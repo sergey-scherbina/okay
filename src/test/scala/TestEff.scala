@@ -1,15 +1,14 @@
 package okay
 
 import org.junit.*
+import util.chaining.*
 
 class TestEff {
 
-  val p = fib[BigInt, Produce]
+  val p: Produce[BigInt] = fib[BigInt, Produce]
 
   @Test def t1(): Unit = {
-    for (n <- 0 to 10) {
-      println(p.skip(n).?)
-    }
+    println(p(100000).?)
   }
 
   @Test def t2(): Unit = {
@@ -18,11 +17,9 @@ class TestEff {
     import scala.concurrent.duration.*
     import ExecutionContext.Implicits.global
 
-    given Handler[Pure] with
-      override def apply[A, B](a: A): A \ B = k => {
-        println(a)
-        k(a)
-      }
+    given Impure with
+      inline override def impure[A](a: A): A =
+        a.tap(println)
 
     Try(Await.ready(Future(p.run), 1.micros))
   }

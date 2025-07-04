@@ -5,7 +5,7 @@ package okay
 // Parametrised monad M[A, S, R] represents a computation of value A
 // which changes a state from S to R, i.e. it's indexed by
 // an arrow S -> R in a category S of "states".
-trait Monad[M[_, _, _]] {
+trait ParaMonad[M[_, _, _]] {
   // identity: R -> R
   def pure[A, R](a: A): M[A, R, R]
 
@@ -19,17 +19,21 @@ trait Monad[M[_, _, _]] {
     def flatMap[B, S2](f: A => M[B, S2, S]): M[B, S2, R]
 }
 
-/*
 trait Functor[F[_]]:
   extension [A](fa: F[A])
     def map[B](f: A => B): F[B]
 
+trait Comonad[F[_]] extends Functor[F]:
+  extension [A](a: F[A])
+    def extract(): A
+    def coflatMap[B](f: F[A] => B): F[B]
+
 trait Applicative[F[_]] extends Functor[F]:
   def pure[A](a: A): F[A]
   extension [A, B](f: F[A => B])
-    def apply(a: F[A]): F[B]
+    def app(a: F[A]): F[B]
   extension [A](fa: F[A])
-    override def map[B](f: A => B): F[B] = pure(f)(fa)
+    override def map[B](f: A => B): F[B] = pure(f).app(fa)
 
 trait Alternative[F[_]] extends Applicative[F]:
   def empty[A](): F[A]
@@ -51,25 +55,19 @@ trait Monad[F[_]] extends Selective[F]:
     inline def >>=[B](f: A => F[B]): F[B] = flatMap(f)
     override def map[B](f: A => B): F[B] = fa.flatMap(f.andThen(pure))
   extension [A, B](f: F[A => B])
-    def apply(a: F[A]): F[B] = a.flatMap(a => f(pure(a)))
+    def app(a: F[A]): F[B] = a.flatMap(a => f.app(pure(a)))
   extension [A, B](fe: F[Either[A, B]])
     override def select(f: F[A => B]): F[B] =
       fe.flatMap(_.fold(a => f.map(_(a)), pure))
+
+trait MonadPlus[F[_]]
+  extends Alternative[F], Monad[F]:
+  def mzero[A](): F[A] = empty()
+  extension [A](x: F[A])
+    def mplus(y: F[A]): F[A] = x.append(y)
 
 /**
  * Kleisli composition, is the composition of effectful functions:
  */
 extension [M[_] : Monad, A, B](f: A => M[B])
   def >>>[C](g: B => M[C]): A => M[C] = f(_).flatMap(g)
-
-trait MonadPlus[F[_]]
-  extends Alternative[F], Monad[F]:
-  def mzero[A](): F[A] = empty()
-  extension [A](x: F[A])
-    def mplus(y: F[A]) = x.append(y)
-
-trait Comonad[F[_]] extends Functor[F]:
-  extension [A](a: F[A])
-    def extract(): A
-    def coflatMap[B](f: F[A] => B): F[B]
-*/

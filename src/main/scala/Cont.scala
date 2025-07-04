@@ -12,7 +12,7 @@ inline def reset[A, R](c: A ^ R): R = c / identity
 
 type Cont[A, B, C] = A / B / C
 
-given Monad[Cont] {
+given ParaMonad[Cont] {
   inline override def pure[A, R](a: A): A \ R = _(a)
 
   extension [A, B, C](m: A / B / C)
