@@ -17,14 +17,6 @@ inline def stream[A, B](a: A)(g: A => B)
                        (f: A => A): LazyList[B] =
   generator[A, B, LazyList](a)(g)(f)
 
-given Put[Producer] with
-  final override inline def put[A](a: A): A \ Producer[A] =
-    shift(produce(a).flatMap(_))
-
-inline def producer[A, B](a: A)(g: A => B)
-                         (f: A => A): Producer[B] =
-  generator[A, B, Producer](a)(g)(f)
-
 import scala.math.Numeric.Implicits.given
 
 inline def num[N: Numeric as N, F[_] : Put]: F[N] = generator(N.zero)(identity)(_ + N.one)

@@ -45,3 +45,4 @@ build/
 
 ### Scala ###
 .bsp/
+/src/test/scala/tmp/
