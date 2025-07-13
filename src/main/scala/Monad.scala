@@ -84,9 +84,6 @@ given Comonad[Nothing] with
 
 type Pure[A] = A
 
-given Functor[Pure] with
-  override inline def fmap[A, B](a: Pure[A], f: A => B): Pure[B] = f(a)
-
 given Comonad[Pure] with
   override inline def fmap[A, B](a: A, f: A => B): B = f(a)
   extension [A](a: A) {

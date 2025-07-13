@@ -4,18 +4,15 @@ import scala.annotation.tailrec
 import scala.util.chaining.*
 
 type Producer[A] = A ! Pure
-inline def produce[A](a: A): Producer[A] = raise(a)
+inline def produce[A](a: A): Producer[A] = effect(a)
 
 given Put[Producer] with
   final override inline def put[A](a: A): A \ Producer[A] =
     shift(produce(a).flatMap(_))
 
-extension [A](p: Producer[A])
-  inline def run: Effect[Pure] ?=> A = Producer.run(p)
-
 object Producer {
-  @tailrec def run[A](e: Producer[A]): Effect[Pure] ?=> A = e.fold(identity)(run)
+  @tailrec def run[A](e: Producer[A]): !.Handler[Pure] ?=> A = e.foldF(identity)(run)
 
-  def log(prefix: String = "", suffix: String = "\n"): Effect[Pure] = new:
-    inline def apply[A](a: A): A = a.tap(_.pipe(prefix + _ + suffix).tap(print))
+  def log(prefix: String = "", suffix: String = "\n"): !.Handler[Pure] = new:
+    inline def apply[A, B](a: A, k: A => B): B = k(a.tap(_.pipe(prefix + _ + suffix).tap(print)))
 }
