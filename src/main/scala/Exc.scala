@@ -1,6 +1,6 @@
 package okay
 
-case class Exc[E, A](e: E)
+case class Exc[E, +A](e: E)
 
 inline def raise[E, A](e: Exc[E, A]): A ! Exc % E = effect(e)
 
