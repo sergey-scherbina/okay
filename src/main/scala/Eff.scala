@@ -31,12 +31,17 @@ enum ![A, F[+_]] {
     case Effect(e, k) => g(e)(k(_).fold(f)(g))
     case Pure(v) => f(v)
 
-  final def foldG[B, G[+_]](f: A => B ! G)(g: [X] => F[X] => X \ (B ! G)): B ! G = this match
+  final def foldG[B, G[+_]](f: A => B ! G)(g: [X] => F[X] => X \
+    (B ! G)): B ! G = this match
     case Effect(e, k) => g(e)(k(_).foldG(f)(g))
     case Pure(v) => f(v)
 
-  final def produce(g: [X] => F[X] => X \ (A ! F)): Producer[A] = this match
-    case Effect(e, k) => g(e)(k).produce(g)
+  private def _produce_ = produce
+  @tailrec final def produce(f: [X] => F[X] => X / (A ! F) /
+    (A ! F, Option[A])): Producer[A] = this match
+    case Effect(e, k) => f(e)(k) match
+      case (x, Some(a)) => effect(a, _ => x._produce_(f))
+      case (x, _) => x.produce(f)
     case Pure(v) => effect(v)
 
   inline final def unfoldF: Functor[F] ?=> Either[F[A ! F], A] = this match

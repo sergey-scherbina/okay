@@ -3,7 +3,8 @@ package okay
 import scala.annotation.tailrec
 import scala.util.chaining.*
 
-type Producer[A] = A ! Pure
+type Produce[A] = Pure[A]
+type Producer[A] = A ! Produce
 inline def produce[A](a: A): Producer[A] = effect(a)
 
 given Put[Producer] with
