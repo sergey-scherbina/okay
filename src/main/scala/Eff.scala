@@ -10,18 +10,18 @@ infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
  * "Freer Monads, More Extensible Effects" Oleg Kiselyov
  */
 
-type Eff[F[+_], +A] = (A ! F)
+type Eff[F[+_], A] = (A ! F)
 inline def effect[F[+_], A](a: F[A]): A ! F = Eff.Effect(a)
 inline def effect[F[+_], A, B](a: F[A], k: A => B ! F): B ! F = Eff.Effect(a, k)
 inline def pure[F[+_], A](a: A): A ! F = Eff.Pure(a)
 
-enum ![+A, F[+_]] {
+enum ![A, F[+_]] {
   case Pure(a: A)
   case Effect[F[+_], A, X](x: F[X],
                            k: X => A ! F = Pure[A, F](_))
     extends (A ! F)
 
-  final def flatMap[B, G[+_]](f: A => B ! F + G): B ! F + G = this match
+  final def flatMap[B](f: A => B ! F): B ! F = this match
     case Effect(x, k) => Effect(x, k(_).flatMap(f))
     case Pure(a) => f(a)
 
@@ -34,6 +34,10 @@ enum ![+A, F[+_]] {
   final def foldG[B, G[+_]](f: A => B ! G)(g: [X] => F[X] => X \ (B ! G)): B ! G = this match
     case Effect(e, k) => g(e)(k(_).foldG(f)(g))
     case Pure(v) => f(v)
+
+  final def produce(g: [X] => F[X] => X \ (A ! F)): Producer[A] = this match
+    case Effect(e, k) => g(e)(k).produce(g)
+    case Pure(v) => effect(v)
 
   inline final def unfoldF: Functor[F] ?=> Either[F[A ! F], A] = this match
     case Effect(a, f) => Left(a.map(f))
