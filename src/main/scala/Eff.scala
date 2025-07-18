@@ -12,15 +12,14 @@ infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
  */
 
 type Eff[F[+_], A] = (A ! F)
+type !![A, F[+_]] = TailRec[A ! F]
 inline def pure[F[+_], A](a: A): A ! F = Eff.pure(a)
 inline def effect[F[+_], A](a: F[A]): A ! F = Eff.effect(a)
-inline def effect[F[+_], A, B](a: F[A], k: A => B ! F): B ! F = Eff.effect(a, k)
+inline def effect[F[+_], A, B](a: F[A], k: A => B !! F): B ! F = Eff.effect(a, k)
 
 enum ![A, F[+_]] {
   case Pure(a: A)
-  case Effect[F[+_], A, X](x: F[X],
-                           k: X => TailRec[A ! F])
-    extends (A ! F)
+  case Effect[F[+_], A, X](x: F[X], k: X => A !! F) extends (A ! F)
 
   final def flatMap[B](f: A => B ! F): B ! F = this match
     case Effect(x, k) => Effect(x, x => tailcall(k(x).map(_.flatMap(f))))
@@ -36,13 +35,6 @@ enum ![A, F[+_]] {
     (B ! G)): B ! G = this match
     case Effect(e, k) => g(e)(k(_).map(_.foldG(f)(g)).result)
     case Pure(v) => f(v)
-
-  private def _produce_ = produce
-  @tailrec final def produce(f: [X] => F[X] => X / TailRec[(A ! F)] / (A ! F, Option[A])): Producer[A] = this match
-    case Effect(e, k) => f(e)(k) match
-      case (x, Some(a)) => effect(a, _ => x._produce_(f))
-      case (x, _) => x.produce(f)
-    case Pure(v) => effect(v)
 
   inline final def unfoldF: Functor[F] ?=> Either[F[A ! F], A] = this match
     case Effect(a, f) => Left(a.map(f).map(_.result))
@@ -69,8 +61,8 @@ val Eff = !
 
 object ! {
   inline def pure[F[+_], A](a: A): A ! F = Pure(a)
-  inline def effect[F[+_], A](a: F[A]): A ! F = effect(a, pure)
-  inline def effect[F[+_], A, B](a: F[A], k: A => B ! F): B ! F = Effect(a, x => done(k(x)))
+  inline def effect[F[+_], A](a: F[A]): A ! F = effect(a, x => done(pure(x)))
+  inline def effect[F[+_], A, B](a: F[A], k: A => B !! F): B ! F = Effect(a, k)
 
   @tailrec def runF[F[+_] : Comonad, A](e: A ! F): A =
     e.foldF(identity)(a => runF(a.extract))
@@ -93,7 +85,7 @@ object ! {
       case !.Pure(a) => pure(f(a))
       case !.Effect(x, k) => <|>[F, G](x) match
         case Left(e) => g(e)(k(_).map(loop).result)
-        case Right(e) => effect(e, k(_).map(loop).result)
+        case Right(e) => effect(e, k(_).map(loop))
 
     loop(a)
   }
