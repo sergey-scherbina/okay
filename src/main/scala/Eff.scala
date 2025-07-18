@@ -84,7 +84,7 @@ object ! {
     def loop(x: A ! F + G): B !! G = x match
       case !.Pure(a) => done(pure(f(a)))
       case !.Effect(x, k) => <|>[F, G](x) match
-        case Left(e) => tailcall(g(e)(k).flatMap(loop))
+        case Left(e) => tailcall(g(e)(k(_).flatMap(loop)))
         case Right(e) => done(effect(e, x => tailcall(k(x).flatMap(loop))))
 
     loop(a).result
