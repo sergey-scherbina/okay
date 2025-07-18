@@ -9,6 +9,7 @@ class TestEff {
   @Test def t1(): Unit = {
     val x = State.index(List("a", "b", "c", "d", "e", "f", "g"), 1).tap(println)
     Assert.assertEquals((8, List((7, "g"), (6, "f"), (5, "e"), (4, "d"), (3, "c"), (2, "b"), (1, "a"))), x)
+    // println(State.index(fib[BigInt, LazyList].take(10000)))
   }
 
   @Test def t21(): Unit = {
