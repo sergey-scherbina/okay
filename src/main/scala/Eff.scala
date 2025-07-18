@@ -2,6 +2,7 @@ package okay
 
 import scala.annotation.tailrec
 import scala.reflect.Typeable
+import scala.util.control.TailCalls.*
 
 infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 
@@ -11,41 +12,40 @@ infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
  */
 
 type Eff[F[+_], A] = (A ! F)
-inline def effect[F[+_], A](a: F[A]): A ! F = Eff.Effect(a)
-inline def effect[F[+_], A, B](a: F[A], k: A => B ! F): B ! F = Eff.Effect(a, k)
-inline def pure[F[+_], A](a: A): A ! F = Eff.Pure(a)
+inline def pure[F[+_], A](a: A): A ! F = Eff.pure(a)
+inline def effect[F[+_], A](a: F[A]): A ! F = Eff.effect(a)
+inline def effect[F[+_], A, B](a: F[A], k: A => B ! F): B ! F = Eff.effect(a, k)
 
 enum ![A, F[+_]] {
   case Pure(a: A)
   case Effect[F[+_], A, X](x: F[X],
-                           k: X => A ! F = Pure[A, F](_))
+                           k: X => TailRec[A ! F])
     extends (A ! F)
 
   final def flatMap[B](f: A => B ! F): B ! F = this match
-    case Effect(x, k) => Effect(x, k(_).flatMap(f))
+    case Effect(x, k) => Effect(x, x => tailcall(k(x).map(_.flatMap(f))))
     case Pure(a) => f(a)
 
   inline def map[B](f: A => B): B ! F = flatMap(f.andThen(Pure(_)))
 
   final def fold[B](f: A => B)(g: [X] => F[X] => X \ B): B = this match
-    case Effect(e, k) => g(e)(k(_).fold(f)(g))
+    case Effect(e, k) => g(e)(k(_).map(_.fold(f)(g)).result)
     case Pure(v) => f(v)
 
   final def foldG[B, G[+_]](f: A => B ! G)(g: [X] => F[X] => X \
     (B ! G)): B ! G = this match
-    case Effect(e, k) => g(e)(k(_).foldG(f)(g))
+    case Effect(e, k) => g(e)(k(_).map(_.foldG(f)(g)).result)
     case Pure(v) => f(v)
 
   private def _produce_ = produce
-  @tailrec final def produce(f: [X] => F[X] => X / (A ! F) /
-    (A ! F, Option[A])): Producer[A] = this match
+  @tailrec final def produce(f: [X] => F[X] => X / TailRec[(A ! F)] / (A ! F, Option[A])): Producer[A] = this match
     case Effect(e, k) => f(e)(k) match
       case (x, Some(a)) => effect(a, _ => x._produce_(f))
       case (x, _) => x.produce(f)
     case Pure(v) => effect(v)
 
   inline final def unfoldF: Functor[F] ?=> Either[F[A ! F], A] = this match
-    case Effect(a, f) => Left(a.map(f))
+    case Effect(a, f) => Left(a.map(f).map(_.result))
     case Pure(a) => Right(a)
 
   inline def foldF[B](inline f: A => B)
@@ -56,7 +56,7 @@ enum ![A, F[+_]] {
   import !.*
 
   @tailrec final def next(steps: Long = 1): Handler[F] ?=> A ! F = this match
-    case Effect(a, k) if steps > 0 => handler(a)(k).next(steps - 1)
+    case Effect(a, k) if steps > 0 => handler(a)(k).result.next(steps - 1)
     case a => a
 
   inline def ? : Handler[F] ?=> ? = this match
@@ -69,8 +69,8 @@ val Eff = !
 
 object ! {
   inline def pure[F[+_], A](a: A): A ! F = Pure(a)
-  inline def effect[F[+_], A](a: F[A]): A ! F = Effect(a)
-  inline def effect[F[+_], A, B](a: F[A], k: A => B ! F): B ! F = Effect(a, k)
+  inline def effect[F[+_], A](a: F[A]): A ! F = effect(a, pure)
+  inline def effect[F[+_], A, B](a: F[A], k: A => B ! F): B ! F = Effect(a, x => done(k(x)))
 
   @tailrec def runF[F[+_] : Comonad, A](e: A ! F): A =
     e.foldF(identity)(a => runF(a.extract))
@@ -92,8 +92,8 @@ object ! {
     def loop(x: A ! F + G): B ! G = x match
       case !.Pure(a) => pure(f(a))
       case !.Effect(x, k) => <|>[F, G](x) match
-        case Left(e) => g(e)(k.andThen(loop))
-        case Right(e) => effect(e, k.andThen(loop))
+        case Left(e) => g(e)(k(_).map(loop).result)
+        case Right(e) => effect(e, k(_).map(loop).result)
 
     loop(a)
   }

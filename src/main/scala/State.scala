@@ -1,6 +1,7 @@
 package okay
 
 import scala.annotation.tailrec
+import scala.util.control.TailCalls.*
 
 infix type %[F[_, _], S] = F[S, *]
 
@@ -16,13 +17,16 @@ object State {
   extension [A](a: A)
     def state[S]: A ! State % S = Eff.pure(a)
 
-  @tailrec def handleState[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = a match
-    case !.Pure(a) => pure((s, a))
-    case !.Effect(x, k) => Eff.<|>[State[S, *], F](x) match
-      case Left(Get()) => handleState(s)(k(s))
-      case Left(Put(s)) => handleState(s)(k(s))
-      case Right(e) => effect(e, x => _handleState(s)(k(x)))
-  private def _handleState[S, A, F[+_]] = handleState[S, A, F]
+  def handleState[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = {
+    def loop[X](s: S)(x: X ! State % S + F): TailRec[(S, X) ! F] = x match
+      case !.Pure(a) => done(pure((s, a)))
+      case !.Effect(x, k) => Eff.<|>[State[S, *], F](x) match
+        case Left(Get()) => k(s).flatMap(loop(s))
+        case Left(Put(s)) => k(s).flatMap(loop(s))
+        case Right(e) => done(Eff.Effect(e, x => tailcall(k(x).flatMap(loop(s)))))
+
+    loop(s)(a).result
+  }
 
   inline def runState[S, A](s: S)(a: A ! State % S): (S, A) =
     Eff.run(handleState(s)(a))
