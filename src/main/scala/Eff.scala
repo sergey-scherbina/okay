@@ -28,16 +28,16 @@ enum ![A, F[+_]] {
   inline def map[B](f: A => B): B ! F = flatMap(f.andThen(Pure(_)))
 
   final def fold[B](f: A => B)(g: [X] => F[X] => X \ B): B = this match
-    case Effect(e, k) => g(e)(k(_).map(_.fold(f)(g)).result)
+    case Effect(e, k) => g(e)(x => tailcall(k(x).map(_.fold(f)(g))).result)
     case Pure(v) => f(v)
 
   final def foldG[B, G[+_]](f: A => B ! G)(g: [X] => F[X] => X \
     (B ! G)): B ! G = this match
-    case Effect(e, k) => g(e)(k(_).map(_.foldG(f)(g)).result)
+    case Effect(e, k) => g(e)(x => tailcall(k(x).map(_.foldG(f)(g))).result)
     case Pure(v) => f(v)
 
   inline final def unfoldF: Functor[F] ?=> Either[F[A ! F], A] = this match
-    case Effect(a, f) => Left(a.map(f).map(_.result))
+    case Effect(a, f) => Left(a.map(f(_).result))
     case Pure(a) => Right(a)
 
   inline def foldF[B](inline f: A => B)

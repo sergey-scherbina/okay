@@ -18,7 +18,7 @@ object State {
     def state[S]: A ! State % S = Eff.pure(a)
 
   def handleState[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = {
-    def loop[X](s: S)(x: X ! State % S + F): TailRec[(S, X) ! F] = x match
+    def loop[X](s: S)(x: X ! State % S + F): (S, X) !! F = x match
       case !.Pure(a) => done(pure((s, a)))
       case !.Effect(x, k) => Eff.<|>[State[S, *], F](x) match
         case Left(Get()) => k(s).flatMap(loop(s))
