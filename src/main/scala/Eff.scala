@@ -80,14 +80,14 @@ object ! {
     case e: G[A] => Right(e)
 
   def handle[A, B, F[+_], G[+_]](a: A ! F + G)(f: A => B)
-                                (g: [X] => F[X] => X \ (B ! G)): B ! G = {
-    def loop(x: A ! F + G): B ! G = x match
-      case !.Pure(a) => pure(f(a))
+                                (g: [X, Y] => F[X] => X \ Y): B ! G = {
+    def loop(x: A ! F + G): B !! G = x match
+      case !.Pure(a) => done(pure(f(a)))
       case !.Effect(x, k) => <|>[F, G](x) match
-        case Left(e) => g(e)(k(_).map(loop).result)
-        case Right(e) => effect(e, k(_).map(loop))
+        case Left(e) => tailcall(g(e)(k).flatMap(loop))
+        case Right(e) => done(effect(e, x => tailcall(k(x).flatMap(loop))))
 
-    loop(a)
+    loop(a).result
   }
 
   trait Handler[F[_]]:
