@@ -23,7 +23,7 @@ object State {
       case !.Effect(x, k) => Eff.<|>[State[S, *], F](x) match
         case Left(Get()) => tailcall(k(s).flatMap(loop(s)))
         case Left(Put(s)) => tailcall(k(s).flatMap(loop(s)))
-        case Right(e) => done(Eff.Effect(e, x => tailcall(k(x).flatMap(loop(s)))))
+        case Right(e) => done(effect(e, x => tailcall(k(x).flatMap(loop(s)))))
 
     loop(s)(a).result
   }
