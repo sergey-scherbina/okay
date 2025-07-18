@@ -72,13 +72,23 @@ object ! {
   inline def effect[F[+_], A](a: F[A]): A ! F = Effect(a)
   inline def effect[F[+_], A, B](a: F[A], k: A => B ! F): B ! F = Effect(a, k)
 
+  @tailrec def runF[F[+_] : Comonad, A](e: A ! F): A =
+    e.foldF(identity)(a => runF(a.extract))
+
+  inline def run[A](e: A ! Nothing): A = runF(e)
+
+  given [F[+_]]: Monad[[A] =>> A ! F] with
+    override inline def pure[A](a: A): A ! F = Pure(a)
+    extension [A](a: A ! F)
+      override inline def flatMap[B](f: A => B ! F): B ! F = a.flatMap(f)
+
   inline def <|>[F[+_], G[+_]]: [A] => (e: F[A] | G[A]) => (Typeable[A],
     Typeable[F[A]], Typeable[G[A]]) ?=> Either[F[A], G[A]] = [A] => e => e match
     case e: F[A] => Left(e)
     case e: G[A] => Right(e)
 
-  def handle[A, B, F[+_], G[+_]](f: A => B)(g: [X] => F[X] => X \ (B ! G))
-                                (a: A ! F + G): B ! G = {
+  def handle[A, B, F[+_], G[+_]](a: A ! F + G)(f: A => B)
+                                (g: [X] => F[X] => X \ (B ! G)): B ! G = {
     def loop(x: A ! F + G): B ! G = x match
       case !.Pure(a) => pure(f(a))
       case !.Effect(x, k) => <|>[F, G](x) match
@@ -87,14 +97,6 @@ object ! {
 
     loop(a)
   }
-
-  @tailrec def extract[F[+_] : Comonad, A](e: A ! F): A =
-    e.foldF(identity)(a => extract(a.extract))
-
-  given [F[+_]]: Monad[[A] =>> A ! F] with
-    override inline def pure[A](a: A): A ! F = Pure(a)
-    extension [A](a: A ! F)
-      override inline def flatMap[B](f: A => B ! F): B ! F = a.flatMap(f)
 
   trait Handler[F[_]]:
     def apply[A, B](a: F[A]): A \ B

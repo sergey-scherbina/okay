@@ -16,16 +16,6 @@ object State {
   extension [A](a: A)
     def state[S]: A ! State % S = Eff.pure(a)
 
-  @tailrec def runState[S, A](s: S)(a: A ! State % S): (S, A) = a match
-    case !.Pure(a) => (s, a)
-    case !.Effect(x, k) => x match
-      case Get() => runState(s)(k(s))
-      case Put(s) => runState(s)(k(s))
-
-  def index[A](seq: Seq[A], begin: Long = 0): (Long, Seq[(Long, A)]) = runState(begin):
-    seq.foldLeft(Seq[(Long, A)]().state[Long]): (c, a) =>
-      for xs <- c; n <- getState; _ <- putState(n + 1) yield (n, a) +: xs
-
   @tailrec def handleState[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = a match
     case !.Pure(a) => pure((s, a))
     case !.Effect(x, k) => Eff.<|>[State[S, *], F](x) match
@@ -33,5 +23,12 @@ object State {
       case Left(Put(s)) => handleState(s)(k(s))
       case Right(e) => effect(e, x => _handleState(s)(k(x)))
   private def _handleState[S, A, F[+_]] = handleState[S, A, F]
+
+  inline def runState[S, A](s: S)(a: A ! State % S): (S, A) =
+    Eff.run(handleState(s)(a))
+
+  def index[A](seq: Seq[A], begin: Long = 0): (Long, Seq[(Long, A)]) = runState(begin):
+    seq.foldLeft(Seq[(Long, A)]().state[Long]): (c, a) =>
+      for xs <- c; n <- getState; _ <- putState(n + 1) yield (n, a) +: xs
 
 }
