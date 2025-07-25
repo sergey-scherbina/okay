@@ -31,8 +31,7 @@ enum ![A, F[+_]] {
     case Effect(e, k) => g(e)(x => tailcall(k(x).map(_.fold(f)(g))).result)
     case Pure(v) => f(v)
 
-  final def foldG[B, G[+_]](f: A => B ! G)(g: [X] => F[X] => X \
-    (B ! G)): B ! G = this match
+  final def foldG[B, G[+_]](f: A => B ! G)(g: [X] => F[X] => X \ (B ! G)): B ! G = this match
     case Effect(e, k) => g(e)(x => tailcall(k(x).map(_.foldG(f)(g))).result)
     case Pure(v) => f(v)
 
@@ -55,6 +54,9 @@ enum ![A, F[+_]] {
     case Effect(a, _) => handler(a)(identity)
     case a => a
 
+  def interprete[G[_] : Monad as M](handle: [X] => F[X] => G[X]): G[A] = this match
+    case Pure(x) => M.pure(x)
+    case Effect(x, k) => handle(x).flatMap(x => tailcall(k(x).map(_.interprete(handle))).result)
 }
 
 val Eff = !
