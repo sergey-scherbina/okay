@@ -40,13 +40,13 @@ enum ![A, F[+_]] {
     case Pure(a) => Right(a)
 
   inline def fold[B](inline f: A => B)
-                     (inline g: F[A ! F] => B): Functor[F] ?=> B = unfold match
+                    (inline g: F[A ! F] => B): Functor[F] ?=> B = unfold match
     case Left(e) => g(e)
     case Right(a) => f(a)
 
-  def interprete[G[_] : Monad as M](handler: [X] => F[X] => G[X]): G[A] = this match
+  def run[G[_] : Monad as M](handler: [X] => F[X] => G[X]): G[A] = this match
     case Pure(x) => M.pure(x)
-    case Effect(x, k) => handler(x).flatMap(x => k(x).map(_.interprete(handler)).result)
+    case Effect(x, k) => handler(x).flatMap(x => k(x).map(_.run(handler)).result)
 
   import !.*
 
