@@ -12,37 +12,41 @@ infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
  */
 
 type Eff[F[+_], A] = (A ! F)
-type !![A, F[+_]] = TailRec[A ! F]
 inline def pure[F[+_], A](a: A): A ! F = Eff.pure(a)
 inline def effect[F[+_], A](a: F[A]): A ! F = Eff.effect(a)
 inline def effect[F[+_], A, B](a: F[A], k: A => B !! F): B ! F = Eff.effect(a, k)
+
+type !![A, F[+_]] = TailRec[A ! F]
+extension [A, B, F[+_]](k: A => B !! F)
+  inline def >>>[C](f: B => C ! F): A => C !! F =
+    x => tailcall(k(x).map(_.flatMap(f)))
 
 enum ![A, F[+_]] {
   case Pure(a: A)
   case Effect[F[+_], A, X](x: F[X], k: X => A !! F) extends (A ! F)
 
   final def flatMap[B](f: A => B ! F): B ! F = this match
-    case Effect(x, k) => Effect(x, x => tailcall(k(x).map(_.flatMap(f))))
+    case Effect(x, k) => Effect(x, k >>> f)
     case Pure(a) => f(a)
 
   inline def map[B](f: A => B): B ! F = flatMap(f.andThen(Pure(_)))
 
-  final def fold[B](f: A => B)(g: [X] => F[X] => X \ B): B = this match
-    case Effect(e, k) => g(e)(x => tailcall(k(x).map(_.fold(f)(g))).result)
+  final def foldMap[B](f: A => B)(g: [X] => F[X] => X \ B): B = this match
+    case Effect(e, k) => g(e)(x => k(x).map(_.foldMap(f)(g)).result)
     case Pure(v) => f(v)
 
-  final def foldG[B, G[+_]](f: A => B ! G)(g: [X] => F[X] => X \ (B ! G)): B ! G = this match
-    case Effect(e, k) => g(e)(x => tailcall(k(x).map(_.foldG(f)(g))).result)
-    case Pure(v) => f(v)
-
-  inline final def unfoldF: Functor[F] ?=> Either[F[A ! F], A] = this match
+  inline final def unfold: Functor[F] ?=> Either[F[A ! F], A] = this match
     case Effect(a, f) => Left(a.map(f(_).result))
     case Pure(a) => Right(a)
 
-  inline def foldF[B](inline f: A => B)
-                     (inline g: F[A ! F] => B): Functor[F] ?=> B = unfoldF match
+  inline def fold[B](inline f: A => B)
+                     (inline g: F[A ! F] => B): Functor[F] ?=> B = unfold match
     case Left(e) => g(e)
     case Right(a) => f(a)
+
+  def interprete[G[_] : Monad as M](handler: [X] => F[X] => G[X]): G[A] = this match
+    case Pure(x) => M.pure(x)
+    case Effect(x, k) => handler(x).flatMap(x => k(x).map(_.interprete(handler)).result)
 
   import !.*
 
@@ -54,9 +58,6 @@ enum ![A, F[+_]] {
     case Effect(a, _) => handler(a)(identity)
     case a => a
 
-  def interprete[G[_] : Monad as M](handle: [X] => F[X] => G[X]): G[A] = this match
-    case Pure(x) => M.pure(x)
-    case Effect(x, k) => handle(x).flatMap(x => tailcall(k(x).map(_.interprete(handle))).result)
 }
 
 val Eff = !
@@ -67,7 +68,7 @@ object ! {
   inline def effect[F[+_], A, B](a: F[A], k: A => B !! F): B ! F = Effect(a, k)
 
   @tailrec def runF[F[+_] : Comonad, A](e: A ! F): A =
-    e.foldF(identity)(a => runF(a.extract))
+    e.fold(identity)(a => runF(a.extract))
 
   inline def run[A](e: A ! Nothing): A = runF(e)
 

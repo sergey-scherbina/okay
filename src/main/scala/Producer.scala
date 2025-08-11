@@ -12,7 +12,7 @@ given Put[Producer] with
     shift(produce(a).flatMap(_))
 
 object Producer {
-  @tailrec def run[A](e: Producer[A]): !.Handler[Pure] ?=> A = e.foldF(identity)(run)
+  @tailrec def run[A](e: Producer[A]): !.Handler[Pure] ?=> A = e.fold(identity)(run)
 
   def log(prefix: String = "", suffix: String = "\n"): !.Handler[Pure] = new:
     inline def apply[A, B](a: A): A \ B = _(a.tap(_.pipe(prefix + _ + suffix).tap(print)))
