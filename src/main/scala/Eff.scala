@@ -3,8 +3,6 @@ package okay
 import scala.annotation.tailrec
 import scala.reflect.Typeable
 
-infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
-
 /**
  * https://okmij.org/ftp/Haskell/extensible/more.pdf
  * "Freer Monads, More Extensible Effects" Oleg Kiselyov
@@ -47,45 +45,58 @@ enum ![A, F[+_]] {
     case Left(e) => g(e)
     case Right(a) => f(a)
 
-  private def _run[M[_] : Monad as M](h: [X] => F[X] => M[X]): M[A] = run(h)
-  @tailrec final def run[M[_] : Monad as M](handler: [X] => F[X] => M[X]): M[A] = this match
-    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).run(handler)
-    case FlatMap(Effect(e), k) => handler(e).flatMap(k(_)._run(handler))
-    case FlatMap(Pure(a), k) => k(a).run(handler)
-    case Effect(e) => handler(e)
+  private def _run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = run(f)
+  @tailrec final def run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = this match
+    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).run(f)
+    case FlatMap(Effect(e), k) => f(e).flatMap(k(_)._run(f))
+    case FlatMap(Pure(a), k) => k(a).run(f)
+    case Effect(e) => f(e)
     case Pure(x) => M.pure(x)
 
   import !.*
 
-  @tailrec final def next(steps: Long = 1): Handler[F] ?=> A ! F = this match
+  @tailrec final def next(steps: Long = 1): Eval[F] ?=> A ! F = this match
     case a if steps <= 0 => a
     case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).next(steps - 1)
-    case FlatMap(Effect(e), k) => handler(e)(k).next(steps - 1)
+    case FlatMap(Effect(e), k) => k(eval(e)).next(steps - 1)
     case FlatMap(Pure(a), k) => k(a).next(steps - 1)
     case a => a
 
-  @tailrec final def ? : Handler[F] ?=> ? = this match
+  @tailrec final def ? : Eval[F] ?=> ? = this match
     case Pure(a) => a
-    case Effect(a) => handler(a)(identity)
+    case Effect(e) => eval(e)
     case FlatMap(a, _) => a.?
 }
+
+trait Eval[F[_]]:
+  def apply[A](a: F[A]): A
+
+inline def eval[F[_] : Eval as F]: [A] => F[A] => A =
+  [A] => a => F(a)
+
+given [F[_] : Comonad]: Eval[F] with
+  inline def apply[A](a: F[A]): A = a.extract
+
+infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 
 val Eff = !
 
 object ! {
+  inline def pure[F[+_], A](a: A): A ! F = Pure(a)
+  inline def effect[F[+_], A](e: F[A]): A ! F = Effect(e)
+
   given [F[+_]]: Monad[[A] =>> A ! F] with
     override inline def pure[A](a: A): A ! F = Pure(a)
     extension [A](a: A ! F)
       override inline def flatMap[B](f: A => B ! F): B ! F = a.flatMap(f)
 
-  inline def pure[F[+_], A](a: A): A ! F = Pure(a)
-  inline def effect[F[+_], A](e: F[A]): A ! F = Effect(e)
+  inline def run[A](e: A ! Nothing): A = runEval(e)
+  @tailrec def runEval[F[+_] : {Functor, Eval}, A](e: A ! F): A =
+    e.fold(identity)(a => runEval(eval(a)))
 
-  @tailrec def runF[F[+_] : Comonad, A](e: A ! F): A = e.fold(identity)(a => runF(a.extract))
-  inline def run[A](e: A ! Nothing): A = runF(e)
-
-  inline def <|>[F[+_], G[+_]]: [A] => (e: F[A] | G[A]) => (Typeable[A],
-    Typeable[F[A]], Typeable[G[A]]) ?=> Either[F[A], G[A]] = [A] => e => e match
+  inline def <|>[F[+_], G[+_]]: [A] => (e: F[A] | G[A]) =>
+    (Typeable[F[A]], Typeable[G[A]]) ?=> Either[F[A], G[A]]
+  = [A] => e => e match
     case e: F[A] => Left(e)
     case e: G[A] => Right(e)
 
@@ -104,14 +115,5 @@ object ! {
 
     loop(a)
   }
-
-  trait Handler[F[_]]:
-    def apply[A, B](a: F[A]): A \ B
-
-  given [F[_] : Comonad]: Handler[F] with
-    inline def apply[A, B](a: F[A]): A \ B = _(a.extract)
-
-  inline def handler[F[_] : Handler as H]: [A, B] => F[A] => A \ B =
-    [A, B] => e => H(e)
-
 }
+

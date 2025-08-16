@@ -17,6 +17,7 @@ extension [A](a: A)
 object State {
   inline def get[S]: S ! State % S = effect(Get())
   inline def set[S](s: S): S ! State % S = effect(Set(s))
+  inline def run[S, A](s: S)(a: A ! State % S): (S, A) = Eff.run(handle(s)(a))
 
   def handle[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = {
     def _loop(s: S)(x: A ! State % S + F): (S, A) ! F = loop(s)(x)
@@ -37,11 +38,7 @@ object State {
     loop(s)(a)
   }
 
-  inline def run[S, A](s: S)(a: A ! State % S): (S, A) =
-    Eff.run(handle(s)(a))
-
   def index[A](seq: Seq[A], from: Long = 0): (Long, Seq[(Long, A)]) = run(from):
     seq.foldLeft(Seq[(Long, A)]().state[Long]): (c, a) =>
       for xs <- c; n <- get; _ <- set(n + 1) yield (n, a) +: xs
-
 }
