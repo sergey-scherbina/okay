@@ -8,7 +8,7 @@ infix type %[F[_, _], S] = F[S, *]
 
 enum State[S, +A] {
   case Get() extends State[S, S]
-  case Put(s: S) extends State[S, S]
+  case Set(s: S) extends State[S, S]
 }
 
 extension [A](a: A)
@@ -16,22 +16,22 @@ extension [A](a: A)
 
 object State {
   inline def get[S]: S ! State % S = effect(Get())
-  inline def set[S](s: S): S ! State % S = effect(Put(s))
+  inline def set[S](s: S): S ! State % S = effect(Set(s))
 
   def handle[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = {
     def _loop(s: S)(x: A ! State % S + F): (S, A) ! F = loop(s)(x)
 
     @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = x match
-      case Continue(Continue(a, h), k) => loop(s)(a.flatMap(h(_).flatMap(k)))
-      case Continue(Pure(a), k) => loop(s)(k(a))
+      case FlatMap(FlatMap(a, h), k) => loop(s)(a.flatMap(h(_).flatMap(k)))
+      case FlatMap(Pure(a), k) => loop(s)(k(a))
       case Pure(a) => Pure((s, a))
       case Effect(e) => <|>[State[S, *], F](e) match
         case Left(Get()) => Pure((s, s))
-        case Left(Put(s)) => Pure((s, s))
+        case Left(Set(s)) => Pure((s, s))
         case Right(e) => Effect(e).map((s, _))
-      case Continue(Effect(e), k) => <|>[State[S, *], F](e) match
+      case FlatMap(Effect(e), k) => <|>[State[S, *], F](e) match
         case Left(Get()) => loop(s)(k(s))
-        case Left(Put(s)) => loop(s)(k(s))
+        case Left(Set(s)) => loop(s)(k(s))
         case Right(e) => Effect(e).flatMap(x => _loop(s)(k(x)))
 
     loop(s)(a)

@@ -8,6 +8,10 @@ infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 /**
  * https://okmij.org/ftp/Haskell/extensible/more.pdf
  * "Freer Monads, More Extensible Effects" Oleg Kiselyov
+ *
+ * https://blog.higher-order.com/assets/trampolines.pdf
+ * "Stackless Scala With Free Monads"
+ * Rúnar Óli Bjarnason runarorama@gmail.com
  */
 
 type Eff[F[+_], A] = (A ! F)
@@ -17,24 +21,24 @@ inline def effect[F[+_], A](a: F[A]): A ! F = Eff.effect(a)
 enum ![A, F[+_]] {
   case Pure(a: A)
   case Effect(x: F[A])
-  case Continue[F[+_], A, X](x: X ! F,
-                             k: X => A ! F)
+  case FlatMap[F[+_], A, X](x: X ! F,
+                            k: X => A ! F)
     extends (A ! F)
 
-  inline def flatMap[B](f: A => B ! F): B ! F = Continue(this, f)
+  inline def flatMap[B](f: A => B ! F): B ! F = FlatMap(this, f)
   inline def map[B](f: A => B): B ! F = flatMap(f.andThen(Pure(_)))
 
   @tailrec final def foldMap[B](f: A => B)(g: [X, Y] => F[X] => X \ Y): B = this match
-    case Continue(Continue(a, h), k) => a.flatMap(h(_).flatMap(k)).foldMap(f)(g)
-    case Continue(Effect(e), k) => g(e)(k).foldMap(f)(g)
-    case Continue(Pure(a), k) => k(a).foldMap(f)(g)
+    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).foldMap(f)(g)
+    case FlatMap(Effect(e), k) => g(e)(k).foldMap(f)(g)
+    case FlatMap(Pure(a), k) => k(a).foldMap(f)(g)
     case Effect(e) => g(e)(f)
     case Pure(a) => f(a)
 
   @tailrec final def unfold: Functor[F] ?=> Either[F[A ! F], A] = this match
-    case Continue(Continue(a, h), k) => a.flatMap(h(_).flatMap(k)).unfold
-    case Continue(Effect(e), k) => Left(e.map(k))
-    case Continue(Pure(a), k) => k(a).unfold
+    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).unfold
+    case FlatMap(Effect(e), k) => Left(e.map(k))
+    case FlatMap(Pure(a), k) => k(a).unfold
     case Effect(e) => Left(e.map(Pure(_)))
     case Pure(a) => Right(a)
 
@@ -45,9 +49,9 @@ enum ![A, F[+_]] {
 
   private def _run[M[_] : Monad as M](h: [X] => F[X] => M[X]): M[A] = run(h)
   @tailrec final def run[M[_] : Monad as M](handler: [X] => F[X] => M[X]): M[A] = this match
-    case Continue(Continue(a, h), k) => a.flatMap(h(_).flatMap(k)).run(handler)
-    case Continue(Effect(e), k) => handler(e).flatMap(k(_)._run(handler))
-    case Continue(Pure(a), k) => k(a).run(handler)
+    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).run(handler)
+    case FlatMap(Effect(e), k) => handler(e).flatMap(k(_)._run(handler))
+    case FlatMap(Pure(a), k) => k(a).run(handler)
     case Effect(e) => handler(e)
     case Pure(x) => M.pure(x)
 
@@ -55,15 +59,15 @@ enum ![A, F[+_]] {
 
   @tailrec final def next(steps: Long = 1): Handler[F] ?=> A ! F = this match
     case a if steps <= 0 => a
-    case Continue(Continue(a, h), k) => a.flatMap(h(_).flatMap(k)).next(steps - 1)
-    case Continue(Effect(e), k) => handler(e)(k).next(steps - 1)
-    case Continue(Pure(a), k) => k(a).next(steps - 1)
+    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).next(steps - 1)
+    case FlatMap(Effect(e), k) => handler(e)(k).next(steps - 1)
+    case FlatMap(Pure(a), k) => k(a).next(steps - 1)
     case a => a
 
   @tailrec final def ? : Handler[F] ?=> ? = this match
     case Pure(a) => a
     case Effect(a) => handler(a)(identity)
-    case Continue(a, _) => a.?
+    case FlatMap(a, _) => a.?
 }
 
 val Eff = !
@@ -88,10 +92,10 @@ object ! {
   def handle[A, B, F[+_], G[+_]](a: A ! F + G)(f: A => B ! G)
                                 (g: [X, Y] => F[X] => X \ Y): B ! G = {
     @tailrec def loop(x: A ! F + G): B ! G = x match
-      case Continue(Continue(x, h), k) => loop(x.flatMap(h(_).flatMap(k)))
-      case Continue(Pure(a), k) => loop(k(a))
+      case FlatMap(FlatMap(x, h), k) => loop(x.flatMap(h(_).flatMap(k)))
+      case FlatMap(Pure(a), k) => loop(k(a))
       case Pure(a) => f(a)
-      case Continue(Effect(e), k) => <|>[F, G](e) match
+      case FlatMap(Effect(e), k) => <|>[F, G](e) match
         case Left(e) => loop(g(e)(k))
         case Right(e) => loop(Effect(e).flatMap(k))
       case Effect(e) => <|>[F, G](e) match
