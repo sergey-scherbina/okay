@@ -26,16 +26,17 @@ enum ![A, F[+_]] {
   inline def flatMap[B](f: A => B ! F): B ! F = FlatMap(this, f)
   inline def map[B](f: A => B): B ! F = flatMap(f.andThen(Pure(_)))
 
-  @tailrec final def foldMap[B](f: A => B)(g: [X, Y] => F[X] => X \ Y): B = this match
-    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).foldMap(f)(g)
-    case FlatMap(Pure(a), k) => k(a).foldMap(f)(g)
+  @tailrec final def resume: A ! F = this match
+    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).resume
+    case FlatMap(Pure(a), k) => k(a).resume
+    case a => a
+
+  @tailrec final def foldMap[B](f: A => B)(g: [X, Y] => F[X] => X \ Y): B = resume match
     case FlatMap(Effect(e), k) => g(e)(k).foldMap(f)(g)
     case Effect(e) => g(e)(f)
     case Pure(a) => f(a)
 
-  @tailrec final def unfold: Functor[F] ?=> Either[F[A ! F], A] = this match
-    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).unfold
-    case FlatMap(Pure(a), k) => k(a).unfold
+  inline def unfold: Functor[F] ?=> Either[F[A ! F], A] = resume match
     case FlatMap(Effect(e), k) => Left(e.map(k))
     case Effect(e) => Left(e.map(Pure(_)))
     case Pure(a) => Right(a)
@@ -45,19 +46,15 @@ enum ![A, F[+_]] {
     case Left(e) => g(e)
     case Right(a) => f(a)
 
-  private def _run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = run(f)
-  @tailrec final def run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = this match
-    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).run(f)
-    case FlatMap(Pure(a), k) => k(a).run(f)
-    case FlatMap(Effect(e), k) => f(e).flatMap(k(_)._run(f))
+  def run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = resume match
+    case FlatMap(Effect(e), k) => f(e).flatMap(k(_).run(f))
     case Effect(e) => f(e)
     case Pure(x) => M.pure(x)
 
   import !.*
 
-  @tailrec final def next(steps: Long = 1): Eval[F] ?=> A ! F = this match
+  @tailrec final def next(steps: Long = 1): Eval[F] ?=> A ! F = resume match
     case a if steps <= 0 => a
-    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).next(steps)
     case FlatMap(Effect(e), k) => k(eval(e)).next(steps - 1)
     case FlatMap(Pure(a), k) => k(a).next(steps - 1)
     case a => a
