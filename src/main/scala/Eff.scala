@@ -31,20 +31,29 @@ enum ![A, F[+_]] {
     case FlatMap(Pure(a), k) => k(a).resume
     case a => a
 
-  final def run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = resume match
-    case FlatMap(Effect(e), k) => f(e).flatMap(k(_).run(f))
-    case Effect(e) => f(e)
-    case Pure(x) => M.pure(x)
+  inline def unfold: Either[A ! F, A] = resume match
+    case Pure(a) => Right(a)
+    case a => Left(a)
 
-  inline def unfold: Functor[F] ?=> Either[F[A ! F], A] = resume match
+  inline def fold[B](inline f: A => B)
+                    (inline g: A ! F => B): B = unfold match
+    case Right(a) => f(a)
+    case Left(e) => g(e)
+
+  inline def unfoldF: Functor[F] ?=> Either[F[A ! F], A] = resume match
     case FlatMap(Effect(e), k) => Left(e.map(k))
     case Effect(e) => Left(e.map(Pure(_)))
     case Pure(a) => Right(a)
 
-  inline def fold[B](inline f: A => B)
-                    (inline g: F[A ! F] => B): Functor[F] ?=> B = unfold match
+  inline def foldF[B](inline f: A => B)
+                     (inline g: F[A ! F] => B): Functor[F] ?=> B = unfoldF match
     case Left(e) => g(e)
     case Right(a) => f(a)
+
+  final def runM[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = resume match
+    case FlatMap(Effect(e), k) => f(e).flatMap(k(_).runM(f))
+    case Effect(e) => f(e)
+    case Pure(x) => M.pure(x)
 
   import !.*
 
@@ -83,7 +92,7 @@ object ! {
 
   inline def run[A](e: A ! Nothing): A = runEval(e)
   @tailrec def runEval[F[+_] : {Functor, Eval}, A](e: A ! F): A =
-    e.fold(identity)(a => runEval(eval(a)))
+    e.foldF(identity)(a => runEval(eval(a)))
 
   given [F[+_]]: Monad[[A] =>> A ! F] with
     override inline def pure[A](a: A): A ! F = Pure(a)
