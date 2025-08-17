@@ -49,15 +49,13 @@ enum ![A, F[+_]] {
   import !.*
 
   @tailrec final def next(steps: Long = 1): Eval[F] ?=> A ! F = resume match
-    case a if steps <= 0 => a
-    case FlatMap(Effect(e), k) => k(eval(e)).next(steps - 1)
-    case FlatMap(Pure(a), k) => k(a).next(steps - 1)
+    case FlatMap(Effect(e), k) if steps > 0 => k(eval(e)).next(steps - 1)
     case a => a
 
   @tailrec final def ? : Eval[F] ?=> ? = this match
-    case Pure(a) => a
-    case Effect(e) => eval(e)
     case FlatMap(a, _) => a.?
+    case Effect(e) => eval(e)
+    case Pure(a) => a
 }
 
 trait Eval[F[_]]:
