@@ -31,10 +31,10 @@ enum ![A, F[+_]] {
     case FlatMap(Pure(a), k) => k(a).resume
     case a => a
 
-  @tailrec final def foldMap[B](f: A => B)(g: [X, Y] => F[X] => X \ Y): B = resume match
-    case FlatMap(Effect(e), k) => g(e)(k).foldMap(f)(g)
-    case Effect(e) => g(e)(f)
-    case Pure(a) => f(a)
+  final def run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = resume match
+    case FlatMap(Effect(e), k) => f(e).flatMap(k(_).run(f))
+    case Effect(e) => f(e)
+    case Pure(x) => M.pure(x)
 
   inline def unfold: Functor[F] ?=> Either[F[A ! F], A] = resume match
     case FlatMap(Effect(e), k) => Left(e.map(k))
@@ -45,11 +45,6 @@ enum ![A, F[+_]] {
                     (inline g: F[A ! F] => B): Functor[F] ?=> B = unfold match
     case Left(e) => g(e)
     case Right(a) => f(a)
-
-  final def run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = resume match
-    case FlatMap(Effect(e), k) => f(e).flatMap(k(_).run(f))
-    case Effect(e) => f(e)
-    case Pure(x) => M.pure(x)
 
   import !.*
 
@@ -76,39 +71,48 @@ given [F[_] : Comonad]: Eval[F] with
 
 infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 
+inline def <|>[F[+_], G[+_]]: [A] => (e: F[A] | G[A]) =>
+  (Typeable[F[A]], Typeable[G[A]]) ?=> Either[F[A], G[A]]
+= [A] => e => e match
+  case e: F[A] => Left(e)
+  case e: G[A] => Right(e)
+
 val Eff = !
 
 object ! {
   inline def pure[F[+_], A](a: A): A ! F = Pure(a)
   inline def effect[F[+_], A](e: F[A]): A ! F = Effect(e)
 
-  given [F[+_]]: Monad[[A] =>> A ! F] with
-    override inline def pure[A](a: A): A ! F = Pure(a)
-    extension [A](a: A ! F)
-      override inline def flatMap[B](f: A => B ! F): B ! F = a.flatMap(f)
-
   inline def run[A](e: A ! Nothing): A = runEval(e)
   @tailrec def runEval[F[+_] : {Functor, Eval}, A](e: A ! F): A =
     e.fold(identity)(a => runEval(eval(a)))
 
-  inline def <|>[F[+_], G[+_]]: [A] => (e: F[A] | G[A]) =>
-    (Typeable[F[A]], Typeable[G[A]]) ?=> Either[F[A], G[A]]
-  = [A] => e => e match
-    case e: F[A] => Left(e)
-    case e: G[A] => Right(e)
+  given [F[+_]]: Monad[[A] =>> A ! F] with
+    override inline def pure[A](a: A): A ! F = Pure(a)
+    extension [A](a: A ! F)
+      override inline def flatMap[B](f: A => B ! F): B ! F =
+        a.flatMap(f)
+
+  given Comonad[Nothing] with
+    override inline def fmap[A, B](a: Nothing, f: A => B): Nothing = a
+    extension [A](a: Nothing) {
+      override inline def extract: A = a
+      override inline def coflatMap[B](f: Nothing => B): Nothing = a
+    }
 
   def handle[A, B, F[+_], G[+_]](a: A ! F + G)(f: A => B ! G)
                                 (g: [X, Y] => F[X] => X \ Y): B ! G = {
     @tailrec def loop(x: A ! F + G): B ! G = x.resume match
-      case Pure(a) => f(a)
       case FlatMap(Effect(e), k) => <|>[F, G](e) match
         case Left(e) => loop(g(e)(k))
         case Right(e) => loop(Effect(e).flatMap(k))
       case Effect(e) => <|>[F, G](e) match
         case Left(e) => g(e)(f)
         case Right(e) => Effect(e).flatMap(f)
+      case Pure(a) => f(a)
 
     loop(a)
   }
+
 }
 

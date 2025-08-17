@@ -75,13 +75,6 @@ trait Comonad[F[_]] extends Functor[F]:
     def extract: A
     def coflatMap[B](f: F[A] => B): F[B]
 
-given Comonad[Nothing] with
-  override inline def fmap[A, B](a: Nothing, f: A => B): Nothing = a
-  extension [A](a: Nothing) {
-    override inline def extract: A = a
-    override inline def coflatMap[B](f: Nothing => B): Nothing = a
-  }
-
 type Pure[A] = A
 
 given Comonad[Pure] with
