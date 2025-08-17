@@ -28,15 +28,15 @@ enum ![A, F[+_]] {
 
   @tailrec final def foldMap[B](f: A => B)(g: [X, Y] => F[X] => X \ Y): B = this match
     case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).foldMap(f)(g)
-    case FlatMap(Effect(e), k) => g(e)(k).foldMap(f)(g)
     case FlatMap(Pure(a), k) => k(a).foldMap(f)(g)
+    case FlatMap(Effect(e), k) => g(e)(k).foldMap(f)(g)
     case Effect(e) => g(e)(f)
     case Pure(a) => f(a)
 
   @tailrec final def unfold: Functor[F] ?=> Either[F[A ! F], A] = this match
     case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).unfold
-    case FlatMap(Effect(e), k) => Left(e.map(k))
     case FlatMap(Pure(a), k) => k(a).unfold
+    case FlatMap(Effect(e), k) => Left(e.map(k))
     case Effect(e) => Left(e.map(Pure(_)))
     case Pure(a) => Right(a)
 
@@ -48,8 +48,8 @@ enum ![A, F[+_]] {
   private def _run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = run(f)
   @tailrec final def run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = this match
     case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).run(f)
-    case FlatMap(Effect(e), k) => f(e).flatMap(k(_)._run(f))
     case FlatMap(Pure(a), k) => k(a).run(f)
+    case FlatMap(Effect(e), k) => f(e).flatMap(k(_)._run(f))
     case Effect(e) => f(e)
     case Pure(x) => M.pure(x)
 
@@ -57,7 +57,7 @@ enum ![A, F[+_]] {
 
   @tailrec final def next(steps: Long = 1): Eval[F] ?=> A ! F = this match
     case a if steps <= 0 => a
-    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).next(steps - 1)
+    case FlatMap(FlatMap(a, h), k) => a.flatMap(h(_).flatMap(k)).next(steps)
     case FlatMap(Effect(e), k) => k(eval(e)).next(steps - 1)
     case FlatMap(Pure(a), k) => k(a).next(steps - 1)
     case a => a
