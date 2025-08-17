@@ -1,7 +1,6 @@
 package okay
 
 import scala.annotation.tailrec
-import scala.util.control.TailCalls.*
 import okay.Eff.*
 
 infix type %[F[_, _], S] = F[S, *]
@@ -22,9 +21,7 @@ object State {
   def handle[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = {
     def _loop(s: S)(x: A ! State % S + F): (S, A) ! F = loop(s)(x)
 
-    @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = x match
-      case FlatMap(FlatMap(a, h), k) => loop(s)(a.flatMap(h(_).flatMap(k)))
-      case FlatMap(Pure(a), k) => loop(s)(k(a))
+    @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = x.resume match
       case Pure(a) => Pure((s, a))
       case Effect(e) => <|>[State[S, *], F](e) match
         case Left(Get()) => Pure((s, s))

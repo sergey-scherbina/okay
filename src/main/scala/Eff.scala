@@ -46,7 +46,7 @@ enum ![A, F[+_]] {
     case Left(e) => g(e)
     case Right(a) => f(a)
 
-  def run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = resume match
+  final def run[M[_] : Monad as M](f: [X] => F[X] => M[X]): M[A] = resume match
     case FlatMap(Effect(e), k) => f(e).flatMap(k(_).run(f))
     case Effect(e) => f(e)
     case Pure(x) => M.pure(x)
@@ -99,9 +99,7 @@ object ! {
 
   def handle[A, B, F[+_], G[+_]](a: A ! F + G)(f: A => B ! G)
                                 (g: [X, Y] => F[X] => X \ Y): B ! G = {
-    @tailrec def loop(x: A ! F + G): B ! G = x match
-      case FlatMap(FlatMap(x, h), k) => loop(x.flatMap(h(_).flatMap(k)))
-      case FlatMap(Pure(a), k) => loop(k(a))
+    @tailrec def loop(x: A ! F + G): B ! G = x.resume match
       case Pure(a) => f(a)
       case FlatMap(Effect(e), k) => <|>[F, G](e) match
         case Left(e) => loop(g(e)(k))
