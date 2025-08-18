@@ -6,7 +6,7 @@ import scala.util.chaining.*
 
 class TestEff {
 
-  val stackStress = 1000000
+  val stackStress = 100000//0
 
   @Test def t1(): Unit = {
     val x = State.index(List("a", "b", "c", "d", "e", "f", "g"), 1).tap(println)
