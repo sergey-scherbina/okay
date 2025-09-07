@@ -10,6 +10,9 @@ class TestThrows {
       unsafe(throw Fault("d")), unsafe(s"${0 / 1}"), unsafe(s"${0 / 0}"))
 
     println(x)
+
+    val y: String throws Safe = "safe"
+    println("y")
   }
 }
 
