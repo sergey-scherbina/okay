@@ -3,7 +3,7 @@ package okay
 import scala.reflect.*
 import scala.util.*
 
-opaque infix type +[A, B] = A | B
+infix type +[A, B] = A | B
 type Safe = Nothing
 type Unsafe = Throwable
 opaque infix type throws[+A, +E <: Unsafe] =
