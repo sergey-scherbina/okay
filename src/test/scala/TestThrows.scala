@@ -19,6 +19,7 @@ class TestThrows {
     println(y)
     println(y.?)
     println(y.?(println))
+    println(y.??)
   }
 }
 
