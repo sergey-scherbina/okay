@@ -2,7 +2,7 @@ ThisBuild / version := "0.1.0-SNAPSHOT"
 
 ThisBuild / scalaVersion := "3.7.2"
 
-ThisBuild / scalacOptions += "-Xkind-projector"
+ThisBuild / scalacOptions ++= Seq("-Xkind-projector", "-Wall")
 
 lazy val root = (project in file("."))
   .settings(

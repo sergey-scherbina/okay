@@ -6,6 +6,7 @@
     <profile name="sbt 2" modules="okay.main,okay.test">
       <parameters>
         <parameter value="-Xkind-projector" />
+        <parameter value="-Wall" />
       </parameters>
     </profile>
   </component>
