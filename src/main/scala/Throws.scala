@@ -31,7 +31,7 @@ extension [A, E <: Unsafe](a: A throws E)
     case x: A => x
   }
 
-def unsafe[A, E <: Unsafe : Typeable](a: => A throws E): A throws E =
+inline def unsafe[A, E <: Unsafe : Typeable](a: => A throws E): A throws E =
   try a catch {
     case e: E => e
     case e => Failure(e)
