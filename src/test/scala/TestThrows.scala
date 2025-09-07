@@ -12,7 +12,7 @@ class TestThrows {
     println(x)
 
     val y: String throws Safe = "safe"
-    println("y")
+    println(y)
   }
 }
 
