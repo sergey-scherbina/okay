@@ -24,9 +24,11 @@ extension [A, E <: Unsafe](a: A throws E)
   }
   inline def ? : A = unwrap
   @scala.throws[Unsafe]("unwrap unsafe")
-  def unwrap: A = wrap match {
-    case Left(e) => throw e
-    case Right(x) => x
+  def unwrap: A = a match {
+    case e: Either[E, A] => e.fold(throw _, identity)
+    case e: Try[A] => e.get
+    case e: E => throw e
+    case x: A => x
   }
 
 def unsafe[A, E <: Unsafe : Typeable](a: => A throws E): A throws E =
