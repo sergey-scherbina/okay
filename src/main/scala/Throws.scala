@@ -3,11 +3,27 @@ package okay
 import scala.reflect.*
 import scala.util.*
 
+opaque infix type +[A, B] = A | B
 type Safe = Nothing
-opaque infix type throws [+A, +E <: Throwable] =
+type Unsafe = Throwable
+opaque infix type throws[+A, +E <: Unsafe] =
   A | E | Either[E, A] | Try[A]
 
-def unsafe[A, E <: Throwable : Typeable](a: => A throws E): A throws E =
+extension [A, E <: Unsafe](a: A throws E)
+  inline def ? : Either[E + Unsafe, A] = unwrap
+  def unwrap: Either[E + Unsafe, A] = a match {
+    case e: Either[E, A] => e
+    case e: Try[A] => e.toEither
+    case e: E => Left(e)
+    case x: A => Right(x)
+  }
+  inline def ?(f: E + Unsafe => A): A = handle(f)
+  inline def handle(f: E + Unsafe => A): A = unwrap match {
+    case Left(e) => f(e)
+    case Right(x) => x
+  }
+
+def unsafe[A, E <: Unsafe : Typeable](a: => A throws E): A throws E =
   try a catch {
     case e: E => e
     case e => Failure(e)
@@ -17,3 +33,4 @@ given [A, E <: Throwable] => Conversion[A, A throws E] = identity
 given [A, E <: Throwable] => Conversion[E, A throws E] = identity
 given [A, E <: Throwable] => Conversion[Either[E, A], A throws E] = identity
 given [A, E <: Throwable] => Conversion[Try[A], A throws E] = identity
+given [A, E <: Throwable] => Conversion[A throws E, Either[E + Unsafe, A]] = _.unwrap
