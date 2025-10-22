@@ -28,6 +28,11 @@ trait ParaMonad[M[_, _, _]] {
 extension [M[_] : Monad, A, B](f: A => M[B])
   def >>>[C](g: B => M[C]): A => M[C] = f(_).flatMap(g)
 
+/**
+ * Natural transformation
+ */
+infix type ==>[F[_], G[_]] = [A] => F[A] => G[A]
+
 trait Functor[F[_]]:
   def fmap[A, B](a: F[A], f: A => B): F[B]
   extension [A](a: F[A])
@@ -83,4 +88,3 @@ given Comonad[Pure] with
     override inline def extract: A = a
     override inline def coflatMap[B](f: A => B): B = f(a)
   }
-

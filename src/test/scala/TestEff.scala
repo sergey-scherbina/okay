@@ -3,6 +3,7 @@ package okay
 import org.junit.*
 
 import scala.util.chaining.*
+import okay.!.*
 
 class TestEff {
 
