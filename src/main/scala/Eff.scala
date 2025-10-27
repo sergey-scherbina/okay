@@ -5,11 +5,7 @@ import scala.reflect.Typeable
 
 /**
  * https://okmij.org/ftp/Haskell/extensible/more.pdf
- * "Freer Monads, More Extensible Effects" Oleg Kiselyov
- *
  * https://blog.higher-order.com/assets/trampolines.pdf
- * "Stackless Scala With Free Monads"
- * Rúnar Óli Bjarnason runarorama@gmail.com
  */
 
 infix type ![A, F[+_]] = Free[F, A]
@@ -37,9 +33,9 @@ object ! {
   export Free.*
   import Free.*
 
-  type Effect[F[+_], A] = Inject[F,A]
+  type Effect[F[+_], A] = Inject[F, A]
   val Effect = Inject
-  
+
   extension [F[+_], A](self: A ! F) {
 
     @tailrec def resume: A ! F = self match
