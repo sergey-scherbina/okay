@@ -28,6 +28,9 @@ enum Free[F[+_], A] {
       case Inject(a) => h(a)(Pure(_))
       case Pure(a) => p(a)
 
+  def run: (M: Monad[F]) ?=> F[A] =
+    fold(M.pure)([X] => a => k => a.flatMap(k(_).run))
+
   def run[M[_] : Monad as M](f: F ==> M): M[A] =
     fold(M.pure)([X] => a => k => f(a).flatMap(k(_).run(f)))
 }
