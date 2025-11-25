@@ -12,5 +12,5 @@ given Put[Producer] with
 
 object Producer {
   def log(prefix: String = "", suffix: String = "\n"): Eval[Produce] = new:
-    inline def apply[A](a: A): A = a.tap(_.pipe(prefix + _ + suffix).tap(print))
+    inline def eval[A](a: A): A = a.tap(_.pipe(prefix + _ + suffix).tap(print))
 }

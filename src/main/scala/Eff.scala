@@ -13,13 +13,13 @@ inline def pure[F[+_], A](a: A): A ! F = Free.pure(a)
 inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
 
 trait Eval[F[_]]:
-  def apply[A](a: F[A]): A
+  def eval[A](a: F[A]): A
 
 inline def eval[F[_] : Eval as F]: [A] => F[A] => A =
-  [A] => a => F(a)
+  [A] => a => F.eval(a)
 
 given [F[_] : Comonad]: Eval[F] with
-  inline def apply[A](a: F[A]): A = a.extract
+  inline def eval[A](a: F[A]): A = a.extract
 
 infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 
@@ -43,17 +43,15 @@ object ! {
       case Bind(Pure(a), k) => k(a).resume
       case a => a
 
-    inline def unfoldF: Functor[F] ?=> Either[F[A ! F], A] = resume match
-      case Bind(Effect(e), k) => Left(e.map(k))
-      case Effect(e) => Left(e.map(Pure(_)))
-      case Pure(a) => Right(a)
+    inline def unfoldF: Functor[F] ?=> Either[F[A ! F], A] =
+      self.fold(Right(_))([X] => a => f => Left(a.map(f)))
 
     inline def foldF[B](inline f: A => B)
                        (inline g: F[A ! F] => B): Functor[F] ?=> B = unfoldF match
       case Left(e) => g(e)
       case Right(a) => f(a)
 
-    @tailrec def next(steps: Long = 1): Eval[F] ?=> A ! F = resume match
+    @tailrec def next(steps: Long = 1): Eval[F] ?=> A ! F = self.resume match
       case Bind(Effect(e), k) if steps > 0 => k(eval(e)).next(steps - 1)
       case a => a
 
