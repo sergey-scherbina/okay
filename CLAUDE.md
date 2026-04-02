@@ -2,7 +2,11 @@
 
 ## Project Overview
 
-**Okay** is a research-grade functional programming library implementing extensible algebraic effects for Scala 3. It is inspired by Oleg Kiselyov's work on freer monads and extensible effects in Haskell. The library is deliberately minimal and academically oriented.
+**Okay** is a research implementation of extensible algebraic effects for Scala 3. Its primary goal is optimisation through correct modelling: mathematical structures from category theory and denotational semantics are projected directly into the type system, so that wrong compositions are structurally inexpressible rather than caught at runtime.
+
+This is not applied mathematics in the direct sense — it is a pragmatic projection of mathematical insights into a typed programming language. The design philosophy is **correctness by construction**: the algebra of effects, continuations, and monads is encoded in types and combinators such that the implementation is forced into the right shape. Defensive programming, validation, and error recovery are deliberately absent from the core; the model itself prevents the wrong decisions.
+
+The library is deliberately minimal. Every abstraction earns its place by capturing a real mathematical concept (free monad, parametrised monad, natural transformation, delimited continuation). Nothing is added for convenience alone.
 
 **Key references embedded in the codebase:**
 - ["Freer Monads, More Extensible Effects"](https://okmij.org/ftp/Haskell/extensible/more.pdf) — Oleg Kiselyov
@@ -271,6 +275,28 @@ sbt jmh:run
 ```
 
 The benchmark exercises Fibonacci generation to compare performance of effect-based vs direct computation.
+
+---
+
+## Design Philosophy
+
+### Optimisation through modelling
+
+Performance and correctness are achieved through the right model, not through tuning or guarding. Concrete examples:
+
+- **Effect unions as Scala union types** (`F[A] | G[A]`) — effect composition is native type-level set union, not a wrapper hierarchy. The type checker enforces that every effect in a union is handled; unhandled effects are a compile error.
+- **Free monad as the single interpreter target** — all effect handlers are morphisms out of `Free`. There is one execution model, not many special cases.
+- **`@tailrec` as a design constraint, not an optimisation** — stack safety is guaranteed structurally by the left-reassociation in `Free.fold`. The annotation is a proof obligation, not a hint.
+- **`inline` on hot-path combinators** — eliminates abstraction overhead without sacrificing the compositional model.
+- **`Cont` as first-class type** — delimited continuations (`shift`/`reset`) are not encoded in a monad stack; they are the model. Generators (`Put`, `Producer`) fall out of this directly.
+
+### What this means when reading or modifying the code
+
+- Do not add runtime checks for things the type system already prevents.
+- Do not add fallback paths or defaults for states the model cannot produce.
+- If a new handler requires a non-tail-recursive loop, the model is wrong — fix the model.
+- Conciseness is not style preference; it is fidelity to the underlying mathematics. A verbose rewrite is a mistranslation.
+- When in doubt about an addition, ask: does this correspond to a mathematical concept? If not, it probably does not belong here.
 
 ---
 
