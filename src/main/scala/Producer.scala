@@ -4,6 +4,7 @@ import scala.util.chaining.*
 
 type Produce[A] = Pure[A]
 type Producer[A] = A ! Produce
+type Codata[+A]  = A ! Produce   // Free[Pure, A] — trampolined free monad on the identity functor
 inline def produce[A](a: A): Producer[A] = effect(a)
 
 given Put[Producer] with
