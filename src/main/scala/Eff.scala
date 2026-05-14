@@ -43,6 +43,14 @@ object ! {
       case Bind(Pure(a), k) => k(a).resume
       case a => a
 
+    inline def unfoldF: Functor[F] ?=> Either[F[A ! F], A] =
+      self.fold(Right(_))([X] => a => f => Left(a.map(f)))
+
+    inline def foldF[B](inline f: A => B)
+                       (inline g: F[A ! F] => B): Functor[F] ?=> B = unfoldF match
+      case Left(e) => g(e)
+      case Right(a) => f(a)
+
     @tailrec def next(steps: Long = 1): Eval[F] ?=> A ! F = self.resume match
       case Bind(Effect(e), k) if steps > 0 => k(eval(e)).next(steps - 1)
       case a => a
@@ -54,11 +62,8 @@ object ! {
   }
 
   inline def run[A](e: A ! Nothing): A = runEval(e)
-  @tailrec def runEval[F[+_] : Eval, A](e: A ! F): A = e.resume match
-    case Pure(a) => a
-    case Effect(e) => eval(e)
-    case Bind(Effect(e), k) => runEval(k(eval(e)))
-    case r => runEval(r)
+  @tailrec def runEval[F[+_] : {Functor, Eval}, A](e: A ! F): A =
+    e.foldF(identity)(a => runEval(eval(a)))
 
   given [F[+_]]: Monad[[A] =>> A ! F] with
     override inline def pure[A](a: A): A ! F = Pure(a)
