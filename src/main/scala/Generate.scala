@@ -25,6 +25,11 @@ infix type Loop[A, R] = Cont[A, R, A => R]
 extension [A](a: A) inline def apply[R](f: A Loop R): R = loop(f)(a)
 /** the argument of the current iteration: shift identity captures the loop context */
 inline def take[A, R]: A Loop R = shift(identity)
+
+/** the first n elements of a stream (lives here to overload with the
+ * Loop take above — toplevel overloads must share a file) */
+extension [S[_], F[+_], A](s: S[A])(using Stream[S, F], Handler[F])
+  def take(n: Int): LazyList[A] = s.toLazyList.take(n)
 /** tie the knot: the fixpoint of the loop body, with a memoized stepper */
 inline def loop[A, R](f: A Loop R): A => R =
   lazy val step: A => R = f / (step(_))
@@ -86,13 +91,39 @@ object Producer {
  * the operations are erased by the identity — the value type A is the
  * only witness left.
  */
-given Stream[Producer] with
+given Stream[Producer, Zero] with
   import !.*
 
-  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] = p.resume match
+  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! Zero = pure(p.resume match
     case Free.Pure(_) => None
     case Effect(e) => Some((e, Free.Pure(e)))
-    case Bind(Effect(e), k) => Some((e.asInstanceOf[A], k(e)))
+    case Bind(Effect(e), k) => Some((e.asInstanceOf[A], k(e))))
+
+/** a producer folds as a stream without a result (push consumption) */
+given Foldable[Producer] with
+  def fold[A, S](p: Producer[A])(using f: Fold[A, S]): S = Stream.fold(p)
+
+/**
+ * An EFFECTFUL producer is a stream in the effect G: the program
+ * emits its elements (the identity Produce side) and performs G along
+ * the way — uncons steps to the next element, carrying the performed
+ * G-operations in its answer. With G = Async this is the asynchronous
+ * stream: the next element may have to be awaited, and on Loom the
+ * consumer's Handler[Async] just blocks a virtual thread for it. G is
+ * split from the elements by its runtime class (TypeableK), so G's
+ * operations must be class-distinct from the element values.
+ */
+given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
+  import !.*
+
+  def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G = p.resume match
+    case Free.Pure(_) => pure(None)
+    case Effect(e) => <|>[G, Produce](e) match
+      case Left(g) => Effect(g).map(_ => None)
+      case Right(w) => pure(Some((w.asInstanceOf[A], Free.Pure(w.asInstanceOf[A]))))
+    case Bind(Effect(e), k) => <|>[G, Produce](e) match
+      case Left(g) => Effect(g).flatMap(x => uncons(k(x)))
+      case Right(w) => pure(Some((w.asInstanceOf[A], k(w))))
 
 import scala.math.Numeric.Implicits.given
 

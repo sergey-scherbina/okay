@@ -27,6 +27,11 @@ import scala.reflect.Typeable
 /** fix the parameter of a binary signature: State % S, Throws % E */
 infix type %[F[_, _], S] = F[S, *]
 
+/** the empty signature, the zero of the union algebra (F + Zero = F):
+ * no operations, so A ! Zero is a pure computation — the readable
+ * name of Nothing in an effect position, e.g. Stream[LazyList, Zero] */
+type Zero = Nothing
+
 /** the union of two signatures: F + G */
 infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 
@@ -174,6 +179,14 @@ given Effects[Free] with
  * stack-safe on a left-nested flatMap, and cannot be stepped.)
  */
 type Eff[F[+_], A] = [S] => F !> S => A /> S
+
+/** every Eff[F, *] is a Monad, by its Effects instance (Free[F, *]
+ * has the same, in Free.scala) — for-comprehensions on either encoding */
+given [F[+_]]: Monad[[A] =>> Eff[F, A]] with
+  override def pure[A](a: A): Eff[F, A] = summon[Effects[Eff]].pure(a)
+  extension [A](m: Eff[F, A])
+    override def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
+      summon[Effects[Eff]].flatMap(m)(f)
 
 given Effects[Eff] with
   override inline def pure[F[+_], A](a: A): Eff[F, A] =

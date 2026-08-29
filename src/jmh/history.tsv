@@ -42,3 +42,21 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-29	handler-bench	4.0	relayForward	188.6	274.4	0.69	HandlerBenchmark: 10k ops, 1% handled, rest forwarded; relay 1.45x faster than Effects.handle on forwarding - the documented guidance now has a number
 2026-08-29	handler-bench	4.0	stepOneByOne	198.0	183.0	1.08	stepping 10k ops one next(1) at a time vs next(10k): only ~8% overhead, LINEAR - the reflection-without-remorse pathology does not manifest; type-aligned queue verdict: unneeded, with evidence
 2026-08-29	handler-bench	4.0	statePara	32.3	19.0	1.70	PState (ATM-cont state) vs the State effect handler on 1000 get/set: effect handler 1.7x faster; PState stays the typed-protocol layer, now with a quantified price
+2026-08-29	a629036	7.86	cmpReader-okay	110.3			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpReader-catsKleisli	350.0			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpReader-zio	239.5			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpReader-atnos	1737			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpReader-kyoEnv	362756			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpWriter-okay	285.5			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpWriter-catsWriterT	1127			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpWriter-atnos	3202			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpWriter-kyoEmit	386322			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpChoice-stdList	579.8			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpChoice-okay	1602.7			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpChoice-kyo	3833.6			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpChoice-atnos	5391.6			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpAsync-rawLoom	21.2			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpAsync-kyo	25.2			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpAsync-okaySpawn	29.4			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpAsync-zio	50.0			full 2f 3+5, us/op; std-effects compare
+2026-08-29	a629036	7.86	cmpAsync-catsIOPar	139.9			full 2f 3+5, us/op; std-effects compare

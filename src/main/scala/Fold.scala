@@ -21,6 +21,23 @@ object Fold:
     def init: Seq[A] = Vector.empty
     def add(s: Seq[A], a: A): Seq[A] = s :+ a
 
+  /** make a Fold from a start and a step */
+  def apply[A, S](z: S)(f: (S, A) => S): Fold[A, S] = new:
+    def init: S = z
+    def add(s: S, a: A): S = f(s, a)
+
+  /** how many elements */
+  def count[A]: Fold[A, Long] = Fold(0L)((n, _) => n + 1)
+
+  /** the sum */
+  def sum[N](using N: Numeric[N]): Fold[N, N] = Fold(N.zero)(N.plus)
+
+  /** the first element, if any */
+  def first[A]: Fold[A, Option[A]] = Fold(Option.empty[A])((s, a) => s.orElse(Some(a)))
+
+  /** the last element, if any */
+  def last[A]: Fold[A, Option[A]] = Fold(Option.empty[A])((_, a) => Some(a))
+
 /**
  * The push side of consumption: a Foldable runs a Fold over all its
  * elements and yields only the output. The pull side is Stream

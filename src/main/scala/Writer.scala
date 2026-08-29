@@ -91,13 +91,48 @@ object Writer {
     case Free.Pure(a) => Left(a)
     case Effect(e) => Right((e, Free.Pure(e.asInstanceOf[A])))
     case Bind(Effect(e), k) => Right((e, k(e.asInstanceOf)))
+
+  /**
+   * The same observation for a writer program performing ARBITRARY
+   * effects G alongside its telling: the next told value arrives
+   * inside G — the G-operations met on the way are carried into the
+   * answer (deferred, not run). Any structured effect handler (State,
+   * Reader, Throws, ...) forwards the telling, so it can be run over
+   * the program FIRST — handlers are stream transformers — and the
+   * Handler-able residue (Async, say) is what the consumer pays at
+   * each pull. G is split from the told values by its runtime class.
+   */
+  def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
+  : Either[A, (W, A ! Writer % W + G)] ! G = a.resume match
+    case Free.Pure(a) => okay.pure(Left(a))
+    case Effect(e) => <|>[G, Writer % W](e) match
+      case Left(g) => Effect(g).map(Left(_))
+      case Right(w) => okay.pure(Right((w, Free.Pure(w.asInstanceOf[A]))))
+    case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
+      case Left(g) => Effect(g).flatMap(x => uncons[W, A, G](k(x)))
+      case Right(w) => okay.pure(Right((w, k(w.asInstanceOf))))
 }
+
+/** the diagonal writer: it tells its own answers, like Producer but
+ * with the element type visible in the signature */
+type Teller[A] = A ! Writer % A
+
+/**
+ * The third corner of the triangle: generate materializes into the
+ * diagonal writer too — one unfold, three carriers (LazyList by pure
+ * laziness, Producer by identity operations, Teller by typed ones).
+ * put is tell as a delimited-control operation: shift captures the
+ * continuation and binds it after the emission.
+ */
+given Put[Teller] with
+  final override inline def put[A](a: A): A /> Teller[A] =
+    shift(Writer.tell(a).flatMap(_))
 
 /**
  * A writer program is a stream of its told values: the same
  * observation as Writer.uncons with the answer forgotten (Left becomes
  * the end) — an infinite teller unfolds on demand like any stream.
  */
-given [A]: Stream[[W] =>> A ! Writer % W] = new:
-  def uncons[W](s: A ! Writer % W): Option[(W, A ! Writer % W)] =
-    Writer.uncons(s).toOption
+given [A]: Stream[[W] =>> A ! Writer % W, Zero] = new:
+  def uncons[W](s: A ! Writer % W): Option[(W, A ! Writer % W)] ! Zero =
+    pure(Writer.uncons(s).toOption)
