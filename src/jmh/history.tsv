@@ -34,3 +34,8 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-29	gen-compare	4.0	zioStream	163.0	10.7	15.2	singleton-element worst case
 2026-08-29	gen-compare	4.0	fs2Stream	249.0	10.7	23.3	singleton-element worst case
 2026-08-29	gen-compare	4.0	kyoStream	63.1	10.7	5.90	kyo 0.16.2 Stream(Loop+Emit.value(Chunk(a))).take.runFold.eval, idiomatic per-element form; okayProducer beats it 3.5x here, the mirror of the bind-chain bench where kyo led
+2026-08-29	runwith-direct	4.5	okayFree	93.0	157.7	0.59	KEPT: Free overrides runWith with a single tailrec loop (one pass instead of Free->Cont->walk); okayCont control unchanged (86->83); effects lane now 8% over the bare paramonad and second only to kyo in the ecosystem table
+2026-08-29	ecosystem-final	4.0	okayFree-binds	94.5	57.8	1.63	full-table re-run post runwith-direct; ref = kyo; binds: kyo 57.8 < okayCont 88.9 < okayFree 94.5 < catsFree ~129 < catsEval 136 < catsIO 153 < ZIO 181 < atnos 260; generators: stdLazy 13.5 ~ Iterator ~12 < okayProducer 18.4 < okayLazy 35 < kyo 61 < ZIO 172 < fs2 245
+2026-08-29	laziness	4.0	okayBuild	13.8	94.5	0.15	LazinessBenchmark: building the 10k chain WITHOUT running; ref = own full build+run lane; construction is 15% of the work under the lazy contract
+2026-08-29	laziness	4.0	catsIOBuild	26.9	152.9	0.18	lazy club: IO construction is also cheap
+2026-08-29	laziness	4.0	kyoBuild	58.5	57.8	1.01	eager: building IS the whole computation (101% of the full lane) - the bind-chain "win" is front-loaded; TestLaziness also shows 513 loop iterations executed at construction, exceptions at build, effects once-at-build

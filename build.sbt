@@ -20,6 +20,7 @@ lazy val compare = (project in file("compare"))
   .settings(
     name := "okay-compare",
     idePackagePrefix := Some("okay"),
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-free" % "2.12.0",
       "org.typelevel" %% "cats-effect" % "3.5.7",
