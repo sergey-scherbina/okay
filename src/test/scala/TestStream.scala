@@ -60,6 +60,15 @@ class TestStream extends munit.FunSuite {
       CP.append(choose(1, 2))(CP.empty).append(choose(3)))), Seq(1, 2, 3))
   }
 
+  test("Monoid: numbers, strings, alternatives — and every Monoid folds") {
+    assertEquals(1 |+| 2, 3)
+    assertEquals("a" |+| "b", "ab")
+    assertEquals((LazyList(1) |+| LazyList(2)).toList, List(1, 2))
+    assertEquals(Stream.fold[Producer, Zero, Int, Int](p12), 3)          // Fold from Monoid[Int]
+    val words = produce("ab").flatMap(_ => produce("c"))
+    assertEquals(Stream.fold[Producer, Zero, String, String](words), "abc")
+  }
+
   test("instances: Fold primitives and Foldable[Producer]") {
     assertEquals(Stream.fold(p12)(using Fold.sum[Int]), 3)
     assertEquals(Stream.fold(p12)(using Fold.count[Int]), 2L)

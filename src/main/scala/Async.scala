@@ -35,6 +35,14 @@ trait Fiber[A]:
   /** request interruption */
   def cancel(): Unit
 
+  /** park until finished; a failure as a value, unwrapped */
+  def joinEither(): Either[Throwable, A] =
+    try Right(join())
+    catch
+      case e: java.util.concurrent.CompletionException => Left(e.getCause)
+      case e: java.util.concurrent.ExecutionException => Left(e.getCause)
+      case e: Throwable => Left(e)
+
 /**
  * The scheduler: how a computation gets its own thread of control.
  * The default given is Loom — one virtual thread per fiber, which is
@@ -106,6 +114,20 @@ object Async {
     async:
       val (fa, fb) = (spawn(a), spawn(b))
       (fa.join(), fb.join())
+
+  /**
+   * Resource safety: acquire, use, release — the release runs whether
+   * use finishes, throws, or the fiber is cancelled (interruption is
+   * an exception, and the finally sees it). The use-program is closed
+   * under Async: it runs to completion inside this one operation, so
+   * no abortive or multi-shot handler can skip or repeat the release
+   * (a general Resource effect open to other rows is future work).
+   */
+  def bracket[R, A](acquire: => R)(release: R => Unit)(use: R => A ! Async): A ! Async =
+    async:
+      val r = acquire
+      try use(r).runWith
+      finally release(r)
 
   /** park for the duration (a virtual thread parks for free) */
   inline def sleep(millis: Long): Unit ! Async = async(Thread.sleep(millis))

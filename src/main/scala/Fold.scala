@@ -38,6 +38,34 @@ object Fold:
   /** the last element, if any */
   def last[A]: Fold[A, Option[A]] = Fold(Option.empty[A])((_, a) => Some(a))
 
+/** combine with a neutral element */
+trait Monoid[A]:
+  def empty: A
+  def combine(x: A, y: A): A
+  extension (x: A)
+    inline def |+|(y: A): A = combine(x, y)
+
+/** numbers add (the conventional default; wrap for a product) */
+given [N](using N: Numeric[N]): Monoid[N] = new:
+  def empty: N = N.zero
+  def combine(x: N, y: N): N = N.plus(x, y)
+
+given Monoid[String] with
+  def empty: String = ""
+  def combine(x: String, y: String): String = x + y
+
+given [A]: Monoid[List[A]] = new:
+  def empty: List[A] = Nil
+  def combine(x: List[A], y: List[A]): List[A] = x ++ y
+
+/** every Alternative is a family of monoids (e.g. LazyList) */
+given [F[_], A](using P: Alternative[F]): Monoid[F[A]] = new:
+  def empty: F[A] = P.empty
+  def combine(x: F[A], y: F[A]): F[A] = P.append(x)(y)
+
+/** every Monoid folds on its own diagonal */
+given [W](using M: Monoid[W]): Fold[W, W] = Fold(M.empty)(M.combine)
+
 /**
  * The push side of consumption: a Foldable runs a Fold over all its
  * elements and yields only the output. The pull side is Stream

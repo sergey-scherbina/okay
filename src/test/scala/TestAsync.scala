@@ -68,6 +68,21 @@ class TestAsync extends munit.FunSuite {
     assert((System.nanoTime() - t0) / 1e9 < 3, "the sleeper did not hold us")
   }
 
+  test("bracket releases on success, on failure, and only once") {
+    var released = 0
+    assertEquals(Async.bracket(41)(_ => released += 1)(r => async(r + 1)).runWith, 42)
+    assertEquals(released, 1)
+    intercept[RuntimeException]:
+      Async.bracket(0)(_ => released += 1)(_ => async[Int](throw RuntimeException("boom"))).runWith
+    assertEquals(released, 2)
+  }
+
+  test("joinEither: a fiber's failure comes back as a value") {
+    assertEquals(Async.spawn(async(7)).joinEither(), Right(7))
+    val boom = RuntimeException("boom")
+    assertEquals(Async.spawn(async[Int](throw boom)).joinEither(), Left(boom))
+  }
+
   test("async composes with other effects: telling across suspensions") {
     type F = Async + Writer % String
     val prog: Int ! F =
