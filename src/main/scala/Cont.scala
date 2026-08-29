@@ -26,9 +26,18 @@ trait Control[M[_, _, _]] extends ParaMonad[M]:
 transparent inline def Control[M[_, _, _]]: Control[M] =
   compiletime.summonInline[Control[M]]
 
+/**
+ * A /> R is Cont[A, R, R] — the ordinary continuation monad, "A
+ * delivered into the answer R": the diagonal of the paramonad, and an
+ * ordinary Monad via the bridge in Monad.scala. Handlers (F !> S) and
+ * put live in this fragment.
+ */
 infix type />[A, R] = Cont[A, R, R]
+/** what reset can delimit: the value and its inner answer coincide */
 infix type ^[A, R] = Cont[A, A, R]
+/** capture the current continuation (Danvy–Filinski, with answer-type modification) */
 inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.Shift(f)
+/** delimit: run the computation with the identity continuation */
 inline def reset[A, R](c: A ^ R): R = c / identity
 
 /**
@@ -43,8 +52,11 @@ object Cont:
   val Fuse = Try(System.getProperty("okay.cont.fuse", "128").toInt).getOrElse(128)
 
 enum Cont[A, S, R] {
+  /** a finished value */
   case Pure[A, R](a: A) extends Cont[A, R, R]
+  /** a captured-continuation computation, carrying its fusion depth */
   case Shift[A, S, R](f: (A => S) => R, depth: Int = 0) extends Cont[A, S, R]
+  /** sequencing, private: only the runner sees the representation */
   private case Bind[A, B, S, T, R](a: Cont[A, T, R],
                                    f: A => Cont[B, S, T]) extends Cont[B, S, R]
 
@@ -72,6 +84,7 @@ enum Cont[A, S, R] {
     case Bind(Shift(s, _), f) => s(f(_)(k))
 }
 
+/** the stack-safe data instance: the default carrier */
 given Control[Cont] with
   override inline def pure[A, R](a: A): A /> R = Cont.Pure(a)
   override inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.Shift(f)
@@ -88,6 +101,7 @@ given Control[Cont] with
  */
 type Func[A, S, R] = (A => S) => R
 
+/** the reference function instance: fast, fused, not stack-safe */
 given Control[Func] with
   override inline def pure[A, R](a: A): Func[A, R, R] = _(a)
   override inline def shift[A, S, R](f: (A => S) => R): Func[A, S, R] = f

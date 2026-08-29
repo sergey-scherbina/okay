@@ -42,17 +42,24 @@ extension [M[_] : Monad, A, B](f: A => M[B])
  */
 infix type ==>[F[_], G[_]] = [A] => F[A] => G[A]
 
+/** map a function over the structure */
 trait Functor[F[_]]:
   def fmap[A, B](a: F[A], f: A => B): F[B]
   extension [A](a: F[A])
     inline def map[B](f: A => B): F[B] = fmap(a, f)
 
+/** lift values and apply lifted functions; fmap derives from pure and app */
 trait Applicative[F[_]] extends Functor[F]:
   override def fmap[A, B](a: F[A], f: A => B): F[B] = pure(f).app(a)
   def pure[A](a: A): F[A]
   extension [A, B](f: F[A => B])
     def app(a: F[A]): F[B]
 
+/**
+ * Selective applicative functors (Mokhov et al. 2019): declare both
+ * branches statically, run at most one — between Applicative (all
+ * effects known, all run) and Monad (continuations opaque).
+ */
 trait Selective[F[_]] extends Applicative[F]:
   extension [A, B](fe: F[Either[A, B]])
     def select(f: F[A => B]): F[B]
@@ -62,6 +69,7 @@ trait Selective[F[_]] extends Applicative[F]:
     def ifS[A](t: F[A])(e: F[A]): F[A] = x.map(Either.cond(_, (), ()))
       .branch(t.map(Function.const))(e.map(Function.const))
 
+/** sequence computations; fmap, app and select all derive from flatMap by the laws */
 trait Monad[F[_]] extends Selective[F]:
   override def fmap[A, B](a: F[A], f: A => B): F[B] = a.flatMap(f.andThen(pure))
   extension [A](a: F[A])
@@ -73,24 +81,38 @@ trait Monad[F[_]] extends Selective[F]:
     override def select(f: F[A => B]): F[B] =
       e.flatMap(_.fold(a => f.map(_(a)), pure))
 
+/** choice with a neutral element */
 trait Alternative[F[_]] extends Applicative[F]:
   def empty[A]: F[A]
   extension [A](x: F[A])
     def append(y: F[A]): F[A]
 
+/** a Monad that is also an Alternative, under the traditional names */
 trait MonadPlus[F[_]]
   extends Alternative[F], Monad[F]:
   def mzero[A]: F[A] = empty
   extension [A](x: F[A])
     def mplus(y: F[A]): F[A] = x.append(y)
 
+/**
+ * extract a value from a context — the basis of pure per-operation
+ * effect handlers: given [F: Comonad]: Handler[F] handles by extract
+ */
 trait Comonad[F[_]] extends Functor[F]:
   extension [A](a: F[A])
     def extract: A
     def coflatMap[B](f: F[A] => B): F[B]
 
+/**
+ * the identity context: a bare value. CAUTION, a known footgun: the
+ * given Comonad[Pure] below puts map/extract extensions on EVERY type
+ * in lexical scope of the package — it has contested `.map` on the
+ * throws union and hijacked kyo's `.map` in benchmarks; prefer
+ * flatMap or explicit calls when a foreign `.map` misbehaves here.
+ */
 type Pure[A] = A
 
+/** a value is trivially its own context */
 given Comonad[Pure] with
   override inline def fmap[A, B](a: A, f: A => B): B = f(a)
   extension [A](a: A) {

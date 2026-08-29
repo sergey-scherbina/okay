@@ -17,10 +17,14 @@ package okay
  * take is the argument of the current iteration.
  * loop ties the knot, i.e. it is the fixpoint.
  */
+/** the aesthetic alias of Loop */
 infix type <<[A, R] = Loop[A, R]
 infix type Loop[A, R] = Cont[A, R, A => R]
+/** run a loop from this seed */
 extension [A](a: A) inline def apply[R](f: A Loop R): R = loop(f)(a)
+/** the argument of the current iteration: shift identity captures the loop context */
 inline def take[A, R]: A Loop R = shift(identity)
+/** tie the knot: the fixpoint of the loop body, with a memoized stepper */
 inline def loop[A, R](f: A Loop R): A => R =
   lazy val step: A => R = f / (step(_))
   step
@@ -29,6 +33,7 @@ inline def loop[A, R](f: A Loop R): A => R =
 trait Put[F[_]]:
   def put[A](a: A): A /> F[A]
 
+/** put a value through the instance of F */
 inline def put[A, F[_] : Put as F](a: A): A /> F[A] = F.put(a)
 
 /** unfold: take the seed, put f(a), continue with the seed g(a) */
@@ -52,6 +57,7 @@ type Produce[A] = Pure[A]
 /** the freer monad over Produce: a computation that emits as it goes */
 type Producer[A] = A ! Produce
 
+/** emit a value as an effect operation */
 inline def produce[A](a: A): Producer[A] = effect(a)
 
 /** put suspends the value as an effect operation */

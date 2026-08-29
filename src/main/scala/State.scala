@@ -3,19 +3,41 @@ package okay
 import scala.annotation.tailrec
 import okay.!.*
 
+/**
+ * The State effect: the signature is fixed at one state type S, and
+ * both operations answer with the (current or new) state. For a state
+ * that changes its TYPE mid-program, see PState below.
+ */
 enum State[S, +A] {
+  /** read the current state */
   case Get() extends State[S, S]
+
+  /** replace the state, answering with the new one */
   case Set(s: S) extends State[S, S]
 }
 
+/** a value as a stateful computation */
 extension [A](a: A)
   inline def state[S]: A ! State % S = pure(a)
 
 object State {
+  /** the current state */
   inline def get[S]: S ! State % S = effect(Get())
+
+  /** replace the state */
   inline def set[S](s: S): S ! State % S = effect(Set(s))
+
+  /** run from an initial state to (final state, value) */
   inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))
 
+  /**
+   * the handler: a bespoke tail-recursive loop that threads the state
+   * through itself. It cannot be a relay handler — the answer-
+   * polymorphic ∀Y shape has nowhere to hold s — and a mutable cell
+   * would break the purity of the residual tree, so the loop is the
+   * honest form. A forwarded F-effect suspends with the current state
+   * captured immutably, which keeps the residual re-runnable.
+   */
   def handle[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = {
     def _loop(s: S)(x: A ! State % S + F): (S, A) ! F = loop(s)(x)
 
@@ -33,6 +55,7 @@ object State {
     loop(s)(a)
   }
 
+  /** number the elements of a sequence, as a State program */
   def index[A](seq: Seq[A], from: Long = 0): (Long, Seq[(Long, A)]) = run(from):
     seq.foldLeft(Seq[(Long, A)]().state[Long]): (c, a) =>
       for xs <- c; n <- get; _ <- set(n + 1) yield (n, a) +: xs
@@ -43,10 +66,11 @@ object State {
  * paramonad: a computation of A that changes the state TYPE from S to
  * S2, with the final answer R, is Cont[A, S2 => R, S => R] — the state
  * is threaded by the answer type, get and set are shifts, and Cont's
- * flatMap already composes the transitions S -> S2 -> S3 (typestate).
- * Unlike the State effect above, whose handler loop is tail-recursive,
- * running costs a stack frame per operation — for typed protocols,
- * not for long loops.
+ * flatMap already composes the transitions S -> S2 -> S3 (typestate:
+ * the compiler enforces the protocol order). Unlike the State effect
+ * above, whose handler loop is tail-recursive, running costs a stack
+ * frame per operation, and it measures ~1.7x slower on the same
+ * workload (HandlerBenchmark) — the typed protocol is what you buy.
  */
 object PState {
   /** read the state, leaving its type unchanged */
