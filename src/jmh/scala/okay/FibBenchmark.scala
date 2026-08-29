@@ -14,17 +14,17 @@ class FibBenchmark {
 
   @Benchmark
   def fib10(): Any =
-    fib[Int, Producer].next(10).?
+    fibs[Int, Producer].next(10).?
 
   @Benchmark
   def fib50(): Any =
-    fib[Int, Producer].next(50).?
+    fibs[Int, Producer].next(50).?
 
   @Benchmark
   def fib100(): Any =
-    fib[BigInt, Producer].next(100).?
+    fibs[BigInt, Producer].next(100).?
 
   @Benchmark
   def fib1000(): Any =
-    fib[BigInt, Producer].next(1000).?
+    fibs[BigInt, Producer].next(1000).?
 }

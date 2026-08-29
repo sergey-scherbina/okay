@@ -1,0 +1,13 @@
+date	sha	host_load	workload	mine	ref	ratio	note
+2026-08-29	80cc6ac+cont	7.2	fib10	228.6	153.8	1.49	Cont-as-data rewrite vs HEAD; medians of 3 vs 4, alternating A/B, jmh -wi2 -w1 -i3 -r1 -f1, busy host
+2026-08-29	80cc6ac+cont	7.2	fib50	1500.0	1013.7	1.48	same session
+2026-08-29	80cc6ac+cont	7.2	fib100	2327.8	1440.7	1.62	same session
+2026-08-29	80cc6ac+cont	7.2	fib1000	36536.1	28958.5	1.26	same session; ±13-24us error bars, ratio noisy
+2026-08-29	80cc6ac+cont+loopmemo	1.8	fib10	206.9	226.3	0.91	loop stepper memoized (lazy val), KEPT; medians of 3, alternating A/B, quiet host
+2026-08-29	80cc6ac+cont+loopmemo	1.8	fib50	1198.2	1337.5	0.90	same session
+2026-08-29	80cc6ac+cont+loopmemo	1.8	fib100	2022.1	2223.5	0.91	same session
+2026-08-29	80cc6ac+cont+loopmemo	1.8	fib1000	31955	33512	0.95	same session
+2026-08-29	80cc6ac+cont+mapnode	2.0	fib10	171.8	204.9	0.84	Map node in Cont, REVERTED; medians of 3, alternating A/B vs loopmemo
+2026-08-29	80cc6ac+cont+mapnode	2.0	fib50	1297.4	1258.9	1.03	REVERTED
+2026-08-29	80cc6ac+cont+mapnode	2.0	fib100	2411.8	1979.2	1.22	REVERTED: consistent 3/3 regression despite strictly less work per element - JIT inlining shape of the 10-case interpreter; do not retry without perfasm evidence
+2026-08-29	80cc6ac+cont+mapnode	2.0	fib1000	27182	32339	0.84	REVERTED with the rest; mixed result, geomean -3% not worth doubling the interpreter

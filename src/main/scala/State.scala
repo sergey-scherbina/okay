@@ -3,8 +3,6 @@ package okay
 import scala.annotation.tailrec
 import okay.!.*
 
-infix type %[F[_, _], S] = F[S, *]
-
 enum State[S, +A] {
   case Get() extends State[S, S]
   case Set(s: S) extends State[S, S]
@@ -38,4 +36,26 @@ object State {
   def index[A](seq: Seq[A], from: Long = 0): (Long, Seq[(Long, A)]) = run(from):
     seq.foldLeft(Seq[(Long, A)]().state[Long]): (c, a) =>
       for xs <- c; n <- get; _ <- set(n + 1) yield (n, a) +: xs
+}
+
+/**
+ * Parameterised (type-changing) state, founded on the continuation
+ * paramonad: a computation of A that changes the state TYPE from S to
+ * S2, with the final answer R, is Cont[A, S2 => R, S => R] — the state
+ * is threaded by the answer type, get and set are shifts, and Cont's
+ * flatMap already composes the transitions S -> S2 -> S3 (typestate).
+ * Unlike the State effect above, whose handler loop is tail-recursive,
+ * running costs a stack frame per operation — for typed protocols,
+ * not for long loops.
+ */
+object PState {
+  /** read the state, leaving its type unchanged */
+  inline def get[S, R]: Cont[S, S => R, S => R] = shift(k => s => k(s)(s))
+
+  /** write a state of a possibly different type; the old state is the value */
+  inline def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = shift(k => s => k(s)(s2))
+
+  /** run from an initial state to (final state, value) */
+  def run[S, S2, A](s: S)(m: Cont[A, S2 => (S2, A), S => (S2, A)]): (S2, A) =
+    (m / (a => s2 => (s2, a)))(s)
 }

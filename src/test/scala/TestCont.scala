@@ -1,10 +1,8 @@
 package okay
 
-import org.junit.Test
+class TestCont extends munit.FunSuite {
 
-class TestCont {
-
-  @Test def t1(): Unit = {
+  test("shift and reset") {
     extension [A1, A2](t: (() => A1, () => A2))
       inline def ? : (A1, A2) = (t._1(), t._2())
 
@@ -25,6 +23,27 @@ class TestCont {
     } yield ())
 
     (example1, example2).?.?.?
+  }
+
+  test("stack safety: a 1M flatMap chain, left-nested") {
+    val n = 1000000
+    val m = (1 to n).foldLeft(Cont.Pure(0): Int /> Int): (m, _) =>
+      m.flatMap(x => Cont.Pure(x + 1))
+    assertEquals(reset(m), n)
+  }
+
+  test("tagless Control: Cont and Func agree") {
+    def prog[M[_, _, _]](using C: Control[M]): M[Int, Int, Int] =
+      C.pure(1).flatMap(x => C.shift((k: Int => Int) => k(x + 1) * 10))
+    def check[M[_, _, _]](using C: Control[M]): Int = C.reset(prog[M])
+    assertEquals(check[Cont], 20)
+    assertEquals(check[Func], 20)
+  }
+
+  test("the diagonal of a ParaMonad is an ordinary Monad") {
+    def sum[F[_] : Monad](a: F[Int], b: F[Int]): F[Int] =
+      a.flatMap(x => b.map(x + _))
+    assertEquals(reset(sum[[A] =>> A /> Int](Cont.Pure(1), Cont.Pure(2))), 3)
   }
 
 }

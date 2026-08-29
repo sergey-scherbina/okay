@@ -4,37 +4,58 @@ import scala.annotation.tailrec
 import scala.reflect.Typeable
 
 /**
+ * Extensible effects, founded on the continuation paramonad.
+ *
+ * A computation A ! F is a freer-monad tree over the signature F; its
+ * meaning is its image in Cont, given by foldCont, where a handler is
+ * an interpretation F !> S = F ==> ([X] =>> X /> S) — that is,
+ * handlers are continuations. The Effects interface is final tagless
+ * with two encodings (Free — initial, Eff — final, Church), and the
+ * object ! is the concrete toolkit over the Free encoding: stepping
+ * (resume, next, ?), running, and the tail-resumptive relay.
+ *
+ * Choosing an encoding: the tree is for tools — stepping, staged
+ * relay, stack safety on any bind shape; the function is for speed —
+ * fused build-and-run pipelines with no tree at all; the interface is
+ * for not choosing too early. fromFree and reify move programs
+ * between the encodings.
+ *
  * https://okmij.org/ftp/Haskell/extensible/more.pdf
  * https://blog.higher-order.com/assets/trampolines.pdf
  */
 
-infix type ![A, F[+_]] = Free[F, A]
-inline def pure[F[+_], A](a: A): A ! F = Free.pure(a)
-inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
-
+/** fix the parameter of a binary signature: State % S, Throws % E */
 infix type %[F[_, _], S] = F[S, *]
+
+/** the union of two signatures: F + G */
 infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]
 
-/** ∀X. Typeable[F[X]], by the erasure of F */
-trait TypeableK[F[_]]:
-  def apply[X]: Typeable[F[X]]
+/** a computation of A performing the operations of F: A ! F */
+infix type ![A, F[+_]] = Free[F, A]
 
-given [F[_]](using t: Typeable[F[Any]]): TypeableK[F] = new:
-  def apply[X]: Typeable[F[X]] = t.asInstanceOf[Typeable[F[X]]]
+/** a value as a computation */
+inline def pure[F[+_], A](a: A): A ! F = Free.pure(a)
+
+/** an operation as a computation */
+inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
 
 /**
- * Split the union by testing only the F side (the erasure of F, by
- * TypeableK), taking G by exclusion: a type test on an abstract G
- * would erase to an always-true test.
+ * A handler of the operations F, with the answers S, is an interpretation
+ * of F in the continuation paramonad: the natural transformation
+ *
+ * F ==> ([X] =>> X /> S)
+ *
+ * That is, handlers are continuations.
  */
-inline def <|>[F[+_] : TypeableK as tf, G[+_]]: [A] => (F[A] | G[A]) => Either[F[A], G[A]] =
-  [A] => e => tf[A].unapply(e) match
-    case Some(e) => Left(e)
-    case None => Right(e.asInstanceOf[G[A]])
+infix type !>[F[_], S] = F ==> ([X] =>> X /> S)
 
 /** A comonadic handler interprets each operation by its own value */
 trait Handler[F[_]]:
   def handle[A](a: F[A]): A
+
+/** A comonadic (per-operation) Handler at every answer type. */
+inline def handler[F[_] : Handler as H, S]: F !> S =
+  [X] => e => Cont.Pure(H.handle(e))
 
 given [F[_] : Comonad]: Handler[F] with
   inline def handle[A](a: F[A]): A = a.extract
@@ -42,17 +63,6 @@ given [F[_] : Comonad]: Handler[F] with
 /** Nothing has no operations left to handle */
 given Handler[Nothing] with
   inline def handle[A](a: Nothing): A = a
-
-/**
- * A handler of the operations F, with the answers S, is an interpretation
- * of F in the continuation paramonad: the natural transformation
- * F ==> ([X] =>> X /> S). That is, handlers are continuations.
- */
-type Handling[F[_], S] = F ==> ([X] =>> X /> S)
-
-/** A comonadic (per-operation) Handler is a Handling at every answer type. */
-inline def handling[F[_] : Handler as H, S]: Handling[F, S] =
-  [X] => e => Cont.Pure(H.handle(e))
 
 /**
  * Final tagless interface of extensible effects: M[F, A] computes A
@@ -68,22 +78,46 @@ trait Effects[M[_[+_], _]]:
     def flatMap[B](f: A => M[F, B]): M[F, B]
     inline def map[B](f: A => B): M[F, B] = m.flatMap(a => pure(f(a)))
     /** interpret the operations, i.e. reflect the computation into Cont */
-    def foldCont[S](h: Handling[F, S]): A /> S
+    def foldCont[S](h: F !> S): A /> S
     /** run all the effects by a comonadic Handler */
-    inline def runWith(using Handler[F]): A = m.foldCont(handling[F, A]) / identity
+    inline def runWith(using Handler[F]): A = m.foldCont(handler[F, A]) / identity
 
   /** handle the effect F by h (and the values by ret), forwarding the effects G */
   def handle[F[+_] : TypeableK, G[+_], A, B](m: M[F + G, A])
                                             (ret: A => M[G, B])
-                                            (h: Handling[F, M[G, B]]): M[G, B] =
+                                            (h: F !> M[G, B]): M[G, B] =
     m.foldCont[M[G, B]]([X] => e => <|>[F, G](e) match
       case Left(e) => h(e)
       case Right(e) => shift(k => perform(e).flatMap(k))
     ) / ret
 
+/** ∀X, the runtime test for F[X], by the erasure of F */
+trait TypeableK[F[_]]:
+  def unapply[A](x: Any): Option[x.type & F[A]]
+
+given [F[+_]](using t: Typeable[F[Nothing]]): TypeableK[F] = new:
+  // no cast: sound by covariance, F[Nothing] <: F[X] for every X
+  // (the erasure trust lives in the compiler-synthesized class
+  // test behind Typeable[F[Nothing]])
+  def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
+
+/**
+ * Split the union by testing only the F side (the erasure of F, by
+ * TypeableK), taking G by exclusion: a type test on an abstract G
+ * would erase to an always-true test.
+ */
+inline def <|>[F[+_] : TypeableK as T, G[+_]]: [A] => (F[A] | G[A]) => Either[F[A], G[A]] =
+  [A] => e => e match
+    case T(e) => Left(e)
+    // the trusted kernel, sound by the excluded middle of the union:
+    // a value of F[A] | G[A] that is not an F[A] is a G[A]
+    case e => Right(e.asInstanceOf[G[A]])
+
 /**
  * The freer monad is the initial (defunctionalized) encoding of Effects:
- * Inject is a suspended shift, given its meaning by foldCont's Handling.
+ * Inject is a suspended shift, given its meaning by foldCont's !> interpretation.
+ * Choose Free when the program is a thing: to step it, inspect it,
+ * relay it in stages — and stay stack-safe on any bind shape.
  */
 given Effects[Free] with
   override inline def pure[F[+_], A](a: A): Free[F, A] = Free.Pure(a)
@@ -91,66 +125,100 @@ given Effects[Free] with
 
   extension [F[+_], A](m: Free[F, A])
     override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = m.flatMap(f)
-    override def foldCont[S](h: Handling[F, S]): A /> S =
+    override def foldCont[S](h: F !> S): A /> S =
       m.fold(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
 
 /**
- * Effects are continuation programs, literally: the final (Church)
- * encoding of the same interface, where foldCont is the program itself.
- * (Unlike Free, not stack-safe on a left-nested flatMap.)
+ * Effects are continuation programs, literally: Eff is the final
+ * (Church) encoding of the interface — a computation as the function
+ * of its handler, where foldCont is the program itself. This is how
+ * extensible effects were first defined (Kiselyov–Sabry–Swords 2013,
+ * by continuations), before the freer tree of 2015 — so Eff and Free
+ * reenact the history, and "Free and Eff agree" is the claim that the
+ * two papers describe one thing. Choose Eff when the program is a
+ * pipeline: built once and run, the handler fusing into the closures
+ * with no tree materialized at all. (Unlike Free, Eff is not
+ * stack-safe on a left-nested flatMap, and cannot be stepped.)
  */
-type EffC[F[+_], A] = [S] => Handling[F, S] => A /> S
+type Eff[F[+_], A] = [S] => F !> S => A /> S
 
-given Effects[EffC] with
-  override def pure[F[+_], A](a: A): EffC[F, A] =
-    [S] => (_: Handling[F, S]) => Cont.Pure(a)
-  override def perform[F[+_], A](e: F[A]): EffC[F, A] =
-    [S] => (h: Handling[F, S]) => h(e)
+given Effects[Eff] with
+  override def pure[F[+_], A](a: A): Eff[F, A] =
+    [S] => (_: F !> S) => Cont.Pure(a)
+  override def perform[F[+_], A](e: F[A]): Eff[F, A] =
+    [S] => (h: F !> S) => h(e)
 
-  extension [F[+_], A](m: EffC[F, A])
-    override def flatMap[B](f: A => EffC[F, B]): EffC[F, B] =
-      [S] => (h: Handling[F, S]) => m[S](h).flatMap(a => f(a)[S](h))
-    override def foldCont[S](h: Handling[F, S]): A /> S = m[S](h)
+  extension [F[+_], A](m: Eff[F, A])
+    override def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
+      [S] => (h: F !> S) => m[S](h).flatMap(a => f(a)[S](h))
+    override def foldCont[S](h: F !> S): A /> S = m[S](h)
+
+/**
+ * Free is initial: the tree interprets uniquely into every Effects
+ * instance (fromFree). Eff is final: every instance observes into it
+ * by its own foldCont (toEff). So all the encodings live between the
+ * tree and its behavior, and reify closes the circle: any program
+ * materializes back as syntax.
+ */
+def fromFree[M[_[+_], _] : Effects as E, F[+_], A](m: A ! F): M[F, A] =
+  m.fold(E.pure)([X] => e => k => E.perform(e).flatMap(x => fromFree[M, F, A](k(x))))
+
+/** every Effects instance observes into Eff, by its own foldCont */
+def toEff[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): Eff[F, A] =
+  [S] => (h: F !> S) => m.foldCont(h)
+
+/**
+ * any Effects program materializes back as a Free tree: building
+ * the syntax is itself an interpretation !>, with the answers A ! F
+ */
+def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
+  m.foldCont[A ! F]([X] => e => shift(k => effect(e).flatMap(k))) / (a => pure(a))
 
 object ! {
   export Free.*
 
   import Free.*
 
+  /** the domain name of Inject: an operation node */
   type Effect[F[+_], A] = Inject[F, A]
   val Effect = Inject
 
   extension [F[+_], A](self: A ! F) {
 
+    /** normalize to a head form: Pure, Effect, or Bind(Effect, k) */
     @tailrec def resume: A ! F = self match
       case Bind(Bind(a, h), k) => a.flatMap(h(_).flatMap(k)).resume
       case Bind(Pure(a), k) => k(a).resume
       case a => a
 
+    /** step through the next n operations by the Handler */
     @tailrec def next(steps: Long = 1)(using H: Handler[F]): A ! F = self.resume match
       case Bind(Effect(e), k) if steps > 0 => k(H.handle(e)).next(steps - 1)
       case a => a
 
+    /** peek the nearest answer: the value, or the first operation handled */
     @tailrec def ? : Handler[F] ?=> ? = self match
       case Bind(a, _) => a.?
       case Effect(e) => summon[Handler[F]].handle(e)
       case Pure(a) => a
   }
 
+  /** run a closed computation */
   inline def run[A](e: A ! Nothing): A = e.runWith
 
   /**
-   * Tail-resumptive handling: g is answer-polymorphic, so by parametricity
-   * it must resume the continuation (exactly once), which keeps the loop
-   * tail-recursive, i.e. stack-safe on any number of handled operations.
-   * For handlers that abort or perform G, use Effects.handle instead.
+   * handle_relay (Kiselyov): tail-resumptive handling. g is
+   * answer-polymorphic, so by parametricity it must resume the
+   * continuation (exactly once), which keeps the loop tail-recursive,
+   * i.e. stack-safe on any number of handled operations. For handlers
+   * that abort or perform G, use Effects.handle instead.
    */
-  def handle[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(f: A => B ! G)
-                                            (g: [X, Y] => F[X] => X /> Y): B ! G = {
+  def relay[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(f: A => B ! G)
+                                           (g: [X, Y] => F[X] => X /> Y): B ! G = {
     @tailrec def loop(x: A ! F + G): B ! G = x.resume match
       case Bind(Effect(e), k) => <|>[F, G](e) match
         case Left(e) => loop(g(e)(k))
-        case Right(e) => Effect(e).flatMap(x => handle[A, B, F, G](k(x))(f)(g))
+        case Right(e) => Effect(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g))
       case Effect(e) => <|>[F, G](e) match
         case Left(e) => g(e)(f)
         case Right(e) => Effect(e).flatMap(f)
