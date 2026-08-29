@@ -74,9 +74,11 @@ runWith/runIn[Cont].
 ## Out of scope
 
 - Carrier-polymorphic Eff (see Design).
-- Expr/quotes staging — same wall as staged-tagless: raw host functions
-  in the signatures; a representation-abstracted (Symantics-style)
-  layer is a separate design.
+- Expr/quotes staging — see staged-tagless: abstracting the value
+  representation R[_] makes the control skeleton stage as-is (R = Id
+  is today's interface, R = Expr a one-pass CPS code generator); only
+  value creation needs side typeclasses or handler parameters. A
+  separate design.
 - Any change to existing semantics.
 
 ## Results

@@ -42,8 +42,15 @@ Why not quotes/Expr (true multi-stage): `Control`'s operations traffic
 in raw host values and functions — `shift(f: (A => S) => R)`,
 `flatMap(f: A => M[B, S2, S])` — and arbitrary host functions cannot be
 lifted into `Expr` (no `ToExpr` for functions; CKS stage interfaces are
-representation-abstracted for exactly this reason). Expr-staging would
-require a separate Symantics-style DSL layer, out of scope.
+representation-abstracted for exactly this reason). The fix is to
+abstract the value representation, `R[_]`: the control skeleton
+(pure/flatMap/shift/run) is representation-polymorphic as-is — values
+only flow through and functions are HOAS — so `R = Id` is today's
+interface verbatim and `R = Expr` is a one-pass CPS code generator
+with no lifting in the skeleton at all. Only value creation in
+programs (literals, arithmetic) needs side typeclasses (Lift/NumR) or
+migration into handler parameters. That layer is a separate design,
+out of scope here.
 
 Why `transparent inline` + `summonInline`: a plain `using C: Control[M]`
 parameter is typed at the widened trait, so every call is virtual and
