@@ -13,3 +13,5 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-29	80cc6ac+cont+mapnode	2.0	fib1000	27182	32339	0.84	REVERTED with the rest; mixed result, geomean -3% not worth doubling the interpreter
 2026-08-29	94dd9dc+staged	5.9	staged-cont24	231.8	145.3	1.60	staged-tagless: 24-step inline chain, Cont (interpreted tree) vs Func (inline-PE closures); medians of 3, busy host; func won 3/3
 2026-08-29	94dd9dc+staged	5.9	staged-func24	145.3	145.3	1.00	the staged Func carrier is the reference here
+2026-08-29	0ac312c+stagedeff	4.0	eff-runIn-Func24	458.8	429.0	1.07	REFUTED as staging: runtime-composed closures vs Cont's flat tailrec walk, func slower 3/3; quieter-session medians
+2026-08-29	0ac312c+stagedeff	6.0	eff-inline24	263.3	499.6	0.53	CONFIRMED: inline handler-passing over Control (compile-time PE) vs Free+foldIn[Cont]; won 3/3, noisy host, ordering never inverted

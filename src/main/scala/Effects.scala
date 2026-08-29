@@ -39,6 +39,9 @@ inline def pure[F[+_], A](a: A): A ! F = Free.pure(a)
 /** an operation as a computation */
 inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
 
+/** an interpretation of F into any Control carrier C, with the answers S */
+type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
+
 /**
  * A handler of the operations F, with the answers S, is an interpretation
  * of F in the continuation paramonad: the natural transformation
@@ -47,7 +50,7 @@ inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
  *
  * That is, handlers are continuations.
  */
-infix type !>[F[_], S] = F ==> ([X] =>> X /> S)
+infix type !>[F[_], S] = Interpr[F, Cont, S]
 
 /** A comonadic handler interprets each operation by its own value */
 trait Handler[F[_]]:
@@ -56,6 +59,10 @@ trait Handler[F[_]]:
 /** A comonadic (per-operation) Handler at every answer type. */
 inline def handler[F[_] : Handler as H, S]: F !> S =
   [X] => e => Cont.Pure(H.handle(e))
+
+/** the same, at any Control carrier */
+inline def interpr[C[_, _, _] : Control as C, F[_] : Handler as H, S]: Interpr[F, C, S] =
+  [X] => e => C.pure(H.handle(e))
 
 given [F[_] : Comonad]: Handler[F] with
   inline def handle[A](a: F[A]): A = a.extract
@@ -79,8 +86,18 @@ trait Effects[M[_[+_], _]]:
     inline def map[B](f: A => B): M[F, B] = m.flatMap(a => pure(f(a)))
     /** interpret the operations, i.e. reflect the computation into Cont */
     def foldCont[S](h: F !> S): A /> S
+    /** the same at any Control carrier (foldCont is its Cont fast path) */
+    def foldIn[C[_, _, _] : Control, S](h: Interpr[F, C, S]): C[A, S, S]
     /** run all the effects by a comonadic Handler */
     inline def runWith(using Handler[F]): A = m.foldCont(handler[F, A]) / identity
+    /**
+     * run at a chosen Control carrier. Cont is the stack-safe default;
+     * Func composes closures at run time — measured no faster than
+     * Cont here (see specs/staged-effects.md): true staged effects are
+     * inline handler-passing programs over Control, not a carrier.
+     */
+    inline def runIn[C[_, _, _]](using Handler[F], Control[C]): A =
+      m.foldIn[C, A](interpr[C, F, A]) / identity
 
   /** handle the effect F by h (and the values by ret), forwarding the effects G */
   def handle[F[+_] : TypeableK, G[+_], A, B](m: M[F + G, A])
@@ -90,6 +107,10 @@ trait Effects[M[_[+_], _]]:
       case Left(e) => h(e)
       case Right(e) => shift(k => perform(e).flatMap(k))
     ) / ret
+
+/** the staging entry for effect programs, as staged is for Control */
+transparent inline def Effects[M[_[+_], _]]: Effects[M] =
+  compiletime.summonInline[Effects[M]]
 
 /** ∀X, the runtime test for F[X], by the erasure of F */
 trait TypeableK[F[_]]:
@@ -127,6 +148,8 @@ given Effects[Free] with
     override inline def flatMap[B](f: A => Free[F, B]): Free[F, B] = m.flatMap(f)
     override def foldCont[S](h: F !> S): A /> S =
       m.fold(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
+    override def foldIn[C[_, _, _], S](h: Interpr[F, C, S])(using C: Control[C]): C[A, S, S] =
+      m.fold(C.pure)([X] => e => k => C.flatMap(h(e))(x => k(x).foldIn[C, S](h)))
 
 /**
  * Effects are continuation programs, literally: Eff is the final
@@ -152,6 +175,9 @@ given Effects[Eff] with
     override def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
       [S] => (h: F !> S) => m[S](h).flatMap(a => f(a)[S](h))
     override def foldCont[S](h: F !> S): A /> S = m[S](h)
+    /** Eff is committed to Cont; changing the carrier reifies the tree first */
+    override def foldIn[C[_, _, _], S](h: Interpr[F, C, S])(using Control[C]): C[A, S, S] =
+      (m[A ! F]([X] => e => shift(k => effect(e).flatMap(k))) / (a => Free.pure(a))).foldIn[C, S](h)
 
 /**
  * Free is initial: the tree interprets uniquely into every Effects

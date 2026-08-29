@@ -16,13 +16,13 @@ trait Control[M[_, _, _]] extends ParaMonad[M]:
 
 /**
  * Staging via final tagless (Carette–Kiselyov–Shan, the partial
- * evaluation half): in an `inline def` program, `val C = staged[M]`
+ * evaluation half): in an `inline def` program, `val C = Control[M]`
  * summons the instance at its precise type, so the instance's inline
  * operations resolve statically and the tagless dispatch evaporates
  * at compile time — at the Func carrier the program partially
  * evaluates to plain nested closures.
  */
-transparent inline def staged[M[_, _, _]]: Control[M] =
+transparent inline def Control[M[_, _, _]]: Control[M] =
   compiletime.summonInline[Control[M]]
 
 infix type />[A, R] = Cont[A, R, R]

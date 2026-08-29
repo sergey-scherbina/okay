@@ -30,13 +30,15 @@ Cont tree is materialized between the program and its answer.
       `sprog[Free].runIn[Cont] == sprog[Free].runIn[Func] ==
       sprog[Eff].runWith == sprog[Eff].runIn[Func]`
       (TestEffects "staged effects").
-- [ ] The payoff is measured: a statically-unrolled 24-op Produce chain
-      at `runIn[Cont]` vs `runIn[Func]` (StagedBenchmark), medians in
-      src/jmh/history.tsv. Prediction, written before measuring:
-      Func ≥ 1.3x faster (both build the same Free tree; the difference
-      is the middle Cont tree plus its interpretive walk vs direct
-      closures); below 1.15x the claim is weak and must be revisited.
-- [x] All existing tests stay green (21).
+- [x] The payoff is measured (see Results). The original prediction —
+      `runIn[Func]` ≥ 1.3x faster — was REFUTED (1.07x slower, 3/3):
+      foldIn composes closures at run time, which is interpretation by
+      call stack, not staging. The revised claim, confirmed: true
+      staged effects are inline handler-passing programs over Control
+      (`effInline24` ≈ 1.9x faster than `runIn[Cont]`, 3/3).
+- [x] A fully fused inline program agrees with the interpreted ones
+      (TestEffects "staged effects, fully fused").
+- [x] All existing tests stay green (22).
 
 ## Design
 
@@ -79,5 +81,20 @@ runWith/runIn[Cont].
 
 ## Results
 
-To be filled after the benchmark: medians and the ratio, also appended
-to src/jmh/history.tsv.
+2026-08-29, StagedBenchmark (24-op Produce chain), medians of 3 runs:
+
+- effCont24 (Free tree, runIn[Cont]): 429–500 ns/op across sessions.
+- effFunc24 (Free tree, runIn[Func]): 459–550 ns/op — REFUTED as a
+  staging path, consistently ~7% slower than Cont: foldIn[Func]
+  composes closures at run time by recursion over the tree, so the
+  flat tail-recursive Cont walk wins. runIn's doc corrected.
+- effInline24 (inline handler-passing over Control at Func, partial
+  evaluation at compile time): 263 ns/op — 1.9x faster than
+  runIn[Cont] on the same session (1.6x vs the quieter one), won 3/3.
+
+Conclusion: for effects, the staged artifact is not a carrier value
+but an inline program shape — `inline def prog[C[_, _, _]](h:
+Interp[F, C, S])` with `staged[C]` — where the 24 binds and the
+handler fuse into one static expression. foldIn/runIn stay as the
+carrier-generic semantics (interpret an effect tree into any Control
+carrier), with no performance claim. Tests: 22/22 green.

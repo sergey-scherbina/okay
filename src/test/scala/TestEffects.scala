@@ -48,6 +48,24 @@ class TestEffects extends munit.FunSuite {
     assertEquals(runEither(calc(true)).runWith, Left("boom"))
   }
 
+  test("staged effects: one inline program, the run carrier is chosen") {
+    inline def sprog[M[_[+_], _]]: M[Produce, Int] =
+      val E = Effects[M]
+      E.flatMap(E.perform[Produce, Int](1))(x => E.perform[Produce, Int](x + 1))
+    assertEquals(sprog[Free].runIn[Cont], 2)
+    assertEquals(sprog[Free].runIn[Func], 2)   // fused: no Cont tree in between
+    assertEquals(sprog[Eff].runWith, 2)
+    assertEquals(sprog[Eff].runIn[Func], 2)    // reifies, then fuses
+  }
+
+  test("staged effects, fully fused: inline handler-passing over Control") {
+    inline def sprog[C[_, _, _]](h: Interpr[Produce, C, Int]): C[Int, Int, Int] =
+      val C = Control[C]
+      C.flatMap(h(1))(x => h(x + 1))
+    assertEquals(sprog[Cont](handler[Produce, Int]) / identity, 2)
+    assertEquals(sprog[Func](interpr[Func, Produce, Int])(identity), 2)
+  }
+
   test("stack safety: a 1M tail-resumptive relay with forwarding") {
     val n = 1000000
     type FG = Op + Produce
