@@ -20,6 +20,7 @@ package okay
 /** the aesthetic alias of Loop */
 infix type <<[A, R] = Loop[A, R]
 infix type Loop[A, R] = Cont[A, R, A => R]
+
 /** run a loop from this seed */
 extension [A](a: A) inline def apply[R](f: A Loop R): R = loop(f)(a)
 /** the argument of the current iteration: shift identity captures the loop context */
@@ -38,7 +39,7 @@ inline def put[A, F[_] : Put as F](a: A): A /> F[A] = F.put(a)
 
 /** unfold: take the seed, put f(a), continue with the seed g(a) */
 inline def generate[A, B, F[_] : Put](a: A)(f: A => B)
-                              (g: A => A): F[B] = a:
+                                     (g: A => A): F[B] = a:
   for a <- take[A, F[B]]; _ <- put(f(a)) yield g(a)
 
 /** generate, materialized by laziness */
@@ -74,6 +75,24 @@ object Producer {
     inline def handle[A](a: A): A = a.tap(_.pipe(prefix + _ + suffix).tap(print))
 
 }
+
+/**
+ * A producer is a stream: it observes by stepping its next operation —
+ * one op per element, on demand, no further than the observer asks
+ * (the eager fronts crash here, see compare/TestLaziness). The end is
+ * its Pure, observed as None. The cast is sound for producers built
+ * by put/produce at one element type: Produce is the identity
+ * signature, an operation IS its element, but the element types of
+ * the operations are erased by the identity — the value type A is the
+ * only witness left.
+ */
+given Stream[Producer] with
+  import !.*
+
+  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] = p.resume match
+    case Free.Pure(_) => None
+    case Effect(e) => Some((e, Free.Pure(e)))
+    case Bind(Effect(e), k) => Some((e.asInstanceOf[A], k(e)))
 
 import scala.math.Numeric.Implicits.given
 
