@@ -39,3 +39,6 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-29	laziness	4.0	okayBuild	13.8	94.5	0.15	LazinessBenchmark: building the 10k chain WITHOUT running; ref = own full build+run lane; construction is 15% of the work under the lazy contract
 2026-08-29	laziness	4.0	catsIOBuild	26.9	152.9	0.18	lazy club: IO construction is also cheap
 2026-08-29	laziness	4.0	kyoBuild	58.5	57.8	1.01	eager: building IS the whole computation (101% of the full lane) - the bind-chain "win" is front-loaded; TestLaziness also shows 513 loop iterations executed at construction, exceptions at build, effects once-at-build
+2026-08-29	handler-bench	4.0	relayForward	188.6	274.4	0.69	HandlerBenchmark: 10k ops, 1% handled, rest forwarded; relay 1.45x faster than Effects.handle on forwarding - the documented guidance now has a number
+2026-08-29	handler-bench	4.0	stepOneByOne	198.0	183.0	1.08	stepping 10k ops one next(1) at a time vs next(10k): only ~8% overhead, LINEAR - the reflection-without-remorse pathology does not manifest; type-aligned queue verdict: unneeded, with evidence
+2026-08-29	handler-bench	4.0	statePara	32.3	19.0	1.70	PState (ATM-cont state) vs the State effect handler on 1000 get/set: effect handler 1.7x faster; PState stays the typed-protocol layer, now with a quantified price
