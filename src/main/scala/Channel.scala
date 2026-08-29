@@ -59,8 +59,12 @@ object Channel {
                                         (using sch: Scheduler): Channel[A] =
     val c = Channel[A](capacity)
     val alive = AtomicInteger(2)
-    inline def feed[U[_], H[+_]](u: U[A])(using Stream[U, H], Handler[H]): Unit =
-      try u.toLazyList.foreach(c.send)
+    inline def feed[U[_], H[+_]](u: U[A])(using St: Stream[U, H], HH: Handler[H]): Unit =
+      try
+        @tailrec def go(x: U[A]): Unit = St.uncons(x).runWith match
+          case Some((a, t)) => c.send(a); go(t)
+          case None => ()
+        go(u)
       finally if alive.decrementAndGet() == 0 then c.close()
     sch.fork(() => feed(s))
     sch.fork(() => feed(t))

@@ -60,3 +60,18 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-29	a629036	7.86	cmpAsync-okaySpawn	29.4			full 2f 3+5, us/op; std-effects compare
 2026-08-29	a629036	7.86	cmpAsync-zio	50.0			full 2f 3+5, us/op; std-effects compare
 2026-08-29	a629036	7.86	cmpAsync-catsIOPar	139.9			full 2f 3+5, us/op; std-effects compare
+2026-08-30	a4e7ac7	6.14	cmpStreamOps-stdIterator	14.0			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpStreamOps-okayProducer	143.4			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpStreamOps-okayLazyList	145.1			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpStreamOps-kyo	238.7			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpStreamOps-zio	691.8			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpStreamOps-fs2	1409.9			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpMerge-zio	44.9			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpMerge-okayChannel	158.0			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpMerge-fs2	9030.9			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpResource-okayResource	18.7			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpResource-okayBracket	26.3			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpResource-zio	105.5			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpResource-catsIO	197.0			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	6.14	cmpResource-kyo	8566.3			full 2f 3+5, us/op; streams/merge/resource compare
+2026-08-30	a4e7ac7	16.21	abMergeFeed	inconclusive			A/B feed-via-uncons vs toLazyList.foreach: A med 164.8 B med 187.3, but round2/3 err bars 50-90% of score (noisy host); only clean round: A 142±12 vs B 112±12 (-22%). Inconclusive under load; kept B (zero carrying cost, no cell allocs in feed)
