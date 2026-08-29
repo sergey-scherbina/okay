@@ -27,9 +27,9 @@ trait ParaMonad[M[_, _, _]] {
  * one on each diagonal M[*, R, R] (e.g. the Monad of A /> R).
  */
 given [M[_, _, _] : ParaMonad as P, R]: Monad[[A] =>> M[A, R, R]] with
-  override def pure[A](a: A): M[A, R, R] = P.pure(a)
+  override inline def pure[A](a: A): M[A, R, R] = P.pure(a)
   extension [A](m: M[A, R, R])
-    override def flatMap[B](f: A => M[B, R, R]): M[B, R, R] = P.flatMap(m)(f)
+    override inline def flatMap[B](f: A => M[B, R, R]): M[B, R, R] = P.flatMap(m)(f)
 
 /**
  * Kleisli composition, is the composition of effectful functions:

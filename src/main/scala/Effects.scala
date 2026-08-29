@@ -166,17 +166,17 @@ given Effects[Free] with
 type Eff[F[+_], A] = [S] => F !> S => A /> S
 
 given Effects[Eff] with
-  override def pure[F[+_], A](a: A): Eff[F, A] =
+  override inline def pure[F[+_], A](a: A): Eff[F, A] =
     [S] => (_: F !> S) => Cont.Pure(a)
-  override def perform[F[+_], A](e: F[A]): Eff[F, A] =
+  override inline def perform[F[+_], A](e: F[A]): Eff[F, A] =
     [S] => (h: F !> S) => h(e)
 
   extension [F[+_], A](m: Eff[F, A])
-    override def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
+    override inline def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
       [S] => (h: F !> S) => m[S](h).flatMap(a => f(a)[S](h))
-    override def foldCont[S](h: F !> S): A /> S = m[S](h)
+    override inline def foldCont[S](h: F !> S): A /> S = m[S](h)
     /** Eff is committed to Cont; changing the carrier reifies the tree first */
-    override def foldIn[C[_, _, _], S](h: Interpr[F, C, S])(using Control[C]): C[A, S, S] =
+    override inline def foldIn[C[_, _, _], S](h: Interpr[F, C, S])(using Control[C]): C[A, S, S] =
       (m[A ! F]([X] => e => shift(k => effect(e).flatMap(k))) / (a => Free.pure(a))).foldIn[C, S](h)
 
 /**
@@ -190,14 +190,14 @@ def fromFree[M[_[+_], _] : Effects as E, F[+_], A](m: A ! F): M[F, A] =
   m.fold(E.pure)([X] => e => k => E.perform(e).flatMap(x => fromFree[M, F, A](k(x))))
 
 /** every Effects instance observes into Eff, by its own foldCont */
-def toEff[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): Eff[F, A] =
+inline def toEff[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): Eff[F, A] =
   [S] => (h: F !> S) => m.foldCont(h)
 
 /**
  * any Effects program materializes back as a Free tree: building
  * the syntax is itself an interpretation !>, with the answers A ! F
  */
-def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
+inline def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
   m.foldCont[A ! F]([X] => e => shift(k => effect(e).flatMap(k))) / (a => pure(a))
 
 object ! {

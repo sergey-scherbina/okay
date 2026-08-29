@@ -22,17 +22,17 @@ case class Throws[E, +A](e: E)
 inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))
 
 /** handle Throws by aborting into Either, forwarding the effects F */
-def runEither[A, F[+_], E](a: A ! Throws % E + F): Either[E, A] ! F =
-  summon[Effects[Free]].handle[Throws % E, F, A, Either[E, A]](a)(a => pure(Right(a))):
+inline def runEither[A, F[+_], E](a: A ! Throws % E + F): Either[E, A] ! F =
+  Effects[Free].handle[Throws % E, F, A, Either[E, A]](a)(a => pure(Right(a))):
     [X] => e => shift(_ => pure(Left(e.e)))
 
 /** handle Throws into the throws union (an Either already is one) */
-def runThrows[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): (A throws E) ! F =
+inline def runThrows[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): (A throws E) ! F =
   runEither(a).map(e => e)
 
 /** handle Throws by actually throwing: the JVM is the handler */
-def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): A ! F =
-  summon[Effects[Free]].handle[Throws % E, F, A, A](a)(a => pure(a)):
+inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): A ! F =
+  Effects[Free].handle[Throws % E, F, A, A](a)(a => pure(a)):
     [X] => e => shift(_ => throw e.e)
 
 /** reflect a direct-style computation into the effect */

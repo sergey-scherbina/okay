@@ -9,7 +9,7 @@ enum State[S, +A] {
 }
 
 extension [A](a: A)
-  def state[S]: A ! State % S = pure(a)
+  inline def state[S]: A ! State % S = pure(a)
 
 object State {
   inline def get[S]: S ! State % S = effect(Get())
@@ -56,6 +56,6 @@ object PState {
   inline def set[S, S2, R](s2: S2): Cont[S, S2 => R, S => R] = shift(k => s => k(s)(s2))
 
   /** run from an initial state to (final state, value) */
-  def run[S, S2, A](s: S)(m: Cont[A, S2 => (S2, A), S => (S2, A)]): (S2, A) =
+  inline def run[S, S2, A](s: S)(m: Cont[A, S2 => (S2, A), S => (S2, A)]): (S2, A) =
     (m / (a => s2 => (s2, a)))(s)
 }

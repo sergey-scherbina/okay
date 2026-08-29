@@ -21,7 +21,7 @@ infix type <<[A, R] = Loop[A, R]
 infix type Loop[A, R] = Cont[A, R, A => R]
 extension [A](a: A) inline def apply[R](f: A Loop R): R = loop(f)(a)
 inline def take[A, R]: A Loop R = shift(identity)
-def loop[A, R](f: A Loop R): A => R =
+inline def loop[A, R](f: A Loop R): A => R =
   lazy val step: A => R = f / (step(_))
   step
 
@@ -32,7 +32,7 @@ trait Put[F[_]]:
 inline def put[A, F[_] : Put as F](a: A): A /> F[A] = F.put(a)
 
 /** unfold: take the seed, put f(a), continue with the seed g(a) */
-def generate[A, B, F[_] : Put](a: A)(f: A => B)
+inline def generate[A, B, F[_] : Put](a: A)(f: A => B)
                               (g: A => A): F[B] = a:
   for a <- take[A, F[B]]; _ <- put(f(a)) yield g(a)
 
