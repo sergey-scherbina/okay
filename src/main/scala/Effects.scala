@@ -88,8 +88,8 @@ trait Effects[M[_[+_], _]]:
     def foldCont[S](h: F !> S): A /> S
     /** the same at any Control carrier (foldCont is its Cont fast path) */
     def foldIn[C[_, _, _] : Control, S](h: Interpr[F, C, S]): C[A, S, S]
-    /** run all the effects by a comonadic Handler */
-    inline def runWith(using Handler[F]): A = m.foldCont(handler[F, A]) / identity
+    /** run all the effects by a comonadic Handler (the foldCont definition; encodings may override with an equivalent fast path) */
+    def runWith(using Handler[F]): A = m.foldCont(handler[F, A]) / identity
     /**
      * run at a chosen Control carrier. Cont is the stack-safe default;
      * Func composes closures at run time — measured no faster than
@@ -150,6 +150,15 @@ given Effects[Free] with
       m.fold(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
     override def foldIn[C[_, _, _], S](h: Interpr[F, C, S])(using C: Control[C]): C[A, S, S] =
       m.fold(C.pure)([X] => e => k => C.flatMap(h(e))(x => k(x).foldIn[C, S](h)))
+    /** the same answer as the foldCont definition, in one pass instead of two */
+    override def runWith(using Handler[F]): A = runFree(m)
+
+  @tailrec private def runFree[F[+_], A](m: Free[F, A])(using H: Handler[F]): A = m match
+    case Free.Pure(a) => a
+    case Free.Inject(e) => H.handle(e)
+    case Free.Bind(Free.Bind(a, f), g) => runFree(Free.Bind(a, f(_).flatMap(g)))
+    case Free.Bind(Free.Pure(a), f) => runFree(f(a))
+    case Free.Bind(Free.Inject(e), f) => runFree(f(H.handle(e)))
 
 /**
  * Effects are continuation programs, literally: Eff is the final
