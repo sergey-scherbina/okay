@@ -28,12 +28,17 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
   /** end the stream: the buffered elements still drain */
   def close(): Unit = open = false
 
-  /** park until an element arrives, or None — closed and drained */
+  /** park until an element arrives, or None — closed and drained.
+   * The closed check comes BEFORE the timed poll, so the end of a
+   * drained channel is immediate; the timeout only bounds how long a
+   * concurrent close can go unnoticed while the queue idles. */
   @tailrec def receive(): Option[A] =
-    val a = q.poll(10, TimeUnit.MILLISECONDS)
+    val a = q.poll()
     if a != null then Some(a)
-    else if !open && q.isEmpty then None
-    else receive()
+    else if !open then Option(q.poll())
+    else
+      val b = q.poll(10, TimeUnit.MILLISECONDS)
+      if b != null then Some(b) else receive()
 }
 
 /** a channel is an async stream of what it receives (linear: see above) */
