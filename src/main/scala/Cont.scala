@@ -14,6 +14,17 @@ trait Control[M[_, _, _]] extends ParaMonad[M]:
     infix def /(k: A => S): R
   inline def reset[A, R](m: M[A, A, R]): R = m / identity
 
+/**
+ * Staging via final tagless (Carette–Kiselyov–Shan, the partial
+ * evaluation half): in an `inline def` program, `val C = staged[M]`
+ * summons the instance at its precise type, so the instance's inline
+ * operations resolve statically and the tagless dispatch evaporates
+ * at compile time — at the Func carrier the program partially
+ * evaluates to plain nested closures.
+ */
+transparent inline def staged[M[_, _, _]]: Control[M] =
+  compiletime.summonInline[Control[M]]
+
 infix type />[A, R] = Cont[A, R, R]
 infix type ^[A, R] = Cont[A, A, R]
 inline def shift[A, S, R](f: (A => S) => R): Cont[A, S, R] = Cont.Shift(f)

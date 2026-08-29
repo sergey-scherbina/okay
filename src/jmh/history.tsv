@@ -11,3 +11,5 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-29	80cc6ac+cont+mapnode	2.0	fib50	1297.4	1258.9	1.03	REVERTED
 2026-08-29	80cc6ac+cont+mapnode	2.0	fib100	2411.8	1979.2	1.22	REVERTED: consistent 3/3 regression despite strictly less work per element - JIT inlining shape of the 10-case interpreter; do not retry without perfasm evidence
 2026-08-29	80cc6ac+cont+mapnode	2.0	fib1000	27182	32339	0.84	REVERTED with the rest; mixed result, geomean -3% not worth doubling the interpreter
+2026-08-29	94dd9dc+staged	5.9	staged-cont24	231.8	145.3	1.60	staged-tagless: 24-step inline chain, Cont (interpreted tree) vs Func (inline-PE closures); medians of 3, busy host; func won 3/3
+2026-08-29	94dd9dc+staged	5.9	staged-func24	145.3	145.3	1.00	the staged Func carrier is the reference here

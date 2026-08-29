@@ -40,6 +40,14 @@ class TestCont extends munit.FunSuite {
     assertEquals(check[Func], 20)
   }
 
+  test("staged: one inline program, both carriers, no dispatch") {
+    inline def prog[M[_, _, _]]: M[Int, Int, Int] =
+      val C = staged[M]
+      C.flatMap(C.pure(1))(x => C.shift((k: Int => Int) => k(x + 1) * 10))
+    assertEquals(reset(prog[Cont]), 20)
+    assertEquals(prog[Func](identity), 20)
+  }
+
   test("the diagonal of a ParaMonad is an ordinary Monad") {
     def sum[F[_] : Monad](a: F[Int], b: F[Int]): F[Int] =
       a.flatMap(x => b.map(x + _))

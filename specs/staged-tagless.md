@@ -29,12 +29,12 @@ tree and keeps the tools.
 
 - [x] One inline program instantiates at both carriers and agrees:
       `reset(prog[Cont]) == prog[Func](identity)` (TestCont "staged").
-- [ ] The payoff is measured: a statically-unrolled flatMap chain at
+- [x] The payoff is measured: a statically-unrolled flatMap chain at
       `Func` vs `Cont` (StagedBenchmark), medians recorded in
       src/jmh/history.tsv. Prediction, written before measuring: Func
       ≥ 1.5x faster (no nodes, no interpretive match); below that the
       staging claim is weak and the spec must be revisited.
-- [ ] All existing tests stay green.
+- [x] All existing tests stay green.
 
 ## Design
 
@@ -85,5 +85,11 @@ Limits, stated honestly:
 
 ## Results
 
-To be filled after the benchmark: per-carrier medians and the ratio,
-also appended to src/jmh/history.tsv.
+2026-08-29, StagedBenchmark (24-step chain), medians of 3 runs, busy
+host (load ~6), jmh -wi 2 -w 1 -i 3 -r 1 -f 1: cont24 = 231.8 ns/op,
+func24 = 145.3 ns/op — the staged Func carrier is 1.60x faster, func
+won 3/3 rounds with tight samples. Prediction (≥ 1.5x) confirmed. The
+ratio matches the interpretation-layer plateau measured on fib (~1.5x),
+a consistent picture: staging at the Func carrier recovers exactly the
+interpretive cost. Tests: 20/20 green, including "staged: one inline
+program, both carriers".
