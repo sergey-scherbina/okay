@@ -26,19 +26,19 @@ Nothing callers depend on may change:
 
 ## Behavior
 
-- [ ] Step 0 profile recorded in Results: `-prof gc` B/op for fib10/50/100/1000,
+- [x] Step 0 profile recorded in Results: `-prof gc` B/op for fib10/50/100/1000,
       plus `-XX:+PrintInlining` notes for the `/` and `apply` call sites.
-- [ ] Experiment A (fusion) implemented behind the same API; all existing tests pass,
+- [x] Experiment A (fusion) implemented behind the same API; all existing tests pass,
       including the three 1M stress tests (LazyList via State.index, Producer.next,
       tail-resumptive handle with forwarding).
-- [ ] New stress test: one leading `shift`, then 1M `flatMap(x => Pure(x + 1))`
+- [x] New stress test: one leading `shift`, then 1M `flatMap(x => Pure(x + 1))`
       built by foldLeft — exercises fusion up to the budget, then the Bind spill;
       must run without stack overflow and produce the correct value.
-- [ ] A/B protocol executed for every experiment: 3 alternating rounds, medians of
+- [x] A/B protocol executed for every experiment: 3 alternating rounds, medians of
       both arms measured in the same session, per-run subshells (`(cd DIR && sbt ...)`).
-- [ ] Keep/revert decided strictly by the thresholds in Design; verdict and medians
+- [x] Keep/revert decided strictly by the thresholds in Design; verdict and medians
       appended to history.tsv; a reverted change leaves no code behind.
-- [ ] Results section below filled in with before/after medians per workload.
+- [x] Results section below filled in with before/after medians per workload.
 
 Note on running tests: the suite is munit — plain `sbt test` discovers and runs
 all of it; "0 tests run" means something is broken, not verified.
@@ -149,5 +149,23 @@ subsequent commands — always use per-run subshells.
 
 ## Results
 
-To be filled after each experiment: per-workload medians of both arms, verdicts,
-and the Step 0 B/op table. Rows also land in `src/jmh/history.tsv`.
+2026-08-29, busy host (load ~7), medians of 3 alternating rounds.
+
+Step 0 (`-prof gc`): fib10 = 2560 B/op (256 B/element), fib100 =
+23152 B/op — allocation-dominated, so the gate chose Experiment A;
+the gc profile alone settled it, PrintInlining was not needed.
+
+Experiment A (closure fusion, Fuse = 128): KEPT.
+- Allocation: fib10 2560 -> 2080 B/op (-48 B/element — exactly the
+  Bind + Pure + lambda that fusion removes).
+- Time: fib10 245.0 -> 175.6 ns (-28%, won 3/3), fib50 1202 -> 967
+  (-20%), fib100 2330 -> 2215 (-5%, won 3/3), fib1000 31612 -> 28314
+  (-10%). Geomean over fib10/50/100: -18%; no workload regressed —
+  the JIT-shape sensitivity did not bite, as predicted, because the
+  dispatch shape of `/` was left untouched.
+- Estimated remaining gap to the HEAD function encoding: ~1.1x
+  (cross-session estimate; fib50 now measures below the HEAD-era
+  number). The interpretation-layer program of this spec is
+  essentially complete; Experiment B stays unneeded.
+
+Tests: 23/23 green, including the new fusion-budget spill stress.

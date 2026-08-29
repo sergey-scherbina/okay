@@ -1,6 +1,7 @@
 package okay
 
 import scala.annotation.tailrec
+import scala.util.Try
 
 /**
  * Final tagless interface of delimited control: the parameterised
@@ -37,24 +38,38 @@ inline def reset[A, R](c: A ^ R): R = c / identity
  * Bind is a data node, and `/` rebalances the left-nested binds in a
  * tail-recursive loop, so running a flatMap chain is stack-safe.
  */
+object Cont:
+  /** the depth budget of closure fusion: bounds the run-time stack of a fused segment */
+  val Fuse = Try(System.getProperty("okay.cont.fuse", "128").toInt).getOrElse(128)
+
 enum Cont[A, S, R] {
   case Pure[A, R](a: A) extends Cont[A, R, R]
-  case Shift[A, S, R](f: (A => S) => R) extends Cont[A, S, R]
+  case Shift[A, S, R](f: (A => S) => R, depth: Int = 0) extends Cont[A, S, R]
   private case Bind[A, B, S, T, R](a: Cont[A, T, R],
                                    f: A => Cont[B, S, T]) extends Cont[B, S, R]
 
-  inline def flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R] = Bind(this, f)
-  inline def map[B](f: A => B): Cont[B, S, R] = flatMap(a => Pure(f(a)))
+  /**
+   * binds fuse into the Shift closure (the fast function encoding)
+   * while the depth budget lasts, then spill into Bind data for the
+   * stack-safe tail-recursive interpreter
+   */
+  def flatMap[B, S2](f: A => Cont[B, S2, S]): Cont[B, S2, R] = this match
+    case Shift(s, d) if d < Cont.Fuse => Shift(k => s(f(_)(k)), d + 1)
+    case _ => Bind(this, f)
+
+  def map[B](f: A => B): Cont[B, S, R] = this match
+    case Shift(s, d) if d < Cont.Fuse => Shift(k => s(x => k(f(x))), d + 1)
+    case _ => Bind(this, a => Pure(f(a)))
 
   /** apply to a continuation, as the function (A => S) => R it means */
   final def apply(k: A => S): R = this / k
 
   @tailrec final infix def /(k: A => S): R = this match
     case Pure(a) => k(a)
-    case Shift(f) => f(k)
+    case Shift(f, _) => f(k)
     case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)) / k
     case Bind(Pure(a), f) => f(a) / k
-    case Bind(Shift(s), f) => s(f(_)(k))
+    case Bind(Shift(s, _), f) => s(f(_)(k))
 }
 
 given Control[Cont] with

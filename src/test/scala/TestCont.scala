@@ -40,6 +40,13 @@ class TestCont extends munit.FunSuite {
     assertEquals(check[Func], 20)
   }
 
+  test("fusion budget: a leading shift, then 1M binds spill into data") {
+    val n = 1000000
+    val m = (1 to n).foldLeft(shift[Int, Int, Int](k => k(0))): (m, _) =>
+      m.flatMap(x => Cont.Pure(x + 1))
+    assertEquals(reset(m), n)
+  }
+
   test("staged: one inline program, both carriers, no dispatch") {
     inline def prog[M[_, _, _]]: M[Int, Int, Int] =
       val C = Control[M]
