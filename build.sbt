@@ -26,5 +26,7 @@ lazy val compare = (project in file("compare"))
       "dev.zio" %% "zio" % "2.1.14",
       "io.getkyo" %% "kyo-core" % "0.16.2",
       "org.atnos" %% "eff" % "7.0.4",
+      "co.fs2" %% "fs2-core" % "3.10.2",
+      "dev.zio" %% "zio-streams" % "2.1.14",
     ),
   )

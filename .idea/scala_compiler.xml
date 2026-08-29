@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ScalaCompilerConfiguration">
     <option name="separateProdTestSources" value="true" />
-    <profile name="sbt 1" modules="okay" />
-    <profile name="sbt 2" modules="okay.main,okay.test">
+    <profile name="sbt 1" modules="okay,okay.okay-compare" />
+    <profile name="sbt 2" modules="okay.main,okay.okay-compare.main,okay.okay-compare.test,okay.test">
       <parameters>
         <parameter value="-Xkind-projector" />
         <parameter value="-Wall" />

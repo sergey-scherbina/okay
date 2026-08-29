@@ -24,3 +24,13 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-29	compare-10k-binds	8.0	okayFree	158.0	87.0	1.82	full effects path (Free->Cont->walk + comonadic handler); ~parity with IO, beats ZIO and atnos-eff
 2026-08-29	compare-10k-binds	8.0	zioChain	183.0	87.0	2.10	
 2026-08-29	compare-10k-binds	8.0	atnosEff	300.0	87.0	3.45	noisy (259-342); the direct extensible-effects competitor
+2026-08-29	fuse128	7.0	fib10	175.6	245.0	0.72	Experiment A KEPT: closure fusion with depth budget 128 in Cont flatMap/map; B/op 2560->2080; medians of 3 alternating rounds
+2026-08-29	fuse128	7.0	fib50	967.1	1202.1	0.80	same session
+2026-08-29	fuse128	7.0	fib100	2214.6	2330.2	0.95	same session, won 3/3
+2026-08-29	fuse128	7.0	fib1000	28314	31612	0.90	same session; geomean fib10/50/100 -18%, no regressions -> KEEP; est. remaining gap to HEAD encoding ~1.1x
+2026-08-29	compare-postfuse	4.0	okayCont	87.0	87.0	1.00	re-run after fuse128: unchanged as predicted (Pure-seeded Bind path untouched, and the new flatMap match added no cost); ranking stable: kyo 58 < okayCont 87 < cats cluster ~149 (Free/Eval/IO) ~ okayFree 155 < ZIO ~200 < atnos ~290
+2026-08-29	gen-compare	4.0	okayProducer	18.9	10.7	1.77	GeneratorBenchmark: 1000 fibs by unfold; ref = stdIterator; okay effectful generator 1.8x from the bare-iterator floor, 8.6x ahead of ZStream, 13x ahead of fs2 (their worst case: per-element unfold, both are chunk-oriented)
+2026-08-29	gen-compare	4.0	okayLazyList	34.8	10.7	3.25	LazyList sync-lazy cons costs; slower than the Producer path
+2026-08-29	gen-compare	4.0	zioStream	163.0	10.7	15.2	singleton-element worst case
+2026-08-29	gen-compare	4.0	fs2Stream	249.0	10.7	23.3	singleton-element worst case
+2026-08-29	gen-compare	4.0	kyoStream	63.1	10.7	5.90	kyo 0.16.2 Stream(Loop+Emit.value(Chunk(a))).take.runFold.eval, idiomatic per-element form; okayProducer beats it 3.5x here, the mirror of the bind-chain bench where kyo led
