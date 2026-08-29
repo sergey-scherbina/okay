@@ -15,3 +15,12 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-29	94dd9dc+staged	5.9	staged-func24	145.3	145.3	1.00	the staged Func carrier is the reference here
 2026-08-29	0ac312c+stagedeff	4.0	eff-runIn-Func24	458.8	429.0	1.07	REFUTED as staging: runtime-composed closures vs Cont's flat tailrec walk, func slower 3/3; quieter-session medians
 2026-08-29	0ac312c+stagedeff	6.0	eff-inline24	263.3	499.6	0.53	CONFIRMED: inline handler-passing over Control (compile-time PE) vs Free+foldIn[Cont]; won 3/3, noisy host, ordering never inverted
+2026-08-29	0ac312c+inlinepass	5.7	fib10	235.1	-	-	single informal sanity run after the library-wide inline pass (generate/loop/toEff/reify/runners/Eff ops inlined); no regression vs recent busy-host sessions, fib50 1296 improved
+2026-08-29	compare-10k-binds	8.0	kyoChain	57.0	87.0	0.66	CompareBenchmark: 10k-bind chain incl. construction; 2 rounds, busy host; ref = okayCont; kyo error bars huge but lowest consistently
+2026-08-29	compare-10k-binds	8.0	okayCont	87.0	87.0	1.00	reference lane; beats cats.Eval 1.6x
+2026-08-29	compare-10k-binds	8.0	catsFree	136.0	87.0	1.56	noisy (108-165 across rounds)
+2026-08-29	compare-10k-binds	8.0	catsEval	142.0	87.0	1.63	
+2026-08-29	compare-10k-binds	8.0	catsIO	150.0	87.0	1.72	
+2026-08-29	compare-10k-binds	8.0	okayFree	158.0	87.0	1.82	full effects path (Free->Cont->walk + comonadic handler); ~parity with IO, beats ZIO and atnos-eff
+2026-08-29	compare-10k-binds	8.0	zioChain	183.0	87.0	2.10	
+2026-08-29	compare-10k-binds	8.0	atnosEff	300.0	87.0	3.45	noisy (259-342); the direct extensible-effects competitor
