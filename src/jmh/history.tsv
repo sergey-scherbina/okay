@@ -82,3 +82,12 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-30	524556a	4.62	cmpStreamOps-okayChunksTransform	16.9			chunk-in/chunk-out transformer pipeline: -28% vs elements view 23.6; 1.2x from Iterator floor 14.1. KEPT
 2026-08-30	113616e	8.11	cmpBinds-okayEager	5.1			f1; pure 10k bind chain: okayEager 5.1 vs kyoChain 50.4 vs okayFree 102 (same session); the kyo trick opt-in as Effects[Eager], 10x under kyo
 2026-08-30	HEAD		stagedPipeline-fold	1.61			inline whole-stage: range->map->filter->take(1000)->sum fused into one while; stdIterator 19.3 (same run), interpretedTree 15.9 — 12x UNDER the Iterator floor, box closed
+2026-08-30	ed0e958	2.4	textLex-elementwise	42.6			2.5KB JSON doc, Scan.all; the chunked path at 64 = 55.6, at 512 = 52.6, at 8 = 70.5 -> per-chunk overhead flattens by 512 yet 23% remains = PER-CHARACTER boxing (Chunk[A] is ArraySeq over Array[AnyRef]; elementwise reads charAt). Specialized char chunks are the stated fix; chunked lexing's value meanwhile is streaming/constant memory, not speed
+2026-08-30	ed0e958	2.4	textParse-full	85.1			50-member JSON doc, Parse.full with builder snapshots
+2026-08-30	ed0e958	2.4	textParse-reparseIncremental	38.0			one-member length-preserving edit: 2.2x under the full parse. Below the theoretical O(damage) win because relex dominates and the prefix/suffix token scans are O(tokens) - next lever if incremental parsing gets a real workload
+2026-08-30	ed0e958	2.4	textCodec-okayJsonWrite	0.63			vs circeWrite 0.42 (1.5x) - the encode side is a plain Schema fold, competitive
+2026-08-30	ed0e958	2.4	textCodec-okayJsonRead	10.3			vs circeRead 0.62 (16x) - the TOTALITY tax: chars -> total scanner -> total driver -> lossless CST -> projection -> Schema fold, where circe parses straight to its AST. Buys damage-as-data and truncated-decodes
+2026-08-30	ed0e958	2.4	textCodec-okayCborRead	0.81			vs circe JSON read 0.62 - 1.3x a hand-tuned parser; okayCborWrite 0.418 TIES circeWrite 0.422. Without the lossless-CST contract we are right there
+2026-08-30	ed0e958	2.4	textBpe-scan	300			~3.3KB corpus; naive rank scan is quadratic per word - fine for v1, the obvious lever if BPE gets hot
+2026-08-30	ed0e958	2.4	asyncDrive-runWith10k	241			parking handler, 10k ops
+2026-08-30	ed0e958	2.4	asyncDrive-runAsync10k	289			the universal callback drive (what JS uses) costs +20% over parking on the JVM - one atomic exchange per Await, nothing per Run

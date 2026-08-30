@@ -41,6 +41,19 @@ class TextBenchmark {
     Chunks.fold(Scan.chunks(JsonLex.scan)(Chunks.fromIterator(doc.iterator, 64)))(
       using Fold.count)
 
+  // the same work at 8x and 1/8x the chunk size: if per-chunk
+  // overhead dominates, bigger chunks win; if the boxing of chars
+  // into Array[AnyRef] dominates, the size barely matters
+  @Benchmark
+  def lexChunked512: Long =
+    Chunks.fold(Scan.chunks(JsonLex.scan)(Chunks.fromIterator(doc.iterator, 512)))(
+      using Fold.count)
+
+  @Benchmark
+  def lexChunked8: Long =
+    Chunks.fold(Scan.chunks(JsonLex.scan)(Chunks.fromIterator(doc.iterator, 8)))(
+      using Fold.count)
+
   // ---- parsing, full and incremental
 
   val session = Parse.full(JsonLex.scan, JsonParse.instrs)(doc, 64)
