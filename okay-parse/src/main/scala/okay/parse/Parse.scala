@@ -120,26 +120,53 @@ object Parse {
    * ROOT-LEVEL node boundaries (stack depth <= 1). Building is
    * persistent, so a snapshot is a pointer, not a copy.
    */
-  final case class Parsed[K, S](lexed: Scan.Lexed[K, S], tree: Cst[K],
-                                snaps: Vector[(Int, Building[K])])
+  final case class Parsed[K, S, D](lexed: Scan.Lexed[K, S], tree: Cst[K],
+                                   snaps: Vector[(Int, Building[K], D)])
 
   /**
-   * Parse a whole input with a PER-TOKEN driver (a token maps to its
-   * instructions with no cross-token state — the contract that makes
-   * token-level reconvergence sound; the stateful part of parsing is
-   * the builder, and the builder is the thing snapshotted).
+   * A driver as a pure STEP FUNCTION, exactly like a Scan one layer
+   * down: state in, token in, next state and instructions out. The
+   * state is what a per-token driver could not carry (brace depth, a
+   * pending doc comment) and it is snapshotted beside the builder, so
+   * reconvergence stays sound — it now requires the driver state to
+   * match too, not only the builder's frame.
    */
-  def full[K, S](sc: Scan[K, S], step: Token[K] => Vector[Instr[K]])
-                (input: String, snapshotEvery: Int = 64): Parsed[K, S] =
+  type Step[K, D] = (D, Token[K]) => (D, Vector[Instr[K]])
+
+  /** the stateless driver of the simple dialects, as a Step */
+  def stateless[K](f: Token[K] => Vector[Instr[K]]): Step[K, Unit] =
+    (_, t) => ((), f(t))
+
+  /**
+   * Parse a whole input, snapshotting (tokenIndex, builder, driver
+   * state) at ROOT-LEVEL node boundaries. Building is persistent, so
+   * a snapshot is a pointer, not a copy.
+   */
+  def fullWith[K, S, D](sc: Scan[K, S], step: Step[K, D], initD: D,
+                        finish: D => Vector[Instr[K]] = (_: D) => Vector.empty)
+                       (input: String, snapshotEvery: Int = 64): Parsed[K, S, D] =
     val lexed = Scan.all(sc)(input, snapshotEvery)
-    val snaps = Vector.newBuilder[(Int, Building[K])]
+    val snaps = Vector.newBuilder[(Int, Building[K], D)]
     var b = build[K].init
+    var d = initD
     var i = 0
     while i < lexed.tokens.length do
-      if b.stack.length <= 1 then snaps += ((i, b))
-      b = step(lexed.tokens(i)).foldLeft(b)(build[K].add)
+      if b.stack.length <= 1 then snaps += ((i, b, d))
+      val (d2, is) = step(d, lexed.tokens(i))
+      d = d2
+      b = is.foldLeft(b)(build[K].add)
       i += 1
+    // a driver may hold tokens back (a doc comment waiting for the
+    // definition it belongs to); finish releases them, so nothing a
+    // driver deferred can be lost — the lexer's flush, one layer up
+    b = finish(d).foldLeft(b)(build[K].add)
     Parsed(lexed, present(b), snaps.result())
+
+  /** the common case: a per-token driver with no state of its own */
+  def full[K, S](sc: Scan[K, S], step: Token[K] => Vector[Instr[K]])
+                (input: String, snapshotEvery: Int = 64): Parsed[K, S, Unit] =
+    fullWith(sc, stateless(step), (), (_: Unit) => Vector.empty[Instr[K]])(
+      input, snapshotEvery)
 
   /**
    * Reparse after an edit: relex (okay-lex reconvergence), resume the
@@ -152,10 +179,11 @@ object Parse {
    * work is O(damage); no convergence found reparses to the end —
    * never wrong, at worst not incremental.
    */
-  def reparse[K, S](sc: Scan[K, S], step: Token[K] => Vector[Instr[K]])
-                   (old: Parsed[K, S], oldInput: String, newInput: String,
-                    editStart: Int, editEndOld: Int, editEndNew: Int,
-                    snapshotEvery: Int = 64): Parsed[K, S] =
+  def reparseWith[K, S, D](sc: Scan[K, S], step: Step[K, D], initD: D,
+                           finish: D => Vector[Instr[K]] = (_: D) => Vector.empty)
+                          (old: Parsed[K, S, D], oldInput: String, newInput: String,
+                           editStart: Int, editEndOld: Int, editEndNew: Int,
+                           snapshotEvery: Int = 64): Parsed[K, S, D] =
     val lexed = Scan.relex(sc)(old.lexed, oldInput, newInput,
       editStart, editEndOld, editEndNew, snapshotEvery)
     val toks = lexed.tokens
@@ -177,27 +205,31 @@ object Parse {
     while l < toks.length - p && l < oldToks.length - p
       && toks(toks.length - 1 - l) == shifted(oldToks(oldToks.length - 1 - l)) do l += 1
 
-    val oldSnaps = old.snaps.toMap
+    val oldSnaps = old.snaps.map(s => (s._1, (s._2, s._3))).toMap
     val oldRootKids = old.tree match
       case Cst.Node(_, kids) => kids
       case other => Vector(other)
 
-    val (start, b0) = old.snaps.filter(_._1 <= p).lastOption.getOrElse((0, build[K].init))
-    val snaps = Vector.newBuilder[(Int, Building[K])]
+    val (start, b0, d0) = old.snaps.filter(_._1 <= p).lastOption
+      .getOrElse((0, build[K].init, initD))
+    val snaps = Vector.newBuilder[(Int, Building[K], D)]
     snaps ++= old.snaps.takeWhile(_._1 < start)
 
     var b = b0
+    var d = d0
     var i = start
     while i < toks.length do
       if b.stack.length <= 1 then
-        snaps += ((i, b))
+        snaps += ((i, b, d))
         // reconverged? the rest of the token stream is the old one,
-        // and the old run stood at a matching boundary here
+        // the old run stood at a matching boundary here, AND its
+        // driver was in the same state (a stateful driver could
+        // otherwise resume the old tail under different rules)
         if i >= toks.length - l then
           val o = i - tokenDelta
           oldSnaps.get(o) match
-            case Some(bo) if bo.stack.length == b.stack.length
-              && bo.stack.map(_._1) == b.stack.map(_._1) =>
+            case Some((bo, dOld)) if bo.stack.length == b.stack.length
+              && bo.stack.map(_._1) == b.stack.map(_._1) && dOld == d =>
               val suffixTop = oldRootKids.drop(bo.done.length)
               val kids = (b.stack, bo.stack) match
                 case (Nil, Nil) =>
@@ -212,8 +244,19 @@ object Parse {
                 case _ => b.done   // unreachable: lengths matched above
               return Parsed(lexed, Cst.Node("root", kids), snaps.result())
             case _ => ()
-      b = step(toks(i)).foldLeft(b)(build[K].add)
+      val (d2, is) = step(d, toks(i))
+      d = d2
+      b = is.foldLeft(b)(build[K].add)
       i += 1
 
+    b = finish(d).foldLeft(b)(build[K].add)
     Parsed(lexed, present(b), snaps.result())
+
+  /** the common case: a per-token driver with no state of its own */
+  def reparse[K, S](sc: Scan[K, S], step: Token[K] => Vector[Instr[K]])
+                   (old: Parsed[K, S, Unit], oldInput: String, newInput: String,
+                    editStart: Int, editEndOld: Int, editEndNew: Int,
+                    snapshotEvery: Int = 64): Parsed[K, S, Unit] =
+    reparseWith(sc, stateless(step), (), (_: Unit) => Vector.empty[Instr[K]])(
+      old, oldInput, newInput, editStart, editEndOld, editEndNew, snapshotEvery)
 }

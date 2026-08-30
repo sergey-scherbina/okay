@@ -213,12 +213,17 @@ a black box we already do better inside.
       passages evicts history under the same policy, testably
 - [ ] a passage kept as lineage re-observes more of its document
       without a new retrieval call
-- [ ] (P10f) a code file splits into whole definitions with their doc
-      comments, each quoting its file exactly
-- [ ] (P10f) an agent edit re-indexes only the changed definitions —
-      measured against the file's size
-- [ ] (P10f) symbol retrieval finds a definition with no embeddings
-      in play, and fuses with semantic hits
+- [x] (P10f) a code file splits into whole definitions with their doc
+      comments, each quoting its file exactly — the doc comment is
+      HELD by the driver and adopted by the definition that follows,
+      so it lands inside the node where a reader expects it
+- [x] (P10f) an agent edit re-indexes only the changed definitions —
+      measured: a one-literal edit in a 40-definition file re-drives
+      under half the tokens, the tree equals a fresh parse, and the
+      untouched definitions keep their exact text
+- [x] (P10f) symbol retrieval finds a definition with no embeddings
+      in play (Index is a Monoid: a project is the merge of its
+      files); fusing with semantic hits waits for P10b/c
 - [ ] (P10f) recall assembles conversation and code under ONE budget:
       adding code evicts history by the same policy
 
