@@ -27,6 +27,11 @@ same material with the measurements attached.
   Free.Pure case shadows it).
 - **`F !> S`** — a handler: `F ==> ([X] =>> X /> S)`; handlers are
   continuations, literally.
+- **`Parse.Step[K, D]`** (okay-parse) — a driver as a pure step
+  function with state, the Scan shape one layer up; snapshotted
+  beside the builder so incremental reparse stays sound for stateful
+  drivers (brace depth, a held doc comment), with `finish` releasing
+  whatever the driver deferred at end of input.
 - **`Handler[F]`** — the comonadic (per-operation) handler;
   `runWith` runs with it. **`Handler.union`** composes one handler
   per effect into a row handler (an explicit combinator, not a given:
