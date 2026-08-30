@@ -65,6 +65,11 @@ Behavior:
 - [x] zip of infinite chunked streams is lazy under take
 - [x] rechunk preserves content and emits size-chunks with a short tail
 
+## pipe (added 2026-08-30)
+- `Chunks.pipe(p)(c)` — an elementwise Take-consumer over chunked
+  transport: awaits served by array index, one tree step per chunk
+- [x] consumer drives (one chunk pulled for ten awaits); early end answers None
+
 ## Out of scope
 - chunk-size adaptivity
 - changing the elementwise Stream/uncons doctrine

@@ -64,6 +64,19 @@ class TestChunks extends munit.FunSuite {
     assertEquals(Chunks.rechunk(f)(4).elements.toList, (0L until 100L).filter(_ % 7 == 0).toList)
   }
 
+  test("chunked pipe: an elementwise consumer over chunked transport") {
+    def sums(n: Int, acc: Long): Long ! Take % Long =
+      if n == 0 then pure(acc)
+      else Take.await[Long].flatMap:
+        case Some(x) => sums(n - 1, acc + x)
+        case None => pure(acc)
+    var built = 0
+    val s = Chunks.generate(0L)(x => { built += 1; x })(_ + 1)(16)
+    assertEquals(Chunks.pipe(s)(sums(10, 0)), 45L)
+    assertEquals(built, 16)                                        // one chunk pulled
+    assertEquals(Chunks.pipe(Chunks.range(0, 5))(sums(100, 0)), 10L)  // early end: None
+  }
+
   test("merge of chunked streams is the existing merge, one op per chunk") {
     val merged = Chunks.merge(Chunks.range(0, 500), Chunks.range(500, 1000))
     var sum = 0L

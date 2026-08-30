@@ -221,6 +221,32 @@ object Chunks {
 
     go(new Array[AnyRef](size), 0, p)
 
+  /**
+   * Pipe a chunked producer into an ELEMENTWISE consumer: the
+   * consumer's logic stays per element (Take.await), the transport
+   * stays chunked — an await is served by an array index, the tree
+   * steps once per chunk. The consumer drives; when the chunks end,
+   * every further await answers None.
+   */
+  def pipe[W, B](p: Chunks[W])(c: B ! Take % W): B = {
+    import scala.annotation.tailrec
+
+    @tailrec def fetch(ch: Chunk[W], i: Int, rest: Chunks[W]): (Option[W], Chunk[W], Int, Chunks[W]) =
+      if i < ch.length then (Some(ch(i)), ch, i + 1, rest)
+      else pull(rest) match
+        case Some((c2, r)) => fetch(c2, 0, r)
+        case None => (None, ch, i, end)
+
+    @tailrec def loop(ch: Chunk[W], i: Int, rest: Chunks[W], c: B ! Take % W): B = c.resume match
+      case Pure(b) => b
+      case Effect(Take.Await()) => fetch(ch, i, rest)._1
+      case Bind(Effect(Take.Await()), k) =>
+        val (o, ch2, i2, r2) = fetch(ch, i, rest)
+        loop(ch2, i2, r2, k(o))
+
+    loop(emptyChunk, 0, p, c)
+  }
+
   private def mapChunk[A, B](c: Chunk[A])(f: A => B): Chunk[B] =
     val n = c.length
     val arr = new Array[AnyRef](n)
