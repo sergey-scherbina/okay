@@ -284,9 +284,16 @@ OpenRouter, Fireworks and the local runtimes (Ollama, vLLM,
 llama.cpp) all serve, so one handler reaches most of the market.
 Nothing above the effect changed to accommodate it: the same
 `converse` loop, the same compaction policy, the same derived tool
-schemas, now against the real request and response shapes. Only the
-socket is mocked in the tests, and no live call has been made from
-this repository yet — that is the one honest gap left.
+schemas, now against the real request and response shapes. Proven against a LIVE model (2026-08-31): a local rozum-gateway
+serving `mlx-community:Qwen3.5-4B` over this protocol answers the
+completion our encoder built, decoded by our decoder; the agent loop
+closes; the compaction policy demonstrably shrinks what reaches the
+wire across three real turns; and a real tool call round-trips —
+the model emits `tool_calls`, our `ToolSpec.args` decodes the
+arguments with the same Schema that declared the tool, the handler
+runs it, and the answer comes back. The live suite is `assume`-gated
+on the endpoint being reachable (OKAY_LLM_URL / OKAY_LLM_MODEL /
+OKAY_LLM_KEY), so CI stays honest without a model.
 
 Details worth recording:
 - The REQUEST is built as a `Json` value and printed, because a
