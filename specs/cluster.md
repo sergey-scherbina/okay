@@ -24,8 +24,9 @@ assembly plan, detailed at implementation time.
   replayable-source capabilities deciding what can be re-asked.
 
 ## Behavior (assembly-level)
-- [ ] two local processes exchange chunks over a remote channel and a
-      merged fold agrees with the local run
+- [x] two ends of a wire exchange chunks over a remote channel and
+      the merged fold (variance!) agrees with the local run; a damaged
+      frame is dropped and the stream lives
 - [ ] a killed worker's chunks are recomputed on another (replayable
       source), the aggregate stays correct
 - [ ] a JS client drives a JVM server with the same shared-source

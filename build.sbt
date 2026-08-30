@@ -178,9 +178,17 @@ lazy val okayLlm = (project in file("okay-llm"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/** the own distributed runtime, assembled from existing parts (P7) */
+lazy val okayCluster = (project in file("okay-cluster"))
+  .dependsOn(okayCodec)
+  .settings(
+    name := "okay-cluster",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val root = (project in file("aggregate"))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okaySpark, okayFlink, okayJdbc, okayLex, okayParse, okayCodec, okayLlm, compare)
+    okaySpark, okayFlink, okayJdbc, okayLex, okayParse, okayCodec, okayLlm, okayCluster, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,
