@@ -222,10 +222,15 @@ a black box we already do better inside.
 - [x] fair interleaving is available as Retrieve.fair over
       Logic.interleave (the Logic property itself is tested in the
       core suite; here it is wiring)
-- [ ] retrieved passages and chat history share ONE budget: adding
-      passages evicts history under the same policy, testably
+- [x] retrieved passages and chat history share ONE budget: adding
+      passages evicts history under the same policy — Grounded.context
+      in okay-agent, with `share` naming how much retrieval may take;
+      tested that neither side is starved and the total never
+      overflows
 - [ ] a passage kept as lineage re-observes more of its document
-      without a new retrieval call
+      without a new retrieval call (the Segment carries the exact
+      span, so re-observation is a substring of the Source; wiring it
+      into the agent as a follow-up capability is the remaining item)
 - [x] (P10f) a code file splits into whole definitions with their doc
       comments, each quoting its file exactly — the doc comment is
       HELD by the driver and adopted by the definition that follows,
@@ -237,8 +242,10 @@ a black box we already do better inside.
 - [x] (P10f) symbol retrieval finds a definition with no embeddings
       in play (Index is a Monoid: a project is the merge of its
       files); fusing with semantic hits waits for P10b/c
-- [ ] (P10f) recall assembles conversation and code under ONE budget:
-      adding code evicts history by the same policy
+- [x] (P10f) recall assembles conversation and code under ONE budget:
+      the agent asks a question, the code is already in `recall`, no
+      tool call is made (asserted on the recorded tool log), and the
+      passage keeps its provenance header on the way in
 
 ## Decisions
 - **No Runnable/LCEL layer.** LCEL exists because Python has no

@@ -32,6 +32,9 @@
             <option value="$PROJECT_DIR$/okay-parse" />
             <option value="$PROJECT_DIR$/okay-parse/.js" />
             <option value="$PROJECT_DIR$/okay-parse/.jvm" />
+            <option value="$PROJECT_DIR$/okay-rag" />
+            <option value="$PROJECT_DIR$/okay-rag/.js" />
+            <option value="$PROJECT_DIR$/okay-rag/.jvm" />
             <option value="$PROJECT_DIR$/okay-spark" />
             <option value="$PROJECT_DIR$/okay-zio" />
             <option value="$PROJECT_DIR$/project" />

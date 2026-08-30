@@ -33,10 +33,13 @@ class TestAsyncCross extends munit.FunSuite {
       assert(interleaved, "the timer should have fired while we slept")
   }
 
-  test("race answers the first to finish, the loser is cancelled") {
-    val prog = Async.race(
-      Async.sleep(100).map(_ => "slow"),
-      Async.sleep(10).map(_ => "fast"))
+  test("race answers the one that finishes, without waiting for the other") {
+    // no clock: the loser is a registration that NEVER fires, so a
+    // busy machine cannot invert the outcome (two sleeps 90ms apart
+    // did invert once, under a full parallel run — the property is
+    // "the finisher wins", not "10ms beats 100ms")
+    val never = Async.await[String](_ => () => ())
+    val prog = Async.race(never, Async.sleep(1).map(_ => "fast"))
     Async.runAsync(prog).map(v => assertEquals(v, "fast"))
   }
 

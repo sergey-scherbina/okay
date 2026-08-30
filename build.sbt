@@ -220,7 +220,7 @@ lazy val okayRag = crossProject(JVMPlatform, JSPlatform)
 /** agents as programs: tool calls are operations, the conversation
  * is a fold, policy lives in handlers (P9) */
 lazy val okayAgent = (project in file("okay-agent"))
-  .dependsOn(okayLlm)
+  .dependsOn(okayLlm, okayRag.jvm)
   .settings(
     name := "okay-agent",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
