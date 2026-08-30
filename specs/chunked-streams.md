@@ -52,8 +52,21 @@ Behavior:
 - [x] benchmark: measured 16.9 us — beats the elements view (23.6, -28%),
       lands 1.2x from the Iterator floor (14.1); kept as the fastest mode
 
+## zip and rechunk (added 2026-08-30)
+- `Chunks.zip(pa, pb): Chunks[(A, B)]` — pair elementwise across chunk
+  boundaries: each emitted chunk is the overlap window of the two current
+  chunks; ends at the shorter stream
+- `Chunks.rechunk(p)(size = 64): Chunks[A]` — normalize chunk sizes
+  (content unchanged, tail shorter): filter shrinks chunks, rechunk
+  restores the amortization downstream
+
+Behavior:
+- [ ] zip realigns misaligned chunk sizes and stops at the shorter stream
+- [ ] zip of infinite chunked streams is lazy under take
+- [ ] rechunk preserves content and emits size-chunks with a short tail
+
 ## Out of scope
-- zip of chunked streams (chunk realignment); rechunking, adaptivity
+- chunk-size adaptivity
 - changing the elementwise Stream/uncons doctrine
 
 ## Decisions
