@@ -28,6 +28,30 @@ class TestPipe extends munit.FunSuite {
     assertEquals(pipe(short)(nones), -1)
   }
 
+  test("stages: a producer through transducers, demand-driven") {
+    def double: Stage[Int, Int, Unit] =
+      Stage.await[Int, Int].flatMap {
+        case Some(x) => Stage.tell[Int, Int](x * 2).flatMap(_ => double)
+        case None => pure(())
+      }
+    // infinite producer, two stages, finite consumer: still lazy
+    assertEquals(pipe(through(count(0))(double))(sums(3, 0)), 0 + 2 + 4)
+    // through is associative on behavior
+    val s1 = through(through(count(0))(double))(Stage.id[Int])
+    val s2 = through(count(0))(through(double)(Stage.id[Int]))
+    assertEquals(s1.toLazyList.take(5).toList, s2.toLazyList.take(5).toList)
+  }
+
+  test("chunked/unchunk stages: batching with a flush, then flattening back") {
+    val ten: Int ! Writer % Int =
+      (1 to 10).foldLeft(Writer.tell(0).map(_ => 0))((m, i) => m.flatMap(_ => Writer.tell(i)))
+    val chunks = through(ten)(Stage.chunked[Int](4)).toLazyList.toList
+    assertEquals(chunks.map(_.length), List(4, 4, 3))   // 0..10 is eleven told values
+    assertEquals(chunks.flatten, (0 to 10).toList)
+    val back = through(through(ten)(Stage.chunked[Int](4)))(Stage.unchunk[Int])
+    assertEquals(back.toLazyList.toList, (0 to 10).toList)
+  }
+
   test("an effectful producer pipes into a program of its effects") {
     type F = Writer % Int + Async
     def ticks(n: Int): Unit ! F =

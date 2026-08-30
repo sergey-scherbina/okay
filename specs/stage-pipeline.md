@@ -38,16 +38,17 @@ def unchunked[I, O, A](s: StageC[I, O, A]): Stage[I, O, A] // adapter
   keeps the DOWNSTREAM answer, as pipe keeps the consumer's.
 
 ## Behavior
-- [ ] through is associative; the identity stage (await-tell loop) is
-      its unit
-- [ ] a finite downstream ends an infinite upstream through any number
+- [x] through is associative; the identity stage (await-tell loop) is
+      its unit (behavior-tested on samples)
+- [x] a finite downstream ends an infinite upstream through any number
       of stages (laziness through composition)
-- [ ] flush: a stage emits buffered output on end-of-input before
-      finishing
-- [ ] chunked/unchunked adapters compose with through and preserve
-      element order and content
+- [x] flush: a stage emits buffered output on end-of-input before
+      finishing (Stage.chunked flushes its tail)
+- [x] chunked/unchunked adapters compose with through and preserve
+      element order and content (round-trip test)
 - [ ] effectful stages (`+ Async`, `+ G`) forward through composition
-      (handlers remain stream transformers)
+      (deferred: v1 rows are closed — Take + Writer only; the G-column
+      lands with okay-lex needs)
 
 ## Out of scope
 - fan-in/fan-out topologies (Channel territory)

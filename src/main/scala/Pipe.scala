@@ -40,6 +40,123 @@ def pipe[W, A, B](p: A ! Writer % W)(c: B ! Take % W): B = {
 }
 
 /**
+ * A pipeline stage (specs/stage-pipeline.md): a transducer as a
+ * program — it awaits I and tells O, state is just its recursion
+ * parameters. Tokenizers, parsers, codec dialects, any stream
+ * rewriter share this one shape; composition (through) is
+ * demand-driven coroutine pairing, so every stage is incremental,
+ * resumable and lazy by construction.
+ */
+type Stage[I, O, A] = A ! (Take % I + Writer % O)
+
+object Stage {
+
+  /** the next input, or None — upstream ended */
+  inline def await[I, O]: Option[I] ! (Take % I + Writer % O) =
+    effect(Take.Await())
+
+  /** emit one output */
+  inline def tell[I, O](o: O): O ! (Take % I + Writer % O) =
+    effect(Writer(o))
+
+  /** the identity stage: every input becomes an output */
+  def id[T]: Stage[T, T, Unit] =
+    await[T, T].flatMap {
+      case Some(t) => tell[T, T](t).flatMap(_ => id[T])
+      case None => pure(())
+    }
+
+  /** batch inputs into chunks of the given size (the tail flushes on
+   * end of input — a stage may still tell after seeing None) */
+  def chunked[T](size: Int): Stage[T, Chunk[T], Unit] =
+    def go(buf: Vector[T]): Stage[T, Chunk[T], Unit] =
+      await[T, Chunk[T]].flatMap {
+        case Some(t) =>
+          val b = buf :+ t
+          if b.length >= size then tell[T, Chunk[T]](Chunks.wrap(
+            b.toArray[Any].asInstanceOf[Array[AnyRef]])).flatMap(_ => go(Vector.empty))
+          else go(b)
+        case None =>
+          if buf.isEmpty then pure(())
+          else tell[T, Chunk[T]](Chunks.wrap(
+            buf.toArray[Any].asInstanceOf[Array[AnyRef]])).map(_ => ())
+      }
+
+    go(Vector.empty)
+
+  /** flatten chunks back into elements */
+  def unchunk[T]: Stage[Chunk[T], T, Unit] =
+    await[Chunk[T], T].flatMap {
+      case Some(c) =>
+        def emit(i: Int): Stage[Chunk[T], T, Unit] =
+          if i >= c.length then unchunk[T]
+          else tell[Chunk[T], T](c(i)).flatMap(_ => emit(i + 1))
+        emit(0)
+      case None => pure(())
+    }
+}
+
+/**
+ * Compose two stages, demand-driven: the downstream's awaits are fed
+ * by the upstream's tells; the upstream's awaits become the composed
+ * stage's awaits; when the upstream finishes, further downstream
+ * awaits answer None (the upstream may have flushed first). The
+ * downstream's answer is the result. Nothing runs until the final
+ * consumer pulls.
+ */
+def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O, B] = {
+  type Res = Take % I + Writer % O
+
+  // drive the upstream until it tells (Some(m) + rest) or ends (None);
+  // its own awaits surface as OUR awaits, in CPS to stay a program
+  def pull(u: Stage[I, M, A])(cont: (Option[M], Stage[I, M, A]) => B ! Res): B ! Res =
+    u.resume match
+      case Pure(_) => cont(None, u)
+      case Effect(e) => <|>[Take % I, Writer % M](e) match
+        case Left(Take.Await()) =>
+          // a final await tells nothing more: the upstream is done
+          cont(None, u)
+        case Right(w) => cont(Some(w.asInstanceOf[M]), Free.Pure(null.asInstanceOf[A]))
+      case Bind(Effect(e), k) => <|>[Take % I, Writer % M](e) match
+        case Left(Take.Await()) =>
+          effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi.asInstanceOf))(cont))
+        case Right(w) => cont(Some(w.asInstanceOf[M]), k(w.asInstanceOf))
+
+  def loop(u: Stage[I, M, A], d: Stage[M, O, B]): B ! Res =
+    d.resume match
+      case Pure(b) => pure(b)
+      case Effect(e) => <|>[Take % M, Writer % O](e) match
+        case Left(Take.Await()) => pull(u)((om, _) => pure(om.asInstanceOf[B]))
+        case Right(o) => effect[Res, B](o.asInstanceOf[Res[B]])
+      case Bind(Effect(e), k) => <|>[Take % M, Writer % O](e) match
+        case Left(Take.Await()) => pull(u)((om, u2) => loop(u2, k(om.asInstanceOf)))
+        case Right(o) =>
+          effect[Res, Any](o.asInstanceOf[Res[Any]]).flatMap(x => loop(u, k(x.asInstanceOf)))
+
+  loop(up, down)
+}
+
+/** run a plain producer through a stage: its tells feed the stage's
+ * awaits, the stage's tells are the result stream */
+@scala.annotation.targetName("throughProducer")
+def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M = {
+  def loop(rest: A ! Writer % W, d: Stage[W, M, B]): B ! Writer % M =
+    d.resume match
+      case Pure(b) => pure(b)
+      case Effect(e) => <|>[Take % W, Writer % M](e) match
+        case Left(Take.Await()) => pure(Writer.uncons(rest).toOption.map(_._1).asInstanceOf[B])
+        case Right(m) => effect[Writer % M, B](m.asInstanceOf[(Writer % M)[B]])
+      case Bind(Effect(e), k) => <|>[Take % W, Writer % M](e) match
+        case Left(Take.Await()) => Writer.uncons(rest) match
+          case Right((w, r)) => loop(r, k(Some(w).asInstanceOf))
+          case Left(_) => loop(rest, k(None.asInstanceOf))
+        case Right(m) =>
+          effect[Writer % M, Any](m.asInstanceOf[(Writer % M)[Any]]).flatMap(x => loop(rest, k(x.asInstanceOf)))
+
+  loop(p, s)
+}
+
+/**
  * The same pipe for a producer performing arbitrary effects G: the
  * consumer still drives, and the G-operations met between elements
  * are carried into the answer — the result is a program in G.
