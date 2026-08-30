@@ -83,3 +83,10 @@ object Channel {
       finally c.close()
     c
 }
+
+/** merge two chunked streams by readiness: the existing Channel.merge,
+ * one queue operation per chunk (type args spelled out — inference
+ * abstracts the wrong slot through the nested alias) */
+def mergeChunks[A](s: Chunks[A], t: Chunks[A], capacity: Int = Int.MaxValue)
+                  (using Scheduler): Channel[Chunk[A]] =
+  Channel.merge[Chunk[A], Producer, Zero, Producer, Zero](s, t, capacity)

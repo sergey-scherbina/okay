@@ -11,16 +11,31 @@ package okay
  * speed.
  */
 enum Async[+A]:
-  /** a suspended (possibly blocking) computation */
+  /** a suspended (possibly blocking — a JVM/Native ability) computation */
   case Run[A](run: () => A) extends Async[A]
+
+  /** the universal, callback-form suspension: register a continuation
+   * (the cross-platform primitive of specs/cross-platform-async.md —
+   * on JVM/Native the handler parks for it, on JS a runner will drive
+   * it through the event loop) */
+  case Await[A](register: (A => Unit) => Unit) extends Async[A]
 
 /** suspend a (possibly blocking) computation as an operation */
 inline def async[A](a: => A): A ! Async = effect(Async.Run(() => a))
 
-/** execute the operation on the current (ideally virtual) thread */
+/** suspend on a callback registration (works on every platform) */
+inline def await[A](register: (A => Unit) => Unit): A ! Async =
+  effect(Async.Await(register))
+
+/** execute the operation on the current (ideally virtual) thread;
+ * an Await parks it until the callback fires */
 given Handler[Async] = new:
   def handle[A](e: Async[A]): A = e match
     case Async.Run(f) => f()
+    case Async.Await(reg) =>
+      val f = java.util.concurrent.CompletableFuture[A]()
+      reg(f.complete(_))
+      f.join()
 
 /**
  * A fiber: a computation already running on its own thread of
@@ -104,6 +119,10 @@ object Async {
     relay[A, A, Async, F](prog)(pure(_)):
       [X, Y] => e => e match
         case Run(f) => Cont.Pure(f())
+        case Await(reg) => Cont.Pure:
+          val f = java.util.concurrent.CompletableFuture[X]()
+          reg(f.complete(_))
+          f.join()
 
   /** run the program on its own fiber (a virtual thread, by default) */
   def spawn[A](prog: => A ! Async)(using S: Scheduler): Fiber[A] =

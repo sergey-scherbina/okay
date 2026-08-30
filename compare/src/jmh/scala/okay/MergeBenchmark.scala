@@ -26,7 +26,7 @@ class MergeBenchmark {
 
   @Benchmark
   def okayChunksMerge(): Long =
-    val merged = Chunks.merge(Chunks.range(0, N), Chunks.range(N, 2L * N))
+    val merged = mergeChunks(Chunks.range(0, N), Chunks.range(N, 2L * N))
     var sum = 0L
     var c = merged.receive()
     while c.isDefined do

@@ -2,12 +2,40 @@
 <project version="4">
   <component name="ScalaCompilerConfiguration">
     <option name="separateProdTestSources" value="true" />
-    <profile name="sbt 1" modules="okay,okay.okay-compare" />
-    <profile name="sbt 2" modules="okay.main,okay.okay-compare.main,okay.okay-compare.test,okay.test">
+    <profile name="sbt 1" modules="okay,okay.okay-compare,okay.okay-root,okay.okay.okayJS,okay.okay.okayJVM,okay.okay.okayNative" />
+    <profile name="sbt 2" modules="okay.main,okay.okay-compare.main,okay.okay-compare.test,okay.okay-root.main,okay.okay-root.test,okay.okay.okayJVM.main,okay.okay.okayJVM.test,okay.test">
       <parameters>
         <parameter value="-Xkind-projector" />
         <parameter value="-Wall" />
       </parameters>
+    </profile>
+    <profile name="sbt 3" modules="okay.okay.okayJS.main,okay.okay.okayJS.test">
+      <parameters>
+        <parameter value="-Xkind-projector" />
+        <parameter value="-Wall" />
+        <parameter value="-scalajs" />
+      </parameters>
+    </profile>
+    <profile name="sbt 4" modules="okay.okay.okayNative.test">
+      <parameters>
+        <parameter value="-Xkind-projector" />
+        <parameter value="-Wall" />
+        <parameter value="-P:scalanative:positionRelativizationPaths:/Users/sergiy/work/my/okay/.native/src/main/scala;/Users/sergiy/work/my/okay/.native/src/main/scala-3;/Users/sergiy/work/my/okay/.native/src/main/java;/Users/sergiy/work/my/okay/src/main/scala-3;/Users/sergiy/work/my/okay/src/main/scala;/Users/sergiy/work/my/okay/.native/target/scala-3.7.1/src_managed/main" />
+        <parameter value="-P:scalanative:positionRelativizationPaths:/Users/sergiy/work/my/okay/.native/target/scala-3.7.1/src_managed/test" />
+      </parameters>
+      <plugins>
+        <plugin path="$USER_HOME$/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-native/nscplugin_3.7.1/0.5.7/nscplugin_3.7.1-0.5.7.jar" />
+      </plugins>
+    </profile>
+    <profile name="sbt 5" modules="okay.okay.okayNative.main">
+      <parameters>
+        <parameter value="-Xkind-projector" />
+        <parameter value="-Wall" />
+        <parameter value="-P:scalanative:positionRelativizationPaths:/Users/sergiy/work/my/okay/.native/src/main/scala;/Users/sergiy/work/my/okay/.native/src/main/scala-3;/Users/sergiy/work/my/okay/.native/src/main/java;/Users/sergiy/work/my/okay/src/main/scala-3;/Users/sergiy/work/my/okay/src/main/scala;/Users/sergiy/work/my/okay/.native/target/scala-3.7.1/src_managed/main" />
+      </parameters>
+      <plugins>
+        <plugin path="$USER_HOME$/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-native/nscplugin_3.7.1/0.5.7/nscplugin_3.7.1-0.5.7.jar" />
+      </plugins>
     </profile>
   </component>
 </project>

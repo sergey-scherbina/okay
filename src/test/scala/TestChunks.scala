@@ -78,7 +78,7 @@ class TestChunks extends munit.FunSuite {
   }
 
   test("merge of chunked streams is the existing merge, one op per chunk") {
-    val merged = Chunks.merge(Chunks.range(0, 500), Chunks.range(500, 1000))
+    val merged = mergeChunks(Chunks.range(0, 500), Chunks.range(500, 1000))
     var sum = 0L
     var c = merged.receive()
     while c.isDefined do { sum += c.get.sum; c = merged.receive() }

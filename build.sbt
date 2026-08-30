@@ -1,25 +1,57 @@
+import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
+
 ThisBuild / version := "0.1.0-SNAPSHOT"
-
-ThisBuild / scalaVersion := "3.7.2"
-
+ThisBuild / scalaVersion := "3.7.1"
 ThisBuild / scalacOptions ++= Seq("-Xkind-projector", "-Wall")
 
-/** the library and its own benchmarks: no dependencies beyond munit for tests */
-lazy val root = (project in file("."))
-  .enablePlugins(JmhPlugin)
+ThisBuild / organization := "io.sergiy-shcherbyna"
+ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
+ThisBuild / homepage := Some(url("https://github.com/sergey-scherbina/okay"))
+ThisBuild / versionScheme := Some("early-semver")
+
+/**
+ * The core: plain `okay`, no suffix, dependency-free. One shared
+ * source tree (src/main/scala) for JVM, JS and Native; the blocking
+ * side (Async runtime, Fiber, Scheduler, Channel) lives in
+ * src/main/scala-jvm until the Await-based runners land per
+ * specs/cross-platform-async.md. Tests run on the JVM.
+ */
+lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("."))
   .settings(
     name := "okay",
-    idePackagePrefix := Some("okay"),
+  )
+  .jvmConfigure(_.enablePlugins(JmhPlugin))
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+  .jsSettings(
+    Test / unmanagedSourceDirectories := Seq(),
+  )
+  .nativeSettings(
+    Test / unmanagedSourceDirectories := Seq(),
+  )
+
+lazy val root = (project in file("aggregate"))
+  .aggregate(okay.jvm, okay.js, okay.native, compare)
+  .settings(
+    name := "okay-root",
+    publish / skip := true,
   )
 
 /** comparison benchmarks against the ecosystem: the heavy dependencies live here */
 lazy val compare = (project in file("compare"))
-  .dependsOn(root)
+  .dependsOn(okay.jvm)
   .enablePlugins(JmhPlugin)
   .settings(
     name := "okay-compare",
-    idePackagePrefix := Some("okay"),
+    publish / skip := true,
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-free" % "2.12.0",

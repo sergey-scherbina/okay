@@ -270,13 +270,6 @@ object Chunks {
     if j == n then c
     else wrap[A](java.util.Arrays.copyOf(arr, j))
 
-  /** merge two chunked streams by readiness: the existing Channel.merge,
-   * one queue operation per chunk (type args spelled out — inference
-   * abstracts the wrong slot through the nested alias) */
-  def merge[A](s: Chunks[A], t: Chunks[A], capacity: Int = Int.MaxValue)
-              (using Scheduler): Channel[Chunk[A]] =
-    Channel.merge[Chunk[A], Producer, Zero, Producer, Zero](s, t, capacity)
-
   extension [A](p: Chunks[A])
     /** the element view: one tree step per chunk, an index per element */
     def elements: Iterator[A] =

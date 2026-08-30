@@ -8,6 +8,10 @@
         <option name="modules">
           <set>
             <option value="$PROJECT_DIR$" />
+            <option value="$PROJECT_DIR$/.js" />
+            <option value="$PROJECT_DIR$/.jvm" />
+            <option value="$PROJECT_DIR$/.native" />
+            <option value="$PROJECT_DIR$/aggregate" />
             <option value="$PROJECT_DIR$/compare" />
             <option value="$PROJECT_DIR$/project" />
           </set>
