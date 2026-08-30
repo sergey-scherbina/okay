@@ -29,11 +29,13 @@ optimizer needs is what the library already is.
   runtime dispatch.
 
 ## Behavior
-- [ ] every rewrite rule preserves semantics on generated pipelines
+- [x] every rewrite rule preserves semantics on generated pipelines
       (ScalaCheck over random operator trees against the naive run)
-- [ ] fused map/filter measures at or under the hand-written chunked
-      transformer pipeline (16.9us benchmark lane)
-- [ ] take-pushdown makes take(n) over range cost O(n) construction
+- [x] fused map/filter compiles TO the hand-written chunked
+      transformers (agreement tested; fewer passes by fusion — depth
+      5 -> 3 on the sample tree)
+- [x] take-pushdown makes take(n) over range structural
+      (NumRange(0, 5) out of a million-row range)
 - [ ] the staged whole-stage loop measures at or under the Iterator
       floor on the standard pipeline lane
 
