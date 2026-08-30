@@ -29,8 +29,14 @@ inward, value conversions outward, nothing more (module minimalism).
       where both sides are chunked
 - [x] laziness survives conversion (an infinite okay stream converted
       to fs2/ZStream still pulls on demand, and back)
-- [ ] instances pass the ecosystem's own law suites (cats-laws etc.,
-      test scope only)
+- [x] instances pass the ecosystem's own law suites (cats-laws, test
+      scope only) — Monad over the pure row and MonadError over
+      Throws % String, 90 properties; programs compared by running
+      (the only observation a value-program offers), generators
+      produce left-nested binds so the rotation is exercised too.
+      Gotcha: discipline-munit 2.0.0 is inline-incompatible with
+      munit 1.1 — the RuleSets unfold into plain munit-scalacheck
+      properties instead.
 
 ## Out of scope
 - emulating foreign runtimes; anything beyond instances + conversions
