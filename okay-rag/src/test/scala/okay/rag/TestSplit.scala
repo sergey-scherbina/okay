@@ -99,6 +99,44 @@ class TestSplit extends munit.FunSuite {
     assert(Split.covers(src, segs))
   }
 
+  test("lineage: a passage widens from its source, no second retrieval") {
+    val corpus = Corpus.of(Seq(md))
+    val segs = Split.structural(md, Markdown.parse(md.text), 12)(chars)
+    val small = segs.find(_.text.contains("Second")).get
+
+    // the prompt carried a projection; more is a substring away
+    val wider = corpus.widen(small, 40).get
+    assert(wider.text.length > small.text.length)
+    assert(wider.quotes(md), "the widened passage stopped quoting its source")
+    assert(wider.text.contains(small.text.trim),
+      s"the widening lost the passage it grew from: '${wider.text}'")
+    // it snapped to line boundaries, so a reader sees whole lines
+    assert(wider.text.startsWith("#") || wider.text.startsWith("intro"), wider.text)
+
+    // and the whole document is available when that is what is wanted
+    val all = corpus.whole(small).get
+    assertEquals(all.text, md.text)
+    assert(all.quotes(md))
+  }
+
+  test("lineage: widening past the edges clips instead of failing") {
+    val corpus = Corpus.of(Seq(md))
+    val segs = Split.structural(md, Markdown.parse(md.text), 12)(chars)
+    for s <- segs do
+      val w = corpus.widen(s, 10_000).get
+      assertEquals(w.text, md.text)
+      assert(w.quotes(md))
+  }
+
+  test("lineage: an index that drifted from the file is detectable") {
+    val corpus = Corpus.of(Seq(md))
+    val segs = Split.structural(md, Markdown.parse(md.text), 40)(chars)
+    assert(corpus.current(segs.head).isDefined)
+    // a segment whose text no longer matches its span is not current
+    val stale = segs.head.copy(text = "something else entirely")
+    assertEquals(corpus.current(stale), None)
+  }
+
   /** the JSON dialect's CST, via okay-codec */
   object Json:
     def cst(s: String): Cst[JsonLex.K] = okay.codec.Json.cst(s)

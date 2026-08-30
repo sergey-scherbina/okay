@@ -34,6 +34,51 @@ final case class Segment(source: String, span: Span, text: String,
       span.offset + span.length <= src.text.length &&
       src.text.substring(span.offset, span.offset + span.length) == text
 
+/**
+ * A corpus: the sources a retriever's segments point into. This is
+ * what makes a passage LINEAGE rather than a copy — the prompt
+ * carries a projection, and anything more is a substring away, with
+ * no second retrieval and no bigger prompt paid for up front.
+ */
+final case class Corpus(sources: Map[String, Source]):
+  def add(s: Source): Corpus = Corpus(sources.updated(s.id, s))
+
+  /** the segment as it stands, re-read from the source (a check that
+   * the index has not drifted from the file) */
+  def current(seg: Segment): Option[String] =
+    sources.get(seg.source).filter(seg.quotes).map(_.text)
+
+  /**
+   * More of the document around a passage: `by` characters on each
+   * side, clipped to the source and snapped outward to line
+   * boundaries so the widened text starts and ends where a reader
+   * would expect. The span stays exact, so the widened passage still
+   * quotes its source.
+   */
+  def widen(seg: Segment, by: Int): Option[Segment] =
+    sources.get(seg.source).map { src =>
+      val text = src.text
+      val from = math.max(0, seg.span.offset - by)
+      val to = math.min(text.length, seg.span.offset + seg.span.length + by)
+      val start = text.lastIndexOf('\n', math.max(0, from - 1)) + 1
+      val end = text.indexOf('\n', math.max(start, to - 1)) match
+        case -1 => text.length
+        case i => i + 1
+      val line = text.take(start).count(_ == '\n')
+      val column = start - (text.lastIndexOf('\n', math.max(0, start - 1)) + 1)
+      Segment(seg.source, okay.lex.Span(start, line, column, end - start),
+        text.substring(start, end), seg.path)
+    }
+
+  /** the whole document a passage came from */
+  def whole(seg: Segment): Option[Segment] =
+    sources.get(seg.source).map(src =>
+      Segment(src.id, okay.lex.Span(0, 0, 0, src.text.length), src.text, seg.path))
+
+object Corpus:
+  def of(sources: Seq[Source]): Corpus =
+    Corpus(sources.map(s => (s.id, s)).toMap)
+
 object Split {
 
   /** the tokens of a subtree, in order (trivia included — lossless) */

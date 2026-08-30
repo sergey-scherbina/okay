@@ -111,14 +111,21 @@ exceptions nor plain flatMap can express.
 - self-consistency = `runChoice` + an `Aggregator` (majority vote is a
   fold; confidence quantiles are a t-digest).
 
-## Streaming, validated as it arrives
+## Streaming, validated as it arrives (shipped)
 
-The total parser + O(damage) reparse make a partial structured answer
-usable BEFORE it is complete: each arriving token reparses the tail,
-the tree-with-holes projects, and the decode either yields a partial
-value or says what is still missing. Two consequences: downstream
-work can start early, and generation can be CUT the moment the value
-is structurally complete (fewer tokens billed).
+`Structured.cut` in okay-llm. Each arriving token extends the text by
+an APPEND, which is an edit, so `Parse.reparse` re-drives only the
+damage — the per-token cost is the token, not the answer so far.
+After each one the tree is checked (no holes) and the value decoded
+against its Schema; when both hold the stream is simply not pulled
+again, and since the stream is demand-driven, NOT PULLING IS
+CANCELLING: the tokens after the closing brace are never generated
+and never billed. Tested by counting what was actually demanded,
+including character-by-character arrival and a nested value that must
+not complete at the inner brace. Honest scope: the stream is assumed
+to BE the JSON — prose around it leaves the tree error-bearing, so
+completion is never declared and the walk runs to the end, which is
+the safe direction.
 
 ## Durability: replay, not serialization
 

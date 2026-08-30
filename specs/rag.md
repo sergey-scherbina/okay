@@ -227,10 +227,13 @@ a black box we already do better inside.
       in okay-agent, with `share` naming how much retrieval may take;
       tested that neither side is starved and the total never
       overflows
-- [ ] a passage kept as lineage re-observes more of its document
-      without a new retrieval call (the Segment carries the exact
-      span, so re-observation is a substring of the Source; wiring it
-      into the agent as a follow-up capability is the remaining item)
+- [x] a passage kept as lineage re-observes more of its document
+      without a new retrieval call — `Corpus.widen(seg, by)` grows a
+      passage from its source (clipped at the edges, snapped outward
+      to line boundaries, span still exact so it still QUOTES), and
+      `Corpus.whole` hands back the document. `Corpus.current` is the
+      companion check: a segment whose text no longer matches its
+      span means the index has drifted from the file.
 - [x] (P10f) a code file splits into whole definitions with their doc
       comments, each quoting its file exactly — the doc comment is
       HELD by the driver and adopted by the definition that follows,
