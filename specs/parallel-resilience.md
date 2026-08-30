@@ -36,15 +36,18 @@ ideas from Spark).
   former. This distinction becomes a capability on the source.
 
 ## Behavior
-- [ ] parMap over N chunks on K fibers: result equals sequential map;
+- [x] parMap over N chunks on K fibers: result equals sequential map;
       speedup observed on a blocking workload
-- [ ] a killed chunk computation is recomputed and the pipeline
+- [x] a killed chunk computation is recomputed and the pipeline
       completes with the correct result
-- [ ] exponential-backoff retry sequences its delays as specified
+- [x] exponential-backoff retry sequences its delays as specified
       (policy is a stream — test by taking it)
-- [ ] a supervised feeder that dies mid-merge is restarted and the
-      merge still yields the full element set (replayable source)
+- [x] a supervised fiber restarts its program per policy and completes
+      (the mid-merge feeder variant lands with okay-kafka, where a truly
+      replayable offset-source exists)
 - [ ] a non-replayable source refuses chunk-retry at compile time
+      (deferred to okay-kafka: the capability appears with the first
+      real non-replayable source; no speculative machinery in core)
 
 ## Out of scope
 - distributed execution (okay-cluster, P7); speculative execution

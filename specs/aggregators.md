@@ -42,7 +42,7 @@ approximate are two distinguishable, equally first-class kinds.
 - [x] zip computes two statistics in one pass over one stream (probe:
       the source is consumed once)
 - [x] mean/variance agree with two-pass references on random data
-- [ ] group laws hold for sum/count (ScalaCheck); min/max are
+- [x] group laws hold for sum/count (ScalaCheck); min/max are
       Monoid-only and the window rejects them at compile time
 - [x] sliding window: subtract-on-age equals recompute-from-scratch
 - [x] sketch error stays within stated bounds on generated data

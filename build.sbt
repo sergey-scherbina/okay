@@ -30,6 +30,7 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
   )
   .jsSettings(
     Test / unmanagedSourceDirectories := Seq(),

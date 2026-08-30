@@ -20,7 +20,7 @@ type Chunks[A] = Producer[Chunk[A]]
 
 object Chunks {
 
-  private inline def wrap[A](arr: Array[AnyRef]): Chunk[A] =
+  private[okay] inline def wrap[A](arr: Array[AnyRef]): Chunk[A] =
     ArraySeq.unsafeWrapArray(arr).asInstanceOf[Chunk[A]]
 
   /**
@@ -69,16 +69,16 @@ object Chunks {
   import !.*
 
   /** defer one step: nothing before the bind runs at construction */
-  private inline def defer[X](inline x: => Producer[X]): Producer[X] =
+  private[okay] inline def defer[X](inline x: => Producer[X]): Producer[X] =
     pure[Produce, Unit](()).flatMap(_ => x)
 
-  private def emptyChunk[B]: Chunk[B] = ArraySeq.empty[AnyRef].asInstanceOf[Chunk[B]]
+  private[okay] def emptyChunk[B]: Chunk[B] = ArraySeq.empty[AnyRef].asInstanceOf[Chunk[B]]
 
   /** the end of a chunked stream */
-  private def end[B]: Chunks[B] = pure(emptyChunk)
+  private[okay] def end[B]: Chunks[B] = pure(emptyChunk)
 
   /** pull one chunk: the pure step of a chunked stream */
-  private def pull[A](p: Chunks[A]): Option[(Chunk[A], Chunks[A])] =
+  private[okay] def pull[A](p: Chunks[A]): Option[(Chunk[A], Chunks[A])] =
     summon[Stream[Producer, Zero]].uncons(p).runWith
 
   /**
@@ -247,7 +247,7 @@ object Chunks {
     loop(emptyChunk, 0, p, c)
   }
 
-  private def mapChunk[A, B](c: Chunk[A])(f: A => B): Chunk[B] =
+  private[okay] def mapChunk[A, B](c: Chunk[A])(f: A => B): Chunk[B] =
     val n = c.length
     val arr = new Array[AnyRef](n)
     var i = 0
