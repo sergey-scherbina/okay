@@ -17,10 +17,18 @@ design away, its direction is right (the user's assessment).
   a Driver (parse) + a projection.
 - Projections: CST → semantic values (JSON AST, a document model),
   total where the dialect allows, error-carrying otherwise.
-- Typeclass codecs: `Encode[A]` / `Decode[A]` derived via Scala 3
-  Mirrors (dependency-free), targeting the CST/token layer so ONE
-  derivation serves every dialect (JSON and CBOR from the same
-  Mirror pass).
+- Typeclass codecs are ALGEBRAS OVER A SCHEMA: a reified description
+  of a datatype's structure (primitives, products, sums, collections,
+  Option, a fixpoint node for recursion), derived once per type via
+  Scala 3 Mirrors (inline, dependency-free). Every derivation is a
+  CATAMORPHISM over Schema[T] with its own algebra — JSON, CBOR, XML,
+  a validator, and (in okay-spark) the Spark Encoder all fold the SAME
+  structure; and the fold runs in two modes, interpreted or STAGED
+  (inline/Expr at compile time, emitting straight-line field access —
+  the ExpressionEncoder trick, our P6 staging applied to data shapes).
+  Note the vocabulary: this is a fold over the TYPE's shape functor
+  (datatype-generic / origami programming), not our value-level
+  Foldable — same algebra spirit, different carrier.
 - Encoding is streaming too: a value renders as a token stream
   (`Chunks[Token]`), so large values stream out in constant memory.
 - Role in the cross-platform policy: codecs are what client and

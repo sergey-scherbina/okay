@@ -16,6 +16,12 @@ the Aggregator triple), then JDBC.
 - Consumer lifecycle (subscribe/rebalance/close) under Resource.
 
 ## okay-spark / okay-flink
+- Encoders: Spark's TypeTag-reflection derivation does not exist in
+  Scala 3, and the Kryo fallback loses both codegen and pushdown — so
+  okay-spark derives ExpressionEncoder-grade encoders as a SCHEMA
+  ALGEBRA (see codecs.md): the Mirror-derived Schema[T] is folded by a
+  Spark algebra into StructType + row (de)serializers, staged at
+  compile time into straight-line field access.
 - The bridge is the P1 contract: any `Aggregator[In, Acc, Out]`
   exports (zero, seqOp, combOp) — handed to Spark's `aggregate` /
   `Aggregator` API and Flink's `AggregateFunction` directly. One
