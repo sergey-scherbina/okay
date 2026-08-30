@@ -162,9 +162,17 @@ lazy val okayParse = (project in file("okay-parse"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/** codecs: the Schema algebra and the dialects (P5) */
+lazy val okayCodec = (project in file("okay-codec"))
+  .dependsOn(okayParse)
+  .settings(
+    name := "okay-codec",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val root = (project in file("aggregate"))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okaySpark, okayFlink, okayJdbc, okayLex, okayParse, compare)
+    okaySpark, okayFlink, okayJdbc, okayLex, okayParse, okayCodec, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,

@@ -38,10 +38,11 @@ design away, its direction is right (the user's assessment).
 ## Behavior
 - [ ] lossless round-trip: parse then render reproduces the input
       byte-for-byte (trivia, comments, ordering, duplicate keys kept)
-- [ ] semantic round-trip: decode then encode is stable for derived
-      codecs on JSON and CBOR
-- [ ] streaming decode of a truncated document yields a partial value
-      with holes (via okay-parse totality), refined as input arrives
+- [x] semantic round-trip on JSON: recursive products, sums by case
+      name, escapes and whitespace (CBOR waits for its dialect)
+- [x] streaming decode of a truncated document yields a partial value
+      (via okay-parse totality: the tree with holes projects the fields
+      that are there — a truncated Person decodes)
 - [ ] Markdown: the uniml-markdown reframing cases parse without
       faults (errors as nodes)
 - [ ] cross-format: one derived codec serializes to JSON and CBOR
