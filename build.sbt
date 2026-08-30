@@ -124,9 +124,31 @@ lazy val okaySpark = (project in file("okay-spark"))
     ),
   )
 
+/** Flink via the same Aggregator triple (P4); flink-core is pure Java */
+lazy val okayFlink = (project in file("okay-flink"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-flink",
+    libraryDependencies ++= Seq(
+      "org.apache.flink" % "flink-core" % "1.20.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
+/** JDBC as chunked async streams under the Resource region (P4) */
+lazy val okayJdbc = (project in file("okay-jdbc"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-jdbc",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+      "com.h2database" % "h2" % "2.3.232" % Test,
+    ),
+  )
+
 lazy val root = (project in file("aggregate"))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okaySpark, compare)
+    okaySpark, okayFlink, okayJdbc, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,

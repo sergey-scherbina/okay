@@ -44,5 +44,6 @@ the Aggregator triple), then JDBC.
 - [x] spark: the SAME Aggregator value yields equal results run
       locally over Chunks and on a local-mode Spark session (variance
       over 8 partitions, zip, aggregateByKey, the typed Dataset column)
-- [ ] jdbc: a large result set streams in constant memory; the
-      Resource region closes the stack on abort and on cancellation
+- [x] jdbc: 250 rows stream as 64,64,64,58-row chunks (fetch-size
+      windows, constant memory by construction); the Resource region
+      closes the connection after a handled abort (tested on H2)
