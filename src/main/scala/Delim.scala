@@ -1,0 +1,143 @@
+package okay
+
+import okay.!.*
+import scala.annotation.tailrec
+
+/**
+ * Delimited control as an EFFECT — multi-prompt, in the shape of
+ * Dybvig, Peyton Jones and Sabry's "A monadic framework for delimited
+ * continuations" (2007): a prompt is a first-class tag carrying the
+ * delimiter's answer type, `push` installs one, and `shift` captures
+ * up to a NAMED prompt rather than to the nearest one.
+ *
+ * Two design points worth stating, because both were arrived at the
+ * hard way.
+ *
+ * FIRST: `push` (reset) is an operation, not a handler application.
+ * The reason is not symmetry with shift — it is that capturing across
+ * an intervening delimiter is the whole point of multi-prompt, and
+ * nested handlers cannot do it: an inner handler forwarding a shift
+ * it does not own would forward it OPAQUELY, leaving its own frames
+ * out of the captured continuation. One machine has to own the whole
+ * prompt stack, so both push and shift must reach it as operations.
+ *
+ * SECOND: tags are what make several answer types coexist in ONE
+ * effect row. A signature parameterised by its answer (`Control % R`)
+ * would give two prompts of different answer types the same runtime
+ * class, and union splitting here is by class — the two would be
+ * indistinguishable. With the answer type riding inside the prompt,
+ * there is a single `Delim` signature and the tags keep them apart.
+ *
+ * The price, stated plainly: the operations' payloads are programs in
+ * the same row, which a single-parameter signature cannot express in
+ * types, so they are erased here and re-typed inside the machine. The
+ * smart constructors below are the only way to build these
+ * operations, which makes the casts sealed module invariants — the
+ * same discipline as Writer's phantom equation, and documented in the
+ * same spirit rather than hidden.
+ */
+
+/** a delimiter's identity AND its answer type; identity is the tag */
+final class Prompt[R]
+
+enum Delim[+A]:
+  /** install a delimiter and run the body under it (reset) */
+  case Push[R](prompt: Prompt[R], body: Any) extends Delim[R]
+
+  /** capture the continuation up to THIS prompt (shift) */
+  case Shift[R, A](prompt: Prompt[R], f: Any) extends Delim[A]
+
+/** a shift naming a prompt that is not installed */
+final class NoPrompt extends RuntimeException(
+  "shift to a prompt that is not on the stack")
+
+object Delim {
+
+  /** a fresh delimiter tag */
+  def prompt[R]: Prompt[R] = new Prompt[R]
+
+  /** run the body under the delimiter — reset, as an operation */
+  def push[R, F[+_]](p: Prompt[R])(body: R ! (Delim + F)): R ! (Delim + F) =
+    effect(Push(p, body))
+
+  /**
+   * Capture the continuation up to `p` and hand it to `f`. The
+   * continuation is a PROGRAM-valued function, so `f` may perform
+   * effects around it, invoke it many times, or drop it entirely
+   * (which is an early exit).
+   */
+  def shift[R, A, F[+_]](p: Prompt[R])
+                        (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+    effect(Shift(p, f))
+
+  /** the common shape: a fresh prompt, a block under it, run */
+  def reset[R, F[+_] : TypeableK](body: Prompt[R] => R ! (Delim + F)): R ! F =
+    val p = prompt[R]
+    run(push(p)(body(p)))
+
+  /** one frame of the machine's continuation */
+  private enum Seg:
+    case K(f: Any => Any)
+    case Delimiter(p: Prompt[?])
+
+  /**
+   * The machine. Our Bind nodes already reify continuations as plain
+   * functions, so the freer tree IS the control stack — the machine
+   * only has to keep the segment list and the prompt markers in it.
+   * A captured segment is turned back INTO A PROGRAM (reify below),
+   * which is why the continuation is an ordinary value: multi-shot
+   * comes for free, and nothing is a closure over interpreter state.
+   */
+  def run[R, F[+_] : TypeableK](prog: R ! (Delim + F)): R ! F = {
+    type Prog = Any ! (Delim + F)
+
+    /** frames back into a program: binds become flatMaps, markers
+     * become pushes — the continuation re-installs its delimiter */
+    def reify(segs: List[Seg], start: Prog): Prog =
+      segs.foldLeft(start) { (acc, seg) =>
+        seg match
+          case Seg.K(f) => acc.flatMap(a => f(a).asInstanceOf[Prog])
+          case Seg.Delimiter(p) =>
+            effect[Delim + F, Any](Push(p.asInstanceOf[Prompt[Any]], acc))
+      }
+
+    def onOp(e: (Delim + F)[Any], kont: List[Seg]): R ! F =
+      <|>[Delim, F](e) match
+        case Left(c) => c match
+          case Push(p, body) =>
+            loop(body.asInstanceOf[Prog], Seg.Delimiter(p) :: kont)
+
+          case Shift(p, f) =>
+            // everything up to the named prompt is the captured part
+            val (captured, rest) = kont.span {
+              case Seg.Delimiter(q) => !(q eq p)
+              case _ => true
+            }
+            rest match
+              case Seg.Delimiter(_) :: outer =>
+                val k = (a: Any) =>
+                  effect[Delim + F, Any](Push(p.asInstanceOf[Prompt[Any]],
+                    reify(captured, okay.pure(a))))
+                loop(f.asInstanceOf[Any => Any](k).asInstanceOf[Prog], outer)
+              case _ => throw NoPrompt()
+
+        // a foreign operation suspends the machine: the residual
+        // program performs it and resumes with the same stack
+        case Right(g) => Effect(g).flatMap(x => loop(okay.pure(x), kont))
+
+    @tailrec def loop(cur: Prog, kont: List[Seg]): R ! F = cur.resume match
+      case Pure(a) => kont match
+        case Nil => okay.pure(a.asInstanceOf[R])
+        case Seg.K(f) :: rest => loop(f(a).asInstanceOf[Prog], rest)
+        // the delimited block finished normally: drop its marker
+        case Seg.Delimiter(_) :: rest => loop(okay.pure(a), rest)
+      case Effect(e) => onOp(e, kont)
+      case Bind(Effect(e), k) => onOp(e, Seg.K(k.asInstanceOf[Any => Any]) :: kont)
+
+    loop(prog.asInstanceOf[Prog], Nil)
+  }
+
+  /** abort to a prompt with a value: shift that drops the continuation */
+  def abort[R, A, F[+_]](p: Prompt[R])(value: R): A ! (Delim + F) =
+    shift[R, A, F](p)(_ => okay.pure(value))
+}
