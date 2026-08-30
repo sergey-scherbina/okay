@@ -61,9 +61,9 @@ Behavior:
   restores the amortization downstream
 
 Behavior:
-- [ ] zip realigns misaligned chunk sizes and stops at the shorter stream
-- [ ] zip of infinite chunked streams is lazy under take
-- [ ] rechunk preserves content and emits size-chunks with a short tail
+- [x] zip realigns misaligned chunk sizes and stops at the shorter stream
+- [x] zip of infinite chunked streams is lazy under take
+- [x] rechunk preserves content and emits size-chunks with a short tail
 
 ## Out of scope
 - chunk-size adaptivity

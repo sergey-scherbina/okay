@@ -72,8 +72,14 @@ object Chunks {
   private inline def defer[X](inline x: => Producer[X]): Producer[X] =
     pure[Produce, Unit](()).flatMap(_ => x)
 
+  private def emptyChunk[B]: Chunk[B] = ArraySeq.empty[AnyRef].asInstanceOf[Chunk[B]]
+
   /** the end of a chunked stream */
-  private def end[B]: Chunks[B] = pure(ArraySeq.empty[AnyRef].asInstanceOf[Chunk[B]])
+  private def end[B]: Chunks[B] = pure(emptyChunk)
+
+  /** pull one chunk: the pure step of a chunked stream */
+  private def pull[A](p: Chunks[A]): Option[(Chunk[A], Chunks[A])] =
+    summon[Stream[Producer, Zero]].uncons(p).runWith
 
   /**
    * The chunk-in, chunk-out transformers: each stage is a tight array
@@ -158,6 +164,62 @@ object Chunks {
         s = fo.add(s, c(i))
         i += 1
     s
+
+  /**
+   * Pair two chunked streams elementwise, realigning chunk boundaries:
+   * each emitted chunk is the overlap window of the two current
+   * chunks; the stream ends at the shorter side. Lazy, one window at
+   * a time.
+   */
+  def zip[A, B](pa: Chunks[A], pb: Chunks[B]): Chunks[(A, B)] =
+    def go(ca: Chunk[A], ia: Int, ra: Chunks[A],
+           cb: Chunk[B], ib: Int, rb: Chunks[B]): Chunks[(A, B)] = defer:
+      if ia >= ca.length then pull(ra) match
+        case None => end
+        case Some((c, r)) => go(c, 0, r, cb, ib, rb)
+      else if ib >= cb.length then pull(rb) match
+        case None => end
+        case Some((c, r)) => go(ca, ia, ra, c, 0, r)
+      else
+        val n = math.min(ca.length - ia, cb.length - ib)
+        val arr = new Array[AnyRef](n)
+        var i = 0
+        while i < n do
+          arr(i) = (ca(ia + i), cb(ib + i))
+          i += 1
+        produce(wrap[(A, B)](arr)).flatMap(_ => go(ca, ia + n, ra, cb, ib + n, rb))
+
+    go(emptyChunk, 0, pa, emptyChunk, 0, pb)
+
+  /**
+   * Normalize chunk sizes (the content unchanged, the tail shorter):
+   * filter shrinks chunks and merge mixes sizes — rechunk restores the
+   * amortization downstream. A full buffer is handed off, not copied.
+   */
+  def rechunk[A](p: Chunks[A])(size: Int = 64): Chunks[A] =
+    def go(buf: Array[AnyRef], have: Int, rest: Chunks[A]): Chunks[A] = defer:
+      pull(rest) match
+        case None =>
+          if have == 0 then end
+          else produce(wrap[A](java.util.Arrays.copyOf(buf, have)))
+        case Some((c, r)) =>
+          val room = size - have
+          if c.length < room then
+            var i = 0
+            while i < c.length do
+              buf(have + i) = c(i).asInstanceOf[AnyRef]
+              i += 1
+            go(buf, have + c.length, r)
+          else
+            var i = 0
+            while i < room do
+              buf(have + i) = c(i).asInstanceOf[AnyRef]
+              i += 1
+            val leftover = c.drop(room)
+            val next = if leftover.isEmpty then r else produce(leftover).flatMap(_ => r)
+            produce(wrap[A](buf)).flatMap(_ => go(new Array[AnyRef](size), 0, next))
+
+    go(new Array[AnyRef](size), 0, p)
 
   private def mapChunk[A, B](c: Chunk[A])(f: A => B): Chunk[B] =
     val n = c.length
