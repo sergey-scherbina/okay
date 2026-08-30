@@ -22,12 +22,12 @@ fold) works on it unchanged, because elements are polymorphic.
   `Chunks` values: one queue operation per chunk, no new plumbing
 
 ## Behavior
-- [ ] construction is lazy: an infinite `Chunks.generate` builds no chunk
+- [x] construction is lazy: an infinite `Chunks.generate` builds no chunk
       until pulled; `take(n)` on `elements` computes ceil(n/size) chunks only
-- [ ] `Chunks.range` emits a short tail chunk when size does not divide
-- [ ] `elements` agrees with the unchunked generator on nats/fibs
-- [ ] merge of two chunked ranges yields the union of elements
-- [ ] benchmark: chunked pipeline (map/filter/take/sum) at or under ~2x of
+- [x] `Chunks.range` emits a short tail chunk when size does not divide
+- [x] `elements` agrees with the unchunked generator on nats/fibs
+- [x] merge of two chunked ranges yields the union of elements
+- [x] benchmark: chunked pipeline (map/filter/take/sum) at or under ~2x of
       the Iterator floor; chunked merge at or under ZIO's merge
 
 ## Out of scope
@@ -49,4 +49,11 @@ fold) works on it unchanged, because elements are polymorphic.
   array without copying (unsafeWrapArray; the array never escapes).
 
 ## Results
-(after implementation)
+(2026-08-30, JMH f1 3+5, history.tsv rows cmpStreamOps-okayChunks / cmpMerge-okayChunks)
+- pipeline map/filter/take(1000)/sum: **okayChunks 23.4 us** vs stdIterator
+  13.9 — 1.7x from the floor (was 143 in elementwise-LazyList mode, 53 in
+  iterator mode); kyo 239, zio 692, fs2 1410
+- merge 2x500: **okayChunksMerge 14.7 us** vs zio 47.3 — **3.2x faster than
+  ZIO** (was 158 elementwise); fs2 9031
+- remaining per-element cost is the Iterator plumbing itself; per chunk: one
+  freer-tree step and one queue operation

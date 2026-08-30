@@ -25,6 +25,16 @@ class MergeBenchmark {
       .toLazyList.foldLeft(0L)(_ + _)
 
   @Benchmark
+  def okayChunksMerge(): Long =
+    val merged = Chunks.merge(Chunks.range(0, N), Chunks.range(N, 2L * N))
+    var sum = 0L
+    var c = merged.receive()
+    while c.isDefined do
+      sum += c.get.sum
+      c = merged.receive()
+    sum
+
+  @Benchmark
   def fs2Merge(): Long =
     import cats.effect.IO
     import cats.effect.unsafe.implicits.global
