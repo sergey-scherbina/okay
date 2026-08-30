@@ -1,5 +1,11 @@
 # Roadmap
 
+Every phase has a spec in specs/: modules-infra (P0),
+cross-platform-async (the policy), aggregators (P1),
+parallel-resilience (P2), interop (P3), external-systems (P4),
+stage-pipeline + streaming-lex + streaming-parse + codecs (P5), llm,
+staged-pipelines (P6), cluster (P7).
+
 Decisions in force: the core module is plain `okay` (no suffix) — every
 satellite carries one (`okay-cats`, `okay-kafka`, ...). Modules are
 kept SMALL — the smaller the better, rare exceptions aside. groupId
