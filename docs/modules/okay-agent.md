@@ -126,6 +126,24 @@ retrieval and memory were never two subsystems here, so the trade-off
 between history and passages is a policy you can test rather than an
 accident you discover in production. Costs no tool call per turn.
 
+## Two providers, and the portable form
+
+`Provider.openAi` and `Provider.anthropic` are both `Handler[Model]`,
+speaking protocols that differ in every way that could have leaked
+into the effect (system as a field or a message, content as blocks or
+a string, `input_schema` or `parameters`, arguments as an object or a
+string of JSON, tool results merged or separate). None of it did —
+which is the seam's test, not a convenience.
+
+`Provider.relay` / `openAiRelay` are the PORTABLE form. A comonadic
+handler must answer with a value, so it runs the request inside
+itself, which needs a thread that can park; where nothing may park
+(JS), the model is peeled into Async instead and the program is
+driven by `Async.runAsync`. Tools peel by `Handlers.relayTools`,
+context by `Memory.run`, and the agent program is unchanged — the
+cross suite runs the same `Agent.converse` under Node that the JVM
+suites run.
+
 ## A live model
 
 `Provider.openAi(transport, key, model)` is a `Handler[Model]`
@@ -134,7 +152,17 @@ run against OpenAI, Groq, Together, OpenRouter or a local runtime
 with no change above the effect. Swap it for `Handlers.scripted` and
 the identical program is a unit test — which is the whole argument
 for handlers owning policy, now demonstrated on a real protocol.
-`Provider.counting(bpe)` makes the token budget local.
+`Provider.counting(bpe)` makes the token budget local. Both providers
+are proven live against a local gateway serving both shapes; the
+suite is `assume`-gated (OKAY_LLM_URL / OKAY_LLM_MODEL /
+OKAY_LLM_KEY), so CI needs no model.
+
+## Large results
+
+`Large.projecting` wraps any tool handler: a result over the limit is
+stored whole and reaches the context as its head plus a handle and a
+size, and the `expand` tool reads any window of it later — lossy in
+the view, lossless in the lineage, as in retrieval.
 
 ## Durability (Durable.scala)
 
