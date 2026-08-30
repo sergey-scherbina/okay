@@ -36,9 +36,11 @@ the Aggregator triple), then JDBC.
   reverse — the region does this already); writes batched per chunk.
 
 ## Behavior
-- [ ] kafka: an embedded/testcontainer round-trip — produce N, stream
-      N, chunk sizes follow poll batches; a killed consumer fiber
-      resumes from committed offsets (per-chunk retry)
+- [x] kafka over MockConsumer/MockProducer: one poll = one chunk in
+      order, commit records the position (restart resumes there —
+      at-least-once), sink sends and flushes, Resource closes the
+      consumer; a real-broker (testcontainers) round-trip is a later
+      hardening step
 - [ ] spark: the SAME Aggregator value yields equal results run
       locally over Chunks and on a local-mode Spark session
 - [ ] jdbc: a large result set streams in constant memory; the

@@ -85,8 +85,19 @@ lazy val okayFs2 = (project in file("okay-fs2"))
     ),
   )
 
+/** Kafka as chunked async streams: one poll, one chunk (P4) */
+lazy val okayKafka = (project in file("okay-kafka"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-kafka",
+    libraryDependencies ++= Seq(
+      "org.apache.kafka" % "kafka-clients" % "3.9.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 lazy val root = (project in file("aggregate"))
-  .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, compare)
+  .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,

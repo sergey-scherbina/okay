@@ -114,7 +114,8 @@ codecs + transport; independent of the P4 bridges.
 Not one README but real documentation: a user guide, a tutorial, a
 TYPEPEDIA (every type and typeclass of the library, its meaning, laws
 and gotchas — the doc comments are already written in that spirit),
-the interop story per module, and the honest "why okay" comparison
+PER-MODULE documentation (every okay-* gets its own guide: what it
+bridges, the idioms, the caveats), and the honest "why okay" comparison
 (measured numbers, the laziness contract, the choice of encodings).
 Likely a docs site generated from markdown + scaladoc; structure to
 be specced when the phase starts.
