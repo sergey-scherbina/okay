@@ -170,9 +170,17 @@ lazy val okayCodec = (project in file("okay-codec"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/** language models as streams: the thin client (P4/llm.md) */
+lazy val okayLlm = (project in file("okay-llm"))
+  .dependsOn(okayCodec)
+  .settings(
+    name := "okay-llm",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val root = (project in file("aggregate"))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okaySpark, okayFlink, okayJdbc, okayLex, okayParse, okayCodec, compare)
+    okaySpark, okayFlink, okayJdbc, okayLex, okayParse, okayCodec, okayLlm, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,

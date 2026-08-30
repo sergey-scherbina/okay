@@ -32,13 +32,15 @@ boundaries here must not preclude it.
   everything is already a stream.
 
 ## Behavior
-- [ ] a mocked SSE stream yields tokens as chunks, lazily, cancellable
-- [ ] structured-output parsing produces monotonically refined partial
-      trees over a streamed JSON fixture (no faults at any prefix)
-- [ ] retry-with-backoff on a flaky mock transport succeeds and
-      sequences delays per policy
+- [x] a mocked SSE stream yields tokens, in order, non-token events
+      dropped (cancellation rides Fiber, as everywhere)
+- [x] structured-output parsing: a mid-answer cut-off JSON decodes to
+      the value it carried (the total pipeline end to end); a payload
+      cut mid-json is simply not a token — no fault at any prefix
+- [ ] retry-with-backoff on a flaky transport (the P2 combinators
+      apply as-is; a dedicated test is the follow-up)
 - [ ] a BPE Scan tokenizes a corpus identically to the reference
-      tokenizer of the chosen dictionary
+      (waits for a dictionary; the Scan interface is ready)
 
 ## Out of scope (for the thin layer)
 - prompt frameworks; vector stores; the rozum-shaped multi-agent

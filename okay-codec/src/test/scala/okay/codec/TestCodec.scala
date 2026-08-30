@@ -27,7 +27,10 @@ class TestCodec extends munit.FunSuite {
   }
 
   test("decode errors are values: missing field, wrong shape, damage") {
-    assertEquals(Json.read[Person]("""{"name":"x","age":1,"tags":[]}""").isLeft, true)
+    // a missing OPTIONAL field is None; a missing required one is an error
+    assertEquals(Json.read[Person]("""{"name":"x","age":1,"tags":[]}"""),
+      Right(Person("x", 1, Nil, None)))
+    assert(Json.read[Person]("""{"name":"x","tags":[]}""").left.exists(_.contains("age")))
     assert(Json.read[Person]("""{"name":"x","age":1,"tags":[],"boss":null""").isLeft
       || Json.read[Person]("""{"name":"x","age":1,"tags":[],"boss":null""").isRight)
     // truncated input still PARSES (totality); decode may still succeed

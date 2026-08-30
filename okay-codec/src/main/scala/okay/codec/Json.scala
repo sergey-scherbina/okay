@@ -133,8 +133,10 @@ object Json {
       val m = fs.toMap
       p.fields.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, f) =>
         acc.flatMap { xs =>
-          m.get(f._1).toRight(s"missing field '${f._1}' in ${p.name}")
-            .flatMap(decode(f._2().asInstanceOf[Schema[Any]])).map(xs :+ _)
+          (m.get(f._1), f._2()) match
+            case (None, _: Schema.SOption[?]) => Right(xs :+ None)   // absent optional
+            case (found, sc) => found.toRight(s"missing field '${f._1}' in ${p.name}")
+              .flatMap(decode(sc.asInstanceOf[Schema[Any]])).map(xs :+ _)
         }
       }.map(p.make)
     case (su: Schema.SSum[A], JObj(Vector((name, v)))) =>
