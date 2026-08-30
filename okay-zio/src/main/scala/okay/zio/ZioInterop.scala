@@ -20,12 +20,18 @@ object ZioInterop {
    * fibers, parMap, merge and supervision run on the ZIO runtime.
    */
   def scheduler(runtime: Runtime[Any] = Runtime.default): okay.Scheduler = new:
-    def fork[A](a: () => A): okay.Fiber[A] =
+    def fork[A](prog: () => A ! okay.Async): okay.Fiber[A] =
       val fiber = Unsafe.unsafe(implicit u =>
-        runtime.unsafe.fork(ZIO.attemptBlocking(a())))
+        runtime.unsafe.fork(ZIO.attemptBlocking(prog().runWith)))
       new okay.Fiber[A]:
-        def join(): A = Unsafe.unsafe(implicit u =>
-          runtime.unsafe.run(fiber.join).getOrThrowFiberFailure())
+        def onComplete(k: Either[Throwable, A] => Unit): Unit =
+          Unsafe.unsafe { implicit u =>
+            runtime.unsafe.fork(fiber.await.map {
+              case _root_.zio.Exit.Success(a) => k(Right(a))
+              case _root_.zio.Exit.Failure(c) => k(Left(c.squash))
+            })
+            ()
+          }
         def cancel(): Unit = Unsafe.unsafe { implicit u =>
           runtime.unsafe.run(fiber.interruptFork).getOrThrowFiberFailure()
           ()

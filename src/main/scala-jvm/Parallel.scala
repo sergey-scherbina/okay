@@ -23,7 +23,7 @@ def parMap[A, B](p: Chunks[A], parallelism: Int = Runtime.getRuntime.availablePr
     @tailrec def fill(q: Vector[Fiber[Chunk[B]]], r: Chunks[A]): (Vector[Fiber[Chunk[B]]], Chunks[A]) =
       if q.length >= parallelism then (q, r)
       else Chunks.pull(r) match
-        case Some((c, r2)) => fill(q :+ S.fork(() => Chunks.mapChunk(c)(f)), r2)
+        case Some((c, r2)) => fill(q :+ S.fork(() => async(Chunks.mapChunk(c)(f))), r2)
         case None => (q, Chunks.end)
 
     val (q, r) = fill(inflight, rest)

@@ -34,17 +34,45 @@ cross-build lands so nothing has to be broken later.
   server there) = okay-codec + a transport module; not Async's job.
 
 ## Behavior
-- [ ] one shared-source test suite passes on all three platforms
-      (Await-based programs only)
-- [ ] a JVM/Native-only test exercises blocking Run/join under the
-      capability
-- [ ] on JS, a sleep-then-answer program completes via runAsync
-      without blocking the event loop
-- [ ] cancellation works on all platforms (Await registrations are
-      cancellable)
+- [x] one shared-source test suite passes on all three platforms
+      (Await-based programs only) — src/test/scala-cross runs on JVM
+      and JS (under Node); Native compiles the same code but its test
+      run is still stubbed in the build (nativeLink cost), so the
+      third platform is compile-verified only
+- [x] a JVM/Native-only test exercises blocking Run/join under the
+      capability (TestAsync — the whole Loom suite runs under the
+      CanBlock/Timer/Scheduler givens of scala-jvm/Platform.scala)
+- [x] on JS, a sleep-then-answer program completes via runAsync
+      without blocking the event loop (the cross suite asserts a
+      timer interleaves with the sleep)
+- [x] cancellation works on all platforms — at FIBER granularity:
+      cancel interrupts the parked thread (JVM/Native) or stops the
+      drive at its next operation (JS). Cancelling the Await
+      REGISTRATION itself (unregistering the timer/IO completion)
+      would need the register to answer with a canceller — open box
+      below.
 
 ## Decisions
 - **Await(register) over a Promise/Future-shaped op** — no dependency,
   no platform type in the core signature; adapters live at the edges.
 - **Capabilities over subsetting**: JS does not get a crippled Fiber
-  type; it gets the same type minus the evidence-gated methods.
+  type; it gets the same type minus the evidence-gated methods —
+  Fiber is onComplete/cancel, and join()(using CanBlock) is derived
+  in the trait, so implementations only ever provide the callbacks.
+- **Scheduler.fork takes the PROGRAM** (`() => A ! Async`), not a
+  computed answer — that is what lets the event loop be a scheduler.
+- **runAsync drives the tree in a while-loop** with an atomic
+  handshake per Await (the callback may fire during registration, on
+  any thread): whoever loses the exchange continues the drive.
+- **par stays under CanBlock** — a child failure must propagate, and
+  the Await callback carries no error channel; race is cross-platform
+  because a failing contender never wins by design.
+
+## Open boxes
+- [ ] an error channel in Await (register: (Either[Throwable,A] =>
+      Unit) => Unit or a richer op) — unlocks callback par and
+      Fiber.joinAsync without the hang-on-failure trap
+- [ ] cancellable Await registrations (register answers a canceller;
+      Timer.after already could)
+- [ ] the Await-based Channel for JS behind the same interface
+- [ ] run the cross suite on Native (unstub nativeLink in CI)

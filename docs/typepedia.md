@@ -55,9 +55,15 @@ same material with the measurements attached.
   the canonical `MonadPlus`.
 - **`Async`** — `Run(thunk)` (blocking = a JVM/Native ability) and
   `Await(register)` (the universal callback form). **`Fiber`**
-  (join/cancel/joinEither), **`Scheduler`** (loom/forkJoin/threads;
-  interop modules add cats-effect and ZIO instances), `spawn/par/race/
-  timeout/sleep`, **`bracket`** (any Handler-able row).
+  (onComplete/cancel everywhere; join/joinEither only under
+  **`CanBlock`** evidence — absent on JS, so a blocking join is a
+  compile error, not a frozen loop), **`Scheduler`** (takes the
+  program: loom/forkJoin/threads in `Schedulers` on the JVM, the
+  event loop on JS, one OS thread per fiber on Native; interop
+  modules add cats-effect and ZIO instances), `runAsync` (the
+  universal `Future` terminal — drives the tree through callbacks),
+  `spawn/par/race/timeout/sleep` (`sleep` rides the platform
+  **`Timer`**), **`bracket`** (any Handler-able row).
 - **`Resource`** — the region: acquires release at the scope's end in
   reverse order, surviving handled aborts and mid-step exceptions;
   run it OUTERMOST.

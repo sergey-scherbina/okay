@@ -24,18 +24,19 @@ object Remote {
   def listen[A](server: ServerSocket)(using Schema[List[A]], Scheduler): Channel[Chunk[A]] =
     val ch = Channel[Chunk[A]]()
     summon[Scheduler].fork { () =>
-      try
-        val sock = server.accept()
-        val in = BufferedReader(InputStreamReader(sock.getInputStream))
-        var line = in.readLine()
-        while line != null do
-          Json.read[List[A]](line) match
-            case Right(xs) =>
-              ch.send(Chunks.wrap[A](xs.toArray[Any].asInstanceOf[Array[AnyRef]]))
-            case Left(_) => ()   // a damaged frame is dropped, the stream lives
-          line = in.readLine()
-        sock.close()
-      finally ch.close()
+      okay.async:
+        try
+          val sock = server.accept()
+          val in = BufferedReader(InputStreamReader(sock.getInputStream))
+          var line = in.readLine()
+          while line != null do
+            Json.read[List[A]](line) match
+              case Right(xs) =>
+                ch.send(Chunks.wrap[A](xs.toArray[Any].asInstanceOf[Array[AnyRef]]))
+              case Left(_) => ()   // a damaged frame is dropped, the stream lives
+            line = in.readLine()
+          sock.close()
+        finally ch.close()
     }
     ch
 

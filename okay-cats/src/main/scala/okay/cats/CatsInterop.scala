@@ -46,11 +46,11 @@ object CatsInterop {
    * supervision on the cats-effect runtime.
    */
   def scheduler(using rt: IORuntime): okay.Scheduler = new:
-    def fork[A](a: () => A): okay.Fiber[A] =
-      val (fut, cancelIO) = IO.blocking(a()).unsafeToFutureCancelable()
+    def fork[A](prog: () => A ! okay.Async): okay.Fiber[A] =
+      val (fut, cancelIO) = IO.blocking(prog().runWith).unsafeToFutureCancelable()
       new okay.Fiber[A]:
-        def join(): A =
-          scala.concurrent.Await.result(fut, scala.concurrent.duration.Duration.Inf)
+        def onComplete(k: Either[Throwable, A] => Unit): Unit =
+          fut.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
         def cancel(): Unit = { cancelIO(); () }
 
   /** run an okay Async program as an IO (it may park — IO.blocking) */

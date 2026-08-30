@@ -47,10 +47,10 @@ class TestAsync extends munit.FunSuite {
 
   test("schedulers: fork-join and plain threads run fibers too") {
     locally:
-      given Scheduler = Scheduler.forkJoin()
+      given Scheduler = Schedulers.forkJoin()
       assertEquals(Async.par(async(1), async(2)).runWith, (1, 2))
     locally:
-      given Scheduler = Scheduler.threads
+      given Scheduler = Schedulers.threads
       assertEquals(Async.spawn(async(3)).join(), 3)
   }
 

@@ -11,10 +11,11 @@ ThisBuild / versionScheme := Some("early-semver")
 
 /**
  * The core: plain `okay`, no suffix, dependency-free. One shared
- * source tree (src/main/scala) for JVM, JS and Native; the blocking
- * side (Async runtime, Fiber, Scheduler, Channel) lives in
- * src/main/scala-jvm until the Await-based runners land per
- * specs/cross-platform-async.md. Tests run on the JVM.
+ * source tree (src/main/scala) for JVM, JS and Native — Async included
+ * (specs/cross-platform-async.md): each platform contributes its
+ * givens (CanBlock/Timer/Scheduler) in src/main/scala-{jvm,js,native};
+ * Channel and parMap stay jvm-only for now. The full suite runs on
+ * the JVM; the cross suite (src/test/scala-cross) also runs on JS.
  */
 lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
@@ -28,16 +29,24 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
   )
   .jsSettings(
-    Test / unmanagedSourceDirectories := Seq(),
-    Test / sources := Seq(),
-    Test / test := {},
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    // the cross suite (Await-based programs) is the ONLY js test source:
+    // the full shared suite still leans on jvm-only pieces (Channel, merge)
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
   .nativeSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-native",
     Test / unmanagedSourceDirectories := Seq(),
     Test / sources := Seq(),
     Test / test := {},

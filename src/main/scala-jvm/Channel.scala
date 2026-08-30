@@ -66,8 +66,8 @@ object Channel {
           case None => ()
         go(u)
       finally if alive.decrementAndGet() == 0 then c.close()
-    sch.fork(() => feed(s))
-    sch.fork(() => feed(t))
+    sch.fork(() => async(feed(s)))
+    sch.fork(() => async(feed(t)))
     c
 
   /**
@@ -79,8 +79,9 @@ object Channel {
                             (using Stream[S, F], Handler[F], Scheduler): Channel[A] =
     val c = Channel[A](capacity)
     summon[Scheduler].fork: () =>
-      try s.toLazyList.foreach(c.send)
-      finally c.close()
+      async:
+        try s.toLazyList.foreach(c.send)
+        finally c.close()
     c
 }
 

@@ -95,11 +95,16 @@ okay-parse).
 
 `Async` has one blocking operation (`Run`) and one universal callback
 operation (`Await`); on the JVM the handler parks a virtual thread —
-blocking IS asynchrony. `Fiber` (join/cancel/joinEither) and
-`Scheduler` (loom by default; forkJoin and plain threads for JVMs
-without Loom; the cats-effect and ZIO runtimes plug in as Scheduler
-instances from the interop modules). `spawn`, `par`, `race` (cancels
-the loser), `timeout`, `sleep`, `bracket`. `Channel` is the queue
+blocking IS asynchrony. Blocking is evidence-gated (`CanBlock`, given
+on JVM/Native only): on JS the SAME programs run through the event
+loop by `Async.runAsync(prog): Future[A]`, and a blocking join is a
+compile error. `Fiber` (onComplete/cancel everywhere, join under the
+evidence) and `Scheduler` (takes the program; `Schedulers.loom` by
+default on the JVM, forkJoin and plain threads for JVMs without Loom,
+the event loop on JS; the cats-effect and ZIO runtimes plug in as
+Scheduler instances from the interop modules). `spawn`, `par`, `race`
+(cancels the loser; cross-platform), `timeout`, `sleep` (rides the
+platform `Timer`), `bracket`. `Channel` is the queue
 between fibers — `merge` combines streams by readiness, `buffer` runs
 a producer ahead. `parMap` maps a chunked stream with a fiber per
 chunk; `retry` takes its policy as a STREAM of delays; `retryChunks`
