@@ -218,7 +218,9 @@ combOp that Spark and Flink call merge.
 ## 12. Where to go next
 
 The [guide](guide.md) explains each layer; the
-[typepedia](typepedia.md) is the reference; each module page under
-[modules/](.) shows its bridge idioms. The specs directory holds the
-design decisions — including the experiments that were tried, measured
-and rejected, so you don't have to re-run them.
+[typepedia](typepedia.md) is the reference; the
+[benchmark explainer](benchmarks.md) walks every measured case; each
+module page under [modules/](modules) is that module's full
+documentation — guide, tutorial, API reference, gotchas. The specs
+directory holds the design decisions — including the experiments that
+were tried, measured and rejected, so you don't have to re-run them.

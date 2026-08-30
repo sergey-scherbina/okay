@@ -183,4 +183,5 @@ Benchmarks: `sbt 'Jmh/run .*FibBenchmark.*'`, comparisons in the
 experiments in src/jmh/history.tsv.
 
 Documentation: [docs/](docs) — the user guide, the tutorial, the
-typepedia, and a page per module.
+typepedia, [the benchmark explainer](docs/benchmarks.md) (every case,
+why each number is what it is), and full per-module documentation.

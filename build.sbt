@@ -252,7 +252,7 @@ lazy val root = (project in file("."))
 
 /** comparison benchmarks against the ecosystem: the heavy dependencies live here */
 lazy val compare = (project in file("compare"))
-  .dependsOn(okay.jvm)
+  .dependsOn(okay.jvm, okayLlm)
   .enablePlugins(JmhPlugin)
   .settings(
     name := "okay-compare",
@@ -266,5 +266,7 @@ lazy val compare = (project in file("compare"))
       "org.atnos" %% "eff" % "7.0.4",
       "co.fs2" %% "fs2-core" % "3.10.2",
       "dev.zio" %% "zio-streams" % "2.1.14",
+      "io.circe" %% "circe-parser" % "0.14.10",
+      "io.circe" %% "circe-generic" % "0.14.10",
     ),
   )

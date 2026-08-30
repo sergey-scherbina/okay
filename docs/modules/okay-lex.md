@@ -1,29 +1,104 @@
 # okay-lex
 
-Total streaming tokenization.
+> Total streaming tokenization: every character becomes a token,
+> errors are a channel, the state is a value — which is what makes
+> lexing chunked, snapshottable and incremental.
 
-- `Scan[K, S]` — a pure step function (`init/step/flush`); the state
-  is a VALUE, which is what crosses chunk boundaries and snapshots.
-  `key` (a position-erased fingerprint) and `rebase` (shift the
-  positions) are what make incremental relexing possible when states
-  carry absolute positions.
-- Totality: every character lands in a token — unrecognized input on
-  the Error CHANNEL, an unterminated string finished by flush. The
-  lossless law: concatenated lexemes of all channels == the input.
-- `Scan.stage` — the scanner as a pipeline Stage (chars in, tokens
-  out, lazily). `Scan.chunks` — the chunked performance path: a chunk
-  of chars in, a chunk of tokens out, one tight while per chunk, the
-  SAME Scan (the state crosses boundaries as a value, so a token
-  spanning chunks is emitted exactly once, where it completes).
-  `Scan.all` — snapshots every N chars. `Scan.relex` — resume from
-  the nearest snapshot, relex the damage, RECONVERGE past the next
-  newline and reuse the old tail with shifted spans; no convergence
-  means a full (still correct) relex.
-- `Json.scan` is the proving dialect; okay-llm's `Bpe` implements the
-  same interface (a tokenizer is a Scan, whatever its dictionary).
+Depends on: `okay` (core). Pure Scala — cross-built for JVM and JS;
+the suite runs on both.
+
+## Guide
+
+**A lexer is a pure step function.** `Scan[K, S]` consumes one
+character at a time and emits zero or more finished tokens; `S` is an
+ordinary immutable value. That single design choice carries the whole
+module:
+
+- *chunked lexing* is free — the state crosses chunk boundaries by
+  being passed along, so a token spanning two chunks is emitted once,
+  in whichever chunk completes it;
+- *snapshots* are free — keep `(offset, S)` pairs and you can resume
+  lexing from any of them;
+- *incremental relexing* is resume + reconverge — run from the
+  nearest snapshot before an edit until the state equals the old
+  run's state at the corresponding offset; from there the old tokens
+  are reused with shifted spans.
+
+**Totality.** Nothing throws. Unrecognizable input lands on the
+`Error` channel as tokens; an unterminated string is finished by
+`flush` at end of input. The lossless law holds for every scanner:
+the concatenated lexemes of ALL channels equal the input, garbage
+included.
+
+**Positions and reconvergence.** States that carry absolute positions
+would never compare equal across an edit's shift — that is what
+`key` (a position-erased fingerprint) and `rebase` (shift the
+positions inside a state) are for. Reconvergence is only accepted
+PAST the next newline so columns stay exact; when no convergence is
+found the relex simply runs to the end — never wrong, at worst not
+incremental.
+
+## Tutorial
+
+Lex a string in one go (`Scan.all` also collects snapshots):
 
 ```scala
-// element-wise and chunked agree at every chunk size:
-Scan.all(Json.scan)(input).tokens
-Chunks.fold(Scan.chunks(Json.scan)(Chunks.fromIterator(input.iterator, 5)))
+import okay.lex.{Scan, Json as JsonLex}
+
+val lexed = Scan.all(JsonLex.scan)("{\"a\": 1, oops}")
+lexed.tokens.map(_.lexeme).mkString == "{\"a\": 1, oops}"  // lossless law
+lexed.tokens.filter(_.channel == Channel.Error)            // the garbage, as data
 ```
+
+The same scanner as a pipeline stage (chars await in, tokens tell
+out, lazily) or over chunks (the performance path):
+
+```scala
+through(chars(text))(Scan.stage(JsonLex.scan))       // a token producer
+Scan.chunks(JsonLex.scan)(Chunks.fromIterator(text.iterator, 64))
+                                                     // Chunks[Token[K]]
+```
+
+Edit and relex incrementally — tokens outside the damage are reused:
+
+```scala
+val old = Scan.all(JsonLex.scan)(oldText, snapshotEvery = 64)
+val re  = Scan.relex(JsonLex.scan)(old, oldText, newText,
+            editStart, editEndOld, editEndNew)
+// re.tokens == Scan.all(JsonLex.scan)(newText).tokens, with fewer steps
+```
+
+Write your own scanner: implement `init/step/flush` (plus
+`key`/`rebase` if the state carries positions). `JsonLex.scan` in
+this module and `Bpe` in okay-llm are the two shipped examples —
+a JSON lexer and an LLM tokenizer are the same machine.
+
+## API reference
+
+| member | signature | meaning |
+|---|---|---|
+| `Span` | `(offset, line, column, length)` | an exact source position |
+| `Channel` | `Syntax / Trivia / Comment / Embedded / Error` | what kind of material a token is |
+| `Token[+K]` | `(kind, lexeme, span, channel)` | one token; `K` is the dialect's kind enum |
+| `Scan[K, S]` | `init: S`; `step(s, c): (S, Vector[Token[K]])`; `flush(s): Vector[Token[K]]` | the lexer as a pure step function |
+| | `key(s): Any` | position-erased fingerprint (reconvergence equality) |
+| | `rebase(s, offΔ, lineΔ): S` | shift positions inside a state |
+| `Scan.stage` | `(sc) => Stage[Char, Token[K], S]` | the scanner as a coroutine stage |
+| `Scan.chunks` | `(sc)(chars: Chunks[Char]) => Chunks[Token[K]]` | chunk in, chunk out, one tight while per chunk |
+| `Scan.all` | `(sc)(input, snapshotEvery = 64) => Lexed[K, S]` | lex everything, snapshotting |
+| `Scan.Lexed` | `(tokens, snapshots, state)` | the result incremental relexing resumes from |
+| `Scan.relex` | `(sc)(old, oldInput, newInput, editStart, editEndOld, editEndNew, snapshotEvery)` | resume, reconverge, splice |
+| `Json.scan` | `Scan[Json.K, Json.S]` | the proving dialect (kinds: braces/brackets, Colon, Comma, Str, Num, Bool, Null, Ws, Bad) |
+
+## Gotchas
+
+- An infinite source of characters that never COMPLETES a token
+  (e.g. endless `'0'` into a number) never emits — alternate the
+  input in laziness tests.
+- Reconvergence needs a newline after the edit; a one-line document
+  relexes fully (still correct).
+- Scanner states must be compared through `key`, never `==`, once
+  they carry positions.
+
+Measured (see [benchmarks](../benchmarks.md)): chunked lexing of a
+2.5KB JSON document vs element-wise, and the BPE corpus lane.
