@@ -28,6 +28,13 @@ class TestZioInterop extends munit.FunSuite {
     assertEquals(heads.toList, List(0, 1, 2, 3, 4))
   }
 
+  test("our Scheduler runs on the ZIO runtime") {
+    given okay.Scheduler = ZioInterop.scheduler()
+    val f = okay.Async.spawn(okay.async { Thread.sleep(10); 21 })
+    assertEquals(f.join() * 2, 42)
+    assertEquals(okay.Async.par(okay.async(1), okay.async(2)).runWith, (1, 2))
+  }
+
   test("ZStream crosses back and is consumed lazily") {
     var built = 0
     val zs = ZStream.iterate(0)(_ + 1).tap(_ => ZIO.succeed { built += 1 })

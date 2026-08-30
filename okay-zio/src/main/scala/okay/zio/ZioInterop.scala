@@ -13,6 +13,24 @@ import _root_.zio.stream.ZStream
  */
 object ZioInterop {
 
+  /**
+   * OUR Scheduler specialized to THEIR runtime: fork runs the thunk
+   * as a blocking ZIO on the zio blocking pool, join parks the okay
+   * caller on the fiber, cancel interrupts it. One given, and okay
+   * fibers, parMap, merge and supervision run on the ZIO runtime.
+   */
+  def scheduler(runtime: Runtime[Any] = Runtime.default): okay.Scheduler = new:
+    def fork[A](a: () => A): okay.Fiber[A] =
+      val fiber = Unsafe.unsafe(implicit u =>
+        runtime.unsafe.fork(ZIO.attemptBlocking(a())))
+      new okay.Fiber[A]:
+        def join(): A = Unsafe.unsafe(implicit u =>
+          runtime.unsafe.run(fiber.join).getOrThrowFiberFailure())
+        def cancel(): Unit = Unsafe.unsafe { implicit u =>
+          runtime.unsafe.run(fiber.interruptFork).getOrThrowFiberFailure()
+          ()
+        }
+
   /** run an okay Async program as a ZIO (it may park — attemptBlocking) */
   def toZIO[A](p: => A ! Async): Task[A] = ZIO.attemptBlocking(p.runWith)
 

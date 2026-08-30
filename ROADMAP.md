@@ -110,6 +110,15 @@ Selective for static branching.
 `okay-cluster`, its own spec: actors/nodes over Channel + Async +
 codecs + transport; independent of the P4 bridges.
 
+## P8 — Documentation (the user's standing ask)
+Not one README but real documentation: a user guide, a tutorial, a
+TYPEPEDIA (every type and typeclass of the library, its meaning, laws
+and gotchas — the doc comments are already written in that spirit),
+the interop story per module, and the honest "why okay" comparison
+(measured numbers, the laziness contract, the choice of encodings).
+Likely a docs site generated from markdown + scaladoc; structure to
+be specced when the phase starts.
+
 ## Ongoing — polish and optimization
 API ergonomics (the inference gotchas, an import story), typeclass
 law tests (ScalaCheck), scaladoc, releases. Optimization strictly by
