@@ -28,6 +28,19 @@ given MonadPlus[[A] =>> A ! Choose] with
     override def append(y: A ! Choose): A ! Choose =
       effect[Choose, A ! Choose](Choose(Seq(x, y))).flatMap(identity)
 
+/**
+ * A row CONTAINING Choose is a MonadPlus too — which is what lets
+ * `guard` prune inside an effectful search (the model is asked, the
+ * answer is judged, the branch dies or lives).
+ */
+given [F[+_]]: MonadPlus[[A] =>> A ! (Choose + F)] with
+  override def pure[A](a: A): A ! (Choose + F) = okay.pure(a)
+  override def empty[A]: A ! (Choose + F) = effect(Choose(Seq.empty))
+  extension [A](x: A ! (Choose + F))
+    override def flatMap[B](f: A => B ! (Choose + F)): B ! (Choose + F) = x.flatMap(f)
+    override def append(y: A ! (Choose + F)): A ! (Choose + F) =
+      effect[Choose + F, A ! (Choose + F)](Choose(Seq(x, y))).flatMap(identity)
+
 /** all the results of all the branches, forwarding the effects F */
 def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
   Effects[Free].handle[Choose, F, A, Seq[A]](a)(x => pure(Seq(x))):

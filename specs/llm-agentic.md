@@ -153,7 +153,16 @@ handler, and its JSON-RPC framing is our total parser plus `Schema`.
 - [x] mark/restore: a snapshot restores the conversation exactly (a
       pointer, not an undo log) — the backtracking-with-Logic
       combination is v2
-- [ ] best-of-N and ifte-reprompt are library one-liners, tested
+- [x] best-of-N and ifte-reprompt are library one-liners, tested —
+      Search.bestOf / validated / all / majority over Choose+Logic;
+      a row CONTAINING Choose is now a MonadPlus, so `guard` prunes
+      inside an effectful search
+- [x] a multi-shot branch does not see a sibling's turns — Memory
+      threads the compaction state (mirroring State.handle) instead
+      of holding it, so a resumed continuation sees the context as it
+      was AT THAT POINT. Handler ORDER then says what you mean:
+      Memory inside the search = a private conversation per branch,
+      outside = one shared transcript. Both tested.
 - [ ] a partial structured answer decodes mid-stream and generation
       stops when the value is complete
 - [ ] the same agent program runs on the JVM and under Node (the
