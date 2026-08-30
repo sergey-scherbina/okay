@@ -96,6 +96,31 @@ bit separately.
       library change — which is the payoff of having delimited
       control as an effect at all
 
+## Measured (2026-08-31, history.tsv)
+1000 emits, a generator defined in USER code over Delim (a prompt and
+a shift) against the native `Writer` it competes with:
+
+| plain List (floor) | Writer (native) | Delim push only | Delim generator |
+|---|---|---|---|
+| 4.9 | 22.6 | 25.4 | 86.0 |
+
+Read it as the price of universality: a DELIMITER costs about what an
+operation costs (25.4 against 22.6 — installing and popping a prompt
+is cheap), and what you pay for is CAPTURING and re-invoking the
+continuation — 3.8x the effect written for the job. That is the
+expected shape, and it is the argument for keeping specialised
+effects: `Delim` is how a user defines a new one, not how the library
+should implement the ones it ships.
+
+The lane also found a real bug. The machine was split into `loop` and
+`onOp`, and mutual recursion is NOT tail-optimised, so every
+operation cost stack frames and a thousand nested captures threw
+StackOverflowError — invisible to the tests, which nest a handful of
+times. Merged into ONE `@tailrec` loop with a `step` function
+answering `Either[done, (next, kont)]`; only a foreign operation now
+suspends under a closure, the shape `State.handle` uses. Fixing it
+also took 20% off the delimiter lane (33.8 to 25.4).
+
 ## Decisions
 - **A separate signature from `Control[M]`,** the tagless interface —
   hence the name `Delim`. The floor stays the floor; this is the

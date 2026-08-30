@@ -139,11 +139,36 @@ object Delim {
             effect[Delim + F, Any](Push(p.asInstanceOf[Prompt[Any]], acc))
       }
 
-    def onOp(e: (Delim + F)[Any], kont: List[Seg]): R ! F =
+    // ONE tail-recursive loop: an earlier version split it into
+    // loop/onOp, and mutual recursion is not tail-optimised, so every
+    // operation cost frames and a thousand nested captures blew the
+    // stack. Merged, only a FOREIGN operation suspends (under a
+    // flatMap closure, as State.handle does) and the Delim ops
+    // themselves are flat.
+    @tailrec def loop(cur: Prog, kont: List[Seg]): R ! F =
+      cur.resume match
+        case Pure(a) => kont match
+          case Nil => okay.pure(a.asInstanceOf[R])
+          case Seg.K(f) :: rest => loop(f(a).asInstanceOf[Prog], rest)
+          // the delimited block finished normally: drop its marker
+          case Seg.Delimiter(_) :: rest => loop(okay.pure(a), rest)
+
+        case Effect(e) => step(e, kont) match
+          case Left(answer) => answer
+          case Right((next, k2)) => loop(next, k2)
+
+        case Bind(Effect(e), k) =>
+          step(e, Seg.K(k.asInstanceOf[Any => Any]) :: kont) match
+            case Left(answer) => answer
+            case Right((next, k2)) => loop(next, k2)
+
+    /** one operation: either the machine is done (Left) or it
+     * continues with a new program and stack (Right) */
+    def step(e: (Delim + F)[Any], kont: List[Seg]): Either[R ! F, (Prog, List[Seg])] =
       <|>[Delim, F](e) match
         case Left(c) => c match
           case Push(p, body) =>
-            loop(body.asInstanceOf[Prog], Seg.Delimiter(p) :: kont)
+            Right((body.asInstanceOf[Prog], Seg.Delimiter(p) :: kont))
 
           case Capture(p, f, underPrompt, delimitK) =>
             // everything up to the named prompt is the captured part
@@ -161,22 +186,13 @@ object Delim {
                 // shift/control put the body back under the delimiter;
                 // the 0-variants have consumed it
                 if underPrompt then
-                  loop(effect[Delim + F, Any](Push(tag, body)), outer)
-                else loop(body, outer)
+                  Right((effect[Delim + F, Any](Push(tag, body)), outer))
+                else Right((body, outer))
               case _ => throw NoPrompt()
 
         // a foreign operation suspends the machine: the residual
         // program performs it and resumes with the same stack
-        case Right(g) => Effect(g).flatMap(x => loop(okay.pure(x), kont))
-
-    @tailrec def loop(cur: Prog, kont: List[Seg]): R ! F = cur.resume match
-      case Pure(a) => kont match
-        case Nil => okay.pure(a.asInstanceOf[R])
-        case Seg.K(f) :: rest => loop(f(a).asInstanceOf[Prog], rest)
-        // the delimited block finished normally: drop its marker
-        case Seg.Delimiter(_) :: rest => loop(okay.pure(a), rest)
-      case Effect(e) => onOp(e, kont)
-      case Bind(Effect(e), k) => onOp(e, Seg.K(k.asInstanceOf[Any => Any]) :: kont)
+        case Right(g) => Left(Effect(g).flatMap(x => loop(okay.pure(x), kont)))
 
     loop(prog.asInstanceOf[Prog], Nil)
   }

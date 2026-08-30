@@ -55,9 +55,13 @@ object Json {
     case JErr(m) => "\"<error: " + escape(m) + ">\""
 
   /** the total pipeline: any string yields a Json (JErr for damage) */
-  def parse(s: String): Json =
-    val vs = values(cst(s))
-    vs.headOption.getOrElse(JErr("empty input"))
+  def parse(s: String): Json = value(cst(s))
+
+  /** the projection of an ALREADY PARSED tree — the door for anyone
+   * holding a session (an incremental reparse, say) who should not
+   * pay to parse the text a second time */
+  def value(c: Cst[K]): Json =
+    values(c).headOption.getOrElse(JErr("empty input"))
 
   private def unquote(lexeme: String): String =
     val inner = lexeme.stripPrefix("\"").stripSuffix("\"")
