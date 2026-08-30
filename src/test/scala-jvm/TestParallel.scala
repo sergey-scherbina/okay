@@ -9,10 +9,14 @@ class TestParallel extends munit.FunSuite {
     val src = Chunks.range(0, 8, 1)   // 8 chunks of one element
     def slow(x: Long): Long = { Thread.sleep(30); x * 2 }
     val t0 = System.nanoTime()
+    val seq = Chunks.fold(Chunks.map(src)(slow))(using Fold.count)
+    val tSeq = (System.nanoTime() - t0) / 1e6
+    val t1 = System.nanoTime()
     val out = Chunks.fold(parMap(src, 4)(slow))(using Fold.count)
-    val ms = (System.nanoTime() - t0) / 1e6
+    val ms = (System.nanoTime() - t1) / 1e6
     assertEquals(out, 8L)
-    assert(ms < 200, s"not parallel: ${ms}ms for 8 x 30ms at 4 fibers")
+    assertEquals(seq, 8L)
+    assert(ms < tSeq * 0.8, s"not parallel: ${ms}ms vs sequential ${tSeq}ms")
     assertEquals(
       Chunks.fold(parMap(Chunks.range(0, 100), 4)(_ * 2))(using Fold.sum[Long]),
       (0L until 100L).map(_ * 2).sum)

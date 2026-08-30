@@ -34,9 +34,13 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   )
   .jsSettings(
     Test / unmanagedSourceDirectories := Seq(),
+    Test / sources := Seq(),
+    Test / test := {},
   )
   .nativeSettings(
     Test / unmanagedSourceDirectories := Seq(),
+    Test / sources := Seq(),
+    Test / test := {},
   )
 
 /** interop with cats: instances and conversions, nothing more (P3) */
@@ -186,12 +190,14 @@ lazy val okayCluster = (project in file("okay-cluster"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
-lazy val root = (project in file("aggregate"))
+lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
     okaySpark, okayFlink, okayJdbc, okayLex, okayParse, okayCodec, okayLlm, okayCluster, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,
+    Compile / sources := Seq(),
+    Test / sources := Seq(),
   )
 
 /** comparison benchmarks against the ecosystem: the heavy dependencies live here */
