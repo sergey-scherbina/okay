@@ -1,0 +1,179 @@
+# P10 — okay-rag: retrieval, built out of what we already have
+
+## Overview
+Retrieval-augmented generation, designed from our own primitives
+rather than ported from LangChain's. The question this spec had to
+answer first was "have we anything to say here, or would we be
+re-typing someone else's class list?" — and the answer is a short
+list of things that follow MECHANICALLY from the lex/parse/codec
+stack, the Aggregator contract and the laziness contract, none of
+which the existing frameworks can express. Everything else in RAG is
+assembly, and assembly is cheap here.
+
+The five that are genuinely ours:
+
+1. **Provenance by construction.** Every token carries an exact Span
+   and the CST is lossless (concatenated lexemes == the input, by
+   law). So a retrieved segment is a BYTE RANGE into the original,
+   re-assembly is exact, and a citation cannot drift. Splitters that
+   regex over normalized text lose that mapping the moment they
+   normalize.
+2. **Incremental re-indexing at O(damage).** Documents change. The
+   usual answer is re-split and re-embed the file (content-hashing
+   per chunk helps only until an insertion shifts every later
+   boundary). We have lex/parse RECONVERGENCE: after an edit we know
+   which spans changed and which subtrees are reference-identical, so
+   only genuinely changed segments are re-embedded and the rest keep
+   their vectors with rebased spans. Nobody else in this stack has
+   the machinery to know that.
+3. **Retrieval and memory are ONE budget and ONE fold.** In
+   LangChain/langchain4j a RetrievalAugmentor injects passages and a
+   ChatMemory evicts history — two subsystems spending the same
+   context window with no knowledge of each other. Here a retrieved
+   passage IS a `Turn`, and assembling the prompt is the same
+   `Aggregator[Turn, S, Seq[Turn]]` with the same budget: "more
+   history or more passages" becomes an explicit, testable policy
+   (`zip` two, or score both kinds in one).
+4. **Lossy in the view, lossless in the lineage.** A passage is a
+   handle into a stream that recomputes (P2). The prompt carries a
+   projection; a follow-up re-observes more of that document without
+   a second retrieval round trip and without a bigger prompt.
+5. **The index is an Aggregator, so it merges.** Building an index is
+   a fold with `merge` — which makes distribution (`Cluster.distribute`,
+   Spark) and incremental update THE SAME operation: the index of a
+   corpus is the merge of the indexes of its parts.
+
+And one the substrate uniquely enables, marked speculative:
+
+6. **Retrieve WHILE generating.** Stages are demand-driven
+   coroutines and the parser is total, so a retriever can sit
+   downstream of the token stream: as the answer streams, the
+   partial structured output names an entity, retrieval for it starts
+   immediately, and the result is ready for the next step — the
+   FLARE/IRCoT shape falling out of the architecture instead of
+   needing an orchestrator.
+
+## Module policy
+Small modules, named by function (the standing doctrine):
+`okay-llm` = models, transport, tokenization; `okay-agent` = agents,
+tools, context, search; `okay-rag` = documents, splitting,
+embeddings, retrieval. No umbrella module and no name borrowed from
+another product.
+
+## P10a — Documents and splitting (pure, cross-platform)
+
+```scala
+final case class Source(id: String, text: String)         // the original bytes
+final case class Segment(source: String, span: Span,      // EXACT provenance
+                         text: String, path: Seq[String]) // structural path
+```
+
+- `Split.structural(dialect)` — split the CST, not the string: a
+  Markdown heading tree, JSON members, YAML blocks. Segments inherit
+  a structural PATH (`["Chapter 2", "Installation"]`) that is also
+  the best free metadata a retriever can have.
+- `Split.tokens(budget, overlap)` — a token-window splitter over our
+  own `Bpe` Scan: exact counts, no provider call, and the overlap
+  window is a `Group` (subtract-on-age), the same primitive chat
+  compaction uses.
+- Both are Stages, so they compose with `through` and stream.
+- Laws: every character of the source lands in at least one segment
+  (coverage); concatenating a non-overlapping split reproduces the
+  source exactly (the lossless law, inherited); spans are exact under
+  every dialect; a DAMAGED document still splits (totality) with the
+  damage visible as data.
+
+## P10b — Embeddings and stores (interface first)
+
+```scala
+enum Embed[+A]:
+  case Of(texts: Seq[String]) extends Embed[Seq[Vector[Float]]]
+
+trait VectorStore[F[+_]]:
+  def upsert(items: Seq[(Segment, Vector[Float])]): Unit ! F
+  def search(query: Vector[Float], k: Int): Seq[(Segment, Float)] ! F
+  def delete(source: String, spans: Seq[Span]): Unit ! F
+```
+
+- `Embed` is an effect: a provider handler, a local model handler, a
+  deterministic mock for tests — the agent-layer discipline again.
+- Batching is `Chunks` + `parMap`; retries are `retryChunks`.
+- v1 ships the INTERFACE plus a reference in-memory implementation
+  built from parts we already have (`Aggregator.topK` for kNN, CBOR
+  for persistence). Honest scope: brute force is honest to ~10^5
+  vectors; ANN (HNSW/IVF) and real stores are adapters, later.
+
+## P10c — Retrieval pipelines
+
+- `Query` transforms: multi-query is `Choose` over rewrites +
+  `runChoice`; HyDE is a `Model` call; both are programs, not classes.
+- Multiple retrievers: `Logic.interleave` gives FAIR interleaving —
+  a prolific retriever cannot starve a slow-but-precise one, which no
+  round-robin router expresses.
+- Fusion: reciprocal-rank fusion is an `Aggregator` (mergeable ⇒
+  distributable); dedup is an exact set or HLL.
+- Rerank: a `Model` effect over candidate pairs.
+- Assembly: passages become `Turn`s and go through the SAME compactor
+  budget as the conversation (point 3 above).
+
+## P10d — Ingestion, and keeping the index fresh
+
+- Ingestion is a chunked stream job: load → split → embed (batched,
+  `parMap`) → upsert, with `retryChunks` per-chunk recompute,
+  resumability, progress as an Aggregator, and `Cluster.distribute`
+  for scale — all existing parts.
+- **Re-index by damage**: given the previous `Parsed` session and an
+  edit, `Scan.relex` + `Parse.reparse` say exactly which segments
+  changed; unchanged ones keep their vectors (spans rebased). The
+  measurable claim: re-embedding cost is proportional to the edit,
+  not the document.
+
+## P10e — Keyword and hybrid
+
+- An inverted index is a `Fold`; term statistics are sketches (CMS);
+  BM25 is a scoring function over them; hybrid fusion is P10c's
+  Aggregator. Mergeable, therefore distributable, therefore
+  incrementally updatable — the same property three times.
+
+## Behavior
+- [ ] every character of a source is covered by the split; a
+      non-overlapping split concatenates back to the source exactly
+- [ ] a segment's span highlights the right bytes in the original,
+      for every dialect (Markdown, JSON, YAML)
+- [ ] structural splitting respects boundaries: a heading's section
+      stays whole until the token budget forces a cut, and the cut
+      lands on a structural edge, not mid-word
+- [ ] token-window splitting with overlap is exact under the BPE
+      counter, and the overlap is what the budget says
+- [ ] a damaged/truncated document still yields segments (totality)
+- [ ] Embed batches, retries per chunk, and an ingestion interrupted
+      mid-corpus resumes without re-embedding what it already stored
+- [ ] after an edit, re-indexing embeds only the changed segments
+      (measured: proportional to the damage, not the document)
+- [ ] multi-query retrieval with fusion beats single-query on a
+      fixture corpus; fusion is order-independent (the merge law)
+- [ ] fair interleaving: a prolific retriever does not starve a
+      precise one (the Logic property, on a fixture)
+- [ ] retrieved passages and chat history share ONE budget: adding
+      passages evicts history under the same policy, testably
+- [ ] a passage kept as lineage re-observes more of its document
+      without a new retrieval call
+
+## Decisions
+- **No Runnable/LCEL layer.** LCEL exists because Python has no
+  composition; `flatMap`, `Stage`/`through` and `Chunks` already are
+  invoke/stream/batch, typed, with no parallel API surface to keep in
+  sync. This is a whole subsystem we delete by construction.
+- **Interface first for stores** (the user's call): define
+  `VectorStore`, ship a reference in-memory implementation, leave
+  pgvector/qdrant/Lucene adapters to their own small modules.
+- **Embeddings are an effect, not a dependency.** Nothing in the
+  module pulls a model runtime.
+- **Segments carry structure, not just text** — the path is free
+  metadata, and it is what makes citations readable.
+
+## Out of scope
+- binary document formats (PDF, docx) — a separate module if ever;
+- ANN indexes in v1 (brute force is honest to ~10^5);
+- provider and store breadth — adapters, one small module each;
+- evaluation harness (its own phase; Aggregators already fit).

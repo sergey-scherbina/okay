@@ -137,3 +137,21 @@ compacting context) and v2 (search strategies, state-threaded memory)
 shipped 2026-08-30; the open items are lineage-backed tool results,
 streaming validation that cuts generation, and the okay-langchain4j
 interop that turns their providers into handlers for `Model`.
+
+## P10 — okay-rag: retrieval from our own primitives
+
+Retrieval designed against LangChain rather than after it
+(specs/rag.md). Five things follow mechanically from what exists and
+cannot be expressed in the frameworks we compared with: provenance by
+construction (exact spans, lossless CST — citations that cannot
+drift); incremental re-indexing at O(damage) over lex/parse
+reconvergence; retrieval and chat memory sharing ONE budget and one
+fold; passages kept as lineage (lossy in the view, lossless in the
+source); and an index that is an Aggregator, so distribution and
+incremental update are the same operation. Phases: documents and
+splitting (a), embeddings and the store INTERFACE (b), retrieval
+pipelines with fair interleaving and fusion (c), resilient ingestion
+and damage-proportional re-indexing (d), keyword/hybrid (e).
+
+Note what is deliberately absent: no Runnable/LCEL layer — flatMap,
+Stage/through and Chunks already are invoke/stream/batch, typed.
