@@ -30,10 +30,31 @@ fold) works on it unchanged, because elements are polymorphic.
 - [x] benchmark: chunked pipeline (map/filter/take/sum) at or under ~2x of
       the Iterator floor; chunked merge at or under ZIO's merge
 
+## Chunked transformers (added 2026-08-30)
+Transformers that stay chunk-in, chunk-out: each stage is a tight array
+pass, no per-element Iterator plumbing, and the result is still a
+`Chunks[A]` — so downstream consumers (merge, further stages) keep the
+amortization. Spelled as `object Chunks` functions (`Chunks.map(p)(f)`,
+like `Stream.map`): the postfix names belong to the monad (Free's map
+transforms the ANSWER — the chunk), and extension-name overloads across
+files are a known resolution trap.
+
+- `Chunks.map(p)(f)`, `filter`, `take(n)`, `drop(n)`, `takeWhile`,
+  `dropWhile` — lazy, one chunk at a time, deferred construction
+- `Chunks.fold(p)(using Fold[A, S]): S` — the terminal: an inner while
+  per chunk
+- empty chunks after filter are skipped, take truncates the last chunk
+
+Behavior:
+- [ ] transformer results agree with the LazyList reference pipeline,
+      including chunk-boundary cases (take mid-chunk, filter-to-empty)
+- [ ] a transformer chain over an infinite source stays lazy
+- [ ] benchmark: the chunked transformer pipeline at or under the Iterator
+      floor (prediction: array passes beat per-element virtual calls, as in
+      fs2/ZStream; disqualifier: no better than the elements view at 23us)
+
 ## Out of scope
-- chunked TRANSFORMERS (map/filter that rebuild chunks in place) — the
-  element view through Iterator already fuses; revisit if measured
-- rechunking, chunk-size adaptivity
+- zip of chunked streams (chunk realignment); rechunking, adaptivity
 - changing the elementwise Stream/uncons doctrine
 
 ## Decisions
