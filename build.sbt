@@ -39,8 +39,20 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories := Seq(),
   )
 
+/** interop with cats: instances and conversions, nothing more (P3) */
+lazy val okayCats = (project in file("okay-cats"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-cats",
+    libraryDependencies ++= Seq(
+      "org.typelevel" %% "cats-free" % "2.12.0",
+      "org.typelevel" %% "cats-effect" % "3.5.7",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 lazy val root = (project in file("aggregate"))
-  .aggregate(okay.jvm, okay.js, okay.native, compare)
+  .aggregate(okay.jvm, okay.js, okay.native, okayCats, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,

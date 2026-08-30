@@ -256,6 +256,14 @@ object ! {
   /** run a closed computation */
   inline def run[A](e: A ! Nothing): A = e.runWith
 
+  /** re-inject into a wider row: effect subsumption. Free is invariant
+   * in its signature, so widening walks the tree — one re-injected
+   * node per operation, deferred as it goes. */
+  def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = p.resume match
+    case Pure(a) => Pure(a)
+    case Effect(e) => Effect(e)
+    case Bind(Effect(e), k) => Effect(e).flatMap(x => widen[A, F, G](k(x)))
+
   /**
    * handle_relay (Kiselyov): tail-resumptive handling, measured 1.45x
    * faster than Effects.handle on forwarding-heavy work. g is
