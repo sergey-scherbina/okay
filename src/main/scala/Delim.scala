@@ -44,8 +44,25 @@ enum Delim[+A]:
   /** install a delimiter and run the body under it (reset) */
   case Push[R](prompt: Prompt[R], body: Any) extends Delim[R]
 
-  /** capture the continuation up to THIS prompt (shift) */
-  case Shift[R, A](prompt: Prompt[R], f: Any) extends Delim[A]
+  /**
+   * Capture the continuation up to THIS prompt. The whole classic
+   * family is two independent bits, so it is one operation with two
+   * flags rather than four cases:
+   *
+   *   underPrompt — does f's body run with the delimiter still
+   *                 installed? (shift, control: yes; the 0-variants
+   *                 consume it)
+   *   delimitK    — does invoking the captured continuation
+   *                 re-install the delimiter? (shift, shift0: yes;
+   *                 the control-variants hand back a bare segment)
+   *
+   *   reset(E[shift    f]) = reset (f (x => reset E[x]))
+   *   reset(E[control  f]) = reset (f (x =>       E[x]))
+   *   reset(E[shift0   f]) =        f (x => reset E[x])
+   *   reset(E[control0 f]) =        f (x =>       E[x])
+   */
+  case Capture[R, A](prompt: Prompt[R], f: Any,
+                     underPrompt: Boolean, delimitK: Boolean) extends Delim[A]
 
 /** a shift naming a prompt that is not installed */
 final class NoPrompt extends RuntimeException(
@@ -65,10 +82,31 @@ object Delim {
    * continuation is a PROGRAM-valued function, so `f` may perform
    * effects around it, invoke it many times, or drop it entirely
    * (which is an early exit).
+   *
+   * `shift`: the body runs under the delimiter and the continuation
+   * re-installs it — the variant most people mean, and the one that
+   * lets a captured continuation shift again.
    */
   def shift[R, A, F[+_]](p: Prompt[R])
                         (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
-    effect(Shift(p, f))
+    effect(Capture(p, f, underPrompt = true, delimitK = true))
+
+  /** the body CONSUMES the delimiter (a further shift to `p` escapes
+   * outward), the continuation still re-installs it */
+  def shift0[R, A, F[+_]](p: Prompt[R])
+                         (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+    effect(Capture(p, f, underPrompt = false, delimitK = true))
+
+  /** the body runs under the delimiter, the continuation does NOT
+   * re-install it — a bare segment, spliced where it is invoked */
+  def control[R, A, F[+_]](p: Prompt[R])
+                          (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+    effect(Capture(p, f, underPrompt = true, delimitK = false))
+
+  /** neither: the delimiter is consumed and the continuation is bare */
+  def control0[R, A, F[+_]](p: Prompt[R])
+                           (f: (A => R ! (Delim + F)) => R ! (Delim + F)): A ! (Delim + F) =
+    effect(Capture(p, f, underPrompt = false, delimitK = false))
 
   /** the common shape: a fresh prompt, a block under it, run */
   def reset[R, F[+_] : TypeableK](body: Prompt[R] => R ! (Delim + F)): R ! F =
@@ -107,7 +145,7 @@ object Delim {
           case Push(p, body) =>
             loop(body.asInstanceOf[Prog], Seg.Delimiter(p) :: kont)
 
-          case Shift(p, f) =>
+          case Capture(p, f, underPrompt, delimitK) =>
             // everything up to the named prompt is the captured part
             val (captured, rest) = kont.span {
               case Seg.Delimiter(q) => !(q eq p)
@@ -115,10 +153,16 @@ object Delim {
             }
             rest match
               case Seg.Delimiter(_) :: outer =>
+                val tag = p.asInstanceOf[Prompt[Any]]
                 val k = (a: Any) =>
-                  effect[Delim + F, Any](Push(p.asInstanceOf[Prompt[Any]],
-                    reify(captured, okay.pure(a))))
-                loop(f.asInstanceOf[Any => Any](k).asInstanceOf[Prog], outer)
+                  val seg = reify(captured, okay.pure(a))
+                  if delimitK then effect[Delim + F, Any](Push(tag, seg)) else seg
+                val body = f.asInstanceOf[Any => Any](k).asInstanceOf[Prog]
+                // shift/control put the body back under the delimiter;
+                // the 0-variants have consumed it
+                if underPrompt then
+                  loop(effect[Delim + F, Any](Push(tag, body)), outer)
+                else loop(body, outer)
               case _ => throw NoPrompt()
 
         // a foreign operation suspends the machine: the residual
@@ -137,7 +181,8 @@ object Delim {
     loop(prog.asInstanceOf[Prog], Nil)
   }
 
-  /** abort to a prompt with a value: shift that drops the continuation */
+  /** abort to a prompt with a value: a shift that drops the
+   * continuation (the 0-variant, so the delimiter goes with it) */
   def abort[R, A, F[+_]](p: Prompt[R])(value: R): A ! (Delim + F) =
-    shift[R, A, F](p)(_ => okay.pure(value))
+    shift0[R, A, F](p)(_ => okay.pure(value))
 }

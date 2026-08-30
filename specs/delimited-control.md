@@ -53,6 +53,25 @@ multi-shot comes for free. Foreign operations suspend the machine and
 resume it with the same stack — the shape `State.handle` already
 uses.
 
+## The family
+Two independent bits, so one operation with two flags rather than
+four cases: `underPrompt` (does f's body run with the delimiter still
+installed) and `delimitK` (does invoking the continuation re-install
+it).
+
+```
+reset(E[shift    f]) = reset (f (x => reset E[x]))
+reset(E[control  f]) = reset (f (x =>       E[x]))
+reset(E[shift0   f]) =        f (x => reset E[x])
+reset(E[control0 f]) =        f (x =>       E[x])
+```
+
+A correction worth recording: the first implementation was labelled
+`shift` and behaved as `shift0` — it popped the delimiter for the
+body. Nothing caught it, because with a single prompt and no nested
+capture the two agree; the discriminating tests below now pin each
+bit separately.
+
 ## Behavior
 - [x] shift/reset returns the continuation as a value (`k(5) * 2`)
 - [x] the captured continuation includes what follows the shift
@@ -66,6 +85,16 @@ uses.
 - [x] two prompts with different answer types in one row
 - [x] other effects pass through the machine untouched, in order
 - [x] a shift to an uninstalled prompt fails loudly (NoPrompt)
+- [x] shift vs shift0: a second capture to the same prompt from
+      inside the body finds the delimiter under `shift` and escapes
+      past it under `shift0`
+- [x] shift0 vs control0: a capture inside the invoked continuation
+      finds a delimiter under `shift0` (k re-installs) and none under
+      `control0` (a bare segment)
+- [x] a NEW EFFECT defined in user code: a generator (`emit`) built
+      from a prompt and `shift` alone — no signature, no handler, no
+      library change — which is the payoff of having delimited
+      control as an effect at all
 
 ## Decisions
 - **A separate signature from `Control[M]`,** the tagless interface —

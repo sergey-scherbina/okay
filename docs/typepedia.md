@@ -67,6 +67,17 @@ same material with the measurements attached.
   `interleave` (fair or), `fairBind`/`>>-` (fair bind), `observe(n)`
   (first n of an infinite search). A library over the effect, not a
   new effect. See specs/backtracking.md.
+- **`Delim`** — delimited control AS AN EFFECT, multi-prompt
+  (Dybvig/Peyton Jones/Sabry): **`Prompt[R]`** is a first-class tag
+  carrying the delimiter's answer type, `push` installs one (an
+  OPERATION, not a handler — one machine must own the whole prompt
+  stack, or a capture cannot cross an intervening delimiter), and
+  `shift`/`shift0`/`control`/`control0` capture up to a NAMED prompt.
+  The tags are what let several answer types share one row. `Delim.run`
+  is the machine; the captured continuation is turned back into a
+  PROGRAM, so it is an ordinary value and multi-shot is free. With it
+  a user can define new effects (a generator is a prompt and a shift)
+  without touching the library. See specs/delimited-control.md.
 - **`Async`** — `Run(thunk)` (blocking = a JVM/Native ability) and
   `Await(register)` (the universal callback form; the callback takes
   `Either[Throwable, A]` — the Left is the error channel and fails

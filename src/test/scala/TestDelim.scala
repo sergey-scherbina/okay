@@ -131,6 +131,74 @@ class TestDelim extends munit.FunSuite {
     assertEquals(ws, Seq.empty, "the dropped continuation told anyway")
   }
 
+  test("shift vs shift0: does the body keep the delimiter?") {
+    // shift puts the body back under the prompt, so a SECOND shift to
+    // the same prompt from inside f finds it
+    val nested = !.run(reset[Int, okay.Pure] { p =>
+      Delim.shift[Int, Int, okay.Pure](p)(_ =>
+        Delim.shift[Int, Int, okay.Pure](p)(_ => okay.pure(1)))
+    })
+    assertEquals(nested, 1)
+
+    // shift0 CONSUMES it, so the same program escapes past the
+    // delimiter and finds nothing
+    intercept[NoPrompt] {
+      !.run(reset[Int, okay.Pure] { p =>
+        Delim.shift0[Int, Int, okay.Pure](p)(_ =>
+          Delim.shift0[Int, Int, okay.Pure](p)(_ => okay.pure(1)))
+      })
+    }
+  }
+
+  test("shift0 vs control0: does the continuation re-install it?") {
+    // the captured continuation contains a shift to the same prompt.
+    // shift0's k re-installs the delimiter, so that shift finds one
+    val ok = !.run(reset[Int, okay.Pure] { p =>
+      Delim.shift0[Int, Int, okay.Pure](p)(k => k(1))
+        .flatMap(x => Delim.shift0[Int, Int, okay.Pure](p)(_ => okay.pure(x + 40)))
+    })
+    assertEquals(ok, 41)
+
+    // control0 hands back a BARE segment: nothing re-installs it
+    intercept[NoPrompt] {
+      !.run(reset[Int, okay.Pure] { p =>
+        Delim.control0[Int, Int, okay.Pure](p)(k => k(1))
+          .flatMap(x => Delim.control0[Int, Int, okay.Pure](p)(_ => okay.pure(x)))
+      })
+    }
+  }
+
+  test("control: the body keeps the delimiter, the continuation does not") {
+    val r = !.run(reset[Int, okay.Pure] { p =>
+      Delim.control[Int, Int, okay.Pure](p)(k => k(1)).map(_ + 10)
+    })
+    assertEquals(r, 11)
+  }
+
+  test("a new effect defined in USER code: yield, with no signature") {
+    // the payoff of having delimited control as an effect — a
+    // generator needs no new operation and no new handler, only a
+    // prompt whose answer type is the list being built
+    def emit[A](p: Prompt[List[A]])(a: A): Unit ! Row =
+      Delim.shift[List[A], Unit, okay.Pure](p)(k => k(()).map(a :: _))
+
+    def collect[A](body: Prompt[List[A]] => Unit ! Row): List[A] =
+      !.run(reset[List[A], okay.Pure](p => body(p).map(_ => Nil)))
+
+    assertEquals(
+      collect[Int](p => emit(p)(1).flatMap(_ => emit(p)(2)).flatMap(_ => emit(p)(3))),
+      List(1, 2, 3))
+
+    // and it composes with ordinary control flow
+    assertEquals(
+      collect[Int] { p =>
+        (1 to 4).foldLeft(okay.pure[Delim + okay.Pure, Unit](())) { (acc, i) =>
+          acc.flatMap(_ => if i % 2 == 0 then emit(p)(i) else okay.pure(()))
+        }
+      },
+      List(2, 4))
+  }
+
   test("a shift to an uninstalled prompt fails loudly") {
     val stray = Delim.prompt[Int]
     intercept[NoPrompt] {
