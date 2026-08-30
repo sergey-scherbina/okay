@@ -125,3 +125,15 @@ API ergonomics (the inference gotchas, an import story), typeclass
 law tests (ScalaCheck), scaladoc, releases. Optimization strictly by
 the measured protocol; history and refuted experiments stay in
 src/jmh/history.tsv.
+
+## P9 — okay-agent: the agentic layer
+
+Agents as programs (specs/llm-agentic.md): a tool call is an effect
+operation, an agent is a Stage, the conversation is a FOLD
+(`Aggregator[Turn, S, Seq[Turn]]` — incremental, mergeable,
+backtrackable), search over completions is `Logic`, and every policy
+question is a handler. v1 (effects, derived tool schemas, the
+compacting context) and v2 (search strategies, state-threaded memory)
+shipped 2026-08-30; the open items are lineage-backed tool results,
+streaming validation that cuts generation, and the okay-langchain4j
+interop that turns their providers into handlers for `Model`.

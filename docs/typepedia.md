@@ -28,7 +28,9 @@ same material with the measurements attached.
 - **`F !> S`** — a handler: `F ==> ([X] =>> X /> S)`; handlers are
   continuations, literally.
 - **`Handler[F]`** — the comonadic (per-operation) handler;
-  `runWith` runs with it. **`TypeableK[F]`** — the runtime test that
+  `runWith` runs with it. **`Handler.union`** composes one handler
+  per effect into a row handler (an explicit combinator, not a given:
+  a given over a union type lambda crashes the 3.7.1 type comparer). **`TypeableK[F]`** — the runtime test that
   splits unions (`<|>`); identity-style signatures are split by the
   runtime class of their values, so keep them class-distinct.
 - **`Effects[M]`** — the interface; instances **`Free`** (initial),
