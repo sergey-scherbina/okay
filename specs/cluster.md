@@ -27,10 +27,25 @@ assembly plan, detailed at implementation time.
 - [x] two ends of a wire exchange chunks over a remote channel and
       the merged fold (variance!) agrees with the local run; a damaged
       frame is dropped and the stream lives
-- [ ] a killed worker's chunks are recomputed on another (replayable
-      source), the aggregate stays correct
+- [x] a killed worker's chunks are recomputed on another (replayable
+      source), the aggregate stays correct — Cluster.distribute:
+      workers behind the one seam `Chunk[A] => Acc` (in-process or a
+      wire away; a dead worker THROWS, that is the whole protocol),
+      round-robin over the living, the failed worker leaves the
+      rotation and its chunk — still in hand, the source is a value —
+      goes to a survivor; partials merge by combOp. Tested with a
+      dying in-process worker (variance exact, every element counted
+      once) AND a socket worker whose server drops the connection
+      mid-stream.
 - [ ] a JS client drives a JVM server with the same shared-source
-      program (the policy's acceptance test)
+      program (the policy's acceptance test) — the one deliberately
+      open item: it is a phase-sized build effort, not a code gap.
+      Plan: (1) cross-build the pure P5 chain (okay-lex/parse/codec
+      have no platform deps), (2) a Node `net` facade behind the
+      Transport seam on JS, (3) a two-process acceptance run (JVM
+      server from the test, `node client.js` linked by scalaJS).
+      Nothing in the current design blocks it — Async, the codec and
+      the channel surface are already cross-platform.
 
 ## Out of scope (initially)
 - membership/discovery beyond static configuration; persistence;
