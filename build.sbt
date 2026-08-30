@@ -197,12 +197,28 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
-/** language models as streams: the thin client (P4/llm.md) */
-lazy val okayLlm = (project in file("okay-llm"))
-  .dependsOn(okayCodec.jvm)
+/** language models as streams: the thin client (P4/llm.md).
+ * Cross-built — only the Transport is platform-bound (java.net.http
+ * on the JVM, fetch on JS), everything else is pure Scala */
+lazy val okayLlm = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-llm"))
+  .dependsOn(okayCodec)
   .settings(
     name := "okay-llm",
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    // the suites use the JVM transport; the JS side is proven by the
+    // agent's own cross suite, which mocks the seam
+    Test / sources := Seq(),
+    Test / test := {},
   )
 
 /** retrieval from our own primitives: documents split over the
@@ -219,11 +235,28 @@ lazy val okayRag = crossProject(JVMPlatform, JSPlatform)
 
 /** agents as programs: tool calls are operations, the conversation
  * is a fold, policy lives in handlers (P9) */
-lazy val okayAgent = (project in file("okay-agent"))
-  .dependsOn(okayLlm, okayRag.jvm)
+lazy val okayAgent = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-agent"))
+  .dependsOn(okayLlm, okayRag)
   .settings(
     name := "okay-agent",
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+  )
+  .jsSettings(
+    // on JS the model is reached by the RELAY (a comonadic handler
+    // cannot do I/O where nothing may park), so the cross suite is
+    // the portable half
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
   )
 
 /** the own distributed runtime, assembled from existing parts (P7);
@@ -263,7 +296,8 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
     okaySpark, okayFlink, okayJdbc, okayLex.jvm, okayLex.js, okayParse.jvm, okayParse.js,
-    okayCodec.jvm, okayCodec.js, okayLlm, okayAgent, okayRag.jvm, okayRag.js,
+    okayCodec.jvm, okayCodec.js, okayLlm.jvm, okayLlm.js,
+    okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",
@@ -274,7 +308,7 @@ lazy val root = (project in file("."))
 
 /** comparison benchmarks against the ecosystem: the heavy dependencies live here */
 lazy val compare = (project in file("compare"))
-  .dependsOn(okay.jvm, okayLlm)
+  .dependsOn(okay.jvm, okayLlm.jvm)
   .enablePlugins(JmhPlugin)
   .settings(
     name := "okay-compare",

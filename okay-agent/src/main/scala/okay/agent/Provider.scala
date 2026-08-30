@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, Handler, given}
+import okay.{!, +, Handler, given}
 import okay.codec.Json
 import okay.lex.{Bpe, Scan}
 import okay.llm.{Anthropic, OpenAi, Transport}
@@ -131,6 +131,57 @@ object Provider {
         // `input` is already an object here, so nothing to re-parse
         Reply(a.text, a.calls.map((id, name, input) => ToolCall(id, name, input)))
       case Model.Count(text) => count(text)
+
+  // ------------------------------------------------------------------
+  // the portable form
+  //
+  // A `Handler[Model]` must ANSWER with a value, so it has to run the
+  // request to completion inside itself — which needs a thread that
+  // can park, and JS has none. The portable shape therefore is not a
+  // handler but a RELAY: the Model operations are translated into
+  // Async ones and the program comes back as `A ! (Async + F)`, which
+  // the JVM runs by parking (runWith) and JS runs by driving the
+  // event loop (Async.runAsync). Same program, both platforms; the
+  // comonadic handler above stays as the JVM convenience.
+
+  def relay[A, F[+_] : okay.TypeableK](complete: (Seq[Turn], Seq[ToolSpec]) => Reply ! okay.Async,
+                                       count: String => Int = _.length / 4)
+                                      (prog: A ! (Model + F)): A ! (okay.Async + F) =
+    import okay.!.*
+    type Out = okay.Async + F
+
+    def answer(e: Model[Any]): Either[Reply ! okay.Async, Any] = e match
+      case Model.Complete(ctx, tools) => Left(complete(ctx, tools))
+      case Model.Count(text) => Right(count(text))
+
+    def go(x: A ! (Model + F)): A ! Out = x.resume match
+      case Pure(a) => okay.pure(a)
+      case Effect(e) => okay.<|>[Model, F](e) match
+        case Left(m) => answer(m) match
+          case Left(req) => okay.!.widen[Reply, okay.Async, F](req).asInstanceOf[A ! Out]
+          case Right(v) => okay.pure(v.asInstanceOf[A])
+        case Right(g) => Effect(g).asInstanceOf[A ! Out]
+      case Bind(Effect(e), k) =>
+        val cont = k.asInstanceOf[Any => A ! (Model + F)]
+        okay.<|>[Model, F](e) match
+          case Left(m) => answer(m) match
+            case Left(req) =>
+              okay.!.widen[Reply, okay.Async, F](req).flatMap(r => go(cont(r)))
+            case Right(v) => go(cont(v))
+          case Right(g) =>
+            Effect(g).asInstanceOf[Any ! Out].flatMap(x => go(cont(x)))
+
+    go(prog)
+
+  /** the OpenAI-compatible provider as a relay — the cross-platform door */
+  def openAiRelay[A, F[+_] : okay.TypeableK](
+      transport: Transport, apiKey: String, model: String,
+      url: String = OpenAi.chatUrl, maxTokens: Option[Int] = Some(1024),
+      count: String => Int = _.length / 4)(prog: A ! (Model + F)): A ! (okay.Async + F) =
+    relay[A, F]((ctx, tools) =>
+      OpenAi.complete(transport, apiKey,
+        OpenAi.request(model, ctx.map(message), tools.map(declaration),
+          stream = false, maxTokens), url).map(reply), count)(prog)
 
   /** the local tokenizer as the counter, when a dictionary is at hand */
   def counting(bpe: Bpe): String => Int = s =>

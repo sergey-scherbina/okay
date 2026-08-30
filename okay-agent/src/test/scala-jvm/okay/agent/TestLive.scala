@@ -3,7 +3,7 @@ package okay.agent
 import okay.{!, +, Async, Handler}
 import okay.given
 import okay.codec.{Json, Schema}
-import okay.llm.{OpenAi, Transport}
+import okay.llm.{OpenAi, Transport, Transports}
 import scala.collection.mutable
 
 /**
@@ -42,17 +42,17 @@ class TestLive extends munit.FunSuite {
       c.getResponseCode == 200
     catch case _: Throwable => false
 
-  def transport = Transport.http()
+  def transport = Transports.http()
 
   def run[A](prog: A ! Agent)(model: Handler[Model], tool: Handler[Tool],
                               ctx: Handler[Context]): A =
     given Handler[Model] = model
     given Handler[Tool] = tool
     given Handler[Context] = ctx
-    given rowCA: Handler[Context + Async] = okay.Handler.union[Context, Async]
-    given rowTCA: Handler[Tool + (Context + Async)] =
-      okay.Handler.union[Tool, Context + Async]
-    given rowAll: Handler[Agent] = okay.Handler.union[Model, Tool + (Context + Async)]
+    given rowMA: Handler[Model + Async] = okay.Handler.union[Model, Async]
+    given rowCMA: Handler[Context + (Model + Async)] =
+      okay.Handler.union[Context, Model + Async]
+    given rowAll: Handler[Agent] = okay.Handler.union[Tool, Context + (Model + Async)]
     prog.runWith
 
   test("live: a completion comes back through our own decoder") {
@@ -83,7 +83,7 @@ class TestLive extends munit.FunSuite {
 
   /** the real transport, with a tap on what actually went out */
   def watched(sent: mutable.Buffer[String]): Transport = new Transport:
-    private val inner = Transport.http()
+    private val inner = Transports.http()
     def post(url: String, headers: Map[String, String], body: String) =
       sent += body
       inner.post(url, headers, body)

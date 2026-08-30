@@ -17,10 +17,10 @@ class TestLarge extends munit.FunSuite {
     given Handler[Model] = model
     given Handler[Tool] = tool
     given Handler[Context] = ctx
-    given rowCA: Handler[Context + Async] = okay.Handler.union[Context, Async]
-    given rowTCA: Handler[Tool + (Context + Async)] =
-      okay.Handler.union[Tool, Context + Async]
-    given rowAll: Handler[Agent] = okay.Handler.union[Model, Tool + (Context + Async)]
+    given rowMA: Handler[Model + Async] = okay.Handler.union[Model, Async]
+    given rowCMA: Handler[Context + (Model + Async)] =
+      okay.Handler.union[Context, Model + Async]
+    given rowAll: Handler[Agent] = okay.Handler.union[Tool, Context + (Model + Async)]
     prog.runWith
 
   val big = (1 to 500).map(i => s"line $i of a very long file").mkString("\n")

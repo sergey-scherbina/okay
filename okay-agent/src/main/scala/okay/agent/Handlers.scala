@@ -75,6 +75,24 @@ object Handlers {
     def handle[A](e: Tool[A]): A = e match
       case Tool.Call(c) => log += c; inner.handle(e)
 
+  /**
+   * Tools as a program transformer rather than a comonadic handler:
+   * the operations are tail-resumptive, so a relay answers them and
+   * hands the program back with the row one effect shorter. This is
+   * what a platform with no threads needs — `runWith` wants a handler
+   * for the WHOLE row, Async included, and on JS there is none.
+   */
+  def relayTools[A, F[+_]](table: Map[String, ToolCall => String])
+                          (prog: A ! (Tool + F)): A ! F =
+    def answer(c: ToolCall): String = table.get(c.name) match
+      case Some(f) =>
+        try f(c) catch case ex: Throwable => s"error: ${ex.getMessage}"
+      case None => s"error: no such tool '${c.name}'"
+
+    okay.!.relay[A, A, Tool, F](prog)(okay.pure(_)):
+      [X, Y] => (e: Tool[X]) => e match
+        case Tool.Call(c) => okay.Cont.Pure(answer(c).asInstanceOf[X])
+
   // ---------------------------------------------------------------- model
 
   /** the local tokenizer: counting needs no provider */

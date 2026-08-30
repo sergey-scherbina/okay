@@ -55,8 +55,13 @@ enum Context[+A]:
 /** an opaque handle to a context state (a persistent value) */
 final class Snapshot(private[agent] val state: Any)
 
-/** the row an agent lives in */
-type Agent = Model + (Tool + (Context + Async))
+/**
+ * The row an agent lives in. The ORDER is deliberate: peeling from
+ * the left is how a platform without threads runs the same program —
+ * tools and context are program transformers, then the model becomes
+ * Async by relay, and what is left is driven by the event loop.
+ */
+type Agent = Tool + (Context + (Model + Async))
 
 object Agent {
 

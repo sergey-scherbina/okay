@@ -42,7 +42,7 @@ test — no network needed to develop against it):
 import okay.llm.{Anthropic, Transport}
 
 val tokens: Unit ! (Writer % String + Async) =
-  Anthropic.stream(Transport.http(), apiKey,
+  Anthropic.stream(Transports.http(), apiKey,
     Anthropic.Request("claude-sonnet-5", 1024,
       List(Anthropic.Message("user", "hi")), stream = true))
 

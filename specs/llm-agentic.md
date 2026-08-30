@@ -405,8 +405,21 @@ handler, and its JSON-RPC framing is our total parser plus `Schema`.
 - [x] a partial structured answer decodes mid-stream and generation
       stops when the value is complete — `Structured.cut` (okay-llm),
       tested by counting what was actually demanded
-- [ ] the same agent program runs on the JVM and under Node (the
-      cross-platform policy, as in okay-cluster)
+- [x] the same agent program runs on the JVM and under Node — and
+      the finding that made it possible is worth more than the box: a
+      `Handler[Model]` must ANSWER with a value, so it runs the
+      request to completion inside itself, which needs a thread that
+      can park; JS has none. The portable shape is PEELING rather
+      than handling — tools by a relay, context by the
+      state-threading walk, the model by `Provider.relay` into Async
+      — after which `Async.runAsync` drives what is left on either
+      platform. The agent program is untouched: the cross suite runs
+      the same `Agent.converse` the platform-bound suites use, and
+      `Agent`'s row is now ordered so that peeling from the left is
+      the natural motion. okay-llm and okay-agent are crossProjects;
+      only the Transport is platform-bound (java.net.http / fetch),
+      named `Transports` because a companion cannot live in another
+      file — the same fix `Schedulers` needed.
 
 ## Decisions
 - **Handlers own policy, programs own logic.** Execute a tool, ask a

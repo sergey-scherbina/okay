@@ -13,6 +13,8 @@
             <option value="$PROJECT_DIR$/.native" />
             <option value="$PROJECT_DIR$/compare" />
             <option value="$PROJECT_DIR$/okay-agent" />
+            <option value="$PROJECT_DIR$/okay-agent/.js" />
+            <option value="$PROJECT_DIR$/okay-agent/.jvm" />
             <option value="$PROJECT_DIR$/okay-cats" />
             <option value="$PROJECT_DIR$/okay-cluster" />
             <option value="$PROJECT_DIR$/okay-cluster/.js" />
@@ -29,6 +31,8 @@
             <option value="$PROJECT_DIR$/okay-lex/.js" />
             <option value="$PROJECT_DIR$/okay-lex/.jvm" />
             <option value="$PROJECT_DIR$/okay-llm" />
+            <option value="$PROJECT_DIR$/okay-llm/.js" />
+            <option value="$PROJECT_DIR$/okay-llm/.jvm" />
             <option value="$PROJECT_DIR$/okay-parse" />
             <option value="$PROJECT_DIR$/okay-parse/.js" />
             <option value="$PROJECT_DIR$/okay-parse/.jvm" />
