@@ -57,4 +57,48 @@ class TestAsyncCross extends munit.FunSuite {
     }
     p.future.map(v => assertEquals(v, 7))
   }
+
+  test("par pairs two answers by completion callbacks, no parking") {
+    val prog = Async.par(
+      Async.sleep(20).map(_ => 1),
+      Async.sleep(10).map(_ => 2))
+    Async.runAsync(prog).map(v => assertEquals(v, (1, 2)))
+  }
+
+  test("a child failure fails par and cancels the sibling") {
+    val boom = RuntimeException("boom")
+    val prog = Async.par(async[Int](throw boom), Async.sleep(500).map(_ => 2))
+    Async.runAsync(prog).failed.map(e => assertEquals(e.getMessage, "boom"))
+  }
+
+  test("joinAsync joins a fiber as an operation") {
+    val f = Async.spawn(Async.sleep(10).map(_ => 21))
+    Async.runAsync(f.joinAsync.map(_ * 2)).map(v => assertEquals(v, 42))
+  }
+
+  test("a race of two failures fails instead of hanging") {
+    val prog = Async.race(
+      async[Int](throw RuntimeException("a")),
+      async[Int](throw RuntimeException("b")))
+    Async.runAsync(prog).failed.map(e =>
+      assert(e.getMessage == "a" || e.getMessage == "b"))
+  }
+
+  test("an Await's Left is the error channel: it fails the program") {
+    val boom = RuntimeException("wire down")
+    val prog = Async.await[Int](k => { k(Left(boom)); () => () })
+    Async.runAsync(prog).failed.map(e => assertEquals(e.getMessage, "wire down"))
+  }
+
+  test("a channel bridges sent values into an Async stream on every platform") {
+    val c = Channel[Int]()
+    c.send(1); c.send(2); c.close()
+    val ch = summon[Stream[Channel, Async]]
+    def drain(acc: List[Int]): List[Int] ! Async =
+      ch.uncons(c).flatMap {
+        case Some((a, _)) => drain(a :: acc)
+        case None => pure(acc.reverse)
+      }
+    Async.runAsync(drain(Nil)).map(v => assertEquals(v, List(1, 2)))
+  }
 }

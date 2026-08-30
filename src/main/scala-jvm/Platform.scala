@@ -8,18 +8,20 @@ import java.util.concurrent.{CompletableFuture, CompletionException, ExecutionEx
  * thread on a future; interruption cancels the wait.
  */
 given CanBlock = new:
-  def block[A](register: (A => Unit) => Unit): A =
+  def block[A](register: (A => Unit) => (() => Unit)): A =
     val f = CompletableFuture[A]()
-    register(f.complete(_))
-    f.get()
+    val cancel = register(a => { f.complete(a); () })
+    try f.get()
+    catch case e: Throwable => { cancel(); throw e }
 
-/** the timer: a virtual thread sleeps for the duration */
+/** the timer: a virtual thread sleeps for the duration; cancelling
+ * interrupts it out of the sleep */
 given Timer = new:
-  def after(millis: Long)(k: () => Unit): Unit =
-    Thread.startVirtualThread: () =>
+  def after(millis: Long)(k: () => Unit): () => Unit =
+    val t = Thread.startVirtualThread: () =>
       try { Thread.sleep(millis); k() }
       catch case _: InterruptedException => ()
-    ()
+    () => t.interrupt()
 
 /**
  * The JVM schedulers. The default given is Loom — one virtual thread

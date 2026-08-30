@@ -27,6 +27,8 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
@@ -47,9 +49,12 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-native",
-    Test / unmanagedSourceDirectories := Seq(),
-    Test / sources := Seq(),
-    Test / test := {},
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    // like JS: the cross suite is the native test source
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
 /** interop with cats: instances and conversions, nothing more (P3) */

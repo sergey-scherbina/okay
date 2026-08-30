@@ -35,10 +35,9 @@ cross-build lands so nothing has to be broken later.
 
 ## Behavior
 - [x] one shared-source test suite passes on all three platforms
-      (Await-based programs only) — src/test/scala-cross runs on JVM
-      and JS (under Node); Native compiles the same code but its test
-      run is still stubbed in the build (nativeLink cost), so the
-      third platform is compile-verified only
+      (Await-based programs only) — src/test/scala-cross runs on JVM,
+      on JS under Node, and on Native as a linked binary (12 tests
+      each; okayNative/test in CI)
 - [x] a JVM/Native-only test exercises blocking Run/join under the
       capability (TestAsync — the whole Loom suite runs under the
       CanBlock/Timer/Scheduler givens of scala-jvm/Platform.scala)
@@ -64,15 +63,29 @@ cross-build lands so nothing has to be broken later.
 - **runAsync drives the tree in a while-loop** with an atomic
   handshake per Await (the callback may fire during registration, on
   any thread): whoever loses the exchange continues the drive.
-- **par stays under CanBlock** — a child failure must propagate, and
-  the Await callback carries no error channel; race is cross-platform
-  because a failing contender never wins by design.
+- **Await carries the error channel and answers a canceller**:
+  `register: (Either[Throwable, A] => Unit) => (() => Unit)`. The
+  Left fails the whole program at that operation; the canceller
+  unregisters (clearTimeout, an interrupt of the sleeping timer
+  thread) and is invoked when a parked block is interrupted or a
+  JS drive is cancelled while suspended. The simple top-level
+  `await(k => ...)` keeps the success-only, nothing-to-unregister
+  shape; the full form is `Async.await`.
+- **par is cross-platform** — completion callbacks pair the answers,
+  a child failure fails the pair through the error channel and
+  cancels the sibling; `Fiber.joinAsync` is the effect-world join.
+  race fails (with the later error) only when BOTH contenders fail —
+  a lone failing contender still never wins.
 
 ## Open boxes
-- [ ] an error channel in Await (register: (Either[Throwable,A] =>
-      Unit) => Unit or a richer op) — unlocks callback par and
-      Fiber.joinAsync without the hang-on-failure trap
-- [ ] cancellable Await registrations (register answers a canceller;
-      Timer.after already could)
-- [ ] the Await-based Channel for JS behind the same interface
-- [ ] run the cross suite on Native (unstub nativeLink in CI)
+- [x] an error channel in Await — done (see Decisions); callback par
+      and joinAsync landed with it
+- [x] cancellable Await registrations — done; Timer.after answers the
+      canceller on every platform
+- [x] the Await-based Channel for JS — src/main/scala-js/Channel.scala:
+      same surface (send/close/receiveAsync + the Stream instance +
+      merge/buffer/mergeChunks); capacity is advisory on JS (a sender
+      cannot park). The blocking Channel and Parallel moved to
+      src/main/scala-jvm-native — one source for both parking
+      platforms.
+- [x] run the cross suite on Native — done, in CI

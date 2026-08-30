@@ -26,11 +26,17 @@ forever; ScalaCheck is allowed in test scope only.
 - Artifact of the core is literally `"…" %% "okay" % v`.
 
 ## Behavior
-- [ ] `okay` compiles and tests green on JVM, JS and Native
-- [ ] the blocking API is absent from the JS platform at compile time
-      (not failing at runtime)
-- [ ] CI: test + Jmh/compile on push; publish workflow dry-runs
-- [ ] `compare` keeps working against the JVM core unchanged
+- [x] `okay` compiles and tests green on JVM, JS and Native — the
+      cross suite (src/test/scala-cross) runs on all three; the full
+      suite runs on the JVM
+- [x] the blocking API is absent from the JS platform at compile time
+      (not failing at runtime) — blocking is gated by CanBlock
+      evidence, which JS does not define; Handler[Async], Fiber.join
+      and Async.run simply do not resolve there
+- [x] CI: test on all three platforms + Jmh/compile on push;
+      publishLocal dry-runs green for okay_3, okay_sjs1_3 and
+      okay_native0.5_3 (real publishing still waits for the domain)
+- [x] `compare` keeps working against the JVM core unchanged
 
 ## Out of scope
 - actually publishing (waits for the domain); satellite content

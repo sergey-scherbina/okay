@@ -1,14 +1,13 @@
 package okay
 
-import java.util.concurrent.atomic.AtomicBoolean
 import scala.concurrent.{ExecutionContext, Promise}
 import scala.scalajs.js.timers
 
-/** the timer is setTimeout */
+/** the timer is setTimeout; the canceller is clearTimeout */
 given Timer = new:
-  def after(millis: Long)(k: () => Unit): Unit =
-    timers.setTimeout(millis.toDouble)(k())
-    ()
+  def after(millis: Long)(k: () => Unit): () => Unit =
+    val h = timers.setTimeout(millis.toDouble)(k())
+    () => timers.clearTimeout(h)
 
 /**
  * The event loop IS the scheduler: a fiber is a tree being driven
@@ -20,9 +19,9 @@ given Timer = new:
 given Scheduler = new:
   def fork[A](prog: () => A ! Async): Fiber[A] =
     val p = Promise[A]()
-    val cancelled = AtomicBoolean(false)
-    Async.drive(prog(), p, () => cancelled.get)
+    val d = Async.Drive(p)
+    d(prog())
     new Fiber[A]:
       def onComplete(k: Either[Throwable, A] => Unit): Unit =
         p.future.onComplete(t => k(t.toEither))(using ExecutionContext.parasitic)
-      def cancel(): Unit = cancelled.set(true)
+      def cancel(): Unit = d.cancel()

@@ -16,4 +16,4 @@ jobs:
           cache: sbt
       - uses: sbt/setup-sbt@v1
       - name: Test (JVM) and compile every platform and benchmark
-        run: sbt okayJVM/test okayJS/test okayNative/compile okayJVM/Jmh/compile compare/test compare/Jmh/compile
+        run: sbt okayJVM/test okayJS/test okayNative/test okayJVM/Jmh/compile compare/test compare/Jmh/compile

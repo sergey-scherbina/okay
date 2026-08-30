@@ -6,27 +6,31 @@ package okay
  * here, no CompletableFuture in the javalib — a hand-rolled cell).
  */
 given CanBlock = new:
-  def block[A](register: (A => Unit) => Unit): A =
+  def block[A](register: (A => Unit) => (() => Unit)): A =
     val lock = new Object
     var done = false
     var v: A = null.asInstanceOf[A]
-    register { a =>
+    val cancel = register { a =>
       lock.synchronized:
         v = a
         done = true
         lock.notifyAll()
     }
-    lock.synchronized:
-      while !done do lock.wait()
+    try
+      lock.synchronized:
+        while !done do lock.wait()
+    catch case e: Throwable => { cancel(); throw e }
     v
 
-/** the timer: a thread sleeps for the duration */
+/** the timer: a thread sleeps for the duration; cancelling
+ * interrupts it out of the sleep */
 given Timer = new:
-  def after(millis: Long)(k: () => Unit): Unit =
+  def after(millis: Long)(k: () => Unit): () => Unit =
     val t = Thread(() =>
       try { Thread.sleep(millis); k() }
       catch case _: InterruptedException => ())
     t.start()
+    () => t.interrupt()
 
 /** one OS thread per fiber */
 given Scheduler = new:
