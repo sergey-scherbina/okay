@@ -120,6 +120,58 @@ value or says what is still missing. Two consequences: downstream
 work can start early, and generation can be CUT the moment the value
 is structurally complete (fewer tokens billed).
 
+## Durability: replay, not serialization
+
+The problem LangGraph solves with a checkpointer and a graph of
+nodes. Our answer starts from what we already have: every
+nondeterministic thing in a program is an OPERATION (a model call, a
+tool, a clock read, a random draw, a Choose), so a journal of
+`(operation fingerprint, answer)` pairs is a complete recording of
+everything the outside world contributed. Restart = run the program
+again with a handler that answers from the journal until it runs out,
+then hands over to the live handlers.
+
+**What is skipped and what is not.** The journal-fed handler does NOT
+re-execute effects: no second model call, no repeated tool
+side-effect, no network. What DOES re-run is the pure glue between
+operations — the flatMap continuations. That is the honest cost, and
+it is small: our own bind-chain lane measures a 10 000-step chain at
+~95us, so re-running the pure part of a several-hundred-step agent
+costs less than a single generated token. The expensive steps are
+exactly the ones replay skips.
+
+**When the glue is NOT cheap, three dials, in order of preference:**
+
+1. *Make it an operation.* Anything you do not want recomputed —
+   a large parse, an expensive fold over a tool's output — becomes an
+   effect, and is then journaled and skipped like any other. The
+   effect row is the dial between "recomputed" and "recorded", chosen
+   per computation by where the boundary is drawn.
+2. *Snapshot the state and resume from it.* An agent written as a
+   FOLD over turns (which `Agent.converse` already is: the Context
+   accumulator is the state) has its resume point determined by the
+   state, not by a continuation — so a serialized accumulator (via
+   `Schema`, like everything else here) lets the replay start at the
+   last checkpoint instead of the beginning, and the journal before
+   it can be truncated. This is the LangGraph model, available as a
+   DISCIPLINE (`Durable.step`) rather than imposed as the only shape.
+3. *Accept the replay.* For most agents, the glue is microseconds.
+
+**Two hazards, both stated rather than hidden:**
+
+- *Code drift.* If the program changed between runs, the operations
+  it requests may not match the journal. Each entry therefore carries
+  a fingerprint (the operation's class plus a hash of its arguments);
+  a mismatch stops the replay loudly at that point instead of feeding
+  an answer to the wrong question — the caller decides whether to
+  continue live from there or refuse.
+- *The crash window.* A process that dies after a tool ran but before
+  its answer was journaled cannot know the outcome. Write the INTENT
+  ahead and the answer after; on replay an intent without an answer
+  is an explicit "unknown", and the handler's policy decides
+  (re-execute when idempotent, ask a human, or fail) — the same
+  at-least-once honesty as the Kafka source.
+
 ## Interop, not reimplementation
 
 The P3 doctrine applies verbatim: `okay-langchain4j` makes their
