@@ -65,20 +65,22 @@ decided at implementation; see stage-pipeline.md).
   run retains none, one code path.
 
 ## Behavior
-- [ ] totality: every token stream yields a CST; truncated input
+- [x] totality: every token stream yields a CST; truncated input
       yields a tree with holes (the LLM-streaming case), never a fault
-- [ ] lossless: concatenated lexemes of the CST == the input
-      (round-trip through lex + parse + build)
-- [ ] error nodes carry exact spans; diagnostics reference them
-- [ ] the VM driver and the combinator surface produce the same CST
-      for the proving dialect (JSON)
-- [ ] recovery: a missing closer/separator damages one node, not the
-      rest of the tree (sibling recovery test)
-- [ ] streaming: a prefix of the input yields a prefix-consistent
-      tree that the remainder refines (monotone growth test)
+- [x] lossless: concatenated lexemes of the CST == the input
+      (round-trip through lex + parse + build, trivia included)
+- [x] error nodes carry exact spans (their tokens do); Cst.errors
+      collects the diagnostics from the tree
+- [x] the VM driver and the combinator surface produce the same CST
+      for the proving dialect (JSON), damaged inputs included
+- [x] recovery: a bad token damages one leaf, not the tree; a close
+      with nothing open is an error leaf (sibling recovery tests)
+- [x] streaming: a prefix of the input yields a prefix-consistent
+      tree that the remainder refines
 - [ ] incremental: after an edit, unchanged subtrees are reused by
-      reference (identity test), and the reparse touches O(damage),
-      not O(input)
+      reference and the reparse touches O(damage) — deferred: rides
+      okay-lex reconvergence plus node-boundary driver snapshots; the
+      relex layer is in place, the parse layer is the follow-up
 
 ## Out of scope
 - semantic projections (JSON values, documents) — okay-codec

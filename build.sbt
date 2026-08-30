@@ -154,9 +154,17 @@ lazy val okayLex = (project in file("okay-lex"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/** streaming error-tolerant parsing: total, lossless, two surfaces (P5) */
+lazy val okayParse = (project in file("okay-parse"))
+  .dependsOn(okayLex)
+  .settings(
+    name := "okay-parse",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val root = (project in file("aggregate"))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okaySpark, okayFlink, okayJdbc, okayLex, compare)
+    okaySpark, okayFlink, okayJdbc, okayLex, okayParse, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,
