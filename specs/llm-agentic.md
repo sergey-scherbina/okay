@@ -276,6 +276,37 @@ the fingerprint and stops the replay loudly.
   (re-execute when idempotent, ask a human, or fail) — the same
   at-least-once honesty as the Kafka source.
 
+## A live provider (shipped)
+
+`Provider.openAi` is a `Handler[Model]` speaking the
+OpenAI-compatible protocol — the one OpenAI, Groq, Together,
+OpenRouter, Fireworks and the local runtimes (Ollama, vLLM,
+llama.cpp) all serve, so one handler reaches most of the market.
+Nothing above the effect changed to accommodate it: the same
+`converse` loop, the same compaction policy, the same derived tool
+schemas, now against the real request and response shapes. Only the
+socket is mocked in the tests, and no live call has been made from
+this repository yet — that is the one honest gap left.
+
+Details worth recording:
+- The REQUEST is built as a `Json` value and printed, because a
+  tool's `parameters` is an arbitrary JSON Schema that a derived
+  codec has no business describing; the RESPONSE is decoded by
+  derived Schemas through the total pipeline.
+- `handle` must answer a value, so the async program runs to
+  completion inside the handler and a virtual thread parks on the
+  wire — the same Loom trade the interop modules make.
+- The agent door is the NON-streaming completion, since the loop
+  needs whole tool calls before it can run them; `OpenAi.stream` is
+  the token-by-token door for the streaming use.
+- Found by this work, and fixed in okay-codec: a truncated document
+  leaves an "unclosed" marker where its last array element would be,
+  and one such element used to fail the decode of the WHOLE list —
+  throwing away the elements that did arrive, which is the opposite
+  of why the stack is total. Error elements are now skipped (and a
+  damaged optional field decodes as absent); the damage stays visible
+  in the projection and in `Cst.errors`.
+
 ## Interop, not reimplementation
 
 The P3 doctrine applies verbatim: `okay-langchain4j` makes their

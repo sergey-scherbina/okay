@@ -1,0 +1,76 @@
+package okay.agent
+
+import okay.{!, Handler, given}
+import okay.codec.Json
+import okay.lex.{Bpe, Scan}
+import okay.llm.{OpenAi, Transport}
+
+/**
+ * A live model behind the `Model` effect. Everything in this library
+ * above the effect — the compaction algebra, the search strategies,
+ * grounded recall, the durable journal — was written against a
+ * scripted handler; this is the handler that makes the same programs
+ * talk to a real provider, and nothing above it changes.
+ *
+ * The protocol is OpenAI-compatible, which is what OpenAI, Groq,
+ * Together, OpenRouter, Fireworks and the local runtimes (Ollama,
+ * vLLM, llama.cpp) all serve — one handler, most of the market. Only
+ * the socket is mocked in the tests; the request and response shapes
+ * are the real ones.
+ *
+ * Loom is why this can be a comonadic handler at all: `handle` must
+ * answer a value, so the async program runs to completion inside it
+ * and a virtual thread parks on the wire. That is the same trade the
+ * interop modules make, and it is stated rather than hidden.
+ */
+object Provider {
+
+  /** turns as the wire wants them */
+  def message(t: Turn): Json = t match
+    case Turn.System(s) => OpenAi.message("system", s)
+    case Turn.User(s) => OpenAi.message("user", s)
+    case Turn.Assistant(s, calls) =>
+      OpenAi.message("assistant", s, calls = calls.map(c =>
+        (c.id, c.name, Json.print(c.args))))
+    case Turn.Result(id, c) => OpenAi.message("tool", c, toolCallId = Some(id))
+    // a compaction marker is context, and context is a system turn
+    case Turn.Summary(s, _) => OpenAi.message("system", s)
+
+  def declaration(spec: ToolSpec): Json =
+    OpenAi.tool(spec.name, spec.description, spec.schema)
+
+  /** what one response means to the agent: the text and the calls */
+  def reply(r: OpenAi.Response): Reply =
+    r.choices.headOption.flatMap(_.message) match
+      case None => Reply("", Nil)
+      case Some(m) =>
+        val calls = m.tool_calls.getOrElse(Nil).map { c =>
+          // OpenAI passes arguments as a STRING of JSON; our parser is
+          // total, so a truncated one becomes a value with holes
+          // rather than a failure here
+          ToolCall(c.id, c.function.name, Json.parse(c.function.arguments))
+        }
+        Reply(m.content.getOrElse(""), calls)
+
+  /**
+   * The handler. `count` is local (a BPE Scan, no provider call) so
+   * the compaction budget never costs a round trip.
+   */
+  def openAi(transport: Transport, apiKey: String, model: String,
+             url: String = OpenAi.chatUrl,
+             maxTokens: Option[Int] = Some(1024),
+             count: String => Int = _.length / 4)
+            (using okay.Handler[okay.Async]): Handler[Model] = new:
+    def handle[A](e: Model[A]): A = e match
+      case Model.Complete(context, tools) =>
+        val body = OpenAi.request(model,
+          context.map(message), tools.map(declaration),
+          stream = false, maxTokens)
+        // the virtual thread parks here; the row above stays a program
+        reply(OpenAi.complete(transport, apiKey, body, url).runWith)
+      case Model.Count(text) => count(text)
+
+  /** the local tokenizer as the counter, when a dictionary is at hand */
+  def counting(bpe: Bpe): String => Int = s =>
+    Scan.all(bpe)(s).tokens.count(_.channel == okay.lex.Channel.Syntax)
+}

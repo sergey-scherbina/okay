@@ -143,15 +143,26 @@ object Json {
     case (Schema.SOption(of), v) =>
       decode(of().asInstanceOf[Schema[Any]])(v).map(Some(_).asInstanceOf[A])
     case (Schema.SList(of), JArr(vs)) =>
-      vs.foldLeft(Right(List.empty[Any]): Either[String, List[Any]]) { (acc, v) =>
-        acc.flatMap(xs => decode(of().asInstanceOf[Schema[Any]])(v).map(xs :+ _))
-      }.map(_.asInstanceOf[A])
+      // A truncated document leaves an "unclosed" marker where its
+      // last element would be, and a damaged one leaves a JErr in
+      // place of a value. Failing the whole list on either would
+      // throw away the elements that DID arrive — which is the exact
+      // opposite of why this stack is total. So error elements are
+      // skipped here; they remain visible in the projection
+      // (Json.parse) and in the tree (Cst.errors) for anyone who
+      // wants to know that the document was damaged.
+      vs.filterNot(_.isInstanceOf[JErr])
+        .foldLeft(Right(List.empty[Any]): Either[String, List[Any]]) { (acc, v) =>
+          acc.flatMap(xs => decode(of().asInstanceOf[Schema[Any]])(v).map(xs :+ _))
+        }.map(_.asInstanceOf[A])
     case (p: Schema.SProduct[A], JObj(fs)) =>
       val m = fs.toMap
       p.fields.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, f) =>
         acc.flatMap { xs =>
           (m.get(f._1), f._2()) match
             case (None, _: Schema.SOption[?]) => Right(xs :+ None)   // absent optional
+            // a damaged optional value is the same as an absent one
+            case (Some(JErr(_)), _: Schema.SOption[?]) => Right(xs :+ None)
             case (found, sc) => found.toRight(s"missing field '${f._1}' in ${p.name}")
               .flatMap(decode(sc.asInstanceOf[Schema[Any]])).map(xs :+ _)
         }
