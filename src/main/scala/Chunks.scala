@@ -79,7 +79,7 @@ object Chunks {
 
   /** pull one chunk: the pure step of a chunked stream */
   private[okay] def pull[A](p: Chunks[A]): Option[(Chunk[A], Chunks[A])] =
-    summon[Stream[Producer, Zero]].uncons(p).runWith
+    summon[Stream[Producer, okay.Pure]].uncons(p).runWith
 
   /**
    * The chunk-in, chunk-out transformers: each stage is a tight array
@@ -156,7 +156,7 @@ object Chunks {
   /** the terminal: run a Fold, an inner while per chunk */
   def fold[A, S](p: Chunks[A])(using fo: Fold[A, S]): S =
     var s = fo.init
-    val it = summon[Stream[Producer, Zero]].iterator(p)
+    val it = summon[Stream[Producer, okay.Pure]].iterator(p)
     while it.hasNext do
       val c = it.next()
       var i = 0
@@ -273,9 +273,9 @@ object Chunks {
   extension [A](p: Chunks[A])
     /** the element view: one tree step per chunk, an index per element */
     def elements: Iterator[A] =
-      summon[Stream[Producer, Zero]].iterator(p).flatMap(_.iterator)
+      summon[Stream[Producer, okay.Pure]].iterator(p).flatMap(_.iterator)
 
     /** the chunks, memoized (first-order: see merge) */
     def toLazyList: LazyList[Chunk[A]] =
-      LazyList.from(summon[Stream[Producer, Zero]].iterator(p))
+      LazyList.from(summon[Stream[Producer, okay.Pure]].iterator(p))
 }

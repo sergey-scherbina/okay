@@ -9,10 +9,10 @@ package okay
  *
  * The observation is EFFECTFUL: uncons answers in the effect F, so a
  * stream may perform work — wait, read, sleep — to produce its next
- * element. A pure stream takes F = Zero (= Nothing, the empty
+ * element. A pure stream takes F = Pure (= Nothing, the empty
  * signature), whose Handler is trivial; an asynchronous stream takes
  * F = Async, and on Loom its consumer just blocks a virtual thread
- * per element. Consumption needs a Handler[F] in scope — for Zero it
+ * per element. Consumption needs a Handler[F] in scope — for Pure it
  * always is.
  *
  * LazyList is the final coalgebra of X => Option[(A, X)] — the
@@ -35,13 +35,13 @@ trait Stream[S[_], F[+_]]:
     Iterator.unfold(s)(uncons(_).runWith)
 
 /** the final coalgebra observes itself, purely */
-given Stream[LazyList, Zero] with
-  def uncons[A](s: LazyList[A]): Option[(A, LazyList[A])] ! Zero =
+given Stream[LazyList, Pure] with
+  def uncons[A](s: LazyList[A]): Option[(A, LazyList[A])] ! Pure =
     pure(if s.isEmpty then None else Some((s.head, s.tail)))
 
 /** a List is a (finite, strict, pure) stream */
-given Stream[List, Zero] with
-  def uncons[A](s: List[A]): Option[(A, List[A])] ! Zero = pure(s match
+given Stream[List, Pure] with
+  def uncons[A](s: List[A]): Option[(A, List[A])] ! Pure = pure(s match
     case a :: t => Some((a, t))
     case Nil => None)
 

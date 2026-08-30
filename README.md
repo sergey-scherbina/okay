@@ -56,7 +56,7 @@ Zero dependencies. JDK 21+ (Loom).
 ## Streams
 
 A stream is codata: one observation, `uncons` — effectful, in
-`Stream[S[_], F[+_]]` (F = `Zero` for pure, `Async` for awaited
+`Stream[S[_], F[+_]]` (F = `Pure` for pure, `Async` for awaited
 elements). LazyList is the final coalgebra every stream unfolds into.
 Consumption modes, slow-to-fast on a map/filter/take(1000)/sum
 pipeline (JMH, us/op; plain Iterator floor = 14.1):

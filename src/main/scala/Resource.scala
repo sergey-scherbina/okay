@@ -75,7 +75,7 @@ object Resource {
 }
 
 /**
- * Bracket over any Handler-able row F (Async, Produce, Zero, ...):
+ * Bracket over any Handler-able row F (Async, Produce, Pure, ...):
  * acquire, use, release — the use-program runs to completion inside
  * one suspension, so no outer handler can skip or repeat the release;
  * a fiber's cancellation is an interrupt exception, and the finally

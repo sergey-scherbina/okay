@@ -41,7 +41,7 @@ class TestStream extends munit.FunSuite {
     given Fold[Int, Int] = new:
       def init: Int = 0
       def add(s: Int, a: Int): Int = s + a
-    assertEquals(Stream.fold[Producer, Zero, Int, Int](p12), 3)
+    assertEquals(Stream.fold[Producer, okay.Pure, Int, Int](p12), 3)
     assertEquals(nats[Int, Producer].take(5).foldLeft(0)(_ + _), 10)
   }
 
@@ -64,9 +64,9 @@ class TestStream extends munit.FunSuite {
     assertEquals(1 |+| 2, 3)
     assertEquals("a" |+| "b", "ab")
     assertEquals((LazyList(1) |+| LazyList(2)).toList, List(1, 2))
-    assertEquals(Stream.fold[Producer, Zero, Int, Int](p12), 3)          // Fold from Monoid[Int]
+    assertEquals(Stream.fold[Producer, okay.Pure, Int, Int](p12), 3)          // Fold from Monoid[Int]
     val words = produce("ab").flatMap(_ => produce("c"))
-    assertEquals(Stream.fold[Producer, Zero, String, String](words), "abc")
+    assertEquals(Stream.fold[Producer, okay.Pure, String, String](words), "abc")
   }
 
   test("instances: Fold primitives and Foldable[Producer]") {

@@ -133,6 +133,6 @@ given Put[Teller] with
  * observation as Writer.uncons with the answer forgotten (Left becomes
  * the end) — an infinite teller unfolds on demand like any stream.
  */
-given [A]: Stream[[W] =>> A ! Writer % W, Zero] = new:
-  def uncons[W](s: A ! Writer % W): Option[(W, A ! Writer % W)] ! Zero =
+given [A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
+  def uncons[W](s: A ! Writer % W): Option[(W, A ! Writer % W)] ! Pure =
     pure(Writer.uncons(s).toOption)

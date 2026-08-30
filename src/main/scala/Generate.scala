@@ -58,7 +58,7 @@ given Put[LazyList] with
     shift(a #:: _(a))
 
 /** the identity signature: an operation is the value it produces */
-type Produce[A] = Pure[A]
+type Produce[A] = Id[A]
 
 /** the freer monad over Produce: a computation that emits as it goes */
 type Producer[A] = A ! Produce
@@ -91,11 +91,11 @@ object Producer {
  * the operations are erased by the identity — the value type A is the
  * only witness left.
  */
-given Stream[Producer, Zero] with
+given Stream[Producer, okay.Pure] with
   import !.*
   import scala.annotation.tailrec
 
-  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! Zero = pure(p.resume match
+  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! okay.Pure = pure(p.resume match
     case Free.Pure(_) => None
     case Effect(e) => Some((e, Free.Pure(e)))
     case Bind(Effect(e), k) => Some((e.asInstanceOf[A], k(e))))
@@ -103,7 +103,7 @@ given Stream[Producer, Zero] with
   /** the specialized linear view: a direct walk of the freer tree —
    * no Option, no tuple per element (measured; the generic default
    * pays both). What remains per element is the stepping itself. */
-  override def iterator[A](p: Producer[A])(using Handler[Zero]): Iterator[A] =
+  override def iterator[A](p: Producer[A])(using Handler[okay.Pure]): Iterator[A] =
     new Iterator[A]:
       private var cur: Producer[A] = p
       private var ready = false

@@ -89,4 +89,4 @@ object Channel {
  * abstracts the wrong slot through the nested alias) */
 def mergeChunks[A](s: Chunks[A], t: Chunks[A], capacity: Int = Int.MaxValue)
                   (using Scheduler): Channel[Chunk[A]] =
-  Channel.merge[Chunk[A], Producer, Zero, Producer, Zero](s, t, capacity)
+  Channel.merge[Chunk[A], Producer, Pure, Producer, Pure](s, t, capacity)

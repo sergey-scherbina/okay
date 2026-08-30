@@ -27,10 +27,11 @@ import scala.reflect.Typeable
 /** fix the parameter of a binary signature: State % S, Throws % E */
 infix type %[F[_, _], S] = F[S, *]
 
-/** the empty signature, the zero of the union algebra (F + Zero = F):
- * no operations, so A ! Zero is a pure computation — the readable
- * name of Nothing in an effect position, e.g. Stream[LazyList, Zero] */
-type Zero = Nothing
+/** the empty signature: no operations, so a computation over it is
+ * PURE — A ! Pure has nothing to perform. The zero of the union
+ * algebra (F + Pure = F). In scopes that import !.* the name is
+ * shadowed by the Free.Pure case: write okay.Pure there. */
+type Pure = Nothing
 
 /** the union of two signatures: F + G */
 infix type +[F[+_], G[+_]] = [A] =>> F[A] | G[A]

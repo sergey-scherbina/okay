@@ -104,16 +104,16 @@ trait Comonad[F[_]] extends Functor[F]:
     def coflatMap[B](f: F[A] => B): F[B]
 
 /**
- * the identity context: a bare value. CAUTION, a known footgun: the
- * given Comonad[Pure] below puts map/extract extensions on EVERY type
+ * the identity context (the Id functor): a bare value. CAUTION, a known footgun: the
+ * given Comonad[Id] below puts map/extract extensions on EVERY type
  * in lexical scope of the package — it has contested `.map` on the
  * throws union and hijacked kyo's `.map` in benchmarks; prefer
  * flatMap or explicit calls when a foreign `.map` misbehaves here.
  */
-type Pure[A] = A
+type Id[A] = A
 
 /** a value is trivially its own context */
-given Comonad[Pure] with
+given Comonad[Id] with
   override inline def fmap[A, B](a: A, f: A => B): B = f(a)
   extension [A](a: A) {
     override inline def extract: A = a
