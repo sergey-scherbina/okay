@@ -56,6 +56,27 @@ object Chunks {
 
     go(from)
 
+  /**
+   * Chunk up a (mutable, linear) iterator: size elements per chunk,
+   * pulled lazily — the iterator advances only as chunks are pulled,
+   * so an infinite iterator is fine. The stream is as linear as its
+   * source: re-observation re-reads the SAME iterator.
+   */
+  def fromIterator[A](it: Iterator[A], size: Int = 64): Chunks[A] =
+    def go(): Chunks[A] = pure[Produce, Unit](()).flatMap: _ =>
+      if !it.hasNext then end
+      else
+        val arr = new Array[AnyRef](size)
+        var i = 0
+        while i < size && it.hasNext do
+          arr(i) = it.next().asInstanceOf[AnyRef]
+          i += 1
+        val c = if i == size then wrap[A](arr)
+                else wrap[A](java.util.Arrays.copyOf(arr, i))
+        produce(c).flatMap(_ => go())
+
+    go()
+
   import scala.math.Numeric.Implicits.given
 
   /** the naturals: 0, 1, 2, ... in chunks */

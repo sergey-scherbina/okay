@@ -25,9 +25,9 @@ inward, value conversions outward, nothing more (module minimalism).
   map to our Chunks losslessly); Pipe ⇄ Stage.
 
 ## Behavior
-- [ ] round-trips preserve results and (for streams) chunk boundaries
+- [x] round-trips preserve results and (for streams) chunk boundaries
       where both sides are chunked
-- [ ] laziness survives conversion (an infinite okay stream converted
+- [x] laziness survives conversion (an infinite okay stream converted
       to fs2/ZStream still pulls on demand, and back)
 - [ ] instances pass the ecosystem's own law suites (cats-laws etc.,
       test scope only)

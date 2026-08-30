@@ -51,8 +51,42 @@ lazy val okayCats = (project in file("okay-cats"))
     ),
   )
 
+/** interop with ZIO: Async <-> ZIO, ZStream <-> Chunks (P3) */
+lazy val okayZio = (project in file("okay-zio"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-zio",
+    libraryDependencies ++= Seq(
+      "dev.zio" %% "zio" % "2.1.14",
+      "dev.zio" %% "zio-streams" % "2.1.14",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
+/** interop with kyo: value and Async bridges (P3) */
+lazy val okayKyo = (project in file("okay-kyo"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-kyo",
+    libraryDependencies ++= Seq(
+      "io.getkyo" %% "kyo-core" % "0.16.2",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
+/** interop with fs2: Stream <-> Chunks, chunk for chunk (P3) */
+lazy val okayFs2 = (project in file("okay-fs2"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-fs2",
+    libraryDependencies ++= Seq(
+      "co.fs2" %% "fs2-core" % "3.10.2",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 lazy val root = (project in file("aggregate"))
-  .aggregate(okay.jvm, okay.js, okay.native, okayCats, compare)
+  .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,
