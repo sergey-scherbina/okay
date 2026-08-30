@@ -104,8 +104,8 @@ why a cut-off LLM answer still decodes:
 ```scala
 case class Answer(city: String, country: String)
 given Schema[Answer] = Schema.derived
-Json.read[Answer]("""{"city": "Kyiv", "country": "Ukra""")
-// Right(Answer("Kyiv", "Ukra"))
+Json.read[Answer]("""{"city": "Kyiv", "country": "Ukraine""")
+// Right(Answer("Kyiv", "Ukraine"))
 ```
 
 ## 7. Where to go next
