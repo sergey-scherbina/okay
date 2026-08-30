@@ -130,6 +130,7 @@ accident you discover in production. Costs no tool call per turn.
 
 Lineage-backed tool results (the model sees a projection, a follow-up
 re-observes the full stream), streaming validation that cuts
-generation when the value is structurally complete, and the
-`okay-langchain4j` interop that would make their providers handlers
-for `Model`.
+generation the moment the value is structurally complete, durability
+by replay (specs/llm-agentic.md), and provider handlers — an
+OpenAI-compatible one covers most of the market, including the local
+runtimes.

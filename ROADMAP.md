@@ -148,10 +148,14 @@ drift); incremental re-indexing at O(damage) over lex/parse
 reconvergence; retrieval and chat memory sharing ONE budget and one
 fold; passages kept as lineage (lossy in the view, lossless in the
 source); and an index that is an Aggregator, so distribution and
-incremental update are the same operation. Phases: documents and
-splitting (a), embeddings and the store INTERFACE (b), retrieval
-pipelines with fair interleaving and fusion (c), resilient ingestion
-and damage-proportional re-indexing (d), keyword/hybrid (e).
+incremental update are the same operation. Phases, all shipped 2026-08-31: documents and splitting (a),
+embeddings and the store INTERFACE (b), retrieval pipelines with fair
+interleaving and fusion (c), resilient ingestion and
+damage-proportional re-indexing (d), keyword/hybrid (e), and code as
+the proving corpus (f) — definitions with their doc comments, a
+symbol index that is a Monoid, and retrieval-augmented `recall` in
+okay-agent, where conversation and code share ONE budget and the
+common case costs no tool call.
 
 Note what is deliberately absent: no Runnable/LCEL layer — flatMap,
 Stage/through and Chunks already are invoke/stream/batch, typed.
