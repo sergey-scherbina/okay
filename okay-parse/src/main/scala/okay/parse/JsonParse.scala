@@ -28,12 +28,18 @@ object JsonParse {
       case Some(t) => step(t).flatMap(_ => driver)
     }
 
-  private def step(t: T): Stage[T, Instr[K], Unit] = t.kind match
-    case K.LBrace => tell(Instr.Open("object", Some(t)))
-    case K.LBracket => tell(Instr.Open("array", Some(t)))
-    case K.RBrace | K.RBracket => tell(Instr.Close(Some(t)))
-    case K.Bad => tell(Instr.Bad(Some(t), s"unexpected '${t.lexeme}'"))
-    case _ => tell(Instr.Emit(t))
+  /** the per-token core both the streaming driver and the
+   * incremental reparse share: a token maps to its instructions with
+   * no cross-token state (the reconvergence contract) */
+  val instrs: T => Vector[Instr[K]] = t => t.kind match
+    case K.LBrace => Vector(Instr.Open("object", Some(t)))
+    case K.LBracket => Vector(Instr.Open("array", Some(t)))
+    case K.RBrace | K.RBracket => Vector(Instr.Close(Some(t)))
+    case K.Bad => Vector(Instr.Bad(Some(t), s"unexpected '${t.lexeme}'"))
+    case _ => Vector(Instr.Emit(t))
+
+  private def step(t: T): Stage[T, Instr[K], Unit] =
+    instrs(t).foldLeft(pure(()): Stage[T, Instr[K], Unit])((m, i) => m.flatMap(_ => tell(i)))
 
   // ------------------------------------------------------------------
   // the combinator surface: little total parsers over Take, compiling

@@ -1,6 +1,6 @@
 package okay.lex
 
-import okay.{!, %, Writer, pipe, through, pure}
+import okay.{!, %, Chunks, Writer, pipe, through, pure}
 import okay.given
 import okay.toLazyList
 import Json.K
@@ -76,5 +76,15 @@ class TestLex extends munit.FunSuite {
     val old = Scan.all(Json.scan)(oldInput, snapshotEvery = 4)
     val relexed = Scan.relex(Json.scan)(old, oldInput, newInput, 6, 7, 8, 4)
     assertEquals(relexed.tokens, Scan.all(Json.scan)(newInput, 4).tokens)
+  }
+
+  test("chunked lexing agrees with element-wise; boundary tokens emitted once") {
+    // long tokens guarantee chunk-boundary crossings at small sizes;
+    // some garbage keeps the Error channel in play
+    val input = "{\"a long string token\": 123456789, \n \"b\": [true, nu ll]}"
+    val expected = Scan.all(Json.scan)(input).tokens.toSeq
+    for size <- List(1, 2, 3, 5, 7, 64) do
+      val chunked = Scan.chunks(Json.scan)(Chunks.fromIterator(input.iterator, size))
+      assertEquals(Chunks.fold(chunked), expected, s"chunk size $size")
   }
 }

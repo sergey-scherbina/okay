@@ -68,4 +68,37 @@ class TestParse extends munit.FunSuite {
       case Cst.Err(t, _) => t.map(_.lexeme).toVector
     assert(toks(full).mkString.startsWith(toks(half).mkString.dropRight(1)))
   }
+
+  val doc =
+    "{\"alpha\": [1, 2, 3],\n \"beta\": 123,\n \"gamma\": {\"x\": true},\n \"delta\": [4, 5]}"
+
+  /** the nested object node (gamma's value) inside the root object */
+  def gammaNode(t: Cst[K]): Cst[K] =
+    val Cst.Node(_, rootKids) = t: @unchecked
+    val Some(obj @ Cst.Node("object", kids)) = rootKids.headOption: @unchecked
+    kids.collectFirst { case n @ Cst.Node("object", _) => n }.get
+
+  test("incremental reparse: a length-preserving edit reuses subtrees by reference") {
+    val old = Parse.full(JsonLex.scan, JsonParse.instrs)(doc, snapshotEvery = 8)
+    val edited = doc.replace("123", "987")
+    assertEquals(edited.length, doc.length)
+    var steps = 0
+    val probe: Token[K] => Vector[Instr[K]] = t => { steps += 1; JsonParse.instrs(t) }
+    val at = doc.indexOf("123")
+    val re = Parse.reparse(JsonLex.scan, probe)(old, doc, edited, at, at + 3, at + 3, 8)
+    assertEquals(re.tree, Parse.full(JsonLex.scan, JsonParse.instrs)(edited).tree)
+    assert(steps < old.lexed.tokens.length / 2,
+      s"not incremental: $steps of ${old.lexed.tokens.length} tokens re-driven")
+    assert(gammaNode(re.tree) eq gammaNode(old.tree),
+      "the untouched subtree must be the SAME object, not a rebuild")
+  }
+
+  test("incremental reparse: a length-changing edit still equals the full parse") {
+    val old = Parse.full(JsonLex.scan, JsonParse.instrs)(doc, snapshotEvery = 8)
+    val edited = doc.replace("123", "1")   // two chars shorter
+    val at = doc.indexOf("123")
+    val re = Parse.reparse(JsonLex.scan, JsonParse.instrs)(old, doc, edited, at, at + 3, at + 1, 8)
+    assertEquals(re.tree, Parse.full(JsonLex.scan, JsonParse.instrs)(edited).tree)
+    assertEquals(Cst.lexemes(re.tree), edited)   // spans rebased, content exact
+  }
 }

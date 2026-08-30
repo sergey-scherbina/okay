@@ -44,7 +44,10 @@ performance path; `lexer` derives both from one Scan.
   run keeps none); the module provides the resume-and-reconverge loop.
 
 ## Behavior
-- [ ] a token spanning a chunk boundary is emitted once, correctly
+- [x] a token spanning a chunk boundary is emitted once, correctly —
+      the Scan state crosses boundaries as a value, the token lands
+      in whichever chunk completes it (agreement across chunk sizes
+      1..64 is the proof: a split or doubled token would break it)
 - [x] totality: arbitrary bytes/chars produce a token stream (Error
       channel), never an exception
 - [x] flush emits the buffered tail token(s) at end of input
@@ -56,7 +59,9 @@ performance path; `lexer` derives both from one Scan.
       damaged region (probe: under half the input re-stepped; the
       key/rebase pair on Scan is what makes position-carrying states
       comparable across the shift)
-- [ ] chunked lexing agrees with element-wise lexing
+- [x] chunked lexing agrees with element-wise lexing — Scan.chunks:
+      chunk of chars in, chunk of tokens out, one tight while per
+      chunk, the same Scan deriving both paths
 
 ## Out of scope
 - parsing (okay-parse), codec semantics (okay-codec)

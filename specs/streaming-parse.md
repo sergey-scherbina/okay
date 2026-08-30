@@ -77,10 +77,19 @@ decided at implementation; see stage-pipeline.md).
       with nothing open is an error leaf (sibling recovery tests)
 - [x] streaming: a prefix of the input yields a prefix-consistent
       tree that the remainder refines
-- [ ] incremental: after an edit, unchanged subtrees are reused by
-      reference and the reparse touches O(damage) — deferred: rides
-      okay-lex reconvergence plus node-boundary driver snapshots; the
-      relex layer is in place, the parse layer is the follow-up
+- [x] incremental: after an edit, unchanged subtrees are reused by
+      reference and the reparse touches O(damage) — Parse.full keeps
+      (tokenIndex, Building) snapshots at root-level node boundaries
+      (Building is persistent: a snapshot is a pointer); reparse
+      relexes (okay-lex reconvergence), resumes the builder from the
+      nearest boundary before the damage, and SPLICES once the token
+      stream is the old one again at a matching boundary. Reuse is by
+      REFERENCE (eq-tested) for a length-preserving edit, rebased
+      spans otherwise (the absolute-span tax; relative spans are the
+      future refinement). The per-token driver contract (a token maps
+      to instructions with no cross-token state) is what makes
+      token-level reconvergence sound — JsonParse.instrs is that
+      function, and both the streaming driver and reparse share it.
 
 ## Out of scope
 - semantic projections (JSON values, documents) — okay-codec

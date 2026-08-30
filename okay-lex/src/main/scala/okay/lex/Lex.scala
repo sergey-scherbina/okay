@@ -56,6 +56,37 @@ object Scan {
 
     go(sc.init)
 
+  /**
+   * The chunked performance path: a chunk of chars in, a chunk of
+   * tokens out, one tight while-loop per chunk — the SAME Scan, so
+   * the state crosses chunk boundaries as a value and a token
+   * spanning chunks is emitted exactly once, when it completes (in
+   * whichever chunk that happens). Empty output chunks are skipped;
+   * flush finishes the tail at end of input.
+   */
+  def chunks[K, S](sc: Scan[K, S])(chars: Chunks[Char]): Chunks[Token[K]] =
+    def emit(ts: Vector[Token[K]], rest: => Chunks[Token[K]]): Chunks[Token[K]] =
+      if ts.isEmpty then rest
+      else okay.produce(Chunks.wrap[Token[K]](
+        ts.toArray[Any].asInstanceOf[Array[AnyRef]])).flatMap(_ => rest)
+
+    def go(s: S, rest: Chunks[Char]): Chunks[Token[K]] = Chunks.defer {
+      Chunks.pull(rest) match
+        case Some((c, r)) =>
+          val out = Vector.newBuilder[Token[K]]
+          var st = s
+          var i = 0
+          while i < c.length do
+            val (s2, ts) = sc.step(st, c(i))
+            out ++= ts
+            st = s2
+            i += 1
+          emit(out.result(), go(st, r))
+        case None => emit(sc.flush(s), Chunks.end)
+    }
+
+    go(sc.init, chars)
+
   /** everything lexed at once, with the snapshots incremental
    * relexing resumes from */
   final case class Lexed[K, S](tokens: Vector[Token[K]],
