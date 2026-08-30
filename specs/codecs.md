@@ -55,6 +55,16 @@ design away, its direction is right (the user's assessment).
       over the SAME Schema (RFC 8949: products = maps by field name,
       sums = one-entry maps by case name, None = null); both decode
       to equal values, decode errors are Left, truncation included
+- [x] YAML: the indentation dialect (Yaml.scala) — scanner with two
+      one-char lookaheads (PendingDash: `-5` vs `- item`;
+      PendingColon: `http://x` vs `key: v`), instruction fold with an
+      indent stack (dedents close frames, `- ` opens sequences, a
+      scalar before `: ` was a key), projection into the SAME Json
+      values so the one decode algebra serves a third wire
+      (`Yaml.read[Person]` through the derived Schema). Lossless
+      (comments and indentation are tokens), total (an orphan colon
+      is an error leaf). v1 subset: block styles only — flow, anchors,
+      tags, block scalars out of scope.
 
 ## Out of scope
 - schema languages/validation; a transport module (its own, later)

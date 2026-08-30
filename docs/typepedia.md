@@ -52,7 +52,14 @@ same material with the measurements attached.
 - **`Throws % E`** — typed aborts; `runEither/runThrows`; the `throws`
   union type for direct style.
 - **`Choose`** — nondeterminism; the handler is genuinely multi-shot;
-  the canonical `MonadPlus`.
+  the canonical `MonadPlus`. A `LazyList` of alternatives is an
+  INFINITE choice point (Seq is the parameter, laziness crosses).
+- **`Logic`** — backtracking search over Choose (LogicT): `msplit`
+  (first answer + the rest as a program — the one primitive), `once`
+  (cut), `ifte` (soft cut), `gnot` (negation as failure),
+  `interleave` (fair or), `fairBind`/`>>-` (fair bind), `observe(n)`
+  (first n of an infinite search). A library over the effect, not a
+  new effect. See specs/backtracking.md.
 - **`Async`** — `Run(thunk)` (blocking = a JVM/Native ability) and
   `Await(register)` (the universal callback form; the callback takes
   `Either[Throwable, A]` — the Left is the error channel and fails
@@ -77,6 +84,22 @@ same material with the measurements attached.
 - **`Resource`** — the region: acquires release at the scope's end in
   reverse order, surviving handled aborts and mid-step exceptions;
   run it OUTERMOST.
+
+## The typeclass hierarchy (Monad.scala)
+
+- **`Functor` → `Applicative` → `Selective` → `Monad`**, plus
+  **`Alternative` → `MonadPlus`** and **`Comonad`** (the basis of
+  per-operation handlers: `given [F: Comonad]: Handler[F]`).
+  `ParaMonad` founds the Cont layer; every diagonal is a `Monad`.
+- The GENERIC combinators the classes exist for — written once, they
+  run over programs, LazyList, Choose searches: **`traverse`** /
+  **`sequence`** / **`replicateA`** (Applicative), **`guard`**
+  (MonadPlus — the pruning conditional of backtracking),
+  **`*>`/`<*`** (sequence and pick a side), **`whenS`/`unlessS`**
+  (Selective: the branch is DECLARED statically, run at most once),
+  **`>>>`** (Kleisli composition).
+- `Selective`'s `ifS`/`branch`/`select` sit between Applicative and
+  Monad: both branches visible, at most one runs.
 
 ## Streams and consumption
 

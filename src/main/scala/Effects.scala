@@ -129,6 +129,12 @@ given [F[+_]](using t: Typeable[F[Nothing]]): TypeableK[F] = new:
   // test behind Typeable[F[Nothing]])
   def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
 
+/** the empty signature is trivially splittable: nothing inhabits it,
+ * so the test never matches — which lets row-generic code (Logic,
+ * the effectful streams) instantiate at F = Pure */
+given TypeableK[Pure] = new:
+  def unapply[A](x: Any): Option[x.type & Nothing] = None
+
 /**
  * Split the union by testing only the F side (the erasure of F, by
  * TypeableK), taking G by exclusion: a type test on an abstract G

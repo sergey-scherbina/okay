@@ -66,8 +66,12 @@ trait Selective[F[_]] extends Applicative[F]:
     def branch[C](fa: F[A => C])(fb: F[B => C]): F[C] =
       fe.map(_.map(Left(_))).select(fa.map(_.andThen(Right(_)))).select(fb)
   extension (x: F[Boolean])
-    def ifS[A](t: F[A])(e: F[A]): F[A] = x.map(Either.cond(_, (), ()))
-      .branch(t.map(Function.const))(e.map(Function.const))
+    // branch sends Left to its FIRST argument, so true must become
+    // Left — Either.cond puts true on the Right and inverted the
+    // whole conditional (caught the day ifS was first tested)
+    def ifS[A](t: F[A])(e: F[A]): F[A] =
+      x.map(b => if b then Left(()) else Right(()))
+        .branch(t.map(Function.const))(e.map(Function.const))
 
 /** sequence computations; fmap, app and select all derive from flatMap by the laws */
 trait Monad[F[_]] extends Selective[F]:
@@ -76,7 +80,11 @@ trait Monad[F[_]] extends Selective[F]:
     def flatMap[B](f: A => F[B]): F[B]
     inline def >>=[B](f: A => F[B]): F[B] = flatMap(f)
   extension [A, B](f: F[A => B])
-    def app(a: F[A]): F[B] = a.flatMap(a => f.app(pure(a)))
+    // NOT `a.flatMap(a => f.app(pure(a)))`: that recursion never grounds
+    // (app of a pure argument is again app) — on a lazy carrier it
+    // builds an infinite tree. Lay dormant until traverse first USED
+    // the derived app; the generic combinators are also the test bed.
+    def app(a: F[A]): F[B] = f.flatMap(g => fmap(a, g))
   extension [A, B](e: F[Either[A, B]])
     override def select(f: F[A => B]): F[B] =
       e.flatMap(_.fold(a => f.map(_(a)), pure))
@@ -86,6 +94,46 @@ trait Alternative[F[_]] extends Applicative[F]:
   def empty[A]: F[A]
   extension [A](x: F[A])
     def append(y: F[A]): F[A]
+
+// ----------------------------------------------------------------
+// the generic combinators the classes exist for: written once, they
+// run over programs (A ! F), LazyList, Choose — any instance
+
+/** effectful map over a sequence, effects in order, results collected */
+def traverse[F[_], A, B](xs: Seq[A])(f: A => F[B])(using M: Applicative[F]): F[Seq[B]] =
+  xs.foldLeft(M.pure(Vector.empty[B]): F[Seq[B]]) { (acc, a) =>
+    M.fmap(acc, (s: Seq[B]) => (b: B) => s :+ b).app(f(a))
+  }
+
+/** a sequence of computations into a computation of the sequence */
+def sequence[F[_] : Applicative, A](xs: Seq[F[A]]): F[Seq[A]] =
+  traverse(xs)(identity)
+
+/** the same computation n times, results collected */
+def replicateA[F[_] : Applicative, A](n: Int)(fa: F[A]): F[Seq[A]] =
+  sequence(Seq.fill(n)(fa))
+
+/** MonadPlus's pruning conditional: the branch dies here unless p —
+ * the backbone of backtracking search (see Logic) */
+def guard[F[_]](p: Boolean)(using M: MonadPlus[F]): F[Unit] =
+  if p then M.pure(()) else M.empty
+
+extension [F[_], A](fa: F[A])(using M: Applicative[F])
+  /** sequence, keep the right */
+  def *>[B](fb: F[B]): F[B] = M.fmap(fa, (_: A) => (b: B) => b).app(fb)
+
+  /** sequence, keep the left */
+  def <*[B](fb: F[B]): F[A] = M.fmap(fa, (a: A) => (_: B) => a).app(fb)
+
+extension [F[_]](cond: F[Boolean])(using S: Selective[F])
+  /** run the effect only when the condition holds — both branches
+   * DECLARED statically (a Selective, not a Monad, is enough) */
+  def whenS(body: F[Unit]): F[Unit] =
+    S.ifS(cond)(body)(S.pure(()))
+
+  /** run the effect only when the condition fails */
+  def unlessS(body: F[Unit]): F[Unit] =
+    S.ifS(cond)(S.pure(()))(body)
 
 /** a Monad that is also an Alternative, under the traditional names */
 trait MonadPlus[F[_]]

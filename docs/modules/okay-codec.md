@@ -37,6 +37,18 @@ damage — and `Json.render` puts it back byte-for-byte. Semantic
 projection (`Json.parse`) and lossless round-tripping are separate
 doors over the same tree.
 
+**Indentation (the YAML dialect).** Structure in leading whitespace:
+the instruction fold carries an indent stack, dedents close frames,
+`- ` opens sequences, and a scalar followed by `: ` was a key (two
+one-character lookaheads in the scanner settle `-5` vs `- item` and
+`http://x` vs `key: v`). The projection lands in the SAME `Json`
+values, so ONE decode algebra serves JSON, CBOR and YAML:
+`Yaml.read[Person](doc)` decodes through the Schema you already
+derived. Deliberate v1 subset: block mappings/sequences, plain and
+double-quoted scalars, comments (kept — lossless); flow styles,
+anchors, tags and block scalars are out of scope, degrading to error
+leaves, never faults.
+
 **Reframing (the Markdown dialect).** Markdown emphasis does not
 nest: `*a _b* c_` closes the star while the underscore is open. The
 dialect answers with the uniml move — close the crossing inner

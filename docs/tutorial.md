@@ -164,6 +164,10 @@ given Schema[Person] = Schema.derived
 val p = Person("ann", 41, List("a"), None)
 Json.read[Person](Json.write(p))    // Right(p) — text
 Cbor.read[Person](Cbor.write(p))    // Right(p) — RFC 8949 binary, same content
+
+// and the third wire, the same Schema, the same decode algebra:
+Yaml.read[Person]("name: ann\nage: 41\ntags:\n  - a\nboss:\n")
+// Right(Person("ann", 41, List("a"), None))
 ```
 
 The dialects are total and lossless: `Json.render(Json.cst(s)) == s`
@@ -173,7 +177,29 @@ Markdown dialect handles crossing emphasis by REFRAMING —
 underscore emphasis closes and reopens around the star's close, every
 marker kept, no faults anywhere.
 
-## 9. A tokenizer is a Scan, even BPE
+## 9. Search that backtracks, fairly
+
+`Choose` is multi-shot nondeterminism; `guard` prunes; `Logic` makes
+it a search engine:
+
+```scala
+val triples =                            // pythagorean, in order
+  choose((1 to 20)*).flatMap(a => choose((a to 20)*).flatMap(b =>
+    choose((b to 20)*).flatMap(c =>
+      guard[[A] =>> A ! Choose](a*a + b*b == c*c).map(_ => (a, b, c)))))
+runChoice(triples)                       // (3,4,5), (5,12,13), (6,8,10), ...
+
+// an INFINITE choice point is a LazyList of alternatives:
+def nats: Long ! (Choose + Pure) = effect(Choose(LazyList.from(0).map(_.toLong)))
+
+Logic.observe(6)(Logic.interleave(evens, odds))   // 0,1,2,3,4,5 — fair turns
+Logic.fairBind(nats)(x => if x*x == 16 then pure(x) else fail)
+                                         // finds 4 where flatMap diverges
+Logic.once(m)                            // the cut: first answer only
+Logic.ifte(cond)(th)(el)                 // soft cut: el ONLY on no answer
+```
+
+## 10. A tokenizer is a Scan, even BPE
 
 ```scala
 val bpe = Bpe(List(("h","e"), ("l","l"), ("he","ll"), ("hell","o")))
@@ -185,7 +211,7 @@ The same `Scan` interface as every lexer: incremental, span-exact,
 chunked (`Scan.chunks`) and snapshot-friendly — an LLM's tokenizer
 and a JSON scanner are the same machine with different dictionaries.
 
-## 10. When the shape is known, stage it
+## 11. When the shape is known, stage it
 
 ```scala
 Staged.fold(
@@ -200,7 +226,7 @@ the `Pipeline` tree is for tools (optimize, inspect, ship), the
 inline shape is for speed — same choice the effects layer offers with
 Free and Eff.
 
-## 11. Chunks across machines
+## 12. Chunks across machines
 
 ```scala
 val source = Chunks.map(Chunks.range(0, 1000, 16))(_ * 0.5)
@@ -215,7 +241,7 @@ that is the whole protocol: its chunk — still in hand, the source is
 a value — goes to a survivor, and the partials merge by the same
 combOp that Spark and Flink call merge.
 
-## 12. Where to go next
+## 13. Where to go next
 
 The [guide](guide.md) explains each layer; the
 [typepedia](typepedia.md) is the reference; the

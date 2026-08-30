@@ -45,6 +45,17 @@ streaming — see below), `State` (+ the type-changing `PState`),
 multi-shot), `Async` (Loom-style, below), `Resource` (the region:
 releases run at the scope's end, in reverse, surviving handled aborts).
 
+Over `Choice` sits BACKTRACKING as a library (`Logic`, LogicT-style):
+`msplit` splits a search into its first answer and a program for the
+rest, and everything derives — `once` (cut), `ifte` (soft cut /
+negation-as-failure), `interleave` and `fairBind` (fair search: two
+infinite branches take turns, so a witness is found where the plain
+bind diverges), `observe(n)`. A `LazyList` of alternatives is an
+infinite choice point. And the typeclass hierarchy earns its keep in
+the generic combinators — `traverse`/`sequence`/`replicateA`,
+`guard` (the pruning conditional of every search), `*>`/`<*`,
+`whenS`/`unlessS` — written once, running over any instance.
+
 ## 3. Streams: codata by `uncons`
 
 A stream is defined by ONE observation:

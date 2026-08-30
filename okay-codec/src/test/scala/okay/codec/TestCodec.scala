@@ -97,6 +97,50 @@ class TestCodec extends munit.FunSuite {
     assertEquals(kinds(t).count(_ == "u-em"), 2)
   }
 
+  test("yaml: the indentation dialect decodes through the SAME Schema algebra") {
+    val doc =
+      "name: ann        # a comment\n" +
+      "age: 41\n" +
+      "tags:\n" +
+      "  - a\n" +
+      "  - b\n" +
+      "boss:\n" +
+      "  name: \"bo ss\"\n" +
+      "  age: 60\n" +
+      "  tags:\n" +
+      "    - x\n"
+    assertEquals(Yaml.read[Person](doc),
+      Right(Person("ann", 41, List("a", "b"),
+        Some(Person("bo ss", 60, List("x"), None)))))
+  }
+
+  test("yaml: lossless render, comments and indentation included") {
+    val docs = List(
+      "a: 1\nb:\n  - x\n  - y   # tail comment\n",
+      "- 1\n- -5\n- true\n",
+      "msg: \"a: b\"  # a colon inside quotes\n",
+      "weird: http://example.com\n",
+      ": orphan\n")
+    for d <- docs do
+      assertEquals(Yaml.render(Yaml.cst(d)), d)
+  }
+
+  test("yaml: scalars type themselves; a plain colon stays in a URL") {
+    val j = Yaml.parse("- 1\n- -5.5\n- true\n- null\n- plain text\n")
+    assertEquals(j, Json.JArr(Vector(Json.JNum(1), Json.JNum(-5.5),
+      Json.JBool(true), Json.JNull, Json.JStr("plain text"))))
+    assertEquals(Yaml.parse("url: http://x/y\n"),
+      Json.JObj(Vector("url" -> Json.JStr("http://x/y"))))
+  }
+
+  test("yaml: total on damage — an orphan colon is data, not a fault") {
+    val j = Yaml.parse(": orphan\nok: 1\n")
+    j match
+      case Json.JObj(fs) => assert(fs.exists((k, _) => k == "ok"))
+      case other => // damage may swallow the doc into an error — still a value
+        assert(other.isInstanceOf[Json.JErr] || other == Json.JNull)
+  }
+
   test("markdown: headings, paragraphs, code spans; unclosed is an error node") {
     val doc = "# title\ntext *bold* and `code # here`\n"
     val t = Markdown.parse(doc)
