@@ -146,9 +146,17 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
     ),
   )
 
+/** streaming tokenization: pure-state scanners, total, incremental (P5) */
+lazy val okayLex = (project in file("okay-lex"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-lex",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val root = (project in file("aggregate"))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okaySpark, okayFlink, okayJdbc, compare)
+    okaySpark, okayFlink, okayJdbc, okayLex, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,

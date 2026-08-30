@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ScalaCompilerConfiguration">
     <option name="separateProdTestSources" value="true" />
-    <profile name="sbt 1" modules="okay,okay.okay-compare,okay.okay-root,okay.okay.okayJS,okay.okay.okayJVM,okay.okay.okayNative" />
-    <profile name="sbt 2" modules="okay.main,okay.okay-compare.main,okay.okay-compare.test,okay.okay-root.main,okay.okay-root.test,okay.okay.okayJVM.main,okay.okay.okayJVM.test,okay.test">
+    <profile name="sbt 1" modules="okay,okay.okay-cats,okay.okay-compare,okay.okay-flink,okay.okay-fs2,okay.okay-jdbc,okay.okay-kafka,okay.okay-kyo,okay.okay-root,okay.okay-spark,okay.okay-zio,okay.okay.okayJS,okay.okay.okayJVM,okay.okay.okayNative" />
+    <profile name="sbt 2" modules="okay.main,okay.okay-cats.main,okay.okay-cats.test,okay.okay-compare.main,okay.okay-compare.test,okay.okay-flink.main,okay.okay-flink.test,okay.okay-fs2.main,okay.okay-fs2.test,okay.okay-jdbc.main,okay.okay-jdbc.test,okay.okay-kafka.main,okay.okay-kafka.test,okay.okay-kyo.main,okay.okay-kyo.test,okay.okay-root.main,okay.okay-root.test,okay.okay-spark.main,okay.okay-spark.test,okay.okay-zio.main,okay.okay-zio.test,okay.okay.okayJVM.main,okay.okay.okayJVM.test,okay.test">
       <parameters>
         <parameter value="-Xkind-projector" />
         <parameter value="-Wall" />

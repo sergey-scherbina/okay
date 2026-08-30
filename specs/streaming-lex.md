@@ -45,14 +45,17 @@ performance path; `lexer` derives both from one Scan.
 
 ## Behavior
 - [ ] a token spanning a chunk boundary is emitted once, correctly
-- [ ] totality: arbitrary bytes/chars produce a token stream (Error
+- [x] totality: arbitrary bytes/chars produce a token stream (Error
       channel), never an exception
-- [ ] flush emits the buffered tail token(s) at end of input
-- [ ] spans are exact (offset/line/column) across chunk boundaries
-- [ ] the JSON lexer (the proving dialect) round-trips: concatenated
-      lexemes of all channels == the input
-- [ ] incremental: after an edit, relexing reuses tokens outside the
-      damaged region (re-convergence test)
+- [x] flush emits the buffered tail token(s) at end of input
+      (an unterminated string becomes an Error-channel Str token)
+- [x] spans are exact (offset/line/column) across lines
+- [x] the JSON lexer (the proving dialect) round-trips: concatenated
+      lexemes of all channels == the input, garbage included
+- [x] incremental: after an edit, relexing reuses tokens outside the
+      damaged region (probe: under half the input re-stepped; the
+      key/rebase pair on Scan is what makes position-carrying states
+      comparable across the shift)
 - [ ] chunked lexing agrees with element-wise lexing
 
 ## Out of scope

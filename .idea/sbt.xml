@@ -13,6 +13,14 @@
             <option value="$PROJECT_DIR$/.native" />
             <option value="$PROJECT_DIR$/aggregate" />
             <option value="$PROJECT_DIR$/compare" />
+            <option value="$PROJECT_DIR$/okay-cats" />
+            <option value="$PROJECT_DIR$/okay-flink" />
+            <option value="$PROJECT_DIR$/okay-fs2" />
+            <option value="$PROJECT_DIR$/okay-jdbc" />
+            <option value="$PROJECT_DIR$/okay-kafka" />
+            <option value="$PROJECT_DIR$/okay-kyo" />
+            <option value="$PROJECT_DIR$/okay-spark" />
+            <option value="$PROJECT_DIR$/okay-zio" />
             <option value="$PROJECT_DIR$/project" />
           </set>
         </option>
