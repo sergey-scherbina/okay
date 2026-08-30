@@ -36,17 +36,25 @@ design away, its direction is right (the user's assessment).
   module; see cross-platform-async.md).
 
 ## Behavior
-- [ ] lossless round-trip: parse then render reproduces the input
-      byte-for-byte (trivia, comments, ordering, duplicate keys kept)
+- [x] lossless round-trip: parse then render reproduces the input
+      byte-for-byte (trivia, ordering, duplicate keys, even damage) —
+      Json.cst / Json.render; render is Cst.lexemes made a function
 - [x] semantic round-trip on JSON: recursive products, sums by case
       name, escapes and whitespace (CBOR waits for its dialect)
 - [x] streaming decode of a truncated document yields a partial value
       (via okay-parse totality: the tree with holes projects the fields
       that are there — a truncated Person decodes)
-- [ ] Markdown: the uniml-markdown reframing cases parse without
-      faults (errors as nodes)
-- [ ] cross-format: one derived codec serializes to JSON and CBOR
-      with equal semantic content
+- [x] Markdown: the uniml-markdown reframing cases parse without
+      faults (errors as nodes) — Markdown.scala: `*a _b* c_` closes
+      the crossing inner frames tokenless, closes the target with its
+      token and REOPENS the inner frames (adoption-agency in
+      miniature); unclosed emphasis at EOF is the builder's "unclosed"
+      error node; lossless (every marker token kept)
+- [x] cross-format: one derived codec serializes to JSON and CBOR
+      with equal semantic content — Cbor.scala is the second algebra
+      over the SAME Schema (RFC 8949: products = maps by field name,
+      sums = one-entry maps by case name, None = null); both decode
+      to equal values, decode errors are Left, truncation included
 
 ## Out of scope
 - schema languages/validation; a transport module (its own, later)

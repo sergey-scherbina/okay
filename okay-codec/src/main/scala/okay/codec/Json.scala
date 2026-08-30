@@ -35,11 +35,17 @@ object Json {
     if i >= s.length then pure(())
     else Writer.tell(s.charAt(i)).flatMap(_ => chars(s, i + 1))
 
+  /** the lossless layer: any string yields a CST that render puts
+   * back byte-for-byte (trivia, ordering, duplicate keys, damage) */
+  def cst(s: String): Cst[K] = Parse.toCst(
+    through(through(chars(s))(Scan.stage(JsonLex.scan)))(JsonParse.driver).toLazyList)
+
+  /** render = the lossless law made a function */
+  def render(c: Cst[K]): String = Cst.lexemes(c)
+
   /** the total pipeline: any string yields a Json (JErr for damage) */
   def parse(s: String): Json =
-    val cst = Parse.toCst(
-      through(through(chars(s))(Scan.stage(JsonLex.scan)))(JsonParse.driver).toLazyList)
-    val vs = values(cst)
+    val vs = values(cst(s))
     vs.headOption.getOrElse(JErr("empty input"))
 
   private def unquote(lexeme: String): String =
