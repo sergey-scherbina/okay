@@ -136,16 +136,17 @@ trait VectorStore[F[+_]]:
   incrementally updatable — the same property three times.
 
 ## Behavior
-- [ ] every character of a source is covered by the split; a
+- [x] every character of a source is covered by the split; a
       non-overlapping split concatenates back to the source exactly
-- [ ] a segment's span highlights the right bytes in the original,
-      for every dialect (Markdown, JSON, YAML)
-- [ ] structural splitting respects boundaries: a heading's section
-      stays whole until the token budget forces a cut, and the cut
-      lands on a structural edge, not mid-word
-- [ ] token-window splitting with overlap is exact under the BPE
-      counter, and the overlap is what the budget says
-- [ ] a damaged/truncated document still yields segments (totality)
+- [x] a segment's span highlights the right bytes in the original,
+      for every dialect (Markdown, JSON, YAML) — `Segment.quotes` is
+      the law as a method, asserted at four budgets per dialect
+- [x] structural splitting respects boundaries: siblings pack
+      greedily while they fit, a subtree too big is ENTERED rather
+      than chopped, and no cut lands mid-word
+- [x] token-window splitting with overlap is exact under the BPE
+      counter, and consecutive windows overlap in the source
+- [x] a damaged/truncated document still yields segments (totality)
 - [ ] Embed batches, retries per chunk, and an ingestion interrupted
       mid-corpus resumes without re-embedding what it already stored
 - [ ] after an edit, re-indexing embeds only the changed segments

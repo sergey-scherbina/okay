@@ -1,6 +1,6 @@
-package okay.llm
+package okay.lex
 
-import okay.lex.{Channel, Scan}
+
 
 /** BPE as a Scan, against an independent whole-string reference. */
 class TestBpe extends munit.FunSuite {

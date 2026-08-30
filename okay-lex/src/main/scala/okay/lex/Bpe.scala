@@ -1,6 +1,6 @@
-package okay.llm
+package okay.lex
 
-import okay.lex.{Channel, Scan, Span, Token}
+
 
 /**
  * Byte-pair encoding as a Scan (specs/llm.md): the LLM world's

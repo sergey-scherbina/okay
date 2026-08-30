@@ -3,7 +3,7 @@ package okay.agent
 import okay.{!, +, Aggregator, Handler, TypeableK}
 import okay.given
 import okay.lex.Scan
-import okay.llm.Bpe
+import okay.lex.Bpe
 
 /**
  * Where the policy lives. Each handler answers ONE effect, so an

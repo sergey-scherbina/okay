@@ -68,7 +68,7 @@ Json.read[Answer]("""{"city": "Kyiv", "country": "Ukraine"""")
 Tokenize with BPE:
 
 ```scala
-import okay.llm.Bpe
+import okay.lex.Bpe
 val bpe = Bpe(List(("h","e"), ("l","l"), ("he","ll"), ("hell","o")))
 Scan.all(bpe)("hello her").tokens.map(_.lexeme)
 // "hello", " ", "he", "r" — spans exact, whitespace on Trivia

@@ -205,6 +205,18 @@ lazy val okayLlm = (project in file("okay-llm"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/** retrieval from our own primitives: documents split over the
+ * lossless CST (exact provenance), embeddings as an effect, the
+ * store as an interface (P10) */
+lazy val okayRag = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-rag"))
+  .dependsOn(okayCodec)
+  .settings(
+    name := "okay-rag",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
 /** agents as programs: tool calls are operations, the conversation
  * is a fold, policy lives in handlers (P9) */
 lazy val okayAgent = (project in file("okay-agent"))
@@ -251,7 +263,7 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
     okaySpark, okayFlink, okayJdbc, okayLex.jvm, okayLex.js, okayParse.jvm, okayParse.js,
-    okayCodec.jvm, okayCodec.js, okayLlm, okayAgent,
+    okayCodec.jvm, okayCodec.js, okayLlm, okayAgent, okayRag.jvm, okayRag.js,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",

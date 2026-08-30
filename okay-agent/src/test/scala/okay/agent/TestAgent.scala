@@ -3,7 +3,7 @@ package okay.agent
 import okay.{!, +, Aggregator, Async, Handler}
 import okay.given
 import okay.codec.{Json, Schema}
-import okay.llm.Bpe
+import okay.lex.Bpe
 import scala.collection.mutable
 
 /** Agents as programs: tools are operations, context is a fold. */

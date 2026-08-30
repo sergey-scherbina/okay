@@ -5,7 +5,7 @@ import java.util.concurrent.TimeUnit
 import okay.lex.{Scan, Json as JsonLex}
 import okay.parse.{Cst, JsonParse, Parse}
 import okay.codec.{Cbor, Json, Schema}
-import okay.llm.Bpe
+import okay.lex.Bpe
 import io.circe.syntax.*
 
 /**
