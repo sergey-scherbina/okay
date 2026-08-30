@@ -207,6 +207,40 @@ glue (a re-parse of a large corpus between turns), and prefer the
 first dial — promote that computation to an operation — before
 reaching at all.
 
+**Is it worth building at all?** Scoped, yes; unscoped, no.
+
+- It EARNS its place for long runs (an agent editing five hundred
+  files, a corpus job), for human gates where the process cannot stay
+  alive between the proposal and the approval, and for server agents
+  that meet a deploy mid-conversation. The concrete argument is
+  money: an agent that dies at step ninety re-pays for ninety model
+  calls.
+- It is OVERHEAD for a short interactive turn, which is most turns.
+  So the journal must be something you switch on for a run, not
+  something the loop always pays for.
+- The underrated half is not recovery but DETERMINISTIC REPLAY: run a
+  production incident again, exactly, offline, with no model calls.
+  In a world where the interesting failures are nondeterministic,
+  that is worth as much as the crash story and comes free with the
+  same journal.
+- The comparison worth being honest about: Temporal and Restate do
+  durable execution properly for general workflows, and their core
+  rule is ours — every nondeterministic thing must go through the
+  runtime or replay diverges. The difference is that they ask for the
+  discipline in documentation and catch violations with a linter,
+  while here the effect row states it in the type. Not enforcement
+  (nothing stops a stray currentTimeMillis in pure code), but the
+  idiom points the right way and the fingerprints catch the drift at
+  runtime.
+- The risk that decides the scope: a durability feature that silently
+  runs a payment twice is worse than none. So the crash window and
+  the drift check are not extras to add later — they are the reason
+  the thing can be trusted, and the tests must be about them.
+
+Priority note: this ranks BELOW a real provider handler. Until the
+agent and retrieval layers have met an actual model, a durability
+feature is insurance on a machine nobody has driven.
+
 **Two hazards, both stated rather than hidden:**
 
 - *Code drift.* If the program changed between runs, the operations
