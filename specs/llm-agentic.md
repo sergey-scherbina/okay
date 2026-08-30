@@ -130,20 +130,29 @@ composable runtime. Same for MCP: an MCP server is another `Tool`
 handler, and its JSON-RPC framing is our total parser plus `Schema`.
 
 ## Behavior
-- [ ] a tool call round-trips: model asks, handler executes, result
-      goes back, conversation continues (mock transport, no network)
-- [ ] tool schemas derive from `Schema[Args]` — no hand-written JSON
-      schema anywhere
-- [ ] context stays within a token budget across N turns WITHOUT the
-      agent program mentioning compaction
-- [ ] the compactor's `merge` makes a summarized history
-      split-point-agnostic (the P1 property, tested like the others)
+- [x] a tool call round-trips: model asks, handler executes, result
+      goes back, conversation continues (scripted model, no network)
+- [x] tool schemas derive from `Schema[Args]` — no hand-written JSON
+      schema anywhere (ToolSpec.jsonSchema is the FOURTH algebra over
+      Schema; `ToolSpec.args` decodes with the same one, so a tool's
+      declaration cannot drift from its parser)
+- [x] context stays within a token budget across N turns WITHOUT the
+      agent program mentioning compaction (asserted on every context
+      the model actually saw). The elision MARKER counts against the
+      budget too — it goes on the wire (caught by the test)
+- [x] the compactor's `merge` makes a summarized history
+      split-point-agnostic (the P1 property, tested at every split)
+- [x] system turns are pinned: they survive any amount of pressure
+- [x] an unknown or denied tool is an ANSWER, not a fault, so the
+      model can recover from its own mistake
 - [ ] token counts from the BPE Scan match the provider's usage
-      report within a stated tolerance
+      report within a stated tolerance (needs a real dictionary; the
+      local counter is wired and tested against itself)
 - [ ] a tool result too large for the context is kept as lineage: the
       model sees a projection, a follow-up re-observes the full value
-- [ ] backtracking: a failed plan restores the marked context exactly
-      and the next alternative proceeds
+- [x] mark/restore: a snapshot restores the conversation exactly (a
+      pointer, not an undo log) — the backtracking-with-Logic
+      combination is v2
 - [ ] best-of-N and ifte-reprompt are library one-liners, tested
 - [ ] a partial structured answer decodes mid-stream and generation
       stops when the value is complete

@@ -78,6 +78,33 @@ given Handler[Nothing] with
   inline def handle[A](a: Nothing): A = a
 
 /**
+ * Handlers compose along the union: split the operation by the F
+ * test and delegate. This is what lets a multi-effect row be run by
+ * `runWith` with one handler per effect, assembled by the compiler —
+ * an agent's `Model + (Tool + (Context + Async))` needs no bespoke
+ * interpreter, only its four handlers in scope.
+ */
+object Handler {
+  /**
+   * Handlers compose along the union: split the operation by the F
+   * test and delegate — one handler per effect, one row. Spelled as
+   * an EXPLICIT combinator, not a given, on purpose: a given whose
+   * subject is a union type lambda enters implicit scope for every
+   * Handler query and crashes the 3.7.1 type comparer ("Failure to
+   * join alternatives F and G") while it is being compared against
+   * unrelated handlers. Called by name, the same code is fine — the
+   * types at a call site are concrete.
+   */
+  def union[F[+_], G[+_]](using T: TypeableK[F], hf: Handler[F], hg: Handler[G])
+  : Handler[F + G] = new Handler[F + G]:
+    def handle[A](a: F[A] | G[A]): A =
+      val split: Either[F[A], G[A]] = a match
+        case T(f) => Left(f)
+        case other => Right(other.asInstanceOf[G[A]])
+      split.fold(f => hf.handle(f), g => hg.handle(g))
+}
+
+/**
  * Final tagless interface of extensible effects: M[F, A] computes A
  * performing the operations of the signature F. The meaning of a
  * computation is its image in the continuation paramonad, given by

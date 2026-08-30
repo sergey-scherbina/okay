@@ -205,6 +205,15 @@ lazy val okayLlm = (project in file("okay-llm"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/** agents as programs: tool calls are operations, the conversation
+ * is a fold, policy lives in handlers (P9) */
+lazy val okayAgent = (project in file("okay-agent"))
+  .dependsOn(okayLlm)
+  .settings(
+    name := "okay-agent",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 /** the own distributed runtime, assembled from existing parts (P7);
  * cross-built: the JVM side holds Remote/Cluster, the JS side the
  * Node client of the acceptance run, the shared tree the ONE program
@@ -242,7 +251,8 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
     okaySpark, okayFlink, okayJdbc, okayLex.jvm, okayLex.js, okayParse.jvm, okayParse.js,
-    okayCodec.jvm, okayCodec.js, okayLlm, okayCluster.jvm, okayCluster.js, compare)
+    okayCodec.jvm, okayCodec.js, okayLlm, okayAgent,
+    okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,

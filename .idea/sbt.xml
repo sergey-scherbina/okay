@@ -12,6 +12,7 @@
             <option value="$PROJECT_DIR$/.jvm" />
             <option value="$PROJECT_DIR$/.native" />
             <option value="$PROJECT_DIR$/compare" />
+            <option value="$PROJECT_DIR$/okay-agent" />
             <option value="$PROJECT_DIR$/okay-cats" />
             <option value="$PROJECT_DIR$/okay-cluster" />
             <option value="$PROJECT_DIR$/okay-cluster/.js" />
