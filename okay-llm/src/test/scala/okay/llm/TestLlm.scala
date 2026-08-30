@@ -40,6 +40,24 @@ class TestLlm extends munit.FunSuite {
       Anthropic.Request("m", 1, Nil, true))), List("par"))
   }
 
+  test("retry-with-backoff recovers a flaky transport (P2 combinators as-is)") {
+    var attempts = 0
+    val flaky: Transport = new Transport:
+      def post(url: String, headers: Map[String, String], body: String)
+      : Unit ! (Writer % String + Async) =
+        type F = Writer % String + Async
+        effect[F, Unit](Async.Run { () =>
+          attempts += 1
+          if attempts == 1 then throw RuntimeException("wire down")
+        }).flatMap(_ => canned.post(url, headers, body))
+    val request = Anthropic.Request("claude", 100,
+      List(Anthropic.Message("user", "hi")), true)
+    val prog = okay.retry(okay.Retry.immediate(2))(
+      okay.async(collect(Anthropic.stream(flaky, "k", request))))
+    assertEquals(prog.runWith, List("Hel", "lo", " world"))
+    assertEquals(attempts, 2)   // one failure, one clean pass
+  }
+
   test("structured output rides the total parser: partial JSON decodes") {
     // a model, cut off mid-answer: the tree with holes still projects
     case class Answer(city: String, country: String)

@@ -37,10 +37,15 @@ boundaries here must not preclude it.
 - [x] structured-output parsing: a mid-answer cut-off JSON decodes to
       the value it carried (the total pipeline end to end); a payload
       cut mid-json is simply not a token — no fault at any prefix
-- [ ] retry-with-backoff on a flaky transport (the P2 combinators
-      apply as-is; a dedicated test is the follow-up)
-- [ ] a BPE Scan tokenizes a corpus identically to the reference
-      (waits for a dictionary; the Scan interface is ready)
+- [x] retry-with-backoff on a flaky transport — the P2 combinators
+      apply as-is: retry(Retry.immediate(2)) around the stream
+      recovers a transport that dies on its first attempt (tested
+      with a mock that throws once)
+- [x] a BPE Scan tokenizes a corpus identically to the reference —
+      Bpe.scala implements okay.lex.Scan (per-word merges by rank,
+      whitespace on the Trivia channel, spans exact, lossless);
+      agreement tested against an independent whole-string reference
+      over a merges table
 
 ## Out of scope (for the thin layer)
 - prompt frameworks; vector stores; the rozum-shaped multi-agent
