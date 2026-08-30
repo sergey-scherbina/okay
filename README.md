@@ -162,3 +162,6 @@ operations; the same shape every other lane runs.)
 Benchmarks: `sbt 'Jmh/run .*FibBenchmark.*'`, comparisons in the
 `compare` module (`sbt 'compare/Jmh/run ...'`); history and refuted
 experiments in src/jmh/history.tsv.
+
+Documentation: [docs/](docs) — the user guide, the tutorial, the
+typepedia, and a page per module.
