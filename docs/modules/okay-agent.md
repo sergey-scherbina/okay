@@ -126,6 +126,27 @@ retrieval and memory were never two subsystems here, so the trade-off
 between history and passages is a policy you can test rather than an
 accident you discover in production. Costs no tool call per turn.
 
+## A live model
+
+`Provider.openAi(transport, key, model)` is a `Handler[Model]`
+speaking the OpenAI-compatible protocol, so the same agent programs
+run against OpenAI, Groq, Together, OpenRouter or a local runtime
+with no change above the effect. Swap it for `Handlers.scripted` and
+the identical program is a unit test — which is the whole argument
+for handlers owning policy, now demonstrated on a real protocol.
+`Provider.counting(bpe)` makes the token budget local.
+
+## Durability (Durable.scala)
+
+The journal is written intent-first and the recovery decision is per
+operation: `Redo`, `WithKey` (retry carrying the FIRST attempt's key,
+so the far end deduplicates — the answer for payments), `Reconcile`
+(never repeat: ask the far end), `Escalate`, `Fail`. One handler
+serves the first run and the recovery; `Durable.replaying` runs an
+incident again offline with the world untouched. Exactly-once
+EXECUTION is impossible and the module says so — what it provides is
+the decision, and tests for the ugly cases rather than the happy one.
+
 ## Not yet (specs/llm-agentic.md)
 
 Lineage-backed tool results (the model sees a projection, a follow-up

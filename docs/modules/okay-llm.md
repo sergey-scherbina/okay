@@ -74,6 +74,15 @@ Scan.all(bpe)("hello her").tokens.map(_.lexeme)
 // "hello", " ", "he", "r" — spans exact, whitespace on Trivia
 ```
 
+**Two protocols, one seam.** `Anthropic` and `OpenAi` are both built
+on the same `Transport`, and the OpenAI-compatible one reaches most
+of the market — OpenAI, Groq, Together, OpenRouter, Fireworks and the
+local runtimes (Ollama, vLLM, llama.cpp) all serve it. Requests are
+built as `Json` values and printed (a tool's `parameters` is an
+arbitrary JSON Schema, not something a derived codec should
+describe); responses decode by derived Schemas through the total
+pipeline, so a body cut mid-string still yields the text it carried.
+
 ## API reference
 
 | member | signature | meaning |
@@ -86,6 +95,9 @@ Scan.all(bpe)("hello her").tokens.map(_.lexeme)
 | `Anthropic.token` | `String => Option[String]` | payload to text token; total |
 | `Anthropic.stream` | `(transport, apiKey, request, url?) => Unit ! (Writer % String + Async)` | the completion as a token stream |
 | `Anthropic.tokensOf` | reusable tail: SSE lines to tokens | build other providers on it |
+| `OpenAi.request/message/tool` | build the wire body as Json | derived tool schemas pass through untouched |
+| `OpenAi.complete` | `(transport, key, body, url) => Response ! Async` | one completion, whole (what an agent loop needs) |
+| `OpenAi.stream` / `token` | SSE deltas to text tokens | total: a cut-off payload is simply not a token |
 | `Bpe` | `Bpe(ranks: Map[(String, String), Int])` / `Bpe(merges: Seq[(String, String)])` | byte-pair encoding as a `Scan[String, Bpe.S]` |
 | `Bpe.encode` | `String => Vector[String]` | merge one word by rank |
 
