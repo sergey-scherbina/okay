@@ -75,3 +75,5 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-30	a4e7ac7	6.14	cmpResource-catsIO	197.0			full 2f 3+5, us/op; streams/merge/resource compare
 2026-08-30	a4e7ac7	6.14	cmpResource-kyo	8566.3			full 2f 3+5, us/op; streams/merge/resource compare
 2026-08-30	a4e7ac7	16.21	abMergeFeed	inconclusive			A/B feed-via-uncons vs toLazyList.foreach: A med 164.8 B med 187.3, but round2/3 err bars 50-90% of score (noisy host); only clean round: A 142±12 vs B 112±12 (-22%). Inconclusive under load; kept B (zero carrying cost, no cell allocs in feed)
+2026-08-30	db6cb62	8.80	abChunkedChannel	refuted			chunked queue (64/feed batch): NEW worse in all 3 rounds (med 150 vs 122), buf copy + sync eat the win; zio merge advantage is WHOLE-PIPELINE chunking, not queue batching. REVERTED
+2026-08-30	db6cb62	8.80	abProducerIterator	96.3->53.5			specialized trait-method iterator (direct tree walk, no Option/tuple per element) vs generic unfold: -44%, tight bars, KEPT. Pipeline lane 143 (LazyList mode) -> 53 (iterator mode); floor stdIterator 14; remaining gap = Free-node stepping per element

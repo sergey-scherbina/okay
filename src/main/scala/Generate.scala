@@ -93,11 +93,45 @@ object Producer {
  */
 given Stream[Producer, Zero] with
   import !.*
+  import scala.annotation.tailrec
 
   def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! Zero = pure(p.resume match
     case Free.Pure(_) => None
     case Effect(e) => Some((e, Free.Pure(e)))
     case Bind(Effect(e), k) => Some((e.asInstanceOf[A], k(e))))
+
+  /** the specialized linear view: a direct walk of the freer tree —
+   * no Option, no tuple per element (measured; the generic default
+   * pays both). What remains per element is the stepping itself. */
+  override def iterator[A](p: Producer[A])(using Handler[Zero]): Iterator[A] =
+    new Iterator[A]:
+      private var cur: Producer[A] = p
+      private var ready = false
+      private var ended = false
+      private var elem: A = scala.compiletime.uninitialized
+
+      @tailrec private def advance(): Unit = cur match
+        case Free.Pure(_) => ended = true
+        case Effect(e) =>
+          elem = e
+          ready = true
+          cur = Free.Pure(e)
+        case Bind(Effect(e), k) =>
+          elem = e.asInstanceOf[A]
+          ready = true
+          cur = k(e)
+        case _ =>
+          cur = cur.resume
+          advance()
+
+      def hasNext: Boolean =
+        if !ready && !ended then advance()
+        ready
+
+      def next(): A =
+        if !hasNext then throw java.util.NoSuchElementException("empty producer")
+        ready = false
+        elem
 
 /** a producer folds as a stream without a result (push consumption) */
 given Foldable[Producer] with

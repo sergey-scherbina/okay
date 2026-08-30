@@ -29,6 +29,11 @@ trait Stream[S[_], F[+_]]:
   /** the next element and the rest (or None at the end), inside the effect F */
   def uncons[A](s: S[A]): Option[(A, S[A])] ! F
 
+  /** the linear view (see the iterator extension); an instance may
+   * specialize it to skip the per-element Option and tuple of uncons */
+  def iterator[A](s: S[A])(using Handler[F]): Iterator[A] =
+    Iterator.unfold(s)(uncons(_).runWith)
+
 /** the final coalgebra observes itself, purely */
 given Stream[LazyList, Zero] with
   def uncons[A](s: LazyList[A]): Option[(A, LazyList[A])] ! Zero =
@@ -66,6 +71,17 @@ extension [S[_], F[+_], A](s: S[A])(using St: Stream[S, F], H: Handler[F])
    * thread, on Loom).
    */
   def toLazyList: LazyList[A] = LazyList.unfold(s)(St.uncons(_).runWith)
+
+  /**
+   * The LINEAR view: walk the stream as an Iterator — no cells, no
+   * memoization, each element observed once and gone. This is the
+   * fused consumption mode: iterator.map(f).filter(p).take(n).sum
+   * runs the whole pipeline in one pass at Iterator speed, where the
+   * LazyList bridge would pay a memoized cell per element per stage.
+   * Use it when the pipeline is consumed once; toLazyList when the
+   * stream is re-observed.
+   */
+  def iterator: Iterator[A] = St.iterator(s)
 
 /**
  * The standard combinators, generically over any Stream: every one
