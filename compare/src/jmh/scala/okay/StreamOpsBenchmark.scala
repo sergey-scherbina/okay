@@ -45,6 +45,13 @@ class StreamOpsBenchmark {
     Chunks.nats[Int]().elements.map(_ * 2).filter(_ % 3 == 0).take(N).sum
 
   @Benchmark
+  def okayChunksTransform(): Int =
+    Chunks.fold(
+      Chunks.take(
+        Chunks.filter(
+          Chunks.map(Chunks.nats[Int]())(_ * 2))(_ % 3 == 0))(N))(using Fold.sum[Int])
+
+  @Benchmark
   def fs2Stream(): Int =
     fs2.Stream.iterate(0)(_ + 1).map(_ * 2).filter(_ % 3 == 0).take(N)
       .compile.fold(0)(_ + _)

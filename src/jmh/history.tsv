@@ -79,3 +79,4 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-30	db6cb62	8.80	abProducerIterator	96.3->53.5			specialized trait-method iterator (direct tree walk, no Option/tuple per element) vs generic unfold: -44%, tight bars, KEPT. Pipeline lane 143 (LazyList mode) -> 53 (iterator mode); floor stdIterator 14; remaining gap = Free-node stepping per element
 2026-08-30	0eb6131		cmpStreamOps-okayChunks	23.4			chunked generator (64): 1.7x from Iterator floor 13.9; was 143 LazyList / 53 iterator
 2026-08-30	0eb6131		cmpMerge-okayChunks	14.7			3.2x FASTER than zio 47.3; was 158 elementwise. Chunking in the stream value, as the spec decided
+2026-08-30	524556a	4.62	cmpStreamOps-okayChunksTransform	16.9			chunk-in/chunk-out transformer pipeline: -28% vs elements view 23.6; 1.2x from Iterator floor 14.1. KEPT

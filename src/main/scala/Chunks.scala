@@ -66,6 +66,122 @@ object Chunks {
   def fibs[N: Numeric as N](size: Int = 64): Chunks[N] =
     generate((N.zero, N.one))(_._1)((x, y) => (y, x + y))(size)
 
+  import !.*
+
+  /** defer one step: nothing before the bind runs at construction */
+  private inline def defer[X](inline x: => Producer[X]): Producer[X] =
+    pure[Produce, Unit](()).flatMap(_ => x)
+
+  /** the end of a chunked stream */
+  private def end[B]: Chunks[B] = pure(ArraySeq.empty[AnyRef].asInstanceOf[Chunk[B]])
+
+  /**
+   * The chunk-in, chunk-out transformers: each stage is a tight array
+   * pass and the result is still Chunks, so downstream keeps the
+   * amortization. Spelled as functions, like Stream.map — the postfix
+   * names belong to the monad (Free's map transforms the answer). The
+   * op-value casts are the identity-signature discipline, as in the
+   * Producer stream instance.
+   */
+  def map[A, B](p: Chunks[A])(f: A => B): Chunks[B] = defer:
+    p.resume match
+      case Pure(_) => end
+      case Effect(c) => produce(mapChunk(c.asInstanceOf[Chunk[A]])(f))
+      case Bind(Effect(c), k) =>
+        produce(mapChunk(c.asInstanceOf[Chunk[A]])(f)).flatMap(_ => map(k(c))(f))
+
+  /** keep the elements satisfying pred (empty result chunks are skipped) */
+  def filter[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
+    p.resume match
+      case Pure(_) => end
+      case Effect(c) => produce(filterChunk(c.asInstanceOf[Chunk[A]])(pred))
+      case Bind(Effect(c), k) =>
+        val fc = filterChunk(c.asInstanceOf[Chunk[A]])(pred)
+        if fc.isEmpty then filter(k(c))(pred)
+        else produce(fc).flatMap(_ => filter(k(c))(pred))
+
+  /** the first n elements (the last chunk truncated) */
+  def take[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
+    if n <= 0 then end
+    else p.resume match
+      case Pure(_) => end
+      case Effect(c) => produce(c.asInstanceOf[Chunk[A]].take(n))
+      case Bind(Effect(c), k) =>
+        val ca = c.asInstanceOf[Chunk[A]]
+        if ca.length >= n then produce(ca.take(n))
+        else produce(ca).flatMap(_ => take(k(c))(n - ca.length))
+
+  /** all but the first n elements */
+  def drop[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
+    if n <= 0 then p
+    else p.resume match
+      case Pure(_) => end
+      case Effect(c) => produce(c.asInstanceOf[Chunk[A]].drop(n))
+      case Bind(Effect(c), k) =>
+        val ca = c.asInstanceOf[Chunk[A]]
+        if ca.length <= n then drop(k(c))(n - ca.length)
+        else produce(ca.drop(n)).flatMap(_ => k(c))
+
+  /** the longest prefix satisfying pred */
+  def takeWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
+    p.resume match
+      case Pure(_) => end
+      case Effect(c) =>
+        val ca = c.asInstanceOf[Chunk[A]]
+        produce(ca.takeWhile(pred))
+      case Bind(Effect(c), k) =>
+        val ca = c.asInstanceOf[Chunk[A]]
+        val i = ca.indexWhere(a => !pred(a))
+        if i < 0 then produce(ca).flatMap(_ => takeWhile(k(c))(pred))
+        else produce(ca.take(i))
+
+  /** the rest, after the longest prefix satisfying pred */
+  def dropWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
+    p.resume match
+      case Pure(_) => end
+      case Effect(c) => produce(c.asInstanceOf[Chunk[A]].dropWhile(pred))
+      case Bind(Effect(c), k) =>
+        val ca = c.asInstanceOf[Chunk[A]]
+        val i = ca.indexWhere(a => !pred(a))
+        if i < 0 then dropWhile(k(c))(pred)
+        else if i == 0 then k(c)
+        else produce(ca.drop(i)).flatMap(_ => k(c))
+
+  /** the terminal: run a Fold, an inner while per chunk */
+  def fold[A, S](p: Chunks[A])(using fo: Fold[A, S]): S =
+    var s = fo.init
+    val it = summon[Stream[Producer, Zero]].iterator(p)
+    while it.hasNext do
+      val c = it.next()
+      var i = 0
+      while i < c.length do
+        s = fo.add(s, c(i))
+        i += 1
+    s
+
+  private def mapChunk[A, B](c: Chunk[A])(f: A => B): Chunk[B] =
+    val n = c.length
+    val arr = new Array[AnyRef](n)
+    var i = 0
+    while i < n do
+      arr(i) = f(c(i)).asInstanceOf[AnyRef]
+      i += 1
+    wrap[B](arr)
+
+  private def filterChunk[A](c: Chunk[A])(pred: A => Boolean): Chunk[A] =
+    val n = c.length
+    val arr = new Array[AnyRef](n)
+    var i = 0
+    var j = 0
+    while i < n do
+      val a = c(i)
+      if pred(a) then
+        arr(j) = a.asInstanceOf[AnyRef]
+        j += 1
+      i += 1
+    if j == n then c
+    else wrap[A](java.util.Arrays.copyOf(arr, j))
+
   /** merge two chunked streams by readiness: the existing Channel.merge,
    * one queue operation per chunk (type args spelled out — inference
    * abstracts the wrong slot through the nested alias) */

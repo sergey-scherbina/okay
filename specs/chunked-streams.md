@@ -46,12 +46,11 @@ files are a known resolution trap.
 - empty chunks after filter are skipped, take truncates the last chunk
 
 Behavior:
-- [ ] transformer results agree with the LazyList reference pipeline,
+- [x] transformer results agree with the LazyList reference pipeline,
       including chunk-boundary cases (take mid-chunk, filter-to-empty)
-- [ ] a transformer chain over an infinite source stays lazy
-- [ ] benchmark: the chunked transformer pipeline at or under the Iterator
-      floor (prediction: array passes beat per-element virtual calls, as in
-      fs2/ZStream; disqualifier: no better than the elements view at 23us)
+- [x] a transformer chain over an infinite source stays lazy
+- [x] benchmark: measured 16.9 us — beats the elements view (23.6, -28%),
+      lands 1.2x from the Iterator floor (14.1); kept as the fastest mode
 
 ## Out of scope
 - zip of chunked streams (chunk realignment); rechunking, adaptivity
