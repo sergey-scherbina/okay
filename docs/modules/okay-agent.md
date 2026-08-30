@@ -116,6 +116,16 @@ Search.majority(Search.all(5)(complete)(ok))      // self-consistency
   would leak state between branches — use `Memory` for anything that
   backtracks.
 
+## Grounded recall (okay-rag)
+
+`Grounded.context(policy, retriever, budget, share)` replaces the
+plain context handler with one that also retrieves: the last question
+drives a search, passages become turns, and conversation and code
+share ONE budget. This is where the design's third claim cashes out —
+retrieval and memory were never two subsystems here, so the trade-off
+between history and passages is a policy you can test rather than an
+accident you discover in production. Costs no tool call per turn.
+
 ## Not yet (specs/llm-agentic.md)
 
 Lineage-backed tool results (the model sees a projection, a follow-up
