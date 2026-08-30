@@ -39,14 +39,14 @@ HyperLogLog (distinct count), Count-Min (frequencies), T-Digest
 approximate are two distinguishable, equally first-class kinds.
 
 ## Behavior
-- [ ] zip computes two statistics in one pass over one stream (probe:
+- [x] zip computes two statistics in one pass over one stream (probe:
       the source is consumed once)
-- [ ] mean/variance agree with two-pass references on random data
+- [x] mean/variance agree with two-pass references on random data
 - [ ] group laws hold for sum/count (ScalaCheck); min/max are
       Monoid-only and the window rejects them at compile time
-- [ ] sliding window: subtract-on-age equals recompute-from-scratch
+- [x] sliding window: subtract-on-age equals recompute-from-scratch
 - [ ] sketch error stays within stated bounds on generated data
-- [ ] (zero, seqOp, combOp) merges chunk-partial results associatively
+- [x] (zero, seqOp, combOp) merges chunk-partial results associatively
       (the distributed contract, testable locally over Chunks)
 
 ## Out of scope

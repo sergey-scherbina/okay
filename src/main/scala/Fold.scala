@@ -45,10 +45,23 @@ trait Monoid[A]:
   extension (x: A)
     inline def |+|(y: A): A = combine(x, y)
 
-/** numbers add (the conventional default; wrap for a product) */
-given [N](using N: Numeric[N]): Monoid[N] = new:
+/**
+ * A Monoid that can also UN-combine: the inverse turns a sliding
+ * window from recompute-from-scratch into subtract-what-aged-out.
+ * Sum and count are groups; min/max (and the sketches) are not — no
+ * way to un-see a value from a running max, and the type system says
+ * so (a window over a Monoid-only type is a compile error).
+ */
+trait Group[A] extends Monoid[A]:
+  def inverse(a: A): A
+  extension (x: A)
+    inline def |-|(y: A): A = combine(x, inverse(y))
+
+/** numbers add, and addition inverts (the conventional default) */
+given [N](using N: Numeric[N]): Group[N] = new:
   def empty: N = N.zero
   def combine(x: N, y: N): N = N.plus(x, y)
+  def inverse(a: N): N = N.negate(a)
 
 given Monoid[String] with
   def empty: String = ""
