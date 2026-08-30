@@ -57,4 +57,28 @@ class TestPipeline extends munit.ScalaCheckSuite {
       using Fold.sum[Int])
     assertEquals(viaTree, byHand)
   }
+
+  test("the staged whole-stage loop agrees with the interpreted run") {
+    // the staged artifact is the inline program shape; nested calls
+    // beta-reduce into one fused while-loop at compile time
+    val staged = Staged.fold(
+      Staged.take(
+        Staged.filter(
+          Staged.map(Staged.range(0, 1000000), _ * 2),
+          _ % 3 == 0),
+        1000))(0L)(_ + _)
+    val interpreted = Pipeline.fold(
+      Pipeline.range(0, 1000000).map(_ * 2).filter(_ % 3 == 0).take(1000))(
+      using Fold.sum[Long])
+    assertEquals(staged, interpreted)
+
+    val dropped = Staged.fold(
+      Staged.drop(Staged.map(Staged.range(0, 100), _ + 1), 90))(0L)(_ + _)
+    assertEquals(dropped, (91L to 100L).sum)
+
+    // an infinite generator, bounded by take: laziness survives staging
+    val gen = Staged.fold(
+      Staged.take(Staged.gen(1L, identity, _ * 2), 10))(0L)(_ + _)
+    assertEquals(gen, (0 until 10).map(1L << _).sum)
+  }
 }

@@ -36,8 +36,19 @@ optimizer needs is what the library already is.
       5 -> 3 on the sample tree)
 - [x] take-pushdown makes take(n) over range structural
       (NumRange(0, 5) out of a million-row range)
-- [ ] the staged whole-stage loop measures at or under the Iterator
-      floor on the standard pipeline lane
+- [x] the staged whole-stage loop measures at or under the Iterator
+      floor on the standard pipeline lane — far under: 1.61us vs
+      Iterator 19.3 and interpreted tree 15.9 (same run, load ~3.3;
+      history.tsv) — one inline-fused while, no dispatch, take(1000)
+      exits without iterator machinery. FINDING that shaped the API:
+      a GADT tree cannot partially evaluate through `inline match`
+      (pattern binding erases the inline-ness of subtrees), so the
+      staged artifact is an INLINE PROGRAM SHAPE (object Staged:
+      range/gen/map/filter/take/drop/fold over Push[A]) — the exact
+      conclusion staged-effects reached, and the choice rule again:
+      the Pipeline TREE is for tools (optimize, inspect, ship), the
+      inline shape is for speed, Expr staging of raw host functions
+      stays impossible (staged-tagless.md).
 
 ## Out of scope
 - cost-based optimization (rule-based only, like early Catalyst);

@@ -84,4 +84,65 @@ object Pipeline {
     case DropN(s, _) => 1 + depth(s)
     case Rechunked(s, _) => 1 + depth(s)
     case _ => 1
+
+}
+
+/**
+ * Whole-stage codegen (specs/staged-pipelines.md), the inline half of
+ * staged-tagless: the staged artifact is an INLINE PROGRAM SHAPE, not
+ * a carrier value — the same conclusion staged-effects reached, and
+ * the same choice rule one level up: the Pipeline TREE is for tools
+ * (optimize, inspect, ship), the inline shape is for speed. A GADT
+ * tree cannot partially evaluate through `inline match` (pattern
+ * binding erases inline-ness of subtrees), so the staged pipeline is
+ * spelled with these combinators; nested calls beta-reduce into ONE
+ * while-loop over the source with every lambda inlined at its use —
+ * no operator dispatch, no per-element allocation.
+ */
+object Staged {
+
+  /** a staged stream in push mode: give it an emit, it drives the
+   * source; emit answering false stops the loop */
+  type Push[A] = (A => Boolean) => Unit
+
+  inline def range(a: Long, b: Long): Push[Long] = emit =>
+    var i = a
+    var go = true
+    while go && i < b do
+      go = emit(i)
+      i += 1
+
+  /** an infinite generator — bound it with take */
+  inline def gen[S, A](seed: S, inline f: S => A, inline g: S => S): Push[A] = emit =>
+    var s = seed
+    var go = true
+    while go do
+      go = emit(f(s))
+      s = g(s)
+
+  inline def map[A, B](inline src: Push[A], inline f: A => B): Push[B] =
+    emit => src(x => emit(f(x)))
+
+  inline def filter[A](inline src: Push[A], inline p: A => Boolean): Push[A] =
+    emit => src(x => !p(x) || emit(x))
+
+  inline def take[A](inline src: Push[A], n: Int): Push[A] = emit =>
+    var left = n
+    if left > 0 then src { x =>
+      left -= 1
+      emit(x) && left > 0
+    }
+
+  inline def drop[A](inline src: Push[A], n: Int): Push[A] = emit =>
+    var toDrop = n
+    src(x => if toDrop > 0 then { toDrop -= 1; true } else emit(x))
+
+  /** the staged terminal: one fused loop, an accumulator, nothing else */
+  inline def fold[A, S](inline src: Push[A])(z: S)(inline add: (S, A) => S): S =
+    var acc = z
+    src { x =>
+      acc = add(acc, x)
+      true
+    }
+    acc
 }
