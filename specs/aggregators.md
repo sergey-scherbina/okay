@@ -45,7 +45,7 @@ approximate are two distinguishable, equally first-class kinds.
 - [ ] group laws hold for sum/count (ScalaCheck); min/max are
       Monoid-only and the window rejects them at compile time
 - [x] sliding window: subtract-on-age equals recompute-from-scratch
-- [ ] sketch error stays within stated bounds on generated data
+- [x] sketch error stays within stated bounds on generated data
 - [x] (zero, seqOp, combOp) merges chunk-partial results associatively
       (the distributed contract, testable locally over Chunks)
 
