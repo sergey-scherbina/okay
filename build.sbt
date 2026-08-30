@@ -166,49 +166,83 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
     ),
   )
 
-/** streaming tokenization: pure-state scanners, total, incremental (P5) */
-lazy val okayLex = (project in file("okay-lex"))
-  .dependsOn(okay.jvm)
+/** streaming tokenization: pure-state scanners, total, incremental
+ * (P5); pure Scala — cross-built, tests run on JS too */
+lazy val okayLex = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-lex"))
+  .dependsOn(okay)
   .settings(
     name := "okay-lex",
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
 /** streaming error-tolerant parsing: total, lossless, two surfaces (P5) */
-lazy val okayParse = (project in file("okay-parse"))
+lazy val okayParse = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-parse"))
   .dependsOn(okayLex)
   .settings(
     name := "okay-parse",
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
 /** codecs: the Schema algebra and the dialects (P5) */
-lazy val okayCodec = (project in file("okay-codec"))
+lazy val okayCodec = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-codec"))
   .dependsOn(okayParse)
   .settings(
     name := "okay-codec",
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
 /** language models as streams: the thin client (P4/llm.md) */
 lazy val okayLlm = (project in file("okay-llm"))
-  .dependsOn(okayCodec)
+  .dependsOn(okayCodec.jvm)
   .settings(
     name := "okay-llm",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
-/** the own distributed runtime, assembled from existing parts (P7) */
-lazy val okayCluster = (project in file("okay-cluster"))
+/** the own distributed runtime, assembled from existing parts (P7);
+ * cross-built: the JVM side holds Remote/Cluster, the JS side the
+ * Node client of the acceptance run, the shared tree the ONE program
+ * both ends compile (specs/cluster.md) */
+lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-cluster"))
   .dependsOn(okayCodec)
   .settings(
     name := "okay-cluster",
+  )
+  .jvmSettings(
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    // the acceptance test runs `node <linked client>` against a local server
+    Test / fork := true,
+    Test / javaOptions += {
+      val client = baseDirectory.value.getParentFile / ".js" / "target" /
+        ("scala-" + scalaVersion.value) / "okay-cluster-fastopt" / "main.js"
+      s"-Dokay.client.js=${client.getAbsolutePath}"
+    },
+    Test / test := (Test / test)
+      .dependsOn(LocalProject("okayClusterJS") / Compile / fastLinkJS).value,
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    scalaJSUseMainModuleInitializer := true,
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    Test / sources := Seq(),
+    Test / test := {},
   )
 
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okaySpark, okayFlink, okayJdbc, okayLex, okayParse, okayCodec, okayLlm, okayCluster, compare)
+    okaySpark, okayFlink, okayJdbc, okayLex.jvm, okayLex.js, okayParse.jvm, okayParse.js,
+    okayCodec.jvm, okayCodec.js, okayLlm, okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,

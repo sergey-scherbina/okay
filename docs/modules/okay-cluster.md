@@ -25,6 +25,12 @@ Cluster.distribute(chunkedSource, Vector(wireWorker, localWorker))(
   agg.init, agg.merge)   // exact even when a worker dies mid-stream
 ```
 
-Actors (a Stage with a mailbox Channel) and the JS-client acceptance
-test are the stated next steps — the latter is the one open roadmap
-box, with its build plan in specs/cluster.md.
+- The cross-platform policy's acceptance is IN THE TESTS: a JS client
+  under Node (`Client.scala`, linked by scalaJS, driven by `runAsync`
+  through the event loop) streams the shared `Acceptance` object's
+  frames to a JVM fold-server and verifies the answer against the
+  SAME shared-source computation — one program, two platforms, one
+  codec.
+
+Actors (a Stage with a mailbox Channel) are the stated next step
+(specs/cluster.md).

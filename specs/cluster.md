@@ -37,15 +37,20 @@ assembly plan, detailed at implementation time.
       dying in-process worker (variance exact, every element counted
       once) AND a socket worker whose server drops the connection
       mid-stream.
-- [ ] a JS client drives a JVM server with the same shared-source
-      program (the policy's acceptance test) — the one deliberately
-      open item: it is a phase-sized build effort, not a code gap.
-      Plan: (1) cross-build the pure P5 chain (okay-lex/parse/codec
-      have no platform deps), (2) a Node `net` facade behind the
-      Transport seam on JS, (3) a two-process acceptance run (JVM
-      server from the test, `node client.js` linked by scalaJS).
-      Nothing in the current design blocks it — Async, the codec and
-      the channel surface are already cross-platform.
+- [x] a JS client drives a JVM server with the same shared-source
+      program (the policy's acceptance test) — DONE, exactly by the
+      plan: (1) okay-lex/parse/codec are crossProjects now (pure
+      Scala; their suites run on JS too), (2) okay-cluster is a
+      crossProject — jvm holds Remote/Cluster, js the Node client
+      (js.Dynamic over `net`, CommonJS module), shared the ONE
+      `Acceptance` object (source, statistic, frames, expected) both
+      ends compile, (3) TestAcceptance starts a JVM fold-server,
+      spawns `node <fastLinkJS output>` (the build wires the link
+      dependency and passes the path as a system property), the
+      client streams the shared frames, awaits the answer through
+      runAsync and exits 0 on agreement — asserted, plus every frame
+      counted on the server. Gotcha: Scala.js main(args) does NOT get
+      process.argv — read it explicitly.
 
 ## Out of scope (initially)
 - membership/discovery beyond static configuration; persistence;
