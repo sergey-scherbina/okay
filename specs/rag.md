@@ -135,6 +135,60 @@ trait VectorStore[F[+_]]:
   Aggregator. Mergeable, therefore distributable, therefore
   incrementally updatable — the same property three times.
 
+## P10f — Code as the proving corpus (the user's proposal)
+
+Index the source of the project the agent is working on, and let
+retrieval REPLACE the read/grep tool loop. This is where every
+advantage above lands hardest, so code is to RAG what JSON was to the
+parser: the dialect that proves the design.
+
+- **Chunks are definitions, not windows.** Splitting the tree gives a
+  function, class or method WITH its doc comment, whole — the unit a
+  reader actually wants. Window splitters cut mid-body and retrieve
+  halves of two functions.
+- **Provenance matters more here than anywhere.** An agent quoting
+  code must quote it exactly, and `file:line-range` must point at the
+  bytes it claims. That is a law here, not a best effort.
+- **Incremental re-index is not a nicety, it is the feature.** The
+  corpus changes constantly BECAUSE THE AGENT IS EDITING IT. And the
+  edit deltas the incremental parser wants are exactly what the
+  agent's own edit tool already knows: an Edit handler can hand
+  (file, editStart, editEndOld, editEndNew) straight to `Parse.reparse`
+  and re-embed only the definitions that actually changed. The loop
+  closes: the agent edits → O(damage) re-index → the next turn
+  retrieves fresh code.
+- **A symbol index needs no embeddings at all.** Definitions and
+  references collected by a `Fold` over the parse give exact
+  structural retrieval — "the definition of X", "what calls X" —
+  cheap, precise, and for code often better than similarity. Semantic
+  search then covers the "where is the thing that does…" half, and
+  fusion (P10c) combines them. Zero-embedding retrieval is a real v1.
+
+**Instead of a tool call, sharpen it to RETRIEVAL-AUGMENTED RECALL.**
+The agent does not ask for code; `recall` already contains it. That
+follows from point 3 of this spec — retrieved segments ARE turns, so
+the context handler can assemble "conversation + relevant code" under
+ONE budget, and the trade-off is a policy, not an accident. A
+`Selective` decision keeps it honest (is the request code-shaped? is
+there budget?), and the explicit search tool stays available for when
+the agent wants to steer — the point is that the common case costs no
+round trip and no tokens spent asking.
+
+**The honest cost: a grammar per language.** Two things make it
+tractable. Our parser is TOTAL, so a partial grammar degrades into
+error nodes instead of failing — a "definition boundary" grammar
+(braces or indentation plus a handful of keywords) is already enough
+for chunking and symbols, and can be sharpened later without a
+rewrite; a parser generator gives no such gradient. And the machinery
+is shared: a brace-family scanner covers Java/JS/TS/C-like, an
+indent-family one reuses the YAML indent stack for Python-shaped
+languages, Scala is where we live, Markdown is already done.
+
+Rejected alternative: tree-sitter via JNI — it would forfeit
+cross-platform (the JS agent could not index), add a native
+dependency to a dependency-free core, and hand incremental parsing to
+a black box we already do better inside.
+
 ## Behavior
 - [x] every character of a source is covered by the split; a
       non-overlapping split concatenates back to the source exactly
@@ -159,6 +213,14 @@ trait VectorStore[F[+_]]:
       passages evicts history under the same policy, testably
 - [ ] a passage kept as lineage re-observes more of its document
       without a new retrieval call
+- [ ] (P10f) a code file splits into whole definitions with their doc
+      comments, each quoting its file exactly
+- [ ] (P10f) an agent edit re-indexes only the changed definitions —
+      measured against the file's size
+- [ ] (P10f) symbol retrieval finds a definition with no embeddings
+      in play, and fuses with semantic hits
+- [ ] (P10f) recall assembles conversation and code under ONE budget:
+      adding code evicts history by the same policy
 
 ## Decisions
 - **No Runnable/LCEL layer.** LCEL exists because Python has no
