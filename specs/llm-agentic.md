@@ -157,6 +157,56 @@ exactly the ones replay skips.
    DISCIPLINE (`Durable.step`) rather than imposed as the only shape.
 3. *Accept the replay.* For most agents, the glue is microseconds.
 
+**"Then why not always skip everything?"** Because naming the resume
+point costs something, and the cost lands on the program's SHAPE:
+
+- To skip everything you must say WHERE to resume, as data. In a
+  free-form program that place is a continuation — a closure — and
+  closures do not serialize (and would not survive a redeploy if they
+  did). So snapshot-resume is available exactly when the agent is a
+  FOLD over an explicit state, which is the trade LangGraph makes:
+  durable resume in exchange for writing every agent as a graph of
+  nodes over a state schema. Replay asks nothing of the shape.
+- The state must then be DATA ONLY — and that collides with the best
+  thing in this design. Our context is allowed to hold program
+  values: a tool result kept as lineage is a `Chunks` program, a
+  passage is a handle that recomputes. Those are exactly what cannot
+  be serialized, and exactly what replay re-derives for free by
+  re-running the pure glue.
+- Versioning cuts the same way. A snapshot binds you to the shape of
+  the state: change the compactor, add a field, and old snapshots
+  need migration, while nothing tells you the code that produced them
+  has moved. A journal binds you only to the operations' wire types —
+  a model call and its reply, a tool call and its result — which are
+  far more stable, and a fingerprint mismatch says so out loud.
+- What a journal gives besides recovery: the whole history, so
+  auditing and time travel are available at ANY point, not only at
+  checkpoints. Fine-grained time travel over snapshots means
+  snapshotting every step, which is the expensive version of this
+  argument.
+- The honest point for the other side: snapshot-resume does not care
+  whether the pure glue is deterministic, and replay does. Glue that
+  depends on iteration order or identity hashes is a real hazard, and
+  the same fingerprints that catch code drift are what catch it.
+
+**So they compose, and that is the answer.** This is a write-ahead
+log with checkpoints, the shape databases settled on decades ago: the
+journal is the foundation (correctness — an effect never runs twice;
+any program shape; the full history), and a periodic snapshot BOUNDS
+how much of it is replayed. You do skip everything — up to the last
+checkpoint — and the journal covers the tail after it. Making the
+journal the foundation rather than the snapshot keeps snapshotting an
+OPTIMIZATION you add where the glue is expensive, instead of a
+CONSTRAINT on how agents may be written.
+
+Scale, so the choice is not made on feeling: the glue is bind-chain
+work, measured at ~95us for ten thousand binds, so a
+several-hundred-step agent replays in microseconds — against seconds
+of model latency. Reach for checkpoints when the glue stops being
+glue (a re-parse of a large corpus between turns), and prefer the
+first dial — promote that computation to an operation — before
+reaching at all.
+
 **Two hazards, both stated rather than hidden:**
 
 - *Code drift.* If the program changed between runs, the operations
