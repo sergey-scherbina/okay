@@ -38,6 +38,13 @@ class TestCatsInterop extends munit.FunSuite {
     assertEquals(fromIO(_root_.cats.effect.IO(21).map(_ * 2)).runWith, 42)
   }
 
+  test("our Scheduler runs on the cats-effect runtime") {
+    given okay.Scheduler = CatsInterop.scheduler
+    val f = okay.Async.spawn(okay.async { Thread.sleep(10); 21 })
+    assertEquals(f.join() * 2, 42)
+    assertEquals(okay.Async.par(okay.async(1), okay.async(2)).runWith, (1, 2))
+  }
+
   test("Free converts to cats free and back, operation for operation") {
     val p: Int ! Produce = produce(1).flatMap(x => produce(x + 1)).map(_ * 10)
     val c = toCats(p)

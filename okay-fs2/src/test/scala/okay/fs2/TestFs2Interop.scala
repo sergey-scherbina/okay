@@ -17,14 +17,12 @@ class TestFs2Interop extends munit.FunSuite {
       List(4, 4, 2))
   }
 
-  test("fs2 streams cross back through a channel of chunks") {
+  test("fs2 streams cross back, backpressured by THEIR queue, lazily consumed") {
     val s = _root_.fs2.Stream.range(0, 100).covary[_root_.cats.effect.IO]
     val c = fromFs2(s)
-    var sum = 0L
-    var ch = c.receive()
-    while ch.isDefined do
-      sum += ch.get.map(_.toLong).sum
-      ch = c.receive()
-    assertEquals(sum, (0 until 100).map(_.toLong).sum)
+    assertEquals(okay.Chunks.fold(c)(using okay.Fold.sum[Int]).toLong, (0 until 100).sum.toLong)
+    // a bounded queue holds an infinite fs2 stream: take a little, leave the rest suspended
+    val inf = fromFs2(_root_.fs2.Stream.iterate(0)(_ + 1).covary[_root_.cats.effect.IO], capacity = 2)
+    assertEquals(okay.Chunks.fold(okay.Chunks.take(inf)(10))(using okay.Fold.count), 10L)
   }
 }

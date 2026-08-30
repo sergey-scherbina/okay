@@ -37,6 +37,22 @@ given [E, F[+_]](using okay.TypeableK[Throws % E])
 
 object CatsInterop {
 
+  /**
+   * OUR Scheduler specialized to THEIR runtime: fork runs the thunk
+   * as an IO on cats-effect's blocking pool (our thunks may park —
+   * that is what their blocking pool is for), join parks the CALLER
+   * (an okay virtual thread) on the future — the compute pool never
+   * blocks. Bring it into scope to run okay fibers, parMap, merge and
+   * supervision on the cats-effect runtime.
+   */
+  def scheduler(using rt: IORuntime): okay.Scheduler = new:
+    def fork[A](a: () => A): okay.Fiber[A] =
+      val (fut, cancelIO) = IO.blocking(a()).unsafeToFutureCancelable()
+      new okay.Fiber[A]:
+        def join(): A =
+          scala.concurrent.Await.result(fut, scala.concurrent.duration.Duration.Inf)
+        def cancel(): Unit = { cancelIO(); () }
+
   /** run an okay Async program as an IO (it may park — IO.blocking) */
   def toIO[A](p: => A ! Async): IO[A] = IO.blocking(p.runWith)
 
