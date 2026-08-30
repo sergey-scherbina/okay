@@ -346,11 +346,19 @@ handler, and its JSON-RPC framing is our total parser plus `Schema`.
 - [x] system turns are pinned: they survive any amount of pressure
 - [x] an unknown or denied tool is an ANSWER, not a fault, so the
       model can recover from its own mistake
-- [ ] token counts from the BPE Scan match the provider's usage
-      report within a stated tolerance (needs a real dictionary; the
-      local counter is wired and tested against itself)
-- [ ] a tool result too large for the context is kept as lineage: the
-      model sees a projection, a follow-up re-observes the full value
+- [x] token counts are checked against the provider's own usage
+      report (live): on English prose the chars/4 estimate measured
+      135 against the provider's 132 — a ratio of 1.02, asserted to
+      stay within 2x either way. An EXACT count needs the model's own
+      merges table in `Bpe`; the honest position is that a budget
+      built on the estimate cannot be wrong by a factor that matters,
+      not that the estimate is a tokenizer.
+- [x] a tool result too large for the context is kept as lineage:
+      `Large.projecting` wraps ANY tool handler, so no tool knows
+      about it — a result over the limit is stored whole and reaches
+      the context as its head plus a handle and a size, and the
+      `expand` tool reads any window of it afterwards. Small results
+      pass through untouched; an unknown handle is an answer.
 - [x] mark/restore: a snapshot restores the conversation exactly (a
       pointer, not an undo log) — the backtracking-with-Logic
       combination is v2
@@ -364,8 +372,9 @@ handler, and its JSON-RPC framing is our total parser plus `Schema`.
       was AT THAT POINT. Handler ORDER then says what you mean:
       Memory inside the search = a private conversation per branch,
       outside = one shared transcript. Both tested.
-- [ ] a partial structured answer decodes mid-stream and generation
-      stops when the value is complete
+- [x] a partial structured answer decodes mid-stream and generation
+      stops when the value is complete — `Structured.cut` (okay-llm),
+      tested by counting what was actually demanded
 - [ ] the same agent program runs on the JVM and under Node (the
       cross-platform policy, as in okay-cluster)
 

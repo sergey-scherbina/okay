@@ -28,12 +28,20 @@ object OpenAi {
   final case class Msg(role: String, content: Option[String],
                        tool_calls: Option[List[Call]])
   final case class Choice(message: Option[Msg], finish_reason: Option[String])
-  final case class Response(choices: List[Choice])
+
+  /** what the provider says the exchange cost — the only authority
+   * on tokens, and what a local counter is checked against */
+  final case class Usage(prompt_tokens: Option[Int],
+                         completion_tokens: Option[Int],
+                         total_tokens: Option[Int])
+
+  final case class Response(choices: List[Choice], usage: Option[Usage])
 
   given Schema[Fn] = Schema.derived
   given Schema[Call] = Schema.derived
   given Schema[Msg] = Schema.derived
   given Schema[Choice] = Schema.derived
+  given Schema[Usage] = Schema.derived
   given Schema[Response] = Schema.derived
 
   /** the streaming shape: deltas rather than a whole message */
@@ -114,7 +122,7 @@ object OpenAi {
     Writer.run[String, Unit, Async](transport.post(url, headers(apiKey), body))
       .map { (lines, _) =>
         Json.read[Response](lines.mkString("\n"))
-          .getOrElse(Response(Nil))   // total: a damaged body is no choices
+          .getOrElse(Response(Nil, None))   // total: a damaged body is no choices
       }
 
   /** the completion as a stream of text tokens (SSE) */

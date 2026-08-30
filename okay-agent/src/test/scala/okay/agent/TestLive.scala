@@ -117,6 +117,28 @@ class TestLive extends munit.FunSuite {
     assert(sent.last != sent.head)
   }
 
+  test("live: how close is the local token estimate to the provider's count?") {
+    assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    // a prompt long enough that a constant overhead does not dominate
+    val prompt = ("The quick brown fox jumps over the lazy dog. " * 12).trim
+    val body = OpenAi.request(model,
+      Seq(OpenAi.message("user", prompt)), maxTokens = Some(8))
+    val r = OpenAi.complete(transport, key, body, url).runWith
+    val reported = r.usage.flatMap(_.prompt_tokens)
+    assume(reported.isDefined, "this endpoint reports no usage")
+
+    val ours = Compact.chars(Turn.User(prompt))    // the chars/4 estimate
+    val actual = reported.get
+    val ratio = ours.toDouble / actual
+    // The estimate is a heuristic, not a tokenizer: what is asserted
+    // is that it is the right ORDER, so a budget built on it cannot
+    // be wrong by a factor that matters. An exact count needs the
+    // model's own merges table in `Bpe` — the honest remaining gap.
+    assert(ratio > 0.4 && ratio < 2.0,
+      s"the local estimate is off by more than 2x: ours=$ours provider=$actual")
+    println(s"[live] prompt tokens: ours=$ours provider=$actual ratio=${"%.2f".format(ratio)}")
+  }
+
   case class Weather(city: String)
   given Schema[Weather] = Schema.derived
 
