@@ -18,5 +18,13 @@ Instances inward, conversions outward, nothing more.
   cats-effect (fork = `IO.blocking` on their blocking pool, join
   parks the okay caller).
 
-Caveat: a row containing `Throws` has no `Handler` — `runEither`
-before `runWith`.
+The instances pass cats' OWN law suites: Monad over the pure row and
+MonadError over `Throws % String` — 90 properties, programs compared
+by running them (the only observation a value-program offers), the
+generators producing left-nested binds so the Bind rotation is under
+the laws too.
+
+Caveats: a row containing `Throws` has no `Handler` — `runEither`
+before `runWith`. discipline-munit 2.0.0 is inline-incompatible with
+munit 1.1 — unfold the RuleSets into plain munit-scalacheck
+properties instead.

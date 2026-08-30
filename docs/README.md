@@ -26,9 +26,9 @@ JVM, JS and Native.
 | [`okay-jdbc`](modules/okay-jdbc.md) | JDBC as chunked streams under Resource |
 | [`okay-lex`](modules/okay-lex.md) | total streaming tokenization, incremental |
 | [`okay-parse`](modules/okay-parse.md) | total error-tolerant parsing |
-| [`okay-codec`](modules/okay-codec.md) | the Schema algebra and the JSON dialect |
-| [`okay-llm`](modules/okay-llm.md) | language models as streams |
-| [`okay-cluster`](modules/okay-cluster.md) | the remote channel |
+| [`okay-codec`](modules/okay-codec.md) | the Schema algebra; JSON, CBOR and Markdown dialects |
+| [`okay-llm`](modules/okay-llm.md) | language models as streams; BPE as a Scan |
+| [`okay-cluster`](modules/okay-cluster.md) | the remote channel and distributed chunk work |
 
 Design documents live in [`specs/`](../specs) — one per feature, with
 behavior checkboxes and the decisions (including refuted experiments).

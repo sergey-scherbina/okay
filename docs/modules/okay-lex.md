@@ -11,8 +11,19 @@ Total streaming tokenization.
   the Error CHANNEL, an unterminated string finished by flush. The
   lossless law: concatenated lexemes of all channels == the input.
 - `Scan.stage` — the scanner as a pipeline Stage (chars in, tokens
-  out, lazily). `Scan.all` — snapshots every N chars. `Scan.relex` —
-  resume from the nearest snapshot, relex the damage, RECONVERGE past
-  the next newline and reuse the old tail with shifted spans; no
-  convergence means a full (still correct) relex.
-- `Json.scan` is the proving dialect.
+  out, lazily). `Scan.chunks` — the chunked performance path: a chunk
+  of chars in, a chunk of tokens out, one tight while per chunk, the
+  SAME Scan (the state crosses boundaries as a value, so a token
+  spanning chunks is emitted exactly once, where it completes).
+  `Scan.all` — snapshots every N chars. `Scan.relex` — resume from
+  the nearest snapshot, relex the damage, RECONVERGE past the next
+  newline and reuse the old tail with shifted spans; no convergence
+  means a full (still correct) relex.
+- `Json.scan` is the proving dialect; okay-llm's `Bpe` implements the
+  same interface (a tokenizer is a Scan, whatever its dictionary).
+
+```scala
+// element-wise and chunked agree at every chunk size:
+Scan.all(Json.scan)(input).tokens
+Chunks.fold(Scan.chunks(Json.scan)(Chunks.fromIterator(input.iterator, 5)))
+```

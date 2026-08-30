@@ -8,7 +8,10 @@ https://okmij.org/ftp/Haskell/extensible/more.pdf
 https://bentnib.org/paramnotions-jfp.html
 "Parameterised notions of computation" Robert Atkey
 
-Zero dependencies. JDK 21+ (Loom).
+Zero dependencies. One source for JVM (JDK 21+, Loom), Scala.js and
+Scala Native — each platform contributes evidence (can it park? what
+is its timer? what schedules?), not API: the same Await-based test
+suite runs on a JVM, under Node and as a linked native binary.
 
 ## Architecture
 
@@ -45,10 +48,17 @@ Zero dependencies. JDK 21+ (Loom).
   (Throws.scala).
 - `Choice` — nondeterminism with a genuinely multi-shot handler; the
   canonical MonadPlus (Choice.scala).
-- `Async` — Loom-style: one operation, "run this (possibly blocking)
-  computation"; blocking parks a virtual thread. `spawn`/`par`/`race`/
-  `timeout`, `Fiber` + `Scheduler` (loom default, forkJoin and plain
-  threads for JVMs without Loom) (Async.scala).
+- `Async` — cross-platform: `Run` (a possibly blocking thunk —
+  blocking is a JVM/Native ability that parks a virtual thread) and
+  `Await` (the universal callback form: an error channel in, a
+  canceller out). Blocking is `CanBlock` evidence — absent on JS,
+  where `runAsync` drives the same programs through the event loop
+  and a blocking join is a compile error. `spawn`/`par`/`race`/
+  `timeout`/`sleep` are cross-platform; `Fiber` is
+  onComplete/cancel/joinAsync everywhere, parking join under the
+  evidence; `Scheduler` takes the program (Loom / the event loop /
+  one OS thread per fiber) (Async.scala + Platform.scala per
+  platform).
 - `Resource` — the region: acquires release at the end of the scope in
   reverse order, surviving handled aborts and mid-step exceptions;
   `bracket` over any Handler-able row (Resource.scala).
@@ -67,8 +77,11 @@ pipeline (JMH, us/op; plain Iterator floor = 14.1):
 | `.iterator` | 53 | linear, fused, consume-once |
 | `Chunks` + `.elements` | 23.6 | chunked source |
 | `Chunks.map/filter/take` | 16.9 | chunk-in, chunk-out array passes |
+| `Staged` (inline whole-stage) | 1.6 | one fused while-loop; same-run Iterator = 19.3 |
 
-(kyo 239, ZIO 692, fs2 1410 on the same pipeline.)
+(kyo 239, ZIO 692, fs2 1410 on the same pipeline. `Staged` is the
+compile-time end of the choice rule: the `Pipeline` operator tree is
+for tools — optimize, inspect, ship — the inline shape is for speed.)
 
 - `Fold`/`Foldable` — the push side; `Monoid` derives folds.
 - Writer programs, producers, generators (`generate`/`Put`: one unfold,
@@ -85,9 +98,15 @@ pipeline (JMH, us/op; plain Iterator floor = 14.1):
 
 - `Channel` — the queue between fibers; `merge` combines streams by
   readiness (chunked merge: 14.7 us vs ZIO 47 on 2x500), `buffer`
-  runs the producer ahead (Channel.scala).
+  runs the producer ahead. Parking backpressure on JVM/Native; the
+  Await-based JS channel keeps the same surface (Channel.scala per
+  platform).
 - Everything runs on virtual threads by default; fork/join of 100
   trivial tasks: 29 us (raw Loom 21, kyo 25, ZIO 50, cats-effect 140).
+- Across machines: `Remote` ships chunks over a socket into an
+  ordinary local Channel, and `Cluster.distribute` spreads a chunked
+  source over workers with per-chunk recompute on failure — the
+  Aggregator merge is the cross-node contract (okay-cluster).
 
 ## Benchmarks vs the ecosystem
 

@@ -54,16 +54,26 @@ same material with the measurements attached.
 - **`Choose`** — nondeterminism; the handler is genuinely multi-shot;
   the canonical `MonadPlus`.
 - **`Async`** — `Run(thunk)` (blocking = a JVM/Native ability) and
-  `Await(register)` (the universal callback form). **`Fiber`**
-  (onComplete/cancel everywhere; join/joinEither only under
-  **`CanBlock`** evidence — absent on JS, so a blocking join is a
-  compile error, not a frozen loop), **`Scheduler`** (takes the
-  program: loom/forkJoin/threads in `Schedulers` on the JVM, the
-  event loop on JS, one OS thread per fiber on Native; interop
-  modules add cats-effect and ZIO instances), `runAsync` (the
-  universal `Future` terminal — drives the tree through callbacks),
-  `spawn/par/race/timeout/sleep` (`sleep` rides the platform
-  **`Timer`**), **`bracket`** (any Handler-able row).
+  `Await(register)` (the universal callback form; the callback takes
+  `Either[Throwable, A]` — the Left is the error channel and fails
+  the program at that operation — and the registration answers a
+  CANCELLER, so cancellation unregisters the timer/completion too;
+  the simple top-level `await` wraps success-only registrations,
+  `Async.await` is the full form). **`Fiber`** (onComplete/cancel
+  everywhere plus `joinAsync` — the effect-world join, an Await;
+  join/joinEither only under **`CanBlock`** evidence — absent on JS,
+  so a blocking join is a compile error, not a frozen loop),
+  **`Scheduler`** (takes the program: loom/forkJoin/threads in
+  `Schedulers` on the JVM, the event loop on JS, one OS thread per
+  fiber on Native; interop modules add cats-effect and ZIO
+  instances), `runAsync` (the universal `Future` terminal — a
+  while-loop drive with an atomic handshake per Await: the callback
+  may fire during registration, on any thread, and whoever loses the
+  exchange continues), `spawn/par/race/timeout/sleep` — all
+  cross-platform: par pairs by completion and a child failure cancels
+  the sibling; race's first SUCCESS wins, two failures fail it;
+  `sleep` rides the platform **`Timer`**; **`bracket`** (any
+  Handler-able row).
 - **`Resource`** — the region: acquires release at the scope's end in
   reverse order, surviving handled aborts and mid-step exceptions;
   run it OUTERMOST.
@@ -94,8 +104,19 @@ same material with the measurements attached.
 - **`Take % V`** / **`pipe`** — the consumer dual of Writer and the
   coroutine pairing. **`Stage[I, O, A]`** — a transducer as a program;
   `through` composes demand-driven; `Stage.id/chunked/unchunk`.
+  Effectful rows compose too: the `throughG`/`throughProducerG`
+  overloads forward arbitrary G ops from either side in the order the
+  pull crosses them (a pure stage joins the row by `!.widen` and a
+  union-ACI ascription).
+- **`Staged`** / **`Push[A]`** — whole-stage codegen as an INLINE
+  PROGRAM SHAPE (`range/gen/map/filter/take/drop/fold`): nested calls
+  beta-reduce into one while-loop, 1.6us on the lane where Iterator
+  takes 19.3. The tree (`Pipeline`) is for tools, the inline shape is
+  for speed — a GADT cannot partially evaluate through `inline match`.
 - **`Channel[A]`** — the bounded queue between fibers (park-based
-  backpressure); a LINEAR async stream; `merge` (readiness), `buffer`.
+  backpressure on JVM/Native; the JS variant is Await-based behind
+  the same surface, capacity advisory); a LINEAR async stream;
+  `merge` (readiness), `buffer`.
 - **`Retry`** — policies as delay streams; `retry`, `supervised`,
   `retryChunks` (per-chunk lineage recompute), `parMap` (a fiber per
   chunk).
@@ -114,3 +135,12 @@ same material with the measurements attached.
   operations are class-distinct from identity-signature values.
 - Satellite modules need `import okay.given` for the extension methods
   of package-level givens (`runWith` above all).
+- `inline match` does NOT reduce through pattern-bound subtrees: a
+  GADT operator tree cannot drive partial evaluation — the staged
+  artifact must be an inline program shape (`Staged`, `Control[M]`).
+- Two files with the SAME NAME in one package cannot both hold
+  top-level definitions — they collide on the synthesized
+  `<name>$package` object (why the platform halves of Async live in
+  `Platform.scala`, not a second `Async.scala`).
+- A poly-function literal (`[X] => ...`) cannot be passed with the
+  colon-argument syntax — parenthesize the call.

@@ -82,6 +82,25 @@ chunk-out array passes), `zip` (realigns boundaries), `rechunk`,
 operator tree and `Pipeline.optimize` rewrites it (fusion, take
 pushdown into sources) before compiling back onto the transformers.
 
+When the pipeline's shape is known where it is written, `Staged` goes
+the last mile — whole-stage codegen by inline partial evaluation:
+
+```scala
+Staged.fold(
+  Staged.take(
+    Staged.filter(Staged.map(Staged.range(0, 1000000), _ * 2), _ % 3 == 0),
+    1000))(0L)(_ + _)
+```
+
+Nested calls beta-reduce into ONE while-loop with every lambda
+inlined: 1.6us where `Iterator` takes 19.3 and the interpreted tree
+15.9 (the standard map/filter/take/sum lane). The choice rule is the
+library's usual one, one level up: the `Pipeline` TREE is for tools
+(optimize, inspect, ship to another node), the INLINE SHAPE is for
+speed — a GADT tree cannot partially evaluate through `inline match`
+(pattern binding erases the inline-ness of subtrees), so the two
+stay separate on purpose.
+
 ## 5. Coroutines: `Take`, `pipe`, `Stage`
 
 `Take.await` is the dual of `Writer.tell`; `pipe(producer)(consumer)`
@@ -91,27 +110,104 @@ as a program (awaits I, tells O); `through` composes stages
 demand-driven. Tokenizers and parsers are stages (okay-lex,
 okay-parse).
 
+Stages may be EFFECTFUL: a row `Take % I + (Writer % O + G)` carries
+arbitrary operations G (Async above all) between awaits and tells,
+and the `through` overloads forward them through composition in the
+order the pull crosses them — laziness intact, associativity intact.
+A pure stage joins an effectful row by `!.widen` (plus a union-ACI
+ascription); an SSE line stream through an event-framing stage is
+this shape in production (okay-llm).
+
 ## 6. Concurrency: Loom first
 
 `Async` has one blocking operation (`Run`) and one universal callback
 operation (`Await`); on the JVM the handler parks a virtual thread —
-blocking IS asynchrony. Blocking is evidence-gated (`CanBlock`, given
-on JVM/Native only): on JS the SAME programs run through the event
-loop by `Async.runAsync(prog): Future[A]`, and a blocking join is a
-compile error. `Fiber` (onComplete/cancel everywhere, join under the
-evidence) and `Scheduler` (takes the program; `Schedulers.loom` by
-default on the JVM, forkJoin and plain threads for JVMs without Loom,
-the event loop on JS; the cats-effect and ZIO runtimes plug in as
-Scheduler instances from the interop modules). `spawn`, `par`, `race`
-(cancels the loser; cross-platform), `timeout`, `sleep` (rides the
-platform `Timer`), `bracket`. `Channel` is the queue
-between fibers — `merge` combines streams by readiness, `buffer` runs
-a producer ahead. `parMap` maps a chunked stream with a fiber per
-chunk; `retry` takes its policy as a STREAM of delays; `retryChunks`
-recomputes a failed chunk from the stream's own program — the value
-is the lineage, Spark-style.
+blocking IS asynchrony. The Await callback carries an ERROR CHANNEL
+(`Either[Throwable, A] => Unit` — a Left fails the program at that
+operation, a failure is a value on the wire) and its registration
+answers with a CANCELLER, so cancelling a fiber also unregisters the
+timer or I/O completion it was parked on. The simple top-level
+`await(k => ...)` keeps the success-only shape; `Async.await` is the
+full form.
 
-## 7. The laziness contract
+Blocking is evidence-gated (`CanBlock`, given on JVM/Native only): on
+JS the SAME programs run through the event loop by
+`Async.runAsync(prog): Future[A]`, and a blocking join is a compile
+error, not a frozen loop. `Fiber` is onComplete/cancel everywhere
+plus `joinAsync` (the effect-world join — itself an Await, good on
+every platform); the parking `join`/`joinEither` exist only under the
+evidence. `Scheduler` takes the PROGRAM — which is exactly what lets
+the event loop be a scheduler (`Schedulers.loom` by default on the
+JVM, forkJoin and plain threads for JVMs without Loom, one OS thread
+per fiber on Native; the cats-effect and ZIO runtimes plug in as
+Scheduler instances from the interop modules).
+
+The combinators are cross-platform: `spawn`, `par` (pairs by
+completion callbacks; a child failure fails the pair and cancels the
+sibling), `race` (first SUCCESS wins and cancels both; two failures
+fail the race instead of hanging), `timeout`, `sleep` (an Await on
+the platform `Timer` — a sleeping virtual thread, setTimeout, a
+thread), `bracket`. One shared-source Await suite runs on the JVM,
+under Node and as a linked Native binary in CI.
+
+`Channel` is the queue between fibers — `merge` combines streams by
+readiness, `buffer` runs a producer ahead. On JVM/Native it parks
+(bounded, backpressure by parking); JS gets the Await-based channel
+behind the same surface (capacity advisory — a JS sender cannot
+park). `parMap` maps a chunked stream with a fiber per chunk; `retry`
+takes its policy as a STREAM of delays; `retryChunks` recomputes a
+failed chunk from the stream's own program — the value is the
+lineage, Spark-style. One level up, `Cluster.distribute` (okay-cluster)
+rides the same fact across machines: workers behind one seam
+(`Chunk[A] => Acc`; a dead worker throws), a failure hands the chunk
+— still in hand, the source is a value — to a survivor, partials
+merging by the Aggregator's combOp.
+
+## 7. Text is a stream: lex → parse → codec
+
+The P5 stack is three small modules over the coroutine layer, all
+TOTAL — errors are data in the result, never faults.
+
+**okay-lex.** A lexer is a pure step function `Scan[K, S]`
+(`step(s, c) => (S, tokens)`, `flush` finishes the tail): the state
+is a VALUE, so it crosses chunk boundaries (`Scan.chunks` — a tight
+while per chunk, a token spanning chunks is emitted once, where it
+completes) and snapshots for free. `Scan.relex` resumes from the
+nearest snapshot before an edit and RECONVERGES — past the edit and
+the next newline, a state equal to the old run's state means the old
+tokens are reused with shifted spans. Everything is a token, garbage
+included (the Error channel); concatenated lexemes of all channels
+equal the input.
+
+**okay-parse.** Both parsing surfaces — a hand-written driver and
+combinators — emit the ONE instruction language (`Open/Emit/Close/
+Bad`), and the total builder folds any instruction stream into a
+lossless CST: a Close with nothing open is an error leaf, open nodes
+at the end close with an "unclosed" marker — a truncated stream (the
+LLM case) is a tree with holes. Incremental reparse is the same
+discipline one level up: `Parse.full` snapshots the persistent
+builder at root-level node boundaries (a snapshot is a pointer), and
+`Parse.reparse` relexes, resumes before the damage and SPLICES once
+the token stream is the old one again — unchanged subtrees come back
+BY REFERENCE for a length-preserving edit, with rebased spans
+otherwise. The contract making token-level reconvergence sound: the
+driver is a per-token function, no cross-token state — the stateful
+part of parsing is the builder, and the builder is what snapshots.
+
+**okay-codec.** Typeclass codecs are ALGEBRAS OVER A SCHEMA:
+`Schema[A]` reifies a datatype's shape once (via Mirrors, thunked
+fields for recursion), and every format folds it — `Json` renders
+text, `Cbor` renders RFC 8949 binary, one derived Schema serving
+both with equal semantic content. Dialects prove the model:
+`Json.cst/render` is the byte-for-byte lossless layer; `Markdown`
+proves REFRAMING (crossing emphasis `*a _b* c_` closes the inner
+frames tokenless, closes the target with its token and reopens the
+inner frames — well-nested, lossless, no faults). okay-llm rides the
+same totality: a BPE tokenizer is just another `Scan`, and a cut-off
+model answer still decodes because a tree with holes projects the
+fields that are there.
+
+## 8. The laziness contract
 
 Programs are values: construction does no work (the opt-in Eager is
 the sole, stated exception). An infinite program constructs in O(1);
