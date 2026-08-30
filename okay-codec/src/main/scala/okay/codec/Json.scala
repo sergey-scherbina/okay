@@ -43,6 +43,17 @@ object Json {
   /** render = the lossless law made a function */
   def render(c: Cst[K]): String = Cst.lexemes(c)
 
+  /** print a Json VALUE back to text — the projection's other
+   * direction (render is the CST's; this one is the value's) */
+  def print(j: Json): String = j match
+    case JNull => "null"
+    case JBool(b) => b.toString
+    case JNum(n) => if n == n.floor && n.abs < 1e15 then n.toLong.toString else n.toString
+    case JStr(s) => "\"" + escape(s) + "\""
+    case JArr(vs) => vs.map(print).mkString("[", ",", "]")
+    case JObj(fs) => fs.map((k, v) => "\"" + escape(k) + "\":" + print(v)).mkString("{", ",", "}")
+    case JErr(m) => "\"<error: " + escape(m) + ">\""
+
   /** the total pipeline: any string yields a Json (JErr for damage) */
   def parse(s: String): Json =
     val vs = values(cst(s))

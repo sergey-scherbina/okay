@@ -241,6 +241,26 @@ Priority note: this ranks BELOW a real provider handler. Until the
 agent and retrieval layers have met an actual model, a durability
 feature is insurance on a machine nobody has driven.
 
+**Built (Durable.scala).** The per-operation recovery policy, since
+the choice belongs to the operation and not to the runtime:
+`Redo` (safe to repeat), `WithKey` (repeat carrying the FIRST
+attempt's key, so the far end deduplicates — the answer for
+payments), `Reconcile` (do not repeat; ask the far end by that key
+what happened), `Escalate` (a human decides), `Fail` (refuse). The
+journal is written intent-first, so recovery tells the three cases
+apart: an answered entry (skip — it already happened), an answerless
+one (the crash window: apply the policy), nothing (execute). One
+handler serves the first run and the recovery. `Durable.replaying`
+is the other half: the incident again, offline, world untouched.
+
+The tests are about the ugly cases, because that is what makes it
+trustworthy: recovery from a complete journal touches nothing, Fail
+refuses rather than charge twice, WithKey demonstrably carries the
+original key, Reconcile never re-executes and settles the journal,
+a Reconcile that cannot answer refuses instead of guessing, policy
+differs per operation in one run, and a changed program is caught by
+the fingerprint and stops the replay loudly.
+
 **Two hazards, both stated rather than hidden:**
 
 - *Code drift.* If the program changed between runs, the operations
