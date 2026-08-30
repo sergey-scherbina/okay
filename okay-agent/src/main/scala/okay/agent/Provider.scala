@@ -3,7 +3,7 @@ package okay.agent
 import okay.{!, Handler, given}
 import okay.codec.Json
 import okay.lex.{Bpe, Scan}
-import okay.llm.{OpenAi, Transport}
+import okay.llm.{Anthropic, OpenAi, Transport}
 
 /**
  * A live model behind the `Model` effect. Everything in this library
@@ -68,6 +68,68 @@ object Provider {
           stream = false, maxTokens)
         // the virtual thread parks here; the row above stays a program
         reply(OpenAi.complete(transport, apiKey, body, url).runWith)
+      case Model.Count(text) => count(text)
+
+  // ------------------------------------------------------------------
+  // the SAME effect, a genuinely different wire
+  //
+  // This is the seam's test rather than a convenience: Anthropic's
+  // Messages API puts `system` at the top level instead of in the
+  // message list, carries content as typed BLOCKS instead of a
+  // string, names a tool's schema `input_schema` instead of
+  // `parameters`, delivers tool arguments as a JSON object instead of
+  // a string of JSON, and expects tool results back as a USER message
+  // of tool_result blocks — several of them merged into one when
+  // calls were parallel. None of that reached `Model`: the whole
+  // mapping lives in this handler, which is what "policy lives in the
+  // handler" is supposed to mean.
+
+  /** turns to the Messages API's shape: the system prompt is lifted
+   * out, and consecutive tool results merge into one user message */
+  def anthropicMessages(context: Seq[Turn]): (Option[String], Seq[Json]) =
+    val system = context.collect {
+      case Turn.System(s) => s
+      case Turn.Summary(s, _) => s
+    }
+    val out = Vector.newBuilder[Json]
+    var pendingResults = Vector.empty[Json]
+
+    def flushResults(): Unit =
+      if pendingResults.nonEmpty then
+        out += Anthropic.blocks("user", pendingResults)
+        pendingResults = Vector.empty
+
+    for t <- context do t match
+      case Turn.System(_) | Turn.Summary(_, _) => ()
+      case Turn.User(s) =>
+        flushResults()
+        out += Anthropic.blocks("user", Vector(Anthropic.textBlock(s)))
+      case Turn.Assistant(s, calls) =>
+        flushResults()
+        val bs = (if s.nonEmpty then Vector(Anthropic.textBlock(s)) else Vector.empty) ++
+          calls.map(c => Anthropic.toolUseBlock(c.id, c.name, c.args))
+        if bs.nonEmpty then out += Anthropic.blocks("assistant", bs)
+      case Turn.Result(id, c) =>
+        pendingResults = pendingResults :+ Anthropic.toolResultBlock(id, c)
+
+    flushResults()
+    (Option(system.mkString("\n")).filter(_.nonEmpty), out.result())
+
+  /** the handler: the same programs, the other protocol */
+  def anthropic(transport: Transport, apiKey: String, model: String,
+                url: String = Anthropic.messagesUrl,
+                maxTokens: Int = 1024,
+                count: String => Int = _.length / 4)
+               (using okay.Handler[okay.Async]): Handler[Model] = new:
+    def handle[A](e: Model[A]): A = e match
+      case Model.Complete(context, tools) =>
+        val (system, messages) = anthropicMessages(context)
+        val body = Anthropic.messagesBody(model, system, messages,
+          tools.map(t => Anthropic.toolDecl(t.name, t.description, t.schema)),
+          maxTokens)
+        val a = Anthropic.message(transport, apiKey, body, url).runWith
+        // `input` is already an object here, so nothing to re-parse
+        Reply(a.text, a.calls.map((id, name, input) => ToolCall(id, name, input)))
       case Model.Count(text) => count(text)
 
   /** the local tokenizer as the counter, when a dictionary is at hand */

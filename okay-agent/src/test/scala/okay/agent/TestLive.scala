@@ -139,6 +139,40 @@ class TestLive extends munit.FunSuite {
     println(s"[live] prompt tokens: ours=$ours provider=$actual ratio=${"%.2f".format(ratio)}")
   }
 
+  // ---- the same programs over the OTHER protocol
+
+  val anthropicUrl = sys.env.getOrElse("OKAY_LLM_ANTHROPIC_URL",
+    url.replace("/chat/completions", "/messages"))
+
+  lazy val anthropicReachable: Boolean =
+    try
+      val body = okay.llm.Anthropic.messagesBody(model, None,
+        Seq(okay.llm.Anthropic.blocks("user",
+          Vector(okay.llm.Anthropic.textBlock("hi")))), Nil, 4)
+      val c = java.net.URI.create(anthropicUrl).toURL.openConnection()
+        .asInstanceOf[java.net.HttpURLConnection]
+      c.setRequestMethod("POST")
+      c.setConnectTimeout(2000)
+      c.setReadTimeout(30000)
+      c.setDoOutput(true)
+      c.setRequestProperty("content-type", "application/json")
+      c.setRequestProperty("anthropic-version", "2023-06-01")
+      c.getOutputStream.write(body.getBytes("UTF-8"))
+      c.getResponseCode == 200
+    catch case _: Throwable => false
+
+  test("live: the same agent runs over the Anthropic protocol too") {
+    assume(anthropicReachable, s"no Anthropic-shaped endpoint at $anthropicUrl")
+    val provider = Provider.anthropic(transport, key, model, anthropicUrl, maxTokens = 64)
+    val (state, ctx) = Handlers.context(Compact.all)
+    val prog = Agent.remember(Turn.System("Answer in one short sentence."))
+      .flatMap(_ => Agent.converse("What colour is the sky on a clear day?"))
+    val answer = run(prog)(provider, Handlers.tools(Map.empty), ctx)
+
+    assert(answer.nonEmpty, "no answer came back over the Messages API")
+    println(s"[live/anthropic] $answer")
+  }
+
   case class Weather(city: String)
   given Schema[Weather] = Schema.derived
 

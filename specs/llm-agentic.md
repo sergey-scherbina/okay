@@ -321,6 +321,36 @@ Details worth recording:
   damaged optional field decodes as absent); the damage stays visible
   in the projection and in `Cst.errors`.
 
+## Two providers, and what the second one proved
+
+`Provider.anthropic` speaks the Messages API, and it exists as the
+SEAM'S TEST rather than for reach (a gateway already serves Claude
+over the OpenAI shape). One provider proves nothing about
+pluggability; two genuinely different wires do — and this one differs
+in every way that could have leaked:
+
+| | OpenAI-compatible | Anthropic Messages |
+|---|---|---|
+| system prompt | a message with role `system` | a TOP-LEVEL field |
+| content | a string | a list of typed BLOCKS |
+| tool schema field | `parameters` | `input_schema` |
+| tool arguments | a STRING of JSON | a JSON object |
+| tool results | a `tool` message per result | a USER message, parallel results MERGED into one |
+| max_tokens | optional | required |
+
+None of that reached the `Model` effect. `Model.Complete(context,
+tools)` was designed while looking at one protocol, so the real risk
+was that it had become OpenAI-shaped by accident; the mapping for the
+second wire lives entirely in its handler, which is what "policy
+lives in the handler" was supposed to mean. Both are proven live
+against the same local gateway, which serves both shapes.
+
+The response is walked as a parsed `Json` rather than decoded by a
+derived Schema, because content blocks are heterogeneous and carry
+arbitrary JSON in `input` — the same reason the request is BUILT from
+Json values. Both directions stay total: a truncated body yields the
+blocks that arrived.
+
 ## Interop, not reimplementation
 
 The P3 doctrine applies verbatim: `okay-langchain4j` makes their
