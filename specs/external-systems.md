@@ -41,7 +41,8 @@ the Aggregator triple), then JDBC.
       at-least-once), sink sends and flushes, Resource closes the
       consumer; a real-broker (testcontainers) round-trip is a later
       hardening step
-- [ ] spark: the SAME Aggregator value yields equal results run
-      locally over Chunks and on a local-mode Spark session
+- [x] spark: the SAME Aggregator value yields equal results run
+      locally over Chunks and on a local-mode Spark session (variance
+      over 8 partitions, zip, aggregateByKey, the typed Dataset column)
 - [ ] jdbc: a large result set streams in constant memory; the
       Resource region closes the stack on abort and on cancellation

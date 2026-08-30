@@ -10,7 +10,7 @@ package okay
  * computes both in a SINGLE pass over the data — mean is sum zip
  * count, presented.
  */
-trait Aggregator[-In, Acc, +Out]:
+trait Aggregator[-In, Acc, +Out] extends Serializable:
   def init: Acc
 
   /** the sequential step (seqOp) */

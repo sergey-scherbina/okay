@@ -96,8 +96,37 @@ lazy val okayKafka = (project in file("okay-kafka"))
     ),
   )
 
+/** Spark via the Aggregator triple (P4); Spark ships for 2.13 only,
+ * so the standard for3Use2_13 cross applies */
+lazy val okaySpark = (project in file("okay-spark"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-spark",
+    libraryDependencies ++= Seq(
+      ("org.apache.spark" %% "spark-sql" % "4.0.0").cross(CrossVersion.for3Use2_13),
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+    Test / fork := true,
+    Test / javaOptions ++= Seq(
+      "--add-opens=java.base/java.lang=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+      "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+      "--add-opens=java.base/java.io=ALL-UNNAMED",
+      "--add-opens=java.base/java.net=ALL-UNNAMED",
+      "--add-opens=java.base/java.nio=ALL-UNNAMED",
+      "--add-opens=java.base/java.util=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED",
+      "--add-opens=java.base/java.util.concurrent.atomic=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
+      "--add-opens=java.base/sun.nio.cs=ALL-UNNAMED",
+      "--add-opens=java.base/sun.security.action=ALL-UNNAMED",
+      "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
+    ),
+  )
+
 lazy val root = (project in file("aggregate"))
-  .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka, compare)
+  .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
+    okaySpark, compare)
   .settings(
     name := "okay-root",
     publish / skip := true,
