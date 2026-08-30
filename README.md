@@ -89,6 +89,73 @@ pipeline (JMH, us/op; plain Iterator floor = 14.1):
 - Everything runs on virtual threads by default; fork/join of 100
   trivial tasks: 29 us (raw Loom 21, kyo 25, ZIO 50, cats-effect 140).
 
+## Benchmarks vs the ecosystem
+
+JMH, average time in us/op, lower is better. Versions: cats-effect
+3.5.7, ZIO 2.1.14, kyo 0.16.2, atnos-eff 7.0.4, fs2 3.10.2. Full
+history, protocols and refuted experiments: src/jmh/history.tsv.
+
+**Bind chain** — 10k left-nested flatMaps, built and run:
+
+| kyo | **okay Cont** | **okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
+|---|---|---|---|---|---|---|---|
+| 58 | **89** | **95** | 129 | 136 | 153 | 181 | 260 |
+
+(kyo's lead is front-loaded eager work: it runs 513 iterations at the
+CONSTRUCTION of an infinite program and crashes where laziness is
+required — see compare/TestLaziness.)
+
+**Reader** — 10k asks:
+
+| **okay** | ZIO | cats Kleisli/Eval | atnos | kyo Env |
+|---|---|---|---|---|
+| **110** | 240 | 350 | 1737 | 362 756* |
+
+**Writer** — 10k tells, collected:
+
+| **okay** | cats WriterT/Chain | atnos | kyo Emit |
+|---|---|---|---|
+| **286** | 1127 | 3202 | 386 322* |
+
+(*kyo Env/Emit go quadratic on left-nested bind chains with handled
+operations; the same shape every other lane runs.)
+
+**Choice** — 2^13 branches, all collected (plain List is the floor):
+
+| List | **okay** | kyo | atnos |
+|---|---|---|---|
+| 580 | **1603** | 3834 | 5392 |
+
+**Fork/join** — 100 trivial fibers (raw virtual threads are the floor):
+
+| raw Loom | kyo | **okay** | ZIO | cats IO |
+|---|---|---|---|---|
+| 21 | 25 | **29** | 50 | 140 |
+
+**Stream pipeline** — map/filter/take(1000)/sum (Iterator is the floor):
+
+| Iterator | **okay chunked** | **okay elements** | kyo | ZIO | fs2 |
+|---|---|---|---|---|---|
+| 14 | **16.9** | **23.6** | 239 | 692 | 1410 |
+
+**Merge** — two 500-element streams merged by readiness:
+
+| **okay chunked** | ZIO | okay elementwise | fs2 |
+|---|---|---|---|
+| **14.7** | 47 | 158 | 9031 |
+
+**Resource** — 1000 bracketed acquire/use/release:
+
+| **okay region** | **okay bracket** | ZIO | cats IO | kyo |
+|---|---|---|---|---|
+| **18.7** | **26.3** | 106 | 197 | 8566 |
+
+**Generators** — the 1000th Fibonacci number, element by element:
+
+| Iterator | LazyList | **okay Producer** | okay LazyList | kyo | ZStream | fs2 |
+|---|---|---|---|---|---|---|
+| 12 | 13.5 | **18.4** | 35 | 61 | 172 | 245 |
+
 Benchmarks: `sbt 'Jmh/run .*FibBenchmark.*'`, comparisons in the
 `compare` module (`sbt 'compare/Jmh/run ...'`); history and refuted
 experiments in src/jmh/history.tsv.
