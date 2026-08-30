@@ -57,6 +57,13 @@ class CompareBenchmark {
     Eff.run((1 to N).foldLeft(Eff.pure[NoFx, Int](0))((m, _) => m.flatMap(x => Eff.pure(x + 1))))
 
   @Benchmark
+  def okayEager(): Int =
+    import Eager.given
+    val E = Effects[Eager]
+    (1 to N).foldLeft(E.pure[Produce, Int](0))((m, _) => E.flatMap(m)(x => E.pure(x + 1)))
+      .runWith
+
+  @Benchmark
   def kyoChain(): Int =
     import _root_.kyo.*
     val k = (1 to N).foldLeft(0: Int < Any)((m, _) => m.flatMap((x: Int) => x + 1))

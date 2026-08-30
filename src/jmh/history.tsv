@@ -80,3 +80,4 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-30	0eb6131		cmpStreamOps-okayChunks	23.4			chunked generator (64): 1.7x from Iterator floor 13.9; was 143 LazyList / 53 iterator
 2026-08-30	0eb6131		cmpMerge-okayChunks	14.7			3.2x FASTER than zio 47.3; was 158 elementwise. Chunking in the stream value, as the spec decided
 2026-08-30	524556a	4.62	cmpStreamOps-okayChunksTransform	16.9			chunk-in/chunk-out transformer pipeline: -28% vs elements view 23.6; 1.2x from Iterator floor 14.1. KEPT
+2026-08-30	113616e	8.11	cmpBinds-okayEager	5.1			f1; pure 10k bind chain: okayEager 5.1 vs kyoChain 50.4 vs okayFree 102 (same session); the kyo trick opt-in as Effects[Eager], 10x under kyo

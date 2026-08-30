@@ -97,13 +97,16 @@ history, protocols and refuted experiments: src/jmh/history.tsv.
 
 **Bind chain** — 10k left-nested flatMaps, built and run:
 
-| kyo | **okay Cont** | **okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
-|---|---|---|---|---|---|---|---|
-| 58 | **89** | **95** | 129 | 136 | 153 | 181 | 260 |
+| **okay Eager** | kyo | **okay Cont** | **okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
+|---|---|---|---|---|---|---|---|---|
+| **5.1** | 58 | **89** | **95** | 129 | 136 | 153 | 181 | 260 |
 
-(kyo's lead is front-loaded eager work: it runs 513 iterations at the
-CONSTRUCTION of an infinite program and crashes where laziness is
-required — see compare/TestLaziness.)
+(okay Eager is the kyo trick as an OPT-IN encoding — import Eager.given —
+with the hazard stated: construction evaluates, so a self-referential
+program diverges before it runs, exactly what compare/TestLaziness
+catches kyo on (it runs 513 iterations at the CONSTRUCTION of an
+infinite program). Free/Eff keep the laziness contract; the user
+chooses per program.)
 
 **Reader** — 10k asks:
 
