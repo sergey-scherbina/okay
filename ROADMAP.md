@@ -1,7 +1,8 @@
 # Roadmap
 
 Decisions in force: the core module is plain `okay` (no suffix) — every
-satellite carries one (`okay-cats`, `okay-kafka`, ...). groupId
+satellite carries one (`okay-cats`, `okay-kafka`, ...). Modules are
+kept SMALL — the smaller the better, rare exceptions aside. groupId
 `io.sergiy-shcherbyna` (domain verification to be settled by publication
 time). Scala: latest (3.7+). License: Apache-2.0. ScalaCheck allowed in
 test scope only; the core stays dependency-free.
@@ -67,14 +68,30 @@ streaming client (tokens as `Chunks[Token] ! Async`, retries from P2)
 designed to grow the agentic layer later (see ../rozum for the larger
 shape; not urgent).
 
-## P5 — Codecs: uniml, redesigned
-`okay-codec`: the uniml idea (one token-to-tree model shared by JSON,
-XML, CBOR, Markdown, YAML dialects; lossless CST; semantic
-projections) rebuilt idiomatically and immutably on our own machinery:
-the token stream is `Chunks[Token]`, the tree builder is a
-Fold/handler, dialects are stream transformers, encoders are streams
-back. Derivation via Scala 3 Mirrors (dependency-free). This is also
-what cross-platform client/server interop rides on.
+## P5 — The lex/parse/codec stack (three small modules + core support)
+Specs: stage-pipeline.md, streaming-lex.md, streaming-parse.md.
+- **Core**: `Stage[I, O, A]` (a transducer as a Take+Writer program)
+  and `through` composition — demand-driven coroutine pipelines,
+  chunked adapters. Tokenizers, parsers and dialects all share this
+  shape.
+- **okay-lex** — streaming tokenization: pure-state Scan step
+  functions (state crosses chunk boundaries as a value), TOTAL (Error
+  is a token channel, never a fault), exact spans, incremental
+  relexing (snapshot + re-convergence) in the contract from day one.
+  Also the interface BPE/SentencePiece implement in okay-llm.
+- **okay-parse** — streaming error-tolerant parsing: TOTAL (any input,
+  truncated included, yields a tree; errors are nodes with spans,
+  diagnostics a data channel; Throws banned by design — which is what
+  makes it the substrate for LLM streaming). TWO surfaces from the
+  start, converging: the uniml VM (dialect = Stage of Open/Close/
+  Emit/Reframe instructions, builder = total Fold to a lossless CST)
+  and total parser combinators over Take — both compiling to the ONE
+  instruction language. Incremental reparse (node-boundary snapshots,
+  subtree reuse by reference, O(damage) work) in the contract.
+- **okay-codec** — the dialects and semantic projections on top:
+  JSON, XML, CBOR, Markdown, YAML; encoders as streams back;
+  derivation via Scala 3 Mirrors (dependency-free). This is also what
+  cross-platform client/server interop rides on.
 
 ## P6 — Staging, Catalyst-style
 Reify Chunks pipelines as an operator tree (an initial encoding —
