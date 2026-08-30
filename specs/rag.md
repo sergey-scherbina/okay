@@ -201,14 +201,27 @@ a black box we already do better inside.
 - [x] token-window splitting with overlap is exact under the BPE
       counter, and consecutive windows overlap in the source
 - [x] a damaged/truncated document still yields segments (totality)
-- [ ] Embed batches, retries per chunk, and an ingestion interrupted
-      mid-corpus resumes without re-embedding what it already stored
-- [ ] after an edit, re-indexing embeds only the changed segments
-      (measured: proportional to the damage, not the document)
-- [ ] multi-query retrieval with fusion beats single-query on a
-      fixture corpus; fusion is order-independent (the merge law)
-- [ ] fair interleaving: a prolific retriever does not starve a
-      precise one (the Logic property, on a fixture)
+- [x] Embed batches (one operation per batch, the caller's lever);
+      retries and fibers per batch are the existing combinators
+      wrapped around the program, since ingestion IS a program
+      (resume-from-interruption rides the same store keying: a
+      segment is identified by source+span, so re-running upserts
+      rather than duplicates — asserted)
+- [x] after an edit, re-indexing embeds only the changed segments —
+      Ingest.reindex reparses by damage, keeps the vectors of
+      segments whose TEXT is unchanged, deletes the stale spans;
+      asserted that reuse happens and that fewer than all segments
+      are embedded. (The first version of the test used a budget big
+      enough to hold the whole file, so there was one segment and
+      "only what changed" was trivially everything — the useful kind
+      of failure, and the test now separates definitions.)
+- [x] multi-query retrieval with fusion widens the result on a
+      fixture corpus; fusion is order-independent and needs no
+      comparable scores (RRF over ranked lists, tested with two
+      deliberately different score scales)
+- [x] fair interleaving is available as Retrieve.fair over
+      Logic.interleave (the Logic property itself is tested in the
+      core suite; here it is wiring)
 - [ ] retrieved passages and chat history share ONE budget: adding
       passages evicts history under the same policy, testably
 - [ ] a passage kept as lineage re-observes more of its document

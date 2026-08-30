@@ -6,6 +6,11 @@ import scala.util.chaining.*
 
 class TestGenerate extends munit.FunSuite {
 
+  // the million-element run proves STACK safety, not speed; under a
+  // full-family parallel run a 30s default has twice been the only
+  // thing that failed, so the clock gets room the property does not need
+  override val munitTimeout = scala.concurrent.duration.Duration(120, "s")
+
   test("fibs by laziness: LazyList") {
     println(fibs[BigInt, LazyList].take(1000).force)
     assertEquals(fibs[Int, LazyList].take(10).toList,

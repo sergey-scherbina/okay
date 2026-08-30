@@ -1,0 +1,87 @@
+package okay.rag
+
+import okay.{!, +, Choose, Handler, Logic, TypeableK, effect, pure, runChoice}
+import okay.given
+
+/**
+ * Retrieval pipelines (specs/rag.md, P10c). Every stage that other
+ * frameworks ship as a class is a combinator here, because the
+ * pieces already existed: multi-query is `Choose`, combining
+ * retrievers fairly is `Logic.interleave`, fusion is an `Aggregator`,
+ * and a retriever is a function.
+ */
+
+/** a retriever is a function from a query to ranked hits, in a row */
+trait Retriever[F[+_]]:
+  def retrieve(query: String, k: Int): Seq[Scored] ! F
+
+object Retrieve {
+
+  /** the vector side: embed the query, search the store */
+  def vector[F[+_]](store: VectorStore[F]): Retriever[Embed + F] =
+    new Retriever[Embed + F]:
+      def retrieve(query: String, k: Int): Seq[Scored] ! (Embed + F) =
+        okay.!.widen[Seq[Embedding], Embed, F](embed(Seq(query))).flatMap { vs =>
+          okay.!.widen[Seq[Scored], F, Embed](store.search(vs.head, k))
+            .asInstanceOf[Seq[Scored] ! (Embed + F)]
+        }
+
+  /** the keyword side: no embedding, no store, just the fold */
+  def keyword(index: Postings): Retriever[okay.Pure] = new:
+    def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
+      pure(Keyword.search(index, query, k))
+
+  /** the symbol side: exact structural retrieval, no vectors at all */
+  def symbols(idx: Index, sources: Map[String, Source]): Retriever[okay.Pure] = new:
+    def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
+      val hits = Keyword.terms(query).distinct.flatMap(idx.definition)
+        .flatMap(sym => sources.get(sym.source).map(Symbols.segment(sym, _)))
+        // an exact definition is worth more than any similarity
+        .map(Scored(_, 1.0f))
+      pure(hits.take(k))
+
+  /**
+   * Hybrid: run several retrievers and fuse by reciprocal rank —
+   * the scores need not be comparable, which is exactly why RRF is
+   * the default way to put a BM25 list beside a vector list.
+   */
+  def hybrid[F[+_]](rs: Seq[Retriever[F]], k: Int = 10): Retriever[F] = new:
+    def retrieve(query: String, kk: Int): Seq[Scored] ! F =
+      rs.foldLeft(pure[F, Seq[Seq[Scored]]](Seq.empty)) { (acc, r) =>
+        acc.flatMap(ls => r.retrieve(query, kk).map(ls :+ _))
+      }.map(ls => Fusion.rrf(ls).take(kk))
+
+  /**
+   * Multi-query: rewrites of one question explored as NONDETERMINISM
+   * — `Choose` over the rewrites, `runChoice` collecting every
+   * branch's hits, then fusion. The rewriter is a plain function
+   * here; a model-backed one is the same shape one row up.
+   */
+  def multiQuery[F[+_] : TypeableK](r: Retriever[F])(rewrites: String => Seq[String])
+  : Retriever[F] = new:
+    def retrieve(query: String, k: Int): Seq[Scored] ! F =
+      val qs = (query +: rewrites(query)).distinct
+      val search: Seq[Scored] ! (Choose + F) =
+        effect[Choose + F, String](Choose(qs)).flatMap(q =>
+          okay.!.widen[Seq[Scored], F, Choose](r.retrieve(q, k)))
+      runChoice[Seq[Scored], F](search).map(ls => Fusion.rrf(ls).take(k))
+
+  /**
+   * Fair combination: when one retriever is prolific and another is
+   * slow but precise, taking turns keeps the precise one from being
+   * starved. `Logic.interleave` says exactly that, and no
+   * round-robin router expresses it — the alternation is over the
+   * SEARCH, not over a list.
+   */
+  def fair[F[+_] : TypeableK](a: Seq[Scored], b: Seq[Scored], k: Int): Seq[Scored] =
+    def alts(xs: Seq[Scored]): Scored ! (Choose + F) = effect(Choose(xs))
+    val mixed = Logic.interleave[Scored, F](alts(a), alts(b))
+    // observe is the lazy take: only k answers are ever computed
+    okay.!.run(Logic.observe[Scored, okay.Pure](k)(
+      mixed.asInstanceOf[Scored ! (Choose + okay.Pure)]))
+
+  /** rerank with any scorer — a cross-encoder, a heuristic, a model
+   * one row up: the pipeline does not care which */
+  def rerank(hits: Seq[Scored])(score: Segment => Float): Seq[Scored] =
+    hits.map(h => Scored(h.segment, score(h.segment))).sortBy(-_.score)
+}
