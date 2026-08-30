@@ -100,5 +100,17 @@ a JSON lexer and an LLM tokenizer are the same machine.
 - Scanner states must be compared through `key`, never `==`, once
   they carry positions.
 
-Measured (see [benchmarks](../benchmarks.md)): chunked lexing of a
-2.5KB JSON document vs element-wise, and the BPE corpus lane.
+## Performance note (measured, honest)
+
+Chunked lexing is currently SLOWER than element-wise on an in-memory
+string (55.6us vs 42.6 on a 2.5KB document), and the reason is
+per-character boxing: `Chunk[A]` is an `ArraySeq` over
+`Array[AnyRef]`, while `Scan.all` reads `charAt` on the String. A
+three-chunk-size probe proves it — per-chunk overhead is gone by size
+512, the 23% gap is not. Specialized char chunks are the fix.
+
+So choose by need, not by folklore: `Scan.chunks` is for STREAMING
+and constant memory over a source you cannot materialize (a socket, a
+huge file); `Scan.all` is for a string you already hold. Both derive
+from one Scan, and they agree token for token. Full numbers and the
+probe: [benchmarks](../benchmarks.md).

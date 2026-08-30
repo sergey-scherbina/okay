@@ -198,34 +198,75 @@ batches; so is ours — see lane 5).
 
 ## 9. Async terminals — runWith vs runAsync (10k ops)
 
-The universal terminal (`runAsync` — the event-loop drive JS uses,
-runnable on the JVM too) against the parking handler on the same
-chain. Numbers land with the next quiet-host session; the drive adds
-one atomic exchange per Await and nothing per Run, so the expected
-gap is small. See `AsyncDriveBenchmark`.
+| **runWith** (parking handler) | **runAsync** (the universal drive) |
+|---|---|
+| **241** | **289** |
 
-## 10. The text stack — lex, parse, reparse, codecs (NEW)
+The event-loop drive JS runs on, measured on the JVM against the
+parking handler: **+20%**, and that is the whole price of
+universality. The drive adds one atomic exchange per `Await`
+(the callback may fire during registration, on any thread — whoever
+loses the exchange continues) and NOTHING per `Run`. So the same
+program is portable to a platform with no threads for a fifth more,
+and on the JVM you simply keep `runWith`.
 
-`TextBenchmark` (compare module) covers: element-wise vs CHUNKED
-lexing of a 2.5KB JSON document; full parse vs INCREMENTAL reparse
-after a one-member edit (the O(damage) claim as a number — the first
-noisy run already shows ~3x with the session machinery included);
-one derived Schema written/read as JSON text and CBOR binary, with
-circe on the same value as the ecosystem line; and BPE tokenization
-throughput.
+## 10. The text stack — lex, parse, reparse, codecs
 
-**The honest framing for the circe lanes.** okay's `Json.read` runs
-chars → total scanner → total driver → LOSSLESS CST → projection →
-Schema fold. circe parses straight to its AST with a hand-tuned
-parser. okay's write side and CBOR are competitive (a string
-builder / byte buffer over the Schema fold); the read side pays for
-a different CONTRACT — totality (damage is data, truncation
-decodes: the LLM case) and byte-for-byte losslessness (the editor
-case). When you need raw JSON decode speed and none of that, use
-circe; the flagship here is that a HALF-ARRIVED document still
-answers. Final numbers land with the next quiet-host session (the
-last attempt ran at load 160+ from a sibling project's builds —
-recorded, discarded).
+Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.
+
+**Lexing** — and the one result that went the other way:
+
+| element-wise | chunked (512) | chunked (64) | chunked (8) |
+|---|---|---|---|
+| **42.6** | 52.6 | 55.6 | 70.5 |
+
+Chunked lexing is SLOWER, and the three-size probe says why: from 8
+to 64 the per-chunk overhead falls away (−15us), from 64 to 512
+almost nothing is left to win (−3us), yet **23% still remains** at a
+size where the document is five chunks. A per-chunk cost would have
+vanished; a per-CHARACTER cost would not — and that is what it is:
+`Chunk[A]` is an `ArraySeq` over `Array[AnyRef]`, so every char is
+boxed and unboxed, where the element-wise path reads `charAt` on the
+String. Specialized char chunks are the stated fix. Meanwhile the
+chunked path's value is not speed at this size — it is streaming and
+constant memory over a source you cannot materialize (a socket, a
+gigabyte file), where `Scan.all` needs the whole input in memory.
+
+**Parsing, full vs incremental:**
+
+| full parse | incremental reparse (one-member edit) |
+|---|---|
+| 85.1 | **38.0** |
+
+2.2x under the full parse for a one-in-fifty edit — real, and
+honestly below what O(damage) suggests: the relex dominates the
+reparse, and the common-prefix/suffix token scans are O(tokens).
+That is the next lever if incremental parsing gets a demanding
+workload; the correctness property (untouched subtrees returned BY
+REFERENCE) is what the layer exists for.
+
+**Codecs — where the contract shows up as a number:**
+
+| | write | read |
+|---|---|---|
+| **okay CBOR** | **0.418** | **0.807** |
+| circe (JSON) | 0.422 | 0.623 |
+| **okay JSON** | **0.628** | **10.3** |
+
+Read this table as a price list for CONTRACTS. Our CBOR write ties
+circe's JSON write; our CBOR read is 1.3x it — that is the Schema
+fold on its own, right next to a hand-tuned parser. Our JSON write
+is 1.5x. But our JSON read is 16x slower, and that gap is the whole
+point: `Json.read` runs chars → total scanner → total driver →
+LOSSLESS CST → projection → Schema fold, where circe parses straight
+into its AST. What the 16x buys is damage-as-data, byte-for-byte
+losslessness, and a HALF-ARRIVED document that still decodes (the
+LLM case). Need raw JSON decode speed and none of that? Use circe —
+and keep the same `Schema` for the wire where the contract matters.
+
+**BPE**: 300us for a ~3.3KB corpus. The rank scan is quadratic per
+word — fine for v1, and the obvious lever the day tokenization gets
+hot.
 
 ---
 
