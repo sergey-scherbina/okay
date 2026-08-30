@@ -58,6 +58,15 @@ class TestParallel extends munit.FunSuite {
     assert(failed)
   }
 
+  test("a non-replayable source refuses chunk-retry at compile time") {
+    // retryChunks is typed on pure Chunks — a program whose pulls are
+    // recomputable from the value alone. An effectful row (a live
+    // consumer, a socket) is not that type, and the compiler says so.
+    val errors = compileErrors(
+      "val live: Chunk[Int] ! (Produce + Async) = ???\nretryChunks(live)")
+    assert(errors.nonEmpty, "an effectful source must not typecheck as retryable")
+  }
+
   test("supervised: the fiber restarts its program and completes") {
     var attempts = 0
     val f = supervised(Retry.immediate(3))(async {

@@ -46,9 +46,12 @@ def unchunked[I, O, A](s: StageC[I, O, A]): Stage[I, O, A] // adapter
       finishing (Stage.chunked flushes its tail)
 - [x] chunked/unchunked adapters compose with through and preserve
       element order and content (round-trip test)
-- [ ] effectful stages (`+ Async`, `+ G`) forward through composition
-      (deferred: v1 rows are closed — Take + Writer only; the G-column
-      lands with okay-lex needs)
+- [x] effectful stages (`+ Async`, `+ G`) forward through composition —
+      the throughG and throughProducerG overloads: either side's G ops
+      forward into the composed row in the order the pull crosses
+      them, laziness intact (a pure stage joins an effectful row via
+      !.widen and a union-ACI ascription); associativity tested with
+      effects in the row
 
 ## Out of scope
 - fan-in/fan-out topologies (Channel territory)

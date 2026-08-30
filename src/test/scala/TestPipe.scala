@@ -60,4 +60,46 @@ class TestPipe extends munit.FunSuite {
     val result: Int ! Async = pipe[Int, Unit, Int, Async](ticks(7))(sums(3, 0))
     assertEquals(result.runWith, 7 + 8 + 9)
   }
+
+  test("effectful stages: G ops forward through composition, lazily") {
+    type Row = Take % Int + (Writer % Int + Async)
+    var effects = 0
+    // an effectful stage: an Async op before every doubled output
+    def double: Unit ! Row =
+      effect[Row, Option[Int]](Take.Await()).flatMap {
+        case Some(x) =>
+          effect[Row, Unit](Async.Run(() => effects += 1)).flatMap(_ =>
+            effect[Row, Int](Writer(x * 2)).flatMap(_ => double))
+        case None => pure(())
+      }
+    // a pure stage widened into the row (union ACI lets the ascription)
+    def incPure: Stage[Int, Int, Unit] =
+      Stage.await[Int, Int].flatMap {
+        case Some(x) => Stage.tell[Int, Int](x + 1).flatMap(_ => incPure)
+        case None => pure(())
+      }
+    val inc: Unit ! Row = !.widen[Unit, Take % Int + Writer % Int, Async](incPure)
+
+    type Src = Writer % Int + Async
+    var told = 0
+    def src(n: Int): Unit ! Src =
+      if n == 0 then pure(())
+      else effect[Src, Unit](Async.Run(() => told += 1)).flatMap(_ =>
+        effect[Src, Int](Writer(n)).flatMap(_ => src(n - 1)))
+
+    // stage∘stage, then the producer through the composite
+    val composed = through[Int, Int, Int, Async, Unit, Unit](double)(inc)
+    val out = through[Int, Int, Async, Unit, Unit](src(3))(composed)
+    assertEquals(effects, 0)   // programs are values: nothing ran yet
+    assertEquals(told, 0)
+    assertEquals(out.toLazyList.toList, List(7, 5, 3))   // 3,2,1 doubled + 1
+    assertEquals(effects, 3)
+    assertEquals(told, 3)
+
+    // associativity holds with effects in the row
+    effects = 0; told = 0
+    val left = through[Int, Int, Async, Unit, Unit](
+      through[Int, Int, Async, Unit, Unit](src(3))(double))(inc)
+    assertEquals(left.toLazyList.toList, List(7, 5, 3))
+  }
 }

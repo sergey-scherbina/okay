@@ -45,9 +45,12 @@ ideas from Spark).
 - [x] a supervised fiber restarts its program per policy and completes
       (the mid-merge feeder variant lands with okay-kafka, where a truly
       replayable offset-source exists)
-- [ ] a non-replayable source refuses chunk-retry at compile time
-      (deferred to okay-kafka: the capability appears with the first
-      real non-replayable source; no speculative machinery in core)
+- [x] a non-replayable source refuses chunk-retry at compile time —
+      no capability machinery needed: retryChunks is typed on pure
+      `Chunks[A]` (a value whose pulls recompute from the program
+      alone), so an effectful row (`Chunk[A] ! (Produce + Async)` — a
+      live consumer, a socket) is not that type; guarded by a
+      compileErrors test in TestParallel
 
 ## Out of scope
 - distributed execution (okay-cluster, P7); speculative execution

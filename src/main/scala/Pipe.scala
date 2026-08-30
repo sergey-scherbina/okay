@@ -157,6 +157,93 @@ def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M = 
 }
 
 /**
+ * Compose two EFFECTFUL stages: both sides may perform arbitrary
+ * effects G (Async above all) between their awaits and tells; the G
+ * operations of either side forward into the composed row in the
+ * order they are reached. Same demand-driven pairing as the pure
+ * through — nothing runs until the final consumer pulls, and a G op
+ * runs only when the pull actually crosses it.
+ */
+@scala.annotation.targetName("throughG")
+def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + G)))
+                                             (down: B ! (Take % M + (Writer % O + G)))
+                                             : B ! (Take % I + (Writer % O + G)) = {
+  type Up = Take % I + (Writer % M + G)
+  type Res = Take % I + (Writer % O + G)
+
+  // drive the upstream to its next tell, re-emitting its awaits as
+  // OUR awaits and forwarding its G ops on the way
+  def pull(u: A ! Up)(cont: (Option[M], A ! Up) => B ! Res): B ! Res =
+    u.resume match
+      case Pure(_) => cont(None, u)
+      case Effect(e) => <|>[Take % I, Writer % M + G](e) match
+        case Left(Take.Await()) => cont(None, u)
+        case Right(rest) => <|>[G, Writer % M](rest) match
+          case Left(g) => effect[Res, Any](g.asInstanceOf[Res[Any]])
+            .flatMap(_ => cont(None, Free.Pure(null.asInstanceOf[A])))
+          case Right(w) => cont(Some(w.asInstanceOf[M]), Free.Pure(null.asInstanceOf[A]))
+      case Bind(Effect(e), k) => <|>[Take % I, Writer % M + G](e) match
+        case Left(Take.Await()) =>
+          effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi.asInstanceOf))(cont))
+        case Right(rest) => <|>[G, Writer % M](rest) match
+          case Left(g) => effect[Res, Any](g.asInstanceOf[Res[Any]])
+            .flatMap(x => pull(k(x.asInstanceOf))(cont))
+          case Right(w) => cont(Some(w.asInstanceOf[M]), k(w.asInstanceOf))
+
+  def loop(u: A ! Up, d: B ! (Take % M + (Writer % O + G))): B ! Res =
+    d.resume match
+      case Pure(b) => pure(b)
+      case Effect(e) => <|>[Take % M, Writer % O + G](e) match
+        case Left(Take.Await()) => pull(u)((om, _) => pure(om.asInstanceOf[B]))
+        case Right(o) => effect[Res, B](o.asInstanceOf[Res[B]])
+      case Bind(Effect(e), k) => <|>[Take % M, Writer % O + G](e) match
+        case Left(Take.Await()) => pull(u)((om, u2) => loop(u2, k(om.asInstanceOf)))
+        case Right(o) =>
+          effect[Res, Any](o.asInstanceOf[Res[Any]]).flatMap(x => loop(u, k(x.asInstanceOf)))
+
+  loop(up, down)
+}
+
+/**
+ * An effectful producer through an effectful stage: the producer's
+ * tells feed the stage's awaits, everyone's G ops forward, the
+ * stage's tells are the result stream — the generalization the LLM
+ * client walks by hand (SSE lines ! Async through the event stage).
+ */
+@scala.annotation.targetName("throughProducerG")
+def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
+                                          (s: B ! (Take % W + (Writer % M + G)))
+                                          : B ! (Writer % M + G) = {
+  type Src = Writer % W + G
+  type Res = Writer % M + G
+
+  def pull(rest: A ! Src)(cont: (Option[W], A ! Src) => B ! Res): B ! Res =
+    rest.resume match
+      case Pure(_) => cont(None, rest)
+      case Effect(e) => <|>[G, Writer % W](e) match
+        case Left(g) => effect[Res, Any](g.asInstanceOf[Res[Any]])
+          .flatMap(_ => cont(None, Free.Pure(null.asInstanceOf[A])))
+        case Right(w) => cont(Some(w.asInstanceOf[W]), Free.Pure(null.asInstanceOf[A]))
+      case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
+        case Left(g) => effect[Res, Any](g.asInstanceOf[Res[Any]])
+          .flatMap(x => pull(k(x.asInstanceOf))(cont))
+        case Right(w) => cont(Some(w.asInstanceOf[W]), k(w.asInstanceOf))
+
+  def loop(rest: A ! Src, d: B ! (Take % W + (Writer % M + G))): B ! Res =
+    d.resume match
+      case Pure(b) => pure(b)
+      case Effect(e) => <|>[Take % W, Writer % M + G](e) match
+        case Left(Take.Await()) => pull(rest)((ow, _) => pure(ow.asInstanceOf[B]))
+        case Right(o) => effect[Res, B](o.asInstanceOf[Res[B]])
+      case Bind(Effect(e), k) => <|>[Take % W, Writer % M + G](e) match
+        case Left(Take.Await()) => pull(rest)((ow, r2) => loop(r2, k(ow.asInstanceOf)))
+        case Right(o) =>
+          effect[Res, Any](o.asInstanceOf[Res[Any]]).flatMap(x => loop(rest, k(x.asInstanceOf)))
+
+  loop(p, s)
+}
+
+/**
  * The same pipe for a producer performing arbitrary effects G: the
  * consumer still drives, and the G-operations met between elements
  * are carried into the answer — the result is a program in G.
