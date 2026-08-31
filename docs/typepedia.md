@@ -190,6 +190,18 @@ same material with the measurements attached.
 - **`Corpus`** (okay-rag) — the sources segments point into, which is
   what makes a passage lineage: `widen` grows it, `whole` returns the
   document, `current` detects an index that drifted from the file.
+- **`Language`** (okay-rag) — a language as DATA: comments, strings,
+  the words that introduce a definition, and `Layout.Braces` or
+  `Layout.Indent`. `Code.scanner` and `Code.driver` are functions of
+  it, so a new language is a nine-field value and not a grammar. Only
+  workable because the parser is total: an imperfect description
+  degrades into ordinary leaves. The indent driver is the `Yaml`
+  indent stack one level up — the same distinction, at the scale of
+  definitions rather than mappings.
+- **`Language.text`** (okay-rag) — the prose fallback, and a
+  reminder that a grammar applied to the wrong material is worse than
+  none: under Scala's rules a README saying "the type of a given
+  value" opens two definitions.
 - **`Large.projecting`** (okay-agent) — the same doctrine for tool
   output: a result over the limit is stored whole, the context gets
   its head plus a handle, and `expand` reads any window later.

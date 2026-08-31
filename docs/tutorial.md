@@ -309,6 +309,31 @@ conversation — no tool call, no round trip. Every passage carries the
 exact byte range it came from, so a citation cannot drift, and
 `Corpus.widen` reads more of the document without a second search.
 
+`RepoAgent.load` indexes whatever `Language` knows — Scala, Java,
+JavaScript, TypeScript, Rust, Go, C and Python — and each file is
+parsed by its own grammar, so a polyglot repository needs no ceremony:
+
+```scala
+Symbols.project(files)          // language per file, from the path
+Code.source(src)                // parse a Source as its id names
+Code.parse(text, 64, Language.python)   // or say which, explicitly
+```
+
+Adding one is data, not code, because `Code.scanner` and `Code.driver`
+are functions of a `Language`:
+
+```scala
+val kotlin = Language("kotlin", Set("kt", "kts"), "//", Some(("/*", "*/")),
+  Some("/**"), Set('"'), triple = true,
+  definers = Set("fun", "class", "object", "val", "var", "interface"),
+  layout = Layout.Braces)
+```
+
+That works on day one *because the parser is total*: an imperfect
+description degrades into ordinary leaves, so a rough language is
+useful immediately and sharpens later without a rewrite. Point
+`okay.demo.IndexReport` at a repository to see what it found.
+
 ## 16. Cutting generation when the value is complete
 
 ```scala

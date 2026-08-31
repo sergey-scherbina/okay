@@ -28,7 +28,12 @@ object RepoAgent {
   final case class Repo(corpus: Corpus, index: Index, keyword: Postings,
                         sources: Seq[Source])
 
-  /** every Scala file under a root, as sources */
+  /**
+   * Every source file under a root. Which files those are is decided
+   * by `Language`, not by this demo — any language the library learns
+   * to parse is indexed here without a change, and markdown comes
+   * along as prose (no definers, so it splits by size).
+   */
   def load(dir: java.io.File, limit: Int = 400): Seq[Source] =
     // canonicalize first: the root is skipped by its own hidden-name
     // rule otherwise, and "." is a hidden name — which is exactly how
@@ -43,7 +48,7 @@ object RepoAgent {
       if f.isDirectory then
         if f != root && skip(f) then Seq.empty
         else Option(f.listFiles).toSeq.flatten.flatMap(walk)
-      else if f.getName.endsWith(".scala") then Seq(f)
+      else if Language.of(f.getName).isDefined || f.getName.endsWith(".md") then Seq(f)
       else Seq.empty
 
     walk(root).take(limit).map { f =>
@@ -125,7 +130,7 @@ object RepoAgent {
     given rowAll: Handler[Agent] = okay.Handler.union[Tool, Context + (Model + Async)]
 
     val prog = Agent.remember(Turn.System(
-      "You answer questions about a Scala codebase. Relevant source is " +
+      "You answer questions about a codebase. Relevant source is " +
         "already provided in the context. Cite file names. Be brief."))
       .flatMap(_ => Agent.converse(question, Seq(definitionTool, readTool)))
 
@@ -143,7 +148,10 @@ object RepoAgent {
 
     val sources = load(root)
     val repo = index(sources)
-    println(s"indexed ${sources.length} files, ${repo.index.names.size} definitions")
+    val byLang = sources.groupBy(s => Language.of(s.id).map(_.name).getOrElse("text"))
+      .view.mapValues(_.size).toSeq.sortBy(-_._2)
+    println(s"indexed ${sources.length} files, ${repo.index.names.size} definitions" +
+      byLang.map((n, c) => s"$n $c").mkString(" (", ", ", ")"))
 
     val (answer, context) = ask(repo, question, url, model)
     println(s"\n--- context the model saw (${context.length} turns) ---")

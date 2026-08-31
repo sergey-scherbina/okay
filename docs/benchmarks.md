@@ -13,7 +13,13 @@ atnos-eff 7.0.4, fs2 3.10.2, circe 0.14.10.
 
 Run them yourself: `sbt 'Jmh/run .*Fib.*'` (core lanes),
 `sbt 'compare/Jmh/run .*Compare.*'` (ecosystem lanes; the heavy
-dependencies live only in the compare module).
+dependencies live only in the compare module),
+`sbt 'compare/Jmh/run RagBenchmark'` (retrieval).
+
+One claim here is not a time at all — structural chunking's advantage
+is that a chunk is a WHOLE definition, so it is measured as a
+percentage by `okay-rag`'s `TestChunkQuality` and reported in §11
+beside the microseconds it costs.
 
 ---
 
@@ -276,6 +282,82 @@ and keep the same `Schema` for the wire where the contract matters.
 word — fine for v1, and the obvious lever the day tokenization gets
 hot.
 
+## 11. Retrieval — indexing, re-indexing, chunking, query
+
+Measured at load 4.3–6.9 with tight bars (±2% or better on every lane
+but one). The document is 8.5KB of Scala — 30 definitions with doc
+comments, strings and nesting — and its 6.3KB Python twin.
+
+**Indexing** — parse a file and build its symbol index:
+
+| Scala, 8.5KB | Python, 6.3KB |
+|---|---|
+| **644** | **449** |
+
+That is 13.2 and 14.0 MB/s warm. Cold, over a real tree —
+`IndexReport` on this repository, 201 files and 898KB, including file
+I/O and with no JIT warmup at all — the same work runs at 1.2 MB/s
+and finishes in 744ms. Quote whichever matches your question; the
+gap between them is warmup and I/O, not algorithm.
+
+**Re-indexing after an edit** — one character changed in the 8.5KB
+file:
+
+| full re-parse | incremental reparse |
+|---|---|
+| 400 | **110** |
+
+3.6x, and the same honest caveat as the JSON lane: below what
+O(damage) alone suggests, because the relex dominates and the
+prefix/suffix token scans are O(tokens). It is the ratio that makes a
+live index of a repository the agent is EDITING affordable, which is
+the whole reason this layer exists.
+
+**Chunking — the price of parsing, and what it buys:**
+
+| structural (parsed) | windows (unparsed) |
+|---|---|
+| 684 | **309** |
+
+Structural chunking costs **2.2x** a sliding window. This is the one
+table here where the slower number is ours on purpose, so the
+comparison has to be made on the thing that actually matters — and it
+is measurable, so `TestChunkQuality` measures it rather than asserting
+it in prose. On the same file, at chunk counts deliberately matched
+(12 structural against 11 windows):
+
+| | definitions returned WHOLE |
+|---|---|
+| **structural** | **24 / 24 (100%)** |
+| windows | 17 / 24 (71%) |
+
+Nearly a third of the window chunks are half of one definition glued
+to half of another. And the window split here is not a straw man — it
+is `Split.windows`, exact, landing on the lexer's own token spans, and
+it reassembles its source byte-for-byte at `overlap = 0`. The 2.2x
+buys the 29%, and it is paid once at ingestion rather than per query.
+
+**Per query, with no embedding service in play:**
+
+| symbols (exact) | keyword (BM25) | hybrid (fused) | hybrid + assemble |
+|---|---|---|---|
+| **0.55** | 12.4 | 17.9 | 16.7 |
+
+Half a microsecond for an exact symbol lookup is the number worth
+staring at: it is the argument for having a half of retrieval that
+needs no vectors at all. "The definition of X" costs a map lookup and
+a substring, so an agent can afford to ask it speculatively — which
+is exactly what `Grounded.context` does on every turn.
+
+That number was 49µs until this benchmark was written. The retriever
+built a `Segment` — a substring of the source — for EVERY definition
+matching the query, then took the top k; on a corpus where a common
+name has hundreds of definitions, that was essentially all of its
+cost. Replacing the collection pipeline with an `Iterator` so only the
+k returned segments are ever cut made it **91x faster**. Nothing about
+the design changed; the benchmark simply asked a question nobody had
+asked, which is what benchmarks are for.
+
 ---
 
 ## Why the good numbers, in one place
@@ -301,6 +383,15 @@ hot.
    work; the one encoding that trades it away (`Eager`) says so on
    the label. Several "slower" competitor numbers are actually THIS
    difference measured (see the kyo asterisks).
+8. **The same incremental machine, at every layer.** The lexer's
+   reconvergence and the parser's snapshot resume are one mechanism,
+   and §10 and §11 are that one mechanism measured on JSON and on
+   source code — 2.2x and 3.6x under a full re-run. Nothing in the
+   retrieval layer had to invent incrementality; it inherited it.
+9. **Cheap questions stay cheap.** Half a microsecond for an exact
+   symbol lookup is what lets `Grounded.context` retrieve on EVERY
+   turn instead of asking the model whether it should. Design
+   decisions above depend on prices below being small.
 
 ## Where the numbers are honest about limits
 
@@ -310,5 +401,13 @@ hot.
   cases (stated in place).
 - JSON decode pays the totality/losslessness contract (stated
   above); CBOR and encode do not.
+- The retrieval lane has no third-party comparison, deliberately: no
+  Scala library ships this shape, and benchmarking a Python stack
+  across a process boundary would measure the boundary. What it
+  compares instead is our own two methods against each other, which
+  is the choice a user of this library actually faces.
+- Structural chunking is SLOWER than windowing (2.2x) and that is the
+  intended trade; the quality percentage next to it is the other half
+  of the number and should never be quoted apart from it.
 - The host is a busy laptop; medians across forks and same-session
   grouping are the discipline, and history.tsv records the load.

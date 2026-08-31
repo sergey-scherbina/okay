@@ -25,13 +25,44 @@ across Markdown, JSON, YAML and code. Splitters that regex over
 normalized text cannot make this promise.
 
 **Code is the proving corpus.** `Code` is a definition-boundary
-grammar — braces, comments, strings and a handful of keywords — which
-is enough to cut a file into whole definitions and name them. It is
-only sane to build such a partial grammar because the parser is
-TOTAL: what it does not understand becomes ordinary leaves or error
-nodes, never a failure, so precision can be sharpened later without a
+grammar — comments, strings and a handful of keywords — which is
+enough to cut a file into whole definitions and name them. It is only
+sane to build such a partial grammar because the parser is TOTAL:
+what it does not understand becomes ordinary leaves or error nodes,
+never a failure, so precision can be sharpened later without a
 rewrite. Doc comments are held by the driver and adopted by the
 definition that follows, so they land inside the node.
+
+**A language is data, not a parser.** `Language` is a nine-field case
+class — how comments are written, how strings are written, which words
+introduce a definition, and whether structure is delimited by braces
+or by indentation — and the scanner and driver are functions of it.
+That is the whole reason a new language costs five lines instead of a
+grammar: the total parser turns an imperfect description into ordinary
+leaves rather than an exception, so a rough `Language` works on day
+one and sharpens later without a rewrite. A parser generator offers no
+such gradient — it either accepts the file or does not.
+
+Shipped: **Scala, Java, JavaScript, TypeScript, Rust, Go, C/C++**
+(brace layout) and **Python** (indent layout). `Language.of(path)`
+dispatches by extension, and `Code.source(src)` parses a `Source` as
+the language its own id names — which is what `Symbols.project` and
+`Ingest.segment` call, so a mixed-language repository is indexed
+correctly with no ceremony at the call site.
+
+The indent driver is the YAML indent stack one level up, which is the
+same distinction okay-codec already met between JSON and YAML: the
+first token of a line at column *c* closes every definition opened at
+a column ≥ *c*. So `def hello` nested in `class Greeter` is nested in
+the tree, and the next top-level `def` is not.
+
+**Prose is not code.** A file no language claims gets `Language.text`
+— no comments, no strings, no definers — so it becomes a flat run of
+leaves and splits by size. That matters more than it sounds: under
+Scala's rules a README saying "the type of a given value" would open
+two definitions, and indexing a documentation tree as identifiers buys
+two thousand mentions of "the" and nothing else. Prose still lands in
+BM25, which is what prose is for.
 
 **Re-indexing costs the damage.** The corpus changes constantly —
 because the agent is editing it. `Code.reparse` takes the edit range
@@ -55,17 +86,34 @@ import okay.rag.*
 
 val src = Source("Greeter.scala", scala.io.Source.fromFile(f).mkString)
 
-// whole definitions, each quoting the file exactly
-val segs = Split.structural(src, Code.parse(src.text).tree, budget = 400)(_.length)
+// whole definitions, each quoting the file exactly. `Code.source`
+// picks the language from the id — ".scala" here, ".py" would get
+// the indent driver instead
+val segs = Split.structural(src, Code.source(src).tree, budget = 400)(_.length)
 segs.foreach(s => assert(s.quotes(src)))
 
 // structural retrieval, no embeddings involved
-val idx = Symbols.project(files)
+val idx = Symbols.project(files)      // per-file language, mixed repo is fine
 idx.definition("hello").map(Symbols.segment(_, src))   // the code, exactly
 idx.mentions("Greeter")                                // where it is used
 
 // the agent edits a file; re-index the damage, not the file
 val fresh = Code.reparse(session, oldText, newText, editStart, editEndOld, editEndNew)
+```
+
+Naming a language explicitly, and adding one:
+
+```scala
+Code.parse(text, snapshotEvery = 64, Language.python)   // this grammar
+Code.parseFile("a/b/c.rs", text)                        // by extension
+Language.of("script.ts").map(_.name)                    // Some("typescript")
+
+// a new language is data
+val kotlin = Language("kotlin", Set("kt", "kts"),
+  lineComment = "//", blockComment = Some(("/*", "*/")), docPrefix = Some("/**"),
+  quotes = Set('"'), triple = true,
+  definers = Set("fun", "class", "object", "val", "var", "interface"),
+  layout = Layout.Braces)
 ```
 
 Prose and data split the same way, with the dialect's own parser:
@@ -86,12 +134,21 @@ Split.windows(doc, bpe, budget = 512, overlap = 64)   // the classic shape, exac
 | `Split.structural` | `(src, cst, budget)(size) => Seq[Segment]` | pack siblings, enter what does not fit |
 | `Split.windows` | `(src, scan, budget, overlap) => Seq[Segment]` | token windows, exact under any Scan |
 | `Split.covers` | `(src, segs) => Boolean` | every character accounted for |
-| `Code.scan` | `Scan[Code.K, Code.S]` | brace-family scanner (doc comments, strings, braces) |
-| `Code.step` / `initD` / `finish` | `Parse.Step[K, D]` | the definition-boundary driver |
-| `Code.parse` / `Code.reparse` | full and incremental | a session, and the damage-priced update |
+| `Layout` | `Braces \| Indent` | how the language delimits structure |
+| `Language` | `(name, extensions, lineComment, blockComment, docPrefix, quotes, triple, definers, layout)` | everything the grammar needs to know |
+| `Language.of` | `String => Option[Language]` | dispatch by file extension |
+| `Language.text` | `Language` | the prose fallback: no comments, no definers |
+| `Language.all` | `Seq[Language]` | scala, java, javascript, typescript, rust, go, c, python |
+| `Code.scanner` | `Language => Scan[Code.K, Code.S]` | the scanner for a language |
+| `Code.driver` | `Language => Parse.Step[K, D]` | braces or indentation |
+| `Code.scan` / `Code.step` | the Scala defaults | what the bare API uses |
+| `Code.parse` | `(text, snapshotEvery, lang)` | parse as a named language |
+| `Code.parseFile` / `Code.source` | by path, or by a `Source`'s own id | language dispatch |
+| `Code.reparse` | full signature plus `lang` | the damage-priced update |
 | `Symbol` | `(name, kind, source, span, path)` | one definition |
 | `Index` | `defs`, `refs`, `merge`, `definition`, `mentions`, `names` | the symbol index (a Monoid) |
-| `Symbols.of` / `project` / `fold` | one file, many, or streaming | build the index |
+| `Symbols.of` | `(source, tree, identifiers = true)` | one parsed file; `identifiers = false` for prose |
+| `Symbols.source` / `project` / `fold` | one `Source`, many, or streaming | build the index, language per file |
 | `Symbols.segment` | `(Symbol, Source) => Segment` | the code a symbol names |
 
 ## Gotchas
@@ -104,6 +161,19 @@ Split.windows(doc, bpe, budget = 512, overlap = 64)   // the classic shape, exac
   ordinary leaves, which is why it degrades instead of failing.
 - Overlapping window splits intentionally break `covers`-style exact
   reassembly; use `overlap = 0` when you want the concatenation law.
+- A triple-quoted string ends at the first three quotes, backslash or
+  not. That is exactly Scala's rule and only approximates Python's —
+  chosen deliberately, because the two ways of being wrong are not
+  symmetric: closing one string early costs a few mis-shaped leaves,
+  while honouring `\"""` in a language that does not have that escape
+  would swallow the rest of the file.
+- A definition owns its BLOCK, not its parameter list. This was a real
+  bug: `class Greeter(name: String) { … }` ended at the `)`, which
+  threw away the body, and for a Go method `func (g G) Hello()` threw
+  away the name too. `TestLanguages` locks both.
+- `Symbols.of` defaults to `identifiers = true`; call it directly on a
+  prose tree and every word becomes a reference. `Symbols.source`
+  decides correctly from the path — prefer it.
 
 ## The retrieval layer
 
@@ -150,10 +220,25 @@ retrieval, and both go through ONE budget with `share` naming how
 much retrieval may take. The agent never asks for code — it has it —
 and the explicit search tool remains for when it wants to steer.
 
-## Not yet (specs/rag.md)
+## Passages as lineage
 
-Passages kept as LINEAGE: a `Segment` already carries the exact span,
-so re-observing more of a document is a substring of its `Source`;
-wiring that in as a follow-up capability (the model sees a
-projection, a follow-up widens it without a new retrieval) is what
-remains.
+A `Segment` carries the exact span, so re-observing more of a document
+is a substring of its `Source` — no second retrieval, no second
+embedding. `Corpus.current(seg)` re-reads the passage as the file
+stands now (it returns `None` if the file is gone), `Corpus.widen(seg,
+by)` grows it by `by` characters on each side without ever moving off
+the passage it started from, and `Corpus.whole(seg)` returns the file.
+That is what makes "show me more of that" a projection rather than a
+new query, and it is the retrieval-side twin of `Large.projecting`.
+
+## Where the numbers are
+
+Indexing throughput, the incremental-reindex ratio, structural
+chunking against sliding windows, and per-query retrieval latency are
+all measured — see the retrieval section of
+[benchmarks](../benchmarks.md). `okay.demo.IndexReport` prints the
+same shape for any repository you point it at:
+
+```
+sbt "okayDemo/runMain okay.demo.IndexReport /path/to/repo"
+```

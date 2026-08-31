@@ -249,6 +249,30 @@ a black box we already do better inside.
       the agent asks a question, the code is already in `recall`, no
       tool call is made (asserted on the recorded tool log), and the
       passage keeps its provenance header on the way in
+- [x] (P10f) the grammar is a FUNCTION OF A LANGUAGE DESCRIPTION, not
+      a hardcoded dialect: `Language` names comments, strings,
+      definers and layout, and `Code.scanner`/`Code.driver` are
+      functions of it — so adding a language is data, not code
+- [x] (P10f) both layout families exist, as this spec predicted:
+      braces for Scala/Java/JS/TS/Rust/Go/C, and an indent driver for
+      Python that IS the YAML indent stack one level up — a definition
+      owns everything indented under it, asserted by nesting and not
+      only by names being found
+- [x] (P10f) language dispatch by extension, and a mixed-language
+      project indexes each file by its own grammar (`Symbols.project`
+      and `Ingest.segment` both go through `Code.source`)
+- [x] (P10f) every language holds the same three laws under random
+      input: the tree is lossless, an incremental reparse equals a full
+      one, and every definition quotes its file exactly — fifteen
+      properties, five languages
+- [x] (P10f) prose is not read as code: a file no language claims gets
+      `Language.text` (no definers), so a documentation tree
+      contributes segments to BM25 and no phantom identifiers to the
+      symbol index
+- [x] (P10f) a definition owns its BLOCK and not its parameter list —
+      found by the Go case, where `func (g G) Hello()` lost its name
+      to its receiver, and true of Scala's `class C(x: Int) { … }` all
+      along
 
 ## Decisions
 - **No Runnable/LCEL layer.** LCEL exists because Python has no

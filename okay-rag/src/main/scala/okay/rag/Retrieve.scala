@@ -34,11 +34,17 @@ object Retrieve {
   /** the symbol side: exact structural retrieval, no vectors at all */
   def symbols(idx: Index, sources: Map[String, Source]): Retriever[okay.Pure] = new:
     def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
-      val hits = Keyword.terms(query).distinct.flatMap(idx.definition)
+      // an ITERATOR, so only the k segments actually returned are
+      // cut out of their sources: a common name in a large project
+      // has hundreds of definitions, and materializing all of them to
+      // return eight was most of this retriever's cost
+      val hits = Keyword.terms(query).distinct.iterator
+        .flatMap(idx.definition)
         .flatMap(sym => sources.get(sym.source).map(Symbols.segment(sym, _)))
         // an exact definition is worth more than any similarity
         .map(Scored(_, 1.0f))
-      pure(hits.take(k))
+        .take(k).toSeq
+      pure(hits)
 
   /**
    * Hybrid: run several retrievers and fuse by reciprocal rank —

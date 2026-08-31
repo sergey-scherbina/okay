@@ -16,9 +16,24 @@ class TestRepoAgent extends munit.FunSuite {
     val here = java.io.File(".")
     val sources = RepoAgent.load(here, limit = 50)
     assert(sources.nonEmpty, "a relative root indexed nothing")
-    assert(sources.forall(_.id.endsWith(".scala")))
+    // what is indexed is decided by Language, not by a literal here
+    assert(sources.forall(s => Language.of(s.id).isDefined || s.id.endsWith(".md")),
+      sources.map(_.id).filterNot(i =>
+        Language.of(i).isDefined || i.endsWith(".md")).take(3).toString)
     // the ids are relative to the root, so they are readable citations
     assert(sources.forall(s => !s.id.startsWith("/")), sources.take(3).map(_.id).toString)
+  }
+
+  test("a repository of several languages indexes as several languages") {
+    val sources = RepoAgent.load(java.io.File("."), limit = 2000)
+    val langs = sources.flatMap(s => Language.of(s.id).map(_.name)).toSet
+    assert(langs.contains("scala"), s"found only $langs")
+    // markdown comes along as prose: parsed, but with no definers, so
+    // the docs never contribute phantom definitions
+    val md = sources.filter(_.id.endsWith(".md"))
+    assert(md.nonEmpty, "the documentation was not indexed")
+    assertEquals(Symbols.project(md).names, Set.empty[String],
+      "prose was read as code")
   }
 
   test("load still skips build output and version control") {

@@ -29,7 +29,7 @@ object Ingest {
 
   /** split one source with the dialect that fits it */
   def segment(src: Source, budget: Int)(size: String => Int): Seq[Segment] =
-    val tree = Code.parse(src.text).tree
+    val tree = Code.source(src).tree
     Split.structural(src, tree, budget)(size)
 
   /**
