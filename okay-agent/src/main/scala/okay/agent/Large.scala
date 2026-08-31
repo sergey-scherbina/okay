@@ -64,14 +64,14 @@ object Large {
               val more = full.length - to
               val tail = if more > 0 then s"\n[$more more characters]" else ""
               full.substring(from, to) + tail
-        ).asInstanceOf[A]
+        )
 
       case Tool.Call(_) =>
-        val full = inner.handle(e).asInstanceOf[String]
+        val full: String = inner.handle(e).asInstanceOf[String]
         (if full.length <= limit then full
         else
           val id = store.put(full)
           s"[$id: ${full.length} characters, showing the first $window; " +
             s"use the $ExpandTool tool with handle=$id for more]\n" +
-            full.take(window)).asInstanceOf[A]
+            full.take(window))
 }

@@ -322,10 +322,21 @@ and nothing else in the library casts for that reason:
   four measured alternatives recorded against it.
 - **`<|>`** — the union split, sound by the excluded middle of `F[A] |
   G[A]`, documented as the trusted kernel.
-- **`Tagged`** — for the other kind: a value stored heterogeneously and
-  recovered at a type the reader must GUESS. There the cast becomes a
-  CHECK. Not for the kinds above, where the type is fixed by an
-  invariant no runtime test can confirm.
+- **No `Tagged`, and the reason is worth more than the type was.** An
+  existential package — a value with its `ClassTag` beside it — turns
+  an unchecked cast into a checked one, and is the right tool for
+  something stored heterogeneously and read back at a GUESSED type. It
+  was built, tested, and then found to have no home here: every
+  candidate turned out to be a GADT, where refinement removes the cast
+  outright and no check is needed. `Durable`'s journal looked like the
+  clearest case and was not — it stores a `String`, and `Tool.Call
+  extends Tool[String]` proves the type. Two facts from the attempt
+  survive it: a `ClassTag` names a CLASS, so
+  `ClassTag[Chunk[Int]]` and `ClassTag[Chunk[String]]` are both
+  `ArraySeq` and such a check cannot distinguish element types at all;
+  and packing a tag WITH an existential does work, which is what
+  `Pipeline.Mapped` and `TaggedBuf` do — the tag captured where the
+  type was still concrete, not guessed where it is not.
 
 What is not on this list is deliberate: GADT refinement removes casts
 outright wherever the ADT records the type (`Schema`, `Context`,

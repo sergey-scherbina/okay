@@ -115,22 +115,22 @@ object Durable {
             if entry.fingerprint != fp then throw Drift(entry.fingerprint, fp)
             entry.answer match
               // it already happened: hand the answer back, touch nothing
-              case Some(a) => a.asInstanceOf[A]
+              case Some(a) => a
 
               // the crash window: the outcome is unknown
               case None => policy(c.name) match
-                case OnRepeat.Redo => execute(n, c, fp, c).asInstanceOf[A]
+                case OnRepeat.Redo => execute(n, c, fp, c)
                 case OnRepeat.WithKey =>
                   // the same key as the first attempt, so the far end
                   // recognises the retry as the same request
-                  execute(n, c, fp, withKey(c, entry.key)).asInstanceOf[A]
+                  execute(n, c, fp, withKey(c, entry.key))
                 case OnRepeat.Reconcile =>
                   reconcile(c, entry.key) match
-                    case Some(a) => journal.complete(n, a); a.asInstanceOf[A]
+                    case Some(a) => journal.complete(n, a); a
                     case None => throw Unresolved(c.name, entry.key)
                 case OnRepeat.Escalate =>
                   escalate(c, entry.key) match
-                    case Some(a) => journal.complete(n, a); a.asInstanceOf[A]
+                    case Some(a) => journal.complete(n, a); a
                     case None => throw Unresolved(c.name, entry.key)
                 case OnRepeat.Fail => throw Unresolved(c.name, entry.key)
 
@@ -167,7 +167,7 @@ object Durable {
         val fp = fingerprintOf(c)
         recorded.find(_.seq == n) match
           case Some(entry) if entry.fingerprint != fp => throw Drift(entry.fingerprint, fp)
-          case Some(Entry(_, _, _, _, Some(a))) => a.asInstanceOf[A]
+          case Some(Entry(_, _, _, _, Some(a))) => a
           case Some(entry) => throw Unresolved(c.name, entry.key)
           case None => throw Unresolved(c.name, "beyond the journal")
 }
