@@ -34,6 +34,13 @@ class MergeBenchmark {
       c = merged.receive()
     sum
 
+  /** the merge in the program shape: what the Writer walk adds over
+   * the raw channel merge above */
+  @Benchmark
+  def okaySourceMerge(): Long =
+    (Source.of(LazyList.range(0L, N.toLong)) merge Source.of(LazyList.range(N.toLong, 2L * N)))
+      .toLazyList.foldLeft(0L)(_ + _)
+
   @Benchmark
   def fs2Merge(): Long =
     import cats.effect.IO

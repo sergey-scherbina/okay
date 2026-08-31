@@ -45,8 +45,21 @@ extension [A](s: Source[A])
    *
    * Lazy at the seam: the fibers start at the FIRST PULL, not when
    * this is called — a source nobody consumes drains nothing.
+   *
+   * BOUNDED by default, and that default is the interesting decision.
+   * The channel underneath will take everything offered, so an
+   * unbounded merge of an ENDLESS source is unbounded memory: measured,
+   * a source merged unbounded and consumed ten elements deep produced
+   * 1 269 819 of them in 300ms and kept going, where the same merge at
+   * 64 produced 74. What the bound costs was measured too, and it is
+   * nothing this benchmark can see (2x500 elements: 210.1us +/-9.7
+   * unbounded against 232.7 +/-20.4 at 64 — bars that overlap), so the
+   * safe default is the free one. `Int.MaxValue` still buys the
+   * unbounded channel where the producer is known to be finite and
+   * small; `Channel.merge` underneath keeps ITS default unbounded,
+   * because there the capacity is the caller's explicit business.
    */
-  infix def merge[B](t: Source[B], capacity: Int = Int.MaxValue)
+  infix def merge[B](t: Source[B], capacity: Int = 64)
                     (using Scheduler, CanBlock): Source[A | B] =
     type S[W] = Unit ! (Writer % W + Async)
     pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
@@ -60,17 +73,23 @@ extension [A](s: Chunks[A])
    *
    * It answers the channel itself rather than a source, and that is
    * measured rather than stylistic — this is the benchmarked path
-   * (merge 2x500: 14.7us against ZIO's 47.3), and a source would add
+   * (merge 2x500: 10.7us against ZIO's 45.4), and a source would add
    * a told program node per chunk to a walk whose whole point is that
    * a chunk costs one queue operation. Consume it with `receive`, or
    * as the Async stream it already is.
+   *
+   * Bounded by default for the reason the source merge is (an endless
+   * source merged unbounded is unbounded memory), and here the price
+   * was measured directly on that benchmark: 10.700us +/-0.292
+   * unbounded against 10.819 +/-0.136 at 64 chunks. No difference to
+   * see, so the default is the safe one.
    */
   infix def merge(t: Chunks[A])(using Scheduler): Channel[Chunk[A]] =
-    merge(t, Int.MaxValue)
+    merge(t, 64)
 
-  /** the same, with the channel bounded: a fast producer parks when
-   * the consumer is that many chunks behind (the arity is spelled out
-   * rather than defaulted — only one overload of a name may carry
-   * default arguments, and the source merge has them) */
+  /** the same, with the channel bounded explicitly — `Int.MaxValue`
+   * for the unbounded one (the arity is spelled out rather than
+   * defaulted: only one overload of a name may carry default
+   * arguments, and the source merge has them) */
   def merge(t: Chunks[A], capacity: Int)(using Scheduler): Channel[Chunk[A]] =
     Channel.merge[Chunk[A], Producer, Pure, Producer, Pure](s, t, capacity)

@@ -200,7 +200,16 @@ readiness, `buffer` runs a producer ahead. `source merge source` is that
 merge in the program shape: two sources in, one source out (so a
 stage consumes it directly), the fibers starting at the first pull —
 and the two element types need NOT agree, because the result tells
-their UNION, which the consumer splits by an ordinary type test. On JVM/Native it parks
+their UNION, which the consumer splits by an ordinary type test.
+Both derived merges are BOUNDED by default (64), because the channel
+takes whatever is offered and an unbounded merge of an endless source
+is unbounded memory — measured, ten pulls deep, 1.27M elements
+produced against 74 at the bound, and the bound costs nothing the
+benchmark can see. `Channel.merge` underneath keeps its unbounded
+default: there the capacity is the caller's explicit business.
+Chaining merges does not serialize them — each hop is its own fiber,
+so eight chained sources overlap as eight (2.4s of parked work in
+0.3s). On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`
