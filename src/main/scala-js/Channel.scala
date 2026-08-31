@@ -16,24 +16,41 @@ import scala.collection.mutable
 final class Channel[A](capacity: Int = Int.MaxValue) {
 
   private val q = mutable.Queue[A]()
-  private val waiters = mutable.Queue[Option[A] => Unit]()
+  private val waiters = mutable.Queue[Either[Throwable, Option[A]] => Unit]()
   private var open = true
+  private var failure: Throwable | Null = null
 
   /** enqueue, or hand straight to a waiting receiver */
   def send(a: A): Unit =
-    if waiters.nonEmpty then waiters.dequeue()(Some(a))
+    if waiters.nonEmpty then waiters.dequeue()(Right(Some(a)))
     else q.enqueue(a)
 
   /** end the stream: the buffered elements still drain */
   def close(): Unit =
     open = false
-    while waiters.nonEmpty && q.isEmpty do waiters.dequeue()(None)
+    val end: Either[Throwable, Option[A]] =
+      if failure != null then Left(failure.nn) else Right(None)
+    while waiters.nonEmpty && q.isEmpty do waiters.dequeue()(end)
+
+  /**
+   * Record that a producer broke. It does NOT close — in a merge the
+   * other source is still feeding — and `close` then ends the stream
+   * with this error rather than cleanly. See the JVM channel for the
+   * whole argument.
+   */
+  def fail(e: Throwable): Unit =
+    if failure == null then failure = e
+
+  /** what ended the stream, if anything did badly */
+  def failed: Option[Throwable] = Option(failure)
 
   /** the callback form of receive: now if an element (or the end) is
    * ready, later when one arrives */
-  def receiveAsync(k: Option[A] => Unit): Unit =
-    if q.nonEmpty then k(Some(q.dequeue()))
-    else if !open then k(None)
+  def receiveAsync(k: Either[Throwable, Option[A]] => Unit): Unit =
+    if q.nonEmpty then k(Right(Some(q.dequeue())))
+    else if !open then
+      // buffered elements drain first; the failure IS the end
+      if failure != null then k(Left(failure.nn)) else k(Right(None))
     else waiters.enqueue(k)
 }
 
@@ -41,7 +58,9 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
  * uncons is an Await, served by the event loop */
 given Stream[Channel, Async] with
   def uncons[A](c: Channel[A]): Option[(A, Channel[A])] ! Async =
-    await(k => c.receiveAsync(o => k(o.map((_, c)))))
+    // the Left is the row's error channel, which is exactly where a
+    // producer's failure belongs
+    Async.await(k => { c.receiveAsync(r => k(r.map(_.map((_, c))))); () => () })
 
 object Channel {
 
@@ -58,6 +77,7 @@ object Channel {
           case Some((a, r)) => c.send(a); go(r)
           case None => ()
         go(u)
+      catch case e: Throwable => c.fail(e)
       finally if alive.decrementAndGet() == 0 then c.close()
     sch.fork(() => async(feed(s)))
     sch.fork(() => async(feed(t)))
@@ -70,6 +90,7 @@ object Channel {
     summon[Scheduler].fork: () =>
       async:
         try s.toLazyList.foreach(c.send)
+        catch case e: Throwable => c.fail(e)
         finally c.close()
     c
 }

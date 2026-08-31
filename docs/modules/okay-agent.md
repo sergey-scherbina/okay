@@ -179,11 +179,20 @@ incident again offline with the world untouched. Exactly-once
 EXECUTION is impossible and the module says so — what it provides is
 the decision, and tests for the ugly cases rather than the happy one.
 
-## Not yet (specs/llm-agentic.md)
+## All of specs/llm-agentic.md is built
 
-Lineage-backed tool results (the model sees a projection, a follow-up
-re-observes the full stream), streaming validation that cuts
-generation the moment the value is structurally complete, durability
-by replay (specs/llm-agentic.md), and provider handlers — an
-OpenAI-compatible one covers most of the market, including the local
-runtimes.
+This section used to say "not yet", and listed four things. All four
+shipped, and the list is kept because it is a good index of them:
+
+- **Lineage-backed tool results** — `Large.projecting`: a result over
+  the limit is stored whole, the context gets its head plus a handle,
+  and `expand` reads any window later.
+- **Streaming validation that cuts generation** — `Structured.cut`:
+  each token is an append, an append is an edit, so the incremental
+  parser costs the token; not pulling further IS cancelling.
+- **Durability by replay** — `Durable`: an intent-first journal with a
+  per-operation recovery decision (`Redo`, `WithKey`, `Reconcile`,
+  `Escalate`, `Fail`), and `replaying` to re-run an incident offline.
+- **Provider handlers** — `Provider.openAi` and `Provider.anthropic`,
+  plus `relay`/`openAiRelay`, which is the portable form for
+  platforms where a comonadic handler cannot do I/O.

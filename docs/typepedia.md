@@ -109,6 +109,16 @@ same material with the measurements attached.
   the sibling; race's first SUCCESS wins, two failures fail it;
   `sleep` rides the platform **`Timer`**; **`bracket`** (any
   Handler-able row).
+- **`Channel`** — the queue between fibers, and the primitive pull
+  cannot express (readiness, pacing). `merge` feeds one channel from
+  two sources by READINESS; `buffer` runs a producer ahead of its
+  consumer. `fail` records a producer's error WITHOUT closing (the
+  other source is still feeding) and `close` then ends the stream
+  with it — so a consumer receives everything actually produced and
+  only then hears that something broke. Before that existed, a
+  producer that threw was indistinguishable from one that finished:
+  the exception died on its own fiber, `finally` closed the channel,
+  and a merge silently returned half its elements.
 - **`Resource`** — the region: acquires release at the scope's end in
   reverse order, surviving handled aborts and mid-step exceptions;
   run it OUTERMOST.

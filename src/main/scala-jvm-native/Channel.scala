@@ -21,12 +21,34 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
 
   private val q = LinkedBlockingQueue[A](capacity)
   @volatile private var open = true
+  @volatile private var failure: Throwable | Null = null
 
   /** park until there is room, then enqueue; do not send after close */
   def send(a: A): Unit = q.put(a)
 
   /** end the stream: the buffered elements still drain */
   def close(): Unit = open = false
+
+  /**
+   * Record that a producer broke. It does NOT close: in a merge the
+   * other source is still feeding, and one side failing is no reason
+   * to cut the side that is fine. `close` still ends the stream, and
+   * the error is what the END then is — so a consumer receives
+   * everything that was actually produced and only then hears that
+   * something went wrong.
+   *
+   * Without this a producer that failed halfway was indistinguishable
+   * from one that finished: the exception died on the producer's own
+   * fiber, `finally` closed the channel, and the consumer read a
+   * perfectly ordinary end of stream. A merge quietly returning half
+   * its elements looks exactly like a merge that legitimately had
+   * that many, which is the worst way for a stream to be wrong.
+   */
+  def fail(e: Throwable): Unit =
+    if failure == null then failure = e
+
+  /** what ended the stream, if anything did badly */
+  def failed: Option[Throwable] = Option(failure)
 
   /** park until an element arrives, or None — closed and drained.
    * The closed check comes BEFORE the timed poll, so the end of a
@@ -35,7 +57,13 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
   @tailrec def receive(): Option[A] =
     val a = q.poll()
     if a != null then Some(a)
-    else if !open then Option(q.poll())
+    else if !open then
+      val b = q.poll()
+      // the buffered elements drain first; the failure is what the
+      // END of the stream is, so it surfaces only once they are gone
+      if b != null then Some(b)
+      else if failure != null then throw failure.nn
+      else None
     else
       val b = q.poll(10, TimeUnit.MILLISECONDS)
       if b != null then Some(b) else receive()
@@ -65,6 +93,7 @@ object Channel {
           case Some((a, t)) => c.send(a); go(t)
           case None => ()
         go(u)
+      catch case e: Throwable => c.fail(e)
       finally if alive.decrementAndGet() == 0 then c.close()
     sch.fork(() => async(feed(s)))
     sch.fork(() => async(feed(t)))
@@ -81,6 +110,7 @@ object Channel {
     summon[Scheduler].fork: () =>
       async:
         try s.toLazyList.foreach(c.send)
+        catch case e: Throwable => c.fail(e)
         finally c.close()
     c
 }

@@ -110,5 +110,7 @@ pipeline, so a body cut mid-string still yields the text it carried.
 - BPE word boundaries are whitespace runs; a GPT-2-style regex
   pre-tokenizer would slot into `step` unchanged.
 
-The agentic layer (tool calls as effect operations, agents as
-Stages over Channels) is designed for, not yet built — specs/llm.md.
+The agentic layer this module is designed for — tool calls as effect
+operations, context as an effect, the loop as a program — is built:
+see [okay-agent](okay-agent.md), and [okay-rag](okay-rag.md) for
+retrieval under the same budget.
