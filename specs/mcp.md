@@ -104,10 +104,11 @@ the same door as everywhere else: a comonadic handler must ANSWER, so
 it needs `CanBlock`; `translate` forwards into `Async` instead and
 works where nothing may park.
 
-## Out of scope (v1)
-- resources, prompts, sampling, roots, completion, progress and
-  cancellation notifications — the shapes are list+fetch, the same as
-  tools, and they are follow-ups rather than design questions
+## Out of scope
+- sampling, roots, completion, progress and cancellation
+  notifications, and resource subscriptions (every one of those is a
+  server talking FIRST, which the session's request/answer loop does
+  not yet do)
 - the HTTP/SSE transport (okay-llm already has the SSE half; the
   streamable-HTTP session layer is its own task)
 - OAuth and any authorization
@@ -133,11 +134,77 @@ works where nothing may park.
   contains damage" and `-32600 Invalid Request` is "it parsed clean
   and is still not a message". A throwing parser can only tell the
   first, and only by throwing.
+- **A prompt message can only be `user` or `assistant`** — MCP has no
+  system role in prompts, so `Turn.System` goes on the wire as a user
+  message and comes back as one. The loss is real and it is the
+  protocol's, not ours; the alternative (dropping system turns) would
+  lose more.
+- **An unknown resource uri is a protocol ERROR, an unknown tool is an
+  ANSWER** — chosen because of who is asking. A model picks a tool
+  name and must be able to read its own mistake and retry; a program
+  asks for a uri it got from `resources/list`, and a wrong one there
+  is a bug, not a conversation.
 - **The demo serves over stdio as a plain class, not through sbt** —
   `sbt -batch` keeps stdin for itself, so the documented invocation is
   `java -cp <classpath> okay.demo.RepoMcp <repo>`. Measured, not
   assumed: that command answers `initialize` and `tools/list` on the
   wire.
+
+## v2 — resources and prompts (2026-09-01)
+
+The other two capabilities, and each lands on a type this library
+already has. That is the same test v1 passed: if MCP's concept has no
+home here, the mapping is doing the work; if it has one, the protocol
+is a transport detail.
+
+- a **resource** is `okay.rag.Source(id, text)` — a document with an
+  identity, which is exactly what the retriever indexes. So an MCP
+  server's resources become a `Corpus`, and an agent RETRIEVES over a
+  remote server's documents with nothing new in the agent.
+- a **prompt** is `Seq[Turn]` — a conversation opening, which is
+  exactly what okay-agent's context is made of. So a server's prompt
+  is something the agent can be started from.
+
+```scala
+final case class Resource(uri: String, name: String,
+                          description: String = "", mimeType: Option[String] = None)
+final case class Prompt(name: String, description: String = "",
+                        arguments: Seq[Prompt.Arg] = Nil)
+
+// serving: what a server has, in one value
+final case class Serving(info: Mcp.Info,
+                         tools: Seq[ToolSpec] = Nil,
+                         call: Map[String, ToolCall => String] = Map.empty,
+                         resources: Seq[Resource] = Nil,
+                         read: String => Option[String] = _ => None,
+                         prompts: Seq[Prompt] = Nil,
+                         prompt: (String, Map[String, String]) => Option[Seq[Turn]] = ...)
+object Server:
+  def serve(s: Serving): Stage[Rpc, Rpc, Unit]
+
+// using: the client side, in our own vocabulary
+final class Session:
+  def resources: Seq[Resource] ! Async          // resources/list, cursor followed
+  def read(uri: String): Option[String] ! Async // resources/read
+  def corpus: Corpus ! Async                    // every resource, as okay-rag documents
+  def prompts: Seq[Prompt] ! Async              // prompts/list
+  def prompt(name: String, args: Map[String, String]): Seq[Turn] ! Async
+```
+
+### Behavior
+- [ ] `capabilities` declares only what the server actually has: a
+      server with no prompts does not advertise prompts, and a client
+      reading the handshake can tell
+- [ ] `resources/list` pages like `tools/list`, and `resources/read`
+      answers the text of a uri; an unknown uri is a protocol error
+      (unlike an unknown TOOL, which is an answer — the difference is
+      that a model chooses tools and a program chooses uris)
+- [ ] a server's resources become a `Corpus`, and the retriever
+      indexes it exactly as it indexes local files
+- [ ] `prompts/list` and `prompts/get` round-trip a `Seq[Turn]`,
+      arguments substituted by the server
+- [ ] a v1 client talking to a v2 server, and the reverse, both work:
+      the capabilities say what is there and nothing else breaks
 
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server
