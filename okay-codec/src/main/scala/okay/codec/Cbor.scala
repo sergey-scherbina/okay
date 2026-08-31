@@ -41,28 +41,28 @@ object Cbor {
     out ++= bs
 
   private def put[A](out: ArrayBuffer[Byte], s: Schema[A], a: A): Unit = s match
-    case Schema.SInt => integer(out, a.asInstanceOf[Int].toLong)
-    case Schema.SLong => integer(out, a.asInstanceOf[Long])
+    case Schema.SInt => integer(out, a.toLong)
+    case Schema.SLong => integer(out, a)
     case Schema.SDouble =>
       out += 0xFB.toByte
-      val bits = java.lang.Double.doubleToLongBits(a.asInstanceOf[Double])
+      val bits = java.lang.Double.doubleToLongBits(a)
       var i = 56
       while i >= 0 do { out += (bits >> i).toByte; i -= 8 }
     case Schema.SBool =>
-      out += (if a.asInstanceOf[Boolean] then 0xF5 else 0xF4).toByte
-    case Schema.SString => text(out, a.asInstanceOf[String])
+      out += (if a then 0xF5 else 0xF4).toByte
+    case Schema.SString => text(out, a)
     case Schema.SBytes =>
       // major type 2: a byte string, which is what CBOR is for
-      val bs = a.asInstanceOf[Array[Byte]]
+      val bs = a
       header(out, 2, bs.length.toLong)
       out ++= bs
-    case Schema.SOption(of) => a.asInstanceOf[Option[Any]] match
+    case Schema.SOption(of) => a match
       case None => out += 0xF6.toByte
-      case Some(x) => put(out, of().asInstanceOf[Schema[Any]], x)
+      case Some(x) => put(out, of(), x)
     case Schema.SList(of) =>
-      val xs = a.asInstanceOf[List[Any]]
+      val xs = a
       header(out, 4, xs.length.toLong)
-      xs.foreach(put(out, of().asInstanceOf[Schema[Any]], _))
+      xs.foreach(put(out, of(), _))
     case p: Schema.SProduct[A] =>
       header(out, 5, p.fields.length.toLong)
       p.parts(a).zip(p.fields).foreach { (v, f) =>
@@ -121,24 +121,24 @@ object Cbor {
     }
 
   private def get[A](in: In, s: Schema[A]): Either[String, A] = s match
-    case Schema.SInt => intItem(in).map(_.toInt.asInstanceOf[A])
-    case Schema.SLong => intItem(in).map(_.asInstanceOf[A])
+    case Schema.SInt => intItem(in).map(_.toInt)
+    case Schema.SLong => intItem(in)
     case Schema.SDouble => in.byte().flatMap {
-      case 0xFB => in.long(8).map(java.lang.Double.longBitsToDouble(_).asInstanceOf[A])
+      case 0xFB => in.long(8).map(java.lang.Double.longBitsToDouble(_))
       case b => Left(f"expected a double (0xFB), got 0x$b%02X")
     }
     case Schema.SBool => in.byte().flatMap {
-      case 0xF4 => Right(false.asInstanceOf[A])
-      case 0xF5 => Right(true.asInstanceOf[A])
+      case 0xF4 => Right(false)
+      case 0xF5 => Right(true)
       case b => Left(f"expected a boolean, got 0x$b%02X")
     }
-    case Schema.SString => textItem(in).map(_.asInstanceOf[A])
+    case Schema.SString => textItem(in)
     case Schema.SBytes => head(in).flatMap {
-      case (2, n) => in.take(n.toInt).map(_.asInstanceOf[A])
+      case (2, n) => in.take(n.toInt)
       case (m, _) => Left(s"expected a byte string, got major $m")
     }
     case Schema.SOption(of) =>
-      if in.peek == 0xF6 then in.byte().map(_ => None.asInstanceOf[A])
+      if in.peek == 0xF6 then in.byte().map(_ => None)
       else get(in, of().asInstanceOf[Schema[Any]]).map(Some(_).asInstanceOf[A])
     case Schema.SList(of) =>
       head(in).flatMap {

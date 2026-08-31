@@ -117,19 +117,18 @@ object Json {
     case Schema.SLong => a.toString
     case Schema.SDouble => a.toString
     case Schema.SBool => a.toString
-    case Schema.SString => s"\"${escape(a.asInstanceOf[String])}\""
+    case Schema.SString => s"\"${escape(a)}\""
     // JSON has no bytes. Base64 is what everyone means by them here,
     // and it is also what makes a dump READABLE: a thousand float
     // literals are not something anyone reads, and one opaque token
     // says "binary payload" without burying the fields that matter.
-    case Schema.SBytes => s"\"${Base64.encode(a.asInstanceOf[Array[Byte]])}\""
+    case Schema.SBytes => s"\"${Base64.encode(a)}\""
     case Schema.SOption(of) =>
-      a.asInstanceOf[Option[Any]] match
-        case Some(x) => encode(of().asInstanceOf[Schema[Any]])(x)
+      a match
+        case Some(x) => encode(of())(x)
         case None => "null"
     case Schema.SList(of) =>
-      a.asInstanceOf[List[Any]]
-        .map(encode(of().asInstanceOf[Schema[Any]])).mkString("[", ",", "]")
+      a.map(encode(of())).mkString("[", ",", "]")
     case p: Schema.SProduct[A] =>
       p.parts(a).zip(p.fields).map { (v, f) =>
         s"\"${f._1}\":${encode(f._2().asInstanceOf[Schema[Any]])(v)}"
@@ -142,13 +141,13 @@ object Json {
   /** the decoding algebra: fold the schema, read the value back —
    * errors are values (Left), never faults */
   def decode[A](s: Schema[A])(j: Json): Either[String, A] = (s, j) match
-    case (Schema.SInt, JNum(n)) => Right(n.toInt.asInstanceOf[A])
-    case (Schema.SLong, JNum(n)) => Right(n.toLong.asInstanceOf[A])
-    case (Schema.SDouble, JNum(n)) => Right(n.asInstanceOf[A])
-    case (Schema.SBool, JBool(b)) => Right(b.asInstanceOf[A])
-    case (Schema.SString, JStr(x)) => Right(x.asInstanceOf[A])
-    case (Schema.SBytes, JStr(x)) => Base64.decode(x).map(_.asInstanceOf[A])
-    case (Schema.SOption(of), JNull) => Right(None.asInstanceOf[A])
+    case (Schema.SInt, JNum(n)) => Right(n.toInt)
+    case (Schema.SLong, JNum(n)) => Right(n.toLong)
+    case (Schema.SDouble, JNum(n)) => Right(n)
+    case (Schema.SBool, JBool(b)) => Right(b)
+    case (Schema.SString, JStr(x)) => Right(x)
+    case (Schema.SBytes, JStr(x)) => Base64.decode(x)
+    case (Schema.SOption(of), JNull) => Right(None)
     case (Schema.SOption(of), v) =>
       decode(of().asInstanceOf[Schema[Any]])(v).map(Some(_).asInstanceOf[A])
     case (Schema.SList(of), JArr(vs)) =>
