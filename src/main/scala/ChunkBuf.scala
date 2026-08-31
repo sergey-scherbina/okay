@@ -20,6 +20,29 @@ import scala.collection.immutable.ArraySeq
  * with no ClassTag — measured at 5x per chunk, and a real class
  * (rather than this opaque one) at 2x. Both are in
  * `ChunkBuildBenchmark`, with the numbers in src/jmh/history.tsv.
+ *
+ * A `ClassTag[A]` would also remove them, and costs nothing at
+ * runtime (a ClassTag'd `Array[String]` measured 65.7ns against this
+ * one's 76.7 — the same). It was tried, and the cost is not speed but
+ * REACH, in three widening waves:
+ *
+ *   1. the leaf builders — `generate`, `fromIterator`, `rechunk`,
+ *      `mapChunk`, `filterChunk`, `Pipe.chunked`;
+ *   2. then the combinators they back — `Chunks.map`, `.filter`,
+ *      `nats`, `fibs`, which is the public streaming API, so every
+ *      user's generic function over `Chunks[A]` needs the evidence
+ *      too;
+ *   3. then `Pipeline.chunks`, where it STOPS: the reified operator
+ *      tree has existential intermediates (`case Mapped[A, B](src:
+ *      Pipeline[A], f: A => B)`), and no ClassTag for `A` can be
+ *      recovered when compiling a `Mapped` node. It would have to be
+ *      stored IN the tree — a change to the data structure, not to a
+ *      signature, and one that would then have to be produced at
+ *      every place a pipeline is built.
+ *
+ * So the trade is not "cast versus ClassTag". It is three casts here
+ * against a ClassTag in the public type of `map`, and a ClassTag
+ * field in the operator tree that P6 exists to keep clean.
  */
 opaque type ChunkBuf[A] = Array[AnyRef]
 
