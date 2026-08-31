@@ -20,6 +20,27 @@ type Chunks[A] = Producer[Chunk[A]]
 
 object Chunks {
 
+  /**
+   * `Array[AnyRef]` and a cast, and NOT `Array[A]` — which would be
+   * the obvious signature and does not work.
+   *
+   * The reason is upstream, in the producers. `generate`, `unfold`,
+   * `fromIterator` and the rest are generic in their element type and
+   * have no `ClassTag[A]`, so `new Array[A](size)` is not something
+   * they can write. What they CAN allocate is `Array[AnyRef]`, fill
+   * elementwise, and hand here. Give this method `Array[A]` and every
+   * one of them stops compiling — the array they hold is
+   * `Array[AnyRef]`, so `A` would infer as `AnyRef` and the result
+   * would be a `Chunk[AnyRef]`, not a `Chunk[A]`.
+   *
+   * So the cast does not disappear if the signature changes; it moves
+   * to each call site. Here it is one line, in one place, and it says
+   * what it knows: the array was filled with `A`s and only `A`s.
+   *
+   * `ofChars` below is the exception that shows the rule — there the
+   * element type is known statically, a primitive `Array[Char]` can
+   * be allocated, and no cast is needed at all.
+   */
   private[okay] inline def wrap[A](arr: Array[AnyRef]): Chunk[A] =
     ArraySeq.unsafeWrapArray(arr).asInstanceOf[Chunk[A]]
 
@@ -78,8 +99,8 @@ object Chunks {
         val n = math.min(size, text.length - from)
         val arr = new Array[Char](n)
         text.getChars(from, from + n, arr, 0)
-        produce(scala.collection.immutable.ArraySeq.unsafeWrapArray(arr)
-          .asInstanceOf[Chunk[Char]]).flatMap(_ => go(from + n))
+        produce(scala.collection.immutable.ArraySeq.unsafeWrapArray(arr))
+          .flatMap(_ => go(from + n))
 
     go(0)
 
