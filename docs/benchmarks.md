@@ -328,6 +328,33 @@ comments, strings and nesting — and its 6.3KB Python twin.
 |---|---|
 | **644** | **449** |
 
+**Where a symbol index's time goes**, split on the same 8.5KB file:
+
+| | us | share |
+|---|---|---|
+| `Code.source` — lex, parse, tree | 376.1 | 60% |
+| `Symbols.of` — the walk over it | 221.5 | 35% |
+| `indexFull` end to end | 628.7 | |
+
+The walk looked like the same defect as everything else in this
+section: it rebuilds the whole `Index` on every identifier it sees — a
+fresh case class, a copied path through the map, a `Vector` append —
+and a file of a few thousand tokens is a few thousand of each. It was
+rewritten to fill mutable buckets and build the `Index` once, and the
+rewrite was **reverted, because it bought nothing**: 244.1us against
+245.4 before, which is no difference at all.
+
+So the cost is somewhere else in the walk — `defHead` scanning each
+definition's head, `span`, `isName`, or the traversal itself. A lane
+with the identifier branch switched off would say which, and on this
+machine it came back at 427 +/- 136 while doing strictly less work
+than the 256.8 +/- 51 full walk, which is noise and not a measurement.
+Left for a quiet machine; the split lanes are in place so it costs
+one run rather than an afternoon.
+
+Worth stating plainly because the pattern held four times in a row
+before this: finding the same SHAPE is not finding the same cost.
+
 **Keyword indexing** — building the BM25 postings from a document's
 segments, and one more instance of the same defect:
 

@@ -154,3 +154,6 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-31	83bd266		cmpMerge-okaySource	210.1	111.2	1.89	Source.merge (Writer walk) vs the raw okayChannelMerge, f1 3+5, 2x500 us/op
 2026-08-31	83bd266		cmpMerge-okayChunks-bound64	10.8	10.7	1.01	bounding the merge channel at 64 costs nothing measurable (+/-0.14 vs +/-0.29) — the default is now bounded
 2026-08-31	83bd266		cmpMerge-okaySource-bound64	232.7	210.1	1.11	same question on the source merge: bars overlap (+/-20.4 vs +/-9.7), no effect demonstrated; bounded default kept
+2026-09-01\tindexParseOnly\t376119\tns/8.5KB\tCode.source alone: 60% of indexFull (628658)
+2026-09-01\tindexFoldOnly\t221461\tns/8.5KB\tSymbols.of over a parsed tree: 35%
+2026-09-01\tindexFoldOnly-mutable\t244109\tns/8.5KB\tREFUTED: mutable buckets bought nothing (245400 before)

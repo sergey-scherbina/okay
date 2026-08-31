@@ -95,6 +95,26 @@ class RagBenchmark {
   @Benchmark
   def indexFull: Int = Symbols.source(scalaSrc).defs.size
 
+  /** the parse alone, on the SAME source indexFull uses — so the two
+   * subtract, and the symbol fold's own share is visible */
+  @Benchmark
+  def indexParseOnly: Any = Code.source(scalaSrc).tree
+
+  /** the tree, parsed once: the fold's input without the parse */
+  val scalaTree = Code.source(scalaSrc).tree
+
+  /** the symbol fold over an already-parsed tree */
+  @Benchmark
+  def indexFoldOnly: Int =
+    Symbols.of(scalaSrc.id, scalaTree,
+      identifiers = Language.of(scalaSrc.id).exists(_.definers.nonEmpty)).defs.size
+
+  /** the same walk with the identifier branch off — if the refs half
+   * is the cost, this collapses; if not, it is the traversal itself */
+  @Benchmark
+  def indexFoldNoRefs: Int =
+    Symbols.of(scalaSrc.id, scalaTree, identifiers = false).defs.size
+
   @Benchmark
   def indexFullPython: Int = Symbols.source(pythonSrc).defs.size
 
