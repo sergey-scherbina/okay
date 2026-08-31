@@ -24,9 +24,7 @@ package okay
  * runtime class of W — forward only effects whose operations are
  * class-distinct from W, or handle them first.
  */
-opaque type Writer[W, +A] = A match 
-    case Nothing => 
-    case _ => W & A
+opaque type Writer[W, +A] = W
 
 /**
  * An operation IS its element.
