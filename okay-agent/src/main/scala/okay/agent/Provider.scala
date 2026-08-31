@@ -147,31 +147,19 @@ object Provider {
   def relay[A, F[+_] : okay.TypeableK](complete: (Seq[Turn], Seq[ToolSpec]) => Reply ! okay.Async,
                                        count: String => Int = _.length / 4)
                                       (prog: A ! (Model + F)): A ! (okay.Async + F) =
-    import okay.!.*
-    type Out = okay.Async + F
-
-    def answer(e: Model[Any]): Either[Reply ! okay.Async, Any] = e match
-      case Model.Complete(ctx, tools) => Left(complete(ctx, tools))
-      case Model.Count(text) => Right(count(text))
-
-    def go(x: A ! (Model + F)): A ! Out = x.resume match
-      case Pure(a) => okay.pure(a)
-      case Effect(e) => okay.<|>[Model, F](e) match
-        case Left(m) => answer(m) match
-          case Left(req) => okay.!.widen[Reply, okay.Async, F](req).asInstanceOf[A ! Out]
-          case Right(v) => okay.pure(v.asInstanceOf[A])
-        case Right(g) => Effect(g).asInstanceOf[A ! Out]
-      case Bind(Effect(e), k) =>
-        val cont = k.asInstanceOf[Any => A ! (Model + F)]
-        okay.<|>[Model, F](e) match
-          case Left(m) => answer(m) match
-            case Left(req) =>
-              okay.!.widen[Reply, okay.Async, F](req).flatMap(r => go(cont(r)))
-            case Right(v) => go(cont(v))
-          case Right(g) =>
-            Effect(g).asInstanceOf[Any ! Out].flatMap(x => go(cont(x)))
-
-    go(prog)
+    // the handler as a NATURAL TRANSFORMATION into another row: a
+    // Model operation answers with a PROGRAM in Async, which is what
+    // Handler[Model] = Model ==> Id could not express — Id has
+    // nowhere to put the suspension
+    okay.!.translate[A, Model, okay.Async + F](
+      okay.!.widen[A, Model + F, okay.Async](prog)
+        .asInstanceOf[A ! (Model + (okay.Async + F))]) {
+      [X] => (e: Model[X]) => e match
+        case Model.Complete(ctx, tools) =>
+          okay.!.widen[Reply, okay.Async, F](complete(ctx, tools))
+            .asInstanceOf[X ! (okay.Async + F)]
+        case Model.Count(text) => okay.pure(count(text).asInstanceOf[X])
+    }
 
   /** the OpenAI-compatible provider as a relay — the cross-platform door */
   def openAiRelay[A, F[+_] : okay.TypeableK](

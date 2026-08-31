@@ -32,6 +32,16 @@ same material with the measurements attached.
   beside the builder so incremental reparse stays sound for stateful
   drivers (brace depth, a held doc comment), with `finish` releasing
   whatever the driver deferred at end of input.
+- **`!.translate`** — a handler valued in ANOTHER ROW:
+  `F ==> ([X] =>> X ! G)`, so an operation answers with a PROGRAM
+  rather than a value. This is the general shape the other two are
+  ends of — `Handler[F]` is `F ==> Id` (and `Id` is exactly where a
+  suspension cannot go, which is why a comonadic handler cannot do
+  I/O where nothing may park), `F !> S` is the Cont-valued handler
+  `Effects.handle` takes (abort and multi-shot, through Cont), and
+  `translate` is the tail-resumptive middle: one walk, no Cont, the
+  rest of the row forwarded. `Free.run(f: F ==> M)` is the same idea
+  when the row is handled entirely.
 - **`Handler[F]`** — the comonadic (per-operation) handler;
   `runWith` runs with it. **`Handler.union`** composes one handler
   per effect into a row handler (an explicit combinator, not a given:

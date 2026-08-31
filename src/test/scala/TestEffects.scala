@@ -76,4 +76,56 @@ class TestEffects extends munit.FunSuite {
     assertEquals(handled.runWith, n)
   }
 
+
+  test("translate: a handler valued in ANOTHER ROW, not in a value") {
+    // Handler[F] is F ==> Id, and Id is where a suspension cannot go.
+    // translate takes the general form — F ==> ([X] =>> X ! G) — so an
+    // operation may answer with more computation.
+    type Row = Reader % Int + (Writer % String + okay.Pure)
+
+    val prog: Int ! Row =
+      effect[Row, Int](Reader.Ask()).flatMap(x =>
+        effect[Row, Int](Reader.Ask()).map(_ + x))
+
+    // the Reader is answered by a program that TELLS on the way
+    val told: Int ! (Writer % String + okay.Pure) =
+      !.translate[Int, Reader % Int, Writer % String + okay.Pure](prog) {
+        [X] => (e: (Reader % Int)[X]) => e match
+          case Reader.Ask() =>
+            effect[Writer % String + okay.Pure, String](Writer("asked"))
+              .map(_ => 21.asInstanceOf[X])
+      }
+
+    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](told))
+    assertEquals(a, 42)
+    assertEquals(ws, Seq("asked", "asked"))
+  }
+
+  test("translate with a pure transformation IS a comonadic handler") {
+    type Row = Reader % Int + okay.Pure
+    val prog: Int ! Row = effect[Row, Int](Reader.Ask()).map(_ * 2)
+
+    val viaTranslate = !.run(!.translate[Int, Reader % Int, okay.Pure](prog) {
+      [X] => (e: (Reader % Int)[X]) => e match
+        case Reader.Ask() => okay.pure(7.asInstanceOf[X])
+    })
+    val viaHandler = !.run(Reader.run[Int, Int, okay.Pure](7)(prog))
+    assertEquals(viaTranslate, viaHandler)
+  }
+
+  test("translate forwards the effects it was not given") {
+    type Row = Reader % Int + (Writer % String + okay.Pure)
+    val prog: Int ! Row =
+      effect[Row, String](Writer("before")).flatMap(_ =>
+        effect[Row, Int](Reader.Ask())).flatMap(x =>
+        effect[Row, String](Writer("after")).map(_ => x))
+
+    val told = !.translate[Int, Reader % Int, Writer % String + okay.Pure](prog) {
+      [X] => (e: (Reader % Int)[X]) => e match
+        case Reader.Ask() => okay.pure(5.asInstanceOf[X])
+    }
+    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](told))
+    assertEquals(a, 5)
+    assertEquals(ws, Seq("before", "after"))
+  }
 }

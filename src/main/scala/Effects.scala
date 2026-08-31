@@ -298,6 +298,44 @@ object ! {
     case Bind(Effect(e), k) => Effect(e).flatMap(x => widen[A, F, G](k(x)))
 
   /**
+   * Interpret F into ANOTHER ROW rather than into a value.
+   *
+   * `Handler[F]` is `F ==> Id`, and Id is exactly where a suspension
+   * cannot go — which is why a comonadic handler can never do I/O on
+   * a platform with no thread to park (it must ANSWER, so it must
+   * finish). The general form is the natural transformation this
+   * library already names: a handler valued in a PROGRAM,
+   * `F ==> ([X] =>> X ! G)`, so an operation may answer with more
+   * computation instead of with a value.
+   *
+   * Three points on one line, then: `F ==> Id` is the comonadic
+   * handler (`runWith`), `F ==> ([X] =>> X ! G)` is this — the
+   * forwarding interpreter — and `F !> S` is the Cont-valued handler
+   * that `Effects.handle` takes, which adds abort and multi-shot at
+   * the price of going through Cont. `translate` is the
+   * tail-resumptive middle: one walk, no Cont, G forwarded.
+   *
+   * `Free.run(f: F ==> M)` is the same idea when the row is handled
+   * ENTIRELY; this is the version that leaves a residue.
+   */
+  def translate[A, F[+_] : TypeableK, G[+_]](prog: A ! (F + G))
+                                            (h: F ==> ([X] =>> X ! G)): A ! G =
+    // every step suspends under a flatMap (the answer is a PROGRAM,
+    // not a value), so the recursion lives in closures rather than on
+    // the stack — the State.handle shape, and the reason no @tailrec
+    // annotation belongs here
+    prog.resume match
+      case Pure(a) => Pure(a)
+      case Effect(e) => <|>[F, G](e) match
+        case Left(f) => h(f)
+        case Right(g) => Effect(g)
+      case Bind(Effect(e), k) =>
+        val cont = k.asInstanceOf[Any => A ! (F + G)]
+        <|>[F, G](e) match
+          case Left(f) => h(f).flatMap(x => translate[A, F, G](cont(x))(h))
+          case Right(g) => Effect(g).flatMap(x => translate[A, F, G](cont(x))(h))
+
+  /**
    * handle_relay (Kiselyov): tail-resumptive handling, measured 1.45x
    * faster than Effects.handle on forwarding-heavy work. g is
    * answer-polymorphic, so by parametricity it must resume the
