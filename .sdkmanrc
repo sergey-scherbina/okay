@@ -1,0 +1,14 @@
+# Java 21, not whatever the shell happens to have.
+#
+# This is not a preference. Spark 4.0.0 supports Java 17 and 21; on
+# JDK 24+ the Security Manager is gone (JEP 486) and with it
+# Subject.getSubject, which Hadoop's UserGroupInformation calls on
+# every job. The failure is
+#
+#   UnsupportedOperationException: getSubject is not supported
+#
+# and there is no flag for it: -Djava.security.manager=allow, the
+# remedy for 18..23, makes a JDK 26 refuse to start at all.
+#
+# `sdk env install` here, or `sdk env` in a shell that already has it.
+java=21.0.7-tem

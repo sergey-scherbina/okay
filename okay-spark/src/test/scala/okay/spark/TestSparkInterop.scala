@@ -7,6 +7,29 @@ import org.apache.spark.sql.{Encoders, SparkSession}
 /** The same Aggregator value, locally over Chunks and on Spark: equal. */
 class TestSparkInterop extends munit.FunSuite {
 
+  /**
+   * Spark 4.0.0 supports Java 17 and 21. On JDK 24+ the Security
+   * Manager is gone (JEP 486), and with it
+   * `Subject.getSubject(AccessControlContext)`, which Hadoop's
+   * `UserGroupInformation.getCurrentUser` calls on every job:
+   *
+   *   UnsupportedOperationException: getSubject is not supported
+   *
+   * There is no flag for it. `-Djava.security.manager=allow` is the
+   * remedy for 18..23 and makes a JDK 26 refuse to start at all
+   * ("Enabling a Security Manager is not supported"), so the suite is
+   * skipped rather than left to fail with a stack trace that names
+   * Hadoop and explains nothing. `.sdkmanrc` pins the JDK that works.
+   */
+  val javaFeature: Int = Runtime.version().feature()
+  override def munitIgnore: Boolean = javaFeature >= 24
+
+  override def beforeAll(): Unit =
+    if munitIgnore then
+      println(s"  okay-spark: skipped on Java $javaFeature — Spark 4.0.0 " +
+        "needs 17 or 21 (JEP 486 removed what Hadoop's UGI calls). " +
+        "`sdk env` uses the pinned 21.")
+
   lazy val spark = SparkSession.builder()
     .master("local[2]").appName("okay-spark-test")
     .config("spark.ui.enabled", "false")

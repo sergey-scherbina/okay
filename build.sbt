@@ -174,13 +174,6 @@ lazy val okaySpark = (project in file("okay-spark"))
       ("org.apache.spark" %% "spark-sql" % "4.0.0").cross(CrossVersion.for3Use2_13),
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
-    // sbt forces every org.scala-lang artifact to the project's own
-    // scalaVersion. Harmless until a `for3Use2_13` dependency drags in
-    // scala-reflect — a Scala 2 artifact published for NO Scala 3
-    // version — and the forcing asks for scala-reflect at the Scala 3
-    // version, which cannot exist. The dependency tree has it right
-    // (2.13.16, from Spark); only the override is wrong, so turn the
-    // override off for this one module.
     // Spark's 2.13 artifacts bring scala-reflect, a Scala 2 artifact
     // published for NO Scala 3 version. The dependency tree resolves
     // it correctly (2.13.16); what fails is sbt asking for it at the
@@ -189,6 +182,16 @@ lazy val okaySpark = (project in file("okay-spark"))
     libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.13.16",
     Test / fork := true,
     Test / javaOptions ++= Seq(
+      // Run the fork on the JDK the tests were compiled for. Without
+      // this the fork inherits sbt's JVM, and if sbt itself was
+      // started on a JDK 24+ (JEP 486 removed the Security Manager,
+      // and with it the Subject.getSubject that Hadoop's
+      // UserGroupInformation calls) Spark fails with
+      // "UnsupportedOperationException: getSubject is not supported".
+      // The suite skips itself there rather than failing, but the
+      // clearer arrangement is not to be there at all: .sdkmanrc pins
+      // Java 21, which is what Spark 4.0.0 supports.
+      //
       // A forked JVM with no -Xmx takes the ergonomic default, which
       // on this 36g machine is 9g — for a `local[2]` session over ten
       // thousand doubles. That is not a problem alone, and it is one
