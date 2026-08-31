@@ -126,11 +126,27 @@ private object Erased {
    * `opaque type Writer[W, +A] = W`, an operation IS its element, and
    * there is no case whose pattern could carry the equation.
    *
-   * That is also why a wrapper type does not help here. A wrapper
-   * would have to be built where the value enters the row, and it
-   * enters as a bare `W` — which is exactly the zero-allocation
-   * property that makes this lane 286ns against cats' 1127. The
-   * evidence is purchasable, and its price is the encoding.
+   * A type-level existential package does not help either, and the
+   * reason is sharper than "it would allocate" — the path-dependent
+   * encoding (`type Kind[K[_]] = { type A; type T = K[A] }`) is
+   * purely type-level and allocates nothing at all.
+   *
+   * It does not help because `Bind` is ALREADY that package.
+   * `Bind[F, X, A](op: F[X], k: X => Free[F, A])` relates the
+   * operation and its continuation through one coherent `X`; nothing
+   * needs relating. What is missing is the other thing, and reduced
+   * to two lines the compiler says it exactly:
+   *
+   *     Found:    W
+   *     Required: X
+   *
+   * That is `W =:= X`, which the identity signature's only injector
+   * (`Writer(w): Writer[W, W]`) makes true and no pattern can
+   * witness, because the operation HAS no constructor to match. A
+   * `Kind` names an existential so that two things sharing it line
+   * up; it never reveals one — the caller that packed a String
+   * cannot prove `packed.A =:= String` either. Revealing is what
+   * would be needed, and only a GADT does that.
    */
   def resumeWith[X](a: Any): X = a.asInstanceOf[X]
 
