@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, %, +, Async, Chunk, Chunks, Produce, Throws, effect}
+import okay.{!, %, +, Async, Chunk, Produce, Throws, effect}
 import okay.given
 import JdbcInterop.*
 import java.sql.DriverManager
@@ -16,7 +16,7 @@ class TestJdbcInterop extends munit.FunSuite {
   test("a query streams fetch-size rows per chunk, in order") {
     withDb { c =>
       !.run(okay.Async.run[Unit, Nothing](execute(c, "create table nums(n int)")))
-      val rows = Chunks.wrap[Int]((1 to 250).map(Integer.valueOf(_): AnyRef).toArray)
+      val rows = okay.ChunkBuf.of(1 to 250)
       val inserted = !.run(okay.Async.run[Int, Nothing](
         batch(c, "insert into nums values (?)")((ps, n: Int) => ps.setInt(1, n))(rows)))
       assertEquals(inserted, 250)

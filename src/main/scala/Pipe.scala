@@ -73,13 +73,12 @@ object Stage {
       await[T, Chunk[T]].flatMap {
         case Some(t) =>
           val b = buf :+ t
-          if b.length >= size then tell[T, Chunk[T]](Chunks.wrap(
-            b.toArray[Any].asInstanceOf[Array[AnyRef]])).flatMap(_ => go(Vector.empty))
+          if b.length >= size then tell[T, Chunk[T]](ChunkBuf.of(b))
+            .flatMap(_ => go(Vector.empty))
           else go(b)
         case None =>
           if buf.isEmpty then pure(())
-          else tell[T, Chunk[T]](Chunks.wrap(
-            buf.toArray[Any].asInstanceOf[Array[AnyRef]])).map(_ => ())
+          else tell[T, Chunk[T]](ChunkBuf.of(buf)).map(_ => ())
       }
 
     go(Vector.empty)

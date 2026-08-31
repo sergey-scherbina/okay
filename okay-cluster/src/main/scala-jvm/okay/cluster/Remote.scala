@@ -1,6 +1,6 @@
 package okay.cluster
 
-import okay.{Channel, Chunk, Chunks, Scheduler}
+import okay.{Channel, Chunk, Scheduler}
 import okay.codec.{Json, Schema}
 import java.net.{ServerSocket, Socket}
 import java.io.{BufferedReader, InputStreamReader, PrintWriter}
@@ -31,7 +31,7 @@ object Remote {
           while line != null do
             Json.read[List[A]](line) match
               case Right(xs) =>
-                ch.send(Chunks.wrap[A](xs.toArray[Any].asInstanceOf[Array[AnyRef]]))
+                ch.send(okay.ChunkBuf.of(xs))
               case Left(_) => ()   // a damaged frame is dropped, the stream lives
             line = in.readLine()
           sock.close()

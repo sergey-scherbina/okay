@@ -1,6 +1,6 @@
 package okay.kafka
 
-import okay.{!, +, Chunks}
+import okay.{!, +}
 import okay.given
 import KafkaInterop.*
 import org.apache.kafka.clients.consumer.{ConsumerRecord, MockConsumer, OffsetResetStrategy}
@@ -50,8 +50,8 @@ class TestKafkaInterop extends munit.FunSuite {
 
   test("sink sends a chunk and flushes") {
     val p = MockProducer[String, String](true, StringSerializer(), StringSerializer())
-    val records = Chunks.wrap[ProducerRecord[String, String]](
-      (1 to 3).map(i => ProducerRecord[String, String]("t", s"k$i", s"v$i"): AnyRef).toArray)
+    val records = okay.ChunkBuf.of(
+      (1 to 3).map(i => ProducerRecord[String, String]("t", s"k$i", s"v$i")))
     !.run(okay.Async.run[Unit, Nothing](sink(p)(records)))
     assertEquals(p.history().asScala.map(_.value()).toList, List("v1", "v2", "v3"))
   }

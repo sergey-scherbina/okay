@@ -1,6 +1,6 @@
 package okay.cluster
 
-import okay.{Aggregator, Chunks}
+import okay.Aggregator
 import okay.given
 import okay.codec.Schema
 import java.net.ServerSocket
@@ -19,7 +19,7 @@ class TestRemote extends munit.FunSuite {
     // "the other node": ships its part in chunks of 64
     val sender = Remote.connect[Double]("localhost", server.getLocalPort)
     remote.grouped(64).foreach(g =>
-      sender.send(Chunks.wrap[Double](g.map(_.asInstanceOf[AnyRef]).toArray)))
+      sender.send(okay.ChunkBuf.of(g)))
     sender.close()
 
     // this node: fold the remote chunks into a partial accumulator

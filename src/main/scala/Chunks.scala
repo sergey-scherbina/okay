@@ -21,56 +21,20 @@ type Chunks[A] = Producer[Chunk[A]]
 object Chunks {
 
   /**
-   * `Array[AnyRef]` and a cast, and NOT `Array[A]` — which would be
-   * the obvious signature and does not work.
-   *
-   * The reason is upstream, in the producers. `generate`, `unfold`,
-   * `fromIterator` and the rest are generic in their element type and
-   * have no `ClassTag[A]`, so `new Array[A](size)` is not something
-   * they can write. What they CAN allocate is `Array[AnyRef]`, fill
-   * elementwise, and hand here. Give this method `Array[A]` and every
-   * one of them stops compiling — the array they hold is
-   * `Array[AnyRef]`, so `A` would infer as `AnyRef` and the result
-   * would be a `Chunk[AnyRef]`, not a `Chunk[A]`.
-   *
-   * So the cast does not disappear if the signature changes; it moves
-   * to each call site. Here it is one line, in one place, and it says
-   * what it knows: the array was filled with `A`s and only `A`s.
-   *
-   * `ofChars` below is the exception that shows the rule — there the
-   * element type is known statically, a primitive `Array[Char]` can
-   * be allocated, and no cast is needed at all.
-   *
-   * And the cast IS removable, which was worth checking rather than
-   * assuming: `ArraySeq.untagged.newBuilder[A]` needs no ClassTag and
-   * answers a typed `ArraySeq[A]`, so this could be written with no
-   * `asInstanceOf` anywhere. Measured, it costs 5x per chunk (64ns ->
-   * 307ns for sixty-four elements; 38 -> 158 for a half-full one),
-   * which is about 23% of the chunked stream lane. The same
-   * measurement says the cast itself is FREE: a ClassTag'd
-   * `Array[String]` builds in 69ns against this one's 64. So the
-   * cast buys the absence of a ClassTag from every producer's
-   * signature and costs nothing at runtime — see
-   * `ChunkBuildBenchmark` and src/jmh/history.tsv.
-   */
-  private[okay] inline def wrap[A](arr: Array[AnyRef]): Chunk[A] =
-    ArraySeq.unsafeWrapArray(arr).asInstanceOf[Chunk[A]]
-
-  /**
    * Unfold with a tight per-chunk loop: size elements of f over the
    * unfolding seed per emitted chunk. Construction is lazy — the
    * first chunk is computed at the first pull, one chunk at a time.
    */
   def generate[A, B](a: A)(f: A => B)(g: A => A)(size: Int = 64): Chunks[B] =
     def go(s: A): Chunks[B] = pure[Produce, Unit](()).flatMap: _ =>
-      val arr = new Array[AnyRef](size)
+      val buf = ChunkBuf[B](size)
       var cur = s
       var i = 0
       while i < size do
-        arr(i) = f(cur).asInstanceOf[AnyRef]
+        buf(i) = f(cur)
         cur = g(cur)
         i += 1
-      produce(wrap[B](arr)).flatMap(_ => go(cur))
+      produce(buf.chunk).flatMap(_ => go(cur))
 
     go(a)
 
@@ -80,12 +44,12 @@ object Chunks {
       if s >= until then pure(ArraySeq.empty)
       else
         val n = math.min(size.toLong, until - s).toInt
-        val arr = new Array[AnyRef](n)
+        val buf = ChunkBuf[Long](n)
         var i = 0
         while i < n do
-          arr(i) = (s + i).asInstanceOf[AnyRef]
+          buf(i) = s + i
           i += 1
-        produce(wrap[Long](arr)).flatMap(_ => go(s + n))
+        produce(buf.chunk).flatMap(_ => go(s + n))
 
     go(from)
 
@@ -120,13 +84,12 @@ object Chunks {
     def go(): Chunks[A] = pure[Produce, Unit](()).flatMap: _ =>
       if !it.hasNext then end
       else
-        val arr = new Array[AnyRef](size)
+        val buf = ChunkBuf[A](size)
         var i = 0
         while i < size && it.hasNext do
-          arr(i) = it.next().asInstanceOf[AnyRef]
+          buf(i) = it.next()
           i += 1
-        val c = if i == size then wrap[A](arr)
-                else wrap[A](java.util.Arrays.copyOf(arr, i))
+        val c = buf.take(i)
         produce(c).flatMap(_ => go())
 
     go()
@@ -257,12 +220,12 @@ object Chunks {
         case Some((c, r)) => go(ca, ia, ra, c, 0, r)
       else
         val n = math.min(ca.length - ia, cb.length - ib)
-        val arr = new Array[AnyRef](n)
+        val buf = ChunkBuf[(A, B)](n)
         var i = 0
         while i < n do
-          arr(i) = (ca(ia + i), cb(ib + i))
+          buf(i) = (ca(ia + i), cb(ib + i))
           i += 1
-        produce(wrap[(A, B)](arr)).flatMap(_ => go(ca, ia + n, ra, cb, ib + n, rb))
+        produce(buf.chunk).flatMap(_ => go(ca, ia + n, ra, cb, ib + n, rb))
 
     go(emptyChunk, 0, pa, emptyChunk, 0, pb)
 
@@ -272,29 +235,29 @@ object Chunks {
    * amortization downstream. A full buffer is handed off, not copied.
    */
   def rechunk[A](p: Chunks[A])(size: Int = 64): Chunks[A] =
-    def go(buf: Array[AnyRef], have: Int, rest: Chunks[A]): Chunks[A] = defer:
+    def go(buf: ChunkBuf[A], have: Int, rest: Chunks[A]): Chunks[A] = defer:
       pull(rest) match
         case None =>
           if have == 0 then end
-          else produce(wrap[A](java.util.Arrays.copyOf(buf, have)))
+          else produce(buf.take(have))
         case Some((c, r)) =>
           val room = size - have
           if c.length < room then
             var i = 0
             while i < c.length do
-              buf(have + i) = c(i).asInstanceOf[AnyRef]
+              buf(have + i) = c(i)
               i += 1
             go(buf, have + c.length, r)
           else
             var i = 0
             while i < room do
-              buf(have + i) = c(i).asInstanceOf[AnyRef]
+              buf(have + i) = c(i)
               i += 1
             val leftover = c.drop(room)
             val next = if leftover.isEmpty then r else produce(leftover).flatMap(_ => r)
-            produce(wrap[A](buf)).flatMap(_ => go(new Array[AnyRef](size), 0, next))
+            produce(buf.chunk).flatMap(_ => go(ChunkBuf[A](size), 0, next))
 
-    go(new Array[AnyRef](size), 0, p)
+    go(ChunkBuf[A](size), 0, p)
 
   /**
    * Pipe a chunked producer into an ELEMENTWISE consumer: the
@@ -324,26 +287,25 @@ object Chunks {
 
   private[okay] def mapChunk[A, B](c: Chunk[A])(f: A => B): Chunk[B] =
     val n = c.length
-    val arr = new Array[AnyRef](n)
+    val buf = ChunkBuf[B](n)
     var i = 0
     while i < n do
-      arr(i) = f(c(i)).asInstanceOf[AnyRef]
+      buf(i) = f(c(i))
       i += 1
-    wrap[B](arr)
+    buf.chunk
 
   private def filterChunk[A](c: Chunk[A])(pred: A => Boolean): Chunk[A] =
     val n = c.length
-    val arr = new Array[AnyRef](n)
+    val buf = ChunkBuf[A](n)
     var i = 0
     var j = 0
     while i < n do
       val a = c(i)
       if pred(a) then
-        arr(j) = a.asInstanceOf[AnyRef]
+        buf(j) = a
         j += 1
       i += 1
-    if j == n then c
-    else wrap[A](java.util.Arrays.copyOf(arr, j))
+    if j == n then c else buf.take(j)
 
   extension [A](p: Chunks[A])
     /** the element view: one tree step per chunk, an index per element */

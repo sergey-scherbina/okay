@@ -29,13 +29,12 @@ object JdbcInterop {
     type F = Produce + Async
 
     def readChunk(rs: ResultSet): Chunk[A] =
-      val arr = new Array[AnyRef](fetchSize)
+      val buf = okay.ChunkBuf[A](fetchSize)
       var i = 0
       while i < fetchSize && rs.next() do
-        arr(i) = f(rs).asInstanceOf[AnyRef]
+        buf(i) = f(rs)
         i += 1
-      if i == fetchSize then Chunks.wrap[A](arr)
-      else Chunks.wrap[A](java.util.Arrays.copyOf(arr, i))
+      buf.take(i)
 
     def go(rs: ResultSet, st: java.sql.Statement): Chunk[A] ! F =
       effect[F, Chunk[A]](Async.Run(() => readChunk(rs))).flatMap { c =>

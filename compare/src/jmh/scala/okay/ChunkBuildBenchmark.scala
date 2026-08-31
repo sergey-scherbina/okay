@@ -50,6 +50,26 @@ class ChunkBuildBenchmark {
       i += 1
     b.result()
 
+  /** the consolidation: every cast behind an opaque type that erases
+   * to the very array the code was writing by hand */
+  @Benchmark
+  def chunkBuf: Chunk[String] =
+    val buf = ChunkBuf[String](size)
+    var i = 0
+    while i < size do
+      buf(i) = src(i)
+      i += 1
+    buf.chunk
+
+  @Benchmark
+  def chunkBufPartial: Chunk[String] =
+    val buf = ChunkBuf[String](size)
+    var i = 0
+    while i < size / 2 do
+      buf(i) = src(i)
+      i += 1
+    buf.take(size / 2)
+
   /** the floor: a ClassTag'd array, which the producers cannot have */
   @Benchmark
   def typedArray: Chunk[String] =

@@ -38,7 +38,7 @@ object Fs2Interop {
       q.take.unsafeRunSync() match
         case None => Chunks.end
         case Some(ch) =>
-          okay.produce(Chunks.wrap[A](ch.iterator.asInstanceOf[Iterator[AnyRef]].toArray))
+          okay.produce(okay.ChunkBuf.of(ch.iterator))
             .flatMap(_ => go())
     go()
 }
