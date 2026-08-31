@@ -25,6 +25,13 @@ enum Async[+A]:
    * channel: it fails the whole program at this operation. */
   case Await[A](register: (Either[Throwable, A] => Unit) => (() => Unit)) extends Async[A]
 
+/** The class IS the whole identity here: `Async` has no parameter but
+ * its (erased) answer type, so splitting a row on it is a TOTAL test
+ * and there is nothing for the compiler to warn about — which is
+ * exactly what this instance says, once, instead of letting it warn
+ * "cannot be checked at runtime" at thirty-four use sites. */
+given TypeableK[Async] = typeableK(classOf[Async[?]])
+
 /** suspend a (possibly blocking) computation as an operation */
 inline def async[A](a: => A): A ! Async = effect(Async.Run(() => a))
 

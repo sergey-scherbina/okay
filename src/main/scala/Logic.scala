@@ -43,7 +43,7 @@ object Logic {
     def go(stack: LazyList[A ! (Choose + F)]): Option[(A, A ! (Choose + F))] ! F =
       stack match
         case LazyList() => pure(None)
-        case p #:: rest => p.resume match
+        case p #:: rest => (p.resume: @unchecked) match
           case Pure(a) => pure(Some((a, alts(rest))))
           case Effect(e) => <|>[Choose, F](e) match
             case Left(c) => go(c.as.to(LazyList).map(a => Pure(a): A ! (Choose + F)) #::: rest)

@@ -39,7 +39,7 @@ object Resource {
       var fin = fin0
       var x = x0
       try
-        while true do x.resume match
+        while true do (x.resume: @unchecked) match
           case Pure(a) =>
             val f = fin
             fin = Nil
@@ -86,3 +86,9 @@ def bracket[R, A, F[+_] : Handler](acquire: => R)(release: R => Unit)(use: R => 
     val r = acquire
     try pure(use(r).runWith)
     finally release(r)
+
+/** The class IS the whole identity: Resource has no parameter but its
+ * (erased) answer type, so splitting a row on it is a TOTAL test —
+ * said once here, rather than as a "cannot be checked at runtime"
+ * warning at every use site of a test that is in fact complete. */
+given TypeableK[Resource] = typeableK(classOf[Resource[?]])

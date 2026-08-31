@@ -4,7 +4,7 @@ ThisBuild / version := "0.1.0-SNAPSHOT"
 ThisBuild / scalaVersion := "3.7.1"
 ThisBuild / scalacOptions ++= Seq("-Xkind-projector", "-Wall")
 
-ThisBuild / organization := "io.sergiy-shcherbyna"
+ThisBuild / organization := "dev.okay"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
 ThisBuild / homepage := Some(url("https://github.com/sergey-scherbina/okay"))
 ThisBuild / versionScheme := Some("early-semver")
@@ -34,6 +34,25 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
     Jmh / sourceDirectory := baseDirectory.value.getParentFile / "src" / "jmh",
+    // The core suite runs in its OWN JVM, and that is not a
+    // workaround for heavy tests — they are not heavy. Measured: the
+    // 1M-operation stack-safety tests pass in 256MB in 0.2s.
+    //
+    // What they cannot do is share. Unforked, they run inside sbt's
+    // own JVM, which its launcher caps at -Xmx4g and which by then
+    // also holds zinc's analysis for two dozen modules, the compiler,
+    // every module's test classloader, and the dependency classes of
+    // Spark, Kafka, ZIO, kyo, fs2 and cats. Then a test that wants a
+    // few hundred megabytes at once meets a heap that has no
+    // contiguous few hundred megabytes left, and the failure looks
+    // like the test's fault: OutOfMemoryError on `1M produced values`,
+    // and 30-second timeouts elsewhere from the GC thrashing.
+    //
+    // With a fork, 1GB — four times what the suite needs — is enough
+    // and the whole build passes. Run it alone and it passed all
+    // along, which is exactly why this was easy to dismiss.
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     libraryDependencies += "org.scalameta" %% "munit-scalacheck" % "1.1.0" % Test,
   )
@@ -226,8 +245,10 @@ lazy val okayLlm = crossProject(JVMPlatform, JSPlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
     // the suites use the JVM transport; the JS side is proven by the
     // agent's own cross suite, which mocks the seam
+    // no JS-side suite here: the acceptance run drives the linked
+    // client from the JVM side (`Test / sources := Seq()` is what
+    // makes this project's own test task a no-op)
     Test / sources := Seq(),
-    Test / test := {},
   )
 
 /** retrieval from our own primitives: documents split over the
@@ -296,7 +317,11 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
         ("scala-" + scalaVersion.value) / "okay-cluster-fastopt" / "main.js"
       s"-Dokay.client.js=${client.getAbsolutePath}"
     },
-    Test / test := (Test / test)
+    // hang the JS client's linking off Test/compile, not Test/test:
+    // `test` is an InputTask in sbt 2 and a Task in sbt 1, while
+    // `compile` is a plain TaskKey in both — and compiling before the
+    // tests run is exactly when the linked client has to exist
+    Test / compile := (Test / compile)
       .dependsOn(LocalProject("okayClusterJS") / Compile / fastLinkJS).value,
   )
   .jsSettings(
@@ -304,8 +329,10 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
     scalaJSUseMainModuleInitializer := true,
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
+    // no JS-side suite here: the acceptance run drives the linked
+    // client from the JVM side (`Test / sources := Seq()` is what
+    // makes this project's own test task a no-op)
     Test / sources := Seq(),
-    Test / test := {},
   )
 
 /**

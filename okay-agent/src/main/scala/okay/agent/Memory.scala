@@ -36,7 +36,7 @@ object Memory {
       case Context.Mark() => (s, Snapshot(s).asInstanceOf[X])
       case Context.Restore(m) => (m.state.asInstanceOf[S], ().asInstanceOf[X])
 
-    @tailrec def loop(s: S)(x: A ! (Context + F)): (S, A) ! F = x.resume match
+    @tailrec def loop(s: S)(x: A ! (Context + F)): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
       case Effect(e) => okay.<|>[Context, F](e) match
         case Left(c) => Pure(answer(s, c).asInstanceOf[(S, A)])

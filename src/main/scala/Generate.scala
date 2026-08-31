@@ -95,7 +95,7 @@ given Stream[Producer, okay.Pure] with
   import !.*
   import scala.annotation.tailrec
 
-  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! okay.Pure = pure(p.resume match
+  def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! okay.Pure = pure((p.resume: @unchecked) match
     case Free.Pure(_) => None
     case Effect(e) => Some((e, Free.Pure(e)))
     case Bind(Effect(e), k) => Some((e.asInstanceOf[A], k(e))))
@@ -150,7 +150,7 @@ given Foldable[Producer] with
 given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
   import !.*
 
-  def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G = p.resume match
+  def uncons[A](p: A ! Produce + G): Option[(A, A ! Produce + G)] ! G = (p.resume: @unchecked) match
     case Free.Pure(_) => pure(None)
     case Effect(e) => <|>[G, Produce](e) match
       case Left(g) => Effect(g).map(_ => None)

@@ -70,7 +70,7 @@ class TestLlm extends munit.FunSuite {
   def collect(s: Unit ! (Writer % String + Async)): List[String] =
     import okay.!.*
     def go(rest: Unit ! (Writer % String + Async), acc: List[String]): List[String] =
-      rest.resume match
+      (rest.resume: @unchecked) match
         case Pure(_) => acc.reverse
         case Effect(e) => okay.<|>[Async, Writer % String](e) match
           case Left(a) => summon[okay.Handler[Async]].handle(a); acc.reverse

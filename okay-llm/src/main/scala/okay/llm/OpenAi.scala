@@ -137,7 +137,7 @@ object OpenAi {
     import okay.!.*
     type F = Writer % String + Async
 
-    def go(rest: Unit ! F, buf: List[String]): Unit ! F = rest.resume match
+    def go(rest: Unit ! F, buf: List[String]): Unit ! F = (rest.resume: @unchecked) match
       case Pure(_) => flush(buf)
       case Effect(e) => okay.<|>[Async, Writer % String](e) match
         case Left(a) => Effect(a).flatMap(_ => flush(buf))

@@ -56,7 +56,7 @@ object Structured {
       if Cst.errors(session.tree).nonEmpty then None
       else Json.decode(s)(Json.value(session.tree)).toOption
 
-    def walk(rest: Unit ! F): Cut[A] = rest.resume match
+    def walk(rest: Unit ! F): Cut[A] = (rest.resume: @unchecked) match
       case Pure(_) => Cut(None, text, count, stopped = false)
       case Effect(e) => okay.<|>[Async, Writer % String](e) match
         case Left(a) => h.handle(a); Cut(None, text, count, stopped = false)

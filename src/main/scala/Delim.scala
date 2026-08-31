@@ -146,7 +146,7 @@ object Delim {
     // flatMap closure, as State.handle does) and the Delim ops
     // themselves are flat.
     @tailrec def loop(cur: Prog, kont: List[Seg]): R ! F =
-      cur.resume match
+      (cur.resume: @unchecked) match
         case Pure(a) => kont match
           case Nil => okay.pure(a.asInstanceOf[R])
           case Seg.K(f) :: rest => loop(f(a).asInstanceOf[Prog], rest)
@@ -202,3 +202,9 @@ object Delim {
   def abort[R, A, F[+_]](p: Prompt[R])(value: R): A ! (Delim + F) =
     shift0[R, A, F](p)(_ => okay.pure(value))
 }
+
+/** The class IS the whole identity: Delim has no parameter but its
+ * (erased) answer type, so splitting a row on it is a TOTAL test —
+ * said once here, rather than as a "cannot be checked at runtime"
+ * warning at every use site of a test that is in fact complete. */
+given TypeableK[Delim] = typeableK(classOf[Delim[?]])

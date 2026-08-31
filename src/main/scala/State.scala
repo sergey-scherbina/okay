@@ -41,7 +41,7 @@ object State {
   def handle[S, A, F[+_]](s: S)(a: A ! State % S + F): (S, A) ! F = {
     def _loop(s: S)(x: A ! State % S + F): (S, A) ! F = loop(s)(x)
 
-    @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = x.resume match
+    @tailrec def loop(s: S)(x: A ! State % S + F): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
       case Effect(e) => <|>[State[S, *], F](e) match
         case Left(Get()) => Pure((s, s))
@@ -83,3 +83,7 @@ object PState {
   inline def run[S, S2, A](s: S)(m: Cont[A, S2 => (S2, A), S => (S2, A)]): (S2, A) =
     (m / (a => s2 => (s2, a)))(s)
 }
+
+/** by class only: `Get()`/`Set(s)` carry no trace of S in the type,
+ * so a row may hold ONE State — see typeableKByClass */
+given stateK[S]: TypeableK[State % S] = typeableKByClass(classOf[State[?, ?]])

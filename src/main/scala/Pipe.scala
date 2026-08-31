@@ -29,7 +29,7 @@ object Take:
  * its answer ignored. Fully typed by the Take/Writer GADTs — no casts.
  */
 def pipe[W, A, B](p: A ! Writer % W)(c: B ! Take % W): B = {
-  @tailrec def loop(p: A ! Writer % W, c: B ! Take % W): B = c.resume match
+  @tailrec def loop(p: A ! Writer % W, c: B ! Take % W): B = (c.resume: @unchecked) match
     case Pure(b) => b
     case Effect(Take.Await()) => Writer.uncons(p).toOption.map(_._1)
     case Bind(Effect(Take.Await()), k) => Writer.uncons(p) match
@@ -110,7 +110,7 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
   // drive the upstream until it tells (Some(m) + rest) or ends (None);
   // its own awaits surface as OUR awaits, in CPS to stay a program
   def pull(u: Stage[I, M, A])(cont: (Option[M], Stage[I, M, A]) => B ! Res): B ! Res =
-    u.resume match
+    (u.resume: @unchecked) match
       case Pure(_) => cont(None, u)
       case Effect(e) => <|>[Take % I, Writer % M](e) match
         case Left(Take.Await()) =>
@@ -123,7 +123,7 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
         case Right(w) => cont(Some(w.asInstanceOf[M]), k(w.asInstanceOf))
 
   def loop(u: Stage[I, M, A], d: Stage[M, O, B]): B ! Res =
-    d.resume match
+    (d.resume: @unchecked) match
       case Pure(b) => pure(b)
       case Effect(e) => <|>[Take % M, Writer % O](e) match
         case Left(Take.Await()) => pull(u)((om, _) => pure(om.asInstanceOf[B]))
@@ -141,7 +141,7 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
 @scala.annotation.targetName("throughProducer")
 def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M = {
   def loop(rest: A ! Writer % W, d: Stage[W, M, B]): B ! Writer % M =
-    d.resume match
+    (d.resume: @unchecked) match
       case Pure(b) => pure(b)
       case Effect(e) => <|>[Take % W, Writer % M](e) match
         case Left(Take.Await()) => pure(Writer.uncons(rest).toOption.map(_._1).asInstanceOf[B])
@@ -174,7 +174,7 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
   // drive the upstream to its next tell, re-emitting its awaits as
   // OUR awaits and forwarding its G ops on the way
   def pull(u: A ! Up)(cont: (Option[M], A ! Up) => B ! Res): B ! Res =
-    u.resume match
+    (u.resume: @unchecked) match
       case Pure(_) => cont(None, u)
       case Effect(e) => <|>[Take % I, Writer % M + G](e) match
         case Left(Take.Await()) => cont(None, u)
@@ -191,7 +191,7 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
           case Right(w) => cont(Some(w.asInstanceOf[M]), k(w.asInstanceOf))
 
   def loop(u: A ! Up, d: B ! (Take % M + (Writer % O + G))): B ! Res =
-    d.resume match
+    (d.resume: @unchecked) match
       case Pure(b) => pure(b)
       case Effect(e) => <|>[Take % M, Writer % O + G](e) match
         case Left(Take.Await()) => pull(u)((om, _) => pure(om.asInstanceOf[B]))
@@ -218,7 +218,7 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
   type Res = Writer % M + G
 
   def pull(rest: A ! Src)(cont: (Option[W], A ! Src) => B ! Res): B ! Res =
-    rest.resume match
+    (rest.resume: @unchecked) match
       case Pure(_) => cont(None, rest)
       case Effect(e) => <|>[G, Writer % W](e) match
         case Left(g) => effect[Res, Any](g.asInstanceOf[Res[Any]])
@@ -230,7 +230,7 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
         case Right(w) => cont(Some(w.asInstanceOf[W]), k(w.asInstanceOf))
 
   def loop(rest: A ! Src, d: B ! (Take % W + (Writer % M + G))): B ! Res =
-    d.resume match
+    (d.resume: @unchecked) match
       case Pure(b) => pure(b)
       case Effect(e) => <|>[Take % W, Writer % M + G](e) match
         case Left(Take.Await()) => pull(rest)((ow, _) => pure(ow.asInstanceOf[B]))
@@ -251,7 +251,7 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
  * are stream transformers; the Handler-able residue is what remains.)
  */
 def pipe[W, A, B, G[+_] : TypeableK](p: A ! Writer % W + G)(c: B ! Take % W): B ! G = {
-  def loop(p: A ! Writer % W + G, c: B ! Take % W): B ! G = c.resume match
+  def loop(p: A ! Writer % W + G, c: B ! Take % W): B ! G = (c.resume: @unchecked) match
     case Pure(b) => pure(b)
     case Effect(Take.Await()) => Writer.uncons(p).map(_.toOption.map(_._1))
     case Bind(Effect(Take.Await()), k) => Writer.uncons(p).flatMap:
@@ -260,3 +260,7 @@ def pipe[W, A, B, G[+_] : TypeableK](p: A ! Writer % W + G)(c: B ! Take % W): B 
 
   loop(p, c)
 }
+
+/** by class only: `Await()` carries no trace of V, so a row may hold
+ * ONE Take — see typeableKByClass */
+given takeK[V]: TypeableK[Take % V] = typeableKByClass(classOf[Take[?, ?]])

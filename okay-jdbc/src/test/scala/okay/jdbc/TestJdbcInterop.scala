@@ -32,7 +32,7 @@ class TestJdbcInterop extends munit.FunSuite {
   def collectChunks[A](s: Chunk[A] ! (Produce + Async)): List[Chunk[A]] =
     import okay.!.*
     def go(rest: Chunk[A] ! (Produce + Async), acc: List[Chunk[A]]): List[Chunk[A]] =
-      rest.resume match
+      (rest.resume: @unchecked) match
         case Pure(_) => acc.reverse
         case Effect(e) => okay.<|>[Async, Produce](e) match
           case Left(a) => summon[okay.Handler[Async]].handle(a); acc.reverse

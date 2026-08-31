@@ -73,10 +73,15 @@ object throws {
   given [A, E <: Throwable] => Conversion[A throws E, Either[E | Unsafe, A]] = _.wrap
 
   extension [A, E <: Unsafe](a: A throws E)
+    // The type ARGUMENTS of Either and Try are erased, so these tests
+    // are by class only — and complete anyway, because the union `A
+    // throws E` is built from exactly these four shapes: an Either in
+    // it can only be an Either[E, A]. `@unchecked` marks precisely
+    // that, at the test it applies to, rather than silencing the file.
     def flatMap[B](f: A => B throws E): B throws E = a match
-      case e: Either[E, A] => e.fold(e => e, f)
-      case e: Try[A] => e.fold(t => Failure(t), f)
-      case e: E => e
+      case e: (Either[E, A] @unchecked) => e.fold(e => e, f)
+      case e: (Try[A] @unchecked) => e.fold(t => Failure(t), f)
+      case e: (E @unchecked) => e
       case x: A => f(x)
     inline def map[B](f: A => B): B throws E = flatMap(a => f(a))
 }
@@ -92,9 +97,10 @@ extension [A, E <: Unsafe](a: A throws E)
   /** normalize to Either */
   inline def ?? : Either[E | Unsafe, A] = wrap
   def wrap: Either[E | Unsafe, A] = a match {
-    case e: Either[E, A] => e
-    case e: Try[A] => e.toEither
-    case e: E => Left(e)
+    // by class, and complete by the union's construction — see flatMap
+    case e: (Either[E, A] @unchecked) => e
+    case e: (Try[A] @unchecked) => e.toEither
+    case e: (E @unchecked) => Left(e)
     case x: A => Right(x)
   }
 
@@ -109,8 +115,13 @@ extension [A, E <: Unsafe](a: A throws E)
   inline def ? : A = unwrap
   @scala.throws[Unsafe]("unwrap unsafe")
   def unwrap: A = a match {
-    case e: Either[E, A] => e.fold(throw _, identity)
-    case e: Try[A] => e.get
-    case e: E => throw e
+    // by class, and complete by the union's construction — see flatMap
+    case e: (Either[E, A] @unchecked) => e.fold(throw _, identity)
+    case e: (Try[A] @unchecked) => e.get
+    case e: (E @unchecked) => throw e
     case x: A => x
   }
+
+/** by class only: the payload `e: E` is erased in the type, so a row
+ * may hold ONE Throws — see typeableKByClass */
+given throwsK[E]: TypeableK[Throws % E] = typeableKByClass(classOf[Throws[?, ?]])

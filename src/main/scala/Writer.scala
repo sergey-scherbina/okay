@@ -61,7 +61,7 @@ object Writer {
 
     def _loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = loop(s)(x)
 
-    @tailrec def loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = x.resume match
+    @tailrec def loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
       case Effect(e) => <|>[Writer % W, F](e) match
         case Left(w) => Pure((K.add(s, w), w.asInstanceOf[A]))
@@ -87,7 +87,7 @@ object Writer {
    * has already been observed). run/fold are this loop with a Fold
    * accumulating the Rights.
    */
-  def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] = a.resume match
+  def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] = (a.resume: @unchecked) match
     case Free.Pure(a) => Left(a)
     case Effect(e) => Right((e, Free.Pure(e.asInstanceOf[A])))
     case Bind(Effect(e), k) => Right((e, k(e.asInstanceOf)))
@@ -103,7 +103,7 @@ object Writer {
    * each pull. G is split from the told values by its runtime class.
    */
   def uncons[W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
-  : Either[A, (W, A ! Writer % W + G)] ! G = a.resume match
+  : Either[A, (W, A ! Writer % W + G)] ! G = (a.resume: @unchecked) match
     case Free.Pure(a) => okay.pure(Left(a))
     case Effect(e) => <|>[G, Writer % W](e) match
       case Left(g) => Effect(g).map(Left(_))
@@ -136,3 +136,17 @@ given Put[Teller] with
 given [A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
   def uncons[W](s: A ! Writer % W): Option[(W, A ! Writer % W)] ! Pure =
     pure(Writer.uncons(s).toOption)
+
+/**
+ * Writer is the one parameterised signature whose split is COMPLETE:
+ * `opaque type Writer[W, +A] = W`, so an operation IS its element at
+ * runtime and testing the erasure tests W's own class. A row may hold
+ * two writers — `Writer % String + Writer % Int` — and they route
+ * correctly, which `TestRowIdentity` asserts. Class-distinct W is the
+ * condition, and it is the same condition the identity encoding
+ * already carries.
+ */
+given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK[Writer % W] = new:
+  def unapply[A](x: Any): Option[x.type & Writer[W, A]] =
+    t.unapply(x).asInstanceOf[Option[x.type & Writer[W, A]]]
+

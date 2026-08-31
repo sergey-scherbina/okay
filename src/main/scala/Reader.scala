@@ -22,3 +22,7 @@ object Reader {
       [X, Y] => e => e match
         case Ask() => Cont.Pure(r)
 }
+
+/** by class only: `Ask()` carries no trace of R, so a row may hold
+ * ONE Reader — see TestRowIdentity and typeableKByClass */
+given readerK[R]: TypeableK[Reader % R] = typeableKByClass(classOf[Reader[?, ?]])

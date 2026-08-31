@@ -35,7 +35,7 @@ class TestKafkaInterop extends munit.FunSuite {
   def firstChunk(s: KafkaChunks[String, String])
   : Chunk1 ! (okay.Produce + okay.Async) =
     import okay.!.*
-    s.resume match
+    (s.resume: @unchecked) match
       case Bind(Effect(e), k) => okay.<|>[okay.Async, okay.Produce](e) match
         case Left(a) => Effect(a).flatMap(x => firstChunk(k(x)))
         case Right(c) => okay.pure(c.asInstanceOf[Chunk1])

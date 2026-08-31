@@ -187,7 +187,7 @@ object Anthropic {
     def go(rest: Unit ! (Writer % String + Async), buf: List[String])
     : Unit ! (Writer % String + Async) =
       import okay.!.*
-      rest.resume match
+      (rest.resume: @unchecked) match
         case Pure(_) => flushEvent(buf)
         case Effect(e) => okay.<|>[Async, Writer % String](e) match
           case Left(a) => Effect(a).flatMap(_ => flushEvent(buf))

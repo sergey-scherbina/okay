@@ -150,17 +150,70 @@ transparent inline def Effects[M[_[+_], _]]: Effects[M] =
 trait TypeableK[F[_]]:
   def unapply[A](x: Any): Option[x.type & F[A]]
 
-given [F[+_]](using t: Typeable[F[Nothing]]): TypeableK[F] = new:
-  // no cast: sound by covariance, F[Nothing] <: F[X] for every X
-  // (the erasure trust lives in the compiler-synthesized class
-  // test behind Typeable[F[Nothing]])
-  def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
+/**
+ * A `TypeableK` by the runtime CLASS of a signature's values.
+ *
+ * For a signature whose ONLY parameter is the answer type — `Async`,
+ * `Choose`, `Resource`, an agent's `Model` — this test is COMPLETE:
+ * the answer type is erased anyway, so the class is the whole
+ * identity of the operation, and there is nothing left to check.
+ * Say that once, here, rather than let the compiler say "cannot be
+ * checked at runtime" at every one of a hundred use sites for a test
+ * that is in fact total.
+ *
+ * For a PARAMETERISED signature (`Writer % W`, `State % S`,
+ * `Throws % E`) the class is NOT the whole identity, and this is the
+ * wrong instance to reach for: see `TypeableK.byClassPartial`.
+ */
+def typeableK[F[_]](cls: Class[?]): TypeableK[F] = new TypeableK[F]:
+  def unapply[A](x: Any): Option[x.type & F[A]] =
+    if cls.isInstance(x) then Some(x.asInstanceOf[x.type & F[A]]) else None
 
-/** the empty signature is trivially splittable: nothing inhabits it,
- * so the test never matches — which lets row-generic code (Logic,
- * the effectful streams) instantiate at F = Pure */
-given TypeableK[Pure] = new:
-  def unapply[A](x: Any): Option[x.type & Nothing] = None
+/**
+ * A `TypeableK` for a signature whose PARAMETER leaves no runtime
+ * trace — `Reader % R`, `State % S`, `Take % V`. The test is by class
+ * and therefore says only "this is a Reader", not "this is a Reader
+ * of Int".
+ *
+ * That is exactly as sound as what was there before, and no less: the
+ * generic instance below tests the same erasure. What this one adds is
+ * a NAME for the limitation and one place to read about it, instead of
+ * "the type test cannot be checked at runtime" repeated at every use
+ * site, where it is unactionable and drowns out the warnings that can
+ * be acted on.
+ *
+ * The limitation, stated: a row may hold ONE instance of such a
+ * signature. Two — `Reader % Int + Reader % String` — misroute, and
+ * `TestRowIdentity` demonstrates exactly how (the first handler
+ * answers both asks and the second continuation gets a
+ * ClassCastException, so it fails loudly at the first wrong answer
+ * rather than returning a plausible wrong result).
+ */
+def typeableKByClass[F[_]](cls: Class[?]): TypeableK[F] = typeableK(cls)
+
+/**
+ * The fallback lives in the TYPECLASS'S COMPANION, and that placement
+ * is the whole point: a given in lexical scope (which `import
+ * okay.given` puts there) BEATS one in a type's implicit scope, so a
+ * toplevel generic instance would shadow every specific one — which
+ * is exactly what happened, and why `Model`, `Tool` and `Context`
+ * kept getting the erasure-based test after being given a total one.
+ * From the companion it is implicit scope too, and specificity picks
+ * the better instance.
+ */
+object TypeableK:
+  /** by the compiler-synthesized class test — no cast: sound by
+   * covariance, F[Nothing] <: F[X] for every X. Complete only when
+   * the erasure IS the signature's identity; a signature that wants
+   * better should say so with its own instance. */
+  given [F[+_]](using t: Typeable[F[Nothing]]): TypeableK[F] = new:
+    def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
+
+  /** the empty signature is trivially splittable: nothing inhabits
+   * it, so the test never matches — which lets row-generic code
+   * (Logic, the effectful streams) instantiate at F = Pure */
+  given TypeableK[Pure] = new:
+    def unapply[A](x: Any): Option[x.type & Nothing] = None
 
 /**
  * Split the union by testing only the F side (the erasure of F, by
@@ -274,8 +327,30 @@ object ! {
       case Bind(Pure(a), k) => k(a).resume
       case a => a
 
+    /**
+     * THE INVARIANT `resume` ESTABLISHES, and why every match over it
+     * is written `(x.resume: @unchecked) match`.
+     *
+     * By construction the result is one of exactly three shapes —
+     * `Pure(a)`, `Effect(e)`, `Bind(Effect(e), k)` — because the
+     * rotation above normalizes `Bind(Bind(…), k)` and
+     * `Bind(Pure(…), k)` away. The TYPE cannot say so: it is still
+     * `A ! F`, whose cases include the two that cannot occur, so a
+     * correct three-case match reads as inexhaustive to the compiler
+     * and did so at forty-two sites — enough to bury every warning it
+     * had that was worth reading.
+     *
+     * The alternatives all cost something real. A three-case view ADT
+     * would let the compiler check it, at one allocation per step on
+     * the hottest path in the library. Explicit impossible branches
+     * would too, at one more type test per step. `@unchecked` costs
+     * nothing at runtime and marks exactly the claim being made, at
+     * the place it is made — so that is what is used, and this is the
+     * one place that says what the claim is.
+     */
+
     /** step through the next n operations by the Handler */
-    @tailrec def next(steps: Long = 1)(using H: Handler[F]): A ! F = self.resume match
+    @tailrec def next(steps: Long = 1)(using H: Handler[F]): A ! F = (self.resume: @unchecked) match
       case Bind(Effect(e), k) if steps > 0 => k(H.handle(e)).next(steps - 1)
       case a => a
 
@@ -292,7 +367,7 @@ object ! {
   /** re-inject into a wider row: effect subsumption. Free is invariant
    * in its signature, so widening walks the tree — one re-injected
    * node per operation, deferred as it goes. */
-  def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = p.resume match
+  def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = (p.resume: @unchecked) match
     case Pure(a) => Pure(a)
     case Effect(e) => Effect(e)
     case Bind(Effect(e), k) => Effect(e).flatMap(x => widen[A, F, G](k(x)))
@@ -324,7 +399,7 @@ object ! {
     // not a value), so the recursion lives in closures rather than on
     // the stack — the State.handle shape, and the reason no @tailrec
     // annotation belongs here
-    prog.resume match
+    (prog.resume: @unchecked) match
       case Pure(a) => Pure(a)
       case Effect(e) => <|>[F, G](e) match
         case Left(f) => h(f)
@@ -345,7 +420,7 @@ object ! {
    */
   def relay[A, B, F[+_] : TypeableK, G[+_]](a: A ! F + G)(f: A => B ! G)
                                            (g: [X, Y] => F[X] => X /> Y): B ! G = {
-    @tailrec def loop(x: A ! F + G): B ! G = x.resume match
+    @tailrec def loop(x: A ! F + G): B ! G = (x.resume: @unchecked) match
       case Bind(Effect(e), k) => <|>[F, G](e) match
         case Left(e) => loop(g(e)(k))
         case Right(e) => Effect(e).flatMap(x => relay[A, B, F, G](k(x))(f)(g))

@@ -132,7 +132,7 @@ object Chunks {
    * Producer stream instance.
    */
   def map[A, B](p: Chunks[A])(f: A => B): Chunks[B] = defer:
-    p.resume match
+    (p.resume: @unchecked) match
       case Pure(_) => end
       case Effect(c) => produce(mapChunk(c.asInstanceOf[Chunk[A]])(f))
       case Bind(Effect(c), k) =>
@@ -140,7 +140,7 @@ object Chunks {
 
   /** keep the elements satisfying pred (empty result chunks are skipped) */
   def filter[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
-    p.resume match
+    (p.resume: @unchecked) match
       case Pure(_) => end
       case Effect(c) => produce(filterChunk(c.asInstanceOf[Chunk[A]])(pred))
       case Bind(Effect(c), k) =>
@@ -151,7 +151,7 @@ object Chunks {
   /** the first n elements (the last chunk truncated) */
   def take[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
     if n <= 0 then end
-    else p.resume match
+    else (p.resume: @unchecked) match
       case Pure(_) => end
       case Effect(c) => produce(c.asInstanceOf[Chunk[A]].take(n))
       case Bind(Effect(c), k) =>
@@ -162,7 +162,7 @@ object Chunks {
   /** all but the first n elements */
   def drop[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
     if n <= 0 then p
-    else p.resume match
+    else (p.resume: @unchecked) match
       case Pure(_) => end
       case Effect(c) => produce(c.asInstanceOf[Chunk[A]].drop(n))
       case Bind(Effect(c), k) =>
@@ -172,7 +172,7 @@ object Chunks {
 
   /** the longest prefix satisfying pred */
   def takeWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
-    p.resume match
+    (p.resume: @unchecked) match
       case Pure(_) => end
       case Effect(c) =>
         val ca = c.asInstanceOf[Chunk[A]]
@@ -185,7 +185,7 @@ object Chunks {
 
   /** the rest, after the longest prefix satisfying pred */
   def dropWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
-    p.resume match
+    (p.resume: @unchecked) match
       case Pure(_) => end
       case Effect(c) => produce(c.asInstanceOf[Chunk[A]].dropWhile(pred))
       case Bind(Effect(c), k) =>
@@ -279,7 +279,7 @@ object Chunks {
         case Some((c2, r)) => fetch(c2, 0, r)
         case None => (None, ch, i, end)
 
-    @tailrec def loop(ch: Chunk[W], i: Int, rest: Chunks[W], c: B ! Take % W): B = c.resume match
+    @tailrec def loop(ch: Chunk[W], i: Int, rest: Chunks[W], c: B ! Take % W): B = (c.resume: @unchecked) match
       case Pure(b) => b
       case Effect(Take.Await()) => fetch(ch, i, rest)._1
       case Bind(Effect(Take.Await()), k) =>

@@ -48,7 +48,7 @@ object KyoInterop {
 
   /** Reader → Env, ask for ask */
   def toKyoEnv[R, A](p: A ! Reader % R)(using Tag[R], Frame): A < Env[R] =
-    p.resume match
+    (p.resume: @unchecked) match
       case Pure(a) => a
       case Effect(Reader.Ask()) => Env.get[R]
       case Bind(Effect(Reader.Ask()), k) =>
@@ -60,7 +60,7 @@ object KyoInterop {
 
   /** Writer → Emit, tell for tell */
   def toKyoEmit[W, A](p: A ! Writer % W)(using Tag[Emit[W]], Frame): A < Emit[W] =
-    p.resume match
+    (p.resume: @unchecked) match
       case Pure(a) => a
       case Effect(e) => Emit.valueWith(e.asInstanceOf[W])(e.asInstanceOf[A])
       case Bind(Effect(e), k) =>
@@ -77,7 +77,7 @@ object KyoInterop {
 
   /** Throws → Abort (the continuation after a raise is dead) */
   def toKyoAbort[E, A](p: A ! Throws % E)(using Tag[Abort[E]], Frame): A < Abort[E] =
-    p.resume match
+    (p.resume: @unchecked) match
       case Pure(a) => a
       case Effect(t: Throws[?, ?]) => Abort.fail(t.e.asInstanceOf[E])
       case Bind(Effect(t: Throws[?, ?]), _) => Abort.fail(t.e.asInstanceOf[E])
@@ -89,7 +89,7 @@ object KyoInterop {
 
   /** Choose → Choice — the same arrow, Seq ~> Id, on both sides */
   def toKyoChoice[A](p: A ! Choose)(using Frame): A < Choice =
-    p.resume match
+    (p.resume: @unchecked) match
       case Pure(a) => a
       case Effect(Choose(as)) => Choice.get(as)
       case Bind(Effect(Choose(as)), k) =>

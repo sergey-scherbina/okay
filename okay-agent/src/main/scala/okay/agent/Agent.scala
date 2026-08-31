@@ -34,9 +34,25 @@ enum Model[+A]:
   case Complete(context: Seq[Turn], tools: Seq[ToolSpec]) extends Model[Reply]
   case Count(text: String) extends Model[Int]
 
+
+/** The class IS the whole identity: Model has no parameter but its
+ * (erased) answer type, so splitting the agent row on it is a TOTAL
+ * test. In the COMPANION so implicit search finds it without an
+ * import — `import okay.agent.*` does not bring toplevel givens. */
+object Model:
+  given okay.TypeableK[Model] = okay.typeableK(classOf[Model[?]])
+
 /** one typed tool invocation — the handler decides what that means */
 enum Tool[+A]:
   case Call(call: ToolCall) extends Tool[String]
+
+
+/** The class IS the whole identity: Tool has no parameter but its
+ * (erased) answer type, so splitting the agent row on it is a TOTAL
+ * test. In the COMPANION so implicit search finds it without an
+ * import — `import okay.agent.*` does not bring toplevel givens. */
+object Tool:
+  given okay.TypeableK[Tool] = okay.typeableK(classOf[Tool[?]])
 
 /**
  * The conversation as effects. Recall answers a view that is ALREADY
@@ -51,6 +67,13 @@ enum Context[+A]:
   case Mark() extends Context[Snapshot]
   case Restore(mark: Snapshot) extends Context[Unit]
 
+
+/** The class IS the whole identity: Context has no parameter but its
+ * (erased) answer type, so splitting the agent row on it is a TOTAL
+ * test. In the COMPANION so implicit search finds it without an
+ * import — `import okay.agent.*` does not bring toplevel givens. */
+object Context:
+  given okay.TypeableK[Context] = okay.typeableK(classOf[Context[?]])
 /** an opaque handle to a context state (a persistent value) */
 final class Snapshot(private[agent] val state: Any)
 
@@ -61,6 +84,7 @@ final class Snapshot(private[agent] val state: Any)
  * Async by relay, and what is left is driven by the event loop.
  */
 type Agent = Tool + (Context + (Model + Async))
+
 
 object Agent {
 
