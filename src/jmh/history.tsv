@@ -134,3 +134,7 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-31\taggVariance\t74746\tns/10k\twas 90904 — flat Variance instead of a Tuple3
 2026-08-31\tloopMean\t18573\tns/10k\tfloor: two primitive locals
 2026-08-31\tloopVariance\t49591\tns/10k\tfloor: Welford in three locals
+2026-08-31\taggCount-nodelegate\t5123\tns/10k\twas 19500 — the aggregator IS its own fold
+2026-08-31\taggSum-nodelegate\t7053\tns/10k\twas 18498
+2026-08-31\twriterSpecialized\t70565\tns/10k\tagainst 108597 generic — 35%, bars disjoint
+2026-08-31\tstreamSpecialized\t139895\tns/10k\tagainst 157186 generic — bars OVERLAP, dispatch reverted

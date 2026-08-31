@@ -84,46 +84,28 @@ object Aggregator {
   // where an Aggregator is actually spent.
 
   /** an aggregator whose accumulator is a `long` */
-  trait OfLong[-In, +Out] extends Aggregator[In, Long, Out]:
-    def initLong: Long
-    def addLong(acc: Long, in: In): Long
+  trait OfLong[-In, +Out] extends Aggregator[In, Long, Out] with Fold.OfLong[In]:
     def mergeLong(a: Long, b: Long): Long
-    final def init: Long = initLong
-    final def add(acc: Long, in: In): Long = addLong(acc, in)
     final def merge(a: Long, b: Long): Long = mergeLong(a, b)
-    final override def fold[In2 <: In]: Fold.OfLong[In2] =
-      val self = this
-      new Fold.OfLong[In2]:
-        def initLong: Long = self.initLong
-        def addLong(s: Long, a: In2): Long = self.addLong(s, a)
+    /** it IS its own fold — no delegating wrapper, so one virtual call
+     * per element instead of two, and nothing allocated to hand it over */
+    final override def fold[In2 <: In]: Fold.OfLong[In2] = this
 
   /** an aggregator whose accumulator is a `double` */
-  trait OfDouble[-In, +Out] extends Aggregator[In, Double, Out]:
-    def initDouble: Double
-    def addDouble(acc: Double, in: In): Double
+  trait OfDouble[-In, +Out] extends Aggregator[In, Double, Out] with Fold.OfDouble[In]:
     def mergeDouble(a: Double, b: Double): Double
-    final def init: Double = initDouble
-    final def add(acc: Double, in: In): Double = addDouble(acc, in)
     final def merge(a: Double, b: Double): Double = mergeDouble(a, b)
-    final override def fold[In2 <: In]: Fold.OfDouble[In2] =
-      val self = this
-      new Fold.OfDouble[In2]:
-        def initDouble: Double = self.initDouble
-        def addDouble(s: Double, a: In2): Double = self.addDouble(s, a)
+    /** it IS its own fold — no delegating wrapper, so one virtual call
+     * per element instead of two, and nothing allocated to hand it over */
+    final override def fold[In2 <: In]: Fold.OfDouble[In2] = this
 
   /** an aggregator whose accumulator is an `int` */
-  trait OfInt[-In, +Out] extends Aggregator[In, Int, Out]:
-    def initInt: Int
-    def addInt(acc: Int, in: In): Int
+  trait OfInt[-In, +Out] extends Aggregator[In, Int, Out] with Fold.OfInt[In]:
     def mergeInt(a: Int, b: Int): Int
-    final def init: Int = initInt
-    final def add(acc: Int, in: In): Int = addInt(acc, in)
     final def merge(a: Int, b: Int): Int = mergeInt(a, b)
-    final override def fold[In2 <: In]: Fold.OfInt[In2] =
-      val self = this
-      new Fold.OfInt[In2]:
-        def initInt: Int = self.initInt
-        def addInt(s: Int, a: In2): Int = self.addInt(s, a)
+    /** it IS its own fold — no delegating wrapper, so one virtual call
+     * per element instead of two, and nothing allocated to hand it over */
+    final override def fold[In2 <: In]: Fold.OfInt[In2] = this
 
   /** make one from the four pieces */
   def apply[In, Acc, Out](z: Acc)(step: (Acc, In) => Acc)(comb: (Acc, Acc) => Acc)

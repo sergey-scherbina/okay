@@ -10,7 +10,7 @@ import scala.compiletime.summonFrom
  * every consumer: Foldable containers run it over their elements,
  * Writer folds its told values with it.
  */
-trait Fold[A, S]:
+trait Fold[-A, S]:
   /** the empty output */
   def init: S
 
@@ -58,28 +58,28 @@ object Fold:
   // widen to Int before they arithmetic.
 
   /** a fold into a `long` that never leaves the register */
-  trait OfLong[A] extends Fold[A, Long]:
+  trait OfLong[-A] extends Fold[A, Long]:
     def initLong: Long
     def addLong(s: Long, a: A): Long
     final def init: Long = initLong
     final def add(s: Long, a: A): Long = addLong(s, a)
 
   /** a fold into an `int` */
-  trait OfInt[A] extends Fold[A, Int]:
+  trait OfInt[-A] extends Fold[A, Int]:
     def initInt: Int
     def addInt(s: Int, a: A): Int
     final def init: Int = initInt
     final def add(s: Int, a: A): Int = addInt(s, a)
 
   /** a fold into a `double` */
-  trait OfDouble[A] extends Fold[A, Double]:
+  trait OfDouble[-A] extends Fold[A, Double]:
     def initDouble: Double
     def addDouble(s: Double, a: A): Double
     final def init: Double = initDouble
     final def add(s: Double, a: A): Double = addDouble(s, a)
 
   /** a fold into a `boolean` */
-  trait OfBoolean[A] extends Fold[A, Boolean]:
+  trait OfBoolean[-A] extends Fold[A, Boolean]:
     def initBoolean: Boolean
     def addBoolean(s: Boolean, a: A): Boolean
     final def init: Boolean = initBoolean

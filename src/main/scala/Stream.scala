@@ -108,7 +108,19 @@ object Stream:
                                     (using Stream[S, F], Handler[F], Stream[T, G], Handler[G]): LazyList[B] =
     s.toLazyList.flatMap(f(_).toLazyList)
 
-  /** consume with a Fold algebra, one uncons at a time */
+  /**
+   * Consume with a Fold algebra, one uncons at a time.
+   *
+   * Deliberately NOT dispatching on the accumulator, unlike
+   * `Chunks.fold` and `Writer.fold`. The dispatch was written here and
+   * measured: 139.9us against 157.2 per 10k, error bars +/-20 and
+   * +/-27 — overlapping, so no effect was demonstrated. This is the
+   * un-chunked path, where the freer tree steps once per ELEMENT and
+   * that step is ~150us per 10k; the fold's share of it is a fraction
+   * of a percent, and an inline dispatch would leave five copies of
+   * this loop behind for nothing. Chunked folding is where the
+   * accumulator is worth specializing, and `Chunks.fold` does it.
+   */
   def fold[S[_], F[+_], A, B](s: S[A])(using f: Fold[A, B])(using St: Stream[S, F], H: Handler[F]): B = {
     @tailrec def loop(b: B, x: S[A]): B = St.uncons(x).runWith match
       case None => b

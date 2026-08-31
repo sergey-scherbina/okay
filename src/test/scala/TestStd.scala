@@ -36,6 +36,22 @@ class TestStd extends munit.FunSuite {
     assertEquals(a, "done")
   }
 
+  test("Writer: a program ENDING in a tell answers what it told") {
+    // the bare-Effect branch of the fold loop: no continuation, so the
+    // operation's answer IS the program's answer. Every other test
+    // ends in a map or flatMap, which is the Bind branch — this is the
+    // one place where a silent wrong answer would go unnoticed.
+    val w: Int ! Writer % Int = Writer.tell(5)
+    val (ws, a) = !.run(Writer.run[Int, Int, okay.Pure](w))
+    assertEquals(ws, Seq(5))
+    assertEquals(a, 5, "a tell answers the value told")
+
+    // and through a custom Fold, so the specialized dispatch sees it too
+    val (n, a2) = !.run(Writer.fold[Int, Long, Int, Nothing](w)(using summon, Fold.count))
+    assertEquals(n, 1L)
+    assertEquals(a2, 5)
+  }
+
   test("Writer: uncons observes the told values one by one, the answer last") {
     val w: Int ! Writer % String =
       Writer.tell("a").flatMap(_ => Writer.tell("b")).map(_.length)

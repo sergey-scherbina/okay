@@ -102,21 +102,46 @@ object Writer {
    * answer-polymorphic relay handler cannot hold.
    */
   def fold[W, S, A, F[+_]](a: A ! Writer % W + F)
-                          (using TypeableK[Writer % W], Fold[W, S]): (S, A) ! F = {
+                          (using TypeableK[Writer % W], Fold[W, S]): (S, A) ! F =
     val K = summon[Fold[W, S]]
+    // GADT refinement needs a stable path, not an expression: bound to
+    // a val it gives `S` back from each test, so none of this casts
+    K match
+      // the same dispatch `Chunks.fold` makes, for the same reason: a
+      // fold that arrives as data has no step to inline, so the one
+      // thing left is to ask what its accumulator is. GADT refinement
+      // gives `S` back from each type test, so none of this casts.
+      case l: Fold.OfLong[W @unchecked] => foldWith[W, Long, A, F](a)(l.initLong)((s, w) => l.addLong(s, w))
+      case i: Fold.OfInt[W @unchecked] => foldWith[W, Int, A, F](a)(i.initInt)((s, w) => i.addInt(s, w))
+      case d: Fold.OfDouble[W @unchecked] => foldWith[W, Double, A, F](a)(d.initDouble)((s, w) => d.addDouble(s, w))
+      case b: Fold.OfBoolean[W @unchecked] => foldWith[W, Boolean, A, F](a)(b.initBoolean)((s, w) => b.addBoolean(s, w))
+      case _ => foldWith(a)(K.init)((s, w) => K.add(s, w))
 
+  /**
+   * The loop itself, with the step taken at the call site.
+   *
+   * `inline` so the four dispatched branches above each beta-reduce
+   * their step into the loop body rather than calling through a
+   * `Function2`, whose `apply` erases `(Object, Object)Object` and
+   * would put back exactly the boxing the dispatch removed. That trap
+   * cost 27.5us against 7.8 when it was first written without inline
+   * in `Fold.long`, so it is worth spelling out.
+   */
+  inline def foldWith[W, S, A, F[+_]](a: A ! Writer % W + F)(z: S)
+                                     (inline step: (S, W) => S)
+                                     (using TypeableK[Writer % W]): (S, A) ! F = {
     def _loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = loop(s)(x)
 
     @tailrec def loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
       case Effect(e) => <|>[Writer % W, F](e) match
-        case Left(w) => Pure((K.add(s, w), answer(w)))
+        case Left(w) => Pure((step(s, w), answer(w)))
         case Right(e) => Effect(e).map((s, _))
       case Bind(Effect(e), k) => <|>[Writer % W, F](e) match
-        case Left(w) => loop(K.add(s, w))(k(answer(w)))
+        case Left(w) => loop(step(s, w))(k(answer(w)))
         case Right(e) => Effect(e).flatMap(x => _loop(s)(k(x)))
 
-    loop(K.init)(a)
+    loop(z)(a)
   }
 
   /** collect everything told, in order, forwarding the effects F */
