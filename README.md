@@ -178,6 +178,16 @@ operations; the same shape every other lane runs.)
 |---|---|---|---|---|---|---|
 | 12 | 13.5 | **18.4** | 35 | 61 | 172 | 245 |
 
+Building: `sbt test` runs everything — 665 tests across two dozen
+modules, on the JVM and under Node. Scala 3.7.4 (the floor is 3.6, for
+the redesigned given syntax; the ceiling is okay-spark, which pins
+Spark's Scala 2.13 artifacts) and sbt 1.13.0 (sbt 2 waits on
+sbt-platform-deps, which supplies `%%%` and has no sbt 2 release).
+`.jvmopts` gives the build 6g — the launcher's default 4g is shared by
+zinc, the compiler and every module at once, and has run out mid-
+compile. If you also build in IntelliJ, its Scala compile server has
+its own separate 4g cap worth raising for the same reason.
+
 Benchmarks: `sbt 'Jmh/run .*FibBenchmark.*'`, comparisons in the
 `compare` module (`sbt 'compare/Jmh/run ...'`); history and refuted
 experiments in src/jmh/history.tsv.

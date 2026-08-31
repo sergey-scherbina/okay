@@ -1,0 +1,22 @@
+# The JVM sbt itself runs in. Without this file the launcher picks
+# -Xmx4g, and that is where the build has actually failed: not in a
+# test but in the COMPILER, "OutOfMemoryError: Java heap space" while
+# compiling a module's test sources.
+#
+# 4g is not obviously too little — a clean `sbt test` peaks near 1g.
+# What makes it fail is everything sharing that one heap: zinc's
+# incremental analysis for two dozen modules, the Scala compiler,
+# every module's classloader, and sbt's parallel compilation of
+# several modules at once. Add IntelliJ and its own Scala compile
+# server on the same machine and the spikes land badly. The failure
+# then wears the name of whatever was running.
+#
+# The machine has 36g. Six for the build is honest and leaves room.
+-Xmx6g
+
+# Deep continuations are this library's normal mode, and the compiler
+# recurses over them too.
+-Xss8m
+
+# Two dozen modules' worth of classes, and cross-builds multiply them.
+-XX:MaxMetaspaceSize=1g
