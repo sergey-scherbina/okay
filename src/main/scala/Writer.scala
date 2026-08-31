@@ -37,11 +37,6 @@ opaque type Writer[W, +A] = W
  */
 def out[W, A](w: Writer[W, A]): W = w
 
-/** an op is its element; the phantom answer is W: Writer(w) is the
- * only injector, and it fixes answer = W (the module invariant
- * behind this cast) */
-given [W]: Handler[Writer % W] = new:
-  def handle[A](e: Writer[W, A]): A = answer
 
 object Writer {
 
