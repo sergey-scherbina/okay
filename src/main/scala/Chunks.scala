@@ -267,17 +267,39 @@ object Chunks {
   /** how many elements — `foldLeft`, so the counter stays a `long` */
   inline def count[A](p: Chunks[A]): Long = foldLeft(p)(0L)((n, _) => n + 1L)
 
-  /** the terminal: run a Fold, an inner while per chunk */
-  def fold[A, S](p: Chunks[A])(using fo: Fold[A, S]): S =
-    var s = fo.init
-    val it = summon[Stream[Producer, okay.Pure]].iterator(p)
-    while it.hasNext do
-      val c = it.next()
-      var i = 0
-      while i < c.length do
-        s = fo.add(s, c(i))
-        i += 1
-    s
+  /**
+   * The terminal: run a Fold, an inner while per chunk.
+   *
+   * For a fold that arrives as DATA there is no step to inline, so the
+   * one thing left is to ask what its accumulator is. The four
+   * specialized shapes declare their step where the type is already
+   * primitive, so `addLong` and friends erase unboxed and the
+   * accumulator stays in a register for the whole scan — which the
+   * measurements say is essentially all of the cost. The element stays
+   * generic and boxed on read, because `A` is not known here and,
+   * measured, that half is nearly free.
+   */
+  def fold[A, S](p: Chunks[A])(using fo: Fold[A, S]): S = fo match
+    // the element type is erased, so these tests see only the shape —
+    // the same unavoidable `@unchecked` any collection's type test has
+    case l: Fold.OfLong[A @unchecked] =>
+      foldLeft(p)(l.initLong)((s, a) => l.addLong(s, a))
+    case i: Fold.OfInt[A @unchecked] =>
+      foldLeft(p)(i.initInt)((s, a) => i.addInt(s, a))
+    case d: Fold.OfDouble[A @unchecked] =>
+      foldLeft(p)(d.initDouble)((s, a) => d.addDouble(s, a))
+    case b: Fold.OfBoolean[A @unchecked] =>
+      foldLeft(p)(b.initBoolean)((s, a) => b.addBoolean(s, a))
+    case _ =>
+      var s = fo.init
+      val it = summon[Stream[Producer, okay.Pure]].iterator(p)
+      while it.hasNext do
+        val c = it.next()
+        var i = 0
+        while i < c.length do
+          s = fo.add(s, c(i))
+          i += 1
+      s
 
   /**
    * Pair two chunked streams elementwise, realigning chunk boundaries:

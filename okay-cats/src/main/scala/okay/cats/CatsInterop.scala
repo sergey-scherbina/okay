@@ -26,7 +26,7 @@ given [F[+_]]: _root_.cats.StackSafeMonad[[A] =>> A ! F] with
 // tie with given_StackSafeMonad_! when cats asks for an Invariant.
 // Removing it makes MonadErrorTests fail to resolve. An unused using
 // on a given can be doing work that is not in the body.
-@annotation.nowarn("msg=unused implicit parameter")
+@annotation.nowarn("id=E198")  // the message filter stopped matching; the id does
 given [E, F[+_]](using okay.TypeableK[Throws % E])
 : _root_.cats.MonadError[[A] =>> A ! (Throws % E + F), E] =
   new _root_.cats.StackSafeMonad[[A] =>> A ! (Throws % E + F)]

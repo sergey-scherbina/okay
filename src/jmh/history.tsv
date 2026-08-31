@@ -122,3 +122,9 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-31\tfoldLeftCount\t11327\tns/10k\tagainst fold+Fold.count 59.0us
 2026-08-31\tboxAccumulatorOnly\t45230\tns/10k\taccumulator generic, element read direct — the whole cost
 2026-08-31\tboxElementOnly\t3765\tns/10k\telement boxed, accumulator a long — nearly free
+2026-08-31\tfoldSum-specialized\t9081\tns/10k\tChunks.fold routing to Fold.sumLong — was 38184
+2026-08-31\tfoldCount-specialized\t6863\tns/10k\tvia Fold.count: OfLong — was 59016
+2026-08-31\tfoldDataGeneric\t34134\tns/10k\ta plain Fold[Long,Long], nothing to inline
+2026-08-31\tfoldDataSpecialized\t7817\tns/10k\tFold.long, inline ctor — 4.4x; 27490 before the ctor was inline
+2026-08-31\tboxAccumulatorOnly\t29369\tns/10k\tclean rerun: the accumulator is the cost
+2026-08-31\tboxElementOnly\t2824\tns/10k\tclean rerun: the element read is not

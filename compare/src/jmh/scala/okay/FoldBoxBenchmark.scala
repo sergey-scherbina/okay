@@ -130,6 +130,26 @@ class FoldBoxBenchmark {
     val N = summon[Numeric[Long]]
     Chunks.foldLeft(longs)(N.zero)(N.plus)
 
+  // ---- the DATA path: a fold that arrives as a value
+  //
+  // Nothing here can inline — the step is behind an interface, which
+  // is the case an Aggregator, a java Collector or a runtime choice
+  // actually presents. The only lever left is the accumulator's
+  // declared type, so these two lanes differ in exactly that and
+  // nothing else.
+
+  /** an ordinary Fold[Long, Long]: the accumulator is generic */
+  val generic: Fold[Long, Long] = Fold(0L)((s: Long, a: Long) => s + a)
+
+  /** the same fold, accumulator declared where it is already a long */
+  val specialized: Fold[Long, Long] = Fold.long[Long](0L)((s, a) => s + a)
+
+  @Benchmark
+  def foldDataGeneric: Long = Chunks.fold(longs)(using generic)
+
+  @Benchmark
+  def foldDataSpecialized: Long = Chunks.fold(longs)(using specialized)
+
   // ---- which half of the boxing is it?
   //
   // `Fold` boxes in two places: the accumulator (S, in and out of

@@ -24,7 +24,9 @@ package okay
  * runtime class of W — forward only effects whose operations are
  * class-distinct from W, or handle them first.
  */
-opaque type Writer[W, +A] = W
+opaque type Writer[W, +A] = A match 
+    case Nothing => 
+    case _ => W & A
 
 /**
  * An operation IS its element.
@@ -38,16 +40,39 @@ opaque type Writer[W, +A] = W
 def out[W, A](w: Writer[W, A]): W = w
 
 /**
- * The ANSWER of a writer operation is its element.
+ * THE THEOREM: a writer operation's answer is its element, `A = W`.
  *
- * `Writer(w): Writer[W, W]` is the only injector, so `A = W` for
- * every operation that can exist — the module invariant this file is
- * built on. The type system does not record it (the answer is
- * phantom, which is the point: it keeps the element type apart from
- * the program's), so this is the one place that asserts it, instead
- * of the eleven that used to.
+ * `Writer(w): Writer[W, W]` is the only injector, so every operation
+ * that can EXIST has `A = W`. The type system does not record it —
+ * the alias makes `A` phantom, and that is the point, since a phantom
+ * answer is what lets `tell` allocate nothing. So the equation is true
+ * by construction and unprovable afterwards, and this is the single
+ * place in the library that asserts it.
+ *
+ * Stating it as EVIDENCE rather than as a cast is what makes the
+ * difference. An `asInstanceOf` at a use site says "this type is that
+ * type" and offers no way to ask why; an `A =:= W` names the theorem,
+ * so each site applies it by name and the compiler checks the
+ * application. The assertion happens once, here, next to the argument
+ * for it. `=:=` erases to the identity, so a single `refl` is minted
+ * once and re-typed per use — the evidence costs nothing at run time.
+ *
+ * Why the alias stays `= W` and not `W & A`: an intersection would
+ * make `answer` a subtyping step instead of a cast, which looks like
+ * a strict improvement and is not. `A` is inferred, and it is
+ * inferred as `Nothing` wherever the answer is unused — the compiler
+ * then believes the value IS a `Nothing` and emits a checkcast to it,
+ * which fails on the String actually there. Measured: 22 tests, and
+ * publishing the bound as `<: A` fails the same way. It is the
+ * `ChunkBuf` lesson again — `Array[?]` beat `Array[A]` because a type
+ * that claims NOTHING about the parameter cannot be wrong about it.
  */
-def answer[W, A](w: Writer[W, A]): A = w.asInstanceOf[A]
+private val refl: Any =:= Any = summon[Any =:= Any]
+
+def told[W, A]: A =:= W = refl.asInstanceOf[A =:= W]
+
+/** the theorem, applied: an operation's answer is the element in it */
+def answer[W, A](w: Writer[W, A]): A = told[W, A].flip(out(w))
 
 /** an op is its element; the phantom answer is W: Writer(w) is the
  * only injector, and it fixes answer = W (the module invariant

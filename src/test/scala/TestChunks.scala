@@ -101,4 +101,45 @@ class TestChunks extends munit.FunSuite {
       Chunks.foldLeft(Chunks.fromIterator((1 to 5).iterator, 2))("")(_ + _.toString),
       "12345")
   }
+
+  test("specialized accumulators: same answers, unboxed step") {
+    // the four shapes exist to keep the accumulator in a register;
+    // what a test can check is that they still compute the right thing
+    // and that Chunks.fold really routes through them
+    assertEquals(Chunks.fold(Chunks.range(0, 10))(using Fold.count), 10L)
+    assertEquals(Chunks.fold(Chunks.range(0, 10))(using Fold.sumLong), 45L)
+    assertEquals(Chunks.fold(Chunks.range(0, 10))(using Fold.maxLong), 9L)
+    assertEquals(Chunks.fold(Chunks.range(0, 10))(using Fold.minLong), 0L)
+    assertEquals(
+      Chunks.fold(Chunks.map(Chunks.range(0, 5))(_.toInt))(using Fold.sumInt), 10)
+    assertEquals(
+      Chunks.fold(Chunks.map(Chunks.range(0, 5))(_.toDouble))(using Fold.sumDouble), 10.0)
+    assertEquals(
+      Chunks.fold(Chunks.range(0, 10))(using Fold.exists[Long](_ == 7L)), true)
+    assertEquals(
+      Chunks.fold(Chunks.range(0, 10))(using Fold.forall[Long](_ < 10L)), true)
+    assertEquals(
+      Chunks.fold(Chunks.range(0, 10))(using Fold.forall[Long](_ < 5L)), false)
+
+    // the specialized shapes ARE Folds: a generic consumer still works
+    val asFold: Fold[Long, Long] = Fold.count[Long]
+    assertEquals(Chunks.fold(Chunks.range(0, 4))(using asFold), 4L)
+
+    // and an empty stream gives the init, through the same dispatch
+    assertEquals(Chunks.fold(Chunks.end[Long])(using Fold.count), 0L)
+    assertEquals(Chunks.fold(Chunks.end[Long])(using Fold.forall[Long](_ => false)), true)
+  }
+
+  test("Fold.sum picks the unboxed sum where the type is known") {
+    // summonFrom selects on N, and the `=:=` transports the fold —
+    // the point is that both the specialized and generic branches
+    // compute the same thing
+    assertEquals(Chunks.fold(Chunks.range(0, 10))(using Fold.sum[Long]), 45L)
+    assertEquals(Fold.sum[Long].getClass, Fold.sumLong.getClass)
+    assertEquals(Fold.sum[Int].getClass, Fold.sumInt.getClass)
+    assertEquals(Fold.sum[Double].getClass, Fold.sumDouble.getClass)
+    // BigInt has no specialization: the generic branch, still correct
+    val big = Fold.sum[BigInt]
+    assertEquals(List[BigInt](1, 2, 3).foldLeft(big.init)(big.add), BigInt(6))
+  }
 }
