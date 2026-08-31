@@ -26,6 +26,17 @@ package okay
  */
 opaque type Writer[W, +A] = W
 
+/**
+ * An operation IS its element.
+ *
+ * Inside this file the opaque type is transparent, so this needs no
+ * cast at all — and stating it here means the callers that take a
+ * `Writer % W` operation out of a row (`Pipe.through`, `Pipe.into`)
+ * do not each have to assert it with an `asInstanceOf`. The equation
+ * belongs to the encoding, so it is published by the encoding.
+ */
+def out[W, A](w: Writer[W, A]): W = w
+
 /** an op is its element; the phantom answer is W: Writer(w) is the
  * only injector, and it fixes answer = W (the module invariant
  * behind this cast) */

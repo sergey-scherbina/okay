@@ -115,11 +115,11 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
         case Left(Take.Await()) =>
           // a final await tells nothing more: the upstream is done
           cont(None, u)
-        case Right(w) => cont(Some(w.asInstanceOf[M]), Free.Pure(null.asInstanceOf[A]))
+        case Right(w) => cont(Some(okay.out(w)), Free.Pure(null.asInstanceOf[A]))
       case Bind(Effect(e), k) => <|>[Take % I, Writer % M](e) match
         case Left(Take.Await()) =>
           effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi.asInstanceOf))(cont))
-        case Right(w) => cont(Some(w.asInstanceOf[M]), k(w.asInstanceOf))
+        case Right(w) => cont(Some(okay.out(w)), k(w.asInstanceOf))
 
   def loop(u: Stage[I, M, A], d: Stage[M, O, B]): B ! Res =
     (d.resume: @unchecked) match
@@ -180,14 +180,14 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
         case Right(rest) => <|>[G, Writer % M](rest) match
           case Left(g) => effect[Res, Any](g.asInstanceOf[Res[Any]])
             .flatMap(_ => cont(None, Free.Pure(null.asInstanceOf[A])))
-          case Right(w) => cont(Some(w.asInstanceOf[M]), Free.Pure(null.asInstanceOf[A]))
+          case Right(w) => cont(Some(okay.out(w)), Free.Pure(null.asInstanceOf[A]))
       case Bind(Effect(e), k) => <|>[Take % I, Writer % M + G](e) match
         case Left(Take.Await()) =>
           effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi.asInstanceOf))(cont))
         case Right(rest) => <|>[G, Writer % M](rest) match
           case Left(g) => effect[Res, Any](g.asInstanceOf[Res[Any]])
             .flatMap(x => pull(k(x.asInstanceOf))(cont))
-          case Right(w) => cont(Some(w.asInstanceOf[M]), k(w.asInstanceOf))
+          case Right(w) => cont(Some(okay.out(w)), k(w.asInstanceOf))
 
   def loop(u: A ! Up, d: B ! (Take % M + (Writer % O + G))): B ! Res =
     (d.resume: @unchecked) match

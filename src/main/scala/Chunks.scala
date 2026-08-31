@@ -122,6 +122,18 @@ object Chunks {
 
   private[okay] def emptyChunk[B]: Chunk[B] = ArraySeq.empty[AnyRef].asInstanceOf[Chunk[B]]
 
+  /**
+   * The chunk a `Bind(Effect(c), k)` node carries.
+   *
+   * `case Effect(c)` needs no such thing — the refinement gives the
+   * type back — but under a `Bind` the element is the BIND's
+   * intermediate, which is existential, so the type is known only
+   * from the surrounding `Chunks[A]` and nothing about the value says
+   * so. Named once here rather than asserted at each of the eight
+   * places that pattern appears.
+   */
+  private[okay] def bound[A](c: Any): Chunk[A] = c.asInstanceOf[Chunk[A]]
+
   /** the end of a chunked stream */
   private[okay] def end[B]: Chunks[B] = pure(emptyChunk)
 
@@ -157,9 +169,9 @@ object Chunks {
   def mapWith[A, B](p: Chunks[A])(g: Chunk[A] => Chunk[B]): Chunks[B] = defer:
     (p.resume: @unchecked) match
       case Pure(_) => end
-      case Effect(c) => produce(g(c.asInstanceOf[Chunk[A]]))
+      case Effect(c) => produce(g(c))
       case Bind(Effect(c), k) =>
-        produce(g(c.asInstanceOf[Chunk[A]])).flatMap(_ => mapWith(k(c))(g))
+        produce(g(bound[A](c))).flatMap(_ => mapWith(k(c))(g))
 
   /** keep the elements satisfying pred (empty result chunks are skipped) */
   inline def filter[A](p: Chunks[A])(inline pred: A => Boolean): Chunks[A] =
@@ -170,9 +182,9 @@ object Chunks {
   def filterWith[A](p: Chunks[A])(g: Chunk[A] => Chunk[A]): Chunks[A] = defer:
     (p.resume: @unchecked) match
       case Pure(_) => end
-      case Effect(c) => produce(g(c.asInstanceOf[Chunk[A]]))
+      case Effect(c) => produce(g(c))
       case Bind(Effect(c), k) =>
-        val fc = g(c.asInstanceOf[Chunk[A]])
+        val fc = g(bound[A](c))
         if fc.isEmpty then filterWith(k(c))(g)
         else produce(fc).flatMap(_ => filterWith(k(c))(g))
 
@@ -181,9 +193,9 @@ object Chunks {
     if n <= 0 then end
     else (p.resume: @unchecked) match
       case Pure(_) => end
-      case Effect(c) => produce(c.asInstanceOf[Chunk[A]].take(n))
+      case Effect(c) => produce(c.take(n))
       case Bind(Effect(c), k) =>
-        val ca = c.asInstanceOf[Chunk[A]]
+        val ca = bound[A](c)
         if ca.length >= n then produce(ca.take(n))
         else produce(ca).flatMap(_ => take(k(c))(n - ca.length))
 
@@ -192,9 +204,9 @@ object Chunks {
     if n <= 0 then p
     else (p.resume: @unchecked) match
       case Pure(_) => end
-      case Effect(c) => produce(c.asInstanceOf[Chunk[A]].drop(n))
+      case Effect(c) => produce(c.drop(n))
       case Bind(Effect(c), k) =>
-        val ca = c.asInstanceOf[Chunk[A]]
+        val ca = bound[A](c)
         if ca.length <= n then drop(k(c))(n - ca.length)
         else produce(ca.drop(n)).flatMap(_ => k(c))
 
@@ -203,10 +215,10 @@ object Chunks {
     (p.resume: @unchecked) match
       case Pure(_) => end
       case Effect(c) =>
-        val ca = c.asInstanceOf[Chunk[A]]
+        val ca = bound[A](c)
         produce(ca.takeWhile(pred))
       case Bind(Effect(c), k) =>
-        val ca = c.asInstanceOf[Chunk[A]]
+        val ca = bound[A](c)
         val i = ca.indexWhere(a => !pred(a))
         if i < 0 then produce(ca).flatMap(_ => takeWhile(k(c))(pred))
         else produce(ca.take(i))
@@ -215,9 +227,9 @@ object Chunks {
   def dropWhile[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
     (p.resume: @unchecked) match
       case Pure(_) => end
-      case Effect(c) => produce(c.asInstanceOf[Chunk[A]].dropWhile(pred))
+      case Effect(c) => produce(c.dropWhile(pred))
       case Bind(Effect(c), k) =>
-        val ca = c.asInstanceOf[Chunk[A]]
+        val ca = bound[A](c)
         val i = ca.indexWhere(a => !pred(a))
         if i < 0 then dropWhile(k(c))(pred)
         else if i == 0 then k(c)
