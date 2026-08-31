@@ -65,8 +65,40 @@ val corpus = session.corpus.runWith                    // resources as documents
 val opening = session.prompt("explain", Map("name" -> "transduce")).runWith
 ```
 
+## Duplex: when the server talks first
+
+MCP is symmetric — a server asks the client for its roots, asks it to
+sample from its model, and tells it when a resource changed. So a
+session is a reader FIBER with three destinations: an answer completes
+the request waiting for it, a notification lands on a `Channel`, and
+an incoming request is answered by the `Peer` (on its own fiber, so a
+slow completion cannot stop the reader).
+
+```scala
+val session = Client.connect(link, Mcp.Info("okay", "1"), Duplex.Peer(
+  roots = Seq(Mcp.Root("file:///work")),
+  sample = Some(modelHandler)))          // the SAME Handler[Model] an agent uses
+session.subscribe("okay://a").runWith
+session.notifications.toLazyList.foreach(n => ...)   // updates, progress, list-changed
+
+// serving, with what a server says unasked
+val (program, pushes) = Server.duplex(link, serving)
+pushes.resourceUpdated("okay://a")       // to every subscriber, and only them
+```
+
+`sampling/createMessage` is the `Model` effect: a server asking for a
+completion is `Model.Complete(context, tools)`, answered by whatever
+handler the client already had. An MCP server borrows YOUR model, and
+nothing new interprets it. A client with no model refuses rather than
+hanging, and the server reads the refusal.
+
+The outbound side of a server is the stage's answers `merge` a channel
+of pushes — the readiness merge, one fiber each.
+
 ## Not here
-sampling, roots, completion, progress/cancellation, resource
-subscriptions (each is a server talking FIRST, which the session's
-request/answer loop does not yet do), the streamable-HTTP transport,
-OAuth, and JSON-RPC batches (removed in the 2025-06-18 revision).
+elicitation (the server asking the human — it needs a UI contract
+this library has no opinion on), completion (argument autocompletion),
+resource templates, the streamable-HTTP transport, OAuth, and
+JSON-RPC batches (removed in the 2025-06-18 revision). Progress and
+cancellation arrive as ordinary notifications on the channel; nothing
+interprets them for you.

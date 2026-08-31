@@ -172,5 +172,8 @@ it. v1 was tools end to end over stdio; v2 added resources and prompts the
 same day, and each lands on a type that already existed — a resource
 is `okay.rag.Source` (so a server's documents go through the
 retriever), a prompt is `Seq[Turn]` (so a server's prompt is an agent
-opening). What remains is the server talking FIRST — sampling, roots,
-subscriptions, progress — and the streamable-HTTP transport.
+opening). v3 made the session duplex — the server talking first: subscriptions,
+roots, and sampling, where `sampling/createMessage` is the `Model`
+effect, so an MCP server borrows the client's own model handler. What
+remains is elicitation (which needs a UI contract) and the
+streamable-HTTP transport.

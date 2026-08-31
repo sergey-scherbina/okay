@@ -140,6 +140,19 @@ works where nothing may park.
   message and comes back as one. The loss is real and it is the
   protocol's, not ours; the alternative (dropping system turns) would
   lose more.
+- **The send is part of the program, never spawned** — found by a
+  hang. Putting each request's write on its own fiber makes the
+  writing thread ephemeral, and a `PipedOutputStream` remembers which
+  thread wrote last: once that fiber has died and the reader finds the
+  buffer empty, the pipe declares the write end dead and the session
+  stops. Sending in the caller's own thread of control also keeps
+  lines in the order the calls were made, which racing writers would
+  not.
+- **The transport suite runs over a SOCKET, not a pipe** — for the
+  same reason, from the other side: a duplex session writes from
+  whichever fiber is answering, so a transport with thread affinity is
+  not one this protocol has. Testing on a pipe was testing the wrong
+  thing.
 - **A capability a server does not declare answers `MethodNotFound`**
   — found by a v1 test that used `resources/list` as its example of an
   unknown method and started passing for the wrong reason once v2
@@ -267,23 +280,23 @@ object Server:
 ```
 
 ### Behavior
-- [ ] a notification arriving while the client is IDLE is delivered:
+- [x] a notification arriving while the client is IDLE is delivered:
       the reader is a fiber, not a side effect of asking something
-- [ ] a server that asks `roots/list` gets the client's roots, and a
+- [x] a server that asks `roots/list` gets the client's roots, and a
       client whose roots change notifies the server
-- [ ] `sampling/createMessage` is answered by the client's
+- [x] `sampling/createMessage` is answered by the client's
       `Handler[Model]` — the SAME handler an agent uses, with the
       conversation carried as `Seq[Turn]`
-- [ ] a client that declares no sampling handler refuses the request
+- [x] a client that declares no sampling handler refuses the request
       rather than hanging, and the server reads the refusal
-- [ ] subscribe, then a change on the server, delivers
+- [x] subscribe, then a change on the server, delivers
       `notifications/resources/updated` for that uri and no other
-- [ ] unsubscribe stops it
-- [ ] answers, requests and notifications interleave on one wire
+- [x] unsubscribe stops it
+- [x] answers, requests and notifications interleave on one wire
       without confusion: a sampling request arriving while a
       `tools/call` is in flight is answered, and the call still gets
       its answer
-- [ ] the capabilities of a CLIENT are declared too (roots, sampling),
+- [x] the capabilities of a CLIENT are declared too (roots, sampling),
       so a server knows what it may ask for
 
 ## Results

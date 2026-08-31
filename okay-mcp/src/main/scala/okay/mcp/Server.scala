@@ -29,6 +29,19 @@ object Server {
    * context is made of. Nothing here is MCP's shape; the mapping to
    * it lives in `McpDocs` and is the only place that knows.
    */
+  /**
+   * Who is watching what. The one mutable thing in the server, and it
+   * is mutable for the same reason a Channel is: a subscription is
+   * made by a message arriving and read by a push going out, and
+   * those are two different threads of control.
+   */
+  final class Subscriptions:
+    private val set = java.util.concurrent.ConcurrentHashMap.newKeySet[String]()
+    def add(uri: String): Unit = { set.add(uri); () }
+    def remove(uri: String): Unit = { set.remove(uri); () }
+    def has(uri: String): Boolean = set.contains(uri)
+    def all: Set[String] = { import scala.jdk.CollectionConverters.*; set.asScala.toSet }
+
   final case class Serving(info: Mcp.Info,
                            tools: Seq[ToolSpec] = Nil,
                            call: Map[String, ToolCall => String] = Map.empty,
@@ -36,7 +49,8 @@ object Server {
                            read: String => Option[String] = _ => None,
                            prompts: Seq[Mcp.Prompt] = Nil,
                            prompt: (String, Map[String, String]) => Option[Seq[Turn]] =
-                             (_, _) => None)
+                             (_, _) => None,
+                           subscriptions: Subscriptions = Subscriptions())
 
   /** the tools-only server, which is what most are */
   def serve(info: Mcp.Info, tools: Seq[ToolSpec],
@@ -90,7 +104,8 @@ object Server {
             case Some(c) => answer(id, run(s.call, c)).map(_ => ready)
 
         case Rpc.Request(id, m, _)
-          if (m == Mcp.ResourcesList || m == Mcp.ResourcesRead) && !hasResources =>
+          if (m == Mcp.ResourcesList || m == Mcp.ResourcesRead ||
+              m == Mcp.ResourcesSubscribe || m == Mcp.ResourcesUnsubscribe) && !hasResources =>
           fail(id, Rpc.MethodNotFound, m).map(_ => ready)
 
         case Rpc.Request(id, m, _)
@@ -103,6 +118,22 @@ object Server {
 
         case Rpc.Request(id, Mcp.ResourcesList, _) =>
           answer(id, McpDocs.resourcesResult(s.resources)).map(_ => ready)
+
+        // subscribe/unsubscribe are the client asking to be TOLD, and
+        // what it is told goes out through Pushes, beside the answers
+        case Rpc.Request(id, Mcp.ResourcesSubscribe, params) =>
+          Rpc.str(params, "uri") match
+            case None => fail(id, Rpc.InvalidParams, "no uri").map(_ => ready)
+            case Some(uri) =>
+              s.subscriptions.add(uri)
+              answer(id, Rpc.obj()).map(_ => ready)
+
+        case Rpc.Request(id, Mcp.ResourcesUnsubscribe, params) =>
+          Rpc.str(params, "uri") match
+            case None => fail(id, Rpc.InvalidParams, "no uri").map(_ => ready)
+            case Some(uri) =>
+              s.subscriptions.remove(uri)
+              answer(id, Rpc.obj()).map(_ => ready)
 
         // an unknown URI is an ERROR, where an unknown TOOL is an
         // answer, and the difference is who asked: a model picks a
@@ -167,25 +198,51 @@ object Server {
     Stage.tell[Rpc, Rpc](Rpc.Failed(id, code, message))
 
   /**
+   * What a server says without being asked.
+   *
+   * A push is a message that does not answer anything, so it cannot
+   * come out of the stage — a stage only speaks when spoken to. It
+   * goes on a channel instead, and the wire's outbound side is the
+   * stage's answers MERGED with that channel: `mergeSources`, used
+   * for exactly what it was built for, one fiber each and whoever is
+   * ready goes first.
+   */
+  final class Pushes private[mcp] (out: Channel[Rpc], subs: Subscriptions) {
+    /** tell every subscriber to this uri that it changed */
+    def resourceUpdated(uri: String): Unit =
+      if subs.has(uri) then out.send(Duplex.updated(uri))
+
+    /** the list itself changed (tools, resources or prompts) */
+    def listChanged(what: String): Unit =
+      out.send(Rpc.Notify(what, Rpc.obj()))
+
+    /** anything at all, for a server with its own ideas */
+    def push(m: Rpc): Unit = out.send(m)
+
+    /** nothing more will be pushed */
+    def close(): Unit = out.close()
+  }
+
+  /**
    * The only part that touches a wire: lines in through the framing,
    * messages through the stage, lines back out. Everything above is
    * testable without it.
    */
   def over(link: Link)(stage: Stage[Rpc, Rpc, Unit]): Unit ! Async =
-    val framed: Unit ! (Writer % Rpc + Async) =
-      through[String, Rpc, Async, Unit, Unit](link.lines)(
-        !.widen[Unit, Take % String + Writer % Rpc, Async](Rpc.messages))
-    val answered: Unit ! (Writer % Rpc + Async) =
-      through[Rpc, Rpc, Async, Unit, Unit](framed)(
-        !.widen[Unit, Take % Rpc + Writer % Rpc, Async](stage))
+    drain(link)(through[Rpc, Rpc, Async, Unit, Unit](framed(link))(
+      !.widen[Unit, Take % Rpc + Writer % Rpc, Async](stage)))
 
-    def drain(p: Unit ! (Writer % Rpc + Async)): Unit ! Async =
-      Writer.uncons[Rpc, Unit, Async](p).flatMap {
-        case Left(_) => pure(())
-        case Right((m, rest)) => link.send(Rpc.encode(m)).flatMap(_ => drain(rest))
-      }
+  /** the incoming lines, framed as messages */
+  private def framed(link: Link): Source[Rpc] =
+    through[String, Rpc, Async, Unit, Unit](link.lines)(
+      !.widen[Unit, Take % String + Writer % Rpc, Async](Rpc.messages))
 
-    drain(answered)
+  /** everything told, put on the wire */
+  private def drain(link: Link)(p: Source[Rpc]): Unit ! Async =
+    Writer.uncons[Rpc, Unit, Async](p).flatMap {
+      case Left(_) => pure(())
+      case Right((m, rest)) => link.send(Rpc.encode(m)).flatMap(_ => drain(link)(rest))
+    }
 
   /** the whole server, from a tool table: framing, protocol, wire */
   def run(link: Link, info: Mcp.Info, tools: Seq[ToolSpec],
@@ -195,4 +252,17 @@ object Server {
   /** the whole server, from everything it has */
   def run(link: Link, serving: Serving): Unit ! Async =
     over(link)(serve(serving))
+
+  /**
+   * The server, plus the handle for what it says unasked. The
+   * outbound side is the stage's answers merged with the pushes —
+   * two sources, one wire, by readiness.
+   */
+  def duplex(link: Link, serving: Serving)
+            (using Scheduler, CanBlock): (Unit ! Async, Pushes) =
+    val out = Channel[Rpc]()
+    val answers: Source[Rpc] =
+      through[Rpc, Rpc, Async, Unit, Unit](framed(link))(
+        !.widen[Unit, Take % Rpc + Writer % Rpc, Async](serve(serving)))
+    (drain(link)(answers merge Writer.of(out)), Pushes(out, serving.subscriptions))
 }

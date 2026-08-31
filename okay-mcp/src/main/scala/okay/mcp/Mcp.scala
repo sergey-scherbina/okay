@@ -34,6 +34,23 @@ object Mcp {
   val PromptsGet = "prompts/get"
   val Ping = "ping"
 
+  // the duplex half: what a SERVER asks a client, and what either
+  // side says without being asked
+  val ResourcesSubscribe = "resources/subscribe"
+  val ResourcesUnsubscribe = "resources/unsubscribe"
+  val RootsList = "roots/list"
+  val SamplingCreate = "sampling/createMessage"
+  val ResourceUpdated = "notifications/resources/updated"
+  val RootsChanged = "notifications/roots/list_changed"
+  val ResourcesChanged = "notifications/resources/list_changed"
+  val ToolsChanged = "notifications/tools/list_changed"
+  val PromptsChanged = "notifications/prompts/list_changed"
+  val Progress = "notifications/progress"
+  val Cancelled = "notifications/cancelled"
+
+  /** a directory or document tree the CLIENT offers the server */
+  final case class Root(uri: String, name: String = "")
+
   /** a document a server offers, by uri — okay-rag's `Source` with
    * the protocol's metadata around it */
   final case class Resource(uri: String, name: String,
@@ -54,11 +71,20 @@ object Mcp {
   def infoOf(j: Json): Option[Info] =
     for n <- str(j, "name"); v <- str(j, "version") yield Info(n, v)
 
-  /** what a client sends to open a session */
-  def initializeParams(client: Info): Json = obj(
-    "protocolVersion" -> Json.JStr(Version),
-    "capabilities" -> obj(),
-    "clientInfo" -> infoJson(client))
+  /**
+   * What a client sends to open a session — and its own capabilities,
+   * because in a duplex protocol the client is a server too: a server
+   * may only ask for roots or sampling if the client said it has
+   * them.
+   */
+  def initializeParams(client: Info, roots: Boolean = false,
+                       sampling: Boolean = false): Json =
+    val caps = Vector(
+      Option.when(roots)("roots" -> obj("listChanged" -> Json.JBool(true))),
+      Option.when(sampling)("sampling" -> obj())).flatten
+    obj("protocolVersion" -> Json.JStr(Version),
+      "capabilities" -> Json.JObj(caps),
+      "clientInfo" -> infoJson(client))
 
   /**
    * What a server answers. `capabilities.tools` is the honest
