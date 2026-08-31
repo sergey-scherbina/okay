@@ -74,7 +74,7 @@ class TestParse extends munit.FunSuite {
   /** the nested object node (gamma's value) inside the root object */
   def gammaNode(t: Cst[K]): Cst[K] =
     val Cst.Node(_, rootKids) = t: @unchecked
-    val Some(obj @ Cst.Node("object", kids)) = rootKids.headOption: @unchecked
+    val Some(Cst.Node("object", kids)) = rootKids.headOption: @unchecked
     kids.collectFirst { case n @ Cst.Node("object", _) => n }.get
 
   test("incremental reparse: a length-preserving edit reuses subtrees by reference") {

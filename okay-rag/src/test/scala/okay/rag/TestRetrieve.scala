@@ -210,4 +210,38 @@ class TestRetrieve extends munit.FunSuite {
     assertEquals(Persist.unpack(packed.dropRight(3)).length, v.length - 1)
     assertEquals(Persist.unpack(Array.empty[Byte]).length, 0)
   }
+
+  test("hybrid's fanOut is read: a wider fan-out changes the fusion") {
+    // it was a dead parameter — declared, defaulted, named for what it
+    // meant, and never read, so asking for a wider fan-out silently
+    // did nothing. Over-fetching is the whole point of fusing: a
+    // document ranked fourth by BOTH retrievers should beat one ranked
+    // first by only one, and it cannot be seen if each list was cut
+    // to three before fusion ever ran.
+    val counted = scala.collection.mutable.Buffer[Int]()
+    def spy(inner: Retriever[okay.Pure]): Retriever[okay.Pure] = new:
+      def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
+        counted += k
+        inner.retrieve(query, k)
+
+    val segs = files.flatMap(s => Ingest.segment(s, 400)(_.length))
+    val kw = Retrieve.keyword(Keyword.index(segs))
+
+    counted.clear()
+    Retrieve.hybrid[okay.Pure](Seq(spy(kw)), fanOut = 25)
+      .retrieve("numbers", 3).runWith
+    assertEquals(counted.toList, List(25),
+      "the retriever was not asked for the fan-out")
+
+    // and k still wins when it is the larger of the two
+    counted.clear()
+    Retrieve.hybrid[okay.Pure](Seq(spy(kw)), fanOut = 2)
+      .retrieve("numbers", 9).runWith
+    assertEquals(counted.toList, List(9), "asking for k > fanOut lost hits")
+
+    // whatever the fan-out, exactly k comes back
+    val out = Retrieve.hybrid[okay.Pure](Seq(kw), fanOut = 25)
+      .retrieve("numbers", 2).runWith
+    assert(out.size <= 2, s"returned ${out.size} for k = 2")
+  }
 }

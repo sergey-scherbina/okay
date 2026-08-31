@@ -144,7 +144,7 @@ object Provider {
   // event loop (Async.runAsync). Same program, both platforms; the
   // comonadic handler above stays as the JVM convenience.
 
-  def relay[A, F[+_] : okay.TypeableK](complete: (Seq[Turn], Seq[ToolSpec]) => Reply ! okay.Async,
+  def relay[A, F[+_]](complete: (Seq[Turn], Seq[ToolSpec]) => Reply ! okay.Async,
                                        count: String => Int = _.length / 4)
                                       (prog: A ! (Model + F)): A ! (okay.Async + F) =
     // the handler as a NATURAL TRANSFORMATION into another row: a
@@ -162,7 +162,7 @@ object Provider {
     }
 
   /** the OpenAI-compatible provider as a relay — the cross-platform door */
-  def openAiRelay[A, F[+_] : okay.TypeableK](
+  def openAiRelay[A, F[+_]](
       transport: Transport, apiKey: String, model: String,
       url: String = OpenAi.chatUrl, maxTokens: Option[Int] = Some(1024),
       count: String => Int = _.length / 4)(prog: A ! (Model + F)): A ! (okay.Async + F) =

@@ -99,8 +99,12 @@ object Xml {
         case Mode.InTag =>
           if c == '"' || c == '\'' then (keep.copy(mode = Mode.InQuote(c)), Vector.empty)
           else if c == '>' then
+            // no comment check here: a `<!--` has already switched to
+            // InComment in the branch below, so by the time a `>` is
+            // seen in InTag the tag is an ordinary one. (There WAS a
+            // check, computing a mode and discarding it — dead since
+            // the switch moved, and the compiler was saying so.)
             val b = s.buf + c
-            val m = if b.startsWith("<!--") then Mode.InComment else Mode.Text
             (S(Mode.Text, "", next, next), tok(s.copy(buf = b), kindOf(b)))
           else
             val b = s.buf + c

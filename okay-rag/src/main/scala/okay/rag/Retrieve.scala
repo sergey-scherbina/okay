@@ -66,12 +66,23 @@ object Retrieve {
    * Hybrid: run several retrievers and fuse by reciprocal rank —
    * the scores need not be comparable, which is exactly why RRF is
    * the default way to put a BM25 list beside a vector list.
+   *
+   * `fanOut` is how many candidates each retriever is asked for,
+   * before fusion picks the k that are returned. Over-fetching is the
+   * whole point of fusing: a document ranked fourth by BM25 and
+   * fourth by vectors should beat one ranked first by only one of
+   * them, and it cannot be seen at all if each list was cut to three.
+   *
+   * It was a dead parameter until the compiler said so — declared,
+   * defaulted, documented by its own name, and never read, so a
+   * caller asking for a wider fan-out silently got none.
    */
-  def hybrid[F[+_]](rs: Seq[Retriever[F]], k: Int = 10): Retriever[F] = new:
-    def retrieve(query: String, kk: Int): Seq[Scored] ! F =
+  def hybrid[F[+_]](rs: Seq[Retriever[F]], fanOut: Int = 10): Retriever[F] = new:
+    def retrieve(query: String, k: Int): Seq[Scored] ! F =
+      val each = math.max(fanOut, k)
       rs.foldLeft(pure[F, Seq[Seq[Scored]]](Seq.empty)) { (acc, r) =>
-        acc.flatMap(ls => r.retrieve(query, kk).map(ls :+ _))
-      }.map(ls => Fusion.rrf(ls).take(kk))
+        acc.flatMap(ls => r.retrieve(query, each).map(ls :+ _))
+      }.map(ls => Fusion.rrf(ls).take(k))
 
   /**
    * Multi-query: rewrites of one question explored as NONDETERMINISM
@@ -79,7 +90,7 @@ object Retrieve {
    * branch's hits, then fusion. The rewriter is a plain function
    * here; a model-backed one is the same shape one row up.
    */
-  def multiQuery[F[+_] : TypeableK](r: Retriever[F])(rewrites: String => Seq[String])
+  def multiQuery[F[+_]](r: Retriever[F])(rewrites: String => Seq[String])
   : Retriever[F] = new:
     def retrieve(query: String, k: Int): Seq[Scored] ! F =
       val qs = (query +: rewrites(query)).distinct

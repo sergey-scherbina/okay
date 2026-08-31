@@ -1,5 +1,6 @@
 package okay.lex
 
+import scala.annotation.unused
 import okay.{+, Chunks, Stage, Writer, pure}
 
 /** an exact source position; length in chars */
@@ -34,8 +35,11 @@ trait Scan[K, S]:
   def key(s: S): Any = s
 
   /** shift the positions inside a state (override when S carries them;
-   * the column never shifts — reconvergence happens past a newline) */
-  def rebase(s: S, offsetDelta: Int, lineDelta: Int): S = s
+   * the column never shifts — reconvergence happens past a newline).
+   * The default ignores the deltas because a state with no positions
+   * in it has nothing to shift — the names stay, they are the
+   * interface's documentation and usable as named arguments. */
+  def rebase(s: S, @unused offsetDelta: Int, @unused lineDelta: Int): S = s
 
 object Scan {
 

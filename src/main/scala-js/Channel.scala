@@ -1,7 +1,7 @@
 package okay
 
 import java.util.concurrent.atomic.AtomicInteger
-import scala.annotation.tailrec
+import scala.annotation.{tailrec, unused}
 import scala.collection.mutable
 
 /**
@@ -13,7 +13,7 @@ import scala.collection.mutable
  * waits — bound producers by demand (the pull side), not by buffer
  * pressure.
  */
-final class Channel[A](capacity: Int = Int.MaxValue) {
+final class Channel[A](@unused capacity: Int = Int.MaxValue) {
 
   private val q = mutable.Queue[A]()
   private val waiters = mutable.Queue[Either[Throwable, Option[A]] => Unit]()

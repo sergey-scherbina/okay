@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Aggregator, TypeableK}
+import okay.{!, +, Aggregator}
 import okay.!.*
 import okay.given
 import scala.annotation.tailrec
@@ -26,7 +26,7 @@ object Memory {
    * residual program keeps whatever effects F remain. Answers the
    * final state beside the value, like State.handle does.
    */
-  def handle[S, A, F[+_] : TypeableK](policy: Aggregator[Turn, S, Seq[Turn]])
+  def handle[S, A, F[+_]](policy: Aggregator[Turn, S, Seq[Turn]])
                                      (init: S)(prog: A ! (Context + F)): (S, A) ! F = {
     def _loop(s: S)(x: A ! (Context + F)): (S, A) ! F = loop(s)(x)
 
@@ -51,12 +51,12 @@ object Memory {
   }
 
   /** the common case: start empty, keep the answer only */
-  def run[S, A, F[+_] : TypeableK](policy: Aggregator[Turn, S, Seq[Turn]])
+  def run[S, A, F[+_]](policy: Aggregator[Turn, S, Seq[Turn]])
                                   (prog: A ! (Context + F)): A ! F =
     handle(policy)(policy.init)(prog).map(_._2)
 
   /** …and the transcript beside it, for inspection or a next turn */
-  def runWithState[S, A, F[+_] : TypeableK](policy: Aggregator[Turn, S, Seq[Turn]])
+  def runWithState[S, A, F[+_]](policy: Aggregator[Turn, S, Seq[Turn]])
                                            (prog: A ! (Context + F)): (S, A) ! F =
     handle(policy)(policy.init)(prog)
 }

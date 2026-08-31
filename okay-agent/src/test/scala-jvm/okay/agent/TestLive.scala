@@ -164,7 +164,7 @@ class TestLive extends munit.FunSuite {
   test("live: the same agent runs over the Anthropic protocol too") {
     assume(anthropicReachable, s"no Anthropic-shaped endpoint at $anthropicUrl")
     val provider = Provider.anthropic(transport, key, model, anthropicUrl, maxTokens = 64)
-    val (state, ctx) = Handlers.context(Compact.all)
+    val (_, ctx) = Handlers.context(Compact.all)
     val prog = Agent.remember(Turn.System("Answer in one short sentence."))
       .flatMap(_ => Agent.converse("What colour is the sky on a clear day?"))
     val answer = run(prog)(provider, Handlers.tools(Map.empty), ctx)

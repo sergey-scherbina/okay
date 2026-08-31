@@ -85,7 +85,7 @@ class TestAgent extends munit.FunSuite {
   test("context stays within budget across turns, agent never mentions it") {
     val budget = 40
     val policy = Compact.window(budget)(Compact.chars)
-    val (state, ctx) = Handlers.context(policy)
+    val (_, ctx) = Handlers.context(policy)
     val seen = mutable.Buffer[Seq[Turn]]()
     val long = "x" * 60   // ~15 tokens each
     val model = Handlers.observing(Seq.fill(12)(Reply(long, Nil)), seen)
@@ -110,10 +110,10 @@ class TestAgent extends munit.FunSuite {
 
   test("system turns are pinned: they survive any amount of pressure") {
     val policy = Compact.window(20)(Compact.chars)
-    val (state, ctx) = Handlers.context(policy)
+    val (_, ctx) = Handlers.context(policy)
     val sys = Turn.System("always obey the pin")
     val prog = Agent.remember(sys).flatMap(_ =>
-      (1 to 20).foldLeft(okay.pure[Agent, Unit](())) { (acc, i) =>
+      (1 to 20).foldLeft(okay.pure[Agent, Unit](())) { (acc, _) =>
         acc.flatMap(_ => Agent.remember(Turn.User("y" * 40)))
       }).flatMap(_ => Agent.recall)
     val view = run(prog)(Handlers.scripted(Nil), Handlers.tools(Map.empty), ctx)
@@ -145,7 +145,7 @@ class TestAgent extends munit.FunSuite {
   }
 
   test("mark and restore: backtracking over the conversation is free") {
-    val (state, ctx) = Handlers.context(Compact.all)
+    val (_, ctx) = Handlers.context(Compact.all)
     val prog = for
       _ <- Agent.remember(Turn.User("keep this"))
       m <- Agent.mark

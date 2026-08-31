@@ -109,7 +109,7 @@ object Delim {
     effect(Capture(p, f, underPrompt = false, delimitK = false))
 
   /** the common shape: a fresh prompt, a block under it, run */
-  def reset[R, F[+_] : TypeableK](body: Prompt[R] => R ! (Delim + F)): R ! F =
+  def reset[R, F[+_]](body: Prompt[R] => R ! (Delim + F)): R ! F =
     val p = prompt[R]
     run(push(p)(body(p)))
 
@@ -126,7 +126,7 @@ object Delim {
    * which is why the continuation is an ordinary value: multi-shot
    * comes for free, and nothing is a closure over interpreter state.
    */
-  def run[R, F[+_] : TypeableK](prog: R ! (Delim + F)): R ! F = {
+  def run[R, F[+_]](prog: R ! (Delim + F)): R ! F = {
     type Prog = Any ! (Delim + F)
 
     /** frames back into a program: binds become flatMaps, markers

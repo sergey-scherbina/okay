@@ -38,7 +38,7 @@ object Logic {
    * crossed. The worklist is a LazyList: infinite choice points
    * (Choose over a LazyList of alternatives) stay unforced.
    */
-  def msplit[A, F[+_] : TypeableK](m: A ! (Choose + F))
+  def msplit[A, F[+_]](m: A ! (Choose + F))
   : Option[(A, A ! (Choose + F))] ! F =
     def go(stack: LazyList[A ! (Choose + F)]): Option[(A, A ! (Choose + F))] ! F =
       stack match
@@ -56,7 +56,7 @@ object Logic {
 
   /** at most one answer: the cut — commits to the first success and
    * throws the rest of the search away */
-  def once[A, F[+_] : TypeableK](m: A ! (Choose + F)): A ! (Choose + F) =
+  def once[A, F[+_]](m: A ! (Choose + F)): A ! (Choose + F) =
     !.widen[Option[(A, A ! (Choose + F))], F, Choose](msplit(m)).flatMap:
       case Some((a, _)) => pure(a)
       case None => effect(Choose(Seq.empty))
@@ -64,7 +64,7 @@ object Logic {
   /** the soft cut: if cond has ANY answer, then th over ALL its
    * answers; el ONLY when cond has none. (A plain flatMap cannot say
    * "no answer"; an ordinary cut would lose cond's other answers.) */
-  def ifte[A, B, F[+_] : TypeableK](cond: A ! (Choose + F))
+  def ifte[A, B, F[+_]](cond: A ! (Choose + F))
                                    (th: A => B ! (Choose + F))
                                    (el: => B ! (Choose + F)): B ! (Choose + F) =
     !.widen[Option[(A, A ! (Choose + F))], F, Choose](msplit(cond)).flatMap:
@@ -73,7 +73,7 @@ object Logic {
 
   /** negation as failure: succeeds (with unit) exactly when the
    * search fails */
-  def gnot[A, F[+_] : TypeableK](m: A ! (Choose + F)): Unit ! (Choose + F) =
+  def gnot[A, F[+_]](m: A ! (Choose + F)): Unit ! (Choose + F) =
     ifte(m)(_ => effect(Choose(Seq.empty)))(pure(()))
 
   /** the FAIR or: answers of a and b take turns — an infinite a

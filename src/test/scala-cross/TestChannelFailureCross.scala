@@ -26,7 +26,7 @@ class TestChannelFailureCross extends munit.FunSuite {
     val prog: List[Int] ! Async =
       def go(acc: List[Int]): List[Int] ! Async =
         summon[Stream[Channel, Async]].uncons(c).flatMap {
-          case Some((a, rest)) => go(a :: acc)
+          case Some((a, _)) => go(a :: acc)
           case None => pure(acc.reverse)
         }
       go(Nil)

@@ -82,7 +82,7 @@ object Handlers {
    * what a platform with no threads needs — `runWith` wants a handler
    * for the WHOLE row, Async included, and on JS there is none.
    */
-  def relayTools[A, F[+_] : okay.TypeableK](table: Map[String, ToolCall => String])
+  def relayTools[A, F[+_]](table: Map[String, ToolCall => String])
                                            (prog: A ! (Tool + F)): A ! F =
     def answer(c: ToolCall): String = table.get(c.name) match
       case Some(f) =>

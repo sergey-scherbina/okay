@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Choose, Logic, TypeableK, effect, guard, runChoice}
+import okay.{!, +, Choose, Logic, effect, guard, runChoice}
 import okay.given
 
 /**
@@ -31,14 +31,14 @@ object Search {
     effect[Choose + F, Int](Choose(1 to n)).flatMap(_ => gen)
 
   /** the first sample that passes the check; none pass = no answer */
-  def bestOf[A, F[+_] : TypeableK](n: Int)(gen: A ! (Choose + F))
+  def bestOf[A, F[+_]](n: Int)(gen: A ! (Choose + F))
                                   (ok: A => Boolean): A ! (Choose + F) =
     Logic.once(samples(n)(gen).flatMap(a =>
       guard[[X] =>> X ! (Choose + F)](ok(a)).map(_ => a)))
 
   /** every sample that passes, in order (the fold-friendly form:
    * majority vote and confidence are Aggregators over this) */
-  def all[A, F[+_] : TypeableK](n: Int)(gen: A ! (Choose + F))
+  def all[A, F[+_]](n: Int)(gen: A ! (Choose + F))
                                (ok: A => Boolean): Seq[A] ! F =
     runChoice[A, F](samples(n)(gen).flatMap(a =>
       guard[[X] =>> X ! (Choose + F)](ok(a)).map(_ => a)))
@@ -50,7 +50,7 @@ object Search {
    * unusable" — and `ifte` is the only combinator that expresses it
    * without either losing the good answers or swallowing the failure.
    */
-  def validated[A, B, F[+_] : TypeableK](attempt: A ! (Choose + F))
+  def validated[A, B, F[+_]](attempt: A ! (Choose + F))
                                         (use: A => B ! (Choose + F))
                                         (fallback: => B ! (Choose + F))
   : B ! (Choose + F) =

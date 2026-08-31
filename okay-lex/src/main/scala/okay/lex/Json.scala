@@ -37,7 +37,7 @@ object Json {
       def shift(p: P) = P(p.off + offsetDelta, p.line + lineDelta, p.col)
       s.copy(start = shift(s.start), cur = shift(s.cur))
 
-    private def tok(kind: K, s: S, extra: Int = 0,
+    private def tok(kind: K, s: S,
                     channel: Channel = Channel.Syntax): Token[K] =
       Token(kind, s.buf, Span(s.start.off, s.start.line, s.start.col,
         s.buf.length), channel)

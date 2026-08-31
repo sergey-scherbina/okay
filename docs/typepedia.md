@@ -254,6 +254,28 @@ same material with the measurements attached.
   it disappears into it. Which is why the rule is to measure, not to
   generalize from the last measurement.
 
+## What the compiler still says, and why
+
+A clean build reports ~440 warnings, and almost all of them are the
+design's stated price rather than work left undone:
+
+- **~199 Pattern Match Unchecked** — `TypeableK` splits a union by a
+  runtime class test, and erasure means the test cannot be fully
+  checked. That is the mechanism `<|>` is built on, documented above.
+- **100 Pattern Match Exhaustivity** — matching on `Free.resume`,
+  where `Bind(Pure(_), _)` is impossible BY CONSTRUCTION because the
+  rotation normalizes it away. The compiler cannot see the invariant.
+- **9 Compatibility (`Unstable inline accessor`)** at `Effects.scala`
+  and `Monad.scala` — matters only at PUBLICATION: a downstream JAR
+  compiled against these could break when the library is recompiled
+  by a different compiler version. Unresolved on purpose; the inline
+  there carries measured optimizations.
+- **4 Unused Symbol**, all in the cats/kyo interop modules, where a
+  `using` parameter is part of the foreign library's own signature.
+
+The unused-import noise that used to bury these — 178 warnings — is
+gone, which is what makes the list above readable at all.
+
 ## Recurring gotchas
 
 - Postfix `.map`/`.flatMap` on program carriers are the MONAD's (they

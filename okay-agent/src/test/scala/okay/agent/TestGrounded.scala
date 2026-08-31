@@ -98,7 +98,7 @@ class TestGrounded extends munit.FunSuite {
       okay.codec.Json.JObj(Vector("q" -> okay.codec.Json.JStr("network"))))
     val model = Handlers.scripted(Seq(
       Reply("let me look", Seq(call)), Reply("found it", Nil)))
-    val tools = Handlers.tools(Map("search" -> { c =>
+    val tools = Handlers.tools(Map("search" -> { _ =>
       okay.!.run(keyword.retrieve("network", 1)).headOption
         .fold("nothing")(_.segment.text)
     }))

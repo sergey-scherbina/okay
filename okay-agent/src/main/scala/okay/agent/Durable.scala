@@ -138,7 +138,7 @@ object Durable {
       c.args match
         case Json.JObj(fs) =>
           c.copy(args = Json.JObj(fs.filterNot(_._1 == KeyField) :+ (KeyField, Json.JStr(key))))
-        case other => c.copy(args = Json.JObj(Vector((KeyField, Json.JStr(key)))))
+        case _ => c.copy(args = Json.JObj(Vector((KeyField, Json.JStr(key)))))
 
     /** intent first, then the effect, then the answer — the order is
      * the whole point: a crash between the second and third steps is

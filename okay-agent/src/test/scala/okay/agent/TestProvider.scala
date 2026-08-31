@@ -82,7 +82,7 @@ class TestProvider extends munit.FunSuite {
       // the SAME Schema that declared the tool decodes the arguments
       ToolSpec.args[SearchArgs](c).fold(e => s"bad: $e", a => s"hits for ${a.query}")
     })))(calls)
-    val (state, ctx) = Handlers.context(Compact.all)
+    val (_, ctx) = Handlers.context(Compact.all)
 
     val out = run(Agent.converse("find okay", Seq(spec)))(model, tools, ctx)
     assertEquals(out, "42 hits")

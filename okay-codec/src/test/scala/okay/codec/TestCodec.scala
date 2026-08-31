@@ -201,4 +201,19 @@ class TestCodec extends munit.FunSuite {
         ((got(i * 4 + 2) & 0xFF) << 16) | ((got(i * 4 + 3) & 0xFF) << 24)
       assertEquals(java.lang.Float.intBitsToFloat(b), floats(i), s"component $i")
   }
+
+  test("a `>` inside an XML comment does not end it") {
+    // the branch that used to compute a mode and throw it away was
+    // guarding exactly this; the guard belongs (and lives) at `<!--`,
+    // so the dead code went and this test stays
+    val text = "<a><!-- b > c --></a>"
+    val lexed = okay.lex.Scan.all(Xml.scan)(text)
+    assertEquals(lexed.tokens.map(_.lexeme).mkString, text, "not lossless")
+    val comments = lexed.tokens.filter(_.kind == Xml.K.Comment)
+    assertEquals(comments.size, 1, s"comment split: ${comments.map(_.lexeme)}")
+    assertEquals(comments.head.lexeme, "<!-- b > c -->")
+    // and the element around it is still seen
+    assertEquals(lexed.tokens.count(_.kind == Xml.K.Open), 1)
+    assertEquals(lexed.tokens.count(_.kind == Xml.K.Close), 1)
+  }
 }
