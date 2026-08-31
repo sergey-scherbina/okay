@@ -2,8 +2,6 @@ package okay.demo
 
 import okay.*
 import okay.given
-import okay.!.resume
-
 import java.time.Instant
 
 /**
@@ -39,19 +37,14 @@ class TestCombine extends munit.FunSuite {
 
   private val emptyState = MapStateRepo()
 
-  /** the events as a pure writer program — the stage's own input */
-  private def told(events: Seq[Event]): Unit ! Writer % Event =
-    events.foldRight(pure[Writer % Event, Unit](()))((e, rest) =>
-      Writer.tell(e).flatMap(_ => rest))
-
   /** the pure run: no effects anywhere, so the answer is a value */
   private def fold(repo: StateRepo, events: Seq[Event]): (Seq[Output], StateRepo) =
-    !.run(Writer.run(through(told(events))(combine(repo))))
+    !.run(Writer.run(through(Writer.of(events.toList))(combine(repo))))
 
-  /** a source that does nothing for a while, then tells its elements */
+  /** a source that waits a while, then tells its elements */
   private def after[W](millis: Long)(ws: Seq[W]): Source[W] =
-    effect[Writer % W + Async, Unit](Async.Run(() => Thread.sleep(millis)))
-      .flatMap(_ => emitAll(ws))
+    !.widen[Unit, Async, Writer % W](Async.sleep(millis))
+      .flatMap(_ => Source.of(ws.toList))
 
   test("the last state of charge is the one that is emitted") {
     val (out, _) = fold(emptyState, battery :+ charging)
@@ -89,24 +82,24 @@ class TestCombine extends munit.FunSuite {
   // ---- the same stage, over two sources merged by readiness ----
 
   test("merged: the battery arrives first, so the charging is enriched") {
-    val (out, _) = outputs(emptyState, emitAll(battery), after(100)(Seq(charging)))
+    val (out, _) = outputs(emptyState, Source.of(battery.toList), after(100)(Seq(charging)))
     assertEquals(out, Seq(enriched))
   }
 
   test("merged: the charging arrives first, so there is nothing to enrich") {
-    val (out, _) = outputs(emptyState, after(100)(battery), emitAll(Seq(charging)))
+    val (out, _) = outputs(emptyState, after(100)(battery), Source(charging))
     assertEquals(out, Seq.empty[Output])
   }
 
   test("merged: a seeded repository gives the charging a default") {
     val seeded = MapStateRepo(Map(VehicleId("v123") -> StateOfChargeInPercent(0)))
-    val (out, _) = outputs(seeded, after(100)(battery), emitAll(Seq(charging)))
+    val (out, _) = outputs(seeded, after(100)(battery), Source(charging))
     assertEquals(out, Seq(Output(t0, SocketId("s123"), VehicleId("v123"),
       PowerInWatts(60), StateOfChargeInPercent(0))))
   }
 
   test("merged: both sources drain, whatever the interleaving") {
-    val (out, repo) = outputs(emptyState, emitAll(battery), emitAll(Seq(charging)))
+    val (out, repo) = outputs(emptyState, Source.of(battery.toList), Source(charging))
     assertEquals(repo.get(VehicleId("v124")), Some(StateOfChargeInPercent(49)))
     assert(out.length <= 1, out.toString)
   }

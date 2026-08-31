@@ -111,6 +111,36 @@ class TestStream extends munit.FunSuite {
     assertEquals(nats[Int, Teller].toLazyList.take(5).toList, List(0, 1, 2, 3, 4))
   }
 
+  test("Writer.of: any stream as a program — the direction back") {
+    // a strict carrier, a lazy one, and an infinite one: the program
+    // is pulled element by element, so the infinite source is fine
+    assertEquals(Writer.of(List(1, 2, 3)).toLazyList.toList, List(1, 2, 3))
+    assertEquals(Writer.of(LazyList(1, 2)).toLazyList.toList, List(1, 2))
+    assertEquals(Writer.of(nats[Int, Producer]).toLazyList.take(3).toList, List(0, 1, 2))
+  }
+
+  test("Writer.map: the told values map, the effects stay where they were") {
+    type F = Writer % String + Async
+    val ran = collection.mutable.ListBuffer[String]()
+    val talk: Int ! F =
+      effect[F, Unit](Writer("a")).flatMap: _ =>
+        effect[F, Unit](Async.Run(() => { ran += "effect"; () })).flatMap: _ =>
+          effect[F, Unit](Writer("b")).map(_ => 7)
+    val loud = Writer.map[String, String, Int, Async](talk)(_.toUpperCase)
+    assertEquals(loud.toLazyList.toList, List("A", "B"))
+    // the forwarded operation ran once, between the two tells
+    assertEquals(ran.toList, List("effect"))
+  }
+
+  test("a Source is a stream in Async — the instance merge asks for") {
+    val src: Source[Int] = Source(1, 2, 3)
+    assertEquals(src.toLazyList.toList, List(1, 2, 3))
+    // and the instance is summonable at the type lambda, which is
+    // what a combinator taking `Stream[S, F]` needs
+    val St = summon[Stream[[W] =>> Unit ! Writer % W + Async, Async]]
+    assertEquals(St.uncons(src).runWith.map(_._1), Some(1))
+  }
+
   test("a writer program joins through toLazyList") {
     def count(n: Int): Nothing ! Writer % Int =
       Writer.tell(n).flatMap(_ => count(n + 1))

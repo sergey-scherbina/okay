@@ -111,6 +111,54 @@ object Writer {
     fold[W, Seq[W], A, F](a)
 
   /**
+   * Map the told values, keeping the PROGRAM.
+   *
+   * `Stream.map` exists already and lands in LazyList — which is the
+   * right answer for a pure stream and the wrong one for a stream
+   * that still has effects to perform: the elements would be pulled
+   * by whoever forces the list, not by whoever consumes it. This one
+   * transforms the telling in place and forwards the G-operations
+   * untouched, in order, so the result is a source like the input.
+   *
+   * It is also what makes two DIFFERENTLY typed sources mergeable:
+   * `Writer` is invariant in what it tells, so re-telling at a common
+   * type is a walk, not a subtyping step (see mergeSources).
+   */
+  def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => V)
+  : A ! (Writer % V + G) = (a.resume: @unchecked) match
+    case Free.Pure(x) => Free.Pure(x)
+    case Effect(e) => <|>[G, Writer % W](e) match
+      case Left(g) => Effect(g)
+      // the constructor refines the answer type to Unit on both
+      // sides, so the re-told operation types with nothing asserted
+      case Right(Say(w)) => Effect(Writer(f(w)))
+    case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
+      case Left(g) => Effect(g).flatMap(x => map[W, V, A, G](k(x))(f))
+      case Right(Say(w)) => Effect(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f))
+
+  /**
+   * ANY stream as a writer program: its elements told one by one, its
+   * own effects F performed at each pull.
+   *
+   * The direction the library was missing. A writer program is a
+   * stream (the instances below), and every stream unfolds into
+   * LazyList — but nothing turned a stream back into the program
+   * shape that `through`, `pipe` and the stage combinators consume.
+   * So a Channel, a List, a LazyList or a Producer becomes a source
+   * here, and the whole pipeline vocabulary applies to it.
+   *
+   * Lazy: nothing is pulled until the result is consumed, one element
+   * per pull, and the F-operations stay in the row rather than being
+   * run behind the caller's back.
+   */
+  def of[S[_], F[+_], A](s: S[A])(using St: Stream[S, F]): Unit ! (Writer % A + F) =
+    okay.pure[Writer % A + F, Unit](()).flatMap: _ =>
+      !.widen[Option[(A, S[A])], F, Writer % A](St.uncons(s)).flatMap:
+        case Some((a, rest)) =>
+          okay.effect[Writer % A + F, Unit](Writer(a)).flatMap(_ => of[S, F, A](rest))
+        case None => okay.pure(())
+
+  /**
    * The observation of the writer as codata: the same shape as
    * Stream.uncons but with a richer functor — Either[A, (W, rest)]
    * instead of Option[(W, rest)]. The told values come out one by one
@@ -150,6 +198,30 @@ object Writer {
 type Teller[A] = A ! Writer % A
 
 /**
+ * An asynchronous SOURCE: a program that tells its elements as it
+ * goes, performing Async between them. The shape every streaming
+ * seam in this library already had (a transport's lines, a model's
+ * tokens, a merged feed), spelled once — and, by the instance below,
+ * an ordinary Stream in Async.
+ */
+type Source[W] = Unit ! (Writer % W + Async)
+
+object Source {
+  /**
+   * Any PURE stream as a source: a List, a LazyList, a Producer, a
+   * Chunks' element view — told one by one into a row that also
+   * admits Async, so a constant feed and a live one compose (see
+   * mergeSources). `Writer.of` is the general form, which keeps
+   * whatever effects the stream itself has.
+   */
+  def of[S[_], A](s: S[A])(using Stream[S, Pure]): Source[A] =
+    !.widen[Unit, Writer % A, Async](Writer.of(s))
+
+  /** these elements, told in order */
+  def apply[A](as: A*): Source[A] = of(as.toList)
+}
+
+/**
  * The third corner of the triangle: generate materializes into the
  * diagonal writer too — one unfold, three carriers (LazyList by pure
  * laziness, Producer by identity operations, Teller by typed ones).
@@ -168,6 +240,17 @@ given Put[Teller] with
 given [A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
   def uncons[W](s: A ! Writer % W): Option[(W, A ! Writer % W)] ! Pure =
     pure(Writer.uncons(s).toOption)
+
+/**
+ * And a writer program performing ARBITRARY effects G is a stream in
+ * G: the same observation, with the G-operations met on the way
+ * carried into the answer. This is the instance the concurrent
+ * combinators ask for — `Channel.merge` needs a `Stream`, and an
+ * asynchronous source (`Unit ! Writer % W + Async`) had none.
+ */
+given writerStreamIn[A, G[+_] : TypeableK]: Stream[[W] =>> A ! Writer % W + G, G] = new:
+  def uncons[W](s: A ! Writer % W + G): Option[(W, A ! Writer % W + G)] ! G =
+    Writer.uncons[W, A, G](s).map(_.toOption)
 
 /**
  * Writer's split is COMPLETE, and now unconditionally so.

@@ -81,6 +81,17 @@ observed by `Writer.uncons: Either[A, (W, rest)]`. `Producer` is the
 diagonal cousin. Effect handlers forward the telling, so State,
 Reader and Throws handlers ARE stream transformers.
 
+The bridge goes both ways: a writer program IS a `Stream` (in `Pure`,
+or in whatever effects it also performs), and `Writer.of(s)` turns any
+stream — a List, a LazyList, a Producer, a Channel — back into the
+program shape that `pipe`, `through` and the stages consume, its own
+effects forwarded into the row rather than run behind the caller.
+`Writer.map` transforms the told values in place, where `Stream.map`
+lands in LazyList and forgets that the elements are still to be
+performed. An asynchronous stream has a name of its own —
+`Source[W] = Unit ! (Writer % W + Async)`, built by `Source(a, b, c)`
+or `Source.of(stream)` — and is an ordinary `Stream` in `Async`.
+
 Consumption is algebra: `Fold[A, S]` (a start and a step; every
 `Monoid` gives one; `Group` adds the inverse that makes sliding
 windows subtract instead of recompute), `Foldable` (the push side),
@@ -185,7 +196,11 @@ thread), `bracket`. One shared-source Await suite runs on the JVM,
 under Node and as a linked Native binary in CI.
 
 `Channel` is the queue between fibers — `merge` combines streams by
-readiness, `buffer` runs a producer ahead. On JVM/Native it parks
+readiness, `buffer` runs a producer ahead. `mergeSources` is that
+merge in the program shape: two sources in, one source out (so a
+stage consumes it directly), the fibers starting at the first pull —
+and the two element types need NOT agree, because the result tells
+their UNION, which the consumer splits by an ordinary type test. On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`

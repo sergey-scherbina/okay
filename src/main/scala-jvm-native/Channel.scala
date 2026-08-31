@@ -115,6 +115,29 @@ object Channel {
     c
 }
 
+/**
+ * Merge two asynchronous SOURCES by readiness, back into a source —
+ * the concurrent join, in the shape the pipeline combinators consume
+ * (`through`, `pipe`, a Stage). A fiber per source feeds one channel;
+ * the channel is told out again as a program, so what comes back is
+ * an ordinary source and nothing had to leave the effect world.
+ *
+ * The element types need NOT agree: the result tells their union,
+ * which is what a join of two differently shaped feeds actually is —
+ * the consumer splits it by an ordinary type test. (Writer is
+ * invariant in what it tells, so each side is re-told at the union by
+ * Writer.map; that walk is the whole cost.)
+ *
+ * Lazy at the seam: the fibers start at the FIRST PULL, not when this
+ * is called — a source nobody consumes drains nothing.
+ */
+def mergeSources[A, B](a: Source[A], b: Source[B], capacity: Int = Int.MaxValue)
+                      (using Scheduler, CanBlock): Source[A | B] =
+  type S[W] = Unit ! (Writer % W + Async)
+  pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
+    Writer.of(Channel.merge[A | B, S, Async, S, Async](
+      Writer.map(a)(identity[A | B]), Writer.map(b)(identity[A | B]), capacity))
+
 /** merge two chunked streams by readiness: the existing Channel.merge,
  * one queue operation per chunk (type args spelled out — inference
  * abstracts the wrong slot through the nested alias) */
