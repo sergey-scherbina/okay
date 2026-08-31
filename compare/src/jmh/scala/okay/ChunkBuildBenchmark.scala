@@ -105,43 +105,23 @@ class ChunkBuildBenchmark {
    * SURVIVES ACROSS CALLS, which is what `fromIterator` and `rechunk`
    * would need. The price is a runtime dispatch per write.
    */
-  final class TaggedBuf[A](val arr: Array[?]):
-    inline def set(i: Int, a: A): Unit =
-      scala.runtime.ScalaRunTime.array_update(arr, i, a)
-    def chunk: Chunk[A] =
-      ArraySeq.unsafeWrapArray(arr).asInstanceOf[Chunk[A]]
-
-  inline def taggedBuf[A](n: Int): TaggedBuf[A] =
-    scala.compiletime.summonFrom {
-      case ct: ClassTag[A] => new TaggedBuf[A](ct.newArray(n))
-      case _ => new TaggedBuf[A](new Array[AnyRef](n))
-    }
-
-  @Benchmark
-  def taggedBufRef: Chunk[String] =
-    val b = taggedBuf[String](size)
-    var i = 0
-    while i < size do
-      b.set(i, src(i))
-      i += 1
-    b.chunk
-
-  /** the same at a primitive, where the specialization is the point */
   val longs: Array[Long] = Array.tabulate(size)(_.toLong)
 
-  @Benchmark
-  def taggedBufLong: Chunk[Long] =
-    val b = taggedBuf[Long](size)
-    var i = 0
-    while i < size do
-      b.set(i, longs(i))
-      i += 1
-    b.chunk
-
-  /** against the shipped path at the same element type */
+  /** the shipped buffer at a concrete element type: specialized */
   @Benchmark
   def chunkBufLong: Chunk[Long] =
     val buf = ChunkBuf[Long](size)
+    var i = 0
+    while i < size do
+      buf(i) = longs(i)
+      i += 1
+    buf.chunk
+
+  /** the same, forced onto the boxed backing — the fallback a generic
+   * caller gets, and the thing the specialization is measured against */
+  @Benchmark
+  def chunkBufLongBoxed: Chunk[Long] =
+    val buf = ChunkBuf.boxed[Long](size)
     var i = 0
     while i < size do
       buf(i) = longs(i)

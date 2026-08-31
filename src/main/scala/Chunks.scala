@@ -89,7 +89,7 @@ object Chunks {
 
   /** the recursion behind the inline `fromIterator` — public for the
    * same binary-compatibility reason as `mapWith` */
-  def fromIteratorWith[A](it: Iterator[A])(fresh: () => TaggedBuf[A])
+  def fromIteratorWith[A](it: Iterator[A])(fresh: () => ChunkBuf[A])
                          (size: Int): Chunks[A] =
     def go(): Chunks[A] = pure[Produce, Unit](()).flatMap: _ =>
       if !it.hasNext then end
@@ -283,8 +283,8 @@ object Chunks {
 
   /** the recursion behind the inline `rechunk` — public for the same
    * binary-compatibility reason as `mapWith` */
-  def rechunkWith[A](p: Chunks[A])(fresh: () => TaggedBuf[A])(size: Int): Chunks[A] =
-    def go(buf: TaggedBuf[A], have: Int, rest: Chunks[A]): Chunks[A] = defer:
+  def rechunkWith[A](p: Chunks[A])(fresh: () => ChunkBuf[A])(size: Int): Chunks[A] =
+    def go(buf: ChunkBuf[A], have: Int, rest: Chunks[A]): Chunks[A] = defer:
       pull(rest) match
         case None =>
           if have == 0 then end

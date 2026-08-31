@@ -6,107 +6,36 @@ import scala.reflect.ClassTag
 
 /**
  * A chunk under construction: the ONE place in this library that
- * asserts an element type.
+ * asserts an element type, and the one buffer there is.
  *
- * An OPAQUE TYPE over the same `Array[AnyRef]` the producers were
- * already allocating by hand — so it erases to exactly that, with no
- * object to allocate and no indirection to inline away. The generic
- * producers have no `ClassTag[A]` and cannot allocate `Array[A]`;
- * they fill an untyped array and assert once. That was true before,
- * but the assertions were spread over twenty-eight sites, one per
- * fill loop and one per caller conjuring an untyped array. Here
- * `update` takes an `A` and `chunk` answers a `Chunk[A]`, and no
- * caller casts anything.
+ * An OPAQUE TYPE over an EXISTENTIAL array, and both halves of that
+ * are load-bearing.
  *
- * Four alternatives were tried and measured, per 64 elements, all in
- * `ChunkBuildBenchmark`:
+ * Opaque, so it has no runtime representation — the buffer IS the
+ * array, with no object to allocate and no indirection to inline
+ * away. (A value class would nearly do; an opaque type does it
+ * without the corner cases where a value class boxes anyway.)
  *
- *   this (opaque over Array[AnyRef])        84ns
- *   a real class instead of an opaque type  2x   (escape analysis
- *                                                does not remove it)
- *   ArraySeq.untagged.newBuilder            3.2x (no casts at all)
- *   ArrayBuffer, ending in toArray          3.9x
- *   ArrayBuffer, ending in ArraySeq.from    4.5x
+ * Existential — `Array[?]`, not `Array[A]` — so it claims nothing
+ * about its backing and nothing about it can be false. That is the
+ * difference from two attempts that failed: `opaque type ChunkBuf[A]
+ * = Array[A]` and a match type on the backing both made the buffer's
+ * TYPE depend on `A`, and then a generically built buffer
+ * contradicted itself with a ClassCastException. Here `apply` picks
+ * the backing with `summonFrom` and the type says nothing either way;
+ * writing dispatches through `ScalaRunTime.array_update`, which costs
+ * nothing where there is nothing to unbox (a chunk of Strings: 66.9ns
+ * against 64.5 for a ClassTag'd array) and pays for itself many times
+ * where there is (a chunk of Longs: 14.8ns against 90.9 boxed).
  *
- * `ArrayBuffer` is the tidiest to read and the slowest to run, for
- * three reasons that stack: a capacity check on every append, an
- * `Array[AnyRef]` backing that boxes primitives whatever the element
- * type is, and a COPY to reach the immutable chunk it has to end as
- * (its internal array is private, so there is no way to hand it over
- * without copying). The third reason is the one that matters most
- * here: being always boxed, it would also foreclose the
- * specialization below, which is worth 21% on the stream lane.
- *
- * A `ClassTag[A]` would also remove them, and costs nothing at
- * runtime (a ClassTag'd `Array[String]` measured 65.7ns against this
- * one's 76.7 — the same). It was tried, and the cost is not speed but
- * REACH, in three widening waves:
- *
- *   1. the leaf builders — `generate`, `fromIterator`, `rechunk`,
- *      `mapChunk`, `filterChunk`, `Pipe.chunked`;
- *   2. then the combinators they back — `Chunks.map`, `.filter`,
- *      `nats`, `fibs`, which is the public streaming API, so every
- *      user's generic function over `Chunks[A]` needs the evidence
- *      too;
- *   3. then `Pipeline.chunks`, where it STOPS: the reified operator
- *      tree has existential intermediates (`case Mapped[A, B](src:
- *      Pipeline[A], f: A => B)`), and no ClassTag for `A` can be
- *      recovered when compiling a `Mapped` node. It would have to be
- *      stored IN the tree — a change to the data structure, not to a
- *      signature, and one that would then have to be produced at
- *      every place a pipeline is built.
- *
- * So the trade is not "cast versus ClassTag". It is three casts here
- * against a ClassTag in the public type of `map`, and a ClassTag
- * field in the operator tree that P6 exists to keep clean.
- *
- * And `ChunkBuf` ITSELF cannot be the specialized thing, which was
- * worth checking rather than assuming. `opaque type ChunkBuf[A] =
- * Array[A]` with an `inline` `apply` and `summonFrom` looks like it
- * should work — it compiles, a direct `ChunkBuf[Long](n)` really is a
- * `long[]`, and a generic caller falls back to `Object[]` and reads
- * back correctly. Then hand that generically-built buffer to anything
- * that knows `A = Long`:
- *
- *   ClassCastException: [Ljava.lang.Object; cannot be cast to [J
- *
- * Because inside this file `ChunkBuf[Long]` REDUCES to `Array[Long]`,
- * and for a buffer the fallback built, that is false. It is the match
- * type's failure again wearing a different shape, and for the same
- * reason: the BUFFER's type was made to depend on `A`.
- *
- * That is exactly what the specialization below avoids. `tabulate`,
- * `mapper`, `filterer` and `filler` answer a `Chunk[A]`, which is an
- * `ArraySeq[A]` — and `ArraySeq.ofLong` and an `ofRef` of boxed Longs
- * are BOTH honest `ArraySeq[Long]`. The specialization lives at the
- * boundary whose type tolerates either backing, never in a type that
- * claims one.
- *
- * A MATCH TYPE was tried too — `type Backing[A] = A match { case Long
- * => Array[Long]; … case _ => Array[AnyRef] }` with an
- * `inline erasedValue[A] match` to allocate. It specializes, and it
- * needs no ClassTag: asked for a `Long` buffer directly it produces
- * `long[]`. It also fails in the one place that matters, and fails
- * UNSOUNDLY.
- *
- * Called from a generic function — which is what `map`, `generate`
- * and `fromIterator` are — `A` is abstract, the inline match cannot
- * reduce, and it falls to the `Array[AnyRef]` branch. That much is
- * merely the same non-specialization we have. The problem is that the
- * TYPE still reduces: inside this file, where the extensions live,
- * `Backing[Long]` is `Array[Long]`, while the value built generically
- * is an `Object[]`. Reading it gives
- * `ClassCastException: [Ljava.lang.Object; cannot be cast to [J`.
- * Measured, not feared.
- *
- * The condition match-type specialization needs — the element type
- * static at the allocation site — is exactly the condition `Staged`
- * already exploits, and there the win is 10x (1.6us against this
- * path's 16.9), not a few percent. The chunked path exists for the
- * case where the type is NOT static, which is the case that cannot
- * be specialized by any of these means.
+ * Four alternatives were measured against it, per 64 elements:
+ * a real class instead of an opaque type 2x (escape analysis does not
+ * remove it), `ArraySeq.untagged.newBuilder` 3.2x, `ArrayBuffer` ending
+ * in `toArray` 3.9x, `ArrayBuffer` ending in `ArraySeq.from` 4.5x. And
+ * two that were not slow but unsound, above. The numbers and the
+ * refutations are in `ChunkBuildBenchmark` and src/jmh/history.tsv.
  */
-opaque type ChunkBuf[A] = Array[AnyRef]
+opaque type ChunkBuf[A] = Array[?]
 
 /**
  * A buffer that specializes AND survives across calls.
@@ -131,34 +60,38 @@ opaque type ChunkBuf[A] = Array[AnyRef]
  * `ChunkBuf.tabulate` is still better where it applies (15.3ns), and
  * this is for where it cannot.
  */
-final class TaggedBuf[A](val arr: Array[?]) {
-  // `arr` is public because `update` is inline and reaches it: an
-  // inline method touching a private member makes the compiler
-  // synthesize an accessor with an unstable name, and a downstream
-  // JAR breaks on a recompile.
-  /** dispatches on the runtime array — the price of not lying */
-  inline def update(i: Int, a: A): Unit =
-    scala.runtime.ScalaRunTime.array_update(arr, i, a)
-
-  inline def capacity: Int = arr.length
-
-  def chunk: Chunk[A] =
-    ArraySeq.unsafeWrapArray(arr).asInstanceOf[Chunk[A]]
-
-  def take(n: Int): Chunk[A] =
-    if n == arr.length then chunk
-    else ArraySeq.unsafeWrapArray(
-      java.lang.reflect.Array.newInstance(
-        arr.getClass.getComponentType, n).asInstanceOf[Array[?]] match
-        case out =>
-          System.arraycopy(arr, 0, out, 0, n)
-          out
-    ).asInstanceOf[Chunk[A]]
-}
-
 object ChunkBuf {
   /** room for n elements */
-  def apply[A](n: Int): ChunkBuf[A] = new Array[AnyRef](n)
+  /**
+   * Room for n elements, UNBOXED when the element type is known here.
+   *
+   * `summonFrom` finds a `ClassTag[A]` exactly when `A` is concrete at
+   * the call site and falls back when it is not — and both answers are
+   * honest, because the backing type is existential and claims
+   * nothing. That is the difference from `opaque type ChunkBuf[A] =
+   * Array[A]`, which was tried and crashed: there the type asserted a
+   * backing the fallback had not built.
+   */
+  inline def apply[A](n: Int): ChunkBuf[A] =
+    summonFrom {
+      case ct: ClassTag[A] => ct.newArray(n)
+      case _ => new Array[AnyRef](n)
+    }
+
+  /**
+   * A buffer that is deliberately NOT specialized: what a caller with
+   * an abstract element type gets, and what a test needs when it
+   * wants to exercise the fallback on purpose.
+   */
+  def boxed[A](n: Int): ChunkBuf[A] = new Array[AnyRef](n)
+
+  /** the same for a recursion that needs a fresh buffer per chunk and
+   * cannot be inline itself — resolved once, where A may be concrete */
+  inline def factory[A](size: Int): () => ChunkBuf[A] =
+    summonFrom {
+      case ct: ClassTag[A] => () => ct.newArray(size)
+      case _ => () => new Array[AnyRef](size)
+    }
 
   /**
    * A chunk from something already sequenced.
@@ -183,51 +116,6 @@ object ChunkBuf {
       buf(i) = it.next()
       i += 1
     buf.take(i)
-
-  /**
-   * An index-driven chunk that is UNBOXED when the element type is
-   * known where it is written.
-   *
-   * The soundness that the match-type attempt lacked comes from
-   * choosing only the BACKING, never the type: `ArraySeq.ofLong` and
-   * an `ArraySeq.ofRef` of boxed Longs are both honest
-   * `ArraySeq[Long]`, so either branch answers the type it promises.
-   * `summonFrom` finds a `ClassTag[A]` exactly when `A` is concrete
-   * at the call site and takes the other branch when it is not —
-   * verified both ways in `TestChunkSpec`.
-   *
-   * It composes across inline hops: an inline caller of an inline
-   * caller of this still specializes, and the first NON-inline
-   * generic boundary falls back, correctly. That is the whole of what
-   * can be threaded through staging, and it is not nothing — measured
-   * on 64 Longs, unboxed against boxed: map 14.6ns against 117.8
-   * (8.1x), construction 17.2 against 91.5 (5.3x), a summing read 8.7
-   * against 18.3 (2.1x). `java.lang.Long` caches only -128..127, so
-   * every other element is an allocation; the same experiment on
-   * `Char` was worth 8%, which is why this had to be measured per
-   * type and not assumed.
-   *
-   * Used where the fill is index-driven. `fromIterator` and `rechunk`
-   * are driven by an external source and hold the buffer across
-   * pulls, so they stay on the untyped path.
-   */
-  inline def tabulate[A](n: Int)(inline f: Int => A): Chunk[A] =
-    summonFrom {
-      case ct: ClassTag[A] =>
-        val arr = ct.newArray(n)
-        var i = 0
-        while i < n do
-          arr(i) = f(i)
-          i += 1
-        ArraySeq.unsafeWrapArray(arr)
-      case _ =>
-        val buf = ChunkBuf[A](n)
-        var i = 0
-        while i < n do
-          buf(i) = f(i)
-          i += 1
-        buf.chunk
-    }
 
   /**
    * A chunk-to-chunk map, SPECIALIZED once where it is written.
@@ -365,21 +253,10 @@ object ChunkBuf {
       case _ => of(xs)
     }
 
-  /**
-   * A factory for `TaggedBuf`, resolved ONCE where the element type
-   * may still be concrete and handed to a recursion that needs a
-   * fresh buffer per chunk — the same shape as `mapper` and `filler`,
-   * for the same reason: an inline method cannot recurse.
-   */
-  inline def factory[A](size: Int): () => TaggedBuf[A] =
-    summonFrom {
-      case ct: ClassTag[A] => () => TaggedBuf[A](ct.newArray(size))
-      case _ => () => TaggedBuf[A](new Array[AnyRef](size))
-    }
-
   extension [A](buf: ChunkBuf[A]) {
     /** the assertion, once: what goes in is an A */
-    inline def update(i: Int, a: A): Unit = buf(i) = a.asInstanceOf[AnyRef]
+    inline def update(i: Int, a: A): Unit =
+      scala.runtime.ScalaRunTime.array_update(buf, i, a)
 
     inline def capacity: Int = buf.length
 
@@ -387,10 +264,14 @@ object ChunkBuf {
     inline def chunk: Chunk[A] =
       ArraySeq.unsafeWrapArray(buf).asInstanceOf[Chunk[A]]
 
-    /** the chunk, trimmed to n — for a source that ended early */
+    /** trimmed to n, into an array of the SAME component type — or
+     * every stream's short final chunk falls back to boxed */
     inline def take(n: Int): Chunk[A] =
       if n == buf.length then buf.chunk
-      else ArraySeq.unsafeWrapArray(java.util.Arrays.copyOf(buf, n))
-        .asInstanceOf[Chunk[A]]
+      else
+        val out = java.lang.reflect.Array
+          .newInstance(buf.getClass.getComponentType, n).asInstanceOf[Array[?]]
+        System.arraycopy(buf, 0, out, 0, n)
+        ArraySeq.unsafeWrapArray(out).asInstanceOf[Chunk[A]]
   }
 }

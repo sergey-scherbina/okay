@@ -97,7 +97,7 @@ class TestJavaInterop extends munit.FunSuite {
     // leave nothing for the second check.
     def generic[A](xs: Seq[A]): Chunks[A] =
       Chunks.fromIteratorWith(xs.iterator)(
-        () => okay.TaggedBuf[A](new Array[AnyRef](4)))(4)
+        () => okay.ChunkBuf.boxed[A](4))(4)
     def boxed: Chunks[Long] = generic(Seq(1L, 2L, 3L, 4L, 5L))
     assertEquals(backing(collect(boxed).head), "Object[]", "the probe is vacuous")
     assertEquals(Streams.longStream(boxed).sum(), 15L)

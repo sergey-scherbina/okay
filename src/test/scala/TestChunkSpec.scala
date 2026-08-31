@@ -3,7 +3,7 @@ package okay
 import scala.collection.immutable.ArraySeq
 
 /**
- * `ChunkBuf.tabulate` specializes when it can and stays correct when
+ * `ChunkBuf` specializes when it can and stays correct when
  * it cannot — and BOTH halves need a test, because the failure mode
  * of getting this wrong is not a wrong answer but a
  * `ClassCastException` from a value that contradicts its own type.
@@ -13,23 +13,33 @@ import scala.collection.immutable.ArraySeq
  */
 class TestChunkSpec extends munit.FunSuite {
 
+  /** fill a buffer by index — what `tabulate` used to be, now just
+   * what `ChunkBuf` is, since `apply` specializes on its own */
+  inline def buildWith[A](n: Int)(inline f: Int => A): Chunk[A] =
+    val b = ChunkBuf[A](n)
+    var i = 0
+    while i < n do
+      b(i) = f(i)
+      i += 1
+    b.chunk
+
   /** the backing array's runtime class — what specialization means */
   def backing(c: Chunk[?]): String =
     c.asInstanceOf[ArraySeq[?]].unsafeArray.getClass.getSimpleName
 
   test("a static element type gives an UNBOXED chunk") {
-    assertEquals(backing(ChunkBuf.tabulate[Long](8)(_.toLong)), "long[]")
-    assertEquals(backing(ChunkBuf.tabulate[Int](8)(identity)), "int[]")
-    assertEquals(backing(ChunkBuf.tabulate[Double](8)(_.toDouble)), "double[]")
-    assertEquals(backing(ChunkBuf.tabulate[Char](8)(i => ('a' + i).toChar)), "char[]")
+    assertEquals(backing(buildWith[Long](8)(_.toLong)), "long[]")
+    assertEquals(backing(buildWith[Int](8)(identity)), "int[]")
+    assertEquals(backing(buildWith[Double](8)(_.toDouble)), "double[]")
+    assertEquals(backing(buildWith[Char](8)(i => ('a' + i).toChar)), "char[]")
     // a reference type has nothing to UNBOX, but the ClassTag still
     // gives a precisely typed array rather than the untyped one
-    assertEquals(backing(ChunkBuf.tabulate[String](8)(_.toString)), "String[]")
+    assertEquals(backing(buildWith[String](8)(_.toString)), "String[]")
   }
 
   test("it composes across inline hops") {
     inline def twice[A](n: Int)(inline f: Int => A): Chunk[A] =
-      ChunkBuf.tabulate(n)(f)
+      buildWith(n)(f)
     inline def thrice[A](n: Int)(inline f: Int => A): Chunk[A] =
       twice(n)(f)
     assertEquals(backing(thrice[Long](8)(_.toLong)), "long[]")
@@ -38,7 +48,7 @@ class TestChunkSpec extends munit.FunSuite {
   test("an abstract element type falls back, and the result is still right") {
     // a NON-inline generic boundary: the ClassTag cannot be summoned,
     // so the boxed backing is used — which is what `Chunks.map` does
-    def generic[A](n: Int)(f: Int => A): Chunk[A] = ChunkBuf.tabulate(n)(f)
+    def generic[A](n: Int)(f: Int => A): Chunk[A] = buildWith(n)(f)
 
     val c = generic[Long](8)(_.toLong)
     assertEquals(backing(c), "Object[]", "it specialized where it cannot")
@@ -49,8 +59,8 @@ class TestChunkSpec extends munit.FunSuite {
   }
 
   test("both backings are interchangeable as the same Chunk type") {
-    def generic[A](n: Int)(f: Int => A): Chunk[A] = ChunkBuf.tabulate(n)(f)
-    val specialized: Chunk[Long] = ChunkBuf.tabulate[Long](8)(_.toLong)
+    def generic[A](n: Int)(f: Int => A): Chunk[A] = buildWith(n)(f)
+    val specialized: Chunk[Long] = buildWith[Long](8)(_.toLong)
     val fallback: Chunk[Long] = generic[Long](8)(_.toLong)
 
     assertNotEquals(backing(specialized), backing(fallback), "the probe is vacuous")
@@ -143,7 +153,7 @@ class TestChunkSpec extends munit.FunSuite {
     // is the exact shape that crashed `opaque ChunkBuf[A] = Array[A]`
     // and the match type with a ClassCastException
     def generic[A](n: Int)(f: Int => A): Chunk[A] =
-      val b = TaggedBuf[A](new Array[AnyRef](n))
+      val b = ChunkBuf.boxed[A](n)
       var i = 0
       while i < n do { b(i) = f(i); i += 1 }
       b.chunk
