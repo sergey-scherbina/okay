@@ -48,6 +48,16 @@ same material with the measurements attached.
   a given over a union type lambda crashes the 3.7.1 type comparer). **`TypeableK[F]`** — the runtime test that
   splits unions (`<|>`); identity-style signatures are split by the
   runtime class of their values, so keep them class-distinct.
+- **`reify` / `reflect` / `convert`** — one function at two ends. An
+  encoding is fixed by `pure` and `perform` and `foldCont` is its
+  fold, so there is exactly ONE structure-preserving way across:
+  `reify` observes an abstract encoding as syntax (what a debugger, a
+  rewriter or `Pipeline`'s optimizer wants), `reflect` spends syntax
+  at an encoding (what running it fast wants — a tree built once can
+  be reflected into `Eager`, where pure binds apply at construction),
+  and `convert` crosses between any two without passing through a
+  tree. A round trip in both directions, asserted for every encoding.
+  Gotcha: `reflect` shadows `scala.reflect` inside package `okay`.
 - **`Effects[M]`** — the interface; instances **`Free`** (initial),
   **`Eff`** (final/Church) and **`Eager`** (opt-in, companion-scoped
   given: pure binds run at construction; the type is opaque so the

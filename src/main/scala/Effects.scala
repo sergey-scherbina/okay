@@ -311,11 +311,49 @@ inline def toEff[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): Eff[F, A] =
   [S] => (h: F !> S) => m.foldCont(h)
 
 /**
+ * Any Effects program in ANY other Effects encoding.
+ *
+ * This is the initiality of the interface made a function: an
+ * encoding is fixed by `pure` and `perform`, `foldCont` is the fold,
+ * and so there is exactly one structure-preserving way across. The
+ * handler rebuilds each operation in the target — `N.perform(e)` —
+ * and the values land through `N.pure`.
+ *
+ * `reify` and `reflect` below are this at the two ends, and naming
+ * them separately is worth it because the two directions are used for
+ * different reasons, not because they are different functions.
+ */
+inline def convert[M[_[+_], _] : Effects, N[_[+_], _] : Effects as N, F[+_], A]
+                  (m: M[F, A]): N[F, A] =
+  m.foldCont[N[F, A]]([X] => e => shift(k => N.perform(e).flatMap(k))) / (a => N.pure(a))
+
+/**
  * any Effects program materializes back as a Free tree: building
  * the syntax is itself an interpretation !>, with the answers A ! F
  */
 inline def reify[M[_[+_], _] : Effects, F[+_], A](m: M[F, A]): A ! F =
   m.foldCont[A ! F]([X] => e => shift(k => effect(e).flatMap(k))) / (a => pure(a))
+
+/**
+ * The other direction: a Free tree read INTO any encoding — the
+ * Church one (`Eff`), the eager one, or another of your own.
+ *
+ * `reify` observes an abstract encoding as syntax, which is what a
+ * debugger, a rewriter or `Pipeline`'s optimizer wants. `reflect`
+ * spends syntax at an encoding, which is what running it fast wants:
+ * a program built once as a tree can be reflected into `Eager` where
+ * pure binds apply at construction, or into `Eff` where there is no
+ * tree to walk.
+ *
+ * Together they are a round trip, and `TestReflect` asserts it is one
+ * — the same answers, both ways, for every encoding this library has.
+ *
+ * One cost of the name, since it is the right name: inside package
+ * `okay` it shadows `scala.reflect`, so a `Typeable` or `ClassTag`
+ * referred to as `reflect.X` there must be spelled `scala.reflect.X`.
+ */
+inline def reflect[M[_[+_], _] : Effects as M, F[+_], A](m: A ! F): M[F, A] =
+  m.foldCont[M[F, A]]([X] => e => shift(k => M.perform(e).flatMap(k))) / (a => M.pure(a))
 
 object ! {
   export Free.*

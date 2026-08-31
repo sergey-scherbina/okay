@@ -43,7 +43,7 @@ object Writer {
 
   /** ops of Writer % W are recognized by the runtime class of W
    * (outside this file the opaque type has no Typeable of its own) */
-  given [W](using t: reflect.Typeable[W]): TypeableK[Writer % W] = new:
+  given [W](using t: scala.reflect.Typeable[W]): TypeableK[Writer % W] = new:
     def unapply[A](x: Any): Option[x.type & Writer[W, A]] = t.unapply(x)
 
   import scala.annotation.tailrec
