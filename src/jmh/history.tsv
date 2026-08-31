@@ -117,3 +117,8 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-31\tfoldInlined\t2547\tns/10k\tinline step, same chunks — 14x
 2026-08-31\tloopSumViaChunk\t2598\tns/10k\thand loop through Chunk.apply
 2026-08-31\tloopSum\t3345\tns/10k\thand loop on the raw long[]
+2026-08-31\tfoldLeftSum\t7017\tns/10k\tinline foldLeft, step at the call site — 5.4x over fold
+2026-08-31\tfoldLeftNumeric\t8245\tns/10k\tsame via Numeric.plus — the typeclass survives inlining
+2026-08-31\tfoldLeftCount\t11327\tns/10k\tagainst fold+Fold.count 59.0us
+2026-08-31\tboxAccumulatorOnly\t45230\tns/10k\taccumulator generic, element read direct — the whole cost
+2026-08-31\tboxElementOnly\t3765\tns/10k\telement boxed, accumulator a long — nearly free

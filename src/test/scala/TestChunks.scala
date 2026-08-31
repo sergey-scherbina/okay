@@ -84,4 +84,21 @@ class TestChunks extends munit.FunSuite {
     while c.isDefined do { sum += c.get.sum; c = merged.receive() }
     assertEquals(sum, (0L until 1000L).sum)
   }
+
+  test("foldLeft agrees with fold, and specializes") {
+    // the same answers as the Fold-as-data path — the point of the
+    // inline entry is that it is 5.4x faster, not that it differs
+    assertEquals(Chunks.foldLeft(Chunks.range(0, 10))(0L)(_ + _), 45L)
+    assertEquals(Chunks.count(Chunks.range(0, 10)), 10L)
+    assertEquals(
+      Chunks.foldLeft(Chunks.range(0, 10))(0L)(_ + _),
+      Chunks.fold(Chunks.range(0, 10))(using Fold.sum[Long]))
+    assertEquals(Chunks.count(Chunks.range(0, 10)),
+      Chunks.fold(Chunks.range(0, 10))(using Fold.count))
+    // empty, and a step that is not commutative, so order is checked
+    assertEquals(Chunks.count(Chunks.end[Long]), 0L)
+    assertEquals(
+      Chunks.foldLeft(Chunks.fromIterator((1 to 5).iterator, 2))("")(_ + _.toString),
+      "12345")
+  }
 }

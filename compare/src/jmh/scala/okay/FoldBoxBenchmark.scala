@@ -113,4 +113,58 @@ class FoldBoxBenchmark {
 
   @Benchmark
   def foldInlined: Long = foldInline(materialized)(0L)(_ + _)
+
+  // ---- the shipped specialization
+
+  @Benchmark
+  def foldLeftSum: Long = Chunks.foldLeft(longs)(0L)(_ + _)
+
+  @Benchmark
+  def foldLeftCount: Long = Chunks.count(longs)
+
+  /** the same, but the step goes through a Numeric — which is what
+   * `Fold.sum` uses, so this says whether the typeclass survives being
+   * inlined or is itself the cost */
+  @Benchmark
+  def foldLeftNumeric: Long =
+    val N = summon[Numeric[Long]]
+    Chunks.foldLeft(longs)(N.zero)(N.plus)
+
+  // ---- which half of the boxing is it?
+  //
+  // `Fold` boxes in two places: the accumulator (S, in and out of
+  // `add`) and the element (A, into `add`). A specialized SUBTRAIT
+  // could fix the first for folds that arrive as data, but not the
+  // second — `Chunks.fold` is generic in A, so the read boxes anyway.
+  // Worth knowing the split before building that.
+
+  /** accumulator generic, element read directly: what a `FoldLong`
+   * subtrait could NOT fix */
+  @Benchmark
+  def boxAccumulatorOnly: Long =
+    val fo = Fold.sum[Long]
+    var s: Any = fo.init
+    var j = 0
+    while j < materialized.length do
+      val c = materialized(j)
+      var i = 0
+      while i < c.length do
+        s = fo.add(s.asInstanceOf[Long], c(i))
+        i += 1
+      j += 1
+    s.asInstanceOf[Long]
+
+  /** element boxed on read, accumulator a raw long: the other half */
+  @Benchmark
+  def boxElementOnly: Long =
+    var s = 0L
+    var j = 0
+    while j < materialized.length do
+      val c: Chunk[?] = materialized(j)
+      var i = 0
+      while i < c.length do
+        s += c(i).asInstanceOf[Long]
+        i += 1
+      j += 1
+    s
 }
