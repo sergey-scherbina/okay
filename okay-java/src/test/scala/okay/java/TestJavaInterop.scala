@@ -88,11 +88,17 @@ class TestJavaInterop extends munit.FunSuite {
   test("a BOXED chunk of Longs still crosses, one unbox per element") {
     // what a generic producer builds: the seam must work anyway.
     //
-    // A `def`, not a `val`: `fromIterator` wraps a LIVE Iterator, so
-    // the producer it makes is single-use — draining it once to check
-    // the backing would leave nothing for the second check. Chunks is
-    // a description, but not every source it describes is replayable.
-    def boxed: Chunks[Long] = Chunks.fromIterator(Seq(1L, 2L, 3L, 4L, 5L).iterator, 4)
+    // Built through a NON-inline generic boundary, which is the only
+    // way to get a boxed chunk now that `fromIterator` specializes —
+    // the fallback is what this test is about, so it has to be real.
+    //
+    // A `def`, not a `val`: the producer wraps a LIVE Iterator and is
+    // single-use, so draining it once to check the backing would
+    // leave nothing for the second check.
+    def generic[A](xs: Seq[A]): Chunks[A] =
+      Chunks.fromIteratorWith(xs.iterator)(
+        () => okay.TaggedBuf[A](new Array[AnyRef](4)))(4)
+    def boxed: Chunks[Long] = generic(Seq(1L, 2L, 3L, 4L, 5L))
     assertEquals(backing(collect(boxed).head), "Object[]", "the probe is vacuous")
     assertEquals(Streams.longStream(boxed).sum(), 15L)
   }

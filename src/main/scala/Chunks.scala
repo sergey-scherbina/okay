@@ -84,11 +84,17 @@ object Chunks {
 
     go(0)
 
-  def fromIterator[A](it: Iterator[A], size: Int = 64): Chunks[A] =
+  inline def fromIterator[A](it: Iterator[A], size: Int = 64): Chunks[A] =
+    fromIteratorWith(it)(ChunkBuf.factory[A](size))(size)
+
+  /** the recursion behind the inline `fromIterator` — public for the
+   * same binary-compatibility reason as `mapWith` */
+  def fromIteratorWith[A](it: Iterator[A])(fresh: () => TaggedBuf[A])
+                         (size: Int): Chunks[A] =
     def go(): Chunks[A] = pure[Produce, Unit](()).flatMap: _ =>
       if !it.hasNext then end
       else
-        val buf = ChunkBuf[A](size)
+        val buf = fresh()
         var i = 0
         while i < size && it.hasNext do
           buf(i) = it.next()
@@ -260,8 +266,13 @@ object Chunks {
    * filter shrinks chunks and merge mixes sizes — rechunk restores the
    * amortization downstream. A full buffer is handed off, not copied.
    */
-  def rechunk[A](p: Chunks[A])(size: Int = 64): Chunks[A] =
-    def go(buf: ChunkBuf[A], have: Int, rest: Chunks[A]): Chunks[A] = defer:
+  inline def rechunk[A](p: Chunks[A])(size: Int = 64): Chunks[A] =
+    rechunkWith(p)(ChunkBuf.factory[A](size))(size)
+
+  /** the recursion behind the inline `rechunk` — public for the same
+   * binary-compatibility reason as `mapWith` */
+  def rechunkWith[A](p: Chunks[A])(fresh: () => TaggedBuf[A])(size: Int): Chunks[A] =
+    def go(buf: TaggedBuf[A], have: Int, rest: Chunks[A]): Chunks[A] = defer:
       pull(rest) match
         case None =>
           if have == 0 then end
@@ -281,9 +292,9 @@ object Chunks {
               i += 1
             val leftover = c.drop(room)
             val next = if leftover.isEmpty then r else produce(leftover).flatMap(_ => r)
-            produce(buf.chunk).flatMap(_ => go(ChunkBuf[A](size), 0, next))
+            produce(buf.chunk).flatMap(_ => go(fresh(), 0, next))
 
-    go(ChunkBuf[A](size), 0, p)
+    go(fresh(), 0, p)
 
   /**
    * Pipe a chunked producer into an ELEMENTWISE consumer: the

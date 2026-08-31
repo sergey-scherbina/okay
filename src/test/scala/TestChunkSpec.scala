@@ -124,4 +124,41 @@ class TestChunkSpec extends munit.FunSuite {
     assertEquals(Pipeline.fold(p)(using Fold.sum[Long]),
       (0L until 64L).map(_ * 2 + 1).sum)
   }
+
+  test("the buffer that survives across pulls specializes too") {
+    // fromIterator and rechunk fill from an external source a pull at
+    // a time, so `tabulate` cannot reach them — TaggedBuf can, because
+    // its backing type is existential and claims nothing
+    val fromIt = collect(Chunks.fromIterator((1L to 200L).iterator, 64))
+    assertEquals(fromIt.flatMap(_.toList), (1L to 200L).toList)
+    for c <- fromIt do assertEquals(backing(c), "long[]")
+
+    val re = collect(Chunks.rechunk(Chunks.range(0L, 100L, 7))(32))
+    assertEquals(re.flatMap(_.toList), (0L until 100L).toList)
+    for c <- re do assertEquals(backing(c), "long[]")
+  }
+
+  test("and it is SOUND generically, which the type-level attempts were not") {
+    // a generically built buffer, statically a TaggedBuf[Long]: this
+    // is the exact shape that crashed `opaque ChunkBuf[A] = Array[A]`
+    // and the match type with a ClassCastException
+    def generic[A](n: Int)(f: Int => A): Chunk[A] =
+      val b = TaggedBuf[A](new Array[AnyRef](n))
+      var i = 0
+      while i < n do { b(i) = f(i); i += 1 }
+      b.chunk
+
+    val c: Chunk[Long] = generic[Long](8)(_.toLong)
+    assertEquals(backing(c), "Object[]", "it specialized where it cannot")
+    assertEquals(c.sum, 28L)
+    assertEquals(c.toList, (0L until 8L).toList)
+  }
+
+  test("a short final chunk keeps its backing") {
+    // take(n) must copy into an array of the SAME component type, or
+    // the tail of every stream quietly falls back to boxed
+    val chunks = collect(Chunks.fromIterator((1L to 10L).iterator, 4))
+    assertEquals(chunks.map(_.length), List(4, 4, 2))
+    for c <- chunks do assertEquals(backing(c), "long[]")
+  }
 }

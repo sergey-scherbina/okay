@@ -3,6 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
 import scala.collection.immutable.ArraySeq
+import scala.reflect.ClassTag
 
 /**
  * Can the casts in `Chunks` be removed, and what does removing them
@@ -96,6 +97,60 @@ class ChunkBuildBenchmark {
       b += src(i)
       i += 1
     ArraySeq.unsafeWrapArray(b.toArray)
+
+  /**
+   * The existential-backed buffer with its tag beside it: sound where
+   * the two type-level attempts were not (verified), specialized when
+   * a ClassTag is reachable, and — unlike the shipped `tabulate` — it
+   * SURVIVES ACROSS CALLS, which is what `fromIterator` and `rechunk`
+   * would need. The price is a runtime dispatch per write.
+   */
+  final class TaggedBuf[A](val arr: Array[?]):
+    inline def set(i: Int, a: A): Unit =
+      scala.runtime.ScalaRunTime.array_update(arr, i, a)
+    def chunk: Chunk[A] =
+      ArraySeq.unsafeWrapArray(arr).asInstanceOf[Chunk[A]]
+
+  inline def taggedBuf[A](n: Int): TaggedBuf[A] =
+    scala.compiletime.summonFrom {
+      case ct: ClassTag[A] => new TaggedBuf[A](ct.newArray(n))
+      case _ => new TaggedBuf[A](new Array[AnyRef](n))
+    }
+
+  @Benchmark
+  def taggedBufRef: Chunk[String] =
+    val b = taggedBuf[String](size)
+    var i = 0
+    while i < size do
+      b.set(i, src(i))
+      i += 1
+    b.chunk
+
+  /** the same at a primitive, where the specialization is the point */
+  val longs: Array[Long] = Array.tabulate(size)(_.toLong)
+
+  @Benchmark
+  def taggedBufLong: Chunk[Long] =
+    val b = taggedBuf[Long](size)
+    var i = 0
+    while i < size do
+      b.set(i, longs(i))
+      i += 1
+    b.chunk
+
+  /** against the shipped path at the same element type */
+  @Benchmark
+  def chunkBufLong: Chunk[Long] =
+    val buf = ChunkBuf[Long](size)
+    var i = 0
+    while i < size do
+      buf(i) = longs(i)
+      i += 1
+    buf.chunk
+
+  /** and against the shipped SPECIALIZED path */
+  @Benchmark
+  def tabulateLong: Chunk[Long] = ChunkBuf.tabulate[Long](size)(i => longs(i))
 
   /** the floor: a ClassTag'd array, which the producers cannot have */
   @Benchmark
