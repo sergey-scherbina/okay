@@ -105,10 +105,11 @@ it needs `CanBlock`; `translate` forwards into `Async` instead and
 works where nothing may park.
 
 ## Out of scope
-- sampling, roots, completion, progress and cancellation
-  notifications, and resource subscriptions (every one of those is a
-  server talking FIRST, which the session's request/answer loop does
-  not yet do)
+- elicitation (`elicitation/create`): the server asking the human, not
+  the program — it needs a UI contract this library has no opinion on
+- completion (`completion/complete`): argument autocompletion for
+  prompts and resource templates
+- resource TEMPLATES (RFC 6570 uri patterns)
 - the HTTP/SSE transport (okay-llm already has the SSE half; the
   streamable-HTTP session layer is its own task)
 - OAuth and any authorization
@@ -214,6 +215,76 @@ final class Session:
 - [x] what a server DECLARES is exactly what it answers: a method of a
       capability it does not have is `MethodNotFound`, not a polite
       empty list
+
+## v3 — duplex: the server talks first (2026-09-01)
+
+Everything left in MCP is one thing: the server initiating. Sampling,
+roots, subscriptions, progress and cancellation are all "a message
+arrives that nobody asked for", and the session's strict
+request-then-answer loop could not carry them — it read lines until it
+saw the answer it wanted and dropped the rest.
+
+So the session becomes duplex, and the three shapes it now has to
+serve are three things this library already owns:
+
+- an incoming REQUEST is answered by the same kind of handler the
+  server side uses — the client is a server too, and MCP is symmetric
+- an incoming NOTIFICATION is a `Channel[Rpc.Notify]`: something
+  arrives when it arrives, which is what a channel is FOR
+- an outgoing push (a server telling a client a resource changed) is
+  the stage's answers `merge` a channel of pushes — the readiness
+  merge, used for the thing it was built for
+
+And the one that is more than plumbing:
+
+- **`sampling/createMessage` IS the `Model` effect.** A server asking
+  the client for a completion is `Model.Complete(context, tools)`,
+  answered by whatever `Handler[Model]` the client already has. An MCP
+  server can use YOUR model, and in our vocabulary that is not new
+  machinery — it is the handler that was already in scope.
+
+```scala
+// what a client answers when a server asks
+final case class Peer(roots: Seq[Root] = Nil,
+                      sample: Option[Handler[Model]] = None)
+final case class Root(uri: String, name: String = "")
+
+final class Session:
+  def notifications: Channel[Rpc.Notify]        // everything unasked-for
+  def subscribe(uri: String): Boolean ! Async
+  def unsubscribe(uri: String): Boolean ! Async
+  def rootsChanged(rs: Seq[Root]): Unit ! Async // notifications/roots/list_changed
+
+object Client:
+  def connect(link: Link, client: Mcp.Info, peer: Peer = Peer()): Session ! Async
+
+// what a server pushes
+final class Pushes:
+  def resourceUpdated(uri: String): Unit        // to every subscriber
+  def sample(context: Seq[Turn]): Reply ! Async // ask the client's model
+object Server:
+  def run(link: Link, serving: Serving): (Unit ! Async, Pushes)
+```
+
+### Behavior
+- [ ] a notification arriving while the client is IDLE is delivered:
+      the reader is a fiber, not a side effect of asking something
+- [ ] a server that asks `roots/list` gets the client's roots, and a
+      client whose roots change notifies the server
+- [ ] `sampling/createMessage` is answered by the client's
+      `Handler[Model]` — the SAME handler an agent uses, with the
+      conversation carried as `Seq[Turn]`
+- [ ] a client that declares no sampling handler refuses the request
+      rather than hanging, and the server reads the refusal
+- [ ] subscribe, then a change on the server, delivers
+      `notifications/resources/updated` for that uri and no other
+- [ ] unsubscribe stops it
+- [ ] answers, requests and notifications interleave on one wire
+      without confusion: a sampling request arriving while a
+      `tools/call` is in flight is answered, and the call still gets
+      its answer
+- [ ] the capabilities of a CLIENT are declared too (roots, sampling),
+      so a server knows what it may ask for
 
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server
