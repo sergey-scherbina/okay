@@ -44,6 +44,18 @@ API reference, gotchas.
 | [`okay-cluster`](modules/okay-cluster.md) | the remote channel, distributed chunk work, the JS↔JVM acceptance |
 | `okay-demo` | not a library: a coding agent over THIS repository, built from the public surface as a user would — `sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'` |
 
+## How the claims are checked
+
+Three kinds of test, deliberately different consumers of the same
+code. EXAMPLES (the bulk) state what a piece should do. PROPERTIES
+(`TestLaws` in five modules) hand it generated input, which agrees
+with nothing by construction — they have found lost and duplicated
+tokens in lex reconvergence, a widened passage that no longer
+contained its passage, and a documented claim that was simply false.
+And an APPLICATION (`okay-demo`) assembles the public surface the way
+a user would; its first run found a loader that indexed nothing and
+an API with no way to see what it sent.
+
 ## Design documents
 
 [`specs/`](../specs) holds one spec per feature with behavior

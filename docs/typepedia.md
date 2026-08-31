@@ -172,6 +172,37 @@ same material with the measurements attached.
   `retryChunks` (per-chunk lineage recompute), `parMap` (a fiber per
   chunk).
 
+## The text stack and above (their own modules)
+
+- **Dialects** (okay-codec) — four, and they cover the four ways a
+  document nests, which is what makes them a test of the parser
+  rather than a feature list: **`Json`** by punctuation, **`Yaml`**
+  by indentation, **`Markdown`** not at all (hence REFRAMING —
+  crossing emphasis closes and reopens), **`Xml`** by NAMED tags (the
+  only one where a close can be WRONG: mismatched closes mark the
+  unclosed, a close with nothing open is an error leaf, void elements
+  never open). All lossless and total, checked under generated input.
+  **`Cbor`** is the binary algebra over the same `Schema`.
+- **`Structured.cut`** (okay-llm) — validate a structured answer as
+  it streams and STOP when it is complete: each token is an append,
+  which is an edit, so the incremental parser costs the token; not
+  pulling further IS cancelling generation.
+- **`Corpus`** (okay-rag) — the sources segments point into, which is
+  what makes a passage lineage: `widen` grows it, `whole` returns the
+  document, `current` detects an index that drifted from the file.
+- **`Large.projecting`** (okay-agent) — the same doctrine for tool
+  output: a result over the limit is stored whole, the context gets
+  its head plus a handle, and `expand` reads any window later.
+- **`Durable`** (okay-agent) — the journal is intent-first and the
+  recovery decision is per operation (`Redo`, `WithKey`, `Reconcile`,
+  `Escalate`, `Fail`); `replaying` re-runs an incident offline.
+- **`Provider`** (okay-agent) — `openAi` and `anthropic` are both
+  `Handler[Model]`; `relay`/`openAiRelay` are the PORTABLE form,
+  since a comonadic handler cannot do I/O where nothing may park.
+- **`Chunks.ofChars`** — a string as chunks without boxing (a
+  primitive `Array[Char]`); see the benchmark note about what it did
+  and did not buy.
+
 ## Recurring gotchas
 
 - Postfix `.map`/`.flatMap` on program carriers are the MONAD's (they

@@ -241,7 +241,105 @@ that is the whole protocol: its chunk — still in hand, the source is
 a value — goes to a survivor, and the partials merge by the same
 combOp that Spark and Flink call merge.
 
-## 13. Where to go next
+## 13. Your own control operator
+
+Delimited control is an effect too, so a new control structure — or a
+whole new effect — is user code, not a library change:
+
+```scala
+// a generator: a prompt whose answer type is the list being built
+def emit[A](p: Prompt[List[A]])(a: A): Unit ! (Delim + Pure) =
+  Delim.shift(p)(k => k(()).map(a :: _))
+
+Delim.reset[List[Int], Pure] { p =>
+  emit(p)(1).flatMap(_ => emit(p)(2)).map(_ => Nil)
+}                                        // List(1, 2)
+```
+
+`Prompt[R]` is a first-class tag carrying the delimiter's answer
+type, so several delimiters of DIFFERENT answer types live in one
+row, and a `shift` can capture past an intervening one — which is
+what multi-prompt means and what nested handlers cannot express. All
+four classic operators are there: `shift`, `shift0`, `control`,
+`control0` (they are two independent bits — does the body keep the
+delimiter, does the continuation re-install it).
+
+## 14. An agent is a program
+
+```scala
+case class SearchArgs(query: String)
+given Schema[SearchArgs] = Schema.derived
+val spec = ToolSpec[SearchArgs]("search", "look something up")  // schema DERIVED
+
+val conversation: String ! Agent = Agent.converse("find okay", Seq(spec))
+```
+
+No message list appears in the program: it performs `remember` and
+`recall`, and the HANDLER owns the policy. So the same program is a
+unit test or a production agent depending on what you install:
+
+```scala
+// a test
+given Handler[Model] = Handlers.scripted(Seq(Reply("hi", Nil)))
+// a live model — OpenAI-compatible, so most providers and every
+// local runtime; Provider.anthropic speaks the Messages API instead
+given Handler[Model] = Provider.openAi(Transports.http(), key, "gpt-4o-mini")
+```
+
+The conversation is compacted by an `Aggregator`, so staying inside a
+token budget is the default path rather than an emergency branch:
+
+```scala
+val (state, ctx) = Handlers.context(Compact.window(4000)(Compact.chars))
+```
+
+## 15. Retrieval that the agent does not have to ask for
+
+```scala
+val repo = RepoAgent.index(RepoAgent.load(File(".")))   // parse, don't regex
+val retriever = Retrieve.hybrid(Seq(
+  Retrieve.symbols(repo.index, repo.corpus.sources),    // exact, no vectors
+  Retrieve.keyword(repo.keyword)))                      // BM25
+
+val (_, ctx) = Grounded.context(policy, retriever, budget = 6000, share = 0.6)
+```
+
+`recall` now contains the relevant code, under the SAME budget as the
+conversation — no tool call, no round trip. Every passage carries the
+exact byte range it came from, so a citation cannot drift, and
+`Corpus.widen` reads more of the document without a second search.
+
+## 16. Cutting generation when the value is complete
+
+```scala
+val cut = Structured.cut[Answer](tokenStream)
+cut.value      // Some(Answer(...)) — decoded mid-stream
+cut.stopped    // true: the tokens after the closing brace were never pulled
+```
+
+Each arriving token is an APPEND, which is an edit, so the
+incremental parser re-drives only the token rather than the answer so
+far; when the tree has no holes and the value decodes, the stream is
+simply not pulled again — and since it is demand-driven, not pulling
+IS cancelling.
+
+## 17. Durability without paying twice
+
+```scala
+Durable.tools(inner, journal)(policy = {
+  case "charge" => Durable.OnRepeat.WithKey   // retry carries the first key
+  case _        => Durable.OnRepeat.Redo
+})
+```
+
+Exactly-once EXECUTION of an external effect is impossible, and the
+module says so: what it gives is the DECISION, per operation, taken
+where the tool is declared. The journal is written intent-first, so
+recovery can tell "already happened" from "outcome unknown" from
+"never ran". `Durable.replaying` runs an incident again offline, with
+the world untouched.
+
+## 18. Where to go next
 
 The [guide](guide.md) explains each layer; the
 [typepedia](typepedia.md) is the reference; the
