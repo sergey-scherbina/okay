@@ -39,7 +39,8 @@ object Persist {
     StoredIndex(items.map((s, v) => StoredItem(out(s), v.map(_.toDouble).toList)).toList)
 
   def fromStored(x: StoredIndex): Vector[(Segment, Embedding)] =
-    x.items.map(it => (in(it.segment), it.vector.map(_.toFloat).toVector)).toVector
+    x.items.map(it => (in(it.segment), embedding(it.vector.map(_.toFloat).toArray)))
+      .toVector
 
   /** compact binary — the shipping format */
   def save(store: MemoryStore): Array[Byte] = Cbor.write(toStored(store.snapshot))

@@ -71,6 +71,14 @@ class RagBenchmark {
   val index: Index = Symbols.project(project)
   val sources: Map[String, Source] = Corpus.of(project).sources
 
+  // the vector side at PROVIDER dimension, over the whole corpus
+  val store: MemoryStore =
+    val st = MemoryStore()
+    val f = Vectors.hashing(1536)
+    st.upsert(segments.map(s => (s, f(s.text)))).runWith
+    st
+  val probe: Embedding = Vectors.hashing(1536)("describe a member by name")
+
   val symbolRetriever: Retriever[Pure] = Retrieve.symbols(index, sources)
   val keywordRetriever: Retriever[Pure] = Retrieve.keyword(postings)
   val hybridRetriever: Retriever[Pure] =
@@ -127,6 +135,15 @@ class RagBenchmark {
   @Benchmark
   def retrieveHybrid: Int =
     hybridRetriever.retrieve("describe member name", 8).runWith.size
+
+  /**
+   * The vector side through the REAL store: `Aggregator.topK`, the
+   * `Scored` allocations and the segment records included, at
+   * provider dimension over a realistic corpus. What the loop
+   * benchmark measures in isolation, priced where a user meets it.
+   */
+  @Benchmark
+  def searchVectors: Int = store.search(probe, 8).runWith.size
 
   /** the whole per-query cost an agent actually pays */
   @Benchmark

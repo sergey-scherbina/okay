@@ -286,7 +286,7 @@ Deliberately little.
 | `VectorStore[F]` | a **trait passed by value**, parameterised by its row | a program holds SEVERAL stores — a code index, a docs index, a scratch one |
 | `Retriever[F]` | the same | likewise, and they are combined by `hybrid`/`fair`, which needs them as values |
 | `Similarity` | a **function** with a default | a normalized index scored by dot product can sit beside an unnormalized one scored by cosine |
-| `Embedding` | a concrete `Vector[Float]` | see below — this one is a real limitation, not a choice |
+| `Embedding` | a concrete `ArraySeq[Float]` | concrete on purpose; unboxed since it was measured — see below |
 
 The reason none of the first four is a typeclass is the same reason
 each time: a typeclass asserts CANONICITY, one instance per type. All
@@ -295,12 +295,31 @@ given resolution would be fought rather than used. `Handler` is a
 typeclass because a row IS canonical at the point it is discharged —
 there is exactly one interpretation of `Embed` in force.
 
-The honest gap is `Embedding = Vector[Float]`: concrete, and boxed.
-A 1536-dimension provider vector is 1536 boxed `java.lang.Float`s.
-Making it abstract would touch the store, the codec and the persisted
-format at once, so it is recorded as a known cost rather than done
-quietly — `Similarity` reads through `apply`, so an unboxed
-representation is a change of one type alias and three loops.
+`Embedding` stays concrete, and that is the right call for the same
+canonicity reason: a program's stores must agree on a representation
+or their vectors cannot be compared at all.
+
+What it should not have been is BOXED, and it was. `Vector[Float]` is
+a generic trie over `Array[AnyRef]`, so a 1536-component provider
+vector was 1536 `java.lang.Float` objects — four times the memory and
+a pointer chase per component in the scoring loop. It is now
+`ArraySeq[Float]`, which wraps a primitive array and is still
+immutable with structural equality, so nothing above it changed: the
+whole switch was one type alias and three construction sites, and the
+test suite did not move.
+
+Measured, because this page got boxing wrong once before and says so
+in the [benchmarks](../benchmarks.md): one cosine at 1536 components
+went **11.70µs → 1.04µs**, and scoring a 2000-segment corpus **21.5ms
+→ 2.06ms** — 11.3x and 10.4x, tying raw `Array[Float]` (1.034µs)
+exactly. Through the real `MemoryStore`, with top-k selection and the
+`Scored` records included, a query over 240 segments at provider
+dimension now costs 347µs.
+
+The reason this one is large where the chunked-lexing one was 8%: a
+scoring loop reads three components per iteration and does nothing
+else, so per-element cost is the whole cost. Where there is real work
+per element, boxing disappears into it.
 
 ## Passages as lineage
 

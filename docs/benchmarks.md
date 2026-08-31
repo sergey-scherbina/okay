@@ -14,7 +14,8 @@ atnos-eff 7.0.4, fs2 3.10.2, circe 0.14.10.
 Run them yourself: `sbt 'Jmh/run .*Fib.*'` (core lanes),
 `sbt 'compare/Jmh/run .*Compare.*'` (ecosystem lanes; the heavy
 dependencies live only in the compare module),
-`sbt 'compare/Jmh/run RagBenchmark'` (retrieval).
+`sbt 'compare/Jmh/run RagBenchmark'` (retrieval),
+`sbt 'compare/Jmh/run EmbeddingBenchmark'` (the embedding representation).
 
 One claim here is not a time at all — structural chunking's advantage
 is that a chunk is a WHOLE definition, so it is measured as a
@@ -339,9 +340,9 @@ buys the 29%, and it is paid once at ingestion rather than per query.
 
 **Per query, with no embedding service in play:**
 
-| symbols (exact) | keyword (BM25) | hybrid (fused) | hybrid + assemble |
-|---|---|---|---|
-| **0.55** | 12.4 | 17.9 | 16.7 |
+| symbols (exact) | keyword (BM25) | hybrid (fused) | hybrid + assemble | vectors (240 segs, 1536 dim) |
+|---|---|---|---|---|
+| **0.55** | 12.4 | 17.9 | 16.7 | 347 |
 
 Half a microsecond for an exact symbol lookup is the number worth
 staring at: it is the argument for having a half of retrieval that
@@ -349,7 +350,31 @@ needs no vectors at all. "The definition of X" costs a map lookup and
 a substring, so an agent can afford to ask it speculatively — which
 is exactly what `Grounded.context` does on every turn.
 
-That number was 49µs until this benchmark was written. The retriever
+**The embedding representation — the boxing question, asked again
+and answered differently.** `Embedding` was `Vector[Float]`, and
+`Vector` is a generic trie over `Array[AnyRef]`, so a 1536-component
+provider vector was 1536 boxed `java.lang.Float` objects. Four ways
+of holding the same numbers, one cosine at provider dimension:
+
+| `Vector[Float]` | `ArraySeq[Float]` | `ArraySeq.ofFloat` | `Array[Float]` |
+|---|---|---|---|
+| 11.70 | **1.043** | **1.035** | **1.034** |
+
+**11.3x**, and the three unboxed forms are indistinguishable — the
+JIT devirtualizes the generic `apply`, so the win needed only a type
+alias, not the concrete subclass. Scoring a 2000-segment corpus:
+21495µs → 2065µs, 10.4x.
+
+Read this next to §10, where the same hypothesis about the same
+mechanism was REFUTED — unboxing the lexer's chunks bought 8% where
+23% was predicted. Both results are correct, and the difference is
+the point: a scoring loop reads three components per iteration and
+does nothing else, so per-element cost is the entire cost, while the
+lexer does real work per character and boxing disappears into it.
+The lesson is not "boxing is cheap" or "boxing is expensive" — it is
+that neither generalizes, which is why both experiments exist.
+
+That last per-query number was 49µs until this benchmark was written. The retriever
 built a `Segment` — a substring of the source — for EVERY definition
 matching the query, then took the top k; on a corpus where a common
 name has hundreds of definitions, that was essentially all of its

@@ -224,7 +224,15 @@ same material with the measurements attached.
   since a comonadic handler cannot do I/O where nothing may park.
 - **`Chunks.ofChars`** — a string as chunks without boxing (a
   primitive `Array[Char]`); see the benchmark note about what it did
-  and did not buy.
+  and did not buy (8%, where 23% was predicted).
+- **`Embedding`** (okay-rag) — `ArraySeq[Float]`, not `Vector[Float]`:
+  the same boxing question asked one module along, and this time the
+  answer was 11.3x on a cosine and 10.4x on a corpus scan, tying a raw
+  `Array[Float]`. The two results are not in tension — a scoring loop
+  reads three components per iteration and does nothing else, so
+  per-element cost IS the cost; where there is real work per element
+  it disappears into it. Which is why the rule is to measure, not to
+  generalize from the last measurement.
 
 ## Recurring gotchas
 
