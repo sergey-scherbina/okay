@@ -60,6 +60,28 @@ import scala.reflect.ClassTag
  * against a ClassTag in the public type of `map`, and a ClassTag
  * field in the operator tree that P6 exists to keep clean.
  *
+ * And `ChunkBuf` ITSELF cannot be the specialized thing, which was
+ * worth checking rather than assuming. `opaque type ChunkBuf[A] =
+ * Array[A]` with an `inline` `apply` and `summonFrom` looks like it
+ * should work — it compiles, a direct `ChunkBuf[Long](n)` really is a
+ * `long[]`, and a generic caller falls back to `Object[]` and reads
+ * back correctly. Then hand that generically-built buffer to anything
+ * that knows `A = Long`:
+ *
+ *   ClassCastException: [Ljava.lang.Object; cannot be cast to [J
+ *
+ * Because inside this file `ChunkBuf[Long]` REDUCES to `Array[Long]`,
+ * and for a buffer the fallback built, that is false. It is the match
+ * type's failure again wearing a different shape, and for the same
+ * reason: the BUFFER's type was made to depend on `A`.
+ *
+ * That is exactly what the specialization below avoids. `tabulate`,
+ * `mapper`, `filterer` and `filler` answer a `Chunk[A]`, which is an
+ * `ArraySeq[A]` — and `ArraySeq.ofLong` and an `ofRef` of boxed Longs
+ * are BOTH honest `ArraySeq[Long]`. The specialization lives at the
+ * boundary whose type tolerates either backing, never in a type that
+ * claims one.
+ *
  * A MATCH TYPE was tried too — `type Backing[A] = A match { case Long
  * => Array[Long]; … case _ => Array[AnyRef] }` with an
  * `inline erasedValue[A] match` to allocate. It specializes, and it
