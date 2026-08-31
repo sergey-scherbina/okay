@@ -37,11 +37,23 @@ opaque type Writer[W, +A] = W
  */
 def out[W, A](w: Writer[W, A]): W = w
 
+/**
+ * The ANSWER of a writer operation is its element.
+ *
+ * `Writer(w): Writer[W, W]` is the only injector, so `A = W` for
+ * every operation that can exist — the module invariant this file is
+ * built on. The type system does not record it (the answer is
+ * phantom, which is the point: it keeps the element type apart from
+ * the program's), so this is the one place that asserts it, instead
+ * of the eleven that used to.
+ */
+def answer[W, A](w: Writer[W, A]): A = w.asInstanceOf[A]
+
 /** an op is its element; the phantom answer is W: Writer(w) is the
  * only injector, and it fixes answer = W (the module invariant
  * behind this cast) */
 given [W]: Handler[Writer % W] = new:
-  def handle[A](e: Writer[W, A]): A = e.asInstanceOf[A]
+  def handle[A](e: Writer[W, A]): A = answer(e)
 
 object Writer {
 
@@ -75,10 +87,10 @@ object Writer {
     @tailrec def loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
       case Effect(e) => <|>[Writer % W, F](e) match
-        case Left(w) => Pure((K.add(s, w), w.asInstanceOf[A]))
+        case Left(w) => Pure((K.add(s, w), answer(w)))
         case Right(e) => Effect(e).map((s, _))
       case Bind(Effect(e), k) => <|>[Writer % W, F](e) match
-        case Left(w) => loop(K.add(s, w))(k(w.asInstanceOf))
+        case Left(w) => loop(K.add(s, w))(k(answer(w)))
         case Right(e) => Effect(e).flatMap(x => _loop(s)(k(x)))
 
     loop(K.init)(a)
@@ -100,8 +112,8 @@ object Writer {
    */
   def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] = (a.resume: @unchecked) match
     case Free.Pure(a) => Left(a)
-    case Effect(e) => Right((e, Free.Pure(e.asInstanceOf[A])))
-    case Bind(Effect(e), k) => Right((e, k(e.asInstanceOf)))
+    case Effect(e) => Right((e, Free.Pure(answer(e))))
+    case Bind(Effect(e), k) => Right((e, k(answer(e))))
 
   /**
    * The same observation for a writer program performing ARBITRARY
@@ -118,10 +130,10 @@ object Writer {
     case Free.Pure(a) => okay.pure(Left(a))
     case Effect(e) => <|>[G, Writer % W](e) match
       case Left(g) => Effect(g).map(Left(_))
-      case Right(w) => okay.pure(Right((w, Free.Pure(w.asInstanceOf[A]))))
+      case Right(w) => okay.pure(Right((w, Free.Pure(answer(w)))))
     case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
       case Left(g) => Effect(g).flatMap(x => uncons[W, A, G](k(x)))
-      case Right(w) => okay.pure(Right((w, k(w.asInstanceOf))))
+      case Right(w) => okay.pure(Right((w, k(answer(w)))))
 }
 
 /** the diagonal writer: it tells its own answers, like Producer but

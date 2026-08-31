@@ -30,10 +30,10 @@ object Memory {
     def _loop(s: S)(x: A ! (Context + F)): (S, A) ! F = loop(s)(x)
 
     def answer[X](s: S, e: Context[X]): (S, X) = e match
-      case Context.Remember(t) => (policy.add(s, t), ().asInstanceOf[X])
-      case Context.Recall() => (s, policy.present(s).asInstanceOf[X])
-      case Context.Mark() => (s, Snapshot(s).asInstanceOf[X])
-      case Context.Restore(m) => (m.state.asInstanceOf[S], ().asInstanceOf[X])
+      case Context.Remember(t) => (policy.add(s, t), ())
+      case Context.Recall() => (s, policy.present(s))
+      case Context.Mark() => (s, Snapshot(s))
+      case Context.Restore(m) => (m.state.asInstanceOf[S], ())
 
     @tailrec def loop(s: S)(x: A ! (Context + F)): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))

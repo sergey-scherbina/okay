@@ -158,7 +158,7 @@ object Provider {
         case Model.Complete(ctx, tools) =>
           okay.!.widen[Reply, okay.Async, F](complete(ctx, tools))
             .asInstanceOf[X ! (okay.Async + F)]
-        case Model.Count(text) => okay.pure(count(text).asInstanceOf[X])
+        case Model.Count(text) => okay.pure(count(text))
     }
 
   /** the OpenAI-compatible provider as a relay — the cross-platform door */

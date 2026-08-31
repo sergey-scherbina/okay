@@ -66,6 +66,21 @@ type Producer[A] = A ! Produce
 /** emit a value as an effect operation */
 inline def produce[A](a: A): Producer[A] = effect(a)
 
+/**
+ * The ANSWER of a produce operation is the value it produced.
+ *
+ * `Produce` is the identity signature, and `produce(a): Producer[A]`
+ * is its only injector, so the answer type equals the element type
+ * for every operation that can exist. The type system does not record
+ * that — the answer is phantom on purpose — so this is the one place
+ * that asserts it, and the walks over produced streams take it from
+ * here rather than each writing an `asInstanceOf`.
+ *
+ * The twin of `okay.answer` for `Writer`, for the same reason and at
+ * the same price: nothing at run time, and one place to be wrong.
+ */
+def produced[A](e: Any): A = e.asInstanceOf[A]
+
 /** put suspends the value as an effect operation */
 given Put[Producer] with
   final override inline def put[A](a: A): A /> Producer[A] =
@@ -98,7 +113,7 @@ given Stream[Producer, okay.Pure] with
   def uncons[A](p: Producer[A]): Option[(A, Producer[A])] ! okay.Pure = pure((p.resume: @unchecked) match
     case Free.Pure(_) => None
     case Effect(e) => Some((e, Free.Pure(e)))
-    case Bind(Effect(e), k) => Some((e.asInstanceOf[A], k(e))))
+    case Bind(Effect(e), k) => Some((produced[A](e), k(e))))
 
   /** the specialized linear view: a direct walk of the freer tree —
    * no Option, no tuple per element (measured; the generic default
@@ -117,7 +132,7 @@ given Stream[Producer, okay.Pure] with
           ready = true
           cur = Free.Pure(e)
         case Bind(Effect(e), k) =>
-          elem = e.asInstanceOf[A]
+          elem = produced[A](e)
           ready = true
           cur = k(e)
         case _ =>
@@ -154,10 +169,10 @@ given [G[+_] : TypeableK]: Stream[[A] =>> A ! Produce + G, G] with
     case Free.Pure(_) => pure(None)
     case Effect(e) => <|>[G, Produce](e) match
       case Left(g) => Effect(g).map(_ => None)
-      case Right(w) => pure(Some((w.asInstanceOf[A], Free.Pure(w.asInstanceOf[A]))))
+      case Right(w) => pure(Some((produced[A](w), Free.Pure(produced[A](w)))))
     case Bind(Effect(e), k) => <|>[G, Produce](e) match
       case Left(g) => Effect(g).flatMap(x => uncons(k(x)))
-      case Right(w) => pure(Some((w.asInstanceOf[A], k(w))))
+      case Right(w) => pure(Some((produced[A](w), k(w))))
 
 import scala.math.Numeric.Implicits.given
 

@@ -299,6 +299,38 @@ blanket suppression; the categories and what each turned out to be:
   unused `using` is load-bearing for resolution — removing it makes
   the instance ambiguous, which a test caught.
 
+## Where the unchecked casts live, and why they are there
+
+A cast the type system cannot verify is a claim, and a claim scattered
+across twenty call sites is a claim nobody can audit. So each family
+has ONE named function, in the file that owns the equation it asserts,
+and nothing else in the library casts for that reason:
+
+- **`okay.out` / `okay.answer`** (Writer) — `opaque type Writer[W, +A]
+  = W`, and `Writer(w): Writer[W, W]` is the only injector, so an
+  operation IS its element and its answer type equals it. `out` needs
+  no cast at all (inside the file the opaque type is transparent);
+  `answer` asserts the phantom equation once. Making `Writer` a GADT
+  would let the compiler check it and cost an allocation per `tell` —
+  which is the whole of why it is 286ns against cats' 1127.
+- **`okay.produced`** (Produce) — the same equation for the identity
+  signature the streams are built on.
+- **`Chunks.bound`** — the element under a `Bind`, which is the BIND's
+  intermediate and genuinely existential. `case Effect(c)` needs
+  nothing: GADT refinement gives the type back.
+- **`ChunkBuf.update` / `.chunk`** — the array assertion, once, with
+  four measured alternatives recorded against it.
+- **`<|>`** — the union split, sound by the excluded middle of `F[A] |
+  G[A]`, documented as the trusted kernel.
+- **`Tagged`** — for the other kind: a value stored heterogeneously and
+  recovered at a type the reader must GUESS. There the cast becomes a
+  CHECK. Not for the kinds above, where the type is fixed by an
+  invariant no runtime test can confirm.
+
+What is not on this list is deliberate: GADT refinement removes casts
+outright wherever the ADT records the type (`Schema`, `Context`,
+`Model`), and 35 were removed that way rather than named.
+
 ## Recurring gotchas
 
 - Postfix `.map`/`.flatMap` on program carriers are the MONAD's (they
