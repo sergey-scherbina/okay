@@ -43,6 +43,30 @@ import scala.collection.immutable.ArraySeq
  * So the trade is not "cast versus ClassTag". It is three casts here
  * against a ClassTag in the public type of `map`, and a ClassTag
  * field in the operator tree that P6 exists to keep clean.
+ *
+ * A MATCH TYPE was tried too — `type Backing[A] = A match { case Long
+ * => Array[Long]; … case _ => Array[AnyRef] }` with an
+ * `inline erasedValue[A] match` to allocate. It specializes, and it
+ * needs no ClassTag: asked for a `Long` buffer directly it produces
+ * `long[]`. It also fails in the one place that matters, and fails
+ * UNSOUNDLY.
+ *
+ * Called from a generic function — which is what `map`, `generate`
+ * and `fromIterator` are — `A` is abstract, the inline match cannot
+ * reduce, and it falls to the `Array[AnyRef]` branch. That much is
+ * merely the same non-specialization we have. The problem is that the
+ * TYPE still reduces: inside this file, where the extensions live,
+ * `Backing[Long]` is `Array[Long]`, while the value built generically
+ * is an `Object[]`. Reading it gives
+ * `ClassCastException: [Ljava.lang.Object; cannot be cast to [J`.
+ * Measured, not feared.
+ *
+ * The condition match-type specialization needs — the element type
+ * static at the allocation site — is exactly the condition `Staged`
+ * already exploits, and there the win is 10x (1.6us against this
+ * path's 16.9), not a few percent. The chunked path exists for the
+ * case where the type is NOT static, which is the case that cannot
+ * be specialized by any of these means.
  */
 opaque type ChunkBuf[A] = Array[AnyRef]
 
