@@ -128,3 +128,9 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-31\tfoldDataSpecialized\t7817\tns/10k\tFold.long, inline ctor — 4.4x; 27490 before the ctor was inline
 2026-08-31\tboxAccumulatorOnly\t29369\tns/10k\tclean rerun: the accumulator is the cost
 2026-08-31\tboxElementOnly\t2824\tns/10k\tclean rerun: the element read is not
+2026-08-31\taggCount\t19500\tns/10k\twas 37803 — Aggregator.fold hands over a Fold.OfLong
+2026-08-31\taggSum\t18498\tns/10k\twas 40838
+2026-08-31\taggMean\t37254\tns/10k\twas 87036 — flat Mean instead of a Tuple2
+2026-08-31\taggVariance\t74746\tns/10k\twas 90904 — flat Variance instead of a Tuple3
+2026-08-31\tloopMean\t18573\tns/10k\tfloor: two primitive locals
+2026-08-31\tloopVariance\t49591\tns/10k\tfloor: Welford in three locals

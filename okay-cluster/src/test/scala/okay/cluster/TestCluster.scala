@@ -9,7 +9,7 @@ import java.net.{ServerSocket, Socket}
 class TestCluster extends munit.FunSuite {
 
   val agg = Aggregator.variance[Double]
-  type Acc = (Long, Double, Double)   // Welford: count, mean, m2
+  type Acc = Aggregator.Variance      // Welford: count, mean, m2, flat
 
   def source: Chunks[Double] = Chunks.map(Chunks.range(0, 1000, 16))(x => x * 0.5 + 1)
 
