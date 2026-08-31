@@ -77,20 +77,17 @@ object Combine {
    * and nothing to hide a mutation in.
    */
   def combine(repo: StateRepo): Stage[Event, Output, StateRepo] =
-    Stage.await[Event, Output].flatMap {
-      case None => pure(repo)
-      case Some(b: Battery) =>
-        combine(repo.put(b.vehicleId, b.stateOfChargeInPercent))
-      case Some(c: Charging) => repo.get(c.vehicleId) match
-        case None => combine(repo)
-        case Some(soc) =>
-          Stage.tell[Event, Output](Output(
-            timestamp = c.timestamp,
-            socketId = c.socketId,
-            vehicleId = c.vehicleId,
-            powerInWatts = c.powerInWatts,
-            stateOfChargeInPercent = soc)).flatMap(_ => combine(repo))
-    }
+    Stage.transduce[Event, Output, StateRepo](repo)((s, event) => event match {
+      case b: Battery => pure(s.put(b.vehicleId, b.stateOfChargeInPercent))
+      case c: Charging => s.get(c.vehicleId) match
+        case None => pure(s)
+        case Some(soc) => Stage.tell[Event, Output](Output(
+          timestamp = c.timestamp,
+          socketId = c.socketId,
+          vehicleId = c.vehicleId,
+          powerInWatts = c.powerInWatts,
+          stateOfChargeInPercent = soc)).map(_ => s)
+    })(pure)
 
   /**
    * The concurrent half: the two sources merged by READINESS (a fiber

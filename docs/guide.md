@@ -155,6 +155,18 @@ as a program (awaits I, tells O); `through` composes stages
 demand-driven. Tokenizers and parsers are stages (okay-lex,
 okay-parse).
 
+`Stage.transduce(z)(step)(flush)` is the skeleton they all share —
+carry a state, step it per input telling whatever that input is
+worth, flush at the end. The step ANSWERS the new state and is itself
+a stage, so it may tell nothing, one, or many, and nothing is
+allocated per element to say which; the lexer's scanner, SSE framing,
+`chunked` and the demo's stream join are all this one call.
+`Stage.mapAccumulate` is fs2's 1:1 special case on top of it, kept
+for people who arrive with the name — and it is the special case, not
+the primitive, because of the five stages written here NONE are
+one-output-per-input: conditional emission has to say "nothing here"
+with an `Option` that `transduce` never allocates.
+
 Stages may be EFFECTFUL: a row `Take % I + (Writer % O + G)` carries
 arbitrary operations G (Async above all) between awaits and tells,
 and the `through` overloads forward them through composition in the

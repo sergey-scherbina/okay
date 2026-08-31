@@ -21,20 +21,15 @@ object Sse {
   /** SSE framing as a Stage: lines await in, event payloads (the
    * joined data: fields) tell out; a partial trailing event flushes */
   def events: Stage[String, String, Unit] =
-    def go(buf: List[String]): Stage[String, String, Unit] =
-      Stage.await[String, String].flatMap {
-        case Some(line) =>
-          if line.isEmpty then
-            if buf.isEmpty then go(Nil)
-            else Stage.tell[String, String](buf.reverse.mkString("\n")).flatMap(_ => go(Nil))
-          else if line.startsWith("data:") then go(line.drop(5).trim :: buf)
-          else go(buf)   // comments, event:, id: — framing we do not need yet
-        case None =>
-          if buf.isEmpty then pure(())
-          else Stage.tell[String, String](buf.reverse.mkString("\n")).map(_ => ())
-      }
+    def flush(buf: List[String]): Stage[String, String, List[String]] =
+      if buf.isEmpty then pure(Nil)
+      else Stage.tell[String, String](buf.reverse.mkString("\n")).map(_ => Nil)
 
-    go(Nil)
+    Stage.transduce[String, String, List[String]](Nil)((buf, line) =>
+      if line.isEmpty then flush(buf)
+      else if line.startsWith("data:") then pure(line.drop(5).trim :: buf)
+      else pure(buf)   // comments, event:, id: — framing we do not need yet
+    )(flush).map(_ => ())
 }
 
 object Anthropic {

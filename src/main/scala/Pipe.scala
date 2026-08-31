@@ -66,22 +66,62 @@ object Stage {
       case None => pure(())
     }
 
+  /**
+   * The transducer skeleton, named: carry a state, step it with each
+   * input (telling whatever that input is worth), and flush at the end
+   * of the input.
+   *
+   * Every stage in this library was writing this by hand — the
+   * lexer's scanner, SSE framing, `chunked` below, the demo's stream
+   * join — and each hand-written copy is a chance to forget the
+   * recursion or the flush. The step ANSWERS the new state and is
+   * itself a stage, so it may tell nothing, one, or many outputs
+   * (which is the shape all four actually have); nothing is allocated
+   * per element to say how many, and a step that needs another input
+   * can simply await one.
+   *
+   * fs2's `mapAccumulate` is the 1:1 special case, spelled below.
+   * The reason it is the special case and not the primitive is that
+   * of the five stages written here, ZERO are one-output-per-input.
+   */
+  def transduce[I, O, S](z: S)(step: (S, I) => Stage[I, O, S])
+                              (end: S => Stage[I, O, S]): Stage[I, O, S] =
+    def go(s: S): Stage[I, O, S] = await[I, O].flatMap {
+      case Some(i) => step(s, i).flatMap(go)
+      case None => end(s)
+    }
+
+    go(z)
+
+  /**
+   * The stateful 1:1 map — fs2's `mapAccumulate`, for those arriving
+   * with it in hand. It is `transduce` with the two degrees of
+   * freedom that combinator has spent: exactly one output per input,
+   * and nothing to flush.
+   *
+   * Where the emission is CONDITIONAL — the join in okay-demo, which
+   * emits only on one of its two input shapes — this is the wrong
+   * tool and fs2 shows why: its own version of that join has to emit
+   * `Option[Output]` per element and filter downstream. `transduce`
+   * emits nothing instead of emitting a None.
+   */
+  def mapAccumulate[I, O, S](z: S)(f: (S, I) => (S, O)): Stage[I, O, S] =
+    transduce[I, O, S](z)((s, i) => {
+      val (s2, o) = f(s, i)
+      tell[I, O](o).map(_ => s2)
+    })(pure)
+
   /** batch inputs into chunks of the given size (the tail flushes on
    * end of input — a stage may still tell after seeing None) */
   def chunked[T](size: Int): Stage[T, Chunk[T], Unit] =
-    def go(buf: Vector[T]): Stage[T, Chunk[T], Unit] =
-      await[T, Chunk[T]].flatMap {
-        case Some(t) =>
-          val b = buf :+ t
-          if b.length >= size then tell[T, Chunk[T]](ChunkBuf.ofSpecialized(b))
-            .flatMap(_ => go(Vector.empty))
-          else go(b)
-        case None =>
-          if buf.isEmpty then pure(())
-          else tell[T, Chunk[T]](ChunkBuf.ofSpecialized(buf)).map(_ => ())
-      }
-
-    go(Vector.empty)
+    transduce[T, Chunk[T], Vector[T]](Vector.empty)((buf, t) => {
+      val b = buf :+ t
+      if b.length < size then pure(b)
+      else tell[T, Chunk[T]](ChunkBuf.ofSpecialized(b)).map(_ => Vector.empty[T])
+    })(buf =>
+      if buf.isEmpty then pure(buf)
+      else tell[T, Chunk[T]](ChunkBuf.ofSpecialized(buf)).map(_ => buf)
+    ).map(_ => ())
 
   /** flatten chunks back into elements */
   def unchunk[T]: Stage[Chunk[T], T, Unit] =
