@@ -73,12 +73,12 @@ object Stage {
       await[T, Chunk[T]].flatMap {
         case Some(t) =>
           val b = buf :+ t
-          if b.length >= size then tell[T, Chunk[T]](ChunkBuf.of(b))
+          if b.length >= size then tell[T, Chunk[T]](ChunkBuf.ofSpecialized(b))
             .flatMap(_ => go(Vector.empty))
           else go(b)
         case None =>
           if buf.isEmpty then pure(())
-          else tell[T, Chunk[T]](ChunkBuf.of(buf)).map(_ => ())
+          else tell[T, Chunk[T]](ChunkBuf.ofSpecialized(buf)).map(_ => ())
       }
 
     go(Vector.empty)

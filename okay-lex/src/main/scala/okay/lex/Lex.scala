@@ -70,7 +70,7 @@ object Scan {
   def chunks[K, S](sc: Scan[K, S])(chars: Chunks[Char]): Chunks[Token[K]] =
     def emit(ts: Vector[Token[K]], rest: => Chunks[Token[K]]): Chunks[Token[K]] =
       if ts.isEmpty then rest
-      else okay.produce(okay.ChunkBuf.of(ts)).flatMap(_ => rest)
+      else okay.produce(okay.ChunkBuf.ofSpecialized(ts)).flatMap(_ => rest)
 
     def go(s: S, rest: Chunks[Char]): Chunks[Token[K]] = Chunks.defer {
       Chunks.pull(rest) match

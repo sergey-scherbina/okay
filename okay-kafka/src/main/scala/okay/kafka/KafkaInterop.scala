@@ -32,7 +32,7 @@ object KafkaInterop {
     def go(): KafkaChunks[K, V] =
       effect[F, Chunk[ConsumerRecord[K, V]]](Async.Run { () =>
         val records = consumer.poll(java.time.Duration.ofMillis(pollMillis))
-        okay.ChunkBuf.of(records.iterator.asScala)
+        okay.ChunkBuf.ofSpecialized(records.iterator.asScala)
       }).flatMap { chunk =>
         if chunk.isEmpty then go()
         else effect[F, Chunk[ConsumerRecord[K, V]]](chunk).flatMap(_ => go())

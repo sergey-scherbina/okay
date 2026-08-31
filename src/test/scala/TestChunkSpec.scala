@@ -59,4 +59,45 @@ class TestChunkSpec extends munit.FunSuite {
     assertEquals(specialized.map(_ * 2).toList, fallback.map(_ * 2).toList)
     assertEquals(specialized ++ fallback, fallback ++ specialized)
   }
+
+  test("the whole producer family specializes, not just tabulate") {
+    // generate: the filler is built once and drives the recursion, so
+    // EVERY chunk is unboxed, not only the first
+    val gen = Chunks.generate(0L)(identity)(_ + 1)(size = 8)
+    val firstTwo = Chunks.take(gen)(16)
+    val chunks = collect(firstTwo)
+    assert(chunks.length >= 2, s"only ${chunks.length} chunks to judge by")
+    for c <- chunks do assertEquals(backing(c), "long[]")
+
+    // map over an unboxed source stays unboxed
+    val mapped = collect(Chunks.take(Chunks.map(gen)(_ * 2))(16))
+    for c <- mapped do assertEquals(backing(c), "long[]")
+
+    // filter too
+    val kept = collect(Chunks.take(Chunks.filter(gen)(_ % 2 == 0))(4))
+    for c <- kept do assertEquals(backing(c), "long[]")
+
+    // and `of`, which is what the interop modules hand over
+    assertEquals(backing(ChunkBuf.ofSpecialized(Vector(1L, 2L, 3L))), "long[]")
+  }
+
+  test("a generic caller still gets correct answers from all of them") {
+    // no ClassTag reachable: every one of these falls back, and the
+    // values must still be right — that is the whole safety claim
+    def genMap[A, B](p: Chunks[A])(f: A => B): Chunks[B] =
+      Chunks.mapWith(p)(ChunkBuf.mapper[A, B](f))
+
+    val gen = Chunks.generate(0L)(identity)(_ + 1)(size = 8)
+    val out = collect(Chunks.take(genMap(gen)((x: Long) => x * 3))(16))
+    for c <- out do assertEquals(backing(c), "Object[]", "it specialized where it cannot")
+    assertEquals(out.flatMap(_.toList).take(8), List(0L, 3L, 6L, 9L, 12L, 15L, 18L, 21L))
+  }
+
+  /** the chunks a producer yields, as a list */
+  def collect[A](p: Chunks[A]): List[Chunk[A]] =
+    def go(x: Chunks[A], acc: List[Chunk[A]]): List[Chunk[A]] =
+      Chunks.pull(x) match
+        case None => acc.reverse
+        case Some((c, r)) => go(r, c :: acc)
+    go(p, Nil)
 }

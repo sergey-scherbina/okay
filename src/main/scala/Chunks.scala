@@ -25,16 +25,16 @@ object Chunks {
    * unfolding seed per emitted chunk. Construction is lazy — the
    * first chunk is computed at the first pull, one chunk at a time.
    */
-  def generate[A, B](a: A)(f: A => B)(g: A => A)(size: Int = 64): Chunks[B] =
+  inline def generate[A, B](a: A)(inline f: A => B)(inline g: A => A)
+                           (size: Int = 64): Chunks[B] =
+    generateWith(a)(ChunkBuf.filler[A, B](f)(g)(size))
+
+  /** the recursion behind the inline `generate` — public for the same
+   * binary-compatibility reason as `mapWith` */
+  def generateWith[A, B](a: A)(fill: A => (Chunk[B], A)): Chunks[B] =
     def go(s: A): Chunks[B] = pure[Produce, Unit](()).flatMap: _ =>
-      val buf = ChunkBuf[B](size)
-      var cur = s
-      var i = 0
-      while i < size do
-        buf(i) = f(cur)
-        cur = g(cur)
-        i += 1
-      produce(buf.chunk).flatMap(_ => go(cur))
+      val (c, cur) = fill(s)
+      produce(c).flatMap(_ => go(cur))
 
     go(a)
 
@@ -127,22 +127,44 @@ object Chunks {
    * op-value casts are the identity-signature discipline, as in the
    * Producer stream instance.
    */
-  def map[A, B](p: Chunks[A])(f: A => B): Chunks[B] = defer:
+  /**
+   * Map, with the element type carried as far as the call site knows
+   * it. `inline` here and an ordinary recursion below: the chunk
+   * mapper is specialized ONCE, where `B` may still be concrete, and
+   * handed to the recursion as a value — so every chunk it maps is
+   * unboxed, not only the first. Where `B` is abstract (through
+   * `Pipeline`, or any generic caller) `mapper` falls back and this
+   * is exactly the code it was before.
+   */
+  inline def map[A, B](p: Chunks[A])(inline f: A => B): Chunks[B] =
+    mapWith(p)(ChunkBuf.mapper[A, B](f))
+
+  /** the recursion behind the inline `map`. Public because an inline
+   * method may only reach members at least as accessible as itself —
+   * a private one makes the compiler synthesize an accessor whose
+   * name is unstable across compiler versions, which breaks a
+   * downstream JAR on a mere recompile. */
+  def mapWith[A, B](p: Chunks[A])(g: Chunk[A] => Chunk[B]): Chunks[B] = defer:
     (p.resume: @unchecked) match
       case Pure(_) => end
-      case Effect(c) => produce(mapChunk(c.asInstanceOf[Chunk[A]])(f))
+      case Effect(c) => produce(g(c.asInstanceOf[Chunk[A]]))
       case Bind(Effect(c), k) =>
-        produce(mapChunk(c.asInstanceOf[Chunk[A]])(f)).flatMap(_ => map(k(c))(f))
+        produce(g(c.asInstanceOf[Chunk[A]])).flatMap(_ => mapWith(k(c))(g))
 
   /** keep the elements satisfying pred (empty result chunks are skipped) */
-  def filter[A](p: Chunks[A])(pred: A => Boolean): Chunks[A] = defer:
+  inline def filter[A](p: Chunks[A])(inline pred: A => Boolean): Chunks[A] =
+    filterWith(p)(ChunkBuf.filterer[A](pred))
+
+  /** the recursion behind the inline `filter` — public for the same
+   * binary-compatibility reason as `mapWith` */
+  def filterWith[A](p: Chunks[A])(g: Chunk[A] => Chunk[A]): Chunks[A] = defer:
     (p.resume: @unchecked) match
       case Pure(_) => end
-      case Effect(c) => produce(filterChunk(c.asInstanceOf[Chunk[A]])(pred))
+      case Effect(c) => produce(g(c.asInstanceOf[Chunk[A]]))
       case Bind(Effect(c), k) =>
-        val fc = filterChunk(c.asInstanceOf[Chunk[A]])(pred)
-        if fc.isEmpty then filter(k(c))(pred)
-        else produce(fc).flatMap(_ => filter(k(c))(pred))
+        val fc = g(c.asInstanceOf[Chunk[A]])
+        if fc.isEmpty then filterWith(k(c))(g)
+        else produce(fc).flatMap(_ => filterWith(k(c))(g))
 
   /** the first n elements (the last chunk truncated) */
   def take[A](p: Chunks[A])(n: Int): Chunks[A] = defer:
@@ -285,6 +307,9 @@ object Chunks {
     loop(emptyChunk, 0, p, c)
   }
 
+  /** the non-specializing chunk map, for callers that hold `f` as a
+   * value (Parallel's per-chunk fibers); `ChunkBuf.mapper` is the
+   * specializing form the inline `map` uses */
   private[okay] def mapChunk[A, B](c: Chunk[A])(f: A => B): Chunk[B] =
     val n = c.length
     val buf = ChunkBuf[B](n)
@@ -293,19 +318,6 @@ object Chunks {
       buf(i) = f(c(i))
       i += 1
     buf.chunk
-
-  private def filterChunk[A](c: Chunk[A])(pred: A => Boolean): Chunk[A] =
-    val n = c.length
-    val buf = ChunkBuf[A](n)
-    var i = 0
-    var j = 0
-    while i < n do
-      val a = c(i)
-      if pred(a) then
-        buf(j) = a
-        j += 1
-      i += 1
-    if j == n then c else buf.take(j)
 
   extension [A](p: Chunks[A])
     /** the element view: one tree step per chunk, an index per element */

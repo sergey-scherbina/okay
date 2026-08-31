@@ -145,6 +145,126 @@ object ChunkBuf {
         buf.chunk
     }
 
+  /**
+   * A chunk-to-chunk map, SPECIALIZED once where it is written.
+   *
+   * `Chunks.map` recurses over the stream, and an inline method
+   * cannot recurse — so the specialization is done here, at the call
+   * site, and handed to the recursion as an ordinary function value
+   * with the `ClassTag` captured in its closure. Every chunk the
+   * recursion maps then lands in a `long[]`, not only the first.
+   */
+  inline def mapper[A, B](inline f: A => B): Chunk[A] => Chunk[B] =
+    summonFrom {
+      case ct: ClassTag[B] =>
+        (c: Chunk[A]) =>
+          val n = c.length
+          val arr = ct.newArray(n)
+          var i = 0
+          while i < n do
+            arr(i) = f(c(i))
+            i += 1
+          ArraySeq.unsafeWrapArray(arr)
+      case _ =>
+        (c: Chunk[A]) =>
+          val n = c.length
+          val buf = ChunkBuf[B](n)
+          var i = 0
+          while i < n do
+            buf(i) = f(c(i))
+            i += 1
+          buf.chunk
+    }
+
+  /**
+   * The same for filter. The result length is not known until the
+   * pass is done, so it fills to the source's length and trims — and
+   * returns the source itself when nothing was dropped, which is the
+   * common case and costs no allocation at all.
+   */
+  inline def filterer[A](inline pred: A => Boolean): Chunk[A] => Chunk[A] =
+    summonFrom {
+      case ct: ClassTag[A] =>
+        (c: Chunk[A]) =>
+          val n = c.length
+          val arr = ct.newArray(n)
+          var i = 0
+          var j = 0
+          while i < n do
+            val a = c(i)
+            if pred(a) then
+              arr(j) = a
+              j += 1
+            i += 1
+          if j == n then c
+          else ArraySeq.unsafeWrapArray(arr.slice(0, j))
+      case _ =>
+        (c: Chunk[A]) =>
+          val n = c.length
+          val buf = ChunkBuf[A](n)
+          var i = 0
+          var j = 0
+          while i < n do
+            val a = c(i)
+            if pred(a) then
+              buf(j) = a
+              j += 1
+            i += 1
+          if j == n then c else buf.take(j)
+    }
+
+  /**
+   * An unfold, specialized where the element type is known: the same
+   * shape as `Chunks.generate`, which recurses, so the per-chunk
+   * filler is built once here and handed to the recursion.
+   */
+  inline def filler[S, A](inline f: S => A)(inline g: S => S)(size: Int)
+  : S => (Chunk[A], S) =
+    summonFrom {
+      case ct: ClassTag[A] =>
+        (s0: S) =>
+          val arr = ct.newArray(size)
+          var cur = s0
+          var i = 0
+          while i < size do
+            arr(i) = f(cur)
+            cur = g(cur)
+            i += 1
+          (ArraySeq.unsafeWrapArray(arr), cur)
+      case _ =>
+        (s0: S) =>
+          val buf = ChunkBuf[A](size)
+          var cur = s0
+          var i = 0
+          while i < size do
+            buf(i) = f(cur)
+            cur = g(cur)
+            i += 1
+          (buf.chunk, cur)
+    }
+
+  /**
+   * `of`, specialized: the interop modules that hand over an already
+   * sequenced collection get an unboxed chunk when their element type
+   * is concrete, which for Kafka records or JDBC rows it usually is.
+   */
+  inline def ofSpecialized[A](xs: IterableOnce[A]): Chunk[A] =
+    summonFrom {
+      case ct: ClassTag[A] =>
+        val known = xs.knownSize
+        val seq = if known >= 0 then xs else xs.iterator.toVector
+        val n = if known >= 0 then known else seq.asInstanceOf[Vector[A]].length
+        val arr = ct.newArray(n)
+        val it = seq.iterator
+        var i = 0
+        while it.hasNext && i < n do
+          arr(i) = it.next()
+          i += 1
+        if i == n then ArraySeq.unsafeWrapArray(arr)
+        else ArraySeq.unsafeWrapArray(arr.slice(0, i))
+      case _ => of(xs)
+    }
+
   extension [A](buf: ChunkBuf[A]) {
     /** the assertion, once: what goes in is an A */
     inline def update(i: Int, a: A): Unit = buf(i) = a.asInstanceOf[AnyRef]
