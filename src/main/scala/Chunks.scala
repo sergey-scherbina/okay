@@ -40,6 +40,18 @@ object Chunks {
    * `ofChars` below is the exception that shows the rule — there the
    * element type is known statically, a primitive `Array[Char]` can
    * be allocated, and no cast is needed at all.
+   *
+   * And the cast IS removable, which was worth checking rather than
+   * assuming: `ArraySeq.untagged.newBuilder[A]` needs no ClassTag and
+   * answers a typed `ArraySeq[A]`, so this could be written with no
+   * `asInstanceOf` anywhere. Measured, it costs 5x per chunk (64ns ->
+   * 307ns for sixty-four elements; 38 -> 158 for a half-full one),
+   * which is about 23% of the chunked stream lane. The same
+   * measurement says the cast itself is FREE: a ClassTag'd
+   * `Array[String]` builds in 69ns against this one's 64. So the
+   * cast buys the absence of a ClassTag from every producer's
+   * signature and costs nothing at runtime — see
+   * `ChunkBuildBenchmark` and src/jmh/history.tsv.
    */
   private[okay] inline def wrap[A](arr: Array[AnyRef]): Chunk[A] =
     ArraySeq.unsafeWrapArray(arr).asInstanceOf[Chunk[A]]
