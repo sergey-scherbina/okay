@@ -321,6 +321,23 @@ scoring loop reads three components per iteration and does nothing
 else, so per-element cost is the whole cost. Where there is real work
 per element, boxing disappears into it.
 
+The same question one layer along: **persistence** used to carry the
+vector as `List[Double]`, which boxed every component twice (once out,
+once back), widened every one to 64 bits it did not use, and spent
+nine CBOR bytes per component where four will do. The fix was a
+missing primitive rather than a workaround — `Schema.SBytes`, because
+CBOR has a first-class byte string and JSON has none, so without it
+every binary payload has to be smuggled through something else. The
+vector now travels as raw little-endian float32.
+
+Measured on a real index — 8 segments at 1536 dimensions: **52,635
+bytes of CBOR against about 114,000**, 2.17x, of which 49,152 is the
+vectors at their exact width. Precision is unchanged and still exact:
+float32 bits in, the same bits out, where before it was float32
+widened to float64 and narrowed back. The JSON dump gets *more*
+readable, not less — one base64 token per vector instead of 1536
+float literals burying the fields anyone actually reads.
+
 ## Passages as lineage
 
 A `Segment` carries the exact span, so re-observing more of a document

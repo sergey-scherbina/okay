@@ -151,4 +151,54 @@ class TestCodec extends munit.FunSuite {
     assertEquals(okay.parse.Cst.lexemes(open), "*never closed")
     assert(okay.parse.Cst.errors(open).nonEmpty)
   }
+
+  test("base64 round-trips every length, and rejects damage as a value") {
+    for n <- 0 to 32 do
+      val bs = Array.tabulate(n)(i => (i * 37 - 128).toByte)
+      val back = Base64.decode(Base64.encode(bs))
+      assertEquals(back.map(_.toList), Right(bs.toList), s"length $n")
+    // padding is exact, so the encoding is the canonical one
+    assertEquals(Base64.encode("M".getBytes("UTF-8")), "TQ==")
+    assertEquals(Base64.encode("Ma".getBytes("UTF-8")), "TWE=")
+    assertEquals(Base64.encode("Man".getBytes("UTF-8")), "TWFu")
+    // and a bad character is an error value, not a thrown exception
+    assert(Base64.decode("TW!u").isLeft)
+    assert(Base64.decode("TWF").isLeft, "a length not a multiple of four")
+  }
+
+  test("bytes survive both wires, and CBOR spends four bytes per float") {
+    final case class Blob(name: String, data: Array[Byte])
+    given Schema[Blob] = Schema.derived
+
+    val floats = Array.tabulate(1536)(i => i * 0.001f)
+    val packed = new Array[Byte](floats.length * 4)
+    for i <- floats.indices do
+      val b = java.lang.Float.floatToIntBits(floats(i))
+      packed(i * 4) = b.toByte
+      packed(i * 4 + 1) = (b >> 8).toByte
+      packed(i * 4 + 2) = (b >> 16).toByte
+      packed(i * 4 + 3) = (b >> 24).toByte
+    val blob = Blob("v", packed)
+
+    // CBOR: a byte string, so four bytes per component and no per-item
+    // tag — where List[Double] spent nine
+    val cbor = Cbor.write(blob)
+    assert(cbor.length < 6200, s"CBOR spent ${cbor.length} bytes")
+    assert(cbor.length > 6140, s"CBOR spent only ${cbor.length} — is the data there?")
+    val backC = Cbor.read[Blob](cbor)
+    assertEquals(backC.map(_.data.toList), Right(packed.toList))
+
+    // JSON: base64, so one token instead of 1536 float literals
+    val json = Json.write(blob)
+    assert(json.length < 8300, s"JSON spent ${json.length} bytes")
+    val backJ = Json.read[Blob](json)
+    assertEquals(backJ.map(_.data.toList), Right(packed.toList))
+
+    // and the floats come back bit-for-bit
+    val got = backC.toOption.get.data
+    for i <- floats.indices do
+      val b = (got(i * 4) & 0xFF) | ((got(i * 4 + 1) & 0xFF) << 8) |
+        ((got(i * 4 + 2) & 0xFF) << 16) | ((got(i * 4 + 3) & 0xFF) << 24)
+      assertEquals(java.lang.Float.intBitsToFloat(b), floats(i), s"component $i")
+  }
 }

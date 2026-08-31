@@ -183,6 +183,16 @@ same material with the measurements attached.
   unclosed, a close with nothing open is an error leaf, void elements
   never open). All lossless and total, checked under generated input.
   **`Cbor`** is the binary algebra over the same `Schema`.
+- **`Schema.SBytes`** (okay-codec) — raw bytes as a PRIMITIVE of the
+  algebra, because CBOR has a first-class byte string and JSON has
+  none: without it every binary payload gets smuggled through a text
+  or number field, which is how an embedding index came to persist as
+  `List[Double]` at nine bytes and two boxed objects per component.
+  Writes as a CBOR byte string, as base64 in JSON (where a dump gets
+  MORE readable — one token instead of 1536 float literals), and as
+  `contentEncoding: base64` in a tool's JSON Schema. The cost it
+  carries honestly: `Array[Byte]` has reference equality, so a product
+  holding one is not a value for `==`.
 - **`Structured.cut`** (okay-llm) — validate a structured answer as
   it streams and STOP when it is complete: each token is an append,
   which is an edit, so the incremental parser costs the token; not

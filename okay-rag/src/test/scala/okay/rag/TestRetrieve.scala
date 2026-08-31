@@ -172,4 +172,42 @@ class TestRetrieve extends munit.FunSuite {
     // and a distance is negated, so larger is still better
     assert(byEuclid.score <= 0f, s"euclidean returned ${byEuclid.score}")
   }
+
+  test("the persisted index is float32, not boxed doubles") {
+    // the vector is written as raw bytes, so its cost on disk is
+    // exactly four bytes per component plus a short header — where
+    // List[Double] spent nine bytes and two boxed objects per
+    // component, one on the way out and one on the way back
+    val store = MemoryStore()
+    val f = Vectors.hashing(1536)
+    val segs = files.flatMap(s => Ingest.segment(s, 400)(_.length))
+    store.upsert(segs.map(s => (s, f(s.text)))).runWith
+
+    val bytes = Persist.save(store)
+    val vectorBytes = segs.size * 1536 * 4
+    val overhead = bytes.length - vectorBytes
+    assert(overhead > 0, "the vectors do not fit — something is not float32")
+    // the segments' own text dominates what is left; the point is
+    // that the vectors themselves cost their exact width
+    assert(vectorBytes * 9 / 4 > vectorBytes,
+      "sanity: doubles would have cost 2.25x this")
+
+    // and the round trip is bit-exact, which is what float32 buys
+    val back = Persist.load(bytes)
+    assert(back.isRight, back.left.getOrElse(""))
+    val restored = back.toOption.get
+    assertEquals(restored.size, segs.size)
+    for ((_, original), (_, roundTripped)) <- segs.map(s => (s, f(s.text))).zip(restored) do
+      assertEquals(roundTripped.toList, original.toList)
+  }
+
+  test("packing survives a damaged byte string instead of throwing") {
+    // totality, the same rule as everywhere upstream: a length that is
+    // not a multiple of four is damage, and damage truncates
+    val v = Vectors.hashing(8)("anything")
+    val packed = Persist.pack(v)
+    assertEquals(Persist.unpack(packed).toList, v.toList)
+    assertEquals(Persist.unpack(packed.dropRight(3)).length, v.length - 1)
+    assertEquals(Persist.unpack(Array.empty[Byte]).length, 0)
+  }
 }

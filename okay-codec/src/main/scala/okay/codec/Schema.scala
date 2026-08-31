@@ -17,6 +17,17 @@ enum Schema[A]:
   case SDouble extends Schema[Double]
   case SBool extends Schema[Boolean]
   case SString extends Schema[String]
+  /**
+   * Raw bytes. Not a convenience: CBOR has a first-class byte string
+   * (major type 2) and JSON has no bytes at all, so without this every
+   * binary payload has to be smuggled through a text field — which is
+   * how an embedding came to travel as `List[Double]`, nine bytes and
+   * one boxed object per component.
+   *
+   * `Array[Byte]` carries reference equality, so a product holding one
+   * is not a value for `==`. That is the honest cost of not copying.
+   */
+  case SBytes extends Schema[Array[Byte]]
   case SOption[A](of: () => Schema[A]) extends Schema[Option[A]]
   case SList[A](of: () => Schema[A]) extends Schema[List[A]]
   case SProduct[A](name: String, fields: Vector[(String, () => Schema[?])],
@@ -31,6 +42,7 @@ object Schema {
   given Schema[Double] = Schema.SDouble
   given Schema[Boolean] = Schema.SBool
   given Schema[String] = Schema.SString
+  given Schema[Array[Byte]] = Schema.SBytes
 
   given [A](using s: => Schema[A]): Schema[Option[A]] = Schema.SOption(() => s)
   given [A](using s: => Schema[A]): Schema[List[A]] = Schema.SList(() => s)

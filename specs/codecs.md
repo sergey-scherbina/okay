@@ -50,6 +50,13 @@ design away, its direction is right (the user's assessment).
       token and REOPENS the inner frames (adoption-agency in
       miniature); unclosed emphasis at EOF is the builder's "unclosed"
       error node; lossless (every marker token kept)
+- [x] bytes are a PRIMITIVE of the algebra (`SBytes`), not something
+      smuggled through a text or number field: CBOR writes a byte
+      string (major 2), JSON base64, a tool schema
+      `contentEncoding: base64`. Found by asking why an embedding
+      index persisted as `List[Double]` — nine bytes and two boxed
+      objects per component; measured 2.17x smaller on a real index,
+      with precision unchanged and exact
 - [x] cross-format: one derived codec serializes to JSON and CBOR
       with equal semantic content — Cbor.scala is the second algebra
       over the SAME Schema (RFC 8949: products = maps by field name,

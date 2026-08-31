@@ -119,6 +119,11 @@ object Json {
     case Schema.SDouble => a.toString
     case Schema.SBool => a.toString
     case Schema.SString => s"\"${escape(a.asInstanceOf[String])}\""
+    // JSON has no bytes. Base64 is what everyone means by them here,
+    // and it is also what makes a dump READABLE: a thousand float
+    // literals are not something anyone reads, and one opaque token
+    // says "binary payload" without burying the fields that matter.
+    case Schema.SBytes => s"\"${Base64.encode(a.asInstanceOf[Array[Byte]])}\""
     case Schema.SOption(of) =>
       a.asInstanceOf[Option[Any]] match
         case Some(x) => encode(of().asInstanceOf[Schema[Any]])(x)
@@ -143,6 +148,7 @@ object Json {
     case (Schema.SDouble, JNum(n)) => Right(n.asInstanceOf[A])
     case (Schema.SBool, JBool(b)) => Right(b.asInstanceOf[A])
     case (Schema.SString, JStr(x)) => Right(x.asInstanceOf[A])
+    case (Schema.SBytes, JStr(x)) => Base64.decode(x).map(_.asInstanceOf[A])
     case (Schema.SOption(of), JNull) => Right(None.asInstanceOf[A])
     case (Schema.SOption(of), v) =>
       decode(of().asInstanceOf[Schema[Any]])(v).map(Some(_).asInstanceOf[A])

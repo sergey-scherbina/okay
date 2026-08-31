@@ -51,6 +51,11 @@ object Cbor {
     case Schema.SBool =>
       out += (if a.asInstanceOf[Boolean] then 0xF5 else 0xF4).toByte
     case Schema.SString => text(out, a.asInstanceOf[String])
+    case Schema.SBytes =>
+      // major type 2: a byte string, which is what CBOR is for
+      val bs = a.asInstanceOf[Array[Byte]]
+      header(out, 2, bs.length.toLong)
+      out ++= bs
     case Schema.SOption(of) => a.asInstanceOf[Option[Any]] match
       case None => out += 0xF6.toByte
       case Some(x) => put(out, of().asInstanceOf[Schema[Any]], x)
@@ -128,6 +133,10 @@ object Cbor {
       case b => Left(f"expected a boolean, got 0x$b%02X")
     }
     case Schema.SString => textItem(in).map(_.asInstanceOf[A])
+    case Schema.SBytes => head(in).flatMap {
+      case (2, n) => in.take(n.toInt).map(_.asInstanceOf[A])
+      case (m, _) => Left(s"expected a byte string, got major $m")
+    }
     case Schema.SOption(of) =>
       if in.peek == 0xF6 then in.byte().map(_ => None.asInstanceOf[A])
       else get(in, of().asInstanceOf[Schema[Any]]).map(Some(_).asInstanceOf[A])

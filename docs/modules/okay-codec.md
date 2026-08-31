@@ -114,7 +114,9 @@ Cst.errors(t).isEmpty               // reframed, not faulted
 
 | member | signature | meaning |
 |---|---|---|
-| `Schema[A]` | `SInt/SLong/SDouble/SBool/SString/SOption/SList/SProduct/SSum` | the reified shape; fields/cases are thunked for recursion |
+| `Schema[A]` | `SInt/SLong/SDouble/SBool/SString/SBytes/SOption/SList/SProduct/SSum` | the reified shape; fields/cases are thunked for recursion |
+| `Schema.SBytes` | `Schema[Array[Byte]]` | raw bytes: a CBOR byte string, base64 in JSON, `contentEncoding` in a tool schema |
+| `Base64` | `encode(Array[Byte]): String`, `decode(String): Either[String, Array[Byte]]` | RFC 4648 §4, hand-rolled and total; decoding reports rather than throws |
 | `Schema.derived` | `inline given derived[A](using Mirror.Of[A]): Schema[A]` | Mirrors derivation; write `given Schema[T] = Schema.derived` |
 | `Json` (data) | `JNull/JBool/JNum/JStr/JArr/JObj/JErr` | the semantic projection, damage as `JErr` |
 | `Json.parse` | `String => Json` | total: any string yields a value |
