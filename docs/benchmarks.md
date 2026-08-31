@@ -301,9 +301,20 @@ including the damaged ones, is what costs, and it is what is being
 bought. `Json.value` on an already-parsed tree is a public entry point
 for anyone holding a session who should not pay for it twice.
 
-**BPE**: 300us for a ~3.3KB corpus. The rank scan is quadratic per
-word — fine for v1, and the obvious lever the day tokenization gets
-hot.
+**BPE**: 306.7us for a ~3.3KB corpus, from 424.0 — 28%, by taking the
+constant out of the scan rather than the exponent. It is still
+quadratic per word (a pass per merge, and a merge shortens the word by
+one), which is the shape BPE asks for; what went is the waste inside
+each pass. The old one built a `Vector` of every adjacent pair,
+filtered it into a second `Vector`, then called `minByOption(ranks)` —
+so every pair cost TWO map lookups, once for `contains` and once for
+the comparison, plus two tuple allocations, on every pass. It now
+finds the same minimum in one pass with one `get` per pair and nothing
+allocated, over an `Array[String]` instead of a rebuilt `Vector`.
+
+Making it linear needs a heap keyed by rank with positions tracked,
+and that is still not worth it: words are short, so k is around ten
+and the constant was the whole cost.
 
 ## 11. Retrieval — indexing, re-indexing, chunking, query
 
