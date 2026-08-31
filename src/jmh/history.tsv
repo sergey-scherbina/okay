@@ -141,3 +141,6 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-31\tokayWriter-gadt\t197969\tns/10k\tGADT Say wrapper — against 203216 for the identity encoding: no cost
 2026-08-31\ttellTag-isolated\t74995\tns/10k\tbuild+fold alone showed +25% (59807 identity) — the wrong fraction to decide on
 2026-08-31\twriterSpecialized-gadt\t95912\tns/10k\tagainst 108386 generic — the fold dispatch still helps, 12% not 35%
+2026-08-31\ttdigestShipped\t120746\tns/10k\twas 70030290 — buffered adds, batch compress: 580x
+2026-08-31\tcmsShipped\t191128\tns/10k\twas 2282516 — Array[Array[Long]] in place: 12x (floor 68740)
+2026-08-31\thllShipped\t163834\tns/10k\twas 489298 — Array[Byte] in place: 3x (floor 36221)

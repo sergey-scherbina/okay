@@ -202,7 +202,11 @@ same material with the measurements attached.
   merge is `(zero, seqOp, combOp)` — the distributed contract; `zip`
   is one-pass composition; `Serializable` so it ships as Spark tasks.
   **`Sketch`** — HyperLogLog, Count-Min, t-digest: approximate
-  monoids with stated error.
+  monoids with stated error. Their state is flat arrays mutated in
+  place, with `init` allocating fresh and `merge` allocating its
+  result — the two rules that make in-place accumulation safe under
+  the same contract Spark's `seqOp` has. The persistent-`Vector`
+  versions they replaced cost 3x, 12x and 580x respectively.
 
   `fold` is the seam the specialization travels through, so it is not
   final: **`Aggregator.OfLong` / `OfDouble` / `OfInt`** override it to

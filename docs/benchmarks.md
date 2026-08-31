@@ -459,6 +459,45 @@ a local fold the JIT often drops even that. `variance` stays close to
 its floor because Welford's per-element division dominates it, not the
 accumulator.
 
+## 13. The sketches — where the same defect was hiding
+
+The aggregators' tuple accumulators turned out to be a bigger hole than
+the boxing above them. The sketches had the same defect one layer
+further in, and worse, because their state is large.
+
+| lane | before | after | floor |
+|---|---|---|---|
+| `tDigest` | 70 030 | **120.7** | — |
+| `countMin` | 2 282.5 | **191.1** | 68.7 |
+| `hyperLogLog` | 489.3 | **163.8** | 36.2 |
+
+Per 10k elements. The t-digest is not a typo: it was 7us per element.
+
+**Count-Min** kept `Vector[Vector[Long]]` and did
+`rows.zipWithIndex.map(...)` with an `updated` per row on every add —
+a tuple per row, a fresh outer vector, and a copied path through each
+2048-element inner one, for what is `depth` counter increments.
+`Array[Array[Long]]` written in place: 12x.
+
+**HyperLogLog** kept `Vector[Byte]` and rebuilt a path through 16 384
+registers whenever a rank improved. One byte store instead: 3x.
+
+**t-digest** was algorithmic, not representational. Each add did an
+`indexWhere` (a linear scan of up to `2*delta` centroids), a `patch`
+(a full copy of the vector to insert one point), and a `compressed`
+that sorts when it runs. The standard shape — the one Dunning
+describes — buffers incoming points at O(1) and compresses once the
+buffer fills, merging the sorted centroids with the sorted buffer in
+one pass. 580x.
+
+All three now mutate their accumulator in place and hand the same one
+back. That is within the contract `Aggregator` is declared against —
+Spark's `seqOp` is explicitly allowed to modify and return its first
+argument, and `Collect.aggregator` already did this for a java
+`Collector` — and it is kept safe by two rules: `init` allocates a
+fresh sketch on every call, so two folds never share one, and `merge`
+allocates its result, so neither side is disturbed by combining.
+
 ## Why the good numbers, in one place
 
 1. **No runtime where none is needed.** Pure binds are plain data
