@@ -58,7 +58,7 @@ enum Free[F[+_], A] {
       case Pure(a) => p(a)
 
   /** interpret into F's own Monad, operation by operation */
-  final def run: (M: Monad[F]) ?=> F[A] =
+  final def run(using M: Monad[F]): F[A] =
     fold(M.pure)([X] => a => k => a.flatMap(k(_).run))
 
   /** interpret through a natural transformation into any monad M */

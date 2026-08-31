@@ -1,7 +1,16 @@
 import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
 ThisBuild / version := "0.1.0-SNAPSHOT"
-ThisBuild / scalaVersion := "3.7.1"
+// Scala 3.7.4. The floor is 3.6 — this code uses the redesigned
+// given syntax (`given [A, E] => Conversion[…]`) and named context
+// bounds (`[M[_] : Monad as M]`), both 3.6 features, and 3.5 fails
+// with hundreds of syntax errors. The ceiling is here for one reason
+// only: okay-spark. Its `for3Use2_13` Spark dependency drags in
+// org.scala-lang:scala-reflect, which is a Scala 2 artifact, and the
+// resolution that works through 3.7 stops working on 3.8+. The core
+// itself compiles clean on 3.9.0 (verified), so if Spark ever leaves
+// this build, so does the ceiling.
+ThisBuild / scalaVersion := "3.7.4"
 ThisBuild / scalacOptions ++= Seq("-Xkind-projector", "-Wall")
 
 ThisBuild / organization := "dev.okay"
