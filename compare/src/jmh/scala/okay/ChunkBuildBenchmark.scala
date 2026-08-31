@@ -128,9 +128,6 @@ class ChunkBuildBenchmark {
       i += 1
     buf.chunk
 
-  /** and against the shipped SPECIALIZED path */
-  @Benchmark
-  def tabulateLong: Chunk[Long] = ChunkBuf.tabulate[Long](size)(i => longs(i))
 
   /** the floor: a ClassTag'd array, which the producers cannot have */
   @Benchmark
