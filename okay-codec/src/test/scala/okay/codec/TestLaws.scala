@@ -38,6 +38,14 @@ class TestLaws extends munit.ScalaCheckSuite {
     Gen.const("`"), Gen.const("\n"), Gen.const("more words "), Gen.const("#")
   )).map(_.mkString)
 
+  val xmlish: Gen[String] = Gen.listOf(Gen.oneOf(
+    Gen.const("<a>"), Gen.const("</a>"), Gen.const("<b class=\"x\">"),
+    Gen.const("</b>"), Gen.const("<br>"), Gen.const("<img src='y'/>"),
+    Gen.const("text "), Gen.const("\n"), Gen.const("<!-- c -->"),
+    Gen.const("<![CDATA[ </z> ]]>"), Gen.const("</z>"), Gen.const("<unclosed"),
+    Gen.const("<"), Gen.const(">")
+  )).map(_.mkString)
+
   val anything: Gen[String] = Arbitrary.arbitrary[String]
 
   property("JSON: the CST reproduces ANY input, exactly") {
@@ -70,6 +78,27 @@ class TestLaws extends munit.ScalaCheckSuite {
       val chunked = okay.Chunks.fold(
         Scan.chunks(okay.lex.Json.scan)(okay.Chunks.fromIterator(s.iterator, size)))
       chunked == elementwise
+    }
+  }
+
+  property("XML: the CST reproduces ANY input, exactly") {
+    forAll(Gen.oneOf(xmlish, anything)) { (s: String) =>
+      Xml.render(Xml.cst(s)) == s
+    }
+  }
+
+  property("XML: an incremental reparse equals a full one") {
+    forAll(xmlish.suchThat(_.nonEmpty)) { (doc: String) =>
+      forAll(Gen.choose(0, doc.length), Gen.choose(0, 5),
+        Gen.oneOf("", "x", "</a>", "<b>", "\n", "<")) {
+        (at0: Int, drop0: Int, insert: String) =>
+          val at = math.min(at0, doc.length)
+          val drop = math.min(drop0, doc.length - at)
+          val edited = doc.take(at) + insert + doc.drop(at + drop)
+          val re = Xml.reparse(Xml.parse(doc, 16), doc, edited,
+            at, at + drop, at + insert.length, 16)
+          re.tree == Xml.parse(edited, 16).tree
+      }
     }
   }
 

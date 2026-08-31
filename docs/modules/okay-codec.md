@@ -49,6 +49,14 @@ double-quoted scalars, comments (kept — lossless); flow styles,
 anchors, tags and block scalars are out of scope, degrading to error
 leaves, never faults.
 
+**Nesting by name (the XML/HTML dialect).** The case where a close
+can be wrong: `Xml` closes the unclosed elements under a mismatched
+`</a>` and marks them, treats a close with nothing open as an error
+leaf, never opens a frame for a void element (`<br>`, `<img>`), and
+lets comments and CDATA swallow markup without nesting it. Lossless
+like the rest, so `Xml.render(Xml.cst(s)) == s` for every string;
+`Xml.text` and `Xml.elements` are the projections.
+
 **Reframing (the Markdown dialect).** Markdown emphasis does not
 nest: `*a _b* c_` closes the star while the underscore is open. The
 dialect answers with the uniml move — close the crossing inner

@@ -66,5 +66,15 @@ design away, its direction is right (the user's assessment).
       is an error leaf). v1 subset: block styles only — flow, anchors,
       tags, block scalars out of scope.
 
+- [x] XML/HTML: the NESTING prover — JSON nests by punctuation, YAML
+      by indentation, Markdown not at all (hence reframing), and this
+      one by NAMED tags, which is where a close can be WRONG. A
+      mismatched `</a>` closes the unclosed elements under it and says
+      so on the error channel; a close with nothing open is an error
+      leaf; void elements (`<br>`, `<img>`) never open a frame;
+      comments and CDATA swallow markup without nesting it; an
+      unterminated tag at end of input is still a token. Lossless and
+      total under generated input, incremental reparse included.
+
 ## Out of scope
 - schema languages/validation; a transport module (its own, later)
