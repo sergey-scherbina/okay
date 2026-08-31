@@ -14,6 +14,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   every snippet's shape runs in the repo's tests.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
+- **[The one cast that cannot go](existentials.md)** — the eleven
+  `asInstanceOf` in `Pipe`, the five encodings tried against them, what
+  the compiler said to each, and the bytecode showing why four fail
+  identically. Read before attempting a sixth.
 - **[Benchmarks](benchmarks.md)** — every measured case with its
   table, WHY the okay number is what it is, why the competitors'
   numbers differ, and where the honest limits are. Raw history with

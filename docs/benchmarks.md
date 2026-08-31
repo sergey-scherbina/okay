@@ -385,6 +385,80 @@ asked, which is what benchmarks are for.
 
 ---
 
+## 12. Consumption — where the boxing was, per 10k Longs
+
+Every number here is 10 000 elements in chunks of 64, JMH, 3 forks
+where a decision hung on it. The interesting part is that two
+intuitions were wrong before the lanes were written, so the diagnostic
+lanes matter as much as the result.
+
+**A fold whose step is written at the call site.**
+
+| lane | us/op |
+|---|---|
+| `Chunks.fold` + `Fold.sum[Long]`, before | 38.2 |
+| `Chunks.foldLeft(p)(0L)(_ + _)` | **7.0** |
+| the same step, via `Numeric.plus` | 8.2 |
+| a hand loop over the same chunks | 2.6 |
+
+`Numeric` survives inlining fine, so the typeclass was never the cost.
+`Fold[A, S]` is `add(s: S, a: A): S`, generic in both, and a
+megamorphic call site gives the JIT no way to remove the boxes.
+
+**Which half of the boxing.** This is the lane that changed the design:
+
+| lane | us/op |
+|---|---|
+| accumulator generic, element read directly | 29.4 |
+| element boxed, accumulator a raw `long` | **2.8** |
+| floor | 2.6 |
+
+The accumulator is essentially the whole cost; boxing the element read
+is nearly free. That is why only the accumulator is specialized, and
+why the specialization is useful at all — `Chunks.fold` cannot know
+the element type either way.
+
+**A fold that arrives as data**, where nothing can inline — an
+`Aggregator`'s, a java `Collector`'s:
+
+| lane | us/op |
+|---|---|
+| a plain `Fold[Long, Long]` | 34.1 |
+| `Fold.long(z)(f)`, constructor **not** inline | 27.5 |
+| `Fold.long(z)(f)`, constructor inline | **7.8** |
+
+The middle row is the trap: a plain constructor stores the step as a
+`Function2`, whose `apply` erases generic, so the boxing the subtrait
+just removed comes straight back in the field it closed over. `inline`
+beta-reduces the lambda into `addLong` and there is no function object
+left to call. The anonymous class is then duplicated per call site,
+which is the mechanism rather than an accident.
+
+**Aggregators**, after the specialization was carried up and the tuple
+accumulators flattened:
+
+| lane | before | after | floor |
+|---|---|---|---|
+| `count` | 37.8 | **19.5** | 8.6 |
+| `sum` | 40.8 | **18.5** | 8.6 |
+| `mean` | 87.0 | **37.3** | 18.6 |
+| `variance` | 90.9 | **74.7** | 49.6 |
+
+`Aggregator.fold` used to build a generic `Fold` unconditionally, so
+none of the above reached Spark, Flink, the cluster or a java
+`Collector` — the callers that can inline nothing and therefore need it
+most. `count` was 5.5x slower than `Fold.count` for identical
+arithmetic.
+
+The tuple accumulators were the larger hole and were not obvious in
+advance: `mean` carried a `(N, Long)` and `variance` a
+`(Long, Double, Double)`, which is three and four allocations per
+**element** — the tuple, plus a box per field, since a tuple's fields
+are `Object`. Flat case classes with primitive fields cost one, and in
+a local fold the JIT often drops even that. `variance` stays close to
+its floor because Welford's per-element division dominates it, not the
+accumulator.
+
 ## Why the good numbers, in one place
 
 1. **No runtime where none is needed.** Pure binds are plain data

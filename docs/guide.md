@@ -90,6 +90,19 @@ on Spark and on Flink unchanged; `zip` computes several statistics in
 one pass; sketches — HyperLogLog, Count-Min, t-digest — are the
 approximate ones, honest monoids with stated error).
 
+Both sides of that algebra are specialized, and the split is the same
+one everywhere: where the step is written at the call site, `inline`
+takes it (`Chunks.foldLeft(p)(z)(f)`, 38.2us -> 7.0 per 10k Longs);
+where the fold arrives as data and nothing can inline — an
+`Aggregator`'s, a java `Collector`'s, one chosen at run time — the
+accumulator is declared where it is already primitive
+(`Fold.OfLong` and its siblings, `Aggregator.OfLong` and its). Only
+the accumulator, because that is measured to be nearly the whole cost;
+boxing the element read costs almost nothing. See
+[the typepedia](typepedia.md) for the shapes and
+[existentials.md](existentials.md) for why the one remaining cast
+cannot be removed.
+
 ## 4. Chunks: the tree steps per batch
 
 `Chunks[A] = Producer[Chunk[A]]` — a stream of array batches. The

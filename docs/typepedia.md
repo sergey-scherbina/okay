@@ -74,6 +74,14 @@ same material with the measurements attached.
   from the answer; `Writer.uncons: Either[A, (W, rest)]`;
   `Writer.fold/run` collect through any `Fold`. The diagonal is
   **`Teller`**; `Put[Teller]` closes the generate triangle.
+
+  The answer type is phantom — the alias is `= W` and mentions `A`
+  nowhere — which is what makes `tell` free and what makes
+  `Writer.told` (an `A =:= W` minted once) the only honest way to
+  resume a continuation after a tell. Five encodings have been tried
+  to remove that assertion; all five fail, and four of them for one
+  mechanical reason. [existentials.md](existentials.md) records what
+  each did, what the compiler said, and the bytecode.
 - **`State % S`** — bespoke tailrec handler; **`PState`** — the
   type-changing (typestate) variant on the paramonad, ~1.7x the price.
 - **`Throws % E`** — typed aborts; `runEither/runThrows`; the `throws`
@@ -162,11 +170,48 @@ same material with the measurements attached.
   the push side. **`Monoid`** (`|+|`) and **`Group`** (adds `inverse`,
   `|-|`) — a sliding window (`sliding`) requires Group and rejects
   Monoid-only elements at compile time.
+
+  Two ways to spend one, and the difference is measured. `Chunks.fold`
+  takes a `Fold` as **data** — an `Aggregator`'s, a java `Collector`'s,
+  one chosen at run time — and `Chunks.foldLeft(p)(z)(f)` takes the
+  step at the **call site**, where `inline` can beta-reduce it into the
+  loop. Per 10k Longs in chunks of 64: 38.2us against 7.0.
+- **`Fold.OfLong` / `OfInt` / `OfDouble` / `OfBoolean`** — the same
+  algebra with the accumulator declared where it is already primitive,
+  for the data path that has nothing to inline. `Fold.long(z)(f)` and
+  friends build one; `count`, `sumLong`, `exists`, `forall` are ones.
+
+  Why a differently-named `addLong` rather than an override of `add`:
+  **erasure is fixed at the declaration**. `add(s: S, a: A): S` is
+  `(Object, Object)Object` in the generic parent and stays that way in
+  every subtype, so re-declaring it at `S = Long` would be the same
+  symbol and the same boxing — the reason the JDK has
+  `LongBinaryOperator` next to `BinaryOperator<Long>`. Only the
+  accumulator is specialized: measured, it is essentially the whole
+  cost (29.4us against 2.8 for boxing the element read instead).
+  `Chunks.fold` dispatches on the four shapes, and GADT refinement
+  hands `S` back from the type test, so the dispatch needs no cast.
 - **`Aggregator[-In, Acc, +Out]`** — init/add/**merge**/present; the
   merge is `(zero, seqOp, combOp)` — the distributed contract; `zip`
   is one-pass composition; `Serializable` so it ships as Spark tasks.
   **`Sketch`** — HyperLogLog, Count-Min, t-digest: approximate
   monoids with stated error.
+
+  `fold` is the seam the specialization travels through, so it is not
+  final: **`Aggregator.OfLong` / `OfDouble` / `OfInt`** override it to
+  hand over the matching `Fold.OfX`. `count` is one; `sum` selects one
+  by `Numeric`. Accumulators are flat — `Aggregator.Mean` and
+  `Aggregator.Variance` are case classes with primitive fields, where
+  a `(N, Long)` and a `(Long, Double, Double)` used to cost three and
+  four allocations per **element** (the tuple, plus a box per field,
+  since a tuple's fields are `Object`). Per 10k: count 37.8 -> 19.5,
+  sum 40.8 -> 18.5, mean 87.0 -> 37.3, variance 90.9 -> 74.7.
+
+  `Numeric` cannot specialize anything — `plus(x: T, y: T): T` erases
+  exactly like `add` — but it can **say** which type this is, and the
+  `=:=` that says it also transports the fold: `substituteCo` at
+  `[X] =>> Fold[X, X]` turns a `Fold[Long, Long]` into a `Fold[N, N]`
+  with no cast, because they are provably the same type.
 - **`Chunk[A]`**/**`Chunks[A]`** — array batches / a producer of
   them; generators fill chunks in while-loops (no tree node per
   element); transformers are chunk-in, chunk-out; `mergeChunks` rides
