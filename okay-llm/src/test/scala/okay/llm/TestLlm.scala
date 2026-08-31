@@ -13,7 +13,7 @@ class TestLlm extends munit.FunSuite {
       type F = Writer % String + Async
       def go(ls: List[String]): Unit ! F = ls match
         case Nil => pure(())
-        case l :: t => effect[F, String](Writer(l)).flatMap(_ => go(t))
+        case l :: t => effect[F, Unit](Writer(l)).flatMap(_ => go(t))
       go(events)
 
   def deltaEvent(text: String): List[String] = List(
@@ -77,6 +77,7 @@ class TestLlm extends munit.FunSuite {
           case Right(w) => (w.asInstanceOf[String] :: acc).reverse
         case Bind(Effect(e), k) => okay.<|>[Async, Writer % String](e) match
           case Left(a) => go(k(summon[okay.Handler[Async]].handle(a)), acc)
-          case Right(w) => go(k(w.asInstanceOf), w.asInstanceOf[String] :: acc)
+          // a tell answers nothing — the continuation gets unit, not the line
+          case Right(w) => go(k(okay.answer), w.asInstanceOf[String] :: acc)
     go(s, Nil)
 }

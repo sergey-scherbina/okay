@@ -145,7 +145,7 @@ object OpenAi {
       case Bind(Effect(e), k) => okay.<|>[Async, Writer % String](e) match
         case Left(a) => Effect(a).flatMap(x => go(k(x), buf))
         case Right(line) =>
-          absorb(line.asInstanceOf[String], buf)(b => go(k(line.asInstanceOf), b))
+          absorb(line.asInstanceOf[String], buf)(b => go(k(okay.answer), b))
 
     def flush(buf: List[String]): Unit ! F =
       if buf.isEmpty then okay.pure(())
@@ -159,7 +159,7 @@ object OpenAi {
 
     def emit(payload: String)(next: => Unit ! F): Unit ! F =
       token(payload) match
-        case Some(t) => okay.effect[F, String](Writer(t)).flatMap(_ => next)
+        case Some(t) => okay.effect[F, Unit](Writer(t)).flatMap(_ => next)
         case None => next
 
     go(lines, Nil)

@@ -55,8 +55,8 @@ object Stage {
   inline def await[I, O]: Option[I] ! (Take % I + Writer % O) =
     effect(Take.Await())
 
-  /** emit one output */
-  inline def tell[I, O](o: O): O ! (Take % I + Writer % O) =
+  /** emit one output — it answers nothing, like every tell */
+  inline def tell[I, O](o: O): Unit ! (Take % I + Writer % O) =
     effect(Writer(o))
 
   /** the identity stage: every input becomes an output */
@@ -193,7 +193,7 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
       case Bind(Effect(e), k) => <|>[Take % I, Writer % M](e) match
         case Left(Take.Await()) =>
           effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi))(cont))
-        case Right(w) => cont(Some(okay.out(w)), k(Erased.resumeWith(w)))
+        case Right(w) => cont(Some(okay.out(w)), k(okay.answer))
 
   def loop(u: Stage[I, M, A], d: Stage[M, O, B]): B ! Res =
     (d.resume: @unchecked) match
@@ -261,7 +261,7 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
         case Right(rest) => <|>[G, Writer % M](rest) match
           case Left(g) => effect[Res, Any](Erased.reinject[Res[Any]](g))
             .flatMap(x => pull(k(Erased.resumeWith(x)))(cont))
-          case Right(w) => cont(Some(okay.out(w)), k(Erased.resumeWith(w)))
+          case Right(w) => cont(Some(okay.out(w)), k(okay.answer))
 
   def loop(u: A ! Up, d: B ! (Take % M + (Writer % O + G))): B ! Res =
     (d.resume: @unchecked) match
@@ -300,7 +300,7 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
       case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
         case Left(g) => effect[Res, Any](Erased.reinject[Res[Any]](g))
           .flatMap(x => pull(k(Erased.resumeWith(x)))(cont))
-        case Right(w) => cont(Some(okay.out(w)), k(Erased.resumeWith(w)))
+        case Right(w) => cont(Some(okay.out(w)), k(okay.answer))
 
   def loop(rest: A ! Src, d: B ! (Take % W + (Writer % M + G))): B ! Res =
     (d.resume: @unchecked) match

@@ -44,5 +44,5 @@ object Transports:
       }
       okay.!.widen[String, Async, Writer % String](request).flatMap { text =>
         text.split("\n").foldLeft(pure[F, Unit](()))((acc, line) =>
-          acc.flatMap(_ => effect[F, String](Writer(line)).map(_ => ())))
+          acc.flatMap(_ => effect[F, Unit](Writer(line)).map(_ => ())))
       }

@@ -87,9 +87,9 @@ class TestStream extends munit.FunSuite {
   test("arbitrary effects on a writer stream: async at the pull") {
     type F = Writer % String + Async
     val talk: Int ! F =
-      effect[F, String](Writer("a")).flatMap: _ =>
+      effect[F, Unit](Writer("a")).flatMap: _ =>
         effect[F, Unit](Async.Run(() => Thread.sleep(1))).flatMap: _ =>
-          effect[F, String](Writer("b")).map(_ => 7)
+          effect[F, Unit](Writer("b")).map(_ => 7)
     assertEquals(talk.toLazyList.toList, List("a", "b"))
   }
 
@@ -98,7 +98,7 @@ class TestStream extends munit.FunSuite {
     def emits(n: Int): Unit ! F =
       if n == 0 then pure(())
       else effect[F, Int](State.Get()).flatMap: s =>
-        effect[F, String](Writer(s"n$n+$s")).flatMap: _ =>
+        effect[F, Unit](Writer(s"n$n+$s")).flatMap: _ =>
           effect[F, Int](State.Set(s + n)).flatMap(_ => emits(n - 1))
     val residue: (Int, Unit) ! (Writer % String + Async) =
       State.handle[Int, Unit, Writer % String + Async](0)(emits(3))

@@ -26,7 +26,7 @@ object Transports:
           effect[F, Boolean](Async.Run(() => it.hasNext)).flatMap { has =>
             if !has then pure(())
             else effect[F, String](Async.Run(() => it.next()))
-              .flatMap(line => effect[F, String](Writer(line)).flatMap(_ => go()))
+              .flatMap(line => effect[F, Unit](Writer(line)).flatMap(_ => go()))
           }
         go()
       }

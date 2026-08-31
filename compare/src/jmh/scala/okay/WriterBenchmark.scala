@@ -27,7 +27,7 @@ class WriterBenchmark {
   def okayWriter(): Int =
     val prog = (1 to N).foldLeft(Writer.tell(0)): (m, i) =>
       m.flatMap(_ => Writer.tell(i))
-    !.run(Writer.run[Int, Int, Nothing](prog))._1.length
+    !.run(Writer.run[Int, Unit, Nothing](prog))._1.length
 
   @Benchmark
   def catsWriterT(): Int =

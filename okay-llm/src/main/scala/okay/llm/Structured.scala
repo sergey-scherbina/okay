@@ -69,7 +69,7 @@ object Structured {
           // complete: the rest of the stream is never pulled, which
           // for a live model means it is never generated
           case Some(v) => Cut(Some(v), text, count, stopped = true)
-          case None => walk(k(okay.answer(w)))
+          case None => walk(k(okay.answer))
 
     walk(tokens)
 

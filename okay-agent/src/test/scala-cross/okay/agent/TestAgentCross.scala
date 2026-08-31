@@ -38,7 +38,7 @@ class TestAgentCross extends munit.FunSuite {
         val reply = rest match
           case r :: t => rest = t; r
           case Nil => """{"choices":[]}"""
-        effect[F, String](Writer(reply)).map(_ => ())
+        effect[F, Unit](Writer(reply)).map(_ => ())
 
   def answer(text: String): String =
     s"""{"choices":[{"message":{"role":"assistant","content":"$text"},"finish_reason":"stop"}]}"""

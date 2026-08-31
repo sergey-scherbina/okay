@@ -44,7 +44,8 @@ class TestPipe extends munit.FunSuite {
 
   test("chunked/unchunk stages: batching with a flush, then flattening back") {
     val ten: Int ! Writer % Int =
-      (1 to 10).foldLeft(Writer.tell(0).map(_ => 0))((m, i) => m.flatMap(_ => Writer.tell(i)))
+      (1 to 10).foldLeft(Writer.tell(0).map(_ => 0))((m, i) =>
+        m.flatMap(_ => Writer.tell(i).map(_ => i)))
     val chunks = through(ten)(Stage.chunked[Int](4)).toLazyList.toList
     assertEquals(chunks.map(_.length), List(4, 4, 3))   // 0..10 is eleven told values
     assertEquals(chunks.flatten, (0 to 10).toList)
@@ -56,7 +57,7 @@ class TestPipe extends munit.FunSuite {
     type F = Writer % Int + Async
     def ticks(n: Int): Unit ! F =
       effect[F, Unit](Async.Run(() => Thread.sleep(1))).flatMap: _ =>
-        effect[F, Int](Writer(n)).flatMap(_ => ticks(n + 1))
+        effect[F, Unit](Writer(n)).flatMap(_ => ticks(n + 1))
     val result: Int ! Async = pipe[Int, Unit, Int, Async](ticks(7))(sums(3, 0))
     assertEquals(result.runWith, 7 + 8 + 9)
   }
@@ -69,7 +70,7 @@ class TestPipe extends munit.FunSuite {
       effect[Row, Option[Int]](Take.Await()).flatMap {
         case Some(x) =>
           effect[Row, Unit](Async.Run(() => effects += 1)).flatMap(_ =>
-            effect[Row, Int](Writer(x * 2)).flatMap(_ => double))
+            effect[Row, Unit](Writer(x * 2)).flatMap(_ => double))
         case None => pure(())
       }
     // a pure stage widened into the row (union ACI lets the ascription)
@@ -85,7 +86,7 @@ class TestPipe extends munit.FunSuite {
     def src(n: Int): Unit ! Src =
       if n == 0 then pure(())
       else effect[Src, Unit](Async.Run(() => told += 1)).flatMap(_ =>
-        effect[Src, Int](Writer(n)).flatMap(_ => src(n - 1)))
+        effect[Src, Unit](Writer(n)).flatMap(_ => src(n - 1)))
 
     // stage∘stage, then the producer through the composite
     val composed = through[Int, Int, Int, Async, Unit, Unit](double)(inc)

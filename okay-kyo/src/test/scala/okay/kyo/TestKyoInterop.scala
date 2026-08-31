@@ -32,8 +32,8 @@ class TestKyoInterop extends munit.FunSuite {
     import okay.{%, Writer, effect}
     import _root_.kyo.Emit
     val ours: Int ! Writer % String =
-      effect[Writer % String, String](Writer("a")).flatMap(_ =>
-        effect[Writer % String, String](Writer("b")).map(_ => 7))
+      effect[Writer % String, Unit](Writer("a")).flatMap(_ =>
+        effect[Writer % String, Unit](Writer("b")).map(_ => 7))
     val (told, a) = Emit.run[String](toKyoEmit(ours)).eval
     assertEquals(told.toList, List("a", "b"))
     assertEquals(a, 7)

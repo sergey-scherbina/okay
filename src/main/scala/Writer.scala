@@ -37,55 +37,20 @@ opaque type Writer[W, +A] = W
  */
 def out[W, A](w: Writer[W, A]): W = w
 
-/**
- * THE THEOREM: a writer operation's answer is its element, `A = W`.
- *
- * `Writer(w): Writer[W, W]` is the only injector, so every operation
- * that can EXIST has `A = W`. The type system does not record it —
- * the alias makes `A` phantom, and that is the point, since a phantom
- * answer is what lets `tell` allocate nothing. So the equation is true
- * by construction and unprovable afterwards, and this is the single
- * place in the library that asserts it.
- *
- * Stating it as EVIDENCE rather than as a cast is what makes the
- * difference. An `asInstanceOf` at a use site says "this type is that
- * type" and offers no way to ask why; an `A =:= W` names the theorem,
- * so each site applies it by name and the compiler checks the
- * application. The assertion happens once, here, next to the argument
- * for it. `=:=` erases to the identity, so a single `refl` is minted
- * once and re-typed per use — the evidence costs nothing at run time.
- *
- * Why the alias stays `= W` and not `W & A`: an intersection would
- * make `answer` a subtyping step instead of a cast, which looks like
- * a strict improvement and is not. `A` is inferred, and it is
- * inferred as `Nothing` wherever the answer is unused — the compiler
- * then believes the value IS a `Nothing` and emits a checkcast to it,
- * which fails on the String actually there. Measured: 22 tests, and
- * publishing the bound as `<: A` fails the same way. It is the
- * `ChunkBuf` lesson again — `Array[?]` beat `Array[A]` because a type
- * that claims NOTHING about the parameter cannot be wrong about it.
- */
-private val refl: Any =:= Any = summon[Any =:= Any]
-
-def told[W, A]: A =:= W = refl.asInstanceOf[A =:= W]
-
-/** the theorem, applied: an operation's answer is the element in it */
-def answer[W, A](w: Writer[W, A]): A = told[W, A].flip(out(w))
-
 /** an op is its element; the phantom answer is W: Writer(w) is the
  * only injector, and it fixes answer = W (the module invariant
  * behind this cast) */
 given [W]: Handler[Writer % W] = new:
-  def handle[A](e: Writer[W, A]): A = answer(e)
+  def handle[A](e: Writer[W, A]): A = answer
 
 object Writer {
 
   /** the operation: telling w, answered by w — the ONLY constructor,
    * diagonal by its type, which is what seals the phantom discipline */
-  inline def apply[W](w: W): Writer[W, W] = w
+  inline def apply[W](w: W): Writer[W, Unit] = w
 
-  /** tell w: emit it as an operation (whose answer is w itself) */
-  inline def tell[W](w: W): W ! Writer % W = effect(Writer(w))
+  /** tell w: emit it as an operation, which answers NOTHING */
+  inline def tell[W](w: W): Unit ! Writer % W = effect(Writer(w))
 
   /** ops of Writer % W are recognized by the runtime class of W
    * (outside this file the opaque type has no Typeable of its own) */
@@ -135,10 +100,10 @@ object Writer {
     @tailrec def loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
       case Effect(e) => <|>[Writer % W, F](e) match
-        case Left(w) => Pure((step(s, w), answer(w)))
+        case Left(w) => Pure((step(s, w), answer))
         case Right(e) => Effect(e).map((s, _))
       case Bind(Effect(e), k) => <|>[Writer % W, F](e) match
-        case Left(w) => loop(step(s, w))(k(answer(w)))
+        case Left(w) => loop(step(s, w))(k(answer))
         case Right(e) => Effect(e).flatMap(x => _loop(s)(k(x)))
 
     loop(z)(a)
@@ -160,8 +125,8 @@ object Writer {
    */
   def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] = (a.resume: @unchecked) match
     case Free.Pure(a) => Left(a)
-    case Effect(e) => Right((e, Free.Pure(answer(e))))
-    case Bind(Effect(e), k) => Right((e, k(answer(e))))
+    case Effect(e) => Right((e, Free.Pure(answer)))
+    case Bind(Effect(e), k) => Right((e, k(answer)))
 
   /**
    * The same observation for a writer program performing ARBITRARY
@@ -178,10 +143,10 @@ object Writer {
     case Free.Pure(a) => okay.pure(Left(a))
     case Effect(e) => <|>[G, Writer % W](e) match
       case Left(g) => Effect(g).map(Left(_))
-      case Right(w) => okay.pure(Right((w, Free.Pure(answer(w)))))
+      case Right(w) => okay.pure(Right((w, Free.Pure(answer))))
     case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
       case Left(g) => Effect(g).flatMap(x => uncons[W, A, G](k(x)))
-      case Right(w) => okay.pure(Right((w, k(answer(w)))))
+      case Right(w) => okay.pure(Right((w, k(answer))))
 }
 
 /** the diagonal writer: it tells its own answers, like Producer but
@@ -197,7 +162,7 @@ type Teller[A] = A ! Writer % A
  */
 given Put[Teller] with
   final override inline def put[A](a: A): A /> Teller[A] =
-    shift(Writer.tell(a).flatMap(_))
+    shift(k => Writer.tell(a).flatMap(_ => k(a)))
 
 /**
  * A writer program is a stream of its told values: the same

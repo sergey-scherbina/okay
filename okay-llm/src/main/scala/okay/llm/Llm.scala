@@ -195,7 +195,7 @@ object Anthropic {
         case Bind(Effect(e), k) => okay.<|>[Async, Writer % String](e) match
           case Left(a) => Effect(a).flatMap(x => go(k(x), buf))
           case Right(line) =>
-            emitFrom(line.asInstanceOf[String], buf)(b => go(k(line.asInstanceOf), b))
+            emitFrom(line.asInstanceOf[String], buf)(b => go(k(okay.answer), b))
 
     def flushEvent(buf: List[String]): Unit ! (Writer % String + Async) =
       if buf.isEmpty then pure(())
@@ -213,7 +213,7 @@ object Anthropic {
     def tokenOf(payload: String)(next: => Unit ! (Writer % String + Async))
     : Unit ! (Writer % String + Async) =
       token(payload) match
-        case Some(t) => effect[Writer % String + Async, String](Writer(t)).flatMap(_ => next)
+        case Some(t) => effect[Writer % String + Async, Unit](Writer(t)).flatMap(_ => next)
         case None => next
 
     go(lines, Nil)

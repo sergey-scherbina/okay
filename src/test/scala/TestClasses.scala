@@ -12,7 +12,7 @@ class TestClasses extends munit.FunSuite {
   test("traverse: effects in order, results collected — over programs") {
     val prog: Seq[Int] ! F =
       traverse(Seq(1, 2, 3))(x =>
-        effect[F, String](Writer(s"at $x")).map(_ => x * 10))
+        effect[F, Unit](Writer(s"at $x")).map(_ => x * 10))
     val (told, got) = !.run(Writer.run[String, Seq[Int], okay.Pure](prog))
     assertEquals(got, Seq(10, 20, 30))
     assertEquals(told, Seq("at 1", "at 2", "at 3"))
@@ -33,7 +33,8 @@ class TestClasses extends munit.FunSuite {
   }
 
   test("*> and <* sequence and pick a side") {
-    def say(s: String): PF[String] = effect[F, String](Writer(s))
+    // a tell answers nothing, so the value comes back EXPLICITLY
+    def say(s: String): PF[String] = effect[F, Unit](Writer(s)).map(_ => s)
     val picked: PF[String] = say("a") *> say("b") <* say("c")
     val (told, kept) = !.run(Writer.run[String, String, okay.Pure](picked))
     assertEquals(kept, "b")
@@ -41,7 +42,7 @@ class TestClasses extends munit.FunSuite {
   }
 
   test("whenS and unlessS: the branch is declared, run at most once") {
-    def tell(s: String): PF[Unit] = effect[F, String](Writer(s)).map(_ => ())
+    def tell(s: String): PF[Unit] = effect[F, Unit](Writer(s)).map(_ => ())
     val prog: PF[Unit] =
       whenS(pure(true): PF[Boolean])(tell("yes")).flatMap(_ =>
         whenS(pure(false): PF[Boolean])(tell("no")).flatMap(_ =>

@@ -24,7 +24,7 @@ class TestProvider extends munit.FunSuite {
         val reply = rest match
           case r :: t => rest = t; r
           case Nil => """{"choices":[]}"""
-        effect[F, String](Writer(reply)).map(_ => ())
+        effect[F, Unit](Writer(reply)).map(_ => ())
 
   case class SearchArgs(query: String)
   given Schema[SearchArgs] = Schema.derived
@@ -120,7 +120,7 @@ class TestProvider extends munit.FunSuite {
       : Unit ! (Writer % String + Async) =
         type F = Writer % String + Async
         events.foldLeft(pure[F, Unit](()))((acc, l) =>
-          acc.flatMap(_ => effect[F, String](Writer(l)).map(_ => ())))
+          acc.flatMap(_ => effect[F, Unit](Writer(l)).map(_ => ())))
 
     val tokens = collect(OpenAi.stream(transport, "k",
       OpenAi.request("m", Seq(OpenAi.message("user", "hi")), stream = true)))
@@ -158,6 +158,7 @@ class TestProvider extends munit.FunSuite {
           case Right(w) => (w.asInstanceOf[String] :: acc).reverse
         case Bind(Effect(e), k) => okay.<|>[Async, Writer % String](e) match
           case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
-          case Right(w) => go(k(w.asInstanceOf), w.asInstanceOf[String] :: acc)
+          // a tell answers nothing — the continuation gets unit, not the line
+          case Right(w) => go(k(okay.answer), w.asInstanceOf[String] :: acc)
     go(s, Nil)
 }

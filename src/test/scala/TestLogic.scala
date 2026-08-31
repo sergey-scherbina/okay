@@ -74,7 +74,7 @@ class TestLogic extends munit.FunSuite {
     type F = Writer % String
     val prog: Int ! (Choose + F) =
       effect[Choose + F, Int](Choose(Seq(1, 2))).flatMap(x =>
-        effect[Choose + F, String](Writer(s"seen $x")).map(_ => x * 10))
+        effect[Choose + F, Unit](Writer(s"seen $x")).map(_ => x * 10))
     val (told, found) = !.run(Writer.run[String, Seq[Int], okay.Pure](
       runChoice[Int, F](prog)))
     assertEquals(found, Seq(10, 20))

@@ -23,7 +23,7 @@ class TestStructured extends munit.FunSuite {
       case t :: rest =>
         // the async op stands for the wire: it runs only if pulled
         effect[F, Unit](Async.Run(() => { pulled.incrementAndGet(); () }))
-          .flatMap(_ => effect[F, String](Writer(t)))
+          .flatMap(_ => effect[F, Unit](Writer(t)))
           .flatMap(_ => go(rest))
     go(tokens.toList)
 

@@ -81,9 +81,9 @@ class TestAsync extends munit.FunSuite {
   test("async composes with other effects: telling across suspensions") {
     type F = Async + Writer % String
     val prog: Int ! F =
-      effect[F, String](Writer("start")).flatMap: _ =>
+      effect[F, Unit](Writer("start")).flatMap: _ =>
         effect[F, Int](Async.Run(() => 21)).flatMap: x =>
-          effect[F, String](Writer("end")).map(_ => x * 2)
+          effect[F, Unit](Writer("end")).map(_ => x * 2)
     val (ws, a) = !.run(Writer.run[String, Int, Nothing](
       Async.run[Int, Writer % String](prog)))
     assertEquals(ws, Seq("start", "end"))

@@ -96,7 +96,7 @@ class TestEffects extends munit.FunSuite {
       !.translate[Int, Reader % Int, Writer % String + okay.Pure](prog) {
         [X] => (e: (Reader % Int)[X]) => e match
           case Reader.Ask() =>
-            effect[Writer % String + okay.Pure, String](Writer("asked"))
+            effect[Writer % String + okay.Pure, Unit](Writer("asked"))
               .map(_ => 21.asInstanceOf[X])
       }
 
@@ -120,9 +120,9 @@ class TestEffects extends munit.FunSuite {
   test("translate forwards the effects it was not given") {
     type Row = Reader % Int + (Writer % String + okay.Pure)
     val prog: Int ! Row =
-      effect[Row, String](Writer("before")).flatMap(_ =>
+      effect[Row, Unit](Writer("before")).flatMap(_ =>
         effect[Row, Int](Reader.Ask())).flatMap(x =>
-        effect[Row, String](Writer("after")).map(_ => x))
+        effect[Row, Unit](Writer("after")).map(_ => x))
 
     val told = !.translate[Int, Reader % Int, Writer % String + okay.Pure](prog) {
       [X] => (e: (Reader % Int)[X]) => e match

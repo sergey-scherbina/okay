@@ -106,10 +106,10 @@ class TestDelim extends munit.FunSuite {
     type F = Writer % String
     val told = Delim.run[Int, F] {
       push[Int, F](Delim.prompt[Int]) {
-        okay.effect[Delim + F, String](Writer("before")).flatMap(_ =>
+        okay.effect[Delim + F, Unit](Writer("before")).flatMap(_ =>
           okay.pure(1))
       }.flatMap(x =>
-        okay.effect[Delim + F, String](Writer("after")).map(_ => x + 1))
+        okay.effect[Delim + F, Unit](Writer("after")).map(_ => x + 1))
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](told))
     assertEquals(a, 2)
@@ -122,7 +122,7 @@ class TestDelim extends munit.FunSuite {
       Delim.prompt[Int] match
         case p => push[Int, F](p) {
           shift[Int, Int, F](p)(_ => okay.pure(5)).flatMap(x =>
-            okay.effect[Delim + F, String](Writer("never")).map(_ => x))
+            okay.effect[Delim + F, Unit](Writer("never")).map(_ => x))
         }
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))

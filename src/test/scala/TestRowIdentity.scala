@@ -22,8 +22,8 @@ class TestRowIdentity extends munit.FunSuite {
     // `opaque type Writer[W, +A] = W`, so telling a String IS a String
     // at runtime and the test is complete for class-distinct W
     val prog: Unit ! (Writer % String + Writer % Int) =
-      okay.effect[Writer % String + Writer % Int, String](Writer("hello"))
-        .flatMap(_ => okay.effect[Writer % String + Writer % Int, Int](Writer(42)))
+      okay.effect[Writer % String + Writer % Int, Unit](Writer("hello"))
+        .flatMap(_ => okay.effect[Writer % String + Writer % Int, Unit](Writer(42)))
         .map(_ => ())
 
     val outer = Writer.run[Int, Unit, Writer % String](prog)

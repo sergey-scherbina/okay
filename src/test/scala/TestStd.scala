@@ -17,9 +17,9 @@ class TestStd extends munit.FunSuite {
   test("Writer: run collects everything told, in order, forwarding F") {
     type F = Writer % String + Produce
     val prog: Int ! F =
-      effect[F, String](Writer("a")).flatMap: _ =>
+      effect[F, Unit](Writer("a")).flatMap: _ =>
         effect[F, Int](1).flatMap: x =>
-          effect[F, String](Writer("b")).map(_ => x + 1)
+          effect[F, Unit](Writer("b")).map(_ => x + 1)
     val (ws, a) = Writer.run[String, Int, Produce](prog).runWith
     assertEquals(ws, Seq("a", "b"))
     assertEquals(a, 2)
@@ -36,25 +36,30 @@ class TestStd extends munit.FunSuite {
     assertEquals(a, "done")
   }
 
-  test("Writer: a program ENDING in a tell answers what it told") {
+  test("Writer: a program ENDING in a tell answers NOTHING") {
     // the bare-Effect branch of the fold loop: no continuation, so the
-    // operation's answer IS the program's answer. Every other test
-    // ends in a map or flatMap, which is the Bind branch — this is the
-    // one place where a silent wrong answer would go unnoticed.
-    val w: Int ! Writer % Int = Writer.tell(5)
-    val (ws, a) = !.run(Writer.run[Int, Int, okay.Pure](w))
+    // operation's answer IS the program's answer — and a tell's answer
+    // is unit, which the type says out loud. Every other test ends in a
+    // map or flatMap, which is the Bind branch, so this is the one
+    // place where a wrong answer here would go unnoticed.
+    val w: Unit ! Writer % Int = Writer.tell(5)
+    val (ws, a) = !.run(Writer.run[Int, Unit, okay.Pure](w))
     assertEquals(ws, Seq(5))
-    assertEquals(a, 5, "a tell answers the value told")
+    assertEquals(a, (), "a tell emits; it does not produce")
+
+    // getting the value back is the CALLER's business, said explicitly
+    val kept: Int ! Writer % Int = Writer.tell(5).map(_ => 5)
+    assertEquals(!.run(Writer.run[Int, Int, okay.Pure](kept)), (Seq(5), 5))
 
     // and through a custom Fold, so the specialized dispatch sees it too
-    val (n, a2) = !.run(Writer.fold[Int, Long, Int, Nothing](w)(using summon, Fold.count))
+    val (n, a2) = !.run(Writer.fold[Int, Long, Unit, Nothing](w)(using summon, Fold.count))
     assertEquals(n, 1L)
-    assertEquals(a2, 5)
+    assertEquals(a2, ())
   }
 
   test("Writer: uncons observes the told values one by one, the answer last") {
     val w: Int ! Writer % String =
-      Writer.tell("a").flatMap(_ => Writer.tell("b")).map(_.length)
+      Writer.tell("a").flatMap(_ => Writer.tell("b")).map(_ => "b".length)
     val Right(("a", r1)) = Writer.uncons(w): @unchecked
     val Right(("b", r2)) = Writer.uncons(r1): @unchecked
     assertEquals(Writer.uncons(r2), Left(1))
@@ -71,7 +76,7 @@ class TestStd extends munit.FunSuite {
     type F = Reader % Int + Writer % String
     val prog: Int ! F =
       effect[F, Int](Reader.Ask()).flatMap: x =>
-        effect[F, String](Writer(s"got $x")).map(_ => x * 2)
+        effect[F, Unit](Writer(s"got $x")).map(_ => x * 2)
     val (ws, a) = !.run(Writer.run[String, Int, Nothing](
       Reader.run[Int, Int, Writer % String](7)(prog)))
     assertEquals(ws, Seq("got 7"))
