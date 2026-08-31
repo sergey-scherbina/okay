@@ -178,6 +178,12 @@ operations; the same shape every other lane runs.)
 |---|---|---|---|---|---|---|
 | 12 | 13.5 | **18.4** | 35 | 61 | 172 | 245 |
 
+Interop: cats, ZIO, kyo, fs2, Kafka, Spark, Flink, JDBC — and the JDK
+itself (`okay-java`), where `Aggregator` IS `java.util.stream.Collector`
+(supplier/accumulator/combiner/finisher against init/add/merge/present)
+and `Chunks` crosses to `Stream` chunk-for-chunk, unboxed in both
+directions for `LongStream`/`IntStream`/`DoubleStream`.
+
 Building: `sbt test` runs everything — 665 tests across two dozen
 modules, on the JVM and under Node. Scala 3.7.4 (the floor is 3.6, for
 the redesigned given syntax; the ceiling is okay-spark, which pins

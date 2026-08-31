@@ -142,6 +142,17 @@ lazy val okayKyo = (project in file("okay-kyo"))
     ),
   )
 
+/**
+ * interop with the JDK itself: java.util.stream and
+ * java.util.function. No dependency to add — it is the platform.
+ */
+lazy val okayJava = (project in file("okay-java"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-java",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 /** interop with fs2: Stream <-> Chunks, chunk for chunk (P3) */
 lazy val okayFs2 = (project in file("okay-fs2"))
   .dependsOn(okay.jvm)
@@ -408,7 +419,7 @@ lazy val okayDemo = (project in file("okay-demo"))
 
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okaySpark, okayFlink, okayJdbc, okayLex.jvm, okayLex.js, okayParse.jvm, okayParse.js,
+    okayJava, okaySpark, okayFlink, okayJdbc, okayLex.jvm, okayLex.js, okayParse.jvm, okayParse.js,
     okayCodec.jvm, okayCodec.js, okayLlm.jvm, okayLlm.js,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayCluster.jvm, okayCluster.js, compare)
