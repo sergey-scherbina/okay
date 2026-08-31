@@ -1,7 +1,6 @@
 package okay.agent
 
-import okay.{!, %, +, Async, Writer, effect, pure}
-import okay.given
+import okay.{!, +, Async, effect, pure}
 import okay.codec.Json
 
 /**

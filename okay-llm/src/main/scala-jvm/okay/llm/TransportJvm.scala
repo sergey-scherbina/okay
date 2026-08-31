@@ -1,7 +1,6 @@
 package okay.llm
 
 import okay.{!, %, +, Async, Writer, effect, pure}
-import okay.given
 
 /**
  * The JVM transport: java.net.http, streaming the response line by

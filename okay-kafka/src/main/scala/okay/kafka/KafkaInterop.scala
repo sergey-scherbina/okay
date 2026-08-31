@@ -1,7 +1,6 @@
 package okay.kafka
 
-import okay.{!, %, +, Async, Chunk, Chunks, Produce, async, effect}
-import okay.given
+import okay.{!, +, Async, Chunk, Chunks, Produce, async, effect}
 import org.apache.kafka.clients.consumer.{Consumer, ConsumerRecord, KafkaConsumer}
 import org.apache.kafka.clients.producer.{KafkaProducer, Producer as JProducer, ProducerRecord}
 import scala.jdk.CollectionConverters.*

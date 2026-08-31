@@ -1,9 +1,8 @@
 package okay.parse
 
 import okay.{!, %, Writer, through, pure}
-import okay.given
 import okay.toLazyList
-import okay.lex.{Channel, Scan, Token}
+import okay.lex.{Scan, Token}
 import okay.lex.Json as JsonLex
 import okay.lex.Json.K
 

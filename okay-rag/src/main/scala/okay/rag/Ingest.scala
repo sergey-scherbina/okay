@@ -1,7 +1,6 @@
 package okay.rag
 
-import okay.{!, +, Aggregator, Chunks, pure}
-import okay.given
+import okay.{!, +, Aggregator, pure}
 import okay.parse.Parse
 
 /**

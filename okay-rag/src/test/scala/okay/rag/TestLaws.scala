@@ -1,6 +1,5 @@
 package okay.rag
 
-import okay.codec.{Markdown, Yaml}
 import okay.parse.Cst
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Prop.forAll

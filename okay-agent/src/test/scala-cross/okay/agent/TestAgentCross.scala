@@ -1,9 +1,9 @@
 package okay.agent
 
-import okay.{!, %, +, Async, Handler, Writer, effect, pure}
+import okay.{!, %, +, Async, Writer, effect}
 import okay.given
 import okay.codec.{Json, Schema}
-import okay.llm.{OpenAi, Transport}
+import okay.llm.Transport
 import scala.collection.mutable
 
 /**

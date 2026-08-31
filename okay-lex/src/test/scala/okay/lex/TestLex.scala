@@ -1,7 +1,6 @@
 package okay.lex
 
-import okay.{!, %, Chunks, Writer, pipe, through, pure}
-import okay.given
+import okay.{!, %, Chunks, Writer, through, pure}
 import okay.toLazyList
 import Json.K
 

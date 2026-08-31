@@ -1,6 +1,5 @@
 package okay
 
-import scala.annotation.tailrec
 import okay.!.*
 
 /**

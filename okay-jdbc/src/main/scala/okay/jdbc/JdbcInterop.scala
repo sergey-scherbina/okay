@@ -1,7 +1,6 @@
 package okay.jdbc
 
-import okay.{!, %, +, Async, Chunk, Chunks, Produce, async, effect}
-import okay.given
+import okay.{!, +, Async, Chunk, Chunks, Produce, async, effect}
 import java.sql.{Connection, DriverManager, PreparedStatement, ResultSet}
 
 /**

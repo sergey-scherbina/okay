@@ -1,6 +1,6 @@
 package okay.zio
 
-import okay.{!, Async, Chunk, Chunks, async}
+import okay.{!, Async, Chunks, async}
 import okay.given
 import _root_.zio.{Runtime, Scope, Task, Unsafe, ZIO}
 import _root_.zio.stream.ZStream

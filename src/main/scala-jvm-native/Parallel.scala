@@ -1,7 +1,6 @@
 package okay
 
 import scala.annotation.tailrec
-import okay.!.*
 
 /**
  * Parallelism and resilience over fibers (specs/parallel-resilience.md).

@@ -1,8 +1,8 @@
 package okay.rag
 
 import okay.codec.{Markdown, Yaml}
-import okay.lex.{Bpe, Scan, Json as JsonLex}
-import okay.parse.{Cst, JsonParse, Parse}
+import okay.lex.{Bpe, Json as JsonLex}
+import okay.parse.Cst
 
 /**
  * The laws that make retrieval citable: a segment quotes its source

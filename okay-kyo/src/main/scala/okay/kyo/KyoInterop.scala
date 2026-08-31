@@ -1,6 +1,6 @@
 package okay.kyo
 
-import okay.{!, Async, Pure, async, pure}
+import okay.{!, Async, Pure, async}
 import okay.given
 import _root_.kyo.{<, Abort, AllowUnsafe, Duration, Flat, KyoApp}
 
@@ -41,9 +41,9 @@ object KyoInterop {
   // ContextEffect (reader-family): outbound walks, inbound asks once
   // and runs theirs with the constant environment — semantically exact.
 
-  import okay.{%, Reader, Writer, Throws, Choose, effect, choose}
+  import okay.{%, Reader, Writer, Throws, Choose, effect}
   import okay.!.*
-  import _root_.kyo.{Tag, Frame, Env, Emit, Choice, Const, Abort}
+  import _root_.kyo.{Tag, Frame, Env, Emit, Choice, Abort}
   import _root_.kyo.kernel.ArrowEffect
 
   /** Reader → Env, ask for ask */

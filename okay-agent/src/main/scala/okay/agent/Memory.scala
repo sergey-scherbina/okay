@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, %, +, Aggregator, TypeableK}
+import okay.{!, +, Aggregator, TypeableK}
 import okay.!.*
 import okay.given
 import scala.annotation.tailrec

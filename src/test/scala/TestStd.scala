@@ -1,6 +1,5 @@
 package okay
 
-import !.*
 
 /** The standard effects (Reader, Writer, Choice), the Fold/Foldable
  * consumers, the Stream codata, and the streaming bridges. */

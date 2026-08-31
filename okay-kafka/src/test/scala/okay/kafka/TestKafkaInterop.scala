@@ -1,6 +1,6 @@
 package okay.kafka
 
-import okay.{!, %, +, Chunks, Fold}
+import okay.{!, +, Chunks}
 import okay.given
 import KafkaInterop.*
 import org.apache.kafka.clients.consumer.{ConsumerRecord, MockConsumer, OffsetResetStrategy}

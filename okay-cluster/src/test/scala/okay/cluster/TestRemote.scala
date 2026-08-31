@@ -1,6 +1,6 @@
 package okay.cluster
 
-import okay.{Aggregator, Chunk, Chunks}
+import okay.{Aggregator, Chunks}
 import okay.given
 import okay.codec.Schema
 import java.net.ServerSocket

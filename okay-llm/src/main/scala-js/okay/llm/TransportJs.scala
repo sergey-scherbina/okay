@@ -1,9 +1,7 @@
 package okay.llm
 
 import okay.{!, %, +, Async, Writer, await, effect, pure}
-import okay.given
 import scala.scalajs.js
-import scala.scalajs.js.Thenable.Implicits.*
 
 /**
  * The JS transport: `fetch`, awaited through the Async effect's

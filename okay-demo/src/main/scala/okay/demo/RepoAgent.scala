@@ -1,9 +1,9 @@
 package okay.demo
 
-import okay.{!, +, Async, Handler, given}
+import okay.{+, Async, Handler, given}
 import okay.agent.*
-import okay.codec.{Json, Schema}
-import okay.llm.{Transport, Transports}
+import okay.codec.Schema
+import okay.llm.Transports
 import okay.rag.*
 
 /**

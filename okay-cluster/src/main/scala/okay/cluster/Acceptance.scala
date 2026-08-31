@@ -2,7 +2,6 @@ package okay.cluster
 
 import okay.{Aggregator, Chunks}
 import okay.codec.Json
-import okay.given
 
 /**
  * The ONE shared-source definition both ends of the acceptance run

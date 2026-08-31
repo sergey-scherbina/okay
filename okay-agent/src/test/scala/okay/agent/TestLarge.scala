@@ -3,7 +3,6 @@ package okay.agent
 import okay.{!, +, Async, Handler}
 import okay.given
 import okay.codec.Json
-import scala.collection.mutable
 
 /**
  * A tool result too big for the context: the model sees a projection

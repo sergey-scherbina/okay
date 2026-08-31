@@ -1,7 +1,7 @@
 package okay.rag
 
 import okay.lex.{Channel, Scan, Span, Token}
-import okay.parse.{Cst, Instr, Parse}
+import okay.parse.{Instr, Parse}
 
 /**
  * Source code as a corpus (specs/rag.md, P10f), for any language a

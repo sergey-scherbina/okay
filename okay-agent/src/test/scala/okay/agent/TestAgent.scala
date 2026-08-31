@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Aggregator, Async, Handler}
+import okay.{!, +, Async, Handler}
 import okay.given
 import okay.codec.{Json, Schema}
 import okay.lex.Bpe

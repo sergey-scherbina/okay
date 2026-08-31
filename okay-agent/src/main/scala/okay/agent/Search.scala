@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Choose, Logic, TypeableK, effect, guard, pure, runChoice}
+import okay.{!, +, Choose, Logic, TypeableK, effect, guard, runChoice}
 import okay.given
 
 /**

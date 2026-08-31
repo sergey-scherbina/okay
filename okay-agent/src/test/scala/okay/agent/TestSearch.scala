@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Aggregator, Choose, Handler, effect, guard, pure, runChoice}
+import okay.{!, +, Choose, Handler, effect, guard, pure, runChoice}
 import okay.given
 
 /**

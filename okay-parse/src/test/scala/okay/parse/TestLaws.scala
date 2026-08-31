@@ -1,7 +1,7 @@
 package okay.parse
 
 import okay.lex.{Scan, Json as JsonLex}
-import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 
 /**

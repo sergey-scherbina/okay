@@ -1,6 +1,6 @@
 package okay.zio
 
-import okay.{!, Async, Chunks, async, Fold}
+import okay.{Async, Chunks, async, Fold}
 import okay.given
 import ZioInterop.*
 import _root_.zio.{Runtime, Unsafe, ZIO}

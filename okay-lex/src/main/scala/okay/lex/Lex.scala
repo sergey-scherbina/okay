@@ -1,7 +1,6 @@
 package okay.lex
 
-import okay.{!, %, +, Chunk, Chunks, Stage, Writer, pure}
-import okay.given
+import okay.{+, Chunks, Stage, Writer, pure}
 
 /** an exact source position; length in chars */
 final case class Span(offset: Int, line: Int, column: Int, length: Int)

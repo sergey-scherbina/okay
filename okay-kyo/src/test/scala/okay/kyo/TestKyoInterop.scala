@@ -29,7 +29,7 @@ class TestKyoInterop extends munit.FunSuite {
   }
 
   test("structural mapping: Writer <-> Emit, tell for tell") {
-    import okay.{%, Writer, effect, pure}
+    import okay.{%, Writer, effect}
     import _root_.kyo.Emit
     val ours: Int ! Writer % String =
       effect[Writer % String, String](Writer("a")).flatMap(_ =>
@@ -46,7 +46,7 @@ class TestKyoInterop extends munit.FunSuite {
   }
 
   test("structural mapping: Throws <-> Abort") {
-    import okay.{%, Throws, effect, pure}
+    import okay.{%, Throws, effect}
     import _root_.kyo.Abort
     val ours: Int ! Throws % String =
       effect[Throws % String, Int](Throws("boom"))

@@ -1,6 +1,6 @@
 package okay.cats
 
-import okay.{!, %, +, Async, Free, Produce, Throws, async, effect, pure, runEither}
+import okay.{!, %, +, Async, Free, Throws, async, effect, runEither}
 import okay.!.*
 import okay.given
 import _root_.cats.effect.IO

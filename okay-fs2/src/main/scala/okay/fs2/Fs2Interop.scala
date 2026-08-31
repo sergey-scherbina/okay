@@ -1,7 +1,6 @@
 package okay.fs2
 
-import okay.{Chunk, Chunks, Channel}
-import okay.given
+import okay.Chunks
 import _root_.cats.effect.IO
 import _root_.cats.effect.unsafe.IORuntime
 

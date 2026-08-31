@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Aggregator, Handler, TypeableK}
+import okay.{!, +, Aggregator, Handler}
 import okay.given
 import okay.lex.Scan
 import okay.lex.Bpe

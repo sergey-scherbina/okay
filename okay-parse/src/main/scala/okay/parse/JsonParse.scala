@@ -1,7 +1,7 @@
 package okay.parse
 
 import okay.{Stage, pure}
-import okay.lex.{Channel, Token}
+import okay.lex.Token
 import okay.lex.Json.K
 
 /**

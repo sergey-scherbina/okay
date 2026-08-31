@@ -1,6 +1,5 @@
 package okay
 
-import !.*
 import Delim.{abort, push, reset, shift}
 
 /**

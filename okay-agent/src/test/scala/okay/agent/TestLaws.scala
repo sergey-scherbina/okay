@@ -1,6 +1,6 @@
 package okay.agent
 
-import org.scalacheck.{Arbitrary, Gen}
+import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 
 /**

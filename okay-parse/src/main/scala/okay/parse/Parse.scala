@@ -1,7 +1,6 @@
 package okay.parse
 
-import okay.{!, %, Fold, Stage, pure}
-import okay.given
+import okay.{Fold, Stage}
 import okay.lex.{Channel, Token}
 
 /**

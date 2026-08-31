@@ -1,7 +1,6 @@
 package okay.fs2
 
 import okay.Chunks
-import okay.given
 import Fs2Interop.*
 import _root_.cats.effect.unsafe.implicits.global
 

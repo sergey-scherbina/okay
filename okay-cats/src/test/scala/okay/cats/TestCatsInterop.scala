@@ -1,7 +1,6 @@
 package okay.cats
 
-import okay.{!, %, +, Async, Produce, Throws, async, effect, produce, pure}
-import okay.!.*
+import okay.{!, %, +, Async, Produce, Throws, async, produce, pure}
 import okay.given
 import CatsInterop.*
 import _root_.cats.syntax.all.*

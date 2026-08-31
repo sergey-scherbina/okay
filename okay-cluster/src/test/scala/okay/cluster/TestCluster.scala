@@ -1,7 +1,6 @@
 package okay.cluster
 
 import okay.{Aggregator, Chunk, Chunks}
-import okay.given
 import okay.codec.Json
 import java.io.{BufferedReader, InputStreamReader, PrintWriter}
 import java.net.{ServerSocket, Socket}

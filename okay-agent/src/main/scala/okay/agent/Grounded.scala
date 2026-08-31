@@ -1,8 +1,8 @@
 package okay.agent
 
-import okay.{!, +, ==>, Aggregator, Handler}
+import okay.{!, ==>, Aggregator, Handler}
 import okay.given
-import okay.rag.{Retriever, Scored, Segment}
+import okay.rag.{Retriever, Scored}
 
 /**
  * Retrieval-augmented RECALL (specs/rag.md, P10f): the agent does not

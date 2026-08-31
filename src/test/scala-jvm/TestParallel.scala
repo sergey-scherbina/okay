@@ -1,6 +1,5 @@
 package okay
 
-import !.*
 
 /** Fibers per chunk, retries per policy, lineage recompute per chunk. */
 class TestParallel extends munit.FunSuite {

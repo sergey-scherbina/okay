@@ -1,7 +1,7 @@
 package okay.agent
 
 import okay.Handler
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 import scala.collection.mutable
 
 /**

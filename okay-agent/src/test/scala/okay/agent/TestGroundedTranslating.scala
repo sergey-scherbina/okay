@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, ==>, Async, Handler}
+import okay.{!, +, Async, Handler}
 import okay.given
 import okay.rag.*
 import java.util.concurrent.atomic.AtomicInteger

@@ -1,7 +1,6 @@
 package okay.cluster
 
 import okay.{Channel, Chunk, Chunks, Scheduler}
-import okay.given
 import okay.codec.{Json, Schema}
 import java.net.{ServerSocket, Socket}
 import java.io.{BufferedReader, InputStreamReader, PrintWriter}

@@ -1,6 +1,6 @@
 package okay.codec
 
-import okay.lex.{Channel, Scan, Span, Token}
+import okay.lex.{Scan, Span, Token}
 import okay.parse.{Cst, Instr, Parse}
 
 /**
