@@ -100,4 +100,28 @@ class TestChunkSpec extends munit.FunSuite {
         case None => acc.reverse
         case Some((c, r)) => go(r, c :: acc)
     go(p, Nil)
+
+  test("a REIFIED pipeline specializes too: the tag rides with the existential") {
+    // this was the wall. `Pipeline.chunks` compiles a `Mapped` node
+    // whose intermediate type is existential, so no ClassTag could be
+    // summoned there — the node now carries the one captured where it
+    // was built, and the compiled chunks come out unboxed.
+    val p = Pipeline.range(0L, 64L, 8).map(_ * 2)
+    val chunks = collect(Pipeline.chunks(p))
+    assert(chunks.nonEmpty)
+    for c <- chunks do assertEquals(backing(c), "long[]")
+  }
+
+  test("and it survives the optimizer, which rebuilds the nodes") {
+    // map/map fusion reconstructs Mapped; the tag must come along or
+    // the optimized tree quietly loses the specialization
+    val p = Pipeline.range(0L, 64L, 8).map(_ * 2).map(_ + 1)
+    val optimized = Pipeline.optimize(p)
+    assert(Pipeline.depth(optimized) < Pipeline.depth(p), "nothing was fused")
+    for c <- collect(Pipeline.chunks(optimized)) do
+      assertEquals(backing(c), "long[]")
+    // and the answers are unchanged by any of it
+    assertEquals(Pipeline.fold(p)(using Fold.sum[Long]),
+      (0L until 64L).map(_ * 2 + 1).sum)
+  }
 }

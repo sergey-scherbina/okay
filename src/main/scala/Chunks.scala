@@ -44,12 +44,16 @@ object Chunks {
       if s >= until then pure(ArraySeq.empty)
       else
         val n = math.min(size.toLong, until - s).toInt
-        val buf = ChunkBuf[Long](n)
+        // Long is concrete here, so this is a long[] with no boxing —
+        // and it matters more than it looks: a boxed SOURCE makes
+        // every downstream stage's specialization moot, because the
+        // first thing each does is read a boxed element back out.
+        val arr = new Array[Long](n)
         var i = 0
         while i < n do
-          buf(i) = s + i
+          arr(i) = s + i
           i += 1
-        produce(buf.chunk).flatMap(_ => go(s + n))
+        produce(ArraySeq.unsafeWrapArray(arr)).flatMap(_ => go(s + n))
 
     go(from)
 

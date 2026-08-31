@@ -191,6 +191,22 @@ object ChunkBuf {
     }
 
   /**
+   * `mapper` when the ClassTag arrives as a VALUE rather than from
+   * the call site — which is what a reified operator tree can offer:
+   * it captured the tag when the node was built, and hands it back
+   * when the node is compiled. Same specialization, from data.
+   */
+  def taggedMapper[A, B](f: A => B)(using ct: ClassTag[B]): Chunk[A] => Chunk[B] =
+    (c: Chunk[A]) =>
+      val n = c.length
+      val arr = ct.newArray(n)
+      var i = 0
+      while i < n do
+        arr(i) = f(c(i))
+        i += 1
+      ArraySeq.unsafeWrapArray(arr)
+
+  /**
    * The same for filter. The result length is not known until the
    * pass is done, so it fills to the source's length and trims — and
    * returns the source itself when nothing was dropped, which is the

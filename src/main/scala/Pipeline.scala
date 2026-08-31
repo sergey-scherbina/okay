@@ -13,13 +13,25 @@ enum Pipeline[A]:
   case Gen[S, A](seed: S, f: S => A, g: S => S, size: Int) extends Pipeline[A]
   case NumRange(from: Long, until: Long, size: Int) extends Pipeline[Long]
   case FromChunks(p: Chunks[A])
-  case Mapped[A, B](src: Pipeline[A], f: A => B) extends Pipeline[B]
+  /**
+   * The element type of a reified node is EXISTENTIAL: at a `Mapped`
+   * the intermediate `A` is gone, and with it any hope of building an
+   * unboxed chunk for it — that is where threading a `ClassTag`
+   * through the streaming API ran out of road.
+   *
+   * So the tag travels WITH the existential, captured where the node
+   * was built and `B` was still concrete. `Chunks.map`'s specializing
+   * worker can then be reconstructed at compile time, from data.
+   */
+  case Mapped[A, B](src: Pipeline[A], f: A => B)
+                   (using val tag: scala.reflect.ClassTag[B]) extends Pipeline[B]
   case Filtered(src: Pipeline[A], p: A => Boolean)
   case TakeN(src: Pipeline[A], n: Int)
   case DropN(src: Pipeline[A], n: Int)
   case Rechunked(src: Pipeline[A], size: Int)
 
-  def map[B](f: A => B): Pipeline[B] = Pipeline.Mapped(this, f)
+  def map[B: scala.reflect.ClassTag](f: A => B): Pipeline[B] =
+    Pipeline.Mapped(this, f)
   def filter(p: A => Boolean): Pipeline[A] = Pipeline.Filtered(this, p)
   def take(n: Int): Pipeline[A] = Pipeline.TakeN(this, n)
   def drop(n: Int): Pipeline[A] = Pipeline.DropN(this, n)
@@ -42,16 +54,17 @@ object Pipeline {
    */
   def optimize[A](p: Pipeline[A]): Pipeline[A] =
     def once[X](q: Pipeline[X]): Pipeline[X] = q match
-      case Mapped(Mapped(s, f), g) => Mapped(once(s), f.andThen(g))
+      case m @ Mapped(Mapped(s, f), g) =>
+        Mapped(once(s), f.andThen(g))(using m.tag)
       case Filtered(Filtered(s, p1), p2) => Filtered(once(s), x => p1(x) && p2(x))
       case TakeN(TakeN(s, n), m) => TakeN(once(s), math.min(n, m))
       case DropN(DropN(s, n), m) => DropN(once(s), n + m)
-      case TakeN(Mapped(s, f), n) => Mapped(TakeN(once(s), n), f)
+      case TakeN(m @ Mapped(s, f), n) => Mapped(TakeN(once(s), n), f)(using m.tag)
       case TakeN(NumRange(a, b, sz), n) => NumRange(a, math.min(b, a + n), sz)
       case Rechunked(Rechunked(s, _), k) => Rechunked(once(s), k)
       case Rechunked(Gen(seed, f, g, _), k) => Gen(seed, f, g, k)
       case Rechunked(NumRange(a, b, _), k) => NumRange(a, b, k)
-      case Mapped(s, f) => Mapped(once(s), f)
+      case m @ Mapped(s, f) => Mapped(once(s), f)(using m.tag)
       case Filtered(s, p1) => Filtered(once(s), p1)
       case TakeN(s, n) => TakeN(once(s), n)
       case DropN(s, n) => DropN(once(s), n)
@@ -66,7 +79,9 @@ object Pipeline {
     case Gen(seed, f, g, size) => Chunks.generate(seed)(f)(g)(size)
     case NumRange(a, b, size) => Chunks.range(a, b, size)
     case FromChunks(c) => c
-    case Mapped(s, f) => Chunks.map(chunks(s))(f)
+    case m @ Mapped(s, f) =>
+      // the tag the node carried is what makes this chunk unboxed
+      Chunks.mapWith(chunks(s))(ChunkBuf.taggedMapper(f)(using m.tag))
     case Filtered(s, pr) => Chunks.filter(chunks(s))(pr)
     case TakeN(s, n) => Chunks.take(chunks(s))(n)
     case DropN(s, n) => Chunks.drop(chunks(s))(n)
