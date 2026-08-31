@@ -57,28 +57,28 @@ object Stdio:
 ```
 
 ## Behavior
-- [ ] a JSON-RPC line decodes to its message; a damaged, truncated or
+- [x] a JSON-RPC line decodes to its message; a damaged, truncated or
       non-JSON line decodes to `Failed` and the stream continues —
       totality, as everywhere in this library
-- [ ] `initialize` negotiates: the client sends its protocol version
+- [x] `initialize` negotiates: the client sends its protocol version
       and info, the server answers with capabilities that declare
       `tools`, the client follows with `notifications/initialized`
-- [ ] a server whose `tools/list` answers over two pages is listed
+- [x] a server whose `tools/list` answers over two pages is listed
       whole (the `nextCursor` is followed)
-- [ ] `tools/call` answers the joined text of the content blocks; an
+- [x] `tools/call` answers the joined text of the content blocks; an
       `isError` result answers `error: ...` rather than throwing — an
       unknown tool is an ANSWER the model can recover from, which is
       the convention `Handlers.tools` already set
-- [ ] an agent program runs UNCHANGED against MCP tools: the same
+- [x] an agent program runs UNCHANGED against MCP tools: the same
       program, one handler swapped, no mention of MCP in it
-- [ ] our tools served over MCP round-trip: `Server.serve` answers
+- [x] our tools served over MCP round-trip: `Server.serve` answers
       `initialize`, `tools/list` and `tools/call` for a `ToolSpec`
       table, and the schemas it publishes are the derived ones
       (`ToolSpec.jsonSchema`, no hand-written JSON Schema)
-- [ ] client and server compose: one `Server.serve` stage feeding one
+- [x] client and server compose: one `Server.serve` stage feeding one
       `Session` through an in-memory Link executes a real tool call,
       with no process and no socket in the test
-- [ ] the loop survives a server that dies mid-call (the Link ends):
+- [x] the loop survives a server that dies mid-call (the Link ends):
       the pending call answers `error: ...`, the agent continues
 
 ## Design
@@ -111,6 +111,9 @@ works where nothing may park.
 - the HTTP/SSE transport (okay-llm already has the SSE half; the
   streamable-HTTP session layer is its own task)
 - OAuth and any authorization
+- JSON-RPC BATCHES (a top-level array of messages): the 2025-06-18
+  revision removed them, and this implementation answers one message
+  per line
 - serving over anything but a byte-line link
 
 ## Decisions
@@ -123,3 +126,29 @@ works where nothing may park.
 - **JSON-RPC decoding is total** — a damaged line is a `Failed` value,
   because a stream that throws on one bad line loses every good line
   after it. This is the streaming-parse doctrine, applied to the wire.
+- **The two error codes are read off the TREE, not off a throw** —
+  found while implementing, and it is the total parser paying for
+  itself: `Json.parse` never fails, it returns a tree with `JErr`
+  NODES where the damage is. So `-32700 Parse error` is "the tree
+  contains damage" and `-32600 Invalid Request` is "it parsed clean
+  and is still not a message". A throwing parser can only tell the
+  first, and only by throwing.
+- **The demo serves over stdio as a plain class, not through sbt** —
+  `sbt -batch` keeps stdin for itself, so the documented invocation is
+  `java -cp <classpath> okay.demo.RepoMcp <repo>`. Measured, not
+  assumed: that command answers `initialize` and `tools/list` on the
+  wire.
+
+## Results
+Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server
+as a pure stage 8, session over channels 5, the transport over real
+byte pipes 1, agent-over-MCP 3), all eight behavior items covered.
+
+- the server needs no I/O to be exercised: `TestServer` drives the
+  whole protocol through `Writer.of(List[Rpc])`
+- `TestAgentOverMcp` runs the SAME `Agent.converse` program against a
+  local tool table and against an MCP server and asserts the answers
+  are equal — the module's thesis, as an assertion
+- `okay.demo.RepoMcp` serves this repository's own two tools
+  (definition, read_file) over stdio; verified by piping real
+  JSON-RPC lines into it

@@ -404,16 +404,48 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
   )
 
 /**
+ * The Model Context Protocol (specs/mcp.md): an MCP server is another
+ * `Tool` handler and our tools are another MCP server. The protocol
+ * layer is pure — cross-built; only the stdio transport is platform.
+ */
+lazy val okayMcp = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-mcp"))
+  .dependsOn(okayAgent)
+  .settings(
+    name := "okay-mcp",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / fork := true,
+    Test / javaOptions += "-Xmx1g",
+  )
+  .jsSettings(
+    // the protocol is pure and compiles here; the transports are not
+    Test / sources := Seq(),
+  )
+
+/**
  * Not a library module: a real user of the library, from outside.
  * A coding agent over this very repository — okay-rag indexes it,
  * okay-agent runs the loop, okay-llm reaches a local model. It exists
  * to find what tests written by the author of the code cannot.
  */
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm)
+  .dependsOn(okayAgent.jvm, okayMcp.jvm)
   .settings(
     name := "okay-demo",
     publish / skip := true,
+    // RepoMcp is an MCP server on stdio, so `run` needs its own
+    // process and its own stdin. Note that `sbt -batch` still keeps
+    // stdin for itself — a client should launch the class directly
+    // (see okay-mcp's module doc for the command).
+    run / fork := true,
+    run / connectInput := true,
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
@@ -422,6 +454,7 @@ lazy val root = (project in file("."))
     okayJava, okaySpark, okayFlink, okayJdbc, okayLex.jvm, okayLex.js, okayParse.jvm, okayParse.js,
     okayCodec.jvm, okayCodec.js, okayLlm.jvm, okayLlm.js,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
+    okayMcp.jvm, okayMcp.js,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",

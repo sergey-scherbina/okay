@@ -159,3 +159,14 @@ common case costs no tool call.
 
 Note what is deliberately absent: no Runnable/LCEL layer — flatMap,
 Stage/through and Chunks already are invoke/stream/batch, typed.
+
+## P11 — okay-mcp: the Model Context Protocol
+
+Both ends (specs/mcp.md), shipped 2026-09-01. The design was already
+decided in specs/llm-agentic.md — "an MCP server is another `Tool`
+handler, and its JSON-RPC framing is our total parser plus `Schema`" —
+and the module is small because that sentence is true: an agent
+program is unchanged when its tools come from a server, and serving
+our own tools is a `Stage[Rpc, Rpc, Unit]` with the transport outside
+it. v1 is tools end to end over stdio; resources and prompts are the
+same list+fetch shape and are follow-ups, not design questions.
