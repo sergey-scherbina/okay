@@ -70,6 +70,33 @@ class ChunkBuildBenchmark {
       i += 1
     buf.take(size / 2)
 
+  /**
+   * `ArrayBuffer` instead: no casts at all at the API level, and it
+   * is typed. Two things it cannot avoid — it is backed by
+   * `Array[AnyRef]`, so primitives box whatever the element type is,
+   * and the immutable chunk it must end as is a COPY.
+   */
+  @Benchmark
+  def arrayBuffer: Chunk[String] =
+    val b = scala.collection.mutable.ArrayBuffer[String]()
+    b.sizeHint(size)
+    var i = 0
+    while i < size do
+      b += src(i)
+      i += 1
+    ArraySeq.from(b)
+
+  /** the same, ending through toArray (which wants a ClassTag) */
+  @Benchmark
+  def arrayBufferToArray: Chunk[String] =
+    val b = scala.collection.mutable.ArrayBuffer[String]()
+    b.sizeHint(size)
+    var i = 0
+    while i < size do
+      b += src(i)
+      i += 1
+    ArraySeq.unsafeWrapArray(b.toArray)
+
   /** the floor: a ClassTag'd array, which the producers cannot have */
   @Benchmark
   def typedArray: Chunk[String] =

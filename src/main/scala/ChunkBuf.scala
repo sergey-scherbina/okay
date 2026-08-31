@@ -18,10 +18,24 @@ import scala.reflect.ClassTag
  * `update` takes an `A` and `chunk` answers a `Chunk[A]`, and no
  * caller casts anything.
  *
- * `ArraySeq.untagged.newBuilder[A]` would remove the casts outright,
- * with no ClassTag — measured at 5x per chunk, and a real class
- * (rather than this opaque one) at 2x. Both are in
- * `ChunkBuildBenchmark`, with the numbers in src/jmh/history.tsv.
+ * Four alternatives were tried and measured, per 64 elements, all in
+ * `ChunkBuildBenchmark`:
+ *
+ *   this (opaque over Array[AnyRef])        84ns
+ *   a real class instead of an opaque type  2x   (escape analysis
+ *                                                does not remove it)
+ *   ArraySeq.untagged.newBuilder            3.2x (no casts at all)
+ *   ArrayBuffer, ending in toArray          3.9x
+ *   ArrayBuffer, ending in ArraySeq.from    4.5x
+ *
+ * `ArrayBuffer` is the tidiest to read and the slowest to run, for
+ * three reasons that stack: a capacity check on every append, an
+ * `Array[AnyRef]` backing that boxes primitives whatever the element
+ * type is, and a COPY to reach the immutable chunk it has to end as
+ * (its internal array is private, so there is no way to hand it over
+ * without copying). The third reason is the one that matters most
+ * here: being always boxed, it would also foreclose the
+ * specialization below, which is worth 21% on the stream lane.
  *
  * A `ClassTag[A]` would also remove them, and costs nothing at
  * runtime (a ClassTag'd `Array[String]` measured 65.7ns against this
