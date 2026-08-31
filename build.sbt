@@ -189,6 +189,15 @@ lazy val okaySpark = (project in file("okay-spark"))
     libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.13.16",
     Test / fork := true,
     Test / javaOptions ++= Seq(
+      // A forked JVM with no -Xmx takes the ergonomic default, which
+      // on this 36g machine is 9g — for a `local[2]` session over ten
+      // thousand doubles. That is not a problem alone, and it is one
+      // in a full build: sbt already holds 6g (see .jvmopts) and an
+      // IDE with its own compile server can hold another 17g, so the
+      // fork asks for memory the machine has already promised away
+      // and Spark's driver fails to come up. Two gigabytes is more
+      // than this suite has ever needed.
+      "-Xmx2g",
       "--add-opens=java.base/java.lang=ALL-UNNAMED",
       "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
       "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
@@ -354,6 +363,9 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     // the acceptance test runs `node <linked client>` against a local server
     Test / fork := true,
+    // bounded for the same reason as okay-spark: a fork with no -Xmx
+    // asks for a quarter of the machine
+    Test / javaOptions += "-Xmx1g",
     Test / javaOptions += {
       val client = baseDirectory.value.getParentFile / ".js" / "target" /
         ("scala-" + scalaVersion.value) / "okay-cluster-fastopt" / "main.js"

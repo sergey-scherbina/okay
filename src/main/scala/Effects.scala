@@ -80,9 +80,9 @@ final class ComonadHandler[F[_]](val C: Comonad[F]) extends Handler[F]:
 
 given [F[_] : Comonad as C]: Handler[F] = ComonadHandler[F](C)
 
-/** Nothing has no operations left to handle */
-given Handler[Nothing] with
-  inline def handle[A](a: Nothing): A = a
+/** Pure has no operations left to handle */
+given Handler[Pure] with
+  inline def handle[A](a: Pure): A = a
 
 /**
  * Handlers compose along the union: split the operation by the F
