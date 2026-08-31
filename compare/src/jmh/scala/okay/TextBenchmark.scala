@@ -41,6 +41,12 @@ class TextBenchmark {
     Chunks.fold(Scan.chunks(JsonLex.scan)(Chunks.fromIterator(doc.iterator, 64)))(
       using Fold.count)
 
+  /** the same chunked lex, but over UNBOXED char chunks — the
+   * hypothesis the three-size probe left standing */
+  @Benchmark
+  def lexChunkedChars: Long =
+    Chunks.fold(Scan.chunks(JsonLex.scan)(Chunks.ofChars(doc, 64)))(using Fold.count)
+
   // the same work at 8x and 1/8x the chunk size: if per-chunk
   // overhead dominates, bigger chunks win; if the boxing of chars
   // into Array[AnyRef] dominates, the size barely matters

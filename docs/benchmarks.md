@@ -220,17 +220,25 @@ Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.
 |---|---|---|---|
 | **42.6** | 52.6 | 55.6 | 70.5 |
 
-Chunked lexing is SLOWER, and the three-size probe says why: from 8
-to 64 the per-chunk overhead falls away (−15us), from 64 to 512
-almost nothing is left to win (−3us), yet **23% still remains** at a
-size where the document is five chunks. A per-chunk cost would have
-vanished; a per-CHARACTER cost would not — and that is what it is:
-`Chunk[A]` is an `ArraySeq` over `Array[AnyRef]`, so every char is
-boxed and unboxed, where the element-wise path reads `charAt` on the
-String. Specialized char chunks are the stated fix. Meanwhile the
-chunked path's value is not speed at this size — it is streaming and
-constant memory over a source you cannot materialize (a socket, a
-gigabyte file), where `Scan.all` needs the whole input in memory.
+Chunked lexing is SLOWER, and the first explanation for it was
+WRONG — which is worth more than the number. The three-size probe
+showed per-chunk overhead falling away by size 512 while 23%
+remained, and the conclusion drawn here was that the residual must be
+per-CHARACTER boxing (`Chunk[A]` is an `ArraySeq` over
+`Array[AnyRef]`, where the element-wise path reads `charAt`). Two
+targeted experiments say otherwise: unboxed storage
+(`Chunks.ofChars`, a primitive `Array[Char]`) bought 5%, and reading
+that array directly instead of through the generic `apply` bought
+another 3%. Eight percent, where the gap was twenty-three.
+
+So the residual is per-CHUNK bookkeeping, not per-character work: a
+`Vector.newBuilder`, a token-chunk allocation and a Free node for
+each of the forty input chunks, against one builder and no chunk
+machinery on the element-wise path. Both improvements are kept —
+they are real, if small — and the chunked path's value remains what
+it always was: streaming and constant memory over a source you
+cannot materialize (a socket, a gigabyte file), where `Scan.all`
+needs the whole input in memory.
 
 **Parsing, full vs incremental:**
 

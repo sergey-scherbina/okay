@@ -62,6 +62,27 @@ object Chunks {
    * so an infinite iterator is fine. The stream is as linear as its
    * source: re-observation re-reads the SAME iterator.
    */
+  /**
+   * A string as chunks of characters, WITHOUT boxing: `ArraySeq` has
+   * a primitive-backed subclass, so the chars live in an Array[Char]
+   * and never become objects. The generic `fromIterator` cannot do
+   * this — it fills an Array[AnyRef] — and the difference is what a
+   * measured lane blamed for chunked lexing being slower than the
+   * element-wise path. Whether it is enough is a question for the
+   * benchmark, not for this comment.
+   */
+  def ofChars(text: String, size: Int = 64): Chunks[Char] =
+    def go(from: Int): Chunks[Char] = defer:
+      if from >= text.length then end
+      else
+        val n = math.min(size, text.length - from)
+        val arr = new Array[Char](n)
+        text.getChars(from, from + n, arr, 0)
+        produce(scala.collection.immutable.ArraySeq.unsafeWrapArray(arr)
+          .asInstanceOf[Chunk[Char]]).flatMap(_ => go(from + n))
+
+    go(0)
+
   def fromIterator[A](it: Iterator[A], size: Int = 64): Chunks[A] =
     def go(): Chunks[A] = pure[Produce, Unit](()).flatMap: _ =>
       if !it.hasNext then end

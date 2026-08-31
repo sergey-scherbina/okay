@@ -69,9 +69,10 @@ val re  = Scan.relex(JsonLex.scan)(old, oldText, newText,
 ```
 
 Write your own scanner: implement `init/step/flush` (plus
-`key`/`rebase` if the state carries positions). `JsonLex.scan` in
-this module and `Bpe` in okay-llm are the two shipped examples —
-a JSON lexer and an LLM tokenizer are the same machine.
+`key`/`rebase` if the state carries positions). `JsonLex.scan` and `Bpe`
+in this module are two of the shipped examples — a JSON lexer and an
+LLM tokenizer are the same machine — and okay-codec adds YAML,
+Markdown and XML scanners over the same interface.
 
 ## API reference
 
@@ -102,12 +103,14 @@ a JSON lexer and an LLM tokenizer are the same machine.
 
 ## Performance note (measured, honest)
 
-Chunked lexing is currently SLOWER than element-wise on an in-memory
-string (55.6us vs 42.6 on a 2.5KB document), and the reason is
-per-character boxing: `Chunk[A]` is an `ArraySeq` over
-`Array[AnyRef]`, while `Scan.all` reads `charAt` on the String. A
-three-chunk-size probe proves it — per-chunk overhead is gone by size
-512, the 23% gap is not. Specialized char chunks are the fix.
+Chunked lexing is SLOWER than element-wise on an in-memory string
+(50.7us vs 42.8 on a 2.5KB document, after two optimisations that
+took it from 55.2). The reason is NOT what was first written here:
+per-character boxing was the hypothesis, and unboxing the storage
+(`Chunks.ofChars`) plus reading the primitive array directly bought
+only 8% of a 23% gap. What remains is per-CHUNK bookkeeping — a
+builder, a token chunk and a tree node for every input chunk —
+against one builder and no chunk machinery element-wise.
 
 So choose by need, not by folklore: `Scan.chunks` is for STREAMING
 and constant memory over a source you cannot materialize (a socket, a

@@ -76,11 +76,23 @@ object Scan {
           val out = Vector.newBuilder[Token[K]]
           var st = s
           var i = 0
-          while i < c.length do
-            val (s2, ts) = sc.step(st, c(i))
-            out ++= ts
-            st = s2
-            i += 1
+          // read the primitive array directly when the chunk has one:
+          // the generic ArraySeq.apply boxes every character on the
+          // way out, whatever the storage underneath
+          c match
+            case cs: scala.collection.immutable.ArraySeq.ofChar =>
+              val arr = cs.unsafeArray
+              while i < arr.length do
+                val (s2, ts) = sc.step(st, arr(i))
+                out ++= ts
+                st = s2
+                i += 1
+            case _ =>
+              while i < c.length do
+                val (s2, ts) = sc.step(st, c(i))
+                out ++= ts
+                st = s2
+                i += 1
           emit(out.result(), go(st, r))
         case None => emit(sc.flush(s), Chunks.end)
     }
