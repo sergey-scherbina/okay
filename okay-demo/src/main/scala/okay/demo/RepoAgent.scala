@@ -26,7 +26,7 @@ import okay.rag.*
 object RepoAgent {
 
   final case class Repo(corpus: Corpus, index: Index, keyword: Postings,
-                        sources: Seq[Source])
+                        vectors: MemoryStore, sources: Seq[Source])
 
   /**
    * Every source file under a root. Which files those are is decided
@@ -56,12 +56,21 @@ object RepoAgent {
       Source(root.toPath.relativize(f.toPath).toString, text)
     }
 
-  /** parse everything once: the symbol index, the keyword index, and
-   * the corpus that makes passages lineage rather than copies */
+  /**
+   * Parse everything once, and build all three retrieval sides from
+   * the same segments: the symbol index (exact, no vectors), the
+   * keyword index (BM25), and the vector store. The embedder here is
+   * the deterministic hashing one, so this demo needs no embedding
+   * service to run — swapping in a real `Handler[Embed]` is the only
+   * change, and nothing else moves.
+   */
   def index(sources: Seq[Source], budget: Int = 600): Repo =
     val segments = sources.flatMap(s => Ingest.segment(s, budget)(_.length))
+    val store = MemoryStore()
+    given Handler[Embed] = Vectors.hashingHandler()
+    Ingest.run(store, sources, budget)(_.length).runWith
     Repo(Corpus.of(sources), Symbols.project(sources),
-      Keyword.index(segments), sources)
+      Keyword.index(segments), store, sources)
 
   // ---------------------------------------------------------------- tools
 
@@ -99,9 +108,10 @@ object RepoAgent {
 
   /**
    * One question, answered with the repository in context. The
-   * retriever is hybrid — exact symbols beside BM25 — and grounded
-   * recall puts what it finds under the SAME budget as the
-   * conversation, so no tool call is needed for the common case.
+   * retriever is hybrid across all three sides — exact symbols, BM25
+   * and semantic — and grounded recall puts what it finds under the
+   * SAME budget as the conversation, so no tool call is needed for
+   * the common case.
    */
   def ask(repo: Repo, question: String,
           url: String, model: String, key: String = "none",
@@ -110,9 +120,16 @@ object RepoAgent {
     // what the model saw, not what the conversation held: the two
     // differ precisely because retrieval joins at recall time
     val seen = scala.collection.mutable.Buffer[Seq[Turn]]()
+    // all three sides, fused by reciprocal rank: exact symbols, BM25,
+    // and semantic. The vector side is `handled` because grounded
+    // recall runs inside a comonadic Handler[Context] where nothing
+    // may suspend — which is fine for a pure embedder and is exactly
+    // the seam that would send a network-backed one to the tool row.
+    given Handler[Embed] = Vectors.hashingHandler()
     val retriever = Retrieve.hybrid[okay.Pure](Seq(
       Retrieve.symbols(repo.index, repo.corpus.sources),
-      Retrieve.keyword(repo.keyword)))
+      Retrieve.keyword(repo.keyword),
+      Retrieve.handled(Retrieve.vector(repo.vectors))))
 
     val provider = Provider.openAi(Transports.http(), key, model, url,
       maxTokens = Some(700))

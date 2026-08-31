@@ -1,5 +1,6 @@
 package okay.demo
 
+import okay.{!, +, Handler, given}
 import okay.agent.ToolCall
 import okay.rag.*
 
@@ -51,6 +52,26 @@ class TestRepoAgent extends munit.FunSuite {
     val sym = repo.index.definition("window").head
     val src = repo.corpus.sources(sym.source)
     assert(Symbols.segment(sym, src).quotes(src))
+  }
+
+  test("all three retrieval sides are built and populated") {
+    val sources = RepoAgent.load(java.io.File("."), limit = 400)
+    val repo = RepoAgent.index(sources)
+    assert(repo.index.names.nonEmpty, "no symbols")
+    assert(repo.keyword.byTerm.nonEmpty, "no BM25 postings")
+    // the vector store is the side that needs an embedder; the demo
+    // uses the deterministic hashing one, so it runs offline
+    val n = repo.vectors.size.runWith
+    assert(n > 0, "the vector store is empty — nothing was embedded")
+
+    // and a semantic query returns something, with provenance intact
+    given Handler[Embed] = Vectors.hashingHandler()
+    val hits = Retrieve.handled(Retrieve.vector(repo.vectors))
+      .retrieve("split a document into passages", 3).runWith
+    assert(hits.nonEmpty, "the vector side returned nothing")
+    for h <- hits do
+      val src = repo.corpus.sources(h.segment.source)
+      assert(h.segment.quotes(src), s"a vector hit misquotes ${h.segment.source}")
   }
 
   test("the tools answer without a model in play") {

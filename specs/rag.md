@@ -269,6 +269,11 @@ a black box we already do better inside.
       `Language.text` (no definers), so a documentation tree
       contributes segments to BM25 and no phantom identifiers to the
       symbol index
+- [x] (P10f) grounded recall uses ALL THREE retrieval sides, not two:
+      `Retrieve.handled` discharges a retriever's own row so the
+      vector side can live inside the comonadic `Handler[Context]`
+      when the embedder is pure — and an embedder that must do I/O
+      still cannot, which is the seam saying so out loud
 - [x] (P10f) a definition owns its BLOCK and not its parameter list —
       found by the Go case, where `func (g G) Hello()` lost its name
       to its receiver, and true of Scala's `class C(x: Int) { … }` all

@@ -220,6 +220,26 @@ retrieval, and both go through ONE budget with `share` naming how
 much retrieval may take. The agent never asks for code — it has it —
 and the explicit search tool remains for when it wants to steer.
 
+It takes a `Retriever[Pure]`, and that is a real constraint rather
+than an oversight: the `Handler[Context]` it builds is COMONADIC, so
+nothing inside it may suspend. `Retrieve.handled` discharges a
+retriever's own row against a pure handler, which is how the vector
+side joins symbols and BM25 there when the embedder is in-process:
+
+```scala
+given Handler[Embed] = Vectors.hashingHandler()      // or any pure one
+Retrieve.hybrid[Pure](Seq(
+  Retrieve.symbols(index, sources),                  // exact
+  Retrieve.keyword(postings),                        // BM25
+  Retrieve.handled(Retrieve.vector(store))))         // semantic
+```
+
+An embedder that must do I/O cannot go there, and should not — that
+retrieval belongs in the agent's own row, reached through the search
+tool, where it can park. `okay-demo`'s `RepoAgent` runs all three
+sides with the deterministic hashing embedder, so it needs no
+embedding service to demonstrate the whole shape.
+
 ## Passages as lineage
 
 A `Segment` carries the exact span, so re-observing more of a document

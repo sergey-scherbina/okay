@@ -26,6 +26,22 @@ object Retrieve {
             .asInstanceOf[Seq[Scored] ! (Embed + F)]
         }
 
+  /**
+   * Discharge a retriever's own effects, giving one that runs in no
+   * row at all. That is not a convenience: `Grounded.context` builds
+   * a COMONADIC `Handler[Context]`, which cannot suspend, so a
+   * retriever used for grounded recall must already be pure. With a
+   * pure embedder (`Vectors.hashingHandler`) or an in-process store
+   * this makes the vector side usable there beside symbols and BM25;
+   * with a handler that must do I/O it does not, and should not —
+   * that retrieval belongs in the agent's row, through the search
+   * tool, where it can park.
+   */
+  def handled[F[+_]](r: Retriever[F])(using Handler[F]): Retriever[okay.Pure] =
+    new Retriever[okay.Pure]:
+      def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
+        pure(r.retrieve(query, k).runWith)
+
   /** the keyword side: no embedding, no store, just the fold */
   def keyword(index: Postings): Retriever[okay.Pure] = new:
     def retrieve(query: String, k: Int): Seq[Scored] ! okay.Pure =
