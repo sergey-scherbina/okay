@@ -1,6 +1,6 @@
 package okay.agent
 
-import okay.{!, +, Aggregator, Handler}
+import okay.{!, +, ==>, Aggregator, Handler}
 import okay.given
 import okay.rag.{Retriever, Scored, Segment}
 
@@ -84,4 +84,73 @@ object Grounded {
               view
         case Context.Mark() => st.mark
         case Context.Restore(s) => st.restore(s))
+
+  /**
+   * The same grounding as a NATURAL TRANSFORMATION rather than a
+   * comonadic handler:
+   *
+   *     Context ==> ([X] =>> X ! F)
+   *
+   * `Handler[Context]` is `Context ==> Id`, and `Id` is precisely
+   * where a suspension cannot go: a comonadic handler must ANSWER, so
+   * it must finish, so its retriever must already be pure. That is
+   * the constraint `context` above carries, and it is a real one — it
+   * is why a network-backed embedder could not be used for grounded
+   * recall at all.
+   *
+   * Valued in a PROGRAM, the operation may answer with more
+   * computation instead of with a value. So `Recall()` returns the
+   * retrieval as a program in `F`, `!.translate` forwards `F` to the
+   * surrounding row, and it is handled OUT THERE — where there is a
+   * driver, and where parking or an event loop is available. The
+   * retriever may now be `Retriever[Async]`, `Retriever[Embed]`, or
+   * anything else; nothing about the grounding policy changes.
+   *
+   * This is the same three-point line the core already draws:
+   * `F ==> Id` (comonadic), `F ==> ([X] =>> X ! G)` (this), and
+   * `F !> S` (Cont-valued, adding abort and multi-shot).
+   */
+  def translating[S, F[+_]](policy: Aggregator[Turn, S, Seq[Turn]],
+                            retriever: Retriever[F],
+                            budget: Int, share: Double = 0.5, k: Int = 4,
+                            onRecall: Seq[Turn] => Unit = _ => ())
+                           (size: Turn => Int)
+  : (Handlers.ContextState[S], Context ==> ([X] =>> X ! F)) =
+    val st = Handlers.ContextState(policy)
+    val forRetrieval = (budget * share).toInt
+
+    def lastQuestion(turns: Seq[Turn]): Option[String] =
+      turns.reverse.collectFirst { case Turn.User(t) => t }
+
+    /** exactly the assembly `context` does — the policy is the same
+     * function; only where the retrieval RUNS has moved */
+    def assemble(conversation: Seq[Turn], hits: Seq[Scored]): Seq[Turn] =
+      val found = hits.map(turn).foldLeft((Vector.empty[Turn], 0)) { (acc, t) =>
+        val (kept, used) = acc
+        val cost = size(t)
+        if used + cost <= forRetrieval then (kept :+ t, used + cost) else acc
+      }._1
+      val left = budget - found.map(size).sum
+      val kept = conversation.foldRight((Vector.empty[Turn], 0)) { (t, acc) =>
+        val (keep, used) = acc
+        val cost = size(t)
+        if used + cost <= left then (t +: keep, used + cost) else acc
+      }._1
+      val view = found ++ kept
+      onRecall(view)
+      view
+
+    val nt: Context ==> ([X] =>> X ! F) =
+      [X] => (e: Context[X]) => (e match
+        case Context.Remember(t) => okay.pure[F, Unit](st.remember(t))
+        case Context.Recall() =>
+          val conversation = st.recall
+          lastQuestion(conversation) match
+            case None => onRecall(conversation); okay.pure[F, Seq[Turn]](conversation)
+            case Some(q) => retriever.retrieve(q, k).map(assemble(conversation, _))
+        case Context.Mark() => okay.pure[F, Snapshot](st.mark)
+        case Context.Restore(s) => okay.pure[F, Unit](st.restore(s))
+      ).asInstanceOf[X ! F]
+
+    (st, nt)
 }

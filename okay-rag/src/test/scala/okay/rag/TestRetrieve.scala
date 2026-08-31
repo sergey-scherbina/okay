@@ -143,4 +143,33 @@ class TestRetrieve extends munit.FunSuite {
     assertEquals(okay.!.run(restored.search(q, 3)).map(_.segment.span),
       okay.!.run(store.search(q, 3)).map(_.segment.span))
   }
+
+  test("the similarity metric is a parameter, not a constant") {
+    // it was hardcoded to cosine inside the store, which is exactly
+    // the kind of choice that has to be the caller's: most providers
+    // return unit vectors, where dot product is cosine without two
+    // wasted square roots
+    val segs = Ingest.segment(Source("a.scala", "class Greeter { def hello = 1 }\n"),
+      400)(_.length)
+    def stocked(m: Similarity): MemoryStore =
+      val st = MemoryStore(m)
+      val f = Vectors.hashing()
+      st.upsert(segs.map(s => (s, f(s.text)))).runWith
+      st
+
+    val q = Vectors.hashing()("greeter hello")
+    val byCosine = stocked(Vectors.cosine).search(q, 1).runWith.head
+    val byDot = stocked(Vectors.dot).search(q, 1).runWith.head
+    val byEuclid = stocked(Vectors.euclidean).search(q, 1).runWith.head
+
+    // the same segment wins under all three here — what differs is
+    // the score, which is what a metric is
+    assertEquals(byCosine.segment.span, byDot.segment.span)
+    assertEquals(byCosine.segment.span, byEuclid.segment.span)
+    // hashing() normalizes, so cosine and dot agree to float noise
+    assert(math.abs(byCosine.score - byDot.score) < 1e-4f,
+      s"${byCosine.score} vs ${byDot.score}")
+    // and a distance is negated, so larger is still better
+    assert(byEuclid.score <= 0f, s"euclidean returned ${byEuclid.score}")
+  }
 }

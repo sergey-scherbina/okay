@@ -190,6 +190,17 @@ same material with the measurements attached.
 - **`Corpus`** (okay-rag) — the sources segments point into, which is
   what makes a passage lineage: `widen` grows it, `whole` returns the
   document, `current` detects an index that drifted from the file.
+- **`Grounded.translating`** (okay-agent) — grounding as
+  `Context ==> ([X] =>> X ! F)` rather than `Context ==> Id`. The
+  comonadic handler must ANSWER, so it must finish, so its retriever
+  must already be pure; valued in a program, `Recall()` may hand back
+  a retrieval that suspends and `!.translate` forwards it outward.
+  The three handler forms, once more, in one concrete place.
+- **`Similarity`** (okay-rag) — a function, not a typeclass, and the
+  general rule for this layer: a typeclass asserts canonicity, and a
+  program holds several stores, several retrievers and possibly two
+  metrics. `Handler` is a typeclass precisely because a row IS
+  canonical where it is discharged.
 - **`Language`** (okay-rag) — a language as DATA: comments, strings,
   the words that introduce a definition, and `Layout.Braces` or
   `Layout.Indent`. `Code.scanner` and `Code.driver` are functions of

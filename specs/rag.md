@@ -274,6 +274,12 @@ a black box we already do better inside.
       vector side can live inside the comonadic `Handler[Context]`
       when the embedder is pure — and an embedder that must do I/O
       still cannot, which is the seam saying so out loud
+- [x] (P10f) grounding also exists as a NATURAL TRANSFORMATION,
+      `Context ==> ([X] =>> X ! F)`, so a retriever that must suspend
+      (a remote store, a network embedder) works where the comonadic
+      handler provably cannot — proved with a retriever answering from
+      another thread, and with a failed retrieval arriving as the
+      row's error rather than an exception inside context assembly
 - [x] (P10f) a definition owns its BLOCK and not its parameter list —
       found by the Go case, where `func (g G) Hello()` lost its name
       to its receiver, and true of Scala's `class C(x: Int) { … }` all

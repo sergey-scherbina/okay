@@ -36,6 +36,17 @@ trait VectorStore[F[+_]]:
   def delete(source: String, spans: Seq[Span]): Unit ! F
   def size: Int ! F
 
+/**
+ * How near two embeddings are. A plain function, not a typeclass, and
+ * deliberately: a typeclass asserts CANONICITY — one instance per
+ * type — while a program may hold two stores with different metrics
+ * (a normalized index scored by dot product beside an unnormalized
+ * one scored by cosine), and there is nothing about `Embedding` that
+ * picks one. Given resolution would have to be fought; a parameter
+ * with a default is simply passed.
+ */
+type Similarity = (Embedding, Embedding) => Float
+
 object Vectors {
 
   /** cosine similarity, the usual measure; zero vectors score 0 */
@@ -51,6 +62,31 @@ object Vectors {
       nb += b(i) * b(i)
       i += 1
     if na == 0f || nb == 0f then 0f else dot / (math.sqrt(na * nb).toFloat)
+
+  /**
+   * The plain inner product — what most embedding providers actually
+   * recommend, because they return unit vectors already, and then
+   * cosine is this with two square roots wasted on 1.0.
+   */
+  def dot(a: Embedding, b: Embedding): Float =
+    var acc = 0.0f
+    var i = 0
+    val n = math.min(a.length, b.length)
+    while i < n do
+      acc += a(i) * b(i)
+      i += 1
+    acc
+
+  /** negated Euclidean distance, so that larger is still better */
+  def euclidean(a: Embedding, b: Embedding): Float =
+    var acc = 0.0f
+    var i = 0
+    val n = math.min(a.length, b.length)
+    while i < n do
+      val d = a(i) - b(i)
+      acc += d * d
+      i += 1
+    -math.sqrt(acc.toDouble).toFloat
 
   /** unit length, so cosine becomes a dot product */
   def normalize(v: Embedding): Embedding =
@@ -86,7 +122,8 @@ object Vectors {
  * ANN indexes and real databases are adapters behind the same
  * interface.
  */
-final class MemoryStore extends VectorStore[okay.Pure] {
+final class MemoryStore(similarity: Similarity = Vectors.cosine)
+  extends VectorStore[okay.Pure] {
 
   private var items: Vector[(Segment, Embedding)] = Vector.empty
 
@@ -102,7 +139,7 @@ final class MemoryStore extends VectorStore[okay.Pure] {
     val top = Aggregator.topK[Scored](k)
     okay.pure(
       items.foldLeft(top.init)((acc, it) =>
-        top.add(acc, Scored(it._1, Vectors.cosine(query, it._2)))) |> top.present)
+        top.add(acc, Scored(it._1, similarity(query, it._2)))) |> top.present)
 
   def delete(source: String, spans: Seq[Span]): Unit ! okay.Pure =
     val gone = spans.toSet

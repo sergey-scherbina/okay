@@ -150,6 +150,12 @@ Split.windows(doc, bpe, budget = 512, overlap = 64)   // the classic shape, exac
 | `Symbols.of` | `(source, tree, identifiers = true)` | one parsed file; `identifiers = false` for prose |
 | `Symbols.source` / `project` / `fold` | one `Source`, many, or streaming | build the index, language per file |
 | `Symbols.segment` | `(Symbol, Source) => Segment` | the code a symbol names |
+| `Similarity` | `(Embedding, Embedding) => Float` | how near two embeddings are |
+| `Vectors.cosine` / `dot` / `euclidean` | the three usual metrics | `dot` for providers that return unit vectors; `euclidean` is negated so larger is better |
+| `MemoryStore(similarity)` | defaults to `cosine` | the metric is the caller's choice |
+| `Retrieve.handled` | `Retriever[F] => Handler[F] ?=> Retriever[Pure]` | discharge a retriever's row, for the comonadic context handler |
+| `Grounded.context` | `… => Handler[Context]` | comonadic grounding; needs `Retriever[Pure]` |
+| `Grounded.translating` | `… => Context ==> ([X] =>> X ! F)` | grounding that may SUSPEND; pair with `!.translate` |
 
 ## Gotchas
 
@@ -220,11 +226,13 @@ retrieval, and both go through ONE budget with `share` naming how
 much retrieval may take. The agent never asks for code — it has it —
 and the explicit search tool remains for when it wants to steer.
 
-It takes a `Retriever[Pure]`, and that is a real constraint rather
-than an oversight: the `Handler[Context]` it builds is COMONADIC, so
-nothing inside it may suspend. `Retrieve.handled` discharges a
-retriever's own row against a pure handler, which is how the vector
-side joins symbols and BM25 there when the embedder is in-process:
+`Grounded.context` takes a `Retriever[Pure]`, and that is a real
+constraint: the `Handler[Context]` it builds is COMONADIC — it is
+`Context ==> Id`, and `Id` is exactly where a suspension cannot go.
+An operation interpreted into `Id` must produce a value, so it must
+finish. `Retrieve.handled` discharges a retriever's own row against a
+pure handler, which is how the vector side joins symbols and BM25
+there when the embedder is in-process:
 
 ```scala
 given Handler[Embed] = Vectors.hashingHandler()      // or any pure one
@@ -234,11 +242,65 @@ Retrieve.hybrid[Pure](Seq(
   Retrieve.handled(Retrieve.vector(store))))         // semantic
 ```
 
-An embedder that must do I/O cannot go there, and should not — that
-retrieval belongs in the agent's own row, reached through the search
-tool, where it can park. `okay-demo`'s `RepoAgent` runs all three
-sides with the deterministic hashing embedder, so it needs no
-embedding service to demonstrate the whole shape.
+### When retrieval must suspend: the natural transformation
+
+For an embedder or a store that goes over a wire, the answer is not a
+workaround but the next point on the line the core already draws.
+`Grounded.translating` is the same grounding valued in a PROGRAM:
+
+```
+Context ==> ([X] =>> X ! F)
+```
+
+`Recall()` answers with the retrieval as a program in `F`;
+`!.translate` forwards `F` to the surrounding row; it runs out where
+a driver exists and where parking or an event loop is available. The
+policy code is identical — only where the retrieval RUNS has moved.
+
+```scala
+val (state, nt) = Grounded.translating(policy, remoteRetriever, budget)(size)
+val grounded: A ! Async = !.translate(program)(nt)
+Async.runAsync(grounded)
+```
+
+So the three handler forms line up as they do everywhere else in this
+library: `F ==> Id` is the comonadic handler (fastest, cannot
+suspend), `F ==> ([X] =>> X ! G)` is this (forwards a residual row),
+and `F !> S` is the Cont-valued handler (adds abort and multi-shot at
+the price of going through Cont). `TestGroundedTranslating` proves the
+difference with a retriever that answers from another thread, and
+shows a failed retrieval arriving as the row's error rather than as an
+exception thrown inside context assembly.
+
+`okay-demo`'s `RepoAgent` uses the comonadic form with the
+deterministic hashing embedder, so it needs no embedding service to
+demonstrate the whole shape.
+
+### What is a typeclass here, and what is not
+
+Deliberately little.
+
+| | form | why |
+|---|---|---|
+| `Embed` | an **effect** in a row, discharged by a `Handler[Embed]` | embedding is a capability of the environment; the handler is the only part resolved as a given |
+| `VectorStore[F]` | a **trait passed by value**, parameterised by its row | a program holds SEVERAL stores — a code index, a docs index, a scratch one |
+| `Retriever[F]` | the same | likewise, and they are combined by `hybrid`/`fair`, which needs them as values |
+| `Similarity` | a **function** with a default | a normalized index scored by dot product can sit beside an unnormalized one scored by cosine |
+| `Embedding` | a concrete `Vector[Float]` | see below — this one is a real limitation, not a choice |
+
+The reason none of the first four is a typeclass is the same reason
+each time: a typeclass asserts CANONICITY, one instance per type. All
+of these are things a program legitimately has more than one of, so
+given resolution would be fought rather than used. `Handler` is a
+typeclass because a row IS canonical at the point it is discharged —
+there is exactly one interpretation of `Embed` in force.
+
+The honest gap is `Embedding = Vector[Float]`: concrete, and boxed.
+A 1536-dimension provider vector is 1536 boxed `java.lang.Float`s.
+Making it abstract would touch the store, the codec and the persisted
+format at once, so it is recorded as a known cost rather than done
+quietly — `Similarity` reads through `apply`, so an unboxed
+representation is a change of one type alias and three loops.
 
 ## Passages as lineage
 
