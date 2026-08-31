@@ -83,9 +83,21 @@ object Stage {
    * fs2's `mapAccumulate` is the 1:1 special case, spelled below.
    * The reason it is the special case and not the primitive is that
    * of the five stages written here, ZERO are one-output-per-input.
+   *
+   * `step` and `end` share ONE parameter list, and that is inference
+   * rather than taste: in a third list (`(z)(step)(end)`) the
+   * compiler solves the type variables after each list, so `I` — a
+   * lambda PARAMETER type, which nothing before it constrains — is
+   * committed to `Any` before the step's body is ever typed, and
+   * every call site has to spell `[I, O, S]` out. In one list the
+   * expected result type reaches them and every call below infers.
+   * A default for `end` breaks it again for the same reason (the
+   * default is elaborated at `Stage[Nothing, Nothing, S]`), so the
+   * no-flush case passes `pure` explicitly — which reads as what it
+   * is: nothing to flush.
    */
-  def transduce[I, O, S](z: S)(step: (S, I) => Stage[I, O, S])
-                              (end: S => Stage[I, O, S]): Stage[I, O, S] =
+  def transduce[I, O, S](z: S)(step: (S, I) => Stage[I, O, S],
+                               end: S => Stage[I, O, S]): Stage[I, O, S] =
     def go(s: S): Stage[I, O, S] = await[I, O].flatMap {
       case Some(i) => step(s, i).flatMap(go)
       case None => end(s)
@@ -106,22 +118,27 @@ object Stage {
    * emits nothing instead of emitting a None.
    */
   def mapAccumulate[I, O, S](z: S)(f: (S, I) => (S, O)): Stage[I, O, S] =
-    transduce[I, O, S](z)((s, i) => {
+    transduce(z)((s, i) => {
       val (s2, o) = f(s, i)
       tell[I, O](o).map(_ => s2)
-    })(pure)
+    }, pure)
 
   /** batch inputs into chunks of the given size (the tail flushes on
    * end of input — a stage may still tell after seeing None) */
   def chunked[T](size: Int): Stage[T, Chunk[T], Unit] =
-    transduce[T, Chunk[T], Vector[T]](Vector.empty)((buf, t) => {
-      val b = buf :+ t
-      if b.length < size then pure(b)
-      else tell[T, Chunk[T]](ChunkBuf.ofSpecialized(b)).map(_ => Vector.empty[T])
-    })(buf =>
-      if buf.isEmpty then pure(buf)
-      else tell[T, Chunk[T]](ChunkBuf.ofSpecialized(buf)).map(_ => buf)
-    ).map(_ => ())
+    // named, not inlined into the `.map` below: as the RECEIVER of a
+    // call the transduce gets no expected type, and then `I` has
+    // nothing to be inferred from
+    val batched: Stage[T, Chunk[T], Vector[T]] =
+      transduce(Vector.empty[T])((buf, t) => {
+        val b = buf :+ t
+        if b.length < size then pure(b)
+        else tell[T, Chunk[T]](ChunkBuf.ofSpecialized(b)).map(_ => Vector.empty[T])
+      }, buf =>
+        if buf.isEmpty then pure(buf)
+        else tell[T, Chunk[T]](ChunkBuf.ofSpecialized(buf)).map(_ => buf))
+
+    batched.map(_ => ())
 
   /** flatten chunks back into elements */
   def unchunk[T]: Stage[Chunk[T], T, Unit] =

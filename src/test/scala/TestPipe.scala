@@ -49,10 +49,11 @@ class TestPipe extends munit.FunSuite {
     // tell the running total, but only on even inputs — and tell the
     // final total once the input ends. Nothing is allocated to say
     // "no output here": the step simply does not tell.
-    val evens = Stage.transduce[Int, Int, Int](0)((sum, i) => {
+    // the type of the stage is all the inference needs: no [I, O, S]
+    val evens: Stage[Int, Int, Int] = Stage.transduce(0)((sum, i) => {
       val s2 = sum + i
       if i % 2 == 0 then Stage.tell[Int, Int](s2).map(_ => s2) else pure(s2)
-    })(s => Stage.tell[Int, Int](-s).map(_ => s))
+    }, s => Stage.tell[Int, Int](-s).map(_ => s))
 
     val (out, answer) = !.run(Writer.run(through(told)(evens)))
     assertEquals(out, Seq(3, 10, 21, -21))   // 1+2, +3+4, +5+6, then the flush
@@ -63,7 +64,8 @@ class TestPipe extends munit.FunSuite {
     // the same skeleton, at four different shapes: `chunked` (below),
     // Scan.stage (okay-lex), Sse.events (okay-llm), the demo's join.
     // Here it is at the trivial one — the identity stage.
-    val id = Stage.transduce[Int, Int, Unit](())((_, i) => Stage.tell[Int, Int](i))(pure)
+    val id: Stage[Int, Int, Unit] =
+      Stage.transduce(())((_, i) => Stage.tell[Int, Int](i), pure)
     val told: Int ! Writer % Int = Writer.tell(1).flatMap(_ => Writer.tell(2).map(_ => 2))
     assertEquals(!.run(Writer.run(through(told)(id)))._1, Seq(1, 2))
   }
@@ -72,14 +74,14 @@ class TestPipe extends munit.FunSuite {
     val told: Int ! Writer % Int =
       (1 to 4).foldLeft(pure[Writer % Int, Int](0))((m, i) => m.flatMap(_ => Writer.tell(i).map(_ => i)))
 
-    val runningTotal = Stage.mapAccumulate[Int, Int, Int](0)((sum, i) => (sum + i, sum + i))
+    val runningTotal: Stage[Int, Int, Int] = Stage.mapAccumulate(0)((sum, i) => (sum + i, sum + i))
     assertEquals(!.run(Writer.run(through(told)(runningTotal)))._1, Seq(1, 3, 6, 10))
 
     // conditional emission is what it cannot say: one output per input
     // is the contract, so "nothing here" has to BE a value — which is
     // exactly why the fs2 original of okay-demo's join emits
     // Option[Output] and filters downstream.
-    val evensOnly = Stage.mapAccumulate[Int, Option[Int], Int](0)((sum, i) =>
+    val evensOnly: Stage[Int, Option[Int], Int] = Stage.mapAccumulate(0)((sum, i) =>
       (sum + i, if i % 2 == 0 then Some(sum + i) else None))
     assertEquals(!.run(Writer.run(through(told)(evensOnly)))._1,
       Seq(None, Some(3), None, Some(10)))   // two Nones nobody wanted

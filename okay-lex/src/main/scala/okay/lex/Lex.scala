@@ -49,10 +49,10 @@ object Scan {
     def tellAll(ts: Vector[Token[K]], then_ : => Stage[Char, Token[K], S]): Stage[Char, Token[K], S] =
       ts.foldRight(then_)((t, rest) => Stage.tell[Char, Token[K]](t).flatMap(_ => rest))
 
-    Stage.transduce[Char, Token[K], S](sc.init)((s, c) => {
+    Stage.transduce(sc.init)((s, c) => {
       val (s2, ts) = sc.step(s, c)
       tellAll(ts, pure(s2))
-    })(s => tellAll(sc.flush(s), pure(s)))
+    }, s => tellAll(sc.flush(s), pure(s)))
 
   /**
    * The chunked performance path: a chunk of chars in, a chunk of

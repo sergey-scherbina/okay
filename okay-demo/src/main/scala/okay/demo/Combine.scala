@@ -80,7 +80,7 @@ object Combine {
    * and nothing to hide a mutation in.
    */
   def combine(repo: StateRepo): Stage[Event, Output, StateRepo] =
-    Stage.transduce[Event, Output, StateRepo](repo)((s, event) => event match {
+    Stage.transduce(repo)((s, event) => event match {
       case b: Battery => pure(s.put(b.vehicleId, b.stateOfChargeInPercent))
       case c: Charging => s.get(c.vehicleId) match
         case None => pure(s)
@@ -90,7 +90,7 @@ object Combine {
           vehicleId = c.vehicleId,
           powerInWatts = c.powerInWatts,
           stateOfChargeInPercent = soc)).map(_ => s)
-    })(pure)
+    }, pure)
 
   /**
    * THE SAME JOIN, written the way fs2 writes it — and the reason
@@ -112,7 +112,7 @@ object Combine {
    * them just has a hole where a value has to go.
    */
   def accumulating(repo: StateRepo): Stage[Event, Option[Output], StateRepo] =
-    Stage.mapAccumulate[Event, Option[Output], StateRepo](repo)((s, event) => event match {
+    Stage.mapAccumulate(repo)((s, event) => event match {
       case b: Battery => (s.put(b.vehicleId, b.stateOfChargeInPercent), None)
       case c: Charging => (s, s.get(c.vehicleId).map(soc => Output(
         timestamp = c.timestamp,
@@ -125,8 +125,8 @@ object Combine {
   /** the filter the accumulating form needs and the direct one does
    * not: drop the Nones it was forced to emit */
   def defined[A]: Stage[Option[A], A, Unit] =
-    Stage.transduce[Option[A], A, Unit](())((_, o) =>
-      o.fold(pure(()))(a => Stage.tell[Option[A], A](a)))(pure)
+    Stage.transduce(())((_, o) =>
+      o.fold(pure(()))(a => Stage.tell[Option[A], A](a)), pure)
 
   /** the accumulating join, end to end: two stages where the direct
    * form needs one */

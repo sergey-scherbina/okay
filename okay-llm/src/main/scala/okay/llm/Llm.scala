@@ -25,11 +25,17 @@ object Sse {
       if buf.isEmpty then pure(Nil)
       else Stage.tell[String, String](buf.reverse.mkString("\n")).map(_ => Nil)
 
-    Stage.transduce[String, String, List[String]](Nil)((buf, line) =>
-      if line.isEmpty then flush(buf)
-      else if line.startsWith("data:") then pure(line.drop(5).trim :: buf)
-      else pure(buf)   // comments, event:, id: — framing we do not need yet
-    )(flush).map(_ => ())
+    // named rather than inlined into the `.map`: as the receiver of a
+    // call the transduce gets no expected type, and its input type
+    // has nothing else to be inferred from
+    val framed: Stage[String, String, List[String]] =
+      Stage.transduce(List.empty[String])((buf, line) =>
+        if line.isEmpty then flush(buf)
+        else if line.startsWith("data:") then pure(line.drop(5).trim :: buf)
+        else pure(buf),   // comments, event:, id: — framing we do not need yet
+        flush)
+
+    framed.map(_ => ())
 }
 
 object Anthropic {
