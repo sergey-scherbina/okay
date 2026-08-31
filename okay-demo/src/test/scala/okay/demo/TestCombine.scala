@@ -79,6 +79,38 @@ class TestCombine extends munit.FunSuite {
     assertEquals(repo.get(VehicleId("v124")), Some(StateOfChargeInPercent(49)))
   }
 
+  // ---- the same join, written as fs2 writes it ----
+
+  /** the accumulating formulation, run the same way */
+  private def foldAccumulating(repo: StateRepo, events: Seq[Event]): Seq[Option[Output]] =
+    !.run(Writer.run(through(Writer.of(events.toList))(accumulating(repo))))._1
+
+  test("the two formulations agree, event for event") {
+    val cases = Seq(
+      battery :+ charging,
+      Seq(charging, battery(0), charging),
+      battery ++ Seq(charging, Charging(t0, SocketId("s124"), VehicleId("v124"), PowerInWatts(11))),
+      Seq(charging),
+      battery,
+    )
+    for events <- cases do
+      val direct = fold(emptyState, events)._1
+      val viaAccumulate = foldAccumulating(emptyState, events).flatten
+      assertEquals(viaAccumulate, direct, s"disagreed on $events")
+      // and through the filtering stage, the accumulating form is the
+      // same pipeline as the direct one — two stages instead of one
+      val piped = !.run(Writer.run(through(Writer.of(events.toList))(accumulated(emptyState))))._1
+      assertEquals(piped, direct)
+  }
+
+  test("what the 1:1 contract costs: an Option per event") {
+    val events = battery :+ charging          // three batteries, one charging
+    val told = foldAccumulating(emptyState, events)
+    assertEquals(told.length, 4)              // one output per INPUT, necessarily
+    assertEquals(told.count(_.isEmpty), 3)    // three Nones nobody asked for
+    assertEquals(fold(emptyState, events)._1.length, 1)   // the direct form tells once
+  }
+
   // ---- the same stage, over two sources merged by readiness ----
 
   test("merged: the battery arrives first, so the charging is enriched") {

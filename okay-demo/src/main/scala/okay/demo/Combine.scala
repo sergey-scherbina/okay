@@ -16,10 +16,13 @@ import java.time.Instant
  * It is written in the two halves the library separates, and that is
  * the whole point of having it here:
  *
- *   - `combine` is a PURE Stage — awaits events, tells outputs, and
- *     its state is a recursion parameter, not a cell and not a
- *     `mapAccumulate`. It has no effects at all, so it is tested
- *     against a list: no scheduler, no clock, no waiting.
+ *   - `combine` is a PURE Stage — awaits events, tells outputs, its
+ *     state carried by `Stage.transduce`, not a cell. It has no
+ *     effects at all, so it is tested against a list: no scheduler,
+ *     no clock, no waiting. `accumulating` beside it is the SAME join
+ *     in fs2's `mapAccumulate` shape, kept because the comparison is
+ *     the point of this file — the tests assert the two agree event
+ *     for event, and measure what the 1:1 contract costs.
  *   - `outputs` is the concurrent half: `merge` runs a fiber
  *     per source and interleaves them by whoever is ready, and the
  *     SAME stage is then run over the merged source by `through`.
@@ -88,6 +91,47 @@ object Combine {
           powerInWatts = c.powerInWatts,
           stateOfChargeInPercent = soc)).map(_ => s)
     })(pure)
+
+  /**
+   * THE SAME JOIN, written the way fs2 writes it — and the reason
+   * this file carries both.
+   *
+   * `mapAccumulate` is one output per input, so a battery reading
+   * (which updates the state and emits nothing) has to emit
+   * SOMETHING: "nothing" becomes a value, `Option[Output]`, and a
+   * second pass filters it out. That is not a translation artifact —
+   * the fs2 original of this exercise has exactly that signature,
+   * `Stream[F, (StateRepo, Option[Output])]`, and its test ends with
+   * `.collect { case (_, Some(x)) => x }`.
+   *
+   * The two produce the same outputs (TestCombine asserts it on the
+   * same inputs), and the difference is what each element costs on
+   * the way: here an Option per event and a filtering stage after it,
+   * above nothing at all — the emitting branch tells, the other
+   * simply does not. Both are three lines of state handling; one of
+   * them just has a hole where a value has to go.
+   */
+  def accumulating(repo: StateRepo): Stage[Event, Option[Output], StateRepo] =
+    Stage.mapAccumulate[Event, Option[Output], StateRepo](repo)((s, event) => event match {
+      case b: Battery => (s.put(b.vehicleId, b.stateOfChargeInPercent), None)
+      case c: Charging => (s, s.get(c.vehicleId).map(soc => Output(
+        timestamp = c.timestamp,
+        socketId = c.socketId,
+        vehicleId = c.vehicleId,
+        powerInWatts = c.powerInWatts,
+        stateOfChargeInPercent = soc)))
+    })
+
+  /** the filter the accumulating form needs and the direct one does
+   * not: drop the Nones it was forced to emit */
+  def defined[A]: Stage[Option[A], A, Unit] =
+    Stage.transduce[Option[A], A, Unit](())((_, o) =>
+      o.fold(pure(()))(a => Stage.tell[Option[A], A](a)))(pure)
+
+  /** the accumulating join, end to end: two stages where the direct
+   * form needs one */
+  def accumulated(repo: StateRepo): Stage[Event, Output, Unit] =
+    through(accumulating(repo))(defined[Output])
 
   /**
    * The concurrent half: the two sources merged by READINESS (a fiber
