@@ -139,6 +139,12 @@ works where nothing may park.
   message and comes back as one. The loss is real and it is the
   protocol's, not ours; the alternative (dropping system turns) would
   lose more.
+- **A capability a server does not declare answers `MethodNotFound`**
+  — found by a v1 test that used `resources/list` as its example of an
+  unknown method and started passing for the wrong reason once v2
+  landed. A polite empty list would have hidden the difference between
+  "no resources" and "does not do resources"; the handshake already
+  says which, and now the methods agree with it.
 - **An unknown resource uri is a protocol ERROR, an unknown tool is an
   ANSWER** — chosen because of who is asking. A model picks a tool
   name and must be able to read its own mistake and retry; a program
@@ -192,19 +198,22 @@ final class Session:
 ```
 
 ### Behavior
-- [ ] `capabilities` declares only what the server actually has: a
+- [x] `capabilities` declares only what the server actually has: a
       server with no prompts does not advertise prompts, and a client
       reading the handshake can tell
-- [ ] `resources/list` pages like `tools/list`, and `resources/read`
+- [x] `resources/list` pages like `tools/list`, and `resources/read`
       answers the text of a uri; an unknown uri is a protocol error
       (unlike an unknown TOOL, which is an answer — the difference is
       that a model chooses tools and a program chooses uris)
-- [ ] a server's resources become a `Corpus`, and the retriever
+- [x] a server's resources become a `Corpus`, and the retriever
       indexes it exactly as it indexes local files
-- [ ] `prompts/list` and `prompts/get` round-trip a `Seq[Turn]`,
+- [x] `prompts/list` and `prompts/get` round-trip a `Seq[Turn]`,
       arguments substituted by the server
-- [ ] a v1 client talking to a v2 server, and the reverse, both work:
+- [x] a v1 client talking to a v2 server, and the reverse, both work:
       the capabilities say what is there and nothing else breaks
+- [x] what a server DECLARES is exactly what it answers: a method of a
+      capability it does not have is `MethodNotFound`, not a polite
+      empty list
 
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server
@@ -216,6 +225,14 @@ byte pipes 1, agent-over-MCP 3), all eight behavior items covered.
 - `TestAgentOverMcp` runs the SAME `Agent.converse` program against a
   local tool table and against an MCP server and asserts the answers
   are equal — the module's thesis, as an assertion
-- `okay.demo.RepoMcp` serves this repository's own two tools
-  (definition, read_file) over stdio; verified by piping real
-  JSON-RPC lines into it
+- `okay.demo.RepoMcp` serves this repository over stdio; verified by
+  piping real JSON-RPC lines into it
+
+v2 (resources and prompts) shipped the same day: 11 more tests (server
+side 6, session and the two bridges 5), 33 in the module. The bridges
+are the point and both are asserted — a server's resources go through
+`Corpus` into the SYMBOL INDEX (a remote file's `add` is found by name
+at its uri), and a server's prompt comes back as `Seq[Turn]`.
+`RepoMcp` now serves all three capabilities: the agent's two tools,
+every indexed file as a resource, and an `explain` prompt that finds a
+definition and opens a conversation about it.

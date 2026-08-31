@@ -2,7 +2,7 @@ package okay.mcp
 
 import okay.*
 import okay.given
-import okay.agent.{Tool, ToolCall, ToolSpec}
+import okay.agent.{Tool, ToolCall, ToolSpec, Turn}
 import okay.codec.Json
 
 /**
@@ -40,7 +40,13 @@ final class Session private[mcp] (link: Link, private var rest: Source[String]) 
   /** who answered the handshake, if it has happened */
   def server: Option[Mcp.Info] = info
 
-  private[mcp] def opened(i: Option[Mcp.Info]): Session = { info = i; this }
+  /** what the handshake said this server has — ask before asking */
+  def has(capability: String): Boolean = caps.contains(capability)
+
+  private var caps: Set[String] = Set.empty
+
+  private[mcp] def opened(i: Option[Mcp.Info], c: Set[String]): Session =
+    info = i; caps = c; this
 
   /** one request, and the answer to it */
   def request(method: String, params: Json): Json ! Async =
@@ -99,6 +105,67 @@ final class Session private[mcp] (link: Link, private var rest: Source[String]) 
     }
 
   /**
+   * The documents a server offers. Pages are followed, like tools —
+   * `nextCursor` is the client's business, not the caller's.
+   */
+  def resources: Seq[Mcp.Resource] ! Async =
+    def page(cursor: Option[String], acc: Seq[Mcp.Resource]): Seq[Mcp.Resource] ! Async =
+      val params = cursor.fold(Rpc.obj())(c => Rpc.obj("cursor" -> Json.JStr(c)))
+      request(Mcp.ResourcesList, params).flatMap { result =>
+        val (rs, next) = McpDocs.resourcesOf(result)
+        next match
+          case Some(c) if rs.nonEmpty || acc.isEmpty => page(Some(c), acc ++ rs)
+          case _ => pure(acc ++ rs)
+      }
+
+    page(None, Nil)
+
+  /** the text of one, or None — the uri is unknown or the link ended */
+  def read(uri: String): Option[String] ! Async =
+    request(Mcp.ResourcesRead, Rpc.obj("uri" -> Json.JStr(uri))).map {
+      case Json.JErr(_) => None
+      case result => McpDocs.contentsOf(result)
+    }
+
+  /**
+   * Every resource the server has, as documents — the bridge that
+   * makes a remote server's files something the RETRIEVER can index.
+   * An agent then searches them exactly as it searches local ones,
+   * which is the resource half of this module's thesis: nothing in
+   * the agent knows where a document came from.
+   */
+  def corpus: okay.rag.Corpus ! Async =
+    resources.flatMap { rs =>
+      def go(rest: Seq[Mcp.Resource], acc: Seq[okay.rag.Source])
+      : Seq[okay.rag.Source] ! Async = rest match
+        case Nil => pure(acc)
+        case r +: more => read(r.uri).flatMap {
+          case Some(text) => go(more, acc :+ okay.rag.Source(r.uri, text))
+          case None => go(more, acc)   // a resource that will not read is not a document
+        }
+
+      go(rs, Nil).map(okay.rag.Corpus.of)
+    }
+
+  /** the conversation openings a server offers */
+  def prompts: Seq[Mcp.Prompt] ! Async =
+    request(Mcp.PromptsList, Rpc.obj()).map(McpDocs.promptsOf)
+
+  /**
+   * One of them, arguments substituted by the server, as the turns an
+   * agent's context is made of. Empty if the prompt is unknown — the
+   * caller asked for a name it got from `prompts`.
+   */
+  def prompt(name: String, args: Map[String, String] = Map.empty): Seq[Turn] ! Async =
+    request(Mcp.PromptsGet, Rpc.obj(
+      "name" -> Json.JStr(name),
+      "arguments" -> Json.JObj(args.toVector.map((k, v) => (k, Json.JStr(v))))))
+      .map {
+        case Json.JErr(_) => Nil
+        case result => McpDocs.turnsOf(result)
+      }
+
+  /**
    * The server AS a handler for the Tool effect — the sentence this
    * module exists for. An agent program does not change by one
    * character when its tools come from here.
@@ -131,6 +198,7 @@ object Client {
     val s = Session(link, link.lines)
     s.request(Mcp.Initialize, Mcp.initializeParams(client)).flatMap { result =>
       s.notify(Mcp.Initialized, Rpc.obj())
-        .map(_ => s.opened(Rpc.field(result, "serverInfo").flatMap(Mcp.infoOf)))
+        .map(_ => s.opened(Rpc.field(result, "serverInfo").flatMap(Mcp.infoOf),
+          Set("tools", "resources", "prompts").filter(Mcp.capability(result, _))))
     }
 }

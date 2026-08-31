@@ -21,8 +21,20 @@ because the two ends were already in the library's vocabulary:
 | `Rpc` | JSON-RPC 2.0 as data, plus `Stage[String, Rpc, Unit]` framing. Decoding is total: a damaged line is a `Failed`, never a throw |
 | `Mcp` | the protocol vocabulary: methods, the handshake, `inputSchema` <-> `ToolSpec` |
 | `Client` / `Session` | a server as `tools`, `call`, and a `Handler[Tool]` (or `interpret`, where nothing may park) |
-| `Server` | `serve` is a PURE `Stage[Rpc, Rpc, Unit]` — the whole protocol is testable with no process, socket, clock or thread; `over` is the only part that touches a wire |
+| `Server` | `Serving` is everything a server has (tools, resources, prompts); `serve` is a PURE `Stage[Rpc, Rpc, Unit]` — the whole protocol is testable with no process, socket, clock or thread; `over` is the only part that touches a wire |
 | `Stdio` (JVM) | the transport: a spawned server's pipes, or this process's own stdin/stdout |
+
+## The three capabilities, and where each lands
+
+| MCP | here | so that |
+|---|---|---|
+| tool | `ToolSpec` + `Map[String, ToolCall => String]` | an agent program is unchanged when its tools are remote |
+| resource | `okay.rag.Source` (a `Corpus`) | the retriever indexes a server's documents like local files |
+| prompt | `Seq[Turn]` | a server's prompt is something an agent can be started from |
+
+Capabilities are computed from what a server actually has, so a
+tools-only server does not advertise resources, and a client reads the
+handshake (`session.has("prompts")`) rather than guessing.
 
 ## Using an MCP server from an agent
 
@@ -35,8 +47,10 @@ Agent.converse("...", session.tools.runWith)   // its tools, discovered
 
 ## Serving ours
 
-`okay.demo.RepoMcp` is this repository as an MCP server — the demo
-agent's two tools (a definition by name, a file by path) over stdio.
+`okay.demo.RepoMcp` is this repository as an MCP server, all three
+capabilities: the demo agent's two tools (a definition by name, a file
+by path), every indexed file as a resource, and an `explain` prompt
+that finds a definition and opens a conversation about it.
 Launch it as a plain class, which is what an MCP client does (`sbt
 -batch` keeps stdin for itself):
 
@@ -45,8 +59,14 @@ CP=$(sbt -batch --error "export okayDemo/Runtime/fullClasspath" | tail -1)
 java -cp "$CP" okay.demo.RepoMcp /path/to/repo
 ```
 
-## Not here (v1)
-resources, prompts, sampling, roots, progress/cancellation, the
-streamable-HTTP transport, OAuth, and JSON-RPC batches (removed in the
-2025-06-18 revision). Capabilities are declared honestly, so a client
-knows to ask only for tools.
+```scala
+// and the other two, in our own vocabulary
+val corpus = session.corpus.runWith                    // resources as documents
+val opening = session.prompt("explain", Map("name" -> "transduce")).runWith
+```
+
+## Not here
+sampling, roots, completion, progress/cancellation, resource
+subscriptions (each is a server talking FIRST, which the session's
+request/answer loop does not yet do), the streamable-HTTP transport,
+OAuth, and JSON-RPC batches (removed in the 2025-06-18 revision).

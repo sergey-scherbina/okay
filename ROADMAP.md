@@ -168,5 +168,9 @@ handler, and its JSON-RPC framing is our total parser plus `Schema`" —
 and the module is small because that sentence is true: an agent
 program is unchanged when its tools come from a server, and serving
 our own tools is a `Stage[Rpc, Rpc, Unit]` with the transport outside
-it. v1 is tools end to end over stdio; resources and prompts are the
-same list+fetch shape and are follow-ups, not design questions.
+it. v1 was tools end to end over stdio; v2 added resources and prompts the
+same day, and each lands on a type that already existed — a resource
+is `okay.rag.Source` (so a server's documents go through the
+retriever), a prompt is `Seq[Turn]` (so a server's prompt is an agent
+opening). What remains is the server talking FIRST — sampling, roots,
+subscriptions, progress — and the streamable-HTTP transport.

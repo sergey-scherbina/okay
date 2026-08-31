@@ -1,6 +1,6 @@
 package okay.mcp
 
-import okay.agent.{ToolCall, ToolSpec}
+import okay.agent.{ToolCall, ToolSpec, Turn}
 import okay.codec.Json
 
 /**
@@ -28,7 +28,25 @@ object Mcp {
   val Initialized = "notifications/initialized"
   val ToolsList = "tools/list"
   val ToolsCall = "tools/call"
+  val ResourcesList = "resources/list"
+  val ResourcesRead = "resources/read"
+  val PromptsList = "prompts/list"
+  val PromptsGet = "prompts/get"
   val Ping = "ping"
+
+  /** a document a server offers, by uri — okay-rag's `Source` with
+   * the protocol's metadata around it */
+  final case class Resource(uri: String, name: String,
+                            description: String = "",
+                            mimeType: Option[String] = None)
+
+  /** a conversation opening a server offers, by name */
+  final case class Prompt(name: String, description: String = "",
+                          arguments: Seq[Prompt.Arg] = Nil)
+
+  object Prompt:
+    final case class Arg(name: String, description: String = "",
+                         required: Boolean = false)
 
   def infoJson(i: Info): Json =
     obj("name" -> Json.JStr(i.name), "version" -> Json.JStr(i.version))
@@ -49,10 +67,22 @@ object Mcp {
    * which is precisely why those being out of scope is a scope
    * decision rather than a hole.
    */
-  def initializeResult(server: Info): Json = obj(
-    "protocolVersion" -> Json.JStr(Version),
-    "capabilities" -> obj("tools" -> obj("listChanged" -> Json.JBool(false))),
-    "serverInfo" -> infoJson(server))
+  def initializeResult(server: Info, tools: Boolean = true,
+                       resources: Boolean = false,
+                       prompts: Boolean = false): Json =
+    val caps = Vector(
+      Option.when(tools)("tools" -> obj("listChanged" -> Json.JBool(false))),
+      Option.when(resources)("resources" -> obj(
+        "listChanged" -> Json.JBool(false), "subscribe" -> Json.JBool(false))),
+      Option.when(prompts)("prompts" -> obj("listChanged" -> Json.JBool(false)))
+    ).flatten
+    obj("protocolVersion" -> Json.JStr(Version),
+      "capabilities" -> Json.JObj(caps),
+      "serverInfo" -> infoJson(server))
+
+  /** what the handshake said this server has */
+  def capability(result: Json, name: String): Boolean =
+    field(result, "capabilities").flatMap(field(_, name)).isDefined
 
   /** a tool declaration on the wire — the schema is the DERIVED one */
   def toolJson(t: ToolSpec): Json = obj(
@@ -109,4 +139,116 @@ object Mcp {
     field(result, "isError") match
       case Some(Json.JBool(true)) => if text.startsWith("error:") then text else "error: " + text
       case _ => text
+}
+
+// ------------------------------------------------------------------
+// resources and prompts: the same list+fetch shape as tools, landing
+// on the types this library already has — a resource is a document
+// (okay-rag's Source), a prompt is a conversation opening (Seq[Turn])
+
+object McpDocs {
+
+  import Mcp.{Prompt, Resource}
+  import Rpc.{field, obj, str}
+
+  def resourceJson(r: Resource): Json =
+    val fs = Vector(
+      "uri" -> Json.JStr(r.uri),
+      "name" -> Json.JStr(r.name),
+      "description" -> Json.JStr(r.description))
+    Json.JObj(r.mimeType.fold(fs)(m => fs :+ ("mimeType" -> Json.JStr(m))))
+
+  def resourceOf(j: Json): Option[Resource] =
+    str(j, "uri").map(u => Resource(u,
+      str(j, "name").getOrElse(u),
+      str(j, "description").getOrElse(""),
+      str(j, "mimeType")))
+
+  def resourcesResult(rs: Seq[Resource], nextCursor: Option[String] = None): Json =
+    val fs = Vector("resources" -> Json.JArr(rs.map(resourceJson).toVector))
+    Json.JObj(nextCursor.fold(fs)(c => fs :+ ("nextCursor" -> Json.JStr(c))))
+
+  def resourcesOf(result: Json): (Seq[Resource], Option[String]) =
+    val rs = field(result, "resources") match
+      case Some(Json.JArr(vs)) => vs.flatMap(resourceOf).toSeq
+      case _ => Nil
+    (rs, str(result, "nextCursor"))
+
+  /** the contents of one resource — one text block, which is what a
+   * document is; binary blobs are a shape we do not serve */
+  def contentsResult(uri: String, text: String, mimeType: String = "text/plain"): Json =
+    obj("contents" -> Json.JArr(Vector(obj(
+      "uri" -> Json.JStr(uri),
+      "mimeType" -> Json.JStr(mimeType),
+      "text" -> Json.JStr(text)))))
+
+  /** and back: the text of whatever blocks came, joined */
+  def contentsOf(result: Json): Option[String] =
+    field(result, "contents") match
+      case Some(Json.JArr(vs)) =>
+        val texts = vs.flatMap(b => str(b, "text"))
+        if texts.isEmpty then None else Some(texts.mkString("\n"))
+      case _ => None
+
+  def promptJson(p: Prompt): Json = obj(
+    "name" -> Json.JStr(p.name),
+    "description" -> Json.JStr(p.description),
+    "arguments" -> Json.JArr(p.arguments.map(a => obj(
+      "name" -> Json.JStr(a.name),
+      "description" -> Json.JStr(a.description),
+      "required" -> Json.JBool(a.required))).toVector))
+
+  def promptOf(j: Json): Option[Prompt] =
+    str(j, "name").map(n => Prompt(n, str(j, "description").getOrElse(""),
+      field(j, "arguments") match
+        case Some(Json.JArr(vs)) => vs.flatMap(a => str(a, "name").map(an =>
+          Prompt.Arg(an, str(a, "description").getOrElse(""),
+            field(a, "required").contains(Json.JBool(true))))).toSeq
+        case _ => Nil))
+
+  def promptsResult(ps: Seq[Prompt]): Json =
+    obj("prompts" -> Json.JArr(ps.map(promptJson).toVector))
+
+  def promptsOf(result: Json): Seq[Prompt] =
+    field(result, "prompts") match
+      case Some(Json.JArr(vs)) => vs.flatMap(promptOf).toSeq
+      case _ => Nil
+
+  /**
+   * A conversation opening on the wire. MCP prompt messages carry one
+   * of two roles, `user` and `assistant` — there is no system role
+   * here — so a `Turn.System` travels as a user message and arrives
+   * as one. The loss is the protocol's; dropping the turn would lose
+   * more.
+   */
+  def messageJson(t: Turn): Json =
+    val (role, text) = t match
+      case Turn.Assistant(x, _) => ("assistant", x)
+      case Turn.System(x) => ("user", x)
+      case Turn.User(x) => ("user", x)
+      case Turn.Result(_, c) => ("user", c)
+      case Turn.Summary(x, _) => ("user", x)
+    obj("role" -> Json.JStr(role),
+      "content" -> obj("type" -> Json.JStr("text"), "text" -> Json.JStr(text)))
+
+  def turnOf(j: Json): Option[Turn] =
+    val text = field(j, "content") match
+      case Some(c) => str(c, "text")
+      case None => None
+    text.map(x => if str(j, "role").contains("assistant") then Turn.Assistant(x) else Turn.User(x))
+
+  def promptResult(description: String, turns: Seq[Turn]): Json = obj(
+    "description" -> Json.JStr(description),
+    "messages" -> Json.JArr(turns.map(messageJson).toVector))
+
+  def turnsOf(result: Json): Seq[Turn] =
+    field(result, "messages") match
+      case Some(Json.JArr(vs)) => vs.flatMap(turnOf).toSeq
+      case _ => Nil
+
+  /** the arguments of a prompts/get, as a flat map of strings */
+  def argsOf(params: Json): Map[String, String] =
+    field(params, "arguments") match
+      case Some(Json.JObj(fs)) => fs.collect { case (n, Json.JStr(v)) => (n, v) }.toMap
+      case _ => Map.empty
 }

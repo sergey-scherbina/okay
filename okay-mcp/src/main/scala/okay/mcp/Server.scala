@@ -2,7 +2,7 @@ package okay.mcp
 
 import okay.*
 import okay.given
-import okay.agent.{ToolCall, ToolSpec}
+import okay.agent.{ToolCall, ToolSpec, Turn}
 import okay.codec.Json
 
 /**
@@ -20,19 +20,54 @@ object Server {
   import Rpc.obj
 
   /**
-   * The protocol, as a stage.
+   * Everything a server has, in one value.
    *
-   * `table` is the same `Map[String, ToolCall => String]` that
-   * `Handlers.tools` takes — a server and a local tool table are the
-   * same thing seen from two sides, which is why serving costs
-   * nothing to a program that already had tools.
+   * Each field is a type this library already used for the same idea:
+   * tools are `ToolSpec` plus the table `Handlers.tools` takes,
+   * resources are documents behind a `uri => text`, and a prompt is a
+   * conversation opening — `Seq[Turn]`, which is what an agent's
+   * context is made of. Nothing here is MCP's shape; the mapping to
+   * it lives in `McpDocs` and is the only place that knows.
    */
+  final case class Serving(info: Mcp.Info,
+                           tools: Seq[ToolSpec] = Nil,
+                           call: Map[String, ToolCall => String] = Map.empty,
+                           resources: Seq[Mcp.Resource] = Nil,
+                           read: String => Option[String] = _ => None,
+                           prompts: Seq[Mcp.Prompt] = Nil,
+                           prompt: (String, Map[String, String]) => Option[Seq[Turn]] =
+                             (_, _) => None)
+
+  /** the tools-only server, which is what most are */
   def serve(info: Mcp.Info, tools: Seq[ToolSpec],
             table: Map[String, ToolCall => String]): Stage[Rpc, Rpc, Unit] =
+    serve(Serving(info, tools, table))
+
+  /**
+   * The protocol, as a stage.
+   *
+   * Capabilities are computed from what is actually there: a server
+   * with no prompts does not advertise prompts. A client reads the
+   * handshake and knows what to ask for, which is what makes an
+   * unimplemented half of the protocol a scope decision rather than a
+   * hole.
+   */
+  def serve(s: Serving): Stage[Rpc, Rpc, Unit] =
+    val info = s.info
+    // What a server DECLARES is exactly what it answers: a method of
+    // a capability it does not have is `MethodNotFound`, not a polite
+    // empty list. A client that read the handshake never asks; one
+    // that asks anyway learns something true.
+    val hasTools = s.tools.nonEmpty || s.call.nonEmpty
+    val hasResources = s.resources.nonEmpty
+    val hasPrompts = s.prompts.nonEmpty
     val stage: Stage[Rpc, Rpc, Boolean] =
       Stage.transduce(false)((ready, msg) => msg match {
         case Rpc.Request(id, Mcp.Initialize, _) =>
-          answer(id, Mcp.initializeResult(info)).map(_ => true)
+          answer(id, Mcp.initializeResult(info,
+            tools = hasTools,
+            resources = hasResources,
+            prompts = hasPrompts)).map(_ => true)
 
         case Rpc.Notify(Mcp.Initialized, _) => pure(ready)
 
@@ -47,12 +82,53 @@ object Server {
             s"'$m' before initialize").map(_ => ready)
 
         case Rpc.Request(id, Mcp.ToolsList, _) =>
-          answer(id, Mcp.toolsResult(tools)).map(_ => ready)
+          answer(id, Mcp.toolsResult(s.tools)).map(_ => ready)
 
         case Rpc.Request(id, Mcp.ToolsCall, params) =>
           Mcp.callOf(params, Json.print(id)) match
             case None => fail(id, Rpc.InvalidParams, "no tool name").map(_ => ready)
-            case Some(c) => answer(id, run(table, c)).map(_ => ready)
+            case Some(c) => answer(id, run(s.call, c)).map(_ => ready)
+
+        case Rpc.Request(id, m, _)
+          if (m == Mcp.ResourcesList || m == Mcp.ResourcesRead) && !hasResources =>
+          fail(id, Rpc.MethodNotFound, m).map(_ => ready)
+
+        case Rpc.Request(id, m, _)
+          if (m == Mcp.PromptsList || m == Mcp.PromptsGet) && !hasPrompts =>
+          fail(id, Rpc.MethodNotFound, m).map(_ => ready)
+
+        case Rpc.Request(id, m, _)
+          if (m == Mcp.ToolsList || m == Mcp.ToolsCall) && !hasTools =>
+          fail(id, Rpc.MethodNotFound, m).map(_ => ready)
+
+        case Rpc.Request(id, Mcp.ResourcesList, _) =>
+          answer(id, McpDocs.resourcesResult(s.resources)).map(_ => ready)
+
+        // an unknown URI is an ERROR, where an unknown TOOL is an
+        // answer, and the difference is who asked: a model picks a
+        // tool name and must be able to read its own mistake, while a
+        // program asks for a uri it got from resources/list
+        case Rpc.Request(id, Mcp.ResourcesRead, params) =>
+          Rpc.str(params, "uri") match
+            case None => fail(id, Rpc.InvalidParams, "no uri").map(_ => ready)
+            case Some(uri) => s.read(uri) match
+              case Some(text) =>
+                answer(id, McpDocs.contentsResult(uri, text)).map(_ => ready)
+              case None =>
+                fail(id, Rpc.InvalidParams, s"no such resource '$uri'").map(_ => ready)
+
+        case Rpc.Request(id, Mcp.PromptsList, _) =>
+          answer(id, McpDocs.promptsResult(s.prompts)).map(_ => ready)
+
+        case Rpc.Request(id, Mcp.PromptsGet, params) =>
+          Rpc.str(params, "name") match
+            case None => fail(id, Rpc.InvalidParams, "no prompt name").map(_ => ready)
+            case Some(n) => s.prompt(n, McpDocs.argsOf(params)) match
+              case Some(turns) =>
+                val d = s.prompts.find(_.name == n).map(_.description).getOrElse("")
+                answer(id, McpDocs.promptResult(d, turns)).map(_ => ready)
+              case None =>
+                fail(id, Rpc.InvalidParams, s"no such prompt '$n'").map(_ => ready)
 
         case Rpc.Request(id, m, _) =>
           fail(id, Rpc.MethodNotFound, m).map(_ => ready)
@@ -115,4 +191,8 @@ object Server {
   def run(link: Link, info: Mcp.Info, tools: Seq[ToolSpec],
           table: Map[String, ToolCall => String]): Unit ! Async =
     over(link)(serve(info, tools, table))
+
+  /** the whole server, from everything it has */
+  def run(link: Link, serving: Serving): Unit ! Async =
+    over(link)(serve(serving))
 }
