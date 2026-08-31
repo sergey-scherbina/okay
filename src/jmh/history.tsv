@@ -145,3 +145,6 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-31\tcmsShipped\t191128\tns/10k\twas 2282516 — Array[Array[Long]] in place: 12x (floor 68740)
 2026-08-31\thllShipped\t163834\tns/10k\twas 489298 — Array[Byte] in place: 3x (floor 36221)
 2026-08-31\tbuildOnly\t21008\tns/doc\tParse.build alone — 13% of parseFull (157646); lexElementwise 74718
+2026-08-31\tjsonToCst\t37317\tns/doc\t95% of okayJsonRead (39128) — the whole gap is scan+drive+build
+2026-08-31\tjsonProject\t5624\tns/doc\tCST to Json value: 14%
+2026-08-31\tjsonDecode\t970\tns/doc\tSchema fold: 2.5%, and faster than circeRead (1331) on its own

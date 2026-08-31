@@ -274,10 +274,32 @@ fold on its own, right next to a hand-tuned parser. Our JSON write
 is 1.5x. But our JSON read is 16x slower, and that gap is the whole
 point: `Json.read` runs chars → total scanner → total driver →
 LOSSLESS CST → projection → Schema fold, where circe parses straight
-into its AST. What the 16x buys is damage-as-data, byte-for-byte
+into its AST. What the gap buys is damage-as-data, byte-for-byte
 losslessness, and a HALF-ARRIVED document that still decodes (the
 LLM case). Need raw JSON decode speed and none of that? Use circe —
 and keep the same `Schema` for the wire where the contract matters.
+
+That was the whole of the explanation for a while, and charging each
+stage separately shows it is directionally right and wrongly
+emphasised. It is not a five-stage pipeline each taking its share:
+
+| stage | us | share |
+|---|---|---|
+| chars → CST (scan + drive + build) | 37.3 | **95%** |
+| CST → `Json` value | 5.6 | 14% |
+| `Schema` fold over that value | **0.97** | 2.5% |
+| `Json.read` end to end | 39.1 | |
+| circe, for scale | 1.33 | |
+
+Wide bars on a loaded machine, but the proportion is not in doubt. The
+generic `Schema` fold — the part a reader might reasonably suspect,
+since it is the one piece that is derived rather than written — is two
+and a half percent, and **faster on its own than circe's entire
+decode**. Everything is in the first two stages, which is exactly
+where losslessness and totality live: a CST that keeps every byte,
+including the damaged ones, is what costs, and it is what is being
+bought. `Json.value` on an already-parsed tree is a public entry point
+for anyone holding a session who should not pay for it twice.
 
 **BPE**: 300us for a ~3.3KB corpus. The rank scan is quadratic per
 word — fine for v1, and the obvious lever the day tokenization gets

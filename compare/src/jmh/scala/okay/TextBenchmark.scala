@@ -112,6 +112,29 @@ class TextBenchmark {
   @Benchmark
   def okayJsonRead: Either[String, Person] = Json.read[Person](personJson)
 
+  // ---- where the JSON read time actually goes
+  //
+  // The 16x against circe is explained in docs as the price of the
+  // pipeline: chars -> total scanner -> total driver -> lossless CST
+  // -> projection -> Schema fold, against circe parsing straight into
+  // its AST. These three lanes check that the explanation is the whole
+  // story, by charging each stage separately.
+
+  val personCst = Json.cst(personJson)
+  val personTree: okay.codec.Json = Json.value(personCst)
+
+  /** stage 1+2: lex and parse, to a lossless CST */
+  @Benchmark
+  def jsonToCst: Cst[?] = Json.cst(personJson)
+
+  /** stage 3: the CST projected to a Json value */
+  @Benchmark
+  def jsonProject: okay.codec.Json = Json.value(personCst)
+
+  /** stage 4: the Schema fold over that value */
+  @Benchmark
+  def jsonDecode: Either[String, Person] = Json.decode(summon[Schema[Person]])(personTree)
+
   @Benchmark
   def okayCborWrite: Array[Byte] = Cbor.write(person)
 
