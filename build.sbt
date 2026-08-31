@@ -408,6 +408,27 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
  * `Tool` handler and our tools are another MCP server. The protocol
  * layer is pure — cross-built; only the stdio transport is platform.
  */
+lazy val okayHttp = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-http"))
+  .dependsOn(okayMcp)
+  .settings(
+    name := "okay-http",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-js",
+  )
+
 lazy val okayMcp = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-mcp"))
@@ -455,6 +476,7 @@ lazy val root = (project in file("."))
     okayCodec.jvm, okayCodec.js, okayLlm.jvm, okayLlm.js,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js,
+    okayHttp.jvm, okayHttp.js,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",

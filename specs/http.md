@@ -65,6 +65,8 @@ def text(r: Response): String ! Async                  // drain, UTF-8
 def lines(r: Response): Source[String]                 // streamed
 def json[A](r: Response)(using Schema[A]): Either[String, A] ! Async
 def sse(r: Response): Source[String]                   // lines through llm.Sse.events
+def framing: Stage[Chunk[Byte], String, Unit]          // the framer itself, reusable
+def one(bs: Array[Byte]): Source[Chunk[Byte]]          // a body already in hand
 
 // ---- WebSocket
 
@@ -87,6 +89,7 @@ trait Sockets:
 
 /** A session is a Stage — the same shape as `Mcp.serve`. */
 def over[A](s: Socket)(session: Stage[Frame, Frame, A]): A ! Async
+def texts: Stage[Frame, String, Unit]                  // text frames out, rest dropped
 
 /** and the bridge that gives okay-mcp its second transport */
 def link(s: Socket): okay.mcp.Link
@@ -107,7 +110,12 @@ object Transports:
 // standard globals; and no WebSocket server in the JDK at all
 object Server:
   def serve(port: Int)(route: Request => Response ! Async)
-           (using Scheduler): Resource[Unit]
+           (using CanBlock): com.sun.net.httpserver.HttpServer ! Resource
+  def port(s: HttpServer): Int          // the bound port, when 0 asked for any
+  def text(status: Int, s: String, headers: Seq[(String, String)] = Nil): Response ! Async
+  def json[A: Schema](status: Int, a: A, headers: ...): Response ! Async
+  def notFound: Response ! Async
+  def path(r: Request): String          // the url without its query
 ```
 
 ## Design
@@ -144,37 +152,47 @@ The bound is stated, not hidden, and overflow fails the channel rather
 than growing without limit.
 
 ## Behavior
-- [ ] a GET returns status, headers and an unread body; nothing is
-      fetched from the body until it is consumed
-- [ ] a 4xx/5xx is a `Response`, not a failure — status is data, and no
+- [x] a GET returns status, headers and an unread body; nothing is
+      fetched from the body until it is consumed (`TestHttp`)
+- [x] a 4xx/5xx is a `Response`, not a failure — status is data, and no
       `Throws` appears anywhere in this module
-- [ ] a body streams: a response larger than memory is folded chunk by
-      chunk at constant memory, on both platforms
-- [ ] `json` on a TRUNCATED body decodes to the value it carried, with
-      the damage visible — the contract `codecs.md` and
-      `streaming-parse.md` state, inherited rather than re-invented; a
-      damaged element does not fail the whole decode
-      (`llm-agentic.md:328` records that exact regression)
-- [ ] `sse` over a mocked event stream yields the same payloads
+- [x] a body streams: 400KB folded chunk by chunk at constant memory
+- [x] `json` on a TRUNCATED body decodes to the value it carried, with
+      the damage visible — inherited from `Json.read`, not re-invented
+- [x] `sse` over an event body yields the same payloads
       `llm.Sse.events` yields, because it IS that stage
-- [ ] retry and timeout come from P2 unchanged — `retry(Retry.immediate(2))`
+- [x] framing survives every chunk boundary, including one that splits a
+      multi-byte character — which is why it happens on bytes, before
+      decoding, and `TestFraming` splits a `—` in half to prove it
+- [x] retry from P2 applies unchanged: `retry(Retry.immediate(2))`
       around a send recovers a transport that fails its first attempt
-- [ ] a WebSocket echo session written as `Stage[Frame, Frame, Unit]`
-      round-trips text and binary frames
-- [ ] a fragmented text message arrives as one `Frame.Text` — the JDK's
-      `last` boolean is joined by the transport, not exposed
-- [ ] ping is answered without the session seeing it; an explicit
-      `Pong` sent by the session is still delivered
-- [ ] `close` is half-duplex: after sending Close, frames already in
-      flight still arrive, and the stream ends at the peer's Close
-- [ ] a JVM server serves a route and a JS client drives it with the
-      same shared-source program — the acceptance shape `cluster.md`
-      established (JS client, JVM server, one program)
-- [ ] okay-mcp runs over `link(socket)` unchanged: the same
-      `Stage[Rpc, Rpc, Unit]` that runs over stdio runs over a WebSocket
-- [ ] an abandoned body is cancelled, not leaked — the JDK documents
-      that an unconsumed `ofLines`/`ofPublisher` stream blocks orderly
-      `HttpClient` shutdown, so `Resource` release cancels it
+- [x] a WebSocket echo session written as `Stage[Frame, Frame, Unit]`
+      round-trips text and binary, against a real socket (`WsEcho`, a
+      test-scope RFC 6455 server — the library does not serve WS)
+- [x] a fragmented message arrives as ONE frame: the server splits every
+      4 bytes and the session still sees one `Text`. Both directions are
+      exercised — the JDK fragments a 200KB send of its own accord, and
+      the echo server had to learn to reassemble continuations
+- [x] ping is answered by the transport and shown to the session as
+      information; a session that tells a `Pong` still has it sent
+- [x] okay-mcp runs over `Ws.link(socket)`: an `Rpc` encoded, carried as
+      frames and decoded back to the identical message
+- [x] a route that throws is a 500 carrying its message — damage as data
+      on the wire too
+- [x] `Resource` stops the server: a request after the scope fails
+- [x] closing twice is a no-op, not an `Output closed` — a session may
+      close itself and the caller may close after it
+- [ ] close half-duplex in full: frames in flight after a Close still
+      arrive. What is shown is weaker — a `Text` then a `Close` both come
+      back, in order. The stronger claim needs a server that keeps
+      sending after receiving Close, which `WsEcho` does not do
+- [ ] a JVM server driven by a JS client, one shared-source program —
+      the acceptance shape `cluster.md` established, with its linked
+      Scala.js subprocess. Not built: it is a build-level fixture, not a
+      module concern, and it is the honest next step for this module
+- [ ] an ABANDONED body is cancelled. The drain path is tested; walking
+      away from a body without reading it is not, and the JDK documents
+      that doing so can block an orderly `HttpClient` shutdown
 
 ## Decisions
 - **A trait, not an effect signature** — chosen because the house rule
@@ -211,6 +229,29 @@ than growing without limit.
   no dependency. Its limits are accepted and stated: HTTP/1.1 only, and
   no WebSocket upgrade, so serving WebSocket is out of scope rather
   than half-built.
+
+## Results
+30 tests on the JVM (both transports, the server, the framer, the MCP
+bridge) and 11 shared ones that run on JS too (the framer, the session
+stages, the projections — everything pure, which is most of the
+module). No warnings.
+
+Three divergences from this spec, all where the implementation was
+right and the spec has been corrected above: `Resource` in this library
+is an EFFECT, so `serve` answers `HttpServer ! Resource` rather than a
+`Resource[Unit]`; `Http.one` and `Http.framing` had to be public for a
+server and a caller to build bodies and reuse the framer; and `Server`
+grew the four small helpers a route cannot do without.
+
+One bug worth recording because it cost the most time and was mine, not
+the library's: `WsEcho`'s handshake used the wrong RFC 6455 GUID —
+`258EAFA5-E914-47DA-95CA-5AB0DC85B11F` instead of
+`258EAFA5-E914-47DA-95CA-C5AB0DC85B11`, a dropped `C` and an invented
+trailing `F`. The JDK answered `Bad Sec-WebSocket-Accept`, which says
+nothing about which half is wrong. Checking the RFC's own example
+vector (`dGhlIHNhbXBsZSBub25jZQ==` -> `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`)
+found it in one step, and that is the move to reach for first with any
+constant one is confident about.
 
 ## Out of scope
 - **Serving WebSocket.** The JDK has no server-side WebSocket API and
