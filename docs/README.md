@@ -42,6 +42,7 @@ API reference, gotchas.
 | [`okay-agent`](modules/okay-agent.md) | agents as programs: tools as operations, context as a fold, search as Logic |
 | [`okay-rag`](modules/okay-rag.md) | retrieval: split the tree not the string, code indexed by parsing it, symbols without embeddings |
 | [`okay-cluster`](modules/okay-cluster.md) | the remote channel, distributed chunk work, the JS↔JVM acceptance |
+| `okay-demo` | not a library: a coding agent over THIS repository, built from the public surface as a user would — `sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'` |
 
 ## Design documents
 

@@ -19,21 +19,17 @@ class TestAsync extends munit.FunSuite {
   }
 
   test("par runs both sides at once, on their own virtual threads") {
-    // compare, do not guess: an absolute bound is a flake waiting for
-    // a busy machine (it found one), so the sequential run is measured
-    // right here and parallelism must beat it by a clear margin
-    def nap(n: Int): Int ! Async = async { Thread.sleep(200); n }
-
-    val s0 = System.nanoTime()
-    assertEquals(nap(1).flatMap(_ => nap(2)).runWith, 2)
-    val seqMs = (System.nanoTime() - s0) / 1000000
-
-    val p0 = System.nanoTime()
-    assertEquals(Async.par(nap(1), nap(2)).runWith, (1, 2))
-    val parMs = (System.nanoTime() - p0) / 1000000
-
-    assert(parMs < seqMs * 0.75,
-      s"not parallel: ${parMs}ms against a sequential ${seqMs}ms")
+    // no clock at all: each side signals its own latch and waits for
+    // the other's, which only completes if the two really are running
+    // together. A ratio against a sequential run kept flaking on a
+    // busy machine (0.78 against a 0.75 bound); a handshake cannot.
+    import java.util.concurrent.{CompletableFuture, TimeUnit}
+    val a = CompletableFuture[Unit]()
+    val b = CompletableFuture[Unit]()
+    val prog = Async.par(
+      async { a.complete(()); b.get(10, TimeUnit.SECONDS); 1 },
+      async { b.complete(()); a.get(10, TimeUnit.SECONDS); 2 })
+    assertEquals(prog.runWith, (1, 2))
   }
 
   test("race answers with the faster side") {

@@ -293,11 +293,25 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
     Test / test := {},
   )
 
+/**
+ * Not a library module: a real user of the library, from outside.
+ * A coding agent over this very repository — okay-rag indexes it,
+ * okay-agent runs the loop, okay-llm reaches a local model. It exists
+ * to find what tests written by the author of the code cannot.
+ */
+lazy val okayDemo = (project in file("okay-demo"))
+  .dependsOn(okayAgent.jvm)
+  .settings(
+    name := "okay-demo",
+    publish / skip := true,
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
     okaySpark, okayFlink, okayJdbc, okayLex.jvm, okayLex.js, okayParse.jvm, okayParse.js,
     okayCodec.jvm, okayCodec.js, okayLlm.jvm, okayLlm.js,
-    okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js,
+    okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",

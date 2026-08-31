@@ -40,7 +40,13 @@ object Grounded {
    */
   def context[S](policy: Aggregator[Turn, S, Seq[Turn]],
                  retriever: Retriever[okay.Pure],
-                 budget: Int, share: Double = 0.5, k: Int = 4)
+                 budget: Int, share: Double = 0.5, k: Int = 4,
+                 // what the model ACTUALLY sees is assembled here and
+                 // nowhere else, so without a seam it is invisible —
+                 // which the first application built on this API
+                 // noticed within a minute (it printed the
+                 // conversation and wondered where the code went)
+                 onRecall: Seq[Turn] => Unit = _ => ())
                 (size: Turn => Int): (Handlers.ContextState[S], Handler[Context]) =
     val st = Handlers.ContextState(policy)
     val forRetrieval = (budget * share).toInt
@@ -63,7 +69,7 @@ object Grounded {
         case Context.Recall() =>
           val conversation = st.recall
           lastQuestion(conversation) match
-            case None => conversation
+            case None => onRecall(conversation); conversation
             case Some(q) =>
               val found = passages(q)
               // the conversation gets what retrieval did not take
@@ -73,7 +79,9 @@ object Grounded {
                 val cost = size(t)
                 if used + cost <= left then (t +: keep, used + cost) else acc
               }._1
-              found ++ kept
+              val view = found ++ kept
+              onRecall(view)
+              view
         case Context.Mark() => st.mark
         case Context.Restore(s) => st.restore(s))
 }
