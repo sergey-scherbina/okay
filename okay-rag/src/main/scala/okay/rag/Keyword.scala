@@ -48,15 +48,54 @@ object Keyword {
     flush()
     out.result()
 
-  /** one segment into an index of its own — the unit of the merge */
+  /**
+   * One segment into an index of its own — the unit of the MERGE.
+   *
+   * Kept because the monoid is the contract (an index of a shard, to
+   * be combined with another), but no longer what `fold` goes
+   * through: see below.
+   */
   def one(seg: Segment): Postings =
     val ts = terms(seg.text)
     val counts = ts.groupBy(identity).view.mapValues(_.length).toMap
     Postings(counts.map((t, n) => (t, Vector((0, n)))), Vector(seg), Vector(ts.length))
 
-  /** the index as a Fold over segments */
-  def fold: Fold[Segment, Postings] =
-    Fold(Postings())((p, s) => summon[Monoid[Postings]].combine(p, one(s)))
+  /**
+   * The index as a Fold over segments — accumulating DIRECTLY.
+   *
+   * It used to be `combine(p, one(s))`: a whole one-segment `Postings`
+   * built per segment, with a `groupBy` that allocates a `Vector` of
+   * duplicate strings per distinct term, a `mapValues.toMap`, a map
+   * and two vectors for the singleton index — and then a merge that
+   * shifts every one of its document ids and concatenates a vector per
+   * term. The whole of that is thrown away one line later.
+   *
+   * Measured on an 8.5KB file's segments: 157.9us, of which the
+   * tokenization it must do is 40.7. Building the accumulator in place
+   * — count into a mutable map on one pass, append the postings at the
+   * document index we already know — leaves the tokenization and drops
+   * the rest.
+   *
+   * `combine` is untouched and still the monoid: shards merge, and
+   * that is when the shift is real work rather than shifting by zero.
+   */
+  def fold: Fold[Segment, Postings] = new Fold[Segment, Postings]:
+    def init: Postings = Postings()
+
+    def add(p: Postings, s: Segment): Postings =
+      val ts = terms(s.text)
+      val doc = p.docs.length
+      val counts = scala.collection.mutable.HashMap.empty[String, Int]
+      var i = 0
+      while i < ts.length do
+        val t = ts(i)
+        counts.update(t, counts.getOrElse(t, 0) + 1)
+        i += 1
+      var byTerm = p.byTerm
+      counts.foreach { (t, n) =>
+        byTerm = byTerm.updated(t, byTerm.getOrElse(t, Vector.empty) :+ (doc, n))
+      }
+      Postings(byTerm, p.docs :+ s, p.lengths :+ ts.length)
 
   def index(segs: Seq[Segment]): Postings = segs.foldLeft(Postings())(fold.add)
 

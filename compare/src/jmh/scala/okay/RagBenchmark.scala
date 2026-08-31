@@ -128,6 +128,26 @@ class RagBenchmark {
   @Benchmark
   def retrieveSymbols: Int = symbolRetriever.retrieve("describe", 8).runWith.size
 
+  /** the segments a keyword index is built from, split once */
+  val kwSegs: Seq[Segment] = Ingest.segment(scalaSrc, 600)(_.length)
+
+  /**
+   * BUILDING the keyword index, as opposed to searching it.
+   *
+   * `Keyword.fold` makes a whole one-segment `Postings` per segment
+   * and merges it into the accumulated one, so every segment rebuilds
+   * map paths and concatenates posting vectors. That is the shape that
+   * turned out to cost 3x to 580x in the sketches; whether it costs
+   * anything here is what this lane is for.
+   */
+  /** the tokenization alone, to see whether the merge is the cost or
+   * whether it is just reading the words */
+  @Benchmark
+  def keywordTerms: Int = kwSegs.map(s => Keyword.terms(s.text).length).sum
+
+  @Benchmark
+  def indexKeyword: Int = Keyword.index(kwSegs).docs.length
+
   @Benchmark
   def retrieveKeyword: Int =
     keywordRetriever.retrieve("member called name", 8).runWith.size

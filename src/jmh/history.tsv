@@ -149,3 +149,5 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-31\tjsonProject\t5624\tns/doc\tCST to Json value: 14%
 2026-08-31\tjsonDecode\t970\tns/doc\tSchema fold: 2.5%, and faster than circeRead (1331) on its own
 2026-08-31\tbpeScan\t306701\tns/3.3KB\twas 423999 — one pass, one map lookup per pair, array symbols
+2026-08-31\tindexKeyword\t75680\tns/8.5KB\twas 157930 — accumulate directly instead of combine(p, one(s))
+2026-08-31\tkeywordTerms\t41051\tns/8.5KB\tthe tokenization floor: 54% of the index now, 26% before

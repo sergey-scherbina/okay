@@ -328,6 +328,27 @@ comments, strings and nesting — and its 6.3KB Python twin.
 |---|---|
 | **644** | **449** |
 
+**Keyword indexing** — building the BM25 postings from a document's
+segments, and one more instance of the same defect:
+
+| | tokenization (the floor) | index build |
+|---|---|---|
+| before | 40.7 | 157.9 |
+| after | 41.1 | **75.7** |
+
+`Keyword.fold` was `combine(p, one(s))`: a whole one-segment
+`Postings` per segment — with a `groupBy` allocating a `Vector` of
+duplicate strings per distinct term, a `mapValues.toMap`, and a map
+plus two vectors for a singleton index — followed by a merge that
+shifts every document id in it and concatenates a vector per term. All
+of it thrown away one line later. Accumulating directly (count into a
+mutable map on one pass, append at the document index already known)
+leaves the tokenization, which is real work, and drops the rest: the
+machinery around it went from 117us to 34.6.
+
+`combine` is untouched and still the monoid — shards merge, and there
+the shift is real rather than a shift by zero.
+
 That is 13.2 and 14.0 MB/s warm. Cold, over a real tree —
 `IndexReport` on this repository, 201 files and 898KB, including file
 I/O and with no JIT warmup at all — the same work runs at 1.2 MB/s
