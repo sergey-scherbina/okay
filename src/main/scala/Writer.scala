@@ -122,7 +122,7 @@ object Writer {
    *
    * It is also what makes two DIFFERENTLY typed sources mergeable:
    * `Writer` is invariant in what it tells, so re-telling at a common
-   * type is a walk, not a subtyping step (see mergeSources).
+   * type is a walk, not a subtyping step (see Source.merge).
    */
   def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => V)
   : A ! (Writer % V + G) = (a.resume: @unchecked) match
@@ -196,30 +196,6 @@ object Writer {
 /** the diagonal writer: it tells its own answers, like Producer but
  * with the element type visible in the signature */
 type Teller[A] = A ! Writer % A
-
-/**
- * An asynchronous SOURCE: a program that tells its elements as it
- * goes, performing Async between them. The shape every streaming
- * seam in this library already had (a transport's lines, a model's
- * tokens, a merged feed), spelled once — and, by the instance below,
- * an ordinary Stream in Async.
- */
-type Source[W] = Unit ! (Writer % W + Async)
-
-object Source {
-  /**
-   * Any PURE stream as a source: a List, a LazyList, a Producer, a
-   * Chunks' element view — told one by one into a row that also
-   * admits Async, so a constant feed and a live one compose (see
-   * mergeSources). `Writer.of` is the general form, which keeps
-   * whatever effects the stream itself has.
-   */
-  def of[S[_], A](s: S[A])(using Stream[S, Pure]): Source[A] =
-    !.widen[Unit, Writer % A, Async](Writer.of(s))
-
-  /** these elements, told in order */
-  def apply[A](as: A*): Source[A] = of(as.toList)
-}
 
 /**
  * The third corner of the triangle: generate materializes into the

@@ -85,12 +85,12 @@ retry(Retry.exponential(100).take(5))(fetch)   // the policy is a stream
 
 A virtual thread parks wherever you block; `spawn` gives a `Fiber`;
 `Channel.merge` combines two async streams by readiness, and
-`mergeSources` does it in the program shape — two live feeds joined
+`merge` does it in the program shape — two live feeds joined
 into one source whose elements are their union:
 
 ```scala
 // two differently shaped feeds, joined and consumed by ONE pure stage
-val events: Source[Battery | Charging] = mergeSources(battery, charging)
+val events: Source[Battery | Charging] = battery merge charging
 Writer.run(through(events)(widen(combine(repo))))   // okay-demo/Combine.scala
 ```
  The same

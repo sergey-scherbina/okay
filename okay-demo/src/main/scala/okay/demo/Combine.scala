@@ -20,7 +20,7 @@ import java.time.Instant
  *     its state is a recursion parameter, not a cell and not a
  *     `mapAccumulate`. It has no effects at all, so it is tested
  *     against a list: no scheduler, no clock, no waiting.
- *   - `outputs` is the concurrent half: `mergeSources` runs a fiber
+ *   - `outputs` is the concurrent half: `merge` runs a fiber
  *     per source and interleaves them by whoever is ready, and the
  *     SAME stage is then run over the merged source by `through`.
  *
@@ -53,7 +53,7 @@ object Combine {
 
   /**
    * What the merged stream carries: a UNION, where the fs2 version
-   * needs an `Either` — `mergeSources` tells the union of its two
+   * needs an `Either` — `merge` tells the union of its two
    * sources, so there is no wrapper to put on and none to take off.
    * The stage below splits it by an ordinary type test.
    */
@@ -102,7 +102,7 @@ object Combine {
    */
   def joined(repo: StateRepo, battery: Source[Battery], charging: Source[Charging])
             (using Scheduler, CanBlock): StateRepo ! (Writer % Output + Async) =
-    through[Event, Output, Async, Unit, StateRepo](mergeSources(battery, charging))(
+    through[Event, Output, Async, Unit, StateRepo](battery merge charging)(
       widen[StateRepo, Take % Event + Writer % Output, Async](combine(repo)))
 
   /** the outputs, and the repository the run ended with */

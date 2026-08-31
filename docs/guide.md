@@ -196,7 +196,7 @@ thread), `bracket`. One shared-source Await suite runs on the JVM,
 under Node and as a linked Native binary in CI.
 
 `Channel` is the queue between fibers — `merge` combines streams by
-readiness, `buffer` runs a producer ahead. `mergeSources` is that
+readiness, `buffer` runs a producer ahead. `source merge source` is that
 merge in the program shape: two sources in, one source out (so a
 stage consumes it directly), the fibers starting at the first pull —
 and the two element types need NOT agree, because the result tells
