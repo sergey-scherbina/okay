@@ -143,10 +143,27 @@ private object Erased {
    * That is `W =:= X`, which the identity signature's only injector
    * (`Writer(w): Writer[W, W]`) makes true and no pattern can
    * witness, because the operation HAS no constructor to match. A
-   * `Kind` names an existential so that two things sharing it line
-   * up; it never reveals one — the caller that packed a String
-   * cannot prove `packed.A =:= String` either. Revealing is what
-   * would be needed, and only a GADT does that.
+   * Both of the article's encodings were tried here — the
+   * path-dependent `type Kind[K[_]] = { type A; type T = K[A] }` and
+   * the newtype `type Type[+F[_]] <: (Any { type T })` with its
+   * `wrap`/`unwrap` — and both give exactly those two lines, because
+   * they encode the same thing: an existential package NAMES an
+   * unknown type so two things sharing it line up, and never reveals
+   * it. That is what it is for.
+   *
+   * The positive half was checked too, so this is not a dismissal:
+   * given a `Pair[F, G, A]` packed, `unwrap` hands both sides back at
+   * one `v.T` and a natural transformation goes under it — `mapK`
+   * works, exactly as the article says.
+   *
+   * It does not help HERE because `Free.Bind[F, X, A](op: F[X], k: X
+   * => Free[F, A])` is that package already: two things sharing one
+   * unknown `X`, related by an ordinary type parameter, and the
+   * compiler does give a coherent `X`. Nothing needs packing. What is
+   * missing is the opposite operation — revealing that the unknown
+   * equals a known one — which an existential encoding exists
+   * precisely NOT to do. A constructor to match supplies it, and an
+   * identity signature has none.
    */
   def resumeWith[X](a: Any): X = a.asInstanceOf[X]
 
