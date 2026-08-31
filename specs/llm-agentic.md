@@ -43,11 +43,20 @@ A policy is `Aggregator[Turn, S, Seq[Turn]]` — our P1 type, unchanged:
 - `add` (seqOp) folds ONE new turn into the state: O(new tokens), not
   O(history). Called on every `remember`, so the view is always ready.
 - `present` is the view that goes on the wire — the compacted context.
-- `merge` (combOp) is what makes compaction HIERARCHICAL: summaries of
-  two halves merge into a summary of the whole, so a long history
-  compacts in parallel (a fiber per chunk, `parMap`) and a
-  cluster-sized history compacts on a cluster (`Cluster.distribute`),
-  with the same value.
+- `merge` (combOp) is what makes compaction HIERARCHICAL: two halves
+  of a history combine, so a long one compacts in parallel (a fiber
+  per chunk) or across a cluster. A correction property testing
+  forced, recorded because it was claimed too strongly here: for a
+  LOSSY policy the merge cannot reproduce the sequential fold —
+  evicting inside the right half discards turns the whole fold could
+  have kept, and no re-application recovers them. What a merge
+  promises is a LEGITIMATE window over the join: within budget, in
+  order, and a genuine suffix (which required making the merge drop
+  the left side whenever the right had already evicted, or the model
+  would see a hole in the middle reported only as a count). The
+  exact-merge contract belongs to lossless policies (`Compact.all`)
+  and to the statistics aggregators — variance, count, sketches —
+  whose merges lose nothing by construction.
 - `zip` runs several compactors in ONE pass: a token-window view, a
   running summary, and a fact/entity extractor, all fed once.
 

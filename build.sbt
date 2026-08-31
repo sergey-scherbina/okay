@@ -174,7 +174,10 @@ lazy val okayLex = crossProject(JVMPlatform, JSPlatform)
   .dependsOn(okay)
   .settings(
     name := "okay-lex",
-    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+    ),
   )
 
 /** streaming error-tolerant parsing: total, lossless, two surfaces (P5) */
@@ -184,7 +187,10 @@ lazy val okayParse = crossProject(JVMPlatform, JSPlatform)
   .dependsOn(okayLex)
   .settings(
     name := "okay-parse",
-    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+    ),
   )
 
 /** codecs: the Schema algebra and the dialects (P5) */
@@ -194,7 +200,10 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform)
   .dependsOn(okayParse)
   .settings(
     name := "okay-codec",
-    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+    ),
   )
 
 /** language models as streams: the thin client (P4/llm.md).
@@ -230,7 +239,10 @@ lazy val okayRag = crossProject(JVMPlatform, JSPlatform)
   .dependsOn(okayCodec)
   .settings(
     name := "okay-rag",
-    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+    ),
   )
 
 /** agents as programs: tool calls are operations, the conversation
@@ -241,7 +253,10 @@ lazy val okayAgent = crossProject(JVMPlatform, JSPlatform)
   .dependsOn(okayLlm, okayRag)
   .settings(
     name := "okay-agent",
-    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+    ),
   )
   .jvmSettings(
     Compile / unmanagedSourceDirectories +=

@@ -128,8 +128,15 @@ object Scan {
     val nlAfterOld = oldInput.indexOf('\n', editEndOld)
     val oldStates = old.snapshots.toMap
 
-    // tokens strictly before the resume point are kept as they are
-    val keep = old.tokens.takeWhile(t => t.span.offset + t.span.length <= base._1)
+    // Tokens before the resume point are kept as they are — but the
+    // resume STATE may already hold a half-built token whose
+    // characters begin before that point, and the old run emitted it
+    // with a span ending exactly at the resume offset. Keeping it AND
+    // re-emitting it from the state is a duplicate; the mirror of the
+    // loss above, found by the same generator. `flush` says where the
+    // pending token began, and that is the honest cut.
+    val cut = sc.flush(base._2).map(_.span.offset).minOption.getOrElse(base._1)
+    val keep = old.tokens.takeWhile(t => t.span.offset + t.span.length <= cut)
 
     var s = base._2
     val fresh = Vector.newBuilder[Token[K]]
@@ -139,7 +146,14 @@ object Scan {
     while i < newInput.length do
       val oldOff = i - delta
       if i % snapshotEvery == 0 then snaps += ((i, s))
-      if nlAfterOld >= 0 && oldOff > nlAfterOld
+      // A token still being BUILT straddles the join: its characters
+      // are neither in the fresh part (it has not been emitted yet)
+      // nor in the reused tail (its span ends at or before the old
+      // offset, so the tail drops it). Reconverging there loses it —
+      // which a generated edit found within eight cases. The test for
+      // "nothing is half-built" needs no new interface: flush emits
+      // exactly what is pending.
+      if nlAfterOld >= 0 && oldOff > nlAfterOld && sc.flush(s).isEmpty
         && oldStates.get(oldOff).exists(st => sc.key(st) == sc.key(s)) then
         // reconverged: reuse the old tail, spans shifted
         val tail = old.tokens.dropWhile(t => t.span.offset + t.span.length <= oldOff).map(t =>

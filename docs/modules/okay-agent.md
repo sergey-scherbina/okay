@@ -23,10 +23,14 @@ different handler IS the mock.
   ready on every `recall`. Compaction is the default path, not an
   emergency branch: being over budget only changes what `present`
   returns.
-- `merge` makes summarization hierarchical and parallel — halves of a
-  history combine into the whole (tested split-point-agnostic), so a
-  long history compacts on fibers or across a cluster with the same
-  value.
+- `merge` makes compaction hierarchical and parallel — halves of a
+  history combine, so a long one compacts on fibers or across a
+  cluster. Note the honest limit: a LOSSY policy's merge cannot equal
+  the sequential fold (evicting inside the right half discards what
+  the whole fold would have kept), so what it guarantees is a valid
+  window over the join — within budget, in order, a true suffix. The
+  exact-merge law holds for `Compact.all` and for the statistics
+  aggregators.
 - `zip` runs several policies in one pass (a window, a running
   summary, a fact extractor).
 

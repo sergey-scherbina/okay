@@ -60,10 +60,17 @@ final case class Corpus(sources: Map[String, Source]):
       val text = src.text
       val from = math.max(0, seg.span.offset - by)
       val to = math.min(text.length, seg.span.offset + seg.span.length + by)
-      val start = text.lastIndexOf('\n', math.max(0, from - 1)) + 1
-      val end = text.indexOf('\n', math.max(start, to - 1)) match
+      // snapping to line boundaries must never move the window OFF
+      // the passage: with a leading newline in the source, the snap
+      // walked the start past the segment's own beginning, so a
+      // widened passage no longer contained the passage it grew from
+      // (found by a generated case, not by a chosen one)
+      val snapped = text.lastIndexOf('\n', math.max(0, from - 1)) + 1
+      val start = math.min(snapped, seg.span.offset)
+      val snappedEnd = text.indexOf('\n', math.max(start, to - 1)) match
         case -1 => text.length
         case i => i + 1
+      val end = math.max(snappedEnd, seg.span.offset + seg.span.length)
       val line = text.take(start).count(_ == '\n')
       val column = start - (text.lastIndexOf('\n', math.max(0, start - 1)) + 1)
       Segment(seg.source, okay.lex.Span(start, line, column, end - start),

@@ -64,14 +64,32 @@ object Compact {
     Aggregator[Turn, Window, Seq[Turn]](
       Window(Vector.empty, Vector.empty, 0, 0)) { (w, t) =>
       val s = Sized(t, size(t))
+      // BOTH branches evict: a pinned turn cannot be dropped, but its
+      // arrival still spends budget, so the recent turns must make
+      // room for it. `merge` always did this, `add` did not, and the
+      // two disagreeing breaks the P1 law that a merge equals the
+      // sequential fold — which a generated conversation with a
+      // system turn in the middle of it found at once.
       t match
-        case _: Turn.System => w.copy(pinned = w.pinned :+ s)
+        case _: Turn.System => evict(w.copy(pinned = w.pinned :+ s))
         case _ => evict(w.copy(recent = w.recent :+ s))
     } { (a, b) =>
-      // merge is the distributed contract: two halves of a history
-      // combine, then the window re-applies to the join
-      evict(Window(a.pinned ++ b.pinned, a.recent ++ b.recent,
-        a.dropped + b.dropped, G.combine(a.droppedTokens, b.droppedTokens)))
+      // A window is a SUFFIX of the conversation. If the right side
+      // already evicted, it left a gap, and everything on the left is
+      // older than that gap — keeping it would hand the model a hole
+      // in the middle, reported only as a count. So the left side goes
+      // with it. (Merging lossy windows cannot reproduce the
+      // sequential fold either way; what it can promise is a
+      // LEGITIMATE window over the join, and that is what this makes
+      // true. A generated conversation with unequal turn sizes is
+      // what forced the distinction.)
+      val gap = b.dropped > 0
+      val keptLeft = if gap then Vector.empty else a.recent
+      val lost = if gap then a.recent else Vector.empty
+      evict(Window(a.pinned ++ b.pinned, keptLeft ++ b.recent,
+        a.dropped + b.dropped + lost.length,
+        G.combine(G.combine(a.droppedTokens, b.droppedTokens),
+          lost.map(_.tokens).sum)))
     } { w =>
       w.pinned.map(_.turn) ++ marker(w).toVector ++ w.recent.map(_.turn)
     }
