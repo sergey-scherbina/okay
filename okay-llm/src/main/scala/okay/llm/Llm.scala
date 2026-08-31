@@ -191,11 +191,13 @@ object Anthropic {
         case Pure(_) => flushEvent(buf)
         case Effect(e) => okay.<|>[Async, Writer % String](e) match
           case Left(a) => Effect(a).flatMap(_ => flushEvent(buf))
-          case Right(line) => emitFrom(line.asInstanceOf[String], buf)(b => flushEvent(b))
+          case Right(Writer.Say(line)) => emitFrom(line, buf)(b => flushEvent(b))
         case Bind(Effect(e), k) => okay.<|>[Async, Writer % String](e) match
           case Left(a) => Effect(a).flatMap(x => go(k(x), buf))
-          case Right(line) =>
-            emitFrom(line.asInstanceOf[String], buf)(b => go(k(okay.answer), b))
+          case Right(Writer.Say(line)) =>
+            // the constructor gives the told line AND refines the
+            // continuation's domain to Unit — no cast on either half
+            emitFrom(line, buf)(b => go(k(()), b))
 
     def flushEvent(buf: List[String]): Unit ! (Writer % String + Async) =
       if buf.isEmpty then pure(())

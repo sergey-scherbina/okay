@@ -76,7 +76,7 @@ the final coalgebra every stream unfolds into (`toLazyList`, memoized);
 `iterator` is the linear consume-once view (fused, faster).
 
 `Writer` is the stream with a RESULT: `A ! Writer % W` computes `A`
-telling `W` — zero allocation per tell (an opaque identity signature),
+telling `W` — a one-constructor GADT whose tell answers nothing,
 observed by `Writer.uncons: Either[A, (W, rest)]`. `Producer` is the
 diagonal cousin. Effect handlers forward the telling, so State,
 Reader and Throws handlers ARE stream transformers.

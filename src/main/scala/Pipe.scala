@@ -189,11 +189,11 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
         case Left(Take.Await()) =>
           // a final await tells nothing more: the upstream is done
           cont(None, u)
-        case Right(w) => cont(Some(okay.out(w)), Free.Pure(Erased.unreachable[A]))
+        case Right(Writer.Say(w)) => cont(Some(w), Free.Pure(()))
       case Bind(Effect(e), k) => <|>[Take % I, Writer % M](e) match
         case Left(Take.Await()) =>
           effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi))(cont))
-        case Right(w) => cont(Some(okay.out(w)), k(okay.answer))
+        case Right(Writer.Say(w)) => cont(Some(w), k(()))
 
   def loop(u: Stage[I, M, A], d: Stage[M, O, B]): B ! Res =
     (d.resume: @unchecked) match
@@ -254,14 +254,14 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
         case Right(rest) => <|>[G, Writer % M](rest) match
           case Left(g) => effect[Res, Any](Erased.reinject[Res[Any]](g))
             .flatMap(_ => cont(None, Free.Pure(Erased.unreachable[A])))
-          case Right(w) => cont(Some(okay.out(w)), Free.Pure(Erased.unreachable[A]))
+          case Right(Writer.Say(w)) => cont(Some(w), Free.Pure(()))
       case Bind(Effect(e), k) => <|>[Take % I, Writer % M + G](e) match
         case Left(Take.Await()) =>
           effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi))(cont))
         case Right(rest) => <|>[G, Writer % M](rest) match
           case Left(g) => effect[Res, Any](Erased.reinject[Res[Any]](g))
             .flatMap(x => pull(k(Erased.resumeWith(x)))(cont))
-          case Right(w) => cont(Some(okay.out(w)), k(okay.answer))
+          case Right(Writer.Say(w)) => cont(Some(w), k(()))
 
   def loop(u: A ! Up, d: B ! (Take % M + (Writer % O + G))): B ! Res =
     (d.resume: @unchecked) match
@@ -296,11 +296,11 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
       case Effect(e) => <|>[G, Writer % W](e) match
         case Left(g) => effect[Res, Any](Erased.reinject[Res[Any]](g))
           .flatMap(_ => cont(None, Free.Pure(Erased.unreachable[A])))
-        case Right(w) => cont(Some(okay.out(w)), Free.Pure(Erased.unreachable[A]))
+        case Right(Writer.Say(w)) => cont(Some(w), Free.Pure(()))
       case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
         case Left(g) => effect[Res, Any](Erased.reinject[Res[Any]](g))
           .flatMap(x => pull(k(Erased.resumeWith(x)))(cont))
-        case Right(w) => cont(Some(okay.out(w)), k(okay.answer))
+        case Right(Writer.Say(w)) => cont(Some(w), k(()))
 
   def loop(rest: A ! Src, d: B ! (Take % W + (Writer % M + G))): B ! Res =
     (d.resume: @unchecked) match

@@ -1,14 +1,19 @@
-# The one cast that cannot go
+# The cast that could not go, and how it went
 
-There are eleven `asInstanceOf` in `Pipe.scala`, gathered behind three
-named helpers in a `private object Erased`, and one in `Writer.scala`
-that states the theorem the eleven apply. Five encodings have been
-tried against them. All five fail, four of them for the same reason,
-and that reason turns out to be simpler and more mechanical than the
-type-theoretic arguments usually offered for it.
+For most of this library's life, resuming a continuation after a
+`Writer.tell` was an assertion the compiler could not check. Six
+encodings were tried against it. Five failed — four of them for one
+mechanical reason worth knowing — and the sixth worked by giving up
+the thing the other five were trying to preserve.
 
-This page records what was tried, what the compiler said, and what the
-bytecode showed — so the sixth attempt starts from here.
+This page records what was tried, what the compiler said to each, and
+what the bytecode showed. It is kept because the five failures are
+the useful part: they are the shapes anyone reaching for this problem
+will reach for first, and the reason they fail is not the one the
+type-theoretic framing suggests.
+
+The sections below describe the situation as it was, in the present
+tense, and the outcome is at the end.
 
 ## The site
 
@@ -243,6 +248,50 @@ an instruction. A match type on the backing failed the same way.
 The two places in the library that assert an element type are the two
 places whose representation is deliberately blind to it.
 
+## What actually happened: the sixth attempt worked
+
+The five above all tried to keep the identity representation and
+recover the answer type anyway. The sixth gave up the representation
+instead, and that is the one that worked.
+
+```scala
+enum Writer[W, +A]:
+  case Say(w: W) extends Writer[W, Unit]
+```
+
+Matching `Say(w)` refines the answer type to `Unit`, so resuming a
+continuation is `k(())` and asserts nothing. It removes:
+
+- `answer` entirely — twelve sites across `Writer`, `Pipe`, and the
+  kyo/llm/agent interops;
+- three of the five `Erased.unreachable` uses in `Pipe`, where a bare
+  writer `Effect` ends a program and the refinement gives `Unit` there
+  too;
+- the `okay.out(w)` calls that went with them, now field reads;
+- and the caveat the identity encoding always carried: *"a told String
+  is just a String at run time, so forward only effects whose
+  operations are class-distinct from W."* A `Say` is class-distinct
+  from everything, so `TypeableK` tests the operation's own class
+  first and the told value's class only to separate two writers in one
+  row.
+
+**Two measurements, and only one of them was the right one to decide
+on.** An isolated build-and-fold of 10k tells put the wrapper at +25%
+(59.8 -> 75.0us). The real `WriterBenchmark`, which also collects what
+was told, came in at **198.0us against 203.2 for the identity
+encoding** — no cost at all. The allocation is dwarfed by the rest of
+the work, and the constructor match is no more expensive than the
+class test the identity encoding needed anyway. The isolated number
+was not wrong; it was the wrong fraction of the program to decide on.
+
+(A first version of that isolated benchmark reported the wrapper as 2x
+*faster*, because the identity lane also built a 10k-element `Seq` and
+the tagged one counted in a `var`. Two lanes must do the same work.)
+
+What did get slower, slightly: the accumulator dispatch in
+`Writer.fold` is worth 12% now rather than 35% (95.9 against 108.4),
+since the loop matches a constructor instead of reading a value.
+
 ## What is left
 
 Eleven sites in `Pipe`, three shapes:
@@ -254,7 +303,12 @@ Eleven sites in `Pipe`, three shapes:
   about.
 - **`unreachable`** — a continuation that provably never runs.
 
-Plus `Writer.told`, which states the theorem the first two apply. That
-is the floor as it stands. A sixth attempt should begin by asking what
-its candidate encoding puts in the **representation**, and what that
-erases to at `A = Nothing`.
+All three are about forwarded effects and the rows they move between,
+not about writers. The writer's own assertions are gone.
+
+The lesson for a seventh attempt, if one is ever needed elsewhere: the
+five failures all tried to make a representation that carries no tag
+answer a question about types anyway, and erasure follows the
+representation. The thing that worked was to carry the tag. It cost
+nothing measurable here, and it is worth measuring rather than
+assuming before ruling it out somewhere else.

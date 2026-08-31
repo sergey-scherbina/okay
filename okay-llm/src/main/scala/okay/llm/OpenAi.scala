@@ -141,11 +141,11 @@ object OpenAi {
       case Pure(_) => flush(buf)
       case Effect(e) => okay.<|>[Async, Writer % String](e) match
         case Left(a) => Effect(a).flatMap(_ => flush(buf))
-        case Right(line) => absorb(line.asInstanceOf[String], buf)(b => flush(b))
+        case Right(Writer.Say(line)) => absorb(line, buf)(b => flush(b))
       case Bind(Effect(e), k) => okay.<|>[Async, Writer % String](e) match
         case Left(a) => Effect(a).flatMap(x => go(k(x), buf))
-        case Right(line) =>
-          absorb(line.asInstanceOf[String], buf)(b => go(k(okay.answer), b))
+        case Right(Writer.Say(line)) =>
+          absorb(line, buf)(b => go(k(()), b))
 
     def flush(buf: List[String]): Unit ! F =
       if buf.isEmpty then okay.pure(())

@@ -1,56 +1,53 @@
 package okay
 
 /**
- * The Writer effect IS a stream: like Produce, the identity signature
- * — telling w is emitting w itself, no wrapper node, zero allocation —
- * but with the element type W kept SEPARATE from the program's answer:
- * A ! Writer % W reads "computes A, telling W". (Producer is the
- * diagonal cousin: it emits its own answers, one type for both.)
- * There is no Tell wrapper and no reinterpretation pass — a writer
- * program is already the stream; run is a fold over it, and
- * toLazyList consumes it lazily.
+ * The Writer effect IS a stream: telling w emits w, and a writer
+ * program is already the stream — run is a fold over it, toLazyList
+ * consumes it lazily, no reinterpretation pass anywhere. The element
+ * type is kept SEPARATE from the program's answer: `A ! Writer % W`
+ * reads "computes A, telling W". (Producer is the diagonal cousin: it
+ * emits its own answers, one type for both.)
  *
- * The answer type of an operation is phantom, and the type is OPAQUE
- * so that the phantom is disciplined by the compiler: the only public
- * constructor is the diagonal Writer(w): Writer[W, W] — an operation
- * with answer = W is the only one that can exist, which is exactly
- * what the casts inside this file reassert (they cannot be proven
- * in place: the equation links an op to its continuation's erased
- * domain, so no runtime Typeable test could witness it — only a GADT
- * wrapper would, at an allocation per tell).
+ * The operation is a GADT with ONE constructor, and both halves of
+ * that matter.
  *
- * The price of the identity representation: at run time a told String
- * is just a String, so when forwarding, the union is split by the
- * runtime class of W — forward only effects whose operations are
- * class-distinct from W, or handle them first.
+ * One constructor, `Say(w): Writer[W, Unit]`, because a tell answers
+ * NOTHING — it emits a value, it does not produce one. Anything a
+ * caller wants back it says explicitly (`tell(w).map(_ => w)`).
+ *
+ * A GADT, because the constructor is what makes that answer type
+ * RECOVERABLE. Under a `Bind` the answer type is existential; matching
+ * `Say(w)` refines it to `Unit`, so resuming the continuation is
+ * `k(())` and asserts nothing. The previous encoding was an identity
+ * signature — `opaque type Writer[W, +A] = W`, the operation IS the
+ * told value, no node at all — which cost nothing to build and could
+ * not recover the answer type afterwards, so twelve sites asserted it.
+ * Measured, the wrapper costs 25% of a build-and-fold (59.8 -> 75.0us
+ * per 10k tells); it buys back every one of those assertions and one
+ * real limitation besides: a told String used to be just a String, so
+ * a row could only forward effects whose operations were
+ * class-distinct from W. A `Say` is class-distinct from everything.
+ * docs/existentials.md has the five encodings tried before this one.
  */
-opaque type Writer[W, +A] = W
+enum Writer[W, +A]:
+  case Say(w: W) extends Writer[W, Unit]
 
 /**
- * An operation IS its element.
- *
- * Inside this file the opaque type is transparent, so this needs no
- * cast at all — and stating it here means the callers that take a
- * `Writer % W` operation out of a row (`Pipe.through`, `Pipe.into`)
- * do not each have to assert it with an `asInstanceOf`. The equation
- * belongs to the encoding, so it is published by the encoding.
+ * An operation IS its element — now by pattern match rather than by
+ * representation, so it is total and asserts nothing.
  */
-def out[W, A](w: Writer[W, A]): W = w
-
+def out[W, A](w: Writer[W, A]): W = w match
+  case Writer.Say(x) => x
 
 object Writer {
 
-  /** the operation: telling w, answered by w — the ONLY constructor,
-   * diagonal by its type, which is what seals the phantom discipline */
-  inline def apply[W](w: W): Writer[W, Unit] = w
+  /** the operation: telling w, answering nothing — the ONLY
+   * constructor, which is what makes the answer type recoverable */
+  inline def apply[W](w: W): Writer[W, Unit] = Say(w)
 
   /** tell w: emit it as an operation, which answers NOTHING */
   inline def tell[W](w: W): Unit ! Writer % W = effect(Writer(w))
 
-  /** ops of Writer % W are recognized by the runtime class of W
-   * (outside this file the opaque type has no Typeable of its own) */
-  given [W](using t: scala.reflect.Typeable[W]): TypeableK[Writer % W] = new:
-    def unapply[A](x: Any): Option[x.type & Writer[W, A]] = t.unapply(x)
 
   import scala.annotation.tailrec
   import !.*
@@ -95,10 +92,14 @@ object Writer {
     @tailrec def loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
       case Effect(e) => <|>[Writer % W, F](e) match
-        case Left(w) => Pure((step(s, w), answer))
+        // matching the constructor refines the answer type to Unit:
+        // the program ends here, and a tell ends it with nothing
+        case Left(Say(v)) => Pure((step(s, v), ()))
         case Right(e) => Effect(e).map((s, _))
       case Bind(Effect(e), k) => <|>[Writer % W, F](e) match
-        case Left(w) => loop(step(s, w))(k(answer))
+        // and here it refines the CONTINUATION's domain, so this is
+        // an ordinary call and not an assertion
+        case Left(Say(v)) => loop(step(s, v))(k(()))
         case Right(e) => Effect(e).flatMap(x => _loop(s)(k(x)))
 
     loop(z)(a)
@@ -120,8 +121,8 @@ object Writer {
    */
   def uncons[W, A](a: A ! Writer % W): Either[A, (W, A ! Writer % W)] = (a.resume: @unchecked) match
     case Free.Pure(a) => Left(a)
-    case Effect(e) => Right((e, Free.Pure(answer)))
-    case Bind(Effect(e), k) => Right((e, k(answer)))
+    case Effect(Say(w)) => Right((w, Free.Pure(())))
+    case Bind(Effect(Say(w)), k) => Right((w, k(())))
 
   /**
    * The same observation for a writer program performing ARBITRARY
@@ -138,10 +139,10 @@ object Writer {
     case Free.Pure(a) => okay.pure(Left(a))
     case Effect(e) => <|>[G, Writer % W](e) match
       case Left(g) => Effect(g).map(Left(_))
-      case Right(w) => okay.pure(Right((w, Free.Pure(answer))))
+      case Right(Say(w)) => okay.pure(Right((w, Free.Pure(()))))
     case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
       case Left(g) => Effect(g).flatMap(x => uncons[W, A, G](k(x)))
-      case Right(w) => okay.pure(Right((w, k(answer))))
+      case Right(Say(w)) => okay.pure(Right((w, k(()))))
 }
 
 /** the diagonal writer: it tells its own answers, like Producer but
@@ -169,15 +170,24 @@ given [A]: Stream[[W] =>> A ! Writer % W, Pure] = new:
     pure(Writer.uncons(s).toOption)
 
 /**
- * Writer is the one parameterised signature whose split is COMPLETE:
- * `opaque type Writer[W, +A] = W`, so an operation IS its element at
- * runtime and testing the erasure tests W's own class. A row may hold
- * two writers — `Writer % String + Writer % Int` — and they route
- * correctly, which `TestRowIdentity` asserts. Class-distinct W is the
- * condition, and it is the same condition the identity encoding
- * already carries.
+ * Writer's split is COMPLETE, and now unconditionally so.
+ *
+ * Two tests, in order: is this a writer operation at all (its own
+ * class, distinct from every other value in the row), and if so, is it
+ * THIS writer's (the told value's class, which separates
+ * `Writer % String + Writer % Int` — `TestRowIdentity` asserts they
+ * route correctly).
+ *
+ * The first test is what the identity encoding could not make. There
+ * an operation WAS its element, so a told String and a bare String
+ * from any other effect were the same runtime value, and the split
+ * came with a caveat: forward only effects whose operations are
+ * class-distinct from W. A `Say` is class-distinct from everything,
+ * and the caveat is gone.
  */
 given writerK[W](using t: scala.reflect.Typeable[W]): TypeableK[Writer % W] = new:
-  def unapply[A](x: Any): Option[x.type & Writer[W, A]] =
-    t.unapply(x).asInstanceOf[Option[x.type & Writer[W, A]]]
+  def unapply[A](x: Any): Option[x.type & Writer[W, A]] = x match
+    case s: Writer.Say[?, ?] =>
+      t.unapply(s.w).map(_ => x.asInstanceOf[x.type & Writer[W, A]])
+    case _ => None
 

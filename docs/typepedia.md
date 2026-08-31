@@ -75,13 +75,20 @@ same material with the measurements attached.
   `Writer.fold/run` collect through any `Fold`. The diagonal is
   **`Teller`**; `Put[Teller]` closes the generate triangle.
 
-  The answer type is phantom — the alias is `= W` and mentions `A`
-  nowhere — which is what makes `tell` free and what makes
-  `Writer.told` (an `A =:= W` minted once) the only honest way to
-  resume a continuation after a tell. Five encodings have been tried
-  to remove that assertion; all five fail, and four of them for one
-  mechanical reason. [existentials.md](existentials.md) records what
-  each did, what the compiler said, and the bytecode.
+  A tell answers NOTHING — `tell[W](w: W): Unit ! Writer % W` — and
+  anything a caller wants back it says explicitly
+  (`tell(w).map(_ => w)`). The operation is a one-constructor GADT,
+  `case Say(w: W) extends Writer[W, Unit]`, which is what makes that
+  answer type recoverable: under a `Bind` it is existential, and
+  matching `Say(w)` refines it to `Unit`, so resuming a continuation
+  asserts nothing. It also makes the row split unconditional, where
+  the previous identity encoding (`opaque type Writer[W, +A] = W`, the
+  operation IS the told value) could only forward effects whose
+  operations were class-distinct from `W`. Measured, the wrapper costs
+  nothing on the real benchmark: 198.0us against 203.2. Five encodings
+  were tried before this one to keep the identity representation and
+  recover the type anyway; [existentials.md](existentials.md) records
+  each, what the compiler said, and the bytecode.
 - **`State % S`** — bespoke tailrec handler; **`PState`** — the
   type-changing (typestate) variant on the paramonad, ~1.7x the price.
 - **`Throws % E`** — typed aborts; `runEither/runThrows`; the `throws`

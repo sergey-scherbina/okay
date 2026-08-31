@@ -62,11 +62,11 @@ object KyoInterop {
   def toKyoEmit[W, A](p: A ! Writer % W)(using Tag[Emit[W]], Frame): A < Emit[W] =
     (p.resume: @unchecked) match
       case Pure(a) => a
-      case Effect(e) => Emit.valueWith(e.asInstanceOf[W])(okay.answer)
-      case Bind(Effect(e), k) =>
-        val w = e.asInstanceOf[W]
-        // a tell answers NOTHING: the continuation gets unit, not the value
-        Emit.valueWith(w)(toKyoEmit(k(okay.answer)))
+      // matching the constructor gives both halves without a cast: the
+      // told value, and the fact that the answer type is Unit
+      case Effect(Writer.Say(w)) => Emit.valueWith(w)(())
+      case Bind(Effect(Writer.Say(w)), k) =>
+        Emit.valueWith(w)(toKyoEmit(k(())))
 
   /** Emit → Writer: their continuation, repacked as our operation */
   def fromKyoEmit[W, A: Flat](v: A < Emit[W])(using Tag[W], Tag[Emit[W]], Frame): A ! Writer % W =

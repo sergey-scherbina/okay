@@ -2,6 +2,7 @@ package okay
 
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
+import !.*
 
 /**
  * The other three Fold consumers, before and after the dispatch.
@@ -48,10 +49,10 @@ class FoldConsumersBenchmark {
   // ---- Writer.fold
 
   @Benchmark
-  def writerGeneric: Long = Writer.fold(teller)(using summon, generic).runWith._1
+  def writerGeneric: Long = !.run(Writer.fold[Long, Long, Unit, Nothing](teller)(using summon, generic))._1
 
   @Benchmark
-  def writerSpecialized: Long = Writer.fold(teller)(using summon, specialized).runWith._1
+  def writerSpecialized: Long = !.run(Writer.fold[Long, Long, Unit, Nothing](teller)(using summon, specialized))._1
 
   // ---- Stream.fold, through a plain (un-chunked) Producer
 

@@ -469,7 +469,10 @@ accumulator.
    `fold` — the freer monad's classic quadratic trap (visible in the
    kyo Env/Emit lanes) never fires.
 3. **Zero-allocation telling.** Writer's operation is an opaque
-   identity signature: emitting a value allocates nothing.
+   one-constructor GADT: emitting costs one small node, and
+   measurably nothing against the rest of the work (198.0us with it,
+   203.2 without) — while making the answer type recoverable, so no
+   continuation is resumed by assertion.
 4. **Relay for the one-shot majority.** Tail-resumptive handlers run
    as tail loops; the general (abortive/multi-shot) handler exists
    for the minority that needs it.

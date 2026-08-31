@@ -172,34 +172,6 @@ trait TypeableK[F[_]]:
  * `Throws % E`) the class is NOT the whole identity, and this is the
  * wrong instance to reach for: see `TypeableK.byClassPartial`.
  */
-/**
- * The answer of an operation that answers NOTHING.
- *
- * `Writer.tell` emits a value; it does not produce one, and its type
- * says so — `tell[W](w: W): Unit ! Writer % W`. But a `Bind` node
- * holds `k: X => …` over an EXISTENTIAL `X`, and resuming it needs a
- * value of that type. Every writer operation that can exist has
- * `X = Unit`, because `Writer(w): Writer[W, Unit]` is the only
- * injector — true by construction, and unwitnessable afterwards,
- * since the operation has no constructor to match on (the value IS
- * the told element, which is what makes `tell` allocate nothing).
- *
- * So: one assertion, said plainly, in one place. It takes no operation
- * and mentions no element type, because it looks at neither — which is
- * the entire content of the claim, and the reason it does not live in
- * `Writer.scala` any more.
- *
- * Not to be confused with `Pipe`'s `Erased.resumeWith`, which re-types
- * a value that genuinely IS the answer of a forwarded effect. That is
- * a different theorem about a different thing; merging them would
- * blur two claims into one name.
- *
- * The only encoding that would make this provable is a GADT — `case
- * Say(w: W) extends Tell[W, Unit]`, whose pattern match refines the
- * answer type — at a wrapper allocation per tell, measured at 4x.
- * See docs/existentials.md for that and four other attempts.
- */
-def answer[A]: A = ().asInstanceOf[A]
 
 def typeableK[F[_]](cls: Class[?]): TypeableK[F] = new TypeableK[F]:
   def unapply[A](x: Any): Option[x.type & F[A]] =
