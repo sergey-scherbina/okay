@@ -54,7 +54,7 @@ class TestDurable extends munit.FunSuite {
     val j = Durable.MemoryJournal()
     val first = mutable.Buffer[ToolCall]()
     val (_, ctx1) = Handlers.context(Compact.all)
-    run(Agent.converse("pay"))(script, Durable.tools(payments(first), j)(), ctx1)
+    val _ = run(Agent.converse("pay"))(script, Durable.tools(payments(first), j)(), ctx1): Unit
     assertEquals(first.length, 1)
 
     // the process died and came back; the same program, the same journal
@@ -77,8 +77,8 @@ class TestDurable extends munit.FunSuite {
   test("crash window, Fail: the workflow refuses rather than pay twice") {
     val touched = mutable.Buffer[ToolCall]()
     val (_, ctx) = Handlers.context(Compact.all)
-    intercept[Durable.Unresolved] {
-      run(Agent.converse("pay"))(script,
+    val _ = intercept[Durable.Unresolved] {
+      val _ = run(Agent.converse("pay"))(script,
         Durable.tools(payments(touched), crashed)(_ => OnRepeat.Fail), ctx)
     }
     assertEquals(touched.length, 0, "it charged despite the Fail policy")
@@ -96,7 +96,7 @@ class TestDurable extends munit.FunSuite {
   test("crash window, WithKey: the retry carries the FIRST attempt's key") {
     val touched = mutable.Buffer[ToolCall]()
     val (_, ctx) = Handlers.context(Compact.all)
-    run(Agent.converse("pay"))(script,
+    val _ = run(Agent.converse("pay"))(script,
       Durable.tools(payments(touched), crashed)(_ => OnRepeat.WithKey), ctx)
 
     assertEquals(touched.length, 1)
@@ -126,8 +126,8 @@ class TestDurable extends munit.FunSuite {
   test("crash window, Reconcile that cannot answer: refuse, do not guess") {
     val touched = mutable.Buffer[ToolCall]()
     val (_, ctx) = Handlers.context(Compact.all)
-    intercept[Durable.Unresolved] {
-      run(Agent.converse("pay"))(script,
+    val _ = intercept[Durable.Unresolved] {
+      val _ = run(Agent.converse("pay"))(script,
         Durable.tools(payments(touched), crashed)(
           policy = _ => OnRepeat.Reconcile,
           reconcile = (_, _) => None), ctx)
@@ -162,7 +162,7 @@ class TestDurable extends munit.FunSuite {
     // another program and must not be trusted
     val (_, ctx) = Handlers.context(Compact.all)
     val e = intercept[Durable.Drift] {
-      run(Agent.converse("pay"))(script,
+      val _ = run(Agent.converse("pay"))(script,
         Durable.tools(payments(mutable.Buffer()), j)(), ctx)
     }
     assert(e.expected.contains("50") && e.got.contains("100"), e.getMessage)
@@ -172,7 +172,7 @@ class TestDurable extends munit.FunSuite {
     val j = Durable.MemoryJournal()
     val touched = mutable.Buffer[ToolCall]()
     val (_, ctx1) = Handlers.context(Compact.all)
-    run(Agent.converse("pay"))(script, Durable.tools(payments(touched), j)(), ctx1)
+    val _ = run(Agent.converse("pay"))(script, Durable.tools(payments(touched), j)(), ctx1): Unit
 
     // replay needs no tools at all — and no model either, if the
     // model's answers are journalled the same way (here the script

@@ -68,7 +68,7 @@ object RepoAgent {
     val segments = sources.flatMap(s => Ingest.segment(s, budget)(_.length))
     val store = MemoryStore()
     given Handler[Embed] = Vectors.hashingHandler()
-    Ingest.run(store, sources, budget)(_.length).runWith
+    val _ = Ingest.run(store, sources, budget)(_.length).runWith
     Repo(Corpus.of(sources), Symbols.project(sources),
       Keyword.index(segments), store, sources)
 

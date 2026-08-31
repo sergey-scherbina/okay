@@ -55,7 +55,7 @@ class TestProvider extends munit.FunSuite {
     val sent = mutable.Buffer[String]()
     val model = Provider.openAi(canned(Seq(answer("hi")), sent), "k", "gpt-x")
     val (_, ctx) = Handlers.context(Compact.all)
-    run(Agent.converse("hello there", Seq(spec)))(
+    val _ = run(Agent.converse("hello there", Seq(spec)))(
       model, Handlers.tools(Map.empty), ctx)
 
     assertEquals(sent.length, 1)
@@ -141,7 +141,7 @@ class TestProvider extends munit.FunSuite {
     val prog = (1 to 3).foldLeft(okay.pure[Agent, String]("")) { (acc, i) =>
       acc.flatMap(_ => Agent.converse(s"turn $i " + "z" * 200))
     }
-    run(prog)(model, Handlers.tools(Map.empty), ctx)
+    run(prog)(model, Handlers.tools(Map.empty), ctx): Unit
     // the wire never carried more than the policy allows
     for body <- sent do
       assert(body.length < 2000, s"the compactor let a whole history through: ${body.length}")

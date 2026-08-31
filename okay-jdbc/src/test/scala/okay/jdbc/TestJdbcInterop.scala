@@ -35,7 +35,7 @@ class TestJdbcInterop extends munit.FunSuite {
       (rest.resume: @unchecked) match
         case Pure(_) => acc.reverse
         case Effect(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => summon[okay.Handler[Async]].handle(a); acc.reverse
+          case Left(a) => (summon[okay.Handler[Async]].handle(a): Unit); acc.reverse
           case Right(c) => (c.asInstanceOf[Chunk[A]] :: acc).reverse
         case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
           case Left(a) => go(k(summon[okay.Handler[Async]].handle(a)), acc)

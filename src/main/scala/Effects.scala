@@ -70,8 +70,15 @@ inline def handler[F[_] : Handler as H, S]: F !> S =
 inline def interpr[C[_, _, _] : Control as C, F[_] : Handler as H, S]: Interpr[F, C, S] =
   [X] => e => C.pure(H.handle(e))
 
-given [F[_] : Comonad]: Handler[F] with
-  inline def handle[A](a: F[A]): A = a.extract
+/** named, with a PUBLIC `C`, for the same binary-compatibility reason
+ * as `DiagonalMonad`: an inline method reaching a privately captured
+ * given makes the compiler synthesize an accessor with an unstable
+ * name, and a downstream JAR compiled against it breaks when this
+ * library is recompiled. */
+final class ComonadHandler[F[_]](val C: Comonad[F]) extends Handler[F]:
+  inline def handle[A](a: F[A]): A = C.extract(a)
+
+given [F[_] : Comonad as C]: Handler[F] = ComonadHandler[F](C)
 
 /** Nothing has no operations left to handle */
 given Handler[Nothing] with

@@ -48,8 +48,8 @@ object Schedulers {
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val f = CompletableFuture[A]()
       val t = Thread.startVirtualThread: () =>
-        try f.complete(prog().runWith)
-        catch case e: Throwable => f.completeExceptionally(e)
+        try { val _ = f.complete(prog().runWith) }
+        catch case e: Throwable => { val _ = f.completeExceptionally(e) }
       fiberOf(f, () => t.interrupt())
 
   /** a pool (the common fork-join by default): cheap fibers, but a
@@ -57,9 +57,12 @@ object Schedulers {
   def forkJoin(pool: ExecutorService = ForkJoinPool.commonPool()): Scheduler = new:
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val f = CompletableFuture[A]()
-      val fut = pool.submit: () =>
-        try f.complete(prog().runWith)
-        catch case e: Throwable => f.completeExceptionally(e)
+      // an explicit Runnable: with a `() => Unit` lambda the two
+      // `submit` overloads (Runnable and Callable[T]) both match
+      val task: Runnable = () =>
+        try { val _ = f.complete(prog().runWith) }
+        catch case e: Throwable => { val _ = f.completeExceptionally(e) }
+      val fut = pool.submit(task)
       fiberOf(f, () => { fut.cancel(true); () })
 
   /** one honest platform thread per fiber: heavy, but works anywhere */
@@ -67,8 +70,8 @@ object Schedulers {
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val f = CompletableFuture[A]()
       val r: Runnable = () =>
-        try f.complete(prog().runWith)
-        catch case e: Throwable => f.completeExceptionally(e)
+        try { val _ = f.complete(prog().runWith) }
+        catch case e: Throwable => { val _ = f.completeExceptionally(e) }
       val t = Thread(r)
       t.start()
       fiberOf(f, () => t.interrupt())

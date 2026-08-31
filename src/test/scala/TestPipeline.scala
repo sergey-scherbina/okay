@@ -35,7 +35,7 @@ class TestPipeline extends munit.ScalaCheckSuite {
   test("take pushes into a range: construction is O(n)") {
     var built = 0
     val p = Pipeline.generate(0)(x => { built += 1; x })(_ + 1, 16).take(10)
-    Pipeline.fold(p)(using Fold.count)
+    Pipeline.fold(p)(using Fold.count): Unit
     val builtLazy = built
     // even unoptimized this source is lazy; the RANGE pushdown is structural:
     val r = Pipeline.optimize(Pipeline.range(0, 1000000).take(5))

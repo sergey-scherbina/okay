@@ -2,7 +2,6 @@ package okay.agent
 
 import okay.{!, +, Aggregator}
 import okay.!.*
-import okay.given
 import scala.annotation.tailrec
 
 /**

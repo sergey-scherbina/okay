@@ -26,7 +26,7 @@ object ZioInterop {
       new okay.Fiber[A]:
         def onComplete(k: Either[Throwable, A] => Unit): Unit =
           Unsafe.unsafe { implicit u =>
-            runtime.unsafe.fork(fiber.await.map {
+            val _ = runtime.unsafe.fork(fiber.await.map {
               case _root_.zio.Exit.Success(a) => k(Right(a))
               case _root_.zio.Exit.Failure(c) => k(Left(c.squash))
             })

@@ -26,10 +26,23 @@ trait ParaMonad[M[_, _, _]] {
  * Every parameterised monad is a family of ordinary monads,
  * one on each diagonal M[*, R, R] (e.g. the Monad of A /> R).
  */
-given [M[_, _, _] : ParaMonad as P, R]: Monad[[A] =>> M[A, R, R]] with
+/**
+ * A named class with a PUBLIC `P`, not an anonymous `given … with`.
+ * The difference is binary compatibility: an `inline` method reaching
+ * a given that the anonymous class captured privately makes the
+ * compiler synthesize an accessor whose name is unstable across
+ * compiler versions, so a downstream JAR compiled against it can
+ * break when this library is merely recompiled. Reaching a public
+ * member needs no accessor, and the `inline` is kept.
+ */
+final class DiagonalMonad[M[_, _, _], R](val P: ParaMonad[M])
+  extends Monad[[A] =>> M[A, R, R]]:
   override inline def pure[A](a: A): M[A, R, R] = P.pure(a)
   extension [A](m: M[A, R, R])
     override inline def flatMap[B](f: A => M[B, R, R]): M[B, R, R] = P.flatMap(m)(f)
+
+given [M[_, _, _] : ParaMonad as P, R]: Monad[[A] =>> M[A, R, R]] =
+  DiagonalMonad[M, R](P)
 
 /**
  * Kleisli composition, is the composition of effectful functions:

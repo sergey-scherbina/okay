@@ -37,7 +37,7 @@ class TestParallel extends munit.FunSuite {
 
     attempts = 0
     def hopeless: Int ! Async = async { attempts += 1; throw RuntimeException("no") }
-    intercept[RuntimeException](retry(Retry.immediate(2))(hopeless).runWith)
+    intercept[RuntimeException](retry(Retry.immediate(2))(hopeless).runWith): Unit
     assertEquals(attempts, 3)   // the first try plus two retries
   }
 

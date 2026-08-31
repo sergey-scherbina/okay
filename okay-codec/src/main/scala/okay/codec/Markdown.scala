@@ -130,7 +130,10 @@ object Markdown {
         case K.Text =>
           openPara()
           out += Instr.Emit(t)
-        case _ => out += Instr.Bad(Some(t), "unexpected")
+        // no catch-all: every K is covered above, so the branch that
+        // was here was dead. Exhaustiveness is the better guard — a
+        // new kind now becomes a compile error naming this match,
+        // instead of silently becoming a Bad instruction.
     }
     out.result()
 

@@ -95,8 +95,8 @@ object Channel {
         go(u)
       catch case e: Throwable => c.fail(e)
       finally if alive.decrementAndGet() == 0 then c.close()
-    sch.fork(() => async(feed(s)))
-    sch.fork(() => async(feed(t)))
+    sch.fork(() => async(feed(s))): Unit
+    sch.fork(() => async(feed(t))): Unit
     c
 
   /**
@@ -107,7 +107,7 @@ object Channel {
   def buffer[A, S[_], F[+_]](capacity: Int)(s: S[A])
                             (using Stream[S, F], Handler[F], Scheduler): Channel[A] =
     val c = Channel[A](capacity)
-    summon[Scheduler].fork: () =>
+    val _ = summon[Scheduler].fork: () =>
       async:
         try s.toLazyList.foreach(c.send)
         catch case e: Throwable => c.fail(e)

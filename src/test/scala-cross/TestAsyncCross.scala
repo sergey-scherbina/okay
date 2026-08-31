@@ -27,7 +27,7 @@ class TestAsyncCross extends munit.FunSuite {
 
   test("sleep then answer completes via runAsync without blocking the loop") {
     @volatile var interleaved = false
-    summon[Timer].after(10)(() => interleaved = true)
+    summon[Timer].after(10)(() => interleaved = true): Unit
     Async.runAsync(Async.sleep(50).map(_ => 42)).map: v =>
       assertEquals(v, 42)
       assert(interleaved, "the timer should have fired while we slept")
@@ -48,7 +48,7 @@ class TestAsyncCross extends munit.FunSuite {
     val f = Async.spawn(Async.sleep(50).map(_ => { ran = true; 1 }))
     f.cancel()
     val p = Promise[Unit]()
-    summon[Timer].after(150)(() => p.success(()))
+    summon[Timer].after(150)(() => p.success(())): Unit
     p.future.map(_ => assert(!ran, "the cancelled program should not resume"))
   }
 

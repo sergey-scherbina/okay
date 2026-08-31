@@ -98,7 +98,7 @@ class TestLive extends munit.FunSuite {
     val prog = (1 to 3).foldLeft(okay.pure[Agent, String]("")) { (acc, i) =>
       acc.flatMap(_ => Agent.converse(s"Question $i: name one colour. " + "x" * 300))
     }
-    run(prog)(provider, Handlers.tools(Map.empty), ctx)
+    run(prog)(provider, Handlers.tools(Map.empty), ctx): Unit
 
     // the policy held against a REAL exchange: every body that went
     // out carried a compacted context, not the whole history

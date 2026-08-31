@@ -29,7 +29,7 @@ class TestResource extends munit.FunSuite {
     var released = false
     val prog: Int ! Resource = Resource.acquire(())(_ => released = true)
       .flatMap(_ => pure[Resource, Int](0).map(_ => throw RuntimeException("boom")))
-    intercept[RuntimeException](!.run(Resource.run[Int, Nothing](prog)))
+    intercept[RuntimeException](!.run(Resource.run[Int, Nothing](prog))): Unit
     assertEquals(released, true)
   }
 
@@ -49,7 +49,7 @@ class TestResource extends munit.FunSuite {
     var released = 0
     assertEquals(bracket(41)(_ => released += 1)(r => async(r + 1)).runWith, 42)
     assertEquals(bracket(1)(_ => released += 1)(r => produce(r + 1)).runWith, 2)
-    intercept[RuntimeException]:
+    val _ = intercept[RuntimeException]:
       bracket(0)(_ => released += 1)(_ => async[Int](throw RuntimeException("boom"))).runWith
     assertEquals(released, 3)
   }

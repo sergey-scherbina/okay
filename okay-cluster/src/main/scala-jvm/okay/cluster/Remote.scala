@@ -22,7 +22,7 @@ object Remote {
    */
   def listen[A](server: ServerSocket)(using Schema[List[A]], Scheduler): Channel[Chunk[A]] =
     val ch = Channel[Chunk[A]]()
-    summon[Scheduler].fork { () =>
+    val _ = summon[Scheduler].fork { () =>
       okay.async:
         try
           val sock = server.accept()
@@ -35,6 +35,12 @@ object Remote {
               case Left(_) => ()   // a damaged frame is dropped, the stream lives
             line = in.readLine()
           sock.close()
+        // the same hole Channel.merge had: without this a reset
+        // connection or a broken stream dies on this fiber, `finally`
+        // closes the channel, and the consumer reads a perfectly
+        // ordinary end — a truncated remote stream indistinguishable
+        // from a complete one
+        catch case e: Throwable => ch.fail(e)
         finally ch.close()
     }
     ch

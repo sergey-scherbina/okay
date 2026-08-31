@@ -78,7 +78,7 @@ class TestAgent extends munit.FunSuite {
     val model = Handlers.scripted(Seq(Reply("", Seq(call)), Reply("ok", Nil)))
     val (state, ctx) = Handlers.context(Compact.all)
     val tool = Handlers.gated(Map("rm" -> (_ => "deleted")))(_ => false)
-    run(Agent.converse("delete everything"))(model, tool, ctx)
+    run(Agent.converse("delete everything"))(model, tool, ctx): Unit
     assertEquals(state.recall.collect { case Turn.Result(_, c) => c }, Seq("denied"))
   }
 
@@ -93,7 +93,7 @@ class TestAgent extends munit.FunSuite {
     val prog = (1 to 6).foldLeft(okay.pure[Agent, String]("")) { (acc, i) =>
       acc.flatMap(_ => Agent.converse(s"turn $i: $long"))
     }
-    run(prog)(model, Handlers.tools(Map.empty), ctx)
+    run(prog)(model, Handlers.tools(Map.empty), ctx): Unit
 
     // every context the model saw was within budget
     for ctxSeen <- seen do

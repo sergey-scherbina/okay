@@ -37,7 +37,7 @@ class TestSparkInterop extends munit.FunSuite {
 
   test("the Dataset side: an okay aggregator as a typed column") {
     import scala.jdk.CollectionConverters.*
-    val ds = spark.createDataset((1 to 500).map(_.toLong).asJava.asScala.toSeq)(Encoders.scalaLong)
+    val ds = spark.createDataset((1 to 500).map(_.toLong).asJava.asScala.toSeq)(using Encoders.scalaLong)
     val total = aggregate(ds)(Aggregator.sum[Long])(using Encoders.scalaLong, Encoders.scalaLong)
     assertEquals(total, (1 to 500).map(_.toLong).sum)
   }

@@ -21,6 +21,12 @@ given [F[+_]]: _root_.cats.StackSafeMonad[[A] =>> A ! F] with
  * MonadError over a row containing Throws % E: raiseError is the
  * effect's raise, recovery goes through runEither and re-raising.
  */
+// The TypeableK is never USED in the body, and the compiler says so —
+// but it is load-bearing anyway: it narrows this given so it does not
+// tie with given_StackSafeMonad_! when cats asks for an Invariant.
+// Removing it makes MonadErrorTests fail to resolve. An unused using
+// on a given can be doing work that is not in the body.
+@annotation.nowarn("msg=unused implicit parameter")
 given [E, F[+_]](using okay.TypeableK[Throws % E])
 : _root_.cats.MonadError[[A] =>> A ! (Throws % E + F), E] =
   new _root_.cats.StackSafeMonad[[A] =>> A ! (Throws % E + F)]
@@ -51,7 +57,7 @@ object CatsInterop {
       new okay.Fiber[A]:
         def onComplete(k: Either[Throwable, A] => Unit): Unit =
           fut.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
-        def cancel(): Unit = { cancelIO(); () }
+        def cancel(): Unit = { val _ = cancelIO() }
 
   /** run an okay Async program as an IO (it may park — IO.blocking) */
   def toIO[A](p: => A ! Async): IO[A] = IO.blocking(p.runWith)

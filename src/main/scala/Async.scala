@@ -153,7 +153,7 @@ object Async {
       while looping do
         looping = false
         try
-          cur.fold[Unit](a => { p.trySuccess(a); () })([X] => e => k =>
+          cur.fold[Unit](a => { val _ = p.trySuccess(a) })([X] => e => k =>
             e match
               case Run(f) =>
                 cur = k(f())
@@ -164,7 +164,7 @@ object Async {
                   if !cell.compareAndSet(null, Got(r)) then
                     if !stopped then r match
                       case Right(x) => apply(k(x))
-                      case Left(e) => { p.tryFailure(e); () }
+                      case Left(e) => { val _ = p.tryFailure(e) }
                 }
                 cell.getAndSet(Moved) match
                   case g: Got =>
@@ -172,12 +172,12 @@ object Async {
                       case Right(x) =>
                         cur = k(x)
                         looping = !stopped
-                      case Left(e) => { p.tryFailure(e); () }
+                      case Left(e) => { val _ = p.tryFailure(e) }
                   case _ =>
                     unregister = cancelReg
                     if stopped then cancelReg()
           )
-        catch case e: Throwable => { p.tryFailure(e); () }
+        catch case e: Throwable => { val _ = p.tryFailure(e) }
   }
 
   /** run the program on its own fiber (a virtual thread by default on

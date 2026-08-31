@@ -1,6 +1,6 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Writer, await, effect, pure}
+import okay.{!, %, +, Async, Writer, effect, pure}
 import scala.scalajs.js
 
 /**
@@ -21,7 +21,12 @@ object Transports:
     def post(url: String, headers: Map[String, String], body: String)
     : Unit ! (Writer % String + Async) =
       type F = Writer % String + Async
-      val request = await[String] { k =>
+      // Async.await, not the success-only `await`: a rejected fetch
+      // (an unreachable host, a DNS failure, a CORS refusal) used to
+      // call nothing at all, and the program waited for a callback
+      // that would never come. The Left is the row's error channel,
+      // which is where a failed request belongs.
+      val request = Async.await[String] { k =>
         val opts = js.Dynamic.literal(
           method = "POST",
           headers = js.Dictionary(headers.toSeq*).asInstanceOf[js.Any],
@@ -30,8 +35,12 @@ object Transports:
           .asInstanceOf[js.Promise[js.Dynamic]]
           .`then`((r: js.Dynamic) => r.text().asInstanceOf[js.Promise[String]])
           .asInstanceOf[js.Promise[String]]
-          .`then`((t: String) => { k(t); () }: Unit)
-        ()
+          .`then`((t: String) => { k(Right(t)); () }: Unit)
+          .asInstanceOf[js.Promise[Unit]]
+          .`catch`((e: Any) => {
+            k(Left(js.JavaScriptException(e.asInstanceOf[js.Any]))); ()
+          }: Unit | js.Thenable[Unit]): Unit
+        () => ()      // fetch is not cancellable here; nothing to undo
       }
       okay.!.widen[String, Async, Writer % String](request).flatMap { text =>
         text.split("\n").foldLeft(pure[F, Unit](()))((acc, line) =>

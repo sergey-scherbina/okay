@@ -42,7 +42,7 @@ class TestRetrieve extends munit.FunSuite {
 
   test("vector search finds the file about the thing asked for") {
     val store = MemoryStore()
-    run(Ingest.run[okay.Pure](store, files)(_.length))
+    run(Ingest.run[okay.Pure](store, files)(_.length)): Unit
     val hits = run(Retrieve.vector[okay.Pure](store).retrieve("multiply numbers", 3))
     assert(hits.nonEmpty)
     assert(hits.head.segment.source == "Math.scala",
@@ -112,7 +112,7 @@ class TestRetrieve extends munit.FunSuite {
     // changed" is trivially everything (the first run of this test
     // said so, which is the useful kind of failure)
     val budget = 60
-    run(Ingest.run[okay.Pure](store, Seq(src), budget)(_.length))
+    run(Ingest.run[okay.Pure](store, Seq(src), budget)(_.length)): Unit
     val session = Code.parse(src.text)
     val sizeBefore = okay.!.run(store.size)
 
@@ -131,7 +131,7 @@ class TestRetrieve extends munit.FunSuite {
 
   test("the index persists through our own codec, exactly") {
     val store = MemoryStore()
-    run(Ingest.run[okay.Pure](store, files)(_.length))
+    run(Ingest.run[okay.Pure](store, files)(_.length)): Unit
     val bytes = Persist.save(store)
     val back = Persist.load(bytes)
     assert(back.isRight, back.left.getOrElse(""))
@@ -228,14 +228,14 @@ class TestRetrieve extends munit.FunSuite {
     val kw = Retrieve.keyword(Keyword.index(segs))
 
     counted.clear()
-    Retrieve.hybrid[okay.Pure](Seq(spy(kw)), fanOut = 25)
+    val _ = Retrieve.hybrid[okay.Pure](Seq(spy(kw)), fanOut = 25)
       .retrieve("numbers", 3).runWith
     assertEquals(counted.toList, List(25),
       "the retriever was not asked for the fan-out")
 
     // and k still wins when it is the larger of the two
     counted.clear()
-    Retrieve.hybrid[okay.Pure](Seq(spy(kw)), fanOut = 2)
+    val _ = Retrieve.hybrid[okay.Pure](Seq(spy(kw)), fanOut = 2)
       .retrieve("numbers", 9).runWith
     assertEquals(counted.toList, List(9), "asking for k > fanOut lost hits")
 

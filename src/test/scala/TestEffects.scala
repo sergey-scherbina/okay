@@ -3,6 +3,10 @@ package okay
 import !.*
 
 case class Op[+A](a: A)
+/** the class is Op's whole identity, so the row test is total — the
+ * same instance every signature in the library now carries, said here
+ * for this test's own effect */
+given okay.TypeableK[Op] = okay.typeableK(classOf[Op[?]])
 
 class TestEffects extends munit.FunSuite {
 

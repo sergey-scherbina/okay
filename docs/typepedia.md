@@ -254,27 +254,40 @@ same material with the measurements attached.
   it disappears into it. Which is why the rule is to measure, not to
   generalize from the last measurement.
 
-## What the compiler still says, and why
+## The build compiles with zero warnings, under `-Wall`
 
-A clean build reports ~440 warnings, and almost all of them are the
-design's stated price rather than work left undone:
+It reported 626 at the start of the cleanup. None of the difference is
+blanket suppression; the categories and what each turned out to be:
 
-- **~199 Pattern Match Unchecked** — `TypeableK` splits a union by a
-  runtime class test, and erasure means the test cannot be fully
-  checked. That is the mechanism `<|>` is built on, documented above.
-- **100 Pattern Match Exhaustivity** — matching on `Free.resume`,
-  where `Bind(Pure(_), _)` is impossible BY CONSTRUCTION because the
-  rotation normalizes it away. The compiler cannot see the invariant.
-- **9 Compatibility (`Unstable inline accessor`)** at `Effects.scala`
-  and `Monad.scala` — matters only at PUBLICATION: a downstream JAR
-  compiled against these could break when the library is recompiled
-  by a different compiler version. Unresolved on purpose; the inline
-  there carries measured optimizations.
-- **4 Unused Symbol**, all in the cats/kyo interop modules, where a
-  `using` parameter is part of the foreign library's own signature.
-
-The unused-import noise that used to bury these — 178 warnings — is
-gone, which is what makes the list above readable at all.
+- **199 "type test cannot be checked at runtime" → 0.** Mostly FALSE.
+  A signature whose only parameter is its erased answer type has the
+  class as its whole identity, so the test is total — `typeableK` says
+  that once per signature. Where the limitation is real (`Reader`,
+  `State`, `Take`, `Throws` keep no runtime trace of their parameter)
+  it is named and `TestRowIdentity` demonstrates it.
+- **100 "match may not be exhaustive" → 0.** All one claim: `resume`
+  normalizes two of `Free`'s cases away, so a three-case match is
+  correct and the type cannot say so. Written `(x.resume: @unchecked)`
+  at all 42 sites, with the invariant explained where `resume` is.
+- **77 "unused value" → 0.** Two real bugs among them (a producer's
+  failure lost in `Remote.listen`; a rejected `fetch` on JS that
+  called no callback at all, so the program waited forever). The rest
+  were deliberate discards, now written `val _ = …`, which is the
+  form that says so.
+- **9 "Unstable inline accessor" → 0**, and this was the one that
+  mattered for publishing: an `inline` method reaching a privately
+  captured given makes the compiler synthesize an accessor whose name
+  is unstable across compiler versions, so a downstream JAR could
+  break on a mere recompile. `DiagonalMonad` and `ComonadHandler` are
+  named classes with a public member instead — the `inline` is kept.
+- **178 unused imports → 0**, mechanically.
+- Two lints are filtered in build.sbt with the reason written there:
+  the interpolation lint (every occurrence is a diagnostic message,
+  where the value's own toString is the point) and the safe-init
+  checker on munit's `test(…) { … }` (the framework's shape, nothing
+  at the call site to change). One `@nowarn`, on a cats given whose
+  unused `using` is load-bearing for resolution — removing it makes
+  the instance ambiguous, which a test caught.
 
 ## Recurring gotchas
 

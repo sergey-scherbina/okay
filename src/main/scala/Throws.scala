@@ -82,7 +82,7 @@ object throws {
       case e: (Either[E, A] @unchecked) => e.fold(e => e, f)
       case e: (Try[A] @unchecked) => e.fold(t => Failure(t), f)
       case e: (E @unchecked) => e
-      case x: A => f(x)
+      case x: (A @unchecked) => f(x)
     inline def map[B](f: A => B): B throws E = flatMap(a => f(a))
 }
 
@@ -101,7 +101,7 @@ extension [A, E <: Unsafe](a: A throws E)
     case e: (Either[E, A] @unchecked) => e
     case e: (Try[A] @unchecked) => e.toEither
     case e: (E @unchecked) => Left(e)
-    case x: A => Right(x)
+    case x: (A @unchecked) => Right(x)
   }
 
   /** the value, mending an error by f */
@@ -119,7 +119,7 @@ extension [A, E <: Unsafe](a: A throws E)
     case e: (Either[E, A] @unchecked) => e.fold(throw _, identity)
     case e: (Try[A] @unchecked) => e.get
     case e: (E @unchecked) => throw e
-    case x: A => x
+    case x: (A @unchecked) => x
   }
 
 /** by class only: the payload `e: E` is erased in the type, so a row

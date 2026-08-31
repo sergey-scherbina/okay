@@ -62,7 +62,7 @@ class TestGrounded extends munit.FunSuite {
     val (_, ctx) = Grounded.context(Compact.all, keyword,
       budget = 2000, share = 0.5, k = 2)(Compact.chars)
 
-    run(Agent.converse("how are requests sent?"))(model, Handlers.tools(Map.empty), ctx)
+    run(Agent.converse("how are requests sent?"))(model, Handlers.tools(Map.empty), ctx): Unit
     val context = seen.head
     assert(context.exists(t => Compact.text(t).contains("HttpClient")),
       "the http file should have been retrieved for a network question")
@@ -79,7 +79,7 @@ class TestGrounded extends munit.FunSuite {
     val prog = (1 to 4).foldLeft(okay.pure[Agent, String]("")) { (acc, i) =>
       acc.flatMap(_ => Agent.converse(s"question $i about Greeter " + "y" * 100))
     }
-    run(prog)(model, Handlers.tools(Map.empty), ctx)
+    run(prog)(model, Handlers.tools(Map.empty), ctx): Unit
 
     for ctxSeen <- seen do
       val used = ctxSeen.map(Compact.chars).sum

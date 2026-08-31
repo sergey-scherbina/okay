@@ -28,7 +28,7 @@ object Client {
         line <- await[String] { k =>
           var buf = ""
           var fired = false
-          sock.on("data", { (d: js.Any) =>
+          val _ = sock.on("data", { (d: js.Any) =>
             buf += d.toString
             val i = buf.indexOf('\n')
             if i >= 0 && !fired then
@@ -40,7 +40,7 @@ object Client {
       yield Json.read[Double](line).exists(v => math.abs(v - Acceptance.expected) < 1e-9)
 
     Async.runAsync(prog).foreach { ok =>
-      if !ok then js.Dynamic.global.console.error("acceptance mismatch")
+      if !ok then { val _ = js.Dynamic.global.console.error("acceptance mismatch") }
       js.Dynamic.global.process.exit(if ok then 0 else 1)
     }(using scala.scalajs.concurrent.JSExecutionContext.queue)
 }

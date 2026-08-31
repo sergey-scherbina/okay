@@ -39,7 +39,7 @@ class TestLarge extends munit.FunSuite {
       Reply("", Seq(readFile)), Reply("read it", Nil)))
     val (state, ctx) = Handlers.context(Compact.all)
 
-    run(Agent.converse("read the file"))(model, tools, ctx)
+    run(Agent.converse("read the file"))(model, tools, ctx): Unit
 
     val results = state.recall.collect { case Turn.Result(_, c) => c }
     assertEquals(results.length, 1)
@@ -75,7 +75,7 @@ class TestLarge extends munit.FunSuite {
       Handlers.tools(Map("read" -> (_ => "short answer"))), store, limit = 1000)
     val model = Handlers.scripted(Seq(Reply("", Seq(readFile)), Reply("ok", Nil)))
     val (state, ctx) = Handlers.context(Compact.all)
-    run(Agent.converse("read"))(model, tools, ctx)
+    run(Agent.converse("read"))(model, tools, ctx): Unit
     assertEquals(state.recall.collect { case Turn.Result(_, c) => c }, Seq("short answer"))
     assertEquals(store.size, 0, "a small result should not have been stored")
   }
@@ -86,7 +86,7 @@ class TestLarge extends munit.FunSuite {
     val model = Handlers.scripted(Seq(
       Reply("", Seq(expand("nope", 0, 10))), Reply("ok", Nil)))
     val (state, ctx) = Handlers.context(Compact.all)
-    run(Agent.converse("x", Seq(Large.spec)))(model, tools, ctx)
+    run(Agent.converse("x", Seq(Large.spec)))(model, tools, ctx): Unit
     assert(state.recall.exists {
       case Turn.Result(_, c) => c.contains("no such result")
       case _ => false

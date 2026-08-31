@@ -130,7 +130,7 @@ object Aggregator {
 
   /** the k greatest elements, descending */
   def topK[A](k: Int)(using O: Ordering[A]): Aggregator[A, List[A], List[A]] =
-    def keep(xs: List[A]) = xs.sorted(O.reverse).take(k)
+    def keep(xs: List[A]) = xs.sorted(using O.reverse).take(k)
     apply(List.empty[A])((s, a: A) => keep(a :: s))((a, b) => keep(a ++ b))(identity)
 
   /** the distinct elements, exactly (bounded data; sketches for the rest) */

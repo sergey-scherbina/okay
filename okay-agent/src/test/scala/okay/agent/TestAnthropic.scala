@@ -57,7 +57,7 @@ class TestAnthropic extends munit.FunSuite {
     val (_, ctx) = Handlers.context(Compact.all)
     val prog = Agent.remember(Turn.System("be brief"))
       .flatMap(_ => Agent.converse("hello there", Seq(spec)))
-    run(prog)(model, Handlers.tools(Map.empty), ctx)
+    run(prog)(model, Handlers.tools(Map.empty), ctx): Unit
 
     val fields: Map[String, Json] = Json.parse(sent.head) match
       case Json.JObj(fs) => fs.toMap
@@ -100,7 +100,7 @@ class TestAnthropic extends munit.FunSuite {
     val model = Provider.anthropic(canned(Seq(two, answer("ok")), sent), "k", "c")
     val tools = Handlers.tools(Map("search" -> (_ => "a hit")))
     val (_, ctx) = Handlers.context(Compact.all)
-    run(Agent.converse("both", Seq(spec)))(model, tools, ctx)
+    run(Agent.converse("both", Seq(spec)))(model, tools, ctx): Unit
 
     val messages: Json = Json.parse(sent(1)) match
       case Json.JObj(fs) =>

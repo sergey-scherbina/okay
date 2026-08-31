@@ -4,14 +4,34 @@ ThisBuild / version := "0.1.0-SNAPSHOT"
 // Scala 3.7.4. The floor is 3.6 — this code uses the redesigned
 // given syntax (`given [A, E] => Conversion[…]`) and named context
 // bounds (`[M[_] : Monad as M]`), both 3.6 features, and 3.5 fails
-// with hundreds of syntax errors. The ceiling is here for one reason
-// only: okay-spark. Its `for3Use2_13` Spark dependency drags in
-// org.scala-lang:scala-reflect, which is a Scala 2 artifact, and the
-// resolution that works through 3.7 stops working on 3.8+. The core
-// itself compiles clean on 3.9.0 (verified), so if Spark ever leaves
-// this build, so does the ceiling.
+// with hundreds of syntax errors.
+//
+// The ceiling is okay-spark, and only okay-spark. Everything else in
+// this build — the core included — COMPILES clean on 3.9.0, verified,
+// and so does okay-spark once scala-reflect is pinned below. But its
+// tests then fail at RUNTIME ("Cannot find a SparkSession
+// implementation on the Classpath"): Spark 4.0.0 ships for Scala
+// 2.13, and making its classpath work under a Scala 3 that far ahead
+// is not a version bump. Compiling is not the bar; the suite is.
+// If Spark ever leaves this build, the ceiling leaves with it.
 ThisBuild / scalaVersion := "3.7.4"
-ThisBuild / scalacOptions ++= Seq("-Xkind-projector", "-Wall")
+ThisBuild / scalacOptions ++= Seq(
+  "-Xkind-projector",
+  "-Wall",
+  // `-Wall` includes a lint that fires whenever a non-String is
+  // interpolated. Everywhere it fires here, the interpolation is a
+  // DIAGNOSTIC — a test's failure message, a decoder's "expected X,
+  // got Y" — and the value's own toString is precisely what should
+  // appear. Silencing it costs nothing; satisfying it would mean
+  // forty-three `.toString` calls that change not one byte of output
+  // and hide the warnings that mean something. Said once, here.
+  "-Wconf:msg=interpolation uses toString:s",
+  // The safe-initialization checker cannot see through munit's
+  // `test("…") { … }`, which necessarily captures `this` from a
+  // FunSuite body. It is the framework's shape, not ours, and there
+  // is nothing at the call site to change.
+  "-Wconf:msg=transitively initialized:s",
+)
 
 ThisBuild / organization := "dev.okay"
 ThisBuild / licenses := Seq("Apache-2.0" -> url("https://www.apache.org/licenses/LICENSE-2.0"))
@@ -154,6 +174,19 @@ lazy val okaySpark = (project in file("okay-spark"))
       ("org.apache.spark" %% "spark-sql" % "4.0.0").cross(CrossVersion.for3Use2_13),
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
+    // sbt forces every org.scala-lang artifact to the project's own
+    // scalaVersion. Harmless until a `for3Use2_13` dependency drags in
+    // scala-reflect — a Scala 2 artifact published for NO Scala 3
+    // version — and the forcing asks for scala-reflect at the Scala 3
+    // version, which cannot exist. The dependency tree has it right
+    // (2.13.16, from Spark); only the override is wrong, so turn the
+    // override off for this one module.
+    // Spark's 2.13 artifacts bring scala-reflect, a Scala 2 artifact
+    // published for NO Scala 3 version. The dependency tree resolves
+    // it correctly (2.13.16); what fails is sbt asking for it at the
+    // project's own Scala version. Naming the 2.13 artifact
+    // explicitly settles it before anything can rewrite the version.
+    libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.13.16",
     Test / fork := true,
     Test / javaOptions ++= Seq(
       "--add-opens=java.base/java.lang=ALL-UNNAMED",
