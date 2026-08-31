@@ -144,3 +144,4 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-31\ttdigestShipped\t120746\tns/10k\twas 70030290 — buffered adds, batch compress: 580x
 2026-08-31\tcmsShipped\t191128\tns/10k\twas 2282516 — Array[Array[Long]] in place: 12x (floor 68740)
 2026-08-31\thllShipped\t163834\tns/10k\twas 489298 — Array[Byte] in place: 3x (floor 36221)
+2026-08-31\tbuildOnly\t21008\tns/doc\tParse.build alone — 13% of parseFull (157646); lexElementwise 74718

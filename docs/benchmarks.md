@@ -498,6 +498,34 @@ argument, and `Collect.aggregator` already did this for a java
 fresh sketch on every call, so two folds never share one, and `merge`
 allocates its result, so neither side is disturbed by combining.
 
+### The two places the sweep cleared
+
+Having found the same defect in the aggregators and then, worse, in
+the sketches, the obvious next question was where else state is
+rebuilt per element. Two candidates, both cleared, and the reasons are
+worth keeping so they are not re-examined.
+
+**`Delim`** carries its continuation stack as a `List[Seg]` — push and
+pop are O(1) and allocate one cons cell, which is what a stack costs.
+Nothing to fix.
+
+**`Parse.build`** does look like the others: its accumulator is a
+`List` stack of tuples whose third field is a `Vector`, so every token
+does a `kids :+ c`, a fresh tuple, a fresh cons cell and a fresh
+`Building` — four allocations. But two things say leave it.
+
+It is 13% of a full parse (21.0us against 157.6 for `parseFull`, on a
+machine reading 157.6 where section 10 above measured 85.1 — the
+ratio is the number to read, not the absolutes). Lexing is 47%.
+Halving the builder would buy six percent.
+
+And the persistence is load-bearing. `Parse.reparse` resumes the
+builder from a snapshot at a node boundary before the damage and
+returns the old tree's untouched subtrees BY REFERENCE. That requires
+state that can be shared and held, which is exactly what an in-place
+accumulator cannot be. The sketches could go mutable because nothing
+holds an old sketch; a builder is held by design.
+
 ## Why the good numbers, in one place
 
 1. **No runtime where none is needed.** Pure binds are plain data

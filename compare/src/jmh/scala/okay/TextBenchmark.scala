@@ -66,6 +66,27 @@ class TextBenchmark {
   val at = doc.indexOf("value 25")
   val edited = doc.replace("value 25", "VALUE 25")   // same length, one member
 
+  /** the instruction stream the builder folds, computed once */
+  val instrs: Vector[okay.parse.Instr[JsonLex.K]] =
+    Scan.all(JsonLex.scan)(doc).tokens.flatMap(JsonParse.instrs).toVector
+
+  /**
+   * The BUILDER alone, over that stream.
+   *
+   * `Parse.full` is lex plus drive plus build, and the section-10
+   * numbers say the relex dominates. This isolates the third part, to
+   * see whether its accumulator is worth the same treatment the
+   * sketches just got: `Building` carries a `List` stack of tuples
+   * whose third field is a `Vector`, and every token does `kids :+ c`
+   * plus a fresh tuple, a fresh cons cell and a fresh `Building`.
+   */
+  @Benchmark
+  def buildOnly: Int =
+    val fold = Parse.build[JsonLex.K]
+    Parse.present(instrs.foldLeft(fold.init)(fold.add)) match
+      case Cst.Node(_, kids) => kids.length
+      case _ => 0
+
   @Benchmark
   def parseFull: Cst[JsonLex.K] =
     Parse.full(JsonLex.scan, JsonParse.instrs)(doc).tree
