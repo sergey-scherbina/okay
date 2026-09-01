@@ -1,0 +1,4 @@
+lane: mcp-streamable-http
+owner: fable-ctx
+started: 2026-09-02
+scope: the streamable-HTTP transport for okay-mcp (the last P11 open): client Link over java.net.http, server adapter over the JDK server, loopback acceptance; duplex stays on stdio/socket (v1 boundary)
