@@ -1,5 +1,22 @@
 # Changelog
 
+## sql-seam — the relational seam cut at the driver, first road open
+Completed: 2026-09-01 (landed as 90c97bf; spec first 0c560db)
+New module okay-sql, cross-built JVM/JS/Native — the no-java.sql
+claim IS the JS/Native compile: SqlValue/SqlType/Col/Isolation/
+Granted(requested, granted), trait Sql (Async everywhere, plus the
+one sync cancel() brake for the region finalizer), the typed layer
+written once (rows by label camel→snake with row-position Bad,
+verify naming dropped/renamed/retyped/nullability drifts, params
+positional-prepared-only, transact generic over the rest of the
+row so aborts cross the scope and still roll back). okay-jdbc is
+the first driver: 13-test battery on H2 run AS a no-DDL user.
+The rollback-on-exception test caught a core finalizer leak —
+Resource.run applied k(y) outside its try after a forwarded
+effect — fixed in core, pinned in TestResource. Write-bridge and
+poll-source stay their own slugs. Merge read alone: exit 0. Full
+matrix green.
+
 ## history-tsv-tabs — the flagged rows had changed shape, not just tabs
 Completed: 2026-09-01 (landed as 5774436)
 The six rows the room flagged already had real tabs; the live defect

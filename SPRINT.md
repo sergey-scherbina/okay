@@ -6,9 +6,10 @@
   invariants' tests (specs/conf.md, contract already frozen)
 
 ## Queue
-(next candidates from BACKLOG.md: sql-seam, conf-impl,
- persist-wire — the seams the most filed work binds to; ui-durable
- and mcp-resumable-sse can now bind to stage 1's tail/offsets)
+(next candidates from BACKLOG.md: the roads the landed Sql seam
+ unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
+ rag-pgvector — plus persist-wire and cache-memory; ui-durable and
+ mcp-resumable-sse can bind to persist stage 1's tail/offsets)
 
 ## Backlog gate
 Promote from BACKLOG.md when the sprint empties; a task enters the

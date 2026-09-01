@@ -96,10 +96,6 @@
       over okay-persist for cross-node regime 2
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
-- [ ] sql-seam — okay-sql: the Sql driver trait (SqlValue/Col,
-      Async), typed layer (rows/params/verify/transact) written
-      once against it; okay-jdbc as the first driver passing the
-      whole jdbc.md behavior list (H2, no-DDL user)
 - [ ] sql-pg-wire — okay-pg: the Postgres v3 protocol over the
       Async transport (SCRAM, extended query/portals, COPY);
       cross-platform; same typed program runs over both drivers
