@@ -370,7 +370,7 @@ composable runtime. Same for MCP: an MCP server is another `Tool`
 handler, and its JSON-RPC framing is our total parser plus `Schema`.
 (Built since, exactly on that sentence: specs/mcp.md, okay-mcp.)
 
-### agent-langchain4j (the Model half, this claim)
+### agent-langchain4j (the Model half) — SHIPPED
 
 `okay-langchain4j` (JVM, dev.langchain4j:langchain4j-core): their
 blocking `ChatModel.chat` is exactly the comonadic `Handler[Model]`
@@ -391,17 +391,17 @@ one handler:
   round trip; their Tokenizer is not consulted
 
 Behavior:
-- [ ] every Turn kind maps to the right ChatMessage; a Summary rides
+- [x] every Turn kind maps to the right ChatMessage; a Summary rides
       as a system message (same choice as Provider, same reason)
-- [ ] a ToolSpec derived from Schema[Args] arrives as their
+- [x] a ToolSpec derived from Schema[Args] arrives as their
       ToolSpecification with properties and required intact; a
       defaulted field is NOT required on their side either
-- [ ] the round trip against a SCRIPTED ChatModel (no network): the
+- [x] the round trip against a SCRIPTED ChatModel (no network): the
       agent completes, receives a tool request with arguments parsed
       into Json, answers with a Result turn, completes again
-- [ ] a response with no tool calls is a plain Reply; a null text is
+- [x] a response with no tool calls is a plain Reply; a null text is
       an empty string, not a null
-- [ ] the EmbeddingStore/Retrieve half is NOT here — filed as
+- [x] the EmbeddingStore/Retrieve half is NOT here — filed as
       rag-langchain4j when a consumer names a store
 
 Their breadth (OpenAI, Anthropic, Gemini, Bedrock, Ollama, Azure,

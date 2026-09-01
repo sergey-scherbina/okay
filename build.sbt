@@ -689,6 +689,23 @@ lazy val okayDemo = (project in file("okay-demo"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * The interop sentence's Model half (specs/llm-agentic.md): their
+ * ChatModel becomes a Handler[Model] — we inherit langchain4j's
+ * provider breadth in one small module, they get a composable
+ * runtime. Depends on their CORE only; the caller constructs any of
+ * their provider models and hands it in.
+ */
+lazy val okayLangchain4j = (project in file("okay-langchain4j"))
+  .dependsOn(okayAgent.jvm)
+  .settings(
+    name := "okay-langchain4j",
+    libraryDependencies ++= Seq(
+      "dev.langchain4j" % "langchain4j-core" % "1.19.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc,
@@ -699,7 +716,7 @@ lazy val root = (project in file("."))
     okaySql.jvm, okaySql.js, okaySql.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
-    okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
+    okayAgent.jvm, okayAgent.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)
