@@ -1,0 +1,5 @@
+slug: sim-harness
+agent: fable-persist (session 75625ecc)
+started: 2026-09-01
+scope: deterministic concurrency simulation on Delim (specs/sim.md; the operator's rule — Delim as the PRIMARY mechanism, nothing else captures and replays interleavings): Sim scheduler (prompt per fiber, seeded pick at the Async waist, virtual clock), SimChannel, fault plans; the reproducibility battery incl. reproducing the runCmd close race under a seed
+files: src/main/scala/Sim.scala or okay-sim? (core test-scope machinery — decide in-branch), src/test/**, specs/sim.md (boxes/Results), BACKLOG
