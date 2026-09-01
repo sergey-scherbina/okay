@@ -1,5 +1,13 @@
 # Changelog
 
+## mcp-resumable — Last-Event-ID is read(from)
+Completed: 2026-09-01
+Pushes journaled per session key before fan-out; SSE frames carry
+id: offsets; a dropped stream reopens with the token and replays
+exactly what it missed, then goes live; fresh GETs start at the live
+end; v6 without a journal is untouched. 4 tests over real Jetty;
+matrix 996.
+
 ## cache-spec — specs/cache.md: caching with named invalidation
 Completed: 2026-09-01
 Every cache names where its truth lives: a log-fed view (never
