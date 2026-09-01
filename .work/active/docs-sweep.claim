@@ -1,0 +1,7 @@
+feature/docs-sweep 2026-09-02T17:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-02T17:00:00Z
+status: in-progress
+done-so-far:
+next: MARKDOWN ONLY. Ten missing module docs (blob conf demo docs-mongo java langchain4j obs py security-argon2 tls); stale updates: security (ES256/OIDC/granted), jdbc (Migrate/BulkLoad/Poll), persist (Doctor/Configs), cache (redis/invalidations/write-through), ui (nav-pop, Scope capability door), llm (Cut); guide sections 1/2/5/6 + capabilities; typepedia (PState no longer an exhibit, Blocking, ambient prompts); theory ch2 consumers; ROADMAP P9 opens closed
+files: docs/**, ROADMAP.md

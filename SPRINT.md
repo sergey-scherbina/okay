@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- docs-sweep — the day's sixteen landings reach the docs: ten
+  missing module pages written, six stale ones updated, guide/
+  typepedia/theory learn the capability arrows, ROADMAP's P9 opens
+  close (markdown only)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
