@@ -1,0 +1,4 @@
+lane: bench-ctx-reader
+owner: fable-ctx
+started: 2026-09-01
+scope: measure the ctx-fn reader against the row Reader (the compiler-runs-the-monad claim gets its number); ReaderBenchmark rows, docs, history
