@@ -90,14 +90,19 @@ class TestObs extends munit.FunSuite {
     assertEquals(st, Some("vendor=opaque,other=x"))
   }
 
-  test("Never costs near-nothing: ten thousand unwritten spans under a coarse bound") {
-    val (t, spans) = tracer(Sample.Never)
-    val t0 = System.nanoTime
+  test("Never costs near-nothing — structurally: no clock, no ids, no I/O") {
+    // a wall clock lies under a loaded matrix; a COUNTING clock does
+    // not: the short-circuit is proven by the clock never being asked
+    var ticks = 0
+    val topic = MemoryStore().topic("__trace", 1, Policy())
+    val t = Tracer(topic, Sample.Never, clock = () => { ticks += 1; 0L })
     var i = 0
     while i < 10000 do { t.span("s") { i += 1 } }
-    val ms = (System.nanoTime - t0) / 1000000
-    assertEquals(spans(), Vector.empty)
-    assert(ms < 500, s"10k Never spans took ${ms}ms")   // Never is a short-circuit: no ids, no clock, no I/O
+    assertEquals(i, 10000)
+    assertEquals(ticks, 0, "Never asked the clock — the short-circuit is gone")
+    topic.read(0, 0, 10) match
+      case Topic.Read.Records(rs) => assertEquals(rs, Vector.empty)
+      case other => fail(other.toString)
   }
 
   test("spans round-trip both wires: JSON to look at, CBOR on the topic") {
