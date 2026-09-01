@@ -21,6 +21,13 @@
       right after. Suspect load/port timing, not code. Settle by:
       run the suite in a loop under parallel matrix load; if it
       reproduces, isolate per the isolate skill.
+      RECURRED 2026-09-01 (queue-shape's full-matrix run: okayNetty
+      Test failed under parallel load; okay-persist was the only
+      changed module, unrelated) — okayNetty ran GREEN in isolation
+      immediately after (all 12, incl. "every WebSocket client talks
+      to every WebSocket server"). Third sighting, same load/port
+      signature; still environmental. Owner (okay-http/netty lane):
+      the fix is the isolate-under-load loop, not a per-run retry.
 
 ## Correctness and the core (specs/sim.md, specs/typestate.md)
 - [ ] wire-typestate — PState at the protocol seams
