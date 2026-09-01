@@ -12,9 +12,6 @@
       nonexistent restart a COMPILE error for in-scope code; the
       dynamic policy menu stays the floor. Named by the 2026-09-01
       conditions-x-direct analysis.
-- [ ] condition-typed-signal — type the condition/answer pair
-      (signal[A](c: Any) casts today); HowMany.signal.? : Int with
-      no annotation. A signature redesign, needs its own spec.
 - [ ] direct-effect-provide — coloring as POLICY: Effect[G] markers
       are ordinary givens, so provide/providing can install them
       per scope — auto-coloring enabled for one environment, off
