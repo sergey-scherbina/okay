@@ -6,6 +6,19 @@ completion/complete both ends: Complete => Vector[String] as an
 Option (capability follows the function), 100-cap with hasMore/total,
 context narrowing, resource uris passed through; the live probe got
 an answer from the reference server. 4 tests + probe; matrix 1016.
+## theory-textbook — where okay comes from, with the papers
+Completed: 2026-09-01
+
+docs/theory/: seven chapters and the map, ~800 lines, okay as the
+single running example. Moggi and Wadler through Free's normalizing
+fold; Felleisen, Danvy–Filinski and Filinski's representation theorem
+as the sentence justifying Cont at the bottom of the tower; Atkey with
+both instances; Swierstra and Kiselyov–Ishii with the left-nested-bind
+literature; Plotkin–Power/Pretnar and the three handler shapes on one
+line; Carette–Kiselyov–Shan and Taha–Sheard as the two answers to
+interpretive overhead, both present and each placed where its theory
+says; LogicT, codata and the sketch papers to close. 30 works cited;
+every okay claim grep-verified at file:line during writing.
 
 ## ws-close-halfduplex — the last unchecked item in specs/http.md
 Completed: 2026-09-01

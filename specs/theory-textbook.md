@@ -41,23 +41,32 @@ Chapters:
 | `07-logic-streams.md` | nondeterminism and msplit; streams as codata; folds as algebra; the sketches | Kiselyov, Shan, Friedman & Sabry 2005; Wadler 1985; Flajolet et al. 2007; Cormode & Muthukrishnan 2005; Dunning & Ertl 2019 |
 
 ## Behavior
-- [ ] every chapter compiles its claims: each okay example is quoted
+- [x] every chapter compiles its claims: each okay example is quoted
       from the tree as it stands, with `file:line`, and a spot-check of
       the quotes against the sources passes
-- [ ] the citations are verifiable: author, title, venue, year for
+- [x] the citations are verifiable: author, title, venue, year for
       every paper, checked against the published record
-- [ ] the decisions are argued: at minimum — why freer over free, why
+- [x] the decisions are argued: at minimum — why freer over free, why
       Cont founds the tower, why rows are unions rather than
       transformer stacks, why the Writer operation became a GADT, why
       staging is done twice in two different ways, why msplit is the
       one Logic primitive — each grounded in a citation or a recorded
       measurement
-- [ ] the book is linked from `docs/README.md` and cross-linked with
+- [x] the book is linked from `docs/README.md` and cross-linked with
       the typepedia and `docs/existentials.md`; no chapter duplicates
       them — it cites them
-- [ ] refutations are kept: the six Writer encodings, the benchmark
+- [x] refutations are kept: the six Writer encodings, the benchmark
       reversals (fold attribution, cluster flush policy) appear as
       worked examples of the method, not as embarrassments edited out
+
+## Results
+Seven chapters and the map, ~750 lines. Every okay quote was taken from
+the tree during writing (grep-verified at file:line); 30 works cited
+across the references sections, three of them already named in code
+comments before the book existed (Danvy & Filinski in Cont.scala,
+Dybvig–Peyton Jones–Sabry in Delim.scala, LogicT in Logic.scala) — the
+book's thesis, that the library is built out of the literature, was
+checkable against the library's own margins.
 
 ## Out of scope
 - Category theory beyond what the code exercises. Monads are presented

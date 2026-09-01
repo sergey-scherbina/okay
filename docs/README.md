@@ -12,6 +12,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[Tutorial](tutorial.md)** — the same layers by use, nineteen
   worked chapters from a pure program to an agent with remote tools;
   every snippet's shape runs in the repo's tests.
+- **[The theory of okay](theory/README.md)** — the textbook: which
+  theories the library stands on, who established them (Moggi, Wadler,
+  Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &
+  Power/Pretnar, Carette–Kiselyov–Shan, Taha & Sheard), and why each
+  design decision — argued from the papers and the repository's own
+  measurements. Seven chapters, okay as the running example.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
 - **[The cast that could not go, and how it went](existentials.md)** —
