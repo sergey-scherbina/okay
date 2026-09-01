@@ -1,5 +1,16 @@
 # Changelog
 
+## agent-langchain4j — their ChatModel behind our Model effect
+Completed: 2026-09-01 (landed as b8b4d75)
+okay-langchain4j (jvm, langchain4j-core only): message/declaration/
+reply as pure mappings — the fourth algebra's schema walks into
+their JsonSchemaElement tree with required intact, so a defaulted
+field stays omittable across the interop; the handler is comonadic
+like Provider.openAi (Loom parks in their client); count stays
+local. Proven against a scripted ChatModel recording what it saw.
+The P9 interop sentence's Model half; rag-langchain4j filed for the
+EmbeddingStore half. Matrix 1197.
+
 ## lake-read-duckdb — the lake read road, proven with zero new code
 Completed: 2026-09-01 (landed as be03533)
 The point of the seam, demonstrated: a Parquet file is queried

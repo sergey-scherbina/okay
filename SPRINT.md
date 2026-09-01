@@ -1,9 +1,6 @@
 # Sprint
 
 ## Doing
-- agent-langchain4j — okay-langchain4j: their ChatModel as a
-  Handler[Model] (P3 doctrine, specs/llm-agentic.md "Interop, not
-  reimplementation"); inherit their provider breadth in one module
 
 ## Queue
 (next candidates from BACKLOG.md: the roads the landed Sql seam

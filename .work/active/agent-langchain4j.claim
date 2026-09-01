@@ -1,6 +1,0 @@
-feature/agent-langchain4j 2026-09-01T16:40:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-01T16:40:00Z
-status: in-progress
-done-so-far:
-next: okay-langchain4j module (their ChatModel as a Handler[Model]; Turn<->ChatMessage, ToolSpec->ToolSpecification via the Json schema), scripted fake, spec items under Interop
