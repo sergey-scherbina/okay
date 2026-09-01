@@ -15,6 +15,18 @@ two full-matrix runs were OOM-killed near the end (the machine at
 5.9G/6G swap) with 0 failures each; their suite UNION covers every
 suite of the last complete green run — landed on that evidence, the
 same precedent as direct-macro's landing.
+## match-conditions — malformed tool values meet the condition system
+Completed: 2026-09-01
+
+The v1 silent coercions (a "num" tag with no number became 0.0) are
+a named policy now: valueOr signals MalformedValue with the legacy
+restart on the menu. The default table invokes legacy — nothing
+changes for anyone — while table(store, policy) lets a deployment
+REPAIR (Resume at the live signal point with a corrected Value) or
+REFUSE (Fail becomes a {"refused": ...} answer the model reads and
+retries; no fact stored). A well-formed value never consults the
+policy. The condition system's second applied consumer. 28 match
+tests.
 
 ## demo-conditions — the intake's silent default becomes a decision
 Completed: 2026-09-01

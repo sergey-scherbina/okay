@@ -262,6 +262,56 @@ class TestMatch extends munit.FunSuite {
     assertEquals(m.respond(d4, flat3, accept = true), None, "a withdrawn ask cannot be accepted")
   }
 
+  test("conditions at the tools: a malformed value — legacy coerces, repair resumes, strict refuses") {
+    import okay.codec.Json
+    import okay.codec.Json.*
+    def assertWith(policy: (Any, Vector[String]) => okay.Condition.Decision,
+                   store: MemoryMatch): Json =
+      val t = Tools.table(store, policy)
+      val p = store.register("m@x")
+      Json.parse(t("facts_assert")(okay.agent.ToolCall("1", "facts_assert", JObj(Vector(
+        "profile" -> JStr(p.uuid), "attr" -> JStr("price"), "side" -> JStr("offer"),
+        "chat" -> JStr("c"), "offset" -> JNum(1), "span" -> JStr("..."),
+        "value" -> JObj(Vector("t" -> JStr("num")))     // the tag says num, no n
+      )))))
+    // legacy (the default): the v1 coercion — stored as 0.0, unchanged behavior
+    val m1 = MemoryMatch()
+    assertWith(Tools.legacy, m1) match
+      case JObj(fs) => assert(fs.exists(_._1 == "fact"))
+      case x => fail(s"$x")
+    assertEquals(m1.profileOf(m1.register("m@x")).get.current.head.value, Value.VNum(0.0))
+    // a REPAIRING policy resumes with the raw payload as text
+    val m2 = MemoryMatch()
+    val repair: (Any, Vector[String]) => okay.Condition.Decision =
+      case (Tools.MalformedValue(_, payload), _) =>
+        okay.Condition.Decision.Resume(Value.VText(Json.print(payload)))
+      case _ => okay.Condition.Decision.Fail
+    assertWith(repair, m2)
+    m2.profileOf(m2.register("m@x")).get.current.head.value match
+      case Value.VText(x) => assert(x.contains("num"))
+      case x => fail(s"$x")
+    // strict: the tool answers a refusal the model can read — no fact stored
+    val m3 = MemoryMatch()
+    val strict: (Any, Vector[String]) => okay.Condition.Decision = (_, _) =>
+      okay.Condition.Decision.Fail
+    assertWith(strict, m3) match
+      case JObj(fs) =>
+        assert(fs.exists(_._1 == "refused"))
+      case x => fail(s"$x")
+    assertEquals(m3.profileOf(m3.register("m@x")).get.current, Vector.empty)
+    // a WELL-FORMED value never consults the policy
+    val m4 = MemoryMatch()
+    val paranoid: (Any, Vector[String]) => okay.Condition.Decision =
+      (_, _) => throw new AssertionError("must not be consulted")
+    val t4 = Tools.table(m4, paranoid)
+    val p4 = m4.register("m@x")
+    t4("facts_assert")(okay.agent.ToolCall("1", "facts_assert", JObj(Vector(
+      "profile" -> JStr(p4.uuid), "attr" -> JStr("price"), "side" -> JStr("offer"),
+      "chat" -> JStr("c"), "offset" -> JNum(1), "span" -> JStr("..."),
+      "value" -> JObj(Vector("t" -> JStr("num"), "n" -> JNum(42)))))))
+    assertEquals(m4.profileOf(p4).get.current.head.value, Value.VNum(42.0))
+  }
+
   test("the tools mirror the operations: a two-side scripted scenario matches end to end") {
     val m = MemoryMatch()
     val t = Tools.table(m)

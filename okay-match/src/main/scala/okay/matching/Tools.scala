@@ -1,6 +1,10 @@
 package okay.matching
 
+import okay.{!, pure, Pure}
+import okay.given
 import okay.codec.Json
+import okay.{!, pure, Pure}
+import okay.given
 import okay.codec.Json.*
 import okay.agent.{ToolCall, ToolSpec}
 
@@ -23,6 +27,49 @@ object Tools {
   private def a(j: Json, k: String): Vector[Json] = j match
     case JObj(fs) => fs.collectFirst { case (`k`, JArr(vs)) => vs }.getOrElse(Vector.empty)
     case _ => Vector.empty
+
+  /** a malformed tool value: the tag said one thing, the payload
+   * another — the condition the parsing signals */
+  final case class MalformedValue(tag: String, payload: Json)
+
+  /** the silent coercions of v1, now a NAMED policy: what the
+   * default table invokes so nothing changes for existing users */
+  val legacy: (Any, Vector[String]) => okay.Condition.Decision =
+    case (_: MalformedValue, menu) if menu.contains("legacy") =>
+      okay.Condition.Decision.Invoke("legacy", ())
+    case _ => okay.Condition.Decision.Fail
+
+  /** parse a tagged value or SIGNAL; the legacy frame supplies the
+   * old coercion when the policy asks for it */
+  private def valueOr(j: Json): Value ! okay.Condition.Op =
+    def field[A](ok: Option[A], mk: A => Value): Value ! okay.Condition.Op =
+      ok match
+        case Some(x) => pure(mk(x))
+        case None => okay.Condition.signal[Value](
+          MalformedValue(s(j, "t").getOrElse("text"), j))
+    s(j, "t") match
+      case Some("num") => field(d(j, "n"), Value.VNum(_))
+      case Some("range") =>
+        (d(j, "lo"), d(j, "hi")) match
+          case (Some(lo), Some(hi)) => pure(Value.VRange(lo, hi))
+          case _ => okay.Condition.signal[Value](MalformedValue("range", j))
+      case Some("geo") =>
+        (d(j, "lat"), d(j, "lon")) match
+          case (Some(la), Some(lo)) => pure(Value.VGeo(la, lo))
+          case _ => okay.Condition.signal[Value](MalformedValue("geo", j))
+      case Some("time") => pure(Value.VTime(s(j, "s").getOrElse("")))
+      case Some("ref") => field(s(j, "s"), (x: String) => Value.VRef(ProfileId(x)))
+      case _ => field(s(j, "s"), Value.VText(_))
+
+  /** run a value parse under the policy; the legacy restart is on
+   * the menu, and an Unhandled becomes a refusal the caller SEES */
+  private def parsed(j: Json,
+                     policy: (Any, Vector[String]) => okay.Condition.Decision)
+  : Either[String, Value] =
+    try Right(okay.Condition.run[Value, Pure](policy)(
+      okay.Condition.within[Value, Pure]("legacy")(valueOr(j))(_ => value(j))
+    ).runWith)
+    catch case u: okay.Condition.Unhandled => Left(u.getMessage)
 
   private def value(j: Json): Value = s(j, "t") match
     case Some("num") => Value.VNum(d(j, "n").getOrElse(0.0))
@@ -139,8 +186,16 @@ object Tools {
       "The other party's contact facts — unlocked ONLY by an accepted deal between the two.",
       strSchema("viewer" -> "string", "other" -> "string")))
 
-  /** the dispatch table over one store; args and answers are Json */
-  def table(m: MatchStore): Map[String, ToolCall => String] = Map(
+  /** the dispatch table over one store; args and answers are Json.
+   * The default POLICY for malformed values is `legacy` — the v1
+   * coercions, unchanged; pass a policy to repair or refuse instead
+   * (see MalformedValue): a strict policy turns a malformed value
+   * into a {"refused": ...} answer the model can read and retry. */
+  def table(m: MatchStore): Map[String, ToolCall => String] = table(m, legacy)
+
+  def table(m: MatchStore,
+            policy: (Any, Vector[String]) => okay.Condition.Decision)
+  : Map[String, ToolCall => String] = Map(
     "registry_search" -> { c =>
       Json.print(JArr(m.registrySearch(s(c.args, "text").getOrElse(""))
         .map(attrJson).toVector)) },
@@ -156,18 +211,22 @@ object Tools {
       Json.print(obj("profile" ->
         JStr(m.register(s(c.args, "email").getOrElse("")).uuid))) },
     "facts_assert" -> { c =>
-      val id = m.assert(
+      val raw = c.args match { case JObj(fs) =>
+        fs.collectFirst { case ("value", v) => v }.getOrElse(JNull); case _ => JNull }
+      parsed(raw, policy) match
+       case Left(refusal) => Json.print(obj("refused" -> JStr(refusal)))
+       case Right(v) =>
+        val id = m.assert(
         ProfileId(s(c.args, "profile").getOrElse("")),
         s(c.args, "attr").getOrElse(""),
         side(s(c.args, "side")),
-        value(c.args match { case JObj(fs) =>
-          fs.collectFirst { case ("value", v) => v }.getOrElse(JNull); case _ => JNull }),
+        v,
         Provenance(s(c.args, "chat").getOrElse(""),
           d(c.args, "offset").getOrElse(0.0).toLong,
           s(c.args, "span").getOrElse("")),
         d(c.args, "confidence").getOrElse(1.0),
         vis(s(c.args, "vis")))
-      Json.print(obj("fact" -> JNum(id.n.toDouble))) },
+        Json.print(obj("fact" -> JNum(id.n.toDouble))) },
     "facts_supersede" -> { c =>
       val id = m.supersede(
         FactId(d(c.args, "fact").getOrElse(0.0).toLong),

@@ -248,6 +248,21 @@ Behavior:
 - [x] the typed builder: an undeclared state in a transition is a
       compile error; the built value equals the hand-written data
 
+## Conditions at the tools (match-conditions)
+The v1 coercions of malformed tool values (a "num" tag with no
+number quietly became 0.0) are now a NAMED policy. `valueOr` signals
+`MalformedValue(tag, payload)` with the `legacy` restart on the
+menu; `Tools.table(store)` keeps yesterday's behavior by invoking it
+(nothing changes for existing users), `Tools.table(store, policy)`
+lets a deployment repair (Resume with a corrected Value — the signal
+point is live) or refuse (Fail becomes a {"refused": ...} answer the
+MODEL can read and retry — no fact stored). A well-formed value
+never consults the policy.
+
+- [x] one malformed assert, three outcomes by policy: legacy
+      coercion, repair-as-text, refusal with nothing stored — and a
+      well-formed value never consults the policy
+
 ## Out of scope
 - The account-recovery security flow (recorded above; stage 2).
 - Payment/monetization mechanics — the platform gate EXISTS in the
