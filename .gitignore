@@ -4,3 +4,6 @@ target/
 .vscode/
 .DS_Store
 .bsp/
+
+# git worktrees for parallel work (multi-agent protocol)
+.worktrees/
