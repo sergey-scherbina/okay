@@ -1,5 +1,19 @@
 # Backlog
 
+## Correctness and the core (specs/sim.md, specs/typestate.md)
+- [ ] sim-harness — deterministic concurrency simulation on Delim
+      (specs/sim.md; user ask 2026-09-01): every fiber under its
+      own Prompt, a seeded scheduler at send/receive points,
+      interleavings replayable byte for byte. The argument: three
+      real races on 2026-09-01 (runCmd lost answers, DriverManager
+      per-classloader, port roulette) were all found by FLAKES.
+      First clients: runCmd, Replicated/Election, cache
+      single-flight, Channel
+- [ ] wire-typestate — PState at the protocol seams
+      (specs/typestate.md; user ask 2026-09-01): SCRAM's step
+      order and PgSql's connection phases as types (out-of-order =
+      compile error), the Sql transact protocol for driver authors
+
 ## Cross-cutting — the 2026-09-01 audit (specs landed e3b5a74; slugs are implementation)
 - [ ] queue-shape — DECIDED (specs/data.md, Queues): no Queue seam;
       ingress/egress bridges to topics with message-id dedup —
@@ -63,11 +77,9 @@
       handshake version: replicas go remote, machinery unchanged
 - [ ] persist-offload — cold segments to the object store via the
       Blob seam (pairs blob-seam; the backup copy helper rides too)
-- [ ] persist-election — implement specs/consensus.md: the control
-      -log fold (first-Take-wins, leases + skew allowance, the
-      operator record), the election battery on BOTH engines
-      (KafkaStore and a FileStore arbiter), flapping bounded by
-      lease length; RaftStore stays its own future slug
+- [ ] persist-raft — RaftStore: consensus as one more control-log
+      engine under the unchanged Election machinery (specs/
+      consensus.md own-Raft notes; typestate per specs/typestate.md)
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,
