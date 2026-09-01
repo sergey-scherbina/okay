@@ -6,8 +6,6 @@
       okay-persist topic (specs/persist.md; seam agreed 2026-09-01)
 - [ ] ui-dom-patch — a raw-DOM patch Backend over js.Dynamic (the
       React host covers the browser today; Host.diffing is ready)
-- [ ] ui-keyed-diff — keyed children matching in the diff (API
-      unchanged, keys already in the tree)
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
 
