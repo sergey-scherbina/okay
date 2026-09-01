@@ -1,0 +1,7 @@
+feature/jdbc-bulk-load 2026-09-02T04:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-02T04:00:00Z
+status: in-progress
+done-so-far:
+next: BulkLoad in okay-jdbc - the load-id discipline (history row + COPY in ONE tx; the unique key IS the dedup - WithKey at batch granularity, the Migrate shape retold); the olap posture wrapper refusing row DML; DuckDB test double (COPY FROM csv), crash-retry lands once
+files: okay-jdbc/BulkLoad.scala + test (new), specs/data.md box
