@@ -250,6 +250,10 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
     libraryDependencies ++= Seq(
       "org.scalameta" %% "munit" % "1.1.1" % Test,
       "com.h2database" % "h2" % "2.3.232" % Test,
+      // the lake read road (specs/data.md): DuckDB embedded reads
+      // Parquet through the same Sql seam — test-scope, since the
+      // road adds ZERO main-code machinery, which is the point
+      "org.duckdb" % "duckdb_jdbc" % "1.3.2.0" % Test,
     ),
   )
 

@@ -271,8 +271,14 @@ list in its spec or spec section)
 - [ ] pgvector: the okay-rag store contract passes over specs/
       jdbc.md against Postgres; search agrees with the memory
       engine on a shared fixture
-- [ ] a Parquet file on disk is read through the JDBC seam (DuckDB)
+- [x] a Parquet file on disk is read through the JDBC seam (DuckDB)
       with `verify` passing and constant-memory streaming asserted
+      (TestLake in okay-jdbc, DuckDB embedded test-scope: 100k rows
+      at fetch-size chunks, aggregation pushed to the engine; one
+      finding worth recording — Parquet marks fields OPTIONAL by
+      default and verify therefore requires Option fields, which is
+      the fingerprint lesson working: a lake column really can be
+      null under you)
 - [ ] a bulk load with a load id, retried across a simulated crash,
       lands once (warehouse or its test double); row-INSERT paths
       refuse in the OLAP posture
