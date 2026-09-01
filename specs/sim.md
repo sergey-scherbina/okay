@@ -78,21 +78,25 @@ is the answer written down.
 
 ## Behavior
 
-- [ ] a seeded run of N fibers over a simulated channel is
+- [x] a seeded run of N fibers over a simulated channel is
       REPRODUCIBLE: same seed, same interleaving, same trace —
       asserted on a scenario whose outcome depends on order
-- [ ] different seeds explore different interleavings (a
+- [x] different seeds explore different interleavings (a
       counter-scenario whose outcomes differ by order shows both
       outcomes across a seed sweep)
-- [ ] the virtual clock: a fiber sleeping 5s and a fiber sleeping
+- [x] the virtual clock: a fiber sleeping 5s and a fiber sleeping
       1s wake in order with NO wall time spent; a lease-expiry
       scenario (Election's) runs entirely on simulated time
-- [ ] the runCmd close race REPRODUCES under some seed within a
+- [x] the runCmd close race REPRODUCES under some seed within a
       bounded sweep — the regression test for the bug this spec
       was born from — and the fixed code survives the same sweep
-- [ ] a fault plan from the seed (delay one send) flips a
+      (at the MODEL level, honestly: the close-rule protocol
+      modeled over SimChannel; the old rule loses the answer, the
+      shipped rule survives 200 seeds; porting the real runCmd
+      under the sim is the next sophistication)
+- [x] a fault plan from the seed (delay one send) flips a
       scenario's outcome, and the seed replays it
-- [ ] the simulated channel passes the real Channel's contract
+- [x] the simulated channel passes the real Channel's contract
       shape (send/receive/close/drain semantics) under the
       scheduler
 
@@ -126,5 +130,19 @@ is the answer written down.
 
 ## Results
 
-(after implementation — the reproducibility battery, the runCmd
-race reproduced and pinned, seeds-per-second measured)
+Landed (sim-harness, 2026-09-01): `Sim` in the core, pure and
+cross-platform-shaped (a seeded Random, a virtual clock, freer
+trees — nothing else). One lesson the first run taught: a
+continuation must be applied when its fiber is SCHEDULED, not when
+it is enqueued — eager k-application ran map-closures' side
+effects at park time and reordered the world; every task is a
+thunk now. Deadlock is an OUTCOME (a mutual-receive scenario
+returns Deadlock(2) instead of hanging). The headline: the runCmd
+close race, modeled, LOSES the answer under seeds found within a
+200-sweep and the shipped rule survives all 200 — the day's
+flake became a replayable regression test, which is the entire
+point of the module. Eight tests. Next sophistications, filed
+with the slug left open: porting real components (runCmd itself,
+Replicated/Election) under the sim via a simulated Async handler,
+and the multi-prompt Delim road when fibers carry inner
+delimiters.
