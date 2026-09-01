@@ -166,3 +166,6 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-01			indexFoldOnly-quiet	234960			ns/8.5KB; +-14.9 — so 81% is traversal machinery (path :+, defHead, span, recursion)
 2026-09-01			blockingBytesFlushed	50787000			ns/100chunks; +-9.5, SLOWER than shipped 38.2: flush-per-line hope closed directionally
 2026-09-01			nio-flaky	58953000			ns/100chunks; +-48.6, 3 fork failures on the sum assert — possible data loss on close, see BACKLOG
+2026-09-01			ctx-direct	480			ns/10k ambient reads via wire under provide; +-245 loaded box; ~2 orders below the relay — nothing to interpret
+2026-09-01			ctx-monad-chain	5305			ns/1k binds through ctxMonad (f(fb) each); ~2x relay per bind; stack-bounded 2-5k, recursion-built only (E22 var self-capture)
+2026-09-01			regression-screen-loaded	0			19 okay legs, -f1, box under sibling sbt load: error bars 50-200%, INCONCLUSIVE; cats matched doc (337 vs 350) while all effectful legs 2-5x elevated incl zio — load profile, not regression; Writer (504/614 vs doc 286) flagged for quiet-box recheck; today's changes additive (new files, inline alias, one given)

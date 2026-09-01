@@ -1,5 +1,25 @@
 # Changelog
 
+## bench-ctx-reader — the compiler-runs-the-monad claim gets its number
+Completed: 2026-09-01
+ReaderBenchmark gains the ctx-function rows: direct style (10k
+ambient reads via wire under one provide, Blackhole-consumed) runs
+at 0.48 us — two-plus orders below the row Reader's relay, because
+there is nothing to interpret; the chain built THROUGH ctxMonad
+measures ~5.3 us per 1 000 binds (~2x the relay per bind) and is
+stack-bounded. Benchmarking surfaced E22 (specs/context-functions.md):
+no trampoline — capacity 2-5k binds on a default stack; a
+mutating-var chain build SELF-CAPTURES (the inserted ctx-closure
+takes the var by reference) and overflows at any depth — recursion
+only; and foldLeft over ctx-fns fails in lambda-result position
+(the E10 family). benchmarks.md section 2 tells the ratios;
+capabilities.md boundaries carry the width-not-depth doctrine. A
+19-leg okay regression screen ran under sibling sbt load: error
+bars 50-200%, inconclusive by the honest-limits rule; cats matched
+its doc number while every effectful leg (zio included) sat 2-5x
+high — a load profile, not a regression pattern; Writer flagged for
+a quiet-box recheck; today's library changes are additive.
+
 ## error-messages — absence answers with a recipe, wording pinned by test
 Completed: 2026-09-02
 Landed with @implicitNotFound on Monad, Applicative, MonadPlus,

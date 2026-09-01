@@ -92,6 +92,21 @@ work). Writer's `tell` is ZERO allocation: the operation is an
 opaque IDENTITY signature — telling w IS the value w, no wrapper
 node; the handler is a bespoke tail loop into a Vector.
 
+**The ctx-function reader** (capabilities.md), measured into the
+same case (2026-09-01, loaded box — ratios, not digits, are the
+claim): direct style — 10k ambient reads via `wire[Int]` under one
+`provide` — runs at **0.48 µs**, two-plus orders of magnitude below
+the relay, because there is nothing to interpret: a read is a
+parameter access, the "monad" is gone at elaboration. The same
+chain built THROUGH the `ctxMonad` instance (N flatMaps, each
+literally `f(fb)`) measures **~5.3 µs per 1 000 binds** — about 2x
+the relay's per-bind rate — but is stack-bounded: no trampoline,
+~2-5k binds on a default stack, and it must be built by recursion
+(a mutating-var build self-captures — E22 in
+specs/context-functions.md). Width is the instance's domain
+(traverse over a page of readers); depth belongs to the row Reader
+above.
+
 **Why the competitors' numbers.** cats WriterT allocates a
 tuple-in-monad per tell; Chain helps, the wrapping doesn't. atnos
 pays union tagging again. The starred kyo numbers are ~1000x off

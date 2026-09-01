@@ -28,6 +28,36 @@ class ReaderBenchmark {
       m.flatMap(_ => Reader.ask[Int])
     !.run(Reader.run[Int, Int, Nothing](42)(prog))
 
+  /** the ctx-fn reader THROUGH THE INSTANCE — at N/10: each
+   * flatMap is literally f(fb) and run is application (the compiler
+   * is the interpreter, E13/E19), but application is a STACK frame
+   * per bind: 10k left-nested binds overflow (measured). The
+   * instance serves modest widths (traverse over a config, a page
+   * of readers); DEPTH belongs to the row Reader, which trampolines
+   * on Cont. The boundary is in capabilities.md. */
+  @Benchmark
+  def okayCtxMonad(): Int =
+    val M = summon[Monad[[X] =>> Int ?=> X]]
+    val ask: Int ?=> Int = wire[Int]
+    // built by RECURSION: a var loop is a trap — the ctx-closure
+    // inserted at `val prev: Int ?=> Int = prog` captures the VAR
+    // by reference, making the chain self-referential (E22); and a
+    // foldLeft lambda eagerly applies in lambda-result position
+    def chain(n: Int): Int ?=> Int =
+      if n == 0 then ask
+      else M.flatMap(chain(n - 1))((_: Int) => (ask: Int ?=> Int))
+    provide(42)(chain(N / 10))
+
+  /** the ctx-fn reader in DIRECT STYLE: no program is built at all
+   * — N reads of the ambient environment are N field reads; this is
+   * the floor the docs claim */
+  @Benchmark
+  def okayCtxDirect(bh: org.openjdk.jmh.infra.Blackhole): Unit =
+    def body: Int ?=> Unit =
+      var i = 0
+      while i < N do { bh.consume(wire[Int]); i += 1 }
+    provide(42)(body)
+
   @Benchmark
   def catsKleisli(): Int =
     import cats.data.Kleisli
