@@ -265,28 +265,21 @@ vector (`dGhlIHNhbXBsZSBub25jZQ==` -> `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`)
 found it in one step, and that is the move to reach for first with any
 constant one is confident about.
 
-## http-message-phases (filed) — the parser's phases as types
+## http-message-phases — REFUTED at implementation (2026-09-01)
 
-The HTTP/1.1 message is the one-way phase shape at its purest:
-request-line -> headers -> body, per message, never backwards — and
-the Nio parser holds it today as an enum whose every branch carries
-states illegal in its phase. `Stage.phased3`
-(specs/stage-pipeline.md) removes them structurally: the
-request-line's parse IS the headers phase's typed start (method,
-target, version), the headers' end (content-length/chunked) IS the
-body phase's typed start. Doctrine: ADDITIVE
-(specs/delimited-control.md, Adoption) — the refactor replaces an
-internal automaton without moving the module's API; typestate
-DOCTRINE home is specs/typestate.md (the wire lane's), this section
-owns only the http mechanics.
-
-- [ ] the phased3 parser agrees with the current one on the
-      existing corpus (same requests in, same Request values out)
-- [ ] the phase enum is GONE from the parser; the wrong-phase step
-      is a compile error (the suite's proof pattern from
-      stage-phased)
-- [ ] torn input dies with the phase named (the answer says which
-      phase saw the end)
+Filed on a false premise and corrected here rather than silently
+dropped: the section claimed the Nio parser "holds the phases as an
+enum today" — but this codebase has NO hand-written HTTP/1.1
+message parser, BY DECISION (Nio.scala's own doc: writing HTTP/1.1
+by hand where the JDK, Netty and Jetty already own the codec is
+work without a payoff; Server.scala rides com.sun.net.httpserver).
+Building a parser in order to refactor it onto phased3 would be
+machinery for a need nobody named, twice over. `Stage.phased3`
+stands on its own (landed, additive; its test exhibits the http
+message SHAPE as scripted data, which is all the shape was ever
+needed for). If a hand parser ever becomes real — a Native http
+leg without a platform codec is the one imaginable door — phased3
+is ready for it, and this note is where that conversation resumes.
 
 ## Out of scope
 - **Serving WebSocket.** The JDK has no server-side WebSocket API and

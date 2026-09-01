@@ -97,10 +97,6 @@
       PRIMARY case — cross-boundary exit has no handler
       equivalent); ADDITIVE as an API: the unguarded path stays
       (specs/llm-agentic.md, Streaming validation)
-- [ ] http-message-phases — the Nio parser's request-line ->
-      headers -> body as phased3, the phase enum gone structurally,
-      corpus-agreement asserted; internal refactor, module API
-      unmoved (specs/http.md)
 - [ ] nav-pop-to-screen — pop to a NAMED screen across untouched
       intermediates, the Scope pattern one level up; the ui lane's
       to take (specs/ui.md)
