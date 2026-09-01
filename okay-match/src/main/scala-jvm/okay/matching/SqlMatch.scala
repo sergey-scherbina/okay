@@ -77,6 +77,9 @@ final class SqlMatch(sql: Sql,
     profile VARCHAR(64) PRIMARY KEY, secret VARCHAR(1000))""")
   exec("""CREATE TABLE IF NOT EXISTS match_links(
     a VARCHAR(64), b VARCHAR(64))""")
+  exec("""CREATE TABLE IF NOT EXISTS match_deals(
+    id BIGINT PRIMARY KEY, seeker VARCHAR(64), provider VARCHAR(64),
+    what VARCHAR(4000), state VARCHAR(16), ts BIGINT)""")
   exec("""CREATE TABLE IF NOT EXISTS match_tokens(
     token VARCHAR(64) PRIMARY KEY, pfrom VARCHAR(64), pto VARCHAR(64),
     expires BIGINT)""")
@@ -89,6 +92,7 @@ final class SqlMatch(sql: Sql,
     case _ => 0L
   private var nextAttr = maxId("match_attrs") + 1
   private var nextFact = maxId("match_facts") + 1
+  private var nextDeal = maxId("match_deals") + 1
 
   // ---- codecs -------------------------------------------------------
 
@@ -368,6 +372,59 @@ final class SqlMatch(sql: Sql,
           Some(ProfileId(u))
         else None
       case _ => None
+
+  // ---- deals: the negotiation, and the Matched unlock ---------------
+
+  private def dealOf(r: Vector[SqlValue]): Deal = Deal(
+    DealId(lng(r(0))), ProfileId(s(r(1))), ProfileId(s(r(2))), s(r(3)),
+    DealState.valueOf(s(r(4))), lng(r(5)))
+
+  def inquire(seeker: ProfileId, provider: ProfileId, what: String): DealId =
+    val id = DealId(nextDeal); nextDeal += 1
+    exec("INSERT INTO match_deals VALUES(?,?,?,?,?,?)", Vector(
+      I64(id.n), Text(seeker.uuid), Text(provider.uuid), Text(what),
+      Text("Asked"), I64(now())))
+    id
+
+  def respond(deal: DealId, by: ProfileId, accept: Boolean): Option[Deal] =
+    rows("SELECT id, seeker, provider, what, state, ts FROM match_deals WHERE id = ?",
+      Vector(I64(deal.n))).map(dealOf).headOption
+      .filter(d => d.state == DealState.Asked && d.provider == by)
+      .map { d =>
+        val st = if accept then "Accepted" else "Declined"
+        exec("UPDATE match_deals SET state = ?, ts = ? WHERE id = ?",
+          Vector(Text(st), I64(now()), I64(deal.n)))
+        d.copy(state = DealState.valueOf(st), ts = now())
+      }
+
+  def dealsFor(p: ProfileId): Vector[Deal] =
+    rows("SELECT id, seeker, provider, what, state, ts FROM match_deals " +
+      "WHERE seeker = ? OR provider = ?",
+      Vector(Text(p.uuid), Text(p.uuid))).map(dealOf)
+
+  def withdraw(deal: DealId, by: ProfileId): Option[Deal] =
+    rows("SELECT id, seeker, provider, what, state, ts FROM match_deals WHERE id = ?",
+      Vector(I64(deal.n))).map(dealOf).headOption
+      .filter(d => d.state == DealState.Asked && d.seeker == by)
+      .map { d =>
+        exec("UPDATE match_deals SET state = 'Withdrawn', ts = ? WHERE id = ?",
+          Vector(I64(now()), I64(deal.n)))
+        d.copy(state = DealState.Withdrawn, ts = now())
+      }
+
+  private def bound(a: ProfileId, b: ProfileId): Boolean =
+    rows("SELECT COUNT(*) FROM match_deals WHERE state = 'Accepted' AND " +
+      "((seeker = ? AND provider = ?) OR (seeker = ? AND provider = ?))",
+      Vector(Text(a.uuid), Text(b.uuid), Text(b.uuid), Text(a.uuid))) match
+      case Vector(Vector(v)) => lng(v) > 0
+      case _ => false
+
+  def contacts(viewer: ProfileId, other: ProfileId): Vector[Fact] =
+    if !bound(viewer, other) then Vector.empty
+    else rows(s"SELECT $factCols FROM match_facts WHERE profile = ? " +
+      "AND superseded_by IS NULL", Vector(Text(other.uuid))).map(factOf)
+      .filter(f => f.vis == Vis.Matched ||
+        (f.vis == Vis.Public && policy.gate(f.attr) == Gate.AfterMatch))
 
   // ---- the handlers, same shape as the memory reference -------------
 

@@ -108,6 +108,26 @@ Verification note: three full-matrix runs were SIGTERM-killed
 externally (a sibling pkill, admitted in the room) at 1082/1082/
 1089 tests with ZERO failures; all ten touched module suites green
 directly (480 tests).
+## match-deals — the negotiation: several candidates, the confirmed match
+Completed: 2026-09-01
+
+Deals complete what Vis.Matched promised: inquire/respond/withdraw
+with Asked -> Accepted | Declined | Withdrawn, respond the asked
+provider's alone, and contacts(viewer, other) unlocking Matched
+facts (and platform AfterMatch gates) ONLY under an accepted deal —
+both engines, sqlite parity, restart survival. The demo runs the
+round: numbered candidates, the client chooses whom to ask (several
+is wise — someone agrees), providers answer in their own chats, an
+acceptance hands the seeker the unlocked contact and stands the rest
+down, a full-decline round says the request still stands. The round
+policy is store-driven and restart-surviving — PState/Delim were
+CONSIDERED for it and declined with the reason written down: this
+protocol spans processes and days, and state that must survive a
+boundary belongs in data, not in a continuation (the same criterion
+that placed them in transact/wizard/stepper, where the whole
+protocol lives inside one program). Domains are anybody's: the jobs
+round is the demo test, housing the engine test, repairs the live
+one. 21 match tests, 11 demo tests.
 
 ## sql-pg-node — the pg driver reaches Node; sql.md's last box
 Completed: 2026-09-01 (landed as a4e491e)

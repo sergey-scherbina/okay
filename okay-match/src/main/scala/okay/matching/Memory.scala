@@ -29,6 +29,8 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
   private var nextFact = 1L
   private var recovery: Map[ProfileId, String] = Map.empty  // hashed secrets
   private var links: Vector[(ProfileId, ProfileId)] = Vector.empty
+  private var deals: Vector[Deal] = Vector.empty
+  private var nextDeal = 1L
   private var tokens: Map[String, LinkToken] = Map.empty
   private val tokenTtlMs = 15L * 60 * 1000
 
@@ -245,6 +247,47 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
       profiles += p -> newEmail
       p
     }
+
+  // ---- deals: the negotiation, and the Matched unlock ---------------
+
+  def inquire(seeker: ProfileId, provider: ProfileId, what: String): DealId =
+    val id = DealId(nextDeal); nextDeal += 1
+    deals :+= Deal(id, seeker, provider, what, DealState.Asked, now())
+    id
+
+  def respond(deal: DealId, by: ProfileId, accept: Boolean): Option[Deal] =
+    deals.find(d => d.id == deal && d.state == DealState.Asked)
+      .filter(_.provider == by)                 // the asked one's answer alone
+      .map { d =>
+        val d2 = d.copy(state = if accept then DealState.Accepted else DealState.Declined,
+          ts = now())
+        deals = deals.map(x => if x.id == deal then d2 else x)
+        d2
+      }
+
+  def dealsFor(p: ProfileId): Vector[Deal] =
+    deals.filter(d => d.seeker == p || d.provider == p)
+
+  /** the withdraw: an Asked deal the seeker takes back (the round's
+   * cleanup once somebody accepted) */
+  def withdraw(deal: DealId, by: ProfileId): Option[Deal] =
+    deals.find(d => d.id == deal && d.state == DealState.Asked)
+      .filter(_.seeker == by)
+      .map { d =>
+        val d2 = d.copy(state = DealState.Withdrawn, ts = now())
+        deals = deals.map(x => if x.id == deal then d2 else x)
+        d2
+      }
+
+  private def bound(a: ProfileId, b: ProfileId): Boolean =
+    deals.exists(d => d.state == DealState.Accepted &&
+      ((d.seeker == a && d.provider == b) || (d.seeker == b && d.provider == a)))
+
+  def contacts(viewer: ProfileId, other: ProfileId): Vector[Fact] =
+    if !bound(viewer, other) then Vector.empty
+    else facts.filter(f => f.profile == other && f.supersededBy.isEmpty &&
+      (f.vis == Vis.Matched ||
+        (f.vis == Vis.Public && policy.gate(f.attr) == Gate.AfterMatch)))
 
   // ---- the handlers -------------------------------------------------
 

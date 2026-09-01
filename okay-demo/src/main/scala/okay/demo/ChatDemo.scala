@@ -83,10 +83,17 @@ object ChatDemo {
 
   private val matchSystem =
     """You are a helpful chat assistant that ALSO runs a marketplace
-      |over a structured database. Decide yourself when the tools
-      |apply: when the user OFFERS a skill or service, or LOOKS FOR
-      |one, work the marketplace; for anything else just answer —
-      |no tools needed.
+      |over a structured database — ANY domain: services and repairs,
+      |housing (rent or sale), jobs (seeking work or hiring). Decide
+      |yourself when the tools apply: when the user OFFERS something
+      |or LOOKS FOR something, work the marketplace; for anything
+      |else just answer — no tools needed.
+      |Candidates may be several and may decline: list them numbered,
+      |let the user CHOOSE whom to ask, then match_inquire each
+      |chosen one (asking several is wise — someone agrees). The
+      |asked side answers with match_respond; an ACCEPTED deal
+      |unlocks contacts (match_contacts) — never reveal contacts
+      |before acceptance.
       |The marketplace flow: facts_register (email -> profile id)
       |first — ask for an email if none was given; registry_search
       |BEFORE registry_propose; facts_assert to record an offer or a
@@ -107,6 +114,9 @@ object ChatDemo {
   // versa); a hit lands in the matched profile's inbox, which the
   // page holds open as an SSE stream (/events). Model-independent:
   // the agent and the deterministic driver go through the same wrap.
+
+  private val lastHits =
+    java.util.concurrent.ConcurrentHashMap[String, Vector[okay.matching.ProfileId]]()
 
   private val inboxes =
     java.util.concurrent.ConcurrentHashMap[String, Channel[String]]()
@@ -137,10 +147,72 @@ object ChatDemo {
       }
     }
 
+  /** the ROUND policy (store-driven, restart-surviving — deliberately
+   * NOT a fiber holding a continuation; see specs/match.md, Deals
+   * decision): on an acceptance, the seeker's other Asked deals for
+   * the same need are withdrawn and everyone hears the outcome */
+  def onResponded(store: MatchStore, deal: okay.matching.Deal): Unit =
+    import okay.matching.*
+    val seekerMail = store.profileOf(deal.seeker).map(_.email)
+    val providerMail = store.profileOf(deal.provider).map(_.email)
+    deal.state match
+      case DealState.Accepted =>
+        val contacts = store.contacts(deal.seeker, deal.provider)
+          .map(f => Value.text(f.value))
+        seekerMail.foreach(m => inbox(m).send(
+          s"исполнитель согласился: ${deal.what}" +
+            (if contacts.nonEmpty then s" — контакт: ${contacts.mkString(", ")}" else "")))
+        // the rest of the round is withdrawn, each asked party told
+        store.dealsFor(deal.seeker)
+          .filter(d => d.state == DealState.Asked && d.what == deal.what)
+          .foreach { d =>
+            store.withdraw(d.id, deal.seeker)
+            store.profileOf(d.provider).map(_.email).foreach(m =>
+              inbox(m).send(s"отбой по заказу: ${d.what} — исполнитель уже найден"))
+          }
+      case DealState.Declined =>
+        seekerMail.foreach(m => inbox(m).send(
+          s"кандидат отказался: ${deal.what}" + providerMail.fold("")(pm => s" ($pm)")))
+        // all asked declined and none accepted -> say so
+        val round = store.dealsFor(deal.seeker).filter(_.what == deal.what)
+        if round.nonEmpty && round.forall(d =>
+          d.state == DealState.Declined || d.state == DealState.Withdrawn) then
+          seekerMail.foreach(m => inbox(m).send(
+            s"все кандидаты отказались: ${deal.what} — запрос остаётся в силе, сообщу о новых"))
+      case _ => ()
+
   /** the tool table with the reverse chain wrapped around asserts */
   def chainedTable(store: MatchStore): Map[String, okay.agent.ToolCall => String] =
     val base = MatchTools.table(store)
-    base.updated("facts_assert", { c =>
+    base.updated("match_inquire", { c =>
+      val out = base("match_inquire")(c)
+      val provider = c.args match
+        case JObj(fs) => fs.collectFirst { case ("provider", JStr(x)) => x }.getOrElse("")
+        case _ => ""
+      val what = c.args match
+        case JObj(fs) => fs.collectFirst { case ("what", JStr(x)) => x }.getOrElse("")
+        case _ => ""
+      val dealN = Json.parse(out) match
+        case JObj(fs) => fs.collectFirst { case ("deal", JNum(n)) => n.toLong }.getOrElse(0L)
+        case _ => 0L
+      emailOf(store, okay.matching.ProfileId(provider)).foreach(m =>
+        inbox(m).send(s"заказ: $what (сделка $dealN) — ответьте: берусь $dealN / отказываюсь $dealN"))
+      out
+    }).updated("match_respond", { c =>
+      val out = base("match_respond")(c)
+      Json.parse(out) match
+        case JObj(fs) =>
+          val n = fs.collectFirst { case ("deal", JNum(x)) => x.toLong }.getOrElse(0L)
+          store.dealsFor(okay.matching.ProfileId("")) // no-op keeps types honest
+          val byId = c.args match
+            case JObj(a) => a.collectFirst { case ("by", JStr(x)) => x }.getOrElse("")
+            case _ => ""
+          // find the deal to hand the policy (dealsFor by the responder)
+          store.dealsFor(okay.matching.ProfileId(byId))
+            .find(_.id.n == n).foreach(onResponded(store, _))
+        case _ => ()
+      out
+    }).updated("facts_assert", { c =>
       val out = base("facts_assert")(c)
       val args = c.args
       val side = args match
@@ -203,6 +275,13 @@ object ChatDemo {
           "side" -> JStr("offer"), "chat" -> JStr("web-demo"),
           "offset" -> JNum(off.toDouble), "span" -> JStr(text),
           "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(skill))))
+        // the contact rides as a MATCHED fact: only an accepted deal
+        // will show it to anyone — the demo of the second gate
+        call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("contact"),
+          "side" -> JStr("offer"), "chat" -> JStr("web-demo"),
+          "offset" -> JNum(off.toDouble), "span" -> JStr(text),
+          "vis" -> JStr("matched"),
+          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(email))))
         s"""записал предложение: \"$skill\" (профиль $email)"""
       case s if s.contains("нужен") || s.contains("нужно") || s.contains("need:") =>
         val want = s.replaceAll(".*(нужен|нужно|need:)\\s*", "").replaceAll("email [^ ]+", "").trim
@@ -215,20 +294,54 @@ object ChatDemo {
         Json.parse(call("find_candidates", "side" -> JStr("offer"),
           "text" -> JStr(want))) match
           case JArr(hits) if hits.nonEmpty =>
-            val lines = hits.take(3).map {
-              case JObj(fs) =>
+            val ids = hits.flatMap { case JObj(fs) =>
+              fs.collectFirst { case ("profile", JStr(x)) => okay.matching.ProfileId(x) }
+              case _ => None }
+            lastHits.put(email, ids)
+            val lines = hits.take(5).zipWithIndex.map {
+              case (JObj(fs), i) =>
                 val facts = fs.collectFirst { case ("facts", JArr(vs)) => vs }.getOrElse(Vector.empty)
-                val skills = facts.collect { case JObj(f)
-                  if f.exists(_ == ("attr", JStr("skill"))) =>
+                val texts = facts.collect { case JObj(f) =>
                   f.collectFirst { case ("value", JObj(v)) =>
                     v.collectFirst { case ("s", JStr(x)) => x }.getOrElse("") }.getOrElse("") }
-                s"- ${skills.mkString(", ")}"
-              case _ => "- ?"
+                s"${i + 1}) ${texts.filter(_.nonEmpty).mkString(", ")}"
+              case (_, i) => s"${i + 1}) ?"
             }
-            s"нашёл ${hits.length}: ${lines.mkString("; ")}"
+            s"нашёл ${hits.length}: ${lines.mkString("; ")} — скажите: спроси 1 2 (или: спроси всех)"
           case _ => "пока никого не нашёл — запомнил ваш запрос и сообщу, когда исполнитель появится"
+      case s if s.contains("спроси") =>
+        val mine = Option(lastHits.get(email)).getOrElse(Vector.empty)
+        if mine.isEmpty then "сначала спросите, что вам нужно — я найду кандидатов"
+        else
+          val me0 = store.register(email)
+          val what = store.profileOf(me0)
+            .flatMap(_.current.filter(_.side == okay.matching.Side.Need)
+              .lastOption.map(f => okay.matching.Value.text(f.value)))
+            .getOrElse("заказ")
+          val chosen =
+            if s.contains("всех") then mine.indices.toVector
+            else "\\d+".r.findAllIn(s).map(_.toInt - 1).toVector.filter(mine.indices.contains)
+          if chosen.isEmpty then "кого спросить? назовите номера или скажите: спроси всех"
+          else
+            val me = store.register(email)
+            chosen.foreach { i =>
+              call("match_inquire", "seeker" -> JStr(me.uuid),
+                "provider" -> JStr(mine(i).uuid), "what" -> JStr(what))
+            }
+            s"спросил ${chosen.length} кандидатов — сообщу, кто возьмётся"
+      case s if s.contains("берусь") || s.contains("отказываюсь") =>
+        val accept = s.contains("берусь")
+        "\\d+".r.findFirstIn(s).map(_.toLong) match
+          case None => "назовите номер сделки: берусь <N> / отказываюсь <N>"
+          case Some(n) =>
+            val me = store.register(email)
+            Json.parse(call("match_respond", "deal" -> JNum(n.toDouble),
+              "by" -> JStr(me.uuid), "accept" -> JBool(accept))) match
+              case JObj(_) => if accept then "передал согласие — заказчик получил ваш контакт"
+                              else "передал отказ"
+              case _ => "эта сделка не ваша или уже закрыта"
       case _ =>
-        """матч-режим: скажите \"умею <что>\" или \"нужен <кто>\" (и email <адрес>)"""
+        """матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>"""
 
   /** which agent serves /match turns: real model when one is
    * configured, the deterministic table-driver otherwise */

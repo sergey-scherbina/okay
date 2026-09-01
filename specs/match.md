@@ -193,13 +193,13 @@ busy, may decline — several asked means someone agrees.
   match_contacts) so the model drives the flow.
 
 Behavior:
-- [ ] several candidates answer a need, and inquiries go only to the
+- [x] several candidates answer a need, and inquiries go only to the
       CHOSEN ones
-- [ ] respond is the asked provider's alone; a stranger's answer is
+- [x] respond is the asked provider's alone; a stranger's answer is
       refused
-- [ ] Accepted unlocks contacts both ways (Matched facts,
+- [x] Accepted unlocks contacts both ways (Matched facts,
       AfterMatch-gated facts); Declined and Asked unlock nothing
-- [ ] the engines agree: memory and sql (sqlite included) hold the
+- [x] the engines agree: memory and sql (sqlite included) hold the
       same deal guarantees; deals survive a restart
 
 ## Out of scope

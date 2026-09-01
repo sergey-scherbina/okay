@@ -36,5 +36,33 @@ class TestSqliteMatch extends munit.FunSuite {
     val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
     assertEquals(m2.candidates(Query(Side.Offer, text = "tiling")).length, 2)
     assertEquals(m2.register("master@example.com"), p)
+  
+  test("deals hold on sqlite and survive a restart") {
+    val (m, f) = fresh()
+    val seeker = m.register("tenant@demo")
+    val flat = m.register("flat@demo")
+    m.assert(flat, "contact", Side.Offer, Value.VText("tg:@flat"),
+      prov("c", 1), 1.0, Vis.Matched)
+    val d = m.inquire(seeker, flat, "снять квартиру")
+    assertEquals(m.respond(d, seeker, accept = true), None)   // the seeker is not the asked one
+    assertEquals(m.respond(d, flat, accept = true).map(_.state), Some(DealState.Accepted))
+    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
+    assertEquals(m2.contacts(seeker, flat).map(x => Value.text(x.value)), Vector("tg:@flat"))
+    assertEquals(m2.dealsFor(flat).map(_.state), Vector(DealState.Accepted))
+  }
+}
+
+  test("deals hold on sqlite and survive a restart") {
+    val (m, f) = fresh()
+    val seeker = m.register("tenant@demo")
+    val flat = m.register("flat@demo")
+    m.assert(flat, "contact", Side.Offer, Value.VText("tg:@flat"),
+      prov("c", 1), 1.0, Vis.Matched)
+    val d = m.inquire(seeker, flat, "снять квартиру")
+    assertEquals(m.respond(d, seeker, accept = true), None)   // the seeker is not the asked one
+    assertEquals(m.respond(d, flat, accept = true).map(_.state), Some(DealState.Accepted))
+    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
+    assertEquals(m2.contacts(seeker, flat).map(x => Value.text(x.value)), Vector("tg:@flat"))
+    assertEquals(m2.dealsFor(flat).map(_.state), Vector(DealState.Accepted))
   }
 }

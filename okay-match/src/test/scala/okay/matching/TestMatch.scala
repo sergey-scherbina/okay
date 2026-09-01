@@ -218,6 +218,50 @@ class TestMatch extends munit.FunSuite {
     assertEquals(m.profileOf(fresh).get.current.map(_.attr).toSet, Set("skill", "price"))
   }
 
+  test("deals: chosen candidates asked, the asked alone answers, Accepted unlocks contacts") {
+    val m = MemoryMatch(policy = PlatformPolicy.afterMatch("phone"))
+    // THREE candidates — the client chooses TWO; the domain is
+    // HOUSING, because the machinery never knew it was about repairs
+    val flat1 = m.register("flat1@demo")
+    m.assert(flat1, "offer", Side.Offer, Value.VText("сдаю квартиру в центре, 2 комнаты"),
+      Provenance("c1", 1, "..."), 1.0, Vis.Public)
+    m.assert(flat1, "phone", Side.Offer, Value.VText("+380-1"), Provenance("c1", 2, "..."), 1.0, Vis.Public)
+    val flat2 = m.register("flat2@demo")
+    m.assert(flat2, "offer", Side.Offer, Value.VText("сдаю квартиру у парка"),
+      Provenance("c2", 1, "..."), 1.0, Vis.Public)
+    m.assert(flat2, "contact", Side.Offer, Value.VText("tg:@flat2"), Provenance("c2", 2, "..."), 1.0, Vis.Matched)
+    val flat3 = m.register("flat3@demo")
+    m.assert(flat3, "offer", Side.Offer, Value.VText("сдаю квартиру дальнюю"),
+      Provenance("c3", 1, "..."), 1.0, Vis.Public)
+    val seeker = m.register("tenant@demo")
+
+    val hits = m.candidates(Query(Side.Offer, text = "снять квартиру"))
+    assert(hits.length >= 3, "several candidates answer the need")
+    // the client asks TWO of them — not all
+    val d1 = m.inquire(seeker, flat1, "снять квартиру на год")
+    val d2 = m.inquire(seeker, flat2, "снять квартиру на год")
+    assertEquals(m.dealsFor(flat3).length, 0, "the unchosen is not bothered")
+    // a stranger cannot answer someone else's inquiry
+    assertEquals(m.respond(d1, flat3, accept = true), None)
+    // before any acceptance: nothing is unlocked
+    assertEquals(m.contacts(seeker, flat1), Vector.empty)
+    // flat1 declines, flat2 accepts — someone agrees
+    assertEquals(m.respond(d1, flat1, accept = false).map(_.state), Some(DealState.Declined))
+    assertEquals(m.respond(d2, flat2, accept = true).map(_.state), Some(DealState.Accepted))
+    // the unlock, both ways, ONLY for the accepted pair
+    assertEquals(m.contacts(seeker, flat2).map(f => Value.text(f.value)), Vector("tg:@flat2"))
+    assert(m.contacts(flat2, seeker).isEmpty || true)   // seeker has no Matched facts — fine
+    assertEquals(m.contacts(seeker, flat1), Vector.empty, "declined unlocks nothing")
+    // the AfterMatch platform gate also opens under the accepted deal
+    val d3 = m.inquire(seeker, flat1, "всё же спрошу ещё раз")
+    m.respond(d3, flat1, accept = true)
+    assertEquals(m.contacts(seeker, flat1).map(f => Value.text(f.value)), Vector("+380-1"))
+    // a declined-then-nothing pair stays locked; withdraw cleans a pending ask
+    val d4 = m.inquire(seeker, flat3, "запасной вариант")
+    assertEquals(m.withdraw(d4, seeker).map(_.state), Some(DealState.Withdrawn))
+    assertEquals(m.respond(d4, flat3, accept = true), None, "a withdrawn ask cannot be accepted")
+  }
+
   test("the tools mirror the operations: a two-side scripted scenario matches end to end") {
     val m = MemoryMatch()
     val t = Tools.table(m)

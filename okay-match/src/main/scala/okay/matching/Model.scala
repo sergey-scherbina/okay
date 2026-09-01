@@ -182,6 +182,16 @@ object PlatformPolicy:
   def afterMatch(attrs: String*): PlatformPolicy =
     PlatformPolicy(per = attrs.map(_ -> Gate.AfterMatch).toMap)
 
+final case class DealId(n: Long)
+
+enum DealState:
+  case Asked, Accepted, Declined, Withdrawn
+
+/** the negotiation record: the ask and its answer — `Accepted` IS
+ * the "confirmed match" the Matched visibility tier waits for */
+final case class Deal(id: DealId, seeker: ProfileId, provider: ProfileId,
+                      what: String, state: DealState, ts: Long)
+
 /**
  * The store, nominal (demo-chat-match's sqlite ask made it so): both
  * engines already spoke this surface structurally; the trait writes
@@ -204,6 +214,14 @@ trait MatchStore:
   def confirmLink(token: String, by: ProfileId, prov: Provenance): Option[ProfileId]
   def linkByRecovery(from: ProfileId, oldEmail: String, secret: String): Option[ProfileId]
   def setRecovery(p: ProfileId, secret: String): Unit
+  def inquire(seeker: ProfileId, provider: ProfileId, what: String): DealId
+  def respond(deal: DealId, by: ProfileId, accept: Boolean): Option[Deal]
+  def dealsFor(p: ProfileId): Vector[Deal]
+  def withdraw(deal: DealId, by: ProfileId): Option[Deal]
+  /** the Matched unlock: the other's Matched facts (and the
+   * platform's AfterMatch-gated ones) — ONLY under an Accepted deal
+   * binding the two */
+  def contacts(viewer: ProfileId, other: ProfileId): Vector[Fact]
 
 /** a hit: who, how well, what the two gates disclose now — and the
  * names of facts that matched but wait behind the platform's

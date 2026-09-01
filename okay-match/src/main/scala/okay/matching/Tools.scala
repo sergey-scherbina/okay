@@ -52,6 +52,9 @@ object Tools {
     case JObj(fs) => fs.collectFirst { case (`k`, JBool(v)) => v }.getOrElse(false)
     case _ => false
 
+  private object FactIdOps:
+    def deal(n: Option[Double]): DealId = DealId(n.getOrElse(0.0).toLong)
+
   private def side(x: Option[String]): Side =
     if x.contains("need") then Side.Need else Side.Offer
 
@@ -109,7 +112,19 @@ object Tools {
       strSchema("token" -> "string", "by" -> "string", "chat" -> "string", "span" -> "string")),
     ToolSpec("find_candidates",
       "Hybrid search: hard filters over typed facts, semantic ranking by text.",
-      strSchema("side" -> "string", "text" -> "string")))
+      strSchema("side" -> "string", "text" -> "string")),
+    ToolSpec("match_inquire",
+      "Ask a candidate whether they take the job; several may be asked — someone agrees.",
+      strSchema("seeker" -> "string", "provider" -> "string", "what" -> "string")),
+    ToolSpec("match_respond",
+      "The ASKED candidate accepts or declines the inquiry (accept: true/false).",
+      strSchema("deal" -> "number", "by" -> "string", "accept" -> "boolean")),
+    ToolSpec("match_deals",
+      "A profile's inquiries, both directions, with their states.",
+      strSchema("profile" -> "string")),
+    ToolSpec("match_contacts",
+      "The other party's contact facts — unlocked ONLY by an accepted deal between the two.",
+      strSchema("viewer" -> "string", "other" -> "string")))
 
   /** the dispatch table over one store; args and answers are Json */
   def table(m: MatchStore): Map[String, ToolCall => String] = Map(
@@ -174,6 +189,28 @@ object Tools {
           s(c.args, "span").getOrElse(""))) match
         case None => Json.print(JNull)
         case Some(p) => Json.print(obj("linked" -> JStr(p.uuid))) },
+    "match_inquire" -> { c =>
+      val id = m.inquire(ProfileId(s(c.args, "seeker").getOrElse("")),
+        ProfileId(s(c.args, "provider").getOrElse("")),
+        s(c.args, "what").getOrElse(""))
+      Json.print(obj("deal" -> JNum(id.n.toDouble))) },
+    "match_respond" -> { c =>
+      m.respond(FactIdOps.deal(d(c.args, "deal")),
+        ProfileId(s(c.args, "by").getOrElse("")),
+        b(c.args, "accept")) match
+        case None => Json.print(JNull)
+        case Some(dl) => Json.print(obj("deal" -> JNum(dl.id.n.toDouble),
+          "state" -> JStr(dl.state.toString))) },
+    "match_deals" -> { c =>
+      Json.print(JArr(m.dealsFor(ProfileId(s(c.args, "profile").getOrElse("")))
+        .map(dl => obj("deal" -> JNum(dl.id.n.toDouble),
+          "seeker" -> JStr(dl.seeker.uuid), "provider" -> JStr(dl.provider.uuid),
+          "what" -> JStr(dl.what), "state" -> JStr(dl.state.toString))))) },
+    "match_contacts" -> { c =>
+      Json.print(JArr(m.contacts(
+        ProfileId(s(c.args, "viewer").getOrElse("")),
+        ProfileId(s(c.args, "other").getOrElse("")))
+        .map(factJson))) },
     "find_candidates" -> { c =>
       val q = Query(side(s(c.args, "side")),
         a(c.args, "filters").map(f =>

@@ -111,6 +111,24 @@ inbox, held open by the page as an SSE stream (/events/<email> —
 the email rides the PATH: the route sees no query string). Both
 pages subscribe on the first email they see and render 🔔 bubbles.
 
+## The negotiation round (match-deals in the demo)
+Candidates are listed NUMBERED; the client chooses ("спроси 1 2" /
+"спроси всех"); each chosen provider's inbox rings with the deal
+number; providers answer in their own chats ("берусь N" /
+"отказываюсь N"). The round policy is store-driven and
+restart-surviving (deliberately not a fiber holding a continuation):
+an acceptance notifies the seeker WITH the unlocked contact (the
+Matched gate's transaction), withdraws the round's other asks and
+tells each stood-down provider; a refusal notifies the seeker, and
+when everyone declined the seeker hears that the request stands.
+Domains are anybody's: services, housing, jobs — the machinery never
+knew it was about repairs (the jobs round is the test; housing is
+the engine test's domain).
+
+- [x] the full round through real routes: three offers, a numbered
+      list, ask-all, one declines (seeker told), one accepts (seeker
+      told WITH the contact), the third stands down (told)
+
 ## Out of scope
 - Auth, persistence of conversations, multi-user rooms (persist owns
   durable history; okay-match's DURABLE store is one constructor swap

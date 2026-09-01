@@ -15,7 +15,8 @@ import java.nio.charset.StandardCharsets.UTF_8
  */
 class TestChatDemo extends munit.FunSuite {
   // live turns are model-speed-bound; a busy local model must not flake
-  // (and a loaded matrix outgrows munit's 30s — the TestRepoAgent precedent)
+  // live model calls under a loaded matrix outgrow munit's 30s —
+  // the TestRepoAgent precedent; 180 covers a busy local model
   override val munitTimeout = scala.concurrent.duration.Duration(180, "s")
 
   def withServer[A](budget: Int,
@@ -216,6 +217,58 @@ class TestChatDemo extends munit.FunSuite {
       }.get(10, java.util.concurrent.TimeUnit.SECONDS)
       assert(got.contains("велосипед"), got)
       events.close()
+    }
+  }
+
+  test("DEALS, jobs domain: choose, ask several, one declines, one accepts, the rest stand down") {
+    withServer(512) { port =>
+      def turn(text: String): String =
+        new String(post(port,
+          s"""{"messages":[{"role":"user","content":"$text"}]}""").readAllBytes(), UTF_8)
+      def events(email: String) = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/events/$email"))
+          .GET().build(), HttpResponse.BodyHandlers.ofInputStream()).body()
+      def readUntil(in: java.io.InputStream, marker: String): String =
+        java.util.concurrent.CompletableFuture.supplyAsync { () =>
+          val sb = new StringBuilder; val buf = new Array[Byte](512)
+          while !sb.toString.contains(marker) do
+            val n = in.read(buf)
+            if n < 0 then throw new AssertionError(s"stream ended: $sb")
+            sb.append(new String(buf, 0, n, UTF_8))
+          sb.toString
+        }.get(10, java.util.concurrent.TimeUnit.SECONDS)
+
+      // the THIRD domain: hiring — three developers offer their work
+      turn("/match offer: разработчик scala, ищу проект email dev1@jobs")
+      turn("/match offer: разработчик scala и котлин email dev2@jobs")
+      turn("/match offer: разработчик джуниор scala email dev3@jobs")
+      // the employer's need lists them NUMBERED
+      val found = turn("/match need: нужен разработчик scala в команду email boss@jobs")
+      assert(found.contains("1)") && found.contains("2)") && found.contains("3)"), found.take(400))
+      assert(found.contains("спроси"), "the driver offers the choice")
+
+      val boss = events("boss@jobs")
+      val d1 = events("dev1@jobs"); val d2 = events("dev2@jobs"); val d3 = events("dev3@jobs")
+      // the client CHOOSES — ask all three (someone will agree)
+      val asked = turn("/match спроси всех email boss@jobs")
+      assert(asked.contains("спросил") && asked.contains("3"), asked.take(300))
+      val ask1 = readUntil(d1, "сделка")
+      val ask2 = readUntil(d2, "сделка")
+      readUntil(d3, "сделка")
+      def dealNo(s: String): String = "сделка (\\d+)".r.findFirstMatchIn(s).get.group(1)
+
+      // dev1 declines; the boss hears it
+      turn(s"/match отказываюсь ${dealNo(ask1)} email dev1@jobs")
+      readUntil(boss, "отказался")
+      // dev2 accepts: the boss gets the CONTACT (the Matched unlock),
+      // dev3 gets the stand-down (withdrawn), and cannot accept anymore
+      turn(s"/match берусь ${dealNo(ask2)} email dev2@jobs")
+      val won = readUntil(boss, "согласился")
+      assert(won.contains("dev2@jobs"), s"the unlocked contact must surface: $won")
+      readUntil(d3, "отбой")   // the unchosen-anymore hears the stand-down
+      // (that a withdrawn ask cannot be accepted is the engine's
+      // guarantee, proven in TestMatch — not re-proven over SSE)
+      Seq(boss, d1, d2, d3).foreach(_.close())
     }
   }
 
