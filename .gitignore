@@ -7,3 +7,4 @@ target/
 
 # git worktrees for parallel work (multi-agent protocol)
 .worktrees/
+okay-chat*.db
