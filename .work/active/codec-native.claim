@@ -1,0 +1,6 @@
+feature/codec-native 2026-09-01T07:53:15Z
+agent: claude-code
+heartbeat: 2026-09-01T07:53:15Z
+status: in-progress
+done-so-far:
+next: Native legs for okay-lex/parse/codec; Form reaches okay-ui native
