@@ -517,6 +517,10 @@ lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
   .jvmConfigure(_.dependsOn(okayHttp.jvm % Test, okayJdbc % Test))
+  // the overlay test (obs-durable-overlay) drives a real Tracer around
+  // a Durable handler; okay-agent joins TEST scope only. okay-obs is a
+  // leaf (nothing depends on it), so this arrow makes no cycle.
+  .jvmConfigure(_.dependsOn(okayAgent.jvm % Test))
   .jvmSettings(
     // the crossing test (http -> sql, one traceId) needs a database
     libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,

@@ -112,10 +112,6 @@
       (specs/backtracking.md)
 - [ ] r-restarts — GATED twice: on r-subprocess and on a restart
       consumer; the one resumable-capture case (specs/r.md)
-- [ ] obs-durable-overlay — the journal/trace identity join: a
-      journaled operation's span carries the entry's identity so a
-      replay lays over its original spans (needs a Durable consumer;
-      specs/obs.md box stays open until then)
 - [ ] rag-langchain4j — their EmbeddingStore as a Retrieve handler
       (the other half of the interop sentence; when a consumer
       names a store)

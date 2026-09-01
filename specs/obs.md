@@ -64,9 +64,16 @@ without importing a framework.
       traceId with correct parentage, appended to the trace topic
 - [x] the tracing handler wraps ANY Handler without that handler's
       knowledge (composition asserted on a mock)
-- [ ] a journaled operation's span and journal entry carry the
-      same operation identity (the overlay join works) — waits for
-      a Durable consumer; filed obs-durable-overlay
+- [x] a journaled operation's span and journal entry carry the
+      same operation identity (the overlay join works) — landed
+      obs-durable-overlay: a NEUTRAL `OpTrace` seam in okay-agent
+      (no okay-obs dependency) that `Durable.tools`/`replaying` take
+      optionally; each operation opens a span carrying `durable.key`
+      = the journal `Entry.key` (plus op and seq), and a replay
+      stamps the same key with `durable.replay=true` — so the replay
+      lays over the original. `okay.obs.Tracer` bridges to `OpTrace`
+      in one line; proven both with a fake sink (okay-agent) and with
+      a real Tracer over a trace topic (okay-obs, TestOverlay)
 - [x] sampling-by-policy: a "never" policy writes nothing and
       costs near-nothing (measured bound); a "root only" policy
       writes roots
@@ -119,4 +126,21 @@ inbound header, parentage http -> sql, spans on the topic. Sampling
 proven as a write decision with a coarse Never bound (10k spans,
 no I/O, generous wall clock). One Tracer per request is the
 concurrency story v1 — handler state, like a terminal's cursor.
-obs-otlp and obs-durable-overlay filed.
+obs-otlp landed.
+
+obs-durable-overlay landed (2026-09-01): the journal/trace identity
+join. The identity that survives a replay already existed — the
+Durable `Entry.key` (`keyFor`, "the step's position and what it asked
+for, nothing per-process"). A journaled operation now opens a span
+carrying that key (`durable.key`, plus `durable.op`/`durable.seq`),
+and a `Durable.replaying` run stamps the SAME key with
+`durable.replay=true` — so filtering spans by `durable.key` lays a
+replay's spans over the originals. The coupling is kept OFF the main
+graph: a neutral `OpTrace` seam lives in okay-agent (which does not
+depend on okay-obs), `Durable.tools`/`replaying` take an optional
+`OpTrace` (default None = no span, no cost), and `okay.obs.Tracer`
+adapts to it in one line. The two stay two things — the span carries
+the identity, it does not merge the journal into the trace. Proven
+twice: a fake sink in okay-agent (the stamping), and a real Tracer
+over a trace topic in okay-obs (TestOverlay, which Test-depends on
+okay-agent — okay-obs is a leaf, so the arrow makes no cycle).

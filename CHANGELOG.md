@@ -1,5 +1,26 @@
 # Changelog
 
+## obs-durable-overlay — the journal/trace identity join
+Completed: 2026-09-01
+specs/obs.md's last open box: a journaled operation's span and its
+journal entry now carry the same operation identity, so an incident
+replayed offline lays its spans over the originals. The identity that
+survives a replay already existed — the Durable `Entry.key` (`keyFor`:
+the step's position and what it asked for, nothing per-process). A
+journaled operation opens a span carrying that key (`durable.key`, plus
+`durable.op`/`durable.seq`); `Durable.replaying` stamps the SAME key
+with `durable.replay=true`, so filtering by `durable.key` overlays the
+replay on the original. The coupling stays OFF the main graph: a
+neutral `OpTrace` seam lives in okay-agent (which does not depend on
+okay-obs), `Durable.tools`/`replaying` take an optional `OpTrace`
+(default None = no span, no cost), and `okay.obs.Tracer` adapts to it
+in one line. Journal and trace stay two things — the span carries the
+identity, it does not merge them. Proven twice: a fake sink in
+okay-agent (TestDurable, the stamping) and a real Tracer over a trace
+topic in okay-obs (TestOverlay, which Test-depends on okay-agent —
+okay-obs is a leaf, so no cycle). Build: okayObs gains okayAgent.jvm in
+TEST scope only.
+
 ## demo-flows — generic scenarios ring the chat
 Completed: 2026-09-01
 

@@ -182,4 +182,46 @@ class TestDurable extends munit.FunSuite {
     assertEquals(again, "paid")
     assertEquals(touched.length, 1, "replay touched the world")
   }
+
+  /** a fake span sink that records what identity each operation
+   * carried — the obs seam without okay-obs (that join is proven with
+   * the real Tracer in okay-obs's TestOverlay) */
+  final class FakeTrace extends OpTrace:
+    val spans = mutable.Buffer[(String, Map[String, String])]()
+    def span[A](name: String, attrs: (String, String)*)(body: => A): A =
+      spans += (name -> attrs.toMap)
+      body
+
+  test("the overlay identity: a journaled operation's span carries the entry key") {
+    val j = Durable.MemoryJournal()
+    val trace = FakeTrace()
+    val (_, ctx) = Handlers.context(Compact.all)
+    val _ = run(Agent.converse("pay"))(
+      script, Durable.tools(payments(mutable.Buffer()), j)(trace = Some(trace)), ctx): Unit
+
+    val entry = j.all.head
+    val span = trace.spans.find(_._2.get("durable.op").contains("charge"))
+      .getOrElse(fail("no span for the charge operation"))
+    assertEquals(span._2("durable.key"), entry.key)   // the join
+    assertEquals(span._2("durable.seq"), entry.seq.toString)
+    assert(!span._2.contains("durable.replay"), "a first run is not a replay")
+  }
+
+  test("the overlay holds across replay: same key, marked as the re-run") {
+    val j = Durable.MemoryJournal()
+    val (_, ctx1) = Handlers.context(Compact.all)
+    val _ = run(Agent.converse("pay"))(
+      script, Durable.tools(payments(mutable.Buffer()), j)(), ctx1): Unit
+    val entryKey = j.all.head.key
+
+    val replayTrace = FakeTrace()
+    val (_, ctx2) = Handlers.context(Compact.all)
+    val _ = run(Agent.converse("pay"))(
+      script, Durable.replaying(j, Some(replayTrace)), ctx2): Unit
+
+    val span = replayTrace.spans.find(_._2.get("durable.op").contains("charge"))
+      .getOrElse(fail("no replay span for the charge operation"))
+    assertEquals(span._2("durable.key"), entryKey)          // overlays the original
+    assertEquals(span._2.get("durable.replay"), Some("true"))
+  }
 }

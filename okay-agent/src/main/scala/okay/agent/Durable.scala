@@ -4,6 +4,19 @@ import okay.Handler
 import okay.codec.Json
 
 /**
+ * The overlay seam (obs-durable-overlay, specs/obs.md "The Durable
+ * resonance"): a journaled operation opens a span carrying the
+ * journal's identity, so an incident replayed by `Durable.replaying`
+ * lays its spans over the originals. Deliberately NEUTRAL — okay-agent
+ * does not depend on okay-obs; `okay.obs.Tracer` adapts to this in one
+ * line, and any other span sink can too. The journal and the trace
+ * stay two things (the spec resists merging them); they meet only on
+ * the operation identity, which is the journal `Entry.key`.
+ */
+trait OpTrace:
+  def span[A](name: String, attrs: (String, String)*)(body: => A): A
+
+/**
  * Durable execution without repeated side effects
  * (specs/llm-agentic.md).
  *
@@ -84,6 +97,21 @@ object Durable {
   def keyFor(seq: Int, c: ToolCall): String =
     s"${c.name}-$seq-${math.abs(fingerprintOf(c).hashCode)}"
 
+  /** run one operation inside its overlay span (obs-durable-overlay):
+   * the span carries the journal identity — `durable.key` equals the
+   * `Entry.key` for this (seq, call) — so first-run and replay spans
+   * share it and lay over one another. No tracer, no span: the join
+   * is opt-in and costs nothing when off. */
+  private def traced(trace: Option[OpTrace], c: ToolCall, n: Int,
+                     replay: Boolean = false)(body: => String): String =
+    trace match
+      case None => body
+      case Some(t) =>
+        val base = Vector("durable.op" -> c.name, "durable.key" -> keyFor(n, c),
+                          "durable.seq" -> n.toString)
+        val attrs = if replay then base :+ ("durable.replay" -> "true") else base
+        t.span(c.name, attrs*)(body)
+
   /**
    * The durable tool handler. Wraps any inner handler; the journal
    * decides whether the world is touched at all.
@@ -95,7 +123,8 @@ object Durable {
   def tools(inner: Handler[Tool], journal: Journal)
            (policy: String => OnRepeat = _ => OnRepeat.Fail,
             reconcile: (ToolCall, String) => Option[String] = (_, _) => None,
-            escalate: (ToolCall, String) => Option[String] = (_, _) => None)
+            escalate: (ToolCall, String) => Option[String] = (_, _) => None,
+            trace: Option[OpTrace] = None)
   : Handler[Tool] = new Handler[Tool]:
 
     private var seq = 0
@@ -107,32 +136,36 @@ object Durable {
         seq += 1
         val fp = fingerprintOf(c)
 
-        recorded.find(_.seq == n) match
-          // never ran: execute and journal, intent first
-          case None => execute(n, c, fp, c)
+        // the overlay span: same identity as the journal entry (the
+        // key), so a later replay lays over exactly this operation
+        traced(trace, c, n) {
+          recorded.find(_.seq == n) match
+            // never ran: execute and journal, intent first
+            case None => execute(n, c, fp, c)
 
-          case Some(entry) =>
-            if entry.fingerprint != fp then throw Drift(entry.fingerprint, fp)
-            entry.answer match
-              // it already happened: hand the answer back, touch nothing
-              case Some(a) => a
+            case Some(entry) =>
+              if entry.fingerprint != fp then throw Drift(entry.fingerprint, fp)
+              entry.answer match
+                // it already happened: hand the answer back, touch nothing
+                case Some(a) => a
 
-              // the crash window: the outcome is unknown
-              case None => policy(c.name) match
-                case OnRepeat.Redo => execute(n, c, fp, c)
-                case OnRepeat.WithKey =>
-                  // the same key as the first attempt, so the far end
-                  // recognises the retry as the same request
-                  execute(n, c, fp, withKey(c, entry.key))
-                case OnRepeat.Reconcile =>
-                  reconcile(c, entry.key) match
-                    case Some(a) => journal.complete(n, a); a
-                    case None => throw Unresolved(c.name, entry.key)
-                case OnRepeat.Escalate =>
-                  escalate(c, entry.key) match
-                    case Some(a) => journal.complete(n, a); a
-                    case None => throw Unresolved(c.name, entry.key)
-                case OnRepeat.Fail => throw Unresolved(c.name, entry.key)
+                // the crash window: the outcome is unknown
+                case None => policy(c.name) match
+                  case OnRepeat.Redo => execute(n, c, fp, c)
+                  case OnRepeat.WithKey =>
+                    // the same key as the first attempt, so the far end
+                    // recognises the retry as the same request
+                    execute(n, c, fp, withKey(c, entry.key))
+                  case OnRepeat.Reconcile =>
+                    reconcile(c, entry.key) match
+                      case Some(a) => journal.complete(n, a); a
+                      case None => throw Unresolved(c.name, entry.key)
+                  case OnRepeat.Escalate =>
+                    escalate(c, entry.key) match
+                      case Some(a) => journal.complete(n, a); a
+                      case None => throw Unresolved(c.name, entry.key)
+                  case OnRepeat.Fail => throw Unresolved(c.name, entry.key)
+        }
 
     private def withKey(c: ToolCall, key: String): ToolCall =
       c.args match
@@ -157,7 +190,7 @@ object Durable {
    * again, offline, with no model and no side effects. The half of
    * durability that is worth as much as the recovery.
    */
-  def replaying(journal: Journal): Handler[Tool] = new Handler[Tool]:
+  def replaying(journal: Journal, trace: Option[OpTrace] = None): Handler[Tool] = new Handler[Tool]:
     private var seq = 0
     private val recorded = journal.all
     def handle[A](e: Tool[A]): A = e match
@@ -165,9 +198,13 @@ object Durable {
         val n = seq
         seq += 1
         val fp = fingerprintOf(c)
-        recorded.find(_.seq == n) match
-          case Some(entry) if entry.fingerprint != fp => throw Drift(entry.fingerprint, fp)
-          case Some(Entry(_, _, _, _, Some(a))) => a
-          case Some(entry) => throw Unresolved(c.name, entry.key)
-          case None => throw Unresolved(c.name, "beyond the journal")
+        // replay=true: the overlay span is marked as the re-run, but
+        // carries the SAME key, so it lands over the original
+        traced(trace, c, n, replay = true) {
+          recorded.find(_.seq == n) match
+            case Some(entry) if entry.fingerprint != fp => throw Drift(entry.fingerprint, fp)
+            case Some(Entry(_, _, _, _, Some(a))) => a
+            case Some(entry) => throw Unresolved(c.name, entry.key)
+            case None => throw Unresolved(c.name, "beyond the journal")
+        }
 }
