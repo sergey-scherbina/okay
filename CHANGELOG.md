@@ -1,5 +1,19 @@
 # Changelog
 
+## match-finish — the entropy seam, the module page, board hygiene
+Completed: 2026-09-01
+
+The sibling's honest flag on 4b7dc0b (util.Random for the link token)
+closed properly: `fresh` is a constructor seam on both stores — the
+cross default is `Entropy.weak` (unique, linkable everywhere, stated
+NOT guess-resistant), and `SqlMatch` defaults to `SecureEntropy.strong`
+(SecureRandom is legal in a scala-jvm source; both the profile id and
+the link token are credentials). docs/modules/okay-match.md joins the
+satellite pages — the wiring table names every seam and its production
+filling (Password, Crypto.randomBytes, a rag embedder, an okay-llm
+reranker), and the docs index lists the module. The emptied okay-match
+BACKLOG section is gone.
+
 ## blob-s3 — the lingua franca, spoken ourselves
 Completed: 2026-09-01 (landed as 10783c4)
 Own SigV4 pinned by the AWS doc vectors (GET/PUT verbatim; the list

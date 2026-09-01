@@ -11,8 +11,6 @@
       bearer/API key via okay-security, per-topic capabilities,
       TLS via specs/tls.md; implement with persist-wire
 
-## okay-match (specs/match.md — staged; log-first matching over LLM-structured chats)
-
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty

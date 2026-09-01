@@ -6,6 +6,16 @@ import okay.rag.{Embedding, Vectors}
 import okay.sql.{Sql, SqlValue}
 import okay.sql.SqlValue.*
 
+/** the JVM's honest default for the entropy seam: SecureRandom is
+ * available here (no JS linker in a scala-jvm source), and both the
+ * profile id and the link token are credentials */
+object SecureEntropy:
+  private val rnd = new java.security.SecureRandom
+  val strong: () => String = () =>
+    val bs = new Array[Byte](16)
+    rnd.nextBytes(bs)
+    bs.iterator.map(b => f"$b%02x").mkString
+
 /**
  * The durable store, stage 1 (specs/match.md): the same three
  * handlers over the `Sql` seam — H2 in the tests, sqlite or Postgres
@@ -29,7 +39,8 @@ final class SqlMatch(sql: Sql,
                      halfLifeMs: Long = 7L * 24 * 3600 * 1000,
                      hash: String => String = identity,
                      verifyHash: (String, String) => Boolean = _ == _,
-                     now: () => Long = () => System.currentTimeMillis())(using CanBlock) {
+                     now: () => Long = () => System.currentTimeMillis(),
+                     fresh: () => String = SecureEntropy.strong)(using CanBlock) {
 
   private def run[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
 
@@ -171,7 +182,7 @@ final class SqlMatch(sql: Sql,
     rows("SELECT uuid FROM match_profiles WHERE email = ?", Vector(Text(email))) match
       case Vector(Vector(Text(u))) => ProfileId(u)
       case _ =>
-        val id = ProfileId(java.util.UUID.randomUUID().toString)
+        val id = ProfileId(fresh())
         exec("INSERT INTO match_profiles VALUES(?,?)", Vector(Text(id.uuid), Text(email)))
         id
 
@@ -266,7 +277,7 @@ final class SqlMatch(sql: Sql,
       Vector(Text(from.uuid), Text(to.uuid)))
     if both != Vector(Vector(I64(2L))) && both != Vector(Vector(I32(2))) then None
     else
-      val t = LinkToken(java.util.UUID.randomUUID().toString, from, to,
+      val t = LinkToken(fresh(), from, to,
         now() + 15L * 60 * 1000)
       exec("INSERT INTO match_tokens VALUES(?,?,?,?)",
         Vector(Text(t.token), Text(from.uuid), Text(to.uuid), I64(t.expiresAt)))

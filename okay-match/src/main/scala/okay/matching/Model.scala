@@ -97,6 +97,24 @@ final case class Fact(id: FactId, profile: ProfileId, attr: String,
 final case class Profile(id: ProfileId, email: String,
                          current: Vector[Fact], history: Vector[Fact])
 
+/**
+ * The entropy seam. Profile ids and link tokens draw from a
+ * constructor parameter `fresh`, because the two platforms disagree:
+ * `UUID.randomUUID`/SecureRandom the Scala.js linker rejects, and
+ * `util.Random` a JVM security reviewer rejects (predictable — and a
+ * LINK TOKEN is a credential, per the identity-x spec). So the cross
+ * default is `Entropy.weak` — unique, linkable everywhere, NOT
+ * guess-resistant, fine for tests and single-user stores — and the
+ * JVM store defaults to `SecureEntropy.strong`; okay-security's
+ * `Crypto.randomBytes` plugs into the same seam at richer sites.
+ */
+object Entropy:
+  private val rnd = new scala.util.Random
+  val weak: () => String = () =>
+    val bs = new Array[Byte](16)
+    rnd.nextBytes(bs)
+    bs.iterator.map(b => f"$b%02x").mkString
+
 /** a link candidate: WHO shares an identifying attribute is not
  * said — only that someone does, which attribute, and a masked hint
  * of where the old profile lives. Leaking less is the design. */

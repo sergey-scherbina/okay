@@ -18,7 +18,8 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
                         halfLifeMs: Long = 7L * 24 * 3600 * 1000,
                         hash: String => String = identity,
                         verifyHash: (String, String) => Boolean = _ == _,
-                        now: () => Long = () => System.currentTimeMillis()) {
+                        now: () => Long = () => System.currentTimeMillis(),
+                        fresh: () => String = Entropy.weak) {
 
   private var attrs: Vector[AttrDef] = Vector.empty
   private var facts: Vector[Fact] = Vector.empty
@@ -69,19 +70,11 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
 
   // ---- facts --------------------------------------------------------
 
-  private val rnd = new scala.util.Random
-  private def freshId(): String =
-    val bs = new Array[Byte](16)
-    rnd.nextBytes(bs)
-    bs.iterator.map(b => f"$b%02x").mkString
-
   def register(email: String): ProfileId =
     byEmail.getOrElse(email, {
-      // NOT UUID.randomUUID: its csprng is java.security.SecureRandom,
-      // which the Scala.js LINKER rejects even from a test leg (the
-      // Crypto.Handle lesson). A profile id needs uniqueness, not
-      // cryptography — util.Random hex serves every platform.
-      val id = ProfileId(freshId())
+      // ids and tokens draw from the `fresh` seam — see Entropy: the
+      // cross default links everywhere, the JVM stores default secure
+      val id = ProfileId(fresh())
       profiles += id -> email
       byEmail += email -> id
       id
@@ -156,12 +149,7 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
   def requestLink(from: ProfileId, to: ProfileId): Option[LinkToken] =
     if !profiles.contains(from) || !profiles.contains(to) then None
     else
-      // the same platform truth as register's id: UUID.randomUUID
-      // drags java.security.SecureRandom, which the Scala.js linker
-      // rejects — freshId serves every platform (a link TOKEN that
-      // must resist guessing should come from okay-security's seam,
-      // a stated future step, not from UUID here either)
-      val t = LinkToken(freshId(), from, to,
+      val t = LinkToken(fresh(), from, to,
         now() + tokenTtlMs)
       tokens += t.token -> t
       Some(t)
