@@ -1,5 +1,12 @@
 # Changelog
 
+## ui-keyed-diff — a moved child is a move, not a Replace
+Completed: 2026-09-01
+Keyed matching when every child has a distinct key: one Reorder for
+a shuffle, narrow patches ride along, Remove/Insert for churn;
+positional fallback otherwise. The law extended: 200 seeded rounds
+plus a quality assertion (shuffles never Replace). Matrix 1027.
+
 ## r-spec — specs/r.md: R as a handler
 Completed: 2026-09-01
 R joins the landscape as call-shaped foreign compute: an R call is
