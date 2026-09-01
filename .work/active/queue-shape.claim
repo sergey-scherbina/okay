@@ -1,0 +1,13 @@
+feature/queue-shape 2026-09-01T22:20:00Z
+agent: claude-code (session 75625ecc)
+heartbeat: 2026-09-01T22:20:00Z
+status: in-progress
+next: the two queue bridges (specs/data.md Queues, DECIDED: no seam).
+  okay-persist Queues: Source/Sink SPIs + ingress (drain a broker into a
+  topic keyed by message id, ack AFTER append = at-least-once) + egress
+  (a topic consumer publishes outward, resumable by offset; broker dedups
+  by id = exactly-once outcome) + a dedup helper (one hop downstream).
+  Proven with an in-memory fake broker (redelivery, lost-ack, resume).
+  Engine adapters (RabbitMQ/SQS/…) are named deployments, out of scope.
+  Also check the now-true kafka-eos box in data.md.
+files: okay-persist Queues.scala (new) + TestQueues.scala (new); specs/data.md
