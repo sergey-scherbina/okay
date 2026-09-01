@@ -160,16 +160,25 @@ import — and the platforms it runs on.
 - [x] the JDBC driver passes the specs/jdbc.md behavior list
       through the seam (H2, no-DDL user; the write-bridge and
       poll-source items ride their own filed slugs)
-- [ ] the pg driver: startup + SCRAM auth, extended-protocol query
+- [x] the pg driver: startup + SCRAM auth, extended-protocol query
       with portal streaming at constant memory, params and rows
       through SqlValue, transact begin/commit/rollback with granted
       isolation — against a real Postgres (live-suite pattern:
-      skips where the endpoint is absent)
-- [ ] the SAME typed test program runs unmodified over the JDBC
+      skips where the endpoint is absent) — proven on Postgres
+      17.11: SCRAM-SHA-256 with the server-signature verification,
+      500 rows at 64-row portal Executes, a bad password refuses,
+      an error reaches quiet and the session survives
+- [x] the SAME typed test program runs unmodified over the JDBC
       driver and the pg driver against equivalent schemas (the
-      cluster acceptance-test move, applied to SQL)
-- [ ] verify through `describe` catches the same four drifts on
-      both drivers, naming the column
+      cluster acceptance-test move, applied to SQL) — one function
+      of the trait alone, two drivers, ONE equal answer; only the
+      SQL strings differ ($n vs ?), which bind-don't-model already
+      decided is the dialect's to show
+- [x] verify through `describe` catches the same four drifts on
+      both drivers, naming the column (pg's RowDescription carries
+      no nullability, so describe asks pg_attribute — the catalog
+      answers and a clean verify needs no Option-everything
+      concession)
 - [ ] COPY-based bulk load with a load id through the pg driver
       (the specs/data.md warehouse posture, exercised on the free
       engine first)
@@ -282,5 +291,16 @@ The seam and its first driver landed (sql-seam, 2026-09-01).
   (an embedded db has no users; "their database" is a file you
   were handed, possibly read-only — reads full, every write
   refuses).
-- **Still open** (their own boxes/slugs): the pg wire driver, the
-  two-driver acceptance, COPY bulk load, the non-JVM consumer.
+- **The pg wire driver landed** (sql-pg-wire, same day): okay-pg,
+  ~400 lines for the whole road — startup, SCRAM-SHA-256 (client
+  nonce extension checked, server signature VERIFIED; md5 and
+  cleartext deliberately not spoken), the extended protocol with
+  portals as the chunk mechanism (Execute maxRows + Flush;
+  PortalSuspended = next chunk), text format both directions v1,
+  errors drained to quiet before the throw so the session
+  survives, describe consulting pg_attribute for nullability.
+  Live suite (8 tests incl. the two-driver acceptance) against
+  the dockerized Postgres 17.11; skips where absent.
+- **Still open** (their own boxes/slugs): COPY bulk load
+  (jdbc-bulk-load), the non-JVM consumer (with the cross-platform
+  transport leg).

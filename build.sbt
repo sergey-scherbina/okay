@@ -265,6 +265,22 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
     Test / fork := true,
   )
 
+/** the Postgres v3 wire as an Sql driver: SCRAM-SHA-256, extended
+ * query with portal streaming — the direct road, no JDBC anywhere
+ * (specs/sql.md). JVM leg first; live suite skips without a server */
+lazy val okayPg = (project in file("okay-pg"))
+  // okay-jdbc joins the TEST scope for the two-driver acceptance:
+  // the same typed program over PgSql and JdbcSql/H2
+  .dependsOn(okay.jvm, okaySql.jvm, okayJdbc % Test)
+  .settings(
+    name := "okay-pg",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
+    // forked like the other database suites: sockets and DriverManager
+    // neighbors both behave better in a clean JVM
+    Test / fork := true,
+  )
+
 /** streaming tokenization: pure-state scanners, total, incremental
  * (P5); pure Scala — cross-built, tests run on JS too */
 lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
@@ -807,7 +823,7 @@ lazy val root = (project in file("."))
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
-    okaySql.jvm, okaySql.js, okaySql.native,
+    okaySql.jvm, okaySql.js, okaySql.native, okayPg,
     okayCache.jvm, okayCache.js, okayCache.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
