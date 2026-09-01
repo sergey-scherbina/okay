@@ -1,5 +1,13 @@
 # Changelog
 
+## codec-vector — Schema learns Vector and Char; recursion is a test
+Completed: 2026-09-01
+SVector + SChar, every algebra swept; recursion proven at depth on a
+product and a sum; Schema[Ui]/Event/Patch derive and round-trip both
+wires — the hand mapping is a choice now. The sweep's warnings caught
+WireJson missing the keyed-diff trio (a real MatchError-in-waiting).
+codec-defaults filed with its reason. Matrix 1042.
+
 ## py-spec — specs/py.md: Python as a handler
 Completed: 2026-09-01
 The REval twin (PyEval), with the r.md model adopted by reference
