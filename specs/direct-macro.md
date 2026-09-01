@@ -105,7 +105,17 @@ stays for expression positions.
   conversion's own evidence. Cost that stays: the
   implicitConversions language import and degraded error messages
   inside blocks; explicit marks remain the default.
-- **`try`** — error-channel reification (Throws.scala is the seam).
+- **`try`** — SHIPPED (direct-try, 2026-09-02): a try body with
+  marks is its own sub-block, reified at the try's joined type
+  through the recursive pipeline, and the whole try becomes ONE mark
+  over `CanTry[F].tryIn` (Throws.scala is the seam, as recorded):
+  strict monads catch at construction — full coverage, since their
+  computation IS the construction; Free rows guard construction and
+  every continuation step, so a pure segment throwing between
+  effects lands in the catch while a throw inside an effect's
+  HANDLER stays that handler's business (stated). Finalizers and
+  marks inside catch bodies remain refused, named. A body ending in
+  throw types Nothing: upcast through the monad, not variance.
   `while` and the foreach/map loops SHIPPED via specs/direct-loops.md.
 - **Answer-type modification inside a block** — the block is the
   DIAGONAL (one F, answers F[A] throughout); that fixed answer type

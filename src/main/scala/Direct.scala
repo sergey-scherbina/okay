@@ -101,6 +101,27 @@ object Direct:
                                                M: Expr[Monad[F]])
                                               (using Quotes): Expr[F[A]] =
     import quotes.reflect.*
+    // the block arrives as a context lambda; take its body — the
+    // lambda is never called (see the entry note below)
+    def strippedTop(t: Term): Term = t match
+      case Inlined(_, Nil, inner) => strippedTop(inner)
+      case Typed(inner, _) => strippedTop(inner)
+      case _ => t
+    val topBody: Term = strippedTop(block.asTerm) match
+      case Block(List(dd: DefDef), _: Closure) =>
+        dd.rhs.getOrElse(report.errorAndAbort("empty direct block"))
+          .changeOwner(Symbol.spliceOwner)
+      case other => report.errorAndAbort(
+        "a Direct mark as a non-literal block (a stored context-function value) " +
+          "cannot be rewritten by direct's v1", other.pos)
+    pipeline[F, A](topBody, M)
+
+  /** the compilation pipeline at ONE answer type — recursive for
+   * try bodies (direct-try): a try's body is its own sub-block,
+   * reified at the try's type, then reflected as one mark */
+  private def pipeline[F[_] : Type, A: Type](using q: Quotes)(topLevelBody: q.reflect.Term,
+                                             M: Expr[Monad[F]]): Expr[F[A]] =
+    import q.reflect.*
 
     val directSym = TypeRepr.of[Direct.type].typeSymbol
     val markSyms = (directSym.methodMember("reflect") ++ directSym.methodMember("!?")
@@ -430,7 +451,48 @@ object Direct:
             loop()
           }.asTerm)
         }
-      case tr @ Try(_, _, _) => refuse(tr, "inside a try (v2)")
+      case tr @ Try(b, cases, fin) =>
+        // direct-try: the body is its own sub-block, reified at the
+        // try's type through the recursive pipeline; the whole try
+        // becomes ONE mark over CanTry's seam. The catch bodies stay
+        // pure (marks there remain v2); finalizers likewise.
+        if fin.isDefined then refuse(tr, "with a finalizer (direct-try v1)")
+        if cases.exists(c => hasMark(c.rhs)) then
+          refuse(tr, "with a mark inside a catch body (direct-try v1)")
+        // literal branches make the try's type a UNION of singletons
+        // (0 | 7): join it by hand — the sub-block reifies at the join
+        def joinUnions(t: TypeRepr): TypeRepr = t.dealias match
+          case OrType(a, b) =>
+            val (ja, jb) = (joinUnions(a).widen, joinUnions(b).widen)
+            if ja =:= jb then ja
+            else OrType(ja, jb)
+          case other => other.widen
+        val bT = joinUnions(tr.tpe.widen)
+        tpe2(bT) { [T] => (_: Type[T]) ?=>
+          val bodyT = joinUnions(b.tpe.widen)
+          val subF: Term = tpe2(bodyT) { [B] => (_: Type[B]) ?=>
+            val raw = pipeline[F, B](b.changeOwner(Symbol.spliceOwner), M)
+            // a body ending in throw types Nothing <: T: upcast
+            // through the monad (F need not be covariant)
+            if bodyT =:= TypeRepr.of[T] then raw.asTerm
+            else '{
+              given Monad[F] = $M
+              ${ raw }.flatMap((x: B) => $M.pure[T](x.asInstanceOf[T]))
+            }.asTerm
+          }
+          val handler: Term = '{ (e: Throwable) =>
+            ${ Match('{ e }.asTerm,
+                 cases.map(c => CaseDef.copy(c)(c.pattern, c.guard,
+                   '{ $M.pure[T](${ c.rhs.asExprOf[T] }) }.asTerm))
+                 :+ CaseDef(Wildcard(), None, '{ throw e }.asTerm)
+               ).asExprOf[F[T]] }
+          }.asTerm
+          val guarded: Term = '{
+            scala.compiletime.summonInline[CanTry[F]]
+              .tryIn[T](${ subF.asExprOf[F[T]] })(${ handler.asExprOf[Throwable => F[T]] })
+          }.asTerm
+          Out.Eff(reflectTerm(guarded, bT))
+        }
 
       // application shapes: ANF-hoist children left to right
       // an assignment with a marked rhs: bind, then assign the value
@@ -618,16 +680,6 @@ object Direct:
         Typed(c, TypeTree.of[Cont[T, F[A], F[A]]])
       }
 
-    // the block arrives as a context lambda (DirectCtx ambient in the
-    // body); take its body — the lambda is never called, and the ctx
-    // parameter occurs only inside conversion calls, rewritten away
-    val body: Term = stripped(block.asTerm) match
-      case Block(List(dd: DefDef), _: Closure) =>
-        dd.rhs.getOrElse(report.errorAndAbort("empty direct block"))
-          .changeOwner(Symbol.spliceOwner)
-      case other => refuse(other,
-        "as a non-literal block (a stored context-function value)")
-
     val res: Expr[Cont[A, F[A], F[A]]] =
-      asCont(compile(body), TypeRepr.of[A]).asExprOf[Cont[A, F[A], F[A]]]
+      asCont(compile(topLevelBody), TypeRepr.of[A]).asExprOf[Cont[A, F[A], F[A]]]
     '{ Monadic.reify[F, A, A]($res)(using $M) }

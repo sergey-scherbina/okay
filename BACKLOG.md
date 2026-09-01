@@ -23,6 +23,11 @@
       (2026-09-02), 15/15 on rerun. For the demo lane: consider
       widening the accepted phrasings or retrying the turn once
       before asserting.
+- [ ] direct-effect-provide — coloring as POLICY: Effect[G] markers
+      are ordinary givens, so provide/providing can install them
+      per scope — auto-coloring enabled for one environment, off
+      elsewhere. Small: a test + a paragraph in the spec; the
+      mechanism already exists.
 - [ ] persist-election-replicated-flake — okay.persist
       .TestElectionReplicated errored at suite level on one platform
       under the full matrix (2026-09-01, Errors 1 with 0 failures;

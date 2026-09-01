@@ -125,3 +125,36 @@ extension [A, E <: Unsafe](a: A throws E)
 /** by class only: the payload `e: E` is erased in the type, so a row
  * may hold ONE Throws — see typeableKByClass */
 given throwsK[E]: TypeableK[Throws % E] = typeableKByClass(classOf[Throws[?, ?]])
+
+/**
+ * The seam direct-try stands on: how a monad CATCHES a JVM throw
+ * from the computation's own code. Strict monads (Option, Either,
+ * List) run at construction, so a try around the value covers
+ * everything; a Free row runs LATER under its handlers, so the
+ * instance guards the continuations through the tree — a throw from
+ * a pure segment between effects lands in the handler, while a
+ * throw from inside an effect's HANDLER stays that handler's
+ * business (stated, not hidden).
+ */
+trait CanTry[F[_]]:
+  def tryIn[A](fa: => F[A])(h: Throwable => F[A]): F[A]
+
+trait CanTryLow:
+  /** strict monads: the whole computation happens at construction */
+  given strict: [F[_]] => CanTry[F] = new:
+    def tryIn[A](fa: => F[A])(h: Throwable => F[A]): F[A] =
+      try fa catch case e: Throwable => h(e)
+
+object CanTry extends CanTryLow:
+  import okay.!.*
+  /** Free rows: guard construction AND every continuation step */
+  given rows: [Fx[+_]] => CanTry[[X] =>> X ! Fx] = new:
+    def tryIn[A](fa: => A ! Fx)(h: Throwable => A ! Fx): A ! Fx =
+      def step(p: () => A ! Fx): A ! Fx =
+        (try Right(p().resume) catch case e: Throwable => Left(e)) match
+          case Left(e) => h(e)
+          case Right(Pure(a)) => Free.Pure(a)
+          case Right(Effect(op)) => Free.Inject(op)
+          case Right(Bind(Effect(op), k)) =>
+            Free.Bind(Free.Inject(op), x => step(() => k(x)))
+      step(() => fa)

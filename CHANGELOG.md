@@ -44,6 +44,23 @@ the typepedia mark-family entry disambiguating three uses of the
 word reflect, and the guide's one-paragraph pointer. Gate note: two
 LIVE TestChatDemo assertions flaked on model judgment under load and
 passed 15/15 on rerun — recorded for the demo lane in BACKLOG.
+## direct-try — try graduates from the v2 list
+Completed: 2026-09-02
+
+A try body with marks compiles now: the recursive pipeline reifies
+it as its own sub-block at the try's joined type, and the whole try
+becomes one mark over CanTry[F].tryIn — the Throws.scala seam the
+road map named. Strict monads catch at construction (their
+computation IS the construction — full coverage, tested on Option);
+Free rows guard construction and every continuation step (a pure
+segment throwing after an effect lands in the catch, the effect
+before it having happened; an unmatched exception rethrows) while a
+throw inside an effect's handler stays that handler's business.
+Finalizers and marks in catch bodies remain refused, named; the old
+"try is v2" test graduated into the three new ones. Literal-typed
+branches forced a union join by hand; a Nothing-typed throw-tail
+upcasts through the monad, not variance. 312 core tests.
+
 ## condition-caps — lexical restarts as capabilities
 Completed: 2026-09-02
 

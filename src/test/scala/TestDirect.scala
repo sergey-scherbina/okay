@@ -5,6 +5,52 @@ import okay.Direct.*
 /** The flat block over Monadic: specs/direct-macro.md */
 class TestDirect extends munit.FunSuite {
 
+  test("direct-try: a strict monad catches everything — construction IS the run") {
+    def boom(n: Int): Int = throw new IllegalStateException(s"boom $n")
+    val r = direct[Option] {
+      try
+        val x = Option(3).reflect
+        boom(x)
+      catch case _: IllegalStateException => -1
+    }
+    assertEquals(r, Some(-1))
+    // the no-throw path is untouched
+    assertEquals(direct[Option] {
+      try Option(3).reflect + 1 catch case _: IllegalStateException => -1
+    }, Some(4))
+  }
+
+  test("direct-try on a Free row: a pure segment throwing AFTER a mark is caught at run") {
+    type W = [A] =>> A ! Writer % String
+    val prog: Int ! Writer % String = direct[W] {
+      try
+        val a = !okay.effect[Writer % String, Unit](Writer("before"))
+        if true then throw new IllegalStateException("mid-stream") else 0
+      catch case _: IllegalStateException => 7
+    }
+    val (logged, n) = Writer.run[String, Int, Pure](prog).runWith
+    assertEquals(n, 7)
+    assertEquals(logged.toList, List("before"), "the effect before the throw happened")
+    // an exception the cases do not match RETHROWS
+    val rethrow: Int ! Writer % String = direct[W] {
+      try
+        val _ = !okay.effect[Writer % String, Unit](Writer("x"))
+        throw new RuntimeException("unmatched")
+      catch case _: IllegalStateException => 0
+    }
+    intercept[RuntimeException](Writer.run[String, Int, Pure](rethrow).runWith)
+  }
+
+  test("direct-try v1 edges are refused NAMED: finalizer; a mark in a catch body") {
+    val e1 = compileErrors(
+      "okay.Direct.direct[Option] { try Option(1).reflect catch { case _: Exception => 0 } finally () }")
+    assert(e1.contains("finalizer"), e1)
+    val e2 = compileErrors(
+      "okay.Direct.direct[Option] { try Option(1).reflect catch { case _: Exception => Option(0).reflect } }")
+    assert(e2.contains("catch body"), e2)
+  }
+
+
   test("the ! mark: one glyph, prefix, on the rows where ? is ambiguous") {
     // a Free-row program collapses under its own type's symbol
     val prog: Int ! Writer % String = direct[[A] =>> A ! Writer % String] {
@@ -151,10 +197,10 @@ class TestDirect extends munit.FunSuite {
     assert(errors.contains("lambda"), errors)
   }
 
-  test("try around marks is a v2 compile error; by-name too") {
-    val tr = compileErrors(
-      "okay.Direct.direct[List] { try List(1).reflect catch { case _: Exception => 0 } }(using summon[Monad[List]]) ")
-    assert(tr.contains("try"), tr)
+  test("a mark under a by-name argument is a compile error") {
+    // (try around marks GRADUATED: direct-try rewrote it — see the
+    // direct-try tests above; the finalizer and catch-mark edges
+    // remain refused there, named)
     val bn = compileErrors(
       "okay.Direct.direct[Option] { Option(1).getOrElse(Option(2).reflect) }(using summon[Monad[Option]]) ")
     assert(bn.contains("by-name"), bn)
