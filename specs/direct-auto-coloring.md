@@ -21,7 +21,7 @@ allowed to fire, and both gates were named by the user (2026-09-01):
    silently color; registering an effect signature for auto-coloring
    is an explicit, one-line, per-project decision.
 
-Explicit marks (`.?`, `.reflect`, `.!?`) keep working in the same
+Explicit marks (`.?`, `.reflect`) keep working in the same
 block and remain the recommended default; auto-coloring is the
 opt-in ergonomic layer.
 
@@ -39,7 +39,7 @@ object Direct:
   /** the block's own monadic values: F[A] as A */
   given selfColor[F[_], A](using DirectCtx[F]): Conversion[F[A], A]
   /** marked operations: G[A] as A, membership in the block's row
-   * checked by the macro exactly as for .!? */
+   * checked by the macro exactly as for a .? on an op */
   given opColor[F[_], G[_], A](using DirectCtx[F], Effect[G]): Conversion[G[A], A]
 
   // DirectApply.apply now takes a context function — plain blocks
@@ -54,30 +54,30 @@ unqualified — rare, and the qualified names disambiguate.
 
 ## Behavior
 
-- [ ] `val x: Int = m` colors in an ascribed position; `f(m)` colors
+- [x] `val x: Int = m` colors in an ascribed position; `f(m)` colors
   in an argument position; `m + 1` colors on member selection —
   each equal to the `.?` spelling of the same block
-- [ ] operations color via the marker: with
+- [x] operations color via the marker: with
   `given Effect[Writer % String]`, a bare `Writer("a")` in an
   Int-expected position... does not arise; in practice ops surface
   through selections/arguments/ascriptions the same way — the
   op-conversion call is rewritten as `.!?` is, row membership
   checked, wrong-row refused with the row named
-- [ ] **the discard guard**: a statement of monadic/marked type with
+- [x] **the discard guard**: a statement of monadic/marked type with
   no conversion (statements have no expected type — auto-coloring
-  CANNOT fire there) is a COMPILE error naming the fix (`.?` /
-  `.!?`); a silently dropped effect is the one classic auto-coloring
-  bug and it must not compile
-- [ ] `val x = m` (no ascription) infers `F[A]` and does NOT color —
+  CANNOT fire there) is a COMPILE error naming the fix (`.?`); a
+  silently dropped effect is the one classic auto-coloring bug and
+  it must not compile
+- [x] `val x = m` (no ascription) infers `F[A]` and does NOT color —
   documented, not fought: inference sees the monadic value; ascribe
   to color
-- [ ] outside a direct block nothing colors: no DirectCtx, normal
+- [x] outside a direct block nothing colors: no DirectCtx, normal
   type errors
-- [ ] a G with no `Effect[G]` instance never colors: normal type
+- [x] a G with no `Effect[G]` instance never colors: normal type
   errors name the mismatch
-- [ ] explicit `.?` and `.!?` still work in an auto block, mixed
+- [x] explicit `.?` marks still work in an auto block, mixed
   freely
-- [ ] every v1 test still passes with the context-function signature
+- [x] every v1 test still passes with the context-function signature
   (plain blocks adapt)
 
 ## Out of scope
@@ -97,17 +97,40 @@ unqualified — rare, and the qualified names disambiguate.
   conversion calls, which are rewritten away whole.
 - Conversion-call detection joins mark detection: a call whose
   callee chain roots at `selfColor`/`opColor`'s symbol is a mark;
-  its converted operand is the receiver. selfColor operands go the
-  `.?` route (reflect), opColor operands the `.!?` route
-  (row-membership check, Free.Inject at the row, reflect).
-- The discard guard runs in compileBlock: a pure statement whose
-  type is `F[_]`, or `G[_]` with an Effect[G] instance in scope, is
-  refused with the fix named.
+  its converted operand is the receiver; markTerm then dispatches
+  by type (F[T] reflects; a row operation is injected, then
+  reflected).
+- The discard guard is a traversal of the whole block (marks or
+  not, lambdas skipped): a discarded statement whose type is
+  `F[_]`, Free-derived, or `G[_]` with an Effect[G] instance in
+  scope is refused with the fix named.
 
 ## Decisions
 
-(fill as they are made)
+- **One mark, one conversion route** — mark dispatch and conversion
+  dispatch converge on the same by-TYPE decision (markTerm): F[T]
+  reflects, a row operation injects then reflects. selfColor and
+  opColor stay separate GIVENS (different gates: the capability
+  alone vs capability + Effect marker) but their calls are one mark
+  kind to the macro.
+- **Unit-typed operations cannot auto-color, by typer physics** —
+  statement position has no expected type, and a Unit ascription is
+  VALUE DISCARD, which preempts conversion search. So `tell`-like
+  ops keep the explicit `.?`; the discard guard turns the silent
+  drop into a compile error. Found by a failing test, kept as one.
+- **Auto-coloring resolves at the DECLARED type** — a smart
+  constructor typed at the trait (`def ask: Reader[Int, Int]`)
+  colors; a raw case constructor's precise type (Reader.Ask[Int,
+  Int]) defeats G inference and does not. Documented, not fought.
 
 ## Results
 
-(fill after verify)
+- 8 tests in TestDirectAuto + the 16 v1 tests unchanged (plain
+  blocks adapt to the context-function signature with no edits).
+  Ascribed/argument/selection positions color; ops color via the
+  Effect marker at declared types; the discard guard catches the
+  dropped-statement case in blocks with and without marks; nothing
+  colors outside a block or without a marker; marks mix freely.
+- The v1 machinery was reused whole: the entire v2 delta is the
+  capability + two phantom givens + conversion-call detection folded
+  into asMark + the discard guard traversal.

@@ -24,9 +24,9 @@ object Direct:
   extension [F[_], A](m: F[A])
     def ? : A
     def reflect: A   // the named spelling of the same mark
-  extension [G[_], A](op: G[A])
-    def !? : A       // op.!? ≡ effect(op).? — lifts a RAW OPERATION
-                     // into the block's row program and reflects it
+  // ONE mark: .? serves monadic values AND raw operations — the
+  // macro dispatches by type (an F[T] reflects; an operation of the
+  // block's row is injected, then reflected)
 
   /** rewrite block: marks become Monadic binds, the result is F[A].
    * direct[F] names only the monad (partial type application via
@@ -80,11 +80,13 @@ stays for expression positions.
 - [x] multi-shot inside the flat block: a reflected List re-runs the
   REST OF THE BLOCK per element (vars shared across runs — the
   documented footgun, asserted by a test, not hidden)
-- [x] `op.!?` (user ask 2026-09-01): `Writer("a").!?` and
-  `Reader.Ask[Int, Int]().!?` in a two-effect row — the macro finds
-  the block's Row from F = A ! Row, checks the op is in it, and
-  emits Free.Inject[Row, A](op) reflected; in a non-row block `!?`
-  is a compile error naming the requirement
+- [x] ONE mark for values and operations (user ask 2026-09-01,
+  refined the same day): `Writer("a").?` in a row block — the macro
+  finds Row from F = A ! Row, checks membership, emits
+  Free.Inject[Row, A](op) reflected; a mark that is neither F[T]
+  nor a row operation is refused with both possibilities named.
+  The separate `.?` was REFUTED as redundant: the type already
+  says which case it is, so the user should not have to
 
 ## Out of scope (v2 roads, recorded not promised)
 
@@ -98,7 +100,7 @@ stays for expression positions.
   auto-color is itself gated by a marker typeclass (user sketch
   2026-09-01): e.g. only `G` with a `given Effect[G]` instance
   converts, so arbitrary F[A]s never silently color — the row
-  membership check the macro already does for `!?` becomes the
+  membership check the macro already does for `?` becomes the
   conversion's own evidence. Cost that stays: the
   implicitConversions language import and degraded error messages
   inside blocks; explicit marks remain the default.
@@ -128,7 +130,7 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Decisions
 
-- **`!?`, not `!`, for the operation mark** — REFUTED by the
+- **`?`, not `!`, for the operation mark** — REFUTED by the
   compiler (2026-09-01): an extension named `!` imported via
   `import Direct.*` SHADOWS `object !` as an identifier, and every
   `!.run(...)` in the importing file stops compiling ("value run is

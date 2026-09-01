@@ -30,42 +30,71 @@ object Direct:
     /** the named spelling of the same mark */
     def reflect: A = m.?
 
-  extension [G[_], A](op: G[A])
-    /**
-     * The operation mark: `op.!?` is `effect(op).?` — lifts a raw
-     * effect operation into the block's row program and reflects it,
-     * so `Writer("a").!?` needs no effect[Row, A] spelling. Valid
-     * only in a block whose F is a program monad (`A ! Row`).
-     */
-    def !? : A = throw new IllegalStateException(
-      "Direct.!? outside a direct block — wrap the code in direct[F] { ... }")
+  // ONE mark serves both monadic values and raw operations: the
+  // macro dispatches by TYPE — an F[T] of the block reflects, an
+  // operation of the block's row is injected then reflected
+  // (`Writer("a").?` works with no effect[Row, A] spelling). A
+  // separate op mark (.!?) was refuted as redundant the day one
+  // user asked why there were two.
+
+  /**
+   * The capability (specs/direct-auto-coloring.md): exists ONLY
+   * inside a direct block — the auto-coloring conversions require it,
+   * so outside a block they cannot resolve and F[A]-as-A stays the
+   * compile error it always was.
+   */
+  final class DirectCtx[F[_]] private[Direct] ()
+
+  /** marker: G's operations may auto-color inside direct blocks */
+  trait Effect[G[_]]
+
+  /** the block's own monadic values auto-color: F[A] as A — a
+   * phantom, the macro rewrites every call */
+  given selfColor[F[_], A](using DirectCtx[F]): Conversion[F[A], A] =
+    _ => throw new IllegalStateException(
+      "Direct auto-coloring escaped macro rewriting — this call belongs inside direct[F] { ... }")
+
+  /** marked operations auto-color: G[A] as A, row membership checked
+   * by the macro exactly as for .!? */
+  given opColor[F[_], G[_], A](using DirectCtx[F], Effect[G]): Conversion[G[A], A] =
+    _ => throw new IllegalStateException(
+      "Direct auto-coloring escaped macro rewriting — this call belongs inside direct[F] { ... }")
 
   /** rewrite the block: marks become Monadic binds, the result is
    * F[A]. `direct[F] { block }` names only the monad (the partial
    * type application trick); with an expected type both infer:
-   * `val p: Int ! W = direct { ... }`. */
+   * `val p: Int ! W = direct { ... }`. The block is a context
+   * function so DirectCtx is ambient in it (plain blocks adapt);
+   * the context lambda is stripped by the macro, never called. */
   inline def direct[F[_]]: DirectApply[F] = DirectApply[F]()
 
   final class DirectApply[F[_]](private val unit: Unit = ()) extends AnyVal:
-    inline def apply[A](inline block: A)(using inline M: Monad[F]): F[A] =
+    inline def apply[A](inline block: DirectCtx[F] ?=> A)(using inline M: Monad[F]): F[A] =
       ${ directImpl[F, A]('block, 'M) }
 
-  private def directImpl[F[_] : Type, A: Type](block: Expr[A], M: Expr[Monad[F]])
+  private def directImpl[F[_] : Type, A: Type](block: Expr[DirectCtx[F] ?=> A],
+                                               M: Expr[Monad[F]])
                                               (using Quotes): Expr[F[A]] =
     import quotes.reflect.*
 
     val directSym = TypeRepr.of[Direct.type].typeSymbol
     val markSyms = (directSym.methodMember("?") ++ directSym.methodMember("reflect")).toSet
-    val opMarkSyms = directSym.methodMember("!?").toSet
+    val colorSyms = (directSym.methodMember("selfColor") ++
+      directSym.methodMember("opColor")).toSet
 
-    /** the mark's receiver, if this term is a mark call */
+    def calleeRoot(t: Term): Symbol = t match
+      case Apply(f, _) => calleeRoot(f)
+      case TypeApply(f, _) => calleeRoot(f)
+      case Inlined(_, Nil, inner) => calleeRoot(inner)
+      case _ => t.symbol
+
+    /** the marked value: an explicit mark call OR an inserted
+     * auto-coloring conversion call — one dispatch serves both,
+     * because markTerm decides value-vs-operation by TYPE */
     def asMark(t: Term): Option[Term] = t match
       case Apply(TypeApply(fun, _), List(m)) if markSyms(fun.symbol) => Some(m)
-      case _ => None
-
-    /** the operation mark's receiver, if this term is an op-mark call */
-    def asOpMark(t: Term): Option[Term] = t match
-      case Apply(TypeApply(fun, _), List(m)) if opMarkSyms(fun.symbol) => Some(m)
+      case Apply(Select(conv, "apply"), List(x))
+        if colorSyms(calleeRoot(conv)) => Some(x)
       case _ => None
 
     def stripped(t: Term): Term = t match
@@ -78,8 +107,7 @@ object Direct:
       val probe = new TreeTraverser:
         override def traverseTree(tree: Tree)(owner: Symbol): Unit =
           tree match
-            case term: Term if asMark(term).isDefined || asOpMark(term).isDefined =>
-              found = true
+            case term: Term if asMark(term).isDefined => found = true
             case _ => if !found then super.traverseTree(tree)(owner)
       probe.traverseTree(t)(Symbol.spliceOwner)
       found
@@ -94,15 +122,7 @@ object Direct:
       Symbol.requiredModule("okay.Free.Inject").methodMember("apply").head
 
     /** Free.Inject[Row, elem](op) — the op lifted into the row program */
-    def injectTerm(op: Term, elem: TypeRepr, at: Position): Term =
-      val row = rowOf.getOrElse(report.errorAndAbort(
-        s"op.!? needs an effect-row block (its F must be a program monad A ! Row); " +
-          s"this block's F[Unit] is ${TypeRepr.of[F[Unit]].dealias.show}", at))
-      val expected = row.appliedTo(elem.widen)
-      if !(op.tpe <:< expected) then
-        report.errorAndAbort(
-          s"the operation has type ${op.tpe.show}, which is not in this block's row: " +
-            expected.show, at)
+    def injectTerm(op: Term, elem: TypeRepr, row: TypeRepr): Term =
       Apply(TypeApply(Ref(injectApply), List(Inferred(row), Inferred(elem.widen))), List(op))
 
     def refuse(t: Tree, where: String): Nothing =
@@ -139,20 +159,32 @@ object Direct:
       end match
 
     /** m.reflect over Monadic at element type `elem`:
-     * Expr[Cont[elem, F[A], F[A]]] */
+     * Expr[Cont[elem, F[A], F[A]]] — m must already be F[elem] */
     def reflectTerm(m: Term, elem: TypeRepr): Term =
       tpe2(elem.widen) { [T] => (_: Type[T]) ?=>
-        if !(m.tpe <:< TypeRepr.of[F[T]]) then
-          report.errorAndAbort(
-            s"the marked value has type ${m.tpe.show}, not this block's ${TypeRepr.of[F[T]].show}" +
-              " — in an effect-row block spell operations at the row: effect[Row, A](op).?",
-            m.pos)
         '{
           import okay.Monadic.{reflect as reflected}
           given Monad[F] = $M
           ${ m.asExprOf[F[T]] }.reflected[A]
         }.asTerm
       }
+
+    /**
+     * ONE mark, dispatched by type: an F[elem] of this block
+     * reflects; an operation of this block's row is injected into
+     * the row program first, then reflects. Anything else is refused
+     * with both possibilities named.
+     */
+    def markTerm(m: Term, elem: TypeRepr, at: Position): Term =
+      val fT = TypeRepr.of[F].appliedTo(elem.widen)
+      if m.tpe <:< fT then reflectTerm(m, elem)
+      else rowOf match
+        case Some(row) if m.tpe <:< row.appliedTo(elem.widen) =>
+          reflectTerm(injectTerm(m, elem, row), elem)
+        case _ =>
+          report.errorAndAbort(
+            s"the marked value has type ${m.tpe.show} — neither this block's ${fT.show}" +
+              rowOf.fold("")(r => s" nor an operation of its row ${r.show}"), at)
 
     /** cont.flatMap(v => body(v)) — body built from a reference to v */
     def bind(cont: Term, vTpe: TypeRepr, resTpe: TypeRepr)(body: Term => Term): Term =
@@ -181,20 +213,12 @@ object Direct:
       asMark(t) match
         case Some(m) =>
           compile(m) match
-            case Out.Pure(pm) => Out.Eff(reflectTerm(pm, t.tpe))
-            case Out.Eff(cm) => // marks inside the marked value: bind, then reflect
-              Out.Eff(bind(cm, m.tpe, t.tpe)(v => reflectTerm(v, t.tpe)))
-        case None => asOpMark(t) match
-          case Some(op) =>
-            compile(op) match
-              case Out.Pure(p) =>
-                Out.Eff(reflectTerm(injectTerm(p, t.tpe, t.pos), t.tpe))
-              case Out.Eff(c) =>
-                Out.Eff(bind(c, op.tpe, t.tpe)(v =>
-                  reflectTerm(injectTerm(v, t.tpe, t.pos), t.tpe)))
-          case None =>
-            if !hasMark(t) then Out.Pure(t)
-            else compileMarked(t)
+            case Out.Pure(pm) => Out.Eff(markTerm(pm, t.tpe, t.pos))
+            case Out.Eff(cm) => // marks inside the marked value: bind, then mark
+              Out.Eff(bind(cm, m.tpe, t.tpe)(v => markTerm(v, t.tpe, t.pos)))
+        case None =>
+          if !hasMark(t) then Out.Pure(t)
+          else compileMarked(t)
 
     /** t contains marks below the root — dispatch on shape */
     def compileMarked(t: Term): Out = t match
@@ -326,6 +350,52 @@ object Direct:
               })
         case other :: _ => refuse(other, "in an unsupported statement")
 
+    lazy val freeClass = Symbol.requiredClass("okay.Free")
+
+    /** is this a monadic/marked value a statement would silently drop? */
+    def discardedMonadic(tpe: TypeRepr): Boolean =
+      val w = tpe.widen.dealias
+      if w.derivesFrom(freeClass) then true
+      else w match
+        case AppliedType(g, args) if args.nonEmpty =>
+          // the candidate constructor is g with all but the LAST
+          // argument fixed — Writer[String, Unit] asks Effect[[X] =>>
+          // Writer[String, X]]
+          val lam =
+            if args.lengthIs == 1 then g
+            else TypeLambda(List("X"), _ => List(TypeBounds.empty),
+              tl => g.appliedTo(args.init :+ tl.param(0)))
+          (args.lengthIs == 1 && g =:= TypeRepr.of[F]) || (Implicits.search(
+            TypeRepr.of[Effect].appliedTo(lam)) match
+            case _: ImplicitSearchSuccess => true
+            case _ => false)
+        case _ => false
+
+    /**
+     * The discard guard, a traversal of the WHOLE block regardless of
+     * marks: statements have no expected type, so auto-coloring can
+     * never fire there and Unit-ascription is value discard — a
+     * dropped monadic value must not compile silently. Lambdas are
+     * not descended into (their bodies are not this block's code).
+     */
+    def discardGuard(body: Term): Unit =
+      val probe = new TreeTraverser:
+        override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match
+          case Lambda(_, _) => ()
+          case Block(stats, _) =>
+            stats.foreach {
+              case st: Term if asMark(st).isEmpty && !hasMark(st)
+                && discardedMonadic(st.tpe) =>
+                report.errorAndAbort(
+                  s"a value of ${st.tpe.widen.show} is discarded in statement position — " +
+                    "auto-coloring cannot fire on statements; run it with .? or bind it",
+                  st.pos)
+              case _ => ()
+            }
+            super.traverseTree(tree)(owner)
+          case _ => super.traverseTree(tree)(owner)
+      probe.traverseTree(body)(Symbol.spliceOwner)
+
     def substStat(s: Statement, sym: Symbol, ref: Term): Statement = s match
       case t: Term => subst(t, sym, ref)
       case vd @ ValDef(n, tp, rhs) => ValDef.copy(vd)(n, tp, rhs.map(subst(_, sym, ref)))
@@ -353,6 +423,18 @@ object Direct:
         Typed(c, TypeTree.of[Cont[T, F[A], F[A]]])
       }
 
+    // the block arrives as a context lambda (DirectCtx ambient in the
+    // body); take its body — the lambda is never called, and the ctx
+    // parameter occurs only inside conversion calls, rewritten away
+    val body: Term = stripped(block.asTerm) match
+      case Block(List(dd: DefDef), _: Closure) =>
+        dd.rhs.getOrElse(report.errorAndAbort("empty direct block"))
+          .changeOwner(Symbol.spliceOwner)
+      case other => refuse(other,
+        "as a non-literal block (a stored context-function value)")
+
+    discardGuard(body)
+
     val res: Expr[Cont[A, F[A], F[A]]] =
-      asCont(compile(block.asTerm), TypeRepr.of[A]).asExprOf[Cont[A, F[A], F[A]]]
+      asCont(compile(body), TypeRepr.of[A]).asExprOf[Cont[A, F[A], F[A]]]
     '{ Monadic.reify[F, A, A]($res)(using $M) }

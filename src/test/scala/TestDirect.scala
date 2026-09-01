@@ -149,11 +149,11 @@ class TestDirect extends munit.FunSuite {
     assert(bn.contains("by-name"), bn)
   }
 
-  test("op.!? lifts a raw operation into the block's row and reflects it") {
+  test("one mark: .? on a raw operation lifts it into the block's row") {
     type F = Reader % Int + Writer % String
     val prog: Int ! F = direct {
-      val env = Reader.Ask[Int, Int]().!?
-      Writer(s"env=$env").!?
+      val env = Reader.Ask[Int, Int]().?
+      Writer(s"env=$env").?
       env + 1
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
@@ -162,10 +162,10 @@ class TestDirect extends munit.FunSuite {
     assertEquals(a, 42)
   }
 
-  test("op.!? in a non-row block is a compile error naming the requirement") {
+  test("a mark that is neither F nor a row operation is refused by type") {
     val e = compileErrors(
-      "okay.Direct.direct[Option] { Option(1).!? }(using summon[Monad[Option]]) ")
-    assert(e.contains("effect-row"), e)
+      "okay.Direct.direct[Option] { List(1).? }(using summon[Monad[Option]]) ")
+    assert(e.contains("neither"), e)
   }
 
   test("&& and || keep the short-circuit (desugared to their If)") {
