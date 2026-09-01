@@ -61,7 +61,17 @@ platform timer — and dropped history stops a stream by declared
 `TopicJournal` is `Durable.Journal` over a keyed topic: intent and
 completion as separate records, recovery as a refold.
 
-The staged roadmap — replication with epochs and a high-water
-mark, the remote wire, interop engines (Kafka/JDBC) behind the
-same trait — lives in specs/persist.md with its decisions and
-refuted alternatives.
+**Stage 2 — replication, transport-agnostic.** `Replicated` is a
+coordinator over N replica Stores behind the same Topic trait:
+the follower push/pull IS the read path, the high-water mark (the
+quorum-th largest replica end) bounds what any reader can see,
+`Ack.Replicated` returns only at quorum (NoQuorum otherwise), the
+Leader handle fences deposed epochs, promote catches the
+successor up before it leads, and `produce(producerId, seq, ...)`
+is the idempotent window. Promotions and fenced appends land on
+the ops topic — the log audits itself.
+
+The staged roadmap — the remote wire carrying these same calls
+between nodes, interop engines (Kafka/JDBC) behind the same
+trait, elected leadership — lives in specs/persist.md with its
+decisions and refuted alternatives.

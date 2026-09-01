@@ -400,12 +400,21 @@ at stage 0 and never rebind.
       from its commit after a restart — the Last-Event-ID shape
       (both engines: fresh `Offsets` refolds the commit; lag =
       end minus committed; groups independent)
-- [ ] an append retried with the same (producerId, seq) after a
-      lost ack lands once (stage 2)
-- [ ] a follower serves reads only up to the high-water mark; an
-      `Ack.Replicated` append returns only at quorum (stage 2)
-- [ ] a deposed leader's append is rejected by epoch fencing, and
-      the rejection is an ops event (stage 2)
+- [x] an append retried with the same (producerId, seq) after a
+      lost ack lands once (produce() answers the ORIGINAL offset,
+      appends nothing; a seq behind the window refuses loudly;
+      producers independent)
+- [x] a follower serves reads only up to the high-water mark; an
+      `Ack.Replicated` append returns only at quorum (short of
+      quorum: NoQuorum thrown, the hwm does not move, and a
+      Durable-acked record above the hwm is INVISIBLE to readers
+      until replicate() confirms it — nothing a failover could
+      unwrite is ever observable)
+- [x] a deposed leader's append is rejected by epoch fencing, and
+      the rejection is an ops event (the Leader handle carries its
+      epoch; promote catches the successor up FIRST, so nothing
+      acknowledged is lost; Promoted and FencedAppend both read
+      back off the ops topic through the Typed envelope)
 - [x] a record written with schema v1 reads under v2 through the
       upcast; an unknown version is an error value naming the
       offset, not a throw (future version and missing-upcast both
@@ -416,7 +425,9 @@ at stage 0 and never rebind.
       format it shipped (a forged v1 segment reads under the v2
       engine; the v1 active segment is closed and a v2 one rolled)
 - [x] `Store.stats` reports begin/end/bytes/segments per partition
-      (consumer lag: stage 1; replica lag: stage 2)
+      (consumer lag: Offsets.lag, stage 1; replica lag:
+      Replicated.replicaStats — epoch, leader, hwm, per-replica end
+      and lag, stage 2)
 
 ## Out of scope
 
@@ -499,6 +510,35 @@ at stage 0 and never rebind.
   forbid).
 
 ## Results
+
+Stage 2's core landed — replication, transport-agnostic
+(persist-replication, 2026-09-01).
+
+- **Replicated**: a coordinator over N replica Stores behind the
+  SAME Topic trait — consumers bound at stage 0 never rebind. The
+  follower push/pull is the read path verbatim (replication is a
+  consumer that writes what it reads); divergence (a follower
+  assigning a different offset) throws by name, never guesses.
+- **The high-water mark** is the quorum-th largest replica end;
+  reads and `end` stop there, so nothing a failover could unwrite
+  is observable. `Ack.Replicated` short of quorum throws NoQuorum
+  rather than acking a promise it cannot keep.
+- **Epochs**: the Leader handle is the fencing unit; promote
+  catches the successor up first, advances the epoch, and both the
+  promotion and any fenced append land on the ops topic (Typed
+  envelope, version 1) — the log audits itself.
+- **The producer window**: produce(producerId, seq, ...) drops the
+  retry and answers the original offset; behind-window replays
+  refuse loudly.
+- **Tests**: 6 (all three platforms via the shared suite dir):
+  every-replica content, counted-out follower with visible lag and
+  replicate catch-up, the no-quorum battery, fencing + ops events,
+  the producer window, loss-free promotion. The Pausable store
+  wrapper stands in for the down replica.
+- **Deliberately out**: crash-divergence between leader disk and
+  follower disks (needs the wire's restart story), automatic
+  election (stage 4). persist-wire moves these same calls across
+  nodes without changing the machinery.
 
 Stage 1 landed — the consumers prove the seam.
 
