@@ -40,7 +40,7 @@
 - [ ] ui-windows-terminal — raw mode beyond stty
 
 ## okay-security (specs/security.md — staged, like persist)
-- [ ] security-es256 — ES256 for JWT (the JOSE raw R||S <-> DER dance,
+- [~] security-es256 — PROMOTED to sprint (the JOSE raw R||S <-> DER dance,
       its own tested task)
 - [ ] security-argon2 — a satellite with a real KDF for new password
       stores (PBKDF2 stays the zero-dep default)
