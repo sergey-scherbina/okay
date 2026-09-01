@@ -10,11 +10,6 @@
 - [ ] condition-typed-signal — type the condition/answer pair
       (signal[A](c: Any) casts today); HowMany.signal.? : Int with
       no annotation. A signature redesign, needs its own spec.
-- [ ] demo-direct-showcase — migrate the survey's named spots as the
-      worked example: ChatDemo seed/go (the effect-per-element
-      pattern), Mcp Client send/receive (protocol sequencing);
-      existing tests stay green, both spellings shown in the module
-      doc.
 - [ ] direct-effect-provide — coloring as POLICY: Effect[G] markers
       are ordinary givens, so provide/providing can install them
       per scope — auto-coloring enabled for one environment, off

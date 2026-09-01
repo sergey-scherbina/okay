@@ -1,6 +1,12 @@
 # Sprint
 
 ## Doing
+- [ ] demo-direct-showcase — migrate the survey's named spots to
+      direct style as the worked example: ChatDemo seed/go (the
+      effect-per-element pattern -> for-do), an okay-mcp Client
+      sequencing spot; existing tests stay green, both spellings
+      shown where the module doc teaches (from BACKLOG,
+      user-directed 2026-09-01)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

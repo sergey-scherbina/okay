@@ -1,0 +1,6 @@
+feature/demo-direct-showcase 2026-09-01T21:11:14Z
+agent: claude-code
+heartbeat: 2026-09-01T21:11:14Z
+status: in-progress
+done-so-far:
+next: ChatDemo go/seed to for-do, then one Mcp Client spot; tests green
