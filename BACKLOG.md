@@ -3,10 +3,6 @@
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [ ] ui-screens — screen stack, navigation events, routing; DOM
       address bar as an event source
-- [ ] ui-wire — Schema[Ui]/Event/Patch derivations; server-driven
-      session over okay-http WS (events up, patches down); the
-      security rule "the tree is the capability list"; reconnect =
-      full tree then patches
 - [ ] ui-durable — event-sourced sessions: intent-first journal
       (Durable shape), refold recovery, snapshots
 - [ ] ui-dom-patch — a raw-DOM patch Backend over js.Dynamic (the
@@ -15,6 +11,11 @@
       unchanged, keys already in the tree)
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
+
+## okay-codec
+- [ ] codec-vector — Schema for Vector (and recursion + default
+      params in derivation): what ui-wire needed and shipped without,
+      on the hand mapping instead
 
 ## okay-mcp
 - [ ] mcp-completion — completion/complete for prompt/resource args
