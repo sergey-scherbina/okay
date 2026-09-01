@@ -1,5 +1,17 @@
 # Changelog
 
+## jdbc-poll-source — the watermark poll, honestly not CDC
+Completed: 2026-09-01 (landed as 07a57d0; spec first)
+Poll(db, offsets, group, source): the watermark IS a persist
+consumer offset (commit-as-record, refold-on-restart), one poll =
+the decoded prefix up to the first damaged row — damage STOPS the
+watermark, so nothing is silently skipped, and the fixed row is
+re-served next poll. The late-commit caveat is a TEST, not a
+footnote: the miss asserted as behavior, then the lag window (in
+the caller's SQL, the DBA's language) holding the watermark back
+so the late row arrives. With this the jdbc.md behavior list is
+fully checked. Merge read alone: exit 0. Full matrix green.
+
 ## jdbc-write-bridge — the Durable policies over their constraints
 Completed: 2026-09-01 (landed as b1903cd; spec first)
 Writes(db, topic, run) in okay-jdbc, written only against the Sql

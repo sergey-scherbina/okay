@@ -1,5 +1,0 @@
-slug: jdbc-poll-source
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: incremental poll by a monotone column with a journaled watermark and a lag window; the late-commit caveat DOCUMENTED by a test; stated non-CDC; spec: specs/jdbc.md "Reading their data as it changes"
-files: okay-jdbc/** (Poll + tests), specs/jdbc.md (box/Results)

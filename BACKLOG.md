@@ -108,8 +108,6 @@
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:
       driver availability, not performance — virtual threads
       already cover JDBC-behind-Async)
-- [ ] jdbc-poll-source — incremental poll by a monotone column with
-      journaled watermark and lag window (stated non-CDC)
 
 ## okay-conf (specs/conf.md)
 - [ ] conf-topic — stage 2: managed config as a compacted keyed
