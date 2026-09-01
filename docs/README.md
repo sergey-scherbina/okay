@@ -17,7 +17,13 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &
   Power/Pretnar, Carette–Kiselyov–Shan, Taha & Sheard), and why each
   design decision — argued from the papers and the repository's own
-  measurements. Seven chapters, Okay as the running example.
+  measurements. Eight chapters, Okay as the running example.
+- **[Direct style](direct-style.md)** — monads as plain code:
+  the reflection foundation (two one-liners, no macros), the
+  `direct` block (one mark, `.?`), auto-coloring behind two explicit
+  gates, do-notation statements — with the rationale for every
+  boundary and the graveyard of refuted alternatives. The theory
+  chapter with the literature is [theory/08](theory/08-direct-style.md).
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
 - **[Capabilities](capabilities.md)** — context functions as the

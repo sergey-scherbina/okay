@@ -44,6 +44,14 @@ One primitive for fair search; streams as codata; approximation with
 stated error.
 *Kiselyov, Shan, Friedman & Sabry 2005 · Wadler 1985 · Flajolet et al. 2007 · Cormode & Muthukrishnan 2005 · Dunning & Ertl 2019*
 
+### Part IV · The surface
+
+**[8 · Direct style](08-direct-style.md)**
+Reflection makes monads read as plain code; elaboration removes the
+rest; capabilities gate the colorless version — and why multi-shot
+survives here and not on Loom.
+*Filinski 1994/1999 · Kameyama & Hasegawa 2003 · Flanagan et al. 1993 · Brachthäuser et al. 2020 · Lindley, McBride & McLaughlin 2017*
+
 ---
 
 The [map](README.md) explains the notation (`A ! F`, `%`, `+`, `/>`),
