@@ -1,6 +1,12 @@
 # Sprint
 
 ## Doing
+- stage-phased — the typestate transducer: a two-phase Stage whose
+  accumulator CHANGES TYPE at the switch (header -> rows, the CSV
+  shape), no phase enum, no illegal states representable; the
+  transition runs through PState — the theory exhibit gains its
+  stream consumer (promoted straight from discovery per the user's
+  ask; specs/chunked-streams.md)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
