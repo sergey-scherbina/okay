@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- control-specs — the PState/Delim consumer map as SPECS: streaming
+  validation that cuts generation (Delim, the open P9 item), http
+  message phases (phased3), nav pop-to-screen, the gated named-cut
+  and r-restarts; slugs filed (spec-only claim)
 ## Queue
 - agent-stepper — the staged relay consumer: step any effectful
   agent program (pause at tool calls, inspect, resume) with Delim as
