@@ -1,0 +1,6 @@
+feature/condition-direct 2026-09-01T21:01:09Z
+agent: claude-code
+heartbeat: 2026-09-01T21:01:09Z
+status: in-progress
+done-so-far:
+next: tests first (TestConditionDirect), then the frame door, docs, chapter 09
