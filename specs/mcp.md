@@ -105,6 +105,9 @@ it needs `CanBlock`; `translate` forwards into `Async` instead and
 works where nothing may park.
 
 ## Out of scope
+- resumability (`Last-Event-ID` and per-event ids on the SSE stream):
+  a reconnecting client replays from the server's own record, which a
+  server has to KEEP — a durability question, not a transport one
 - elicitation (`elicitation/create`): the server asking the human, not
   the program — it needs a UI contract this library has no opinion on
 - completion (`completion/complete`): argument autocompletion for
@@ -298,6 +301,67 @@ object Server:
       its answer
 - [x] the capabilities of a CLIENT are declared too (roots, sampling),
       so a server knows what it may ask for
+
+## v4 — the streamable HTTP transport (2026-09-01)
+
+MCP's other standard transport, and the point is how little of it is
+new: a `Link` is `send(line)` plus `lines: Source[String]`, so the
+whole session and server machinery is untouched — what changes is
+where the lines come from.
+
+It lives in `okay-http`, beside the WebSocket link that module already
+has, because the layering there is right: transports depend on the
+protocol, not the other way round.
+
+Streamable HTTP is one endpoint that answers three ways, and each maps
+onto something okay-http already returns:
+
+- a POST whose answer is a single JSON-RPC message — `application/json`
+- a POST whose answer is a STREAM of them — `text/event-stream`,
+  which is `Http.sse(response): Source[String]` verbatim
+- a GET that opens a stream for what the server says unasked — the
+  same `Http.sse`, drained onto the link's inbound channel
+
+Plus one piece of state: the server may issue an `Mcp-Session-Id` on
+the initialize response, and every later request must carry it.
+
+```scala
+// the client side: an endpoint AS a Link
+object McpHttp:
+  def link(http: Http, url: String)(using Scheduler): McpLink
+final class McpLink extends okay.mcp.Link:
+  def sessionId: Option[String]     // what the server issued, if it did
+  def open(): Fiber[Unit]           // the GET stream for server-initiated messages
+
+// the server side: a Serving AS a route
+  def route(serving: Server.Serving)(using Scheduler, CanBlock)
+  : Request => Response ! Async
+```
+
+### Behavior
+- [ ] a client over HTTP does the whole handshake and calls a tool,
+      against a real `okay-http` server on a real port
+- [ ] the answer may arrive as `application/json` or as
+      `text/event-stream`, and the client cannot tell the difference
+      from the outside
+- [ ] `Mcp-Session-Id` is issued on initialize, carried on every later
+      request, and an unknown one answers 404 — the protocol's own
+      "reinitialize" signal
+- [ ] a POSTed NOTIFICATION answers 202 with no body (there is
+      nothing to answer)
+- [ ] a GET stream delivers server-initiated messages onto the same
+      session, so `session.notifications` works over HTTP exactly as
+      it does over stdio
+- [ ] one MCP program, three wires: the SAME `Serving` and the same
+      agent test pass over stdio, over a socket and over HTTP
+
+### Out of scope, and whose it is
+The HTTP server cannot hold a stream open — `okay-http`'s JVM server
+drains the response body before sending headers (`Http.bytes(res)`),
+which is that module's decision and a reasonable one for REST. So the
+route serves POST-with-a-JSON-answer, and answers 405 to GET. A server
+that needs to PUSH over HTTP needs a streaming response in okay-http
+first; the same server pushes fine over stdio and WebSocket today.
 
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server
