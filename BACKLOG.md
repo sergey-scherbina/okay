@@ -1,30 +1,27 @@
 # Backlog
 
-## Cross-cutting — the 2026-09-01 audit (internal consistency / industry axes)
-- [ ] queue-shape — the per-message-ack shape (AMQP/RabbitMQ, SQS,
-      NATS, Pulsar, MQTT): not the log shape (no offsets); either
-      interop sources appending into persist topics or a minimal
-      Queue seam — decide in a data.md section when claimed
-- [ ] blob-seam — object storage (S3-compatible first; GCS/Azure
-      later): put/get/list/delete(+multipart) behind one trait;
-      already ASSUMED by persist stage-3 offload, the lake roads and
-      r/py Arrow exchange, never specced; MinIO for live tests
-- [ ] wire-tls — TLS for the own wire protocols (okay-pg sslmode,
-      persist-wire, RESP, Rserve): one transport-level seam over the
-      Async transport, keys/certs via specs/conf.md
-- [ ] persist-wire-auth — authn/z on the remote Topic client via
-      okay-security (bearer/API key; per-topic capabilities — the
-      ui "tree is the capability list" analog for topics)
-- [ ] own-db-migrations — versioned idempotent DDL for OWN
-      databases (materialization targets), applied set journaled as
-      a topic; foreign DBs stay strictly no-DDL (specs/jdbc.md)
-- [ ] obs-tracing — trace-context propagation (W3C traceparent)
-      through http/mcp/sql/persist operations; spans as values, an
-      exporter as a consumer (the stats-as-values doctrine extended)
-- [ ] persist-backup — state the backup/PITR story persist's design
-      already implies (segment copy IS backup, restore = replay +
-      truncate; snapshot copies bound it) + a doctor tool verifying
-      segment CRCs offline
+## Cross-cutting — the 2026-09-01 audit (specs landed e3b5a74; slugs are implementation)
+- [ ] queue-shape — DECIDED (specs/data.md, Queues): no Queue seam;
+      ingress/egress bridges to topics with message-id dedup —
+      implement the two bridges; engine adapters as named
+- [ ] blob-seam — spec landed (specs/blob.md): fs engine + own
+      SigV4 S3 subset over the http client; MinIO live tests;
+      implement stage 0 (fs) then stage 1 (S3)
+- [ ] wire-tls — spec landed (specs/tls.md): one transport seam,
+      sslmode vocabulary, verify-full default, platform crypto;
+      implement JVM SSLEngine leg first
+- [ ] persist-wire-auth — spec landed (specs/persist.md, stage 2):
+      bearer/API key via okay-security, per-topic capabilities,
+      TLS via specs/tls.md; implement with persist-wire
+- [ ] own-db-migrations — spec landed (specs/jdbc.md, Own
+      relational databases): Flyway model, checksummed scripts,
+      schema-version table + ops topic; implement over the Sql seam
+- [ ] obs-tracing — spec landed (specs/obs.md): spans as values on
+      a trace topic, W3C traceparent at the edges, tracing handler
+      composition; OTLP exporter a later interop
+- [ ] persist-backup — spec landed (specs/persist.md, Backup and
+      restore): what remains is the DOCTOR tool (recovery scan
+      against a backup, offline) and a blob-seam copy helper
 
 ## Correctness leads
 - [ ] nio-close-race — `ClusterTransportBenchmark.nio` sporadically

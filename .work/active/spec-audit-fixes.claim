@@ -1,6 +1,0 @@
-feature/spec-audit-fixes 2026-09-01T11:05:45Z
-agent: claude-code
-heartbeat: 2026-09-01T11:05:45Z
-status: in-progress
-done-so-far:
-next: new specs tls/obs/blob; updates to persist/sql/jdbc/data/cache/r per audit

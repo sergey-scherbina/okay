@@ -1,5 +1,17 @@
 # Changelog
 
+## spec-audit-fixes — the audit's seven gaps closed in the specs
+Completed: 2026-09-01
+Three specs born: tls.md (one transport seam, sslmode vocabulary,
+verify-full default), obs.md (spans as values on a trace topic,
+W3C traceparent, tracing handlers), blob.md (object-store seam, fs
++ own-SigV4 S3 subset). Six updated: persist.md (the sync-SPI
+asymmetry recorded, backup/PITR stated, wire auth via
+okay-security), jdbc.md (sketch retyped against Sql, own-DB
+migrations à la Flyway), data.md (queues bridged not mirrored —
+no Queue seam, two table rows), sql/cache/r TLS links. BACKLOG
+slugs turned into implementation entries.
+
 ## security-node — the JS leg verifies
 Completed: 2026-09-01
 node:crypto behind the same seam; the JS suite runs the SAME shared
