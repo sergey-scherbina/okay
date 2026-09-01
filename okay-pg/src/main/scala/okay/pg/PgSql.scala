@@ -439,7 +439,69 @@ object PgSql:
         out(i) = Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16).toByte
         i += 1
       SqlValue.Bytes(out)
+    // ROW()/record and arrays decode into structure (pg-composite-decode)
+    case 2249 => parseComposite(s)
+    case a if arrayElem.contains(a) => parseArray(s, arrayElem(a))
     case _ => SqlValue.Text(s)
+
+  // ── composite / array text decoding (pg-composite-decode) ──────
+  // Postgres hands composites and arrays as TEXT; the driver parses
+  // that text into structure instead of shrugging it back as one
+  // opaque string. `record`/ROW() -> SqlValue.Row (fields as text,
+  // their per-field types are not on the wire without a describe);
+  // an array whose element type we know -> SqlValue.Arr with each
+  // element typed by the ordinary valueOf, nested arrays recursed.
+
+  /** the common array OIDs -> their element OID (a named composite's
+   * array is a describe-time follow-up, noted in specs/sql.md) */
+  private val arrayElem: Map[Int, Int] = Map(
+    1000 -> 16,   1005 -> 21,   1007 -> 23,   1016 -> 20,
+    1021 -> 700,  1022 -> 701,  1231 -> 1700,
+    1009 -> 25,   1015 -> 1043, 1014 -> 1042, 1002 -> 18,
+    1001 -> 17,   1028 -> 26,   1005 -> 21)
+
+  /** split a composite/array body into top-level members, honouring
+   * double-quoted values (both `""` and `\"`/`\\` escaping, so the
+   * two pg conventions both read) and — for arrays — brace nesting.
+   * Each member is (unescaped-text, was-it-quoted). */
+  private def splitMembers(body: String, braces: Boolean): Vector[(String, Boolean)] =
+    val out = Vector.newBuilder[(String, Boolean)]
+    val sb = new StringBuilder
+    var i = 0; var depth = 0; var inQ = false; var quoted = false
+    while i < body.length do
+      val c = body(i)
+      if inQ then
+        if c == '\\' && i + 1 < body.length then { sb.append(body(i + 1)); i += 2 }
+        else if c == '"' && i + 1 < body.length && body(i + 1) == '"' then { sb.append('"'); i += 2 }
+        else if c == '"' then { inQ = false; i += 1 }
+        else { sb.append(c); i += 1 }
+      else c match
+        case '"' => inQ = true; quoted = true; i += 1
+        case '{' if braces => depth += 1; sb.append(c); i += 1
+        case '}' if braces => depth -= 1; sb.append(c); i += 1
+        case ',' if depth == 0 => out += ((sb.result(), quoted)); sb.clear(); quoted = false; i += 1
+        case _ => sb.append(c); i += 1
+    out += ((sb.result(), quoted))
+    out.result()
+
+  /** `{...}` -> Arr, elements typed via `elemOid`; nested arrays
+   * recurse; the literal NULL element is Null; `{}` is the empty Arr */
+  private[pg] def parseArray(s: String, elemOid: Int): SqlValue =
+    val inner = s.stripPrefix("{").stripSuffix("}")
+    if inner.isEmpty then SqlValue.Arr(Vector.empty)
+    else SqlValue.Arr(splitMembers(inner, braces = true).map { (raw, quoted) =>
+      if !quoted && raw.equalsIgnoreCase("NULL") then SqlValue.Null
+      else if !quoted && raw.startsWith("{") then parseArray(raw, elemOid)
+      else valueOf(elemOid, raw)
+    })
+
+  /** `(...)` -> Row; an UNquoted empty field is a SQL NULL, every
+   * other field is Text (record field types are not on the wire) */
+  private[pg] def parseComposite(s: String): SqlValue =
+    val inner = s.stripPrefix("(").stripSuffix(")")
+    SqlValue.Row(splitMembers(inner, braces = false).map { (raw, quoted) =>
+      if !quoted && raw.isEmpty then SqlValue.Null else SqlValue.Text(raw)
+    })
 
   /** one row in COPY text format (see specs/sql.md) */
   def copyRow(row: Vector[SqlValue]): String =
@@ -466,3 +528,20 @@ object PgSql:
     case SqlValue.Text(s) => Some(s)
     case SqlValue.Bytes(bs) =>
       Some("\\x" + bs.map(b => f"${b & 0xff}%02x").mkString)
+    // the reverse of the decode: a structured value re-encodes to the
+    // pg literal, so a decoded Arr/Row round-trips through copy/bind
+    case SqlValue.Arr(elems) => Some(arrayLiteral(elems))
+    case SqlValue.Row(fields) => Some(compositeLiteral(fields))
+
+  private def arrayLiteral(elems: Vector[SqlValue]): String =
+    elems.map {
+      case SqlValue.Null => "NULL"
+      case a: SqlValue.Arr => arrayLiteral(a.elems)
+      case v => "\"" + textOf(v).getOrElse("").replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    }.mkString("{", ",", "}")
+
+  private def compositeLiteral(fields: Vector[SqlValue]): String =
+    fields.map {
+      case SqlValue.Null => ""
+      case v => "\"" + textOf(v).getOrElse("").replace("\\", "\\\\").replace("\"", "\"\"") + "\""
+    }.mkString("(", ",", ")")

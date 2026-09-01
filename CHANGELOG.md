@@ -1,5 +1,27 @@
 # Changelog
 
+## pg-composite-decode — the pg driver decodes COMPOSITE/ROW() and ARRAY types
+Completed: 2026-09-01
+The pg driver handed composites and arrays back as one opaque string
+(`valueOf` fell through to `SqlValue.Text` for any non-scalar OID);
+now it decodes them into structure. `SqlValue` gained `Arr(Vector)` and
+`Row(Vector)` (okay-sql, additive). An array whose element OID the
+driver knows (int2/4/8, text/varchar, bool, float4/8, numeric, bytea)
+parses to a typed `Arr` — each element through the ordinary `valueOf`,
+nested arrays recursed, a `NULL` element as `Null`; `record`/ROW()
+(oid 2249) parses to a `Row` with fields split and unescaped (a
+record's per-field types are not on the wire, so fields arrive as
+`Text`; an empty unquoted field is `Null`). One text parser reads BOTH
+pg escaping conventions (`""` and `\"`/`\\`), so quoting and embedded
+commas survive; `textOf` re-encodes an `Arr`/`Row` to the pg literal,
+so a decoded value round-trips through copy/bind. Proven live over the
+dockerized Postgres (TestPgComposite, 8: int[], text[] with quoting +
+NULL, bool[]/float8[], empty, nested int[][], ROW()/record, composite
+quoting, Arr round-trip). The existing sql/jdbc/pg suites stay green —
+the new cases are additive. Follow-up filed (pg-composite-fields-typed):
+named-composite columns and typed record fields need the composite's
+attribute OIDs resolved at describe time.
+
 ## demo-direct-showcase — the worked example, and the two holes it found
 Completed: 2026-09-01
 Landed as e5a3205. ChatDemo's scripted go became a markless for-do
@@ -40,7 +62,6 @@ recognizes the third mark; the ui wizard test now reads
 `val name = !Form.ask[Name]("who?")`. A direct-style.md section
 records the collision so nobody retries the postfix. 305 core + ui
 tests green.
-
 ## pg-sslmode — the pg driver speaks TLS through the one seam
 Completed: 2026-09-01
 specs/tls.md's pg box: Postgres over TLS, the seam's second consumer

@@ -53,6 +53,8 @@ enum SqlValue:
   case I32(v: Int); case I64(v: Long); case F64(v: Double)
   case Text(v: String)
   case Bytes(v: Array[Byte])
+  case Arr(elems: Vector[SqlValue])    // a SQL array (pg-composite-decode)
+  case Row(fields: Vector[SqlValue])   // a composite / ROW() value
 
 /** column description, the verify input — driver-neutral */
 final case class Col(label: String, tpe: SqlType, nullable: Boolean)
@@ -168,6 +170,24 @@ import — and the platforms it runs on.
       17.11: SCRAM-SHA-256 with the server-signature verification,
       500 rows at 64-row portal Executes, a bad password refuses,
       an error reaches quiet and the session survives
+- [x] the pg driver decodes COMPOSITE / ROW() and ARRAY values into
+      structure, not raw text (pg-composite-decode): an array whose
+      element OID the driver knows (int2/4/8, text/varchar, bool,
+      float4/8, numeric, bytea) parses to `SqlValue.Arr` with each
+      element typed via the ordinary `valueOf`, nested arrays
+      recursed, a `NULL` element as `Null`; `record`/ROW() (oid 2249)
+      parses to `SqlValue.Row` with fields split and unescaped (a
+      record's per-field types are not on the wire without a
+      describe, so fields arrive as `Text`; an empty unquoted field
+      is `Null`). One text parser reads BOTH pg escaping conventions
+      (`""` and `\"`/`\\`), so quoting and embedded commas survive;
+      `textOf` re-encodes an `Arr`/`Row` to the pg literal, so a
+      decoded value round-trips through copy/bind. Proven live over
+      Postgres (TestPgComposite, 8). FOLLOW-UP: a NAMED composite
+      column (dynamic OID, not 2249) still reads as text, and typing
+      a record's fields needs the composite's attribute OIDs resolved
+      at describe time (the nullability-resolve shape); the
+      `row_to_json → Schema` bridge is the other road
 - [x] the SAME typed test program runs unmodified over the JDBC
       driver and the pg driver against equivalent schemas (the
       cluster acceptance-test move, applied to SQL) — one function

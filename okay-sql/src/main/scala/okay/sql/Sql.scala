@@ -26,6 +26,14 @@ enum SqlValue:
   case F64(v: Double)
   case Text(v: String)
   case Bytes(v: Array[Byte])
+  /** a SQL array: the elements typed by the driver (pg-composite-decode).
+   * Nested arrays are Arr-of-Arr; a SQL NULL element is `Null`. */
+  case Arr(elems: Vector[SqlValue])
+  /** a composite / ROW() value: the fields, in order. Anonymous
+   * `record` fields arrive as `Text` (their types are not on the wire
+   * without a describe); a named composite's fields are typed when the
+   * driver resolves them. A NULL field is `Null`. */
+  case Row(fields: Vector[SqlValue])
 
 /** the column types verify speaks; `Other` carries a vendor type by
  * name so a drift report can say what it found rather than shrug */
