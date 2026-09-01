@@ -9,8 +9,8 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[User guide](guide.md)** — the concepts, layer by layer: control
   → effects → streams → chunks → coroutines → concurrency → the text
   stack → the laziness contract that holds it together.
-- **[Tutorial](tutorial.md)** — the same layers by use, twelve
-  worked chapters from a pure program to chunks across machines;
+- **[Tutorial](tutorial.md)** — the same layers by use, nineteen
+  worked chapters from a pure program to an agent with remote tools;
   every snippet's shape runs in the repo's tests.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
@@ -51,7 +51,7 @@ API reference, gotchas.
 | [`okay-jetty`](modules/okay-jetty.md) | Jetty behind the same two seams — and the WebSocket SERVER okay-http could not serve |
 | [`okay-netty`](modules/okay-netty.md) | Netty behind the same two seams, plus the cross-backend matrix that proves the seam |
 | [`okay-mcp`](modules/okay-mcp.md) | the Model Context Protocol, both ends: a server is a `Handler[Tool]`, our tools are a server, and the protocol is a pure Stage |
-| `okay-demo` | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`), and the worked examples beside it — `Combine` joins two live telemetry streams, a pure Stage for the join and `Channel.merge` for the concurrency |
+| `okay-demo` | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`); `RepoMcp`, the same repository served as an MCP server (tools, every file as a resource, an `explain` prompt); and the worked examples — `Combine` joins two live telemetry streams twice, `Stage.transduce` against fs2's `mapAccumulate` shape, with tests pricing the difference |
 
 ## How the claims are checked
 
@@ -64,6 +64,14 @@ contained its passage, and a documented claim that was simply false.
 And an APPLICATION (`okay-demo`) assembles the public surface the way
 a user would; its first run found a loader that indexed nothing and
 an API with no way to see what it sent.
+
+A fourth kind runs only where the world cooperates: ACCEPTANCE
+against things nobody here wrote — a real model behind an
+OpenAI-compatible endpoint (okay-agent's `TestLive`), the MCP
+reference server spawned by npx (okay-mcp's `TestLive`), a Node
+client against a JVM server (okay-cluster). Skipped, not failed,
+where the endpoint or runtime is absent; what they test is OUR
+assumptions, not the other side's behaviour.
 
 ## Design documents
 

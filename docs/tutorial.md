@@ -373,7 +373,32 @@ recovery can tell "already happened" from "outcome unknown" from
 "never ran". `Durable.replaying` runs an incident again offline, with
 the world untouched.
 
-## 18. Where to go next
+## 18. Tools from anywhere: MCP
+
+```scala
+// a real third-party server, spawned over stdio
+val link = Stdio.of(Stdio.spawn(Seq("npx", "-y", "@modelcontextprotocol/server-everything")))
+val session = Client.connect(link, Mcp.Info("okay", "1")).runWith
+
+given Handler[Tool] = session.handler          // the only line that changes
+Agent.converse("...", session.tools.runWith)   // its tools, discovered
+```
+
+The agent program is UNCHANGED — a tool call is an effect, and where
+it executes is the handler's business; `TestAgentOverMcp` runs the
+same program against a local table and a server and compares the
+answers. The other directions are as short: our tools are already
+what a server serves (`Server.run(Stdio.std, info, tools, table)` —
+`RepoMcp` serves this repository that way), a server's resources
+become a `Corpus` the retriever indexes (`session.corpus`), its
+prompts become the `Seq[Turn]` an agent starts from, and
+`sampling/createMessage` is answered by whatever `Handler[Model]` you
+already had — an MCP server borrows your model. Transports: stdio, or
+streamable HTTP (`McpHttp.link`), with server push on the GET stream.
+All of it verified live against the protocol's reference server
+(`TestLive`), which passed on the first run.
+
+## 19. Where to go next
 
 The [guide](guide.md) explains each layer; the
 [typepedia](typepedia.md) is the reference; the

@@ -38,16 +38,22 @@ suite runs on a JVM, under Node and as a linked native binary.
 ## Effects
 
 - `Reader` — the environment, handled at relay speed (Reader.scala).
-- `Writer` — telling IS streaming: the opaque identity signature, zero
-  allocation per tell, the element type separate from the answer
-  (`A ! Writer % W` computes A telling W); run/fold into any Fold
-  algebra, uncons as `Either[A, (W, rest)]` (Writer.scala).
+- `Writer` — telling IS streaming: a one-constructor GADT
+  (`Say(w): Writer[W, Unit]` — a tell answers NOTHING, and matching
+  the constructor recovers that, so nothing casts), the element type
+  separate from the answer (`A ! Writer % W` computes A telling W);
+  run/fold into any Fold algebra, uncons as `Either[A, (W, rest)]`;
+  `Writer.of` turns any stream back into the program shape, `Writer.map`
+  re-tells at another type (Writer.scala; the five encodings tried
+  before this one: docs/existentials.md).
 - `State` — get/set with a bespoke tail-recursive handler; `PState` —
   type-changing (typestate) state on the paramonad (State.scala).
 - `Throws` — typed errors: abort, runEither, the `throws` union
   (Throws.scala).
 - `Choice` — nondeterminism with a genuinely multi-shot handler; the
-  canonical MonadPlus (Choice.scala).
+  canonical MonadPlus (Choice.scala). `Logic` — fair backtracking
+  search on top of it: interleave, once, ifte (Logic.scala,
+  specs/backtracking.md).
 - `Async` — cross-platform: `Run` (a possibly blocking thunk —
   blocking is a JVM/Native ability that parks a virtual thread) and
   `Await` (the universal callback form: an error channel in, a
@@ -90,6 +96,10 @@ for tools — optimize, inspect, ship — the inline shape is for speed.)
 - `Take`/`pipe` (Pipe.scala) — coroutine pipelines: tell meets await
   one element at a time, no channel, no materialization; the consumer
   drives, a finite consumer ends an infinite producer.
+  `Stage[I, O, A]` is the transducer as a program; `Stage.transduce`
+  is the skeleton they all share (state, a step that tells what the
+  input is worth, a flush), `Stage.mapAccumulate` the fs2-shaped 1:1
+  special case.
 - `Chunks[A] = Producer[Chunk[A]]` (Chunks.scala) — the tree steps per
   chunk, an element costs an array index: generators, transformers,
   zip, rechunk, fold, pipe; spec in specs/chunked-streams.md.
@@ -97,10 +107,15 @@ for tools — optimize, inspect, ship — the inline shape is for speed.)
 ## Concurrency
 
 - `Channel` — the queue between fibers; `merge` combines streams by
-  readiness (chunked merge: 14.7 us vs ZIO 47 on 2x500), `buffer`
+  readiness (chunked merge: 10.7 us vs ZIO 45 on 2x500), `buffer`
   runs the producer ahead. Parking backpressure on JVM/Native; the
   Await-based JS channel keeps the same surface (Channel.scala per
   platform).
+- `Source[W]` — an asynchronous stream as a program
+  (`Unit ! Writer % W + Async`), the shape every streaming seam here
+  speaks; `a merge b` joins two of DIFFERENT element types into a
+  source of their union, bounded by default (an endless source merged
+  unbounded measured 1.27M elements produced for 10 consumed).
 - Everything runs on virtual threads by default; fork/join of 100
   trivial tasks: 29 us (raw Loom 21, kyo 25, ZIO 50, cats-effect 140).
 - Across machines: `Remote` ships chunks over a socket into an
@@ -184,8 +199,35 @@ itself (`okay-java`), where `Aggregator` IS `java.util.stream.Collector`
 and `Chunks` crosses to `Stream` chunk-for-chunk, unboxed in both
 directions for `LongStream`/`IntStream`/`DoubleStream`.
 
-Building: `sbt test` runs everything — 665 tests across two dozen
-modules, on the JVM and under Node. Scala 3.7.4 (the floor is 3.6, for
+## The upper layers
+
+Everything below is built from the primitives above, and each is one
+module with its own page under docs/modules:
+
+- **text** — total streaming lex (`okay-lex`, BPE included), total
+  lossless parse with O(damage) incremental reparse (`okay-parse`),
+  one `Schema` serving JSON/CBOR/Markdown and JSON Schema
+  (`okay-codec`).
+- **models** — completions as token streams over one transport seam,
+  two provider dialects, structured output that cuts generation
+  mid-stream (`okay-llm`); retrieval with provenance by construction,
+  the index an Aggregator (`okay-rag`); agents as programs — a tool
+  call is an effect, context is a fold, policy lives in handlers
+  (`okay-agent`).
+- **MCP** (`okay-mcp`) — both ends of the Model Context Protocol: a
+  server is another `Handler[Tool]`, our tools are another server,
+  resources are documents, prompts are conversation openings,
+  sampling is the `Model` effect; stdio and streamable HTTP (with
+  server push over the GET stream), verified live against the
+  protocol's reference server.
+- **wires** — REST and WebSocket as programs (`okay-http`), served by
+  the JDK, Jetty or Netty behind one seam (`okay-jetty`,
+  `okay-netty`); the distributed runtime (`okay-cluster`).
+
+Building: `sbt test` runs everything — 845 tests across two dozen
+modules, on the JVM, under Node and as a linked native binary (the
+live suites — a local model, an npx-spawned MCP server — skip where
+their endpoint is absent). Scala 3.7.4 (the floor is 3.6, for
 the redesigned given syntax; the ceiling is okay-spark, which pins
 Spark's Scala 2.13 artifacts) and sbt 1.13.0 (sbt 2 waits on
 sbt-platform-deps, which supplies `%%%` and has no sbt 2 release).

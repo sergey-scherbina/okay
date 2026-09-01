@@ -196,3 +196,12 @@ shipped, and the list is kept because it is a good index of them:
 - **Provider handlers** — `Provider.openAi` and `Provider.anthropic`,
   plus `relay`/`openAiRelay`, which is the portable form for
   platforms where a comonadic handler cannot do I/O.
+
+## Tools from an MCP server
+
+A tool call is an effect and the handler decides what it means — so an
+MCP server plugs in as `session.handler: Handler[Tool]` and the agent
+program does not change by one character. Discovery included: the
+`ToolSpec`s a model is told about can come from `session.tools`,
+schemas and all. See [okay-mcp](okay-mcp.md); `TestAgentOverMcp` runs
+the same `Agent.converse` both ways and asserts the answers are equal.

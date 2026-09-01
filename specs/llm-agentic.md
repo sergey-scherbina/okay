@@ -368,6 +368,7 @@ their `EmbeddingStore` a handler for a `Retrieve` effect. We inherit
 their provider and store breadth in one small module; they get a
 composable runtime. Same for MCP: an MCP server is another `Tool`
 handler, and its JSON-RPC framing is our total parser plus `Schema`.
+(Built since, exactly on that sentence: specs/mcp.md, okay-mcp.)
 
 ## Behavior
 - [x] a tool call round-trips: model asks, handler executes, result

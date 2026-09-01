@@ -117,7 +117,7 @@ it; the reader fiber keeps it.
 | stdio | `Stdio.of(process)` / `Stdio.std` — the one MCP clients launch |
 | a socket, or any byte stream | `Stdio.of(in, out)` |
 | WebSocket | `okay.http.Ws.link(socket)` (okay-http) |
-| streamable HTTP | `okay.http.McpHttp.link(http, url)`, and `McpHttp.route(serving)` to serve (okay-http) |
+| streamable HTTP | `okay.http.McpHttp.link(http, url)`; `McpHttp.route(serving)` to serve, `McpHttp.routed(serving)` when the server also pushes (okay-http; the push half needs okay-jetty) |
 
 The last two live in okay-http because transports depend on the
 protocol, not the other way round. A `Link` is `send(line)` plus
@@ -135,10 +135,14 @@ initialize is carried on every later request; an unknown one answers
 404, which the client turns into an error for the waiting call rather
 than a wait.
 
-Serving over HTTP is POST-only: holding a stream open needs a
-streaming response, which okay-http's JVM server does not have (it
-drains the body before sending the head), so `route` answers 405 to
-GET. A server that must PUSH is one for stdio or WebSocket today.
+Serving over HTTP includes the push half: a GET with the session's
+id opens that session's event stream, and `McpHttp.routed(serving)`
+hands back the same `Pushes` handle the stdio duplex server gives —
+`pushes.resourceUpdated(uri)` reaches every subscribed session's
+`notifications` channel over the wire. It needs a server that writes
+a body incrementally: okay-jetty does (when the response says
+`text/event-stream`); okay-http's own JDK server buffers, and there a
+GET stream delivers nothing.
 
 ## Not here
 elicitation (the server asking the human — it needs a UI contract

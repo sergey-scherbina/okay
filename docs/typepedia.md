@@ -225,12 +225,22 @@ same material with the measurements attached.
   with no cast, because they are provably the same type.
 - **`Chunk[A]`**/**`Chunks[A]`** — array batches / a producer of
   them; generators fill chunks in while-loops (no tree node per
-  element); transformers are chunk-in, chunk-out; `mergeChunks` rides
-  Channel. **`Pipeline[A]`** — the reified operator tree with
+  element); transformers are chunk-in, chunk-out; `a merge b` rides
+  Channel (bounded at 64 by default — an endless source merged
+  unbounded is the heap). **`Pipeline[A]`** — the reified operator tree with
   `optimize` (fusion, pushdown) and `chunks` (compile).
 - **`Take % V`** / **`pipe`** — the consumer dual of Writer and the
   coroutine pairing. **`Stage[I, O, A]`** — a transducer as a program;
-  `through` composes demand-driven; `Stage.id/chunked/unchunk`.
+  `through` composes demand-driven; `Stage.id/chunked/unchunk`;
+  `Stage.transduce(z)(step, end)` — the state-step-flush skeleton
+  every stage here shares (the two functions share ONE parameter list
+  so the types infer; a third list commits `I` to `Any` before the
+  lambda is typed); `Stage.mapAccumulate` — the 1:1 special case.
+  **`Source[W]`** = `Unit ! Writer % W + Async` — the asynchronous
+  stream as a program; `Source(a, b, c)`, `Source.of(stream)`,
+  `Writer.of` (any stream, effects kept), `Writer.map` (re-tell at
+  another type), `a merge b` (readiness, union element type, bounded
+  default).
   Effectful rows compose too: the `throughG`/`throughProducerG`
   overloads forward arbitrary G ops from either side in the order the
   pull crosses them (a pure stage joins the row by `!.widen` and a
