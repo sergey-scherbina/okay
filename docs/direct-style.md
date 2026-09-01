@@ -342,6 +342,25 @@ block's monad (`Option[Nothing]`), and every guess is verified with
 | deep bind chains (10⁴+) | any layer — but over `A ! F`, not a strict monad (the stack rule) |
 | two different monads in one computation | not a direct-style problem: effect rows (`F + G`), then one block over the row |
 
+## Composing with capabilities
+
+The block composes with the [capability vocabulary](capabilities.md)
+— the door outside, the block inside (E20 in
+specs/context-functions.md, executable as `TestDirectDoors`):
+
+```scala
+def told: Env ?=> Int ! (Writer % String) = direct {
+  Writer(s"hello ${wire[Env].user}")
+  wire[Env].uid
+}
+provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+```
+
+A `direct` block is itself a context function (`DirectCtx[F] ?=> A`
+— Layer 3's own gate), so it nests under any environment layer by
+nearest-wins, and `wire` resolves inside it; the DI guarantee — a
+missing capability does not compile — survives the block.
+
 ## The graveyard, kept on purpose
 
 Every alternative below was implemented or attempted, and the

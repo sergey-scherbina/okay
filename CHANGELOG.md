@@ -1,5 +1,17 @@
 # Changelog
 
+## ctx-e20-pattern — the door outside, the direct block inside
+Completed: 2026-09-01
+The two arcs of the day meet: TestDirectDoors (core, 3 tests) lands
+the E20 pattern as executable documentation — `def told: Env ?=> Int
+! (Writer % String) = direct { Writer(s"hello ${wire[Env].user}");
+wire[Env].uid }` with provide/providing at the edge. A direct block
+is itself a context function (DirectCtx[F] ?=> A), so it nests under
+the environment layer by nearest-wins and wire resolves inside;
+three layers peeled by three machines (compiler / macro / handlers),
+none knowing of the others. Sections added to capabilities.md and
+direct-style.md, cross-linked.
+
 ## docs-direct-style — the direct-style documentation, user page and theory chapter
 Completed: 2026-09-01
 Landed as ea0df1b. docs/direct-style.md: the four layers (reflection,
