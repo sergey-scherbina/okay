@@ -1,5 +1,11 @@
 # Changelog
 
+## codec-native — the P5 chain on Scala Native
+Completed: 2026-09-01
+okay-lex/parse/codec gain Native legs (an omission from P5, never a
+decision); 57 tests pass as native binaries first try; okay-ui's Form
+rides to Native. Full matrix: 927 tests.
+
 ## ui-scenarios — Dialog: a wizard is a program
 Completed: 2026-09-01
 Show answers an Event (a GADT); scenarios run standalone over any
