@@ -1,5 +1,21 @@
 # Changelog
 
+
+## cluster-nio — measured, the answer was neither guess, and the code stays
+Completed: 2026-09-01
+
+Four lanes, then a fifth when the first attribution turned out to be
+confounded. The shipped transport is 37.9ms per 100 chunks; bytes with
+a single flush 24.4; NIO 24.7; the codec alone 25.9. A byte rewrite
+with the flush-per-send streaming requires measured 38.4 — equal to
+what shipped — so the 1.55x was the flush policy, not the text
+machinery, and the rewrite was REVERTED: equal performance, more code.
+What stands: Loom parking is free (NIO vs a parked read is a wash), the
+codec IS the transport (CBOR is the lever), and a totality hole found
+by a torn frame — the "total" JSON parser threw on "-", "1e" and three
+more — is fixed and pinned. `Lines.stage` (bytes→UTF-8 lines) moved to
+the core; okay-http delegates to it.
+
 ## ui-screens — screens are codata, a wizard is a screen you push
 Completed: 2026-09-01
 Screen (view + step), Nav stack (Stay/Push/Pop/To; empty = end),

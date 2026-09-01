@@ -601,7 +601,7 @@ lazy val root = (project in file("."))
 
 /** comparison benchmarks against the ecosystem: the heavy dependencies live here */
 lazy val compare = (project in file("compare"))
-  .dependsOn(okay.jvm, okayLlm.jvm, okayRag.jvm, okayAgent.jvm)
+  .dependsOn(okay.jvm, okayLlm.jvm, okayRag.jvm, okayAgent.jvm, okayHttp.jvm, okayCluster.jvm)
   .enablePlugins(JmhPlugin)
   .settings(
     name := "okay-compare",

@@ -49,7 +49,7 @@ final case class Bpe(ranks: Map[(String, String), Int]) extends Scan[String, Bpe
     if word.length < 2 then
       if word.isEmpty then Vector.empty else Vector(word)
     else
-      var syms = new Array[String](word.length)
+      val syms = new Array[String](word.length)
       var k = 0
       while k < word.length do
         syms(k) = word.charAt(k).toString

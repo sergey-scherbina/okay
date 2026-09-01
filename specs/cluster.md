@@ -12,6 +12,28 @@ assembly plan, detailed at implementation time.
   Channel whose other end is on another node — same interface, the
   transport underneath.
 - Transport: okay-codec (CBOR for the wire) + the cross-platform
+  The transport plumbing was MEASURED on 2026-09-01
+  (`ClusterTransportBenchmark`, per round of 100 chunks of 64 Longs
+  over localhost) and the honest outcome is that it stays as it is.
+  Four lanes: the shipped BufferedReader/PrintWriter transport 37.9ms;
+  blocking sockets with byte reads and a SINGLE flush 24.4; NIO 24.7;
+  the JSON codec alone, no wire, 25.9. A byte rewrite of Remote with
+  the flush-per-send that streaming requires measured 38.4 — equal to
+  the shipped code — so the 1.55x in the middle lane was the FLUSH
+  POLICY (one packet per chunk against one big write), not the text
+  machinery, and the rewrite was reverted rather than kept: equal
+  performance, more code. Two findings stand. Loom parking is free —
+  NIO against a parked blocking read is a wash. And the codec IS the
+  transport within noise (25.9 of 37.9), which makes the CBOR dialect
+  this spec already plans the lever, not the socket API. One question
+  stays open, with its lane already written
+  (`blockingBytesFlushed`): whether NIO's completion handlers beat
+  parked reads specifically on per-line-flushed small-packet streams —
+  the one clean NIO run (24.7 with per-line sends) hints they might,
+  and a quiet machine settles it in one run.
+  (Found on the way, by a torn frame: the "total" JSON parser threw
+  NumberFormatException on five number-shaped damages — "-", "[1,2,-",
+  "-e5", "1e". Fixed in okay-codec, pinned by TotalityProbe.)
   Async (Await-based I/O) — which is also how the one-source
   client/server policy is fulfilled: a JS client and a JVM server run
   the same code and speak the same codec.

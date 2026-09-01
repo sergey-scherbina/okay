@@ -85,7 +85,16 @@ object Json {
     case Cst.Node(_, kids) => kids.flatMap(values)
     case Cst.Leaf(t) => t.kind match
       case K.Str => Vector(JStr(unquote(t.lexeme)))
-      case K.Num => Vector(JNum(t.lexeme.toDouble))
+      case K.Num =>
+        // the lexer's Num class is a superset of Java's parseable
+        // doubles — a torn frame ends in "-" or "1e", and the lexer
+        // rightly calls that a number-shaped lexeme. Totality is THIS
+        // layer's promise too: damage becomes a JErr, never a throw.
+        // Found by an NIO transport benchmark whose last line was cut
+        // mid-number; five inputs crashed the "total" parser.
+        t.lexeme.toDoubleOption match
+          case Some(d) => Vector(JNum(d))
+          case None => Vector(JErr(s"malformed number '${t.lexeme}'"))
       case K.Bool => Vector(JBool(t.lexeme == "true"))
       case K.Null => Vector(JNull)
       case _ => Vector.empty

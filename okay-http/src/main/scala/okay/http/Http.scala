@@ -146,28 +146,9 @@ object Http {
     okay.through[Chunk[Byte], String, Async, Unit, Unit](r.body)(
       !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](framing))
 
-  /** bytes in, lines out — the framer, in the shape `Sse.events` uses */
-  def framing: Stage[Chunk[Byte], String, Unit] =
-    def spill(buf: Array[Byte]): Stage[Chunk[Byte], String, Array[Byte]] =
-      var i = 0
-      while i < buf.length && buf(i) != '\n'.toByte do i += 1
-      if i >= buf.length then i = -1
-      if i < 0 then pure(buf)
-      else
-        val line = new String(buf, 0, if i > 0 && buf(i - 1) == '\r' then i - 1 else i, UTF_8)
-        Stage.tell[Chunk[Byte], String](line)
-          .flatMap(_ => spill(java.util.Arrays.copyOfRange(buf, i + 1, buf.length)))
-
-    val framed: Stage[Chunk[Byte], String, Array[Byte]] =
-      Stage.transduce(Array.empty[Byte])(
-        (buf, c) => spill(buf ++ c.toArray),
-        // a body that does not end in a newline still has a last line
-        rest =>
-          if rest.isEmpty then pure(rest)
-          else Stage.tell[Chunk[Byte], String](new String(rest, UTF_8))
-            .map(_ => Array.empty[Byte]))
-
-    framed.map(_ => ())
+  /** bytes in, lines out — `okay.Lines.stage`, which moved to the core
+   * when okay-cluster needed it without this module */
+  def framing: Stage[Chunk[Byte], String, Unit] = Lines.stage
 
   /**
    * The body, decoded by its schema.
