@@ -40,6 +40,9 @@
       idempotency (WithKey at batch granularity); row-DML refused
 - [ ] lake-read-duckdb — Parquet/Iceberg reads through the JDBC
       seam (DuckDB embedded); verify + constant-memory asserted
+- [ ] lake-delta — Delta specifics: DuckDB delta extension via the
+      JDBC seam (read), Delta Kernel interop (read/write, no
+      Spark), spark-bridge writes already available (specs/data.md)
 - [ ] rag-pgvector — VectorStore over specs/jdbc.md against
       Postgres/pgvector; agrees with the memory engine on a fixture
 - [ ] kafka-eos — producer idempotence/transactions on the okay-kafka
