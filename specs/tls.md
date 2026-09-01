@@ -50,8 +50,18 @@ transport gets TLS from one seam and adds nothing of its own.
 - [ ] (pg lane) the pg driver speaks sslmode through this seam (postgres's
       STARTTLS-style SSLRequest dance lives in the pg driver; the
       session it hands over is this seam's)
-- [ ] (persist-wire lane) persist-wire over TLS passes the same acceptance suite as
-      plaintext (the two-driver move)
+- [x] (persist-wire lane) persist-wire over TLS passes the same acceptance suite as
+      plaintext (persist-wire-tls, landed): the wire's transport is
+      INJECTABLE — `Wire.Server` takes a `ServerSocket` (an
+      SSLServerSocket from `Tls.serverSocket`), `Wire.Remote.connect`
+      takes a `Socket => Socket` wrap (the `Tls.client` wrap) — so
+      the handshake, capability grant, frames and refusals are
+      byte-for-byte the plaintext behaviour with every byte encrypted
+      underneath, and okay-persist keeps its core-only compile graph
+      (okay-tls is TEST scope). TestWireTls: encrypted grant, append/
+      read round-trip, refuse-by-name, and a PLAINTEXT client refused
+      by the TLS server — live over an openssl localhost identity,
+      skips where openssl is absent
 - [x] a private key configured inline (not a Secret ref) is refused
       at config decode (the seam refuses a ref that smuggles PEM,
       client and server)
@@ -100,6 +110,19 @@ tunnels and refuses plaintext; disable is the named decision.
 Private keys travel as Secret refs — PEM smuggled into the ref is
 refused at the seam, both halves. The server half terminates TLS
 from a PEM cert + PKCS#8 key ref. mTLS fields ride in TlsConfig
-from day one, so adding it changes no signatures. The pg and
-persist-wire integration boxes stay open for their lanes; the seam
-is ready for both.
+from day one, so adding it changes no signatures.
+
+persist-wire over TLS landed (persist-wire-tls, 2026-09-01): the
+first consumer of the seam. The wire's transport became INJECTABLE
+rather than TLS-aware — `Wire.Server` accepts a `ServerSocket`
+(pass the SSLServerSocket from `Tls.serverSocket`), and
+`Wire.Remote.connect` accepts a `Socket => Socket` wrap (pass the
+`Tls.client` wrap, whose contract is exactly "wrap the connected
+socket BEFORE any protocol byte flows"). So okay-persist gains
+encryption without a compile dependency on okay-tls — it is TEST
+scope only, and the SSLSocket is built by the caller. The acceptance
+is that NOTHING in the wire changed: the same handshake, grant,
+frames and refusals run byte-for-byte over the encrypted transport
+(TestWireTls), plus a plaintext client is refused by the TLS server.
+Still open: the pg lane's sslmode dance (SSLRequest preamble then
+the same seam), for that lane.

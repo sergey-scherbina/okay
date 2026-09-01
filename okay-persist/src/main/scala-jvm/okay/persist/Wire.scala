@@ -57,11 +57,17 @@ object Wire:
   final class Server(store: Store, auth: String => Option[Set[String]],
                      requested: Int = 0,
                      bind: java.net.InetAddress = java.net.InetAddress.getLoopbackAddress,
-                     repl: String => Option[Replicated] = _ => None):
-    // loopback by DEFAULT: this surface is plaintext until wire-tls
-    // lands, and a plaintext log does not volunteer itself to the
-    // network — an operator opens it up deliberately
-    private val listener = ServerSocket(requested, 50, bind)
+                     repl: String => Option[Replicated] = _ => None,
+                     socket: Option[ServerSocket] = None):
+    // TLS rides the ONE transport seam (specs/tls.md, persist-wire
+    // lane): pass a `socket` built by `Tls.serverSocket` (an
+    // SSLServerSocket) and every byte below is encrypted — the accept
+    // loop and the frame code do not change, because encryption wraps
+    // the TRANSPORT, not the protocol. okay-persist itself stays
+    // dependency-free: the SSLServerSocket is built by the caller.
+    // Loopback by DEFAULT when plaintext: a plaintext log does not
+    // volunteer itself to the network — an operator opens it deliberately.
+    private val listener = socket.getOrElse(ServerSocket(requested, 50, bind))
     @volatile private var closed = false
 
     val port: Int = listener.getLocalPort
@@ -227,10 +233,17 @@ object Wire:
     def close(): Unit = sock.close()
 
   object Remote:
-    /** the handshake: refused tokens and versions throw by name */
-    def connect(host: String, port: Int, token: String): Remote =
-      val sock = Socket(host, port)
-      sock.setTcpNoDelay(true)
+    /** the handshake: refused tokens and versions throw by name.
+     * `wrap` is the TLS integration point (specs/tls.md): pass
+     * `s => Tls.client(s, host, cfg).fold(throw …, identity)` to
+     * encrypt the transport before any protocol byte flows — the
+     * seam's own contract ("wrap an already-connected client socket
+     * BEFORE any protocol bytes"). Default identity = plaintext. */
+    def connect(host: String, port: Int, token: String,
+                wrap: Socket => Socket = identity): Remote =
+      val raw = Socket(host, port)
+      raw.setTcpNoDelay(true)
+      val sock = wrap(raw)   // e.g. the SSLSocket the TLS handshake produced
       val in = DataInputStream(BufferedInputStream(sock.getInputStream))
       val out = DataOutputStream(BufferedOutputStream(sock.getOutputStream))
       writeFrame[Req](out, Req.Hello(Version, token))

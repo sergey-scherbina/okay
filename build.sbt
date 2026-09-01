@@ -449,6 +449,11 @@ lazy val okayPersist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   // the core for the streaming reads (Chunk ! Produce + Async, the
   // JdbcInterop shape); the codec for the typed Schema view
   .dependsOn(okay, okayCodec)
+  // okay-tls joins TEST scope only, for the persist-wire-over-TLS
+  // acceptance: the wire's transport is injectable, so the SSLSocket
+  // is built in the test and okay-persist keeps its core-only compile
+  // graph (rests on okay + codec, nothing that cycles through http)
+  .jvmConfigure(_.dependsOn(okayTls % Test))
   .settings(
     name := "okay-persist",
     libraryDependencies ++= Seq(

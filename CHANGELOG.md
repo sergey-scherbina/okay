@@ -1,5 +1,25 @@
 # Changelog
 
+## persist-wire-tls — the wire runs encrypted, the first consumer of the TLS seam
+Completed: 2026-09-01
+specs/tls.md's persist-wire box: persist-wire over TLS passes the same
+acceptance suite as plaintext. The move keeps okay-persist dependency-
+free by making the wire's transport INJECTABLE rather than TLS-aware:
+`Wire.Server` gained a `socket: Option[ServerSocket]` (pass the
+SSLServerSocket from `Tls.serverSocket`) and `Wire.Remote.connect`
+gained a `wrap: Socket => Socket` (pass the `Tls.client` wrap, whose
+contract is exactly "wrap the connected socket before any protocol
+byte"). Encryption wraps the TRANSPORT, so the handshake, capability
+grant, frames and refusals are byte-for-byte the plaintext behaviour —
+the acceptance is what does NOT change. okay-tls joins okay-persist in
+TEST scope only; the SSLSocket is built in the test, so the core-only
+compile graph (okay + codec) is untouched. TestWireTls (live over an
+openssl localhost identity, skips where openssl is absent): the
+encrypted grant, an append/read round-trip, refuse-by-name, and — the
+proof it is REQUIRED not optional — a plaintext client refused by the
+TLS server. The plaintext TestWire/TestWireRepl (12) unchanged and
+green. Still open for the pg lane: the sslmode SSLRequest dance.
+
 ## docs-direct-style — the direct-style documentation, user page and theory chapter
 Completed: 2026-09-01
 Landed as ea0df1b. docs/direct-style.md: the four layers (reflection,
