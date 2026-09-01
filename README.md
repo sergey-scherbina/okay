@@ -225,6 +225,10 @@ module with its own page under docs/modules:
   terminal, under React, on a test host; forms derived from the same
   `Schema` that decodes them — which is what lets an MCP server ask
   the human (elicitation) and get a typed answer.
+- **security** (`okay-security`) — authorization once: claims as
+  values, JWT over a crypto seam, policies as an algebra, protection
+  as a route wrapper the type system enforces, OAuth2 client flows —
+  zero dependencies, the JDK carries the primitives.
 - **wires** — REST and WebSocket as programs (`okay-http`), served by
   the JDK, Jetty or Netty behind one seam (`okay-jetty`,
   `okay-netty`); the distributed runtime (`okay-cluster`).

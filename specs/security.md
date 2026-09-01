@@ -100,32 +100,32 @@ object OAuth2:                           // the client flows, over trait Http
 ```
 
 ## Behavior (stage 0)
-- [ ] a JWT round-trips: sign with HS256 and with RS256, verify with
+- [x] a JWT round-trips: sign with HS256 and with RS256, verify with
       the right key; a TAMPERED payload, a wrong key, a wrong
       audience, an expired token and a not-yet-valid token are each a
       `No` with its own reason — never a throw
-- [ ] clock skew: a token expiring "just now" verifies within the
+- [x] clock skew: a token expiring "just now" verifies within the
       skew window and not beyond it
-- [ ] `alg: none` and an alg/key MISMATCH (an HS256 token against an
+- [x] `alg: none` and an alg/key MISMATCH (an HS256 token against an
       RSA key — the classic confusion attack) are refused
-- [ ] JWKS: a real JWKS JSON (RSA n/e, kid) parses into verifying
+- [x] JWKS: a real JWKS JSON (RSA n/e, kid) parses into verifying
       keys; verify picks the key by the token's kid
-- [ ] passwords: hash-then-verify; a wrong password refuses; two
+- [x] passwords: hash-then-verify; a wrong password refuses; two
       hashes of one password differ (salt); the stored form carries
       its own parameters so iterations can rise without migration
-- [ ] API keys: issue/verify round-trips; the digest alone (what a
+- [x] API keys: issue/verify round-trips; the digest alone (what a
       database would leak) does not verify
-- [ ] the policy algebra: scoped/role/allOf/anyOf compose; a Deny
+- [x] the policy algebra: scoped/role/allOf/anyOf compose; a Deny
       names its reason
-- [ ] `Secure.bearer` on a real okay-http server: no token is 401
+- [x] `Secure.bearer` on a real okay-http server: no token is 401
       with WWW-Authenticate, a bad token is 401, a good token without
       the scope is 403, a good token with it reaches the route and
       the route sees the Principal
-- [ ] OAuth2 code+PKCE against a STUB authorization server (an
+- [x] OAuth2 code+PKCE against a STUB authorization server (an
       okay-http route): the url carries the S256 challenge, exchange
       posts the verifier and yields tokens, refresh rotates, client
       credentials works; a token-endpoint error is a Left, not a throw
-- [ ] nothing in the module throws on hostile input: fuzzed garbage
+- [x] nothing in the module throws on hostile input: fuzzed garbage
       into Jwt.verify/Jwks.parse/Password.verify answers refusals
 
 ## Stages
@@ -166,3 +166,15 @@ object OAuth2:                           // the client flows, over trait Http
 - **HS256+RS256 first, ES256 staged** — ES256's JOSE signature format
   (raw R||S) differs from JCA's (DER) and that conversion deserves
   its own tested task rather than a footnote in this one.
+
+## Results (stage 0)
+Shipped 2026-09-01: the model, Jwt (HS256/RS256, kid lookup, skew),
+Jwks (RSA, damaged entries skipped), Password (pbkdf2 with parameters
+in the stored form), ApiKey, the policy algebra, Secure.bearer as a
+route wrapper, and the OAuth2 client flows with S256 PKCE — the stub
+AS in the tests CHECKS the S256 relation, so the challenge/verifier
+pair is proven, not asserted. 11 tests, hostile side throughout:
+tampered payloads, the HS256-against-RSA confusion (defused by the
+key deciding the algorithm), fuzzed garbage into every entry point.
+Zero dependencies; the JS leg compiles, verifies nothing until
+security-node.
