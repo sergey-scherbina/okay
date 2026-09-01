@@ -1,5 +1,25 @@
 # Changelog
 
+## security-crypto-split — the SCRAM primitives on a shared, dependency-free seam
+Completed: 2026-09-01
+okay-pg's SCRAM used a local `PgCrypto` given because okay-security's
+fuller Crypto seam drags okayHttp (the JWKS road) and cycles the build
+through this project's test edge. That local copy retires: a new
+crypto-only module `okay-crypto` (specs/sql.md) holds the four
+primitives SCRAM and password hashing need — hmacSha256, sha256,
+pbkdf2, randomBytes — as a per-platform given (JCA on the JVM,
+node:crypto on JS), resting on NOTHING, so any module can depend on it
+without the http drag. okay-pg now depends on okay-crypto: PgCrypto*
+deleted, `Scram` and `PgSql.connect` take `okay.crypto.Crypto`, the
+test given imports move to `okay.crypto.given`. The four primitives are
+pinned to published vectors (TestCrypto: NIST sha256("abc"), the RFC
+fox HMAC, the PBKDF2-HMAC-SHA256 password/salt/1 vector), and the live
+SCRAM battery (15 pg tests over the dockerized Postgres) proves the
+seam end to end. The signing surface (RSA/ECDSA, JWT key handles) stays
+in okay-security, which owns those heavier concerns — the split is by
+dependency weight, not a move of everything. Build: new lazy val
+okayCrypto (JVM+JS), okayPg depends on it, root aggregate updated.
+
 ## monadic-reflection — Filinski's reflect/reify over Cont: direct style for any Monad[F], no macros
 Completed: 2026-09-01
 Landed as 84d955f (spec d35c6a2, demo hotfix b725d19). object Monadic:

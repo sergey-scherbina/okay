@@ -2,6 +2,7 @@ package okay.pg
 
 import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Net, NetConn, Produce, async, effect, pure}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
+import okay.crypto.Crypto
 import java.nio.charset.StandardCharsets.UTF_8
 
 /**
@@ -304,7 +305,7 @@ object PgSql:
   /** startup + SCRAM-SHA-256 as one Async program over the Net
    * seam — the same connect on the JVM and on Node */
   def connect(host: String, port: Int, user: String, password: String,
-              database: String)(using Net, PgCrypto): PgSql ! Async =
+              database: String)(using Net, Crypto): PgSql ! Async =
     Net.connect(host, port).flatMap { conn =>
       val params = str("user") ++ str(user) ++ str("database") ++ str(database) ++
         Array(0.toByte)

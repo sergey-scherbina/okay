@@ -26,11 +26,6 @@
 
 ## okay-security (specs/security.md — staged, like persist)
 
-## okay-security (crypto seam)
-- [ ] security-crypto-split — a crypto-only module (hmac/sha256/
-      pbkdf2/random) that does NOT drag okayHttp, so okay-pg's SCRAM
-      can retire its local PgCrypto onto the shared seam
-      (specs/sql.md Results; the JWKS road is what cycles today)
 
 ## okay-codec
 

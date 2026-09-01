@@ -2,16 +2,19 @@ package okay.pg
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.Base64
+import okay.crypto.Crypto
 
 /**
  * SCRAM-SHA-256, the client side (RFC 5802 with the SHA-256
  * parameters of RFC 7677) — what a modern Postgres demands over
  * TCP. CROSS-PLATFORM since sql-pg-node: the three primitives it
  * needs (HMAC, SHA-256, PBKDF2) and the nonce randomness come from
- * the per-platform `PgCrypto` given (JCA on the JVM, node:crypto
- * on JS) — okay-security's fuller seam drags okayHttp and would
- * cycle the build; consolidation waits on security-crypto-split,
- * filed. Platform primitives, never our own (the tls.md rule).
+ * the per-platform `okay.crypto.Crypto` given (JCA on the JVM,
+ * node:crypto on JS) — the shared crypto-only seam. okay-security's
+ * fuller seam drags okayHttp and would cycle the build, which is why
+ * the primitives live in their own dependency-free module
+ * (security-crypto-split). Platform primitives, never our own (the
+ * tls.md rule).
  *
  * The dance: client-first (bare, with our nonce) → server-first
  * (its nonce appended to ours, the salt, the iteration count) →
@@ -35,7 +38,7 @@ object Scram:
   /** phase 1: holds our nonce; the only step is receiving the
    * server's challenge */
   final class ClientFirst private[Scram] (user: String, password: String,
-                                          nonce: String)(using c: PgCrypto):
+                                          nonce: String)(using c: Crypto):
     private[Scram] val bare = s"n=$user,r=$nonce"
 
     /** the SASLInitialResponse payload */
@@ -84,14 +87,14 @@ object Scram:
         "SCRAM server signature does not verify — not the server the password knows")
 
   /** the entry: phase 1, with our nonce */
-  def start(user: String, password: String, nonce: String)(using PgCrypto): ClientFirst =
+  def start(user: String, password: String, nonce: String)(using Crypto): ClientFirst =
     ClientFirst(user, password, nonce)
 
-  def start(user: String, password: String)(using PgCrypto): ClientFirst =
+  def start(user: String, password: String)(using Crypto): ClientFirst =
     start(user, password, nonce())
 
   /** a printable nonce from the platform's randomness */
-  def nonce()(using c: PgCrypto): String =
+  def nonce()(using c: Crypto): String =
     Base64.getEncoder.encodeToString(c.randomBytes(18))
 
   private val gs2Header = "n,,"
@@ -114,7 +117,7 @@ object Scram:
  * the phases existed, same bytes; a misordered call is a NAMED
  * refusal where it used to be an accidental NPE.
  */
-final class Scram(user: String, password: String, nonce: String)(using PgCrypto):
+final class Scram(user: String, password: String, nonce: String)(using Crypto):
   private var phase: AnyRef = Scram.start(user, password, nonce)
 
   /** the SASLInitialResponse payload */

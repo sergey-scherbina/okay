@@ -1,10 +1,11 @@
-package okay.pg
+package okay.crypto
 
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.*
 
-/** the node:crypto leg (the security-node move, told locally) */
-given PgCrypto = new PgCrypto:
+/** the node:crypto leg — reached through the global require, so it
+ * needs no module-kind ceremony (the okay-pg pattern, now shared) */
+given Crypto = new Crypto:
   private val crypto = js.Dynamic.global.require("crypto")
 
   private def bytesOf(d: js.Dynamic): Array[Byte] =

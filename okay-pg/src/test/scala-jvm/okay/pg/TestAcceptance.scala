@@ -2,6 +2,7 @@ package okay.pg
 
 import okay.{!, +, Async, Chunk, Handler, Produce}
 import okay.given
+import okay.crypto.given
 import okay.codec.Schema
 import okay.jdbc.JdbcSql
 import okay.sql.{Sql, Typed}

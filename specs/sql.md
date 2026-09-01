@@ -195,11 +195,21 @@ import — and the platforms it runs on.
       okay-pg cross-built JVM+JS; the message pump PULLS bytes
       through the Net seam as a sequential Async program, so the
       SAME driver runs over a blocking socket and over Node's
-      buffered net; SCRAM rides a per-platform PgCrypto given
+      buffered net; SCRAM rides a per-platform crypto given
       (JCA / node:crypto); TestPgNode: a Node process speaks SCRAM
       and portals to the dockerized Postgres and gets 42 back, with
       a wrong password refused by SCRAM itself — no JVM, no JDBC in
       the process
+- [x] the SCRAM primitives are the SHARED crypto seam, not a private
+      copy (security-crypto-split, landed): a crypto-only module
+      `okay-crypto` (hmac/sha256/pbkdf2/random, JCA and node:crypto
+      givens) resting on NOTHING — so okay-pg depends on it without
+      cycling through okay-security's okayHttp (the JWKS road). The
+      local PgCrypto retired; Scram/connect take `okay.crypto.Crypto`;
+      the four primitives are pinned to published vectors (TestCrypto)
+      and the live SCRAM handshake proves the seam end to end. The
+      signing surface (RSA/ECDSA, JWT key handles) stays in
+      okay-security, which owns those heavier concerns
 
 ## The typed region (sql-typestate)
 `transact` refuses a nested begin at RUNTIME (specs/jdbc.md names the
@@ -342,7 +352,14 @@ The seam and its first driver landed (sql-seam, 2026-09-01).
   pump restructure onto Net (the JVM live battery green THROUGH the
   new async-pull pump is itself the acceptance that nothing
   regressed), okay-pg cross-built, SCRAM as phase objects over the
-  per-platform PgCrypto. Every behavior box of this spec is now
+  per-platform crypto given. Every behavior box of this spec is now
   checked; the pg family is a connect call away from a Native
-  binary or a Node process too. Filed: security-crypto-split
-  (retire PgCrypto into a no-http-cycle crypto module).
+  binary or a Node process too.
+- **security-crypto-split landed** (same day): PgCrypto retired into
+  `okay-crypto`, a crypto-only module (hmac/sha256/pbkdf2/random,
+  JCA + node:crypto) that rests on nothing, so okay-pg stands on the
+  SHARED seam without cycling through okay-security's okayHttp. The
+  four primitives are pinned to published vectors (TestCrypto); the
+  live SCRAM battery proves the seam end to end. The signing surface
+  stays in okay-security. The crypto seam is now available to any
+  future consumer that needs primitives without the http drag.

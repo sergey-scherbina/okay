@@ -1,11 +1,13 @@
-package okay.pg
+package okay.crypto
 
 import javax.crypto.Mac
 import javax.crypto.spec.{PBEKeySpec, SecretKeySpec}
 import javax.crypto.SecretKeyFactory
 
-/** the JCA leg */
-given PgCrypto = new PgCrypto:
+/** the JCA leg — every primitive the JDK already ships, so the seam
+ * costs zero dependencies (the same primitives okay-security's Crypto
+ * uses; here without the signing surface that drags okayHttp) */
+given Crypto = new Crypto:
   def hmacSha256(key: Array[Byte], data: Array[Byte]): Array[Byte] =
     val m = Mac.getInstance("HmacSHA256")
     m.init(SecretKeySpec(key, "HmacSHA256"))

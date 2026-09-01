@@ -277,14 +277,36 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
  * (specs/sql.md). CROSS-BUILT since sql-pg-node: the pump pulls
  * bytes through the Net seam, SCRAM speaks okay-security's Crypto
  * seam, and a Node process reaches Postgres with no JVM present */
+/** the primitive crypto seam (security-crypto-split): hmac/sha256/
+ * pbkdf2/random on the platform's own crypto (JCA / node:crypto),
+ * resting on NOTHING — so a module that must not cycle through the
+ * security stack (okay-pg's SCRAM) stands on a shared seam instead of
+ * a private copy. The signing surface stays in okay-security. */
+lazy val okayCrypto = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-crypto"))
+  .settings(
+    name := "okay-crypto",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / (crossProjectPlatform.value match {
+        case JVMPlatform => "scala-jvm"
+        case _ => "scala-js"
+      }),
+  )
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 lazy val okayPg: sbtcrossproject.CrossProject = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-pg"))
   // NOT okaySecurity: its module drags okayHttp (JWKS), which cycles
-  // back through mcp/agent/rag to this project's test edge — so the
-  // three SCRAM primitives ride a local per-platform given until a
-  // security-crypto-split module exists (filed)
-  .dependsOn(okay, okaySql)
+  // back through mcp/agent/rag to this project's test edge — so SCRAM's
+  // primitives ride okay-crypto, the shared crypto-only seam that rests
+  // on nothing (security-crypto-split, landed)
+  .dependsOn(okay, okaySql, okayCrypto)
   .settings(
     name := "okay-pg",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -971,6 +993,7 @@ lazy val root = (project in file("."))
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
     okaySql.jvm, okaySql.js, okaySql.native, okayPg.jvm, okayPg.js,
+    okayCrypto.jvm, okayCrypto.js,
     okayCache.jvm, okayCache.js, okayCache.native,
     okayDocs.jvm, okayDocs.js, okayDocs.native, okayDocsMongo,
     okayConf.jvm, okayConf.js, okayConf.native,

@@ -1,6 +1,7 @@
 package okay.pg
 
 import java.nio.charset.StandardCharsets.UTF_8
+import okay.crypto.given
 
 /**
  * SCRAM against the RFC 7677 test vector (user "user", password

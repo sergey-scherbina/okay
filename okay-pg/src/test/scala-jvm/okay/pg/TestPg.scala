@@ -2,6 +2,7 @@ package okay.pg
 
 import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Throws, effect}
 import okay.given
+import okay.crypto.given
 import okay.codec.Schema
 import okay.sql.{Granted, Isolation, Sql, SqlValue, Typed}
 
