@@ -22,6 +22,7 @@
             <option value="$PROJECT_DIR$/okay-codec" />
             <option value="$PROJECT_DIR$/okay-codec/.js" />
             <option value="$PROJECT_DIR$/okay-codec/.jvm" />
+            <option value="$PROJECT_DIR$/okay-codec/.native" />
             <option value="$PROJECT_DIR$/okay-demo" />
             <option value="$PROJECT_DIR$/okay-flink" />
             <option value="$PROJECT_DIR$/okay-fs2" />
@@ -36,6 +37,7 @@
             <option value="$PROJECT_DIR$/okay-lex" />
             <option value="$PROJECT_DIR$/okay-lex/.js" />
             <option value="$PROJECT_DIR$/okay-lex/.jvm" />
+            <option value="$PROJECT_DIR$/okay-lex/.native" />
             <option value="$PROJECT_DIR$/okay-llm" />
             <option value="$PROJECT_DIR$/okay-llm/.js" />
             <option value="$PROJECT_DIR$/okay-llm/.jvm" />
@@ -46,10 +48,19 @@
             <option value="$PROJECT_DIR$/okay-parse" />
             <option value="$PROJECT_DIR$/okay-parse/.js" />
             <option value="$PROJECT_DIR$/okay-parse/.jvm" />
+            <option value="$PROJECT_DIR$/okay-parse/.native" />
+            <option value="$PROJECT_DIR$/okay-persist" />
+            <option value="$PROJECT_DIR$/okay-persist/.js" />
+            <option value="$PROJECT_DIR$/okay-persist/.jvm" />
+            <option value="$PROJECT_DIR$/okay-persist/.native" />
             <option value="$PROJECT_DIR$/okay-rag" />
             <option value="$PROJECT_DIR$/okay-rag/.js" />
             <option value="$PROJECT_DIR$/okay-rag/.jvm" />
             <option value="$PROJECT_DIR$/okay-spark" />
+            <option value="$PROJECT_DIR$/okay-ui" />
+            <option value="$PROJECT_DIR$/okay-ui/.js" />
+            <option value="$PROJECT_DIR$/okay-ui/.jvm" />
+            <option value="$PROJECT_DIR$/okay-ui/.native" />
             <option value="$PROJECT_DIR$/okay-zio" />
             <option value="$PROJECT_DIR$/project" />
           </set>
