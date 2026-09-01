@@ -137,16 +137,19 @@ class TestHttp extends munit.FunSuite {
     assertEquals(attempts, 2)   // one failure, one clean pass
   }
 
-  test("a body abandoned unread is closed, not leaked") {
+  test("a body can be let go UNREAD — discard, not drain") {
     // the JDK documents that an unconsumed ofInputStream body can keep
-    // an HttpClient from shutting down; draining is the caller's, and
-    // this is the shape that does it
-    serving(_ => Server.text(200, "x" * 100_000)) { port =>
-      val status = get(port, "/big") { r =>
-        // read nothing, then drain deliberately
-        Http.bytes(r).map(_ => r.status)
-      }
-      assertEquals(status, 200)
+    // an HttpClient from shutting down, and draining a large body only
+    // to throw it away is the wrong fix. `release` closes it.
+    //
+    // Twenty of them, unread, and then an ordinary request: if
+    // abandoning wedged anything, the last one would not answer.
+    serving(_ => Server.text(200, "x" * 200_000)) { port =>
+      for _ <- 1 to 20 do
+        val status = get(port, "/big")(r => Http.discard(r).map(_ => r.status))
+        assertEquals(status, 200)
+
+      assertEquals(get(port, "/big")(Http.text).length, 200_000)
     }
   }
 

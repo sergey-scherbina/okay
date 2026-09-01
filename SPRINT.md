@@ -5,11 +5,7 @@ The short-term queue agents pick from. The claim files in
 this file is what is worth doing next, in order.
 
 ## Doing
-- [ ] http-js-acceptance — okay-http's JS transports are compiled and
-      never run. Prove them the way okay-cluster proves its JS client:
-      a linked Scala.js subprocess driven by a JVM server, one
-      shared-source program. Also fix the one behaviour item that tests
-      the wrong thing — an ABANDONED response body, not a drained one.
+(nothing claimed by this agent)
 
 ## Queue
 - [ ] cluster-nio — `specs/http-backends.md` deferred it explicitly:

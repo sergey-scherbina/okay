@@ -51,7 +51,8 @@ final case class Request(method: Method, url: String,
   * been read yet. Nothing is buffered until someone consumes it. */
 final case class Response(status: Int,
                           headers: Seq[(String, String)],
-                          body: Source[Chunk[Byte]])
+                          body: Source[Chunk[Byte]],
+                          release: Unit ! Async = pure(()))
 
 /** The seam. One method, like `llm.Transport` — but with the verb, the
   * status and the headers that Transport could not carry. */
@@ -65,6 +66,7 @@ def text(r: Response): String ! Async                  // drain, UTF-8
 def lines(r: Response): Source[String]                 // streamed
 def json[A](r: Response)(using Schema[A]): Either[String, A] ! Async
 def sse(r: Response): Source[String]                   // lines through llm.Sse.events
+def discard(r: Response): Unit ! Async                 // let a body go unread
 def framing: Stage[Chunk[Byte], String, Unit]          // the framer itself, reusable
 def one(bs: Array[Byte]): Source[Chunk[Byte]]          // a body already in hand
 
@@ -186,13 +188,22 @@ than growing without limit.
       arrive. What is shown is weaker — a `Text` then a `Close` both come
       back, in order. The stronger claim needs a server that keeps
       sending after receiving Close, which `WsEcho` does not do
-- [ ] a JVM server driven by a JS client, one shared-source program —
-      the acceptance shape `cluster.md` established, with its linked
-      Scala.js subprocess. Not built: it is a build-level fixture, not a
-      module concern, and it is the honest next step for this module
-- [ ] an ABANDONED body is cancelled. The drain path is tested; walking
-      away from a body without reading it is not, and the JDK documents
-      that doing so can block an orderly `HttpClient` shutdown
+- [x] a JVM server driven by a JS client, one shared-source program.
+      `Acceptance.check` is that program — the schema, the routes, the
+      session and the expectations all shared — and both ends run it:
+      the JVM against its own transports as a control, and a linked
+      Scala.js client over `fetch` and the global `WebSocket` as the
+      acceptance. It lives in okay-jetty because that is the module
+      which can serve both halves. Verified to be able to FAIL:
+      mistyping one field name in the JS transport turns the run red
+      with `undefined cannot be cast to java.lang.Integer`, which is
+      exactly the failure `js.Dynamic` is worst at and exactly why this
+      run had to exist
+- [x] a body can be let go UNREAD. `Response` carries a `release`, and
+      `Http.discard` is it — draining a large body only to throw it
+      away is the wrong fix, and the JDK documents that leaving one
+      open can block an orderly `HttpClient` shutdown. Twenty abandoned
+      200KB bodies followed by an ordinary request, which answers
 
 ## Decisions
 - **A trait, not an effect signature** — chosen because the house rule

@@ -415,6 +415,21 @@ lazy val okayJetty = project
   .dependsOn(okayHttp.jvm)
   .settings(
     name := "okay-jetty",
+    // the acceptance run: okay-http's JS transports, linked as a Node
+    // program, driven against a Jetty server that serves both halves.
+    // Hung off Test/compile rather than Test/test for the reason
+    // okay-cluster records: `test` is an InputTask in sbt 2 and a Task
+    // in sbt 1, while `compile` is a plain TaskKey in both.
+    Test / javaOptions += {
+      // okay-jetty is a plain project, so the path is taken from the
+      // build root rather than from a crossProject's sibling directory
+      val client = (ThisBuild / baseDirectory).value / "okay-http" / ".js" /
+        "target" / ("scala-" + scalaVersion.value) / "okay-http-fastopt" / "main.js"
+      s"-Dokay.http.client.js=${client.getAbsolutePath}"
+    },
+    Test / fork := true,
+    Test / compile := (Test / compile)
+      .dependsOn(LocalProject("okayHttpJS") / Compile / fastLinkJS).value,
     libraryDependencies ++= Seq(
       "org.eclipse.jetty" % "jetty-client" % jettyVersion,
       "org.eclipse.jetty" % "jetty-server" % jettyVersion,
@@ -454,6 +469,13 @@ lazy val okayHttp = crossProject(JVMPlatform, JSPlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-js",
+    // the acceptance client is linked as a Node program and driven from
+    // okay-jetty's JVM suite. Unlike okay-cluster, this project KEEPS
+    // its own JS tests — the linked main and the test suite link
+    // separately, so both can exist.
+    scalaJSUseMainModuleInitializer := true,
+    Compile / mainClass := Some("okay.http.Client"),
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
   )
 
 lazy val okayMcp = crossProject(JVMPlatform, JSPlatform)

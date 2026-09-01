@@ -46,7 +46,8 @@ object Transports {
       }).map { res =>
         val hs = res.headers().map().asScala.toSeq
           .flatMap((k, vs) => vs.asScala.map(v => (k, v)))
-        Response(res.statusCode(), hs, ofInputStream(res.body()))
+        Response(res.statusCode(), hs, ofInputStream(res.body()),
+          async { res.body().close() })
       }
 
   /**

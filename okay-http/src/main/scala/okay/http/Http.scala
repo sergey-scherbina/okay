@@ -69,7 +69,19 @@ object Request:
  */
 final case class Response(status: Int,
                           headers: Seq[(String, String)],
-                          body: Source[Chunk[Byte]]):
+                          body: Source[Chunk[Byte]],
+                          /**
+                           * Let the body go WITHOUT reading it.
+                           *
+                           * A transport that holds an open stream needs
+                           * this: the JDK documents that an unconsumed
+                           * `ofInputStream` body can keep an
+                           * `HttpClient` from shutting down cleanly, and
+                           * draining a large body only to throw it away
+                           * is the wrong fix. The default is `pure(())`
+                           * for the transports that hold nothing.
+                           */
+                          release: Unit ! Async = pure(())):
   def header(name: String): Option[String] =
     val n = name.toLowerCase
     headers.collectFirst { case (k, v) if k.toLowerCase == n => v }
@@ -111,6 +123,9 @@ object Http {
         b ++= c.toArray; b
     Writer.fold[Chunk[Byte], scala.collection.mutable.ArrayBuilder[Byte], Unit, Async](r.body)
       .map((b, _) => scala.collection.immutable.ArraySeq.unsafeWrapArray(b.result()))
+
+  /** let a body go unread — the counterpart of draining it */
+  def discard(r: Response): Unit ! Async = r.release
 
   /** the whole body as text */
   def text(r: Response): String ! Async =
