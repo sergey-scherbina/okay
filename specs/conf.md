@@ -186,13 +186,13 @@ History is honest about compaction: the audit lives until
 still answers — the exact records compaction keeps.
 
 Stage-2 behavior:
-- [ ] three writes under one name: latest is the third, at(second's
+- [x] three writes under one name: latest is the third, at(second's
       offset) is the second (rollback is a read), history lists all
       three oldest-first with their offsets
-- [ ] two names on one topic do not bleed — keys filter
-- [ ] a damaged stored value decodes as a Left in place, the rest of
+- [x] two names on one topic do not bleed — keys filter
+- [x] a damaged stored value decodes as a Left in place, the rest of
       the history intact
-- [ ] after Topic.compact: latest and its offset unchanged, history
+- [x] after Topic.compact: latest and its offset unchanged, history
       shortened to what compaction keeps — stated, not hidden
 
 ## Module
@@ -223,7 +223,7 @@ BACKLOG); this spec is the contract it builds to.
       one error names the reference once
 - [x] `memory` serves tests; `Secret.toString` is the reference
       (asserted, since logs are where discipline fails)
-- [ ] (stage 2) a config topic: latest-by-key serves the current
+- [x] (stage 2) a config topic: latest-by-key serves the current
       config, an older offset serves the old one, and the write that
       changed it is in the log
 
