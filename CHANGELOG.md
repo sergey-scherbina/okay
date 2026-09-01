@@ -1,7 +1,7 @@
 # Changelog
 
 ## conf-impl — configuration as data, secrets as references
-Completed: 2026-09-01 (landed as edff795)
+Completed: 2026-09-01 (landed as 443c8a2 — the release rode a pull --rebase over the README push, so the changelog names the post-rebase hash)
 okay-conf cross-built (depends on okay-codec only): Secret whose
 toString IS the reference, Secrets env/file/memory/chain (the chain's
 one error is the specific one), Conf.read/load. The shared suite
