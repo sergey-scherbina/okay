@@ -417,9 +417,14 @@ at stage 0 and never rebind.
   — and encrypts via the one transport seam, specs/tls.md.
 - **Stage 3 — interop engines**: `Store` over Kafka via okay-kafka;
   JDBC-backed topic; segment offload to object storage.
-- **Stage 4 — elected leadership**: consensus, its own spec, its
-  own honest comparison (Raft vs delegating election to a
-  stage-3 engine that has it).
+- **Stage 4 — elected leadership**: consensus, its own spec —
+  specs/consensus.md (landed 2026-09-01): election reduced to a
+  fold of a totally-ordered CONTROL LOG (first-Take-wins, leases
+  for liveness, the operator record outranking automation), with
+  the log sourced from engines this stack already has — KafkaStore
+  first, a FileStore arbiter for dev, own Raft later as one more
+  engine under the unchanged machinery. Implementation filed as
+  persist-election.
 
 ## Behavior
 
