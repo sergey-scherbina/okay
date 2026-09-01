@@ -94,6 +94,24 @@ Behavior:
       Cont program whose state type changes S1 -> S2 (the Atkey
       instance, executed rather than exhibited)
 
+## phased3 (stage-phased3) — the three-phase sibling
+
+`Stage.phased` covers two phases; the http message shape
+(request-line -> headers -> body) wants three. Not a family of
+combinators: ONE more arity, because the consumer exists (http.md,
+http-message-phases) and because chaining two phased stages cannot
+express it — the middle phase's END is the third's typed start, and
+`body` is a step function, not a stage. Same guarantees: no phase
+enum, illegal states unrepresentable, ends honest in all three
+phases, the transitions run through PState. ADDITIVE per the
+adoption doctrine (specs/delimited-control.md): transduce stays,
+phased/phased3 are the extra door.
+
+- [ ] phased3 drives the http message shape (the consumer's test);
+      the two-phase law holds at each seam: switch outputs precede
+      the next phase's, the answer names the dying phase (three-way)
+- [ ] the wrong-phase step is a compile error at BOTH seams
+
 ## Out of scope
 - fan-in/fan-out topologies (Channel territory)
 - own buffering/backpressure (Channel territory; a Stage never queues)

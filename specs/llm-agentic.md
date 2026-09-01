@@ -360,6 +360,52 @@ arbitrary JSON in `input` — the same reason the request is BUILT from
 Json values. Both directions stay total: a truncated body yields the
 blocks that arrived.
 
+## Streaming validation that cuts generation (llm-streaming-cut)
+
+The open P9 item, given its mechanism: a VALIDATOR standing in the
+streaming row watches tokens as they arrive, and on a violation
+ABORTS TO A NAMED PROMPT installed over the generation — Delim
+(specs/delimited-control.md), doing the one thing specialised
+effects cannot: a non-local exit across the streaming boundary, with
+no Option threading on the stages in between and no poisoned partial
+output flowing further. The Scope precedent (okay-ui) applied to the
+model's own mouth. ADDITIVE per the adoption doctrine
+(specs/delimited-control.md): `Cut.guarded` wraps a streaming
+generation; the unguarded path is untouched and stays available.
+The abort itself is the doctrine's PRIMARY case — a cross-boundary
+exit has no handler equivalent.
+
+```scala
+// the shape, not the final word
+object Cut:
+  /** install the cut boundary over a streaming generation; the
+   * validator may abort to it with a NAMED violation */
+  def guarded[A](gen: Prompt[Violation | Done[A]] => A ! (Writer % Token + Delim + Async))
+  : Either[Violation, A] ! (Writer % Token + Async)
+final case class Violation(rule: String, at: Int, seen: String)
+```
+
+- the cut STOPS the pull: no further tokens are requested from the
+  provider after the abort (observable on a scripted stream)
+- the violation is a VALUE naming the rule, the position and what
+  was seen — the caller retries, reprompts, or surfaces it
+- a stream that passes flows through UNCHANGED — the guard costs a
+  prompt push (~ one operation, the measured Delim floor), not the
+  3.8x capture price, because a passing stream never captures
+- provider-side cleanliness stated: the http stream is released on
+  the abort (Response.release), not abandoned
+
+Behavior:
+- [ ] a scripted generation violating mid-stream: the validator
+      aborts, the answer is Left(Violation) naming rule/position,
+      and the provider stub records NO further token pulls
+- [ ] a passing generation is byte-identical to the unguarded run
+- [ ] two nested guards: the inner violation aborts to the INNER
+      prompt; the outer stream continues — multi-prompt earning
+      its keep
+- [ ] the live probe (TestLive pattern): a real streamed completion
+      cut by a length rule, the connection released
+
 ## Interop, not reimplementation
 
 The P3 doctrine applies verbatim: `okay-langchain4j` makes their

@@ -442,6 +442,24 @@ Behavior:
 - accessibility trees (the Host seam is where they would attach)
 - Windows terminals (raw mode is stty in v1)
 
+## nav-pop-to-screen (filed; the ui lane's to take)
+
+Scope proved the pattern for dialogs: a first-class typed prompt
+delimits a cancellable sub-flow, cancel exits to the NAMED boundary
+with a value, and nested scopes abort across their own boundary —
+which nested handlers cannot express, making this the adoption
+doctrine's PRIMARY case (specs/delimited-control.md). The same
+pattern one level up: a screen PUSHES a named boundary, and "pop to
+that screen with this answer" crosses however many screens are
+between — no Option threading through every screen's update.
+ADDITIVE: Nav's existing push/pop stays; the named boundary is the
+extra door.
+
+- [ ] pop-to-named crosses two intermediate screens, each untouched
+      by the exit passing through them
+- [ ] two named boundaries nest; the inner pop stops at the inner
+- [ ] a plain Nav program (no boundaries) runs exactly as before
+
 ## Decisions
 - **The primary seam hands over the WHOLE TREE (`Host`), patches are
   derived** — reversed from the first sketch by the React

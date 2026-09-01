@@ -265,6 +265,29 @@ vector (`dGhlIHNhbXBsZSBub25jZQ==` -> `s3pPLMBiTxaQ9kYGzzhZRbK+xOo=`)
 found it in one step, and that is the move to reach for first with any
 constant one is confident about.
 
+## http-message-phases (filed) — the parser's phases as types
+
+The HTTP/1.1 message is the one-way phase shape at its purest:
+request-line -> headers -> body, per message, never backwards — and
+the Nio parser holds it today as an enum whose every branch carries
+states illegal in its phase. `Stage.phased3`
+(specs/stage-pipeline.md) removes them structurally: the
+request-line's parse IS the headers phase's typed start (method,
+target, version), the headers' end (content-length/chunked) IS the
+body phase's typed start. Doctrine: ADDITIVE
+(specs/delimited-control.md, Adoption) — the refactor replaces an
+internal automaton without moving the module's API; typestate
+DOCTRINE home is specs/typestate.md (the wire lane's), this section
+owns only the http mechanics.
+
+- [ ] the phased3 parser agrees with the current one on the
+      existing corpus (same requests in, same Request values out)
+- [ ] the phase enum is GONE from the parser; the wrong-phase step
+      is a compile error (the suite's proof pattern from
+      stage-phased)
+- [ ] torn input dies with the phase named (the answer says which
+      phase saw the end)
+
 ## Out of scope
 - **Serving WebSocket.** The JDK has no server-side WebSocket API and
   `HttpServer` does not surrender its socket, so this would mean

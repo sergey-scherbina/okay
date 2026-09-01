@@ -96,6 +96,28 @@ bit separately.
       library change — which is the payoff of having delimited
       control as an effect at all
 
+## Adoption doctrine (operator, 2026-09-01)
+
+Stated once here for BOTH control facilities (PState links here from
+specs/typestate.md rather than restating):
+
+- **Additive by default.** PState and Delim enter a module as an
+  OPT-IN capability: a wrapper, an extra combinator, a typed
+  internal — never a rewrite of the working form. Everything must
+  keep working without them; a consumer that ignores the new door
+  loses nothing. (Shipped precedents: Dialog's Scope — "Delim in
+  Dialog, as an OPTION"; Stage.phased beside transduce, which
+  stays.)
+- **Primary where necessary.** Where the capability has NO
+  equivalent and its absence makes the design worse, it is the
+  mechanism, not an option. The known case: aborts and cancellable
+  scopes ACROSS boundaries — nested handlers provably cannot
+  express multi-prompt capture (this spec's first design note), so
+  cross-boundary cut/cancel IS Delim. For PState the bar is the
+  same and no current case clears it: typestate stays additive
+  (internals, extra combinators) until a protocol exists that
+  value-level guards cannot hold.
+
 ## Measured (2026-08-31, history.tsv)
 1000 emits, a generator defined in USER code over Delim (a prompt and
 a shift) against the native `Writer` it competes with:

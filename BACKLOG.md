@@ -51,12 +51,10 @@
 ## okay-cache (specs/cache.md)
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
-- [ ] pg-scram-typestate — the SCRAM handshake as PHASE OBJECTS
-      (ClientFirst -> AwaitingServerFinal -> Verified: each step
-      answers the next phase, an early verifyServerFinal does not
-      EXIST as a method — today it is ordering-by-convention over a
-      private var). Typestate-by-construction, cheaper than PState
-      here; pairs the sql-typestate wave (user ask, 2026-09-01)
+- [ ] pg-scram-typestate — the SCRAM handshake's order by type;
+      FORM decided in specs/typestate.md (the wire lane's doctrine
+      home): phase objects vs PState — internals only either way,
+      the public API unchanged (user ask, 2026-09-01)
 
 - [ ] sql-pg-copy — COPY through the wire: the bulk-load posture
       (pairs jdbc-bulk-load); the wire already frames it
@@ -106,6 +104,26 @@
       (Jetty's did not — found by mcp-push, fixed there)
 
 ## Elsewhere
+- [ ] llm-streaming-cut — the OPEN P9 item given its mechanism:
+      Cut.guarded installs a named prompt over a streamed
+      generation, a validator ABORTS to it (Delim; the doctrine's
+      PRIMARY case — cross-boundary exit has no handler
+      equivalent); ADDITIVE as an API: the unguarded path stays
+      (specs/llm-agentic.md, Streaming validation)
+- [ ] stage-phased3 — one more arity, because the consumer exists:
+      the http message shape; same typestate guarantees, PState
+      transitions; transduce stays (specs/stage-pipeline.md)
+- [ ] http-message-phases — the Nio parser's request-line ->
+      headers -> body as phased3, the phase enum gone structurally,
+      corpus-agreement asserted; internal refactor, module API
+      unmoved (specs/http.md)
+- [ ] nav-pop-to-screen — pop to a NAMED screen across untouched
+      intermediates, the Scope pattern one level up; the ui lane's
+      to take (specs/ui.md)
+- [ ] logic-named-cut — GATED on a search consumer
+      (specs/backtracking.md)
+- [ ] r-restarts — GATED twice: on r-subprocess and on a restart
+      consumer; the one resumable-capture case (specs/r.md)
 - [ ] obs-durable-overlay — the journal/trace identity join: a
       journaled operation's span carries the entry's identity so a
       replay lays over its original spans (needs a Durable consumer;

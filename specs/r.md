@@ -137,6 +137,17 @@ they are operations, not because the modules know each other.
 - [ ] (stage 1) the same test program passes over subprocess and
       Rserve engines unchanged (the two-driver acceptance move)
 
+## r-restarts (filed, GATED on r-subprocess)
+
+R's condition system natively has RESTARTS: a handler may not just
+refuse but RESUME the computation with a fix. A Delim-shaped
+condition API on our side (the condition is a shift; the handler's
+answer resumes the captured continuation) would mirror that honestly
+instead of flattening restarts into errors — the one place resumable
+capture (not just abort) earns Delim's full price. Gated twice: on
+r-subprocess landing (itself gated on an R interpreter being
+present), and on a consumer that actually uses a restart.
+
 ## Out of scope
 
 - embedding R in the JVM (JRI/Renjin/FastR) — rejected in the

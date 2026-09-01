@@ -59,6 +59,16 @@ of LogicT derives from ONE primitive over it.
 - msplit (like every handler here) walks eagerly when CALLED up to
   the first answer or F-operation — eliminators run, programs don't.
 
+## logic-named-cut (filed, GATED on a search consumer)
+
+`once`/`ifte` are the local cuts and cover the practical cases;
+Prolog's NON-LOCAL cut — committing through several choice points
+to a NAMED barrier — is abort-to-prompt, i.e. Delim over the Logic
+row (the doctrine's cross-boundary case). Deliberately gated: no
+search consumer needs it yet, and machinery for a need nobody named
+is this repo's named anti-pattern. The gate lifts when a
+planner/solver consumer exists (agent-search is the likely one).
+
 ## Out of scope
 - committed-choice/pruning beyond once (cut scopes), tabling,
   unification — a Prolog is a user of this, not this
