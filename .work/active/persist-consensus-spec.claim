@@ -1,0 +1,5 @@
+slug: persist-consensus (spec stage)
+agent: fable-persist (session 75625ecc)
+started: 2026-09-01
+scope: the stage-4 spec — specs/consensus.md: the honest comparison (own Raft vs delegation), the reduction of election to a totally-ordered CONTROL LOG (claims/leases as records, first-claim-wins by fold order), engines for that log (KafkaStore today, own Raft later, single arbiter for dev), clock caveats stated, operator override kept; behavior boxes for the future implementation; spec only
+files: specs/consensus.md (new), specs/persist.md (stage-4 pointer), BACKLOG (implementation slug)
