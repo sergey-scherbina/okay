@@ -198,7 +198,17 @@ object OAuth2:                           // the client flows, over trait Http
   while verifying where keys exist (`rsaPublicKey` answers None on
   JS). RS256 stays JVM with that reason; a JWK-native verify is the
   follow-up if JS ever needs it.
-- **3 — security-oidc**: id_token validation, discovery, nonce.
+- **3 — security-oidc**: SHIPPED. User login assembled from the
+  pieces already here: discovery is one GET, the login URL is
+  OAuth2's with `openid` and a nonce, the tokens come from
+  OAuth2.exchange, and id_token validation adds exactly four checks
+  to Jwt.verify's — issuer, audience-is-the-client, nonce, at_hash
+  (the left half of sha256(access_token), so a spliced access token
+  cannot ride a genuine id_token). The stub-IdP test walks the whole
+  login and then forges everything forgeable: wrong issuer, wrong
+  nonce, stolen access token, wrong audience, expired, and a
+  stranger's signature — each refused by ITS name, because an
+  id_token is exactly the input an attacker crafts.
 - Satellites when needed: argon2 (a real KDF, with a dependency),
   ES256 (the JOSE raw-vs-DER signature dance, its own tested task).
 

@@ -23,7 +23,9 @@ Node via node:crypto — HS256 JWTs, passwords, API keys, PKCE pinned
 to the RFC 7636 vector. RS256 stays JVM: platform key types are an
 opaque `Crypto.Handle`, built only where material exists.
 
-Staged next (BACKLOG): security-oidc, ES256 and an argon2 satellite.
+| `Oidc` | user login: discovery, the code+PKCE url with nonce, callback validating the id_token (signature via JWKS, issuer, audience, nonce, at_hash) into a Principal — every forgery refused by name |
+
+Staged next (BACKLOG): ES256 and an argon2 satellite.
 
 Not an authorization SERVER: this module verifies and obtains tokens;
 it does not issue codes to third parties. The stub AS in its tests is
