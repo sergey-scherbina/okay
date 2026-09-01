@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- [ ] docs-direct-style — docs/direct-style.md: the full direct-style
-  story (reflection foundation, the flat block, auto-coloring,
-  do-statements) with rationale, examples and the refuted
-  alternatives; linked from docs/README.md (user-directed 2026-09-01)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

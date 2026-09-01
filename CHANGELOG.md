@@ -1,5 +1,17 @@
 # Changelog
 
+## docs-direct-style — the direct-style documentation, user page and theory chapter
+Completed: 2026-09-01
+Landed as ea0df1b. docs/direct-style.md: the four layers (reflection,
+the direct block, auto-coloring, do-statements) with the rationale
+for every boundary, worked examples, the choosing-a-layer table and
+the nine-entry refuted-alternatives graveyard. docs/theory/08:
+Part IV of the textbook — the same story argued from the literature
+(Filinski 1994/1999, Kameyama-Hasegawa 2003, Flanagan et al. 1993,
+Brachthauser et al. 2020, Lindley-McBride-McLaughlin 2017,
+Sivaramakrishnan et al. 2021), every Okay claim with file:line.
+Linked from docs/README.md and the theory index (eight chapters now).
+
 ## direct-do-statements — bare statements run: do-notation for direct blocks
 Completed: 2026-09-01
 Landed as c0facb3. A bare statement whose type is the block's F or a
