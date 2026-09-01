@@ -369,6 +369,8 @@ object Form {
    * which attempt this is — the policy decides how forgiving the
    * wizard is */
   final case class InvalidSubmit(errors: Vector[(String, String)], attempt: Int)
+  /** the typed pair: an InvalidSubmit is answered with the forced A —
+   * declared per ask via the local instance below */
 
   private enum Outcome[A]:
     case Done(a: A)
@@ -402,14 +404,17 @@ object Form {
    */
   def askWith[A](message: String, checks: Check[A]*)
                 (policy: (Any, Vector[String]) => okay.Condition.Decision)
-                (using s: Schema[A]): Option[A] ! Dialog =
+                (using s: Schema[A], ct: scala.reflect.ClassTag[A]): Option[A] ! Dialog =
     import okay.Condition
+    // the answer type rides the instance; a policy Resume of the
+    // wrong type is BadResume at the point where it acts
+    given ans: Condition.Answers[InvalidSubmit, A] = Condition.Answers.of[InvalidSubmit, A]
     def verdict(errs: Vector[(String, String)], n: Int): Outcome[A] =
       Condition.run[Outcome[A], Pure](policy)(
         Condition.within[Outcome[A], Pure]("giveup")(
           Condition.within[Outcome[A], Pure]("reask")(
             !.widen[A, Condition.Op, Pure](
-              Condition.signal[A](InvalidSubmit(errs, n))).map(Outcome.Done(_))
+              Condition.raiseC(InvalidSubmit(errs, n))(using ans)).map(Outcome.Done(_))
           )(_ => Outcome.Retry()))(_ => Outcome.Gave())).runWith
 
     def loop(j: Json, errs: Vector[(String, String)], n: Int): Option[A] ! Dialog =

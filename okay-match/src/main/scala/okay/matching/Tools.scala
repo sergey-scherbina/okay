@@ -31,6 +31,8 @@ object Tools {
   /** a malformed tool value: the tag said one thing, the payload
    * another — the condition the parsing signals */
   final case class MalformedValue(tag: String, payload: Json)
+  given okay.Condition.Answers[MalformedValue, Value] =
+    okay.Condition.Answers.of[MalformedValue, Value]
 
   /** the silent coercions of v1, now a NAMED policy: what the
    * default table invokes so nothing changes for existing users */
@@ -45,18 +47,18 @@ object Tools {
     def field[A](ok: Option[A], mk: A => Value): Value ! okay.Condition.Op =
       ok match
         case Some(x) => pure(mk(x))
-        case None => okay.Condition.signal[Value](
+        case None => okay.Condition.raiseC(
           MalformedValue(s(j, "t").getOrElse("text"), j))
     s(j, "t") match
       case Some("num") => field(d(j, "n"), Value.VNum(_))
       case Some("range") =>
         (d(j, "lo"), d(j, "hi")) match
           case (Some(lo), Some(hi)) => pure(Value.VRange(lo, hi))
-          case _ => okay.Condition.signal[Value](MalformedValue("range", j))
+          case _ => okay.Condition.raiseC(MalformedValue("range", j))
       case Some("geo") =>
         (d(j, "lat"), d(j, "lon")) match
           case (Some(la), Some(lo)) => pure(Value.VGeo(la, lo))
-          case _ => okay.Condition.signal[Value](MalformedValue("geo", j))
+          case _ => okay.Condition.raiseC(MalformedValue("geo", j))
       case Some("time") => pure(Value.VTime(s(j, "s").getOrElse("")))
       case Some("ref") => field(s(j, "s"), (x: String) => Value.VRef(ProfileId(x)))
       case _ => field(s(j, "s"), Value.VText(_))

@@ -8,6 +8,29 @@ import Condition.Decision.*
  * and the repair story: one program, three outcomes, chosen at run */
 class TestCondition extends munit.FunSuite {
 
+  test("the typed pair: raiseC answers its instance's type; a bad Resume is the policy's bug, named") {
+    import Condition.*
+    final case class HowMany(what: String)
+    given Answers[HowMany, Int] = Answers.of[HowMany, Int]
+    // the site needs NO annotation: the instance carries the type
+    val prog: Int ! Op = raiseC(HowMany("retries")).map(_ * 2)
+    assertEquals(!.run(Condition.run[Int, Pure](
+      (_, _) => Decision.Resume(21))(prog)), 42)
+    // a policy resuming with the wrong type is refused NAMED at the
+    // point where it acts — not a ClassCastException three calls later
+    val bad = intercept[BadResume](!.run(Condition.run[Int, Pure](
+      (_, _) => Decision.Resume("twenty-one"))(prog)))
+    assert(bad.getMessage.contains("HowMany"), bad.getMessage)
+    assert(bad.getMessage.contains("not a"), bad.getMessage)
+    // restarts compose with the typed door exactly as with signal
+    val viaRestart = Condition.run[Int, Pure](
+      (_, menu) => Decision.Invoke("default", ()))(
+      within[Int, Pure]("default")(
+        raiseC(HowMany("retries")))(_ => 7))
+    assertEquals(!.run(viaRestart), 7)
+  }
+
+
   test("Resume continues AT the signal point: progress before it survives") {
     var steps = Vector.empty[String]
     val prog: Int ! Op =

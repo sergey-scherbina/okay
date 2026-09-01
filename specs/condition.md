@@ -216,8 +216,8 @@ def raiseC[C, A](c: C)(using Answers[C, A]): A ! Op
   — heterogeneous by design).
 
 Behavior:
-- [ ] a typed signal answers its instance's type with no annotation
+- [x] a typed signal answers its instance's type with no annotation
       at the site; a Resume with a non-conforming value is refused
       NAMED (the policy bug caught where it acts)
-- [ ] the three consumers compile on raiseC with their policies
+- [x] the three consumers compile on raiseC with their policies
       untouched

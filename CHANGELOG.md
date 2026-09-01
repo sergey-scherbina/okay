@@ -13,6 +13,19 @@ type serves all three. The Ambiguous-extension-methods error class
 for the mark disappears by construction. 58 tests across the direct
 family, TestThrows untouched. GATE CAVEAT: OOM-kill late, 0
 failures, full reference coverage — the standing precedent.
+## condition-typed — signal stops casting
+Completed: 2026-09-01
+
+Answers[C, A] is the typed pair: raiseC(HowMany("retries")) IS an
+Int with no annotation at the site, and a policy Resume of the wrong
+type is BadResume named at the point where it acts — not a
+ClassCastException three calls later. The policy stays heterogeneous
+BY DESIGN (one function holds a deployment's whole stance; typing it
+per-condition was declined in the spec). Additive: signal/Any stays.
+The proof is the day's three consumers moved over — InvalidSubmit
+(askWith gains an implicit ClassTag; call sites untouched),
+BadEmail, MalformedValue — policies unchanged, casts gone. 9+67+28
++15 tests green.
 
 ## pg-composite-decode — the pg driver decodes COMPOSITE/ROW() and ARRAY types
 Completed: 2026-09-01

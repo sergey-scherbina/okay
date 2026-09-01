@@ -2,6 +2,7 @@ package okay.demo
 
 import okay.*
 import okay.given
+import okay.Condition
 import okay.http.{Body, Http, Request, Response}
 import okay.jetty.Jetty
 import okay.llm.{Anthropic, Cut, OpenAi, Transports}
@@ -298,6 +299,7 @@ object ChatDemo {
   // outcomes, chosen at run.
 
   final case class BadEmail(text: String)
+  given Condition.Answers[BadEmail, String] = Condition.Answers.of[BadEmail, String]
 
   /** the demo's default: lenient — the guest restart */
   val lenient: (Any, Vector[String]) => Condition.Decision =
@@ -316,7 +318,7 @@ object ChatDemo {
   def emailIn(text: String): String ! Condition.Op =
     "email ([^ ]+@[^ ]+)".r.findFirstMatchIn(text).map(_.group(1)) match
       case Some(e) => pure(e)
-      case None => Condition.signal[String](BadEmail(text))
+      case None => Condition.raiseC(BadEmail(text))
 
   def resolveEmail(text: String,
                    policy: (Any, Vector[String]) => Condition.Decision): String =

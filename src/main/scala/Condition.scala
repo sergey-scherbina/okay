@@ -54,6 +54,30 @@ object Condition {
   def signal[A](condition: Any): A ! Op =
     effect(Op.Signal(condition)).asInstanceOf[A ! Op]
 
+  /** the condition C is answered with A — declared once, where C
+   * is; the ClassTag is the evidence the resume check stands on */
+  trait Answers[C, A]:
+    def tag: scala.reflect.ClassTag[A]
+  object Answers:
+    /** the usual way to declare one: Answers.of[HowMany, Int] */
+    def of[C, A](using t: scala.reflect.ClassTag[A]): Answers[C, A] = new:
+      def tag = t
+
+  /** a Resume whose value does not conform to the instance's answer
+   * type: the POLICY's bug, caught where it acts, named */
+  final class BadResume(condition: Any, value: Any, expected: String)
+    extends RuntimeException(
+      s"the policy resumed $condition with $value: not a $expected")
+
+  /** the typed door (condition-typed): the answer type comes from
+   * the Answers instance — no annotation at the site, and a
+   * non-conforming Resume is refused named rather than cast */
+  def raiseC[C, A](c: C)(using ev: Answers[C, A]): A ! Op =
+    signal[Any](c).map {
+      case ev.tag(a) => a
+      case other => throw BadResume(c, other, ev.tag.runtimeClass.getName)
+    }
+
   /** establish a restart around `body`: if the policy invokes
    * `name` with v, this whole `within` answers `recover(v)` — the
    * body's remaining work is abandoned, everything outside
