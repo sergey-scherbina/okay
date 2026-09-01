@@ -19,7 +19,8 @@ package okay.blob
 trait Blob:
   def put(key: String, bytes: Chunk[Byte] ! (Produce + Async)): Etag ! Async
   def get(key: String, range: Option[(Long, Long)] = None)
-  : Chunk[Byte] ! (Produce + Async)                   // absent key: an error value
+  : Either[String, Unit] ! (Produce + Async)   // chunks produced; the
+    // ANSWER says how it ended — an absent key is Left naming the key
   def head(key: String): Option[Meta] ! Async         // size, etag, modified
   def list(prefix: String): Chunk[Meta] ! (Produce + Async)  // paged underneath
   def delete(key: String): Unit ! Async
@@ -102,6 +103,11 @@ across machines; persist-backup copies (specs/persist.md, Backup).
   per-provider dialects now.
 - **Multipart as engine detail** — callers say put; thresholds are
   tuning, not semantics. Rejected: a multipart API surface.
+- **get answers Either, chunks ride the effects** — the absent key
+  needed a place to BE a value: the produced chunks are the body,
+  the program's answer is the outcome. (Adjusted at blob-fs; the
+  original sketch returned the chunk type and had nowhere to say
+  "no such key" without a throw.)
 - **Immutable-object bias** — put-once keys (segments, staged
   files, frames) are the design center; overwrite works but
   nothing here builds mutable-blob coordination on top (that is

@@ -411,6 +411,27 @@ lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )
 
+/**
+ * The object-store seam (specs/blob.md): bytes and streams in the
+ * engine, meaning at the edge — the trait three landed specs already
+ * assumed. Stage 0 is the filesystem engine (jvm); the S3 subset
+ * with own SigV4 is blob-s3.
+ */
+lazy val okayBlob = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-blob"))
+  .dependsOn(okay)
+  .settings(
+    name := "okay-blob",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 /** language models as streams: the thin client (P4/llm.md).
  * Cross-built — only the Transport is platform-bound (java.net.http
  * on the JVM, fetch on JS), everything else is pure Scala */
@@ -790,6 +811,7 @@ lazy val root = (project in file("."))
     okayCache.jvm, okayCache.js, okayCache.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
+    okayBlob.jvm, okayBlob.js, okayBlob.native,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
