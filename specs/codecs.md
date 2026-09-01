@@ -102,11 +102,46 @@ a recursive sum whose cases hold Vectors — derives `Schema[Ui]`,
 WireJson stays as the wire's own compact dialect BY CHOICE now, not
 as a workaround.
 
-Out of scope, with the reason: DEFAULT parameters in decode (an
-absent field falling back to the declaration's default) need
-companion-default access that Mirrors do not provide — a macro task,
-filed as codec-defaults on the backlog. Derived schemas round-trip
-their own output; defaults only matter for foreign, partial input.
+## codec-defaults — decode falls back to the declaration
+
+The reason this was filed is the design: Mirrors do not carry
+defaults, so the ONE macro this library allows itself reads what the
+compiler already wrote — the companion's `<init>$default$N` methods —
+and nothing else. Everything downstream stays ordinary values:
+
+- `SProduct` gains `defaults: Vector[Option[() => Any]]` (aligned
+  with `fields`, empty when underived/unknown — every existing
+  constructor call and type pattern survives unchanged).
+- `Schema.derived` fills it via `Defaults.of[A]`. A default the
+  macro cannot CALL at decode time — one that takes parameters
+  (`b: Int = a`) or type parameters — is honestly None, not a guess.
+- Json and Cbor decode: an absent field takes, in order, its
+  declared default, then None-if-optional, then the missing-field
+  refusal. A DAMAGED optional stays the absent case (and so reaches
+  the default first when one is declared).
+- ToolSpec: a defaulted field leaves the `required` list (an LLM may
+  omit it — decode now survives that) and its default value is
+  advertised as JSON Schema `default`.
+- Form.decode rides Json's decode and inherits the fallback.
+
+Behavior:
+- [ ] a product with defaulted fields decodes from partial JSON and
+      partial CBOR: absent defaulted fields take their declarations,
+      absent undefaulted fields still refuse by name
+- [ ] the default wins over None-if-optional: an absent
+      `Option[Int] = Some(5)` decodes as Some(5)
+- [ ] round-trip is untouched: full wires decode exactly as before,
+      and encode never writes a default-dependent shape
+- [ ] a computed default (referring to another parameter) is None in
+      the vector — decode refuses the absent field rather than guess
+- [ ] the tool JSON Schema: defaulted fields are not required and
+      carry `default`; optional fields stay unrequired
+- [ ] the macro is cross-platform: the shared suite proves it on
+      JVM, JS and Native (macros run in the compiler — the platform
+      only runs the values)
+
+Derived schemas still round-trip their own output; defaults matter
+for foreign, partial input — which tools and forms are made of.
 
 Found by the sweep's exhaustivity warnings: WireJson had not learned
 the keyed-diff patch trio (Remove/Reorder/Insert) — a server-driven
