@@ -49,3 +49,35 @@ enum Find[+A]:
 
 object Find:
   def candidates(q: Query): Vector[Ranked] ! Find = effect(Candidates(q))
+
+/** the reranker (stage 2): an LLM reads the need and the top
+ * candidates' summaries and orders them — an EFFECT, so tests use a
+ * deterministic handler and no network lives in this module (the
+ * rag/Embed precedent). The production handler is the integration
+ * site's five lines over okay-llm. */
+enum Rerank[+A]:
+  case Order(need: String, candidates: Vector[(ProfileId, String)])
+    extends Rerank[Vector[ProfileId]]
+
+object Rerank:
+  def order(need: String, cs: Vector[(ProfileId, String)])
+  : Vector[ProfileId] ! Rerank = effect(Order(need, cs))
+
+  /** overlap-scored deterministic reranker for tests and offline use */
+  def lexical: Handler[Rerank] = new:
+    def handle[A](e: Rerank[A]): A = e match
+      case Order(need, cs) =>
+        val ws = need.toLowerCase.split("\\W+").toSet
+        cs.sortBy((_, text) =>
+          -text.toLowerCase.split("\\W+").count(ws.contains)).map(_._1)
+
+/** candidates, then the reranker over the top slice — the composed
+ * program a seeker-side agent actually runs */
+def top(q: Query, rerankOver: Int = 10): Vector[Ranked] ! (Find + Rerank) =
+  !.widen[Vector[Ranked], Find, Rerank](Find.candidates(q.copy(k = rerankOver)))
+    .flatMap { cs =>
+      val summaries = cs.map(r => r.profile ->
+        r.disclosed.map(f => f.attr + " " + Value.text(f.value)).mkString(" "))
+      !.widen[Vector[ProfileId], Rerank, Find](Rerank.order(q.text, summaries))
+        .map(order => order.flatMap(p => cs.find(_.profile == p)).take(q.k))
+    }

@@ -126,6 +126,27 @@ final case class Query(side: Side,
                        filters: Vector[(String, Pred)] = Vector.empty,
                        text: String = "", k: Int = 10)
 
-/** a hit: who, how well, and only what the two gates disclose */
+/** the platform's gate per attribute (stage 2): the engine behind
+ * the second gate. `AfterMatch` is the business hook — the fact
+ * matched, the seeker learns THAT it matched, and the value flows
+ * only through a confirmed match. */
+enum Gate:
+  case Allow, AfterMatch, Withhold
+
+final case class PlatformPolicy(default: Gate = Gate.Allow,
+                                per: Map[String, Gate] = Map.empty):
+  def gate(attr: String): Gate = per.getOrElse(attr, default)
+
+object PlatformPolicy:
+  val open: PlatformPolicy = PlatformPolicy()
+  def withhold(attrs: String*): PlatformPolicy =
+    PlatformPolicy(per = attrs.map(_ -> Gate.Withhold).toMap)
+  def afterMatch(attrs: String*): PlatformPolicy =
+    PlatformPolicy(per = attrs.map(_ -> Gate.AfterMatch).toMap)
+
+/** a hit: who, how well, what the two gates disclose now — and the
+ * names of facts that matched but wait behind the platform's
+ * AfterMatch gate (the seeker learns THAT, not WHAT) */
 final case class Ranked(profile: ProfileId, score: Float,
-                        disclosed: Vector[Fact])
+                        disclosed: Vector[Fact],
+                        withheld: Vector[String] = Vector.empty)

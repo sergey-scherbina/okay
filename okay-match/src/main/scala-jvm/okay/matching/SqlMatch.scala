@@ -24,8 +24,12 @@ import okay.sql.SqlValue.*
  */
 final class SqlMatch(sql: Sql,
                      embed: String => Embedding = Vectors.hashing(),
-                     platformAllows: String => Boolean = _ => true,
-                     proposeThreshold: Float = 0.85f)(using CanBlock) {
+                     policy: PlatformPolicy = PlatformPolicy.open,
+                     proposeThreshold: Float = 0.85f,
+                     halfLifeMs: Long = 7L * 24 * 3600 * 1000,
+                     hash: String => String = identity,
+                     verifyHash: (String, String) => Boolean = _ == _,
+                     now: () => Long = () => System.currentTimeMillis())(using CanBlock) {
 
   private def run[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
 
@@ -57,6 +61,8 @@ final class SqlMatch(sql: Sql,
     chat VARCHAR(255), off BIGINT, span VARCHAR(4000),
     confidence DOUBLE, ts BIGINT, vis VARCHAR(8),
     superseded_by BIGINT, reason VARCHAR(4000))""")
+  exec("""CREATE TABLE IF NOT EXISTS match_recovery(
+    profile VARCHAR(64) PRIMARY KEY, secret VARCHAR(1000))""")
   exec("CREATE INDEX IF NOT EXISTS match_facts_attr ON match_facts(attr)")
   exec("CREATE INDEX IF NOT EXISTS match_facts_profile ON match_facts(profile)")
 
@@ -172,7 +178,7 @@ final class SqlMatch(sql: Sql,
       case _ =>
         val id = FactId(nextFact); nextFact += 1
         insertFact(Fact(id, p, attr, side, v, prov, conf,
-          System.currentTimeMillis(), vis))
+          now(), vis))
         id
 
   private def insertFact(f: Fact): Unit =
@@ -199,7 +205,7 @@ final class SqlMatch(sql: Sql,
       case Some(old) if old.supersededBy.isDefined => old.supersededBy.get
       case Some(old) =>
         val nf = old.copy(id = FactId(nextFact), value = v, prov = prov,
-          ts = System.currentTimeMillis(), supersededBy = None, reason = Some(reason))
+          ts = now(), supersededBy = None, reason = Some(reason))
         nextFact += 1
         insertFact(nf)
         exec("UPDATE match_facts SET superseded_by = ? WHERE id = ?",
@@ -221,8 +227,17 @@ final class SqlMatch(sql: Sql,
       "AND superseded_by IS NULL AND vis <> 'Private'",
       Vector(Text(side.toString))).map(factOf)
 
-  private def disclose(fs: Vector[Fact]): Vector[Fact] =
-    fs.filter(f => f.vis == Vis.Public && platformAllows(f.attr))
+  private def disclose(fs: Vector[Fact]): (Vector[Fact], Vector[String]) =
+    val owned = fs.filter(_.vis == Vis.Public)
+    (owned.filter(f => policy.gate(f.attr) == Gate.Allow),
+      owned.filter(f => policy.gate(f.attr) == Gate.AfterMatch).map(_.attr).distinct)
+
+  private def freshness(fs: Vector[Fact]): Float =
+    val volatile = liveAttrs.filter(_.volatile).map(_.slug).toSet
+    val vol = fs.filter(f => volatile.contains(f.attr))
+    if vol.isEmpty then 1.0f
+    else (vol.map(f => math.pow(2, -(now() - f.ts).toDouble / halfLifeMs))
+      .sum / vol.length).toFloat
 
   def candidates(q: Query): Vector[Ranked] =
     val pool = matchable(q.side).groupBy(_.profile)
@@ -233,10 +248,34 @@ final class SqlMatch(sql: Sql,
     }
     val qe = if q.text.nonEmpty then embed(q.text) else null
     passing.toVector.map { (p, fs) =>
-      val score = if qe == null then 1.0f else Vectors.cosine(qe,
+      val base = if qe == null then 1.0f else Vectors.cosine(qe,
         embed(fs.map(f => f.attr + " " + Value.text(f.value)).mkString(" ")))
-      Ranked(p, score, disclose(fs))
+      val (open, gated) = disclose(fs)
+      Ranked(p, base * freshness(fs), open, gated)
     }.sortBy(-_.score).take(q.k)
+
+  // ---- identity recovery (stage 2): the hash seam, no dependency ----
+
+  def setRecovery(p: ProfileId, secret: String): Unit =
+    exec("DELETE FROM match_recovery WHERE profile = ?", Vector(Text(p.uuid)))
+    exec("INSERT INTO match_recovery VALUES(?,?)",
+      Vector(Text(p.uuid), Text(hash(secret))))
+    ()
+
+  def rebind(oldEmail: String, newEmail: String, secret: String): Option[ProfileId] =
+    rows("SELECT uuid FROM match_profiles WHERE email = ?",
+      Vector(Text(oldEmail))) match
+      case Vector(Vector(Text(u))) =>
+        val ok = rows("SELECT secret FROM match_recovery WHERE profile = ?",
+          Vector(Text(u))) match
+          case Vector(Vector(Text(stored))) => verifyHash(secret, stored)
+          case _ => false
+        if ok then
+          exec("UPDATE match_profiles SET email = ? WHERE uuid = ?",
+            Vector(Text(newEmail), Text(u)))
+          Some(ProfileId(u))
+        else None
+      case _ => None
 
   // ---- the handlers, same shape as the memory reference -------------
 

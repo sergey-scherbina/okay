@@ -16,14 +16,14 @@ import java.sql.DriverManager
  */
 class TestSqlMatch extends munit.FunSuite {
 
-  def fresh(name: String, allow: String => Boolean = _ => true): SqlMatch =
+  def fresh(name: String, policy: PlatformPolicy = PlatformPolicy.open): SqlMatch =
     SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:h2:mem:$name;DB_CLOSE_DELAY=-1")),
-      platformAllows = allow)
+      policy = policy)
 
   def prov(chat: String, off: Long, quote: String) = Provenance(chat, off, quote)
 
   test("the durable store keeps the reference's guarantees") {
-    val m = fresh("guarantees", allow = _ != "phone")
+    val m = fresh("guarantees", policy = PlatformPolicy.withhold("phone"))
     // search-before-create
     val a1 = m.propose(AttrDraft("schedule", Kind.Time, "when available for work"))
     assertEquals(m.propose(AttrDraft("hours", Kind.Time, "availability",

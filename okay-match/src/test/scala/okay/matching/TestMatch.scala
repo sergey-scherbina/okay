@@ -1,6 +1,7 @@
 package okay.matching
 
 import okay.*
+import okay.given
 import okay.codec.Json
 import okay.agent.ToolCall
 
@@ -42,7 +43,7 @@ class TestMatch extends munit.FunSuite {
   }
 
   test("visibility: Private never matches; platform-withheld matches but is not disclosed") {
-    val m = MemoryMatch(platformAllows = attr => attr != "phone")
+    val m = MemoryMatch(policy = PlatformPolicy.withhold("phone"))
     val p = m.register("master@example.com")
     m.assert(p, "skill", Side.Offer, Value.VText("plumbing repair"),
       prov("c", 1, "умею чинить сантехнику"), 1.0, Vis.Public)
@@ -103,6 +104,58 @@ class TestMatch extends munit.FunSuite {
       prov("c3", 1, "нужно выложить плитку в ванной"), 1.0, Vis.Public)
     val needs = m.candidates(Query(Side.Need, text = "bathroom tiling"))
     assertEquals(needs.head.profile, seeker)
+  }
+
+  test("stage 2 — rerank: the effect reorders the top slice") {
+    val m = MemoryMatch()
+    val plumber = m.register("plumber@example.com")
+    m.assert(plumber, "skill", Side.Offer, Value.VText("fixing pipes and taps"),
+      prov("c1", 1, "..."), 1.0, Vis.Public)
+    val tiler = m.register("tiler@example.com")
+    m.assert(tiler, "skill", Side.Offer, Value.VText("tiling bathrooms"),
+      prov("c2", 1, "..."), 1.0, Vis.Public)
+    given Handler[Find + Rerank] = new:
+      def handle[A](e: Find[A] | Rerank[A]): A = e match
+        case f: Find.Candidates => m.find.handle(f)
+        case r: Rerank.Order => Rerank.lexical.handle(r)
+    val hits = top(Query(Side.Offer, text = "who can fix my taps", k = 2)).runWith
+    assertEquals(hits.head.profile, plumber)
+  }
+
+  test("stage 2 — the policy engine names what waits behind the match gate") {
+    val m = MemoryMatch(policy = PlatformPolicy.afterMatch("phone"))
+    val p = m.register("master@example.com")
+    m.assert(p, "skill", Side.Offer, Value.VText("welding"), prov("c", 1, "..."), 1.0, Vis.Public)
+    m.assert(p, "phone", Side.Offer, Value.VText("+38050"), prov("c", 2, "..."), 1.0, Vis.Public)
+    val hit = m.candidates(Query(Side.Offer, text = "welding")).head
+    assert(!hit.disclosed.exists(_.attr == "phone"))
+    assertEquals(hit.withheld, Vector("phone"))         // THAT it matched — not WHAT
+  }
+
+  test("stage 2 — volatility: a stale volatile fact drags the rank, a stable one does not") {
+    var clock = 0L
+    val m = MemoryMatch(halfLifeMs = 1000, now = () => clock)
+    m.propose(AttrDraft("availability", Kind.Time, "when free this week", volatile = true))
+    val stale = m.register("stale@example.com")
+    m.assert(stale, "skill", Side.Offer, Value.VText("painting walls"), prov("c1", 1, "..."), 1.0, Vis.Public)
+    m.assert(stale, "availability", Side.Offer, Value.VTime("this week"), prov("c1", 2, "..."), 1.0, Vis.Public)
+    clock = 10_000                                       // ten half-lives later
+    val fresh = m.register("fresh@example.com")
+    m.assert(fresh, "skill", Side.Offer, Value.VText("painting walls"), prov("c2", 1, "..."), 1.0, Vis.Public)
+    m.assert(fresh, "availability", Side.Offer, Value.VTime("this week"), prov("c2", 2, "..."), 1.0, Vis.Public)
+    val hits = m.candidates(Query(Side.Offer, text = "painting walls"))
+    assertEquals(hits.map(_.profile), Vector(fresh, stale))
+    assert(hits(0).score > hits(1).score * 100)          // exp2(-10) is dust
+  }
+
+  test("stage 2 — recovery: the secret rebinds the email; without it a stranger gets nothing") {
+    val m = MemoryMatch(hash = s => "h:" + s, verifyHash = (s, st) => "h:" + s == st)
+    val p = m.register("old@example.com")
+    m.setRecovery(p, "correct horse battery staple")
+    assertEquals(m.rebind("old@example.com", "new@example.com", "wrong guess"), None)
+    assertEquals(m.rebind("old@example.com", "new@example.com", "correct horse battery staple"), Some(p))
+    assertEquals(m.register("new@example.com"), p)       // the new email finds the OLD profile
+    assert(m.register("old@example.com") != p)           // and the old address is a stranger now
   }
 
   test("the tools mirror the operations: a two-side scripted scenario matches end to end") {

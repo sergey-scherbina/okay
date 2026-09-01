@@ -124,7 +124,18 @@ conflicts, asks, supersedes) commutes with offline replay.
   (the loser's facts move, the winner answers).
 - **stage 2** — cross-channel/email-recovery identity (the hijack
   question, with okay-security), LLM rerank, the platform-policy
-  engine for disclosure, freshness/volatility in ranking.
+  engine for disclosure, freshness/volatility in ranking. LANDED
+  2026-09-01 but for cross-channel identity: `Rerank` is an effect
+  with a deterministic lexical handler (`top` composes it over
+  `Find`); `PlatformPolicy` gates per attribute — Allow / AfterMatch
+  / Withhold — and an AfterMatch fact that matched is NAMED in
+  `Ranked.withheld` (the seeker learns THAT, not WHAT: the business
+  hook); volatile attributes decay the rank (exp2 half-life);
+  email recovery is a hashed-secret rebind behind a hash/verify SEAM
+  (okay-security's Password plugs in at the site — no dependency),
+  and without the secret a new address gets a fresh profile, never a
+  hijack. Cross-channel identity (same person, another messenger, no
+  email) stays open in BACKLOG.
 
 ## Out of scope
 - The account-recovery security flow (recorded above; stage 2).

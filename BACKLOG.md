@@ -19,9 +19,10 @@
       against a backup, offline) and a blob-seam copy helper
 
 ## okay-match (specs/match.md — staged; log-first matching over LLM-structured chats)
-- [ ] match-stage2 — identity recovery (the email-hijack question,
-      with okay-security), LLM rerank of candidates, the platform
-      disclosure-policy engine, volatility in ranking.
+- [ ] match-identity-x — cross-channel identity: the same person
+      arriving from another messenger with no shared email; candidate
+      generation by phone/name facts + owner confirmation. The one
+      stage-2 piece that stayed open (specs/match.md).
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam

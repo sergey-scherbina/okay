@@ -13,8 +13,12 @@ import okay.rag.{Embedding, Vectors}
  * three effects.
  */
 final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
-                        platformAllows: String => Boolean = _ => true,
-                        proposeThreshold: Float = 0.85f) {
+                        policy: PlatformPolicy = PlatformPolicy.open,
+                        proposeThreshold: Float = 0.85f,
+                        halfLifeMs: Long = 7L * 24 * 3600 * 1000,
+                        hash: String => String = identity,
+                        verifyHash: (String, String) => Boolean = _ == _,
+                        now: () => Long = () => System.currentTimeMillis()) {
 
   private var attrs: Vector[AttrDef] = Vector.empty
   private var facts: Vector[Fact] = Vector.empty
@@ -22,6 +26,7 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
   private var byEmail: Map[String, ProfileId] = Map.empty
   private var nextAttr = 1L
   private var nextFact = 1L
+  private var recovery: Map[ProfileId, String] = Map.empty  // hashed secrets
 
   // ---- registry -----------------------------------------------------
 
@@ -86,7 +91,7 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
     facts.find(f => f.profile == p && f.attr == attr && f.prov == prov)
       .map(_.id).getOrElse {
         val f = Fact(FactId(nextFact), p, attr, side, v, prov, conf,
-          System.currentTimeMillis(), vis)
+          now(), vis)
         nextFact += 1
         facts :+= f
         summaries -= (p, side)
@@ -99,7 +104,7 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
       case Some(old) if old.supersededBy.isDefined => old.supersededBy.get
       case Some(old) =>
         val nf = old.copy(id = FactId(nextFact), value = v, prov = prov,
-          ts = System.currentTimeMillis(), supersededBy = None,
+          ts = now(), supersededBy = None,
           reason = Some(reason))
         nextFact += 1
         facts = facts.map(f =>
@@ -132,11 +137,21 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
       e
     })
 
-  /** the two gates, at disclosure time: owner intent AND platform
-   * policy. A withheld fact still MATCHED — that gate is the
-   * business — it just does not come back in the result. */
-  private def disclose(fs: Vector[Fact]): Vector[Fact] =
-    fs.filter(f => f.vis == Vis.Public && platformAllows(f.attr))
+  /** the two gates, at disclosure time: owner intent AND the
+   * platform's engine. AfterMatch and Withhold facts still MATCHED —
+   * that gate is the business — they just do not come back; the
+   * AfterMatch ones are NAMED in `withheld`, which is the hook. */
+  private def disclose(fs: Vector[Fact]): (Vector[Fact], Vector[String]) =
+    val owned = fs.filter(_.vis == Vis.Public)
+    (owned.filter(f => policy.gate(f.attr) == Gate.Allow),
+      owned.filter(f => policy.gate(f.attr) == Gate.AfterMatch).map(_.attr).distinct)
+
+  /** a volatile fact ages: exp2(-age/halfLife); stable facts do not */
+  private def freshness(fs: Vector[Fact]): Float =
+    val vol = fs.filter(f => attrs.exists(a => a.slug == f.attr && a.volatile))
+    if vol.isEmpty then 1.0f
+    else (vol.map(f => math.pow(2, -(now() - f.ts).toDouble / halfLifeMs))
+      .sum / vol.length).toFloat
 
   def candidates(q: Query): Vector[Ranked] =
     val holders = facts.filter(f => f.side == q.side && f.supersededBy.isEmpty &&
@@ -148,9 +163,31 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
     }
     val qe = if q.text.nonEmpty then embed(q.text) else null
     passing.map { p =>
-      val score = if qe == null then 1.0f else Vectors.cosine(qe, summary(p, q.side))
-      Ranked(p, score, disclose(matchable(p, q.side)))
+      val fs = matchable(p, q.side)
+      val base = if qe == null then 1.0f else Vectors.cosine(qe, summary(p, q.side))
+      val (open, gated) = disclose(fs)
+      Ranked(p, base * freshness(fs), open, gated)
     }.sortBy(-_.score).take(q.k)
+
+  // ---- identity recovery (stage 2) ----------------------------------
+  // The seam, not the dependency: `hash`/`verifyHash` are constructor
+  // parameters; okay-security's Password plugs in at the integration
+  // site. Without the secret there is NO path from a new email to an
+  // existing profile — a stranger gets a fresh profile, not a hijack.
+
+  def setRecovery(p: ProfileId, secret: String): Unit =
+    recovery += p -> hash(secret)
+
+  /** rebind the profile to a new email, authorized by the recovery
+   * secret; refusal is an answer, not a throw */
+  def rebind(oldEmail: String, newEmail: String, secret: String): Option[ProfileId] =
+    byEmail.get(oldEmail).filter(p =>
+      recovery.get(p).exists(verifyHash(secret, _))).map { p =>
+      byEmail -= oldEmail
+      byEmail += newEmail -> p
+      profiles += p -> newEmail
+      p
+    }
 
   // ---- the handlers -------------------------------------------------
 

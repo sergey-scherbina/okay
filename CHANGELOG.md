@@ -8,6 +8,21 @@ engine-defined etags. get answers Either — the chunks are the body,
 the answer is the outcome, an absent key is a value naming itself
 (sketch adjusted, recorded in Decisions). BlobContract written once;
 blob-s3 re-runs it against MinIO. Matrix 1317.
+## match-stage2 — the rerank, the gate engine, decay, and the recovery seam
+Completed: 2026-09-01
+
+Rerank is an effect (the rag/Embed precedent): `top` runs Find, then
+the reranker over the top slice; tests use the lexical handler, the
+production one is five lines over okay-llm at the site. PlatformPolicy
+replaces the predicate — Allow / AfterMatch / Withhold per attribute —
+and Ranked.withheld NAMES the AfterMatch facts that matched: the
+seeker learns that the phone exists, not what it is. Volatile
+attributes decay the rank on an exp2 half-life. Email recovery is a
+hashed-secret rebind behind a hash/verify seam (okay-security plugs
+in; no dependency): with the secret the new email finds the old
+profile, without it a stranger gets a fresh one — never a hijack.
+Memory and Sql handlers carry all four; 14 tests green. Cross-channel
+identity stays open as match-identity-x.
 
 ## sql-sqlite — the embedded engine proves the seam (user ask)
 Completed: 2026-09-01 (landed as 5b17922)
