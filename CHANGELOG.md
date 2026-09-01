@@ -1,5 +1,16 @@
 # Changelog
 
+## nav-pop-to-screen — the pattern held, the mechanism corrected
+Completed: 2026-09-01 (landed as 84617de)
+A typed Key names a boundary screen; PopTo drops every intervening
+frame — none stepped, they are DATA — and the boundary routes the
+typed answer; boundaries chain, the outer pop crosses the inner, an
+absent key names nothing (total). The spec's mechanism claim
+corrected in place: Dialog needs Delim's capture because its
+continuations are implicit; Nav's stack is reified data, so the
+boundary is a marker and the exit is a drop — the adoption
+doctrine's own test applied to its own poster case. Matrix 1546.
+
 ## persist-offload — the cold tail becomes the lake
 Completed: 2026-09-01 (landed as 7c19340)
 Segments: the documented disk format gets a PUBLIC reader in
