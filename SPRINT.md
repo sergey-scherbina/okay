@@ -1,12 +1,6 @@
 # Sprint
 
 ## Doing
-- [ ] error-messages — the compile-error quality pass:
-      @implicitNotFound on core typeclasses and capabilities with
-      actionable text, audit every errorAndAbort/compiletime.error
-      to what-why-fix, compileErrors tests asserting message QUALITY
-      so wording cannot degrade silently (user directive:
-      "obligatory")
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

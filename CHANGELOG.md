@@ -1,5 +1,20 @@
 # Changelog
 
+## error-messages — absence answers with a recipe, wording pinned by test
+Completed: 2026-09-02
+Landed with @implicitNotFound on Monad, Applicative, MonadPlus,
+Handler, TypeableK, CanBlock, Direct.Effect and DirectCtx — each
+message names the fix (the given import, Handler.union, the
+one-line Effect registration, the Blocking door, direct { }).
+TestErrorMessages pins five wordings plus the direct macro's
+standing refusals, so a rewrite that loses the actionable substring
+fails the suite instead of a user's terminal. Probed and recorded:
+TypeableK and CanBlock always resolve in-package (annotations serve
+downstream); compileErrors snippets need imports inside the string.
+The ambiguity half of the directive was already served by
+direct-mark-retire (the class is removed, not reworded). Full
+matrix green, exit 0.
+
 ## docs-spellings-sweep — the mark family documented everywhere
 Completed: 2026-09-02
 Landed with the when-which-spelling table in direct-style.md (one
