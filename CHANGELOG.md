@@ -1,5 +1,22 @@
 # Changelog
 
+## rag-pgvector — the vector store behind the same interface
+Completed: 2026-09-01 (landed as 4b7dc0b)
+PgVector in okay-rag's JVM leg: VectorStore[Async] over the Sql
+seam via the okay-pg WIRE (the consumer that road was cut for) —
+own posture (ensure() creates extension+table), upsert ON CONFLICT
+on the segment identity (re-index replaces), search pushed to the
+engine with declared Metric whose scores return on the Vectors
+scale. THE assertion: order AND scores agree with the reference
+MemoryStore within 1e-4 on the hashing fixture; the segment
+round-trips whole. Exact scan v1 — an approximate index is a later
+measured choice BECAUSE agreement is only testable while exact.
+Fixed forward en route: the repo outgrew RepoAgent's 400-file
+limit (now 1200); okay-match's second UUID.randomUUID site
+(requestLink) broke the JS linker again — freshId, with a note
+that a guess-resistant token wants okay-security's seam. Merge
+read alone: exit 0. Matrix green.
+
 ## match-identity-x — cross-channel identity, without building the hijack
 Completed: 2026-09-01
 

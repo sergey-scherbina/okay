@@ -1,5 +1,0 @@
-slug: rag-pgvector
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: VectorStore over the Sql seam against Postgres/pgvector (own posture: extension+table+upsert ON CONFLICT, search pushed to the engine); agreement with the memory engine on a deterministic fixture; live suite (skips absent); spec: specs/data.md pgvector box
-files: okay-rag/** (jvm adapter + live test), build.sbt (okayRag + okaySql), specs/data.md (box/Results)
