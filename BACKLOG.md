@@ -10,14 +10,6 @@
 - [ ] condition-typed-signal — type the condition/answer pair
       (signal[A](c: Any) casts today); HowMany.signal.? : Int with
       no annotation. A signature redesign, needs its own spec.
-- [ ] ctx-reader-elim — the Reader-to-using bridge, with direct
-      blocks as the CONSUMER that ungates ctx-reader-bridge in
-      specs/context-functions.md: a program Int ! (Reader % Cfg +
-      Async) rewritten as (Cfg) ?=> Int ! Async = direct { ...
-      wire[Cfg].port ... } — the environment leaves the row, the
-      elaborator runs the Reader half at zero cost. Deliverable:
-      tests proving the pattern + spec gate lifted + a recipe in
-      docs/capabilities.md.
 - [ ] demo-direct-showcase — migrate the survey's named spots as the
       worked example: ChatDemo seed/go (the effect-per-element
       pattern), Mcp Client send/receive (protocol sequencing);

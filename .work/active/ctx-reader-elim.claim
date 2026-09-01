@@ -1,0 +1,6 @@
+feature/ctx-reader-elim 2026-09-01T21:07:11Z
+agent: claude-code
+heartbeat: 2026-09-01T21:07:11Z
+status: in-progress
+done-so-far:
+next: tests (TestCtxReaderElim), then spec gate lift + capabilities recipe
