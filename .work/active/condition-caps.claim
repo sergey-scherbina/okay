@@ -1,0 +1,5 @@
+feature/condition-caps 2026-09-01T21:42:24Z
+agent: claude-code
+heartbeat: 2026-09-01T21:42:24Z
+status: in-progress
+next: lexical restarts as capabilities (frame/Restart), then direct-try
