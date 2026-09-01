@@ -1,5 +1,0 @@
-slug: persist-replication
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: okay-persist stage 2 core, transport-agnostic: Replicated topic coordinator — leader/follower per partition (follower = a consumer that writes what it reads), epochs with fencing (rejection = ops event), high-water mark (reads never past it), quorum acks (Ack.Replicated returns at quorum), operator promote, idempotent producer window, replica stats; spec: specs/persist.md stage 2 boxes
-files: okay-persist/**, specs/persist.md (stage-2 notes + boxes), docs/modules/okay-persist.md

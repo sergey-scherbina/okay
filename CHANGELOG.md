@@ -1,5 +1,26 @@
 # Changelog
 
+## persist-replication — stage 2's core, transport-agnostic
+Completed: 2026-09-01 (landed as a9e4bb5; spec first)
+Replicated: a coordinator over N replica Stores behind the SAME
+Topic trait (stage-0 consumers never rebind). The follower
+push/pull IS the read path (replication is a consumer that writes
+what it reads; divergence throws by name). The high-water mark =
+the quorum-th largest replica end — reads and end() stop there, so
+nothing a failover could unwrite is observable; Ack.Replicated
+short of quorum throws NoQuorum rather than acking a promise it
+cannot keep. The Leader handle carries its epoch: promote catches
+the successor up FIRST, then fences the deposed handle, and both
+promotion and fencing land on the ops topic (the log audits
+itself). produce(producerId, seq, ...) is the idempotent window —
+the retry answers the ORIGINAL offset. Six tests on all three
+platforms with a Pausable store standing in for the down replica.
+En route: TestRepoAgent's budget grows with the repo (120s over
+munit's 30 at 419+ sources). persist-wire will carry these same
+calls between nodes without changing the machinery. Merge read
+alone after one refused ff (match-finish divergence; targeted
+retest of persist/demo/match): exit 0. Full matrix green.
+
 ## match-finish — the entropy seam, the module page, board hygiene
 Completed: 2026-09-01
 

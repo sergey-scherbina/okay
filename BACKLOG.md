@@ -74,9 +74,6 @@
 - [ ] persist-wire — the remote Topic client over the stage-2
       frames: a non-JVM consumer reaches a persist node directly;
       format and wire as documented surfaces
-- [ ] persist-replication — stage 2: leader/follower per partition,
-      epochs, high-water mark, quorum acks, operator failover,
-      replica stats, idempotent producer window
 - [ ] persist-interop — stage 3: Store over Kafka (okay-kafka), a
       JDBC table, segment offload to object storage
 - [ ] persist-consensus — stage 4: elected leadership, its own spec
