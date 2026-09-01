@@ -1,5 +1,16 @@
 # Changelog
 
+## direct-try v2 — marked catch bodies graduate
+Completed: 2026-09-02
+Landed. The sibling's v1 try sandwich (reify body, CanTry.tryIn,
+reflect back) gains effectful handlers: a catch body with marks goes
+through the block pipeline at the join type — Writer("recovered")
+.reflect inside the handler tells. Marked guards keep the named
+refusal; the finalizer refusal stands. A claim lesson recorded: the
+task was promoted from a STALE backlog entry (v1 had landed without
+the board cleanup) and converted into the delta instead of a no-op
+release. Full matrix green, exit 0.
+
 ## pg-composite-fields-typed — named composite columns decode with typed fields
 Completed: 2026-09-01
 The follow-up to pg-composite-decode: a NAMED composite column's fields

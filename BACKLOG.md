@@ -6,12 +6,6 @@
       with .reflect compiles (ChatDemo.agentTurn on master); Choice
       documents the Monad/MonadPlus overlap in its header. Reopen
       only if the inference form (no type argument) bites a consumer.
-- [ ] condition-restart-caps — lexical restarts as capabilities
-      (the ctx-prompts pattern applied to Condition.within): a
-      given Restart installed by the frame makes invoking a
-      nonexistent restart a COMPILE error for in-scope code; the
-      dynamic policy menu stays the floor. Named by the 2026-09-01
-      conditions-x-direct analysis.
 
 ## Flakes observed (record → fix loop when they recur)
 - [ ] demo-live-judgment-flake — TestChatDemo "LIVE UNGATED" and
