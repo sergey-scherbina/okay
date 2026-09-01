@@ -1,6 +1,0 @@
-feature/ui-dom-patch 2026-09-01T14:05:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-01T14:05:00Z
-status: in-progress
-done-so-far:
-next: spec section, Dom.scala (scala-js), fake-DOM law test, js test dir enabled for okayUi

@@ -1,5 +1,16 @@
 # Changelog
 
+## ui-dom-patch — the raw-DOM Backend; the patch consumer arrives
+Completed: 2026-09-01 (landed as 1624244)
+React-less DOM over js.Dynamic, zero dependencies: React.elem is the
+build plan, Ui.patch keeps the mirror events interpret against
+(React.event, one delegated listener per kind), paths walk
+childNodes. Proven against a fake document under Node: the law
+(patching frames equals building the last), a shuffle creates zero
+nodes, narrow patches mutate in place, events round-trip. okayUi JS
+tests exist again (js test dir replaces sources := Seq()). Matrix
+1106.
+
 ## persist-stage1 — the consumers prove the seam
 Completed: 2026-09-01 (landed as 8501246; spec first af18ad6)
 Compaction (keep-latest-per-key, offsets preserved as holes,
