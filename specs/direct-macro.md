@@ -128,6 +128,14 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Decisions
 
+- **`!?`, not `!`, for the operation mark** — REFUTED by the
+  compiler (2026-09-01): an extension named `!` imported via
+  `import Direct.*` SHADOWS `object !` as an identifier, and every
+  `!.run(...)` in the importing file stops compiling ("value run is
+  not a member of Any => Any" — the bare `!` eta-expands to the
+  extension). The two-character mark is the price of keeping the
+  program-runner namespace intact.
+
 - **A phantom mark, not Monadic's operators** — the macro's block is
   typed BEFORE expansion, so inside it `m.?` must have type A; the
   Monadic operators return Cont and cannot be reused. The phantom
