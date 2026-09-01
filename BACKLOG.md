@@ -1,5 +1,31 @@
 # Backlog
 
+## Cross-cutting — the 2026-09-01 audit (internal consistency / industry axes)
+- [ ] queue-shape — the per-message-ack shape (AMQP/RabbitMQ, SQS,
+      NATS, Pulsar, MQTT): not the log shape (no offsets); either
+      interop sources appending into persist topics or a minimal
+      Queue seam — decide in a data.md section when claimed
+- [ ] blob-seam — object storage (S3-compatible first; GCS/Azure
+      later): put/get/list/delete(+multipart) behind one trait;
+      already ASSUMED by persist stage-3 offload, the lake roads and
+      r/py Arrow exchange, never specced; MinIO for live tests
+- [ ] wire-tls — TLS for the own wire protocols (okay-pg sslmode,
+      persist-wire, RESP, Rserve): one transport-level seam over the
+      Async transport, keys/certs via specs/conf.md
+- [ ] persist-wire-auth — authn/z on the remote Topic client via
+      okay-security (bearer/API key; per-topic capabilities — the
+      ui "tree is the capability list" analog for topics)
+- [ ] own-db-migrations — versioned idempotent DDL for OWN
+      databases (materialization targets), applied set journaled as
+      a topic; foreign DBs stay strictly no-DDL (specs/jdbc.md)
+- [ ] obs-tracing — trace-context propagation (W3C traceparent)
+      through http/mcp/sql/persist operations; spans as values, an
+      exporter as a consumer (the stats-as-values doctrine extended)
+- [ ] persist-backup — state the backup/PITR story persist's design
+      already implies (segment copy IS backup, restore = replay +
+      truncate; snapshot copies bound it) + a doctor tool verifying
+      segment CRCs offline
+
 ## Correctness leads
 - [ ] nio-close-race — `ClusterTransportBenchmark.nio` sporadically
       fails its sum assertion (3 forks of 6 on 2026-09-01; also one
