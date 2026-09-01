@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- ctx-functions — the context-function map specced in full (verified
+  by E1-E8), and the top two implemented: implicit prompts for
+  Scope/Cut (nearest-scope by nesting), Obs.Traced.route
+  (Tracer ?=> Route); the rest filed or gated with reasons
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
