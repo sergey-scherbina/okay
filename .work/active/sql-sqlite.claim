@@ -1,5 +1,0 @@
-slug: sql-sqlite
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: SQLite through the Sql seam (user ask): xerial sqlite-jdbc test-scope, the typed battery over an embedded file db — rows/verify/params, transact (SQLite's isolation reality stated), the Writes bridge over native ON CONFLICT, read-only open mode as the no-DDL analog; spec: jdbc.md/sql.md driver notes
-files: okay-jdbc/** (TestSqlite), build.sbt (test dep), specs/sql.md or jdbc.md (Results note)

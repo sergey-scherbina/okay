@@ -1,5 +1,19 @@
 # Changelog
 
+## sql-sqlite — the embedded engine proves the seam (user ask)
+Completed: 2026-09-01 (landed as 5b17922)
+The whole typed battery over xerial sqlite-jdbc (test-scope)
+against a FILE database: metadata honest enough for a clean verify,
+both isolation levels granted, the Writes bridge in its
+spec-preferred ON CONFLICT DO NOTHING spelling, and READ-ONLY open
+mode standing in for the no-DDL posture (an embedded db has no
+users — "their database" is a file you were handed). En route,
+found and fixed for everyone: okay-match + okay-jdbc both carrying
+H2 in one sbt JVM raced DriverManager's per-classloader driver
+registration ("No suitable driver" for whoever ran second) — both
+suites now fork, the core-fork precedent. Merge read alone after
+one refused ff (claim-only divergence): exit 0. Matrix green.
+
 ## own-db-migrations — the settled discipline, adopted not reinvented
 Completed: 2026-09-01 (landed as e5eff69)
 Migrate against the Sql trait: versioned authored scripts, sha-256
