@@ -1,5 +1,21 @@
 # Changelog
 
+## monadic-reflection — Filinski's reflect/reify over Cont: direct style for any Monad[F], no macros
+Completed: 2026-09-01
+Landed as 84d955f (spec d35c6a2, demo hotfix b725d19). object Monadic:
+reflect is ONE extension serving three spellings (m.reflect,
+reflect(m), and the symbolic m.? — Rust's postfix question
+generalized), reify is the delimiter back into F; answer-type
+modification types it precisely (Cont[A, F[B], F[B]]). Multi-shot
+PRESERVED (a reflected List runs the continuation per element — the
+"direct style forfeits multi-shot" note in specs/context-functions.md
+corrected: that is Loom's cost, not this road's). FINDING: stack
+discipline is the reflected monad's own — strict flatMap (Option)
+costs a frame per reflect, trampolined A ! F runs 100k reflected binds
+flat. 10 tests (TestMonadic); full matrix green. Rode along: master's
+okayDemo/Test compile fix (two munitTimeout overrides from ebd344a +
+99364a6 — kept 180s).
+
 ## kafka-eos — exactly-once on the Kafka interop, inherited from the engine
 Completed: 2026-09-01
 The stage-3 persist-interop rule "an engine keeps its own ops" cuts

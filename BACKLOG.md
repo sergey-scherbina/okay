@@ -1,5 +1,14 @@
 # Backlog
 
+## Flakes observed (record → fix loop when they recur)
+- [ ] netty-ws-matrix-flake — okay.netty.TestBackends "every WebSocket
+      client talks to every WebSocket server" failed once under the
+      full sbt test matrix (jetty StaticException: Closed,
+      2026-09-01, log: one failure in 12); twice green in isolation
+      right after. Suspect load/port timing, not code. Settle by:
+      run the suite in a loop under parallel matrix load; if it
+      reproduces, isolate per the isolate skill.
+
 ## Correctness and the core (specs/sim.md, specs/typestate.md)
 - [ ] wire-typestate — PState at the protocol seams
       (specs/typestate.md; user ask 2026-09-01): SCRAM's step
