@@ -298,6 +298,16 @@ the failures are load-bearing.
   functions, `import okay.given` brings `ctxMonad` (and friends).
   Forgetting the second is a "no given instance" error at a
   `sequence` call, not silence.
+- **The ctx-monad is for width, not depth** (E22). Every bind the
+  compiler runs is a stack frame — there is no trampoline — and a
+  left-nested chain overflows between ~2 000 and ~5 000 binds on a
+  default stack. `traverse`/`sequence` over a config or a page of
+  readers is the intended scale; a 10k-deep monadic chain belongs
+  to the row's `Reader % R`, which trampolines on Cont. And never
+  grow a chain through a mutating `var`: the closure inserted at
+  `val prev: Env ?=> A = prog` captures the var BY REFERENCE, the
+  chain becomes self-referential, and it overflows at any depth —
+  build chains by recursion.
 
 ## The door outside, the direct block inside (the E20 pattern)
 

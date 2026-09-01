@@ -174,6 +174,22 @@ Every claim below was compiled, not assumed:
   inside — no new seams. (Noticed: `import okay.*` + `import
   okay.!.*` makes `Pure` ambiguous — qualify `okay.Pure`; same
   shadow as TestDirectDoors hit.)
+- **The ctx-monad chain is NOT stack-safe, and a var loop
+  self-captures** (E22, 2026-09-01, while benchmarking): building
+  `chain = M.flatMap(chain')(_ => ask)` to depth 10k overflows on
+  apply — the compiler-run Reader has no trampoline, every bind is
+  a stack frame; default-stack capacity measured between 2 000 (ok)
+  and 5 000 (overflow). Worse, the natural var loop is a TRAP:
+  at `val prev: Int ?=> Int = prog` the inserted ctx-closure
+  captures the VAR by reference, so the chain becomes
+  self-referential and overflows at ANY depth — build chains by
+  recursion, never through a mutating var. Also found: a ctx-fn
+  value in LAMBDA-RESULT position eagerly applies before closure
+  insertion (foldLeft over ctx-fns fails to type; the E10 family).
+  Doctrine: the instance serves modest WIDTHS (traverse over a
+  config, a page of readers); DEPTH belongs to the row Reader,
+  which trampolines on Cont. Recorded in capabilities.md
+  boundaries; measured in ReaderBenchmark (okayCtxMonad at N/10).
 - **The ctx layer composes with `!` cleanly, and the shipped doors
   are the proof** (E14, compiled against core): `Env ?=> (A ! F)`
   gives the ambient environment INSIDE `for`-comprehensions over
