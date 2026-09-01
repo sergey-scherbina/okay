@@ -179,9 +179,11 @@ is `okay.rag.Source` (so a server's documents go through the
 retriever), a prompt is `Seq[Turn]` (so a server's prompt is an agent
 opening). v3 made the session duplex — the server talking first: subscriptions,
 roots, and sampling, where `sampling/createMessage` is the `Model`
-effect, so an MCP server borrows the client's own model handler. What
-remains is elicitation (which needs a UI contract) and the
-streamable-HTTP transport.
+effect, so an MCP server borrows the client's own model handler. Both remaining
+opens closed since: elicitation end to end via okay-ui's contract
+(P12 v1), and the streamable-HTTP transport as `McpHttp` in
+okay-http (route + link, session ids, the 404 reinitialize signal —
+beside the WebSocket transport), spec'd in specs/mcp.md.
 
 ## P12 — okay-ui: the toolkit that is not a toolkit
 

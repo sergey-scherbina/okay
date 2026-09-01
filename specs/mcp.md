@@ -172,8 +172,9 @@ Session.templates: Seq[Mcp.Template] ! Async
 ## Out of scope
 - elicitation (`elicitation/create`): the server asking the human, not
   the program — it needs a UI contract this library has no opinion on
-- the HTTP/SSE transport (okay-llm already has the SSE half; the
-  streamable-HTTP session layer is its own task)
+- ~~the HTTP/SSE transport~~ — landed since: `McpHttp` in okay-http
+  (the streamable-HTTP route and link, sessions, journaled pushes —
+  see the McpHttp section below), beside the WebSocket transport
 - OAuth and any authorization
 - JSON-RPC BATCHES (a top-level array of messages): the 2025-06-18
   revision removed them, and this implementation answers one message
