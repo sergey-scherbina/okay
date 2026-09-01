@@ -16,10 +16,10 @@ reason. Zero dependencies — the JDK carries the primitives.
 | `Secure.bearer` | the route wrapper: the protected route is `Principal => PartialFunction`, so it CANNOT be reached without a principal — the type system holds the door; 401/403 with WWW-Authenticate |
 | `OAuth2` | the client flows over `trait Http`: code+PKCE (S256), refresh, client credentials; a token-endpoint error is a Left |
 
-Staged next (BACKLOG): security-mcp (MCP authorization: RFC 9728
-metadata, 401 challenges, discovery -> PKCE -> bearer retry on the
-link), security-node (the seam over node:crypto), security-oidc,
-ES256 and an argon2 satellite.
+| `McpAuth` | stage 1: the RFC 9728 document, the protected MCP route (401 with resource_metadata), discovery (401 -> resource metadata -> AS metadata, missing links as named Lefts), and `connect` — the machine grant onto a bearer-carrying `McpLink`; the loop test proves the same agent call works protected and open |
+
+Staged next (BACKLOG): security-node (the seam over node:crypto),
+security-oidc, ES256 and an argon2 satellite.
 
 Not an authorization SERVER: this module verifies and obtains tokens;
 it does not issue codes to third parties. The stub AS in its tests is

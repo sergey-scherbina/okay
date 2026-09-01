@@ -36,7 +36,8 @@ object McpHttp {
    * which is what `lines` reads, so the session above cannot tell
    * which shape the server chose.
    */
-  final class McpLink private[http] (http: Http, url: String)(using Scheduler)
+  final class McpLink private[http] (http: Http, url: String,
+                                     bearer: Option[() => Option[String]])(using Scheduler)
     extends okay.mcp.Link {
 
     private val inbound = Channel[String]()
@@ -49,7 +50,10 @@ object McpHttp {
       ("content-type", "application/json"),
       ("accept", "application/json, text/event-stream"),
       (VersionHeader, Mcp.Version)) ++
-      session.map(id => (SessionHeader, id))
+      session.map(id => (SessionHeader, id)) ++
+      // asked per request, so a refreshed token is picked up without
+      // rebuilding the link
+      bearer.flatMap(_()).map(t => ("authorization", s"Bearer $t"))
 
     def send(line: String): Unit ! Async =
       http.send(Request.post(url, Body.Text(line), headers))
@@ -122,7 +126,8 @@ object McpHttp {
         http.send(Request.get(url,
           Seq(("accept", "text/event-stream"), (VersionHeader, Mcp.Version)) ++
             session.map(id => (SessionHeader, id)) ++
-            lastEvent.map(n => (LastEventHeader, n.toString)))).flatMap { r =>
+            lastEvent.map(n => (LastEventHeader, n.toString)) ++
+            bearer.flatMap(_()).map(t => ("authorization", s"Bearer $t")))).flatMap { r =>
           if r.status >= 400 then pure(())    // 405: this server does not push
           else drainSse(Http.lines(r)).flatMap(_ =>
             if closed then pure(())
@@ -158,8 +163,10 @@ object McpHttp {
       inbound.close()
   }
 
-  /** an endpoint, as a link */
-  def link(http: Http, url: String)(using Scheduler): McpLink = McpLink(http, url)
+  /** an endpoint, as a link; `bearer` authorizes every request */
+  def link(http: Http, url: String,
+           bearer: Option[() => Option[String]] = None)(using Scheduler): McpLink =
+    McpLink(http, url, bearer)
 
   // ---------------------------------------------------------------- serving
 

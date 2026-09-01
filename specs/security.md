@@ -166,19 +166,19 @@ object OAuth2:                           // the client flows, over trait Http
   stage 0's pieces (`authorizationUrl`/`exchange`) with the browser
   the caller owns; `connect` covers the machine-to-machine grant.
 
-  - [ ] an unauthenticated MCP request answers 401 whose
+  - [x] an unauthenticated MCP request answers 401 whose
         WWW-Authenticate names resource_metadata, and that url serves
         the RFC 9728 document naming the authorization server
-  - [ ] discover walks the chain: 401 -> resource metadata -> AS
+  - [x] discover walks the chain: 401 -> resource metadata -> AS
         metadata -> endpoints; each missing link is a named Left
-  - [ ] the whole loop against a stub AS: connect obtains a token by
+  - [x] the whole loop against a stub AS: connect obtains a token by
         client credentials and the SAME agent tool-call that works
         unauthenticated on an open server works on the protected one
         — with nothing above the link changed
-  - [ ] a wrong-scope token is 403 by policy; the metadata documents
+  - [x] a wrong-scope token is 403 by policy; the metadata documents
         stay servable without any token (they are how you LEARN to
         authenticate)
-  - [ ] hostile: a metadata document pointing at a hostile AS is the
+  - [x] hostile: a metadata document pointing at a hostile AS is the
         caller's to distrust — discover surfaces the AS url it found,
         and connect only talks to it if the caller proceeds (recorded
         as the trust boundary, not silently followed)... reformulated:
@@ -228,3 +228,14 @@ tampered payloads, the HS256-against-RSA confusion (defused by the
 key deciding the algorithm), fuzzed garbage into every entry point.
 Zero dependencies; the JS leg compiles, verifies nothing until
 security-node.
+
+Stage 1 (security-mcp) shipped the same day: McpAuth — the RFC 9728
+document servable without a token (it is how a stranger learns to
+stop being one), the protected MCP route whose 401 carries
+resource_metadata, discovery walking 401 -> resource metadata -> AS
+metadata with every missing link a named Left, and connect for the
+machine grant handing back a bearer-carrying link. The proof is the
+loop test: the SAME agent tool call that works on an open server
+works on the protected one, with nothing above the link changed.
+Discovered is a VALUE the caller sees before any secret travels —
+the trust boundary held by making them look. 4 tests.
