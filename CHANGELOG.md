@@ -1,5 +1,19 @@
 # Changelog
 
+## demo-direct-showcase — the worked example, and the two holes it found
+Completed: 2026-09-01
+Landed as e5a3205. ChatDemo's scripted go became a markless for-do
+(`for t <- reply.split(' ') do Writer(t + " ")`); the agentTurn
+migration converged with ui-direct's parallel landing (theirs kept —
+explicit direct[F] with .reflect). The example did its job as a test
+bed: loop and while BODIES now carry statement semantics (a bare op
+as the body used to compile as an expression and be dropped), and a
+fully markless block with a runnable loop body is intercepted (the
+interception used to gate on hasMark). Recorded: .? is ambiguous
+under the Throws import (okay's own row-?) — .reflect is the
+collision-free idiom, and the symbolic mark is queued for retirement
+(three strikes: .!, .!?, .?). Full matrix green, exit 0.
+
 ## kafka-repair — the repair road holds over the real engine
 Completed: 2026-09-01
 The Repair seam is engine-agnostic by construction (Repair over

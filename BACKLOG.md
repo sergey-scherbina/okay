@@ -1,13 +1,11 @@
 # Backlog
 
 ## Direct style — the roads named by the 2026-09-01 survey (docs/direct-style.md)
-- [ ] direct-choice-ambiguity — direct over a row containing Choose
-      does not compile: Monad[[A] =>> A ! Row] is ambiguous between
-      Free's Monad and Choice's MonadPlus[[A] =>> A ! (Choose + F)]
-      (repro: ChatDemo.agentTurn migration, reverted with a pointer).
-      The principled fix is priority (Choice's given lowered so plain
-      Monad summons resolve to Free's; MonadPlus summons unchanged) —
-      touches repo-wide resolution, coordinate in rozum before doing.
+- [x-resolved] direct-choice-ambiguity — resolved in practice by
+      ui-direct's landing: explicit direct[[A] =>> A ! AgentRow]
+      with .reflect compiles (ChatDemo.agentTurn on master); Choice
+      documents the Monad/MonadPlus overlap in its header. Reopen
+      only if the inference form (no type argument) bites a consumer.
 - [ ] condition-restart-caps — lexical restarts as capabilities
       (the ctx-prompts pattern applied to Condition.within): a
       given Restart installed by the frame makes invoking a
