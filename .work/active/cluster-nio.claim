@@ -1,6 +1,0 @@
-feature/cluster-nio 2026-09-01T07:08:58Z
-agent: claude-code
-heartbeat: 2026-09-01T07:08:58Z
-status: in-progress
-done-so-far: worktree created
-next: measure blocking-socket vs Nio.Conn transport before changing anything
