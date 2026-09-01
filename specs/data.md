@@ -25,6 +25,8 @@ surface.** The seams already exist, built one per shape:
 | cached view | `Cache`/`View` | specs/cache.md |
 | heavy compute (aggregation) | the `Aggregator` triple bridges | specs/external-systems.md |
 | foreign compute (call-shaped: R, Python) | `REval`/`PyEval` operations + handler | specs/r.md, specs/py.md |
+| per-message-ack queues | ingress/egress bridges to topics (no seam) | specs/data.md, Queues |
+| files / objects | `Blob` | specs/blob.md |
 | config/secrets | `Conf`/`Secrets` | specs/conf.md |
 
 Every class below gets the same five questions answered: which seam;
@@ -198,6 +200,31 @@ Nothing new filed. The CALL-shaped sibling of this class — a
 statistical function over a frame, answered and journaled — is R,
 specced separately (specs/r.md: operations not embeddings,
 subprocess and Rserve engines behind one handler).
+
+### Queues (RabbitMQ/AMQP, SQS, NATS, Pulsar, MQTT) — the ack shape, bridged not mirrored
+
+The shape the log deliberately is not: per-message acknowledgement,
+redelivery, competing consumers, no offsets — DELIVERY machinery,
+not history. Two roads, and pointedly no new seam:
+
+- **Ingress**: consume their queue, append into a persist topic,
+  ack AFTER the append — at-least-once, with dedup one hop
+  downstream (the record carries the broker's message id; topic
+  consumers dedup by it — WithKey's shape again). The queue
+  becomes an entry ramp to the log, and everything it could not do
+  — replay, audit, fan-out to late consumers — is restored one hop
+  in.
+- **Egress**: a topic consumer publishes outward, its journaled
+  offset making the publisher resumable; a broker that dedups on
+  message id gets exactly-once OUTCOME, the rest get at-least-once
+  said out loud.
+
+A native `Queue` seam is REJECTED: it would mirror a lossy shape
+into the core to save one hop, and every consumer of it would
+rebuild the log's properties on top. Task distribution INSIDE the
+stack is the cluster's worker model and consumer groups over
+partitions — not a broker. Filed: `queue-shape` (the two bridges;
+engine adapters as deployments name them).
 
 ### Named and deferred, so the list is complete
 

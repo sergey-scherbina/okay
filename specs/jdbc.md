@@ -27,9 +27,9 @@ bridge — is unchanged, but it binds to the driver-agnostic `Sql`
 seam rather than to `java.sql.Connection`: okay-jdbc is that seam's
 FIRST driver (and stays the right one for warehouses, DuckDB and
 everything with a good JVM driver), with the Postgres wire protocol
-and an R2DBC hatch as the other roads in. The `Connection`-typed
-sketch below predates the seam; the raw `JdbcInterop` streaming
-keeps it deliberately.
+and an R2DBC hatch as the other roads in. The sketch below is
+stated against the seam (audit fix, 2026-09-01); only the raw
+`JdbcInterop` streaming keeps `Connection` in hand, deliberately.
 
 ## Typed rows: Schema at the flat edge
 
@@ -148,24 +148,40 @@ handed to `connection(url, user, password)` which already has the
 right signature. Nothing here stores or logs a credential; the
 JDBC URL never carries one (conf invariant 2).
 
+## Own relational databases: migrations (the audit's gap, closed)
+
+The no-DDL posture is for THEIR databases. Our own — the
+materialization targets of specs/data.md's own posture — need the
+opposite discipline, and it is the industry's settled one, adopted
+rather than reinvented (the Flyway model): VERSIONED SQL scripts,
+applied in order, each recorded with its CHECKSUM in a
+schema-version table in the SAME database — transactional with the
+DDL where the engine allows it (Postgres does), so the database
+itself answers "what am I". A changed checksum on an
+already-applied script REFUSES loudly (the fingerprint rule at yet
+another seam); the applied set is also appended to an ops topic
+for the audit trail. Auto-generated diff migrations are rejected:
+a migration is authored SQL, reviewed like the code it is. Filed:
+`own-db-migrations`.
+
 ## Interface (sketch — the shape, not the final word)
 
 ```scala
-object Jdbc:
-  /** startup drift check: every mismatch, as data */
-  def verify[A: Schema](conn: Connection, sql: String): Vector[Drift]  // empty = aligned
+// the typed layer, once, against the Sql driver seam (specs/sql.md)
+object Typed:
+  /** startup drift check via the driver's describe: mismatches as data */
+  def verify[A: Schema](db: Sql, sql: String): Vector[Drift] ! Async
 
   /** typed streaming read; per-row damage is data */
-  def rows[A: Schema](conn: Connection, sql: String, params: Product = EmptyTuple)
+  def rows[A: Schema](db: Sql, sql: String, params: Product = EmptyTuple)
   : Chunk[Either[Bad, A]] ! (Produce + Async)
 
   /** typed write; params from the product, always prepared */
-  def update[P: Schema](conn: Connection, sql: String)(p: P): Int ! Async
-  def batchOf[P: Schema](conn: Connection, sql: String)(rows: Chunk[P]): Int ! Async
+  def update[P: Schema](db: Sql, sql: String)(p: P): Long ! Async
+  def batchOf[P: Schema](db: Sql, sql: String)(rows: Chunk[P]): Long ! Async
 
-  /** the transaction region */
-  enum Isolation { case ReadCommitted, RepeatableRead, Serializable }
-  def transact[A](conn: Connection, isolation: Isolation = Isolation.ReadCommitted)
+  /** the transaction region over the driver's begin/commit/rollback */
+  def transact[A](db: Sql, isolation: Isolation = Isolation.ReadCommitted)
                  (body: => A ! (Resource + Async)): A ! (Resource + Async)
 ```
 

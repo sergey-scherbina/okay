@@ -63,6 +63,15 @@ requests of the world; the log is infrastructure a HANDLER owns —
 argument, and that precedent is right. Programs stay written against
 their own effects; the store appears where handlers are built.
 
+One deliberate asymmetry, recorded since the 2026-09-01 audit:
+`Topic` is SYNCHRONOUS where the newer seams (`Sql`, `Docs`,
+`Cache`) speak `Async`. `Topic` is the local ENGINE SPI — memory
+and files, where an async signature would be theater — and
+everything that crosses a wire wraps it: the streaming/tailable
+readers (stage 1) and the remote client (persist-wire) speak Async
+at their own layer. An engine is not an access path; specs/sql.md's
+async-in-the-trait decision governs access paths.
+
 ```scala
 package okay.persist
 
@@ -259,6 +268,28 @@ this is interface, not afterthought:
   readiness = every partition this node leads is open and past
   recovery. Two booleans with reasons, as values.
 
+## Backup and restore (stated, since the design already implies it)
+
+Append-only makes backup boring, which is the point:
+
+- a CLOSED segment never changes, so incremental backup is copying
+  new segment files — to an object store (specs/blob.md) or plain
+  rsync; the active segment joins next round, after it rolls.
+- RESTORE is placing files back and letting recovery scan them —
+  the same code path as every startup, so restore is exercised by
+  the ordinary test suite daily, not by an incident yearly.
+- POINT-IN-TIME is truncation: restore, then truncate to the last
+  offset before the damage; a snapshot copy bounds how much
+  history a restore must replay (the WAL+checkpoint shape, told a
+  third time).
+- a DOCTOR tool (filed: persist-backup) runs the recovery scan
+  against a BACKUP — CRCs, header chains — answering "is this
+  backup restorable" before anyone needs it to be.
+
+Replication (stage 2) is availability, not backup: an epoch fence
+protects against split-brain, not against `rm -rf` or a bad
+deploy writing garbage — the copies above answer those.
+
 ## Staging
 
 Each stage lands alone, tested, useful; consumers bind to the trait
@@ -282,7 +313,11 @@ at stage 0 and never rebind.
   REMOTE `Topic` client (persist-wire): a Native or Node consumer
   reaches a persist node directly — no JVM, no JDBC in between.
   Openness is a stated property: the segment format and the wire
-  are documented surfaces, not internals.
+  are documented surfaces, not internals. The wire AUTHENTICATES
+  via specs/security.md (bearer / API key) with per-topic
+  capabilities — a client is offered only the topics it may see,
+  the ui rule ("the tree is the capability list") retold for logs
+  — and encrypts via the one transport seam, specs/tls.md.
 - **Stage 3 — interop engines**: `Store` over Kafka via okay-kafka;
   JDBC-backed topic; segment offload to object storage.
 - **Stage 4 — elected leadership**: consensus, its own spec, its

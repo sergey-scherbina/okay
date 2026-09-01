@@ -1,0 +1,79 @@
+# TLS for the own wires
+
+## Overview
+
+The stack is growing wire protocols of its own — the pg client
+(specs/sql.md), the remote Topic client (specs/persist.md), RESP
+(specs/cache.md), QAP1 (specs/r.md), the cluster's remote channels —
+and none of them had a transport-security story: the 2026-09-01
+audit's most serious finding, because "внешняя база клиента" in
+production means TLS or it means nothing. This spec states the
+answer ONCE, at the layer where it belongs: encryption wraps the
+TRANSPORT, not the protocols — every protocol above the Async
+transport gets TLS from one seam and adds nothing of its own.
+
+## The seam
+
+- `Tls.client(cfg)` / `Tls.server(cfg)` wrap an Async-transport
+  connection before any protocol bytes flow. Platform fills the
+  crypto (the specs/security.md doctrine — no own crypto, ever):
+  JVM = `SSLEngine` over the existing NIO transport; Node = the
+  `tls` module; Native = platform TLS via interop, staged — JVM
+  first, honestly.
+- **Vocabulary: postgres's `sslmode`, adopted stack-wide** because
+  it is the one operators already know, and it names the honest
+  levels: `disable` | `require` (encrypt, no identity check) |
+  `verify-ca` | `verify-full` (hostname too). The default
+  everywhere is `verify-full`; anything weaker is a NAMED decision
+  in config (the Ack pattern, security edition).
+- Config per specs/conf.md: cert/CA paths are plain fields, PRIVATE
+  KEYS are `Secret` references (`file:` under 0400) — invariant 2's
+  sibling: a private key never inlines.
+- Server side: a wire server (persist-wire) terminates TLS itself
+  via the same seam, OR deployment terminates at a proxy — a stated
+  legitimate mode, not a workaround; the wire's auth (bearer, per
+  specs/persist.md) does not depend on which.
+- mTLS (client certificates) is the staged second step: the seam's
+  config carries an optional client identity from day one so adding
+  it changes no signatures.
+
+## Behavior
+
+- [ ] `verify-full` refuses a wrong hostname and an unknown CA,
+      each named as data; `verify-ca` accepts the wrong hostname
+      and the spec says so out loud
+- [ ] `require` refuses a plaintext server; `disable` connects and
+      is loggable as the named decision it is
+- [ ] the pg driver speaks sslmode through this seam (postgres's
+      STARTTLS-style SSLRequest dance lives in the pg driver; the
+      session it hands over is this seam's)
+- [ ] persist-wire over TLS passes the same acceptance suite as
+      plaintext (the two-driver move)
+- [ ] a private key configured inline (not a Secret ref) is refused
+      at config decode
+
+## Out of scope
+
+- own cipher/protocol choices beyond the platform's defaults —
+  TLS 1.2+ as the platform provides; no cipher-suite tuning API
+  until an operator names a need
+- certificate issuance/rotation automation (ACME) — deployment's
+  concern; the seam reloads on reconnect, which is enough for
+  rotation-by-replacement
+
+## Decisions
+
+- **One seam at the transport, not per protocol** — N protocols ×
+  1 TLS instead of N TLS stories; also what makes the
+  proxy-termination mode uniform. Rejected: per-protocol TLS
+  options.
+- **pg's sslmode vocabulary stack-wide** — operator-legible,
+  honest about the weak modes by naming them. Rejected: a
+  boolean `ssl: true` (hides verify-vs-not, the distinction that
+  matters).
+- **verify-full as the only default** — weak modes exist for real
+  topologies (sidecars, tunnels) but are opt-in by name. Rejected:
+  require-by-default (the industry's quiet MITM).
+- **Platform crypto only** — JCA/node:tls/platform TLS; the
+  security spec's rule extended to transport. Rejected: bundling a
+  TLS implementation.

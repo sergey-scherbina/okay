@@ -100,6 +100,9 @@ import — and the platforms it runs on.
   This stack already speaks SSE, JSON-RPC, MCP and (planned) RESP;
   the Postgres protocol is bigger but of the same nature, and one
   implementation unlocks the whole pg family including pgvector.
+  TLS rides the one transport seam (specs/tls.md) — the driver owns
+  only pg's SSLRequest handshake dance and speaks the `sslmode`
+  vocabulary that spec adopts stack-wide, `verify-full` by default.
 - **okay-r2dbc — the hatch, honestly framed.** R2DBC (Reactive
   Relational Database Connectivity — likely what "rjdbc" refers
   to; RJDBC proper is an R-language package and not relevant here)

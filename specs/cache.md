@@ -103,7 +103,9 @@ stated so the "cache the 404" question has one answer.
   justify a client-library dependency. Budget maps to `SET PX`
   (Redis enforces expiry server-side); `invalidate` is `DEL`.
   Connection config per specs/conf.md: address fields plus
-  `password: Secret` — resolved at the edge, never stored.
+  `password: Secret` — resolved at the edge, never stored. TLS
+  (the `rediss` deployments) rides specs/tls.md — the RESP client
+  adds nothing of its own.
 - **Cross-node invalidation** (stage 2, regime 2): an invalidation
   topic in okay-persist, each node's cache a consumer. Redis
   pub/sub is the stated alternative when Redis is already the

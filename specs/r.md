@@ -86,6 +86,9 @@ final case class RFrame(cols: Vector[(String, RColumn)])
   dependency chafes — a minimal QAP1 client over the Async
   transport, the okay-pg move (this stack speaks SSE, JSON-RPC,
   MCP, RESP-planned, pg-wire-planned; QAP1 is of the same nature).
+  A REMOTE Rserve rides specs/tls.md or stays behind localhost/a
+  tunnel — Rserve's own auth is weak, and the spec says so rather
+  than trusting it.
 - Config and secrets per specs/conf.md: the Rserve address and any
   credentials are conf fields; NOTHING of the parent environment
   leaks into the R process unless a config names it (an R process
