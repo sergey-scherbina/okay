@@ -51,9 +51,12 @@ Every claim below was compiled, not assumed:
   E10 trap, generalized) — explicit type arguments do not save it.
   So today: fixed-arity overloads (ContextFunctionN is built in to
   22) and nested `provide` (which associates exactly like the
-  idiom's <*>) are the honest floor; re-test the single definition
-  on future compilers — param-position match-type reduction is the
-  one missing piece.
+  idiom's <*>) are the honest floor — and the floor SHIPPED
+  (ctx-provide-n): provide is generated to all 22 arities, the Cats
+  mapN answer applied (their "unbounded" is 22 generated overloads
+  too; tools/gen_provide.py regenerates). Re-test the single
+  definition on future compilers — param-position match-type
+  reduction is the one missing piece.
 - **Macros cannot rewrite a block into nested implicit scopes** —
   Scala 3 macros run after typing; implicit resolution has already
   happened. A pre-typer compiler plugin could; that road is noted,
