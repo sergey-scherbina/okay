@@ -1,0 +1,16 @@
+feature/pg-composite-decode 2026-09-01T23:15:00Z
+agent: claude-code (session 75625ecc)
+heartbeat: 2026-09-01T23:15:00Z
+status: in-progress
+next: the pg driver decodes COMPOSITE/ROW() and ARRAY types instead of
+  raw text (user ask 2026-09-01, MUST). Add SqlValue.Arr(Vector)/Row(Vector)
+  to okay-sql (shared). In okay-pg: parse pg array text {..} (top-level split
+  respecting quotes+nesting; NULL literal; elements typed via a static
+  array-OID -> element-OID map + existing valueOf; nested arrays recurse)
+  and composite/record text (..) (fields split, "" and backslash unescaped,
+  empty = NULL) into SqlValue.Row. Wire into valueOf; textOf gains Arr/Row
+  -> pg literal for round-trip/copy/bind. Live TestPg battery over docker
+  pg: int[]/text[] (quoting, NULL), ROW()/record, nested array, NULLs.
+  Composite FIELD typing (named types via catalog) noted as follow-up.
+files: okay-sql Sql.scala (SqlValue cases), okay-pg PgSql.scala (valueOf/typeOf/textOf
+  + parser), new okay-pg test cases; specs/sql.md note
