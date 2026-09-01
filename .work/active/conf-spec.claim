@@ -1,6 +1,0 @@
-feature/conf-spec 2026-09-01T08:38:05Z
-agent: claude-code
-heartbeat: 2026-09-01T08:38:05Z
-status: in-progress
-done-so-far:
-next: write specs/conf.md (config as data, secrets as references)

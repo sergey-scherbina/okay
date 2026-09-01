@@ -23,6 +23,13 @@
       (the journal is an okay-persist topic: read(from) IS
       Last-Event-ID, TooEarly answers a compacted-past id)
 
+## okay-conf (specs/conf.md)
+- [ ] conf-impl — Secret/Secrets (env, file, memory, chain),
+      Conf.read/load; cross-built; the invariants' tests (error
+      names the ref, toString is the ref, trailing-newline trim)
+- [ ] conf-topic — stage 2: managed config as a compacted keyed
+      topic over okay-persist (audit/rollback for free)
+
 ## okay-persist (specs/persist.md — staged design; stage 0 landed)
 - [ ] persist-stage1 — consumers prove the seam: Durable.Journal over
       a keyed topic (complete-as-append), streaming/tailable reads,

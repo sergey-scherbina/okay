@@ -1,5 +1,14 @@
 # Changelog
 
+## conf-spec — specs/conf.md: config as data, secrets as references
+Completed: 2026-09-01
+Names the rule already in force (modules take credentials as
+constructor values; the edge resolves them) and adds the missing
+seam: Secret = a reference (env:/file:), Secrets = the resolver
+trait, four invariants keeping passwords out of journals, logs,
+URLs and stored configs by construction. Spec only; conf-impl and
+conf-topic filed.
+
 ## ui-durable — the journal is the line stream, verbatim
 Completed: 2026-09-01 (landed as 9068fe7 — an earlier entry said
 277ecce, the pre-rebase hash of the same work: a `| tail -1` hid a
