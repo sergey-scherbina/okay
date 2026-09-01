@@ -1,5 +1,25 @@
 # Changelog
 
+## pg-composite-fields-typed — named composite columns decode with typed fields
+Completed: 2026-09-01
+The follow-up to pg-composite-decode: a NAMED composite column's fields
+are now TYPED, not handed back as text. The obstacle was the protocol —
+a mid-query catalog lookup would corrupt the open extended-protocol
+portal — so the driver PRELOADS every named composite type's ordered
+field OIDs ONCE at connect (a single simple query in the ready state,
+where no portal is open, cached on the connection). `dataRow` then
+types a composite column's fields from that cache with no extra round
+trip: `select row('main st', 90210, true)::addr` decodes to
+`Row(Text("main st"), I32(90210), Bool(true))`, a NULL field as `Null`.
+Anonymous `record`/ROW() deliberately stays fields-as-text — its field
+types are genuinely undiscoverable (no typrelid, nothing on the wire).
+A composite type created after a connection is unknown to it until
+reconnect (stated). Live TestPgComposite gains 3 (typed fields, NULL
+fields, record-still-text); the pg suite (29) and the rest stay green —
+the preload is one extra query at connect, robust to a catalog it
+cannot read. Filed pg-composite-array-of-composite for the last
+slivers (arrays of composites, table row-types).
+
 ## direct-effect-provide — coloring as policy: the grant is a capability
 Completed: 2026-09-02
 Landed. A def requires Effect[G] as a using parameter and its

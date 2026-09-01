@@ -183,11 +183,21 @@ import — and the platforms it runs on.
       (`""` and `\"`/`\\`), so quoting and embedded commas survive;
       `textOf` re-encodes an `Arr`/`Row` to the pg literal, so a
       decoded value round-trips through copy/bind. Proven live over
-      Postgres (TestPgComposite, 8). FOLLOW-UP: a NAMED composite
-      column (dynamic OID, not 2249) still reads as text, and typing
-      a record's fields needs the composite's attribute OIDs resolved
-      at describe time (the nullability-resolve shape); the
-      `row_to_json → Schema` bridge is the other road
+      Postgres (TestPgComposite, 8)
+- [x] a NAMED composite column's fields are TYPED, not text
+      (pg-composite-fields-typed): the driver PRELOADS every named
+      composite type's ordered field OIDs at connect — a single simple
+      query in the ready state, because a mid-query catalog lookup
+      would corrupt the open extended-protocol portal — and `dataRow`
+      types a composite column's fields from that cache with no extra
+      round trip (`select row('main st', 90210, true)::addr` ->
+      `Row(Text, I32, Bool)`; a NULL field is `Null`). Anonymous
+      `record`/ROW() stays fields-as-text: its field types are genuinely
+      not discoverable (no typrelid). A composite type created AFTER a
+      connection is unknown to it until reconnect (stated). Still open
+      (pg-composite-array-of-composite): typing arrays whose element is
+      a named composite, and typing a table's row-type (relkind='r');
+      the `row_to_json → Schema` bridge remains the other road
 - [x] the SAME typed test program runs unmodified over the JDBC
       driver and the pg driver against equivalent schemas (the
       cluster acceptance-test move, applied to SQL) — one function

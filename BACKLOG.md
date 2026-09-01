@@ -100,13 +100,13 @@
 ## okay-cache (specs/cache.md)
 
 ## okay-pg (specs/sql.md — the wire driver)
-- [ ] pg-composite-fields-typed — the follow-up to pg-composite-decode
-      (landed): a NAMED composite column (dynamic OID, not record's
-      2249) still reads as text, and a record's fields arrive as Text
-      because per-field OIDs are not on the wire. Type them by
-      resolving the composite's attribute OIDs at describe time (the
-      nullability-resolve shape already in PgSql), threaded into the
-      row decode; or the row_to_json → Schema bridge.
+- [ ] pg-composite-array-of-composite — the remaining slivers after
+      pg-composite-fields-typed (landed): (1) an array whose ELEMENT
+      is a named composite (my_type[]) — needs pg_type.typelem ->
+      the composite OID, then the preloaded field cache; (2) a
+      table's ROW-type (relkind='r') selected as a whole row — same
+      cache shape, just widen the preload's relkind filter (weigh the
+      preload cost). Anonymous record ROW() stays text (unresolvable).
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:

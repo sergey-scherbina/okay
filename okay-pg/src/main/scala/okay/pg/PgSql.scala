@@ -32,6 +32,14 @@ final class PgSql private (conn: NetConn) extends Sql:
   private var inTx = false
   @volatile private var pendingRollback = false
 
+  // named-composite type OID -> its field OIDs, in attribute order
+  // (pg-composite-fields-typed). Preloaded ONCE at connect from the
+  // catalog — a mid-query lookup would corrupt the open portal — so
+  // `dataRow` types a composite column's fields with no extra round
+  // trip. Empty until loadComposites runs; a type created after
+  // connect is unknown until reconnect (stated).
+  private val composites = scala.collection.mutable.HashMap.empty[Int, Vector[Int]]
+
   // ── the Sql seam ───────────────────────────────────────────────
 
   def describe(sql: String): Vector[Col] ! Async =
@@ -297,7 +305,49 @@ final class PgSql private (conn: NetConn) extends Sql:
       else
         val s = new String(body, at, len, UTF_8)
         at += len
-        valueOf(oids(i), s)
+        // a NAMED composite column: its fields are typed from the
+        // preloaded catalog (pg-composite-fields-typed); everything
+        // else, including anonymous record/ROW(), goes through valueOf
+        composites.get(oids(i)) match
+          case Some(fieldOids) => parseCompositeTyped(s, fieldOids)
+          case None => valueOf(oids(i), s)
+    }
+
+  /** preload every named composite type's field OIDs once, at connect
+   * (pg-composite-fields-typed): a simple 'Q' query in the ready state,
+   * safe because no portal is open. `relkind='c'` selects user-defined
+   * composite types (CREATE TYPE ... AS); a table's row-type and an
+   * anonymous record are deliberately not here. Robust: a catalog it
+   * cannot read leaves the cache empty and composites fall back to
+   * text, never a failed connect. */
+  private def loadComposites(): Unit ! Async =
+    compositeRows(
+      "select ty.oid, a.atttypid from pg_type ty " +
+      "join pg_class c on c.oid = ty.typrelid " +
+      "join pg_attribute a on a.attrelid = c.oid " +
+      "where c.relkind = 'c' and a.attnum > 0 and not a.attisdropped " +
+      "order by ty.oid, a.attnum").map { rows =>
+      composites.clear()
+      for (typeOid, fieldOid) <- rows do
+        composites.update(typeOid, composites.getOrElse(typeOid, Vector.empty) :+ fieldOid)
+    }
+
+  /** the first two int columns of every row of a simple query */
+  private def compositeRows(sql: String): Vector[(Int, Int)] ! Async =
+    conn.write(msg('Q', str(sql))).flatMap { _ =>
+      collectReady(Vector.empty[(Int, Int)]) {
+        case (('D', body), acc) =>
+          val n = ((body(0) & 0xff) << 8) | (body(1) & 0xff)
+          if n >= 2 then
+            var at = 2
+            val l1 = readI32(body, at); at += 4
+            val c1 = new String(body, at, l1, UTF_8); at += l1
+            val l2 = readI32(body, at); at += 4
+            val c2 = new String(body, at, l2, UTF_8)
+            acc :+ ((c1.toInt, c2.toInt))
+          else acc
+        case (_, acc) => acc
+      }
     }
 
 object PgSql:
@@ -351,7 +401,11 @@ object PgSql:
             throw PgError(s"authentication method $other is not spoken here " +
               "(scram-sha-256 is; md5 and cleartext are deliberately not)")
         case ('E', body) => throw errorOf(body)
-        case ('Z', _) => pure(new PgSql(conn))
+        case ('Z', _) =>
+          // ready: preload named-composite field OIDs before handing
+          // the session over, so composite columns type from the cache
+          val db = new PgSql(conn)
+          db.loadComposites().map(_ => db)
         case _ => auth(scram)
       }
 
@@ -501,6 +555,19 @@ object PgSql:
     val inner = s.stripPrefix("(").stripSuffix(")")
     SqlValue.Row(splitMembers(inner, braces = false).map { (raw, quoted) =>
       if !quoted && raw.isEmpty then SqlValue.Null else SqlValue.Text(raw)
+    })
+
+  /** a NAMED composite whose field OIDs are known (pg-composite-fields-
+   * typed): each field typed via `valueOf`, an unquoted empty field a
+   * SQL NULL. If the field count and the OID count disagree (a type
+   * changed under a live connection), the extra fields fall back to
+   * text rather than throw. */
+  private[pg] def parseCompositeTyped(s: String, fieldOids: Vector[Int]): SqlValue =
+    val inner = s.stripPrefix("(").stripSuffix(")")
+    SqlValue.Row(splitMembers(inner, braces = false).zipWithIndex.map { case ((raw, quoted), i) =>
+      if !quoted && raw.isEmpty then SqlValue.Null
+      else if i < fieldOids.length then valueOf(fieldOids(i), raw)
+      else SqlValue.Text(raw)
     })
 
   /** one row in COPY text format (see specs/sql.md) */

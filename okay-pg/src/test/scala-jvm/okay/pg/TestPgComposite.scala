@@ -94,3 +94,34 @@ class TestPgComposite extends munit.FunSuite:
       assertEquals(back, Arr(Vector(I32(1), I32(2), Null)))
     finally db.close()
   }
+
+  /** define a named composite type on its own connection, so a FRESH
+   * connection preloads it (pg-composite-fields-typed's contract) */
+  private def defineType(): Unit =
+    val setup = connect()
+    try
+      run(setup.update("drop type if exists okay_addr cascade"))
+      run(setup.update("create type okay_addr as (street text, zip int, active bool)"))
+    finally setup.close()
+
+  test("a named composite type's fields are TYPED, not handed back as text") {
+    assume(available, s"no Postgres at $host:$port — skips")
+    defineType()
+    // the fresh connection preloaded okay_addr's field OIDs at connect
+    assertEquals(cell("select row('main st', 90210, true)::okay_addr"),
+      Row(Vector(Text("main st"), I32(90210), Bool(true))))
+  }
+
+  test("a named composite with NULL fields types the present ones and nulls the rest") {
+    assume(available, s"no Postgres at $host:$port — skips")
+    defineType()
+    assertEquals(cell("select row('x', null, null)::okay_addr"),
+      Row(Vector(Text("x"), Null, Null)))
+  }
+
+  test("an anonymous record stays fields-as-text: no field OIDs on the wire to type by") {
+    assume(available, s"no Postgres at $host:$port — skips")
+    // record (oid 2249), not a named type — unchanged by this feature
+    assertEquals(cell("select row(1, 2, 3)"),
+      Row(Vector(Text("1"), Text("2"), Text("3"))))
+  }
