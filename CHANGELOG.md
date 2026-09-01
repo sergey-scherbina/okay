@@ -1,5 +1,20 @@
 # Changelog
 
+## match-spec — okay-match designed: structure the unstructured, then find it
+Completed: 2026-09-01
+
+specs/match.md, designed in conversation with the user. Log-first
+(chats in persist topics are the only truth; facts, profiles and
+indexes are rebuildable projections), an attribute registry with a
+search-before-create contract as the mechanism that bounds LLM
+vocabulary drift, append-only facts with provenance to a chat span and
+supersede-with-reason (freshest wins, but ask first), two-gate
+visibility (owner intent AND platform policy) from day 0, identity as
+email + owner-secret profile UUID with the recovery/hijack question
+honestly deferred to stage 2 alongside okay-security. Effects first,
+handlers second: memory + rag embeddings at stage 0, sqlite and
+Postgres+pgvector through the Sql seam at stage 1.
+
 ## conf-topic — the config becomes one more consumer of the one primitive
 Completed: 2026-09-01 (landed as 87f53b4)
 Configs in okay-persist (beside Snapshots/Offsets): put/latest/at/

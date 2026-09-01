@@ -57,6 +57,7 @@
             <option value="$PROJECT_DIR$/okay-rag/.js" />
             <option value="$PROJECT_DIR$/okay-rag/.jvm" />
             <option value="$PROJECT_DIR$/okay-security" />
+            <option value="$PROJECT_DIR$/okay-security-argon2" />
             <option value="$PROJECT_DIR$/okay-security/.js" />
             <option value="$PROJECT_DIR$/okay-security/.jvm" />
             <option value="$PROJECT_DIR$/okay-spark" />

@@ -20,6 +20,15 @@
       restore): what remains is the DOCTOR tool (recovery scan
       against a backup, offline) and a blob-seam copy helper
 
+## okay-match (specs/match.md — staged; log-first matching over LLM-structured chats)
+- [ ] match-stage1 — durable handlers: sqlite and Postgres+pgvector
+      via the Sql seam; chat log on persist topics; registry
+      migrations (synonym merge -> projection rebuild). Gives
+      sql-pg-wire and rag-pgvector their first customer.
+- [ ] match-stage2 — identity recovery (the email-hijack question,
+      with okay-security), LLM rerank of candidates, the platform
+      disclosure-policy engine, volatility in ranking.
+
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
