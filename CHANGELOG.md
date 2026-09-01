@@ -1,5 +1,13 @@
 # Changelog
 
+## security-core — okay-security stage 0
+Completed: 2026-09-01 (landed as 3a36930)
+The model as values, JWT (HS256/RS256, kid, skew; alg confusion
+defused by the key deciding), JWKS, PBKDF2 with parameters in the
+stored form, API keys as digests, the policy algebra, Secure.bearer
+holding the door by type, OAuth2 client flows with S256 PKCE checked
+by the stub AS. 11 tests, hostile side throughout. Matrix 1007.
+
 ## data-spec — specs/data.md: the data landscape, two postures, few seams
 Completed: 2026-09-01
 NoSQL, OLAP/warehouses, lakes, vector, Kafka, Spark — classified by
