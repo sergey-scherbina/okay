@@ -1,11 +1,6 @@
 # Sprint
 
 ## Doing
-- own-db-migrations — Migrate over the Sql seam (okay-jdbc): the
-  Flyway model adopted, checksummed versioned scripts, the
-  schema-version table in the same database, changed checksums
-  refuse loudly; ops-topic hook (specs/jdbc.md, Own relational
-  databases)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam

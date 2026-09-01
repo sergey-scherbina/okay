@@ -1,5 +1,18 @@
 # Changelog
 
+## own-db-migrations — the settled discipline, adopted not reinvented
+Completed: 2026-09-01 (landed as e5eff69)
+Migrate against the Sql trait: versioned authored scripts, sha-256
+checksums, the version table in the SAME database, script + row in
+one transaction as far as the engine's DDL allows. The fingerprint
+rule again: changed or vanished applied scripts refuse naming the
+version; duplicates/disorder refuse before touching the db; a failed
+script leaves no row and the fix applies next run. record = the ops
+hook. RODE ALONG: okay-match hotfix (UUID.randomUUID's SecureRandom
+broke the JS linker — every matrix run was red; util.Random hex ids
+now) and the obs Never test proven by a counting clock instead of a
+wall clock. Matrix 1301.
+
 ## match-stage0 — okay-match exists: the model, the effects, the reference store
 Completed: 2026-09-01
 
