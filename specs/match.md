@@ -116,7 +116,12 @@ conflicts, asks, supersedes) commutes with offline replay.
   text files for a test, memory (the stage-0 reference), a technology
   that does not exist yet. A new backend is a new handler in one
   place; the core does not change. Registry migrations (synonym
-  merge → projection rebuild) land here too.
+  merge → projection rebuild) land here too. LANDED 2026-09-01:
+  SqlMatch (the three handlers over any `Sql` driver — H2 in tests,
+  proven surviving a restart), ChatLog on a persist topic with
+  `replay` (a fresh store rebuilt from the log equals the live one;
+  replaying over the live one changes nothing), and `mergeAttr`
+  (the loser's facts move, the winner answers).
 - **stage 2** — cross-channel/email-recovery identity (the hijack
   question, with okay-security), LLM rerank, the platform-policy
   engine for disclosure, freshness/volatility in ranking.

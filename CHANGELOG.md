@@ -12,6 +12,20 @@ hook. RODE ALONG: okay-match hotfix (UUID.randomUUID's SecureRandom
 broke the JS linker — every matrix run was red; util.Random hex ids
 now) and the obs Never test proven by a counting clock instead of a
 wall clock. Matrix 1301.
+## match-stage1 — okay-match is durable: the Sql seam, the log, the migration
+Completed: 2026-09-01
+
+SqlMatch: the same three handlers over ANY `Sql` driver (H2 in the
+tests; sqlite or Postgres is the connection string — the seam is the
+point), values flattened into typed columns, restart-proof (a second
+handler over the same database continues where the first stopped,
+ids included). ChatLog: chat turns on a persist topic keyed by
+profile, offsets as provenance, and `replay` — the log-first test
+rebuilds a FRESH store from the topic to the live store's exact
+state, and replaying over the live store changes nothing (the
+idempotence key doing its job). mergeAttr: the registry migration —
+the drifted attribute's facts move to the winner, the loser answers
+no more. 10 tests green (6 stage-0 + 4 stage-1).
 
 ## match-stage0 — okay-match exists: the model, the effects, the reference store
 Completed: 2026-09-01

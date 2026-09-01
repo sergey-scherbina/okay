@@ -450,7 +450,7 @@ lazy val okayRag = crossProject(JVMPlatform, JSPlatform)
 lazy val okayMatch = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-match"))
-  .dependsOn(okayRag, okayAgent)
+  .dependsOn(okayRag, okayAgent, okaySql, okayPersist)
   .settings(
     name := "okay-match",
     libraryDependencies ++= Seq(
@@ -458,6 +458,14 @@ lazy val okayMatch = crossProject(JVMPlatform, JSPlatform)
       "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
     ),
   )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
+  )
+  .jvmConfigure(_.dependsOn(okayJdbc % Test))
 
 /** agents as programs: tool calls are operations, the conversation
  * is a fold, policy lives in handlers (P9) */
