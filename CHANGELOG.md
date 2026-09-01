@@ -1,5 +1,15 @@
 # Changelog
 
+## obs-tracing — the missing third of the doctrine, without a framework
+Completed: 2026-09-01 (landed as 2ad52a4)
+okay-obs cross-built: spans as values on a trace topic, W3C
+traceparent parsed totally (damage = a NAMED fresh root), tracestate
+opaque, the traced(Handler) combinator wrapping any handler blind.
+The crossing test follows one traceId from an inbound header through
+okay-http into H2 through the Sql seam. Never is a short-circuit by
+construction. obs-otlp and obs-durable-overlay filed; the journal
+join box stays open until a Durable consumer. Matrix 1282.
+
 ## match-spec — okay-match designed: structure the unstructured, then find it
 Completed: 2026-09-01
 

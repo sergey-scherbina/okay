@@ -1,9 +1,6 @@
 # Sprint
 
 ## Doing
-- obs-tracing — okay-obs: spans as values on a trace topic, W3C
-  traceparent as the one propagation vocabulary, the tracing handler
-  wrapping any Handler; export stays a consumer (specs/obs.md)
 
 ## Queue
 - match-stage0 — specs/match.md stage 0: the model, Registry/Facts/
