@@ -23,6 +23,19 @@
       (the journal is an okay-persist topic: read(from) IS
       Last-Event-ID, TooEarly answers a compacted-past id)
 
+## The data landscape (specs/data.md — umbrella; vendor = seam impl)
+- [ ] docs-seam — the Docs trait (get/put CAS/delete/query,
+      declared consistency) + the own-posture engine over View;
+      then one foreign adapter (Dynamo or Mongo) to prove the seam
+- [ ] jdbc-bulk-load — OLAP write posture: staged files + load-id
+      idempotency (WithKey at batch granularity); row-DML refused
+- [ ] lake-read-duckdb — Parquet/Iceberg reads through the JDBC
+      seam (DuckDB embedded); verify + constant-memory asserted
+- [ ] rag-pgvector — VectorStore over specs/jdbc.md against
+      Postgres/pgvector; agrees with the memory engine on a fixture
+- [ ] kafka-eos — producer idempotence/transactions on the okay-kafka
+      sink, or the at-least-once contract asserted where EOS is off
+
 ## okay-cache (specs/cache.md)
 - [ ] cache-memory — Cache trait, bounded LRU memory engine,
       single-flight getOrLoad, named Regime (no default TTL),

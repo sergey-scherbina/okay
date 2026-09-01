@@ -1,5 +1,16 @@
 # Changelog
 
+## data-spec — specs/data.md: the data landscape, two postures, few seams
+Completed: 2026-09-01
+NoSQL, OLAP/warehouses, lakes, vector, Kafka, Spark — classified by
+access shape, not vendor; a vendor enters only as an implementation
+of an existing seam. One new trait for the one uncovered shape
+(Docs: CAS conditional writes, declared consistency; multi-doc
+transactions refused in favor of journaled sagas). Foreign posture
+(no DDL, their constraints as the idempotency far end) and own
+posture (the log + materializations, refold as universal rebuild)
+defined once, applied per class. Five implementation slugs filed.
+
 ## mcp-resumable — Last-Event-ID is read(from)
 Completed: 2026-09-01
 Pushes journaled per session key before fan-out; SSE frames carry
