@@ -154,6 +154,61 @@ connect -> migrate, and the import-thread for same-typed evolution
 - [x] typepedia carries both patterns with their E-numbers and the
       footgun; conf.md points at it from the edge example
 
+## ctx-everywhere — doors wherever the environment is a type (operator directive)
+
+The operator's call, 2026-09-01: add the capability forms EVERYWHERE
+— optionally. And the operator's framing, adopted as this section's
+thesis: **this is the dependency-injection story** — doors (APIs
+accepting capabilities) plus `provide` (the generic installer) give
+DI with COMPILE-TIME resolution: a missing dependency is a type
+error, not a container exception at startup; the "object graph" is
+given-scopes; "modules" are ordinary values; zero reflection, zero
+framework, zero dependencies.
+
+**`provide` — the installer half of the pair:**
+
+```scala
+// core: expression-scoped installation, no given-line, no nesting
+inline def provide[A, B](a: A)(inline body: A ?=> B): B = body(using a)
+inline def provide[A, B, C](a: A, b: B)(inline body: (A, B) ?=> C): C
+inline def provide[A, B, C, D](a: A, b: B, c: C)(inline body: (A, B, C) ?=> D): D
+```
+
+`provide(testHttp, testSecrets) { app }` swaps a whole environment
+for a block — the test-override story containers sell, as one inline.
+
+**The line that keeps "everywhere" honest — environment vs
+resource:** a door is added where the parameter is an ENVIRONMENT
+type (`Http`, `Secrets`, `Crypto`, `ChatModel`, `Store`, `Tracer`,
+`Principal`, `Prompt`) — process-wide, swap-per-context, the thing
+DI containers call a scope. A per-instance RESOURCE (`Connection`,
+a `Resp`, a socket) stays an argument: ambient resources are how
+leaks happen. And no newtypes are invented just to make string
+params (apiKey, model) door-able — the door waits for typed config.
+
+Doors added by this sweep (all additive, explicit forms stay):
+
+- `McpAuth.granted` — closes the route-wrapper family (Traced.route,
+  Secure.granted, and now the protected MCP route)
+- `OAuth2.exchange/refresh/clientCredentials` and `Jwks.fetch`,
+  `McpAuth.discover/connect` — `using Http` overloads: the one
+  recurring environment of the security flows
+- `Tls.serverSocket` — ambient `Secrets` (client already defaults)
+- `Langchain4j.wired` — `ChatModel ?=> Handler[Model]`: the
+  handler-awaiting-environment form, first of the wiring family
+- `S3.wired` — `Http ?=> S3`
+- `Configs.ambient` — `Store ?=> Configs`
+
+- [ ] provide: installs for a block, nests to the NEAREST (inner
+      provide shadows outer), works in expression position
+- [ ] each door delegates byte-for-byte to its explicit form (one
+      assertion per door, against stubs where a wire would be)
+- [ ] the DI claim demonstrated: one program wired twice —
+      provide(prodEnv){...} and provide(testEnv){...} — with a
+      missing capability a COMPILE error, quoted
+- [ ] the recipe lives in typepedia: two lines to add a door to any
+      future API, the auto-application eagerness (E10) warned
+
 ## Filed (BACKLOG slugs, each with its gate)
 
 - **ctx-wiring** — handlers-awaiting-environment: module factories
