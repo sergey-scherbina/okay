@@ -137,6 +137,44 @@ conflicts, asks, supersedes) commutes with offline replay.
   hijack. Cross-channel identity (same person, another messenger, no
   email) stays open in BACKLOG.
 
+## Cross-channel identity (stage 2 completion: match-identity-x)
+The same person arrives from another messenger with no shared email.
+The danger is symmetric to recovery: the LINK ITSELF must not become
+the hijack — claiming someone's phone number in a new chat must earn
+a stranger nothing.
+
+- **Identifying attributes.** The registry marks attributes as
+  `identifying` (a phone is, a skill is not). Only identifying
+  facts generate link candidates, matched by exact value.
+- **Candidates leak nothing.** `linkCandidates(p)` answers "a profile
+  sharing your <attribute> exists" plus a masked email hint
+  (`m***@e***.com`) — never the value, never the profile's facts.
+- **The challenge proves control of the OLD channel.** `requestLink`
+  mints a single-use, expiring token addressed to the OLD profile;
+  the integration site delivers it through the old channel (the old
+  chat, the old email — its job, not this module's). The person in
+  the NEW chat producing the token proves they hold both ends;
+  `confirmLink(token, prov)` then records the link, with chat
+  provenance like every other event. The stage-2 recovery secret is
+  the fallback route for a dead old channel.
+- **A link is an equivalence, not a merge.** Both profiles stay;
+  `identityOf` answers the class, `profileOf` and search read facts
+  across it (one person, one candidate in results, whichever profile
+  the facts live on). Nothing is rewritten — log-first holds.
+
+Behavior:
+- [ ] only identifying attributes generate candidates, and the
+      candidate answer carries the attribute name and a masked hint,
+      not the value and not the other profile's facts
+- [ ] the token flow links: minted for the old profile, single-use,
+      expiring; the wrong token and the expired token refuse; the
+      recovery secret links as the fallback
+- [ ] the identity class reads as one: facts asserted on either
+      profile serve one search candidate and one profile view
+- [ ] no hijack by assertion: asserting someone else's phone in a
+      new chat yields a candidate hint and NOTHING else — no facts,
+      no link, no disclosure
+
 ## Out of scope
 - The account-recovery security flow (recorded above; stage 2).
 - Payment/monetization mechanics — the platform gate EXISTS in the
