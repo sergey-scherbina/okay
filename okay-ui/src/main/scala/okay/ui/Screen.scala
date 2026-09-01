@@ -23,6 +23,10 @@ enum Nav:
   case Push(next: Screen)
   case Pop
   case To(s: Screen)
+  /** the effect slot: stay on `s`, LAUNCH `prog` — its Event answer
+   * re-enters the fold like any other event (specs/ui.md, "The
+   * effect slot"). The program is data; the loop runs it. */
+  case Run(prog: okay.![Event, okay.Async], s: Screen)
 
 object Nav {
 
@@ -46,19 +50,26 @@ object Nav {
     case top :: _ => top.view
     case Nil => Ui.Text("")
 
-  def update(stack: List[Screen], e: Event): List[Screen] = stack match
-    case Nil => Nil
-    case top :: rest => top.step(e) match
-      case Stay(s) => s :: rest
-      case Push(next) => next :: top :: rest
-      case Pop => rest
-      case To(s) => s :: rest
+  def update(stack: List[Screen], e: Event): List[Screen] =
+    updateCmd(stack, e)._1
+
+  /** the same step, commands out: `Run` stays on its screen and
+   * hands the loop the program to launch */
+  def updateCmd(stack: List[Screen], e: Event): (List[Screen], Vector[okay.![Event, okay.Async]]) =
+    stack match
+      case Nil => (Nil, Vector.empty)
+      case top :: rest => top.step(e) match
+        case Stay(s) => (s :: rest, Vector.empty)
+        case Push(next) => (next :: top :: rest, Vector.empty)
+        case Pop => (rest, Vector.empty)
+        case To(s) => (s :: rest, Vector.empty)
+        case Run(prog, s) => (s :: rest, Vector(prog))
 
   /** run a stack on a host: ends when the host closes (an emptied
    * stack shows nothing and ignores everything until then) */
   def run(root: Screen)(host: Host, external: Source[Event] = pure(()))
          (using Scheduler, CanBlock): Unit ! Async =
-    Ui.run(state(root))(view)(update)(host, external).map(_ => ())
+    Ui.runCmd(state(root))(view)(updateCmd)(host, external).map(_ => ())
 
   /**
    * A Dialog scenario as a pushable screen — the imperative flow and

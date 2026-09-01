@@ -76,6 +76,20 @@ distinctness (determinism over stopwatch); module state lives WITH
 its worker (seed-and-draw); the supervisor replaces a corpse COLD
 before rethrowing, the retry lands live. One program, both engines,
 unchanged. okay-py stages 0+1 shipped. Matrix 1406.
+## ui-cmd — the effect slot: commands are data, the loop runs them
+Completed: 2026-09-01
+
+"Press the button, fetch, fold the result back in" now has a direct
+spelling: Ui.runCmd's update answers (state, commands), each command
+an `Event ! Async` the LOOP spawns, its answer re-entering the same
+fold; Nav.Run(prog, s) is the stack's version — go there AND launch.
+Ui.run is the commandless special case. The first cut merged a
+never-closing answers channel and broke v1's quiet ending (host ends,
+loop ends) — caught by the old tests hanging, redesigned to one
+channel with an honest close: upstream done AND nothing in flight.
+A command encodes its own failure as an event or forfeits (stated);
+a command may answer Closed — an app can end itself. 3 new tests,
+52 in okay-ui, JS and Native compile.
 
 ## py-subprocess — the other half of the world's numerics, as a handler
 Completed: 2026-09-01 (landed as ff683b6)

@@ -188,21 +188,67 @@ object Ui {
   def run[S](init: S)(view: S => Ui)(update: (S, Event) => S)
             (host: Host, external: Source[Event] = pure(()))
             (using Scheduler, CanBlock): S ! Async =
-    val events: Source[Event] = host.events merge external
+    runCmd(init)(view)((s, e) => (update(s, e), Vector.empty))(host, external)
+
+  /**
+   * The loop WITH the effect slot (specs/ui.md, "The effect slot"):
+   * update also answers COMMANDS — programs whose Event answers
+   * re-enter this same fold through the merge, which was always the
+   * subscription mechanism. The commands are DATA out of a pure
+   * update; the loop is the only thing that runs them. A command
+   * encodes its own failure as an event or is dropped on a raw
+   * throw — stated, not hidden.
+   */
+  def runCmd[S](init: S)(view: S => Ui)
+               (update: (S, Event) => (S, Vector[Event ! Async]))
+               (host: Host, external: Source[Event] = pure(()))
+               (using Scheduler, CanBlock): S ! Async =
+    // ONE channel carries everything: a feeder drains the merged
+    // upstream into it, command answers join it, and it CLOSES when
+    // the upstream has ended and no command is still in flight — so
+    // the commandless loop keeps v1's exact ending (host ends, loop
+    // ends), and a pending command's answer is waited for, not lost.
+    val events = Channel[Event]()
+    val pending = java.util.concurrent.atomic.AtomicInteger(0)
+    val upstreamDone = java.util.concurrent.atomic.AtomicBoolean(false)
+    def maybeClose(): Unit =
+      if upstreamDone.get && pending.get == 0 then events.close()
+
+    def drain(src: Source[Event]): Unit ! Async =
+      Writer.uncons[Event, Unit, Async](src).flatMap {
+        case Left(_) => pure(())
+        case Right((e, more)) => async(events.send(e)).flatMap(_ => drain(more))
+      }
+    Async.spawn(drain(host.events merge external)).onComplete { _ =>
+      upstreamDone.set(true); maybeClose()
+    }
+
+    def launch(cmds: Vector[Event ! Async]): Unit =
+      cmds.foreach { prog =>
+        pending.incrementAndGet()
+        Async.spawn(prog).onComplete { r =>
+          r match
+            case Right(ev) => events.send(ev)
+            case Left(_) => ()   // a command encodes its failure as an event, or forfeits it
+          pending.decrementAndGet()
+          maybeClose()
+        }
+      }
 
     def loop(s: S, shown: Ui, rest: Source[Event]): S ! Async =
       Writer.uncons[Event, Unit, Async](rest).flatMap {
         case Left(_) => pure(s)
         case Right((Event.Closed, _)) => pure(s)
         case Right((e, more)) =>
-          val s2 = update(s, e)
+          val (s2, cmds) = update(s, e)
+          launch(cmds)
           val u2 = view(s2)
           (if u2 == shown then pure(()) else host.render(u2))
             .flatMap(_ => loop(s2, u2, more))
       }
 
     val first = view(init)
-    host.render(first).flatMap(_ => loop(init, first, events))
+    host.render(first).flatMap(_ => loop(init, first, Writer.of(events)))
 
   /** a patch consumer as a Host: the core diff, one kept tree */
   def diffing(b: Backend): Host = new Host:

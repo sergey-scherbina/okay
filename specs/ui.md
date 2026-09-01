@@ -404,6 +404,36 @@ Behavior:
       `Test / sources := Seq()` and this suite runs under Node in the
       matrix
 
+## The effect slot (ui-cmd — user-requested)
+The loop's v1 doctrine said "subscriptions are not a Cmd type — an
+application spawns its own programs and feeds a source". That held
+for subscriptions and broke down for REACTIONS: "press the button,
+fetch, fold the result back in" had no direct spelling — the effect
+had to live outside the loop. The Elm answer, in this library's
+terms: commands are DATA out of a pure update, and the loop is the
+only thing that runs them.
+
+- `Ui.runCmd(init)(view)(update)` where `update: (S, Event) => (S,
+  Vector[Event ! Async])` — each command is spawned by the loop and
+  its Event answer re-enters the SAME fold through the merge (which
+  was always the subscription mechanism). `Ui.run` is now the
+  commandless special case of `runCmd`.
+- `Nav.Run(prog, s)` — the stack's spelling: stay showing `s`,
+  launch `prog`; `Nav.updateCmd` routes it, `Nav.run` wires the
+  loop; `update` stays for pure stepping.
+- Failure is the command's own business: it encodes failure as an
+  event, or a raw throw forfeits the answer (stated, not hidden) —
+  the loop never breaks.
+- A command may answer `Closed`: an app can end itself.
+
+Behavior:
+- [x] a pressed button launches a command and the answer event folds
+      back into the state through the same loop
+- [x] `Nav.Run` from a screen's pure step: the interim screen shows
+      while the program runs, the answer routes navigation
+- [x] a command that throws forfeits its answer and the loop
+      continues undisturbed; a command may Close the app
+
 ## Out of scope (v1)
 - native toolkits (GTK/Cocoa/Win32) — satellites once the seam has
   proven itself on three free backends; Native runs the terminal host
