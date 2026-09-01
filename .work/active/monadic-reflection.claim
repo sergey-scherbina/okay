@@ -1,0 +1,6 @@
+feature/monadic-reflection 2026-09-01T19:14:10Z
+agent: claude-code
+heartbeat: 2026-09-01T19:14:10Z
+status: in-progress
+done-so-far:
+next: spec, then Monadic.scala + TestMonadic
