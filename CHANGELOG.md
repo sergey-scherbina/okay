@@ -1,5 +1,25 @@
 # Changelog
 
+## pg-sslmode — the pg driver speaks TLS through the one seam
+Completed: 2026-09-01
+specs/tls.md's pg box: Postgres over TLS, the seam's second consumer
+and the one with a protocol preamble. `PgSql.connect` was factored
+into `connectOver(conn: NetConn, …)` — the startup + SCRAM half over
+any established connection. On the JVM, `PgTls.connect` does pg's
+STARTTLS-style SSLRequest dance on the raw socket (Int32(8) + code
+80877103, then the server's single 'S'/'N' byte), wraps the socket via
+`Tls.client` on 'S', and hands the encrypted NetConn to `connectOver`,
+which runs the same SCRAM and never learns it is on TLS. A server that
+answers 'N' when encryption was asked for is refused by name. okay-pg's
+JVM leg compile-depends on okay-tls (the box's own shape — the dance is
+the driver's, the session is the seam's); the JS leg has no okay-tls,
+so `PgTls` is scala-jvm only. Verified LIVE against the dockerized
+Postgres with ssl reloaded on: sslmode=require completes end to end,
+verify-full with the server CA passes chain AND hostname, verify-full
+with an unknown CA is refused (TestPgTls, skips where TLS is not
+offered). Plaintext connections keep working — ssl=on accepts both, so
+the existing pg suite is untouched.
+
 ## ctx-reader-elim — Reader elimination: the gate lifted, direct blocks the consumer
 Completed: 2026-09-01
 Landed as e66ac87. Int ! (Reader % E + Row) rewrites to
@@ -56,7 +76,6 @@ Nav.hosted are the ambient-Host doors. And the demo's agentTurn is a
 direct block now — remember, seed, converse as three plain lines,
 the seeding loop staying a named helper exactly as the macro's
 no-marks-under-lambda rule prescribes. 67 ui tests, 15 demo tests.
-
 ## tutorial-new-arcs — the day reaches the tutorial
 Completed: 2026-09-01
 Three chapters join the worked tour: 19 "Needs are types:
@@ -98,7 +117,6 @@ REFUSE (Fail becomes a {"refused": ...} answer the model reads and
 retries; no fact stored). A well-formed value never consults the
 policy. The condition system's second applied consumer. 28 match
 tests.
-
 ## demo-conditions — the intake's silent default becomes a decision
 Completed: 2026-09-01
 

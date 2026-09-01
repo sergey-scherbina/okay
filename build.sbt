@@ -320,6 +320,11 @@ lazy val okayPg: sbtcrossproject.CrossProject = crossProject(JVMPlatform, JSPlat
     // okay-jdbc joins the TEST scope for the two-driver acceptance:
     // the same typed program over PgSql and JdbcSql/H2
     _.dependsOn(okayJdbc % Test))
+  // okay-tls (JVM only) backs the pg sslmode connect (specs/tls.md, pg
+  // lane): the SSLRequest dance is the driver's, the TLS session is the
+  // seam's. Compile scope on the JVM leg where SSLSocket lives; the JS
+  // leg has no okay-tls, so PgTls is scala-jvm only.
+  .jvmConfigure(_.dependsOn(okayTls))
   .jvmSettings(
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",

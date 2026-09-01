@@ -306,7 +306,17 @@ object PgSql:
    * seam — the same connect on the JVM and on Node */
   def connect(host: String, port: Int, user: String, password: String,
               database: String)(using Net, Crypto): PgSql ! Async =
-    Net.connect(host, port).flatMap { conn =>
+    Net.connect(host, port).flatMap(conn => connectOver(conn, user, password, database))
+
+  /** the startup + SCRAM handshake over an ALREADY-established
+   * connection — factored out so the transport can be a plaintext Net
+   * socket OR a TLS-wrapped one (specs/tls.md, pg lane): the pg TLS
+   * connect does its SSLRequest dance, wraps the socket through the
+   * one seam, and hands the encrypted NetConn here. This half never
+   * learns whether it is encrypted; that is the seam's whole point. */
+  def connectOver(conn: NetConn, user: String, password: String,
+                  database: String)(using Crypto): PgSql ! Async =
+    {
       val params = str("user") ++ str(user) ++ str("database") ++ str(database) ++
         Array(0.toByte)
       val startup = new Array[Byte](8 + params.length)

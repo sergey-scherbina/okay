@@ -47,9 +47,18 @@ transport gets TLS from one seam and adds nothing of its own.
       and the spec says so out loud
 - [x] `require` refuses a plaintext server; `disable` connects and
       is loggable as the named decision it is
-- [ ] (pg lane) the pg driver speaks sslmode through this seam (postgres's
-      STARTTLS-style SSLRequest dance lives in the pg driver; the
-      session it hands over is this seam's)
+- [x] (pg lane) the pg driver speaks sslmode through this seam (pg-sslmode,
+      landed): postgres's STARTTLS-style SSLRequest dance lives in the
+      pg driver (`PgTls`, JVM) — Int32(8)+code 80877103, then the
+      server's single 'S'/'N' byte; on 'S' `Tls.client` wraps the
+      socket and the encrypted NetConn is handed to `PgSql.connectOver`
+      (factored out of `connect`), which runs the SAME startup + SCRAM
+      and never learns it is on TLS. A server that answers 'N' when
+      encryption was asked for is refused BY NAME. Live over the
+      dockerized Postgres with ssl=on: require completes, verify-full
+      with the server CA passes chain AND hostname, verify-full with
+      an unknown CA is refused (TestPgTls, skips where TLS is not
+      offered). JVM only (SSLSocket); the Node leg is node:tls later
 - [x] (persist-wire lane) persist-wire over TLS passes the same acceptance suite as
       plaintext (persist-wire-tls, landed): the wire's transport is
       INJECTABLE — `Wire.Server` takes a `ServerSocket` (an
@@ -124,5 +133,16 @@ scope only, and the SSLSocket is built by the caller. The acceptance
 is that NOTHING in the wire changed: the same handshake, grant,
 frames and refusals run byte-for-byte over the encrypted transport
 (TestWireTls), plus a plaintext client is refused by the TLS server.
-Still open: the pg lane's sslmode dance (SSLRequest preamble then
-the same seam), for that lane.
+pg over TLS landed too (pg-sslmode, 2026-09-01): the second consumer,
+and the one with a protocol preamble. `PgSql.connect` was factored
+into `connectOver(conn: NetConn, …)` — the startup + SCRAM half over
+any established connection — so the JVM-only `PgTls.connect` can do
+pg's SSLRequest dance on the raw socket, wrap it via `Tls.client`, and
+hand the encrypted NetConn to the shared handshake. okay-pg's JVM leg
+compile-depends on okay-tls (the box's own shape: the dance is the
+driver's, the session is the seam's); the JS leg has no okay-tls, so
+`PgTls` is scala-jvm only. Verified live against the dockerized
+Postgres with ssl reloaded on (require / verify-full-with-CA /
+verify-full-unknown-CA-refused); plaintext connections keep working,
+so the existing pg suite is untouched. Both own-wire consumers now
+ride the one seam; only the mTLS rung stays staged.
