@@ -40,10 +40,6 @@
       sink, or the at-least-once contract asserted where EOS is off
 
 ## okay-cache (specs/cache.md)
-- [ ] cache-write-through — regime 2 paired with okay-jdbc: the
-      invalidate-AFTER-commit ordering asserted, the stale window
-      between commit and invalidate demonstrated and documented
-      (the one cache.md box no existing slug covered)
 - [ ] cache-redis — minimal RESP client (GET/SET PX/DEL/PING) over
       the Async transport, same contract suite; invalidation topic
       over okay-persist for cross-node regime 2

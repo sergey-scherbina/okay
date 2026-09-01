@@ -1,0 +1,7 @@
+feature/cache-write-through 2026-09-02T02:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-02T02:00:00Z
+status: in-progress
+done-so-far:
+next: WriteThrough in okay-cache (commit-then-invalidate ordering); tests over H2 through the Sql seam: ordering asserted, the WRONG ordering's resurrection bug demonstrated, the honest commit-to-invalidate window shown not denied
+files: okay-cache/WriteThrough.scala + test (new), build.sbt (cache Test -> jdbc), specs/cache.md box
