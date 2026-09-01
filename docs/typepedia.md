@@ -431,3 +431,34 @@ outright wherever the ADT records the type (`Schema`, `Context`,
   `Platform.scala`, not a second `Async.scala`).
 - A poly-function literal (`[X] => ...`) cannot be passed with the
   colon-argument syntax — parenthesize the call.
+
+## The edge patterns: linear context without nesting (ctx-edge-docs)
+
+Two verified styles for application-edge code (experimental base:
+specs/context-functions.md, E1-E8):
+
+**The type-changing given-chain (E3)** — phases as types, each line
+seeing the previous line's context:
+
+```scala
+given Conn   = connect()      // load -> resolve -> connect -> ...
+given TxOpen = begin()        // sees Conn
+given TxDone = commit()       // sees TxOpen
+```
+
+No nesting; the compiler orders the protocol. Honest hole: STALE
+phases stay in scope (use-after-commit compiles) — discipline, not
+types, until capture checking.
+
+**The import-thread (E6/E7)** — SAME-typed context evolving
+linearly, via a holder whose given member has a FIXED name:
+
+```scala
+class Step(c: Ctx) { given ctx: Ctx = c }
+val s1 = step("one");   import s1.given
+val s2 = step("two");   import s2.given   // sees s1's ctx
+```
+
+Mechanism: NAME shadowing (different member names restore
+ambiguity — E7). FOOTGUN, stated: a forgotten `import sN.given`
+silently uses the stale context; there is no error.

@@ -108,7 +108,7 @@ opens itself; stated, not hidden.
       tracers and parents to each — deferred requirement as a value
 - [x] an untraced route is untouched (additive)
 
-## ctx-principal — `Principal ?=> route` (ctx-adopt)
+## ctx-principal — `Principal ?=> route` (SHIPPED)
 
 The third capability route, and the symmetry that proves the
 pattern: Secure.bearer's protected route is a
@@ -121,16 +121,16 @@ door. The crown is composition: a stored
 traced, self-wiring wherever both capabilities are installed —
 deferred requirements composing as arrows.
 
-- [ ] Secure.granted: the handler reads the ambient principal; the
+- [x] Secure.granted: the handler reads the ambient principal; the
       401/403 ladder is byte-identical to bearer's (delegation, not
       reimplementation)
-- [ ] the composition crown: one stored (Principal, Tracer) ?=>
+- [x] the composition crown: one stored (Principal, Tracer) ?=>
       Route serves under Traced.route(Secure.granted(...)(...)) —
       the response names the principal, the topic holds the root
       and the handler's child span
-- [ ] the explicit bearer form stays untouched (additive)
+- [x] the explicit bearer form stays untouched (additive)
 
-## ctx-blocking — `Blocking[A]` (ctx-adopt)
+## ctx-blocking — `Blocking[A]` (SHIPPED)
 
 `type Blocking[A] = CanBlock ?=> A`, in core beside CanBlock: the
 first-class "this parks a thread" — a returned Blocking[A] is
@@ -139,11 +139,11 @@ force it. Zero runtime; the platform gets a NAME for what its seams
 already do, and new APIs can return the requirement instead of
 demanding it.
 
-- [ ] a Blocking[A] value stored and passed forces only where a
+- [x] a Blocking[A] value stored and passed forces only where a
       CanBlock is given; on the JVM the ambient given forces it in
       place (the alias is the existing practice, named)
 
-## ctx-edge-docs — the patterns where developers look (ctx-adopt)
+## ctx-edge-docs — the patterns where developers look (SHIPPED)
 
 The two linear-context patterns move from this spec's experimental
 base into docs/typepedia (with a pointer from specs/conf.md's edge
@@ -151,7 +151,7 @@ section): the type-changing given-chain for load -> resolve ->
 connect -> migrate, and the import-thread for same-typed evolution
 — WITH the forgotten-import footgun stated in the same breath.
 
-- [ ] typepedia carries both patterns with their E-numbers and the
+- [x] typepedia carries both patterns with their E-numbers and the
       footgun; conf.md points at it from the edge example
 
 ## Filed (BACKLOG slugs, each with its gate)

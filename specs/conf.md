@@ -94,7 +94,9 @@ final case class Db(url: String,          // NO credentials in here
 given Schema[Db] = Schema.derived
 ```
 
-and the edge wires it:
+and the edge wires it (the linear given-chain style for longer
+edges — load -> resolve -> connect -> migrate — is documented in
+docs/typepedia.md, "The edge patterns"):
 
 ```scala
 for

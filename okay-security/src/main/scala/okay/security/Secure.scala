@@ -42,6 +42,22 @@ object Secure {
             case Decision.Permit => route(p)(r)
   }
 
+  /**
+   * The capability form (specs/context-functions.md, ctx-principal):
+   * the principal is AMBIENT in the handler — `granted { ... }`
+   * reads `summon[Principal]` (or takes `using`) instead of a
+   * lambda parameter. Delegation, not reimplementation: the
+   * 401/403 ladder is bearer's, byte for byte. ADDITIVE.
+   */
+  def granted(verify: String => Verified,
+              policy: Policy = Policy.allowAll,
+              realm: String = "okay",
+              action: Request => String = _.method.name,
+              resource: Request => String = _.url)
+             (route: Principal ?=> PartialFunction[Request, Response ! Async])
+  : PartialFunction[Request, Response ! Async] =
+    bearer(verify, policy, realm, action, resource)(p => route(using p))
+
   private def challenge(status: Int, realm: String, error: String): Response ! Async =
     pure(Response(status,
       Seq(("www-authenticate", s"""Bearer realm="$realm", error="$error"""")),

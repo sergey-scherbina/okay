@@ -464,8 +464,9 @@ lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-obs"))
   .dependsOn(okay, okayCodec, okayPersist)
-  // the OTLP push glue speaks to a collector through the one client
-  .jvmConfigure(_.dependsOn(okayHttp.jvm))
+  // the OTLP push glue speaks to a collector through the one client;
+  // the composition crown test stacks Principal over Tracer
+  .jvmConfigure(_.dependsOn(okayHttp.jvm, okaySecurity.jvm % Test))
   .settings(
     name := "okay-obs",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

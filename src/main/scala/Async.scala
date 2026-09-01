@@ -46,6 +46,12 @@ inline def await[A](register: (A => Unit) => Unit): A ! Async =
  * blocking door (Handler[Async], Fiber.join, Async.run) is closed
  * there by the compiler.
  */
+/** a computation that PARKS a thread, as a first-class VALUE
+ * (specs/context-functions.md, ctx-blocking): storable, composable,
+ * and only an edge HOLDING the capability can force it — the
+ * platform practice the seams already follow, named as a type */
+type Blocking[A] = CanBlock ?=> A
+
 trait CanBlock:
   /** park the current thread until the registered callback fires; if
    * the park itself fails (interruption), the registration is
