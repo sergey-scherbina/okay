@@ -258,6 +258,11 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
       // the same seam, same zero-machinery argument
       "org.xerial" % "sqlite-jdbc" % "3.47.1.0" % Test,
     ),
+    // JDBC suites fork: DriverManager registers drivers per
+    // classloader, and TWO modules carrying H2 in one sbt JVM
+    // (okay-match joined okay-jdbc) made "No suitable driver" a
+    // matter of which suite ran first — a clean JVM ends that
+    Test / fork := true,
   )
 
 /** streaming tokenization: pure-state scanners, total, incremental
@@ -467,6 +472,8 @@ lazy val okayMatch = crossProject(JVMPlatform, JSPlatform)
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
+    // forked for the same DriverManager reason as okayJdbc
+    Test / fork := true,
   )
   .jvmConfigure(_.dependsOn(okayJdbc % Test))
 
