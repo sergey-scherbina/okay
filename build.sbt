@@ -254,6 +254,9 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
       // Parquet through the same Sql seam — test-scope, since the
       // road adds ZERO main-code machinery, which is the point
       "org.duckdb" % "duckdb_jdbc" % "1.3.2.0" % Test,
+      // the embedded engine everyone actually has: SQLite through
+      // the same seam, same zero-machinery argument
+      "org.xerial" % "sqlite-jdbc" % "3.47.1.0" % Test,
     ),
   )
 

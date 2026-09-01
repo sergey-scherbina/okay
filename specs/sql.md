@@ -273,6 +273,14 @@ The seam and its first driver landed (sql-seam, 2026-09-01).
   transact commit/exception/abort with autocommit restored, nested
   refusal, granted isolation, chunked streaming inside a
   transaction (64×7+52 over 500 rows), DDL refusal.
+- **SQLite proves the embedded corner** (sql-sqlite, user ask,
+  same day): the whole typed battery over xerial sqlite-jdbc
+  (test-scope) against a FILE database — metadata honest enough
+  for a clean verify, both isolation levels granted, the Writes
+  bridge in its spec-preferred `ON CONFLICT DO NOTHING` spelling,
+  and the READ-ONLY open mode standing in for the no-DDL posture
+  (an embedded db has no users; "their database" is a file you
+  were handed, possibly read-only — reads full, every write
+  refuses).
 - **Still open** (their own boxes/slugs): the pg wire driver, the
-  two-driver acceptance, COPY bulk load, the non-JVM consumer,
-  jdbc-write-bridge, jdbc-poll-source.
+  two-driver acceptance, COPY bulk load, the non-JVM consumer.
