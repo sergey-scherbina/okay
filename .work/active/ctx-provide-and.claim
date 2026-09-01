@@ -1,4 +1,0 @@
-lane: ctx-provide-and
-owner: fable-ctx
-started: 2026-09-01
-scope: core Providing composable installer (and-composition of provide via currying), tests, spec E16
