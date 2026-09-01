@@ -219,16 +219,16 @@ object Migrate:
   naming the version — the fingerprint rule at yet another seam
 
 Migration behavior:
-- [ ] a fresh database: scripts apply in order, the version table
+- [x] a fresh database: scripts apply in order, the version table
       records version/name/checksum/at; a re-run applies nothing
-- [ ] a new script appended: only it applies
-- [ ] a changed checksum on an applied script refuses naming the
+- [x] a new script appended: only it applies
+- [x] a changed checksum on an applied script refuses naming the
       version, and nothing else runs
-- [ ] a vanished script for an applied version refuses the same way
-- [ ] duplicate or unordered versions refuse before touching the db
-- [ ] a failing script leaves no version row (its transaction rolls
+- [x] a vanished script for an applied version refuses the same way
+- [x] duplicate or unordered versions refuse before touching the db
+- [x] a failing script leaves no version row (its transaction rolls
       back), and the fixed script applies on the next run
-- [ ] `record` sees every Applied of the run, after its commit —
+- [x] `record` sees every Applied of the run, after its commit —
       the ops-topic wiring is one lambda
 
 ## Interface (sketch — the shape, not the final word)
