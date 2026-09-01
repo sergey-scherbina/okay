@@ -1,6 +1,0 @@
-feature/py-spec 2026-09-01T10:47:02Z
-agent: claude-code
-heartbeat: 2026-09-01T10:47:02Z
-status: in-progress
-done-so-far:
-next: specs/py.md — Python as a handler; r.md out-of-scope line retargeted

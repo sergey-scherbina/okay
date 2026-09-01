@@ -1,5 +1,17 @@
 # Changelog
 
+## py-spec — specs/py.md: Python as a handler
+Completed: 2026-09-01
+The REval twin (PyEval), with the r.md model adopted by reference
+rather than copied. Python-specific: module:name addressing, an
+own stdlib-only stdio shim (Py4J and jupyter-kernel rejected),
+persistent worker as the served engine (resident imports; N
+workers instead of threads-under-GIL), verify against the
+configured interpreter (wrong-venv refuses loudly). The
+JVM-python question answered once: Jython dead, JEP/ScalaPy
+shared-fate, GraalPy a watched future engine behind the unchanged
+seam. Spec only; py-subprocess, py-worker, py-arrow filed.
+
 ## ui-keyed-diff — a moved child is a move, not a Replace
 Completed: 2026-09-01
 Keyed matching when every child has a distinct key: one Reorder for

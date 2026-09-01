@@ -34,6 +34,15 @@
       (the journal is an okay-persist topic: read(from) IS
       Last-Event-ID, TooEarly answers a compacted-past id)
 
+## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
+- [ ] py-subprocess — stage 0: module + shim (stdlib json wire,
+      module:name addressing, clean env, version handshake),
+      verify via importlib.metadata (the wrong-venv refusal)
+- [ ] py-worker — stage 1: persistent worker holding imports;
+      N-workers parallelism; two-engine acceptance
+- [ ] py-arrow — frames via pyarrow (twin of r-arrow; nearer —
+      pyarrow is first-class)
+
 ## okay-r (specs/r.md — R as a handler)
 - [ ] r-subprocess — stage 0: the module, REval/RValue/RFrame,
       Rscript engine (CBOR/JSON wire, clean env), verify(packages),
