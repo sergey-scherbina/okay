@@ -1,6 +1,6 @@
-feature/direct-try 2026-09-01T21:56:18Z
+feature/direct-try 2026-09-01T21:59:59Z
 agent: claude-code
-heartbeat: 2026-09-01T21:56:18Z
+heartbeat: 2026-09-01T21:59:59Z
 status: in-progress
-done-so-far:
-next: macro Try case over CanTry, tests
+done-so-far: v2 delta done (marked catch bodies), 48 tests green; full matrix running
+next: land on green, clean stale BACKLOG entries, then condition-typed-signal
