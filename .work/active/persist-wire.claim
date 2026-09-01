@@ -1,5 +1,0 @@
-slug: persist-wire (+ persist-wire-auth)
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: the remote Topic surface — CBOR frames over TCP (the cluster precedent), a JVM server over any Store, an Async client (blocking-socket-behind-Async, the PgSql pattern); auth = bearer token -> the topic capability set (okay-security plugs into the auth function; TLS rides wire-tls later, stated); loopback battery; spec: specs/persist.md wire section (documented surface)
-files: okay-persist/src/main/scala-jvm/** (Wire server+client), okay-persist tests scala-jvm, specs/persist.md, docs/modules/okay-persist.md

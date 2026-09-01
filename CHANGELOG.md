@@ -1,5 +1,22 @@
 # Changelog
 
+## persist-wire — the log reaches past the process; auth rides along
+Completed: 2026-09-01 (landed as 73ff276; spec's wire section first)
+Covers persist-wire AND persist-wire-auth. The documented surface
+made real: [len][CBOR] frames with Wire.Req/Resp as the one source
+for both ends (the cluster precedent), Hello/Granted where the
+capability list IS the offer (the ui rule retold for logs), auth
+as a function (token => Option[Set[topic]]) that okay-security
+plugs into with no crypto dependency here, refusals by name with
+the connection surviving them, TooEarly crossing unchanged, the
+tail shape working remotely, a forged future-version Hello refused
+in the handshake. The client speaks Async (a blocking socket
+behind Async.Run, the okay-pg pattern); the Node leg arrives with
+a consumer. Plaintext v1, stated — TLS rides wire-tls.
+Replication's calls join the message enum under the handshake
+version when replicas go remote. 7 loopback tests. Merge read
+alone: exit 0. Full matrix green.
+
 ## wire-tls — verify-full or it is a named decision
 Completed: 2026-09-01 (landed as 8e795cf)
 okay-tls: the one transport seam, sslmode vocabulary stack-wide,

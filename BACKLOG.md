@@ -4,9 +4,6 @@
 - [ ] queue-shape — DECIDED (specs/data.md, Queues): no Queue seam;
       ingress/egress bridges to topics with message-id dedup —
       implement the two bridges; engine adapters as named
-- [ ] persist-wire-auth — spec landed (specs/persist.md, stage 2):
-      bearer/API key via okay-security, per-topic capabilities,
-      TLS via specs/tls.md; implement with persist-wire
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
@@ -65,9 +62,12 @@
 ## okay-conf (specs/conf.md)
 
 ## okay-persist (specs/persist.md — staged design; stage 0 landed)
-- [ ] persist-wire — the remote Topic client over the stage-2
-      frames: a non-JVM consumer reaches a persist node directly;
-      format and wire as documented surfaces
+- [ ] persist-wire-node — the non-JVM leg: the same documented
+      frames from Node (pairs sql-pg-node — one cross-platform
+      socket story serves both)
+- [ ] persist-wire-repl — replication's calls (replicate-pull,
+      promote, produce) join the wire's message enum under the
+      handshake version: replicas go remote, machinery unchanged
 - [ ] persist-interop — stage 3: Store over Kafka (okay-kafka), a
       JDBC table, segment offload to object storage
 - [ ] persist-consensus — stage 4: elected leadership, its own spec
