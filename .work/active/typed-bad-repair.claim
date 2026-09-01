@@ -1,5 +1,0 @@
-slug: typed-bad-repair
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: Typed.Bad meets Condition — Repair.decode over persist records: damage SIGNALS (carrying offset, error, the raw record) with a "skip" restart per element; Resume = patch (the corrected value flows in), Invoke(skip) drops the element, Fail aborts naming the offset; cross-platform tests over MemoryStore; specs/condition.md + persist.md notes
-files: okay-persist/src/main/scala/Repair.scala, tests, specs updates, boards at release

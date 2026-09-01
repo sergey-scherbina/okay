@@ -1,5 +1,18 @@
 # Changelog
 
+## typed-bad-repair — damaged records ask
+Completed: 2026-09-01 (landed as 0a321aa)
+Conditions' first consumer outside the core: Repair in okay-persist
+— decode/read over the Typed view where each damaged record
+SIGNALS Damaged(offset, error, raw bytes) under a per-element
+"skip" frame. One log, three answers under three policies: patched
+IN PLACE (the corrected value sits exactly where the damage sat),
+skipped with order intact, aborted naming the offset and the
+declined menu. And the additive rule's other half, tested: a clean
+slice never consults the policy — who never signals never pays.
+Merge read alone: exit 0. Matrix green on rerun (one TestHttp
+port-roulette flake, 11/11 alone — the ledger entry stands).
+
 ## demo-chat-move — the frontend moves in with its demo
 Completed: 2026-09-01
 
