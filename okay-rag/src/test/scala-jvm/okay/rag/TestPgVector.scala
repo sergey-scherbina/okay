@@ -2,6 +2,7 @@ package okay.rag
 
 import okay.{!, Async}
 import okay.given
+import okay.pg.given
 import okay.lex.Span
 import okay.pg.PgSql
 
