@@ -1,0 +1,7 @@
+feature/codec-iso 2026-09-01T17:10:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-01T17:10:00Z
+status: in-progress
+done-so-far:
+next: SIso node in Schema; sweep ALL six algebras (Json, Cbor, ToolSpec, Form, sql Typed, plus derivation untouched); Secret goes bare-string; conf tests/spec follow
+files: okay-codec/**, okay-agent/ToolSpec.scala, okay-ui/Form.scala, okay-sql/Typed.scala, okay-conf/**

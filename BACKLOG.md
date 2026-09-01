@@ -30,10 +30,6 @@
 ## okay-security (specs/security.md — staged, like persist)
 
 ## okay-codec
-- [ ] codec-iso — an iso/wrapper node in the Schema algebra (bimap:
-      a newtype travels as its underlying shape); first consumer:
-      Schema[Secret] as a bare reference string (specs/conf.md
-      Results)
 
 ## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
 - [ ] py-subprocess — stage 0: module + shim (stdlib json wire,
