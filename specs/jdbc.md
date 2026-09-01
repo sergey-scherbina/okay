@@ -123,6 +123,22 @@ already has. (When a natural key does not exist, that is not a
 library gap — it is a data-model conversation with the DBA, and the
 spec says so rather than inventing a probabilistic dedup.)
 
+The shipped shape (jdbc-write-bridge): `Writes(db, topic, run)` —
+driver-agnostic, written against the `Sql` seam and a persist
+`Topic`, housed in okay-jdbc only until a second driver wants it.
+`write(sql, params, key)` journals `Intent(seq, sql, params, key)`
+(Ack.Durable), executes, journals `Done(seq, count)` — intent
+physically first, records through the persist `Typed` envelope.
+`recover(policy)` refolds the run's records; every intent without
+a completion is the crash window, resolved per key by the declared
+`Policy`: `WithKey` re-executes the SAME statement with the SAME
+key (the statement's contract is the idempotent form — MERGE /
+ON CONFLICT — which is WithKey spelled in SQL), `Reconcile(select)`
+asks by key and settles the journal without re-executing,
+`Fail` reports `Unresolved` as DATA (a batch recovery answers per
+entry; the caller decides — unlike Durable.tools, whose single
+in-flight call rightly throws).
+
 ## Reading their data as it changes (three honest levels)
 
 - **Snapshot** — any query, any time: the existing streaming read.
