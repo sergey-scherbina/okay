@@ -67,6 +67,8 @@ trait Applicative[F[_]] extends Functor[F]:
   def pure[A](a: A): F[A]
   extension [A, B](f: F[A => B])
     def app(a: F[A]): F[B]
+    /** the idiom bracket's own spelling: `pure(f) <*> fa <*> fb` */
+    inline def <*>(a: F[A]): F[B] = app(a)
 
 /**
  * Selective applicative functors (Mokhov et al. 2019): declare both

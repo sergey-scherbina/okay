@@ -135,7 +135,9 @@ Every claim below was compiled, not assumed:
   A ?=> B ?=> C ?=> D = f(wire[A], wire[B], wire[C])` — the
   compiler inserts the closures and performs every `<*>` itself;
   the operator would reintroduce ceremony the elaborator performs
-  for free.
+  for free. (The symbolic `<*>` later landed in
+  `Applicative` itself — applicative-op — as `app`'s alias for ANY
+  carrier; the graded ctx-specific operator stays unshipped.)
 - **The E13/E15 verdict, revised where it was incomplete** (E19,
   2026-09-01, SHIPPED as ctx-monad-instance): direct style still
   needs no instance — but the GENERIC combinators written once over
