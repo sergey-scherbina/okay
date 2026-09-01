@@ -1,5 +1,0 @@
-feature/demo-chat-ungated 2026-09-01T18:09:16Z
-agent: claude-code
-heartbeat: 2026-09-01T18:09:16Z
-status: in-progress
-next: ungated agent mode — the model decides when to match
