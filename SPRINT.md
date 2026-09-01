@@ -1,9 +1,6 @@
 # Sprint
 
 ## Doing
-- blob-fs — the object-store seam, stage 0: trait Blob (cross) and
-  the filesystem engine (jvm), the contract suite the S3 engine will
-  re-run; keys never escape the root (specs/blob.md)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam

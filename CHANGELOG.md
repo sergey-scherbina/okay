@@ -1,5 +1,14 @@
 # Changelog
 
+## blob-fs — the seam three specs assumed; stage 0, the fs engine
+Completed: 2026-09-01 (landed as 2338af1)
+Trait Blob cross-built; the Fs engine holds the floor: strict root
+containment, atomic tmp-then-move puts, crash leftovers invisible,
+engine-defined etags. get answers Either — the chunks are the body,
+the answer is the outcome, an absent key is a value naming itself
+(sketch adjusted, recorded in Decisions). BlobContract written once;
+blob-s3 re-runs it against MinIO. Matrix 1317.
+
 ## sql-sqlite — the embedded engine proves the seam (user ask)
 Completed: 2026-09-01 (landed as 5b17922)
 The whole typed battery over xerial sqlite-jdbc (test-scope)
