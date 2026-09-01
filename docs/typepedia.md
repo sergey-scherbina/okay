@@ -481,7 +481,10 @@ as the object graph, zero framework. The composable form
 (`providing[A](a) and providing[B](b)`, core Providing.scala)
 builds installers as reusable values with no nesting and no arity
 cap; the right operand of `and` is the inner layer, so it is the
-override story as data. Adding a door is two lines:
+override story as data. One trap: a conditional LAYER does not
+typecheck (`if debug then providing[Log](v) else base` — the branch
+types differ); make the VALUE conditional inside one installer
+instead: `providing[Log](if debug then verbose else quiet)`. Adding a door is two lines:
 
 ```scala
 // a wrapper-taking API:                      // a factory:

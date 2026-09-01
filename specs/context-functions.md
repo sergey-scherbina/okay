@@ -56,7 +56,9 @@ Every claim below was compiled, not assumed:
   mapN answer applied (their "unbounded" is 22 generated overloads
   too; tools/gen_provide.py regenerates). Re-test the single
   definition on future compilers — param-position match-type
-  reduction is the one missing piece.
+  reduction is the one missing piece. (E16 then answered from the
+  flank: type-LAMBDA composition delivers the uncapped form —
+  `providing`/`and` — without match types.)
 - **Macros cannot rewrite a block into nested implicit scopes** —
   Scala 3 macros run after typing; implicit resolution has already
   happened. A pre-typer compiler plugin could; that road is noted,
