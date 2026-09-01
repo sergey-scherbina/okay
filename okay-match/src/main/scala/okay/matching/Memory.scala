@@ -61,9 +61,19 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
 
   // ---- facts --------------------------------------------------------
 
+  private val rnd = new scala.util.Random
+  private def freshId(): String =
+    val bs = new Array[Byte](16)
+    rnd.nextBytes(bs)
+    bs.iterator.map(b => f"$b%02x").mkString
+
   def register(email: String): ProfileId =
     byEmail.getOrElse(email, {
-      val id = ProfileId(java.util.UUID.randomUUID().toString)
+      // NOT UUID.randomUUID: its csprng is java.security.SecureRandom,
+      // which the Scala.js LINKER rejects even from a test leg (the
+      // Crypto.Handle lesson). A profile id needs uniqueness, not
+      // cryptography — util.Random hex serves every platform.
+      val id = ProfileId(freshId())
       profiles += id -> email
       byEmail += email -> id
       id
