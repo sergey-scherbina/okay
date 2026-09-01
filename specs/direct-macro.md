@@ -23,10 +23,18 @@ object Direct:
    * Outside a direct block it throws at runtime by design. */
   extension [F[_], A](m: F[A])
     def ? : A
-    inline def reflect: A   // the named spelling of the same mark
+    def reflect: A   // the named spelling of the same mark
+  extension [G[_], A](op: G[A])
+    def !? : A       // op.!? ≡ effect(op).? — lifts a RAW OPERATION
+                     // into the block's row program and reflects it
 
-  /** rewrite block: marks become Monadic binds, the result is F[A] */
-  transparent inline def direct[F[_]](inline block: Any)(using Monad[F]): F[?]
+  /** rewrite block: marks become Monadic binds, the result is F[A].
+   * direct[F] names only the monad (partial type application via
+   * DirectApply); with an expected type both infer:
+   * val p: Int ! W = direct { ... } */
+  inline def direct[F[_]]: DirectApply[F]
+  final class DirectApply[F[_]] extends AnyVal:
+    inline def apply[A](inline block: A)(using inline M: Monad[F]): F[A]
 ```
 
 The mark is `Direct.?`, NOT `Monadic.?` — the two return different
@@ -48,38 +56,52 @@ stays for expression positions.
 
 ## Behavior
 
-- [ ] `direct[Option] { val x = mx.?; val y = my.?; x + y }` ==
+- [x] `direct[Option] { val x = mx.?; val y = my.?; x + y }` ==
   the for-comprehension equivalent, on every TestMonadic scenario
   (Option short-circuit, Either error channel, List multi-shot)
-- [ ] EFFECTS work as through `!` itself: a direct block over
+- [x] EFFECTS work as through `!` itself: a direct block over
   `[A] =>> A ! (Writer % String)` reflecting `Writer.tell` answers
   the same (log, value) under `Writer.run` as the monadic program —
   and a two-effect row (`Writer % String + Reader % Int`) reflects
   `tell` and `ask` in one block, handlers peeling as always
-- [ ] `val p: Int ! W = direct { ... }` — F inferred from the
+- [x] `val p: Int ! W = direct { ... }` — F inferred from the
   expected type, no type argument written
-- [ ] marks in SUBEXPRESSIONS are hoisted in evaluation order:
+- [x] marks in SUBEXPRESSIONS are hoisted in evaluation order:
   `f(a.?, b.?)` binds a before b, exactly left-to-right
-- [ ] `if`/`match` with marks in condition/scrutinee and branches:
+- [x] `if`/`match` with marks in condition/scrutinee and branches:
   only the taken branch's effects run
-- [ ] a mark under a lambda is a COMPILE error naming the position
+- [x] a mark under a lambda is a COMPILE error naming the position
   and the workaround (bind to a val before the lambda)
-- [ ] `while`/`try` containing marks: compile error, "v2" named
-- [ ] a mark outside any direct block: the phantom throws with a
+- [x] `while`/`try` containing marks: compile error, "v2" named
+- [x] a mark outside any direct block: the phantom throws with a
   message naming the macro
-- [ ] a block with NO marks still compiles: `direct[F] { 42 }` ==
+- [x] a block with NO marks still compiles: `direct[F] { 42 }` ==
   `F.pure(42)`
-- [ ] multi-shot inside the flat block: a reflected List re-runs the
+- [x] multi-shot inside the flat block: a reflected List re-runs the
   REST OF THE BLOCK per element (vars shared across runs — the
   documented footgun, asserted by a test, not hidden)
+- [x] `op.!?` (user ask 2026-09-01): `Writer("a").!?` and
+  `Reader.Ask[Int, Int]().!?` in a two-effect row — the macro finds
+  the block's Row from F = A ! Row, checks the op is in it, and
+  emits Free.Inject[Row, A](op) reflected; in a non-row block `!?`
+  is a compile error naming the requirement
 
 ## Out of scope (v2 roads, recorded not promised)
 
 - **Auto-coloring** (no marks at all): the Conversion trick —
-  a scoped `given Conversion[F[A], A]` lets the block typecheck,
-  the macro rewrites the conversion calls. Works (dotty-cps-async's
-  automatic mode) but must be locked to the block's scope and
-  degrades error messages; explicit marks first.
+  a `given Conversion[F[A], A]` lets the block typecheck, the macro
+  rewrites the conversion calls. The scoping answer is a CAPABILITY:
+  the block becomes `DirectCtx[F] ?=> A` and the conversion requires
+  `using DirectCtx[F]`, so it can fire ONLY inside a direct block
+  (dotty-cps-async's CpsMonadContext pattern; compile-time refusal
+  outside, better than the phantom's runtime throw). Which types
+  auto-color is itself gated by a marker typeclass (user sketch
+  2026-09-01): e.g. only `G` with a `given Effect[G]` instance
+  converts, so arbitrary F[A]s never silently color — the row
+  membership check the macro already does for `!?` becomes the
+  conversion's own evidence. Cost that stays: the
+  implicitConversions language import and degraded error messages
+  inside blocks; explicit marks remain the default.
 - **`while`/`try`** — recursion-encoding for while, error-channel
   reification for try (Throws.scala is the seam).
 - **Answer-type modification inside a block** — the block is the
@@ -121,4 +143,28 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Results
 
-(fill after verify)
+- 16 tests in TestDirect, all green: vals, subexpression hoisting
+  (order asserted), if/match, multi-shot (List, 6 continuation runs
+  counted), effects over `!` (single row and a two-effect
+  Reader+Writer row, handlers peeling as always), expected-type
+  inference (`val p: Int ! F = direct { ... }` — no type argument),
+  compile errors for lambda/while/try/by-name, the phantom's runtime
+  throw. The macro is ~300 lines.
+- Findings, each paid for once:
+  - `isInstanceOf[ByNameType]` on quotes-reflect types is ALWAYS true
+    (abstract types erase to TypeRepr) — by-name detection must
+    pattern-match through the API's TypeTest.
+  - Boolean `&&`/`||` are intrinsics: method type by-value, the
+    short-circuit is compiler magic — the macro desugars marked
+    `a && b` to `if a then b else false` (dually `||`) and recurses,
+    keeping the short-circuit; hoisting their operands would have
+    broken it silently.
+  - `Lambda(...)` IS `Block(DefDef :: Nil, Closure)` — the Lambda
+    case must precede the Block case or the error message degrades.
+  - A narrow-row operation in a wide-row block (`Writer.tell` where
+    the block's F is a union row) is refused with the fix named:
+    spell it `effect[Row, A](op).?` — the same spelling the monadic
+    style needs, so parity with `!` holds exactly.
+  - Application spines: only VALUE slots (receiver, arguments) are
+    hoisted; callee structure (Selects, TypeApplies, curried lists)
+    is rebuilt — a partially applied method is not a value.
