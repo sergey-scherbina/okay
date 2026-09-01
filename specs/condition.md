@@ -77,29 +77,29 @@ object Condition:
 
 ## Behavior
 
-- [ ] Resume: the policy answers a value and the computation
+- [x] Resume: the policy answers a value and the computation
       continues AT the signal point with it — the counter after
       the signal increments, nothing unwound
-- [ ] Invoke: signalling deep inside `within("skip")(...)` and
+- [x] Invoke: signalling deep inside `within("skip")(...)` and
       invoking "skip" unwinds exactly to that frame — `recover`
       supplies the frame's answer, code between signal and frame
       never resumes, code OUTSIDE the frame continues
-- [ ] the menu accumulates lexically: nested `within`s offer both
+- [x] the menu accumulates lexically: nested `within`s offer both
       names, inner first; invoking the OUTER restart unwinds past
       the inner frame
-- [ ] Fail escalates as `Unhandled` naming the condition and the
+- [x] Fail escalates as `Unhandled` naming the condition and the
       menu; a policy that always fails makes `signal` behave like a
       throw — the degenerate case is the familiar one
-- [ ] other effects forward: a signal-and-resume inside an Async
+- [x] other effects forward: a signal-and-resume inside an Async
       row leaves the Async operations undisturbed (the Resource.run
       forwarding shape)
-- [ ] the repair story, end to end: a decode loop over records
+- [x] the repair story, end to end: a decode loop over records
       where damage SIGNALS with restarts "skip" and "patch" — one
       policy patches (the corrected value flows back into the
       decode), another skips (the element vanishes, the loop
       continues), a third fails (the loop aborts) — three outcomes
       of one program, chosen at run
-- [ ] a `within` whose body completes normally is invisible: the
+- [x] a `within` whose body completes normally is invisible: the
       recover function never runs, the answer is the body's
 
 ## Out of scope
@@ -139,5 +139,16 @@ object Condition:
 
 ## Results
 
-(after implementation — the battery, the repair story, notes on
-what the machine forwards)
+Landed (conditions, 2026-09-01): `Condition` in the core — ~120
+lines for the machine, in the Resource.run shape (a loop that owns
+its frames and forwards everything else) with Delim's payload
+discipline (a Within's body is a program in the same row, erased
+at the operation, re-typed inside the one owner). Eight tests: the
+full battery plus a policy bug of its own class (`NoSuchRestart` —
+invoking off the menu is named as the policy's fault, not the
+program's). The repair story runs verbatim: a decode loop with one
+`within("skip")` frame PER ELEMENT, and the same program yields
+patched / skipped / failed under three policies — which is what
+"chosen at run" was always supposed to mean. Consumers filed for
+later: the Typed.Bad interactive-repair road, r.md's native
+restarts bridged over the same vocabulary once okay-r lands.
