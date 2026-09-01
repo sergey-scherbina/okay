@@ -143,6 +143,47 @@ Behavior:
 Derived schemas still round-trip their own output; defaults matter
 for foreign, partial input — which tools and forms are made of.
 
+## codec-iso — the newtype node
+
+A wrapper type should travel as what it wraps: `Secret("env:PG")` is
+a string on the wire, not `{"ref": ...}`. Mirrors cannot see through
+a wrapper any more than they carry defaults, so the algebra itself
+gains ONE node:
+
+```scala
+case SIso[A, B](under: () => Schema[B],
+                to: B => Either[String, A],    // decode may REFINE
+                from: A => B) extends Schema[A]
+
+object Schema:
+  /** a total wrapper (a newtype) */
+  def wrap[A, B](to: B => A, from: A => B)(using Schema[B]): Schema[A]
+  /** a refining wrapper — a Left is a decode error naming itself */
+  def refine[A, B](to: B => Either[String, A], from: A => B)(using Schema[B]): Schema[A]
+```
+
+Every algebra folds through it: encode is `from` then under's
+encode; decode is under's decode then `to`, a Left surfacing as the
+same kind of error value every decoder here answers. The tool
+schema, the form and the sql row all see the UNDERLYING shape —
+which is the point: to every consumer, the wrapper does not exist.
+
+Behavior:
+- [ ] a wrapped string round-trips JSON and CBOR as a BARE string;
+      a wrapped Int as a bare number — no object anywhere
+- [ ] refine: a Left from `to` is a decode error carrying its
+      message, positioned like any wrong-shape error, never a throw
+- [ ] a product holding wrapped fields derives, encodes flat, and
+      partial input still falls back to defaults first (the two
+      macro-adjacent features compose)
+- [ ] the tool schema of a wrapped field is the underlying type's
+      schema (a Secret parameter declares as a string)
+- [ ] the sql row bridge treats a wrapped column as its underlying
+      SqlValue kind, both directions
+- [ ] the first consumer: Schema[Secret] is the bare reference
+      string; okay-conf's fixtures and round-trip tests move to the
+      new wire, and toString stays the ref
+
 Found by the sweep's exhaustivity warnings: WireJson had not learned
 the keyed-diff patch trio (Remove/Reorder/Insert) — a server-driven
 reorder would have MatchErrored on encode. Wired and round-tripped
