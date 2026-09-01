@@ -104,11 +104,41 @@ the same door as everywhere else: a comonadic handler must ANSWER, so
 it needs `CanBlock`; `translate` forwards into `Async` instead and
 works where nothing may park.
 
+## v8 — completion (2026-09-01)
+
+Argument autocompletion for prompts and resource templates, in the
+shape everything else here has: the server's completer is DATA IN,
+VALUES OUT — `Complete(ref, argument, value, context) =>
+Vector[String]` — carried by `Serving` as an Option, so the
+capability is declared exactly when the function exists (the
+declare-what-you-answer rule, again). The wire caps at 100 values
+and says `hasMore`, which is the protocol's own pagination-by-truth.
+
+```scala
+enum Ref:
+  case Prompt(name: String)
+  case Resource(uri: String)        // a template uri; templates
+                                    // themselves are still backlogged —
+                                    // the completer sees the uri either way
+final case class Complete(ref: Ref, argument: String, value: String,
+                          context: Map[String, String])
+
+Serving(..., complete: Option[Complete => Vector[String]] = None)
+Session.complete(ref, argument, value, context): Vector[String] ! Async
+```
+
+- [ ] a prompt-ref completion answers the server's values, the
+      already-resolved context arriving with it
+- [ ] more than 100 values cap at 100 with hasMore = true
+- [ ] no completer, no capability: completion/complete on a server
+      without one is MethodNotFound, and the handshake said so
+- [ ] a resource ref passes its uri through to the completer
+- [ ] live: the reference server's own completion answers our client
+      (shape asserted, content theirs)
+
 ## Out of scope
 - elicitation (`elicitation/create`): the server asking the human, not
   the program — it needs a UI contract this library has no opinion on
-- completion (`completion/complete`): argument autocompletion for
-  prompts and resource templates
 - resource TEMPLATES (RFC 6570 uri patterns)
 - the HTTP/SSE transport (okay-llm already has the SSE half; the
   streamable-HTTP session layer is its own task)
