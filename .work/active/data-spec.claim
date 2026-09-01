@@ -1,0 +1,6 @@
+feature/data-spec 2026-09-01T08:54:03Z
+agent: claude-code
+heartbeat: 2026-09-01T08:54:03Z
+status: in-progress
+done-so-far:
+next: write specs/data.md — the data landscape, two postures, few seams
