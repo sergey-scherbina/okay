@@ -1,5 +1,22 @@
 # Changelog
 
+## sim-harness — luck retires from concurrency testing
+Completed: 2026-09-01 (landed with spec boxes checked)
+Sim in the core: many fibers, one seeded scheduler, interleavings
+as VALUES — a found bug is a seed, a fix is verified by replaying
+it. Fibers are freer trees and their k at every operation IS the
+captured delimited continuation (the Cont foundation as scheduler
+food — the operator's primary-where-necessary rule, satisfied);
+SimChannel makes blocking primitives operations; the virtual clock
+moves only when nothing else can; deadlock is an OUTCOME, not a
+hung test; fault plans ride the seed. The headline: the runCmd
+close race, modeled, loses its answer under seeds a 200-sweep
+finds, and the shipped rule survives all 200 — today's flake is
+now a replayable regression test. One lesson: continuations apply
+at SCHEDULING, not enqueueing (eager k ran side effects early);
+tasks are thunks. Eight tests. Merge read alone: exit 0. Full
+matrix green.
+
 ## control-specs — the PState/Delim consumer map, written down
 Completed: 2026-09-01 (landed as bff0581; markdown only)
 The operator's adoption doctrine stated once (delimited-control.md):

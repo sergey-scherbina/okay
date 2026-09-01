@@ -1,14 +1,6 @@
 # Backlog
 
 ## Correctness and the core (specs/sim.md, specs/typestate.md)
-- [ ] sim-harness — deterministic concurrency simulation on Delim
-      (specs/sim.md; user ask 2026-09-01): every fiber under its
-      own Prompt, a seeded scheduler at send/receive points,
-      interleavings replayable byte for byte. The argument: three
-      real races on 2026-09-01 (runCmd lost answers, DriverManager
-      per-classloader, port roulette) were all found by FLAKES.
-      First clients: runCmd, Replicated/Election, cache
-      single-flight, Channel
 - [ ] wire-typestate — PState at the protocol seams
       (specs/typestate.md; user ask 2026-09-01): SCRAM's step
       order and PgSql's connection phases as types (out-of-order =
