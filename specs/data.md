@@ -286,9 +286,12 @@ list in its spec or spec section)
       default and verify therefore requires Option fields, which is
       the fingerprint lesson working: a lake column really can be
       null under you)
-- [ ] a bulk load with a load id, retried across a simulated crash,
-      lands once (warehouse or its test double); row-INSERT paths
-      refuse in the OLAP posture
+- [x] a bulk load with a load id, retried across a simulated crash,
+      lands once (DuckDB as the double: the history table's unique
+      key IS the dedup — WithKey at batch granularity; a failing
+      COPY rolls its claim back with it, so the fixed retry starts
+      clean); row DML refuses BY NAME in the OLAP posture wrapper,
+      and the refusal says where the right door is (BulkLoad.load)
 - [ ] kafka-eos: a producer retry under the idempotent/
       transactional config does not duplicate (their test
       machinery), or the sink's at-least-once is asserted and
