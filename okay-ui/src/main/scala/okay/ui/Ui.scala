@@ -210,14 +210,26 @@ object Ui {
     // ends), and a pending command's answer is waited for, not lost.
     val events = Channel[Event]()
     val pending = java.util.concurrent.atomic.AtomicInteger(0)
+    // events HANDED OVER but not yet folded by the loop: the close
+    // decision must count them, or a command launched from a
+    // buffered event races the close and its answer is lost (found
+    // as a flaky TestCmd: the loop read the last buffered event,
+    // the closer saw pending == 0 in the window before launch ran,
+    // and the loop met a closed, drained channel before the
+    // answers came back)
+    val unprocessed = java.util.concurrent.atomic.AtomicInteger(0)
     val upstreamDone = java.util.concurrent.atomic.AtomicBoolean(false)
     def maybeClose(): Unit =
-      if upstreamDone.get && pending.get == 0 then events.close()
+      if upstreamDone.get && pending.get == 0 && unprocessed.get == 0 then
+        events.close()
+    def offer(e: Event): Unit =
+      unprocessed.incrementAndGet()
+      events.send(e)
 
     def drain(src: Source[Event]): Unit ! Async =
       Writer.uncons[Event, Unit, Async](src).flatMap {
         case Left(_) => pure(())
-        case Right((e, more)) => async(events.send(e)).flatMap(_ => drain(more))
+        case Right((e, more)) => async(offer(e)).flatMap(_ => drain(more))
       }
     Async.spawn(drain(host.events merge external)).onComplete { _ =>
       upstreamDone.set(true); maybeClose()
@@ -228,7 +240,7 @@ object Ui {
         pending.incrementAndGet()
         Async.spawn(prog).onComplete { r =>
           r match
-            case Right(ev) => events.send(ev)
+            case Right(ev) => offer(ev)
             case Left(_) => ()   // a command encodes its failure as an event, or forfeits it
           pending.decrementAndGet()
           maybeClose()
@@ -242,6 +254,10 @@ object Ui {
         case Right((e, more)) =>
           val (s2, cmds) = update(s, e)
           launch(cmds)
+          // the event is folded and its commands are COUNTED before
+          // the close decision may see a zero
+          unprocessed.decrementAndGet()
+          maybeClose()
           val u2 = view(s2)
           (if u2 == shown then pure(()) else host.render(u2))
             .flatMap(_ => loop(s2, u2, more))
