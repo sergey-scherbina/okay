@@ -164,6 +164,37 @@ continuations doing what they are for. Both styles coexist because
 both are the same machine: a screen is a fold, a flow is a program,
 `Dialog` is the bridge. MCP elicitation is a one-step scenario.
 
+Phase 2 interface and behavior (claimed: ui-scenarios):
+
+```scala
+enum Dialog[+A]:
+  case Show(ui: Ui) extends Dialog[Event]
+
+object Dialog:
+  def show(ui: Ui): Event ! Dialog                  // show, await one event
+  def run[A](host: Host)(prog: A ! Dialog): A ! Async   // standalone
+  def screen[A](prog: A ! Dialog): Screen[A]        // the scenario AS a screen
+object Form:
+  def ask[A](message: String)(using Schema[A]): Option[A] ! Dialog  // a typed form flow
+  def askSchema(message: String, schema: Json): Option[Json] ! Dialog
+```
+
+- [ ] a wizard is a PROGRAM: show, await, validate, branch — and
+      retry is recursion, not a combinator (an invalid step loops
+      itself with an error line shown)
+- [ ] `Dialog.run` drives a scenario over any Host: renders on Show,
+      resumes with the next event; the host's end answers what the
+      scenario has (a scenario is not entitled to an ending it did
+      not reach — the run answers Option)
+- [ ] the SAME scenario runs INSIDE `Ui.run` via `Dialog.screen`: the
+      continuation is literally the screen's state, one event steps
+      it, `done` shows the answer
+- [ ] `Form.ask[A]` answers Some(A) on ok (decoded by the same
+      Schema), None on cancel; an undecodable value does not submit —
+      the error is SHOWN and the flow continues
+- [ ] MCP elicitation is a one-step scenario: the demo's form-elicit
+      collapses to `Dialog.run(host)(Form.askSchema(...))`
+
 ### Screens and navigation (phase 2)
 A screen is a `(view, update)` pair over its own S; navigation is a
 STACK of screens — push/pop is Mark/Restore over values, exactly the
