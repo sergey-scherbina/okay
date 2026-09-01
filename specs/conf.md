@@ -164,6 +164,37 @@ This stage ships as a thin convenience over `Store` when a consumer
 names the need; it adds no new machinery and MUST not (that is the
 point).
 
+The convenience (conf-topic), living in okay-persist beside
+Snapshots and Offsets, where the compacted-keyed-topic pattern
+already lives (okay-conf keeps its codec-only dependency):
+
+```scala
+final class Configs(topic: Topic):        // keyed, compacted
+  def put[C: Schema](name: String, value: C, ack: Ack = Durable): Long
+  def latest[C: Schema](name: String): Option[(Long, Either[String, C])]
+  /** rollback IS a read: the newest write at or before `offset` */
+  def at[C: Schema](name: String, offset: Long): Option[(Long, Either[String, C])]
+  /** the audit: every surviving write under this name, oldest first */
+  def history[C: Schema](name: String): Vector[(Long, Either[String, C])]
+```
+
+Values travel as the Schema's JSON (a config is for looking at, and
+the log is one more place it gets looked at); reference-only safety
+is invariant 3 by construction — Schema[Secret] encodes the ref.
+History is honest about compaction: the audit lives until
+`Topic.compact` reclaims superseded writes, and after it `latest`
+still answers — the exact records compaction keeps.
+
+Stage-2 behavior:
+- [ ] three writes under one name: latest is the third, at(second's
+      offset) is the second (rollback is a read), history lists all
+      three oldest-first with their offsets
+- [ ] two names on one topic do not bleed — keys filter
+- [ ] a damaged stored value decodes as a Left in place, the rest of
+      the history intact
+- [ ] after Topic.compact: latest and its offset unchanged, history
+      shortened to what compaction keeps — stated, not hidden
+
 ## Module
 
 `okay-conf`, small by design: `Secret`, `Secrets` (env/file/memory/
