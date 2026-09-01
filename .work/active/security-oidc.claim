@@ -1,0 +1,6 @@
+feature/security-oidc 2026-09-01T11:29:30Z
+agent: claude-code
+heartbeat: 2026-09-01T11:29:30Z
+status: in-progress
+done-so-far:
+next: Oidc — discovery, login url, id_token validation, callback; stub IdP tests

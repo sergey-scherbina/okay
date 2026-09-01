@@ -45,8 +45,6 @@
 ## okay-security (specs/security.md — staged, like persist)
 - [ ] security-es256 — ES256 for JWT (the JOSE raw R||S <-> DER dance,
       its own tested task)
-- [ ] security-oidc — id_token validation, discovery document,
-      nonce/at_hash
 - [ ] security-argon2 — a satellite with a real KDF for new password
       stores (PBKDF2 stays the zero-dep default)
 
