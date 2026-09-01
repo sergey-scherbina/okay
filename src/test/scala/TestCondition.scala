@@ -8,6 +8,45 @@ import Condition.Decision.*
  * and the repair story: one program, three outcomes, chosen at run */
 class TestCondition extends munit.FunSuite {
 
+  test("condition-caps: the lexical invoke unwinds to ITS frame; no handle, no invoke") {
+    import Condition.*
+    // the body holds its restart as a capability and leaves through
+    // it directly — no signal, no policy round-trip
+    val prog: String ! (Op + Pure) =
+      frame[String, Int, Pure]("skip") { restart ?=>
+        okay.pure[Op + Pure, Int](1).flatMap { _ =>
+          restart.invoke[String](42)   // abandon the rest of the frame
+        }.map(_ => "never reached")
+      }(v => s"skipped with $v")
+    assertEquals(!.run(Condition.run[String, Pure](
+      (_, _) => throw new AssertionError("the policy must not be consulted"))(prog)),
+      "skipped with 42")
+    // nesting: the inner handle leaves the inner frame; the outer
+    // continues past it
+    val nested: String ! (Op + Pure) =
+      frame[String, String, Pure]("outer") { outer ?=>
+        frame[String, Int, Pure]("inner") { inner ?=>
+          inner.invoke[String](7)
+        }(v => s"inner=$v").map(x => x + ", outer went on")
+      }(v => s"outer=$v")
+    assertEquals(!.run(Condition.run[String, Pure]((_, _) =>
+      Decision.Fail)(nested)), "inner=7, outer went on")
+    // and the capability route crosses frames too: the OUTER handle
+    // invoked from inside the inner frame skips both
+    val crossing: String ! (Op + Pure) =
+      frame[String, String, Pure]("outer") { outer ?=>
+        frame[String, Int, Pure]("inner") { inner ?=>
+          outer.invoke[String]("all the way out")
+        }(v => s"inner=$v").map(x => x + ", never appended")
+      }(v => s"outer=$v")
+    assertEquals(!.run(Condition.run[String, Pure]((_, _) =>
+      Decision.Fail)(crossing)), "outer=all the way out")
+    // no frame, no handle: a Restart cannot be conjured
+    val errors = compileErrors("summon[okay.Condition.Restart[Int]]")
+    assert(errors.nonEmpty, "a Restart outside every frame must not summon")
+  }
+
+
   test("the typed pair: raiseC answers its instance's type; a bad Resume is the policy's bug, named") {
     import Condition.*
     final case class HowMany(what: String)

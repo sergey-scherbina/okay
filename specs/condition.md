@@ -221,3 +221,20 @@ Behavior:
       NAMED (the policy bug caught where it acts)
 - [x] the three consumers compile on raiseC with their policies
       untouched
+
+## Lexical restarts as capabilities (condition-caps)
+
+The ctx-prompts pattern applied to frames: `frame(name)(body)(recover)`
+hands the body its `Restart[V]` as a context capability — in-scope
+code UNWINDS TO ITS FRAME directly (`restart.invoke(v)`), no signal,
+no policy round-trip, and the typed V reaches recover typed. The
+only way to hold a Restart is to be inside its frame (the
+constructor is private), so invoking a nonexistent restart is not a
+runtime miss but unwritable code. Handles are first-class within
+their scope: an OUTER handle invoked from inside an inner frame
+unwinds past both. The dynamic menu stays the floor — signals still
+see every frame; `within` stays as the Any-typed base.
+
+- [x] the lexical invoke unwinds to its frame with no policy
+      consulted; nesting and cross-frame invokes behave; a Restart
+      cannot be summoned outside every frame

@@ -44,6 +44,16 @@ the typepedia mark-family entry disambiguating three uses of the
 word reflect, and the guide's one-paragraph pointer. Gate note: two
 LIVE TestChatDemo assertions flaked on model judgment under load and
 passed 15/15 on rerun — recorded for the demo lane in BACKLOG.
+## condition-caps — lexical restarts as capabilities
+Completed: 2026-09-02
+
+frame(name)(body)(recover) hands the body its Restart[V] as a
+context capability: in-scope code unwinds to ITS frame directly —
+no signal, no policy round-trip, V reaching recover typed — and a
+nonexistent restart is unwritable code (the constructor is private;
+only a frame hands a handle out). An outer handle invoked from an
+inner frame unwinds past both. The menu stays the floor; within
+stays. 10 condition tests.
 
 ## direct-mark-retire — .? retired, .!? resurrected, the mark family settled
 Completed: 2026-09-02

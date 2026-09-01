@@ -36,6 +36,10 @@ object Condition {
     /** the payload is a program in the same row — the Delim
      * discipline: erased here, re-typed inside the machine */
     case Within(name: String, body: Any, recover: Any => Any) extends Op[Any]
+    /** the LEXICAL invoke (condition-caps): unwind to the named
+     * frame directly, no policy round-trip — only a Restart handle
+     * can construct it, and only a frame hands one out */
+    case Leave(name: String, value: Any) extends Op[Nothing]
 
   /** the condition had no answer: the policy declined (Fail), and
    * the menu it declined is part of the report */
@@ -78,6 +82,31 @@ object Condition {
       case other => throw BadResume(c, other, ev.tag.runtimeClass.getName)
     }
 
+  /**
+   * The capability a frame hands its body (condition-caps, the
+   * ctx-prompts pattern): in-scope code invokes THIS restart
+   * lexically — a nonexistent restart is not a runtime miss but a
+   * COMPILE error, because the only way to hold a Restart is to be
+   * inside its frame (the constructor is private). The dynamic
+   * policy menu stays the floor: signals still see every frame.
+   */
+  final class Restart[V] private[Condition] (private[Condition] val name: String):
+    /** unwind to this frame with v — the body's remaining work is
+     * abandoned, the frame answers recover(v) */
+    def invoke[X](v: V): X ! Op =
+      effect(Op.Leave(name, v)).asInstanceOf[X ! Op]
+
+  /**
+   * `within`, handing the body its restart as a CAPABILITY: the
+   * typed twin — recover receives the V the handle's invoke was
+   * given. (A policy Invoke on the same name still arrives as Any;
+   * the frame is one frame either way.)
+   */
+  def frame[A, V, F[+_]](name: String)
+                        (body: Restart[V] ?=> A ! (Op + F))
+                        (recover: V => A): A ! (Op + F) =
+    within[A, F](name)(body(using Restart[V](name)))(v => recover(v.asInstanceOf[V]))
+
   /** establish a restart around `body`: if the policy invokes
    * `name` with v, this whole `within` answers `recover(v)` — the
    * body's remaining work is abandoned, everything outside
@@ -111,6 +140,9 @@ object Condition {
 
     def handle[X](op: Op[?], k: Any => X ! (Op + F), menu: List[String]): Out[X] ! F =
       op match
+        case Op.Leave(name, v) =>
+          if !menu.contains(name) then throw NoSuchRestart(name, menu.toVector)
+          pure(Out.Escape(name, v))
         case Op.Signal(c) =>
           policy(c, menu.toVector) match
             case Decision.Resume(v) => loop(k(v), menu)
