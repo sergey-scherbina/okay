@@ -34,3 +34,16 @@ final class Providing[F[_]](val run: [X] => F[X] => X):
 /** one installer: `providing[A](a)` holds a `given A` for later */
 def providing[A](a: A): Providing[[X] =>> A ?=> X] =
   Providing([X] => (body: A ?=> X) => body(using a))
+
+/**
+ * The CONSUMER one-liner (E17): `wire[Db].q` pulls the ambient
+ * capability by naming its type — Reader's `ask` on context
+ * functions. The naive `def wire[T] = summon[T]` does not compile
+ * (no given at the definition site); the `A ?=> A` result type is
+ * the fix, and the eager auto-application of context functions
+ * (the E10 trap) works FOR us here: in receiver position
+ * `wire[Db].q` applies to the nearest given and moves on. Doors
+ * write point-free: `val getQ: Db ?=> String = wire[Db].q`.
+ * A missing given is a compile error — the DI claim holds.
+ */
+inline def wire[A]: A ?=> A = summon[A]

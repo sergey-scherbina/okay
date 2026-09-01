@@ -328,6 +328,10 @@ base { app }                                        // the edge
 (base and providing[Http](stubHttp)) { app }        // override just Http
 ```
 
+The consumer side is one line too: `wire[Http]` pulls the ambient
+capability by naming its type — `val get: Http ?=> Response =
+wire[Http].send(req)` is a door with no `summon` and no parameter.
+
 Together the doors and `provide` are the DEPENDENCY-INJECTION
 story: compile-time resolution (a missing dependency is a type
 error, not a container exception), given-scopes as the object

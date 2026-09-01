@@ -121,3 +121,28 @@ class TestProviding extends munit.FunSuite {
     assert(errors.nonEmpty, "the missing Clock compiled")
   }
 }
+
+/** The consumer one-liner (E17): wire[A] is Reader's ask. */
+class TestWire extends munit.FunSuite {
+
+  trait Db { def q: String }
+  trait Log { def tag: String }
+
+  test("wire pulls the ambient capability by type") {
+    assertEquals(provide(new Db { val q = "row" }) { wire[Db].q }, "row")
+  }
+
+  test("point-free doors — no summon, no parameter") {
+    val line: (Db, Log) ?=> String = s"${wire[Log].tag}:${wire[Db].q}"
+    assertEquals(provide(new Db { val q = "r" }, new Log { val tag = "t" })(line), "t:r")
+  }
+
+  test("composes with providing; nearest given wins") {
+    val base = providing[Db](new Db { val q = "outer" })
+    assertEquals((base and providing[Db](new Db { val q = "inner" })) { wire[Db].q }, "inner")
+  }
+
+  test("a missing given does not COMPILE") {
+    assert(compileErrors("wire[Db].q").nonEmpty, "the missing Db compiled")
+  }
+}

@@ -484,7 +484,10 @@ cap; the right operand of `and` is the inner layer, so it is the
 override story as data. One trap: a conditional LAYER does not
 typecheck (`if debug then providing[Log](v) else base` — the branch
 types differ); make the VALUE conditional inside one installer
-instead: `providing[Log](if debug then verbose else quiet)`. Adding a door is two lines:
+instead: `providing[Log](if debug then verbose else quiet)`.
+The consumer one-liner is `wire[A]` (Reader's ask): `wire[Db].q`
+pulls the nearest given — E10's eagerness working FOR us — and a
+missing given is still a compile error. Adding a door is two lines:
 
 ```scala
 // a wrapper-taking API:                      // a factory:
