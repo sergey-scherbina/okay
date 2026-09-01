@@ -1,5 +1,15 @@
 # Changelog
 
+## applicative-op — `<*>`, the idiom bracket's own spelling
+Completed: 2026-09-01
+`trait Applicative` gains the symbolic alias: `f <*> a` is `f.app(a)`
+(inline, Monad.scala) — `pure(f) <*> fa <*> fb` now reads as written
+in the papers. Works over any carrier through the generic door:
+TestApOp runs one generic idiom over `[X] =>> Env ?=> X` (context
+functions, via ctxMonad) and over `X ! Pure` (the effect row). Bare
+ctx-fn receivers still hit E10 outside generic code — the known
+boundary. Matrix 275/14/14.
+
 ## direct-macro — the flat block v1: direct style with no for-comprehension
 Completed: 2026-09-01
 Landed as 96a46e8 (nearly lost once: a no-op self-merge in the

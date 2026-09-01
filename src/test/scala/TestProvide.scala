@@ -177,3 +177,24 @@ class TestCtxMonad extends munit.FunSuite {
     assertEquals(provide(Env("ada", 7))(prog), "ada#7")
   }
 }
+
+/** the symbolic ap: `<*>` is `app`, on any carrier */
+class TestApOp extends munit.FunSuite {
+
+  case class Env(user: String, uid: Int)
+
+  // generic — F is abstract inside, so it runs over ANY instance
+  def idiom[F[_]](fu: F[String], fn: F[Int])(using M: Applicative[F]): F[String] =
+    M.pure((u: String) => (n: Int) => s"$u#$n") <*> fu <*> fn
+
+  test("<*> over context functions, through the generic door") {
+    val prog: Env ?=> String = idiom[[X] =>> Env ?=> X](wire[Env].user, wire[Env].uid)
+    assertEquals(provide(Env("ada", 7))(prog), "ada#7")
+  }
+
+  test("<*> over an effect row — the same generic code") {
+    import okay.!.*
+    val got: String ! okay.Pure = idiom[[X] =>> X ! okay.Pure](pure("bob"), pure(1))
+    assertEquals(!.run(got), "bob#1")
+  }
+}
