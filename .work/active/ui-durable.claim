@@ -1,6 +1,0 @@
-feature/ui-durable 2026-09-01T08:30:36Z
-agent: claude-code
-heartbeat: 2026-09-01T08:30:36Z
-status: in-progress
-done-so-far:
-next: Sessions over Topic — append/recover/snapshot/serve; tests on MemoryStore

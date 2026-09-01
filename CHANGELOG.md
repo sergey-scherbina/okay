@@ -1,5 +1,13 @@
 # Changelog
 
+## ui-durable — the journal is the line stream, verbatim
+Completed: 2026-09-01
+Event-sourced sessions on persist-core stage 0: journal inbound
+lines (hostile ones included — the stage's determinism is the
+argument), segmented refold (a journaled Closed ended a connection,
+not the session), snapshots bound the refold (counted). Six
+equalities between live runs and recoveries. Matrix 983.
+
 
 ## cluster-nio — measured, the answer was neither guess, and the code stays
 Completed: 2026-09-01
