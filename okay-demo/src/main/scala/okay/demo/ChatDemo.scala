@@ -73,7 +73,12 @@ object ChatDemo {
   lazy val market: MatchStore =
     val db = sys.env.getOrElse("OKAY_CHAT_DB", "okay-chat.db")
     if db == ":memory:" then MemoryMatch()
-    else SqlMatch(JdbcSql(java.sql.DriverManager.getConnection(s"jdbc:sqlite:$db")))
+    else
+      // under the parallel matrix DriverManager can see another
+      // module's loader first; naming the driver removes the race
+      // (the TestCrossing/H2 lesson, third telling)
+      Class.forName("org.sqlite.JDBC")
+      SqlMatch(JdbcSql(java.sql.DriverManager.getConnection(s"jdbc:sqlite:$db")))
   private val turnNo = java.util.concurrent.atomic.AtomicLong(0)
 
   private val matchSystem =

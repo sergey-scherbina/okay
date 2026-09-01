@@ -75,6 +75,13 @@
       shows", "a press launches", "a throwing command forfeits") —
       REPRODUCED ON PRISTINE MASTER (worktree probe at c20d41a,
       2026-09-01), so it landed flaky; owner: the ui-cmd lane
+- [ ] demo-chat-live-budget — TestChatDemo's LIVE tests run a local
+      model with munit's default 30s budget; under a full parallel
+      matrix the box is compiling everywhere and the call ran 55s —
+      timeout, not skip. Owner call: raise the budget matrix-proof
+      (the TestRepoAgent precedent: 120s) or gate live tests out of
+      the parallel run (flagged 2026-09-01; sqlite driver race fixed
+      in ctx-functions' landing)
 - [ ] http-flaky-mcphttp — TestMcpHttp "one Serving, three wires"
       answered 503 once in a full-matrix run (2026-09-01); green
       alone and on suite rerun — likely a port/readiness race
