@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- wire-tls — the one transport seam: sslmode vocabulary
+  (verify-full default), Tls.client/server over the blocking-socket
+  transport our own wires use, private keys as Secret refs; live
+  handshake tests against a generated CA (specs/tls.md)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam

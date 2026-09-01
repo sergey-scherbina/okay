@@ -4,9 +4,6 @@
 - [ ] queue-shape — DECIDED (specs/data.md, Queues): no Queue seam;
       ingress/egress bridges to topics with message-id dedup —
       implement the two bridges; engine adapters as named
-- [ ] wire-tls — spec landed (specs/tls.md): one transport seam,
-      sslmode vocabulary, verify-full default, platform crypto;
-      implement JVM SSLEngine leg first
 - [ ] persist-wire-auth — spec landed (specs/persist.md, stage 2):
       bearer/API key via okay-security, per-topic capabilities,
       TLS via specs/tls.md; implement with persist-wire
