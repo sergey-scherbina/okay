@@ -199,6 +199,78 @@ object Direct:
         }
       }
 
+    /** a whitelisted-combinator call: xs.<name>(x => body), with or
+     * without the type application the collections put on it */
+    object HofCall:
+      def unapply(t: Term): Option[(Term, String, ValDef, Term)] = t match
+        case Apply(TypeApply(Select(xs, nm), _), List(Lambda(List(p), b))) =>
+          Some((xs, nm, p, b))
+        case Apply(Select(xs, nm), List(Lambda(List(p), b))) =>
+          Some((xs, nm, p, b))
+        case _ => None
+
+    /** xs.iterator, built by name so ArrayOps and IterableOnce both
+     * serve; refuses receivers with no iterator */
+    def iteratorOf(xs: Term): Term =
+      if xs.tpe.typeSymbol.methodMember("iterator").isEmpty
+        && xs.tpe.baseClasses.forall(_.methodMember("iterator").isEmpty)
+      then refuse(xs, "as a loop receiver with no .iterator")
+      Select.unique(xs, "iterator")
+
+    /** compile the loop body at the emitted binder h */
+    def loopBody(param: ValDef, lbody: Term)(h: Term): Term =
+      asCont(compile(subst(lbody, param.symbol, h)), lbody.tpe)
+        .changeOwner(Symbol.spliceOwner)
+
+    /** for x <- xs do body — run per element, in order; the loop
+     * recurses over an IMMUTABLE List so multi-shot re-entry is
+     * sound, and through flatMap so Bind spill keeps it stack-safe */
+    def foreachLoop(xs: Term, param: ValDef, lbody: Term): Term =
+      tpe2(param.tpt.tpe.widen) { [T] => (_: Type[T]) ?=>
+        tpe2(lbody.tpe.widen) { [U] => (_: Type[U]) ?=>
+          '{
+            val items: List[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.toList
+            def loop(rest: List[T]): Cont[Unit, F[A], F[A]] = rest match
+              case Nil => Cont.Pure[Unit, F[A]](())
+              case h :: tl =>
+                ${ loopBody(param, lbody)('h.asTerm).asExprOf[Cont[U, F[A], F[A]]] }
+                  .flatMap[Unit, F[A]](_ => loop(tl))
+            loop(items)
+          }.asTerm
+        }
+      }
+
+    /** for x <- xs yield body — the traverse shape; results come out
+     * as a List, accepted where the node's type allows it */
+    def mapLoop(t: Term, xs: Term, param: ValDef, lbody: Term): Term =
+      tpe2(param.tpt.tpe.widen) { [T] => (_: Type[T]) ?=>
+        tpe2(lbody.tpe.widen) { [U] => (_: Type[U]) ?=>
+          if !(TypeRepr.of[List[U]] <:< t.tpe.widen) then
+            refuse(t, s"in a for-yield whose collection type ${t.tpe.widen.show} cannot hold a List " +
+              "(v1 yields a List; .toList the receiver or collect explicitly)")
+          '{
+            val items: List[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.toList
+            def loop(rest: List[T], acc: List[U]): Cont[List[U], F[A], F[A]] = rest match
+              case Nil => Cont.Pure[List[U], F[A]](acc.reverse)
+              case h :: tl =>
+                ${ loopBody(param, lbody)('h.asTerm).asExprOf[Cont[U, F[A], F[A]]] }
+                  .flatMap[List[U], F[A]](b => loop(tl, b :: acc))
+            loop(items, Nil)
+          }.asTerm
+        }
+      }
+
+    /** the loop shapes, receiver hoisted first if it is marked */
+    def hofLoop(t: Term, xs: Term, nm: String, param: ValDef, lbody: Term): Out =
+      def emit(xsPure: Term): Term = nm match
+        case "foreach" => foreachLoop(xsPure, param, lbody)
+        case "map" => mapLoop(t, xsPure, param, lbody)
+      if hasMark(xs) then
+        compile(xs) match
+          case Out.Eff(c) => Out.Eff(bind(c, xs.tpe, t.tpe)(v => emit(v)))
+          case Out.Pure(p) => Out.Eff(emit(p))
+      else Out.Eff(emit(xs))
+
     /** replace references to `sym` with `ref` */
     def subst(t: Term, sym: Symbol, ref: Term): Term =
       val m = new TreeMap:
@@ -229,6 +301,12 @@ object Direct:
 
     /** t contains marks below the root — dispatch on shape */
     def compileMarked(t: Term): Out = t match
+      // whitelisted combinators FIRST — for-do and for-yield desugar
+      // to foreach/map with a lambda, and the general lambda refusal
+      // below must not claim them
+      case HofCall(xs, nm @ ("foreach" | "map"), param, lbody) if hasMark(lbody) =>
+        hofLoop(t, xs, nm, param, lbody)
+
       // BEFORE Block: a Lambda IS Block(DefDef :: Nil, Closure), and
       // the block case would claim it with a vaguer message
       case l @ Lambda(_, _) => refuse(l, "under a lambda")
@@ -271,10 +349,35 @@ object Direct:
           case out @ Out.Eff(_) => out
           case Out.Pure(p) => Out.Pure(p)
 
-      case w @ While(_, _) => refuse(w, "inside a while (v2)")
+      case While(cond, wbody) =>
+        // cond and body splice INSIDE def loop, so they re-evaluate
+        // per iteration by construction; recursion rides Bind spill
+        val condC = asCont(compile(cond), cond.tpe).changeOwner(Symbol.spliceOwner)
+        val bodyC = asCont(compile(wbody), wbody.tpe).changeOwner(Symbol.spliceOwner)
+        tpe2(wbody.tpe.widen) { [U] => (_: Type[U]) ?=>
+          Out.Eff('{
+            def loop(): Cont[Unit, F[A], F[A]] =
+              ${ condC.asExprOf[Cont[Boolean, F[A], F[A]]] }
+                .flatMap[Unit, F[A]](c =>
+                  if c then
+                    ${ bodyC.asExprOf[Cont[U, F[A], F[A]]] }
+                      .flatMap[Unit, F[A]](_ => loop())
+                  else Cont.Pure[Unit, F[A]](()))
+            loop()
+          }.asTerm)
+        }
       case tr @ Try(_, _, _) => refuse(tr, "inside a try (v2)")
 
       // application shapes: ANF-hoist children left to right
+      // an assignment with a marked rhs: bind, then assign the value
+      case Assign(lhs, rhs) =>
+        compile(rhs) match
+          case Out.Pure(p) => Out.Pure(Assign.copy(t)(lhs, p))
+          case Out.Eff(c) =>
+            Out.Eff(bind(c, rhs.tpe, TypeRepr.of[Unit]) { v =>
+              pureCont(Assign.copy(t)(lhs, v))
+            })
+
       // application spines: hoist VALUE slots only (receiver
       // qualifier, arguments) left to right; the callee structure —
       // Selects, TypeApplies, curried Apply lists — is rebuilt, never

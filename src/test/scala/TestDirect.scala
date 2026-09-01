@@ -133,14 +133,11 @@ class TestDirect extends munit.FunSuite {
 
   test("a mark under a lambda is a compile error") {
     val errors = compileErrors(
-      "okay.Direct.direct[List] { List(1).map(i => List(i).?) }(using summon[Monad[List]]) ")
+      "okay.Direct.direct[List] { List(1).filter(i => List(i > 0).?) }(using summon[Monad[List]]) ")
     assert(errors.contains("lambda"), errors)
   }
 
-  test("while and try around marks are v2 compile errors; by-name too") {
-    val w = compileErrors(
-      "okay.Direct.direct[List] { while (List(true).?) {}; 1 }(using summon[Monad[List]]) ")
-    assert(w.contains("while"), w)
+  test("try around marks is a v2 compile error; by-name too") {
     val tr = compileErrors(
       "okay.Direct.direct[List] { try List(1).? catch { case _: Exception => 0 } }(using summon[Monad[List]]) ")
     assert(tr.contains("try"), tr)
@@ -175,6 +172,90 @@ class TestDirect extends munit.FunSuite {
     assertEquals(n, 1)
     assertEquals(direct[Option] { eff(true).? || eff(false).? }, Some(true))
     assertEquals(n, 2)
+  }
+
+  test("for-do: an effect per element, in order") {
+    val order = collection.mutable.ListBuffer[Int]()
+    def eff(i: Int): Option[Int] = { order += i; Some(i) }
+    val r = direct[Option] {
+      for i <- List(1, 2, 3) do eff(i).?
+      order.sum
+    }
+    assertEquals(r, Some(6))
+    assertEquals(order.toList, List(1, 2, 3))
+  }
+
+  test("for-do over an Array receiver (the split case)") {
+    type W = Writer % String
+    val prog: Unit ! W = direct {
+      for t <- "a b c".split(' ') do Writer(t + " ").?
+    }
+    val (ws, _) = !.run(Writer.run[String, Unit, okay.Pure](prog))
+    assertEquals(ws, Seq("a ", "b ", "c "))
+  }
+
+  test("for-do: a None mid-loop short-circuits the rest") {
+    var hits = 0
+    def eff(i: Int): Option[Int] =
+      { hits += 1; if i == 2 then None else Some(i) }
+    val r = direct[Option] {
+      for i <- List(1, 2, 3) do eff(i).?
+      99
+    }
+    assertEquals(r, None)
+    assertEquals(hits, 2, "the loop stopped at the None")
+  }
+
+  test("for-yield: the traverse shape, results in order") {
+    def look(i: Int): Option[Int] = Some(i * 10)
+    val r: Option[List[Int]] = direct[Option] {
+      for i <- List(1, 2, 3) yield look(i).?
+    }
+    assertEquals(r, Some(List(10, 20, 30)))
+  }
+
+  test("while: effectful condition re-evaluates per iteration") {
+    var n = 0
+    def more: Option[Boolean] = { n += 1; Some(n < 4) }
+    val r = direct[Option] {
+      while more.? do ()
+      n
+    }
+    assertEquals(r, Some(4))
+  }
+
+  test("multi-shot inside a loop body: immutable re-entry") {
+    // a List reflect INSIDE the loop body re-runs the REST of the
+    // loop per element — the emitted loop recurses over an immutable
+    // List, so re-entry cannot corrupt iteration state
+    given Monad[List] with
+      override def pure[A](a: A): List[A] = List(a)
+      extension [A](m: List[A])
+        override def flatMap[B](f: A => List[B]): List[B] = m.flatMap(f)
+    var sum = 0
+    val r = direct[List] {
+      for i <- List(1, 2) do { sum += List(10, 20).? * i; () }
+      sum
+    }
+    assertEquals(r.length, 4, "2 elements x 2 continuations")
+  }
+
+  test("nested for-do loops") {
+    val pairs = collection.mutable.ListBuffer[(Int, Int)]()
+    def eff(p: (Int, Int)): Option[Unit] = { pairs += p; Some(()) }
+    val r = direct[Option] {
+      for i <- List(1, 2) do
+        for j <- List(10, 20) do eff((i, j)).?
+      pairs.size
+    }
+    assertEquals(r, Some(4))
+    assertEquals(pairs.toList, List((1, 10), (1, 20), (2, 10), (2, 20)))
+  }
+
+  test("a non-whitelisted HOF with a mark keeps the refusal") {
+    val e = compileErrors(
+      "okay.Direct.direct[Option] { List(1).exists(i => Option(i > 0).?) }(using summon[Monad[Option]]) ")
+    assert(e.contains("lambda"), e)
   }
 
   test("a mark outside any direct block throws by design") {

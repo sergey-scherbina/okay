@@ -177,6 +177,14 @@ direct[Option] { if c.? then branch(1).? else branch(2).? }
 direct[Option] { eff(false).? && eff(true).? }   // right side never runs
 ```
 
+**Effectful iteration** (the shapes the codebase survey named as
+the top real pattern) is rewritten, not refused: `for x <- xs do
+eff(x).?` runs per element in order and short-circuits mid-loop;
+`for x <- xs yield eff(x).?` is the traverse shape; `while cond.?
+do body` re-evaluates its condition each turn; loops recurse over an
+immutable materialized List, so multi-shot re-entry into a loop body
+is sound. Other higher-order arguments keep the refusal below.
+
 **Why scoped, precisely.** Four things are compile errors, each with
 its position and its workaround in the message:
 
@@ -187,8 +195,9 @@ its position and its workaround in the message:
   Bind the value to a `val` before the lambda.
 - a mark **under a by-name argument** — hoisting it would change
   when (whether) it evaluates.
-- **`while`/`try` around marks** — v2 roads (recursion-encoding;
-  reification into the Throws error channel), named, not promised.
+- **`try` around marks** — a v2 road (reification into the Throws
+  error channel), named, not promised. (`while` and the
+  foreach/map loops below graduated out of this list.)
 - a mark on a value that is **neither the block's `F[T]` nor an
   operation of its row** — see the next section.
 

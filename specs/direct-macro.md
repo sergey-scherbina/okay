@@ -72,7 +72,8 @@ stays for expression positions.
   only the taken branch's effects run
 - [x] a mark under a lambda is a COMPILE error naming the position
   and the workaround (bind to a val before the lambda)
-- [x] `while`/`try` containing marks: compile error, "v2" named
+- [x] `try` containing marks: compile error, "v2" named (`while`
+  graduated to a feature — specs/direct-loops.md, with foreach/map)
 - [x] a mark outside any direct block: the phantom throws with a
   message naming the macro
 - [x] a block with NO marks still compiles: `direct[F] { 42 }` ==
@@ -104,8 +105,8 @@ stays for expression positions.
   conversion's own evidence. Cost that stays: the
   implicitConversions language import and degraded error messages
   inside blocks; explicit marks remain the default.
-- **`while`/`try`** — recursion-encoding for while, error-channel
-  reification for try (Throws.scala is the seam).
+- **`try`** — error-channel reification (Throws.scala is the seam).
+  `while` and the foreach/map loops SHIPPED via specs/direct-loops.md.
 - **Answer-type modification inside a block** — the block is the
   DIAGONAL (one F, answers F[A] throughout); that fixed answer type
   is exactly what makes the scoped macro cheap (no re-typing tower).

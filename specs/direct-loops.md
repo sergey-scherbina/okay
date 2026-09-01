@@ -26,25 +26,25 @@ while retry.? do backoff()                        // while: effectful cond
 
 ## Behavior
 
-- [ ] `for x <- xs do eff(x).?` (and bare-statement bodies, layer-4
+- [x] `for x <- xs do eff(x).?` (and bare-statement bodies, layer-4
   style) runs the effect once per element, in order, effects
   sequenced left to right
-- [ ] `for x <- xs yield eff(x).?` collects results in order — the
+- [x] `for x <- xs yield eff(x).?` collects results in order — the
   traverse shape; the result is emitted as List and accepted where
   the original type is List/Seq; other collection shapes are a v1
   refusal naming the workaround
-- [ ] a marked receiver hoists first: `mkList().?.foreach(...)` binds
+- [x] a marked receiver hoists first: `mkList().?.foreach(...)` binds
   the receiver before the loop
-- [ ] `while cond do body` with marks in cond and/or body: cond
+- [x] `while cond do body` with marks in cond and/or body: cond
   re-evaluates per iteration; the loop is emitted as a recursive
   Cont, stack-safe through Bind spill
-- [ ] multi-shot safety: the emitted loops recurse over an IMMUTABLE
+- [x] multi-shot safety: the emitted loops recurse over an IMMUTABLE
   materialized List, never a live iterator — a List-monad reflect
   inside a loop body re-runs the rest of the loop per element
   without exhausted-iterator corruption
-- [ ] nested loops work (the desugaring nests lambdas; the rewrite
+- [x] nested loops work (the desugaring nests lambdas; the rewrite
   recurses)
-- [ ] a lambda that is NOT a whitelisted combinator argument keeps
+- [x] a lambda that is NOT a whitelisted combinator argument keeps
   the v1 refusal, message unchanged
 
 ## Out of scope
@@ -81,8 +81,31 @@ while retry.? do backoff()                        // while: effectful cond
 
 ## Decisions
 
-(fill as they are made)
+- **Whitelist, not general HOF coloring** — foreach and map are the
+  shapes the codebase survey actually found; each further shape
+  (exists/fold/flatMap-comprehensions) waits for a consumer. The
+  refusal message for everything else is unchanged.
+- **Materialize, then recurse immutably** — the emitted loops walk
+  a List built once from `.iterator` (built by NAME, so ArrayOps
+  receivers — the `split(' ')` case — serve alongside IterableOnce);
+  a live iterator would be corrupted by multi-shot re-entry.
+- **Assign joined the rewrite** — `sum += eff().? * i` appeared in
+  the first loop test and was refused; an Assign with a marked rhs
+  now binds then assigns. Loops made effectful assignment
+  unavoidable one test in.
+- **for-yield emits List** — accepted where the node's type can hold
+  it (List/Seq); Vector/Map-typed comprehensions are refused with
+  the workaround named, until a consumer names the shape.
 
 ## Results
 
-(fill after verify)
+- 8 new tests in TestDirect (35 total across the two suites): for-do
+  in order, Array receiver, mid-loop None short-circuit (the loop
+  STOPS — 2 hits of 3), for-yield traverse, while with effectful
+  condition (re-evaluated per iteration, 4 evaluations observed),
+  multi-shot re-entry into a loop body (2x2 continuations, immutable
+  iteration state), nested loops in row-major order, and the
+  non-whitelisted refusal (`exists`) intact.
+- Two v1 tests were retired BY the feature: the lambda-refusal
+  example had used `map` (now a feature — moved to `filter`), and
+  the while-refusal test asserted an error that no longer exists.
