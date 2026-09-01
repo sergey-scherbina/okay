@@ -155,12 +155,16 @@ stated so the "cache the 404" question has one answer.
       (TestView, all three platforms: agreement asserted before AND
       after compaction — the snapshot story; a fold answering None
       is the tombstone and removes the key)
-- [ ] (stage 2) Redis engine passes the same contract suite as
-      memory (the StoreSuite pattern from okay-persist); expiry is
-      server-side (`SET PX` observed); values round-trip as CBOR
-- [ ] (stage 2) an invalidation event appended by node A is
-      consumed by node B's cache: B's next read reloads; a node
-      that was down replays the topic and converges
+- [x] (stage 2) Redis engine passes the same contract claims as
+      memory, live against docker redis (skip where absent); expiry
+      is SERVER-side (a Budget entry vanishes with no process-side
+      filtering — polled to a deadline, not slept-and-hoped);
+      values round-trip as CBOR; connect PINGs and fails fast
+- [x] (stage 2) an invalidation event appended by node A is
+      consumed by node B's cache: B's next read reloads (and the
+      cross-node honest window is shown before the drain); a node
+      that was down replays from offset 0 and converges — the trade
+      that justifies the topic over pub/sub, asserted
 
 ## Out of scope
 

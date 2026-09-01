@@ -368,6 +368,9 @@ lazy val okayCache = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   // regime 2's write-through test drives H2 through the Sql seam
   .jvmConfigure(_.dependsOn(okayJdbc % Test))
   .jvmSettings(
+    // the Redis engine: the RESP client is jvm (a blocking socket)
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
