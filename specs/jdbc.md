@@ -248,9 +248,14 @@ user with no DDL rights.
       have thrown on the primary key — proven, not assumed; an
       empty Reconcile and Fail answer Unresolved as data, world
       untouched, entry left open)
-- [ ] incremental poll by a monotone column resumes from a journaled
+- [x] incremental poll by a monotone column resumes from a journaled
       watermark; the late-commit caveat demonstrated as a test that
-      DOCUMENTS the miss and the lag-window mitigation
+      DOCUMENTS the miss and the lag-window mitigation (TestPoll:
+      the miss asserted as behavior — a row behind the watermark is
+      invisible, which is why this is stated non-CDC; the windowed
+      SQL holds the watermark back and the late row arrives; plus:
+      a damaged row STOPS the watermark, so nothing decodes wrong
+      and nothing is silently skipped)
 - [x] the typed layer works end-to-end as a user with no DDL rights
       (their schema, our types)
 
@@ -316,3 +321,7 @@ jdbc-write-bridge followed (same day): `Writes(db, topic, run)` —
 intent-first records through the persist Typed envelope, recover
 by refold, five tests including both crash windows (executed with
 the ack lost; never executed) and seq continuity over restart.
+jdbc-poll-source closed the list (same day): `Poll` with the
+watermark as a persist consumer offset, prefix-to-damage batches,
+four tests — resume over restart, the documented miss, the window
+mitigation, the damage stop. Every behavior box above is checked.
