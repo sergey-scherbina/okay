@@ -17,3 +17,7 @@ is the model.
 The same `BlobContract` suite passes over fs and live MinIO. A
 recording transport proves the secret key reaches the HMAC chain
 and nothing else.
+
+`S3.wired(endpoint, bucket, region, creds)` is the engine awaiting
+the one http client: `Http ?=> S3`, for `provide(http) { ... }`
+edges and catalogs of preconfigured stores.

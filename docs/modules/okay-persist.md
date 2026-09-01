@@ -97,3 +97,6 @@ dependency arrow persist→blob would cycle through http): closed
 segments copy incrementally, restore is placing files back for the
 ordinary startup path. Elected leadership stays specced
 (persist-raft) with its decisions and refuted alternatives.
+
+`Configs.ambient(name)` reads an ambient `Store` (ctx-everywhere) —
+the managed-config convenience under `provide(store) { ... }`.

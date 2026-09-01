@@ -18,3 +18,7 @@ Ollama, Azure, Mistral…) and hands it in.
 Proven against a scripted ChatModel recording what it saw — no
 network anywhere. The EmbeddingStore half is filed as
 rag-langchain4j, gated on a consumer naming a store.
+
+`Langchain4j.wired` is the handler-awaiting-environment form:
+`ChatModel ?=> Handler[Model]` — store it, ship it,
+`provide(chatModel) { ... }` at the edge.

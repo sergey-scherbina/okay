@@ -39,3 +39,9 @@ a test.
 | `Oidc` | user login from parts already on the shelf: discovery, the login url (nonce), callback validating the id_token into a Principal — issuer/audience/nonce/at_hash on top of Jwt.verify |
 | `Secure.granted` | the capability form of the route wrapper: the principal AMBIENT in the handler (`Principal ?=> route`), the 401/403 ladder byte-identical to bearer's; composes with `Traced.route` — one stored `(Principal, Tracer) ?=> Route` is protected AND traced |
 | argon2 | the satellite with a real KDF: [okay-security-argon2](okay-security-argon2.md) |
+
+The doors (ctx-everywhere): `McpAuth.granted` (the principal ambient
+in the protected MCP route — the route-wrapper family is closed),
+and ambient-`Http` forms of `OAuth2.exchange/refresh/
+clientCredentials`, `Jwks.fetch`, `McpAuth.discover/connect` —
+`provide(http) { ... }` and the flows read their environment.

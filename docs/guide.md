@@ -309,7 +309,20 @@ self-applying where a given `A` is in scope. Three shipped routes:
 `Secure.granted` (the principal ambient in a protected route), and
 the ambient prompts of `Scope`/`Cut`. They COMPOSE: one stored
 `(Principal, Tracer) ?=> Route` is protected and traced at every
-installation site. The linear-context patterns (the type-changing
-given-chain; the import-thread and its footgun) are in
-[typepedia](typepedia.md); the experimental base and the full map in
+installation site. `provide` is the installer half of
+the pair — expression-scoped, nearest-wins:
+
+```scala
+provide(prodHttp, Secrets.env) { app }     // the edge
+provide(stubHttp, testSecrets) { app }     // the test — same program
+```
+
+Together the doors and `provide` are the DEPENDENCY-INJECTION
+story: compile-time resolution (a missing dependency is a type
+error, not a container exception), given-scopes as the object
+graph, modules as ordinary values, zero framework. The rules that
+keep it honest — the environment-vs-resource line, no newtypes for
+strings, the eager-auto-application trap — plus the two-line recipe
+for adding a door to any API are in [typepedia](typepedia.md); the
+linear-context patterns and the experimental base in
 specs/context-functions.md.

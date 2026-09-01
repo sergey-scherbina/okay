@@ -18,3 +18,6 @@ sockets our wires actually run on (a virtual thread parks in the
 handshake); the `SSLEngine` machine waits for an NIO consumer,
 recorded in the spec's Decisions. The whole sslmode ladder is proven
 against live handshakes with a locally generated identity.
+
+`Tls.serverSocket(port, cert, key)` also reads an ambient `Secrets`
+(ctx-everywhere) — the resolver is the flow's environment.
