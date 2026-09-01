@@ -90,4 +90,51 @@ object Cut {
                 (using p: Prompt[Either[Violation, A]])
   : Unit ! (Writer % String + (Delim + Async)) =
     checked[A](p, tokens)(check)
+
+  // ── the repair door (specs/condition.md): between passing a token
+  // and cutting the stream there is REPAIRING it. ADDITIVE:
+  // checked/watched still cut hard; a stream that never violates
+  // never signals.
+
+  /** the screened row: conditions over the guarded row */
+  type Screened = Condition.Op + (Writer % String + (Delim + Async))
+
+  /**
+   * `checked`, repairable: a violating token SIGNALS the Violation
+   * instead of cutting, and the policy at `Condition.run` answers
+   * per incident — `Resume(t: String)` emits `t` in the token's
+   * place and the stream continues; `Invoke("drop", _)` makes the
+   * token vanish; `Invoke("cut", v: Violation)` is the old hard cut
+   * to the nearest guard. The menu at the signal is
+   * `["drop", "cut"]` — mechanism in the stream, policy at the edge.
+   */
+  def screened[A](tokens: Unit ! (Writer % String + Async))
+                 (check: (Int, String) => Option[Violation])
+                 (using p: Prompt[Either[Violation, A]])
+  : Unit ! Screened =
+    type R = Writer % String + (Delim + Async)
+    def emit(t: String): Unit ! Screened =
+      effect[Screened, Unit](Writer(t))
+    def go(src: Unit ! (Writer % String + Async), i: Int): Unit ! Screened =
+      !.widen[Either[Unit, (String, Unit ! (Writer % String + Async))],
+              Async, Condition.Op + (Writer % String + Delim)](
+        Writer.uncons[String, Unit, Async](src)).flatMap {
+        case Left(_) => pure(())
+        case Right((t, rest)) => check(i, t) match
+          case None => emit(t).flatMap(_ => go(rest, i + 1))
+          case Some(v) =>
+            Condition.within[Option[String], R]("drop")(
+              !.widen[String, Condition.Op, R](Condition.signal[String](v))
+                .map(Some(_)))(_ => None).flatMap {
+              case Some(t2) => emit(t2).flatMap(_ => go(rest, i + 1))
+              case None => go(rest, i + 1)
+            }
+      }
+    Condition.within[Option[Violation], R]("cut")(go(tokens, 0).map(_ => None))(
+      x => Some(x.asInstanceOf[Violation])).flatMap {
+      case Some(v) =>
+        !.widen[Unit, Writer % String + (Delim + Async), Condition.Op](
+          violation[A, Unit](v))
+      case None => pure(())
+    }
 }

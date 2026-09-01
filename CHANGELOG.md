@@ -1,5 +1,18 @@
 # Changelog
 
+## llm-cut-conditions — the repair road between passing and cutting
+Completed: 2026-09-01
+Cut gains `screened`, the first module consumer of the condition
+system: a violating token signals the Violation while the stream's
+continuation is live, and the policy chooses per incident —
+Resume(t) emits a replacement in the token's place and the stream
+continues; Invoke("drop") makes the token vanish; Invoke("cut", v)
+falls back to the old hard cut (pull stops, the guard answers
+Left(v)). The menu is ["drop", "cut"]; mechanism in the stream,
+policy at Condition.run. Additive: checked/watched untouched, a
+clean stream never signals (the policy-never-consulted test).
+TestCutRepair (4); okay-llm 18/18 JVM, JS compiles.
+
 ## tutorial-new-arcs — the day reaches the tutorial
 Completed: 2026-09-01
 Three chapters join the worked tour: 19 "Needs are types:
