@@ -407,6 +407,19 @@ Behavior:
       cut by a length rule, the connection released — OPEN: needs an
       API key on the box; the mechanism is fully covered scripted
 
+### The repair door (2026-09-01, llm-cut-conditions)
+
+`Cut.screened` joins checked/watched: a violating token SIGNALS the
+`Violation` (specs/condition.md) instead of cutting, and the policy
+at `Condition.run` answers per incident — `Resume(t)` emits the
+replacement in the token's place, `Invoke("drop", _)` makes the
+token vanish, `Invoke("cut", v)` is the old hard cut to the nearest
+guard (the pull stops, the guard answers `Left(v)`). The menu at
+the signal is `["drop", "cut"]`. Additive: checked/watched still
+cut hard; a clean stream never signals and never consults the
+policy (asserted). First module consumer of the condition system
+outside the demo. Tests: TestCutRepair (4).
+
 ## Interop, not reimplementation
 
 The P3 doctrine applies verbatim: `okay-langchain4j` makes their
