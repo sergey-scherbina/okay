@@ -1,4 +1,7 @@
-# The theory of okay
+# The theory of okay — the map
+
+*(The short pretty index is [index.md](index.md); this page is the map
+with the notation and the reading order.)*
 
 okay is a small library built out of large ideas, and its code cites
 them in passing — `Cont.scala` opens by naming Danvy and Filinski,

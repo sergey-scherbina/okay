@@ -12,7 +12,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[Tutorial](tutorial.md)** — the same layers by use, nineteen
   worked chapters from a pure program to an agent with remote tools;
   every snippet's shape runs in the repo's tests.
-- **[The theory of okay](theory/README.md)** — the textbook: which
+- **[The theory of okay](theory/index.md)** — the textbook: which
   theories the library stands on, who established them (Moggi, Wadler,
   Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &
   Power/Pretnar, Carette–Kiselyov–Shan, Taha & Sheard), and why each

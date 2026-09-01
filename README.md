@@ -1,12 +1,18 @@
 Okay! Extensible effects for Scala 3.
 
-Inspired by Oleg Kiselyov.
+Inspired by Rúnar Bjarnason, Oleg Kiselyov and Robert Atkey.
+
+http://blog.higher-order.com/assets/trampolines.pdf
+"Stackless Scala With Free Monads" Rúnar Óli Bjarnason
 
 https://okmij.org/ftp/Haskell/extensible/more.pdf
 "Freer Monads, More Extensible Effects" Oleg Kiselyov
 
 https://bentnib.org/paramnotions-jfp.html
 "Parameterised notions of computation" Robert Atkey
+
+Where every other idea here comes from, with the papers:
+[the theory of okay](docs/theory/index.md).
 
 Zero dependencies. One source for JVM (JDK 21+, Loom), Scala.js and
 Scala Native — each platform contributes evidence (can it park? what
@@ -249,6 +255,29 @@ Benchmarks: `sbt 'Jmh/run .*FibBenchmark.*'`, comparisons in the
 `compare` module (`sbt 'compare/Jmh/run ...'`); history and refuted
 experiments in src/jmh/history.tsv.
 
-Documentation: [docs/](docs) — the user guide, the tutorial, the
-typepedia, [the benchmark explainer](docs/benchmarks.md) (every case,
-why each number is what it is), and full per-module documentation.
+## Documentation
+
+Start here:
+
+| | |
+|---|---|
+| [User guide](docs/guide.md) | the concepts, layer by layer — control, effects, streams, the upper modules |
+| [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
+| [Typepedia](docs/typepedia.md) | every core type and typeclass, with its meaning and the recurring gotchas |
+| [The theory of okay](docs/theory/index.md) | the textbook: the theories the library stands on, the scientists, the papers, and why each design decision |
+
+Going deeper:
+
+| | |
+|---|---|
+| [Benchmarks](docs/benchmarks.md) | every measured case, why each number is what it is, and where the honest limits are |
+| [The cast that could not go](docs/existentials.md) | six encodings tried against one assertion; the five failures are the useful part |
+| [Specs](specs/) | the living design documents, one per feature, refutations kept |
+| [history.tsv](src/jmh/history.tsv) | the raw measurement log, refuted experiments included |
+
+Per module — every satellite has its own page under
+[docs/modules/](docs/modules/): the interop bridges (cats, zio, kyo,
+fs2, java, spark, flink, kafka, jdbc), the text stack (lex, parse,
+codec), retrieval and agents (rag, llm, agent, mcp), the network
+(http, jetty, netty) and the distributed runtime (cluster). The
+[docs index](docs/README.md) lists them all with one-line summaries.
