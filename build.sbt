@@ -326,6 +326,32 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     ),
   )
 
+/** the document seam: get/put/delete by key with CAS as data,
+ * declared-index queries, per-item atomicity — the one new seam of
+ * specs/data.md; the own engine is a fold of a compacted topic */
+lazy val okayDocs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-docs"))
+  .dependsOn(okay, okayCodec, okayPersist)
+  .settings(
+    name := "okay-docs",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+
+/** the Mongo adapter of the Docs seam — a satellite that pays the
+ * driver dependency (the argon2 precedent); live suite against the
+ * dockerized Mongo, skips where absent */
+lazy val okayDocsMongo = (project in file("okay-docs-mongo"))
+  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test")
+  .settings(
+    name := "okay-docs-mongo",
+    libraryDependencies ++= Seq(
+      "org.mongodb" % "mongodb-driver-sync" % "5.2.1",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+    Test / fork := true,
+  )
+
 /** caching with NAMED invalidation: no default TTL — every cache
  * states where its truth lives and how wrong it may be
  * (specs/cache.md); memory engine v1, Redis and the log-fed view
@@ -879,6 +905,7 @@ lazy val root = (project in file("."))
     okayPersist.jvm, okayPersist.js, okayPersist.native,
     okaySql.jvm, okaySql.js, okaySql.native, okayPg,
     okayCache.jvm, okayCache.js, okayCache.native,
+    okayDocs.jvm, okayDocs.js, okayDocs.native, okayDocsMongo,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,

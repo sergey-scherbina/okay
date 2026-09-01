@@ -262,12 +262,19 @@ engine adapters as deployments name them).
 (umbrella-level acceptance; each class's claim carries its own full
 list in its spec or spec section)
 
-- [ ] `Docs` contract suite (the StoreSuite pattern): get/put/
+- [x] `Docs` contract suite (the StoreSuite pattern): get/put/
       delete/query, `IfAbsent`/`IfVersion` semantics, consistency
       declared and granted — against the own-posture View engine
-      and at least one foreign adapter
-- [ ] a conditional write retried after a simulated lost ack lands
-      once (CAS as WithKey), on the same two engines
+      and at least one foreign adapter (DocsSuite over TopicDocs —
+      the compacted-topic fold, version = the record offset, cold
+      rebuild agrees — AND MongoDocs live: 8 + 7 tests, one
+      contract; queries walk DECLARED indexes only, a scan wearing
+      a query's hat refuses by name on both engines)
+- [x] a conditional write retried after a simulated lost ack lands
+      once (CAS as WithKey), on the same two engines (the IfAbsent
+      retry answers Stale carrying the applied version — the far
+      end says "already happened"; exactly one document, exactly
+      the first version, on TopicDocs and MongoDocs alike)
 - [x] pgvector: the okay-rag store contract passes over specs/
       jdbc.md against Postgres; search agrees with the memory
       engine on a shared fixture (TestPgVector over the okay-pg
