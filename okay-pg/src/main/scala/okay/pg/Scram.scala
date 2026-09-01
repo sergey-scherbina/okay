@@ -2,15 +2,16 @@ package okay.pg
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util.Base64
-import javax.crypto.spec.{PBEKeySpec, SecretKeySpec}
-import javax.crypto.{Mac, SecretKeyFactory}
 
 /**
  * SCRAM-SHA-256, the client side (RFC 5802 with the SHA-256
  * parameters of RFC 7677) — what a modern Postgres demands over
- * TCP. Small enough to own: three HMACs, one PBKDF2, one SHA-256,
- * all from the platform's crypto (the specs/tls.md rule: platform
- * primitives, never our own).
+ * TCP. CROSS-PLATFORM since sql-pg-node: the three primitives it
+ * needs (HMAC, SHA-256, PBKDF2) and the nonce randomness come from
+ * the per-platform `PgCrypto` given (JCA on the JVM, node:crypto
+ * on JS) — okay-security's fuller seam drags okayHttp and would
+ * cycle the build; consolidation waits on security-crypto-split,
+ * filed. Platform primitives, never our own (the tls.md rule).
  *
  * The dance: client-first (bare, with our nonce) → server-first
  * (its nonce appended to ours, the salt, the iteration count) →
@@ -34,7 +35,7 @@ object Scram:
   /** phase 1: holds our nonce; the only step is receiving the
    * server's challenge */
   final class ClientFirst private[Scram] (user: String, password: String,
-                                          nonce: String):
+                                          nonce: String)(using c: PgCrypto):
     private[Scram] val bare = s"n=$user,r=$nonce"
 
     /** the SASLInitialResponse payload */
@@ -54,9 +55,9 @@ object Scram:
       val iterations = field(msg, "i=").map(_.toInt)
         .getOrElse(throw PgError("SCRAM server-first carries no iteration count"))
 
-      val salted = hi(password, salt, iterations)
+      val salted = c.pbkdf2(password.toCharArray, salt, iterations, 256)
       val clientKey = hmac(salted, "Client Key")
-      val storedKey = sha256(clientKey)
+      val storedKey = c.sha256(clientKey)
       val withoutProof =
         s"c=${Base64.getEncoder.encodeToString(gs2Header.getBytes(UTF_8))},r=$combined"
       val authMessage = s"$bare,$msg,$withoutProof"
@@ -65,6 +66,9 @@ object Scram:
       ClientFinal(
         s"$withoutProof,p=${Base64.getEncoder.encodeToString(proof)}".getBytes(UTF_8),
         hmac(hmac(salted, "Server Key"), authMessage))
+
+    private def hmac(key: Array[Byte], msg: String): Array[Byte] =
+      c.hmacSha256(key, msg.getBytes(UTF_8))
 
   /** phase 2: holds the proof and the expected server signature; the
    * only step is verifying server-final */
@@ -75,44 +79,42 @@ object Scram:
       val msg = new String(fin, UTF_8)
       val v = field(msg, "v=")
         .getOrElse(throw PgError("SCRAM server-final carries no signature"))
-      if !java.security.MessageDigest.isEqual(
-        Base64.getDecoder.decode(v), serverSignature)
+      if !constantTimeEquals(Base64.getDecoder.decode(v), serverSignature)
       then throw PgError(
         "SCRAM server signature does not verify — not the server the password knows")
 
   /** the entry: phase 1, with our nonce */
-  def start(user: String, password: String, nonce: String = Scram.nonce()): ClientFirst =
+  def start(user: String, password: String, nonce: String)(using PgCrypto): ClientFirst =
     ClientFirst(user, password, nonce)
 
-  /** a printable nonce from the platform's secure randomness */
-  def nonce(): String =
-    val bs = new Array[Byte](18)
-    java.security.SecureRandom().nextBytes(bs)
-    Base64.getEncoder.encodeToString(bs)
+  def start(user: String, password: String)(using PgCrypto): ClientFirst =
+    start(user, password, nonce())
+
+  /** a printable nonce from the platform's randomness */
+  def nonce()(using c: PgCrypto): String =
+    Base64.getEncoder.encodeToString(c.randomBytes(18))
 
   private val gs2Header = "n,,"
 
   private def field(msg: String, prefix: String): Option[String] =
     msg.split(",").find(_.startsWith(prefix)).map(_.drop(prefix.length))
 
-  private def hi(password: String, salt: Array[Byte], iterations: Int): Array[Byte] =
-    val spec = PBEKeySpec(password.toCharArray, salt, iterations, 256)
-    SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).getEncoded
-
-  private def hmac(key: Array[Byte], msg: String): Array[Byte] =
-    val m = Mac.getInstance("HmacSHA256")
-    m.init(SecretKeySpec(key, "HmacSHA256"))
-    m.doFinal(msg.getBytes(UTF_8))
-
-  private def sha256(bs: Array[Byte]): Array[Byte] =
-    java.security.MessageDigest.getInstance("SHA-256").digest(bs)
+  /** hand-rolled because java.security.MessageDigest.isEqual does
+   * not exist on JS; the shape is the standard xor-fold */
+  private[pg] def constantTimeEquals(a: Array[Byte], b: Array[Byte]): Boolean =
+    if a.length != b.length then false
+    else
+      var acc = 0
+      var i = 0
+      while i < a.length do { acc |= a(i) ^ b(i); i += 1 }
+      acc == 0
 
 /**
  * The one-object convenience over the phases — same API as before
  * the phases existed, same bytes; a misordered call is a NAMED
  * refusal where it used to be an accidental NPE.
  */
-final class Scram(user: String, password: String, nonce: String):
+final class Scram(user: String, password: String, nonce: String)(using PgCrypto):
   private var phase: AnyRef = Scram.start(user, password, nonce)
 
   /** the SASLInitialResponse payload */

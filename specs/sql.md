@@ -190,8 +190,16 @@ import — and the platforms it runs on.
       between COPY and commit rolls back claim AND data together,
       so the retry lands exactly once overall (tested by killing
       the connection mid-load)
-- [ ] a Native-image (or Node) consumer queries Postgres through
-      okay-pg with no JVM/JDBC present (the openness acceptance)
+- [x] a Native-image (or Node) consumer queries Postgres through
+      okay-pg with no JVM/JDBC present (the openness acceptance) —
+      okay-pg cross-built JVM+JS; the message pump PULLS bytes
+      through the Net seam as a sequential Async program, so the
+      SAME driver runs over a blocking socket and over Node's
+      buffered net; SCRAM rides a per-platform PgCrypto given
+      (JCA / node:crypto); TestPgNode: a Node process speaks SCRAM
+      and portals to the dockerized Postgres and gets 42 back, with
+      a wrong password refused by SCRAM itself — no JVM, no JDBC in
+      the process
 
 ## The typed region (sql-typestate)
 `transact` refuses a nested begin at RUNTIME (specs/jdbc.md names the
@@ -330,5 +338,11 @@ The seam and its first driver landed (sql-seam, 2026-09-01).
 - **COPY landed** (sql-pg-copy, same day): see the checked box —
   copyIn + Load with the one-transaction registry claim; the
   crash-retry battery runs live against the dockerized Postgres.
-- **Still open**: the non-JVM consumer (sql-pg-node, with the
-  cross-platform transport leg).
+- **sql-pg-node landed** (same day): the last box checked. The
+  pump restructure onto Net (the JVM live battery green THROUGH the
+  new async-pull pump is itself the acceptance that nothing
+  regressed), okay-pg cross-built, SCRAM as phase objects over the
+  per-platform PgCrypto. Every behavior box of this spec is now
+  checked; the pg family is a connect call away from a Native
+  binary or a Node process too. Filed: security-crypto-split
+  (retire PgCrypto into a no-http-cycle crypto module).

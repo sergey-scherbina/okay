@@ -17,7 +17,7 @@ class TestPg extends munit.FunSuite {
   val host = sys.env.getOrElse("OKAY_PG_HOST", "127.0.0.1")
   val port = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
 
-  def connect(): PgSql = PgSql.connect(host, port, "okay", "okay", "okay")
+  def connect(): PgSql = okay.!.run(okay.Async.run[PgSql, Nothing](PgSql.connect(host, port, "okay", "okay", "okay")))
 
   lazy val available: Boolean =
     try { connect().close(); true }
@@ -75,7 +75,7 @@ class TestPg extends munit.FunSuite {
       val one = collectChunks(db.query("select 1")).flatten
       assertEquals(one, List(Vector(SqlValue.I32(1))))
     }
-    intercept[PgError](PgSql.connect(host, port, "okay", "wrong-password", "okay"))
+    intercept[PgError](okay.!.run(okay.Async.run[PgSql, Nothing](PgSql.connect(host, port, "okay", "wrong-password", "okay"))))
   }
 
   test("the typed layer runs over the wire: rows by label, verify with catalog nullability") {

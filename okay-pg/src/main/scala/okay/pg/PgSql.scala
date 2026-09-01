@@ -1,243 +1,263 @@
 package okay.pg
 
-import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Produce, async, effect}
+import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Net, NetConn, Produce, async, effect, pure}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
-import java.io.{BufferedInputStream, BufferedOutputStream, DataInputStream, DataOutputStream}
-import java.net.Socket
 import java.nio.charset.StandardCharsets.UTF_8
 
 /**
  * The Postgres v3 wire, natively (specs/sql.md): the direct road
  * the seam exists for — no java.sql, no JDBC driver, the protocol
- * itself behind the same `Sql` trait, so the typed layer runs over
- * it unchanged. Startup + SCRAM-SHA-256 (with the server-signature
- * verification most clients skip), the EXTENDED query protocol
- * whose portals ARE chunked streaming at the protocol level
- * (Execute maxRows + PortalSuspended = our fetch-size story with
- * no driver in between), text-format values both directions v1.
+ * itself behind the same `Sql` trait. CROSS-PLATFORM since
+ * sql-pg-node: the message pump PULLS bytes through the Net seam
+ * (specs/net.md) as a sequential Async program, so the same driver
+ * runs over a blocking socket on the JVM and over Node's buffered
+ * `net` events — and SCRAM speaks the per-platform PgCrypto given
+ * on both. Startup + SCRAM-SHA-256 (server signature VERIFIED), the
+ * extended query protocol with portals as the chunk mechanism,
+ * text format both directions, errors drained to quiet so the
+ * session survives.
  *
- * JVM leg first: a blocking socket behind Async.Run — the same
- * honesty as the JDBC driver, virtual threads make it real. The
- * cross-platform transport (Node) arrives with a consumer, behind
- * this same class shape.
- *
- * One driver instance wraps ONE connection; use it from one
- * logical thread of control at a time (the JdbcSql contract).
+ * `cancel` — the region's sync brake — MARKS the rollback and the
+ * next operation on this connection performs it first (program
+ * order is server order, so the rollback happens-before any later
+ * use); a connection dropped without a next use is rolled back by
+ * the server, the abandoned-transaction truth every deployment
+ * already relies on. One driver instance = one logical thread of
+ * control, the driver contract.
  */
-final class PgSql private (sock: Socket, in: DataInputStream, out: DataOutputStream)
-  extends Sql:
+final class PgSql private (conn: NetConn) extends Sql:
   import PgSql.*
 
   private var inTx = false
+  @volatile private var pendingRollback = false
 
   // ── the Sql seam ───────────────────────────────────────────────
 
-  def describe(sql: String): Vector[Col] ! Async = async {
-    send('P', str("") ++ str(sql) ++ i16(0))
-    send('D', Array('S'.toByte) ++ str(""))
-    sync()
-    var cols = Vector.empty[(String, Int, Int, Int)] // label, oid, tableOid, attnum
-    drainUntilReady {
-      case ('T', body) => cols = rowDescription(body)
-      case _ => ()
+  def describe(sql: String): Vector[Col] ! Async =
+    settled {
+      conn.write(concat(
+        msg('P', str("") ++ str(sql) ++ i16(0)),
+        msg('D', Array('S'.toByte) ++ str("")),
+        msg('S', Array.empty))).flatMap { _ =>
+        collectReady(Vector.empty[(String, Int, Int, Int)]) {
+          case (('T', body), _) => rowDescription(body)
+          case (_, acc) => acc
+        }.flatMap { cols =>
+          // RowDescription has no nullability; the catalog does
+          def resolve(rest: List[(String, Int, Int, Int)],
+                      acc: Vector[Col]): Vector[Col] ! Async = rest match
+            case Nil => pure(acc)
+            case (label, oid, tableOid, attnum) :: more =>
+              if tableOid == 0 then
+                resolve(more, acc :+ Col(label, typeOf(oid), true))
+              else
+                simpleValue(s"select attnotnull from pg_attribute " +
+                  s"where attrelid = $tableOid and attnum = $attnum").flatMap { v =>
+                  resolve(more, acc :+ Col(label, typeOf(oid), !v.contains("t")))
+                }
+          resolve(cols.toList, Vector.empty)
+        }
+      }
     }
-    // RowDescription does not carry nullability; the catalog does.
-    // One lookup per table column, at verify time — startup cost.
-    cols.map { (label, oid, tableOid, attnum) =>
-      val nullable =
-        if tableOid == 0 then true // an expression: no home, no promise
-        else attNotNull(tableOid, attnum).map(!_).getOrElse(true)
-      Col(label, typeOf(oid), nullable)
-    }
-  }
 
   def query(sql: String, params: Vector[SqlValue])
   : Chunk[Vector[SqlValue]] ! (Produce + Async) =
     type F = Produce + Async
 
-    // one chunk = one Execute against the open portal: rows until
-    // PortalSuspended (more to come) or CommandComplete (the end)
-    def readChunk(oids: Vector[Int]): (Chunk[Vector[SqlValue]], Boolean) =
-      send('E', str("") ++ i32(fetchSize))
-      flush()
-      val buf = ChunkBuf[Vector[SqlValue]](fetchSize)
-      var i = 0
-      var more = false
-      var going = true
-      while going do
-        val (tag, body) = receive()
-        tag match
-          case 'D' => buf(i) = dataRow(body, oids); i += 1
-          case 's' => more = true; going = false          // PortalSuspended
-          case 'C' => going = false                       // CommandComplete
-          case 'E' =>
-            // after an error the backend discards until Sync: reach
-            // quiet first, so the connection survives the throw
-            sync()
-            val err = errorOf(body)
-            drainUntilReady { case _ => () }
-            throw err
-          case _ => ()
-      (buf.take(i), more)
-
-    def go(oids: Vector[Int]): Chunk[Vector[SqlValue]] ! F =
-      effect[F, (Chunk[Vector[SqlValue]], Boolean)](Async.Run(() => readChunk(oids))).flatMap {
-        (c, more) =>
-          if !more then
-            effect[F, Unit](Async.Run(() => finishPortal())).flatMap { _ =>
-              if c.isEmpty then okay.pure(Chunks.emptyChunk)
-              else effect[F, Chunk[Vector[SqlValue]]](c)
-            }
-          else effect[F, Chunk[Vector[SqlValue]]](c).flatMap(_ => go(oids))
+    def openPortal: Vector[Int] ! Async =
+      conn.write(concat(
+        msg('P', str("") ++ str(sql) ++ i16(0)),
+        bindMsg(params),
+        msg('D', Array('P'.toByte) ++ str("")),
+        msg('H', Array.empty))).flatMap { _ =>
+        def await: Vector[Int] ! Async = receive().flatMap {
+          case ('T', body) => pure(rowDescription(body).map(_._2))
+          case ('n', _) => pure(Vector.empty)
+          case ('E', body) => failToQuiet(body)
+          case _ => await
+        }
+        await
       }
 
-    effect[F, Vector[Int]](Async.Run { () =>
-      send('P', str("") ++ str(sql) ++ i16(0))
-      bind(params)
-      send('D', Array('P'.toByte) ++ str(""))
-      flush()
-      var oids = Vector.empty[Int]
-      var going = true
-      while going do
-        val (tag, body) = receive()
-        tag match
-          case 'T' => oids = rowDescription(body).map(_._2); going = false
-          case 'n' => going = false                       // NoData
-          case 'E' =>
-            sync()
-            val err = errorOf(body)
-            drainUntilReady { case _ => () }
-            throw err
-          case _ => ()
-      oids
-    }).flatMap(go)
+    def readChunk(oids: Vector[Int]): (Chunk[Vector[SqlValue]], Boolean) ! Async =
+      conn.write(concat(msg('E', str("") ++ i32(fetchSize)), msg('H', Array.empty)))
+        .flatMap { _ =>
+          def go(buf: Vector[Vector[SqlValue]]): (Chunk[Vector[SqlValue]], Boolean) ! Async =
+            receive().flatMap {
+              case ('D', body) => go(buf :+ dataRow(body, oids))
+              case ('s', _) => pure((ChunkBuf.of(buf), true))
+              case ('C', _) => pure((ChunkBuf.of(buf), false))
+              case ('E', body) => failToQuiet(body)
+              case _ => go(buf)
+            }
+          go(Vector.empty)
+        }
 
-  def update(sql: String, params: Vector[SqlValue]): Long ! Async = async {
-    send('P', str("") ++ str(sql) ++ i16(0))
-    bind(params)
-    send('E', str("") ++ i32(0))
-    sync()
-    var count = 0L
-    drainUntilReady {
-      case ('C', body) => count = countOf(body)
-      case _ => ()
+    def emit(oids: Vector[Int]): Chunk[Vector[SqlValue]] ! F =
+      !.widen[(Chunk[Vector[SqlValue]], Boolean), Async, Produce](readChunk(oids))
+        .flatMap { (c, more) =>
+          if !more then
+            !.widen[Unit, Async, Produce](finishPortal).flatMap { _ =>
+              if c.isEmpty then pure(Chunks.emptyChunk)
+              else effect[F, Chunk[Vector[SqlValue]]](c)
+            }
+          else effect[F, Chunk[Vector[SqlValue]]](c).flatMap(_ => emit(oids))
+        }
+
+    !.widen[Unit, Async, Produce](settled(pure(())))
+      .flatMap(_ => !.widen[Vector[Int], Async, Produce](openPortal))
+      .flatMap(emit)
+
+  def update(sql: String, params: Vector[SqlValue]): Long ! Async =
+    settled {
+      conn.write(concat(
+        msg('P', str("") ++ str(sql) ++ i16(0)),
+        bindMsg(params),
+        msg('E', str("") ++ i32(0)),
+        msg('S', Array.empty))).flatMap { _ =>
+        collectReady(0L) {
+          case (('C', body), _) => countOf(body)
+          case (_, acc) => acc
+        }
+      }
     }
-    count
-  }
 
-  def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = async {
-    send('P', str("") ++ str(sql) ++ i16(0))
-    rows.foreach { r =>
-      bind(r)
-      send('E', str("") ++ i32(0))
+  def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async =
+    settled {
+      val msgs = Vector(msg('P', str("") ++ str(sql) ++ i16(0))) ++
+        rows.toVector.flatMap(r => Vector(bindMsg(r), msg('E', str("") ++ i32(0)))) :+
+        msg('S', Array.empty)
+      conn.write(concat(msgs*)).flatMap { _ =>
+        collectReady(0L) {
+          case (('C', body), acc) => acc + countOf(body)
+          case (_, acc) => acc
+        }
+      }
     }
-    sync()
-    var count = 0L
-    drainUntilReady {
-      case ('C', body) => count += countOf(body)
-      case _ => ()
+
+  def begin(isolation: Isolation): Granted ! Async =
+    settled {
+      if inTx then throw IllegalStateException(
+        "nested transaction: this connection is already in one — " +
+          "refuse rather than silently flatten (specs/jdbc.md)")
+      simple("BEGIN").flatMap { _ =>
+        simple(s"SET TRANSACTION ISOLATION LEVEL ${levelSql(isolation)}").flatMap { _ =>
+          inTx = true
+          simpleValue("SHOW transaction_isolation").map { v =>
+            val granted = v match
+              case Some("serializable") => Isolation.Serializable
+              case Some("repeatable read") => Isolation.RepeatableRead
+              case _ => Isolation.ReadCommitted
+            Granted(isolation, granted)
+          }
+        }
+      }
     }
-    count
-  }
 
-  def begin(isolation: Isolation): Granted ! Async = async {
-    if inTx then throw IllegalStateException(
-      "nested transaction: this connection is already in one — " +
-        "refuse rather than silently flatten (specs/jdbc.md)")
-    simple("BEGIN")
-    simple(s"SET TRANSACTION ISOLATION LEVEL ${levelSql(isolation)}")
-    inTx = true
-    val granted = simpleValue("SHOW transaction_isolation") match
-      case Some("serializable") => Isolation.Serializable
-      case Some("repeatable read") => Isolation.RepeatableRead
-      case _ => Isolation.ReadCommitted
-    Granted(isolation, granted)
-  }
+  def commit(): Unit ! Async = settled(simple("COMMIT").map { _ => inTx = false })
 
-  def commit(): Unit ! Async = async { simple("COMMIT"); inTx = false }
+  def rollback(): Unit ! Async = settled(simple("ROLLBACK").map { _ => inTx = false })
 
-  def rollback(): Unit ! Async = async { simple("ROLLBACK"); inTx = false }
-
-  // ── COPY: the bulk-load road (specs/sql.md, specs/data.md) ─────
-
-  /** raw COPY IN over the simple protocol: CopyInResponse, then a
-   * CopyData frame per row line, CopyDone, the count from
-   * CommandComplete. Rows arrive already TEXT-ENCODED (see
-   * `PgSql.copyRow`); the caller owns the statement text — the
-   * bind-don't-model rule holds for bulk loads too. */
-  def copyIn(sql: String, rows: Iterator[String]): Long ! Async = async {
-    send('Q', str(sql))
-    out.flush()
-    var ok = false
-    var going = true
-    while going do
-      val (tag, body) = receive()
-      tag match
-        case 'G' => ok = true; going = false          // CopyInResponse
-        case 'E' =>
-          val err = errorOf(body)
-          drainUntilReady { case _ => () }
-          throw err
-        case 'Z' => going = false                     // refused before starting
-        case _ => ()
-    if !ok then throw PgError(s"the statement did not start a COPY: $sql")
-    for line <- rows do
-      send('d', (line + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
-    send('c', Array.empty)
-    out.flush()
-    var count = 0L
-    drainUntilReady {
-      case ('C', body) => count = countOf(body)
-      case _ => ()
-    }
-    count
-  }
-
-  /** the sync emergency brake: blocking I/O anyway on this leg */
+  /** the sync brake: mark now, roll back before the next use —
+   * program order is server order, and an abandoned connection is
+   * rolled back by the server anyway */
   def cancel(): Unit =
     if inTx then
-      simple("ROLLBACK")
+      pendingRollback = true
       inTx = false
 
-  def close(): Unit =
-    try { send('X', Array.empty); flush() } finally sock.close()
+  def close(): Unit = conn.close()
 
-  // ── protocol plumbing ──────────────────────────────────────────
+  // ── COPY: the bulk-load road ───────────────────────────────────
+
+  /** raw COPY IN over the simple protocol (see specs/sql.md): rows
+   * arrive already text-encoded (`PgSql.copyRow`) */
+  def copyIn(sql: String, rows: Iterator[String]): Long ! Async =
+    settled {
+      conn.write(msg('Q', str(sql))).flatMap { _ =>
+        def awaitCopy: Unit ! Async = receive().flatMap {
+          case ('G', _) => pure(())
+          case ('E', body) => failToQuiet(body)
+          case ('Z', _) => throw PgError(s"the statement did not start a COPY: $sql")
+          case _ => awaitCopy
+        }
+        awaitCopy.flatMap { _ =>
+          val payload = rows.map(l => msg('d', (l + "\n").getBytes(UTF_8))).toVector
+          conn.write(concat((payload :+ msg('c', Array.empty))*)).flatMap { _ =>
+            collectReady(0L) {
+              case (('C', body), _) => countOf(body)
+              case (_, acc) => acc
+            }
+          }
+        }
+      }
+    }
+
+  // ── the pump: sequential pulls over the Net seam ───────────────
 
   private val fetchSize = 64
 
-  private def send(tag: Char, body: Array[Byte]): Unit =
-    out.writeByte(tag)
-    out.writeInt(body.length + 4)
-    out.write(body)
+  private def receive(): (Char, Array[Byte]) ! Async =
+    conn.readFully(5).flatMap { h =>
+      val tag = (h(0) & 0xff).toChar
+      val len = ((h(1) & 0xff) << 24) | ((h(2) & 0xff) << 16) |
+        ((h(3) & 0xff) << 8) | (h(4) & 0xff)
+      if len < 4 || len > 512 * 1024 * 1024 then
+        throw PgError(s"message length $len is not a message")
+      conn.readFully(len - 4).map(body => (tag, body))
+    }
 
-  private def flush(): Unit = { send('H', Array.empty); out.flush() }
-  private def sync(): Unit = { send('S', Array.empty); out.flush() }
+  /** pump to ReadyForQuery, folding what the caller cares about;
+   * an ErrorResponse is remembered and THROWN after quiet, so the
+   * session survives */
+  private def collectReady[S](init: S)(f: ((Char, Array[Byte]), S) => S): S ! Async =
+    def go(acc: S, err: Option[PgError]): S ! Async =
+      receive().flatMap {
+        case ('Z', _) => err.fold(pure(acc))(e => throw e)
+        case ('E', body) => go(acc, err.orElse(Some(errorOf(body))))
+        case m => go(f(m, acc), err)
+      }
+    go(init, None)
 
-  private def receive(): (Char, Array[Byte]) =
-    val tag = in.readByte().toChar
-    val len = in.readInt() - 4
-    val body = new Array[Byte](len)
-    in.readFully(body)
-    (tag, body)
+  /** an error mid-conversation: reach quiet first, then throw */
+  private def failToQuiet[A](body: Array[Byte]): A ! Async =
+    conn.write(msg('S', Array.empty)).flatMap { _ =>
+      val err = errorOf(body)
+      collectReady(())((_, _) => ()).map(_ => throw err)
+    }
 
-  /** pump messages to ReadyForQuery; errors THROW after the pump
-   * reaches quiet, so the connection stays usable */
-  private def drainUntilReady(f: PartialFunction[(Char, Array[Byte]), Unit]): Unit =
-    var err: PgError = null
-    var going = true
-    while going do
-      val m = receive()
-      m._1 match
-        case 'Z' => going = false
-        case 'E' => err = errorOf(m._2)
-        case _ => if f.isDefinedAt(m) then f(m)
-    if err != null then throw err
+  private def finishPortal: Unit ! Async =
+    conn.write(concat(msg('C', Array('P'.toByte) ++ str("")), msg('S', Array.empty)))
+      .flatMap(_ => collectReady(())((_, _) => ()))
 
-  private def bind(params: Vector[SqlValue]): Unit =
+  private def simple(sql: String): Unit ! Async =
+    conn.write(msg('Q', str(sql))).flatMap(_ => collectReady(())((_, _) => ()))
+
+  private def simpleValue(sql: String): Option[String] ! Async =
+    conn.write(msg('Q', str(sql))).flatMap { _ =>
+      collectReady(Option.empty[String]) {
+        case (('D', body), _) =>
+          val n = ((body(0) & 0xff) << 8) | (body(1) & 0xff)
+          if n >= 1 then
+            val len = readI32(body, 2)
+            if len >= 0 then Some(new String(body, 6, len, UTF_8)) else None
+          else None
+        case (_, acc) => acc
+      }
+    }
+
+  /** the pending-rollback settle: cancel's mark performed before
+   * any next use of this connection */
+  private def settled[A](prog: => A ! Async): A ! Async =
+    if !pendingRollback then pure(()).flatMap(_ => prog)
+    else
+      pendingRollback = false
+      simple("ROLLBACK").flatMap(_ => prog)
+
+  private def bindMsg(params: Vector[SqlValue]): Array[Byte] =
     val b = Array.newBuilder[Byte]
-    b ++= str("") ++= str("")                 // portal, statement
-    b ++= i16(0)                              // all params text
+    b ++= str("") ++= str("")
+    b ++= i16(0)
     b ++= i16(params.length)
     for p <- params do
       textOf(p) match
@@ -245,35 +265,8 @@ final class PgSql private (sock: Socket, in: DataInputStream, out: DataOutputStr
         case Some(s) =>
           val bs = s.getBytes(UTF_8)
           b ++= i32(bs.length) ++= bs
-    b ++= i16(0)                              // all results text
-    send('B', b.result())
-
-  private def finishPortal(): Unit =
-    send('C', Array('P'.toByte) ++ str(""))
-    sync()
-    drainUntilReady { case _ => () }
-
-  private def simple(sql: String): Unit =
-    send('Q', str(sql)); out.flush()
-    drainUntilReady { case _ => () }
-
-  private def simpleValue(sql: String): Option[String] =
-    send('Q', str(sql)); out.flush()
-    var v: Option[String] = None
-    drainUntilReady {
-      case ('D', body) =>
-        val n = ((body(0) & 0xff) << 8) | (body(1) & 0xff)
-        if n >= 1 then
-          val len = readI32(body, 2)
-          if len >= 0 then v = Some(new String(body, 6, len, UTF_8))
-      case _ => ()
-    }
-    v
-
-  private def attNotNull(tableOid: Int, attnum: Int): Option[Boolean] =
-    simpleValue(
-      s"select attnotnull from pg_attribute where attrelid = $tableOid and attnum = $attnum")
-      .map(_ == "t")
+    b ++= i16(0)
+    msg('B', b.result())
 
   private def rowDescription(body: Array[Byte]): Vector[(String, Int, Int, Int)] =
     var at = 0
@@ -291,12 +284,12 @@ final class PgSql private (sock: Socket, in: DataInputStream, out: DataOutputStr
       val tableOid = i32r()
       val attnum = i16r()
       val typeOid = i32r()
-      i16r(); i32r(); i16r()                  // typlen, typmod, format
+      i16r(); i32r(); i16r()
       (label, typeOid, tableOid, attnum)
     }
 
   private def dataRow(body: Array[Byte], oids: Vector[Int]): Vector[SqlValue] =
-    var at = 2                                // column count, already known
+    var at = 2
     Vector.tabulate(oids.length) { i =>
       val len = readI32(body, at); at += 4
       if len < 0 then SqlValue.Null
@@ -308,68 +301,74 @@ final class PgSql private (sock: Socket, in: DataInputStream, out: DataOutputStr
 
 object PgSql:
 
-  /** startup + SCRAM-SHA-256; answers a driver ready for the seam */
+  /** startup + SCRAM-SHA-256 as one Async program over the Net
+   * seam — the same connect on the JVM and on Node */
   def connect(host: String, port: Int, user: String, password: String,
-              database: String): PgSql =
-    val sock = Socket(host, port)
-    sock.setTcpNoDelay(true)
-    val in = DataInputStream(BufferedInputStream(sock.getInputStream))
-    val out = DataOutputStream(BufferedOutputStream(sock.getOutputStream))
+              database: String)(using Net, PgCrypto): PgSql ! Async =
+    Net.connect(host, port).flatMap { conn =>
+      val params = str("user") ++ str(user) ++ str("database") ++ str(database) ++
+        Array(0.toByte)
+      val startup = new Array[Byte](8 + params.length)
+      writeI32(startup, 0, params.length + 8)
+      writeI32(startup, 4, 196608)
+      System.arraycopy(params, 0, startup, 8, params.length)
 
-    // StartupMessage has no tag byte
-    val params = str("user") ++ str(user) ++ str("database") ++ str(database) ++ Array(0.toByte)
-    out.writeInt(params.length + 8)
-    out.writeInt(196608)                      // protocol 3.0
-    out.write(params)
-    out.flush()
+      def receive(): (Char, Array[Byte]) ! Async =
+        conn.readFully(5).flatMap { h =>
+          val len = ((h(1) & 0xff) << 24) | ((h(2) & 0xff) << 16) |
+            ((h(3) & 0xff) << 8) | (h(4) & 0xff)
+          conn.readFully(len - 4).map(body => ((h(0) & 0xff).toChar, body))
+        }
 
-    def receive(): (Char, Array[Byte]) =
-      val tag = in.readByte().toChar
-      val len = in.readInt() - 4
-      val body = new Array[Byte](len)
-      in.readFully(body)
-      (tag, body)
+      def auth(scram: Scram): PgSql ! Async = receive().flatMap {
+        case ('R', body) => readI32(body, 0) match
+          case 0 => auth(scram)
+          case 10 =>
+            val mechs = new String(body, 4, body.length - 4, UTF_8)
+            if !mechs.contains("SCRAM-SHA-256") then
+              throw PgError(s"server offers no SCRAM-SHA-256 (offered: $mechs)")
+            val first = scram.clientFirst
+            conn.write(msg('p', str("SCRAM-SHA-256") ++ i32(first.length) ++ first))
+              .flatMap(_ => auth(scram))
+          case 11 =>
+            conn.write(msg('p', scram.clientFinal(body.drop(4))))
+              .flatMap(_ => auth(scram))
+          case 12 =>
+            scram.verifyServerFinal(body.drop(4))
+            auth(scram)
+          case other =>
+            throw PgError(s"authentication method $other is not spoken here " +
+              "(scram-sha-256 is; md5 and cleartext are deliberately not)")
+        case ('E', body) => throw errorOf(body)
+        case ('Z', _) => pure(new PgSql(conn))
+        case _ => auth(scram)
+      }
 
-    def send(tag: Char, body: Array[Byte]): Unit =
-      out.writeByte(tag); out.writeInt(body.length + 4); out.write(body); out.flush()
-
-    // the SASL handshake as PHASE OBJECTS: the variable holds the
-    // phase we are in, and a tag arriving out of order is a NAMED
-    // refusal, not an accidental NPE (pg-scram-typestate)
-    var sasl: AnyRef = null
-    var ready = false
-    while !ready do
-      val (tag, body) = receive()
-      tag match
-        case 'R' =>
-          readI32(body, 0) match
-            case 0 => ()                      // AuthenticationOk
-            case 10 =>                        // SASL: pick SCRAM-SHA-256
-              val mechs = new String(body, 4, body.length - 4, UTF_8)
-              if !mechs.contains("SCRAM-SHA-256") then
-                throw PgError(s"server offers no SCRAM-SHA-256 (offered: $mechs)")
-              val p0 = Scram.start(user, password)
-              sasl = p0
-              val first = p0.message
-              send('p', str("SCRAM-SHA-256") ++ i32(first.length) ++ first)
-            case 11 => sasl match             // SASLContinue
-              case p: Scram.ClientFirst =>
-                val next = p.serverFirst(body.drop(4))
-                sasl = next
-                send('p', next.message)
-              case _ => throw PgError("SASLContinue out of order")
-            case 12 => sasl match             // SASLFinal: verify the server
-              case p: Scram.ClientFinal => p.serverFinal(body.drop(4))
-              case _ => throw PgError("SASLFinal before SASLContinue")
-            case other =>
-              throw PgError(s"authentication method $other is not spoken here " +
-                "(scram-sha-256 is; md5 and cleartext are deliberately not)")
-        case 'E' => throw errorOf(body)
-        case 'Z' => ready = true              // ReadyForQuery
-        case _ => ()                          // ParameterStatus, BackendKeyData, notices
-    new PgSql(sock, in, out)
+      conn.write(startup).flatMap { _ =>
+        auth(Scram(user, password, Scram.nonce()))
+      }
+    }
 
   // ── shared byte helpers ────────────────────────────────────────
+
+  private[pg] def msg(tag: Char, body: Array[Byte]): Array[Byte] =
+    val out = new Array[Byte](5 + body.length)
+    out(0) = tag.toByte
+    writeI32(out, 1, body.length + 4)
+    System.arraycopy(body, 0, out, 5, body.length)
+    out
+
+  private[pg] def concat(msgs: Array[Byte]*): Array[Byte] =
+    val out = new Array[Byte](msgs.map(_.length).sum)
+    var at = 0
+    for m <- msgs do { System.arraycopy(m, 0, out, at, m.length); at += m.length }
+    out
+
+  private def writeI32(out: Array[Byte], at: Int, v: Int): Unit =
+    out(at) = (v >> 24).toByte
+    out(at + 1) = (v >> 16).toByte
+    out(at + 2) = (v >> 8).toByte
+    out(at + 3) = v.toByte
 
   private[pg] def str(s: String): Array[Byte] = s.getBytes(UTF_8) :+ 0.toByte
   private[pg] def i16(v: Int): Array[Byte] = Array((v >> 8).toByte, v.toByte)
@@ -380,9 +379,8 @@ object PgSql:
       ((bs(at + 2) & 0xff) << 8) | (bs(at + 3) & 0xff)
 
   private[pg] def errorOf(body: Array[Byte]): PgError =
-    // fields: a tag byte then a c-string, until a lone terminator
     var at = 0
-    var msg = "backend error"
+    var m = "backend error"
     var code = ""
     while at < body.length && body(at) != 0 do
       val tag = body(at).toChar
@@ -392,15 +390,14 @@ object PgSql:
       val v = new String(body, start, at - start, UTF_8)
       at += 1
       tag match
-        case 'M' => msg = v
+        case 'M' => m = v
         case 'C' => code = v
         case _ => ()
-    PgError(if code.isEmpty then msg else s"$msg [$code]")
+    PgError(if code.isEmpty then m else s"$m [$code]")
 
-  /** CommandComplete's tag: "INSERT 0 5", "UPDATE 3", "SELECT 2" —
-   * the affected count is the last token when it is a number */
+  /** CommandComplete's tag: the affected count is the last token */
   private[pg] def countOf(body: Array[Byte]): Long =
-    val tag = new String(body, UTF_8).takeWhile(_ != '\u0000')
+    val tag = new String(body, UTF_8).takeWhile(_ != ' ')
     tag.split(' ').lastOption.flatMap(_.toLongOption).getOrElse(0L)
 
   private def levelSql(i: Isolation): String = i match
@@ -408,8 +405,7 @@ object PgSql:
     case Isolation.RepeatableRead => "REPEATABLE READ"
     case Isolation.Serializable => "SERIALIZABLE"
 
-  /** type OIDs → the neutral vocabulary; numeric→F64 v1, stated
-   * like the JDBC driver states it */
+  /** type OIDs → the neutral vocabulary; numeric→F64 v1, stated */
   private def typeOf(oid: Int): SqlType = oid match
     case 16 => SqlType.Bool
     case 21 | 23 => SqlType.I32
@@ -425,7 +421,6 @@ object PgSql:
     case 20 => SqlValue.I64(s.toLong)
     case 700 | 701 | 1700 => SqlValue.F64(s.toDouble)
     case 17 =>
-      // bytea text format: \x followed by hex
       val hex = s.drop(2)
       val out = new Array[Byte](hex.length / 2)
       var i = 0
@@ -435,8 +430,7 @@ object PgSql:
       SqlValue.Bytes(out)
     case _ => SqlValue.Text(s)
 
-  /** one row in COPY text format: tab-separated, NULL as \\N,
-   * the backslash/tab/newline/return escapes the format demands */
+  /** one row in COPY text format (see specs/sql.md) */
   def copyRow(row: Vector[SqlValue]): String =
     row.map {
       case SqlValue.Null => "\\N"

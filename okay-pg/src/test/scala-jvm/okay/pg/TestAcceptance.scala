@@ -28,7 +28,7 @@ class TestAcceptance extends munit.FunSuite {
   val port = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)
 
   lazy val available: Boolean =
-    try { PgSql.connect(host, port, "okay", "okay", "okay").close(); true }
+    try { okay.!.run(okay.Async.run[PgSql, Nothing](PgSql.connect(host, port, "okay", "okay", "okay"))).close(); true }
     catch { case _: Throwable => false }
 
   def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
@@ -92,7 +92,7 @@ class TestAcceptance extends munit.FunSuite {
 
   test("the same typed program, two drivers, one answer") {
     assume(available, s"no Postgres at $host:$port — the acceptance skips")
-    val pg = PgSql.connect(host, port, "okay", "okay", "okay")
+    val pg = okay.!.run(okay.Async.run[PgSql, Nothing](PgSql.connect(host, port, "okay", "okay", "okay")))
     val h2conn = DriverManager.getConnection("jdbc:h2:mem:acc;DB_CLOSE_DELAY=-1", "sa", "")
     try
       val h2 = JdbcSql(h2conn)
