@@ -1,4 +1,5 @@
 import okay.*
+import okay.given
 
 /**
  * The installer half of the capability pair (ctx-everywhere):
@@ -144,5 +145,35 @@ class TestWire extends munit.FunSuite {
 
   test("a missing given does not COMPILE") {
     assert(compileErrors("wire[Db].q").nonEmpty, "the missing Db compiled")
+  }
+}
+
+/** The Monad instance over ctx functions serves the GENERIC
+ * combinators (E19) — direct style never needed it. */
+class TestCtxMonad extends munit.FunSuite {
+
+  case class Env(user: String, uid: Int)
+
+  test("sequence over Seq[Env ?=> A] — F is inferred") {
+    val xs: Seq[Env ?=> Int] = Seq(wire[Env].uid, wire[Env].uid + 1, wire[Env].user.length)
+    val all: Env ?=> Seq[Int] = sequence(xs)
+    assertEquals(provide(Env("ada", 7))(all), Seq(7, 8, 3))
+  }
+
+  test("traverse builds one reader from many") {
+    val tr: Env ?=> Seq[String] =
+      traverse[[X] =>> Env ?=> X, Int, String](Seq(1, 2))(n => s"${wire[Env].user}$n")
+    assertEquals(provide(Env("ada", 7))(tr), Seq("ada1", "ada2"))
+  }
+
+  test("replicateA reads the same environment n times") {
+    val rep: Env ?=> Seq[Int] = replicateA[[X] =>> Env ?=> X, Int](3)(wire[Env].uid)
+    assertEquals(provide(Env("ada", 7))(rep), Seq(7, 7, 7))
+  }
+
+  test("the instance IS the compiler's own semantics: flatMap = f(fa)") {
+    val M = summon[Monad[[X] =>> Env ?=> X]]
+    val prog: Env ?=> String = M.flatMap(wire[Env].user)(u => s"$u#${wire[Env].uid}")
+    assertEquals(provide(Env("ada", 7))(prog), "ada#7")
   }
 }

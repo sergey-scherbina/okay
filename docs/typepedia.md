@@ -487,7 +487,9 @@ types differ); make the VALUE conditional inside one installer
 instead: `providing[Log](if debug then verbose else quiet)`.
 The consumer one-liner is `wire[A]` (Reader's ask): `wire[Db].q`
 pulls the nearest given — E10's eagerness working FOR us — and a
-missing given is still a compile error. Adding a door is two lines:
+missing given is still a compile error. And the generic
+combinators run over context functions: `sequence(Seq[Env ?=> A]):
+Env ?=> Seq[A]` via `ctxMonad` (core), F inferred. Adding a door is two lines:
 
 ```scala
 // a wrapper-taking API:                      // a factory:
