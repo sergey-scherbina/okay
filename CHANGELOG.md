@@ -1,7 +1,10 @@
 # Changelog
 
 ## ui-durable — the journal is the line stream, verbatim
-Completed: 2026-09-01
+Completed: 2026-09-01 (landed as 9068fe7 — an earlier entry said
+277ecce, the pre-rebase hash of the same work: a `| tail -1` hid a
+refused fast-forward and the release commit went out before the
+merge; recovered from the reflog, rebased, landed for real)
 Event-sourced sessions on persist-core stage 0: journal inbound
 lines (hostile ones included — the stage's determinism is the
 argument), segmented refold (a journaled Closed ended a connection,
