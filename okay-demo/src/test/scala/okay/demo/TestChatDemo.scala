@@ -56,8 +56,43 @@ class TestChatDemo extends munit.FunSuite {
         HttpResponse.BodyHandlers.ofString())
       assertEquals(res.statusCode(), 200)
       assert(res.body().contains("okay chat"))
-      assert(res.body().contains("fetch('/chat'"))
+      // whichever face: the vanilla script inline, or the React shell
+      assert(res.body().contains("fetch('/chat'") || res.body().contains("/app.js"))
     }
+  }
+
+  test("the React page serves when the linked app exists, with CDN React and /app.js") {
+    assume(ChatDemo.appJs.isDefined, "no linked app (sbt okayChatWebJS/fastLinkJS) — skipped")
+    withServer(512) { port =>
+      val res = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/")).GET().build(),
+        HttpResponse.BodyHandlers.ofString())
+      assert(res.body().contains("react.production.min.js"))
+      assert(res.body().contains("/app.js"))
+      val app = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/app.js")).GET().build(),
+        HttpResponse.BodyHandlers.ofString())
+      assertEquals(app.statusCode(), 200)
+      assert(app.body().contains("okay chat"), "the linked app carries the chat view")
+    }
+  }
+
+  test("LIVE: the local model on :8089 streams through the same route") {
+    val base = sys.env.getOrElse("OKAY_CHAT_BASE", "http://127.0.0.1:8089")
+    val up = try {
+      client.send(HttpRequest.newBuilder(URI.create(s"$base/v1/models")).GET().build(),
+        HttpResponse.BodyHandlers.ofString()).statusCode() == 200
+    } catch { case _: Throwable => false }
+    assume(up, s"no local model at $base — skipped")
+    Resource.run[Unit, Pure](
+      Jetty.serve(0)(ChatDemo.routes(ChatDemo.local(base), 512))()
+        .map { s =>
+          val port = Jetty.port(s)
+          val whole = new String(post(port,
+            """{"messages":[{"role":"user","content":"answer with one short word"}]}""").readAllBytes(), UTF_8)
+          assert(whole.contains("data: "), s"no tokens: ${whole.take(200)}")
+          assert(whole.contains("event: done"), s"no done: ${whole.takeRight(120)}")
+        }).runWith
   }
 
   test("over budget the stream is cut, named, and no tokens follow") {

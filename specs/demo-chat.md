@@ -45,15 +45,22 @@ The pieces, each doing its one job:
 - [x] the cut shows: a scripted reply exceeding the budget streams
       its prefix and ends with `event: cut` naming the rule; no
       tokens follow the cut
-- [ ] with a key in the environment the same route speaks to the
-      real API (the TestLive pattern: skipped when absent) — OPEN
-      pending a key on the box; the seam is one function swap
+- [x] a LIVE model streams through the same route: the local
+      OpenAI-compatible endpoint (rozum, :8089) proves the wire path
+      end to end (skipped when absent); Anthropic remains the
+      key-gated third filling of the same seam
+- [x] the React frontend: okay-chat-web — the chat's view/update are
+      CROSS and JVM-tested (send flow, token folding, the cut line);
+      the browser gets okay-ui's ReactJs over CDN React UMD globals
+      and a fetch reader feeding $token/$done/$cut into the same
+      fold; the server serves the React page and /app.js when a link
+      exists, the vanilla page otherwise
 
 ## Out of scope
 - Auth, persistence of conversations, multi-user rooms (okay-match
   and persist own those stories).
-- A Scala.js frontend — deliberate: the server stack is the exhibit;
-  the ui-wire browser leg is its own demo when taken.
+- (Lifted 2026-09-01 by user ask: the React frontend landed as
+  okay-chat-web.) The ui-wire browser leg stays its own demo.
 
 ## Decisions
 - **SSE over WebSocket** — the reply is a one-direction stream per

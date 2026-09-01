@@ -4,7 +4,7 @@ import okay.*
 import okay.given
 import okay.http.{Body, Http, Request, Response}
 import okay.jetty.Jetty
-import okay.llm.{Anthropic, Cut, Transports}
+import okay.llm.{Anthropic, Cut, OpenAi, Transports}
 import okay.codec.Json
 import okay.codec.Json.*
 import java.nio.charset.StandardCharsets.UTF_8
@@ -46,8 +46,21 @@ object ChatDemo {
       model = "claude-sonnet-4-5", max_tokens = 1024,
       messages = messages.toList, stream = true))
 
+  /** an OpenAI-compatible endpoint (the local rozum model on :8089
+   * fits): the same seam, one more filling */
+  def local(base: String): Model = messages =>
+    val body = Json.print(JObj(Vector(
+      "model" -> JStr("default"),
+      "stream" -> JBool(true),
+      "max_tokens" -> JNum(1024),
+      "messages" -> JArr(messages.toVector.map(m => JObj(Vector(
+        "role" -> JStr(m.role), "content" -> JStr(m.content))))))))
+    OpenAi.stream(Transports.http(), "local", body, s"$base/v1/chat/completions")
+
   def model: Model =
-    sys.env.get("ANTHROPIC_API_KEY").fold(scripted)(live)
+    sys.env.get("ANTHROPIC_API_KEY").map(live)
+      .orElse(sys.env.get("OKAY_CHAT_BASE").map(local))
+      .getOrElse(scripted)
 
   // ---- the SSE reply -------------------------------------------------
 
@@ -88,10 +101,29 @@ object ChatDemo {
         }
       case _ => Vector.empty
 
+  /** the linked React app, if a link has been run (sbt
+   * okayChatWebJS/fastLinkJS); absent, the vanilla page serves */
+  def appJs: Option[java.nio.file.Path] =
+    sys.env.get("OKAY_CHAT_APP").map(java.nio.file.Path.of(_))
+      .filter(java.nio.file.Files.exists(_))
+      .orElse {
+        val glob = java.nio.file.Path.of("okay-chat-web/.js/target")
+        if !java.nio.file.Files.exists(glob) then None
+        else
+          import scala.jdk.CollectionConverters.*
+          java.nio.file.Files.walk(glob).iterator().asScala
+            .find(p => p.getFileName.toString == "main.js" &&
+              p.toString.contains("fastopt"))
+      }
+
   def routes(m: Model, budget: Int): PartialFunction[Request, Response ! Async] =
     case r if r.method == okay.http.Method.Get && r.url == "/" =>
+      val html = if appJs.isDefined then reactPage else page
       pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-        Http.one(page.getBytes(UTF_8))))
+        Http.one(html.getBytes(UTF_8))))
+    case r if r.method == okay.http.Method.Get && r.url == "/app.js" && appJs.isDefined =>
+      pure(Response(200, Seq("content-type" -> "text/javascript"),
+        Http.one(java.nio.file.Files.readAllBytes(appJs.get))))
     case r if r.method == okay.http.Method.Post && r.url == "/chat" =>
       pure(Response(200, Seq("content-type" -> "text/event-stream"),
         reply(m, budget)(messagesOf(r.body))))
@@ -99,12 +131,33 @@ object ChatDemo {
   def main(args: Array[String]): Unit =
     val port = sys.env.get("OKAY_CHAT_PORT").flatMap(_.toIntOption).getOrElse(8090)
     val budget = sys.env.get("OKAY_CHAT_MAX").flatMap(_.toIntOption).getOrElse(512)
-    val mode = if sys.env.contains("ANTHROPIC_API_KEY") then "live" else "scripted"
+    val mode =
+      if sys.env.contains("ANTHROPIC_API_KEY") then "live"
+      else if sys.env.contains("OKAY_CHAT_BASE") then s"local ${sys.env("OKAY_CHAT_BASE")}"
+      else "scripted"
     Resource.run[Unit, Pure](
       Jetty.serve(port)(routes(model, budget))().map { s =>
         println(s"chat: http://127.0.0.1:${Jetty.port(s)}  (model: $mode)")
         Thread.sleep(Long.MaxValue)   // ctrl-c ends the process and the Resource
       }).runWith
+
+  /** the React page: okay-ui's tree rendered by a real React (CDN
+   * UMD globals), the logic cross-tested on the JVM — the frontend
+   * the user asked for, still with no local build step beyond the
+   * Scala.js link */
+  val reactPage: String = """<!doctype html>
+<meta charset="utf-8">
+<title>okay chat</title>
+<style>
+  body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #10141a; color: #e6e9ef; }
+  #root > div { max-width: 640px; margin: 0 auto; padding: 1rem; display: flex; flex-direction: column; gap: .6rem; }
+  input { padding: .6rem .8rem; border-radius: .7rem; border: 1px solid #2a3342; background: #171c25; color: inherit; width: 70%; }
+  button { padding: .6rem 1rem; border-radius: .7rem; border: 0; background: #3563a8; color: white; cursor: pointer; }
+</style>
+<div id="root"></div>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="/app.js"></script>"""
 
   // ---- the page (no build step: the demo is of the server stack) ----
 

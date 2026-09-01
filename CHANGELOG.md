@@ -19,6 +19,22 @@ later: Typed.Bad interactive repair, r.md's native restarts over
 the now-shared vocabulary. Merge read alone after one refused ff
 (nav-pop divergence, ui-only; core retested 227): exit 0. Full
 matrix green.
+## demo-chat-react — the React frontend, and the live leg proven locally
+Completed: 2026-09-01
+
+okay-chat-web (cross): the chat's brain is pure view/update over the
+Ui tree, JVM-tested with scripted events (send flow, token folding
+into the open bubble, the cut line) — the React frontend's logic
+never sees a browser in its tests. The JS leg is glue only: okay-ui's
+ReactJs against CDN React UMD (the first time the mapping meets a
+REAL React), the Elm fold on runAsync (no CanBlock on JS — the event
+loop is the runner), and a fetch reader feeding $token/$done/$cut
+into the same bus the clicks use. ChatDemo serves the React page and
+/app.js when a link exists, the vanilla page otherwise — and gained
+the third model filling: OKAY_CHAT_BASE speaks any OpenAI-compatible
+endpoint, and the LIVE test streams through the local rozum model on
+:8089 (green on this box) — the live box closes without an Anthropic
+key. 5 + 3 tests.
 
 ## nav-pop-to-screen — the pattern held, the mechanism corrected
 Completed: 2026-09-01 (landed as 84617de)

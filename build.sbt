@@ -871,6 +871,23 @@ lazy val okayMcp = crossProject(JVMPlatform, JSPlatform)
  * okay-agent runs the loop, okay-llm reaches a local model. It exists
  * to find what tests written by the author of the code cannot.
  */
+/** the chat demo's React frontend (specs/demo-chat.md): the logic is
+ * CROSS (view/update pure, tested on the JVM), the browser gets the
+ * thin glue over okay-ui's ReactJs against a CDN React */
+lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-chat-web"))
+  .dependsOn(okayUi)
+  .settings(
+    name := "okay-chat-web",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    scalaJSUseMainModuleInitializer := true,
+  )
+
 lazy val okayDemo = (project in file("okay-demo"))
   .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty)
   .settings(
@@ -916,7 +933,7 @@ lazy val root = (project in file("."))
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
-    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,
+    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)
