@@ -211,7 +211,7 @@ object OAuth2:                           // the client flows, over trait Http
   id_token is exactly the input an attacker crafts.
 - Satellites when needed: argon2 (a real KDF, with a dependency),
   ES256 (the JOSE raw-vs-DER signature dance, its own tested task).
-- **5 — security-argon2 (this claim)**: the one satellite that buys
+- **5 — security-argon2**: SHIPPED. the one satellite that buys
   a dependency, because a memory-hard KDF cannot be had from the JDK.
   A NEW MODULE `okay-security-argon2` (jvm, Bouncy Castle provider)
   so the core keeps its zero; services that want Argon2 opt in by
@@ -234,21 +234,21 @@ object OAuth2:                           // the client flows, over trait Http
   ```
 
   Behavior:
-  - [ ] hash-then-verify round-trips; a wrong password refuses; two
+  - [x] hash-then-verify round-trips; a wrong password refuses; two
         hashes of one password differ (salt)
-  - [ ] the stored form is PHC: $argon2id$v=19$m=,t=,p=$ with
+  - [x] the stored form is PHC: $argon2id$v=19$m=,t=,p=$ with
         unpadded base64 — and raised parameters ride the stored form,
         so verify honors them with no flag day
-  - [ ] the RFC 9106 Argon2id test vector pins the provider — the
+  - [x] the RFC 9106 Argon2id test vector pins the provider — the
         standard's bytes, not our own round-trip
-  - [ ] hostile stored forms refuse, never throw: garbage, missing
+  - [x] hostile stored forms refuse, never throw: garbage, missing
         fields, wrong algorithm name, non-numeric parameters — and
         ABSURD parameters refuse before allocating (a stored form
         claiming gigabytes of memory is an attack on the verifier,
         not a password)
-  - [ ] verifyAny reads a mixed store: a pbkdf2$ hash and an
+  - [x] verifyAny reads a mixed store: a pbkdf2$ hash and an
         $argon2id$ hash both verify through the one door
-  - [ ] constant-time comparison on the hash, same as everywhere
+  - [x] constant-time comparison on the hash, same as everywhere
 - **4 — security-es256**: SHIPPED. ES256 (ECDSA over P-256 with
   SHA-256) joins HS256/RS256. The task IS the signature format: JOSE
   carries `R||S` — two fixed 32-byte big-endian integers, 64 bytes

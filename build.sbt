@@ -506,6 +506,21 @@ lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  */
 lazy val jettyVersion = "12.0.13"
 
+/**
+ * The one satellite that buys a dependency (specs/security.md stage
+ * 5): Argon2id via Bouncy Castle, because a memory-hard KDF cannot
+ * be had from the JDK. Separate module so okay-security keeps its
+ * zero; services opt in by classpath.
+ */
+lazy val okaySecurityArgon2 = project
+  .in(file("okay-security-argon2"))
+  .dependsOn(okaySecurity.jvm)
+  .settings(
+    name := "okay-security-argon2",
+    libraryDependencies += "org.bouncycastle" % "bcprov-jdk18on" % "1.78.1",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayJetty = project
   .in(file("okay-jetty"))
   .dependsOn(okayHttp.jvm)
@@ -624,7 +639,7 @@ lazy val root = (project in file("."))
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
-    okaySecurity.jvm, okaySecurity.js,
+    okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
