@@ -45,8 +45,6 @@
       is trustworthy under that harness.
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
-- [ ] ui-dom-patch — a raw-DOM patch Backend over js.Dynamic (the
-      React host covers the browser today; Host.diffing is ready)
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
 
