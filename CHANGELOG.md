@@ -1,5 +1,14 @@
 # Changelog
 
+## obs-otlp — export is a consumer, and no SDK came
+Completed: 2026-09-01 (landed as bc14801)
+The pure half maps spans to OTLP/HTTP JSON (nanos as strings,
+status 2 carries the message, roots omit parentSpanId); the jvm
+glue is one more topic consumer — offset = resume token, a refusing
+collector leaves the batch unconsumed so retry re-ships
+(at-least-once, as ingestion expects). Proven against a recording
+fake collector. Matrix 1430.
+
 ## cache-write-through — the window is stated, not denied
 Completed: 2026-09-01 (landed as 61c7501)
 Regime 2's write path held by construction (WriteThrough.write:
