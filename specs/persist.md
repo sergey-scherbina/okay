@@ -570,6 +570,29 @@ at stage 0 and never rebind.
 
 ## Results
 
+Stage 3's engines landed (persist-interop, 2026-09-01).
+
+- **SqlStore** (okay-jdbc, via the Sql seam — any driver serves
+  it): the Journal doc-comment's oldest promise kept. Passes the
+  FULL 13-test StoreSuite contract on H2 (test->test borrows the
+  suite; the cross-engine acceptance) — retention per record,
+  compaction as one keep-latest DELETE, `begin` as state of its
+  own (it moves only under retention; compaction leaves holes but
+  never the start — the contract caught min(off) being wrong).
+  Two truths found by the suite: an aggregate over nothing answers
+  a NULL row (the empty partition starts at 0, not NULL+1), and
+  H2 types SUM(expr) as NUMERIC.
+- **KafkaStore** (okay-kafka): partitions/replication/election
+  inherited; the sync SPI blocks honestly on the client's futures;
+  compact() REFUSES by name (the engine keeps its own ops);
+  Received maps to fire-and-forget (the answered offset is the
+  log's end — a caller that declined to wait gets the honest
+  approximation), Durable/Replicated block on acks=all. Four live
+  tests against the dockerized broker (skip when absent),
+  including the persist Typed view decoding unchanged over Kafka.
+- **Refiled**: persist-offload (cold segments to the object store)
+  pairs blob-seam and waits for it.
+
 The wire landed (persist-wire + persist-wire-auth, 2026-09-01).
 
 - **The surface is documented above** ("The wire") and the code is

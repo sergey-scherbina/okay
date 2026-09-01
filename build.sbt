@@ -166,7 +166,9 @@ lazy val okayFs2 = (project in file("okay-fs2"))
 
 /** Kafka as chunked async streams: one poll, one chunk (P4) */
 lazy val okayKafka = (project in file("okay-kafka"))
-  .dependsOn(okay.jvm)
+  // okay-persist rides along: KafkaStore is the stage-3 interop
+  // engine behind the same Store trait (specs/persist.md)
+  .dependsOn(okay.jvm, okayPersist.jvm)
   .settings(
     name := "okay-kafka",
     libraryDependencies ++= Seq(
@@ -243,8 +245,11 @@ lazy val okayFlink = (project in file("okay-flink"))
 lazy val okayJdbc = (project in file("okay-jdbc"))
   // the first DRIVER of the Sql seam (specs/sql.md); the raw
   // JdbcInterop streaming stays alongside, unchanged. okay-persist
-  // backs the write bridge's intent-first journal (specs/jdbc.md)
-  .dependsOn(okay.jvm, okaySql.jvm, okayPersist.jvm)
+  // backs the write bridge's intent-first journal (specs/jdbc.md);
+  // test->test borrows the persist StoreSuite for SqlStore's
+  // cross-engine contract run
+  .dependsOn(okay.jvm, okaySql.jvm,
+    okayPersist.jvm % "compile->compile;test->test")
   .settings(
     name := "okay-jdbc",
     libraryDependencies ++= Seq(
