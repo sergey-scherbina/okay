@@ -82,14 +82,23 @@ trait Topic:
   def partitions: Int
   def append(partition: Int, key: Array[Byte], value: Array[Byte],
              ack: Ack): Long                          // the offset
-  def read(partition: Int, from: Long, max: Int): Vector[Record]
+  def read(partition: Int, from: Long, max: Int): Topic.Read
   def end(partition: Int): Long                       // next offset
   def begin(partition: Int): Long                     // first retained
+
+object Topic:
+  /** a read names its failure instead of returning silence: asking
+   *  for history that retention dropped is an answer, not an empty
+   *  vector pretending nothing was ever there */
+  enum Read:
+    case Records(records: Vector[Record])
+    case TooEarly(begin: Long)
 
 trait Store:
   def topic(name: String, partitions: Int = 1,
             policy: Policy = Policy.default): Topic
   def topics: Vector[String]
+  def stats: Store.Stats      // plain values, see Operations
 ```
 
 Conveniences over the core, not part of it: `append(key, value)`
@@ -99,9 +108,9 @@ routing by key hash; a chunked streaming read
 size); a typed view `Topic.of[A](using Schema[A])` that encodes and
 decodes at the edge and returns damage as data, never throws.
 
-`Policy` names retention (by size, by age, or forever), compaction
-(off, or keep-latest-per-key), and — from stage 2 — the replication
-factor. All of it per topic, because an agent journal (forever,
+`Policy` names the segment roll size, retention (by size, by age, or
+forever), compaction (off, or keep-latest-per-key), and — from
+stage 2 — the replication factor. All of it per topic, because an agent journal (forever,
 compact never) and a metrics stream (24h, who cares) are both honest
 topics.
 
@@ -278,21 +287,21 @@ at stage 0 and never rebind.
 
 ## Behavior
 
-- [ ] append then read returns the records in order with dense
+- [x] append then read returns the records in order with dense
       offsets; `end` is the next offset, `begin` the first retained
       (file + memory)
-- [ ] a process killed between append and ack leaves the partition
+- [x] a process killed between append and ack leaves the partition
       readable: the record is either wholly present or wholly
       absent, never a corrupt log (torn frame truncates on recovery)
-- [ ] recovery after a torn tail serves every earlier record intact,
+- [x] recovery after a torn tail serves every earlier record intact,
       and the next append continues the offset sequence (dense over
       restart)
 - [ ] a damaged index is rebuilt from segments; log content decides,
       never the index (index deleted between runs; reads agree)
-- [ ] keyed appends land deterministically: same key, same
+- [x] keyed appends land deterministically: same key, same
       partition, order preserved per key across concurrent writers
       (routing pure and platform-stable; interleaved writers)
-- [ ] retention drops whole segments from the front; `begin`
+- [x] retention drops whole segments from the front; `begin`
       advances; reading from before `begin` says so explicitly
       rather than returning silence
 - [ ] compaction keeps the latest record per key; a refold from
@@ -314,10 +323,11 @@ at stage 0 and never rebind.
 - [ ] a record written with schema v1 reads under v2 through the
       upcast; an unknown version is an error value naming the
       offset, not a throw (stage 1)
-- [ ] an older engine refuses a newer segment format loudly;
-      a newer engine reads the older format (header version checked
-      both directions; forged newer header refused with the path)
-- [ ] `Store.stats` reports begin/end/bytes/segments per partition
+- [x] an older engine refuses a newer segment format loudly
+      (forged newer header refused, naming the file and both
+      versions; the reads-the-older-format half becomes testable
+      only when a v2 exists)
+- [x] `Store.stats` reports begin/end/bytes/segments per partition
       (consumer lag: stage 1; replica lag: stage 2)
 
 ## Out of scope
@@ -386,5 +396,32 @@ at stage 0 and never rebind.
 
 ## Results
 
-(after implementation and verify — measurements, test counts,
-observed behaviour; the before/after baseline for future agents)
+Stage 0 landed.
+
+- **Module**: `okay-persist`, cross-built JVM/JS/Native
+  (CrossType.Pure, depends on okay-codec for stage 1's typed view).
+  Shared: `Record`, `Ack`, `Policy`, `Topic` (+ `Topic.Read`,
+  FNV-1a key routing), `Store`, `MemoryStore`. JVM only:
+  `FileStore` (java.nio). JS and Native run the shared contract
+  suite over `MemoryStore`; a file engine there waits for a
+  consumer that needs one.
+- **Format**: segment header (magic `OKPS`, format v1, topic,
+  partition, base offset); frames `[len][crc32c][ts][keyLen][key]
+  [value]`, CRC over the body. Recovery scans the last segment,
+  truncates the torn tail, continues appending at the last good
+  frame — the never-acknowledged offset is reused, densely.
+- **Tests**: 21 JVM (the 7-test engine contract against memory AND
+  file, plus 7 file-only: reopen, torn tail, CRC damage, format
+  refusal, segment roll + retention, multi-segment reads, disk
+  topic listing), 7 JS, 7 Native — green.
+- **Deferred, deliberately**: the sparse offset index — reads scan
+  within one segment, bounded by `segmentBytes`; measure before
+  adding the cache (the index is designed above as a rebuildable
+  cache precisely so it can arrive late). Benchmarks land with the
+  first real consumer (stage 1), where an honest workload exists
+  to measure; the numbers row goes to `src/jmh/history.tsv` as
+  usual.
+- **For the next agent**: the seam agreed with the ui/mcp lane —
+  their journal is a topic (offset = Seq = Last-Event-ID), their
+  snapshot store is a compacted keyed topic; a thin `Snapshots`
+  put/latest convenience is wanted in stage 1.
