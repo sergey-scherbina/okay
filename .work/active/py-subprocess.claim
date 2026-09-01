@@ -1,0 +1,7 @@
+feature/py-subprocess 2026-09-02T00:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-02T00:00:00Z
+status: in-progress
+done-so-far:
+next: okay-py stage 0 - PyEval/PyValue/PyFrame (conditions as Either, deviation recorded), stdlib-only shim resource (json wire, module:name, clean env, shim/host handshake), comonadic handler, verify via importlib.metadata incl. wrong-venv refusal; python3 live with skip guard
+files: okay-py/** (new), build.sbt (tail), specs/py.md

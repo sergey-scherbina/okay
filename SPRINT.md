@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- py-subprocess — okay-py stage 0: the REval shape for Python
+  (operations, named functions only, conditions as data), the
+  stdlib-only shim with version handshake and clean env, verify
+  via importlib.metadata (specs/py.md; model = specs/r.md)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam

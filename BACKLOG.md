@@ -17,9 +17,6 @@
 ## okay-codec
 
 ## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
-- [ ] py-subprocess — stage 0: module + shim (stdlib json wire,
-      module:name addressing, clean env, version handshake),
-      verify via importlib.metadata (the wrong-venv refusal)
 - [ ] py-worker — stage 1: persistent worker holding imports;
       N-workers parallelism; two-engine acceptance
 - [ ] py-arrow — frames via pyarrow (twin of r-arrow; nearer —
