@@ -560,6 +560,29 @@ at stage 0 and never rebind.
 
 ## Results
 
+The wire landed (persist-wire + persist-wire-auth, 2026-09-01).
+
+- **The surface is documented above** ("The wire") and the code is
+  its mirror: `[len][CBOR]` frames, `Wire.Req`/`Wire.Resp` enums
+  as the one source for both ends, Hello/Granted with the
+  capability list AS the offer.
+- **Auth as a function**: `token => Option[Set[topic]]` — a token
+  the node does not accept refuses by name; a topic outside the
+  granted set refuses by name and the connection SURVIVES the
+  refusal; okay-security's API keys plug in at construction with
+  no crypto dependency here. TLS: plaintext v1, stated; rides
+  wire-tls when it lands.
+- **The client speaks Async** (`Wire.Remote`), blocking socket
+  behind Async.Run — the okay-pg pattern; Node leg with a
+  consumer. TooEarly crosses unchanged; the tail shape
+  (end-then-read) works remotely; a forged future-version Hello
+  refuses in the handshake.
+- **Tests**: 7 over loopback (JVM), two tokens with different
+  capability sets, byte-exact round-trips against the server's own
+  store. Replication's calls join the message enum under the
+  handshake version when the replicas go remote — the stage-2
+  machinery is already transport-agnostic.
+
 Stage 2's core landed — replication, transport-agnostic
 (persist-replication, 2026-09-01).
 

@@ -71,7 +71,15 @@ successor up before it leads, and `produce(producerId, seq, ...)`
 is the idempotent window. Promotions and fenced appends land on
 the ops topic — the log audits itself.
 
-The staged roadmap — the remote wire carrying these same calls
-between nodes, interop engines (Kafka/JDBC) behind the same
-trait, elected leadership — lives in specs/persist.md with its
-decisions and refuted alternatives.
+**The wire.** `Wire.Server(store, auth)` serves any Store over
+documented `[len][CBOR]` frames; `Wire.Remote.connect(host, port,
+token)` answers the GRANTED topic set — the capability list is
+the offer — and Async programs for append/read/begin/end.
+Refusals are by name, TooEarly crosses unchanged, and auth is a
+function okay-security plugs into. Plaintext until wire-tls,
+stated.
+
+The staged roadmap — replication's calls joining the wire's
+message enum, interop engines (Kafka/JDBC) behind the same trait,
+elected leadership — lives in specs/persist.md with its decisions
+and refuted alternatives.
