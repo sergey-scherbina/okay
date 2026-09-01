@@ -134,8 +134,8 @@ Python-specific additions:)
 - [ ] (py-worker) a persistent worker holds imports across calls (second call
       measurably skips import); kill → dead-process-throws →
       supervisor restarts with imports cold, correctness unchanged
-- [ ] (py-worker) the same test program passes over subprocess and
-      persistent engines unchanged
+- [x] (py-worker) the same test program passes over subprocess and
+      pool engines unchanged (the two-engine acceptance move)
 
 ## Out of scope
 
@@ -190,3 +190,12 @@ handshake refusal, verify naming the absent package, the
 /no/such/venv interpreter refusing at start, and the dead worker
 turning the next exchange into the supervisor's throw. Also the
 FIRST implementation of the r.md shape — r-subprocess mirrors it.
+
+Stage 1 (py-worker, same day): PyWorkers — N resident processes
+behind one handler; parallelism is N workers and the GIL is then
+irrelevant, which is the cluster's worker model, not
+threads-under-GIL. Concurrent dispatch proven by PID distinctness
+(determinism over stopwatch); the supervisor replaces a dead worker
+COLD before rethrowing, so the caller's retry lands on live
+imports-cold state; the two-engine acceptance runs one program over
+subprocess and pool unchanged. 4 more tests, all live.
