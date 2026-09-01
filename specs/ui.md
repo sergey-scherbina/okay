@@ -141,6 +141,76 @@ Layout in v1 is the minimum the terminal needs: Row divides width by
 natural size, Column stacks, no flex weights. The DOM maps Row/Column
 to flexbox and forgets the problem.
 
+## The architecture above v1 (designed now, built in phases)
+
+### Scenarios are programs (phase 2)
+The Elm fold is the LOW level. A wizard, a dialog, an elicitation is
+imperative by nature — show, await, validate, branch — and that shape
+is an EFFECT this library already knows how to run:
+
+```scala
+enum Dialog[+A]:
+  case Show(ui: Ui) extends Dialog[Event]     // show, await one event
+
+def wizard: Contact ! (Dialog + Throws % String) =
+  for
+    name <- Form.ask[Name]("who are you?")    // built on Show
+    _    <- if name.valid then pure(()) else abort("try again")
+    addr <- Form.ask[Address]("where?")
+  yield Contact(name, addr)
+```
+
+A scenario RUNS INSIDE the loop: its handler holds the continuation
+as the update function until the awaited event arrives — delimited
+continuations doing what they are for. Both styles coexist because
+both are the same machine: a screen is a fold, a flow is a program,
+`Dialog` is the bridge. MCP elicitation is a one-step scenario.
+
+### Screens and navigation (phase 2)
+A screen is a `(view, update)` pair over its own S; navigation is a
+STACK of screens — push/pop is Mark/Restore over values, exactly the
+backtrackable-context shape okay-agent already has. Routing is an
+Event; the address bar (DOM) is one more event source merged in.
+
+### The wire: client-server bindings (phase 3)
+The tree carries no functions — by decision, and this is where it
+pays twice. `Ui`, `Event` and `Patch` get derived `Schema`s, so:
+
+- **server-driven UI** (LiveView-shaped): update and view run on the
+  SERVER; events go up the wire, patches come down. The client is a
+  dumb Backend — terminal, DOM, React, none know the difference.
+  Transport: okay-http WebSocket or the MCP duplex session (a page is
+  then something a server SERVES, like tools and resources).
+- **hybrid**: forms fold locally (every keystroke stays client-side),
+  submit crosses the wire as one typed value, decoded by the SAME
+  Schema that rendered the form.
+
+### Low level, in the UI context (phase 3, designed now)
+- **codecs**: `Schema[Ui]`/`Schema[Event]`/`Schema[Patch]` are
+  derivations, not designs — JSON and CBOR both arrive free, CBOR for
+  the patch stream where chatter matters. Version drift across
+  client/server is the codec-evolution problem Schema already has
+  rules for (optional fields decode absent).
+- **security**: an inbound Event is UNTRUSTED input with a natural
+  validator — the currently shown tree. An event naming a key that is
+  not on screen is rejected: THE TREE IS THE CAPABILITY LIST, and the
+  server shows only what it is prepared to hear about. Form input
+  decodes by Schema (total: damage is data), so structure cannot be
+  injected; server-driven mode keeps logic and secrets off the client
+  entirely; rate limiting is a bounded channel, which is the default.
+- **fault tolerance**: the session state is a fold over events — that
+  is EVENT SOURCING by construction: journal events intent-first
+  (the okay-agent Durable shape), recover by refold, snapshot by
+  writing S (a value). Reconnection is cheap because the tree is
+  retained: send the full tree once, then patches; an unacknowledged
+  patch resends from the kept tree, idempotently (patches against a
+  named base version).
+- **scaling**: a session is a fold with a value state — shard by
+  session id, move a session by moving a value, fan a broadcast in as
+  one more merged source. Nothing in the loop holds a lock; the
+  channels' backpressure is the overload story (a slow client parks
+  its own producer, not the server).
+
 ## Out of scope (v1)
 - native toolkits (GTK/Cocoa/Win32) — satellites once the seam has
   proven itself on three free backends; Native runs the terminal host
