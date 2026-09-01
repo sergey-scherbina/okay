@@ -174,6 +174,34 @@ Behavior:
       new chat yields a candidate hint and NOTHING else — no facts,
       no link, no disclosure
 
+## Deals (match-deals): the confirmed match, at last
+`Vis.Matched` promised "disclosed only after a confirmed match" and
+the model had no such thing — the negotiation supplies it. Candidates
+may be several; the client CHOOSES whom to ask; the asked may be
+busy, may decline — several asked means someone agrees.
+
+- **Deal**: (seeker, provider, what, state) — `Asked -> Accepted |
+  Declined`; `Withdrawn` reserved. Append-only states, timestamps.
+- `inquire(seeker, provider, what)` — the ask; `respond(deal, by,
+  accept)` — only the ASKED provider may answer, anyone else is
+  refused; `dealsFor(profile)` — both directions.
+- **The unlock**: `contacts(viewer, other)` answers the other's
+  `Vis.Matched` facts (and the platform's `AfterMatch`-gated ones)
+  ONLY when an Accepted deal binds the two — the second gate's
+  transaction, executed.
+- Tools mirror it (match_inquire / match_respond / match_deals /
+  match_contacts) so the model drives the flow.
+
+Behavior:
+- [ ] several candidates answer a need, and inquiries go only to the
+      CHOSEN ones
+- [ ] respond is the asked provider's alone; a stranger's answer is
+      refused
+- [ ] Accepted unlocks contacts both ways (Matched facts,
+      AfterMatch-gated facts); Declined and Asked unlock nothing
+- [ ] the engines agree: memory and sql (sqlite included) hold the
+      same deal guarantees; deals survive a restart
+
 ## Out of scope
 - The account-recovery security flow (recorded above; stage 2).
 - Payment/monetization mechanics — the platform gate EXISTS in the
