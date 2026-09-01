@@ -62,18 +62,19 @@ across machines; persist-backup copies (specs/persist.md, Backup).
 
 ## Behavior
 
-- [ ] put then get round-trips bytes at constant memory (a payload
+- [x] put then get round-trips bytes at constant memory (a payload
       larger than any single buffer, asserted by allocation bound
       or by chunk accounting)
-- [ ] get with a range returns exactly the slice; head reports
+- [x] get with a range returns exactly the slice; head reports
       size and etag without a body
-- [ ] list(prefix) pages transparently and yields every key once,
+- [x] list(prefix) pages transparently and yields every key once,
       in key order
-- [ ] absent keys: get is an error value naming the key, head is
+- [x] absent keys: get is an error value naming the key, head is
       None, delete is idempotent
 - [ ] the fs and S3 engines pass the same contract suite (StoreSuite
       pattern); the S3 side runs against MinIO and SKIPS where
-      absent (TestLive pattern)
+      absent (TestLive pattern) — fs half SHIPPED (BlobContract);
+      the S3 re-run arrives with blob-s3
 - [ ] SigV4: a canonical-request test vector from the AWS
       documentation signs to the documented signature (the
       algorithm pinned by test, not by trust)
@@ -113,3 +114,15 @@ across machines; persist-backup copies (specs/persist.md, Backup).
   nothing here builds mutable-blob coordination on top (that is
   what the LOG is for). Rejected: blob-level optimistic-locking
   machinery beyond the declared conditional put.
+
+## Results (stage 0)
+
+Shipped 2026-09-01 (blob-fs): trait Blob cross-built; the Fs engine
+(jvm) — keys resolve STRICTLY under the root (`..` refuses), puts
+land in `.tmp` and MOVE atomically so a reader never sees a
+half-written object, crash leftovers are invisible, the etag is
+engine-defined (size-mtime; content hashes arrive with S3's
+protocol). One adjustment to the sketch, recorded in Decisions: get
+answers Either — the produced chunks are the body, the program's
+answer is the outcome, which is where an absent key can BE a value.
+BlobContract is the suite blob-s3 re-runs. 7 tests.
