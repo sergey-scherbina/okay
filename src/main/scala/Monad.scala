@@ -1,5 +1,7 @@
 package okay
 
+import scala.annotation.implicitNotFound
+
 /**
  * Robert Atkey. Parameterised notions of computation. (2009)
  * https://bentnib.org/paramnotions-jfp.html
@@ -62,6 +64,7 @@ trait Functor[F[_]]:
     inline def map[B](f: A => B): F[B] = fmap(a, f)
 
 /** lift values and apply lifted functions; fmap derives from pure and app */
+@implicitNotFound("no Applicative[${F}].\nOkay's instances ride the given import: `import okay.given` (a bare `import okay.*` does not bring givens).")
 trait Applicative[F[_]] extends Functor[F]:
   override def fmap[A, B](a: F[A], f: A => B): F[B] = pure(f).app(a)
   def pure[A](a: A): F[A]
@@ -89,6 +92,7 @@ trait Selective[F[_]] extends Applicative[F]:
         .branch(t.map(Function.const))(e.map(Function.const))
 
 /** sequence computations; fmap, app and select all derive from flatMap by the laws */
+@implicitNotFound("no Monad[${F}].\nOkay's instances ride the given import: `import okay.given`.\nFor a program monad A ! Row the instance lives in Free's companion and is always found;\nif ${F} is a row containing Choose, summon MonadPlus explicitly where empty/append are needed\n(Choice.scala documents the overlap).")
 trait Monad[F[_]] extends Selective[F]:
   override def fmap[A, B](a: F[A], f: A => B): F[B] = a.flatMap(f.andThen(pure))
   extension [A](a: F[A])
@@ -151,6 +155,7 @@ extension [F[_]](cond: F[Boolean])(using S: Selective[F])
     S.ifS(cond)(S.pure(()))(body)
 
 /** a Monad that is also an Alternative, under the traditional names */
+@implicitNotFound("no MonadPlus[${F}].\nNondeterminism needs Choose in the row: MonadPlus exists for [A] =>> A ! Choose and for rows Choose + F\n(Choice.scala); `import okay.given` brings it.")
 trait MonadPlus[F[_]]
   extends Alternative[F], Monad[F]:
   def mzero[A]: F[A] = empty

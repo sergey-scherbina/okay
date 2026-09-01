@@ -1,5 +1,7 @@
 package okay
 
+import scala.annotation.implicitNotFound
+
 import scala.annotation.tailrec
 import scala.reflect.Typeable
 
@@ -59,6 +61,7 @@ type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
 infix type !>[F[_], S] = Interpr[F, Cont, S]
 
 /** A comonadic handler interprets each operation by its own value */
+@implicitNotFound("no Handler[${F}].\nA Handler answers each operation with a plain value (trait Handler: def handle[A](a: F[A]): A).\nFor a ROW, build the union from the parts: given Handler[F + G] = Handler.union[F, G]\n(each part needs its own Handler in scope first).")
 trait Handler[F[_]]:
   def handle[A](a: F[A]): A
 
@@ -154,6 +157,7 @@ transparent inline def Effects[M[_[+_], _]]: Effects[M] =
   compiletime.summonInline[Effects[M]]
 
 /** ∀X, the runtime test for F[X], by the erasure of F */
+@implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations. If one class carries the whole\nsignature (the answer type is the only parameter), declare:\n  given TypeableK[${F}] = typeableK(classOf[YourOp[?]])\n— the test is then TOTAL (see Delim.scala's precedent and the typepedia entry).")
 trait TypeableK[F[_]]:
   def unapply[A](x: Any): Option[x.type & F[A]]
 

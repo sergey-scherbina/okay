@@ -1,6 +1,7 @@
 package okay
 
 import scala.quoted.*
+import scala.annotation.implicitNotFound
 
 /**
  * The flat block (specs/direct-macro.md): `direct[F] { ... m.reflect ... }`
@@ -65,9 +66,11 @@ object Direct:
    * so outside a block they cannot resolve and F[A]-as-A stays the
    * compile error it always was.
    */
+  @implicitNotFound("no DirectCtx[${F}]: auto-coloring works only INSIDE a direct block.\nWrap the code in direct[F] { ... } — or use the explicit marks (.reflect / .!? / !prog),\nwhich need no capability.")
   final class DirectCtx[F[_]] private[Direct] ()
 
   /** marker: G's operations may auto-color inside direct blocks */
+  @implicitNotFound("no Direct.Effect[${G}]: auto-coloring is OPT-IN per signature.\nRegister the effect once — `given Direct.Effect[${G}] with {}` — or use the explicit marks\n(.reflect / .!? / !prog), which need no marker.")
   trait Effect[G[_]]
 
   /** the block's own monadic values auto-color: F[A] as A — a

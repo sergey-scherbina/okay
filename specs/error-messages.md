@@ -21,20 +21,22 @@ No API. Annotations and messages only.
 
 ## Behavior
 
-- [ ] a missing `Monad[F]` names the given import (`import
+- [x] a missing `Monad[F]` names the given import (`import
   okay.given`) and the program-monad case (`A ! Row` has its
   instance in Free's companion — check the row for Choose overlap)
-- [ ] a missing `Handler[F]` says what a handler is and points at
+- [x] a missing `Handler[F]` says what a handler is and points at
   the union builder for rows
-- [ ] a missing `TypeableK[F]` explains the total-split requirement
-  and the one-class-carries-the-signature pattern
-- [ ] a missing `Direct.Effect[G]` says auto-coloring is opt-in and
+- [x] a missing `TypeableK[F]` explains the total-split requirement
+  and the one-class-carries-the-signature pattern (annotation only —
+  unpinnable, see Results)
+- [x] a missing `Direct.Effect[G]` says auto-coloring is opt-in and
   shows the one-line registration
-- [ ] a missing `DirectCtx[F]` says auto-coloring works only inside
+- [x] a missing `DirectCtx[F]` says auto-coloring works only inside
   `direct { }`
-- [ ] a missing `CanBlock` names the door (`Blocking`) and the
-  scheduler rule it protects
-- [ ] TestErrorMessages asserts an ACTIONABLE substring for each of
+- [x] a missing `CanBlock` names the door (`Blocking`) and the
+  scheduler rule it protects (annotation only — the JVM default
+  given always resolves in-package, see Results)
+- [x] TestErrorMessages asserts an ACTIONABLE substring for each of
   the above and for the direct macro's standing refusals — the
   wording is pinned by test
 
@@ -47,8 +49,25 @@ No API. Annotations and messages only.
 
 ## Decisions
 
-(fill as made)
+- **Pin what fails, annotate what may fail elsewhere** — probed
+  in-package: TypeableK and CanBlock ALWAYS resolve inside okay
+  (the derivation; the JVM default CanBlock), so their texts cannot
+  be asserted by compileErrors here; the annotations stand for
+  downstream scopes and the probe result is recorded so nobody
+  writes the unpinnable test again.
+- **The macro's messages were already the standard** — the audit
+  found the direct refusals name position and workaround throughout;
+  the pass pinned them rather than rewrote them.
 
 ## Results
 
-(fill after verify)
+- @implicitNotFound landed on Monad, Applicative, MonadPlus,
+  Handler, TypeableK, CanBlock, Direct.Effect, DirectCtx — each
+  message a recipe (the import, the union builder, the one-line
+  registration, the door), not a lament.
+- TestErrorMessages pins 5 wordings (Monad, Handler, Effect,
+  DirectCtx, and both standing macro refusals); a rewrite that
+  loses the actionable substring fails the suite.
+- Probe finding: compileErrors snippets typecheck at the CALL SITE
+  scope — extensions used in a snippet need their import IN the
+  snippet string.

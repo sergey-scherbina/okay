@@ -1,5 +1,7 @@
 package okay
 
+import scala.annotation.implicitNotFound
+
 /**
  * Asynchrony, cross-platform (specs/cross-platform-async.md): programs
  * stay in the effect world — `A ! Async` composes by flatMap,
@@ -52,6 +54,7 @@ inline def await[A](register: (A => Unit) => Unit): A ! Async =
  * platform practice the seams already follow, named as a type */
 type Blocking[A] = CanBlock ?=> A
 
+@implicitNotFound("no CanBlock capability in scope.\nBlocking parks a thread, so it must be GRANTED, not assumed: take it through the door\n(a `Blocking[A]` = `CanBlock ?=> A` parameter, or `using CanBlock`), and the runtime installs\nit where parking is safe (a virtual thread on the JVM). JS has no blocking — restructure with Async.")
 trait CanBlock:
   /** park the current thread until the registered callback fires; if
    * the park itself fails (interruption), the registration is
