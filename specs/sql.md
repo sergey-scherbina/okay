@@ -179,9 +179,17 @@ import — and the platforms it runs on.
       no nullability, so describe asks pg_attribute — the catalog
       answers and a clean verify needs no Option-everything
       concession)
-- [ ] COPY-based bulk load with a load id through the pg driver
+- [x] COPY-based bulk load with a load id through the pg driver
       (the specs/data.md warehouse posture, exercised on the free
-      engine first)
+      engine first) — copyIn speaks the simple-protocol COPY dance
+      (CopyInResponse/CopyData/CopyDone) with the text format's
+      escapes proven round-trip (tab, newline, backslash, NULL);
+      where a warehouse has per-file load history, plain Postgres
+      gets a loads REGISTRY whose row commits IN ONE TRANSACTION
+      with the data — the retry answers AlreadyLoaded, and a crash
+      between COPY and commit rolls back claim AND data together,
+      so the retry lands exactly once overall (tested by killing
+      the connection mid-load)
 - [ ] a Native-image (or Node) consumer queries Postgres through
       okay-pg with no JVM/JDBC present (the openness acceptance)
 
@@ -319,6 +327,8 @@ The seam and its first driver landed (sql-seam, 2026-09-01).
   survives, describe consulting pg_attribute for nullability.
   Live suite (8 tests incl. the two-driver acceptance) against
   the dockerized Postgres 17.11; skips where absent.
-- **Still open** (their own boxes/slugs): COPY bulk load
-  (jdbc-bulk-load), the non-JVM consumer (with the cross-platform
-  transport leg).
+- **COPY landed** (sql-pg-copy, same day): see the checked box —
+  copyIn + Load with the one-transaction registry claim; the
+  crash-retry battery runs live against the dockerized Postgres.
+- **Still open**: the non-JVM consumer (sql-pg-node, with the
+  cross-platform transport leg).

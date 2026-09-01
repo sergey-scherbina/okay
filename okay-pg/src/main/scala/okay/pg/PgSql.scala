@@ -158,6 +158,41 @@ final class PgSql private (sock: Socket, in: DataInputStream, out: DataOutputStr
 
   def rollback(): Unit ! Async = async { simple("ROLLBACK"); inTx = false }
 
+  // ── COPY: the bulk-load road (specs/sql.md, specs/data.md) ─────
+
+  /** raw COPY IN over the simple protocol: CopyInResponse, then a
+   * CopyData frame per row line, CopyDone, the count from
+   * CommandComplete. Rows arrive already TEXT-ENCODED (see
+   * `PgSql.copyRow`); the caller owns the statement text — the
+   * bind-don't-model rule holds for bulk loads too. */
+  def copyIn(sql: String, rows: Iterator[String]): Long ! Async = async {
+    send('Q', str(sql))
+    out.flush()
+    var ok = false
+    var going = true
+    while going do
+      val (tag, body) = receive()
+      tag match
+        case 'G' => ok = true; going = false          // CopyInResponse
+        case 'E' =>
+          val err = errorOf(body)
+          drainUntilReady { case _ => () }
+          throw err
+        case 'Z' => going = false                     // refused before starting
+        case _ => ()
+    if !ok then throw PgError(s"the statement did not start a COPY: $sql")
+    for line <- rows do
+      send('d', (line + "\n").getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    send('c', Array.empty)
+    out.flush()
+    var count = 0L
+    drainUntilReady {
+      case ('C', body) => count = countOf(body)
+      case _ => ()
+    }
+    count
+  }
+
   /** the sync emergency brake: blocking I/O anyway on this leg */
   def cancel(): Unit =
     if inTx then
@@ -399,6 +434,23 @@ object PgSql:
         i += 1
       SqlValue.Bytes(out)
     case _ => SqlValue.Text(s)
+
+  /** one row in COPY text format: tab-separated, NULL as \\N,
+   * the backslash/tab/newline/return escapes the format demands */
+  def copyRow(row: Vector[SqlValue]): String =
+    row.map {
+      case SqlValue.Null => "\\N"
+      case v =>
+        val s = textOf(v).get
+        val sb = new StringBuilder(s.length)
+        for c <- s do c match
+          case '\\' => sb.append("\\\\")
+          case '\t' => sb.append("\\t")
+          case '\n' => sb.append("\\n")
+          case '\r' => sb.append("\\r")
+          case other => sb.append(other)
+        sb.result()
+    }.mkString("\t")
 
   private[pg] def textOf(v: SqlValue): Option[String] = v match
     case SqlValue.Null => None
