@@ -97,9 +97,6 @@
       PRIMARY case — cross-boundary exit has no handler
       equivalent); ADDITIVE as an API: the unguarded path stays
       (specs/llm-agentic.md, Streaming validation)
-- [ ] stage-phased3 — one more arity, because the consumer exists:
-      the http message shape; same typestate guarantees, PState
-      transitions; transduce stays (specs/stage-pipeline.md)
 - [ ] http-message-phases — the Nio parser's request-line ->
       headers -> body as phased3, the phase enum gone structurally,
       corpus-agreement asserted; internal refactor, module API

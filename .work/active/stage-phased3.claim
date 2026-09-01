@@ -1,0 +1,7 @@
+feature/stage-phased3 2026-09-02T10:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-02T10:00:00Z
+status: in-progress
+done-so-far:
+next: Stage.phased3 per the landed spec - one more arity for the http message shape; same guarantees (no phase enum, compile-error proofs at BOTH seams, PState transitions, three honest ends); transduce stays
+files: src/main/scala/Pipe.scala (additive), src/test/scala/TestPhased.scala (extend), specs/stage-pipeline.md boxes
