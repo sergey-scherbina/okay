@@ -3,10 +3,6 @@
 ## Doing
 
 ## Queue
-- match-stage0 — specs/match.md stage 0: the model, Registry/Facts/
-  Match effects, memory handler + rag embeddings, MCP tools, replay
-  idempotence. The user-directed priority lane.
-
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
  rag-pgvector — plus persist-wire and cache-memory; ui-durable and

@@ -444,6 +444,21 @@ lazy val okayRag = crossProject(JVMPlatform, JSPlatform)
     ),
   )
 
+/** two-sided matching over LLM-structured chats (specs/match.md):
+ * log-first, an attribute registry against vocabulary drift, facts
+ * with provenance, hybrid search */
+lazy val okayMatch = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-match"))
+  .dependsOn(okayRag, okayAgent)
+  .settings(
+    name := "okay-match",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+    ),
+  )
+
 /** agents as programs: tool calls are operations, the conversation
  * is a fold, policy lives in handlers (P9) */
 lazy val okayAgent = crossProject(JVMPlatform, JSPlatform)
@@ -758,7 +773,7 @@ lazy val root = (project in file("."))
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
-    okayAgent.jvm, okayAgent.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,
+    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)

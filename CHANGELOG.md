@@ -1,5 +1,23 @@
 # Changelog
 
+## match-stage0 — okay-match exists: the model, the effects, the reference store
+Completed: 2026-09-01
+
+New module okay-match (package okay.matching — `match` is a keyword).
+Model.scala: profiles (email + owner-secret UUID), append-only facts
+with chat-span provenance and supersede-with-reason, two-gate
+visibility, the small value core, typed predicates. Ops.scala: the
+Registry / Facts / Find effects — the whole backend contract, open by
+construction. Memory.scala: the reference handler — hashing
+embeddings, search-before-create on propose (slug/synonym exact OR
+description cosine), replay-idempotent asserts keyed by (profile,
+attr, provenance), hybrid candidates (hard predicate filter, then
+similarity over per-side profile summaries), both gates honored at
+disclosure. Tools.scala: the operations as LLM tools 1:1 — the
+(specs, table) pair mcp.Server.serve takes. Six tests, one per
+spec behavior checkbox, including the scripted two-side scenario:
+provider chat in, seeker chat out, matched end to end.
+
 ## obs-tracing — the missing third of the doctrine, without a framework
 Completed: 2026-09-01 (landed as 2ad52a4)
 okay-obs cross-built: spans as values on a trace topic, W3C

@@ -90,28 +90,33 @@ interactive in-chat extraction (which reads the profile, notices
 conflicts, asks, supersedes) commutes with offline replay.
 
 ## Behavior (stage 0)
-- [ ] search-before-create holds: proposing an attribute
+- [x] search-before-create holds: proposing an attribute
       near-duplicate to an existing one returns the existing id, and
       the registry stays synonym-free under a replayed extraction
-- [ ] facts carry provenance to a chat span; supersede keeps the old
+- [x] facts carry provenance to a chat span; supersede keeps the old
       fact reachable in history; `profile` shows current + history
-- [ ] both visibility gates are stored; search results never disclose
+- [x] both visibility gates are stored; search results never disclose
       below the effective gate (min of owner intent, platform policy)
-- [ ] replay idempotence: re-extracting the same chat log yields no
+- [x] replay idempotence: re-extracting the same chat log yields no
       duplicate facts and the same profile state
-- [ ] hybrid search on the memory handler: a hard constraint (typed
+- [x] hybrid search on the memory handler: a hard constraint (typed
       fact filter) excludes; semantic similarity ranks the rest; a
       seeker's stored need finds the provider stored earlier
-- [ ] the MCP tools mirror the effect operations and a scripted
+- [x] the MCP tools mirror the effect operations and a scripted
       two-side scenario (provider chat, then seeker chat) matches
       end to end
 
 ## Staging
 - **stage 0** — the model, the three effects, the in-memory handler,
   embeddings via okay-rag's index, MCP tools, replay discipline.
-- **stage 1** — durable handlers: sqlite and Postgres+pgvector
-  through the Sql seam; the chat log on persist topics; registry
-  migrations (synonym merge → projection rebuild).
+- **stage 1** — durable handlers. Named first: sqlite and
+  Postgres+pgvector through the Sql seam, and the chat log on persist
+  topics; but the list is OPEN by principle — the three effects are
+  the whole contract, so a backend is anything that can serve them:
+  text files for a test, memory (the stage-0 reference), a technology
+  that does not exist yet. A new backend is a new handler in one
+  place; the core does not change. Registry migrations (synonym
+  merge → projection rebuild) land here too.
 - **stage 2** — cross-channel/email-recovery identity (the hijack
   question, with okay-security), LLM rerank, the platform-policy
   engine for disclosure, freshness/volatility in ranking.
@@ -133,6 +138,7 @@ conflicts, asks, supersedes) commutes with offline replay.
   error and is discarded) needs history, not overwrite.
 - **Two-gate visibility from day 0** — retrofitting privacy is
   expensive; one enum and one policy hook now are cheap.
-- **Effect facade first, handlers second** — memory + rag now,
-  sqlite/Postgres behind the Sql seam next, the same typed programs
-  over all of them; the house style, stated once here and assumed.
+- **Effect facade first, handlers second** — memory + rag now, any
+  store later, the same typed programs over all of them; the backend
+  list is open BY CONSTRUCTION (a handler in one place, the core
+  untouched) — the house style, stated once here and assumed.
