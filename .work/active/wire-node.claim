@@ -1,0 +1,5 @@
+slug: wire-node (persist-wire-node; the Net seam sql-pg-node will ride)
+agent: fable-persist (session 75625ecc)
+started: 2026-09-01
+scope: the one cross-platform socket seam — Net in the core (trait shared; jvm-native leg = blocking socket behind Async.Run; js leg = Node net with buffered awaits); persist's Wire protocol moved to SHARED (WireProtocol: Version/Req/Resp, export keeps Wire.* paths), a cross-platform WireClient over Net; jvm battery against Wire.Server + a JS test against a SCRIPTED NODE SERVER speaking the documented CBOR frames — the openness acceptance with no JVM in sight; sql-pg-node stays open (PgSql's pump restructure, its own claim), stated
+files: specs/net.md, src/main/scala/Net.scala + scala-jvm-native/NetSocket.scala + scala-js/NetNode.scala, okay-persist shared WireProtocol + WireClient + tests (jvm + js), build.sbt (persist js test dir)
