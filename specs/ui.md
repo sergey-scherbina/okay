@@ -241,19 +241,19 @@ object WireJson:   // hand-mapped, the MCP-dialect precedent —
   def patchJson(p: Patch): Json; def patchOf(j: Json): Option[Patch]
 ```
 
-- [ ] every Ui, Event and Patch shape round-trips through Json
-- [ ] the serve stage's first line is the full tree; later lines are
+- [x] every Ui, Event and Patch shape round-trips through Json
+- [x] the serve stage's first line is the full tree; later lines are
       the narrow patches the diff makes, not full repaints
-- [ ] a FORGED event — a key that is not on the shown tree — is
+- [x] a FORGED event — a key that is not on the shown tree — is
       dropped: update never sees it (asserted by a counter that would
       have moved)
-- [ ] end to end over in-memory channels: a scripted user drives a
+- [x] end to end over in-memory channels: a scripted user drives a
       server-held counter through a client Host; frames on the client
       equal the server's views
-- [ ] a second client connecting to a fresh serve of the SAME state
+- [x] a second client connecting to a fresh serve of the SAME state
       begins with the full tree (reconnect's shape; session
       continuity itself is ui-durable's task)
-- [ ] a damaged line is dropped, not a crash — totality at this wire
+- [x] a damaged line is dropped, not a crash — totality at this wire
       like every other
 
 ### Low level, in the UI context (phase 3, designed now)
@@ -334,6 +334,15 @@ and askSchema are form flows with retry-by-recursion, and the demo's
 hand-rolled elicitation loop collapsed to
 `Dialog.run(host)(Form.askSchema(...))`, which is the phase's claim
 in one diff. 4 more tests.
+
+Phase 3's wire (ui-wire) shipped 2026-09-01: WireJson (hand-mapped,
+the dialect precedent — codec-vector filed for the derivation),
+Wire.serve as a pure Stage (full tree first, then the diff's narrow
+patches), Wire.client rendering to any Host, and the capability rule
+asserted from the hostile side: an update that would THROW on a
+forged key never hears about it. 6 tests; the end-to-end asserts the
+client's frames equal the server's views over channels — and any line
+transport (Link, WS, stdio) is the same stage by construction.
 
 The seam's claim is a test, not a sentence: TestPortable runs one
 application on the test host and asserts the terminal renders exactly
