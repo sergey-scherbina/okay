@@ -485,3 +485,22 @@ and handing it in; this module depends on core only.
 - embeddings/vector search of our own (a `Retrieve` effect with
   handlers pointing at existing stores instead), document loaders,
   provider breadth — that is what the interop module is for.
+
+## The stepper (agent-stepper — the staged-relay consumer)
+Run an agent program under a debugger's hand: `Stepper.stepped`
+translates every `Tool.Call` into a PAUSE — the operator inspects the
+call, performs/fakes/edits its result, and `resume` continues the run
+none the wiser. Delim is the foundation and earns it twice: the pause
+is a shift to a typed prompt whose captured continuation IS the rest
+of the run, reified as a value; and because Delim's continuations are
+multi-shot, one pause can be resumed MORE THAN ONCE — fork the run at
+a tool call, feed two results, compare the futures ("what if the tool
+had said X"). `drive` loops an operator's decision; `transparent`
+proves the observer effect away: stepping with nobody watching equals
+not stepping.
+
+- [x] the stepped run pauses at every tool call and, fed the real
+      results, equals the unstepped run
+- [x] an edited result flows into the program unnoticed
+- [x] multi-shot: one pause resumed twice yields two futures
+- [x] the transparent driver equals the direct run

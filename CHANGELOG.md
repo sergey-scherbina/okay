@@ -1,5 +1,18 @@
 # Changelog
 
+## agent-stepper — pause, inspect, resume, fork: Delim's second consumer
+Completed: 2026-09-01
+
+Stepper.stepped translates every Tool.Call into a pause (a shift to a
+typed prompt; the captured continuation IS the rest of the run, as a
+value), drive loops the operator's decision, transparent proves the
+observer away (stepping with nobody watching equals not stepping —
+tested against the direct run). The Delim-specific dividend is
+multi-shot: one pause resumed twice yields two futures from one past
+("what if the tool had said X"), tested. With dialog-delim and
+ui-pwizard landed the same day, PState and Delim both now hold
+production consumers. 4 tests.
+
 ## persist-election — the operator removed from the loop
 Completed: 2026-09-01 (landed as 096fc9c)
 specs/consensus.md implemented: Election consumes total order and
