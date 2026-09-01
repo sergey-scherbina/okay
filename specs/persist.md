@@ -253,6 +253,16 @@ a dead peer THROWS and that is the whole protocol):
   runs `Store` over Kafka; the own engine grows under the same
   trait and the consumers never hear about it.
 
+  Two rules the stage-3 engines obey (persist-interop):
+  (a) the `Topic` SPI is sync, and an interop engine that is
+  Async underneath BLOCKS honestly (CanBlock — virtual threads on
+  the JVM), exactly the JdbcSql argument run in reverse; it does
+  not fake an async SPI. (b) an engine KEEPS its own operations:
+  Kafka manages retention and compaction itself, so our
+  `compact()` on the Kafka engine REFUSES by name ("configure the
+  topic") instead of pretending to own what it does not — an
+  interop inherits the engine's ops along with its twenty years.
+
 ## Evolution and versioning
 
 Three separate things that version, each with its own rule:
