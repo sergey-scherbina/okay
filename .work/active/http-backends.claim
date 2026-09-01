@@ -1,6 +1,0 @@
-feature/http-backends 2026-09-01T06:07:10Z
-agent: claude-code
-heartbeat: 2026-09-01T06:07:10Z
-status: in-progress
-done-so-far: NIO and okay-jetty landed on master (c9937aa); okay-netty is in the worktree, 12 tests green
-next: rebase on dd4599f, verify the spec, docs, land
