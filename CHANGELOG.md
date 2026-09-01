@@ -1,5 +1,20 @@
 # Changelog
 
+## cache-memory — named invalidation, no default TTL, stage 0
+Completed: 2026-09-01 (landed as f6219f9)
+okay-cache cross-built (core-only dep): Regime (Budget/Invalidated,
+no default, no unbounded constructor), bounded LRU memory engine
+(expiry on read, re-insertion recency), single-flight getOrLoad
+whose loader runs under its OWN drive — a failure anywhere in it
+reaches every waiter instead of stranding them, and the key
+recovers. Negative caching is a type (V = Option[A]), stats a plain
+value. 9 JVM / 7 JS / 7 Native (the shared suite drives Run-only
+programs inline — no CanBlock, so it runs on JS). Filed
+cache-write-through for the orphaned write-through box. En route:
+one full-matrix environmental kill (okay-conf Native, signal 9,
+green twice alone — OOM under parallel Native runners). Merge read
+alone: exit 0. Matrix green on rerun.
+
 ## agent-langchain4j — their ChatModel behind our Model effect
 Completed: 2026-09-01 (landed as b8b4d75)
 okay-langchain4j (jvm, langchain4j-core only): message/declaration/

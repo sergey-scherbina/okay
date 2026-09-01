@@ -69,9 +69,10 @@
       sink, or the at-least-once contract asserted where EOS is off
 
 ## okay-cache (specs/cache.md)
-- [ ] cache-memory — Cache trait, bounded LRU memory engine,
-      single-flight getOrLoad, named Regime (no default TTL),
-      negative caching, stats as values
+- [ ] cache-write-through — regime 2 paired with okay-jdbc: the
+      invalidate-AFTER-commit ordering asserted, the stale window
+      between commit and invalidate demonstrated and documented
+      (the one cache.md box no existing slug covered)
 - [ ] cache-view — regime 1: the log-fed View over a compacted
       keyed topic (lag = consumer lag; pairs persist-stage1)
 - [ ] cache-redis — minimal RESP client (GET/SET PX/DEL/PING) over
