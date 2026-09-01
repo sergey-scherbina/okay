@@ -41,6 +41,7 @@ object Cbor {
     out ++= bs
 
   private def put[A](out: ArrayBuffer[Byte], s: Schema[A], a: A): Unit = s match
+    case Schema.SIso(u, _, from) => put(out, u(), from(a))
     case Schema.SInt => integer(out, a.toLong)
     case Schema.SLong => integer(out, a)
     case Schema.SDouble =>
@@ -125,6 +126,7 @@ object Cbor {
     }
 
   private def get[A](in: In, s: Schema[A]): Either[String, A] = s match
+    case Schema.SIso(u, to, _) => get(in, u()).flatMap(to)
     case Schema.SInt => intItem(in).map(_.toInt)
     case Schema.SLong => intItem(in)
     case Schema.SDouble => in.byte().flatMap {

@@ -15,9 +15,10 @@ final case class Secret(ref: String):
   override def toString: String = ref
 
 object Secret:
-  /** the reference travels as a one-field product ({"ref": ...});
-   * a bare-string form waits for an iso node in the Schema algebra */
-  given Schema[Secret] = Schema.derived
+  /** the reference travels as the BARE string — the iso node it
+   * waited for (codec-iso) arrived, and the wrapper does not exist
+   * on the wire */
+  given Schema[Secret] = Schema.wrap(Secret(_), _.ref)
 
 /**
  * The resolver seam — a trait, not an effect row (programs do not

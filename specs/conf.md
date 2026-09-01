@@ -255,8 +255,8 @@ Native leg compiles the same Platform source). Two small deviations
 from the sketch, both stated: `Conf.load` takes the path as a String
 so the signature exists on every platform (JS answers a named
 refusal until Node's fs joins), and `Schema[Secret]` travels as the
-one-field product {"ref": ...} — a bare-string form waits for an iso
-node in the Schema algebra (filed: codec-iso). `chain` prefers a
+BARE reference string since codec-iso landed the iso node the first
+form waited for. `chain` prefers a
 matched scheme's own miss over an unrecognized-scheme shrug, so the
 one error is the specific one. Stage 2 (the config topic) remains
 conf-topic in BACKLOG.

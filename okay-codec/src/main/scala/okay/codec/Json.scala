@@ -149,6 +149,8 @@ object Json {
       val i = su.caseOf(a)
       val (name, sc) = su.cases(i)
       s"{\"$name\":${encode(sc().asInstanceOf[Schema[Any]])(a)}}"
+    // the newtype node: A travels as B, so encode is `from` then under's
+    case Schema.SIso(u, _, from) => encode(u())(from(a))
 
   /** the decoding algebra: fold the schema, read the value back —
    * errors are values (Left), never faults */
@@ -208,6 +210,7 @@ object Json {
       su.cases.find(_._1 == name)
         .toRight(s"unknown case '$name' of ${su.name}")
         .flatMap((_, sc) => decode(sc().asInstanceOf[Schema[Any]])(v).map(_.asInstanceOf[A]))
+    case (Schema.SIso(u, to, _), v) => decode(u())(v).flatMap(to)
     case (_, JErr(m)) => Left(m)
     case (want, got) => Left(s"expected ${want.getClass.getSimpleName}, got $got")
 

@@ -29,7 +29,7 @@ class TestConfFiles extends munit.FunSuite {
   test("Conf.load reads a config file end to end") {
     final case class App(name: String, token: Secret)
     given Schema[App] = Schema.derived
-    val path = tmp("""{"name":"svc","token":{"ref":"env:TOKEN"}}""")
+    val path = tmp("""{"name":"svc","token":"env:TOKEN"}""")
     assertEquals(Conf.load[App](path), Right(App("svc", Secret("env:TOKEN"))))
     assert(Conf.load[App]("/no/such/file").isLeft)
   }
@@ -37,7 +37,7 @@ class TestConfFiles extends munit.FunSuite {
   test("the edge pattern: load, resolve, hand to a constructor — the whole gap") {
     final case class Db(url: String, user: String, password: Secret)
     given Schema[Db] = Schema.derived
-    val path = tmp("""{"url":"jdbc:h2:mem:x","user":"app","password":{"ref":"env:PATH"}}""")
+    val path = tmp("""{"url":"jdbc:h2:mem:x","user":"app","password":"env:PATH"}""")
     val wired =
       for
         db <- Conf.load[Db](path)

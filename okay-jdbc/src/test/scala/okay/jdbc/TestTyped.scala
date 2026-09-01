@@ -83,6 +83,32 @@ class TestTyped extends munit.FunSuite {
 
   // ── rows ─────────────────────────────────────────────────────────
 
+  test("a wrapped column is its underlying kind, both directions (codec-iso)") {
+    // the wrapper exists only in the Scala type; the row sees text
+    final case class Name(s: String)
+    given Schema[Name] = Schema.wrap(Name(_), _.s)
+    final case class Named(id: Long, userName: Name)
+    given Schema[Named] = Schema.derived
+    withDb { db =>
+      val rs = allRows[Named](db, "select id, user_name from customer order by id")
+      assertEquals(rs(0).toOption.get.userName, Name("ann"))
+      // and the encode direction: a wrapped param binds as its Text
+      val hit = allRows[Named](db,
+        "select id, user_name from customer where user_name = ?",
+        okay.sql.Params.bind(Tuple1(Name("bob")))(using Schema.derived))
+      assertEquals(hit.map(_.toOption.get.userName), Vector(Name("bob")))
+      // a refining wrapper's refusal is a Bad naming the rule
+      final case class Short5(s: String)
+      given Schema[Short5] = Schema.refine(
+        (x: String) => if x.length <= 2 then Right(Short5(x)) else Left(s"'$x' is longer than 2"),
+        _.s)
+      final case class R(id: Long, userName: Short5)
+      given Schema[R] = Schema.derived
+      val bad = allRows[R](db, "select id, user_name from customer order by id")
+      assert(bad.forall(_.isLeft), bad.toString)
+    }
+  }
+
   test("a row decodes by column label: camel-snake, Option for NULL, bytes for binary") {
     withDb { db =>
       val rs = allRows[Customer](db, "select * from customer order by id")

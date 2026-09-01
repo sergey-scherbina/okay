@@ -169,18 +169,18 @@ schema, the form and the sql row all see the UNDERLYING shape —
 which is the point: to every consumer, the wrapper does not exist.
 
 Behavior:
-- [ ] a wrapped string round-trips JSON and CBOR as a BARE string;
+- [x] a wrapped string round-trips JSON and CBOR as a BARE string;
       a wrapped Int as a bare number — no object anywhere
-- [ ] refine: a Left from `to` is a decode error carrying its
+- [x] refine: a Left from `to` is a decode error carrying its
       message, positioned like any wrong-shape error, never a throw
-- [ ] a product holding wrapped fields derives, encodes flat, and
+- [x] a product holding wrapped fields derives, encodes flat, and
       partial input still falls back to defaults first (the two
       macro-adjacent features compose)
-- [ ] the tool schema of a wrapped field is the underlying type's
+- [x] the tool schema of a wrapped field is the underlying type's
       schema (a Secret parameter declares as a string)
-- [ ] the sql row bridge treats a wrapped column as its underlying
+- [x] the sql row bridge treats a wrapped column as its underlying
       SqlValue kind, both directions
-- [ ] the first consumer: Schema[Secret] is the bare reference
+- [x] the first consumer: Schema[Secret] is the bare reference
       string; okay-conf's fixtures and round-trip tests move to the
       new wire, and toString stays the ref
 

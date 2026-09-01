@@ -30,6 +30,7 @@ object Form {
     case _ => Ui.Text(s"unsupported form: $s")
 
   private def field(name: String, s: Schema[?], v: Option[Json]): Ui = s match
+    case Schema.SIso(u, _, _) => field(name, u(), v)   // a wrapper renders as what it wraps
     case Schema.SOption(of) => field(name + " (optional)", of(), v) match
       case Ui.Input(value, _, label) => Ui.Input(value, key = name, label)
       case Ui.Check(on, _, label) => Ui.Check(on, key = name, label)
@@ -53,6 +54,7 @@ object Form {
     case _ => value
 
   private def coerce(s: Schema[?], text: String): Json = s match
+    case Schema.SIso(u, _, _) => coerce(u(), text)
     case Schema.SOption(of) => coerce(of(), text)
     case Schema.SInt | Schema.SLong =>
       text.toLongOption.fold(Json.JStr(text))(n => Json.JNum(n.toDouble))

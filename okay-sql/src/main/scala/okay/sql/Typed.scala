@@ -24,16 +24,27 @@ object Typed:
 
   // ── the row shape of a Schema ──────────────────────────────────
 
-  private final case class Field(name: String, tpe: SqlType, optional: Boolean)
+  /** `into`/`outof` carry a wrapper's conversions (codec-iso): a
+   * wrapped column decodes through `into` after its primitive and
+   * encodes through `outof` before it — to the row the wrapper does
+   * not exist */
+  private final case class Field(name: String, tpe: SqlType, optional: Boolean,
+                                 into: Any => Either[String, Any] = Right(_),
+                                 outof: Any => Any = identity)
 
-  private def shapeOf(s: Schema[?]): Option[(SqlType, Boolean)] = s match
-    case Schema.SInt => Some((SqlType.I32, false))
-    case Schema.SLong => Some((SqlType.I64, false))
-    case Schema.SDouble => Some((SqlType.F64, false))
-    case Schema.SBool => Some((SqlType.Bool, false))
-    case Schema.SString => Some((SqlType.Text, false))
-    case Schema.SBytes => Some((SqlType.Bytes, false))
-    case Schema.SOption(of) => shapeOf(of()).map((t, _) => (t, true))
+  private def shapeOf(s: Schema[?]): Option[(SqlType, Boolean, Any => Either[String, Any], Any => Any)] = s match
+    case Schema.SInt => Some((SqlType.I32, false, Right(_), identity))
+    case Schema.SLong => Some((SqlType.I64, false, Right(_), identity))
+    case Schema.SDouble => Some((SqlType.F64, false, Right(_), identity))
+    case Schema.SBool => Some((SqlType.Bool, false, Right(_), identity))
+    case Schema.SString => Some((SqlType.Text, false, Right(_), identity))
+    case Schema.SBytes => Some((SqlType.Bytes, false, Right(_), identity))
+    case Schema.SOption(of) => shapeOf(of()).map((t, _, in, out) => (t, true, in, out))
+    case Schema.SIso(u, to, from) => shapeOf(u()).map { (t, opt, in, out) =>
+      (t, opt,
+        (v: Any) => in(v).flatMap(x => to.asInstanceOf[Any => Either[String, Any]](x)),
+        (v: Any) => out(from.asInstanceOf[Any => Any](v)))
+    }
     case _ => None
 
   private def fieldsOf(s: Schema[?]): Either[String, Vector[Field]] = s match
@@ -42,7 +53,7 @@ object Typed:
       var err: String = null
       for (name, thunk) <- fields if err == null do
         shapeOf(thunk()) match
-          case Some((t, opt)) => out += Field(name, t, opt)
+          case Some((t, opt, in, outof)) => out += Field(name, t, opt, in, outof)
           case None => err = s"field $name is not row-shaped (a row holds primitives, bytes and Option)"
       if err == null then Right(out.result()) else Left(err)
     case _ => Left("a row is a flat product (a case class)")
@@ -105,7 +116,9 @@ object Typed:
         case (SqlType.Bytes, SqlValue.Bytes(x)) => Some(x)
         case _ => None
       prim match
-        case Some(x) => Right(if f.optional then Some(x) else x)
+        case Some(x) => f.into(x) match
+          case Right(y) => Right(if f.optional then Some(y) else y)
+          case Left(m) => Left(Bad(label, m))   // a refining wrapper refused
         case None => Left(Bad(label, s"expected ${f.tpe}, got $other"))
 
   /** the per-frame decoder, resolved ONCE against the described
@@ -210,6 +223,7 @@ object Params:
       "params bind from a flat product (a case class of row-shaped fields)")
 
   private def encode(name: String, s: Schema[?], v: Any): SqlValue = s match
+    case Schema.SIso(u, _, from) => encode(name, u(), from.asInstanceOf[Any => Any](v))
     case Schema.SInt => SqlValue.I32(v.asInstanceOf[Int])
     case Schema.SLong => SqlValue.I64(v.asInstanceOf[Long])
     case Schema.SDouble => SqlValue.F64(v.asInstanceOf[Double])

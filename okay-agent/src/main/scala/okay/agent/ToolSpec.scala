@@ -15,6 +15,8 @@ object ToolSpec {
 
   /** the algebra: a datatype's shape as a JSON Schema value */
   def jsonSchema[A](s: Schema[A]): Json = s match
+    // a wrapper does not exist to the tool schema — a Secret is a string
+    case Schema.SIso(u, _, _) => jsonSchema(u())
     case Schema.SInt | Schema.SLong => obj("type" -> Json.JStr("integer"))
     case Schema.SDouble => obj("type" -> Json.JStr("number"))
     case Schema.SBool => obj("type" -> Json.JStr("boolean"))

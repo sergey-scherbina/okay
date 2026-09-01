@@ -44,6 +44,13 @@ enum Schema[A]:
                    defaults: Vector[Option[() => Any]] = Vector.empty) extends Schema[A]
   case SSum[A](name: String, cases: Vector[(String, () => Schema[?])],
                caseOf: A => Int) extends Schema[A]
+  /** the newtype node (codec-iso): A travels as B — encode is `from`
+   * then under's encode, decode is under's decode then `to`, and a
+   * Left from `to` is a decode error like any other. To every
+   * algebra the wrapper does not exist, which is the point. */
+  case SIso[A, B](under: () => Schema[B],
+                  to: B => Either[String, A],
+                  from: A => B) extends Schema[A]
 
 object Schema {
 
@@ -54,6 +61,14 @@ object Schema {
   given Schema[String] = Schema.SString
   given Schema[Char] = Schema.SChar
   given Schema[Array[Byte]] = Schema.SBytes
+
+  /** a total wrapper — a newtype travels as what it wraps */
+  def wrap[A, B](to: B => A, from: A => B)(using s: => Schema[B]): Schema[A] =
+    Schema.SIso(() => s, b => Right(to(b)), from)
+
+  /** a refining wrapper — a Left is a decode error naming itself */
+  def refine[A, B](to: B => Either[String, A], from: A => B)(using s: => Schema[B]): Schema[A] =
+    Schema.SIso(() => s, to, from)
 
   given [A](using s: => Schema[A]): Schema[Option[A]] = Schema.SOption(() => s)
   given [A](using s: => Schema[A]): Schema[List[A]] = Schema.SList(() => s)

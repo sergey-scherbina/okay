@@ -15,7 +15,7 @@ class TestConf extends munit.FunSuite {
                       poolSize: Option[Int] = None)
   given Schema[Db] = Schema.derived
 
-  val json = """{"url":"jdbc:h2:mem:t","user":"app","password":{"ref":"env:PG_PASSWORD"}}"""
+  val json = """{"url":"jdbc:h2:mem:t","user":"app","password":"env:PG_PASSWORD"}"""
 
   test("a config loads via its derived Schema; absent optional fields decode absent") {
     assertEquals(Conf.read[Db](json),
