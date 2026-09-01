@@ -1,5 +1,17 @@
 # Changelog
 
+## ui-pwizard — the typed wizard: PState's style as a Dialog alternative
+Completed: 2026-09-01
+
+PWizard, additive only: steps are Cont values whose answer type
+threads a suspend/resume machine and whose state type GROWS — a step
+names its state requirement, the compiler enforces the order (age
+before name does not compile; compileErrors proves it), views read
+the typed state-so-far, and `step` carries a built-in validation
+retry. toDialog bridges any machine into an ordinary Dialog program,
+so the typed wizard runs over any Host or as a Screen with Dialog
+untouched. PState's second consumer after sql-typestate. 3 tests.
+
 ## sql-typestate — the transaction protocol in the types; PState gets its consumer
 Completed: 2026-09-01
 

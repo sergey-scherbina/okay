@@ -55,6 +55,23 @@ arrays).
       and a list, the Json the form submits round-trips through the
       codec decoder unchanged
 
+## The typed wizard (ui-pwizard — the PState alternative)
+An ALTERNATIVE spelling of wizards beside the monadic Dialog, nothing
+changed or removed: in a Dialog flow collected values thread through
+lambdas; in `PWizard` they thread through a state whose TYPE GROWS —
+PState's typestate (Atkey; theory textbook ch. 3) with the machine as
+the threaded answer type. A step is `Cont[A, S2 => Machine, S =>
+Machine]`: it NAMES its state requirement, so the compiler enforces
+step order — asking the age before the name is a type error, proven
+by compileErrors. `ask`/`get`/`mod`/`step` (the last with a built-in
+validation retry loop); `toDialog` bridges any machine into an
+ordinary Dialog program, so a typed wizard runs anywhere Dialog runs.
+
+- [x] the typed wizard collects through a growing state, views read
+      the typed state-so-far, validation retries in place
+- [x] the bridge runs the same wizard as a Dialog program over a Host
+- [x] misordered steps do not compile
+
 ## Out of scope
 - Layout/styling beyond bold/dim (specs/ui.md owns Style).
 - Async validation (a validator that needs IO is a scenario's job).
