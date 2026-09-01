@@ -47,16 +47,16 @@ async pulls — real work this seam enables but does not do.
 
 ## Behavior
 
-- [ ] the JVM leg: `WireClient` over `Net` passes the wire battery
+- [x] the JVM leg: `WireClient` over `Net` passes the wire battery
       against the existing `Wire.Server` (hello/capabilities,
       byte-exact append/read, refusals by name, TooEarly through)
-- [ ] the JS leg: the same `WireClient` code talks to a scripted
+- [x] the JS leg: the same `WireClient` code talks to a scripted
       Node `net` server answering frames built with the SAME shared
       enums — Granted's capability list arrives, an Append answers
       its offset, a Refused throws by name; no JVM in the process
-- [ ] `readFully` at EOF mid-frame throws naming the shortfall —
+- [x] `readFully` at EOF mid-frame throws naming the shortfall —
       a half-frame is damage at the transport, not a hang
-- [ ] `Wire.*` call sites compile unchanged (the export), and the
+- [x] `Wire.*` call sites compile unchanged (the export), and the
       jvm server suite (TestWire) is untouched and green
 
 ## Out of scope
@@ -86,5 +86,16 @@ async pulls — real work this seam enables but does not do.
 
 ## Results
 
-(after implementation — the two-platform battery, the scripted
-Node server, what the export preserved)
+Landed (wire-node, 2026-09-01). Net in the core: the trait plus
+`NetEof` shared; ONE blocking file in scala-jvm-native serves the
+JVM and Native; the Node leg buffers `data` events behind
+Async.await pulls (the cluster client's dance, made a given).
+persist's protocol moved to shared `WireProtocol` — Version, the
+enums, the frame helpers over `NetConn`, and the cross-platform
+`Client` — while `export` kept every `Wire.*` path compiling and
+the jvm server suite green untouched. The headline test is the
+sentence the persist spec promised: the SAME client code talks to
+a scripted Node `net` server answering frames encoded with the
+SAME shared enums — capabilities, offsets, TooEarly and a refusal
+by name crossing the wire — with no JVM in the process. sql-pg-node
+now has its transport; the pump restructure remains its claim.

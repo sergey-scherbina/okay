@@ -417,6 +417,12 @@ lazy val okayPersist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )
+  .jsSettings(
+    // the Node leg of the wire client (specs/net.md): the scripted
+    // Node server test lives here
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-js",
+  )
 
 /**
  * Configuration as data, secrets as references (specs/conf.md):

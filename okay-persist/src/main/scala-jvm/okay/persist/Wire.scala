@@ -23,38 +23,14 @@ import java.net.{ServerSocket, Socket}
  */
 object Wire:
 
-  val Version = 1
+  // the protocol's one source of truth is SHARED (WireProtocol —
+  // specs/net.md moved it so the Node client speaks the same
+  // enums); the export keeps every existing Wire.* path compiling
+  export WireProtocol.{Version, Req, Resp, WireRefused, Client}
+  export WireProtocol.given
 
-  given Schema[Record] = Schema.derived
-
-  enum Req derives Schema:
-    case Hello(version: Int, token: String)
-    case Append(topic: String, partition: Int,
-                key: Array[Byte], value: Array[Byte], ack: Int)
-    case Read(topic: String, partition: Int, from: Long, max: Int)
-    case Begin(topic: String, partition: Int)
-    case End(topic: String, partition: Int)
-
-  enum Resp derives Schema:
-    case Granted(version: Int, topics: Vector[String])
-    case Appended(offset: Long)
-    case Records(records: Vector[Record])
-    case TooEarly(begin: Long)
-    case Offset(value: Long)
-    case Refused(reason: String)
-
-  final case class WireRefused(reason: String)
-    extends RuntimeException(s"the persist node refused: $reason")
-
-  private def ackOf(i: Int): Ack = i match
-    case 0 => Ack.Received
-    case 2 => Ack.Replicated
-    case _ => Ack.Durable
-
-  private def ackCode(a: Ack): Int = a match
-    case Ack.Received => 0
-    case Ack.Durable => 1
-    case Ack.Replicated => 2
+  private def ackOf(i: Int): Ack = WireProtocol.ackOf(i)
+  private def ackCode(a: Ack): Int = WireProtocol.ackCode(a)
 
   private def writeFrame[A: Schema](out: DataOutputStream, a: A): Unit =
     val bs = Cbor.write(a)
