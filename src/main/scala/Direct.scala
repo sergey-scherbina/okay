@@ -217,8 +217,15 @@ object Direct:
             case Out.Eff(cm) => // marks inside the marked value: bind, then mark
               Out.Eff(bind(cm, m.tpe, t.tpe)(v => markTerm(v, t.tpe, t.pos)))
         case None =>
-          if !hasMark(t) then Out.Pure(t)
-          else compileMarked(t)
+          if hasMark(t) then compileMarked(t)
+          else t match
+            // a markless Block still goes through compileBlock: a
+            // bare statement of the block's own effectful type RUNS
+            // (do-notation), and only compileBlock can see it.
+            // Lambdas are Blocks too — their bodies stay untouched.
+            case Lambda(_, _) => Out.Pure(t)
+            case Block(stats, expr) => compileBlock(stats, expr)
+            case _ => Out.Pure(t)
 
     /** t contains marks below the root — dispatch on shape */
     def compileMarked(t: Term): Out = t match
@@ -343,7 +350,23 @@ object Direct:
           wrapStat(dd, rest, expr)
         case (st: Term) :: rest =>
           compile(st) match
-            case Out.Pure(p) => wrapStat(p, rest, expr)
+            case Out.Pure(p) =>
+              runnableElem(p) match
+                // do-notation: a bare statement of the block's F or
+                // row type RUNS, its value dropped — the `_ <-` reading
+                case Some(elem) =>
+                  Out.Eff(bind(markTerm(p, elem, st.pos), elem, expr.tpe) { _ =>
+                    asCont(compileBlock(rest, expr), expr.tpe)
+                  })
+                case None =>
+                  // a FOREIGN marked type can be neither run nor
+                  // meaningfully dropped
+                  if discardedMonadic(p.tpe) then
+                    report.errorAndAbort(
+                      s"a value of ${p.tpe.widen.show} is discarded in statement position, " +
+                        "and it is neither this block's monad nor an operation of its row — " +
+                        "it cannot run here; bind it or move it to its own block", st.pos)
+                  wrapStat(p, rest, expr)
             case Out.Eff(c) =>
               Out.Eff(bind(c, st.tpe, expr.tpe) { _ =>
                 asCont(compileBlock(rest, expr), expr.tpe)
@@ -372,29 +395,32 @@ object Direct:
         case _ => false
 
     /**
-     * The discard guard, a traversal of the WHOLE block regardless of
-     * marks: statements have no expected type, so auto-coloring can
-     * never fire there and Unit-ascription is value discard — a
-     * dropped monadic value must not compile silently. Lambdas are
-     * not descended into (their bodies are not this block's code).
+     * The element type under which a bare statement can RUN in this
+     * block — p is an F[T] of the block's monad or an operation of
+     * its row. Candidates come from the type's own arguments (answer
+     * type last, so tried first) and, for programs, from the Free
+     * base type; the <:< check makes the guesses safe.
      */
-    def discardGuard(body: Term): Unit =
-      val probe = new TreeTraverser:
-        override def traverseTree(tree: Tree)(owner: Symbol): Unit = tree match
-          case Lambda(_, _) => ()
-          case Block(stats, _) =>
-            stats.foreach {
-              case st: Term if asMark(st).isEmpty && !hasMark(st)
-                && discardedMonadic(st.tpe) =>
-                report.errorAndAbort(
-                  s"a value of ${st.tpe.widen.show} is discarded in statement position — " +
-                    "auto-coloring cannot fire on statements; run it with .? or bind it",
-                  st.pos)
-              case _ => ()
-            }
-            super.traverseTree(tree)(owner)
-          case _ => super.traverseTree(tree)(owner)
-      probe.traverseTree(body)(Symbol.spliceOwner)
+    def runnableElem(p: Term): Option[TypeRepr] =
+      val w = p.tpe.widen.dealias
+      val fromFree = w.baseType(freeClass) match
+        case AppliedType(_, List(_, t)) => List(t)
+        case _ => Nil
+      val fromArgs = w match
+        case AppliedType(_, args) => args.reverse
+        case _ => Nil
+      // None.type-like singletons carry no arguments of their own —
+      // the base type at the block's monad does (Option[Nothing])
+      val fromFBase =
+        val fs = TypeRepr.of[F].dealias.typeSymbol
+        if fs.exists && fs.isClassDef then w.baseType(fs) match
+          case AppliedType(_, args) if args.nonEmpty => List(args.last)
+          case _ => Nil
+        else Nil
+      (fromFree ++ fromArgs ++ fromFBase).find { t =>
+        p.tpe <:< TypeRepr.of[F].appliedTo(t.widen) ||
+          rowOf.exists(r => p.tpe <:< r.appliedTo(t.widen))
+      }
 
     def substStat(s: Statement, sym: Symbol, ref: Term): Statement = s match
       case t: Term => subst(t, sym, ref)
@@ -432,8 +458,6 @@ object Direct:
           .changeOwner(Symbol.spliceOwner)
       case other => refuse(other,
         "as a non-literal block (a stored context-function value)")
-
-    discardGuard(body)
 
     val res: Expr[Cont[A, F[A], F[A]]] =
       asCont(compile(body), TypeRepr.of[A]).asExprOf[Cont[A, F[A], F[A]]]

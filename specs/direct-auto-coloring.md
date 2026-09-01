@@ -138,7 +138,15 @@ unqualified — rare, and the qualified names disambiguate.
 
 ## Results
 
-- 8 tests in TestDirectAuto + the 16 v1 tests unchanged (plain
+- v2.1 (do-notation statements): 11 tests in TestDirectAuto — bare
+  statements of the block's monad run (None short-circuits, a bare
+  List statement re-runs the rest per element, runs counted), bare
+  ops tell with no mark, `val` keeps a program un-run (binding is
+  consent to hold the value), foreign marked types still refuse.
+  The None.type wrinkle paid for once: a singleton carries no type
+  arguments, so runnableElem also consults the base type at the
+  block's monad (Option[Nothing]).
+- v2: 8 initial tests + the 16 v1 tests unchanged (plain
   blocks adapt to the context-function signature with no edits).
   Ascribed/argument/selection positions color; ops color via the
   Effect marker at declared types; the discard guard catches the

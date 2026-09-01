@@ -38,8 +38,8 @@ class TestDirectAuto extends munit.FunSuite {
     def ask: Reader[Int, Int] = Reader.Ask()
     val prog: Int ! F = direct {
       val env: Int = ask                      // colored via the marker
-      Writer(s"env=$env").?                   // Unit op: value discard would
-                                              // eat a conversion — mark it
+      Writer(s"env=$env")                     // bare statement: do-notation,
+                                              // the statement IS the mark
       env + 1
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
@@ -48,10 +48,44 @@ class TestDirectAuto extends munit.FunSuite {
     assertEquals(a, 42)
   }
 
-  test("the discard guard: a dropped monadic statement does not compile") {
+  test("do-notation: a bare statement of the block's monad runs") {
+    assertEquals(direct[Option] { Option(1); 2 }, Some(2))
+    assertEquals(direct[Option] { (None: Option[Int]); 2 }, None)
+    assertEquals(direct[Option] { None; 2 }, None)
+  }
+
+  test("do-notation: a bare List statement re-runs the rest per element") {
+    given Monad[List] with
+      override def pure[A](a: A): List[A] = List(a)
+      extension [A](m: List[A])
+        override def flatMap[B](f: A => List[B]): List[B] = m.flatMap(f)
+    var runs = 0
+    val r = direct[List] {
+      List(1, 2, 3)
+      runs += 1
+      7
+    }
+    assertEquals(r, List(7, 7, 7))
+    assertEquals(runs, 3)
+  }
+
+  test("a foreign marked type in statement position still refuses") {
     val e = compileErrors(
-      "okay.Direct.direct[Option] { Option(1); 2 }(using summon[Monad[Option]]) ")
-    assert(e.contains("statement position"), e)
+      "import okay.Direct.given; import scala.language.implicitConversions; " +
+        "given okay.Direct.Effect[List] with {}; " +
+        "okay.Direct.direct[Option] { List(1); 2 }(using summon[Monad[Option]]) ")
+    assert(e.contains("neither"), e)
+  }
+
+  test("val keeps the program un-run — binding is consent to hold the value") {
+    var built = 0
+    def make: Option[Int] = { built += 1; Some(1) }
+    val r = direct[Option] {
+      val held = make      // the Option VALUE, not its content: no ascription
+      held.?               // runs where marked
+    }
+    assertEquals(r, Some(1))
+    assertEquals(built, 1)
   }
 
   test("outside a direct block nothing colors") {
