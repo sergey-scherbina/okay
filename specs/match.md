@@ -202,6 +202,52 @@ Behavior:
 - [x] the engines agree: memory and sql (sqlite included) hold the
       same deal guarantees; deals survive a restart
 
+## Scenarios as data (match-scenarios)
+The deal was ONE state machine hardcoded in enums and engine methods;
+the user's review question ("can we add new scenarios? how?") gets
+the registry answer a second time: an interaction scenario is DATA,
+symmetric to the attribute registry — because which scenarios will be
+needed is as unknowable in advance as which attributes.
+
+- **ScenarioDef** — name, roles, states (initial, terminals),
+  transitions; a **Transition** carries the ROLE it belongs to (the
+  generalization of "respond is the asked provider's alone"), the
+  visibility unlocks it grants (viewer-role -> attribute; the
+  generalization of contacts()), and the notifications it sends
+  (role -> message template with {state},{by},{scenario} holes).
+- **validate(def)** — total: unknown roles/states named by the
+  transition, unreachable terminals, a terminal with exits — answers
+  as data, never throws.
+- **Flow** — the instance: scenario, parties (role -> profile),
+  state, append-only history. `start` checks arity and validity;
+  `advance(flow, transition, by)` is the ONE engine method: the
+  transition must exit the current state and `by` must hold its
+  role; effects fire on success.
+- **unlockedBy(viewer, other)** — visibility earned through flows:
+  facts whose attribute an executed transition unlocked for the
+  viewer's role. `contacts` remains and is subsumed.
+- Tools: scenario_define / scenario_get / flow_start / flow_advance /
+  flow_state — the model drives ANY registered scenario the way it
+  drives deals today.
+- **The typed builder (stage 1)**: definitions are built in ONE
+  program, so the doctrine's other half applies — a phantom-indexed
+  builder where naming an undeclared state or role does not COMPILE;
+  the data form stays primary (wire-loadable), the builder is the
+  safe pen.
+
+Behavior:
+- [ ] a scenario defined as data runs end to end: roles enforced per
+      transition, terminals close the flow, history kept
+- [ ] validate names each malformation as data (unknown role/state,
+      unreachable terminal, terminal with exits)
+- [ ] transition unlocks grant visibility (unlockedBy) and
+      notifications fire with the template holes filled
+- [ ] a SECOND scenario (multi-step, three roles) runs on the same
+      engine with zero engine changes — the universality proof
+- [ ] engines agree (memory + sqlite): flows survive a restart
+- [ ] the typed builder: an undeclared state in a transition is a
+      compile error; the built value equals the hand-written data
+
 ## Out of scope
 - The account-recovery security flow (recorded above; stage 2).
 - Payment/monetization mechanics — the platform gate EXISTS in the
