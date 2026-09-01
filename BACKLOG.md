@@ -82,8 +82,6 @@
       already cover JDBC-behind-Async)
 
 ## okay-conf (specs/conf.md)
-- [ ] conf-topic — stage 2: managed config as a compacted keyed
-      topic over okay-persist (audit/rollback for free)
 
 ## okay-persist (specs/persist.md — staged design; stage 0 landed)
 - [ ] persist-wire — the remote Topic client over the stage-2
