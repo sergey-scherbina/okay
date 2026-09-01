@@ -1,0 +1,169 @@
+# okay-ui — the toolkit that is not a toolkit
+
+## Overview
+A UI is four things this library already owns and one it does not.
+Events arrive when they arrive — a `Source`. Several inputs (the user,
+a timer, a network answer) join by readiness — `merge`. State evolves
+by folding events — `Stage.transduce`. Drawing on a concrete toolkit
+is an interpretation — a handler's job, the MCP thesis verbatim: the
+program must not know who executes. The one missing thing is the
+VIEW: a pure value describing what is on screen. This module is that
+value, the loop around it, and the seam to anything that can draw.
+
+The architecture is Elm's (model/view/update) with two honest
+differences: effects in `update` are the effect row rather than a
+`Cmd` encoding, and the renderer is swappable without touching the
+program — one application, drawn by a terminal, by the DOM, by React,
+by Swing, by a native toolkit; the first three are in scope now, and
+all three cost zero dependencies.
+
+## Interface
+
+```scala
+/** the view: a VALUE — no functions inside, so it has equality,
+ * diffs, and could cross a wire. Widgets carry KEYS; events name
+ * keys; the app's update interprets. */
+enum Ui:
+  case Text(s: String, style: Style = Style.none)
+  case Row(children: Vector[Ui], key: String = "")
+  case Column(children: Vector[Ui], key: String = "")
+  case Button(label: String, key: String)
+  case Input(value: String, key: String, label: String = "")
+  case Check(on: Boolean, key: String, label: String = "")
+  case Select(options: Vector[String], selected: Int, key: String)
+
+enum Event:
+  case Pressed(key: String)
+  case Edited(key: String, value: String)
+  case Toggled(key: String, on: Boolean)
+  case Chosen(key: String, index: Int)
+  case Key(ch: Char)                  // raw, for whole-app bindings
+  case Resized(w: Int, h: Int)
+  case Closed
+
+/**
+ * The seam, in the form React taught everyone: the HOST is handed the
+ * whole tree and draws it however it likes — React reconciles, a
+ * terminal repaints, Swing rebuilds. Two functions, like Link.
+ */
+trait Host:
+  def render(ui: Ui): Unit ! Async
+  def events: Source[Event]
+
+/** a patch-consuming target (raw DOM, native toolkits): the core
+ * diff turns it into a Host — diffing is OUR job, not every
+ * backend's */
+trait Backend:
+  def apply(p: Patch): Unit ! Async
+  def events: Source[Event]
+object Host:
+  def diffing(b: Backend): Host
+
+enum Patch:
+  case Replace(path: List[Int], ui: Ui)
+  case SetText(path: List[Int], s: String)
+  case SetValue(path: List[Int], s: String)
+  ...
+def diff(old: Ui, next: Ui): Vector[Patch]
+
+/** the loop: pure update, external world as MERGED event sources —
+ * subscriptions are `merge`, not a Cmd type */
+object Ui:
+  def run[S](init: S)(view: S => Ui)(update: (S, Event) => S)
+            (host: Host, external: Source[Event] = Source())
+            (using Scheduler, CanBlock): S ! Async   // answers the final state (Closed)
+
+/** the fifth algebra over Schema: a FORM — rendered from the same
+ * Schema that decodes it, so a form cannot drift from its parser */
+object Form:
+  def ui[A](using Schema[A]): Json => Ui             // render the partial value
+  def edit(value: Json, e: Event): Json              // fold one event in
+  def decode[A](using Schema[A]): Json => Either[String, A]
+```
+
+Backends shipped, all dependency-free:
+- **terminal** (`src/main/scala-jvm-native`): ANSI painting, raw-mode
+  input by `stty` (POSIX), a `Host` that repaints the frame — a frame
+  is a Vector[String], so rendering is testable as a value
+- **DOM** (`src/main/scala-js`): a patch `Backend` over the global
+  `document` via `js.Dynamic` — no scalajs-dom, no dependency
+- **React-likes** (`src/main/scala-js`): `Ui => element` over the
+  global `React.createElement` (works for anything with that shape —
+  Preact included); the mapping itself is PURE
+  (`Ui => Elem`, a data tree) and tested on the JVM, the js glue is
+  five lines
+- **the test host** (test scope): applies renders to a value, feeds
+  scripted events — the whole loop is exercised with no screen,
+  which is the point of the seam
+
+## Behavior
+- [ ] the loop: scripted events through update, each state viewed,
+      the test host sees the frames in order, `Closed` answers the
+      final state
+- [ ] external sources merge in: a "timer" source and the user's
+      events interleave by readiness into ONE update fold
+- [ ] diff: changing one Text yields SetText at its path, not a
+      Replace of the root; unequal shapes Replace at the highest
+      differing node; equal trees yield NO patches
+- [ ] `Host.diffing(backend)` applied to the frames equals rendering
+      each frame whole (the patch path and the repaint path agree)
+- [ ] the terminal host renders a frame as lines: Row lays out
+      side by side, Column stacks, Input shows its value and focus;
+      asserted on the STRING frame, no tty in the test
+- [ ] the React mapping is pure: a Ui tree becomes the element tree
+      (type/props/children) a createElement host expects, keys
+      carried; asserted on the JVM
+- [ ] a Form renders from `Schema[A]`: a product becomes labeled
+      Inputs (an Option field unrequired, a Boolean a Check), edits
+      fold into the partial Json, and `decode` answers the SAME `A`
+      the schema parses — round-trip asserted
+- [ ] elicitation closes: okay-mcp's `Peer` gains `elicit`, a server's
+      `elicitation/create` renders a Form on a scripted host, the
+      accepted value decodes against the requested schema and goes
+      back; decline goes back too
+- [ ] one application runs UNCHANGED on the terminal host and the
+      test host (same frames modulo painting) — the seam's claim
+
+## Design
+The tree carries NO functions — Elm puts `msg` values in attributes,
+React puts closures, this puts KEYS and lets events name them. That
+is what makes `Ui` a plain value: equality for the diff, pure
+rendering, JVM-testable React mapping, and (later) a tree that can
+cross a wire — an MCP server could describe a form; elicitation
+already does, as a Schema.
+
+The loop is `Stage.transduce` in a coat: state is the transducer's
+parameter, the input is `host.events merge external`, the output is
+frames. Async work does not need a Cmd type: spawn a fiber, feed a
+source, merge it — subscriptions are what `merge` is for.
+
+Layout in v1 is the minimum the terminal needs: Row divides width by
+natural size, Column stacks, no flex weights. The DOM maps Row/Column
+to flexbox and forgets the problem.
+
+## Out of scope (v1)
+- native toolkits (GTK/Cocoa/Win32) — satellites once the seam has
+  proven itself on three free backends; Native runs the terminal host
+- styling beyond bold/color, themes, animation
+- focus traversal beyond linear tab order; mouse in the terminal
+- accessibility trees (the Host seam is where they would attach)
+- keyed-children reordering in the diff (positional v1; keys are
+  already in the tree, so the diff can learn without an API change)
+- Windows terminals (raw mode is stty in v1)
+
+## Decisions
+- **The primary seam hands over the WHOLE TREE (`Host`), patches are
+  derived** — reversed from the first sketch by the React
+  requirement: hosts that reconcile themselves want the tree, and a
+  patch-consumer is `Host.diffing(backend)` with the core diff. The
+  other direction (a Host from a patch stream) needs keeping the
+  tree, which is the diff again.
+- **No functions in the tree** — keys instead, because a closure in a
+  value breaks equality, diffing, serialization and JVM-testing of
+  the React mapping. The cost is stringly keys; a typed key layer can
+  come later without moving the tree.
+- **Update is pure in v1; the world merges in as sources** — the
+  effect row stays available (an app can run its own programs and
+  feed a source), but the LOOP does not interpret commands. Elm's Cmd
+  exists because Elm has no effect system; this library has one, and
+  it composes by merge already.
