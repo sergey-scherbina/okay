@@ -1,5 +1,16 @@
 # Changelog
 
+## cache-write-through — the window is stated, not denied
+Completed: 2026-09-01 (landed as 61c7501)
+Regime 2's write path held by construction (WriteThrough.write:
+commit THEN invalidate — one helper, not an audit of call sites).
+Argued three ways over H2 through the Sql seam: ordering asserted
+on a probing cache; the WRONG ordering's resurrection bug
+demonstrated (a reader between invalidate and commit re-caches the
+old truth indefinitely — why the rule exists); the honest
+commit-to-invalidate window shown. The last open cache.md box
+closes. Matrix 1410.
+
 ## persist-interop — the engines that already did the twenty years
 Completed: 2026-09-01 (landed as d101128; spec first)
 Stage 3: SqlStore (okay-jdbc, via the Sql seam — any driver serves

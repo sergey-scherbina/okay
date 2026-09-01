@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- cache-write-through — regime 2 paired with okay-jdbc: the
-  invalidate-AFTER-commit ordering asserted, the wrong ordering's
-  resurrection bug demonstrated, the honest stale window shown
-  (specs/cache.md, the one box no slug covered)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
