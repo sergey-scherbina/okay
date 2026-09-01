@@ -40,6 +40,7 @@ object Mcp {
   val ResourcesUnsubscribe = "resources/unsubscribe"
   val RootsList = "roots/list"
   val SamplingCreate = "sampling/createMessage"
+  val ElicitationCreate = "elicitation/create"
   val ResourceUpdated = "notifications/resources/updated"
   val RootsChanged = "notifications/roots/list_changed"
   val ResourcesChanged = "notifications/resources/list_changed"
@@ -78,10 +79,12 @@ object Mcp {
    * them.
    */
   def initializeParams(client: Info, roots: Boolean = false,
-                       sampling: Boolean = false): Json =
+                       sampling: Boolean = false,
+                       elicitation: Boolean = false): Json =
     val caps = Vector(
       Option.when(roots)("roots" -> obj("listChanged" -> Json.JBool(true))),
-      Option.when(sampling)("sampling" -> obj())).flatten
+      Option.when(sampling)("sampling" -> obj()),
+      Option.when(elicitation)("elicitation" -> obj())).flatten
     obj("protocolVersion" -> Json.JStr(Version),
       "capabilities" -> Json.JObj(caps),
       "clientInfo" -> infoJson(client))

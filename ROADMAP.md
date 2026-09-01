@@ -177,3 +177,12 @@ roots, and sampling, where `sampling/createMessage` is the `Model`
 effect, so an MCP server borrows the client's own model handler. What
 remains is elicitation (which needs a UI contract) and the
 streamable-HTTP transport.
+
+## P12 — okay-ui: the toolkit that is not a toolkit
+
+The view as a value, the loop as `transduce` over merged sources, the
+renderer as a seam (specs/ui.md). v1 shipped 2026-09-01: terminal +
+React-shaped hosts, the diff, forms from Schema, and MCP elicitation
+closed end to end. Above v1, designed and backlogged: scenarios as
+programs (Dialog), screens as a stack, server-driven UI over the wire
+("the tree is the capability list"), event-sourced sessions.

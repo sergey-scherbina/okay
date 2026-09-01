@@ -85,8 +85,6 @@ Backends shipped, all dependency-free:
 - **terminal** (`src/main/scala-jvm-native`): ANSI painting, raw-mode
   input by `stty` (POSIX), a `Host` that repaints the frame — a frame
   is a Vector[String], so rendering is testable as a value
-- **DOM** (`src/main/scala-js`): a patch `Backend` over the global
-  `document` via `js.Dynamic` — no scalajs-dom, no dependency
 - **React-likes** (`src/main/scala-js`): `Ui => element` over the
   global `React.createElement` (works for anything with that shape —
   Preact included); the mapping itself is PURE
@@ -97,31 +95,31 @@ Backends shipped, all dependency-free:
   which is the point of the seam
 
 ## Behavior
-- [ ] the loop: scripted events through update, each state viewed,
+- [x] the loop: scripted events through update, each state viewed,
       the test host sees the frames in order, `Closed` answers the
       final state
-- [ ] external sources merge in: a "timer" source and the user's
+- [x] external sources merge in: a "timer" source and the user's
       events interleave by readiness into ONE update fold
-- [ ] diff: changing one Text yields SetText at its path, not a
+- [x] diff: changing one Text yields SetText at its path, not a
       Replace of the root; unequal shapes Replace at the highest
       differing node; equal trees yield NO patches
-- [ ] `Host.diffing(backend)` applied to the frames equals rendering
+- [x] `Host.diffing(backend)` applied to the frames equals rendering
       each frame whole (the patch path and the repaint path agree)
-- [ ] the terminal host renders a frame as lines: Row lays out
+- [x] the terminal host renders a frame as lines: Row lays out
       side by side, Column stacks, Input shows its value and focus;
       asserted on the STRING frame, no tty in the test
-- [ ] the React mapping is pure: a Ui tree becomes the element tree
+- [x] the React mapping is pure: a Ui tree becomes the element tree
       (type/props/children) a createElement host expects, keys
       carried; asserted on the JVM
-- [ ] a Form renders from `Schema[A]`: a product becomes labeled
+- [x] a Form renders from `Schema[A]`: a product becomes labeled
       Inputs (an Option field unrequired, a Boolean a Check), edits
       fold into the partial Json, and `decode` answers the SAME `A`
       the schema parses — round-trip asserted
-- [ ] elicitation closes: okay-mcp's `Peer` gains `elicit`, a server's
+- [x] elicitation closes: okay-mcp's `Peer` gains `elicit`, a server's
       `elicitation/create` renders a Form on a scripted host, the
       accepted value decodes against the requested schema and goes
       back; decline goes back too
-- [ ] one application runs UNCHANGED on the terminal host and the
+- [x] one application runs UNCHANGED on the terminal host and the
       test host (same frames modulo painting) — the seam's claim
 
 ## Design
@@ -217,6 +215,9 @@ pays twice. `Ui`, `Event` and `Patch` get derived `Schema`s, so:
 - styling beyond bold/color, themes, animation
 - focus traversal beyond linear tab order; mouse in the terminal
 - accessibility trees (the Host seam is where they would attach)
+- a RAW-DOM patch `Backend` (the React-shaped host covers the
+  browser; the patch consumer is `Host.diffing` away when someone
+  needs React-less DOM — backlog: ui-dom-patch)
 - keyed-children reordering in the diff (positional v1; keys are
   already in the tree, so the diff can learn without an API change)
 - Windows terminals (raw mode is stty in v1)
@@ -237,3 +238,19 @@ pays twice. `Ui`, `Event` and `Patch` get derived `Schema`s, so:
   feed a source), but the LOOP does not interpret commands. Elm's Cmd
   exists because Elm has no effect system; this library has one, and
   it composes by merge already.
+
+## Results
+v1 shipped 2026-09-01: core (tree, diff, patch, loop over merged
+sources), the terminal's pure half (frames as values, key
+interpretation) with the thin stty host, the React-shaped rendering
+(pure `Ui => Elem` + five-line js glue + a Host over a root), Form in
+both directions (typed `Schema[A]` and the dynamic JSON Schema
+elicitation carries), and MCP elicitation end to end — a server's
+question rendered as a form, filled by a scripted user, answered
+typed. 15 tests in okay-ui, 3 in okay-mcp, 2 in okay-demo; all ten
+behavior items covered; JS and Native legs compile (Native without
+Form — okay-codec has no Native leg, recorded in build.sbt).
+
+The seam's claim is a test, not a sentence: TestPortable runs one
+application on the test host and asserts the terminal renders exactly
+those frames; TestElicitForm is the whole circle in one assertion.

@@ -121,6 +121,20 @@ final class Session private[mcp] (link: Link, peer: Duplex.Peer)(using Scheduler
         model.handle(Model.Complete(turns, Nil))
       }.flatMap(r => reply(id, Duplex.samplingResult(r)))
 
+    /**
+     * The server asking the HUMAN — the one door that stayed closed
+     * until there was a UI to open it (okay-ui's Form renders the
+     * requested schema; the handler is any (message, schema) =>
+     * Answer). No handler, no capability, and a server that asks
+     * anyway is refused rather than hung — same as sampling.
+     */
+    case Mcp.ElicitationCreate => peer.elicit match
+      case None => refuse(id, Mcp.ElicitationCreate)
+      case Some(ask) => async {
+        val (message, schema) = Duplex.elicitOf(params)
+        ask(message, schema)
+      }.flatMap(a => reply(id, Duplex.elicitResult(a)))
+
     case other => refuse(id, other)
 
   private def reply(id: Json, result: Json): Unit ! Async =
@@ -323,7 +337,8 @@ object Client {
     val s = Session(link, peer)
     s.start(): Unit
     s.request(Mcp.Initialize, Mcp.initializeParams(client,
-      roots = peer.roots.nonEmpty, sampling = peer.sample.isDefined)).flatMap { result =>
+      roots = peer.roots.nonEmpty, sampling = peer.sample.isDefined,
+      elicitation = peer.elicit.isDefined)).flatMap { result =>
       s.notify(Mcp.Initialized, Rpc.obj())
         .map(_ => s.opened(Rpc.field(result, "serverInfo").flatMap(Mcp.infoOf),
           Set("tools", "resources", "prompts").filter(Mcp.capability(result, _))))

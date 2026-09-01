@@ -20,7 +20,16 @@ object Duplex {
    * `Handler[Model]` an agent in this process is already using.
    */
   final case class Peer(roots: Seq[Mcp.Root] = Nil,
-                        sample: Option[Handler[Model]] = None)
+                        sample: Option[Handler[Model]] = None,
+                        elicit: Option[(String, Json) => Answer] = None)
+
+  /** what a human said to an elicitation — accept carries the value,
+   * decline and cancel are different words for different acts (the
+   * protocol distinguishes them, so we do) */
+  enum Answer:
+    case Accept(content: Json)
+    case Decline
+    case Cancel
 
   def rootJson(r: Mcp.Root): Json =
     obj("uri" -> Json.JStr(r.uri), "name" -> Json.JStr(r.name))
@@ -70,6 +79,28 @@ object Duplex {
   /** and back — a server reading what it asked for */
   def replyOf(result: Json): Reply =
     Reply(field(result, "content").flatMap(c => str(c, "text")).getOrElse(""), Nil)
+
+  /** what a server sends to ask the human: a message, and the flat
+   * JSON Schema the answer must fit */
+  def elicitParams(message: String, requestedSchema: Json): Json = obj(
+    "message" -> Json.JStr(message),
+    "requestedSchema" -> requestedSchema)
+
+  def elicitOf(params: Json): (String, Json) =
+    (str(params, "message").getOrElse(""),
+      field(params, "requestedSchema").getOrElse(obj()))
+
+  /** and what the client answers */
+  def elicitResult(a: Answer): Json = a match
+    case Answer.Accept(content) => obj(
+      "action" -> Json.JStr("accept"), "content" -> content)
+    case Answer.Decline => obj("action" -> Json.JStr("decline"))
+    case Answer.Cancel => obj("action" -> Json.JStr("cancel"))
+
+  def answerOf(result: Json): Answer = str(result, "action") match
+    case Some("accept") => Answer.Accept(field(result, "content").getOrElse(obj()))
+    case Some("cancel") => Answer.Cancel
+    case _ => Answer.Decline
 
   /** the uri a resources/updated notification is about */
   def updatedUri(n: Rpc.Notify): Option[String] = str(n.params, "uri")

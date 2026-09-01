@@ -404,6 +404,46 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
   )
 
 /**
+ * The toolkit that is not a toolkit (specs/ui.md): the view is a
+ * VALUE, the loop is transduce, the renderer is a seam — a terminal,
+ * the DOM, React or a test host, one application on all of them.
+ * Pure core cross-built everywhere; the terminal host is jvm+native,
+ * the DOM/React glue is js.
+ */
+lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-ui"))
+  .dependsOn(okay)
+  // Form is the fifth algebra over Schema, and okay-codec has no
+  // Native leg — so the tree, the loop and the terminal are
+  // everywhere, and Form (src/main/scala-form) rides only where the
+  // codec does. Native loses the form, not the toolkit.
+  .jvmConfigure(_.dependsOn(okayCodec.jvm))
+  .jsConfigure(_.dependsOn(okayCodec.js))
+  .settings(
+    name := "okay-ui",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-form",
+  )
+  .nativeSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / sources := Seq(),
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-form",
+    Test / sources := Seq(),
+  )
+
+/**
  * The Model Context Protocol (specs/mcp.md): an MCP server is another
  * `Tool` handler and our tools are another MCP server. The protocol
  * layer is pure — cross-built; only the stdio transport is platform.
@@ -506,7 +546,7 @@ lazy val okayMcp = crossProject(JVMPlatform, JSPlatform)
  * to find what tests written by the author of the code cannot.
  */
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayMcp.jvm)
+  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm)
   .settings(
     name := "okay-demo",
     publish / skip := true,
@@ -524,7 +564,7 @@ lazy val root = (project in file("."))
     okayJava, okaySpark, okayFlink, okayJdbc, okayLex.jvm, okayLex.js, okayParse.jvm, okayParse.js,
     okayCodec.jvm, okayCodec.js, okayLlm.jvm, okayLlm.js,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
-    okayMcp.jvm, okayMcp.js,
+    okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(

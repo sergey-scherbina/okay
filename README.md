@@ -220,6 +220,11 @@ module with its own page under docs/modules:
   sampling is the `Model` effect; stdio and streamable HTTP (with
   server push over the GET stream), verified live against the
   protocol's reference server.
+- **ui** (`okay-ui`) — the view as a value, the loop as a fold over
+  merged sources, the renderer as a seam: one application on a
+  terminal, under React, on a test host; forms derived from the same
+  `Schema` that decodes them — which is what lets an MCP server ask
+  the human (elicitation) and get a typed answer.
 - **wires** — REST and WebSocket as programs (`okay-http`), served by
   the JDK, Jetty or Netty behind one seam (`okay-jetty`,
   `okay-netty`); the distributed runtime (`okay-cluster`).
