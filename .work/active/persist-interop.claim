@@ -1,5 +1,0 @@
-slug: persist-interop
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: stage-3 interop engines — SqlStore (a Store over a SQL table via the Sql seam; the full persist StoreSuite contract on H2) and KafkaStore (okay-kafka: append/read/begin/end/poll-on-end live against docker Kafka; retention/compaction stay the ENGINE's, refused by name); segment offload refiled to pair blob-seam; spec: specs/persist.md stage 3
-files: okay-jdbc/** (SqlStore), okay-kafka/** (KafkaStore), build.sbt, specs/persist.md, tests

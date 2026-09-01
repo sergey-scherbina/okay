@@ -62,8 +62,8 @@
 - [ ] persist-wire-repl — replication's calls (replicate-pull,
       promote, produce) join the wire's message enum under the
       handshake version: replicas go remote, machinery unchanged
-- [ ] persist-interop — stage 3: Store over Kafka (okay-kafka), a
-      JDBC table, segment offload to object storage
+- [ ] persist-offload — cold segments to the object store via the
+      Blob seam (pairs blob-seam; the backup copy helper rides too)
 - [ ] persist-consensus — stage 4: elected leadership, its own spec
       (Raft vs delegating election to a stage-3 engine)
 

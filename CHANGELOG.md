@@ -1,5 +1,22 @@
 # Changelog
 
+## persist-interop — the engines that already did the twenty years
+Completed: 2026-09-01 (landed as d101128; spec first)
+Stage 3: SqlStore (okay-jdbc, via the Sql seam — any driver serves
+it) passes the FULL 13-test persist StoreSuite on H2, the
+cross-engine acceptance; begin proved to be state of its own (it
+moves only under retention — the contract caught min(off) drifting
+under compaction), plus two SQL truths (aggregates over nothing
+answer a NULL row; H2 types SUM(expr) as NUMERIC). KafkaStore
+(okay-kafka) inherits partitions/replication/election behind the
+same trait: the sync SPI blocks honestly, compact() refuses by
+name (the engine keeps its own ops), Received maps to
+fire-and-forget with the log's end as the honest answer, and the
+persist Typed view decodes unchanged over a real broker — four
+live tests on dockerized Kafka 3.9 (skip when absent).
+persist-offload refiled to pair blob-seam. Merge read alone:
+exit 0. Full matrix green (live Postgres AND Kafka in the run).
+
 ## py-worker — N processes is the parallelism; the GIL is then irrelevant
 Completed: 2026-09-01 (landed as b8c76ab)
 PyWorkers: N resident processes behind the same handler shape a
