@@ -1,0 +1,13 @@
+feature/obs-durable-overlay 2026-09-01T21:50:00Z
+agent: claude-code (session 75625ecc)
+heartbeat: 2026-09-01T21:50:00Z
+status: in-progress
+next: the journal/trace identity join (specs/obs.md open box). A neutral
+  OpTrace seam in okay-agent (no obs dep); Durable.tools/replaying take an
+  optional OpTrace and open a span per operation carrying durable.op/key/
+  seq (+replay=true on replay) — the journal Entry.key and the span carry
+  the SAME identity, so a replay's spans overlay the originals. The real
+  Tracer join proven in okay-obs test (Test-dep on okayAgent; okayObs is a
+  leaf, no cycle). specs/obs.md box checked.
+files: okay-agent Durable.scala (+OpTrace), okay-agent TestDurable (fake-OpTrace stamp),
+  okay-obs test (real Tracer overlay) + build.sbt okayObs test-dep, specs/obs.md
