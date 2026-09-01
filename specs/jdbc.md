@@ -227,10 +227,14 @@ user with no DDL rights.
       exposed; a caller can refuse a downgrade
 - [x] a streaming read inside a transaction stays chunked at
       fetch-size (constant memory over a large table)
-- [ ] the WithKey bridge: an insert with a natural key, retried
+- [x] the WithKey bridge: an insert with a natural key, retried
       after a simulated crash-between-journal-and-commit, lands
       once (unique constraint dedup, H2); Reconcile: the SELECT by
-      key settles the journal without re-executing
+      key settles the journal without re-executing (TestWrites: the
+      reconcile fixture is a PLAIN insert, so a re-execution would
+      have thrown on the primary key — proven, not assumed; an
+      empty Reconcile and Fail answer Unresolved as data, world
+      untouched, entry left open)
 - [ ] incremental poll by a monotone column resumes from a journaled
       watermark; the late-commit caveat demonstrated as a test that
       DOCUMENTS the miss and the lag-window mitigation
@@ -295,3 +299,7 @@ are their own filed slugs (jdbc-write-bridge, jdbc-poll-source).
 One find escaped the module: rollback-on-exception exposed a
 finalizer leak in core `Resource.run` (a continuation throwing
 after a forwarded effect), fixed and pinned in the core suite.
+jdbc-write-bridge followed (same day): `Writes(db, topic, run)` —
+intent-first records through the persist Typed envelope, recover
+by refold, five tests including both crash windows (executed with
+the ack lost; never executed) and seq continuity over restart.

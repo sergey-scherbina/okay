@@ -242,8 +242,9 @@ lazy val okayFlink = (project in file("okay-flink"))
 /** JDBC as chunked async streams under the Resource region (P4) */
 lazy val okayJdbc = (project in file("okay-jdbc"))
   // the first DRIVER of the Sql seam (specs/sql.md); the raw
-  // JdbcInterop streaming stays alongside, unchanged
-  .dependsOn(okay.jvm, okaySql.jvm)
+  // JdbcInterop streaming stays alongside, unchanged. okay-persist
+  // backs the write bridge's intent-first journal (specs/jdbc.md)
+  .dependsOn(okay.jvm, okaySql.jvm, okayPersist.jvm)
   .settings(
     name := "okay-jdbc",
     libraryDependencies ++= Seq(
