@@ -292,12 +292,20 @@ Doors added by this sweep (all additive, explicit forms stay):
   in the tree") exists precisely to keep construction dumb;
   a context-collector builder reintroduces ambient mutation into
   the one place the design evicted it.
-- **Direct-style rewriting via macros** — rejected as impossible in
-  the general case (typed trees arrive after implicit resolution);
-  the honest roads are the ones the stack already walks: Loom for
-  one-shot (comonadic handlers ARE direct style), for-comprehension
-  or CPS-plugins for multi-shot, where multi-shot is the FEATURE
-  (Logic, sim, Stepper) and direct style would forfeit it.
+- **Direct-style rewriting via macros** — rejected at FULL
+  generality, not as impossible: dotty-cps-async proves the general
+  transform exists for Scala 3 typed trees, at the cost of years of
+  re-typing machinery (the "typed trees arrive after implicit
+  resolution" problem is real — it is what makes it expensive, not
+  impossible). A SCOPED macro (linear `val`/`if`/`match`/`try`, no
+  reflect under lambdas, clear error) is feasible and stays open as
+  a future road. Two corrections to the earlier wording: (1) Loom is
+  the road that forfeits multi-shot (one-shot runtime continuations,
+  JVM-only) — macro-CPS and shift/reset both PRESERVE it, since the
+  continuation is a pure closure; (2) the no-macro floor already
+  exists: Filinski's monadic reflection over Cont
+  (specs/monadic-reflection.md) gives direct style relative to Cont
+  for any Monad[F] today, in for-comprehensions.
 
 ## Decisions
 
