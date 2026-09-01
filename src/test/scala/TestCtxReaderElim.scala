@@ -14,8 +14,8 @@ class TestCtxReaderElim extends munit.FunSuite {
 
   /** the row spelling: the environment is an effect */
   def viaReader: Int ! (Reader % Int + W) = direct {
-    val env = effect[Reader % Int + W, Int](Reader.Ask()).?
-    effect[Reader % Int + W, Unit](Writer(s"env=$env")).?
+    val env = effect[Reader % Int + W, Int](Reader.Ask()).reflect
+    effect[Reader % Int + W, Unit](Writer(s"env=$env")).reflect
     env + 1
   }
 

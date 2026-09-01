@@ -3,7 +3,7 @@
 ## Overview
 
 `direct[F] { block }` lets a plain block use monadic values as plain
-values — `val x = m.?` with no for-comprehension — by rewriting the
+values — `val x = m.!?` with no for-comprehension — by rewriting the
 block at compile time into the Cont binds that
 specs/monadic-reflection.md established as the semantic floor. The
 macro adds SYNTAX only: every program it emits is one the user could
@@ -37,7 +37,7 @@ object Direct:
     inline def apply[A](inline block: A)(using inline M: Monad[F]): F[A]
 ```
 
-The mark is `Direct.?`, NOT `Monadic.?` — the two return different
+The mark is `Direct.!?`, NOT `Monadic.!?` — the two return different
 types (A vs Cont) because they live on different sides of expansion.
 One imports `Direct.*` for flat blocks or `Monadic.*` for
 for-comprehensions; mixing both imports in one scope is an ambiguity
@@ -46,7 +46,7 @@ the compiler will name.
 **Effects are the first-class case** (user directive 2026-09-01):
 a `direct` block over the program monad `!` must work exactly as the
 same program written monadically — operations reflected (`Writer
-.tell("a").?`), the block's value an `A ! Row` that handlers run
+.tell("a").!?`), the block's value an `A ! Row` that handlers run
 afterwards, rows and `+` untouched. The Monad instance is the
 existing `Monad[Free[Row, *]]`; nothing effect-specific enters the
 macro. Since `[A] =>> A ! Row` is noisy at a call site, F is
@@ -56,7 +56,7 @@ stays for expression positions.
 
 ## Behavior
 
-- [x] `direct[Option] { val x = mx.?; val y = my.?; x + y }` ==
+- [x] `direct[Option] { val x = mx.!?; val y = my.!?; x + y }` ==
   the for-comprehension equivalent, on every TestMonadic scenario
   (Option short-circuit, Either error channel, List multi-shot)
 - [x] EFFECTS work as through `!` itself: a direct block over
@@ -67,7 +67,7 @@ stays for expression positions.
 - [x] `val p: Int ! W = direct { ... }` — F inferred from the
   expected type, no type argument written
 - [x] marks in SUBEXPRESSIONS are hoisted in evaluation order:
-  `f(a.?, b.?)` binds a before b, exactly left-to-right
+  `f(a.!?, b.!?)` binds a before b, exactly left-to-right
 - [x] `if`/`match` with marks in condition/scrutinee and branches:
   only the taken branch's effects run
 - [x] a mark under a lambda is a COMPILE error naming the position
@@ -82,7 +82,7 @@ stays for expression positions.
   REST OF THE BLOCK per element (vars shared across runs — the
   documented footgun, asserted by a test, not hidden)
 - [x] ONE mark for values and operations (user ask 2026-09-01,
-  refined the same day): `Writer("a").?` in a row block — the macro
+  refined the same day): `Writer("a").!?` in a row block — the macro
   finds Row from F = A ! Row, checks membership, emits
   Free.Inject[Row, A](op) reflected; a mark that is neither F[T]
   nor a row operation is refused with both possibilities named.
@@ -140,7 +140,7 @@ The rewrite is statement-level monadic normalization (ANF for marks):
   program-runner namespace intact.
 
 - **A phantom mark, not Monadic's operators** — the macro's block is
-  typed BEFORE expansion, so inside it `m.?` must have type A; the
+  typed BEFORE expansion, so inside it `m.!?` must have type A; the
   Monadic operators return Cont and cannot be reused. The phantom
   throws outside a block rather than compiling to nothing, so a
   stray mark fails loudly at the first run, not silently.
@@ -174,7 +174,7 @@ The rewrite is statement-level monadic normalization (ANF for marks):
     case must precede the Block case or the error message degrades.
   - A narrow-row operation in a wide-row block (`Writer.tell` where
     the block's F is a union row) is refused with the fix named:
-    spell it `effect[Row, A](op).?` — the same spelling the monadic
+    spell it `effect[Row, A](op).!?` — the same spelling the monadic
     style needs, so parity with `!` holds exactly.
   - Application spines: only VALUE slots (receiver, arguments) are
     hoisted; callee structure (Selects, TypeApplies, curried lists)

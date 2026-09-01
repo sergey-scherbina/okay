@@ -22,7 +22,7 @@ object Monadic:
      * spellings: `m.reflect` and `reflect(m)` */
     inline def reflect[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
-    /** the symbolic μ: `m.?` — Rust's postfix question, generalized */
+    /** the symbolic μ: `m.!?` — Rust's postfix question, generalized */
     inline def ?[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
 

@@ -8,11 +8,11 @@ import okay.Direct.*
  * signal is a call that may return — the Common Lisp reading */
 class TestConditionDirect extends munit.FunSuite {
 
-  test("signal.? resumes AT the mark; progress before it survives") {
+  test("signal.reflect resumes AT the mark; progress before it survives") {
     var steps = Vector.empty[String]
     val prog: Int ! Op = direct {
       steps :+= "before"
-      val v = signal[Int]("how many?").?
+      val v = signal[Int]("how many?").reflect
       steps :+= s"after($v)"
       v + 1
     }
@@ -21,15 +21,15 @@ class TestConditionDirect extends munit.FunSuite {
     assertEquals(steps, Vector("before", "after(41)"))
   }
 
-  test("within under .? — Invoke unwinds to the frame, between never resumes") {
+  test("within under .reflect — Invoke unwinds to the frame, between never resumes") {
     var trail = Vector.empty[String]
     val prog: String ! Op = direct {
       val a = within[String, Pure]("use-default")(direct {
         trail :+= "inside"
-        val v = signal[String]("bad value").?
+        val v = signal[String]("bad value").reflect
         trail :+= "never"
         v
-      })(v => s"default:$v").?
+      })(v => s"default:$v").reflect
       trail :+= "outside"
       a
     }
@@ -46,9 +46,9 @@ class TestConditionDirect extends munit.FunSuite {
     val prog: String ! Op = direct {
       val a = frame[String, Pure]("skip") {
         trail :+= "inside"
-        val v = signal[String]("bad").?
+        val v = signal[String]("bad").reflect
         v
-      }(v => s"skipped:$v").?
+      }(v => s"skipped:$v").reflect
       trail :+= "outside"
       a
     }
@@ -63,7 +63,7 @@ class TestConditionDirect extends munit.FunSuite {
     val seen = collection.mutable.ListBuffer[Int]()
     val prog: Unit ! Op = direct {
       for x <- List(1, -2, 3) do
-        val v = (if x < 0 then signal[Int](s"bad: $x") else pure[Op, Int](x)).?
+        val v = (if x < 0 then signal[Int](s"bad: $x") else pure[Op, Int](x)).reflect
         seen += v
     }
     !.run(Condition.run[Unit, Pure]((_, _) => Resume(0))(prog))

@@ -82,7 +82,7 @@ class TestDirectAuto extends munit.FunSuite {
     def make: Option[Int] = { built += 1; Some(1) }
     val r = direct[Option] {
       val held = make      // the Option VALUE, not its content: no ascription
-      held.?               // runs where marked
+      held.reflect               // runs where marked
     }
     assertEquals(r, Some(1))
     assertEquals(built, 1)
@@ -103,7 +103,7 @@ class TestDirectAuto extends munit.FunSuite {
   test("explicit marks mix freely with auto-coloring") {
     val r = direct[Option] {
       val x: Int = Option(1)
-      val y = Option(2).?
+      val y = Option(2).reflect
       x + y
     }
     assertEquals(r, Some(3))

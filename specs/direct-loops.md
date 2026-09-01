@@ -20,20 +20,20 @@ No new API. Inside `direct[F] { ... }`:
 
 ```scala
 for t <- reply.split(' ') do Writer(t + " ")     // foreach: each tells
-val ids: Seq[Int] = for u <- users yield lookup(u).?   // map: traverse
-while retry.? do backoff()                        // while: effectful cond
+val ids: Seq[Int] = for u <- users yield lookup(u).!?   // map: traverse
+while retry.!? do backoff()                        // while: effectful cond
 ```
 
 ## Behavior
 
-- [x] `for x <- xs do eff(x).?` (and bare-statement bodies, layer-4
+- [x] `for x <- xs do eff(x).!?` (and bare-statement bodies, layer-4
   style) runs the effect once per element, in order, effects
   sequenced left to right
-- [x] `for x <- xs yield eff(x).?` collects results in order — the
+- [x] `for x <- xs yield eff(x).!?` collects results in order — the
   traverse shape; the result is emitted as List and accepted where
   the original type is List/Seq; other collection shapes are a v1
   refusal naming the workaround
-- [x] a marked receiver hoists first: `mkList().?.foreach(...)` binds
+- [x] a marked receiver hoists first: `mkList().!?.foreach(...)` binds
   the receiver before the loop
 - [x] `while cond do body` with marks in cond and/or body: cond
   re-evaluates per iteration; the loop is emitted as a recursive
@@ -89,7 +89,7 @@ while retry.? do backoff()                        // while: effectful cond
   a List built once from `.iterator` (built by NAME, so ArrayOps
   receivers — the `split(' ')` case — serve alongside IterableOnce);
   a live iterator would be corrupted by multi-shot re-entry.
-- **Assign joined the rewrite** — `sum += eff().? * i` appeared in
+- **Assign joined the rewrite** — `sum += eff().!? * i` appeared in
   the first loop test and was refused; an Assign with a marked rhs
   now binds then assigns. Loops made effectful assignment
   unavoidable one test in.

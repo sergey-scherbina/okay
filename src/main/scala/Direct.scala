@@ -3,7 +3,7 @@ package okay
 import scala.quoted.*
 
 /**
- * The flat block (specs/direct-macro.md): `direct[F] { ... m.? ... }`
+ * The flat block (specs/direct-macro.md): `direct[F] { ... m.reflect ... }`
  * rewrites a plain block into the Cont binds of Monadic
  * (specs/monadic-reflection.md), so monadic values read as plain
  * values with no for-comprehension. The macro adds SYNTAX only —
@@ -24,11 +24,19 @@ object Direct:
      * macro expands; the macro rewrites every call, so this body
      * only runs when a mark escapes outside a direct block — and
      * then it fails loudly rather than compiling to nothing.
+     * The mark is a NAME, deliberately: three symbols were tried
+     * and refuted (.! shadows object !, .!? was redundant, .reflect was
+     * ambiguous with the Throws row-?) — the retirement is recorded
+     * in specs/direct-macro.md.
      */
-    def ? : A = throw new IllegalStateException(
-      "Direct.? outside a direct block — wrap the code in direct[F] { ... }")
-    /** the named spelling of the same mark */
-    def reflect: A = m.?
+    def reflect: A = throw new IllegalStateException(
+      "Direct.reflect outside a direct block — wrap the code in direct[F] { ... }")
+    /** the symbolic spelling of the same mark — the survivor of the
+     * three-strikes history: .! shadowed object !, .? was ambiguous
+     * with the Throws row-?, and .!? — once retired as redundant
+     * beside .? — is the one symbol that collides with nothing */
+    def !? : A = throw new IllegalStateException(
+      "Direct.!? outside a direct block — wrap the code in direct[F] { ... }")
 
     /**
      * The one-glyph mark for the rows, PREFIX: `!prog` — a program
@@ -41,14 +49,15 @@ object Direct:
      * spelling (`unary_!`) carries a different name, shadows
      * nothing, and reads as "perform": `val name = !Form.ask[Name]("who?")`.
      */
-    def unary_! : A = m.?
+    def unary_! : A = m.reflect
 
-  // ONE mark serves both monadic values and raw operations: the
-  // macro dispatches by TYPE — an F[T] of the block reflects, an
-  // operation of the block's row is injected then reflected
-  // (`Writer("a").?` works with no effect[Row, A] spelling). A
-  // separate op mark (.!?) was refuted as redundant the day one
-  // user asked why there were two.
+  // ONE mark, three spellings, all one dispatch-by-TYPE: .reflect
+  // (the name, every scope), .!? (postfix symbol — resurrected once
+  // .? retired; the one postfix that collides with nothing), and
+  // prefix !prog (unary_!, the one-glyph gesture for rows). An
+  // F[T] of the block reflects; an operation of the block's row is
+  // injected then reflected — no spelling distinguishes the cases,
+  // the type does.
 
   /**
    * The capability (specs/direct-auto-coloring.md): exists ONLY
@@ -91,7 +100,7 @@ object Direct:
     import quotes.reflect.*
 
     val directSym = TypeRepr.of[Direct.type].typeSymbol
-    val markSyms = (directSym.methodMember("?") ++ directSym.methodMember("reflect")
+    val markSyms = (directSym.methodMember("reflect") ++ directSym.methodMember("!?")
       ++ directSym.methodMember("unary_!")).toSet
     val colorSyms = (directSym.methodMember("selfColor") ++
       directSym.methodMember("opColor")).toSet
@@ -141,7 +150,7 @@ object Direct:
 
     def refuse(t: Tree, where: String): Nothing =
       report.errorAndAbort(
-        s"a Direct mark (.? / .reflect) $where cannot be rewritten by direct's v1 — " +
+        s"a Direct mark (.reflect) $where cannot be rewritten by direct's v1 — " +
           "bind the marked value to a val before it, or use a for-comprehension over Monadic",
         t.pos)
 

@@ -43,8 +43,8 @@ class TestDirect extends munit.FunSuite {
       if b == 0 then Left("div0") else Right(a / b)
     def calc(a: Int, b: Int, c: Int): Either[String, Int] =
       direct[[A] =>> Either[String, A]] {
-        val x = div(a, b).?
-        div(x, c).? + 1
+        val x = div(a, b).reflect
+        div(x, c).reflect + 1
       }
     assertEquals(calc(12, 3, 2), Right(3))
     assertEquals(calc(12, 0, 2), Left("div0"))
@@ -54,8 +54,8 @@ class TestDirect extends munit.FunSuite {
   test("vals: the flat block binds in order") {
     def add(mx: Option[Int], my: Option[Int]): Option[Int] =
       direct[Option] {
-        val x = mx.?
-        val y = my.?
+        val x = mx.reflect
+        val y = my.reflect
         x + y
       }
     assertEquals(add(Some(2), Some(3)), Some(5))
@@ -66,7 +66,7 @@ class TestDirect extends munit.FunSuite {
   test("short-circuit: after a None nothing runs") {
     var ran = false
     val r = direct[Option] {
-      val _ = (None: Option[Int]).?
+      val _ = (None: Option[Int]).reflect
       ran = true
       ()
     }
@@ -77,7 +77,7 @@ class TestDirect extends munit.FunSuite {
   test("subexpression marks hoist left to right") {
     val order = collection.mutable.ListBuffer[String]()
     def eff(tag: String, v: Int): Option[Int] = { order += tag; Some(v) }
-    val r = direct[Option] { eff("a", 1).? + eff("b", 2).? }
+    val r = direct[Option] { eff("a", 1).reflect + eff("b", 2).reflect }
     assertEquals(r, Some(3))
     assertEquals(order.toList, List("a", "b"))
   }
@@ -86,7 +86,7 @@ class TestDirect extends munit.FunSuite {
     var b = 0
     def branch(v: Int): Option[Int] = { b += 1; Some(v) }
     def pick(c: Option[Boolean]): Option[Int] =
-      direct[Option] { if c.? then branch(1).? else branch(2).? }
+      direct[Option] { if c.reflect then branch(1).reflect else branch(2).reflect }
     assertEquals(pick(Some(true)), Some(1))
     assertEquals(b, 1)
     assertEquals(pick(Some(false)), Some(2))
@@ -98,9 +98,9 @@ class TestDirect extends munit.FunSuite {
   test("match: marks in scrutinee and case bodies") {
     def f(m: Option[Int]): Option[String] =
       direct[Option] {
-        m.? match
+        m.reflect match
           case 0 => "zero"
-          case n => Some(s"n=$n").?
+          case n => Some(s"n=$n").reflect
       }
     assertEquals(f(Some(0)), Some("zero"))
     assertEquals(f(Some(7)), Some("n=7"))
@@ -110,8 +110,8 @@ class TestDirect extends munit.FunSuite {
   test("multi-shot: the rest of the block re-runs per element") {
     var hits = 0
     val r = direct[List] {
-      val x = List(1, 2, 3).?
-      val y = List(10, 20).?
+      val x = List(1, 2, 3).reflect
+      val y = List(10, 20).reflect
       hits += 1
       x * y
     }
@@ -122,9 +122,9 @@ class TestDirect extends munit.FunSuite {
   test("effects: a direct block over ! answers as the monadic program") {
     type W = Writer % String
     val prog: Int ! W = direct {
-      Writer.tell("a").?
-      val x = Free.pure[W, Int](21).?
-      Writer.tell("b").?
+      Writer.tell("a").reflect
+      val x = Free.pure[W, Int](21).reflect
+      Writer.tell("b").reflect
       x * 2
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))
@@ -135,8 +135,8 @@ class TestDirect extends munit.FunSuite {
   test("effects: a two-effect row reflects both operations in one block") {
     type F = Reader % Int + Writer % String
     val prog: Int ! F = direct {
-      val env = effect[F, Int](Reader.Ask()).?
-      effect[F, Unit](Writer(s"env=$env")).?
+      val env = effect[F, Int](Reader.Ask()).reflect
+      effect[F, Unit](Writer(s"env=$env")).reflect
       env + 1
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
@@ -147,24 +147,24 @@ class TestDirect extends munit.FunSuite {
 
   test("a mark under a lambda is a compile error") {
     val errors = compileErrors(
-      "okay.Direct.direct[List] { List(1).filter(i => List(i > 0).?) }(using summon[Monad[List]]) ")
+      "okay.Direct.direct[List] { List(1).filter(i => List(i > 0).reflect) }(using summon[Monad[List]]) ")
     assert(errors.contains("lambda"), errors)
   }
 
   test("try around marks is a v2 compile error; by-name too") {
     val tr = compileErrors(
-      "okay.Direct.direct[List] { try List(1).? catch { case _: Exception => 0 } }(using summon[Monad[List]]) ")
+      "okay.Direct.direct[List] { try List(1).reflect catch { case _: Exception => 0 } }(using summon[Monad[List]]) ")
     assert(tr.contains("try"), tr)
     val bn = compileErrors(
-      "okay.Direct.direct[Option] { Option(1).getOrElse(Option(2).?) }(using summon[Monad[Option]]) ")
+      "okay.Direct.direct[Option] { Option(1).getOrElse(Option(2).reflect) }(using summon[Monad[Option]]) ")
     assert(bn.contains("by-name"), bn)
   }
 
-  test("one mark: .? on a raw operation lifts it into the block's row") {
+  test("one mark, two spellings: .reflect and .!? on values and operations") {
     type F = Reader % Int + Writer % String
     val prog: Int ! F = direct {
-      val env = Reader.Ask[Int, Int]().?
-      Writer(s"env=$env").?
+      val env = Reader.Ask[Int, Int]().!?
+      Writer(s"env=$env").reflect
       env + 1
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](
@@ -175,16 +175,16 @@ class TestDirect extends munit.FunSuite {
 
   test("a mark that is neither F nor a row operation is refused by type") {
     val e = compileErrors(
-      "okay.Direct.direct[Option] { List(1).? }(using summon[Monad[Option]]) ")
+      "okay.Direct.direct[Option] { List(1).reflect }(using summon[Monad[Option]]) ")
     assert(e.contains("neither"), e)
   }
 
   test("&& and || keep the short-circuit (desugared to their If)") {
     var n = 0
     def eff(b: Boolean): Option[Boolean] = { n += 1; Some(b) }
-    assertEquals(direct[Option] { eff(false).? && eff(true).? }, Some(false))
+    assertEquals(direct[Option] { eff(false).reflect && eff(true).reflect }, Some(false))
     assertEquals(n, 1)
-    assertEquals(direct[Option] { eff(true).? || eff(false).? }, Some(true))
+    assertEquals(direct[Option] { eff(true).reflect || eff(false).reflect }, Some(true))
     assertEquals(n, 2)
   }
 
@@ -192,7 +192,7 @@ class TestDirect extends munit.FunSuite {
     val order = collection.mutable.ListBuffer[Int]()
     def eff(i: Int): Option[Int] = { order += i; Some(i) }
     val r = direct[Option] {
-      for i <- List(1, 2, 3) do eff(i).?
+      for i <- List(1, 2, 3) do eff(i).reflect
       order.sum
     }
     assertEquals(r, Some(6))
@@ -202,7 +202,7 @@ class TestDirect extends munit.FunSuite {
   test("for-do over an Array receiver (the split case)") {
     type W = Writer % String
     val prog: Unit ! W = direct {
-      for t <- "a b c".split(' ') do Writer(t + " ").?
+      for t <- "a b c".split(' ') do Writer(t + " ").reflect
     }
     val (ws, _) = !.run(Writer.run[String, Unit, okay.Pure](prog))
     assertEquals(ws, Seq("a ", "b ", "c "))
@@ -213,7 +213,7 @@ class TestDirect extends munit.FunSuite {
     def eff(i: Int): Option[Int] =
       { hits += 1; if i == 2 then None else Some(i) }
     val r = direct[Option] {
-      for i <- List(1, 2, 3) do eff(i).?
+      for i <- List(1, 2, 3) do eff(i).reflect
       99
     }
     assertEquals(r, None)
@@ -223,7 +223,7 @@ class TestDirect extends munit.FunSuite {
   test("for-yield: the traverse shape, results in order") {
     def look(i: Int): Option[Int] = Some(i * 10)
     val r: Option[List[Int]] = direct[Option] {
-      for i <- List(1, 2, 3) yield look(i).?
+      for i <- List(1, 2, 3) yield look(i).reflect
     }
     assertEquals(r, Some(List(10, 20, 30)))
   }
@@ -232,7 +232,7 @@ class TestDirect extends munit.FunSuite {
     var n = 0
     def more: Option[Boolean] = { n += 1; Some(n < 4) }
     val r = direct[Option] {
-      while more.? do ()
+      while more.reflect do ()
       n
     }
     assertEquals(r, Some(4))
@@ -248,7 +248,7 @@ class TestDirect extends munit.FunSuite {
         override def flatMap[B](f: A => List[B]): List[B] = m.flatMap(f)
     var sum = 0
     val r = direct[List] {
-      for i <- List(1, 2) do { sum += List(10, 20).? * i; () }
+      for i <- List(1, 2) do { sum += List(10, 20).reflect * i; () }
       sum
     }
     assertEquals(r.length, 4, "2 elements x 2 continuations")
@@ -259,7 +259,7 @@ class TestDirect extends munit.FunSuite {
     def eff(p: (Int, Int)): Option[Unit] = { pairs += p; Some(()) }
     val r = direct[Option] {
       for i <- List(1, 2) do
-        for j <- List(10, 20) do eff((i, j)).?
+        for j <- List(10, 20) do eff((i, j)).reflect
       pairs.size
     }
     assertEquals(r, Some(4))
@@ -279,7 +279,7 @@ class TestDirect extends munit.FunSuite {
     type W = Writer % String
     var n = 0
     val prog: Int ! W = direct {
-      while { n += 1; pure[W, Boolean](n < 3).? } do Writer(s"tick$n")
+      while { n += 1; pure[W, Boolean](n < 3).reflect } do Writer(s"tick$n")
       n
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))
@@ -289,11 +289,11 @@ class TestDirect extends munit.FunSuite {
 
   test("a non-whitelisted HOF with a mark keeps the refusal") {
     val e = compileErrors(
-      "okay.Direct.direct[Option] { List(1).exists(i => Option(i > 0).?) }(using summon[Monad[Option]]) ")
+      "okay.Direct.direct[Option] { List(1).exists(i => Option(i > 0).reflect) }(using summon[Monad[Option]]) ")
     assert(e.contains("lambda"), e)
   }
 
   test("a mark outside any direct block throws by design") {
-    intercept[IllegalStateException] { Option(1).? }
+    intercept[IllegalStateException] { Option(1).reflect }
   }
 }

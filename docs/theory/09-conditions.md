@@ -59,7 +59,7 @@ the same sealed-invariant discipline as `Delim` and `Writer`.
 ## Direct style completes the picture
 
 Chapter 8's reflection makes the Lisp reading *literal*. In a direct
-block, `signal[Int]("how many?").?` is a call that may return: the
+block, `signal[Int]("how many?").!?` is a call that may return: the
 mark captures the rest of the block as the continuation, the policy
 answers `Resume(41)`, and execution proceeds from the mark with 41 —
 `TestConditionDirect` asserts the "before" work survives and the

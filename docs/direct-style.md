@@ -1,7 +1,7 @@
 # Direct style: monads as plain code
 
 How Okay lets you write monadic and effectful programs as ordinary
-Scala — `val x = m.?`, or no marks at all — and why every layer of it
+Scala — `val x = m.!?`, or no marks at all — and why every layer of it
 is two one-liners of semantics plus a macro that only ever adds
 syntax. Four features, landed in dependency order on 2026-09-01:
 `Monadic` (the foundation, no macros), the `direct` block, the
@@ -71,7 +71,7 @@ object Monadic:
      * spellings: m.reflect and reflect(m) */
     inline def reflect[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
-    /** the symbolic μ: m.? — Rust's postfix question, generalized */
+    /** the symbolic μ: m.!? — Rust's postfix question, generalized */
     inline def ?[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
 
@@ -96,14 +96,14 @@ def add(mx: Option[Int], my: Option[Int]): Option[Int] =
   reify:
     for
       x <- mx.reflect   // x: Int — a plain value
-      y <- my.?         // the same μ, spelled short
+      y <- my.!?         // the same μ, spelled short
     yield x + y
 
 // multi-shot comes free, because k is a pure closure:
 val r: List[Int] = reify:
   for
-    x <- List(1, 2, 3).?
-    y <- List(10, 20).?
+    x <- List(1, 2, 3).!?
+    y <- List(10, 20).!?
   yield x * y           // List(10,20,20,40,30,60) — k ran 6 times
 ```
 
@@ -144,8 +144,8 @@ import Direct.*
 
 def add(mx: Option[Int], my: Option[Int]): Option[Int] =
   direct[Option] {
-    val x = mx.?
-    val y = my.?
+    val x = mx.!?
+    val y = my.!?
     x + y
   }
 ```
@@ -155,7 +155,7 @@ rewrites the block, at compile time, into exactly the
 `Monadic.reflect`/`reify` chain of Layer 1. Every program it emits is
 one you could have written by hand; multi-shot, short-circuit and the
 stack discipline are *inherited*, not re-implemented. The mark `.?`
-inside a block is a different symbol from `Monadic.?` — it typechecks
+inside a block is a different symbol from `Monadic.!?` — it typechecks
 as `A` (the block must typecheck *before* the macro expands; that is
 how inline macros work), never executes, and throws loudly if it
 somehow escapes a block.
@@ -164,23 +164,23 @@ Inside the block, plain Scala works:
 
 ```scala
 // subexpression marks hoist left-to-right (evaluation order kept):
-direct[Option] { eff("a", 1).? + eff("b", 2).? }  // "a" before "b", always
+direct[Option] { eff("a", 1).!? + eff("b", 2).!? }  // "a" before "b", always
 
 // if/match with effects in the scrutinee and the branches —
 // only the taken branch's effects run:
-direct[Option] { if c.? then branch(1).? else branch(2).? }
+direct[Option] { if c.!? then branch(1).!? else branch(2).!? }
 
 // && and || keep their short-circuit — the macro desugars them to
 // the if they mean (they are compiler intrinsics whose method type
 // lies about by-name-ness; hoisting their operands would have
 // broken short-circuit silently):
-direct[Option] { eff(false).? && eff(true).? }   // right side never runs
+direct[Option] { eff(false).!? && eff(true).!? }   // right side never runs
 ```
 
 **Effectful iteration** (the shapes the codebase survey named as
 the top real pattern) is rewritten, not refused: `for x <- xs do
-eff(x).?` runs per element in order and short-circuits mid-loop;
-`for x <- xs yield eff(x).?` is the traverse shape; `while cond.?
+eff(x).!?` runs per element in order and short-circuits mid-loop;
+`for x <- xs yield eff(x).!?` is the traverse shape; `while cond.!?
 do body` re-evaluates its condition each turn; loops recurse over an
 immutable materialized List, so multi-shot re-entry into a loop body
 is sound. Other higher-order arguments keep the refusal below.
@@ -217,19 +217,21 @@ One `.?` everywhere:
 ```scala
 type F = Reader % Int + Writer % String
 val prog: Int ! F = direct {          // F inferred from the expected type
-  val env = Reader.Ask[Int, Int]().?  // an operation
-  Writer(s"env=$env").?               // an operation
+  val env = Reader.Ask[Int, Int]().!?  // an operation
+  Writer(s"env=$env").!?               // an operation
   env + 1                             // plain code
 }
 // then the ordinary handlers:
 !.run(Writer.run(Reader.run(41)(prog)))  // (Seq("env=41"), 42)
 ```
 
-(A symbolic rename of the op mark to `.!` was also tried and refuted
-by the compiler: an imported extension named `!` shadows `object !`
-as an identifier, and every `!.run(...)` in the importing file stops
-compiling. The two-character `.!?` died for redundancy, the
-one-character `.!` for namespace collision; `.?` survived both.)
+(The mark's spelling has a three-strikes history, all recorded in
+the specs: `.!` shadows `object !` (every `!.run` in the importing
+file breaks); `.?` collided with okay's own Throws row-`?`
+(Ambiguous extension methods, found twice independently); and
+`.!?` — once retired as redundant beside `.?` — returned as the
+survivor: the one symbol that shadows and collides with nothing.
+`.reflect` is the named spelling and works in every scope.)
 
 ## Layer 3 — auto-coloring: no marks, behind two gates
 
@@ -353,7 +355,7 @@ exactly as Common Lisp meant it — **a call that may return**:
 ```scala
 val prog: Int ! Op = direct {
   steps :+= "before"
-  val v = signal[Int]("how many?").?   // raise; Resume(41) lands HERE
+  val v = signal[Int]("how many?").!?   // raise; Resume(41) lands HERE
   steps :+= s"after($v)"               // ... and this line runs
   v + 1
 }
@@ -365,9 +367,9 @@ lines, forwarding to `within` over `direct`):
 
 ```scala
 val a = frame[String, Pure]("skip") {
-  val v = signal[String]("bad").?      // policy says Invoke("skip", x)
+  val v = signal[String]("bad").!?      // policy says Invoke("skip", x)
   v                                    // ...so this never runs
-}(v => s"skipped:$v").?                // ...and the frame answers
+}(v => s"skipped:$v").!?                // ...and the frame answers
 ```
 
 And the operator's story — repair a malformed element mid-stream and

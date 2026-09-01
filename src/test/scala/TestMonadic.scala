@@ -77,12 +77,12 @@ class TestMonadic extends munit.FunSuite {
     assertEquals(hits, 6, "3 × 2 continuations, each run to the end")
   }
 
-  test("postfix forms: m.reflect and m.? are the same μ") {
+  test("postfix forms: m.reflect and m.reflect are the same μ") {
     def add(mx: Option[Int], my: Option[Int]): Option[Int] =
       reify:
         for
           x <- mx.reflect
-          y <- my.?
+          y <- my.!?
         yield x + y
     assertEquals(add(Some(2), Some(3)), Some(5))
     assertEquals(add(None, Some(3)), None)

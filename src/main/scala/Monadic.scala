@@ -24,9 +24,9 @@ object Monadic:
      * method; the prefix form is its desugared call) */
     inline def reflect[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
-    /** the symbolic μ: `m.?` — Rust's postfix question, generalized
-     * from Result to any monad (`!` is taken by the program type) */
-    inline def ?[B]: Cont[A, F[B], F[B]] =
+    /** the symbolic μ — the collision-free survivor (see
+     * specs/direct-macro.md Decisions for the three-strikes story) */
+    inline def !?[B]: Cont[A, F[B], F[B]] =
       shift(k => m.flatMap(k))
 
   /** the delimiter: a direct-style block back into its monad */
