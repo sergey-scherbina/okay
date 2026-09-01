@@ -1,5 +1,0 @@
-feature/demo-judgment-flake 2026-09-01T21:57:51Z
-agent: claude-code
-heartbeat: 2026-09-01T21:57:51Z
-status: in-progress
-next: retry-once on judgment-asserting live tests; board hygiene
