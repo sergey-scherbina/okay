@@ -1,0 +1,6 @@
+feature/direct-macro 2026-09-01T19:34:40Z
+agent: claude-code
+heartbeat: 2026-09-01T19:34:40Z
+status: in-progress
+done-so-far:
+next: spec first (specs/direct-macro.md), then the Quotes rewrite + tests
