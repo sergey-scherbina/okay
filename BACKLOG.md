@@ -23,27 +23,6 @@
       restore): what remains is the DOCTOR tool (recovery scan
       against a backup, offline) and a blob-seam copy helper
 
-## Correctness leads
-- [ ] nio-close-race — INVESTIGATED 2026-09-01, narrowed but not fixed.
-      Reproduced at ~1.3/1000 rounds (100 lines x ~480 bytes,
-      localhost): the SERVE fiber stalls after 0–4 completed writes —
-      its next write's completion handler never fires, `onComplete`
-      never runs (stall, not death) — while the client usually sees a
-      premature EOF, and in one round the listener's accept failed
-      with AsynchronousCloseException while the client still received
-      4 lines. A leak-free sequential harness also reproduced the pure
-      HANG variant (no EOF at all). Suspects, in order: the default
-      AsynchronousChannelGroup's dispatch under rapid
-      channel-create/close cycles (macOS/KQueue), then a close racing
-      a queued write. NOT the okay Async driver — its Await/cell CAS
-      protocol was read and is sound, and CanBlock.block only cancels
-      on interrupt. Next steps: (a) dedicated channel group per test
-      to isolate the default group; (b) `shutdownOutput()` + drain
-      before `close()` in `Nio.Conn`; (c) jstack the stalled fiber.
-      Harness pitfall recorded: a watchdogged round that times out
-      LEAKS its listener and thread — only the first failure of a run
-      is trustworthy under that harness.
-
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
