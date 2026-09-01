@@ -1,7 +1,10 @@
 # Changelog
 
 ## security-oidc — user login from parts on the shelf
-Completed: 2026-09-01
+Completed: 2026-09-01 (landed as 4951cd1; the release entry went out
+one commit early again — a refused fast-forward followed by a `;`
+chain. The rule hardens: merge FIRST, boards after the merge exit is
+read, nothing between them but the check)
 Discovery, login url (nonce), callback validating the id_token into
 a Principal; at_hash keeps spliced access tokens out; the forgery
 battery refuses each attack by name. Matrix 1049.
