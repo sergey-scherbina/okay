@@ -1,5 +1,13 @@
 # Changelog
 
+## mcp-templates — one declaration, unbounded uris; MCP's list closes
+Completed: 2026-09-01
+resources/templates/list both ends; expand (RFC 6570 L1) and its
+never-guessing reverse `matches` — a server's read extracts the
+variables, one line serves a tree; completion tied in; the reference
+server's own templates probed live. The 2025-06-18 protocol list is
+COMPLETE. Matrix 1022.
+
 ## mcp-completion — the completer is a function the Serving carries
 Completed: 2026-09-01
 completion/complete both ends: Complete => Vector[String] as an

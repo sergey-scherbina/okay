@@ -1,6 +1,0 @@
-feature/mcp-templates 2026-09-01T10:03:32Z
-agent: claude-code
-heartbeat: 2026-09-01T10:03:32Z
-status: in-progress
-done-so-far:
-next: Template shapes + expand/match + serve/session + tests + live
