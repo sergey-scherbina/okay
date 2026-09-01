@@ -1,0 +1,5 @@
+slug: sim-typestate-specs
+agent: fable-persist (session 75625ecc)
+started: 2026-09-01
+scope: two specs born of one user question — specs/sim.md (deterministic concurrency simulation on Delim: prompts per fiber, seeded scheduler, replayable interleavings; the three-races-by-flakes argument) and specs/typestate.md (PState at protocol seams: SCRAM/PgSql phases, transact internals; public APIs untouched); room discussion incorporated before landing
+files: specs/sim.md (new), specs/typestate.md (new), BACKLOG already points at them
