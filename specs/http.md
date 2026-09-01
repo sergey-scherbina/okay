@@ -184,10 +184,11 @@ than growing without limit.
 - [x] `Resource` stops the server: a request after the scope fails
 - [x] closing twice is a no-op, not an `Output closed` — a session may
       close itself and the caller may close after it
-- [ ] close half-duplex in full: frames in flight after a Close still
-      arrive. What is shown is weaker — a `Text` then a `Close` both come
-      back, in order. The stronger claim needs a server that keeps
-      sending after receiving Close, which `WsEcho` does not do
+- [x] close half-duplex in full: frames in flight after a Close still
+      arrive. `WsEcho(partingWords = 3)` answers a Close with three
+      more texts BEFORE echoing it, and the session sees all three, in
+      order, then the Close — a transport that tore the read half down
+      with the write half would drop them
 - [x] a JVM server driven by a JS client, one shared-source program.
       `Acceptance.check` is that program — the schema, the routes, the
       session and the expectations all shared — and both ends run it:

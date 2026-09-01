@@ -1,5 +1,13 @@
 # Changelog
 
+## ws-close-halfduplex — the last unchecked item in specs/http.md
+Completed: 2026-09-01
+
+The strong form of the half-duplex claim: `WsEcho(partingWords = 3)`
+answers a Close with three more texts before echoing it, and the
+session sees all three, in order, then the Close. specs/http.md now
+has no unchecked behaviour item.
+
 ## security-mcp — MCP authorization: the challenge that teaches
 Completed: 2026-09-01
 McpAuth: RFC 9728 metadata (public — it is how strangers learn), the

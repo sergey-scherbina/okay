@@ -21,7 +21,8 @@ import java.util.Base64
  * ping/pong and close. No fragmentation on the way out, no extensions,
  * no TLS.
  */
-final class WsEcho(val fragmentEvery: Int = 0) extends AutoCloseable {
+final class WsEcho(val fragmentEvery: Int = 0,
+                   val partingWords: Int = 0) extends AutoCloseable {
   private val server = ServerSocket(0)
   @volatile private var client: TcpSocket = null
   private val thread = Thread.startVirtualThread(() => try serve() catch case _: Throwable => ())
@@ -92,7 +93,16 @@ final class WsEcho(val fragmentEvery: Int = 0) extends AutoCloseable {
 
         val fin = (b0 & 0x80) != 0
         opcode match
-          case 0x8 => // close: answer and stop
+          case 0x8 => // close: answer and stop — but not before any
+            // parting words. RFC 6455 close is HALF-duplex: a peer that
+            // received Close may still deliver frames already on their
+            // way, and the client transport must hand them to the
+            // session rather than dropping them at the door. This is
+            // the fixture for exactly that test.
+            var w = 0
+            while w < partingWords do
+              send(out, 0x1, s"parting-$w".getBytes(UTF_8))
+              w += 1
             send(out, 0x8, data); open = false
           case 0x9 => send(out, 0xa, data)                  // ping -> pong
           case 0xa => ()                                     // pong: nothing owed

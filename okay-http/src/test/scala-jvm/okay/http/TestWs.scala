@@ -105,6 +105,22 @@ class TestWs extends munit.FunSuite {
     finally echo.close()
   }
 
+  test("close is HALF-duplex: frames in flight after our Close still arrive") {
+    // the strong form of the claim specs/http.md left unchecked: the
+    // server, on receiving our Close, sends three more texts BEFORE
+    // echoing the Close — and the session must see all three, in
+    // order, and then the Close. A transport that tears the read half
+    // down when the write half closes would drop them.
+    val echo = WsEcho(partingWords = 3)
+    try
+      val got = session(echo.url)(sayAndTake(4)(
+        Frame.Close(Frame.Normal, "leaving")))
+      assertEquals(got.take(3),
+        Seq(Frame.Text("parting-0"), Frame.Text("parting-1"), Frame.Text("parting-2")))
+      assert(got(3).isInstanceOf[Frame.Close], s"the stream must end at the peer's Close: $got")
+    finally echo.close()
+  }
+
   // ---- the payoff the shapes were kept the same for
 
   final case class Add(a: Int, b: Int)
