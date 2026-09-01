@@ -15,6 +15,11 @@ import java.nio.charset.StandardCharsets.UTF_8
  */
 class TestChatDemo extends munit.FunSuite {
 
+  // live model calls under a loaded matrix outgrow munit's 30s —
+  // the TestRepoAgent precedent
+  override def munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(120, "s")
+
   def withServer[A](budget: Int,
                     store: okay.matching.MatchStore = okay.matching.MemoryMatch())
                    (f: Int => A): A =

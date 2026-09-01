@@ -912,6 +912,9 @@ lazy val okayDemo = (project in file("okay-demo"))
     // stdin for itself — a client should launch the class directly
     // (see okay-mcp's module doc for the command).
     run / fork := true,
+    // the DriverManager per-classloader rule (the okay-jdbc lesson):
+    // a module carrying a JDBC driver forks its tests
+    Test / fork := true,
     run / connectInput := true,
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
