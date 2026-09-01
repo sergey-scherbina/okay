@@ -13,6 +13,20 @@ logic-named-cut and r-restarts (both GATED, gates named). Slugs
 filed; pg-scram amended to defer its form. Design discussed in the
 room: capture-at-Async, prompt-machine non-collision, and
 internals-only transact all settled with the sibling lane.
+## pg-scram-typestate — the handshake's order is the type's shape
+Completed: 2026-09-01
+
+Scram rebuilt as PHASE OBJECTS (the wire-typestate family; phase
+objects where PState's Cont bridge buys nothing): ClientFirst's only
+step is serverFirst, ClientFinal's only step is serverFinal — an
+out-of-order step does not EXIST as a method (compileErrors-pinned
+both directions). The one-object Scram class stays as the adapter
+over the phases (same API, same bytes — usable without the types),
+and even there the old silent NPE on a misordered server became a
+named PgError; PgSql's driver loop now holds the phase and names
+SASLContinue/SASLFinal arriving out of order. The whole dance is
+pinned to the RFC 7677 test vector byte for byte, mutual
+verification included. 4 tests.
 
 ## sim-typestate-specs — the user's question becomes two specs
 Completed: 2026-09-01 (landed as 3bb0bd3; spec only)

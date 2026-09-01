@@ -298,7 +298,10 @@ object PgSql:
     def send(tag: Char, body: Array[Byte]): Unit =
       out.writeByte(tag); out.writeInt(body.length + 4); out.write(body); out.flush()
 
-    var scram: Scram = null
+    // the SASL handshake as PHASE OBJECTS: the variable holds the
+    // phase we are in, and a tag arriving out of order is a NAMED
+    // refusal, not an accidental NPE (pg-scram-typestate)
+    var sasl: AnyRef = null
     var ready = false
     while !ready do
       val (tag, body) = receive()
@@ -310,13 +313,19 @@ object PgSql:
               val mechs = new String(body, 4, body.length - 4, UTF_8)
               if !mechs.contains("SCRAM-SHA-256") then
                 throw PgError(s"server offers no SCRAM-SHA-256 (offered: $mechs)")
-              scram = Scram(user, password, Scram.nonce())
-              val first = scram.clientFirst
+              val p0 = Scram.start(user, password)
+              sasl = p0
+              val first = p0.message
               send('p', str("SCRAM-SHA-256") ++ i32(first.length) ++ first)
-            case 11 =>                        // SASLContinue
-              send('p', scram.clientFinal(body.drop(4)))
-            case 12 =>                        // SASLFinal: verify the server
-              scram.verifyServerFinal(body.drop(4))
+            case 11 => sasl match             // SASLContinue
+              case p: Scram.ClientFirst =>
+                val next = p.serverFirst(body.drop(4))
+                sasl = next
+                send('p', next.message)
+              case _ => throw PgError("SASLContinue out of order")
+            case 12 => sasl match             // SASLFinal: verify the server
+              case p: Scram.ClientFinal => p.serverFinal(body.drop(4))
+              case _ => throw PgError("SASLFinal before SASLContinue")
             case other =>
               throw PgError(s"authentication method $other is not spoken here " +
                 "(scram-sha-256 is; md5 and cleartext are deliberately not)")

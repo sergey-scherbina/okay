@@ -51,11 +51,6 @@
 ## okay-cache (specs/cache.md)
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
-- [ ] pg-scram-typestate — the SCRAM handshake's order by type;
-      FORM decided in specs/typestate.md (the wire lane's doctrine
-      home): phase objects vs PState — internals only either way,
-      the public API unchanged (user ask, 2026-09-01)
-
 - [ ] sql-pg-copy — COPY through the wire: the bulk-load posture
       (pairs jdbc-bulk-load); the wire already frames it
 - [ ] sql-pg-node — the cross-platform transport leg: the same
