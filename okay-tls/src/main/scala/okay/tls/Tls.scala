@@ -67,10 +67,11 @@ object Tls {
         .asInstanceOf[SSLServerSocket]
       ss
 
-  /** the ambient-Secrets door (ctx-everywhere): pure delegation */
-  def serverSocket(port: Int, certFile: String, key: Secret)
-                  (using secrets: Secrets): Either[String, SSLServerSocket] =
-    serverSocket(port, certFile, key, secrets)
+  /** the ambient-Secrets door (ctx-everywhere), wiring-shaped: the
+   * server awaiting its resolver — provide(secrets) { Tls.served(...) } */
+  def served(port: Int, certFile: String, key: Secret)
+  : Secrets ?=> Either[String, SSLServerSocket] =
+    serverSocket(port, certFile, key, summon[Secrets])
 
   // ── the pieces ────────────────────────────────────────────────────
 

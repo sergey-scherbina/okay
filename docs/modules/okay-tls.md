@@ -19,5 +19,5 @@ handshake); the `SSLEngine` machine waits for an NIO consumer,
 recorded in the spec's Decisions. The whole sslmode ladder is proven
 against live handshakes with a locally generated identity.
 
-`Tls.serverSocket(port, cert, key)` also reads an ambient `Secrets`
-(ctx-everywhere) — the resolver is the flow's environment.
+`Tls.served(port, cert, key)` is the ambient-Secrets form —
+`Secrets ?=> …`, for provide(secrets){ … } edges (ctx-everywhere).
