@@ -701,6 +701,18 @@ lazy val okaySecurityArgon2 = project
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * TLS for the own wires (specs/tls.md): one seam at the transport,
+ * postgres's sslmode vocabulary stack-wide, verify-full the only
+ * default. Platform crypto only; private keys are Secret references.
+ */
+lazy val okayTls = (project in file("okay-tls"))
+  .dependsOn(okayConf.jvm)
+  .settings(
+    name := "okay-tls",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayJetty = project
   .in(file("okay-jetty"))
   .dependsOn(okayHttp.jvm)
@@ -840,7 +852,7 @@ lazy val root = (project in file("."))
     okayCache.jvm, okayCache.js, okayCache.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,

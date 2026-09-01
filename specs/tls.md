@@ -17,9 +17,12 @@ transport gets TLS from one seam and adds nothing of its own.
 - `Tls.client(cfg)` / `Tls.server(cfg)` wrap an Async-transport
   connection before any protocol bytes flow. Platform fills the
   crypto (the specs/security.md doctrine — no own crypto, ever):
-  JVM = `SSLEngine` over the existing NIO transport; Node = the
-  `tls` module; Native = platform TLS via interop, staged — JVM
-  first, honestly.
+  JVM = platform TLS over the transport the own wires ACTUALLY use
+  — which today is the blocking `java.net.Socket` (pg-wire, Loom
+  parks in it), so the JVM leg is `SSLSocket`; the `SSLEngine`
+  state machine joins when an NIO consumer appears (adjusted at
+  wire-tls, recorded below). Node = the `tls` module; Native =
+  platform TLS via interop, staged.
 - **Vocabulary: postgres's `sslmode`, adopted stack-wide** because
   it is the one operators already know, and it names the honest
   levels: `disable` | `require` (encrypt, no identity check) |
@@ -77,3 +80,9 @@ transport gets TLS from one seam and adds nothing of its own.
 - **Platform crypto only** — JCA/node:tls/platform TLS; the
   security spec's rule extended to transport. Rejected: bundling a
   TLS implementation.
+- **SSLSocket before SSLEngine** (wire-tls) — the wires this seam
+  exists for run on blocking sockets under virtual threads, and
+  `SSLSocket` IS the platform's TLS for that transport; driving an
+  `SSLEngine` state machine for an NIO consumer that does not exist
+  yet would be machinery for a need nobody named. The seam's
+  signature (wrap a connected socket) survives the addition.
