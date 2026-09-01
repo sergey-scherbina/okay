@@ -1,5 +1,12 @@
 # Changelog
 
+## ui-wire — server-driven UI; the tree is the capability list
+Completed: 2026-09-01
+WireJson (hand-mapped; codec-vector filed), Wire.serve as a pure
+stage (full tree, then narrow patches), Wire.client to any Host; the
+forged-key test argues from the hostile side (its update THROWS on
+the forged key — the wire never lets it through). 6 tests; matrix 933.
+
 ## codec-native — the P5 chain on Scala Native
 Completed: 2026-09-01
 okay-lex/parse/codec gain Native legs (an omission from P5, never a

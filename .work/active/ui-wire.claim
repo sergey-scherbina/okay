@@ -1,6 +1,0 @@
-feature/ui-wire 2026-09-01T08:01:09Z
-agent: claude-code
-heartbeat: 2026-09-01T08:01:09Z
-status: in-progress
-done-so-far:
-next: WireJson + serve stage + client + capability check
