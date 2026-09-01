@@ -60,7 +60,21 @@ API reference, gotchas.
 | [`okay-security`](modules/okay-security.md) | authorization once: claims as values, JWT/JWKS over a crypto seam, PBKDF2, policies as an algebra, routes wrapped so a principal must exist, OAuth2 client flows |
 | [`okay-ui`](modules/okay-ui.md) | the toolkit that is not a toolkit: the view is a value, the renderer is a seam — terminal, React, test host, one application; forms derived from Schema |
 | [`okay-mcp`](modules/okay-mcp.md) | the Model Context Protocol, both ends: a server is a `Handler[Tool]`, our tools are a server, and the protocol is a pure Stage |
-| `okay-demo` | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`); `RepoMcp`, the same repository served as an MCP server (tools, every file as a resource, an `explain` prompt); and the worked examples — `Combine` joins two live telemetry streams twice, `Stage.transduce` against fs2's `mapAccumulate` shape, with tests pricing the difference |
+| [`okay-persist`](modules/okay-persist.md) | the durable log: one primitive, staged — segments and recovery, offsets, compaction, replication's core, Sql/Kafka store engines, the Doctor |
+| [`okay-cache`](modules/okay-cache.md) | how a cache is ALLOWED to be wrong, named: budgets, invalidation, the log-fed view; memory and Redis engines; the cross-node invalidation topic |
+| [`okay-sql`](modules/okay-sql.md) | the relational seam: SqlValue/Col and the typed layer once, drivers underneath (JDBC, the pg wire, sqlite) |
+| [`okay-pg`](modules/okay-pg.md) | the Postgres v3 protocol spoken natively: SCRAM (phase objects), the extended protocol, no JVM driver in between |
+| [`okay-docs`](modules/okay-docs.md) | the document seam: get/put with CAS, declared consistency; TopicDocs own engine |
+| [`okay-docs-mongo`](modules/okay-docs-mongo.md) | the foreign adapter that proves the Docs seam, on Mongo's native CAS |
+| [`okay-conf`](modules/okay-conf.md) | configuration as data, secrets as REFERENCES — a config cannot leak what it does not contain |
+| [`okay-tls`](modules/okay-tls.md) | one TLS seam at the transport; the sslmode ladder, verify-full the only default; keys as Secret refs |
+| [`okay-blob`](modules/okay-blob.md) | the object-store seam: fs and S3 engines, OWN SigV4 pinned by the AWS vectors, persist backups |
+| [`okay-obs`](modules/okay-obs.md) | tracing without a framework: spans as values on a topic, W3C traceparent, capability routes, OTLP export as a consumer |
+| [`okay-py`](modules/okay-py.md) | Python as a handler: operations not eval, a clean-env shim with a version handshake, N workers past the GIL |
+| [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Handler[Model]` — their provider breadth behind our effect |
+| [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
+| [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector |
+| [`okay-demo`](modules/okay-demo.md) | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`); `RepoMcp`, the same repository served as an MCP server (tools, every file as a resource, an `explain` prompt); and the worked examples — `Combine` joins two live telemetry streams twice, `Stage.transduce` against fs2's `mapAccumulate` shape, with tests pricing the difference |
 
 ## How the claims are checked
 
