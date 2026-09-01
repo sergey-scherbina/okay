@@ -353,11 +353,17 @@ Doors added by this sweep (all additive, explicit forms stay):
 
 ## Filed (BACKLOG slugs, each with its gate)
 
-- **ctx-wiring** — handlers-awaiting-environment: module factories
-  returning `Http ?=> Secrets ?=> Handler[Model]`-shaped values, the
-  conf doctrine ("the edge builds handlers") expressed in types;
-  okay-demo adopts first. Gate: a demo consumer wanting rewiring —
-  possibly OPEN since demo-chat (offered to that lane, room n244).
+- **ctx-wiring** — CLOSED 2026-09-01, half adopted, half rejected.
+  The valuable half landed as demo-ctx (another lane): the demo's
+  environment went ambient (`using MatchStore` on seven functions,
+  provide at the edges) — the forgot-to-thread bug class gone
+  structurally. The factory half (`Http ?=> Secrets ?=>
+  Handler[Model]`-shaped module factories) found NO consumer: the
+  demo builds its provider once from env vars, tests use scripted,
+  nobody swaps Http under a factory; where the factory shape pays,
+  the doors already shipped (`S3.wired`, `Langchain4j.wired`,
+  `Configs.ambient`). Audited against the demo sources; reopen only
+  with a consumer that actually rewires.
 - **ctx-reader-bridge** — `(A ?=> B) <-> B ! Reader % A`: a context
   function IS a pure Reader program and the tower has Reader.scala.
   GATED: no consumer named. The sketch "one Conversion each way" was
