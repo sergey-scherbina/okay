@@ -6,8 +6,14 @@
       under the full matrix (2026-09-01, Errors 1 with 0 failures;
       JVM tests of the same suite green in the same run); second
       platform run printed the header with no tests. Suspect
-      platform init under load. Settle by: run the suite alone on
-      JS/Native; if it reproduces, isolate.
+      platform init under load. TRIAGED 2026-09-01: ran alone on
+      JS (3/3) and Native (3/3) — did NOT reproduce. The suite is
+      pure and deterministic (MemoryStore + Election + Replicated, a
+      manual clock, no threads/IO), so the suite-level error was an
+      environmental runner crash under parallel matrix load — the
+      same family as the Native-SIGKILL-under-load incidents, not a
+      code defect. Leave filed; re-triage only if it recurs with a
+      NON-environmental signature.
 - [ ] netty-ws-matrix-flake — okay.netty.TestBackends "every WebSocket
       client talks to every WebSocket server" failed once under the
       full sbt test matrix (jetty StaticException: Closed,
