@@ -60,6 +60,12 @@ object ChatDemo {
         "role" -> JStr(m.role), "content" -> JStr(m.content))))))))
     OpenAi.stream(Transports.http(), "local", body, s"$base/v1/chat/completions")
 
+  /** which model serves — shown on the page and at startup */
+  def modeName: String =
+    if sys.env.contains("ANTHROPIC_API_KEY") then "live (Anthropic)"
+    else if sys.env.contains("OKAY_CHAT_BASE") then s"local (${sys.env("OKAY_CHAT_BASE")})"
+    else "scripted (no model — set OKAY_CHAT_BASE or ANTHROPIC_API_KEY)"
+
   def model: Model =
     sys.env.get("ANTHROPIC_API_KEY").map(live)
       .orElse(sys.env.get("OKAY_CHAT_BASE").map(local))
@@ -442,6 +448,8 @@ object ChatDemo {
             case Some(f) =>
               s"флоу $n: сценарий ${f.scenario}, состояние ${f.state}, " +
                 s"история: ${f.history.map(_._1).mkString(" -> ")}"
+      case s if s.trim == "помощь" || s.trim == "help" =>
+        scriptedAgent("")   // the default branch IS the help
       case s if s.contains("берусь") || s.contains("отказываюсь") =>
         val accept = s.contains("берусь")
         "\\d+".r.findFirstIn(s).map(_.toLong) match
@@ -525,9 +533,26 @@ object ChatDemo {
   def routes(m: Model, budget: Int)(using MatchStore)
   : PartialFunction[Request, Response ! Async] =
     case r if r.method == okay.http.Method.Get && r.url == "/" =>
-      val html = if appJs.isDefined then reactPage else page
+      val html = (if appJs.isDefined then reactPage else page)
+        .replace("MODE", modeName)
       pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
         Http.one(html.getBytes(UTF_8))))
+    case r if r.method == okay.http.Method.Get && r.url == "/market" =>
+      val store = summon[MatchStore]
+      import okay.matching.*
+      def rowsOf(side: Side) = store.candidates(Query(side, k = 50)).map { h =>
+        val texts = h.disclosed.map(f => Value.text(f.value)).filter(_.nonEmpty)
+        s"<li>${texts.mkString(" · ")}</li>"
+      }.mkString
+      pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
+        Http.one(s"""<!doctype html><meta charset="utf-8"><title>market</title>
+          |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
+          |h2{color:#7a869c}</style>
+          |<h2>предложения</h2><ul>${rowsOf(Side.Offer)}</ul>
+          |<h2>запросы</h2><ul>${rowsOf(Side.Need)}</ul>
+          |<p><a style="color:#6b9fff" href="/">← в чат</a> · видно только Public — ворота держат и здесь</p>
+          |""".stripMargin.getBytes(UTF_8))))
+
     case r if r.method == okay.http.Method.Get && r.url == "/app.js" && appJs.isDefined =>
       pure(Response(200, Seq("content-type" -> "text/javascript"),
         Http.one(java.nio.file.Files.readAllBytes(appJs.get))))
@@ -589,6 +614,7 @@ object ChatDemo {
   input { padding: .6rem .8rem; border-radius: .7rem; border: 1px solid #2a3342; background: #171c25; color: inherit; width: 70%; }
   button { padding: .6rem 1rem; border-radius: .7rem; border: 0; background: #3563a8; color: white; cursor: pointer; }
 </style>
+<div style="max-width:640px;margin:0 auto;padding:.6rem 1rem;color:#7a869c;font-size:.85em">режим: MODE — маркетплейс: <a style="color:#6b9fff" href="/market">/market</a></div>
 <div id="root"></div>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -614,6 +640,8 @@ object ChatDemo {
 </style>
 <main>
   <h1>okay chat — streamed by okay-jetty, guarded by Cut</h1>
+  <div id="status" style="color:#7a869c;font-size:.85em"></div>
+  <div id="chips" style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.4rem 0"></div>
   <div id="log"></div>
   <form id="f"><input id="i" autocomplete="off" placeholder="say something — or /match умею класть плитку email me@x"><button>send</button></form>
 </main>
@@ -621,6 +649,20 @@ object ChatDemo {
 const log = document.getElementById('log'), f = document.getElementById('f'), i = document.getElementById('i');
 const history = [];
 let subscribed = false;
+document.getElementById('status').textContent = 'режим: MODE — маркетплейс: /market';
+const examples = [
+  'умею класть плитку email tiler@x',
+  'нужен сантехник email client@x',
+  'спроси всех email client@x',
+  'какая столица Франции?'];
+const chips = document.getElementById('chips');
+for (const ex of examples) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.textContent = ex;
+  b.style.cssText = 'font-size:.8em;background:#1d2430;border:1px solid #2a3342;color:#9fb0c8';
+  b.onclick = () => { i.value = ex; i.focus(); };
+  chips.appendChild(b);
+}
 function subscribe(email) {
   if (subscribed) return; subscribed = true;
   const es = new EventSource('/events/' + encodeURIComponent(email));
@@ -641,7 +683,7 @@ f.onsubmit = async (ev) => {
   const res = await fetch('/chat', {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({messages: history})});
   const reader = res.body.getReader(); const dec = new TextDecoder();
-  let buf = '', answer = '';
+  let buf = '', answer = '', closed = false;
   for (;;) {
     const {done, value} = await reader.read(); if (done) break;
     buf += dec.decode(value, {stream: true});
@@ -651,11 +693,16 @@ f.onsubmit = async (ev) => {
       const ev = frame.match(/^event: (.*)$/m)?.[1] ?? 'data';
       const data = frame.match(/^data: (.*)$/m)?.[1] ?? '';
       if (ev === 'data') { answer += JSON.parse(data); bot.textContent = answer; }
+      else if (ev === 'error') { const c = document.createElement('div'); c.className = 'cut';
+        c.textContent = '⚠ ' + JSON.parse(data); bot.appendChild(c); closed = true; }
       else if (ev === 'cut') { const c = document.createElement('div'); c.className = 'cut';
-        c.textContent = '✂ generation cut: ' + data; bot.appendChild(c); }
+        c.textContent = '✂ generation cut: ' + data; bot.appendChild(c); closed = true; }
+      else if (ev === 'done') { closed = true; }
       log.scrollTop = log.scrollHeight;
     }
   }
+  if (!closed) { const c = document.createElement('div'); c.className = 'cut';
+    c.textContent = '⚠ поток оборвался — модель могла упасть'; bot.appendChild(c); }
   history.push({role: 'assistant', content: answer});
 };
 </script>"""

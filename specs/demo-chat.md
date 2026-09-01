@@ -156,6 +156,17 @@ sqlite) is gone structurally. `Cut.checked` gained the ambient-
 prompt door (additive in okay-llm), so the guard site reads
 `Cut.guard { Cut.checked(tokens)(rule) }`.
 
+## Polish (demo-polish)
+- The page states its MODE (scripted/local/live) and links /market.
+- `/market` — the marketplace, visible: offers and needs as lists of
+  their disclosed facts; ONLY Public shows (the gates hold on the
+  page too, by test — a Matched phone stays off it).
+- Example chips fill the input (the demo teaches itself).
+- Failure is visible: the agent path answers `event: error` when the
+  model dies (not a 500); the streaming path's dropped connection is
+  detected client-side ("поток оборвался").
+- "помощь"/"help" reaches the driver's phrasebook.
+
 ## Out of scope
 - Auth, persistence of conversations, multi-user rooms (persist owns
   durable history; okay-match's DURABLE store is one constructor swap

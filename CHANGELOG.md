@@ -19,6 +19,16 @@ encrypted grant, an append/read round-trip, refuse-by-name, and — the
 proof it is REQUIRED not optional — a plaintext client refused by the
 TLS server. The plaintext TestWire/TestWireRepl (12) unchanged and
 green. Still open for the pg lane: the sslmode SSLRequest dance.
+## demo-polish — the demo teaches itself and fails visibly
+Completed: 2026-09-01
+
+The page states its mode and links /market — the marketplace made
+visible as lists of DISCLOSED facts only (a Matched phone stays off
+the page; the gates hold there too, by test). Example chips fill the
+input; "помощь" reaches the phrasebook. Failure is visible: a model
+dying on the agent path answers an error frame the page renders
+(⚠), and a dropped stream on the plain path is detected client-side.
+14 demo tests.
 
 ## docs-direct-style — the direct-style documentation, user page and theory chapter
 Completed: 2026-09-01
