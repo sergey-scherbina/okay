@@ -115,3 +115,6 @@
       (Jetty's did not — found by mcp-push, fixed there)
 
 ## Elsewhere
+- [ ] rag-langchain4j — their EmbeddingStore as a Retrieve handler
+      (the other half of the interop sentence; when a consumer
+      names a store)
