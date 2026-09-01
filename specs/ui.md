@@ -214,6 +214,48 @@ pays twice. `Ui`, `Event` and `Patch` get derived `Schema`s, so:
   submit crosses the wire as one typed value, decoded by the SAME
   Schema that rendered the form.
 
+Phase 3 contract (claimed: ui-wire). Transport-agnostic on purpose:
+the server is a PURE `Stage[String, String, Nothing]` — event lines
+in, patch lines out — so it runs over channels, an okay-mcp `Link`, a
+WebSocket or stdio with the machinery that already exists, and is
+tested with none of them.
+
+```scala
+object Wire:
+  /** the server side: the first line out is the FULL TREE, then
+   * narrow patches; an event naming a key not on the shown tree is
+   * DROPPED — the tree is the capability list */
+  def serve[S](init: S)(view: S => Ui)(update: (S, Event) => S)
+  : Stage[String, String, Nothing]
+
+  /** the client side: keep the tree, apply what arrives, render to
+   * any Host; the host's own events go back as lines */
+  def client(host: Host)(lines: Source[String],
+             send: String => Unit ! Async): Unit ! Async
+
+object WireJson:   // hand-mapped, the MCP-dialect precedent —
+                   // Schema derivation needs Vector+recursion+defaults
+                   // first (backlog: codec-vector)
+  def uiJson(u: Ui): Json;      def uiOf(j: Json): Option[Ui]
+  def eventJson(e: Event): Json; def eventOf(j: Json): Option[Event]
+  def patchJson(p: Patch): Json; def patchOf(j: Json): Option[Patch]
+```
+
+- [ ] every Ui, Event and Patch shape round-trips through Json
+- [ ] the serve stage's first line is the full tree; later lines are
+      the narrow patches the diff makes, not full repaints
+- [ ] a FORGED event — a key that is not on the shown tree — is
+      dropped: update never sees it (asserted by a counter that would
+      have moved)
+- [ ] end to end over in-memory channels: a scripted user drives a
+      server-held counter through a client Host; frames on the client
+      equal the server's views
+- [ ] a second client connecting to a fresh serve of the SAME state
+      begins with the full tree (reconnect's shape; session
+      continuity itself is ui-durable's task)
+- [ ] a damaged line is dropped, not a crash — totality at this wire
+      like every other
+
 ### Low level, in the UI context (phase 3, designed now)
 - **codecs**: `Schema[Ui]`/`Schema[Event]`/`Schema[Patch]` are
   derivations, not designs — JSON and CBOR both arrive free, CBOR for
