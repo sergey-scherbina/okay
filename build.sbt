@@ -427,6 +427,8 @@ lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-obs"))
   .dependsOn(okay, okayCodec, okayPersist)
+  // the OTLP push glue speaks to a collector through the one client
+  .jvmConfigure(_.dependsOn(okayHttp.jvm))
   .settings(
     name := "okay-obs",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -435,6 +437,8 @@ lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .jvmSettings(
     // the crossing test (http -> sql, one traceId) needs a database
     libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )

@@ -42,10 +42,15 @@ without importing a framework.
   operation it performs. Programs stay observability-blind; the
   edge composes a tracing handler around any other, which is what
   handlers are for.
-- **Export = a consumer.** An OTLP exporter reading the trace
-  topic and speaking to any collector (Jaeger, Tempo, vendor) is
-  an interop, filed, not core; a JSON dump of a trace is `read` +
-  the Schema, today, free.
+- **Export = a consumer.** SHIPPED (obs-otlp): the exporter reads
+  the trace topic and POSTs OTLP/HTTP JSON to any collector's
+  /v1/traces — no SDK, because a documented JSON shape is a
+  mapping, not a dependency. The offset is the resume token; a
+  refusing collector leaves the batch unconsumed, so retry
+  re-ships: at-least-once, which is what trace ingestion expects.
+  Proven against a recording fake collector (shape, statuses,
+  nanos-as-strings, resume, refusal). A JSON dump of a trace
+  remains `read` + the Schema, free.
 
 ## Behavior
 
