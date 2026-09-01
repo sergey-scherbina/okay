@@ -1,0 +1,5 @@
+slug: cache-view
+agent: fable-persist (session 75625ecc)
+started: 2026-09-01
+scope: regime 1 — the log-fed View over a compacted keyed topic: latest = the fold's state, lag = consumer lag, refresh = reading on; cold refold agrees with the warm view; spec: specs/cache.md regime 1 + its behavior box
+files: okay-cache/** (View + tests), build.sbt (okayCache gains okayPersist), specs/cache.md (box/Results), docs/modules/okay-cache.md
