@@ -22,7 +22,12 @@ force, all already practiced, none previously written down:
 - Before merging: rebase the branch on `master`, run `sbt test`, then
   `git merge --ff-only` — and READ the merge output; git refuses a
   fast-forward over a sibling's uncommitted files, and the refusal
-  scrolls past a `tail -1`.
+  scrolls past a `tail -1`. HARDENED after three incidents: the merge
+  runs ALONE (its own command, from the main checkout, exit code
+  printed), and only after reading exit 0 do worktree removal, branch
+  deletion, boards and the claim release run. A `;` after a failed
+  merge has twice deleted an unmerged branch and pushed a release
+  entry for work that had not landed.
 - Coordination room: rozum. Announce landings; flag files you both
   touch (`build.sbt`, `src/jmh/history.tsv` — append-only, expect
   tail conflicts, resolve by keeping both sides).
