@@ -53,6 +53,47 @@ def unchunked[I, O, A](s: StageC[I, O, A]): Stage[I, O, A] // adapter
       !.widen and a union-ACI ascription); associativity tested with
       effects in the row
 
+## Phased stages (stage-phased) — typestate on the stream
+
+A stream with PHASES (a header before rows — the CSV shape, a
+preamble before frames) forces today's transducer to encode the
+phase as a sum type in S, and every step carries branches for
+states that are illegal in that phase. `Stage.phased` removes the
+illegal states STRUCTURALLY: the accumulator CHANGES TYPE at the
+switch, so the body step cannot even mention the header phase —
+Atkey's parameterised composition applied to the pipeline, and
+PState (the theory exhibit of docs/theory/03) gains its stream
+consumer: the per-input transition is executed as a PState program,
+the reified form of the type change the two loops enforce.
+
+```scala
+/** two phases, one stage: `head` consumes I at S1 and either stays
+ * (Left) or SWITCHES (Right) carrying the S2 the body starts from;
+ * `body` runs at S2 and never sees S1 — not by discipline, by type.
+ * Ends are honest both ways: input may end DURING the head. */
+def phased[I, O, S1, S2](z: S1)(
+  head: (S1, I) => Either[(S1, Vector[O]), (S2, Vector[O])],
+  body: (S2, I) => (S2, Vector[O]),
+  endHead: S1 => Vector[O],
+  endBody: S2 => Vector[O]): Stage[I, O, Either[S1, S2]]
+```
+
+Behavior:
+- [ ] the CSV shape: the head parses the header line into the
+      column index (S2 = the names), the body emits typed rows
+      keyed by it; outputs and the final Right(S2) agree with a
+      hand-written run
+- [ ] outputs telled AT the switch (the Right's vector) arrive
+      before the body's first output; order is total
+- [ ] input ending DURING the head answers Left(S1) and endHead's
+      flush; ending in the body answers Right(S2) and endBody's
+- [ ] the illegal state does not COMPILE: a body step written
+      against the head's type is a compile error, asserted with
+      compileErrors — the first typestate proof in the suite
+- [ ] the transition runs through PState: the switch step is a
+      Cont program whose state type changes S1 -> S2 (the Atkey
+      instance, executed rather than exhibited)
+
 ## Out of scope
 - fan-in/fan-out topologies (Channel territory)
 - own buffering/backpressure (Channel territory; a Stage never queues)
