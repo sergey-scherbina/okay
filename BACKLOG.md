@@ -108,9 +108,6 @@
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:
       driver availability, not performance — virtual threads
       already cover JDBC-behind-Async)
-- [ ] jdbc-write-bridge — the Durable policies over their unique
-      constraints (WithKey = ON CONFLICT, Reconcile = SELECT by
-      key), journaled in okay-persist
 - [ ] jdbc-poll-source — incremental poll by a monotone column with
       journaled watermark and lag window (stated non-CDC)
 

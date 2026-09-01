@@ -1,5 +1,20 @@
 # Changelog
 
+## jdbc-write-bridge — the Durable policies over their constraints
+Completed: 2026-09-01 (landed as b1903cd; spec first)
+Writes(db, topic, run) in okay-jdbc, written only against the Sql
+seam and a persist Topic (movable to any driver): write() journals
+Intent(seq, sql, params, key) durably BEFORE the statement, Done
+after; recover() refolds and resolves each open intent by declared
+Policy — WithKey re-executes the same statement/key and the far
+end's constraint dedups (H2 MERGE, landed once), Reconcile(select)
+settles the journal without re-executing (proven with a PLAIN
+insert that would have thrown on re-run), Fail/empty-Reconcile
+answer Unresolved as data with the world untouched. Both crash
+windows tested; seq continues over restart. Schema[SqlValue]
+derives for the journal records. Merge read alone: exit 0. Full
+matrix green.
+
 ## conf-impl — configuration as data, secrets as references
 Completed: 2026-09-01 (landed as 443c8a2 — the release rode a pull --rebase over the README push, so the changelog names the post-rebase hash)
 okay-conf cross-built (depends on okay-codec only): Secret whose

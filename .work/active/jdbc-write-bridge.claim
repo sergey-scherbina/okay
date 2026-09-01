@@ -1,5 +1,0 @@
-slug: jdbc-write-bridge
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: the Durable policies over their unique constraints through the Sql seam — WithKey (retry same natural key, constraint dedups), Reconcile (SELECT by key settles the journal), journaled in okay-persist (TopicJournal); the jdbc.md WithKey/Reconcile behavior box; spec: specs/jdbc.md "Writing correctly into a database we do not own"
-files: okay-jdbc/** (bridge + tests), specs/jdbc.md (box/Results), build.sbt (okayJdbc deps if needed)
