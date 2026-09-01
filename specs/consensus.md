@@ -141,7 +141,19 @@ caveats are stated, not hidden:
 
 - own Raft (RaftStore) — filed separately when a deployment names
   the need; the reduction above is designed so it slots in as an
-  engine
+  engine. Two notes for that future claim, from the core this
+  stack already owns (asked by the user, 2026-09-01): the ROLE
+  protocol (Follower → Candidate → Leader, each with its own legal
+  actions) is the textbook typestate case, and `PState` (the
+  type-changing state paramonad) can make "a follower may not
+  append as leader" a COMPILE error rather than a runtime check —
+  its per-op cost is irrelevant at election rates; and the honest
+  way to TEST consensus is deterministic simulation
+  (FoundationDB-style interleaving of many nodes by seed), which
+  is exactly what multi-prompt `Delim` is machinery for — each
+  node under its own Prompt, the simulator capturing at
+  send/receive points and choosing who wakes next, every found
+  bug replayable byte for byte.
 - membership changes / rebalancing partitions across nodes — the
   control log can carry assignment records later; static
   assignment stands until then
