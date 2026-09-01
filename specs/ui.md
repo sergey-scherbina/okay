@@ -352,15 +352,64 @@ object WireJson:   // hand-mapped, the MCP-dialect precedent —
   channels' backpressure is the overload story (a slow client parks
   its own producer, not the server).
 
+## ui-dom-patch — the raw-DOM Backend (the patch consumer arrives)
+
+`Host.diffing` was built for a consumer that never came in v1; this
+is it: React-less DOM, zero dependencies, the browser driven by the
+core diff. The design leans on three pieces that already exist —
+`React.elem` builds (the Elem tree IS the DOM plan), `Ui.patch`
+mirrors (the backend keeps a value copy of the tree, so events
+interpret against a value), `React.event` interprets (one delegated
+listener at the root, walking up to the nearest `data-key`).
+
+```scala
+object Dom:   // okay-ui scala-js — js.Dynamic in, zero dependencies
+  /** a Backend over a real (or fake) document and a mount node */
+  def backend(document: js.Dynamic, root: js.Dynamic): Backend
+```
+
+- Patch paths walk `childNodes`: a Ui child maps to exactly ONE root
+  element (the label wrapper of Input/Check is a leaf's root — paths
+  never descend through it; Select's options are DOM children but
+  never Ui children), so index-for-index navigation is sound.
+- SetValue/SetChecked find the `input` inside a possible wrapper;
+  SetSelected sets `selectedIndex`. Reorder appends the survivors in
+  target order (appendChild MOVES a live node — the DOM's own
+  primitive matches the patch's meaning). Remove/Insert are
+  removeChild/insertBefore at the index.
+- Events: ONE listener per kind (click/input/change) on the mount
+  root; the handler walks parentNode to the nearest data-key and asks
+  `React.event(mirror, key, kind, value)` — the same pure
+  interpretation the React host uses, against the mirror tree kept by
+  `Ui.patch`.
+
+Behavior:
+- [ ] the law, at the DOM: for scripted frame sequences (shuffles,
+      removals, insertions, edits — the keyed battery's shapes),
+      rendering through Host.diffing(Dom.backend(fake)) leaves the
+      fake DOM equal to building React.elem(last frame) from scratch
+- [ ] each narrow patch narrows: SetText touches textContent,
+      SetValue reaches the input inside its label wrapper, Reorder
+      MOVES nodes (the fake counts creations — a shuffle creates
+      nothing)
+- [ ] delegated events round-trip: a click on a button's node emits
+      Pressed(key), input on a nested input emits Edited with the
+      value, change on a check emits Toggled(!on) read from the
+      MIRROR, a click on a keyless node emits nothing
+- [ ] the fake document is the test's (createElement/appendChild/
+      replaceChild/removeChild/insertBefore/setAttribute/
+      addEventListener/textContent) — what Dom.scala uses and nothing
+      more, so the glue's real surface is written down
+- [ ] okayUi's JS tests exist again: the js test dir replaces
+      `Test / sources := Seq()` and this suite runs under Node in the
+      matrix
+
 ## Out of scope (v1)
 - native toolkits (GTK/Cocoa/Win32) — satellites once the seam has
   proven itself on three free backends; Native runs the terminal host
 - styling beyond bold/color, themes, animation
 - focus traversal beyond linear tab order; mouse in the terminal
 - accessibility trees (the Host seam is where they would attach)
-- a RAW-DOM patch `Backend` (the React-shaped host covers the
-  browser; the patch consumer is `Host.diffing` away when someone
-  needs React-less DOM — backlog: ui-dom-patch)
 - Windows terminals (raw mode is stty in v1)
 
 ## Decisions
