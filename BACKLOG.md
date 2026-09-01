@@ -29,6 +29,16 @@
       (the journal is an okay-persist topic: read(from) IS
       Last-Event-ID, TooEarly answers a compacted-past id)
 
+## okay-r (specs/r.md — R as a handler)
+- [ ] r-subprocess — stage 0: the module, REval/RValue/RFrame,
+      Rscript engine (CBOR/JSON wire, clean env), verify(packages),
+      condition-as-data, dead-process-throws; Durable-replay test
+- [ ] r-rserve — stage 1: the served engine (Java client behind a
+      trait; own QAP1 over Async later if named); two-engine
+      acceptance
+- [ ] r-arrow — frames as Arrow files/streams once the JSON-frame
+      road hurts
+
 ## The data landscape (specs/data.md — umbrella; vendor = seam impl)
 - [ ] docs-seam — the Docs trait (get/put CAS/delete/query,
       declared consistency) + the own-posture engine over View;

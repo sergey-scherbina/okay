@@ -1,5 +1,16 @@
 # Changelog
 
+## r-spec — specs/r.md: R as a handler
+Completed: 2026-09-01
+R joins the landscape as call-shaped foreign compute: an R call is
+an OPERATION (journalable by Durable, mockable by handler swap,
+supervised like a cluster worker), never an embedding (JRI/Renjin/
+FastR rejected with reasons). Named functions only — no string
+eval, structurally; neutral RValue/RFrame with Schema at the edge
+(the SqlValue move); verify(packages) catches environment drift
+loudly; subprocess engine first, Rserve behind the same handler.
+Spec only; r-subprocess, r-rserve, r-arrow filed.
+
 ## mcp-templates — one declaration, unbounded uris; MCP's list closes
 Completed: 2026-09-01
 resources/templates/list both ends; expand (RFC 6570 L1) and its
