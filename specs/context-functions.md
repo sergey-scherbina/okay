@@ -151,6 +151,18 @@ Every claim below was compiled, not assumed:
   eagerly applies before extension lookup (E10), `(x: Env ?=>
   Int).flatMap` dispatches against Int. The full matrix stayed
   green: the global given collides with nothing.
+- **The two arcs compose: a direct block inside a capability door**
+  (E20, 2026-09-01): `def told: Env ?=> Int ! (Writer % String) =
+  direct { Writer(s"hello ${wire[Env].user}"); wire[Env].uid }`
+  compiles and runs — the direct block is itself a context function
+  (`DirectCtx[F] ?=> A`), so it nests under the Env layer by
+  nearest-wins (E8) and `wire` works inside it; bare Writer
+  statements run as do-notation. Three layers, none knowing of the
+  others: provide peels Env at compile time, the macro peels the
+  syntax at expansion, handlers peel the row at run time. The
+  direct-style lane owns the doctrine of WHERE direct blocks
+  belong; this entry records only that the vocabularies do not
+  collide.
 - **The ctx layer composes with `!` cleanly, and the shipped doors
   are the proof** (E14, compiled against core): `Env ?=> (A ! F)`
   gives the ambient environment INSIDE `for`-comprehensions over
