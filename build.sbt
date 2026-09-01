@@ -706,6 +706,19 @@ lazy val okaySecurityArgon2 = project
  * postgres's sslmode vocabulary stack-wide, verify-full the only
  * default. Platform crypto only; private keys are Secret references.
  */
+/**
+ * Python as a handler (specs/py.md; the model is specs/r.md's):
+ * call-shaped foreign compute — operations, named functions only,
+ * conditions as data, a stdlib-only shim per session, verify makes
+ * "wrong venv" a loud startup refusal.
+ */
+lazy val okayPy = (project in file("okay-py"))
+  .dependsOn(okay.jvm, okayCodec.jvm)
+  .settings(
+    name := "okay-py",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayTls = (project in file("okay-tls"))
   .dependsOn(okayConf.jvm)
   .settings(
@@ -852,7 +865,7 @@ lazy val root = (project in file("."))
     okayCache.jvm, okayCache.js, okayCache.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,

@@ -85,6 +85,36 @@ implementation finds the duplication real — an implementation
 freedom, deliberately not a specced abstraction (two data points
 are not a rule of three).
 
+## Interface (stage 0, as built)
+
+```scala
+package okay.py
+
+enum PyValue:
+  case PyNone                       // Python None — distinct from NaN
+  case Bool(v: Boolean); case I64(v: Long); case F64(v: Double)
+  case Str(v: String); case Bytes(v: Array[Byte])
+  case Arr(v: Vector[PyValue])
+
+final case class PyFrame(cols: Vector[(String, Vector[PyValue])])
+final case class Condition(kind: String, message: String)  // type(e).__name__, str(e)
+
+enum PyEval[A]:
+  case Call(fn: String, args: Vector[PyValue])
+    extends PyEval[Either[Condition, PyValue]]
+  case Frame(fn: String, in: PyFrame, args: Vector[PyValue])
+    extends PyEval[Either[Condition, PyFrame]]
+```
+
+One deviation from the r.md sketch, recorded: the operations answer
+`Either[Condition, _]` rather than the bare value — "errors are
+data" needs a place where the condition can BE a value, and the
+answer type is that place (the blob-get argument, told again).
+The wire is one JSON object per line each way; None is null, NaN
+and bytes ride TAGGED objects ({"t":"nan"}, {"t":"bytes","b64":..})
+because JSON has neither. The shim announces {"shim": N, "python":
+"x.y.z"} first; the host refuses a mismatched N loudly.
+
 ## Behavior
 
 (the specs/r.md list applies as the contract, PyEval for REval;
