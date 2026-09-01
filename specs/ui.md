@@ -384,23 +384,23 @@ object Dom:   // okay-ui scala-js — js.Dynamic in, zero dependencies
   `Ui.patch`.
 
 Behavior:
-- [ ] the law, at the DOM: for scripted frame sequences (shuffles,
+- [x] the law, at the DOM: for scripted frame sequences (shuffles,
       removals, insertions, edits — the keyed battery's shapes),
       rendering through Host.diffing(Dom.backend(fake)) leaves the
       fake DOM equal to building React.elem(last frame) from scratch
-- [ ] each narrow patch narrows: SetText touches textContent,
+- [x] each narrow patch narrows: SetText touches textContent,
       SetValue reaches the input inside its label wrapper, Reorder
       MOVES nodes (the fake counts creations — a shuffle creates
       nothing)
-- [ ] delegated events round-trip: a click on a button's node emits
+- [x] delegated events round-trip: a click on a button's node emits
       Pressed(key), input on a nested input emits Edited with the
       value, change on a check emits Toggled(!on) read from the
       MIRROR, a click on a keyless node emits nothing
-- [ ] the fake document is the test's (createElement/appendChild/
+- [x] the fake document is the test's (createElement/appendChild/
       replaceChild/removeChild/insertBefore/setAttribute/
       addEventListener/textContent) — what Dom.scala uses and nothing
       more, so the glue's real surface is written down
-- [ ] okayUi's JS tests exist again: the js test dir replaces
+- [x] okayUi's JS tests exist again: the js test dir replaces
       `Test / sources := Seq()` and this suite runs under Node in the
       matrix
 

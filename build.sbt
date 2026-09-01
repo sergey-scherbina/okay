@@ -500,7 +500,10 @@ lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-form",
-    Test / sources := Seq(),
+    // the shared suite stays JVM; the js dir carries what MUST run
+    // under Node — the raw-DOM backend against its fake document
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-js"),
   )
 
 /**
