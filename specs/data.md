@@ -154,6 +154,24 @@ OLTP or a cache. Filed: `jdbc-bulk-load`.
   approximate (the Redlock decision again).
 - FOREIGN lake with restricted rights = the read path only, which
   is the DuckDB/Trino route unchanged.
+- **Delta Lake, specifically** — worth naming because its
+  architecture is OURS: `_delta_log/` is an append-only journal of
+  actions (add/remove file, metadata, protocol) with Parquet
+  CHECKPOINTS bounding the replay — the journal-foundation +
+  snapshot-optimization decision of specs/persist.md, arrived at
+  independently by another project at another scale. Concretely,
+  three roads, in order: (1) READ through the existing JDBC seam —
+  DuckDB's delta extension reads Delta tables today, zero new
+  machinery; (2) READ/WRITE without Spark via **Delta Kernel**, the
+  Delta project's own JVM library for exactly this — adopting their
+  kernel is the honest form of the no-hand-rolled-commit-protocols
+  rule, since the optimistic log-entry commit is theirs to version;
+  (3) WRITE at scale through the okay-spark bridge that already
+  exists — Spark is Delta's first-class writer, so the Aggregator
+  bridge makes Delta output available NOW, before any kernel
+  interop lands. Iceberg mirrors the shape (`iceberg-core` as its
+  kernel-equivalent) when a deployment names it. Filed:
+  `lake-delta`.
 
 ### Vector stores (pgvector, Qdrant, Milvus, ...) — the seam shipped with okay-rag
 
