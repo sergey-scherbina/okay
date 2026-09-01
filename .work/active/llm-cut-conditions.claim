@@ -1,4 +1,0 @@
-lane: llm-cut-conditions
-owner: fable-ctx
-started: 2026-09-01
-scope: Cut.screened — repairable streaming validation via conditions (Resume replaces, drop vanishes, cut falls back); tests; spec note
