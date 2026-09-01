@@ -1,0 +1,5 @@
+feature/match-stage0 2026-09-01T14:04:28Z
+agent: claude-code
+heartbeat: 2026-09-01T14:04:28Z
+status: in-progress
+next: specs/match.md stage 0: Registry/Facts/Match effects, memory handler, rag embeddings, MCP tools, replay idempotence
