@@ -1,5 +1,12 @@
 # Changelog
 
+## ui-scenarios — Dialog: a wizard is a program
+Completed: 2026-09-01
+Show answers an Event (a GADT); scenarios run standalone over any
+Host or AS a screen inside the loop (the continuation is the state);
+Form.ask/askSchema with retry-by-recursion; the demo's elicitation
+loop collapsed to one line. 4 tests. Landed with spec check-off.
+
 ## ui — okay-ui v1: the toolkit that is not a toolkit
 Completed: 2026-09-01
 Spec-first (specs/ui.md, incl. the architecture above v1). The view
