@@ -1,0 +1,6 @@
+feature/http-js-acceptance 2026-09-01T06:22:55Z
+agent: claude-code
+heartbeat: 2026-09-01T06:22:55Z
+status: not-started
+done-so-far:
+next: worktree, then the linked Scala.js fixture okay-cluster established
