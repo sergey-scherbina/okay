@@ -16,6 +16,21 @@ a consumer. Plaintext v1, stated — TLS rides wire-tls.
 Replication's calls join the message enum under the handshake
 version when replicas go remote. 7 loopback tests. Merge read
 alone: exit 0. Full matrix green.
+## ui-toolkit — Form v2 is total over the algebra; the composed dialogs arrive
+Completed: 2026-09-01
+
+Per the user's call, derivation and cross-field validation together,
+not staged. Form.of[A] now renders every Schema node: a nested
+product is a titled section with dotted-path keys (addr.city), a sum
+is a Select of its cases plus the chosen case's subform (choosing
+swaps it; the value keeps the codec's {"Case": {...}} shape), lists
+edit in place with add/remove routed by index. Errors are data —
+Form.errors gives (path, message) pairs and each renders under its
+field — and cross-field checks read the DECODED value, holding
+submit until both layers are clean. Toolkit.confirm/alert/prompt/
+choice close the hand-rolling. The drift law extended and tested:
+a nesting+sum+list form's submission round-trips the codec decoder.
+7 new tests (49 total in okay-ui); JS and Native compile.
 
 ## wire-tls — verify-full or it is a named decision
 Completed: 2026-09-01 (landed as 8e795cf)

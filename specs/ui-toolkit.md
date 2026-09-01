@@ -38,20 +38,20 @@ arrays).
   Option[Int]` — all `! Dialog`.
 
 ## Behavior
-- [ ] a nested product renders as a titled section, edits route by
+- [x] a nested product renders as a titled section, edits route by
       dotted path, and the submitted value decodes by the codec
-- [ ] a sum renders as case-Select plus the chosen case's subform;
+- [x] a sum renders as case-Select plus the chosen case's subform;
       choosing swaps the subform; the submitted value keeps the
       codec's `{"Case": {...}}` shape and decodes
-- [ ] a list renders its items with add/remove; item edits route by
+- [x] a list renders its items with add/remove; item edits route by
       index; the submitted value is the codec's array and decodes
-- [ ] per-field errors: a submit with two bad fields shows two
+- [x] per-field errors: a submit with two bad fields shows two
       messages, each under its field, not one blob
-- [ ] cross-field checks run on the DECODED value, name their field
+- [x] cross-field checks run on the DECODED value, name their field
       (or the form), and hold submit until clean
-- [ ] the composed dialogs answer through the same event contract
+- [x] the composed dialogs answer through the same event contract
       (ok/cancel/choice), scripted-host tested
-- [ ] the drift law, extended: for a case class with nesting, a sum
+- [x] the drift law, extended: for a case class with nesting, a sum
       and a list, the Json the form submits round-trips through the
       codec decoder unchanged
 
