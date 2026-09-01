@@ -1,5 +1,21 @@
 # Changelog
 
+## persist-consensus (spec) — who may advance an epoch, decided
+Completed: 2026-09-01 (landed as fbf2e2e; spec only)
+specs/consensus.md: election REDUCED to a fold of a totally-ordered
+control log — the first Take at an epoch wins on every node's fold,
+no votes or wire protocol of our own; leases (plus a declared skew
+allowance) decide LIVENESS only, epochs keep deciding safety, and
+the operator record outranks automation on every fold. The log is
+sourced from engines this stack already has: KafkaStore first (its
+KRaft did the twenty years), a FileStore arbiter for dev (honest
+trade: failover availability, never correctness), own RaftStore
+later as one more engine under unchanged machinery. Rejected with
+reasons: Raft-first, per-partition election groups, ZK/etcd client
+deps, clock-trusting correctness. persist-election filed with its
+six-box battery. The persist staging now has every stage designed
+and stages 0-3 shipped.
+
 ## docs-seam — the one new seam, proven on both postures
 Completed: 2026-09-01 (landed as df9a119)
 okay-docs cross-built: Docs[A] with Cond as the load-bearing part
