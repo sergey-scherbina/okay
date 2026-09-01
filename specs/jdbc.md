@@ -21,6 +21,16 @@ schema caught loudly at the seam, at startup, naming the column.
 This is the doobie/JDBI shape, not the ORM shape, and that is a
 decision (below), not an omission.
 
+**Seam update (specs/sql.md).** The CONTRACT below — typed rows,
+verify, the transaction region, the no-DDL posture, the write
+bridge — is unchanged, but it binds to the driver-agnostic `Sql`
+seam rather than to `java.sql.Connection`: okay-jdbc is that seam's
+FIRST driver (and stays the right one for warehouses, DuckDB and
+everything with a good JVM driver), with the Postgres wire protocol
+and an R2DBC hatch as the other roads in. The `Connection`-typed
+sketch below predates the seam; the raw `JdbcInterop` streaming
+keeps it deliberately.
+
 ## Typed rows: Schema at the flat edge
 
 A result row is a FLAT product. The same derived `Schema[A]` that

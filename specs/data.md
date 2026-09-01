@@ -18,7 +18,7 @@ surface.** The seams already exist, built one per shape:
 
 | Shape | Seam | Where |
 |---|---|---|
-| rows + SQL | streaming JDBC, typed by Schema | specs/jdbc.md |
+| rows + SQL | the `Sql` seam, typed by Schema (drivers: JDBC, pg wire, R2DBC hatch) | specs/sql.md, specs/jdbc.md |
 | ordered events | `Topic`/`Store` (the log) | specs/persist.md |
 | key → document | `Docs` — the ONE new seam this spec adds | below |
 | vector search | `VectorStore` | specs/rag.md |

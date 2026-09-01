@@ -278,7 +278,11 @@ at stage 0 and never rebind.
 - **Stage 2 — out of one machine**: replication (static
   assignment, epochs, high-water mark, quorum acks,
   operator-driven failover), stats for replicas, the wire
-  protocol. Idempotent producer window.
+  protocol. Idempotent producer window. The same frames serve a
+  REMOTE `Topic` client (persist-wire): a Native or Node consumer
+  reaches a persist node directly — no JVM, no JDBC in between.
+  Openness is a stated property: the segment format and the wire
+  are documented surfaces, not internals.
 - **Stage 3 — interop engines**: `Store` over Kafka via okay-kafka;
   JDBC-backed topic; segment offload to object storage.
 - **Stage 4 — elected leadership**: consensus, its own spec, its
