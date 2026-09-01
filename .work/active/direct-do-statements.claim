@@ -1,6 +1,0 @@
-feature/direct-do-statements 2026-09-01T20:21:32Z
-agent: claude-code
-heartbeat: 2026-09-01T20:21:32Z
-status: in-progress
-done-so-far:
-next: spec-update, then flip the discard guard into the statement-run rewrite

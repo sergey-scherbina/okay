@@ -1,5 +1,17 @@
 # Changelog
 
+## direct-do-statements — bare statements run: do-notation for direct blocks
+Completed: 2026-09-01
+Landed as c0facb3. A bare statement whose type is the block's F or a
+row operation is bound as an implicit .? with the value dropped (the
+_ <- reading) — Writer("a") on its own line tells, None
+short-circuits, a bare List statement re-runs the rest per element.
+The discard guard narrows to foreign marked types; val keeps a
+program un-run (binding is consent to hold the value). The None.type
+wrinkle: singletons carry no type arguments, so runnableElem also
+consults the base type at the block's monad, every guess verified by
+<:<. 27 tests, full matrix green.
+
 ## ctx-capabilities-doc — the whole story, told in one place
 Completed: 2026-09-01
 docs/capabilities.md: what a context function is (three mechanical

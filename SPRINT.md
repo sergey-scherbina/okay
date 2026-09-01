@@ -1,12 +1,6 @@
 # Sprint
 
 ## Doing
-- [ ] direct-do-statements — do-notation semantics for bare
-  monadic/operation statements in direct blocks: a discarded
-  statement of the block's F or row type RUNS (implicit .?, the _ <-
-  reading) instead of refusing to compile; the guard narrows to
-  foreign marked types (specs/direct-auto-coloring.md; user-directed
-  2026-09-01)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
