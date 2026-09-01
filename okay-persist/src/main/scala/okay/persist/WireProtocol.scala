@@ -12,7 +12,11 @@ import okay.codec.{Cbor, Schema}
  */
 object WireProtocol {
 
-  val Version = 1
+  // Version 2 added the replication surface (Produce/Promote) and
+  // Compact, so the wire covers the whole Topic and the stage-2
+  // coordinator (specs/persist.md, persist-wire-repl). New Req/Resp
+  // cases are APPENDED so the CBOR ordinals of v1 messages never move.
+  val Version = 2
 
   given Schema[Record] = Schema.derived
 
@@ -23,6 +27,11 @@ object WireProtocol {
     case Read(topic: String, partition: Int, from: Long, max: Int)
     case Begin(topic: String, partition: Int)
     case End(topic: String, partition: Int)
+    // v2: the Topic surface completed, and the coordinator's calls
+    case Compact(topic: String, partition: Int)
+    case Produce(topic: String, partition: Int, producerId: String,
+                 seq: Long, key: Array[Byte], value: Array[Byte], ack: Int)
+    case Promote(topic: String, partition: Int, replica: Int)
 
   enum Resp derives Schema:
     case Granted(version: Int, topics: Vector[String])
@@ -31,6 +40,8 @@ object WireProtocol {
     case TooEarly(begin: Long)
     case Offset(value: Long)
     case Refused(reason: String)
+    // v2: the ack-only answer (Compact, Promote)
+    case Done()
 
   final case class WireRefused(reason: String)
     extends RuntimeException(s"the persist node refused: $reason")
@@ -102,6 +113,31 @@ object WireProtocol {
 
     private def offsetOf(req: Req): Long ! Async = call(req).map {
       case Resp.Offset(v) => v
+      case Resp.Refused(r) => throw WireRefused(r)
+      case other => throw WireRefused(s"unexpected answer $other")
+    }
+
+    /** the force-compact admin call, over the wire */
+    def compact(topic: String, partition: Int): Unit ! Async =
+      done(Req.Compact(topic, partition))
+
+    /** the idempotent producer: a retry with the same (producerId,
+     * seq) lands once and answers the ORIGINAL offset — the server's
+     * topic must be a replicated coordinator, else it refuses */
+    def produce(topic: String, partition: Int, producerId: String, seq: Long,
+                key: Array[Byte], value: Array[Byte], ack: Ack = Ack.Replicated): Long ! Async =
+      call(Req.Produce(topic, partition, producerId, seq, key, value, ackCode(ack))).map {
+        case Resp.Appended(off) => off
+        case Resp.Refused(r) => throw WireRefused(r)
+        case other => throw WireRefused(s"unexpected answer $other")
+      }
+
+    /** the operator's failover, driven remotely */
+    def promote(topic: String, partition: Int, replica: Int): Unit ! Async =
+      done(Req.Promote(topic, partition, replica))
+
+    private def done(req: Req): Unit ! Async = call(req).map {
+      case Resp.Done() => ()
       case Resp.Refused(r) => throw WireRefused(r)
       case other => throw WireRefused(s"unexpected answer $other")
     }

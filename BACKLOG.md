@@ -56,9 +56,6 @@
 ## okay-conf (specs/conf.md)
 
 ## okay-persist (specs/persist.md — staged design; stage 0 landed)
-- [ ] persist-wire-repl — replication's calls (replicate-pull,
-      promote, produce) join the wire's message enum under the
-      handshake version: replicas go remote, machinery unchanged
 - [ ] persist-raft — RaftStore: consensus as one more control-log
       engine under the unchanged Election machinery (specs/
       consensus.md own-Raft notes; typestate per specs/typestate.md)

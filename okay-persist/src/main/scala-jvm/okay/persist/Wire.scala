@@ -56,7 +56,8 @@ object Wire:
    */
   final class Server(store: Store, auth: String => Option[Set[String]],
                      requested: Int = 0,
-                     bind: java.net.InetAddress = java.net.InetAddress.getLoopbackAddress):
+                     bind: java.net.InetAddress = java.net.InetAddress.getLoopbackAddress,
+                     repl: String => Option[Replicated] = _ => None):
     // loopback by DEFAULT: this surface is plaintext until wire-tls
     // lands, and a plaintext log does not volunteer itself to the
     // network — an operator opens it up deliberately
@@ -101,10 +102,17 @@ object Wire:
       finally sock.close()
 
     private def answer(req: Req, allowed: Set[String]): Resp =
+      // a replicated name routes to its COORDINATOR (reads truncate to
+      // the hwm, appends fence by epoch); every other name is a plain
+      // engine topic — either way behind the capability check
       def topicOf(name: String): Either[Resp, Topic] =
         if !allowed.contains(name) then
           Left(Resp.Refused(s"topic $name is not on this client's capability list"))
-        else Right(store.topic(name))
+        else Right(repl(name).getOrElse(store.topic(name)))
+      def coordinatorOf(name: String): Either[Resp, Replicated] =
+        if !allowed.contains(name) then
+          Left(Resp.Refused(s"topic $name is not on this client's capability list"))
+        else repl(name).toRight(Resp.Refused(s"topic $name is not a replicated topic"))
       try
         req match
           case Req.Hello(_, _) => Resp.Refused("Hello twice")
@@ -119,6 +127,13 @@ object Wire:
             topicOf(t).fold(identity, tp => Resp.Offset(tp.begin(p)))
           case Req.End(t, p) =>
             topicOf(t).fold(identity, tp => Resp.Offset(tp.end(p)))
+          case Req.Compact(t, p) =>
+            topicOf(t).fold(identity, tp => { tp.compact(p); Resp.Done() })
+          case Req.Produce(t, p, pid, seq, k, v, a) =>
+            coordinatorOf(t).fold(identity,
+              r => Resp.Appended(r.produce(p, pid, seq, k, v, ackOf(a))))
+          case Req.Promote(t, p, replica) =>
+            coordinatorOf(t).fold(identity, r => { r.promote(p, replica); Resp.Done() })
       catch case e: Throwable => Resp.Refused(s"the node threw: ${e.getMessage}")
 
     def close(): Unit =
@@ -139,33 +154,75 @@ object Wire:
         readFrame[Resp](in).fold(e => throw WireRefused(s"a damaged answer: $e"), identity)
       }
 
+    // ── the synchronous surface (package-private) ────────────────
+    // one call is one round trip and already blocks under `call`;
+    // the async methods below are `async{}` wrappers of these, and
+    // RemoteStore drives a remote replica straight through them —
+    // the coordinator's Topic is synchronous, so a remote replica is
+    // reached on the coordinator's own thread, the okay-pg waist.
+
+    private[persist] def appendSync(topic: String, partition: Int, key: Array[Byte],
+                                    value: Array[Byte], ack: Ack): Long =
+      call(Req.Append(topic, partition, key, value, ackCode(ack))) match
+        case Resp.Appended(off) => off
+        case Resp.Refused(r) => throw WireRefused(r)
+        case other => throw WireRefused(s"unexpected answer $other")
+
+    private[persist] def readSync(topic: String, partition: Int, from: Long, max: Int): Topic.Read =
+      call(Req.Read(topic, partition, from, max)) match
+        case Resp.Records(rs) => Topic.Read.Records(rs)
+        case Resp.TooEarly(b) => Topic.Read.TooEarly(b)
+        case Resp.Refused(r) => throw WireRefused(r)
+        case other => throw WireRefused(s"unexpected answer $other")
+
+    private[persist] def beginSync(topic: String, partition: Int): Long =
+      offsetSync(Req.Begin(topic, partition))
+    private[persist] def endSync(topic: String, partition: Int): Long =
+      offsetSync(Req.End(topic, partition))
+
+    private def offsetSync(req: Req): Long = call(req) match
+      case Resp.Offset(v) => v
+      case Resp.Refused(r) => throw WireRefused(r)
+      case other => throw WireRefused(s"unexpected answer $other")
+
+    private[persist] def compactSync(topic: String, partition: Int): Unit =
+      doneSync(Req.Compact(topic, partition))
+
+    private def doneSync(req: Req): Unit = call(req) match
+      case Resp.Done() => ()
+      case Resp.Refused(r) => throw WireRefused(r)
+      case other => throw WireRefused(s"unexpected answer $other")
+
+    // ── the async surface (an engine is not an access path) ──────
+
     def append(topic: String, partition: Int, key: Array[Byte],
                value: Array[Byte], ack: Ack = Ack.Durable): Long ! Async =
+      async { appendSync(topic, partition, key, value, ack) }
+
+    def read(topic: String, partition: Int, from: Long, max: Int): Topic.Read ! Async =
+      async { readSync(topic, partition, from, max) }
+
+    def begin(topic: String, partition: Int): Long ! Async = async { beginSync(topic, partition) }
+    def end(topic: String, partition: Int): Long ! Async = async { endSync(topic, partition) }
+
+    def compact(topic: String, partition: Int): Unit ! Async =
+      async { compactSync(topic, partition) }
+
+    /** the idempotent producer, driven remotely: a retry with the
+     * same (producerId, seq) lands once and answers the original
+     * offset — the server's topic must be a replicated coordinator */
+    def produce(topic: String, partition: Int, producerId: String, seq: Long,
+                key: Array[Byte], value: Array[Byte], ack: Ack = Ack.Replicated): Long ! Async =
       async {
-        call(Req.Append(topic, partition, key, value, ackCode(ack))) match
+        call(Req.Produce(topic, partition, producerId, seq, key, value, ackCode(ack))) match
           case Resp.Appended(off) => off
           case Resp.Refused(r) => throw WireRefused(r)
           case other => throw WireRefused(s"unexpected answer $other")
       }
 
-    def read(topic: String, partition: Int, from: Long, max: Int): Topic.Read ! Async =
-      async {
-        call(Req.Read(topic, partition, from, max)) match
-          case Resp.Records(rs) => Topic.Read.Records(rs)
-          case Resp.TooEarly(b) => Topic.Read.TooEarly(b)
-          case Resp.Refused(r) => throw WireRefused(r)
-          case other => throw WireRefused(s"unexpected answer $other")
-      }
-
-    def begin(topic: String, partition: Int): Long ! Async = offsetOf(Req.Begin(topic, partition))
-    def end(topic: String, partition: Int): Long ! Async = offsetOf(Req.End(topic, partition))
-
-    private def offsetOf(req: Req): Long ! Async = async {
-      call(req) match
-        case Resp.Offset(v) => v
-        case Resp.Refused(r) => throw WireRefused(r)
-        case other => throw WireRefused(s"unexpected answer $other")
-    }
+    /** the operator's failover, driven remotely */
+    def promote(topic: String, partition: Int, replica: Int): Unit ! Async =
+      async { doneSync(Req.Promote(topic, partition, replica)) }
 
     def close(): Unit = sock.close()
 

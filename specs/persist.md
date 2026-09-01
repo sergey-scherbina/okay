@@ -492,6 +492,17 @@ at stage 0 and never rebind.
       (consumer lag: Offsets.lag, stage 1; replica lag:
       Replicated.replicaStats — epoch, leader, hwm, per-replica end
       and lag, stage 2)
+- [x] the replication surface crosses the wire, machinery unchanged
+      (persist-wire-repl): produce (idempotent — the retry answers
+      the original offset; a stale seq refuses across the wire),
+      promote (the operator's failover, driven remotely; the epoch
+      advances) and compact join the message enum at handshake
+      version 2; produce/promote on a name with no coordinator refuse
+      by name ("not a replicated topic"); a `RemoteStore` presents a
+      `Wire.Remote` as a `Store`, so the SAME `Replicated` holds a
+      remote replica — the eager push is the remote's Append, the
+      replicate-pull is the remote's Read, and the far node ends up
+      holding the very bytes (no in-process replica wrote them)
 
 ## Out of scope
 
@@ -629,9 +640,31 @@ The wire landed (persist-wire + persist-wire-auth, 2026-09-01).
   refuses in the handshake.
 - **Tests**: 7 over loopback (JVM), two tokens with different
   capability sets, byte-exact round-trips against the server's own
-  store. Replication's calls join the message enum under the
-  handshake version when the replicas go remote — the stage-2
-  machinery is already transport-agnostic.
+  store.
+
+The replication surface joined the wire (persist-wire-repl,
+2026-09-01), version bumped to 2 with the new cases APPENDED so no v1
+ordinal moved.
+
+- **produce/promote/compact** are three more frames. `produce` and
+  `promote` route to a coordinator: `Wire.Server` gained a
+  `repl: String => Option[Replicated]` resolver, so a replicated name
+  serves through its `Replicated` (reads truncate to the hwm, appends
+  fence by epoch) while every other name stays a plain engine topic.
+  A name with no coordinator refuses produce/promote by name; the
+  connection survives. `compact` completes the Topic surface remotely.
+- **Replicas go remote, machinery unchanged**: a `RemoteStore`
+  presents a `Wire.Remote` as an ordinary synchronous `Store`, so the
+  SAME `Replicated` — not a variant — holds a remote replica. The
+  eager push is the remote's Append, the replicate-pull is the
+  remote's Read; the coordinator drives it on its own thread (the
+  okay-pg blocking waist under the async client, JVM-only by design).
+  Proven: the far node ends up holding the very bytes, and a lagging
+  remote is caught up by `replicate()` over the wire.
+- **Tests**: 5 more over loopback — idempotent produce with the
+  retry across the wire, remote promote advancing the epoch, the
+  refuse-by-name for non-replicated names, compact, and the
+  RemoteStore-as-replica round trip.
 
 Stage 2's core landed — replication, transport-agnostic
 (persist-replication, 2026-09-01).

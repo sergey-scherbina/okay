@@ -1,5 +1,28 @@
 # Changelog
 
+## persist-wire-repl — replication crosses the wire, machinery unchanged
+Completed: 2026-09-01
+The stage-2 replication surface joined the documented wire (specs/
+persist.md), version bumped to 2 with the new message cases APPENDED
+so no v1 CBOR ordinal moved. Three frames added: produce (idempotent —
+the retry across the wire answers the ORIGINAL offset; a stale seq
+refuses by name), promote (the operator's failover, driven remotely;
+the epoch advances) and compact (the Topic surface, completed). The
+JVM `Wire.Server` gained a `repl: String => Option[Replicated]`
+resolver: a replicated name serves through its coordinator (reads
+truncate to the hwm, appends fence by epoch), every other name stays a
+plain engine topic, and produce/promote on a name with no coordinator
+refuse by name while the connection survives. The other direction —
+replicas go remote — is a new `RemoteStore` that presents a
+`Wire.Remote` as an ordinary synchronous `Store`, so the SAME
+`Replicated` (not a variant) holds a remote replica: the eager push is
+the remote's Append, the replicate-pull is the remote's Read, driven
+on the coordinator's own thread (the okay-pg blocking waist under the
+async client, JVM-only by design). Proven live over loopback: the far
+node ends up holding the very bytes no in-process replica wrote, and a
+lagging remote is caught up by replicate() over the wire. 5 new tests
+(TestWireRepl), the existing 7 (TestWire) unchanged and green.
+
 ## ctx-everywhere — doors wherever the environment is a type; provide
 Completed: 2026-09-01 (landed as 02098bf)
 The operator's "everywhere, OPTIONALLY" executed with the operator's
