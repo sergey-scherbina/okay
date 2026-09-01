@@ -1,5 +1,15 @@
 # Changelog
 
+## stage-phased3 — one more arity, because the consumer exists
+Completed: 2026-09-01 (landed as 1444810)
+The http message shape needs exactly three phases; chaining two
+phased cannot express it (the middle's end is the third's TYPED
+start). No phase enum, both switches through PState, the answer
+names the dying phase three ways, and the does-not-compile proof
+stands at BOTH seams. Driven by the consumer's shape: request-line
+-> headers -> body. Matrix 1537 (the day's sibling landings ride
+in the count). http-message-phases (the Nio refactor) is next.
+
 ## sim-harness — luck retires from concurrency testing
 Completed: 2026-09-01 (landed with spec boxes checked)
 Sim in the core: many fibers, one seeded scheduler, interleavings

@@ -1,9 +1,6 @@
 # Sprint
 
 ## Doing
-- stage-phased3 — the three-phase sibling for the http message
-  shape; same typestate guarantees, PState transitions at both
-  seams (specs/stage-pipeline.md)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
