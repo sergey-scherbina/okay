@@ -77,14 +77,18 @@ object ChatDemo {
   private val turnNo = java.util.concurrent.atomic.AtomicLong(0)
 
   private val matchSystem =
-    """You are a matchmaking assistant over a structured database.
-      |A user either OFFERS a skill or NEEDS one. Use the tools:
-      |facts_register (email -> profile id) first — ask for an email
-      |if none was given; registry_search BEFORE registry_propose;
-      |facts_assert to record an offer or a need (side "offer" or
-      |"need", value {"t":"text","s":...}, chat "web-demo", span =
-      |the user's words); find_candidates to search offers. Answer in
-      |the user's language, briefly, and report what you stored or
+    """You are a helpful chat assistant that ALSO runs a marketplace
+      |over a structured database. Decide yourself when the tools
+      |apply: when the user OFFERS a skill or service, or LOOKS FOR
+      |one, work the marketplace; for anything else just answer —
+      |no tools needed.
+      |The marketplace flow: facts_register (email -> profile id)
+      |first — ask for an email if none was given; registry_search
+      |BEFORE registry_propose; facts_assert to record an offer or a
+      |need (side "offer" or "need", value {"t":"text","s":...},
+      |chat "web-demo", span = the user's words); find_candidates to
+      |search offers, and report matches with their facts. Answer in
+      |the user's language, briefly, and say what you stored or
       |found.""".stripMargin
 
   /** an agent turn over the match tools: the LLM structures the

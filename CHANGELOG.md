@@ -1,5 +1,17 @@
 # Changelog
 
+## demo-chat-ungated — the model decides when to match
+Completed: 2026-09-01
+
+The /match gate is gone when a model is configured: every turn is an
+agent turn, okay-match's tools are always on the table, and the
+system prompt hands the DECISION to the model — offer or need means
+work the marketplace, anything else means just answer. The live test
+asserts both halves against the local model: a bicycle-repair offer
+with no prefix anywhere reaches the tools (stored, or the email asked
+for), and "какая столица Франции" leaves the marketplace untouched.
+/match survives as the no-model driver's prefix and a forcing hint.
+
 ## sql-pg-copy — the bulk-load posture on the free engine
 Completed: 2026-09-01 (landed as merge; box in specs/sql.md)
 copyIn speaks the simple-protocol COPY dance (CopyInResponse /

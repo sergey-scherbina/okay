@@ -57,6 +57,11 @@ The pieces, each doing its one job:
       exists, the vanilla page otherwise
 
 ## Matching (demo-chat-match — user ask)
+With a model configured there IS no gate: every turn is an agent
+turn, the tools are always on the table, and the MODEL decides when
+the marketplace applies (offer/need -> work the tools; anything else
+-> just answer). `/match` remains as the deterministic driver's
+prefix for the no-model mode, and as a forcing hint.
 `/match <text>` turns are MATCHMAKING turns over the shared
 marketplace — one store per server, providers and seekers meet
 across sessions, and it is DURABLE by default: sqlite at
@@ -79,6 +84,9 @@ engine). The ask made the store interface nominal: `MatchStore`
       remember across turns)
 - [x] LIVE: the local model drives the okay-match tools (store-or-ask
       asserted; skipped where no model listens)
+- [x] UNGATED live: with no prefix at all the model itself reaches
+      for the tools on an offer and leaves the marketplace untouched
+      on small talk (both asserted against the local model)
 - [x] sqlite parity: the store guarantees hold on sqlite (the
       booleans-as-integers dialect trap caught and fixed) and the
       marketplace survives a restart over the same file

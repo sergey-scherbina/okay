@@ -135,6 +135,30 @@ class TestChatDemo extends munit.FunSuite {
       s"the agent neither stored the offer nor asked for what it lacked: $answer")
   }
 
+  test("LIVE UNGATED: the model itself decides — an offer stores, small talk does not") {
+    val base = sys.env.getOrElse("OKAY_CHAT_BASE", "http://127.0.0.1:8089")
+    val up = try {
+      client.send(HttpRequest.newBuilder(URI.create(s"$base/v1/models")).GET().build(),
+        HttpResponse.BodyHandlers.ofString()).statusCode() == 200
+    } catch { case _: Throwable => false }
+    assume(up, s"no local model at $base — skipped")
+    val store = okay.matching.MemoryMatch()
+    def turn(text: String): String = ChatDemo.agentTurn(text, Nil,
+      okay.agent.Provider.openAi(okay.llm.Transports.http(), "local", "default",
+        s"$base/v1/chat/completions"), store)
+    // an OFFER, no /match anywhere: the model should reach for the tools
+    val a1 = turn("Я умею чинить велосипеды, почта bike@demo. Запиши моё предложение.")
+    val stored = store.candidates(
+      okay.matching.Query(okay.matching.Side.Offer, text = "велосипед")).nonEmpty
+    assert(stored || a1.toLowerCase.contains("почт") || a1.toLowerCase.contains("email"),
+      s"neither stored nor asked: $a1")
+    // SMALL TALK: the marketplace must stay untouched
+    val before = store.candidates(okay.matching.Query(okay.matching.Side.Offer, k = 100)).length
+    turn("Какая столица Франции?")
+    val after = store.candidates(okay.matching.Query(okay.matching.Side.Offer, k = 100)).length
+    assertEquals(after, before, "small talk must not touch the marketplace")
+  }
+
   test("over budget the stream is cut, named, and no tokens follow") {
     withServer(budget = 3) { port =>
       val whole = new String(post(port,
