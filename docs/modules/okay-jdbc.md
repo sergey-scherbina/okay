@@ -63,3 +63,18 @@ val program = Resource.run:
   abort to release); `!.widen` builds the union program.
 - The driver's own fetch-size semantics apply (some drivers ignore
   it without further connection flags — check yours).
+
+## Since the seam (2026-09-01)
+
+okay-jdbc is the FIRST DRIVER of the `Sql` seam (specs/sql.md):
+`JdbcSql` wraps one connection; the typed layer
+(rows/params/verify/transact) lives in okay-sql and is written once
+against the trait. On top of the driver:
+
+| | |
+|---|---|
+| `Migrate` | migrations for OUR databases, the Flyway model adopted: versioned authored scripts, sha-256 checksums, the version table in the SAME database; a changed or vanished applied script REFUSES naming the version; a failed script leaves no row |
+| `BulkLoad` | the OLAP write posture: the caller's COPY sql + a history row in ONE transaction — the unique key IS the dedup (WithKey at batch granularity); a refused claim is VERIFIED against the key before answering AlreadyLoaded; the `olap` wrapper refuses row DML by name |
+| `Poll` | incremental reads by a monotone column, the watermark journaled as a consumer offset; the late-commit caveat demonstrated, not hidden |
+| `Writes` | the WithKey/Reconcile bridge onto their unique constraints |
+| `TestLake` | the lake road: DuckDB embedded reads Parquet through the same seam at fetch-size |

@@ -30,3 +30,12 @@ Staged next (BACKLOG): ES256 and an argon2 satellite.
 Not an authorization SERVER: this module verifies and obtains tokens;
 it does not issue codes to third parties. The stub AS in its tests is
 a test.
+
+## Since stage 1
+
+| | |
+|---|---|
+| `Es256` | ES256 joins HS256/RS256: the JOSE raw R||S ↔ DER dance as its own PURE object, total both ways, its battery on JS too; the key still decides the algorithm with three kinds in the ring |
+| `Oidc` | user login from parts already on the shelf: discovery, the login url (nonce), callback validating the id_token into a Principal — issuer/audience/nonce/at_hash on top of Jwt.verify |
+| `Secure.granted` | the capability form of the route wrapper: the principal AMBIENT in the handler (`Principal ?=> route`), the 401/403 ladder byte-identical to bearer's; composes with `Traced.route` — one stored `(Principal, Tracer) ?=> Route` is protected AND traced |
+| argon2 | the satellite with a real KDF: [okay-security-argon2](okay-security-argon2.md) |

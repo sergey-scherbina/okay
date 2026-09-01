@@ -12,7 +12,12 @@ chain is stack-safe. `shift` captures the continuation, `reset`
 delimits it. `Control[M[_,_,_]]` is the final-tagless interface;
 `Cont` (data, stack-safe) and `Func` (the raw function encoding) are
 its instances. You rarely touch this layer directly — it is what
-handlers are made of.
+handlers are made of. When you DO want it, the door is `Delim`
+(multi-prompt delimited control as an effect): cancellable Dialog
+scopes (`Scope`), the streaming cut (`Cut`), the agent stepper and
+the sim scheduler are its shipped consumers — and the prompts can
+be AMBIENT (`Scope.bounded { … Scope.exit(v) … }` exits the nearest
+scope by nesting; a bound prompt still crosses).
 
 ## 2. Effects: `A ! F`
 
@@ -157,7 +162,10 @@ okay-parse).
 
 `Stage.transduce(z)(step)(flush)` is the skeleton they all share —
 carry a state, step it per input telling whatever that input is
-worth, flush at the end. The step ANSWERS the new state and is itself
+worth, flush at the end. A stream with PHASES (a header before
+rows) gets `Stage.phased`/`phased3`: the accumulator CHANGES TYPE
+at the switch, the wrong-phase step does not compile, and the
+transition runs through `PState` — typestate on the stream. The step ANSWERS the new state and is itself
 a stage, so it may tell nothing, one, or many, and nothing is
 allocated per element to say which; the lexer's scanner, SSE framing,
 `chunked` and the demo's stream join are all this one call.
@@ -233,6 +241,10 @@ rides the same fact across machines: workers behind one seam
 — still in hand, the source is a value — to a survivor, partials
 merging by the Aggregator's combOp.
 
+`type Blocking[A] = CanBlock ?=> A` names the trade as a
+first-class VALUE: a returned `Blocking[A]` is storable and
+composable, and only an edge holding the capability can force it.
+
 ## 7. Text is a stream: lex → parse → codec
 
 The P5 stack is three small modules over the coroutine layer, all
@@ -287,3 +299,17 @@ load-bearing: it is what makes handlers stream transformers, chunk
 retry a lineage recompute, and the whole lex/parse stack incremental
 — and it is exactly where eager runtimes crash (see
 compare/TestLaziness).
+
+## 9. Capabilities: context functions
+
+The stack's implicit evidence (`CanBlock`, `Scheduler`) generalizes:
+`A ?=> B` is a capability arrow — returnable, storable,
+self-applying where a given `A` is in scope. Three shipped routes:
+`Traced.route` (a handler written against `using Tracer`),
+`Secure.granted` (the principal ambient in a protected route), and
+the ambient prompts of `Scope`/`Cut`. They COMPOSE: one stored
+`(Principal, Tracer) ?=> Route` is protected and traced at every
+installation site. The linear-context patterns (the type-changing
+given-chain; the import-thread and its footgun) are in
+[typepedia](typepedia.md); the experimental base and the full map in
+specs/context-functions.md.

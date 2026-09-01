@@ -36,5 +36,10 @@ thing.
 **Negative caching** is not a feature, it is a type: make absence a
 value (`V = Option[A]`) and it caches under the same budget.
 
-Redis (a minimal own RESP client) and the cross-node invalidation
-topic ride later slugs behind the same trait.
+Stage 2 landed behind the same trait:
+
+| | |
+|---|---|
+| `Redis` | the engine over a MINIMAL own RESP client (four commands do not justify a dependency); Budget = server-side `SET PX` — an expired entry is GONE, never filtered; values are CBOR a Schema reads; connect PINGs and fails fast |
+| `WriteThrough` | regime 2's write path held by construction: commit THEN invalidate — the wrong ordering's resurrection bug is demonstrated in the tests, and the honest commit-to-invalidate window is shown, not denied |
+| `Invalidations` | cross-node regime 2: the invalidation is an EVENT on a persist topic — every node a consumer, and a node that was DOWN replays and CONVERGES (the trade that justifies the topic over pub/sub, asserted) |

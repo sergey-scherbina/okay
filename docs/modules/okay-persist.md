@@ -79,7 +79,21 @@ Refusals are by name, TooEarly crosses unchanged, and auth is a
 function okay-security plugs into. Plaintext until wire-tls,
 stated.
 
-The staged roadmap — replication's calls joining the wire's
-message enum, interop engines (Kafka/JDBC) behind the same trait,
-elected leadership — lives in specs/persist.md with its decisions
-and refuted alternatives.
+Landed since: stage 2's core (Replicated — hwm as the visibility
+bound, quorum acks that refuse honestly, epoch-fenced leadership,
+the producer window), stage 3 interop engines (SqlStore over the
+Sql seam, KafkaStore inheriting the twenty years), and the
+conveniences that ride the one primitive:
+
+| | |
+|---|---|
+| `Snapshots` | a compacted keyed topic as the checkpoint store; refold from the snapshot's offset |
+| `Offsets` | consumer positions as commits on a compacted topic |
+| `Configs` | managed config (specs/conf.md stage 2): put/latest/at/history — the audit IS the log, rollback IS a read |
+| `Doctor` | "is this backup restorable", answered offline by an INDEPENDENT reader of the documented segment format: a torn tail on the LAST segment is normal and named; damage in a CLOSED one condemns the copy |
+
+Backup/restore live on the blob side (`okay.blob.Backup` — the
+dependency arrow persist→blob would cycle through http): closed
+segments copy incrementally, restore is placing files back for the
+ordinary startup path. Elected leadership stays specced
+(persist-raft) with its decisions and refuted alternatives.

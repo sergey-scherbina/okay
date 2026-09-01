@@ -32,7 +32,14 @@ requested schema, folds the user's edits, and answers typed.
 ## What is deliberately not here (v1)
 Raw-DOM patch backend (React covers the browser), keyed reordering in
 the diff, native toolkits (satellites over the same seam), styling
-beyond bold/dim, Windows raw mode. The architecture above v1 —
-scenarios as programs (`Dialog`), screens as a stack, server-driven
-UI over the wire, event-sourced sessions — is DESIGNED in specs/ui.md
-and staged on the backlog.
+beyond bold/dim, Windows raw mode.
+
+The architecture above v1 is largely BUILT since: scenarios as
+programs (`Dialog`, with cancellable scopes — `Scope`, the Delim
+door, now also in capability form: `mark`/`exit`/`bounded`, exit
+to the NEAREST scope by nesting), screens as a stack (`Nav`, with
+NAMED boundaries: `Nav.boundary`/`PopTo` drop intervening frames
+as DATA — the mechanism the stack itself dictates), the raw-DOM
+patch backend (`Dom`), forms from schemas, event-sourced sessions.
+specs/ui.md holds the decisions; docs/typepedia.md the capability
+patterns.

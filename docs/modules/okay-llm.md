@@ -114,3 +114,14 @@ The agentic layer this module is designed for — tool calls as effect
 operations, context as an effect, the loop as a program — is built:
 see [okay-agent](okay-agent.md), and [okay-rag](okay-rag.md) for
 retrieval under the same budget.
+
+## The streaming cut (llm-streaming-cut)
+
+`Cut` closes P9's open item: a validator stands IN the token stream
+and, on a violation, ABORTS to a prompt installed over the
+generation — the non-local exit no specialised effect can spell
+(Delim as the doctrine's PRIMARY case), behind an ADDITIVE wrapper:
+`guarded`/`checked` explicit, `guard`/`watched`/`violation` with the
+prompt ambient (nearest guard by nesting). The poisoned token never
+flows; the source records NO further pulls after the cut; a passing
+stream is identical to the unguarded run and never captures.

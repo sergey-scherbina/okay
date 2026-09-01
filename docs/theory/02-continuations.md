@@ -126,3 +126,10 @@ but one theorem, specialized twice.
 ---
 
 ← [1 · Monads and functors](01-monads.md) · [Contents](index.md) · [3 · Parameterised monads](03-parameterised.md) →
+
+*Shipped consumers of this chapter (2026-09-01):* `Delim` carries
+Dialog's cancellable scopes (`Scope`), the streaming cut (`Cut`),
+the agent stepper's pause-and-fork, and the sim scheduler's
+captured-continuation feeding — the operator's adoption doctrine
+(specs/delimited-control.md, Adoption) states when it is the
+mechanism and when an option.

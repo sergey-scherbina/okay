@@ -90,7 +90,16 @@ same material with the measurements attached.
   recover the type anyway; [existentials.md](existentials.md) records
   each, what the compiler said, and the bytecode.
 - **`State % S`** — bespoke tailrec handler; **`PState`** — the
-  type-changing (typestate) variant on the paramonad, ~1.7x the price.
+  type-changing (typestate) variant on the paramonad, ~1.7x the
+  price — no longer only an exhibit: `Stage.phased`/`phased3`
+  execute their phase switches through it, and the typed
+  transaction region (sql-typestate) is its second consumer.
+- **`Blocking[A]`** — `CanBlock ?=> A`: parks-a-thread as a
+  first-class value; forced only where the capability is given.
+- **`Prompt[R]`** — a delimiter's identity AND answer type (Delim);
+  ambient in the capability forms (`Scope.mark/exit/bounded`,
+  `Cut.guard/violation`) — nested using-params resolve to the
+  NEAREST scope, verified.
 - **`Throws % E`** — typed aborts; `runEither/runThrows`; the `throws`
   union type for direct style.
 - **`Choose`** — nondeterminism; the handler is genuinely multi-shot;
