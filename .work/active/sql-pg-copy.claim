@@ -1,0 +1,5 @@
+slug: sql-pg-copy
+agent: fable-persist (session 75625ecc)
+started: 2026-09-01
+scope: COPY through the pg wire — copyIn (CopyInResponse/CopyData/CopyDone, text format with proper escaping) and the load-id posture (a loads registry + the data COPY in ONE transaction: the retry after a simulated crash lands once — WithKey at batch granularity on the free engine); live tests; sql.md COPY box
+files: okay-pg/** (PgSql copyIn + Load + tests), specs/sql.md (box/Results)
