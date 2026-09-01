@@ -253,6 +253,10 @@ object Server {
   def run(link: Link, serving: Serving): Unit ! Async =
     over(link)(serve(serving))
 
+  /** the pushing half alone, for a transport that owns its own
+   * outbound channel (the HTTP route fans one out to many sessions) */
+  def pushesTo(out: Channel[Rpc], subs: Subscriptions): Pushes = Pushes(out, subs)
+
   /**
    * The server, plus the handle for what it says unasked. The
    * outbound side is the stage's answers merged with the pushes —

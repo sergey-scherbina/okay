@@ -129,9 +129,12 @@ class TestMcpHttp extends munit.FunSuite {
     }
   }
 
-  test("GET on the serving route is 405: this server cannot push") {
+  test("GET without a session is 404 — the stream belongs to a session") {
+    // v6: GET serves the push stream now (see okay-jetty's TestMcpPush
+    // for the streaming half); with no session id there is nothing to
+    // stream, and 404 says whose fault that is
     served(McpHttp.route(serving)) { url =>
-      assertEquals(http.send(Request.get(url)).runWith.status, 405)
+      assertEquals(http.send(Request.get(url)).runWith.status, 404)
     }
   }
 

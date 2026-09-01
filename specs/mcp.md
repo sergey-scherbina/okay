@@ -427,16 +427,25 @@ Three pieces:
   resource changed exactly as it does over stdio.
 
 ### Behavior
-- [ ] a GET with `accept: text/event-stream` opens a stream instead of
+- [x] a POST body actually reaches the route (see below — it did not)
+- [x] a GET with `accept: text/event-stream` opens a stream instead of
       405, and the session id ties it to that client's session
-- [ ] a resource update pushed after a subscription arrives on the
+- [x] a resource update pushed after a subscription arrives on the
       client's `notifications` channel — over HTTP, with nothing in
       the client changed
-- [ ] a client that never opens the GET stream still works; the
+- [x] a client that never opens the GET stream still works; the
       pushes simply have nowhere to go
-- [ ] a streaming response is written incrementally: the client sees
+- [x] a streaming response is written incrementally: the client sees
       the first event before the source has ended (asserted by a
       source that does not end until asked)
+
+### What it found
+okay-jetty's REST handler never read the request body: `requestOf`
+built a `Request` from the method, path and headers and stopped. Every
+POST route on that backend therefore saw `Body.Empty`, and an MCP
+route answered every message as though it were damaged. The body is
+read on the REST path only — the same function also builds the request
+a WebSocket UPGRADE is dispatched on, where reading would consume it.
 
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server

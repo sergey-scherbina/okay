@@ -108,15 +108,16 @@ object Jetty {
 
       val rest = new Handler.Abstract:
         def handle(req: JsrRequest, res: JsrResponse, cb: Callback): Boolean =
-          val r = requestOf(req)
+          val r = posted(requestOf(req), req)
           if !routes.isDefinedAt(r) then false
           else
             try
               val out = Async.run[Response, Pure](routes(r)).runWith
-              val bytes = Async.run[Chunk[Byte], Pure](Http.bytes(out)).runWith.toArray
               res.setStatus(out.status)
               out.headers.foreach((k, v) => res.getHeaders.add(k, v))
-              res.write(true, ByteBuffer.wrap(bytes), cb)
+              if streams(out) then stream(out, res, cb) else
+                val bytes = Async.run[Chunk[Byte], Pure](Http.bytes(out)).runWith.toArray
+                res.write(true, ByteBuffer.wrap(bytes), cb)
             catch
               case e: Throwable =>
                 // damage as data, on the wire too — the same 500 the
@@ -147,6 +148,27 @@ object Jetty {
 
   // ---- the two directions of a session, over Jetty's own listener
 
+  /**
+   * The request WITH its body, for the REST side.
+   *
+   * `requestOf` deliberately does not read one: it also builds the
+   * request a WebSocket upgrade is dispatched on, where there is no
+   * body to read and reading would consume the upgrade. On the REST
+   * side there is one, and a route that never sees it cannot serve a
+   * POST at all — which is how this was found: an MCP route over
+   * Jetty answered every message as though it were damaged, because
+   * every body arrived empty.
+   */
+  private def posted(r: Request, req: org.eclipse.jetty.server.Request): Request =
+    if r.method == Method.Get || r.method == Method.Head then r
+    else
+      val bb = org.eclipse.jetty.io.Content.Source.asByteBuffer(req)
+      if !bb.hasRemaining then r
+      else
+        val bytes = new Array[Byte](bb.remaining)
+        bb.get(bytes)
+        r.copy(body = Body.Bytes(scala.collection.immutable.ArraySeq.unsafeWrapArray(bytes)))
+
   private def requestOf(req: org.eclipse.jetty.server.Request): Request =
     val hs = req.getHeaders.asScala.toSeq.map(f => (f.getName, f.getValue))
     val m = Method.values.find(_.name == req.getMethod).getOrElse(Method.Get)
@@ -160,6 +182,50 @@ object Jetty {
    * picks callbacks by reflection and refuses a class declaring both
    * text forms, which is exactly what Scala's mixin forwarders produce.
    */
+  /**
+   * Does this response mean a STREAM?
+   *
+   * `Response.body` is a `Source[Chunk[Byte]]` and always was, so the
+   * shape allowed streaming from the start; what buffering decided was
+   * that nobody could use it. Draining first is right for REST — one
+   * length, one write — and fatal for server-sent events, where the
+   * whole point is that the caller sees an event before the source
+   * ends. So the content type decides, because it is exactly the
+   * place a caller says which one they meant.
+   */
+  private def streams(r: Response): Boolean =
+    r.headers.exists((k, v) =>
+      k.equalsIgnoreCase("content-type") && v.contains("text/event-stream"))
+
+  /**
+   * Write the body chunk by chunk, on a virtual thread: each pull of
+   * the source may park (a channel with nothing in it yet), and the
+   * last chunk is the one that closes the response. A source that
+   * never ends is a stream that stays open, which is what a
+   * subscription is.
+   */
+  private def stream(out: Response, res: JsrResponse, cb: Callback)
+                    (using CanBlock): Unit =
+    Thread.startVirtualThread: () =>
+      try
+        Async.run[Unit, Pure](write(out.body, res)).runWith
+        res.write(true, ByteBuffer.allocate(0), cb)
+      catch case _: Throwable => res.write(true, ByteBuffer.allocate(0), cb)
+    ()
+
+  private def write(body: okay.Source[Chunk[Byte]], res: JsrResponse): Unit ! Async =
+    Writer.uncons[Chunk[Byte], Unit, Async](body).flatMap {
+      case Left(_) => pure(())
+      case Right((c, rest)) =>
+        Async.await[Unit] { k =>
+          res.write(false, ByteBuffer.wrap(c.toArray), new Callback {
+            override def succeeded(): Unit = k(Right(()))
+            override def failed(e: Throwable): Unit = k(Left(e))
+          })
+          () => ()
+        }.flatMap(_ => write(rest, res))
+    }
+
   private def adapter(q: Channel[Frame]): Listen =
     Listen(new Listen.Sink:
       def open(session: Session): Unit = ()

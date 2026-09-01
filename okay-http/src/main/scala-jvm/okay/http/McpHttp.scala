@@ -134,18 +134,40 @@ object McpHttp {
    *
    * A POST carrying a request answers with its one message; a POST
    * carrying a notification answers 202, because there is nothing to
-   * answer. GET is 405: holding a stream open needs a streaming
-   * response, which this module's server does not have (it drains the
-   * body before sending the head) — so a server that must PUSH is one
-   * for stdio or WebSocket today.
+   * answer. A GET with `accept: text/event-stream` opens the stream a
+   * server PUSHES on — which needs a server that can write a body
+   * incrementally (okay-jetty can; okay-http's own buffers, and there
+   * the GET simply never delivers anything).
    */
   def route(serving: McpServer.Serving)
            (using Scheduler, CanBlock): Request => Response ! Async =
-    val sessions = java.util.concurrent.ConcurrentHashMap[String, Wire]()
+    routed(serving)._1
 
-    request =>
+  /**
+   * The route, and the handle for what the server says unasked. Every
+   * session gets the same `Pushes`, because a `Serving` is one server
+   * — its subscriptions are its own, and a push goes to the sessions
+   * that have a stream open.
+   */
+  def routed(serving: McpServer.Serving)
+            (using Scheduler, CanBlock): (Request => Response ! Async, McpServer.Pushes) =
+    val sessions = java.util.concurrent.ConcurrentHashMap[String, Wire]()
+    val pushes = Channel[Rpc]()
+    val handle = McpServer.pushesTo(pushes, serving.subscriptions)
+
+    // one fan-out fiber: a push goes to every session with a stream
+    Async.spawn(fanOut(pushes, sessions)): Unit
+
+    val route: Request => Response ! Async = request =>
       if request.method == Method.Get then
-        pure(Response(405, Seq(("allow", "POST")), Http.one(Array.empty)))
+        val id = header(request, SessionHeader).getOrElse("")
+        Option(sessions.get(id)) match
+          case None => pure(Response(404, Nil, Http.one(Array.empty)))
+          case Some(wire) =>
+            // the body is that session's stream, as events; it ends
+            // when the session does
+            pure(Response(200, Seq(("content-type", "text/event-stream")),
+              events(wire.stream)))
       else
         val body = request.body match
           case Body.Text(s) => s
@@ -174,6 +196,36 @@ object McpHttp {
               "unknown session")).getBytes(java.nio.charset.StandardCharsets.UTF_8))))
           case Some(wire) => answer(wire, body, message, Nil)
 
+    (route, handle)
+
+  /** every push, to every session that has a stream open */
+  private def fanOut(pushes: Channel[Rpc],
+                     sessions: java.util.concurrent.ConcurrentHashMap[String, Wire])
+  : Unit ! Async =
+    async(pushes.receive()).flatMap {
+      case None => pure(())
+      case Some(m) =>
+        import scala.jdk.CollectionConverters.*
+        sessions.values().asScala.foreach(_.stream.send(m))
+        fanOut(pushes, sessions)
+    }
+
+  /** a stream of messages as an SSE body */
+  private def events(out: Channel[Rpc]): Source[Chunk[Byte]] =
+    def go: Source[Chunk[Byte]] =
+      effect[Writer % Chunk[Byte] + Async, Option[Rpc]](Async.Run(() => out.receive()))
+        .flatMap {
+          case None => pure(())
+          case Some(m) =>
+            val bytes = s"data: ${Rpc.encode(m)}\n\n"
+              .getBytes(java.nio.charset.StandardCharsets.UTF_8)
+            effect[Writer % Chunk[Byte] + Async, Unit](
+              Writer(scala.collection.immutable.ArraySeq.unsafeWrapArray(bytes)))
+              .flatMap(_ => go)
+        }
+
+    go
+
   private def header(r: Request, name: String): Option[String] =
     r.headers.collectFirst { case (k, v) if k.equalsIgnoreCase(name) => v }
 
@@ -201,6 +253,9 @@ object McpHttp {
   private final class Wire(serving: McpServer.Serving)(using Scheduler, CanBlock) {
     val inbound: Channel[String] = Channel[String]()
     val outbound: Channel[String] = Channel[String]()
+
+    /** what this session is told unasked — the GET stream reads it */
+    val stream: Channel[Rpc] = Channel[Rpc]()
 
     private val link: okay.mcp.Link = new okay.mcp.Link:
       def send(line: String): Unit ! Async = async(outbound.send(line))
