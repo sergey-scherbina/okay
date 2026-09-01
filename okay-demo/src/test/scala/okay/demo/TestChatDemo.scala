@@ -272,6 +272,34 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
+  test("FLOWS in the demo: a transition's notifications reach the role inboxes, filled") {
+    val store = okay.matching.MemoryMatch()
+    val t = ChatDemo.chainedTable(store)
+    import okay.codec.Json
+    def call(name: String, args: (String, Json)*): String =
+      t(name)(okay.agent.ToolCall("t", name, Json.JObj(args.toVector)))
+    val seeker = store.register("flow-seeker@x")
+    val provider = store.register("flow-prov@x")
+    store.assert(provider, "contact", okay.matching.Side.Offer,
+      okay.matching.Value.VText("tg:@prov"),
+      okay.matching.Provenance("c", 1, "..."), 1.0, okay.matching.Vis.Matched)
+    val Right(id) = store.startFlow("deal",
+      Map("seeker" -> seeker, "provider" -> provider), "полка"): @unchecked
+    // the provider accepts THROUGH THE TOOL — the seeker's inbox rings
+    val inb = ChatDemo.inbox("flow-seeker@x")
+    call("flow_advance", "flow" -> Json.JNum(id.n.toDouble),
+      "transition" -> Json.JStr("accept"), "by" -> Json.JStr(provider.uuid))
+    val note = java.util.concurrent.CompletableFuture.supplyAsync { () =>
+      var r: Option[String] = None
+      while r.isEmpty do r = inb.receive()
+      r.get
+    }.get(5, java.util.concurrent.TimeUnit.SECONDS)
+    assertEquals(note, "исполнитель согласился: полка")
+    // and the unlock is queryable the generic way
+    assertEquals(store.unlockedBy(seeker, provider).map(f =>
+      okay.matching.Value.text(f.value)), Vector("tg:@prov"))
+  }
+
   test("over budget the stream is cut, named, and no tokens follow") {
     withServer(budget = 3) { port =>
       val whole = new String(post(port,

@@ -129,6 +129,18 @@ the engine test's domain).
       list, ask-all, one declines (seeker told), one accepts (seeker
       told WITH the contact), the third stands down (told)
 
+## Flows in the demo (demo-flows)
+The generic scenarios reach the chat: flow_advance is wrapped like
+the rest of the tool table — a fired transition's notifications are
+delivered to the role-holders' inboxes with the templates filled, so
+ANY registered scenario's steps ring the right pages with no
+per-scenario code; the prompt teaches the model scenario_get /
+flow_start / flow_advance.
+
+- [x] a transition fired through the tool rings the named role's
+      inbox with the filled template, and the unlock is queryable
+      via unlockedBy
+
 ## Out of scope
 - Auth, persistence of conversations, multi-user rooms (persist owns
   durable history; okay-match's DURABLE store is one constructor swap

@@ -1,5 +1,15 @@
 # Changelog
 
+## demo-flows — generic scenarios ring the chat
+Completed: 2026-09-01
+
+flow_advance joins the demo's wrapped tool table: a fired
+transition's notifications are delivered to the role-holders'
+inboxes with templates filled — any registered scenario's steps ring
+the right pages with no per-scenario code (the deal's hand-written
+onResponded now has a generic sibling). The prompt teaches the model
+the flow tools. 12 demo tests.
+
 ## ctx-wire — the consumer one-liner: wire[A] is Reader's ask
 Completed: 2026-09-01
 The other half of the vocabulary (E17 in specs/context-functions.md):

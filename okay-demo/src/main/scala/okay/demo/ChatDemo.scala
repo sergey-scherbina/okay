@@ -184,7 +184,28 @@ object ChatDemo {
   /** the tool table with the reverse chain wrapped around asserts */
   def chainedTable(store: MatchStore): Map[String, okay.agent.ToolCall => String] =
     val base = MatchTools.table(store)
-    base.updated("match_inquire", { c =>
+    base.updated("flow_advance", { c =>
+      val out = base("flow_advance")(c)
+      // a successful advance fired a transition: deliver its
+      // notifications to the role-holders' inboxes, templates filled
+      Json.parse(out) match
+        case JObj(fs) if fs.exists(_._1 == "state") =>
+          val flowN = c.args match
+            case JObj(a) => a.collectFirst { case ("flow", JNum(x)) => x.toLong }.getOrElse(0L)
+            case _ => 0L
+          for
+            f <- store.flow(okay.matching.FlowId(flowN))
+            d <- store.scenario(f.scenario)
+            (tname, byP, _) <- f.history.lastOption
+            t <- d.transitions.find(_.name == tname)
+            byRole = f.parties.collectFirst { case (r, p) if p == byP => r }.getOrElse("?")
+            (role, template) <- t.notifies
+            target <- f.parties.get(role)
+            email <- emailOf(store, target)
+          do inbox(email).send(okay.matching.Flow.fill(template, d, f, byRole))
+        case _ => ()
+      out
+    }).updated("match_inquire", { c =>
       val out = base("match_inquire")(c)
       val provider = c.args match
         case JObj(fs) => fs.collectFirst { case ("provider", JStr(x)) => x }.getOrElse("")
