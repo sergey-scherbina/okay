@@ -913,8 +913,11 @@ lazy val okayDemo = (project in file("okay-demo"))
     // (see okay-mcp's module doc for the command).
     run / fork := true,
     // the DriverManager per-classloader rule (the okay-jdbc lesson):
-    // a module carrying a JDBC driver forks its tests
+    // a module carrying a JDBC driver forks its tests — and the
+    // forked JVM keeps the REPO ROOT as its working directory,
+    // because RepoAgent indexes File(".")
     Test / fork := true,
+    Test / baseDirectory := (ThisBuild / baseDirectory).value,
     run / connectInput := true,
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
