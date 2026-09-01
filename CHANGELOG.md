@@ -1,5 +1,23 @@
 # Changelog
 
+## sim-typestate-specs — the user's question becomes two specs
+Completed: 2026-09-01 (landed as 3bb0bd3; spec only)
+Born of "where are PState and Delim useful?" and hashed out in the
+room while OTHER lanes landed three consumers the same afternoon.
+specs/sim.md: deterministic concurrency simulation on Delim —
+every fiber under its own Prompt, a seeded scheduler capturing at
+the Async waist (Run/Await, the narrowest point everything already
+passes), virtual clock, fault plans from the seed, interleavings
+replayable byte for byte; the argument is the day's own ledger
+(three real races, all found by flakes). specs/typestate.md: the
+criteria doc — typestate pays for ONE-WAY phases through ABSTRACT
+boundaries, and the cheapest adequate mechanism wins (phantom
+types for two states = the landed sql-typestate; phase objects for
+short handshakes = pg-scram-typestate, the room's counter-proposal
+accepted; PState proper for type-changing accumulation = the
+landed stage-phased). sim-harness and wire-typestate filed against
+the specs; scram may be claimed by any lane.
+
 ## agent-stepper — pause, inspect, resume, fork: Delim's second consumer
 Completed: 2026-09-01
 
