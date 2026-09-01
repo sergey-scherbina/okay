@@ -445,9 +445,12 @@ lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )
   .jsSettings(
-    // the model and Jwt/Jwks/Policy compile; the Crypto given is a
-    // stage (security-node), so nothing verifies on JS yet
-    Test / sources := Seq(),
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-js"),
+    // node:crypto arrives by require, which needs a module kind
+    scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
   )
 
 /**
