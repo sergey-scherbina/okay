@@ -25,12 +25,16 @@ assembly plan, detailed at implementation time.
   performance, more code. Two findings stand. Loom parking is free —
   NIO against a parked blocking read is a wash. And the codec IS the
   transport within noise (25.9 of 37.9), which makes the CBOR dialect
-  this spec already plans the lever, not the socket API. One question
-  stays open, with its lane already written
-  (`blockingBytesFlushed`): whether NIO's completion handlers beat
-  parked reads specifically on per-line-flushed small-packet streams —
-  the one clean NIO run (24.7 with per-line sends) hints they might,
-  and a quiet machine settles it in one run.
+  this spec already plans the lever, not the socket API. The
+  deconfounding lane ran on 2026-09-01: `blockingBytesFlushed`
+  measured 50.8 ±9.5 — slower than the shipped transport's
+  38.2 ±0.5 — so bytes with a flush per line beat nothing, which is
+  consistent with the rewrite's wash and closes the byte-plumbing
+  question for good. The NIO half stays open for a NEW reason: its
+  lane read 59.0 ±48.6 with three fork failures on the sum
+  assertion — the NIO path sporadically loses data around close
+  under per-line sends. A correctness lead now, not a performance
+  one (BACKLOG: nio-close-race).
   (Found on the way, by a torn frame: the "total" JSON parser threw
   NumberFormatException on five number-shaped damages — "-", "[1,2,-",
   "-e5", "1e". Fixed in okay-codec, pinned by TotalityProbe.)

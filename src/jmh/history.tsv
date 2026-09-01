@@ -162,3 +162,7 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-01	clusterTransport-nio	24698000	ns/100chunks	AsynchronousSocketChannel: a WASH against blockingBytes — parking is free
 2026-09-01	clusterTransport-codecOnly	25884000	ns/100chunks	JSON encode+decode alone: the codec dominates; CBOR is the next lever
 2026-09-01	clusterTransport-remoteBytes	38395000	ns/100chunks	byte rewrite with flush-per-send: EQUAL to shipped — rewrite reverted
+2026-09-01	indexFoldNoRefs	189588	ns/8.5KB	QUIET run, +-5.4: the identifier branch is only 19% of the walk
+2026-09-01	indexFoldOnly-quiet	234960	ns/8.5KB	+-14.9 — so 81% is traversal machinery (path :+, defHead, span, recursion)
+2026-09-01	blockingBytesFlushed	50787000	ns/100chunks	+-9.5, SLOWER than shipped 38.2: flush-per-line hope closed directionally
+2026-09-01	nio-flaky	58953000	ns/100chunks	+-48.6, 3 fork failures on the sum assert — possible data loss on close, see BACKLOG

@@ -1,5 +1,15 @@
 # Backlog
 
+## Correctness leads
+- [ ] nio-close-race — `ClusterTransportBenchmark.nio` sporadically
+      fails its sum assertion (3 forks of 6 on 2026-09-01; also one
+      torn frame on 2026-08-31 that exposed the Json totality bug).
+      Suspect: `AsynchronousSocketChannel.close()` racing the last
+      completed-but-kernel-buffered writes under per-line sends.
+      `okay.http.Nio.Conn` is the code under suspicion; a
+      shutdown-output-then-drain close, or a half-close API, is the
+      likely shape of the fix. Reproduce first: loop the nio lane alone.
+
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [ ] ui-durable — event-sourced sessions: intent-first journal
       (Durable shape), refold recovery, snapshots; the journal is an

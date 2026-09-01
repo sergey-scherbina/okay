@@ -17,6 +17,19 @@ eval, structurally; neutral RValue/RFrame with Schema at the edge
 (the SqlValue move); verify(packages) catches environment drift
 loudly; subprocess engine first, Rserve behind the same handler.
 Spec only; r-subprocess, r-rserve, r-arrow filed.
+## quiet-measurements — the two waiting questions, answered on a quiet machine
+Completed: 2026-09-01
+
+symbol-fold-cost is CLOSED: indexFoldNoRefs 189.6 ±5.4 against
+indexFoldOnly 235.0 ±14.9 — the identifier branch is 19% of the walk
+and 81% is the traversal machinery, which prices future optimization
+honestly and agrees with the refuted mutable-bucket rewrite. The
+cluster flush question closed directionally (blockingBytesFlushed 50.8
+±9.5, slower than shipped 38.2 ±0.5) and yielded a NEW correctness
+lead: the NIO lane sporadically fails its sum assertion — possible
+data loss around close — filed as nio-close-race. Chapter 1's monad
+laws expanded per user request: each law spelled, read operationally,
+and tied to why generic code depends on it.
 
 ## mcp-templates — one declaration, unbounded uris; MCP's list closes
 Completed: 2026-09-01

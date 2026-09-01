@@ -14,8 +14,45 @@ with two operations —
 - `flatMap: T[A] => (A => T[B]) => T[B]` — do one computation, feed its
   result to the next
 
-— obeying three laws (left identity, right identity, associativity).
-That triple is a **monad**, and Moggi showed that state, exceptions,
+— obeying three laws. Spelled in okay's own notation, with `>>=` for
+`flatMap`:
+
+```scala
+pure(a) >>= f    ==  f(a)                        // left identity
+m >>= pure       ==  m                           // right identity
+(m >>= f) >>= g  ==  m >>= (x => f(x) >>= g)     // associativity
+```
+
+Each says something operational, not merely algebraic.
+
+**Left identity**: wrapping a value with `pure` and immediately
+feeding it onward is the same as just calling the next step. `pure`
+adds no effect — if it did (logged something, delayed something), this
+law would fail, and so would every refactoring that inlines a
+`val x = pure(...)`. It is the law that makes `pure` safe to introduce
+and eliminate mechanically.
+
+**Right identity**: finishing a computation by returning its result
+unchanged changes nothing. This is why a trailing `.map(identity)` or
+`.flatMap(pure)` can always be dropped — and why an interpreter may
+resume a bare operation with `Pure(_)` as its continuation without
+altering the program's meaning.
+
+**Associativity**: how a *sequence* of steps is parenthesized cannot
+matter — `do a; do b; do c` has one meaning whether you group it as
+`(a; b); c` or `a; (b; c)`. This is the deepest of the three, because
+it is what makes sequential composition *refactorable*: extract three
+lines into a helper function and the program is grouped differently
+but must behave identically. A structure violating it would make
+extracting a method a semantics-changing edit.
+
+Why laws at all, rather than just an interface? Because the laws are
+the *contract the abstraction sells*. Generic code — a `traverse`, a
+retry loop, okay's own interpreter — manipulates `m >>= f` without
+knowing what effect `m` performs, and every transformation it applies
+is justified by exactly these equations. Break the laws and generic
+code silently miscompiles your effect. That triple obeying those laws
+is a **monad**, and Moggi showed that state, exceptions,
 nondeterminism, continuations and I/O are all instances. Philip Wadler
 then carried the idea into programming practice [Wadler 1992, 1995]:
 monads are how a pure language *expresses* effects, and the laws are
@@ -71,7 +108,7 @@ The laws are not ceremony; two places in this repository lean on them
 directly.
 
 **Rebalancing is associativity.** The `fold` rewrite quoted above is
-legal *only because* `(m >>= f) >>= g  ≡  m >>= (x => f(x) >>= g)`.
+the third law read left-to-right as a rewrite rule.
 The benchmarks page measures what it buys: a 10 000-step left-nested
 `flatMap` chain — the worst case, built by `foldLeft` — runs without
 stack growth and without the quadratic re-walking naïve free monads

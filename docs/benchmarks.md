@@ -344,13 +344,18 @@ rewritten to fill mutable buckets and build the `Index` once, and the
 rewrite was **reverted, because it bought nothing**: 244.1us against
 245.4 before, which is no difference at all.
 
-So the cost is somewhere else in the walk — `defHead` scanning each
-definition's head, `span`, `isName`, or the traversal itself. A lane
-with the identifier branch switched off would say which, and on this
-machine it came back at 427 +/- 136 while doing strictly less work
-than the 256.8 +/- 51 full walk, which is noise and not a measurement.
-Left for a quiet machine; the split lanes are in place so it costs
-one run rather than an afternoon.
+So the cost is somewhere else in the walk, and the quiet machine
+eventually said where: `indexFoldNoRefs` 189.6 ±5.4 against
+`indexFoldOnly` 235.0 ±14.9 — the identifier branch is only **19%** of
+the walk, and **81% is the traversal machinery itself**: the recursion,
+the `path :+` per definition node, `defHead` scanning each head,
+`span`. That is consistent with the refuted rewrite above (mutable
+buckets targeted the 19% and bought nothing measurable) and it prices
+any future optimization honestly: nothing short of restructuring the
+traversal touches the bulk. (An earlier attempt at this lane on a
+loaded machine read 427 ±136 while doing strictly less work than the
+full walk — kept here as the reminder that a noisy number is not a
+small number.)
 
 Worth stating plainly because the pattern held four times in a row
 before this: finding the same SHAPE is not finding the same cost.
