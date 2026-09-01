@@ -1,5 +1,16 @@
 # Changelog
 
+## blob-s3 — the lingua franca, spoken ourselves
+Completed: 2026-09-01 (landed as 10783c4)
+Own SigV4 pinned by the AWS doc vectors (GET/PUT verbatim; the list
+example settled by cross-implementation agreement — the diagnostic
+recorded in Results). PUT/GET/HEAD/DELETE/ListObjectsV2 path-style
+over the one http client; puts buffer while http's Body stays
+unstreamed (stated), gets stream. The SAME BlobContract passes green
+against LIVE MinIO (docker), and a recording transport proves the
+secret reaches the HMAC chain and nothing else. specs/blob.md fully
+shipped, both stages. Matrix 1353.
+
 ## rag-pgvector — the vector store behind the same interface
 Completed: 2026-09-01 (landed as 4b7dc0b)
 PgVector in okay-rag's JVM leg: VectorStore[Async] over the Sql
