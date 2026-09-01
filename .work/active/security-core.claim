@@ -1,0 +1,6 @@
+feature/security-core 2026-09-01T08:58:28Z
+agent: claude-code
+heartbeat: 2026-09-01T08:58:28Z
+status: in-progress
+done-so-far:
+next: specs/security.md — the full layout, staged; then stage 0

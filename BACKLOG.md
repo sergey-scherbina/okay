@@ -16,6 +16,19 @@
       params in derivation): what ui-wire needed and shipped without,
       on the hand mapping instead
 
+## okay-security (specs/security.md — staged, like persist)
+- [ ] security-mcp — MCP authorization (stage 1): protected-resource
+      metadata (RFC 9728), 401 + WWW-Authenticate on McpHttp.route,
+      client discovery -> PKCE flow -> bearer retry
+- [ ] security-es256 — ES256 for JWT (the JOSE raw R||S <-> DER dance,
+      its own tested task)
+- [ ] security-node — the Crypto seam over node:crypto, so the JS leg
+      verifies too
+- [ ] security-oidc — id_token validation, discovery document,
+      nonce/at_hash
+- [ ] security-argon2 — a satellite with a real KDF for new password
+      stores (PBKDF2 stays the zero-dep default)
+
 ## okay-mcp
 - [ ] mcp-completion — completion/complete for prompt/resource args
 - [ ] mcp-resource-templates — RFC 6570 templates, list + expand
