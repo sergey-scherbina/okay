@@ -11,6 +11,17 @@ program un-run (binding is consent to hold the value). The None.type
 wrinkle: singletons carry no type arguments, so runnableElem also
 consults the base type at the block's monad, every guess verified by
 <:<. 27 tests, full matrix green.
+## match-docs — the day, documented
+Completed: 2026-09-01
+
+docs/modules/okay-match.md rewritten to the module's full present:
+the two founding decisions, the model layer by layer, hybrid search
+with withheld, the reverse chain, scenarios-as-data with the typed
+pen, identity without the hijack, open stores, the complete tool
+table. docs/modules/okay-demo.md is new — the chat as the stack's
+tour: running it, the env table, who does what, how the model runs
+the marketplace, the offline phrases, the tests as the tour. Both
+linked from the docs index.
 
 ## ctx-capabilities-doc — the whole story, told in one place
 Completed: 2026-09-01

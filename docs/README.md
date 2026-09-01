@@ -57,7 +57,7 @@ API reference, gotchas.
 | [`okay-llm`](modules/okay-llm.md) | language models as streams; two protocols over one seam; structured output that cuts generation |
 | [`okay-agent`](modules/okay-agent.md) | agents as programs: tools as operations, context as a fold, search as Logic |
 | [`okay-rag`](modules/okay-rag.md) | retrieval: split the tree not the string, code in eight languages indexed by parsing it, symbols without embeddings |
-| [`okay-match`](modules/okay-match.md) | two-sided matching over LLM-structured chats: log-first, a registry against vocabulary drift, two-gate disclosure, safe cross-channel identity |
+| [`okay-match`](modules/okay-match.md) | two-sided matching over LLM-structured chats: log-first, registries for attributes AND scenarios, negotiations with role-enforced flows, two-gate disclosure, safe cross-channel identity |
 | [`okay-cluster`](modules/okay-cluster.md) | the remote channel, distributed chunk work, the JS↔JVM acceptance |
 | [`okay-http`](modules/okay-http.md) | REST and WebSocket as programs: a body is a `Source`, a socket session is a `Stage[Frame, Frame, A]`, and a socket IS an MCP `Link` |
 | [`okay-jetty`](modules/okay-jetty.md) | Jetty behind the same two seams — and the WebSocket SERVER okay-http could not serve |
