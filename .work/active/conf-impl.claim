@@ -1,6 +1,0 @@
-feature/conf-impl 2026-09-01T16:00:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-01T16:00:00Z
-status: in-progress
-done-so-far:
-next: okay-conf module (Secret/Secrets env-file-memory-chain, Conf.read/load), the invariants' tests, cross-built

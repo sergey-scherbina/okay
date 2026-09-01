@@ -1,5 +1,14 @@
 # Changelog
 
+## conf-impl — configuration as data, secrets as references
+Completed: 2026-09-01 (landed as edff795)
+okay-conf cross-built (depends on okay-codec only): Secret whose
+toString IS the reference, Secrets env/file/memory/chain (the chain's
+one error is the specific one), Conf.read/load. The shared suite
+proves env: on JVM, Node and Native; file: trims exactly one
+trailing newline. No plain: scheme, deliberately. codec-iso filed
+for the bare-string Secret form. Matrix 1179.
+
 ## sql-seam — the relational seam cut at the driver, first road open
 Completed: 2026-09-01 (landed as 90c97bf; spec first 0c560db)
 New module okay-sql, cross-built JVM/JS/Native — the no-java.sql
