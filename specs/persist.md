@@ -290,6 +290,10 @@ at stage 0 and never rebind.
 - [x] append then read returns the records in order with dense
       offsets; `end` is the next offset, `begin` the first retained
       (file + memory)
+- [x] poll-on-end: a reader that has consumed to `end` and reads
+      again from there sees an append made after its first read —
+      the contract tailing stands on (ui-durable, resumable SSE),
+      tested in both engines rather than assumed by the consumer
 - [x] a process killed between append and ack leaves the partition
       readable: the record is either wholly present or wholly
       absent, never a corrupt log (torn frame truncates on recovery)
@@ -410,10 +414,11 @@ Stage 0 landed.
   [value]`, CRC over the body. Recovery scans the last segment,
   truncates the torn tail, continues appending at the last good
   frame — the never-acknowledged offset is reused, densely.
-- **Tests**: 21 JVM (the 7-test engine contract against memory AND
-  file, plus 7 file-only: reopen, torn tail, CRC damage, format
+- **Tests**: 23 JVM (the 8-test engine contract — order, density,
+  poll-on-end, routing, retention/TooEarly, stats — against memory
+  AND file, plus 7 file-only: reopen, torn tail, CRC damage, format
   refusal, segment roll + retention, multi-segment reads, disk
-  topic listing), 7 JS, 7 Native — green.
+  topic listing), 8 JS, 8 Native — green.
 - **Deferred, deliberately**: the sparse offset index — reads scan
   within one segment, bounded by `segmentBytes`; measure before
   adding the cache (the index is designed above as a rebuildable
