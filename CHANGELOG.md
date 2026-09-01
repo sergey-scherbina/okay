@@ -1,5 +1,14 @@
 # Changelog
 
+## direct-effect-provide — coloring as policy: the grant is a capability
+Completed: 2026-09-02
+Landed. A def requires Effect[G] as a using parameter and its
+ascribed positions color only by the grant; provide installs the
+permission for one expression, providing composes it as a layer,
+the ungranted site does not compile. TestEffectProvide pins the
+three shapes; the ascribed-val rule recorded. Full matrix green,
+exit 0.
+
 ## bench-ctx-reader — the compiler-runs-the-monad claim gets its number
 Completed: 2026-09-01
 ReaderBenchmark gains the ctx-function rows: direct style (10k

@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- [ ] direct-effect-provide — coloring as POLICY: Effect[G] markers
-      are ordinary givens, so provide/providing install them per
-      scope; a test proving scope-local auto-coloring + the spec
-      paragraph (promoted from BACKLOG)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
