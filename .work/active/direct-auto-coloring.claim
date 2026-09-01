@@ -1,6 +1,0 @@
-feature/direct-auto-coloring 2026-09-01T20:08:28Z
-agent: claude-code
-heartbeat: 2026-09-01T20:08:28Z
-status: in-progress
-done-so-far:
-next: spec first, then DirectCtx + gated Conversion + macro detection

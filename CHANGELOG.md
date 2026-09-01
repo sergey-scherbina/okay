@@ -1,5 +1,21 @@
 # Changelog
 
+## direct-auto-coloring — v2: no marks, and one mark where marks remain
+Completed: 2026-09-01
+Landed as 838eb2f. The block is DirectCtx[F] ?=> A; phantom
+Conversions gated on the capability (selfColor) and additionally on
+the Effect[G] marker (opColor) let F[A]-as-A typecheck ONLY inside
+direct blocks and ONLY for registered types; the macro rewrites the
+conversion calls with the v1 machinery whole. Same landing unifies
+the marks: .? now serves monadic values AND raw operations (markTerm
+dispatches by type), .!? refuted as redundant. The discard guard
+makes a silently dropped monadic statement a compile error — found
+and kept as tests: statements never see conversions (no expected
+type) and Unit ascription is value discard, so tell-like ops keep
+the explicit .?; auto-coloring resolves at DECLARED types (smart
+constructors color, raw case constructors do not). 24 tests
+(TestDirect + TestDirectAuto), full matrix green.
+
 ## applicative-op — `<*>`, the idiom bracket's own spelling
 Completed: 2026-09-01
 `trait Applicative` gains the symbolic alias: `f <*> a` is `f.app(a)`
