@@ -87,6 +87,21 @@
       (Jetty's did not — found by mcp-push, fixed there)
 
 ## Elsewhere
+- [ ] ctx-blocking — `type Blocking[A] = CanBlock ?=> A`: the
+      first-class parks-a-thread marker; storable, composable, only
+      a capability-holding edge can force it; per-seam additive
+      adoption (specs/context-functions.md)
+- [ ] ctx-edge-docs — the edge patterns into docs/typepedia (+ a
+      conf.md pointer): the type-changing given-chain and the
+      import-thread WITH its forgotten-import footgun stated
+      (specs/context-functions.md, docs only)
+- [ ] ctx-wiring — handlers-awaiting-environment: factories
+      returning `Http ?=> Secrets ?=> Handler[Model]`-shaped values;
+      okay-demo adopts first (gate: a demo consumer wanting
+      rewiring) (specs/context-functions.md)
+- [ ] ctx-reader-bridge — `(A ?=> B) <-> B ! Reader % A`, one
+      Conversion each way; GATED: no consumer named
+      (specs/context-functions.md)
 - [ ] llm-streaming-cut — the OPEN P9 item given its mechanism:
       Cut.guarded installs a named prompt over a streamed
       generation, a validator ABORTS to it (Delim; the doctrine's

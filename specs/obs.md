@@ -42,6 +42,9 @@ without importing a framework.
   operation it performs. Programs stay observability-blind; the
   edge composes a tracing handler around any other, which is what
   handlers are for.
+  Between the effect row and hand-threading sits the capability
+  form — `Tracer ?=> Route`, specs/context-functions.md
+  (obs-traced-routes).
 - **Export = a consumer.** SHIPPED (obs-otlp): the exporter reads
   the trace topic and POSTs OTLP/HTTP JSON to any collector's
   /v1/traces — no SDK, because a documented JSON shape is a

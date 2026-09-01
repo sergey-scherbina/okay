@@ -118,6 +118,11 @@ specs/typestate.md rather than restating):
   (internals, extra combinators) until a protocol exists that
   value-level guards cannot hold.
 
+## See also
+Implicit prompts — the context-function door over this machinery
+(nearest-scope by nesting, E8-verified) — live in
+specs/context-functions.md, ctx-prompts.
+
 ## Measured (2026-08-31, history.tsv)
 1000 emits, a generator defined in USER code over Delim (a prompt and
 a shift) against the native `Writer` it competes with:
