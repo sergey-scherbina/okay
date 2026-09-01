@@ -114,5 +114,3 @@
       (Jetty's did not — found by mcp-push, fixed there)
 
 ## Elsewhere
-- [ ] agent-langchain4j — their providers as Model handlers (ROADMAP
-      P9 leftover)
