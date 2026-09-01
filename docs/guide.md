@@ -332,6 +332,31 @@ The consumer side is one line too: `wire[Http]` pulls the ambient
 capability by naming its type — `val get: Http ?=> Response =
 wire[Http].send(req)` is a door with no `summon` and no parameter.
 
+The payoff, on one page (executable: TestShowcase in okay-obs) —
+ONE value whose needs are its type, living in two worlds without
+changing a letter:
+
+```scala
+val api: (Principal, Tracer) ?=> Traced.Route = {
+  case r if r.url.contains("/quote") =>
+    okay.async {
+      wire[Tracer].span("db.lookup") { () }
+      Response(200, Nil, Http.one(s"for:${wire[Principal].name}".getBytes))
+    }
+}
+
+// production: the doors install from the wire — a verified JWT
+// becomes the Principal, a traceparent becomes the Tracer
+Traced.route(tracer)(Secure.granted(verify, Policy.scoped("read"))(api))
+
+// unit test: provide installs the SAME needs directly — no token,
+// no HTTP machinery; a missing capability would not compile
+provide(ada, tracer)(api)
+
+// environments are values: one base, override one layer
+(base and providing[Principal](bob)) { api }
+```
+
 Together the doors and `provide` are the DEPENDENCY-INJECTION
 story: compile-time resolution (a missing dependency is a type
 error, not a container exception), given-scopes as the object

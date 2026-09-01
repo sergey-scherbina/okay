@@ -16,6 +16,19 @@ the explicit .?; auto-coloring resolves at DECLARED types (smart
 constructors color, raw case constructors do not). 24 tests
 (TestDirect + TestDirectAuto), full matrix green.
 
+## ctx-showcase — the payoff on one page, executable
+Completed: 2026-09-01
+TestShowcase (okay-obs, 3 tests) distills the context-function arc
+into one witness: `api: (Principal, Tracer) ?=> Traced.Route` — its
+needs ARE its type — runs (1) behind the production doors (a
+verified JWT becomes the Principal, tracing wraps it), (2) under
+`provide(ada, tracer)` as a unit test with no token and no HTTP
+machinery, and (3) under `providing`-composed environments with one
+layer overridden (`base and providing[Principal](bob)` answers
+for:Bob). One value, three worlds, zero changed letters; a missing
+capability is a compile error in all three. Guide §9 gains the same
+page as prose.
+
 ## applicative-op — `<*>`, the idiom bracket's own spelling
 Completed: 2026-09-01
 `trait Applicative` gains the symbolic alias: `f <*> a` is `f.app(a)`
