@@ -1,6 +1,0 @@
-feature/history-tsv 2026-09-01T15:00:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-01T15:00:00Z
-status: in-progress
-done-so-far: diagnosed — literal \t already gone; real defect is 51 five-column rows vs the 8-column header
-next: mechanical normalization (unit into note, unknown fields empty), verify NF==8 everywhere

@@ -1,9 +1,6 @@
 # Sprint
 
 ## Doing
-- history-tsv-tabs — the six flagged rows have real tabs now but 51
-  rows (theirs included) are FIVE columns against the eight-column
-  header; normalize mechanically, invent nothing
 
 ## Queue
 (next candidates from BACKLOG.md: sql-seam, conf-impl,

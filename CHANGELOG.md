@@ -1,5 +1,12 @@
 # Changelog
 
+## history-tsv-tabs — the flagged rows had changed shape, not just tabs
+Completed: 2026-09-01 (landed as 5774436)
+The six rows the room flagged already had real tabs; the live defect
+was 51 five-column rows (theirs included) against the eight-column
+header. Normalized mechanically — unit into the note's prefix,
+unknown sha/load/ref/ratio honestly empty. NF==8 for every data row.
+
 ## codec-defaults — the one macro this library allows itself
 Completed: 2026-09-01 (landed as 3ebee10)
 Mirrors do not carry defaults; the companion's <init>$default$N do.
