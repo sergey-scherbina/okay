@@ -1,0 +1,5 @@
+feature/match-stage1 2026-09-01T14:14:39Z
+agent: claude-code
+heartbeat: 2026-09-01T14:14:39Z
+status: in-progress
+next: specs/match.md stage 1: durable handlers (sqlite via Sql seam first), chat log on persist topics, registry migrations
