@@ -120,6 +120,22 @@ Every claim below was compiled, not assumed:
   A missing given stays a compile error. The vocabulary closes:
   `providing`/`provide` install, `wire` consumes, the type is the
   contract.
+- **`f.curried <*> wire[A] <*> wire[B] <*> wire[C] : A ?=> B ?=>
+  C ?=> D` — verified, and ONE overload suffices** (E18,
+  2026-09-01): the chain is the applicative of the COMPOSITION of
+  distinct Readers (environments accumulate — graded, not one
+  fixed `A`), and weakening is free (`wire[A]` ascribes into any
+  wider chain: `val w: A ?=> B ?=> A = wire[A]`). The literal
+  operator needs only `extension [B, C](fn: B => C) infix def
+  <*>[E](fb: E ?=> B): E ?=> C = fn(fb)` — a PLAIN-function left
+  side — because E10 eagerness collapses each intermediate ctx
+  layer back to a plain function against the ambient given, so the
+  same overload fires at every link. Not shipped, same verdict as
+  E13/E15: juxtaposition already IS the idiom bracket — `val prog:
+  A ?=> B ?=> C ?=> D = f(wire[A], wire[B], wire[C])` — the
+  compiler inserts the closures and performs every `<*>` itself;
+  the operator would reintroduce ceremony the elaborator performs
+  for free.
 - **The ctx layer composes with `!` cleanly, and the shipped doors
   are the proof** (E14, compiled against core): `Env ?=> (A ! F)`
   gives the ambient environment INSIDE `for`-comprehensions over
