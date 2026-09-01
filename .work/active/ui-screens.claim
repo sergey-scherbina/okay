@@ -1,0 +1,6 @@
+feature/ui-screens 2026-09-01T08:13:30Z
+agent: claude-code
+heartbeat: 2026-09-01T08:13:30Z
+status: in-progress
+done-so-far:
+next: Screen trait + Nav stack + scenario-as-screen; tests

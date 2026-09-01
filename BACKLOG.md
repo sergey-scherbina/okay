@@ -1,8 +1,6 @@
 # Backlog
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
-- [ ] ui-screens — screen stack, navigation events, routing; DOM
-      address bar as an event source
 - [ ] ui-durable — event-sourced sessions: intent-first journal
       (Durable shape), refold recovery, snapshots
 - [ ] ui-dom-patch — a raw-DOM patch Backend over js.Dynamic (the
