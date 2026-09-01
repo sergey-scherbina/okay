@@ -182,6 +182,29 @@ object PlatformPolicy:
   def afterMatch(attrs: String*): PlatformPolicy =
     PlatformPolicy(per = attrs.map(_ -> Gate.AfterMatch).toMap)
 
+/**
+ * The store, nominal (demo-chat-match's sqlite ask made it so): both
+ * engines already spoke this surface structurally; the trait writes
+ * it down so a consumer (the tools, a demo) takes ANY store — the
+ * open-backend principle as a type.
+ */
+trait MatchStore:
+  def registrySearch(text: String): Vector[AttrDef]
+  def propose(d: AttrDraft): AttrDef
+  def get(slug: String): Option[AttrDef]
+  def register(email: String): ProfileId
+  def assert(p: ProfileId, attr: String, side: Side, v: Value,
+             prov: Provenance, conf: Double, vis: Vis): FactId
+  def supersede(id: FactId, v: Value, reason: String, prov: Provenance): FactId
+  def profileOf(id: ProfileId): Option[Profile]
+  def candidates(q: Query): Vector[Ranked]
+  def identityOf(p: ProfileId): Vector[ProfileId]
+  def linkCandidates(p: ProfileId): Vector[LinkHint]
+  def requestLink(from: ProfileId, to: ProfileId): Option[LinkToken]
+  def confirmLink(token: String, by: ProfileId, prov: Provenance): Option[ProfileId]
+  def linkByRecovery(from: ProfileId, oldEmail: String, secret: String): Option[ProfileId]
+  def setRecovery(p: ProfileId, secret: String): Unit
+
 /** a hit: who, how well, what the two gates disclose now — and the
  * names of facts that matched but wait behind the platform's
  * AfterMatch gate (the seeker learns THAT, not WHAT) */

@@ -19,7 +19,7 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
                         hash: String => String = identity,
                         verifyHash: (String, String) => Boolean = _ == _,
                         now: () => Long = () => System.currentTimeMillis(),
-                        fresh: () => String = Entropy.weak) {
+                        fresh: () => String = Entropy.weak) extends MatchStore {
 
   private var attrs: Vector[AttrDef] = Vector.empty
   private var facts: Vector[Fact] = Vector.empty

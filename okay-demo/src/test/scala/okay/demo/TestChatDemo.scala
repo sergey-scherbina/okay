@@ -15,9 +15,11 @@ import java.nio.charset.StandardCharsets.UTF_8
  */
 class TestChatDemo extends munit.FunSuite {
 
-  def withServer[A](budget: Int)(f: Int => A): A =
+  def withServer[A](budget: Int,
+                    store: okay.matching.MatchStore = okay.matching.MemoryMatch())
+                   (f: Int => A): A =
     Resource.run[A, Pure](
-      Jetty.serve(0)(ChatDemo.routes(ChatDemo.scripted, budget))()
+      Jetty.serve(0)(ChatDemo.routes(ChatDemo.scripted, budget, store))()
         .map(s => f(Jetty.port(s)))).runWith
 
   val client = HttpClient.newHttpClient()
@@ -118,14 +120,16 @@ class TestChatDemo extends munit.FunSuite {
         HttpResponse.BodyHandlers.ofString()).statusCode() == 200
     } catch { case _: Throwable => false }
     assume(up, s"no local model at $base — skipped")
-    val before = ChatDemo.market.candidates(
+    val store = okay.matching.MemoryMatch()
+    val before = store.candidates(
       okay.matching.Query(okay.matching.Side.Offer, text = "weld")).length
     val answer = ChatDemo.agentTurn(
       "I can weld metal gates, my email is welder@live-demo. Please store my offer.",
       Nil, okay.agent.Provider.openAi(
-        okay.llm.Transports.http(), "local", "default", s"$base/v1/chat/completions"))
+        okay.llm.Transports.http(), "local", "default", s"$base/v1/chat/completions"),
+      store)
     assert(answer.nonEmpty)
-    val after = ChatDemo.market.candidates(
+    val after = store.candidates(
       okay.matching.Query(okay.matching.Side.Offer, text = "weld metal gates")).length
     assert(after > before || answer.toLowerCase.contains("email"),
       s"the agent neither stored the offer nor asked for what it lacked: $answer")

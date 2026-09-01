@@ -58,8 +58,11 @@ The pieces, each doing its one job:
 
 ## Matching (demo-chat-match — user ask)
 `/match <text>` turns are MATCHMAKING turns over the shared
-marketplace (one MemoryMatch per server — providers and seekers meet
-across sessions):
+marketplace — one store per server, providers and seekers meet
+across sessions, and it is DURABLE by default: sqlite at
+OKAY_CHAT_DB (default okay-chat.db; ":memory:" asks for the memory
+engine). The ask made the store interface nominal: `MatchStore`
+(okay-match) is what the tools and the demo take — any engine fits.
 - with a model configured (Anthropic key, or any OpenAI-compatible
   `OKAY_CHAT_BASE` — the local rozum model drives it), the turn is an
   AGENT conversation: the model works okay-match's own tool table
@@ -76,6 +79,9 @@ across sessions):
       remember across turns)
 - [x] LIVE: the local model drives the okay-match tools (store-or-ask
       asserted; skipped where no model listens)
+- [x] sqlite parity: the store guarantees hold on sqlite (the
+      booleans-as-integers dialect trap caught and fixed) and the
+      marketplace survives a restart over the same file
 
 ## Out of scope
 - Auth, persistence of conversations, multi-user rooms (persist owns

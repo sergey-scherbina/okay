@@ -40,7 +40,8 @@ final class SqlMatch(sql: Sql,
                      hash: String => String = identity,
                      verifyHash: (String, String) => Boolean = _ == _,
                      now: () => Long = () => System.currentTimeMillis(),
-                     fresh: () => String = SecureEntropy.strong)(using CanBlock) {
+                     fresh: () => String = SecureEntropy.strong)(using CanBlock)
+  extends MatchStore {
 
   private def run[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
 
@@ -109,8 +110,14 @@ final class SqlMatch(sql: Sql,
       case "Provisional" => Status.Provisional
       case "Established" => Status.Established
       case x => Status.MergedInto(x.stripPrefix("MergedInto:")),
-    r(6) match { case Bool(b) => b; case _ => false },
-    r(7) match { case Bool(b) => b; case _ => false })
+    bool(r(6)), bool(r(7)))
+
+  /** sqlite has no BOOLEAN: its driver answers integers — accept both */
+  private def bool(v: SqlValue): Boolean = v match
+    case Bool(b) => b
+    case I32(n) => n != 0
+    case I64(n) => n != 0
+    case _ => false
 
   private def valueOf(r: Vector[SqlValue]): Value = s(r(4)) match
     case "num" => Value.VNum(dbl(r(6)))

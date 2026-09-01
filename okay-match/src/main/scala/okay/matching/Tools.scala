@@ -112,7 +112,7 @@ object Tools {
       strSchema("side" -> "string", "text" -> "string")))
 
   /** the dispatch table over one store; args and answers are Json */
-  def table(m: MemoryMatch): Map[String, ToolCall => String] = Map(
+  def table(m: MatchStore): Map[String, ToolCall => String] = Map(
     "registry_search" -> { c =>
       Json.print(JArr(m.registrySearch(s(c.args, "text").getOrElse(""))
         .map(attrJson).toVector)) },

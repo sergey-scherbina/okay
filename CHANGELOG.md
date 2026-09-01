@@ -26,7 +26,12 @@ honest outcomes asserted). With no model, a deterministic driver
 speaks THE SAME tool table, and the offline test walks the two-sided
 story through the real route: "умею класть плитку" chats in, "нужен
 плиточник" finds it, the marketplace remembers across turns and
-sessions. 7 tests.
+sessions. And the marketplace is DURABLE by default: sqlite
+(OKAY_CHAT_DB, ":memory:" opts out) — which made the store interface
+nominal (MatchStore: both engines spoke it structurally, the trait
+writes it down, Tools.table takes any store), caught sqlite's
+booleans-as-integers dialect trap with a parity suite, and proved
+restart survival over the same file. 7 + 1 tests.
 
 ## typed-bad-repair — damaged records ask
 Completed: 2026-09-01 (landed as 0a321aa)

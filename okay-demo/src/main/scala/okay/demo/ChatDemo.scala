@@ -6,7 +6,8 @@ import okay.http.{Body, Http, Request, Response}
 import okay.jetty.Jetty
 import okay.llm.{Anthropic, Cut, OpenAi, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
-import okay.matching.{MemoryMatch, Tools as MatchTools}
+import okay.matching.{MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
+import okay.jdbc.JdbcSql
 import okay.codec.Json
 import okay.codec.Json.*
 import java.nio.charset.StandardCharsets.UTF_8
@@ -66,9 +67,13 @@ object ChatDemo {
 
   // ---- the matchmaking side (okay-match wired in) --------------------
 
-  /** ONE marketplace for the whole server: providers and seekers
-   * meet in it across sessions — that is the point */
-  val market = MemoryMatch()
+  /** ONE marketplace for the whole server, DURABLE by default: a
+   * sqlite file (OKAY_CHAT_DB; ":memory:" asks for the memory
+   * engine) — the open-backend principle is a connection string */
+  lazy val market: MatchStore =
+    val db = sys.env.getOrElse("OKAY_CHAT_DB", "okay-chat.db")
+    if db == ":memory:" then MemoryMatch()
+    else SqlMatch(JdbcSql(java.sql.DriverManager.getConnection(s"jdbc:sqlite:$db")))
   private val turnNo = java.util.concurrent.atomic.AtomicLong(0)
 
   private val matchSystem =
@@ -85,9 +90,10 @@ object ChatDemo {
   /** an agent turn over the match tools: the LLM structures the
    * chat into the store and searches it — the okay-match story */
   def agentTurn(text: String, history: Seq[Anthropic.Message],
-                modelH: okay.Handler[AgentModel]): String =
+                modelH: okay.Handler[AgentModel],
+                store: MatchStore = market): String =
     given okay.Handler[AgentModel] = modelH
-    given okay.Handler[Tool] = Handlers.tools(MatchTools.table(market))
+    given okay.Handler[Tool] = Handlers.tools(MatchTools.table(store))
     val ctx = Handlers.context(Compact.all)._2
     given okay.Handler[AgentContext] = ctx
     given r1: okay.Handler[AgentModel + Async] = okay.Handler.union[AgentModel, Async]
@@ -110,9 +116,9 @@ object ChatDemo {
 
   /** the deterministic offline "agent": the SAME tool table, driven
    * by two fixed phrasings — the tests' and the no-model mode's path */
-  def scriptedAgent(text: String): String =
+  def scriptedAgent(text: String, store: MatchStore = market): String =
     import okay.codec.Json.*
-    val t = MatchTools.table(market)
+    val t = MatchTools.table(store)
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
     val email = "email ([^ ]+@[^ ]+)".r.findFirstMatchIn(text).map(_.group(1))
@@ -152,14 +158,15 @@ object ChatDemo {
 
   /** which agent serves /match turns: real model when one is
    * configured, the deterministic table-driver otherwise */
-  def matchTurn(text: String, history: Seq[Anthropic.Message]): String =
+  def matchTurn(text: String, history: Seq[Anthropic.Message],
+                store: MatchStore = market): String =
     sys.env.get("ANTHROPIC_API_KEY").map { key =>
       agentTurn(text, history, Provider.anthropic(
-        Transports.http(), key, "claude-sonnet-4-5"))
+        Transports.http(), key, "claude-sonnet-4-5"), store)
     }.orElse(sys.env.get("OKAY_CHAT_BASE").map { base =>
       agentTurn(text, history, Provider.openAi(
-        Transports.http(), "local", "default", s"$base/v1/chat/completions"))
-    }).getOrElse(scriptedAgent(text))
+        Transports.http(), "local", "default", s"$base/v1/chat/completions"), store)
+    }).getOrElse(scriptedAgent(text, store))
 
   // ---- the SSE reply -------------------------------------------------
 
@@ -216,7 +223,8 @@ object ChatDemo {
               p.toString.contains("fastopt"))
       }
 
-  def routes(m: Model, budget: Int): PartialFunction[Request, Response ! Async] =
+  def routes(m: Model, budget: Int,
+             store: MatchStore = market): PartialFunction[Request, Response ! Async] =
     case r if r.method == okay.http.Method.Get && r.url == "/" =>
       val html = if appJs.isDefined then reactPage else page
       pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
@@ -230,7 +238,7 @@ object ChatDemo {
       if last.startsWith("/match") then
         // the matchmaking turn: the agent works the okay-match tools,
         // the answer streams through the same SSE framing
-        val answer = matchTurn(last.stripPrefix("/match").trim, messages.init)
+        val answer = matchTurn(last.stripPrefix("/match").trim, messages.init, store)
         def stream(ts: List[String]): Unit ! (Writer % String + Async) = ts match
           case Nil => pure(())
           case t :: rest => effect[Writer % String + Async, Unit](

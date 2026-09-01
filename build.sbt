@@ -570,6 +570,10 @@ lazy val okayMatch = crossProject(JVMPlatform, JSPlatform)
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
+    libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.47.1.0" % Test,
+    // the sqlite driver registers per classloader (the okay-jdbc
+    // lesson at line ~268): the suite forks to see it
+    Test / fork := true,
     // forked for the same DriverManager reason as okayJdbc
     Test / fork := true,
   )
@@ -892,9 +896,10 @@ lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
   )
 
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm)
+  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc)
   .settings(
     name := "okay-demo",
+    libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.47.1.0",
     publish / skip := true,
     // RepoMcp is an MCP server on stdio, so `run` needs its own
     // process and its own stdin. Note that `sbt -batch` still keeps
