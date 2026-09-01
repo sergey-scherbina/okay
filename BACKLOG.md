@@ -10,9 +10,6 @@
 - [ ] persist-wire-auth — spec landed (specs/persist.md, stage 2):
       bearer/API key via okay-security, per-topic capabilities,
       TLS via specs/tls.md; implement with persist-wire
-- [ ] persist-backup — spec landed (specs/persist.md, Backup and
-      restore): what remains is the DOCTOR tool (recovery scan
-      against a backup, offline) and a blob-seam copy helper
 
 ## okay-match (specs/match.md — staged; log-first matching over LLM-structured chats)
 
