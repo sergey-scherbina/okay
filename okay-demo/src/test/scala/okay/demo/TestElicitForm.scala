@@ -4,7 +4,7 @@ import okay.*
 import okay.given
 import okay.codec.Json
 import okay.mcp.{Client, Duplex, Link, Mcp, Rpc, Server}
-import okay.ui.{Event, Form, Host, Ui}
+import okay.ui.{Dialog, Event, Form, Host, Ui}
 
 /**
  * The circle this module exists to close: an MCP server asks the
@@ -22,23 +22,13 @@ class TestElicitForm extends munit.FunSuite {
     def render(ui: Ui): Unit ! Async = async { frames += ui; () }
     def events: Source[Event] = okay.Source.of(script.toList)
 
-  /** elicitation answered by a form session over a host */
+  /** elicitation IS a one-step scenario — this used to be a
+   * hand-rolled loop; Dialog.run + Form.askSchema is all of it */
   def formElicit(host: Seq[Event] => Host): (String, Json) => Duplex.Answer =
-    (message, schema) => {
-      // the form loop: state is the partial value; ok submits
-      def view(j: Json): Ui = Ui.Column(Vector(
-        Ui.Text(message),
-        Form.ofSchema(schema)(j),
-        Ui.Row(Vector(Ui.Button("ok", "$ok"), Ui.Button("cancel", "$cancel")))))
-      // the script plays the user; ok/cancel end the loop by Closed
-      var submitted = false
-      def update(j: Json, e: Event): Json = e match
-        case Event.Pressed("$ok") => submitted = true; j
-        case _ => Form.editSchema(schema, j, e)
-      val h = host(Nil)
-      val value = Ui.run(Json.JObj(Vector.empty): Json)(view)(update)(h).runWith
-      if submitted then Duplex.Answer.Accept(value) else Duplex.Answer.Decline
-    }
+    (message, schema) =>
+      Dialog.run(host(Nil))(Form.askSchema(message, schema)).runWith.flatten match
+        case Some(value) => Duplex.Answer.Accept(value)
+        case None => Duplex.Answer.Decline
 
   val schema = Json.parse(
     """{"type":"object","properties":{
@@ -69,8 +59,7 @@ class TestElicitForm extends munit.FunSuite {
     val user = Seq(
       Event.Edited("path", "/work/okay"),
       Event.Toggled("recursive", true),
-      Event.Pressed("$ok"),
-      Event.Closed)
+      Event.Pressed("$ok"))
 
     val (client, server) = wire()
     Async.spawn(Server.over(server)(asking)): Unit
@@ -94,7 +83,7 @@ class TestElicitForm extends munit.FunSuite {
       case _ => pure(())
     }, pure)
 
-    val user = Seq(Event.Pressed("$cancel"), Event.Closed)
+    val user = Seq(Event.Pressed("$cancel"))
     val (client, server) = wire()
     Async.spawn(Server.over(server)(asking)): Unit
     Client.connect(client, Mcp.Info("ui", "1"), Duplex.Peer(

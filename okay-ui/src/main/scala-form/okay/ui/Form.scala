@@ -1,5 +1,6 @@
 package okay.ui
 
+import okay.!
 import okay.codec.{Json, Schema}
 
 /**
@@ -103,6 +104,42 @@ object Form {
   private def properties(schema: Json): Vector[(String, Json)] = field0(schema, "properties") match
     case Some(Json.JObj(fs)) => fs
     case _ => Vector.empty
+
+  // ---- flows: a form as a SCENARIO (show, edit, submit, retry)
+
+  /**
+   * Ask for an A: the typed form as a Dialog program. Ok submits —
+   * and an undecodable value does NOT: the error is shown and the
+   * flow continues, because the form may not smuggle what the parser
+   * would refuse. Cancel (or the host closing) answers None.
+   */
+  def ask[A](message: String)(using s: Schema[A]): Option[A] ! Dialog =
+    def loop(j: Json, error: Option[String]): Option[A] ! Dialog =
+      Dialog.show(asked(message, error, of[A].apply(j))).flatMap {
+        case Event.Pressed("$ok") => decode[A].apply(j) match
+          case Right(a) => okay.pure(Some(a))
+          case Left(err) => loop(j, Some(err))
+        case Event.Pressed("$cancel") | Event.Closed => okay.pure(None)
+        case e => loop(edit[A](j, e), None)
+      }
+
+    loop(Json.JObj(Vector.empty), None)
+
+  /** the same flow over a JSON Schema — what elicitation asks with */
+  def askSchema(message: String, schema: Json): Option[Json] ! Dialog =
+    def loop(j: Json, error: Option[String]): Option[Json] ! Dialog =
+      Dialog.show(asked(message, error, ofSchema(schema)(j))).flatMap {
+        case Event.Pressed("$ok") => okay.pure(Some(j))
+        case Event.Pressed("$cancel") | Event.Closed => okay.pure(None)
+        case e => loop(editSchema(schema, j, e), None)
+      }
+
+    loop(Json.JObj(Vector.empty), None)
+
+  private def asked(message: String, error: Option[String], form: Ui): Ui =
+    Ui.Column(Vector(Ui.Text(message)) ++
+      error.map(e => Ui.Text(s"! $e", Style(bold = true))).toVector ++
+      Vector(form, Ui.Row(Vector(Ui.Button("ok", "$ok"), Ui.Button("cancel", "$cancel")))))
 
   // ---- small Json helpers (the codec keeps objects as Vectors)
   private def field0(j: Json, name: String): Option[Json] = j match

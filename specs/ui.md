@@ -179,20 +179,20 @@ object Form:
   def askSchema(message: String, schema: Json): Option[Json] ! Dialog
 ```
 
-- [ ] a wizard is a PROGRAM: show, await, validate, branch — and
+- [x] a wizard is a PROGRAM: show, await, validate, branch — and
       retry is recursion, not a combinator (an invalid step loops
       itself with an error line shown)
-- [ ] `Dialog.run` drives a scenario over any Host: renders on Show,
+- [x] `Dialog.run` drives a scenario over any Host: renders on Show,
       resumes with the next event; the host's end answers what the
       scenario has (a scenario is not entitled to an ending it did
       not reach — the run answers Option)
-- [ ] the SAME scenario runs INSIDE `Ui.run` via `Dialog.screen`: the
+- [x] the SAME scenario runs INSIDE `Ui.run` via `Dialog.screen`: the
       continuation is literally the screen's state, one event steps
       it, `done` shows the answer
-- [ ] `Form.ask[A]` answers Some(A) on ok (decoded by the same
+- [x] `Form.ask[A]` answers Some(A) on ok (decoded by the same
       Schema), None on cancel; an undecodable value does not submit —
       the error is SHOWN and the flow continues
-- [ ] MCP elicitation is a one-step scenario: the demo's form-elicit
+- [x] MCP elicitation is a one-step scenario: the demo's form-elicit
       collapses to `Dialog.run(host)(Form.askSchema(...))`
 
 ### Screens and navigation (phase 2)
@@ -281,6 +281,14 @@ question rendered as a form, filled by a scripted user, answered
 typed. 15 tests in okay-ui, 3 in okay-mcp, 2 in okay-demo; all ten
 behavior items covered; JS and Native legs compile (Native without
 Form — okay-codec has no Native leg, recorded in build.sbt).
+
+Phase 2 (ui-scenarios) shipped the same day: Dialog (one operation,
+a GADT), Running as the stepped scenario, run over any Host, and the
+scenario AS a screen — the continuation literally the state. Form.ask
+and askSchema are form flows with retry-by-recursion, and the demo's
+hand-rolled elicitation loop collapsed to
+`Dialog.run(host)(Form.askSchema(...))`, which is the phase's claim
+in one diff. 4 more tests.
 
 The seam's claim is a test, not a sentence: TestPortable runs one
 application on the test host and asserts the terminal renders exactly
