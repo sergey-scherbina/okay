@@ -162,9 +162,16 @@ connect -> migrate, and the import-thread for same-typed evolution
   okay-demo adopts first. Gate: a demo consumer wanting rewiring —
   possibly OPEN since demo-chat (offered to that lane, room n244).
 - **ctx-reader-bridge** — `(A ?=> B) <-> B ! Reader % A`: a context
-  function IS a pure Reader program and the tower has Reader.scala;
-  the bridge is one Conversion each way. GATED: no consumer named —
-  machinery for nobody until one appears.
+  function IS a pure Reader program and the tower has Reader.scala.
+  GATED: no consumer named. The sketch "one Conversion each way" was
+  REFUTED by experiment (E10, 2026-09-01): the ctx->Reader direction
+  must be a FUNCTION (`lift(cf: A ?=> B)`) — a Conversion never
+  fires because the context function EAGERLY auto-applies at the
+  ascription site first; and Reader->ctx as a Conversion SAM lambda
+  hits an implementation restriction (an explicit `with apply` form
+  compiles but inherits the same eagerness). The honest bridge is
+  two small named functions, which is also why it can wait: they
+  are one line each at any call site that wants them.
 
 ## Rejected, with the reason
 
