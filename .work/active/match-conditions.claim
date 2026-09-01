@@ -1,0 +1,5 @@
+feature/match-conditions 2026-09-01T20:57:08Z
+agent: claude-code
+heartbeat: 2026-09-01T20:57:08Z
+status: in-progress
+next: condition-aware value parsing in match Tools (additive policy overload)
