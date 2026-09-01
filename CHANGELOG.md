@@ -1,5 +1,18 @@
 # Changelog
 
+## dialog-delim — cancellable scopes: Delim gets its consumer
+Completed: 2026-09-01
+
+Scope: scenarios in the Delim + Dialog row, typed prompts as
+cancellable sub-flow boundaries — cancel(p)(value) exits the named
+scope from any depth with no Option threading between steps, and the
+multi-prompt point is proven: an inner scope aborts ACROSS its own
+boundary to the outer prompt (the capability nested handlers cannot
+express; textbook ch. 2). One run erases the row; Dialog untouched,
+plain scenarios run beside scoped ones by test. Delim's first
+production consumer, PWizard being PState's second — both theory
+exhibits now earn their keep. 3 tests.
+
 ## stage-phased — typestate on the stream; PState gains its consumer
 Completed: 2026-09-01 (landed as 3aba599)
 Stage.phased: the accumulator CHANGES TYPE at the switch (header ->

@@ -72,6 +72,24 @@ ordinary Dialog program, so a typed wizard runs anywhere Dialog runs.
 - [x] the bridge runs the same wizard as a Dialog program over a Host
 - [x] misordered steps do not compile
 
+## Dialog scopes (dialog-delim — Delim as an option)
+Delim integrated into Dialog WITHOUT touching it: scenarios may run
+in the `Delim + Dialog` row (`Scope.Row`), where a typed prompt
+delimits a cancellable sub-flow. `Scope.push` installs scopes,
+`cancel(p)(value)` exits the NAMED scope from any depth with no
+Option threading on the steps between, and one `run`/`scoped` erases
+the row at the top — after which it is an ordinary Dialog program.
+The multi-prompt capability is the point and is tested: an inner
+scope aborts ACROSS its own boundary to the outer one, which nested
+handlers cannot express (theory textbook ch. 2, the Dybvig–Peyton
+Jones–Sabry design points). Nesting discipline stated: scopes nest
+by push under ONE run — a prompt lives in the machine that pushed it.
+
+- [x] a scope cancels as a unit: no Option threading between steps
+- [x] an inner scope aborts across its boundary to the outer prompt,
+      and the outer's remaining steps never render
+- [x] plain Dialog scenarios run unchanged beside scoped ones
+
 ## Out of scope
 - Layout/styling beyond bold/dim (specs/ui.md owns Style).
 - Async validation (a validator that needs IO is a scenario's job).

@@ -2,9 +2,6 @@
 
 ## Doing
 ## Queue
-- dialog-delim — Delim integrated into Dialog as an OPTION (nothing
-  broken): the suspend/resume machinery over typed prompts; user-
-  requested 2026-09-01.
 - agent-stepper — the staged relay consumer: step any effectful
   agent program (pause at tool calls, inspect, resume) with Delim as
   the foundation; user-requested 2026-09-01.
