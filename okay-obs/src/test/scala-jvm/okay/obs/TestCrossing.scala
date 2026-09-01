@@ -21,6 +21,9 @@ class TestCrossing extends munit.FunSuite {
 
   test("http -> sql: one traceId, correct parentage, on the trace topic") {
     val topic = MemoryStore().topic("__trace", 1, Policy())
+    // under the full matrix DriverManager sees another module's
+    // loader first; naming the driver removes the race
+    Class.forName("org.h2.Driver")
     val conn = java.sql.DriverManager.getConnection("jdbc:h2:mem:obs;DB_CLOSE_DELAY=-1")
     val st = conn.createStatement()
     st.execute("create table t(n int)"); st.execute("insert into t values (7)"); st.close()

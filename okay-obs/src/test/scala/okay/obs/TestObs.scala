@@ -97,7 +97,7 @@ class TestObs extends munit.FunSuite {
     while i < 10000 do { t.span("s") { i += 1 } }
     val ms = (System.nanoTime - t0) / 1000000
     assertEquals(spans(), Vector.empty)
-    assert(ms < 500, s"10k Never spans took ${ms}ms")   // generous: the claim is 'no I/O', not a benchmark
+    assert(ms < 500, s"10k Never spans took ${ms}ms")   // Never is a short-circuit: no ids, no clock, no I/O
   }
 
   test("spans round-trip both wires: JSON to look at, CBOR on the topic") {

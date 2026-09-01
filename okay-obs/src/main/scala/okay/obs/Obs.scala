@@ -115,6 +115,9 @@ final class Tracer(topic: Topic, sample: Sample = Sample.Always,
 
   private def run[A](name: String, traceId: String, parentId: Option[String],
                      attrs: Vector[Attr])(body: => A): A =
+    // Never means OFF: no ids, no clock, no propagation — the claim
+    // "costs near-nothing" is made true by construction, not tuning
+    if sample == Sample.Never then return body
     val self = Trace.freshSpanId()
     val before = current
     current = Some((traceId, self))
