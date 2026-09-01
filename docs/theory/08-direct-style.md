@@ -115,6 +115,15 @@ chapter 5 meeting reflection: an *operation* is not a monadic value,
 but `Free.Inject` is a monad morphism away, and elaboration is where
 the coercion belongs.
 
+One surface note earns its citation: Okay's prefix mark `!prog`
+(the glyph of the program type `A ! F` performing it) is the point
+Idris reached with **bang-notation** — `!expr` inside a do-block
+lifts an effectful subexpression to a bind \[[Brady 2013](#ref-brady-2013)\]
+— and Frank reached with `!` for command invocation \[[Lindley,
+McBride & McLaughlin 2017](#ref-frank-2017)\]; the elaboration
+mechanism differs (their compilers, our macro), the reading is the
+same: perform, here.
+
 ## The two gates: coloring as a capability
 
 Removing the marks entirely turns direct style into an implicit
@@ -235,6 +244,9 @@ users today.
   Philipp Schuster, Klaus Ostermann. *Effekt: capability-passing
   style for type- and effect-safe, extensible effect handlers in
   Scala.* Journal of Functional Programming 30, 2020.
+- <a id="ref-brady-2013"></a>Edwin Brady. *Idris, a
+  general-purpose dependently typed programming language: design
+  and implementation.* JFP 23(5), 2013 — §bang-notation.
 - <a id="ref-frank-2017"></a>Sam Lindley, Conor McBride, Craig
   McLaughlin. *Do be do be do.* POPL 2017.
 - <a id="ref-leijen-2017"></a>Daan Leijen. *Type directed

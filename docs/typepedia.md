@@ -48,6 +48,17 @@ same material with the measurements attached.
   a given over a union type lambda crashes the 3.7.1 type comparer). **`TypeableK[F]`** — the runtime test that
   splits unions (`<|>`); identity-style signatures are split by the
   runtime class of their values, so keep them class-distinct.
+- **the direct marks: `.reflect` / `.!?` / `!prog`** — one mark,
+  three spellings, one dispatch-by-type inside `direct { }` blocks
+  (docs/direct-style.md): an `F[T]` of the block reflects, a row
+  operation injects then reflects. `.reflect` never collides; `.!?`
+  is the postfix symbol for chains; prefix `!` is the one-glyph
+  gesture (`unary_!` under the hood — shadows nothing). Gotcha: the
+  RETIRED `.?` belongs to the Throws machinery, not to direct — if
+  you see `Ambiguous extension methods` on a `?`, you are on an old
+  branch. Distinct from Monadic's `reflect`/`reify` pair below and
+  from the Effects encoding pair below THAT — three uses of one
+  word, each namespaced.
 - **`reify` / `reflect` / `convert`** — one function at two ends. An
   encoding is fixed by `pure` and `perform` and `foldCont` is its
   fold, so there is exactly ONE structure-preserving way across:

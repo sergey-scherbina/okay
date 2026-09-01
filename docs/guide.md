@@ -367,3 +367,18 @@ for adding a door to any API are in [typepedia](typepedia.md); the
 linear-context patterns and the experimental base in
 specs/context-functions.md; the whole story, told in one place with
 its theory and boundaries, is [capabilities](capabilities.md).
+
+## Direct style, in one paragraph
+
+Any monad in this library can be written as plain code:
+`direct[F] { val x = m.reflect; ... }` compiles the block into the
+reflect/reify chain of `Monadic` (Filinski's construction over the
+`Cont` of chapter one), so short-circuit, multi-shot and handlers
+all behave exactly as in the monadic spelling. Effects are
+first-class (`Writer("a")` on its own line tells; loops and `while`
+work; `!prog` performs a program in one glyph), auto-coloring can
+remove marks entirely behind explicit gates, and every refusal is a
+positioned compile error naming the workaround. The whole story,
+with the reasoning and the graveyard of refuted alternatives:
+[direct-style.md](direct-style.md); the theory with the literature:
+[theory ch. 8](theory/08-direct-style.md).

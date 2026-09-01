@@ -225,13 +225,29 @@ val prog: Int ! F = direct {          // F inferred from the expected type
 !.run(Writer.run(Reader.run(41)(prog)))  // (Seq("env=41"), 42)
 ```
 
-(The mark's spelling has a three-strikes history, all recorded in
-the specs: `.!` shadows `object !` (every `!.run` in the importing
-file breaks); `.?` collided with okay's own Throws row-`?`
-(Ambiguous extension methods, found twice independently); and
-`.!?` — once retired as redundant beside `.?` — returned as the
-survivor: the one symbol that shadows and collides with nothing.
-`.reflect` is the named spelling and works in every scope.)
+**One mark, three spellings** — all the same dispatch-by-type, so
+the choice is pure style, and each has a niche:
+
+| spelling | shape | use it for |
+|---|---|---|
+| `.reflect` | name | any scope, any doubt — it never collides |
+| `.!?` | postfix symbol | chains: `lookup(u).!?.name` needs no parens |
+| `!prog` | prefix glyph | the gesture: statements, wizard lines — `val name = !Form.ask[Name]("who?")` |
+
+The family is the survivor set of a recorded three-strikes history
+(specs/direct-macro.md Decisions): `.!` shadows `object !` (every
+`!.run` in the importing file breaks — refuted twice, once per
+lane); `.?` collided with okay's own Throws row-`?` (Ambiguous
+extension methods, found twice independently) and is retired; `.!?`
+— once retired as redundant beside `.?` — returned as the one
+postfix that collides with nothing; and the prefix rides the method
+name `unary_!`, which shadows nothing by construction. Prefix `!`
+on an effectful program is Idris's bang-notation and Frank's `!`
+arriving at the same point of the design space (see
+[theory ch. 8](theory/08-direct-style.md)). One caution inherited
+with it: in boolean-heavy code `!x` is negation on a `Boolean` and
+a mark on an `F[Boolean]` — mechanically unambiguous (members beat
+extensions), but readers parse by type; prefer `.reflect` there.
 
 ## Layer 3 — auto-coloring: no marks, behind two gates
 
@@ -454,13 +470,4 @@ specs' Decisions so the next person does not pay twice.
   (yet) taken, recorded in specs/monadic-reflection.md's Out of
   scope.
 
-### The row mark: prefix `!`
 
-On Free rows `.?` is ambiguous (Effects carries its own row-`?`
-extension) and a postfix `.!` was tried and refuted within the hour —
-the method name shadows the object `!` (`!.run` broke) for every
-file importing `Direct.*`. The prefix spelling survives both:
-`val name = !Form.ask[Name]("who?")` — a program of type `A ! F`
-collapsing under its own type's symbol, reading as "perform".
-`.reflect` remains the named form; auto-coloring still needs no mark
-at all where an expected type is present.
