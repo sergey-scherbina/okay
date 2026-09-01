@@ -25,8 +25,12 @@
             <option value="$PROJECT_DIR$/okay-demo" />
             <option value="$PROJECT_DIR$/okay-flink" />
             <option value="$PROJECT_DIR$/okay-fs2" />
+            <option value="$PROJECT_DIR$/okay-http" />
+            <option value="$PROJECT_DIR$/okay-http/.js" />
+            <option value="$PROJECT_DIR$/okay-http/.jvm" />
             <option value="$PROJECT_DIR$/okay-java" />
             <option value="$PROJECT_DIR$/okay-jdbc" />
+            <option value="$PROJECT_DIR$/okay-jetty" />
             <option value="$PROJECT_DIR$/okay-kafka" />
             <option value="$PROJECT_DIR$/okay-kyo" />
             <option value="$PROJECT_DIR$/okay-lex" />

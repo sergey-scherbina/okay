@@ -408,6 +408,22 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
  * `Tool` handler and our tools are another MCP server. The protocol
  * layer is pure — cross-built; only the stdio transport is platform.
  */
+lazy val jettyVersion = "12.0.13"
+
+lazy val okayJetty = project
+  .in(file("okay-jetty"))
+  .dependsOn(okayHttp.jvm)
+  .settings(
+    name := "okay-jetty",
+    libraryDependencies ++= Seq(
+      "org.eclipse.jetty" % "jetty-client" % jettyVersion,
+      "org.eclipse.jetty" % "jetty-server" % jettyVersion,
+      "org.eclipse.jetty.websocket" % "jetty-websocket-jetty-server" % jettyVersion,
+      "org.eclipse.jetty.websocket" % "jetty-websocket-jetty-client" % jettyVersion,
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 lazy val okayHttp = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-http"))
@@ -476,7 +492,7 @@ lazy val root = (project in file("."))
     okayCodec.jvm, okayCodec.js, okayLlm.jvm, okayLlm.js,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js,
-    okayHttp.jvm, okayHttp.js,
+    okayHttp.jvm, okayHttp.js, okayJetty,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",
