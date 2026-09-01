@@ -1,0 +1,7 @@
+feature/py-worker 2026-09-02T01:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-02T01:00:00Z
+status: in-progress
+done-so-far:
+next: PyWorkers pool (N processes = the parallelism story, GIL irrelevant), supervisor replaces a dead worker (imports cold, correctness unchanged), state-across-calls proof, two-engine acceptance (same program over subprocess and pool)
+files: okay-py/PyWorkers.scala + test (new), specs/py.md boxes

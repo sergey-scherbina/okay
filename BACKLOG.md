@@ -14,8 +14,6 @@
 ## okay-codec
 
 ## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
-- [ ] py-worker — stage 1: persistent worker holding imports;
-      N-workers parallelism; two-engine acceptance
 - [ ] py-arrow — frames via pyarrow (twin of r-arrow; nearer —
       pyarrow is first-class)
 
