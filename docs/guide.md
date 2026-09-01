@@ -317,6 +317,17 @@ provide(prodHttp, Secrets.env) { app }     // the edge
 provide(stubHttp, testSecrets) { app }     // the test — same program
 ```
 
+And installers COMPOSE as values — `providing[A](a)` holds one
+`given` for later, `and` chains them flat (the right side wins on
+overlap), so a base environment is built once and overridden per
+use, with no nesting and no arity cap:
+
+```scala
+val base = providing[Http](prodHttp) and providing[Secrets](Secrets.env)
+base { app }                                        // the edge
+(base and providing[Http](stubHttp)) { app }        // override just Http
+```
+
 Together the doors and `provide` are the DEPENDENCY-INJECTION
 story: compile-time resolution (a missing dependency is a type
 error, not a container exception), given-scopes as the object
