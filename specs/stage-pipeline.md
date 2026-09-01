@@ -107,10 +107,10 @@ phases, the transitions run through PState. ADDITIVE per the
 adoption doctrine (specs/delimited-control.md): transduce stays,
 phased/phased3 are the extra door.
 
-- [ ] phased3 drives the http message shape (the consumer's test);
+- [x] phased3 drives the http message shape (the consumer's test);
       the two-phase law holds at each seam: switch outputs precede
       the next phase's, the answer names the dying phase (three-way)
-- [ ] the wrong-phase step is a compile error at BOTH seams
+- [x] the wrong-phase step is a compile error at BOTH seams
 
 ## Out of scope
 - fan-in/fan-out topologies (Channel territory)

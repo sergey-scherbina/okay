@@ -183,6 +183,71 @@ object Stage {
 
     inHead(z)
 
+  /**
+   * The three-phase sibling (specs/stage-pipeline.md, stage-phased3)
+   * — one more arity, not a family: the http message shape
+   * (request-line -> headers -> body) needs exactly three, and
+   * chaining two `phased` cannot express it — the middle phase's end
+   * is the third's TYPED start, and steps are functions, not stages.
+   * Same guarantees at both seams: no phase enum, illegal states
+   * unrepresentable, ends honest in all three phases (the answer
+   * names the dying phase), each switch run through PState.
+   */
+  def phased3[I, O, S1, S2, S3](z: S1)(
+      first: (S1, I) => Either[(S1, Vector[O]), (S2, Vector[O])],
+      second: (S2, I) => Either[(S2, Vector[O]), (S3, Vector[O])],
+      third: (S3, I) => (S3, Vector[O]),
+      endFirst: S1 => Vector[O],
+      endSecond: S2 => Vector[O],
+      endThird: S3 => Vector[O]): Stage[I, O, Either[S1, Either[S2, S3]]] =
+
+    def tellAll(os: Vector[O]): Stage[I, O, Unit] =
+      os.foldLeft(pure(()): Stage[I, O, Unit])((p, o) => p.flatMap(_ => tell[I, O](o)))
+
+    // each seam's switch runs through PState — the same executed
+    // Atkey step as `phased`, at both type changes
+    def switch[SA, SB](sa: SA, i: I,
+                       step: (SA, I) => Either[(SA, Vector[O]), (SB, Vector[O])])
+    : (Either[SA, SB], Vector[O]) =
+      type R = (Either[SA, SB], Vector[O])
+      PState.run[SA, Either[SA, SB], Vector[O]](sa):
+        PState.get[SA, R].flatMap { s =>
+          step(s, i) match
+            case Left((ns, os)) => PState.set[SA, Either[SA, SB], R](Left(ns)).map(_ => os)
+            case Right((sb, os)) => PState.set[SA, Either[SA, SB], R](Right(sb)).map(_ => os)
+        }
+
+    def inFirst(s1: S1): Stage[I, O, Either[S1, Either[S2, S3]]] = await[I, O].flatMap {
+      case None => tellAll(endFirst(s1)).map(_ => Left(s1))
+      case Some(i) =>
+        val (next, os) = switch(s1, i, first)
+        tellAll(os).flatMap { _ =>
+          next match
+            case Left(ns) => inFirst(ns)
+            case Right(s2) => inSecond(s2)
+        }
+    }
+
+    def inSecond(s2: S2): Stage[I, O, Either[S1, Either[S2, S3]]] = await[I, O].flatMap {
+      case None => tellAll(endSecond(s2)).map(_ => Right(Left(s2)))
+      case Some(i) =>
+        val (next, os) = switch(s2, i, second)
+        tellAll(os).flatMap { _ =>
+          next match
+            case Left(ns) => inSecond(ns)
+            case Right(s3) => inThird(s3)
+        }
+    }
+
+    def inThird(s3: S3): Stage[I, O, Either[S1, Either[S2, S3]]] = await[I, O].flatMap {
+      case None => tellAll(endThird(s3)).map(_ => Right(Right(s3)))
+      case Some(i) =>
+        val (ns, os) = third(s3, i)
+        tellAll(os).flatMap(_ => inThird(ns))
+    }
+
+    inFirst(z)
+
   /** batch inputs into chunks of the given size (the tail flushes on
    * end of input — a stage may still tell after seeing None) */
   def chunked[T](size: Int): Stage[T, Chunk[T], Unit] =

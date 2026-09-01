@@ -91,3 +91,68 @@ class TestPhased extends munit.FunSuite {
     assertEquals(out, Vector("switched"))
   }
 }
+
+/** the three-phase sibling, driven by its consumer's shape: the
+ * http message — request-line -> headers -> body */
+class TestPhased3 extends munit.FunSuite {
+
+  def runStage[O, A](lines: Seq[String])(st: Stage[String, O, A]): (Seq[O], A) =
+    val told: String ! Writer % String =
+      lines.foldLeft(pure[Writer % String, String]("")):
+        (m, l) => m.flatMap(_ => Writer.tell(l).map(_ => l))
+    !.run(Writer.run(through(told)(st)))
+
+  /** S1 = Unit (awaiting the request line), S2 = (method, target) +
+   * headers so far, S3 = the complete head; body lines emit tagged */
+  def http: Stage[String, String,
+      Either[Unit, Either[((String, String), Vector[String]), String]]] =
+    Stage.phased3[String, String, Unit, ((String, String), Vector[String]), String](())(
+      first = (_, line) =>
+        val Array(m, t, _) = line.split(' ')
+        Right((((m, t), Vector.empty), Vector(s"line:$m $t"))),
+      second = (acc, line) =>
+        if line.isEmpty then Right((s"${acc._1._1} ${acc._1._2} [${acc._2.mkString(";")}]",
+          Vector("headers-done")))
+        else Left(((acc._1, acc._2 :+ line), Vector.empty)),
+      third = (head, line) => (head, Vector(s"$head body:$line")),
+      endFirst = _ => Vector("died: no request line"),
+      endSecond = acc => Vector(s"died in headers after ${acc._2.length}"),
+      endThird = _ => Vector.empty)
+
+  test("the http message shape: three phases, both switches typed") {
+    val (out, answer) = runStage(Seq(
+      "GET /q HTTP/1.1", "host: x", "accept: *", "", "hello", "world"))(http)
+    assertEquals(out, Seq(
+      "line:GET /q", "headers-done",
+      "GET /q [host: x;accept: *] body:hello",
+      "GET /q [host: x;accept: *] body:world"))
+    assertEquals(answer, Right(Right("GET /q [host: x;accept: *]")))
+  }
+
+  test("the answer names the dying phase, three ways") {
+    assertEquals(runStage(Seq.empty[String])(http)._2, Left(()))
+    val (out2, a2) = runStage(Seq("GET /q HTTP/1.1", "host: x"))(http)
+    assertEquals(a2, Right(Left((("GET", "/q"), Vector("host: x")))))
+    assert(out2.contains("died in headers after 1"))
+  }
+
+  test("the wrong-phase step is a compile error at BOTH seams") {
+    val atSecond = compileErrors(
+      """Stage.phased3[String, String, Unit, Vector[String], Int](())(
+           first = (_, l) => Right((Vector(l), Vector.empty)),
+           second = (n: Int, l) => Left((n, Vector.empty)),
+           third = (n, l) => (n, Vector.empty),
+           endFirst = _ => Vector.empty, endSecond = _ => Vector.empty,
+           endThird = _ => Vector.empty)""")
+    assert(atSecond.nonEmpty, "a second step at the THIRD phase's type compiled")
+    val atThird = compileErrors(
+      """Stage.phased3[String, String, Unit, Vector[String], Int](())(
+           first = (_, l) => Right((Vector(l), Vector.empty)),
+           second = (v, l) => Right((v.length, Vector.empty)),
+           third = (v: Vector[String], l) => (v, Vector.empty),
+           endFirst = _ => Vector.empty, endSecond = _ => Vector.empty,
+           endThird = _ => Vector.empty)""")
+    assert(atThird.nonEmpty, "a third step at the SECOND phase's type compiled")
+  }
+}
+
