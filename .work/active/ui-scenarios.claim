@@ -1,0 +1,6 @@
+feature/ui-scenarios 2026-09-01T07:49:00Z
+agent: claude-code
+heartbeat: 2026-09-01T07:49:00Z
+status: in-progress
+done-so-far:
+next: Dialog effect + run + screen; Form.ask; elicitation as a scenario

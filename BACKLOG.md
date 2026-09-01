@@ -1,9 +1,6 @@
 # Backlog
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
-- [ ] ui-scenarios — Dialog effect: show-await-validate flows as
-      programs inside the loop; wizard test; elicitation becomes a
-      one-step scenario
 - [ ] ui-screens — screen stack, navigation events, routing; DOM
       address bar as an event source
 - [ ] ui-wire — Schema[Ui]/Event/Patch derivations; server-driven
