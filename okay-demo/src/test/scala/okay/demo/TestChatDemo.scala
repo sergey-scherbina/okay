@@ -159,6 +159,32 @@ class TestChatDemo extends munit.FunSuite {
     assertEquals(after, before, "small talk must not touch the marketplace")
   }
 
+  test("LIVE SEEKER: 'найди мне кого-нибудь' finds the stored provider across two turns") {
+    val base = sys.env.getOrElse("OKAY_CHAT_BASE", "http://127.0.0.1:8089")
+    val up = try {
+      client.send(HttpRequest.newBuilder(URI.create(s"$base/v1/models")).GET().build(),
+        HttpResponse.BodyHandlers.ofString()).statusCode() == 200
+    } catch { case _: Throwable => false }
+    assume(up, s"no local model at $base — skipped")
+    val store = okay.matching.MemoryMatch()
+    val p = store.register("bike-master@demo")
+    store.assert(p, "skill", okay.matching.Side.Offer,
+      okay.matching.Value.VText("ремонт велосипедов, замена цепи и тормозов"),
+      okay.matching.Provenance("seed", 1, "умею чинить велосипеды"), 1.0,
+      okay.matching.Vis.Public)
+    def modelH = okay.agent.Provider.openAi(okay.llm.Transports.http(),
+      "local", "default", s"$base/v1/chat/completions")
+    val q1 = "мне нужно починить велосипед, найди мне кого-нибудь"
+    val a1 = ChatDemo.agentTurn(q1, Nil, modelH, store)
+    // the intake may ask for the email first; the second turn supplies it
+    val a2 = if a1.toLowerCase.contains("почт") || a1.toLowerCase.contains("email") then
+      ChatDemo.agentTurn("моя почта seeker@demo",
+        Vector(okay.llm.Anthropic.Message("user", q1),
+               okay.llm.Anthropic.Message("assistant", a1)), modelH, store)
+    else a1
+    assert(a2.contains("велосипед"), s"the found provider's skill must surface: $a2")
+  }
+
   test("over budget the stream is cut, named, and no tokens follow") {
     withServer(budget = 3) { port =>
       val whole = new String(post(port,

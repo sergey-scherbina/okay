@@ -15,6 +15,15 @@ ctx-wiring, ctx-reader-bridge (gates named). Rejected with reasons:
 ui builder DSL, macro direct-style. Rode along: the sqlite
 DriverManager race named (third telling), demo-chat-live-budget
 filed. Matrix 1588.
+## demo-chat-seek — the seeker's question, answered live
+Completed: 2026-09-01
+
+The user asked "а найдёт?" and the answer is a test now: with a bike
+repairman in the store, "мне нужно починить велосипед, найди мне
+кого-нибудь" (no prefix, no hints) runs the intake across two turns —
+the model asks for the seeker's email, receives it, registers, calls
+find_candidates and reports the master with his skills. Asserted
+against the local model.
 
 ## demo-chat-ungated — the model decides when to match
 Completed: 2026-09-01

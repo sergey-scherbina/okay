@@ -87,6 +87,10 @@ engine). The ask made the store interface nominal: `MatchStore`
 - [x] UNGATED live: with no prefix at all the model itself reaches
       for the tools on an offer and leaves the marketplace untouched
       on small talk (both asserted against the local model)
+- [x] LIVE seeker: "мне нужно починить велосипед, найди мне
+      кого-нибудь" finds the stored provider — a two-turn intake
+      (the email asked for and given), the match reported with the
+      provider's skills
 - [x] sqlite parity: the store guarantees hold on sqlite (the
       booleans-as-integers dialect trap caught and fixed) and the
       marketplace survives a restart over the same file
