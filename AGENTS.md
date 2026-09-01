@@ -4,12 +4,21 @@ SPRINT: SPRINT.md
 BACKLOG: BACKLOG.md
 CHANGELOG: CHANGELOG.md
 
+## Skills
+- Skills live in the `.agents/plugins` submodule (fresh clone:
+  `git submodule update --init`). Read `.agents/plugins/AGENTS.md` — it
+  indexes every skill; when a task matches one, read
+  `.agents/plugins/<name>/commands/<name>.md` and follow it. In a
+  worktree the submodule is checked out only in the main repo — read
+  skills from there, never `submodule update --init` in the worktree.
+
 Several agents commit to one `master` from one machine. The rules in
 force, all already practiced, none previously written down:
 
 ## Coordination
-- The protocol is the `multi-agent` skill; this file only fixes the
-  repo-specific facts. The branch is `master` (not `main`), there is
+- The protocol is the `multi-agent` skill
+  (`.agents/plugins/multi-agent/commands/multi-agent.md`); this file
+  only fixes the repo-specific facts. The branch is `master` (not `main`), there is
   no remote sync step — claims and merges are local.
 - Claims live in `.work/active/<slug>.claim`, committed to `master`.
   One claim is one task; release it (`git rm` + commit) when the task
@@ -28,19 +37,23 @@ force, all already practiced, none previously written down:
   deletion, boards and the claim release run. A `;` after a failed
   merge has twice deleted an unmerged branch and pushed a release
   entry for work that had not landed.
-- Coordination room: rozum. Announce landings; flag files you both
+- Coordination room: rozum (etiquette: the `rozum` skill). Announce
+  landings; flag files you both
   touch (`build.sbt`, `src/jmh/history.tsv` — append-only, expect
   tail conflicts, resolve by keeping both sides).
 
 ## Boards
-- `SPRINT.md` is what agents pick from (claim before working);
+- The protocol is the `scrumban` skill: write the plan into the board
+  BEFORE executing. `SPRINT.md` is what agents pick from (claim before working);
   `BACKLOG.md` is where found-but-deferred work goes THE MOMENT it is
   found; `CHANGELOG.md` is append-only, newest first, one entry per
   landed task naming the commits. Lifecycle: promote backlog -> sprint
   -> claim -> land -> DELETE from sprint, prepend to changelog.
 
 ## Specs
-- The `spec-dev` skill, with `specs/` as the spec directory (no global
+- The `spec-dev` skill
+  (`.agents/plugins/spec-dev/commands/spec-dev.md`), with `specs/` as
+  the spec directory (no global
   SPEC.md). Write or extend the feature's spec and COMMIT it before
   implementation; check `- [ ]` behavior items off as tests cover
   them; record findings and refuted alternatives in the spec's
@@ -53,7 +66,8 @@ force, all already practiced, none previously written down:
   model endpoint and npx respectively; they SKIP where those are
   absent, so a red TestLive usually means the endpoint died, not the
   code.
-- Benchmarks: measure before optimizing, record in
+- Benchmarks: the `performance` skill is the protocol — measure
+  before optimizing, record in
   `src/jmh/history.tsv` (TABS, eight columns — literal `\t` has
   slipped in before and breaks parsing), keep refuted experiments.
 - `organization` is `dev.okay` (build.sbt is the decision in force).

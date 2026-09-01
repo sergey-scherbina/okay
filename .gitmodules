@@ -1,0 +1,3 @@
+[submodule "agent-plugins"]
+	path = .agents/plugins
+	url = ../agent-plugins
