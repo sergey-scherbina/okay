@@ -252,7 +252,7 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
 
 /** streaming tokenization: pure-state scanners, total, incremental
  * (P5); pure Scala — cross-built, tests run on JS too */
-lazy val okayLex = crossProject(JVMPlatform, JSPlatform)
+lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-lex"))
   .dependsOn(okay)
@@ -265,7 +265,7 @@ lazy val okayLex = crossProject(JVMPlatform, JSPlatform)
   )
 
 /** streaming error-tolerant parsing: total, lossless, two surfaces (P5) */
-lazy val okayParse = crossProject(JVMPlatform, JSPlatform)
+lazy val okayParse = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-parse"))
   .dependsOn(okayLex)
@@ -278,7 +278,7 @@ lazy val okayParse = crossProject(JVMPlatform, JSPlatform)
   )
 
 /** codecs: the Schema algebra and the dialects (P5) */
-lazy val okayCodec = crossProject(JVMPlatform, JSPlatform)
+lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-codec"))
   .dependsOn(okayParse)
@@ -414,12 +414,11 @@ lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-ui"))
   .dependsOn(okay)
-  // Form is the fifth algebra over Schema, and okay-codec has no
-  // Native leg — so the tree, the loop and the terminal are
-  // everywhere, and Form (src/main/scala-form) rides only where the
-  // codec does. Native loses the form, not the toolkit.
+  // Form is the fifth algebra over Schema and rides where the codec
+  // does — which since codec-native is every platform.
   .jvmConfigure(_.dependsOn(okayCodec.jvm))
   .jsConfigure(_.dependsOn(okayCodec.js))
+  .nativeConfigure(_.dependsOn(okayCodec.native))
   .settings(
     name := "okay-ui",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
@@ -433,6 +432,8 @@ lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .nativeSettings(
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-form",
     Test / sources := Seq(),
   )
   .jsSettings(
@@ -561,8 +562,10 @@ lazy val okayDemo = (project in file("okay-demo"))
 
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okayJava, okaySpark, okayFlink, okayJdbc, okayLex.jvm, okayLex.js, okayParse.jvm, okayParse.js,
-    okayCodec.jvm, okayCodec.js, okayLlm.jvm, okayLlm.js,
+    okayJava, okaySpark, okayFlink, okayJdbc,
+    okayLex.jvm, okayLex.js, okayLex.native,
+    okayParse.jvm, okayParse.js, okayParse.native,
+    okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,

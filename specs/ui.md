@@ -279,8 +279,11 @@ both directions (typed `Schema[A]` and the dynamic JSON Schema
 elicitation carries), and MCP elicitation end to end — a server's
 question rendered as a form, filled by a scripted user, answered
 typed. 15 tests in okay-ui, 3 in okay-mcp, 2 in okay-demo; all ten
-behavior items covered; JS and Native legs compile (Native without
-Form — okay-codec has no Native leg, recorded in build.sbt).
+behavior items covered; JS and Native legs compile. (v1 shipped
+without Form on Native — okay-codec had no Native leg; codec-native
+closed that the same day: the omission dated from P5 and was never a
+decision, and the whole lex/parse/codec suite now runs as native
+binaries, Form riding along.)
 
 Phase 2 (ui-scenarios) shipped the same day: Dialog (one operation,
 a GADT), Running as the stepped scenario, run over any Host, and the
