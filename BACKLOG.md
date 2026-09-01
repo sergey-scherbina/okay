@@ -43,8 +43,9 @@
 ## okay-cache (specs/cache.md)
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
-- [ ] sql-pg-node — the cross-platform transport leg: the same
-      protocol from Node (the non-JVM openness acceptance)
+- [ ] sql-pg-node — the PgSql message pump restructured onto the
+      Net seam's async pulls (the transport landed with wire-node;
+      the pump is what remains)
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:
       driver availability, not performance — virtual threads
       already cover JDBC-behind-Async)
@@ -52,9 +53,6 @@
 ## okay-conf (specs/conf.md)
 
 ## okay-persist (specs/persist.md — staged design; stage 0 landed)
-- [ ] persist-wire-node — the non-JVM leg: the same documented
-      frames from Node (pairs sql-pg-node — one cross-platform
-      socket story serves both)
 - [ ] persist-wire-repl — replication's calls (replicate-pull,
       promote, produce) join the wire's message enum under the
       handshake version: replicas go remote, machinery unchanged

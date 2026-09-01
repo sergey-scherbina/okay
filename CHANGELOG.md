@@ -1,5 +1,26 @@
 # Changelog
 
+## wire-node — one socket leg for every wire; the log reaches Node
+Completed: 2026-09-01 (landed as 594faf1; spec first)
+Net in the core (specs/net.md): the byte-stream seam as a given per
+platform — ONE blocking file in scala-jvm-native serves JVM and
+Native (both ship java.net.Socket), the Node leg buffers `data`
+events behind Async.await pulls so every protocol pump stays a
+sequential program. persist's wire protocol moved to SHARED
+WireProtocol (Version, the enums, frame helpers over NetConn, the
+cross-platform Client); `export` kept every Wire.* path compiling
+and TestWire untouched. THE headline, the openness acceptance made
+literal: the SAME client code talks to a scripted Node net server
+answering frames encoded with the SAME shared enums — with no JVM
+in the process. En route, two forward-fixes for the fresh chat
+demo under the day's house rules (a JDBC-carrying module forks its
+tests; live calls get 120s) plus the third rule those exposed: a
+FORKED test JVM keeps the repo root as cwd when the suite indexes
+File("."). sql-pg-node now has its transport; the PgSql pump
+restructure stays its own claim, stated. Merge read alone after
+two refused ffs (demo landings; targeted retests): exit 0. Full
+matrix green.
+
 ## ctx-functions — what the capability arrows buy us, verified first
 Completed: 2026-09-01 (landed as 67e11ad)
 specs/context-functions.md: the FULL map on its experimental base
