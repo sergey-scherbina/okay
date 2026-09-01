@@ -1,5 +1,15 @@
 # Changelog
 
+## codec-defaults — the one macro this library allows itself
+Completed: 2026-09-01 (landed as 3ebee10)
+Mirrors do not carry defaults; the companion's <init>$default$N do.
+The macro reads them into SProduct.defaults as ordinary values;
+Json/Cbor fall back in order (declared default, None-if-optional,
+refusal); an uncallable default is honestly None. ToolSpec stops
+requiring defaulted fields and advertises `default` — the omission
+an LLM will make is now one decode survives. Proven JVM+JS+Native
+by the shared suite. Matrix 1126.
+
 ## ui-dom-patch — the raw-DOM Backend; the patch consumer arrives
 Completed: 2026-09-01 (landed as 1624244)
 React-less DOM over js.Dynamic, zero dependencies: React.elem is the

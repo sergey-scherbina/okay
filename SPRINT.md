@@ -1,11 +1,6 @@
 # Sprint
 
 ## Doing
-- codec-defaults — decode falls back to a field's declared default
-  when the wire lacks it: a macro reads the companion's
-  <init>$default$N (Mirrors do not carry defaults), SProduct carries
-  them, Json/Cbor fall back, ToolSpec stops requiring defaulted
-  fields (specs/codecs.md files it with its reason)
 
 ## Queue
 (next candidates from BACKLOG.md: sql-seam, conf-impl,
