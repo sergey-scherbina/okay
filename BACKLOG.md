@@ -60,9 +60,16 @@
       over okay-persist for cross-node regime 2
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
-- [ ] jdbc-typed — Schema row decode (label-matched, total) +
-      verify against ResultSetMetaData + typed params + transact
-      region with declared isolation; H2 no-DDL-user test
+- [ ] sql-seam — okay-sql: the Sql driver trait (SqlValue/Col,
+      Async), typed layer (rows/params/verify/transact) written
+      once against it; okay-jdbc as the first driver passing the
+      whole jdbc.md behavior list (H2, no-DDL user)
+- [ ] sql-pg-wire — okay-pg: the Postgres v3 protocol over the
+      Async transport (SCRAM, extended query/portals, COPY);
+      cross-platform; same typed program runs over both drivers
+- [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:
+      driver availability, not performance — virtual threads
+      already cover JDBC-behind-Async)
 - [ ] jdbc-write-bridge — the Durable policies over their unique
       constraints (WithKey = ON CONFLICT, Reconcile = SELECT by
       key), journaled in okay-persist
@@ -77,6 +84,9 @@
       topic over okay-persist (audit/rollback for free)
 
 ## okay-persist (specs/persist.md — staged design; stage 0 landed)
+- [ ] persist-wire — the remote Topic client over the stage-2
+      frames: a non-JVM consumer reaches a persist node directly;
+      format and wire as documented surfaces
 - [ ] persist-stage1 — consumers prove the seam: Durable.Journal over
       a keyed topic (complete-as-append), streaming/tailable reads,
       typed Schema view with upcasts, consumer offsets, compaction

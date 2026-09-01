@@ -1,6 +1,0 @@
-feature/sql-seam-spec 2026-09-01T09:04:26Z
-agent: claude-code
-heartbeat: 2026-09-01T09:04:26Z
-status: in-progress
-done-so-far:
-next: specs/sql.md (driver-agnostic relational seam); surgical updates to jdbc/persist/data specs

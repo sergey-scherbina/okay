@@ -1,5 +1,17 @@
 # Changelog
 
+## sql-seam-spec — specs/sql.md: SQL without a mandatory JDBC
+Completed: 2026-09-01
+The typed relational contract (rows/verify/transact, jdbc.md)
+re-cut against a driver-agnostic Sql seam (neutral SqlValue/Col,
+Async): okay-jdbc becomes its first driver (and stays the honest
+default on the JVM), okay-pg (Postgres wire over the Async
+transport, cross-platform, unlocks the whole pg family incl.
+pgvector) the direct road, R2DBC a stated low-priority hatch.
+persist gains the openness commitment: persist-wire (remote Topic
+client), format and wire as documented surfaces. Spec only;
+sql-seam, sql-pg-wire, sql-r2dbc, persist-wire filed.
+
 ## security-core — okay-security stage 0
 Completed: 2026-09-01 (landed as 3a36930)
 The model as values, JWT (HS256/RS256, kid, skew; alg confusion
