@@ -1,0 +1,5 @@
+feature/match-identity-x 2026-09-01T14:37:46Z
+agent: claude-code
+heartbeat: 2026-09-01T14:37:46Z
+status: in-progress
+next: cross-channel identity: identifying attrs, link candidates, token challenge, identity class
