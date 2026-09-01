@@ -38,6 +38,22 @@ Every claim below was compiled, not assumed:
   This is what makes implicit prompts sound.
 - **A stored `A ?=> B` self-applies where a given A is in scope**
   (E8) — deferred requirements as VALUES.
+- **Unbounded-arity provide via the applicative idiom: the idiom
+  EXISTS, the single definition is blocked** (E11/E12, 2026-09-01).
+  Currying IS the n-ary Reader idiom — `(A, B) ?=> C` and
+  `A ?=> B ?=> C` interchange, and a DIRECT ascription against a
+  match type `Given[T, B] = T match { EmptyTuple => B; h *: t =>
+  h ?=> Given[t, B] }` reduces and eta-expands a using-method into
+  the curried chain (verified). But in PARAMETER position the same
+  type defeats both halves: a using-method argument is not
+  eta-expanded against the unreduced match type, and an ascribed
+  context-function VALUE is eagerly auto-applied against it (the
+  E10 trap, generalized) — explicit type arguments do not save it.
+  So today: fixed-arity overloads (ContextFunctionN is built in to
+  22) and nested `provide` (which associates exactly like the
+  idiom's <*>) are the honest floor; re-test the single definition
+  on future compilers — param-position match-type reduction is the
+  one missing piece.
 - **Macros cannot rewrite a block into nested implicit scopes** —
   Scala 3 macros run after typing; implicit resolution has already
   happened. A pre-typer compiler plugin could; that road is noted,
