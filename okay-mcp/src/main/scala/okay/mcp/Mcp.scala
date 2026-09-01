@@ -70,6 +70,72 @@ object Mcp {
                             description: String = "",
                             mimeType: Option[String] = None)
 
+  val ResourcesTemplates = "resources/templates/list"
+
+  /** a resource TEMPLATE: one declaration standing for unbounded
+   * uris — RFC 6570, level 1 in this implementation */
+  final case class Template(uriTemplate: String, name: String,
+                            description: String = "",
+                            mimeType: Option[String] = None)
+
+  object Template:
+    /** {var} expansion with percent-encoding (RFC 6570 level 1) */
+    def expand(template: String, vars: Map[String, String]): String =
+      val out = StringBuilder()
+      var i = 0
+      while i < template.length do
+        val c = template.charAt(i)
+        if c == '{' then
+          val end = template.indexOf('}', i)
+          if end < 0 then { out.append(template.substring(i)); i = template.length }
+          else
+            val name = template.substring(i + 1, end)
+            out.append(vars.get(name).fold("")(encode))
+            i = end + 1
+        else { out.append(c); i += 1 }
+      out.toString
+
+    /** the REVERSE: does this uri fit the template, and with which
+     * variables? Never guesses — a leftover or a mismatch is None */
+    def matches(template: String, uri: String): Option[Map[String, String]] =
+      def go(ti: Int, ui: Int, acc: Map[String, String]): Option[Map[String, String]] =
+        if ti >= template.length then
+          if ui >= uri.length then Some(acc) else None
+        else if template.charAt(ti) == '{' then
+          val end = template.indexOf('}', ti)
+          if end < 0 then None
+          else
+            val name = template.substring(ti + 1, end)
+            // the variable runs to the next literal character (or the
+            // end); level 1 variables do not cross '/' either way
+            val next = if end + 1 < template.length then Some(template.charAt(end + 1)) else None
+            val stop = next match
+              case Some(ch) =>
+                val at = uri.indexOf(ch, ui)
+                if at < 0 then -1 else at
+              case None => uri.length
+            if stop < 0 then None
+            else
+              val raw = uri.substring(ui, stop)
+              if raw.contains('/') then None
+              else go(end + 1, stop, acc + (name -> decode(raw)))
+        else if ui < uri.length && template.charAt(ti) == uri.charAt(ui) then
+          go(ti + 1, ui + 1, acc)
+        else None
+
+      go(0, 0, Map.empty)
+
+    private def encode(s: String): String =
+      val keep = "-._~".toSet
+      s.flatMap { ch =>
+        if ch.isLetterOrDigit && ch < 128 || keep(ch) then ch.toString
+        else ch.toString.getBytes("UTF-8").map(b => f"%%${b & 0xff}%02X").mkString
+      }
+
+    private def decode(s: String): String =
+      try java.net.URLDecoder.decode(s.replace("+", "%2B"), "UTF-8")
+      catch case _: IllegalArgumentException => s
+
   /** a conversation opening a server offers, by name */
   final case class Prompt(name: String, description: String = "",
                           arguments: Seq[Prompt.Arg] = Nil)
@@ -287,6 +353,27 @@ object McpDocs {
   def turnsOf(result: Json): Seq[Turn] =
     field(result, "messages") match
       case Some(Json.JArr(vs)) => vs.flatMap(turnOf).toSeq
+      case _ => Nil
+
+  /** resource templates on the wire, both directions */
+  def templateJson(t: Mcp.Template): Json =
+    val fs = Vector(
+      "uriTemplate" -> Json.JStr(t.uriTemplate),
+      "name" -> Json.JStr(t.name),
+      "description" -> Json.JStr(t.description))
+    Json.JObj(t.mimeType.fold(fs)(m => fs :+ ("mimeType" -> Json.JStr(m))))
+
+  def templateOf(j: Json): Option[Mcp.Template] =
+    str(j, "uriTemplate").map(u => Mcp.Template(u,
+      str(j, "name").getOrElse(u), str(j, "description").getOrElse(""),
+      str(j, "mimeType")))
+
+  def templatesResult(ts: Seq[Mcp.Template]): Json =
+    obj("resourceTemplates" -> Json.JArr(ts.map(templateJson).toVector))
+
+  def templatesOf(result: Json): Seq[Mcp.Template] =
+    field(result, "resourceTemplates") match
+      case Some(Json.JArr(vs)) => vs.flatMap(templateOf).toSeq
       case _ => Nil
 
   /** completion/complete params, both directions */

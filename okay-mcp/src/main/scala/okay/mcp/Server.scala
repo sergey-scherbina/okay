@@ -51,7 +51,8 @@ object Server {
                            prompt: (String, Map[String, String]) => Option[Seq[Turn]] =
                              (_, _) => None,
                            subscriptions: Subscriptions = Subscriptions(),
-                           complete: Option[Mcp.Complete => Vector[String]] = None)
+                           complete: Option[Mcp.Complete => Vector[String]] = None,
+                           templates: Seq[Mcp.Template] = Nil)
 
   /** the tools-only server, which is what most are */
   def serve(info: Mcp.Info, tools: Seq[ToolSpec],
@@ -74,7 +75,7 @@ object Server {
     // empty list. A client that read the handshake never asks; one
     // that asks anyway learns something true.
     val hasTools = s.tools.nonEmpty || s.call.nonEmpty
-    val hasResources = s.resources.nonEmpty
+    val hasResources = s.resources.nonEmpty || s.templates.nonEmpty
     val hasPrompts = s.prompts.nonEmpty
     val hasCompletions = s.complete.isDefined
     val stage: Stage[Rpc, Rpc, Boolean] =
@@ -108,6 +109,7 @@ object Server {
 
         case Rpc.Request(id, m, _)
           if (m == Mcp.ResourcesList || m == Mcp.ResourcesRead ||
+              m == Mcp.ResourcesTemplates ||
               m == Mcp.ResourcesSubscribe || m == Mcp.ResourcesUnsubscribe) && !hasResources =>
           fail(id, Rpc.MethodNotFound, m).map(_ => ready)
 
@@ -127,6 +129,9 @@ object Server {
 
         case Rpc.Request(id, Mcp.ResourcesList, _) =>
           answer(id, McpDocs.resourcesResult(s.resources)).map(_ => ready)
+
+        case Rpc.Request(id, Mcp.ResourcesTemplates, _) =>
+          answer(id, McpDocs.templatesResult(s.templates)).map(_ => ready)
 
         // subscribe/unsubscribe are the client asking to be TOLD, and
         // what it is told goes out through Pushes, beside the answers

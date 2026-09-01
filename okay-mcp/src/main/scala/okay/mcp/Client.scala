@@ -263,6 +263,15 @@ final class Session private[mcp] (link: Link, peer: Duplex.Peer)(using Scheduler
       go(rs, Nil).map(okay.rag.Corpus.of)
     }
 
+  /** the resource TEMPLATES a server offers — one declaration
+   * standing for unbounded uris; expand with Mcp.Template.expand and
+   * read the result */
+  def templates: Seq[Mcp.Template] ! Async =
+    request(Mcp.ResourcesTemplates, Rpc.obj()).map {
+      case Json.JErr(_) => Nil
+      case result => McpDocs.templatesOf(result)
+    }
+
   /** watch one resource: its updates arrive on `notifications` */
   def subscribe(uri: String): Boolean ! Async =
     request(Mcp.ResourcesSubscribe, Rpc.obj("uri" -> Json.JStr(uri))).map(ok)

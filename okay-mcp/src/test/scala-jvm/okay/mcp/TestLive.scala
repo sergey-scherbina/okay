@@ -112,6 +112,15 @@ class TestLive extends munit.FunSuite {
     }
   }
 
+  test("live: the reference server lists its resource templates") {
+    assume(available, s"'${command.head}' is not on the PATH")
+    live { s =>
+      val ts = s.templates.runWith
+      println(s"  live: ${ts.length} templates — ${ts.map(_.uriTemplate).take(3).mkString(", ")}")
+      assert(ts.forall(_.uriTemplate.nonEmpty))
+    }
+  }
+
   test("live: a notification sent BEFORE the handshake answer is not lost") {
     assume(available, s"'${command.head}' is not on the PATH")
     // the reference server announces notifications/tools/list_changed

@@ -32,6 +32,7 @@ because the two ends were already in the library's vocabulary:
 | resource | `okay.rag.Source` (a `Corpus`) | the retriever indexes a server's documents like local files |
 | prompt | `Seq[Turn]` | a server's prompt is something an agent can be started from |
 | completion | `Complete => Vector[String]` | argument autocompletion is a function the Serving carries; the capability follows the function |
+| resource template | `Template` + `expand`/`matches` | one declaration, unbounded uris: the server's read MATCHES the uri back and extracts the variables |
 
 Capabilities are computed from what a server actually has, so a
 tools-only server does not advertise resources, and a client reads the
@@ -96,6 +97,10 @@ hanging, and the server reads the refusal.
 
 The outbound side of a server is the stage's answers `merge` a channel
 of pushes — the readiness merge, one fiber each.
+
+The protocol list is COMPLETE for the 2025-06-18 revision —
+authorization included (okay-security's `McpAuth`), every capability
+probed live against the reference server.
 
 ## Does it work with the ecosystem
 

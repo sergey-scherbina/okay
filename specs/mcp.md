@@ -158,16 +158,16 @@ Serving(..., templates: Seq[Mcp.Template] = Nil)   // counts toward the
 Session.templates: Seq[Mcp.Template] ! Async
 ```
 
-- [ ] templates round-trip the wire; the list is served under the
+- [x] templates round-trip the wire; the list is served under the
       resources capability (templates alone suffice to declare it)
-- [ ] expand/matches are inverses on level 1, percent-encoding
+- [x] expand/matches are inverses on level 1, percent-encoding
       included: expand then matches answers the vars back, verbatim
-- [ ] a server SERVES a template: one declaration, a read that
+- [x] a server SERVES a template: one declaration, a read that
       matches and extracts, unbounded uris answer — end to end over a
       session, with completion on the template's variable tying v8 in
-- [ ] a uri that does not fit the template is None — matches never
+- [x] a uri that does not fit the template is None — matches never
       guesses
-- [ ] live: the reference server lists its templates to our client
+- [x] live: the reference server lists its templates to our client
 
 ## Out of scope
 - elicitation (`elicitation/create`): the server asking the human, not
@@ -549,6 +549,14 @@ the reference server answered our completion call (shape ours,
 content theirs). The only protocol features left unbuilt are resource
 templates and OAuth-beyond-what-okay-security-stage-1-gives, both on
 the backlog with owners of their reasons.
+
+With v9 the protocol LIST IS COMPLETE: every feature of the
+2025-06-18 revision is built, tested from the hostile side where one
+exists, and probed live against the reference implementation —
+authorization included, via okay-security. What remains in Out of
+scope remains by DECISION (batches were removed by the revision
+itself; elicitation's UI half lives in okay-ui; newer draft
+capabilities like `tasks` are future revisions, not this one).
 
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server
