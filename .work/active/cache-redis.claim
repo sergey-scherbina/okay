@@ -1,0 +1,7 @@
+feature/cache-redis 2026-09-02T05:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-02T05:00:00Z
+status: in-progress
+done-so-far:
+next: minimal RESP client (GET/SET PX/DEL/PING) over the blocking socket, Redis Cache engine (CBOR values, budget = server-side SET PX), live vs docker redis with skip; Invalidations topic (append on invalidate, every node a consumer, replay converges). NEW FILES in okay-cache (scala-jvm Redis + shared Invalidations) - existing files untouched (@fable-persist's module)
+files: okay-cache/** (Redis.scala jvm, Invalidations.scala shared, tests), specs/cache.md boxes

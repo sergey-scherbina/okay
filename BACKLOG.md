@@ -38,9 +38,6 @@
       sink, or the at-least-once contract asserted where EOS is off
 
 ## okay-cache (specs/cache.md)
-- [ ] cache-redis — minimal RESP client (GET/SET PX/DEL/PING) over
-      the Async transport, same contract suite; invalidation topic
-      over okay-persist for cross-node regime 2
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
 - [ ] sql-pg-copy — COPY through the wire: the bulk-load posture
