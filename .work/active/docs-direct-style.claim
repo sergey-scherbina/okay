@@ -1,0 +1,6 @@
+feature/docs-direct-style 2026-09-01T20:30:18Z
+agent: claude-code
+heartbeat: 2026-09-01T20:30:18Z
+status: in-progress
+done-so-far:
+next: write docs/direct-style.md, link from docs/README.md
