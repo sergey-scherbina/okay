@@ -1,0 +1,6 @@
+feature/persist-core 2026-09-01T08:09:27Z
+agent: claude-code
+heartbeat: 2026-09-01T08:09:27Z
+status: in-progress
+done-so-far:
+next: write specs/persist.md, then module skeleton
