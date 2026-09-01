@@ -137,7 +137,11 @@ it is what a disk is good at:
   CRC does not check out ENDS the log there — damage truncates
   rather than throws, the rule everywhere else in this stack
   (`Persist.unpack`, the cluster's dropped frame). A torn tail is
-  the normal crash artifact, not an exception.
+  the normal crash artifact, not an exception. From format v2 a
+  frame carries its OFFSET explicitly (v1 derived offsets as base
+  plus position, which only works while offsets are dense) —
+  compaction punches holes in the sequence, so the frame must say
+  which record it is. The engine writes v2 and reads both.
 - **Index**: sparse offset→file-position entries per segment,
   rebuilt from the segment on recovery if missing or damaged — the
   index is a cache, never a source of truth.
@@ -151,6 +155,19 @@ it is what a disk is good at:
   topic BE the snapshot, and refold starts from `begin`, not zero.
   Snapshotting stays an optimization a consumer opts into by
   writing a value, precisely as the settled decision requires.
+  The two are exclusive per topic: `Policy.compact` switches
+  size/age retention OFF — dropping whole segments from the front
+  of a compacted topic would delete the latest value of every key
+  that went quiet, the exact records compaction exists to keep.
+  Compaction preserves offsets and `begin`, changes no record, and
+  runs as an explicit `compact(partition)` call (the force-compact
+  admin call of Operations); the active segment is never compacted.
+  Crash-safety is the atomic-rename shape: survivors are written to
+  a temporary file, fsync'd, renamed over the head segment, and
+  only then are the superseded closed segments deleted — a crash
+  in the window leaves segments whose records reads already skip,
+  because a read serves offsets monotonically and every survivor
+  carries a later or equal offset than what the leftovers hold.
 
 `MemoryStore` implements the same trait for tests and for short
 interactive runs where the journal is overhead (the llm-agentic spec:
@@ -226,8 +243,12 @@ Three separate things that version, each with its own rule:
 - **Record values**: `Schema` evolution rules already in force in
   okay-codec (optional fields decode absent; damage is data). On
   top, an ENVELOPE convention for journal-grade topics: a small
-  version int beside the payload; readers upcast old versions
-  through pure `v→v+1` functions at decode. A version the reader
+  version int beside the payload (concretely, the `Typed` view
+  writes a four-byte big-endian version before the CBOR bytes);
+  readers upcast old versions through pure `v→v+1` functions at
+  decode — byte-level `payload(v) => payload(v+1)` steps, with a
+  `Typed.step` helper lifting an `Old => New` function over two
+  Schemas into one. A version the reader
   does not know is an explicit error value, not a crash — the
   Durable fingerprint lesson: drift is caught loudly at the exact
   record, not fed to the wrong code.
@@ -436,6 +457,22 @@ at stage 0 and never rebind.
   okay-http route, testable as equality; no framework dependency.
   Rejected: a metrics library (a dependency and a push model for
   what is naturally a pulled value).
+- **Frames carry their offset from format v2** — compaction makes
+  offsets sparse, so base-plus-position stops being an offset; the
+  eight bytes per record buy the property everything above resumes
+  on. The v1 read path stays, which also makes the evolution
+  promise ("a newer engine reads every older segment version it
+  ever shipped") testable rather than aspirational. Rejected:
+  a separate format for compacted segments only (two write paths,
+  and a reader that must know which kind it holds).
+- **Dropped history stops a stream by declared decision** — the
+  streaming readers take an `OnTooEarly` argument (`Fail` throws
+  naming `begin`, `Resume` continues from it), the
+  decision-not-promise pattern once more: a tailing consumer whose
+  history aged out must choose between loud failure and a stated
+  jump, not receive one silently. Rejected: silently starting at
+  `begin` (the exact silence `Topic.Read.TooEarly` exists to
+  forbid).
 
 ## Results
 
