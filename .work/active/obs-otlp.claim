@@ -1,0 +1,7 @@
+feature/obs-otlp 2026-09-02T03:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-02T03:00:00Z
+status: in-progress
+done-so-far:
+next: Otlp exporter in okay-obs - a CONSUMER of the trace topic speaking OTLP/HTTP JSON to any collector, no SDK; the pure span->OTLP mapping shared, the push glue jvm over okay-http; offset = the resume token; fake-collector test
+files: okay-obs/** (Otlp.scala shared + OtlpPush.scala jvm + test), build.sbt (okayObs jvm dep okayHttp), specs/obs.md

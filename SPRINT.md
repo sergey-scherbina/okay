@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- obs-otlp — the exporter as a CONSUMER of the trace topic: the pure
+  span->OTLP JSON mapping, the jvm push over okay-http, offsets as
+  resume tokens; proven against a recording fake collector
+  (specs/obs.md, Export = a consumer)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
