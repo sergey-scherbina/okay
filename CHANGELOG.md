@@ -1,5 +1,24 @@
 # Changelog
 
+## direct-macro — the flat block v1: direct style with no for-comprehension
+Completed: 2026-09-01
+Landed as 96a46e8 (nearly lost once: a no-op self-merge in the
+worktree read as landed and the branch deleted — recovered from the
+dangling hash; the merge-alone rule's "from the main checkout" half
+is now twice-paid). direct[F] { val x = m.?; ... } rewrites at
+compile time into Monadic's Cont binds (~300-line Quotes macro):
+statement folding, ANF hoisting of value slots in application spines
+(order asserted), if/match with effectful scrutinee/branches, &&/||
+desugared to their If keeping the short-circuit, op.!? lifting a raw
+effect operation into the block's row (Free.Inject emitted at the
+Row the macro extracts from F = A ! Row). Marks under
+lambda/while/try/by-name: positioned compile errors naming the
+workaround. Effects first-class; F infers from the expected type.
+16 tests. REFUTED and recorded: .! for the op mark (an imported
+extension named ! shadows object ! — !.run breaks); isInstanceOf on
+quotes-reflect types (erases to always-true, TypeTest patterns are
+the way).
+
 ## obs-durable-overlay — the journal/trace identity join
 Completed: 2026-09-01
 specs/obs.md's last open box: a journaled operation's span and its

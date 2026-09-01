@@ -1,6 +1,0 @@
-feature/direct-macro 2026-09-01T19:46:56Z
-agent: claude-code
-heartbeat: 2026-09-01T19:46:56Z
-status: in-progress
-done-so-far: macro + 14 tests green on JVM (spec verified); full matrix running
-next: ff-merge on green exit, release, boards

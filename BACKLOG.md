@@ -1,6 +1,13 @@
 # Backlog
 
 ## Flakes observed (record → fix loop when they recur)
+- [ ] persist-election-replicated-flake — okay.persist
+      .TestElectionReplicated errored at suite level on one platform
+      under the full matrix (2026-09-01, Errors 1 with 0 failures;
+      JVM tests of the same suite green in the same run); second
+      platform run printed the header with no tests. Suspect
+      platform init under load. Settle by: run the suite alone on
+      JS/Native; if it reproduces, isolate.
 - [ ] netty-ws-matrix-flake — okay.netty.TestBackends "every WebSocket
       client talks to every WebSocket server" failed once under the
       full sbt test matrix (jetty StaticException: Closed,
