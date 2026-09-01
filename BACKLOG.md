@@ -89,13 +89,13 @@
 ## okay-cache (specs/cache.md)
 
 ## okay-pg (specs/sql.md — the wire driver)
-- [ ] pg-composite-array-of-composite — the remaining slivers after
-      pg-composite-fields-typed (landed): (1) an array whose ELEMENT
-      is a named composite (my_type[]) — needs pg_type.typelem ->
-      the composite OID, then the preloaded field cache; (2) a
-      table's ROW-type (relkind='r') selected as a whole row — same
-      cache shape, just widen the preload's relkind filter (weigh the
-      preload cost). Anonymous record ROW() stays text (unresolvable).
+- [ ] pg-composite-rowtype — the last sliver after pg-composite-array
+      (landed): type a TABLE'S row-type (relkind='r') selected whole
+      (select t from t). Same cache shape as named composites, but
+      every table would join the connect preload — DEFERRED on that
+      cost until a consumer names the need; `(t).*` or row_to_json →
+      Schema is the road meanwhile. Anonymous record ROW() stays text
+      (genuinely unresolvable — no typrelid).
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:

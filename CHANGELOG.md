@@ -1,5 +1,22 @@
 # Changelog
 
+## pg-composite-array — arrays of a named composite decode to Arr of typed Row
+Completed: 2026-09-02
+The first sliver after pg-composite-fields-typed: an array whose ELEMENT
+is a named composite (`addr[]`) now decodes to `Arr(Row(...))`, not text.
+The connect preload gained a second map — each composite-array type OID
+to its element composite OID (`pg_type.typelem` where the element is a
+`relkind='c'` composite) — and the per-cell decode became a
+connection-aware `decodeCell` that passes ITSELF as `parseArray`'s
+element decoder. So an array element that is a composite types through
+the field cache, a scalar element through `valueOf`, and nested arrays
+recurse with the same decoder: `array[row('main st',90210,true)::addr,
+row('elm',null,false)::addr]` yields
+`Arr(Row(Text,I32,Bool), Row(Text,Null,Bool))`. Live TestPgComposite +1
+(12 total); the pg suite and the rest stay green. Deferred and re-filed
+as pg-composite-rowtype: typing a table's whole row-type (relkind='r'),
+which would draw every table into the connect preload.
+
 ## direct-try v2 — marked catch bodies graduate
 Completed: 2026-09-02
 Landed. The sibling's v1 try sandwich (reify body, CanTry.tryIn,

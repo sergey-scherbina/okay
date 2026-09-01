@@ -194,10 +194,18 @@ import — and the platforms it runs on.
       `Row(Text, I32, Bool)`; a NULL field is `Null`). Anonymous
       `record`/ROW() stays fields-as-text: its field types are genuinely
       not discoverable (no typrelid). A composite type created AFTER a
-      connection is unknown to it until reconnect (stated). Still open
-      (pg-composite-array-of-composite): typing arrays whose element is
-      a named composite, and typing a table's row-type (relkind='r');
-      the `row_to_json → Schema` bridge remains the other road
+      connection is unknown to it until reconnect (stated)
+- [x] an ARRAY of a named composite decodes to Arr of typed Row
+      (pg-composite-array): the connect preload also maps each
+      composite-array type OID to its element composite OID
+      (pg_type.typelem where the element is `relkind='c'`), and the
+      cell decode became a connection-aware `decodeCell` that uses
+      ITSELF as the array element decoder — so `array[row(..)::addr,
+      ..]` yields `Arr(Row(...))`, nested and NULL elements included.
+      Still deferred (weighed against the preload cost): typing a
+      table's ROW-type (relkind='r') selected whole — every table
+      would join the preload; the `(t).*` expansion or `row_to_json →
+      Schema` is the road until a consumer names the need
 - [x] the SAME typed test program runs unmodified over the JDBC
       driver and the pg driver against equivalent schemas (the
       cluster acceptance-test move, applied to SQL) — one function

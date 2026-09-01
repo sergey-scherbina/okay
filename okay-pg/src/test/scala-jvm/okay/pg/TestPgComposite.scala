@@ -125,3 +125,14 @@ class TestPgComposite extends munit.FunSuite:
     assertEquals(cell("select row(1, 2, 3)"),
       Row(Vector(Text("1"), Text("2"), Text("3"))))
   }
+
+  test("an ARRAY of a named composite decodes to Arr of typed Row (pg-composite-array)") {
+    assume(available, s"no Postgres at $host:$port — skips")
+    defineType()
+    val v = cell(
+      "select array[row('main st', 90210, true)::okay_addr, " +
+      "row('elm', null, false)::okay_addr]")
+    assertEquals(v, Arr(Vector(
+      Row(Vector(Text("main st"), I32(90210), Bool(true))),
+      Row(Vector(Text("elm"), Null, Bool(false))))))
+  }

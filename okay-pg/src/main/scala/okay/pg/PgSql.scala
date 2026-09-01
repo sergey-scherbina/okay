@@ -39,6 +39,11 @@ final class PgSql private (conn: NetConn) extends Sql:
   // trip. Empty until loadComposites runs; a type created after
   // connect is unknown until reconnect (stated).
   private val composites = scala.collection.mutable.HashMap.empty[Int, Vector[Int]]
+  // an array type OID whose ELEMENT is a named composite -> the
+  // composite's OID (pg-composite-array). Built-in scalar arrays live
+  // in the static PgSql.arrayElem; these dynamic ones are preloaded
+  // beside the composite fields so addr[] decodes to Arr(Row(...)).
+  private val arrayElemDyn = scala.collection.mutable.HashMap.empty[Int, Int]
 
   // ── the Sql seam ───────────────────────────────────────────────
 
@@ -305,13 +310,22 @@ final class PgSql private (conn: NetConn) extends Sql:
       else
         val s = new String(body, at, len, UTF_8)
         at += len
-        // a NAMED composite column: its fields are typed from the
-        // preloaded catalog (pg-composite-fields-typed); everything
-        // else, including anonymous record/ROW(), goes through valueOf
-        composites.get(oids(i)) match
-          case Some(fieldOids) => parseCompositeTyped(s, fieldOids)
-          case None => valueOf(oids(i), s)
+        decodeCell(oids(i), s)
     }
+
+  /** the connection-aware cell decode: a named composite types from the
+   * preloaded field cache (pg-composite-fields-typed); an array — built
+   * in OR one of named composites (pg-composite-array) — decodes with
+   * this SAME function as the element decoder, so an array of composites
+   * yields Arr(Row(...)); everything else falls to the static valueOf,
+   * which still handles record/ROW() and the built-in scalar arrays */
+  private def decodeCell(oid: Int, s: String): SqlValue =
+    composites.get(oid) match
+      case Some(fieldOids) => parseCompositeTyped(s, fieldOids)
+      case None =>
+        arrayElem.get(oid).orElse(arrayElemDyn.get(oid)) match
+          case Some(el) => parseArray(s, r => decodeCell(el, r))
+          case None => valueOf(oid, s)
 
   /** preload every named composite type's field OIDs once, at connect
    * (pg-composite-fields-typed): a simple 'Q' query in the ready state,
@@ -326,10 +340,26 @@ final class PgSql private (conn: NetConn) extends Sql:
       "join pg_class c on c.oid = ty.typrelid " +
       "join pg_attribute a on a.attrelid = c.oid " +
       "where c.relkind = 'c' and a.attnum > 0 and not a.attisdropped " +
-      "order by ty.oid, a.attnum").map { rows =>
+      "order by ty.oid, a.attnum").flatMap { rows =>
       composites.clear()
       for (typeOid, fieldOid) <- rows do
         composites.update(typeOid, composites.getOrElse(typeOid, Vector.empty) :+ fieldOid)
+      loadArrayElems()
+    }
+
+  /** the arrays whose element is a named composite (pg-composite-array):
+   * array type OID -> its composite element OID, so `addr[]` decodes to
+   * Arr(Row(...)). `typelem` names an array type's element; we keep only
+   * those whose element is a `relkind='c'` composite (the built-in
+   * scalar arrays are already in the static map). */
+  private def loadArrayElems(): Unit ! Async =
+    compositeRows(
+      "select ty.oid, ty.typelem from pg_type ty " +
+      "join pg_type el on el.oid = ty.typelem " +
+      "join pg_class c on c.oid = el.typrelid " +
+      "where c.relkind = 'c'").map { rows =>
+      arrayElemDyn.clear()
+      for (arrayOid, elemOid) <- rows do arrayElemDyn.update(arrayOid, elemOid)
     }
 
   /** the first two int columns of every row of a simple query */
@@ -495,7 +525,7 @@ object PgSql:
       SqlValue.Bytes(out)
     // ROW()/record and arrays decode into structure (pg-composite-decode)
     case 2249 => parseComposite(s)
-    case a if arrayElem.contains(a) => parseArray(s, arrayElem(a))
+    case a if arrayElem.contains(a) => parseArray(s, r => valueOf(arrayElem(a), r))
     case _ => SqlValue.Text(s)
 
   // ── composite / array text decoding (pg-composite-decode) ──────
@@ -538,15 +568,18 @@ object PgSql:
     out += ((sb.result(), quoted))
     out.result()
 
-  /** `{...}` -> Arr, elements typed via `elemOid`; nested arrays
-   * recurse; the literal NULL element is Null; `{}` is the empty Arr */
-  private[pg] def parseArray(s: String, elemOid: Int): SqlValue =
+  /** `{...}` -> Arr; each element decoded by `decodeElem` (so a
+   * composite element types through the field cache, a scalar through
+   * valueOf); nested arrays recurse with the SAME decoder (multidim
+   * shares one element OID); the literal NULL element is Null; `{}` is
+   * the empty Arr */
+  private[pg] def parseArray(s: String, decodeElem: String => SqlValue): SqlValue =
     val inner = s.stripPrefix("{").stripSuffix("}")
     if inner.isEmpty then SqlValue.Arr(Vector.empty)
     else SqlValue.Arr(splitMembers(inner, braces = true).map { (raw, quoted) =>
       if !quoted && raw.equalsIgnoreCase("NULL") then SqlValue.Null
-      else if !quoted && raw.startsWith("{") then parseArray(raw, elemOid)
-      else valueOf(elemOid, raw)
+      else if !quoted && raw.startsWith("{") then parseArray(raw, decodeElem)
+      else decodeElem(raw)
     })
 
   /** `(...)` -> Row; an UNquoted empty field is a SQL NULL, every
