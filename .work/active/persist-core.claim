@@ -1,6 +1,0 @@
-feature/persist-core 2026-09-01T08:23:05Z
-agent: claude-code
-heartbeat: 2026-09-01T08:23:05Z
-status: in-progress
-done-so-far: spec + stage 0 implemented, module tests green (JVM/JS/Native); full sbt test next
-next: rebase, full sbt test, ff-merge

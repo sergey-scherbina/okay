@@ -1,5 +1,17 @@
 # Changelog
 
+## persist-core — okay-persist: the durable log, stage 0
+Completed: 2026-09-01
+Spec-first (specs/persist.md — the partitioned log designed to its
+distributed extent: replication with epochs, delivery semantics,
+evolution, ops as values; built in stages). Stage 0: Record/Ack/
+Policy/Topic/Store, FNV-1a routing, MemoryStore cross-platform,
+FileStore on the JVM (versioned segment headers, CRC32C frames,
+torn-tail truncation on recovery, retention by whole segments);
+poll-on-end is a tested claim (the ui/mcp tailing contract). 23 JVM
++ 8 JS + 8 Native tests; full matrix green (one unrelated TestMcpHttp
+flake, filed). Commits 5ffce3c..ca24db3.
+
 ## ui-wire — server-driven UI; the tree is the capability list
 Completed: 2026-09-01
 WireJson (hand-mapped; codec-vector filed), Wire.serve as a pure
