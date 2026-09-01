@@ -5,9 +5,6 @@ The short-term queue agents pick from. The claim files in
 this file is what is worth doing next, in order.
 
 ## Doing
-(nothing claimed by this agent)
-
-## Queue
 - [ ] cluster-nio — `specs/http-backends.md` deferred it explicitly:
       "Replacing okay-cluster's transport. NIO makes it possible and
       that is a separate change with its own measurements."
@@ -15,6 +12,8 @@ this file is what is worth doing next, in order.
       `Nio.Conn` parks nothing. Measure first — on Java 21 the answer
       may be that Loom parking already costs nothing, and that is a
       result worth recording rather than a change worth making.
+
+## Queue
 - [ ] symbol-fold-cost — `Symbols.of` is 221.5us of a 628.7us index and
       nobody knows where it goes. The obvious answer was measured and
       REFUTED (rebuilding the Index per token bought 0). The diagnostic
