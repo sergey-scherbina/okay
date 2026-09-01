@@ -163,6 +163,17 @@ Every claim below was compiled, not assumed:
   direct-style lane owns the doctrine of WHERE direct blocks
   belong; this entry records only that the vocabularies do not
   collide.
+- **Conditions join the composition** (E21, 2026-09-01): `def
+  checked(n: Int): Env ?=> Int ! (Condition.Op + Pure) = direct {
+  val floor = wire[Env].min; if n < floor then
+  signal[Int](TooSmall(n)).? else n }` — a resumable signal inside
+  a direct block inside a capability door; `provide` installs the
+  environment, the policy decides at `Condition.run`, Resume flows
+  the repaired value back INTO the block. Conditions are a row
+  effect, so the E14 rule covers them: capability outside, effects
+  inside — no new seams. (Noticed: `import okay.*` + `import
+  okay.!.*` makes `Pure` ambiguous — qualify `okay.Pure`; same
+  shadow as TestDirectDoors hit.)
 - **The ctx layer composes with `!` cleanly, and the shipped doors
   are the proof** (E14, compiled against core): `Env ?=> (A ! F)`
   gives the ambient environment INSIDE `for`-comprehensions over
