@@ -1,5 +1,14 @@
 # Changelog
 
+## ctx-provide-n — the Cats mapN answer applied: 22 generated arities
+Completed: 2026-09-01 (landed as 8265a2e)
+Their "unbounded" is 22 generated overloads; so is ours — each a
+one-line delegation, tools/gen_provide.py regenerates, capped where
+the platform caps (ContextFunctionN ends at 22). Tested at 8 and at
+the cap; core green on all three platforms (234/14/14). The
+single-definition tuple route stays recorded as blocked (E11/E12)
+with the missing compiler piece named.
+
 ## persist-wire-repl — replication crosses the wire, machinery unchanged
 Completed: 2026-09-01
 The stage-2 replication surface joined the documented wire (specs/
