@@ -151,6 +151,19 @@ in-flight call rightly throws).
   is invisible to a watermark that already passed it — mitigated by
   a lag window (`col <= now() - ε`), never eliminated. The spec
   refuses to call this CDC.
+
+  The shipped shape (jdbc-poll-source): `Poll(db, offsets, group,
+  source, start)` — the watermark IS a consumer offset, stored
+  through persist `Offsets` (commit-as-record, refold-on-restart,
+  nothing new to make durable). `poll[A](sql)(watermarkOf)` binds
+  the current watermark as the statement's one parameter, decodes
+  through the typed layer, and answers a `Batch`: the decoded
+  PREFIX up to the first damaged row (the torn-tail doctrine — the
+  watermark advances only over what decoded, a damaged row stops
+  the advance and surfaces), plus the new watermark. The lag
+  window lives in the CALLER's SQL text (`and col <= ...`), where
+  the DBA can read it — the API adds no second language for it.
+  At-least-once by construction: the commit follows the hand-over.
 - **True CDC** — their WAL (Debezium-class). An interop question,
   out of scope here; if a deployment has it, its stream is just a
   source that appends into an okay-persist topic, and everything
