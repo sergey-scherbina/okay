@@ -1,5 +1,13 @@
 # Changelog
 
+## security-mcp — MCP authorization: the challenge that teaches
+Completed: 2026-09-01
+McpAuth: RFC 9728 metadata (public — it is how strangers learn), the
+protected route (401 with resource_metadata), discovery with named
+Lefts, connect onto a bearer-carrying link. The loop test: the same
+agent call works protected and open. MCP's last parked item closed.
+4 tests; matrix 1011.
+
 ## sql-seam-spec — specs/sql.md: SQL without a mandatory JDBC
 Completed: 2026-09-01
 The typed relational contract (rows/verify/transact, jdbc.md)
