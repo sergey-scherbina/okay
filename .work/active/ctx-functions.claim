@@ -1,7 +1,0 @@
-feature/ctx-functions 2026-09-02T13:00:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-02T13:00:00Z
-status: in-progress
-done-so-far:
-next: specs/context-functions.md - the FULL verified map (E1-E8) with every idea specced or gated or rejected; BACKLOG slugs; then the top two implemented: implicit prompts for Scope (ADDITIVE, dialog lane's file, announced) and Cut, and Obs Traced.route
-files: specs/context-functions.md (new), specs/{delimited-control,obs}.md pointers, BACKLOG.md; okay-ui Scope.scala (additive) + TestScope, okay-llm Cut.scala (additive) + TestCut, okay-obs Traced.scala (new) + test

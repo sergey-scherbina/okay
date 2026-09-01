@@ -1,5 +1,21 @@
 # Changelog
 
+## ctx-functions — what the capability arrows buy us, verified first
+Completed: 2026-09-01 (landed as 67e11ad)
+specs/context-functions.md: the FULL map on its experimental base
+(E1-E8 — same-type rebinding impossible; type-changing given-chains
+linear; the import-thread works via NAME shadowing incl. LTS;
+nested using-params resolve NEAREST; stored ctx-fns self-apply;
+macros cannot rescope). Shipped: implicit prompts for Scope
+(mark/exit/bounded) and Cut (guard/violation/watched) — exit to the
+nearest scope by nesting, bound prompts still cross; Obs
+Traced.route (Tracer-capability routes, per-request roots, stored
+route values self-wiring). Filed: ctx-blocking, ctx-edge-docs,
+ctx-wiring, ctx-reader-bridge (gates named). Rejected with reasons:
+ui builder DSL, macro direct-style. Rode along: the sqlite
+DriverManager race named (third telling), demo-chat-live-budget
+filed. Matrix 1588.
+
 ## demo-chat-ungated — the model decides when to match
 Completed: 2026-09-01
 
