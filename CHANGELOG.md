@@ -48,6 +48,20 @@ configured interpreter (wrong-venv refuses loudly). The
 JVM-python question answered once: Jython dead, JEP/ScalaPy
 shared-fate, GraalPy a watched future engine behind the unchanged
 seam. Spec only; py-subprocess, py-worker, py-arrow filed.
+## nio-close-race (partial) — narrowed to a serve-fiber stall, not fixed
+Completed: 2026-09-01 (investigation landed; fix still open in BACKLOG)
+
+Three harness generations: racy counters, per-round futures, and a
+leak-free sequential trace. Established: the serve fiber STALLS (a
+write completion that never fires — not an exception, onComplete never
+runs) after 0–4 writes, at ~1.3/1000 rounds; the client usually sees
+premature EOF, sometimes a pure hang. The okay Async driver was read
+and cleared — the Await cell CAS protocol is sound. Prime suspect is
+the default AsynchronousChannelGroup under rapid channel churn.
+Also landed per user request: law comments moved above each law in all
+theory code blocks (phone readability), and chapter 7 now names the
+origami tradition — Gibbons 2003, catamorphisms/anamorphisms, and the
+Chunks pipeline as a hylomorphism with the optimizer as fusion laws.
 
 ## ui-keyed-diff — a moved child is a move, not a Replace
 Completed: 2026-09-01

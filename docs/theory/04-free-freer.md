@@ -20,9 +20,11 @@ that operations must be *shaped* to carry their continuation. Their
 **freer** monad stores the continuation *beside* the operation instead:
 
 ```scala
-enum Free[F[+_], A] {                                  // Free.scala:29
+// Free.scala:29
+enum Free[F[+_], A] {
   case Pure(a: A)
-  case Inject(a: F[A])                                 // an operation, bare
+  // an operation, bare
+  case Inject(a: F[A])
   case Bind[F[+_], A, B](a: Free[F, A], f: A => Free[F, B]) ...
 }
 // Free.scala:22 — the point, in one comment:
@@ -55,8 +57,10 @@ the one interpreter**. `Free.fold` (`Free.scala:51–58`) is a `@tailrec`
 loop whose first two cases *are* the monad laws used as rewrite rules:
 
 ```scala
-case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).fold(p)(h)  // associativity
-case Bind(Pure(a), f)    => f(a).fold(p)(h)                      // left identity
+// associativity
+case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)).fold(p)(h)
+// left identity
+case Bind(Pure(a), f)    => f(a).fold(p)(h)
 ```
 
 Every pass rotates left-nests right and discharges pure prefixes, so

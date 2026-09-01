@@ -43,6 +43,36 @@ delimited control, and `Writer.uncons` (chapter 5's stream-with-result)
 is the richer observation `Either[A, (W, rest)]` — codata "with the
 answer carried at the end" (`Stream.scala:22`).
 
+The tradition has names worth knowing. The recursion-schemes paper
+gave the schemes their birds-and-bananas notation — a fold is a
+**catamorphism**, an unfold an **anamorphism**, their composition a
+hylomorphism — and Jeremy Gibbons' "origami programming" [Gibbons
+2003] made the discipline explicit: write no explicit recursion;
+express every traversal as a fold or an unfold, and the program's
+structure becomes a theorem about it (fusion laws, deforestation). okay
+is origami in that sense wherever it streams: a `Chunks` pipeline is a
+hylomorphism — an unfold at the source (`Chunks.generate`, `range`,
+`fromIterator`), chunk-to-chunk arrows in the middle, a catamorphism
+at the sink (`Chunks.fold`) — and the `Pipeline` optimizer of chapter
+6 is the fusion laws applied as rewrites: map fusion IS the functor
+law, filter fusion and take-pushdown are the fold-fusion family, each
+property-tested rather than assumed.
+
+The tradition has names worth knowing. The recursion-schemes paper
+gave the schemes their birds-and-bananas notation — a fold is a
+**catamorphism**, an unfold an **anamorphism**, their composition a
+hylomorphism — and Jeremy Gibbons' "origami programming" [Gibbons
+2003] made the discipline explicit: write no explicit recursion;
+express every traversal as a fold or an unfold, and the program's
+structure becomes a theorem about it (fusion laws, deforestation). okay
+is origami in that sense wherever it streams: a `Chunks` pipeline is a
+hylomorphism — an unfold at the source (`Chunks.generate`, `range`,
+`fromIterator`), chunk-to-chunk arrows in the middle, a catamorphism
+at the sink (`Chunks.fold`) — and the `Pipeline` optimizer of chapter
+6 is the fusion laws applied as rewrites: map fusion IS the functor
+law, filter fusion and take-pushdown are the fold-fusion family, each
+property-tested rather than assumed.
+
 Two engineering notes the theory predicts and the benchmarks confirm.
 Chunking (`Chunks[A] = Producer[Chunk[A]]`) amortizes the tree step of
 chapter 4 over a batch, which is the whole arithmetic of the streaming
@@ -86,6 +116,8 @@ where that property was established.
 - Erik Meijer, Maarten Fokkinga, Ross Paterson. *Functional
   programming with bananas, lenses, envelopes and barbed wire.*
   FPCA 1991.
+- Jeremy Gibbons. *Origami programming.* In The Fun of Programming,
+  Palgrave, 2003.
 - Philippe Flajolet, Éric Fusy, Olivier Gandouet, Frédéric Meunier.
   *HyperLogLog: the analysis of a near-optimal cardinality estimation
   algorithm.* AofA 2007.

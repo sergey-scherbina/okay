@@ -18,9 +18,12 @@ with two operations —
 `flatMap`:
 
 ```scala
-pure(a) >>= f    ==  f(a)                        // left identity
-m >>= pure       ==  m                           // right identity
-(m >>= f) >>= g  ==  m >>= (x => f(x) >>= g)     // associativity
+// left identity
+pure(a) >>= f    ==  f(a)
+// right identity
+m >>= pure       ==  m
+// associativity
+(m >>= f) >>= g  ==  m >>= (x => f(x) >>= g)
 ```
 
 Each says something operational, not merely algebraic.
@@ -71,9 +74,12 @@ okay never *requires* the functor structure of its effect signatures.
 okay's computation type is spelled as an infix operator:
 
 ```scala
-infix type ![A, F[+_]] = Free[F, A]              // Effects.scala:40
-inline def pure[F[+_], A](a: A): A ! F           // Effects.scala:43
-inline def effect[F[+_], A](a: F[A]): A ! F      // Effects.scala:46
+// Effects.scala:40
+infix type ![A, F[+_]] = Free[F, A]
+// Effects.scala:43
+inline def pure[F[+_], A](a: A): A ! F
+// Effects.scala:46
+inline def effect[F[+_], A](a: F[A]): A ! F
 ```
 
 `A ! F` reads "an `A`, computed with effects `F`". The monad operations

@@ -10,8 +10,10 @@ that moves an index from `S` to `R`; `pure` sits on the diagonal
 function composition:
 
 ```scala
-trait ParaMonad[M[_, _, _]] {                      // Monad.scala:11
-  def pure[A, R](a: A): M[A, R, R]                 // identity: R -> R
+// Monad.scala:11
+trait ParaMonad[M[_, _, _]] {
+  // identity: R -> R
+  def pure[A, R](a: A): M[A, R, R]
   extension [A, S, R](m: M[A, S, R])
     // composition: (S -> R) o (S2 -> S) = S2 -> R
     def flatMap[B, S2](f: A => M[B, S2, S]): M[B, S2, R]

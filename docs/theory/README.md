@@ -37,11 +37,15 @@ These five spellings appear on nearly every page, all from
 `Effects.scala`:
 
 ```scala
-infix type ![A, F[+_]] = Free[F, A]     // Effects.scala:40 — "A, computed with effects F"
-infix type %[F[_, _], S] = F[S, *]      // Effects.scala:28 — fix a signature's first parameter
-type Pure = Nothing                     // Effects.scala:34 — the empty effect row
+// Effects.scala:40 — "A, computed with effects F"
+infix type ![A, F[+_]] = Free[F, A]
+// Effects.scala:28 — fix a signature's first parameter
+infix type %[F[_, _], S] = F[S, *]
+// Effects.scala:34 — the empty effect row
+type Pure = Nothing
 // F + G is a union of signatures; a row is built with % and +
-infix type !>[F[_], S] = Interpr[F, Cont, S]   // Effects.scala:59 — a Cont-valued handler
+// Effects.scala:59 — a Cont-valued handler
+infix type !>[F[_], S] = Interpr[F, Cont, S]
 ```
 
 So `A ! (State % Int + Throws % String)` reads: *a program computing
