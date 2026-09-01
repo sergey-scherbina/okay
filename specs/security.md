@@ -211,7 +211,7 @@ object OAuth2:                           // the client flows, over trait Http
   id_token is exactly the input an attacker crafts.
 - Satellites when needed: argon2 (a real KDF, with a dependency),
   ES256 (the JOSE raw-vs-DER signature dance, its own tested task).
-- **4 — security-es256 (this claim)**: ES256 (ECDSA over P-256 with
+- **4 — security-es256**: SHIPPED. ES256 (ECDSA over P-256 with
   SHA-256) joins HS256/RS256. The task IS the signature format: JOSE
   carries `R||S` — two fixed 32-byte big-endian integers, 64 bytes
   total — while JCA and node speak DER `SEQUENCE(INTEGER r, INTEGER
@@ -242,24 +242,24 @@ object OAuth2:                           // the client flows, over trait Http
   - `Keys` (jvm) gains `ecPublic`/`ecPair` doors.
 
   Behavior:
-  - [ ] round-trip: sign with EcPair -> compact JWT whose signature
+  - [x] round-trip: sign with EcPair -> compact JWT whose signature
         segment is EXACTLY 64 bytes (proof it is JOSE, not DER);
         verify with EcPublic -> Ok with the principal
-  - [ ] the dance is total both ways: high-bit r/s gain and shed the
+  - [x] the dance is total both ways: high-bit r/s gain and shed the
         0x00 pad, short r left-pads to 32, r=0 encodes as one zero
         byte; derToJose(joseToDer(raw)) == raw for every valid raw
-  - [ ] hostile bytes refuse as None: raw of length 0/63/65, DER
+  - [x] hostile bytes refuse as None: raw of length 0/63/65, DER
         truncated mid-integer, wrong outer tag, integer longer than
         33 bytes, trailing garbage after the sequence
-  - [ ] a 63- or 65-byte signature segment on the wire is a refusal,
+  - [x] a 63- or 65-byte signature segment on the wire is a refusal,
         not a throw
-  - [ ] confusion refused both ways: an ES256 token against an Hmac
+  - [x] confusion refused both ways: an ES256 token against an Hmac
         or RSA key, and an HS256/RS256 token against an EC key
-  - [ ] tampered payload and a stranger's EC key both refuse by name
-  - [ ] JWKS: an EC entry parses and its key verifies; an entry
+  - [x] tampered payload and a stranger's EC key both refuse by name
+  - [x] JWKS: an EC entry parses and its key verifies; an entry
         missing y, and one with crv P-384, are skipped while the
         good keys around them survive
-  - [ ] the pure battery runs on JS too (shared test) — the dance
+  - [x] the pure battery runs on JS too (shared test) — the dance
         exists everywhere even while EC keys are JVM-only
 
 ## Out of scope (module-wide, until a stage names them)

@@ -94,6 +94,13 @@ trait Crypto:
    * None where the platform cannot build one, which is what makes
    * JWKS parseable on every platform and verifying where keys exist */
   def rsaPublicKey(modulus: BigInt, exponent: BigInt): Option[Crypto.Handle]
+  /** ECDSA P-256/SHA-256, DER-shaped at the seam (each platform's
+   * native form); the JOSE raw R||S dance is Es256's, pure and shared */
+  def signEcdsaSha256(key: Crypto.Handle, data: Array[Byte]): Array[Byte]
+  def verifyEcdsaSha256(key: Crypto.Handle, data: Array[Byte], derSig: Array[Byte]): Boolean
+  /** a P-256 public key from its point (a JWKS entry's x and y) —
+   * None where the platform cannot build one, same rule as RSA */
+  def ecPublicKey(x: BigInt, y: BigInt): Option[Crypto.Handle]
 
 object Crypto:
   /**

@@ -447,8 +447,10 @@ lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
   .jsSettings(
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
-    Test / unmanagedSourceDirectories :=
-      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-js"),
+    // += (not :=) so the SHARED test dir survives: the pure Es256
+    // battery runs on JS precisely because it needs no crypto
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-js",
     // node:crypto arrives by require, which needs a module kind
     scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.CommonJSModule)),
   )

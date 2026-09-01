@@ -67,3 +67,13 @@ given Crypto = new Crypto:
 
   def rsaPublicKey(modulus: BigInt, exponent: BigInt): Option[Crypto.Handle] =
     None   // RS256 is JVM until a JWK-native verify arrives
+
+  def signEcdsaSha256(key: Crypto.Handle, data: Array[Byte]): Array[Byte] =
+    throw UnsupportedOperationException("ECDSA signing is a JVM ability (same door as RSA)")
+
+  def verifyEcdsaSha256(key: Crypto.Handle, data: Array[Byte],
+                        derSig: Array[Byte]): Boolean =
+    false   // no constructible EC key on this platform, so no true answer
+
+  def ecPublicKey(x: BigInt, y: BigInt): Option[Crypto.Handle] =
+    None   // ES256 is JVM by the same reasoning as RSA — and the same follow-up

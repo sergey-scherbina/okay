@@ -3,9 +3,9 @@ package okay.security
 import okay.codec.Json
 
 /**
- * JWT over the Crypto seam: HS256 and RS256 in stage 0 (ES256 is
- * staged — JOSE's raw R||S signature format is not JCA's DER, and
- * that conversion deserves its own tested task).
+ * JWT over the Crypto seam: HS256 and RS256 from stage 0, ES256 from
+ * stage 4 (the raw R||S <-> DER dance lives in Es256, pure and
+ * tested on every platform).
  *
  * Verification is TOTAL and refuses by name: tampered, wrong key,
  * wrong audience, expired, not yet valid, `alg: none`, and the
@@ -20,6 +20,8 @@ object Jwt {
     case Hmac(secret: Array[Byte])
     case RsaPublic(key: Crypto.Handle)
     case RsaPair(pub: Crypto.Handle, priv: Crypto.Handle)
+    case EcPublic(key: Crypto.Handle)
+    case EcPair(pub: Crypto.Handle, priv: Crypto.Handle)
 
   private val enc = java.util.Base64.getUrlEncoder.withoutPadding
   private val dec = java.util.Base64.getUrlDecoder
@@ -33,6 +35,7 @@ object Jwt {
   def sign(claims: Claims, key: Key, kid: Option[String] = None)(using c: Crypto): String =
     val alg = key match
       case Key.Hmac(_) => "HS256"
+      case Key.EcPublic(_) | Key.EcPair(_, _) => "ES256"
       case _ => "RS256"
     val header = Json.JObj(Vector(
       "alg" -> Json.JStr(alg), "typ" -> Json.JStr("JWT")) ++
@@ -41,7 +44,13 @@ object Jwt {
     val sig = key match
       case Key.Hmac(secret) => c.hmacSha256(secret, signing.getBytes("UTF-8"))
       case Key.RsaPair(_, priv) => c.signRsaSha256(priv, signing.getBytes("UTF-8"))
-      case Key.RsaPublic(_) =>
+      case Key.EcPair(_, priv) =>
+        val der = c.signEcdsaSha256(priv, signing.getBytes("UTF-8"))
+        // the platform emitted this DER; failing to read it back is a
+        // broken seam, not hostile input
+        Es256.derToJose(der).getOrElse(
+          throw IllegalStateException("the platform's DER did not parse"))
+      case Key.RsaPublic(_) | Key.EcPublic(_) =>
         throw IllegalArgumentException("a public key cannot sign")   // a broken invariant, not hostile input
     signing + "." + b64(sig)
 
@@ -72,6 +81,11 @@ object Jwt {
                     Crypto.constantTimeEquals(c.hmacSha256(secret, signed), sig)
                   case (Key.RsaPublic(pub), "RS256") => c.verifyRsaSha256(pub, signed, sig)
                   case (Key.RsaPair(pub, _), "RS256") => c.verifyRsaSha256(pub, signed, sig)
+                  case (Key.EcPublic(pub), "ES256") =>
+                    // a 63- or 65-byte signature is a refusal here, not a throw
+                    Es256.joseToDer(sig).exists(der => c.verifyEcdsaSha256(pub, signed, der))
+                  case (Key.EcPair(pub, _), "ES256") =>
+                    Es256.joseToDer(sig).exists(der => c.verifyEcdsaSha256(pub, signed, der))
                   case _ => false
                 if !holds then Verified.No(s"signature does not verify (alg '$alg')")
                 else
@@ -97,7 +111,7 @@ object Jwt {
 
 /**
  * JWKS — the key set an issuer publishes, parsed into verifying keys
- * (RSA in stage 0). `fetch` is one Http call; `parse` is total: a
+ * (RSA from stage 0, P-256 EC from stage 4). `fetch` is one Http call; `parse` is total: a
  * damaged or unsupported entry is skipped, not thrown.
  */
 object Jwks {
@@ -107,7 +121,8 @@ object Jwks {
 
   def parse(j: Json)(using c: Crypto): Map[String, Jwt.Key] =
     Claims.field(j, "keys") match
-      case Some(Json.JArr(entries)) => entries.flatMap(rsa).toMap
+      case Some(Json.JArr(entries)) =>
+        entries.flatMap(e => rsa(e).orElse(ec(e))).toMap
       case _ => Map.empty
 
   private def rsa(j: Json)(using c: Crypto): Option[(String, Jwt.Key)] =
@@ -119,6 +134,15 @@ object Jwks {
       // file compile and parse everywhere, and verify where keys exist
       key <- c.rsaPublicKey(n, e)
     yield (Claims.str(j, "kid").getOrElse(""), Jwt.Key.RsaPublic(key))
+
+  private def ec(j: Json)(using c: Crypto): Option[(String, Jwt.Key)] =
+    for
+      kty <- Claims.str(j, "kty") if kty == "EC"
+      crv <- Claims.str(j, "crv") if crv == "P-256"   // other curves are other algs — skipped, not thrown
+      x <- Claims.str(j, "x").flatMap(b64uint)
+      y <- Claims.str(j, "y").flatMap(b64uint)
+      key <- c.ecPublicKey(x, y)
+    yield (Claims.str(j, "kid").getOrElse(""), Jwt.Key.EcPublic(key))
 
   private def b64uint(s: String): Option[BigInt] =
     try Some(BigInt(1, java.util.Base64.getUrlDecoder.decode(s)))

@@ -48,6 +48,31 @@ given Crypto = new Crypto:
       java.security.spec.RSAPublicKeySpec(modulus.bigInteger, exponent.bigInteger))))
     catch case _: Exception => None
 
+  def signEcdsaSha256(key: Crypto.Handle, data: Array[Byte]): Array[Byte] =
+    val s = java.security.Signature.getInstance("SHA256withECDSA")
+    s.initSign(key.value.asInstanceOf[java.security.PrivateKey])
+    s.update(data)
+    s.sign()
+
+  def verifyEcdsaSha256(key: Crypto.Handle, data: Array[Byte],
+                        derSig: Array[Byte]): Boolean =
+    try
+      val s = java.security.Signature.getInstance("SHA256withECDSA")
+      s.initVerify(key.value.asInstanceOf[java.security.PublicKey])
+      s.update(data)
+      s.verify(derSig)
+    catch case _: Exception => false   // same rule as RSA: a refusal, not a fault
+
+  def ecPublicKey(x: BigInt, y: BigInt): Option[Crypto.Handle] =
+    try
+      val params = java.security.AlgorithmParameters.getInstance("EC")
+      params.init(java.security.spec.ECGenParameterSpec("secp256r1"))
+      val spec = params.getParameterSpec(classOf[java.security.spec.ECParameterSpec])
+      val point = java.security.spec.ECPoint(x.bigInteger, y.bigInteger)
+      Some(Crypto.Handle(java.security.KeyFactory.getInstance("EC").generatePublic(
+        java.security.spec.ECPublicKeySpec(point, spec))))
+    catch case _: Exception => None   // a point off the curve is a damaged JWKS entry
+
 /** the JVM's typed doors into the opaque handle — tests and callers
  * hold real java.security keys; the shared surface does not */
 object Keys:
@@ -55,3 +80,7 @@ object Keys:
     Jwt.Key.RsaPublic(Crypto.Handle(k))
   def rsaPair(pub: java.security.PublicKey, priv: java.security.PrivateKey): Jwt.Key =
     Jwt.Key.RsaPair(Crypto.Handle(pub), Crypto.Handle(priv))
+  def ecPublic(k: java.security.PublicKey): Jwt.Key =
+    Jwt.Key.EcPublic(Crypto.Handle(k))
+  def ecPair(pub: java.security.PublicKey, priv: java.security.PrivateKey): Jwt.Key =
+    Jwt.Key.EcPair(Crypto.Handle(pub), Crypto.Handle(priv))
