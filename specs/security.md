@@ -184,8 +184,20 @@ object OAuth2:                           // the client flows, over trait Http
         as the trust boundary, not silently followed)... reformulated:
         discover ANSWERS what it found; connect takes the Discovered
         VALUE, so the caller sees the AS before any secret goes to it
-- **2 — security-node**: the Crypto seam over node:crypto; the JS leg
-  verifies.
+- **2 — security-node**: SHIPPED. The Crypto seam over node:crypto:
+  HMAC-SHA256, SHA-256, PBKDF2 and secure random are real on JS, and
+  the JS suite runs the SAME shared code under Node — HS256 JWTs,
+  passwords, API keys, and PKCE pinned to the RFC 7636 appendix-B
+  vector (checked against the standard, not against ourselves).
+
+  What the linker taught: `java.security` key types do not exist on
+  JS even as signatures, so the shared surface now carries an OPAQUE
+  `Crypto.Handle` — each platform knows what it wrapped, the JVM's
+  typed doors are `Keys.rsaPublic/rsaPair` (scala-jvm), the cast back
+  happens at the seam and nowhere else, and JWKS PARSES everywhere
+  while verifying where keys exist (`rsaPublicKey` answers None on
+  JS). RS256 stays JVM with that reason; a JWK-native verify is the
+  follow-up if JS ever needs it.
 - **3 — security-oidc**: id_token validation, discovery, nonce.
 - Satellites when needed: argon2 (a real KDF, with a dependency),
   ES256 (the JOSE raw-vs-DER signature dance, its own tested task).

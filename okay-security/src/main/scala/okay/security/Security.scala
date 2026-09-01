@@ -86,12 +86,28 @@ enum Verified:
 trait Crypto:
   def hmacSha256(key: Array[Byte], data: Array[Byte]): Array[Byte]
   def sha256(data: Array[Byte]): Array[Byte]
-  def signRsaSha256(key: java.security.PrivateKey, data: Array[Byte]): Array[Byte]
-  def verifyRsaSha256(key: java.security.PublicKey, data: Array[Byte], sig: Array[Byte]): Boolean
+  def signRsaSha256(key: Crypto.Handle, data: Array[Byte]): Array[Byte]
+  def verifyRsaSha256(key: Crypto.Handle, data: Array[Byte], sig: Array[Byte]): Boolean
   def pbkdf2(password: Array[Char], salt: Array[Byte], iterations: Int, bits: Int): Array[Byte]
   def randomBytes(n: Int): Array[Byte]
+  /** an RSA public key from its material (a JWKS entry's n and e) —
+   * None where the platform cannot build one, which is what makes
+   * JWKS parseable on every platform and verifying where keys exist */
+  def rsaPublicKey(modulus: BigInt, exponent: BigInt): Option[Crypto.Handle]
 
 object Crypto:
+  /**
+   * A PLATFORM key, opaquely: `java.security` types do not exist on
+   * JS even as signatures the linker will accept, so the shared
+   * surface carries a handle and each platform knows what it wrapped.
+   * The JVM's typed constructors live in `Keys` (scala-jvm); the cast
+   * back happens at the seam and nowhere else.
+   */
+  opaque type Handle = AnyRef
+  object Handle:
+    def apply(a: AnyRef): Handle = a
+    extension (h: Handle) def value: AnyRef = h
+
   /** constant-time equality — the compare that does not leak how far
    * it got; every verifier here goes through it */
   def constantTimeEquals(a: Array[Byte], b: Array[Byte]): Boolean =

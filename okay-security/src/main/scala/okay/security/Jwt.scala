@@ -18,8 +18,8 @@ object Jwt {
 
   enum Key:
     case Hmac(secret: Array[Byte])
-    case RsaPublic(key: java.security.PublicKey)
-    case RsaPair(pub: java.security.PublicKey, priv: java.security.PrivateKey)
+    case RsaPublic(key: Crypto.Handle)
+    case RsaPair(pub: Crypto.Handle, priv: Crypto.Handle)
 
   private val enc = java.util.Base64.getUrlEncoder.withoutPadding
   private val dec = java.util.Base64.getUrlDecoder
@@ -105,26 +105,26 @@ object Jwks {
   import okay.{!, Async}
   import okay.http.{Http, Request}
 
-  def parse(j: Json): Map[String, Jwt.Key] =
+  def parse(j: Json)(using c: Crypto): Map[String, Jwt.Key] =
     Claims.field(j, "keys") match
       case Some(Json.JArr(entries)) => entries.flatMap(rsa).toMap
       case _ => Map.empty
 
-  private def rsa(j: Json): Option[(String, Jwt.Key)] =
+  private def rsa(j: Json)(using c: Crypto): Option[(String, Jwt.Key)] =
     for
       kty <- Claims.str(j, "kty") if kty == "RSA"
       n <- Claims.str(j, "n").flatMap(b64uint)
       e <- Claims.str(j, "e").flatMap(b64uint)
-      key <- try Some(java.security.KeyFactory.getInstance("RSA").generatePublic(
-        java.security.spec.RSAPublicKeySpec(n.bigInteger, e.bigInteger)))
-      catch case _: Exception => None
+      // building the key is the SEAM's job — which is what lets this
+      // file compile and parse everywhere, and verify where keys exist
+      key <- c.rsaPublicKey(n, e)
     yield (Claims.str(j, "kid").getOrElse(""), Jwt.Key.RsaPublic(key))
 
   private def b64uint(s: String): Option[BigInt] =
     try Some(BigInt(1, java.util.Base64.getUrlDecoder.decode(s)))
     catch case _: IllegalArgumentException => None
 
-  def fetch(http: Http, url: String): Map[String, Jwt.Key] ! Async =
+  def fetch(http: Http, url: String)(using Crypto): Map[String, Jwt.Key] ! Async =
     http.send(Request.get(url)).flatMap(r => okay.http.Http.text(r))
       .map(t => parse(Json.parse(t)))
 }

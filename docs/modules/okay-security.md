@@ -18,8 +18,12 @@ reason. Zero dependencies — the JDK carries the primitives.
 
 | `McpAuth` | stage 1: the RFC 9728 document, the protected MCP route (401 with resource_metadata), discovery (401 -> resource metadata -> AS metadata, missing links as named Lefts), and `connect` — the machine grant onto a bearer-carrying `McpLink`; the loop test proves the same agent call works protected and open |
 
-Staged next (BACKLOG): security-node (the seam over node:crypto),
-security-oidc, ES256 and an argon2 satellite.
+The JS leg verifies (security-node): the same shared code under
+Node via node:crypto — HS256 JWTs, passwords, API keys, PKCE pinned
+to the RFC 7636 vector. RS256 stays JVM: platform key types are an
+opaque `Crypto.Handle`, built only where material exists.
+
+Staged next (BACKLOG): security-oidc, ES256 and an argon2 satellite.
 
 Not an authorization SERVER: this module verifies and obtains tokens;
 it does not issue codes to third parties. The stub AS in its tests is
