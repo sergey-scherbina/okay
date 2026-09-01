@@ -12,6 +12,8 @@
       full tree then patches
 - [ ] ui-durable — event-sourced sessions: intent-first journal
       (Durable shape), refold recovery, snapshots
+- [ ] ui-dom-patch — a raw-DOM patch Backend over js.Dynamic (the
+      React host covers the browser today; Host.diffing is ready)
 - [ ] ui-keyed-diff — keyed children matching in the diff (API
       unchanged, keys already in the tree)
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam

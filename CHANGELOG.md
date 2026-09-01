@@ -1,5 +1,14 @@
 # Changelog
 
+## ui — okay-ui v1: the toolkit that is not a toolkit
+Completed: 2026-09-01
+Spec-first (specs/ui.md, incl. the architecture above v1). The view
+as a value (keys, not closures), diff+patch with the agreement law,
+the loop over merged sources, terminal host (pure frames + stty),
+React-shaped host (pure Ui=>Elem, five-line glue), Form as the fifth
+Schema algebra (typed + dynamic), and MCP elicitation closed end to
+end. 20 new tests. Landed: e5e19db.
+
 ## mcp — the Model Context Protocol, complete
 Completed: 2026-09-01
 Six tasks, spec-first (specs/mcp.md): tools/resources/prompts both
