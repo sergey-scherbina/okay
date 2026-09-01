@@ -166,12 +166,12 @@ A condition is an operation, so the direct machinery applies as-is —
 and the direct reading is the Common Lisp reading: a signal is a
 CALL THAT MAY RETURN.
 
-- [ ] `signal[Int]("how many?").?` in a direct block resumes AT the
+- [x] `signal[Int]("how many?").?` in a direct block resumes AT the
   mark with the policy's value; progress before the signal survives
-- [ ] `within(...)(...)` reflects with `.?` (or runs as a bare
+- [x] `within(...)(...)` reflects with `.?` (or runs as a bare
   statement); Invoke unwinds exactly to the frame, code between
   never resumes — semantics identical to the monadic spelling
-- [ ] the `frame` door: `Condition.frame(name)(directBody)(recover)`
+- [x] the `frame` door: `Condition.frame(name)(directBody)(recover)`
   takes the body as a DIRECT block (two-line door: it forwards to
   `within` over `direct`), so nested `direct { }` ceremony
   disappears at restart frames

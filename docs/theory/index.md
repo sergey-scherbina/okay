@@ -52,6 +52,12 @@ rest; capabilities gate the colorless version — and why multi-shot
 survives here and not on Loom.
 *Filinski 1994/1999 · Kameyama & Hasegawa 2003 · Flanagan et al. 1993 · Brachthäuser et al. 2020 · Lindley, McBride & McLaughlin 2017*
 
+**[9 · Conditions: resumable exceptions](09-conditions.md)**
+Signal without unwinding, restarts as prompts, the policy at the
+boundary — and the direct reading where a signal is a call that may
+return.
+*Goldberg & Robson 1983 · Steele 1990 · Pitman 2001 · Plotkin & Pretnar 2009/2013 · Zhang, Salvaneschi & Myers 2020*
+
 ---
 
 The [map](README.md) explains the notation (`A ! F`, `%`, `+`, `/>`),

@@ -109,6 +109,17 @@ object Condition {
     }
   }
 
+  /**
+   * The direct-style door (specs/condition.md, Direct style): the
+   * restart frame's body as a direct block — two lines, forwarding
+   * to `within` over `direct`, per the door recipe of
+   * docs/capabilities.md. The explicit `within` stays the floor.
+   */
+  inline def frame[A, F[+_]](name: String)
+    (inline body: Direct.DirectCtx[[X] =>> X ! (Op + F)] ?=> A)
+    (recover: Any => A): A ! (Op + F) =
+    within[A, F](name)(Direct.direct[[X] =>> X ! (Op + F)](body))(recover)
+
   /** the Delim/Resource precedent: splitting a row on Op is a
    * total test — one class carries the whole signature */
   given TypeableK[Op] = typeableK(classOf[Op[?]])

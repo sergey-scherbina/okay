@@ -341,6 +341,42 @@ element type from — the macro also consults the base type at the
 block's monad (`Option[Nothing]`), and every guess is verified with
 `<:<` before it is believed.
 
+## Resumable exceptions read as they were meant to
+
+Okay's condition system (`Condition.scala`,
+[specs/condition.md](../specs/condition.md)) is the road between
+throwing and tolerating: `signal` raises WITHOUT unwinding, a policy
+decides while the signal point is still live, and named restarts are
+frames the policy can unwind to. In direct style a condition reads
+exactly as Common Lisp meant it — **a call that may return**:
+
+```scala
+val prog: Int ! Op = direct {
+  steps :+= "before"
+  val v = signal[Int]("how many?").?   // raise; Resume(41) lands HERE
+  steps :+= s"after($v)"               // ... and this line runs
+  v + 1
+}
+Condition.run((_, _) => Resume(41))(prog)   // 42; before, after(41)
+```
+
+Restart frames take a direct body through the `frame` door (two
+lines, forwarding to `within` over `direct`):
+
+```scala
+val a = frame[String, Pure]("skip") {
+  val v = signal[String]("bad").?      // policy says Invoke("skip", x)
+  v                                    // ...so this never runs
+}(v => s"skipped:$v").?                // ...and the frame answers
+```
+
+And the operator's story — repair a malformed element mid-stream and
+continue — is a for-do loop with a signal in the body: the policy
+resumes each signal point, the loop keeps going (`TestConditionDirect`,
+"repair per element"). The two recorded roads onward — lexical
+restarts as capabilities (a nonexistent restart uncompilable in
+scope) and typed condition/answer pairs — are in BACKLOG.md.
+
 ## Choosing a layer
 
 | you are writing | use |
