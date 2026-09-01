@@ -77,6 +77,11 @@
       answered on the expected port) — all green alone, all under
       parallel suites in one sbt JVM; suspect ephemeral-port reuse
       between a closing listener and a dialing client
+- [ ] ui-cmd-flaky — okay.ui.TestCmd fails 1-2 of 3 with a VARYING
+      subset run to run (timing in the command loop: "interim screen
+      shows", "a press launches", "a throwing command forfeits") —
+      REPRODUCED ON PRISTINE MASTER (worktree probe at c20d41a,
+      2026-09-01), so it landed flaky; owner: the ui-cmd lane
 - [ ] http-flaky-mcphttp — TestMcpHttp "one Serving, three wires"
       answered 503 once in a full-matrix run (2026-09-01); green
       alone and on suite rerun — likely a port/readiness race
