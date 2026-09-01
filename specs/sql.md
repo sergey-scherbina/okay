@@ -152,13 +152,14 @@ import — and the platforms it runs on.
 
 ## Behavior
 
-- [ ] the typed layer (rows/params/verify/transact) compiles and
+- [x] the typed layer (rows/params/verify/transact) compiles and
       tests against `Sql` with ZERO references to java.sql above
       the driver line (asserted structurally: okay-sql cross-builds
       for JS and Native, platforms where java.sql does not exist —
       a stronger check than any import grep)
-- [ ] the JDBC driver passes the full specs/jdbc.md behavior list
-      through the seam (same tests, re-targeted — H2, no-DDL user)
+- [x] the JDBC driver passes the specs/jdbc.md behavior list
+      through the seam (H2, no-DDL user; the write-bridge and
+      poll-source items ride their own filed slugs)
 - [ ] the pg driver: startup + SCRAM auth, extended-protocol query
       with portal streaming at constant memory, params and rows
       through SqlValue, transact begin/commit/rollback with granted
@@ -233,5 +234,45 @@ import — and the platforms it runs on.
 
 ## Results
 
-(after implementation — the two-driver acceptance run, pg-wire
-against live Postgres, the no-java.sql structural check)
+The seam and its first driver landed (sql-seam, 2026-09-01).
+
+- **okay-sql** (cross-built JVM/JS/Native — the no-java.sql
+  assertion IS the JS and Native compile): `SqlValue`, `SqlType`
+  (+`Other(name)` so verify can name a vendor type), `Col`,
+  `Isolation`, `Granted(requested, granted)` with `downgraded`,
+  `trait Sql` (describe/query/update/batch/begin/commit/rollback +
+  the sync `cancel()` brake), `Drift`, `Bad(column, error, row)`.
+- **The typed layer** (`Typed`, `Params`): field↔column by name
+  (camelCase→snake_case, case-insensitive, exact-name fallback);
+  the frame decoder resolves ONCE against `describe` and then
+  every row decodes totally — `Bad` carries column and row
+  position; `verify` reports dropped/renamed (absent), retyped and
+  nullability drifts naming the column — a cast expression drifts
+  twice, honestly (type + lost NOT NULL, H2 metadata agrees);
+  params bind positionally via the driver's prepared path only, so
+  injection stays unrepresentable; `transact[A, G]` is generic in
+  the rest of the row, so a Throws abort can cross the scope and
+  the region still rolls back via `cancel()` in the Resource
+  finalizer.
+- **JdbcSql** (okay-jdbc): the JdbcInterop chunk shape behind the
+  seam; java.sql.Types→SqlType (NUMERIC/DECIMAL→F64 v1, stated);
+  begin refuses nested loudly, reads back the granted level;
+  commit/rollback/cancel restore autocommit.
+- **A core find, fixed where it lives**: `Resource.run`'s residual
+  applies the continuation `k(y)` at the OUTER handler's call
+  site, outside the region's try — a `.map` that throws after a
+  forwarded effect skipped the finalizers (the transact
+  rollback-on-exception test caught it). Fixed in Resource.scala,
+  pinned by a core test ("a throw in the continuation AFTER a
+  forwarded effect still releases").
+- **Tests**: 4 in okay-sql per platform (name mapping, positional
+  bind incl. Option→Null, non-row-shaped refusal, downgrade flag);
+  13 in okay-jdbc/TestTyped over H2 as the no-DDL `app` user —
+  rows by label, NULL-in-non-Option as data with row position,
+  reordered SELECT, the four verify drifts, positional params,
+  transact commit/exception/abort with autocommit restored, nested
+  refusal, granted isolation, chunked streaming inside a
+  transaction (64×7+52 over 500 rows), DDL refusal.
+- **Still open** (their own boxes/slugs): the pg wire driver, the
+  two-driver acceptance, COPY bulk load, the non-JVM consumer,
+  jdbc-write-bridge, jdbc-poll-source.

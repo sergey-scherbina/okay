@@ -37,7 +37,7 @@ object Typed:
     case _ => None
 
   private def fieldsOf(s: Schema[?]): Either[String, Vector[Field]] = s match
-    case Schema.SProduct(_, fields, _, _) =>
+    case Schema.SProduct(_, fields, _, _, _) =>
       val out = Vector.newBuilder[Field]
       var err: String = null
       for (name, thunk) <- fields if err == null do
@@ -112,7 +112,7 @@ object Typed:
    * columns — label matching happens here, not per row */
   private def planOf[A](s: Schema[A], cols: Vector[Col])
   : Either[Bad, Vector[SqlValue] => Either[Bad, A]] = s match
-    case Schema.SProduct(_, _, make, _) =>
+    case Schema.SProduct(_, _, make, _, _) =>
       fieldsOf(s) match
         case Left(e) => Left(Bad("<schema>", e))
         case Right(fs) =>
@@ -204,7 +204,7 @@ object Typed:
 object Params:
 
   def bind[P](p: P)(using s: Schema[P]): Vector[SqlValue] = s match
-    case Schema.SProduct(_, fields, _, parts) =>
+    case Schema.SProduct(_, fields, _, parts, _) =>
       parts(p).toVector.zip(fields).map((v, f) => encode(f._1, f._2(), v))
     case _ => throw IllegalArgumentException(
       "params bind from a flat product (a case class of row-shaped fields)")

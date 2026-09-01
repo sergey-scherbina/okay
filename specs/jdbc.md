@@ -193,23 +193,23 @@ user with no DDL rights.
 
 ## Behavior
 
-- [ ] a row decodes into a case class by column label (camel→snake),
+- [x] a row decodes into a case class by column label (camel→snake),
       Option for NULL, bytes for BLOB; a NULL in a non-Option field
       is an error value naming the column, not a throw
-- [ ] `SELECT *` with reordered columns decodes identically (label,
+- [x] `SELECT *` with reordered columns decodes identically (label,
       not position)
-- [ ] `verify` reports a dropped, renamed, retyped and
+- [x] `verify` reports a dropped, renamed, retyped and
       nullability-changed column, each naming the column; a passing
       verify then decodes every row of a matching table
-- [ ] params bind positionally from a product through
+- [x] params bind positionally from a product through
       PreparedStatement; no API accepts a value into SQL text
-- [ ] `transact` commits on success; rolls back on an exception AND
+- [x] `transact` commits on success; rolls back on an exception AND
       on a handled abort crossing the scope; autocommit restored in
       both paths
-- [ ] nested `transact` on one connection refuses loudly
-- [ ] requested isolation is passed through and the GRANTED level is
+- [x] nested `transact` on one connection refuses loudly
+- [x] requested isolation is passed through and the GRANTED level is
       exposed; a caller can refuse a downgrade
-- [ ] a streaming read inside a transaction stays chunked at
+- [x] a streaming read inside a transaction stays chunked at
       fetch-size (constant memory over a large table)
 - [ ] the WithKey bridge: an insert with a natural key, retried
       after a simulated crash-between-journal-and-commit, lands
@@ -218,7 +218,7 @@ user with no DDL rights.
 - [ ] incremental poll by a monotone column resumes from a journaled
       watermark; the late-commit caveat demonstrated as a test that
       DOCUMENTS the miss and the lag-window mitigation
-- [ ] the typed layer works end-to-end as a user with no DDL rights
+- [x] the typed layer works end-to-end as a user with no DDL rights
       (their schema, our types)
 
 ## Out of scope
@@ -269,5 +269,13 @@ user with no DDL rights.
 
 ## Results
 
-(after implementation — verify against a real legacy-shaped H2
-schema, the no-DDL user test, counts and numbers)
+Landed with sql-seam (2026-09-01): the typed layer lives in
+okay-sql against the `Sql` trait (specs/sql.md, where the full
+Results are recorded); okay-jdbc is the first driver. The whole
+TestTyped battery runs on H2 AS the no-DDL `app` user against
+tables the admin made — the posture proven, not simulated: 13
+tests covering every checked box above. The two unchecked boxes
+are their own filed slugs (jdbc-write-bridge, jdbc-poll-source).
+One find escaped the module: rollback-on-exception exposed a
+finalizer leak in core `Resource.run` (a continuation throwing
+after a forwarded effect), fixed and pinned in the core suite.
