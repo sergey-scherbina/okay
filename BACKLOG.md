@@ -48,8 +48,6 @@
 ## okay-security (specs/security.md — staged, like persist)
 - [ ] security-es256 — ES256 for JWT (the JOSE raw R||S <-> DER dance,
       its own tested task)
-- [ ] security-node — the Crypto seam over node:crypto, so the JS leg
-      verifies too
 - [ ] security-oidc — id_token validation, discovery document,
       nonce/at_hash
 - [ ] security-argon2 — a satellite with a real KDF for new password
