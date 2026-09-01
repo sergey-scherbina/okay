@@ -1,5 +1,0 @@
-slug: persist-election
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: implement specs/consensus.md — Election: the control-log fold (first-Take-wins per epoch, Operator outranks, leases + declared skew), takeover/heartbeat driving stage-2 promote; the six-box battery incl. the two-engine acceptance (memory/file arbiter + KafkaStore live) and arbiter-down degradation
-files: okay-persist/** (Election + tests), okay-kafka test (the Kafka control-log leg), specs/consensus.md (boxes/Results), build.sbt (okayKafka test->test)

@@ -1,5 +1,28 @@
 # Changelog
 
+## persist-election — the operator removed from the loop
+Completed: 2026-09-01 (landed as 096fc9c)
+specs/consensus.md implemented: Election consumes total order and
+a clock, nothing else — the fold is first-Take-wins per epoch,
+Operator overrides even landing second, a deposed leader's lease
+is noise; tryTakeover answers from the FOLD (the claim lands, the
+node reads back whether it was first) and the winner leases
+immediately so a racing claimant sees no vacancy. All six spec
+boxes checked: 5 suite tests x THREE control-log engines (memory,
+the FileStore arbiter, live Kafka — unchanged, which was the
+claim) + 3 integration tests driving stage 2's promote (loss-free
+takeover, epoch fencing, arbiter-down degrading only failover).
+One truth taught back: a winner that never leases loses the seat.
+The spec also gained the user's PState/Delim notes (typestate for
+RaftStore roles; deterministic simulation for testing consensus).
+En route, fixed forward for the ui lane: runCmd's close raced the
+loop's launch and LOST command answers (flaky TestCmd) — a third
+counter (handed-over-but-unfolded events) ends it, 5x green.
+Merge read alone after one refused ff (dialog-delim divergence;
+targeted retest): exit 0. Full matrix green on a quiet machine
+(two environmental signal-9 kills on a load-42 machine before it,
+both green alone — the multi-agent matrix stampede is real).
+
 ## dialog-delim — cancellable scopes: Delim gets its consumer
 Completed: 2026-09-01
 
