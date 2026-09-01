@@ -99,6 +99,21 @@
 
 ## okay-cache (specs/cache.md)
 
+## okay-pg (specs/sql.md — the wire driver)
+- [ ] pg-composite-decode — the pg driver decodes COMPOSITE / ROW()
+      and ARRAY types instead of handing back raw text (user ask
+      2026-09-01, MUST). Today valueOf falls through to
+      SqlValue.Text for any non-scalar OID, so ROW(1,'ann')/record
+      (oid 2249)/named composites/arrays arrive as "(1,ann,25)" /
+      "{a,b}" unparsed. Deliverable: parse the pg text format for
+      composites (parens, comma-sep, double-quote escaping of
+      members with special chars, NULL as empty) and arrays (braces,
+      element typing), surfaced as a structured SqlValue (a Row/Array
+      case) with the member OIDs typed via the existing valueOf; a
+      live TestPg case over the docker Postgres (ROW, a named
+      composite type, an int[]/text[] array, nested, NULLs). Note
+      the alternative bridge (row_to_json → Schema) in the spec.
+
 ## okay-jdbc (specs/jdbc.md — the foreign database)
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:
       driver availability, not performance — virtual threads
