@@ -12,7 +12,7 @@ stack already stands on the capability style: `CanBlock` and
 `Scheduler` are context capabilities, and `Secrets`/`Crypto`/`Store`
 are the same idea as explicit traits.
 
-## The experimental base (2026-09-01, scratch experiments E1-E8)
+## The experimental base (2026-09-01, scratch experiments E1-E14)
 
 Every claim below was compiled, not assumed:
 
@@ -61,6 +61,35 @@ Every claim below was compiled, not assumed:
   Scala 3 macros run after typing; implicit resolution has already
   happened. A pre-typer compiler plugin could; that road is noted,
   not taken.
+- **The Reader monad ON context functions is definable and
+  degenerate — the compiler already runs it** (E13, 2026-09-01).
+  `given ctxMonad[A]: Monad[[B] =>> A ?=> B]` compiles and works
+  in combinator style, and the bodies are the punchline: `map` and
+  `flatMap` are both literally `f(fb)` — auto-application of the
+  receiver against the ambient given IS the Reader diagonal, so
+  the whole instance is the identity written four ways. Method
+  syntax on a BARE ctx-fn is worse than broken: the receiver
+  eagerly applies (E10), and `(x: Env ?=> String).map(f)` silently
+  dispatches to `String.map` over Chars — a wrong-method trap, not
+  an error. Boxing restores `.map`/`for`, but the language forbids
+  the cheap boxes — `opaque type` over a context function type is
+  rejected outright ("context function type cannot have opaque
+  aliases"), and so is `AnyVal` — only a real allocating class
+  works. Verdict: not adopted. The ambient style IS the direct
+  style — `summon[Env].user` needs no `.map`; a box would reintroduce
+  the monadic ceremony the feature exists to delete. When reader-y
+  data flow should be a first-class effect, the row already has one:
+  `Reader % R` with `Ask`.
+- **The ctx layer composes with `!` cleanly, and the shipped doors
+  are the proof** (E14, compiled against core): `Env ?=> (A ! F)`
+  gives the ambient environment INSIDE `for`-comprehensions over
+  `!` with no threading; `provide(env) { !.run(...) }` peels the
+  ctx layer at compile time while handlers peel the effect row at
+  run time — the layers never touch. Both readers coexist without
+  conflict: ctx-fn reader outside, `Reader % R`'s `Ask` inside
+  (`Env ?=> String ! Reader % Int` runs). This is the same shape
+  ctx-everywhere shipped as `Principal ?=> PartialFunction[Request,
+  Response ! Async]` — capability outside, effects inside.
 
 ## ctx-prompts — implicit prompts for Scope and Cut (SHIPPED)
 
