@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- control-specs — the PState/Delim consumer map as SPECS: streaming
-  validation that cuts generation (Delim, the open P9 item), http
-  message phases (phased3), nav pop-to-screen, the gated named-cut
-  and r-restarts; slugs filed (spec-only claim)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

@@ -1,5 +1,19 @@
 # Changelog
 
+## control-specs — the PState/Delim consumer map, written down
+Completed: 2026-09-01 (landed as bff0581; markdown only)
+The operator's adoption doctrine stated once (delimited-control.md):
+ADDITIVE by default — a wrapper, an extra combinator, a typed
+internal, never a rewrite; PRIMARY only where no equivalent exists,
+which today is exactly cross-boundary abort/cancel. Six sections in
+the owning specs: llm-streaming-cut (closes the open P9 item's
+design), stage-phased3, http-message-phases (doctrine home deferred
+to the wire lane's typestate.md), nav-pop-to-screen (ui lane's),
+logic-named-cut and r-restarts (both GATED, gates named). Slugs
+filed; pg-scram amended to defer its form. Design discussed in the
+room: capture-at-Async, prompt-machine non-collision, and
+internals-only transact all settled with the sibling lane.
+
 ## sim-typestate-specs — the user's question becomes two specs
 Completed: 2026-09-01 (landed as 3bb0bd3; spec only)
 Born of "where are PState and Delim useful?" and hashed out in the

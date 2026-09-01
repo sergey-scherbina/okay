@@ -1,7 +1,0 @@
-feature/control-specs 2026-09-02T08:00:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-02T08:00:00Z
-status: in-progress
-done-so-far:
-next: SPEC-ONLY: the PState/Delim consumer map written into the owning specs (llm-agentic: streaming cut; stage-pipeline+http: phased3 and message phases; ui-toolkit: nav pop-to-screen; backtracking: named cut gated; r: restarts gated) + BACKLOG slugs
-files: specs/{llm-agentic,stage-pipeline,http,ui-toolkit,backtracking,r}.md, BACKLOG.md — markdown only, no code
