@@ -1,0 +1,5 @@
+feature/pg-scram-typestate 2026-09-01T17:20:20Z
+agent: claude-code
+heartbeat: 2026-09-01T17:20:20Z
+status: in-progress
+next: SCRAM as phase objects (okay-pg)
