@@ -323,18 +323,21 @@ object WireJson:   // hand-mapped, the MCP-dialect precedent —
   and until persist-stage1's compaction `latest` is a fold of the
   tail — correct, not yet cheap.
 
-  - [ ] refold determinism: a live journaled run and a recovery from
+  - [x] refold determinism: a live journaled run and a recovery from
         its journal reach the SAME state — with forged and damaged
         lines in the stream
-  - [ ] crash and continue: k lines live, crash, recover, feed the
+  - [x] crash and continue: k lines live, crash, recover, feed the
         rest — the final state equals the uninterrupted run's
-  - [ ] intent-first: a line appended but never processed (crash
-        between append and update) IS in the recovered state
-  - [ ] snapshot: recovery from `latest` refolds only the tail
+  - [x] intent-first: a line appended but never processed (crash
+        between append and update) IS in the recovered state — even
+        when it follows a journaled Closed, because a Closed in the
+        journal ended a CONNECTION, not the session's life: the
+        refold folds segment by segment through the same stage
+  - [x] snapshot: recovery from `latest` refolds only the tail
         (counted, not assumed), and equals the full refold
-  - [ ] two sessions sharing a topic and partition do not bleed:
+  - [x] two sessions sharing a topic and partition do not bleed:
         keys filter
-  - [ ] `serve` = recover + journal + continue, in one call, over any
+  - [x] `serve` = recover + journal + continue, in one call, over any
         line transport
 - **scaling**: a session is a fold with a value state — shard by
   session id, move a session by moving a value, fan a broadcast in as
@@ -411,6 +414,15 @@ the parent's continuation. The heterogeneous-state problem never
 appears: closures carry each screen's state, and the closure/value
 line is exactly the wire. 5 tests, including the wizard pushed from a
 parent and its answer renaming it.
+
+ui-durable shipped 2026-09-01, on persist-core stage 0: the journal
+is the inbound line stream verbatim (hostile lines included — the
+stage's determinism about dropping them IS the argument), recovery
+refolds segment by segment (a journaled Closed ended a CONNECTION,
+not the session — found by the intent-first test), snapshots bound
+the refold (counted, not assumed) until persist-stage1 makes latest
+a lookup. Six tests, every one an equality between a live run and a
+recovery.
 
 The seam's claim is a test, not a sentence: TestPortable runs one
 application on the test host and asserts the terminal renders exactly
