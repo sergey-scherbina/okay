@@ -29,6 +29,11 @@
 - [ ] security-argon2 — a satellite with a real KDF for new password
       stores (PBKDF2 stays the zero-dep default)
 
+## okay-codec
+- [ ] codec-defaults — decode falls back to a field's declared
+      default when the wire lacks it (companion-default access =
+      a macro; Mirrors do not carry defaults)
+
 ## okay-mcp
 - [ ] mcp-resumable-sse — Last-Event-ID on the HTTP GET stream
       (the journal is an okay-persist topic: read(from) IS

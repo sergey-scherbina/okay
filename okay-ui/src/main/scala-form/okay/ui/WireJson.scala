@@ -105,6 +105,14 @@ object WireJson {
     case Patch.SetValue(at, s) => obj("p" -> JStr("value"), "at" -> path(at), "s" -> JStr(s))
     case Patch.SetChecked(at, on) => obj("p" -> JStr("checked"), "at" -> path(at), "on" -> JBool(on))
     case Patch.SetSelected(at, i) => obj("p" -> JStr("selected"), "at" -> path(at), "i" -> JNum(i.toDouble))
+    // the keyed-diff trio — added by the exhaustivity warning this
+    // sweep surfaced: the previous task extended Patch and missed the
+    // wire, which would have MatchErrored a server-driven reorder
+    case Patch.Remove(at, i) => obj("p" -> JStr("remove"), "at" -> path(at), "i" -> JNum(i.toDouble))
+    case Patch.Reorder(at, order) => obj("p" -> JStr("reorder"), "at" -> path(at),
+      "order" -> JArr(order.map(n => JNum(n.toDouble))))
+    case Patch.Insert(at, i, ui) => obj("p" -> JStr("insert"), "at" -> path(at),
+      "i" -> JNum(i.toDouble), "ui" -> uiJson(ui))
 
   def patchOf(j: Json): Option[Patch] = str(j, "p").flatMap {
     case "replace" => for at <- pathOf(j); u <- field(j, "ui").flatMap(uiOf) yield Patch.Replace(at, u)
@@ -112,6 +120,15 @@ object WireJson {
     case "value" => for at <- pathOf(j); s <- str(j, "s") yield Patch.SetValue(at, s)
     case "checked" => for at <- pathOf(j); on <- bool(j, "on") yield Patch.SetChecked(at, on)
     case "selected" => for at <- pathOf(j); i <- num(j, "i") yield Patch.SetSelected(at, i)
+    case "remove" => for at <- pathOf(j); i <- num(j, "i") yield Patch.Remove(at, i)
+    case "reorder" => for
+        at <- pathOf(j)
+        order <- field(j, "order") match
+          case Some(JArr(vs)) => Some(vs.collect { case JNum(n) => n.toInt })
+          case _ => None
+      yield Patch.Reorder(at, order)
+    case "insert" => for at <- pathOf(j); i <- num(j, "i"); u <- field(j, "ui").flatMap(uiOf)
+      yield Patch.Insert(at, i, u)
     case _ => None
   }
 }

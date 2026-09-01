@@ -35,7 +35,9 @@ class TestWire extends munit.FunSuite {
     for e <- events do
       assertEquals(WireJson.eventOf(Json.parse(Json.print(WireJson.eventJson(e)))), Some(e))
     val patches = Seq(Patch.Replace(List(1, 0), shapes(2)), Patch.SetText(List(0), "s"),
-      Patch.SetValue(Nil, "v"), Patch.SetChecked(List(2), false), Patch.SetSelected(List(1), 1))
+      Patch.SetValue(Nil, "v"), Patch.SetChecked(List(2), false), Patch.SetSelected(List(1), 1),
+      Patch.Remove(List(0), 2), Patch.Reorder(Nil, Vector(2, 0, 1)),
+      Patch.Insert(List(1), 0, shapes(0)))
     for p <- patches do
       assertEquals(WireJson.patchOf(Json.parse(Json.print(WireJson.patchJson(p)))), Some(p))
   }

@@ -19,6 +19,8 @@ object ToolSpec {
     case Schema.SDouble => obj("type" -> Json.JStr("number"))
     case Schema.SBool => obj("type" -> Json.JStr("boolean"))
     case Schema.SString => obj("type" -> Json.JStr("string"))
+    case Schema.SChar => obj("type" -> Json.JStr("string"),
+      "minLength" -> Json.JNum(1), "maxLength" -> Json.JNum(1))
     // the JSON Schema vocabulary for bytes, and it matches what the
     // Json algebra actually writes — a tool taking binary input tells
     // the model exactly how to send it
@@ -26,6 +28,9 @@ object ToolSpec {
       "contentEncoding" -> Json.JStr("base64"))
     case Schema.SOption(of) => jsonSchema(of())   // optionality is in `required`
     case Schema.SList(of) => obj(
+      "type" -> Json.JStr("array"),
+      "items" -> jsonSchema(of()))
+    case Schema.SVector(of) => obj(
       "type" -> Json.JStr("array"),
       "items" -> jsonSchema(of()))
     case p: Schema.SProduct[A] =>

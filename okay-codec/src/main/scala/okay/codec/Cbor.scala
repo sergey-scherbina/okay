@@ -51,6 +51,7 @@ object Cbor {
     case Schema.SBool =>
       out += (if a then 0xF5 else 0xF4).toByte
     case Schema.SString => text(out, a)
+    case Schema.SChar => text(out, a.toString)
     case Schema.SBytes =>
       // major type 2: a byte string, which is what CBOR is for
       val bs = a
@@ -63,6 +64,9 @@ object Cbor {
       val xs = a
       header(out, 4, xs.length.toLong)
       xs.foreach(put(out, of(), _))
+    case Schema.SVector(of) =>
+      header(out, 4, a.length.toLong)
+      a.foreach(put(out, of(), _))
     case p: Schema.SProduct[A] =>
       header(out, 5, p.fields.length.toLong)
       p.parts(a).zip(p.fields).foreach { (v, f) =>
@@ -133,6 +137,8 @@ object Cbor {
       case b => Left(f"expected a boolean, got 0x$b%02X")
     }
     case Schema.SString => textItem(in)
+    case Schema.SChar => textItem(in).flatMap(x =>
+      if x.length == 1 then Right(x.head) else Left(s"expected one character, got ${x.length}"))
     case Schema.SBytes => head(in).flatMap {
       case (2, n) => in.take(n.toInt)
       case (m, _) => Left(s"expected a byte string, got major $m")
@@ -144,6 +150,14 @@ object Cbor {
       head(in).flatMap {
         case (4, n) =>
           (0L until n).foldLeft(Right(List.empty[Any]): Either[String, List[Any]]) { (acc, _) =>
+            acc.flatMap(xs => get(in, of().asInstanceOf[Schema[Any]]).map(xs :+ _))
+          }.map(_.asInstanceOf[A])
+        case (m, _) => Left(s"expected an array, got major $m")
+      }
+    case Schema.SVector(of) =>
+      head(in).flatMap {
+        case (4, n) =>
+          (0L until n).foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, _) =>
             acc.flatMap(xs => get(in, of().asInstanceOf[Schema[Any]]).map(xs :+ _))
           }.map(_.asInstanceOf[A])
         case (m, _) => Left(s"expected an array, got major $m")

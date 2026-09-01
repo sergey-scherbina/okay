@@ -127,6 +127,7 @@ object Json {
     case Schema.SDouble => a.toString
     case Schema.SBool => a.toString
     case Schema.SString => s"\"${escape(a)}\""
+    case Schema.SChar => s"\"${escape(a.toString)}\""
     // JSON has no bytes. Base64 is what everyone means by them here,
     // and it is also what makes a dump READABLE: a thousand float
     // literals are not something anyone reads, and one opaque token
@@ -137,6 +138,8 @@ object Json {
         case Some(x) => encode(of())(x)
         case None => "null"
     case Schema.SList(of) =>
+      a.map(encode(of())).mkString("[", ",", "]")
+    case Schema.SVector(of) =>
       a.map(encode(of())).mkString("[", ",", "]")
     case p: Schema.SProduct[A] =>
       p.parts(a).zip(p.fields).map { (v, f) =>
@@ -155,6 +158,8 @@ object Json {
     case (Schema.SDouble, JNum(n)) => Right(n)
     case (Schema.SBool, JBool(b)) => Right(b)
     case (Schema.SString, JStr(x)) => Right(x)
+    case (Schema.SChar, JStr(x)) if x.length == 1 => Right(x.head)
+    case (Schema.SChar, JStr(x)) => Left(s"expected one character, got ${x.length}")
     case (Schema.SBytes, JStr(x)) => Base64.decode(x)
     case (Schema.SOption(of), JNull) => Right(None)
     case (Schema.SOption(of), v) =>
@@ -170,6 +175,13 @@ object Json {
       // wants to know that the document was damaged.
       vs.filterNot(_.isInstanceOf[JErr])
         .foldLeft(Right(List.empty[Any]): Either[String, List[Any]]) { (acc, v) =>
+          acc.flatMap(xs => decode(of().asInstanceOf[Schema[Any]])(v).map(xs :+ _))
+        }.map(_.asInstanceOf[A])
+    case (Schema.SVector(of), JArr(vs)) =>
+      // the same totality rule as SList above: damaged elements are
+      // skipped, the ones that arrived survive
+      vs.filterNot(_.isInstanceOf[JErr])
+        .foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, v) =>
           acc.flatMap(xs => decode(of().asInstanceOf[Schema[Any]])(v).map(xs :+ _))
         }.map(_.asInstanceOf[A])
     case (p: Schema.SProduct[A], JObj(fs)) =>

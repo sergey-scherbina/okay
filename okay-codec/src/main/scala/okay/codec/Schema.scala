@@ -17,6 +17,9 @@ enum Schema[A]:
   case SDouble extends Schema[Double]
   case SBool extends Schema[Boolean]
   case SString extends Schema[String]
+  /** one character — surfaced by deriving okay-ui's Event, whose raw
+   * key IS a Char; on the wire a char is a one-character string */
+  case SChar extends Schema[Char]
   /**
    * Raw bytes. Not a convenience: CBOR has a first-class byte string
    * (major type 2) and JSON has no bytes at all, so without this every
@@ -30,6 +33,10 @@ enum Schema[A]:
   case SBytes extends Schema[Array[Byte]]
   case SOption[A](of: () => Schema[A]) extends Schema[Option[A]]
   case SList[A](of: () => Schema[A]) extends Schema[List[A]]
+  /** the OTHER sequence this stack actually uses — Ui children,
+   * codec fields, chunk contents are Vectors; smuggling them through
+   * List cost a conversion at every derivation edge (codec-vector) */
+  case SVector[A](of: () => Schema[A]) extends Schema[Vector[A]]
   case SProduct[A](name: String, fields: Vector[(String, () => Schema[?])],
                    make: Seq[Any] => A, parts: A => Seq[Any]) extends Schema[A]
   case SSum[A](name: String, cases: Vector[(String, () => Schema[?])],
@@ -42,10 +49,12 @@ object Schema {
   given Schema[Double] = Schema.SDouble
   given Schema[Boolean] = Schema.SBool
   given Schema[String] = Schema.SString
+  given Schema[Char] = Schema.SChar
   given Schema[Array[Byte]] = Schema.SBytes
 
   given [A](using s: => Schema[A]): Schema[Option[A]] = Schema.SOption(() => s)
   given [A](using s: => Schema[A]): Schema[List[A]] = Schema.SList(() => s)
+  given [A](using s: => Schema[A]): Schema[Vector[A]] = Schema.SVector(() => s)
 
   private inline def thunks[T <: Tuple]: List[() => Schema[?]] =
     inline erasedValue[T] match

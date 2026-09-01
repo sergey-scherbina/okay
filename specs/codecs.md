@@ -85,3 +85,30 @@ design away, its direction is right (the user's assessment).
 
 ## Out of scope
 - schema languages/validation; a transport module (its own, later)
+
+## codec-vector (2026-09-01)
+
+Schema learns `Vector` (`SVector`) and `Char` (`SChar` — surfaced by
+deriving okay-ui's Event, whose raw key is a Char), every algebra
+swept: JSON, CBOR, the tool JSON-Schema, the form (by its fallback).
+Recursion in derivation — the doc comment's old claim — is now a
+TEST: a recursive product and a recursive sum derive and round-trip
+at depth (the thunked fields and the laziness of `given` vals are
+the mechanism, and they hold).
+
+The exhibit is the type that filed the task: okay-ui's whole tree —
+a recursive sum whose cases hold Vectors — derives `Schema[Ui]`,
+`Schema[Event]`, `Schema[Patch]` and round-trips JSON and CBOR.
+WireJson stays as the wire's own compact dialect BY CHOICE now, not
+as a workaround.
+
+Out of scope, with the reason: DEFAULT parameters in decode (an
+absent field falling back to the declaration's default) need
+companion-default access that Mirrors do not provide — a macro task,
+filed as codec-defaults on the backlog. Derived schemas round-trip
+their own output; defaults only matter for foreign, partial input.
+
+Found by the sweep's exhaustivity warnings: WireJson had not learned
+the keyed-diff patch trio (Remove/Reorder/Insert) — a server-driven
+reorder would have MatchErrored on encode. Wired and round-tripped
+here.
