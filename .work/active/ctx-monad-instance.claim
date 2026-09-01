@@ -1,4 +1,0 @@
-lane: ctx-monad-instance
-owner: fable-ctx
-started: 2026-09-01
-scope: core given Monad[[X] =>> E ?=> X] for the generic combinators (E19), tests, spec verdict revision
