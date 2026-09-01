@@ -95,6 +95,36 @@ hanging, and the server reads the refusal.
 The outbound side of a server is the stage's answers `merge` a channel
 of pushes — the readiness merge, one fiber each.
 
+## The transports
+
+| | |
+|---|---|
+| stdio | `Stdio.of(process)` / `Stdio.std` — the one MCP clients launch |
+| a socket, or any byte stream | `Stdio.of(in, out)` |
+| WebSocket | `okay.http.Ws.link(socket)` (okay-http) |
+| streamable HTTP | `okay.http.McpHttp.link(http, url)`, and `McpHttp.route(serving)` to serve (okay-http) |
+
+The last two live in okay-http because transports depend on the
+protocol, not the other way round. A `Link` is `send(line)` plus
+`lines: Source[String]`, so none of `Client`, `Session` or `Server`
+changes when the wire does — the HTTP transport's own test asserts
+that the same `Serving` answers identically over HTTP and over a pair
+of in-memory channels.
+
+Streamable HTTP is one endpoint answering three ways, and each is
+something okay-http already returns: one JSON message
+(`application/json`), a stream of them (`text/event-stream`, which is
+`Http.sse` verbatim), and a GET that opens a stream for what the
+server says unasked. The `Mcp-Session-Id` a server issues at
+initialize is carried on every later request; an unknown one answers
+404, which the client turns into an error for the waiting call rather
+than a wait.
+
+Serving over HTTP is POST-only: holding a stream open needs a
+streaming response, which okay-http's JVM server does not have (it
+drains the body before sending the head), so `route` answers 405 to
+GET. A server that must PUSH is one for stdio or WebSocket today.
+
 ## Not here
 elicitation (the server asking the human — it needs a UI contract
 this library has no opinion on), completion (argument autocompletion),

@@ -126,5 +126,7 @@ object Rpc {
   def str(j: Json, name: String): Option[String] =
     field(j, name).collect { case Json.JStr(s) => s }
 
-  private[mcp] def obj(fs: (String, Json)*): Json = Json.JObj(fs.toVector)
+  /** a JSON object, spelled shortly — public because a transport or a
+   * caller outside this package builds params too */
+  def obj(fs: (String, Json)*): Json = Json.JObj(fs.toVector)
 }

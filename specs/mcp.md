@@ -143,6 +143,14 @@ works where nothing may park.
   message and comes back as one. The loss is real and it is the
   protocol's, not ours; the alternative (dropping system turns) would
   lose more.
+- **A response that owes an answer and does not give one becomes a
+  `Failed`, not a wait** — found by writing the transport: over stdio
+  a peer that never answers is a peer that is gone, but HTTP has
+  statuses that mean exactly "no answer is coming" (202 to a request,
+  404 for a dead session, any 4xx/5xx), and turning those into a
+  message for the waiting id is the difference between an error and a
+  hang. The link decodes the line it is SENDING to know which id is
+  owed one.
 - **The send is part of the program, never spawned** — found by a
   hang. Putting each request's write on its own fiber makes the
   writing thread ephemeral, and a `PipedOutputStream` remembers which
@@ -339,21 +347,24 @@ final class McpLink extends okay.mcp.Link:
 ```
 
 ### Behavior
-- [ ] a client over HTTP does the whole handshake and calls a tool,
+- [x] a client over HTTP does the whole handshake and calls a tool,
       against a real `okay-http` server on a real port
-- [ ] the answer may arrive as `application/json` or as
+- [x] the answer may arrive as `application/json` or as
       `text/event-stream`, and the client cannot tell the difference
       from the outside
-- [ ] `Mcp-Session-Id` is issued on initialize, carried on every later
+- [x] `Mcp-Session-Id` is issued on initialize, carried on every later
       request, and an unknown one answers 404 — the protocol's own
       "reinitialize" signal
-- [ ] a POSTed NOTIFICATION answers 202 with no body (there is
+- [x] a POSTed NOTIFICATION answers 202 with no body (there is
       nothing to answer)
-- [ ] a GET stream delivers server-initiated messages onto the same
+- [x] a GET stream delivers server-initiated messages onto the same
       session, so `session.notifications` works over HTTP exactly as
       it does over stdio
-- [ ] one MCP program, three wires: the SAME `Serving` and the same
+- [x] one MCP program, three wires: the SAME `Serving` and the same
       agent test pass over stdio, over a socket and over HTTP
+
+- [x] a server that answers 202 to a REQUEST does not hang the caller
+      — it is told no answer is coming
 
 ### Out of scope, and whose it is
 The HTTP server cannot hold a stream open — `okay-http`'s JVM server

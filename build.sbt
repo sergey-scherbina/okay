@@ -404,10 +404,9 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
   )
 
 /**
- * HTTP as programs (specs/http.md): REST and WebSocket, with the
- * request, response and route in one vocabulary — and the transports
- * MCP needs, which is why this depends on okay-mcp rather than the
- * other way round. (The comment here was okay-mcp's, copied.)
+ * The Model Context Protocol (specs/mcp.md): an MCP server is another
+ * `Tool` handler and our tools are another MCP server. The protocol
+ * layer is pure — cross-built; only the stdio transport is platform.
  */
 lazy val jettyVersion = "12.0.13"
 
