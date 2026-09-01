@@ -1,4 +1,19 @@
-# okay-demo — the chat that runs the stack
+# okay-demo
+
+The showcase module — every demo is a real program exercising the
+stack end to end, and several double as acceptance tests.
+
+| | |
+|---|---|
+| `Combine` | the stream-exercise ported from Cats/FS2: `Stage.transduce` and `mapAccumulate` doing the same join in a fraction of the code — the example that extracted those primitives into core |
+| `RepoAgent` / `RepoMcp` | this repository indexed by its own lex/parse/rag machinery, served as an agent and as an MCP server on stdio; the test asserts the index finds the library's own definitions |
+| `IndexReport` | the index, reported |
+| `ChatDemo` | the chat over okay-http + okay-llm + okay-match: streaming through the route, the match tools driven by a live local model where one answers (TestLive skip otherwise), sqlite via the Sql seam |
+
+`run / fork := true` — RepoMcp owns its stdin (an MCP client
+launches the class directly; `sbt -batch` keeps stdin for itself).
+
+## ChatDemo — the chat that runs the stack
 
 One JVM main serves a chat page and, behind it, most of the
 repository at once: okay-jetty streams the reply live, okay-llm
@@ -8,7 +23,7 @@ whole thing works — tested end to end — with NO model and NO build
 step, because the offline mode is the demo, not a mock of it.
 The design record is [specs/demo-chat.md](../../specs/demo-chat.md).
 
-## Running it
+### Running it
 
 ```bash
 sbt okayChatWebJS/fastLinkJS          # optional: the React frontend
@@ -27,7 +42,7 @@ ANTHROPIC_API_KEY=... sbt okayDemo/run                  # Anthropic
 | `ANTHROPIC_API_KEY` | the Anthropic model | — |
 | `OKAY_CHAT_APP` | path to the linked frontend | auto-discovered |
 
-## The pieces and who does what
+### The pieces and who does what
 
 - **Streaming**: `POST /chat` answers `text/event-stream`;
   okay-jetty writes the body `Source[Chunk[Byte]]` chunk by chunk on
@@ -45,7 +60,7 @@ ANTHROPIC_API_KEY=... sbt okayDemo/run                  # Anthropic
 - **The marketplace**: one shared `MatchStore` per server — sqlite
   by default, durable across restarts.
 
-## How the model runs the marketplace
+### How the model runs the marketplace
 
 With a model configured there is NO gate: every turn is an agent
 turn (okay-agent's `converse` over `Provider.openAi`/`anthropic`),
@@ -72,7 +87,7 @@ table is wrapped —
 Delivery is `GET /events/<email>` — an SSE stream each page holds
 open from the first email it sees, rendered as 🔔 bubbles.
 
-## The offline phrases (the no-model driver)
+### The offline phrases (the no-model driver)
 
 The same tool table, driven by fixed phrasings — so tests and the
 keyless demo cover everything the model can do:
@@ -89,7 +104,7 @@ keyless demo cover everything the model can do:
 
 Prefix `/match` forces the driver (and, with a model, is a hint).
 
-## The tests as the tour
+### The tests as the tour
 
 `TestChatDemo` (13, over a real socket; live legs skip without a
 model): incremental streaming, the cut, the two-sided match, the

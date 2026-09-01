@@ -79,7 +79,7 @@ API reference, gotchas.
 | [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Handler[Model]` — their provider breadth behind our effect |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector |
-| [`okay-demo`](modules/okay-demo.md) | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`); `RepoMcp`, the same repository served as an MCP server (tools, every file as a resource, an `explain` prompt); and the worked examples — `Combine` joins two live telemetry streams twice, `Stage.transduce` against fs2's `mapAccumulate` shape, with tests pricing the difference |
+| [`okay-demo`](modules/okay-demo.md) | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`); `RepoMcp`, the same repository served as an MCP server (tools, every file as a resource, an `explain` prompt); `ChatDemo`, the chat that runs the stack (streamed replies cut by a guard, a durable marketplace the model drives, scenarios ringing live pages — works with no model); and the worked examples — `Combine` joins two live telemetry streams twice, `Stage.transduce` against fs2's `mapAccumulate` shape, with tests pricing the difference |
 
 ## How the claims are checked
 
