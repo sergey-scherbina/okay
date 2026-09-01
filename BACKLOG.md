@@ -12,11 +12,6 @@
       nonexistent restart a COMPILE error for in-scope code; the
       dynamic policy menu stays the floor. Named by the 2026-09-01
       conditions-x-direct analysis.
-- [ ] direct-effect-provide — coloring as POLICY: Effect[G] markers
-      are ordinary givens, so provide/providing can install them
-      per scope — auto-coloring enabled for one environment, off
-      elsewhere. Small: a test + a paragraph in the spec; the
-      mechanism already exists.
 - [ ] direct-try — try around marks reified into the Throws error
       channel (the v2 road named in specs/direct-macro.md Out of
       scope; Throws.scala is the seam).
