@@ -63,11 +63,23 @@ unqualified — rare, and the qualified names disambiguate.
   through selections/arguments/ascriptions the same way — the
   op-conversion call is rewritten as `.!?` is, row membership
   checked, wrong-row refused with the row named
-- [x] **the discard guard**: a statement of monadic/marked type with
-  no conversion (statements have no expected type — auto-coloring
-  CANNOT fire there) is a COMPILE error naming the fix (`.?`); a
-  silently dropped effect is the one classic auto-coloring bug and
-  it must not compile
+- [x] **do-notation statements** (v2.1, user ask 2026-09-01): a bare
+  statement of the block's F or row-operation type RUNS — the `_ <-`
+  reading, an implicit `.?` with the value dropped. `Writer("a")` on
+  its own line tells; `direct[Option] { None; 2 }` is None; a bare
+  List statement re-runs the rest per element (honest do-notation
+  multi-shot). This subsumes the old discard-guard error for the
+  block's own types: running is what the statement means, and
+  building-without-running was dead code in every reading
+- [x] **the narrowed guard**: a statement of a FOREIGN marked type
+  (an Effect[G]-registered G that is neither this block's F nor in
+  its row) still refuses to compile — it can be neither run nor
+  meaningfully dropped. Unmarked foreign types stay the compiler's
+  own unused-value warning, as everywhere else
+- [x] `val _ = op` and `val x = op` keep the VALUE un-run — binding
+  is explicit consent to hold the program as a value (building
+  sub-programs inside a block is legitimate); only bare statement
+  position carries the do-notation reading
 - [x] `val x = m` (no ascription) infers `F[A]` and does NOT color —
   documented, not fought: inference sees the monadic value; ascribe
   to color
@@ -116,8 +128,9 @@ unqualified — rare, and the qualified names disambiguate.
 - **Unit-typed operations cannot auto-color, by typer physics** —
   statement position has no expected type, and a Unit ascription is
   VALUE DISCARD, which preempts conversion search. So `tell`-like
-  ops keep the explicit `.?`; the discard guard turns the silent
-  drop into a compile error. Found by a failing test, kept as one.
+  ops surfaced the whole question. v2.1 answers it: statement
+  position is rewritten by the MACRO (no conversion involved), so
+  Unit ops need no mark at all — the statement is the mark.
 - **Auto-coloring resolves at the DECLARED type** — a smart
   constructor typed at the trait (`def ask: Reader[Int, Int]`)
   colors; a raw case constructor's precise type (Reader.Ask[Int,
