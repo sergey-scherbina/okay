@@ -1,5 +1,17 @@
 # Changelog
 
+## docs-sweep — the landings reach the docs
+Completed: 2026-09-01 (landed as a963374; markdown only)
+Ten module pages born (blob conf demo docs-mongo java langchain4j
+obs py security-argon2 tls), six updated (security ES256/OIDC/
+granted; jdbc Migrate/BulkLoad/Poll; persist Doctor/Configs/stages;
+cache stage 2; ui Scope-capability/Nav-boundaries; llm Cut). The
+guide gains phased stages, ambient prompts, Blocking and a
+Capabilities section; typepedia records PState's consumers (no
+longer an exhibit), Blocking and ambient Prompt; theory ch.2 names
+its shipped consumers; ROADMAP P9 closes two of three opens; the
+module index catches up by fourteen rows.
+
 ## ctx-adopt — the third capability route, the Blocking value, the documented edge
 Completed: 2026-09-01 (landed as f11ec6c)
 Secure.granted: the principal ambient by pure delegation (the
