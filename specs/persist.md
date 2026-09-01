@@ -368,29 +368,36 @@ at stage 0 and never rebind.
 - [x] retention drops whole segments from the front; `begin`
       advances; reading from before `begin` says so explicitly
       rather than returning silence
-- [ ] compaction keeps the latest record per key; a refold from
+- [x] compaction keeps the latest record per key; a refold from
       `begin` of a compacted topic equals the fold of the full
-      history (stage 1)
-- [ ] `Durable.Journal` over a topic: intent and completion are
+      history (both engines; offsets preserved as holes, `begin` and
+      `end` unmoved, retention proven OFF on a compacted topic; file:
+      fewer segment files, survivors agree after reopen)
+- [x] `Durable.Journal` over a topic: intent and completion are
       separate records; recovery folds them; the crash-window entry
       (intent, no completion) surfaces for the policy exactly as
-      MemoryJournal does today (stage 1)
-- [ ] a consumer commits offsets to the offsets topic and resumes
+      MemoryJournal does today (TestTopicJournal: Fail refuses,
+      WithKey carries the first key; runs isolated by key; a record
+      that does not decode ends the fold at the damage)
+- [x] a consumer commits offsets to the offsets topic and resumes
       from its commit after a restart — the Last-Event-ID shape
-      (stage 1)
+      (both engines: fresh `Offsets` refolds the commit; lag =
+      end minus committed; groups independent)
 - [ ] an append retried with the same (producerId, seq) after a
       lost ack lands once (stage 2)
 - [ ] a follower serves reads only up to the high-water mark; an
       `Ack.Replicated` append returns only at quorum (stage 2)
 - [ ] a deposed leader's append is rejected by epoch fencing, and
       the rejection is an ops event (stage 2)
-- [ ] a record written with schema v1 reads under v2 through the
+- [x] a record written with schema v1 reads under v2 through the
       upcast; an unknown version is an error value naming the
-      offset, not a throw (stage 1)
+      offset, not a throw (future version and missing-upcast both
+      answered as `Typed.Decoded.Bad`; raw and short values too)
 - [x] an older engine refuses a newer segment format loudly
       (forged newer header refused, naming the file and both
-      versions; the reads-the-older-format half becomes testable
-      only when a v2 exists)
+      versions), and the newer engine reads every older segment
+      format it shipped (a forged v1 segment reads under the v2
+      engine; the v1 active segment is closed and a v2 one rolled)
 - [x] `Store.stats` reports begin/end/bytes/segments per partition
       (consumer lag: stage 1; replica lag: stage 2)
 
@@ -475,6 +482,53 @@ at stage 0 and never rebind.
   forbid).
 
 ## Results
+
+Stage 1 landed — the consumers prove the seam.
+
+- **Compaction**, both engines: keep-latest-per-key over what is
+  closed (file: closed segments rewritten atomic-rename style into
+  the head segment file; memory: the whole vector), offsets
+  preserved as holes, `begin`/`end` unmoved, retention structurally
+  off for compacted topics. Forced the disk format to v2: frames
+  carry their offset (eight bytes), because base-plus-position dies
+  with the first hole. The v1 read path stays; a v1 ACTIVE segment
+  found on recovery is closed and a v2 segment rolled, so no file
+  mixes frame formats — and the evolution promise got its missing
+  test (a forged v1 segment reads under this engine).
+- **Typed view** (`Typed`, `Topic.of[A]`): four-byte big-endian
+  version envelope + CBOR payload; byte-level `v→v+1` upcasts with
+  `Typed.step` lifting an `Old => New` over two Schemas; every
+  failure — no envelope, unknown version, missing upcast, decode —
+  is `Decoded.Bad(offset, error)`, never a throw.
+- **Offsets**: commits as records to a compacted keyed topic
+  (`__offsets`; group/topic/partition NUL-joined key, 8-byte BE
+  value); a fresh instance refolds — that IS resume-from-commit;
+  `lag` = end minus committed, the drowning number.
+- **Snapshots**: `put`/`latest` (+ Schema'd `putValue`/
+  `latestValue`) over a compacted keyed topic — the thin
+  convenience the ui lane asked for; `latest` scans what compaction
+  left, which is the point of pairing them.
+- **Streams**: `stream` (chunked to end) and `tail` (parks on the
+  platform timer, sees later appends) as `Chunk[Record] !
+  (Produce + Async)`, the JdbcInterop shape; dropped history stops
+  a stream by declared `OnTooEarly` decision (`Fail` throws naming
+  `begin`, `Resume` jumps there loudly). okay-persist now depends
+  on the core for this (and okay-agent on okay-persist for the
+  journal).
+- **TopicJournal** (okay-agent): `Durable.Journal` over a keyed
+  topic through the Typed envelope (version 1); intent and
+  completion separate records, `all` a refold filtered by run key;
+  a record that does not decode ends the fold there (the torn-tail
+  doctrine one level up). The whole TestDurable crash-window
+  battery holds against it.
+- **Tests**: 38 in okay-persist JVM (the 13-test contract suite —
+  stage 0's 8 plus compaction, typed damage, upcast/unknown
+  version, offsets resume, snapshots — against memory AND file;
+  9 file-only incl. the v1 fixture and on-disk compaction reopen;
+  3 streaming), 13 JS, 13 Native; 15 in okay-agent (10 Durable +
+  5 TopicJournal). Deferred as before: the sparse offset index
+  (still a rebuildable cache, still unmeasured), benchmarks with
+  the first hot consumer.
 
 Stage 0 landed.
 

@@ -6,7 +6,8 @@
 > turn out to be. Designed to its distributed extent, built in
 > stages (specs/persist.md).
 
-Depends on: `okay-codec` (the typed view and stats rides Schema).
+Depends on: `okay-codec` (the typed view and stats ride Schema) and
+the core (the streaming reads speak `Chunk ! (Produce + Async)`).
 
 ## Guide
 
@@ -44,8 +45,23 @@ guessed at.
 bytes, segment counts per partition — a plain case class, so an
 endpoint, a log line and a test assertion are the same thing.
 
-The staged roadmap — streaming/tailable reads, compaction (which IS
-the snapshot store), consumer offsets, `Durable.Journal` over a
-topic, replication with epochs and a high-water mark, interop
-engines (Kafka/JDBC) behind the same trait — lives in
-specs/persist.md with its decisions and refuted alternatives.
+**Stage 1 — the consumers' toolkit.** `Topic.compact(p)` keeps the
+latest record per key (offsets stay, holes appear; a compacted
+topic never retains away — the two are exclusive). `Topic.of[A]`
+is the typed view: a four-byte version envelope over CBOR, byte-
+level `v→v+1` upcasts (`Typed.step`), and every failure an explicit
+`Decoded.Bad(offset, error)`. `Offsets` commits consumer positions
+as records to a compacted topic and refolds them on restart — the
+Last-Event-ID shape; `lag` is the drowning number. `Snapshots` is
+put/latest over a compacted keyed topic (the ui lane's refold
+anchor). `Streams.stream`/`Streams.tail` read chunked —
+`Chunk[Record] ! (Produce + Async)`, a caught-up tail parks on the
+platform timer — and dropped history stops a stream by declared
+`OnTooEarly` decision, never silently. In okay-agent,
+`TopicJournal` is `Durable.Journal` over a keyed topic: intent and
+completion as separate records, recovery as a refold.
+
+The staged roadmap — replication with epochs and a high-water
+mark, the remote wire, interop engines (Kafka/JDBC) behind the
+same trait — lives in specs/persist.md with its decisions and
+refuted alternatives.
