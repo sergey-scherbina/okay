@@ -1,0 +1,6 @@
+feature/mcp-push 2026-09-01T06:13:22Z
+agent: claude-code
+heartbeat: 2026-09-01T06:13:22Z
+status: not-started
+done-so-far:
+next: spec — MCP over WebSocket, and what a Stage-shaped route can and cannot push
