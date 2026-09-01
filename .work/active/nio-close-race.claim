@@ -1,6 +1,0 @@
-feature/nio-close-race 2026-09-01T10:47:49Z
-agent: claude-code
-heartbeat: 2026-09-01T10:47:49Z
-status: in-progress
-done-so-far:
-next: reproduce first: loop the nio lane alone, then fix the close
