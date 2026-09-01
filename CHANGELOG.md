@@ -1,5 +1,14 @@
 # Changelog
 
+## cache-view — the consumer that is never invalid, only behind
+Completed: 2026-09-01 (landed as 6ab7e63)
+Regime 1 shipped: View(topic)(key)(fold) in okay-cache (now on
+okay-persist) — latest serves the consumed fold, lag IS consumer
+lag, refresh is the whole of invalidation, a fold answering None is
+the tombstone. Cold refold agrees with the warm view before AND
+after compaction — the snapshot story, told as a cache. All three
+platforms. Merge read alone: exit 0. Matrix green.
+
 ## cache-memory — named invalidation, no default TTL, stage 0
 Completed: 2026-09-01 (landed as f6219f9)
 okay-cache cross-built (core-only dep): Regime (Budget/Invalidated,

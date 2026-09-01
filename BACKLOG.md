@@ -69,8 +69,6 @@
       invalidate-AFTER-commit ordering asserted, the stale window
       between commit and invalidate demonstrated and documented
       (the one cache.md box no existing slug covered)
-- [ ] cache-view — regime 1: the log-fed View over a compacted
-      keyed topic (lag = consumer lag; pairs persist-stage1)
 - [ ] cache-redis — minimal RESP client (GET/SET PX/DEL/PING) over
       the Async transport, same contract suite; invalidation topic
       over okay-persist for cross-node regime 2
