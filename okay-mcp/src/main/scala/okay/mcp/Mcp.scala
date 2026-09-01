@@ -41,6 +41,18 @@ object Mcp {
   val RootsList = "roots/list"
   val SamplingCreate = "sampling/createMessage"
   val ElicitationCreate = "elicitation/create"
+  val CompletionComplete = "completion/complete"
+
+  /** what a completion is about: a prompt's argument, or a resource
+   * template's (the template uri travels either way) */
+  enum Ref:
+    case Prompt(name: String)
+    case Resource(uri: String)
+
+  /** one completion request, as data: which ref, which argument, the
+   * partial value typed, and the arguments already resolved */
+  final case class Complete(ref: Ref, argument: String, value: String,
+                            context: Map[String, String] = Map.empty)
   val ResourceUpdated = "notifications/resources/updated"
   val RootsChanged = "notifications/roots/list_changed"
   val ResourcesChanged = "notifications/resources/list_changed"
@@ -98,12 +110,14 @@ object Mcp {
    */
   def initializeResult(server: Info, tools: Boolean = true,
                        resources: Boolean = false,
-                       prompts: Boolean = false): Json =
+                       prompts: Boolean = false,
+                       completions: Boolean = false): Json =
     val caps = Vector(
       Option.when(tools)("tools" -> obj("listChanged" -> Json.JBool(false))),
       Option.when(resources)("resources" -> obj(
         "listChanged" -> Json.JBool(false), "subscribe" -> Json.JBool(false))),
-      Option.when(prompts)("prompts" -> obj("listChanged" -> Json.JBool(false)))
+      Option.when(prompts)("prompts" -> obj("listChanged" -> Json.JBool(false))),
+      Option.when(completions)("completions" -> obj())
     ).flatten
     obj("protocolVersion" -> Json.JStr(Version),
       "capabilities" -> Json.JObj(caps),
@@ -274,6 +288,43 @@ object McpDocs {
     field(result, "messages") match
       case Some(Json.JArr(vs)) => vs.flatMap(turnOf).toSeq
       case _ => Nil
+
+  /** completion/complete params, both directions */
+  def completeParams(c: Mcp.Complete): Json =
+    val ref = c.ref match
+      case Mcp.Ref.Prompt(n) => obj("type" -> Json.JStr("ref/prompt"), "name" -> Json.JStr(n))
+      case Mcp.Ref.Resource(u) => obj("type" -> Json.JStr("ref/resource"), "uri" -> Json.JStr(u))
+    val base = Vector(
+      "ref" -> ref,
+      "argument" -> obj("name" -> Json.JStr(c.argument), "value" -> Json.JStr(c.value)))
+    Json.JObj(if c.context.isEmpty then base else base :+ ("context" -> obj(
+      "arguments" -> Json.JObj(c.context.toVector.map((k, v) => (k, Json.JStr(v)))))))
+
+  def completeOf(params: Json): Option[Mcp.Complete] =
+    val ref = field(params, "ref").flatMap { r =>
+      str(r, "type") match
+        case Some("ref/prompt") => str(r, "name").map(Mcp.Ref.Prompt(_))
+        case Some("ref/resource") => str(r, "uri").map(Mcp.Ref.Resource(_))
+        case _ => None
+    }
+    val arg = field(params, "argument")
+    val context = field(params, "context").flatMap(field(_, "arguments")) match
+      case Some(Json.JObj(fs)) => fs.collect { case (k, Json.JStr(v)) => (k, v) }.toMap
+      case _ => Map.empty[String, String]
+    for r <- ref; a <- arg; n <- str(a, "name")
+    yield Mcp.Complete(r, n, str(a, "value").getOrElse(""), context)
+
+  /** the answer: values capped at 100, hasMore telling the truth */
+  def completionResult(values: Vector[String]): Json = obj(
+    "completion" -> obj(
+      "values" -> Json.JArr(values.take(100).map(Json.JStr(_))),
+      "total" -> Json.JNum(values.length.toDouble),
+      "hasMore" -> Json.JBool(values.length > 100)))
+
+  def completionOf(result: Json): Vector[String] =
+    field(result, "completion").flatMap(field(_, "values")) match
+      case Some(Json.JArr(vs)) => vs.collect { case Json.JStr(s) => s }
+      case _ => Vector.empty
 
   /** the arguments of a prompts/get, as a flat map of strings */
   def argsOf(params: Json): Map[String, String] =

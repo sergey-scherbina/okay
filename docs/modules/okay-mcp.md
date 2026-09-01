@@ -31,6 +31,7 @@ because the two ends were already in the library's vocabulary:
 | tool | `ToolSpec` + `Map[String, ToolCall => String]` | an agent program is unchanged when its tools are remote |
 | resource | `okay.rag.Source` (a `Corpus`) | the retriever indexes a server's documents like local files |
 | prompt | `Seq[Turn]` | a server's prompt is something an agent can be started from |
+| completion | `Complete => Vector[String]` | argument autocompletion is a function the Serving carries; the capability follows the function |
 
 Capabilities are computed from what a server actually has, so a
 tools-only server does not advertise resources, and a client reads the

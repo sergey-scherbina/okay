@@ -127,13 +127,13 @@ Serving(..., complete: Option[Complete => Vector[String]] = None)
 Session.complete(ref, argument, value, context): Vector[String] ! Async
 ```
 
-- [ ] a prompt-ref completion answers the server's values, the
+- [x] a prompt-ref completion answers the server's values, the
       already-resolved context arriving with it
-- [ ] more than 100 values cap at 100 with hasMore = true
-- [ ] no completer, no capability: completion/complete on a server
+- [x] more than 100 values cap at 100 with hasMore = true
+- [x] no completer, no capability: completion/complete on a server
       without one is MethodNotFound, and the handshake said so
-- [ ] a resource ref passes its uri through to the completer
-- [ ] live: the reference server's own completion answers our client
+- [x] a resource ref passes its uri through to the completer
+- [x] live: the reference server's own completion answers our client
       (shape asserted, content theirs)
 
 ## Out of scope
@@ -511,6 +511,12 @@ McpHttp.routed(serving, journal = Some(topic))   // journaled pushes
       notifications channel (open() itself loops with the token when
       a stream ends server-side; the test forces the drop from the
       client side, which exercises the same resume path)
+
+v8 (completion) shipped the same day: 4 tests plus the live probe —
+the reference server answered our completion call (shape ours,
+content theirs). The only protocol features left unbuilt are resource
+templates and OAuth-beyond-what-okay-security-stage-1-gives, both on
+the backlog with owners of their reasons.
 
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server

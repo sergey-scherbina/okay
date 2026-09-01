@@ -293,6 +293,17 @@ final class Session private[mcp] (link: Link, peer: Duplex.Peer)(using Scheduler
         case result => McpDocs.turnsOf(result)
       }
 
+  /** ask the server to complete an argument (a prompt's or a
+   * resource template's): the values it offers, empty when it has
+   * none or does not complete */
+  def complete(ref: Mcp.Ref, argument: String, value: String,
+               context: Map[String, String] = Map.empty): Vector[String] ! Async =
+    request(Mcp.CompletionComplete,
+      McpDocs.completeParams(Mcp.Complete(ref, argument, value, context))).map {
+      case Json.JErr(_) => Vector.empty
+      case result => McpDocs.completionOf(result)
+    }
+
   /** our roots changed; a server that cares will ask again */
   def rootsChanged: Unit ! Async = notify(Mcp.RootsChanged, Rpc.obj())
 }
@@ -341,6 +352,7 @@ object Client {
       elicitation = peer.elicit.isDefined)).flatMap { result =>
       s.notify(Mcp.Initialized, Rpc.obj())
         .map(_ => s.opened(Rpc.field(result, "serverInfo").flatMap(Mcp.infoOf),
-          Set("tools", "resources", "prompts").filter(Mcp.capability(result, _))))
+          Set("tools", "resources", "prompts", "completions")
+            .filter(Mcp.capability(result, _))))
     }
 }

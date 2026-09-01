@@ -95,6 +95,23 @@ class TestLive extends munit.FunSuite {
     }
   }
 
+  test("live: the reference server completes a prompt argument for our client") {
+    assume(available, s"'${command.head}' is not on the PATH")
+    live { s =>
+      assume(s.has("completions"), "this server does not declare completions")
+      val prompts = s.prompts.runWith
+      val withArg = prompts.find(_.arguments.nonEmpty)
+      assume(withArg.isDefined, "no prompt with arguments to complete")
+      val p = withArg.get
+      // the CONTENT is theirs; the SHAPE is ours to assert — the call
+      // round-trips and answers a vector, empty or not, with no error
+      val values = s.complete(Mcp.Ref.Prompt(p.name), p.arguments.head.name, "").runWith
+      println(s"  live: complete('${p.name}', '${p.arguments.head.name}') -> " +
+        s"${values.length} values ${values.take(3).mkString("[", ", ", ", ...]")}")
+      assert(values.length <= 100)
+    }
+  }
+
   test("live: a notification sent BEFORE the handshake answer is not lost") {
     assume(available, s"'${command.head}' is not on the PATH")
     // the reference server announces notifications/tools/list_changed

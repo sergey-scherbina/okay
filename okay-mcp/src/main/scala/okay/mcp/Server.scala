@@ -50,7 +50,8 @@ object Server {
                            prompts: Seq[Mcp.Prompt] = Nil,
                            prompt: (String, Map[String, String]) => Option[Seq[Turn]] =
                              (_, _) => None,
-                           subscriptions: Subscriptions = Subscriptions())
+                           subscriptions: Subscriptions = Subscriptions(),
+                           complete: Option[Mcp.Complete => Vector[String]] = None)
 
   /** the tools-only server, which is what most are */
   def serve(info: Mcp.Info, tools: Seq[ToolSpec],
@@ -75,13 +76,15 @@ object Server {
     val hasTools = s.tools.nonEmpty || s.call.nonEmpty
     val hasResources = s.resources.nonEmpty
     val hasPrompts = s.prompts.nonEmpty
+    val hasCompletions = s.complete.isDefined
     val stage: Stage[Rpc, Rpc, Boolean] =
       Stage.transduce(false)((ready, msg) => msg match {
         case Rpc.Request(id, Mcp.Initialize, _) =>
           answer(id, Mcp.initializeResult(info,
             tools = hasTools,
             resources = hasResources,
-            prompts = hasPrompts)).map(_ => true)
+            prompts = hasPrompts,
+            completions = hasCompletions)).map(_ => true)
 
         case Rpc.Notify(Mcp.Initialized, _) => pure(ready)
 
@@ -115,6 +118,12 @@ object Server {
         case Rpc.Request(id, m, _)
           if (m == Mcp.ToolsList || m == Mcp.ToolsCall) && !hasTools =>
           fail(id, Rpc.MethodNotFound, m).map(_ => ready)
+
+        case Rpc.Request(id, Mcp.CompletionComplete, params) => s.complete match
+          case None => fail(id, Rpc.MethodNotFound, Mcp.CompletionComplete).map(_ => ready)
+          case Some(f) => McpDocs.completeOf(params) match
+            case None => fail(id, Rpc.InvalidParams, "no ref/argument").map(_ => ready)
+            case Some(c) => answer(id, McpDocs.completionResult(f(c))).map(_ => ready)
 
         case Rpc.Request(id, Mcp.ResourcesList, _) =>
           answer(id, McpDocs.resourcesResult(s.resources)).map(_ => ready)
