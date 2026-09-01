@@ -225,6 +225,23 @@ a dead peer THROWS and that is the whole protocol):
   paragraph pretending Raft is a detail. Nothing in stages 0–2
   bakes in an assumption stage 4 has to break: election changes who
   MAY write an epoch, not what an epoch is.
+- **Transport-agnostic first** (the persist-replication landing):
+  the replication MACHINERY — epochs, the high-water mark, quorum
+  acks, the follower pull, producer dedup — is a coordinator over
+  N `Store` replicas behind the same `Topic` trait, and none of it
+  cares whether a replica is in this process or across a wire.
+  It lands in-process (replicas = engine Stores; the follower pull
+  IS the read path, verbatim), and persist-wire later carries the
+  SAME calls between nodes — the machinery does not change, the
+  replicas get remote. Appends go through a `Leader` HANDLE bound
+  to the epoch it was issued under: promotion advances the
+  partition's epoch, and a deposed handle's append is FENCED —
+  rejected loudly, recorded as an ops event. The replica engines
+  are SPI, not access paths: reads go through the coordinator,
+  which never serves past the high-water mark. Producer dedup is
+  its own entry (`produce(producerId, seq, ...)`) rather than a
+  change to `Topic.append` — consumers bound at stage 0 never
+  rebind, and a replay answers the ORIGINAL offset.
 - **The interop hatch, because business does not wait for stage 4**:
   the `Store` trait is also implementable over engines that already
   did the twenty years of work — okay-kafka's interop (partitions,
