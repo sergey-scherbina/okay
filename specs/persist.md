@@ -306,6 +306,44 @@ this is interface, not afterthought:
   readiness = every partition this node leads is open and past
   recovery. Two booleans with reasons, as values.
 
+## The wire (a documented surface, not an internal)
+
+persist-wire makes the log reachable past the process — a non-JVM
+consumer talks to a persist node directly, no JVM and no JDBC in
+between. The openness is the point, so the surface is DOCUMENTED:
+
+- **Framing**: `[length: int32 BE][payload]`, payload = one CBOR
+  message through the okay-codec Schema of the message enums below
+  (the okay-cluster precedent: CBOR frames, one source of truth
+  for both ends).
+- **Handshake**: the client's first frame is `Hello(version,
+  token)`; the server answers `Granted(version, topics)` where
+  `topics` is exactly the set the TOKEN may see — the capability
+  list IS the offer, the ui rule ("the tree is the capability
+  list") retold for logs. A version the server does not speak or a
+  token it does not accept answers `Refused(reason)` and closes.
+- **Requests** map 1:1 onto the Topic SPI — Append, Read, Begin,
+  End — each carrying the topic NAME; the server resolves against
+  its Store and refuses names outside the client's capability set.
+  Answers: `Appended(offset)`, `Records(...)`, `TooEarly(begin)`,
+  `Offset(n)`, `Refused(reason)`. Reads pass `Topic.Read` through
+  UNCHANGED — dropped history stays an answer across the wire.
+- **Auth is a function, security is a plug**: the server takes
+  `auth: token => Option[Set[topic]]` — okay-security's API-key
+  verification slots into that function at construction; the wire
+  module itself depends on no crypto. TLS rides the one transport
+  seam when wire-tls lands (specs/tls.md); until then the surface
+  is plaintext and SAYS so.
+- **The client speaks Async** (the stage-1 rule: an engine is not
+  an access path): `Remote.connect(host, port, token)` answers the
+  granted topic set and Async programs for the four calls — the
+  JVM leg is a blocking socket behind `Async.Run` (the okay-pg
+  pattern); the Node leg arrives with a consumer, same shape.
+- **Replication rides the same frames later**: the coordinator's
+  calls (replicate-pull, promote, produce) are additions to the
+  message enum, versioned by the handshake — the machinery of
+  stage 2 does not change when its replicas go remote.
+
 ## Backup and restore (stated, since the design already implies it)
 
 Append-only makes backup boring, which is the point:
