@@ -92,6 +92,20 @@ unqualified — rare, and the qualified names disambiguate.
 - [x] every v1 test still passes with the context-function signature
   (plain blocks adapt)
 
+## Coloring as policy (direct-effect-provide, 2026-09-02)
+
+Effect[G] markers are ordinary givens, so the capability vocabulary
+applies whole: a def can REQUIRE the permission
+(`def prog(using Effect[RInt]): Int ! F = direct { ... }` — its
+ascribed positions color only by the grant), `provide(grant)(prog)`
+installs it for one expression, `providing[Effect[RInt]](grant)`
+makes it a composable layer, and the ungranted call site simply does
+not compile. Auto-coloring thereby stops being a project-wide
+switch and becomes a per-scope decision — TestEffectProvide pins
+all three shapes. (Declare the grant as an ASCRIBED val: provide
+infers the anonymous refinement otherwise — the standing
+capabilities.md rule.)
+
 ## Out of scope
 
 - Auto-coloring under lambdas — same refusal as v1, same reason.
