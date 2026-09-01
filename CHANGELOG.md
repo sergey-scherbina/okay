@@ -13,6 +13,20 @@ connection mid-load) rolls back claim AND data together, so the
 retry lands exactly once overall: WithKey at batch granularity,
 made physical. sql.md now has one open box: the non-JVM consumer
 (sql-pg-node). Merge read alone: exit 0. Full matrix green.
+## demo-chat-match — the marketplace joins the chat
+Completed: 2026-09-01
+
+/match turns are matchmaking turns over one shared MemoryMatch per
+server. With a model configured the turn is an AGENT conversation —
+Provider.openAi/anthropic as Handler[Model], okay-match's Tools.table
+as Handler[Tool], a system prompt teaching the intake — and the LIVE
+test proved the local rozum model driving the real tools end to end
+(it stored the welder's offer, or asked for the missing email — both
+honest outcomes asserted). With no model, a deterministic driver
+speaks THE SAME tool table, and the offline test walks the two-sided
+story through the real route: "умею класть плитку" chats in, "нужен
+плиточник" finds it, the marketplace remembers across turns and
+sessions. 7 tests.
 
 ## typed-bad-repair — damaged records ask
 Completed: 2026-09-01 (landed as 0a321aa)

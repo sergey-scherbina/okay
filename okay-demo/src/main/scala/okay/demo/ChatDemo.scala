@@ -5,6 +5,8 @@ import okay.given
 import okay.http.{Body, Http, Request, Response}
 import okay.jetty.Jetty
 import okay.llm.{Anthropic, Cut, OpenAi, Transports}
+import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
+import okay.matching.{MemoryMatch, Tools as MatchTools}
 import okay.codec.Json
 import okay.codec.Json.*
 import java.nio.charset.StandardCharsets.UTF_8
@@ -61,6 +63,103 @@ object ChatDemo {
     sys.env.get("ANTHROPIC_API_KEY").map(live)
       .orElse(sys.env.get("OKAY_CHAT_BASE").map(local))
       .getOrElse(scripted)
+
+  // ---- the matchmaking side (okay-match wired in) --------------------
+
+  /** ONE marketplace for the whole server: providers and seekers
+   * meet in it across sessions — that is the point */
+  val market = MemoryMatch()
+  private val turnNo = java.util.concurrent.atomic.AtomicLong(0)
+
+  private val matchSystem =
+    """You are a matchmaking assistant over a structured database.
+      |A user either OFFERS a skill or NEEDS one. Use the tools:
+      |facts_register (email -> profile id) first — ask for an email
+      |if none was given; registry_search BEFORE registry_propose;
+      |facts_assert to record an offer or a need (side "offer" or
+      |"need", value {"t":"text","s":...}, chat "web-demo", span =
+      |the user's words); find_candidates to search offers. Answer in
+      |the user's language, briefly, and report what you stored or
+      |found.""".stripMargin
+
+  /** an agent turn over the match tools: the LLM structures the
+   * chat into the store and searches it — the okay-match story */
+  def agentTurn(text: String, history: Seq[Anthropic.Message],
+                modelH: okay.Handler[AgentModel]): String =
+    given okay.Handler[AgentModel] = modelH
+    given okay.Handler[Tool] = Handlers.tools(MatchTools.table(market))
+    val ctx = Handlers.context(Compact.all)._2
+    given okay.Handler[AgentContext] = ctx
+    given r1: okay.Handler[AgentModel + Async] = okay.Handler.union[AgentModel, Async]
+    given r2: okay.Handler[AgentContext + (AgentModel + Async)] =
+      okay.Handler.union[AgentContext, AgentModel + Async]
+    given r3: okay.Handler[Tool + (AgentContext + (AgentModel + Async))] =
+      okay.Handler.union[Tool, AgentContext + (AgentModel + Async)]
+    val prog =
+      Agent.remember(Turn.System(matchSystem)).flatMap { _ =>
+        def seed(ms: List[Anthropic.Message]): Unit ! okay.agent.Agent = ms match
+          case Nil => pure(())
+          case m :: rest =>
+            Agent.remember(
+              if m.role == "user" then Turn.User(m.content)
+              else Turn.Assistant(m.content)).flatMap(_ => seed(rest))
+        seed(history.toList).flatMap(_ =>
+          Agent.converse(text, MatchTools.specs))
+      }
+    prog.runWith
+
+  /** the deterministic offline "agent": the SAME tool table, driven
+   * by two fixed phrasings — the tests' and the no-model mode's path */
+  def scriptedAgent(text: String): String =
+    import okay.codec.Json.*
+    val t = MatchTools.table(market)
+    def call(name: String, args: (String, Json)*): String =
+      t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
+    val email = "email ([^ ]+@[^ ]+)".r.findFirstMatchIn(text).map(_.group(1))
+      .getOrElse("guest@demo")
+    val off = turnNo.incrementAndGet()
+    def profile: String =
+      Json.parse(call("facts_register", "email" -> JStr(email))) match
+        case JObj(fs) => fs.collectFirst { case ("profile", JStr(p)) => p }.get
+        case _ => ""
+    text match
+      case s if s.contains("умею") || s.contains("offer:") =>
+        val skill = s.replaceAll(".*(умею|offer:)\\s*", "").replaceAll("email [^ ]+", "").trim
+        call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("skill"),
+          "side" -> JStr("offer"), "chat" -> JStr("web-demo"),
+          "offset" -> JNum(off.toDouble), "span" -> JStr(text),
+          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(skill))))
+        s"""записал предложение: \"$skill\" (профиль $email)"""
+      case s if s.contains("нужен") || s.contains("нужно") || s.contains("need:") =>
+        val want = s.replaceAll(".*(нужен|нужно|need:)\\s*", "").replaceAll("email [^ ]+", "").trim
+        Json.parse(call("find_candidates", "side" -> JStr("offer"),
+          "text" -> JStr(want))) match
+          case JArr(hits) if hits.nonEmpty =>
+            val lines = hits.take(3).map {
+              case JObj(fs) =>
+                val facts = fs.collectFirst { case ("facts", JArr(vs)) => vs }.getOrElse(Vector.empty)
+                val skills = facts.collect { case JObj(f)
+                  if f.exists(_ == ("attr", JStr("skill"))) =>
+                  f.collectFirst { case ("value", JObj(v)) =>
+                    v.collectFirst { case ("s", JStr(x)) => x }.getOrElse("") }.getOrElse("") }
+                s"- ${skills.mkString(", ")}"
+              case _ => "- ?"
+            }
+            s"нашёл ${hits.length}: ${lines.mkString("; ")}"
+          case _ => "пока никого не нашёл — но запрос я вижу"
+      case _ =>
+        """матч-режим: скажите \"умею <что>\" или \"нужен <кто>\" (и email <адрес>)"""
+
+  /** which agent serves /match turns: real model when one is
+   * configured, the deterministic table-driver otherwise */
+  def matchTurn(text: String, history: Seq[Anthropic.Message]): String =
+    sys.env.get("ANTHROPIC_API_KEY").map { key =>
+      agentTurn(text, history, Provider.anthropic(
+        Transports.http(), key, "claude-sonnet-4-5"))
+    }.orElse(sys.env.get("OKAY_CHAT_BASE").map { base =>
+      agentTurn(text, history, Provider.openAi(
+        Transports.http(), "local", "default", s"$base/v1/chat/completions"))
+    }).getOrElse(scriptedAgent(text))
 
   // ---- the SSE reply -------------------------------------------------
 
@@ -126,8 +225,21 @@ object ChatDemo {
       pure(Response(200, Seq("content-type" -> "text/javascript"),
         Http.one(java.nio.file.Files.readAllBytes(appJs.get))))
     case r if r.method == okay.http.Method.Post && r.url == "/chat" =>
-      pure(Response(200, Seq("content-type" -> "text/event-stream"),
-        reply(m, budget)(messagesOf(r.body))))
+      val messages = messagesOf(r.body)
+      val last = messages.lastOption.map(_.content).getOrElse("")
+      if last.startsWith("/match") then
+        // the matchmaking turn: the agent works the okay-match tools,
+        // the answer streams through the same SSE framing
+        val answer = matchTurn(last.stripPrefix("/match").trim, messages.init)
+        def stream(ts: List[String]): Unit ! (Writer % String + Async) = ts match
+          case Nil => pure(())
+          case t :: rest => effect[Writer % String + Async, Unit](
+            Writer(t + " ")).flatMap(_ => stream(rest))
+        pure(Response(200, Seq("content-type" -> "text/event-stream"),
+          reply(_ => stream(answer.split(' ').toList), budget)(messages)))
+      else
+        pure(Response(200, Seq("content-type" -> "text/event-stream"),
+          reply(m, budget)(messages)))
 
   def main(args: Array[String]): Unit =
     val port = sys.env.get("OKAY_CHAT_PORT").flatMap(_.toIntOption).getOrElse(8090)
@@ -181,7 +293,7 @@ object ChatDemo {
 <main>
   <h1>okay chat — streamed by okay-jetty, guarded by Cut</h1>
   <div id="log"></div>
-  <form id="f"><input id="i" autocomplete="off" placeholder="say something"><button>send</button></form>
+  <form id="f"><input id="i" autocomplete="off" placeholder="say something — or /match умею класть плитку email me@x"><button>send</button></form>
 </main>
 <script>
 const log = document.getElementById('log'), f = document.getElementById('f'), i = document.getElementById('i');

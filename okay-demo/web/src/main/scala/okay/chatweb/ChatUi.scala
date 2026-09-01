@@ -31,7 +31,7 @@ object ChatUi {
 
   def view(s: State): Ui =
     Ui.Column(Vector(
-      Ui.Text("okay chat — okay-ui on React, streamed by okay-jetty, guarded by Cut",
+      Ui.Text("okay chat — okay-ui on React; /match wires okay-match (умею… / нужен…)",
         Style(bold = true)),
       Ui.Column(s.messages.zipWithIndex.map { (m, i) =>
         val bubble = Ui.Text((if m.role == "user" then "you: " else "bot: ") + m.text)

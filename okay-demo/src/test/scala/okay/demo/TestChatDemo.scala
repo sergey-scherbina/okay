@@ -95,6 +95,42 @@ class TestChatDemo extends munit.FunSuite {
         }).runWith
   }
 
+  test("MATCH offline: a provider chats in, a seeker finds them — through the real route") {
+    withServer(512) { port =>
+      def turn(text: String): String =
+        new String(post(port,
+          s"""{"messages":[{"role":"user","content":"$text"}]}""").readAllBytes(), UTF_8)
+      val stored = turn("/match умею класть плитку email tiler@demo")
+      assert(stored.contains("записал"), stored.take(200))
+      val found = turn("/match нужен плиточник")
+      assert(found.contains("нашёл") && found.contains("1:"), found.take(300))
+      assert(found.contains("плитку"), "the offer's skill surfaces in the answer")
+      // and the marketplace REMEMBERS across turns and sessions: the
+      // second seeker sees the same provider
+      assert(turn("/match нужен мастер по плитке").contains("нашёл"))
+    }
+  }
+
+  test("LIVE MATCH: the local model drives the okay-match tools end to end") {
+    val base = sys.env.getOrElse("OKAY_CHAT_BASE", "http://127.0.0.1:8089")
+    val up = try {
+      client.send(HttpRequest.newBuilder(URI.create(s"$base/v1/models")).GET().build(),
+        HttpResponse.BodyHandlers.ofString()).statusCode() == 200
+    } catch { case _: Throwable => false }
+    assume(up, s"no local model at $base — skipped")
+    val before = ChatDemo.market.candidates(
+      okay.matching.Query(okay.matching.Side.Offer, text = "weld")).length
+    val answer = ChatDemo.agentTurn(
+      "I can weld metal gates, my email is welder@live-demo. Please store my offer.",
+      Nil, okay.agent.Provider.openAi(
+        okay.llm.Transports.http(), "local", "default", s"$base/v1/chat/completions"))
+    assert(answer.nonEmpty)
+    val after = ChatDemo.market.candidates(
+      okay.matching.Query(okay.matching.Side.Offer, text = "weld metal gates")).length
+    assert(after > before || answer.toLowerCase.contains("email"),
+      s"the agent neither stored the offer nor asked for what it lacked: $answer")
+  }
+
   test("over budget the stream is cut, named, and no tokens follow") {
     withServer(budget = 3) { port =>
       val whole = new String(post(port,

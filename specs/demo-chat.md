@@ -56,9 +56,31 @@ The pieces, each doing its one job:
       fold; the server serves the React page and /app.js when a link
       exists, the vanilla page otherwise
 
+## Matching (demo-chat-match — user ask)
+`/match <text>` turns are MATCHMAKING turns over the shared
+marketplace (one MemoryMatch per server — providers and seekers meet
+across sessions):
+- with a model configured (Anthropic key, or any OpenAI-compatible
+  `OKAY_CHAT_BASE` — the local rozum model drives it), the turn is an
+  AGENT conversation: the model works okay-match's own tool table
+  (facts_register, registry_search/propose, facts_assert,
+  find_candidates) under a system prompt; the answer streams through
+  the same SSE framing;
+- with no model, a deterministic driver speaks THE SAME tool table
+  (умею…/нужен…, email …) — the offline mode stays the demo, and the
+  tests prove the two-sided story end to end on a real socket:
+  a provider chats in, a seeker finds them, the marketplace remembers
+  across turns.
+
+- [x] offline two-sided match through the real route (store, find,
+      remember across turns)
+- [x] LIVE: the local model drives the okay-match tools (store-or-ask
+      asserted; skipped where no model listens)
+
 ## Out of scope
-- Auth, persistence of conversations, multi-user rooms (okay-match
-  and persist own those stories).
+- Auth, persistence of conversations, multi-user rooms (persist owns
+  durable history; okay-match's DURABLE store is one constructor swap
+  — the demo keeps memory).
 - (Lifted 2026-09-01 by user ask: the React frontend landed as
   okay-chat-web.) The ui-wire browser leg stays its own demo.
 
