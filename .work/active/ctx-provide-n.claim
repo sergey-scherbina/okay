@@ -1,0 +1,7 @@
+feature/ctx-provide-n 2026-09-02T23:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-02T23:00:00Z
+status: in-progress
+done-so-far:
+next: provide to arity 22 the Cats way - generated fixed overloads (each a one-line delegation; ContextFunctionN caps at 22 like cats mapN); generator committed beside the generated file; tests at arities 8 and 22; spec note closing the E11/E12 finding with the shipped floor
+files: src/main/scala/Provide.scala (regenerated), tools/gen_provide.py or scratch generator noted, src/test/scala/TestProvide.scala (extend), specs/context-functions.md
