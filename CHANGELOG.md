@@ -1,5 +1,13 @@
 # Changelog
 
+## security-node — the JS leg verifies
+Completed: 2026-09-01
+node:crypto behind the same seam; the JS suite runs the SAME shared
+code (HS256 JWT, passwords, API keys, PKCE pinned to RFC 7636). The
+linker forced the right design: platform keys are an opaque
+Crypto.Handle; JWKS parses everywhere, verifies where keys exist.
+Matrix 1047.
+
 ## codec-vector — Schema learns Vector and Char; recursion is a test
 Completed: 2026-09-01
 SVector + SChar, every algebra swept; recursion proven at depth on a
