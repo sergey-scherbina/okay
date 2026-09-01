@@ -390,14 +390,14 @@ decodes into `ToolSpec`s, that a real tool call comes back as text our
 and real prompts become turns.
 
 ### Behavior
-- [ ] the handshake is accepted by a server nobody here wrote, and its
+- [x] the handshake is accepted by a server nobody here wrote, and its
       capabilities decode
-- [ ] its tools decode into `ToolSpec`s, schemas and all, and calling
+- [x] its tools decode into `ToolSpec`s, schemas and all, and calling
       one answers what it says
-- [ ] its resources become a `Corpus` and its prompts become `Seq[Turn]`
-- [ ] a notification the server sends BEFORE the initialize answer is
+- [x] its resources become a `Corpus` and its prompts become `Seq[Turn]`
+- [x] a notification the server sends BEFORE the initialize answer is
       not mistaken for one (the reference server does exactly this)
-- [ ] the run is skipped, not failed, where node is absent
+- [x] the run is skipped, not failed, where node is absent
 
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server

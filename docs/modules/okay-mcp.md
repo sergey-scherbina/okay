@@ -39,6 +39,7 @@ handshake (`session.has("prompts")`) rather than guessing.
 ## Using an MCP server from an agent
 
 ```scala
+// verified against this exact server (TestLive), 13 tools and all
 val link = Stdio.of(Stdio.spawn(Seq("npx", "-y", "@modelcontextprotocol/server-everything")))
 val session = Client.connect(link, Mcp.Info("okay", "1")).runWith
 given Handler[Tool] = session.handler          // the only line that changes
@@ -94,6 +95,20 @@ hanging, and the server reads the refusal.
 
 The outbound side of a server is the stage's answers `merge` a channel
 of pushes — the readiness merge, one fiber each.
+
+## Does it work with the ecosystem
+
+`TestLive` answers that, because nothing else can: it spawns
+`@modelcontextprotocol/server-everything` (the protocol's own
+reference server) over stdio and asserts OUR assumptions against it —
+the handshake is accepted, 13 tools decode with their schemas, `echo`
+answers, resources become a `Corpus`, a prompt becomes `Seq[Turn]`.
+It passed on the first run, and is skipped where node is absent.
+
+One detail it earns its keep on: the reference server sends
+`notifications/tools/list_changed` BEFORE its own initialize answer.
+A request-then-answer loop that filtered for its id would have dropped
+it; the reader fiber keeps it.
 
 ## The transports
 
