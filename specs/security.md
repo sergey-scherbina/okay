@@ -349,3 +349,8 @@ loop test: the SAME agent tool call that works on an open server
 works on the protected one, with nothing above the link changed.
 Discovered is a VALUE the caller sees before any secret travels —
 the trust boundary held by making them look. 4 tests.
+
+## See also
+`Secure.granted` — the capability form of the route wrapper
+(`Principal ?=> route`, the principal ambient in the handler) —
+specs/context-functions.md, ctx-principal.

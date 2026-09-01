@@ -108,22 +108,59 @@ opens itself; stated, not hidden.
       tracers and parents to each — deferred requirement as a value
 - [x] an untraced route is untouched (additive)
 
+## ctx-principal — `Principal ?=> route` (ctx-adopt)
+
+The third capability route, and the symmetry that proves the
+pattern: Secure.bearer's protected route is a
+`Principal => PartialFunction[...]` — the type system already held
+the door; the context form `Secure.granted(verify, policy)(route:
+Principal ?=> PartialFunction[...])` makes the principal AMBIENT in
+the handler, and the door gets stronger: the capability IS the
+door. The crown is composition: a stored
+`(Principal, Tracer) ?=> Route` is one VALUE that is protected AND
+traced, self-wiring wherever both capabilities are installed —
+deferred requirements composing as arrows.
+
+- [ ] Secure.granted: the handler reads the ambient principal; the
+      401/403 ladder is byte-identical to bearer's (delegation, not
+      reimplementation)
+- [ ] the composition crown: one stored (Principal, Tracer) ?=>
+      Route serves under Traced.route(Secure.granted(...)(...)) —
+      the response names the principal, the topic holds the root
+      and the handler's child span
+- [ ] the explicit bearer form stays untouched (additive)
+
+## ctx-blocking — `Blocking[A]` (ctx-adopt)
+
+`type Blocking[A] = CanBlock ?=> A`, in core beside CanBlock: the
+first-class "this parks a thread" — a returned Blocking[A] is
+storable, composable, and only an edge HOLDING the capability can
+force it. Zero runtime; the platform gets a NAME for what its seams
+already do, and new APIs can return the requirement instead of
+demanding it.
+
+- [ ] a Blocking[A] value stored and passed forces only where a
+      CanBlock is given; on the JVM the ambient given forces it in
+      place (the alias is the existing practice, named)
+
+## ctx-edge-docs — the patterns where developers look (ctx-adopt)
+
+The two linear-context patterns move from this spec's experimental
+base into docs/typepedia (with a pointer from specs/conf.md's edge
+section): the type-changing given-chain for load -> resolve ->
+connect -> migrate, and the import-thread for same-typed evolution
+— WITH the forgotten-import footgun stated in the same breath.
+
+- [ ] typepedia carries both patterns with their E-numbers and the
+      footgun; conf.md points at it from the edge example
+
 ## Filed (BACKLOG slugs, each with its gate)
 
-- **ctx-blocking** — `type Blocking[A] = CanBlock ?=> A`: the
-  first-class "this parks a thread" marker; a returned Blocking[A]
-  is storable and composable, and only an edge holding the
-  capability can force it. Zero runtime cost; adoption is per-seam
-  and additive. Gate: none — small, waits its turn.
-- **ctx-edge-docs** — the application-edge patterns documented where
-  developers look (docs/typepedia + a conf.md pointer): the
-  type-changing given-chain (E3) for load -> resolve -> connect ->
-  migrate, and the import-thread (E6) for same-typed evolution, WITH
-  its forgotten-import footgun stated. Gate: none — docs only.
 - **ctx-wiring** — handlers-awaiting-environment: module factories
   returning `Http ?=> Secrets ?=> Handler[Model]`-shaped values, the
   conf doctrine ("the edge builds handlers") expressed in types;
-  okay-demo adopts first. Gate: a demo consumer wanting rewiring.
+  okay-demo adopts first. Gate: a demo consumer wanting rewiring —
+  possibly OPEN since demo-chat (offered to that lane, room n244).
 - **ctx-reader-bridge** — `(A ?=> B) <-> B ! Reader % A`: a context
   function IS a pure Reader program and the tower has Reader.scala;
   the bridge is one Conversion each way. GATED: no consumer named —
