@@ -485,9 +485,10 @@ lazy val okayBlob = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .in(file("okay-blob"))
   .dependsOn(okay)
   // the S3 engine (jvm) speaks the wire through the one http client;
-  // the end-to-end backup test drives a real FileStore (test scope —
-  // the reverse arrow would cycle through http)
-  .jvmConfigure(_.dependsOn(okayHttp.jvm, okayPersist.jvm % Test))
+  // persist joined COMPILE scope with the offload tier (this
+  // direction is safe — persist depends on core+codec only; the
+  // reverse arrow would cycle through http)
+  .jvmConfigure(_.dependsOn(okayHttp.jvm, okayPersist.jvm))
   .settings(
     name := "okay-blob",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

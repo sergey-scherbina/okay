@@ -595,8 +595,20 @@ Stage 3's engines landed (persist-interop, 2026-09-01).
   approximation), Durable/Replicated block on acks=all. Four live
   tests against the dockerized broker (skip when absent),
   including the persist Typed view decoding unchanged over Kafka.
-- **Refiled**: persist-offload (cold segments to the object store)
-  pairs blob-seam and waits for it.
+- **The offload tier landed** (persist-offload, same day, once
+  blob-fs did): `Segments` — a PUBLIC reader of the documented
+  segment format in okay-persist (what Doctor certifies with, now
+  a library: bytes parse into records wherever they live);
+  `Offload` on the blob side — verified-then-evict under a local
+  byte budget (a segment leaves the disk only when the blob's copy
+  matches, the active file never leaves, `begin` advances exactly
+  as under retention), and the `Tiered` Async read where TooEarly
+  stops meaning "gone" and starts meaning "cold": blob history
+  strictly below the local begin plus the local tail, byte-exact
+  and bounded — proven against Fs with rolled segments. The
+  dependency direction: blob → persist (compile), safe because
+  persist rests on core+codec alone; the reverse would cycle
+  through http.
 
 The wire landed (persist-wire + persist-wire-auth, 2026-09-01).
 
