@@ -104,3 +104,7 @@ and twelve casts plus a row-splitting caveat disappeared.
 - <a id="ref-ploeg-2014"></a>Atze van der Ploeg, Oleg Kiselyov. *[Reflection without remorse.](https://okmij.org/ftp/Haskell/zseq.pdf)*
   Haskell Symposium 2014.
 - <a id="ref-bjarnason-2012"></a>Rúnar Bjarnason. *[Stackless Scala with free monads.](http://blog.higher-order.com/assets/trampolines.pdf)* 2012.
+
+---
+
+← [3 · Parameterised monads](03-parameterised.md) · [Contents](index.md) · [5 · Algebraic effects and handlers](05-effects-handlers.md) →

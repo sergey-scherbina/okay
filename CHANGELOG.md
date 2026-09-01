@@ -1,5 +1,12 @@
 # Changelog
 
+## theory-nav — previous/next at the foot of every chapter
+Completed: 2026-09-01
+
+Each theory page (the map and chapters 1-7) ends with
+prev · Contents · next navigation, so the book reads front to back
+without returning to the index by hand.
+
 ## theory-cite-links — in-text citations are footnotes now
 Completed: 2026-09-01
 

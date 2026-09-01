@@ -98,3 +98,7 @@ followed the paper closely enough that there is little else to say.
   contexts.* DIKU report 89/12, 1989.
 - <a id="ref-asai-2007"></a>Kenichi Asai, Yukiyoshi Kameyama. *[Polymorphic delimited
   continuations.](https://doi.org/10.1007/978-3-540-76637-7_16)* APLAS 2007.
+
+---
+
+← [2 · Continuations and delimited control](02-continuations.md) · [Contents](index.md) · [4 · Free and freer](04-free-freer.md) →

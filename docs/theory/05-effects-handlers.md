@@ -105,3 +105,7 @@ refinement both read it.
   alternative to monad transformers.](https://okmij.org/ftp/Haskell/extensible/exteff.pdf)* Haskell Symposium 2013.
 - <a id="ref-kiselyov-2015"></a>Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible
   effects.](https://okmij.org/ftp/Haskell/extensible/more.pdf)* Haskell Symposium 2015.
+
+---
+
+← [4 · Free and freer](04-free-freer.md) · [Contents](index.md) · [6 · Final tagless and staging](06-tagless-staging.md) →

@@ -95,3 +95,7 @@ than dogmatically.
 - <a id="ref-taha-2000"></a>Walid Taha, Tim Sheard. *[MetaML and multi-stage programming with
   explicit annotations.](https://doi.org/10.1016/S0304-3975(00)00053-0)* Theoretical Computer Science
   248(1–2):211–242, 2000.
+
+---
+
+← [5 · Algebraic effects and handlers](05-effects-handlers.md) · [Contents](index.md) · [7 · Logic, streams and sketches](07-logic-streams.md) →

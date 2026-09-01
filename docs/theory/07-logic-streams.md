@@ -131,3 +131,7 @@ where that property was established.
 - <a id="ref-chan-1983"></a>Tony F. Chan, Gene H. Golub, Randall J. LeVeque. *[Algorithms for
   computing the sample variance: analysis and recommendations.](https://doi.org/10.1080/00031305.1983.10483115)* The
   American Statistician 37(3):242–247, 1983.
+
+---
+
+← [6 · Final tagless and staging](06-tagless-staging.md) · [Contents](index.md)

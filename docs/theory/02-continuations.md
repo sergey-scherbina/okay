@@ -122,3 +122,7 @@ but one theorem, specialized twice.
 - <a id="ref-dybvig-2007"></a>R. Kent Dybvig, Simon Peyton Jones, Amr Sabry. *[A monadic framework
   for delimited continuations.](https://www.cs.indiana.edu/~dyb/pubs/monadicDC.pdf)* JFP 17(6):687–730, 2007.
 - <a id="ref-bjarnason-2012"></a>Rúnar Bjarnason. *[Stackless Scala with free monads.](http://blog.higher-order.com/assets/trampolines.pdf)* 2012.
+
+---
+
+← [1 · Monads and functors](01-monads.md) · [Contents](index.md) · [3 · Parameterised monads](03-parameterised.md) →

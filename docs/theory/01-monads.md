@@ -155,3 +155,7 @@ and then claw back.
   alternative to monad transformers.](https://okmij.org/ftp/Haskell/extensible/exteff.pdf)* Haskell Symposium 2013.
 - <a id="ref-voigtlander-2008"></a>Janis Voigtländer. *[Asymptotic improvement of computations over free
   monads.](https://doi.org/10.1007/978-3-540-70594-9_20)* MPC 2008.
+
+---
+
+← [The map](README.md) · [Contents](index.md) · [2 · Continuations and delimited control](02-continuations.md) →

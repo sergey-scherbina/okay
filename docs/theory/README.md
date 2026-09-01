@@ -65,3 +65,7 @@ rest of `docs/` — the [typepedia](../typepedia.md) for what each type
 is, [benchmarks](../benchmarks.md) for every number quoted, and
 [existentials](../existentials.md) for the longest worked example of
 the house method: measure, refute, keep the refutation.
+
+---
+
+[Contents](index.md) · [1 · Monads and functors](01-monads.md) →
