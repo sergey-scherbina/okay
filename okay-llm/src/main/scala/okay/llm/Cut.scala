@@ -71,6 +71,14 @@ object Cut {
   : Either[Violation, A] ! (Writer % String + Async) =
     guarded[A](p => gen(using p))
 
+  /** `checked` against the NEAREST guard — the prompt is ambient
+   * (the ctx-prompts door; the explicit form stays) */
+  def checked[A](tokens: Unit ! (Writer % String + Async))
+                (check: (Int, String) => Option[Violation])
+                (using p: Prompt[Either[Violation, A]])
+  : Unit ! (Writer % String + (Delim + Async)) =
+    checked(p, tokens)(check)
+
   /** abort to the nearest guard — no prompt in hand */
   def violation[A, X](v: Violation)(using p: Prompt[Either[Violation, A]])
   : X ! (Writer % String + (Delim + Async)) =

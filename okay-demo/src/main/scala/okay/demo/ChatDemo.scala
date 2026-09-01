@@ -129,7 +129,7 @@ object ChatDemo {
     store.profileOf(p).map(_.email)
 
   /** after a stored fact: who was WAITING for it, on the other side? */
-  def reverseChain(store: MatchStore, side: okay.matching.Side, text: String): Unit =
+  def reverseChain(side: okay.matching.Side, text: String)(using store: MatchStore): Unit =
     import okay.matching.*
     val other = if side == Side.Offer then Side.Need else Side.Offer
     // the floor keeps unrelated waiters quiet; how well related ones
@@ -151,7 +151,7 @@ object ChatDemo {
    * NOT a fiber holding a continuation; see specs/match.md, Deals
    * decision): on an acceptance, the seeker's other Asked deals for
    * the same need are withdrawn and everyone hears the outcome */
-  def onResponded(store: MatchStore, deal: okay.matching.Deal): Unit =
+  def onResponded(deal: okay.matching.Deal)(using store: MatchStore): Unit =
     import okay.matching.*
     val seekerMail = store.profileOf(deal.seeker).map(_.email)
     val providerMail = store.profileOf(deal.provider).map(_.email)
@@ -182,7 +182,7 @@ object ChatDemo {
       case _ => ()
 
   /** the tool table with the reverse chain wrapped around asserts */
-  def chainedTable(store: MatchStore): Map[String, okay.agent.ToolCall => String] =
+  def chainedTable(using store: MatchStore): Map[String, okay.agent.ToolCall => String] =
     val base = MatchTools.table(store)
     base.updated("flow_advance", { c =>
       val out = base("flow_advance")(c)
@@ -230,7 +230,7 @@ object ChatDemo {
             case _ => ""
           // find the deal to hand the policy (dealsFor by the responder)
           store.dealsFor(okay.matching.ProfileId(byId))
-            .find(_.id.n == n).foreach(onResponded(store, _))
+            .find(_.id.n == n).foreach(onResponded(_))
         case _ => ()
       out
     }).updated("facts_assert", { c =>
@@ -243,7 +243,7 @@ object ChatDemo {
         case JObj(fs) => fs.collectFirst { case ("value", JObj(v)) =>
           v.collectFirst { case ("s", JStr(x)) => x }.getOrElse("") }.getOrElse("")
         case _ => ""
-      if text.nonEmpty then reverseChain(store,
+      if text.nonEmpty then reverseChain(
         if side == "need" then okay.matching.Side.Need else okay.matching.Side.Offer, text)
       out
     })
@@ -251,10 +251,9 @@ object ChatDemo {
   /** an agent turn over the match tools: the LLM structures the
    * chat into the store and searches it — the okay-match story */
   def agentTurn(text: String, history: Seq[Anthropic.Message],
-                modelH: okay.Handler[AgentModel],
-                store: MatchStore = market): String =
+                modelH: okay.Handler[AgentModel])(using MatchStore): String =
     given okay.Handler[AgentModel] = modelH
-    given okay.Handler[Tool] = Handlers.tools(chainedTable(store))
+    given okay.Handler[Tool] = Handlers.tools(chainedTable)
     val ctx = Handlers.context(Compact.all)._2
     given okay.Handler[AgentContext] = ctx
     given r1: okay.Handler[AgentModel + Async] = okay.Handler.union[AgentModel, Async]
@@ -277,9 +276,9 @@ object ChatDemo {
 
   /** the deterministic offline "agent": the SAME tool table, driven
    * by two fixed phrasings — the tests' and the no-model mode's path */
-  def scriptedAgent(text: String, store: MatchStore = market): String =
+  def scriptedAgent(text: String)(using store: MatchStore): String =
     import okay.codec.Json.*
-    val t = chainedTable(store)
+    val t = chainedTable
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
     val email = "email ([^ ]+@[^ ]+)".r.findFirstMatchIn(text).map(_.group(1))
@@ -459,15 +458,14 @@ object ChatDemo {
 
   /** which agent serves /match turns: real model when one is
    * configured, the deterministic table-driver otherwise */
-  def matchTurn(text: String, history: Seq[Anthropic.Message],
-                store: MatchStore = market): String =
+  def matchTurn(text: String, history: Seq[Anthropic.Message])(using MatchStore): String =
     sys.env.get("ANTHROPIC_API_KEY").map { key =>
       agentTurn(text, history, Provider.anthropic(
-        Transports.http(), key, "claude-sonnet-4-5"), store)
+        Transports.http(), key, "claude-sonnet-4-5"))
     }.orElse(sys.env.get("OKAY_CHAT_BASE").map { base =>
       agentTurn(text, history, Provider.openAi(
-        Transports.http(), "local", "default", s"$base/v1/chat/completions"), store)
-    }).getOrElse(scriptedAgent(text, store))
+        Transports.http(), "local", "default", s"$base/v1/chat/completions"))
+    }).getOrElse(scriptedAgent(text))
 
   // ---- the SSE reply -------------------------------------------------
 
@@ -480,8 +478,8 @@ object ChatDemo {
   def reply(m: Model, budget: Int)(messages: Seq[Anthropic.Message])
   : Source[Chunk[Byte]] =
     val guarded: Either[Cut.Violation, Unit] ! (Writer % String + Async) =
-      Cut.guarded[Unit] { p =>
-        Cut.checked(p, m(messages))((i, _) =>
+      Cut.guard {
+        Cut.checked(m(messages))((i, _) =>
           if i >= budget then Some(Cut.Violation("token-budget", i, s"> $budget tokens"))
           else None)
       }
@@ -524,8 +522,8 @@ object ChatDemo {
               p.toString.contains("fastopt"))
       }
 
-  def routes(m: Model, budget: Int,
-             store: MatchStore = market): PartialFunction[Request, Response ! Async] =
+  def routes(m: Model, budget: Int)(using MatchStore)
+  : PartialFunction[Request, Response ! Async] =
     case r if r.method == okay.http.Method.Get && r.url == "/" =>
       val html = if appJs.isDefined then reactPage else page
       pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
@@ -554,7 +552,7 @@ object ChatDemo {
       if last.startsWith("/match") then
         // the matchmaking turn: the agent works the okay-match tools,
         // the answer streams through the same SSE framing
-        val answer = matchTurn(last.stripPrefix("/match").trim, messages.init, store)
+        val answer = matchTurn(last.stripPrefix("/match").trim, messages.init)
         def stream(ts: List[String]): Unit ! (Writer % String + Async) = ts match
           case Nil => pure(())
           case t :: rest => effect[Writer % String + Async, Unit](
@@ -572,11 +570,11 @@ object ChatDemo {
       if sys.env.contains("ANTHROPIC_API_KEY") then "live"
       else if sys.env.contains("OKAY_CHAT_BASE") then s"local ${sys.env("OKAY_CHAT_BASE")}"
       else "scripted"
-    Resource.run[Unit, Pure](
+    provide(market)(Resource.run[Unit, Pure](
       Jetty.serve(port)(routes(model, budget))().map { s =>
         println(s"chat: http://127.0.0.1:${Jetty.port(s)}  (model: $mode)")
         Thread.sleep(Long.MaxValue)   // ctrl-c ends the process and the Resource
-      }).runWith
+      }).runWith)
 
   /** the React page: okay-ui's tree rendered by a real React (CDN
    * UMD globals), the logic cross-tested on the JVM — the frontend

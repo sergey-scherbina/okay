@@ -11,6 +11,17 @@ Part IV of the textbook — the same story argued from the literature
 Brachthauser et al. 2020, Lindley-McBride-McLaughlin 2017,
 Sivaramakrishnan et al. 2021), every Okay claim with file:line.
 Linked from docs/README.md and the theory index (eight chapters now).
+## demo-ctx — the demo adopts the capability style
+Completed: 2026-09-01
+
+The user asked where the new context-function DI pays; the demo was
+the textbook site. MatchStore is ambient now: seven signatures drop
+the threaded `store = market` default (the hidden-global-with-
+override idiom); main provides the durable store, each test provides
+its own — the forgot-to-thread bug class (one test once hit the
+global sqlite) is structurally gone. Cut.checked gained the
+ambient-prompt door (additive), so the demo's guard reads
+Cut.guard { Cut.checked(tokens)(rule) }. 13 demo tests green.
 
 ## direct-do-statements — bare statements run: do-notation for direct blocks
 Completed: 2026-09-01

@@ -145,6 +145,17 @@ flow_start / flow_advance.
       шаг <N> <переход>; флоу <N>) — the escrow walk through real
       routes, roles enforced, the buyer's page ringing
 
+## The DI style (demo-ctx)
+The marketplace store is an AMBIENT capability: seven functions that
+threaded `store: MatchStore = market` (the hidden-global-with-
+override idiom) now take `using MatchStore`; `main` does
+`provide(market)(...)`, each test `provide(itsOwn)(...)` — the
+ctx-everywhere doctrine's DI, applied where an application lives.
+The forgot-to-thread class of bug (a test once hit the global
+sqlite) is gone structurally. `Cut.checked` gained the ambient-
+prompt door (additive in okay-llm), so the guard site reads
+`Cut.guard { Cut.checked(tokens)(rule) }`.
+
 ## Out of scope
 - Auth, persistence of conversations, multi-user rooms (persist owns
   durable history; okay-match's DURABLE store is one constructor swap

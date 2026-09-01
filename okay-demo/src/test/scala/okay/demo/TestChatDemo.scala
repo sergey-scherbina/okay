@@ -22,9 +22,9 @@ class TestChatDemo extends munit.FunSuite {
   def withServer[A](budget: Int,
                     store: okay.matching.MatchStore = okay.matching.MemoryMatch())
                    (f: Int => A): A =
-    Resource.run[A, Pure](
-      Jetty.serve(0)(ChatDemo.routes(ChatDemo.scripted, budget, store))()
-        .map(s => f(Jetty.port(s)))).runWith
+    provide(store)(Resource.run[A, Pure](
+      Jetty.serve(0)(ChatDemo.routes(ChatDemo.scripted, budget))()
+        .map(s => f(Jetty.port(s)))).runWith)
 
   val client = HttpClient.newHttpClient()
 
@@ -90,7 +90,7 @@ class TestChatDemo extends munit.FunSuite {
         HttpResponse.BodyHandlers.ofString()).statusCode() == 200
     } catch { case _: Throwable => false }
     assume(up, s"no local model at $base — skipped")
-    Resource.run[Unit, Pure](
+    provide(okay.matching.MemoryMatch(): okay.matching.MatchStore)(Resource.run[Unit, Pure](
       Jetty.serve(0)(ChatDemo.routes(ChatDemo.local(base), 512))()
         .map { s =>
           val port = Jetty.port(s)
@@ -98,7 +98,7 @@ class TestChatDemo extends munit.FunSuite {
             """{"messages":[{"role":"user","content":"answer with one short word"}]}""").readAllBytes(), UTF_8)
           assert(whole.contains("data: "), s"no tokens: ${whole.take(200)}")
           assert(whole.contains("event: done"), s"no done: ${whole.takeRight(120)}")
-        }).runWith
+        }).runWith)
   }
 
   test("MATCH offline: a provider chats in, a seeker finds them — through the real route") {
@@ -127,11 +127,10 @@ class TestChatDemo extends munit.FunSuite {
     val store = okay.matching.MemoryMatch()
     val before = store.candidates(
       okay.matching.Query(okay.matching.Side.Offer, text = "weld")).length
-    val answer = ChatDemo.agentTurn(
+    val answer = provide(store)(ChatDemo.agentTurn(
       "I can weld metal gates, my email is welder@live-demo. Please store my offer.",
       Nil, okay.agent.Provider.openAi(
-        okay.llm.Transports.http(), "local", "default", s"$base/v1/chat/completions"),
-      store)
+        okay.llm.Transports.http(), "local", "default", s"$base/v1/chat/completions")))
     assert(answer.nonEmpty)
     val after = store.candidates(
       okay.matching.Query(okay.matching.Side.Offer, text = "weld metal gates")).length
@@ -147,9 +146,9 @@ class TestChatDemo extends munit.FunSuite {
     } catch { case _: Throwable => false }
     assume(up, s"no local model at $base — skipped")
     val store = okay.matching.MemoryMatch()
-    def turn(text: String): String = ChatDemo.agentTurn(text, Nil,
+    def turn(text: String): String = provide(store)(ChatDemo.agentTurn(text, Nil,
       okay.agent.Provider.openAi(okay.llm.Transports.http(), "local", "default",
-        s"$base/v1/chat/completions"), store)
+        s"$base/v1/chat/completions")))
     // an OFFER, no /match anywhere: the model should reach for the tools
     val a1 = turn("Я умею чинить велосипеды, почта bike@demo. Запиши моё предложение.")
     val stored = store.candidates(
@@ -179,12 +178,12 @@ class TestChatDemo extends munit.FunSuite {
     def modelH = okay.agent.Provider.openAi(okay.llm.Transports.http(),
       "local", "default", s"$base/v1/chat/completions")
     val q1 = "мне нужно починить велосипед, найди мне кого-нибудь"
-    val a1 = ChatDemo.agentTurn(q1, Nil, modelH, store)
+    val a1 = provide(store)(ChatDemo.agentTurn(q1, Nil, modelH))
     // the intake may ask for the email first; the second turn supplies it
     val a2 = if a1.toLowerCase.contains("почт") || a1.toLowerCase.contains("email") then
-      ChatDemo.agentTurn("моя почта seeker@demo",
+      provide(store)(ChatDemo.agentTurn("моя почта seeker@demo",
         Vector(okay.llm.Anthropic.Message("user", q1),
-               okay.llm.Anthropic.Message("assistant", a1)), modelH, store)
+               okay.llm.Anthropic.Message("assistant", a1)), modelH))
     else a1
     assert(a2.contains("велосипед"), s"the found provider's skill must surface: $a2")
   }
@@ -274,7 +273,8 @@ class TestChatDemo extends munit.FunSuite {
 
   test("FLOWS in the demo: a transition's notifications reach the role inboxes, filled") {
     val store = okay.matching.MemoryMatch()
-    val t = ChatDemo.chainedTable(store)
+    given okay.matching.MatchStore = store
+    val t = ChatDemo.chainedTable
     import okay.codec.Json
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("t", name, Json.JObj(args.toVector)))
