@@ -186,3 +186,38 @@ CALL THAT MAY RETURN.
 Recorded roads (BACKLOG): condition-restart-caps (lexical restarts
 as capabilities — a nonexistent restart uncompilable in scope),
 condition-typed-signal (type the condition/answer pair).
+
+## The typed pair (condition-typed)
+
+`signal[A](c: Any)` casts, the policy pattern-matches on `Any`, and
+`Resume(value: Any)` is taken on faith — three consumers in one day
+(BadEmail, MalformedValue, InvalidSubmit) all paid the same tax. The
+typed form makes the pair a TYPECLASS fact:
+
+```scala
+/** the condition C is answered with A — declared once, where C is */
+trait Answers[C, A]
+
+/** typed signal: the answer type comes from the instance, no
+ * annotation at the site, no cast on Resume */
+def raiseC[C, A](c: C)(using Answers[C, A]): A ! Op
+```
+
+- The POLICY stays heterogeneous (it sees every condition and the
+  menu) — typing the policy per-condition was considered and
+  declined: a policy is one function precisely so a deployment can
+  hold its whole stance in one place. What the instance buys is the
+  SIGNAL side: `raiseC(HowMany("k")).?` is an `Int` with no
+  annotation, and a `Resume` whose value does not conform is a
+  policy bug caught at the signal point (a checked cast against the
+  instance's evidence — ClassTag carried by the instance).
+- ADDITIVE: `signal`/`Any` stays; `raiseC` is the typed door. The
+  three consumers move to it as the proof (their policies unchanged
+  — heterogeneous by design).
+
+Behavior:
+- [ ] a typed signal answers its instance's type with no annotation
+      at the site; a Resume with a non-conforming value is refused
+      NAMED (the policy bug caught where it acts)
+- [ ] the three consumers compile on raiseC with their policies
+      untouched
