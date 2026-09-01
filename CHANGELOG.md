@@ -16,6 +16,26 @@ flat. 10 tests (TestMonadic); full matrix green. Rode along: master's
 okayDemo/Test compile fix (two munitTimeout overrides from ebd344a +
 99364a6 — kept 180s).
 
+## ctx-provide-and — provide composes applicatively, the 22 cap falls
+Completed: 2026-09-01
+The missing combinator of the provide family (E16 in
+specs/context-functions.md): `providing[A](a)` builds an installer
+as a VALUE carrying `F[X] = A ?=> X`, and `and` composes installers
+by composing the type constructors — `F[G[X]]` IS the curried chain
+`A ?=> G[X]`, so `(providing[Db](db) and providing[Log](log)) {
+app }` installs both without nesting and without the tuple. Type
+lambdas reduce where the E11/E12 match-type route stalled, so the
+using-method body eta-expands into the chain at the call site. The
+right operand of `and` is the inner layer — override under
+nearest-wins as plain data (`base and providing[Log](testLog)`).
+Compositions are values: build a base environment once, reuse and
+override per test. No arity cap — 25 layers tested past
+ContextFunction22 (composition is heterogeneous, the type grows, so
+no homogeneous fold — chains are written explicitly). Core:
+Providing.scala; tests: TestProviding (flat composition, value
+reuse, right-wins override, 25 layers, missing-dependency
+compile-error claim). Core matrix 239/14/14 on JVM/JS/Native.
+
 ## kafka-eos — exactly-once on the Kafka interop, inherited from the engine
 Completed: 2026-09-01
 The stage-3 persist-interop rule "an engine keeps its own ops" cuts

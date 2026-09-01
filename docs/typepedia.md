@@ -477,7 +477,11 @@ silently uses the stale context; there is no error.
 The pair is `provide` (core: expression-scoped installation,
 nearest-wins nesting) and DOORS — and together they are the
 dependency-injection story: compile-time resolution, given-scopes
-as the object graph, zero framework. Adding a door is two lines:
+as the object graph, zero framework. The composable form
+(`providing[A](a) and providing[B](b)`, core Providing.scala)
+builds installers as reusable values with no nesting and no arity
+cap; the right operand of `and` is the inner layer, so it is the
+override story as data. Adding a door is two lines:
 
 ```scala
 // a wrapper-taking API:                      // a factory:

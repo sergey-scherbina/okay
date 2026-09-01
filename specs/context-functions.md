@@ -89,6 +89,24 @@ Every claim below was compiled, not assumed:
   instance is real, the ceremony is redundant — and the mapN idiom
   the Applicative would buy already SHIPPED as `provide` at 22
   arities (E11: currying is the n-ary Reader idiom).
+- **provide composes applicatively WITHOUT nesting — currying as
+  value composition, and the 22 cap falls** (E16, 2026-09-01,
+  SHIPPED as ctx-provide-and): an installer carries the type
+  constructor `F[X] = A ?=> X`; `and` composes CONSTRUCTORS,
+  `F[G[X]] = A ?=> G[X]` — the curried chain assembled by values:
+  `(providing[Db](db) and providing[Log](log)) { app }`. Type
+  lambdas reduce where the match-type route (E11/E12) stalled, so
+  the using-method eta-expands into the chain in parameter
+  position — the single-definition unbounded form EXISTS after
+  all, just with `and` written by the caller instead of a tuple.
+  Nesting order: the RIGHT operand is the inner layer, so it wins
+  under nearest-wins — `base and providing[Log](testLog)` is the
+  override story as data. Installers and their compositions are
+  VALUES (build once, reuse across tests); composition is
+  heterogeneous (the type grows with each `and`, no homogeneous
+  fold) but uncapped — 25 layers tested past ContextFunction22.
+  Core: Providing.scala (`providing[A](a)`, `and`, `apply`),
+  suite TestProviding (5 tests, incl. the DI compile-error claim).
 - **The ctx layer composes with `!` cleanly, and the shipped doors
   are the proof** (E14, compiled against core): `Env ?=> (A ! F)`
   gives the ambient environment INSIDE `for`-comprehensions over

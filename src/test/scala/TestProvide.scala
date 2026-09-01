@@ -74,3 +74,50 @@ class TestProvideN extends munit.FunSuite {
       C16(16), C17(17), C18(18), C19(19), C20(20), C21(21), C22(22))(app), 253)
   }
 }
+
+/**
+ * The composable form (E16): installers as values, `and` as
+ * applicative composition via currying — no nesting, no arity cap.
+ */
+class TestProviding extends munit.FunSuite {
+
+  trait Db { def q: String }
+  trait Log { def tag: String }
+  trait Clock { def now: Long }
+  def app(using db: Db, log: Log, c: Clock): String = s"${log.tag}@${c.now}:${db.q}"
+
+  val withDb = providing[Db](new Db { val q = "row" })
+  val withLog = providing[Log](new Log { val tag = "t" })
+  val withClock = providing[Clock](new Clock { val now = 7L })
+
+  test("flat and-composition, no nesting") {
+    assertEquals((withDb and withLog and withClock)(app), "t@7:row")
+  }
+
+  test("compositions are values — build once, reuse") {
+    val base = withDb and withLog
+    assertEquals((base and withClock)(app), "t@7:row")
+    assertEquals((base and providing[Clock](new Clock { val now = 9L }))(app), "t@9:row")
+  }
+
+  test("the right operand is the inner layer — override under nearest-wins") {
+    val shadowed = withLog and providing[Log](new Log { val tag = "inner" })
+    assertEquals(shadowed { summon[Log].tag }, "inner")
+  }
+
+  test("past the 22 cap: 25 layers by composition") {
+    case class N(v: Int)
+    // the type GROWS with each and (no homogeneous fold), but the
+    // chain itself has no arity cap; innermost (rightmost) wins
+    val o = providing[N](N(0))
+    val stack = o and o and o and o and o and o and o and o and o and o and
+      o and o and o and o and o and o and o and o and o and o and
+      o and o and o and o and providing[N](N(25))
+    assertEquals(stack { summon[N].v }, 25)
+  }
+
+  test("the DI claim holds: a missing dependency does not COMPILE") {
+    val errors = compileErrors("(withDb and withLog)(app)")
+    assert(errors.nonEmpty, "the missing Clock compiled")
+  }
+}
