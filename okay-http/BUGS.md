@@ -8,7 +8,7 @@ header, never in prose.
      lane: nio
      area: okay-http/src/main/scala-jvm/okay/http/Nio.scala
      gate: okay-http/src/test/scala-jvm/okay/http/TestNio.scala (churn test)
-     fixed-in: pending-land
+     fixed-in: 198c802
      confirmed: no -->
 
 Found 2026-09-01 by the `ClusterTransportBenchmark.nio` lane (3/6 forks
