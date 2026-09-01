@@ -80,6 +80,15 @@ Every claim below was compiled, not assumed:
   the monadic ceremony the feature exists to delete. When reader-y
   data flow should be a first-class effect, the row already has one:
   `Reader % R` with `Ask`.
+- **The Applicative too, and it is the S combinator** (E15,
+  2026-09-01): `ap[B, C](ff: A ?=> (B => C))(fb: A ?=> B): A ?=> C
+  = ff(fb)` compiles and runs — BOTH sides auto-apply to the same
+  ambient `A`, which is exactly `S f g x = f x (g x)`, the Reader
+  ap. `map2`/`product` fall out and work (two independent
+  "computations" read one environment). Same verdict as E13: the
+  instance is real, the ceremony is redundant — and the mapN idiom
+  the Applicative would buy already SHIPPED as `provide` at 22
+  arities (E11: currying is the n-ary Reader idiom).
 - **The ctx layer composes with `!` cleanly, and the shipped doors
   are the proof** (E14, compiled against core): `Env ?=> (A ! F)`
   gives the ambient environment INSIDE `for`-comprehensions over
