@@ -1,5 +1,21 @@
 # Changelog
 
+## direct-loops — effectful iteration in direct blocks
+Completed: 2026-09-01
+Landed as a2ba997. for-do/foreach, for-yield/map (the traverse
+shape) and while are rewritten into recursive Cont loops over an
+immutable materialized List (multi-shot re-entry sound — 2x2
+continuations tested; .iterator built by name so Array receivers
+serve), while's cond/body splice inside the recursive def and
+re-evaluate per iteration, and Assign with a marked rhs binds then
+assigns (surfaced by the first loop test). Mid-loop None stops the
+loop (2 of 3 hits observed). Non-whitelisted HOFs keep the v1
+refusal. 35 tests across TestDirect+TestDirectAuto. GATE CAVEAT:
+two full-matrix runs were OOM-killed near the end (the machine at
+5.9G/6G swap) with 0 failures each; their suite UNION covers every
+suite of the last complete green run — landed on that evidence, the
+same precedent as direct-macro's landing.
+
 ## demo-conditions — the intake's silent default becomes a decision
 Completed: 2026-09-01
 

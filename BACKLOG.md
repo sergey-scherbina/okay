@@ -1,6 +1,15 @@
 # Backlog
 
 ## Direct style — the roads named by the 2026-09-01 survey (docs/direct-style.md)
+- [ ] condition-restart-caps — lexical restarts as capabilities
+      (the ctx-prompts pattern applied to Condition.within): a
+      given Restart installed by the frame makes invoking a
+      nonexistent restart a COMPILE error for in-scope code; the
+      dynamic policy menu stays the floor. Named by the 2026-09-01
+      conditions-x-direct analysis.
+- [ ] condition-typed-signal — type the condition/answer pair
+      (signal[A](c: Any) casts today); HowMany.signal.? : Int with
+      no annotation. A signature redesign, needs its own spec.
 - [ ] ctx-reader-elim — the Reader-to-using bridge, with direct
       blocks as the CONSUMER that ungates ctx-reader-bridge in
       specs/context-functions.md: a program Int ! (Reader % Cfg +
