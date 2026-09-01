@@ -1,5 +1,26 @@
 # Changelog
 
+## sql-pg-node — the pg driver reaches Node; sql.md's last box
+Completed: 2026-09-01 (landed as a4e491e)
+okay-pg cross-built JVM+JS. The message pump was restructured onto
+the Net seam: it now PULLS bytes as a sequential Async program
+(receive = readFully(5) then the body; collectReady folds to
+ReadyForQuery, an error drained to quiet so the session survives)
+instead of blocking-read calls — so the SAME driver runs over a
+blocking socket on the JVM and over Node's buffered net. SCRAM
+kept the room's phase-object shape but its three primitives + nonce
+now come from a per-platform PgCrypto given (JCA / node:crypto) —
+okay-security's fuller seam drags okayHttp and would cycle the
+build, so security-crypto-split is filed. cancel() became a marked
+rollback settled before the next use (no sync I/O on the async
+leg). The acceptance: TestPgNode — a NODE process speaks SCRAM and
+portals to the dockerized Postgres and gets 42 back, a wrong
+password refused by SCRAM itself, no JVM/JDBC in the process; the
+whole JVM live battery green THROUGH the new pump proves nothing
+regressed. Every behavior box of sql.md is now checked. Merge read
+alone after one refused ff (claim-only divergence): exit 0. Full
+matrix green on a quiet machine.
+
 ## docs-sweep — the landings reach the docs
 Completed: 2026-09-01 (landed as a963374; markdown only)
 Ten module pages born (blob conf demo docs-mongo java langchain4j
