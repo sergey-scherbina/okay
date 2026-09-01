@@ -167,8 +167,10 @@ lazy val okayFs2 = (project in file("okay-fs2"))
 /** Kafka as chunked async streams: one poll, one chunk (P4) */
 lazy val okayKafka = (project in file("okay-kafka"))
   // okay-persist rides along: KafkaStore is the stage-3 interop
-  // engine behind the same Store trait (specs/persist.md)
-  .dependsOn(okay.jvm, okayPersist.jvm)
+  // engine behind the same Store trait (specs/persist.md);
+  // test->test borrows the ElectionSuite for the Kafka control-log
+  // leg of the consensus battery (specs/consensus.md)
+  .dependsOn(okay.jvm, okayPersist.jvm % "compile->compile;test->test")
   .settings(
     name := "okay-kafka",
     libraryDependencies ++= Seq(

@@ -113,23 +113,29 @@ caveats are stated, not hidden:
 
 ## Behavior (for the implementation claim)
 
-- [ ] two nodes claim the same epoch concurrently through one
+- [x] two nodes claim the same epoch concurrently through one
       control log: exactly one wins on EVERY node's fold; the loser
-      observes its loss and does not promote
-- [ ] a leader that cannot renew its lease is taken over after
+      observes its loss and does not promote (three folds agree;
+      and a winner that never LEASES loses the seat — the liveness
+      rule caught the test assuming otherwise)
+- [x] a leader that cannot renew its lease is taken over after
       expiry + skew; nothing acknowledged is lost (the promote path
-      catches the successor up, as stage 2 already proves)
-- [ ] a paused-and-resumed old leader is fenced by epoch on its
+      catches the successor up, as stage 2 already proves; renewal
+      holds the seat, injectable clock makes expiry a test)
+- [x] a paused-and-resumed old leader is fenced by epoch on its
       first append; the rejection is an ops event (stage 2's test,
       re-run under automatic election)
-- [ ] the operator record wins over any concurrent automatic claim
-      at the same epoch, on every fold
-- [ ] the control log over KafkaStore and over a FileStore arbiter
+- [x] the operator record wins over any concurrent automatic claim
+      at the same epoch, on every fold (even landing SECOND)
+- [x] the control log over KafkaStore and over a FileStore arbiter
       passes the same election battery (the two-engine acceptance,
-      the house move)
-- [ ] arbiter down: data partitions keep serving; failover waits;
-      the operator path still works — availability degradation is
-      visible in stats, correctness untouched
+      the house move) — ElectionSuite unchanged over memory, the
+      file arbiter, and live Kafka (5 tests each)
+- [x] arbiter down: data partitions keep serving; failover waits;
+      the operator path still works — a dead control topic fails
+      the claim loudly, Replicated keeps appending at quorum, and
+      the stage-2 manual promote never passes through the control
+      log at all
 
 ## Out of scope
 
@@ -169,5 +175,17 @@ caveats are stated, not hidden:
 
 ## Results
 
-(after the implementation claim — the election battery on both
-control-log engines, the flapping bound measured, stats surfaced)
+Landed (persist-election, 2026-09-01): `Election` in okay-persist
+(cross-platform — it consumes total order and a clock, nothing
+else). The fold is ~40 lines: first-Take-wins per epoch, Operator
+overrides even landing second, a deposed leader's Lease is noise.
+`tryTakeover` answers from the FOLD, not the append — the claim
+lands, the node reads back whether it was first — and the winner
+immediately leases so a racing claimant sees no vacancy. The
+battery: 5 suite tests × three control-log engines (memory, the
+FileStore arbiter, live Kafka — unchanged, which was the claim),
+plus 3 integration tests driving stage 2's promote (loss-free
+takeover, epoch fencing, the arbiter-down degradation). One truth
+the tests taught back: a winner that never leases loses the seat —
+liveness working as specified. RaftStore remains the filed future
+engine; flapping-bound measurement joins the first deployment.
