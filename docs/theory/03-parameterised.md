@@ -90,6 +90,15 @@ written in. One trait (`ParaMonad`), one theorem (the diagonal), two
 instances (`Cont`, `PState`) — the chapter is short because the design
 followed the paper closely enough that there is little else to say.
 
+
+**The production consumer.** The two-state degenerate form of this
+chapter's typestate ships in okay-sql: `Typed.region` (Typed.scala)
+carries the transaction protocol in a phantom index — `Db[Tx.No]` in,
+`Db[Tx.Yes]` for the body, a nested region a compile error where
+`transact` could only refuse at runtime. The full answer-type
+threading stays here as the theory; the phantom form is what the
+price/benefit analysis actually bought.
+
 ## References
 
 - <a id="ref-atkey-2009"></a>Robert Atkey. *[Parameterised notions of computation.](https://bentnib.org/paramnotions-jfp.html)* JFP

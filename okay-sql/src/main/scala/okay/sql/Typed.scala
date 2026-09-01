@@ -210,6 +210,48 @@ object Typed:
       _ <- !.widen[Unit, Async, Resource + G](db.commit())
     yield a
 
+  // ── the TYPED region: the protocol in the types ────────────────
+
+  /** the two transaction states, as phantoms. This is PState's
+   * typestate (State.scala, Atkey's parameterised monad — the theory
+   * textbook, ch. 3) in its two-state degenerate form: entering the
+   * region is the No -> Yes transition, leaving it Yes -> No, and the
+   * type system enforces the protocol order — a nested `region` does
+   * not COMPILE, where `transact` refuses it at runtime. The full
+   * PState embedding (threading the state type through Cont's answer
+   * type) was considered and declined for v1: it buys the same
+   * guarantee at the price of a Free<->Cont bridge on every step. */
+  object Tx:
+    sealed trait No
+    sealed trait Yes
+
+  /** a driver handle carrying its transaction state in the type.
+   * Queries run in any state; `region` demands `No` and hands the
+   * body `Yes` — and there is no begin/commit on the handle at all,
+   * the region IS them. */
+  final class Db[S] private[sql] (private[sql] val db: Sql):
+    def describe(sql: String): Vector[Col] ! Async = db.describe(sql)
+    def query(sql: String, params: Vector[SqlValue] = Vector.empty)
+    : Chunk[Vector[SqlValue]] ! (Produce + Async) = db.query(sql, params)
+    def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async =
+      db.update(sql, params)
+    def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async =
+      db.batch(sql, rows)
+
+  object Db:
+    /** every driver starts outside a transaction */
+    def apply(db: Sql): Db[Tx.No] = new Db[Tx.No](db)
+
+  /** `transact`, with the protocol lifted into the types: the body
+   * sees a `Db[Tx.Yes]`, on which `region` cannot be called again —
+   * the nested-begin failure specs/jdbc.md documents as a runtime
+   * refusal is unrepresentable here. Runtime behavior is EXACTLY
+   * `transact` (commit on completion, the cancel brake on abort). */
+  def region[A, G[+_]](db: Db[Tx.No], isolation: Isolation = Isolation.ReadCommitted)
+                      (body: Db[Tx.Yes] => A ! (Resource + Async + G))
+  : A ! (Resource + Async + G) =
+    transact(db.db, isolation)(_ => body(new Db[Tx.Yes](db.db)))
+
 /** parameter binding: positionally from a product's declared field
  * order, through the driver's prepared path — there is no API that
  * interpolates a value into SQL text, so injection is

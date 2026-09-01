@@ -230,6 +230,33 @@ class TestTyped extends munit.FunSuite {
     finally conn.close()
   }
 
+  test("the typed region: same runtime as transact, and the nested begin cannot COMPILE") {
+    val conn = DriverManager.getConnection(url, "app", "app")
+    try
+      val db = JdbcSql(conn)
+      val h = Typed.Db(db)                        // Db[Tx.No]
+      val prog = Typed.region[Long, Async](h) { tx =>
+        !.widen[Long, Async, Resource](
+          tx.update("insert into customer(id, user_name, balance, active) values (22, 'typed', 1.0, true)"))
+      }
+      val n = !.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog)))
+      assertEquals(n, 1L)
+      assertEquals(countBy(db, "id = 22"), 1L)
+      assertEquals(run(db.update("delete from customer where id = 22")), 1L)
+
+      // the point of the types: what transact refuses at RUNTIME the
+      // region makes unrepresentable — the body holds a Db[Tx.Yes],
+      // and region demands Db[Tx.No]
+      val errors = compileErrors(
+        "val h2: Typed.Db[Typed.Tx.No] = null.asInstanceOf[Typed.Db[Typed.Tx.No]]\n" +
+        "Typed.region[Long, okay.Async](h2) { tx =>\n" +
+        "  Typed.region[Long, okay.Async](tx)(inner =>\n" +
+        "    okay.!.widen[Long, okay.Async, okay.Resource](tx.update(\"select 1\")))\n" +
+        "}")
+      assert(errors.contains("Found:") && errors.contains("Tx.Yes"), errors)
+    finally conn.close()
+  }
+
   test("transact rolls back on an exception; autocommit restored") {
     val conn = DriverManager.getConnection(url, "app", "app")
     try

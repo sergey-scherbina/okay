@@ -1,5 +1,17 @@
 # Changelog
 
+## sql-typestate — the transaction protocol in the types; PState gets its consumer
+Completed: 2026-09-01
+
+Typed.Db[S] carries the transaction state as a phantom; Typed.region
+demands Db[Tx.No], hands the body Db[Tx.Yes], and owns begin/commit
+itself — the nested-begin failure specs/jdbc.md documents as a
+runtime refusal is now unrepresentable, proven by compileErrors (the
+error names Tx.Yes). Runtime is exactly transact. This is PState's
+typestate (Atkey, textbook ch. 3) in two-state form — the chapter now
+points at the shipped consumer; the full answer-type embedding was
+declined with its price stated. 14 tests on H2.
+
 ## cache-redis — four commands do not justify a dependency
 Completed: 2026-09-01 (landed after c316c30)
 The RESP client is four commands over a blocking socket; Budget =

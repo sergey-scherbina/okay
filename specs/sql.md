@@ -185,6 +185,24 @@ import — and the platforms it runs on.
 - [ ] a Native-image (or Node) consumer queries Postgres through
       okay-pg with no JVM/JDBC present (the openness acceptance)
 
+## The typed region (sql-typestate)
+`transact` refuses a nested begin at RUNTIME (specs/jdbc.md names the
+failure mode: the rollback that quietly does not roll back). The
+typed region lifts the protocol into the types — PState's typestate
+(Atkey's parameterised monad; theory textbook ch. 3) in its two-state
+form: `Typed.Db[S]` carries the transaction state as a phantom,
+`Typed.region` demands `Db[Tx.No]` and hands the body `Db[Tx.Yes]`,
+and there is no begin/commit on the handle at all — the region IS
+them. A nested region does not compile; the test proves it with
+`compileErrors`. Runtime behavior is exactly `transact`. The full
+PState embedding (state type threaded through Cont's answer type) was
+declined for v1 — same guarantee, plus a Free<->Cont bridge per step.
+
+- [x] `region` commits on success with the same semantics as
+      `transact` (proven on H2 through the JDBC driver)
+- [x] a nested `region` is a COMPILE error, and the error names the
+      state (`Tx.Yes` where `Tx.No` is demanded)
+
 ## Out of scope
 
 - writing MySQL/MSSQL/Oracle wire protocols — R2DBC or JDBC are
