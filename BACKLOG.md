@@ -17,9 +17,6 @@
       on the hand mapping instead
 
 ## okay-security (specs/security.md — staged, like persist)
-- [ ] security-mcp — MCP authorization (stage 1): protected-resource
-      metadata (RFC 9728), 401 + WWW-Authenticate on McpHttp.route,
-      client discovery -> PKCE flow -> bearer retry
 - [ ] security-es256 — ES256 for JWT (the JOSE raw R||S <-> DER dance,
       its own tested task)
 - [ ] security-node — the Crypto seam over node:crypto, so the JS leg
