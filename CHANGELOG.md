@@ -10,6 +10,20 @@ the right pages with no per-scenario code (the deal's hand-written
 onResponded now has a generic sibling). The prompt teaches the model
 the flow tools. 12 demo tests.
 
+## ctx-monad-instance — okay's Monad over context functions, for the generic combinators
+Completed: 2026-09-01
+The E13/E15 "not adopted" verdict was incomplete: direct style needs
+no instance, but traverse/sequence/replicateA are written ONCE over
+any F and need exactly an instance — juxtaposition cannot replace
+them. Core now carries `given ctxMonad[E]: Monad[[X] =>> E ?=> X]`
+(Providing.scala): pure is the value, flatMap is literally f(fa) —
+the compiler's own auto-application is the Reader diagonal, so the
+instance certifies semantics the elaborator already runs.
+`sequence(Seq[Env ?=> Int]): Env ?=> Seq[Int]` works with F
+inferred. Method syntax on bare ctx functions stays out (E10:
+receiver applies before extension lookup). Tests: TestCtxMonad (4).
+Matrix 257/14/14 — the global given collides with nothing.
+
 ## ctx-wire — the consumer one-liner: wire[A] is Reader's ask
 Completed: 2026-09-01
 The other half of the vocabulary (E17 in specs/context-functions.md):

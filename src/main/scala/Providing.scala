@@ -47,3 +47,27 @@ def providing[A](a: A): Providing[[X] =>> A ?=> X] =
  * A missing given is a compile error — the DI claim holds.
  */
 inline def wire[A]: A ?=> A = summon[A]
+
+/**
+ * The Monad instance for context functions themselves (E13/E15/E19):
+ * `[X] =>> E ?=> X` is the Reader whose combinators the COMPILER
+ * runs — pure is the value, flatMap is literally `f(fa)` (the
+ * receiver auto-applies to the ambient E: the Reader diagonal for
+ * free). Direct style needs none of it; the instance exists for the
+ * GENERIC combinators written once over any F — traverse, sequence,
+ * replicateA:
+ *
+ * {{{
+ *   val xs: Seq[Env ?=> Int] = Seq(wire[Env].uid, wire[Env].uid + 1)
+ *   val all: Env ?=> Seq[Int] = sequence(xs)   // F inferred
+ * }}}
+ *
+ * Method syntax on a BARE ctx function stays out of bounds: the
+ * receiver eagerly applies before extension lookup (E10), so
+ * `(x: Env ?=> Int).flatMap(...)` dispatches against Int, not the
+ * instance. Use the generic combinators or direct style.
+ */
+given ctxMonad[E]: Monad[[X] =>> E ?=> X] with
+  def pure[A](a: A): E ?=> A = a
+  extension [A](fa: E ?=> A)
+    def flatMap[B](f: A => E ?=> B): E ?=> B = f(fa)

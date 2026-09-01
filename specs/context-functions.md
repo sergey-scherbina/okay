@@ -136,6 +136,19 @@ Every claim below was compiled, not assumed:
   compiler inserts the closures and performs every `<*>` itself;
   the operator would reintroduce ceremony the elaborator performs
   for free.
+- **The E13/E15 verdict, revised where it was incomplete** (E19,
+  2026-09-01, SHIPPED as ctx-monad-instance): direct style still
+  needs no instance — but the GENERIC combinators written once over
+  any F (traverse, sequence, replicateA) DO, and juxtaposition
+  cannot replace them. Core now carries `given ctxMonad[E]:
+  Monad[[X] =>> E ?=> X]` (Providing.scala): pure is the value,
+  flatMap is literally `f(fa)`. `sequence(Seq[Env ?=> Int])` works
+  with F INFERRED (higher-kinded unification finds the type
+  lambda); traverse and replicateA take it explicitly. Method
+  syntax on a bare ctx function stays rejected — the receiver
+  eagerly applies before extension lookup (E10), `(x: Env ?=>
+  Int).flatMap` dispatches against Int. The full matrix stayed
+  green: the global given collides with nothing.
 - **The ctx layer composes with `!` cleanly, and the shipped doors
   are the proof** (E14, compiled against core): `Env ?=> (A ! F)`
   gives the ambient environment INSIDE `for`-comprehensions over
