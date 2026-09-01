@@ -311,6 +311,31 @@ object WireJson:   // hand-mapped, the MCP-dialect precedent —
   retained: send the full tree once, then patches; an unacknowledged
   patch resends from the kept tree, idempotently (patches against a
   named base version).
+
+  Contract (claimed: ui-durable, on okay-persist stage 0). The
+  journal is the INBOUND LINE STREAM, verbatim — forged and damaged
+  lines included — because `Wire.serve` is deterministic about
+  dropping them, and refolding through the SAME pure stage is the
+  whole guarantee; filtering before journaling would be a second
+  implementation of the rule. One session = one key
+  (`Topic.route` picks the partition); a snapshot is the same
+  partition under `key + "#snap"`, value `{upTo, s}` by `Schema[S]`,
+  and until persist-stage1's compaction `latest` is a fold of the
+  tail — correct, not yet cheap.
+
+  - [ ] refold determinism: a live journaled run and a recovery from
+        its journal reach the SAME state — with forged and damaged
+        lines in the stream
+  - [ ] crash and continue: k lines live, crash, recover, feed the
+        rest — the final state equals the uninterrupted run's
+  - [ ] intent-first: a line appended but never processed (crash
+        between append and update) IS in the recovered state
+  - [ ] snapshot: recovery from `latest` refolds only the tail
+        (counted, not assumed), and equals the full refold
+  - [ ] two sessions sharing a topic and partition do not bleed:
+        keys filter
+  - [ ] `serve` = recover + journal + continue, in one call, over any
+        line transport
 - **scaling**: a session is a fold with a value state — shard by
   session id, move a session by moving a value, fan a broadcast in as
   one more merged source. Nothing in the loop holds a lock; the
