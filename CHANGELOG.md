@@ -1,5 +1,14 @@
 # Changelog
 
+## codec-iso — to every algebra the wrapper does not exist
+Completed: 2026-09-01 (landed as 46c6bcd)
+SIso in the Schema enum (wrap/refine): a newtype travels as what it
+wraps, a refining Left is a decode error like any other. All six
+algebras swept — Json, Cbor, tool schema, form, and okay-sql's row
+bridge (Field gained into/outof; a wrapped column is its underlying
+kind both directions). First consumer: Schema[Secret] is the bare
+reference string. Composes with codec-defaults. Matrix 1242.
+
 ## cache-view — the consumer that is never invalid, only behind
 Completed: 2026-09-01 (landed as 6ab7e63)
 Regime 1 shipped: View(topic)(key)(fold) in okay-cache (now on

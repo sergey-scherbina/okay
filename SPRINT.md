@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- codec-iso — an iso node in the Schema algebra: a newtype travels
-  as its underlying shape, decode may refine (Either); the sweep
-  covers all six algebras; first consumer Schema[Secret] as the bare
-  reference string (specs/codecs.md + conf.md Results)
 
 ## Queue
 (next candidates from BACKLOG.md: the roads the landed Sql seam
