@@ -23,6 +23,16 @@
       (the journal is an okay-persist topic: read(from) IS
       Last-Event-ID, TooEarly answers a compacted-past id)
 
+## okay-cache (specs/cache.md)
+- [ ] cache-memory — Cache trait, bounded LRU memory engine,
+      single-flight getOrLoad, named Regime (no default TTL),
+      negative caching, stats as values
+- [ ] cache-view — regime 1: the log-fed View over a compacted
+      keyed topic (lag = consumer lag; pairs persist-stage1)
+- [ ] cache-redis — minimal RESP client (GET/SET PX/DEL/PING) over
+      the Async transport, same contract suite; invalidation topic
+      over okay-persist for cross-node regime 2
+
 ## okay-jdbc (specs/jdbc.md — the foreign database)
 - [ ] jdbc-typed — Schema row decode (label-matched, total) +
       verify against ResultSetMetaData + typed params + transact

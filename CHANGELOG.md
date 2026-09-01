@@ -1,5 +1,15 @@
 # Changelog
 
+## cache-spec — specs/cache.md: caching with named invalidation
+Completed: 2026-09-01
+Every cache names where its truth lives: a log-fed view (never
+invalid, only behind — lag IS consumer lag), write-through with an
+invalidation topic (the stale window stated, not denied), or a
+declared staleness budget — no default TTL anywhere. Single-flight
+in getOrLoad, bounded always, Redis via a minimal own RESP behind
+the same trait; distributed locks refused out loud. Spec only;
+cache-memory, cache-view, cache-redis filed.
+
 ## jdbc-typed-spec — specs/jdbc.md: the unmodifiable foreign database
 Completed: 2026-09-01
 The posture: their schema is authoritative — bind, don't model. SQL
