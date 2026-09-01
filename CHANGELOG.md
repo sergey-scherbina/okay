@@ -1,5 +1,28 @@
 # Changelog
 
+## kafka-eos — exactly-once on the Kafka interop, inherited from the engine
+Completed: 2026-09-01
+The stage-3 persist-interop rule "an engine keeps its own ops" cuts
+both ways: Kafka HAS exactly-once, so the interop now exposes it
+(specs/persist.md). The producer is idempotent by default
+(`enable.idempotence`) — a retry after a lost ack cannot duplicate,
+effectively-once to Kafka; the consumer reads `read_committed`, so a
+reader never observes an aborted or in-flight transaction and `end` is
+the last stable offset. New `KafkaStore.transaction(transactionalId) {
+tx => tx.append(topic, partition, k, v) }` runs appends across
+partitions AND topics atomically — commit on a normal return, abort
+and re-raise on a throw — over a transactional producer cached per id
+(initTransactions once, fenced by the id), closed with the store. The
+own-engine file store gains nothing: this is Kafka's feature exposed,
+not reimplemented, and the out-of-scope note stands for the own
+engine. 3 live tests (TestKafkaEos, skip when the broker is absent):
+a committed transaction's records appear together and in order; an
+aborted one is invisible to a read-committed reader; one transaction
+spans two topics atomically. The existing kafka suite (13) unchanged
+and green — read_committed leaves non-transactional offsets identical.
+One live wart stated in the spec: a read immediately after commit must
+tolerate the last-stable-offset propagating (the test retries briefly).
+
 ## ctx-provide-n — the Cats mapN answer applied: 22 generated arities
 Completed: 2026-09-01 (landed as 8265a2e)
 Their "unbounded" is 22 generated overloads; so is ours — each a
@@ -1295,7 +1318,6 @@ lines (hostile ones included — the stage's determinism is the
 argument), segmented refold (a journaled Closed ended a connection,
 not the session), snapshots bound the refold (counted). Six
 equalities between live runs and recoveries. Matrix 983.
-
 
 ## cluster-nio — measured, the answer was neither guess, and the code stays
 Completed: 2026-09-01

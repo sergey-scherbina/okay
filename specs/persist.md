@@ -263,6 +263,26 @@ a dead peer THROWS and that is the whole protocol):
   topic") instead of pretending to own what it does not — an
   interop inherits the engine's ops along with its twenty years.
 
+  Exactly-once, inherited (kafka-eos, landed 2026-09-01): the same
+  rule (b) says the interop inherits the engine's EOS, so it does.
+  The producer is idempotent (`enable.idempotence`) — a retry after
+  a lost ack cannot duplicate, effectively-once to Kafka, always on;
+  the consumer reads `read_committed`, so a reader never observes an
+  aborted or in-flight transaction and `end` is the last STABLE
+  offset. `transaction(transactionalId) { tx => tx.append(...) }`
+  runs appends across partitions AND topics atomically — commit on a
+  normal return, abort (and re-raise) on a throw — over a cached
+  transactional producer that `initTransactions` once and is fenced
+  by its id. Proven live: a committed transaction's records appear
+  together and in order; an aborted one is invisible to a
+  read-committed reader (its offsets are spent holes, the log's
+  ordinary story); one transaction spans two topics atomically. The
+  own-engine file store does NOT gain transactions from this — it is
+  Kafka's feature, exposed, not reimplemented (the out-of-scope note
+  stands for the own engine). One live wart, stated: a reader
+  immediately after commit must tolerate the read-committed
+  last-stable-offset propagating (the test retries briefly).
+
 ## Evolution and versioning
 
 Three separate things that version, each with its own rule:
@@ -506,9 +526,12 @@ at stage 0 and never rebind.
 
 ## Out of scope
 
-- transactions (atomic multi-partition writes, read-committed) —
+- transactions in the OWN engine (atomic multi-partition writes) —
   the consumer-side idempotency story covers the named consumers;
-  revisit only with a concrete case in hand
+  revisit only with a concrete case in hand. (The Kafka INTEROP now
+  exposes the engine's native transactions — kafka-eos, below —
+  because Kafka already has them and an interop inherits the
+  engine's ops; the own-engine file store still does not.)
 - queries and secondary indexes — it is a log; an index is a
   consumer that builds one (okay-rag is literally this already)
 - multi-region/geo-replication; encryption at rest (file-system

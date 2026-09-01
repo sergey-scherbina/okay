@@ -25,6 +25,22 @@ import scala.jdk.CollectionConverters.*
  * `Replicated` both block on the send whose producer is configured
  * `acks=all` — at least as durable as asked, stated rather than
  * approximated downward.
+ *
+ * Exactly-once (kafka-eos), inherited from the engine that has it:
+ *  - the producer is IDEMPOTENT (`enable.idempotence`), so a retry
+ *    after a lost ack does not duplicate the record — effectively-
+ *    once TO Kafka, the sink half, always on.
+ *  - the consumer reads `read_committed`, so a reader never observes
+ *    an aborted transaction's records nor an open one's — the reader
+ *    half. `end` is then the last STABLE offset, which is exactly the
+ *    end a read-committed consumer can reach.
+ *  - `transaction(transactionalId) { tx => tx.append(...) }` runs a
+ *    set of appends across partitions and topics ATOMICALLY: commit
+ *    on a normal return, abort on a throw. The `transactionalId`
+ *    fences a zombie producer of the same id (Kafka's own EOS). This
+ *    is the "concrete case" specs/persist.md kept transactions out of
+ *    scope pending — and it costs no new machinery, because Kafka has
+ *    transactions and an interop inherits the engine's ops.
  */
 final class KafkaStore(bootstrap: String, group: String = "okay-persist")
   extends Store:
@@ -36,6 +52,8 @@ final class KafkaStore(bootstrap: String, group: String = "okay-persist")
     Map[String, AnyRef](
       "bootstrap.servers" -> bootstrap,
       "acks" -> "all",
+      // effectively-once to Kafka: a producer retry cannot duplicate
+      "enable.idempotence" -> "true",
       "key.serializer" -> "org.apache.kafka.common.serialization.ByteArraySerializer",
       "value.serializer" -> "org.apache.kafka.common.serialization.ByteArraySerializer",
     ).asJava)
@@ -45,11 +63,17 @@ final class KafkaStore(bootstrap: String, group: String = "okay-persist")
       "group.id" -> group,
       "enable.auto.commit" -> "false",
       "auto.offset.reset" -> "none",
+      // the reader half of EOS: aborted and in-flight records are invisible
+      "isolation.level" -> "read_committed",
       "key.deserializer" -> "org.apache.kafka.common.serialization.ByteArrayDeserializer",
       "value.deserializer" -> "org.apache.kafka.common.serialization.ByteArrayDeserializer",
     ).asJava)
 
   private var open = Vector.empty[KTopic]
+  // one transactional producer per id, initTransactions'd once and
+  // reused; a transaction on one id is serialized (Kafka forbids
+  // concurrent transactions on a producer, and fences by the id)
+  private var txnProducers = Map.empty[String, KafkaProducer[Array[Byte], Array[Byte]]]
 
   def topic(name: String, partitions: Int, policy: Policy): Topic = synchronized {
     open.find(_.name == name) match
@@ -91,8 +115,55 @@ final class KafkaStore(bootstrap: String, group: String = "okay-persist")
     })
   }
 
+  /**
+   * Run a set of appends as ONE Kafka transaction (kafka-eos): the
+   * records — across any partitions and topics — become visible to
+   * read-committed consumers all at once on commit, or not at all on
+   * abort. A normal return commits; any throw aborts and re-raises.
+   * The `transactionalId` is a STABLE name for this logical producer:
+   * it fences a zombie of the same id, so reuse the same id for the
+   * same duty across restarts. Topics must already exist (call
+   * `topic(name, partitions)` first); the block runs synchronously.
+   */
+  def transaction[A](transactionalId: String)(body: Txn => A): A =
+    val p = txnProducer(transactionalId)
+    p.synchronized {
+      p.beginTransaction()
+      val a =
+        try body(new Txn(p))
+        catch
+          case e: Throwable =>
+            try p.abortTransaction() catch case _: Throwable => ()
+            throw e
+      p.commitTransaction()
+      a
+    }
+
+  private def txnProducer(id: String): KafkaProducer[Array[Byte], Array[Byte]] =
+    synchronized {
+      txnProducers.get(id) match
+        case Some(p) => p
+        case None =>
+          val p = KafkaProducer[Array[Byte], Array[Byte]](
+            Map[String, AnyRef](
+              "bootstrap.servers" -> bootstrap,
+              "acks" -> "all",
+              "enable.idempotence" -> "true",
+              "transactional.id" -> id,
+              "key.serializer" -> "org.apache.kafka.common.serialization.ByteArraySerializer",
+              "value.serializer" -> "org.apache.kafka.common.serialization.ByteArraySerializer",
+            ).asJava)
+          p.initTransactions()
+          txnProducers = txnProducers.updated(id, p)
+          p
+    }
+
   def close(): Unit =
     producer.close()
+    synchronized {
+      txnProducers.values.foreach(p => try p.close() catch case _: Throwable => ())
+      txnProducers = Map.empty
+    }
     consumer.close()
     admin.close()
 
@@ -161,3 +232,16 @@ final class KafkaStore(bootstrap: String, group: String = "okay-persist")
 object KafkaStore:
   def apply(bootstrap: String, group: String = "okay-persist"): KafkaStore =
     new KafkaStore(bootstrap, group)
+
+  /**
+   * The append surface inside a transaction (kafka-eos): partition-
+   * addressed, across any topic. The returned offset is the one the
+   * broker assigned — durable and visible to read-committed readers
+   * only once the enclosing `transaction` commits; an abort unwrites
+   * it (the offset is spent, a hole, the log's ordinary story).
+   */
+  final class Txn private[kafka] (producer: KafkaProducer[Array[Byte], Array[Byte]]):
+    def append(topic: String, partition: Int, key: Array[Byte], value: Array[Byte]): Long =
+      val record = ProducerRecord[Array[Byte], Array[Byte]](
+        topic, partition, if key.isEmpty then null else key, value)
+      producer.send(record).get().offset()

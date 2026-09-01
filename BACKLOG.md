@@ -43,8 +43,6 @@
 - [ ] lake-delta — Delta specifics: DuckDB delta extension via the
       JDBC seam (read), Delta Kernel interop (read/write, no
       Spark), spark-bridge writes already available (specs/data.md)
-- [ ] kafka-eos — producer idempotence/transactions on the okay-kafka
-      sink, or the at-least-once contract asserted where EOS is off
 
 ## okay-cache (specs/cache.md)
 
