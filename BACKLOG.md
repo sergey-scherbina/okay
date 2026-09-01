@@ -16,9 +16,6 @@
 - [ ] own-db-migrations — spec landed (specs/jdbc.md, Own
       relational databases): Flyway model, checksummed scripts,
       schema-version table + ops topic; implement over the Sql seam
-- [ ] obs-tracing — spec landed (specs/obs.md): spans as values on
-      a trace topic, W3C traceparent at the edges, tracing handler
-      composition; OTLP exporter a later interop
 - [ ] persist-backup — spec landed (specs/persist.md, Backup and
       restore): what remains is the DOCTOR tool (recovery scan
       against a backup, offline) and a blob-seam copy helper

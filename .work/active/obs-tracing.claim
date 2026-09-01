@@ -1,0 +1,7 @@
+feature/obs-tracing 2026-09-01T18:30:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-01T18:30:00Z
+status: in-progress
+done-so-far:
+next: okay-obs module - Span value+Schema, W3C traceparent total parse/render, Sample policy, Tracer over a persist topic, traced(Handler) combinator; crossing test http->sql in test scope
+files: okay-obs/** (new), build.sbt (tail), specs/obs.md boxes

@@ -1,6 +1,9 @@
 # Sprint
 
 ## Doing
+- obs-tracing — okay-obs: spans as values on a trace topic, W3C
+  traceparent as the one propagation vocabulary, the tracing handler
+  wrapping any Handler; export stays a consumer (specs/obs.md)
 
 ## Queue
 (next candidates from BACKLOG.md: the roads the landed Sql seam
