@@ -19,6 +19,13 @@ class TestChatDemo extends munit.FunSuite {
   // the TestRepoAgent precedent; 180 covers a busy local model
   override val munitTimeout = scala.concurrent.duration.Duration(180, "s")
 
+  /** a JUDGMENT assertion against a small live model is stochastic:
+   * one retry of the whole turn cuts the flake quadratically, and a
+   * consistent failure still fails (demo-live-judgment-flake) */
+  def judged[A](attempt: => A)(ok: A => Boolean): A =
+    val first = attempt
+    if ok(first) then first else attempt
+
   def withServer[A](budget: Int,
                     store: okay.matching.MatchStore = okay.matching.MemoryMatch())
                    (f: Int => A): A =
@@ -149,12 +156,15 @@ class TestChatDemo extends munit.FunSuite {
     def turn(text: String): String = provide(store)(ChatDemo.agentTurn(text, Nil,
       okay.agent.Provider.openAi(okay.llm.Transports.http(), "local", "default",
         s"$base/v1/chat/completions")))
-    // an OFFER, no /match anywhere: the model should reach for the tools
-    val a1 = turn("Я умею чинить велосипеды, почта bike@demo. Запиши моё предложение.")
-    val stored = store.candidates(
-      okay.matching.Query(okay.matching.Side.Offer, text = "велосипед")).nonEmpty
-    assert(stored || a1.toLowerCase.contains("почт") || a1.toLowerCase.contains("email"),
-      s"neither stored nor asked: $a1")
+    // an OFFER, no /match anywhere: the model should reach for the
+    // tools — judged with one retry (the model's call, stochastic)
+    def offerStored(ans: String): Boolean =
+      store.candidates(okay.matching.Query(okay.matching.Side.Offer,
+        text = "велосипед")).nonEmpty ||
+        ans.toLowerCase.contains("почт") || ans.toLowerCase.contains("email")
+    val a1 = judged(
+      turn("Я умею чинить велосипеды, почта bike@demo. Запиши моё предложение."))(offerStored)
+    assert(offerStored(a1), s"neither stored nor asked (after retry): $a1")
     // SMALL TALK: the marketplace must stay untouched
     val before = store.candidates(okay.matching.Query(okay.matching.Side.Offer, k = 100)).length
     turn("Какая столица Франции?")
@@ -178,14 +188,16 @@ class TestChatDemo extends munit.FunSuite {
     def modelH = okay.agent.Provider.openAi(okay.llm.Transports.http(),
       "local", "default", s"$base/v1/chat/completions")
     val q1 = "мне нужно починить велосипед, найди мне кого-нибудь"
-    val a1 = provide(store)(ChatDemo.agentTurn(q1, Nil, modelH))
     // the intake may ask for the email first; the second turn supplies it
-    val a2 = if a1.toLowerCase.contains("почт") || a1.toLowerCase.contains("email") then
-      provide(store)(ChatDemo.agentTurn("моя почта seeker@demo",
-        Vector(okay.llm.Anthropic.Message("user", q1),
-               okay.llm.Anthropic.Message("assistant", a1)), modelH))
-    else a1
-    assert(a2.contains("велосипед"), s"the found provider's skill must surface: $a2")
+    def finish(first: String): String =
+      if first.toLowerCase.contains("почт") || first.toLowerCase.contains("email") then
+        provide(store)(ChatDemo.agentTurn("моя почта seeker@demo",
+          Vector(okay.llm.Anthropic.Message("user", q1),
+                 okay.llm.Anthropic.Message("assistant", first)), modelH))
+      else first
+    val a2 = judged(finish(provide(store)(
+      ChatDemo.agentTurn(q1, Nil, modelH))))(_.contains("велосипед"))
+    assert(a2.contains("велосипед"), s"the found provider's skill must surface (after retry): $a2")
   }
 
   test("REVERSE CHAIN: the need waits; the offer arriving later rings the seeker's inbox") {

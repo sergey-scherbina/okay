@@ -8,12 +8,10 @@
       only if the inference form (no type argument) bites a consumer.
 
 ## Flakes observed (record → fix loop when they recur)
-- [ ] demo-live-judgment-flake — TestChatDemo "LIVE UNGATED" and
-      "LIVE SEEKER" assert on the local model's JUDGMENT (store vs
-      ask; surface the skill) and flaked once under full-matrix load
-      (2026-09-02), 15/15 on rerun. For the demo lane: consider
-      widening the accepted phrasings or retrying the turn once
-      before asserting.
+- [x] demo-live-judgment-flake — FIXED 2026-09-02: `judged` retries
+      the whole turn once before asserting in LIVE UNGATED and LIVE
+      SEEKER (stochastic judgment — one retry is a quadratic flake
+      cut; a consistent failure still fails). 15/15 with the retry.
 - [ ] direct-effect-provide — coloring as POLICY: Effect[G] markers
       are ordinary givens, so provide/providing can install them
       per scope — auto-coloring enabled for one environment, off
@@ -119,18 +117,12 @@
       answered on the expected port) — all green alone, all under
       parallel suites in one sbt JVM; suspect ephemeral-port reuse
       between a closing listener and a dialing client
-- [ ] ui-cmd-flaky — okay.ui.TestCmd fails 1-2 of 3 with a VARYING
-      subset run to run (timing in the command loop: "interim screen
-      shows", "a press launches", "a throwing command forfeits") —
-      REPRODUCED ON PRISTINE MASTER (worktree probe at c20d41a,
-      2026-09-01), so it landed flaky; owner: the ui-cmd lane
-- [ ] demo-chat-live-budget — TestChatDemo's LIVE tests run a local
-      model with munit's default 30s budget; under a full parallel
-      matrix the box is compiling everywhere and the call ran 55s —
-      timeout, not skip. Owner call: raise the budget matrix-proof
-      (the TestRepoAgent precedent: 120s) or gate live tests out of
-      the parallel run (flagged 2026-09-01; sqlite driver race fixed
-      in ctx-functions' landing)
+- [x] ui-cmd-flaky — FIXED 2026-09-01 by the unprocessed-counter
+      close redesign (the runCmd race: close only when upstream done
+      AND pending==0 AND unprocessed==0); TestCmd 3x3 green since.
+- [x] demo-chat-live-budget — FIXED 2026-09-01: munitTimeout raised
+      to 180s in TestChatDemo (the TestRepoAgent precedent, sized
+      for a busy local model under a full matrix).
 - [ ] http-flaky-mcphttp — TestMcpHttp "one Serving, three wires"
       answered 503 once in a full-matrix run (2026-09-01); green
       alone and on suite rerun — likely a port/readiness race
