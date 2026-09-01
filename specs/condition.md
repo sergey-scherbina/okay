@@ -158,3 +158,24 @@ aborted naming the offset), and a clean slice never consults the
 policy at all — the never-signals-never-pays half of the additive
 rule, tested. Still filed: r.md's native restarts bridged over the
 now-shared vocabulary once okay-r lands.
+
+
+## Direct style (2026-09-01, condition-direct)
+
+A condition is an operation, so the direct machinery applies as-is —
+and the direct reading is the Common Lisp reading: a signal is a
+CALL THAT MAY RETURN.
+
+- [ ] `signal[Int]("how many?").?` in a direct block resumes AT the
+  mark with the policy's value; progress before the signal survives
+- [ ] `within(...)(...)` reflects with `.?` (or runs as a bare
+  statement); Invoke unwinds exactly to the frame, code between
+  never resumes — semantics identical to the monadic spelling
+- [ ] the `frame` door: `Condition.frame(name)(directBody)(recover)`
+  takes the body as a DIRECT block (two-line door: it forwards to
+  `within` over `direct`), so nested `direct { }` ceremony
+  disappears at restart frames
+
+Recorded roads (BACKLOG): condition-restart-caps (lexical restarts
+as capabilities — a nonexistent restart uncompilable in scope),
+condition-typed-signal (type the condition/answer pair).
