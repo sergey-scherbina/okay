@@ -1,4 +1,4 @@
-# okay — documentation
+# Okay — documentation
 
 Okay! Extensible effects for Scala 3, founded on the parameterised
 continuation monad. Zero dependencies in the core; one source for
@@ -12,12 +12,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[Tutorial](tutorial.md)** — the same layers by use, nineteen
   worked chapters from a pure program to an agent with remote tools;
   every snippet's shape runs in the repo's tests.
-- **[The theory of okay](theory/index.md)** — the textbook: which
+- **[The theory of Okay](theory/index.md)** — the textbook: which
   theories the library stands on, who established them (Moggi, Wadler,
   Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &
   Power/Pretnar, Carette–Kiselyov–Shan, Taha & Sheard), and why each
   design decision — argued from the papers and the repository's own
-  measurements. Seven chapters, okay as the running example.
+  measurements. Seven chapters, Okay as the running example.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
 - **[The cast that could not go, and how it went](existentials.md)** —
@@ -26,7 +26,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   fail for one mechanical reason. The sixth worked; the failures are
   the useful part.
 - **[Benchmarks](benchmarks.md)** — every measured case with its
-  table, WHY the okay number is what it is, why the competitors'
+  table, WHY the Okay number is what it is, why the competitors'
   numbers differ, and where the honest limits are. Raw history with
   protocols and refuted experiments: [history.tsv](../src/jmh/history.tsv).
 

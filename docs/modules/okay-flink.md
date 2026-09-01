@@ -1,6 +1,6 @@
 # okay-flink
 
-> The smallest module in the family, and that is the point: an okay
+> The smallest module in the family, and that is the point: an Okay
 > `Aggregator` IS a Flink `AggregateFunction`, field for field.
 
 Depends on: `okay` (JVM), flink-core (pure Java — no cross-version
@@ -9,7 +9,7 @@ pain).
 ## Guide
 
 Flink's `AggregateFunction[In, Acc, Out]` asks for
-`createAccumulator / add / merge / getResult`; okay's `Aggregator`
+`createAccumulator / add / merge / getResult`; Okay's `Aggregator`
 carries `init / add / merge / present`. `toFlink(agg)` maps one onto
 the other with no adaptation — the P1 contract again, third
 appearance (Chunks locally, Spark, Flink).

@@ -31,7 +31,7 @@ enum Free[F[+_], A] {
 // "Free[F, *] is a Monad for every signature F, with NO constraint on F"
 ```
 
-okay is freer, and the practical payoff shows all over the tree: a
+Okay is freer, and the practical payoff shows all over the tree: a
 signature can be *anything with an answer type*. `Take` is a
 two-constructor GADT; `Writer` is a one-constructor GADT;
 `Produce[A]` is literally `Id[A]` (`Generate.scala:64`) — an identity
@@ -52,7 +52,7 @@ and Kiselyov's "Reflection without remorse" [van der Ploeg & Kiselyov
 2014] gave the type-aligned-sequence answer that `freer` systems in
 Haskell adopted.
 
-okay takes a third road, already visible in chapter 1: **normalize in
+Okay takes a third road, already visible in chapter 1: **normalize in
 the one interpreter**. `Free.fold` (`Free.scala:51–58`) is a `@tailrec`
 loop whose first two cases *are* the monad laws used as rewrite rules:
 

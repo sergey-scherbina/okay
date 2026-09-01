@@ -1,6 +1,6 @@
 # okay-spark
 
-> One Aggregator, local or distributed: okay's `(init, add, merge,
+> One Aggregator, local or distributed: Okay's `(init, add, merge,
 > present)` IS Spark's `(zero, seqOp, combOp)` — the same VALUE runs
 > over Chunks on a laptop and over an RDD on a cluster.
 

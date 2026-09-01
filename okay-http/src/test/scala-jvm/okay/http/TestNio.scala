@@ -113,6 +113,38 @@ class TestNio extends munit.FunSuite {
       Mcp.initializeParams(Mcp.Info("client", "1"))))
   }
 
+  test("churn: one listener, hundreds of connections lose nothing") {
+    // the regression gate for nio-serve-stall (okay-http/BUGS.md).
+    // One STABLE listener on purpose: under listener churn macOS
+    // itself loses fresh backlog connections at ~1.2/1000 rounds —
+    // measured identically on blocking and asynchronous channels, so
+    // no transport code can gate it. What the transport does
+    // guarantee is per-connection delivery, and this holds it to that
+    // (8000/8000 at fix time; 500 here for suite time).
+    val n = 20
+    val got = Resource.run[Int, Pure](
+      Nio.listen(0) { conn =>
+        def go(i: Int): Unit ! Async =
+          if i >= n then conn.close()
+          else conn.send(s"line-$i\n").flatMap(_ => go(i + 1))
+        go(0)
+      }.map { server =>
+        val port = Nio.port(server)
+        var ok = 0
+        for _ <- 1 to 500 do
+          val lines = Async.run[Int, Pure](
+            Nio.connect("127.0.0.1", port).flatMap { c =>
+              Writer.run[String, Unit, Async](
+                through[Chunk[Byte], String, Async, Unit, Unit](c.bytes)(
+                  !.widen[Unit, Take % Chunk[Byte] + Writer % String, Async](
+                    Http.framing))).map(_._1.length)
+            }).runWith
+          if lines == n then ok += 1
+        ok
+      }).runWith
+    assertEquals(got, 500)
+  }
+
   test("the listener is a Resource: the port is free after the scope") {
     val port = Resource.run[Int, Pure](
       Nio.listen(0)(_ => pure(())).map(Nio.port)).runWith

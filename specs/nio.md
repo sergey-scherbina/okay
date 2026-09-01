@@ -5,20 +5,20 @@
 between them, `link` for a line protocol on top. It was originally
 written on `AsynchronousSocketChannel`, on the premise that the
 completion-handler shape is `Async.Await`'s shape and therefore the
-natural one. The premise was refuted operationally on 2026-09-01
-(okay-http/BUGS.md: nio-serve-stall): under rapid channel churn on
-macOS the JDK's asynchronous-channel layer LOSES completion events —
-measured at ~1–1.5 per 1000 listen/serve rounds, with the lost event
-pinned to the accept dispatch by stage counters (accepted=false,
-nothing sent, nothing read), reproduced identically on the default
-channel group and on a dedicated one. A lost accept in the old code
-also killed the re-arm, silencing the listener forever.
-
-So Nio now stands on blocking channels parked on Loom virtual
-threads — the trade the rest of the repository already takes, and one
-this repository has priced: the cluster transport benchmark measured
-blocking-on-Loom against NIO completion handlers as a wash (24.4 vs
-24.7 ms, docs/benchmarks.md). Parking is free; lost wakeups are not.
+natural one. Chasing a flake refuted the premise's VALUE and found
+something deeper (okay-http/BUGS.md: nio-serve-stall): under rapid
+LISTENER churn — bind/listen/close cycles, the shape of test suites
+and per-invocation benchmarks — macOS occasionally (~1.2/1000 rounds)
+loses a freshly established connection: the kernel completes the
+handshake into the backlog, never delivers it to accept (blocking or
+asynchronous alike — both APIs measured, same rate), and closes it
+with a clean FIN. With ONE stable listener the same shape ran 8000
+consecutive connections clean. So the defect is below both channel
+APIs and unreachable from transport code; what a transport CAN choose
+is simplicity, and the blocking form is simpler, priced equal by the
+cluster transport benchmark (24.4 vs 24.7 ms, docs/benchmarks.md),
+and immune to userland completion-dispatch loss — so that is the form
+this file now takes.
 
 ## Interface
 Unchanged but for one type: `listen` hands back a
@@ -39,27 +39,31 @@ JVM-only file. Programs are expected to run on virtual threads
 would execute the blocking calls in place on the driving thread.
 
 ## Behavior
-- [ ] the existing TestNio suite passes unchanged (echo, 500 ordered
+- [x] the existing TestNio suite passes unchanged (echo, 500 ordered
       lines, 300KB drained write, MCP over a socket, resource frees
       the port)
-- [ ] the churn gate: hundreds of consecutive listen/serve/close
-      rounds complete with every line delivered — the shape that lost
-      accepts at ~1.5/1000 before the rewrite
-- [ ] the full-length proof (thousands of rounds, the original repro
-      harness) ran clean at fix time and its result is recorded in
-      okay-http/BUGS.md
+- [x] the churn gate: one stable listener, hundreds of consecutive
+      connect/serve/close connections, every line delivered — the
+      guarantee the code CAN make; listener churn is NOT gated
+      because the loss there is the OS's (a ~45%-flaky gate teaches
+      people to ignore red)
+- [x] the full-length proofs ran at fix time and are recorded in
+      okay-http/BUGS.md: stable listener 8000/8000 clean; listener
+      churn loses connections at the same rate on blocking and
+      asynchronous channels alike
 
 ## Out of scope
 - HTTP on raw NIO (specs/http.md's reasoning stands: that is Netty's
   job).
-- A watchdog/retry layer over asynchronous channels — rejected in
-  favor of removing the failure mode structurally.
+- A retry layer over connect/accept for the listener-churn loss —
+  the OS closes those connections cleanly, indistinguishable from a
+  server that chose to; retrying is an application policy, not a
+  transport one.
 
 ## Decisions
-- **Blocking channels on virtual threads, not a patched async layer**
-  — the event loss is below the JDK API surface, cannot be detected
-  from above (a lost accept is indistinguishable from a quiet
-  listener), and the house's own measurement says the async layer buys
-  nothing here.
+- **Blocking channels on virtual threads, not the async layer** — the
+  OS-level loss hits both equally, so the choice is on other grounds:
+  the blocking form is simpler, measured equal, and cannot lose a
+  userland completion dispatch on top of what the OS loses.
 - **API preserved** — callers (tests, mcp link) compile unchanged; the
   listener type in `listen`'s signature is the one visible change.

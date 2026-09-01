@@ -1,6 +1,6 @@
 # The user guide
 
-okay is built in layers, each founded on the one below. This guide
+Okay is built in layers, each founded on the one below. This guide
 walks them bottom-up; the [tutorial](tutorial.md) walks them by use.
 
 ## 1. Delimited control: `Cont`

@@ -21,12 +21,12 @@ through to an outer handler.
 The third ingredient is making the *set of pending effects* extensible
 and inferable. Kiselyov, Sabry and Swords' extensible effects
 [Kiselyov, Sabry & Swords 2013] replaced monad-transformer stacks with
-a single monad over an open union of signatures — the design okay
+a single monad over an open union of signatures — the design Okay
 follows, with chapter 4's freer monad as the carrier.
 
 ## Rows as unions, and the trusted kernel
 
-okay's effect row is a *type-level union of signatures*:
+Okay's effect row is a *type-level union of signatures*:
 
 ```scala
 A ! (State % Int + Throws % String + Async)
@@ -66,7 +66,7 @@ signature to a carrier:
 This is chapter 2's theorem specialized twice: the Cont-valued form is
 the general handler Filinski's theorem promises; the other two are the
 fast degenerate points where the continuation is used exactly once and
-immediately, and okay makes them separate constructs *because they cost
+immediately, and Okay makes them separate constructs *because they cost
 less* — `translate` forwards `G` in a single tail-recursive walk, and
 `Handler[F]` is what `runWith` consumes. Choosing the weakest shape
 that suffices is the library's standing advice, and the platform

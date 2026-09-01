@@ -26,7 +26,7 @@ beside the microseconds it costs.
 
 ## 1. Bind chain — 10k left-nested flatMaps, built and run
 
-| **okay Eager** | kyo | **okay Cont** | **okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
+| **Okay Eager** | kyo | **Okay Cont** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
 |---|---|---|---|---|---|---|---|---|
 | **5.1** | 58 | **89** | **95** | 129 | 136 | 153 | 181 | 260 |
 
@@ -35,7 +35,7 @@ build a 10 000-step flatMap chain by foldLeft (the WORST, left-nested
 shape), then run it. No effects, no I/O — just who pays how much per
 bind.
 
-**Why okay's numbers.** Three encodings, one interface, chosen per
+**Why Okay's numbers.** Three encodings, one interface, chosen per
 program:
 
 - `Free` (the tree) stays fast because `fold` REBALANCES left-nested
@@ -61,30 +61,30 @@ open-union tagging of classic freer on every operation.
 
 **The asterisk that reframes the whole table.** kyo's 58 is
 FRONT-LOADED: construction evaluates. Build-only lanes
-(LazinessBenchmark): okay 13.8 (15% of its full cost), cats IO 26.9,
+(LazinessBenchmark): Okay 13.8 (15% of its full cost), cats IO 26.9,
 kyo 58.5 — **101%**: for kyo, construction IS the computation.
 Building an infinite pure-recursive program runs 513 iterations
 uninvited (their safepoint budget); an exception in a flatMap lambda
 throws at BUILD time; an effect runs once-at-build, so the value is
 not reusable as a description (all three demonstrated in
-compare/TestLaziness). In build-many-run-few scenarios okay is 4.2x
-cheaper; and okay offers the same trade EXPLICITLY as `Eager`,
+compare/TestLaziness). In build-many-run-few scenarios Okay is 4.2x
+cheaper; and Okay offers the same trade EXPLICITLY as `Eager`,
 per-program, instead of as the only semantics.
 
 ## 2. Reader — 10k asks · Writer — 10k tells
 
-| Reader | **okay** | ZIO | cats Kleisli | atnos | kyo Env |
+| Reader | **Okay** | ZIO | cats Kleisli | atnos | kyo Env |
 |---|---|---|---|---|---|
 | | **110** | 240 | 350 | 1737 | 362 756* |
 
-| Writer | **okay** | cats WriterT/Chain | atnos | kyo Emit |
+| Writer | **Okay** | cats WriterT/Chain | atnos | kyo Emit |
 |---|---|---|---|---|
 | | **286** | 1127 | 3202 | 386 322* |
 
 **What they measure.** Handled operations at volume — the everyday
 shape of effectful code.
 
-**Why okay's numbers.** Reader runs at RELAY speed: a
+**Why Okay's numbers.** Reader runs at RELAY speed: a
 tail-resumptive handler must resume exactly once, so handling is one
 tail-recursive loop — no continuation capture, no allocation per ask
 (relay measured 1.45x over the general handler on forwarding-heavy
@@ -97,17 +97,17 @@ tuple-in-monad per tell; Chain helps, the wrapping doesn't. atnos
 pays union tagging again. The starred kyo numbers are ~1000x off
 because kyo's Env/Emit resumption RE-TRAVERSES the pending
 computation — quadratic on left-nested chains with handled ops. That
-is precisely the pathology okay's Bind rotation exists to prevent;
+is precisely the pathology Okay's Bind rotation exists to prevent;
 the lane is the rotation's value made visible.
 
 ## 3. Choice — 2^13 branches, all collected
 
-| List (floor) | **okay** | kyo | atnos |
+| List (floor) | **Okay** | kyo | atnos |
 |---|---|---|---|
 | 580 | **1603** | 3834 | 5392 |
 
 The one handler that is genuinely MULTI-SHOT: the continuation runs
-once per alternative. okay's `runChoice` folds `k(x)` over the
+once per alternative. Okay's `runChoice` folds `k(x)` over the
 alternatives on the Free tree directly; 2.8x from the bare-List
 floor is the price of programs-as-values here, and it still halves
 kyo. (Multi-shot is where one-shot-optimized runtimes can't follow:
@@ -115,11 +115,11 @@ this handler cannot be expressed with relay OR exceptions.)
 
 ## 4. Fork/join — 100 trivial fibers
 
-| raw Loom (floor) | kyo | **okay** | ZIO | cats IO |
+| raw Loom (floor) | kyo | **Okay** | ZIO | cats IO |
 |---|---|---|---|---|
 | 21 | 25 | **29** | 50 | 140 |
 
-**Why okay's number.** There is almost no okay here — that is the
+**Why Okay's number.** There is almost no Okay here — that is the
 design. A fiber IS a virtual thread; spawn is `Thread.startVirtualThread`,
 join parks. No fiber runtime of our own means nothing added over the
 floor but 8us of bookkeeping. ZIO and cats IO pay their own
@@ -129,7 +129,7 @@ compete by NOT having one.
 
 ## 5. Stream pipeline — map/filter/take(1000)/sum
 
-| Iterator (floor) | **Staged** | **okay chunked** | **okay elements** | okay iterator | okay LazyList | kyo | ZIO | fs2 |
+| Iterator (floor) | **Staged** | **Okay chunked** | **Okay elements** | Okay iterator | Okay LazyList | kyo | ZIO | fs2 |
 |---|---|---|---|---|---|---|---|---|
 | 14 | **1.6*** | **16.9** | **23.6** | 53 | 143 | 239 | 692 | 1410 |
 
@@ -140,7 +140,7 @@ real: see below.)
 **What it measures.** The bread-and-butter stream pipeline in each
 library's fastest mode.
 
-**Why okay's numbers, mode by mode.** This table is one design
+**Why Okay's numbers, mode by mode.** This table is one design
 principle at four price points:
 
 - `toLazyList` (143): the memoized, re-observable bridge — you pay
@@ -169,7 +169,7 @@ them (singleton-unfold generators) and honestly noted as such.
 
 ## 6. Merge — two 500-element streams by readiness
 
-| **okay chunked** | ZIO | okay elementwise | fs2 |
+| **Okay chunked** | ZIO | Okay elementwise | fs2 |
 |---|---|---|---|
 | **14.7** | 47 | 158 | 9031 |
 
@@ -182,7 +182,7 @@ elements through its concurrency machinery), stated as such.
 
 ## 7. Resource — 1000 bracketed acquire/use/release
 
-| **okay region** | **okay bracket** | ZIO | cats IO | kyo |
+| **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
 |---|---|---|---|---|
 | **18.7** | **26.3** | 106 | 197 | 8566 |
 
@@ -194,12 +194,12 @@ built around suspension pay their machinery for nothing.
 
 ## 8. Generators — the 1000th Fibonacci, element by element
 
-| Iterator | LazyList | **okay Producer** | okay LazyList | kyo | ZStream | fs2 |
+| Iterator | LazyList | **Okay Producer** | Okay LazyList | kyo | ZStream | fs2 |
 |---|---|---|---|---|---|---|
 | 12 | 13.5 | **18.4** | 35 | 61 | 172 | 245 |
 
 Per-element unfold — the generator's honest per-element price. The
-okay Producer is 1.5x from the bare-iterator floor; the streaming
+Okay Producer is 1.5x from the bare-iterator floor; the streaming
 libraries pay 10-20x in their per-element mode (their strength is
 batches; so is ours — see lane 5).
 
@@ -264,9 +264,9 @@ REFERENCE) is what the layer exists for.
 
 | | write | read |
 |---|---|---|
-| **okay CBOR** | **0.418** | **0.807** |
+| **Okay CBOR** | **0.418** | **0.807** |
 | circe (JSON) | 0.422 | 0.623 |
-| **okay JSON** | **0.628** | **10.3** |
+| **Okay JSON** | **0.628** | **10.3** |
 
 Read this table as a price list for CONTRACTS. Our CBOR write ties
 circe's JSON write; our CBOR read is 1.3x it — that is the Schema
@@ -617,7 +617,7 @@ holds an old sketch; a builder is held by design.
 1. **No runtime where none is needed.** Pure binds are plain data
    (or, opted in, plain calls); fibers are virtual threads; blocking
    is parking. Every lane where competitors pay a scheduler/run-loop
-   tax and okay doesn't traces to this.
+   tax and Okay doesn't traces to this.
 2. **The rotation.** Left-nested binds rebalance tail-recursively in
    `fold` — the freer monad's classic quadratic trap (visible in the
    kyo Env/Emit lanes) never fires.

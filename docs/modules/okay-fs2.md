@@ -9,7 +9,7 @@ Depends on: `okay` (JVM), fs2-core (and cats-effect underneath).
 
 **Out: pure unfold.** `toFs2` unfolds our `Chunks.pull` with fs2's
 `Stream.unfoldChunk` — a pure stream, chunk boundaries preserved
-(4,4,2 stays 4,4,2), laziness crossing untouched: an infinite okay
+(4,4,2 stays 4,4,2), laziness crossing untouched: an infinite Okay
 stream is an infinite fs2 stream that computes on pull.
 
 **In: two runtimes, two waits.** `fromFs2` runs the fs2 stream on

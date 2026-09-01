@@ -14,7 +14,7 @@ with two operations —
 - `flatMap: T[A] => (A => T[B]) => T[B]` — do one computation, feed its
   result to the next
 
-— obeying three laws. Spelled in okay's own notation, with `>>=` for
+— obeying three laws. Spelled in Okay's own notation, with `>>=` for
 `flatMap`:
 
 ```scala
@@ -51,7 +51,7 @@ extracting a method a semantics-changing edit.
 
 Why laws at all, rather than just an interface? Because the laws are
 the *contract the abstraction sells*. Generic code — a `traverse`, a
-retry loop, okay's own interpreter — manipulates `m >>= f` without
+retry loop, Okay's own interpreter — manipulates `m >>= f` without
 knowing what effect `m` performs, and every transformation it applies
 is justified by exactly these equations. Break the laws and generic
 code silently miscompiles your effect. That triple obeying those laws
@@ -65,13 +65,13 @@ what it does.
 
 A **functor** is the weaker structure underneath: just
 `map: T[A] => (A => B) => T[B]`. Every monad is a functor
-(`map(f) = flatMap(a => pure(f(a)))`, which is how okay derives it —
+(`map(f) = flatMap(a => pure(f(a)))`, which is how Okay derives it —
 `Free.scala:43`), but not conversely; chapter 4 turns on the fact that
-okay never *requires* the functor structure of its effect signatures.
+Okay never *requires* the functor structure of its effect signatures.
 
-## What this is in okay
+## What this is in Okay
 
-okay's computation type is spelled as an infix operator:
+Okay's computation type is spelled as an infix operator:
 
 ```scala
 // Effects.scala:40
@@ -98,13 +98,13 @@ consumer's side*: `Free.fold` (`Free.scala:51–58`) re-associates
 the associativity law is not a proof obligation on every effect but a
 rewrite the one interpreter performs.
 
-The parade of Moggi's examples is okay's module list. State
+The parade of Moggi's examples is Okay's module list. State
 (`State.scala`), exceptions (`Throws.scala` — "typed aborts"),
 nondeterminism (`Choice.scala`, chapter 7), output (`Writer.scala`),
 input (`Reader.scala`), and the continuation monad itself
 (`Cont.scala`, chapter 2). Each is one *signature* — a small GADT or
 identity alias naming its operations — rather than a monad of its own,
-because in okay there is exactly one monad (`Free`/`!`) and the
+because in Okay there is exactly one monad (`Free`/`!`) and the
 signatures plug into it. Why that factoring is the right one is the
 subject of chapters 4 and 5.
 

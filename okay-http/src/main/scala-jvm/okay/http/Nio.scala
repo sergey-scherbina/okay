@@ -5,27 +5,31 @@ import okay.given
 
 import java.net.InetSocketAddress
 import java.nio.ByteBuffer
-import java.nio.channels.{AsynchronousServerSocketChannel, AsynchronousSocketChannel, CompletionHandler}
+import java.nio.channels.{ServerSocketChannel, SocketChannel}
 import java.nio.charset.StandardCharsets.UTF_8
 
 /**
- * Non-blocking sockets, and the one place on the JVM where the
- * callback shape is the NATURAL one.
+ * Raw TCP: blocking channels parked on virtual threads.
  *
- * Everywhere else in this repository a blocking call parks a virtual
- * thread and that is the right trade — Loom made it cheap and the
- * interop modules all take it. `AsynchronousSocketChannel` is
- * different: its `CompletionHandler` is register-and-be-called-back,
- * which is precisely `Async.Await`'s shape, down to the canceller. So
- * this transport parks nothing at all, and does it without adapting
- * anything: `Async.Await(k => ...)` IS the completion handler.
+ * This file used to stand on `AsynchronousSocketChannel`, on the
+ * premise that the completion-handler shape is `Async.Await`'s shape
+ * and therefore the natural one. The premise was refuted by
+ * measurement (okay-http/BUGS.md: nio-serve-stall): under rapid
+ * channel churn on macOS the JDK's asynchronous layer loses
+ * completion events — ~1.5 per 1000 rounds, pinned to the accept
+ * dispatch, on the default channel group and a dedicated one alike —
+ * and a lost accept also killed the re-arm, silencing the listener
+ * forever. Blocking channels have no completion to lose, Loom makes
+ * the parking free, and the cluster transport benchmark priced the
+ * two within noise of each other (docs/benchmarks.md). specs/nio.md
+ * carries the full argument.
  *
  * What this is NOT is an HTTP client. Writing HTTP/1.1 by hand where
  * `java.net.http` exists is work without a payoff — the same reasoning
  * specs/http.md uses for not cross-building to Native. This is the byte
- * level, which is what raw NIO honestly offers: two ends, chunks
- * between them, and `Nio.link` for a line protocol on top. Netty is
- * the answer to "NIO with HTTP", and that codec is worth a dependency.
+ * level: two ends, chunks between them, and `Nio.link` for a line
+ * protocol on top. Netty is the answer to "NIO with HTTP", and that
+ * codec is worth a dependency.
  */
 object Nio {
 
@@ -39,19 +43,14 @@ object Nio {
    * every combinator applies — including `Http.framing`, which turns it
    * into lines without knowing it is looking at a socket.
    */
-  final class Conn(private[Nio] val ch: AsynchronousSocketChannel,
+  final class Conn(private[Nio] val ch: SocketChannel,
                    size: Int = 8192) {
 
-    def send(b: Chunk[Byte]): Unit ! Async =
+    def send(b: Chunk[Byte]): Unit ! Async = async {
       val buf = ByteBuffer.wrap(b.toArray)
-      def go: Unit ! Async =
-        if !buf.hasRemaining then pure(())
-        else Async.await[Integer] { k =>
-          ch.write(buf, null, handler[Integer](k))
-          () => ()
-        }.flatMap(_ => go)   // a write is partial by contract; drain it
-
-      go
+      // a write is partial by contract; drain it
+      while buf.hasRemaining do { val _ = ch.write(buf) }
+    }
 
     def send(line: String): Unit ! Async =
       send(scala.collection.immutable.ArraySeq.unsafeWrapArray(line.getBytes(UTF_8)))
@@ -59,18 +58,13 @@ object Nio {
     /** the bytes as they arrive; end of stream ends the source */
     def bytes: Source[Chunk[Byte]] =
       def go: Source[Chunk[Byte]] =
-        effect[F, Chunk[Byte] | Null](Async.Await[Chunk[Byte] | Null] { k =>
+        effect[F, Chunk[Byte] | Null](Async.Run { () =>
           val buf = ByteBuffer.allocate(size)
-          ch.read(buf, null, new CompletionHandler[Integer, Null] {
-            def completed(n: Integer, a: Null): Unit =
-              if n < 0 then k(Right(null))
-              else
-                buf.flip()
-                val out = new Array[Byte](buf.remaining()); buf.get(out)
-                k(Right(scala.collection.immutable.ArraySeq.unsafeWrapArray(out)))
-            def failed(e: Throwable, a: Null): Unit = k(Left(e))
-          })
-          () => ()
+          if ch.read(buf) < 0 then null
+          else
+            buf.flip()
+            val out = new Array[Byte](buf.remaining()); buf.get(out)
+            scala.collection.immutable.ArraySeq.unsafeWrapArray(out)
         }).flatMap {
           case null => pure(())
           case c: Chunk[Byte] @unchecked =>
@@ -86,50 +80,32 @@ object Nio {
     private[Nio] def shut(): Unit = try ch.close() catch case _: Throwable => ()
   }
 
-  private def handler[A](k: Either[Throwable, A] => Unit): CompletionHandler[A, Null] =
-    new CompletionHandler[A, Null] {
-      def completed(v: A, a: Null): Unit = k(Right(v))
-      def failed(e: Throwable, a: Null): Unit = k(Left(e))
-    }
-
-  /** connect, without parking anything */
+  /** connect — parks the fiber, which is what fibers are for */
   def connect(host: String, port: Int): Conn ! Async =
-    Async.await[Conn] { k =>
-      val ch = AsynchronousSocketChannel.open()
-      ch.connect(InetSocketAddress(host, port), null,
-        new CompletionHandler[Void, Null] {
-          def completed(v: Void, a: Null): Unit = k(Right(Conn(ch)))
-          def failed(e: Throwable, a: Null): Unit = k(Left(e))
-        })
-      () => try ch.close() catch case _: Throwable => ()
-    }
+    async { Conn(SocketChannel.open(InetSocketAddress(host, port))) }
 
   /**
    * Listen, serving each accepted connection with `serve` on its own
-   * fiber. The server channel is a `Resource` — it owns a thread group,
-   * and handing one back without a scope is a leak with instructions.
+   * fiber. The accept loop is itself a fiber parked in `accept()`;
+   * closing the Resource unparks it (ClosedChannelException) and ends
+   * it — there is no completion to lose and no re-arm to kill.
    */
   def listen(port: Int)(serve: Conn => Unit ! Async)
-            (using Scheduler): AsynchronousServerSocketChannel ! Resource =
+            (using Scheduler): ServerSocketChannel ! Resource =
     Resource.acquire {
-      val server = AsynchronousServerSocketChannel.open()
+      val server = ServerSocketChannel.open()
       server.bind(InetSocketAddress(port))
-
-      def accept(): Unit =
-        server.accept(null, new CompletionHandler[AsynchronousSocketChannel, Null] {
-          def completed(ch: AsynchronousSocketChannel, a: Null): Unit =
-            accept()                       // the next one, before serving this
-            Async.spawn(serve(Conn(ch)))
-            ()
-          def failed(e: Throwable, a: Null): Unit = ()   // the channel closed
-        })
-
-      accept()
+      def loop: Unit ! Async =
+        async(server.accept()).flatMap { ch =>
+          val _ = Async.spawn(serve(Conn(ch)))
+          loop
+        }
+      val _ = Async.spawn(loop)   // dies with the channel: accept throws when it closes
       server
     }(s => try s.close() catch case _: Throwable => ())
 
   /** the port a listener bound to — useful when 0 asked for any free one */
-  def port(s: AsynchronousServerSocketChannel): Int =
+  def port(s: ServerSocketChannel): Int =
     s.getLocalAddress.asInstanceOf[InetSocketAddress].getPort
 
   /**

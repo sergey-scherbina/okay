@@ -1,7 +1,7 @@
 # okay-kyo
 
 > Value bridges plus the STRUCTURAL effect-row mapping: kyo's
-> ArrowEffect shapes match okay's operation-with-typed-answer arrow
+> ArrowEffect shapes match Okay's operation-with-typed-answer arrow
 > for arrow, so effects translate operation by operation — multi-shot
 > included.
 
@@ -10,30 +10,30 @@ Depends on: `okay` (JVM), kyo-core.
 ## Guide
 
 **The anatomy match.** kyo's effects are `ArrowEffect[Input, Output]`
-pairs; okay's are operations `F[A]` whose type parameter IS the
+pairs; Okay's are operations `F[A]` whose type parameter IS the
 answer. They line up structurally:
 
-| kyo | okay |
+| kyo | Okay |
 |---|---|
 | `Emit[V] = ArrowEffect[Const[V], Const[Unit]]` | `Writer % V` (tell) |
 | `Abort[E] = ArrowEffect[Const[Error[E]], Const[Unit]]` | `Throws % E` (raise) |
 | `Choice = ArrowEffect[Seq, Id]` | `Choose` — literally the same |
 | `Env[R] = ContextEffect[TypeMap[R]]` | `Reader % R` (not an arrow — reader family) |
 
-**Outbound** (okay → kyo) is a resume-walk: each okay operation maps
+**Outbound** (Okay → kyo) is a resume-walk: each Okay operation maps
 to its kyo counterpart (`Ask` → `Env.get`, tell → `Emit.valueWith`,
 raise → `Abort.fail` with the dead continuation dropped, `Choose` →
 `Choice.get`) and the continuation follows.
 
-**Inbound** (kyo → okay) rides kyo's `ArrowEffect.handleFirst`: the
+**Inbound** (kyo → Okay) rides kyo's `ArrowEffect.handleFirst`: the
 handler returns OUR tree as its value, kyo's continuation repacked
 into our operation's flatMap, and recursion re-handles — which is
 what makes MULTI-SHOT work: a kyo Choice computation explored by our
 `runChoice` visits every branch.
 
 **Values.** `fromKyo` (pure eval in), `fromKyoAsync` (their async
-runs to completion inside one okay operation — `runAndBlock`, a
-virtual thread parks), `toKyo` (an okay program as a kyo IO
+runs to completion inside one Okay operation — `runAndBlock`, a
+virtual thread parks), `toKyo` (an Okay program as a kyo IO
 suspension).
 
 ## Tutorial
@@ -57,8 +57,8 @@ runChoice(back)                                // Seq(1, 2, 3), every branch
 | member | signature | meaning |
 |---|---|---|
 | `KyoInterop.fromKyo` | `(A < Any) => A ! Pure` | pure eval in |
-| `KyoInterop.fromKyoAsync` | their async inside one okay op | runAndBlock on a parked thread |
-| `KyoInterop.toKyo` | `(=> A ! Async) => A < IO` | okay as a kyo suspension |
+| `KyoInterop.fromKyoAsync` | their async inside one Okay op | runAndBlock on a parked thread |
+| `KyoInterop.toKyo` | `(=> A ! Async) => A < IO` | Okay as a kyo suspension |
 | `toKyoEnv/toKyoEmit/toKyoAbort/toKyoChoice` | operation-for-operation outbound | the structural mapping |
 | `fromKyoEnv/fromKyoEmit/fromKyoAbort/fromKyoChoice` | inbound via handleFirst | multi-shot preserved |
 

@@ -22,7 +22,7 @@ Choose", and its header is the paper's table of contents restated:
 line), `interleave` (the fair or), `>>-` (the fair bind — a productive
 branch cannot starve its siblings), `observe` (first *n* answers of a
 possibly infinite search), every one derived from `msplit`
-(`Logic.scala:41`). The okay twist is where the answers live:
+(`Logic.scala:41`). The Okay twist is where the answers live:
 alternatives are a `Seq`, "and a LazyList IS a Seq — so infinite choice
 points cost nothing to construct" — the 1985 paper's data structure
 serving the 2005 paper's operators.
@@ -31,12 +31,12 @@ serving the 2005 paper's operators.
 
 A data type is what you can build; a **codata** type is what you can
 observe. A stream is the canonical codata: its one observation is
-`uncons` — the next element and the rest — and okay's `Stream`
+`uncons` — the next element and the rest — and Okay's `Stream`
 typeclass (`Stream.scala:5–10`) is that observation made *effectful*:
 `uncons` answers in the stream's own effect `F`, so a pure generator, a
 channel and a socket satisfy one interface. The fold/unfold duality
 underneath — consumers are algebras, producers are coalgebras — is the
-recursion-schemes tradition [Meijer, Fokkinga & Paterson 1991]; okay
+recursion-schemes tradition [Meijer, Fokkinga & Paterson 1991]; Okay
 keeps both directions honest by *naming* them: `Fold[A, S]` is the
 algebra (`init`/`add`), generators are unfolds built from chapter 2's
 delimited control, and `Writer.uncons` (chapter 5's stream-with-result)
@@ -49,7 +49,7 @@ gave the schemes their birds-and-bananas notation — a fold is a
 hylomorphism — and Jeremy Gibbons' "origami programming" [Gibbons
 2003] made the discipline explicit: write no explicit recursion;
 express every traversal as a fold or an unfold, and the program's
-structure becomes a theorem about it (fusion laws, deforestation). okay
+structure becomes a theorem about it (fusion laws, deforestation). Okay
 is origami in that sense wherever it streams: a `Chunks` pipeline is a
 hylomorphism — an unfold at the source (`Chunks.generate`, `range`,
 `fromIterator`), chunk-to-chunk arrows in the middle, a catamorphism
@@ -64,7 +64,7 @@ gave the schemes their birds-and-bananas notation — a fold is a
 hylomorphism — and Jeremy Gibbons' "origami programming" [Gibbons
 2003] made the discipline explicit: write no explicit recursion;
 express every traversal as a fold or an unfold, and the program's
-structure becomes a theorem about it (fusion laws, deforestation). okay
+structure becomes a theorem about it (fusion laws, deforestation). Okay
 is origami in that sense wherever it streams: a `Chunks` pipeline is a
 hylomorphism — an unfold at the source (`Chunks.generate`, `range`,
 `fromIterator`), chunk-to-chunk arrows in the middle, a catamorphism

@@ -1,9 +1,9 @@
-# The theory of okay — the map
+# The theory of Okay — the map
 
 *(The short pretty index is [index.md](index.md); this page is the map
 with the notation and the reading order.)*
 
-okay is a small library built out of large ideas, and its code cites
+Okay is a small library built out of large ideas, and its code cites
 them in passing — `Cont.scala` opens by naming Danvy and Filinski,
 `Logic.scala` names LogicT, the staging comment names
 Carette–Kiselyov–Shan. This book is the connected account: which
@@ -13,7 +13,7 @@ space, argued from the cited work or from a measurement the repository
 keeps.
 
 It teaches the theory through one concrete library. Every claim about
-okay carries a `file:line` or a quoted signature from the tree as it
+Okay carries a `file:line` or a quoted signature from the tree as it
 stands; every theoretical claim carries author, title, venue, year.
 Refuted designs are kept, with their refutations — the six encodings
 tried against the Writer cast and the benchmark attributions that
@@ -58,7 +58,7 @@ row is the empty type, and what that buys.
 Chapters 1–2 are the foundation and are worth reading in order:
 chapter 2 explains the sentence that justifies the whole architecture
 (Filinski's theorem that delimited continuations express every monadic
-effect — which is why `Cont` is the bottom of okay's tower and
+effect — which is why `Cont` is the bottom of Okay's tower and
 everything else is layered on it). After that the chapters are
 independent. Each ends with its references and with pointers into the
 rest of `docs/` — the [typepedia](../typepedia.md) for what each type

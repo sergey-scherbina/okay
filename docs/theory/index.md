@@ -1,4 +1,4 @@
-# The theory of okay
+# The theory of Okay
 
 *A small library built out of large ideas — and the ideas, with the
 people who had them.*
@@ -35,7 +35,7 @@ handler on one line.
 ### Part III · Making it fast, making it search
 
 **[6 · Final tagless and staging](06-tagless-staging.md)**
-Two classical answers to interpretive overhead, and okay's three
+Two classical answers to interpretive overhead, and Okay's three
 staging rungs.
 *Carette, Kiselyov & Shan 2009 · Taha & Sheard 1997/2000*
 
@@ -48,6 +48,6 @@ stated error.
 
 The [map](README.md) explains the notation (`A ! F`, `%`, `+`, `/>`),
 the reading order, and the contract every chapter keeps: every claim
-about okay carries a `file:line`, every theory claim a citation, every
+about Okay carries a `file:line`, every theory claim a citation, every
 *why* an argument — from the papers, or from a measurement this
 repository keeps.

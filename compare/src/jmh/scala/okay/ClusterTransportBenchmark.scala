@@ -15,8 +15,9 @@ import okay.http.Nio
  * first two even matter. `remote` is the shipped transport — blocking
  * socket, BufferedReader, one JSON frame per line, a virtual thread
  * parked on the wire. `nio` is the same payload and the same framing
- * over `Nio.Conn`, where a CompletionHandler feeds Async.Await and
- * nothing parks. `codecOnly` is the JSON encode+decode with no wire at
+ * over `Nio.Conn` — since the nio-serve-stall fix (specs/nio.md) also
+ * blocking channels on virtual threads, so the lane now measures the
+ * same mechanics through the Conn API. `codecOnly` is the JSON encode+decode with no wire at
  * all: if it dominates, the transport choice is noise and the honest
  * change to cluster is the CBOR dialect its spec already plans, not a
  * socket API.
@@ -58,7 +59,7 @@ class ClusterTransportBenchmark {
     assert(sum == expected)
     sum
 
-  /** the same payload and framing over Nio.Conn: nothing parks */
+  /** the same payload and framing over Nio.Conn */
   @Benchmark
   def nio: Long =
     Resource.run[Long, Pure](

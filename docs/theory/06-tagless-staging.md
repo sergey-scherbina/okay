@@ -4,7 +4,7 @@
 
 The accusation against everything in chapters 1–5 is *interpretive
 overhead*: programs-as-data pay a node per step and a dispatch per
-node. This chapter is the two classical answers, both present in okay,
+node. This chapter is the two classical answers, both present in Okay,
 each in the place its theory says it belongs.
 
 ## Final tagless: abstract over the interpreter, then let it vanish
@@ -15,10 +15,10 @@ Shan 2009] represents a program not as a data tree but as a
 operations, instantiate with a concrete carrier, and there is no tree
 — the "interpretation" is ordinary method calls, inlinable by the
 compiler. Their title's second half, *partially evaluated*, is the
-point okay leans on: when the carrier is statically known, the
+point Okay leans on: when the carrier is statically known, the
 abstraction can be made to cost nothing.
 
-okay's `Control` trait (chapter 2) is exactly this shape, and
+Okay's `Control` trait (chapter 2) is exactly this shape, and
 `Cont.scala:19–27` names the maneuver:
 
 ```scala
@@ -76,7 +76,7 @@ not; quotation reserved for the whole-stage loops that neither reaches
 
 Chapter 4's `Free` and this chapter's tagless are the two classical
 encodings of the same algebra — initial (data, easy to inspect) and
-final (functions, easy to run fast) — and okay refuses to pick one
+final (functions, easy to run fast) — and Okay refuses to pick one
 globally. Effects are initial, because handlers must *split rows and
 inspect operations*. The control substrate is final-taglessed, because
 nothing inspects it and speed matters. The pipeline layer is initial

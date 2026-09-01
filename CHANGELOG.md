@@ -106,6 +106,23 @@ keeps its zero. PHC stored form (portable, parameters ride the row),
 RFC 9106 vector pins the provider, absurd parameters refuse before
 allocating, verifyAny reads a mixed pbkdf2/argon2id store. Matrix
 1072. okay-security's staged spec is now fully shipped, 0 through 5.
+## nio-close-fix — the flake was the OS; Nio rewritten on blocking channels
+Completed: 2026-09-01
+
+The chase ended two suspects deep: the dedicated-channel-group
+experiment cleared the default group, the blocking rewrite reproducing
+the loss cleared the whole JDK async layer, and stage counters plus a
+parked-accept-never-woke trace pinned it on macOS itself — under
+listener churn the kernel completes a handshake into the backlog,
+never delivers it to accept, and closes it with a clean FIN, at
+~1.2/1000 rounds on either channel API. One stable listener: 8000/8000
+clean. Nio stays rewritten on blocking channels over virtual threads
+(simpler, measured equal, no userland dispatch to lose); specs/nio.md
+carries the argument, okay-http/BUGS.md the full forensics, TestNio a
+stable-listener churn gate — deliberately NOT a listener-churn gate,
+which would flake red on ~45% of runs by the OS's hand. Also per user
+request: the library is Okay, capitalized, across README and docs
+prose (127 mentions; code, packages and module names untouched).
 
 ## security-es256 — the raw-vs-DER dance, danced
 Completed: 2026-09-01 (landed as 9995966)

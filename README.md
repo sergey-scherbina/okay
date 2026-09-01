@@ -12,7 +12,7 @@ https://bentnib.org/paramnotions-jfp.html
 "Parameterised notions of computation" Robert Atkey
 
 Where every other idea here comes from, with the papers:
-[the theory of okay](docs/theory/index.md).
+[the theory of Okay](docs/theory/index.md).
 
 Zero dependencies. One source for JVM (JDK 21+, Loom), Scala.js and
 Scala Native — each platform contributes evidence (can it park? what
@@ -137,11 +137,11 @@ history, protocols and refuted experiments: src/jmh/history.tsv.
 
 **Bind chain** — 10k left-nested flatMaps, built and run:
 
-| **okay Eager** | kyo | **okay Cont** | **okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
+| **Okay Eager** | kyo | **Okay Cont** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
 |---|---|---|---|---|---|---|---|---|
 | **5.1** | 58 | **89** | **95** | 129 | 136 | 153 | 181 | 260 |
 
-(okay Eager is the kyo trick as an OPT-IN encoding — import Eager.given —
+(Okay Eager is the kyo trick as an OPT-IN encoding — import Eager.given —
 with the hazard stated: construction evaluates, so a self-referential
 program diverges before it runs, exactly what compare/TestLaziness
 catches kyo on (it runs 513 iterations at the CONSTRUCTION of an
@@ -150,13 +150,13 @@ chooses per program.)
 
 **Reader** — 10k asks:
 
-| **okay** | ZIO | cats Kleisli/Eval | atnos | kyo Env |
+| **Okay** | ZIO | cats Kleisli/Eval | atnos | kyo Env |
 |---|---|---|---|---|
 | **110** | 240 | 350 | 1737 | 362 756* |
 
 **Writer** — 10k tells, collected:
 
-| **okay** | cats WriterT/Chain | atnos | kyo Emit |
+| **Okay** | cats WriterT/Chain | atnos | kyo Emit |
 |---|---|---|---|
 | **286** | 1127 | 3202 | 386 322* |
 
@@ -165,37 +165,37 @@ operations; the same shape every other lane runs.)
 
 **Choice** — 2^13 branches, all collected (plain List is the floor):
 
-| List | **okay** | kyo | atnos |
+| List | **Okay** | kyo | atnos |
 |---|---|---|---|
 | 580 | **1603** | 3834 | 5392 |
 
 **Fork/join** — 100 trivial fibers (raw virtual threads are the floor):
 
-| raw Loom | kyo | **okay** | ZIO | cats IO |
+| raw Loom | kyo | **Okay** | ZIO | cats IO |
 |---|---|---|---|---|
 | 21 | 25 | **29** | 50 | 140 |
 
 **Stream pipeline** — map/filter/take(1000)/sum (Iterator is the floor):
 
-| Iterator | **okay chunked** | **okay elements** | kyo | ZIO | fs2 |
+| Iterator | **Okay chunked** | **Okay elements** | kyo | ZIO | fs2 |
 |---|---|---|---|---|---|
 | 14 | **16.9** | **23.6** | 239 | 692 | 1410 |
 
 **Merge** — two 500-element streams merged by readiness:
 
-| **okay chunked** | ZIO | okay elementwise | fs2 |
+| **Okay chunked** | ZIO | Okay elementwise | fs2 |
 |---|---|---|---|
 | **14.7** | 47 | 158 | 9031 |
 
 **Resource** — 1000 bracketed acquire/use/release:
 
-| **okay region** | **okay bracket** | ZIO | cats IO | kyo |
+| **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
 |---|---|---|---|---|
 | **18.7** | **26.3** | 106 | 197 | 8566 |
 
 **Generators** — the 1000th Fibonacci number, element by element:
 
-| Iterator | LazyList | **okay Producer** | okay LazyList | kyo | ZStream | fs2 |
+| Iterator | LazyList | **Okay Producer** | Okay LazyList | kyo | ZStream | fs2 |
 |---|---|---|---|---|---|---|
 | 12 | 13.5 | **18.4** | 35 | 61 | 172 | 245 |
 
@@ -264,7 +264,7 @@ Start here:
 | [User guide](docs/guide.md) | the concepts, layer by layer — control, effects, streams, the upper modules |
 | [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
 | [Typepedia](docs/typepedia.md) | every core type and typeclass, with its meaning and the recurring gotchas |
-| [The theory of okay](docs/theory/index.md) | the textbook: the theories the library stands on, the scientists, the papers, and why each design decision |
+| [The theory of Okay](docs/theory/index.md) | the textbook: the theories the library stands on, the scientists, the papers, and why each design decision |
 
 Going deeper:
 

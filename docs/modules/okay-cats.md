@@ -7,7 +7,7 @@ Depends on: `okay` (JVM), cats-free, cats-effect.
 
 ## Guide
 
-**Instances inward.** Any okay program is a lawful `cats.Monad`
+**Instances inward.** Any Okay program is a lawful `cats.Monad`
 (`StackSafeMonad`: `tailRecM` builds lazily — the recursion hides in
 the flatMap closure — and Free runs it stack-safely), so cats syntax
 (`mapN`, `traverse`, …) works on `A ! F` out of the box. A row
@@ -23,9 +23,9 @@ initiality: `toCats` walks operations into `cats.free.Free`,
 `fromCats` is `foldMap` through the injecting `FunctionK`.
 
 **Their runtime as our Scheduler.** `CatsInterop.scheduler` makes
-the cats-effect runtime an okay `Scheduler`: fork runs the program
+the cats-effect runtime an Okay `Scheduler`: fork runs the program
 as `IO.blocking` via `unsafeToFutureCancelable`, completion callbacks
-ride the future, cancel is the IO canceler. One `given`, and okay
+ride the future, cancel is the IO canceler. One `given`, and Okay
 fibers, `parMap`, `merge` and supervision run on cats-effect.
 
 **Laws.** cats-laws' Monad and MonadError rule sets run against the
@@ -70,7 +70,7 @@ Async.par(async(1), async(2)).runWith          // fibers on cats-effect
 ## Gotchas
 
 - `import okay.given` is required in every satellite for the
-  extension methods of okay's package-level givens (`runWith` above
+  extension methods of Okay's package-level givens (`runWith` above
   all); `import okay.cats.given` brings the instances.
 - A row containing `Throws` has no `Handler` — `runEither` before
   `runWith`.

@@ -26,10 +26,10 @@ monadic effect.** State, exceptions, nondeterminism — each is a
 particular way of invoking (or not invoking, or twice invoking) the
 captured continuation. A language, or a library, that has delimited
 control at the bottom does not need to *build in* any other effect; it
-needs only to program them. That is okay's architecture in one
+needs only to program them. That is Okay's architecture in one
 sentence.
 
-## What this is in okay: `Cont`
+## What this is in Okay: `Cont`
 
 ```scala
 // Cont.scala:39 — capture the current continuation
@@ -49,7 +49,7 @@ consequences, both load-bearing:
 
 **Stack safety.** A directly-encoded continuation monad overflows the
 stack on long `flatMap` chains — the classic problem Rúnar Bjarnason
-treated for Scala with trampolines [Bjarnason 2012]. okay's answer is
+treated for Scala with trampolines [Bjarnason 2012]. Okay's answer is
 the same normalization move chapter 1 showed for `Free`: `Bind` is a
 node, and `/` rebalances left-nested binds in a tail-recursive loop.
 
@@ -66,7 +66,7 @@ than doctrine.
 
 `shift`/`reset` capture to the *nearest* delimiter. Multi-prompt
 control — capture to a *named* delimiter, possibly across intervening
-ones — is strictly more expressive, and okay implements it in the
+ones — is strictly more expressive, and Okay implements it in the
 shape of Dybvig, Peyton Jones and Sabry's monadic framework [Dybvig,
 Peyton Jones & Sabry 2007]: a **prompt is a first-class tag carrying
 the delimiter's answer type** (`Delim.scala:74`), `push` installs one,
@@ -83,7 +83,7 @@ theory-meets-implementation:
   the captured continuation. One machine must own the whole prompt
   stack, so both `push` and `shift` reach it as operations of a single
   `Delim` signature.
-- **Tags are what let several answer types share one row.** okay's
+- **Tags are what let several answer types share one row.** Okay's
   union splitting is by runtime class (chapter 5); a signature
   parameterised by its answer type would erase two different prompts
   to the same class. With the answer type riding inside the tag, one
@@ -96,7 +96,7 @@ the enumeration" at each element.
 
 ## Why Cont is the bottom of the tower
 
-Filinski's theorem says delimited control *suffices*; okay's
+Filinski's theorem says delimited control *suffices*; Okay's
 `Effects.scala` makes it the actual foundation: a Cont-valued handler
 `F !> S = F ==> ([X] =>> X /> S)` (`Effects.scala:59`) interprets each
 operation as a continuation-manipulating program, and the comment at

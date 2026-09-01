@@ -1,7 +1,7 @@
 # okay-zio
 
 > Async ⇄ ZIO by Loom, ZStream ⇄ Chunks chunk for chunk, and the ZIO
-> runtime as an okay Scheduler.
+> runtime as an Okay Scheduler.
 
 Depends on: `okay` (JVM), zio, zio-streams.
 
@@ -10,20 +10,20 @@ Depends on: `okay` (JVM), zio, zio-streams.
 **Values cross by parking.** `toZIO` wraps a program as
 `ZIO.attemptBlocking` — ZIO's blocking pool runs it and a virtual
 thread parks wherever the program blocks. `fromZIO` runs a ZIO to
-completion inside ONE okay async operation (`unsafe.run` — again, a
+completion inside ONE Okay async operation (`unsafe.run` — again, a
 parked virtual thread). Neither side simulates the other's runtime;
 each waits its own native way.
 
 **Streams cross chunk for chunk.** `toZStream` unfolds our pure
 `Chunks.pull` with `ZStream.unfoldChunk` — chunk boundaries are
-preserved and an infinite okay stream stays lazy on the ZIO side.
+preserved and an infinite Okay stream stays lazy on the ZIO side.
 `fromZStream` opens the stream's scoped iterator once and drives it
 lazily (pulling 32 elements builds at most 64); the scope closes when
 the iterator ends. Like every external source, the result is LINEAR —
 consume it once.
 
 **Their runtime, our fibers.** `ZioInterop.scheduler()` implements
-okay's `Scheduler` on the ZIO runtime: fork is `unsafe.fork` of an
+Okay's `Scheduler` on the ZIO runtime: fork is `unsafe.fork` of an
 `attemptBlocking`, completion rides `fiber.await`, cancel is
 `interruptFork`. One `given`, and `spawn`, `parMap`, `merge`,
 supervision — everything fiber-shaped — runs on ZIO.
@@ -57,7 +57,7 @@ Async.par(async(1), async(2)).runWith
 | `ZioInterop.fromZIO` | `(Task[A], runtime = default) => A ! Async` | a ZIO as one async op |
 | `ZioInterop.toZStream` | `Chunks[A] => ZStream[Any, Nothing, A]` | unfoldChunk over pure pull |
 | `ZioInterop.fromZStream` | `ZStream[Any, Throwable, A] => Chunks[A]` | scoped iterator, lazy, linear |
-| `ZioInterop.scheduler` | `(runtime = default) => okay.Scheduler` | ZIO runtime under okay fibers |
+| `ZioInterop.scheduler` | `(runtime = default) => okay.Scheduler` | ZIO runtime under Okay fibers |
 
 ## Gotchas
 

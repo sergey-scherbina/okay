@@ -20,10 +20,10 @@ trait ParaMonad[M[_, _, _]] {
 }
 ```
 
-okay's `Monad.scala` cites the paper in its header and states Atkey's
+Okay's `Monad.scala` cites the paper in its header and states Atkey's
 own slogan as a comment: the computation "is indexed by an arrow
 `S -> R` in a category of states". Two of Atkey's example
-instantiations are exactly the two okay uses.
+instantiations are exactly the two Okay uses.
 
 ## Instance one: the continuation monad with answer-type modification
 
@@ -38,7 +38,7 @@ parameters bolted on" but the paramonad whose arrows are
 answer-transformations.
 
 The bridge back to ordinary monads is Atkey's too: **every diagonal of
-a parameterised monad is a monad**. okay spells it as an instance
+a parameterised monad is a monad**. Okay spells it as an instance
 (`Monad.scala:36–43`):
 
 ```scala
@@ -63,7 +63,7 @@ chose the shape; binary compatibility chose the spelling.)
 
 Atkey's other flagship example is state whose *type* changes as the
 program runs — a file handle that is `Open` before `close` and
-`Closed` after, with the indices making misuse a type error. okay's
+`Closed` after, with the indices making misuse a type error. Okay's
 `PState` (`State.scala:69–75`) is this instance: its `flatMap`
 "already composes the transitions `S -> S2 -> S3` (typestate)", so a
 protocol's stages become index transitions and skipping a stage fails
@@ -71,7 +71,7 @@ to compile.
 
 The price was measured rather than assumed: the typestate variant
 costs about 1.7x the plain `State` handler (`docs/benchmarks.md`), so
-okay keeps both — `State % S` for the common case where the type never
+Okay keeps both — `State % S` for the common case where the type never
 changes, `PState` where the protocol is the point. This is the
 recurring house pattern: the more general theory is present, and the
 specialized fast path exists *because a benchmark said so*, not
@@ -83,7 +83,7 @@ Chapter 2 ended with Filinski: delimited control expresses every
 monadic effect. The typing that makes this *safe* is precisely the
 parameterised structure — without answer-type indices, `shift`'s
 ability to change the answer type is either forbidden (losing
-expressiveness) or unchecked (losing safety). So okay's tower has a
+expressiveness) or unchecked (losing safety). So Okay's tower has a
 paramonad at the bottom out of necessity, and Atkey's diagonal theorem
 is the ramp back down to the ordinary monads everything else is
 written in. One trait (`ParaMonad`), one theorem (the diagonal), two
