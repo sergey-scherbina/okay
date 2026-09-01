@@ -1,5 +1,0 @@
-slug: pg-scram-typestate
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: Scram as PHASE OBJECTS (specs/typestate.md; the operator's additive rule): each step answers the next phase, an out-of-order call does not exist as a method, the mutable serverSignature dissolves into its phase; PgSql.connect adopts it; the live SCRAM battery stays green; compileErrors pins the order
-files: okay-pg/** (Scram + connect + tests), specs/typestate.md (box/Results + the operator's rule), BACKLOG (entry)
