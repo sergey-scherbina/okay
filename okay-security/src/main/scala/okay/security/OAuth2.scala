@@ -91,4 +91,13 @@ object OAuth2 {
         case Array(k, v) => Some(k -> java.net.URLDecoder.decode(v, "UTF-8"))
         case _ => None
     }.toMap
+
+  // ── the ambient-Http doors (ctx-everywhere): pure delegation —
+  // the one recurring environment of these flows
+  def exchange(c: Client, code: String, verifier: String)(using http: Http)
+  : Either[String, Tokens] ! okay.Async = exchange(http, c, code, verifier)
+  def refresh(c: Client, refreshToken: String)(using http: Http)
+  : Either[String, Tokens] ! okay.Async = refresh(http, c, refreshToken)
+  def clientCredentials(c: Client)(using http: Http)
+  : Either[String, Tokens] ! okay.Async = clientCredentials(http, c)
 }

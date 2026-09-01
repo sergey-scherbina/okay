@@ -151,4 +151,8 @@ object Jwks {
   def fetch(http: Http, url: String)(using Crypto): Map[String, Jwt.Key] ! Async =
     http.send(Request.get(url)).flatMap(r => okay.http.Http.text(r))
       .map(t => parse(Json.parse(t)))
+
+  /** the ambient-Http door (ctx-everywhere) */
+  def fetch(url: String)(using http: Http, c: Crypto): Map[String, Jwt.Key] ! Async =
+    fetch(http, url)
 }

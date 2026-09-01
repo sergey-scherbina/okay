@@ -199,14 +199,14 @@ Doors added by this sweep (all additive, explicit forms stay):
 - `S3.wired` — `Http ?=> S3`
 - `Configs.ambient` — `Store ?=> Configs`
 
-- [ ] provide: installs for a block, nests to the NEAREST (inner
+- [x] provide: installs for a block, nests to the NEAREST (inner
       provide shadows outer), works in expression position
-- [ ] each door delegates byte-for-byte to its explicit form (one
+- [x] each door delegates byte-for-byte to its explicit form (one
       assertion per door, against stubs where a wire would be)
-- [ ] the DI claim demonstrated: one program wired twice —
+- [x] the DI claim demonstrated: one program wired twice —
       provide(prodEnv){...} and provide(testEnv){...} — with a
       missing capability a COMPILE error, quoted
-- [ ] the recipe lives in typepedia: two lines to add a door to any
+- [x] the recipe lives in typepedia: two lines to add a door to any
       future API, the auto-application eagerness (E10) warned
 
 ## Filed (BACKLOG slugs, each with its gate)

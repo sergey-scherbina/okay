@@ -67,6 +67,11 @@ object Tls {
         .asInstanceOf[SSLServerSocket]
       ss
 
+  /** the ambient-Secrets door (ctx-everywhere): pure delegation */
+  def serverSocket(port: Int, certFile: String, key: Secret)
+                  (using secrets: Secrets): Either[String, SSLServerSocket] =
+    serverSocket(port, certFile, key, secrets)
+
   // ── the pieces ────────────────────────────────────────────────────
 
   /** the ref must BE a reference — PEM in the ref is the leak the

@@ -57,3 +57,7 @@ object Configs:
   /** the conventional topic: keyed, compacted */
   def apply(store: Store, name: String = "__configs", partitions: Int = 1): Configs =
     new Configs(store.topic(name, partitions, Policy(compact = true)))
+
+  /** the ambient-Store door (ctx-everywhere) */
+  def ambient(name: String = "__configs", partitions: Int = 1)(using store: Store): Configs =
+    apply(store, name, partitions)

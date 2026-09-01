@@ -471,3 +471,25 @@ val s2 = step("two");   import s2.given   // sees s1's ctx
 Mechanism: NAME shadowing (different member names restore
 ambiguity — E7). FOOTGUN, stated: a forgotten `import sN.given`
 silently uses the stale context; there is no error.
+
+## The capability recipe: adding a door to any API (ctx-everywhere)
+
+The pair is `provide` (core: expression-scoped installation,
+nearest-wins nesting) and DOORS — and together they are the
+dependency-injection story: compile-time resolution, given-scopes
+as the object graph, zero framework. Adding a door is two lines:
+
+```scala
+// a wrapper-taking API:                      // a factory:
+def granted(...)(route: Principal ?=> R): R  def wired(...): Http ?=> Engine =
+  = explicit(...)(p => route(using p))         explicit(summon[Http], ...)
+```
+
+Rules that keep it honest: the door goes where the parameter is an
+ENVIRONMENT type (Http, Secrets, Crypto, ChatModel, Store, Tracer,
+Principal, Prompt) — a per-instance RESOURCE (a Connection, a
+socket) stays an argument, because ambient resources are how leaks
+happen; no newtypes are invented for string params; the explicit
+form always stays. One trap (E10): a context function EAGERLY
+auto-applies at ascription sites — bridges into other worlds must
+be FUNCTIONS with `?=>` parameters, never bare Conversions.

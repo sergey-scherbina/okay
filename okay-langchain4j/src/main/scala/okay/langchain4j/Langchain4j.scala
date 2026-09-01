@@ -100,4 +100,9 @@ object Langchain4j {
         val req = if tools.isEmpty then b else b.toolSpecifications(tools.map(declaration).asJava)
         reply(chat.chat(req.build()))
       case Model.Count(text) => count(text)
+
+  /** the wiring form (ctx-everywhere): the handler awaiting its
+   * environment — store it, ship it, provide(chatModel){ use it } */
+  def wired(count: String => Int = _.length / 4): dev.langchain4j.model.chat.ChatModel ?=> Handler[Model] =
+    model(summon[dev.langchain4j.model.chat.ChatModel], count)
 }

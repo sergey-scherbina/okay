@@ -45,6 +45,20 @@ object McpAuth {
   def protect(verify: String => Verified, metadataUrl: String,
               policy: Policy = Policy.allowAll)
              (route: Request => Response ! Async): Request => Response ! Async =
+    guard(verify, metadataUrl, policy)((_, r) => route(r))
+
+  /** the capability form (specs/context-functions.md,
+   * ctx-everywhere): the principal AMBIENT in the protected route —
+   * closes the route-wrapper family beside Secure.granted and
+   * Traced.route; the same ladder through the same private core */
+  def granted(verify: String => Verified, metadataUrl: String,
+              policy: Policy = Policy.allowAll)
+             (route: Principal ?=> Request => Response ! Async): Request => Response ! Async =
+    guard(verify, metadataUrl, policy)((p, r) => route(using p)(r))
+
+  /** the one ladder both forms share */
+  private def guard(verify: String => Verified, metadataUrl: String, policy: Policy)
+                   (k: (Principal, Request) => Response ! Async): Request => Response ! Async =
     r =>
       def challenge(status: Int, error: String): Response ! Async =
         pure(Response(status, Seq(("www-authenticate",
@@ -56,7 +70,7 @@ object McpAuth {
           case Verified.No(_) => challenge(401, "invalid_token")
           case Verified.Ok(p) => policy(p, r.method.name, r.url) match
             case Decision.Deny(_) => challenge(403, "insufficient_scope")
-            case Decision.Permit => route(r)
+            case Decision.Permit => k(p, r)
 
   // ---------------------------------------------------------------- client
 
@@ -155,4 +169,12 @@ object McpAuth {
           case j => Right(j)
       }
     }
+
+  // ── the ambient-Http doors (ctx-everywhere): pure delegation
+  def discover(mcpUrl: String)(using http: Http): Either[String, Discovered] ! Async =
+    discover(http, mcpUrl)
+  def connect(mcpUrl: String, clientId: String, secret: Option[String],
+              scopes: Seq[String])(using http: Http, s: okay.Scheduler)
+  : Either[String, McpHttp.McpLink] ! Async =
+    connect(http, mcpUrl, clientId, secret, scopes)
 }

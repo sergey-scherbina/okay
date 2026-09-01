@@ -179,3 +179,10 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
       }
     go(p)
 }
+
+object S3:
+  /** the wiring form (ctx-everywhere): the engine awaiting the one
+   * http client — provide(http){ S3.wired(...) } */
+  def wired(endpoint: String, bucket: String, region: String,
+            creds: SigV4.Creds): okay.http.Http ?=> S3 =
+    S3(summon[okay.http.Http], endpoint, bucket, region, creds)
