@@ -70,7 +70,23 @@ trait Sql:
   def begin(isolation: Isolation): Granted ! Async
   def commit(): Unit ! Async
   def rollback(): Unit ! Async
+  /** the emergency brake — the ONE deliberately synchronous method:
+   * called from a Resource finalizer when a transaction scope
+   * unwinds without a commit (an exception, a handled abort), and
+   * finalizers are sync by design. After a commit it is a no-op.
+   * The JDBC driver rolls back on the spot; a wire driver may
+   * simply close the connection — every serious server rolls back
+   * an abandoned transaction, which is why this is honest. */
+  def cancel(): Unit
 ```
+
+Around the trait, the small vocabulary the sketch above implies:
+`SqlType` mirrors `SqlValue`'s cases (plus `Other(name)` for vendor
+types verify can then name), `Isolation` is ReadCommitted /
+RepeatableRead / Serializable, and `begin` answers
+`Granted(requested, granted)` — engines interpret levels
+differently, so the caller sees what was actually granted and can
+refuse a downgrade rather than assume.
 
 The typed layer of specs/jdbc.md re-targets to this seam verbatim:
 `rows[A: Schema]` decodes `Vector[SqlValue]` frames by label through
@@ -138,8 +154,9 @@ import — and the platforms it runs on.
 
 - [ ] the typed layer (rows/params/verify/transact) compiles and
       tests against `Sql` with ZERO references to java.sql above
-      the driver line (asserted structurally: okay-sql has no
-      java.sql import)
+      the driver line (asserted structurally: okay-sql cross-builds
+      for JS and Native, platforms where java.sql does not exist —
+      a stronger check than any import grep)
 - [ ] the JDBC driver passes the full specs/jdbc.md behavior list
       through the seam (same tests, re-targeted — H2, no-DDL user)
 - [ ] the pg driver: startup + SCRAM auth, extended-protocol query
@@ -196,6 +213,23 @@ import — and the platforms it runs on.
   "migrates off" it needlessly: for warehouses, DuckDB and
   anything JVM-side with a good driver, it remains the honest
   default. Rejected: deprecating JDBC (fashion, not engineering).
+- **`cancel()` is sync, and it is the only sync method** — rollback
+  on an unwinding scope must run inside a Resource finalizer, and
+  finalizers are sync by design (the same reasoning that made
+  `Topic` a sync engine SPI: an async signature there would be
+  theater). The JDBC driver's rollback is genuinely synchronous
+  under the Async wrapper; a wire driver closes the connection and
+  lets the server roll back the abandoned transaction — the
+  behavior every deployment already relies on when a client dies.
+  Rejected: an async rollback in the finalizer path (needs a
+  blocking handler exactly where JS cannot have one); rejected:
+  no brake at all (a handled abort crossing the scope would leave
+  the transaction open — the rollback that quietly does not roll
+  back, the exact ORM bug jdbc.md refuses).
+- **A transact program is one-shot** — the region ties driver
+  state (begin..commit/cancel) to one run; replaying it through a
+  multi-shot handler is not meaningful and is stated rather than
+  defended against.
 
 ## Results
 
