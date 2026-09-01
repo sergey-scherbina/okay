@@ -34,9 +34,6 @@
       likely shape of the fix. Reproduce first: loop the nio lane alone.
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
-- [ ] ui-durable — event-sourced sessions: intent-first journal
-      (Durable shape), refold recovery, snapshots; the journal is an
-      okay-persist topic (specs/persist.md; seam agreed 2026-09-01)
 - [ ] ui-dom-patch — a raw-DOM patch Backend over js.Dynamic (the
       React host covers the browser today; Host.diffing is ready)
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
@@ -52,11 +49,6 @@
 - [ ] codec-defaults — decode falls back to a field's declared
       default when the wire lacks it (companion-default access =
       a macro; Mirrors do not carry defaults)
-
-## okay-mcp
-- [ ] mcp-resumable-sse — Last-Event-ID on the HTTP GET stream
-      (the journal is an okay-persist topic: read(from) IS
-      Last-Event-ID, TooEarly answers a compacted-past id)
 
 ## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
 - [ ] py-subprocess — stage 0: module + shim (stdlib json wire,

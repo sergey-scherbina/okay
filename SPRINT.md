@@ -9,7 +9,8 @@
       (spec: specs/security.md; claim: .work/active/security-oidc.claim)
 
 ## Queue
-(next candidates from BACKLOG.md: ui-wire, ui-screens)
+(next candidates from BACKLOG.md: persist-stage1, sql-seam,
+ conf-impl — the seams the most filed work binds to)
 
 ## Backlog gate
 Promote from BACKLOG.md when the sprint empties; a task enters the
