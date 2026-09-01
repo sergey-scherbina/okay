@@ -144,9 +144,9 @@ they are operations, not because the modules know each other.
   not install
 - streaming frames (Arrow IPC streams, chunked exchange) — staged
   behind the file road; batch frames first
-- Python — the same shape would serve (a `PyEval` twin over a
-  subprocess/Arrow road), noted so the naming stays parallel, but
-  not specced until asked
+- Python — the same shape, specced: specs/py.md (`PyEval`, the
+  twin; that spec references this one's model rather than
+  restating it)
 
 ## Decisions
 

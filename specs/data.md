@@ -24,7 +24,7 @@ surface.** The seams already exist, built one per shape:
 | vector search | `VectorStore` | specs/rag.md |
 | cached view | `Cache`/`View` | specs/cache.md |
 | heavy compute (aggregation) | the `Aggregator` triple bridges | specs/external-systems.md |
-| foreign compute (call-shaped: R) | `REval` operations + handler | specs/r.md |
+| foreign compute (call-shaped: R, Python) | `REval`/`PyEval` operations + handler | specs/r.md, specs/py.md |
 | config/secrets | `Conf`/`Secrets` | specs/conf.md |
 
 Every class below gets the same five questions answered: which seam;
