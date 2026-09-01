@@ -1,5 +1,19 @@
 # Changelog
 
+## stage-phased — typestate on the stream; PState gains its consumer
+Completed: 2026-09-01 (landed as 3aba599)
+Stage.phased: the accumulator CHANGES TYPE at the switch (header ->
+rows, the CSV shape) — the body cannot mention the head's phase by
+TYPE, the suite gains its first does-not-COMPILE proof
+(compileErrors), and the per-input transition is EXECUTED through
+PState: the theory exhibit of docs/theory/03 doing streaming work.
+Ends honest both ways (the answer names the phase the stream died
+in). Core suites 208/14/14 green on all three platforms; the full
+matrix carries the PRE-EXISTING ui-cmd flake, probe-proven on
+pristine master and filed as ui-cmd-flaky. Second Atkey consumer
+(sql-typestate) is the sibling's parallel lane; pg-scram-typestate
+filed at the operator's ask.
+
 ## ui-pwizard — the typed wizard: PState's style as a Dialog alternative
 Completed: 2026-09-01
 

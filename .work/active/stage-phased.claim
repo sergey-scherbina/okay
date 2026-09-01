@@ -1,8 +1,0 @@
-feature/stage-phased 2026-09-02T06:00:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-02T06:00:00Z
-status: in-progress
-done-so-far:
-next: spec section in chunked-streams.md FIRST; then Stage.phased (head/body typed S1/S2, Either switch, ends handled), the per-input transition as a PState program, CSV-header test + a compileErrors proof that the wrong phase does not compile; theory ch.3 pointer
-files: src/main/scala/Pipe.scala (additive), src/test/scala/TestPhased.scala (new), specs/chunked-streams.md, docs/theory/03-parameterised.md (one sentence)
-note: DISTINCT from sql-typestate (sibling): theirs = the transaction region in okay-sql, mine = the stream transducer in core; two Atkey consumers, zero shared files
