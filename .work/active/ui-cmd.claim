@@ -1,5 +1,0 @@
-feature/ui-cmd 2026-09-01T16:28:14Z
-agent: claude-code
-heartbeat: 2026-09-01T16:28:14Z
-status: in-progress
-next: Nav.Run: an effect slot in the declarative loop (Elm Cmd, okay-style)
