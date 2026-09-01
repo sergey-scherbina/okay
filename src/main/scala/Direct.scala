@@ -30,6 +30,19 @@ object Direct:
     /** the named spelling of the same mark */
     def reflect: A = m.?
 
+    /**
+     * The one-glyph mark for the rows, PREFIX: `!prog` — a program
+     * of type `A ! F` collapses under its own type's symbol. Exists
+     * because `.?` is AMBIGUOUS on Free rows (Effects carries its
+     * own row-`?` extension), `.reflect` is a word where a wizard
+     * wants a gesture, and a POSTFIX `.!` was tried and refuted the
+     * same hour: the method name `!` shadows the object `!` for
+     * every file importing Direct.* — `!.run` broke. The prefix
+     * spelling (`unary_!`) carries a different name, shadows
+     * nothing, and reads as "perform": `val name = !Form.ask[Name]("who?")`.
+     */
+    def unary_! : A = m.?
+
   // ONE mark serves both monadic values and raw operations: the
   // macro dispatches by TYPE — an F[T] of the block reflects, an
   // operation of the block's row is injected then reflected
@@ -78,7 +91,8 @@ object Direct:
     import quotes.reflect.*
 
     val directSym = TypeRepr.of[Direct.type].typeSymbol
-    val markSyms = (directSym.methodMember("?") ++ directSym.methodMember("reflect")).toSet
+    val markSyms = (directSym.methodMember("?") ++ directSym.methodMember("reflect")
+      ++ directSym.methodMember("unary_!")).toSet
     val colorSyms = (directSym.methodMember("selfColor") ++
       directSym.methodMember("opColor")).toSet
 

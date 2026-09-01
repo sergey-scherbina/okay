@@ -27,6 +27,19 @@ naming offset 1. Live-gated (skips without the broker); 3/3 against
 the real thing. No production code changed — the lane is one test
 and this record, which is the point: conditions crossed an engine
 boundary untouched.
+## direct-bang — the one-glyph mark for the rows, prefix
+Completed: 2026-09-01
+
+`!prog` joins `.?`/`.reflect` as the row mark: a program of type
+`A ! F` collapses under its own type's symbol. The postfix `.!` was
+tried and refuted within the hour — the method name shadows the
+object `!` for every file importing Direct.* (`!.run` broke in
+TestConditionDirect); the prefix spelling (unary_!) carries a
+different name, shadows nothing, and reads as "perform". The macro
+recognizes the third mark; the ui wizard test now reads
+`val name = !Form.ask[Name]("who?")`. A direct-style.md section
+records the collision so nobody retries the postfix. 305 core + ui
+tests green.
 
 ## pg-sslmode — the pg driver speaks TLS through the one seam
 Completed: 2026-09-01

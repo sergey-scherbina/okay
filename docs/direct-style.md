@@ -451,3 +451,14 @@ specs' Decisions so the next person does not pay twice.
   tears* — direct style with ATM inside one block; the road not
   (yet) taken, recorded in specs/monadic-reflection.md's Out of
   scope.
+
+### The row mark: prefix `!`
+
+On Free rows `.?` is ambiguous (Effects carries its own row-`?`
+extension) and a postfix `.!` was tried and refuted within the hour —
+the method name shadows the object `!` (`!.run` broke) for every
+file importing `Direct.*`. The prefix spelling survives both:
+`val name = !Form.ask[Name]("who?")` — a program of type `A ! F`
+collapsing under its own type's symbol, reading as "perform".
+`.reflect` remains the named form; auto-coloring still needs no mark
+at all where an expected type is present.

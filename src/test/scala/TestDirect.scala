@@ -5,6 +5,20 @@ import okay.Direct.*
 /** The flat block over Monadic: specs/direct-macro.md */
 class TestDirect extends munit.FunSuite {
 
+  test("the ! mark: one glyph, prefix, on the rows where ? is ambiguous") {
+    // a Free-row program collapses under its own type's symbol
+    val prog: Int ! Writer % String = direct[[A] =>> A ! Writer % String] {
+      val a = !okay.effect[Writer % String, Unit](Writer("hi"))
+      21 + 21
+    }
+    val ((logged, n)) = Writer.run[String, Int, Pure](prog).runWith
+    assertEquals(n, 42)
+    assertEquals(logged.toList, List("hi"))
+    // outside a block the mark stays a loud failure, like its kin
+    intercept[IllegalStateException](!okay.pure[Pure, Int](1))
+  }
+
+
   given Monad[Option] with
     override def pure[A](a: A): Option[A] = Some(a)
     extension [A](m: Option[A])

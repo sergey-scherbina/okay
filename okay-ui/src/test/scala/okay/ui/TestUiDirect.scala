@@ -23,12 +23,14 @@ class TestUiDirect extends munit.FunSuite {
 
   test("the direct wizard: a flatMap chain reads as straight-line code") {
     // the same two-step wizard TestDialog writes with flatMaps —
-    // here as plain vals under the reflect mark (the ? spelling
-    // collides with Effects' own ?-extension on rows — the named
-    // mark is the row idiom)
+    // here as plain vals under the PREFIX mark: a program of type
+    // A ! F collapses under its own type's symbol (`.?` is ambiguous
+    // on rows — Effects has its own row-`?`; postfix `.!` shadowed
+    // the object `!`; the prefix carries a different name and reads
+    // as "perform")
     val wizard: (Option[Name], Option[Age]) ! Dialog = direct[D] {
-      val name = Form.ask[Name]("who are you?").reflect
-      val age = Form.ask[Age]("how old?").reflect
+      val name = !Form.ask[Name]("who are you?")
+      val age = !Form.ask[Age]("how old?")
       (name, age)
     }
     val host = Scripted(Seq(
