@@ -425,6 +425,32 @@ lazy val okayCluster = crossProject(JVMPlatform, JSPlatform)
   )
 
 /**
+ * Authorization for services, once (specs/security.md): identities,
+ * claims and decisions as values, crypto as a platform seam,
+ * protection as a route wrapper. Zero dependencies — the JDK carries
+ * the primitives. JVM-first; the JS crypto seam is a stage.
+ */
+lazy val okaySecurity = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-security"))
+  .dependsOn(okayHttp)
+  .settings(
+    name := "okay-security",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+  .jsSettings(
+    // the model and Jwt/Jwks/Policy compile; the Crypto given is a
+    // stage (security-node), so nothing verifies on JS yet
+    Test / sources := Seq(),
+  )
+
+/**
  * The toolkit that is not a toolkit (specs/ui.md): the view is a
  * VALUE, the loop is transduce, the renderer is a seam — a terminal,
  * the DOM, React or a test host, one application on all of them.
@@ -593,6 +619,7 @@ lazy val root = (project in file("."))
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
+    okaySecurity.jvm, okaySecurity.js,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
