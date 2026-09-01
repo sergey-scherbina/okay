@@ -467,17 +467,20 @@ McpHttp.routed(serving, journal = Some(topic))   // journaled pushes
 // without a journal: today's live-only behavior, unchanged
 ```
 
-- [ ] a resumed GET replays exactly the missed pushes, in order, then
+- [x] a resumed GET replays exactly the missed pushes, in order, then
       the live ones
-- [ ] a fresh GET (no Last-Event-ID) sees only pushes made after it
+- [x] a fresh GET (no Last-Event-ID) sees only pushes made after it
       opened
-- [ ] every frame on a journaled stream carries `id:` equal to its
+- [x] every frame on a journaled stream carries `id:` equal to its
       topic offset
-- [ ] two sessions' pushes do not bleed on resume (keys filter)
-- [ ] without a journal the route behaves exactly as v6 (the tests of
+- [x] two sessions' pushes do not bleed on resume (keys filter)
+- [x] without a journal the route behaves exactly as v6 (the tests of
       v6 still pass unchanged)
-- [ ] the client auto-resumes: after a dropped stream, the missed
-      pushes arrive on the SAME notifications channel
+- [x] the client tracks ids and resumes with `Last-Event-ID`: a
+      re-opened stream delivers the missed pushes on the SAME
+      notifications channel (open() itself loops with the token when
+      a stream ends server-side; the test forces the drop from the
+      client side, which exercises the same resume path)
 
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server

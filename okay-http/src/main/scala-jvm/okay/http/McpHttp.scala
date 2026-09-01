@@ -4,6 +4,7 @@ import okay.*
 import okay.given
 import okay.codec.Json
 import okay.mcp.{Mcp, Rpc, Server as McpServer}
+import okay.persist.{Ack, Topic}
 
 /**
  * MCP's streamable HTTP transport, both ends — and the point is how
@@ -27,6 +28,7 @@ object McpHttp {
 
   val SessionHeader = "mcp-session-id"
   val VersionHeader = "mcp-protocol-version"
+  val LastEventHeader = "last-event-id"
 
   /**
    * An endpoint AS a Link. Everything a POST answers with — one
@@ -98,24 +100,62 @@ object McpHttp {
           else async(inbound.send(line)).flatMap(_ => drain(rest))
       }
 
+    @volatile private var lastEvent: Option[Long] = None
+    @volatile private var closed = false
+
+    /** the newest `id:` the stream has delivered — the resume token */
+    def lastEventId: Option[Long] = lastEvent
+
     /**
      * The GET stream: what the server says unasked. Optional by the
      * protocol (a server may answer 405), and optional here — a
-     * client that never opens it simply never hears a notification,
-     * which over HTTP is a choice rather than a fault.
+     * client that never opens it simply never hears a notification.
+     *
+     * A LOOP, because streams drop: it tracks the last `id:` seen and,
+     * when the stream ends without the link being closed, re-GETs
+     * with `Last-Event-ID` — so against a journaled server (v7) a
+     * dropped stream costs the messages nothing. Against a v6 server
+     * (no ids) resuming is joining, which is what v6 offers anyway.
      */
     def open(): Fiber[Unit] =
-      Async.spawn(http.send(Request.get(url,
-        Seq(("accept", "text/event-stream"), (VersionHeader, Mcp.Version)) ++
-          session.map(id => (SessionHeader, id)))).flatMap { r =>
-        if r.status >= 400 then pure(())      // 405: this server does not push
-        else drain(Http.sse(r))
-      })
+      def once: Unit ! Async =
+        http.send(Request.get(url,
+          Seq(("accept", "text/event-stream"), (VersionHeader, Mcp.Version)) ++
+            session.map(id => (SessionHeader, id)) ++
+            lastEvent.map(n => (LastEventHeader, n.toString)))).flatMap { r =>
+          if r.status >= 400 then pure(())    // 405: this server does not push
+          else drainSse(Http.lines(r)).flatMap(_ =>
+            if closed then pure(())
+            else async(Thread.sleep(50)).flatMap(_ => once))
+        }
+      Async.spawn(once)
+
+    /** SSE framing that KEEPS the ids: `id:` lines set the resume
+     * token, `data:` lines buffer, a blank line delivers (okay-llm's
+     * stage drops ids — this one is the reason not to) */
+    private def drainSse(ls: Source[String]): Unit ! Async =
+      def go(rest: Source[String], buf: List[String]): Unit ! Async =
+        Writer.uncons[String, Unit, Async](rest).flatMap {
+          case Left(_) => pure(())
+          case Right((line, more)) =>
+            if line.startsWith("id:") then
+              lastEvent = line.drop(3).trim.toLongOption.orElse(lastEvent)
+              go(more, buf)
+            else if line.startsWith("data:") then go(more, line.drop(5).trim :: buf)
+            else if line.trim.isEmpty then
+              val payload = buf.reverse.mkString(String(Array('\n')))
+              (if payload.trim.isEmpty then pure(())
+               else async(inbound.send(payload))).flatMap(_ => go(more, Nil))
+            else go(more, buf)
+        }
+      go(ls, Nil)
 
     def lines: Source[String] = Writer.of(inbound)
 
-    /** no more will arrive */
-    def close(): Unit = inbound.close()
+    /** no more will arrive — and the open() loop stops re-connecting */
+    def close(): Unit =
+      closed = true
+      inbound.close()
   }
 
   /** an endpoint, as a link */
@@ -149,25 +189,37 @@ object McpHttp {
    * — its subscriptions are its own, and a push goes to the sessions
    * that have a stream open.
    */
-  def routed(serving: McpServer.Serving)
+  def routed(serving: McpServer.Serving,
+             journal: Option[Topic] = None)
             (using Scheduler, CanBlock): (Request => Response ! Async, McpServer.Pushes) =
     val sessions = java.util.concurrent.ConcurrentHashMap[String, Wire]()
     val pushes = Channel[Rpc]()
     val handle = McpServer.pushesTo(pushes, serving.subscriptions)
 
-    // one fan-out fiber: a push goes to every session with a stream
-    Async.spawn(fanOut(pushes, sessions)): Unit
+    // one fan-out fiber: a push goes to every session with a stream —
+    // and, when a journal is given, into its key first (intent-first,
+    // the ui-durable discipline), so a dropped stream loses nothing
+    Async.spawn(fanOut(pushes, sessions, journal)): Unit
 
     val route: Request => Response ! Async = request =>
       if request.method == Method.Get then
         val id = header(request, SessionHeader).getOrElse("")
         Option(sessions.get(id)) match
           case None => pure(Response(404, Nil, Http.one(Array.empty)))
-          case Some(wire) =>
-            // the body is that session's stream, as events; it ends
-            // when the session does
-            pure(Response(200, Seq(("content-type", "text/event-stream")),
-              events(wire.stream)))
+          case Some(wire) => journal match
+            case None =>
+              // v6 unchanged: the live stream, no history, no ids
+              pure(Response(200, Seq(("content-type", "text/event-stream")),
+                events(wire.stream)))
+            case Some(t) =>
+              // resumable: replay this session's missed records from
+              // Last-Event-ID + 1 (a fresh GET starts at the live
+              // end — history is for resumers, not joiners), then
+              // tail; every frame carries id: <offset>
+              val from = header(request, LastEventHeader)
+                .flatMap(_.toLongOption).map(_ + 1)
+              pure(Response(200, Seq(("content-type", "text/event-stream")),
+                journaled(t, id, from)))
       else
         val body = request.body match
           case Body.Text(s) => s
@@ -198,17 +250,60 @@ object McpHttp {
 
     (route, handle)
 
-  /** every push, to every session that has a stream open */
+  /** every push, to every session that has a stream open — journaled
+   * first when there is a journal, so replay can miss nothing */
   private def fanOut(pushes: Channel[Rpc],
-                     sessions: java.util.concurrent.ConcurrentHashMap[String, Wire])
+                     sessions: java.util.concurrent.ConcurrentHashMap[String, Wire],
+                     journal: Option[Topic])
   : Unit ! Async =
     async(pushes.receive()).flatMap {
       case None => pure(())
       case Some(m) =>
         import scala.jdk.CollectionConverters.*
+        for t <- journal; id <- sessions.keys().asScala do
+          val k = id.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+          t.append(Topic.route(k, t.partitions), k,
+            Rpc.encode(m).getBytes(java.nio.charset.StandardCharsets.UTF_8), Ack.Durable): Unit
         sessions.values().asScala.foreach(_.stream.send(m))
-        fanOut(pushes, sessions)
+        fanOut(pushes, sessions, journal)
     }
+
+  /**
+   * A session's journaled stream as SSE: replay the missed records
+   * for this key from `from` (or start at the live end), then tail —
+   * the stage-0 batch+poll loop, a poll interval budgeted as
+   * persist-stage1's streaming helper is not here yet. Frames carry
+   * `id: <offset>`, which is what makes Last-Event-ID mean something.
+   */
+  private def journaled(t: Topic, sessionId: String, from: Option[Long])
+  : Source[Chunk[Byte]] =
+    val key = sessionId.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+    val partition = Topic.route(key, t.partitions)
+
+    def frame(offset: Long, value: Array[Byte]): Chunk[Byte] =
+      val line = s"id: $offset\ndata: ${String(value, java.nio.charset.StandardCharsets.UTF_8)}\n\n"
+      scala.collection.immutable.ArraySeq.unsafeWrapArray(
+        line.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+
+    def go(at: Long): Source[Chunk[Byte]] =
+      effect[Writer % Chunk[Byte] + Async, Topic.Read](
+        Async.Run(() => t.read(partition, at, 64))).flatMap {
+        case Topic.Read.TooEarly(begin) => go(begin)   // compacted: resume at begin
+        case Topic.Read.Records(rs) if rs.nonEmpty =>
+          val mine = rs.filter(r => java.util.Arrays.equals(r.key, key))
+          def tell(rest: Vector[okay.persist.Record]): Unit ! (Writer % Chunk[Byte] + Async) =
+            rest match
+              case r +: more => effect[Writer % Chunk[Byte] + Async, Unit](
+                Writer(frame(r.offset, r.value))).flatMap(_ => tell(more))
+              case _ => pure(())
+          tell(mine).flatMap(_ => go(rs.last.offset + 1))
+        case Topic.Read.Records(_) =>
+          // the live end: poll — the budgeted interval until stage 1
+          effect[Writer % Chunk[Byte] + Async, Unit](
+            Async.Run(() => Thread.sleep(25))).flatMap(_ => go(at))
+      }
+
+    go(from.getOrElse(t.end(partition)))
 
   /** a stream of messages as an SSE body */
   private def events(out: Channel[Rpc]): Source[Chunk[Byte]] =
