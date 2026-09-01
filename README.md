@@ -1,4 +1,4 @@
-Okay! Extensible effects for Scala 3.
+# Okay! Extensible effects for Scala 3.
 
 Inspired by Rúnar Bjarnason, Oleg Kiselyov and Robert Atkey.
 
