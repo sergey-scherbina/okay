@@ -49,19 +49,20 @@ without importing a framework.
 
 ## Behavior
 
-- [ ] an inbound traceparent is parsed totally (damage = a fresh
+- [x] an inbound traceparent is parsed totally (damage = a fresh
       root trace, named as such); an outbound call carries a valid
       child traceparent; tracestate passes through opaquely
-- [ ] a request crossing http → sql produces spans sharing one
+- [x] a request crossing http → sql produces spans sharing one
       traceId with correct parentage, appended to the trace topic
-- [ ] the tracing handler wraps ANY Handler without that handler's
+- [x] the tracing handler wraps ANY Handler without that handler's
       knowledge (composition asserted on a mock)
 - [ ] a journaled operation's span and journal entry carry the
-      same operation identity (the overlay join works)
-- [ ] sampling-by-policy: a "never" policy writes nothing and
+      same operation identity (the overlay join works) — waits for
+      a Durable consumer; filed obs-durable-overlay
+- [x] sampling-by-policy: a "never" policy writes nothing and
       costs near-nothing (measured bound); a "root only" policy
       writes roots
-- [ ] spans round-trip through Schema (JSON inspectable, CBOR on
+- [x] spans round-trip through Schema (JSON inspectable, CBOR on
       the topic)
 
 ## Out of scope
@@ -96,3 +97,18 @@ without importing a framework.
   causality); merging them would couple retention, sampling and
   trust levels that genuinely differ. Rejected: spans-in-the-
   journal.
+
+## Results
+
+Shipped 2026-09-01 (obs-tracing): okay-obs cross-built JVM/JS/Native
+over okay + okay-codec + okay-persist. Span/Attr with derived
+Schemas; Trace.parse total (all-zero ids, reserved version ff,
+uppercase, wrong arity all refuse); Tracer with root/span/outbound/
+outboundState and the traced(Handler) combinator — a polymorphic
+namer, since F[?] does not reduce. The crossing test drives a real
+okay-http server into H2 through the Sql seam: one traceId from the
+inbound header, parentage http -> sql, spans on the topic. Sampling
+proven as a write decision with a coarse Never bound (10k spans,
+no I/O, generous wall clock). One Tracer per request is the
+concurrency story v1 — handler state, like a terminal's cursor.
+obs-otlp and obs-durable-overlay filed.

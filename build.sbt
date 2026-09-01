@@ -381,6 +381,28 @@ lazy val okayConf = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     // node reads process.env by require-time global, no module kind needed
   )
 
+/**
+ * The missing third of the observability doctrine (specs/obs.md):
+ * spans as VALUES on a trace topic, W3C traceparent as the one
+ * propagation vocabulary, and the tracing handler that wraps any
+ * other — programs stay observability-blind; export is a consumer.
+ */
+lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-obs"))
+  .dependsOn(okay, okayCodec, okayPersist)
+  .settings(
+    name := "okay-obs",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmConfigure(_.dependsOn(okayHttp.jvm % Test, okayJdbc % Test))
+  .jvmSettings(
+    // the crossing test (http -> sql, one traceId) needs a database
+    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 /** language models as streams: the thin client (P4/llm.md).
  * Cross-built — only the Transport is platform-bound (java.net.http
  * on the JVM, fetch on JS), everything else is pure Scala */
@@ -734,6 +756,7 @@ lazy val root = (project in file("."))
     okaySql.jvm, okaySql.js, okaySql.native,
     okayCache.jvm, okayCache.js, okayCache.native,
     okayConf.jvm, okayConf.js, okayConf.native,
+    okayObs.jvm, okayObs.js, okayObs.native,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayAgent.jvm, okayAgent.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,

@@ -114,6 +114,13 @@
       (Jetty's did not — found by mcp-push, fixed there)
 
 ## Elsewhere
+- [ ] obs-otlp — the exporter as a CONSUMER of the trace topic,
+      speaking OTLP to any collector (interop; the SDK stays inside
+      it if used at all) (specs/obs.md, Export = a consumer)
+- [ ] obs-durable-overlay — the journal/trace identity join: a
+      journaled operation's span carries the entry's identity so a
+      replay lays over its original spans (needs a Durable consumer;
+      specs/obs.md box stays open until then)
 - [ ] rag-langchain4j — their EmbeddingStore as a Retrieve handler
       (the other half of the interop sentence; when a consumer
       names a store)
