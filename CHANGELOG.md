@@ -1,5 +1,19 @@
 # Changelog
 
+## kafka-repair — the repair road holds over the real engine
+Completed: 2026-09-01
+The Repair seam is engine-agnostic by construction (Repair over
+Typed, Typed over any Topic, KafkaStore is a Topic); TestKafkaRepair
+is the proof on the wire, live against the okay-kafka broker with
+the production shape of damage — a FOREIGN producer's garbage bytes
+at offset 1 of a typed topic. The same road, three policies:
+Resume patches at the broker-assigned offset (Vector(a, patched,
+c)); Invoke("skip") drops the offset with order intact; Fail aborts
+naming offset 1. Live-gated (skips without the broker); 3/3 against
+the real thing. No production code changed — the lane is one test
+and this record, which is the point: conditions crossed an engine
+boundary untouched.
+
 ## pg-sslmode — the pg driver speaks TLS through the one seam
 Completed: 2026-09-01
 specs/tls.md's pg box: Postgres over TLS, the seam's second consumer

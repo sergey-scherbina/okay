@@ -156,7 +156,14 @@ under a per-element "skip" frame; the same log answers three ways
 under three policies (patched in place, skipped with order intact,
 aborted naming the offset), and a clean slice never consults the
 policy at all — the never-signals-never-pays half of the additive
-rule, tested. Still filed: r.md's native restarts bridged over the
+rule, tested. And the seam is ENGINE-AGNOSTIC by construction
+(Repair works over Typed, Typed over any Topic) — proven on the
+wire the same day (kafka-repair): TestKafkaRepair runs the same
+three policies against a REAL broker with the production shape of
+damage, a foreign producer's garbage bytes in the middle of the
+topic — patched at the broker-assigned offset, skipped with order
+intact, aborted naming offset 1. Live-gated, skips without the
+broker. Still filed: r.md's native restarts bridged over the
 now-shared vocabulary once okay-r lands.
 
 
