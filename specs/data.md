@@ -23,7 +23,8 @@ surface.** The seams already exist, built one per shape:
 | key → document | `Docs` — the ONE new seam this spec adds | below |
 | vector search | `VectorStore` | specs/rag.md |
 | cached view | `Cache`/`View` | specs/cache.md |
-| heavy compute | the `Aggregator` triple bridges | specs/external-systems.md |
+| heavy compute (aggregation) | the `Aggregator` triple bridges | specs/external-systems.md |
+| foreign compute (call-shaped: R) | `REval` operations + handler | specs/r.md |
 | config/secrets | `Conf`/`Secrets` | specs/conf.md |
 
 Every class below gets the same five questions answered: which seam;
@@ -193,7 +194,10 @@ The bridges exist (external-systems.md): any `Aggregator` exports
 encoders. Their place in this taxonomy: they are not storage — they
 are how a FOREIGN-scale computation runs over the classes above,
 and the merge contract is the same one okay-cluster distributes.
-Nothing new filed.
+Nothing new filed. The CALL-shaped sibling of this class — a
+statistical function over a frame, answered and journaled — is R,
+specced separately (specs/r.md: operations not embeddings,
+subprocess and Rserve engines behind one handler).
 
 ### Named and deferred, so the list is complete
 
