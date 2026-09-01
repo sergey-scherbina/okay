@@ -1,5 +1,14 @@
 # Changelog
 
+## jdbc-bulk-load — WithKey at batch granularity
+Completed: 2026-09-01 (landed as 6f7e8d8)
+The OLAP write posture held by discipline: history row + the
+caller's COPY in ONE transaction — the unique key IS the dedup, a
+crash-retry lands once, a refused claim is VERIFIED against the key
+(a dead wire must not impersonate a dedup), a failing COPY rolls
+its claim back. The olap wrapper refuses row DML by name and points
+at the right door. DuckDB as the double. Matrix 1433.
+
 ## obs-otlp — export is a consumer, and no SDK came
 Completed: 2026-09-01 (landed as bc14801)
 The pure half maps spans to OTLP/HTTP JSON (nanos as strings,

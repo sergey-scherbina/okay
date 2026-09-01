@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- jdbc-bulk-load — the OLAP write posture: stage + COPY under a
-  LOAD ID the history table dedups (WithKey at batch granularity),
-  row DML refused in the posture; DuckDB as the test double
-  (specs/data.md)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
