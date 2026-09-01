@@ -1,0 +1,6 @@
+feature/ws-close-halfduplex 2026-09-01T09:24:38Z
+agent: claude-code
+heartbeat: 2026-09-01T09:24:38Z
+status: in-progress
+done-so-far:
+next: WsEcho keeps sending after Close; one test proves frames in flight arrive
