@@ -1,5 +1,9 @@
 # Working in this repository (agents)
 
+SPRINT: SPRINT.md
+BACKLOG: BACKLOG.md
+CHANGELOG: CHANGELOG.md
+
 Several agents commit to one `master` from one machine. The rules in
 force, all already practiced, none previously written down:
 
@@ -22,6 +26,13 @@ force, all already practiced, none previously written down:
 - Coordination room: rozum. Announce landings; flag files you both
   touch (`build.sbt`, `src/jmh/history.tsv` — append-only, expect
   tail conflicts, resolve by keeping both sides).
+
+## Boards
+- `SPRINT.md` is what agents pick from (claim before working);
+  `BACKLOG.md` is where found-but-deferred work goes THE MOMENT it is
+  found; `CHANGELOG.md` is append-only, newest first, one entry per
+  landed task naming the commits. Lifecycle: promote backlog -> sprint
+  -> claim -> land -> DELETE from sprint, prepend to changelog.
 
 ## Specs
 - The `spec-dev` skill, with `specs/` as the spec directory (no global
