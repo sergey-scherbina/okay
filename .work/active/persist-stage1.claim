@@ -1,5 +1,0 @@
-slug: persist-stage1
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: okay-persist stage 1 — Durable.Journal over a keyed topic, tailable reads, typed Schema view, consumer offsets, compaction (= snapshots), Snapshots put/latest; spec: specs/persist.md stage 1
-files: okay-persist/**, okay-agent/** (Durable.Journal binding), build.sbt (tail), docs/modules/okay-persist.md

@@ -128,11 +128,6 @@
 - [ ] persist-wire — the remote Topic client over the stage-2
       frames: a non-JVM consumer reaches a persist node directly;
       format and wire as documented surfaces
-- [ ] persist-stage1 — consumers prove the seam: Durable.Journal over
-      a keyed topic (complete-as-append), streaming/tailable reads,
-      typed Schema view with upcasts, consumer offsets, compaction
-      (= snapshots), a Snapshots put/latest convenience (asked for
-      by the ui lane)
 - [ ] persist-replication — stage 2: leader/follower per partition,
       epochs, high-water mark, quorum acks, operator failover,
       replica stats, idempotent producer window

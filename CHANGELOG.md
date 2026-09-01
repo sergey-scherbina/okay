@@ -1,5 +1,22 @@
 # Changelog
 
+## persist-stage1 — the consumers prove the seam
+Completed: 2026-09-01 (landed as 8501246; spec first af18ad6)
+Compaction (keep-latest-per-key, offsets preserved as holes,
+exclusive with retention) forced disk format v2 — frames carry
+their offset — and bought the evolution test both ways (a forged
+v1 segment reads; a v1 active segment is closed and a v2 rolled).
+Typed view: four-byte version envelope over CBOR, byte-level
+upcasts via Typed.step, every failure Decoded.Bad(offset, error).
+Offsets (commit-as-record, refold-on-restart, lag), Snapshots
+(put/latest, the ui lane's ask), Streams (stream/tail as
+Chunk ! Produce + Async; dropped history stops by declared
+OnTooEarly). okay-agent: TopicJournal = Durable.Journal over a
+keyed topic, intent and completion separate records, the whole
+crash-window battery green against it. okay-persist now depends on
+the core; okay-agent on okay-persist. Merge read alone: exit 0.
+Full matrix green (persist 38 JVM / 13 JS / 13 Native; agent +5).
+
 ## security-argon2 — the satellite that buys a dependency
 Completed: 2026-09-01 (landed as 16b8d58)
 New module okay-security-argon2 (jvm, Bouncy Castle) — a memory-hard

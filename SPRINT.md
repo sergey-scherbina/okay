@@ -7,8 +7,9 @@
   under Node (specs/ui.md names it in Out of scope v1 -> now)
 
 ## Queue
-(next candidates from BACKLOG.md: persist-stage1, sql-seam,
- conf-impl — the seams the most filed work binds to)
+(next candidates from BACKLOG.md: sql-seam, conf-impl,
+ persist-wire — the seams the most filed work binds to; ui-durable
+ and mcp-resumable-sse can now bind to stage 1's tail/offsets)
 
 ## Backlog gate
 Promote from BACKLOG.md when the sprint empties; a task enters the
