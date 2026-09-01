@@ -149,6 +149,12 @@ invoking off the menu is named as the policy's fault, not the
 program's). The repair story runs verbatim: a decode loop with one
 `within("skip")` frame PER ELEMENT, and the same program yields
 patched / skipped / failed under three policies — which is what
-"chosen at run" was always supposed to mean. Consumers filed for
-later: the Typed.Bad interactive-repair road, r.md's native
-restarts bridged over the same vocabulary once okay-r lands.
+"chosen at run" was always supposed to mean. The first consumer landed the same day (typed-bad-repair):
+`Repair` in okay-persist — `decode`/`read` over the Typed view
+where each damaged record SIGNALS `Damaged(offset, error, raw)`
+under a per-element "skip" frame; the same log answers three ways
+under three policies (patched in place, skipped with order intact,
+aborted naming the offset), and a clean slice never consults the
+policy at all — the never-signals-never-pays half of the additive
+rule, tested. Still filed: r.md's native restarts bridged over the
+now-shared vocabulary once okay-r lands.
