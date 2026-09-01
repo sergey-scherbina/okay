@@ -442,23 +442,26 @@ Behavior:
 - accessibility trees (the Host seam is where they would attach)
 - Windows terminals (raw mode is stty in v1)
 
-## nav-pop-to-screen (filed; the ui lane's to take)
+## nav-pop-to-screen — SHIPPED, with a mechanism correction
 
-Scope proved the pattern for dialogs: a first-class typed prompt
-delimits a cancellable sub-flow, cancel exits to the NAMED boundary
-with a value, and nested scopes abort across their own boundary —
-which nested handlers cannot express, making this the adoption
-doctrine's PRIMARY case (specs/delimited-control.md). The same
-pattern one level up: a screen PUSHES a named boundary, and "pop to
-that screen with this answer" crosses however many screens are
-between — no Option threading through every screen's update.
-ADDITIVE: Nav's existing push/pop stays; the named boundary is the
-extra door.
+Scope proved the PATTERN for dialogs (typed named boundary, exit
+with a value, nesting); one level up the pattern holds but the
+MECHANISM the spec first claimed does not, and the correction is
+the lesson: Dialog's continuations are implicit in a program, so
+crossing them needs Delim's capture — but Nav's stack is REIFIED
+DATA (List[Screen]), so the boundary is a stack marker (Nav.Key[A],
+the Prompt shape at the value level) and the exit is a DROP. Using
+the prompt machinery here would pay for capture the data structure
+already performs — the adoption doctrine's own test applied to its
+own poster case. ADDITIVE: plain Nav programs never meet any of it.
 
-- [ ] pop-to-named crosses two intermediate screens, each untouched
-      by the exit passing through them
-- [ ] two named boundaries nest; the inner pop stops at the inner
-- [ ] a plain Nav program (no boundaries) runs exactly as before
+- [x] pop-to-named crosses two intermediate screens, each untouched
+      by the exit passing through them (probe screens record zero
+      steps during the exit — frames are data)
+- [x] two named boundaries nest; the inner pop stops at the inner,
+      and the OUTER pop crosses the inner boundary — the capability
+- [x] a plain Nav program (no boundaries) runs exactly as before;
+      an absent key names nothing (total: the stack is unchanged)
 
 ## Decisions
 - **The primary seam hands over the WHOLE TREE (`Host`), patches are

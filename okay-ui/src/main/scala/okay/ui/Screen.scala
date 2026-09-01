@@ -27,8 +27,42 @@ enum Nav:
    * re-enters the fold like any other event (specs/ui.md, "The
    * effect slot"). The program is data; the loop runs it. */
   case Run(prog: okay.![Event, okay.Async], s: Screen)
+  /** exit to the NAMED boundary (nav-pop-to-screen): every frame
+   * above it is dropped untouched, and the boundary routes the
+   * typed answer. The key's identity carries its type — the Prompt
+   * argument, at the stack. */
+  case PopTo[A](key: Nav.Key[A], answer: A) extends Nav
 
 object Nav {
+
+  /** a boundary's identity AND its answer type (the Prompt shape) */
+  final class Key[A]
+  def key[A]: Key[A] = new Key[A]
+
+  /**
+   * Wrap a screen as a NAMED boundary: `PopTo(key, a)` from anywhere
+   * above drops every intervening frame — none of them stepped, they
+   * are data — and `done(a)` routes at the boundary. ADDITIVE per
+   * the adoption doctrine: plain Nav programs never meet this.
+   *
+   * The Scope pattern one level up, with the mechanism the stack
+   * itself dictates: screens are REIFIED frames, so the boundary is
+   * a stack marker and the exit is a drop — no captured
+   * continuation, hence no Delim (recorded in specs/ui.md; a prompt
+   * here would pay for capture the data structure already performs).
+   */
+  def boundary[A](k: Key[A], s: Screen)(done: A => Nav): Screen =
+    new Boundary[A](k, s, done)
+
+  private final class Boundary[A](val k: Key[A], inner: Screen,
+                                  val done: A => Nav) extends Screen:
+    def view: Ui = inner.view
+    def step(e: Event): Nav = inner.step(e) match
+      // the boundary survives its inner screen's ordinary moves
+      case Stay(s) => Stay(new Boundary[A](k, s, done))
+      case To(s) => To(new Boundary[A](k, s, done))
+      case Run(p, s) => Run(p, new Boundary[A](k, s, done))
+      case other => other
 
   /** a screen from a plain (state, view, update) triple — update may
    * answer a Nav, or just the next state (which means Stay) */
@@ -64,6 +98,28 @@ object Nav {
         case Pop => (rest, Vector.empty)
         case To(s) => (s :: rest, Vector.empty)
         case Run(prog, s) => (s :: rest, Vector(prog))
+        case PopTo(k, a) => popTo(stack, k, a)
+
+  /** drop to the named frame and let it route; an ABSENT boundary
+   * changes nothing (total, like every fold here) — the stack is
+   * data, and a name not on it names nothing */
+  private def popTo[A](stack: List[Screen], k: Key[A], a: A)
+  : (List[Screen], Vector[okay.![Event, okay.Async]]) =
+    val at = stack.indexWhere {
+      case b: Boundary[?] => b.k eq k
+      case _ => false
+    }
+    if at < 0 then (stack, Vector.empty)
+    else
+      val b = stack(at).asInstanceOf[Boundary[A]]   // key identity carries the type
+      val remaining = stack.drop(at)
+      b.done(a) match
+        case Stay(s) => (s :: remaining.tail, Vector.empty)
+        case Push(next) => (next :: remaining, Vector.empty)
+        case Pop => (remaining.tail, Vector.empty)
+        case To(s) => (s :: remaining.tail, Vector.empty)
+        case Run(prog, s) => (s :: remaining.tail, Vector(prog))
+        case PopTo(k2, a2) => popTo(remaining, k2, a2)   // boundaries chain
 
   /** run a stack on a host: ends when the host closes (an emptied
    * stack shows nothing and ignores everything until then) */
