@@ -1,5 +1,12 @@
 # Changelog
 
+## ui-screens — screens are codata, a wizard is a screen you push
+Completed: 2026-09-01
+Screen (view + step), Nav stack (Stay/Push/Pop/To; empty = end),
+Nav.scenario fusing Dialog into a pushable screen with the answer
+through the parent's continuation. 5 tests; matrix 977 (with
+persist-core landed beside).
+
 ## persist-core — okay-persist: the durable log, stage 0
 Completed: 2026-09-01
 Spec-first (specs/persist.md — the partitioned log designed to its
