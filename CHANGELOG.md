@@ -1,5 +1,23 @@
 # Changelog
 
+## ctx-everywhere — doors wherever the environment is a type; provide
+Completed: 2026-09-01 (landed as 02098bf)
+The operator's "everywhere, OPTIONALLY" executed with the operator's
+own framing adopted: this IS the DI story — provide (core:
+expression-scoped, nearest-wins, 1-3 arities) plus doors =
+compile-time dependency injection, a missing dependency a QUOTED
+compile error, zero framework. Doors: McpAuth.granted closes the
+route family (protect refactored through one shared ladder);
+OAuth2/Jwks/McpAuth gain ambient-Http forms; Tls.served
+(Secrets ?=>, reshaped after an erasure clash — recorded);
+Langchain4j.wired and S3.wired open the wiring family;
+Configs.ambient. The environment-vs-resource line drawn; the
+two-line recipe in typepedia; guide and five module pages updated.
+Verification note: three full-matrix runs were SIGTERM-killed
+externally (a sibling pkill, admitted in the room) at 1082/1082/
+1089 tests with ZERO failures; all ten touched module suites green
+directly (480 tests).
+
 ## sql-pg-node — the pg driver reaches Node; sql.md's last box
 Completed: 2026-09-01 (landed as a4e491e)
 okay-pg cross-built JVM+JS. The message pump was restructured onto

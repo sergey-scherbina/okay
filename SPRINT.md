@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- ctx-everywhere — the operator's "everywhere, OPTIONALLY": the core
-  provide combinator (the installer half of the pair) and capability
-  doors wherever the environment is a TYPE; the environment-vs-
-  resource line drawn; the recipe in typepedia (all additive)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
