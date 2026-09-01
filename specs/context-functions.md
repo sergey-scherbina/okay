@@ -366,7 +366,14 @@ Doors added by this sweep (all additive, explicit forms stay):
   with a consumer that actually rewires.
 - **ctx-reader-bridge** — `(A ?=> B) <-> B ! Reader % A`: a context
   function IS a pure Reader program and the tower has Reader.scala.
-  GATED: no consumer named. The sketch "one Conversion each way" was
+  GATE LIFTED (2026-09-01, ctx-reader-elim): the consumer is the
+  direct block — READER ELIMINATION: `Int ! (Reader % E + Row)`
+  rewritten as `E ?=> Int ! Row = direct { ... wire[E] ... }`, the
+  environment out of the row, the elaborator running the Reader
+  half at zero cost. TestCtxReaderElim proves the equivalence (same
+  answers both spellings), nearest-wins overriding THROUGH an
+  effectful block, and both one-line bridges at a call site — which
+  is where they stay: still functions, never Conversions. The sketch "one Conversion each way" was
   REFUTED by experiment (E10, 2026-09-01): the ctx->Reader direction
   must be a FUNCTION (`lift(cf: A ?=> B)`) — a Conversion never
   fires because the context function EAGERLY auto-applies at the

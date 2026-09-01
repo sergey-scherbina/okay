@@ -226,6 +226,46 @@ def idiom[F[_]](fu: F[String], fn: F[Int])(using M: Applicative[F]): F[String] =
   M.pure((u: String) => (n: Int) => s"$u#$n") <*> fu <*> fn
 ```
 
+## Reader elimination — the row's environment as a capability
+
+A program whose row carries `Reader % E` can shed it: move the
+environment into a `using` parameter and the elaborator runs the
+Reader half at compile time — zero runtime, and one effect fewer to
+handle. With direct blocks (docs/direct-style.md) the rewrite is a
+deletion:
+
+```scala
+// the row spelling: environment as an effect, handled at run
+def viaReader: Int ! (Reader % Int + W) = direct {
+  val env = effect[Reader % Int + W, Int](Reader.Ask()).?
+  effect[Reader % Int + W, Unit](Writer(s"env=$env")).?
+  env + 1
+}
+// the elimination: environment as a capability — Reader is GONE
+def viaCtx: Int ?=> Int ! W = direct {
+  Writer(s"env=${wire[Int]}")
+  wire[Int] + 1
+}
+provide(41)(viaCtx)   // same answers as Reader.run(41)(viaReader)
+```
+
+`TestCtxReaderElim` asserts the equivalence, that `provide` nesting
+overrides through the effectful block (nearest-wins survives the
+macro), and the two one-line bridges for migration — functions at
+the call site, never Conversions (E10):
+
+```scala
+def lift[E, A](cf: E ?=> A): A ! (Reader % E) =
+  effect[Reader % E, E](Reader.Ask()).map(e => cf(using e))
+def unlift[E, A, F[+_]](p: A ! (Reader % E + F)): E ?=> A ! F =
+  Reader.run[E, A, F](wire[E])(p)
+```
+
+When to keep the Reader row instead: when the environment must
+CHANGE mid-program (`Reader.local`-style scoping inside one
+program), or when a handler wants to observe the asks — a
+capability is invisible to handlers by design.
+
 ## The boundaries, stated exactly
 
 Every one of these is a compiler-verified refutation, kept because
