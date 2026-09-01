@@ -241,7 +241,9 @@ lazy val okayFlink = (project in file("okay-flink"))
 
 /** JDBC as chunked async streams under the Resource region (P4) */
 lazy val okayJdbc = (project in file("okay-jdbc"))
-  .dependsOn(okay.jvm)
+  // the first DRIVER of the Sql seam (specs/sql.md); the raw
+  // JdbcInterop streaming stays alongside, unchanged
+  .dependsOn(okay.jvm, okaySql.jvm)
   .settings(
     name := "okay-jdbc",
     libraryDependencies ++= Seq(
@@ -288,6 +290,19 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "org.scalameta" %%% "munit" % "1.1.1" % Test,
       "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
     ),
+  )
+
+/** the relational seam: the Sql driver trait and the typed layer
+ * (rows/params/verify/transact) written once against it — no
+ * java.sql anywhere, asserted by the JS and Native cross-builds
+ * (specs/sql.md, specs/jdbc.md) */
+lazy val okaySql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-sql"))
+  .dependsOn(okay, okayCodec)
+  .settings(
+    name := "okay-sql",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 
 /** the durable log: partitioned append-only persistence, offsets as
@@ -646,6 +661,7 @@ lazy val root = (project in file("."))
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
+    okaySql.jvm, okaySql.js, okaySql.native,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,

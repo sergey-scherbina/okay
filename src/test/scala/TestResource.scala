@@ -45,6 +45,22 @@ class TestResource extends munit.FunSuite {
     assertEquals(released, true)
   }
 
+  test("a throw in the continuation AFTER a forwarded effect still releases") {
+    // the leak sql-seam found: the residual applies k(y) at the OUTER
+    // handler's call site, outside the region's own try — user code
+    // composed after a forwarded effect (a .map that throws) must not
+    // skip the finalizers
+    var released = false
+    type F = Resource + Produce
+    val prog: Int ! F =
+      effect[F, Unit](Resource.Acquire(() => (), _ => released = true)).flatMap: _ =>
+        effect[F, Int](41).map(_ => throw RuntimeException("boom"))
+    val residual: Int ! Produce = Resource.run[Int, Produce](prog)
+    assertEquals(released, false)
+    intercept[RuntimeException](residual.runWith): Unit
+    assertEquals(released, true)
+  }
+
   test("bracket over any Handler-able row, not only Async") {
     var released = 0
     assertEquals(bracket(41)(_ => released += 1)(r => async(r + 1)).runWith, 42)

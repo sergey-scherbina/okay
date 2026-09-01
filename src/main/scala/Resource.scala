@@ -62,7 +62,14 @@ object Resource {
               x = k(r)
             case Right(e) =>
               val f = fin
-              return Effect(e).flatMap(y => _loop(f)(k(y)))
+              // k(y) runs USER code (the composed continuation) at
+              // the outer handler's call site, outside this loop's
+              // try — a throw there must not skip the finalizers
+              return Effect(e).flatMap { y =>
+                _loop(f)(
+                  try k(y)
+                  catch { case t: Throwable => releaseAll(f); throw t })
+              }
         throw MatchError(x)
       catch
         case e: Throwable =>
