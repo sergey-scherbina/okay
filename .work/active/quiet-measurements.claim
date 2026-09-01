@@ -1,0 +1,6 @@
+feature/quiet-measurements 2026-09-01T10:25:09Z
+agent: claude-code
+heartbeat: 2026-09-01T10:25:09Z
+status: in-progress
+done-so-far:
+next: the two pending measurements on the first quiet machine: symbol-fold split, cluster flush lanes
