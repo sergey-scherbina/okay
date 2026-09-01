@@ -1,5 +1,0 @@
-feature/demo-chat 2026-09-01T17:35:07Z
-agent: claude-code
-heartbeat: 2026-09-01T17:35:07Z
-status: in-progress
-next: demo chat web app (jetty SSE + llm streaming + Cut; offline stub mode)
