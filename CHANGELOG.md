@@ -1,5 +1,14 @@
 # Changelog
 
+## security-argon2 — the satellite that buys a dependency
+Completed: 2026-09-01 (landed as 16b8d58)
+New module okay-security-argon2 (jvm, Bouncy Castle) — a memory-hard
+KDF cannot be had from the JDK, so this module pays while the core
+keeps its zero. PHC stored form (portable, parameters ride the row),
+RFC 9106 vector pins the provider, absurd parameters refuse before
+allocating, verifyAny reads a mixed pbkdf2/argon2id store. Matrix
+1072. okay-security's staged spec is now fully shipped, 0 through 5.
+
 ## security-es256 — the raw-vs-DER dance, danced
 Completed: 2026-09-01 (landed as 9995966)
 Es256 is the conversion alone — pure, total both ways, shared, its
