@@ -223,8 +223,12 @@ A native `Queue` seam is REJECTED: it would mirror a lossy shape
 into the core to save one hop, and every consumer of it would
 rebuild the log's properties on top. Task distribution INSIDE the
 stack is the cluster's worker model and consumer groups over
-partitions — not a broker. Filed: `queue-shape` (the two bridges;
-engine adapters as deployments name them).
+partitions — not a broker. queue-shape LANDED (2026-09-01,
+`okay.persist.Queues`): the two bridges over `Source`/`Sink` SPIs —
+ingress (append then ack, at-least-once, id as the record key) and
+egress (read from an offset, publish, resumable), plus a `dedup`
+helper for the one-hop-downstream collapse. Engine adapters are
+deployments that implement the two SPIs; none is a core seam.
 
 ### Named and deferred, so the list is complete
 
@@ -299,10 +303,25 @@ list in its spec or spec section)
       COPY rolls its claim back with it, so the fixed retry starts
       clean); row DML refuses BY NAME in the OLAP posture wrapper,
       and the refusal says where the right door is (BulkLoad.load)
-- [ ] kafka-eos: a producer retry under the idempotent/
+- [x] kafka-eos: a producer retry under the idempotent/
       transactional config does not duplicate (their test
       machinery), or the sink's at-least-once is asserted and
-      documented where EOS is off
+      documented where EOS is off — LANDED: enable.idempotence
+      producer + read_committed consumer + transaction(txnId){…}
+      atomic across partitions and topics (commit/abort); the
+      own-engine file store gains nothing, it is Kafka's feature
+      exposed (specs/persist.md); TestKafkaEos, 3 live tests
+- [x] the queue bridges (queue-shape, specs/data.md "Queues"): no
+      new seam — INGRESS drains a broker into a topic keyed by
+      message id, acking AFTER the append (at-least-once: a lost ack
+      redelivers and re-appends, and Queues.dedup collapses the
+      duplicate one hop downstream by id); EGRESS reads a topic from
+      an offset and publishes outward, resumable by the returned
+      offset (a lost offset re-publishes; a sink that dedups on the
+      id gives exactly-once OUTCOME, the rest at-least-once said out
+      loud). Source/Sink SPIs are the whole coupling; engine
+      adapters (RabbitMQ/SQS/NATS/…) are named deployments. Proven
+      against an in-memory fake broker (TestQueues, 4 tests)
 - [ ] every adapter exposes stats as a Schema value; no adapter
       logs or journals a credential (grep-able invariant from
       specs/conf.md asserted in tests where feasible)

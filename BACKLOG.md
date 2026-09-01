@@ -29,9 +29,6 @@
       compile error), the Sql transact protocol for driver authors
 
 ## Cross-cutting — the 2026-09-01 audit (specs landed e3b5a74; slugs are implementation)
-- [ ] queue-shape — DECIDED (specs/data.md, Queues): no Queue seam;
-      ingress/egress bridges to topics with message-id dedup —
-      implement the two bridges; engine adapters as named
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam

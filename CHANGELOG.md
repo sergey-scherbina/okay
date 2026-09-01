@@ -1,5 +1,24 @@
 # Changelog
 
+## queue-shape — the two queue bridges, no new seam
+Completed: 2026-09-01
+Per-message-ack brokers (RabbitMQ/AMQP, SQS, NATS, Pulsar, MQTT) are
+DELIVERY machinery — per-message ack, redelivery, no offsets — a shape
+the log deliberately is not, so a native Queue seam is rejected
+(specs/data.md). Instead `okay.persist.Queues`: two bridges over
+`Source`/`Sink` SPIs. INGRESS drains a broker into a topic keyed by the
+broker's message id, acking AFTER the append — at-least-once: a lost
+ack redelivers and re-appends, never drops, and `Queues.dedup`
+collapses the duplicate one hop downstream by id (WithKey's shape).
+EGRESS reads a topic from an offset and publishes outward, resumable by
+the returned offset (a lost offset re-publishes; a sink that dedups on
+the id gives exactly-once OUTCOME, the rest at-least-once said out
+loud). The SPIs are the whole coupling to a real broker — an engine
+adapter is a named deployment, not a core seam. Proven against an
+in-memory fake broker (TestQueues, 4 tests: happy drain, lost-ack
+redelivery + dedup, resumable egress, lost-offset replay + id-dedup).
+Also checked the now-true kafka-eos box in specs/data.md.
+
 ## direct-auto-coloring — v2: no marks, and one mark where marks remain
 Completed: 2026-09-01
 Landed as 838eb2f. The block is DirectCtx[F] ?=> A; phantom
