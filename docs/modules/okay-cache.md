@@ -10,8 +10,10 @@ Depends on: the core only. Cross-built JVM/JS/Native.
 ## Guide
 
 **Three regimes, one rule.** Truth in the log (okay-persist) → the
-cache is a consumer, never invalid, only behind (the `View`,
-arriving with cache-view). Truth in a foreign system with writes
+cache is a consumer, never invalid, only behind: `View(topic)(key)
+(fold)` — `latest` is the fold's state, `lag` IS consumer lag,
+`refresh` is the whole of invalidation, and a cold refold agrees
+with the warm view even after compaction (the snapshot story). Truth in a foreign system with writes
 through us → `Regime.Invalidated`, write-through owns correctness.
 Truth changes behind our back → `Regime.Budget(n)`: a staleness
 budget the business signed off on, declared, never defaulted.

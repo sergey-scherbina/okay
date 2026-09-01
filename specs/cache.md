@@ -146,9 +146,12 @@ stated so the "cache the 404" question has one answer.
 - [ ] write-through with specs/jdbc.md: invalidate runs AFTER
       commit (ordering asserted); the stale window between commit
       and invalidate is demonstrated and documented, not denied
-- [ ] regime 1 view: fold of a compacted keyed topic serves
+- [x] regime 1 view: fold of a compacted keyed topic serves
       `latest`; `lag` equals end minus consumed; appends move it;
       a rebuilt view (cold start refold) agrees with the warm one
+      (TestView, all three platforms: agreement asserted before AND
+      after compaction — the snapshot story; a fold answering None
+      is the tombstone and removes the key)
 - [ ] (stage 2) Redis engine passes the same contract suite as
       memory (the StoreSuite pattern from okay-persist); expiry is
       server-side (`SET PX` observed); values round-trip as CBOR
@@ -216,7 +219,12 @@ step, a failed Await — completes the flight and reaches every
 waiter instead of stranding them; the claim releases and the key
 recovers. Tests: 9 JVM (7 shared + 2 concurrency) / 7 JS / 7
 Native; the shared suite runs on JS by driving Run-only programs
-inline, no CanBlock. Still open, each with its slug: the
-write-through-after-commit box (pairs okay-jdbc; needs a slug —
-filed as cache-write-through), the regime-1 view (cache-view), the
-Redis engine and cross-node invalidation (cache-redis).
+inline, no CanBlock. The regime-1 view landed with cache-view (same day):
+`View(topic)(key)(fold)` in okay-cache (which now depends on
+okay-persist) — latest serves the consumed fold without touching
+the log, `refresh` is the whole of invalidation, lag is consumer
+lag; cold refold agrees with the warm view before and after
+compaction (12 JVM / 10 JS / 10 Native module totals). Still open,
+each with its slug: the write-through-after-commit box
+(cache-write-through), the Redis engine and cross-node
+invalidation (cache-redis).

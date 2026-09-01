@@ -304,7 +304,8 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayCache = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-cache"))
-  .dependsOn(okay)
+  // okay-persist backs regime 1: the log-fed View is a consumer
+  .dependsOn(okay, okayPersist)
   .settings(
     name := "okay-cache",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
