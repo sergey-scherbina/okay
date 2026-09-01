@@ -201,6 +201,41 @@ STACK of screens — push/pop is Mark/Restore over values, exactly the
 backtrackable-context shape okay-agent already has. Routing is an
 Event; the address bar (DOM) is one more event source merged in.
 
+Contract (claimed: ui-screens). A screen is CODATA — what it shows
+and what it becomes — which settles the heterogeneous-state problem
+without an existential: each screen closes over its own state, and a
+parent passes a CONTINUATION into a child it wants an answer from.
+Closures are fine HERE and forbidden in the Ui tree, and the line
+between the two is exactly the wire: screens never cross it, trees
+do.
+
+```scala
+trait Screen:
+  def view: Ui
+  def step(e: Event): Nav
+
+enum Nav:
+  case Stay(s: Screen)     case Push(next: Screen)
+  case Pop                 case To(s: Screen)
+
+object Nav:
+  def run(root: Screen): (List[Screen], (List[Screen], Event) => List[Screen], List[Screen] => Ui)
+    // packaged for Ui.run: state is the stack, events route to the top
+  def scenario[A](prog: A ! Dialog)(done: A => Nav): Screen
+    // a Dialog program as a pushable screen — phases 2a and 2b meet
+```
+
+- [ ] events route to the TOP screen only; Stay steps it, Push covers
+      it, Pop reveals what was under, To replaces
+- [ ] a popped stack ends the app (the empty stack is Closed)
+- [ ] a parent gets a child's ANSWER through the continuation it
+      passed — no shared mutable state, no message bus
+- [ ] a Dialog scenario is a pushable screen: the wizard from
+      TestDialog runs as a child screen and its answer lands in the
+      parent
+- [ ] the stack survives the loop: Ui.run over Nav.run renders the
+      top screen's view at every step
+
 ### The wire: client-server bindings (phase 3)
 The tree carries no functions — by decision, and this is where it
 pays twice. `Ui`, `Event` and `Patch` get derived `Schema`s, so:
