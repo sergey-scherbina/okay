@@ -91,9 +91,25 @@ engine). The ask made the store interface nominal: `MatchStore`
       кого-нибудь" finds the stored provider — a two-turn intake
       (the email asked for and given), the match reported with the
       provider's skills
+- [x] REVERSE CHAIN: events in either order — a need stored today
+      with nobody fitting rings the seeker's live inbox (/events SSE)
+      the moment the matching offer arrives tomorrow; structural (the
+      tool table is wrapped), model-independent, two-window tested
+      through real routes
 - [x] sqlite parity: the store guarantees hold on sqlite (the
       booleans-as-integers dialect trap caught and fixed) and the
       marketplace survives a restart over the same file
+
+## The reverse chain (demo-chat-async)
+Events arrive in EITHER order. A need with no match is STORED (the
+scripted driver asserts it before searching; the prompt tells the
+model to); every facts_assert is wrapped server-side — an arriving
+OFFER runs the reverse search over stored NEEDS (and vice versa),
+above a similarity floor (how well related texts score is the
+embedder seam's business); a hit lands in the matched profile's
+inbox, held open by the page as an SSE stream (/events/<email> —
+the email rides the PATH: the route sees no query string). Both
+pages subscribe on the first email they see and render 🔔 bubbles.
 
 ## Out of scope
 - Auth, persistence of conversations, multi-user rooms (persist owns

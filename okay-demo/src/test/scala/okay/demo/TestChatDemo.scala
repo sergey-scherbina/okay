@@ -14,6 +14,8 @@ import java.nio.charset.StandardCharsets.UTF_8
  * here, exercised by running the main with ANTHROPIC_API_KEY.)
  */
 class TestChatDemo extends munit.FunSuite {
+  // live turns are model-speed-bound; a busy local model must not flake
+  override val munitTimeout = scala.concurrent.duration.Duration(180, "s")
 
   // live model calls under a loaded matrix outgrow munit's 30s —
   // the TestRepoAgent precedent
@@ -188,6 +190,37 @@ class TestChatDemo extends munit.FunSuite {
                okay.llm.Anthropic.Message("assistant", a1)), modelH, store)
     else a1
     assert(a2.contains("велосипед"), s"the found provider's skill must surface: $a2")
+  }
+
+  test("REVERSE CHAIN: the need waits; the offer arriving later rings the seeker's inbox") {
+    withServer(512) { port =>
+      def turn(text: String): String =
+        new String(post(port,
+          s"""{"messages":[{"role":"user","content":"$text"}]}""").readAllBytes(), UTF_8)
+      // window one, TODAY: the seeker asks; nobody fits yet
+      val today = turn("/match нужен мастер починить велосипед email seeker@wait")
+      assert(today.contains("запомнил"), today.take(300))
+      // the seeker's page holds the inbox open
+      val events = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/events/seeker@wait"))
+          .GET().build(),
+        HttpResponse.BodyHandlers.ofInputStream()).body()
+      // window two, TOMORROW: the provider shows up
+      turn("/match умею велосипед ремонт email master@late")
+      // the chain fired: the waiting inbox receives the match, live —
+      // read past the hello frame, under a watchdog
+      val got = java.util.concurrent.CompletableFuture.supplyAsync { () =>
+        val sb = new StringBuilder
+        val buf = new Array[Byte](512)
+        while !sb.toString.contains("event: match") do
+          val n = events.read(buf)
+          if n < 0 then throw new AssertionError(s"stream ended: $sb")
+          sb.append(new String(buf, 0, n, UTF_8))
+        sb.toString
+      }.get(10, java.util.concurrent.TimeUnit.SECONDS)
+      assert(got.contains("велосипед"), got)
+      events.close()
+    }
   }
 
   test("over budget the stream is cut, named, and no tokens follow") {

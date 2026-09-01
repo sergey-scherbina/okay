@@ -44,6 +44,23 @@ File("."). sql-pg-node now has its transport; the PgSql pump
 restructure stays its own claim, stated. Merge read alone after
 two refused ffs (demo landings; targeted retests): exit 0. Full
 matrix green.
+## demo-chat-async — the reverse chain: events in either order
+Completed: 2026-09-01
+
+"Мне нужно починить велосипед" today, nobody fits; "я умею чинить
+велосипеды" tomorrow — and the seeker's page rings. The chain is
+STRUCTURAL, not the model's: the tool table is wrapped, every
+facts_assert of an offer runs the reverse search over stored needs
+(and vice versa, floored by similarity — the embedder seam's
+business), and a hit lands in the matched profile's inbox — an SSE
+stream (/events/<email>) both pages hold open from the first email
+they see, rendering 🔔 bubbles. Needs are stored before searching
+(driver and prompt both). The two-window story is a deterministic
+test through real routes: need waits, offer arrives, the open stream
+receives the match — plus the hello frame that flushes SSE headers
+(client.send blocks without it) and the email-in-the-PATH lesson
+(requestOf keeps the path; a query string never reaches a route).
+10/10 including the three live legs.
 
 ## ctx-functions — what the capability arrows buy us, verified first
 Completed: 2026-09-01 (landed as 67e11ad)

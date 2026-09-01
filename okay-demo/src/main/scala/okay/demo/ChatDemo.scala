@@ -91,10 +91,69 @@ object ChatDemo {
       |first — ask for an email if none was given; registry_search
       |BEFORE registry_propose; facts_assert to record an offer or a
       |need (side "offer" or "need", value {"t":"text","s":...},
-      |chat "web-demo", span = the user's words); find_candidates to
-      |search offers, and report matches with their facts. Answer in
+      |chat "web-demo", span = the user's words) — ALWAYS store a need
+      |(side "need") before searching, so the user is notified when
+      |a matching offer arrives later; find_candidates to search
+      |offers, and report matches with their facts. Answer in
       |the user's language, briefly, and say what you stored or
       |found.""".stripMargin
+
+  // ---- the reverse chain (demo-chat-async) ---------------------------
+  //
+  // Events arrive in EITHER order: a need stored today matches an
+  // offer arriving tomorrow. The chain is structural, not the
+  // model's: the tool table is WRAPPED, and every facts_assert of an
+  // OFFER runs the reverse search over stored NEEDS (and vice
+  // versa); a hit lands in the matched profile's inbox, which the
+  // page holds open as an SSE stream (/events). Model-independent:
+  // the agent and the deterministic driver go through the same wrap.
+
+  private val inboxes =
+    java.util.concurrent.ConcurrentHashMap[String, Channel[String]]()
+
+  /** the open inbox of an email (created on first use) */
+  def inbox(email: String): Channel[String] =
+    inboxes.computeIfAbsent(email, _ => Channel[String]())
+
+  private def emailOf(store: MatchStore, p: okay.matching.ProfileId): Option[String] =
+    store.profileOf(p).map(_.email)
+
+  /** after a stored fact: who was WAITING for it, on the other side? */
+  def reverseChain(store: MatchStore, side: okay.matching.Side, text: String): Unit =
+    import okay.matching.*
+    val other = if side == Side.Offer then Side.Need else Side.Offer
+    // the floor keeps unrelated waiters quiet; how well related ones
+    // score is the embedder seam's business (hashing offline — token
+    // overlap; a real embedder in production understands morphology)
+    val waiting = store.candidates(Query(other, text = text, k = 5))
+      .filter(_.score > 0.1f)
+    waiting.foreach { hit =>
+      emailOf(store, hit.profile).foreach { email =>
+        val what = hit.disclosed.map(f => Value.text(f.value)).mkString("; ")
+        val note =
+          if side == Side.Offer then s"появился исполнитель: $text (вы искали: $what)"
+          else s"появился заказ: $text (вы предлагали: $what)"
+        inbox(email).send(note)
+      }
+    }
+
+  /** the tool table with the reverse chain wrapped around asserts */
+  def chainedTable(store: MatchStore): Map[String, okay.agent.ToolCall => String] =
+    val base = MatchTools.table(store)
+    base.updated("facts_assert", { c =>
+      val out = base("facts_assert")(c)
+      val args = c.args
+      val side = args match
+        case JObj(fs) => fs.collectFirst { case ("side", JStr(x)) => x }.getOrElse("offer")
+        case _ => "offer"
+      val text = args match
+        case JObj(fs) => fs.collectFirst { case ("value", JObj(v)) =>
+          v.collectFirst { case ("s", JStr(x)) => x }.getOrElse("") }.getOrElse("")
+        case _ => ""
+      if text.nonEmpty then reverseChain(store,
+        if side == "need" then okay.matching.Side.Need else okay.matching.Side.Offer, text)
+      out
+    })
 
   /** an agent turn over the match tools: the LLM structures the
    * chat into the store and searches it — the okay-match story */
@@ -102,7 +161,7 @@ object ChatDemo {
                 modelH: okay.Handler[AgentModel],
                 store: MatchStore = market): String =
     given okay.Handler[AgentModel] = modelH
-    given okay.Handler[Tool] = Handlers.tools(MatchTools.table(store))
+    given okay.Handler[Tool] = Handlers.tools(chainedTable(store))
     val ctx = Handlers.context(Compact.all)._2
     given okay.Handler[AgentContext] = ctx
     given r1: okay.Handler[AgentModel + Async] = okay.Handler.union[AgentModel, Async]
@@ -127,7 +186,7 @@ object ChatDemo {
    * by two fixed phrasings — the tests' and the no-model mode's path */
   def scriptedAgent(text: String, store: MatchStore = market): String =
     import okay.codec.Json.*
-    val t = MatchTools.table(store)
+    val t = chainedTable(store)
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
     val email = "email ([^ ]+@[^ ]+)".r.findFirstMatchIn(text).map(_.group(1))
@@ -147,6 +206,12 @@ object ChatDemo {
         s"""записал предложение: \"$skill\" (профиль $email)"""
       case s if s.contains("нужен") || s.contains("нужно") || s.contains("need:") =>
         val want = s.replaceAll(".*(нужен|нужно|need:)\\s*", "").replaceAll("email [^ ]+", "").trim
+        // the need is STORED first — the reverse chain fires from it
+        // when the matching offer arrives later
+        call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("need"),
+          "side" -> JStr("need"), "chat" -> JStr("web-demo"),
+          "offset" -> JNum(off.toDouble), "span" -> JStr(text),
+          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(want))))
         Json.parse(call("find_candidates", "side" -> JStr("offer"),
           "text" -> JStr(want))) match
           case JArr(hits) if hits.nonEmpty =>
@@ -161,7 +226,7 @@ object ChatDemo {
               case _ => "- ?"
             }
             s"нашёл ${hits.length}: ${lines.mkString("; ")}"
-          case _ => "пока никого не нашёл — но запрос я вижу"
+          case _ => "пока никого не нашёл — запомнил ваш запрос и сообщу, когда исполнитель появится"
       case _ =>
         """матч-режим: скажите \"умею <что>\" или \"нужен <кто>\" (и email <адрес>)"""
 
@@ -241,6 +306,21 @@ object ChatDemo {
     case r if r.method == okay.http.Method.Get && r.url == "/app.js" && appJs.isDefined =>
       pure(Response(200, Seq("content-type" -> "text/javascript"),
         Http.one(java.nio.file.Files.readAllBytes(appJs.get))))
+    case r if r.method == okay.http.Method.Get && r.url.startsWith("/events/") =>
+      // the email rides the PATH: requestOf keeps the path only, a
+      // query string never reaches the route (found the hard way)
+      val email = java.net.URLDecoder.decode(
+        r.url.stripPrefix("/events/"), "UTF-8")
+      // the inbox as a LIVE stream: jetty keeps it open, a match
+      // arriving tomorrow becomes a frame then
+      // the hello frame flushes the headers so the subscriber's
+      // request completes at once; matches follow whenever they land
+      val src: Source[Chunk[Byte]] =
+        effect[Writer % Chunk[Byte] + Async, Unit](Writer(sse("hello", "")))
+          .flatMap(_ => Writer.map(Writer.of(inbox(email)))(note =>
+            sse("match", Json.print(JStr(note)))))
+      pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
+
     case r if r.method == okay.http.Method.Post && r.url == "/chat" =>
       val messages = messagesOf(r.body)
       val last = messages.lastOption.map(_.content).getOrElse("")
@@ -315,6 +395,15 @@ object ChatDemo {
 <script>
 const log = document.getElementById('log'), f = document.getElementById('f'), i = document.getElementById('i');
 const history = [];
+let subscribed = false;
+function subscribe(email) {
+  if (subscribed) return; subscribed = true;
+  const es = new EventSource('/events/' + encodeURIComponent(email));
+  es.addEventListener('match', ev => {
+    const d = bubble('bot'); d.textContent = '🔔 ' + JSON.parse(ev.data);
+    log.scrollTop = log.scrollHeight;
+  });
+}
 function bubble(cls) { const d = document.createElement('div'); d.className = 'm ' + cls; log.appendChild(d); return d; }
 f.onsubmit = async (ev) => {
   ev.preventDefault();
@@ -322,6 +411,7 @@ f.onsubmit = async (ev) => {
   i.value = '';
   bubble('user').textContent = text;
   history.push({role: 'user', content: text});
+  const em = text.match(/[\w.+-]+@[\w.-]+/); if (em) subscribe(em[0]);
   const bot = bubble('bot');
   const res = await fetch('/chat', {method: 'POST', headers: {'content-type': 'application/json'},
     body: JSON.stringify({messages: history})});

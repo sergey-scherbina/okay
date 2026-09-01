@@ -42,8 +42,24 @@ object Main {
 
     val _ = Async.runAsync(loop(ChatUi.State()))
 
+  private var subscribed = false
+
+  /** the reverse chain's delivery: once we know the user's email,
+   * hold /events open — a match arriving LATER becomes a bubble */
+  private def subscribe(email: String): Unit =
+    if !subscribed then
+      subscribed = true
+      val es = js.Dynamic.newInstance(g.EventSource)(s"/events/$email")
+      es.addEventListener("match", { (ev: js.Dynamic) =>
+        bus.send(okay.ui.Event.Edited("$match",
+          js.JSON.parse(ev.data.asInstanceOf[String]).asInstanceOf[String]))
+      }: js.Function1[js.Dynamic, Unit])
+      ()
+
   /** POST the history, parse the SSE frames, feed the bus */
   private def fetchReply(history: Vector[ChatUi.Msg]): Unit =
+    history.lastOption.foreach(m =>
+      "[\\w.+-]+@[\\w.-]+".r.findFirstIn(m.text).foreach(subscribe))
     val body = js.JSON.stringify(js.Dictionary(
       "messages" -> js.Array(history.map(m => js.Dictionary(
         "role" -> m.role, "content" -> m.text): js.Any)*)))
