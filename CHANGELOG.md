@@ -1,5 +1,22 @@
 # Changelog
 
+## persist-offload — the cold tail becomes the lake
+Completed: 2026-09-01 (landed as 7c19340)
+Segments: the documented disk format gets a PUBLIC reader in
+okay-persist (Doctor's certification knowledge as a library —
+bytes parse into records wherever they live, torn tails end
+soundly). Offload on the blob side: verified-then-evict under a
+local byte budget (a segment leaves only when the blob's copy
+matches its size; the active file never leaves; begin advances
+exactly as under retention — proven across reopen), and the
+Tiered Async read where TooEarly stops meaning gone and starts
+meaning COLD: blob history strictly below the local begin plus the
+local tail, byte-exact, bounded (the overlap bug — backup holds
+copies of still-local segments — caught by the first run and
+fenced by the strictly-below rule). Dependency direction blob →
+persist compile, safe (persist rests on core+codec; reverse cycles
+through http). Merge read alone: exit 0. Full matrix green.
+
 ## stage-phased3 — one more arity, because the consumer exists
 Completed: 2026-09-01 (landed as 1444810)
 The http message shape needs exactly three phases; chaining two

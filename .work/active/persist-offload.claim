@@ -1,5 +1,0 @@
-slug: persist-offload
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: cold-segment tiering over the Blob seam — Segments (a public reader of the documented segment format, okay-persist jvm), Offload.evict (delete local closed segments verified in blob, under a local byte budget; begin advances like retention) and Offload.read/Tiered (the Async read road serving blob history + local tail, byte-exact); okayBlob.jvm gains okayPersist.jvm compile (safe direction); spec: persist.md stage 3 / backup section
-files: okay-persist/src/main/scala-jvm/Segments.scala, okay-blob/** (Offload + tests), build.sbt, specs/persist.md
