@@ -1,0 +1,5 @@
+slug: cache-memory
+agent: fable-persist (session 75625ecc)
+started: 2026-09-01
+scope: okay-cache stage 0 — the Cache trait, bounded LRU memory engine, single-flight getOrLoad, named Regime (no default TTL), negative caching, stats as values; spec: specs/cache.md
+files: okay-cache/** (new), build.sbt (module + aggregate), specs/cache.md (boxes/Results), docs/modules/okay-cache.md
