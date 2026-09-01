@@ -328,6 +328,36 @@ lazy val okayPersist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )
 
+/**
+ * Configuration as data, secrets as references (specs/conf.md):
+ * Secret is a reference a config can store and log by construction;
+ * Secrets is the resolver seam at the application edge; Conf is the
+ * codec plus a file. Cross-built; file:/load are JVM/Native.
+ */
+lazy val okayConf = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-conf"))
+  .dependsOn(okayCodec)
+  .settings(
+    name := "okay-conf",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+  .nativeSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
+  )
+  .jsSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-js",
+    // node reads process.env by require-time global, no module kind needed
+  )
+
 /** language models as streams: the thin client (P4/llm.md).
  * Cross-built — only the Transport is platform-bound (java.net.http
  * on the JVM, fetch on JS), everything else is pure Scala */
@@ -662,6 +692,7 @@ lazy val root = (project in file("."))
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
     okaySql.jvm, okaySql.js, okaySql.native,
+    okayConf.jvm, okayConf.js, okayConf.native,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,

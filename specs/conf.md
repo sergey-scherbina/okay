@@ -175,22 +175,22 @@ BACKLOG); this spec is the contract it builds to.
 
 ## Behavior
 
-- [ ] a config case class loads from JSON via its derived Schema;
+- [x] a config case class loads from JSON via its derived Schema;
       absent optional fields decode absent (the codec's own rule,
       asserted here at the config seam)
-- [ ] a `Secret` field round-trips: read, written back, the
+- [x] a `Secret` field round-trips: read, written back, the
       reference is intact and no other representation exists
-- [ ] `env:` resolves from the environment; a missing variable is an
+- [x] `env:` resolves from the environment; a missing variable is an
       error naming `env:NAME` — the test asserts the error CONTAINS
       the reference and nothing resembling a value
-- [ ] `file:` resolves file content with exactly one trailing
+- [x] `file:` resolves file content with exactly one trailing
       newline trimmed (content ending in two keeps one); a missing
       path or a directory is an error naming the path
-- [ ] an unrecognized scheme (`vault:x` today) is an error naming
+- [x] an unrecognized scheme (`vault:x` today) is an error naming
       the scheme; the reference is never used as the value
-- [ ] `chain`: the first resolver that answers wins; when all miss,
+- [x] `chain`: the first resolver that answers wins; when all miss,
       one error names the reference once
-- [ ] `memory` serves tests; `Secret.toString` is the reference
+- [x] `memory` serves tests; `Secret.toString` is the reference
       (asserted, since logs are where discipline fails)
 - [ ] (stage 2) a config topic: latest-by-key serves the current
       config, an older offset serves the old one, and the write that
@@ -247,5 +247,16 @@ BACKLOG); this spec is the contract it builds to.
 
 ## Results
 
-(after implementation — test counts, what the seam looked like in
-its first consumer)
+Shipped 2026-09-01 (conf-impl): okay-conf cross-built JVM/JS/Native,
+depending on okay-codec only. 12/8/8 tests — the SHARED suite proves
+`env:` on all three platforms (PATH resolves everywhere; a miss
+names `env:NAME` verbatim), the JVM suite covers file:/load (the
+Native leg compiles the same Platform source). Two small deviations
+from the sketch, both stated: `Conf.load` takes the path as a String
+so the signature exists on every platform (JS answers a named
+refusal until Node's fs joins), and `Schema[Secret]` travels as the
+one-field product {"ref": ...} — a bare-string form waits for an iso
+node in the Schema algebra (filed: codec-iso). `chain` prefers a
+matched scheme's own miss over an unrecognized-scheme shrug, so the
+one error is the specific one. Stage 2 (the config topic) remains
+conf-topic in BACKLOG.
