@@ -1,5 +1,0 @@
-feature/ui-toolkit 2026-09-01T16:14:38Z
-agent: claude-code
-heartbeat: 2026-09-01T16:14:38Z
-status: in-progress
-next: specs/ui-toolkit.md gate, then Form[A] + Schema derivation + cross-field validation + composites
