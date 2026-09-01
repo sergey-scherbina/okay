@@ -1,5 +1,0 @@
-slug: conditions
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: resumable exceptions (user ask) — the condition/restart system: signal runs the POLICY without unwinding (resume-with-value at the signal point = the effect system's native move), named restarts are frames the policy can unwind TO (the Delim shape, own machine per Delim's documented payload discipline), Throws untouched (additive per the operator's rule); spec + core Condition.scala + battery incl. the verify-drift/Typed.Bad interactive-repair consumer story
-files: specs/condition.md (new), src/main/scala/Condition.scala (new), src/test/scala/TestCondition.scala, BACKLOG/boards at release

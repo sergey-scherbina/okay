@@ -1,5 +1,25 @@
 # Changelog
 
+## conditions — resumable exceptions: the road between throwing and damage-as-data
+Completed: 2026-09-01 (landed as 99d44dc; spec first; user ask)
+Condition in the core: signal raises WITHOUT unwinding — the
+policy runs while the signal point's continuation is live, so
+Resume(v) continues FROM THERE with the value (the effect system
+was a resumable-exception system waiting to be named); within
+establishes named restart frames the policy can unwind TO
+(Invoke — the Delim shape, one machine owning frames and menu per
+Delim's own payload-erasure discipline); Fail escalates naming the
+condition AND the declined menu; invoking off the menu is the
+POLICY's named bug (NoSuchRestart). The repair story proven: a
+decode loop with a skip frame per element — ONE program answers
+patched/skipped/failed under three policies. Additive by the
+operator's rule: Throws, runEither, damage-as-data untouched; a
+program that never signals never pays. Eight tests. Filed for
+later: Typed.Bad interactive repair, r.md's native restarts over
+the now-shared vocabulary. Merge read alone after one refused ff
+(nav-pop divergence, ui-only; core retested 227): exit 0. Full
+matrix green.
+
 ## nav-pop-to-screen — the pattern held, the mechanism corrected
 Completed: 2026-09-01 (landed as 84617de)
 A typed Key names a boundary screen; PopTo drops every intervening

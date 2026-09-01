@@ -18,6 +18,11 @@
 ## okay-security (specs/security.md — staged, like persist)
 
 ## okay-codec
+- [ ] typed-bad-repair — Typed.Bad meets Condition: a decode road
+      that SIGNALS damage with skip/patch restarts, so an operator
+      repairs at the point of failure instead of rerunning
+      (specs/condition.md Results; pairs okay-r's native restarts
+      when r-subprocess lands)
 
 ## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
 - [ ] py-arrow — frames via pyarrow (twin of r-arrow; nearer —
