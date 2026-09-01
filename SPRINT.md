@@ -1,6 +1,9 @@
 # Sprint
 
 ## Doing
+- conf-impl — okay-conf: Secret (toString = the ref), Secrets
+  (env/file/memory/chain), Conf.read/load; cross-built; the
+  invariants' tests (specs/conf.md, contract already frozen)
 
 ## Queue
 (next candidates from BACKLOG.md: sql-seam, conf-impl,

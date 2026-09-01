@@ -113,9 +113,6 @@
       journaled watermark and lag window (stated non-CDC)
 
 ## okay-conf (specs/conf.md)
-- [ ] conf-impl — Secret/Secrets (env, file, memory, chain),
-      Conf.read/load; cross-built; the invariants' tests (error
-      names the ref, toString is the ref, trailing-newline trim)
 - [ ] conf-topic — stage 2: managed config as a compacted keyed
       topic over okay-persist (audit/rollback for free)
 
