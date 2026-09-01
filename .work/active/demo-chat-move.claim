@@ -1,5 +1,0 @@
-feature/demo-chat-move 2026-09-01T17:52:09Z
-agent: claude-code
-heartbeat: 2026-09-01T17:52:09Z
-status: in-progress
-next: move okay-chat-web under okay-demo/web
