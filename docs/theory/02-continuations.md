@@ -10,18 +10,18 @@ there is no answer to hand back and no way to run a captured piece
 *inside* a larger program.
 
 Delimited control fixes this by marking where "the rest" stops.
-Matthias Felleisen introduced the **prompt** [Felleisen 1988]: a
+Matthias Felleisen introduced the **prompt** \[[Felleisen 1988](#ref-felleisen-1988)\]: a
 delimiter installed on the stack, and a control operator capturing only
 up to it. The captured piece is then an ordinary function — it returns
 — so captured continuations compose. Olivier Danvy and Andrzej Filinski
 gave the now-standard pair **shift/reset** and, crucially, its typing
-discipline [Danvy & Filinski 1990; the typing with answer types is in
+discipline \[[Danvy & Filinski 1990](#ref-danvy-1990); [the typing with answer types is in
 their 1989 report, and its polymorphic account is Asai & Kameyama
-2007]: `reset` delimits, `shift f` captures the continuation `k` up to
+2007](#ref-asai-2007)\]: `reset` delimits, `shift f` captures the continuation `k` up to
 the nearest `reset` and runs `f(k)` in its place.
 
 The reason this chapter comes before everything else is Andrzej
-Filinski's theorem [Filinski 1994]: **shift and reset can express any
+Filinski's theorem \[[Filinski 1994](#ref-filinski-1994)\]: **shift and reset can express any
 monadic effect.** State, exceptions, nondeterminism — each is a
 particular way of invoking (or not invoking, or twice invoking) the
 captured continuation. A language, or a library, that has delimited
@@ -49,7 +49,7 @@ consequences, both load-bearing:
 
 **Stack safety.** A directly-encoded continuation monad overflows the
 stack on long `flatMap` chains — the classic problem Rúnar Bjarnason
-treated for Scala with trampolines [Bjarnason 2012]. Okay's answer is
+treated for Scala with trampolines \[[Bjarnason 2012](#ref-bjarnason-2012)\]. Okay's answer is
 the same normalization move chapter 1 showed for `Free`: `Bind` is a
 node, and `/` rebalances left-nested binds in a tail-recursive loop.
 
@@ -67,8 +67,8 @@ than doctrine.
 `shift`/`reset` capture to the *nearest* delimiter. Multi-prompt
 control — capture to a *named* delimiter, possibly across intervening
 ones — is strictly more expressive, and Okay implements it in the
-shape of Dybvig, Peyton Jones and Sabry's monadic framework [Dybvig,
-Peyton Jones & Sabry 2007]: a **prompt is a first-class tag carrying
+shape of Dybvig, Peyton Jones and Sabry's monadic framework \[[Dybvig,
+Peyton Jones & Sabry 2007](#ref-dybvig-2007)\]: a **prompt is a first-class tag carrying
 the delimiter's answer type** (`Delim.scala:74`), `push` installs one,
 and `shift(p)` captures up to the prompt `p` (`Delim.scala:90`).
 
@@ -110,15 +110,15 @@ but one theorem, specialized twice.
 
 ## References
 
-- Matthias Felleisen. *[The theory and practice of first-class
+- <a id="ref-felleisen-1988"></a>Matthias Felleisen. *[The theory and practice of first-class
   prompts.](https://doi.org/10.1145/73560.73576)* POPL 1988.
-- Olivier Danvy, Andrzej Filinski. *A functional abstraction of typed
+- <a id="ref-danvy-1989"></a>Olivier Danvy, Andrzej Filinski. *A functional abstraction of typed
   contexts.* DIKU report 89/12, 1989.
-- Olivier Danvy, Andrzej Filinski. *[Abstracting control.](https://doi.org/10.1145/91556.91622)* LISP and
+- <a id="ref-danvy-1990"></a>Olivier Danvy, Andrzej Filinski. *[Abstracting control.](https://doi.org/10.1145/91556.91622)* LISP and
   Functional Programming 1990.
-- Andrzej Filinski. *[Representing monads.](https://doi.org/10.1145/174675.178047)* POPL 1994.
-- Kenichi Asai, Yukiyoshi Kameyama. *[Polymorphic delimited
+- <a id="ref-filinski-1994"></a>Andrzej Filinski. *[Representing monads.](https://doi.org/10.1145/174675.178047)* POPL 1994.
+- <a id="ref-asai-2007"></a>Kenichi Asai, Yukiyoshi Kameyama. *[Polymorphic delimited
   continuations.](https://doi.org/10.1007/978-3-540-76637-7_16)* APLAS 2007.
-- R. Kent Dybvig, Simon Peyton Jones, Amr Sabry. *[A monadic framework
+- <a id="ref-dybvig-2007"></a>R. Kent Dybvig, Simon Peyton Jones, Amr Sabry. *[A monadic framework
   for delimited continuations.](https://www.cs.indiana.edu/~dyb/pubs/monadicDC.pdf)* JFP 17(6):687–730, 2007.
-- Rúnar Bjarnason. *[Stackless Scala with free monads.](http://blog.higher-order.com/assets/trampolines.pdf)* 2012.
+- <a id="ref-bjarnason-2012"></a>Rúnar Bjarnason. *[Stackless Scala with free monads.](http://blog.higher-order.com/assets/trampolines.pdf)* 2012.

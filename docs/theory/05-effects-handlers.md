@@ -5,12 +5,12 @@
 Gordon Plotkin and John Power reframed Moggi's monads from the inside:
 an effect is not a type constructor first but a set of **operations**
 with equations — nondeterminism *is* `choose`, state *is* `get`/`put` —
-and the monad arises from the algebraic theory [Plotkin & Power 2002,
-2003]. The payoff of thinking operation-first is separation: a program
+and the monad arises from the algebraic theory \[[Plotkin & Power 2002,
+2003](#ref-plotkin-2002)\]. The payoff of thinking operation-first is separation: a program
 *performs* operations; what they mean is decided elsewhere.
 
 "Elsewhere" got its name with Plotkin and Matija Pretnar's **handlers**
-[Plotkin & Pretnar 2009]: a handler gives each operation an
+\[[Plotkin & Pretnar 2009](#ref-plotkin-2009)\]: a handler gives each operation an
 interpretation that receives the operation's payload *and the
 continuation of the program at that point*. Exceptions discard the
 continuation; state threads a value through it; nondeterminism calls it
@@ -20,7 +20,7 @@ through to an outer handler.
 
 The third ingredient is making the *set of pending effects* extensible
 and inferable. Kiselyov, Sabry and Swords' extensible effects
-[Kiselyov, Sabry & Swords 2013] replaced monad-transformer stacks with
+\[[Kiselyov, Sabry & Swords 2013](#ref-kiselyov-2013)\] replaced monad-transformer stacks with
 a single monad over an open union of signatures — the design Okay
 follows, with chapter 4's freer monad as the carrier.
 
@@ -95,13 +95,13 @@ refinement both read it.
 
 ## References
 
-- Gordon Plotkin, John Power. *[Notions of computation determine
+- <a id="ref-plotkin-2002"></a>Gordon Plotkin, John Power. *[Notions of computation determine
   monads.](https://doi.org/10.1007/3-540-45931-6_24)* FoSSaCS 2002.
-- Gordon Plotkin, John Power. *[Algebraic operations and generic
+- <a id="ref-plotkin-2003"></a>Gordon Plotkin, John Power. *[Algebraic operations and generic
   effects.](https://doi.org/10.1023/A:1023064908962)* Applied Categorical Structures 11(1):69–94, 2003.
-- Gordon Plotkin, Matija Pretnar. *[Handlers of algebraic effects.](https://doi.org/10.1007/978-3-642-00590-9_7)*
+- <a id="ref-plotkin-2009"></a>Gordon Plotkin, Matija Pretnar. *[Handlers of algebraic effects.](https://doi.org/10.1007/978-3-642-00590-9_7)*
   ESOP 2009.
-- Oleg Kiselyov, Amr Sabry, Cameron Swords. *[Extensible effects: an
+- <a id="ref-kiselyov-2013"></a>Oleg Kiselyov, Amr Sabry, Cameron Swords. *[Extensible effects: an
   alternative to monad transformers.](https://okmij.org/ftp/Haskell/extensible/exteff.pdf)* Haskell Symposium 2013.
-- Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible
+- <a id="ref-kiselyov-2015"></a>Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible
   effects.](https://okmij.org/ftp/Haskell/extensible/more.pdf)* Haskell Symposium 2015.

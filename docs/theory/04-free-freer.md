@@ -7,14 +7,14 @@ data structure: leaves are values, nodes are operations, and `flatMap`
 just grows the tree. The interpreter is then an ordinary function over
 that tree, and *changing the interpretation* — run it, test it, print
 it, optimize it — needs no change to the program. Wouter Swierstra's
-"Data types à la carte" [Swierstra 2008] made this the standard recipe
+"Data types à la carte" \[[Swierstra 2008](#ref-swierstra-2008)\] made this the standard recipe
 for extensible interpreters: effects are functors, programs are free
 monads over their coproduct, handlers are folds.
 
 The classical construction requires `F` to be a **functor** — its
 `Bind` stores `F[Free[F, A]]`, so sequencing must `map` into the
 operation. Oleg Kiselyov and Hiromi Ishii observed that this
-requirement is both a tax and a distortion [Kiselyov & Ishii 2015]: the
+requirement is both a tax and a distortion \[[Kiselyov & Ishii 2015](#ref-kiselyov-2015)\]: the
 tax is a `Functor` instance and a `map` per layer; the distortion is
 that operations must be *shaped* to carry their continuation. Their
 **freer** monad stores the continuation *beside* the operation instead:
@@ -47,9 +47,9 @@ signatures that carry no evidence.
 Free monads have a famous performance trap: `(((m >>= f) >>= g) >>= h)`
 built by a left fold makes each `fold`/`resume` re-walk the spine, and
 naïve implementations go quadratic. Janis Voigtländer diagnosed it and
-proposed the codensity transformation [Voigtländer 2008]; van der Ploeg
-and Kiselyov's "Reflection without remorse" [van der Ploeg & Kiselyov
-2014] gave the type-aligned-sequence answer that `freer` systems in
+proposed the codensity transformation \[[Voigtländer 2008](#ref-voigtlander-2008)\]; van der Ploeg
+and Kiselyov's "Reflection without remorse" \[[van der Ploeg & Kiselyov
+2014](#ref-ploeg-2014)\] gave the type-aligned-sequence answer that `freer` systems in
 Haskell adopted.
 
 Okay takes a third road, already visible in chapter 1: **normalize in
@@ -96,11 +96,11 @@ and twelve casts plus a row-splitting caveat disappeared.
 
 ## References
 
-- Wouter Swierstra. *[Data types à la carte.](https://doi.org/10.1017/S0956796808006758)* JFP 18(4):423–436, 2008.
-- Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible
+- <a id="ref-swierstra-2008"></a>Wouter Swierstra. *[Data types à la carte.](https://doi.org/10.1017/S0956796808006758)* JFP 18(4):423–436, 2008.
+- <a id="ref-kiselyov-2015"></a>Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible
   effects.](https://okmij.org/ftp/Haskell/extensible/more.pdf)* Haskell Symposium 2015.
-- Janis Voigtländer. *[Asymptotic improvement of computations over free
+- <a id="ref-voigtlander-2008"></a>Janis Voigtländer. *[Asymptotic improvement of computations over free
   monads.](https://doi.org/10.1007/978-3-540-70594-9_20)* MPC 2008.
-- Atze van der Ploeg, Oleg Kiselyov. *[Reflection without remorse.](https://okmij.org/ftp/Haskell/zseq.pdf)*
+- <a id="ref-ploeg-2014"></a>Atze van der Ploeg, Oleg Kiselyov. *[Reflection without remorse.](https://okmij.org/ftp/Haskell/zseq.pdf)*
   Haskell Symposium 2014.
-- Rúnar Bjarnason. *[Stackless Scala with free monads.](http://blog.higher-order.com/assets/trampolines.pdf)* 2012.
+- <a id="ref-bjarnason-2012"></a>Rúnar Bjarnason. *[Stackless Scala with free monads.](http://blog.higher-order.com/assets/trampolines.pdf)* 2012.

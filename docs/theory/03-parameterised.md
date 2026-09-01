@@ -3,7 +3,7 @@
 ## Atkey's generalization
 
 Robert Atkey asked what happens when a monad's type is indexed not by
-one type but by a *pair* — a "before" and an "after" [Atkey 2009]. A
+one type but by a *pair* — a "before" and an "after" \[[Atkey 2009](#ref-atkey-2009)\]. A
 **parameterised monad** `M[A, S, R]` is a computation of a value `A`
 that moves an index from `S` to `R`; `pure` sits on the diagonal
 (`S = R`, it moves nothing), and `flatMap` composes indices like
@@ -32,7 +32,7 @@ Atkey's lens: the "state" being moved is the **answer type** — the
 type of what the surrounding `reset` will produce. `shift` may hand
 back an answer of a different type than its continuation returns, and
 the indices track that honestly. This is answer-type modification
-[Danvy & Filinski 1989; Asai & Kameyama 2007], and the parameterised
+\[[Danvy & Filinski 1989](#ref-danvy-1989); [Asai & Kameyama 2007](#ref-asai-2007)\], and the parameterised
 monad is its natural typing: `Cont` is not "a monad with two extra
 parameters bolted on" but the paramonad whose arrows are
 answer-transformations.
@@ -92,9 +92,9 @@ followed the paper closely enough that there is little else to say.
 
 ## References
 
-- Robert Atkey. *[Parameterised notions of computation.](https://bentnib.org/paramnotions-jfp.html)* JFP
+- <a id="ref-atkey-2009"></a>Robert Atkey. *[Parameterised notions of computation.](https://bentnib.org/paramnotions-jfp.html)* JFP
   19(3–4):335–376, 2009. (The paper `Monad.scala` links.)
-- Olivier Danvy, Andrzej Filinski. *A functional abstraction of typed
+- <a id="ref-danvy-1989"></a>Olivier Danvy, Andrzej Filinski. *A functional abstraction of typed
   contexts.* DIKU report 89/12, 1989.
-- Kenichi Asai, Yukiyoshi Kameyama. *[Polymorphic delimited
+- <a id="ref-asai-2007"></a>Kenichi Asai, Yukiyoshi Kameyama. *[Polymorphic delimited
   continuations.](https://doi.org/10.1007/978-3-540-76637-7_16)* APLAS 2007.

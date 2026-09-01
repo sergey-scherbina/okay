@@ -4,7 +4,7 @@
 
 A pure function returns a value. A program does more: it may consult
 state, fail, emit output, wait for a socket. Eugenio Moggi's insight
-[Moggi 1989, 1991] was that "a computation of an `A`" and "a value of
+\[[Moggi 1989, 1991](#ref-moggi-1989)\] was that "a computation of an `A`" and "a value of
 type `A`" are different types, and that the difference itself has
 structure: for each *notion of computation* there is a type constructor
 `T` such that `T[A]` means "a computation yielding an `A`", together
@@ -57,7 +57,7 @@ is justified by exactly these equations. Break the laws and generic
 code silently miscompiles your effect. That triple obeying those laws
 is a **monad**, and Moggi showed that state, exceptions,
 nondeterminism, continuations and I/O are all instances. Philip Wadler
-then carried the idea into programming practice [Wadler 1992, 1995]:
+then carried the idea into programming practice \[[Wadler 1992, 1995](#ref-wadler-1992)\]:
 monads are how a pure language *expresses* effects, and the laws are
 what make programs refactorable — associativity is precisely the
 statement that how you parenthesize a sequence of steps cannot change
@@ -134,8 +134,8 @@ the program's meaning.
 
 The classical alternative — a monad per effect, composed with monad
 transformers — is what the extensible-effects line of work explicitly
-set out to replace; the argument is laid out in [Kiselyov, Sabry &
-Swords 2013] and taken up in chapter 5. The short version visible
+set out to replace; the argument is laid out in \[[Kiselyov, Sabry &
+Swords 2013](#ref-kiselyov-2013)\] and taken up in chapter 5. The short version visible
 already at this chapter's level: with one monad, `flatMap` is defined
 once, the laws are discharged once (in `fold`), and combining effects
 is a type-level union rather than a nesting order the programmer must
@@ -145,13 +145,13 @@ and then claw back.
 
 ## References
 
-- Eugenio Moggi. *[Computational lambda-calculus and monads.](https://doi.org/10.1109/LICS.1989.39155)* LICS 1989.
-- Eugenio Moggi. *[Notions of computation and monads.](https://doi.org/10.1016/0890-5401(91)90052-4)* Information and
+- <a id="ref-moggi-1989"></a>Eugenio Moggi. *[Computational lambda-calculus and monads.](https://doi.org/10.1109/LICS.1989.39155)* LICS 1989.
+- <a id="ref-moggi-1991"></a>Eugenio Moggi. *[Notions of computation and monads.](https://doi.org/10.1016/0890-5401(91)90052-4)* Information and
   Computation 93(1):55–92, 1991.
-- Philip Wadler. *[The essence of functional programming.](https://doi.org/10.1145/143165.143169)* POPL 1992.
-- Philip Wadler. *[Monads for functional programming.](https://homepages.inf.ed.ac.uk/wadler/papers/marktoberdorf/baastad.pdf)* In Advanced
+- <a id="ref-wadler-1992"></a>Philip Wadler. *[The essence of functional programming.](https://doi.org/10.1145/143165.143169)* POPL 1992.
+- <a id="ref-wadler-1995"></a>Philip Wadler. *[Monads for functional programming.](https://homepages.inf.ed.ac.uk/wadler/papers/marktoberdorf/baastad.pdf)* In Advanced
   Functional Programming, LNCS 925, Springer, 1995.
-- Oleg Kiselyov, Amr Sabry, Cameron Swords. *[Extensible effects: an
+- <a id="ref-kiselyov-2013"></a>Oleg Kiselyov, Amr Sabry, Cameron Swords. *[Extensible effects: an
   alternative to monad transformers.](https://okmij.org/ftp/Haskell/extensible/exteff.pdf)* Haskell Symposium 2013.
-- Janis Voigtländer. *[Asymptotic improvement of computations over free
+- <a id="ref-voigtlander-2008"></a>Janis Voigtländer. *[Asymptotic improvement of computations over free
   monads.](https://doi.org/10.1007/978-3-540-70594-9_20)* MPC 2008.

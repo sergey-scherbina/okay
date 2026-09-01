@@ -1,5 +1,13 @@
 # Changelog
 
+## theory-cite-links — in-text citations are footnotes now
+Completed: 2026-09-01
+
+Every \[Author Year\] in the theory chapters links to its entry in
+that chapter's References (HTML anchors on the entries), where the
+paper link from the previous pass awaits — 31 in-text citations wired,
+zero unmatched, existing links and code blocks untouched.
+
 ## jdbc-poll-source — the watermark poll, honestly not CDC
 Completed: 2026-09-01 (landed as 07a57d0; spec first)
 Poll(db, offsets, group, source): the watermark IS a persist

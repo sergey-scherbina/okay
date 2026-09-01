@@ -9,8 +9,8 @@ each in the place its theory says it belongs.
 
 ## Final tagless: abstract over the interpreter, then let it vanish
 
-Carette, Kiselyov and Shan's "Finally tagless" [Carette, Kiselyov &
-Shan 2009] represents a program not as a data tree but as a
+Carette, Kiselyov and Shan's "Finally tagless" \[[Carette, Kiselyov &
+Shan 2009](#ref-carette-2009)\] represents a program not as a data tree but as a
 *polymorphic function over its interpreter*: write against a trait of
 operations, instantiate with a concrete carrier, and there is no tree
 — the "interpretation" is ordinary method calls, inlinable by the
@@ -49,7 +49,7 @@ works only while the value never crosses a generic boundary.
 
 ## Staging proper: programs that build programs
 
-Multi-stage programming [Taha & Sheard 1997, 2000] makes generation
+Multi-stage programming \[[Taha & Sheard 1997, 2000](#ref-taha-1997)\] makes generation
 explicit: code that constructs code, with the type system guaranteeing
 the generated program is well-typed. MetaML's brackets and escapes are
 the reference design; Scala 3 carries the idea natively as quotes and
@@ -87,11 +87,11 @@ than dogmatically.
 
 ## References
 
-- Jacques Carette, Oleg Kiselyov, Chung-chieh Shan. *[Finally tagless,
+- <a id="ref-carette-2009"></a>Jacques Carette, Oleg Kiselyov, Chung-chieh Shan. *[Finally tagless,
   partially evaluated: tagless staged interpreters for simpler typed
   languages.](https://okmij.org/ftp/tagless-final/JFP.pdf)* JFP 19(5):509–543, 2009.
-- Walid Taha, Tim Sheard. *[Multi-stage programming with explicit
+- <a id="ref-taha-1997"></a>Walid Taha, Tim Sheard. *[Multi-stage programming with explicit
   annotations.](https://doi.org/10.1145/258993.259019)* PEPM 1997.
-- Walid Taha, Tim Sheard. *[MetaML and multi-stage programming with
+- <a id="ref-taha-2000"></a>Walid Taha, Tim Sheard. *[MetaML and multi-stage programming with
   explicit annotations.](https://doi.org/10.1016/S0304-3975(00)00053-0)* Theoretical Computer Science
   248(1–2):211–242, 2000.
