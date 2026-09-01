@@ -871,12 +871,15 @@ lazy val okayMcp = crossProject(JVMPlatform, JSPlatform)
  * okay-agent runs the loop, okay-llm reaches a local model. It exists
  * to find what tests written by the author of the code cannot.
  */
-/** the chat demo's React frontend (specs/demo-chat.md): the logic is
- * CROSS (view/update pure, tested on the JVM), the browser gets the
- * thin glue over okay-ui's ReactJs against a CDN React */
+/** the chat demo's React frontend (specs/demo-chat.md), living
+ * INSIDE okay-demo (okay-demo/web): a separate sbt module only
+ * because the frontend needs the JS cross-build a plain JVM project
+ * cannot carry; the logic is CROSS (view/update pure, tested on the
+ * JVM), the browser gets the thin glue over okay-ui's ReactJs
+ * against a CDN React */
 lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
-  .in(file("okay-chat-web"))
+  .in(file("okay-demo/web"))
   .dependsOn(okayUi)
   .settings(
     name := "okay-chat-web",

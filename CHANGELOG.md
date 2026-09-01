@@ -1,5 +1,14 @@
 # Changelog
 
+## demo-chat-move — the frontend moves in with its demo
+Completed: 2026-09-01
+
+okay-chat-web relocated to okay-demo/web (user ask): the chat's
+frontend lives inside okay-demo now; the separate sbt module remains
+only because a JS cross-build cannot ride a plain JVM project. Paths
+rewired (appJs discovery, build.sbt), all 8 tests green after the
+move including the live local-model leg.
+
 ## conditions — resumable exceptions: the road between throwing and damage-as-data
 Completed: 2026-09-01 (landed as 99d44dc; spec first; user ask)
 Condition in the core: signal raises WITHOUT unwinding — the

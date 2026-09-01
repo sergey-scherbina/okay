@@ -102,12 +102,13 @@ object ChatDemo {
       case _ => Vector.empty
 
   /** the linked React app, if a link has been run (sbt
-   * okayChatWebJS/fastLinkJS); absent, the vanilla page serves */
+   * okayChatWebJS/fastLinkJS — the module lives in okay-demo/web);
+   * absent, the vanilla page serves */
   def appJs: Option[java.nio.file.Path] =
     sys.env.get("OKAY_CHAT_APP").map(java.nio.file.Path.of(_))
       .filter(java.nio.file.Files.exists(_))
       .orElse {
-        val glob = java.nio.file.Path.of("okay-chat-web/.js/target")
+        val glob = java.nio.file.Path.of("okay-demo/web/.js/target")
         if !java.nio.file.Files.exists(glob) then None
         else
           import scala.jdk.CollectionConverters.*

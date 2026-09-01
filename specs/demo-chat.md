@@ -49,7 +49,7 @@ The pieces, each doing its one job:
       OpenAI-compatible endpoint (rozum, :8089) proves the wire path
       end to end (skipped when absent); Anthropic remains the
       key-gated third filling of the same seam
-- [x] the React frontend: okay-chat-web — the chat's view/update are
+- [x] the React frontend: okay-demo/web (module okayChatWeb) — the chat's view/update are
       CROSS and JVM-tested (send flow, token folding, the cut line);
       the browser gets okay-ui's ReactJs over CDN React UMD globals
       and a fetch reader feeding $token/$done/$cut into the same
