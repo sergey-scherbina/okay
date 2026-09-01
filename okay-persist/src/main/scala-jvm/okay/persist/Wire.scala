@@ -79,8 +79,12 @@ object Wire:
    * on a connection closes THAT connection, never the server.
    */
   final class Server(store: Store, auth: String => Option[Set[String]],
-                     requested: Int = 0):
-    private val listener = ServerSocket(requested)
+                     requested: Int = 0,
+                     bind: java.net.InetAddress = java.net.InetAddress.getLoopbackAddress):
+    // loopback by DEFAULT: this surface is plaintext until wire-tls
+    // lands, and a plaintext log does not volunteer itself to the
+    // network — an operator opens it up deliberately
+    private val listener = ServerSocket(requested, 50, bind)
     @volatile private var closed = false
 
     val port: Int = listener.getLocalPort
