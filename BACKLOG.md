@@ -51,8 +51,6 @@
 - [ ] ui-windows-terminal — raw mode beyond stty
 
 ## okay-security (specs/security.md — staged, like persist)
-- [ ] security-argon2 — a satellite with a real KDF for new password
-      stores (PBKDF2 stays the zero-dep default)
 
 ## okay-codec
 - [ ] codec-defaults — decode falls back to a field's declared

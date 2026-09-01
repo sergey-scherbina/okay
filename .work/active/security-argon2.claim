@@ -1,0 +1,6 @@
+feature/security-argon2 2026-09-01T13:55:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-01T13:55:00Z
+status: in-progress
+done-so-far:
+next: spec section, new sbt module okay-security-argon2 (jvm, BC dep), Argon2.hash/verify + prefix-dispatching verify
