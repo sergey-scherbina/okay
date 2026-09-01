@@ -1,0 +1,6 @@
+feature/delta-spec 2026-09-01T09:28:42Z
+agent: claude-code
+heartbeat: 2026-09-01T09:28:42Z
+status: in-progress
+done-so-far:
+next: data.md lake section — Delta Lake specifics (kernel road, spark write road)
