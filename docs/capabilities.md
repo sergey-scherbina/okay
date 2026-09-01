@@ -259,6 +259,33 @@ the failures are load-bearing.
   Forgetting the second is a "no given instance" error at a
   `sequence` call, not silence.
 
+## The door outside, the direct block inside (the E20 pattern)
+
+The capability vocabulary composes with [direct style](direct-style.md)
+— and the composition is the recommended shape for user code that
+wants both: the door answers *what is available*, the block answers
+*how it reads*.
+
+```scala
+def told: Env ?=> Int ! (Writer % String) = direct {
+  Writer(s"hello ${wire[Env].user}")   // bare statement: do-notation
+  Writer("bye")
+  wire[Env].uid                        // the door, inside the block
+}
+
+provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+// Vector(hello ada, bye) -> 7
+```
+
+This works because a `direct` block is itself a context function
+(`DirectCtx[F] ?=> A`), so it nests under the `Env` layer by
+nearest-wins and `wire` resolves inside it. Three layers are peeled
+by three different machines — `provide` by the compiler at
+elaboration, the block by the macro at expansion, the effect row by
+handlers at run time — and none knows of the others. `providing`
+compositions and the override story work over the block unchanged
+(E20; executable as `TestDirectDoors` in core).
+
 ## The payoff, on one page
 
 One value whose needs are its type, living in three worlds without
