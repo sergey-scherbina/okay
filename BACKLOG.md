@@ -28,9 +28,6 @@
       road hurts
 
 ## The data landscape (specs/data.md — umbrella; vendor = seam impl)
-- [ ] docs-seam — the Docs trait (get/put CAS/delete/query,
-      declared consistency) + the own-posture engine over View;
-      then one foreign adapter (Dynamo or Mongo) to prove the seam
 - [ ] lake-delta — Delta specifics: DuckDB delta extension via the
       JDBC seam (read), Delta Kernel interop (read/write, no
       Spark), spark-bridge writes already available (specs/data.md)

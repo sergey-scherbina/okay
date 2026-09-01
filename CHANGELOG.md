@@ -1,5 +1,27 @@
 # Changelog
 
+## docs-seam — the one new seam, proven on both postures
+Completed: 2026-09-01 (landed as df9a119)
+okay-docs cross-built: Docs[A] with Cond as the load-bearing part
+(Always/IfAbsent/IfVersion — CAS as data, Stale carries what holds
+NOW), declared-index queries (a scan wearing a query's hat refuses
+by name), grants as the engine's honest consistency mapping, and
+NO multi-document transactions deliberately (a multi-item change is
+a journaled sequence of CAS — the saga with existing machinery).
+TopicDocs = the own posture made code: a compacted-topic fold where
+the version IS the record offset, deletes are tombstones, a cold
+node refolds the same store. okay-docs-mongo (satellite pays the
+driver, the argon2 precedent): every conditional write is ONE
+server-side operation, declared indexes become real ones. ONE
+DocsSuite over both engines (8+8+8 cross-platform + 7 live Mongo),
+including the lost-ack CAS retry landing once. En route: the wire
+server now binds LOOPBACK by default (plaintext until wire-tls
+does not volunteer itself to the network), and the port-roulette
+flake family got one BACKLOG ledger (TestWire read literal "HTTP"
+at its handshake once under parallel suites). Merge read alone
+after one refused ff (jdbc-bulk-load divergence; targeted retest):
+exit 0. Full matrix green (Postgres, Kafka AND Mongo live).
+
 ## jdbc-bulk-load — WithKey at batch granularity
 Completed: 2026-09-01 (landed as 6f7e8d8)
 The OLAP write posture held by discipline: history row + the

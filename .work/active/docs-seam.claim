@@ -1,5 +1,0 @@
-slug: docs-seam
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: the Docs seam (specs/data.md): Docs[A] trait (get/put/delete with Cond CAS, query over declared indexes, consistency requested/granted), TopicDocs own engine (a log fold; version = the record offset), MongoDocs foreign adapter as a satellite module (mongodb-driver-sync, live docker); one contract suite over both engines + the CAS-as-WithKey retry box
-files: okay-docs/** (new cross module), okay-docs-mongo/** (new satellite), build.sbt, specs/data.md (boxes/Results), docs/modules/okay-docs.md
