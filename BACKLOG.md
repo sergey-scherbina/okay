@@ -50,11 +50,6 @@
 
 ## okay-security (specs/security.md — staged, like persist)
 
-## okay-codec
-- [ ] codec-defaults — decode falls back to a field's declared
-      default when the wire lacks it (companion-default access =
-      a macro; Mirrors do not carry defaults)
-
 ## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
 - [ ] py-subprocess — stage 0: module + shim (stdlib json wire,
       module:name addressing, clean env, version handshake),

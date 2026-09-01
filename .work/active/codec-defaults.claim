@@ -1,0 +1,6 @@
+feature/codec-defaults 2026-09-01T14:30:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-01T14:30:00Z
+status: in-progress
+done-so-far:
+next: spec section, Defaults macro, SProduct.defaults, Json/Cbor fallback, ToolSpec required-list, shared cross-platform test
