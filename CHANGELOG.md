@@ -1,5 +1,19 @@
 # Changelog
 
+## ctx-reader-elim — Reader elimination: the gate lifted, direct blocks the consumer
+Completed: 2026-09-01
+Landed as e66ac87. Int ! (Reader % E + Row) rewrites to
+E ?=> Int ! Row = direct { ... wire[E] ... } — the environment out
+of the row, the elaborator running the Reader half at compile time.
+TestCtxReaderElim: equivalence at both spellings; provide nesting
+overrides THROUGH the effectful block (nearest-wins survives the
+macro); lift/unlift one-liners at the call site (functions, never
+Conversions — E10 stands). specs/context-functions.md's
+ctx-reader-bridge gate lifted; the capabilities.md recipe records
+when to KEEP the Reader row (local-style rescoping, handler-visible
+asks). GATE CAVEAT: OOM-kill late, 0 failures, full reference
+coverage — the standing precedent.
+
 ## condition-direct — resumable exceptions in direct style, the frame door, chapter 09
 Completed: 2026-09-01
 Landed as 167c02e. signal.? resumes at the mark (a call that may
