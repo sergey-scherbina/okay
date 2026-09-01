@@ -190,8 +190,46 @@ itself answers "what am I". A changed checksum on an
 already-applied script REFUSES loudly (the fingerprint rule at yet
 another seam); the applied set is also appended to an ops topic
 for the audit trail. Auto-generated diff migrations are rejected:
-a migration is authored SQL, reviewed like the code it is. Filed:
-`own-db-migrations`.
+a migration is authored SQL, reviewed like the code it is.
+
+Implementation (own-db-migrations), against the `Sql` trait so any
+driver serves it:
+
+```scala
+final case class Script(version: Int, name: String, sql: String)
+final case class Applied(version: Int, name: String, checksum: String, at: Long)
+
+object Migrate:
+  /** apply pending scripts in version order; answers what THIS run
+   * applied, or the refusal that stopped it. `record` is the ops
+   * hook — wire it to a topic for the audit trail. */
+  def apply(db: Sql, scripts: Seq[Script],
+            table: String = "okay_schema_version",
+            record: Applied => Unit = _ => ()): Either[String, Vector[Applied]] ! Async
+```
+
+- one script = one `update` call: engines that accept multi-statement
+  scripts (H2, Postgres) take them whole; others get one-statement
+  scripts — stated, not papered over
+- the script and its version row commit in ONE transaction where the
+  engine allows transactional DDL (Postgres); engines that
+  auto-commit DDL (H2 mixed) keep the DML atomicity and the caveat
+- out-of-order versions, duplicates, a script MISSING for an
+  already-applied version, and a changed checksum each REFUSE loudly
+  naming the version — the fingerprint rule at yet another seam
+
+Migration behavior:
+- [ ] a fresh database: scripts apply in order, the version table
+      records version/name/checksum/at; a re-run applies nothing
+- [ ] a new script appended: only it applies
+- [ ] a changed checksum on an applied script refuses naming the
+      version, and nothing else runs
+- [ ] a vanished script for an applied version refuses the same way
+- [ ] duplicate or unordered versions refuse before touching the db
+- [ ] a failing script leaves no version row (its transaction rolls
+      back), and the fixed script applies on the next run
+- [ ] `record` sees every Applied of the run, after its commit —
+      the ops-topic wiring is one lambda
 
 ## Interface (sketch — the shape, not the final word)
 
