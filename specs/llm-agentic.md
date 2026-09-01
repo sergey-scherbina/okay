@@ -396,15 +396,16 @@ final case class Violation(rule: String, at: Int, seen: String)
   the abort (Response.release), not abandoned
 
 Behavior:
-- [ ] a scripted generation violating mid-stream: the validator
+- [x] a scripted generation violating mid-stream: the validator
       aborts, the answer is Left(Violation) naming rule/position,
       and the provider stub records NO further token pulls
-- [ ] a passing generation is byte-identical to the unguarded run
-- [ ] two nested guards: the inner violation aborts to the INNER
+- [x] a passing generation is byte-identical to the unguarded run
+- [x] two nested guards: the inner violation aborts to the INNER
       prompt; the outer stream continues — multi-prompt earning
       its keep
 - [ ] the live probe (TestLive pattern): a real streamed completion
-      cut by a length rule, the connection released
+      cut by a length rule, the connection released — OPEN: needs an
+      API key on the box; the mechanism is fully covered scripted
 
 ## Interop, not reimplementation
 

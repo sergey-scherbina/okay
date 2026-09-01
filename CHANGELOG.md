@@ -16,6 +16,20 @@ now a replayable regression test. One lesson: continuations apply
 at SCHEDULING, not enqueueing (eager k ran side effects early);
 tasks are thunks. Eight tests. Merge read alone: exit 0. Full
 matrix green.
+## llm-streaming-cut — the validator cuts the model off mid-sentence
+Completed: 2026-09-01
+
+Cut.guarded installs a typed prompt over a streaming generation;
+Cut.checked stands in the token stream, emits what passes, and on a
+violation ABORTS to the prompt — Left(Violation(rule, at, seen)),
+the poisoned token never flows, and the source records NO further
+pulls (the counter had to become Async data to observe that
+honestly — uncons builds one node ahead). A passing stream is
+identical to the unguarded run; nested guards prove multi-prompt:
+the inner cut recovers, the outer stream continues. The open P9
+roadmap item, closed with Delim as the PRIMARY mechanism per the
+adoption doctrine; the unguarded path untouched. 3 tests; the live
+probe stays open pending an API key, mechanism covered scripted.
 
 ## control-specs — the PState/Delim consumer map, written down
 Completed: 2026-09-01 (landed as bff0581; markdown only)
