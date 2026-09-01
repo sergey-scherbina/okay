@@ -1,0 +1,4 @@
+lane: ctx-capabilities-doc
+owner: fable-ctx
+started: 2026-09-01
+scope: docs/capabilities.md — the full capability/DI documentation; links from README, docs index, guide, typepedia
