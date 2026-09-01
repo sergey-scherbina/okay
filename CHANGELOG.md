@@ -1,5 +1,18 @@
 # Changelog
 
+## ctx-wire — the consumer one-liner: wire[A] is Reader's ask
+Completed: 2026-09-01
+The other half of the vocabulary (E17 in specs/context-functions.md):
+`inline def wire[A]: A ?=> A = summon[A]` pulls the ambient
+capability by naming its type. The naive `def wire[T] = summon[T]`
+does not compile — no given at the definition site; the `A ?=> A`
+result type is the fix, and the E10 eagerness finally works FOR us:
+`wire[Db].q` applies in receiver position, `val d = wire[Db]` lands
+as a plain Db, and doors write point-free (`val getQ: Db ?=> String
+= wire[Db].q`) — no summon, no parameter. A missing given stays a
+COMPILE error. Composes with providing/and (nearest wins). Core:
+Providing.scala; tests: TestWire (4). Matrix 253/14/14.
+
 ## security-crypto-split — the SCRAM primitives on a shared, dependency-free seam
 Completed: 2026-09-01
 okay-pg's SCRAM used a local `PgCrypto` given because okay-security's

@@ -109,6 +109,17 @@ Every claim below was compiled, not assumed:
   fold) but uncapped — 25 layers tested past ContextFunction22.
   Core: Providing.scala (`providing[A](a)`, `and`, `apply`),
   suite TestProviding (5 tests, incl. the DI compile-error claim).
+- **The consumer is one line too** (E17, 2026-09-01, SHIPPED as
+  ctx-wire): `inline def wire[A]: A ?=> A = summon[A]` — Reader's
+  `ask` on context functions. The naive `def wire[T] = summon[T]`
+  does not compile (no given at the definition site); the `A ?=> A`
+  result type fixes it, and E10's eager auto-application works FOR
+  us for once: `wire[Db].q` applies to the nearest given in
+  receiver position, `val d = wire[Db]` lands as a plain `Db`, and
+  doors write point-free — `val getQ: Db ?=> String = wire[Db].q`.
+  A missing given stays a compile error. The vocabulary closes:
+  `providing`/`provide` install, `wire` consumes, the type is the
+  contract.
 - **The ctx layer composes with `!` cleanly, and the shipped doors
   are the proof** (E14, compiled against core): `Env ?=> (A ! F)`
   gives the ambient environment INSIDE `for`-comprehensions over
