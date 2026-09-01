@@ -238,3 +238,34 @@ see every frame; `within` stays as the Any-typed base.
 - [x] the lexical invoke unwinds to its frame with no policy
       consulted; nesting and cross-frame invokes behave; a Restart
       cannot be summoned outside every frame
+
+
+## Typed signals (2026-09-02, condition-typed-signal)
+
+The Zhang–Myers discipline (theory ch. 9) applied as an ADDITIVE
+door: a condition may declare its answer type, and then a
+wrong-typed resume stops compiling — while the Any floor (signal /
+the (Any, menu) => Decision policy) stays exactly what it is.
+
+```scala
+object Condition:
+  /** a condition whose answer is A */
+  trait Of[A]
+  extension [A](c: Of[A])
+    /** the typed signal edge — HowMany.signal : Int ! Op */
+    def signal: A ! Op
+  /** the typed resume for policies: resume(c)(v) checks v against
+   * c's answer type — case c: HowMany.type => resume(c)(41) */
+  def resume[A](c: Of[A])(v: A): Decision
+```
+
+- [ ] a typed condition round-trips: `object HowMany extends Of[Int]`,
+  `HowMany.signal` answers Int, the policy resumes via `resume(c)(41)`
+- [ ] a wrong-typed resume is a COMPILE error at the policy
+- [ ] the typed edge works in direct blocks (`HowMany.signal.reflect`)
+  and with restarts unchanged
+- [ ] the floor is untouched: untyped signal/policy tests all pass
+  as-is
+
+Out of scope: making the MACHINE dependent on Of — the erasure
+discipline of the file header stands; Of is an edge vocabulary.
