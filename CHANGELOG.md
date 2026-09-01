@@ -62,6 +62,16 @@ layer overridden (`base and providing[Principal](bob)` answers
 for:Bob). One value, three worlds, zero changed letters; a missing
 capability is a compile error in all three. Guide §9 gains the same
 page as prose.
+## demo-flow-cmds — the offline driver speaks scenarios
+Completed: 2026-09-01
+
+Three phrases complete the offline mode: "сценарий <имя> роль=email
+…" starts any registered flow (and lists its transitions with their
+roles), "шаг <N> <переход>" fires the writer's transition, "флоу <N>"
+shows state and history. The escrow walk runs through real routes by
+phrases alone — the wrong role refused with the reason, the buyer's
+page ringing on the seller's sign. The no-model mode now covers
+everything the model can drive. 13 demo tests.
 
 ## applicative-op — `<*>`, the idiom bracket's own spelling
 Completed: 2026-09-01

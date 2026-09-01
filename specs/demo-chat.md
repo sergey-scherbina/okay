@@ -140,6 +140,10 @@ flow_start / flow_advance.
 - [x] a transition fired through the tool rings the named role's
       inbox with the filled template, and the unlock is queryable
       via unlockedBy
+- [x] OFFLINE flows: the no-model driver plays ANY registered
+      scenario by phrases alone (сценарий <имя> роль=email …;
+      шаг <N> <переход>; флоу <N>) — the escrow walk through real
+      routes, roles enforced, the buyer's page ringing
 
 ## Out of scope
 - Auth, persistence of conversations, multi-user rooms (persist owns

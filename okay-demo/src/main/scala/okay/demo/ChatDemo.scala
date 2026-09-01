@@ -350,6 +350,99 @@ object ChatDemo {
                 "provider" -> JStr(mine(i).uuid), "what" -> JStr(what))
             }
             s"спросил ${chosen.length} кандидатов — сообщу, кто возьмётся"
+      case s if s.startsWith("сценарий ") =>
+        // сценарий <имя> роль=email роль=email ... — flow_start
+        val parts = s.stripPrefix("сценарий ").split("\\s+").toVector
+        val name = parts.headOption.getOrElse("")
+        val parties = parts.tail.collect {
+          case kv if kv.contains("=") =>
+            val i = kv.indexOf('='); kv.take(i) -> kv.drop(i + 1)
+        }
+        store.scenario(name) match
+          case None => s"нет сценария '$name' — зарегистрированные видны через scenario_get"
+          case Some(d) =>
+            val partyIds = parties.map((r, mail) => r -> JStr(store.register(mail).uuid))
+            Json.parse(call("flow_start", "scenario" -> JStr(name),
+              "what" -> JStr(name),
+              "parties" -> JObj(partyIds))) match
+              case JObj(fs) if fs.exists(_._1 == "flow") =>
+                val n = fs.collectFirst { case ("flow", JNum(x)) => x.toLong }.get
+                s"сценарий '$name' начат (флоу $n, состояние ${d.initial}); шаги: " +
+                  d.transitions.map(t => s"${t.name} (${t.by})").mkString(", ") +
+                  s" — команда: шаг $n <переход>"
+              case JObj(fs) =>
+                fs.collectFirst { case ("refused", JStr(r)) => s"отказ: $r" }
+                  .getOrElse("отказ")
+              case _ => "отказ"
+      case s if s.startsWith("шаг ") =>
+        // шаг <N> <переход> — flow_advance от лица пишущего
+        val parts = s.stripPrefix("шаг ").split("\\s+").toVector
+        (parts.headOption.flatMap(_.toLongOption), parts.lift(1)) match
+          case (Some(n), Some(tr)) =>
+            val me = store.register(email)
+            Json.parse(call("flow_advance", "flow" -> JNum(n.toDouble),
+              "transition" -> JStr(tr), "by" -> JStr(me.uuid))) match
+              case JObj(fs) if fs.exists(_._1 == "state") =>
+                val st = fs.collectFirst { case ("state", JStr(x)) => x }.get
+                s"переход '$tr' сделан — состояние: $st"
+              case JObj(fs) =>
+                fs.collectFirst { case ("refused", JStr(r)) => s"отказ: $r" }
+                  .getOrElse("отказ")
+              case _ => "отказ"
+          case _ => "формат: шаг <номер флоу> <переход>"
+      case s if s.startsWith("флоу ") =>
+        s.stripPrefix("флоу ").trim.toLongOption match
+          case None => "формат: флоу <номер>"
+          case Some(n) => store.flow(okay.matching.FlowId(n)) match
+            case None => s"нет флоу $n"
+            case Some(f) =>
+              s"флоу $n: сценарий ${f.scenario}, состояние ${f.state}, " +
+                s"история: ${f.history.map(_._1).mkString(" -> ")}"
+      case s if s.startsWith("сценарий ") =>
+        // сценарий <имя> роль=email ... — flow_start by phrase
+        val parts = s.stripPrefix("сценарий ").split("\\s+").toVector
+        val name = parts.headOption.getOrElse("")
+        val parties = parts.tail.collect {
+          case kv if kv.contains("=") && !kv.startsWith("email") =>
+            val i = kv.indexOf('='); kv.take(i) -> kv.drop(i + 1)
+        }
+        store.scenario(name) match
+          case None => s"нет сценария '$name'"
+          case Some(d) =>
+            val partyIds = parties.map((r, mail) => r -> JStr(store.register(mail).uuid))
+            Json.parse(call("flow_start", "scenario" -> JStr(name),
+              "what" -> JStr(name), "parties" -> JObj(partyIds))) match
+              case JObj(fs) if fs.exists(_._1 == "flow") =>
+                val n = fs.collectFirst { case ("flow", JNum(x)) => x.toLong }.get
+                s"сценарий '$name' начат (флоу $n, состояние ${d.initial}); шаги: " +
+                  d.transitions.map(t => s"${t.name} (${t.by})").mkString(", ") +
+                  s"; команда: шаг $n <переход>"
+              case JObj(fs) =>
+                fs.collectFirst { case ("refused", JStr(r)) => s"отказ: $r" }.getOrElse("отказ")
+              case _ => "отказ"
+      case s if s.startsWith("шаг ") =>
+        // шаг <N> <переход> — flow_advance от лица пишущего
+        val parts = s.stripPrefix("шаг ").split("\\s+").toVector
+        (parts.headOption.flatMap(_.toLongOption), parts.lift(1)) match
+          case (Some(n), Some(tr)) =>
+            val me = store.register(email)
+            Json.parse(call("flow_advance", "flow" -> JNum(n.toDouble),
+              "transition" -> JStr(tr), "by" -> JStr(me.uuid))) match
+              case JObj(fs) if fs.exists(_._1 == "state") =>
+                s"переход '$tr' сделан — состояние: " +
+                  fs.collectFirst { case ("state", JStr(x)) => x }.get
+              case JObj(fs) =>
+                fs.collectFirst { case ("refused", JStr(r)) => s"отказ: $r" }.getOrElse("отказ")
+              case _ => "отказ"
+          case _ => "формат: шаг <номер флоу> <переход>"
+      case s if s.startsWith("флоу ") =>
+        s.stripPrefix("флоу ").trim.split("\\s+").head.toLongOption match
+          case None => "формат: флоу <номер>"
+          case Some(n) => store.flow(okay.matching.FlowId(n)) match
+            case None => s"нет флоу $n"
+            case Some(f) =>
+              s"флоу $n: сценарий ${f.scenario}, состояние ${f.state}, " +
+                s"история: ${f.history.map(_._1).mkString(" -> ")}"
       case s if s.contains("берусь") || s.contains("отказываюсь") =>
         val accept = s.contains("берусь")
         "\\d+".r.findFirstIn(s).map(_.toLong) match
@@ -362,7 +455,7 @@ object ChatDemo {
                               else "передал отказ"
               case _ => "эта сделка не ваша или уже закрыта"
       case _ =>
-        """матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>"""
+        """матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>; сценарии: сценарий <имя> роль=email ...; шаг <N> <переход>; флоу <N>"""
 
   /** which agent serves /match turns: real model when one is
    * configured, the deterministic table-driver otherwise */

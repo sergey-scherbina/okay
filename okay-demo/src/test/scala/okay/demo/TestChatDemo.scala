@@ -300,6 +300,55 @@ class TestChatDemo extends munit.FunSuite {
       okay.matching.Value.text(f.value)), Vector("tg:@prov"))
   }
 
+  test("OFFLINE FLOWS: the driver plays ANY registered scenario by phrases alone") {
+    val store = okay.matching.MemoryMatch()
+    // register the three-role escrow scenario (configuration)
+    val sale = okay.matching.ScenarioDef(
+      name = "escrow-sale",
+      roles = Vector("buyer", "seller", "escrow"),
+      initial = "offered",
+      states = Vector("offered", "under-contract", "funded", "closed"),
+      terminal = Set("closed"),
+      transitions = Vector(
+        okay.matching.Transition("sign", "offered", "under-contract", by = "seller",
+          notifies = Vector("buyer" -> "продавец подписал: {what}")),
+        okay.matching.Transition("fund", "under-contract", "funded", by = "buyer"),
+        okay.matching.Transition("release", "funded", "closed", by = "escrow",
+          notifies = Vector("buyer" -> "сделка закрыта: {what}"))))
+    assertEquals(store.defineScenario(sale), Vector.empty)
+    withServer(512, store) { port =>
+      def turn(text: String): String =
+        new String(post(port,
+          s"""{"messages":[{"role":"user","content":"$text"}]}""").readAllBytes(), UTF_8)
+      val started = turn(
+        "/match сценарий escrow-sale buyer=b@x seller=s@x escrow=e@x email b@x")
+      assert(started.contains("начат"), started.take(300))
+      val flowN = "флоу (\\d+)".r.findFirstMatchIn(started).map(_.group(1))
+        .getOrElse("1")
+      // the buyer holds the seller's transition — refused with the reason
+      assert(turn(s"/match шаг $flowN sign email b@x").contains("отказ"), "role enforced")
+      // each party fires its own step by phrase; the buyer's page rings
+      val buyer = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/events/b@x")).GET().build(),
+        HttpResponse.BodyHandlers.ofInputStream()).body()
+      assert(turn(s"/match шаг $flowN sign email s@x").contains("under-contract"))
+      assert(turn(s"/match шаг $flowN fund email b@x").contains("funded"))
+      assert(turn(s"/match шаг $flowN release email e@x").contains("closed"))
+      val heard = java.util.concurrent.CompletableFuture.supplyAsync { () =>
+        val sb = new StringBuilder; val buf = new Array[Byte](512)
+        while !sb.toString.contains("закрыта") do
+          val n = buyer.read(buf)
+          if n < 0 then throw new AssertionError(s"ended: $sb")
+          sb.append(new String(buf, 0, n, UTF_8))
+        sb.toString
+      }.get(10, java.util.concurrent.TimeUnit.SECONDS)
+      assert(heard.contains("подписал") || heard.contains("закрыта"))
+      val hist = turn(s"/match флоу $flowN")
+      assert(hist.contains("sign") && hist.contains("fund") && hist.contains("release"), hist.take(300))
+      buyer.close()
+    }
+  }
+
   test("over budget the stream is cut, named, and no tokens follow") {
     withServer(budget = 3) { port =>
       val whole = new String(post(port,
