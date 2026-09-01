@@ -75,13 +75,15 @@ final case class AttrDef(id: AttrId, slug: String, kind: Kind,
                          description: String,
                          synonyms: Vector[String] = Vector.empty,
                          status: Status = Status.Provisional,
-                         volatile: Boolean = false)
+                         volatile: Boolean = false,
+                         identifying: Boolean = false)
 
 /** what the LLM proposes; the registry decides whether it already
  * exists (search-before-create is enforced on THIS side too) */
 final case class AttrDraft(slug: String, kind: Kind, description: String,
                            synonyms: Vector[String] = Vector.empty,
-                           volatile: Boolean = false)
+                           volatile: Boolean = false,
+                           identifying: Boolean = false)
 
 final case class Fact(id: FactId, profile: ProfileId, attr: String,
                       side: Side, value: Value, prov: Provenance,
@@ -94,6 +96,24 @@ final case class Fact(id: FactId, profile: ProfileId, attr: String,
  * it to rank */
 final case class Profile(id: ProfileId, email: String,
                          current: Vector[Fact], history: Vector[Fact])
+
+/** a link candidate: WHO shares an identifying attribute is not
+ * said — only that someone does, which attribute, and a masked hint
+ * of where the old profile lives. Leaking less is the design. */
+final case class LinkHint(attr: String, hint: String)
+
+/** the single-use, expiring proof-of-both-ends (see the spec: it is
+ * delivered through the OLD channel and typed in the NEW chat) */
+final case class LinkToken(token: String, from: ProfileId, to: ProfileId,
+                           expiresAt: Long)
+
+object LinkHint:
+  /** m***@e***.com — enough to recognize your own, useless to a stranger */
+  def mask(email: String): String = email.split('@') match
+    case Array(u, d) =>
+      def m(x: String) = if x.isEmpty then "*" else x.head + "***" + x.drop(1).dropWhile(_ != '.')
+      m(u).takeWhile(_ != '.') + "@" + m(d)
+    case _ => "***"
 
 /** a hard constraint over one attribute's typed values */
 enum Pred:

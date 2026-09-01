@@ -27,6 +27,9 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
   private var nextAttr = 1L
   private var nextFact = 1L
   private var recovery: Map[ProfileId, String] = Map.empty  // hashed secrets
+  private var links: Vector[(ProfileId, ProfileId)] = Vector.empty
+  private var tokens: Map[String, LinkToken] = Map.empty
+  private val tokenTtlMs = 15L * 60 * 1000
 
   // ---- registry -----------------------------------------------------
 
@@ -55,7 +58,7 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
     }
     existing.getOrElse {
       val a = AttrDef(AttrId(nextAttr), d.slug, d.kind, d.description,
-        d.synonyms, Status.Provisional, d.volatile)
+        d.synonyms, Status.Provisional, d.volatile, d.identifying)
       nextAttr += 1
       attrs :+= a
       a
@@ -114,8 +117,67 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
 
   def profileOf(id: ProfileId): Option[Profile] =
     profiles.get(id).map { email =>
-      val mine = facts.filter(_.profile == id)
+      val ids = identityOf(id).toSet
+      val mine = facts.filter(f => ids.contains(f.profile))
       Profile(id, email, mine.filter(_.supersededBy.isEmpty), mine)
+    }
+
+  // ---- cross-channel identity (match-identity-x) --------------------
+
+  /** the equivalence class of confirmed links (reflexive closure) */
+  def identityOf(p: ProfileId): Vector[ProfileId] =
+    var cls = Set(p)
+    var grew = true
+    while grew do
+      val next = cls ++ links.collect {
+        case (a, b) if cls(a) => b
+        case (a, b) if cls(b) => a
+      }
+      grew = next.size != cls.size
+      cls = next
+    cls.toVector.sortBy(_.uuid)
+
+  /** who shares an identifying fact value — the attribute and a
+   * masked hint, NOTHING else (leaking less is the design) */
+  def linkCandidates(p: ProfileId): Vector[LinkHint] =
+    val identifying = attrs.filter(a => live(a) && a.identifying).map(_.slug).toSet
+    val mine = facts.filter(f => f.profile == p && f.supersededBy.isEmpty
+      && identifying.contains(f.attr)).map(f => (f.attr, Value.text(f.value)))
+    val cls = identityOf(p).toSet
+    mine.flatMap { (attr, v) =>
+      facts.filter(f => !cls.contains(f.profile) && f.attr == attr
+        && f.supersededBy.isEmpty && Value.text(f.value) == v)
+        .map(_.profile).distinct.flatMap(o => profiles.get(o).map(e =>
+          LinkHint(attr, LinkHint.mask(e))))
+    }.distinct
+
+  /** mint the single-use token addressed to the OLD profile; the
+   * integration site delivers it through the old channel */
+  def requestLink(from: ProfileId, to: ProfileId): Option[LinkToken] =
+    if !profiles.contains(from) || !profiles.contains(to) then None
+    else
+      val t = LinkToken(java.util.UUID.randomUUID().toString, from, to,
+        now() + tokenTtlMs)
+      tokens += t.token -> t
+      Some(t)
+
+  /** the person in the NEW chat produced the token: both ends held */
+  def confirmLink(token: String, by: ProfileId, prov: Provenance): Option[ProfileId] =
+    tokens.get(token) match
+      case Some(t) if t.from == by && now() <= t.expiresAt =>
+        tokens -= token                                    // single use
+        links :+= (t.from, t.to)
+        summaries = Map.empty                              // the class changed shape
+        Some(t.to)
+      case _ => None
+
+  /** the fallback for a dead old channel: the recovery secret */
+  def linkByRecovery(from: ProfileId, oldEmail: String, secret: String): Option[ProfileId] =
+    byEmail.get(oldEmail).filter(p =>
+      recovery.get(p).exists(verifyHash(secret, _))).map { old =>
+      links :+= (from, old)
+      summaries = Map.empty
+      old
     }
 
   // ---- search -------------------------------------------------------
@@ -125,7 +187,8 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
   private var summaries: Map[(ProfileId, Side), Embedding] = Map.empty
 
   private def matchable(p: ProfileId, side: Side): Vector[Fact] =
-    facts.filter(f => f.profile == p && f.side == side &&
+    val cls = identityOf(p).toSet
+    facts.filter(f => cls.contains(f.profile) && f.side == side &&
       f.supersededBy.isEmpty && f.vis != Vis.Private)
 
   private def summary(p: ProfileId, side: Side): Embedding =
@@ -156,6 +219,7 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
   def candidates(q: Query): Vector[Ranked] =
     val holders = facts.filter(f => f.side == q.side && f.supersededBy.isEmpty &&
       f.vis != Vis.Private).map(_.profile).distinct
+      .map(p => identityOf(p).head).distinct              // one person, one candidate
     val passing = holders.filter { p =>
       q.filters.forall { (slug, pred) =>
         matchable(p, q.side).exists(f => f.attr == slug && Pred.holds(pred, f.value))
@@ -203,6 +267,13 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
       case Facts.Assert(p, a, s, v, prov, c, vis) => assert(p, a, s, v, prov, c, vis)
       case Facts.Supersede(id, v, r, prov) => supersede(id, v, r, prov)
       case Facts.ProfileOf(id) => profileOf(id)
+
+  given ident: Handler[Ident] = new:
+    def handle[A](e: Ident[A]): A = e match
+      case Ident.Candidates(p) => linkCandidates(p)
+      case Ident.Request(f, t) => requestLink(f, t)
+      case Ident.Confirm(t, by, prov) => confirmLink(t, by, prov)
+      case Ident.IdentityOf(p) => identityOf(p)
 
   given find: Handler[Find] = new:
     def handle[A](e: Find[A]): A = e match

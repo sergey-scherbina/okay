@@ -158,6 +158,66 @@ class TestMatch extends munit.FunSuite {
     assert(m.register("old@example.com") != p)           // and the old address is a stranger now
   }
 
+  test("identity-x — candidates: identifying attrs only, masked hint, no facts, no values") {
+    var clock = 1000L
+    val m = MemoryMatch(now = () => clock)
+    m.propose(AttrDraft("phone", Kind.Text, "contact phone number", identifying = true))
+    m.propose(AttrDraft("skill", Kind.Text, "what the provider can do"))
+    val old = m.register("master@example.com")
+    m.assert(old, "phone", Side.Offer, Value.VText("+380501112233"), prov("tg", 1, "..."), 1.0, Vis.Matched)
+    m.assert(old, "skill", Side.Offer, Value.VText("welding"), prov("tg", 2, "..."), 1.0, Vis.Public)
+    val fresh = m.register("viber-user@example.com")
+    m.assert(fresh, "phone", Side.Offer, Value.VText("+380501112233"), prov("vb", 1, "..."), 1.0, Vis.Matched)
+    m.assert(fresh, "skill", Side.Offer, Value.VText("welding"), prov("vb", 2, "..."), 1.0, Vis.Public)
+    val hints = m.linkCandidates(fresh)
+    assertEquals(hints, Vector(LinkHint("phone", "m***@e***.com")))  // attr + mask, nothing else
+    // skill matches too — but it is not identifying, so it says nothing
+    assert(!hints.exists(_.attr == "skill"))
+    // and a hint is ALL a stranger gets: no link, separate identities
+    assertEquals(m.identityOf(fresh), Vector(fresh))
+  }
+
+  test("identity-x — the token flow: single use, expiring, right holder only") {
+    var clock = 1000L
+    val m = MemoryMatch(now = () => clock)
+    val old = m.register("old@example.com")
+    val fresh = m.register("new@example.com")
+    val t = m.requestLink(fresh, old).get
+    assertEquals(m.confirmLink("wrong-token", fresh, prov("vb", 5, "...")), None)
+    val stranger = m.register("stranger@example.com")
+    assertEquals(m.confirmLink(t.token, stranger, prov("vb", 5, "...")), None)  // not the requester
+    assertEquals(m.confirmLink(t.token, fresh, prov("vb", 5, "...")), Some(old))
+    assertEquals(m.confirmLink(t.token, fresh, prov("vb", 6, "...")), None)     // single use
+    // expiry
+    val t2 = m.requestLink(fresh, old).get
+    clock += 16 * 60 * 1000
+    assertEquals(m.confirmLink(t2.token, fresh, prov("vb", 7, "...")), None)
+    // the recovery fallback for a dead old channel
+    val m2 = MemoryMatch(hash = "h:" + _, verifyHash = (x, st) => "h:" + x == st)
+    val o2 = m2.register("dead@example.com"); m2.setRecovery(o2, "s3cret")
+    val f2 = m2.register("alive@example.com")
+    assertEquals(m2.linkByRecovery(f2, "dead@example.com", "wrong"), None)
+    assertEquals(m2.linkByRecovery(f2, "dead@example.com", "s3cret"), Some(o2))
+    assertEquals(m2.identityOf(f2).toSet, Set(f2, o2))
+  }
+
+  test("identity-x — the linked class reads as one person") {
+    val m = MemoryMatch()
+    val old = m.register("old@example.com")
+    m.assert(old, "skill", Side.Offer, Value.VText("welding gates"), prov("tg", 1, "..."), 1.0, Vis.Public)
+    val fresh = m.register("new@example.com")
+    m.assert(fresh, "price", Side.Offer, Value.VNum(700), prov("vb", 1, "..."), 1.0, Vis.Public)
+    val t = m.requestLink(fresh, old).get
+    m.confirmLink(t.token, fresh, prov("vb", 2, "..."))
+    // one candidate carrying facts from BOTH profiles
+    val hits = m.candidates(Query(Side.Offer, text = "welding",
+      filters = Vector("price" -> Pred.AtMost(1000))))
+    assertEquals(hits.length, 1)
+    assertEquals(hits.head.disclosed.map(_.attr).toSet, Set("skill", "price"))
+    // and the profile view aggregates too
+    assertEquals(m.profileOf(fresh).get.current.map(_.attr).toSet, Set("skill", "price"))
+  }
+
   test("the tools mirror the operations: a two-side scripted scenario matches end to end") {
     val m = MemoryMatch()
     val t = Tools.table(m)

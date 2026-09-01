@@ -50,6 +50,24 @@ enum Find[+A]:
 object Find:
   def candidates(q: Query): Vector[Ranked] ! Find = effect(Candidates(q))
 
+/** cross-channel identity (match-identity-x): candidates from
+ * identifying facts, the token challenge, the equivalence class.
+ * The token TRAVELS outside this module — through the old channel —
+ * which is exactly why producing it in the new chat proves the link. */
+enum Ident[+A]:
+  case Candidates(p: ProfileId) extends Ident[Vector[LinkHint]]
+  case Request(from: ProfileId, to: ProfileId) extends Ident[Option[LinkToken]]
+  case Confirm(token: String, by: ProfileId, prov: Provenance) extends Ident[Option[ProfileId]]
+  case IdentityOf(p: ProfileId) extends Ident[Vector[ProfileId]]
+
+object Ident:
+  def candidates(p: ProfileId): Vector[LinkHint] ! Ident = effect(Candidates(p))
+  def request(from: ProfileId, to: ProfileId): Option[LinkToken] ! Ident =
+    effect(Request(from, to))
+  def confirm(token: String, by: ProfileId, prov: Provenance): Option[ProfileId] ! Ident =
+    effect(Confirm(token, by, prov))
+  def identityOf(p: ProfileId): Vector[ProfileId] ! Ident = effect(IdentityOf(p))
+
 /** the reranker (stage 2): an LLM reads the need and the top
  * candidates' summaries and orders them — an EFFECT, so tests use a
  * deterministic handler and no network lives in this module (the

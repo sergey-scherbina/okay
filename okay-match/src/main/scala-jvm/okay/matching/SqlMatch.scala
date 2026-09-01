@@ -51,7 +51,7 @@ final class SqlMatch(sql: Sql,
   exec("""CREATE TABLE IF NOT EXISTS match_attrs(
     id BIGINT PRIMARY KEY, slug VARCHAR(255), kind VARCHAR(16),
     description VARCHAR(4000), synonyms VARCHAR(4000),
-    status VARCHAR(300), volatile BOOLEAN)""")
+    status VARCHAR(300), volatile BOOLEAN, identifying BOOLEAN)""")
   exec("""CREATE TABLE IF NOT EXISTS match_profiles(
     uuid VARCHAR(64) PRIMARY KEY, email VARCHAR(255))""")
   exec("""CREATE TABLE IF NOT EXISTS match_facts(
@@ -63,6 +63,11 @@ final class SqlMatch(sql: Sql,
     superseded_by BIGINT, reason VARCHAR(4000))""")
   exec("""CREATE TABLE IF NOT EXISTS match_recovery(
     profile VARCHAR(64) PRIMARY KEY, secret VARCHAR(1000))""")
+  exec("""CREATE TABLE IF NOT EXISTS match_links(
+    a VARCHAR(64), b VARCHAR(64))""")
+  exec("""CREATE TABLE IF NOT EXISTS match_tokens(
+    token VARCHAR(64) PRIMARY KEY, pfrom VARCHAR(64), pto VARCHAR(64),
+    expires BIGINT)""")
   exec("CREATE INDEX IF NOT EXISTS match_facts_attr ON match_facts(attr)")
   exec("CREATE INDEX IF NOT EXISTS match_facts_profile ON match_facts(profile)")
 
@@ -93,7 +98,8 @@ final class SqlMatch(sql: Sql,
       case "Provisional" => Status.Provisional
       case "Established" => Status.Established
       case x => Status.MergedInto(x.stripPrefix("MergedInto:")),
-    r(6) match { case Bool(b) => b; case _ => false })
+    r(6) match { case Bool(b) => b; case _ => false },
+    r(7) match { case Bool(b) => b; case _ => false })
 
   private def valueOf(r: Vector[SqlValue]): Value = s(r(4)) match
     case "num" => Value.VNum(dbl(r(6)))
@@ -118,7 +124,7 @@ final class SqlMatch(sql: Sql,
   // ---- registry -----------------------------------------------------
 
   private def liveAttrs: Vector[AttrDef] =
-    rows("SELECT id, slug, kind, description, synonyms, status, volatile FROM match_attrs")
+    rows("SELECT id, slug, kind, description, synonyms, status, volatile, identifying FROM match_attrs")
       .map(attrOf).filter(a => a.status match
         case Status.MergedInto(_) => false
         case _ => true)
@@ -139,11 +145,12 @@ final class SqlMatch(sql: Sql,
         Vectors.cosine(embed(d.description), embed(a.description)) >= proposeThreshold
     }.getOrElse {
       val a = AttrDef(AttrId(nextAttr), d.slug, d.kind, d.description,
-        d.synonyms, Status.Provisional, d.volatile)
+        d.synonyms, Status.Provisional, d.volatile, d.identifying)
       nextAttr += 1
-      exec("INSERT INTO match_attrs VALUES(?,?,?,?,?,?,?)", Vector(
+      exec("INSERT INTO match_attrs VALUES(?,?,?,?,?,?,?,?)", Vector(
         I64(a.id.n), Text(a.slug), Text(a.kind.toString), Text(a.description),
-        Text(a.synonyms.mkString("\u0001")), Text("Provisional"), Bool(a.volatile)))
+        Text(a.synonyms.mkString("\u0001")), Text("Provisional"), Bool(a.volatile),
+        Bool(a.identifying)))
       a
     }
 
@@ -215,9 +222,76 @@ final class SqlMatch(sql: Sql,
   def profileOf(id: ProfileId): Option[Profile] =
     rows("SELECT email FROM match_profiles WHERE uuid = ?", Vector(Text(id.uuid))) match
       case Vector(Vector(Text(email))) =>
-        val mine = rows(s"SELECT $factCols FROM match_facts WHERE profile = ? ORDER BY id",
-          Vector(Text(id.uuid))).map(factOf)
+        val mine = identityOf(id).flatMap(p =>
+          rows(s"SELECT $factCols FROM match_facts WHERE profile = ? ORDER BY id",
+            Vector(Text(p.uuid))).map(factOf))
         Some(Profile(id, email, mine.filter(_.supersededBy.isEmpty), mine))
+      case _ => None
+
+  // ---- cross-channel identity (match-identity-x) --------------------
+
+  def identityOf(p: ProfileId): Vector[ProfileId] =
+    val all = rows("SELECT a, b FROM match_links").map(r => (s(r(0)), s(r(1))))
+    var cls = Set(p.uuid)
+    var grew = true
+    while grew do
+      val next = cls ++ all.collect {
+        case (a, b) if cls(a) => b
+        case (a, b) if cls(b) => a
+      }
+      grew = next.size != cls.size
+      cls = next
+    cls.toVector.sorted.map(ProfileId(_))
+
+  def linkCandidates(p: ProfileId): Vector[LinkHint] =
+    val identifying = liveAttrs.filter(_.identifying).map(_.slug).toSet
+    if identifying.isEmpty then Vector.empty else
+      val cls = identityOf(p).map(_.uuid).toSet
+      val mine = rows(s"SELECT $factCols FROM match_facts WHERE profile = ? " +
+        "AND superseded_by IS NULL", Vector(Text(p.uuid))).map(factOf)
+        .filter(f => identifying.contains(f.attr))
+      mine.flatMap { f =>
+        rows(s"SELECT $factCols FROM match_facts WHERE attr = ? AND superseded_by IS NULL",
+          Vector(Text(f.attr))).map(factOf)
+          .filter(o => !cls.contains(o.profile.uuid)
+            && Value.text(o.value) == Value.text(f.value))
+          .flatMap(o => rows("SELECT email FROM match_profiles WHERE uuid = ?",
+            Vector(Text(o.profile.uuid))) match
+            case Vector(Vector(Text(e))) => Vector(LinkHint(f.attr, LinkHint.mask(e)))
+            case _ => Vector.empty)
+      }.distinct
+
+  def requestLink(from: ProfileId, to: ProfileId): Option[LinkToken] =
+    val both = rows("SELECT COUNT(*) FROM match_profiles WHERE uuid IN (?, ?)",
+      Vector(Text(from.uuid), Text(to.uuid)))
+    if both != Vector(Vector(I64(2L))) && both != Vector(Vector(I32(2))) then None
+    else
+      val t = LinkToken(java.util.UUID.randomUUID().toString, from, to,
+        now() + 15L * 60 * 1000)
+      exec("INSERT INTO match_tokens VALUES(?,?,?,?)",
+        Vector(Text(t.token), Text(from.uuid), Text(to.uuid), I64(t.expiresAt)))
+      Some(t)
+
+  def confirmLink(token: String, by: ProfileId, prov: Provenance): Option[ProfileId] =
+    rows("SELECT pfrom, pto, expires FROM match_tokens WHERE token = ?",
+      Vector(Text(token))) match
+      case Vector(Vector(Text(f), Text(t), exp)) if f == by.uuid && now() <= lng(exp) =>
+        exec("DELETE FROM match_tokens WHERE token = ?", Vector(Text(token)))
+        exec("INSERT INTO match_links VALUES(?,?)", Vector(Text(f), Text(t)))
+        Some(ProfileId(t))
+      case _ => None
+
+  def linkByRecovery(from: ProfileId, oldEmail: String, secret: String): Option[ProfileId] =
+    rows("SELECT uuid FROM match_profiles WHERE email = ?", Vector(Text(oldEmail))) match
+      case Vector(Vector(Text(u))) =>
+        val ok = rows("SELECT secret FROM match_recovery WHERE profile = ?",
+          Vector(Text(u))) match
+          case Vector(Vector(Text(st))) => verifyHash(secret, st)
+          case _ => false
+        if ok then
+          exec("INSERT INTO match_links VALUES(?,?)", Vector(Text(from.uuid), Text(u)))
+          Some(ProfileId(u))
+        else None
       case _ => None
 
   // ---- search -------------------------------------------------------
@@ -240,7 +314,7 @@ final class SqlMatch(sql: Sql,
       .sum / vol.length).toFloat
 
   def candidates(q: Query): Vector[Ranked] =
-    val pool = matchable(q.side).groupBy(_.profile)
+    val pool = matchable(q.side).groupBy(f => identityOf(f.profile).head)
     val passing = pool.filter { (_, fs) =>
       q.filters.forall { (slug, pred) =>
         fs.exists(f => f.attr == slug && Pred.holds(pred, f.value))
@@ -291,6 +365,13 @@ final class SqlMatch(sql: Sql,
       case Facts.Assert(p, a, sd, v, prov, c, vis) => assert(p, a, sd, v, prov, c, vis)
       case Facts.Supersede(id, v, r, prov) => supersede(id, v, r, prov)
       case Facts.ProfileOf(id) => profileOf(id)
+
+  given ident: Handler[Ident] = new:
+    def handle[A](e: Ident[A]): A = e match
+      case Ident.Candidates(p) => linkCandidates(p)
+      case Ident.Request(f, t) => requestLink(f, t)
+      case Ident.Confirm(t, by, prov) => confirmLink(t, by, prov)
+      case Ident.IdentityOf(p) => identityOf(p)
 
   given find: Handler[Find] = new:
     def handle[A](e: Find[A]): A = e match

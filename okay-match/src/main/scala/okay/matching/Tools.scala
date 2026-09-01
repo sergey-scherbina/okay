@@ -48,6 +48,10 @@ object Tools {
     case Some("hasText") => Pred.HasText(s(j, "s").getOrElse(""))
     case _ => Pred.Is(value(j))
 
+  private def b(j: Json, k: String): Boolean = j match
+    case JObj(fs) => fs.collectFirst { case (`k`, JBool(v)) => v }.getOrElse(false)
+    case _ => false
+
   private def side(x: Option[String]): Side =
     if x.contains("need") then Side.Need else Side.Offer
 
@@ -94,6 +98,15 @@ object Tools {
     ToolSpec("facts_profile",
       "Read a profile's current facts and history — for noticing conflicts mid-chat.",
       strSchema("profile" -> "string")),
+    ToolSpec("ident_candidates",
+      "Does another profile share this profile's identifying facts? Answers attribute + masked hint only.",
+      strSchema("profile" -> "string")),
+    ToolSpec("ident_request",
+      "Mint a link token for the OLD profile; deliver it through the OLD channel, never this chat.",
+      strSchema("from" -> "string", "to" -> "string")),
+    ToolSpec("ident_confirm",
+      "The user typed the token they received on the old channel: confirm the link.",
+      strSchema("token" -> "string", "by" -> "string", "chat" -> "string", "span" -> "string")),
     ToolSpec("find_candidates",
       "Hybrid search: hard filters over typed facts, semantic ranking by text.",
       strSchema("side" -> "string", "text" -> "string")))
@@ -109,7 +122,8 @@ object Tools {
       Json.print(attrJson(m.propose(AttrDraft(
         s(c.args, "slug").getOrElse(""), k,
         s(c.args, "description").getOrElse(""),
-        a(c.args, "synonyms").collect { case JStr(x) => x })))) },
+        a(c.args, "synonyms").collect { case JStr(x) => x },
+        identifying = b(c.args, "identifying"))))) },
     "facts_register" -> { c =>
       Json.print(obj("profile" ->
         JStr(m.register(s(c.args, "email").getOrElse("")).uuid))) },
@@ -143,6 +157,23 @@ object Tools {
           "email" -> JStr(p.email),
           "current" -> JArr(p.current.map(factJson)),
           "history" -> JArr(p.history.map(factJson)))) },
+    "ident_candidates" -> { c =>
+      Json.print(JArr(m.linkCandidates(ProfileId(s(c.args, "profile").getOrElse("")))
+        .map(h => obj("attr" -> JStr(h.attr), "hint" -> JStr(h.hint))).toVector)) },
+    "ident_request" -> { c =>
+      m.requestLink(ProfileId(s(c.args, "from").getOrElse("")),
+        ProfileId(s(c.args, "to").getOrElse(""))) match
+        case None => Json.print(JNull)
+        case Some(t) => Json.print(obj("token" -> JStr(t.token),
+          "to" -> JStr(t.to.uuid), "expiresAt" -> JNum(t.expiresAt.toDouble))) },
+    "ident_confirm" -> { c =>
+      m.confirmLink(s(c.args, "token").getOrElse(""),
+        ProfileId(s(c.args, "by").getOrElse("")),
+        Provenance(s(c.args, "chat").getOrElse(""),
+          d(c.args, "offset").getOrElse(0.0).toLong,
+          s(c.args, "span").getOrElse(""))) match
+        case None => Json.print(JNull)
+        case Some(p) => Json.print(obj("linked" -> JStr(p.uuid))) },
     "find_candidates" -> { c =>
       val q = Query(side(s(c.args, "side")),
         a(c.args, "filters").map(f =>

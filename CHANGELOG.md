@@ -1,5 +1,22 @@
 # Changelog
 
+## match-identity-x — cross-channel identity, without building the hijack
+Completed: 2026-09-01
+
+The registry marks attributes identifying (a phone is, a skill is
+not); only those generate link candidates, and a candidate answer is
+an attribute name plus a masked email — never the value, never the
+other profile's facts, never a link. The link itself is proven by the
+token: minted for the old profile, delivered through the OLD channel
+(the site's job), typed in the new chat — single-use, expiring, right
+holder only; the stage-2 recovery secret is the fallback for a dead
+channel. A confirmed link is an equivalence, not a merge: both
+profiles stay, identityOf answers the class, search folds it into one
+candidate carrying facts from both, profileOf aggregates — log-first
+holds, nothing rewritten. Tools ident_candidates/request/confirm let
+the LLM drive the whole dialogue. 18 tests; the class survives a
+restart on the durable store. specs/match.md is now fully landed.
+
 ## sql-pg-wire — the direct road: Postgres v3 behind the Sql seam
 Completed: 2026-09-01 (landed as 2b03cb3)
 okay-pg, ~400 lines for the whole road and zero dependencies:

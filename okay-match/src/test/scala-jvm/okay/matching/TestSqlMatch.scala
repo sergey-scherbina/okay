@@ -101,6 +101,24 @@ class TestSqlMatch extends munit.FunSuite {
     assertEquals(live.profileOf(master).get.history.length, 2)
   }
 
+  test("identity-x holds on the durable store too") {
+    val m = fresh("identity")
+    m.propose(AttrDraft("phone", Kind.Text, "contact phone", identifying = true))
+    val old = m.register("old@example.com")
+    m.assert(old, "skill", Side.Offer, Value.VText("welding"), prov("tg", 1, "..."), 1.0, Vis.Public)
+    m.assert(old, "phone", Side.Offer, Value.VText("+38050"), prov("tg", 2, "..."), 1.0, Vis.Matched)
+    val nw = m.register("new@example.com")
+    m.assert(nw, "phone", Side.Offer, Value.VText("+38050"), prov("vb", 1, "..."), 1.0, Vis.Matched)
+    assertEquals(m.linkCandidates(nw), Vector(LinkHint("phone", "o***@e***.com")))
+    val t = m.requestLink(nw, old).get
+    assertEquals(m.confirmLink(t.token, nw, prov("vb", 2, "...")), Some(old))
+    assertEquals(m.confirmLink(t.token, nw, prov("vb", 3, "...")), None)   // single use survives in SQL
+    // the class reads as one — and SURVIVES a restart
+    val m2 = fresh("identity")
+    assertEquals(m2.identityOf(nw).toSet, Set(old, nw))
+    assertEquals(m2.profileOf(nw).get.current.map(_.attr).toSet, Set("skill", "phone"))
+  }
+
   test("registry migration: a synonym merge moves the facts, the winner answers") {
     val m = fresh("merge")
     m.propose(AttrDraft("schedule", Kind.Time, "when available"))

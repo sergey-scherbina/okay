@@ -134,8 +134,7 @@ conflicts, asks, supersedes) commutes with offline replay.
   email recovery is a hashed-secret rebind behind a hash/verify SEAM
   (okay-security's Password plugs in at the site — no dependency),
   and without the secret a new address gets a fresh profile, never a
-  hijack. Cross-channel identity (same person, another messenger, no
-  email) stays open in BACKLOG.
+  hijack. Cross-channel identity landed as match-identity-x — see its section below.
 
 ## Cross-channel identity (stage 2 completion: match-identity-x)
 The same person arrives from another messenger with no shared email.
@@ -163,15 +162,15 @@ a stranger nothing.
   the facts live on). Nothing is rewritten — log-first holds.
 
 Behavior:
-- [ ] only identifying attributes generate candidates, and the
+- [x] only identifying attributes generate candidates, and the
       candidate answer carries the attribute name and a masked hint,
       not the value and not the other profile's facts
-- [ ] the token flow links: minted for the old profile, single-use,
+- [x] the token flow links: minted for the old profile, single-use,
       expiring; the wrong token and the expired token refuse; the
       recovery secret links as the fallback
-- [ ] the identity class reads as one: facts asserted on either
+- [x] the identity class reads as one: facts asserted on either
       profile serve one search candidate and one profile view
-- [ ] no hijack by assertion: asserting someone else's phone in a
+- [x] no hijack by assertion: asserting someone else's phone in a
       new chat yields a candidate hint and NOTHING else — no facts,
       no link, no disclosure
 
