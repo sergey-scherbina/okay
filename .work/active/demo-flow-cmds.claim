@@ -1,0 +1,5 @@
+feature/demo-flow-cmds 2026-09-01T20:16:42Z
+agent: claude-code
+heartbeat: 2026-09-01T20:16:42Z
+status: in-progress
+next: flow commands in the offline driver
