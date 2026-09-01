@@ -1,5 +1,0 @@
-feature/demo-chat-match 2026-09-01T17:58:49Z
-agent: claude-code
-heartbeat: 2026-09-01T17:58:49Z
-status: in-progress
-next: matching wired into demo-chat (/match agent turns over okay-match tools)
