@@ -424,6 +424,17 @@ lazy val okayJetty = project
     ),
   )
 
+lazy val okayNetty = project
+  .in(file("okay-netty"))
+  .dependsOn(okayHttp.jvm, okayJetty % Test)
+  .settings(
+    name := "okay-netty",
+    libraryDependencies ++= Seq(
+      "io.netty" % "netty-codec-http" % "4.1.125.Final",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 lazy val okayHttp = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-http"))
@@ -492,7 +503,7 @@ lazy val root = (project in file("."))
     okayCodec.jvm, okayCodec.js, okayLlm.jvm, okayLlm.js,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js,
-    okayHttp.jvm, okayHttp.js, okayJetty,
+    okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)
   .settings(
     name := "okay-root",

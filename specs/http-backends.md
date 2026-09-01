@@ -95,23 +95,29 @@ are used to feed the `Source`, and they stay inside — `Socket` still
 has no `request(n)`, for the reason `specs/http.md` gives.
 
 ## Behavior
-- [ ] the same program runs on every backend: a test written once
-      against `Http` passes with `java.net.http`, Jetty and Netty
-      underneath, which is what having a seam is for
-- [ ] a body still streams on each: a large response is folded chunk by
-      chunk without being materialized
-- [ ] a Jetty WebSocket SERVER runs a `Stage[Frame, Frame, Unit]`, and
-      the JDK client from `okay-http` talks to it — the gap closed, and
-      closed with the session type that already existed
-- [ ] a Netty server does the same, for both REST and WebSocket
-- [ ] NIO: two ends exchange bytes with nothing parked, the completion
-      handler feeding `Async.Await` directly
-- [ ] NIO carries an MCP session — `Mcp.run(Nio.link(conn), serving)`
-      over a raw socket, no HTTP involved
-- [ ] every backend releases what it owns: after the `Resource` scope
-      the port is free and no thread survives
-- [ ] a route that throws is a 500 on every server, as on the built-in
-      one — damage as data does not depend on the backend
+- [x] the same program runs on every backend: `TestBackends` writes one
+      `fetchPerson(http, url)` and one `sayOnce(sockets, url)` and runs
+      them across the matrix — three REST clients, three REST servers,
+      and every WebSocket client against every WebSocket server (six
+      pairs). One suite run many times, not many similar suites, which
+      is the only form of that claim worth making
+- [x] a body still streams on each: 300KB folded chunk by chunk through
+      Jetty's `InputStreamResponseListener` and through Netty's pipeline
+      with NO aggregator on the client side
+- [x] a Jetty WebSocket SERVER runs a `Stage[Frame, Frame, Unit]`, and
+      both the JDK client and Jetty's own talk to it — the gap
+      `specs/http.md` named, closed with the session type that already
+      existed
+- [x] a Netty server does the same, for both REST and WebSocket
+- [x] NIO: two ends exchange bytes with nothing parked, the completion
+      handler feeding `Async.Await` directly; a 300KB write is drained
+      through the partial-write loop
+- [x] NIO carries an MCP session over a bare TCP socket, no HTTP — which
+      makes three transports for okay-mcp with the protocol untouched
+- [x] every backend releases what it owns: after the `Resource` scope
+      the port refuses a connection, on all three servers
+- [x] a route that throws is a 500 on every server, and an unrouted path
+      is a 404 — damage as data does not depend on the backend
 
 ## Decisions
 - **Three backends, three reasons** — chosen because symmetry is not a
@@ -131,6 +137,35 @@ has no `request(n)`, for the reason `specs/http.md` gives.
 - **Servers are `Resource`, clients too** — chosen because all three
   own threads. Rejected: returning a bare client and documenting a
   `close()`, which is a leak with instructions.
+
+## Results
+NIO: 5 tests. Jetty: 7. Netty: 12, of which 4 are the cross-backend
+matrix. No warnings anywhere.
+
+Two things cost time, and both are interop rather than design.
+
+**Scala's mixin forwarders against a reflection-driven Java API.**
+Jetty picks a listener's callbacks by reflecting over the methods its
+class declares, and refuses one declaring both `onWebSocketText` and
+`onWebSocketPartialText` — one or the other, not both. Scala 3 emits
+mixin forwarders for every default method of an implemented Java
+interface, so a Scala listener declares them all and Jetty rejects it
+with "Cannot replace previously assigned [TEXT Handler]". Ten lines of
+Java declare exactly the four callbacks wanted, with a `Sink` interface
+— all abstract, nothing to forward — for Scala to implement. Expect
+this with any API that reflects over declared methods.
+
+**A server that could not see a POST body.** Netty's request conversion
+built its `Request` from the method, uri and headers and forgot the
+content, so every route saw an empty body. One test posts, and it
+caught it. The lesson is that a conversion between two request types
+wants a test per FIELD, not per happy path.
+
+One divergence from this spec, corrected here rather than in the code:
+`Netty.serve` answers `io.netty.channel.Channel ! Resource` — aliased
+`NettyChannel` in the source, because `okay.Channel` is also in scope
+and the ambiguity is real — and it composes two `Resource`s, boss and
+worker groups, rather than one.
 
 ## Out of scope
 - **Serving from JS.** Unchanged: no server in a browser, and Node's
