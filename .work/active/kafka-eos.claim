@@ -1,0 +1,11 @@
+feature/kafka-eos 2026-09-01T21:20:00Z
+agent: claude-code (session 75625ecc)
+heartbeat: 2026-09-01T21:20:00Z
+status: in-progress
+next: exactly-once on the Kafka interop sink — enable.idempotence on the
+  producer (effectively-once to Kafka), isolation.level=read_committed on
+  the consumer (the reader half), and a transaction(transactionalId){ tx =>
+  tx.append(...) } scope over a cached transactional producer: commit on
+  return, abort on throw. Spec Results note; live tests skip when the
+  broker is absent.
+files: okay-kafka KafkaStore.scala, test TestKafkaEos.scala (new); specs/persist.md
