@@ -1,5 +1,12 @@
 # Changelog
 
+## mcp-completion — the completer is a function the Serving carries
+Completed: 2026-09-01
+completion/complete both ends: Complete => Vector[String] as an
+Option (capability follows the function), 100-cap with hasMore/total,
+context narrowing, resource uris passed through; the live probe got
+an answer from the reference server. 4 tests + probe; matrix 1016.
+
 ## ws-close-halfduplex — the last unchecked item in specs/http.md
 Completed: 2026-09-01
 
