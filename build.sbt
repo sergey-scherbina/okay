@@ -488,6 +488,15 @@ lazy val okayRag = crossProject(JVMPlatform, JSPlatform)
       "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
     ),
   )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+  // the pgvector adapter rides the Sql seam (either driver serves);
+  // JVM leg only — the JS leg keeps its pure reference store
+  .jvmConfigure(_.dependsOn(okaySql.jvm, okayPg % Test))
 
 /** two-sided matching over LLM-structured chats (specs/match.md):
  * log-first, an attribute registry against vocabulary drift, facts

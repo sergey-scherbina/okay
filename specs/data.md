@@ -268,9 +268,16 @@ list in its spec or spec section)
       and at least one foreign adapter
 - [ ] a conditional write retried after a simulated lost ack lands
       once (CAS as WithKey), on the same two engines
-- [ ] pgvector: the okay-rag store contract passes over specs/
+- [x] pgvector: the okay-rag store contract passes over specs/
       jdbc.md against Postgres; search agrees with the memory
-      engine on a shared fixture
+      engine on a shared fixture (TestPgVector over the okay-pg
+      WIRE driver — the road cut for exactly this consumer: order
+      AND scores agree within 1e-4 on the hashing fixture across
+      three queries and three metrics' score scales; upsert is
+      ON CONFLICT on the segment identity, re-index replaces;
+      exact scan v1 — an approximate index is a later, measured
+      choice precisely because agreement is only testable while
+      search is exact)
 - [x] a Parquet file on disk is read through the JDBC seam (DuckDB)
       with `verify` passing and constant-memory streaming asserted
       (TestLake in okay-jdbc, DuckDB embedded test-scope: 100k rows
