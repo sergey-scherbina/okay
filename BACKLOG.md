@@ -47,6 +47,11 @@
       to every WebSocket server"). Third sighting, same load/port
       signature; still environmental. Owner (okay-http/netty lane):
       the fix is the isolate-under-load loop, not a per-run retry.
+      FOURTH sighting 2026-09-01 (pg-sslmode matrix: same test,
+      ClosedChannelException, 1 of 12; okay-pg was the only changed
+      module) — green in isolation immediately after (4/4). Pattern
+      is firmly environmental; escalate to the owner lane for the
+      isolate-under-load fix rather than re-triaging per landing.
 
 ## Correctness and the core (specs/sim.md, specs/typestate.md)
 - [ ] wire-typestate — PState at the protocol seams
