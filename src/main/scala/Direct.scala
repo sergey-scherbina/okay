@@ -457,8 +457,6 @@ object Direct:
         // becomes ONE mark over CanTry's seam. The catch bodies stay
         // pure (marks there remain v2); finalizers likewise.
         if fin.isDefined then refuse(tr, "with a finalizer (direct-try v1)")
-        if cases.exists(c => hasMark(c.rhs)) then
-          refuse(tr, "with a mark inside a catch body (direct-try v1)")
         // literal branches make the try's type a UNION of singletons
         // (0 | 7): join it by hand — the sub-block reifies at the join
         def joinUnions(t: TypeRepr): TypeRepr = t.dealias match
@@ -480,10 +478,24 @@ object Direct:
               ${ raw }.flatMap((x: B) => $M.pure[T](x.asInstanceOf[T]))
             }.asTerm
           }
+          // catch bodies may carry marks too: a marked rhs goes
+          // through the same pipeline at the join type; a pure rhs
+          // stays a cheap pure-wrap. Marked GUARDS remain refused.
+          def caseBody(c: CaseDef): Term =
+            c.guard.foreach(g => if hasMark(g) then refuse(g, "in a catch guard"))
+            if hasMark(c.rhs) then
+              tpe2(joinUnions(c.rhs.tpe.widen)) { [H] => (_: Type[H]) ?=>
+                val hp = pipeline[F, H](c.rhs.changeOwner(Symbol.spliceOwner), M)
+                if TypeRepr.of[H] =:= TypeRepr.of[T] then hp.asTerm
+                else '{
+                  given Monad[F] = $M
+                  ${ hp }.flatMap((x: H) => $M.pure[T](x.asInstanceOf[T]))
+                }.asTerm
+              }
+            else '{ $M.pure[T](${ c.rhs.asExprOf[T] }) }.asTerm
           val handler: Term = '{ (e: Throwable) =>
             ${ Match('{ e }.asTerm,
-                 cases.map(c => CaseDef.copy(c)(c.pattern, c.guard,
-                   '{ $M.pure[T](${ c.rhs.asExprOf[T] }) }.asTerm))
+                 cases.map(c => CaseDef.copy(c)(c.pattern, c.guard, caseBody(c)))
                  :+ CaseDef(Wildcard(), None, '{ throw e }.asTerm)
                ).asExprOf[F[T]] }
           }.asTerm

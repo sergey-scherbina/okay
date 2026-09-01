@@ -5,6 +5,28 @@ import okay.Direct.*
 /** The flat block over Monadic: specs/direct-macro.md */
 class TestDirect extends munit.FunSuite {
 
+  test("direct-try v2: a MARKED catch body runs its own effects") {
+    type W = Writer % String
+    val prog: Int ! W = direct {
+      try
+        Writer("before").reflect
+        if true then throw new IllegalStateException("boom")
+        1
+      catch case _: IllegalStateException =>
+        Writer("recovered").reflect
+        7
+    }
+    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))
+    assertEquals(ws, Seq("before", "recovered"))
+    assertEquals(a, 7)
+  }
+
+  test("direct-try v2: a marked catch GUARD keeps the refusal") {
+    val e = compileErrors(
+      "import okay.Direct.*; okay.Direct.direct[Option] { try 1 catch { case _: Exception if Option(true).reflect => 2 } }(using summon[Monad[Option]]) ")
+    assert(e.contains("catch guard"), e)
+  }
+
   test("direct-try: a strict monad catches everything — construction IS the run") {
     def boom(n: Int): Int = throw new IllegalStateException(s"boom $n")
     val r = direct[Option] {
@@ -41,13 +63,12 @@ class TestDirect extends munit.FunSuite {
     intercept[RuntimeException](Writer.run[String, Int, Pure](rethrow).runWith)
   }
 
-  test("direct-try v1 edges are refused NAMED: finalizer; a mark in a catch body") {
+  test("direct-try edges: the finalizer refusal stands; marked catch bodies GRADUATED") {
     val e1 = compileErrors(
       "okay.Direct.direct[Option] { try Option(1).reflect catch { case _: Exception => 0 } finally () }")
     assert(e1.contains("finalizer"), e1)
-    val e2 = compileErrors(
-      "okay.Direct.direct[Option] { try Option(1).reflect catch { case _: Exception => Option(0).reflect } }")
-    assert(e2.contains("catch body"), e2)
+    // the catch-body refusal became a feature (direct-try v2): the
+    // marked-handler test above asserts the semantics
   }
 
 
