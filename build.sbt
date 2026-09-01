@@ -519,6 +519,8 @@ lazy val okayHttp = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-http"))
   .dependsOn(okayMcp)
+  // the resumable GET stream journals pushes into a topic (specs/mcp.md v7)
+  .jvmConfigure(_.dependsOn(okayPersist.jvm))
   .settings(
     name := "okay-http",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,

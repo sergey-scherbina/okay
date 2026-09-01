@@ -105,9 +105,6 @@ it needs `CanBlock`; `translate` forwards into `Async` instead and
 works where nothing may park.
 
 ## Out of scope
-- resumability (`Last-Event-ID` and per-event ids on the SSE stream):
-  a reconnecting client replays from the server's own record, which a
-  server has to KEEP — a durability question, not a transport one
 - elicitation (`elicitation/create`): the server asking the human, not
   the program — it needs a UI contract this library has no opinion on
 - completion (`completion/complete`): argument autocompletion for
@@ -446,6 +443,41 @@ POST route on that backend therefore saw `Body.Empty`, and an MCP
 route answered every message as though it were damaged. The body is
 read on the REST path only — the same function also builds the request
 a WebSocket UPGRADE is dispatched on, where reading would consume it.
+
+## v7 — the resumable GET stream (2026-09-01)
+
+The durability question v4 parked, answered by the module that
+answers durability questions now: pushes are journaled into an
+okay-persist topic (one MCP session = one key — the same discipline
+ui-durable set), the SSE frame carries `id: <offset>`, and
+`Last-Event-ID` is literally `read(from = id + 1)`: replay the missed
+records for that key, then tail the live end (the stage-0 batch+poll
+loop, until persist-stage1's streaming helper). A fresh GET with no
+`Last-Event-ID` starts at the LIVE END — history is for resumers, not
+for joiners. `TooEarly` (history compacted from under a resumer)
+restarts the replay at `begin`, which is the same contract
+Sessions.records already holds.
+
+The client's `open()` becomes a loop: it tracks the last id it saw
+and, when the stream drops without the link closing, re-GETs with
+`Last-Event-ID` — so a dropped stream costs the messages nothing.
+
+```scala
+McpHttp.routed(serving, journal = Some(topic))   // journaled pushes
+// without a journal: today's live-only behavior, unchanged
+```
+
+- [ ] a resumed GET replays exactly the missed pushes, in order, then
+      the live ones
+- [ ] a fresh GET (no Last-Event-ID) sees only pushes made after it
+      opened
+- [ ] every frame on a journaled stream carries `id:` equal to its
+      topic offset
+- [ ] two sessions' pushes do not bleed on resume (keys filter)
+- [ ] without a journal the route behaves exactly as v6 (the tests of
+      v6 still pass unchanged)
+- [ ] the client auto-resumes: after a dropped stream, the missed
+      pushes arrive on the SAME notifications channel
 
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server
