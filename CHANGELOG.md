@@ -1,5 +1,14 @@
 # Changelog
 
+## py-worker — N processes is the parallelism; the GIL is then irrelevant
+Completed: 2026-09-01 (landed as b8c76ab)
+PyWorkers: N resident processes behind the same handler shape a
+single worker has — programs cannot tell. Dispatch proven by pid
+distinctness (determinism over stopwatch); module state lives WITH
+its worker (seed-and-draw); the supervisor replaces a corpse COLD
+before rethrowing, the retry lands live. One program, both engines,
+unchanged. okay-py stages 0+1 shipped. Matrix 1406.
+
 ## py-subprocess — the other half of the world's numerics, as a handler
 Completed: 2026-09-01 (landed as ff683b6)
 okay-py stage 0: PyEval operations (named functions only — no

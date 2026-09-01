@@ -1,9 +1,6 @@
 # Sprint
 
 ## Doing
-- py-worker — okay-py stage 1: the worker pool (N processes is the
-  parallelism, the GIL is then irrelevant), the supervisor replacing
-  dead workers cold, the two-engine acceptance (specs/py.md)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
