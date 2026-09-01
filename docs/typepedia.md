@@ -487,7 +487,8 @@ types differ); make the VALUE conditional inside one installer
 instead: `providing[Log](if debug then verbose else quiet)`.
 The consumer one-liner is `wire[A]` (Reader's ask): `wire[Db].q`
 pulls the nearest given — E10's eagerness working FOR us — and a
-missing given is still a compile error. And the generic
+missing given is still a compile error. The full story —
+vocabulary, theory, boundaries — is [capabilities](capabilities.md). And the generic
 combinators run over context functions: `sequence(Seq[Env ?=> A]):
 Env ?=> Seq[A]` via `ctxMonad` (core), F inferred. Adding a door is two lines:
 

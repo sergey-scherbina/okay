@@ -1,5 +1,20 @@
 # Changelog
 
+## ctx-capabilities-doc — the whole story, told in one place
+Completed: 2026-09-01
+docs/capabilities.md: what a context function is (three mechanical
+facts, E8/E10), the four-word vocabulary (doors, provide,
+providing/and, wire) with the rules learned the hard way, the
+zero-framework DI story (type as contract, compile-time resolution,
+given-scopes as the object graph, environment-vs-resource), the
+theory the compiler runs (Reader monad/applicative as verified
+identities, the graded <*> chain, ctxMonad for the generic
+combinators, the given-import gotcha), the boundaries as kept
+refutations (bare-receiver method syntax, forbidden boxes,
+Conversions, linear rebinding, the blocked tuple provide), and the
+three-worlds payoff page. Linked from README, docs index, guide §9
+and typepedia. Every claim traces to E1-E19 or a running test.
+
 ## queue-shape — the two queue bridges, no new seam
 Completed: 2026-09-01
 Per-message-ack brokers (RabbitMQ/AMQP, SQS, NATS, Pulsar, MQTT) are

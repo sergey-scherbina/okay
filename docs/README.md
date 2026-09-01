@@ -20,6 +20,11 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   measurements. Seven chapters, Okay as the running example.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
+- **[Capabilities](capabilities.md)** — context functions as the
+  wiring: doors, `provide`/`providing`, `wire`, the zero-framework
+  dependency-injection story, the theory the compiler runs (the
+  Reader monad, with the elaborator as its interpreter), and the
+  exact boundaries — every claim traced to a compiled experiment.
 - **[The cast that could not go, and how it went](existentials.md)** —
   six encodings tried against the assertion behind `Writer.tell`, what
   the compiler said to each, and the bytecode showing why five of them

@@ -264,6 +264,7 @@ Start here:
 | [User guide](docs/guide.md) | the concepts, layer by layer — control, effects, streams, the upper modules |
 | [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
 | [Typepedia](docs/typepedia.md) | every core type and typeclass, with its meaning and the recurring gotchas |
+| [Capabilities](docs/capabilities.md) | context functions as the wiring: doors, provide, wire — dependency injection with the container deleted |
 | [The theory of Okay](docs/theory/index.md) | the textbook: the theories the library stands on, the scientists, the papers, and why each design decision |
 
 Going deeper:

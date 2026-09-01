@@ -365,4 +365,5 @@ keep it honest — the environment-vs-resource line, no newtypes for
 strings, the eager-auto-application trap — plus the two-line recipe
 for adding a door to any API are in [typepedia](typepedia.md); the
 linear-context patterns and the experimental base in
-specs/context-functions.md.
+specs/context-functions.md; the whole story, told in one place with
+its theory and boundaries, is [capabilities](capabilities.md).
