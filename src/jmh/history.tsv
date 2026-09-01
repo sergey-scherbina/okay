@@ -112,57 +112,57 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-08-31	5e6f1d1	na	chunkbuf-self-specialize	na	na	na	REFUTED, and UNSOUND — the fifth alternative tried. opaque type ChunkBuf[A] = Array[A] with an inline apply + summonFrom compiles, specializes a direct ChunkBuf[Long](n) to long[], and falls back to Object[] for a generic caller which reads back correctly. Then hand the generically-built buffer to code that knows A = Long: ClassCastException [Ljava.lang.Object; cannot be cast to [J, because inside the defining file ChunkBuf[Long] REDUCES to Array[Long] and that is false for what the fallback built. Same failure as the match type, same cause: the BUFFER's type made to depend on A. The shipped specialization avoids it by answering Chunk[A] = ArraySeq[A], a type that tolerates either backing honestly
 2026-08-31	bdb517a	7.0	chunk-taggedbuf	44.7	92.3	2.07	The idea that WORKED where two type-level ones did not: an EXISTENTIAL backing (Array[?]) with the ClassTag beside it. The backing type claims nothing, so nothing can be false about it — which is exactly what crashed both opaque ChunkBuf[A]=Array[A] and the match type when a generically built buffer met code that knew A=Long. Writing dispatches via ScalaRunTime.array_update. Per 64 elements at Long: 44.7 vs 92.3 boxed (2.07x); at String 67.5 vs 63.8, so the dispatch is free where there is nothing to unbox. tabulate is still better where it applies (14.9) — this is for where it cannot: fromIterator and rechunk hold the buffer across pulls from an external source, and both now specialize. End to end okayChunksTransform 12.477+-0.462 against 16.891 before any of this work, okayChunks 22.0 against 23.6
 2026-08-31	5865021	7.0	chunkbuf-unified	14.8	92.3	6.2	SIMPLIFICATION that was also a speedup. Two buffer types (opaque ChunkBuf over Array[AnyRef], plus a TaggedBuf class over Array[?]) collapsed into ONE: opaque type ChunkBuf[A] = Array[?]. Opaque so there is no runtime object (a value class would nearly do; opaque has no boxing corner cases), existential so the type claims nothing and the two type-level attempts' unsoundness cannot recur. apply is inline + summonFrom, so a plain ChunkBuf[Long](n) is now specialized BY DEFAULT: 14.8ns against 92.3 before, and indistinguishable from the tabulate that used to be needed for it (14.7) — so tabulate was deleted, it had no production caller left. Reference path unchanged: 66.9 vs 64.5 for a ClassTag'd array
-2026-08-31	foldSum	36071	ns/10k	Fold[Long,Long] via Chunks.fold
-2026-08-31	foldGeneric	36817	ns/10k	same, over materialized chunks — producing is not the cost
-2026-08-31	foldInlined	2547	ns/10k	inline step, same chunks — 14x
-2026-08-31	loopSumViaChunk	2598	ns/10k	hand loop through Chunk.apply
-2026-08-31	loopSum	3345	ns/10k	hand loop on the raw long[]
-2026-08-31	foldLeftSum	7017	ns/10k	inline foldLeft, step at the call site — 5.4x over fold
-2026-08-31	foldLeftNumeric	8245	ns/10k	same via Numeric.plus — the typeclass survives inlining
-2026-08-31	foldLeftCount	11327	ns/10k	against fold+Fold.count 59.0us
-2026-08-31	boxAccumulatorOnly	45230	ns/10k	accumulator generic, element read direct — the whole cost
-2026-08-31	boxElementOnly	3765	ns/10k	element boxed, accumulator a long — nearly free
-2026-08-31	foldSum-specialized	9081	ns/10k	Chunks.fold routing to Fold.sumLong — was 38184
-2026-08-31	foldCount-specialized	6863	ns/10k	via Fold.count: OfLong — was 59016
-2026-08-31	foldDataGeneric	34134	ns/10k	a plain Fold[Long,Long], nothing to inline
-2026-08-31	foldDataSpecialized	7817	ns/10k	Fold.long, inline ctor — 4.4x; 27490 before the ctor was inline
-2026-08-31	boxAccumulatorOnly	29369	ns/10k	clean rerun: the accumulator is the cost
-2026-08-31	boxElementOnly	2824	ns/10k	clean rerun: the element read is not
-2026-08-31	aggCount	19500	ns/10k	was 37803 — Aggregator.fold hands over a Fold.OfLong
-2026-08-31	aggSum	18498	ns/10k	was 40838
-2026-08-31	aggMean	37254	ns/10k	was 87036 — flat Mean instead of a Tuple2
-2026-08-31	aggVariance	74746	ns/10k	was 90904 — flat Variance instead of a Tuple3
-2026-08-31	loopMean	18573	ns/10k	floor: two primitive locals
-2026-08-31	loopVariance	49591	ns/10k	floor: Welford in three locals
-2026-08-31	aggCount-nodelegate	5123	ns/10k	was 19500 — the aggregator IS its own fold
-2026-08-31	aggSum-nodelegate	7053	ns/10k	was 18498
-2026-08-31	writerSpecialized	70565	ns/10k	against 108597 generic — 35%, bars disjoint
-2026-08-31	streamSpecialized	139895	ns/10k	against 157186 generic — bars OVERLAP, dispatch reverted
-2026-08-31	okayWriter-gadt	197969	ns/10k	GADT Say wrapper — against 203216 for the identity encoding: no cost
-2026-08-31	tellTag-isolated	74995	ns/10k	build+fold alone showed +25% (59807 identity) — the wrong fraction to decide on
-2026-08-31	writerSpecialized-gadt	95912	ns/10k	against 108386 generic — the fold dispatch still helps, 12% not 35%
-2026-08-31	tdigestShipped	120746	ns/10k	was 70030290 — buffered adds, batch compress: 580x
-2026-08-31	cmsShipped	191128	ns/10k	was 2282516 — Array[Array[Long]] in place: 12x (floor 68740)
-2026-08-31	hllShipped	163834	ns/10k	was 489298 — Array[Byte] in place: 3x (floor 36221)
-2026-08-31	buildOnly	21008	ns/doc	Parse.build alone — 13% of parseFull (157646); lexElementwise 74718
-2026-08-31	jsonToCst	37317	ns/doc	95% of okayJsonRead (39128) — the whole gap is scan+drive+build
-2026-08-31	jsonProject	5624	ns/doc	CST to Json value: 14%
-2026-08-31	jsonDecode	970	ns/doc	Schema fold: 2.5%, and faster than circeRead (1331) on its own
-2026-08-31	bpeScan	306701	ns/3.3KB	was 423999 — one pass, one map lookup per pair, array symbols
-2026-08-31	indexKeyword	75680	ns/8.5KB	was 157930 — accumulate directly instead of combine(p, one(s))
-2026-08-31	keywordTerms	41051	ns/8.5KB	the tokenization floor: 54% of the index now, 26% before
+2026-08-31			foldSum	36071			ns/10k; Fold[Long,Long] via Chunks.fold
+2026-08-31			foldGeneric	36817			ns/10k; same, over materialized chunks — producing is not the cost
+2026-08-31			foldInlined	2547			ns/10k; inline step, same chunks — 14x
+2026-08-31			loopSumViaChunk	2598			ns/10k; hand loop through Chunk.apply
+2026-08-31			loopSum	3345			ns/10k; hand loop on the raw long[]
+2026-08-31			foldLeftSum	7017			ns/10k; inline foldLeft, step at the call site — 5.4x over fold
+2026-08-31			foldLeftNumeric	8245			ns/10k; same via Numeric.plus — the typeclass survives inlining
+2026-08-31			foldLeftCount	11327			ns/10k; against fold+Fold.count 59.0us
+2026-08-31			boxAccumulatorOnly	45230			ns/10k; accumulator generic, element read direct — the whole cost
+2026-08-31			boxElementOnly	3765			ns/10k; element boxed, accumulator a long — nearly free
+2026-08-31			foldSum-specialized	9081			ns/10k; Chunks.fold routing to Fold.sumLong — was 38184
+2026-08-31			foldCount-specialized	6863			ns/10k; via Fold.count: OfLong — was 59016
+2026-08-31			foldDataGeneric	34134			ns/10k; a plain Fold[Long,Long], nothing to inline
+2026-08-31			foldDataSpecialized	7817			ns/10k; Fold.long, inline ctor — 4.4x; 27490 before the ctor was inline
+2026-08-31			boxAccumulatorOnly	29369			ns/10k; clean rerun: the accumulator is the cost
+2026-08-31			boxElementOnly	2824			ns/10k; clean rerun: the element read is not
+2026-08-31			aggCount	19500			ns/10k; was 37803 — Aggregator.fold hands over a Fold.OfLong
+2026-08-31			aggSum	18498			ns/10k; was 40838
+2026-08-31			aggMean	37254			ns/10k; was 87036 — flat Mean instead of a Tuple2
+2026-08-31			aggVariance	74746			ns/10k; was 90904 — flat Variance instead of a Tuple3
+2026-08-31			loopMean	18573			ns/10k; floor: two primitive locals
+2026-08-31			loopVariance	49591			ns/10k; floor: Welford in three locals
+2026-08-31			aggCount-nodelegate	5123			ns/10k; was 19500 — the aggregator IS its own fold
+2026-08-31			aggSum-nodelegate	7053			ns/10k; was 18498
+2026-08-31			writerSpecialized	70565			ns/10k; against 108597 generic — 35%, bars disjoint
+2026-08-31			streamSpecialized	139895			ns/10k; against 157186 generic — bars OVERLAP, dispatch reverted
+2026-08-31			okayWriter-gadt	197969			ns/10k; GADT Say wrapper — against 203216 for the identity encoding: no cost
+2026-08-31			tellTag-isolated	74995			ns/10k; build+fold alone showed +25% (59807 identity) — the wrong fraction to decide on
+2026-08-31			writerSpecialized-gadt	95912			ns/10k; against 108386 generic — the fold dispatch still helps, 12% not 35%
+2026-08-31			tdigestShipped	120746			ns/10k; was 70030290 — buffered adds, batch compress: 580x
+2026-08-31			cmsShipped	191128			ns/10k; was 2282516 — Array[Array[Long]] in place: 12x (floor 68740)
+2026-08-31			hllShipped	163834			ns/10k; was 489298 — Array[Byte] in place: 3x (floor 36221)
+2026-08-31			buildOnly	21008			ns/doc; Parse.build alone — 13% of parseFull (157646); lexElementwise 74718
+2026-08-31			jsonToCst	37317			ns/doc; 95% of okayJsonRead (39128) — the whole gap is scan+drive+build
+2026-08-31			jsonProject	5624			ns/doc; CST to Json value: 14%
+2026-08-31			jsonDecode	970			ns/doc; Schema fold: 2.5%, and faster than circeRead (1331) on its own
+2026-08-31			bpeScan	306701			ns/3.3KB; was 423999 — one pass, one map lookup per pair, array symbols
+2026-08-31			indexKeyword	75680			ns/8.5KB; was 157930 — accumulate directly instead of combine(p, one(s))
+2026-08-31			keywordTerms	41051			ns/8.5KB; the tokenization floor: 54% of the index now, 26% before
 2026-08-31	83bd266		cmpMerge-okaySource	210.1	111.2	1.89	Source.merge (Writer walk) vs the raw okayChannelMerge, f1 3+5, 2x500 us/op
 2026-08-31	83bd266		cmpMerge-okayChunks-bound64	10.8	10.7	1.01	bounding the merge channel at 64 costs nothing measurable (+/-0.14 vs +/-0.29) — the default is now bounded
 2026-08-31	83bd266		cmpMerge-okaySource-bound64	232.7	210.1	1.11	same question on the source merge: bars overlap (+/-20.4 vs +/-9.7), no effect demonstrated; bounded default kept
-2026-09-01	indexParseOnly	376119	ns/8.5KB	Code.source alone: 60% of indexFull (628658)
-2026-09-01	indexFoldOnly	221461	ns/8.5KB	Symbols.of over a parsed tree: 35%
-2026-09-01	indexFoldOnly-mutable	244109	ns/8.5KB	REFUTED: mutable buckets bought nothing (245400 before)
-2026-09-01	clusterTransport-remote	37914000	ns/100chunks	shipped: BufferedReader+PrintWriter text plumbing
-2026-09-01	clusterTransport-blockingBytes	24399000	ns/100chunks	bytes + ONE flush — later shown to be the flush policy, not the bytes
-2026-09-01	clusterTransport-nio	24698000	ns/100chunks	AsynchronousSocketChannel: a WASH against blockingBytes — parking is free
-2026-09-01	clusterTransport-codecOnly	25884000	ns/100chunks	JSON encode+decode alone: the codec dominates; CBOR is the next lever
-2026-09-01	clusterTransport-remoteBytes	38395000	ns/100chunks	byte rewrite with flush-per-send: EQUAL to shipped — rewrite reverted
-2026-09-01	indexFoldNoRefs	189588	ns/8.5KB	QUIET run, +-5.4: the identifier branch is only 19% of the walk
-2026-09-01	indexFoldOnly-quiet	234960	ns/8.5KB	+-14.9 — so 81% is traversal machinery (path :+, defHead, span, recursion)
-2026-09-01	blockingBytesFlushed	50787000	ns/100chunks	+-9.5, SLOWER than shipped 38.2: flush-per-line hope closed directionally
-2026-09-01	nio-flaky	58953000	ns/100chunks	+-48.6, 3 fork failures on the sum assert — possible data loss on close, see BACKLOG
+2026-09-01			indexParseOnly	376119			ns/8.5KB; Code.source alone: 60% of indexFull (628658)
+2026-09-01			indexFoldOnly	221461			ns/8.5KB; Symbols.of over a parsed tree: 35%
+2026-09-01			indexFoldOnly-mutable	244109			ns/8.5KB; REFUTED: mutable buckets bought nothing (245400 before)
+2026-09-01			clusterTransport-remote	37914000			ns/100chunks; shipped: BufferedReader+PrintWriter text plumbing
+2026-09-01			clusterTransport-blockingBytes	24399000			ns/100chunks; bytes + ONE flush — later shown to be the flush policy, not the bytes
+2026-09-01			clusterTransport-nio	24698000			ns/100chunks; AsynchronousSocketChannel: a WASH against blockingBytes — parking is free
+2026-09-01			clusterTransport-codecOnly	25884000			ns/100chunks; JSON encode+decode alone: the codec dominates; CBOR is the next lever
+2026-09-01			clusterTransport-remoteBytes	38395000			ns/100chunks; byte rewrite with flush-per-send: EQUAL to shipped — rewrite reverted
+2026-09-01			indexFoldNoRefs	189588			ns/8.5KB; QUIET run, +-5.4: the identifier branch is only 19% of the walk
+2026-09-01			indexFoldOnly-quiet	234960			ns/8.5KB; +-14.9 — so 81% is traversal machinery (path :+, defHead, span, recursion)
+2026-09-01			blockingBytesFlushed	50787000			ns/100chunks; +-9.5, SLOWER than shipped 38.2: flush-per-line hope closed directionally
+2026-09-01			nio-flaky	58953000			ns/100chunks; +-48.6, 3 fork failures on the sum assert — possible data loss on close, see BACKLOG
