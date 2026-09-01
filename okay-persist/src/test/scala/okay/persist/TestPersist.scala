@@ -1,6 +1,15 @@
 package okay.persist
 
 import munit.FunSuite
+import okay.codec.Schema
+
+/** the evolution fixture: v1 had only the id, v2 adds a count */
+final case class EvV1(id: String)
+final case class Ev(id: String, n: Int)
+object Ev:
+  given Schema[EvV1] = Schema.derived
+  given Schema[Ev] = Schema.derived
+import Ev.given
 
 /**
  * The contract every engine must honor (specs/persist.md, Behavior).
@@ -15,6 +24,13 @@ abstract class StoreSuite extends FunSuite:
   /** a policy tight enough that a handful of appends triggers
    * retention (engine-specific granularity) */
   def tinyRetention: Policy
+
+  /** a compacted-topic policy under which ~30 small appends leave
+   * the engine something to actually compact (the file engine
+   * compacts closed segments only, so it needs segments to roll);
+   * the tiny retainBytes must be IGNORED — compaction and retention
+   * are exclusive */
+  def tinyCompact: Policy = Policy(compact = true, retainBytes = 100)
 
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
   private def str(b: Array[Byte]): String = new String(b, "UTF-8")
@@ -105,7 +121,133 @@ abstract class StoreSuite extends FunSuite:
       assert(p.segments > 0)
   }
 
+  test("compaction keeps the latest record per key; a refold from begin equals the fold of full history") {
+    val t = mkStore().topic("kv", partitions = 1, policy = tinyCompact)
+    val keys = Vector("a", "b", "c")
+    for i <- 0 until 30 do t.append(0, bytes(keys(i % 3)), bytes(s"$i"), Ack.Durable)
+    // retention must NOT have run on a compacted topic, despite the
+    // tiny retainBytes: dropping from the front deletes quiet keys
+    assertEquals(t.begin(0), 0L, "retention ran on a compacted topic")
+
+    def foldOf(rs: Vector[Record]): Map[String, String] =
+      rs.foldLeft(Map.empty[String, String])((m, r) => m.updated(str(r.key), str(r.value)))
+    val before = records(t.read(0, 0L, 100))
+    val full = foldOf(before)
+
+    t.compact(0)
+
+    val after = records(t.read(0, t.begin(0), 100))
+    assert(after.length < before.length, "compaction dropped nothing")
+    assertEquals(foldOf(after), full, "the refold of the compacted partition diverged")
+    // offsets are preserved (holes, not renumbering) and stay ordered
+    assertEquals(after.map(_.offset), after.map(_.offset).sorted)
+    assert(after.forall(r => before.exists(b => b.offset == r.offset && str(b.value) == str(r.value))))
+    assertEquals(t.begin(0), 0L)
+    assertEquals(t.end(0), 30L, "compaction moved end")
+    // the sequence continues densely after compaction
+    assertEquals(t.append(0, bytes("d"), bytes("30"), Ack.Durable), 30L)
+  }
+
+  test("typed view: Schema at the edge, damage is data naming the offset") {
+    val t = mkStore().topic("typed", partitions = 1)
+    val v = t.of[Ev]()
+    v.append(0, bytes("k"), Ev("x", 1), Ack.Durable)
+    // a raw, unenveloped record lands between the typed ones
+    t.append(0, bytes("k"), bytes("garbage-bytes"), Ack.Durable)
+    t.append(0, bytes("k"), Array[Byte](1, 2), Ack.Durable)
+    v.append(0, bytes("k"), Ev("y", 2), Ack.Durable)
+
+    v.read(0, 0L, 10) match
+      case Typed.Read.TooEarly(b) => fail(s"unexpected TooEarly($b)")
+      case Typed.Read.Records(ds) =>
+        assertEquals(ds.length, 4)
+        ds(0) match
+          case Typed.Decoded.Ok(0L, _, _, a) => assertEquals(a, Ev("x", 1))
+          case other => fail(s"expected Ok at 0, got $other")
+        ds(1) match
+          case Typed.Decoded.Bad(1L, e) => assert(e.nonEmpty)
+          case other => fail(s"expected Bad at 1, got $other")
+        ds(2) match
+          case Typed.Decoded.Bad(2L, e) => assert(e.contains("envelope"), e)
+          case other => fail(s"expected Bad at 2, got $other")
+        ds(3) match
+          case Typed.Decoded.Ok(3L, _, _, a) => assertEquals(a, Ev("y", 2))
+          case other => fail(s"expected Ok at 3, got $other")
+  }
+
+  test("a v1 record reads under v2 through the upcast; an unknown version is an error value") {
+    val t = mkStore().topic("evolving", partitions = 1)
+    Typed[EvV1](t, version = 1, upcasts = Map.empty).append(0, bytes("k"), EvV1("old"), Ack.Durable)
+    val v2 = Typed[Ev](t, version = 2,
+      upcasts = Map(1 -> Typed.step[EvV1, Ev](o => Ev(o.id, 0))))
+    v2.append(0, bytes("k"), Ev("new", 5), Ack.Durable)
+    // a record from the future, and one this reader has no road to
+    t.append(0, bytes("k"), Typed.seal(3, Array[Byte](0x60.toByte)), Ack.Durable)
+
+    val ds = v2.read(0, 0L, 10) match
+      case Typed.Read.Records(ds) => ds
+      case Typed.Read.TooEarly(b) => fail(s"unexpected TooEarly($b)")
+    ds(0) match
+      case Typed.Decoded.Ok(0L, _, _, a) => assertEquals(a, Ev("old", 0))
+      case other => fail(s"the upcast road failed: $other")
+    ds(1) match
+      case Typed.Decoded.Ok(1L, _, _, a) => assertEquals(a, Ev("new", 5))
+      case other => fail(s"the current version failed: $other")
+    ds(2) match
+      case Typed.Decoded.Bad(2L, e) =>
+        assert(e.contains("version 3") && e.contains("2"), e)
+      case other => fail(s"the future version must be an error value, got $other")
+
+    // an old version with NO upcast on the road is an error, not a guess
+    val noRoad = Typed[Ev](t, version = 2, upcasts = Map.empty)
+    noRoad.read(0, 0L, 1) match
+      case Typed.Read.Records(Vector(Typed.Decoded.Bad(0L, e))) =>
+        assert(e.contains("no upcast"), e)
+      case other => fail(s"expected Bad(no upcast), got $other")
+  }
+
+  test("a consumer commits offsets and resumes from its commit after a restart") {
+    val s = mkStore()
+    val t = s.topic("events")
+    (0 until 10).foreach(i => t.append(0, Array.empty, bytes(s"v$i"), Ack.Durable))
+
+    val first = Offsets(s)
+    assertEquals(first.committed("g", "events", 0), None)
+    assertEquals(first.lag("g", t), 10L)
+    first.commit("g", "events", 0, 7L)
+    assertEquals(first.committed("g", "events", 0), Some(7L))
+    assertEquals(first.lag("g", t), 3L)
+
+    // the restart: a fresh instance folds the offsets topic anew
+    val second = Offsets(s)
+    assertEquals(second.committed("g", "events", 0), Some(7L),
+      "the commit did not survive the restart")
+    second.commit("g", "events", 0, 10L)
+    assertEquals(Offsets(s).lag("g", t), 0L)
+    // groups are independent
+    assertEquals(second.committed("other", "events", 0), None)
+  }
+
+  test("snapshots: put and latest over a compacted keyed topic") {
+    val s = mkStore()
+    val sn = Snapshots(s)
+    assertEquals(sn.latest(bytes("sess")), None)
+    sn.put(bytes("sess"), bytes("s1"))
+    val off = sn.put(bytes("sess"), bytes("s2"))
+    sn.put(bytes("other"), bytes("o1"))
+
+    val r = sn.latest(bytes("sess")).getOrElse(fail("no snapshot"))
+    assertEquals(r.offset, off)
+    assertEquals(str(r.value), "s2")
+    // compaction reclaims the superseded state, the latest survives
+    sn.topic.compact(0)
+    assertEquals(sn.latest(bytes("sess")).map(x => str(x.value)), Some("s2"))
+    // the Schema'd pair, for consumers whose state has one
+    sn.putValue(bytes("n"), Ev("z", 9))
+    assertEquals(sn.latestValue[Ev](bytes("n")).map(_._2), Some(Right(Ev("z", 9))))
+  }
+
 class TestMemoryStore extends StoreSuite:
   def mkStore(): Store = MemoryStore()
-  // memory counts a frame as bytes + 24 overhead; ~10 records fit
+  // memory counts a frame as bytes + 28 overhead; ~9 records fit
   def tinyRetention: Policy = Policy(retainBytes = 340)

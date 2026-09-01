@@ -38,8 +38,12 @@ enum Ack:
 
 /** per-topic policy: an agent journal (retain forever, never
  * compact) and a metrics stream (a day, who cares) are both honest
- * topics. `compact` and `replicas` are declared now, honored from
- * stages 1 and 2 (specs/persist.md, Staging). */
+ * topics. `compact` and retention are exclusive: a compacted topic
+ * never drops segments from the front — that would delete the
+ * latest value of every quiet key, the exact records compaction
+ * keeps — so `compact = true` switches `retainBytes` off and
+ * `Topic.compact` is the space reclaimer. `replicas` is declared
+ * now, honored from stage 2 (specs/persist.md, Staging). */
 final case class Policy(segmentBytes: Long = 64L * 1024 * 1024,
                         retainBytes: Long = Long.MaxValue,
                         compact: Boolean = false,
@@ -64,9 +68,20 @@ trait Topic:
   /** the first retained offset (retention moves it forward) */
   def begin(partition: Int): Long
 
-  /** the next offset to be assigned; `end - begin` records are
-   * readable, and a reader that has consumed to `end` is caught up */
+  /** the next offset to be assigned; a reader that has consumed to
+   * `end` is caught up (offsets between `begin` and `end` may have
+   * gaps once compaction has run) */
   def end(partition: Int): Long
+
+  /** keep the latest record per key, dropping the superseded ones
+   * (the force-compact admin call): offsets and `begin` are
+   * preserved, no surviving record changes, `end` does not move —
+   * the sequence just grows holes. A fold from `begin` of the
+   * compacted partition equals the fold of the full history for any
+   * last-write-wins-per-key fold, which is the snapshot story.
+   * Meaningful for keyed topics; unkeyed records share the empty
+   * key and collapse to the last one. */
+  def compact(partition: Int): Unit
 
   /** keyed convenience: route by key hash — same key, same
    * partition, per-key order for free */

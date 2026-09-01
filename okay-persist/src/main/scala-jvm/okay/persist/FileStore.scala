@@ -31,18 +31,24 @@ import scala.jdk.CollectionConverters.*
  * deleted.
  *
  * Layout: `<root>/<topic>/<partition>/<base offset, 20 digits>.log`.
- * Frame: `[len:int][crc:int][timestamp:long][keyLen:int][key][value]`
- * where `len` is the body length (timestamp onward) and the CRC
- * covers exactly the body.
+ * Frame v2: `[len:int][crc:int][offset:long][timestamp:long]
+ * [keyLen:int][key][value]` where `len` is the body length (offset
+ * onward) and the CRC covers exactly the body. v1 frames had no
+ * offset field — the offset was base plus position, which works
+ * only while offsets are dense; compaction punches holes, so from
+ * v2 the frame says which record it is. The engine writes v2 and
+ * reads both; a v1 ACTIVE segment found on recovery is closed and
+ * a fresh v2 segment rolled, so no segment ever mixes formats.
  */
 object FileStore:
   val Magic = 0x4F4B5053 // "OKPS"
-  val Format = 1
+  val Format = 2
 
   def open(root: Path): FileStore = new FileStore(root)
 
   private val FrameHeader = 8            // len + crc
-  private val BodyFixed = 12             // timestamp + keyLen
+  private val BodyFixedV1 = 12           // timestamp + keyLen
+  private val BodyFixedV2 = 20           // offset + timestamp + keyLen
 
   private def crcOf(body: ByteBuffer): Int =
     val c = new CRC32C
@@ -55,6 +61,7 @@ final class FileStore(root: Path) extends Store:
   private final class Segment(val path: Path, val base: Long):
     var size = 0L
     var count = 0L          // maintained for the ACTIVE segment only
+    var format = Format     // per segment: v1 segments stay readable
 
   private final class Part(topicName: String, val partition: Int, policy: Policy):
     val dir: Path = root.resolve(topicName).resolve(partition.toString)
@@ -71,10 +78,10 @@ final class FileStore(root: Path) extends Store:
       b.putInt(partition).putLong(base)
       b.array()
 
-    /** validates the header; returns its length. A newer format is
-     * refused loudly with the path — the one failure here that is
-     * not damage and must not truncate. */
-    private def readHeader(buf: ByteBuffer, path: Path): Int =
+    /** validates the header; returns (format version, header length).
+     * A newer format is refused loudly with the path — the one
+     * failure here that is not damage and must not truncate. */
+    private def readHeader(buf: ByteBuffer, path: Path): (Int, Int) =
       def refuse(what: String) =
         throw IllegalStateException(s"$path: $what — not a segment of $topicName/$partition")
       if buf.remaining < 12 then refuse("no header")
@@ -88,38 +95,52 @@ final class FileStore(root: Path) extends Store:
       if buf.remaining < 12 then refuse("bad header")
       buf.getInt // partition, informational
       buf.getLong // base, authoritative copy is the filename
-      buf.position
+      (v, buf.position)
 
     /** walks frames from the buffer's position; calls `f` per valid
      * record (returning false stops early); returns the position
-     * after the last VALID frame */
-    private def scan(buf: ByteBuffer, base: Long)
+     * after the last VALID frame. v1 frames derive their offset as
+     * base plus position (dense by construction); v2 frames carry it. */
+    private def scan(buf: ByteBuffer, base: Long, format: Int)
                     (f: (Long, Long, Array[Byte], Array[Byte]) => Boolean): Int =
+      val bodyFixed = if format >= 2 then BodyFixedV2 else BodyFixedV1
       var validEnd = buf.position
-      var offset = base
+      var derived = base
       var go = true
       while go && buf.remaining >= FrameHeader do
         val mark = buf.position
         val len = buf.getInt
         val crc = buf.getInt
-        if len < BodyFixed || len > buf.remaining then go = false
+        if len < bodyFixed || len > buf.remaining then go = false
         else
           val body = buf.slice(buf.position, len)
           if crcOf(body.duplicate) != crc then go = false
           else
+            val offset = if format >= 2 then body.getLong else derived
             val ts = body.getLong
             val keyLen = body.getInt
-            if keyLen < 0 || keyLen > len - BodyFixed then go = false
+            if keyLen < 0 || keyLen > len - bodyFixed then go = false
             else
               val key = new Array[Byte](keyLen)
               body.get(key)
-              val value = new Array[Byte](len - BodyFixed - keyLen)
+              val value = new Array[Byte](len - bodyFixed - keyLen)
               body.get(value)
               buf.position(mark + FrameHeader + len)
               validEnd = buf.position
               go = f(offset, ts, key, value)
-              offset += 1
+              derived += 1
       validEnd
+
+    /** one v2 frame, ready to write */
+    private def frameOf(offset: Long, ts: Long,
+                        key: Array[Byte], value: Array[Byte]): ByteBuffer =
+      val body = ByteBuffer.allocate(BodyFixedV2 + key.length + value.length)
+      body.putLong(offset).putLong(ts).putInt(key.length).put(key).put(value)
+      body.flip()
+      val crc = crcOf(body.duplicate)
+      val frame = ByteBuffer.allocate(FrameHeader + body.remaining)
+      frame.putInt(body.remaining).putInt(crc).put(body).flip()
+      frame
 
     private def mapOf(seg: Segment): ByteBuffer =
       val ch = FileChannel.open(seg.path, StandardOpenOption.READ)
@@ -140,20 +161,22 @@ final class FileStore(root: Path) extends Store:
           s.size = Files.size(p)
           s
         }
-        // headers of the closed segments: validated, nothing else read
+        // headers of the closed segments: validated, versions kept
         segments.init.foreach { s =>
           val ch = FileChannel.open(s.path, StandardOpenOption.READ)
-          try readHeader(ch.map(FileChannel.MapMode.READ_ONLY, 0, math.min(s.size, 4096)), s.path)
+          try s.format =
+            readHeader(ch.map(FileChannel.MapMode.READ_ONLY, 0, math.min(s.size, 4096)), s.path)._1
           finally ch.close()
         }
         // the last segment is where a crash lives: count the valid
         // frames, truncate the torn tail, continue appending after it
         val last = segments.last
         val buf = mapOf(last)
-        val start = readHeader(buf, last.path)
+        val (v, start) = readHeader(buf, last.path)
+        last.format = v
         buf.position(start)
         var n = 0L
-        val validEnd = scan(buf, last.base) { (_, _, _, _) => n += 1; true }
+        val validEnd = scan(buf, last.base, v) { (_, _, _, _) => n += 1; true }
         channel = FileChannel.open(last.path, StandardOpenOption.WRITE)
         if validEnd < last.size then
           channel.truncate(validEnd)
@@ -161,6 +184,9 @@ final class FileStore(root: Path) extends Store:
           last.size = validEnd
         channel.position(last.size)
         last.count = n
+        // an active segment in an older format is closed as it stands
+        // and a fresh one rolled: no segment ever mixes frame formats
+        if v < Format then newSegment(endUnsafe)
 
     private def newSegment(base: Long): Unit =
       if channel != null then { channel.force(false); channel.close() }
@@ -173,33 +199,34 @@ final class FileStore(root: Path) extends Store:
       s.size = header.length
       segments :+= s
 
-    /** whole segments from the front, never the active one */
+    /** whole segments from the front, never the active one; a
+     * compacted topic never retains away — compaction is exclusive
+     * with retention (Policy) */
     private def retain(): Unit =
-      while segments.map(_.size).sum > policy.retainBytes && segments.length > 1 do
+      while !policy.compact &&
+        segments.map(_.size).sum > policy.retainBytes && segments.length > 1 do
         Files.delete(segments.head.path)
         segments = segments.tail
 
     def begin: Long = synchronized(segments.head.base)
     def end: Long = synchronized(endUnsafe)
+    // the active segment is dense from its base (appends assign
+    // base + count and compaction never touches it), so this holds
+    // even after compaction leaves holes in the closed segments
     private def endUnsafe: Long = segments.last.base + segments.last.count
 
     def append(key: Array[Byte], value: Array[Byte], ack: Ack): Long = synchronized:
-      val body = ByteBuffer.allocate(BodyFixed + key.length + value.length)
-      body.putLong(System.currentTimeMillis()).putInt(key.length).put(key).put(value)
-      body.flip()
-      val crc = crcOf(body.duplicate)
-      val frame = ByteBuffer.allocate(FrameHeader + body.remaining)
-      frame.putInt(body.remaining).putInt(crc).put(body).flip()
-
+      val frameSize = FrameHeader + BodyFixedV2 + key.length + value.length
       val active = segments.last
-      if active.size + frame.remaining > policy.segmentBytes && active.count > 0 then
+      if active.size + frameSize > policy.segmentBytes && active.count > 0 then
         newSegment(endUnsafe)
         retain()
       val seg = segments.last
       val off = seg.base + seg.count
+      val frame = frameOf(off, System.currentTimeMillis(), key, value)
       while frame.hasRemaining do channel.write(frame)
       if ack != Ack.Received then channel.force(false)
-      seg.size += frame.limit
+      seg.size += frameSize
       seg.count += 1
       off
 
@@ -215,8 +242,8 @@ final class FileStore(root: Path) extends Store:
           val pastWant = (seg eq segments.last) && want >= seg.base + seg.count
           if need > 0 && !pastWant then
             val buf = mapOf(seg)
-            buf.position(readHeader(buf, seg.path))
-            scan(buf, seg.base) { (off, ts, k, v) =>
+            buf.position(readHeader(buf, seg.path)._2)
+            scan(buf, seg.base, seg.format) { (off, ts, k, v) =>
               if off >= want then
                 out += Record(off, ts, k, v)
                 need -= 1
@@ -224,6 +251,47 @@ final class FileStore(root: Path) extends Store:
               need > 0
             }
         Topic.Read.Records(out.result())
+
+    /** keep the latest record per key across the CLOSED segments,
+     * atomic-rename shape: survivors to a temporary file, fsync,
+     * rename over the head segment, only then delete the superseded
+     * ones. A crash in the window leaves segments whose records
+     * reads already skip — every survivor carries a later or equal
+     * offset than what the leftovers hold, and a read serves
+     * offsets monotonically. */
+    def compact(): Unit = synchronized:
+      if segments.length > 1 then
+        val closed = segments.init
+        val latest = scala.collection.mutable.LinkedHashMap
+          .empty[scala.collection.immutable.ArraySeq[Byte], Record]
+        for seg <- closed do
+          val buf = mapOf(seg)
+          buf.position(readHeader(buf, seg.path)._2)
+          scan(buf, seg.base, seg.format) { (off, ts, k, v) =>
+            latest(scala.collection.immutable.ArraySeq.unsafeWrapArray(k)) =
+              Record(off, ts, k, v)
+            true
+          }
+        val survivors = latest.values.toVector.sortBy(_.offset)
+        val head = closed.head
+        val tmp = dir.resolve("compact.tmp")   // not *.log: recovery ignores it
+        val ch = FileChannel.open(tmp, StandardOpenOption.CREATE,
+          StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)
+        try
+          val hdr = ByteBuffer.wrap(headerBytes(head.base))
+          while hdr.hasRemaining do ch.write(hdr)
+          for r <- survivors do
+            val f = frameOf(r.offset, r.timestamp, r.key, r.value)
+            while f.hasRemaining do ch.write(f)
+          ch.force(false)
+        finally ch.close()
+        Files.move(tmp, head.path,
+          java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+          java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        closed.tail.foreach(s => Files.delete(s.path))
+        val ns = new Segment(head.path, head.base)
+        ns.size = Files.size(head.path)
+        segments = ns +: Vector(segments.last)
 
     def statsOf: Store.PartitionStats = synchronized:
       Store.PartitionStats(partition, segments.head.base, endUnsafe,
@@ -241,6 +309,7 @@ final class FileStore(root: Path) extends Store:
       parts(partition).read(from, max)
     def begin(partition: Int): Long = parts(partition).begin
     def end(partition: Int): Long = parts(partition).end
+    def compact(partition: Int): Unit = parts(partition).compact()
 
   private var byName = Vector.empty[FileTopic]
 

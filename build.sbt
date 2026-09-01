@@ -296,7 +296,9 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayPersist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-persist"))
-  .dependsOn(okayCodec)
+  // the core for the streaming reads (Chunk ! Produce + Async, the
+  // JdbcInterop shape); the codec for the typed Schema view
+  .dependsOn(okay, okayCodec)
   .settings(
     name := "okay-persist",
     libraryDependencies ++= Seq(
@@ -357,7 +359,9 @@ lazy val okayRag = crossProject(JVMPlatform, JSPlatform)
 lazy val okayAgent = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-agent"))
-  .dependsOn(okayLlm, okayRag)
+  // okay-persist backs the durable journal: intent and completion
+  // are records of a keyed topic (specs/persist.md, stage 1)
+  .dependsOn(okayLlm, okayRag, okayPersist)
   .settings(
     name := "okay-agent",
     libraryDependencies ++= Seq(
