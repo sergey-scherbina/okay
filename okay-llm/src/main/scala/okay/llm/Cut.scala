@@ -61,4 +61,25 @@ object Cut {
               .flatMap(_ => go(rest, i + 1))
       }
     go(tokens, 0)
+
+  // ── the capability door (specs/context-functions.md, ctx-prompts)
+  // ADDITIVE: guarded/cut/checked stay. The prompt becomes ambient;
+  // a validator holds no name, and nesting cuts to the NEAREST guard.
+
+  /** the boundary with an ambient prompt */
+  def guard[A](gen: Prompt[Either[Violation, A]] ?=> A ! (Writer % String + (Delim + Async)))
+  : Either[Violation, A] ! (Writer % String + Async) =
+    guarded[A](p => gen(using p))
+
+  /** abort to the nearest guard — no prompt in hand */
+  def violation[A, X](v: Violation)(using p: Prompt[Either[Violation, A]])
+  : X ! (Writer % String + (Delim + Async)) =
+    cut[A, X](p)(v)
+
+  /** `checked`, prompt ambient */
+  def watched[A](tokens: Unit ! (Writer % String + Async))
+                (check: (Int, String) => Option[Violation])
+                (using p: Prompt[Either[Violation, A]])
+  : Unit ! (Writer % String + (Delim + Async)) =
+    checked[A](p, tokens)(check)
 }

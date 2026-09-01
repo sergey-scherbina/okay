@@ -43,7 +43,7 @@ Every claim below was compiled, not assumed:
   happened. A pre-typer compiler plugin could; that road is noted,
   not taken.
 
-## ctx-prompts — implicit prompts for Scope and Cut (IMPLEMENTED HERE)
+## ctx-prompts — implicit prompts for Scope and Cut (SHIPPED)
 
 Scope and Cut thread their `Prompt` by hand. The context form makes
 the prompt a capability: nesting gives "exit to the NEAREST scope"
@@ -72,16 +72,16 @@ object Cut:     // ADDITIVE — guarded/cut/checked stay
                 (using p: Prompt[Either[Violation, A]]): Unit ! Guarded[A]
 ```
 
-- [ ] `bounded { ... exit(v) ... }` exits without naming a prompt;
+- [x] `bounded { ... exit(v) ... }` exits without naming a prompt;
       two nested `mark`s: `exit` reaches the INNER (E8 semantics at
       the API)
-- [ ] a bound outer prompt still crosses the inner scope — the
+- [x] a bound outer prompt still crosses the inner scope — the
       multi-prompt capability is kept, now opt-in
-- [ ] `Cut.guard { watched(tokens)(check) }` — the validator holds
+- [x] `Cut.guard { watched(tokens)(check) }` — the validator holds
       no prompt; behavior identical to the explicit `guarded` form
-- [ ] every existing explicit-form test passes unchanged (additive)
+- [x] every existing explicit-form test passes unchanged (additive)
 
-## obs-traced-routes — `Tracer ?=> Route` (IMPLEMENTED HERE)
+## obs-traced-routes — `Tracer ?=> Route` (SHIPPED)
 
 specs/obs.md decided "the current span is handler state, not an
 effect". Between an effect row and hand-threading there is a third
@@ -101,12 +101,12 @@ The span covers the route's ANSWER (the Response is ready), not the
 body's streaming — body-level spans are the child spans the route
 opens itself; stated, not hidden.
 
-- [ ] a request with a traceparent through a Traced.route: the root
+- [x] a request with a traceparent through a Traced.route: the root
       span carries the inbound trace id and the route's name; child
       spans opened via the ambient tracer parent correctly
-- [ ] a STORED `Tracer ?=> Route` value installs at two different
+- [x] a STORED `Tracer ?=> Route` value installs at two different
       tracers and parents to each — deferred requirement as a value
-- [ ] an untraced route is untouched (additive)
+- [x] an untraced route is untouched (additive)
 
 ## Filed (BACKLOG slugs, each with its gate)
 

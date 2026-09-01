@@ -45,4 +45,23 @@ object Scope {
   /** the common one-scope shape: push + run */
   def scoped[A](body: okay.Prompt[A] => A ! Row): A ! Dialog =
     run(push(body))
+
+  // ── the capability door (specs/context-functions.md, ctx-prompts)
+  // ADDITIVE: the explicit forms above stay the floor. The prompt
+  // becomes ambient; nesting resolves `exit` to the NEAREST scope
+  // (inner using-params shadow outer — E8-verified), and a BOUND
+  // prompt still crosses boundaries: multi-prompt kept, opt-in.
+
+  /** install a scope whose prompt is ambient in the body */
+  def mark[A](body: okay.Prompt[A] ?=> A ! Row): A ! Row =
+    val p = Delim.prompt[A]
+    Delim.push(p)(body(using p))
+
+  /** exit the nearest enclosing scope — or a named one, by binding */
+  def exit[A, R](value: R)(using p: okay.Prompt[R]): A ! Row =
+    Delim.abort[R, A, Dialog](p)(value)
+
+  /** the one-scope capability form: mark + run */
+  def bounded[A](body: okay.Prompt[A] ?=> A ! Row): A ! Dialog =
+    run(mark(body))
 }
