@@ -1,4 +1,0 @@
-lane: kafka-repair
-owner: fable-ctx
-started: 2026-09-01
-scope: live proof that the Repair road holds over the real Kafka engine — foreign-producer garbage patched/skipped/aborted; spec note
