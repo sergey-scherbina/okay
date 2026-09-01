@@ -143,9 +143,12 @@ stated so the "cache the 404" question has one answer.
       hit/miss/eviction counts in `stats` match the scenario
 - [x] negative caching: an absent answer (None) is cached under the
       same budget and counted as a hit while fresh
-- [ ] write-through with specs/jdbc.md: invalidate runs AFTER
-      commit (ordering asserted); the stale window between commit
-      and invalidate is demonstrated and documented, not denied
+- [x] write-through with specs/jdbc.md: invalidate runs AFTER
+      commit (ordering asserted on a probing cache); the WRONG
+      ordering's resurrection bug is demonstrated over H2 — a
+      reader between invalidate and commit re-caches the old truth
+      indefinitely, which is WHY the ordering is the rule; and the
+      honest commit-to-invalidate window is shown, not denied
 - [x] regime 1 view: fold of a compacted keyed topic serves
       `latest`; `lag` equals end minus consumed; appends move it;
       a rebuilt view (cold start refold) agrees with the warm one

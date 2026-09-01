@@ -339,6 +339,13 @@ lazy val okayCache = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "okay-cache",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
+  // regime 2's write-through test drives H2 through the Sql seam
+  .jvmConfigure(_.dependsOn(okayJdbc % Test))
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
+  )
   .jvmSettings(
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
