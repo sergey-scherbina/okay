@@ -43,8 +43,6 @@
 ## okay-cache (specs/cache.md)
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
-- [ ] sql-pg-copy — COPY through the wire: the bulk-load posture
-      (pairs jdbc-bulk-load); the wire already frames it
 - [ ] sql-pg-node — the cross-platform transport leg: the same
       protocol from Node (the non-JVM openness acceptance)
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:

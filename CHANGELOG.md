@@ -1,5 +1,19 @@
 # Changelog
 
+## sql-pg-copy — the bulk-load posture on the free engine
+Completed: 2026-09-01 (landed as merge; box in specs/sql.md)
+copyIn speaks the simple-protocol COPY dance (CopyInResponse /
+CopyData / CopyDone) with the text format's escapes proven
+round-trip (tab, newline, backslash, NULL); a thousand rows land
+in one command. The load-id posture where plain Postgres has no
+per-file load history: a loads REGISTRY whose claim row commits IN
+ONE TRANSACTION with the data — the retry answers AlreadyLoaded,
+and a crash between COPY and commit (tested by killing the
+connection mid-load) rolls back claim AND data together, so the
+retry lands exactly once overall: WithKey at batch granularity,
+made physical. sql.md now has one open box: the non-JVM consumer
+(sql-pg-node). Merge read alone: exit 0. Full matrix green.
+
 ## typed-bad-repair — damaged records ask
 Completed: 2026-09-01 (landed as 0a321aa)
 Conditions' first consumer outside the core: Repair in okay-persist
