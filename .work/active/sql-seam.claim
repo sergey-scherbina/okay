@@ -1,5 +1,6 @@
-slug: sql-seam
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: okay-sql — the Sql driver trait (SqlValue/Col, Async), typed layer (rows/params/verify/transact) once against it; okay-jdbc as the first driver passing the jdbc.md behavior list (H2, no-DDL user); specs: sql.md, jdbc.md
-files: okay-sql/** (new), okay-jdbc/**, build.sbt (tail), docs/modules/*
+feature/sql-seam 2026-09-01T15:30:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-01T15:30:00Z
+status: in-progress
+done-so-far:
+next: okay-sql module (Sql trait + Typed layer, cross-built), JdbcSql driver, jdbc.md behavior list on H2
