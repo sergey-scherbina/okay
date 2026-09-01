@@ -320,9 +320,20 @@ Append-only makes backup boring, which is the point:
   offset before the damage; a snapshot copy bounds how much
   history a restore must replay (the WAL+checkpoint shape, told a
   third time).
-- a DOCTOR tool (filed: persist-backup) runs the recovery scan
-  against a BACKUP — CRCs, header chains — answering "is this
-  backup restorable" before anyone needs it to be.
+- a DOCTOR tool (SHIPPED, persist-backup) runs the recovery scan
+  against a BACKUP — CRCs, header chains, offset climbs — answering
+  "is this backup restorable" before anyone needs it to be. It is
+  deliberately an INDEPENDENT reader of the documented segment
+  format: a second implementation double-checks the writer instead
+  of inheriting its bugs. Verdict rule: a torn tail on the LAST
+  segment is the normal crash artifact (restorable, named); damage
+  in a CLOSED segment condemns the copy — closed segments never
+  change. Backup.copy/restore live on the BLOB side of the seam
+  (okay.blob.Backup — persist cannot depend on blob without cycling
+  through http): incremental by "same size = already there", the
+  newest file per directory stays home until it rolls, restore is
+  placing files back for the ordinary startup path — proven end to
+  end with the doctor certifying the restored copy.
 
 Replication (stage 2) is availability, not backup: an epoch fence
 protects against split-brain, not against `rm -rf` or a bad
