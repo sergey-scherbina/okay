@@ -1,5 +1,11 @@
 # Changelog
 
+## security-oidc — user login from parts on the shelf
+Completed: 2026-09-01
+Discovery, login url (nonce), callback validating the id_token into
+a Principal; at_hash keeps spliced access tokens out; the forgery
+battery refuses each attack by name. Matrix 1049.
+
 ## spec-audit-fixes — the audit's seven gaps closed in the specs
 Completed: 2026-09-01
 Three specs born: tls.md (one transport seam, sslmode vocabulary,
