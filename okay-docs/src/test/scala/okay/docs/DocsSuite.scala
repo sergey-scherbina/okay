@@ -1,6 +1,6 @@
 package okay.docs
 
-import okay.{!, +, Async, Chunk, Handler, Produce}
+import okay.{!, +, Async, Chunk, Produce, Stream}
 import okay.given
 import okay.codec.Schema
 import munit.FunSuite
@@ -22,20 +22,22 @@ abstract class DocsSuite extends FunSuite:
   /** a fresh store per test */
   def mkDocs(): Docs[Person]
 
-  def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
+  /** cross-platform runner: these programs are Run-only, so the
+   * drive completes inline — no CanBlock, so the suite runs on JS
+   * and Native (the TestCache precedent) */
+  def run[A](prog: A ! Async): A =
+    Async.runAsync(prog).value match
+      case Some(t) => t.get
+      case None => fail("the test program did not complete synchronously")
 
   def collect[A](s: Chunk[A] ! (Produce + Async)): List[A] =
-    import okay.!.*
-    def go(rest: Chunk[A] ! (Produce + Async), acc: List[Chunk[A]]): List[Chunk[A]] =
-      (rest.resume: @unchecked) match
-        case Pure(_) => acc.reverse
-        case Effect(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => (summon[Handler[Async]].handle(a): Unit); acc.reverse
-          case Right(c) => (c.asInstanceOf[Chunk[A]] :: acc).reverse
-        case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => go(k(summon[Handler[Async]].handle(a)), acc)
-          case Right(c) => go(k(c), c.asInstanceOf[Chunk[A]] :: acc)
-    go(s, Nil).flatten
+    val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
+    def go(rest: Chunk[A] ! (Produce + Async)): Vector[A] ! Async =
+      S.uncons(rest).flatMap {
+        case None => okay.pure(Vector.empty)
+        case Some((c, more)) => go(more).map(c.toVector ++ _)
+      }
+    run(go(s)).toList
 
   test("put then get round-trips; versions are monotone per document") {
     val d = mkDocs()
