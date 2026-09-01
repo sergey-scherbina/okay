@@ -1,6 +1,0 @@
-feature/security-es256 2026-09-01T12:00:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-01T12:00:00Z
-status: in-progress
-done-so-far:
-next: spec section first, then Es256 pure dance + Crypto seam ECDSA + Jwt keys + Jwks EC

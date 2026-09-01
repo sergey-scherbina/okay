@@ -1,5 +1,13 @@
 # Changelog
 
+## security-es256 — the raw-vs-DER dance, danced
+Completed: 2026-09-01 (landed as 9995966)
+Es256 is the conversion alone — pure, total both ways, shared, its
+battery on JS too (the build's := became += for that). EcPublic/
+EcPair keys, the key still decides the algorithm with three kinds in
+the ring, Jwks learns kty:EC, Oidc gains ES256 IdPs for free.
+Merge read alone: exit 0. Matrix green.
+
 ## security-oidc — user login from parts on the shelf
 Completed: 2026-09-01 (landed as 4951cd1; the release entry went out
 one commit early again — a refused fast-forward followed by a `;`
