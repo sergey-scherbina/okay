@@ -374,6 +374,31 @@ route serves POST-with-a-JSON-answer, and answers 405 to GET. A server
 that needs to PUSH over HTTP needs a streaming response in okay-http
 first; the same server pushes fine over stdio and WebSocket today.
 
+## v5 — the acceptance run (2026-09-01)
+
+Everything so far tested this implementation against itself. The one
+thing no amount of that answers is whether our reading of the protocol
+matches the ecosystem's, so: a live run against the reference server
+(`@modelcontextprotocol/server-everything`, over stdio, spawned by
+npx), skipped when node is not there — the same bargain okay-agent's
+TestLive makes with a model.
+
+What is under test is not their server's behaviour but OUR assumptions:
+that the handshake we send is accepted, that a real `tools/list`
+decodes into `ToolSpec`s, that a real tool call comes back as text our
+`Tool` handler can answer with, that real resources become documents
+and real prompts become turns.
+
+### Behavior
+- [ ] the handshake is accepted by a server nobody here wrote, and its
+      capabilities decode
+- [ ] its tools decode into `ToolSpec`s, schemas and all, and calling
+      one answers what it says
+- [ ] its resources become a `Corpus` and its prompts become `Seq[Turn]`
+- [ ] a notification the server sends BEFORE the initialize answer is
+      not mistaken for one (the reference server does exactly this)
+- [ ] the run is skipped, not failed, where node is absent
+
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server
 as a pure stage 8, session over channels 5, the transport over real
