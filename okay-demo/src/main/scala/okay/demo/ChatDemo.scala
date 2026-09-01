@@ -267,17 +267,23 @@ object ChatDemo {
       okay.Handler.union[AgentContext, AgentModel + Async]
     given r3: okay.Handler[Tool + (AgentContext + (AgentModel + Async))] =
       okay.Handler.union[Tool, AgentContext + (AgentModel + Async)]
-    val prog =
-      Agent.remember(Turn.System(matchSystem)).flatMap { _ =>
-        def seed(ms: List[Anthropic.Message]): Unit ! okay.agent.Agent = ms match
-          case Nil => pure(())
-          case m :: rest =>
-            Agent.remember(
-              if m.role == "user" then Turn.User(m.content)
-              else Turn.Assistant(m.content)).flatMap(_ => seed(rest))
-        seed(history.toList).flatMap(_ =>
-          Agent.converse(text, MatchTools.specs))
-      }
+    // the DIRECT block (ui-direct's demo pass): the turn reads as
+    // straight-line code — remember the system prompt, seed the
+    // history, converse. The seeding loop stays a named helper: v1
+    // of the macro refuses marks under a lambda, and a recursive
+    // helper is the workaround it names.
+    import okay.Direct.*
+    def seed(ms: List[Anthropic.Message]): Unit ! okay.agent.Agent = ms match
+      case Nil => pure(())
+      case m :: rest =>
+        Agent.remember(
+          if m.role == "user" then Turn.User(m.content)
+          else Turn.Assistant(m.content)).flatMap(_ => seed(rest))
+    val prog = direct[[A] =>> A ! okay.agent.Agent] {
+      Agent.remember(Turn.System(matchSystem)).reflect
+      seed(history.toList).reflect
+      Agent.converse(text, MatchTools.specs).reflect
+    }
     prog.runWith
 
   // ---- the intake's conditions (demo-conditions) ---------------------

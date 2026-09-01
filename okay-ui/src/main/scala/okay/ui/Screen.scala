@@ -123,6 +123,10 @@ object Nav {
 
   /** run a stack on a host: ends when the host closes (an emptied
    * stack shows nothing and ignores everything until then) */
+  /** the door: the host ambient, the external source optional */
+  def hosted(root: Screen)(using host: Host, s: Scheduler, cb: CanBlock): Unit ! Async =
+    run(root)(host)
+
   def run(root: Screen)(host: Host, external: Source[Event] = pure(()))
          (using Scheduler, CanBlock): Unit ! Async =
     Ui.runCmd(state(root))(view)(updateCmd)(host, external).map(_ => ())

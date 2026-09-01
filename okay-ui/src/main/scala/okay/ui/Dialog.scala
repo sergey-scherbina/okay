@@ -54,6 +54,10 @@ object Dialog {
   /** drive a scenario over any Host: render on Show, resume with the
    * next event; the host ending (or Closed) before the scenario does
    * answers None */
+  /** the door (ctx-everywhere): the app's ONE host is ambient */
+  def hosted[A](prog: A ! Dialog)(using host: Host): Option[A] ! Async =
+    run(host)(prog)
+
   def run[A](host: Host)(prog: A ! Dialog): Option[A] ! Async =
     def loop(r: Running[A], rest: Source[Event]): Option[A] ! Async = r match
       case Running.Done(a) => pure(Some(a))

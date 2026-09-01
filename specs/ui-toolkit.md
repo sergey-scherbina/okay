@@ -90,6 +90,26 @@ by push under ONE run — a prompt lives in the machine that pushed it.
       and the outer's remaining steps never render
 - [x] plain Dialog scenarios run unchanged beside scoped ones
 
+## ui-direct: the three roads reach the toolkit
+- **Direct wizards**: a Dialog scenario reads as straight-line code
+  under `direct[[A] =>> A ! Dialog] { ... .reflect ... }` (the `?`
+  spelling collides with Effects' own row-`?`; the named mark is the
+  row idiom, tested). v1's no-marks-under-lambda holds wizards fine —
+  they are sequential by construction.
+- **askWith(policy)**: ask's retry POLICY lifted out via conditions —
+  an invalid submit signals InvalidSubmit(errors, attempt); the
+  forgiving policy IS ask (reask), patience(n) gives up to None, a
+  repairing policy Resumes with a forced value; a valid submit never
+  consults the policy. The machine runs per submit over a pure
+  program; the dialog loop is ask's own.
+- **Ambient Host doors**: Dialog.hosted / Nav.hosted — the app's one
+  host as a capability; run(host) stays.
+
+- [x] the direct wizard equals the flatMap wizard on the same script
+- [x] askWith: forgiving≡ask, patience gives up, repair resumes, a
+      valid submit never consults the policy
+- [x] hosted ≡ run(host)
+
 ## Out of scope
 - Layout/styling beyond bold/dim (specs/ui.md owns Style).
 - Async validation (a validator that needs IO is a scenario's job).

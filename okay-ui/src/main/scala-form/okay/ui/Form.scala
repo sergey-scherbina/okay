@@ -1,6 +1,7 @@
 package okay.ui
 
-import okay.!
+import okay.{!, +, pure, Pure}
+import okay.given
 import okay.codec.{Json, Schema}
 
 /**
@@ -363,6 +364,77 @@ object Form {
       }
 
     loop(Json.JObj(Vector.empty), Vector.empty)
+
+  /** an invalid submit, as a CONDITION (ui-direct): the errors and
+   * which attempt this is — the policy decides how forgiving the
+   * wizard is */
+  final case class InvalidSubmit(errors: Vector[(String, String)], attempt: Int)
+
+  private enum Outcome[A]:
+    case Done(a: A)
+    case Retry()
+    case Gave()
+
+  /** the reask restart invoked — the default policy's answer, i.e.
+   * exactly what `ask` always did */
+  val forgiving: (Any, Vector[String]) => okay.Condition.Decision =
+    case (_: InvalidSubmit, menu) if menu.contains("reask") =>
+      okay.Condition.Decision.Invoke("reask", ())
+    case _ => okay.Condition.Decision.Fail
+
+  /** give up after n attempts, reask before that */
+  def patience(n: Int): (Any, Vector[String]) => okay.Condition.Decision =
+    case (InvalidSubmit(_, k), menu) =>
+      if k >= n && menu.contains("giveup") then okay.Condition.Decision.Invoke("giveup", ())
+      else if menu.contains("reask") then okay.Condition.Decision.Invoke("reask", ())
+      else okay.Condition.Decision.Fail
+    case _ => okay.Condition.Decision.Fail
+
+  /**
+   * `ask`, with the retry POLICY lifted out (the condition road): an
+   * invalid submit SIGNALS InvalidSubmit — the reask restart repeats
+   * (the default forgiving policy makes this exactly `ask`), the
+   * giveup restart answers None (a patience policy), and a repairing
+   * policy may Resume with a forced value at the live signal point.
+   * A valid submit never consults the policy. The condition machine
+   * runs PER SUBMIT over a tiny pure program — the dialog loop
+   * itself is ask's own.
+   */
+  def askWith[A](message: String, checks: Check[A]*)
+                (policy: (Any, Vector[String]) => okay.Condition.Decision)
+                (using s: Schema[A]): Option[A] ! Dialog =
+    import okay.Condition
+    def verdict(errs: Vector[(String, String)], n: Int): Outcome[A] =
+      Condition.run[Outcome[A], Pure](policy)(
+        Condition.within[Outcome[A], Pure]("giveup")(
+          Condition.within[Outcome[A], Pure]("reask")(
+            !.widen[A, Condition.Op, Pure](
+              Condition.signal[A](InvalidSubmit(errs, n))).map(Outcome.Done(_))
+          )(_ => Outcome.Retry()))(_ => Outcome.Gave())).runWith
+
+    def loop(j: Json, errs: Vector[(String, String)], n: Int): Option[A] ! Dialog =
+      Dialog.show(asked(message, errs.collect { case ("", m) => m },
+        ofWith[A](errs).apply(j))).flatMap {
+        case Event.Pressed("$ok") =>
+          val fieldErrs = errors[A](j)
+          val submit: Either[Vector[(String, String)], A] =
+            if fieldErrs.nonEmpty then Left(fieldErrs)
+            else decode[A].apply(j) match
+              case Left(err) => Left(Vector("" -> err))
+              case Right(a) =>
+                val crossErrs = checks.toVector.flatMap(_(a))
+                if crossErrs.isEmpty then Right(a) else Left(crossErrs)
+          submit match
+            case Right(a) => pure(Some(a))          // the policy is never consulted
+            case Left(errs2) => verdict(errs2, n) match
+              case Outcome.Done(forced) => pure(Some(forced))
+              case Outcome.Gave() => pure(None)
+              case Outcome.Retry() => loop(j, errs2, n + 1)
+        case Event.Pressed("$cancel") | Event.Closed => pure(None)
+        case e => loop(edit[A](j, e), Vector.empty, n)
+      }
+
+    loop(Json.JObj(Vector.empty), Vector.empty, 1)
 
   /** the same flow over a JSON Schema — what elicitation asks with */
   def askSchema(message: String, schema: Json): Option[Json] ! Dialog =

@@ -42,6 +42,20 @@ Left(v)). The menu is ["drop", "cut"]; mechanism in the stream,
 policy at Condition.run. Additive: checked/watched untouched, a
 clean stream never signals (the policy-never-consulted test).
 TestCutRepair (4); okay-llm 18/18 JVM, JS compiles.
+## ui-direct — the three roads reach the toolkit, and the demo
+Completed: 2026-09-01
+
+Direct wizards: a Dialog scenario is straight-line code under
+direct[[A] =>> A ! Dialog] with .reflect marks (the ? spelling
+collides with Effects' row-?; named mark, tested). Form.askWith
+lifts ask's retry policy into conditions — InvalidSubmit signaled,
+forgiving≡ask, patience(n) gives up, a repairing policy Resumes a
+forced value, and a valid submit never consults the policy (the
+machine runs per submit over a pure program). Dialog.hosted /
+Nav.hosted are the ambient-Host doors. And the demo's agentTurn is a
+direct block now — remember, seed, converse as three plain lines,
+the seeding loop staying a named helper exactly as the macro's
+no-marks-under-lambda rule prescribes. 67 ui tests, 15 demo tests.
 
 ## tutorial-new-arcs — the day reaches the tutorial
 Completed: 2026-09-01
