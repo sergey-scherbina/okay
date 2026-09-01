@@ -1,5 +1,21 @@
 # Changelog
 
+## condition-direct — resumable exceptions in direct style, the frame door, chapter 09
+Completed: 2026-09-01
+Landed as 167c02e. signal.? resumes at the mark (a call that may
+return — the Common Lisp reading, asserted by TestConditionDirect's
+before/after trace); within/frame unwind to their frames from direct
+blocks; a for-do loop repairs malformed elements mid-stream (the
+operator's story, per-element Resume). The frame door takes the
+restart body as a direct block (two lines over within + direct).
+docs/direct-style.md gains the section; docs/theory/09-conditions.md
+opens with Goldberg-Robson/Steele/Pitman, argues via Plotkin-Pretnar
+that handlers ARE resumable exceptions, and names both recorded
+roads (typed signal, restart capabilities) through Zhang-Myers'
+bidirectional effects. GATE CAVEAT: the full matrix was OOM-killed
+late with 0 failures and every reference suite covered — the
+direct-macro/direct-loops precedent.
+
 ## tutorial-new-arcs — the day reaches the tutorial
 Completed: 2026-09-01
 Three chapters join the worked tour: 19 "Needs are types:
