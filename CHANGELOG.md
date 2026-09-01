@@ -1,5 +1,14 @@
 # Changelog
 
+## conf-topic — the config becomes one more consumer of the one primitive
+Completed: 2026-09-01 (landed as 87f53b4)
+Configs in okay-persist (beside Snapshots/Offsets): put/latest/at/
+history over a compacted keyed topic, values as the Schema's JSON.
+The audit IS the log, rollback IS a read, and history is honest
+about compaction (asserted). okay-conf keeps codec-only deps;
+reference-only safety is invariant 3 by construction. specs/conf.md
+fully shipped, both stages. Matrix 1254.
+
 ## codec-iso — to every algebra the wrapper does not exist
 Completed: 2026-09-01 (landed as 46c6bcd)
 SIso in the Schema enum (wrap/refine): a newtype travels as what it

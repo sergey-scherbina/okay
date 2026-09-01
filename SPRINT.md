@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- conf-topic — managed config as a compacted keyed topic: Configs
-  (put/latest/at/history) as a thin convenience over Store in
-  okay-persist, next to Snapshots/Offsets where the pattern lives;
-  audit and rollback for free (specs/conf.md stage 2)
 
 ## Queue
 (next candidates from BACKLOG.md: the roads the landed Sql seam

@@ -1,7 +1,0 @@
-feature/conf-topic 2026-09-01T18:00:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-01T18:00:00Z
-status: in-progress
-done-so-far:
-next: Configs convenience in okay-persist (put/latest/at/history over a compacted keyed topic, JSON values); conf.md stage-2 box; MemoryStore tests
-files: okay-persist/src/main/scala/okay/persist/Configs.scala (new), okay-persist tests, specs/conf.md
