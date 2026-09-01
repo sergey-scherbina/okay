@@ -42,18 +42,19 @@ transport gets TLS from one seam and adds nothing of its own.
 
 ## Behavior
 
-- [ ] `verify-full` refuses a wrong hostname and an unknown CA,
+- [x] `verify-full` refuses a wrong hostname and an unknown CA,
       each named as data; `verify-ca` accepts the wrong hostname
       and the spec says so out loud
-- [ ] `require` refuses a plaintext server; `disable` connects and
+- [x] `require` refuses a plaintext server; `disable` connects and
       is loggable as the named decision it is
-- [ ] the pg driver speaks sslmode through this seam (postgres's
+- [ ] (pg lane) the pg driver speaks sslmode through this seam (postgres's
       STARTTLS-style SSLRequest dance lives in the pg driver; the
       session it hands over is this seam's)
-- [ ] persist-wire over TLS passes the same acceptance suite as
+- [ ] (persist-wire lane) persist-wire over TLS passes the same acceptance suite as
       plaintext (the two-driver move)
-- [ ] a private key configured inline (not a Secret ref) is refused
-      at config decode
+- [x] a private key configured inline (not a Secret ref) is refused
+      at config decode (the seam refuses a ref that smuggles PEM,
+      client and server)
 
 ## Out of scope
 
@@ -86,3 +87,19 @@ transport gets TLS from one seam and adds nothing of its own.
   `SSLEngine` state machine for an NIO consumer that does not exist
   yet would be machinery for a need nobody named. The seam's
   signature (wrap a connected socket) survives the addition.
+
+## Results (the seam)
+
+Shipped 2026-09-01 (wire-tls): okay-tls (jvm, depends on okay-conf
+for Secret/Secrets). The whole sslmode ladder proven against LIVE
+handshakes with an openssl-generated identity (the suite skips
+where openssl is absent): verify-full completes with the CA and
+refuses the wrong hostname and the unknown CA by name; verify-ca
+accepts the wrong hostname and the TEST says so out loud; require
+tunnels and refuses plaintext; disable is the named decision.
+Private keys travel as Secret refs — PEM smuggled into the ref is
+refused at the seam, both halves. The server half terminates TLS
+from a PEM cert + PKCS#8 key ref. mTLS fields ride in TlsConfig
+from day one, so adding it changes no signatures. The pg and
+persist-wire integration boxes stay open for their lanes; the seam
+is ready for both.
