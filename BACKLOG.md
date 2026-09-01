@@ -23,6 +23,16 @@
       (the journal is an okay-persist topic: read(from) IS
       Last-Event-ID, TooEarly answers a compacted-past id)
 
+## okay-jdbc (specs/jdbc.md — the foreign database)
+- [ ] jdbc-typed — Schema row decode (label-matched, total) +
+      verify against ResultSetMetaData + typed params + transact
+      region with declared isolation; H2 no-DDL-user test
+- [ ] jdbc-write-bridge — the Durable policies over their unique
+      constraints (WithKey = ON CONFLICT, Reconcile = SELECT by
+      key), journaled in okay-persist
+- [ ] jdbc-poll-source — incremental poll by a monotone column with
+      journaled watermark and lag window (stated non-CDC)
+
 ## okay-conf (specs/conf.md)
 - [ ] conf-impl — Secret/Secrets (env, file, memory, chain),
       Conf.read/load; cross-built; the invariants' tests (error

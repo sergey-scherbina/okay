@@ -1,5 +1,15 @@
 # Changelog
 
+## jdbc-typed-spec — specs/jdbc.md: the unmodifiable foreign database
+Completed: 2026-09-01
+The posture: their schema is authoritative — bind, don't model. SQL
+stays; Schema becomes the row and param codec (total decode, damage
+names the column), verify catches drift at startup (the fingerprint
+lesson at the DB seam), transact is a Resource-shaped region with
+declared isolation, and writes bridge to okay-persist through their
+own unique constraints (WithKey/Reconcile in SQL). Spec only;
+jdbc-typed, jdbc-write-bridge, jdbc-poll-source filed.
+
 ## conf-spec — specs/conf.md: config as data, secrets as references
 Completed: 2026-09-01
 Names the rule already in force (modules take credentials as
