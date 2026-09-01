@@ -1,0 +1,4 @@
+lane: applicative-op
+owner: fable-ctx
+started: 2026-09-01
+scope: symbolic <*> alias for app in trait Applicative, test
