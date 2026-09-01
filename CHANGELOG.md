@@ -1,5 +1,17 @@
 # Changelog
 
+## wire-tls — verify-full or it is a named decision
+Completed: 2026-09-01 (landed as 8e795cf)
+okay-tls: the one transport seam, sslmode vocabulary stack-wide,
+SSLSocket over the blocking sockets our wires actually use (the
+SSLEngine machine waits for an NIO consumer — recorded in
+Decisions). The whole ladder proven against live handshakes:
+verify-full refuses wrong hostname/unknown CA by name, verify-ca
+accepts the wrong hostname and the test SAYS SO, require tunnels
+and refuses plaintext, disable is the named decision. Keys are
+Secret refs; inline PEM refuses at the seam. pg/persist-wire
+integration boxes stay with their lanes. Matrix 1380.
+
 ## persist-backup — backup is boring, and the doctor certifies it first
 Completed: 2026-09-01 (landed as 1624f26)
 Doctor (okay-persist): an INDEPENDENT reader of the documented
