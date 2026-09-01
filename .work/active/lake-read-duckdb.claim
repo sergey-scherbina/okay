@@ -1,0 +1,5 @@
+slug: lake-read-duckdb
+agent: fable-persist (session 75625ecc)
+started: 2026-09-01
+scope: the lake read road proven — a Parquet file read through the Sql seam over DuckDB embedded (test-scope dep), verify passing, constant-memory chunked streaming asserted; spec: specs/data.md "Data lakes", its behavior box
+files: okay-jdbc/src/test/** (TestLake), build.sbt (duckdb test dep), specs/data.md (box/Results)
