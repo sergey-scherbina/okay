@@ -252,6 +252,27 @@ class TestDirect extends munit.FunSuite {
     assertEquals(pairs.toList, List((1, 10), (1, 20), (2, 10), (2, 20)))
   }
 
+  test("a BARE op as the for-do body runs — statement semantics reach loop bodies") {
+    type W = Writer % String
+    val prog: Unit ! W = direct {
+      for t <- "a b c".split(' ') do Writer(t)   // no mark at all
+    }
+    val (ws, _) = !.run(Writer.run[String, Unit, okay.Pure](prog))
+    assertEquals(ws, Seq("a", "b", "c"))
+  }
+
+  test("a BARE op as the while body runs too") {
+    type W = Writer % String
+    var n = 0
+    val prog: Int ! W = direct {
+      while { n += 1; pure[W, Boolean](n < 3).? } do Writer(s"tick$n")
+      n
+    }
+    val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))
+    assertEquals(ws, Seq("tick1", "tick2"))
+    assertEquals(a, 3)
+  }
+
   test("a non-whitelisted HOF with a mark keeps the refusal") {
     val e = compileErrors(
       "okay.Direct.direct[Option] { List(1).exists(i => Option(i > 0).?) }(using summon[Monad[Option]]) ")

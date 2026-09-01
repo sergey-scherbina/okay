@@ -217,8 +217,38 @@ object Direct:
       then refuse(xs, "as a loop receiver with no .iterator")
       Select.unique(xs, "iterator")
 
-    /** compile the loop body at the emitted binder h */
+    /** a term in STATEMENT position, as a Cont: marks compile, and a
+     * markless value of the block's own effectful type RUNS — the
+     * do-notation reading, so `for t <- xs do Writer(t)` tells
+     * instead of silently building and dropping the op */
+    def statementCont(t: Term): Term =
+      compile(t) match
+        case Out.Eff(c) => c
+        case Out.Pure(p) =>
+          runnableElem(p) match
+            case Some(el) => markTerm(p, el, t.pos)
+            case None => pureCont(p)
+
+    /** the value type a Cont term carries */
+    def contValue(c: Term): TypeRepr = c.tpe.widen.dealias match
+      case AppliedType(_, List(v, _, _)) => v
+      case other => report.errorAndAbort(s"not a Cont: ${other.show}")
+
+    /** compile the loop body at the emitted binder h, with statement
+     * semantics, erased to Cont[Unit, ...] (foreach drops values) */
     def loopBody(param: ValDef, lbody: Term)(h: Term): Term =
+      val c = statementCont(subst(lbody, param.symbol, h))
+        .changeOwner(Symbol.spliceOwner)
+      tpe2(contValue(c)) { [V] => (_: Type[V]) ?=>
+        '{
+          ${ c.asExprOf[Cont[V, F[A], F[A]]] }
+            .flatMap[Unit, F[A]](_ => Cont.Pure[Unit, F[A]](()))
+        }.asTerm
+      }
+
+    /** compile the yield body at the emitted binder h (values kept —
+     * no statement semantics in a yield) */
+    def yieldBody(param: ValDef, lbody: Term)(h: Term): Term =
       asCont(compile(subst(lbody, param.symbol, h)), lbody.tpe)
         .changeOwner(Symbol.spliceOwner)
 
@@ -227,17 +257,15 @@ object Direct:
      * sound, and through flatMap so Bind spill keeps it stack-safe */
     def foreachLoop(xs: Term, param: ValDef, lbody: Term): Term =
       tpe2(param.tpt.tpe.widen) { [T] => (_: Type[T]) ?=>
-        tpe2(lbody.tpe.widen) { [U] => (_: Type[U]) ?=>
-          '{
-            val items: List[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.toList
-            def loop(rest: List[T]): Cont[Unit, F[A], F[A]] = rest match
-              case Nil => Cont.Pure[Unit, F[A]](())
-              case h :: tl =>
-                ${ loopBody(param, lbody)('h.asTerm).asExprOf[Cont[U, F[A], F[A]]] }
-                  .flatMap[Unit, F[A]](_ => loop(tl))
-            loop(items)
-          }.asTerm
-        }
+        '{
+          val items: List[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.toList
+          def loop(rest: List[T]): Cont[Unit, F[A], F[A]] = rest match
+            case Nil => Cont.Pure[Unit, F[A]](())
+            case h :: tl =>
+              ${ loopBody(param, lbody)('h.asTerm).asExprOf[Cont[Unit, F[A], F[A]]] }
+                .flatMap[Unit, F[A]](_ => loop(tl))
+          loop(items)
+        }.asTerm
       }
 
     /** for x <- xs yield body — the traverse shape; results come out
@@ -253,7 +281,7 @@ object Direct:
             def loop(rest: List[T], acc: List[U]): Cont[List[U], F[A], F[A]] = rest match
               case Nil => Cont.Pure[List[U], F[A]](acc.reverse)
               case h :: tl =>
-                ${ loopBody(param, lbody)('h.asTerm).asExprOf[Cont[U, F[A], F[A]]] }
+                ${ yieldBody(param, lbody)('h.asTerm).asExprOf[Cont[U, F[A], F[A]]] }
                   .flatMap[List[U], F[A]](b => loop(tl, b :: acc))
             loop(items, Nil)
           }.asTerm
@@ -297,6 +325,15 @@ object Direct:
             // Lambdas are Blocks too — their bodies stay untouched.
             case Lambda(_, _) => Out.Pure(t)
             case Block(stats, expr) => compileBlock(stats, expr)
+            // markless loops whose BODY is the block's own effectful
+            // type: statement semantics reach them too — otherwise
+            // `for t <- xs do Writer(t)` with no mark anywhere would
+            // build and drop each op natively
+            case HofCall(xs, "foreach", param, lbody)
+              if runnableElemT(lbody.tpe).isDefined =>
+              hofLoop(t, xs, "foreach", param, lbody)
+            case While(c, b) if runnableElemT(b.tpe).isDefined =>
+              compileMarked(t)
             case _ => Out.Pure(t)
 
     /** t contains marks below the root — dispatch on shape */
@@ -353,8 +390,9 @@ object Direct:
         // cond and body splice INSIDE def loop, so they re-evaluate
         // per iteration by construction; recursion rides Bind spill
         val condC = asCont(compile(cond), cond.tpe).changeOwner(Symbol.spliceOwner)
-        val bodyC = asCont(compile(wbody), wbody.tpe).changeOwner(Symbol.spliceOwner)
-        tpe2(wbody.tpe.widen) { [U] => (_: Type[U]) ?=>
+        // the body is statement position: bare ops of the block RUN
+        val bodyC = statementCont(wbody).changeOwner(Symbol.spliceOwner)
+        tpe2(contValue(bodyC)) { [U] => (_: Type[U]) ?=>
           Out.Eff('{
             def loop(): Cont[Unit, F[A], F[A]] =
               ${ condC.asExprOf[Cont[Boolean, F[A], F[A]]] }
@@ -504,8 +542,10 @@ object Direct:
      * type last, so tried first) and, for programs, from the Free
      * base type; the <:< check makes the guesses safe.
      */
-    def runnableElem(p: Term): Option[TypeRepr] =
-      val w = p.tpe.widen.dealias
+    def runnableElem(p: Term): Option[TypeRepr] = runnableElemT(p.tpe)
+
+    def runnableElemT(tpe0: TypeRepr): Option[TypeRepr] =
+      val w = tpe0.widen.dealias
       val fromFree = w.baseType(freeClass) match
         case AppliedType(_, List(_, t)) => List(t)
         case _ => Nil
@@ -521,8 +561,8 @@ object Direct:
           case _ => Nil
         else Nil
       (fromFree ++ fromArgs ++ fromFBase).find { t =>
-        p.tpe <:< TypeRepr.of[F].appliedTo(t.widen) ||
-          rowOf.exists(r => p.tpe <:< r.appliedTo(t.widen))
+        tpe0 <:< TypeRepr.of[F].appliedTo(t.widen) ||
+          rowOf.exists(r => tpe0 <:< r.appliedTo(t.widen))
       }
 
     def substStat(s: Statement, sym: Symbol, ref: Term): Statement = s match

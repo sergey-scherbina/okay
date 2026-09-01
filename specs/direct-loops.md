@@ -97,6 +97,13 @@ while retry.? do backoff()                        // while: effectful cond
   it (List/Seq); Vector/Map-typed comprehensions are refused with
   the workaround named, until a consumer names the shape.
 
+- [x] loop and while BODIES carry statement semantics (fixed
+  2026-09-01, found by the ChatDemo migration): a bare op as the
+  body — `for t <- xs do Writer(t)`, `while c do Writer(x)` — RUNS;
+  and a fully MARKLESS block whose loop body is the block's own
+  effectful type is intercepted too (the interception used to gate
+  on hasMark, so such loops built and dropped each op natively)
+
 ## Results
 
 - 8 new tests in TestDirect (35 total across the two suites): for-do
@@ -106,6 +113,12 @@ while retry.? do backoff()                        // while: effectful cond
   multi-shot re-entry into a loop body (2x2 continuations, immutable
   iteration state), nested loops in row-major order, and the
   non-whitelisted refusal (`exists`) intact.
+- The ChatDemo migration immediately found the two holes above —
+  the worked example doing its job as a test bed. Also found there:
+  `.?` is AMBIGUOUS in scopes where okay's Throws machinery is
+  imported (it has its own postfix `?` via the throws Conversion);
+  `.reflect` is the collision-free spelling and the demo uses it —
+  recorded in specs/direct-macro.md Decisions.
 - Two v1 tests were retired BY the feature: the lambda-refusal
   example had used `map` (now a feature — moved to `filter`), and
   the while-refusal test asserted an error that no longer exists.
