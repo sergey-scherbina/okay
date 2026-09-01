@@ -1,5 +1,17 @@
 # Changelog
 
+## demo-conditions — the intake's silent default becomes a decision
+Completed: 2026-09-01
+
+The condition system's first applied consumer outside its own tests:
+the marketplace intake signals BadEmail instead of silently minting
+guest@demo. The guest restart is on the menu; the lenient demo
+policy invokes it (yesterday's behavior, now chosen on the record),
+a repairing policy resumes AT the signal point with a corrected
+address, OKAY_CHAT_STRICT=1 escalates as Unhandled naming the menu —
+one intake, three outcomes, and a present email never consults the
+policy. 15 demo tests.
+
 ## persist-wire-tls — the wire runs encrypted, the first consumer of the TLS seam
 Completed: 2026-09-01
 specs/tls.md's persist-wire box: persist-wire over TLS passes the same

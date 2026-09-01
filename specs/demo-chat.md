@@ -167,6 +167,16 @@ prompt door (additive in okay-llm), so the guard site reads
   detected client-side ("поток оборвался").
 - "помощь"/"help" reaches the driver's phrasebook.
 
+## Conditions at the intake (demo-conditions)
+The silent guest@demo default was a policy decision nobody made. The
+intake now SIGNALS `BadEmail` (the condition road: the signal point
+stays live), with the "guest" restart on the menu: the demo's
+default policy INVOKES it (the old behavior, chosen on the record),
+a repairing policy can RESUME with a corrected address,
+`OKAY_CHAT_STRICT=1` FAILS with an Unhandled naming the declined
+menu. One intake, three outcomes, chosen at run — and an email
+present never consults the policy at all.
+
 ## Out of scope
 - Auth, persistence of conversations, multi-user rooms (persist owns
   durable history; okay-match's DURABLE store is one constructor swap

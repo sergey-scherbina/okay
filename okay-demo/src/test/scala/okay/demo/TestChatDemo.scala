@@ -390,6 +390,30 @@ class TestChatDemo extends munit.FunSuite {
     assert(whole != null)
   }
 
+  test("CONDITIONS at the intake: one program, three outcomes, chosen by policy") {
+    // lenient (the demo default): the guest restart — the old silent
+    // default, now a DECISION on the record
+    assertEquals(ChatDemo.resolveEmail("умею плитку", ChatDemo.lenient), "guest@demo")
+    // an email present never signals: the policy is not consulted
+    assertEquals(ChatDemo.resolveEmail("умею плитку email m@x",
+      (_, _) => throw new AssertionError("must not be asked")), "m@x")
+    // a REPAIRING policy resumes AT the signal point with a corrected address
+    val repairing: (Any, Vector[String]) => okay.Condition.Decision =
+      case (ChatDemo.BadEmail(_), _) => okay.Condition.Decision.Resume("fixed@ops")
+      case _ => okay.Condition.Decision.Fail
+    assertEquals(ChatDemo.resolveEmail("умею плитку", repairing), "fixed@ops")
+    // strict: Unhandled, naming the declined menu
+    val e = intercept[okay.Condition.Unhandled](
+      ChatDemo.resolveEmail("умею плитку", ChatDemo.strict))
+    assert(e.getMessage.contains("guest"), e.getMessage)
+    // and through the real route the lenient default still stores
+    withServer(512) { port =>
+      val ans = new String(post(port,
+        """{"messages":[{"role":"user","content":"/match умею класть плитку"}]}""").readAllBytes(), UTF_8)
+      assert(ans.contains("guest@demo"), ans.take(200))
+    }
+  }
+
   test("over budget the stream is cut, named, and no tokens follow") {
     withServer(budget = 3) { port =>
       val whole = new String(post(port,

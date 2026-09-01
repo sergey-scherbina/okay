@@ -280,6 +280,44 @@ object ChatDemo {
       }
     prog.runWith
 
+  // ---- the intake's conditions (demo-conditions) ---------------------
+  //
+  // The silent default was a policy decision nobody made: a phrase
+  // with no email quietly became guest@demo. Now it SIGNALS — the
+  // condition system's repair road — and the POLICY answers: the
+  // lenient demo invokes the "guest" restart (the old behavior, now
+  // chosen), a repairing policy can Resume with a corrected address
+  // (the signal point is still live), and OKAY_CHAT_STRICT=1 makes
+  // it Fail — an Unhandled naming the menu. One intake, three
+  // outcomes, chosen at run.
+
+  final case class BadEmail(text: String)
+
+  /** the demo's default: lenient — the guest restart */
+  val lenient: (Any, Vector[String]) => Condition.Decision =
+    case (_: BadEmail, menu) if menu.contains("guest") =>
+      Condition.Decision.Invoke("guest", ())
+    case _ => Condition.Decision.Fail
+
+  val strict: (Any, Vector[String]) => Condition.Decision =
+    (_, _) => Condition.Decision.Fail
+
+  def intakePolicy: (Any, Vector[String]) => Condition.Decision =
+    if sys.env.get("OKAY_CHAT_STRICT").contains("1") then strict else lenient
+
+  /** extract the author's email or SIGNAL; the guest frame is on the
+   * menu around it */
+  def emailIn(text: String): String ! Condition.Op =
+    "email ([^ ]+@[^ ]+)".r.findFirstMatchIn(text).map(_.group(1)) match
+      case Some(e) => pure(e)
+      case None => Condition.signal[String](BadEmail(text))
+
+  def resolveEmail(text: String,
+                   policy: (Any, Vector[String]) => Condition.Decision): String =
+    Condition.run[String, Pure](policy)(
+      Condition.within[String, Pure]("guest")(emailIn(text))(_ => "guest@demo")
+    ).runWith
+
   /** the deterministic offline "agent": the SAME tool table, driven
    * by two fixed phrasings — the tests' and the no-model mode's path */
   def scriptedAgent(text: String)(using store: MatchStore): String =
@@ -287,8 +325,7 @@ object ChatDemo {
     val t = chainedTable
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
-    val email = "email ([^ ]+@[^ ]+)".r.findFirstMatchIn(text).map(_.group(1))
-      .getOrElse("guest@demo")
+    val email = resolveEmail(text, intakePolicy)
     val off = turnNo.incrementAndGet()
     def profile: String =
       Json.parse(call("facts_register", "email" -> JStr(email))) match
