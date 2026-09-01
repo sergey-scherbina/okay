@@ -120,21 +120,22 @@ because JSON has neither. The shim announces {"shim": N, "python":
 (the specs/r.md list applies as the contract, PyEval for REval;
 Python-specific additions:)
 
-- [ ] `module:name` addressing imports and calls; a missing module
+- [x] `module:name` addressing imports and calls; a missing module
       or attribute is a condition value naming it, the worker
       survives
-- [ ] None vs NaN round-trip distinctly; a frame with a nullable
-      column maps to Option
-- [ ] the shim/host version handshake refuses a mismatched shim
+- [x] None vs NaN round-trip distinctly (and an integral float
+      stays a float — the json wire tags what it would merge); a
+      frame column carries PyNone in place
+- [x] the shim/host version handshake refuses a mismatched shim
       loudly
-- [ ] verify names a missing package and a version mismatch via
+- [x] verify names a missing package and a version mismatch via
       importlib.metadata; the configured interpreter path is the
       one verified (the wrong-venv test)
-- [ ] a persistent worker holds imports across calls (second call
+- [ ] (py-worker) a persistent worker holds imports across calls (second call
       measurably skips import); kill → dead-process-throws →
       supervisor restarts with imports cold, correctness unchanged
-- [ ] the same test program passes over subprocess and persistent
-      engines unchanged
+- [ ] (py-worker) the same test program passes over subprocess and
+      persistent engines unchanged
 
 ## Out of scope
 
@@ -174,3 +175,18 @@ Python-specific additions:)
 (after implementation — round-trips, the wrong-venv refusal, a
 real statsmodels/sklearn call through both engines, import-hold
 timings)
+
+## Results (stage 0)
+
+Shipped 2026-09-01 (py-subprocess): okay-py (jvm) — PyEval/PyValue/
+PyFrame with conditions as Either (the deviation recorded above),
+the stdlib-only shim as a versioned resource, the comonadic handler
+over a clean-env subprocess. Proven live against python3 (skip
+where absent): plain and dotted addressing, ModuleNotFoundError/
+AttributeError as conditions with the worker SURVIVING, None-vs-NaN
+distinct plus bytes and integral floats tagged past JSON's gaps,
+HOME invisible until named, frames columnar both ways, the v99
+handshake refusal, verify naming the absent package, the
+/no/such/venv interpreter refusing at start, and the dead worker
+turning the next exchange into the supervisor's throw. Also the
+FIRST implementation of the r.md shape — r-subprocess mirrors it.
