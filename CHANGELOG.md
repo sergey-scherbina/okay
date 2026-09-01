@@ -1,5 +1,17 @@
 # Changelog
 
+## ctx-adopt — the third capability route, the Blocking value, the documented edge
+Completed: 2026-09-01 (landed as f11ec6c)
+Secure.granted: the principal ambient by pure delegation (the
+401/403 ladder byte-identical to bearer). The composition crown
+holds: ONE stored (Principal, Tracer) ?=> Route serves protected
+AND traced under stacked installers — deferred requirements compose
+as arrows. Blocking[A] names core practice as a type (stored,
+forced only where CanBlock is given). The edge patterns (given-chain
++ import-thread with the footgun) moved into typepedia with their
+E-numbers; conf.md points at them. ctx-wiring's gate noted possibly
+open, offered to the demo lane. Matrix 1599.
+
 ## wire-node — one socket leg for every wire; the log reaches Node
 Completed: 2026-09-01 (landed as 594faf1; spec first)
 Net in the core (specs/net.md): the byte-stream seam as a given per

@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- ctx-adopt — the third capability route (Secure.granted:
-  Principal ?=> route) with the composition crown test
-  ((Principal, Tracer) ?=> Route), the Blocking alias, and the edge
-  patterns into typepedia (specs/context-functions.md)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

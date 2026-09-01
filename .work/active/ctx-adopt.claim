@@ -1,7 +1,0 @@
-feature/ctx-adopt 2026-09-02T15:00:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-02T15:00:00Z
-status: in-progress
-done-so-far:
-next: A: Secure.granted (Principal ?=> route) + the composition crown test (Principal, Tracer) ?=> Route; B: type Blocking[A] = CanBlock ?=> A in core; C: the edge patterns into docs/typepedia + conf.md pointer; D: ctx-wiring offered to the demo lane in the room. Spec sections first.
-files: specs/context-functions.md, specs/security.md pointer, BACKLOG.md; src/main/scala/Async.scala (alias), okay-security Secure.scala (additive) + test, okay-obs test (composition; okayObs jvm Test dep on okaySecurity), docs/typepedia.md
