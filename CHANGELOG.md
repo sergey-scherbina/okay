@@ -1,5 +1,16 @@
 # Changelog
 
+## persist-backup — backup is boring, and the doctor certifies it first
+Completed: 2026-09-01 (landed as 1624f26)
+Doctor (okay-persist): an INDEPENDENT reader of the documented
+segment format — a second implementation double-checks the writer.
+Torn tail on the LAST segment: normal, named, restorable; damage in
+a CLOSED one condemns the copy; refusals never mistaken for tails.
+Backup (okay.blob — persist->blob would cycle through http):
+incremental closed-segment copies to any Blob engine; restore =
+place files back for the ordinary startup path. End to end: copy,
+wipe, restore, doctor certifies, recovery serves. Matrix ~1360.
+
 ## persist-replication — stage 2's core, transport-agnostic
 Completed: 2026-09-01 (landed as a9e4bb5; spec first)
 Replicated: a coordinator over N replica Stores behind the SAME

@@ -1,7 +1,0 @@
-feature/persist-backup 2026-09-01T22:00:00Z
-agent: claude-code (session 02d895cc)
-heartbeat: 2026-09-01T22:00:00Z
-status: in-progress
-done-so-far:
-next: Doctor (an INDEPENDENT reader of the documented segment format - CRCs, header chain, offset chain; torn tail on the last segment is normal, damage in a closed one is not) + Backup.copy/restore over the Blob seam. NEW FILES ONLY in okay-persist scala-jvm + build.sbt dep line; FileStore untouched (fable-persist owns replication there)
-files: okay-persist/src/main/scala-jvm/okay/persist/{Doctor,Backup}.scala (new), tests, build.sbt (okayPersist jvm dep on okayBlob), specs/persist.md box

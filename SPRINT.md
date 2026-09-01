@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- persist-backup — the DOCTOR (recovery scan against a backup,
-  offline: an independent reader of the documented segment format)
-  and Backup.copy/restore over the blob seam; FileStore untouched
-  (specs/persist.md, Backup and restore)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
