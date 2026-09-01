@@ -16,6 +16,21 @@ copies of still-local segments — caught by the first run and
 fenced by the strictly-below rule). Dependency direction blob →
 persist compile, safe (persist rests on core+codec; reverse cycles
 through http). Merge read alone: exit 0. Full matrix green.
+## demo-chat — the chat with an LLM, as one JVM main and no build step
+Completed: 2026-09-01
+
+The user-requested showcase, out of what already ships: okay-jetty
+streams the SSE reply body live (Source[Chunk[Byte]] chunk by chunk
+on a virtual thread), okay-llm's Anthropic.stream speaks the real
+API when ANTHROPIC_API_KEY is set, Cut guards the stream with a
+token budget the page renders as a visible scissors line, and the
+offline mode IS the demo — the scripted model streams the same
+framing, so the acceptance proves the same path on a real socket:
+first frame read incrementally before the end, done marker, and the
+over-budget run cut at exactly the budget with the rule named and
+nothing following. GET / carries the whole page inline (dark, small,
+fetch-reader appending tokens as they arrive). `sbt okayDemo/run` →
+http://127.0.0.1:8090. 3 tests.
 
 ## stage-phased3 — one more arity, because the consumer exists
 Completed: 2026-09-01 (landed as 1444810)

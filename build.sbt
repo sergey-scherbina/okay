@@ -872,7 +872,7 @@ lazy val okayMcp = crossProject(JVMPlatform, JSPlatform)
  * to find what tests written by the author of the code cannot.
  */
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm)
+  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty)
   .settings(
     name := "okay-demo",
     publish / skip := true,

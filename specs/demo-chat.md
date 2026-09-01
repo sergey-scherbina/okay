@@ -38,15 +38,16 @@ The pieces, each doing its one job:
   by `Cut.checked` — over budget, the stream is cut, named.
 
 ## Behavior
-- [ ] offline, on a real socket: POST /chat streams the scripted
+- [x] offline, on a real socket: POST /chat streams the scripted
       reply token by token (the test reads the stream incrementally,
       not as one blob), ending with `event: done`
-- [ ] the page serves and carries the client script
-- [ ] the cut shows: a scripted reply exceeding the budget streams
+- [x] the page serves and carries the client script
+- [x] the cut shows: a scripted reply exceeding the budget streams
       its prefix and ends with `event: cut` naming the rule; no
       tokens follow the cut
 - [ ] with a key in the environment the same route speaks to the
-      real API (the TestLive pattern: skipped when absent)
+      real API (the TestLive pattern: skipped when absent) — OPEN
+      pending a key on the box; the seam is one function swap
 
 ## Out of scope
 - Auth, persistence of conversations, multi-user rooms (okay-match
