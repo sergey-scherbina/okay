@@ -1,0 +1,6 @@
+feature/direct-loops 2026-09-01T20:49:04Z
+agent: claude-code
+heartbeat: 2026-09-01T20:49:04Z
+status: in-progress
+done-so-far:
+next: spec-update to direct-macro spec, then foreach/map/while rewriting
