@@ -22,6 +22,12 @@
       scope; Throws.scala is the seam).
 
 ## Flakes observed (record → fix loop when they recur)
+- [ ] demo-live-judgment-flake — TestChatDemo "LIVE UNGATED" and
+      "LIVE SEEKER" assert on the local model's JUDGMENT (store vs
+      ask; surface the skill) and flaked once under full-matrix load
+      (2026-09-02), 15/15 on rerun. For the demo lane: consider
+      widening the accepted phrasings or retrying the turn once
+      before asserting.
 - [ ] persist-election-replicated-flake — okay.persist
       .TestElectionReplicated errored at suite level on one platform
       under the full matrix (2026-09-01, Errors 1 with 0 failures;

@@ -1,5 +1,15 @@
 # Changelog
 
+## docs-spellings-sweep — the mark family documented everywhere
+Completed: 2026-09-02
+Landed with the when-which-spelling table in direct-style.md (one
+unified three-strikes story, the boolean-readability caution), the
+Idris bang-notation (Brady 2013) and Frank citations in theory ch8,
+the typepedia mark-family entry disambiguating three uses of the
+word reflect, and the guide's one-paragraph pointer. Gate note: two
+LIVE TestChatDemo assertions flaked on model judgment under load and
+passed 15/15 on rerun — recorded for the demo lane in BACKLOG.
+
 ## direct-mark-retire — .? retired, .!? resurrected, the mark family settled
 Completed: 2026-09-02
 Landed as d474b8d. The three-strikes story closed: .? was ambiguous
