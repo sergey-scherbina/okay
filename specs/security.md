@@ -129,11 +129,61 @@ object OAuth2:                           // the client flows, over trait Http
       into Jwt.verify/Jwks.parse/Password.verify answers refusals
 
 ## Stages
-- **0 — the core (this claim)**: everything above, JVM crypto.
-- **1 — security-mcp**: MCP authorization per its spec — RFC 9728
-  protected-resource metadata served beside `McpHttp.route`, 401
-  challenges, client-side discovery → PKCE → bearer retry on the
-  McpLink.
+- **0 — the core**: everything above, JVM crypto. SHIPPED.
+- **1 — security-mcp (this claim)**: MCP authorization per its spec.
+
+  ```scala
+  object McpAuth:   // okay-security, jvm — it sees McpHttp through okay-http
+    /** the RFC 9728 document, served at /.well-known/oauth-protected-resource */
+    def metadata(resource: String, authorizationServers: Seq[String])
+    : PartialFunction[Request, Response ! Async]
+
+    /** the MCP route, protected: no/bad bearer answers 401 with
+     * WWW-Authenticate carrying resource_metadata=<url>; a good one
+     * reaches the route (the principal is on the request's watch,
+     * policy applied) */
+    def protect(verify: String => Verified, metadataUrl: String,
+                policy: Policy = Policy.allowAll)
+               (route: Request => Response ! Async): Request => Response ! Async
+
+    /** client side: from an MCP url to its authorization server's
+     * endpoints — probe (expect 401), read resource_metadata, fetch
+     * RFC 9728 doc, fetch RFC 8414 AS metadata */
+    final case class Discovered(resource: String, authServer: String,
+                                authEndpoint: String, tokenEndpoint: String)
+    def discover(http: Http, mcpUrl: String): Either[String, Discovered] ! Async
+
+    /** the whole client dance for a non-interactive grant: discover,
+     * client credentials, a bearer-carrying link */
+    def connect(http: Http, mcpUrl: String, clientId: String,
+                secret: Option[String], scopes: Seq[String])
+    : Either[String, McpHttp.McpLink] ! Async
+  ```
+
+  `McpHttp.link` grows `bearer: Option[() => Option[String]]` — the
+  supplier is asked per request, so a refreshed token is picked up
+  without rebuilding the link. The interactive code+PKCE path uses
+  stage 0's pieces (`authorizationUrl`/`exchange`) with the browser
+  the caller owns; `connect` covers the machine-to-machine grant.
+
+  - [ ] an unauthenticated MCP request answers 401 whose
+        WWW-Authenticate names resource_metadata, and that url serves
+        the RFC 9728 document naming the authorization server
+  - [ ] discover walks the chain: 401 -> resource metadata -> AS
+        metadata -> endpoints; each missing link is a named Left
+  - [ ] the whole loop against a stub AS: connect obtains a token by
+        client credentials and the SAME agent tool-call that works
+        unauthenticated on an open server works on the protected one
+        — with nothing above the link changed
+  - [ ] a wrong-scope token is 403 by policy; the metadata documents
+        stay servable without any token (they are how you LEARN to
+        authenticate)
+  - [ ] hostile: a metadata document pointing at a hostile AS is the
+        caller's to distrust — discover surfaces the AS url it found,
+        and connect only talks to it if the caller proceeds (recorded
+        as the trust boundary, not silently followed)... reformulated:
+        discover ANSWERS what it found; connect takes the Discovered
+        VALUE, so the caller sees the AS before any secret goes to it
 - **2 — security-node**: the Crypto seam over node:crypto; the JS leg
   verifies.
 - **3 — security-oidc**: id_token validation, discovery, nonce.
