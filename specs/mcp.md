@@ -136,10 +136,42 @@ Session.complete(ref, argument, value, context): Vector[String] ! Async
 - [x] live: the reference server's own completion answers our client
       (shape asserted, content theirs)
 
+## v9 — resource templates (2026-09-01, the last list item)
+
+`resources/templates/list` both ends, plus the two functions that
+make a template more than a string: `expand` (RFC 6570 level 1 —
+`{var}` with percent-encoding; higher levels are a named non-goal
+until something needs them) and its REVERSE, `matches(template, uri)
+-> Option[vars]` — which is what lets a SERVER serve a template: the
+read function matches the expanded uri back and extracts the
+variables, one declaration serving unbounded resources.
+
+```scala
+final case class Template(uriTemplate: String, name: String,
+                          description: String = "", mimeType: Option[String] = None)
+object Template:
+  def expand(template: String, vars: Map[String, String]): String
+  def matches(template: String, uri: String): Option[Map[String, String]]
+
+Serving(..., templates: Seq[Mcp.Template] = Nil)   // counts toward the
+                                                   // resources capability
+Session.templates: Seq[Mcp.Template] ! Async
+```
+
+- [ ] templates round-trip the wire; the list is served under the
+      resources capability (templates alone suffice to declare it)
+- [ ] expand/matches are inverses on level 1, percent-encoding
+      included: expand then matches answers the vars back, verbatim
+- [ ] a server SERVES a template: one declaration, a read that
+      matches and extracts, unbounded uris answer — end to end over a
+      session, with completion on the template's variable tying v8 in
+- [ ] a uri that does not fit the template is None — matches never
+      guesses
+- [ ] live: the reference server lists its templates to our client
+
 ## Out of scope
 - elicitation (`elicitation/create`): the server asking the human, not
   the program — it needs a UI contract this library has no opinion on
-- resource TEMPLATES (RFC 6570 uri patterns)
 - the HTTP/SSE transport (okay-llm already has the SSE half; the
   streamable-HTTP session layer is its own task)
 - OAuth and any authorization
