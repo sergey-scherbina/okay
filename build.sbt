@@ -297,6 +297,23 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     ),
   )
 
+/** caching with NAMED invalidation: no default TTL — every cache
+ * states where its truth lives and how wrong it may be
+ * (specs/cache.md); memory engine v1, Redis and the log-fed view
+ * behind the same trait later */
+lazy val okayCache = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-cache"))
+  .dependsOn(okay)
+  .settings(
+    name := "okay-cache",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 /** the relational seam: the Sql driver trait and the typed layer
  * (rows/params/verify/transact) written once against it — no
  * java.sql anywhere, asserted by the JS and Native cross-builds
@@ -714,6 +731,7 @@ lazy val root = (project in file("."))
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
     okaySql.jvm, okaySql.js, okaySql.native,
+    okayCache.jvm, okayCache.js, okayCache.native,
     okayConf.jvm, okayConf.js, okayConf.native,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayAgent.jvm, okayAgent.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,

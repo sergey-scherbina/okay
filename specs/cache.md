@@ -129,16 +129,19 @@ stated so the "cache the 404" question has one answer.
 
 ## Behavior
 
-- [ ] single-flight: N concurrent `getOrLoad` misses on one key run
+- [x] single-flight: N concurrent `getOrLoad` misses on one key run
       the loader ONCE; all N get its value; a second key loads
-      independently (no global lock)
-- [ ] a budget expires: within N the value serves, after N the
+      independently (no global lock) — 8 real threads on a gated
+      loader; and a FAILING flight fails every waiter (no hang) and
+      releases the key (TestCacheFlight, JVM)
+- [x] a budget expires: within N the value serves, after N the
       entry is a miss and reloads; no budget can be left unnamed
-      (construction requires a Regime)
-- [ ] `invalidate` removes: the next read loads; `put` replaces
-- [ ] eviction: at maxEntries the least-recently-USED entry leaves;
+      (construction requires a Regime — structurally: `memory` has
+      no overload without one; the bound is required too)
+- [x] `invalidate` removes: the next read loads; `put` replaces
+- [x] eviction: at maxEntries the least-recently-USED entry leaves;
       hit/miss/eviction counts in `stats` match the scenario
-- [ ] negative caching: an absent answer (None) is cached under the
+- [x] negative caching: an absent answer (None) is cached under the
       same budget and counted as a hit while fresh
 - [ ] write-through with specs/jdbc.md: invalidate runs AFTER
       commit (ordering asserted); the stale window between commit
@@ -201,6 +204,19 @@ stated so the "cache the 404" question has one answer.
 
 ## Results
 
-(after implementation — contract-suite counts against memory and
-Redis, the measured stale window under write-through, view refold
-agreement)
+Stage 0 landed (cache-memory, 2026-09-01): okay-cache cross-built
+JVM/JS/Native, depending on the core alone. `Regime` (Budget /
+Invalidated — no default, no unbounded constructor), the `Cache`
+trait, the memory engine: LRU by re-insertion into a LinkedHashMap
+(head = least recently used), budgets enforced on read (an expired
+entry is a miss and is removed), stats as a plain value.
+Single-flight runs the loader under its OWN drive
+(`Async.runAsync`), so a failure anywhere in the loader — a thrown
+step, a failed Await — completes the flight and reaches every
+waiter instead of stranding them; the claim releases and the key
+recovers. Tests: 9 JVM (7 shared + 2 concurrency) / 7 JS / 7
+Native; the shared suite runs on JS by driving Run-only programs
+inline, no CanBlock. Still open, each with its slug: the
+write-through-after-commit box (pairs okay-jdbc; needs a slug —
+filed as cache-write-through), the regime-1 view (cache-view), the
+Redis engine and cross-node invalidation (cache-redis).
