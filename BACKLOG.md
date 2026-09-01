@@ -9,11 +9,6 @@
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
 
-## okay-codec
-- [ ] codec-vector — Schema for Vector (and recursion + default
-      params in derivation): what ui-wire needed and shipped without,
-      on the hand mapping instead
-
 ## okay-security (specs/security.md — staged, like persist)
 - [ ] security-es256 — ES256 for JWT (the JOSE raw R||S <-> DER dance,
       its own tested task)
