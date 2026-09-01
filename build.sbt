@@ -290,6 +290,27 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     ),
   )
 
+/** the durable log: partitioned append-only persistence, offsets as
+ * resume tokens; memory and file engines behind one trait
+ * (specs/persist.md) */
+lazy val okayPersist = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-persist"))
+  .dependsOn(okayCodec)
+  .settings(
+    name := "okay-persist",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+    ),
+  )
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 /** language models as streams: the thin client (P4/llm.md).
  * Cross-built — only the Transport is platform-bound (java.net.http
  * on the JVM, fetch on JS), everything else is pure Scala */
@@ -566,6 +587,7 @@ lazy val root = (project in file("."))
     okayLex.jvm, okayLex.js, okayLex.native,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
+    okayPersist.jvm, okayPersist.js, okayPersist.native,
     okayAgent.jvm, okayAgent.js, okayRag.jvm, okayRag.js, okayDemo,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
