@@ -1,5 +1,15 @@
 # Changelog
 
+## cache-redis — four commands do not justify a dependency
+Completed: 2026-09-01 (landed after c316c30)
+The RESP client is four commands over a blocking socket; Budget =
+SET PX (the SERVER expires, this process never filters), values
+ride CBOR, connect PINGs and fails fast. Invalidations are EVENTS
+on a persist topic: the cross-node honest window shown before the
+drain, and a down node replays and CONVERGES — the trade justifying
+the topic over pub/sub, asserted. Live vs docker redis, skip where
+absent. Matrix ~1440.
+
 ## persist-consensus (spec) — who may advance an epoch, decided
 Completed: 2026-09-01 (landed as fbf2e2e; spec only)
 specs/consensus.md: election REDUCED to a fold of a totally-ordered

@@ -1,10 +1,6 @@
 # Sprint
 
 ## Doing
-- cache-redis — the minimal RESP client (four commands do not
-  justify a dependency), the Redis engine with CBOR values and
-  server-side expiry, and the cross-node invalidation topic where
-  a replaying node converges (specs/cache.md stage 2)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
