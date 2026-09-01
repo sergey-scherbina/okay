@@ -1,0 +1,4 @@
+lane: ctx-wire
+owner: fable-ctx
+started: 2026-09-01
+scope: core wire[A] consumer one-liner (Reader-ask on ctx fns, E17), tests, spec
