@@ -1,0 +1,7 @@
+feature/blob-fs 2026-09-01T20:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-01T20:00:00Z
+status: in-progress
+done-so-far:
+next: okay-blob module - trait (cross) + Fs engine (jvm) + BlobContract suite; get answers Either (spec sketch adjusted, noted); S3 stays blob-s3
+files: okay-blob/** (new), build.sbt (tail), specs/blob.md
