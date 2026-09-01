@@ -143,6 +143,3 @@
 ## Elsewhere
 - [ ] agent-langchain4j — their providers as Model handlers (ROADMAP
       P9 leftover)
-- [ ] history-tsv-tabs — six rows with literal \t instead of tabs
-      (bpeScan, indexKeyword, keywordTerms, jsonToCst, jsonProject,
-      jsonDecode, buildOnly area; flagged in the room 2026-08-31)
