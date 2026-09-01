@@ -87,11 +87,11 @@ than dogmatically.
 
 ## References
 
-- Jacques Carette, Oleg Kiselyov, Chung-chieh Shan. *Finally tagless,
+- Jacques Carette, Oleg Kiselyov, Chung-chieh Shan. *[Finally tagless,
   partially evaluated: tagless staged interpreters for simpler typed
-  languages.* JFP 19(5):509–543, 2009.
-- Walid Taha, Tim Sheard. *Multi-stage programming with explicit
-  annotations.* PEPM 1997.
-- Walid Taha, Tim Sheard. *MetaML and multi-stage programming with
-  explicit annotations.* Theoretical Computer Science
+  languages.](https://okmij.org/ftp/tagless-final/JFP.pdf)* JFP 19(5):509–543, 2009.
+- Walid Taha, Tim Sheard. *[Multi-stage programming with explicit
+  annotations.](https://doi.org/10.1145/258993.259019)* PEPM 1997.
+- Walid Taha, Tim Sheard. *[MetaML and multi-stage programming with
+  explicit annotations.](https://doi.org/10.1016/S0304-3975(00)00053-0)* Theoretical Computer Science
   248(1–2):211–242, 2000.

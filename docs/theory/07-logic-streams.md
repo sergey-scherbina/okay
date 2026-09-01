@@ -108,26 +108,26 @@ where that property was established.
 
 ## References
 
-- Philip Wadler. *How to replace failure by a list of successes.*
+- Philip Wadler. *[How to replace failure by a list of successes.](https://doi.org/10.1007/3-540-15975-4_33)*
   FPCA 1985.
 - Oleg Kiselyov, Chung-chieh Shan, Daniel P. Friedman, Amr Sabry.
-  *Backtracking, interleaving, and terminating monad transformers
-  (functional pearl).* ICFP 2005.
-- Erik Meijer, Maarten Fokkinga, Ross Paterson. *Functional
-  programming with bananas, lenses, envelopes and barbed wire.*
+  *[Backtracking, interleaving, and terminating monad transformers
+  (functional pearl).](https://okmij.org/ftp/papers/LogicT.pdf)* ICFP 2005.
+- Erik Meijer, Maarten Fokkinga, Ross Paterson. *[Functional
+  programming with bananas, lenses, envelopes and barbed wire.](https://maartenfokkinga.github.io/utwente/mmf91m.pdf)*
   FPCA 1991.
-- Jeremy Gibbons. *Origami programming.* In The Fun of Programming,
+- Jeremy Gibbons. *[Origami programming.](https://www.cs.ox.ac.uk/jeremy.gibbons/publications/origami.pdf)* In The Fun of Programming,
   Palgrave, 2003.
 - Philippe Flajolet, Éric Fusy, Olivier Gandouet, Frédéric Meunier.
-  *HyperLogLog: the analysis of a near-optimal cardinality estimation
-  algorithm.* AofA 2007.
-- Graham Cormode, S. Muthukrishnan. *An improved data stream summary:
-  the count-min sketch and its applications.* Journal of Algorithms
+  *[HyperLogLog: the analysis of a near-optimal cardinality estimation
+  algorithm.](https://algo.inria.fr/flajolet/Publications/FlFuGaMe07.pdf)* AofA 2007.
+- Graham Cormode, S. Muthukrishnan. *[An improved data stream summary:
+  the count-min sketch and its applications.](https://doi.org/10.1016/j.jalgor.2003.12.001)* Journal of Algorithms
   55(1):58–75, 2005.
-- Ted Dunning, Otmar Ertl. *Computing extremely accurate quantiles
-  using t-digests.* arXiv:1902.04023, 2019.
-- B. P. Welford. *Note on a method for calculating corrected sums of
-  squares and products.* Technometrics 4(3):419–420, 1962.
-- Tony F. Chan, Gene H. Golub, Randall J. LeVeque. *Algorithms for
-  computing the sample variance: analysis and recommendations.* The
+- Ted Dunning, Otmar Ertl. *[Computing extremely accurate quantiles
+  using t-digests.](https://arxiv.org/abs/1902.04023)* arXiv:1902.04023, 2019.
+- B. P. Welford. *[Note on a method for calculating corrected sums of
+  squares and products.](https://doi.org/10.1080/00401706.1962.10490022)* Technometrics 4(3):419–420, 1962.
+- Tony F. Chan, Gene H. Golub, Randall J. LeVeque. *[Algorithms for
+  computing the sample variance: analysis and recommendations.](https://doi.org/10.1080/00031305.1983.10483115)* The
   American Statistician 37(3):242–247, 1983.

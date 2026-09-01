@@ -96,11 +96,11 @@ and twelve casts plus a row-splitting caveat disappeared.
 
 ## References
 
-- Wouter Swierstra. *Data types à la carte.* JFP 18(4):423–436, 2008.
-- Oleg Kiselyov, Hiromi Ishii. *Freer monads, more extensible
-  effects.* Haskell Symposium 2015.
-- Janis Voigtländer. *Asymptotic improvement of computations over free
-  monads.* MPC 2008.
-- Atze van der Ploeg, Oleg Kiselyov. *Reflection without remorse.*
+- Wouter Swierstra. *[Data types à la carte.](https://doi.org/10.1017/S0956796808006758)* JFP 18(4):423–436, 2008.
+- Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible
+  effects.](https://okmij.org/ftp/Haskell/extensible/more.pdf)* Haskell Symposium 2015.
+- Janis Voigtländer. *[Asymptotic improvement of computations over free
+  monads.](https://doi.org/10.1007/978-3-540-70594-9_20)* MPC 2008.
+- Atze van der Ploeg, Oleg Kiselyov. *[Reflection without remorse.](https://okmij.org/ftp/Haskell/zseq.pdf)*
   Haskell Symposium 2014.
-- Rúnar Bjarnason. *Stackless Scala with free monads.* 2012.
+- Rúnar Bjarnason. *[Stackless Scala with free monads.](http://blog.higher-order.com/assets/trampolines.pdf)* 2012.

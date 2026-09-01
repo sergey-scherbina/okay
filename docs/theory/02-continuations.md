@@ -110,15 +110,15 @@ but one theorem, specialized twice.
 
 ## References
 
-- Matthias Felleisen. *The theory and practice of first-class
-  prompts.* POPL 1988.
+- Matthias Felleisen. *[The theory and practice of first-class
+  prompts.](https://doi.org/10.1145/73560.73576)* POPL 1988.
 - Olivier Danvy, Andrzej Filinski. *A functional abstraction of typed
   contexts.* DIKU report 89/12, 1989.
-- Olivier Danvy, Andrzej Filinski. *Abstracting control.* LISP and
+- Olivier Danvy, Andrzej Filinski. *[Abstracting control.](https://doi.org/10.1145/91556.91622)* LISP and
   Functional Programming 1990.
-- Andrzej Filinski. *Representing monads.* POPL 1994.
-- Kenichi Asai, Yukiyoshi Kameyama. *Polymorphic delimited
-  continuations.* APLAS 2007.
-- R. Kent Dybvig, Simon Peyton Jones, Amr Sabry. *A monadic framework
-  for delimited continuations.* JFP 17(6):687–730, 2007.
-- Rúnar Bjarnason. *Stackless Scala with free monads.* 2012.
+- Andrzej Filinski. *[Representing monads.](https://doi.org/10.1145/174675.178047)* POPL 1994.
+- Kenichi Asai, Yukiyoshi Kameyama. *[Polymorphic delimited
+  continuations.](https://doi.org/10.1007/978-3-540-76637-7_16)* APLAS 2007.
+- R. Kent Dybvig, Simon Peyton Jones, Amr Sabry. *[A monadic framework
+  for delimited continuations.](https://www.cs.indiana.edu/~dyb/pubs/monadicDC.pdf)* JFP 17(6):687–730, 2007.
+- Rúnar Bjarnason. *[Stackless Scala with free monads.](http://blog.higher-order.com/assets/trampolines.pdf)* 2012.

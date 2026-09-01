@@ -95,13 +95,13 @@ refinement both read it.
 
 ## References
 
-- Gordon Plotkin, John Power. *Notions of computation determine
-  monads.* FoSSaCS 2002.
-- Gordon Plotkin, John Power. *Algebraic operations and generic
-  effects.* Applied Categorical Structures 11(1):69–94, 2003.
-- Gordon Plotkin, Matija Pretnar. *Handlers of algebraic effects.*
+- Gordon Plotkin, John Power. *[Notions of computation determine
+  monads.](https://doi.org/10.1007/3-540-45931-6_24)* FoSSaCS 2002.
+- Gordon Plotkin, John Power. *[Algebraic operations and generic
+  effects.](https://doi.org/10.1023/A:1023064908962)* Applied Categorical Structures 11(1):69–94, 2003.
+- Gordon Plotkin, Matija Pretnar. *[Handlers of algebraic effects.](https://doi.org/10.1007/978-3-642-00590-9_7)*
   ESOP 2009.
-- Oleg Kiselyov, Amr Sabry, Cameron Swords. *Extensible effects: an
-  alternative to monad transformers.* Haskell Symposium 2013.
-- Oleg Kiselyov, Hiromi Ishii. *Freer monads, more extensible
-  effects.* Haskell Symposium 2015.
+- Oleg Kiselyov, Amr Sabry, Cameron Swords. *[Extensible effects: an
+  alternative to monad transformers.](https://okmij.org/ftp/Haskell/extensible/exteff.pdf)* Haskell Symposium 2013.
+- Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible
+  effects.](https://okmij.org/ftp/Haskell/extensible/more.pdf)* Haskell Symposium 2015.

@@ -92,9 +92,9 @@ followed the paper closely enough that there is little else to say.
 
 ## References
 
-- Robert Atkey. *Parameterised notions of computation.* JFP
+- Robert Atkey. *[Parameterised notions of computation.](https://bentnib.org/paramnotions-jfp.html)* JFP
   19(3–4):335–376, 2009. (The paper `Monad.scala` links.)
 - Olivier Danvy, Andrzej Filinski. *A functional abstraction of typed
   contexts.* DIKU report 89/12, 1989.
-- Kenichi Asai, Yukiyoshi Kameyama. *Polymorphic delimited
-  continuations.* APLAS 2007.
+- Kenichi Asai, Yukiyoshi Kameyama. *[Polymorphic delimited
+  continuations.](https://doi.org/10.1007/978-3-540-76637-7_16)* APLAS 2007.

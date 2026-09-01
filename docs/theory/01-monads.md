@@ -145,13 +145,13 @@ and then claw back.
 
 ## References
 
-- Eugenio Moggi. *Computational lambda-calculus and monads.* LICS 1989.
-- Eugenio Moggi. *Notions of computation and monads.* Information and
+- Eugenio Moggi. *[Computational lambda-calculus and monads.](https://doi.org/10.1109/LICS.1989.39155)* LICS 1989.
+- Eugenio Moggi. *[Notions of computation and monads.](https://doi.org/10.1016/0890-5401(91)90052-4)* Information and
   Computation 93(1):55–92, 1991.
-- Philip Wadler. *The essence of functional programming.* POPL 1992.
-- Philip Wadler. *Monads for functional programming.* In Advanced
+- Philip Wadler. *[The essence of functional programming.](https://doi.org/10.1145/143165.143169)* POPL 1992.
+- Philip Wadler. *[Monads for functional programming.](https://homepages.inf.ed.ac.uk/wadler/papers/marktoberdorf/baastad.pdf)* In Advanced
   Functional Programming, LNCS 925, Springer, 1995.
-- Oleg Kiselyov, Amr Sabry, Cameron Swords. *Extensible effects: an
-  alternative to monad transformers.* Haskell Symposium 2013.
-- Janis Voigtländer. *Asymptotic improvement of computations over free
-  monads.* MPC 2008.
+- Oleg Kiselyov, Amr Sabry, Cameron Swords. *[Extensible effects: an
+  alternative to monad transformers.](https://okmij.org/ftp/Haskell/extensible/exteff.pdf)* Haskell Symposium 2013.
+- Janis Voigtländer. *[Asymptotic improvement of computations over free
+  monads.](https://doi.org/10.1007/978-3-540-70594-9_20)* MPC 2008.
