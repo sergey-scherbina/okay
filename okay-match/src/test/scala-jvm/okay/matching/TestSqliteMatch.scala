@@ -49,6 +49,38 @@ class TestSqliteMatch extends munit.FunSuite {
     val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
     assertEquals(m2.contacts(seeker, flat).map(x => Value.text(x.value)), Vector("tg:@flat"))
     assertEquals(m2.dealsFor(flat).map(_.state), Vector(DealState.Accepted))
+  
+  test("flows survive a restart on sqlite; unlocks persist") {
+    val (m, f) = fresh()
+    val seeker = m.register("s@x"); val provider = m.register("p@x")
+    m.assert(provider, "contact", Side.Offer, Value.VText("tg:@p"),
+      prov("c", 1), 1.0, Vis.Matched)
+    val Right(id) = m.startFlow("deal",
+      Map("seeker" -> seeker, "provider" -> provider), "кран"): @unchecked
+    assert(m.advanceFlow(id, "accept", provider).isRight)
+    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
+    assertEquals(m2.flow(id).get.state, "accepted")
+    assertEquals(m2.flow(id).get.history.map(_._1), Vector("accept"))
+    assertEquals(m2.unlockedBy(seeker, provider).map(x => Value.text(x.value)),
+      Vector("tg:@p"))
+    assert(m2.advanceFlow(id, "decline", provider).isLeft, "closed stays closed")
+  }
+}
+
+  test("flows survive a restart on sqlite; unlocks persist") {
+    val (m, f) = fresh()
+    val seeker = m.register("s@x"); val provider = m.register("p@x")
+    m.assert(provider, "contact", Side.Offer, Value.VText("tg:@p"),
+      prov("c", 1), 1.0, Vis.Matched)
+    val Right(id) = m.startFlow("deal",
+      Map("seeker" -> seeker, "provider" -> provider), "кран"): @unchecked
+    assert(m.advanceFlow(id, "accept", provider).isRight)
+    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
+    assertEquals(m2.flow(id).get.state, "accepted")
+    assertEquals(m2.flow(id).get.history.map(_._1), Vector("accept"))
+    assertEquals(m2.unlockedBy(seeker, provider).map(x => Value.text(x.value)),
+      Vector("tg:@p"))
+    assert(m2.advanceFlow(id, "decline", provider).isLeft, "closed stays closed")
   }
 }
 
@@ -64,5 +96,37 @@ class TestSqliteMatch extends munit.FunSuite {
     val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
     assertEquals(m2.contacts(seeker, flat).map(x => Value.text(x.value)), Vector("tg:@flat"))
     assertEquals(m2.dealsFor(flat).map(_.state), Vector(DealState.Accepted))
+  
+  test("flows survive a restart on sqlite; unlocks persist") {
+    val (m, f) = fresh()
+    val seeker = m.register("s@x"); val provider = m.register("p@x")
+    m.assert(provider, "contact", Side.Offer, Value.VText("tg:@p"),
+      prov("c", 1), 1.0, Vis.Matched)
+    val Right(id) = m.startFlow("deal",
+      Map("seeker" -> seeker, "provider" -> provider), "кран"): @unchecked
+    assert(m.advanceFlow(id, "accept", provider).isRight)
+    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
+    assertEquals(m2.flow(id).get.state, "accepted")
+    assertEquals(m2.flow(id).get.history.map(_._1), Vector("accept"))
+    assertEquals(m2.unlockedBy(seeker, provider).map(x => Value.text(x.value)),
+      Vector("tg:@p"))
+    assert(m2.advanceFlow(id, "decline", provider).isLeft, "closed stays closed")
+  }
+}
+
+  test("flows survive a restart on sqlite; unlocks persist") {
+    val (m, f) = fresh()
+    val seeker = m.register("s@x"); val provider = m.register("p@x")
+    m.assert(provider, "contact", Side.Offer, Value.VText("tg:@p"),
+      prov("c", 1), 1.0, Vis.Matched)
+    val Right(id) = m.startFlow("deal",
+      Map("seeker" -> seeker, "provider" -> provider), "кран"): @unchecked
+    assert(m.advanceFlow(id, "accept", provider).isRight)
+    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
+    assertEquals(m2.flow(id).get.state, "accepted")
+    assertEquals(m2.flow(id).get.history.map(_._1), Vector("accept"))
+    assertEquals(m2.unlockedBy(seeker, provider).map(x => Value.text(x.value)),
+      Vector("tg:@p"))
+    assert(m2.advanceFlow(id, "decline", provider).isLeft, "closed stays closed")
   }
 }

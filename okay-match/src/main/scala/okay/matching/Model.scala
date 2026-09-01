@@ -222,6 +222,23 @@ trait MatchStore:
    * platform's AfterMatch-gated ones) — ONLY under an Accepted deal
    * binding the two */
   def contacts(viewer: ProfileId, other: ProfileId): Vector[Fact]
+  // ---- scenarios as data (match-scenarios) ----
+  /** register a definition; malformations come back as data and an
+   * invalid definition is NOT registered */
+  def defineScenario(d: ScenarioDef): Vector[BadScenario]
+  def scenario(name: String): Option[ScenarioDef]
+  def startFlow(scenario: String, parties: Map[String, ProfileId],
+                what: String): Either[NoAdvance, FlowId]
+  /** the one engine step; on success the unlocks are RECORDED and
+   * the fired transition returned (its notifies are the caller's to
+   * deliver — inboxes are an application's business) */
+  def advanceFlow(id: FlowId, transition: String, by: ProfileId)
+  : Either[NoAdvance, (Flow, Transition)]
+  def flow(id: FlowId): Option[Flow]
+  def flowsFor(p: ProfileId): Vector[Flow]
+  /** visibility EARNED through flows: the other's facts whose
+   * attribute an executed transition unlocked for the viewer */
+  def unlockedBy(viewer: ProfileId, other: ProfileId): Vector[Fact]
 
 /** a hit: who, how well, what the two gates disclose now — and the
  * names of facts that matched but wait behind the platform's

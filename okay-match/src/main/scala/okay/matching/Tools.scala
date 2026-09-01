@@ -54,6 +54,7 @@ object Tools {
 
   private object FactIdOps:
     def deal(n: Option[Double]): DealId = DealId(n.getOrElse(0.0).toLong)
+    def flow(n: Option[Double]): FlowId = FlowId(n.getOrElse(0.0).toLong)
 
   private def side(x: Option[String]): Side =
     if x.contains("need") then Side.Need else Side.Offer
@@ -122,6 +123,18 @@ object Tools {
     ToolSpec("match_deals",
       "A profile's inquiries, both directions, with their states.",
       strSchema("profile" -> "string")),
+    ToolSpec("flow_start",
+      "Start a registered scenario: parties = {role: profileId,...}; answers the flow id.",
+      strSchema("scenario" -> "string", "what" -> "string")),
+    ToolSpec("flow_advance",
+      "Fire a transition on a flow; only the transition's role may. Answers the new state.",
+      strSchema("flow" -> "number", "transition" -> "string", "by" -> "string")),
+    ToolSpec("flow_state",
+      "A flow's scenario, state, parties and history.",
+      strSchema("flow" -> "number")),
+    ToolSpec("scenario_get",
+      "A registered scenario definition: roles, states, transitions.",
+      strSchema("name" -> "string")),
     ToolSpec("match_contacts",
       "The other party's contact facts — unlocked ONLY by an accepted deal between the two.",
       strSchema("viewer" -> "string", "other" -> "string")))
@@ -206,6 +219,44 @@ object Tools {
         .map(dl => obj("deal" -> JNum(dl.id.n.toDouble),
           "seeker" -> JStr(dl.seeker.uuid), "provider" -> JStr(dl.provider.uuid),
           "what" -> JStr(dl.what), "state" -> JStr(dl.state.toString))))) },
+    "flow_start" -> { c =>
+      val parties = (c.args match
+        case JObj(fs) => fs.collectFirst { case ("parties", JObj(ps)) => ps }
+          .getOrElse(Vector.empty)
+        case _ => Vector.empty
+      ).collect { case (r, JStr(u)) => r -> ProfileId(u) }.toMap
+      m.startFlow(s(c.args, "scenario").getOrElse(""), parties,
+        s(c.args, "what").getOrElse("")) match
+        case Left(no) => Json.print(obj("refused" -> JStr(no.reason)))
+        case Right(id) => Json.print(obj("flow" -> JNum(id.n.toDouble))) },
+    "flow_advance" -> { c =>
+      m.advanceFlow(FactIdOps.flow(d(c.args, "flow")),
+        s(c.args, "transition").getOrElse(""),
+        ProfileId(s(c.args, "by").getOrElse(""))) match
+        case Left(no) => Json.print(obj("refused" -> JStr(no.reason)))
+        case Right((f, _)) => Json.print(obj("flow" -> JNum(f.id.n.toDouble),
+          "state" -> JStr(f.state))) },
+    "flow_state" -> { c =>
+      m.flow(FactIdOps.flow(d(c.args, "flow"))) match
+        case None => Json.print(JNull)
+        case Some(f) => Json.print(obj(
+          "scenario" -> JStr(f.scenario), "state" -> JStr(f.state),
+          "what" -> JStr(f.what),
+          "parties" -> JObj(f.parties.toVector.map((r, p) => r -> JStr(p.uuid))),
+          "history" -> JArr(f.history.map((t, by, ts) => obj(
+            "transition" -> JStr(t), "by" -> JStr(by.uuid), "ts" -> JNum(ts.toDouble)))))) },
+    "scenario_get" -> { c =>
+      m.scenario(s(c.args, "name").getOrElse("")) match
+        case None => Json.print(JNull)
+        case Some(sc) => Json.print(obj(
+          "name" -> JStr(sc.name),
+          "roles" -> JArr(sc.roles.map(JStr(_))),
+          "initial" -> JStr(sc.initial),
+          "states" -> JArr(sc.states.map(JStr(_))),
+          "terminal" -> JArr(sc.terminal.toVector.sorted.map(JStr(_))),
+          "transitions" -> JArr(sc.transitions.map(t => obj(
+            "name" -> JStr(t.name), "from" -> JStr(t.from), "to" -> JStr(t.to),
+            "by" -> JStr(t.by)))))) },
     "match_contacts" -> { c =>
       Json.print(JArr(m.contacts(
         ProfileId(s(c.args, "viewer").getOrElse("")),

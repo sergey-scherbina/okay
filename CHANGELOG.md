@@ -12,6 +12,26 @@ as a plain Db, and doors write point-free (`val getQ: Db ?=> String
 = wire[Db].q`) — no summon, no parameter. A missing given stays a
 COMPILE error. Composes with providing/and (nearest wins). Core:
 Providing.scala; tests: TestWire (4). Matrix 253/14/14.
+## match-scenarios — scenarios as data; the deal becomes a definition
+Completed: 2026-09-01
+
+The review question ("can we add new scenarios? how?") gets the
+registry answer a second time. ScenarioDef/Transition/Flow: roles,
+states, terminals; a transition BELONGS to a role (the generalization
+of "respond is the asked provider's alone"), carries the visibility
+unlocks it grants (generalizing contacts()) and notification
+templates. validate answers malformations as data (unknown
+role/state, terminal with exits, unreachable terminal) and an invalid
+definition is not registered. advance is the ONE engine method; the
+deal machine is now the built-in ScenarioDef.deal running on it. The
+universality proof: a three-role escrow housing sale runs with zero
+engine changes, unlocking the address only at release. Flows and
+unlocks are durable (sqlite restart test); definitions are
+configuration. Stage 1 landed with it: the phantom-indexed
+ScenarioBuilder — a route naming an undeclared state does not
+compile (match-type membership, no macros) — the safe pen for
+definitions written in code, the data form staying primary. Tools:
+flow_start/flow_advance/flow_state/scenario_get. 27 match tests.
 
 ## security-crypto-split — the SCRAM primitives on a shared, dependency-free seam
 Completed: 2026-09-01

@@ -236,16 +236,16 @@ needed is as unknowable in advance as which attributes.
   safe pen.
 
 Behavior:
-- [ ] a scenario defined as data runs end to end: roles enforced per
+- [x] a scenario defined as data runs end to end: roles enforced per
       transition, terminals close the flow, history kept
-- [ ] validate names each malformation as data (unknown role/state,
+- [x] validate names each malformation as data (unknown role/state,
       unreachable terminal, terminal with exits)
-- [ ] transition unlocks grant visibility (unlockedBy) and
+- [x] transition unlocks grant visibility (unlockedBy) and
       notifications fire with the template holes filled
-- [ ] a SECOND scenario (multi-step, three roles) runs on the same
+- [x] a SECOND scenario (multi-step, three roles) runs on the same
       engine with zero engine changes — the universality proof
-- [ ] engines agree (memory + sqlite): flows survive a restart
-- [ ] the typed builder: an undeclared state in a transition is a
+- [x] engines agree (memory + sqlite): flows survive a restart
+- [x] the typed builder: an undeclared state in a transition is a
       compile error; the built value equals the hand-written data
 
 ## Out of scope

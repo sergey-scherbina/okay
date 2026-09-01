@@ -289,6 +289,57 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
       (f.vis == Vis.Matched ||
         (f.vis == Vis.Public && policy.gate(f.attr) == Gate.AfterMatch)))
 
+  // ---- scenarios as data --------------------------------------------
+
+  private var scenarios: Map[String, ScenarioDef] = Map("deal" -> ScenarioDef.deal)
+  private var flows: Vector[Flow] = Vector.empty
+  private var nextFlow = 1L
+  private var unlocks: Set[(ProfileId, ProfileId, String)] = Set.empty
+
+  def defineScenario(d: ScenarioDef): Vector[BadScenario] =
+    val bad = ScenarioDef.validate(d)
+    if bad.isEmpty then scenarios += d.name -> d
+    bad
+
+  def scenario(name: String): Option[ScenarioDef] = scenarios.get(name)
+
+  def startFlow(sc: String, parties: Map[String, ProfileId],
+                what: String): Either[NoAdvance, FlowId] =
+    scenarios.get(sc) match
+      case None => Left(NoAdvance(s"unknown scenario '$sc'"))
+      case Some(d) if d.roles.toSet != parties.keySet =>
+        Left(NoAdvance(s"parties must cover roles ${d.roles.mkString(",")}"))
+      case Some(d) =>
+        val id = FlowId(nextFlow); nextFlow += 1
+        flows :+= Flow(id, sc, parties, what, d.initial, Vector.empty)
+        Right(id)
+
+  def advanceFlow(id: FlowId, transition: String, by: ProfileId)
+  : Either[NoAdvance, (Flow, Transition)] =
+    flows.find(_.id == id) match
+      case None => Left(NoAdvance("no such flow"))
+      case Some(f) =>
+        val d = scenarios(f.scenario)
+        if d.terminal(f.state) then Left(NoAdvance(s"the flow is closed ('${f.state}')"))
+        else Flow.advance(d, f, transition, by, now()).map { (f2, t) =>
+          flows = flows.map(x => if x.id == id then f2 else x)
+          // the unlocks are recorded pairwise: the viewer role sees
+          // every OTHER party's facts of that attribute
+          for (vr, attr) <- t.unlocks; viewer <- f2.parties.get(vr);
+              (r, other) <- f2.parties if r != vr do
+            unlocks += ((viewer, other, attr))
+          (f2, t)
+        }
+
+  def flow(id: FlowId): Option[Flow] = flows.find(_.id == id)
+  def flowsFor(p: ProfileId): Vector[Flow] = flows.filter(_.parties.values.exists(_ == p))
+
+  def unlockedBy(viewer: ProfileId, other: ProfileId): Vector[Fact] =
+    val attrs = unlocks.collect { case (v, o, a) if v == viewer && o == other => a }
+    if attrs.isEmpty then Vector.empty
+    else facts.filter(f => f.profile == other && f.supersededBy.isEmpty &&
+      attrs.contains(f.attr) && f.vis != Vis.Private)
+
   // ---- the handlers -------------------------------------------------
 
   given registry: Handler[Registry] = new:

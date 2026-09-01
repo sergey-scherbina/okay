@@ -80,6 +80,13 @@ final class SqlMatch(sql: Sql,
   exec("""CREATE TABLE IF NOT EXISTS match_deals(
     id BIGINT PRIMARY KEY, seeker VARCHAR(64), provider VARCHAR(64),
     what VARCHAR(4000), state VARCHAR(16), ts BIGINT)""")
+  exec("""CREATE TABLE IF NOT EXISTS match_flows(
+    id BIGINT PRIMARY KEY, scenario VARCHAR(255), what VARCHAR(4000),
+    state VARCHAR(255), parties VARCHAR(4000))""")
+  exec("""CREATE TABLE IF NOT EXISTS match_flow_hist(
+    flow BIGINT, transition VARCHAR(255), by_p VARCHAR(64), ts BIGINT)""")
+  exec("""CREATE TABLE IF NOT EXISTS match_unlocks(
+    viewer VARCHAR(64), other VARCHAR(64), attr VARCHAR(255))""")
   exec("""CREATE TABLE IF NOT EXISTS match_tokens(
     token VARCHAR(64) PRIMARY KEY, pfrom VARCHAR(64), pto VARCHAR(64),
     expires BIGINT)""")
@@ -425,6 +432,83 @@ final class SqlMatch(sql: Sql,
       "AND superseded_by IS NULL", Vector(Text(other.uuid))).map(factOf)
       .filter(f => f.vis == Vis.Matched ||
         (f.vis == Vis.Public && policy.gate(f.attr) == Gate.AfterMatch))
+
+  // ---- scenarios as data --------------------------------------------
+  // The DEFINITIONS are configuration (registered at boot, `deal`
+  // built in); the FLOWS and the unlocks they grant are durable.
+
+  private var scenarios: Map[String, ScenarioDef] = Map("deal" -> ScenarioDef.deal)
+  private var nextFlow = maxId("match_flows") + 1
+
+  def defineScenario(d: ScenarioDef): Vector[BadScenario] =
+    val bad = ScenarioDef.validate(d)
+    if bad.isEmpty then scenarios += d.name -> d
+    bad
+
+  def scenario(name: String): Option[ScenarioDef] = scenarios.get(name)
+
+  private def encodeParties(ps: Map[String, ProfileId]): String =
+    ps.toVector.sortBy(_._1).map((r, p) => s"$r=${p.uuid}").mkString(";")
+  private def decodeParties(x: String): Map[String, ProfileId] =
+    x.split(';').toVector.filter(_.nonEmpty).map { kv =>
+      val i = kv.indexOf('=')
+      kv.take(i) -> ProfileId(kv.drop(i + 1))
+    }.toMap
+
+  private def flowOf(r: Vector[SqlValue]): Flow =
+    val id = FlowId(lng(r(0)))
+    val hist = rows("SELECT transition, by_p, ts FROM match_flow_hist " +
+      "WHERE flow = ? ORDER BY ts", Vector(I64(id.n)))
+      .map(h => (s(h(0)), ProfileId(s(h(1))), lng(h(2))))
+    Flow(id, s(r(1)), decodeParties(s(r(4))), s(r(2)), s(r(3)), hist)
+
+  def startFlow(sc: String, parties: Map[String, ProfileId],
+                what: String): Either[NoAdvance, FlowId] =
+    scenarios.get(sc) match
+      case None => Left(NoAdvance(s"unknown scenario '$sc'"))
+      case Some(d) if d.roles.toSet != parties.keySet =>
+        Left(NoAdvance(s"parties must cover roles ${d.roles.mkString(",")}"))
+      case Some(d) =>
+        val id = FlowId(nextFlow); nextFlow += 1
+        exec("INSERT INTO match_flows VALUES(?,?,?,?,?)", Vector(
+          I64(id.n), Text(sc), Text(what), Text(d.initial),
+          Text(encodeParties(parties))))
+        Right(id)
+
+  def advanceFlow(id: FlowId, transition: String, by: ProfileId)
+  : Either[NoAdvance, (Flow, Transition)] =
+    flow(id) match
+      case None => Left(NoAdvance("no such flow"))
+      case Some(f) =>
+        val d = scenarios(f.scenario)
+        if d.terminal(f.state) then Left(NoAdvance(s"the flow is closed ('${f.state}')"))
+        else Flow.advance(d, f, transition, by, now()).map { (f2, t) =>
+          exec("UPDATE match_flows SET state = ? WHERE id = ?",
+            Vector(Text(f2.state), I64(id.n)))
+          exec("INSERT INTO match_flow_hist VALUES(?,?,?,?)",
+            Vector(I64(id.n), Text(transition), Text(by.uuid), I64(now())))
+          for (vr, attr) <- t.unlocks; viewer <- f2.parties.get(vr);
+              (r, other) <- f2.parties if r != vr do
+            exec("INSERT INTO match_unlocks VALUES(?,?,?)",
+              Vector(Text(viewer.uuid), Text(other.uuid), Text(attr)))
+          (f2, t)
+        }
+
+  def flow(id: FlowId): Option[Flow] =
+    rows("SELECT id, scenario, what, state, parties FROM match_flows WHERE id = ?",
+      Vector(I64(id.n))).map(flowOf).headOption
+
+  def flowsFor(p: ProfileId): Vector[Flow] =
+    rows("SELECT id, scenario, what, state, parties FROM match_flows")
+      .map(flowOf).filter(_.parties.values.exists(_ == p))
+
+  def unlockedBy(viewer: ProfileId, other: ProfileId): Vector[Fact] =
+    val attrs = rows("SELECT attr FROM match_unlocks WHERE viewer = ? AND other = ?",
+      Vector(Text(viewer.uuid), Text(other.uuid))).map(r => s(r(0))).toSet
+    if attrs.isEmpty then Vector.empty
+    else rows(s"SELECT $factCols FROM match_facts WHERE profile = ? " +
+      "AND superseded_by IS NULL", Vector(Text(other.uuid))).map(factOf)
+      .filter(f => attrs.contains(f.attr) && f.vis != Vis.Private)
 
   // ---- the handlers, same shape as the memory reference -------------
 
