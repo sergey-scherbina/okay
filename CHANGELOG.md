@@ -1,5 +1,19 @@
 # Changelog
 
+## tutorial-new-arcs — the day reaches the tutorial
+Completed: 2026-09-01
+Three chapters join the worked tour: 19 "Needs are types:
+capabilities" (the TestShowcase shape — one route, production edge /
+provide unit / providing override, missing capability = compile
+error), 20 "Monads as plain code: the direct block" (bare statements
+as do-notation, multi-shot preserved, the door-outside-block-inside
+composition), 21 "Errors you can repair: conditions" (signal keeps
+the continuation alive, the repair story: one loop, three policies).
+The closer renumbered to 22 and now points at capabilities.md and
+direct-style.md; the docs index count updated. Every snippet's shape
+runs in the repo's tests (TestShowcase, TestDirectDoors,
+TestCondition).
+
 ## direct-loops — effectful iteration in direct blocks
 Completed: 2026-09-01
 Landed as a2ba997. for-do/foreach, for-yield/map (the traverse

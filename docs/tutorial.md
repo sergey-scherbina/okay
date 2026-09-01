@@ -398,10 +398,98 @@ streamable HTTP (`McpHttp.link`), with server push on the GET stream.
 All of it verified live against the protocol's reference server
 (`TestLive`), which passed on the first run.
 
-## 19. Where to go next
+## 19. Needs are types: capabilities
+
+```scala
+val api: (Principal, Tracer) ?=> Traced.Route = {
+  case r if r.url.contains("/quote") =>
+    okay.async {
+      wire[Tracer].span("db.lookup") { () }
+      Response(200, Nil, Http.one(s"for:${wire[Principal].name}".getBytes))
+    }
+}
+```
+
+No parameter threading appears in the route: its needs are its TYPE,
+and `wire[A]` pulls each one from the nearest installation. So the
+same value is a production endpoint or a unit test depending on what
+you install — the agent chapter's lesson, generalized:
+
+```scala
+// production: doors install from the wire — a verified JWT becomes
+// the Principal, a traceparent becomes the Tracer
+Traced.route(tracer)(Secure.granted(verify, Policy.scoped("read"))(api))
+
+// unit test: provide installs the SAME needs directly
+provide(ada, tracer)(api)                       // no token anywhere
+
+// environments are values: one base, one overridden layer
+(base and providing[Principal](bob)) { api }    // answers for:Bob
+```
+
+A missing capability is a compile error, not a container exception —
+the wiring IS the type checker. The whole story, with its theory and
+its exact boundaries, is [capabilities](capabilities.md); the shape
+above runs as `TestShowcase` in okay-obs.
+
+## 20. Monads as plain code: the direct block
+
+```scala
+def told: Env ?=> Int ! (Writer % String) = direct {
+  Writer(s"hello ${wire[Env].user}")   // a bare statement runs — do-notation
+  Writer("bye")
+  wire[Env].uid                        // the capability, inside the block
+}
+
+provide(Env("ada", 7)) { !.run(Writer.run(told)) }
+// Vector(hello ada, bye) -> 7
+```
+
+No `for`, no `yield`, no `<-`: the `direct` block rewrites plain
+statements into the binds you would have written, and marks (`m.?`)
+or opt-in auto-coloring let monadic values stand in plain positions.
+Multi-shot survives — a bare `List(1, 2, 3)` statement re-runs the
+rest of the block per element. The block composes with chapter 19:
+the door outside answers *what is available*, the block inside
+answers *how it reads* (`TestDirectDoors`). The layers, the gates
+and the graveyard of rejected designs are in
+[direct style](direct-style.md).
+
+## 21. Errors you can repair: conditions
+
+```scala
+def decode(raw: String): Int ! Op =
+  raw.toIntOption match
+    case Some(n) => pure(n)
+    case None    => signal[Int](Damaged(raw))   // raise WITHOUT unwinding
+
+def loop(raws: List[String]): Vector[Int] ! Op = ...
+  // one frame per element: within("skip")(decode(r).map(Some(_)))(_ => None)
+```
+
+`throw` discards the continuation; `signal` keeps it alive while a
+POLICY decides — so "here is the corrected value, continue from
+where you were" is an answer, not a wish. The loop offers the menu
+(named restarts); the policy, supplied at `run`, picks per incident:
+
+```scala
+Condition.run { case (Damaged(_), _) => Resume(2) }(loop(in))       // Vector(1, 2, 3)
+Condition.run { case (Damaged(_), _) => Invoke("skip", ()) }(loop(in)) // Vector(1, 3)
+Condition.run { (_, _) => Fail }(loop(in))   // Unhandled(Damaged("x"), menu)
+```
+
+One decode loop, three outcomes, chosen at the edge — mechanism in
+the loop, policy at `run`, exactly the effect discipline the rest of
+the tutorial has been practicing. `Throws` and damage-as-data stay
+what they are; a program that never signals never pays
+(specs/condition.md, `TestCondition`).
+
+## 22. Where to go next
 
 The [guide](guide.md) explains each layer; the
-[typepedia](typepedia.md) is the reference; the
+[typepedia](typepedia.md) is the reference;
+[capabilities](capabilities.md) and [direct style](direct-style.md)
+tell the wiring and syntax stories end to end; the
 [benchmark explainer](benchmarks.md) walks every measured case; each
 module page under [modules/](modules) is that module's full
 documentation — guide, tutorial, API reference, gotchas. The specs

@@ -9,7 +9,7 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[User guide](guide.md)** — the concepts, layer by layer: control
   → effects → streams → chunks → coroutines → concurrency → the text
   stack → the laziness contract that holds it together.
-- **[Tutorial](tutorial.md)** — the same layers by use, nineteen
+- **[Tutorial](tutorial.md)** — the same layers by use, twenty-two
   worked chapters from a pure program to an agent with remote tools;
   every snippet's shape runs in the repo's tests.
 - **[The theory of Okay](theory/index.md)** — the textbook: which
