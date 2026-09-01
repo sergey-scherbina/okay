@@ -134,10 +134,14 @@ operation, an agent is a Stage, the conversation is a FOLD
 backtrackable), search over completions is `Logic`, and every policy
 question is a handler. v1 (effects, derived tool schemas, the
 compacting context) and v2 (search strategies, state-threaded memory)
-shipped 2026-08-30. Two of the three opens closed 2026-09-01:
+shipped 2026-08-30. All three opens closed 2026-09-01:
 streaming validation that cuts generation (okay-llm `Cut`, Delim as
-the mechanism) and the okay-langchain4j interop (their ChatModel as
-a `Handler[Model]`). Remaining open: lineage-backed tool results.
+the mechanism — and the repair door `screened` joined it via
+conditions), the okay-langchain4j interop (their ChatModel as a
+`Handler[Model]`), and lineage-backed tool results
+(`Large.projecting` wraps any tool handler: an oversized result is
+stored whole, the context gets head+handle+size, the `expand` tool
+reads windows on demand — llm-agentic.md's box checked, TestLarge).
 
 ## P10 — okay-rag: retrieval from our own primitives
 
