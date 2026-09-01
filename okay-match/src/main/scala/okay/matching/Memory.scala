@@ -156,7 +156,12 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
   def requestLink(from: ProfileId, to: ProfileId): Option[LinkToken] =
     if !profiles.contains(from) || !profiles.contains(to) then None
     else
-      val t = LinkToken(java.util.UUID.randomUUID().toString, from, to,
+      // the same platform truth as register's id: UUID.randomUUID
+      // drags java.security.SecureRandom, which the Scala.js linker
+      // rejects — freshId serves every platform (a link TOKEN that
+      // must resist guessing should come from okay-security's seam,
+      // a stated future step, not from UUID here either)
+      val t = LinkToken(freshId(), from, to,
         now() + tokenTtlMs)
       tokens += t.token -> t
       Some(t)
