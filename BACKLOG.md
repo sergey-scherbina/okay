@@ -27,7 +27,6 @@
       stores (PBKDF2 stays the zero-dep default)
 
 ## okay-mcp
-- [ ] mcp-completion — completion/complete for prompt/resource args
 - [ ] mcp-resource-templates — RFC 6570 templates, list + expand
 - [ ] mcp-resumable-sse — Last-Event-ID on the HTTP GET stream
       (the journal is an okay-persist topic: read(from) IS
