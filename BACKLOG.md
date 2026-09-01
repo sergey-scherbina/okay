@@ -4,10 +4,6 @@
 - [ ] queue-shape — DECIDED (specs/data.md, Queues): no Queue seam;
       ingress/egress bridges to topics with message-id dedup —
       implement the two bridges; engine adapters as named
-- [ ] blob-s3 — stage 1 of specs/blob.md: the S3 REST subset with
-      OWN SigV4 over the http client; the AWS doc vector pins the
-      signing; MinIO live tests (TestLive pattern); the SAME
-      BlobContract suite as fs
 - [ ] wire-tls — spec landed (specs/tls.md): one transport seam,
       sslmode vocabulary, verify-full default, platform crypto;
       implement JVM SSLEngine leg first

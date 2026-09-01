@@ -1,6 +1,11 @@
 # Sprint
 
 ## Doing
+- blob-s3 — stage 1: the S3 REST subset with OWN SigV4 over the
+  okay-http client, the AWS doc vector pinning the signing; puts
+  spool to disk so the payload hash is real and memory constant;
+  BlobContract re-runs against MinIO, skipping where absent
+  (specs/blob.md)
 
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam

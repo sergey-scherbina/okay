@@ -1,0 +1,7 @@
+feature/blob-s3 2026-09-01T21:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-01T21:00:00Z
+status: in-progress
+done-so-far:
+next: SigV4 signer pinned by the AWS doc vector; S3 engine over okay-http (path-style, spooled puts with a real payload hash); BlobContract re-run vs MinIO (TestLive skip pattern)
+files: okay-blob/** (S3.scala, SigV4.scala, tests), build.sbt (okayBlob deps okayHttp/okayCodec jvm), specs/blob.md boxes
