@@ -1,5 +1,19 @@
 # Changelog
 
+## direct-mark-retire — .? retired, .!? resurrected, the mark family settled
+Completed: 2026-09-02
+Landed as d474b8d. The three-strikes story closed: .? was ambiguous
+with okay's own Throws row-? (found twice independently) and is
+gone; .reflect is the name for every scope; .!? returns as the
+postfix symbol (its only charge had been redundancy beside .?, and
+it collides with nothing); and direct-bang's prefix !prog (unary_!,
+landed in parallel by the ui lane — Idris bang-notation's point in
+the design space) joins as the one-glyph gesture. One dispatch-by-
+type serves all three. The Ambiguous-extension-methods error class
+for the mark disappears by construction. 58 tests across the direct
+family, TestThrows untouched. GATE CAVEAT: OOM-kill late, 0
+failures, full reference coverage — the standing precedent.
+
 ## pg-composite-decode — the pg driver decodes COMPOSITE/ROW() and ARRAY types
 Completed: 2026-09-01
 The pg driver handed composites and arrays back as one opaque string

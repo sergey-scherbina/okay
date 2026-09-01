@@ -1,11 +1,6 @@
 # Sprint
 
 ## Doing
-- [ ] direct-mark-retire — remove the symbolic .? mark from Direct
-      and Monadic (three strikes recorded: .!, .!?, .?); .reflect is
-      the one spelling; sweep tests/docs/specs; the Ambiguous-
-      extension-methods error class disappears by construction
-      (user-directed 2026-09-01)
 - [ ] error-messages — the compile-error quality pass:
       @implicitNotFound on core typeclasses and capabilities with
       actionable text, audit every errorAndAbort/compiletime.error

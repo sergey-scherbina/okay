@@ -1,6 +1,0 @@
-feature/direct-mark-retire 2026-09-01T21:25:16Z
-agent: claude-code
-heartbeat: 2026-09-01T21:25:16Z
-status: in-progress
-done-so-far:
-next: sweep .? out of Direct/Monadic and all consumers
