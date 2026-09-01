@@ -1,0 +1,7 @@
+feature/nav-pop 2026-09-02T11:00:00Z
+agent: claude-code (session 02d895cc)
+heartbeat: 2026-09-02T11:00:00Z
+status: in-progress
+done-so-far:
+next: the Scope pattern one level up per the landed spec: a screen pushes a NAMED boundary, pop-to-named crosses untouched intermediates; ADDITIVE - plain Nav unchanged (specs/ui.md section landed at control-specs; handed over in room n207)
+files: okay-ui (Nav/Screen additive + test), specs/ui.md boxes

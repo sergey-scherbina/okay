@@ -95,9 +95,6 @@
       PRIMARY case — cross-boundary exit has no handler
       equivalent); ADDITIVE as an API: the unguarded path stays
       (specs/llm-agentic.md, Streaming validation)
-- [ ] nav-pop-to-screen — pop to a NAMED screen across untouched
-      intermediates, the Scope pattern one level up; the ui lane's
-      to take (specs/ui.md)
 - [ ] logic-named-cut — GATED on a search consumer
       (specs/backtracking.md)
 - [ ] r-restarts — GATED twice: on r-subprocess and on a restart
