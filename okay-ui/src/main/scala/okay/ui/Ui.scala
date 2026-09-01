@@ -57,6 +57,11 @@ enum Patch:
   case SetValue(path: List[Int], s: String)
   case SetChecked(path: List[Int], on: Boolean)
   case SetSelected(path: List[Int], index: Int)
+  /** children ops, applied IN ORDER: removals (desc), one reorder,
+   * insertions (asc) — the sequencing the keyed diff emits */
+  case Remove(path: List[Int], index: Int)
+  case Reorder(path: List[Int], order: Vector[Int])
+  case Insert(path: List[Int], index: Int, ui: Ui)
 
 object Ui {
 
@@ -66,6 +71,16 @@ object Ui {
    * nodes yield nothing, a changed leaf yields its narrow Set, a
    * changed shape replaces at the highest node that differs.
    */
+  /** a child's identity, when it has one — what keyed matching keys on */
+  def keyOf(ui: Ui): Option[String] = ui match
+    case Row(_, k) if k.nonEmpty => Some(k)
+    case Column(_, k) if k.nonEmpty => Some(k)
+    case Button(_, k) if k.nonEmpty => Some(k)
+    case Input(_, k, _) if k.nonEmpty => Some(k)
+    case Check(_, k, _) if k.nonEmpty => Some(k)
+    case Select(_, _, k) if k.nonEmpty => Some(k)
+    case _ => None
+
   def diff(old: Ui, next: Ui): Vector[Patch] =
     def go(a: Ui, b: Ui, path: List[Int]): Vector[Patch] = (a, b) match
       case (x, y) if x == y => Vector.empty
@@ -77,11 +92,56 @@ object Ui {
         Vector(Patch.SetChecked(path.reverse, on))
       case (Select(o1, _, k1), Select(o2, i, k2)) if k1 == k2 && o1 == o2 =>
         Vector(Patch.SetSelected(path.reverse, i))
-      case (Row(c1, k1), Row(c2, k2)) if k1 == k2 && c1.length == c2.length =>
-        c1.indices.flatMap(i => go(c1(i), c2(i), i :: path)).toVector
-      case (Column(c1, k1), Column(c2, k2)) if k1 == k2 && c1.length == c2.length =>
-        c1.indices.flatMap(i => go(c1(i), c2(i), i :: path)).toVector
+      case (Row(c1, k1), Row(c2, k2)) if k1 == k2 => children(b, c1, c2, path)
+      case (Column(c1, k1), Column(c2, k2)) if k1 == k2 => children(b, c1, c2, path)
       case _ => Vector(Patch.Replace(path.reverse, b))
+
+    /**
+     * Children: keyed matching when EVERY child on both sides has a
+     * distinct key — then a moved child is a move, not a Replace —
+     * and the positional walk otherwise. The keyed patches come in
+     * the order `patch` applies them: removals (descending), one
+     * Reorder of the survivors, insertions (ascending), then content
+     * recursion at the settled positions.
+     */
+    def children(b: Ui, c1: Vector[Ui], c2: Vector[Ui], path: List[Int]): Vector[Patch] =
+      val k1 = c1.map(keyOf)
+      val k2 = c2.map(keyOf)
+      val keyed = k1.forall(_.isDefined) && k2.forall(_.isDefined) &&
+        k1.distinct.length == k1.length && k2.distinct.length == k2.length
+      if !keyed then
+        // the positional walk of v1: same length recurses, different
+        // lengths replace the container — unkeyed children have no
+        // identity to move by
+        if c1.length == c2.length then
+          c1.indices.flatMap(i => go(c1(i), c2(i), i :: path)).toVector
+        else Vector(Patch.Replace(path.reverse, b))
+      else
+        val at = path.reverse
+        val oldKeys = k1.map(_.get)
+        val newKeys = k2.map(_.get)
+        val newSet = newKeys.toSet
+        // 1. removals, descending, of keys that vanished
+        val removals = oldKeys.zipWithIndex.collect {
+          case (k, i) if !newSet(k) => i }.sorted(Ordering[Int].reverse)
+          .map(i => Patch.Remove(at, i))
+        val survivors = oldKeys.filter(newSet)
+        // 2. one reorder of the survivors into the new relative order
+        val targetOrder = newKeys.filter(survivors.contains)
+        val order = targetOrder.map(k => survivors.indexOf(k))
+        val reorder =
+          if order == survivors.indices.toVector then Vector.empty
+          else Vector(Patch.Reorder(at, order))
+        // 3. insertions, ascending, of keys that appeared
+        val oldSet = oldKeys.toSet
+        val insertions = newKeys.zipWithIndex.collect {
+          case (k, i) if !oldSet(k) => Patch.Insert(at, i, c2(i)) }
+        // 4. content recursion at the settled positions
+        val oldByKey = oldKeys.zip(c1).toMap
+        val content = c2.zipWithIndex.flatMap { (child, i) =>
+          oldByKey.get(newKeys(i)).toVector.flatMap(o => go(o, child, i :: path))
+        }
+        removals ++ reorder ++ insertions ++ content
 
     go(old, next, Nil)
 
@@ -95,12 +155,19 @@ object Ui {
         case Row(c, k) => Row(c.updated(i, at(c(i), rest, f)), k)
         case Column(c, k) => Column(c.updated(i, at(c(i), rest, f)), k)
         case other => other   // a path into a leaf: the diff never makes one
+    def kids(u: Ui, f: Vector[Ui] => Vector[Ui]): Ui = u match
+      case Row(c, k) => Row(f(c), k)
+      case Column(c, k) => Column(f(c), k)
+      case other => other
     p match
       case Patch.Replace(path, b) => at(ui, path, _ => b)
       case Patch.SetText(path, s) => at(ui, path, { case Text(_, st) => Text(s, st); case u => u })
       case Patch.SetValue(path, v) => at(ui, path, { case Input(_, k, l) => Input(v, k, l); case u => u })
       case Patch.SetChecked(path, on) => at(ui, path, { case Check(_, k, l) => Check(on, k, l); case u => u })
       case Patch.SetSelected(path, i) => at(ui, path, { case Select(o, _, k) => Select(o, i, k); case u => u })
+      case Patch.Remove(path, i) => at(ui, path, kids(_, c => c.patch(i, Nil, 1)))
+      case Patch.Reorder(path, order) => at(ui, path, kids(_, c => order.map(c)))
+      case Patch.Insert(path, i, b) => at(ui, path, kids(_, c => c.patch(i, Seq(b), 0)))
 
   /** every interactive widget, in tab order — focus is a position in
    * this list, and it is the HOST's business, not the tree's */

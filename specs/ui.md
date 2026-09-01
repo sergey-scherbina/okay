@@ -103,12 +103,13 @@ Backends shipped, all dependency-free:
 - [x] diff: changing one Text yields SetText at its path, not a
       Replace of the root; unequal shapes Replace at the highest
       differing node; equal trees yield NO patches
-- [ ] keyed children (all keyed, keys distinct in both trees): a
+- [x] keyed children (all keyed, keys distinct in both trees): a
       SHUFFLE is one Reorder plus narrow content patches — no child
       is Replaced for having moved; vanished keys Remove, new keys
       Insert; mixed or unkeyed children fall back to positional
-- [ ] the law survives the extension: diff-then-patch equals the next
+- [x] the law survives the extension: diff-then-patch equals the next
       tree across shuffles, removals, insertions and edits combined
+      (200 seeded rounds, plus nested keyed lists)
 - [x] `Host.diffing(backend)` applied to the frames equals rendering
       each frame whole (the patch path and the repaint path agree)
 - [x] the terminal host renders a frame as lines: Row lays out
