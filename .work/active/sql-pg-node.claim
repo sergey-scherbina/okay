@@ -1,0 +1,5 @@
+slug: sql-pg-node
+agent: fable-persist (session 75625ecc)
+started: 2026-09-01
+scope: the PgSql pump restructured onto the Net seam (async pulls; the JVM live battery green through the NEW pump = the acceptance), okay-pg cross-built JVM+JS with SCRAM over a per-platform crypto seam (okay-security's if it fits, else a local given: javax.crypto / node:crypto), and the sql.md final box: a Node process queries the dockerized Postgres with no JVM/JDBC present
+files: okay-pg/** (restructure + platform split), build.sbt, specs/sql.md + net.md notes
