@@ -34,7 +34,7 @@ object RepoAgent {
    * to parse is indexed here without a change, and markdown comes
    * along as prose (no definers, so it splits by size).
    */
-  def load(dir: java.io.File, limit: Int = 400): Seq[Source] =
+  def load(dir: java.io.File, limit: Int = 1200): Seq[Source] =
     // canonicalize first: the root is skipped by its own hidden-name
     // rule otherwise, and "." is a hidden name — which is exactly how
     // the first run of this demo indexed nothing at all

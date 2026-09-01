@@ -38,13 +38,13 @@ class TestRepoAgent extends munit.FunSuite {
   }
 
   test("load still skips build output and version control") {
-    val sources = RepoAgent.load(java.io.File("."), limit = 400)
+    val sources = RepoAgent.load(java.io.File("."), limit = 1200)
     assert(!sources.exists(_.id.contains("/target/")), "target was indexed")
     assert(!sources.exists(_.id.startsWith(".git")), ".git was indexed")
   }
 
   test("indexing this repository finds its own definitions") {
-    val repo = RepoAgent.index(RepoAgent.load(java.io.File("."), limit = 400))
+    val repo = RepoAgent.index(RepoAgent.load(java.io.File("."), limit = 1200))
     // the library's own names, found by parsing its source
     for name <- Seq("translate", "window", "reparse") do
       assert(repo.index.definition(name).nonEmpty, s"no definition of '$name' found")
@@ -55,7 +55,7 @@ class TestRepoAgent extends munit.FunSuite {
   }
 
   test("all three retrieval sides are built and populated") {
-    val sources = RepoAgent.load(java.io.File("."), limit = 400)
+    val sources = RepoAgent.load(java.io.File("."), limit = 1200)
     val repo = RepoAgent.index(sources)
     assert(repo.index.names.nonEmpty, "no symbols")
     assert(repo.keyword.byTerm.nonEmpty, "no BM25 postings")
@@ -75,7 +75,7 @@ class TestRepoAgent extends munit.FunSuite {
   }
 
   test("the tools answer without a model in play") {
-    val repo = RepoAgent.index(RepoAgent.load(java.io.File("."), limit = 400))
+    val repo = RepoAgent.index(RepoAgent.load(java.io.File("."), limit = 1200))
     val table = RepoAgent.tools(repo)
 
     val found = table("definition")(ToolCall("c", "definition",
