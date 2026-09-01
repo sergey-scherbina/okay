@@ -399,6 +399,45 @@ and real prompts become turns.
       not mistaken for one (the reference server does exactly this)
 - [x] the run is skipped, not failed, where node is absent
 
+## v6 — server push over HTTP (2026-09-01)
+
+The gap v4 named and left: an HTTP server that cannot hold a stream
+open cannot push, so `route` answered 405 to GET and a subscription
+over HTTP delivered nothing. This closes it — and note where the fix
+had to go, because it says what the gap really was.
+
+MCP has TWO standard transports, stdio and streamable HTTP. WebSocket
+is not one of them (okay-http's `Ws.link` is ours, for okay-to-okay),
+so the push that matters is the GET event-stream, not a WebSocket
+session.
+
+Three pieces:
+
+- **a streaming response** — okay-jetty's REST handler drained the
+  body (`Http.bytes`) before sending the head, which is right for
+  REST and fatal for SSE. It now writes chunk by chunk when the
+  response says `text/event-stream`, which is exactly when a caller
+  meant a stream. The other backends keep buffering until someone
+  needs otherwise.
+- **the GET stream in the route** — a session's pushes as an SSE body:
+  a `Channel[Rpc]` becomes a `Source[Chunk[Byte]]`, which is what a
+  `Response` body already is.
+- **the pushes themselves** — `route` now takes the `Serving` and
+  hands back the `Pushes` handle, so the owner tells subscribers a
+  resource changed exactly as it does over stdio.
+
+### Behavior
+- [ ] a GET with `accept: text/event-stream` opens a stream instead of
+      405, and the session id ties it to that client's session
+- [ ] a resource update pushed after a subscription arrives on the
+      client's `notifications` channel — over HTTP, with nothing in
+      the client changed
+- [ ] a client that never opens the GET stream still works; the
+      pushes simply have nowhere to go
+- [ ] a streaming response is written incrementally: the client sees
+      the first event before the source has ended (asserted by a
+      source that does not end until asked)
+
 ## Results
 Shipped 2026-09-01. Five files, 22 tests in okay-mcp (wire 5, server
 as a pure stage 8, session over channels 5, the transport over real
