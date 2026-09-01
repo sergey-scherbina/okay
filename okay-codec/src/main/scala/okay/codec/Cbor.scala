@@ -175,10 +175,16 @@ object Cbor {
                 }
               }
           }.flatMap { m =>
-            p.fields.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, f) =>
+            p.fields.zipWithIndex.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, fi) =>
+              val (f, i) = fi
               acc.flatMap { xs =>
                 (m.get(f._1), f._2()) match
-                  case (None, _: Schema.SOption[?]) => Right(xs :+ None)
+                  // absent: the declared default first, then
+                  // None-if-optional, then the refusal (codec-defaults)
+                  case (None, sc) => (p.defaults.lift(i).flatten, sc) match
+                    case (Some(d), _) => Right(xs :+ d())
+                    case (None, _: Schema.SOption[?]) => Right(xs :+ None)
+                    case _ => Left(s"missing field '${f._1}' in ${p.name}")
                   case (found, _) =>
                     found.toRight(s"missing field '${f._1}' in ${p.name}").map(xs :+ _)
               }

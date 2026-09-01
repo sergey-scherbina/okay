@@ -38,7 +38,10 @@ enum Schema[A]:
    * List cost a conversion at every derivation edge (codec-vector) */
   case SVector[A](of: () => Schema[A]) extends Schema[Vector[A]]
   case SProduct[A](name: String, fields: Vector[(String, () => Schema[?])],
-                   make: Seq[Any] => A, parts: A => Seq[Any]) extends Schema[A]
+                   make: Seq[Any] => A, parts: A => Seq[Any],
+                   /** aligned with fields; a decoder falls back here
+                    * when the wire lacks the field (codec-defaults) */
+                   defaults: Vector[Option[() => Any]] = Vector.empty) extends Schema[A]
   case SSum[A](name: String, cases: Vector[(String, () => Schema[?])],
                caseOf: A => Int) extends Schema[A]
 
@@ -72,7 +75,8 @@ object Schema {
           constValueTuple[Tuple1[p.MirroredLabel]].head.toString,
           fields,
           xs => p.fromProduct(Tuple.fromArray(xs.toArray)),
-          a => a.asInstanceOf[Product].productIterator.toSeq)
+          a => a.asInstanceOf[Product].productIterator.toSeq,
+          Defaults.of[A])
       case s: Mirror.SumOf[A] =>
         val labels = constValueTuple[s.MirroredElemLabels].toList.map(_.toString)
         Schema.SSum(

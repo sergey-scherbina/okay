@@ -125,18 +125,18 @@ and nothing else. Everything downstream stays ordinary values:
 - Form.decode rides Json's decode and inherits the fallback.
 
 Behavior:
-- [ ] a product with defaulted fields decodes from partial JSON and
+- [x] a product with defaulted fields decodes from partial JSON and
       partial CBOR: absent defaulted fields take their declarations,
       absent undefaulted fields still refuse by name
-- [ ] the default wins over None-if-optional: an absent
+- [x] the default wins over None-if-optional: an absent
       `Option[Int] = Some(5)` decodes as Some(5)
-- [ ] round-trip is untouched: full wires decode exactly as before,
+- [x] round-trip is untouched: full wires decode exactly as before,
       and encode never writes a default-dependent shape
-- [ ] a computed default (referring to another parameter) is None in
+- [x] a computed default (referring to another parameter) is None in
       the vector — decode refuses the absent field rather than guess
-- [ ] the tool JSON Schema: defaulted fields are not required and
+- [x] the tool JSON Schema: defaulted fields are not required and
       carry `default`; optional fields stay unrequired
-- [ ] the macro is cross-platform: the shared suite proves it on
+- [x] the macro is cross-platform: the shared suite proves it on
       JVM, JS and Native (macros run in the compiler — the platform
       only runs the values)
 

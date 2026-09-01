@@ -186,12 +186,20 @@ object Json {
         }.map(_.asInstanceOf[A])
     case (p: Schema.SProduct[A], JObj(fs)) =>
       val m = fs.toMap
-      p.fields.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, f) =>
+      p.fields.zipWithIndex.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, fi) =>
+        val (f, i) = fi
+        // an absent (or damaged-optional) field takes, in order: its
+        // DECLARED default, None-if-optional, the missing refusal
+        def absent: Either[String, Any] = p.defaults.lift(i).flatten match
+          case Some(d) => Right(d())
+          case None => f._2() match
+            case _: Schema.SOption[?] => Right(None)
+            case _ => Left(s"missing field '${f._1}' in ${p.name}")
         acc.flatMap { xs =>
           (m.get(f._1), f._2()) match
-            case (None, _: Schema.SOption[?]) => Right(xs :+ None)   // absent optional
+            case (None, _) => absent.map(xs :+ _)
             // a damaged optional value is the same as an absent one
-            case (Some(JErr(_)), _: Schema.SOption[?]) => Right(xs :+ None)
+            case (Some(JErr(_)), _: Schema.SOption[?]) => absent.map(xs :+ _)
             case (found, sc) => found.toRight(s"missing field '${f._1}' in ${p.name}")
               .flatMap(decode(sc.asInstanceOf[Schema[Any]])).map(xs :+ _)
         }

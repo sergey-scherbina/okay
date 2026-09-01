@@ -34,9 +34,22 @@ object ToolSpec {
       "type" -> Json.JStr("array"),
       "items" -> jsonSchema(of()))
     case p: Schema.SProduct[A] =>
-      val props = p.fields.map((n, f) => (n, jsonSchema(f())))
-      val required = p.fields.collect {
-        case (n, f) if !f().isInstanceOf[Schema.SOption[?]] => Json.JStr(n)
+      // a DEFAULTED field is not required (the model may omit it —
+      // decode falls back to the declaration) and advertises its
+      // default, encoded by the field's own schema
+      def defaulted(i: Int) = p.defaults.lift(i).flatten
+      val props = p.fields.zipWithIndex.map { case ((n, f), i) =>
+        val base = jsonSchema(f())
+        (n, defaulted(i) match
+          case Some(d) => base match
+            case Json.JObj(fs) => Json.JObj(fs :+
+              ("default" -> Json.parse(Json.encode(f().asInstanceOf[Schema[Any]])(d()))))
+            case other => other
+          case None => base)
+      }
+      val required = p.fields.zipWithIndex.collect {
+        case ((n, f), i) if !f().isInstanceOf[Schema.SOption[?]]
+          && defaulted(i).isEmpty => Json.JStr(n)
       }
       obj(
         "type" -> Json.JStr("object"),
