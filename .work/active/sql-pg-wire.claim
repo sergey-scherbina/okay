@@ -1,5 +1,0 @@
-slug: sql-pg-wire
-agent: fable-persist (session 75625ecc)
-started: 2026-09-01
-scope: okay-pg — the Postgres v3 wire as an Sql driver: startup + SCRAM-SHA-256, extended query with portal streaming at fetch-size, params/rows as text-format SqlValue, transact with granted isolation, describe with pg_attribute nullability; live suite against the docker Postgres (skips when absent); the two-driver acceptance (same typed program over JdbcSql/H2 and PgSql); spec: specs/sql.md boxes
-files: okay-pg/** (new), build.sbt (module + aggregate), specs/sql.md (boxes/Results), docs/modules/okay-pg.md

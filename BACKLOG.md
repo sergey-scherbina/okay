@@ -75,9 +75,10 @@
       over okay-persist for cross-node regime 2
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
-- [ ] sql-pg-wire — okay-pg: the Postgres v3 protocol over the
-      Async transport (SCRAM, extended query/portals, COPY);
-      cross-platform; same typed program runs over both drivers
+- [ ] sql-pg-copy — COPY through the wire: the bulk-load posture
+      (pairs jdbc-bulk-load); the wire already frames it
+- [ ] sql-pg-node — the cross-platform transport leg: the same
+      protocol from Node (the non-JVM openness acceptance)
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:
       driver availability, not performance — virtual threads
       already cover JDBC-behind-Async)

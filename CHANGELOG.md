@@ -1,5 +1,23 @@
 # Changelog
 
+## sql-pg-wire — the direct road: Postgres v3 behind the Sql seam
+Completed: 2026-09-01 (landed as 2b03cb3)
+okay-pg, ~400 lines for the whole road and zero dependencies:
+startup + SCRAM-SHA-256 with the halves most clients skip (server
+nonce must extend ours; server SIGNATURE verified — mutual auth;
+md5/cleartext deliberately not spoken), the extended protocol with
+portals AS the chunk mechanism (Execute maxRows + Flush,
+PortalSuspended = next chunk — fetch-size with no driver in
+between), text format v1, errors drained to ReadyForQuery before
+the throw so the session survives, describe consulting
+pg_attribute so verify keeps full strictness. Live suite on the
+dockerized Postgres 17.11 (skips where absent): 8 tests including
+the TWO-DRIVER ACCEPTANCE — one typed program over PgSql and
+JdbcSql/H2, one equal answer, only the SQL strings differ ($n vs
+?). The pg family (Cockroach, Timescale, Materialize, Neon,
+pgvector) is now a connect call away. Merge read alone: exit 0.
+Full matrix green.
+
 ## blob-fs — the seam three specs assumed; stage 0, the fs engine
 Completed: 2026-09-01 (landed as 2338af1)
 Trait Blob cross-built; the Fs engine holds the floor: strict root
