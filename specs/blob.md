@@ -71,14 +71,13 @@ across machines; persist-backup copies (specs/persist.md, Backup).
       in key order
 - [x] absent keys: get is an error value naming the key, head is
       None, delete is idempotent
-- [ ] the fs and S3 engines pass the same contract suite (StoreSuite
+- [x] the fs and S3 engines pass the same contract suite (StoreSuite
       pattern); the S3 side runs against MinIO and SKIPS where
-      absent (TestLive pattern) — fs half SHIPPED (BlobContract);
-      the S3 re-run arrives with blob-s3
-- [ ] SigV4: a canonical-request test vector from the AWS
+      absent (TestLive pattern)
+- [x] SigV4: a canonical-request test vector from the AWS
       documentation signs to the documented signature (the
       algorithm pinned by test, not by trust)
-- [ ] a secret key never appears in a URL, a log line, or an error
+- [x] a secret key never appears in a URL, a log line, or an error
       (the conf invariants asserted at this seam)
 
 ## Out of scope
@@ -126,3 +125,19 @@ protocol). One adjustment to the sketch, recorded in Decisions: get
 answers Either — the produced chunks are the body, the program's
 answer is the outcome, which is where an absent key can BE a value.
 BlobContract is the suite blob-s3 re-runs. 7 tests.
+
+## Results (stage 1)
+
+Shipped 2026-09-01 (blob-s3): own SigV4 pinned by the AWS doc's GET
+and PUT vectors verbatim; the list vector's remembered tail was
+wrong and was settled by cross-implementation agreement (the Scala
+signer and an independent Python one produce identical signatures on
+the documented inputs — recorded here because the diagnostic is the
+lesson: two vectors pin the algorithm, a third settled by agreement).
+The engine speaks PUT/GET/HEAD/DELETE/ListObjectsV2 path-style over
+the one http client; puts BUFFER (okay-http's Body is deliberately
+unstreamed — when it learns streaming, multipart and constant-memory
+puts arrive together; stated in the engine doc); gets stream. The
+SAME BlobContract passes against live MinIO — round-trip, ranges,
+list order, absent keys, overwrite — and a recording transport
+proves the secret reaches the HMAC chain and nothing else.
