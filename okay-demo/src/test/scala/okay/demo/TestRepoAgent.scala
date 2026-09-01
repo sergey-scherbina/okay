@@ -13,6 +13,12 @@ import okay.rag.*
  */
 class TestRepoAgent extends munit.FunSuite {
 
+  // the corpus is THIS repository, and it grows: at 419+ sources the
+  // index build passes munit's default 30s under a loaded full
+  // matrix only sometimes — the suite's budget grows with the repo
+  override def munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(120, "s")
+
   test("load walks a relative root — '.' is not a hidden directory") {
     val here = java.io.File(".")
     val sources = RepoAgent.load(here, limit = 50)
