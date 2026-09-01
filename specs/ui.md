@@ -225,15 +225,15 @@ object Nav:
     // a Dialog program as a pushable screen — phases 2a and 2b meet
 ```
 
-- [ ] events route to the TOP screen only; Stay steps it, Push covers
+- [x] events route to the TOP screen only; Stay steps it, Push covers
       it, Pop reveals what was under, To replaces
-- [ ] a popped stack ends the app (the empty stack is Closed)
-- [ ] a parent gets a child's ANSWER through the continuation it
+- [x] a popped stack ends the app (the empty stack is Closed)
+- [x] a parent gets a child's ANSWER through the continuation it
       passed — no shared mutable state, no message bus
-- [ ] a Dialog scenario is a pushable screen: the wizard from
+- [x] a Dialog scenario is a pushable screen: the wizard from
       TestDialog runs as a child screen and its answer lands in the
       parent
-- [ ] the stack survives the loop: Ui.run over Nav.run renders the
+- [x] the stack survives the loop: Ui.run over Nav.run renders the
       top screen's view at every step
 
 ### The wire: client-server bindings (phase 3)
@@ -378,6 +378,14 @@ asserted from the hostile side: an update that would THROW on a
 forged key never hears about it. 6 tests; the end-to-end asserts the
 client's frames equal the server's views over channels — and any line
 transport (Link, WS, stdio) is the same stage by construction.
+
+ui-screens shipped 2026-09-01: Screen as codata (view + step), Nav as
+the stack, `Nav.screen` for the plain triple, `Nav.scenario` fusing a
+Dialog program into a pushable screen whose answer arrives through
+the parent's continuation. The heterogeneous-state problem never
+appears: closures carry each screen's state, and the closure/value
+line is exactly the wire. 5 tests, including the wizard pushed from a
+parent and its answer renaming it.
 
 The seam's claim is a test, not a sentence: TestPortable runs one
 application on the test host and asserts the terminal renders exactly
