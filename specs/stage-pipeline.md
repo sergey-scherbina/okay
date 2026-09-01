@@ -79,18 +79,18 @@ def phased[I, O, S1, S2](z: S1)(
 ```
 
 Behavior:
-- [ ] the CSV shape: the head parses the header line into the
+- [x] the CSV shape: the head parses the header line into the
       column index (S2 = the names), the body emits typed rows
       keyed by it; outputs and the final Right(S2) agree with a
       hand-written run
-- [ ] outputs telled AT the switch (the Right's vector) arrive
+- [x] outputs telled AT the switch (the Right's vector) arrive
       before the body's first output; order is total
-- [ ] input ending DURING the head answers Left(S1) and endHead's
+- [x] input ending DURING the head answers Left(S1) and endHead's
       flush; ending in the body answers Right(S2) and endBody's
-- [ ] the illegal state does not COMPILE: a body step written
+- [x] the illegal state does not COMPILE: a body step written
       against the head's type is a compile error, asserted with
       compileErrors — the first typestate proof in the suite
-- [ ] the transition runs through PState: the switch step is a
+- [x] the transition runs through PState: the switch step is a
       Cont program whose state type changes S1 -> S2 (the Atkey
       instance, executed rather than exhibited)
 

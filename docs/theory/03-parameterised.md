@@ -72,7 +72,10 @@ to compile.
 The price was measured rather than assumed: the typestate variant
 costs about 1.7x the plain `State` handler (`docs/benchmarks.md`), so
 Okay keeps both — `State % S` for the common case where the type never
-changes, `PState` where the protocol is the point. This is the
+changes, `PState` where the protocol is the point — and since
+stage-phased it is no longer only an exhibit: `Stage.phased`
+(Pipe.scala) executes its per-input phase switch as a PState run,
+the type change S1 -> Either[S1, S2] doing streaming work. This is the
 recurring house pattern: the more general theory is present, and the
 specialized fast path exists *because a benchmark said so*, not
 instead of the theory.

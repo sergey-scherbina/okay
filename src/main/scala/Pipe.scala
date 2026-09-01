@@ -123,6 +123,66 @@ object Stage {
       tell[I, O](o).map(_ => s2)
     }, pure)
 
+  /**
+   * The PHASED transducer (specs/stage-pipeline.md, stage-phased):
+   * a stream with phases — a header before rows, a preamble before
+   * frames — forces `transduce` to encode the phase as a sum in S,
+   * and every step then carries branches for states illegal in its
+   * phase. Here the accumulator CHANGES TYPE at the switch instead:
+   * `head` runs at S1 and either stays (Left) or switches (Right)
+   * carrying the S2 the body starts from; `body` runs at S2 and
+   * cannot mention S1 — not by discipline, by type. Atkey's
+   * parameterised composition applied to the pipeline.
+   *
+   * The per-input transition is EXECUTED through `PState` — the
+   * type-changing state the theory chapter exhibits
+   * (docs/theory/03), here doing work: one Cont program whose state
+   * type goes S1 -> Either[S1, S2], `run` at every head input.
+   *
+   * Ends are honest both ways: input may end DURING the head, and
+   * the answer says which phase the stream died in.
+   */
+  def phased[I, O, S1, S2](z: S1)(
+      head: (S1, I) => Either[(S1, Vector[O]), (S2, Vector[O])],
+      body: (S2, I) => (S2, Vector[O]),
+      endHead: S1 => Vector[O],
+      endBody: S2 => Vector[O]): Stage[I, O, Either[S1, S2]] =
+
+    def tellAll(os: Vector[O]): Stage[I, O, Unit] =
+      os.foldLeft(pure(()): Stage[I, O, Unit])((p, o) => p.flatMap(_ => tell[I, O](o)))
+
+    // the switch, run through PState: the Atkey instance executed
+    type R = (Either[S1, S2], Vector[O])
+    def switch(s1: S1, i: I): R =
+      PState.run[S1, Either[S1, S2], Vector[O]](s1):
+        PState.get[S1, R].flatMap { s =>
+          head(s, i) match
+            case Left((ns, os)) =>
+              PState.set[S1, Either[S1, S2], R](Left(ns)).map(_ => os)
+            case Right((s2, os)) =>
+              PState.set[S1, Either[S1, S2], R](Right(s2)).map(_ => os)
+        }
+
+    def inHead(s1: S1): Stage[I, O, Either[S1, S2]] = await[I, O].flatMap {
+      case None => tellAll(endHead(s1)).map(_ => Left(s1))
+      case Some(i) =>
+        val (next, os) = switch(s1, i)
+        tellAll(os).flatMap { _ =>
+          next match
+            case Left(ns) => inHead(ns)
+            case Right(s2) => inBody(s2)
+        }
+    }
+
+    def inBody(s2: S2): Stage[I, O, Either[S1, S2]] = await[I, O].flatMap {
+      case None => tellAll(endBody(s2)).map(_ => Right(s2))
+      case Some(i) =>
+        val (ns, os) = body(s2, i)
+        tellAll(os).flatMap(_ => inBody(ns))
+    }
+
+    inHead(z)
+
   /** batch inputs into chunks of the given size (the tail flushes on
    * end of input — a stage may still tell after seeing None) */
   def chunked[T](size: Int): Stage[T, Chunk[T], Unit] =
