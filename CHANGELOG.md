@@ -1,5 +1,15 @@
 # Changelog
 
+## py-subprocess — the other half of the world's numerics, as a handler
+Completed: 2026-09-01 (landed as ff683b6)
+okay-py stage 0: PyEval operations (named functions only — no
+eval-a-string case, structurally), conditions as Either with the
+worker surviving them, the stdlib-only shim as a versioned resource
+behind a loud handshake, a CLEAN child env, verify turning the
+wrong venv into a startup refusal. The json wire tags what it would
+merge (NaN, bytes, integral floats). Live vs python3, skip where
+absent. First implementation of the r.md shape. Matrix 1395.
+
 ## persist-wire — the log reaches past the process; auth rides along
 Completed: 2026-09-01 (landed as 73ff276; spec's wire section first)
 Covers persist-wire AND persist-wire-auth. The documented surface
