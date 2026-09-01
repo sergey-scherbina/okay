@@ -1,0 +1,15 @@
+feature/pg-composite-fields-typed 2026-09-01T23:40:00Z
+agent: claude-code (session 75625ecc)
+heartbeat: 2026-09-01T23:40:00Z
+status: in-progress
+next: type NAMED composite columns' fields (follow-up to pg-composite-decode).
+  A mid-query catalog lookup would corrupt the open extended-protocol
+  portal, so PRELOAD named-composite (relkind='c') type-OID -> ordered
+  field-OIDs once at connect (ready state, simple 'Q' query, cached on the
+  PgSql instance). dataRow types a composite column via valueOf(fieldOid)
+  per field, empty unquoted = Null; anonymous record ROW() (2249) stays
+  fields-as-text (unavoidable, no field OIDs on the wire). Live TestPg over
+  docker pg: CREATE TYPE addr AS (...); select a typed composite column,
+  nested/NULL fields. specs/sql.md box updated, follow-up narrowed.
+files: okay-pg PgSql.scala (composite cache + loadComposites + dataRow +
+  parseCompositeTyped), test; specs/sql.md
