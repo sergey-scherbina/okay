@@ -1,0 +1,6 @@
+feature/direct-try 2026-09-01T21:56:18Z
+agent: claude-code
+heartbeat: 2026-09-01T21:56:18Z
+status: in-progress
+done-so-far:
+next: macro Try case over CanTry, tests

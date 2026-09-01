@@ -12,9 +12,6 @@
       nonexistent restart a COMPILE error for in-scope code; the
       dynamic policy menu stays the floor. Named by the 2026-09-01
       conditions-x-direct analysis.
-- [ ] direct-try — try around marks reified into the Throws error
-      channel (the v2 road named in specs/direct-macro.md Out of
-      scope; Throws.scala is the seam).
 
 ## Flakes observed (record → fix loop when they recur)
 - [ ] demo-live-judgment-flake — TestChatDemo "LIVE UNGATED" and
