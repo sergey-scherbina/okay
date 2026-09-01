@@ -1,5 +1,18 @@
 # Changelog
 
+## lake-read-duckdb — the lake read road, proven with zero new code
+Completed: 2026-09-01 (landed as be03533)
+The point of the seam, demonstrated: a Parquet file is queried
+through the SAME typed layer as every relational source — DuckDB
+embedded (test-scope only), read_parquet the table, verify passing,
+100k rows streaming at fetch-size chunks, an aggregation pushed to
+the engine. Finding recorded in the spec: Parquet marks fields
+OPTIONAL by default, so verify demands Option fields — the
+fingerprint lesson working, not a nuisance. One full-matrix flake
+observed en route (okay-jetty TestResumable, green twice alone) —
+noted on the http flake entry. Merge read alone: exit 0. Matrix
+green on rerun.
+
 ## theory-nav — previous/next at the foot of every chapter
 Completed: 2026-09-01
 

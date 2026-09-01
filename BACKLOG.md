@@ -60,8 +60,6 @@
       then one foreign adapter (Dynamo or Mongo) to prove the seam
 - [ ] jdbc-bulk-load — OLAP write posture: staged files + load-id
       idempotency (WithKey at batch granularity); row-DML refused
-- [ ] lake-read-duckdb — Parquet/Iceberg reads through the JDBC
-      seam (DuckDB embedded); verify + constant-memory asserted
 - [ ] lake-delta — Delta specifics: DuckDB delta extension via the
       JDBC seam (read), Delta Kernel interop (read/write, no
       Spark), spark-bridge writes already available (specs/data.md)
@@ -108,6 +106,9 @@
 - [ ] http-flaky-mcphttp — TestMcpHttp "one Serving, three wires"
       answered 503 once in a full-matrix run (2026-09-01); green
       alone and on suite rerun — likely a port/readiness race
+      (second sighting, same family: okay-jetty TestResumable
+      failed its first subscribe once in a full-matrix run
+      2026-09-01, green twice alone — port/readiness race shape)
 - [ ] http-streaming-responses — incremental bodies on the NIO and
       Netty backends (Jetty has it); unblocks MCP push there
 - [ ] http-post-body-audit — Netty/NIO: do POST bodies reach routes?
