@@ -52,4 +52,20 @@ class TestSame extends munit.FunSuite {
     assertEquals(int, Some(5))
     assertEquals(m.size, 2)
   }
+
+  test("=== is the witness, =!= the boolean: in the Some branch the compiler knows A is B") {
+    val a = Key[Int]("a")
+    val b = Key[Int]("b")
+    def moveValue[A, B](from: Key[A], to: Key[B], v: A): Option[B] =
+      (from === to).map(ev => ev(v))     // an A becomes a B only with the proof in hand
+    assertEquals(moveValue(a, a, 7), Some(7))
+    assertEquals(moveValue(a, b, 7), None)
+    assert(a =!= b)
+    assert(!(a =!= a))
+    // without the proof an A is not a B: this does not compile
+    val errors = compileErrors("""
+      val t = new okay.TestSame()
+      def bad[A, B](v: A): B = v """)
+    assert(errors.nonEmpty)
+  }
 }

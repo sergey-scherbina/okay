@@ -27,16 +27,16 @@ final class TMap[K[_]] private (private val stack: List[TMap.Entry[K, ?]]) {
 
   /** the value under k, if any — typed by the key, through the key
    * type's own sameness proof */
-  def get[A](k: K[A])(using keyed: Same[K]): Option[A] =
-    def at[X](e: Entry[K, X]): Option[A] = keyed.same(e.key, k).map(ev => ev(e.value))
+  def get[A](k: K[A])(using Same[K]): Option[A] =
+    def at[X](e: Entry[K, X]): Option[A] = (e.key === k).map(ev => ev(e.value))
     stack.iterator.map(e => at(e)).collectFirst { case Some(v) => v }
 
   def contains[A](k: K[A])(using Same[K]): Boolean = get(k).isDefined
 
   /** k now holds v; an entry for the same key is replaced in place */
-  def updated[A](k: K[A], v: A)(using keyed: Same[K]): TMap[K] =
+  def updated[A](k: K[A], v: A)(using Same[K]): TMap[K] =
     val e = Entry(k, v)
-    def isK[X](x: Entry[K, X]): Boolean = keyed.same(x.key, k).isDefined
+    def isK[X](x: Entry[K, X]): Boolean = (x.key === k).isDefined
     if contains(k) then TMap(stack.map(x => if isK(x) then e else x))
     else TMap(e :: stack)
 

@@ -228,7 +228,12 @@ document.
   value AND tag agree. The tag is a ClassTag: exact for concrete
   types, erased for generic ones, so value keys are for concrete
   types (stated on the method; tested through TMap with `Id[String]`
-  and `Id[Int]` holding the same number).
+  and `Id[Int]` holding the same number). The operator the stack
+  needs (same-operator, 2026-09-02): `a === b` on typed tokens is
+  the WITNESS `Option[A =:= B]`, not a Boolean — in the `Some(ev)`
+  branch the compiler knows A is B and `ev` converts an A to a B;
+  `=!=` is the Boolean "not the same key"; `==` stays `equals`, for
+  a plain yes or no. TMap's lookups read `e.key === k`.
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark
 (src/jmh ChannelBenchmark, alternating A/B rounds, medians, busy

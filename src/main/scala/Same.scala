@@ -43,9 +43,16 @@ object Same:
     def same[A, B](a: K[A], b: K[B]): Option[A =:= B] =
       if equal(a, b) && tag(a) == tag(b) then Some(summon[A =:= A].asInstanceOf[A =:= B]) else None
 
-/** the witness, if b is this key */
+/** the witness, if b is this key. `===` is the operator the stack
+ * needs for typed tokens: not a Boolean but the PROOF — in the
+ * `Some(ev)` branch the compiler knows A is B and `ev(x: A): B`
+ * converts; `=!=` is the Boolean "not the same key". A plain
+ * `==` stays what it is (`equals`, permitted under strictEquality by
+ * the CanEqual below) for the places that want only a yes or no */
 extension [K[_], A](a: K[A])(using s: Same[K])
   def sameAs[B](b: K[B]): Option[A =:= B] = s.same(a, b)
+  infix def ===[B](b: K[B]): Option[A =:= B] = s.same(a, b)
+  infix def =!=[B](b: K[B]): Boolean = s.same(a, b).isEmpty
 
 /** strict equality for token keys: two keys of one constructor may
  * always be compared — `Same` decides, `==` may ask. Top-level in the
