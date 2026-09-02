@@ -297,6 +297,24 @@ list in its spec or spec section)
       default and verify therefore requires Option fields, which is
       the fingerprint lesson working: a lake column really can be
       null under you)
+- [ ] Delta without Spark (lake-delta, roads 1+2): okay-delta wraps
+      Delta Kernel — `Delta.create(path, columns)` and
+      `Delta.append(path, rows, loadId)` write a table from SqlValue
+      rows (the seam's vocabulary; Bool/I32/I64/F64/Num/Text/Bytes,
+      Option as nullable; Arr/Row refused by name) through the
+      kernel's own transaction, so the optimistic log commit is
+      THEIRS to version — the no-hand-rolled-commit-protocols rule
+      in its honest form; `loadId = (app, version)` rides the Delta
+      transaction identifier, so a retried append lands ONCE (the
+      bulk-load posture's WithKey, spoken in Delta's own words);
+      `Delta.snapshot` answers version + schema; `Delta.rows` is the
+      kernel's own full scan, for the reader with no engine at hand.
+      Road 1 stays the read road: the same table read through the
+      JDBC seam by DuckDB's delta extension (`delta_scan`), typed
+      rows and verify — the extension installs from the network,
+      so that leg skips offline. Proven: written by the kernel,
+      read back equal by the kernel AND by DuckDB; the same loadId
+      appended twice counts once
 - [x] a bulk load with a load id, retried across a simulated crash,
       lands once (DuckDB as the double: the history table's unique
       key IS the dedup — WithKey at batch granularity; a failing

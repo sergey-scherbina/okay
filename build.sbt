@@ -287,6 +287,24 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
     Test / fork := true,
   )
 
+/** Delta Lake without Spark (lake-delta, specs/data.md): Delta
+ * Kernel — the Delta project's own JVM library — writes and scans
+ * tables from the seam's SqlValue rows; the optimistic log commit is
+ * theirs to version. Reads at scale stay the JDBC road (DuckDB's
+ * delta extension), tested here against the kernel-written table. */
+lazy val okayDelta = (project in file("okay-delta"))
+  .dependsOn(okay.jvm, okaySql.jvm, okayJdbc % Test)
+  .settings(
+    name := "okay-delta",
+    libraryDependencies ++= Seq(
+      "io.delta" % "delta-kernel-api" % "4.4.0",
+      "io.delta" % "delta-kernel-defaults" % "4.4.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+      "org.duckdb" % "duckdb_jdbc" % "1.3.2.0" % Test,
+    ),
+    Test / fork := true,
+  )
+
 /** the R2DBC hatch of the Sql seam (sql-r2dbc, specs/sql.md): any
  * io.r2dbc.spi.Connection behind the same trait. Honestly framed —
  * on virtual threads it buys DRIVER availability (MSSQL, Oracle,
@@ -1037,7 +1055,7 @@ lazy val okayLangchain4j = (project in file("okay-langchain4j"))
 
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc,
+    okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
