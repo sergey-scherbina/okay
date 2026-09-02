@@ -27,10 +27,10 @@ construction instead of a type test per value).
       is productIterator in field order; `theCase`: caseOf is the
       ordinal), sum cases are `Schema[? <: A]`, and the codecs are
       written by GADT matching.
-- [ ] cast-free-typed — okay-sql Typed (11): Shape mirrors Schema
-      untyped (`Iso(Any => Either[String, Any])`, value casts by
-      SqlType); a typed `Shape[A]` GADT built from the Schema, the
-      row kernel through `eachField`.
+- [x-landed] cast-free-typed — landed: Shape[A] is a GADT (Prim
+      carries its typed decode/encode with the column widenings,
+      Opt/Iso/Arr carry their types, Row carries its Schema), decode
+      and encode by matching, a row encodes through eachField; 11 → 0.
 - [ ] typed-js-facades — okay-http Transports.js (11), okay-llm
       TransportJs (6): `js.Dynamic` casts to Int/String/Uint8Array
       are the browser API without types; `js.native` facades for

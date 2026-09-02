@@ -587,3 +587,21 @@ bind is tried, the String one is the fallback H2's driver wants. The
 verdict of the framing held: nothing here is faster than JDBC behind
 Async.Run; what arrived is the DRIVER seat for engines okay will not
 speak natively.
+
+## Cast-free (2026-09-02, cast-free-typed)
+Typed's `Shape` mirrored the Schema untyped — `Iso(Any => Either
+[String, Any])`, `Arr(Vector[Any] => Any)`, value casts by SqlType on
+the encode side — eleven casts. Now `Shape[A]` is a GADT: `Prim[A]`
+carries its own typed decode (with the column widenings I32 → I64,
+Num → F64/Text) and encode, `Opt`/`Iso`/`Arr` carry their element
+types, `Row[A]` carries the field shapes by position for decoding
+(the Mirror's `make` takes them erased, so no kernel is needed) and
+the `Schema.SProduct` itself for encoding, whose `eachField` hands
+every value over at its own type; a nested product's field shape is
+recomputed from its Schema at encode time (a small tree walk per
+parameter binding, not per row). `decode[A](sh: Shape[A], v)` and
+`encode[A](sh: Shape[A], v: A)` are written by matching, binding the
+element types (`case o: Shape.Opt[a]`). `encodeParams[P](s: Schema[P],
+p: P)` is typed too. Zero casts left in Typed.scala; the sql suites on
+JVM/JS/Native, jdbc, r2dbc and match unchanged and green.
+

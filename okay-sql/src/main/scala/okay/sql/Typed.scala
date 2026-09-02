@@ -27,66 +27,85 @@ object Typed:
 
   // ── the row shape of a Schema ──────────────────────────────────
 
-  /** what a column can hold, read off the Schema once: a primitive,
-   * an Option of a shape, a wrapper (codec-iso: `to`/`from` carry the
-   * conversions — to the row the wrapper does not exist), an ARRAY of
-   * a shape, a nested PRODUCT (sql-schema-composite). Decode and
-   * encode recurse over it; `tpe` is what verify compares. */
-  private enum Shape:
-    case Prim(t: SqlType)
-    case Opt(of: Shape)
-    case Iso(of: Shape, to: Any => Either[String, Any], from: Any => Any)
-    case Arr(elem: Shape, build: Vector[Any] => Any, parts: Any => Vector[Any])
-    case Row(fields: Vector[Shape], make: Seq[Any] => Any, parts: Any => Seq[Any])
+  /** what a column can hold, read off the Schema once, TYPED by the
+   * value it holds (cast-free-typed): a primitive carrying its own
+   * decode/encode, an Option of a shape, a wrapper (codec-iso: `to`/
+   * `from` carry the conversions — to the row the wrapper does not
+   * exist), an ARRAY of a shape, a nested PRODUCT (sql-schema-
+   * composite) carrying its Schema for the typed field walk. Decode
+   * and encode recurse over it by GADT matching; `tpe` is what verify
+   * compares. */
+  private enum Shape[A]:
+    case Prim[A](t: SqlType, dec: SqlValue => Either[String, A], enc: A => SqlValue) extends Shape[A]
+    case Opt[A](of: Shape[A]) extends Shape[Option[A]]
+    case Iso[A, B](of: Shape[B], to: B => Either[String, A], from: A => B) extends Shape[A]
+    case Arr[A, C](elem: Shape[A], build: Vector[A] => C, parts: C => Vector[A]) extends Shape[C]
+    /** the product: field shapes by position for decoding (the Mirror's
+     * `make` takes them erased), the Schema itself for encoding (its
+     * `eachField` hands every value over at its own type) */
+    case Row[A](fields: Vector[Shape[?]], schema: Schema.SProduct[A]) extends Shape[A]
 
     def tpe: SqlType = this match
-      case Prim(t) => t
+      case Prim(t, _, _) => t
       case Opt(of) => of.tpe
       case Iso(of, _, _) => of.tpe
       case Arr(el, _, _) => SqlType.Arr(el.tpe)
-      case Row(fs, _, _) => SqlType.Row(fs.map(_.tpe))
+      case Row(fs, _) => SqlType.Row(fs.map(_.tpe))
 
     def optional: Boolean = this match
       case Opt(_) => true
       case Iso(of, _, _) => of.optional
       case _ => false
 
-  private final case class Field(name: String, shape: Shape):
+  private object Shape:
+    /** a primitive column's shape: one SqlType, and the two typed
+     * directions — the widenings a column may take (I32 → I64,
+     * Num → F64/Text) live in `dec` */
+    def prim[A](t: SqlType, dec: PartialFunction[SqlValue, A], enc: A => SqlValue): Shape[A] =
+      Prim(t, v => dec.lift(v).toRight(s"expected $t, got $v"), enc)
+
+  private val i32 = Shape.prim[Int](SqlType.I32, { case SqlValue.I32(x) => x }, SqlValue.I32(_))
+  private val i64 = Shape.prim[Long](SqlType.I64,
+    { case SqlValue.I64(x) => x; case SqlValue.I32(x) => x.toLong }, SqlValue.I64(_))
+  private val f64 = Shape.prim[Double](SqlType.F64,
+    { case SqlValue.F64(x) => x; case SqlValue.Num(x) => x.toDouble }, SqlValue.F64(_))
+  private val bool = Shape.prim[Boolean](SqlType.Bool, { case SqlValue.Bool(x) => x }, SqlValue.Bool(_))
+  private val text = Shape.prim[String](SqlType.Text,
+    { case SqlValue.Text(x) => x; case SqlValue.Num(x) => x.toString }, SqlValue.Text(_))
+  private val bytes = Shape.prim[Array[Byte]](SqlType.Bytes, { case SqlValue.Bytes(x) => x }, SqlValue.Bytes(_))
+
+  private final case class Field(name: String, shape: Shape[?]):
     def tpe: SqlType = shape.tpe
     def optional: Boolean = shape.optional
 
-  private def shapeOf(s: Schema[?]): Either[String, Shape] = s match
-    case Schema.SInt => Right(Shape.Prim(SqlType.I32))
-    case Schema.SLong => Right(Shape.Prim(SqlType.I64))
-    case Schema.SDouble => Right(Shape.Prim(SqlType.F64))
-    case Schema.SBool => Right(Shape.Prim(SqlType.Bool))
-    case Schema.SString => Right(Shape.Prim(SqlType.Text))
-    case Schema.SBytes => Right(Shape.Prim(SqlType.Bytes))
-    case Schema.SOption(of) => shapeOf(of()).map(Shape.Opt(_))
-    case Schema.SIso(u, to, from) => shapeOf(u()).map(Shape.Iso(_,
-      to.asInstanceOf[Any => Either[String, Any]], from.asInstanceOf[Any => Any]))
-    case Schema.SVector(of) => shapeOf(of()).map(Shape.Arr(_, identity, _.asInstanceOf[Vector[Any]]))
-    case Schema.SList(of) => shapeOf(of()).map(Shape.Arr(_, _.toList, _.asInstanceOf[List[Any]].toVector))
-    case Schema.SProduct(_, fields, make, parts, _) =>
-      val out = Vector.newBuilder[Shape]
-      var err: String = null
-      for (name, thunk) <- fields if err == null do
-        shapeOf(thunk()) match
-          case Right(sh) => out += sh
-          case Left(e) => err = s"field $name: $e"
-      if err == null then Right(Shape.Row(out.result(), make, parts.asInstanceOf[Any => Seq[Any]]))
-      else Left(err)
+  private def shapeOf[A](s: Schema[A]): Either[String, Shape[A]] = s match
+    case Schema.SInt => Right(i32)
+    case Schema.SLong => Right(i64)
+    case Schema.SDouble => Right(f64)
+    case Schema.SBool => Right(bool)
+    case Schema.SString => Right(text)
+    case Schema.SBytes => Right(bytes)
+    case o: Schema.SOption[a] => shapeOf(o.of()).map(Shape.Opt(_))
+    case Schema.SIso(u, to, from) => shapeOf(u()).map(Shape.Iso(_, to, from))
+    case v: Schema.SVector[a] => shapeOf(v.of()).map(Shape.Arr[a, Vector[a]](_, identity, identity))
+    case l: Schema.SList[a] => shapeOf(l.of()).map(Shape.Arr[a, List[a]](_, _.toList, _.toVector))
+    case p: Schema.SProduct[a] =>
+      shapesOf(p).map(Shape.Row(_, p))
     case other => Left(s"not row-shaped (a row holds primitives, bytes, Option, Vector/List and nested products): $other")
 
+  /** a product's field shapes, by position */
+  private def shapesOf(p: Schema.SProduct[?]): Either[String, Vector[Shape[?]]] =
+    val out = Vector.newBuilder[Shape[?]]
+    var err: String = null
+    for (name, thunk) <- p.fields if err == null do
+      shapeOf(thunk()) match
+        case Right(sh) => out += sh
+        case Left(e) => err = s"field $name: $e"
+    if err == null then Right(out.result()) else Left(err)
+
   private def fieldsOf(s: Schema[?]): Either[String, Vector[Field]] = s match
-    case Schema.SProduct(_, fields, _, _, _) =>
-      val out = Vector.newBuilder[Field]
-      var err: String = null
-      for (name, thunk) <- fields if err == null do
-        shapeOf(thunk()) match
-          case Right(sh) => out += Field(name, sh)
-          case Left(e) => err = s"field $name is $e"
-      if err == null then Right(out.result()) else Left(err)
+    case p: Schema.SProduct[?] =>
+      shapesOf(p).left.map(e => s"field ${e}").map(shapes => p.fields.zip(shapes).map((f, sh) => Field(f._1, sh)))
     case _ => Left("a row is a product (a case class)")
 
   /** camelCase → snake_case, lowercased */
@@ -146,70 +165,71 @@ object Typed:
 
   // ── rows: typed streaming decode, damage as data ───────────────
 
-  /** total: damage is a message, never a throw */
-  private def decode(sh: Shape, v: SqlValue): Either[String, Any] = (sh, v) match
-    case (Shape.Opt(_), SqlValue.Null) => Right(None)
-    case (Shape.Opt(of), other) => decode(of, other).map(Some(_))
-    case (Shape.Iso(of, to, _), other) => decode(of, other).flatMap(to)   // a refining wrapper may refuse
-    case (_, SqlValue.Null) => Left("NULL in a non-Option field")
-    case (Shape.Prim(t), other) => (t, other) match
-      case (SqlType.Bool, SqlValue.Bool(x)) => Right(x)
-      case (SqlType.I32, SqlValue.I32(x)) => Right(x)
-      case (SqlType.I64, SqlValue.I64(x)) => Right(x)
-      case (SqlType.I64, SqlValue.I32(x)) => Right(x.toLong)
-      case (SqlType.F64, SqlValue.F64(x)) => Right(x)
-      case (SqlType.F64, SqlValue.Num(x)) => Right(x.toDouble)
-      case (SqlType.Text, SqlValue.Text(x)) => Right(x)
-      case (SqlType.Text, SqlValue.Num(x)) => Right(x.toString)
-      case (SqlType.Bytes, SqlValue.Bytes(x)) => Right(x)
-      case _ => Left(s"expected $t, got $other")
-    case (Shape.Arr(el, build, _), SqlValue.Arr(elems)) =>
-      val out = Vector.newBuilder[Any]
-      var err: String = null
-      var i = 0
-      while i < elems.length && err == null do
-        decode(el, elems(i)) match
-          case Right(x) => out += x
-          case Left(m) => err = s"element $i: $m"
-        i += 1
-      if err == null then Right(build(out.result())) else Left(err)
-    case (Shape.Row(fs, make, _), SqlValue.Row(fields)) =>
-      if fields.length != fs.length then
-        Left(s"expected a composite of ${fs.length} fields, got ${fields.length}")
-      else
-        val out = new Array[Any](fs.length)
+  /** total: damage is a message, never a throw — typed by the shape */
+  private def decode[A](sh: Shape[A], v: SqlValue): Either[String, A] = sh match
+    case o: Shape.Opt[a] => v match
+      case SqlValue.Null => Right(None)
+      case other => decode(o.of, other).map(Some(_))
+    case Shape.Iso(of, to, _) => decode(of, v).flatMap(to)   // a refining wrapper may refuse
+    case _ if v == SqlValue.Null => Left("NULL in a non-Option field")
+    case Shape.Prim(_, dec, _) => dec(v)
+    case arr: Shape.Arr[a, c] => v match
+      case SqlValue.Arr(elems) =>
+        val out = Vector.newBuilder[a]
         var err: String = null
         var i = 0
-        while i < fs.length && err == null do
-          decode(fs(i), fields(i)) match
-            case Right(x) => out(i) = x
-            case Left(m) => err = s"field $i: $m"
+        while i < elems.length && err == null do
+          decode(arr.elem, elems(i)) match
+            case Right(x) => out += x
+            case Left(m) => err = s"element $i: $m"
           i += 1
-        if err == null then Right(make(ArraySeq.unsafeWrapArray(out))) else Left(err)
-    case (other, v) => Left(s"expected ${other.tpe}, got $v")
+        if err == null then Right(arr.build(out.result())) else Left(err)
+      case other => Left(s"expected ${sh.tpe}, got $other")
+    case row: Shape.Row[a] => v match
+      case SqlValue.Row(fields) =>
+        if fields.length != row.fields.length then
+          Left(s"expected a composite of ${row.fields.length} fields, got ${fields.length}")
+        else
+          val out = new Array[Any](row.fields.length)
+          var err: String = null
+          var i = 0
+          while i < row.fields.length && err == null do
+            decodeAny(row.fields(i), fields(i)) match
+              case Right(x) => out(i) = x
+              case Left(m) => err = s"field $i: $m"
+            i += 1
+          if err == null then Right(row.schema.make(ArraySeq.unsafeWrapArray(out))) else Left(err)
+      case other => Left(s"expected ${sh.tpe}, got $other")
+
+  /** one field at its own type; the value joins the product's erased
+   * parts (the Mirror's `make` takes Any) */
+  private def decodeAny[X](sh: Shape[X], v: SqlValue): Either[String, Any] = decode(sh, v)
 
   private def decodeCell(f: Field, label: String, v: SqlValue): Either[Bad, Any] =
-    decode(f.shape, v).left.map(Bad(label, _))
+    decodeAny(f.shape, v).left.map(Bad(label, _))
 
-  /** the mirror of `decode` — for params */
-  private def encode(sh: Shape, v: Any): SqlValue = sh match
+  /** the mirror of `decode` — for params; a product's fields are
+   * walked at their own types by the Schema's `eachField` */
+  private def encode[A](sh: Shape[A], v: A): SqlValue = sh match
     case Shape.Iso(of, _, from) => encode(of, from(v))
-    case Shape.Opt(of) => v.asInstanceOf[Option[Any]] match
+    case o: Shape.Opt[a] => v match
       case None => SqlValue.Null
-      case Some(x) => encode(of, x)
-    case Shape.Prim(t) => t match
-      case SqlType.I32 => SqlValue.I32(v.asInstanceOf[Int])
-      case SqlType.I64 => SqlValue.I64(v.asInstanceOf[Long])
-      case SqlType.F64 => SqlValue.F64(v.asInstanceOf[Double])
-      case SqlType.Bool => SqlValue.Bool(v.asInstanceOf[Boolean])
-      case SqlType.Text => SqlValue.Text(v.asInstanceOf[String])
-      case _ => SqlValue.Bytes(v.asInstanceOf[Array[Byte]])
-    case Shape.Arr(el, _, parts) => SqlValue.Arr(parts(v).map(encode(el, _)))
-    case Shape.Row(fs, _, parts) => SqlValue.Row(parts(v).toVector.zip(fs).map((x, f) => encode(f, x)))
+      case Some(x) => encode(o.of, x)
+    case Shape.Prim(_, _, enc) => enc(v)
+    case arr: Shape.Arr[a, c] => SqlValue.Arr(arr.parts(v).map(encode(arr.elem, _)))
+    case row: Shape.Row[a] =>
+      SqlValue.Row(row.schema.eachField(v)([X] => (name: String, sc: Schema[X], x: X) =>
+        shapeOf(sc) match
+          case Right(sh) => encode(sh, x)
+          case Left(e) => throw IllegalArgumentException(s"params: field $name: $e")))
 
   /** parameter encoding by Schema, positionally (used by Params) */
-  private[sql] def encodeParams(s: Schema[?], p: Any): Vector[SqlValue] = shapeOf(s) match
-    case Right(Shape.Row(fs, _, parts)) => parts(p).toVector.zip(fs).map((x, f) => encode(f, x))
+  private[sql] def encodeParams[P](s: Schema[P], p: P): Vector[SqlValue] = shapeOf(s) match
+    case Right(row: Shape.Row[a]) =>
+      row.schema.eachField(p)([X] => (name: String, sc: Schema[X], x: X) =>
+        shapeOf(sc) match
+          case Right(sh) => encode(sh, x)
+          case Left(e) => throw IllegalArgumentException(s"params: field $name: $e"))
     case Right(_) => throw IllegalArgumentException(
       "params bind from a product (a case class of row-shaped fields)")
     case Left(e) => throw IllegalArgumentException(s"params: $e")
@@ -218,7 +238,8 @@ object Typed:
    * columns — label matching happens here, not per row */
   private def planOf[A](s: Schema[A], cols: Vector[Col])
   : Either[Bad, Vector[SqlValue] => Either[Bad, A]] = s match
-    case Schema.SProduct(_, _, make, _, _) =>
+    case p: Schema.SProduct[A] =>
+      val make = p.make
       fieldsOf(s) match
         case Left(e) => Left(Bad("<schema>", e))
         case Right(fs) =>
