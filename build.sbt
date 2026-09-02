@@ -287,6 +287,27 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
     Test / fork := true,
   )
 
+/** the R2DBC hatch of the Sql seam (sql-r2dbc, specs/sql.md): any
+ * io.r2dbc.spi.Connection behind the same trait. Honestly framed —
+ * on virtual threads it buys DRIVER availability (MSSQL, Oracle,
+ * MySQL, ...), not speed: publishers are pulled behind Async.Run as
+ * JDBC's blocking calls are parked there. r2dbc-h2 in tests, the
+ * Postgres driver live against the dockerized server. */
+lazy val okayR2dbc = (project in file("okay-r2dbc"))
+  .dependsOn(okay.jvm, okaySql.jvm)
+  .settings(
+    name := "okay-r2dbc",
+    libraryDependencies ++= Seq(
+      "io.r2dbc" % "r2dbc-spi" % "1.0.0.RELEASE",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+      "io.r2dbc" % "r2dbc-h2" % "1.1.0.RELEASE" % Test,
+      "com.h2database" % "h2" % "2.3.232" % Test,
+      "org.postgresql" % "r2dbc-postgresql" % "1.1.2.RELEASE" % Test,
+    ),
+    // H2 again: the per-classloader driver registration lesson
+    Test / fork := true,
+  )
+
 /** the Postgres v3 wire as an Sql driver: SCRAM-SHA-256, extended
  * query with portal streaming — the direct road, no JDBC anywhere
  * (specs/sql.md). CROSS-BUILT since sql-pg-node: the pump pulls
@@ -1016,7 +1037,7 @@ lazy val okayLangchain4j = (project in file("okay-langchain4j"))
 
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
-    okayJava, okaySpark, okayFlink, okayJdbc,
+    okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc,
     okayLex.jvm, okayLex.js, okayLex.native,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,

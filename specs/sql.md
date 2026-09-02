@@ -141,8 +141,8 @@ import — and the platforms it runs on.
   exists). What it does not buy: on virtual threads, JDBC-behind-
   Async.Run already fails to block the carrier — so R2DBC is not a
   performance unlock, it is a driver-availability unlock. Filed
-  low-priority; adopted when a deployment names one of its
-  engines.
+  low-priority; the operator named it needed on 2026-09-02 and it
+  landed as okay-r2dbc (the box below).
 
 ## What changes where (the surgery, minimal)
 
@@ -181,6 +181,24 @@ import — and the platforms it runs on.
       17.11: SCRAM-SHA-256 with the server-signature verification,
       500 rows at 64-row portal Executes, a bad password refuses,
       an error reaches quiet and the session survives
+- [x] the R2DBC hatch (sql-r2dbc, operator: needed): `R2dbcSql(conn)`
+      over any `io.r2dbc.spi.Connection` — query as PULLED chunks (a
+      demand-driven Subscriber: request(fetchSize), park behind
+      Async.Run until they arrive), update/batch summing every
+      Result's count, transact with the granted isolation read back,
+      the same SqlValue/Col vocabulary; the typed layer runs over it
+      unchanged (rows/params/verify) on H2 through r2dbc-h2 and on the
+      dockerized Postgres through r2dbc-postgresql. Honestly framed
+      where the SPI is thinner than JDBC: metadata exists only WITH a
+      row, so `describe` runs the statement for one row and reads its
+      metadata; a parameterised statement or an empty result describes
+      as EMPTY and verify names every column missing — stated, not
+      guessed. Nullability is the driver's word: H2's says it,
+      r2dbc-postgresql answers UNKNOWN for every column (pg's
+      RowDescription carries none and the hatch has no catalog road
+      as okay-pg does), so verify names each non-Option column there
+      as "nullable" rather than inventing a promise. Composite params
+      are refused as on JDBC
 - [x] the pg driver decodes COMPOSITE / ROW() and ARRAY values into
       structure, not raw text (pg-composite-decode): an array whose
       element OID the driver knows (int2/4/8, text/varchar, bool,
@@ -550,3 +568,22 @@ strict `p: Person` drifts with found "nullable" because a whole-row
 column has no table column behind it. A table created after connect
 is unknown to that connection: its cell is the raw text until
 reconnect, as for composites.
+sql-r2dbc (2026-09-02, operator: needed): okay-r2dbc, the hatch
+landed as framed — `R2dbcSql(conn)` over `io.r2dbc.spi.Connection`,
+query as PULLED chunks through a forty-line demand-driven Subscriber
+(request(fetchSize), park behind Async.Run), update/batch/transact,
+the same SqlValue/Col vocabulary; the typed layer runs unchanged on
+H2 (r2dbc-h2) and on the dockerized Postgres (r2dbc-postgresql), the
+same suite on both. Two things the SPI taught: a Result must be
+consumed before the next is asked for — collecting Results first
+hangs against the Postgres driver (H2 is eager and hid it), so the
+driver walks them one at a time and keeps the results publisher open
+under a streaming Result until its rows end; and metadata exists only
+with a row, so `describe` reads the first row's, an empty result
+describes as EMPTY, and nullability is the driver's word — H2 states
+it, r2dbc-postgresql answers UNKNOWN and verify names every non-Option
+column there. A NULL parameter has no type in the seam: the untyped
+bind is tried, the String one is the fallback H2's driver wants. The
+verdict of the framing held: nothing here is faster than JDBC behind
+Async.Run; what arrived is the DRIVER seat for engines okay will not
+speak natively.
