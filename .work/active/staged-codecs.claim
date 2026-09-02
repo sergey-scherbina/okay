@@ -1,0 +1,5 @@
+slug: staged-codecs
+branch: feature/staged-codecs
+worktree: ../okay-wt-staged-codecs
+claimed: 2026-09-02
+scope: specs/codecs.md's promised STAGED fold mode — step 0 a JMH baseline for Json encode/decode (interpreted Schema fold vs a hand-written encoder floor, circe as the external reference) in compare/src/jmh; then a compile-time inline+Mirror staged encoder/decoder emitting straight-line field access, agreement-tested against the interpreted fold. Files: okay-codec Json.scala/Schema.scala (additive), compare jmh, specs/codecs.md, history.tsv.
