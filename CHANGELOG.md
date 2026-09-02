@@ -1,5 +1,22 @@
 # Changelog
 
+## stm-one-content — the cell holds one type
+Completed: 2026-09-02
+Landed as f3a2d18. The operator disliked that Owned and
+Slot/Stamped were different types, forcing AnyRef and casts in the
+cell. Now `Owned extends Stamped` and mirrors its content's stamp
+and value, so the reference is `AtomicReference[Stamped]`,
+valueOf/versionOf are gone (a field read), no AnyRef remains in the
+cell, and Owned is matched only where ownership means something:
+the fast path spins on it, a transactional read aborts on it, a
+commit's ownership CAS fails on it. The one cast left is `value:
+Any` to `A` in TRef.get/modify — the price of a bare value being
+its own content; the handlers' remaining casts are the freer
+interpreter's erasure over Tx[Any], the shape every handler in the
+stack has. A/B two rounds: equal within noise. Gate green in three
+chunks; rebased over demo-pg-backend and re-verified core + sql +
+jdbc + match + demo before the merge.
+
 ## demo-pg-backend — the marketplace on live Postgres, one env var
 Completed: 2026-09-02
 Landed as 0da8033 (spec 39bd411). okay-sql gains
