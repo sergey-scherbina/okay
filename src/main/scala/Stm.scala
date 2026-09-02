@@ -12,25 +12,28 @@ import scala.collection.mutable
  * every handler takes for a transaction that is one `Modify`; the
  * Channel's state lives in one of these.
  *
- * What the reference holds is one of two things: a `Stamped` — the
- * value itself when it carries its own version (the Channel's State
- * does, so its fast path allocates nothing beyond the state it would
- * build anyway) or a `Slot` wrapping any other value, which is a
- * Stamped too — or an `Owned` marker that a commit in flight has
- * CAS'd over the content: the fast path retries on it, another
- * commit fails its CAS on it, and nothing waits.
+ * The reference holds ONE type, `Stamped`: the value itself when it
+ * carries its own version (the Channel's State does, so its fast
+ * path allocates nothing beyond the state it would build anyway), a
+ * `Slot` wrapping any other value, or an `Owned` marker that a
+ * commit in flight has CAS'd over the content and that mirrors the
+ * content's stamp and value — so `stamp` and `value` read the same
+ * way whatever is there, and Owned is matched only where its
+ * meaning differs: the fast path retries on it, a transactional read
+ * aborts on it, another commit fails its CAS on it. Nothing waits.
  */
 final class TRef[A](init: A) {
   import TRef.*
 
-  private[okay] val ref = AtomicReference[AnyRef](wrap(init, 0L))
+  private[okay] val ref = AtomicReference[Stamped](wrap(init, 0L))
   private[okay] val waiters = AtomicReference[List[Waiter]](Nil)
 
-  /** a plain read, outside any transaction */
-  def get: A = valueOf[A](ref.get)
+  /** a plain read, outside any transaction — the one cast in the
+   * STM: Stamped.value is Any because a bare value's value is itself */
+  def get: A = ref.get.value.asInstanceOf[A]
 
   /** the cell's version: moves by one at every install */
-  def version: Long = versionOf(ref.get)
+  def version: Long = ref.get.stamp
 
   /** the one-cell transaction: f is PURE and may run more than once;
    * the answer b is yours to act on after — the Channel returns its
@@ -39,16 +42,15 @@ final class TRef[A](init: A) {
    * instructions long, never a park) */
   @tailrec def modify[B](f: A => (A, B)): B =
     ref.get match
-      case s: Stamped =>
-        // ONE path: a type test, the value (itself, or the Slot's),
-        // the stamp; a Stamped answer is installed bare, any other
-        // gets a Slot
+      case _: Owned => modify(f)   // a commit is installing; spin, never park
+      case s =>
+        // ONE path: the value (itself, or the Slot's), the stamp; a
+        // Stamped answer is installed bare, any other gets a Slot
         val a = s.value.asInstanceOf[A]
         val (a2, b) = f(a)
         if a2.asInstanceOf[AnyRef] eq a.asInstanceOf[AnyRef] then b
         else if ref.compareAndSet(s, wrap(a2, s.stamp + 1)) then { if waiters.get ne Nil then wake(); b }
         else modify(f)
-      case _ => modify(f)   // Owned: a commit is installing; spin, never park
 
   @tailrec private[okay] def wake(): Unit =
     val ws = waiters.get
@@ -78,13 +80,18 @@ object TRef {
   }
 
   /** the wrapper for values that are not Stamped themselves; typed
-   * for the reader — the cell holds it as AnyRef and re-attaches A
+   * for the reader — the cell holds it as Stamped and re-attaches A
    * once, in valueOf (a generic Stamped would need an F-bound on
    * every user value for nothing but this field) */
   final class Slot[+A](override val value: A) extends Stamped
 
-  /** a commit in flight owns the content it found */
-  private[okay] final class Owned(val inner: Stamped, val token: AnyRef)
+  /** a commit in flight owns the content it found; it IS a Stamped —
+   * the content's stamp and value, seen through it — so the cell has
+   * one type and only the places where ownership MEANS something
+   * match on it */
+  private[okay] final class Owned(val inner: Stamped, val token: AnyRef) extends Stamped:
+    stamp = inner.stamp
+    override def value: Any = inner.value
 
   /** stamp and install-shape a USER value (never an existing Slot:
    * wrap is only ever given what a transaction or modify produced) */
@@ -92,13 +99,6 @@ object TRef {
     case s: Stamped => s.stamp = v; s
     case other => val s = Slot[A](other); s.stamp = v; s
 
-  private[okay] def valueOf[A](c: AnyRef): A = c match
-    case o: Owned => o.inner.value.asInstanceOf[A]
-    case s => s.asInstanceOf[Stamped].value.asInstanceOf[A]
-
-  private[okay] def versionOf(c: AnyRef): Long = c match
-    case o: Owned => o.inner.stamp
-    case s => s.asInstanceOf[Stamped].stamp
 
   /** fires at most once, however many cells it watches */
   final class Waiter(k: () => Unit):
@@ -152,7 +152,7 @@ object Stm {
       while ok && i < reads.length do
         val (r, v) = reads(i)
         val c = r.ref.get
-        ok = !c.isInstanceOf[TRef.Owned] && TRef.versionOf(c) == v
+        ok = !c.isInstanceOf[TRef.Owned] && c.stamp == v
         i += 1
       ok
   }
@@ -168,8 +168,8 @@ object Stm {
         case None =>
           val c = r.ref.get
           if c.isInstanceOf[TRef.Owned] || !log.valid then throw Abort
-          log.reads += ((r, TRef.versionOf(c)))
-          TRef.valueOf[Any](c)
+          log.reads += ((r, c.stamp))
+          c.value
     case Tx.Write(r0, a) =>
       log.writes(r0.asInstanceOf[TRef[Any]]) = a
       ()
@@ -195,26 +195,26 @@ object Stm {
   private def commit(log: Log): Boolean =
     if log.writes.isEmpty then return log.valid
     val token = new AnyRef
-    val owned = mutable.ArrayBuffer.empty[(TRef[Any], AnyRef)]
+    val owned = mutable.ArrayBuffer.empty[(TRef[Any], TRef.Stamped)]
     var ok = true
     val it = log.writes.keysIterator
     while ok && it.hasNext do
       val r = it.next()
       val c = r.ref.get
       c match
-        case s: TRef.Stamped if r.ref.compareAndSet(s, TRef.Owned(s, token)) => owned += ((r, c))
-        case _ => ok = false
+        case _: TRef.Owned => ok = false
+        case s => if r.ref.compareAndSet(s, TRef.Owned(s, token)) then owned += ((r, s)) else ok = false
     if ok then
       var i = 0
       while ok && i < log.reads.length do
         val (r, v) = log.reads(i)
         val c = r.ref.get
-        ok = TRef.versionOf(c) == v && (c match
+        ok = c.stamp == v && (c match
           case o: TRef.Owned => o.token eq token
           case _ => true)
         i += 1
     if ok then
-      owned.foreach((r, c) => r.ref.set(TRef.wrap(log.writes(r), TRef.versionOf(c) + 1)))
+      owned.foreach((r, c) => r.ref.set(TRef.wrap(log.writes(r), c.stamp + 1)))
       owned.foreach((r, _) => r.wake())
       true
     else
@@ -281,7 +281,7 @@ object Stm {
       try
         val a = interpret(tx, log)
         log.writes.foreach { (r, v) =>
-          r.ref.set(TRef.wrap(v, TRef.versionOf(r.ref.get) + 1))
+          r.ref.set(TRef.wrap(v, r.ref.get.stamp + 1))
         }
         log.writes.keysIterator.foreach(_.wake())
         k(Right(a))

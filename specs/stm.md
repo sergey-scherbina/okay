@@ -133,10 +133,21 @@ document.
   see what a transaction or modify PRODUCED — never an existing
   Slot; the code has no such path and the comment says so. A/B
   (three rounds): equal within noise on both channel paths.
-  `Slot[+A]` is generic for the reader (stm-slot-generic): the cell
-  still holds AnyRef and re-attaches A once in valueOf; `Stamped`
+  `Slot[+A]` is generic for the reader (stm-slot-generic); `Stamped`
   stays unparameterized because a typed `value = this` would need an
   F-bound on every user value for nothing but that field.
+- **The cell holds ONE type** (stm-one-content, 2026-09-02, the
+  operator: no AnyRef, no casts between the kinds). `Owned` extends
+  `Stamped` and mirrors its content's stamp and value, so the
+  reference is `AtomicReference[Stamped]`, `valueOf`/`versionOf`
+  are gone (a field read), and `Owned` is matched only where
+  ownership MEANS something: the fast path spins on it, a
+  transactional read aborts on it, a commit's ownership CAS fails on
+  it. The one cast left in the cell is `value: Any` to `A` in
+  `TRef.get`/`modify` — the price of a bare value being its own
+  content; the handlers' remaining casts are the freer interpreter's
+  erasure over `Tx[Any]`, the same shape every handler in the stack
+  has. A/B: equal within noise.
 
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark
