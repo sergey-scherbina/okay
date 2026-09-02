@@ -1,5 +1,0 @@
-slug: demo-deal-timeline
-branch: feature/demo-deal-timeline
-worktree: ../okay-wt-demo-deal-timeline
-claimed: 2026-09-02
-scope: render a deal's negotiation history from the log (proposed -> responded -> settled), each fact with its provenance -- the append-only + supersede story made visible. GET /deals/<n> page + JSON; ChatLog offsets as provenance. specs/demo-chat.md.

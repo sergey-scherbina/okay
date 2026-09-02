@@ -1,5 +1,20 @@
 # Changelog
 
+## demo-deal-timeline — a deal's negotiation history, made visible
+Completed: 2026-09-02
+Landed as 4ccb701 (spec) + 4ef2c3f (impl). Deal (okay-match) carries only
+its current state, no history — the demo layer fills the gap without
+touching the engine: chainedTable now threads off: Long (the same ChatLog
+offset scriptedAgent/agentTurn already carry for facts_assert's
+provenance), and the match_inquire/match_respond wraps each append a
+DealEvent(state, by, Provenance("web-demo", off, what)) to an in-memory
+per-deal log — append-only, the same story supersede tells for facts.
+GET /deals/<n> and /deals/<n>.json render the current state plus the full
+event vector with provenance; an accepted deal's stand-downs get their
+own Withdrawn events (found via the responder's live dealsFor query,
+taken AFTER onResponded ran); an unknown deal answers 404, not an empty
+timeline. Suite 20/20 three runs.
+
 ## lake-delta — Delta Lake without Spark, and its read road
 Completed: 2026-09-02
 Landed as b4fc0c2. A new JVM module `okay-delta` wraps Delta Kernel

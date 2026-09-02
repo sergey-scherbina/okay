@@ -174,9 +174,12 @@
       pinged from the chainedTable wraps + /admin/replay), the page
       re-renders on every ping with attribute facet chips; rows stay
       server-rendered at load.
-- [ ] demo-deal-timeline — render a deal's negotiation history from
-      the log (proposed → responded → settled), each fact with its
-      provenance — the append-only + supersede story made visible.
+- [x] demo-deal-timeline — LANDED 2026-09-02: chainedTable threads
+      off: Long; match_inquire/match_respond append a DealEvent(state,
+      by, Provenance) per transition — append-only, never rewritten.
+      GET /deals/<n> and /deals/<n>.json render the full history with
+      provenance; a withdrawn stand-down gets its own event; unknown
+      deal is 404.
 - [ ] demo-sessions — signed sessions over okay-security ES256 JWT:
       the email identity (BadEmail condition already guards entry)
       gets a real confirm-and-sign login instead of trust-the-field;
