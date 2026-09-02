@@ -88,6 +88,20 @@
 
 ## okay-cache (specs/cache.md)
 
+## okay-sql (the neutral seam — Typed/Schema layer)
+- [ ] sql-schema-composite — Schema-layer binding of SqlValue.Arr/Row
+      (the natural close of the composite story). Today the pg driver
+      decodes composites/arrays into Arr/Row at the SqlValue level, but
+      Typed.decodeCell only maps SCALARS: a case-class field typed
+      Vector[T] or a nested case class hits `case _ => Bad("expected
+      …, got Arr/Row")`. Teach decodeCell to read Schema.SArray from
+      Arr (elements recursed) and Schema.SProduct from Row (fields by
+      position, then by label once named-composite field NAMES are
+      carried). Cross-driver: JDBC's getArray/getObject lands here too;
+      the encode side (Schema value -> Arr/Row -> textOf) mirrors it.
+      Deliverable: a case class with a Vector field and a nested
+      composite decodes end to end (live pg + a JDBC/H2 array case).
+
 ## okay-pg (specs/sql.md — the wire driver)
 - [ ] pg-composite-rowtype — the last sliver after pg-composite-array
       (landed): type a TABLE'S row-type (relkind='r') selected whole
@@ -96,6 +110,27 @@
       cost until a consumer names the need; `(t).*` or row_to_json →
       Schema is the road meanwhile. Anonymous record ROW() stays text
       (genuinely unresolvable — no typrelid).
+- [ ] pg-scalar-types — the OIDs still falling through valueOf to
+      Text: uuid (2950), json/jsonb (114/3802), timestamp/timestamptz
+      (1114/1184), date (1082), time (1083/1266), inet/cidr, interval.
+      Decode the common ones to typed/normalized SqlValue (or a named
+      SqlType.Other kept honest). SEPARATELY and IMPORTANT: numeric
+      (1700) is decoded as F64 today — LOSSY. Carry it exact (a
+      SqlValue.Num(BigDecimal) or the text preserved) so money/precise
+      decimals do not silently round. Bind-don't-model stays the
+      default for the exotic ones; this is about the ones that bite.
+- [ ] pg-mtls — client-certificate auth for the pg TLS path
+      (specs/tls.md mTLS rung, staged): TlsConfig already carries
+      clientCert/clientKey and PgTls threads Secrets, so wire the
+      key-manager side through Tls.client and prove it live against a
+      Postgres configured for clientcert=verify-full. The seam change
+      is already sized to zero-signature by tls.md.
+- [ ] pg-wire-typestate — PgSql's connection-phase graph as types
+      (the pg half of wire-typestate; specs/typestate.md marks it
+      CAUTIOUS — after Scram's phase objects proved the pattern, and
+      only if the readability gain inside the one file is measured
+      worth the plumbing). Idle/in-tx/in-copy as phases so a mis-
+      ordered call does not compile.
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:
