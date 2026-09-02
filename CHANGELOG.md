@@ -1,5 +1,30 @@
 # Changelog
 
+## json-value-parser — the text side of the staged-codecs promise
+Completed: 2026-09-02
+Landed as 69f5f8f (3 commits). staged-codecs step 0 found the real
+cost of text->value: with decode staged at 0.1 µs, Json.parse's
+lex+CST+project cost 14.6 µs on a 150-byte object, all of it the
+lossless layer nobody asked for when they just want the value.
+`JsonValue.parse` is a strict recursive-descent parser over the raw
+String, no tokens, no tree: an index, a StringBuilder only for the
+rare escaped string, `parseDouble` on a number's slice. It accepts
+only RFC 8259 (plus the projection's own two readings, kept on
+purpose: `\u0041` is the four letters, an unknown escape is itself)
+and answers None on anything else; `Json.parseValue` then falls
+through to the lossless `Json.parse`, so damaged input gets exactly
+the CST's answer and no damage vocabulary is duplicated. Agreement is
+a full prefix-truncation sweep: every substring of 25 well-formed and
+34 damaged fixture documents, both roads, equal — on JVM, JS and
+Native. The price: 217 ns vs 13.3 µs on the fixture (61x, and 2.0x
+faster than circe's own parser); end to end with the staged decoder
+from the last lane, 349 ns vs circe's fused parse+decode at 804 (2.3x
+faster). specs/codecs.md gains "Value parser"; BACKLOG's
+json-value-parser entry is checked off. Gate green in three chunks
+after a rebase over stm-orelse; the nine -Wall warnings clean showed
+are all pre-existing or a fresh sibling's (Stm.scala:236 from
+stm-orelse) — none in the files this lane touched.
+
 ## stm-orelse — Tx gains the classic STM combinator
 Completed: 2026-09-02
 Landed as f1d4df3. `Tx.orElse(a, b)`: run `a`; if it RETRIES (not any
