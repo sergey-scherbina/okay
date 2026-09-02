@@ -14,9 +14,9 @@ construction instead of a type test per value).
       (`Seg.K(f.asInstanceOf[Any => Any])`, `Prompt[Any]`) — typed
       segments, a Held-like carrier per prompt; keep the multi-prompt
       semantics exactly (its suite is the spec).
-- [ ] cast-free-sim — Sim.scala (7): the same run-loop recipe;
-      `SimChannel[Any]` ops become `Send[A]`/`Receive[A]` with the
-      channel's type.
+- [x-landed] cast-free-sim — landed: Chan[A]/Send[A]/Receive[A]/
+      Close[A], the wait queues typed on the channel itself,
+      perform[Y] by GADT; zero casts; traces unchanged by seed.
 - [ ] cast-free-effects — Effects.scala (4): `<|>` splits a row by
       runtime CLASS (typeableKByClass) — the two `Right(other
       .asInstanceOf[G[A]])` are that design's one claim; isolate in
