@@ -132,6 +132,15 @@ import — and the platforms it runs on.
   TLS rides the one transport seam (specs/tls.md) — the driver owns
   only pg's SSLRequest handshake dance and speaks the `sslmode`
   vocabulary that spec adopts stack-wide, `verify-full` by default.
+  **`PgTarget`** (`okay-pg`, JVM leg — `TlsConfig` is JVM-only)
+  parses the connection string operators actually write,
+  `postgres://user:pass@host:port/db?sslmode=…&sslrootcert=…`, into
+  `(host, port, user, password, database, tls: Option[TlsConfig])` —
+  pure, total (`Either[String, PgTarget]`, never a throw), so "does
+  this URL configure TLS the way I meant" is testable with no
+  server. Extracted 2026-09-02 from `okay-demo` (round-two reusable-
+  module pass, BACKLOG.md) — it had zero demo dependencies from the
+  start, a pure move to sit beside the driver it configures.
 - **okay-r2dbc — the hatch, honestly framed.** R2DBC (Reactive
   Relational Database Connectivity — likely what "rjdbc" refers
   to; RJDBC proper is an R-language package and not relevant here)
@@ -339,6 +348,12 @@ import — and the platforms it runs on.
       and the live SCRAM handshake proves the seam end to end. The
       signing surface (RSA/ECDSA, JWT key handles) stays in
       okay-security, which owns those heavier concerns
+- [ ] `PgTarget.parse` round-trips every field a `postgres://` URL
+      names (user/pass/host/port/db), the `sslmode` ladder
+      (disable/require/verify-ca/verify-full) maps onto `TlsConfig`,
+      `sslrootcert` carries through to `verify-ca`/`verify-full`,
+      defaults hold (port 5432, plaintext, db = user) — the tests
+      that already proved this in okay-demo, moved
 
 ## The typed region (sql-typestate)
 `transact` refuses a nested begin at RUNTIME (specs/jdbc.md names the
