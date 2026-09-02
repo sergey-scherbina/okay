@@ -9,6 +9,8 @@ import okay.llm.{Anthropic, Cut, OpenAi, Transport, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
 import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
 import okay.security.Secure
+import okay.subscription.Subscription
+import okay.subscription.Subscription.Period
 import okay.persist.{FileStore, MemoryStore, Policy}
 import okay.jdbc.JdbcSql
 import okay.pg.{PgSql, PgTls}
@@ -206,58 +208,10 @@ object ChatDemo {
   private def emailOf(store: MatchStore, p: okay.matching.ProfileId): Option[String] =
     store.profileOf(p).map(_.email)
 
-  // ---- the subscription gate (demo-subscription-gate, user ask) -------
-  //
-  // A profile shows and matches FREE for its first calendar month;
-  // after that, only a period actually PAID keeps it visible.
-  // Unpaid: gated from search AND matching, but NEVER deleted — a
-  // demo-layer overlay, the same doctrine as the deal timeline and
-  // the market feed: state the engine has no opinion about lives
-  // beside it, keyed by profile uuid.
-
-  final case class Period(y: Int, m: Int):
-    def key: String = f"$y%04d-$m%02d"
-
-  object Period:
-    def of(epochMillis: Long): Period =
-      val d = java.time.Instant.ofEpochMilli(epochMillis).atZone(java.time.ZoneOffset.UTC)
-      Period(d.getYear, d.getMonthValue)
-    def now(): Period = of(System.currentTimeMillis())
-
-  private val joinedPeriod =
-    java.util.concurrent.ConcurrentHashMap[String, Period]()
-  private val paidPeriods =
-    java.util.concurrent.ConcurrentHashMap[String, java.util.Set[String]]()
-
-  /** the first period a profile was ever gate-checked — anchored
-   * LAZILY, so a profile the demo never touched defaults to "just
-   * joined" rather than surprise-gated */
-  private def joinedOf(uuid: String, now: Period): Period =
-    joinedPeriod.computeIfAbsent(uuid, _ => now)
-
-  private def paidThisPeriod(uuid: String, now: Period): Boolean =
-    Option(paidPeriods.get(uuid)).exists(_.contains(now.key))
-
-  /** free for the join period; after that, paid-this-period or gated */
-  def subscribed(uuid: String, now: Period = Period.now()): Boolean =
-    joinedOf(uuid, now) == now || paidThisPeriod(uuid, now)
-
-  /** takes effect IMMEDIATELY — the very next `subscribed` check
-   * (same turn, even) sees it */
-  def pay(uuid: String, now: Period = Period.now()): Unit =
-    paidPeriods.computeIfAbsent(uuid, _ => java.util.concurrent.ConcurrentHashMap.newKeySet[String]())
-      .add(now.key): Unit
-
-  /** the test seam for "a month passed": `subscribed` only ANCHORS
-   * `joined` on a profile's first-ever check (so production never
-   * needs this) — a test that wants a profile ALREADY past its free
-   * month calls this to force the anchor back in time */
-  def backdateJoin(uuid: String, period: Period): Unit =
-    joinedPeriod.put(uuid, period): Unit
-
-  def subscriptionNotice(uuid: String, now: Period = Period.now()): Option[String] =
-    if subscribed(uuid, now) then None
-    else Some("your free month is over — say \"pay\" (\"оплатить\") to show up in search and matching again this month")
+  // the subscription gate is okay-subscription now (extracted
+  // 2026-09-02, specs/subscription.md): `Subscription.subscribed`/
+  // `pay`/`backdateJoin`/`subscriptionNotice`/`paySpec`, a bare
+  // profile uuid, no opinion about MatchStore held here or there.
 
   /** after a stored fact: who was WAITING for it, on the other side? */
   def reverseChain(side: okay.matching.Side, text: String, now: Period = Period.now())
@@ -270,7 +224,7 @@ object ChatDemo {
     // A gated waiter does not participate in matching either.
     val waiting = store.candidates(Query(other, text = text, k = 5))
       .filter(_.score > 0.1f)
-      .filter(h => subscribed(h.profile.uuid, now))
+      .filter(h => Subscription.subscribed(h.profile.uuid, now))
     waiting.foreach { hit =>
       emailOf(store, hit.profile).foreach { email =>
         val what = hit.disclosed.map(f => Value.text(f.value)).mkString("; ")
@@ -465,7 +419,7 @@ object ChatDemo {
         case _ => ""
       // a GATED profile's new post does not enter matching at all —
       // it must not surface to anyone waiting on the other side
-      if text.nonEmpty && subscribed(profile, now) then reverseChain(
+      if text.nonEmpty && Subscription.subscribed(profile, now) then reverseChain(
         if side == "need" then okay.matching.Side.Need else okay.matching.Side.Offer, text, now)
       marketChanged("facts")
       out
@@ -478,7 +432,7 @@ object ChatDemo {
       Json.parse(out) match
         case JObj(fs) =>
           val uuid = fs.collectFirst { case ("profile", JStr(x)) => x }.getOrElse("")
-          subscriptionNotice(uuid, now) match
+          Subscription.subscriptionNotice(uuid, now) match
             case Some(n) => Json.print(JObj(fs :+ ("notice" -> JStr(n))))
             case None => out
         case _ => out
@@ -489,7 +443,7 @@ object ChatDemo {
         case JArr(hits) =>
           Json.print(JArr(hits.filter {
             case JObj(fs) => fs.collectFirst { case ("profile", JStr(uuid)) => uuid }
-              .forall(subscribed(_, now))
+              .forall(Subscription.subscribed(_, now))
             case _ => true
           }))
         case other => Json.print(other)
@@ -497,18 +451,13 @@ object ChatDemo {
       val uuid = c.args match
         case JObj(fs) => fs.collectFirst { case ("profile", JStr(x)) => x }.getOrElse("")
         case _ => ""
-      pay(uuid, now)
+      Subscription.pay(uuid, now)
       marketChanged("subscription")
       Json.print(JObj(Vector("paid" -> JBool(true), "period" -> JStr(now.key))))
     })
 
   /** an agent turn over the match tools: the LLM structures the
    * chat into the store and searches it — the okay-match story */
-  private val subscriptionPaySpec = okay.agent.ToolSpec("subscription_pay",
-    "Pay the profile's subscription for the current period — call it when the user asks to pay/subscribe.",
-    JObj(Vector("type" -> JStr("object"), "properties" -> JObj(Vector(
-      "profile" -> JObj(Vector("type" -> JStr("string"))))))))
-
   def agentTurn(text: String, history: Seq[Anthropic.Message],
                 modelH: okay.Handler[AgentModel], off: Option[Long] = None,
                 identity: Option[String] = None,
@@ -550,7 +499,7 @@ object ChatDemo {
     val prog = direct[[A] =>> A ! okay.agent.Agent] {
       Agent.remember(Turn.System(system)).reflect
       seed(history.toList).reflect
-      Agent.converse(text, MatchTools.specs :+ subscriptionPaySpec).reflect
+      Agent.converse(text, MatchTools.specs :+ Subscription.paySpec).reflect
     }
     prog.runWith
 
@@ -826,7 +775,7 @@ object ChatDemo {
       case _ => if en then englishHelp else russianHelp
     // the reminder rides EVERY reply from a gated user (computed
     // AFTER dispatch, so a "pay" turn's own reply is already clear)
-    subscriptionNotice(store.register(email).uuid, now) match
+    Subscription.subscriptionNotice(store.register(email).uuid, now) match
       case Some(n) => answer + " — " + n
       case None => answer
 
@@ -917,7 +866,7 @@ object ChatDemo {
       // gate test keeps reading plain HTML); the script below then
       // re-renders from /market.json on every feed ping
       def rowsOf(side: Side) = store.candidates(Query(side, k = 50))
-        .filter(h => subscribed(h.profile.uuid)).map { h =>
+        .filter(h => Subscription.subscribed(h.profile.uuid)).map { h =>
         val texts = h.disclosed.map(f => Value.text(f.value)).filter(_.nonEmpty)
         s"<li>${texts.mkString(" · ")}</li>"
       }.mkString
@@ -968,7 +917,7 @@ object ChatDemo {
       // the facet key; `disclosed` is Public-only for an anonymous
       // viewer, so the gate holds on the JSON exactly as on the HTML
       def rows(side: Side) = JArr(store.candidates(Query(side, k = 50))
-        .filter(h => subscribed(h.profile.uuid)).map { h =>
+        .filter(h => Subscription.subscribed(h.profile.uuid)).map { h =>
         JObj(Vector("facts" -> JArr(h.disclosed
           .filter(f => Value.text(f.value).nonEmpty)
           .map(f => JObj(Vector(

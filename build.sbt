@@ -927,6 +927,14 @@ lazy val okayJetty = project
     ),
   )
 
+lazy val okaySubscription = project
+  .in(file("okay-subscription"))
+  .dependsOn(okayAgent.jvm)
+  .settings(
+    name := "okay-subscription",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayNetty = project
   .in(file("okay-netty"))
   .dependsOn(okayHttp.jvm, okayJetty % Test)
@@ -1016,7 +1024,7 @@ lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
   )
 
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm)
+  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription)
   .settings(
     name := "okay-demo",
     libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.47.1.0",
@@ -1068,7 +1076,7 @@ lazy val root = (project in file("."))
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
-    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo,
+    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)

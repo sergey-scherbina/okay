@@ -304,6 +304,39 @@ construction instead of a type test per value).
       today it is set in code — the two-gate visibility model is the
       business story, so let a viewer flip it and watch /market react.
 
+## Reusable modules extracted from the demo (user ask 2026-09-02)
+
+okay-subscription landed (specs/subscription.md); these two are the
+rest of that ask, designed but not built — API sketches below so a
+claim starts from a decided shape:
+
+- [ ] okay-admin — `adminRoutes(verify: String => okay.security.
+      Verified, policy: okay.security.Policy = Policy.scoped("admin"),
+      replay: () => Long, onReplayed: () => Unit): PartialFunction[
+      Request, Response ! Async]`, built on `Secure.granted` (the same
+      401/403 ladder every other protected route in this stack uses).
+      Fixes a real gap found while planning the extraction: the demo's
+      `POST /admin/replay` is completely UNAUTHENTICATED today.
+      `replay`/`onReplayed` are injected closures — the marketplace-
+      specific `replayProjections(chatLog)`/`marketChanged("replay")`
+      stay in the demo. Highest-risk of the three extracted-module
+      asks — first authenticated route this repo ships — land it
+      deliberately, with okay-security's own scrutiny bar.
+- [ ] okay-chat — the demo's `Model` type + `scripted`/`live`/`local`/
+      `model`/`modeName` + `sse`/`reply`/`obj` (Cut-guarded SSE
+      framing) + `fieldOf`/`messagesOf`/`appJs`, and `chatRoute(m,
+      budget, turnOverride: Seq[Anthropic.Message] => Option[Source[
+      Chunk[Byte]]] = _ => None)`. The override returns an
+      ALREADY-SSE-FRAMED Source, not a bare String, so a consumer's
+      special-cased turns (the demo's `/match` prefix) keep their own
+      token-streaming shape. page/reactPage HTML stays OUT of the
+      module (the demo's copy is market-flavored — a market link,
+      example chips, `/events/<email>` inbox JS — templating that via
+      a config case class was considered and rejected as string-
+      templating wearing a case-class costume, no real type safety
+      gained); the module can ship its own minimal generic page later
+      if a non-marketplace consumer asks.
+
 ## Elsewhere
 - [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and
       shipped (demo-ctx-wiring — ChatDemo.handler as a

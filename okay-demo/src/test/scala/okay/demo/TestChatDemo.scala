@@ -555,7 +555,7 @@ class TestChatDemo extends munit.FunSuite {
     // equivalent of "a month passed" without threading `now` through
     // the whole route stack: `subscribed` anchors `joined` lazily on
     // first check, so one touch with an old period fixes it there
-    val oldPeriod = ChatDemo.Period(2000, 1)
+    val oldPeriod = okay.subscription.Subscription.Period(2000, 1)
     withServer(512, store) { port =>
       def turn(text: String): String =
         new String(post(port,
@@ -569,7 +569,7 @@ class TestChatDemo extends munit.FunSuite {
       assert(found1.contains("нашёл"), found1.take(300))
 
       val tilerUuid = store.register("tiler@sub").uuid
-      ChatDemo.backdateJoin(tilerUuid, oldPeriod)
+      okay.subscription.Subscription.backdateJoin(tilerUuid, oldPeriod)
 
       // gated: absent from find_candidates — "пока никого не нашёл"
       // is the EMPTY answer ("не нашёл" itself contains "нашёл" as a
@@ -598,7 +598,7 @@ class TestChatDemo extends munit.FunSuite {
       val waiter = store.register("waiter@sub")
       store.assert(waiter, "need", Side.Need, Value.VText("нужен электрик"),
         Provenance("seed", 1, "..."), 1.0, Vis.Public)
-      ChatDemo.backdateJoin(waiter.uuid, oldPeriod)
+      okay.subscription.Subscription.backdateJoin(waiter.uuid, oldPeriod)
       val ch = ChatDemo.inbox("waiter@sub")
       ch.offer("sentinel-before"): Unit
       ChatDemo.reverseChain(Side.Offer, "умею электрика")(using store)
@@ -636,7 +636,7 @@ class TestChatDemo extends munit.FunSuite {
     val fresh = call("facts_register", "email" -> Json.JStr("live@sub"))
     assert(!fresh.contains("\"notice\""), fresh)
     val uuid = store.register("live@sub").uuid
-    ChatDemo.backdateJoin(uuid, ChatDemo.Period(2000, 1))
+    okay.subscription.Subscription.backdateJoin(uuid, okay.subscription.Subscription.Period(2000, 1))
     val gated = call("facts_register", "email" -> Json.JStr("live@sub"))
     assert(gated.contains("\"notice\""), gated)
   }
