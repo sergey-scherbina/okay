@@ -262,6 +262,15 @@ import — and the platforms it runs on.
       of the trait alone, two drivers, ONE equal answer; only the
       SQL strings differ ($n vs ?), which bind-don't-model already
       decided is the dialect's to show
+- [ ] `Placeholders.numbered` (demo-pg-backend): the ONE mechanical
+      dialect difference bind-don't-model itself introduced — `?` on
+      JDBC, `$n` on the pg wire — gets a pure renumbering helper in
+      the neutral seam (`?` outside quoted literals/identifiers
+      becomes `$1..$n`; a program that uses pg's own `?` operators
+      does not ask for it). Not a dialect layer: the strings stay
+      visible and the DBA's; only the placeholder spelling moves.
+      Proven by the first `?`-written program running unchanged over
+      the pg driver (SqlMatch, okay-match)
 - [x] verify through `describe` catches the same four drifts on
       both drivers, naming the column (pg's RowDescription carries
       no nullability, so describe asks pg_attribute — the catalog
@@ -336,6 +345,13 @@ declined for v1 — same guarantee, plus a Free<->Cont bridge per step.
   statements and frames is what drivers own; dialects stay in the
   SQL strings. Rejected: a dialect-abstracting layer (an ORM
   through the back door).
+- **Placeholder renumbering is not dialect abstraction** — `?` vs
+  `$n` is the one difference the seam's own bind-don't-model rule
+  created between its two drivers, so a pure `?`→`$n` rewrite lives
+  in the seam; everything else in a statement stays the string the
+  DBA reads. Rejected: a per-driver `placeholder` field on `Sql`
+  (a trait change for a string function) and a SqlMatch-private
+  copy (the next `?`-program would write it again).
 - **Neutral SqlValue/Col instead of java.sql types in the
   contract** — the whole point; also what makes the typed layer
   cross-platform for free. Rejected: typed layer parameterized

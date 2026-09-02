@@ -245,6 +245,13 @@ Behavior:
 - [x] a SECOND scenario (multi-step, three roles) runs on the same
       engine with zero engine changes — the universality proof
 - [x] engines agree (memory + sqlite): flows survive a restart
+- [ ] engines agree on Postgres too (demo-pg-backend): the SAME
+      SqlMatch over the pg wire driver — the DDL portable (`DOUBLE
+      PRECISION`), the `?` placeholders renumbered by
+      `Placeholders.numbered`; the sqlite engine suite runs verbatim
+      against live Postgres (guarantees, deals, flows, each surviving
+      a reconnect); the store spec's "Postgres is the same line" is
+      now a test, not a sentence
 - [x] the typed builder: an undeclared state in a transition is a
       compile error; the built value equals the hand-written data
 
