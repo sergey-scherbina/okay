@@ -1,0 +1,5 @@
+slug: login-in-okay-security
+branch: feature/login-in-okay-security
+worktree: ../okay-wt-login-in-okay-security
+claimed: 2026-09-02
+scope: user ask (round-two demo extraction, third of three) -- move okay.demo.Login (ES256 keypair, session issue/verify, one-time-code start/confirm) into okay-security as a generic OTP-plus-session recipe. Second consumer already exists (Admin.Issuer in okay-admin copied Login's session-issuer half once).
