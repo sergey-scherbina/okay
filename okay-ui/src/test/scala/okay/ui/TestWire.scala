@@ -88,7 +88,7 @@ class TestWire extends munit.FunSuite {
       def drain(p: Int ! (Writer % String + Async)): Unit ! Async =
         Writer.uncons[String, Int, Async](p).flatMap {
           case Left(_) => async(down.close())
-          case Right((l, rest)) => async(down.send(l)).flatMap(_ => drain(rest))
+          case Right((l, rest)) => down.send(l).map(_ => ()).flatMap(_ => drain(rest))
         }
       drain(through[String, String, Async, Unit, Int](src)(
         !.widen[Int, okay.Take % String + Writer % String, Async](
@@ -102,7 +102,7 @@ class TestWire extends munit.FunSuite {
       def render(ui: Ui): Unit ! Async = async { frames += ui; () }
       def events: Source[Event] = Writer.of(feed)
 
-    val fiber = Async.spawn(Wire.client(host)(Writer.of(down), l => async(up.send(l))))
+    val fiber = Async.spawn(Wire.client(host)(Writer.of(down), l => up.send(l).map(_ => ())))
     Seq(Event.Pressed("inc"), Event.Pressed("inc"), Event.Pressed("dec"), Event.Closed)
       .foreach(feed.send)
     fiber.join()

@@ -66,7 +66,7 @@ class TestElicitForm extends munit.FunSuite {
     Client.connect(client, Mcp.Info("ui", "1"), Duplex.Peer(
       elicit = Some(formElicit(_ => Scripted(user))))).runWith
 
-    assertEquals(answers.receive(), Some(Duplex.Answer.Accept(Json.JObj(Vector(
+    assertEquals(answers.receiveBlocking(), Some(Duplex.Answer.Accept(Json.JObj(Vector(
       "path" -> Json.JStr("/work/okay"),
       "recursive" -> Json.JBool(true))))))
   }
@@ -88,6 +88,6 @@ class TestElicitForm extends munit.FunSuite {
     Async.spawn(Server.over(server)(asking)): Unit
     Client.connect(client, Mcp.Info("ui", "1"), Duplex.Peer(
       elicit = Some(formElicit(_ => Scripted(user))))).runWith
-    assertEquals(answers.receive(), Some(Duplex.Answer.Decline))
+    assertEquals(answers.receiveBlocking(), Some(Duplex.Answer.Decline))
   }
 }

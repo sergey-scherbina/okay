@@ -303,7 +303,7 @@ class TestChatDemo extends munit.FunSuite {
       "transition" -> Json.JStr("accept"), "by" -> Json.JStr(provider.uuid))
     val note = java.util.concurrent.CompletableFuture.supplyAsync { () =>
       var r: Option[String] = None
-      while r.isEmpty do r = inb.receive()
+      while r.isEmpty do r = inb.receiveBlocking()
       r.get
     }.get(5, java.util.concurrent.TimeUnit.SECONDS)
     assertEquals(note, "исполнитель согласился: полка")

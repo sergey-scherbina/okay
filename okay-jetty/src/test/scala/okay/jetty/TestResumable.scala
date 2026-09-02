@@ -46,7 +46,7 @@ class TestResumable extends munit.FunSuite {
       val f1 = link.open()
       Thread.sleep(150)
       push(pushes, "okay://a")
-      assertEquals(Duplex.updatedUri(session.notifications.receive().get), Some("okay://a"))
+      assertEquals(Duplex.updatedUri(session.notifications.receiveBlocking().get), Some("okay://a"))
       assert(link.lastEventId.isDefined, "no id: arrived on the frame")
 
       // the stream DROPS (the fiber is killed, not the link)
@@ -57,13 +57,13 @@ class TestResumable extends munit.FunSuite {
 
       // re-open: Last-Event-ID replays the two missed, in order
       link.open(): Unit
-      assertEquals(session.notifications.receive().flatMap(Duplex.updatedUri), Some("okay://b"))
-      assertEquals(session.notifications.receive().flatMap(Duplex.updatedUri), Some("okay://a"))
+      assertEquals(session.notifications.receiveBlocking().flatMap(Duplex.updatedUri), Some("okay://b"))
+      assertEquals(session.notifications.receiveBlocking().flatMap(Duplex.updatedUri), Some("okay://a"))
 
       // and the stream is LIVE again, not just a replay
       Thread.sleep(150)
       push(pushes, "okay://b")
-      assertEquals(session.notifications.receive().flatMap(Duplex.updatedUri), Some("okay://b"))
+      assertEquals(session.notifications.receiveBlocking().flatMap(Duplex.updatedUri), Some("okay://b"))
     }
   }
 
@@ -82,9 +82,9 @@ class TestResumable extends munit.FunSuite {
       push(pushes, "okay://a")     // live
 
       // exactly ONE arrives — the live one; history is for resumers
-      assertEquals(Duplex.updatedUri(session.notifications.receive().get), Some("okay://a"))
+      assertEquals(Duplex.updatedUri(session.notifications.receiveBlocking().get), Some("okay://a"))
       pushes.listChanged(Mcp.ResourcesChanged)   // a sentinel to bound the wait
-      assertEquals(session.notifications.receive().map(_.method), Some(Mcp.ResourcesChanged))
+      assertEquals(session.notifications.receiveBlocking().map(_.method), Some(Mcp.ResourcesChanged))
     }
   }
 
@@ -103,8 +103,8 @@ class TestResumable extends munit.FunSuite {
       val fa = la.open(); val fb = lb.open()
       Thread.sleep(150)
       push(pushes, "okay://a")
-      assertEquals(Duplex.updatedUri(sa.notifications.receive().get), Some("okay://a"))
-      assertEquals(Duplex.updatedUri(sb.notifications.receive().get), Some("okay://a"))
+      assertEquals(Duplex.updatedUri(sa.notifications.receiveBlocking().get), Some("okay://a"))
+      assertEquals(Duplex.updatedUri(sb.notifications.receiveBlocking().get), Some("okay://a"))
       fa.cancel(); fb.cancel(); Thread.sleep(50)
 
       push(pushes, "okay://b")     // missed by both; irrelevant to their subscription filter? both subscribed only to a — resourceUpdated(b) reaches nobody
@@ -112,10 +112,10 @@ class TestResumable extends munit.FunSuite {
 
       la.open(): Unit
       // a's replay: exactly its own missed push, once
-      assertEquals(Duplex.updatedUri(sa.notifications.receive().get), Some("okay://a"))
+      assertEquals(Duplex.updatedUri(sa.notifications.receiveBlocking().get), Some("okay://a"))
       // and nothing of b's stream leaked into a's channel
       pushes.listChanged(Mcp.ResourcesChanged)
-      assertEquals(sa.notifications.receive().map(_.method), Some(Mcp.ResourcesChanged))
+      assertEquals(sa.notifications.receiveBlocking().map(_.method), Some(Mcp.ResourcesChanged))
     }
   }
 
@@ -128,7 +128,7 @@ class TestResumable extends munit.FunSuite {
       link.open(): Unit
       Thread.sleep(150)
       push(pushes, "okay://a")
-      assertEquals(Duplex.updatedUri(session.notifications.receive().get), Some("okay://a"))
+      assertEquals(Duplex.updatedUri(session.notifications.receiveBlocking().get), Some("okay://a"))
       assertEquals(link.lastEventId, None, "a v6 stream carried ids")
     }
   }

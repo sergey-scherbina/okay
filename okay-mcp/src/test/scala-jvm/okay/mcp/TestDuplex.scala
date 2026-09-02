@@ -21,7 +21,7 @@ class TestDuplex extends munit.FunSuite {
     val up = Channel[String]()
     val down = Channel[String]()
     def link(out: Channel[String], in: Channel[String]): Link = new Link:
-      def send(line: String): Unit ! Async = async(out.send(line))
+      def send(line: String): Unit ! Async = out.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(in)
     (link(up, down), link(down, up))
 
@@ -48,7 +48,7 @@ class TestDuplex extends munit.FunSuite {
     var seen = List.empty[Rpc.Notify]
     var done = false
     while !done do
-      val n = s.notifications.receive().get
+      val n = s.notifications.receiveBlocking().get
       if n.method == Mcp.ResourcesChanged then done = true else seen = seen :+ n
 
     assertEquals(seen.map(_.method), List(Mcp.ResourceUpdated))
@@ -62,7 +62,7 @@ class TestDuplex extends munit.FunSuite {
 
     pushes.resourceUpdated("okay://a")
     pushes.listChanged(Mcp.ResourcesChanged)
-    assertEquals(s.notifications.receive().get.method, Mcp.ResourcesChanged)
+    assertEquals(s.notifications.receiveBlocking().get.method, Mcp.ResourcesChanged)
   }
 
   test("a notification arriving while the client is IDLE is delivered") {
@@ -72,7 +72,7 @@ class TestDuplex extends munit.FunSuite {
     // fiber, not a side effect of asking something
     Thread.sleep(30)
     pushes.resourceUpdated("okay://a")
-    assertEquals(Duplex.updatedUri(s.notifications.receive().get), Some("okay://a"))
+    assertEquals(Duplex.updatedUri(s.notifications.receiveBlocking().get), Some("okay://a"))
   }
 
   test("a server asks for roots, and the client answers its own") {
@@ -86,7 +86,7 @@ class TestDuplex extends munit.FunSuite {
           .flatMap(_ => Stage.tell[Rpc, Rpc](
             Rpc.Request(Json.JStr("r1"), Mcp.RootsList, Rpc.obj())))
       case Rpc.Answer(Json.JStr("r1"), result) =>
-        pure(asked.send(Duplex.rootsOf(result)))
+        pure(asked.offer(Duplex.rootsOf(result)): Unit)
       case _ => pure(())
     }, pure)
 
@@ -94,7 +94,7 @@ class TestDuplex extends munit.FunSuite {
     Async.spawn(Server.over(server)(stage)): Unit
     val s = Client.connect(client, Mcp.Info("test", "1"),
       Duplex.Peer(roots = roots)).runWith
-    assertEquals(asked.receive(), Some(roots))
+    assertEquals(asked.receiveBlocking(), Some(roots))
     // and telling the server they changed is a notification
     s.rootsChanged.runWith
   }
@@ -107,8 +107,8 @@ class TestDuplex extends munit.FunSuite {
           .flatMap(_ => Stage.tell[Rpc, Rpc](Rpc.Request(Json.JStr("s1"), Mcp.SamplingCreate,
             Duplex.samplingParams(Seq(Turn.System("Be terse."), Turn.User("2+2?"))))))
       case Rpc.Answer(Json.JStr("s1"), result) =>
-        pure(answered.send(Duplex.replyOf(result)))
-      case Rpc.Failed(Json.JStr("s1"), _, m) => pure(answered.send(Reply(s"refused: $m", Nil)))
+        pure(answered.offer(Duplex.replyOf(result)): Unit)
+      case Rpc.Failed(Json.JStr("s1"), _, m) => pure(answered.offer(Reply(s"refused: $m", Nil)): Unit)
       case _ => pure(())
     }, pure)
 
@@ -118,7 +118,7 @@ class TestDuplex extends munit.FunSuite {
     Async.spawn(Server.over(server)(stage)): Unit
     Client.connect(client, Mcp.Info("test", "1"),
       Duplex.Peer(sample = Some(model))).runWith
-    assertEquals(answered.receive().map(_.text), Some("4"))
+    assertEquals(answered.receiveBlocking().map(_.text), Some("4"))
   }
 
   test("a client with no model refuses sampling rather than hanging") {
@@ -128,15 +128,15 @@ class TestDuplex extends munit.FunSuite {
         Stage.tell[Rpc, Rpc](Rpc.Answer(id, Mcp.initializeResult(info)))
           .flatMap(_ => Stage.tell[Rpc, Rpc](Rpc.Request(Json.JStr("s1"), Mcp.SamplingCreate,
             Duplex.samplingParams(Seq(Turn.User("hi"))))))
-      case Rpc.Failed(Json.JStr("s1"), code, _) => pure(answered.send(s"refused $code"))
-      case Rpc.Answer(Json.JStr("s1"), _) => pure(answered.send("answered"))
+      case Rpc.Failed(Json.JStr("s1"), code, _) => pure(answered.offer(s"refused $code"): Unit)
+      case Rpc.Answer(Json.JStr("s1"), _) => pure(answered.offer("answered"): Unit)
       case _ => pure(())
     }, pure)
 
     val (client, server) = wire()
     Async.spawn(Server.over(server)(stage)): Unit
     Client.connect(client, Mcp.Info("test", "1")).runWith
-    assertEquals(answered.receive(), Some(s"refused ${Rpc.MethodNotFound}"))
+    assertEquals(answered.receiveBlocking(), Some(s"refused ${Rpc.MethodNotFound}"))
   }
 
   test("answers, requests and notifications interleave on one wire") {
@@ -161,14 +161,14 @@ class TestDuplex extends munit.FunSuite {
       Duplex.Peer(sample = Some(Handlers.scripted(Seq(Reply("sampled", Nil)))))).runWith
 
     assertEquals(s.call(ToolCall("c1", "add", Json.JObj(Vector.empty))).runWith, "3")
-    assertEquals(s.notifications.receive().map(_.method), Some(Mcp.Progress))
+    assertEquals(s.notifications.receiveBlocking().map(_.method), Some(Mcp.Progress))
   }
 
   test("a client declares ITS capabilities, so a server knows what to ask") {
     val seen = Channel[Json]()
     val stage: Stage[Rpc, Rpc, Unit] = Stage.transduce(())((_, msg: Rpc) => msg match {
       case Rpc.Request(id, Mcp.Initialize, params) =>
-        seen.send(params)
+        seen.offer(params): Unit
         Stage.tell[Rpc, Rpc](Rpc.Answer(id, Mcp.initializeResult(info)))
       case _ => pure(())
     }, pure)
@@ -178,7 +178,7 @@ class TestDuplex extends munit.FunSuite {
     Client.connect(client, Mcp.Info("test", "1"),
       Duplex.Peer(roots = Seq(Mcp.Root("file:///w")),
         sample = Some(Handlers.scripted(Nil)))).runWith
-    val params = seen.receive().get
+    val params = seen.receiveBlocking().get
     assert(Mcp.capability(params, "roots"), Json.print(params))
     assert(Mcp.capability(params, "sampling"), Json.print(params))
   }

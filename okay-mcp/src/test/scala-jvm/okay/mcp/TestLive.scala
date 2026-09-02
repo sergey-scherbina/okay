@@ -128,7 +128,7 @@ class TestLive extends munit.FunSuite {
     // request/answer loop with a filter on it would drop
     live { s =>
       assert(s.server.isDefined)          // the answer was still correlated
-      val n = s.notifications.receive()   // and the notification was kept
+      val n = s.notifications.receiveBlocking()   // and the notification was kept
       assert(n.isDefined, "the early notification was dropped")
       println(s"  live: early notification '${n.get.method}' arrived")
     }

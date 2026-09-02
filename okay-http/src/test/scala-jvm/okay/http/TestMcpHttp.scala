@@ -125,7 +125,7 @@ class TestMcpHttp extends munit.FunSuite {
       val s = Client.connect(link, Mcp.Info("test", "1")).runWith
       link.open(): Unit
       // notifications arrive on the session exactly as over stdio
-      assertEquals(Duplex.updatedUri(s.notifications.receive().get), Some("okay://a"))
+      assertEquals(Duplex.updatedUri(s.notifications.receiveBlocking().get), Some("okay://a"))
     }
   }
 
@@ -157,7 +157,7 @@ class TestMcpHttp extends munit.FunSuite {
     val up = Channel[String]()
     val down = Channel[String]()
     def mem(out: Channel[String], in: Channel[String]): okay.mcp.Link = new okay.mcp.Link:
-      def send(line: String): Unit ! Async = async(out.send(line))
+      def send(line: String): Unit ! Async = out.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(in)
     Async.spawn(McpServer.run(mem(down, up), serving)): Unit
     val direct = Client.connect(mem(up, down), Mcp.Info("test", "1")).runWith

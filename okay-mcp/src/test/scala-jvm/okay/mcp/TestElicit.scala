@@ -13,7 +13,7 @@ class TestElicit extends munit.FunSuite {
     val up = Channel[String]()
     val down = Channel[String]()
     def link(out: Channel[String], in: Channel[String]): Link = new Link:
-      def send(line: String): Unit ! Async = async(out.send(line))
+      def send(line: String): Unit ! Async = out.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(in)
     (link(up, down), link(down, up))
 
@@ -27,9 +27,9 @@ class TestElicit extends munit.FunSuite {
           .flatMap(_ => Stage.tell[Rpc, Rpc](Rpc.Request(Json.JStr("e1"),
             Mcp.ElicitationCreate, Duplex.elicitParams("which file?", schema))))
       case Rpc.Answer(Json.JStr("e1"), result) =>
-        pure(answers.send(Duplex.answerOf(result)))
+        pure(answers.offer(Duplex.answerOf(result)): Unit)
       case Rpc.Failed(Json.JStr("e1"), _, _) =>
-        pure(answers.send(Duplex.Answer.Cancel))
+        pure(answers.offer(Duplex.Answer.Cancel): Unit)
       case _ => pure(())
     }, pure)
 
@@ -42,7 +42,7 @@ class TestElicit extends munit.FunSuite {
         assertEquals(msg, "which file?")
         Duplex.Answer.Accept(Json.parse("""{"path":"/tmp"}"""))
       }))).runWith
-    assertEquals(got.receive(),
+    assertEquals(got.receiveBlocking(),
       Some(Duplex.Answer.Accept(Json.JObj(Vector("path" -> Json.JStr("/tmp"))))))
   }
 
@@ -52,13 +52,13 @@ class TestElicit extends munit.FunSuite {
     Async.spawn(Server.over(server)(asking(got))): Unit
     Client.connect(client, Mcp.Info("c", "1"), Duplex.Peer(
       elicit = Some((_, _) => Duplex.Answer.Decline))).runWith
-    assertEquals(got.receive(), Some(Duplex.Answer.Decline))
+    assertEquals(got.receiveBlocking(), Some(Duplex.Answer.Decline))
 
     val got2 = Channel[Duplex.Answer]()
     val (client2, server2) = wire()
     Async.spawn(Server.over(server2)(asking(got2))): Unit
     Client.connect(client2, Mcp.Info("c", "1")).runWith   // no handler
-    assertEquals(got2.receive(), Some(Duplex.Answer.Cancel))  // the refusal arrived
+    assertEquals(got2.receiveBlocking(), Some(Duplex.Answer.Cancel))  // the refusal arrived
   }
 
   test("the capability is declared exactly when the handler exists") {

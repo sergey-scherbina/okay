@@ -105,7 +105,7 @@ object Transports {
           override def onText(ws: WebSocket, data: CharSequence,
                               last: Boolean): CompletionStage[?] =
             text.append(data)
-            if last then { q.send(Frame.Text(text.toString)); text.clear() }
+            if last then { q.offer(Frame.Text(text.toString)); text.clear() }
             ws.request(1)
             null
 
@@ -114,7 +114,7 @@ object Transports {
             val a = new Array[Byte](data.remaining()); data.get(a)
             bin ++= a
             if last then
-              q.send(Frame.Binary(
+              q.offer(Frame.Binary(
                 scala.collection.immutable.ArraySeq.unsafeWrapArray(bin.result())))
               bin.clear()
             ws.request(1)
@@ -122,18 +122,18 @@ object Transports {
 
           override def onPing(ws: WebSocket, m: ByteBuffer): CompletionStage[?] =
             // the JDK sends the pong itself; the session is only told
-            q.send(Frame.Ping(bytesOf(m)))
+            q.offer(Frame.Ping(bytesOf(m)))
             ws.request(1)
             null
 
           override def onPong(ws: WebSocket, m: ByteBuffer): CompletionStage[?] =
-            q.send(Frame.Pong(bytesOf(m)))
+            q.offer(Frame.Pong(bytesOf(m)))
             ws.request(1)
             null
 
           override def onClose(ws: WebSocket, code: Int, reason: String)
           : CompletionStage[?] =
-            q.send(Frame.Close(code, reason))
+            q.offer(Frame.Close(code, reason))
             q.close()
             null
 

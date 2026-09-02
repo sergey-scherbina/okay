@@ -150,7 +150,7 @@ object ChatDemo {
         val note =
           if side == Side.Offer then s"появился исполнитель: $text (вы искали: $what)"
           else s"появился заказ: $text (вы предлагали: $what)"
-        inbox(email).send(note)
+        inbox(email).offer(note): Unit
       }
     }
 
@@ -166,7 +166,7 @@ object ChatDemo {
       case DealState.Accepted =>
         val contacts = store.contacts(deal.seeker, deal.provider)
           .map(f => Value.text(f.value))
-        seekerMail.foreach(m => inbox(m).send(
+        seekerMail.foreach(m => inbox(m).offer(
           s"исполнитель согласился: ${deal.what}" +
             (if contacts.nonEmpty then s" — контакт: ${contacts.mkString(", ")}" else "")))
         // the rest of the round is withdrawn, each asked party told
@@ -175,16 +175,16 @@ object ChatDemo {
           .foreach { d =>
             store.withdraw(d.id, deal.seeker)
             store.profileOf(d.provider).map(_.email).foreach(m =>
-              inbox(m).send(s"отбой по заказу: ${d.what} — исполнитель уже найден"))
+              inbox(m).offer(s"отбой по заказу: ${d.what} — исполнитель уже найден"))
           }
       case DealState.Declined =>
-        seekerMail.foreach(m => inbox(m).send(
+        seekerMail.foreach(m => inbox(m).offer(
           s"кандидат отказался: ${deal.what}" + providerMail.fold("")(pm => s" ($pm)")))
         // all asked declined and none accepted -> say so
         val round = store.dealsFor(deal.seeker).filter(_.what == deal.what)
         if round.nonEmpty && round.forall(d =>
           d.state == DealState.Declined || d.state == DealState.Withdrawn) then
-          seekerMail.foreach(m => inbox(m).send(
+          seekerMail.foreach(m => inbox(m).offer(
             s"все кандидаты отказались: ${deal.what} — запрос остаётся в силе, сообщу о новых"))
       case _ => ()
 
@@ -209,7 +209,7 @@ object ChatDemo {
             (role, template) <- t.notifies
             target <- f.parties.get(role)
             email <- emailOf(store, target)
-          do inbox(email).send(okay.matching.Flow.fill(template, d, f, byRole))
+          do inbox(email).offer(okay.matching.Flow.fill(template, d, f, byRole)): Unit
         case _ => ()
       out
     }).updated("match_inquire", { c =>
@@ -224,7 +224,7 @@ object ChatDemo {
         case JObj(fs) => fs.collectFirst { case ("deal", JNum(n)) => n.toLong }.getOrElse(0L)
         case _ => 0L
       emailOf(store, okay.matching.ProfileId(provider)).foreach(m =>
-        inbox(m).send(s"заказ: $what (сделка $dealN) — ответьте: берусь $dealN / отказываюсь $dealN"))
+        inbox(m).offer(s"заказ: $what (сделка $dealN) — ответьте: берусь $dealN / отказываюсь $dealN"))
       out
     }).updated("match_respond", { c =>
       val out = base("match_respond")(c)

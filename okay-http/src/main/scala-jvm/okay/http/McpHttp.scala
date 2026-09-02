@@ -86,7 +86,7 @@ object McpHttp {
       else if r.header("content-type").exists(_.contains("text/event-stream")) then
         async(Async.spawn(drain(Http.sse(r))): Unit)
       else Http.text(r).flatMap(t =>
-        if t.trim.nonEmpty then async(inbound.send(t))
+        if t.trim.nonEmpty then inbound.send(t).map(_ => ())
         else fail(awaited, Rpc.InternalError, "the server answered nothing"))
 
     /** tell the waiting request that no answer is coming (a
@@ -94,14 +94,14 @@ object McpHttp {
     private def fail(awaited: Option[Json], code: Int, message: String): Unit ! Async =
       awaited match
         case None => pure(())
-        case Some(id) => async(inbound.send(Rpc.encode(Rpc.Failed(id, code, message))))
+        case Some(id) => inbound.send(Rpc.encode(Rpc.Failed(id, code, message))).map(_ => ())
 
     private def drain(s: Source[String]): Unit ! Async =
       Writer.uncons[String, Unit, Async](s).flatMap {
         case Left(_) => pure(())
         case Right((line, rest)) =>
           if line.trim.isEmpty then drain(rest)
-          else async(inbound.send(line)).flatMap(_ => drain(rest))
+          else inbound.send(line).map(_ => ()).flatMap(_ => drain(rest))
       }
 
     @volatile private var lastEvent: Option[Long] = None
@@ -150,7 +150,7 @@ object McpHttp {
             else if line.trim.isEmpty then
               val payload = buf.reverse.mkString(String(Array('\n')))
               (if payload.trim.isEmpty then pure(())
-               else async(inbound.send(payload))).flatMap(_ => go(more, Nil))
+               else inbound.send(payload).map(_ => ())).flatMap(_ => go(more, Nil))
             else go(more, buf)
         }
       go(ls, Nil)
@@ -198,7 +198,7 @@ object McpHttp {
    */
   def routed(serving: McpServer.Serving,
              journal: Option[Topic] = None)
-            (using Scheduler, CanBlock): (Request => Response ! Async, McpServer.Pushes) =
+            (using Scheduler): (Request => Response ! Async, McpServer.Pushes) =
     val sessions = java.util.concurrent.ConcurrentHashMap[String, Wire]()
     val pushes = Channel[Rpc]()
     val handle = McpServer.pushesTo(pushes, serving.subscriptions)
@@ -263,7 +263,7 @@ object McpHttp {
                      sessions: java.util.concurrent.ConcurrentHashMap[String, Wire],
                      journal: Option[Topic])
   : Unit ! Async =
-    async(pushes.receive()).flatMap {
+    pushes.receive.flatMap {
       case None => pure(())
       case Some(m) =>
         import scala.jdk.CollectionConverters.*
@@ -271,7 +271,7 @@ object McpHttp {
           val k = id.getBytes(java.nio.charset.StandardCharsets.UTF_8)
           t.append(Topic.route(k, t.partitions), k,
             Rpc.encode(m).getBytes(java.nio.charset.StandardCharsets.UTF_8), Ack.Durable): Unit
-        sessions.values().asScala.foreach(_.stream.send(m))
+        sessions.values().asScala.foreach(_.stream.offer(m): Unit)
         fanOut(pushes, sessions, journal)
     }
 
@@ -315,7 +315,7 @@ object McpHttp {
   /** a stream of messages as an SSE body */
   private def events(out: Channel[Rpc]): Source[Chunk[Byte]] =
     def go: Source[Chunk[Byte]] =
-      effect[Writer % Chunk[Byte] + Async, Option[Rpc]](Async.Run(() => out.receive()))
+      !.widen[Option[Rpc], Async, Writer % Chunk[Byte]](out.receive)
         .flatMap {
           case None => pure(())
           case Some(m) =>
@@ -337,9 +337,9 @@ object McpHttp {
     val owed = message match
       case _: Rpc.Request => true
       case _ => false
-    async(wire.inbound.send(body)).flatMap { _ =>
+    wire.inbound.send(body).flatMap { _ =>
       if !owed then pure(Response(202, extra, Http.one(Array.empty)))
-      else async(wire.outbound.receive()).map {
+      else wire.outbound.receive.map {
         case Some(line) => Response(200,
           extra :+ ("content-type", "application/json"),
           Http.one(line.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
@@ -352,7 +352,7 @@ object McpHttp {
    * over them. Nothing here knows the protocol — that is the whole
    * point of a Link being two functions.
    */
-  private final class Wire(serving: McpServer.Serving)(using Scheduler, CanBlock) {
+  private final class Wire(serving: McpServer.Serving)(using Scheduler) {
     val inbound: Channel[String] = Channel[String]()
     val outbound: Channel[String] = Channel[String]()
 
@@ -360,7 +360,7 @@ object McpHttp {
     val stream: Channel[Rpc] = Channel[Rpc]()
 
     private val link: okay.mcp.Link = new okay.mcp.Link:
-      def send(line: String): Unit ! Async = async(outbound.send(line))
+      def send(line: String): Unit ! Async = outbound.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(inbound)
 
     Async.spawn(McpServer.run(link, serving)): Unit

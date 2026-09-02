@@ -51,7 +51,7 @@ class TestAgentOverMcp extends munit.FunSuite {
     val up = Channel[String]()
     val down = Channel[String]()
     def link(out: Channel[String], in: Channel[String]): Link = new Link:
-      def send(line: String): Unit ! Async = async(out.send(line))
+      def send(line: String): Unit ! Async = out.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(in)
     Async.spawn(Server.run(link(down, up), Mcp.Info("okay-mcp", "0.1"), Seq(spec), table)): Unit
     Client.connect(link(up, down), Mcp.Info("agent", "1")).runWith.handler
@@ -84,7 +84,7 @@ class TestAgentOverMcp extends munit.FunSuite {
     val up = Channel[String]()
     val down = Channel[String]()
     def link(out: Channel[String], in: Channel[String]): Link = new Link:
-      def send(line: String): Unit ! Async = async(out.send(line))
+      def send(line: String): Unit ! Async = out.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(in)
     Async.spawn(Server.run(link(down, up), Mcp.Info("okay-mcp", "0.1"), Seq(spec), table)): Unit
     val session = Client.connect(link(up, down), Mcp.Info("agent", "1")).runWith

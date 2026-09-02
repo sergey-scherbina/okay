@@ -88,7 +88,7 @@ final class Session private[mcp] (link: Link, peer: Duplex.Peer)(using Scheduler
       async(complete(id, Json.JErr(s"$code $msg")))
     // a damaged line from the server answers nothing and ends nothing
     case Rpc.Failed(_, _, _) => pure(())
-    case n: Rpc.Notify => async(notifications.send(n))
+    case n: Rpc.Notify => notifications.send(n).map(_ => ())
     case Rpc.Request(id, method, params) =>
       // on its own fiber: a sampling call may take a second, and the
       // reader must keep reading while it does

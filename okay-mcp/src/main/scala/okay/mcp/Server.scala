@@ -224,14 +224,14 @@ object Server {
   final class Pushes private[mcp] (out: Channel[Rpc], subs: Subscriptions) {
     /** tell every subscriber to this uri that it changed */
     def resourceUpdated(uri: String): Unit =
-      if subs.has(uri) then out.send(Duplex.updated(uri))
+      if subs.has(uri) then out.offer(Duplex.updated(uri)): Unit
 
     /** the list itself changed (tools, resources or prompts) */
     def listChanged(what: String): Unit =
-      out.send(Rpc.Notify(what, Rpc.obj()))
+      out.offer(Rpc.Notify(what, Rpc.obj())): Unit
 
     /** anything at all, for a server with its own ideas */
-    def push(m: Rpc): Unit = out.send(m)
+    def push(m: Rpc): Unit = out.offer(m): Unit
 
     /** nothing more will be pushed */
     def close(): Unit = out.close()

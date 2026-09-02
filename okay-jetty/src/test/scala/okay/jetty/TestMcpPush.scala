@@ -53,7 +53,7 @@ class TestMcpPush extends munit.FunSuite {
       Thread.sleep(150)          // let the GET arrive before the push
 
       pushes.resourceUpdated("okay://a")
-      val n = session.notifications.receive()
+      val n = session.notifications.receiveBlocking()
       assertEquals(n.flatMap(Duplex.updatedUri), Some("okay://a"))
     }
   }
@@ -72,10 +72,10 @@ class TestMcpPush extends munit.FunSuite {
       // two pushes, read one at a time: the second cannot have been
       // buffered behind an ended body, because the body has not ended
       pushes.resourceUpdated("okay://a")
-      assertEquals(session.notifications.receive().flatMap(Duplex.updatedUri),
+      assertEquals(session.notifications.receiveBlocking().flatMap(Duplex.updatedUri),
         Some("okay://a"))
       pushes.resourceUpdated("okay://b")
-      assertEquals(session.notifications.receive().flatMap(Duplex.updatedUri),
+      assertEquals(session.notifications.receiveBlocking().flatMap(Duplex.updatedUri),
         Some("okay://b"))
     }
   }

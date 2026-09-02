@@ -25,7 +25,7 @@ class TestSession extends munit.FunSuite {
     val up = Channel[String]()
     val down = Channel[String]()
     def link(out: Channel[String], in: Channel[String]): Link = new Link:
-      def send(line: String): Unit ! Async = async(out.send(line))
+      def send(line: String): Unit ! Async = out.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(in)
     (link(up, down), link(down, up))
 
@@ -84,7 +84,7 @@ class TestSession extends munit.FunSuite {
     val up = Channel[String]()
     val down = Channel[String]()
     def link(out: Channel[String], in: Channel[String]): Link = new Link:
-      def send(line: String): Unit ! Async = async(out.send(line))
+      def send(line: String): Unit ! Async = out.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(in)
 
     // a server that answers the handshake and then simply stops

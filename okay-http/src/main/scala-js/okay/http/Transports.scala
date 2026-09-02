@@ -129,14 +129,14 @@ object Transports {
             if js.typeOf(d) == "string" then Frame.Text(d.asInstanceOf[String])
             else Frame.Binary(chunkOf(new Uint8Array(d.asInstanceOf[js.Any]
               .asInstanceOf[scala.scalajs.js.typedarray.ArrayBuffer])))
-          q.send(f)
+          q.sendAsync(f)(_ => ())
           ()
         }: js.Function1[js.Dynamic, Unit]
 
         ws.onclose = { (e: js.Dynamic) =>
-          q.send(Frame.Close(
+          q.sendAsync(Frame.Close(
             try e.code.asInstanceOf[Int] catch case _: Throwable => Frame.Normal,
-            try e.reason.asInstanceOf[String] catch case _: Throwable => ""))
+            try e.reason.asInstanceOf[String] catch case _: Throwable => ""))(_ => ())
           q.close()
           ()
         }: js.Function1[js.Dynamic, Unit]
