@@ -172,9 +172,11 @@
       Transports.http() + Secrets.env, the test wires a canned wire +
       memory Secrets and runs the LIVE Anthropic.stream path offline;
       offline suites run over a DEAD wire. Closes the Elsewhere gate.
-- [ ] demo-market-live — /market subscribes to the SSE inbox and
-      updates live as offers/needs/deals land (today: static render
-      on page load); attribute-facet filtering while there.
+- [x] demo-market-live — LANDED 2026-09-02: GET /market.json (facts
+      with attr names, Public-only), GET /events/market (SSE feed
+      pinged from the chainedTable wraps + /admin/replay), the page
+      re-renders on every ping with attribute facet chips; rows stay
+      server-rendered at load.
 - [ ] demo-deal-timeline — render a deal's negotiation history from
       the log (proposed → responded → settled), each fact with its
       provenance — the append-only + supersede story made visible.

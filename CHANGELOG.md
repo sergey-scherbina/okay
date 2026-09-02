@@ -1,5 +1,19 @@
 # Changelog
 
+## demo-market-live — the market page moves
+Completed: 2026-09-02
+Landed as f9f2985 (spec) + 96c6ce4 (impl). /market was a static render;
+now GET /market.json serves the rows as disclosed facts with their
+attribute names (the gate holds on JSON as on HTML — Public-only), GET
+/events/market is a market-wide SSE feed matched before the
+/events/<email> prefix route and pinged from the chainedTable wraps
+(facts_assert, match_inquire, match_respond, flow_advance) plus
+/admin/replay — model path and deterministic driver ring it alike; the
+page keeps server-rendered rows and re-renders from market.json on every
+ping, with attribute facet chips as the client-side filter. A closed
+page's channel stays registered until process end — stated in the spec.
+Suite 20/20 three runs (live endpoint up).
+
 ## tmap — two heterogeneous maps; the STM's write set on the dynamic one
 Completed: 2026-09-02
 Landed as a6a6d7c (2 commits). The operator's design for the STM's

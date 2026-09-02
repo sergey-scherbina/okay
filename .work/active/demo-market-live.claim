@@ -1,5 +1,0 @@
-slug: demo-market-live
-branch: feature/demo-market-live
-worktree: ../okay-wt-demo-market-live
-claimed: 2026-09-02
-scope: /market updates live: GET /market.json (rows with attr names), GET /events/market (SSE changed-pings published from the chainedTable wraps), the page fetches+renders, resubscribes, filters by attribute facets client-side. specs/demo-chat.md.
