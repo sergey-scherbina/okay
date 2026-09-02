@@ -202,13 +202,13 @@ the LIVE parsing path runs offline for the first time. Offline
 tests wire a DEAD transport that throws on touch, so "offline never
 reaches the wire" is asserted, not assumed.
 
-- [ ] the same `handler` value wired twice: with a canned wire + a
+- [x] the same `handler` value wired twice: with a canned wire + a
       key in memory-Secrets the LIVE branch streams the canned
       tokens through the real `Anthropic.stream`; with no key the
       scripted branch answers — one value, two environments
-- [ ] every offline suite runs over the DEAD wire (a touch is an
+- [x] every offline suite runs over the DEAD wire (a touch is an
       AssertionError) and stays green
-- [ ] behavior unchanged at the edge: `main` wires `Transports.
+- [x] behavior unchanged at the edge: `main` wires `Transports.
       http()` + `Secrets.env`, which resolve the same env vars the
       old `sys.env` reads did
 

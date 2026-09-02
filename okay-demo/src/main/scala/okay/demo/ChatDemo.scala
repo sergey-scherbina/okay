@@ -5,7 +5,7 @@ import okay.given
 import okay.Condition
 import okay.http.{Body, Http, Request, Response}
 import okay.jetty.Jetty
-import okay.llm.{Anthropic, Cut, OpenAi, Transports}
+import okay.llm.{Anthropic, Cut, OpenAi, Transport, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
 import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
 import okay.persist.{FileStore, MemoryStore, Policy}
@@ -13,7 +13,7 @@ import okay.jdbc.JdbcSql
 import okay.pg.{PgSql, PgTls}
 import okay.sql.Placeholders
 import okay.tls.{SslMode, TlsConfig}
-import okay.conf.Secrets
+import okay.conf.{Secret, Secrets}
 import okay.crypto.given
 import okay.codec.Json
 import okay.codec.Json.*
@@ -50,32 +50,43 @@ object ChatDemo {
         effect[Writer % String + Async, Unit](Writer(t + " ")).flatMap(_ => go(rest))
     go(reply.split(' ').toList)
 
-  /** live: the provider's stream through okay-llm */
-  def live(key: String): Model = messages =>
-    Anthropic.stream(Transports.http(), key, Anthropic.Request(
+  /** the demo's config rides the Secrets capability as `env:NAME`
+   * references (demo-ctx-wiring): `main` — the process edge —
+   * installs Secrets.env, a test installs Secrets.memory, and the
+   * model DISPATCH below becomes testable without touching the
+   * process environment */
+  def secret(name: String)(using s: Secrets): Option[String] =
+    s.get(Secret(s"env:$name")).toOption
+
+  /** live: the provider's stream through okay-llm, over the AMBIENT
+   * wire — a test wires a canned Transport and runs this very path
+   * offline */
+  def live(key: String)(using t: Transport): Model = messages =>
+    Anthropic.stream(t, key, Anthropic.Request(
       model = "claude-sonnet-4-5", max_tokens = 1024,
       messages = messages.toList, stream = true))
 
   /** an OpenAI-compatible endpoint (the local rozum model on :8089
    * fits): the same seam, one more filling */
-  def local(base: String): Model = messages =>
+  def local(base: String)(using t: Transport): Model = messages =>
     val body = Json.print(JObj(Vector(
       "model" -> JStr("default"),
       "stream" -> JBool(true),
       "max_tokens" -> JNum(1024),
       "messages" -> JArr(messages.toVector.map(m => JObj(Vector(
         "role" -> JStr(m.role), "content" -> JStr(m.content))))))))
-    OpenAi.stream(Transports.http(), "local", body, s"$base/v1/chat/completions")
+    OpenAi.stream(t, "local", body, s"$base/v1/chat/completions")
 
   /** which model serves — shown on the page and at startup */
-  def modeName: String =
-    if sys.env.contains("ANTHROPIC_API_KEY") then "live (Anthropic)"
-    else if sys.env.contains("OKAY_CHAT_BASE") then s"local (${sys.env("OKAY_CHAT_BASE")})"
-    else "scripted (no model — set OKAY_CHAT_BASE or ANTHROPIC_API_KEY)"
+  def modeName(using Secrets): String =
+    if secret("ANTHROPIC_API_KEY").isDefined then "live (Anthropic)"
+    else secret("OKAY_CHAT_BASE") match
+      case Some(base) => s"local ($base)"
+      case None => "scripted (no model — set OKAY_CHAT_BASE or ANTHROPIC_API_KEY)"
 
-  def model: Model =
-    sys.env.get("ANTHROPIC_API_KEY").map(live)
-      .orElse(sys.env.get("OKAY_CHAT_BASE").map(local))
+  def model(using Transport, Secrets): Model =
+    secret("ANTHROPIC_API_KEY").map(live)
+      .orElse(secret("OKAY_CHAT_BASE").map(local))
       .getOrElse(scripted)
 
   // ---- the matchmaking side (okay-match wired in) --------------------
@@ -121,7 +132,8 @@ object ChatDemo {
   /** a /match turn, LOGGED: register the speaker, append the turn,
    * extract with the log offset as provenance, log the answer too */
   def matchTurnLogged(text: String, history: Seq[Anthropic.Message], log: ChatLog)
-                     (using store: MatchStore): String =
+                     (using Transport, Secrets, MatchStore): String =
+    val store = summon[MatchStore]
     val me = store.register(resolveEmail(text, intakePolicy))
     val off = log.append(ChatTurn(me, "user", text))
     val answer = matchTurn(text, history, off)
@@ -131,7 +143,8 @@ object ChatDemo {
   /** log-first made demonstrable: drop the projection, rebuild it
    * from the log through the SAME extraction the live chat used;
    * answers how many user turns it replayed */
-  def replayProjections(log: ChatLog)(using store: MatchStore): Long =
+  def replayProjections(log: ChatLog)(using Transport, Secrets, MatchStore): Long =
+    val store = summon[MatchStore]
     store.reset()
     var n = 0L
     log.replay { (t, prov) =>
@@ -567,14 +580,15 @@ object ChatDemo {
         """матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>; сценарии: сценарий <имя> роль=email ...; шаг <N> <переход>; флоу <N>"""
 
   /** which agent serves /match turns: real model when one is
-   * configured, the deterministic table-driver otherwise */
-  def matchTurn(text: String, history: Seq[Anthropic.Message], off: Long)(using MatchStore): String =
-    sys.env.get("ANTHROPIC_API_KEY").map { key =>
-      agentTurn(text, history, Provider.anthropic(
-        Transports.http(), key, "claude-sonnet-4-5"), Some(off))
-    }.orElse(sys.env.get("OKAY_CHAT_BASE").map { base =>
+   * configured (by the AMBIENT secrets, over the AMBIENT wire), the
+   * deterministic table-driver otherwise */
+  def matchTurn(text: String, history: Seq[Anthropic.Message], off: Long)
+               (using t: Transport, s: Secrets, m: MatchStore): String =
+    secret("ANTHROPIC_API_KEY").map { key =>
+      agentTurn(text, history, Provider.anthropic(t, key, "claude-sonnet-4-5"), Some(off))
+    }.orElse(secret("OKAY_CHAT_BASE").map { base =>
       agentTurn(text, history, Provider.openAi(
-        Transports.http(), "local", "default", s"$base/v1/chat/completions"), Some(off))
+        t, "local", "default", s"$base/v1/chat/completions"), Some(off))
     }).getOrElse(scriptedAgent(text, off))
 
   // ---- the SSE reply -------------------------------------------------
@@ -632,7 +646,7 @@ object ChatDemo {
               p.toString.contains("fastopt"))
       }
 
-  def routes(m: Model, budget: Int)(using MatchStore)
+  def routes(m: Model, budget: Int)(using Transport, Secrets, MatchStore)
   : PartialFunction[Request, Response ! Async] =
     case r if r.method == okay.http.Method.Get && r.url == "/" =>
       val html = (if appJs.isDefined then reactPage else page)
@@ -703,6 +717,14 @@ object ChatDemo {
         pure(Response(200, Seq("content-type" -> "text/event-stream"),
           reply(m, budget)(messages)))
 
+  /** the whole demo as ONE value awaiting its environment
+   * (demo-ctx-wiring): `main` wires production, a test wires stubs —
+   * the same value both times, and a missing capability is a compile
+   * error, not a container exception */
+  def handler(budget: Int)
+  : (Transport, Secrets, MatchStore) ?=> PartialFunction[Request, Response ! Async] =
+    routes(model, budget)
+
   def main(args: Array[String]): Unit =
     val port = sys.env.get("OKAY_CHAT_PORT").flatMap(_.toIntOption).getOrElse(8090)
     val budget = sys.env.get("OKAY_CHAT_MAX").flatMap(_.toIntOption).getOrElse(512)
@@ -710,8 +732,8 @@ object ChatDemo {
       if sys.env.contains("ANTHROPIC_API_KEY") then "live"
       else if sys.env.contains("OKAY_CHAT_BASE") then s"local ${sys.env("OKAY_CHAT_BASE")}"
       else "scripted"
-    provide(market)(Resource.run[Unit, Pure](
-      Jetty.serve(port)(routes(model, budget))().map { s =>
+    provide(Transports.http(), Secrets.env, market)(Resource.run[Unit, Pure](
+      Jetty.serve(port)(handler(budget))().map { s =>
         println(s"chat: http://127.0.0.1:${Jetty.port(s)}  (model: $mode)")
         Thread.sleep(Long.MaxValue)   // ctrl-c ends the process and the Resource
       }).runWith)

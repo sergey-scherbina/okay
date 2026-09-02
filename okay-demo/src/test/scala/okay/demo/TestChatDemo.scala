@@ -26,10 +26,16 @@ class TestChatDemo extends munit.FunSuite {
     val first = attempt
     if ok(first) then first else attempt
 
+  /** the offline environment (demo-ctx-wiring): a wire that PROVES
+   * offline never reaches it, and secrets holding no model config */
+  val deadWire: okay.llm.Transport = (url, _, _) =>
+    throw new AssertionError(s"offline test touched the wire: $url")
+  val noSecrets: okay.conf.Secrets = okay.conf.Secrets.memory(Map.empty)
+
   def withServer[A](budget: Int,
                     store: okay.matching.MatchStore = okay.matching.MemoryMatch())
                    (f: Int => A): A =
-    provide(store)(Resource.run[A, Pure](
+    provide(deadWire, noSecrets, store)(Resource.run[A, Pure](
       Jetty.serve(0)(ChatDemo.routes(ChatDemo.scripted, budget))()
         .map(s => f(Jetty.port(s)))).runWith)
 
@@ -97,7 +103,8 @@ class TestChatDemo extends munit.FunSuite {
         HttpResponse.BodyHandlers.ofString()).statusCode() == 200
     } catch { case _: Throwable => false }
     assume(up, s"no local model at $base — skipped")
-    provide(okay.matching.MemoryMatch(): okay.matching.MatchStore)(Resource.run[Unit, Pure](
+    provide(okay.llm.Transports.http(), noSecrets,
+      okay.matching.MemoryMatch(): okay.matching.MatchStore)(Resource.run[Unit, Pure](
       Jetty.serve(0)(ChatDemo.routes(ChatDemo.local(base), 512))()
         .map { s =>
           val port = Jetty.port(s)
@@ -388,7 +395,8 @@ class TestChatDemo extends munit.FunSuite {
     }
     // a model that dies mid-turn: the ERROR frame, not a 500
     val dying: ChatDemo.Model = _ => throw new RuntimeException("boom-model")
-    val whole = provide(okay.matching.MemoryMatch(): okay.matching.MatchStore)(
+    val whole = provide(deadWire, noSecrets,
+      okay.matching.MemoryMatch(): okay.matching.MatchStore)(
       Resource.run[String, Pure](
         Jetty.serve(0)(ChatDemo.routes(dying, 512))().map { srv =>
           // hasModel=false and /match prefix → agent path → scripted (no throw);
@@ -424,6 +432,37 @@ class TestChatDemo extends munit.FunSuite {
         """{"messages":[{"role":"user","content":"/match умею класть плитку"}]}""").readAllBytes(), UTF_8)
       assert(ans.contains("guest@demo"), ans.take(200))
     }
+  }
+
+  test("CTX WIRING: one handler value, two environments — LIVE parsing over a canned wire, scripted without a key") {
+    // the canned wire: ANY post answers a fixed Anthropic SSE stream,
+    // so the REAL Anthropic.stream parsing runs with no server anywhere
+    val canned: okay.llm.Transport = (_, _, _) =>
+      type F = Writer % String + Async
+      Seq(
+        """data: {"type":"content_block_delta","delta":{"text":"canned"}}""", "",
+        """data: {"type":"content_block_delta","delta":{"text":" wire"}}""", "",
+        "data: [DONE]", "")
+        .foldLeft(pure(()): Unit ! F)((acc, l) =>
+          acc.flatMap(_ => effect[F, Unit](Writer(l))))
+    def run(wire: okay.llm.Transport, secrets: okay.conf.Secrets): String =
+      provide(wire, secrets, okay.matching.MemoryMatch(): okay.matching.MatchStore)(
+        Resource.run[String, Pure](
+          Jetty.serve(0)(ChatDemo.handler(512))().map { s =>
+            new String(post(Jetty.port(s),
+              """{"messages":[{"role":"user","content":"hi"}]}""").readAllBytes(), UTF_8)
+          }).runWith)
+    // wired LIVE: memory-secrets hold the key, dispatch picks the live
+    // branch, Anthropic.stream parses the canned SSE — offline
+    val live = run(canned,
+      okay.conf.Secrets.memory(Map("env:ANTHROPIC_API_KEY" -> "sk-canned")))
+    assert(live.contains("canned") && live.contains("wire"), live.take(300))
+    assert(live.contains("event: done"), live.takeRight(120))
+    // the SAME value wired with no key: the scripted branch answers,
+    // and the dead wire proves the dispatch never touched a transport
+    // tokens are per-frame: the words arrive in separate data events
+    val scripted = run(deadWire, noSecrets)
+    assert(scripted.contains("You") && scripted.contains("said:"), scripted.take(300))
   }
 
   test("over budget the stream is cut, named, and no tokens follow") {
@@ -464,7 +503,7 @@ class TestChatDemo extends munit.FunSuite {
     import okay.matching.*
     val store = MemoryMatch()
     val log = ChatDemo.logOf(":memory:")
-    def turn(t: String) = provide(store: MatchStore)(ChatDemo.matchTurnLogged(t, Nil, log))
+    def turn(t: String) = provide(deadWire, noSecrets, store: MatchStore)(ChatDemo.matchTurnLogged(t, Nil, log))
     turn("умею класть плитку email master@demo")
     turn("нужен плиточник email client@demo")
     def snapshot(s: MatchStore) =
@@ -474,11 +513,11 @@ class TestChatDemo extends munit.FunSuite {
     val live = snapshot(store)
     assert(live._1.nonEmpty && live._2.nonEmpty, live.toString)
     // the projection dies; the log does not
-    val replayed = provide(store: MatchStore)(ChatDemo.replayProjections(log))
+    val replayed = provide(deadWire, noSecrets, store: MatchStore)(ChatDemo.replayProjections(log))
     assertEquals(replayed, 2L)
     assertEquals(snapshot(store), live)
     // the same log over the same store: a no-op (idempotence by provenance)
-    assertEquals(provide(store: MatchStore)(ChatDemo.replayProjections(log)), 2L)
+    assertEquals(provide(deadWire, noSecrets, store: MatchStore)(ChatDemo.replayProjections(log)), 2L)
     assertEquals(snapshot(store), live)
   }
 }
