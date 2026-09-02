@@ -1,5 +1,27 @@
 # Changelog
 
+## demo-subscription-gate — free join month, then paid-per-period or gated, never deleted
+Completed: 2026-09-02
+Landed as 87d6e70 (spec) + c06bc42 (impl). User ask: a profile shows and
+matches free for its first calendar month; after that only a period
+actually PAID keeps it visible; unpaid is gated from find_candidates, the
+reverse chain (both as poster and as the waiting side), and /market +
+/market.json — never deleted, and every turn from a gated user carries a
+reminder. Demo layer only, okay-match untouched: Period(y,m) is the
+calendar-month key, subscribed(uuid, now) = the profile's lazily-anchored
+join period IS now, or now was paid. Paying is a new subscription_pay
+tool (demo stub, оплатить/pay), taking effect the same turn. Two reminder
+channels for two paths: scriptedAgent appends a suffix computed AFTER
+dispatch; the LIVE path's facts_register wrap carries a "notice" field,
+relayed by one new matchSystem sentence — the same channel the model
+already reads its provenance instruction from. Bug found and fixed while
+landing this: dealEvents (demo-deal-timeline) was keyed by bare deal id,
+so two independent test stores (both numbering from 1) could cross-
+contaminate dealTimeline lookups across tests in one JVM — rekeyed on
+(store identity, deal id). Suite 24-26/24-26 clean over several runs
+(rebased twice mid-flight over demo-sessions landing concurrently); the
+one red seen throughout was local-model timeout/flake, unrelated.
+
 ## cast-free-codec — Json and Cbor by GADT matching; the Mirror's erasure stated once
 Completed: 2026-09-02
 Landed as 2a8aca1. Schema was a GADT already; the codecs cast out of
