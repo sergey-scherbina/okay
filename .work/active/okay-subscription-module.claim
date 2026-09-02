@@ -1,5 +1,0 @@
-slug: okay-subscription-module
-branch: feature/okay-subscription-module
-worktree: ../okay-wt-okay-subscription-module
-claimed: 2026-09-02
-scope: user ask -- extract the demo's subscription gate (Period, subscribed/pay/backdateJoin/subscriptionNotice, paySpec) out of ChatDemo.scala into a new reusable sbt module okay-subscription. Pure move + genericize (uuid was already generic), no behavior change. build.sbt new project block; okayDemo depends on it. specs/subscription.md. Two follow-on extractions (okay-admin, okay-chat) get filed to BACKLOG with API sketches, not built this pass.

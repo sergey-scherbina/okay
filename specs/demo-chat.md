@@ -359,6 +359,13 @@ present never consults the policy at all.
 
 ## The subscription gate (demo-subscription-gate — user ask)
 
+EXTRACTED 2026-09-02 into its own module (specs/subscription.md,
+`okay-subscription`) — a pure move, no behavior change: the demo
+calls `Subscription.subscribed`/`pay`/`backdateJoin`/
+`subscriptionNotice`/`paySpec` now instead of same-file functions.
+This section stays as the original design record; the module's own
+spec is the source of truth for the API going forward.
+
 A profile shows and matches FREE for its first calendar month; after
 that, only a period actually PAID keeps it visible. Unpaid: gated —
 absent from search AND from matching (the reverse chain does not

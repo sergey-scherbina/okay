@@ -1,5 +1,26 @@
 # Changelog
 
+## okay-subscription — the demo's subscription gate, extracted into a reusable module
+Completed: 2026-09-02
+Landed as 261981e (spec) + c54f3d2 (impl). User ask: extract genuinely
+reusable pieces the demo builds into their own modules rather than
+leaving them stuck inside ChatDemo.scala. Period/subscribed/pay/
+backdateJoin/subscriptionNotice/paySpec were already fully decoupled
+from MatchStore/ChatLog and took a bare String uuid, so this was a
+pure move, not a redesign: new JVM-only sbt project okay-subscription
+(depends only on okayAgent.jvm, for ToolSpec), okayDemo.dependsOn
+gains it, every ChatDemo.scala call site becomes Subscription.<fn>.
+New unit suite (9 tests) proves the module in isolation; the existing
+SUBSCRIPTION GATE integration tests in TestChatDemo keep proving the
+end-to-end HTTP-route wiring, updated to the qualified names. Two more
+extractions from the same ask (okay-admin, okay-chat) are designed
+(API sketches, decisions — a Plan agent validated the seams before
+landing) but not built this pass; filed to BACKLOG.md's new
+'## Reusable modules' section — admin also names a real gap found
+while planning: /admin/replay ships unauthenticated today. Suite
+26/26 clean except a rotating LIVE-model-endpoint timeout (the same
+infra flake documented all session, unrelated to this change).
+
 ## cast-free-blob — the blob walkers typed by the tree
 Completed: 2026-09-02
 Landed as 982c4ce. Backup.walkGet and Offload.walk, hand-rolled
