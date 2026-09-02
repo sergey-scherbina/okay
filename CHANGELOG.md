@@ -1,5 +1,26 @@
 # Changelog
 
+## stm-orelse — Tx gains the classic STM combinator
+Completed: 2026-09-02
+Landed as f1d4df3. `Tx.orElse(a, b)`: run `a`; if it RETRIES (not any
+other outcome), its writes are discarded as if it never ran and `b`
+runs instead; if `b` also retries, the whole thing retries, parked on
+whatever EITHER branch read. One new `Tx` case, one new `perform`
+branch — a nested `Log(parent = outer)` runs `a`, `RetryNow` is
+caught locally, the branch's reads fold into the outer log either
+way, its writes fold in (`Log.absorb`, via `TMap`'s typed polymorphic
+`foreach`) only if it did not retry. `runWithLog`, the tree-walker
+`interpret` used to own alone, is now shared with `perform`'s
+`OrElse` case; every handler (tl2, direct, Sim) gets `orElse` for
+free since none of them reimplement Read/Write/Modify/Retry
+themselves. Proven cross-platform (`TestStmOrElse`: a-succeeds,
+a-retries-b-runs-and-a's-write-never-lands, both-retry-parks-on-
+either, nested `orElse`, a write before `orElse` visible inside a
+branch) plus 60 Sim seeds racing two writers against one `orElse`d
+reader. specs/stm.md Behavior box + Results entry. Matrix 73 suites,
+zero failures (one confirmed pre-existing live-model flake, isolated
+and reconfirmed green alone).
+
 ## staged-codecs — the STAGED fold mode, kept
 Completed: 2026-09-02
 Landed as 92fc9ed (5 commits). The operator asked what final tagless

@@ -102,8 +102,6 @@ construction instead of a type test per value).
 ## STM — after stm (2026-09-02, specs/stm.md)
 - [ ] stm-sessions — McpHttp's session table + pushes fan-out, and
       Fiber's cell/subscribers/cancel, as transactions.
-- [ ] stm-orelse — `OrElse(a, b)`: run b when a retries; the
-      language grows one node, the handlers one case.
 - [ ] stm-js-direct-bench — the direct handler is the JS given by
       construction; price it against tl2 on Node once a JS
       benchmark harness exists.
