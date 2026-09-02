@@ -803,4 +803,25 @@ class TestChatDemo extends munit.FunSuite {
       assertEquals(store.profileOf(spoofed).map(_.current.length), Some(0))
     }
   }
+
+  test("ops-monitoring: /healthz, /readyz, /stats, /metrics are wired into the demo's own routes") {
+    withServer(512) { port =>
+      val h = client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/healthz")).GET().build(),
+        HttpResponse.BodyHandlers.ofString())
+      assertEquals(h.statusCode(), 200)
+      assertEquals(h.body(), "live=true")
+      // an empty store's /metrics is legitimately empty (no series
+      // advertised for data that does not exist) — the wiring test's
+      // job is that the ROUTE answers, not re-proving Prom.render
+      // (okay-ops's own suite does that with real data)
+      val m = client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/metrics")).GET().build(),
+        HttpResponse.BodyHandlers.ofString())
+      assertEquals(m.statusCode(), 200)
+      assert(m.headers().firstValue("content-type").orElse("").startsWith("text/plain; version=0.0.4"))
+      val s2 = client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/stats")).GET().build(),
+        HttpResponse.BodyHandlers.ofString())
+      assertEquals(s2.statusCode(), 200)
+      assertEquals(s2.body(), """{"topics":[]}""")
+    }
+  }
 }

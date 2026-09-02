@@ -600,6 +600,28 @@ lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
  * assumed. Stage 0 is the filesystem engine (jvm); the S3 subset
  * with own SigV4 is blob-s3.
  */
+/**
+ * Health, stats and Prometheus over the values that already exist
+ * (specs/ops.md): a mapping, like OTLP is for tracing, never an
+ * SDK. `Ops.routes` is a thin okay-http admin surface any server can
+ * wire in; `Prom.render` is a pure Store.Stats -> Prometheus text
+ * function, pinned by a golden-string test.
+ */
+lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-ops"))
+  .dependsOn(okay, okayCodec, okayPersist, okayHttp)
+  // a real socket for the route-level acceptance test, JVM only
+  .jvmConfigure(_.dependsOn(okayJetty % Test))
+  .settings(
+    name := "okay-ops",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 lazy val okayBlob = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-blob"))
@@ -1024,7 +1046,7 @@ lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
   )
 
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription)
+  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm)
   .settings(
     name := "okay-demo",
     libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.47.1.0",

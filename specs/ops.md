@@ -54,21 +54,21 @@ a documented wire is a mapping, exactly as OTLP was.
 
 ## Behavior
 
-- [ ] `Ops.health(store)` answers live/ready by calling `store.stats`;
+- [x] `Ops.health(store)` answers live/ready by calling `store.stats`;
       an exception is caught and reported as NOT ready, named
-- [ ] `GET /healthz` is 200 while live, else 503 with the reason;
+- [x] `GET /healthz` is 200 while live, else 503 with the reason;
       `GET /readyz` likewise for ready — plain text, human-legible,
       the Kubernetes probe contract
-- [ ] `GET /stats` answers `Store.Stats` as JSON (the Schema already
+- [x] `GET /stats` answers `Store.Stats` as JSON (the Schema already
       derived; no new codec)
-- [ ] `Prom.render` is PURE and pinned: a `Store.Stats` with two
+- [x] `Prom.render` is PURE and pinned: a `Store.Stats` with two
       topics, several partitions, and (optionally) an `Offsets`
       lag reading becomes stable Prometheus text — HELP/TYPE once
       per metric name, one line per (topic, partition) label pair,
       a trailing newline (the format's own requirement)
-- [ ] `GET /metrics` serves `Prom.render` at `text/plain;
+- [x] `GET /metrics` serves `Prom.render` at `text/plain;
       version=0.0.4` (the exposition format's own content-type)
-- [ ] the demo (okay-demo) wires `Ops.routes` in as a consumer,
+- [x] the demo (okay-demo) wires `Ops.routes` in as a consumer,
       proving the routes against a real Store over a real socket —
       the same acceptance move `TestChatDemo` already makes for
       every other route
@@ -108,3 +108,19 @@ a documented wire is a mapping, exactly as OTLP was.
   manifest flavor) without touching `okay-ops`.
 
 ## Results
+
+Landed 2026-09-02 (ops-monitoring): a new JVM/JS module `okay-ops`
+(the Native leg was not built — its routes need `okay-http`, which
+has no Native leg). `Health.of(store)` calls `store.stats` live,
+catching a throw as `live=false, ready=false` with the exception's
+message as the reason. `Prom.render` is a pure `Store.Stats =>
+String` (Prometheus text 0.0.4), pinned by a golden-string test, plus
+an opt-in `lagOf` for `Offsets.lag` per named consumer group. `Ops
+.routes` composes the four routes into any `PartialFunction[Request,
+Response ! Async]`, proven over a real socket (`okay-jetty`, TEST
+scope) and wired into the demo (`okay-demo`) as the first consumer —
+`chatLog`'s underlying `Store` is now exposed as `chatStore` so both
+can see it. One MemoryStore lesson found while pinning the golden
+text: its `PartitionStats.segments` field reports RECORD count, not
+segment count — an engine-specific reading of a field the Store
+trait leaves engines free to interpret, now stated in the test.

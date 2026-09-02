@@ -8,6 +8,7 @@ import okay.jetty.Jetty
 import okay.llm.{Anthropic, Cut, OpenAi, Transport, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
 import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
+import okay.ops.Ops
 import okay.security.Secure
 import okay.subscription.Subscription
 import okay.subscription.Subscription.Period
@@ -126,11 +127,16 @@ object ChatDemo {
    * the offset that comes back is the provenance of what the turn
    * asserts. OKAY_CHAT_LOG is a FileStore directory (":memory:" for
    * a run that keeps nothing); the store above is a projection of it */
-  lazy val chatLog: ChatLog = logOf(sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log"))
+  lazy val chatStore: okay.persist.Store = storeOf(sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log"))
+  lazy val chatLog: ChatLog = ChatLog(chatStore.topic("web-demo", 1, Policy.default))
 
+  def storeOf(path: String): okay.persist.Store =
+    if path == ":memory:" then MemoryStore() else FileStore.open(java.nio.file.Path.of(path))
+
+  /** for tests that want their OWN log without touching the ambient
+   * OKAY_CHAT_LOG store */
   def logOf(path: String): ChatLog =
-    val store = if path == ":memory:" then MemoryStore() else FileStore.open(java.nio.file.Path.of(path))
-    ChatLog(store.topic("web-demo", 1, Policy.default))
+    ChatLog(storeOf(path).topic("web-demo", 1, Policy.default))
 
   /** a /match turn, LOGGED: register the speaker, append the turn,
    * extract with the log offset as provenance, log the answer too.
@@ -998,6 +1004,8 @@ object ChatDemo {
           .flatMap(_ => Writer.map(Writer.of(inbox(email)))(note =>
             sse("match", Json.print(JStr(note)))))
       pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
+
+    case r if Ops.routes(chatStore).isDefinedAt(r) => Ops.routes(chatStore)(r)
 
     case r if r.method == okay.http.Method.Post && r.url == "/login" =>
       val email = fieldOf(r.body, "email")
