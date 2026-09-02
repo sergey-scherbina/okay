@@ -327,3 +327,23 @@ inject scheduling points INSIDE a branch's own reads/writes (`perform`
 is synchronous by design, so a nested attempt runs eagerly) — stated,
 not a correctness gap, since a branch's atomicity does not depend on
 where Sim chooses to interleave.
+
+Two more consumers (stm-sessions, 2026-09-02): `McpHttp`'s session
+table — a `ConcurrentHashMap[String, Wire]` — became `TRef[Sessions]`
+(a `Map` wrapped in a tiny value type); every write is one `modify`.
+This found a REAL race the map's own check-then-act could not avoid:
+"a client that never initialized, talking to a server with no
+sessions, gets one rather than a riddle" was `isEmpty` checked, then
+`put` — two racing first requests could both pass the check and
+clobber each other's `Wire` under the same key. Folded into one
+`modify` (look the id up; if absent AND the table is genuinely empty,
+mint the session; otherwise answer nothing), only the first racer can
+ever win — proven by a regression test firing 30 concurrent
+uninitialized POSTs and asserting exactly one 200. Native's `FiberCell`
+(the hand-rolled `synchronized` "one result, many subscribers" cell
+behind `Fiber` where the platform has no `CompletableFuture`) became
+`TRef[State]` the same way `Ui.CloseState` did: `modify` decides
+which subscribers this call gets to fire, firing happens outside it
+(never inside `f`, which the doc comment on `modify` already warns
+may run more than once). Both are single-cell fast paths — no `Tx`/
+`Stm[F]` needed, the same shape every consumer here has taken so far.

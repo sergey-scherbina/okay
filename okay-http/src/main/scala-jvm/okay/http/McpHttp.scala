@@ -186,6 +186,14 @@ object McpHttp {
    * incrementally (okay-jetty can; okay-http's own buffers, and there
    * the GET simply never delivers anything).
    */
+  /** the session table (stm-sessions, specs/stm.md): one `TRef`
+   * instead of a `ConcurrentHashMap`, so lookup-or-create is ONE
+   * `modify` rather than a check then an act */
+  private final case class Sessions(byId: Map[String, Wire] = Map.empty):
+    def get(id: String): Option[Wire] = byId.get(id)
+    def put(id: String, w: Wire): Sessions = copy(byId = byId.updated(id, w))
+    def isEmpty: Boolean = byId.isEmpty
+
   def route(serving: McpServer.Serving)
            (using Scheduler): Request => Response ! Async =
     routed(serving)._1
@@ -199,7 +207,7 @@ object McpHttp {
   def routed(serving: McpServer.Serving,
              journal: Option[Topic] = None)
             (using Scheduler): (Request => Response ! Async, McpServer.Pushes) =
-    val sessions = java.util.concurrent.ConcurrentHashMap[String, Wire]()
+    val sessions = TRef(Sessions())
     val pushes = Channel[Rpc]()
     val handle = McpServer.pushesTo(pushes, serving.subscriptions)
 
@@ -211,7 +219,7 @@ object McpHttp {
     val route: Request => Response ! Async = request =>
       if request.method == Method.Get then
         val id = header(request, SessionHeader).getOrElse("")
-        Option(sessions.get(id)) match
+        sessions.get.get(id) match
           case None => pure(Response(404, Nil, Http.one(Array.empty)))
           case Some(wire) => journal match
             case None =>
@@ -241,37 +249,42 @@ object McpHttp {
         if isInit then
           val fresh = java.util.UUID.randomUUID().toString
           val wire = Wire(serving)
-          sessions.put(fresh, wire)
+          sessions.modify(s => (s.put(fresh, wire), ()))
           answer(wire, body, message, Seq((SessionHeader, fresh)))
-        else id.flatMap(i => Option(sessions.get(i))) match
-          case None if id.isEmpty && sessions.isEmpty =>
-            // a client that never initialized, talking to a server
-            // that has no sessions: give it one rather than a riddle
-            val wire = Wire(serving)
-            sessions.put("", wire)
-            answer(wire, body, message, Nil)
-          case None => pure(Response(404, Nil, Http.one(
-            Rpc.encode(Rpc.Failed(Json.JNull, Rpc.InvalidRequest,
-              "unknown session")).getBytes(java.nio.charset.StandardCharsets.UTF_8))))
-          case Some(wire) => answer(wire, body, message, Nil)
+        else
+          // lookup, or (both conditions at once) mint the riddle-free
+          // first session — ONE modify, so two concurrent uninitialized
+          // POSTs cannot both slip through and clobber each other's
+          // Wire under the "" key the way two racing get-then-put calls
+          // on the old ConcurrentHashMap could
+          sessions.modify { s =>
+            id.flatMap(s.get) match
+              case found @ Some(_) => (s, found)
+              case None if id.isEmpty && s.isEmpty =>
+                val wire = Wire(serving)
+                (s.put("", wire), Some(wire))
+              case None => (s, None)
+          } match
+            case None => pure(Response(404, Nil, Http.one(
+              Rpc.encode(Rpc.Failed(Json.JNull, Rpc.InvalidRequest,
+                "unknown session")).getBytes(java.nio.charset.StandardCharsets.UTF_8))))
+            case Some(wire) => answer(wire, body, message, Nil)
 
     (route, handle)
 
   /** every push, to every session that has a stream open — journaled
    * first when there is a journal, so replay can miss nothing */
-  private def fanOut(pushes: Channel[Rpc],
-                     sessions: java.util.concurrent.ConcurrentHashMap[String, Wire],
-                     journal: Option[Topic])
+  private def fanOut(pushes: Channel[Rpc], sessions: TRef[Sessions], journal: Option[Topic])
   : Unit ! Async =
     pushes.receive.flatMap {
       case None => pure(())
       case Some(m) =>
-        import scala.jdk.CollectionConverters.*
-        for t <- journal; id <- sessions.keys().asScala do
+        val now = sessions.get
+        for t <- journal; id <- now.byId.keys do
           val k = id.getBytes(java.nio.charset.StandardCharsets.UTF_8)
           t.append(Topic.route(k, t.partitions), k,
             Rpc.encode(m).getBytes(java.nio.charset.StandardCharsets.UTF_8), Ack.Durable): Unit
-        sessions.values().asScala.foreach(_.stream.offer(m): Unit)
+        now.byId.values.foreach(_.stream.offer(m): Unit)
         fanOut(pushes, sessions, journal)
     }
 

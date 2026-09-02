@@ -44,23 +44,27 @@ given Scheduler = new:
       def onComplete(k: Either[Throwable, A] => Unit): Unit = cell.subscribe(k)
       def cancel(): Unit = t.interrupt()
 
-/** one result, many subscribers */
+/** one result, many subscribers (stm-sessions, specs/stm.md): a
+ * `TRef[State]` instead of a hand-rolled `synchronized` cell — the
+ * mutation and "who gets notified" decision are one `modify`, and
+ * firing the callbacks OUTSIDE it (never inside `f`, which may run
+ * more than once) is exactly the shape `TRef.modify`'s own doc
+ * comment names: "the Channel returns its callbacks this way" */
 private final class FiberCell[A]:
-  private var result: Option[Either[Throwable, A]] = None
-  private var subs: List[Either[Throwable, A] => Unit] = Nil
+  private case class State(result: Option[Either[Throwable, A]] = None,
+                           subs: List[Either[Throwable, A] => Unit] = Nil)
+  private val cell = TRef(State())
 
   def complete(r: Either[Throwable, A]): Unit =
-    val run = synchronized:
-      if result.isDefined then Nil
-      else
-        result = Some(r)
-        val s = subs
-        subs = Nil
-        s
-    run.foreach(_(r))
+    val toRun = cell.modify { s =>
+      if s.result.isDefined then (s, Nil) else (State(Some(r)), s.subs)
+    }
+    toRun.foreach(_(r))
 
   def subscribe(k: Either[Throwable, A] => Unit): Unit =
-    val now = synchronized:
-      if result.isEmpty then subs = k :: subs
-      result
+    val now = cell.modify { s =>
+      s.result match
+        case done @ Some(_) => (s, done)
+        case None => (s.copy(subs = k :: s.subs), None)
+    }
     now.foreach(k)

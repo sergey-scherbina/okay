@@ -49,6 +49,30 @@ class TestMcpHttp extends munit.FunSuite {
     }
   }
 
+  test("stm-sessions: concurrent uninitialized POSTs mint the riddle-free session ONCE, not once each") {
+    // "a client that never initialized, talking to a server with no
+    // sessions: give it one rather than a riddle" — the old
+    // ConcurrentHashMap check-then-act (isEmpty, then put) let two
+    // racing first requests both slip through and clobber each
+    // other's Wire under the "" key; the TRef.modify version answers
+    // the question and mints the session in ONE step
+    served(McpHttp.route(serving)) { url =>
+      val listing = Rpc.encode(Rpc.Request(Json.JNum(1), Mcp.ToolsList, Json.JObj(Vector.empty)))
+      val n = 30
+      val results = java.util.concurrent.ConcurrentLinkedQueue[Int]()
+      val threads = (1 to n).map(_ => Thread(() =>
+        val r = http.send(Request.post(url, Body.Text(listing),
+          Seq(("content-type", "application/json")))).runWith
+        results.add(r.status): Unit))
+      threads.foreach(_.start())
+      threads.foreach(_.join())
+      import scala.jdk.CollectionConverters.*
+      val all = results.asScala.toVector
+      assertEquals(all.count(_ == 200), 1, s"exactly one racer should win the empty session: $all")
+      assertEquals(all.count(_ == 404), n - 1, s"every loser sees the unknown-session 404: $all")
+    }
+  }
+
   test("an unknown session id answers 404 — the reinitialize signal") {
     served(McpHttp.route(serving)) { url =>
       val hello = Rpc.encode(Rpc.Request(Json.JNum(1), Mcp.Initialize,
