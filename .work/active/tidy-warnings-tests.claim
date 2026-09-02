@@ -1,0 +1,5 @@
+slug: tidy-warnings-tests
+branch: feature/tidy-warnings-tests
+worktree: ../okay-wt-tidy-warnings-tests
+claimed: 2026-09-02
+scope: extend tidy-warnings-screen-dom to test sources across the whole build: clean compile of Test/compile everywhere should show 0 warnings under -Wall, same recipe (explicit discards, ? for unused pattern types, @unused for API-forced params, dead imports removed).
