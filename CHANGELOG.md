@@ -1,5 +1,23 @@
 # Changelog
 
+## live-skip-on-gateway-loss — a live test skips when the gateway goes away, even mid-test
+Completed: 2026-09-02
+Landed as 8bcd9f2. The operator, after TestChatDemo's LIVE tests
+went red twice on "HTTP/1.1 header parser received no bytes" from
+the shared local gateway: make them skip when the gateway is
+absent. They already skipped on a failed probe; now a gateway that
+drops the wire DURING the test counts as absent too. `okay.llm.Live`
+(main, tiny, shared by the suites): `wireDropped(e)` — an
+IOException or HttpTimeoutException anywhere in the cause chain —
+and `root(e)`; a `liveTest(name)(body)` helper in TestChatDemo and
+the agent TestLive wraps the body and turns such a failure into a
+named skip, while a wrong answer still fails. Unit test on the
+predicate (EOF under IOException under RuntimeException; a
+self-referential cause chain terminates; assertion failures are not
+the wire). AGENTS.md: new live tests use liveTest. Verified with the
+gateway actually down (all LIVE tests skipped, named); rebased over
+sql-r2dbc and re-verified llm/agent/demo.
+
 ## sql-r2dbc — okay-r2dbc, the R2DBC hatch behind Sql
 Completed: 2026-09-02
 Landed as e8aa08d (operator: "НУЖЕН"). A new JVM module: `R2dbcSql(conn)`

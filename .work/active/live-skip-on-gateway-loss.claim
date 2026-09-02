@@ -1,5 +1,0 @@
-slug: live-skip-on-gateway-loss
-branch: feature/live-skip-on-gateway-loss
-worktree: ../okay-wt-live-skip-on-gateway-loss
-claimed: 2026-09-02
-scope: LIVE tests against the local model gateway SKIP, not fail, when the gateway is absent OR drops the connection mid-test (IOException anywhere in the cause chain from the wire): one `live(base)(body)` helper per suite (demo first, then the agent/mcp/llm live suites that share the shape). Operator: "при отсутствии гейтвея тесты просто не выполнялись и скипались".
