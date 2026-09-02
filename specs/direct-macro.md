@@ -4,10 +4,12 @@
 
 `direct[F] { block }` lets a plain block use monadic values as plain
 values — `val x = m.!?` with no for-comprehension — by rewriting the
-block at compile time into the Cont binds that
-specs/monadic-reflection.md established as the semantic floor. The
-macro adds SYNTAX only: every program it emits is one the user could
-have written with `Monadic.reflect`/`reify` by hand, so semantics
+block at compile time into the monad's own plain flatMap binds
+(direct-flatmap-emission, 2026-09-02, in Decisions; the first cut
+emitted the Cont binds that specs/monadic-reflection.md established
+as the semantic floor, and Monadic stays that floor and the no-macro
+API). The macro adds SYNTAX only: every program it emits is one the
+user could have written with flatMap by hand, so semantics
 (multi-shot, short-circuit, the stack discipline of the reflected
 monad) are inherited, not re-implemented. v1 is deliberately scoped:
 the general transform exists (dotty-cps-async) but costs years of

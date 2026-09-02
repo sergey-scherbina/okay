@@ -1,5 +1,29 @@
 # Changelog
 
+## direct-flatmap-emission — the direct macro compiles to plain flatMaps; the Cont target retires
+Completed: 2026-09-02
+Landed as 454036a (merge; f5dcd7f compare receiveBlocking fix,
+2b11dbe the macro rewrite, 454036a measure+docs). The optimization
+bench-direct FILED is done, and went further than filed: not plain
+flatMaps for sequential fragments with Cont at the corners, but the
+whole emission target — `reflect(m)` IS `shift(k => m.flatMap(k))`,
+so the Cont layer bought nothing the syntactic continuation does not
+already provide, and even the stack discipline was always inherited
+from F in both encodings. Measured (quiet box, spike watcher clean,
+§1b re-tabled): 10k binds while+var 313µs -> 189µs (3.3x -> 2.0x —
+exactly the loop's sequencing bind), recursion 410µs -> 56µs (4.3x
+-> 0.59x — FASTER than the hand-written foldLeft chain, right-nested
+emission vs left-nested rebuilding, the zio-direct mechanism, level
+with kyo's hand-written 56µs). Monad instance hoisted to one val per
+block; pure while conditions and statement Assigns fused. Full sbt
+test green; every TestDirect* suite unchanged. Drive-by: compare's
+Cluster/Merge benches called the retired receive() — receiveBlocking
+now (compare/Jmh sits outside sbt test, so the channel-cas breakage
+sat unseen; worth a thought for the build). Pickler traps recorded
+in the spec's Results (nested quote in a splice, anonymous Type
+params, cross-Quotes val). Road recorded, not promised: a CPS
+sequencing pass could merge while's two binds per iteration (~1x).
+
 ## live-skip-on-gateway-loss — a live test skips when the gateway goes away, even mid-test
 Completed: 2026-09-02
 Landed as 8bcd9f2. The operator, after TestChatDemo's LIVE tests
