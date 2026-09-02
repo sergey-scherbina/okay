@@ -9,6 +9,7 @@ import okay.jetty.Jetty
 import okay.llm.{Anthropic, Cut, Transport, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
 import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
+import okay.rag.{Embedding, Vectors}
 import okay.ops.Ops
 import okay.security.Secure
 import okay.security.given
@@ -57,9 +58,19 @@ object ChatDemo {
   lazy val market: MatchStore = marketOf(sys.env.getOrElse("OKAY_CHAT_DB", "okay-chat.db"))
 
   /** the connection string → the engine (pure in its choice, so the
-   * live test can drive it without the env) */
-  def marketOf(db: String): MatchStore =
-    if db == ":memory:" then MemoryMatch()
+   * live test can drive it without the env). `embed` is the registry's
+   * search-before-create similarity function (demo-embeddings-attr):
+   * `Vectors.hashing()` (lexical, the default — zero extra weight in
+   * this module) or a real embedder, e.g. okay-langchain4j-embed's
+   * `Langchain4jEmbed.embed(model)` — kept OUT of okay-demo's own
+   * dependencies (a real model download), so the wiring is a
+   * constructor parameter a SIBLING module (okay-demo-embed) supplies,
+   * never an import here. `proposeThreshold` (default 0.85, unchanged)
+   * rides along: a real embedder's OWN cosine distribution is a
+   * deployment's to calibrate, same as choosing the embedder is */
+  def marketOf(db: String, embed: String => Embedding = Vectors.hashing(),
+               proposeThreshold: Float = 0.85f): MatchStore =
+    if db == ":memory:" then MemoryMatch(embed = embed, proposeThreshold = proposeThreshold)
     else if PgTarget.is(db) then
       // the SAME SqlMatch, its `?` renumbered to pg's `$n` — one env
       // var switches the engine (demo-pg-backend)
@@ -67,13 +78,15 @@ object ChatDemo {
       val conn = t.tls match
         case None => PgSql.connect(t.host, t.port, t.user, t.password, t.database)
         case Some(cfg) => PgTls.connect(t.host, t.port, t.user, t.password, t.database, cfg, Secrets.file)
-      SqlMatch(!.run(Async.run[PgSql, Nothing](conn)), placeholders = Placeholders.numbered)
+      SqlMatch(!.run(Async.run[PgSql, Nothing](conn)), embed = embed,
+        proposeThreshold = proposeThreshold, placeholders = Placeholders.numbered)
     else
       // under the parallel matrix DriverManager can see another
       // module's loader first; naming the driver removes the race
       // (the TestCrossing/H2 lesson, third telling)
       Class.forName("org.sqlite.JDBC")
-      SqlMatch(JdbcSql(java.sql.DriverManager.getConnection(s"jdbc:sqlite:$db")))
+      SqlMatch(JdbcSql(java.sql.DriverManager.getConnection(s"jdbc:sqlite:$db")),
+        embed = embed, proposeThreshold = proposeThreshold)
   private val turnNo = java.util.concurrent.atomic.AtomicLong(0)
 
   /** the LOG comes first (demo-replay-projections): every /match turn

@@ -1165,6 +1165,26 @@ lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
     ),
   )
 
+/**
+ * A live proof that the demo's registry benefits from real
+ * embeddings, not just the raw model wrapper (specs/demo-chat.md,
+ * demo-embeddings-attr): `ChatDemo.marketOf`'s `embed` parameter,
+ * given okay-langchain4j-embed's `Langchain4jEmbed.embed(model)`,
+ * collides "разработчик"/"программист" in `propose`'s search-before-
+ * create BEFORE the registry drifts into two near-duplicate
+ * attributes — the same reasoning as okayLangchain4jEmbed and
+ * okayDemoE2eBrowser above: a real ~90MB model download, so this is
+ * DELIBERATELY NOT in the root `.aggregate(...)` list and not a
+ * dependency of okayDemo's own test sourceset. Build/test it
+ * explicitly: `sbt okayDemoEmbed/test`.
+ */
+lazy val okayDemoEmbed = (project in file("okay-demo-embed"))
+  .dependsOn(okayDemo, okayLangchain4jEmbed)
+  .settings(
+    name := "okay-demo-embed",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,

@@ -87,6 +87,8 @@ API reference, gotchas.
 | [`okay-obs`](modules/okay-obs.md) | tracing without a framework: spans as values on a topic, W3C traceparent, capability routes, OTLP export as a consumer |
 | [`okay-py`](modules/okay-py.md) | Python as a handler: operations not eval, a clean-env shim with a version handshake, N workers past the GIL |
 | [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Handler[Model]` — their provider breadth behind our effect |
+| [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Handler[Embed]` |
+| [`okay-demo-embed`](modules/okay-demo-embed.md) | a live proof: the chat demo's registry wired to a real embedder, catching near-synonym duplicates hashing cannot |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector |
 | [`okay-chat`](modules/okay-chat.md) | a streaming LLM chat component: the model seam, Cut-guarded SSE framing, the /chat route — extracted from the demo |

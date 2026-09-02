@@ -99,6 +99,11 @@ of each, not how each works internally.
 - **The marketplace**: one shared `MatchStore` per server — sqlite
   by default (or live Postgres via `OKAY_CHAT_DB=postgres://…`,
   parsed by okay-pg's `PgTarget`), durable across restarts.
+- **Real embeddings for the registry** (demo-embeddings-attr):
+  `marketOf`'s `embed`/`proposeThreshold` parameters (defaults
+  unchanged — `Vectors.hashing()`, `0.85f`) are where a real embedder
+  plugs in; `okay-demo-embed` (docs/modules/okay-demo-embed.md) is
+  the live proof, kept out of okay-demo's own dependencies.
 
 ### How the model runs the marketplace
 

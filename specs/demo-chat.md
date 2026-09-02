@@ -749,6 +749,48 @@ Behavior:
 - [x] `OKAY_CHAT_NODE` unset: the demo's existing behavior and full
       test suite are UNCHANGED — this is additive, not a rewrite
 
+## Real embeddings for the attribute registry (demo-embeddings-attr)
+
+`MatchStore.propose`'s search-before-create already compares
+descriptions by cosine similarity (`embed`, a constructor parameter
+since stage 0) — the DEFAULT, `Vectors.hashing()`, is lexical, so two
+descriptions sharing no substring never collide, however synonymous:
+"разработчик" and "программист" mint TWO attributes naming the same
+thing, and the registry drifts. `okay-langchain4j-embed`'s
+`Langchain4jEmbed.embed(model)` (a real local ONNX model,
+rag-langchain4j) is the exact `String => Embedding` shape `propose`
+already takes — no new seam, only a constructor argument to plug in.
+
+`ChatDemo.marketOf` gains two OPTIONAL parameters, `embed` and
+`proposeThreshold` (defaults unchanged: `Vectors.hashing()`, `0.85f`
+— the ambient `market` and every existing test are untouched). They
+travel together on purpose: a real embedder's own cosine distribution
+is a deployment's to calibrate, exactly like choosing the embedder
+is — `okay-demo` itself stays free of the ~90MB model download
+(the same reasoning as `okay-langchain4j-embed` and
+`okay-demo-e2e-browser`), so the actual wiring lives in a SIBLING
+module, `okay-demo-embed` (depends on `okayDemo` +
+`okayLangchain4jEmbed`, kept out of the root `.aggregate(...)`,
+`sbt okayDemoEmbed/test`).
+
+- [x] `marketOf(db, embed, proposeThreshold)` threads both into
+      `MemoryMatch`/`SqlMatch`, defaults unchanged; every existing
+      call site (the ambient `market`, every test) passes neither and
+      sees no behavior change
+- [x] `okay-demo-embed`, live: proposing "разработчик" then
+      "программист" through `ChatDemo.marketOf(":memory:")` (the
+      demo's own default) mints TWO attributes — the drift named
+      above, proven, not asserted; the SAME two proposals through
+      `marketOf(":memory:", embed = Langchain4jEmbed.embed(model),
+      proposeThreshold = 0.5f)` collide into ONE. The threshold is
+      MEASURED, not invented: this ONNX MiniLM model scores the pair
+      at ~0.52 cosine (matching `TestLangchain4jEmbed`'s own `>
+      0.5f` bound), well under the demo's conservative 0.85 default
+      — a real embedder is a package deal with recalibrating the
+      threshold to its own distribution
+- [x] an exact slug hit still dedupes regardless of which embedder is
+      wired in (the cheap path `propose` already had is untouched)
+
 ## Out of scope
 - Persistence of conversations, multi-user rooms (okay-match's
   DURABLE store is one constructor swap for facts/deals/flows; the
