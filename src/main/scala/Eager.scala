@@ -25,8 +25,17 @@ object Eager {
    * plain A or a tree A ! F, told apart at runtime by the one class
    * a tree has — the two casts here are the encoding's definition
    * (the opaque type is `A | (A ! F)`), and every operation below
-   * goes through them */
-  private def fold[F[+_], A, B](m: Eager[F, A])(value: A => B, tree: (A ! F) => B): B = m match
+   * goes through them. INLINE, both the function and its `value`/
+   * `tree` arguments: an ordinary `fold` here built a closure for
+   * BOTH branches on every call (arguments are evaluated before the
+   * call, so the branch not taken still allocated) and dispatched
+   * through it virtually instead of an inlined match arm — measured
+   * at 3.45x on the pure-bind hot path, the whole point of Eager
+   * (eager-dispatch-regression, specs/eager.md Decisions). Inlining
+   * substitutes each call site's argument EXPRESSION directly into
+   * the match arm, so only the arm actually taken builds anything;
+   * the casts stay textually in this one function, same as before. */
+  private inline def fold[F[+_], A, B](m: Eager[F, A])(inline value: A => B, inline tree: (A ! F) => B): B = m match
     case t: Free[?, ?] => tree(t.asInstanceOf[A ! F])
     case a => value(a.asInstanceOf[A])
 
@@ -43,7 +52,7 @@ object Eager {
 
     extension [F[+_], A](m: Eager[F, A])
       override def flatMap[B](f: A => Eager[F, B]): Eager[F, B] =
-        fold(m)(a => f(a), t => t.flatMap(x => toFree(f(x))))
+        fold(m)(f, t => t.flatMap(x => toFree(f(x))))
 
       override def foldCont[S](h: F !> S): A /> S =
         FreeE.foldCont(toFree(m))(h)

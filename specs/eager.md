@@ -57,4 +57,6 @@ pure code and pays with kyo's hazards, stated plainly.
   match arms at compile time, so only the arm actually taken builds
   anything, and `flatMap`'s pure branch compiles to exactly what the
   pre-refactor hand-written match did. Gate: TestEager unchanged
-  green; the benchmark is the receipt.
+  green; the benchmark is the receipt — measured (quiet box) 4.83
+  ±0.03us, UNDER the pre-regression 5.1, not just back to it (the
+  per-call-site specialization an ordinary `fold` couldn't offer).

@@ -28,7 +28,7 @@ beside the microseconds it costs.
 
 | **Okay Eager** | kyo | **Okay Cont** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
 |---|---|---|---|---|---|---|---|---|
-| **5.1** | 58 | **89** | **95** | 129 | 136 | 153 | 181 | 260 |
+| **4.8** | 58 | **89** | **95** | 129 | 136 | 153 | 181 | 260 |
 
 **What it measures.** The raw cost of the monadic plumbing itself:
 build a 10 000-step flatMap chain by foldLeft (the WORST, left-nested
@@ -50,8 +50,16 @@ program:
   measuring −10..28% across generator lanes).
 - `Eager` is the kyo trick as an OPT-IN encoding (`import
   Eager.given`): pure binds apply at construction, so "running" the
-  chain is running nothing. 10x under kyo on this lane — with kyo's
-  hazards STATED, not hidden (see the asterisk below).
+  chain is running nothing. 12x under kyo on this lane — with kyo's
+  hazards STATED, not hidden (see the asterisk below). (A same-day
+  regression and fix, both filed: `casts-encapsulated` centralized
+  the encoding's two casts into one `fold` taking ordinary closures
+  — 5.1 -> 17.6us, 3.45x, an unconditional closure per branch plus a
+  virtual dispatch through it. eager-dispatch-regression made `fold`
+  `inline` with `inline` value/tree parameters instead: the casts
+  stay in the one function, but each call site's branch compiles
+  in-place with nothing built for the arm not taken — 4.8, matching
+  the pre-regression number and then some. specs/eager.md Decisions.)
 
 **Why the competitors' numbers.** cats Free lacks the rotation (its
 fold re-associates by allocation); cats IO and ZIO run every bind
