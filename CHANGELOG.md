@@ -1,5 +1,22 @@
 # Changelog
 
+## cast-free-agent — round two opens: the agent's interpreters typed
+Completed: 2026-09-02
+Landed as 881074a. The second cast round (BACKLOG "Casts, round
+two"), agent first: Provider.relay, Grounded's translation,
+relayTools and Memory.handle are built at the GADT-bound X — a
+covariant row gives X >: the case's answer and `!` is invariant in
+its answer, so each branch is `pure[F, X](…)` or `.map[X](…)`, never
+a cast; a row re-association is an ascription (a row is a union).
+Large asks the inner handler as a `Tool[String]` and gets a String.
+Two erased boundaries got one kernel each: `Schema.defaultAt` (a
+product's defaults are aligned with its fields) and
+`Snapshot.stateAs` (the Context row names no S, and a snapshot is
+only ever restored into the state that made it). Ten casts to one.
+Agent suites (all but the live one, which hangs while the gateway
+is drowned), agent JS, codec, demo's repo-agent green; every module
+compiles.
+
 ## unchecked-null-chunks — the audit's last lane, and a slip on the way
 Completed: 2026-09-02
 Landed as 9eaf17f (2 commits). The five `case c: Chunk[Byte]
