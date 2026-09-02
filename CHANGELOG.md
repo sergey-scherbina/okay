@@ -1,5 +1,31 @@
 # Changelog
 
+## deploy-module — okay-deploy as a module; the app owns its deploy
+Completed: 2026-09-02
+Landed as ba959d4 + d5c9398 (tip acaeee3). Operator: "в самом
+okay-deploy не было ничего жестко привязано к конкретному
+приложению... сам деплой должен находиться в okay-demo... все должно
+быть локализовано или в okay-deploy или в okay-demo". The first
+deploy landing was a root `deploy/` whose default values.yaml knew
+DemoChat's port variable and image — the app leaking into the
+template. Now `okay-deploy` is a module: `Deploy(...)` is a VALUE
+with a Schema; `Dockerfile.render`/`Helm.values`/`Compose.render`
+are pure and golden-tested; the generic chart rides as resources and
+a test asserts its templates name no application; `Deploy.write`/
+`drift`/`repoRoot`. The build half is a SOURCE sbt plugin under
+`okay-deploy/sbt-plugin` (brings sbt-assembly; `OkayDeploy
+.deployable(mainClass)` is one build.sbt line) — the root keeps one
+pointer in project/plugins.sbt and nothing else deploy-shaped (root
+deploy/, docs/deploy.md, project/OkayDeploy.scala all gone).
+okay-demo declares `DemoDeploy.spec`, owns `okay-demo/deploy/`
+(Dockerfile, compose.yaml, helm/) as its committed rendering, and
+`TestDemoDeploy` refuses drift. Proven: okayDemo/assembly through
+the source plugin + `java -jar` /healthz; `helm lint`/`template` on
+the rendered chart. Traps: a forked `run` has the MODULE dir as cwd
+(hence `Deploy.repoRoot`); the core project is named `okay`, so the
+build entry says `_root_.okay.deploy.sbt.OkayDeploy`. Matrix 76
+suites, zero failures.
+
 ## PgTarget — moved into okay-pg, beside the driver it configures
 Completed: 2026-09-02
 Landed as d3880a8 (spec) + a792dd2 (impl). First of the round-two demo

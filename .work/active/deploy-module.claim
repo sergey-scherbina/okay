@@ -1,5 +1,0 @@
-slug: deploy-module
-branch: feature/deploy-module
-worktree: ../okay-wt-deploy-module
-claimed: 2026-09-02
-scope: okay-deploy as a MODULE — Deploy as a value, pure renderers (Dockerfile, Helm values, compose), the generic chart as resources, an sbt helper for assembly; nothing app-specific inside. okay-demo declares DemoDeploy and owns its generated okay-demo/deploy, golden-tested. Root deploy/ removed. specs/deploy.md, docs.
