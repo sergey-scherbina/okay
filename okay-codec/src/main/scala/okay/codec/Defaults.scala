@@ -3,8 +3,9 @@ package okay.codec
 import scala.quoted.*
 
 /**
- * The one macro this library allows itself, and the reason is
- * structural: Mirrors carry labels and types but NOT defaults — those
+ * The first of the two macros this library allows itself (Staged is
+ * the other, the fold mode specs/codecs.md promised), and the reason
+ * here is structural: Mirrors carry labels and types but NOT defaults — those
  * live as `<init>$default$N` methods on the companion, reachable only
  * by reflection. This macro reads what the compiler already wrote and
  * hands back ordinary values; nothing downstream knows a macro ran.

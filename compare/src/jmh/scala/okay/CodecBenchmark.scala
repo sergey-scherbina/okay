@@ -105,7 +105,11 @@ object CodecFixture:
 class CodecBenchmark {
   import CodecFixture.*
 
+  val staged = okay.codec.Staged.json[Order]
+
   @Benchmark def encodeInterp(): String = Json.encode(summon[Schema[Order]])(order)
+  @Benchmark def encodeStaged(): String = staged.encode(order)
+  @Benchmark def decodeStagedAst(): Either[String, Order] = staged.decode(ast)
   @Benchmark def encodeHand(): String = handEncode(order)
   @Benchmark def encodeCirce(): String = summon[io.circe.Encoder[Order]](order).noSpaces
 
