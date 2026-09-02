@@ -1,0 +1,5 @@
+slug: demo-subscription-gate
+branch: feature/demo-subscription-gate
+worktree: ../okay-wt-demo-subscription-gate
+claimed: 2026-09-02
+scope: user ask -- profile shows/matches free for its first calendar month; after that, only a period PAID this month keeps it visible; unpaid = gated (not found, not shown, not matched) but never deleted, and gets a periodic reminder; paying takes effect immediately, no more reminder that period. Demo-layer only (okay-match untouched): a Period key, joined-period + paid-periods maps, filters on find_candidates/reverseChain/market rendering, a subscription_pay tool, a pay/oplatit driver phrase, a notice on facts_register for the LLM path. specs/demo-chat.md.
