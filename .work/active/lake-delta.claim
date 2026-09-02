@@ -1,5 +1,0 @@
-slug: lake-delta
-branch: feature/lake-delta
-worktree: ../okay-wt-lake-delta
-claimed: 2026-09-02
-scope: specs/data.md lake-delta roads (1)+(2): okay-delta (JVM) — Delta Kernel create/append from SqlValue rows with a Schema-derived table schema, snapshot metadata; read back through the JDBC seam via DuckDB's delta extension (skips offline) and via the kernel; spec box + module doc.

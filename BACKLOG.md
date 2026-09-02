@@ -117,9 +117,6 @@
       road hurts
 
 ## The data landscape (specs/data.md — umbrella; vendor = seam impl)
-- [ ] lake-delta — Delta specifics: DuckDB delta extension via the
-      JDBC seam (read), Delta Kernel interop (read/write, no
-      Spark), spark-bridge writes already available (specs/data.md)
 
 ## okay-cache (specs/cache.md)
 

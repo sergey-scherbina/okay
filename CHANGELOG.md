@@ -1,5 +1,28 @@
 # Changelog
 
+## lake-delta — Delta Lake without Spark, and its read road
+Completed: 2026-09-02
+Landed as b4fc0c2. A new JVM module `okay-delta` wraps Delta Kernel
+4.4 (delta-kernel-api + delta-kernel-defaults, the Delta project's
+own library): `Delta.create(path, columns)`, `.append(path, rows,
+loadId)`, `.snapshot(path)`, `.rows(path)` — rows in the seam's
+SqlValue vocabulary, the commit protocol left to the kernel. A
+`loadId` rides Delta's own transaction identifier, so a retried
+append is refused rather than duplicated — the bulk-load posture's
+dedup, in Delta's own words. Two things the kernel taught: the
+Parquet writer wants a decimal at the column's declared scale (a
+7.25 at scale 2 came back 7.25E-16 until rescaled first), and a row's
+refusal arrives wrapped in RuntimeException, sometimes twice, so the
+named IllegalArgumentException is dug out of the cause chain. Road 1
+(the read side, already promised in specs/data.md) is proven on the
+kernel-written table: DuckDB's delta extension reads it through the
+JDBC seam, typed rows equal the kernel's own scan; DuckDB describes
+delta_scan columns nullable regardless of the Delta schema, so
+verify names the non-Option fields — the Parquet-marks-fields-
+optional lesson, a third time. That leg skips offline (the extension
+installs from the network). Matrix: 70 suites in chunks, zero
+failures.
+
 ## tmap-keyed — the identity axiom is a witness, TMap is cast-free
 Completed: 2026-09-02
 Landed as 05953ee. The operator pointed at TMap.get's two casts (the
