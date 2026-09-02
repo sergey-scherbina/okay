@@ -66,6 +66,9 @@ object Condition {
     /** the usual way to declare one: Answers.of[HowMany, Int] */
     def of[C, A](using t: scala.reflect.ClassTag[A]): Answers[C, A] = new:
       def tag = t
+    /** a condition that EXTENDS Of[A] has declared its answer already:
+     * the instance is derived, raiseC takes it without a given */
+    given fromOf: [A: scala.reflect.ClassTag, C <: Of[A]] => Answers[C, A] = of[C, A]
 
   /** a Resume whose value does not conform to the instance's answer
    * type: the POLICY's bug, caught where it acts, named */
@@ -177,22 +180,20 @@ object Condition {
     within[A, F](name)(Direct.direct[[X] =>> X ! (Op + F)](body))(recover)
 
   /**
-   * Typed signals (specs/condition.md, Typed signals): an ADDITIVE
-   * edge vocabulary — a condition declaring its answer type gets a
-   * typed signal and a typed resume, and a wrong-typed resume stops
-   * compiling. The machine stays erased (the header's discipline);
-   * the Any floor stays the floor.
+   * Typed signals, the NOMINAL spelling (specs/condition.md, Typed
+   * signals): `object HowMany extends Of[Int]` declares the answer
+   * type in the condition itself, and that declaration IS an Answers
+   * instance (Answers.fromOf) — so `HowMany.signal` is `raiseC` with
+   * the evidence derived, one typed door behind two spellings: the
+   * checked resume of raiseC applies, and a wrong-typed `resume`
+   * stops compiling. The machine stays erased (the header's
+   * discipline); the Any floor stays the floor.
    */
   trait Of[A]
 
-  extension [A](c: Of[A])
-    /** the typed signal edge: HowMany.signal : Int ! Op. The
-     * ascription is LOAD-BEARING: without it Condition.signal[A](c)
-     * resolves to this very extension (Of[A] beats Any in overload
-     * resolution) and the self tail call compiles to an infinite
-     * loop — caught burning 47 CPU-minutes in the first ungated
-     * landing, the gate lesson paid in full */
-    def signal: A ! Op = Condition.signal[A](c: Any)
+  extension [A: scala.reflect.ClassTag](c: Of[A])
+    /** the typed signal edge: HowMany.signal : Int ! Op */
+    def signal: A ! Op = raiseC[Of[A], A](c)
 
   /** the typed resume for policies: resume(c)(v) checks v against
    * c's answer type — `case c: HowMany.type => resume(c)(41)` */

@@ -31,6 +31,19 @@ class TestConditionTyped extends munit.FunSuite {
     assert(e.contains("Int") || e.contains("String"), e)
   }
 
+  test("Of IS an Answers instance: raiseC takes it without a given, and a bad resume is named") {
+    val viaRaise: Int ! Op = raiseC(HowMany).map(_ + 1)
+    val out = !.run(Condition.run[Int, Pure] {
+      case (HowMany, _) => Resume(41)
+      case _ => Fail
+    }(viaRaise))
+    assertEquals(out, 42)
+    val bad = intercept[BadResume] {
+      !.run(Condition.run[Int, Pure]((_, _) => Resume("not an int"))(HowMany.signal))
+    }
+    assert(bad.getMessage.contains("not an int"), bad.getMessage)
+  }
+
   test("the typed edge works in direct blocks, restarts unchanged") {
     import okay.Direct.*
     val prog: String ! Op = direct {

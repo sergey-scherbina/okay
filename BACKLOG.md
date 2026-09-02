@@ -1,19 +1,13 @@
 # Backlog
 
 ## Direct style — the roads named by the 2026-09-01 survey (docs/direct-style.md)
-- [ ] condition-typed-reconcile — specs/condition.md and
-      Condition.scala carry TWO typed-signal doors landed the same
-      night blind to each other: Answers[C, A]/raiseC (three
-      consumers, checked Resume at the signal, the recorded
-      decision that the policy stays heterogeneous) and
-      Of[A]/signal/resume (compile-checked resume helper, no
-      consumers). ONE door must remain (policy rule: a rule lives
-      in one place); the reconciliation is a ROOM decision — the
-      likely shape is Answers as the base with Of's typed-resume
-      helper re-expressed over it, but whoever takes this claims it
-      AFTER a rozum thread. The two frame overloads (Restart[V]
-      capability vs the inline direct door) look complementary —
-      verify, don't assume.
+- [x-landed] condition-typed-reconcile — landed in audit-fixes: Of[A]
+      derives the Answers instance (Answers.fromOf), so the two typed
+      doors are one door with two spellings (specs/condition.md,
+      Typed signals, Reconciled). The two frame overloads verified
+      complementary: Restart[V]-capability body + typed recover vs
+      the inline direct body + Any recover; unifying them would need
+      the macro to accept a beta-redex body — not worth a road.
 
 - [x-resolved] direct-choice-ambiguity — resolved in practice by
       ui-direct's landing: explicit direct[[A] =>> A ! AgentRow]

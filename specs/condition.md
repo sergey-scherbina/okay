@@ -240,10 +240,10 @@ see every frame; `within` stays as the Any-typed base.
       cannot be summoned outside every frame
 
 
-## Typed signals (2026-09-02, condition-typed-signal)
+## Typed signals, the nominal spelling (2026-09-02, condition-typed-signal)
 
 The Zhang–Myers discipline (theory ch. 9) applied as an ADDITIVE
-door: a condition may declare its answer type, and then a
+door: a condition may declare its answer type IN ITSELF, and then a
 wrong-typed resume stops compiling — while the Any floor (signal /
 the (Any, menu) => Decision policy) stays exactly what it is.
 
@@ -251,12 +251,15 @@ the (Any, menu) => Decision policy) stays exactly what it is.
 object Condition:
   /** a condition whose answer is A */
   trait Of[A]
-  extension [A](c: Of[A])
+  extension [A: ClassTag](c: Of[A])
     /** the typed signal edge — HowMany.signal : Int ! Op */
     def signal: A ! Op
   /** the typed resume for policies: resume(c)(v) checks v against
    * c's answer type — case c: HowMany.type => resume(c)(41) */
   def resume[A](c: Of[A])(v: A): Decision
+  object Answers:
+    /** extending Of[A] IS declaring the instance */
+    given fromOf: [A: ClassTag, C <: Of[A]] => Answers[C, A]
 ```
 
 - [x] a typed condition round-trips: `object HowMany extends Of[Int]`,
@@ -266,6 +269,24 @@ object Condition:
   and with restarts unchanged
 - [x] the floor is untouched: untyped signal/policy tests all pass
   as-is
+
+**Reconciled (2026-09-02, audit-fixes):** two typed doors landed the
+same day from two agents — `Answers`/`raiseC` (the typeclass
+spelling, three consumers) and `Of`/`signal`/`resume` (the nominal
+spelling). They are now ONE door with two spellings: `Of[A]` derives
+the `Answers[C, A]` instance (`Answers.fromOf`), so `HowMany.signal`
+IS `raiseC(HowMany)` — the checked resume applies to both, and
+`raiseC` takes an `Of` condition with no given in scope. What each
+spelling still buys: `Answers.of` types a condition you do not own;
+`Of` gives the compile-time `resume(c)(v)` for policies. Rejected:
+retiring `Of` (its compile-time resume is the Zhang–Myers half the
+typeclass spelling cannot express — a policy is heterogeneous, so
+only a nominal handle carries the answer type INTO the case) and
+retiring `Answers` (a typeclass is the only way to type a foreign
+condition).
+- [x] `raiseC(HowMany)` with `HowMany extends Of[Int]` compiles with
+  no given; a non-conforming Resume through `HowMany.signal` is
+  refused as `BadResume`, named
 
 Out of scope: making the MACHINE dependent on Of — the erasure
 discipline of the file header stands; Of is an edge vocabulary.
