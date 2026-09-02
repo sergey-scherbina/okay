@@ -75,8 +75,8 @@ per-program, instead of as the only semantics.
 
 | | flatMap (hand) | direct | the syntax costs |
 |---|---|---|---|
-| **Okay** (while+var) | **95** | **189** | 2.0x |
-| **Okay** (recursion) | **95** | **56** | **0.59x — faster** |
+| **Okay** (while+var) | **95** | **101** | **1.06x — matched** |
+| **Okay** (recursion) | **95** | **55** | **0.58x — faster** |
 | kyo-direct (recursion) | 56 | 157 | 2.8x |
 | zio-direct (recursion) | 187 | **120** | **0.64x — faster** |
 
@@ -84,25 +84,28 @@ per-program, instead of as the only semantics.
 against its own hand-written flatMap chain, same shape, same run
 (cats has no first-party direct form and is absent honestly). The
 PAIR's ratio is the price of the syntax; absolute columns compare
-runtimes as usual. The Okay legs are the direct-flatmap-emission
-re-measure (quiet box, flatMap baseline 95.4±8.6 revalidating the
-§1 chain); the competitor rows carry over from the bench-direct run
-of the same suite — their code did not change.
+runtimes as usual. The Okay legs are the direct-tail-fusion
+re-measure (quiet box, flatMap baseline 95.1±9.6 revalidating the
+§1 chain, while 101.1±5.4, recursion re-isolated 54.9±0.7 after a
+same-run fork spike); the competitor rows carry over from the
+bench-direct run of the same suite — their code did not change.
 
 **Why Okay's numbers.** The macro emits the monad's own plain
 flatMap binds (direct-flatmap-emission, specs/direct-macro.md; the
 first cut emitted Monadic's Cont layer, priced right here at 3.3x
-and retired — this table is what filed the optimization and this
-row is its receipt). The recursion form is now FASTER than the
-hand-written chain by the same mechanism that credits zio-direct
-below: the macro emits right-nested binds where the hand-written
-foldLeft builds left-nested ones the Free interpreter must
-reassociate — and at 56 it runs level with kyo's hand-written
-chain. The while+var form pays exactly its bind count: the loop
-sequencer adds one flatMap per iteration on top of the step's own
-(two binds against the chain's one), which is the whole 2.0x —
-a further continuation-passing fusion could merge those two, and
-is recorded as a road, not promised.
+and retired — this table is what filed that optimization). The
+recursion form is FASTER than the hand-written chain by the same
+mechanism that credits zio-direct below: the macro emits
+right-nested binds where the hand-written foldLeft builds
+left-nested ones the Free interpreter must reassociate — level with
+kyo's hand-written chain. The while+var form landed at 2.0x on that
+same measurement — the loop sequencer paid one flatMap per
+iteration on top of the step's own bind — and direct-tail-fusion
+(specs/direct-macro.md Decisions) closed it: the loop body compiles
+against an explicit tail (`loop()`) so the sequencing bind merges
+into the body's own last bind, one per iteration, the hand-written
+recursion shape. The receipt is this row: 1.06x, matched within
+measurement noise.
 
 **Why the competitors' numbers.** kyo's defer pays 2.8x over its own
 eager chain — the runtime-layer price Okay's first cut also paid.

@@ -319,35 +319,95 @@ object Direct:
       case Out.Eff(f, _) => f
       case Out.Pure(p) => pureF(p)
 
+    /**
+     * Compile t in STATEMENT position against an explicit tail
+     * (direct-tail-fusion): the returned F[tailElem] term runs t's
+     * effects, drops t's value, and continues with `tail` — spliced
+     * into the LAST bind's own continuation for the fused statement
+     * shapes (vals, assigns, pure statements, bare runnable ops), so
+     * a loop body pays no separate sequencing bind. Everything else
+     * (if/match, nested loops, try) falls back to one sequencing
+     * bind — the pre-fusion emission, correct by construction, and a
+     * tail duplicated into branches would duplicate code. `tail` is
+     * invoked exactly once per emission path and must be a cheap
+     * nullary call (loop()/loop(tl)).
+     */
+    def compileTail(t0: Term, tail: () => Term, tailElem: TypeRepr): Term =
+      stripped(t0) match
+        case l @ Lambda(_, _) => seqTail(l, tail, tailElem) // a Lambda IS a Block
+        case Block(stats, expr) => stmtsTail(stats :+ expr, tail, tailElem)
+        case one => stmtsTail(List(one), tail, tailElem)
+
+    /** the unfused floor: one sequencing bind after the statement */
+    def seqTail(t: Term, tail: () => Term, tailElem: TypeRepr): Term =
+      statementF(t) match
+        case Out.Eff(f, e) => bind(f, e, tailElem)(_ => tail())
+        case Out.Pure(p) => Block(List(p), tail())
+
+    /** fold statements threading the tail inward; every value is in
+     * statement position (dropped) — the loop-body reading */
+    def stmtsTail(stats: List[Statement], tail: () => Term, tailElem: TypeRepr): Term =
+      stats match
+        case Nil => tail()
+        case (vd @ ValDef(_, _, Some(rhs))) :: rest =>
+          if vd.symbol.flags.is(Flags.Lazy) && hasMark(rhs) then refuse(vd, "in a lazy val")
+          compile(rhs) match
+            case Out.Pure(p) =>
+              Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(p))),
+                stmtsTail(rest, tail, tailElem))
+            case Out.Eff(c, e) =>
+              bind(c, e, tailElem) { v =>
+                Block(List(ValDef.copy(vd)(vd.name, vd.tpt, Some(v))),
+                  stmtsTail(rest, tail, tailElem))
+              }
+        case (a @ Assign(lhs, rhs)) :: rest if hasMark(rhs) =>
+          compile(rhs) match
+            case Out.Pure(p) =>
+              Block(List(Assign.copy(a)(lhs, p)), stmtsTail(rest, tail, tailElem))
+            case Out.Eff(c, e) =>
+              bind(c, e, tailElem) { v =>
+                Block(List(Assign.copy(a)(lhs, v)), stmtsTail(rest, tail, tailElem))
+              }
+        case (dd: Definition) :: rest =>
+          if hasMark(dd) then refuse(dd, "inside a nested definition")
+          Block(List(dd), stmtsTail(rest, tail, tailElem))
+        case (st: Term) :: rest =>
+          val t = stripped(st)
+          if hasMark(t) then
+            compile(t) match // marked if/match/nested-loop/mark: one bind, value dropped
+              case Out.Eff(c, e) => bind(c, e, tailElem)(_ => stmtsTail(rest, tail, tailElem))
+              case Out.Pure(p) => Block(List(p), stmtsTail(rest, tail, tailElem))
+          else
+            statementF(t) match // do-notation: a bare runnable op RUNS
+              case Out.Eff(f, e) => bind(f, e, tailElem)(_ => stmtsTail(rest, tail, tailElem))
+              case Out.Pure(p) =>
+                if discardedMonadic(p.tpe) then
+                  report.errorAndAbort(
+                    s"a value of ${p.tpe.widen.show} is discarded in statement position, " +
+                      "and it is neither this block's monad nor an operation of its row — " +
+                      "it cannot run here; bind it or move it to its own block", st.pos)
+                Block(List(p), stmtsTail(rest, tail, tailElem))
+        case other :: _ => refuse(other, "in an unsupported statement")
+
     /** for x <- xs do body — run per element, in order; the loop
      * recurses over an immutable, LAZY LazyList so multi-shot re-entry
      * is sound and an unbounded receiver is only forced as far as the
-     * monad drives it; a lazy F defers the recursive call inside its
-     * own flatMap, exactly as a hand-written loop would */
-    /** the value type a loop BODY compiles at — computable from the
-     * types alone, so the outer quote can name it BEFORE the body is
-     * compiled against the emitted binder (a nested quote inside the
-     * splice referencing an outer-bound type param does not pickle) */
-    def bodyElemOf(lbody: Term): TypeRepr =
-      if hasMark(lbody) then lbody.tpe.widen
-      else runnableElemT(lbody.tpe).getOrElse(lbody.tpe.widen)
-
+     * monad drives it; the body compiles against `loop(tl)` as its
+     * tail, so each element pays only the body's own binds */
     def foreachLoop(xs: Term, param: ValDef, lbody: Term): Term =
       tpe2(param.tpt.tpe.widen) { [T] => (tT: Type[T]) ?=>
-        val bodyElem = bodyElemOf(lbody)
-        tpe2(bodyElem.widen) { [V] => (tV: Type[V]) ?=>
-          '{
-            val items: LazyList[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.to(LazyList)
-            def loop(rest: LazyList[T]): F[Unit] = rest match
-              case h #:: tl =>
-                $M.flatMap[V](${
-                  asFAt(statementF(subst(lbody, param.symbol, 'h.asTerm)), bodyElem)
-                    .changeOwner(Symbol.spliceOwner).asExprOf[F[V]]
-                })[Unit]((_: V) => loop(tl))
-              case _ => $M.pure(())
-            loop(items)
-          }.asTerm
-        }
+        '{
+          val items: LazyList[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.to(LazyList)
+          def loop(rest: LazyList[T]): F[Unit] = rest match
+            case h #:: tl =>
+              ${
+                compileTail(subst(lbody, param.symbol, 'h.asTerm),
+                    () => '{ loop(tl) }.asTerm, TypeRepr.of[Unit])
+                  .changeOwner(Symbol.spliceOwner).asExprOf[F[Unit]]
+              }
+            case _ => $M.pure(())
+          loop(items)
+        }.asTerm
       }
 
     /** for x <- xs yield body — the traverse shape; results come out
@@ -477,35 +537,38 @@ object Direct:
         // per iteration by construction; a lazy F defers the
         // recursive call inside its own flatMap — the loop inherits
         // F's stack discipline exactly as a hand-written one would.
-        // The body is statement position: bare ops of the block RUN.
-        val (bodyF, bodyE) = statementF(wbody) match
-          case Out.Eff(f, e) => (f.changeOwner(Symbol.spliceOwner), e)
-          case Out.Pure(p) =>
-            val p2 = p.changeOwner(Symbol.spliceOwner)
-            (pureF(p2), p2.tpe.widen)
-        tpe2(bodyE.widen) { [U] => (tU: Type[U]) ?=>
-          compile(cond) match
-            case Out.Pure(pc0) =>
-              // a PURE condition needs no bind: a plain `if` per
-              // iteration (direct-flatmap-emission fusion #1)
-              val pc = pc0.changeOwner(Symbol.spliceOwner)
-              Out.Eff('{
-                def loop(): F[Unit] =
-                  if ${ pc.asExprOf[Boolean] } then
-                    $M.flatMap[U](${ bodyF.asExprOf[F[U]] })[Unit]((_: U) => loop())
-                  else $M.pure(())
-                loop()
-              }.asTerm, TypeRepr.of[Unit])
-            case Out.Eff(cf0, _) =>
-              val cf = cf0.changeOwner(Symbol.spliceOwner)
-              Out.Eff('{
-                def loop(): F[Unit] =
-                  $M.flatMap[Boolean](${ cf.asExprOf[F[Boolean]] })[Unit]((c: Boolean) =>
-                    if c then $M.flatMap[U](${ bodyF.asExprOf[F[U]] })[Unit]((_: U) => loop())
-                    else $M.pure(()))
-                loop()
-              }.asTerm, TypeRepr.of[Unit])
-        }
+        // The body is statement position (bare ops of the block RUN)
+        // and compiles against `loop()` as its tail (direct-tail-
+        // fusion): one bind per iteration for the fused shapes, the
+        // hand-written recursion exactly.
+        compile(cond) match
+          case Out.Pure(pc0) =>
+            // a PURE condition needs no bind: a plain `if` per
+            // iteration (direct-flatmap-emission fusion #1)
+            val pc = pc0.changeOwner(Symbol.spliceOwner)
+            Out.Eff('{
+              def loop(): F[Unit] =
+                if ${ pc.asExprOf[Boolean] } then
+                  ${
+                    compileTail(wbody, () => '{ loop() }.asTerm, TypeRepr.of[Unit])
+                      .changeOwner(Symbol.spliceOwner).asExprOf[F[Unit]]
+                  }
+                else $M.pure(())
+              loop()
+            }.asTerm, TypeRepr.of[Unit])
+          case Out.Eff(cf0, _) =>
+            val cf = cf0.changeOwner(Symbol.spliceOwner)
+            Out.Eff('{
+              def loop(): F[Unit] =
+                $M.flatMap[Boolean](${ cf.asExprOf[F[Boolean]] })[Unit]((c: Boolean) =>
+                  if c then
+                    ${
+                      compileTail(wbody, () => '{ loop() }.asTerm, TypeRepr.of[Unit])
+                        .changeOwner(Symbol.spliceOwner).asExprOf[F[Unit]]
+                    }
+                  else $M.pure(()))
+              loop()
+            }.asTerm, TypeRepr.of[Unit])
       case tr @ Try(b, cases, fin) =>
         // direct-try: the body is its own sub-block, compiled at the
         // try's type through the recursive pipeline; the whole try

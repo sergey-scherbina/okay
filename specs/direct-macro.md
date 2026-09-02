@@ -239,6 +239,18 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Results
 
+- direct-tail-fusion, measured (2026-09-02, quiet box; docs/
+  benchmarks.md §1b): 10k binds while+var — 189µs -> **101µs**
+  (2.0x -> **1.06x, matched within noise** against the 95µs
+  hand-written chain). Recursion untouched (55µs, 0.58x) — it
+  doesn't go through While/foreach, so tail fusion has nothing to
+  merge there. Every TestDirect* suite green unchanged (65/65),
+  full sbt test green. The generic statement-tail compiler
+  (`compileTail`/`stmtsTail`) folds vals, marked assigns, pure
+  statements and bare runnable ops into the supplied tail; if/match/
+  nested-loop/try and any bare mark fall back to one sequencing bind
+  — duplicating a tail into branches would duplicate code, and the
+  fallback is the pre-fusion emission, correct by construction.
 - direct-flatmap-emission, measured (2026-09-02, quiet box, spike
   watcher clean; docs/benchmarks.md §1b): 10k binds — while+var
   313µs -> **189µs** (3.3x -> 2.0x over the 95µs hand chain, and the
