@@ -243,12 +243,21 @@ trait MatchStore:
    * attribute an executed transition unlocked for the viewer */
   def unlockedBy(viewer: ProfileId, other: ProfileId): Vector[Fact]
 
+  // ---- the platform gate policy, live (demo-gate-ui) -----------------
+  /** the CURRENT gate for this attribute — Allow unless overridden */
+  def gate(attr: String): Gate
+  /** flip one attribute's gate live, no restart — the two-gate
+   * visibility model, switchable instead of fixed in code */
+  def setGate(attr: String, g: Gate): Unit
+  /** every attribute with a gate set right now, for an admin listing */
+  def gateOverrides: Map[String, Gate]
+
   /** drop the PROJECTION — every fact, profile, deal, flow, unlock and
    * link this store holds — leaving an empty store ready for
    * `ChatLog.replay` to rebuild (log-first: the store is derivable
    * from the log, and this is the operation that proves it). Scenario
-   * DEFINITIONS are configuration and survive; the built-in `deal`
-   * is back on its own */
+   * DEFINITIONS and the gate policy are configuration and survive;
+   * the built-in `deal` is back on its own */
   def reset(): Unit
 
 /** a hit: who, how well, what the two gates disclose now — and the

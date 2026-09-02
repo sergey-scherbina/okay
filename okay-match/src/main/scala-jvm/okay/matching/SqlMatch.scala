@@ -44,6 +44,11 @@ final class SqlMatch(sql: Sql,
                      placeholders: String => String = identity)(using CanBlock)
   extends MatchStore {
 
+  // the constructor's `policy` is the STARTING value; livePolicy is
+  // what's actually consulted, so an operator can flip a gate live
+  // (demo-gate-ui) without a restart
+  private var livePolicy: PlatformPolicy = policy
+
   private def run[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
 
   private def rows(q: String, ps: Vector[SqlValue] = Vector.empty): Vector[Vector[SqlValue]] =
@@ -345,8 +350,8 @@ final class SqlMatch(sql: Sql,
 
   private def disclose(fs: Vector[Fact]): (Vector[Fact], Vector[String]) =
     val owned = fs.filter(_.vis == Vis.Public)
-    (owned.filter(f => policy.gate(f.attr) == Gate.Allow),
-      owned.filter(f => policy.gate(f.attr) == Gate.AfterMatch).map(_.attr).distinct)
+    (owned.filter(f => livePolicy.gate(f.attr) == Gate.Allow),
+      owned.filter(f => livePolicy.gate(f.attr) == Gate.AfterMatch).map(_.attr).distinct)
 
   private def freshness(fs: Vector[Fact]): Float =
     val volatile = liveAttrs.filter(_.volatile).map(_.slug).toSet
@@ -444,7 +449,7 @@ final class SqlMatch(sql: Sql,
     else rows(s"SELECT $factCols FROM match_facts WHERE profile = ? " +
       "AND superseded_by IS NULL", Vector(Text(other.uuid))).map(factOf)
       .filter(f => f.vis == Vis.Matched ||
-        (f.vis == Vis.Public && policy.gate(f.attr) == Gate.AfterMatch))
+        (f.vis == Vis.Public && livePolicy.gate(f.attr) == Gate.AfterMatch))
 
   // ---- scenarios as data --------------------------------------------
   // The DEFINITIONS are configuration (registered at boot, `deal`
@@ -524,6 +529,13 @@ final class SqlMatch(sql: Sql,
     else rows(s"SELECT $factCols FROM match_facts WHERE profile = ? " +
       "AND superseded_by IS NULL", Vector(Text(other.uuid))).map(factOf)
       .filter(f => attrs.contains(f.attr) && f.vis != Vis.Private)
+
+  // ---- the platform gate policy, live (demo-gate-ui) -----------------
+
+  def gate(attr: String): Gate = livePolicy.gate(attr)
+  def setGate(attr: String, g: Gate): Unit =
+    livePolicy = livePolicy.copy(per = livePolicy.per.updated(attr, g))
+  def gateOverrides: Map[String, Gate] = livePolicy.per
 
   // ---- the handlers, same shape as the memory reference -------------
 

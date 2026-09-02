@@ -870,6 +870,27 @@ object ChatDemo {
     // fresh McpHttp session table each time it is evaluated, and a
     // session issued on one request must still be found on the next
     val mcpR: Request => Response ! Async = mcpRoute
+    // the gate flip, admin-token gated the same way /admin/replay is
+    // (demo-gate-ui): the two-gate visibility model switchable from a
+    // page instead of fixed in code
+    val gateRoute: PartialFunction[Request, Response ! Async] =
+      Secure.granted(Admin.Issuer.verify) {
+        case r if r.method == okay.http.Method.Post && r.url == "/admin/gate" =>
+          val store = summon[MatchStore]
+          Json.parse(new String(r.body.bytes, UTF_8)) match
+            case JObj(fs) =>
+              val attr = fs.collectFirst { case ("attr", JStr(x)) => x }
+              val gate = fs.collectFirst { case ("gate", JStr(x)) => x }
+                .flatMap(g => scala.util.Try(okay.matching.Gate.valueOf(g)).toOption)
+              (attr, gate) match
+                case (Some(a), Some(g)) =>
+                  store.setGate(a, g)
+                  marketChanged("gate")
+                  pure(Response(200, Nil, Http.one("ok".getBytes(UTF_8))))
+                case _ => pure(Response(400, Nil, Http.one(
+                  "need attr and a valid gate (Allow/AfterMatch/Withhold)".getBytes(UTF_8))))
+            case _ => pure(Response(400, Nil, Http.one("not a JSON object".getBytes(UTF_8))))
+      }
     val core: PartialFunction[Request, Response ! Async] = {
     case r if r.method == okay.http.Method.Get && r.url == "/" =>
       val html = (if Chat.appJs.isDefined then reactPage else page)
@@ -887,18 +908,27 @@ object ChatDemo {
         val texts = h.disclosed.map(f => Value.text(f.value)).filter(_.nonEmpty)
         s"<li>${texts.mkString(" · ")}</li>"
       }.mkString
+      def gatesOf = store.gateOverrides.toVector
+        .map((a, g) => s"<li>$a → $g</li>").mkString
       pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
         Http.one(s"""<!doctype html><meta charset="utf-8"><title>market</title>
           |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
           |h2{color:#7a869c}
           |#facets button{font-size:.8em;background:#1d2430;border:1px solid #2a3342;color:#9fb0c8;border-radius:.6rem;padding:.3rem .7rem;margin-right:.3rem;cursor:pointer}
-          |#facets button.on{background:#3563a8;color:#fff}</style>
+          |#facets button.on{background:#3563a8;color:#fff}
+          |select,input{background:#1d2430;color:#e6e9ef;border:1px solid #2a3342;border-radius:.4rem;padding:.3rem}</style>
           |<div id="facets"></div>
           |<h2>предложения</h2><ul id="offers">${rowsOf(Side.Offer)}</ul>
           |<h2>запросы</h2><ul id="needs">${rowsOf(Side.Need)}</ul>
           |<p><a style="color:#6b9fff" href="/">← в чат</a> · видно только Public — ворота держат и здесь · обновляется вживую</p>
           |<button id="replay" style="background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer">перестроить из лога</button>
           |<span style="color:#7a869c;font-size:.85em"> — сбросить проекцию и заново вывести её из журнала чатов (нужен admin-токен, okay-admin)</span>
+          |<h2>ворота платформы (per-attribute gate)</h2>
+          |<ul id="gates">${gatesOf}</ul>
+          |<input id="gate-attr" placeholder="атрибут, напр. skill">
+          |<select id="gate-value"><option>Allow</option><option>AfterMatch</option><option>Withhold</option></select>
+          |<button id="gate-set" style="background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer">выставить</button>
+          |<span style="color:#7a869c;font-size:.85em"> — второе ограждение (два-gate модель): the business hook, switchable live (нужен admin-токен)</span>
           |<script>
           |let facet = null;
           |async function render() {
@@ -921,6 +951,12 @@ object ChatDemo {
           |    }
           |  };
           |  fill('offers', d.offers); fill('needs', d.needs);
+          |  const gu = document.getElementById('gates'); gu.innerHTML = '';
+          |  for (const a in d.gates) {
+          |    const li = document.createElement('li');
+          |    li.textContent = a + ' → ' + d.gates[a];
+          |    gu.appendChild(li);
+          |  }
           |}
           |new EventSource('/events/market').addEventListener('market', render);
           |render();
@@ -928,6 +964,16 @@ object ChatDemo {
           |  const t = prompt('admin token (okay-admin):'); if (!t) return;
           |  const res = await fetch('/admin/replay', {method: 'POST', headers: {authorization: 'Bearer ' + t}});
           |  alert(res.ok ? await res.text() : 'отказано: ' + res.status);
+          |  render();
+          |};
+          |document.getElementById('gate-set').onclick = async () => {
+          |  const attr = document.getElementById('gate-attr').value; if (!attr) return;
+          |  const gate = document.getElementById('gate-value').value;
+          |  const t = prompt('admin token (okay-admin):'); if (!t) return;
+          |  const res = await fetch('/admin/gate', {method: 'POST',
+          |    headers: {authorization: 'Bearer ' + t, 'content-type': 'application/json'},
+          |    body: JSON.stringify({attr, gate})});
+          |  alert(res.ok ? 'ok' : 'отказано: ' + res.status);
           |  render();
           |};
           |</script>
@@ -1000,7 +1046,11 @@ object ChatDemo {
       })
       pure(Response(200, Seq("content-type" -> "application/json"),
         Http.one(Json.print(JObj(Vector(
-          "offers" -> rows(Side.Offer), "needs" -> rows(Side.Need)))).getBytes(UTF_8))))
+          "offers" -> rows(Side.Offer), "needs" -> rows(Side.Need),
+          // the current gate overrides (demo-gate-ui): what a viewer
+          // just flipped shows up here on the very next poll
+          "gates" -> JObj(store.gateOverrides.toVector.map((a, g) =>
+            a -> JStr(g.toString)))))).getBytes(UTF_8))))
 
     case r if r.method == okay.http.Method.Get && r.url.startsWith("/deals/") && r.url.endsWith(".json") =>
       val n = r.url.stripPrefix("/deals/").stripSuffix(".json").toLongOption.getOrElse(-1L)
@@ -1113,6 +1163,7 @@ object ChatDemo {
     core.orElse(Chat.chatRoute(m, budget, marketplaceTurnOverride, contentPolicy))
       .orElse(Admin.routes(Admin.Issuer.verify)(
         () => replayProjections(chatLog), () => marketChanged("replay")))
+      .orElse(gateRoute)
 
   /** the whole demo as ONE value awaiting its environment
    * (demo-ctx-wiring): `main` wires production, a test wires stubs —

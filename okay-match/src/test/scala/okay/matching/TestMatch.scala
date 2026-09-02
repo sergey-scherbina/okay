@@ -63,6 +63,27 @@ class TestMatch extends munit.FunSuite {
     assert(bySecret.isEmpty, "a Private fact participated in matching")
   }
 
+  test("the gate policy flips LIVE, no restart (demo-gate-ui)") {
+    val m = MemoryMatch()
+    val p = m.register("master@example.com")
+    m.assert(p, "phone", Side.Offer, Value.VText("+380501234567"),
+      prov("c", 1, "мой телефон"), 1.0, Vis.Public): Unit
+    // starts open: no override, Allow discloses it
+    assertEquals(m.gate("phone"), Gate.Allow)
+    assert(m.candidates(Query(Side.Offer, text = "phone"))
+      .head.disclosed.exists(_.attr == "phone"))
+    // flip it live
+    m.setGate("phone", Gate.Withhold)
+    assertEquals(m.gate("phone"), Gate.Withhold)
+    assertEquals(m.gateOverrides, Map("phone" -> Gate.Withhold))
+    assert(!m.candidates(Query(Side.Offer, text = "phone"))
+      .head.disclosed.exists(_.attr == "phone"), "the flip did not take effect")
+    // reset drops the projection but keeps the gate policy — configuration,
+    // not projection, the same reasoning as scenario definitions
+    m.reset()
+    assertEquals(m.gateOverrides, Map("phone" -> Gate.Withhold))
+  }
+
   test("replay idempotence: re-extracting the same chat changes nothing") {
     val m = MemoryMatch()
     val p = m.register("master@example.com")

@@ -21,6 +21,11 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
                         now: () => Long = () => System.currentTimeMillis(),
                         fresh: () => String = Entropy.weak) extends MatchStore {
 
+  // the constructor's `policy` is the STARTING value; livePolicy is
+  // what's actually consulted, so an operator can flip a gate live
+  // (demo-gate-ui) without a restart
+  private var livePolicy: PlatformPolicy = policy
+
   private var attrs: Vector[AttrDef] = Vector.empty
   private var facts: Vector[Fact] = Vector.empty
   private var profiles: Map[ProfileId, String] = Map.empty  // id -> email
@@ -201,8 +206,8 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
    * AfterMatch ones are NAMED in `withheld`, which is the hook. */
   private def disclose(fs: Vector[Fact]): (Vector[Fact], Vector[String]) =
     val owned = fs.filter(_.vis == Vis.Public)
-    (owned.filter(f => policy.gate(f.attr) == Gate.Allow),
-      owned.filter(f => policy.gate(f.attr) == Gate.AfterMatch).map(_.attr).distinct)
+    (owned.filter(f => livePolicy.gate(f.attr) == Gate.Allow),
+      owned.filter(f => livePolicy.gate(f.attr) == Gate.AfterMatch).map(_.attr).distinct)
 
   /** a volatile fact ages: exp2(-age/halfLife); stable facts do not */
   private def freshness(fs: Vector[Fact]): Float =
@@ -287,7 +292,7 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
     if !bound(viewer, other) then Vector.empty
     else facts.filter(f => f.profile == other && f.supersededBy.isEmpty &&
       (f.vis == Vis.Matched ||
-        (f.vis == Vis.Public && policy.gate(f.attr) == Gate.AfterMatch)))
+        (f.vis == Vis.Public && livePolicy.gate(f.attr) == Gate.AfterMatch)))
 
   // ---- scenarios as data --------------------------------------------
 
@@ -341,6 +346,13 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
     if attrs.isEmpty then Vector.empty
     else facts.filter(f => f.profile == other && f.supersededBy.isEmpty &&
       attrs.contains(f.attr) && f.vis != Vis.Private)
+
+  // ---- the platform gate policy, live (demo-gate-ui) -----------------
+
+  def gate(attr: String): Gate = livePolicy.gate(attr)
+  def setGate(attr: String, g: Gate): Unit =
+    livePolicy = livePolicy.copy(per = livePolicy.per.updated(attr, g))
+  def gateOverrides: Map[String, Gate] = livePolicy.per
 
   // ---- the handlers -------------------------------------------------
 

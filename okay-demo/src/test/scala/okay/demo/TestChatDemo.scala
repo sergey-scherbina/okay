@@ -874,6 +874,39 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
+  // ---- the platform gate policy, live (demo-gate-ui) --------------------
+
+  test("GATE: /admin/gate is gated on an admin token, then flips a gate live and /market reacts") {
+    withServer(512) { port =>
+      val stored = new String(post(port,
+        """{"messages":[{"role":"user","content":"/match умею класть плитку email gate-tiler@x"}]}""")
+        .readAllBytes(), UTF_8)
+      assert(stored.contains("записал"), stored.take(200))
+      // starts visible: Allow is the default, no override yet
+      assert(getText(port, "/market.json").contains("плитку"))
+      // no token: refused, nothing changes
+      val (noTok, _) = postJson(port, "/admin/gate", """{"attr":"skill","gate":"Withhold"}""")
+      assertEquals(noTok, 401)
+      assert(getText(port, "/market.json").contains("плитку"))
+      // admin token: the flip takes effect on the very next read
+      val (ok, _) = postJson(port, "/admin/gate", """{"attr":"skill","gate":"Withhold"}""",
+        Some(okay.admin.Admin.Issuer.issue()))
+      assertEquals(ok, 200)
+      val after = getText(port, "/market.json")
+      assert(!after.contains("плитку"), s"the gate flip did not take: ${after.take(300)}")
+      assert(after.contains("\"skill\":\"Withhold\""), after.take(300))
+    }
+  }
+
+  test("GATE: an unknown gate value is refused, nothing registered") {
+    withServer(512) { port =>
+      val (bad, body) = postJson(port, "/admin/gate", """{"attr":"skill","gate":"Nonsense"}""",
+        Some(okay.admin.Admin.Issuer.issue()))
+      assertEquals(bad, 400, body)
+      assert(!getText(port, "/market.json").contains("skill"))
+    }
+  }
+
   // PgTarget's own parsing behavior is proven in okay-pg's
   // TestPgTarget now (specs/sql.md) — moved 2026-09-02, it never had
   // a demo dependency. This test stays: it proves the DEMO'S OWN
