@@ -56,6 +56,12 @@ object Json {
   /** the total pipeline: any string yields a Json (JErr for damage) */
   def parse(s: String): Json = value(cst(s))
 
+  /** the same Json by the fast road (JsonValue: one strict pass, no
+   * tokens, no tree) when the text is well formed, and by the
+   * lossless road otherwise — so damage still gets the CST's exact
+   * answer. Same values, same totality; only the trivia is not kept */
+  def parseValue(s: String): Json = JsonValue.parse(s).getOrElse(parse(s))
+
   /** the projection of an ALREADY PARSED tree — the door for anyone
    * holding a session (an incremental reparse, say) who should not
    * pay to parse the text a second time */

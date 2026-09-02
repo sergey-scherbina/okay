@@ -114,6 +114,9 @@ class CodecBenchmark {
   @Benchmark def encodeCirce(): String = summon[io.circe.Encoder[Order]](order).noSpaces
 
   @Benchmark def parseOnly(): Json = Json.parse(text)
+  @Benchmark def parseValueOnly(): Json = Json.parseValue(text)
+  @Benchmark def textToOrderStaged(): Either[String, Order] = staged.decode(Json.parseValue(text))
+  @Benchmark def textToOrderCirce(): Either[?, Order] = io.circe.parser.decode[Order](text)
   @Benchmark def decodeInterpAst(): Either[String, Order] = Json.decode(summon[Schema[Order]])(ast)
   @Benchmark def decodeHandAst(): Either[String, Order] = handDecode(ast)
   @Benchmark def decodeCirceAst(): Either[?, Order] = summon[io.circe.Decoder[Order]].decodeJson(circeAst)
