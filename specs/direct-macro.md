@@ -171,6 +171,25 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Decisions
 
+- **Tail fusion for loop bodies** (direct-tail-fusion, 2026-09-02;
+  the road direct-flatmap-emission recorded): a loop BODY compiles
+  against an explicit tail term — `compileTail(t, tail)` returns an
+  F-term that runs t's effects and continues with `tail` — so the
+  sequencing bind (`bodyF.flatMap(_ => loop())`) merges into the
+  body's own last bind: `while i < N do { x = step(x).reflect;
+  i += 1 }` emits `step(x).flatMap(v => { x = v; i += 1; loop() })`
+  — one bind per iteration, the hand-written recursion shape, where
+  the unfused emission paid two (measured at 2.0x, §1b). Fused
+  shapes: statement blocks (vals, assigns, pure statements, bare
+  runnable ops), each threading the same tail inward; everything
+  else (if/match, nested loops, try) falls back to
+  `flatMap(asF(compiled))(_ => tail)` — the pre-fusion behavior —
+  because duplicating a tail into branches duplicates code, and the
+  fallback is correct by construction. The tail is always a nullary
+  call (`loop()`/`loop(tl)`), so the fused closure captures nothing
+  extra. Semantics unchanged by monad law (associativity + pure-bind)
+  — the gate is every TestDirect* suite green unchanged.
+
 - **`?`, not `!`, for the operation mark** — REFUTED by the
   compiler (2026-09-01): an extension named `!` imported via
   `import Direct.*` SHADOWS `object !` as an identifier, and every
