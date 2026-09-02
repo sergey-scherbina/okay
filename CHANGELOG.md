@@ -1,5 +1,29 @@
 # Changelog
 
+## security-sessions — SessionIssuer + OneTimeCode, the recipe two callers already duplicated
+Completed: 2026-09-02
+Landed as dc968be (spec) + 2ff03c9 (impl). Third and last of the
+round-two demo reusable-module extractions (user ask) — all three now
+done: pg-target-in-okay-pg, okay-live, login-in-okay-security. New
+okay-security/src/main/scala-jvm classes (ES256 already is JVM-only):
+SessionIssuer(ttlSec)(subject, scopes) for the ES256 keypair-plus-
+issue/verify shape okay.demo.Login and okay.admin.Admin.Issuer had
+independently duplicated (found while landing okay-admin); OneTimeCode
+(ttlMs) for Login's confirm-and-sign one-time code. Login.scala and
+Admin.Issuer both became thin wrappers; OneTimeCode.start's Crypto is
+okay-security's OWN Crypto now, not okay.crypto — simpler, since the
+recipe lives inside the module with the richer local trait already.
+8 new unit tests in okay-security (a real bug caught writing them: a
+first "expired token" test advanced past ttlSec but landed inside
+Jwt.verify's default 60s clock-skew tolerance, silently passing —
+fixed by advancing further); okay-admin's TestAdmin and the demo's
+full suite (31 tests, +TestLogin) pass unchanged in substance.
+
+The round-two demo extraction ask (BACKLOG.md, "what else can be
+reused") is now fully complete: pg-target-in-okay-pg, okay-live,
+login-in-okay-security, alongside round one's okay-subscription,
+okay-admin, okay-chat — six extractions from one file this session.
+
 ## docs-catchup — module docs for today's extractions, and a stale index found
 Completed: 2026-09-02
 Landed as 91eb6d6 (docs only, no code — no matrix run). Four modules

@@ -382,13 +382,14 @@ route tables instead of holding their logic inline.
       inbox JS); the demo keeps its own copy, reusing `Chat.Model`/
       `reply`/`sse`.
 
-## Round two: what else in the demo is reusable (user ask 2026-09-02)
+## Round two: what else in the demo is reusable (user ask 2026-09-02) — DONE
 
-The first three extractions left ~1160 lines in ChatDemo.scala.
-Surveyed for what else earns a move — not everything does; the
-condition-based intake (BadEmail/resolveEmail) and the deal timeline
-stay demo-local, named and reasoned in specs/demo-chat.md already.
-Three do earn it:
+All three landed: pg-target-in-okay-pg, okay-live, login-in-okay-
+security (specs/sql.md, specs/live.md, specs/security.md). The first
+three extractions left ~1160 lines in ChatDemo.scala; surveyed for
+what else earns a move — not everything does; the condition-based
+intake (BadEmail/resolveEmail) and the deal timeline stay demo-local,
+named and reasoned in specs/demo-chat.md already. Three did earn it:
 
 - [x] okay-live — LANDED 2026-09-02: `Hub[A]` (broadcast, `subscribe()`
       /`publish(a)`) and `Registry[K, A]` (`apply(key)`, lazy per-key
@@ -402,16 +403,14 @@ Three do earn it:
       3 new: disable/absent plaintext, require carries no CA,
       malformed URL never throws); the demo keeps only the live-
       Postgres integration test (proves marketOf's own wiring).
-- [ ] login-in-okay-security (existing module: okay-security) —
-      `okay.demo.Login` (its own file already, 65 lines): an
-      in-process ES256 keypair issuing/verifying sessions, plus a
-      one-time 6-digit code start/confirm flow (the demo's "no email
-      transport yet" answer — the code rides the response and the
-      console). `okay-security` has the JWT/ES256 primitives Login
-      is built from but no OTP-plus-session RECIPE of its own yet;
-      `Admin.Issuer` (okay-admin) already copied Login's session-
-      issuer half once — a second copy is the signal this earns a
-      home nearer the primitives it wraps.
+- [x] login-in-okay-security — LANDED 2026-09-02 (specs/security.md,
+      stage 6, security-sessions): `SessionIssuer(ttlSec)(subject,
+      scopes)` (the ES256 keypair-plus-issue/verify shape) and
+      `OneTimeCode(ttlMs)` (confirm-and-sign), both okay-security/
+      scala-jvm. `okay.demo.Login` and `okay.admin.Admin.Issuer` are
+      thin wrappers now; a caught bug on the way — a first "expired
+      token" test landed inside `Jwt.verify`'s default 60s clock-skew
+      tolerance and silently passed, fixed by advancing further.
 
 ## Cross-platform concurrent state (operator ask 2026-09-02, filed while landing okay-live)
 
