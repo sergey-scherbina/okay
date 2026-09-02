@@ -1,5 +1,37 @@
 # Changelog
 
+## stm — one transaction language, a family of handlers; the Channel on it, faster
+Completed: 2026-09-02
+Landed as 5ac9b4d (5 commits; spec first). The operator's brief:
+STM behind a typeclass, implementations optimized per case, and the
+Channel on the same machinery "без потери производительности".
+Delivered: `TRef[A]` (one cell, value + version in an
+AtomicReference, one-shot waiters), the language `Tx`
+(Read/Write/Modify/Retry — no Async in the row, so I/O inside a
+transaction is a compile error), the door `Stm[F]` with three
+handlers: `tl2` (JVM/Native: per-cell versions, incremental
+validation so a body always holds a consistent snapshot, CAS-owned
+obstruction-free commit, `retry` parks the transaction on its
+read set and the committing thread re-runs it), `direct` (JS: one
+thread, writes buffered to the end, no log), `sim` (deterministic:
+a `Sim.Yield` before every step, versions validated at commit,
+retry sleeps a virtual millisecond — the same transaction code
+under every seed). Structural fast paths from the program's shape:
+one Modify is the cell's own CAS, one Read a plain read. The
+Channel's state is a `TRef[State]` and its transitions
+`TRef.modify`. Measured (src/jmh ChannelBenchmark, alternating A/B,
+history.tsv): the first cut wrapped values in a Slot and cost 10%;
+`TRef.Stamped` (values carrying their version; an abstract CLASS,
+since a trait's instanceof is an interface scan) removed the
+wrapper and the buffer path is now 8% FASTER than master's
+AtomicReference, the program path equal within noise. Tests on all
+platforms: transfers under eight threads, torn-pair reader, retry
+wake-up by the right cell only, a thousand parked transactions,
+Sim under sixty seeds with interleaving asserted. Find: a
+Scala.js incremental build kept `Stamped.$init$` from the trait
+version — clean rebuilt it. BACKLOG: stm-ui-close, stm-sessions,
+stm-orelse, stm-js-direct-bench. Gate green in three chunks.
+
 ## channel-cas — the channel without a lock
 Completed: 2026-09-02
 Landed as 500efb7. The operator: "сделай все неблокирующим через

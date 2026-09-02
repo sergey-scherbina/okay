@@ -1,5 +1,0 @@
-slug: stm
-branch: feature/stm
-worktree: ../okay-wt-stm
-claimed: 2026-09-02
-scope: STM as one transaction language (A ! Tx over TRef) + a typeclass door Stm[F] with a family of handlers (TL2 with structural fast paths on JVM/Native, direct on JS, deterministic on Sim); Channel's cell becomes a TRef and its transact the single-CAS fast path — measured, no throughput loss (JMH before/after). specs/stm.md first. Operator: "да начинаем но с прицелом чтобы channel тоже его использовал без потери производительности".
