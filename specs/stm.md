@@ -159,6 +159,18 @@ document.
   in `wrap` (a value that IS a Stamped inside a TRef[A] is a
   Stamped[A] by contract, invisible through erasure) and the
   interpreter's erasure casts over `Tx[Any]`.
+- **No `asInstanceOf[AnyRef]`** (stm-no-anyref-cast, 2026-09-02).
+  `modify` skipped the CAS when the answer was the same object as
+  the content, and `eq` on an unbounded `A` needed both sides cast
+  to AnyRef. The skip only ever matters for Stamped values (the
+  Channel's State returns itself on a receive that changes nothing),
+  and a Stamped is a reference by type — so the check is a pattern:
+  `case same: Stamped[?] if same eq s`. A wrapped value always
+  installs, an equal one included: a version bump and a spurious
+  wake-up of a `retry` that reads the cell, both harmless (the
+  woken transaction re-validates and parks again). `A` stays
+  unbounded: `TRef[Int]` keeps compiling, and nothing in the cell is
+  cast.
 
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark

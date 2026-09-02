@@ -36,20 +36,23 @@ final class TRef[A](init: A) {
 
   /** the one-cell transaction: f is PURE and may run more than once;
    * the answer b is yours to act on after — the Channel returns its
-   * callbacks this way. A result that is the same object skips the
-   * CAS; content owned by a commit in progress is retried (a few
-   * instructions long, never a park) */
+   * callbacks this way. A Stamped answer that IS the current content
+   * (the same object: "nothing changed") skips the CAS — that check
+   * lives on Stamped, which is a reference by type, so no value is
+   * ever cast to compare it; a wrapped value always installs, an
+   * equal one included (a version bump and a spurious wake-up, both
+   * harmless). Content owned by a commit in progress is retried (a
+   * few instructions long, never a park) */
   @tailrec def modify[B](f: A => (A, B)): B =
     ref.get match
       case _: Owned[?] => modify(f)   // a commit is installing; spin, never park
       case s =>
-        // ONE path: the value (itself, or the Slot's), the stamp; a
-        // Stamped answer is installed bare, any other gets a Slot
-        val a = s.value
-        val (a2, b) = f(a)
-        if a2.asInstanceOf[AnyRef] eq a.asInstanceOf[AnyRef] then b
-        else if ref.compareAndSet(s, wrap(a2, s.stamp + 1)) then { if waiters.get ne Nil then wake(); b }
-        else modify(f)
+        val (a2, b) = f(s.value)
+        a2 match
+          case same: Stamped[?] if same eq s => b
+          case _ =>
+            if ref.compareAndSet(s, wrap(a2, s.stamp + 1)) then { if waiters.get ne Nil then wake(); b }
+            else modify(f)
 
   @tailrec private[okay] def wake(): Unit =
     val ws = waiters.get
