@@ -39,13 +39,24 @@ final class TRef[A](init: A) {
    * instructions long, never a park) */
   @tailrec def modify[B](f: A => (A, B)): B =
     val cur = ref.get
-    if cur.isInstanceOf[Owned] then modify(f)
-    else
-      val a = valueOf[A](cur)
-      val (a2, b) = f(a)
-      if a2.asInstanceOf[AnyRef] eq a.asInstanceOf[AnyRef] then b
-      else if ref.compareAndSet(cur, wrap(a2, versionOf(cur) + 1)) then { wake(); b }
-      else modify(f)
+    cur match
+      case s: Stamped =>
+        // the bare path: one type test, no unwrapping, no wrapper built
+        val (a2, b) = f(s.asInstanceOf[A])
+        if a2.asInstanceOf[AnyRef] eq s then b
+        else
+          val next = a2 match
+            case n: Stamped => n.stamp = s.stamp + 1; n
+            case other => Slot(other, s.stamp + 1)
+          if ref.compareAndSet(cur, next) then { if waiters.get ne Nil then wake(); b }
+          else modify(f)
+      case _: Owned => modify(f)
+      case _ =>
+        val a = valueOf[A](cur)
+        val (a2, b) = f(a)
+        if a2.asInstanceOf[AnyRef] eq a.asInstanceOf[AnyRef] then b
+        else if ref.compareAndSet(cur, wrap(a2, versionOf(cur) + 1)) then { wake(); b }
+        else modify(f)
 
   @tailrec private[okay] def wake(): Unit =
     val ws = waiters.get
