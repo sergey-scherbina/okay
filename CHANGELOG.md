@@ -1,5 +1,35 @@
 # Changelog
 
+## channel-callback — one channel for every platform, waiting in queues not threads
+Completed: 2026-09-02
+Landed as 5502971 (3 commits). The operator asked whether blocking a
+thread is not "too crude" and, on Native, what it costs — and said
+"Давай, делай колбэчный канал". The JS design is now THE Channel,
+src/main/scala/Channel.scala: `receive: Option[A] ! Async` and
+`send(a): Boolean ! Async` are programs; a receiver that finds the
+buffer empty leaves a callback, a sender that finds it full leaves
+its element and a callback, send/receive/close hand things to the
+first waiter; the state sits under a short lock, callbacks run
+outside it. No thread parks inside the channel and nothing polls
+(the old receive polled every 10ms to notice a close). Parking
+forms `receiveBlocking()`/`sendBlocking(a)` exist only under
+CanBlock, like Fiber.join; `offer(a)` is the non-suspending send.
+The scala-js and scala-jvm-native channels are gone. Callers
+migrated across http/mcp/jetty/netty/demo/ui/cluster: a send inside
+`async(...)` became the program itself, sends from plain callbacks
+became `offer`, test drains use `receiveBlocking()`. Found on the
+way: the migration's first cut silently DISCARDED sends in Ui.offer,
+Dom, ReactJs, Jetty and Netty queues (a `Boolean ! Async` in
+statement position is a value, not an action) — the -Wall
+value-discard warning and TestDom caught it; all on offer now.
+Tests: a thousand parked receives hold no thread; a bounded send
+suspends and resumes on the consumer's take; close wakes a parked
+receiver at once and drains a parked sender's accepted element; the
+200-round send/close race keeps its accounting invariant. Spec
+decision in specs/cross-platform-async.md; BACKLOG
+native-scheduler-pool (a fixed pool is now safe on Native). Full
+gate 69/69.
+
 ## channel-send-closed — send after close is refused, not thrown
 Completed: 2026-09-02
 Landed as 5eaec72. The operator asked (after the receive() walk-
