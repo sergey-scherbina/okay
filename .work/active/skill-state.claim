@@ -1,0 +1,5 @@
+slug: skill-state
+branch: feature/skill-state
+worktree: ../okay-wt-skill-state
+claimed: 2026-09-02
+scope: SKILL.state (arxiv 2608.26263) as a Compact policy — bounded execution state instead of an append-only transcript, reusing the existing Aggregator[Turn,S,Seq[Turn]] context algebra. Adds: Json.mergePatch (RFC 7396) in okay-codec; Turn.StatePatch case in okay-agent Agent.scala; Compact.skillState (the policy) + Compact.validatePatch (decode-before-remember, the rollback door) in Compact.scala; wire-format cases in Provider.scala (OpenAI + Anthropic message mapping); property tests in TestLaws.scala; specs/llm-agentic.md section under Context management.
