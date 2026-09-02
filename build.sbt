@@ -1061,23 +1061,23 @@ lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
     scalaJSUseMainModuleInitializer := true,
   )
 
-lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayAdmin, okayChat)
-  // deploy-package: one fat jar, one main, a stable name the
-  // Dockerfile does not have to guess
+/**
+ * Deployment as a value (specs/deploy.md): `Deploy(...)` plus pure
+ * renderers to a Dockerfile, a Helm chart's values, a compose file;
+ * the generic chart rides as resources. Knows no application — each
+ * app declares its own Deploy and owns the rendered files.
+ */
+lazy val okayDeploy = (project in file("okay-deploy"))
+  .dependsOn(okayCodec.jvm)
   .settings(
-    assembly / mainClass := Some("okay.demo.ChatDemo"),
-    assembly / assemblyJarName := "app.jar",
-    assembly / assemblyMergeStrategy := { (path: String) =>
-      path match {
-        case p if p.startsWith("META-INF/services/") => MergeStrategy.concat
-        case p if p.startsWith("META-INF/") => MergeStrategy.discard
-        case "module-info.class" => MergeStrategy.discard
-        case "reference.conf" => MergeStrategy.concat
-        case _ => MergeStrategy.first
-      }
-    },
+    name := "okay-deploy",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
+
+lazy val okayDemo = (project in file("okay-demo"))
+  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayAdmin, okayChat, okayDeploy)
+  // deployable (specs/deploy.md): the fat jar DemoDeploy's Dockerfile runs
+  .settings(OkayDeploy.deployable("okay.demo.ChatDemo"))
   .settings(
     name := "okay-demo",
     libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.47.1.0",
@@ -1129,7 +1129,7 @@ lazy val root = (project in file("."))
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
-    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat,
+    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)

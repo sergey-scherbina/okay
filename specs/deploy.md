@@ -13,59 +13,56 @@ scaffold is proven against, not the thing the scaffold is FOR.
 
 ## The model
 
-- **Packaging is a plugin, not a script.** `sbt-assembly` is the
-  standard, minimal, single-purpose tool for "one fat jar" on the
-  JVM — adopted rather than hand-rolling a classpath-copy step,
-  the same "adopt the standard tool" reasoning as everywhere else
-  in this stack. Each deployable module opts in with two settings
-  (`assembly / mainClass`, a stable `assemblyJarName`); nothing
-  else in the build changes.
-- **The image is a template, parameterized by ONE thing.**
-  `deploy/Dockerfile` takes a single build arg, `MODULE` (the sbt
-  project id) — multi-stage: an sbt image builds `$MODULE/assembly`,
-  a slim JRE image runs the resulting jar. No per-app Dockerfile to
-  maintain; a new Okay service adds two build.sbt lines and reuses
-  this file unchanged.
-- **The manifest is a chart, not a fork.** `deploy/helm/okay-app/`
-  is ONE Helm chart with `values.yaml` as the parameterization
-  surface (image, tag, port, env, resources) — Terraform's `helm`
-  provider (or plain `helm install -f values.yaml`) applies it
-  unchanged for any Okay service. Probes point at `/healthz`/
-  `/readyz`; a `prometheus.io/scrape` annotation points at
-  `/metrics` — okay-ops's OWN contract, so any service that wires
-  `Ops.routes` in is deployable by this chart with zero chart
-  changes.
-- **A convention, stated, not enforced in code**: a service is
-  "scaffold-ready" when it (1) has exactly one `object` with `def
-  main` in its deployable module, (2) wires `okay.ops.Ops.routes`
-  into its own routes, (3) sets `assembly/mainClass` and
-  `assemblyJarName` for that module. Nothing CHECKS this — it is
-  the same kind of convention `okay-http`'s `Response` shape or
-  `okay-persist`'s `Store` trait already are: a shape a new module
-  fits into, not a framework it inherits from.
+- **A deployment is a VALUE.** `okay.deploy.Deploy(name, module,
+  moduleDir, mainClass, port, image, env, replicas, resources,
+  health, metricsPath, javaOpts)` — a case class with a Schema, like
+  every other observable thing here. What an application says about
+  itself, and nothing else.
+- **Rendering is pure.** `Dockerfile.render`, `Helm.values`,
+  `Compose.render` are `Deploy => String`, pinned by golden tests
+  (the `Prom.render`/`Otlp.body` move). `Deploy.files(d)` is the whole
+  deployment as data — inspectable before a byte is written;
+  `Deploy.write` puts it under `<moduleDir>/deploy/`; `Deploy.drift`
+  names every file there that no longer equals its rendering.
+- **The module knows no application.** okay-deploy carries the
+  generic Helm chart as resources (every knob a value in
+  values.yaml), the renderers, and the build half
+  (`project/OkayDeploy.scala`: `OkayDeploy.deployable(mainClass)` —
+  sbt-assembly with a stable jar name, one line in a module's build
+  entry). An application declares its `Deploy` in its OWN module,
+  renders it with a one-line main, commits the result, and keeps one
+  drift test — the committed deployment IS the rendered value, or
+  the test says which file is not.
+- **The wires stay the standard ones.** A Dockerfile (multi-stage,
+  sbt image → slim JRE, non-root), a Helm chart (Terraform's `helm`
+  provider, ArgoCD, plain `helm install`), a compose file for a
+  laptop; probes and the Prometheus annotation point at okay-ops's
+  routes by default (`Health()`), so a service that wires
+  `Ops.routes` in is probeable with no chart change. Nothing talks to
+  Kubernetes or Terraform directly — they apply what this renders.
 
 ## Behavior
 
-- [x] `sbt "okayDemo/assembly"` produces one runnable jar; `java
-      -jar app.jar` serves the same routes the `sbt run` main does,
-      `/healthz` included — proven WITHOUT Docker, since the jar is
-      the actual hard part (classpath, merge conflicts, one main)
-- [x] `deploy/Dockerfile --build-arg MODULE=okayDemo` builds an
-      image whose `ENTRYPOINT` runs that jar; the container answers
-      `/healthz` on its exposed port (proven when a Docker daemon
-      is available; the jar-level proof above is what runs when it
-      is not — as it was not for this box's own landing, 2026-09-02,
-      operator: "я остановил докер... чтобы память освободить")
-- [x] `deploy/scripts/okay-package.sh <module> [tag]` wraps the
-      build (and, if a daemon answers, an image build) into one
-      command — the utility the operator asked for
-- [x] `helm lint deploy/helm/okay-app` passes; `helm template
-      deploy/helm/okay-app -f deploy/helm/okay-app/examples/demo-
-      chat.values.yaml` renders a Deployment whose probes and
-      Prometheus annotations name `/healthz`, `/readyz`, `/metrics`
-      exactly as okay-ops answers them
-- [x] the chart's `values.yaml` needs no chart edits to point at a
-      SECOND Okay service — only its own values file
+- [x] `Deploy` renders: the Dockerfile builds ONE module's jar and
+      runs it non-root, with no build arg left to decide; values.yaml
+      carries every knob as a quoted scalar and the chart templates
+      carry no application name at all; compose builds from the
+      module's own Dockerfile with the repository as context — all
+      pinned (okay-deploy's TestDeploy)
+- [x] write-then-drift is empty; a hand edit and a missing file are
+      each named by path
+- [x] DemoChat is the worked instance: `DemoDeploy.spec` in okay-demo,
+      `okay-demo/deploy/` committed as its rendering, `TestDemoDeploy`
+      refusing drift; `sbt "okayDemo/assembly"` via
+      `OkayDeploy.deployable` produces the jar the Dockerfile copies,
+      and `java -jar app.jar` serves `/healthz` (proven without Docker)
+- [x] `helm lint okay-demo/deploy/helm` passes and `helm template`
+      renders probes and the Prometheus annotation at exactly
+      okay-ops's paths, port 8090, the app's own env
+- [x] `okay-deploy/bin/okay-package.sh <module> <dir> [image:tag]`
+      builds the jar and, where a daemon answers, the image from the
+      module's own Dockerfile; a second service needs only its own
+      `Deploy` value — no file in okay-deploy changes
 
 ## Out of scope
 
@@ -122,3 +119,18 @@ answers) are the honest offline substitute, same shape as every
 "skips where the endpoint is absent" live test elsewhere in this
 stack. Re-run `deploy/scripts/okay-package.sh okayDemo` once a
 daemon is back to close that gap.
+
+Reshaped 2026-09-02 (deploy-module, operator: "в самом okay-deploy не
+было ничего жестко привязано к конкретному приложению"): the first
+landing was a `deploy/` directory at the root whose default
+values.yaml knew DemoChat's port variable and image name — an
+application leaking into the "generic" template. Now okay-deploy is a
+module with a `Deploy` VALUE and pure renderers; the application-
+specific facts live only in `okay-demo/src/.../DemoDeploy.scala`, its
+rendering is committed under `okay-demo/deploy/` and drift-tested,
+and the chart templates are asserted to contain no application name.
+One trap found: a forked `run` has the MODULE directory as cwd, so
+`Deploy.repoRoot()` walks up to the nearest build.sbt before writing.
+Docker/kubectl remain unproven live this session (no daemon, no
+cluster); `java -jar`, `helm lint` and `helm template` are the
+offline proof.
