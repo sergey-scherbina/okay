@@ -15,9 +15,9 @@ scaffold is proven against, not the thing the scaffold is FOR.
 
 - **A deployment is a VALUE.** `okay.deploy.Deploy(name, module,
   moduleDir, mainClass, port, image, env, replicas, resources,
-  health, metricsPath, javaOpts)` — a case class with a Schema, like
-  every other observable thing here. What an application says about
-  itself, and nothing else.
+  health, metricsPath, javaOpts, extraBuild, extraCopy)` — a case
+  class with a Schema, like every other observable thing here. What
+  an application says about itself, and nothing else.
 - **Rendering is pure.** `Dockerfile.render`, `Helm.values`,
   `Compose.render` are `Deploy => String`, pinned by golden tests
   (the `Prom.render`/`Otlp.body` move). `Deploy.files(d)` is the whole
@@ -85,25 +85,26 @@ integration point — nothing in okay-chat changed.
 
 - **`Deploy.extraBuild: Vector[String]`** — extra sbt tasks run in
   the build stage alongside `<module>/assembly` (one `sbt` line,
-  every task quoted); **`Deploy.extraCopy: Vector[(String, String)]`**
-  — extra `COPY --from=build` lines from the build stage into the
-  final image, each `(glob-in-build-stage, dest-in-final-image)`.
-  Both default to `Vector.empty`, so every existing `Deploy` value
-  renders byte-identical Dockerfiles to before — additive, no
-  drift on any deployment that does not use them.
+  every task quoted); **`Deploy.extraCopy: Vector[Copy]`**, `Copy(from,
+  to)` a small case class (a Schema field, like `Env` — a raw tuple
+  was passed over for the same reason) — extra `COPY --from=build`
+  lines from the build stage into the final image. Both default to
+  `Vector.empty`, so every existing `Deploy` value renders
+  byte-identical Dockerfiles to before — additive, no drift on any
+  deployment that does not use them.
 - **`DemoDeploy.spec`** sets `extraBuild =
-  Vector("okayChatWebJS/fastLinkJS")`, `extraCopy = Vector(
-  "okay-demo/web/.js/target/scala-*/*-fastopt/main.js" -> "/app/app.js")`,
+  Vector("okayChatWebJS/fastLinkJS")`, `extraCopy = Vector(Copy(
+  "okay-demo/web/.js/target/scala-*/*-fastopt/main.js", "/app/app.js"))`,
   and adds `Env("OKAY_CHAT_APP", "/app/app.js")` — the SAME env var
   `Chat.appJs` already reads first, so the demo's own code needed no
   change at all; the wiring lives entirely in the deploy value.
 
 Behavior:
-- [ ] `Deploy.extraBuild`/`extraCopy` empty (every prior `Deploy`
+- [x] `Deploy.extraBuild`/`extraCopy` empty (every prior `Deploy`
       value) render byte-identical to before — no drift introduced
-- [ ] populated, they render as an added `sbt` task and an added
+- [x] populated, they render as an added `sbt` task and an added
       `COPY --from=build` line, in the build stage before `USER okay`
-- [ ] `DemoDeploy`'s rendering links the React bundle and copies it
+- [x] `DemoDeploy`'s rendering links the React bundle and copies it
       to `/app/app.js`, with `OKAY_CHAT_APP` pointing at it — `docker
       build` (or the sbt-image build stage alone) produces a jar that
       serves the React page with no separate `node`/dev-server step
