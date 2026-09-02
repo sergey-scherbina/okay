@@ -1,5 +1,21 @@
 # Changelog
 
+## same-typeclass — sameness of typed tokens, and strict equality from it
+Completed: 2026-09-02
+Landed as 1b13209. The operator asked for the `A =:= B` trick as a
+typeclass of its own, and recalled Scala 3's equality work.
+`okay.Same[K[_]]` (Same.scala): `same(a: K[A], b: K[B]): Option[A
+=:= B]` — two typed tokens are one key, witnessed; `Same.byIdentity`
+for reference tokens holds the one witness cast in the stack;
+`a.sameAs(b)` at package level. Scala 3's `CanEqual` (multiversal
+equality, strictEquality) permits `==` without proving anything;
+from a `Same[K]` a `CanEqual[K[A], K[B]]` is derived at package
+level, so token keys compare with `==` in strict mode and a key
+against a String does not compile (tested). TMap and TRef use Same;
+TMap.Keyed is gone. Core 359 green on JVM, JS/Native green, every
+module compiles; rebased over demo-deal-timeline and re-verified
+demo + match.
+
 ## demo-deal-timeline — a deal's negotiation history, made visible
 Completed: 2026-09-02
 Landed as 4ccb701 (spec) + 4ef2c3f (impl). Deal (okay-match) carries only
