@@ -3,7 +3,8 @@ package okay.demo
 import okay.*
 import okay.given
 import okay.Condition
-import okay.http.{Http, Request, Response}
+import okay.http.{Http, McpHttp, Request, Response}
+import okay.mcp.{Mcp, Server as McpServer}
 import okay.jetty.Jetty
 import okay.llm.{Anthropic, Cut, Transport, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
@@ -411,6 +412,32 @@ object ChatDemo {
       Json.print(JObj(Vector("paid" -> JBool(true), "period" -> JStr(now.key))))
     })
 
+  // ---- the marketplace as an MCP server (demo-mcp-market) -------------
+  //
+  // chainedTable is already the ONE tool table both the LLM agent
+  // path and the deterministic driver drive; serving it over MCP is
+  // one more caller of the same substrate — a tool call from MCP
+  // fires the same wraps (reverse chain, market feed, deal timeline)
+  // a chat turn's tool call fires.
+
+  /** rebuilt PER CALL (not once at mount time) — a static off/now
+   * snapshot would give every MCP-driven fact the same stale ChatLog
+   * offset and subscription period; per-call freshness matches what
+   * the /chat route already does per HTTP request. MCP calls do NOT
+   * append to chatLog (demo-replay-projections stays the chat
+   * route's) — MCP is the marketplace's OTHER front door, not a
+   * second writer to the durable turn log */
+  def mcpTable(using MatchStore): Map[String, okay.agent.ToolCall => String] =
+    val names = chainedTable().keys
+    names.map(name => name -> ((c: okay.agent.ToolCall) =>
+      chainedTable(turnNo.incrementAndGet(), Period.now())(name)(c))).toMap
+
+  def mcpRoute(using MatchStore): Request => Response ! Async =
+    McpHttp.route(McpServer.Serving(
+      info = Mcp.Info("okay-demo-market", "0.1.0"),
+      tools = MatchTools.specs :+ Subscription.paySpec,
+      call = mcpTable))
+
   /** an agent turn over the match tools: the LLM structures the
    * chat into the store and searches it — the okay-match story */
   def agentTurn(text: String, history: Seq[Anthropic.Message],
@@ -768,6 +795,10 @@ object ChatDemo {
 
   def routes(m: Chat.Model, budget: Int)(using Transport, Secrets, MatchStore)
   : PartialFunction[Request, Response ! Async] =
+    // built ONCE per server, not per request — mcpRoute constructs a
+    // fresh McpHttp session table each time it is evaluated, and a
+    // session issued on one request must still be found on the next
+    val mcpR: Request => Response ! Async = mcpRoute
     val core: PartialFunction[Request, Response ! Async] = {
     case r if r.method == okay.http.Method.Get && r.url == "/" =>
       val html = (if Chat.appJs.isDefined then reactPage else page)
@@ -830,6 +861,8 @@ object ChatDemo {
           |};
           |</script>
           |""".stripMargin.getBytes(UTF_8))))
+
+    case r if r.url == "/mcp" => mcpR(r)
 
     case r if r.method == okay.http.Method.Get && r.url == "/market.json" =>
       val store = summon[MatchStore]

@@ -3,6 +3,8 @@ package okay.demo
 import okay.*
 import okay.given
 import okay.jetty.Jetty
+import okay.mcp.{Client, Mcp, Session as McpSession}
+import okay.agent.ToolCall
 import okay.codec.Json
 import okay.codec.Json.*
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
@@ -732,6 +734,79 @@ class TestChatDemo extends munit.FunSuite {
       assert(!whole.contains("content-policy"))
     }
   }
+
+  // ---- the marketplace as an MCP server (demo-mcp-market) -------------
+
+  def mcpClient(port: Int) =
+    val link = okay.http.McpHttp.link(okay.http.Transports.http(), s"http://127.0.0.1:$port/mcp")
+    Client.connect(link, Mcp.Info("test-client", "1")).runWith
+
+  def mcpCall(session: McpSession, name: String, args: (String, Json)*): String =
+    session.call(ToolCall("t", name, JObj(args.toVector))).runWith
+
+  test("MCP: initialize lists the marketplace tools, subscription_pay among them") {
+    withServer(512) { port =>
+      val mcp = mcpClient(port)
+      val names = mcp.tools.runWith.map(_.name)
+      assert(names.contains("facts_assert") && names.contains("find_candidates") &&
+        names.contains("subscription_pay"), names.take(20).toString)
+    }
+  }
+
+  test("MCP: an asserted offer is immediately visible through /market.json") {
+    withServer(512) { port =>
+      val mcp = mcpClient(port)
+      val profile = Json.parse(mcpCall(mcp, "facts_register",
+        "email" -> JStr("mcp-tiler@x"))) match
+        case JObj(fs) => fs.collectFirst { case ("profile", JStr(p)) => p }.get
+        case _ => fail("no profile")
+      mcpCall(mcp, "facts_assert", "profile" -> JStr(profile), "attr" -> JStr("skill"),
+        "side" -> JStr("offer"), "chat" -> JStr("mcp"), "span" -> JStr("mcp offer"),
+        "vis" -> JStr("public"),
+        "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr("кладу mcp-плитку")))): Unit
+      val mj = getText(port, "/market.json")
+      assert(mj.contains("mcp-плитку"), mj.take(300))
+    }
+  }
+
+  test("MCP: an offer from MCP rings a WAITING chat-side inbox — the reverse chain fires across front doors") {
+    withServer(512) { port =>
+      // a need stored through the ORDINARY chat route first
+      val stored = new String(post(port,
+        """{"messages":[{"role":"user","content":"/match нужен мастер по mcp-трубам email waiter@x"}]}""")
+        .readAllBytes(), UTF_8)
+      assert(stored.contains("запомнил"), stored.take(300))
+      val events = getStream(port, "/events/waiter@x")
+      // the matching offer arrives through MCP, not chat
+      val mcp = mcpClient(port)
+      val profile = Json.parse(mcpCall(mcp, "facts_register",
+        "email" -> JStr("mcp-plumber@x"))) match
+        case JObj(fs) => fs.collectFirst { case ("profile", JStr(p)) => p }.get
+        case _ => fail("no profile")
+      mcpCall(mcp, "facts_assert", "profile" -> JStr(profile), "attr" -> JStr("skill"),
+        "side" -> JStr("offer"), "chat" -> JStr("mcp"), "span" -> JStr("mcp offer"),
+        "vis" -> JStr("public"),
+        "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr("mcp-трубы")))): Unit
+      val got = java.util.concurrent.CompletableFuture.supplyAsync { () =>
+        val sb = new StringBuilder; val buf = new Array[Byte](512)
+        while !sb.toString.contains("event: match") do
+          val n = events.read(buf)
+          if n < 0 then throw new AssertionError(s"stream ended: $sb")
+          sb.append(new String(buf, 0, n, UTF_8))
+        sb.toString
+      }.get(10, java.util.concurrent.TimeUnit.SECONDS)
+      assert(got.contains("mcp-труб"), got)
+      events.close()
+    }
+  }
+
+  private def getText(port: Int, path: String): String =
+    client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path")).GET().build(),
+      HttpResponse.BodyHandlers.ofString()).body()
+
+  private def getStream(port: Int, path: String): java.io.InputStream =
+    client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path")).GET().build(),
+      HttpResponse.BodyHandlers.ofInputStream()).body()
 
   // PgTarget's own parsing behavior is proven in okay-pg's
   // TestPgTarget now (specs/sql.md) — moved 2026-09-02, it never had

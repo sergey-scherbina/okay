@@ -331,7 +331,7 @@ case.
 
 ```scala
 def mcpTable(using MatchStore): Map[String, okay.agent.ToolCall => String]
-def mcpRoute(using Transport, Secrets, MatchStore): Request => Response ! Async
+def mcpRoute(using MatchStore): Request => Response ! Async
 ```
 
 `mcpTable` rebuilds `chainedTable(turnNo.incrementAndGet(),
@@ -346,16 +346,26 @@ route's; MCP is the marketplace's OTHER front door, not a second
 writer to the durable turn log. A deployment wanting MCP calls
 logged too is a straightforward follow-up, not implied here.
 
-- [ ] an MCP `initialize` handshake against `/mcp` succeeds and lists
+`mcpTable`/`mcpRoute` don't need `Transport`/`Secrets` — they only
+close over `chainedTable`, which needs `MatchStore` alone. Caught in
+testing: `mcpRoute` must be evaluated ONCE per server (`routes`
+memoizes it as a `val`, not a `def` call site) — `McpHttp.route`
+builds a fresh session table on every evaluation, so calling it fresh
+per request (`case r if r.url == "/mcp" => mcpRoute(r)`) silently
+dropped every session after `initialize`, 404ing the next call as
+"the MCP session is gone." `routes` now binds `val mcpR = mcpRoute`
+once and routes to `mcpR(r)`.
+
+- [x] an MCP `initialize` handshake against `/mcp` succeeds and lists
       the marketplace tools, `subscription_pay` among them
-- [ ] an MCP `facts_assert` (an offer, Public) is immediately visible
+- [x] an MCP `facts_assert` (an offer, Public) is immediately visible
       through `/market.json` — the SAME projection the chat UI reads,
       proving MCP and chat share one store, not two
-- [ ] an MCP `facts_assert` on one side (an offer) rings a WAITING
+- [x] an MCP `facts_assert` on one side (an offer) rings a WAITING
       chat-side inbox on the other (a need stored earlier through
       `/chat`) — the reverse chain fires for an MCP-originated fact
       exactly as for a chat-originated one
-- [ ] the chat UI is UNCHANGED: every existing demo test still passes
+- [x] the chat UI is UNCHANGED: every existing demo test still passes
       — MCP is an additional front door, not a rewrite of the
       existing one
 
