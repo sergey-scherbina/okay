@@ -1,5 +1,29 @@
 # Changelog
 
+## kyo-fair-lanes — the 1000x kyo numbers were the shape, not the library
+Completed: 2026-09-02
+Landed as 35caeaf (lanes) + <docs>. The operator asked whether the
+competitors' worst numbers — kyo Env 362 756, Emit 342 761, Resource
+8566 — were our mistake. Audit of all ten kyo lanes and of kyo 0.16.2's
+source: they were not a measurement error, but they were the
+left-nested foldLeft shape, which is O(N²) in kyo (`map` over a
+suspension wraps a `KyoContinue` that re-applies the inner
+continuation; `handleLoop` never reassociates — ×109 from N=1k to
+10k). Real code nests right, and there kyo is linear: Env 291 vs Okay
+79, Emit 215 vs Okay 163 (parity with the foldLeft Okay Writer),
+Resource 838 vs Okay 15. The stream lane hand-emitted singleton
+chunks; kyo's own `Stream.range` runs 64 vs 330 in the same session.
+Added `okayReaderRec`/`kyoEnvRec`, `okayWriterRec`/`kyoEmitRec`,
+`okayResourceRec`/`kyoResourceRec`, `kyoStreamRange`; tables §2/§5/§7
+in docs/benchmarks.md and the README now show BOTH shapes with the
+right-nested row as the number to quote, the mechanism stated, and
+the earlier "~1000x" / "Resource + Async runtime" wording retracted.
+Bind chain, fork/join, choice, direct and generator lanes were checked
+and stand. Measured with plain `java -cp` outside sbt (siblings'
+runs), load ~7, all four classes in one session. Two BACKLOG items:
+a same-session chunked-source sweep for fs2/ZIO, and the rule that a
+foldLeft competitor lane gets a right-nested twin before quoting.
+
 ## json-value-parser — the text side of the staged-codecs promise
 Completed: 2026-09-02
 Landed as 69f5f8f (3 commits). staged-codecs step 0 found the real
@@ -24,7 +48,6 @@ json-value-parser entry is checked off. Gate green in three chunks
 after a rebase over stm-orelse; the nine -Wall warnings clean showed
 are all pre-existing or a fresh sibling's (Stm.scala:236 from
 stm-orelse) — none in the files this lane touched.
-
 ## stm-orelse — Tx gains the classic STM combinator
 Completed: 2026-09-02
 Landed as f1d4df3. `Tx.orElse(a, b)`: run `a`; if it RETRIES (not any
@@ -134,7 +157,6 @@ x 50 runs under the real JVM scheduler (virtual threads, no `Pure`
 interpreter) and accounts for every answer — the shape of the exact
 race the old comment described, exercised for real. specs/stm.md
 Results entry. Matrix 78 suites, zero failures.
-
 ## rag-langchain4j (EmbeddingModel half) — a local embedder, kept out of the root build
 Completed: 2026-09-02
 Landed as 01c4955 (spec) + bcb29c0 (impl). A consumer finally named a

@@ -1,5 +1,16 @@
 # Backlog
 
+## Benchmarks — after kyo-fair-lanes (2026-09-02, docs/benchmarks.md §2/§5/§7)
+- [ ] chunked-source-sweep — one same-session StreamOps run with every
+      library's CHUNKED source (fs2 `Stream.range`, `ZStream.range`,
+      kyo `Stream.range`, Okay Chunks) next to the per-element lanes;
+      today only kyo's chunked lane exists and the §5 table mixes
+      sessions with a ratio-to-floor caveat.
+- [ ] shape-check-new-lanes — every new competitor lane built by
+      foldLeft gets a right-nested twin before its number is quoted
+      (the kyo Env/Emit/Resource lesson: the foldLeft shape is O(N²) in
+      kyo, ~1000x, and read as the library's price for a week).
+
 ## Casts — the audit of 2026-09-02 (operator's rule: no cast without a real necessity)
 185 `asInstanceOf` + 28 non-`resume` `@unchecked` in src/main, in five
 groups; the recipe for the first two is the one that made Stm.scala

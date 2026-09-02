@@ -150,18 +150,20 @@ chooses per program.)
 
 **Reader** — 10k asks:
 
-| **Okay** | ZIO | cats Kleisli/Eval | atnos | kyo Env |
+| **Okay** | kyo Env | ZIO | cats Kleisli/Eval | atnos |
 |---|---|---|---|---|
-| **110** | 240 | 350 | 1737 | 362 756* |
+| **79** | 291 | 245 | 328 | 3123 |
 
 **Writer** — 10k tells, collected:
 
-| **Okay** | cats WriterT/Chain | atnos | kyo Emit |
+| **Okay** | kyo Emit | cats WriterT/Chain | atnos |
 |---|---|---|---|
-| **286** | 1127 | 3202 | 386 322* |
+| **163** | 215 | 1250 | 4054 |
 
-(*kyo Env/Emit go quadratic on left-nested bind chains with handled
-operations; the same shape every other lane runs.)
+(Okay and kyo in the right-nested shape a for-comprehension builds.
+The left-nested foldLeft shape is O(N²) in kyo — 362 099 / 364 313 —
+and Okay's rotation keeps it linear at 124 / 209; docs/benchmarks.md
+§2 has both rows and the mechanism.)
 
 **Choice** — 2^13 branches, all collected (plain List is the floor):
 
@@ -177,9 +179,12 @@ operations; the same shape every other lane runs.)
 
 **Stream pipeline** — map/filter/take(1000)/sum (Iterator is the floor):
 
-| Iterator | **Okay chunked** | **Okay elements** | kyo | ZIO | fs2 |
-|---|---|---|---|---|---|
-| 14 | **16.9** | **23.6** | 239 | 692 | 1410 |
+| Iterator | **Okay chunked** | **Okay elements** | kyo `Stream.range` | kyo singleton | ZIO | fs2 |
+|---|---|---|---|---|---|---|
+| 14 | **16.9** | **23.6** | 64† | 239 | 692 | 1410 |
+
+(†kyo's own chunked source, measured in a later session against a
+15.3 floor — 4.2x from the floor; docs/benchmarks.md §5.)
 
 **Merge** — two 500-element streams merged by readiness:
 
@@ -191,7 +196,10 @@ operations; the same shape every other lane runs.)
 
 | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
 |---|---|---|---|---|
-| **18.7** | **26.3** | 106 | 197 | 8566 |
+| **15.0** | **36** | 135 | 237 | 838 |
+
+(kyo and Okay region in the right-nested shape; kyo's foldLeft lane
+is the same O(N²) trap as Reader/Writer, 9011.)
 
 **Generators** — the 1000th Fibonacci number, element by element:
 

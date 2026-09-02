@@ -134,15 +134,32 @@ spellings and the competitors in the one they allow.
 
 | Reader | **Okay ctx direct** | **Okay ctx instance** | **Okay row** | ZIO | cats Kleisli | atnos | kyo Env |
 |---|---|---|---|---|---|---|---|
-| | **0.3** | **43**† | **110** | 240 | 350 | 1737 | 362 756* |
+| right-nested (recursion) | **0.3** | **46**† | **79** | | | | 291 |
+| left-nested (foldLeft) | | | **124** | 245 | 328 | 3123 | 362 099* |
 
-(† the ctx instance is measured at 1 000 binds — 4.3 µs, scaled ×10
+(† the ctx instance is measured at 1 000 binds — 4.6 µs, scaled ×10
 here — because the chain is stack-bounded at ~2-5k binds; see the
 paragraph below.)
 
 | Writer | **Okay** | cats WriterT/Chain | atnos | kyo Emit |
 |---|---|---|---|---|
-| | **202** | 1030 | 3215 | 342 761* |
+| right-nested (recursion) | **163** | | | 215 |
+| left-nested (foldLeft) | **209** | 1250 | 4054 | 364 313* |
+
+**Two shapes, deliberately (kyo-fair-lanes, 2026-09-02).** The
+foldLeft build — `(1 to N).foldLeft(ask)((m, _) => m.flatMap(_ =>
+ask))` — nests LEFT: `((ask >>= f) >>= f) >>= f`. A for-comprehension,
+a direct block or a recursive definition nests RIGHT: `ask >>= (_ =>
+ask >>= (_ => ...))`. Both are the same N handled operations; only
+the tree differs. The right-nested row is the everyday shape and the
+number to quote; the left-nested row is the stress shape, kept
+because it is where a freer-style interpreter's quadratic trap
+fires (see the starred paragraph below). ZIO, cats and atnos have
+only the foldLeft lane; all three are linear in it, so their number
+stands for both shapes. Session: one run on a busy host (load
+~7), all lanes together; the earlier session's numbers (110 / 202
+for Okay, 362 756 / 342 761 for kyo) were the same shape and are
+in history.tsv.
 
 **What they measure.** Handled operations at volume — the everyday
 shape of effectful code.
@@ -171,11 +188,25 @@ above.
 
 **Why the competitors' numbers.** cats WriterT allocates a
 tuple-in-monad per tell; Chain helps, the wrapping doesn't. atnos
-pays union tagging again. The starred kyo numbers are ~1000x off
-because kyo's Env/Emit resumption RE-TRAVERSES the pending
-computation — quadratic on left-nested chains with handled ops. That
-is precisely the pathology Okay's Bind rotation exists to prevent;
-the lane is the rotation's value made visible.
+pays union tagging again. kyo in its natural shape is close: Env
+3.7x over the Okay row Reader, Emit at parity with the foldLeft
+Okay Writer and 1.3x over its recursive form.
+
+**The starred kyo numbers are the left-nested trap, NOT kyo's
+price.** Verified in kyo 0.16.2's source (kernel `Pending.scala`,
+`ArrowEffect.handleLoop`): `map` over a suspended computation wraps
+it in a `KyoContinue` whose `apply` re-applies the INNER
+continuation and re-wraps the result; the handle loop never
+reassociates. On a left-nested chain every resume therefore walks
+the rest of the chain — O(N²), measured ×109 from N=1k to N=10k
+(3.6 ms → 394 ms). The same chain nested right resumes in O(1) per
+op, and kyo is linear. Okay is linear in BOTH shapes because `fold`
+rotates left-nested Binds tail-recursively before stepping (the
+rotation's cost is the 124-vs-79 / 209-vs-163 difference above).
+The lane stays as the rotation's value made visible; an earlier
+version of this page quoted the starred numbers as "~1000x off"
+without the right-nested row beside them — that was the pathology
+measured, not the library.
 
 ## 3. Choice — 2^13 branches, all collected
 
@@ -206,13 +237,19 @@ compete by NOT having one.
 
 ## 5. Stream pipeline — map/filter/take(1000)/sum
 
-| Iterator (floor) | **Staged** | **Okay chunked** | **Okay elements** | Okay iterator | Okay LazyList | kyo | ZIO | fs2 |
-|---|---|---|---|---|---|---|---|---|
-| 14 | **1.6*** | **16.9** | **23.6** | 53 | 143 | 239 | 692 | 1410 |
+| Iterator (floor) | **Staged** | **Okay chunked** | **Okay elements** | Okay iterator | Okay LazyList | kyo Stream.range | kyo singleton | ZIO | fs2 |
+|---|---|---|---|---|---|---|---|---|---|
+| 14 | **1.6*** | **16.9** | **23.6** | 53 | 143 | 64‡ | 239 | 692 | 1410 |
 
 (*Staged and its same-run floor of 19.3 come from a different
 session; the rest is one session. The 12x-under-the-floor number is
-real: see below.)
+real: see below. ‡kyo `Stream.range` — kyo's own chunked source,
+4096-element chunks, the lane a kyo user would write for this
+pipeline — was added by kyo-fair-lanes (2026-09-02) and measured in
+its own session: 64 against a same-run Iterator floor of 15.3, Okay
+chunked 12.4/23.5 and the hand-emitted singleton kyo lane at 330.
+Ratios to the floor are what carry across sessions: kyo chunked
+4.2x, Okay chunked 0.8-1.5x, kyo singleton 22x.)
 
 **What it measures.** The bread-and-butter stream pipeline in each
 library's fastest mode.
@@ -241,8 +278,14 @@ principle at four price points:
 STREAMING RUNTIMES here: every element (or worst-case singleton
 chunk) crosses effect-dispatch machinery. fs2's pull-model
 Pull/Chunk plumbing is built for concurrency and resource safety,
-priced per element; ZStream similarly. It's an honest worst-case for
-them (singleton-unfold generators) and honestly noted as such.
+priced per element; ZStream similarly. The `iterate`/singleton-emit
+lanes are their worst case (a per-element source), noted as such;
+kyo's chunked `Stream.range` lane shows what the runtime costs when
+the source is chunked the way its author intended — 5x under its
+singleton lane, and still 4x from the floor where Okay's chunks sit
+at ~1x. (fs2 and ZStream have chunked `range` sources too; they are
+not yet measured — a same-session sweep of all three is the next
+step, filed.)
 
 ## 6. Merge — two 500-element streams by readiness
 
@@ -279,9 +322,16 @@ baseline; 158 is retired.
 
 ## 7. Resource — 1000 bracketed acquire/use/release
 
-| **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
-|---|---|---|---|---|
-| **18.7** | **26.3** | 106 | 197 | 8566 |
+| | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
+|---|---|---|---|---|---|
+| right-nested (recursion) | **15.0** | | | | 838 |
+| left-nested (foldLeft) | **21.5** | **36** | 135 | 237 | 9011* |
+
+(Same two shapes as §2, same session as §2's table. *The starred kyo
+number is the left-nested O(N²) trap explained in §2 — an earlier
+version of this page attributed it to "kyo's Resource + Async
+runtime"; it isn't the runtime, the right-nested row is. kyo's
+natural-shape price is 56x over the Okay region, 6x over ZIO.)
 
 The region is a while-loop with a finalizer list — visible in the
 number. The catch must see the CURRENT finalizer list (a tailrec
