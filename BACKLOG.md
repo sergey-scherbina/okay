@@ -184,7 +184,12 @@ construction instead of a type test per value).
       the fix is the isolate-under-load loop, not a per-run retry.
       FOURTH sighting 2026-09-01 (pg-sslmode matrix: same test,
       ClosedChannelException, 1 of 12; okay-pg was the only changed
-      module) — green in isolation immediately after (4/4). Pattern
+      module) — green in isolation immediately after (4/4). SIXTH
+      sighting 2026-09-02 (direct-tail-fusion's decisive gate,
+      genuinely quiet box, load 2.6, no sibling sbt): same test,
+      ClosedChannelException, the ONLY failure in the whole matrix;
+      Direct.scala was the only module the landing touched, netty
+      untouched — green in isolation immediately after (4/4). Pattern
       is firmly environmental; escalate to the owner lane for the
       isolate-under-load fix rather than re-triaging per landing.
       FIFTH sighting, a new family, 2026-09-02 (direct-tail-fusion
