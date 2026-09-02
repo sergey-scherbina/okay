@@ -1,5 +1,0 @@
-slug: tmap-keyed
-branch: feature/tmap-keyed
-worktree: ../okay-wt-tmap-keyed
-claimed: 2026-09-02
-scope: TMap.get without casts — a key type proves sameness through TMap.Keyed[K] (same(a, b): Option[A =:= B]); the identity axiom for reference keys lives once in Keyed.byIdentity as a witness; K bounded to references there, no AnyRef casts. TRef provides its Keyed. Operator: "опять касты — можно тут как-то сделать получше?".

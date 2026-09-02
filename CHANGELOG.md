@@ -1,5 +1,20 @@
 # Changelog
 
+## tmap-keyed — the identity axiom is a witness, TMap is cast-free
+Completed: 2026-09-02
+Landed as 05953ee. The operator pointed at TMap.get's two casts (the
+AnyRef ones for `eq`, and identity => type) and updated's. Now a
+key type proves sameness itself: `TMap.Keyed[K]` with `same(a: K[A],
+b: K[B]): Option[A =:= B]`; `get` and `updated` only apply the
+witness, the map has no cast. `Keyed.byIdentity[K[X] <: AnyRef]`
+states the axiom for reference keys once — "this token IS that
+token, so A is B" — as the single `asInstanceOf` on a `=:=`
+witness in the file; the reference bound removes the AnyRef casts
+`eq` needed. TRef provides its Keyed in its companion; the test's
+Key does the same. Core suite 357 green on JVM, JS and Native
+suites green, every module compiles; rebased over a claim-only
+commit.
+
 ## demo-market-live — the market page moves
 Completed: 2026-09-02
 Landed as f9f2985 (spec) + 96c6ce4 (impl). /market was a static render;
