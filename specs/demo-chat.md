@@ -312,6 +312,53 @@ chip on the page invites it directly.
       IDENTICAL to the pre-widening signature — proven directly in
       okay-chat's own suite, not just asserted here
 
+## The marketplace as an MCP server (demo-mcp-market)
+
+`chainedTable` (the marketplace tool table, already the ONE surface
+both the LLM agent path and the deterministic driver drive — specs/
+demo-chat.md, "Matching") is a `Map[String, ToolCall => String]`, and
+`MatchTools.specs :+ Subscription.paySpec` is its `Seq[ToolSpec]` —
+exactly what `okay.mcp.Server.serve` takes. Serving it is the
+integration the doc comment on `Tools.scala` names ("one call at the
+integration site"): `McpHttp.route` mounts that server at `POST/GET
+/mcp`, and any MCP client — Claude Code, Claude Desktop, a hand-rolled
+one — becomes a market participant over the SAME substrate the chat
+UI already drives. A tool call from MCP fires the SAME wraps a chat
+turn's tool call fires (the reverse chain, the market feed ping, the
+deal timeline) — model-independent was already the doctrine
+(demo-chat-async); this is one more caller proving it, not a special
+case.
+
+```scala
+def mcpTable(using MatchStore): Map[String, okay.agent.ToolCall => String]
+def mcpRoute(using Transport, Secrets, MatchStore): Request => Response ! Async
+```
+
+`mcpTable` rebuilds `chainedTable(turnNo.incrementAndGet(),
+Period.now())` PER TOOL CALL rather than once at server-mount time —
+`Server.serve` takes one static table, but a static `off`/`now`
+snapshot would give every MCP-driven fact the SAME stale ChatLog
+offset and subscription period; per-call freshness matches what the
+`/chat` route already does per HTTP request. Stated limit: unlike
+`/chat`'s `/match` turns, MCP tool calls do NOT append to `chatLog`
+(demo-replay-projections) — the log-first story stays the chat
+route's; MCP is the marketplace's OTHER front door, not a second
+writer to the durable turn log. A deployment wanting MCP calls
+logged too is a straightforward follow-up, not implied here.
+
+- [ ] an MCP `initialize` handshake against `/mcp` succeeds and lists
+      the marketplace tools, `subscription_pay` among them
+- [ ] an MCP `facts_assert` (an offer, Public) is immediately visible
+      through `/market.json` — the SAME projection the chat UI reads,
+      proving MCP and chat share one store, not two
+- [ ] an MCP `facts_assert` on one side (an offer) rings a WAITING
+      chat-side inbox on the other (a need stored earlier through
+      `/chat`) — the reverse chain fires for an MCP-originated fact
+      exactly as for a chat-originated one
+- [ ] the chat UI is UNCHANGED: every existing demo test still passes
+      — MCP is an additional front door, not a rewrite of the
+      existing one
+
 ## Polish (demo-polish)
 - The page states its MODE (scripted/local/live) and links /market.
 - `/market` — the marketplace, visible: offers and needs as lists of
