@@ -69,4 +69,20 @@ abstract class MatchEngineSuite extends munit.FunSuite {
       Vector("tg:@p"))
     assert(m2.advanceFlow(id, "decline", provider).isLeft, "closed stays closed")
   }
+
+  test(s"reset drops the projection on $engine: facts, profiles, deals gone; ids restart; the reopened store is empty too") {
+    val (m, reopen) = fresh()
+    val p = m.register("gone@example.com")
+    val f = m.assert(p, "skill", Side.Offer, Value.VText("tiling"), prov("c", 1), 1.0, Vis.Public)
+    val q = m.register("other@example.com")
+    m.inquire(q, p, "tiles")
+    m.reset()
+    assertEquals(m.candidates(Query(Side.Offer, text = "tiling")), Vector.empty)
+    assertEquals(m.dealsFor(p), Vector.empty)
+    assertEquals(m.profileOf(p), None)
+    // ids restart: the first fact after a reset has the first id again
+    val p2 = m.register("gone@example.com")
+    assertEquals(m.assert(p2, "skill", Side.Offer, Value.VText("mosaic"), prov("c", 2), 1.0, Vis.Public), f)
+    assertEquals(reopen().candidates(Query(Side.Offer, text = "mosaic")).length, 1)
+  }
 }

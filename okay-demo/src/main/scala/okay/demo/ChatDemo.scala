@@ -7,7 +7,8 @@ import okay.http.{Body, Http, Request, Response}
 import okay.jetty.Jetty
 import okay.llm.{Anthropic, Cut, OpenAi, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
-import okay.matching.{MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
+import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
+import okay.persist.{FileStore, MemoryStore, Policy}
 import okay.jdbc.JdbcSql
 import okay.pg.{PgSql, PgTls}
 import okay.sql.Placeholders
@@ -105,6 +106,40 @@ object ChatDemo {
       Class.forName("org.sqlite.JDBC")
       SqlMatch(JdbcSql(java.sql.DriverManager.getConnection(s"jdbc:sqlite:$db")))
   private val turnNo = java.util.concurrent.atomic.AtomicLong(0)
+
+  /** the LOG comes first (demo-replay-projections): every /match turn
+   * is appended to a persist topic before anything is extracted, and
+   * the offset that comes back is the provenance of what the turn
+   * asserts. OKAY_CHAT_LOG is a FileStore directory (":memory:" for
+   * a run that keeps nothing); the store above is a projection of it */
+  lazy val chatLog: ChatLog = logOf(sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log"))
+
+  def logOf(path: String): ChatLog =
+    val store = if path == ":memory:" then MemoryStore() else FileStore.open(java.nio.file.Path.of(path))
+    ChatLog(store.topic("web-demo", 1, Policy.default))
+
+  /** a /match turn, LOGGED: register the speaker, append the turn,
+   * extract with the log offset as provenance, log the answer too */
+  def matchTurnLogged(text: String, history: Seq[Anthropic.Message], log: ChatLog)
+                     (using store: MatchStore): String =
+    val me = store.register(resolveEmail(text, intakePolicy))
+    val off = log.append(ChatTurn(me, "user", text))
+    val answer = matchTurn(text, history, off)
+    log.append(ChatTurn(me, "assistant", answer))
+    answer
+
+  /** log-first made demonstrable: drop the projection, rebuild it
+   * from the log through the SAME extraction the live chat used;
+   * answers how many user turns it replayed */
+  def replayProjections(log: ChatLog)(using store: MatchStore): Long =
+    store.reset()
+    var n = 0L
+    log.replay { (t, prov) =>
+      if t.role == "user" then
+        matchTurn(t.text, Nil, prov.offset)
+        n += 1
+    }
+    n
 
   private val matchSystem =
     """You are a helpful chat assistant that ALSO runs a marketplace
@@ -276,7 +311,11 @@ object ChatDemo {
   /** an agent turn over the match tools: the LLM structures the
    * chat into the store and searches it — the okay-match story */
   def agentTurn(text: String, history: Seq[Anthropic.Message],
-                modelH: okay.Handler[AgentModel])(using MatchStore): String =
+                modelH: okay.Handler[AgentModel], off: Option[Long] = None)(using MatchStore): String =
+    // the log's offset, when the turn came through the log: the model
+    // is TOLD the provenance instead of inventing one
+    val system = matchSystem + off.fold("")(n =>
+      "\nProvenance for THIS turn: chat \"web-demo\", offset " + n + " — pass exactly these to facts_assert.")
     given okay.Handler[AgentModel] = modelH
     given okay.Handler[Tool] = Handlers.tools(chainedTable)
     val ctx = Handlers.context(Compact.all)._2
@@ -299,7 +338,7 @@ object ChatDemo {
           if m.role == "user" then Turn.User(m.content)
           else Turn.Assistant(m.content)).flatMap(_ => seed(rest))
     val prog = direct[[A] =>> A ! okay.agent.Agent] {
-      Agent.remember(Turn.System(matchSystem)).reflect
+      Agent.remember(Turn.System(system)).reflect
       seed(history.toList).reflect
       Agent.converse(text, MatchTools.specs).reflect
     }
@@ -346,13 +385,13 @@ object ChatDemo {
 
   /** the deterministic offline "agent": the SAME tool table, driven
    * by two fixed phrasings — the tests' and the no-model mode's path */
-  def scriptedAgent(text: String)(using store: MatchStore): String =
+  def scriptedAgent(text: String, off: Long = turnNo.incrementAndGet())
+                   (using store: MatchStore): String =
     import okay.codec.Json.*
     val t = chainedTable
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
     val email = resolveEmail(text, intakePolicy)
-    val off = turnNo.incrementAndGet()
     def profile: String =
       Json.parse(call("facts_register", "email" -> JStr(email))) match
         case JObj(fs) => fs.collectFirst { case ("profile", JStr(p)) => p }.get
@@ -529,14 +568,14 @@ object ChatDemo {
 
   /** which agent serves /match turns: real model when one is
    * configured, the deterministic table-driver otherwise */
-  def matchTurn(text: String, history: Seq[Anthropic.Message])(using MatchStore): String =
+  def matchTurn(text: String, history: Seq[Anthropic.Message], off: Long)(using MatchStore): String =
     sys.env.get("ANTHROPIC_API_KEY").map { key =>
       agentTurn(text, history, Provider.anthropic(
-        Transports.http(), key, "claude-sonnet-4-5"))
+        Transports.http(), key, "claude-sonnet-4-5"), Some(off))
     }.orElse(sys.env.get("OKAY_CHAT_BASE").map { base =>
       agentTurn(text, history, Provider.openAi(
-        Transports.http(), "local", "default", s"$base/v1/chat/completions"))
-    }).getOrElse(scriptedAgent(text))
+        Transports.http(), "local", "default", s"$base/v1/chat/completions"), Some(off))
+    }).getOrElse(scriptedAgent(text, off))
 
   // ---- the SSE reply -------------------------------------------------
 
@@ -614,7 +653,20 @@ object ChatDemo {
           |<h2>предложения</h2><ul>${rowsOf(Side.Offer)}</ul>
           |<h2>запросы</h2><ul>${rowsOf(Side.Need)}</ul>
           |<p><a style="color:#6b9fff" href="/">← в чат</a> · видно только Public — ворота держат и здесь</p>
+          |<form method="post" action="/admin/replay"><button style="background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer">перестроить из лога</button>
+          |<span style="color:#7a869c;font-size:.85em"> — сбросить проекцию и заново вывести её из журнала чатов</span></form>
           |""".stripMargin.getBytes(UTF_8))))
+
+    case r if r.method == okay.http.Method.Post && r.url == "/admin/replay" =>
+      // log-first in one click: the projection is dropped and rebuilt
+      // from the persist log through the live extraction
+      val n = replayProjections(chatLog)
+      val html = "<!doctype html><meta charset=\"utf-8\"><title>replay</title>" +
+        "<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}</style>" +
+        s"<p>проекция перестроена из журнала: $n ходов</p>" +
+        "<p><a style=\"color:#6b9fff\" href=\"/market\">→ /market</a></p>"
+      pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
+        Http.one(html.getBytes(UTF_8))))
 
     case r if r.method == okay.http.Method.Get && r.url == "/app.js" && appJs.isDefined =>
       pure(Response(200, Seq("content-type" -> "text/javascript"),
@@ -640,7 +692,7 @@ object ChatDemo {
       if last.startsWith("/match") then
         // the matchmaking turn: the agent works the okay-match tools,
         // the answer streams through the same SSE framing
-        val answer = matchTurn(last.stripPrefix("/match").trim, messages.init)
+        val answer = matchTurnLogged(last.stripPrefix("/match").trim, messages.init, chatLog)
         def stream(ts: List[String]): Unit ! (Writer % String + Async) = ts match
           case Nil => pure(())
           case t :: rest => effect[Writer % String + Async, Unit](

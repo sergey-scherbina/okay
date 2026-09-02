@@ -459,4 +459,26 @@ class TestChatDemo extends munit.FunSuite {
     val p = store.register(s"pg-demo-${java.util.UUID.randomUUID()}@example.com")
     assertEquals(store.register(store.profileOf(p).get.email), p)
   }
+
+  test("log-first, demonstrable: turns land in the ChatLog first; reset + replay rebuilds the same market; replay over the live store changes nothing") {
+    import okay.matching.*
+    val store = MemoryMatch()
+    val log = ChatDemo.logOf(":memory:")
+    def turn(t: String) = provide(store: MatchStore)(ChatDemo.matchTurnLogged(t, Nil, log))
+    turn("умею класть плитку email master@demo")
+    turn("нужен плиточник email client@demo")
+    def snapshot(s: MatchStore) =
+      (s.candidates(Query(Side.Offer, text = "плитку")).map(_.disclosed.map(f => Value.text(f.value))),
+       s.candidates(Query(Side.Need, text = "плиточник")).map(_.disclosed.map(f => Value.text(f.value))),
+       s.profileOf(s.register("master@demo")).get.current.length)
+    val live = snapshot(store)
+    assert(live._1.nonEmpty && live._2.nonEmpty, live.toString)
+    // the projection dies; the log does not
+    val replayed = provide(store: MatchStore)(ChatDemo.replayProjections(log))
+    assertEquals(replayed, 2L)
+    assertEquals(snapshot(store), live)
+    // the same log over the same store: a no-op (idempotence by provenance)
+    assertEquals(provide(store: MatchStore)(ChatDemo.replayProjections(log)), 2L)
+    assertEquals(snapshot(store), live)
+  }
 }

@@ -38,6 +38,7 @@ ANTHROPIC_API_KEY=... sbt okayDemo/run                  # Anthropic
 | `OKAY_CHAT_PORT` | where to listen | 8090 |
 | `OKAY_CHAT_MAX` | the Cut token budget | 512 |
 | `OKAY_CHAT_DB` | the marketplace's engine: a sqlite file; `:memory:` opts out; `postgres://user:pass@host:port/db[?sslmode=…&sslrootcert=…]` is live Postgres over the wire driver | `okay-chat.db` |
+| `OKAY_CHAT_LOG` | the chat log's FileStore directory — every `/match` turn lands here FIRST, the marketplace is its projection (`POST /admin/replay` rebuilds it; a button on `/market`); `:memory:` keeps nothing | `okay-chat.log` |
 | `OKAY_CHAT_BASE` | an OpenAI-compatible endpoint (local models fit) | — |
 | `ANTHROPIC_API_KEY` | the Anthropic model | — |
 | `OKAY_CHAT_APP` | path to the linked frontend | auto-discovered |

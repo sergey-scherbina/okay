@@ -365,4 +365,16 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
   given find: Handler[Find] = new:
     def handle[A](e: Find[A]): A = e match
       case Find.Candidates(q) => candidates(q)
+
+  def reset(): Unit =
+    attrs = Vector.empty; facts = Vector.empty
+    profiles = Map.empty; byEmail = Map.empty
+    nextAttr = 1L; nextFact = 1L
+    recovery = Map.empty; links = Vector.empty
+    deals = Vector.empty; nextDeal = 1L
+    tokens = Map.empty
+    summaries = Map.empty
+    scenarios = Map("deal" -> ScenarioDef.deal)
+    flows = Vector.empty; nextFlow = 1L
+    unlocks = Set.empty
 }

@@ -240,6 +240,14 @@ trait MatchStore:
    * attribute an executed transition unlocked for the viewer */
   def unlockedBy(viewer: ProfileId, other: ProfileId): Vector[Fact]
 
+  /** drop the PROJECTION — every fact, profile, deal, flow, unlock and
+   * link this store holds — leaving an empty store ready for
+   * `ChatLog.replay` to rebuild (log-first: the store is derivable
+   * from the log, and this is the operation that proves it). Scenario
+   * DEFINITIONS are configuration and survive; the built-in `deal`
+   * is back on its own */
+  def reset(): Unit
+
 /** a hit: who, how well, what the two gates disclose now — and the
  * names of facts that matched but wait behind the platform's
  * AfterMatch gate (the seeker learns THAT, not WHAT) */

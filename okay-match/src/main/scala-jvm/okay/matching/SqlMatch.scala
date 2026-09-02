@@ -61,38 +61,50 @@ final class SqlMatch(sql: Sql,
 
   // ---- schema -------------------------------------------------------
 
-  exec("""CREATE TABLE IF NOT EXISTS match_attrs(
-    id BIGINT PRIMARY KEY, slug VARCHAR(255), kind VARCHAR(16),
-    description VARCHAR(4000), synonyms VARCHAR(4000),
-    status VARCHAR(300), volatile BOOLEAN, identifying BOOLEAN)""")
-  exec("""CREATE TABLE IF NOT EXISTS match_profiles(
-    uuid VARCHAR(64) PRIMARY KEY, email VARCHAR(255))""")
-  exec("""CREATE TABLE IF NOT EXISTS match_facts(
-    id BIGINT PRIMARY KEY, profile VARCHAR(64), attr VARCHAR(255),
-    side VARCHAR(8), vkind VARCHAR(8), vtext VARCHAR(4000),
-    vnum DOUBLE PRECISION, vlo DOUBLE PRECISION, vhi DOUBLE PRECISION, vlat DOUBLE PRECISION, vlon DOUBLE PRECISION,
-    chat VARCHAR(255), off BIGINT, span VARCHAR(4000),
-    confidence DOUBLE PRECISION, ts BIGINT, vis VARCHAR(8),
-    superseded_by BIGINT, reason VARCHAR(4000))""")
-  exec("""CREATE TABLE IF NOT EXISTS match_recovery(
-    profile VARCHAR(64) PRIMARY KEY, secret VARCHAR(1000))""")
-  exec("""CREATE TABLE IF NOT EXISTS match_links(
-    a VARCHAR(64), b VARCHAR(64))""")
-  exec("""CREATE TABLE IF NOT EXISTS match_deals(
-    id BIGINT PRIMARY KEY, seeker VARCHAR(64), provider VARCHAR(64),
-    what VARCHAR(4000), state VARCHAR(16), ts BIGINT)""")
-  exec("""CREATE TABLE IF NOT EXISTS match_flows(
-    id BIGINT PRIMARY KEY, scenario VARCHAR(255), what VARCHAR(4000),
-    state VARCHAR(255), parties VARCHAR(4000))""")
-  exec("""CREATE TABLE IF NOT EXISTS match_flow_hist(
-    flow BIGINT, transition VARCHAR(255), by_p VARCHAR(64), ts BIGINT)""")
-  exec("""CREATE TABLE IF NOT EXISTS match_unlocks(
-    viewer VARCHAR(64), other VARCHAR(64), attr VARCHAR(255))""")
-  exec("""CREATE TABLE IF NOT EXISTS match_tokens(
-    token VARCHAR(64) PRIMARY KEY, pfrom VARCHAR(64), pto VARCHAR(64),
-    expires BIGINT)""")
-  exec("CREATE INDEX IF NOT EXISTS match_facts_attr ON match_facts(attr)")
-  exec("CREATE INDEX IF NOT EXISTS match_facts_profile ON match_facts(profile)")
+  private def createSchema(): Unit =
+    exec("""CREATE TABLE IF NOT EXISTS match_attrs(
+      id BIGINT PRIMARY KEY, slug VARCHAR(255), kind VARCHAR(16),
+      description VARCHAR(4000), synonyms VARCHAR(4000),
+      status VARCHAR(300), volatile BOOLEAN, identifying BOOLEAN)""")
+    exec("""CREATE TABLE IF NOT EXISTS match_profiles(
+      uuid VARCHAR(64) PRIMARY KEY, email VARCHAR(255))""")
+    exec("""CREATE TABLE IF NOT EXISTS match_facts(
+      id BIGINT PRIMARY KEY, profile VARCHAR(64), attr VARCHAR(255),
+      side VARCHAR(8), vkind VARCHAR(8), vtext VARCHAR(4000),
+      vnum DOUBLE PRECISION, vlo DOUBLE PRECISION, vhi DOUBLE PRECISION, vlat DOUBLE PRECISION, vlon DOUBLE PRECISION,
+      chat VARCHAR(255), off BIGINT, span VARCHAR(4000),
+      confidence DOUBLE PRECISION, ts BIGINT, vis VARCHAR(8),
+      superseded_by BIGINT, reason VARCHAR(4000))""")
+    exec("""CREATE TABLE IF NOT EXISTS match_recovery(
+      profile VARCHAR(64) PRIMARY KEY, secret VARCHAR(1000))""")
+    exec("""CREATE TABLE IF NOT EXISTS match_links(
+      a VARCHAR(64), b VARCHAR(64))""")
+    exec("""CREATE TABLE IF NOT EXISTS match_deals(
+      id BIGINT PRIMARY KEY, seeker VARCHAR(64), provider VARCHAR(64),
+      what VARCHAR(4000), state VARCHAR(16), ts BIGINT)""")
+    exec("""CREATE TABLE IF NOT EXISTS match_flows(
+      id BIGINT PRIMARY KEY, scenario VARCHAR(255), what VARCHAR(4000),
+      state VARCHAR(255), parties VARCHAR(4000))""")
+    exec("""CREATE TABLE IF NOT EXISTS match_flow_hist(
+      flow BIGINT, transition VARCHAR(255), by_p VARCHAR(64), ts BIGINT)""")
+    exec("""CREATE TABLE IF NOT EXISTS match_unlocks(
+      viewer VARCHAR(64), other VARCHAR(64), attr VARCHAR(255))""")
+    exec("""CREATE TABLE IF NOT EXISTS match_tokens(
+      token VARCHAR(64) PRIMARY KEY, pfrom VARCHAR(64), pto VARCHAR(64),
+      expires BIGINT)""")
+    exec("CREATE INDEX IF NOT EXISTS match_facts_attr ON match_facts(attr)")
+    exec("CREATE INDEX IF NOT EXISTS match_facts_profile ON match_facts(profile)")
+
+  createSchema()
+
+  /** the projection dropped: every table gone and recreated empty,
+   * the id counters back to 1, the built-in scenario alone (log-first:
+   * `ChatLog.replay` rebuilds all of it) */
+  def reset(): Unit =
+    Vector("match_attrs", "match_profiles", "match_facts", "match_recovery", "match_links", "match_deals", "match_flows", "match_flow_hist", "match_unlocks", "match_tokens").foreach(t => exec(s"DROP TABLE IF EXISTS $t"))
+    createSchema()
+    nextAttr = 1L; nextFact = 1L; nextDeal = 1L; nextFlow = 1L
+    scenarios = Map("deal" -> ScenarioDef.deal)
 
   private def maxId(table: String): Long = rows(s"SELECT MAX(id) FROM $table") match
     case Vector(Vector(I64(n))) => n
