@@ -1,0 +1,1 @@
+claimed: writer-covariant-merge-fusion — Writer[W,+A] covariance experiment + Writer.of/Writer.map(identity) fusion in Source.merge, to remove the per-element tree-rebuild cost found investigating channel-merge-regression; experimental, will report if covariance breaks something load-bearing
