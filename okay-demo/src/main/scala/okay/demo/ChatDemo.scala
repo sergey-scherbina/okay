@@ -12,6 +12,7 @@ import okay.ops.Ops
 import okay.security.Secure
 import okay.admin.Admin
 import okay.chat.Chat
+import okay.live.{Hub, Registry}
 import okay.subscription.Subscription
 import okay.subscription.Subscription.Period
 import okay.persist.{FileStore, MemoryStore, Policy}
@@ -155,12 +156,13 @@ object ChatDemo {
   private val lastHits =
     java.util.concurrent.ConcurrentHashMap[String, Vector[okay.matching.ProfileId]]()
 
-  private val inboxes =
-    java.util.concurrent.ConcurrentHashMap[String, Channel[String]]()
+  // the per-key channel registry is okay-live now (extracted
+  // 2026-09-02, specs/live.md): the SAME shape as the market feed
+  // below, noticed duplicated twice, generalized once.
+  private val inboxes = Registry[String, String]()
 
   /** the open inbox of an email (created on first use) */
-  def inbox(email: String): Channel[String] =
-    inboxes.computeIfAbsent(email, _ => Channel[String]())
+  def inbox(email: String): Channel[String] = inboxes(email)
 
   private def emailOf(store: MatchStore, p: okay.matching.ProfileId): Option[String] =
     store.profileOf(p).map(_.email)
@@ -231,22 +233,17 @@ object ChatDemo {
   // /market subscribes; every market mutation pings every open page.
   // The publish points are the chainedTable wraps below — the model
   // path and the deterministic driver share them, so the feed is
-  // model-independent. A closed page's channel stays registered until
-  // process end — stated, not hidden: the demo's subscriber count is
-  // human-scale.
+  // model-independent. The broadcast itself is okay-live's Hub now
+  // (extracted 2026-09-02, specs/live.md) — the same pattern as the
+  // inbox registry above, generalized once.
 
-  private val marketFeed =
-    java.util.concurrent.CopyOnWriteArrayList[Channel[String]]()
+  private val marketFeed = Hub[String]()
 
   /** a new /market subscriber's own channel */
-  def marketSub(): Channel[String] =
-    val c = Channel[String]()
-    marketFeed.add(c)
-    c
+  def marketSub(): Channel[String] = marketFeed.subscribe()
 
   /** ring every open /market page: something on the market moved */
-  def marketChanged(kind: String): Unit =
-    marketFeed.forEach(c => c.offer(kind): Unit)
+  def marketChanged(kind: String): Unit = marketFeed.publish(kind)
 
   // ---- the deal timeline (demo-deal-timeline) -------------------------
   //

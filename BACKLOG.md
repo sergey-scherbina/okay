@@ -416,6 +416,42 @@ Three do earn it:
       issuer half once — a second copy is the signal this earns a
       home nearer the primitives it wraps.
 
+## Cross-platform concurrent state (operator ask 2026-09-02, filed while landing okay-live)
+
+Two round-two modules made the SAME tradeoff for the SAME reason:
+`okay-subscription` (joinedPeriod/paidPeriods) and `okay-live`
+(Hub/Registry) both needed a safely-shared, growing collection
+(a map, a list) and both reached for `java.util.concurrent`
+(ConcurrentHashMap/CopyOnWriteArrayList) — which is JVM-only, so
+both modules became JVM-only projects rather than crossProject(JVM,
+JS, Native), even though everything ELSE about them (the values
+they hold, the operations they expose) has no platform opinion.
+`okay` core already carries the machinery this problem wants:
+`TRef[A]`/`Stm.atomically` (src/main/scala/Stm.scala) is a
+cross-platform (JVM/JS/Native) transactional cell, and the STM
+engine's OWN write-set bookkeeping already leans on an internal
+`TMap` — proof the pattern the two modules need (a transactional
+map, a transactional growing list) is buildable on what exists,
+not a new primitive from scratch.
+
+- [ ] okay-stm-collections — a small cross-platform layer ON TRef:
+      at minimum a `TMap[K, A]`-shaped wrapper (get/put/computeIfAbsent
+      equivalent, atomically) and a `TList[A]`/append+snapshot shape
+      — public API, not the STM engine's private bookkeeping TMap.
+      The real design question to answer before building, not
+      assumed: `Hub.subscribe()`/`Registry.apply(key)` are PLAIN
+      synchronous methods today; an STM-backed version makes them
+      effectful (`... ! F`, run inside a transaction) — decide
+      whether that's an acceptable API change for every call site,
+      or whether a thin JVM-only synchronous facade stays over a
+      cross-platform STM core (facade cost vs. honest effect type).
+- [ ] Once landed: migrate `okay-subscription`'s two maps and
+      `okay-live`'s `Hub`/`Registry` onto it, and reconsider whether
+      either module (or okay-demo itself) should become crossProject
+      at that point — no JS/Native consumer is named yet, so this is
+      NOT urgent; filed so the decision is made once, deliberately,
+      not by accretion the next time this exact tradeoff recurs.
+
 ## Elsewhere
 - [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and
       shipped (demo-ctx-wiring — ChatDemo.handler as a

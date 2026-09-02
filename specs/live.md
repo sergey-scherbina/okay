@@ -54,14 +54,14 @@ final class Registry[K, A]:
   site's own semantics (what gets published, who subscribes) stays
   in the demo; this module only holds the channel bookkeeping.
 
-- [ ] `Hub`: two subscribers both receive a published value (both
+- [x] `Hub`: two subscribers both receive a published value (both
       channels get their own copy, not a fanned-out competing read)
-- [ ] `Hub`: a subscriber added AFTER an earlier publish does not
+- [x] `Hub`: a subscriber added AFTER an earlier publish does not
       see that earlier value (publish reaches only CURRENT
       subscribers, matching `marketFeed`'s existing semantics)
-- [ ] `Registry`: the same key returns the SAME channel on repeated
+- [x] `Registry`: the same key returns the SAME channel on repeated
       calls; different keys get independent channels
-- [ ] through the real demo route: `/market`'s live feed and
+- [x] through the real demo route: `/market`'s live feed and
       `/events/<email>` behave identically to before this move (the
       existing demo tests, unchanged in substance, still pass)
 
