@@ -250,3 +250,21 @@ it read wakes it; a thousand parked transactions hold no thread;
 the cross suite runs the same programs through tl2 and direct; the
 Sim suite runs them under sixty seeds and checks the scheduler did
 interleave.
+
+Under REAL concurrent contention, still no loss (channel-merge-
+regression, 2026-09-02): the original Channel benchmark above is
+single-threaded (one thread alternating offer/receive, never
+contending). A doc-comparison sweep flagged `Source.merge` at 1.95x
+over its recorded baseline the same day the STM channel landed, and
+the STM cell was the obvious suspect — `TRef.modify`'s generic
+`waiters` check (Channel never calls `.watch`, so it always reads
+`Nil`) is dead weight on Channel's fast path. Measured, it wasn't
+the cause: `ChannelBenchmark.concurrentSendReceive1k` (new — two
+virtual threads racing `sendBlocking` into one channel against a
+draining receiver, real CAS contention) costs 78.4µs against the
+single-threaded program path's 69.3µs, ~13% for genuine contention,
+not 95%. A same-run A/B settled it outright: today's HEAD (STM
+channel) and the last pre-STM commit (channel-cas, 500efb7, CAS-only
+Channel) measured within noise of each other on the exact merge
+benchmark (308 ±19 vs 290 ±11). Whatever moved the doc's baseline
+predates this lane entirely — see docs/benchmarks.md §6.

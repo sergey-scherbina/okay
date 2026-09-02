@@ -41,4 +41,23 @@ class ChannelBenchmark {
   @Benchmark
   def sendReceiveProgram1k(): Int =
     ScalaAwait.result(Async.runAsync(pairs(1000, 0)), Duration.Inf)
+
+  /**
+   * The MergeBenchmark shape, isolated to the bare channel: TWO
+   * virtual threads racing sendBlocking into ONE channel while this
+   * thread drains it — real CAS contention on the same cell, where
+   * offerReceive1k/sendReceiveProgram1k above are single-threaded
+   * (never contend). Filed to settle channel-merge-regression: is
+   * the Source.merge slowdown a TRef cost, or does it live elsewhere
+   * (Writer.map, Scheduler.fork) that this benchmark cannot see.
+   */
+  @Benchmark
+  def concurrentSendReceive1k(): Int =
+    val t1 = Thread.startVirtualThread(() => { var i = 0; while i < 500 do { c.sendBlocking(i): Unit; i += 1 } })
+    val t2 = Thread.startVirtualThread(() => { var i = 500; while i < 1000 do { c.sendBlocking(i): Unit; i += 1 } })
+    var s = 0
+    var i = 0
+    while i < 1000 do { s += c.receiveBlocking().get; i += 1 }
+    t1.join(); t2.join()
+    s
 }

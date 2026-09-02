@@ -240,7 +240,7 @@ them (singleton-unfold generators) and honestly noted as such.
 
 | **Okay chunked** | ZIO | Okay elementwise | fs2 |
 |---|---|---|---|
-| **14.7** | 47 | 158 | 9031 |
+| **10.7** | 45 | **308** | 8878 |
 
 Readiness-merge is what zip and ++ cannot express: a fiber per
 source feeds one channel, the loser of every race simply arrives
@@ -248,6 +248,26 @@ later. Chunking the STREAM (not the queue — a chunked-queue variant
 was tried and REFUTED, it's in history.tsv) beat ZIO's own
 chunk-aware merge 3.2x. fs2's number is its worst case (singleton
 elements through its concurrency machinery), stated as such.
+
+**Okay elementwise moved from 158 to 308 — investigated, NOT a
+regression** (channel-merge-regression, 2026-09-02). A full-sweep
+re-run flagged this as a 1.95x regression and the STM Channel
+rewrite landed the same day (`stm`, `stm-slot-stamped`,
+`cast-free-sim`) was the obvious suspect. It wasn't: `TRef.modify`'s
+generic `waiters` check (unused by Channel, which has its own
+receivers/senders queues) accounts for at most ~13% under real
+two-fiber contention (`ChannelBenchmark.concurrentSendReceive1k`,
+new — the STM lane's own benchmarks were single-threaded and never
+measured contention at all). The rigorous check: the exact same
+benchmark, same run, one on today's HEAD (308 ±19), one checked out
+at the LAST pre-STM commit (channel-cas, 500efb7) with the CAS-only
+Channel (290 ±11) — within noise of each other. Whatever moved 158
+to ~290-308 predates every commit from today; it is not attributable
+to any landing here. (§4 Fork/join's uniform 30-45% drop across all
+four libraries in the same full-sweep session is the same class of
+finding: session-to-session environment, not code.) The `Okay
+elementwise`/`Okay chunked` numbers above are the current honest
+baseline; 158 is retired.
 
 ## 7. Resource — 1000 bracketed acquire/use/release
 
