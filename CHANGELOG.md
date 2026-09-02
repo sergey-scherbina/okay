@@ -1,5 +1,16 @@
 # Changelog
 
+## stm-orelse-warning — the OrElse branch's unchecked type test, fixed
+Completed: 2026-09-02
+Landed as 8d7f363 (operator ask: "посмотри warning при компиляции в
+Stm.scala:236"). `case op: Tx.OrElse[X] =>` triggered [E092] Pattern
+Match Unchecked (X is erased, unverifiable at runtime) — the only
+branch in `perform` that used a type-ascription pattern instead of
+case-class extraction. Switched to `case Tx.OrElse(progA, progB) =>`,
+the same shape every other branch already used; the GADT match types
+`progA`/`progB` as `X ! Tx` with no runtime check needed at all. No
+behavior change, warning gone, full matrix 79 suites clean.
+
 ## demo-two-nodes — Election made consumer-visible: two real processes, kill the leader
 Completed: 2026-09-02
 Landed as aed0669 (spec) + 43ae53d (impl). Failover itself is not new

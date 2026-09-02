@@ -1,5 +1,0 @@
-slug: stm-orelse-warning
-branch: feature/stm-orelse-warning
-worktree: ../okay-wt-stm-orelse-warning
-claimed: 2026-09-02
-scope: fix the unchecked-type-test warning at Stm.scala:236 (Tx.OrElse[X] ascription pattern) — switch to case-class extraction like every other perform branch. No behavior change.
