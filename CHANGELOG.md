@@ -1,5 +1,28 @@
 # Changelog
 
+## cast-free-small — round two closes: 97 → 36
+Completed: 2026-09-02
+Landed as 3666b6b. The last lane of the second cast round, one small
+fix per file: Rx's reactive pull queue is a typed message ADT; Async's
+handshake cell is `Got[X] | Moved | Null`, so what comes out is the
+operation's Either; Native's blocking cell holds an Option instead
+of a null dressed as an A; the Java API downcasts (Nio, Jetty, Netty
+×2, Tls ×2) are type tests with a named refusal, and CryptoJvm's key
+handles go through privateKeyOf/publicKeyOf that refuse the wrong
+kind by name; Node's `process.argv` is a facade (Web.Process), the
+Buffer callbacks are typed at the callback (NetNode, node:crypto in
+both CryptoJs — the require-based one keeps ONE claim at the module
+boundary, where a JSImport would put it); Form decodes fields at
+their type and matches a product's column; Screen finds a boundary
+by Same's witness (`b.k === k` gives Boundary[A]); Collect always
+calls the finisher; jdbc/r2dbc walk any array through the runtime.
+Every touched suite green (core JVM/Native, r2dbc, jdbc, java, ui
+JVM/JS, http JVM/JS, jetty, netty, tls, security JVM/JS, crypto
+JVM/JS, cluster JS), every module compiles; rebased over
+ops-monitoring's landing. What stays is in BACKLOG "Casts, round
+two": the kernels with their reasons, Screen's `Nav | S` union (an
+API design), Dom.scala's js.Dynamic (a ui-js facade lane).
+
 ## ops-monitoring — health, stats, Prometheus over the values that already exist
 Completed: 2026-09-02
 Landed as 1414328 (operator ask, extended to standard wires). New

@@ -1,5 +1,0 @@
-slug: cast-free-small
-branch: feature/cast-free-small
-worktree: ../okay-wt-cast-free-small
-claimed: 2026-09-02
-scope: round two's last lane — Rx's queue typed (an item ADT), Async's handshake cell typed (Got[X]), Native's null placeholder an Option, Java API downcasts as type TESTS with a named refusal (Nio, Jetty, Netty, Tls, CryptoJvm through typed key accessors), Node facades (process.argv, Buffer callbacks, node:crypto), ui Form (codec recipe) and Screen (Same's witness), Collect, the jdbc/r2dbc Object[] arrays.
