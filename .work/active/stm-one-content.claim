@@ -1,0 +1,5 @@
+slug: stm-one-content
+branch: feature/stm-one-content
+worktree: ../okay-wt-stm-one-content
+claimed: 2026-09-02
+scope: the cell's content is ONE type: Owned extends Stamped (mirrors inner's stamp and value), AtomicReference[Stamped], valueOf/versionOf gone, Owned matched only where its meaning differs (spin / abort / commit). The one cast left is value: Any -> A in TRef. Operator: "сделать их одним типом".
