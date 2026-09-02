@@ -73,9 +73,11 @@ construction instead of a type test per value).
       identity signature, the op IS its answer; that the values are
       chunks is `produced`'s one claim), S3's row re-associations are
       ascriptions (a row is a union); 17 → 0.
-- [ ] cast-free-rag-llm-kyo — rag Ingest (3), Retrieve (2), llm Cut
-      (1), kyo interop (4): row re-associations and continuation
-      casts; typed by ascription and GADT.
+- [x-landed] cast-free-rag-llm-kyo — landed: rag's rows by
+      ascription, `fair` built in Choose + Pure, Cut's "cut" frame
+      typed through `frame[…, Violation]` (the ClassTag door), kyo's
+      Throws matched at its E and the continuations uncast (kyo's
+      types line up); 10 → 0.
 - [ ] cast-free-small — Rx's AnyRef queue (2: a typed item ADT),
       Async's handshake cell (1: typed Got[X]), Native Platform's
       null placeholder (1), Java API downcasts as type TESTS with a

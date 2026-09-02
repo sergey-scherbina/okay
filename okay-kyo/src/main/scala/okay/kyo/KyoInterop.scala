@@ -72,7 +72,7 @@ object KyoInterop {
   def fromKyoEmit[W, A: Flat](v: A < Emit[W])(using Tag[W], Tag[Emit[W]], Frame): A ! Writer % W =
     ArrowEffect.handleFirst(Tag[Emit[W]], v)(
       handle = [C] => (w, cont) =>
-        effect[Writer % W, Unit](Writer(w)).flatMap(_ => fromKyoEmit(cont(()).asInstanceOf[A < Emit[W]])),
+        effect[Writer % W, Unit](Writer(w)).flatMap(_ => fromKyoEmit(cont(()))),
       done = a => (okay.pure(a): A ! Writer % W)
     ).eval
 
@@ -80,8 +80,9 @@ object KyoInterop {
   def toKyoAbort[E, A](p: A ! Throws % E)(using Tag[Abort[E]], Frame): A < Abort[E] =
     (p.resume: @unchecked) match
       case Pure(a) => a
-      case Effect(t: Throws[?, ?]) => Abort.fail(t.e.asInstanceOf[E])
-      case Bind(Effect(t: Throws[?, ?]), _) => Abort.fail(t.e.asInstanceOf[E])
+      // the tree types the operation at its E: Throws[E, A], so `e` IS an E
+      case Effect(t) => Abort.fail(t.e)
+      case Bind(Effect(t), _) => Abort.fail(t.e)
 
   /** Abort → Throws */
   def fromKyoAbort[E, A: Flat](v: A < Abort[E])(using _root_.kyo.SafeClassTag[E], Tag[E], Frame): A ! Throws % E =
@@ -100,7 +101,7 @@ object KyoInterop {
   def fromKyoChoice[A: Flat](v: A < Choice)(using Frame): A ! Choose =
     ArrowEffect.handleFirst(Tag[Choice], v)(
       handle = [C] => (as, cont) =>
-        effect[Choose, C](Choose(as)).flatMap(c => fromKyoChoice(cont(c).asInstanceOf[A < Choice])),
+        effect[Choose, C](Choose(as)).flatMap(c => fromKyoChoice(cont(c))),
       done = a => (okay.pure(a): A ! Choose)
     ).eval
 }

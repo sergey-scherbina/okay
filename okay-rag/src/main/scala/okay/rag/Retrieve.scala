@@ -22,8 +22,7 @@ object Retrieve {
     new Retriever[Embed + F]:
       def retrieve(query: String, k: Int): Seq[Scored] ! (Embed + F) =
         okay.!.widen[Seq[Embedding], Embed, F](embed(Seq(query))).flatMap { vs =>
-          okay.!.widen[Seq[Scored], F, Embed](store.search(vs.head, k))
-            .asInstanceOf[Seq[Scored] ! (Embed + F)]
+          okay.!.widen[Seq[Scored], F, Embed](store.search(vs.head, k)): Seq[Scored] ! (Embed + F)
         }
 
   /**
@@ -107,11 +106,13 @@ object Retrieve {
    * SEARCH, not over a list.
    */
   def fair[F[+_] : TypeableK](a: Seq[Scored], b: Seq[Scored], k: Int): Seq[Scored] =
-    def alts(xs: Seq[Scored]): Scored ! (Choose + F) = effect(Choose(xs))
-    val mixed = Logic.interleave[Scored, F](alts(a), alts(b))
+    // the alternatives never perform an F: built in Choose + Pure and
+    // observed there, no re-typing needed (F stays the signature's
+    // promise to callers)
+    def alts(xs: Seq[Scored]): Scored ! (Choose + okay.Pure) = effect(Choose(xs))
+    val mixed = Logic.interleave[Scored, okay.Pure](alts(a), alts(b))
     // observe is the lazy take: only k answers are ever computed
-    okay.!.run(Logic.observe[Scored, okay.Pure](k)(
-      mixed.asInstanceOf[Scored ! (Choose + okay.Pure)]))
+    okay.!.run(Logic.observe[Scored, okay.Pure](k)(mixed))
 
   /** rerank with any scorer — a cross-encoder, a heuristic, a model
    * one row up: the pipeline does not care which */

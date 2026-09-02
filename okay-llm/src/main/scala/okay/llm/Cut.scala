@@ -130,8 +130,10 @@ object Cut {
               case None => go(rest, i + 1)
             }
       }
-    Condition.within[Option[Violation], R]("cut")(go(tokens, 0).map(_ => None))(
-      x => Some(x.asInstanceOf[Violation])).flatMap {
+    // the typed frame: an Invoke("cut", v) reaches recover as a
+    // Violation or is refused named (the ClassTag door), not cast
+    Condition.frame[Option[Violation], Violation, R]("cut")(go(tokens, 0).map(_ => None))(
+      v => Some(v)).flatMap {
       case Some(v) =>
         !.widen[Unit, Writer % String + (Delim + Async), Condition.Op](
           violation[A, Unit](v))
