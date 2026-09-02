@@ -39,7 +39,7 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
     receivers: Queue[End => Unit],
     senders: Queue[(A, Boolean => Unit)],
     open: Boolean,
-    failure: Throwable | Null)
+    failure: Throwable | Null) extends TRef.Stamped
   // invariant: receivers waiting => buf empty and no sender waiting;
   // senders waiting => buf full (or capacity 0) and no receiver waiting
 

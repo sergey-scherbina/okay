@@ -58,7 +58,7 @@ class TestStm extends munit.FunSuite {
     assertEquals(old, 41)
     assertEquals(r.get, 42)
     // the cell's version moved exactly once
-    assertEquals(r.slot.get.version, 1L)
+    assertEquals(r.version, 1L)
     // and the same through TRef.modify directly (what the Channel does)
     assertEquals(r.modify(x => (x * 2, x)), 42)
     assertEquals(r.get, 84)

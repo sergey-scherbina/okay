@@ -11,28 +11,40 @@ import scala.collection.mutable
  * `modify` IS the single-cell transaction — one CAS — and the path
  * every handler takes for a transaction that is one `Modify`; the
  * Channel's state lives in one of these.
+ *
+ * What the reference holds is one of three things: a `Stamped` value
+ * (the version lives IN the value, no wrapper — the Channel's State
+ * is one, so its fast path allocates nothing beyond the state it
+ * would build anyway), a `Slot` wrapping any other value with its
+ * version, or an `Owned` marker that a commit in flight has CAS'd
+ * over the content — the fast path retries on it, another commit
+ * fails its CAS on it, and nothing waits.
  */
 final class TRef[A](init: A) {
   import TRef.*
 
-  private[okay] val slot = AtomicReference[Slot[A]](Slot(init, 0L, null))
+  private[okay] val ref = AtomicReference[AnyRef](wrap(init, 0L))
   private[okay] val waiters = AtomicReference[List[Waiter]](Nil)
 
   /** a plain read, outside any transaction */
-  def get: A = slot.get.value
+  def get: A = valueOf[A](ref.get)
+
+  /** the cell's version: moves by one at every install */
+  def version: Long = versionOf(ref.get)
 
   /** the one-cell transaction: f is PURE and may run more than once;
    * the answer b is yours to act on after — the Channel returns its
    * callbacks this way. A result that is the same object skips the
-   * CAS; a slot owned by a commit in progress is retried (a few
+   * CAS; content owned by a commit in progress is retried (a few
    * instructions long, never a park) */
   @tailrec def modify[B](f: A => (A, B)): B =
-    val s = slot.get
-    if s.owner != null then modify(f)
+    val cur = ref.get
+    if cur.isInstanceOf[Owned] then modify(f)
     else
-      val (a2, b) = f(s.value)
-      if a2.asInstanceOf[AnyRef] eq s.value.asInstanceOf[AnyRef] then b
-      else if slot.compareAndSet(s, Slot(a2, s.version + 1, null)) then { wake(); b }
+      val a = valueOf[A](cur)
+      val (a2, b) = f(a)
+      if a2.asInstanceOf[AnyRef] eq a.asInstanceOf[AnyRef] then b
+      else if ref.compareAndSet(cur, wrap(a2, versionOf(cur) + 1)) then { wake(); b }
       else modify(f)
 
   @tailrec private[okay] def wake(): Unit =
@@ -47,7 +59,31 @@ final class TRef[A](init: A) {
 }
 
 object TRef {
-  final case class Slot[+A](value: A, version: Long, owner: AnyRef | Null)
+  /** a value that carries its own version, so a cell holding it
+   * installs it bare. The cell STAMPS it at install: a Stamped value
+   * belongs to one cell and one install — build a new one for every
+   * transition (an immutable case class does, through copy) */
+  trait Stamped { private[okay] var stamp: Long = 0L }
+
+  /** any other value, with its version */
+  final class Slot[+A](val value: A, val version: Long)
+
+  /** a commit in flight owns the content it found */
+  private[okay] final class Owned(val inner: AnyRef, val token: AnyRef)
+
+  private[okay] def wrap(a: Any, v: Long): AnyRef = a match
+    case s: Stamped => s.stamp = v; s
+    case other => Slot(other, v)
+
+  private[okay] def valueOf[A](c: AnyRef): A = c match
+    case s: Slot[?] => s.value.asInstanceOf[A]
+    case o: Owned => valueOf[A](o.inner)
+    case s => s.asInstanceOf[A]
+
+  private[okay] def versionOf(c: AnyRef): Long = c match
+    case s: Slot[?] => s.version
+    case s: Stamped => s.stamp
+    case o: Owned => versionOf(o.inner)
 
   /** fires at most once, however many cells it watches */
   final class Waiter(k: () => Unit):
@@ -100,8 +136,8 @@ object Stm {
       var ok = true
       while ok && i < reads.length do
         val (r, v) = reads(i)
-        val s = r.slot.get
-        ok = s.version == v && s.owner == null
+        val c = r.ref.get
+        ok = !c.isInstanceOf[TRef.Owned] && TRef.versionOf(c) == v
         i += 1
       ok
   }
@@ -115,10 +151,10 @@ object Stm {
       log.writes.get(r) match
         case Some(a) => a
         case None =>
-          val s = r.slot.get
-          if s.owner != null || !log.valid then throw Abort
-          log.reads += ((r, s.version))
-          s.value
+          val c = r.ref.get
+          if c.isInstanceOf[TRef.Owned] || !log.valid then throw Abort
+          log.reads += ((r, TRef.versionOf(c)))
+          TRef.valueOf[Any](c)
     case Tx.Write(r0, a) =>
       log.writes(r0.asInstanceOf[TRef[Any]]) = a
       ()
@@ -144,27 +180,29 @@ object Stm {
   private def commit(log: Log): Boolean =
     if log.writes.isEmpty then return log.valid
     val token = new AnyRef
-    val owned = mutable.ArrayBuffer.empty[(TRef[Any], TRef.Slot[Any])]
+    val owned = mutable.ArrayBuffer.empty[(TRef[Any], AnyRef)]
     var ok = true
     val it = log.writes.keysIterator
     while ok && it.hasNext do
       val r = it.next()
-      val s = r.slot.get
-      if s.owner != null || !r.slot.compareAndSet(s, s.copy(owner = token)) then ok = false
-      else owned += ((r, s))
+      val c = r.ref.get
+      if c.isInstanceOf[TRef.Owned] || !r.ref.compareAndSet(c, TRef.Owned(c, token)) then ok = false
+      else owned += ((r, c))
     if ok then
       var i = 0
       while ok && i < log.reads.length do
         val (r, v) = log.reads(i)
-        val s = r.slot.get
-        ok = s.version == v && (s.owner == null || (s.owner eq token))
+        val c = r.ref.get
+        ok = TRef.versionOf(c) == v && (c match
+          case o: TRef.Owned => o.token eq token
+          case _ => true)
         i += 1
     if ok then
-      owned.foreach((r, s) => r.slot.set(TRef.Slot(log.writes(r), s.version + 1, null)))
+      owned.foreach((r, c) => r.ref.set(TRef.wrap(log.writes(r), TRef.versionOf(c) + 1)))
       owned.foreach((r, _) => r.wake())
       true
     else
-      owned.foreach((r, s) => r.slot.set(s))
+      owned.foreach((r, c) => r.ref.set(c))
       false
 
   /** the structural fast paths, shared by tl2 and direct: a program
@@ -227,8 +265,7 @@ object Stm {
       try
         val a = interpret(tx, log)
         log.writes.foreach { (r, v) =>
-          val s = r.slot.get
-          r.slot.set(TRef.Slot(v, s.version + 1, null))
+          r.ref.set(TRef.wrap(v, TRef.versionOf(r.ref.get) + 1))
         }
         log.writes.keysIterator.foreach(_.wake())
         k(Right(a))
