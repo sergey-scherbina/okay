@@ -1,1 +1,0 @@
-claimed: direct-tail-fusion — loop bodies compile with an explicit tail, the sequencing bind merges into the body's last bind (while 2.0x -> ~1x); road recorded by direct-flatmap-emission (454036a)

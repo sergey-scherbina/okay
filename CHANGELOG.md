@@ -1,5 +1,35 @@
 # Changelog
 
+## direct-tail-fusion — the direct macro's while loop matches its hand-written flatMap chain
+Completed: 2026-09-02
+Landed as 935014d (merge; c4315d8 the kafka+mongo munitTimeout
+drive-by, 63c86bb the fusion itself). The road direct-flatmap-
+emission recorded: while's 2.0x came from paying two flatMap binds
+per iteration (the step's own, plus a separate sequencing bind
+chaining to loop()). compileTail/stmtsTail compiles a loop body
+against an explicit tail term instead, threading it into the body's
+own last bind — vals, marked assigns, pure statements, and bare
+runnable ops all fold; if/match/nested-loop/try fall back to one
+sequencing bind (duplicating a tail into branches duplicates code,
+and the fallback is the pre-fusion emission, correct by construction).
+Measured (quiet box, §1b): while+var 189us -> 101us (2.0x -> 1.06x,
+matched within noise against the 95us hand chain). Recursion
+untouched at 55us — it never goes through While/foreach.
+
+Drive-by, found chasing the gate: TestElectionKafka and TestMongoDocs
+were missing the `munitTimeout` override their sibling live suites
+already carry (120s) — the 30s munit default was firing before even
+a merely-slow availability probe could return, so a correct "docker
+absent, skip" read as a hard failure under a loaded sbt test matrix.
+Fixed to match the established pattern, verified green (clean skip)
+in isolation. TestKafkaEos, which already had the override and still
+blew through it, stays open in BACKLOG as the netty-ws-matrix-flake
+root cause verbatim (unbounded sbt test-matrix parallelism) — a
+cross-cutting build.sbt fix, its own claim. The gate's one remaining
+failure on the decisive quiet-box run was netty-ws-matrix-flake's
+sixth sighting (TestBackends, green in isolation) — recorded, not
+re-triaged, per that entry's own standing doctrine.
+
 ## tidy-warnings-screen-dom — the main sources compile warning-free
 Completed: 2026-09-02
 Landed as e5a512d. The operator asked what else could be fixed. A
