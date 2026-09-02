@@ -40,6 +40,11 @@ enum SqlValue:
 enum SqlType:
   case Bool, I32, I64, F64, Text, Bytes
   case Other(name: String)
+  /** an array column; `Other` as the element when the driver's
+   * metadata cannot name it (JDBC) — decode checks the elements */
+  case Arr(elem: SqlType)
+  /** a composite column, fields in order (sql-schema-composite) */
+  case Row(fields: Vector[SqlType])
 
 /** column description, the verify input — driver-neutral */
 final case class Col(label: String, tpe: SqlType, nullable: Boolean)

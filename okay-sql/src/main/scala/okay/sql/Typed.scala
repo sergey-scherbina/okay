@@ -13,8 +13,11 @@ import scala.collection.immutable.ArraySeq
  * Schema, rows decoded into a case class by Schema, and drift
  * caught loudly at startup by `verify`, naming the column.
  *
- * A row is a FLAT product: primitives, bytes, Option for nullable.
- * Field matches column by NAME — `userName` matches `user_name`
+ * A row is a product: primitives, bytes, Option for nullable — and
+ * (sql-schema-composite) Vector/List for an ARRAY column, a nested
+ * case class for a COMPOSITE column, recursively; a composite's
+ * fields bind by POSITION (no names on the wire), the row's columns
+ * by NAME. Field matches column by NAME — `userName` matches `user_name`
  * (camelCase → snake_case, case-insensitive; an exact-name match
  * also passes, the escape hatch for legacy labels) — never by
  * position, so `SELECT *` reordering cannot shear the mapping.
@@ -24,28 +27,56 @@ object Typed:
 
   // ── the row shape of a Schema ──────────────────────────────────
 
-  /** `into`/`outof` carry a wrapper's conversions (codec-iso): a
-   * wrapped column decodes through `into` after its primitive and
-   * encodes through `outof` before it — to the row the wrapper does
-   * not exist */
-  private final case class Field(name: String, tpe: SqlType, optional: Boolean,
-                                 into: Any => Either[String, Any] = Right(_),
-                                 outof: Any => Any = identity)
+  /** what a column can hold, read off the Schema once: a primitive,
+   * an Option of a shape, a wrapper (codec-iso: `to`/`from` carry the
+   * conversions — to the row the wrapper does not exist), an ARRAY of
+   * a shape, a nested PRODUCT (sql-schema-composite). Decode and
+   * encode recurse over it; `tpe` is what verify compares. */
+  private enum Shape:
+    case Prim(t: SqlType)
+    case Opt(of: Shape)
+    case Iso(of: Shape, to: Any => Either[String, Any], from: Any => Any)
+    case Arr(elem: Shape, build: Vector[Any] => Any, parts: Any => Vector[Any])
+    case Row(fields: Vector[Shape], make: Seq[Any] => Any, parts: Any => Seq[Any])
 
-  private def shapeOf(s: Schema[?]): Option[(SqlType, Boolean, Any => Either[String, Any], Any => Any)] = s match
-    case Schema.SInt => Some((SqlType.I32, false, Right(_), identity))
-    case Schema.SLong => Some((SqlType.I64, false, Right(_), identity))
-    case Schema.SDouble => Some((SqlType.F64, false, Right(_), identity))
-    case Schema.SBool => Some((SqlType.Bool, false, Right(_), identity))
-    case Schema.SString => Some((SqlType.Text, false, Right(_), identity))
-    case Schema.SBytes => Some((SqlType.Bytes, false, Right(_), identity))
-    case Schema.SOption(of) => shapeOf(of()).map((t, _, in, out) => (t, true, in, out))
-    case Schema.SIso(u, to, from) => shapeOf(u()).map { (t, opt, in, out) =>
-      (t, opt,
-        (v: Any) => in(v).flatMap(x => to.asInstanceOf[Any => Either[String, Any]](x)),
-        (v: Any) => out(from.asInstanceOf[Any => Any](v)))
-    }
-    case _ => None
+    def tpe: SqlType = this match
+      case Prim(t) => t
+      case Opt(of) => of.tpe
+      case Iso(of, _, _) => of.tpe
+      case Arr(el, _, _) => SqlType.Arr(el.tpe)
+      case Row(fs, _, _) => SqlType.Row(fs.map(_.tpe))
+
+    def optional: Boolean = this match
+      case Opt(_) => true
+      case Iso(of, _, _) => of.optional
+      case _ => false
+
+  private final case class Field(name: String, shape: Shape):
+    def tpe: SqlType = shape.tpe
+    def optional: Boolean = shape.optional
+
+  private def shapeOf(s: Schema[?]): Either[String, Shape] = s match
+    case Schema.SInt => Right(Shape.Prim(SqlType.I32))
+    case Schema.SLong => Right(Shape.Prim(SqlType.I64))
+    case Schema.SDouble => Right(Shape.Prim(SqlType.F64))
+    case Schema.SBool => Right(Shape.Prim(SqlType.Bool))
+    case Schema.SString => Right(Shape.Prim(SqlType.Text))
+    case Schema.SBytes => Right(Shape.Prim(SqlType.Bytes))
+    case Schema.SOption(of) => shapeOf(of()).map(Shape.Opt(_))
+    case Schema.SIso(u, to, from) => shapeOf(u()).map(Shape.Iso(_,
+      to.asInstanceOf[Any => Either[String, Any]], from.asInstanceOf[Any => Any]))
+    case Schema.SVector(of) => shapeOf(of()).map(Shape.Arr(_, identity, _.asInstanceOf[Vector[Any]]))
+    case Schema.SList(of) => shapeOf(of()).map(Shape.Arr(_, _.toList, _.asInstanceOf[List[Any]].toVector))
+    case Schema.SProduct(_, fields, make, parts, _) =>
+      val out = Vector.newBuilder[Shape]
+      var err: String = null
+      for (name, thunk) <- fields if err == null do
+        shapeOf(thunk()) match
+          case Right(sh) => out += sh
+          case Left(e) => err = s"field $name: $e"
+      if err == null then Right(Shape.Row(out.result(), make, parts.asInstanceOf[Any => Seq[Any]]))
+      else Left(err)
+    case other => Left(s"not row-shaped (a row holds primitives, bytes, Option, Vector/List and nested products): $other")
 
   private def fieldsOf(s: Schema[?]): Either[String, Vector[Field]] = s match
     case Schema.SProduct(_, fields, _, _, _) =>
@@ -53,10 +84,10 @@ object Typed:
       var err: String = null
       for (name, thunk) <- fields if err == null do
         shapeOf(thunk()) match
-          case Some((t, opt, in, outof)) => out += Field(name, t, opt, in, outof)
-          case None => err = s"field $name is not row-shaped (a row holds primitives, bytes and Option)"
+          case Right(sh) => out += Field(name, sh)
+          case Left(e) => err = s"field $name is $e"
       if err == null then Right(out.result()) else Left(err)
-    case _ => Left("a row is a flat product (a case class)")
+    case _ => Left("a row is a product (a case class)")
 
   /** camelCase → snake_case, lowercased */
   def snake(name: String): String =
@@ -71,8 +102,15 @@ object Typed:
 
   /** a column may hold a wider home than the value needs: an I32
    * column serves an I64 field; everything else is exact */
-  private def fits(field: SqlType, col: SqlType): Boolean =
-    field == col || (field == SqlType.I64 && col == SqlType.I32)
+  private def fits(field: SqlType, col: SqlType): Boolean = (field, col) match
+    case (SqlType.I64, SqlType.I32) => true
+    // the driver could not name the element type (JDBC metadata):
+    // decode checks the elements, and decode is total
+    case (SqlType.Arr(_), SqlType.Arr(SqlType.Other(_))) => true
+    case (SqlType.Arr(f), SqlType.Arr(c)) => fits(f, c)
+    case (SqlType.Row(fs), SqlType.Row(cs)) =>
+      fs.length == cs.length && fs.zip(cs).forall(fits)
+    case _ => field == col
 
   // ── verify: the fingerprint lesson at the database seam ────────
 
@@ -82,7 +120,7 @@ object Typed:
   def verify[A](db: Sql, sql: String)(using s: Schema[A]): Vector[Drift] ! Async =
     db.describe(sql).map { cols =>
       fieldsOf(s) match
-        case Left(e) => Vector(Drift("<schema>", "a flat product of row-shaped fields", e))
+        case Left(e) => Vector(Drift("<schema>", "a product of row-shaped fields", e))
         case Right(fs) => fs.flatMap { f =>
           cols.find(c => matches(f.name, c.label)) match
             case None =>
@@ -101,25 +139,71 @@ object Typed:
 
   // ── rows: typed streaming decode, damage as data ───────────────
 
-  private def decodeCell(f: Field, label: String, v: SqlValue): Either[Bad, Any] = v match
-    case SqlValue.Null =>
-      if f.optional then Right(None)
-      else Left(Bad(label, "NULL in a non-Option field"))
-    case other =>
-      val prim: Option[Any] = (f.tpe, other) match
-        case (SqlType.Bool, SqlValue.Bool(x)) => Some(x)
-        case (SqlType.I32, SqlValue.I32(x)) => Some(x)
-        case (SqlType.I64, SqlValue.I64(x)) => Some(x)
-        case (SqlType.I64, SqlValue.I32(x)) => Some(x.toLong)
-        case (SqlType.F64, SqlValue.F64(x)) => Some(x)
-        case (SqlType.Text, SqlValue.Text(x)) => Some(x)
-        case (SqlType.Bytes, SqlValue.Bytes(x)) => Some(x)
-        case _ => None
-      prim match
-        case Some(x) => f.into(x) match
-          case Right(y) => Right(if f.optional then Some(y) else y)
-          case Left(m) => Left(Bad(label, m))   // a refining wrapper refused
-        case None => Left(Bad(label, s"expected ${f.tpe}, got $other"))
+  /** total: damage is a message, never a throw */
+  private def decode(sh: Shape, v: SqlValue): Either[String, Any] = (sh, v) match
+    case (Shape.Opt(_), SqlValue.Null) => Right(None)
+    case (Shape.Opt(of), other) => decode(of, other).map(Some(_))
+    case (Shape.Iso(of, to, _), other) => decode(of, other).flatMap(to)   // a refining wrapper may refuse
+    case (_, SqlValue.Null) => Left("NULL in a non-Option field")
+    case (Shape.Prim(t), other) => (t, other) match
+      case (SqlType.Bool, SqlValue.Bool(x)) => Right(x)
+      case (SqlType.I32, SqlValue.I32(x)) => Right(x)
+      case (SqlType.I64, SqlValue.I64(x)) => Right(x)
+      case (SqlType.I64, SqlValue.I32(x)) => Right(x.toLong)
+      case (SqlType.F64, SqlValue.F64(x)) => Right(x)
+      case (SqlType.Text, SqlValue.Text(x)) => Right(x)
+      case (SqlType.Bytes, SqlValue.Bytes(x)) => Right(x)
+      case _ => Left(s"expected $t, got $other")
+    case (Shape.Arr(el, build, _), SqlValue.Arr(elems)) =>
+      val out = Vector.newBuilder[Any]
+      var err: String = null
+      var i = 0
+      while i < elems.length && err == null do
+        decode(el, elems(i)) match
+          case Right(x) => out += x
+          case Left(m) => err = s"element $i: $m"
+        i += 1
+      if err == null then Right(build(out.result())) else Left(err)
+    case (Shape.Row(fs, make, _), SqlValue.Row(fields)) =>
+      if fields.length != fs.length then
+        Left(s"expected a composite of ${fs.length} fields, got ${fields.length}")
+      else
+        val out = new Array[Any](fs.length)
+        var err: String = null
+        var i = 0
+        while i < fs.length && err == null do
+          decode(fs(i), fields(i)) match
+            case Right(x) => out(i) = x
+            case Left(m) => err = s"field $i: $m"
+          i += 1
+        if err == null then Right(make(ArraySeq.unsafeWrapArray(out))) else Left(err)
+    case (other, v) => Left(s"expected ${other.tpe}, got $v")
+
+  private def decodeCell(f: Field, label: String, v: SqlValue): Either[Bad, Any] =
+    decode(f.shape, v).left.map(Bad(label, _))
+
+  /** the mirror of `decode` — for params */
+  private def encode(sh: Shape, v: Any): SqlValue = sh match
+    case Shape.Iso(of, _, from) => encode(of, from(v))
+    case Shape.Opt(of) => v.asInstanceOf[Option[Any]] match
+      case None => SqlValue.Null
+      case Some(x) => encode(of, x)
+    case Shape.Prim(t) => t match
+      case SqlType.I32 => SqlValue.I32(v.asInstanceOf[Int])
+      case SqlType.I64 => SqlValue.I64(v.asInstanceOf[Long])
+      case SqlType.F64 => SqlValue.F64(v.asInstanceOf[Double])
+      case SqlType.Bool => SqlValue.Bool(v.asInstanceOf[Boolean])
+      case SqlType.Text => SqlValue.Text(v.asInstanceOf[String])
+      case _ => SqlValue.Bytes(v.asInstanceOf[Array[Byte]])
+    case Shape.Arr(el, _, parts) => SqlValue.Arr(parts(v).map(encode(el, _)))
+    case Shape.Row(fs, _, parts) => SqlValue.Row(parts(v).toVector.zip(fs).map((x, f) => encode(f, x)))
+
+  /** parameter encoding by Schema, positionally (used by Params) */
+  private[sql] def encodeParams(s: Schema[?], p: Any): Vector[SqlValue] = shapeOf(s) match
+    case Right(Shape.Row(fs, _, parts)) => parts(p).toVector.zip(fs).map((x, f) => encode(f, x))
+    case Right(_) => throw IllegalArgumentException(
+      "params bind from a product (a case class of row-shaped fields)")
+    case Left(e) => throw IllegalArgumentException(s"params: $e")
 
   /** the per-frame decoder, resolved ONCE against the described
    * columns — label matching happens here, not per row */
@@ -145,7 +229,7 @@ object Typed:
               if bad != null then Left(bad)
               else Right(make(ArraySeq.unsafeWrapArray(out)))
             }
-    case _ => Left(Bad("<schema>", "a row is a flat product"))
+    case _ => Left(Bad("<schema>", "a row is a product (a case class)"))
 
   private type F = Produce + Async
 
@@ -258,21 +342,4 @@ object Typed:
  * unrepresentable, not discouraged */
 object Params:
 
-  def bind[P](p: P)(using s: Schema[P]): Vector[SqlValue] = s match
-    case Schema.SProduct(_, fields, _, parts, _) =>
-      parts(p).toVector.zip(fields).map((v, f) => encode(f._1, f._2(), v))
-    case _ => throw IllegalArgumentException(
-      "params bind from a flat product (a case class of row-shaped fields)")
-
-  private def encode(name: String, s: Schema[?], v: Any): SqlValue = s match
-    case Schema.SIso(u, _, from) => encode(name, u(), from.asInstanceOf[Any => Any](v))
-    case Schema.SInt => SqlValue.I32(v.asInstanceOf[Int])
-    case Schema.SLong => SqlValue.I64(v.asInstanceOf[Long])
-    case Schema.SDouble => SqlValue.F64(v.asInstanceOf[Double])
-    case Schema.SBool => SqlValue.Bool(v.asInstanceOf[Boolean])
-    case Schema.SString => SqlValue.Text(v.asInstanceOf[String])
-    case Schema.SBytes => SqlValue.Bytes(v.asInstanceOf[Array[Byte]])
-    case Schema.SOption(of) => v.asInstanceOf[Option[Any]] match
-      case None => SqlValue.Null
-      case Some(x) => encode(name, of(), x)
-    case _ => throw IllegalArgumentException(s"param $name is not row-shaped")
+  def bind[P](p: P)(using s: Schema[P]): Vector[SqlValue] = Typed.encodeParams(s, p)

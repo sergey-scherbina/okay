@@ -215,7 +215,7 @@ import — and the platforms it runs on.
       table's ROW-type (relkind='r') selected whole — every table
       would join the preload; the `(t).*` expansion or `row_to_json →
       Schema` is the road until a consumer names the need
-- [ ] the Schema layer binds Arr/Row (sql-schema-composite): a
+- [x] the Schema layer binds Arr/Row (sql-schema-composite): a
       case-class field typed `Vector[T]`/`List[T]` decodes from
       `SqlValue.Arr` (elements recursed through the same shape, so
       `Vector[Option[Int]]`, `Vector[Vector[Int]]` and a Vector of
@@ -419,6 +419,29 @@ The seam and its first driver landed (sql-seam, 2026-09-01).
   per-platform crypto given. Every behavior box of this spec is now
   checked; the pg family is a connect call away from a Native
   binary or a Node process too.
+- **sql-schema-composite landed** (2026-09-02): `Typed`'s field
+  shape became a recursive `Shape` (Prim/Opt/Iso/Arr/Row) read off
+  the Schema once — decode and encode are two folds over it, so the
+  old per-field `into`/`outof` closures went away rather than growing
+  two more cases. `SqlType.Arr(elem)`/`Row(fields)` join the verify
+  vocabulary; `fits` recurses and accepts `Arr(Other)` (JDBC names
+  ARRAY, not the element). Drivers: JdbcSql maps `Types.ARRAY`,
+  reads `getArray` (java boxes → SqlValue, nested arrays included)
+  and binds an `Arr` as `Object[]` (H2 and pgjdbc take it; a `Row`
+  param is refused loudly — JDBC has no neutral composite); PgSql's
+  `describe` types columns through the same composite/array caches
+  `decodeCell` reads, so `Col.tpe` says `Row(Text, I32, Bool)` for
+  `okay_addr`. Tests: 4 new in okay-sql on all three platforms (a
+  one-frame fake driver — bind, decode, verify, damage naming column
+  and row); H2 array column read/verify/bind round-trip; live pg:
+  `Person(id, Vector[Int], Addr, Vector[Addr], Option[Addr])` from a
+  table through `Typed.rows` with a clean verify and a `Wrong` shape
+  drifting on `home`, and `rowsOf` binding `Vector`+`Addr` params
+  read back typed. Refuted: keeping the flat `Field(into, outof)` and
+  special-casing arrays — the composite-of-arrays-of-composites case
+  needs the recursion anyway. Composite fields bind by POSITION: pg
+  puts no field names on the wire; by-name would need the preload to
+  carry attname too — deferred until a consumer reorders a type.
 - **security-crypto-split landed** (same day): PgCrypto retired into
   `okay-crypto`, a crypto-only module (hmac/sha256/pbkdf2/random,
   JCA + node:crypto) that rests on nothing, so okay-pg stands on the

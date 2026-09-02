@@ -125,7 +125,31 @@ object JdbcSql:
     case Types.CHAR | Types.VARCHAR | Types.LONGVARCHAR |
          Types.NCHAR | Types.NVARCHAR | Types.LONGNVARCHAR | Types.CLOB => SqlType.Text
     case Types.BINARY | Types.VARBINARY | Types.LONGVARBINARY | Types.BLOB => SqlType.Bytes
+    // JDBC metadata does not name the element type; verify accepts
+    // Arr(Other) and the typed decode checks the elements
+    case Types.ARRAY => SqlType.Arr(SqlType.Other(vendorName))
     case _ => SqlType.Other(vendorName)
+
+  /** an array element as the driver hands it back (java boxes) */
+  private def valueOf(o: AnyRef): SqlValue = o match
+    case null => SqlValue.Null
+    case b: java.lang.Boolean => SqlValue.Bool(b)
+    case i: java.lang.Integer => SqlValue.I32(i)
+    case i: java.lang.Short => SqlValue.I32(i.toInt)
+    case i: java.lang.Byte => SqlValue.I32(i.toInt)
+    case l: java.lang.Long => SqlValue.I64(l)
+    case d: java.lang.Double => SqlValue.F64(d)
+    case f: java.lang.Float => SqlValue.F64(f.toDouble)
+    case d: java.math.BigDecimal => SqlValue.F64(d.doubleValue)
+    case s: String => SqlValue.Text(s)
+    case bs: Array[Byte] => SqlValue.Bytes(bs)
+    case a: java.sql.Array => arrayOf(a)
+    case xs: Array[AnyRef] => SqlValue.Arr(xs.toVector.map(valueOf))
+    case other => SqlValue.Text(other.toString)
+
+  private def arrayOf(a: java.sql.Array): SqlValue =
+    if a == null then SqlValue.Null
+    else SqlValue.Arr(a.getArray.asInstanceOf[Array[AnyRef]].toVector.map(valueOf))
 
   private def rowOf(rs: ResultSet, cols: Vector[SqlType]): Vector[SqlValue] =
     Vector.tabulate(cols.length) { ix =>
@@ -137,7 +161,8 @@ object JdbcSql:
         case SqlType.F64 => SqlValue.F64(rs.getDouble(i))
         case SqlType.Text => SqlValue.Text(rs.getString(i))
         case SqlType.Bytes => SqlValue.Bytes(rs.getBytes(i))
-        case SqlType.Other(_) =>
+        case SqlType.Arr(_) => arrayOf(rs.getArray(i))
+        case SqlType.Other(_) | SqlType.Row(_) =>
           val s = rs.getString(i)
           SqlValue.Text(if s == null then "" else s)
       if rs.wasNull then SqlValue.Null else v
@@ -154,7 +179,24 @@ object JdbcSql:
         case SqlValue.F64(v) => ps.setDouble(i + 1, v)
         case SqlValue.Text(v) => ps.setString(i + 1, v)
         case SqlValue.Bytes(v) => ps.setBytes(i + 1, v)
+        // an Object[] is what H2 (and the pg driver's setObject) take
+        // for an ARRAY parameter; the vendor-typed createArrayOf road
+        // is not needed for the engines this stack binds
+        case SqlValue.Arr(elems) => ps.setObject(i + 1, elems.map(jdbcOf).toArray)
+        case SqlValue.Row(_) => throw IllegalArgumentException(
+          s"param ${i + 1}: a composite parameter is not bindable through JDBC")
       i += 1
+
+  private def jdbcOf(v: SqlValue): AnyRef = v match
+    case SqlValue.Null => null
+    case SqlValue.Bool(b) => java.lang.Boolean.valueOf(b)
+    case SqlValue.I32(x) => java.lang.Integer.valueOf(x)
+    case SqlValue.I64(x) => java.lang.Long.valueOf(x)
+    case SqlValue.F64(x) => java.lang.Double.valueOf(x)
+    case SqlValue.Text(s) => s
+    case SqlValue.Bytes(bs) => bs
+    case SqlValue.Arr(elems) => elems.map(jdbcOf).toArray
+    case SqlValue.Row(fields) => fields.map(jdbcOf).toArray
 
   private def levelOf(i: Isolation): Int = i match
     case Isolation.ReadCommitted => Connection.TRANSACTION_READ_COMMITTED

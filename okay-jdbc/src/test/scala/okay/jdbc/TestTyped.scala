@@ -52,6 +52,9 @@ class TestTyped extends munit.FunSuite {
       st.execute("create user app password 'app'")
       st.execute("grant select, insert, update, delete on customer to app")
       st.execute("grant select on big to app")
+      st.execute("create table tagged(id int not null, tags varchar(16) array not null, nums int array)")
+      st.execute("insert into tagged values (1, array['a', 'b'], array[1, null, 3]), (2, array[], null)")
+      st.execute("grant select, insert on tagged to app")
       st.close()
     finally admin.close()
 
@@ -328,6 +331,28 @@ class TestTyped extends munit.FunSuite {
   }
 
   // ── the posture ──────────────────────────────────────────────────
+
+  // ── sql-schema-composite: an ARRAY column over JDBC ─────────────
+
+  final case class Tagged(id: Int, tags: Vector[String], nums: Option[List[Option[Int]]])
+  given Schema[Tagged] = Schema.derived
+
+  test("a Vector/List field reads an ARRAY column (getArray) and binds one (Object[]); verify accepts the unnamed element type") {
+    withDb { db =>
+      val rs = allRows[Tagged](db, "select id, tags, nums from tagged order by id")
+      assertEquals(rs, Vector(
+        Right(Tagged(1, Vector("a", "b"), Some(List(Some(1), None, Some(3))))),
+        Right(Tagged(2, Vector.empty, None))))
+      // H2 metadata names ARRAY, not the element: verify is clean
+      assertEquals(run(Typed.verify[Tagged](db, "select id, tags, nums from tagged")), Vector.empty)
+      // the encode side: the array param round-trips
+      val n = run(Typed.update(db, "insert into tagged values (?, ?, ?)")(
+        Tagged(3, Vector("x"), Some(List(None, Some(9))))))
+      assertEquals(n, 1L)
+      val back = allRows[Tagged](db, "select id, tags, nums from tagged where id = 3")
+      assertEquals(back, Vector(Right(Tagged(3, Vector("x"), Some(List(None, Some(9)))))))
+    }
+  }
 
   test("the restricted user has no DDL: their schema, our types, full function") {
     val conn = DriverManager.getConnection(url, "app", "app")

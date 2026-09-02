@@ -45,6 +45,18 @@ final class PgSql private (conn: NetConn) extends Sql:
   // beside the composite fields so addr[] decodes to Arr(Row(...)).
   private val arrayElemDyn = scala.collection.mutable.HashMap.empty[Int, Int]
 
+  /** the column type as verify speaks it: arrays and named composites
+   * resolve through the same caches `decodeCell` reads, so a Vector or
+   * nested case-class field has an `Arr`/`Row` to be checked against
+   * (sql-schema-composite); the rest is the static scalar map */
+  private def colType(oid: Int): SqlType =
+    composites.get(oid) match
+      case Some(fieldOids) => SqlType.Row(fieldOids.map(colType))
+      case None =>
+        arrayElem.get(oid).orElse(arrayElemDyn.get(oid)) match
+          case Some(el) => SqlType.Arr(colType(el))
+          case None => typeOf(oid)
+
   // ── the Sql seam ───────────────────────────────────────────────
 
   def describe(sql: String): Vector[Col] ! Async =
@@ -63,11 +75,11 @@ final class PgSql private (conn: NetConn) extends Sql:
             case Nil => pure(acc)
             case (label, oid, tableOid, attnum) :: more =>
               if tableOid == 0 then
-                resolve(more, acc :+ Col(label, typeOf(oid), true))
+                resolve(more, acc :+ Col(label, colType(oid), true))
               else
                 simpleValue(s"select attnotnull from pg_attribute " +
                   s"where attrelid = $tableOid and attnum = $attnum").flatMap { v =>
-                  resolve(more, acc :+ Col(label, typeOf(oid), !v.contains("t")))
+                  resolve(more, acc :+ Col(label, colType(oid), !v.contains("t")))
                 }
           resolve(cols.toList, Vector.empty)
         }

@@ -136,3 +136,49 @@ class TestPgComposite extends munit.FunSuite:
       Row(Vector(Text("main st"), I32(90210), Bool(true))),
       Row(Vector(Text("elm"), Null, Bool(false))))))
   }
+
+  // ── sql-schema-composite: the Schema layer over the pg driver ────
+
+  final case class Addr(street: String, zip: Option[Int], active: Boolean)
+  given okay.codec.Schema[Addr] = okay.codec.Schema.derived
+  final case class Person(id: Int, nums: Vector[Int], home: Addr, moves: Vector[Addr], prev: Option[Addr])
+  given okay.codec.Schema[Person] = okay.codec.Schema.derived
+
+  test("a Vector field and a nested case class decode from int[] and a named composite through Typed.rows; verify is clean") {
+    assume(available, "no Postgres at the configured endpoint")
+    defineType()
+    val db = connect()
+    try
+      // a table, so describe can answer nullability from the catalog
+      run(db.update("drop table if exists okay_people"))
+      run(db.update("create table okay_people(id int not null, nums int[] not null, " +
+        "home okay_addr not null, moves okay_addr[] not null, prev okay_addr)"))
+      run(db.update("insert into okay_people values (1, array[1, 2, 3], " +
+        "row('main st', 90210, true), array[row('elm', null, false)::okay_addr], null)"))
+      val sql = "select id, nums, home, moves, prev from okay_people"
+      val rows = collectChunks(okay.sql.Typed.rows[Person](db, sql)).flatten
+      assertEquals(rows, List(Right(Person(1, Vector(1, 2, 3), Addr("main st", Some(90210), true),
+        Vector(Addr("elm", None, false)), None))))
+      // describe types the array and the composite from the connect preload
+      assertEquals(run(okay.sql.Typed.verify[Person](db, sql)), Vector.empty)
+      // and a row-shape mismatch is a Drift naming the column
+      final case class Wrong(id: Int, home: Vector[Int])
+      given okay.codec.Schema[Wrong] = okay.codec.Schema.derived
+      assertEquals(run(okay.sql.Typed.verify[Wrong](db, sql)).map(_.column), Vector("home"))
+    finally db.close()
+  }
+
+  test("a Vector param and a nested case class param bind as Arr/Row and are read back typed") {
+    assume(available, "no Postgres at the configured endpoint")
+    defineType()
+    val db = connect()
+    try
+      final case class In(nums: Vector[Int], home: Addr)
+      given okay.codec.Schema[In] = okay.codec.Schema.derived
+      final case class Out(nums: Vector[Int], home: Addr)
+      given okay.codec.Schema[Out] = okay.codec.Schema.derived
+      val rows = collectChunks(okay.sql.Typed.rowsOf[Out, In](db,
+        "select $1::int[] as nums, $2::okay_addr as home")(In(Vector(4, 5), Addr("a\"b,c", None, true)))).flatten
+      assertEquals(rows, List(Right(Out(Vector(4, 5), Addr("a\"b,c", None, true)))))
+    finally db.close()
+  }
