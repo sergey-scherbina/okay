@@ -1,5 +1,0 @@
-slug: tidy-warnings-screen-dom
-branch: feature/tidy-warnings-screen-dom
-worktree: ../okay-wt-tidy-warnings-screen-dom
-claimed: 2026-09-02
-scope: the core's remaining compiler warnings (inline accessors in ChunkBuf/Direct, unused pattern vars, two non-exhaustive rebuilders in the macro, the union type test in Direct, Throws' match), Screen's Nav | S split made sound at compile time (NotGiven[S <:< Nav] evidence), and Dom.scala on typed DOM facades (Web.Dom) instead of js.Dynamic.

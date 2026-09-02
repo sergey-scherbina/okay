@@ -1,5 +1,32 @@
 # Changelog
 
+## tidy-warnings-screen-dom — the main sources compile warning-free
+Completed: 2026-09-02
+Landed as e5a512d. The operator asked what else could be fixed. A
+`clean; compile` of the whole build had 255 warnings in main sources
+(143 unused values, 81 unused symbols, 28 discarded values, 3
+non-exhaustive matches); now 0 (test sources still carry theirs — a
+separate, optional lane). What changed: a discarded Java or Scala
+result says so (`x: Unit`), a discarded js.Dynamic result is `val _
+= x` (an ascription does not silence it), unused pattern type
+variables are `?`, an unused parameter an API forces is `@unused`,
+unused imports and `using` parameters are gone (McpHttp.routed,
+Wire.serve, Repair.decode/read, Retrieve.fair no longer ask for
+what they do not use), the macro's two slot rebuilders are total
+with a named refusal, its union type test is three extractor
+patterns, Throws' head-form match follows the stack's convention,
+and ChunkBuf/Direct's inline accessors are `@publicInBinary`.
+Screen's `Nav | S` split is sound now: a `NotGiven[S <:< Nav]`
+evidence refuses an S that is a Nav at compile time. Two slips on
+the way, both caught by the compiler before any commit: the
+automatic pass once put `: Unit` after a `match` header and once
+after the wrong statement on a `;` line. AGENTS.md records the rule
+and the trap (an incremental compile hides warnings in untouched
+files). Gate green in three chunks (the one red was the demo's
+LIVE SEEKER judgment — the small local model's answer, not the
+wire); rebased over okay-admin-module and deploy-package and
+clean-compiled again: still 0.
+
 ## deploy-package — a reusable deploy scaffold, not one app's Dockerfile
 Completed: 2026-09-02
 Landed as 3e0d390 (operator ask, following ops-monitoring). sbt-
