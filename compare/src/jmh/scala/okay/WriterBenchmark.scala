@@ -11,6 +11,10 @@ import java.util.concurrent.TimeUnit
  * fold; cats is WriterT over Eval with a Chain log; kyo's Emit is its
  * writer/stream primitive; atnos-eff has a WriterEffect. ZIO has no
  * native writer and is omitted.
+ *
+ * The foldLeft lanes are LEFT-nested, which is O(N²) in kyo (see
+ * ReaderBenchmark's note); the `*Rec` lanes are the right-nested
+ * shape real code builds, for both libraries.
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -28,6 +32,13 @@ class WriterBenchmark {
       m.flatMap(_ => Writer.tell(i))
     !.run(Writer.run[Int, Unit, Nothing](prog))._1.length
 
+  /** the same N tells, RIGHT-nested by recursion */
+  @Benchmark
+  def okayWriterRec(): Int =
+    def go(i: Int): Unit ! Writer % Int =
+      if i == 0 then Writer.tell(0) else Writer.tell(i).flatMap(_ => go(i - 1))
+    !.run(Writer.run[Int, Unit, Nothing](go(N)))._1.length
+
   @Benchmark
   def catsWriterT(): Int =
     import cats.data.{Chain, WriterT}
@@ -43,6 +54,14 @@ class WriterBenchmark {
     val k = (1 to N).foldLeft(0: Int < Emit[Int]): (m, i) =>
       m.flatMap((_: Int) => Emit.valueWith(i)(i))
     Emit.run[Int](k).eval._1.length
+
+  /** kyo Emit in its natural, right-nested shape — linear */
+  @Benchmark
+  def kyoEmitRec(): Int =
+    import _root_.kyo.*
+    def go(i: Int): Int < Emit[Int] =
+      if i == 0 then (0: Int < Emit[Int]) else Emit.valueWith(i)(i).flatMap((_: Int) => go(i - 1))
+    Emit.run[Int](go(N)).eval._1.length
 
   @Benchmark
   def atnosWriter(): Int =

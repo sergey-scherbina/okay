@@ -10,6 +10,17 @@ import java.util.concurrent.TimeUnit
  * okay handles it with the tail-resumptive relay; cats is Kleisli
  * over Eval (Id would build an N-deep stack); ZIO reads its
  * environment; kyo uses Env; atnos-eff its ReaderEffect.
+ *
+ * SHAPE MATTERS (kyo-fair-lanes, 2026-09-02): foldLeft builds a
+ * LEFT-nested chain, ((ask >>= f) >>= f) >>= f. kyo's `map` over a
+ * suspension wraps it in a KyoContinue whose apply re-applies the
+ * inner continuation, and its handle loop never reassociates — so
+ * every resume walks the rest of the chain: O(N²), measured ×109
+ * from N=1k to 10k. Real code (a for-comprehension, a direct block,
+ * recursion) builds the RIGHT-nested chain, ask >>= (_ => ask >>=
+ * ...), which kyo handles linearly. The `*Rec` lanes are that shape,
+ * for both libraries; the foldLeft lanes stay as the quadratic-trap
+ * measurement, and must not be quoted as kyo's price.
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -26,6 +37,13 @@ class ReaderBenchmark {
     val prog = (1 to N).foldLeft(Reader.ask[Int]): (m, _) =>
       m.flatMap(_ => Reader.ask[Int])
     !.run(Reader.run[Int, Int, Nothing](42)(prog))
+
+  /** the same N asks, RIGHT-nested by recursion */
+  @Benchmark
+  def okayReaderRec(): Int =
+    def go(i: Int): Int ! Reader % Int =
+      if i == 0 then Reader.ask[Int] else Reader.ask[Int].flatMap(_ => go(i - 1))
+    !.run(Reader.run[Int, Int, Nothing](42)(go(N)))
 
   /** the ctx-fn reader THROUGH THE INSTANCE — at N/10: each
    * flatMap is literally f(fb) and run is application (the compiler
@@ -77,6 +95,14 @@ class ReaderBenchmark {
     val k = (1 to N).foldLeft(Env.get[Int]: Int < Env[Int]): (m, _) =>
       m.flatMap((_: Int) => Env.get[Int])
     Env.run(42)(k).eval
+
+  /** kyo Env in its natural, right-nested shape — linear */
+  @Benchmark
+  def kyoEnvRec(): Int =
+    import _root_.kyo.*
+    def go(i: Int): Int < Env[Int] =
+      if i == 0 then Env.get[Int] else Env.get[Int].flatMap((_: Int) => go(i - 1))
+    Env.run(42)(go(N)).eval
 
   @Benchmark
   def atnosReader(): Int =

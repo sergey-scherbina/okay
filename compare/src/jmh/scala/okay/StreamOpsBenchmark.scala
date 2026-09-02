@@ -10,7 +10,10 @@ import java.util.concurrent.TimeUnit
  * the Producer through the uncons combinators (landing in LazyList),
  * and the pure LazyList generator. The kyo source is bounded (its
  * emit loop needs a bound, as in GeneratorBenchmark); the bound is
- * sized so take(N) is what ends every lane.
+ * sized so take(N) is what ends every lane. kyoStream hand-emits
+ * SINGLETON chunks — kyo's worst case; kyoStreamRange is kyo's own
+ * chunked source (`Stream.range`, 4096-element chunks), the lane a
+ * kyo user would write for this pipeline (kyo-fair-lanes).
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -70,5 +73,12 @@ class StreamOpsBenchmark {
         if i > 3 * N + 3 then Loop.done
         else Emit.value(Chunk(i)).andThen(Loop.continue(i + 1))
     .map((x: Int) => x * 2).filter((x: Int) => x % 3 == 0).take(N)
+      .runFold(0)((a: Int, v: Int) => a + v).eval
+
+  @Benchmark
+  def kyoStreamRange(): Int =
+    import _root_.kyo.*
+    Stream.range(0, 3 * N + 4)
+      .map((x: Int) => x * 2).filter((x: Int) => x % 3 == 0).take(N)
       .runFold(0)((a: Int, v: Int) => a + v).eval
 }
