@@ -1,0 +1,5 @@
+slug: pg-target-in-okay-pg
+branch: feature/pg-target-in-okay-pg
+worktree: ../okay-wt-pg-target-in-okay-pg
+claimed: 2026-09-02
+scope: user ask (round-two demo extraction) -- move PgTarget (a pure postgres:// connection URL parser) from okay-demo/ChatDemo.scala into okay-pg, where it belongs beside the driver it configures. Pure move, no behavior change.
