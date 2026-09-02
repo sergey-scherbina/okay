@@ -1,5 +1,27 @@
 # Changelog
 
+## pg-mtls — the client presents an identity; the TLS seam's last rung
+Completed: 2026-09-02
+Landed as 69b5f5d. `Tls.client` turns `clientCert` + `clientKey` into
+key managers through the same `contextOf` the server half uses, so
+the certificate is offered when the server sends CertificateRequest
+and nothing changes for a server that does not; a half identity
+(cert without key, key without cert) is refused by name; the key
+stays a Secret ref, inline PEM refused as before. Zero signature
+change — the fields rode in TlsConfig from day one. Proven live:
+`okay-pg/mtls-provision.sh` provisions the dockerized Postgres (a
+client CA, a cert with CN = the role `okay_mtls`, `ssl_ca_file`,
+`hostssl all okay_mtls all cert clientcert=verify-full` inserted
+before the scram rule — idempotent, and the first time the ssl
+provisioning is a script rather than prose); TestPgMtls logs the
+role in with the certificate and NO password and queries as itself,
+is refused by the server without it ("connection requires a valid
+client certificate"), and shows the password role still SCRAMs in
+with or without an identity offered. okay-tls gains the half-identity
+and full-identity unit tests. specs/tls.md box checked with a Results
+entry; the okay-pg module doc gains its TLS paragraph. Full matrix
+green (69 suites).
+
 ## audit-fixes — the 2026-09-02 master audit, everything found fixed
 Completed: 2026-09-02
 Landed as 5580283 (6 commits, AGENTS.md rule on top). The operator asked for an audit of

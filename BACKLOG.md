@@ -108,12 +108,6 @@
       cost until a consumer names the need; `(t).*` or row_to_json →
       Schema is the road meanwhile. Anonymous record ROW() stays text
       (genuinely unresolvable — no typrelid).
-- [ ] pg-mtls — client-certificate auth for the pg TLS path
-      (specs/tls.md mTLS rung, staged): TlsConfig already carries
-      clientCert/clientKey and PgTls threads Secrets, so wire the
-      key-manager side through Tls.client and prove it live against a
-      Postgres configured for clientcert=verify-full. The seam change
-      is already sized to zero-signature by tls.md.
 - [ ] pg-wire-typestate — PgSql's connection-phase graph as types
       (the pg half of wire-typestate; specs/typestate.md marks it
       CAUTIOUS — after Scram's phase objects proved the pattern, and

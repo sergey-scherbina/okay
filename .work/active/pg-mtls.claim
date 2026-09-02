@@ -1,5 +1,0 @@
-slug: pg-mtls
-branch: feature/pg-mtls
-worktree: ../okay-wt-pg-mtls
-claimed: 2026-09-02
-scope: okay-tls Tls.client builds key managers from TlsConfig.clientCert/clientKey (mTLS rung, zero-signature); live proof against dockerized Postgres with a dedicated okay_mtls user under hostssl … cert clientcert=verify-full. specs/tls.md, specs/sql.md.
