@@ -10,10 +10,10 @@ construction instead of a type test per value).
       type, the policy's Any crosses one checked door (accept), the
       run loop is GADT-typed; one stated claim left (a Within's body
       re-typed in the machine's row). See specs/condition.md.
-- [ ] cast-free-delim — Delim.scala (9): the segment stack
-      (`Seg.K(f.asInstanceOf[Any => Any])`, `Prompt[Any]`) — typed
-      segments, a Held-like carrier per prompt; keep the multi-prompt
-      semantics exactly (its suite is the spec).
+- [x-landed] cast-free-delim — landed: a typed chain Segs[F, A, Z],
+      the cut at a prompt through Same[Prompt]'s witness, Next(prog,
+      kont) between steps; two stated claims left (Push.body,
+      Capture.f). TestDelim unchanged.
 - [x-landed] cast-free-sim — landed: Chan[A]/Send[A]/Receive[A]/
       Close[A], the wait queues typed on the channel itself,
       perform[Y] by GADT; zero casts; traces unchanged by seed.

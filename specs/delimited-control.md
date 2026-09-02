@@ -166,3 +166,19 @@ also took 20% off the delimiter lane (33.8 to 25.4).
 - `control`/`shift0`/`prompt0` variants — the machine can express
   them (do not re-install the marker in the captured segment) if a
   use appears.
+
+## Cast-free (2026-09-02, cast-free-delim)
+The machine's continuation is a TYPED chain, `Segs[F, A, Z]`: from
+the current answer A to the run's answer Z, `K` chaining types
+through each Bind's continuation and `Mark` carrying its prompt —
+and so the answer type of the program under it. Cutting the chain at
+a prompt goes through `Same[Prompt]`'s witness (`q === p` gives the
+mark's type is the prompt's), so `reify`, `split` and the loop are
+typed by the chain and by GADT matching, and the state between steps
+is a typed pair `Next(prog, kont)`. Nine casts became the two claims
+the header always stated: a Push's body and a Capture's f are
+programs in this machine's row, erased at the operation because the
+row's other half F is not the operation's to name — re-typed at
+their two lines. One frame more per push (the K that carries the
+prompt's answer up to the op's), measured on DelimBenchmark (see the
+changelog). The suite is the spec: TestDelim unchanged.
