@@ -11,7 +11,7 @@ same machinery without losing throughput.
 
 ## Interface
 ```scala
-final class TRef[A](init: A)            // the cell: value + version, an AtomicReference
+final class TRef[A](init: A)            // the cell: an AtomicReference[Stamped[A]] — value + version
   def get: A                            // a plain read, outside any transaction
   def modify[B](f: A => (A, B)): B      // the single-cell transaction: ONE CAS
 
@@ -148,6 +148,17 @@ document.
   content; the handlers' remaining casts are the freer interpreter's
   erasure over `Tx[Any]`, the same shape every handler in the stack
   has. A/B: equal within noise.
+- **Typed end to end** (stm-typed-content, 2026-09-02, the operator:
+  "Owned too, for type safety"). An `Owned[A]` over an untyped
+  Stamped would be a phantom parameter, so the whole content is
+  typed: `Stamped[+A] { def value: A }`, `Slot[A]`, `Owned[A]`,
+  `AtomicReference[Stamped[A]]`; `TRef.get`/`modify` have no cast.
+  A user value says `extends TRef.Stamped[State] { def value =
+  this }` — one line, a self type argument, not an F-bound (the
+  earlier objection overstated it). What remains: one `@unchecked`
+  in `wrap` (a value that IS a Stamped inside a TRef[A] is a
+  Stamped[A] by contract, invisible through erasure) and the
+  interpreter's erasure casts over `Tx[Any]`.
 
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark

@@ -25,12 +25,11 @@ import scala.collection.mutable
 final class TRef[A](init: A) {
   import TRef.*
 
-  private[okay] val ref = AtomicReference[Stamped](wrap(init, 0L))
+  private[okay] val ref = AtomicReference[Stamped[A]](wrap(init, 0L))
   private[okay] val waiters = AtomicReference[List[Waiter]](Nil)
 
-  /** a plain read, outside any transaction — the one cast in the
-   * STM: Stamped.value is Any because a bare value's value is itself */
-  def get: A = ref.get.value.asInstanceOf[A]
+  /** a plain read, outside any transaction */
+  def get: A = ref.get.value
 
   /** the cell's version: moves by one at every install */
   def version: Long = ref.get.stamp
@@ -42,11 +41,11 @@ final class TRef[A](init: A) {
    * instructions long, never a park) */
   @tailrec def modify[B](f: A => (A, B)): B =
     ref.get match
-      case _: Owned => modify(f)   // a commit is installing; spin, never park
+      case _: Owned[?] => modify(f)   // a commit is installing; spin, never park
       case s =>
         // ONE path: the value (itself, or the Slot's), the stamp; a
         // Stamped answer is installed bare, any other gets a Slot
-        val a = s.value.asInstanceOf[A]
+        val a = s.value
         val (a2, b) = f(a)
         if a2.asInstanceOf[AnyRef] eq a.asInstanceOf[AnyRef] then b
         else if ref.compareAndSet(s, wrap(a2, s.stamp + 1)) then { if waiters.get ne Nil then wake(); b }
@@ -64,39 +63,41 @@ final class TRef[A](init: A) {
 }
 
 object TRef {
-  /** what a cell holds: a value that carries its own version. Extend
-   * it and the cell installs your value BARE; anything else is
-   * wrapped in a Slot, which is a Stamped too — so the cell's content
-   * is always one of these, and `value`/`stamp` read the same way for
-   * both. The cell STAMPS at install: a Stamped value belongs to one
-   * cell and one install — build a new one for every transition (an
-   * immutable case class does, through copy). A class, not a trait:
-   * the type test on the fast path is a primary-supers check, not an
-   * interface scan (measured, half the gap of the first cut) */
-  abstract class Stamped {
+  /** what a cell holds: a value of A that carries its own version.
+   * Extend it — `extends TRef.Stamped[Self] { def value = this }` —
+   * and the cell installs your value BARE; anything else is wrapped
+   * in a Slot, which is a Stamped too. So the cell's content is
+   * always a Stamped[A], typed end to end: `value` is an A, and
+   * TRef needs no cast. The cell STAMPS at install: a Stamped value
+   * belongs to one cell and one install — build a new one for every
+   * transition (an immutable case class does, through copy). A
+   * class, not a trait: the type test on the fast path is a
+   * primary-supers check, not an interface scan (measured, half the
+   * gap of the first cut) */
+  abstract class Stamped[+A] {
     private[okay] var stamp: Long = 0L
-    /** the value the cell holds: yourself, unless you are a Slot */
-    def value: Any = this
+    /** the value the cell holds: yourself, unless you are a wrapper */
+    def value: A
   }
 
-  /** the wrapper for values that are not Stamped themselves; typed
-   * for the reader — the cell holds it as Stamped and re-attaches A
-   * once, in valueOf (a generic Stamped would need an F-bound on
-   * every user value for nothing but this field) */
-  final class Slot[+A](override val value: A) extends Stamped
+  /** the wrapper for values that are not Stamped themselves */
+  final class Slot[+A](val value: A) extends Stamped[A]
 
-  /** a commit in flight owns the content it found; it IS a Stamped —
-   * the content's stamp and value, seen through it — so the cell has
-   * one type and only the places where ownership MEANS something
+  /** a commit in flight owns the content it found; it IS a Stamped[A]
+   * — the content's stamp and value, seen through it — so the cell
+   * has one type and only the places where ownership MEANS something
    * match on it */
-  private[okay] final class Owned(val inner: Stamped, val token: AnyRef) extends Stamped:
+  private[okay] final class Owned[+A](val inner: Stamped[A], val token: AnyRef) extends Stamped[A]:
     stamp = inner.stamp
-    override def value: Any = inner.value
+    def value: A = inner.value
 
   /** stamp and install-shape a USER value (never an existing Slot:
-   * wrap is only ever given what a transaction or modify produced) */
-  private[okay] def wrap[A](a: A, v: Long): Stamped = a match
-    case s: Stamped => s.stamp = v; s
+   * wrap is only ever given what a transaction or modify produced).
+   * The one @unchecked in the cell: a value that IS a Stamped inside
+   * a TRef[A] is a Stamped[A] by the contract above (its value is
+   * itself), which the type test cannot see through erasure */
+  private[okay] def wrap[A](a: A, v: Long): Stamped[A] = a match
+    case s: Stamped[A @unchecked] => s.stamp = v; s
     case other => val s = Slot[A](other); s.stamp = v; s
 
 
@@ -152,7 +153,7 @@ object Stm {
       while ok && i < reads.length do
         val (r, v) = reads(i)
         val c = r.ref.get
-        ok = !c.isInstanceOf[TRef.Owned] && c.stamp == v
+        ok = !c.isInstanceOf[TRef.Owned[?]] && c.stamp == v
         i += 1
       ok
   }
@@ -167,7 +168,7 @@ object Stm {
         case Some(a) => a
         case None =>
           val c = r.ref.get
-          if c.isInstanceOf[TRef.Owned] || !log.valid then throw Abort
+          if c.isInstanceOf[TRef.Owned[?]] || !log.valid then throw Abort
           log.reads += ((r, c.stamp))
           c.value
     case Tx.Write(r0, a) =>
@@ -195,14 +196,14 @@ object Stm {
   private def commit(log: Log): Boolean =
     if log.writes.isEmpty then return log.valid
     val token = new AnyRef
-    val owned = mutable.ArrayBuffer.empty[(TRef[Any], TRef.Stamped)]
+    val owned = mutable.ArrayBuffer.empty[(TRef[Any], TRef.Stamped[Any])]
     var ok = true
     val it = log.writes.keysIterator
     while ok && it.hasNext do
       val r = it.next()
       val c = r.ref.get
       c match
-        case _: TRef.Owned => ok = false
+        case _: TRef.Owned[?] => ok = false
         case s => if r.ref.compareAndSet(s, TRef.Owned(s, token)) then owned += ((r, s)) else ok = false
     if ok then
       var i = 0
@@ -210,7 +211,7 @@ object Stm {
         val (r, v) = log.reads(i)
         val c = r.ref.get
         ok = c.stamp == v && (c match
-          case o: TRef.Owned => o.token eq token
+          case o: TRef.Owned[?] => o.token eq token
           case _ => true)
         i += 1
     if ok then

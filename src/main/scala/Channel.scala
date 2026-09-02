@@ -39,7 +39,8 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
     receivers: Queue[End => Unit],
     senders: Queue[(A, Boolean => Unit)],
     open: Boolean,
-    failure: Throwable | Null) extends TRef.Stamped
+    failure: Throwable | Null) extends TRef.Stamped[State]:
+    def value: State = this
   // invariant: receivers waiting => buf empty and no sender waiting;
   // senders waiting => buf full (or capacity 0) and no receiver waiting
 
