@@ -643,12 +643,12 @@ named — the same "the dependency isn't here" discipline as `liveTest`
 for a missing local model, not a failure.
 
 Behavior:
-- [ ] one chat round through a REAL browser: typed text appears in
+- [x] one chat round through a REAL browser: typed text appears in
       the user bubble, the scripted reply streams in token by token
       and the bot bubble ends up carrying it — proving `fetch` +
       `ReadableStream` actually decodes the SSE frames in a real
       engine, not just in the JVM unit test's string-splitting
-- [ ] the test SKIPS, named, when the bundle is not linked or
+- [x] the test SKIPS, named, when the bundle is not linked or
       Playwright's browser is not installed — never a false failure
       for an absent local precondition
 

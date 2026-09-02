@@ -1143,6 +1143,28 @@ lazy val okayLangchain4jEmbed = (project in file("okay-langchain4j-embed"))
     ),
   )
 
+/**
+ * A browser-level proof of the chat demo (specs/demo-chat.md,
+ * demo-e2e-browser): one real chat round through a headless
+ * Chromium, driven by Playwright — the same reasoning as
+ * okayLangchain4jEmbed above. Playwright downloads its OWN browser
+ * on first use (no system browser needed anywhere), but that
+ * download is real, so this module is DELIBERATELY NOT in the root
+ * `.aggregate(...)` list and not a dependency of okayDemo's own test
+ * sourceset. Build/test it explicitly (the React bundle must be
+ * linked first): `sbt "okayChatWebJS/fastLinkJS"
+ * "okayDemoE2eBrowser/test"`.
+ */
+lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
+  .dependsOn(okayDemo)
+  .settings(
+    name := "okay-demo-e2e-browser",
+    libraryDependencies ++= Seq(
+      "com.microsoft.playwright" % "playwright" % "1.62.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
