@@ -31,7 +31,7 @@ object Remote {
           while line != null do
             Json.read[List[A]](line) match
               case Right(xs) =>
-                ch.send(okay.ChunkBuf.of(xs))
+                ch.send(okay.ChunkBuf.of(xs)): Unit
               case Left(_) => ()   // a damaged frame is dropped, the stream lives
             line = in.readLine()
           sock.close()

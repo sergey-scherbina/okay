@@ -20,10 +20,15 @@ final class Channel[A](@unused capacity: Int = Int.MaxValue) {
   private var open = true
   private var failure: Throwable | Null = null
 
-  /** enqueue, or hand straight to a waiting receiver */
-  def send(a: A): Unit =
-    if waiters.nonEmpty then waiters.dequeue()(Right(Some(a)))
-    else q.enqueue(a)
+  /** enqueue, or hand straight to a waiting receiver. False once
+   * closed: the element is dropped, nothing thrown — the JVM
+   * channel's contract, trivially exact on one thread */
+  def send(a: A): Boolean =
+    if !open then false
+    else
+      if waiters.nonEmpty then waiters.dequeue()(Right(Some(a)))
+      else q.enqueue(a)
+      true
 
   /** end the stream: the buffered elements still drain */
   def close(): Unit =
@@ -74,7 +79,7 @@ object Channel {
     inline def feed[U[_], H[+_]](u: U[A])(using St: Stream[U, H], HH: Handler[H]): Unit =
       try
         @tailrec def go(x: U[A]): Unit = St.uncons(x).runWith match
-          case Some((a, r)) => c.send(a); go(r)
+          case Some((a, r)) => c.send(a): Unit; go(r)
           case None => ()
         go(u)
       catch case e: Throwable => c.fail(e)

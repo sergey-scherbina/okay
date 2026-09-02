@@ -76,6 +76,24 @@ cross-build lands so nothing has to be broken later.
   cancels the sibling; `Fiber.joinAsync` is the effect-world join.
   race fails (with the later error) only when BOTH contenders fail —
   a lone failing contender still never wins.
+- **send after close is REFUSED, not thrown** (channel-send-closed,
+  2026-09-02): `send(a): Boolean` — true when the channel took the
+  element, false once closed (the element dropped). The first cut
+  had `send: Unit` with "do not send after close" as a comment:
+  nothing enforced it, and a late send was either delivered as an
+  ordinary element or lost without a trace. An exception was the
+  obvious enforcement and the wrong one: a producer that outlives
+  its stream is ordinary (a merge's second source, a remote feed
+  whose consumer went away), and unwinding its fiber for that turns
+  a fact into a fault. A Boolean is the fact — the producer reads it
+  and stops. Exact under the race on the parking platforms: `send`
+  checks open, puts, and re-checks; a put that landed after the
+  close is taken back (`remove`), and counts as accepted only if a
+  receiver already drained it — so "true" means received-or-buffered
+  -before-the-end, and "false" means nobody will ever see it. The
+  receiver's second poll after a closed check is the other half of
+  the same race (an element put BEFORE the close, seen after the
+  first poll). On JS one thread makes the check trivially exact.
 
 ## Open boxes
 - [x] an error channel in Await — done (see Decisions); callback par

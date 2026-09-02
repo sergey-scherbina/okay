@@ -1,15 +1,56 @@
 package okay
 
 import !.*
+import scala.jdk.CollectionConverters.*
 
 /** Channels: the concurrency primitive of streams — merge and buffer. */
 class TestChannel extends munit.FunSuite {
 
   test("a channel is a linear async stream: send, close, drain") {
     val c = Channel[Int]()
-    c.send(1); c.send(2); c.close()
+    assert(c.send(1)); assert(c.send(2)); c.close()
     assertEquals(c.toLazyList.toList, List(1, 2))
     assertEquals(c.receive(), None)
+  }
+
+  test("send after close is refused, not thrown: false, the element dropped, the end unchanged") {
+    val c = Channel[Int]()
+    assert(c.send(1)); c.close()
+    assert(!c.send(2), "a closed channel took an element")
+    assertEquals(c.receive(), Some(1))
+    assertEquals(c.receive(), None)
+    assert(!c.send(3))
+    assertEquals(c.receive(), None)
+  }
+
+  test("the send/close race is exact: every accepted send is received, every refused one is not") {
+    // a producer sends as fast as it can; the consumer drains; the
+    // main thread closes at an arbitrary moment. The invariant is
+    // the accounting: the receiver's set is EXACTLY the accepted set,
+    // whatever the interleaving — no element lost after a true, none
+    // delivered after a false
+    for round <- 1 to 200 do
+      val c = Channel[Int](capacity = 4)
+      val accepted = java.util.concurrent.ConcurrentHashMap.newKeySet[Int]()
+      val received = scala.collection.mutable.ArrayBuffer.empty[Int]
+      val producer = Thread.ofVirtual().start { () =>
+        var i = 0
+        var on = true
+        while on && i < 10000 do
+          if c.send(i) then accepted.add(i): Unit else on = false
+          i += 1
+      }
+      val consumer = Thread.ofVirtual().start { () =>
+        var go = true
+        while go do c.receive() match
+          case Some(v) => received += v
+          case None => go = false
+      }
+      Thread.sleep(0, (round % 7) * 100000)
+      c.close()
+      producer.join(); consumer.join()
+      assertEquals(received.toSet, accepted.asScala.toSet, s"round $round")
+      assertEquals(received.toList, received.toList.sorted, s"round $round: order")
   }
 
   test("merge combines two async streams by readiness") {

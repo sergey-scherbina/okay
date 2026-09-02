@@ -23,8 +23,21 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
   @volatile private var open = true
   @volatile private var failure: Throwable | Null = null
 
-  /** park until there is room, then enqueue; do not send after close */
-  def send(a: A): Unit = q.put(a)
+  /** park until there is room, then enqueue. Returns whether the
+   * channel TOOK the element: false once closed — the element is
+   * dropped, nothing is thrown (a producer that outlives the stream
+   * is ordinary in a merge or a remote feed; its send is a fact to
+   * read, not a fault to unwind). Exact under the race with close:
+   * a put that lands after the close is taken back out, and only if
+   * a receiver already had it does the send count as accepted. */
+  def send(a: A): Boolean =
+    if !open then false
+    else
+      q.put(a)
+      // closed while we parked or right after the put: the receiver
+      // may already have gone (None); take the element back unless
+      // someone drained it in between
+      open || !q.remove(a)
 
   /** end the stream: the buffered elements still drain */
   def close(): Unit = open = false
@@ -58,9 +71,13 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
     val a = q.poll()
     if a != null then Some(a)
     else if !open then
+      // the closed check raced a send: an element put BEFORE the
+      // close (put happens-before the volatile close, which
+      // happens-before our read) may have landed after our first
+      // poll — the second poll sees it. Buffered elements drain
+      // first; the failure is what the END of the stream is, so it
+      // surfaces only once they are gone
       val b = q.poll()
-      // the buffered elements drain first; the failure is what the
-      // END of the stream is, so it surfaces only once they are gone
       if b != null then Some(b)
       else if failure != null then throw failure.nn
       else None
@@ -90,7 +107,7 @@ object Channel {
     inline def feed[U[_], H[+_]](u: U[A])(using St: Stream[U, H], HH: Handler[H]): Unit =
       try
         @tailrec def go(x: U[A]): Unit = St.uncons(x).runWith match
-          case Some((a, t)) => c.send(a); go(t)
+          case Some((a, t)) => c.send(a): Unit; go(t)
           case None => ()
         go(u)
       catch case e: Throwable => c.fail(e)
@@ -109,7 +126,7 @@ object Channel {
     val c = Channel[A](capacity)
     val _ = summon[Scheduler].fork: () =>
       async:
-        try s.toLazyList.foreach(c.send)
+        try s.toLazyList.foreach(c.send(_): Unit)
         catch case e: Throwable => c.fail(e)
         finally c.close()
     c
