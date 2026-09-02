@@ -346,6 +346,67 @@ present never consults the policy at all.
   smaller box if named wanted; the identity primitive it would need
   (a verified session) is what this box delivers
 
+## The subscription gate (demo-subscription-gate — user ask)
+
+A profile shows and matches FREE for its first calendar month; after
+that, only a period actually PAID keeps it visible. Unpaid: gated —
+absent from search AND from matching (the reverse chain does not
+notify others of it, and it does not notify on others' new posts
+either) — but NEVER deleted, and every turn from a gated user carries
+a reminder. Paying takes effect IMMEDIATELY (same turn) and the
+reminder stops for that period. Demo layer only — `okay-match`'s
+`MatchStore` is untouched, the same doctrine as
+[[demo-deal-timeline]] and [[demo-market-live]]: state that the
+engine has no opinion about lives beside it, keyed by profile uuid.
+
+- `Period(y, m)` — a calendar-month key (`"2026-09"`); `Period.now()`
+  reads the wall clock, but every gate function TAKES a `now:
+  Period` (default `Period.now()`) so tests advance months without
+  waiting one — the same threading style `off` already uses for
+  provenance.
+- `joined: uuid -> Period` — the FIRST period a profile was ever
+  checked (anchored lazily, on first gate check — a profile the demo
+  never touched defaults to "just joined," never surprise-gated).
+  `paid: uuid -> Set[Period.key]` — periods actually paid.
+  `subscribed(uuid, now) = joined(uuid, now) == now || paid.contains(now.key)`.
+- **Enforcement, three sites** (all filter by `subscribed`, never
+  delete): the `find_candidates` tool wrap (covers both the
+  deterministic driver's search AND the LIVE model's tool calls —
+  one filter, two paths); the reverse chain's `waiting` search
+  (demo-chat-async) — AND the wrap skips firing the chain at all
+  when the ASSERTING profile itself is gated, so a gated post never
+  surfaces to anyone; `/market` and `/market.json` rendering
+  (demo-market-live).
+- **The reminder, two mechanisms for two paths**: the deterministic
+  driver (`scriptedAgent`) appends a suffix to its own reply,
+  computed AFTER the turn's dispatch (so a "pay" turn's own reply
+  never carries a now-stale reminder — `subscribed` is already true
+  by the time the suffix is computed); the LIVE path's
+  `facts_register` tool wrap attaches a `"notice"` field to its JSON
+  answer when gated, and one new sentence in `matchSystem` tells the
+  model to relay it, in the user's language — the SAME channel the
+  model already reads its provenance instruction from.
+- **Paying**: a new `subscription_pay` tool (profile) marks the
+  CURRENT period paid — demo-only, no real payment integration (the
+  same "the offline mode is not a mock, it IS the demo" spirit: a
+  stub that behaves like the real gate would). The driver phrases
+  are `оплатить`/`pay`, paired per [[demo-en-phrasebook]]'s doctrine.
+
+- [ ] a fresh profile is visible and matchable in its join month with
+      no reminder; advancing `now` one period with nothing paid gates
+      it from find_candidates, from the reverse chain (as poster AND
+      as the waiting side), and from /market and /market.json — and
+      every turn from that user now carries a reminder
+- [ ] `pay` (or `оплатить`) un-gates the SAME turn: the reply carries
+      no reminder, and an immediately following search/market check
+      shows the profile again
+- [ ] a gated profile is never REMOVED from the store — its facts and
+      profile row are readable throughout; only visibility/matching
+      are withheld
+- [ ] the LIVE path: `facts_register`'s JSON carries a `notice` field
+      exactly when gated, absent otherwise (a stub Transport/handler
+      test, not a live-model assertion)
+
 ## Out of scope
 - Persistence of conversations, multi-user rooms (okay-match's
   DURABLE store is one constructor swap for facts/deals/flows; the
@@ -356,6 +417,9 @@ present never consults the policy at all.
   this box's stated gaps — a demo's session, not a production one.
 - (Lifted 2026-09-01 by user ask: the React frontend landed as
   okay-chat-web.) The ui-wire browser leg stays its own demo.
+- Real payment processing — `subscription_pay` is a demo stub, same
+  as everything else in the offline driver; a real integration would
+  be its own gated backlog entry, not implied by this ask.
 
 ## Decisions
 - **SSE over WebSocket** — the reply is a one-direction stream per
