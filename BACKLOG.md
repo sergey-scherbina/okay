@@ -246,8 +246,11 @@ construction instead of a type test per value).
       the fixture, 2.0x faster than circe's own parser; end to end
       with the staged decoder, 2.3x faster than circe's fused
       parse+decode. specs/codecs.md, "Value parser".
-- [ ] staged-cbor — Cbor's algebra through the Staged generator (a
-      second emitter over the same Mirror walk) when a wire names it
+- [x] staged-cbor — landed: Staged.cbor[A], sharing the Reflect base
+      with Staged.json; Cbor.scala's Out/In made public so both the
+      fold and the staged generator call the same primitives. Encode
+      1.6x, decode 2.0x over the interpreted fold. Named by
+      okay-persist's own wire path. specs/codecs.md, "Staged CBOR".
 - [ ] staged-runtime — `scala.quoted.staging` for run-time schemas
       (ToolSpec from a model, Pg composites from the catalog);
       JVM-only opt-in module, compiler dependency; only on a named

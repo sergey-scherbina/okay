@@ -343,3 +343,72 @@ TEXT side.
   to amortize generating a parser for it.
 - Streaming / incremental fast-path parsing (the lossless CST already
   owns incremental reparse).
+
+## Staged CBOR (2026-09-02, staged-cbor)
+
+The Staged fold mode's second emitter, and the first one this spec's
+own words called for ("when a wire names it" — BACKLOG): CBOR sits on
+okay-persist's hot path (`Wire.scala`, `WireProtocol.scala`,
+`Typed.scala`, `Snapshots.scala` — every durable-log record, every
+wire frame, every snapshot), so it is named now.
+
+### Interface
+- `Staged.cbor[A]: CborCodec[A]` — `encode(a: A): Array[Byte]`,
+  `decode(bytes: Array[Byte]): Either[String, A]`.
+- `Cbor.Out`/`Cbor.In` are public: the item-level primitives (a
+  major-type header, an integer, a length-prefixed string or byte
+  string) both the interpreted `write`/`read` and the staged
+  generator call — one implementation of RFC 8949's varint encoding,
+  not two. `Cbor.encodeItem`/`decodeItem` are the fallback door: one
+  item at A's schema, on an already-open `Out`/`In`, for a node the
+  staged generator delegates.
+
+### Behavior
+- [x] agreement: staged and interpreted are one algebra — encode
+      item-for-item, decode Left-for-Left, over products, nested
+      products, Option/List/Vector, sums, an Iso field, a recursive
+      type, every wrong-shape refusal in the fold's own words
+      (TestStagedCbor, JVM/JS/Native)
+- [x] CBOR's own hazard, absent from JSON: a map carries no field
+      ORDER guarantee. Tested directly — a hand-built map with every
+      field reversed and a duplicate key decodes to the same value
+      both ways.
+- [x] the price (CodecBenchmark, compare, quiet box): encode 395 ns
+      vs 630 (1.6x), decode 601 vs 1188 (2.0x) — history.tsv
+      staged-cbor
+
+### Decisions
+- **The Reflect base, extracted** — `Staged.json`'s Mirror walk,
+  labels, and the `ok_T` shape-check machinery moved into an
+  abstract `Reflect` class; `JsonGen` and `CborGen` extend it and
+  differ only in `emit`/`read`. One reflection, two emitters.
+- **Cbor.scala refactored so there is ONE encoder** — `Out`/`In`
+  were private locals inside `put`/`get`; made public classes with
+  named methods (`integer`, `text`, `mapHeader`, `intItem`,
+  `textItem`, …) and `put`/`get` rewritten to call them, so the
+  staged generator's calls and the fold's calls are the identical
+  method, not a second reimplementation of CBOR's varint header.
+- **Decode reads a run-time-ordered map by NAME, not by position** —
+  the first cut assumed the wire's field order equals the Mirror's
+  (true only because both writers here happen to write that order),
+  and would have silently miscoded a document with reordered or
+  duplicate keys. Refuted before landing by a test built for exactly
+  that shape. `Staged.cborProduct` is the fix: a run-time helper
+  that reads `n` (key, value) pairs by name into indexed slots — one
+  per-field reader SPECIALIZED at compile time, so the win survives
+  — then fills absences by the fold's own rule. This is the fold's
+  own Map-then-fill algorithm, verbatim, with staged readers instead
+  of a Schema redispatch per field.
+- **Sums need no such fix** — a CBOR sum is always a one-entry map;
+  there is no order to get wrong.
+- **Lists need no such fix either** — CBOR arrays are positional by
+  the format itself; `Staged.cborElems`/`cborElemsV` walk the
+  declared count sequentially, matching the fold, which is also
+  sequential (no per-element skip-on-damage rule — CBOR has no
+  sentinel error item the way JSON's JErr is one, so a malformed
+  element is a real Left, not a skip).
+
+### Out of scope
+- Yaml/Xml through the same generator (no hot path names them yet).
+- Streaming CBOR (a value larger than fits comfortably in memory) —
+  the interpreted fold does not offer it either.
