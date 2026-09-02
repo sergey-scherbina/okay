@@ -138,6 +138,8 @@ lazy val okayKyo = (project in file("okay-kyo"))
     name := "okay-kyo",
     libraryDependencies ++= Seq(
       "io.getkyo" %% "kyo-core" % "0.16.2",
+      "io.getkyo" %% "kyo-direct" % "0.16.2",
+      "dev.zio" %% "zio-direct" % "1.0.0-RC7",
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
   )
@@ -1038,6 +1040,8 @@ lazy val compare = (project in file("compare"))
       "org.typelevel" %% "cats-effect" % "3.5.7",
       "dev.zio" %% "zio" % "2.1.14",
       "io.getkyo" %% "kyo-core" % "0.16.2",
+      "io.getkyo" %% "kyo-direct" % "0.16.2",
+      "dev.zio" %% "zio-direct" % "1.0.0-RC7",
       "org.atnos" %% "eff" % "7.0.4",
       "co.fs2" %% "fs2-core" % "3.10.2",
       "dev.zio" %% "zio-streams" % "2.1.14",

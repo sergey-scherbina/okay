@@ -2,7 +2,7 @@
 
 ## sql-schema-composite — Vector and nested case classes bind to Arr/Row
 Completed: 2026-09-02
-Landed as d92c2a5 (spec 1 commit before). The Schema layer closes the
+Landed as d7c8e0d (spec 1 commit before). The Schema layer closes the
 composite story: a case-class field typed Vector[T]/List[T] decodes
 from SqlValue.Arr and a nested case class from SqlValue.Row, both
 recursive (Vector[Option[Int]], Vector[Vector[Int]], Vector[Addr],
