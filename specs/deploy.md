@@ -66,6 +66,48 @@ scaffold is proven against, not the thing the scaffold is FOR.
       module's own Dockerfile; a second service needs only its own
       `Deploy` value — no file in okay-deploy changes
 
+## Bundling a companion build artifact (demo-package)
+
+The chat demo's React frontend (specs/demo-chat.md: `okayChatWeb`, a
+Scala.js cross-project) needed `sbt` and a node-style dev server side
+by side — the fat jar alone was not "one command run" because
+`Chat.appJs` (okay-chat) finds the linked bundle by walking a
+FILESYSTEM path relative to a repo checkout, which a shipped jar
+does not carry. Two designs were weighed: (a) an sbt
+`resourceGenerators` task copying the linked JS into `okayDemo`'s own
+classpath resources (a NEW idiom — grepped, nothing in this repo does
+that yet, and it would mean `okayDemo` depending on `okayChatWebJS`
+across the crossProject boundary just to run a copy), or (b) two
+generic fields on `Deploy` and one more `COPY` line in the ALREADY
+multi-stage Dockerfile. (b) needed no new sbt machinery and kept
+`Chat.appJs`'s existing `OKAY_CHAT_APP` env-var seam as the ONLY
+integration point — nothing in okay-chat changed.
+
+- **`Deploy.extraBuild: Vector[String]`** — extra sbt tasks run in
+  the build stage alongside `<module>/assembly` (one `sbt` line,
+  every task quoted); **`Deploy.extraCopy: Vector[(String, String)]`**
+  — extra `COPY --from=build` lines from the build stage into the
+  final image, each `(glob-in-build-stage, dest-in-final-image)`.
+  Both default to `Vector.empty`, so every existing `Deploy` value
+  renders byte-identical Dockerfiles to before — additive, no
+  drift on any deployment that does not use them.
+- **`DemoDeploy.spec`** sets `extraBuild =
+  Vector("okayChatWebJS/fastLinkJS")`, `extraCopy = Vector(
+  "okay-demo/web/.js/target/scala-*/*-fastopt/main.js" -> "/app/app.js")`,
+  and adds `Env("OKAY_CHAT_APP", "/app/app.js")` — the SAME env var
+  `Chat.appJs` already reads first, so the demo's own code needed no
+  change at all; the wiring lives entirely in the deploy value.
+
+Behavior:
+- [ ] `Deploy.extraBuild`/`extraCopy` empty (every prior `Deploy`
+      value) render byte-identical to before — no drift introduced
+- [ ] populated, they render as an added `sbt` task and an added
+      `COPY --from=build` line, in the build stage before `USER okay`
+- [ ] `DemoDeploy`'s rendering links the React bundle and copies it
+      to `/app/app.js`, with `OKAY_CHAT_APP` pointing at it — `docker
+      build` (or the sbt-image build stage alone) produces a jar that
+      serves the React page with no separate `node`/dev-server step
+
 ## Out of scope
 
 - a CI pipeline that runs any of this on a schedule/push — this
