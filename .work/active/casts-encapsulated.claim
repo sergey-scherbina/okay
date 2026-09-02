@@ -1,0 +1,5 @@
+slug: casts-encapsulated
+branch: feature/casts-encapsulated
+worktree: ../okay-wt-casts-encapsulated
+claimed: 2026-09-02
+scope: BACKLOG cast-free-effects + casts-encapsulated + direct-upcast-ascription: Effects.scala (the union split's one claim isolated, the cont cast by GADT), Pipe (unreachable as a throw), Eager/ChunkBuf/Same (each cast in one function with its reason), Direct (upcasts as ascriptions in the quotes). Small, mechanical, all core.
