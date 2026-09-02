@@ -177,3 +177,4 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-02			direct-competitors	156584			ns kyo defer (2.8x over its 56k) and 119485 zio-direct (0.64x — FASTER than hand foldLeft, better-shaped emission); both forbid var in blocks, okay alone allows the imperative form
 2026-09-02	d8ff4bb+stm	3.5	channel-offer-receive-1k	29.6	32.1	0.92	Channel on TRef.modify (Stamped state, no wrapper) vs master AtomicReference[State]; medians of 3 alternating A/B rounds, jmh -wi2 -w1 -i3 -r1 -f1, busy host
 2026-09-02	d8ff4bb+stm	3.3	channel-program-1k	65.8	65.4	1.01	same, send/receive as Async programs under runAsync; medians of 2 alternating rounds at -wi3 -i6
+2026-09-02	e86e8a8+slot-stamped	3.5	channel-offer-receive-1k	30.0	29.9	1.00	Slot extends Stamped (two content kinds) vs stm landing; medians of 3 alternating rounds, jmh -wi2 -w1 -i3 -r1 -f1

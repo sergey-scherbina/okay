@@ -122,6 +122,17 @@ document.
   commit. A Stamped value belongs to one cell and one install — an
   immutable case class rebuilt by `copy` on every transition, as the
   Channel's State is, satisfies that by construction.
+- **`Slot` IS a `Stamped`** (stm-slot-stamped, 2026-09-02, the
+  operator's suggestion). The cell's content is two kinds, not
+  three: a Stamped — the value itself, or a Slot wrapping any other
+  value, which is a Stamped too with `value` overridden — or the
+  Owned marker. `Stamped.value` defaults to `this`, so `valueOf` and
+  `versionOf` are a field read behind one Owned check and `modify`
+  has one path for every value type. The caveat that follows:
+  `wrap` stamps whatever Stamped it is given, so it must only ever
+  see what a transaction or modify PRODUCED — never an existing
+  Slot; the code has no such path and the comment says so. A/B
+  (three rounds): equal within noise on both channel paths.
 
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark
