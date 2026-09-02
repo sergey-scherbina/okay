@@ -1,5 +1,22 @@
 # Changelog
 
+## channel-send-closed — send after close is refused, not thrown
+Completed: 2026-09-02
+Landed as 5eaec72. The operator asked (after the receive() walk-
+through) for send-after-close to be an error, "but safer than an
+exception". `Channel.send` now returns Boolean: true when the channel
+took the element, false once closed (dropped, nothing thrown) — a
+producer that outlives its stream reads the fact and stops instead of
+having its fiber unwound. Exact under the send/close race on JVM and
+Native: check open, put, re-check; a put that landed after the close
+is taken back, and counts as accepted only if a receiver already had
+it. JS keeps the same surface. Callers (merge, buffer, Remote.listen)
+ascribe the result. Tests: refusal after close; a 200-round race
+(virtual-thread producer, consumer, close at an arbitrary moment) with
+the accounting invariant received == accepted, in order; the cross
+suite checks the refusal on every platform. Decision recorded in
+specs/cross-platform-async.md. Full gate 69/69 green.
+
 ## bench-direct — the direct syntax priced, ours and the apt competitors
 Completed: 2026-09-02
 DirectBenchmark (compare) + the 1b table in benchmarks.md: each

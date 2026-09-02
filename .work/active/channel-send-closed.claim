@@ -1,5 +1,0 @@
-slug: channel-send-closed
-branch: feature/channel-send-closed
-worktree: ../okay-wt-channel-send-closed
-claimed: 2026-09-02
-scope: Channel.send after close is refused, not thrown: send returns Boolean (accepted / refused-and-dropped), exact under the send/close race on JVM (put then re-check, remove on loss); JS the same surface. Race test. specs/cross-platform-async.md.
