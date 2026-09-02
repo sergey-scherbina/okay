@@ -69,7 +69,7 @@ object Transports {
           if n == size then buf else java.util.Arrays.copyOf(buf, n))
       }).flatMap {
         case null => pure(())
-        case c: Chunk[Byte] @unchecked =>
+        case c =>
           effect[F, Unit](Writer(c)).flatMap(_ => go)
       }
 

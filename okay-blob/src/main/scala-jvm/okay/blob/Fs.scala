@@ -91,7 +91,7 @@ final class Fs(root: Path, chunkSize: Int = 64 * 1024) extends Blob {
         else ArraySeq.unsafeWrapArray(if n == buf.length then buf else buf.take(n))
       }).flatMap {
         case null => pure(Right(()))
-        case c: Chunk[Byte] @unchecked =>
+        case c =>
           effect[F, Chunk[Byte]](c).flatMap(_ => stream(in, remaining - c.length))
       }
 

@@ -57,7 +57,7 @@ object Transports {
         }: js.Function1[Web.Response, Unit])
           .`catch`({ (e: Any) =>
             k(Left(js.JavaScriptException(e))); ()
-          }: js.Function1[Any, Unit | js.Thenable[Unit]])
+          }: js.Function1[Any, Unit | js.Thenable[Unit]]): Unit
         () => ()
       }
 
@@ -75,7 +75,7 @@ object Transports {
         () => ()
       }).flatMap {
         case null => pure(())
-        case c: Chunk[Byte] @unchecked =>
+        case c =>
           effect[F, Unit](Writer(c)).flatMap(_ => go)
       }
 

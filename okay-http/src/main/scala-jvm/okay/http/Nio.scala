@@ -67,7 +67,7 @@ object Nio {
             scala.collection.immutable.ArraySeq.unsafeWrapArray(out)
         }).flatMap {
           case null => pure(())
-          case c: Chunk[Byte] @unchecked =>
+          case c =>
             effect[F, Unit](Writer(c)).flatMap(_ => go)
         }
 

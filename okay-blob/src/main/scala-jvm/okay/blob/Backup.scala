@@ -73,7 +73,7 @@ object Backup {
           else ArraySeq.unsafeWrapArray(if n == buf.length then buf else buf.take(n))
         }).flatMap {
           case null => pure(okay.Chunks.emptyChunk)
-          case c: Chunk[Byte] @unchecked => effect[F, Chunk[Byte]](c).flatMap(_ => go)
+          case c => effect[F, Chunk[Byte]](c).flatMap(_ => go)
         }
       go
     }
