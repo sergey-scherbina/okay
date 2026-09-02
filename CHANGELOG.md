@@ -1,5 +1,25 @@
 # Changelog
 
+## demo-embeddings-attr — real embeddings for the registry's search-before-create
+Completed: 2026-09-02
+Landed as ce0f8d5. `ChatDemo.marketOf` gains `embed` and
+`proposeThreshold` (defaults unchanged: `Vectors.hashing()`, `0.85f`
+— every existing call site sees no behavior change). New sibling
+module `okay-demo-embed` (depends on okayDemo + okayLangchain4jEmbed,
+kept out of the root aggregate like okay-demo-e2e-browser — a real
+~90MB ONNX model download): `TestDemoEmbed` proves the demo's
+registry drifts into two attributes for "разработчик"/"программист"
+under the default hashing embedder, and collides into one under the
+real embedder recalibrated to its own MEASURED similarity (~0.52
+cosine for this pair — well under the 0.85 default chosen for
+hashing's coarser fallback, matching `TestLangchain4jEmbed`'s own
+`>0.5f` bound rather than an invented number). Also closed a
+pre-existing docs gap found along the way: `okay-langchain4j-embed`
+had shipped with no `docs/modules/*.md` at all; written now,
+alongside `okay-demo-embed`'s own, both indexed in docs/README.md.
+specs/demo-chat.md new section. Matrix 71 suites, zero failures (one
+confirmed pre-existing live-model flake).
+
 ## skill-state — SKILL.state (arxiv 2608.26263) as one more Compact policy
 Completed: 2026-09-02
 Landed as 21fac3b (2 commits). The operator asked whether the paper's

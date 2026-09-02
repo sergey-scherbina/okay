@@ -383,17 +383,6 @@ construction instead of a type test per value).
       ships. Kept OUT of okay-demo's test sourceset and the root
       aggregate (a real ~450MB one-time browser download); invoke
       via `sbt "okayChatWebJS/fastLinkJS" "okayDemoE2eBrowser/test"`.
-- [ ] demo-embeddings-attr — search-before-create for attributes via
-      embeddings instead of substring match (twin of rag-langchain4j;
-      an embedding store as Retrieve handler): "разработчик" and
-      "программист" should collide BEFORE the registry drifts.
-      UNBLOCKED 2026-09-02: okay-langchain4j-embed's
-      Langchain4jEmbed.embed(model) is the exact String => Embedding
-      MemoryMatch's constructor takes — proven colliding on this
-      SAME pair in its own test suite. Deliberately not wired into
-      okay-demo yet (kept off the root build — a real ~90MB model
-      download); wiring it into ChatDemo's MemoryMatch(embed = ...)
-      is what closes this box.
 - [x] demo-package — one-command run: bundle the React build into
       the jar's static assets (+ optionally a Dockerfile); today the
       demo needs sbt and a node dev server side by side.

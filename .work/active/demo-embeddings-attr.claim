@@ -1,5 +1,0 @@
-slug: demo-embeddings-attr
-branch: feature/demo-embeddings-attr
-worktree: ../okay-wt-demo-embeddings-attr
-claimed: 2026-09-02
-scope: ChatDemo.marketOf gains an embed parameter (default Vectors.hashing(), unchanged for the ambient market); a new sibling module okay-demo-embed (depends on okayDemo + okayLangchain4jEmbed, kept out of the root aggregate like okay-demo-e2e-browser) proves the real embedder wired into MemoryMatch/SqlMatch's propose collides "разработчик"/"программист" before the registry drifts, contrasted with hashing's registry drift. specs/demo-chat.md.
