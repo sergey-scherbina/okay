@@ -1,5 +1,0 @@
-slug: okay-admin-module
-branch: feature/okay-admin-module
-worktree: ../okay-wt-okay-admin-module
-claimed: 2026-09-02
-scope: user ask (extraction plan, second of three) -- a reusable okay-admin sbt module: adminRoutes(verify, policy, replay, onReplayed) built on Secure.granted/Policy.scoped("admin"). Fixes a real gap: the demo's POST /admin/replay is unauthenticated today. Highest-risk of the three extractions (first authenticated route this repo ships) -- land deliberately. specs/admin.md.

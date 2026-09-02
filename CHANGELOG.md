@@ -1,5 +1,34 @@
 # Changelog
 
+## okay-admin — protected admin routes, fixing the demo's unauthenticated /admin/replay
+Completed: 2026-09-02
+Landed as 1d29269 (spec) + 38ea057 (impl). Second of the three reusable-
+module extractions from the demo (user ask). New JVM-only sbt module
+okay-admin (depends on okaySecurity.jvm): Admin.routes(verify, policy =
+Policy.scoped("admin"), realm)(replay, onReplayed) delegates to
+Secure.granted — the same 401/403 ladder every other protected route in
+this stack already uses; Admin.Issuer is a minimal in-process ES256
+credential (same shape as okay.demo.Login) so a consumer has something
+to test/use the route with. Wired into ChatDemo.scala: routes composes
+core.orElse(Admin.routes(...)(...)), replacing the old inline
+UNAUTHENTICATED /admin/replay case — a real gap named while planning
+the extraction, now fixed rather than moved verbatim. main() prints the
+admin token to console at startup; /market's replay button now sends a
+Bearer token via fetch instead of a plain form POST. 6 new unit tests
+plus one integration test through the real demo route. Suite 27-28/28
+clean except the known rotating LIVE-model-endpoint flake.
+
+Caught and fixed before push: a checkbox-flipping script (specs/admin.md)
+assumed unchecked "- [ ]" boxes but the file was accidentally written
+already-checked; an unguarded `rfind` returning -1 on every iteration
+silently duplicated the file's content 30-fold (121 -> 3841 lines) via
+Python's negative-index slicing. Caught by an unusually large diff stat
+on a routine merge, before the corrupted commit was pushed; fixed by
+restoring the spec commit's clean content and amending, no history
+rewrite reached origin. Lesson for future scripted text edits: verify
+line count / diff size after ANY find/rfind-based rewrite, and never
+assume a checklist's starting state without checking it.
+
 ## cast-free-small — round two closes: 97 → 36
 Completed: 2026-09-02
 Landed as 3666b6b. The last lane of the second cast round, one small
