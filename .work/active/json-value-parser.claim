@@ -1,0 +1,5 @@
+slug: json-value-parser
+branch: feature/json-value-parser
+worktree: ../okay-wt-json-value-parser
+claimed: 2026-09-02
+scope: a fast VALUE parser beside the lossless CST one (BACKLOG okay-codec json-value-parser): Json.parse measured 14.6us vs circe 0.55 on a 150-byte object. Design: a strict recursive-descent parser over the String producing the same Json values; on ANY doubt it yields to the lossless parser, so damaged input gets exactly the CST's answer. Agreement-tested against Json.parse on a corpus. Files: okay-codec Json.scala (additive), TestJsonFast, CodecBenchmark rows, specs/codecs.md.
