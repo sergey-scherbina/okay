@@ -285,20 +285,46 @@ class TestChatDemo extends munit.FunSuite {
       assert(asked.contains("спросил") && asked.contains("3"), asked.take(300))
       val ask1 = readUntil(d1, "сделка")
       val ask2 = readUntil(d2, "сделка")
-      readUntil(d3, "сделка")
+      val ask3 = readUntil(d3, "сделка")
       def dealNo(s: String): String = "сделка (\\d+)".r.findFirstMatchIn(s).get.group(1)
+      val (n1, n2, n3) = (dealNo(ask1), dealNo(ask2), dealNo(ask3))
 
       // dev1 declines; the boss hears it
-      turn(s"/match отказываюсь ${dealNo(ask1)} email dev1@jobs")
+      turn(s"/match отказываюсь $n1 email dev1@jobs")
       readUntil(boss, "отказался")
       // dev2 accepts: the boss gets the CONTACT (the Matched unlock),
       // dev3 gets the stand-down (withdrawn), and cannot accept anymore
-      turn(s"/match берусь ${dealNo(ask2)} email dev2@jobs")
+      turn(s"/match берусь $n2 email dev2@jobs")
       val won = readUntil(boss, "согласился")
       assert(won.contains("dev2@jobs"), s"the unlocked contact must surface: $won")
       readUntil(d3, "отбой")   // the unchosen-anymore hears the stand-down
       // (that a withdrawn ask cannot be accepted is the engine's
       // guarantee, proven in TestMatch — not re-proven over SSE)
+
+      // DEAL TIMELINE: each deal's own append-only event vector,
+      // through the real /deals/<n>.json route
+      def timeline(n: String): String = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/deals/$n.json"))
+          .GET().build(), HttpResponse.BodyHandlers.ofString()).body()
+      val t1 = timeline(n1)
+      assert(t1.contains("\"state\":\"Asked\"") && t1.contains("\"state\":\"Declined\""), t1)
+      val t2 = timeline(n2)
+      assert(t2.contains("\"state\":\"Asked\"") && t2.contains("\"state\":\"Accepted\""), t2)
+      val t3 = timeline(n3)
+      assert(t3.contains("\"state\":\"Asked\"") && t3.contains("\"state\":\"Withdrawn\""), t3)
+      // provenance rides every event
+      assert(t2.contains("\"chat\":\"web-demo\"") && t2.contains("\"offset\":"), t2)
+      // the HTML page renders the same story
+      val html = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/deals/$n2")).GET().build(),
+        HttpResponse.BodyHandlers.ofString()).body()
+      assert(html.contains("Asked") && html.contains("Accepted"), html.take(400))
+      // an unknown deal is 404, not an empty timeline
+      val missing = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/deals/999999.json"))
+          .GET().build(), HttpResponse.BodyHandlers.ofString())
+      assertEquals(missing.statusCode(), 404)
+
       Seq(boss, d1, d2, d3).foreach(_.close())
     }
   }
@@ -306,7 +332,7 @@ class TestChatDemo extends munit.FunSuite {
   test("FLOWS in the demo: a transition's notifications reach the role inboxes, filled") {
     val store = okay.matching.MemoryMatch()
     given okay.matching.MatchStore = store
-    val t = ChatDemo.chainedTable
+    val t = ChatDemo.chainedTable()
     import okay.codec.Json
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("t", name, Json.JObj(args.toVector)))

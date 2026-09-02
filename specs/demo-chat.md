@@ -168,13 +168,13 @@ turn that caused it — and the span of what was asked/answered): the
 Asked → Accepted/Declined arc, or Asked → Withdrawn when the round's
 other asks stand down.
 
-- [ ] a full round (ask two, one declines, one accepts) through the
+- [x] a full round (ask two, one declines, one accepts) through the
       real route: /deals/<n>.json for each shows its own event
       vector (Asked; Asked, Declined; Asked, Accepted) with
       provenance on every event
-- [ ] the withdrawn stand-down carries its own event (Asked,
+- [x] the withdrawn stand-down carries its own event (Asked,
       Withdrawn) — the "someone else was chosen" story on the record
-- [ ] a deal that never existed answers 404, not an empty timeline
+- [x] a deal that never existed answers 404, not an empty timeline
 
 ## Flows in the demo (demo-flows)
 The generic scenarios reach the chat: flow_advance is wrapped like

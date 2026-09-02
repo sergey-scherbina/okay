@@ -276,8 +276,42 @@ object ChatDemo {
   def marketChanged(kind: String): Unit =
     marketFeed.forEach(c => c.offer(kind): Unit)
 
-  /** the tool table with the reverse chain wrapped around asserts */
-  def chainedTable(using store: MatchStore): Map[String, okay.agent.ToolCall => String] =
+  // ---- the deal timeline (demo-deal-timeline) -------------------------
+  //
+  // Deal (okay-match) carries only its CURRENT state — no history.
+  // This is the demo layer making the negotiation visible without
+  // touching the engine: an append-only per-deal event log, each
+  // event carrying the provenance of the turn that caused it (the
+  // ChatLog offset threaded through as `off`, the same one
+  // facts_assert already gets) — the same story `supersede` tells
+  // for facts, told here for deals.
+
+  final case class DealEvent(state: String, by: String, prov: okay.matching.Provenance)
+
+  private val dealEvents =
+    java.util.concurrent.ConcurrentHashMap[Long, java.util.concurrent.CopyOnWriteArrayList[DealEvent]]()
+
+  private def dealEvent(deal: Long, e: DealEvent): Unit =
+    dealEvents.computeIfAbsent(deal, _ => java.util.concurrent.CopyOnWriteArrayList())
+      .add(e): Unit
+
+  /** the current state plus the append-only history, for /deals/<n>;
+   * None when the deal id was never asked (the "Asked" event names
+   * the seeker, which is how the live Deal is found — the store has
+   * no deal-by-id lookup, only dealsFor(profile)) */
+  def dealTimeline(deal: Long)(using store: MatchStore): Option[(okay.matching.Deal, Vector[DealEvent])] =
+    for
+      events <- Option(dealEvents.get(deal))
+      es = { import scala.jdk.CollectionConverters.*; events.asScala.toVector }
+      asked <- es.find(_.state == "Asked")
+      d <- store.dealsFor(okay.matching.ProfileId(asked.by)).find(_.id.n == deal)
+    yield (d, es)
+
+  /** the tool table with the reverse chain wrapped around asserts;
+   * `off` is the ChatLog offset of the turn driving these calls
+   * (default: a fresh counter tick, for callers with no log turn) */
+  def chainedTable(off: Long = turnNo.incrementAndGet())
+                   (using store: MatchStore): Map[String, okay.agent.ToolCall => String] =
     val base = MatchTools.table(store)
     base.updated("flow_advance", { c =>
       val out = base("flow_advance")(c)
@@ -313,6 +347,10 @@ object ChatDemo {
       val dealN = Json.parse(out) match
         case JObj(fs) => fs.collectFirst { case ("deal", JNum(n)) => n.toLong }.getOrElse(0L)
         case _ => 0L
+      val seeker = c.args match
+        case JObj(fs) => fs.collectFirst { case ("seeker", JStr(x)) => x }.getOrElse("")
+        case _ => ""
+      dealEvent(dealN, DealEvent("Asked", seeker, okay.matching.Provenance("web-demo", off, what)))
       emailOf(store, okay.matching.ProfileId(provider)).foreach(m =>
         inbox(m).offer(s"заказ: $what (сделка $dealN) — ответьте: берусь $dealN / отказываюсь $dealN"))
       out
@@ -327,8 +365,18 @@ object ChatDemo {
             case JObj(a) => a.collectFirst { case ("by", JStr(x)) => x }.getOrElse("")
             case _ => ""
           // find the deal to hand the policy (dealsFor by the responder)
-          store.dealsFor(okay.matching.ProfileId(byId))
-            .find(_.id.n == n).foreach(onResponded(_))
+          val resolved = store.dealsFor(okay.matching.ProfileId(byId)).find(_.id.n == n)
+          resolved.foreach { d =>
+            dealEvent(n, DealEvent(d.state.toString, byId,
+              okay.matching.Provenance("web-demo", off, d.what)))
+            onResponded(d)
+            // WITHDRAWN stand-downs land as their own event too
+            if d.state == okay.matching.DealState.Accepted then
+              store.dealsFor(d.seeker)
+                .filter(o => o.state == okay.matching.DealState.Withdrawn && o.what == d.what)
+                .foreach(o => dealEvent(o.id.n,
+                  DealEvent("Withdrawn", "", okay.matching.Provenance("web-demo", off, o.what))))
+          }
         case _ => ()
       out
     }).updated("facts_assert", { c =>
@@ -356,7 +404,7 @@ object ChatDemo {
     val system = matchSystem + off.fold("")(n =>
       "\nProvenance for THIS turn: chat \"web-demo\", offset " + n + " — pass exactly these to facts_assert.")
     given okay.Handler[AgentModel] = modelH
-    given okay.Handler[Tool] = Handlers.tools(chainedTable)
+    given okay.Handler[Tool] = Handlers.tools(chainedTable(off.getOrElse(turnNo.incrementAndGet())))
     val ctx = Handlers.context(Compact.all)._2
     given okay.Handler[AgentContext] = ctx
     given r1: okay.Handler[AgentModel + Async] = okay.Handler.union[AgentModel, Async]
@@ -427,7 +475,7 @@ object ChatDemo {
   def scriptedAgent(text: String, off: Long = turnNo.incrementAndGet())
                    (using store: MatchStore): String =
     import okay.codec.Json.*
-    val t = chainedTable
+    val t = chainedTable(off)
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
     val email = resolveEmail(text, intakePolicy)
@@ -744,6 +792,39 @@ object ChatDemo {
       pure(Response(200, Seq("content-type" -> "application/json"),
         Http.one(Json.print(JObj(Vector(
           "offers" -> rows(Side.Offer), "needs" -> rows(Side.Need)))).getBytes(UTF_8))))
+
+    case r if r.method == okay.http.Method.Get && r.url.startsWith("/deals/") && r.url.endsWith(".json") =>
+      val n = r.url.stripPrefix("/deals/").stripSuffix(".json").toLongOption.getOrElse(-1L)
+      dealTimeline(n) match
+        case None => pure(Response(404, Seq("content-type" -> "application/json"),
+          Http.one("""{"error":"no such deal"}""".getBytes(UTF_8))))
+        case Some((d, events)) =>
+          val json = obj(
+            "deal" -> JNum(n.toDouble), "what" -> JStr(d.what), "state" -> JStr(d.state.toString),
+            "events" -> JArr(events.map(e => obj(
+              "state" -> JStr(e.state),
+              "chat" -> JStr(e.prov.chat), "offset" -> JNum(e.prov.offset.toDouble),
+              "span" -> JStr(e.prov.span)))))
+          pure(Response(200, Seq("content-type" -> "application/json"),
+            Http.one(Json.print(json).getBytes(UTF_8))))
+
+    case r if r.method == okay.http.Method.Get && r.url.startsWith("/deals/") =>
+      val n = r.url.stripPrefix("/deals/").toLongOption.getOrElse(-1L)
+      dealTimeline(n) match
+        case None => pure(Response(404, Seq("content-type" -> "text/html; charset=utf-8"),
+          Http.one("<!doctype html><meta charset=\"utf-8\"><p>нет такой сделки</p>".getBytes(UTF_8))))
+        case Some((d, events)) =>
+          val rows = events.map(e =>
+            s"<li><b>${e.state}</b> — ${e.prov.span} <span style=\"color:#7a869c;font-size:.85em\">(chat ${e.prov.chat}, offset ${e.prov.offset})</span></li>")
+            .mkString
+          pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
+            Http.one(s"""<!doctype html><meta charset="utf-8"><title>deal $n</title>
+              |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
+              |h2{color:#7a869c}</style>
+              |<h2>сделка $n: ${d.what} — ${d.state}</h2>
+              |<ul>$rows</ul>
+              |<p><a style="color:#6b9fff" href="/market">→ /market</a></p>
+              |""".stripMargin.getBytes(UTF_8))))
 
     case r if r.method == okay.http.Method.Post && r.url == "/admin/replay" =>
       // log-first in one click: the projection is dropped and rebuilt
