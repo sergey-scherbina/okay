@@ -1,5 +1,39 @@
 # Changelog
 
+## okay-chat — a streaming LLM chat component, extracted from the demo
+Completed: 2026-09-02
+Landed as 96e61b7 (spec) + c63af13 (impl). Third and last of the three
+reusable-module extractions from the demo (user ask) — the demo now
+composes okay-subscription, okay-admin, okay-chat, and okay-match
+purely via `orElse` route tables instead of holding their logic
+inline. New JVM-only sbt module okay-chat (depends on okayLlm.jvm,
+okayHttp.jvm, okayConf.jvm): the model seam (Model/scripted/live/
+local/modeName/model), Cut-guarded SSE framing (sse/obj/reply — sse/
+obj made PUBLIC since the demo's other streams, /events/market and
+/events/<email>, reuse the exact same convention), body parsing
+(fieldOf/messagesOf), appJs, and chatRoute(m, budget, turnOverride)
+for POST /chat.
+
+turnOverride's type widened during wiring from the original BACKLOG
+sketch (Seq[Anthropic.Message] => ...) to (Request, Seq[Anthropic.
+Message]) => Option[Source[Chunk[Byte]]] — found while actually
+composing the demo's /match branch, which needs the bearer token off
+the request's headers (a verified session identifies the speaker),
+not obtainable from parsed messages alone. The override answers an
+already-SSE-framed Source, preserving the demo's own token-splitting
+shape for marketplace answers untouched; None falls through to the
+plain path. 8 new unit tests in the module; the demo's own
+TestChatDemo suite unchanged in substance (call sites qualified only)
+still proves /match, deals, flows, subscriptions, sessions and the
+live paths end to end through the composed route table. Suite
+27-28/28 clean over three runs, the one red the known rotating
+LIVE-model-endpoint flake — unrelated pre-existing infra noise.
+
+Landed carefully after the okay-admin spec-corruption incident earlier
+this session: diff sizes and spec line counts verified sane both
+before and after the merge, no scripted find/rfind edits used this
+time (a plain single Edit replace_all for the checkbox flip instead).
+
 ## direct-tail-fusion — the direct macro's while loop matches its hand-written flatMap chain
 Completed: 2026-09-02
 Landed as 935014d (merge; c4315d8 the kafka+mongo munitTimeout
