@@ -1,5 +1,17 @@
 # Changelog
 
+## stm-slot-generic — Slot[+A], for the reader
+Completed: 2026-09-02
+Landed as 2f6d73c. The operator asked why Stamped and Slot were not
+generic. Slot now is — `Slot[+A](value: A)`, a covariant override
+of `Stamped.value` — so the wrapper's type documents itself; the
+cell still holds AnyRef and re-attaches A once in valueOf, so no
+cast moved. Stamped stays unparameterized on purpose: a typed
+`value = this` needs an F-bound (`State extends Stamped[State]`) on
+every user value for nothing but that field. Recorded in
+specs/stm.md. Gate green in three chunks; rebased over a sibling's
+claim-only commit before the merge.
+
 ## stm-slot-stamped — the cell's content is two kinds, not three
 Completed: 2026-09-02
 Landed as 0577ab3. The operator's suggestion after stm: `Slot
