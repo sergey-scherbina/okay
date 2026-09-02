@@ -12,13 +12,13 @@ import scala.collection.mutable
  * every handler takes for a transaction that is one `Modify`; the
  * Channel's state lives in one of these.
  *
- * What the reference holds is one of three things: a `Stamped` value
- * (the version lives IN the value, no wrapper — the Channel's State
- * is one, so its fast path allocates nothing beyond the state it
- * would build anyway), a `Slot` wrapping any other value with its
- * version, or an `Owned` marker that a commit in flight has CAS'd
- * over the content — the fast path retries on it, another commit
- * fails its CAS on it, and nothing waits.
+ * What the reference holds is one of two things: a `Stamped` — the
+ * value itself when it carries its own version (the Channel's State
+ * does, so its fast path allocates nothing beyond the state it would
+ * build anyway) or a `Slot` wrapping any other value, which is a
+ * Stamped too — or an `Owned` marker that a commit in flight has
+ * CAS'd over the content: the fast path retries on it, another
+ * commit fails its CAS on it, and nothing waits.
  */
 final class TRef[A](init: A) {
   import TRef.*
@@ -38,25 +38,17 @@ final class TRef[A](init: A) {
    * CAS; content owned by a commit in progress is retried (a few
    * instructions long, never a park) */
   @tailrec def modify[B](f: A => (A, B)): B =
-    val cur = ref.get
-    cur match
+    ref.get match
       case s: Stamped =>
-        // the bare path: one type test, no unwrapping, no wrapper built
-        val (a2, b) = f(s.asInstanceOf[A])
-        if a2.asInstanceOf[AnyRef] eq s then b
-        else
-          val next = a2 match
-            case n: Stamped => n.stamp = s.stamp + 1; n
-            case other => Slot(other, s.stamp + 1)
-          if ref.compareAndSet(cur, next) then { if waiters.get ne Nil then wake(); b }
-          else modify(f)
-      case _: Owned => modify(f)
-      case _ =>
-        val a = valueOf[A](cur)
+        // ONE path: a type test, the value (itself, or the Slot's),
+        // the stamp; a Stamped answer is installed bare, any other
+        // gets a Slot
+        val a = s.value.asInstanceOf[A]
         val (a2, b) = f(a)
         if a2.asInstanceOf[AnyRef] eq a.asInstanceOf[AnyRef] then b
-        else if ref.compareAndSet(cur, wrap(a2, versionOf(cur) + 1)) then { wake(); b }
+        else if ref.compareAndSet(s, wrap(a2, s.stamp + 1)) then { if waiters.get ne Nil then wake(); b }
         else modify(f)
+      case _ => modify(f)   // Owned: a commit is installing; spin, never park
 
   @tailrec private[okay] def wake(): Unit =
     val ws = waiters.get
@@ -70,31 +62,40 @@ final class TRef[A](init: A) {
 }
 
 object TRef {
-  /** a value that carries its own version, so a cell holding it
-   * installs it bare. The cell STAMPS it at install: a Stamped value
-   * belongs to one cell and one install — build a new one for every
-   * transition (an immutable case class does, through copy) */
-  abstract class Stamped { private[okay] var stamp: Long = 0L }   // a class, not a trait: the type test is a primary-supers check, not an interface scan
+  /** what a cell holds: a value that carries its own version. Extend
+   * it and the cell installs your value BARE; anything else is
+   * wrapped in a Slot, which is a Stamped too — so the cell's content
+   * is always one of these, and `value`/`stamp` read the same way for
+   * both. The cell STAMPS at install: a Stamped value belongs to one
+   * cell and one install — build a new one for every transition (an
+   * immutable case class does, through copy). A class, not a trait:
+   * the type test on the fast path is a primary-supers check, not an
+   * interface scan (measured, half the gap of the first cut) */
+  abstract class Stamped {
+    private[okay] var stamp: Long = 0L
+    /** the value the cell holds: yourself, unless you are a Slot */
+    def value: Any = this
+  }
 
-  /** any other value, with its version */
-  final class Slot[+A](val value: A, val version: Long)
+  /** the wrapper for values that are not Stamped themselves */
+  final class Slot(override val value: Any) extends Stamped
 
   /** a commit in flight owns the content it found */
-  private[okay] final class Owned(val inner: AnyRef, val token: AnyRef)
+  private[okay] final class Owned(val inner: Stamped, val token: AnyRef)
 
-  private[okay] def wrap(a: Any, v: Long): AnyRef = a match
+  /** stamp and install-shape a USER value (never an existing Slot:
+   * wrap is only ever given what a transaction or modify produced) */
+  private[okay] def wrap(a: Any, v: Long): Stamped = a match
     case s: Stamped => s.stamp = v; s
-    case other => Slot(other, v)
+    case other => val s = Slot(other); s.stamp = v; s
 
   private[okay] def valueOf[A](c: AnyRef): A = c match
-    case s: Slot[?] => s.value.asInstanceOf[A]
-    case o: Owned => valueOf[A](o.inner)
-    case s => s.asInstanceOf[A]
+    case o: Owned => o.inner.value.asInstanceOf[A]
+    case s => s.asInstanceOf[Stamped].value.asInstanceOf[A]
 
   private[okay] def versionOf(c: AnyRef): Long = c match
-    case s: Slot[?] => s.version
-    case s: Stamped => s.stamp
-    case o: Owned => versionOf(o.inner)
+    case o: Owned => o.inner.stamp
+    case s => s.asInstanceOf[Stamped].stamp
 
   /** fires at most once, however many cells it watches */
   final class Waiter(k: () => Unit):
@@ -197,8 +198,9 @@ object Stm {
     while ok && it.hasNext do
       val r = it.next()
       val c = r.ref.get
-      if c.isInstanceOf[TRef.Owned] || !r.ref.compareAndSet(c, TRef.Owned(c, token)) then ok = false
-      else owned += ((r, c))
+      c match
+        case s: TRef.Stamped if r.ref.compareAndSet(s, TRef.Owned(s, token)) => owned += ((r, c))
+        case _ => ok = false
     if ok then
       var i = 0
       while ok && i < log.reads.length do
