@@ -44,6 +44,15 @@ class TestLive extends munit.FunSuite {
 
   def transport = Transports.http()
 
+  /** the gateway going away MID-test is the environment, not the
+   * code: an I/O failure anywhere in the cause chain skips the test,
+   * named (okay.llm.Live); a wrong answer still fails */
+  def liveTest(name: String)(body: => Any): Unit = test(name) {
+    try body
+    catch case e: Throwable if okay.llm.Live.wireDropped(e) =>
+      assume(false, s"the endpoint went away mid-test (${okay.llm.Live.root(e).getMessage}) — skipped")
+  }
+
   def run[A](prog: A ! Agent)(model: Handler[Model], tool: Handler[Tool],
                               ctx: Handler[Context]): A =
     given Handler[Model] = model
@@ -55,7 +64,7 @@ class TestLive extends munit.FunSuite {
     given rowAll: Handler[Agent] = okay.Handler.union[Tool, Context + (Model + Async)]
     prog.runWith
 
-  test("live: a completion comes back through our own decoder") {
+  liveTest("live: a completion comes back through our own decoder") {
     assume(reachable, s"no OpenAI-compatible endpoint at $url")
     val body = OpenAi.request(model,
       Seq(OpenAi.message("user", "Reply with exactly: ok")),
@@ -65,7 +74,7 @@ class TestLive extends munit.FunSuite {
     assert(text.nonEmpty, s"the model answered nothing: $r")
   }
 
-  test("live: the agent loop runs against a real model") {
+  liveTest("live: the agent loop runs against a real model") {
     assume(reachable, s"no OpenAI-compatible endpoint at $url")
     val provider = Provider.openAi(transport, key, model, url, maxTokens = Some(64))
     val (state, ctx) = Handlers.context(Compact.all)
@@ -88,7 +97,7 @@ class TestLive extends munit.FunSuite {
       sent += body
       inner.post(url, headers, body)
 
-  test("live: compaction keeps a long conversation inside its budget") {
+  liveTest("live: compaction keeps a long conversation inside its budget") {
     assume(reachable, s"no OpenAI-compatible endpoint at $url")
     val sent = mutable.Buffer[String]()
     val provider = Provider.openAi(watched(sent), key, model, url, maxTokens = Some(32))
@@ -117,7 +126,7 @@ class TestLive extends munit.FunSuite {
     assert(sent.last != sent.head)
   }
 
-  test("live: how close is the local token estimate to the provider's count?") {
+  liveTest("live: how close is the local token estimate to the provider's count?") {
     assume(reachable, s"no OpenAI-compatible endpoint at $url")
     // a prompt long enough that a constant overhead does not dominate
     val prompt = ("The quick brown fox jumps over the lazy dog. " * 12).trim
@@ -161,7 +170,7 @@ class TestLive extends munit.FunSuite {
       c.getResponseCode == 200
     catch case _: Throwable => false
 
-  test("live: the same agent runs over the Anthropic protocol too") {
+  liveTest("live: the same agent runs over the Anthropic protocol too") {
     assume(anthropicReachable, s"no Anthropic-shaped endpoint at $anthropicUrl")
     val provider = Provider.anthropic(transport, key, model, anthropicUrl, maxTokens = 64)
     val (_, ctx) = Handlers.context(Compact.all)
@@ -176,7 +185,7 @@ class TestLive extends munit.FunSuite {
   case class Weather(city: String)
   given Schema[Weather] = Schema.derived
 
-  test("live: a tool call round-trips, if the model supports tools") {
+  liveTest("live: a tool call round-trips, if the model supports tools") {
     assume(reachable, s"no OpenAI-compatible endpoint at $url")
     val spec = ToolSpec[Weather]("get_weather", "the current weather in a city")
     val provider = Provider.openAi(transport, key, model, url, maxTokens = Some(128))

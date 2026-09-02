@@ -26,6 +26,19 @@ class TestChatDemo extends munit.FunSuite {
     val first = attempt
     if ok(first) then first else attempt
 
+  /** a LIVE test needs the local model gateway; without it the test
+   * is not a failure, it is not applicable — and a gateway that is
+   * up at the probe and drops the connection mid-turn (a shared
+   * gateway under load: "HTTP/1.1 header parser received no bytes")
+   * is absent in the same sense. Anything from the wire — an
+   * IOException anywhere in the cause chain — SKIPS the test, named;
+   * a judgment failure still fails */
+  def liveTest(name: String)(body: => Any): Unit = test(name) {
+    try body
+    catch case e: Throwable if okay.llm.Live.wireDropped(e) =>
+      assume(false, s"the local model gateway went away mid-test (${okay.llm.Live.root(e).getMessage}) — skipped")
+  }
+
   /** the offline environment (demo-ctx-wiring): a wire that PROVES
    * offline never reaches it, and secrets holding no model config */
   val deadWire: okay.llm.Transport = (url, _, _) =>
@@ -96,7 +109,7 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
-  test("LIVE: the local model on :8089 streams through the same route") {
+  liveTest("LIVE: the local model on :8089 streams through the same route") {
     val base = sys.env.getOrElse("OKAY_CHAT_BASE", "http://127.0.0.1:8089")
     val up = try {
       client.send(HttpRequest.newBuilder(URI.create(s"$base/v1/models")).GET().build(),
@@ -131,7 +144,7 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
-  test("LIVE MATCH: the local model drives the okay-match tools end to end") {
+  liveTest("LIVE MATCH: the local model drives the okay-match tools end to end") {
     val base = sys.env.getOrElse("OKAY_CHAT_BASE", "http://127.0.0.1:8089")
     val up = try {
       client.send(HttpRequest.newBuilder(URI.create(s"$base/v1/models")).GET().build(),
@@ -152,7 +165,7 @@ class TestChatDemo extends munit.FunSuite {
       s"the agent neither stored the offer nor asked for what it lacked: $answer")
   }
 
-  test("LIVE UNGATED: the model itself decides — an offer stores, small talk does not") {
+  liveTest("LIVE UNGATED: the model itself decides — an offer stores, small talk does not") {
     val base = sys.env.getOrElse("OKAY_CHAT_BASE", "http://127.0.0.1:8089")
     val up = try {
       client.send(HttpRequest.newBuilder(URI.create(s"$base/v1/models")).GET().build(),
@@ -179,7 +192,7 @@ class TestChatDemo extends munit.FunSuite {
     assertEquals(after, before, "small talk must not touch the marketplace")
   }
 
-  test("LIVE SEEKER: 'найди мне кого-нибудь' finds the stored provider across two turns") {
+  liveTest("LIVE SEEKER: 'найди мне кого-нибудь' finds the stored provider across two turns") {
     val base = sys.env.getOrElse("OKAY_CHAT_BASE", "http://127.0.0.1:8089")
     val up = try {
       client.send(HttpRequest.newBuilder(URI.create(s"$base/v1/models")).GET().build(),

@@ -93,10 +93,14 @@ force, all already practiced, none previously written down:
   across ui/jetty/netty/chatweb before the lint existed.
 - `sbt test` runs everything, JVM + JS + Native. The core suite forks
   (see build.sbt for why); `.jvmopts` gives sbt 6g.
-- Live suites (`TestLive` in okay-agent and okay-mcp) hit a local
-  model endpoint and npx respectively; they SKIP where those are
-  absent, so a red TestLive usually means the endpoint died, not the
-  code.
+- Live suites (`TestLive` in okay-agent and okay-mcp, the LIVE tests
+  in okay-demo's TestChatDemo) hit a local model endpoint and npx
+  respectively; they SKIP where those are absent — and since
+  live-skip-on-gateway-loss (2026-09-02) also when the endpoint
+  drops the connection MID-test (an IOException anywhere in the
+  cause chain: `okay.llm.Live.wireDropped`, the `liveTest` helper).
+  A red live test therefore means a wrong ANSWER, not a dead
+  endpoint; write new live tests with `liveTest`, not `test`.
 - Benchmarks: the `performance` skill is the protocol — measure
   before optimizing, record in
   `src/jmh/history.tsv` (TABS, eight columns — literal `\t` has
