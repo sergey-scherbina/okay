@@ -1,0 +1,5 @@
+slug: cast-free-agent
+branch: feature/cast-free-agent
+worktree: ../okay-wt-cast-free-agent
+claimed: 2026-09-02
+scope: the second cast round, agent module (Provider, Grounded, Handlers, Memory, Large, Durable, ToolSpec — 10 casts): interpreters typed by GADT matching, snapshots typed, tool answers typed; a Schema kernel for a product's typed defaults.
