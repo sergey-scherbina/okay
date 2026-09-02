@@ -5,17 +5,20 @@ import scala.annotation.implicitNotFound
 
 /**
  * The flat block (specs/direct-macro.md): `direct[F] { ... m.reflect ... }`
- * rewrites a plain block into the Cont binds of Monadic
- * (specs/monadic-reflection.md), so monadic values read as plain
- * values with no for-comprehension. The macro adds SYNTAX only —
- * every emitted program is one the user could write with
- * reflect/reify by hand; multi-shot, short-circuit and the stack
- * discipline of the reflected monad are inherited, not
- * re-implemented. The block is scoped: marks under a lambda (other
- * than the whitelisted loop combinators) or a by-name argument, and
- * a `finally` around marks, are compile errors with the workaround
- * named — refusing that corner is the entire difference between
- * these few hundred lines and a general CPS transformer.
+ * rewrites a plain block into its monad's own flatMap binds, so
+ * monadic values read as plain values with no for-comprehension.
+ * The macro adds SYNTAX only — every emitted program is one the
+ * user could write with flatMap by hand; multi-shot, short-circuit
+ * and the stack discipline of the monad are inherited, not
+ * re-implemented. (The first cut compiled to the Cont binds of
+ * Monadic reflection instead; bench-direct priced that layer at
+ * 3.3x over the hand-written chain and the target retired —
+ * direct-flatmap-emission in the spec's Decisions.) The block is
+ * scoped: marks under a lambda (other than the whitelisted loop
+ * combinators) or a by-name argument, and a `finally` around marks,
+ * are compile errors with the workaround named — refusing that
+ * corner is the entire difference between these few hundred lines
+ * and a general CPS transformer.
  */
 object Direct:
 
@@ -85,7 +88,7 @@ object Direct:
     _ => throw new IllegalStateException(
       "Direct auto-coloring escaped macro rewriting — this call belongs inside direct[F] { ... }")
 
-  /** rewrite the block: marks become Monadic binds, the result is
+  /** rewrite the block: marks become flatMap binds, the result is
    * F[A]. `direct[F] { block }` names only the monad (the partial
    * type application trick); with an expected type both infer:
    * `val p: Int ! W = direct { ... }`. The block is a context
@@ -120,12 +123,31 @@ object Direct:
           "cannot be rewritten by direct's v1", other.pos)
     pipeline[F, A](topBody, M)
 
-  /** the compilation pipeline at ONE answer type — recursive for
-   * try bodies (direct-try): a try's body is its own sub-block,
-   * reified at the try's type, then reflected as one mark */
+  /** the compilation pipeline at ONE monad — recursive for try
+   * bodies (direct-try): a try's body is its own sub-block, compiled
+   * at the try's type, then bound as one mark. The emission target
+   * is plain `F[T]` terms (direct-flatmap-emission): a bind is a
+   * Monad.flatMap call, the pure tail is M.pure — exactly the
+   * program a careful hand would write, with no Cont layer between
+   * the block and its monad. */
   private def pipeline[F[_] : Type, A: Type](using q: Quotes)(topLevelBody: q.reflect.Term,
-                                             M: Expr[Monad[F]]): Expr[F[A]] =
+                                             M0: Expr[Monad[F]]): Expr[F[A]] =
     import q.reflect.*
+    // ONE instance for the whole block: the summoned Monad
+    // expression is hoisted to a val, so every emitted bind shares
+    // it — the given for Free is a parameterized class the splice
+    // would otherwise re-evaluate per bind. Built by hand (Symbol/
+    // Block, not a quote) so the term stays in THIS Quotes context.
+    val mmSym = Symbol.newVal(Symbol.spliceOwner, "mm$direct",
+      TypeRepr.of[Monad[F]], Flags.EmptyFlags, Symbol.noSymbol)
+    val mmVal = ValDef(mmSym, Some(M0.asTerm.changeOwner(mmSym)))
+    val body = compileAll[F, A](topLevelBody, Ref(mmSym).asExprOf[Monad[F]])
+    Block(List(mmVal), body.asTerm).asExprOf[F[A]]
+
+  private def compileAll[F[_] : Type, A: Type](using q: Quotes)(topLevelBody0: q.reflect.Term,
+                                               M: Expr[Monad[F]]): Expr[F[A]] =
+    import q.reflect.*
+    val topLevelBody = topLevelBody0.changeOwner(Symbol.spliceOwner)
 
     val directSym = TypeRepr.of[Direct.type].typeSymbol
     val markSyms = (directSym.methodMember("reflect") ++ directSym.methodMember("!?")
@@ -178,26 +200,17 @@ object Direct:
           "bind the marked value to a val before it, or use a for-comprehension over Monadic",
         t.pos)
 
-    type CA = Cont[A, F[A], F[A]]
-
     /**
-     * Compile a term to either a pure term (no marks) or an
-     * Expr[Cont[T, F[A], F[A]]] for the term's type T. Pure children
-     * that precede an effectful child are NOT reordered: the ANF
-     * hoisting below binds children left to right.
+     * Compile a term to either a pure term (no marks) or an F[elem]
+     * term. Eff CARRIES its element type: F is invariant in general,
+     * so the value type travels with the term instead of being
+     * parsed back out of it. Pure children that precede an effectful
+     * child are NOT reordered: the ANF hoisting below binds children
+     * left to right.
      */
     enum Out:
       case Pure(t: Term)
-      case Eff(c: Term) // : Cont[T, F[A], F[A]] where T = the source term's type
-
-    def contOf(tpe: TypeRepr): TypeRepr =
-      TypeRepr.of[Cont].appliedTo(List(tpe.widen, TypeRepr.of[F[A]], TypeRepr.of[F[A]]))
-
-    /** Cont.Pure(t) at t's type */
-    def pureCont(t: Term): Term =
-      tpe2(t.tpe.widen) { [T] => (_: Type[T]) ?=>
-        '{ Cont.Pure[T, F[A]](${ t.asExprOf[T] }) }.asTerm
-      }
+      case Eff(f: Term, elem: TypeRepr) // f : F[elem]
 
     /** run f with the TypeRepr as a Type given */
     def tpe2[R](tpe: TypeRepr)(f: [T] => Type[T] ?=> R): R =
@@ -205,43 +218,39 @@ object Direct:
         case '[t] => f[t]
       end match
 
-    /** m.reflect over Monadic at element type `elem`:
-     * Expr[Cont[elem, F[A], F[A]]] — m must already be F[elem] */
-    def reflectTerm(m: Term, elem: TypeRepr): Term =
-      tpe2(elem.widen) { [T] => (_: Type[T]) ?=>
-        '{
-          import okay.Monadic.{reflect as reflected}
-          given Monad[F] = $M
-          ${ m.asExprOf[F[T]] }.reflected[A]
-        }.asTerm
+    /** M.pure(t) at t's type */
+    def pureF(t: Term): Term =
+      tpe2(t.tpe.widen) { [T] => (tT: Type[T]) ?=>
+        '{ $M.pure[T](${ t.asExprOf[T] }) }.asTerm
       }
 
     /**
-     * ONE mark, dispatched by type: an F[elem] of this block
-     * reflects; an operation of this block's row is injected into
-     * the row program first, then reflects. Anything else is refused
+     * ONE mark, dispatched by type: an F[elem] of this block IS
+     * already the term to bind; an operation of this block's row is
+     * injected into the row program first. Anything else is refused
      * with both possibilities named.
      */
     def markTerm(m: Term, elem: TypeRepr, at: Position): Term =
       val fT = TypeRepr.of[F].appliedTo(elem.widen)
-      if m.tpe <:< fT then reflectTerm(m, elem)
+      if m.tpe <:< fT then m
       else rowOf match
         case Some(row) if m.tpe <:< row.appliedTo(elem.widen) =>
-          reflectTerm(injectTerm(m, elem, row), elem)
+          injectTerm(m, elem, row)
         case _ =>
           report.errorAndAbort(
             s"the marked value has type ${m.tpe.show} — neither this block's ${fT.show}" +
               rowOf.fold("")(r => s" nor an operation of its row ${r.show}"), at)
 
-    /** cont.flatMap(v => body(v)) — body built from a reference to v */
-    def bind(cont: Term, vTpe: TypeRepr, resTpe: TypeRepr)(body: Term => Term): Term =
-      tpe2(vTpe.widen) { [T] => (_: Type[T]) ?=>
-        tpe2(resTpe.widen) { [B] => (_: Type[B]) ?=>
-          val c = cont.asExprOf[Cont[T, F[A], F[A]]]
+    /** fa.flatMap(v => body(v)) — body built from a reference to v,
+     * returning an F[resTpe] term */
+    def bind(fa: Term, vTpe: TypeRepr, resTpe: TypeRepr)(body: Term => Term): Term =
+      tpe2(vTpe.widen) { [T] => (tT: Type[T]) ?=>
+        tpe2(resTpe.widen) { [B] => (tB: Type[B]) ?=>
+          val fa2 = fa.asExprOf[F[T]]
           '{
-            $c.flatMap[B, F[A]]((v: T) =>
+            $M.flatMap[T]($fa2)[B]((v: T) =>
               ${ body('v.asTerm).changeOwner(Symbol.spliceOwner)
-                   .asExprOf[Cont[B, F[A], F[A]]] })
+                   .asExprOf[F[B]] })
           }.asTerm
         }
       }
@@ -264,89 +273,107 @@ object Direct:
       then refuse(xs, "as a loop receiver with no .iterator")
       Select.unique(xs, "iterator")
 
-    /** a term in STATEMENT position, as a Cont: marks compile, and a
-     * markless value of the block's own effectful type RUNS — the
-     * do-notation reading, so `for t <- xs do Writer(t)` tells
-     * instead of silently building and dropping the op */
-    def statementCont(t: Term): Term =
+    /** a term in STATEMENT position: marks compile, and a markless
+     * value of the block's own effectful type RUNS — the do-notation
+     * reading, so `for t <- xs do Writer(t)` tells instead of
+     * silently building and dropping the op */
+    def statementF(t: Term): Out =
       compile(t) match
-        case Out.Eff(c) => c
+        case e: Out.Eff => e
         case Out.Pure(p) =>
           runnableElem(p) match
-            case Some(el) => markTerm(p, el, t.pos)
-            case None => pureCont(p)
+            case Some(el) => Out.Eff(markTerm(p, el, t.pos), el)
+            case None => Out.Pure(p)
 
-    /** the value type a Cont term carries */
-    def contValue(c: Term): TypeRepr = c.tpe.widen.dealias match
-      case AppliedType(_, List(v, _, _)) => v
-      case other => report.errorAndAbort(s"not a Cont: ${other.show}")
-
-    /** compile the loop body at the emitted binder h, with statement
-     * semantics, erased to Cont[Unit, ...] (foreach drops values) */
-    def loopBody(param: ValDef, lbody: Term)(h: Term): Term =
-      val c = statementCont(subst(lbody, param.symbol, h))
-        .changeOwner(Symbol.spliceOwner)
-      tpe2(contValue(c)) { [V] => (_: Type[V]) ?=>
-        '{
-          ${ c.asExprOf[Cont[V, F[A], F[A]]] }
-            .flatMap[Unit, F[A]](_ => Cont.Pure[Unit, F[A]](()))
-        }.asTerm
+    /** the compiled term at exactly F[tpe] — a no-op when the types
+     * already agree; a real fmap when a branch narrows (F need not
+     * be covariant, so ascription cannot widen it) */
+    def asFAt(o: Out, tpe: TypeRepr): Term =
+      tpe2(tpe.widen) { [T] => (tT: Type[T]) ?=>
+        o match
+          case Out.Pure(p) => '{ $M.pure[T](${ p.asExprOf[T] }) }.asTerm
+          case Out.Eff(f, e) =>
+            if e.widen =:= tpe.widen then f
+            else tpe2(e.widen) { [V] => (tV: Type[V]) ?=>
+              // V <:< tpe was the reason we are here — the cast is
+              // an erased no-op the abstract types cannot spell
+              '{ $M.fmap[V, T](${ f.asExprOf[F[V]] }, (x: V) => x.asInstanceOf[T]) }.asTerm
+            }
       }
 
-    /** compile the yield body at the emitted binder h (values kept —
-     * no statement semantics in a yield) */
-    def yieldBody(param: ValDef, lbody: Term)(h: Term): Term =
-      asCont(compile(subst(lbody, param.symbol, h)))
-        .changeOwner(Symbol.spliceOwner)
+    def asF(o: Out): Term = o match
+      case Out.Eff(f, _) => f
+      case Out.Pure(p) => pureF(p)
 
     /** for x <- xs do body — run per element, in order; the loop
      * recurses over an immutable, LAZY LazyList so multi-shot re-entry
      * is sound and an unbounded receiver is only forced as far as the
-     * monad drives it, and through flatMap so Bind spill keeps it
-     * stack-safe */
+     * monad drives it; a lazy F defers the recursive call inside its
+     * own flatMap, exactly as a hand-written loop would */
+    /** the value type a loop BODY compiles at — computable from the
+     * types alone, so the outer quote can name it BEFORE the body is
+     * compiled against the emitted binder (a nested quote inside the
+     * splice referencing an outer-bound type param does not pickle) */
+    def bodyElemOf(lbody: Term): TypeRepr =
+      if hasMark(lbody) then lbody.tpe.widen
+      else runnableElemT(lbody.tpe).getOrElse(lbody.tpe.widen)
+
     def foreachLoop(xs: Term, param: ValDef, lbody: Term): Term =
-      tpe2(param.tpt.tpe.widen) { [T] => (_: Type[T]) ?=>
-        '{
-          val items: LazyList[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.to(LazyList)
-          def loop(rest: LazyList[T]): Cont[Unit, F[A], F[A]] = rest match
-            case h #:: tl =>
-              ${ loopBody(param, lbody)('h.asTerm).asExprOf[Cont[Unit, F[A], F[A]]] }
-                .flatMap[Unit, F[A]](_ => loop(tl))
-            case _ => Cont.Pure[Unit, F[A]](())
-          loop(items)
-        }.asTerm
+      tpe2(param.tpt.tpe.widen) { [T] => (tT: Type[T]) ?=>
+        val bodyElem = bodyElemOf(lbody)
+        tpe2(bodyElem.widen) { [V] => (tV: Type[V]) ?=>
+          '{
+            val items: LazyList[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.to(LazyList)
+            def loop(rest: LazyList[T]): F[Unit] = rest match
+              case h #:: tl =>
+                $M.flatMap[V](${
+                  asFAt(statementF(subst(lbody, param.symbol, 'h.asTerm)), bodyElem)
+                    .changeOwner(Symbol.spliceOwner).asExprOf[F[V]]
+                })[Unit]((_: V) => loop(tl))
+              case _ => $M.pure(())
+            loop(items)
+          }.asTerm
+        }
       }
 
     /** for x <- xs yield body — the traverse shape; results come out
-     * as a List, accepted where the node's type allows it */
+     * as a List, accepted where the node's type allows it (the loop
+     * is emitted AT the node's type, so an invariant F needs no
+     * widening after the fact) */
     def mapLoop(t: Term, xs: Term, param: ValDef, lbody: Term): Term =
-      tpe2(param.tpt.tpe.widen) { [T] => (_: Type[T]) ?=>
-        tpe2(lbody.tpe.widen) { [U] => (_: Type[U]) ?=>
+      tpe2(param.tpt.tpe.widen) { [T] => (tT: Type[T]) ?=>
+        tpe2(lbody.tpe.widen) { [U] => (tU: Type[U]) ?=>
           if !(TypeRepr.of[List[U]] <:< t.tpe.widen) then
             refuse(t, s"in a for-yield whose collection type ${t.tpe.widen.show} cannot hold a List " +
               "(v1 yields a List; .toList the receiver or collect explicitly)")
-          '{
-            val items: LazyList[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.to(LazyList)
-            def loop(rest: LazyList[T], acc: List[U]): Cont[List[U], F[A], F[A]] = rest match
-              case h #:: tl =>
-                ${ yieldBody(param, lbody)('h.asTerm).asExprOf[Cont[U, F[A], F[A]]] }
-                  .flatMap[List[U], F[A]](b => loop(tl, b :: acc))
-              case _ => Cont.Pure[List[U], F[A]](acc.reverse)
-            loop(items, Nil)
-          }.asTerm
+          val uRepr = lbody.tpe.widen
+          tpe2(t.tpe.widen) { [W] => (tW: Type[W]) ?=>
+            '{
+              val items: LazyList[T] = ${ iteratorOf(xs).asExprOf[Iterator[T]] }.to(LazyList)
+              def loop(rest: LazyList[T], acc: List[U]): F[W] = rest match
+                case h #:: tl =>
+                  $M.flatMap[U](${
+                    asFAt(compile(subst(lbody, param.symbol, 'h.asTerm)), uRepr)
+                      .changeOwner(Symbol.spliceOwner).asExprOf[F[U]]
+                  })[W]((b: U) => loop(tl, b :: acc))
+                case _ => $M.pure[W](acc.reverse.asInstanceOf[W]) // List[U] <:< W checked above
+              loop(items, Nil)
+            }.asTerm
+          }
         }
       }
 
     /** the loop shapes, receiver hoisted first if it is marked */
     def hofLoop(t: Term, xs: Term, nm: String, param: ValDef, lbody: Term): Out =
+      val loopElem = if nm == "foreach" then TypeRepr.of[Unit] else t.tpe.widen
       def emit(xsPure: Term): Term = nm match
         case "foreach" => foreachLoop(xsPure, param, lbody)
         case "map" => mapLoop(t, xsPure, param, lbody)
       if hasMark(xs) then
         compile(xs) match
-          case Out.Eff(c) => Out.Eff(bind(c, xs.tpe, t.tpe)(v => emit(v)))
-          case Out.Pure(p) => Out.Eff(emit(p))
-      else Out.Eff(emit(xs))
+          case Out.Eff(c, e) => Out.Eff(bind(c, e, loopElem)(v => emit(v)), loopElem)
+          case Out.Pure(p) => Out.Eff(emit(p), loopElem)
+      else Out.Eff(emit(xs), loopElem)
 
     /** replace references to `sym` with `ref` */
     def subst(t: Term, sym: Symbol, ref: Term): Term =
@@ -362,9 +389,9 @@ object Direct:
       asMark(t) match
         case Some(m) =>
           compile(m) match
-            case Out.Pure(pm) => Out.Eff(markTerm(pm, t.tpe, t.pos))
-            case Out.Eff(cm) => // marks inside the marked value: bind, then mark
-              Out.Eff(bind(cm, m.tpe, t.tpe)(v => markTerm(v, t.tpe, t.pos)))
+            case Out.Pure(pm) => Out.Eff(markTerm(pm, t.tpe, t.pos), t.tpe.widen)
+            case Out.Eff(cm, ce) => // marks inside the marked value: bind, then mark
+              Out.Eff(bind(cm, ce, t.tpe)(v => markTerm(v, t.tpe, t.pos)), t.tpe.widen)
         case None =>
           if hasMark(t) then compileMarked(t)
           else t match
@@ -399,29 +426,29 @@ object Direct:
       case Block(stats, expr) => compileBlock(stats, expr)
 
       case If(c, th, el) =>
-        val thC = asCont(compile(th))
-        val elC = asCont(compile(el))
-        val branchTpe = t.tpe
+        val branchTpe = t.tpe.widen
+        val thF = asFAt(compile(th), branchTpe)
+        val elF = asFAt(compile(el), branchTpe)
         compile(c) match
           case Out.Pure(pc) =>
-            Out.Eff(If.copy(t)(pc, asContAt(thC, branchTpe), asContAt(elC, branchTpe)))
-          case Out.Eff(cc) =>
-            Out.Eff(bind(cc, c.tpe, branchTpe) { v =>
-              If.copy(t)(v, asContAt(thC, branchTpe), asContAt(elC, branchTpe))
-            })
+            Out.Eff(If.copy(t)(pc, thF, elF), branchTpe)
+          case Out.Eff(cc, ce) =>
+            Out.Eff(bind(cc, ce, branchTpe) { v =>
+              If.copy(t)(v, thF, elF)
+            }, branchTpe)
 
       case Match(scrut, cases) =>
-        val branchTpe = t.tpe
+        val branchTpe = t.tpe.widen
         def casesC = cases.map { cd =>
-          val bodyC = asContAt(asCont(compile(cd.rhs)), branchTpe)
+          val bodyC = asFAt(compile(cd.rhs), branchTpe)
           CaseDef.copy(cd)(cd.pattern, cd.guard.map {
             g => if hasMark(g) then refuse(g, "in a pattern guard") else g
           }, bodyC)
         }
         compile(scrut) match
-          case Out.Pure(ps) => Out.Eff(Match.copy(t)(ps, casesC))
-          case Out.Eff(cs) =>
-            Out.Eff(bind(cs, scrut.tpe, branchTpe)(v => Match.copy(t)(v, casesC)))
+          case Out.Pure(ps) => Out.Eff(Match.copy(t)(ps, casesC), branchTpe)
+          case Out.Eff(cs, se) =>
+            Out.Eff(bind(cs, se, branchTpe)(v => Match.copy(t)(v, casesC)), branchTpe)
 
       // Boolean && / || are compiler intrinsics (their method type is
       // by-value, the short-circuit is magic) — desugar to the If they
@@ -433,30 +460,46 @@ object Direct:
 
       case While(cond, wbody) =>
         // cond and body splice INSIDE def loop, so they re-evaluate
-        // per iteration by construction; recursion rides Bind spill
-        val condC = asCont(compile(cond)).changeOwner(Symbol.spliceOwner)
-        // the body is statement position: bare ops of the block RUN
-        val bodyC = statementCont(wbody).changeOwner(Symbol.spliceOwner)
-        tpe2(contValue(bodyC)) { [U] => (_: Type[U]) ?=>
-          Out.Eff('{
-            def loop(): Cont[Unit, F[A], F[A]] =
-              ${ condC.asExprOf[Cont[Boolean, F[A], F[A]]] }
-                .flatMap[Unit, F[A]](c =>
-                  if c then
-                    ${ bodyC.asExprOf[Cont[U, F[A], F[A]]] }
-                      .flatMap[Unit, F[A]](_ => loop())
-                  else Cont.Pure[Unit, F[A]](()))
-            loop()
-          }.asTerm)
+        // per iteration by construction; a lazy F defers the
+        // recursive call inside its own flatMap — the loop inherits
+        // F's stack discipline exactly as a hand-written one would.
+        // The body is statement position: bare ops of the block RUN.
+        val (bodyF, bodyE) = statementF(wbody) match
+          case Out.Eff(f, e) => (f.changeOwner(Symbol.spliceOwner), e)
+          case Out.Pure(p) =>
+            val p2 = p.changeOwner(Symbol.spliceOwner)
+            (pureF(p2), p2.tpe.widen)
+        tpe2(bodyE.widen) { [U] => (tU: Type[U]) ?=>
+          compile(cond) match
+            case Out.Pure(pc0) =>
+              // a PURE condition needs no bind: a plain `if` per
+              // iteration (direct-flatmap-emission fusion #1)
+              val pc = pc0.changeOwner(Symbol.spliceOwner)
+              Out.Eff('{
+                def loop(): F[Unit] =
+                  if ${ pc.asExprOf[Boolean] } then
+                    $M.flatMap[U](${ bodyF.asExprOf[F[U]] })[Unit]((_: U) => loop())
+                  else $M.pure(())
+                loop()
+              }.asTerm, TypeRepr.of[Unit])
+            case Out.Eff(cf0, _) =>
+              val cf = cf0.changeOwner(Symbol.spliceOwner)
+              Out.Eff('{
+                def loop(): F[Unit] =
+                  $M.flatMap[Boolean](${ cf.asExprOf[F[Boolean]] })[Unit]((c: Boolean) =>
+                    if c then $M.flatMap[U](${ bodyF.asExprOf[F[U]] })[Unit]((_: U) => loop())
+                    else $M.pure(()))
+                loop()
+              }.asTerm, TypeRepr.of[Unit])
         }
       case tr @ Try(b, cases, fin) =>
-        // direct-try: the body is its own sub-block, reified at the
+        // direct-try: the body is its own sub-block, compiled at the
         // try's type through the recursive pipeline; the whole try
         // becomes ONE mark over CanTry's seam. Marked catch bodies
         // go through the pipeline too; finalizers stay refused.
         if fin.isDefined then refuse(tr, "with a finalizer (direct-try v1)")
         // literal branches make the try's type a UNION of singletons
-        // (0 | 7): join it by hand — the sub-block reifies at the join
+        // (0 | 7): join it by hand — the sub-block compiles at the join
         def joinUnions(t: TypeRepr): TypeRepr = t.dealias match
           case OrType(a, b) =>
             val (ja, jb) = (joinUnions(a).widen, joinUnions(b).widen)
@@ -464,9 +507,9 @@ object Direct:
             else OrType(ja, jb)
           case other => other.widen
         val bT = joinUnions(tr.tpe.widen)
-        tpe2(bT) { [T] => (_: Type[T]) ?=>
+        tpe2(bT) { [T] => (tT: Type[T]) ?=>
           val bodyT = joinUnions(b.tpe.widen)
-          val subF: Term = tpe2(bodyT) { [B] => (_: Type[B]) ?=>
+          val subF: Term = tpe2(bodyT) { [B] => (tB: Type[B]) ?=>
             val raw = pipeline[F, B](b.changeOwner(Symbol.spliceOwner), M)
             // a body ending in throw types Nothing <: T: upcast
             // through the monad (F need not be covariant)
@@ -482,7 +525,7 @@ object Direct:
           def caseBody(c: CaseDef): Term =
             c.guard.foreach(g => if hasMark(g) then refuse(g, "in a catch guard"))
             if hasMark(c.rhs) then
-              tpe2(joinUnions(c.rhs.tpe.widen)) { [H] => (_: Type[H]) ?=>
+              tpe2(joinUnions(c.rhs.tpe.widen)) { [H] => (tH: Type[H]) ?=>
                 val hp = pipeline[F, H](c.rhs.changeOwner(Symbol.spliceOwner), M)
                 if TypeRepr.of[H] =:= TypeRepr.of[T] then hp.asTerm
                 else '{
@@ -501,7 +544,7 @@ object Direct:
             scala.compiletime.summonInline[CanTry[F]]
               .tryIn[T](${ subF.asExprOf[F[T]] })(${ handler.asExprOf[Throwable => F[T]] })
           }.asTerm
-          Out.Eff(reflectTerm(guarded, bT))
+          Out.Eff(guarded, bT)
         }
 
       // application shapes: ANF-hoist children left to right
@@ -509,10 +552,10 @@ object Direct:
       case Assign(lhs, rhs) =>
         compile(rhs) match
           case Out.Pure(p) => Out.Pure(Assign.copy(t)(lhs, p))
-          case Out.Eff(c) =>
-            Out.Eff(bind(c, rhs.tpe, TypeRepr.of[Unit]) { v =>
-              pureCont(Assign.copy(t)(lhs, v))
-            })
+          case Out.Eff(c, e) =>
+            Out.Eff(bind(c, e, TypeRepr.of[Unit]) { v =>
+              pureF(Assign.copy(t)(lhs, v))
+            }, TypeRepr.of[Unit])
 
       // application spines: hoist VALUE slots only (receiver
       // qualifier, arguments) left to right; the callee structure —
@@ -568,7 +611,7 @@ object Direct:
       val lastEff = children.lastIndexWhere(hasMark)
       def loop(rest: List[Term], i: Int, acc: List[Term]): Term =
         rest match
-          case Nil => pureCont(rebuild(acc.reverse))
+          case Nil => pureF(rebuild(acc.reverse))
           case c :: tail =>
             if !hasMark(c) then
               if i < lastEff && !trivial(c) then
@@ -578,11 +621,11 @@ object Direct:
               else loop(tail, i + 1, c :: acc)
             else compile(c) match
               case Out.Pure(p) => loop(tail, i + 1, p :: acc)
-              case Out.Eff(ce) =>
-                bind(ce, c.tpe, resTpe) { v =>
+              case Out.Eff(ce, e) =>
+                bind(ce, e, resTpe) { v =>
                   loop(tail, i + 1, v :: acc)
                 }
-      Out.Eff(loop(children, 0, Nil))
+      Out.Eff(loop(children, 0, Nil), resTpe.widen)
 
     /** a Block with statements: fold vals/exprs into binds */
     def compileBlock(stats: List[Statement], expr: Term): Out =
@@ -593,14 +636,25 @@ object Direct:
           compile(rhs) match
             case Out.Pure(p) =>
               wrapPure(vd, p, rest, expr)
-            case Out.Eff(c) =>
+            case Out.Eff(c, e) =>
               // the val KEEPS its symbol, re-bound to the continuation's
               // parameter: a later def or an assignment (for a var)
               // still refers to it — substitution would strand them
-              Out.Eff(bind(c, rhs.tpe, expr.tpe) { v =>
+              Out.Eff(bind(c, e, expr.tpe) { v =>
                 val vd2 = ValDef.copy(vd)(vd.name, vd.tpt, Some(v))
-                asCont(wrapStat(vd2, rest, expr))
-              })
+                asF(wrapStat(vd2, rest, expr))
+              }, expr.tpe.widen)
+        // an assignment in STATEMENT position binds straight into the
+        // assignment (direct-flatmap-emission fusion #2) — the
+        // expression-position Assign in compileMarked would bind into
+        // a pure and pay a second bind to sequence it
+        case (a @ Assign(lhs, rhs)) :: rest if hasMark(rhs) =>
+          compile(rhs) match
+            case Out.Pure(p) => wrapStat(Assign.copy(a)(lhs, p), rest, expr)
+            case Out.Eff(c, e) =>
+              Out.Eff(bind(c, e, expr.tpe) { v =>
+                asF(wrapStat(Assign.copy(a)(lhs, v), rest, expr))
+              }, expr.tpe.widen)
         case (dd: Definition) :: rest =>
           if hasMark(dd) then refuse(dd, "inside a nested definition")
           wrapStat(dd, rest, expr)
@@ -612,8 +666,8 @@ object Direct:
                 // row type RUNS, its value dropped — the `_ <-` reading
                 case Some(elem) =>
                   Out.Eff(bind(markTerm(p, elem, st.pos), elem, expr.tpe) { _ =>
-                    asCont(compileBlock(rest, expr))
-                  })
+                    asF(compileBlock(rest, expr))
+                  }, expr.tpe.widen)
                 case None =>
                   // a FOREIGN marked type can be neither run nor
                   // meaningfully dropped
@@ -623,10 +677,10 @@ object Direct:
                         "and it is neither this block's monad nor an operation of its row — " +
                         "it cannot run here; bind it or move it to its own block", st.pos)
                   wrapStat(p, rest, expr)
-            case Out.Eff(c) =>
-              Out.Eff(bind(c, st.tpe, expr.tpe) { _ =>
-                asCont(compileBlock(rest, expr))
-              })
+            case Out.Eff(c, e) =>
+              Out.Eff(bind(c, e, expr.tpe) { _ =>
+                asF(compileBlock(rest, expr))
+              }, expr.tpe.widen)
         case other :: _ => refuse(other, "in an unsupported statement")
 
     lazy val freeClass = Symbol.requiredClass("okay.Free")
@@ -684,21 +738,9 @@ object Direct:
     def wrapStat(s: Statement, rest: List[Statement], expr: Term): Out =
       compileBlock(rest, expr) match
         case Out.Pure(p) => Out.Pure(Block(List(s), p))
-        case Out.Eff(c) => Out.Eff(Block(List(s), c))
+        case Out.Eff(c, e) => Out.Eff(Block(List(s), c), e)
 
     def wrapPure(vd: ValDef, rhs: Term, rest: List[Statement], expr: Term): Out =
       wrapStat(ValDef.copy(vd)(vd.name, vd.tpt, Some(rhs)), rest, expr)
 
-    def asCont(o: Out): Term = o match
-      case Out.Eff(c) => c
-      case Out.Pure(p) => pureCont(p)
-
-    /** widen a Cont's value type to the join the branches share */
-    def asContAt(c: Term, tpe: TypeRepr): Term =
-      tpe2(tpe.widen) { [T] => (_: Type[T]) ?=>
-        Typed(c, TypeTree.of[Cont[T, F[A], F[A]]])
-      }
-
-    val res: Expr[Cont[A, F[A], F[A]]] =
-      asCont(compile(topLevelBody)).asExprOf[Cont[A, F[A], F[A]]]
-    '{ Monadic.reify[F, A, A]($res)(using $M) }
+    asFAt(compile(topLevelBody), TypeRepr.of[A]).asExprOf[F[A]]
