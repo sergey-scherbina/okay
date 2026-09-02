@@ -390,15 +390,12 @@ condition-based intake (BadEmail/resolveEmail) and the deal timeline
 stay demo-local, named and reasoned in specs/demo-chat.md already.
 Three do earn it:
 
-- [ ] okay-live (new module) — a generic pub-sub pair, found by
-      NOTICING the SAME pattern already independently duplicated
-      twice in one file: `marketFeed`/`marketSub`/`marketChanged`
-      (broadcast a ping to every subscriber) and `inboxes`/`inbox`
-      (a per-key `Channel` registry, keyed by email). Neither
-      mentions the marketplace — a `Hub[A]` (broadcast) and a
-      `Registry[K]` (per-key channel, created on first use) cover
-      both, and the demo's third potential use (a live admin
-      dashboard) would be a THIRD consumer proving it further.
+- [x] okay-live — LANDED 2026-09-02: `Hub[A]` (broadcast, `subscribe()`
+      /`publish(a)`) and `Registry[K, A]` (`apply(key)`, lazy per-key
+      channel), a new JVM-only module (same java.util.concurrent
+      reasoning as okay-subscription — filed for cross-platform
+      unification below). `marketFeed`/`inboxes` in ChatDemo.scala
+      now delegate to one `Hub`/`Registry` each.
 - [x] pg-target-in-okay-pg — LANDED 2026-09-02: `PgTarget` moved to
       `okay-pg/src/main/scala-jvm` (the JVM leg PgTls.scala already
       lives on). Its own TestPgTarget suite in okay-pg (4 tests,

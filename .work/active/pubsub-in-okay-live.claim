@@ -1,5 +1,0 @@
-slug: pubsub-in-okay-live
-branch: feature/pubsub-in-okay-live
-worktree: ../okay-wt-pubsub-in-okay-live
-claimed: 2026-09-02
-scope: user ask (round-two demo extraction) -- a new JVM-only module okay-live: Hub[A] (broadcast to every subscriber's own Channel) and Registry[K, A] (a per-key Channel, created on first use), generalizing the demo's marketFeed/marketSub/marketChanged and inboxes/inbox -- the SAME pattern independently duplicated twice in ChatDemo.scala. specs/live.md.

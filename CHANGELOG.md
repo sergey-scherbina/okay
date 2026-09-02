@@ -1,5 +1,29 @@
 # Changelog
 
+## okay-live — Hub[A] broadcast + Registry[K,A] per-key channels
+Completed: 2026-09-02
+Landed as 3aad44f (spec) + dab184a (impl, merged over three sibling
+rebases). Second of the round-two demo reusable-module extractions
+(user ask): found by noticing the SAME pattern already independently
+duplicated twice in ChatDemo.scala — marketFeed (broadcast a ping to
+every /market subscriber) and inboxes (a per-email Channel, created
+on first use). New JVM-only sbt module okay-live (Channel itself is
+already cross-platform core; only the concurrent bookkeeping around
+many channels needs java.util.concurrent, the same tradeoff okay-
+subscription already made). Hub[A].subscribe()/.publish(a) and
+Registry[K,A].apply(key) generalize both call sites; ChatDemo.scala's
+own semantics (what's published, who subscribes) stayed put. 5 new
+unit tests; demo suite 27/27 clean except the known rotating
+LIVE-model-endpoint flake.
+
+Also filed to BACKLOG (operator ask): unify okay-subscription and
+okay-live onto okay core's existing TRef/Stm.atomically (a real
+cross-platform transactional cell whose own engine leans on an
+internal TMap) once the synchronous-vs-effectful API tradeoff for
+Hub/Registry is decided deliberately — not urgent, no JS/Native
+consumer named yet, filed so the decision gets made once rather than
+by accretion next time this tradeoff recurs.
+
 ## tidy-warnings-tests — the whole build compiles warning-free
 Completed: 2026-09-02
 Landed as dc7fec5 (4 commits). Extends tidy-warnings-screen-dom's rule
