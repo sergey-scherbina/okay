@@ -1,5 +1,29 @@
 # Changelog
 
+## demo-mcp-market — the marketplace served over MCP at /mcp
+Completed: 2026-09-02
+Landed as af5bae9 (spec) + 55b1b82 (impl). chainedTable — already the
+ONE tool table both the LLM agent path and the deterministic driver
+drive — is exactly the (specs, table) pair okay.mcp.Server.serve
+takes; mcpRoute mounts it at /mcp via McpHttp.route, so any MCP
+client becomes a market participant over the same substrate the chat
+UI drives. mcpTable rebuilds chainedTable PER TOOL CALL (fresh turn
+offset + subscription period) rather than once at server-mount time,
+matching what /chat already does per HTTP request. Stated limit: MCP
+tool calls do not append to chatLog — MCP is the marketplace's OTHER
+front door, not a second writer to the durable turn log.
+Real bug caught in testing: mcpRoute is a def, and McpHttp.route
+builds a fresh session table every time it's evaluated; routing with
+`mcpRoute(r)` inline re-built it per request, silently dropping every
+session right after initialize (next call 404'd as "the MCP session
+is gone"). Fixed by binding it once as a val in routes(). Also
+dropped an unused Transport/Secrets from the signature — chainedTable
+only needs MatchStore.
+3 new MCP integration tests (initialize+tool list, facts_assert
+visible via /market.json, reverse chain firing across MCP+chat front
+doors). Suite 35-36/36 clean over three bare-JUnitCore runs, the one
+red being the known pre-existing LIVE SEEKER judgment flake.
+
 ## demo-streaming-cut — the demo as llm-streaming-cut's first consumer
 Completed: 2026-09-02
 Landed as 0aa67f4 (spec) + b1bd957 (impl). Cut.guard shipped earlier

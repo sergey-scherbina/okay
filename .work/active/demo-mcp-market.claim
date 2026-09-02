@@ -1,5 +1,0 @@
-slug: demo-mcp-market
-branch: feature/demo-mcp-market
-worktree: ../okay-wt-demo-mcp-market
-claimed: 2026-09-02
-scope: expose the demo's marketplace tools (chainedTable) as an MCP server over okay-http's McpHttp.route, mounted at /mcp -- any MCP client (Claude included) becomes a market participant over the same tool table the chat UI drives, so a tool call still fires the reverse chain / market feed / deal timeline exactly as chat turns do. specs/demo-chat.md.

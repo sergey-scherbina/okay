@@ -318,10 +318,16 @@ construction instead of a type test per value).
       GET /deals/<n> and /deals/<n>.json render the full history with
       provenance; a withdrawn stand-down gets its own event; unknown
       deal is 404.
-- [ ] demo-mcp-market — expose the market tools (search / assert /
+- [x] demo-mcp-market — expose the market tools (search / assert /
       deal / flow) as an MCP server over okay-http's MCP: any MCP
       client (Claude included) becomes a market participant; the chat
       UI unchanged, the marketplace becomes the shared substrate.
+      LANDED 2026-09-02: chainedTable mounted at /mcp via
+      McpHttp.route; mcpTable rebuilds it per call for fresh
+      offset/period. Caught and fixed a real bug — mcpRoute must be
+      built ONCE per server (a def re-evaluated per request built a
+      fresh MCP session table each time, dropping every session right
+      after initialize).
 - [ ] demo-two-nodes — two demo processes over one shared durable
       log: Election picks the writer, both serve reads, kill the
       leader and watch the market survive — the persist/Election
