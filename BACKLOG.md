@@ -360,10 +360,15 @@ construction instead of a type test per value).
 - [ ] demo-package — one-command run: bundle the React build into
       the jar's static assets (+ optionally a Dockerfile); today the
       demo needs sbt and a node dev server side by side.
-- [ ] demo-gate-ui — the platform Gate policy (Allow / AfterMatch /
+- [x] demo-gate-ui — the platform Gate policy (Allow / AfterMatch /
       Withhold) switchable from an admin page per attribute class;
       today it is set in code — the two-gate visibility model is the
       business story, so let a viewer flip it and watch /market react.
+      LANDED 2026-09-02: MatchStore.gate/setGate/gateOverrides — a
+      `livePolicy` var replacing the immutable constructor-bound
+      PlatformPolicy; POST /admin/gate flips it, admin-token gated
+      like /admin/replay; /market gained a panel and /market.json a
+      "gates" field.
 
 ## Reusable modules extracted from the demo (user ask 2026-09-02) — DONE
 

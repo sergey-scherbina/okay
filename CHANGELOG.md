@@ -1,5 +1,29 @@
 # Changelog
 
+## demo-gate-ui — the platform gate policy, live and switchable from /market
+Completed: 2026-09-02
+Landed as 0d4dfff (spec) + a2e7492 (impl). `PlatformPolicy` was
+already data (an immutable `Map[String, Gate]`) but bound at store
+construction and never reassigned — flipping a gate meant editing
+code and restarting. `MatchStore` gains `gate`/`setGate`/
+`gateOverrides`; both engines (Memory, SqlMatch) keep a `livePolicy`
+var seeded from the constructor's starting value, read on every
+disclosure check, so a flip takes effect on the very next query — no
+cache to invalidate, because there never was one.
+`POST /admin/gate` flips one attribute's gate, admin-token gated the
+same way `/admin/replay` is (`Secure.granted` + `Admin.Issuer`, built
+directly in `ChatDemo.scala` rather than growing okay-admin's generic
+module with a domain-specific action — Gate is a marketplace concept,
+not admin infra). `/market.json` gained a `"gates"` field; `/market`'s
+page gained a small panel (current overrides + an attr/gate form)
+mirroring the existing replay button's client shape exactly.
+Tests: okay-match's TestMatch +1 (live flip visible immediately;
+`reset()` leaves the gate policy alone — configuration, not
+projection, same reasoning as scenario definitions), okay-demo's
+TestChatDemo +2. Full okayMatchJVM suite 31/31; TestChatDemo+TestLogin
+42/42 clean over two of three bare-JUnitCore runs, one hit the known
+pre-existing LIVE SEEKER judgment flake (unrelated).
+
 ## channel-merge-regression — investigated, not a code regression
 Completed: 2026-09-02
 Landed as f5ad554 (bbefd79). The bench-sweep report flagged
