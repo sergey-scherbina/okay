@@ -1,5 +1,0 @@
-slug: ops-monitoring
-branch: feature/ops-monitoring
-worktree: ../okay-wt-ops-monitoring
-claimed: 2026-09-02
-scope: okay-ops (JVM) — health (liveness/readiness as values), Store.stats as JSON, a pure Stats->Prometheus-text mapper (/metrics), routes wired into the demo; specs/ops.md, docs. Sets up deploy-package (Dockerfile) and deploy-k8s (manifests wired to these probes) as the next slugs.

@@ -1,5 +1,36 @@
 # Changelog
 
+## ops-monitoring — health, stats, Prometheus over the values that already exist
+Completed: 2026-09-02
+Landed as 1414328 (operator ask, extended to standard wires). New
+module `okay-ops`: `Health.of(store)` calls `store.stats` live (no
+cached flag), answering two booleans with a reason; `Prom.render` is
+a pure `Store.Stats => Prometheus-text-0.0.4` mapping, pinned by a
+golden string, with opt-in per-group `Offsets.lag`; `Ops.routes`
+composes `GET /healthz`, `/readyz`, `/stats`, `/metrics` into any
+route table — no client library, no SDK, the same OTLP-is-a-mapping
+ruling okay-obs already made for tracing. Wired into the demo, whose
+`chatLog` store is now exposed as `chatStore` so both can see it. A
+Kubernetes liveness/readiness probe and a Prometheus scrape both read
+these routes directly with zero code in the pod on their behalf; the
+manifest IS the integration (deploy-package/deploy-k8s next, a
+reusable Dockerfile + Helm chart template for any Okay app, DemoChat
+as the first concrete instance). specs/ops.md; docs/modules/
+okay-ops.md.
+
+Found and fixed along the way (docker-live-suites-slow-skip):
+TestKafkaStore/TestElectionKafka/TestKafkaRepair/TestKafkaEos and
+TestMongoDocs hung to their munitTimeout (30-120s) instead of
+skipping in milliseconds when no broker answered — the Kafka and
+Mongo client LIBRARIES' own generous defaults ran their full retry
+policy before the tests' catch-all ever saw a Throwable. A fast raw-
+socket pre-check (`TestKafkaSupport.reachable`, 1s) now gates all
+four Kafka checks; Mongo's probe client alone gets a 1.5s
+`serverSelectionTimeout`/`connectTimeout` (production `MongoDocs
+.client`/`KafkaStore.apply` keep their default retry policy — only
+the test-side "is anything here" question needed to be fast). Both
+suites now skip in ~1s combined with no broker running, not ~2min.
+
 ## cast-free-rag-llm-kyo — rows by ascription, a typed frame, kyo at its E
 Completed: 2026-09-02
 Landed as a755a84. rag's Ingest and Retrieve re-associate rows by
