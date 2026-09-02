@@ -30,6 +30,19 @@ object Same:
       if a eq b then Some(summon[A =:= A].asInstanceOf[A =:= B]) else None
 
 
+  /** the axiom for VALUE keys — a typed id over a primitive, say
+   * `Id[A](n: Long)`. Equal values alone cannot witness A =:= B:
+   * `Id[User](5)` and `Id[Order](5)` are equal numbers and different
+   * keys. So a value key must carry a runtime TAG of its type, and
+   * "the same key" is "equal value AND equal tag". The tag is a
+   * ClassTag: exact for non-generic A, erased for a generic one
+   * (`Id[List[Int]]` and `Id[List[String]]` share a tag) — so value
+   * keys are for concrete types, stated here and in the test */
+  def byValue[K[_]](equal: [A, B] => (K[A], K[B]) => Boolean,
+                    tag: [A] => K[A] => scala.reflect.ClassTag[A]): Same[K] = new Same[K]:
+    def same[A, B](a: K[A], b: K[B]): Option[A =:= B] =
+      if equal(a, b) && tag(a) == tag(b) then Some(summon[A =:= A].asInstanceOf[A =:= B]) else None
+
 /** the witness, if b is this key */
 extension [K[_], A](a: K[A])(using s: Same[K])
   def sameAs[B](b: K[B]): Option[A =:= B] = s.same(a, b)

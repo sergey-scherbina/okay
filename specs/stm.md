@@ -220,6 +220,15 @@ document.
   sibling that permits `==` without proving anything; from a
   `Same[K]` a `CanEqual[K[A], K[B]]` is derived at package level,
   so token keys compare with `==` in strict mode too (tested).
+  Value keys (same-by-value, 2026-09-02): a typed id over a
+  primitive cannot witness `A =:= B` by equal values alone —
+  `Id[User](5)` and `Id[Order](5)` are equal numbers and different
+  keys — so `Same.byValue(equal, tag)` requires the key to carry a
+  runtime tag of its type and calls two keys the same only when
+  value AND tag agree. The tag is a ClassTag: exact for concrete
+  types, erased for generic ones, so value keys are for concrete
+  types (stated on the method; tested through TMap with `Id[String]`
+  and `Id[Int]` holding the same number).
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark
 (src/jmh ChannelBenchmark, alternating A/B rounds, medians, busy
