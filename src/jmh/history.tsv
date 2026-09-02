@@ -173,3 +173,5 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-02			reader-quiet-recheck	108299			ns/10k asks; +-6.3us quiet box, matches the doc's 110 exactly — loaded 231+-388 was noise
 2026-09-02			ctx-direct-quiet	305			ns/10k ambient reads; +-35ns quiet box (was 480 loaded); ~350x under the relay; joins the section-2 table
 2026-09-02			ctx-monad-quiet	4336			ns/1k binds; +-250ns quiet box (was 5305 loaded); ~2.5x faster than the relay per bind, stack-bounded 2-5k; table dagger row
+2026-09-02			direct-okay-pair	313427			ns/10k binds direct while+var vs 95805 flatMap (quiet, load 2.8): 3.3x = the Monadic Cont layer; recursion form 410203 (4.3x); FILED: emit plain flatMaps for sequential fragments
+2026-09-02			direct-competitors	156584			ns kyo defer (2.8x over its 56k) and 119485 zio-direct (0.64x — FASTER than hand foldLeft, better-shaped emission); both forbid var in blocks, okay alone allows the imperative form

@@ -71,6 +71,47 @@ compare/TestLaziness). In build-many-run-few scenarios Okay is 4.2x
 cheaper; and Okay offers the same trade EXPLICITLY as `Eager`,
 per-program, instead of as the only semantics.
 
+## 1b. Direct syntax — the same 10k binds, written as code
+
+| | flatMap (hand) | direct | the syntax costs |
+|---|---|---|---|
+| **Okay** (while+var) | **96** | **313** | 3.3x |
+| **Okay** (recursion) | **96** | **410** | 4.3x |
+| kyo-direct (recursion) | 56 | 157 | 2.8x |
+| zio-direct (recursion) | 187 | **120** | **0.64x — faster** |
+
+**What it measures.** Each ecosystem's first-party direct form
+against its own hand-written flatMap chain, same shape, same run
+(cats has no first-party direct form and is absent honestly). The
+PAIR's ratio is the price of the syntax; absolute columns compare
+runtimes as usual.
+
+**Why Okay's numbers.** The macro adds syntax only — it emits
+Monadic's Cont binds (specs/direct-macro.md), so the 3.3x IS the
+price of monadic reflection at runtime: one `shift` (a Cont closure)
+per bind on top of the Free node the flatMap baseline already pays.
+The while+var form beats the recursion form (313 vs 410) because
+recursion adds a `direct` block entry per step. FILED from this
+table: the macro could emit plain flatMaps for the purely sequential
+fragment and reserve Cont for the control corners — that would close
+3.3x toward 1x; the shape is measured, the optimization is not
+guessed at.
+
+**Why the competitors' numbers.** kyo's defer pays 2.8x over its own
+eager chain — macro-transform overhead of the same order as ours.
+zio-direct is the surprise the table exists to catch: its defer is
+FASTER than the naive hand-written foldLeft chain, because the macro
+emits a better-shaped program than left-nested binds — a genuinely
+good macro, credited.
+
+**The expressiveness line, measured by refusal.** Both competitors
+FORBID `var` inside their blocks (kyo as a design stance, stated in
+its error; zio-direct bans `var`/`def`/`class` alike), and kyo
+refuses nested marks in one expression. The imperative direct form —
+`var x = 0; while i < N do x = step(x).reflect` — compiles only in
+Okay (direct-loops), which is why Okay is measured in both
+spellings and the competitors in the one they allow.
+
 ## 2. Reader — 10k asks · Writer — 10k tells
 
 | Reader | **Okay ctx direct** | **Okay ctx instance** | **Okay row** | ZIO | cats Kleisli | atnos | kyo Env |
