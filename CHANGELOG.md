@@ -1,5 +1,24 @@
 # Changelog
 
+## stm-sessions — McpHttp's session table and Native's FiberCell, on TRef
+Completed: 2026-09-02
+Landed as c488185. `McpHttp`'s session table
+(`ConcurrentHashMap[String, Wire]`) became `TRef[Sessions]`; every
+write is one `modify`. Found and fixed a real race on the way: "an
+uninitialized client talking to a server with no sessions gets one
+rather than a riddle" was `isEmpty`-checked then `put` — two racing
+first requests could both pass and clobber each other's `Wire` under
+the shared `""` key. One `modify` now decides lookup-or-mint
+atomically; a regression test fires 30 concurrent such POSTs and
+asserts exactly one 200. Native's `FiberCell` (the hand-rolled
+`synchronized` "one result, many subscribers" cell backing `Fiber`
+where the platform has no `CompletableFuture`) became `TRef[State]`
+the same shape `stm-ui-close`'s `CloseState` took. Both single-cell
+fast paths, no `Tx`/`Stm[F]`. TestMcpHttp (9) and the full Native
+suite (22) green. specs/stm.md Results entry. Matrix 73 suites, zero
+failures (one confirmed pre-existing live-model flake, isolated and
+reconfirmed green alone, twice).
+
 ## stm-orelse-warning — the OrElse branch's unchecked type test, fixed
 Completed: 2026-09-02
 Landed as 8d7f363 (operator ask: "посмотри warning при компиляции в
