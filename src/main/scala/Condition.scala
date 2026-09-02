@@ -186,8 +186,13 @@ object Condition {
   trait Of[A]
 
   extension [A](c: Of[A])
-    /** the typed signal edge: HowMany.signal : Int ! Op */
-    def signal: A ! Op = Condition.signal[A](c)
+    /** the typed signal edge: HowMany.signal : Int ! Op. The
+     * ascription is LOAD-BEARING: without it Condition.signal[A](c)
+     * resolves to this very extension (Of[A] beats Any in overload
+     * resolution) and the self tail call compiles to an infinite
+     * loop — caught burning 47 CPU-minutes in the first ungated
+     * landing, the gate lesson paid in full */
+    def signal: A ! Op = Condition.signal[A](c: Any)
 
   /** the typed resume for policies: resume(c)(v) checks v against
    * c's answer type — `case c: HowMany.type => resume(c)(41)` */
