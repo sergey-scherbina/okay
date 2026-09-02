@@ -89,6 +89,7 @@
 ## okay-cache (specs/cache.md)
 
 ## okay-sql (the neutral seam — Typed/Schema layer)
+
 ## okay-pg (specs/sql.md — the wire driver)
 - [ ] pg-composite-rowtype — the last sliver after pg-composite-array
       (landed): type a TABLE'S row-type (relkind='r') selected whole
