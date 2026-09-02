@@ -231,12 +231,12 @@ construction instead of a type test per value).
 
 
 ## okay-codec
-- [ ] json-value-parser — a fast VALUE parser beside the lossless CST
-      one: staged-codecs step 0 measured Json.parse at 14.6 µs on a
-      150-byte object vs circe's 0.55 (26x); with decode now 0.1 µs
-      staged, text→value is all parser. Same Json values, same JErr
-      totality contract, no trivia. The CST parser stays the
-      lossless layer.
+- [x] json-value-parser — landed: JsonValue.parse, a strict
+      recursive-descent parser yielding to the lossless CST parser on
+      any doubt; Json.parseValue wires it in. 61x over Json.parse on
+      the fixture, 2.0x faster than circe's own parser; end to end
+      with the staged decoder, 2.3x faster than circe's fused
+      parse+decode. specs/codecs.md, "Value parser".
 - [ ] staged-cbor — Cbor's algebra through the Staged generator (a
       second emitter over the same Mirror walk) when a wire names it
 - [ ] staged-runtime — `scala.quoted.staging` for run-time schemas

@@ -284,3 +284,62 @@ data shape. Same algebra, one more instance of it.
   only at run time (a ToolSpec from a model, Pg composites from the
   catalog): JVM-only, a compiler dependency; only if such a workload
   appears.
+
+## Value parser (2026-09-02, json-value-parser)
+
+staged-codecs step 0 found the real cost: with decode at 0.1 µs
+(staged), text→value on a 150-byte object was 14.6 µs of parsing and
+0.6 µs of decode — the lossless CST parser (lex, tree, project) is
+what a caller who just wants the value pays for. `JsonValue` is the
+other half of the promise this spec's Overview already made for
+codecs ("interpreted or STAGED"): one more mode, this time for the
+TEXT side.
+
+### Interface
+- `JsonValue.parse(s: String): Option[Json]` — a strict recursive
+  descent over the string; `None` on anything it is not sure of.
+- `Json.parseValue(s: String): Json` — the total function: the fast
+  road's answer, or `Json.parse(s)` (the lossless road) when the fast
+  road refused. Same values, same totality; the lossless road's
+  trivia and error placement are what is not kept.
+
+### Behavior
+- [x] agreement: `JsonValue.parse` and `Json.parse` yield equal Json
+      on every well-formed document (25 shapes: nesting, escapes,
+      unicode, exponents, duplicate keys, whitespace) and on every
+      damaged one (34 shapes: truncation, wrong punctuation, raw
+      control characters, unterminated strings, `NaN`/bare
+      identifiers) — the fast road refuses every damaged shape,
+      never accepts a wrong answer
+- [x] the strong form: a full PREFIX-TRUNCATION sweep — every
+      substring of every document above, both roads, equal
+      (TestJsonValue, JVM/JS/Native)
+- [x] the price: 217 ns vs 13.3 µs on the fixture (61x; history.tsv
+      json-value-parser), 2.0x faster than circe's own parser; end to
+      end with the staged decoder, 349 ns vs circe's fused
+      parse+decode at 804 (2.3x)
+
+### Decisions
+- **Refuse rather than diverge** — the fast parser is strict RFC
+  8259 plus the projection's own two readings (kept ON PURPOSE so
+  the roads never disagree: `A` is the four letters "u0041",
+  any other unknown escape is itself; a number is whatever
+  `toDouble` makes of its RFC-shaped lexeme, so `1e999` is Infinity).
+  Anything else — a raw control character in a string, trailing
+  content, empty input — is `None`, and `parseValue` falls through
+  to the lossless parser, which already owns every damage shape and
+  its wording. No damage vocabulary is duplicated.
+- **No tokens, no tree** — an index into the String, a
+  `StringBuilder` only for the (rare) escaped string, `substring` for
+  the plain case and for a number's slice into `parseDouble`. This is
+  what the interpreted road's own choice-rule from staged-tagless
+  says for text: the CST is for tools (incremental reparse,
+  diagnostics, round-trip), the fast pass is for speed.
+
+### Out of scope
+- A staged (macro) parser tied to a Schema shape — would still have
+  to reparse arbitrary JSON structurally first; not pursued without
+  a workload that reads the SAME schema from text repeatedly enough
+  to amortize generating a parser for it.
+- Streaming / incremental fast-path parsing (the lossless CST already
+  owns incremental reparse).
