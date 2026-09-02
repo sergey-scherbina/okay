@@ -1,0 +1,5 @@
+slug: same-typeclass
+branch: feature/same-typeclass
+worktree: ../okay-wt-same-typeclass
+claimed: 2026-09-02
+scope: okay.Same[K[_]] — the standalone typeclass "these two typed tokens are the same one, witnessed by A =:= B"; Same.byIdentity for reference keys (the one witness cast, once); a CanEqual[K[A], K[B]] derived from Same for Scala 3 strict equality; TMap uses Same instead of its own Keyed. Operator's request.
