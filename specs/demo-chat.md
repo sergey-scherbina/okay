@@ -212,6 +212,38 @@ reaches the wire" is asserted, not assumed.
       http()` + `Secrets.env`, which resolve the same env vars the
       old `sys.env` reads did
 
+## The live market page (demo-market-live)
+
+`/market` was a static render at page load; now it is a projection
+that MOVES. Three pieces, all riding machinery the demo already has:
+
+- `GET /market.json` — the page's data: offers and needs as rows of
+  disclosed facts, each fact with its ATTRIBUTE name (`{"attr":
+  "skill","text":"..."}`) — the facet key. The same gate holds as on
+  the HTML: `disclosed` is Public-only for an anonymous viewer.
+- `GET /events/market` — a market-wide SSE feed (matched BEFORE the
+  `/events/<email>` prefix route — "market" must not parse as an
+  email). Every subscriber gets its own channel in a registry;
+  every market mutation pings every open page. The publish points
+  are the chainedTable wraps the demo already owns (facts_assert,
+  match_inquire, match_respond, flow_advance) plus /admin/replay —
+  the model path and the deterministic driver go through the same
+  wraps, so the feed is model-independent. A closed page's channel
+  stays in the registry until process end — stated, not hidden: the
+  demo's subscriber count is human-scale.
+- The page: rows stay SERVER-RENDERED at load (works without JS,
+  and the gate test keeps reading plain HTML); a script then fetches
+  /market.json, re-renders on every feed ping, and offers the
+  attribute facets as toggle chips (client-side filter).
+
+- [ ] market.json: the seeded Public skill shows with its attr; the
+      Matched phone stays off it (the gates hold on the JSON too)
+- [ ] a subscribed /events/market stream rings when a new offer
+      lands through the real /match route
+- [ ] the page carries the live script (EventSource on
+      /events/market) and the facet container; rows still server-
+      rendered (the existing polish assertions stay green)
+
 ## Polish (demo-polish)
 - The page states its MODE (scripted/local/live) and links /market.
 - `/market` — the marketplace, visible: offers and needs as lists of
