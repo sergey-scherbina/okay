@@ -21,14 +21,16 @@ construction instead of a type test per value).
       Handler.union splits through `<|>` (the one claim), translate's
       cont typed by the Bind node; typeableK's class-test kernel
       stays, stated.
-- [ ] cast-free-schema — Json (9), Cbor (9), Typed (11): `Schema` is
-      not a GADT — `SVector(of: () => Schema[?])` loses the link to
-      `Vector[A]`, so every codec casts `Schema[Any]` and the result
-      to `A`. Make the cases carry their type
-      (`SVector[A](of) extends Schema[Vector[A]]`), write
-      `encode[A](s: Schema[A])(a: A)` by matching; Typed's value
-      casts by SqlType need a typed Shape. One lane, three files
-      plus Schema; the biggest single win (29).
+- [x-landed] cast-free-codec — Json (9 → 0), Cbor (9 → 0): Schema
+      WAS a GADT already; the codecs cast out of habit. Two kernels
+      in Schema state the Mirror's erasure once (`eachField`: parts
+      is productIterator in field order; `theCase`: caseOf is the
+      ordinal), sum cases are `Schema[? <: A]`, and the codecs are
+      written by GADT matching.
+- [ ] cast-free-typed — okay-sql Typed (11): Shape mirrors Schema
+      untyped (`Iso(Any => Either[String, Any])`, value casts by
+      SqlType); a typed `Shape[A]` GADT built from the Schema, the
+      row kernel through `eachField`.
 - [ ] typed-js-facades — okay-http Transports.js (11), okay-llm
       TransportJs (6): `js.Dynamic` casts to Int/String/Uint8Array
       are the browser API without types; `js.native` facades for

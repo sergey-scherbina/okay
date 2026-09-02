@@ -188,3 +188,22 @@ Found by the sweep's exhaustivity warnings: WireJson had not learned
 the keyed-diff patch trio (Remove/Reorder/Insert) — a server-driven
 reorder would have MatchErrored on encode. Wired and round-tripped
 here.
+
+## Cast-free (2026-09-02, cast-free-codec)
+`Schema` was a GADT from the start — `SOption[A](of) extends
+Schema[Option[A]]` and the rest — and the codecs cast anyway
+(`of().asInstanceOf[Schema[Any]]`, `.map(_.asInstanceOf[A])`, eighteen
+times in Json and Cbor). Written by GADT matching on the schema
+(`case l: Schema.SList[a]` binds the element type) they need none.
+What the Mirror erases is stated ONCE, in Schema: `SProduct.eachField`
+(parts is the Mirror's productIterator in field order, so the i-th
+value is the i-th field's type) and `SSum.theCase` (caseOf is the
+ordinal, so the value is that case's type) hand a codec each value at
+its own type through a polymorphic function; sum cases are typed
+`Schema[? <: A]`, the bound claimed in `derived` where the Mirror
+gives the element types (the inline match on the tuple type cannot
+see it). Decoding a product needs no kernel at all: each field decodes
+at its own type and joins the erased parts that `fromProduct` takes.
+Both codec suites unchanged, green on JVM, JS and Native. Next:
+okay-sql's Typed (cast-free-typed) — its Shape mirrors Schema
+untyped.

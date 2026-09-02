@@ -42,7 +42,7 @@ enum Schema[A]:
                    /** aligned with fields; a decoder falls back here
                     * when the wire lacks the field (codec-defaults) */
                    defaults: Vector[Option[() => Any]] = Vector.empty) extends Schema[A]
-  case SSum[A](name: String, cases: Vector[(String, () => Schema[?])],
+  case SSum[A](name: String, cases: Vector[(String, () => Schema[? <: A])],
                caseOf: A => Int) extends Schema[A]
   /** the newtype node (codec-iso): A travels as B — encode is `from`
    * then under's encode, decode is under's decode then `to`, and a
@@ -53,6 +53,22 @@ enum Schema[A]:
                   from: A => B) extends Schema[A]
 
 object Schema {
+
+  /** the PRODUCT kernel, once: `parts` is the Mirror's productIterator
+   * in field order, so the i-th value IS the i-th field's type — a
+   * codec sees each field at that type through f and never casts */
+  extension [A](p: SProduct[A])
+    def eachField[R](a: A)(f: [X] => (String, Schema[X], X) => R): Vector[R] =
+      def one[X](name: String, sc: Schema[X], v: Any): R = f(name, sc, v.asInstanceOf[X])
+      p.parts(a).toVector.zip(p.fields).map((v, fld) => one(fld._1, fld._2(), v))
+
+  /** the SUM kernel, once: `caseOf` is the Mirror's ordinal, so the
+   * value IS that case's type — a codec sees it at that type through f */
+  extension [A](su: SSum[A])
+    def theCase[R](a: A)(f: [X <: A] => (String, Schema[X], X) => R): R =
+      val (name, sc) = su.cases(su.caseOf(a))
+      def one[X <: A](sc: Schema[X]): R = f(name, sc, a.asInstanceOf[X])
+      one(sc())
 
   given Schema[Int] = Schema.SInt
   given Schema[Long] = Schema.SLong
@@ -94,8 +110,12 @@ object Schema {
           Defaults.of[A])
       case s: Mirror.SumOf[A] =>
         val labels = constValueTuple[s.MirroredElemLabels].toList.map(_.toString)
+        // the Mirror's claim, once: a sum's element types are its
+        // subtypes (the compiler derived them so; the inline match on
+        // the tuple type cannot see the bound)
+        val cases = thunks[s.MirroredElemTypes].map(_.asInstanceOf[() => Schema[? <: A]])
         Schema.SSum(
           constValueTuple[Tuple1[s.MirroredLabel]].head.toString,
-          labels.zip(thunks[s.MirroredElemTypes]).toVector,
+          labels.zip(cases).toVector,
           a => s.ordinal(a))
 }

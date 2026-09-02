@@ -70,15 +70,10 @@ object Cbor {
       a.foreach(put(out, of(), _))
     case p: Schema.SProduct[A] =>
       header(out, 5, p.fields.length.toLong)
-      p.parts(a).zip(p.fields).foreach { (v, f) =>
-        text(out, f._1)
-        put(out, f._2().asInstanceOf[Schema[Any]], v)
-      }
+      p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) => { text(out, n); put(out, sc, x) }): Unit
     case su: Schema.SSum[A] =>
       header(out, 5, 1)
-      val (name, sc) = su.cases(su.caseOf(a))
-      text(out, name)
-      put(out, sc().asInstanceOf[Schema[Any]], a)
+      su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) => { text(out, n); put(out, sc, x) })
 
   /** value to bytes in one move */
   def write[A](a: A)(using s: Schema[A]): Array[Byte] =
@@ -147,21 +142,21 @@ object Cbor {
     }
     case Schema.SOption(of) =>
       if in.peek == 0xF6 then in.byte().map(_ => None)
-      else get(in, of().asInstanceOf[Schema[Any]]).map(Some(_).asInstanceOf[A])
-    case Schema.SList(of) =>
+      else get(in, of()).map(Some(_))
+    case l: Schema.SList[a] =>
       head(in).flatMap {
         case (4, n) =>
-          (0L until n).foldLeft(Right(List.empty[Any]): Either[String, List[Any]]) { (acc, _) =>
-            acc.flatMap(xs => get(in, of().asInstanceOf[Schema[Any]]).map(xs :+ _))
-          }.map(_.asInstanceOf[A])
+          (0L until n).foldLeft(Right(Nil): Either[String, List[a]]) { (acc, _) =>
+            acc.flatMap(xs => get(in, l.of()).map(xs :+ _))
+          }
         case (m, _) => Left(s"expected an array, got major $m")
       }
-    case Schema.SVector(of) =>
+    case vec: Schema.SVector[a] =>
       head(in).flatMap {
         case (4, n) =>
-          (0L until n).foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, _) =>
-            acc.flatMap(xs => get(in, of().asInstanceOf[Schema[Any]]).map(xs :+ _))
-          }.map(_.asInstanceOf[A])
+          (0L until n).foldLeft(Right(Vector.empty): Either[String, Vector[a]]) { (acc, _) =>
+            acc.flatMap(xs => get(in, vec.of()).map(xs :+ _))
+          }
         case (m, _) => Left(s"expected an array, got major $m")
       }
     case p: Schema.SProduct[A] =>
@@ -172,7 +167,7 @@ object Cbor {
               acc.flatMap { m =>
                 textItem(in).flatMap { k =>
                   p.fields.find(_._1 == k) match
-                    case Some((_, sc)) => get(in, sc().asInstanceOf[Schema[Any]]).map(v => m + (k -> v))
+                    case Some((_, sc)) => field(in, sc()).map(v => m + (k -> v))
                     case None => Left(s"unknown field '$k' of ${p.name}")
                 }
               }
@@ -199,10 +194,14 @@ object Cbor {
         case (5, 1) => textItem(in).flatMap { name =>
           su.cases.find(_._1 == name)
             .toRight(s"unknown case '$name' of ${su.name}")
-            .flatMap((_, sc) => get(in, sc().asInstanceOf[Schema[Any]]).map(_.asInstanceOf[A]))
+            .flatMap((_, sc) => get(in, sc()))
         }
         case (m, n) => Left(s"expected a one-entry map, got major $m of $n")
       }
+
+  /** one field at its own type; the value joins the product's erased
+   * parts (Mirror's fromProduct takes Any) */
+  private def field[X](in: In, sc: Schema[X]): Either[String, Any] = get(in, sc)
 
   /** bytes to value in one move; errors as values */
   def read[A](bytes: Array[Byte])(using s: Schema[A]): Either[String, A] =

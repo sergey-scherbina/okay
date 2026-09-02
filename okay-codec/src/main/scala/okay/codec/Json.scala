@@ -142,15 +142,16 @@ object Json {
     case Schema.SVector(of) =>
       a.map(encode(of())).mkString("[", ",", "]")
     case p: Schema.SProduct[A] =>
-      p.parts(a).zip(p.fields).map { (v, f) =>
-        s"\"${f._1}\":${encode(f._2().asInstanceOf[Schema[Any]])(v)}"
-      }.mkString("{", ",", "}")
+      p.eachField(a)([X] => (n: String, sc: Schema[X], x: X) => s"\"$n\":${encode(sc)(x)}")
+        .mkString("{", ",", "}")
     case su: Schema.SSum[A] =>
-      val i = su.caseOf(a)
-      val (name, sc) = su.cases(i)
-      s"{\"$name\":${encode(sc().asInstanceOf[Schema[Any]])(a)}}"
+      su.theCase(a)([X <: A] => (n: String, sc: Schema[X], x: X) => s"{\"$n\":${encode(sc)(x)}}")
     // the newtype node: A travels as B, so encode is `from` then under's
     case Schema.SIso(u, _, from) => encode(u())(from(a))
+
+  /** one field at its own type; the value joins the product's erased
+   * parts (Mirror's fromProduct takes Any) */
+  private def field[X](sc: Schema[X], v: Json): Either[String, Any] = decode(sc)(v)
 
   /** the decoding algebra: fold the schema, read the value back —
    * errors are values (Left), never faults */
@@ -164,9 +165,8 @@ object Json {
     case (Schema.SChar, JStr(x)) => Left(s"expected one character, got ${x.length}")
     case (Schema.SBytes, JStr(x)) => Base64.decode(x)
     case (Schema.SOption(of), JNull) => Right(None)
-    case (Schema.SOption(of), v) =>
-      decode(of().asInstanceOf[Schema[Any]])(v).map(Some(_).asInstanceOf[A])
-    case (Schema.SList(of), JArr(vs)) =>
+    case (Schema.SOption(of), v) => decode(of())(v).map(Some(_))
+    case (l: Schema.SList[a], JArr(vs)) =>
       // A truncated document leaves an "unclosed" marker where its
       // last element would be, and a damaged one leaves a JErr in
       // place of a value. Failing the whole list on either would
@@ -176,16 +176,16 @@ object Json {
       // (Json.parse) and in the tree (Cst.errors) for anyone who
       // wants to know that the document was damaged.
       vs.filterNot(_.isInstanceOf[JErr])
-        .foldLeft(Right(List.empty[Any]): Either[String, List[Any]]) { (acc, v) =>
-          acc.flatMap(xs => decode(of().asInstanceOf[Schema[Any]])(v).map(xs :+ _))
-        }.map(_.asInstanceOf[A])
-    case (Schema.SVector(of), JArr(vs)) =>
+        .foldLeft(Right(Nil): Either[String, List[a]]) { (acc, v) =>
+          acc.flatMap(xs => decode(l.of())(v).map(xs :+ _))
+        }
+    case (vec: Schema.SVector[a], JArr(vs)) =>
       // the same totality rule as SList above: damaged elements are
       // skipped, the ones that arrived survive
       vs.filterNot(_.isInstanceOf[JErr])
-        .foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, v) =>
-          acc.flatMap(xs => decode(of().asInstanceOf[Schema[Any]])(v).map(xs :+ _))
-        }.map(_.asInstanceOf[A])
+        .foldLeft(Right(Vector.empty): Either[String, Vector[a]]) { (acc, v) =>
+          acc.flatMap(xs => decode(vec.of())(v).map(xs :+ _))
+        }
     case (p: Schema.SProduct[A], JObj(fs)) =>
       val m = fs.toMap
       p.fields.zipWithIndex.foldLeft(Right(Vector.empty[Any]): Either[String, Vector[Any]]) { (acc, fi) =>
@@ -203,13 +203,13 @@ object Json {
             // a damaged optional value is the same as an absent one
             case (Some(JErr(_)), _: Schema.SOption[?]) => absent.map(xs :+ _)
             case (found, sc) => found.toRight(s"missing field '${f._1}' in ${p.name}")
-              .flatMap(decode(sc.asInstanceOf[Schema[Any]])).map(xs :+ _)
+              .flatMap(field(sc, _)).map(xs :+ _)
         }
       }.map(p.make)
     case (su: Schema.SSum[A], JObj(Vector((name, v)))) =>
       su.cases.find(_._1 == name)
         .toRight(s"unknown case '$name' of ${su.name}")
-        .flatMap((_, sc) => decode(sc().asInstanceOf[Schema[Any]])(v).map(_.asInstanceOf[A]))
+        .flatMap((_, sc) => decode(sc())(v))
     case (Schema.SIso(u, to, _), v) => decode(u())(v).flatMap(to)
     case (_, JErr(m)) => Left(m)
     case (want, got) => Left(s"expected ${want.getClass.getSimpleName}, got $got")
