@@ -190,6 +190,32 @@ The rewrite is statement-level monadic normalization (ANF for marks):
   rewriting HOFs generically is the expensive half of the general
   problem. A clear error with a workaround beats a wrong capture.
 
+- **Plain flatMaps, not Cont, as the emission target**
+  (direct-flatmap-emission, 2026-09-02; filed by bench-direct): the
+  macro now compiles every node to an `F[T]` term — binds are
+  `fa.flatMap(v => rest)` on `Monad[F]` directly, the pure tail is
+  `M.pure(_)`, loops are the same recursive defs with `F[Unit]`
+  bodies, and `Monadic.reify` disappears from the emitted tree. The
+  original target (`Cont[·, F[A], F[A]]` closed by reify) was priced
+  by the bench-direct lane at 3.3x over hand-written flatMaps
+  (docs/benchmarks.md §1b): every mark paid a shift closure and a
+  Cont trampoline step on top of the flatMap it wrapped. The Cont
+  layer bought NOTHING semantic in the macro's hands — `reflect(m)`
+  is `shift(k => m.flatMap(k))`, so multi-shot and short-circuit
+  were always F's own flatMap calling the continuation, and the
+  stack discipline was always inherited (a strict monad's flatMap
+  invokes k inline in BOTH encodings — a while over Option was
+  never trampolined; a lazy carrier defers k in both). The macro
+  builds the continuation syntactically, which is the one job
+  runtime reflection existed to do dynamically. `Monadic.reflect`/
+  `reify` remain public API for hand-written Cont style; only the
+  macro's target changed. Two law-based fusions ride along: a pure
+  while condition emits a plain `if` (no bind), and a statement-
+  position `Assign` with a marked rhs binds once into the assignment
+  (not bind-into-pure-then-bind-again). Gate: every TestDirect*
+  suite green unchanged — the suites pin the semantics the rewrite
+  must preserve.
+
 ## Results
 
 - 16 tests in TestDirect, all green: vals, subexpression hoisting
