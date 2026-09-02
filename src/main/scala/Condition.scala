@@ -176,6 +176,23 @@ object Condition {
     (recover: Any => A): A ! (Op + F) =
     within[A, F](name)(Direct.direct[[X] =>> X ! (Op + F)](body))(recover)
 
+  /**
+   * Typed signals (specs/condition.md, Typed signals): an ADDITIVE
+   * edge vocabulary — a condition declaring its answer type gets a
+   * typed signal and a typed resume, and a wrong-typed resume stops
+   * compiling. The machine stays erased (the header's discipline);
+   * the Any floor stays the floor.
+   */
+  trait Of[A]
+
+  extension [A](c: Of[A])
+    /** the typed signal edge: HowMany.signal : Int ! Op */
+    def signal: A ! Op = Condition.signal[A](c)
+
+  /** the typed resume for policies: resume(c)(v) checks v against
+   * c's answer type — `case c: HowMany.type => resume(c)(41)` */
+  def resume[A](c: Of[A])(v: A): Decision = Decision.Resume(v)
+
   /** the Delim/Resource precedent: splitting a row on Op is a
    * total test — one class carries the whole signature */
   given TypeableK[Op] = typeableK(classOf[Op[?]])
