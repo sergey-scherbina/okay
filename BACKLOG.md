@@ -345,11 +345,17 @@ construction instead of a type test per value).
       built ONCE per server (a def re-evaluated per request built a
       fresh MCP session table each time, dropping every session right
       after initialize).
-- [ ] demo-two-nodes — two demo processes over one shared durable
+- [x] demo-two-nodes — two demo processes over one shared durable
       log: Election picks the writer, both serve reads, kill the
       leader and watch the market survive — the persist/Election
       machinery in a consumer-visible showcase. Sized LARGE; take
       only when a distributed demo is named wanted.
+      LANDED 2026-09-02 (named wanted by the operator): TwoNode
+      polls a shared OKAY_CHAT_LOG directory (FileStore has no live
+      cross-process tailing, stated not hidden), Election picks the
+      writer, POST is 503-gated to the leader, GET always serves.
+      TestTwoNode launches two REAL OS processes, kills the leader,
+      proves the survivor takes over and the market holds.
 - [x] demo-scenario-editor — scenarios are already data
       (ScenarioDef): a UI page to author one (steps, prompts, deal
       hook), saved through the store, listed by the help command —

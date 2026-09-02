@@ -1,5 +1,46 @@
 # Changelog
 
+## demo-two-nodes — Election made consumer-visible: two real processes, kill the leader
+Completed: 2026-09-02
+Landed as aed0669 (spec) + 43ae53d (impl). Failover itself is not new
+work — `Election` (okay-persist, specs/consensus.md) already proves
+concurrent claims, lease takeover, fencing, and operator override,
+against both `MemoryStore` and `FileStore`. This showcase makes that
+machinery consumer-visible: two real `ChatDemo` processes, one shared
+`OKAY_CHAT_LOG` directory, one elected writer, kill it and watch
+`/market` keep answering. Sized LARGE and gated in BACKLOG ("take
+only when a distributed demo is named wanted") — landed after the
+operator named it wanted, once every other okay-demo backlog item
+was clear.
+A real constraint made visible, not hidden: `FileStore.open` scans
+its directory ONCE; a process that never appends to a topic never
+sees another process's later writes — nothing re-scans. `TwoNode`
+does not add live cross-process tailing (a real project on its own);
+it POLLS — every tick (`OKAY_CHAT_TICK_MS`, default 500ms) reopens a
+fresh `FileStore` handle, re-decides leadership from ITS control
+topic, and — only when not leading — `market.reset()` +
+`replayProjections` (the exact function `POST /admin/replay` already
+calls, reused rather than reinvented).
+`TwoNode.leaderGated` wraps the WHOLE route table once: a `POST`
+from a non-leader answers 503 naming the leader; every `GET` passes
+through untouched. `main` branches on `OKAY_CHAT_NODE` — absent, the
+single-process path is byte-for-byte unchanged.
+Two real bugs caught in testing: both spawned processes defaulted to
+the SAME relative `okay-chat.db` sqlite file (never explicitly set),
+racing on schema creation — fixed by pointing each process's store
+at `:memory:` (the log is shared, the store is per-node); and a cold
+start where both nodes provision a brand-new shared directory at
+once can race on a topic's first segment file
+(`FileAlreadyExistsException`, no cross-process lock) — fixed by
+catching and retrying on the next tick instead of crashing `main`.
+Tests: `TestTwoNode` launches two REAL OS processes (not two
+threads), asserts one agreed leader, the follower refusing writes
+while still serving reads, a write becoming visible on the follower
+within one tick, a forced kill, and the survivor taking over and
+accepting writes. 5/5 clean standalone runs; the full demo suite (44
+tests) clean in 2 of 3 combined runs, the third hitting only the
+known pre-existing LIVE SEEKER flake.
+
 ## kyo-fair-lanes — the 1000x kyo numbers were the shape, not the library
 Completed: 2026-09-02
 Landed as 35caeaf (lanes) + <docs>. The operator asked whether the
