@@ -1,0 +1,5 @@
+slug: okay-chat-module
+branch: feature/okay-chat-module
+worktree: ../okay-wt-okay-chat-module
+claimed: 2026-09-02
+scope: user ask (extraction plan, third of three) -- a reusable okay-chat sbt module: Model type + scripted/live/local/model/modeName + sse/reply/obj (Cut-guarded SSE) + fieldOf/messagesOf/appJs, and chatRoute(m, budget, turnOverride: Seq[Anthropic.Message] => Option[Source[Chunk[Byte]]] = _ => None). page/reactPage HTML stays in the demo (market-flavored). specs/chat.md.
