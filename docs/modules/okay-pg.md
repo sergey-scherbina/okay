@@ -32,6 +32,16 @@ one typed program over PgSql and JdbcSql/H2 and asserts ONE equal
 answer — only the SQL strings differ (`$n` vs `?`), which
 bind-don't-model already decided belongs to the dialect.
 
+**Over TLS (JVM).** `PgTls.connect(host, port, user, password, db,
+TlsConfig(...), secrets)` does pg's SSLRequest preamble on the raw
+socket and hands the encrypted session to the same startup + SCRAM.
+`TlsConfig.mode` is the `sslmode` ladder (VerifyFull the default,
+`caFile` the CA to check against); with `clientCert` + `clientKey`
+(a `Secret` ref, never inline PEM) the client PRESENTS a certificate
+and a role under `hostssl … cert clientcert=verify-full` logs in with
+no password at all (specs/tls.md). The dockerized test Postgres is
+provisioned for this by `okay-pg/mtls-provision.sh`.
+
 **Errors survive.** A backend error is drained to `ReadyForQuery`
 before the throw, so the session keeps working; `cancel()` (the
 region's sync brake) rolls back on the spot.

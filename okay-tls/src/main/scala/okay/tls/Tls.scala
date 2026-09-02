@@ -32,8 +32,8 @@ enum SslMode:
  */
 final case class TlsConfig(mode: SslMode = SslMode.VerifyFull,
                            caFile: Option[String] = None,
-                           clientCert: Option[String] = None,   // mTLS, staged: carried so adding it changes no signatures
-                           clientKey: Option[Secret] = None)
+                           clientCert: Option[String] = None,   // mTLS: the identity the CLIENT presents (cert PEM path) …
+                           clientKey: Option[Secret] = None)    // … and its key, a ref like the server's
 
 object Tls {
 
@@ -49,10 +49,21 @@ object Tls {
       case mode =>
         for
           _ <- noInlineKey(cfg.clientKey)
+          identity <- clientIdentity(cfg, secrets)
           trust <- trustOf(mode, cfg.caFile)
-          ctx <- contextOf(trust, None)
+          ctx <- contextOf(trust, identity)
           out <- handshake(ctx, sock, host, mode)
         yield out
+
+  /** mTLS (pg-mtls): cert AND key make an identity the handshake
+   * offers when the server asks; one without the other is a
+   * misconfiguration named as such, never a silent no-identity */
+  private def clientIdentity(cfg: TlsConfig, secrets: Secrets)
+  : Either[String, Option[(String, String)]] = (cfg.clientCert, cfg.clientKey) match
+    case (None, None) => Right(None)
+    case (Some(cert), Some(key)) => secrets.get(key).map(pem => Some((cert, pem)))
+    case (Some(_), None) => Left("clientCert is set without clientKey — a client identity is a certificate AND its key")
+    case (None, Some(_)) => Left("clientKey is set without clientCert — a client identity is a certificate AND its key")
 
   /** the server half: a wire server terminates TLS itself — cert as
    * a PEM path, key as a Secret ref (PKCS#8 PEM) */
@@ -107,11 +118,13 @@ object Tls {
           Right(Some(tmf.getTrustManagers))
         catch case e: Exception => Left(s"CA file '$path' did not load: ${e.getMessage}")
 
+  /** `identity` is (PEM chain path, PKCS#8 key PEM) — the server's
+   * own on the server half, the client's on an mTLS client */
   private def contextOf(trust: Option[Array[TrustManager]],
-                        serverIdentity: Option[(String, String)])
+                        identity: Option[(String, String)])
   : Either[String, SSLContext] =
     try
-      val kms = serverIdentity match
+      val kms = identity match
         case None => null
         case Some((certFile, keyPem)) =>
           val cf = CertificateFactory.getInstance("X.509")

@@ -111,6 +111,30 @@ class TestTls extends munit.FunSuite {
     plain.close()
   }
 
+  test("mTLS: a HALF identity (cert without key, key without cert) is refused by name, not silently dropped") {
+    val c1 = Tls.client(Socket(), "h", TlsConfig(clientCert = Some(cert)))
+    assert(c1.left.exists(_.contains("without clientKey")), c1.toString)
+    val c2 = Tls.client(Socket(), "h", TlsConfig(clientKey = Some(key)), Secrets.file)
+    assert(c2.left.exists(_.contains("without clientCert")), c2.toString)
+  }
+
+  test("mTLS: a full identity is loaded and OFFERED; a server that does not ask still handshakes") {
+    // the live proof that the server RECEIVES it is TestPgMtls (okay-pg);
+    // here: the key managers build from cert+key and change nothing
+    // for a server that never sends CertificateRequest
+    served { port =>
+      val out = Tls.client(Socket("localhost", port), "localhost",
+        TlsConfig(caFile = Some(cert), clientCert = Some(cert), clientKey = Some(key)),
+        Secrets.file)
+      assertEquals(out.map(echo), Right("ping"))
+    }
+    // a key ref that does not resolve is the resolver's refusal, surfaced
+    val missing = Tls.client(Socket(), "h",
+      TlsConfig(clientCert = Some(cert), clientKey = Some(Secret(s"file:${TestTls.dir}/nope.pem"))),
+      Secrets.file)
+    assert(missing.isLeft, missing.toString)
+  }
+
   test("a private key smuggled inline in the ref is refused, client and server") {
     val inline = Secret("-----BEGIN PRIVATE KEY-----\nMIIE...")
     val c = Tls.client(Socket(), "h", TlsConfig(clientKey = Some(inline)))

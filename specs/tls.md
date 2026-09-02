@@ -74,7 +74,7 @@ transport gets TLS from one seam and adds nothing of its own.
 - [x] a private key configured inline (not a Secret ref) is refused
       at config decode (the seam refuses a ref that smuggles PEM,
       client and server)
-- [ ] mTLS — the client PRESENTS an identity (pg-mtls): with
+- [x] mTLS — the client PRESENTS an identity (pg-mtls): with
       `clientCert` (PEM chain path) AND `clientKey` (PKCS#8 Secret
       ref) set, `Tls.client` builds key managers exactly as the server
       half builds its identity and offers the certificate when the
@@ -160,3 +160,23 @@ Postgres with ssl reloaded on (require / verify-full-with-CA /
 verify-full-unknown-CA-refused); plaintext connections keep working,
 so the existing pg suite is untouched. Both own-wire consumers now
 ride the one seam; only the mTLS rung stays staged.
+mTLS landed (pg-mtls, 2026-09-02): the last rung of the seam, at zero
+signature change — `Tls.client` now turns `clientCert` + `clientKey`
+into key managers by the same `contextOf` the server half uses, so
+the certificate is offered whenever the server sends
+CertificateRequest and nothing changes for a server that does not. A
+half identity (cert without key or key without cert) is refused by
+name; the key stays a Secret ref (inline PEM refused as before) and
+resolves through the same `Secrets`. Proven live (TestPgMtls) against
+the dockerized Postgres provisioned by `okay-pg/mtls-provision.sh` —
+a client CA, a cert whose CN is the role `okay_mtls`, `ssl_ca_file`
+pointing at that CA, and `hostssl all okay_mtls all cert
+clientcert=verify-full` inserted BEFORE the scram rule: the role logs
+in with the certificate and NO password and queries as itself; the
+same role without a certificate is refused by the server
+("connection requires a valid client certificate"); the password role
+still SCRAMs in with or without an identity offered, and the
+plaintext suite is untouched. Not in the seam: the server half
+DEMANDING a client certificate (`needClientAuth` + a client CA) — our
+own wires authenticate with their grant, so the rung was not needed;
+it is a small additive box if a deployment asks.
