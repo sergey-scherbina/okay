@@ -2,6 +2,7 @@ package okay.agent
 
 import okay.{Aggregator, Group}
 import okay.given
+import okay.codec.{Json, Schema}
 
 /**
  * Context management as an ALGEBRA (specs/llm-agentic.md). A policy
@@ -98,6 +99,70 @@ object Compact {
   def all: Aggregator[Turn, Vector[Turn], Seq[Turn]] =
     Aggregator[Turn, Vector[Turn], Seq[Turn]](Vector.empty)(_ :+ _)(_ ++ _)(identity)
 
+  /**
+   * SKILL.state (arxiv 2608.26263): bounded execution state instead
+   * of an append-only transcript, for a task whose future decisions
+   * depend on a small structured FACT, not on how it was reached. Σ
+   * is a `Json` object, changed only by `Turn.StatePatch` (an RFC
+   * 7396 merge, `Json.mergePatch` — a later field wins over an
+   * earlier one, `JNull` deletes it); the latest `Turn.Result` or
+   * `Turn.User` is kept as the one observation that matters now; a
+   * `Turn.System` is pinned, exactly as in `window`; everything else
+   * — an `Assistant` turn's own reasoning, every earlier observation,
+   * a `Summary` marker — is not folded in at all, so `present`
+   * renders in time proportional to the PINS plus one observation,
+   * not to how many turns were ever seen: the O(1)-per-step prompt
+   * the paper measures, here as a direct consequence of the
+   * accumulator's shape rather than a truncation heuristic layered
+   * on top of one.
+   *
+   * `add` is what `Memory.handle` actually calls, on every
+   * `remember`, and it is the property this module tests: sequential
+   * folding matches RFC 7396 exactly. `merge` (only relevant to
+   * chunk-parallel or distributed replay — no agent loop in this
+   * library calls it) shares `window`'s own documented caveat: it is
+   * a legitimate combination of two partial states, not always the
+   * SAME one sequential folding would reach, because `Json.mergePatch`
+   * does not compose invertibly across a split it cannot see across
+   * (a right-side deletion of a key only the LEFT side ever set has
+   * nothing to compose against). Do not parallel-reduce a Σ whose
+   * patches delete keys across chunk boundaries and expect the exact
+   * sequential answer; do expect a real, applicable state.
+   *
+   * A candidate patch is validated BEFORE it ever reaches here —
+   * `validatePatch` below — so this policy itself never refuses
+   * anything; it only ever applies what already decoded.
+   */
+  final case class SkillAcc(pinned: Vector[Turn], sigma: Json, observation: Option[Turn])
+
+  def skillState(render: Json => String): Aggregator[Turn, SkillAcc, Seq[Turn]] =
+    Aggregator[Turn, SkillAcc, Seq[Turn]](SkillAcc(Vector.empty, Json.JObj(Vector.empty), None)) {
+      (acc, t) => t match
+        case s: Turn.System => acc.copy(pinned = acc.pinned :+ s)
+        case Turn.StatePatch(patch) => acc.copy(sigma = Json.mergePatch(acc.sigma, patch))
+        case r: Turn.Result => acc.copy(observation = Some(r))
+        case u: Turn.User => acc.copy(observation = Some(u))
+        case _ => acc   // Assistant reasoning, Summary markers: not kept
+    } { (a, b) =>
+      SkillAcc(a.pinned ++ b.pinned, Json.mergePatch(a.sigma, b.sigma), b.observation.orElse(a.observation))
+    } { acc =>
+      acc.pinned :+ Turn.User(render(acc.sigma) + acc.observation.fold("")(o => "\n\n" + text(o)))
+    }
+
+  /**
+   * The rollback door (specs/llm-agentic.md): a candidate patch,
+   * merged and checked against S's Schema before it is ever
+   * remembered. `Right` is the merged Σ, ready for
+   * `Context.remember(Turn.StatePatch(patch))`; `Left` names why the
+   * patch is refused, and the caller feeds that back as the next
+   * observation instead of corrupting the state — the paper's
+   * validate-then-rollback, as a pure decision instead of a runtime
+   * exception.
+   */
+  def validatePatch[S](current: Json, patch: Json)(using s: Schema[S]): Either[String, Json] =
+    val merged = Json.mergePatch(current, patch)
+    Json.decode(s)(merged).map(_ => merged)
+
   /** a crude size when no tokenizer is at hand (4 chars ~ 1 token) */
   def chars(t: Turn): Int = (text(t).length + 3) / 4
 
@@ -108,4 +173,5 @@ object Compact {
     case Turn.Assistant(s, calls) => s + calls.map(_.name).mkString(" ")
     case Turn.Result(_, c) => c
     case Turn.Summary(s, _) => s
+    case Turn.StatePatch(patch) => Json.print(patch)
 }

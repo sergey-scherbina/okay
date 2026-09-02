@@ -35,6 +35,10 @@ object Provider {
     case Turn.Result(id, c) => OpenAi.message("tool", c, toolCallId = Some(id))
     // a compaction marker is context, and context is a system turn
     case Turn.Summary(s, _) => OpenAi.message("system", s)
+    // Compact.skillState folds this into a rendered Turn.User before
+    // `present` ever hands the context here; a raw one reaching the
+    // wire is a caller bypassing that, so it goes as context, plainly
+    case Turn.StatePatch(patch) => OpenAi.message("system", Json.print(patch))
 
   def declaration(spec: ToolSpec): Json =
     OpenAi.tool(spec.name, spec.description, spec.schema)
@@ -91,6 +95,10 @@ object Provider {
       case Turn.System(s) => s
       case Turn.Summary(s, _) => s
     }
+    // a StatePatch normally never reaches here — Compact.skillState's
+    // `present` already folded it into a Turn.User — so this treats
+    // one the same as the summary marker just above: context, not
+    // conversation
     val out = Vector.newBuilder[Json]
     var pendingResults = Vector.empty[Json]
 
@@ -100,7 +108,7 @@ object Provider {
         pendingResults = Vector.empty
 
     for t <- context do t match
-      case Turn.System(_) | Turn.Summary(_, _) => ()
+      case Turn.System(_) | Turn.Summary(_, _) | Turn.StatePatch(_) => ()
       case Turn.User(s) =>
         flushResults()
         out += Anthropic.blocks("user", Vector(Anthropic.textBlock(s)))

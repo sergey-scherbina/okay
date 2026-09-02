@@ -110,6 +110,78 @@ on failure backtrack to the mark and take the next alternative —
 all its outcomes; otherwise re-prompt", which is the soft cut neither
 exceptions nor plain flatMap can express.
 
+## Bounded execution state (2026-09-02, skill-state)
+
+For a task whose future decisions depend on a small structured FACT
+rather than on how it was reached — a warehouse pick count, a CTF
+shell's working directory and env, a form's filled fields — an
+append-only transcript is the wrong shape even compacted: every
+policy above keeps a VIEW of turns, so the prompt still carries
+whatever the view retains, and the model still has to re-read its
+own past reasoning to find the one number that matters. SKILL.state
+(arxiv 2608.26263) names the alternative: Σ, a bounded JSON state,
+changed by a validated PATCH each step, with the reasoning that
+produced the patch thrown away rather than compacted.
+
+This did not need a new effect. `Compact.skillState` is one more
+`Aggregator[Turn, S, Seq[Turn]]` — the SAME algebra `window`
+implements, so it plugs into `Handlers.context`/`Memory.handle`
+exactly as `window` does, and a program written against `Context`
+does not know or care which policy is in the handler:
+
+- **Σ is `Json`, changed by `Json.mergePatch`** (RFC 7396: an object
+  field merges recursively, `null` deletes it, anything else
+  replaces) — a new `Turn.StatePatch(patch)` case is the one artifact
+  the policy keeps of a step.
+- **`present` is O(1) in the number of turns seen**, not merely
+  bounded like a window: the accumulator holds the pinned `System`
+  turns, Σ, and the LATEST observation only, so the rendered view is
+  the pins plus exactly one turn, at step 1 and at step 100,000 alike
+  (TestLaws: "skillState's view is O(1)").
+- **The reasoning is not compacted away, it is never kept**: an
+  `Assistant` turn's own text is not one of the cases `add` folds on,
+  so nothing about it survives past the step that produced it —
+  tested directly (TestSkillState: "the reasoning that produced a
+  patch is never in the rendered view").
+- **Validation is the rollback door, and it is a pure decision.**
+  `Compact.validatePatch[S](current, patch)(using Schema[S])` merges
+  and decodes against the caller's `Schema` BEFORE the patch is ever
+  remembered: `Right` hands back the merged Σ (so a caller need not
+  recompute it), `Left` names the refusal, and the caller feeds that
+  back as the next observation instead of corrupting the state — the
+  paper's rollback-retry, without a mutable rollback anywhere, because
+  the corrupting write never happens.
+- **Grammar-constrained decoding falls out of tool-calling that
+  already exists.** The paper spends real design on forcing valid
+  JSON from open-weight models; here a state patch is the argument of
+  an ordinary tool call, and `ToolSpec.jsonSchema` already derives its
+  JSON Schema from `Schema[S]` — a field that is `Option`-typed or
+  carries a codec-defaults default is already NOT required, so a
+  patch's natural shape (omit what did not change) is what the schema
+  already asks a provider's structured-output mode for. No new
+  machinery earns the paper's grammar constraint; it was already
+  built for tool arguments.
+
+**The one caveat, inherited from `Json.mergePatch` and stated there:**
+`skillState`'s `merge` (relevant only to chunk-parallel or distributed
+replay — no loop in this library calls it; `add`, used on every
+`remember`, is exact) shares `window`'s own documented imperfection.
+Combining two partial Σs first and applying once can disagree with
+applying each patch in sequence, specifically when a later patch
+deletes a key only the LEFT partial's turns ever set — the combined
+patch has nothing to delete, because it was never told the key
+existed. `TestLaws` proves the two AGREE whenever no patch in the run
+deletes anything, and names the counterexample directly in
+`TestJsonMergePatch` rather than asserting a law that does not hold.
+
+**What this is not**: a replacement for `window`. A task whose
+relevance only becomes clear in hindsight, whose state must be
+discovered rather than declared upfront, or whose objective concerns
+the HISTORY itself (an audit, a postmortem) wants the transcript, or
+`window`'s lossy-but-honest suffix of it — the paper names the same
+limits. `zip` composes the two: a state and a token-window view of
+the raw turns, one pass, if a task genuinely wants both.
+
 ## Search over plans (why backtracking belongs here)
 
 - best-of-N sampling = `Choose` over N completions, `once` to commit;

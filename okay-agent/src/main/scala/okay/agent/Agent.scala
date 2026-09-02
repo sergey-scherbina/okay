@@ -22,6 +22,14 @@ enum Turn:
   case Result(call: String, content: String)
   /** a compaction artifact: what a range of turns became */
   case Summary(text: String, covers: Int)
+  /** a bounded EXECUTION STATE, patched (specs/llm-agentic.md,
+   * "Bounded execution state" — Compact.skillState): the one
+   * artifact that policy keeps of a step, a validated RFC 7396 merge
+   * patch (`Json.mergePatch`) against the running state. The
+   * reasoning that PRODUCED it is not kept at all — this case exists
+   * so a task whose future decisions depend on a small structured
+   * fact, not on the transcript, can say so */
+  case StatePatch(patch: Json)
 
 /** the model asked for a tool, by name, with JSON arguments */
 final case class ToolCall(id: String, name: String, args: Json)

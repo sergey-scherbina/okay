@@ -56,6 +56,40 @@ object Json {
   /** the total pipeline: any string yields a Json (JErr for damage) */
   def parse(s: String): Json = value(cst(s))
 
+  /**
+   * RFC 7396 JSON Merge Patch, applied: an object PATCH recursively
+   * merges into TARGET field by field (a target that is not itself
+   * an object is treated as `{}`, per the RFC), a `null` field
+   * DELETES that key, and any other value replaces it wholesale —
+   * so a scalar or array patch always replaces, never merges. Any
+   * non-object patch simply becomes the new value: `mergePatch(t,
+   * JNum(1))` is `JNum(1)` regardless of `t`. Pure, total, and
+   * self-composing only up to the caveat RFC 7396 itself has —
+   * `mergePatch(mergePatch(t, p1), p2)` is not always the same value
+   * as `mergePatch(t, mergePatch(p1, p2))` when `p2` deletes a key
+   * that `t` carried and `p1` never mentioned (the combined patch has
+   * nothing to delete, because it was never told the key existed) —
+   * a caller composing patches across a boundary it does not control
+   * the whole history of should apply them in order, not combine
+   * them first.
+   */
+  def mergePatch(target: Json, patch: Json): Json = patch match
+    case JObj(patchFields) =>
+      val base = target match
+        case JObj(fs) => fs
+        case _ => Vector.empty
+      val merged = patchFields.foldLeft(base) { (acc, kv) =>
+        val (k, v) = kv
+        val without = acc.filterNot(_._1 == k)
+        v match
+          case JNull => without
+          case _ =>
+            val orig = acc.find(_._1 == k).map(_._2).getOrElse(JNull)
+            without :+ (k -> mergePatch(orig, v))
+      }
+      JObj(merged)
+    case other => other
+
   /** the same Json by the fast road (JsonValue: one strict pass, no
    * tokens, no tree) when the text is well formed, and by the
    * lossless road otherwise — so damage still gets the CST's exact

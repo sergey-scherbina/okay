@@ -2,6 +2,7 @@ package okay.agent
 
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
+import okay.codec.Json
 
 /**
  * The compactor's invariants under random conversations. A budget
@@ -111,6 +112,90 @@ class TestLaws extends munit.ScalaCheckSuite {
       val dropped = turns.count(!_.isInstanceOf[Turn.System]) - kept
       // something fell out if and only if the view says so
       (dropped > 0) == view.exists(_.isInstanceOf[Turn.Summary])
+    }
+  }
+
+  // ---- Compact.skillState (SKILL.state, arxiv 2608.26263) ----
+
+  private def norm(j: Json): Json = j match
+    case Json.JObj(fs) => Json.JObj(fs.map((k, v) => (k, norm(v))).sortBy(_._1))
+    case Json.JArr(vs) => Json.JArr(vs.map(norm))
+    case other => other
+
+  private val jsonScalar: Gen[Json] = Gen.oneOf(
+    Gen.alphaStr.map(Json.JStr(_)),
+    Gen.choose(-100, 100).map(n => Json.JNum(n.toDouble)),
+    Gen.const(Json.JNull))
+
+  /** a small object over a FIXED three-key alphabet: enough overlap
+   * for later patches to overwrite or delete earlier ones, which is
+   * the whole point of exercising this against a random walk */
+  private val jsonPatch: Gen[Json] =
+    for
+      keys <- Gen.someOf(Seq("a", "b", "c"))
+      vals <- Gen.listOfN(keys.size, jsonScalar)
+    yield Json.JObj(keys.zip(vals).toVector)
+
+  private val skillTurn: Gen[Turn] = Gen.oneOf(
+    Gen.alphaStr.map(Turn.User(_)),
+    Gen.alphaStr.map(Turn.Assistant(_, Nil)),
+    Gen.alphaStr.map(s => Turn.Result("id", s)),
+    Gen.alphaStr.map(Turn.System(_)),
+    jsonPatch.map(Turn.StatePatch(_)))
+
+  private val skillConversation: Gen[List[Turn]] = Gen.listOf(skillTurn)
+
+  property("skillState's view is O(1): the pins, plus exactly one rendered turn") {
+    forAll(skillConversation) { (turns: List[Turn]) =>
+      val policy = Compact.skillState(Json.print)
+      val view = policy.present(turns.foldLeft(policy.init)(policy.add))
+      val pins = turns.collect { case s: Turn.System => s }
+      view.dropRight(1) == pins && view.lastOption.exists(_.isInstanceOf[Turn.User])
+    }
+  }
+
+  property("Sigma is exactly the sequential RFC 7396 fold of the StatePatch turns, others skipped") {
+    forAll(skillConversation) { (turns: List[Turn]) =>
+      val policy = Compact.skillState(Json.print)
+      val acc = turns.foldLeft(policy.init)(policy.add)
+      val zero: Json = Json.JObj(Vector.empty)
+      val expected = turns.collect { case Turn.StatePatch(p) => p }.foldLeft(zero)(Json.mergePatch)
+      norm(acc.sigma) == norm(expected)
+    }
+  }
+
+  property("the accumulator's observation is the LAST Result/User content, nothing older") {
+    forAll(skillConversation) { (turns: List[Turn]) =>
+      val policy = Compact.skillState(Json.print)
+      val acc = turns.foldLeft(policy.init)(policy.add)
+      val lastObs = turns.reverse.collectFirst {
+        case r: Turn.Result => r
+        case u: Turn.User => u
+      }
+      acc.observation == lastObs
+    }
+  }
+
+  property("skillState's merge matches sequential folding when patches never delete across the split") {
+    // the documented caveat (Compact.scala, Json.mergePatch) is about
+    // a right-side deletion of a key only the LEFT side ever set —
+    // restricted to patches that never delete, merge and sequential
+    // folding must always agree
+    val noDeletes: Gen[Json] =
+      for
+        keys <- Gen.someOf(Seq("a", "b", "c"))
+        vals <- Gen.listOfN(keys.size, Gen.alphaStr.map(Json.JStr(_)))
+      yield Json.JObj(keys.zip(vals).toVector)
+    val turnsNoDeletes: Gen[List[Turn]] = Gen.listOf(Gen.oneOf(
+      Gen.alphaStr.map(Turn.System(_)),
+      noDeletes.map(Turn.StatePatch(_))))
+    forAll(turnsNoDeletes, turnsNoDeletes) { (left: List[Turn], right: List[Turn]) =>
+      val policy = Compact.skillState(Json.print)
+      val sequential = (left ++ right).foldLeft(policy.init)(policy.add)
+      val merged = policy.merge(
+        left.foldLeft(policy.init)(policy.add),
+        right.foldLeft(policy.init)(policy.add))
+      norm(sequential.sigma) == norm(merged.sigma) && sequential.pinned == merged.pinned
     }
   }
 }
