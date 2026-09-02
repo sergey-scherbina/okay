@@ -131,17 +131,18 @@ object Offload {
     import okay.!.*
     def walk(p: Either[String, Unit] ! (Produce + Async),
              acc: Vector[Array[Byte]]): Vector[Array[Byte]] ! Async =
+      // typed by the tree (the Backup walker's shape): a produced X
+      // is a chunk by `produced`'s one claim
       (p.resume: @unchecked) match
-        case Pure(a) => a.asInstanceOf[Either[String, Unit]] match
+        case Pure(a) => a match
           case Left(why) => throw IllegalStateException(s"offload read '$key': $why")
           case Right(()) => okay.pure(acc)
         case Effect(e) => okay.<|>[Async, Produce](e) match
-          case Left(a) => okay.effect[Async, Any](a.asInstanceOf[Async[Any]]).map(_ => acc)
-          case Right(c) => okay.pure(acc :+ c.asInstanceOf[Chunk[Byte]].toArray)
+          case Left(a) => okay.effect(a).map(_ => acc)
+          case Right(c) => okay.pure(acc :+ okay.produced[Chunk[Byte]](c).toArray)
         case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
-          case Left(a) => okay.effect[Async, Any](a.asInstanceOf[Async[Any]])
-            .flatMap(x => walk(k(x.asInstanceOf), acc))
-          case Right(c) => walk(k(c), acc :+ c.asInstanceOf[Chunk[Byte]].toArray)
+          case Left(a) => okay.effect(a).flatMap(x => walk(k(x), acc))
+          case Right(c) => walk(k(c), acc :+ okay.produced[Chunk[Byte]](c).toArray)
     walk(blob.get(key), Vector.empty).map { parts =>
       val out = new Array[Byte](parts.map(_.length).sum)
       var at = 0

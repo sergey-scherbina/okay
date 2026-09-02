@@ -68,9 +68,11 @@ construction instead of a type test per value).
       as such answers a String, defaults through a Schema kernel
       (`defaultAt`), the snapshot's erased state through ONE kernel
       (`Snapshot.stateAs`, the Context row names no S).
-- [ ] cast-free-blob — Backup (6), Offload (6), S3 (5): hand-rolled
-      Async interpreters over a Writer row and row re-associations;
-      the agent recipe.
+- [x-landed] cast-free-blob — landed: the Backup/Offload walkers are
+      typed by the tree (an Async[X] or a produced X — Produce is the
+      identity signature, the op IS its answer; that the values are
+      chunks is `produced`'s one claim), S3's row re-associations are
+      ascriptions (a row is a union); 17 → 0.
 - [ ] cast-free-rag-llm-kyo — rag Ingest (3), Retrieve (2), llm Cut
       (1), kyo interop (4): row re-associations and continuation
       casts; typed by ascription and GADT.

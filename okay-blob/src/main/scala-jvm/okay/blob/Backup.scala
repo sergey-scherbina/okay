@@ -101,17 +101,19 @@ object Backup {
   private def walkGet(p: Either[String, Unit] ! (Produce + Async),
                       each: Chunk[Byte] => Unit): Either[String, Unit] ! Async =
     import okay.!.*
+    // typed by the tree: the split gives an Async[X] or a produced
+    // X (Produce is the identity signature — the op IS its answer);
+    // that the produced values are chunks is `produced`'s one claim
     (p.resume: @unchecked) match
       case Pure(a) => okay.pure(a)
       case Effect(e) => okay.<|>[Async, Produce](e) match
-        case Left(a) => effect[Async, Either[String, Unit]](a.asInstanceOf[Async[Either[String, Unit]]])
+        case Left(a) => effect(a)
         case Right(c) =>
-          each(c.asInstanceOf[Chunk[Byte]])
-          okay.pure(c.asInstanceOf[Either[String, Unit]])
+          each(okay.produced[Chunk[Byte]](c))
+          okay.pure(c)
       case Bind(Effect(e), k) => okay.<|>[Async, Produce](e) match
-        case Left(a) =>
-          effect[Async, Any](a.asInstanceOf[Async[Any]]).flatMap(x => walkGet(k(x.asInstanceOf), each))
+        case Left(a) => effect(a).flatMap(x => walkGet(k(x), each))
         case Right(c) =>
-          each(c.asInstanceOf[Chunk[Byte]])
-          walkGet(k(c.asInstanceOf), each)
+          each(okay.produced[Chunk[Byte]](c))
+          walkGet(k(c), each)
 }

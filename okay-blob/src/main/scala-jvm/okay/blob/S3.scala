@@ -62,22 +62,22 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
       Seq("host" -> hostHeader) ++ headers, SigV4.emptyHash, region, stamp(), creds)
     val send = http.send(Request(Method.Get,
       s"$endpoint${SigV4.uriEncode(keyPath(key), keepSlash = true)}", auth ++ headers))
-    okay.!.widen[Response, Async, Produce](send)
-      .asInstanceOf[Response ! F].flatMap { r =>
-        if r.status == 404 then
-          okay.!.widen[Either[String, Unit], Async, Produce](
-            r.release.map(_ => Left(s"no such key '$key'"))).asInstanceOf[Either[String, Unit] ! F]
-        else if !r.ok && r.status != 206 then
-          okay.!.widen[Either[String, Unit], Async, Produce](
-            r.release.map(_ => Left(s"get '$key': HTTP ${r.status}"))).asInstanceOf[Either[String, Unit] ! F]
-        else emit(r.body)
-      }
+    // a row is a union: Async + Produce IS Produce + Async, so the
+    // ascriptions are the compiler's equality, not casts
+    (okay.!.widen[Response, Async, Produce](send): Response ! F).flatMap { r =>
+      if r.status == 404 then
+        okay.!.widen[Either[String, Unit], Async, Produce](
+          r.release.map(_ => Left(s"no such key '$key'"))): Either[String, Unit] ! F
+      else if !r.ok && r.status != 206 then
+        okay.!.widen[Either[String, Unit], Async, Produce](
+          r.release.map(_ => Left(s"get '$key': HTTP ${r.status}"))): Either[String, Unit] ! F
+      else emit(r.body)
+    }
 
   /** re-produce a response body Source as this seam's chunk stream */
   private def emit(src: okay.Source[Chunk[Byte]]): Either[String, Unit] ! F =
-    okay.!.widen[Either[Unit, (Chunk[Byte], okay.Source[Chunk[Byte]])], Async, Produce](
-      Writer.uncons[Chunk[Byte], Unit, Async](src))
-      .asInstanceOf[Either[Unit, (Chunk[Byte], okay.Source[Chunk[Byte]])] ! F]
+    (okay.!.widen[Either[Unit, (Chunk[Byte], okay.Source[Chunk[Byte]])], Async, Produce](
+      Writer.uncons[Chunk[Byte], Unit, Async](src)): Either[Unit, (Chunk[Byte], okay.Source[Chunk[Byte]])] ! F)
       .flatMap {
         case Left(_) => pure(Right(()))
         case Right((c, more)) =>
@@ -108,8 +108,7 @@ final class S3(http: Http, endpoint: String, bucket: String, region: String,
         token.map("continuation-token" -> _)
       val send = http.send(signed(Method.Get, s"/$bucket", query.sortBy(_._1)))
         .flatMap(r => Http.text(r).map(t => (r.status, t)))
-      okay.!.widen[(Int, String), Async, Produce](send)
-        .asInstanceOf[(Int, String) ! F].flatMap { (status, xml) =>
+      (okay.!.widen[(Int, String), Async, Produce](send): (Int, String) ! F).flatMap { (status, xml) =>
           if status != 200 then throw IllegalStateException(s"list '$prefix': HTTP $status")
           val metas = contents(xml)
           val next =
