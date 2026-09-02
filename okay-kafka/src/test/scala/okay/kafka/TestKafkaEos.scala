@@ -40,14 +40,16 @@ class TestKafkaEos extends FunSuite:
    * single-node dev broker with the txn-state log at RF=1); if not,
    * the EOS battery skips rather than fails on the environment */
   lazy val txnReady: Option[KafkaStore] =
-    try
-      val s = KafkaStore(bootstrap)
-      // force the coordinator handshake once; a broker without txn
-      // support throws here and the battery skips
-      s.topic(fresh("probe"), 1)
-      s.transaction(fresh("probe-txn"))(_ => ())
-      Some(s)
-    catch case _: Throwable => None
+    if !TestKafkaSupport.reachable(bootstrap) then None
+    else
+      try
+        val s = KafkaStore(bootstrap)
+        // force the coordinator handshake once; a broker without txn
+        // support throws here and the battery skips
+        s.topic(fresh("probe"), 1)
+        s.transaction(fresh("probe-txn"))(_ => ())
+        Some(s)
+      catch case _: Throwable => None
 
   test("a committed transaction is atomic: all its records become visible together, in order") {
     assume(txnReady.isDefined, s"no transactional Kafka at $bootstrap — the EOS suite skips")

@@ -12,9 +12,21 @@ class TestMongoDocs extends DocsSuite:
 
   val uri = sys.env.getOrElse("OKAY_MONGO", "mongodb://127.0.0.1:27017")
 
+  /** the DRIVER's own defaults make "nothing is listening" a 30s
+   * failure (`serverSelectionTimeoutMS` default) — found 2026-09-02
+   * when the live suite hung to that instead of skipping in
+   * milliseconds. A short deadline on the PROBE alone (the
+   * production `MongoDocs.client` keeps its generous retry policy;
+   * only this availability check needs to be fast) answers "is
+   * anything here" honestly and quickly either way. */
   lazy val availableClient: Option[com.mongodb.client.MongoClient] =
     try
-      val c = MongoDocs.client(uri)
+      val settings = com.mongodb.MongoClientSettings.builder()
+        .applyConnectionString(com.mongodb.ConnectionString(uri))
+        .applyToClusterSettings(_.serverSelectionTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS))
+        .applyToSocketSettings(_.connectTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS))
+        .build()
+      val c = com.mongodb.client.MongoClients.create(settings)
       c.listDatabaseNames().first() // forces a round-trip
       Some(c)
     catch case _: Throwable => None

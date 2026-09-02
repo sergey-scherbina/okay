@@ -17,10 +17,11 @@ class TestKafkaStore extends FunSuite:
   val bootstrap = sys.env.getOrElse("OKAY_KAFKA", "127.0.0.1:9092")
 
   lazy val available: Boolean =
-    try
-      val s = KafkaStore(bootstrap)
-      try { s.topics; true } finally s.close()
-    catch case _: Throwable => false
+    TestKafkaSupport.reachable(bootstrap) && (
+      try
+        val s = KafkaStore(bootstrap)
+        try { s.topics; true } finally s.close()
+      catch case _: Throwable => false)
 
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
   private def str(b: Array[Byte]): String = new String(b, "UTF-8")

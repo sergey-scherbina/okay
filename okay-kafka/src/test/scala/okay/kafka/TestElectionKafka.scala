@@ -10,11 +10,13 @@ class TestElectionKafka extends ElectionSuite:
   val bootstrap = sys.env.getOrElse("OKAY_KAFKA", "127.0.0.1:9092")
 
   lazy val store: Option[KafkaStore] =
-    try
-      val s = KafkaStore(bootstrap)
-      s.topics
-      Some(s)
-    catch case _: Throwable => None
+    if !TestKafkaSupport.reachable(bootstrap) then None
+    else
+      try
+        val s = KafkaStore(bootstrap)
+        s.topics
+        Some(s)
+      catch case _: Throwable => None
 
   def mkControl(): Topic =
     assume(store.isDefined, s"no Kafka at $bootstrap — the live battery skips")

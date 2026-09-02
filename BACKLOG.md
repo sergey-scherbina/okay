@@ -153,6 +153,22 @@ construction instead of a type test per value).
       same family as the Native-SIGKILL-under-load incidents, not a
       code defect. Leave filed; re-triage only if it recurs with a
       NON-environmental signature.
+- [x] docker-live-suites-slow-skip — FIXED 2026-09-02: TestKafkaStore/
+      TestElectionKafka/TestKafkaRepair/TestKafkaEos and TestMongoDocs
+      timed out at their `munitTimeout` (30-120s) instead of skipping
+      in milliseconds when no docker broker was running — the Kafka
+      and Mongo CLIENT LIBRARIES' own generous defaults
+      (`request.timeout.ms`/`default.api.timeout.ms`,
+      `serverSelectionTimeoutMS`, all 30s+) ran their full retry
+      policy before the availability check's catch-all ever saw a
+      Throwable. Fixed: a fast raw-socket pre-check (`TestKafkaSupport
+      .reachable`, 1s deadline) ahead of the Kafka client entirely;
+      a short `serverSelectionTimeout`/`connectTimeout` (1.5s) on
+      Mongo's PROBE client alone — production `MongoDocs.client`/
+      `KafkaStore.apply` keep their default retry policy, only the
+      test-side "is anything here" question needed to be fast. Both
+      suites now skip in ~1s total with no broker running instead of
+      ~2 minutes combined.
 - [ ] mcp-auth-matrix-flake — okay.security.TestMcpAuth "the
       metadata documents are servable without any token" failed once
       under the full matrix (2026-09-02, `java.io.IOException:
