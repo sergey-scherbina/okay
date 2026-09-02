@@ -1,0 +1,5 @@
+slug: stm-slot-stamped
+branch: feature/stm-slot-stamped
+worktree: ../okay-wt-stm-slot-stamped
+claimed: 2026-09-02
+scope: TRef content is two kinds, not three: Slot extends Stamped (value: Any = this on Stamped, overridden by Slot), so valueOf/versionOf lose their matches and modify its third branch; Owned stays the only marker. Same fast path, A/B benchmark to confirm. Operator: "а что если Slot extends Stamped?" — "да, делай".
