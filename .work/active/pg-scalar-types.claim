@@ -1,0 +1,5 @@
+slug: pg-scalar-types
+branch: feature/pg-scalar-types
+worktree: ../okay-wt-pg-scalar-types
+claimed: 2026-09-02
+scope: SqlValue.Num(BigDecimal)/SqlType.Num — numeric exact on pg (1700) and JDBC (NUMERIC/DECIMAL); named SqlType.Other for uuid/json/jsonb/timestamp(tz)/date/time(tz)/interval/inet/cidr on pg; Typed: Double reads Num (lossy by the field's choice), String reads Num exactly and any Other; given Schema[BigDecimal]. specs/sql.md.
