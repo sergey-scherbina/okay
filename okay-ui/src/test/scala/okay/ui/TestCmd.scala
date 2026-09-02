@@ -53,6 +53,29 @@ class TestCmd extends munit.FunSuite {
     assert(shown.exists(_.contains("done: fetched")), shown.mkString("|"))
   }
 
+  test("stm-ui-close: a burst of commands racing the upstream's end loses nothing, over many real-scheduler runs") {
+    // the v1 race (three atomics, read one at a time in maybeClose):
+    // a command launched from the LAST buffered event could land in
+    // the window between "pending == 0" and "unprocessed == 0" being
+    // read, and its answer was lost. Every press here launches a
+    // command that fires as the upstream ends — real virtual
+    // threads, real scheduling, no Pure interpreter serializing
+    // anything — so a surviving race would show up as a wrong count.
+    val n = 200
+    def view(s: Int) = Ui.Text(s.toString)
+    def update(s: Int, e: Event): (Int, Vector[Event ! Async]) = e match
+      case Event.Pressed(_) => (s, Vector(async(Event.Edited("tick", ""))))
+      case Event.Edited("tick", _) => (s + 1, Vector.empty)
+      case _ => (s, Vector.empty)
+    final class Bursty extends Host:
+      def render(ui: Ui): Unit ! Async = pure(())
+      def events: Source[Event] = okay.Source.of(List.fill(n)(Event.Pressed("go")))
+    (1 to 50).foreach { run =>
+      val end = Ui.runCmd(0)(view)(update)(Bursty()).runWith
+      assertEquals(end, n, s"run $run: lost an answer racing the close")
+    }
+  }
+
   test("a throwing command forfeits its answer; the loop survives") {
     def update(s: Int, e: Event): (Int, Vector[Event ! Async]) = e match
       case Event.Pressed("boom") =>

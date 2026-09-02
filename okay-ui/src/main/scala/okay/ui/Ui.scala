@@ -190,6 +190,14 @@ object Ui {
             (using Scheduler, CanBlock): S ! Async =
     runCmd(init)(view)((s, e) => (update(s, e), Vector.empty))(host, external)
 
+  /** `runCmd`'s closing decision, as one cell (stm-ui-close,
+   * specs/stm.md): commands still in flight, events handed to the
+   * channel but not yet folded, and whether the upstream has ended —
+   * `ready` is the composite condition the loop closes on */
+  private[ui] final case class CloseState(pending: Int = 0, unprocessed: Int = 0,
+                                          upstreamDone: Boolean = false):
+    def ready: Boolean = upstreamDone && pending == 0 && unprocessed == 0
+
   /**
    * The loop WITH the effect slot (specs/ui.md, "The effect slot"):
    * update also answers COMMANDS — programs whose Event answers
@@ -209,21 +217,24 @@ object Ui {
     // the commandless loop keeps v1's exact ending (host ends, loop
     // ends), and a pending command's answer is waited for, not lost.
     val events = Channel[Event]()
-    val pending = java.util.concurrent.atomic.AtomicInteger(0)
-    // events HANDED OVER but not yet folded by the loop: the close
-    // decision must count them, or a command launched from a
-    // buffered event races the close and its answer is lost (found
-    // as a flaky TestCmd: the loop read the last buffered event,
-    // the closer saw pending == 0 in the window before launch ran,
-    // and the loop met a closed, drained channel before the
-    // answers came back)
-    val unprocessed = java.util.concurrent.atomic.AtomicInteger(0)
-    val upstreamDone = java.util.concurrent.atomic.AtomicBoolean(false)
-    def maybeClose(): Unit =
-      if upstreamDone.get && pending.get == 0 && unprocessed.get == 0 then
-        events.close()
+    // the close decision, as ONE cell (stm-ui-close, specs/stm.md):
+    // `pending` commands in flight, `unprocessed` events handed to
+    // the channel but not yet folded by the loop, `upstreamDone` once
+    // the merged feed ends. v1 held these as three atomics and read
+    // them one at a time in `maybeClose` — a command launched from a
+    // buffered event could land in the window between two of those
+    // reads and its answer was lost (found as a flaky TestCmd). A
+    // single `TRef[CloseState]` makes "mutate, then decide" ONE step
+    // through `modify`: nothing can observe a state this cell never
+    // held.
+    val closeState = TRef(Ui.CloseState())
+    // `f` is pure and may run more than once (TRef.modify's contract);
+    // the close is the side effect, run only when THIS call is the one
+    // that made the state ready — never inside `f` itself
+    def bump(f: Ui.CloseState => Ui.CloseState): Unit =
+      if closeState.modify(s => { val s2 = f(s); (s2, s2.ready) }) then events.close()
     def offer(e: Event): Unit =
-      unprocessed.incrementAndGet()
+      closeState.modify(s => (s.copy(unprocessed = s.unprocessed + 1), ()))
       events.offer(e): Unit
 
     def drain(src: Source[Event]): Unit ! Async =
@@ -232,18 +243,17 @@ object Ui {
         case Right((e, more)) => async(offer(e)).flatMap(_ => drain(more))
       }
     Async.spawn(drain(host.events merge external)).onComplete { _ =>
-      upstreamDone.set(true); maybeClose()
+      bump(_.copy(upstreamDone = true))
     }
 
     def launch(cmds: Vector[Event ! Async]): Unit =
       cmds.foreach { prog =>
-        pending.incrementAndGet()
+        closeState.modify(s => (s.copy(pending = s.pending + 1), ()))
         Async.spawn(prog).onComplete { r =>
           r match
             case Right(ev) => offer(ev)
             case Left(_) => ()   // a command encodes its failure as an event, or forfeits it
-          pending.decrementAndGet()
-          maybeClose()
+          bump(s => s.copy(pending = s.pending - 1))
         }
       }
 
@@ -254,10 +264,9 @@ object Ui {
         case Right((e, more)) =>
           val (s2, cmds) = update(s, e)
           launch(cmds)
-          // the event is folded and its commands are COUNTED before
-          // the close decision may see a zero
-          unprocessed.decrementAndGet()
-          maybeClose()
+          // the event is folded and its commands are COUNTED (by
+          // `launch`, above) before this decrement can see a zero
+          bump(s => s.copy(unprocessed = s.unprocessed - 1))
           val u2 = view(s2)
           (if u2 == shown then pure(()) else host.render(u2))
             .flatMap(_ => loop(s2, u2, more))

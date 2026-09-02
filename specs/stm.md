@@ -268,3 +268,26 @@ channel) and the last pre-STM commit (channel-cas, 500efb7, CAS-only
 Channel) measured within noise of each other on the exact merge
 benchmark (308 ±19 vs 290 ±11). Whatever moved the doc's baseline
 predates this lane entirely — see docs/benchmarks.md §6.
+
+The first CONSUMER outside the engine itself (stm-ui-close,
+2026-09-02): `Ui.runCmd`'s closing decision (`okay-ui/Ui.scala`) held
+three atomics — `pending`/`unprocessed`/`upstreamDone` — and read
+them one at a time in `maybeClose`; a command launched from the last
+buffered event could land in the window between two of those reads,
+and its answer was lost (the fix already carried the comment
+documenting the race it once caught as a flaky test). The three
+became one `TRef[CloseState]`; `modify` makes "mutate, then decide
+whether ready" ONE step, which removes the window by construction
+rather than by narrowing it. This is the single-cell fast path
+(`TRef.modify` alone, no `Tx`/`Stm[F]`) — the composite condition
+lives in one cell, so no cross-cell transaction was ever needed;
+exactly the case this spec's Behavior list already named
+("structural fast paths, chosen by the handler from the program's
+SHAPE"), just chosen by the CALLER this time, not the interpreter.
+Proven: the existing `TestCmd`/`TestUi`/`TestDialog`/etc. suites
+stayed green (67 JVM, 4 JS, Native compiles and links clean — no
+UI-specific Native test source exists, so it ran zero); a new stress
+test fires 200 commands per run, 50 runs, under the REAL JVM
+scheduler (virtual threads, `Async.spawn`, no `Pure` interpreter
+serializing anything) and asserts every answer landed — the shape of
+the exact race the old comment described, exercised for real.
