@@ -1,5 +1,24 @@
 # Changelog
 
+## discarded-program-lint — a dropped program is a compile error
+Completed: 2026-09-02
+Landed as 8213968. The operator asked whether the channel rule
+("send only inside a program, offer from plain code") can be checked
+at compile time. It can, for the shapes the compiler sees: build.sbt
+escalates -Wall's value-discard and non-unit-statement warnings to
+ERRORS when the discarded top-level type is an `A ! F` program
+(regex on the message; a `!` nested in Sim's Queue element type is
+not matched). Probed: statement `{ c.send(1); () }`, Unit def body,
+eta-expansion into `Int => Unit` — errors; `xs.foreach(c.send)`,
+`for x <- xs do c.send(x)` — invisible (foreach's U takes anything),
+stated in AGENTS.md. The lint paid for itself before landing: five
+more silent discards in okay-demo/web (chatweb Main.scala) that the
+channel-callback migration had missed, all on offer now. munit's
+compileErrors cannot see lints, so the test covers the sanctioned
+spellings and the spec records the probe. Gate green in three
+chunks (the full run was being SIGTERMed near ten minutes — the
+tool's ceiling, not the build).
+
 ## channel-callback — one channel for every platform, waiting in queues not threads
 Completed: 2026-09-02
 Landed as 5502971 (3 commits). The operator asked whether blocking a
