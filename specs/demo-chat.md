@@ -369,6 +369,51 @@ once and routes to `mcpR(r)`.
       — MCP is an additional front door, not a rewrite of the
       existing one
 
+## Authoring scenarios (demo-scenario-editor)
+
+Scenarios are already data (Flows in the demo, specs/match.md
+match-scenarios) — the remaining piece is a page to AUTHOR one
+without touching code, "shown not told" per the BACKLOG ask. Rather
+than invent a new schema, `GET /scenarios` edits the plain JSON shape
+of the existing `ScenarioDef`/`Transition` case classes directly: a
+scenario IS name/roles/initial/states/terminal/transitions, and a
+transition IS name/from/to/by/unlocks/notifies — the BACKLOG bullet's
+"steps" are transitions, "prompts" are `notifies` templates, and
+"deal hook" is that SAME `notifies` mechanism (the built-in `deal`
+scenario rings inboxes through it already; there is no separate hook
+concept to design).
+
+```
+GET  /scenarios   — lists every registered ScenarioDef (name, roles,
+                     states, transition names) and a textarea
+                     pre-filled with an example (an escrow-sale walk,
+                     three transitions) editable in place
+POST /scenarios   — body: the JSON shape above; parsed and passed to
+                     MatchStore.defineScenario; malformations
+                     (validate's BadScenario — unknown role/state, an
+                     unreachable terminal, a terminal with exits)
+                     come back as 400 + one line each, same wording
+                     the store already produces; success reloads the
+                     page so the new scenario is immediately listed
+                     AND immediately playable (`сценарий <name> …`)
+```
+
+The registered names ALSO ride the help text now (`help`/`помощь`)
+instead of a static "scenarios:" hint that could name a scenario the
+store doesn't have — `MatchStore.scenarios` (specs/match.md) is what
+makes this possible; help mentions `/scenarios` as the editor.
+
+- [ ] `/scenarios` lists the built-in `deal` scenario (and any others
+      registered) with its roles/states/transitions
+- [ ] POSTing a valid scenario JSON registers it — immediately
+      listed, immediately playable through the existing phrase driver
+      (сценарий/шаг/флоу — demo-flows) with no restart
+- [ ] POSTing an invalid scenario (an unknown role on a transition)
+      is REFUSED — the store's own validate() malformation reaches
+      the caller as text, nothing is registered
+- [ ] help text names the currently-registered scenarios, not a
+      hardcoded string — proven by defining one and asking for help
+
 ## Polish (demo-polish)
 - The page states its MODE (scripted/local/live) and links /market.
 - `/market` — the marketplace, visible: offers and needs as lists of

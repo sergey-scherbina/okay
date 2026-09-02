@@ -234,6 +234,15 @@ needed is as unknowable in advance as which attributes.
   builder where naming an undeclared state or role does not COMPILE;
   the data form stays primary (wire-loadable), the builder is the
   safe pen.
+- **`MatchStore.scenarios: Vector[ScenarioDef]`** (demo-scenario-editor)
+  — every registered definition, `deal` always among them; the
+  listing an editor needs and `scenario`/`defineScenario` didn't
+  answer alone. Both engines keep definitions in an in-memory map
+  (`reset()` does not clear it — configuration, not projection);
+  **stated limit**: `SqlMatch` does not persist scenario definitions
+  to a table the way it persists flows (`match_flows`) — a restarted
+  process starts with `deal` alone plus whatever the demo's own main
+  re-registers. Pre-existing, not touched here.
 
 Behavior:
 - [x] a scenario defined as data runs end to end: roles enforced per
