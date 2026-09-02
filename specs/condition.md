@@ -57,7 +57,9 @@ object Condition:
 
   /** the effect: signal carries the condition; within establishes
    * a named restart around a body */
-  enum Op[+A]: ...                   // Signal, Within (payload erased)
+  enum Op[+A]: ...                   // Signal[A](c, accept), Within[A, V](…, recover, accept), Leave[V]
+                                     // (cast-free-condition, 2026-09-02: ops carry their answer
+                                     //  type; Within's body stays erased — F is not the op's to name)
 
   /** raise; the answer is what the policy resumed with */
   def signal[C, A](c: C): A ! Op
@@ -301,3 +303,28 @@ condition).
 
 Out of scope: making the MACHINE dependent on Of — the erasure
 discipline of the file header stands; Of is an edge vocabulary.
+
+## Cast-free (2026-09-02, cast-free-condition)
+The operator's rule (AGENTS.md: no cast without a real necessity)
+applied to this file, which had twelve. The operations now carry
+their answer type: `Signal[A](condition, accept: Any => A)`,
+`Within[A, V](name, id, body, recover: V => A, accept: Any => V)`,
+`Leave[V](handle: Restart[V], value: V)`. The policy is untyped by
+design (`Resume(v: Any)`, `Invoke(name, v: Any)`), so every value it
+answers crosses ONE door, `accept` — a ClassTag test that refuses a
+wrong-typed value as `BadResume`, named — and the machine hands the
+continuation an A without claiming anything. Consequences: `signal[A]`
+takes a `ClassTag[A]` (`signal[Int]` writes none; a generic caller
+passes its own — okay-persist's Repair.decode/read gained the bound),
+`frame[A, V, F]` takes a `ClassTag[V]`, and `raiseC` IS `signal[A]`
+with the Answers instance's tag — the checked resume is no longer the
+typed door's privilege, every signal has it. The run loop is typed by
+GADT matching (`step[Y](op: Op[Y], k: Y => …)`, Left = continue,
+Right = answer), so the erasure casts are gone. One claim remains,
+stated at its line: a Within's body is a program in this machine's
+row, erased at the operation because the row's other half F is not
+the operation's to name, and re-typed inside `run` where F is known —
+the Delim discipline the header describes. All twenty-two condition
+tests pass unchanged (one test that built `Op.Signal` by hand now
+uses `signal[Int]`); persist, llm and match suites green.
+

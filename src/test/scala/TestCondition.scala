@@ -173,7 +173,7 @@ class TestCondition extends munit.FunSuite {
     val prog: Int ! (Op + Async) =
       for
         a <- !.widen[Int, Async, Op](async(20))
-        b <- effect[Op + Async, Any](Op.Signal("double it")).map(_.asInstanceOf[Int])
+        b <- !.widen[Int, Op, Async](signal[Int]("double it"))
         c <- !.widen[Int, Async, Op](async(2))
       yield a + b + c
     val out = !.run(Async.run[Int, Nothing](

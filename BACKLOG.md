@@ -6,11 +6,10 @@ groups; the recipe for the first two is the one that made Stm.scala
 cast-free (stm-typed-interpreter: `perform[X](op: Op[X]): X`, GADT
 matching on `Bind(Effect(e), k)`, typed helper classes, a decision at
 construction instead of a type test per value).
-- [ ] cast-free-condition — Condition.scala (12): the run loop's
-      erasure casts go by GADT typing; the row casts
-      (`effect(Op.Signal(c)).asInstanceOf[A ! Op]`) go by giving the
-      ops their answer type (`Signal[A]`, `Leave`, `Within[A]`); the
-      policy boundary stays checked at runtime (BadResume). FIRST.
+- [x-landed] cast-free-condition — landed: ops carry their answer
+      type, the policy's Any crosses one checked door (accept), the
+      run loop is GADT-typed; one stated claim left (a Within's body
+      re-typed in the machine's row). See specs/condition.md.
 - [ ] cast-free-delim — Delim.scala (9): the segment stack
       (`Seg.K(f.asInstanceOf[Any => Any])`, `Prompt[Any]`) — typed
       segments, a Held-like carrier per prompt; keep the multi-prompt

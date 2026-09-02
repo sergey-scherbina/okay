@@ -31,17 +31,24 @@ object Condition {
     case Fail
 
   enum Op[+A]:
-    /** raise; the answer is what the policy resumed with */
-    case Signal(condition: Any) extends Op[Any]
+    /** raise; the answer is what the policy resumed with, passed
+     * through `accept` — the operation carries its own check of the
+     * policy's untyped Resume (a ClassTag test), so the machine hands
+     * the continuation an A without claiming anything */
+    case Signal[A](condition: Any, accept: Any => A) extends Op[A]
     /** the payload is a program in the same row — the Delim
-     * discipline: erased here, re-typed inside the machine */
-    case Within(name: String, id: AnyRef, body: Any, recover: Any => Any) extends Op[Any]
+     * discipline: erased here (the row's other half F is not the
+     * operation's to name), re-typed inside the machine, which is
+     * the one claim this file makes. `accept` checks a policy Invoke's
+     * untyped value against V; a lexical invoke's value is a V by
+     * construction and passes through the same door */
+    case Within[A, V](name: String, id: AnyRef, body: Any, recover: V => A, accept: Any => V) extends Op[A]
     /** the LEXICAL invoke (condition-caps): unwind to the handle's
      * OWN frame — by identity, not by name, so two frames sharing
      * a name cannot alias (a policy Invoke stays by name: innermost
      * wins, that is the dynamic menu's contract). Only a Restart
      * can construct it, and only a frame hands one out */
-    case Leave(handle: Restart[?], value: Any) extends Op[Nothing]
+    case Leave[V](handle: Restart[V], value: V) extends Op[Nothing]
 
   /** the condition had no answer: the policy declined (Fail), and
    * the menu it declined is part of the report */
@@ -57,9 +64,17 @@ object Condition {
       s"no restart '$restart' on the menu (${
         if menu.isEmpty then "none" else menu.mkString(", ")})")
 
-  /** raise a condition; resumes with the policy's value */
-  def signal[A](condition: Any): A ! Op =
-    effect(Op.Signal(condition)).asInstanceOf[A ! Op]
+  /** raise a condition; resumes with the policy's value, checked
+   * against A at the resume (BadResume names a wrong one): the
+   * ClassTag is the evidence, so `signal[Int]` needs none written
+   * and a generic caller passes its own */
+  def signal[A](condition: Any)(using tag: scala.reflect.ClassTag[A]): A ! Op =
+    effect(Op.Signal[A](condition, checked(condition, tag)))
+
+  /** the policy's Any, admitted as an A or refused named */
+  private def checked[A](condition: Any, tag: scala.reflect.ClassTag[A]): Any => A =
+    case tag(a) => a
+    case other => throw BadResume(condition, other, tag.runtimeClass.getName)
 
   /** the condition C is answered with A — declared once, where C
    * is; the ClassTag is the evidence the resume check stands on */
@@ -83,10 +98,7 @@ object Condition {
    * the Answers instance — no annotation at the site, and a
    * non-conforming Resume is refused named rather than cast */
   def raiseC[C, A](c: C)(using ev: Answers[C, A]): A ! Op =
-    signal[Any](c).map {
-      case ev.tag(a) => a
-      case other => throw BadResume(c, other, ev.tag.runtimeClass.getName)
-    }
+    signal[A](c)(using ev.tag)
 
   /**
    * The capability a frame hands its body (condition-caps, the
@@ -100,7 +112,7 @@ object Condition {
     /** unwind to this frame with v — the body's remaining work is
      * abandoned, the frame answers recover(v) */
     def invoke[X](v: V): X ! Op =
-      effect(Op.Leave(this, v)).asInstanceOf[X ! Op]
+      effect[Op, X](Op.Leave(this, v))   // Op[Nothing] is an Op[X]: the answer never comes
 
   /**
    * `within`, handing the body its restart as a CAPABILITY: the
@@ -110,10 +122,9 @@ object Condition {
    */
   def frame[A, V, F[+_]](name: String)
                         (body: Restart[V] ?=> A ! (Op + F))
-                        (recover: V => A): A ! (Op + F) =
+                        (recover: V => A)(using tag: scala.reflect.ClassTag[V]): A ! (Op + F) =
     val handle = Restart[V](name)
-    effect[Op + F, Any](Op.Within(name, handle, body(using handle), recover.asInstanceOf[Any => Any]))
-      .asInstanceOf[A ! (Op + F)]
+    effect[Op + F, A](Op.Within[A, V](name, handle, body(using handle), recover, checked(name, tag)))
 
   /** establish a restart around `body`: if the policy invokes
    * `name` with v, this whole `within` answers `recover(v)` — the
@@ -121,8 +132,7 @@ object Condition {
    * continues; a body that completes normally makes the frame
    * invisible */
   def within[A, F[+_]](name: String)(body: A ! (Op + F))(recover: Any => A): A ! (Op + F) =
-    effect[Op + F, Any](Op.Within(name, new Object, body, recover.asInstanceOf[Any => Any]))
-      .asInstanceOf[A ! (Op + F)]
+    effect[Op + F, A](Op.Within[A, Any](name, new Object, body, recover, identity))
 
   /** an established frame: its menu name and its identity */
   private final case class Frame(name: String, id: AnyRef)
@@ -149,36 +159,46 @@ object Condition {
     // under flatMap, so their recursion lives in closures.
     def loop[X](p0: X ! (Op + F), menu: List[Frame]): Out[X] ! F =
       val names = menu.map(_.name).toVector
+
+      /** one operation with its continuation, typed by the tree:
+       * Left = the program continues here (the Resume path), Right =
+       * this loop's answer */
+      def step[Y](op: Op[Y], k: Y => X ! (Op + F)): Either[X ! (Op + F), Out[X] ! F] = op match
+        case Op.Leave(handle, v) =>
+          // a handle that leaked out of its frame: the frame is gone
+          if !menu.exists(_.id eq handle) then throw NoSuchRestart(handle.name, names)
+          Right(pure(Out.Escape(handle, v)))
+        case Op.Signal(c, accept) =>
+          policy(c, names) match
+            case Decision.Resume(v) => Left(k(accept(v)))
+            case Decision.Invoke(name, v) =>
+              if !names.contains(name) then throw NoSuchRestart(name, names)
+              Right(pure(Out.Escape(name, v)))
+            case Decision.Fail => throw Unhandled(c, names)
+        case w: Op.Within[a, v] =>
+          // THE claim of this file: the payload is a program in this
+          // machine's row — erased at the operation because F is not
+          // the operation's to name, re-typed here where F is known
+          val body = w.body.asInstanceOf[a ! (Op + F)]
+          Right(loop(body, Frame(w.name, w.id) :: menu).flatMap {
+            case Out.Done(b) => loop(k(b), menu)
+            case Out.Escape(t, x) if t == w.name || (t eq w.id) => loop(k(w.recover(w.accept(x))), menu)
+            case Out.Escape(t, x) => pure(Out.Escape(t, x)) // an outer frame's
+          })
+
       var p = p0
       while true do
-        val (op, k): (Op[Any], Any => X ! (Op + F)) = (p.resume: @unchecked) match
-          case Pure(x) => return pure(Out.Done(x.asInstanceOf[X]))
+        val next: Either[X ! (Op + F), Out[X] ! F] = (p.resume: @unchecked) match
+          case Pure(x) => Right(pure(Out.Done(x)))
           case Effect(e) => <|>[Op, F](e) match
-            case Left(op) => (op, (a: Any) => Free.Pure(a).asInstanceOf[X ! (Op + F)])
-            case Right(f) => return Effect(f).map(x => Out.Done(x.asInstanceOf[X]))
+            case Left(op) => step(op, (a: X) => Free.Pure(a))
+            case Right(f) => Right(Effect(f).map(Out.Done(_)))
           case Bind(Effect(e), k) => <|>[Op, F](e) match
-            case Left(op) => (op, k.asInstanceOf[Any => X ! (Op + F)])
-            case Right(f) =>
-              val cont = k.asInstanceOf[Any => X ! (Op + F)]
-              return Effect(f).flatMap(x => loop(cont(x), menu))
-        op match
-          case Op.Leave(handle, v) =>
-            // a handle that leaked out of its frame: the frame is gone
-            if !menu.exists(_.id eq handle) then throw NoSuchRestart(handle.name, names)
-            return pure(Out.Escape(handle, v))
-          case Op.Signal(c) =>
-            policy(c, names) match
-              case Decision.Resume(v) => p = k(v)
-              case Decision.Invoke(name, v) =>
-                if !names.contains(name) then throw NoSuchRestart(name, names)
-                return pure(Out.Escape(name, v))
-              case Decision.Fail => throw Unhandled(c, names)
-          case Op.Within(name, id, body, recover) =>
-            return loop(body.asInstanceOf[Any ! (Op + F)], Frame(name, id) :: menu).flatMap {
-              case Out.Done(b) => loop(k(b), menu)
-              case Out.Escape(t, v) if t == name || (t eq id) => loop(k(recover(v)), menu)
-              case Out.Escape(t, v) => pure(Out.Escape(t, v)) // an outer frame's
-            }
+            case Left(op) => step(op, k)
+            case Right(f) => Right(Effect(f).flatMap(x => loop(k(x), menu)))
+        next match
+          case Left(p2) => p = p2
+          case Right(out) => return out
       throw IllegalStateException("unreachable")
 
     loop(prog, Nil).map {
