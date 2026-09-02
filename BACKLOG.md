@@ -345,10 +345,16 @@ construction instead of a type test per value).
       спроси/ask, сценарий/scenario, шаг/step, флоу/flow,
       берусь/accept, отказываюсь/decline, помощь/help); both speak
       the SAME chainedTable.
-- [ ] demo-e2e-browser — a browser-level test of the React UI
+- [x] demo-e2e-browser — a browser-level test of the React UI
       (today's tests hit the HTTP/SSE seam directly, so the React
       layer itself is untested); smallest honest version: build the
       bundle, drive one chat round through a headless browser.
+      LANDED 2026-09-02: okay-demo-e2e-browser (Playwright, real
+      headless Chromium) — typed text sends, the scripted reply
+      streams in via the SAME fetch+ReadableStream glue Main.scala
+      ships. Kept OUT of okay-demo's test sourceset and the root
+      aggregate (a real ~450MB one-time browser download); invoke
+      via `sbt "okayChatWebJS/fastLinkJS" "okayDemoE2eBrowser/test"`.
 - [ ] demo-embeddings-attr — search-before-create for attributes via
       embeddings instead of substring match (twin of rag-langchain4j;
       an embedding store as Retrieve handler): "разработчик" and

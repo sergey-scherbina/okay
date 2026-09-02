@@ -1,5 +1,42 @@
 # Changelog
 
+## demo-e2e-browser — one chat round through a real headless browser
+Completed: 2026-09-02
+Landed as d0dbf4e (spec) + 03b2099 (impl). Every existing demo test
+hit the HTTP/SSE seam directly with `java.net.http.HttpClient` —
+proving the server honestly, but never running the shipped React
+bundle in a real JS engine. `Main.scala`'s remaining untested glue is
+real: `fetch`+`ReadableStream` driving `/chat` (hand-rolled SSE-frame
+parsing) and a real `EventSource` driving `/events/:email` — neither
+exercisable from a JVM unit test.
+Weighed HtmlUnit (pure JVM, no browser binary, but its own JS
+engine's fetch-stream/EventSource support is exactly the weak spot
+this test needed solid), Selenium (needs a real browser + matching
+driver pre-installed, a precondition outside sbt's control), and
+Playwright for Java (one dependency, downloads its OWN Chromium on
+first use, full real-browser fidelity for both). Took Playwright —
+same reasoning as `okay-langchain4j-embed`'s local ONNX model: no
+external service, but a real download.
+New module `okay-demo-e2e-browser` (JVM): one test booting
+`ChatDemo.routes` on a real Jetty socket (the exact
+`TestChatDemo.withServer` pattern), launching headless Chromium,
+typing into the `data-key="draft"` input, clicking
+`data-key="send"`, and waiting for the bot bubble under
+`data-key="log"` to carry the scripted echo streamed token by token.
+Deliberately kept OUT of okay-demo's own test sourceset and the root
+`.aggregate(...)` list; invoke explicitly: `sbt
+"okayChatWebJS/fastLinkJS" "okayDemoE2eBrowser/test"`. Absent the
+linked bundle or an installed browser, the test SKIPS named, never
+fails falsely.
+Real bug caught during testing: `Page.waitForFunction`'s 2-arg
+overload is `(expression, arg)` — `arg` a value passed INTO the
+polling function — not `(expression, options)`; passing a
+`WaitForFunctionOptions` positionally there threw a serialization
+error. Fixed by passing `null` for `arg` and the options third.
+Tests: 3/3 clean bare-JUnitCore runs, ~3s each after the one-time
+~450MB browser download. Verified okay-demo and other modules compile
+unaffected by the build.sbt addition.
+
 ## stm-ui-close — the first STM consumer outside the engine itself
 Completed: 2026-09-02
 Landed as bc9059a. `Ui.runCmd`'s closing decision (`okay-ui`) held
