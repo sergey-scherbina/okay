@@ -3,9 +3,9 @@ package okay.demo
 import okay.*
 import okay.given
 import okay.Condition
-import okay.http.{Body, Http, Request, Response}
+import okay.http.{Http, Request, Response}
 import okay.jetty.Jetty
-import okay.llm.{Anthropic, Cut, OpenAi, Transport, Transports}
+import okay.llm.{Anthropic, Transport, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
 import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
 import okay.ops.Ops
@@ -18,7 +18,7 @@ import okay.persist.{FileStore, MemoryStore, Policy}
 import okay.jdbc.JdbcSql
 import okay.pg.{PgSql, PgTarget, PgTls}
 import okay.sql.Placeholders
-import okay.conf.{Secret, Secrets}
+import okay.conf.Secrets
 import okay.crypto.given
 import okay.codec.Json
 import okay.codec.Json.*
