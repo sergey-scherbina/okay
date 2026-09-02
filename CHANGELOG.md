@@ -1,5 +1,29 @@
 # Changelog
 
+## demo-package — the React bundle rides into the image next to the jar
+Completed: 2026-09-02
+Landed as 04abb38+e3bab74 (spec) + 8485498 (impl). `Chat.appJs`
+(okay-chat) finds the linked React/Scala.js bundle by walking a
+filesystem path relative to a repo checkout, which a shipped fat jar
+does not carry — "one command run" needed sbt and a node-style dev
+server side by side. Weighed an sbt `resourceGenerators` task (a new
+idiom nowhere else in this repo, and a cross-module dependency just
+for a copy) against two generic fields on `Deploy` plus one more
+`COPY` line in the already multi-stage Dockerfile; took the second.
+`Deploy` gains `extraBuild: Vector[String]` (extra sbt tasks run
+alongside `<module>/assembly`) and `extraCopy: Vector[Copy]` (extra
+`COPY --from=build` lines into the final image) — both default
+empty, so every prior `Deploy` value renders byte-identical
+Dockerfiles, no drift anywhere else.
+`DemoDeploy.spec` links `okayChatWebJS` and copies the output to
+`/app/app.js`, wired through `Chat.appJs`'s EXISTING `OKAY_CHAT_APP`
+env-var seam — okay-chat itself needed no code change. Regenerated
+`okay-demo/deploy/` from the updated spec; `TestDemoDeploy` confirms
+zero drift.
+Tests: okay-deploy's TestDeploy +1. Full okayDeploy suite 6/6;
+TestChatDemo+TestLogin+TestDemoDeploy 43/43 clean over three
+bare-JUnitCore runs, no flake.
+
 ## demo-gate-ui — the platform gate policy, live and switchable from /market
 Completed: 2026-09-02
 Landed as 0d4dfff (spec) + a2e7492 (impl). `PlatformPolicy` was

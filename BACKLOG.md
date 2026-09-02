@@ -357,9 +357,14 @@ construction instead of a type test per value).
       embeddings instead of substring match (twin of rag-langchain4j;
       an embedding store as Retrieve handler): "разработчик" and
       "программист" should collide BEFORE the registry drifts.
-- [ ] demo-package — one-command run: bundle the React build into
+- [x] demo-package — one-command run: bundle the React build into
       the jar's static assets (+ optionally a Dockerfile); today the
       demo needs sbt and a node dev server side by side.
+      LANDED 2026-09-02: Deploy.extraBuild/extraCopy (both additive,
+      empty by default — no drift on any other Deploy value);
+      DemoDeploy.spec links okayChatWebJS and copies main.js to
+      /app/app.js, wired through Chat.appJs's existing OKAY_CHAT_APP
+      env var — okay-chat itself needed no change.
 - [x] demo-gate-ui — the platform Gate policy (Allow / AfterMatch /
       Withhold) switchable from an admin page per attribute class;
       today it is set in code — the two-gate visibility model is the
