@@ -1,5 +1,36 @@
 # Changelog
 
+## skill-state — SKILL.state (arxiv 2608.26263) as one more Compact policy
+Completed: 2026-09-02
+Landed as 21fac3b (2 commits). The operator asked whether the paper's
+bounded-execution-state technique — replace an append-only agent
+transcript with a small structured Sigma, patched each step, its
+reasoning discarded rather than compacted — was buildable here. It
+needed no new subsystem: `Compact.skillState` is one more
+`Aggregator[Turn, S, Seq[Turn]]`, the SAME algebra `window` already
+implements, so it plugs into `Handlers.context`/`Memory.handle`
+exactly as `window` does. `Json.mergePatch` (RFC 7396) is the new
+primitive in okay-codec — an object patch merges recursively, null
+deletes a key, anything else replaces — tested against the RFC's own
+examples and its own composition caveat, demonstrated rather than
+merely asserted. `Turn.StatePatch` is the one artifact a step leaves;
+the policy pins System turns, merges Sigma on StatePatch turns, keeps
+the latest Result/User as the one observation that matters, and folds
+nothing else in — so `present` is O(1) in turns EVER seen, not merely
+bounded, proven as a property (TestLaws) and demonstrated at 500
+steps (TestSkillState). `Compact.validatePatch` is the rollback door:
+merge-then-decode against the caller's Schema before a patch is ever
+remembered, a pure Left/Right instead of a runtime rollback. The
+paper's grammar-constrained decoding needed no new machinery either —
+a state patch is an ordinary tool call's arguments, and
+`ToolSpec.jsonSchema` already derives an all-optional schema from
+Option/defaulted fields, which is exactly what a patch's shape wants.
+Provider.scala's two wire mappings (OpenAI, Anthropic) gained the new
+Turn case. specs/llm-agentic.md's "Bounded execution state" names
+what this is not a replacement for (`window`, for history-shaped
+tasks) and where `zip` composes both. Gate green (codec x3 platforms,
+agent JVM+JS) from clean, no warnings.
+
 ## staged-cbor — the STAGED fold's second wire
 Completed: 2026-09-02
 Landed as d299be1 (3 commits, rebased over stm-sessions/stm-orelse-
