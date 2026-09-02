@@ -1,5 +1,22 @@
 # Changelog
 
+## docs-catchup — module docs for today's extractions, and a stale index found
+Completed: 2026-09-02
+Landed as 91eb6d6 (docs only, no code — no matrix run). Four modules
+extracted from the demo today had shipped with no docs/modules/*.md
+at all: okay-admin, okay-chat, okay-subscription, okay-live. Written.
+okay-pg.md gained the PgTarget paragraph (moved in earlier today,
+never documented there); okay-demo.md's "pieces and who does what"
+rewritten to say ChatDemo.routes composes five extracted modules via
+orElse rather than describing streaming/the guard/sessions as if
+still inline, plus the admin token and okay-ops's routes named in the
+env table. Found along the way: docs/README.md's module index (one
+row per module, exhaustive) was missing rows for 8 modules that
+already had docs and had simply never been added — okay-admin,
+okay-chat, okay-delta, okay-deploy, okay-live, okay-ops, okay-r2dbc,
+okay-subscription. All 8 added; verified by diff that the index now
+names exactly the modules under docs/modules/.
+
 ## okay-live — Hub[A] broadcast + Registry[K,A] per-key channels
 Completed: 2026-09-02
 Landed as 3aad44f (spec) + dab184a (impl, merged over three sibling
