@@ -1,5 +1,17 @@
 # Changelog
 
+## cast-free-blob — the blob walkers typed by the tree
+Completed: 2026-09-02
+Landed as 982c4ce. Backup.walkGet and Offload.walk, hand-rolled
+interpreters over `Either[String, Unit] ! (Produce + Async)`, are
+typed by the tree: the split yields an `Async[X]` or a produced X
+(Produce is the identity signature — the op IS its answer), and the
+one claim — that the produced values are chunks — goes through the
+stated kernel `produced[Chunk[Byte]]` instead of a cast per site.
+S3's row re-associations are ascriptions (a row is a union, so
+Async + Produce is Produce + Async). Seventeen casts to none; the
+blob suite green, every module compiles.
+
 ## cast-free-agent — round two opens: the agent's interpreters typed
 Completed: 2026-09-02
 Landed as 881074a. The second cast round (BACKLOG "Casts, round

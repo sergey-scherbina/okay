@@ -1,5 +1,0 @@
-slug: cast-free-blob
-branch: feature/cast-free-blob
-worktree: ../okay-wt-cast-free-blob
-claimed: 2026-09-02
-scope: round two, okay-blob (Backup 6, Offload 6, S3 5): the two hand-rolled walkers typed by GADT over the Produce/Async split, the S3 row re-associations as ascriptions; a Produce op as a whole Either-typed program is a named refusal, not a cast.
