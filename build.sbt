@@ -1055,6 +1055,21 @@ lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
 
 lazy val okayDemo = (project in file("okay-demo"))
   .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayAdmin)
+  // deploy-package: one fat jar, one main, a stable name the
+  // Dockerfile does not have to guess
+  .settings(
+    assembly / mainClass := Some("okay.demo.ChatDemo"),
+    assembly / assemblyJarName := "app.jar",
+    assembly / assemblyMergeStrategy := { (path: String) =>
+      path match {
+        case p if p.startsWith("META-INF/services/") => MergeStrategy.concat
+        case p if p.startsWith("META-INF/") => MergeStrategy.discard
+        case "module-info.class" => MergeStrategy.discard
+        case "reference.conf" => MergeStrategy.concat
+        case _ => MergeStrategy.first
+      }
+    },
+  )
   .settings(
     name := "okay-demo",
     libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.47.1.0",

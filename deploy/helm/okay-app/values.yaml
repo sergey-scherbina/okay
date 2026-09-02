@@ -1,0 +1,35 @@
+# Values for the okay-app chart (specs/deploy.md). Point this at any
+# image built by deploy/Dockerfile (or deploy/scripts/okay-package.sh)
+# from a module that wires in okay.ops.Ops.routes — nothing in the
+# templates below needs to change per service.
+
+image:
+  repository: okay/demo
+  tag: local
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  port: 8080          # the port the container listens on AND the Service exposes
+  type: ClusterIP
+
+# okay-ops's own contract (specs/ops.md) — change these only if a
+# service mounts Ops.routes under different paths than the default
+health:
+  livenessPath: /healthz
+  readinessPath: /readyz
+metrics:
+  path: /metrics
+  enabled: true
+
+# every entry becomes a container env var — this is where a service
+# names its own port (OKAY_CHAT_PORT for DemoChat), its data dir, etc.
+env:
+  - name: OKAY_CHAT_PORT
+    value: "8080"
+
+resources: {}
+# resources:
+#   requests: { cpu: 100m, memory: 256Mi }
+#   limits: { cpu: "1", memory: 512Mi }

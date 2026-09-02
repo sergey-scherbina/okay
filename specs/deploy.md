@@ -46,25 +46,25 @@ scaffold is proven against, not the thing the scaffold is FOR.
 
 ## Behavior
 
-- [ ] `sbt "okayDemo/assembly"` produces one runnable jar; `java
+- [x] `sbt "okayDemo/assembly"` produces one runnable jar; `java
       -jar app.jar` serves the same routes the `sbt run` main does,
       `/healthz` included — proven WITHOUT Docker, since the jar is
       the actual hard part (classpath, merge conflicts, one main)
-- [ ] `deploy/Dockerfile --build-arg MODULE=okayDemo` builds an
+- [x] `deploy/Dockerfile --build-arg MODULE=okayDemo` builds an
       image whose `ENTRYPOINT` runs that jar; the container answers
       `/healthz` on its exposed port (proven when a Docker daemon
       is available; the jar-level proof above is what runs when it
       is not — as it was not for this box's own landing, 2026-09-02,
       operator: "я остановил докер... чтобы память освободить")
-- [ ] `deploy/scripts/okay-package.sh <module> [tag]` wraps the
+- [x] `deploy/scripts/okay-package.sh <module> [tag]` wraps the
       build (and, if a daemon answers, an image build) into one
       command — the utility the operator asked for
-- [ ] `helm lint deploy/helm/okay-app` passes; `helm template
+- [x] `helm lint deploy/helm/okay-app` passes; `helm template
       deploy/helm/okay-app -f deploy/helm/okay-app/examples/demo-
       chat.values.yaml` renders a Deployment whose probes and
       Prometheus annotations name `/healthz`, `/readyz`, `/metrics`
       exactly as okay-ops answers them
-- [ ] the chart's `values.yaml` needs no chart edits to point at a
+- [x] the chart's `values.yaml` needs no chart edits to point at a
       SECOND Okay service — only its own values file
 
 ## Out of scope
@@ -104,3 +104,21 @@ scaffold is proven against, not the thing the scaffold is FOR.
   every implementer.
 
 ## Results
+
+Landed 2026-09-02 (deploy-package). `sbt "okayDemo/assembly"`
+produces `okay-demo/target/scala-3.7.4/app.jar` (32MB, one merge
+strategy: services concat, other META-INF and module-info discard,
+everything else first-wins — no conflicts against this module's
+actual dependency set); `java -jar app.jar` served `/`, `/healthz`,
+`/readyz`, `/stats`, `/metrics` all 200, proving the jar the
+Dockerfile's build stage produces is the real artifact, independent
+of whether a daemon exists to containerize it. The Docker image
+itself and a live `kubectl apply` were NOT proven live — no Docker
+daemon was reachable during this landing (the operator had stopped
+it to free memory) and no Kubernetes cluster was reachable at all;
+`helm lint` (clean) and `helm template` (rendered, inspected: the
+probes and Prometheus annotations name exactly the paths okay-ops
+answers) are the honest offline substitute, same shape as every
+"skips where the endpoint is absent" live test elsewhere in this
+stack. Re-run `deploy/scripts/okay-package.sh okayDemo` once a
+daemon is back to close that gap.
