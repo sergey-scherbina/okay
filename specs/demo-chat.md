@@ -652,6 +652,93 @@ Behavior:
       Playwright's browser is not installed — never a false failure
       for an absent local precondition
 
+## Two nodes over one shared log (demo-two-nodes)
+
+Failover itself is not new work — `Election` (okay-persist,
+specs/consensus.md) already proves concurrent claims, lease takeover,
+fencing, and operator override, against both `MemoryStore` and
+`FileStore`, all `[x]`. This showcase makes THAT machinery
+consumer-visible: two real `ChatDemo` processes, one shared
+`OKAY_CHAT_LOG` directory, one elected writer, kill it and watch
+`/market` keep answering.
+
+**A real constraint made visible, not hidden.** `FileStore.open`
+scans its directory ONCE at construction (specs/persist.md); a
+process that never appends to a topic never sees another process's
+later writes on it, because nothing re-scans. This demo does not add
+live cross-process tailing (a real engineering project on its own,
+filed separately if a consumer names it) — it POLLS: every tick,
+reopen a fresh `FileStore` handle on the shared directory, re-decide
+leadership from ITS control topic, and — when this node is not
+leader — `reset()` + replay the market from the freshly-reopened
+log. The poll interval IS the staleness bound, stated, not a
+promise of live consistency.
+
+- **`TwoNode(root, node, tickMs, leaseMillis)`** (`okay.demo`,
+  active only when `OKAY_CHAT_NODE` is set — the single-process path
+  is UNCHANGED, byte-for-byte, when it is not): one tick, synchronous
+  at construction and then on a daemon thread —
+  1. reopen `storeOf(root)`, fresh `Election` over its `__control`
+     topic and a fresh `ChatLog` over its `web-demo` topic (the SAME
+     topic name `chatLog` already uses — one shared log, not two)
+  2. `tryTakeover(0)` when the fold says the partition is vacant —
+     the SAME proven method `ElectionSuite` already drives
+  3. `heartbeat()` when this node holds the seat (keeps the lease
+     alive so a REAL follower does not steal it out from under a
+     live leader — only a genuinely gone leader's lease expires)
+  4. when NOT the leader: `market.reset()` then
+     `replayProjections(freshLog)` — the exact function
+     `POST /admin/replay` already calls, reused rather than
+     reinvented
+  5. close the reopened store — no handle survives past one tick
+  `isLeader`/`leaderNode` answer from the LAST tick's cached
+  decision — never touch a store handle between ticks.
+- **`TwoNode.leaderGated(node)(inner)`** wraps the WHOLE route
+  `PartialFunction` (not each write route individually — the
+  smallest honest cut): a `POST` from a non-leader answers 503
+  naming the current leader (or "none"); every `GET` passes through
+  untouched, so `/market`, `/market.json`, `/events/*` keep serving
+  from whichever process is up, leader or not.
+- **`main`** branches on `OKAY_CHAT_NODE`: absent, everything is
+  exactly as before (every existing test constructs `routes(...)`
+  directly and never sets this env var, so nothing already landed
+  changes shape); present, `TwoNode.leaderGated` wraps `routes(...)`
+  and the console additionally prints this node's id and leader
+  status.
+- **`GET /whoami`** (added by `leaderGated`, only reachable when
+  `OKAY_CHAT_NODE` is set): `{"node":"...","leader":"...",
+  "isLeader":true|false}` — the ONLY way a test (or an operator)
+  outside the process can observe which of two real processes
+  currently holds the seat; a GET, so it is never itself gated.
+
+**Stated limits, not solved here.** Session tokens (`Login`,
+`Admin.Issuer`) are per-process `SessionIssuer`s with their own
+signing key — a token minted by one node does not verify on the
+other; a real multi-node deployment needs ONE shared signing key,
+filed as its own item if a consumer names it. Only `POST`/write
+routes are gated; this includes `/scenarios`, `/admin/gate`,
+`/login`, and MCP tool calls uniformly (the wrapper does not
+distinguish read-only MCP calls like `tools/list` from writing ones
+— a stated over-refusal, not a correctness gap).
+
+Behavior:
+- [ ] two `ChatDemo` processes over the SAME `OKAY_CHAT_LOG`
+      directory: exactly one is leader at a time (proven by reading
+      both nodes' `/whoami`-style leader report — see below —
+      agreeing on one node)
+- [ ] a `/chat` turn accepted by the leader is visible on the
+      FOLLOWER's `/market.json` within one tick interval, with no
+      restart
+- [ ] the follower refuses a write (`POST /chat`) with 503 naming
+      the leader; its `GET /market`/`/market.json` keep answering
+      throughout
+- [ ] killing the leader process: within lease + skew, the follower
+      takes over (`tryTakeover` succeeds), the market it already
+      held from polling is immediately servable, and it now accepts
+      writes too — the showcase's own claim, "the market survives"
+- [ ] `OKAY_CHAT_NODE` unset: the demo's existing behavior and full
+      test suite are UNCHANGED — this is additive, not a rewrite
+
 ## Out of scope
 - Persistence of conversations, multi-user rooms (okay-match's
   DURABLE store is one constructor swap for facts/deals/flows; the
