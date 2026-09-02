@@ -1,0 +1,5 @@
+slug: stm-sessions
+branch: feature/stm-sessions
+worktree: ../okay-wt-stm-sessions
+claimed: 2026-09-02
+scope: McpHttp's session table (ConcurrentHashMap[String,Wire]) becomes TRef[Sessions] with one atomic modify per decision point (also fixes a pre-existing check-then-act race in the "give the first uninitialized POST a session" branch); Native's FiberCell (hand-rolled synchronized cell+subscribers) becomes TRef[FiberCell.State] via modify. specs/stm.md Results entry.
