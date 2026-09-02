@@ -2,6 +2,7 @@ package okay
 
 import scala.reflect.*
 import scala.util.*
+import scala.annotation.implicitNotFound
 
 /**
  * Errors on two levels, with the bridges between them.
@@ -134,19 +135,29 @@ given throwsK[E]: TypeableK[Throws % E] = typeableKByClass(classOf[Throws[?, ?]]
  * instance guards the continuations through the tree — a throw from
  * a pure segment between effects lands in the handler, while a
  * throw from inside an effect's HANDLER stays that handler's
- * business (stated, not hidden).
+ * business (stated, not hidden). The instances are NAMED, not a
+ * catch-all: a lazy monad (a Cont diagonal, Eff) given the strict
+ * instance would try the CONSTRUCTION and never the run, and the
+ * catch would silently never fire — so an F without an instance is
+ * a compile error that says so, and a strict monad of your own
+ * declares itself in one line: `given CanTry[M] = CanTry.strict`.
  */
+@implicitNotFound("no CanTry[${F}]: `try` in a direct block needs to know how ${F} catches a throw.\nStrict monads (Option, Either, List, Vector, Try) and Free rows have instances;\nfor a strict monad of your own declare `given CanTry[${F}] = CanTry.strict` — a LAZY monad\n(a Cont diagonal, Eff) has no honest instance: its body runs after the try, catch in the run instead.")
 trait CanTry[F[_]]:
   def tryIn[A](fa: => F[A])(h: Throwable => F[A]): F[A]
 
-trait CanTryLow:
+object CanTry:
+  import okay.!.*
   /** strict monads: the whole computation happens at construction */
-  given strict: [F[_]] => CanTry[F] = new:
+  def strict[F[_]]: CanTry[F] = new:
     def tryIn[A](fa: => F[A])(h: Throwable => F[A]): F[A] =
       try fa catch case e: Throwable => h(e)
 
-object CanTry extends CanTryLow:
-  import okay.!.*
+  given option: CanTry[Option] = strict
+  given either: [E] => CanTry[[X] =>> Either[E, X]] = strict
+  given list: CanTry[List] = strict
+  given vector: CanTry[Vector] = strict
+  given tries: CanTry[Try] = strict
   /** Free rows: guard construction AND every continuation step */
   given rows: [Fx[+_]] => CanTry[[X] =>> X ! Fx] = new:
     def tryIn[A](fa: => A ! Fx)(h: Throwable => A ! Fx): A ! Fx =

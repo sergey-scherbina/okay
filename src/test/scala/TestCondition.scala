@@ -46,6 +46,31 @@ class TestCondition extends munit.FunSuite {
     assert(errors.nonEmpty, "a Restart outside every frame must not summon")
   }
 
+  test("condition-caps: a handle targets ITS frame by identity — two frames of one name cannot alias") {
+    import Condition.*
+    // the outer "retry" recovers from an Int, the inner "retry" from a
+    // String; the OUTER handle invoked inside the inner frame must
+    // reach the outer recover — by name it would land in the inner
+    // one and cast the Int to a String
+    val aliased: String ! (Op + Pure) =
+      frame[String, Int, Pure]("retry") { outer ?=>
+        frame[String, String, Pure]("retry") { inner ?=>
+          outer.invoke[String](3)
+        }(s => s"inner got ${s.length}").map(x => x + ", never appended")
+      }(n => s"outer got $n")
+    assertEquals(!.run(Condition.run[String, Pure]((_, _) =>
+      Decision.Fail)(aliased)), "outer got 3")
+    // the policy's Invoke stays BY NAME: innermost wins, as the menu promises
+    val byName: String ! (Op + Pure) =
+      frame[String, Int, Pure]("retry") { _ ?=>
+        frame[String, String, Pure]("retry") { _ ?=>
+          signal[String]("which?")
+        }(s => s"inner got $s")
+      }(n => s"outer got $n")
+    assertEquals(!.run(Condition.run[String, Pure]((_, menu) =>
+      Decision.Invoke("retry", "x"))(byName)), "inner got x")
+  }
+
 
   test("the typed pair: raiseC answers its instance's type; a bad Resume is the policy's bug, named") {
     import Condition.*

@@ -11,11 +11,11 @@ import scala.annotation.implicitNotFound
  * every emitted program is one the user could write with
  * reflect/reify by hand; multi-shot, short-circuit and the stack
  * discipline of the reflected monad are inherited, not
- * re-implemented. v1 is scoped: marks under a lambda or a by-name
- * argument, and `while`/`try` around marks, are compile errors with
- * the workaround named — refusing that corner is the entire
- * difference between these few hundred lines and a general CPS
- * transformer.
+ * re-implemented. The block is scoped: marks under a lambda (other
+ * than the whitelisted loop combinators) or a by-name argument, and
+ * a `finally` around marks, are compile errors with the workaround
+ * named — refusing that corner is the entire difference between
+ * these few hundred lines and a general CPS transformer.
  */
 object Direct:
 
@@ -25,10 +25,10 @@ object Direct:
      * macro expands; the macro rewrites every call, so this body
      * only runs when a mark escapes outside a direct block — and
      * then it fails loudly rather than compiling to nothing.
-     * The mark is a NAME, deliberately: three symbols were tried
-     * and refuted (.! shadows object !, .!? was redundant, .reflect was
-     * ambiguous with the Throws row-?) — the retirement is recorded
-     * in specs/direct-macro.md.
+     * The mark is a NAME, deliberately: of the symbols tried, .!
+     * shadows object ! and .? is ambiguous with the Throws row-? —
+     * the retirements are recorded in specs/direct-macro.md; .!?
+     * and prefix ! survive as the symbolic spellings below.
      */
     def reflect: A = throw new IllegalStateException(
       "Direct.reflect outside a direct block — wrap the code in direct[F] { ... }")
@@ -581,10 +581,12 @@ object Direct:
             case Out.Pure(p) =>
               wrapPure(vd, p, rest, expr)
             case Out.Eff(c) =>
+              // the val KEEPS its symbol, re-bound to the continuation's
+              // parameter: a later def or an assignment (for a var)
+              // still refers to it — substitution would strand them
               Out.Eff(bind(c, rhs.tpe, expr.tpe) { v =>
-                val restT = compileBlock(rest.map(substStat(_, vd.symbol, v)),
-                  subst(expr, vd.symbol, v))
-                asCont(restT, expr.tpe)
+                val vd2 = ValDef.copy(vd)(vd.name, vd.tpt, Some(v))
+                asCont(wrapStat(vd2, rest, expr), expr.tpe)
               })
         case (dd: Definition) :: rest =>
           if hasMark(dd) then refuse(dd, "inside a nested definition")
@@ -664,11 +666,6 @@ object Direct:
         tpe0 <:< TypeRepr.of[F].appliedTo(t.widen) ||
           rowOf.exists(r => tpe0 <:< r.appliedTo(t.widen))
       }
-
-    def substStat(s: Statement, sym: Symbol, ref: Term): Statement = s match
-      case t: Term => subst(t, sym, ref)
-      case vd @ ValDef(n, tp, rhs) => ValDef.copy(vd)(n, tp, rhs.map(subst(_, sym, ref)))
-      case _ => s
 
     /** keep a pure statement in front of the compiled rest */
     def wrapStat(s: Statement, rest: List[Statement], expr: Term): Out =

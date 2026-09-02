@@ -238,6 +238,14 @@ see every frame; `within` stays as the Any-typed base.
 - [x] the lexical invoke unwinds to its frame with no policy
       consulted; nesting and cross-frame invokes behave; a Restart
       cannot be summoned outside every frame
+- [x] a handle targets its frame BY IDENTITY (audit-fixes,
+      2026-09-02): two frames sharing a name cannot alias — the
+      first cut unwound by name, so an outer `Restart[Int]` invoked
+      inside an inner frame of the same name landed in the inner
+      recover and cast the Int to its V (ClassCastException). The
+      policy's `Invoke(name, v)` stays by name, innermost first —
+      that is the dynamic menu's contract; the lexical route is
+      exactly the one that never needed a name
 
 
 ## Typed signals, the nominal spelling (2026-09-02, condition-typed-signal)

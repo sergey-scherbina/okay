@@ -32,6 +32,12 @@ class TestErrorMessages extends munit.FunSuite {
   // CanBlock — verified by probe, specs/error-messages.md Results).
   // Their @implicitNotFound texts serve downstream scopes.
 
+  test("missing CanTry names the lazy-monad trap and the one-line strict recipe") {
+    val e = compileErrors("summon[okay.CanTry[[X] =>> okay.Eff[okay.Pure, X]]] ")
+    assert(e.contains("CanTry.strict"), e)
+    assert(e.contains("LAZY"), e)
+  }
+
   test("missing Direct.Effect shows the one-line registration") {
     val e = compileErrors("summon[okay.Direct.Effect[List]] ")
     assert(e.contains("given Direct.Effect"), e)

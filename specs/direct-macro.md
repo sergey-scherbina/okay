@@ -72,8 +72,15 @@ stays for expression positions.
   only the taken branch's effects run
 - [x] a mark under a lambda is a COMPILE error naming the position
   and the workaround (bind to a val before the lambda)
-- [x] `try` containing marks: compile error, "v2" named (`while`
-  graduated to a feature — specs/direct-loops.md, with foreach/map)
+- [x] `try` containing marks — SHIPPED (direct-try, see Out of
+  scope below for the seam); `while`/foreach/map graduated too
+  (specs/direct-loops.md)
+- [x] a marked val KEEPS ITS SYMBOL (audit-fixes, 2026-09-02): the
+  val is re-bound to the continuation's parameter rather than
+  substituted away, so a local `def` after it still refers to it,
+  and a `var` bound from a mark can be reassigned — both were
+  compile errors ("used outside the scope where it was defined",
+  "Reassignment to val v") found by the audit
 - [x] a mark outside any direct block: the phantom throws with a
   message naming the macro
 - [x] a block with NO marks still compiles: `direct[F] { 42 }` ==
@@ -117,6 +124,15 @@ stays for expression positions.
   marks inside catch bodies remain refused, named. A body ending in
   throw types Nothing: upcast through the monad, not variance.
   `while` and the foreach/map loops SHIPPED via specs/direct-loops.md.
+  CanTry's instances are NAMED (audit-fixes, 2026-09-02): the first
+  cut had a catch-all strict given, under which a LAZY monad (a Cont
+  diagonal, Eff) tried the construction and never the run — the
+  catch silently never fired. Now Option/Either/List/Vector/Try and
+  Free rows have instances, a strict monad of your own declares
+  `given CanTry[M] = CanTry.strict`, and a lazy one is a compile
+  error that says why. (A context-function instance was written and
+  withheld: direct-try over `E ?=> X` crashes dotty 3.7.4 at erasure
+  — BACKLOG direct-try-ctx.)
 - **Answer-type modification inside a block** — the block is the
   DIAGONAL (one F, answers F[A] throughout); that fixed answer type
   is exactly what makes the scoped macro cheap (no re-typing tower).
