@@ -1,0 +1,5 @@
+slug: same-operator
+branch: feature/same-operator
+worktree: ../okay-wt-same-operator
+claimed: 2026-09-02
+scope: `a === b` on typed tokens with a Same[K] — the witness Option[A =:= B] (sameAs by another name), `=!=` its boolean negation; TMap uses ===; tests; spec. Operator: "а мы можем определить оператор === такой как нам нужно".
