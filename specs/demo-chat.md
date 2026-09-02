@@ -280,6 +280,30 @@ that MOVES. Three pieces, all riding machinery the demo already has:
   detected client-side ("поток оборвался").
 - "помощь"/"help" reaches the driver's phrasebook.
 
+## The English phrasebook (demo-en-phrasebook)
+
+The offline driver (`scriptedAgent`) spoke only Russian. Language is
+now picked PER MESSAGE, not configured: `isEnglish(text)` is "no
+Cyrillic character" — content alone decides which reply template
+answers, with no session state. Every trigger pairs one-for-one:
+умею/can:/offer:, нужен/нужно/want:/need:, спроси/ask (+
+всех/all), сценарий/scenario, шаг/step, флоу/flow,
+берусь/accept, отказываюсь/decline, помощь/help (already paired —
+now decided by which WORD triggered, since an empty string carries
+no Cyrillic either and would otherwise misroute). Both phrasebooks
+speak the SAME tool table through the SAME wraps (chainedTable) —
+language is presentation, not a second code path.
+
+- [ ] the full offer -> need -> ask -> accept round, phrased entirely
+      in English, through the real route: matches the Russian round's
+      shape (demo-chat-match/match-deals), replies in English
+      throughout
+- [ ] "help" answers the English phrasebook; "помощь" still answers
+      the Russian one — the empty-string trap named above is covered
+- [ ] a scenario/flow round (scenario ... ; step N ...; flow N)
+      phrased in English walks the SAME escrow scenario the Russian
+      OFFLINE FLOWS test walks, in English throughout
+
 ## Conditions at the intake (demo-conditions)
 The silent guest@demo default was a policy decision nobody made. The
 intake now SIGNALS `BadEmail` (the condition road: the signal point
