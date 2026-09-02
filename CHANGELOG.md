@@ -1,5 +1,16 @@
 # Changelog
 
+## cast-free-rag-llm-kyo — rows by ascription, a typed frame, kyo at its E
+Completed: 2026-09-02
+Landed as a755a84. rag's Ingest and Retrieve re-associate rows by
+ascription (a row is a union); `fair` builds its alternatives in
+Choose + Pure and observes them there, no re-typing; llm's Cut
+establishes its "cut" frame through `frame[…, Violation]`, so the
+policy's value arrives as a Violation or is refused named; kyo's
+interop matches Throws at its E (the tree types it) and passes kyo's
+continuations uncast (their types line up). Ten casts to none; rag,
+llm, kyo suites green; rebased over okay-subscription-module.
+
 ## okay-subscription — the demo's subscription gate, extracted into a reusable module
 Completed: 2026-09-02
 Landed as 261981e (spec) + c54f3d2 (impl). User ask: extract genuinely
