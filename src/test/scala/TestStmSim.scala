@@ -42,4 +42,27 @@ class TestStmSim extends munit.FunSuite {
     assertEquals(r.get, 2)
     assert(trace.virtualMillis >= 5, s"virtual time ${trace.virtualMillis}")
   }
+
+  test("orElse under Sim: a waiter races two writers, every seed picks whichever fires and only that one") {
+    var picked = -1
+    for seed <- 1L to 60L do
+      val left = TRef(0)
+      val right = TRef(0)
+      picked = -1
+      val waiter: String ! Tx = Tx.orElse(
+        Tx.read(left).flatMap(x => Tx.check(x > 0)).map(_ => "left"),
+        Tx.read(right).flatMap(x => Tx.check(x > 0)).map(_ => "right"))
+      val main: Unit ! Sim.Op =
+        Sim.fork(Stm.sim.atomically(waiter).map(v => picked = (if v == "left" then 1 else 2))).flatMap { _ =>
+          Sim.sleep(1).flatMap(_ => Sim.fork(Stm.sim.atomically(Tx.write(left, 1))))
+            .flatMap(_ => Sim.fork(Stm.sim.atomically(Tx.write(right, 1))))
+        }.map(_ => ())
+      val trace = Sim.run(seed)(main)
+      assertEquals(trace.outcome, Sim.Outcome.Done, s"seed $seed: ${trace.outcome}")
+      assert(picked == 1 || picked == 2, s"seed $seed: orElse never resolved")
+      // whichever fired, the OTHER cell's write still lands (both writers always run) —
+      // the waiter's own answer just names which one it woke on first
+      assertEquals(left.get, 1, s"seed $seed")
+      assertEquals(right.get, 1, s"seed $seed")
+  }
 }

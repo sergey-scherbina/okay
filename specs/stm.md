@@ -70,6 +70,15 @@ document.
       suspension make a transaction atomic by construction; it runs
       Read/Write/Modify straight against the cells, no log; `retry`
       registers the same one-shot waiters
+- [x] `Tx.orElse(a, b)`: `a` runs first; if it RETRIES (not on any
+      other outcome), its writes are discarded as if it never ran
+      and `b` runs instead; if `b` also retries, the WHOLE thing
+      retries, parked on whatever EITHER branch read — one case in
+      the language, one in `perform` (shared by every handler, since
+      none of tl2/direct/sim reimplement the primitive ops
+      themselves); nests, and a write made before reaching the
+      `orElse` is visible inside a branch (the branch's log falls
+      through to its parent's pending writes)
 
 ## Out of scope
 - opacity by global clock (TL2 proper): per-ref versions with
@@ -291,3 +300,30 @@ test fires 200 commands per run, 50 runs, under the REAL JVM
 scheduler (virtual threads, `Async.spawn`, no `Pure` interpreter
 serializing anything) and asserts every answer landed — the shape of
 the exact race the old comment described, exercised for real.
+
+`Tx.orElse` (stm-orelse, 2026-09-02): one new `Tx` case, one new
+`perform` branch — a NESTED `Log(parent = Some(outer))` runs `a`;
+`RetryNow` is caught right there (not left to propagate to the
+attempt loop), the branch's reads are folded into the outer log
+either way (so a park after BOTH branches retry blocks on the union),
+and its writes are folded in only if it did not retry
+(`Log.absorb`, via `TMap`'s typed polymorphic `foreach` — the same
+justified cast site the write set already had). `runWithLog`, the
+tail-recursive tree-walker `interpret` used to own alone, is now
+shared with `perform`'s `OrElse` case — mutually recursive with
+`perform` across nested `orElse`, which is fine: a transaction body
+is source code depth, not a loop counter. Every handler gets it for
+free (tl2, direct, Sim) because none of them reimplement Read/Write/
+Modify/Retry themselves — they all call this same `perform`. Proven:
+a-succeeds-b-never-writes, a-retries-b-runs-and-a's-write-never-
+lands, both-retry-parks-on-either, nested `orElse` picks the first
+non-retrying branch in order, a write made before the `orElse` is
+visible inside a branch — cross-platform (tl2 on JVM/Native, direct
+on JS, `TestStmOrElse`); plus a Sim test (60 seeds) racing two
+writers against one `orElse`d reader, every seed resolving to
+whichever writer's cell got set and the OTHER writer's write still
+landing untouched. Not covered: Sim's per-seed interleaving does not
+inject scheduling points INSIDE a branch's own reads/writes (`perform`
+is synchronous by design, so a nested attempt runs eagerly) — stated,
+not a correctness gap, since a branch's atomicity does not depend on
+where Sim chooses to interleave.

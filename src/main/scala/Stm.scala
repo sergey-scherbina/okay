@@ -135,6 +135,11 @@ enum Tx[+A] {
   case Modify[A, B](r: TRef[A], f: A => (A, B)) extends Tx[B]
   /** block until something this transaction READ changes, then run again */
   case Retry() extends Tx[Nothing]
+  /** run `a`; if IT retries (not on any other failure), run `b`
+   * instead — `a`'s writes are discarded, never committed, as if it
+   * never ran. If `b` ALSO retries, the whole thing retries, parked
+   * on whatever EITHER branch read (the classic STM combinator) */
+  case OrElse[A](a: A ! Tx, b: A ! Tx) extends Tx[A]
 }
 
 object Tx {
@@ -145,6 +150,8 @@ object Tx {
   def retry[A]: A ! Tx = effect(Retry())
   /** `retry` unless the condition holds */
   def check(cond: Boolean): Unit ! Tx = if cond then pure(()) else retry
+  /** `a`, or `b` if `a` retries — specs/stm.md, stm-orelse */
+  def orElse[A](a: A ! Tx, b: A ! Tx): A ! Tx = effect(OrElse(a, b))
 }
 
 /** the door: WHERE a transaction runs, and by which strategy */
@@ -164,18 +171,32 @@ object Stm {
   /** what one attempt has read (cell, version seen) and written. The
    * write set is a TMap keyed by the cells: a value written to a
    * TRef[X] comes back as an X, and the heterogeneous map's one
-   * justified cast lives in TMap, not here */
-  private final class Log {
+   * justified cast lives in TMap, not here. `parent`, set only for a
+   * `OrElse` branch's own nested attempt (stm-orelse): a read not
+   * pending in THIS log falls through to the enclosing one, so a
+   * branch sees writes the transaction already made before reaching
+   * the `orElse` — but a branch's OWN writes stay local until
+   * `absorb`, so a retried branch leaves nothing behind. */
+  private final class Log(parent: Option[Log] = None) {
     val reads = mutable.ArrayBuffer.empty[(TRef[?], Long)]
     private var writes = TMap.empty[TRef]
 
-    /** the value this attempt has written to r, if any */
-    def pending[X](r: TRef[X]): Option[X] = writes.get(r)
+    /** the value this attempt has written to r, if any — this log's
+     * own write, or (falling through) an enclosing one's */
+    def pending[X](r: TRef[X]): Option[X] =
+      writes.get(r).orElse(parent.flatMap(_.pending(r)))
     def write[X](r: TRef[X], v: X): Unit = writes = writes.updated(r, v)
     def hasWrites: Boolean = writes.nonEmpty
     def written: Iterator[TRef[?]] =
       def key[X](e: TMap.Entry[TRef, X]): TRef[?] = e.key
       writes.entries.map(e => key(e))
+
+    /** a WINNING `orElse` branch's log, folded into this one: every
+     * write it made becomes this log's own (typed through TMap's
+     * polymorphic `foreach`, the one justified link between a cell
+     * and what was written to it) */
+    def absorb(child: Log): Unit =
+      child.writes.foreach([X] => (r: TRef[X], v: X) => write(r, v))
 
     /** everything read so far still at the version it was read at,
      * and none of it owned by a commit in flight */
@@ -212,15 +233,37 @@ object Stm {
       log.write(r, a2)
       b
     case Tx.Retry() => throw RetryNow
+    case op: Tx.OrElse[X] =>
+      val branchA = new Log(parent = Some(log))
+      val ra = try Some(runWithLog(op.a, branchA)) catch case RetryNow => None
+      log.reads ++= branchA.reads   // read either way: a real retry blocks on it too
+      ra match
+        case Some(a) => log.absorb(branchA); a
+        case None =>
+          val branchB = new Log(parent = Some(log))
+          try
+            val b = runWithLog(op.b, branchB)
+            log.reads ++= branchB.reads
+            log.absorb(branchB)
+            b
+          catch case RetryNow =>
+            log.reads ++= branchB.reads
+            throw RetryNow   // both branches retried: so does the whole thing
 
-  /** run the whole program against the log, synchronously; the
-   * freer tree's own Bind gives every step its type */
-  private def interpret[A](tx: A ! Tx, log: Log): A =
+  /** run one program against a log, synchronously — the freer
+   * tree's own Bind gives every step its type. Shared by the
+   * top-level attempt loop AND `OrElse`'s branches (perform, above)
+   * — not tail-recursive across that boundary, which is fine: a
+   * transaction body is source code, not a loop counter. */
+  private def runWithLog[A](tx: A ! Tx, log: Log): A =
     @tailrec def loop(p: A ! Tx): A = (p.resume: @unchecked) match
       case Pure(a) => a
       case Effect(e) => perform(e, log)
       case Bind(Effect(e), k) => loop(k(perform(e, log)))
     loop(tx)
+
+  /** run the whole program against the log, synchronously */
+  private def interpret[A](tx: A ! Tx, log: Log): A = runWithLog(tx, log)
 
   /** a cell a commit has taken: release it, or install into it */
   private final class Held[X](r: TRef[X], before: TRef.Stamped[X]):
