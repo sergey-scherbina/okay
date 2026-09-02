@@ -1,5 +1,37 @@
 # Changelog
 
+## rag-langchain4j (EmbeddingModel half) — a local embedder, kept out of the root build
+Completed: 2026-09-02
+Landed as 01c4955 (spec) + bcb29c0 (impl). A consumer finally named a
+store: demo-embeddings-attr (BACKLOG) wants okay-match's registry to
+collide "разработчик"/"программист" BEFORE the registry drifts —
+semantic search-before-create, not the hashing embedder's lexical
+stand-in. `MatchStore` already takes `embed: String => Embedding` as
+a plain constructor parameter, so no okay-rag retrieval pipeline was
+needed to satisfy that ask; a real embedder was the whole gap.
+New module `okay-langchain4j-embed` (JVM): `dev.langchain4j`'s
+`AllMiniLmL6V2EmbeddingModel` — a local ONNX model bundled in the
+jar, no network, no API key — wrapped two ways: `embed(model):
+String => Embedding` (the exact shape `MemoryMatch`'s constructor
+already takes) and `handler(model): Handler[Embed]` (okay-rag's
+effect). Pinned at `1.19.0-beta29` — this artifact still ships
+beta-versioned even though `langchain4j-core` is stable at `1.19.0`.
+Scoped narrower than the BACKLOG name: only the EmbeddingModel half
+shipped. Their EmbeddingStore (a vector database behind
+`okay.rag.VectorStore`) stays unbuilt, a separate larger integration.
+Deliberately kept OUT of okay-demo's build and the root
+`.aggregate(...)` list — the bundled model is a real ~90MB download,
+and nothing about compiling or testing this repo should force that
+on a contributor who never touches embeddings (an explicit operator
+call after weighing the tradeoff). `demo-embeddings-attr` stays open
+in BACKLOG, now unblocked rather than closed.
+Tests: the real semantic collision (разработчик/программист score
+>0.5 cosine, beating the hashing embedder on the same pair),
+embed/handler answering identically. 2/2 clean over three
+bare-JUnitCore runs, ~45ms each (confirms no network). Verified
+okayDemo/okayLangchain4j/okayRag compile unaffected by the build.sbt
+addition.
+
 ## eager-dispatch-regression — fold goes inline, closes 3.45x UNDER the pre-regression baseline
 Completed: 2026-09-02
 Landed as 55f4aa3. The other half of the bench-sweep report's two

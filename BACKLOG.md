@@ -357,6 +357,13 @@ construction instead of a type test per value).
       embeddings instead of substring match (twin of rag-langchain4j;
       an embedding store as Retrieve handler): "разработчик" and
       "программист" should collide BEFORE the registry drifts.
+      UNBLOCKED 2026-09-02: okay-langchain4j-embed's
+      Langchain4jEmbed.embed(model) is the exact String => Embedding
+      MemoryMatch's constructor takes — proven colliding on this
+      SAME pair in its own test suite. Deliberately not wired into
+      okay-demo yet (kept off the root build — a real ~90MB model
+      download); wiring it into ChatDemo's MemoryMatch(embed = ...)
+      is what closes this box.
 - [x] demo-package — one-command run: bundle the React build into
       the jar's static assets (+ optionally a Dockerfile); today the
       demo needs sbt and a node dev server side by side.
@@ -492,3 +499,10 @@ not a new primitive from scratch.
 - [ ] rag-langchain4j — their EmbeddingStore as a Retrieve handler
       (the other half of the interop sentence; when a consumer
       names a store)
+      PARTIAL 2026-09-02: the EmbeddingModel half landed as
+      okay-langchain4j-embed (a local ONNX embedder, String =>
+      Embedding + Handler[Embed] — MemoryMatch's exact `embed` seam,
+      no okay-rag pipeline needed). Deliberately OUT of okay-demo's
+      build and the root aggregate (a real ~90MB model download).
+      The EmbeddingStore/VectorStore half named in the title is
+      still open — this box stays unchecked for that.
