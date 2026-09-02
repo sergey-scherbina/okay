@@ -1,5 +1,23 @@
 # Changelog
 
+## bench-direct — the direct syntax priced, ours and the apt competitors
+Completed: 2026-09-02
+DirectBenchmark (compare) + the 1b table in benchmarks.md: each
+ecosystem's first-party direct form against its own hand-written
+flatMap chain, same shape, same run, quiet box. okay `direct`
+(while+var) 313 µs/10k binds = 3.3x over the 96 µs baseline — the
+price of the Monadic Cont layer the macro emits, not of the macro;
+the recursion spelling 410 (4.3x). kyo defer 157 = 2.8x over its
+eager chain. zio-direct 119 = 0.64x — FASTER than the naive
+hand-written chain (its macro emits a better shape than left-nested
+binds; credited in the doc). Expressiveness measured by refusal:
+both competitors forbid `var` in their blocks (kyo also nested
+marks); the imperative form compiles only in okay (direct-loops).
+FILED for the direct lane: emit plain flatMaps for purely
+sequential fragments, reserving Cont for control corners — would
+close 3.3x toward 1x. (Room post failed: rozum daemon "Too many
+open files"; this entry carries the handoff.)
+
 ## pg-wire-typestate — measured, declined, recorded
 Completed: 2026-09-02
 Landed as ac1d76a (spec only; PgSql.scala unchanged — that is the
