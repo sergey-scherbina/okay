@@ -59,6 +59,22 @@ force, all already practiced, none previously written down:
   them; record findings and refuted alternatives in the spec's
   Decisions/Results — that history is why the specs exist.
 
+## Code rules the operator has set
+- NO CAST WITHOUT A REAL NECESSITY (operator, 2026-09-02). An
+  `asInstanceOf`, an `@unchecked` pattern, an `Any` where a type
+  parameter would do, is a claim the compiler cannot check — and
+  "the first draft was easier that way" is not a reason. Before
+  writing one, try the typed route: a polymorphic method (`def
+  perform[X](op: Tx[X]): X` instead of `Tx[Any]`), GADT matching on
+  the freer tree (`case Bind(Effect(e), k)` types e and k), a
+  helper class holding the typed pair (`Held[X]`), a decision taken
+  at construction instead of a type test per value (`TRef.bare`).
+  When a cast truly cannot go — a heterogeneous map keyed by
+  identity, an erased type behind a wildcard — isolate it in ONE
+  function and say in its comment why the type is right. Incident:
+  Stm.scala's first cut had a dozen erasure casts in the
+  interpreter; all but one were removable (stm-typed-interpreter).
+
 ## Build facts that bite
 - A guess about the build is a HYPOTHESIS, not a fact: check it
   before acting on it. Incident (2026-09-02): an agent decided a

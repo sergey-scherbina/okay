@@ -48,7 +48,7 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
    * state is a TRef, its transitions go through TRef.modify — the
    * single-CAS path a one-op transaction takes — and the full
    * transaction language works on the same cell */
-  private[okay] val cell = TRef(State(Queue.empty, 0, Queue.empty, Queue.empty, true, null))
+  private[okay] val cell = TRef.bare(State(Queue.empty, 0, Queue.empty, Queue.empty, true, null))
 
   private def transact[R](f: State => (State, () => R)): R = cell.modify(f)()
 

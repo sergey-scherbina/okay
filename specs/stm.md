@@ -11,7 +11,8 @@ same machinery without losing throughput.
 
 ## Interface
 ```scala
-final class TRef[A](init: A)            // the cell: an AtomicReference[Stamped[A]] — value + version
+TRef(init: A): TRef[A]                  // the cell, WRAPPED kind: values travel in a Slot
+TRef.bare[A <: Stamped[A]](init: A)     // the BARE kind: the value carries its version (the Channel's)
   def get: A                            // a plain read, outside any transaction
   def modify[B](f: A => (A, B)): B      // the single-cell transaction: ONE CAS
 

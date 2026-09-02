@@ -12,21 +12,32 @@ import scala.collection.mutable
  * every handler takes for a transaction that is one `Modify`; the
  * Channel's state lives in one of these.
  *
- * The reference holds ONE type, `Stamped`: the value itself when it
- * carries its own version (the Channel's State does, so its fast
- * path allocates nothing beyond the state it would build anyway), a
- * `Slot` wrapping any other value, or an `Owned` marker that a
- * commit in flight has CAS'd over the content and that mirrors the
- * content's stamp and value — so `stamp` and `value` read the same
- * way whatever is there, and Owned is matched only where its
- * meaning differs: the fast path retries on it, a transactional read
- * aborts on it, another commit fails its CAS on it. Nothing waits.
+ * The reference holds ONE type, `Stamped[A]`: the value itself when
+ * it carries its own version (a BARE cell — the Channel's State, so
+ * its fast path allocates nothing beyond the state it would build
+ * anyway), a `Slot` wrapping any other value (a WRAPPED cell), or an
+ * `Owned` marker that a commit in flight has CAS'd over the content
+ * and that mirrors the content's stamp and value. Which of bare or
+ * wrapped a cell is, is decided at construction — `TRef(init)` wraps,
+ * `TRef.bare(init)` needs `A <: Stamped[A]` — so nothing about a
+ * value is ever guessed at runtime and nothing is cast. Owned is
+ * matched only where its meaning differs: the fast path retries on
+ * it, a transactional read aborts on it, another commit fails its
+ * CAS on it. Nothing waits.
  */
-final class TRef[A](init: A) {
+sealed abstract class TRef[A] {
   import TRef.*
 
-  private[okay] val ref = AtomicReference[Stamped[A]](wrap(init, 0L))
+  private[okay] def ref: AtomicReference[Stamped[A]]
   private[okay] val waiters = AtomicReference[List[Waiter]](Nil)
+
+  /** stamp and shape a value for this cell — bare or in a Slot, the
+   * cell's kind */
+  private[okay] def install(a: A, v: Long): Stamped[A]
+
+  /** is the answer the content itself — "nothing changed", no CAS?
+   * Only a bare cell can say yes */
+  protected def unchanged(a: A, content: Stamped[A]): Boolean
 
   /** a plain read, outside any transaction */
   def get: A = ref.get.value
@@ -36,54 +47,67 @@ final class TRef[A](init: A) {
 
   /** the one-cell transaction: f is PURE and may run more than once;
    * the answer b is yours to act on after — the Channel returns its
-   * callbacks this way. A Stamped answer that IS the current content
-   * (the same object: "nothing changed") skips the CAS — that check
-   * lives on Stamped, which is a reference by type, so no value is
-   * ever cast to compare it; a wrapped value always installs, an
-   * equal one included (a version bump and a spurious wake-up, both
-   * harmless). Content owned by a commit in progress is retried (a
-   * few instructions long, never a park) */
-  @tailrec def modify[B](f: A => (A, B)): B =
+   * callbacks this way. A bare cell whose answer IS the content skips
+   * the CAS; a wrapped value always installs, an equal one included (a
+   * version bump and a spurious wake-up, both harmless). Content owned
+   * by a commit in progress is retried (a few instructions long, never
+   * a park) */
+  @tailrec final def modify[B](f: A => (A, B)): B =
     ref.get match
       case _: Owned[?] => modify(f)   // a commit is installing; spin, never park
       case s =>
         val (a2, b) = f(s.value)
-        a2 match
-          case same: Stamped[?] if same eq s => b
-          case _ =>
-            if ref.compareAndSet(s, wrap(a2, s.stamp + 1)) then { if waiters.get ne Nil then wake(); b }
-            else modify(f)
+        if unchanged(a2, s) then b
+        else if ref.compareAndSet(s, install(a2, s.stamp + 1)) then { if waiters.get ne Nil then wake(); b }
+        else modify(f)
 
-  @tailrec private[okay] def wake(): Unit =
+  @tailrec private[okay] final def wake(): Unit =
     val ws = waiters.get
     if ws.nonEmpty then
       if waiters.compareAndSet(ws, Nil) then ws.reverse.foreach(_.fire())
       else wake()
 
-  @tailrec private[okay] def watch(w: Waiter): Unit =
+  @tailrec private[okay] final def watch(w: Waiter): Unit =
     val ws = waiters.get
     if !waiters.compareAndSet(ws, w :: ws) then watch(w)
 }
 
 object TRef {
+  /** a cell for any value: the value travels in a Slot */
+  def apply[A](init: A): TRef[A] = Wrapped(init)
+
+  /** a cell for a value that carries its own version (`extends
+   * TRef.Stamped[Self] { def value = this }`): installed bare, no
+   * wrapper ever built — the Channel's kind */
+  def bare[A <: Stamped[A]](init: A): TRef[A] = Bare(init)
+
+  private final class Wrapped[A](init: A) extends TRef[A]:
+    private[okay] val ref = AtomicReference[Stamped[A]](install(init, 0L))
+    private[okay] def install(a: A, v: Long): Stamped[A] = { val s = Slot(a); s.stamp = v; s }
+    protected def unchanged(a: A, content: Stamped[A]): Boolean = false
+
+  private final class Bare[A <: Stamped[A]](init: A) extends TRef[A]:
+    private[okay] val ref = AtomicReference[Stamped[A]](install(init, 0L))
+    private[okay] def install(a: A, v: Long): Stamped[A] = { a.stamp = v; a }
+    protected def unchanged(a: A, content: Stamped[A]): Boolean = a eq content
+
   /** what a cell holds: a value of A that carries its own version.
    * Extend it — `extends TRef.Stamped[Self] { def value = this }` —
-   * and the cell installs your value BARE; anything else is wrapped
-   * in a Slot, which is a Stamped too. So the cell's content is
-   * always a Stamped[A], typed end to end: `value` is an A, and
-   * TRef needs no cast. The cell STAMPS at install: a Stamped value
-   * belongs to one cell and one install — build a new one for every
-   * transition (an immutable case class does, through copy). A
-   * class, not a trait: the type test on the fast path is a
-   * primary-supers check, not an interface scan (measured, half the
-   * gap of the first cut) */
+   * and a bare cell installs your value as is; a wrapped cell puts
+   * any value in a Slot, which is a Stamped too. So the cell's content
+   * is always a Stamped[A], typed end to end. A bare cell STAMPS at
+   * install: such a value belongs to one cell and one install — build
+   * a new one for every transition (an immutable case class does,
+   * through copy). A class, not a trait: the type test on the fast
+   * path is a primary-supers check, not an interface scan (measured,
+   * half the gap of the first cut) */
   abstract class Stamped[+A] {
     private[okay] var stamp: Long = 0L
     /** the value the cell holds: yourself, unless you are a wrapper */
     def value: A
   }
 
-  /** the wrapper for values that are not Stamped themselves */
+  /** the wrapper a wrapped cell puts its values in */
   final class Slot[+A](val value: A) extends Stamped[A]
 
   /** a commit in flight owns the content it found; it IS a Stamped[A]
@@ -93,16 +117,6 @@ object TRef {
   private[okay] final class Owned[+A](val inner: Stamped[A], val token: AnyRef) extends Stamped[A]:
     stamp = inner.stamp
     def value: A = inner.value
-
-  /** stamp and install-shape a USER value (never an existing Slot:
-   * wrap is only ever given what a transaction or modify produced).
-   * The one @unchecked in the cell: a value that IS a Stamped inside
-   * a TRef[A] is a Stamped[A] by the contract above (its value is
-   * itself), which the type test cannot see through erasure */
-  private[okay] def wrap[A](a: A, v: Long): Stamped[A] = a match
-    case s: Stamped[A @unchecked] => s.stamp = v; s
-    case other => val s = Slot[A](other); s.stamp = v; s
-
 
   /** fires at most once, however many cells it watches */
   final class Waiter(k: () => Unit):
@@ -144,9 +158,20 @@ object Stm {
   private object Abort extends RuntimeException(null, null, false, false)
   private object RetryNow extends RuntimeException(null, null, false, false)
 
+  /** what one attempt has read (cell, version seen) and written */
   private final class Log {
-    val reads = mutable.ArrayBuffer.empty[(TRef[Any], Long)]
-    val writes = mutable.LinkedHashMap.empty[TRef[Any], Any]   // TRef has identity equality
+    val reads = mutable.ArrayBuffer.empty[(TRef[?], Long)]
+    private val writes = mutable.LinkedHashMap.empty[TRef[?], Any]   // TRef has identity equality
+
+    /** the value this attempt has written to r, if any. THE one cast in
+     * the STM: the write set is a map keyed by the cell's identity and
+     * heterogeneous in value type, and a value stored under a TRef[X]
+     * was an X — the key's type is the value's, which no map type can
+     * say */
+    def pending[X](r: TRef[X]): Option[X] = writes.get(r).map(_.asInstanceOf[X])
+    def write[X](r: TRef[X], v: X): Unit = writes(r) = v
+    def hasWrites: Boolean = writes.nonEmpty
+    def written: Iterator[TRef[?]] = writes.keysIterator
 
     /** everything read so far still at the version it was read at,
      * and none of it owned by a commit in flight */
@@ -159,55 +184,63 @@ object Stm {
         ok = !c.isInstanceOf[TRef.Owned[?]] && c.stamp == v
         i += 1
       ok
+
+    /** install what this attempt wrote to r, at the next version */
+    def installTo[X](r: TRef[X], v: Long): Unit =
+      r.ref.set(r.install(pending(r).get, v))
   }
 
   /** one operation against the log; a torn read aborts (Abort), a
    * retry surfaces as RetryNow — both control flow, both caught by
    * the handler that owns the attempt */
-  private def perform(op: Tx[Any], log: Log): Any = op match
-    case Tx.Read(r0) =>
-      val r = r0.asInstanceOf[TRef[Any]]
-      log.writes.get(r) match
+  private def perform[X](op: Tx[X], log: Log): X = op match
+    case Tx.Read(r) =>
+      log.pending(r) match
         case Some(a) => a
         case None =>
           val c = r.ref.get
           if c.isInstanceOf[TRef.Owned[?]] || !log.valid then throw Abort
           log.reads += ((r, c.stamp))
           c.value
-    case Tx.Write(r0, a) =>
-      log.writes(r0.asInstanceOf[TRef[Any]]) = a
-      ()
-    case Tx.Modify(r0, f0) =>
-      val r = r0.asInstanceOf[TRef[Any]]
-      val a = perform(Tx.Read(r), log)
-      val (a2, b) = f0.asInstanceOf[Any => (Any, Any)](a)
-      log.writes(r) = a2
+    case Tx.Write(r, a) => log.write(r, a)
+    case Tx.Modify(r, f) =>
+      val (a2, b) = f(perform(Tx.Read(r), log))
+      log.write(r, a2)
       b
     case Tx.Retry() => throw RetryNow
 
-  /** run the whole program against the log, synchronously */
+  /** run the whole program against the log, synchronously; the
+   * freer tree's own Bind gives every step its type */
   private def interpret[A](tx: A ! Tx, log: Log): A =
-    @tailrec def loop(p: Any ! Tx): Any = (p.resume: @unchecked) match
+    @tailrec def loop(p: A ! Tx): A = (p.resume: @unchecked) match
       case Pure(a) => a
-      case Effect(e) => perform(e.asInstanceOf[Tx[Any]], log)
-      case Bind(Effect(e), k) =>
-        loop(k.asInstanceOf[Any => Any ! Tx](perform(e.asInstanceOf[Tx[Any]], log)))
-    loop(tx.asInstanceOf[Any ! Tx]).asInstanceOf[A]
+      case Effect(e) => perform(e, log)
+      case Bind(Effect(e), k) => loop(k(perform(e, log)))
+    loop(tx)
+
+  /** a cell a commit has taken: release it, or install into it */
+  private final class Held[X](r: TRef[X], before: TRef.Stamped[X]):
+    def release(): Unit = r.ref.set(before)
+    def install(log: Log): Unit = log.installTo(r, before.stamp + 1)
+    def wake(): Unit = r.wake()
+
+  private def own[X](r: TRef[X], token: AnyRef): Option[Held[X]] =
+    r.ref.get match
+      case _: TRef.Owned[?] => None
+      case s => if r.ref.compareAndSet(s, TRef.Owned(s, token)) then Some(Held(r, s)) else None
 
   /** own the write set by CAS, validate the read set, install, release —
    * or restore and answer false; nothing ever waits */
   private def commit(log: Log): Boolean =
-    if log.writes.isEmpty then return log.valid
+    if !log.hasWrites then return log.valid
     val token = new AnyRef
-    val owned = mutable.ArrayBuffer.empty[(TRef[Any], TRef.Stamped[Any])]
+    val owned = mutable.ArrayBuffer.empty[Held[?]]
     var ok = true
-    val it = log.writes.keysIterator
+    val it = log.written
     while ok && it.hasNext do
-      val r = it.next()
-      val c = r.ref.get
-      c match
-        case _: TRef.Owned[?] => ok = false
-        case s => if r.ref.compareAndSet(s, TRef.Owned(s, token)) then owned += ((r, s)) else ok = false
+      own(it.next(), token) match
+        case Some(h) => owned += h
+        case None => ok = false
     if ok then
       var i = 0
       while ok && i < log.reads.length do
@@ -218,26 +251,25 @@ object Stm {
           case _ => true)
         i += 1
     if ok then
-      owned.foreach((r, c) => r.ref.set(TRef.wrap(log.writes(r), c.stamp + 1)))
-      owned.foreach((r, _) => r.wake())
+      owned.foreach(_.install(log))
+      owned.foreach(_.wake())
       true
     else
-      owned.foreach((r, c) => r.ref.set(c))
+      owned.foreach(_.release())
       false
 
   /** the structural fast paths, shared by tl2 and direct: a program
    * that IS one operation needs no log */
   private def fast[A](tx: A ! Tx): Option[A ! Async] = (tx.resume: @unchecked) match
     case Pure(a) => Some(pure(a))
-    case Effect(Tx.Modify(r, f)) =>
-      Some(async(r.asInstanceOf[TRef[Any]].modify(f.asInstanceOf[Any => (Any, A)])))
-    case Effect(Tx.Read(r)) => Some(async(r.get.asInstanceOf[A]))
+    case Effect(Tx.Modify(r, f)) => Some(async(r.modify(f)))
+    case Effect(Tx.Read(r)) => Some(async(r.get))
     case _ => None
 
   /** park the transaction on its read set; the first change re-runs
    * it through `again` — on the committing thread, as a channel
    * hands a value to a waiting receiver */
-  private def park(log: Log, again: () => Unit, k: Either[Throwable, Any] => Unit): Unit =
+  private def park[A](log: Log, again: () => Unit, k: Either[Throwable, A] => Unit): Unit =
     if log.reads.isEmpty then
       k(Left(IllegalStateException("retry with nothing read: nothing could ever wake it")))
     else
@@ -267,7 +299,7 @@ object Stm {
           case Abort => ()
           case RetryNow =>
             done = true
-            park(log, () => attempt(tx, k), k.asInstanceOf[Either[Throwable, Any] => Unit])
+            park(log, () => attempt(tx, k), k)
           case e: Throwable => done = true; k(Left(e))
 
   /**
@@ -284,15 +316,12 @@ object Stm {
       val log = new Log
       try
         val a = interpret(tx, log)
-        log.writes.foreach { (r, v) =>
-          r.ref.set(TRef.wrap(v, r.ref.get.stamp + 1))
-        }
-        log.writes.keysIterator.foreach(_.wake())
+        log.written.foreach(r => log.installTo(r, r.version + 1))
+        log.written.foreach(_.wake())
         k(Right(a))
       catch
         case Abort => attempt(tx, k)   // cannot happen on one thread; stated
-        case RetryNow =>
-          park(log, () => attempt(tx, k), k.asInstanceOf[Either[Throwable, Any] => Unit])
+        case RetryNow => park(log, () => attempt(tx, k), k)
         case e: Throwable => k(Left(e))
 
   /**
@@ -308,24 +337,20 @@ object Stm {
     def atomically[A](tx: A ! Tx): A ! Sim.Op =
       def attempt: A ! Sim.Op =
         val log = new Log
-        def step(e: Tx[Any]): Either[Throwable, Any] =
+        def step[X](e: Tx[X]): Either[Throwable, X] =
           try Right(perform(e, log))
           catch case t: Throwable => Left(t)
-        def loop(p: Any ! Tx): A ! Sim.Op = (p.resume: @unchecked) match
-          case Pure(a) =>
-            if commit(log) then pure(a.asInstanceOf[A]) else attempt
-          case Effect(e) =>
-            Sim.yieldNow.flatMap(_ => step(e.asInstanceOf[Tx[Any]]) match
-              case Right(a) => if commit(log) then pure(a.asInstanceOf[A]) else attempt
-              case Left(Abort) => attempt
-              case Left(RetryNow) => Sim.sleep(1).flatMap(_ => attempt)
-              case Left(t) => throw t)
-          case Bind(Effect(e), k) =>
-            Sim.yieldNow.flatMap(_ => step(e.asInstanceOf[Tx[Any]]) match
-              case Right(a) => loop(k.asInstanceOf[Any => Any ! Tx](a))
-              case Left(Abort) => attempt
-              case Left(RetryNow) => Sim.sleep(1).flatMap(_ => attempt)
-              case Left(t) => throw t)
-        loop(tx.asInstanceOf[Any ! Tx])
+        def finish(a: A): A ! Sim.Op = if commit(log) then pure(a) else attempt
+        def after[X](outcome: Either[Throwable, X])(next: X => A ! Sim.Op): A ! Sim.Op =
+          outcome match
+            case Right(x) => next(x)
+            case Left(Abort) => attempt
+            case Left(RetryNow) => Sim.sleep(1).flatMap(_ => attempt)
+            case Left(t) => throw t
+        def loop(p: A ! Tx): A ! Sim.Op = (p.resume: @unchecked) match
+          case Pure(a) => finish(a)
+          case Effect(e) => Sim.yieldNow.flatMap(_ => after(step(e))(finish))
+          case Bind(Effect(e), k) => Sim.yieldNow.flatMap(_ => after(step(e))(x => loop(k(x))))
+        loop(tx)
       attempt
 }
