@@ -1,0 +1,5 @@
+slug: demo-ctx-wiring
+branch: feature/demo-ctx-wiring
+worktree: ../okay-wt-demo-ctx-wiring
+claimed: 2026-09-02
+scope: ChatDemo assembled as a handlers-awaiting-environment value (Http ?=> Secrets ?=> Handler shape, room n244); wiring only, behavior unchanged; closes the Elsewhere ctx-wiring gate. specs/demo-chat.md + specs/context-functions.md updated.
