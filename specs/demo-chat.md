@@ -176,6 +176,17 @@ other asks stand down.
       Withdrawn) — the "someone else was chosen" story on the record
 - [x] a deal that never existed answers 404, not an empty timeline
 
+BUG found and fixed while landing demo-subscription-gate
+(2026-09-02): `dealEvents` was keyed by bare `Long` deal id — two
+independent `MemoryMatch()` stores (one per test, typically) both
+number their own deals from 1, so a SECOND store's events could land
+on the FIRST store's deal id and `dealTimeline` would resolve against
+the wrong store (surfaced as an intermittent "no such deal" 404 in
+whichever OTHER test happened to run first in the same JVM). Fixed by
+keying on `(System.identityHashCode(store), dealId)` — not a
+concurrency bug (bare JUnitCore runs sequentially), a cross-test
+STATE LEAK: the map outlives every individual test.
+
 ## Flows in the demo (demo-flows)
 The generic scenarios reach the chat: flow_advance is wrapped like
 the rest of the tool table — a fired transition's notifications are
@@ -369,6 +380,12 @@ engine has no opinion about lives beside it, keyed by profile uuid.
   never touched defaults to "just joined," never surprise-gated).
   `paid: uuid -> Set[Period.key]` — periods actually paid.
   `subscribed(uuid, now) = joined(uuid, now) == now || paid.contains(now.key)`.
+  Note `subscribed` is a QUERY, not a mutator — the anchor is set
+  once, lazily, on a profile's first-ever check, so passing a
+  different `now` later does nothing; `backdateJoin(uuid, period)` is
+  the explicit test seam that forces it (found the hard way: a test
+  that tried to "advance a month" by re-calling `subscribed` with an
+  old period was a silent no-op against an already-anchored profile).
 - **Enforcement, three sites** (all filter by `subscribed`, never
   delete): the `find_candidates` tool wrap (covers both the
   deterministic driver's search AND the LIVE model's tool calls —
@@ -392,18 +409,18 @@ engine has no opinion about lives beside it, keyed by profile uuid.
   stub that behaves like the real gate would). The driver phrases
   are `оплатить`/`pay`, paired per [[demo-en-phrasebook]]'s doctrine.
 
-- [ ] a fresh profile is visible and matchable in its join month with
+- [x] a fresh profile is visible and matchable in its join month with
       no reminder; advancing `now` one period with nothing paid gates
       it from find_candidates, from the reverse chain (as poster AND
       as the waiting side), and from /market and /market.json — and
       every turn from that user now carries a reminder
-- [ ] `pay` (or `оплатить`) un-gates the SAME turn: the reply carries
+- [x] `pay` (or `оплатить`) un-gates the SAME turn: the reply carries
       no reminder, and an immediately following search/market check
       shows the profile again
-- [ ] a gated profile is never REMOVED from the store — its facts and
+- [x] a gated profile is never REMOVED from the store — its facts and
       profile row are readable throughout; only visibility/matching
       are withheld
-- [ ] the LIVE path: `facts_register`'s JSON carries a `notice` field
+- [x] the LIVE path: `facts_register`'s JSON carries a `notice` field
       exactly when gated, absent otherwise (a stub Transport/handler
       test, not a live-model assertion)
 

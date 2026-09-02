@@ -548,6 +548,99 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
+  test("SUBSCRIPTION GATE: free join month, gated after, reminder every turn, pay un-gates immediately, never deleted") {
+    import okay.matching.*
+    val store = MemoryMatch()
+    // a period nothing will ever coincide with "now" — the demo-layer
+    // equivalent of "a month passed" without threading `now` through
+    // the whole route stack: `subscribed` anchors `joined` lazily on
+    // first check, so one touch with an old period fixes it there
+    val oldPeriod = ChatDemo.Period(2000, 1)
+    withServer(512, store) { port =>
+      def turn(text: String): String =
+        new String(post(port,
+          s"""{"messages":[{"role":"user","content":"$text"}]}""").readAllBytes(), UTF_8)
+
+      // a fresh profile: free in its join month, no reminder, matchable
+      val stored = turn("/match умею класть плитку email tiler@sub")
+      assert(stored.contains("записал"), stored.take(200))
+      assert(!stored.contains("оплатить"), s"no reminder in the join month: $stored")
+      val found1 = turn("/match нужен плиточник email seeker1@sub")
+      assert(found1.contains("нашёл"), found1.take(300))
+
+      val tilerUuid = store.register("tiler@sub").uuid
+      ChatDemo.backdateJoin(tilerUuid, oldPeriod)
+
+      // gated: absent from find_candidates — "пока никого не нашёл"
+      // is the EMPTY answer ("не нашёл" itself contains "нашёл" as a
+      // substring, so check the numbered-list marker's absence too)
+      val found2 = turn("/match нужен плиточник email seeker2@sub")
+      assert(found2.contains("пока") && !found2.contains("1)"), found2.take(300))
+
+      // gated: absent from /market and /market.json
+      val mj = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/market.json")).GET().build(),
+        HttpResponse.BodyHandlers.ofString()).body()
+      assert(!mj.contains("плитку"), mj.take(300))
+      val mh = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/market")).GET().build(),
+        HttpResponse.BodyHandlers.ofString()).body()
+      assert(!mh.contains("плитку"), mh.take(300))
+
+      // every turn from the gated user carries a reminder
+      val remind = turn("/match help email tiler@sub")
+      assert(remind.contains("pay") && remind.contains("оплатить"), remind.take(400))
+
+      // gated as a WAITER too: reverseChain must not notify them.
+      // Sentinels bracket the call — deterministic, no timing guess:
+      // a FIFO channel with only the two sentinels proves nothing
+      // landed between them.
+      val waiter = store.register("waiter@sub")
+      store.assert(waiter, "need", Side.Need, Value.VText("нужен электрик"),
+        Provenance("seed", 1, "..."), 1.0, Vis.Public)
+      ChatDemo.backdateJoin(waiter.uuid, oldPeriod)
+      val ch = ChatDemo.inbox("waiter@sub")
+      ch.offer("sentinel-before"): Unit
+      ChatDemo.reverseChain(Side.Offer, "умею электрика")(using store)
+      ch.offer("sentinel-after"): Unit
+      val bracket = java.util.concurrent.CompletableFuture.supplyAsync { () =>
+        (ch.receiveBlocking(), ch.receiveBlocking())
+      }.get(5, java.util.concurrent.TimeUnit.SECONDS)
+      assertEquals(bracket, (Some("sentinel-before"), Some("sentinel-after")),
+        "the gated waiter must not be notified")
+
+      // never deleted: the profile's facts are still readable
+      assert(store.profileOf(store.register("tiler@sub")).exists(_.current.nonEmpty))
+
+      // PAY un-gates the SAME turn: no reminder on the pay reply itself
+      val paid = turn("/match оплатить email tiler@sub")
+      assert(paid.contains("оплачена"), paid.take(200))
+      assert(!paid.contains("say"), s"no reminder riding the pay turn itself: $paid")
+      val found3 = turn("/match нужен плиточник email seeker3@sub")
+      assert(found3.contains("нашёл"), found3.take(300))
+      val mj2 = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/market.json")).GET().build(),
+        HttpResponse.BodyHandlers.ofString()).body()
+      assert(mj2.contains("плитку"), mj2.take(300))
+    }
+  }
+
+  test("SUBSCRIPTION GATE, LIVE path: facts_register's JSON carries a notice exactly when gated") {
+    import okay.matching.*
+    val store = MemoryMatch()
+    given MatchStore = store
+    val t = ChatDemo.chainedTable()
+    import okay.codec.Json
+    def call(name: String, args: (String, Json)*): String =
+      t(name)(okay.agent.ToolCall("t", name, Json.JObj(args.toVector)))
+    val fresh = call("facts_register", "email" -> Json.JStr("live@sub"))
+    assert(!fresh.contains("\"notice\""), fresh)
+    val uuid = store.register("live@sub").uuid
+    ChatDemo.backdateJoin(uuid, ChatDemo.Period(2000, 1))
+    val gated = call("facts_register", "email" -> Json.JStr("live@sub"))
+    assert(gated.contains("\"notice\""), gated)
+  }
+
   test("CONDITIONS at the intake: one program, three outcomes, chosen by policy") {
     // lenient (the demo default): the guest restart — the old silent
     // default, now a DECISION on the record

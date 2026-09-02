@@ -206,15 +206,71 @@ object ChatDemo {
   private def emailOf(store: MatchStore, p: okay.matching.ProfileId): Option[String] =
     store.profileOf(p).map(_.email)
 
+  // ---- the subscription gate (demo-subscription-gate, user ask) -------
+  //
+  // A profile shows and matches FREE for its first calendar month;
+  // after that, only a period actually PAID keeps it visible.
+  // Unpaid: gated from search AND matching, but NEVER deleted — a
+  // demo-layer overlay, the same doctrine as the deal timeline and
+  // the market feed: state the engine has no opinion about lives
+  // beside it, keyed by profile uuid.
+
+  final case class Period(y: Int, m: Int):
+    def key: String = f"$y%04d-$m%02d"
+
+  object Period:
+    def of(epochMillis: Long): Period =
+      val d = java.time.Instant.ofEpochMilli(epochMillis).atZone(java.time.ZoneOffset.UTC)
+      Period(d.getYear, d.getMonthValue)
+    def now(): Period = of(System.currentTimeMillis())
+
+  private val joinedPeriod =
+    java.util.concurrent.ConcurrentHashMap[String, Period]()
+  private val paidPeriods =
+    java.util.concurrent.ConcurrentHashMap[String, java.util.Set[String]]()
+
+  /** the first period a profile was ever gate-checked — anchored
+   * LAZILY, so a profile the demo never touched defaults to "just
+   * joined" rather than surprise-gated */
+  private def joinedOf(uuid: String, now: Period): Period =
+    joinedPeriod.computeIfAbsent(uuid, _ => now)
+
+  private def paidThisPeriod(uuid: String, now: Period): Boolean =
+    Option(paidPeriods.get(uuid)).exists(_.contains(now.key))
+
+  /** free for the join period; after that, paid-this-period or gated */
+  def subscribed(uuid: String, now: Period = Period.now()): Boolean =
+    joinedOf(uuid, now) == now || paidThisPeriod(uuid, now)
+
+  /** takes effect IMMEDIATELY — the very next `subscribed` check
+   * (same turn, even) sees it */
+  def pay(uuid: String, now: Period = Period.now()): Unit =
+    paidPeriods.computeIfAbsent(uuid, _ => java.util.concurrent.ConcurrentHashMap.newKeySet[String]())
+      .add(now.key): Unit
+
+  /** the test seam for "a month passed": `subscribed` only ANCHORS
+   * `joined` on a profile's first-ever check (so production never
+   * needs this) — a test that wants a profile ALREADY past its free
+   * month calls this to force the anchor back in time */
+  def backdateJoin(uuid: String, period: Period): Unit =
+    joinedPeriod.put(uuid, period): Unit
+
+  def subscriptionNotice(uuid: String, now: Period = Period.now()): Option[String] =
+    if subscribed(uuid, now) then None
+    else Some("your free month is over — say \"pay\" (\"оплатить\") to show up in search and matching again this month")
+
   /** after a stored fact: who was WAITING for it, on the other side? */
-  def reverseChain(side: okay.matching.Side, text: String)(using store: MatchStore): Unit =
+  def reverseChain(side: okay.matching.Side, text: String, now: Period = Period.now())
+                   (using store: MatchStore): Unit =
     import okay.matching.*
     val other = if side == Side.Offer then Side.Need else Side.Offer
     // the floor keeps unrelated waiters quiet; how well related ones
     // score is the embedder seam's business (hashing offline — token
-    // overlap; a real embedder in production understands morphology)
+    // overlap; a real embedder in production understands morphology).
+    // A gated waiter does not participate in matching either.
     val waiting = store.candidates(Query(other, text = text, k = 5))
       .filter(_.score > 0.1f)
+      .filter(h => subscribed(h.profile.uuid, now))
     waiting.foreach { hit =>
       emailOf(store, hit.profile).foreach { email =>
         val what = hit.disclosed.map(f => Value.text(f.value)).mkString("; ")
@@ -293,11 +349,19 @@ object ChatDemo {
 
   final case class DealEvent(state: String, by: String, prov: okay.matching.Provenance)
 
+  // keyed by (store identity, deal id) — NOT bare deal id: two
+  // independent MemoryMatch() instances (one per test, typically)
+  // both number their deals from 1, and an unscoped map lets a
+  // SECOND store's events land on the FIRST store's deal — found
+  // while landing demo-subscription-gate, a pre-existing bug from
+  // demo-deal-timeline (cross-test collision, not concurrency: bare
+  // JUnitCore runs sequentially, but the map outlives every test)
   private val dealEvents =
-    java.util.concurrent.ConcurrentHashMap[Long, java.util.concurrent.CopyOnWriteArrayList[DealEvent]]()
+    java.util.concurrent.ConcurrentHashMap[(Int, Long), java.util.concurrent.CopyOnWriteArrayList[DealEvent]]()
 
-  private def dealEvent(deal: Long, e: DealEvent): Unit =
-    dealEvents.computeIfAbsent(deal, _ => java.util.concurrent.CopyOnWriteArrayList())
+  private def dealEvent(deal: Long, e: DealEvent)(using store: MatchStore): Unit =
+    dealEvents.computeIfAbsent((System.identityHashCode(store), deal),
+      _ => java.util.concurrent.CopyOnWriteArrayList())
       .add(e): Unit
 
   /** the current state plus the append-only history, for /deals/<n>;
@@ -306,7 +370,7 @@ object ChatDemo {
    * no deal-by-id lookup, only dealsFor(profile)) */
   def dealTimeline(deal: Long)(using store: MatchStore): Option[(okay.matching.Deal, Vector[DealEvent])] =
     for
-      events <- Option(dealEvents.get(deal))
+      events <- Option(dealEvents.get((System.identityHashCode(store), deal)))
       es = { import scala.jdk.CollectionConverters.*; events.asScala.toVector }
       asked <- es.find(_.state == "Asked")
       d <- store.dealsFor(okay.matching.ProfileId(asked.by)).find(_.id.n == deal)
@@ -314,8 +378,10 @@ object ChatDemo {
 
   /** the tool table with the reverse chain wrapped around asserts;
    * `off` is the ChatLog offset of the turn driving these calls
-   * (default: a fresh counter tick, for callers with no log turn) */
-  def chainedTable(off: Long = turnNo.incrementAndGet())
+   * (default: a fresh counter tick, for callers with no log turn);
+   * `now` is the subscription gate's period (default: the wall
+   * clock — tests advance it explicitly to simulate a month passing) */
+  def chainedTable(off: Long = turnNo.incrementAndGet(), now: Period = Period.now())
                    (using store: MatchStore): Map[String, okay.agent.ToolCall => String] =
     val base = MatchTools.table(store)
     base.updated("flow_advance", { c =>
@@ -394,17 +460,59 @@ object ChatDemo {
         case JObj(fs) => fs.collectFirst { case ("value", JObj(v)) =>
           v.collectFirst { case ("s", JStr(x)) => x }.getOrElse("") }.getOrElse("")
         case _ => ""
-      if text.nonEmpty then reverseChain(
-        if side == "need" then okay.matching.Side.Need else okay.matching.Side.Offer, text)
+      val profile = args match
+        case JObj(fs) => fs.collectFirst { case ("profile", JStr(x)) => x }.getOrElse("")
+        case _ => ""
+      // a GATED profile's new post does not enter matching at all —
+      // it must not surface to anyone waiting on the other side
+      if text.nonEmpty && subscribed(profile, now) then reverseChain(
+        if side == "need" then okay.matching.Side.Need else okay.matching.Side.Offer, text, now)
       marketChanged("facts")
       out
+    }).updated("facts_register", { c =>
+      val out = base("facts_register")(c)
+      // the notice rides the tool result itself — the LIVE path's
+      // channel back to the model, which the system prompt teaches
+      // it to relay (the same way it already reads its provenance
+      // instruction from the tool it was told to use)
+      Json.parse(out) match
+        case JObj(fs) =>
+          val uuid = fs.collectFirst { case ("profile", JStr(x)) => x }.getOrElse("")
+          subscriptionNotice(uuid, now) match
+            case Some(n) => Json.print(JObj(fs :+ ("notice" -> JStr(n))))
+            case None => out
+        case _ => out
+    }).updated("find_candidates", { c =>
+      // the ONE filter both paths share: the deterministic driver's
+      // search and the LIVE model's tool call both land here
+      Json.parse(base("find_candidates")(c)) match
+        case JArr(hits) =>
+          Json.print(JArr(hits.filter {
+            case JObj(fs) => fs.collectFirst { case ("profile", JStr(uuid)) => uuid }
+              .forall(subscribed(_, now))
+            case _ => true
+          }))
+        case other => Json.print(other)
+    }).updated("subscription_pay", { c =>
+      val uuid = c.args match
+        case JObj(fs) => fs.collectFirst { case ("profile", JStr(x)) => x }.getOrElse("")
+        case _ => ""
+      pay(uuid, now)
+      marketChanged("subscription")
+      Json.print(JObj(Vector("paid" -> JBool(true), "period" -> JStr(now.key))))
     })
 
   /** an agent turn over the match tools: the LLM structures the
    * chat into the store and searches it — the okay-match story */
+  private val subscriptionPaySpec = okay.agent.ToolSpec("subscription_pay",
+    "Pay the profile's subscription for the current period — call it when the user asks to pay/subscribe.",
+    JObj(Vector("type" -> JStr("object"), "properties" -> JObj(Vector(
+      "profile" -> JObj(Vector("type" -> JStr("string"))))))))
+
   def agentTurn(text: String, history: Seq[Anthropic.Message],
                 modelH: okay.Handler[AgentModel], off: Option[Long] = None,
-                identity: Option[String] = None)(using MatchStore): String =
+                identity: Option[String] = None,
+                now: Period = Period.now())(using MatchStore): String =
     // the log's offset, when the turn came through the log: the model
     // is TOLD the provenance instead of inventing one; a verified
     // session (demo-sessions) is told too, as the identity to use for
@@ -413,9 +521,13 @@ object ChatDemo {
       "\nProvenance for THIS turn: chat \"web-demo\", offset " + n + " — pass exactly these to facts_assert.") +
       identity.fold("")(e =>
         s"\nThe speaker is a SIGNED-IN session as $e — use this email for facts_register, " +
-        "even if the message names a different one.")
+        "even if the message names a different one.") +
+      "\nSubscription gate: a profile's first month is free; after that it needs the CURRENT period paid" +
+      " to appear in search or matching. facts_register's answer may carry a \"notice\" field — relay it to" +
+      " the user, in their own language, when present. subscription_pay(profile) marks the current period paid" +
+      " when the user asks to pay/subscribe (\"оплатить\"/\"pay\")."
     given okay.Handler[AgentModel] = modelH
-    given okay.Handler[Tool] = Handlers.tools(chainedTable(off.getOrElse(turnNo.incrementAndGet())))
+    given okay.Handler[Tool] = Handlers.tools(chainedTable(off.getOrElse(turnNo.incrementAndGet()), now))
     val ctx = Handlers.context(Compact.all)._2
     given okay.Handler[AgentContext] = ctx
     given r1: okay.Handler[AgentModel + Async] = okay.Handler.union[AgentModel, Async]
@@ -438,7 +550,7 @@ object ChatDemo {
     val prog = direct[[A] =>> A ! okay.agent.Agent] {
       Agent.remember(Turn.System(system)).reflect
       seed(history.toList).reflect
-      Agent.converse(text, MatchTools.specs).reflect
+      Agent.converse(text, MatchTools.specs :+ subscriptionPaySpec).reflect
     }
     prog.runWith
 
@@ -492,15 +604,15 @@ object ChatDemo {
   def isEnglish(s: String): Boolean = !s.exists(c => c >= 'Ѐ' && c <= 'ӿ')
 
   private val russianHelp =
-    """матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>; сценарии: сценарий <имя> роль=email ...; шаг <N> <переход>; флоу <N>"""
+    """матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>; сценарии: сценарий <имя> роль=email ...; шаг <N> <переход>; флоу <N>; подписка: оплатить"""
   private val englishHelp =
-    """match mode: say "can: <what>" / "offer: <what>" or "want: <who>" / "need: <what>" (and email <address>); after a candidate list: ask 1 2 / ask all; as a candidate: accept <N> / decline <N>; scenarios: scenario <name> role=email ...; step <N> <transition>; flow <N>"""
+    """match mode: say "can: <what>" / "offer: <what>" or "want: <who>" / "need: <what>" (and email <address>); after a candidate list: ask 1 2 / ask all; as a candidate: accept <N> / decline <N>; scenarios: scenario <name> role=email ...; step <N> <transition>; flow <N>; subscription: pay"""
 
   def scriptedAgent(text: String, off: Long = turnNo.incrementAndGet(),
-                    identity: Option[String] = None)
+                    identity: Option[String] = None, now: Period = Period.now())
                    (using store: MatchStore): String =
     import okay.codec.Json.*
-    val t = chainedTable(off)
+    val t = chainedTable(off, now)
     val en = isEnglish(text)
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
@@ -512,7 +624,7 @@ object ChatDemo {
       Json.parse(call("facts_register", "email" -> JStr(email))) match
         case JObj(fs) => fs.collectFirst { case ("profile", JStr(p)) => p }.get
         case _ => ""
-    text match
+    val answer = text match
       case s if s.contains("умею") || s.contains("can:") || s.contains("offer:") =>
         val skill = s.replaceAll(".*(умею|can:|offer:)\\s*", "").replaceAll("email [^ ]+", "").trim
         call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("skill"),
@@ -706,7 +818,17 @@ object ChatDemo {
               case _ =>
                 if en then "not your deal, or already closed"
                 else "эта сделка не ваша или уже закрыта"
+      case s if s.contains("оплатить") || s.contains("pay") =>
+        val me = store.register(email)
+        call("subscription_pay", "profile" -> JStr(me.uuid))
+        if en then "subscription paid for this period — back in search and matching"
+        else "подписка оплачена на этот месяц — снова в поиске и матчинге"
       case _ => if en then englishHelp else russianHelp
+    // the reminder rides EVERY reply from a gated user (computed
+    // AFTER dispatch, so a "pay" turn's own reply is already clear)
+    subscriptionNotice(store.register(email).uuid, now) match
+      case Some(n) => answer + " — " + n
+      case None => answer
 
   /** which agent serves /match turns: real model when one is
    * configured (by the AMBIENT secrets, over the AMBIENT wire), the
@@ -794,7 +916,8 @@ object ChatDemo {
       // rows stay SERVER-RENDERED at load (works without JS, and the
       // gate test keeps reading plain HTML); the script below then
       // re-renders from /market.json on every feed ping
-      def rowsOf(side: Side) = store.candidates(Query(side, k = 50)).map { h =>
+      def rowsOf(side: Side) = store.candidates(Query(side, k = 50))
+        .filter(h => subscribed(h.profile.uuid)).map { h =>
         val texts = h.disclosed.map(f => Value.text(f.value)).filter(_.nonEmpty)
         s"<li>${texts.mkString(" · ")}</li>"
       }.mkString
@@ -844,7 +967,8 @@ object ChatDemo {
       // the page's data: each disclosed fact with its ATTRIBUTE name —
       // the facet key; `disclosed` is Public-only for an anonymous
       // viewer, so the gate holds on the JSON exactly as on the HTML
-      def rows(side: Side) = JArr(store.candidates(Query(side, k = 50)).map { h =>
+      def rows(side: Side) = JArr(store.candidates(Query(side, k = 50))
+        .filter(h => subscribed(h.profile.uuid)).map { h =>
         JObj(Vector("facts" -> JArr(h.disclosed
           .filter(f => Value.text(f.value).nonEmpty)
           .map(f => JObj(Vector(
