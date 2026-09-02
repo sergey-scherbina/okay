@@ -1,5 +1,32 @@
 # Changelog
 
+## writer-covariance — Writer[+W, +A] lands; the merge-fusion it was meant to unlock measured worse and was declined
+Completed: 2026-09-02
+Landed as b469c20. Follow-on to channel-merge-regression: with the
+STM channel cleared of the doc-baseline drift, this asked whether
+`Source.merge` has any real, safe optimization available at all.
+`Writer[W, +A]` becomes `Writer[+W, +A]` — the correct variance (`W`
+is only ever told, the `Say(w)` constructor never consumes it) —
+verified safe by the full `sbt test` suite (JVM+JS+Native) green
+unchanged, not just by inspection. New `Writer.widen` (map's
+identity case, reusing the told `Say` instance instead of rebuilding
+it) replaces `Writer.map(s)(identity[A|B])` inside `Source.merge`.
+
+Measured neutral: 305-308us either way, because that per-element
+allocation was never the dominant cost. A further attempt — fusing
+`Writer.of`'s construction with the re-tell into one unfold per side
+(`Source.mergeOf`) — was implemented, tested, and measured WORSE
+(336-349us, noisier), so it was not shipped; the code and its
+numbers are recorded, not the API. Two diagnostics filed for a
+profiler pass: a bare `Source` with no `Channel.merge` at all
+already costs 48.9us against a native `LazyList`'s 11.1us for the
+same 1000 elements (the honest price of the program abstraction,
+~38ns/element) — under half the ~180us gap `Channel.merge` shows
+consuming a Writer-shaped stream, so most of the cost is specific to
+that consumption path; and Pure-rowed sources measured WORSE than
+Async-rowed ones inside `Channel.merge`, counter to expectation.
+specs/writer-covariance.md carries the full investigation.
+
 ## demo-embeddings-attr — real embeddings for the registry's search-before-create
 Completed: 2026-09-02
 Landed as ce0f8d5. `ChatDemo.marketOf` gains `embed` and
