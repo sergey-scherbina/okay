@@ -56,6 +56,15 @@ enum SqlValue:
   case Arr(elems: Vector[SqlValue])    // a SQL array (pg-composite-decode)
   case Row(fields: Vector[SqlValue])   // a composite / ROW() value
 
+/** the column types verify speaks; Arr/Row mirror the values, so a
+ * Vector field or a nested case class has a column type to be
+ * checked against (sql-schema-composite) */
+enum SqlType:
+  case Bool, I32, I64, F64, Text, Bytes
+  case Other(name: String)             // a vendor type, by name
+  case Arr(elem: SqlType)              // an array column
+  case Row(fields: Vector[SqlType])    // a composite column
+
 /** column description, the verify input — driver-neutral */
 final case class Col(label: String, tpe: SqlType, nullable: Boolean)
 
@@ -206,6 +215,23 @@ import — and the platforms it runs on.
       table's ROW-type (relkind='r') selected whole — every table
       would join the preload; the `(t).*` expansion or `row_to_json →
       Schema` is the road until a consumer names the need
+- [ ] the Schema layer binds Arr/Row (sql-schema-composite): a
+      case-class field typed `Vector[T]`/`List[T]` decodes from
+      `SqlValue.Arr` (elements recursed through the same shape, so
+      `Vector[Option[Int]]`, `Vector[Vector[Int]]` and a Vector of
+      nested case classes all read) and a NESTED case class decodes
+      from `SqlValue.Row` by POSITION (a composite carries no field
+      names on the wire; the arity must match exactly, a mismatch is
+      `Bad` naming the column). The encode side mirrors it: a Vector
+      param binds as `Arr`, a nested product as `Row`, and the driver
+      renders them (pg's `textOf` literal; JDBC's `Object[]` for
+      arrays). `verify` speaks the same types — `SqlType.Arr(elem)` /
+      `SqlType.Row(fields)` — recursively; a driver that cannot name
+      an array's element type (JDBC metadata: `Arr(Other(vendor))`)
+      passes verify and leaves the element check to decode, which is
+      total anyway. Proven live: a `Vector[Int]` field over H2 and
+      over pg, and a nested `Addr` case class from a pg named
+      composite (`okay_addr`) — through the SAME `Typed.rows` call
 - [x] the SAME typed test program runs unmodified over the JDBC
       driver and the pg driver against equivalent schemas (the
       cluster acceptance-test move, applied to SQL) — one function
