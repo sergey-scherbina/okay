@@ -151,7 +151,7 @@ object Condition {
       val names = menu.map(_.name).toVector
       var p = p0
       while true do
-        val (op, k): (Op[?], Any => X ! (Op + F)) = (p.resume: @unchecked) match
+        val (op, k): (Op[Any], Any => X ! (Op + F)) = (p.resume: @unchecked) match
           case Pure(x) => return pure(Out.Done(x.asInstanceOf[X]))
           case Effect(e) => <|>[Op, F](e) match
             case Left(op) => (op, (a: Any) => Free.Pure(a).asInstanceOf[X ! (Op + F)])
@@ -218,7 +218,7 @@ object Condition {
 
   /** the typed resume for policies: resume(c)(v) checks v against
    * c's answer type — `case c: HowMany.type => resume(c)(41)` */
-  def resume[A](c: Of[A])(v: A): Decision = Decision.Resume(v)
+  def resume[A](@scala.annotation.unused c: Of[A])(v: A): Decision = Decision.Resume(v)
 
   /** the Delim/Resource precedent: splitting a row on Op is a
    * total test — one class carries the whole signature */
