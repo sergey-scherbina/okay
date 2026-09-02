@@ -1,5 +1,34 @@
 # Changelog
 
+## staged-cbor — the STAGED fold's second wire
+Completed: 2026-09-02
+Landed as d299be1 (3 commits, rebased over stm-sessions/stm-orelse-
+warning/demo-two-nodes/kyo-fair-lanes). staged-codecs' BACKLOG entry
+read "when a wire names it" — okay-persist's Wire.scala,
+WireProtocol.scala, Typed.scala and Snapshots.scala all call
+Cbor.write/read per record, per frame, per snapshot, so it is named.
+`Staged.cbor[A]` is JSON's twin: the Mirror walked once at expansion,
+Cbor's item primitives called straight-line at run time. The
+refactor that made it honest first: Cbor.scala's `Out`/`In` were
+private locals inside `put`/`get`; made public classes so the staged
+generator calls the identical methods the fold calls, not a second
+implementation of RFC 8949's varint header. A shared `Reflect` base
+now carries the Mirror-walk/shape-check machinery both `JsonGen` and
+`CborGen` need; only `emit`/`read` differ per format. The real
+finding: a first cut assumed a CBOR map's field order matches the
+Mirror's (true only because both writers here happen to agree on it)
+and would have silently miscoded a document with reordered or
+duplicate keys — a hazard JSON's object never has. Refuted before
+landing by TestStagedCbor's own test built for exactly that shape;
+fixed with `Staged.cborProduct`, the fold's own read-by-name-then-
+fill algorithm with per-field readers specialized at compile time.
+Price: encode 1.6x, decode 2.0x over the interpreted fold on the
+fixture (history.tsv staged-cbor). TestStagedCbor: 15/15 on JVM, JS,
+Native — every case above plus an Iso field, recursion, every wrong-
+shape refusal in the fold's own words. specs/codecs.md gains "Staged
+CBOR"; BACKLOG's staged-cbor is checked off. Gate green (codec x3
+platforms, persist JVM/JS, compare jmh) before and after the rebase.
+
 ## stm-sessions — McpHttp's session table and Native's FiberCell, on TRef
 Completed: 2026-09-02
 Landed as c488185. `McpHttp`'s session table

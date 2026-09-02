@@ -1,5 +1,0 @@
-slug: staged-cbor
-branch: feature/staged-cbor
-worktree: ../okay-wt-staged-cbor
-claimed: 2026-09-02
-scope: BACKLOG's staged-cbor, now named: Cbor.write/read sit on okay-persist's hot path (Wire.scala, WireProtocol.scala, Typed.scala, Snapshots.scala — every durable-log record, every wire frame, every snapshot). Extend the Staged generator (okay-codec Staged.scala) with a Cbor emitter beside the JSON one, sharing the shape-check/delegation machinery. Benchmark: Cbor.write/read vs staged, on the persist module's own record shapes if practical. Files: okay-codec Staged.scala (additive: a second interpreter, or generalize the existing one), Cbor.scala (write/read stay the fold, public where needed), TestStagedCbor, compare CodecBenchmark, specs/codecs.md.
