@@ -158,20 +158,21 @@ object Stm {
   private object Abort extends RuntimeException(null, null, false, false)
   private object RetryNow extends RuntimeException(null, null, false, false)
 
-  /** what one attempt has read (cell, version seen) and written */
+  /** what one attempt has read (cell, version seen) and written. The
+   * write set is a TMap keyed by the cells: a value written to a
+   * TRef[X] comes back as an X, and the heterogeneous map's one
+   * justified cast lives in TMap, not here */
   private final class Log {
     val reads = mutable.ArrayBuffer.empty[(TRef[?], Long)]
-    private val writes = mutable.LinkedHashMap.empty[TRef[?], Any]   // TRef has identity equality
+    private var writes = TMap.empty[TRef]
 
-    /** the value this attempt has written to r, if any. THE one cast in
-     * the STM: the write set is a map keyed by the cell's identity and
-     * heterogeneous in value type, and a value stored under a TRef[X]
-     * was an X — the key's type is the value's, which no map type can
-     * say */
-    def pending[X](r: TRef[X]): Option[X] = writes.get(r).map(_.asInstanceOf[X])
-    def write[X](r: TRef[X], v: X): Unit = writes(r) = v
+    /** the value this attempt has written to r, if any */
+    def pending[X](r: TRef[X]): Option[X] = writes.get(r)
+    def write[X](r: TRef[X], v: X): Unit = writes = writes.updated(r, v)
     def hasWrites: Boolean = writes.nonEmpty
-    def written: Iterator[TRef[?]] = writes.keysIterator
+    def written: Iterator[TRef[?]] =
+      def key[X](e: TMap.Entry[TRef, X]): TRef[?] = e.key
+      writes.entries.map(e => key(e))
 
     /** everything read so far still at the version it was read at,
      * and none of it owned by a commit in flight */
@@ -187,7 +188,7 @@ object Stm {
 
     /** install what this attempt wrote to r, at the next version */
     def installTo[X](r: TRef[X], v: Long): Unit =
-      r.ref.set(r.install(pending(r).get, v))
+      pending(r).foreach(x => r.ref.set(r.install(x, v)))
   }
 
   /** one operation against the log; a torn read aborts (Abort), a
