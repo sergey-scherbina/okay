@@ -299,3 +299,20 @@ is ready for it, and this note is where that conversation resumes.
   raw sockets and any server; that is a narrowing to face when someone
   wants it, not now.
 - **Native.** See Design.
+
+## Typed facades (2026-09-02, typed-js-facades)
+The "raw `js.Dynamic`, no scala-js-dom" decision above was written to
+be revisited out loud, and the cast audit (AGENTS.md: no cast without
+a real necessity) was the occasion. The dependency half stands — still
+no scala-js-dom — but the untyped half is gone: `okay.Web` in the
+core's scala-js sources states the web globals this stack uses as
+`js.native` facades — `fetch` with `RequestInit`, `Response`,
+`Headers`, the body `Reader` and its `ReadResult`, `WebSocket` with
+`MessageEvent`/`CloseEvent` — and both transports (okay-http's fetch
+and sockets, okay-llm's fetch) are written on them: seventeen casts to
+none. A message's `data` is declared `Any` so that text versus binary
+is a type TEST (`case s: String`, `case buf: ArrayBuffer`), not a
+cast. What a facade cannot make safe it makes explicit: the shape of
+the API is now one file's claim about Node 18+/22+ and browsers,
+instead of a claim at every call site.
+

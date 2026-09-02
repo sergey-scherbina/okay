@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.{!, +, Condition, Pure, pure}
+import okay.{!, Condition, Pure, pure}
 import okay.codec.Schema
 
 /**

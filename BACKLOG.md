@@ -31,11 +31,10 @@ construction instead of a type test per value).
       carries its typed decode/encode with the column widenings,
       Opt/Iso/Arr carry their types, Row carries its Schema), decode
       and encode by matching, a row encodes through eachField; 11 → 0.
-- [ ] typed-js-facades — okay-http Transports.js (11), okay-llm
-      TransportJs (6): `js.Dynamic` casts to Int/String/Uint8Array
-      are the browser API without types; `js.native` facades for
-      Response, the stream reader and WebSocket events state them
-      once.
+- [x-landed] typed-js-facades — landed: okay.Web (core scala-js)
+      states fetch/Response/Headers/the body reader/WebSocket and its
+      events as js.native facades; both transports rewritten on them,
+      17 casts → 0 (a text-vs-binary frame is a type TEST on `Any`).
 - [x-landed] casts-encapsulated — landed: ChunkBuf's array kernel
       is one `wrap` (7 → 2, in it) and `sized` replaced the Vector
       casts; Eager's encoding dispatch is one `fold` (6 → 2, in it);

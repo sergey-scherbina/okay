@@ -10,11 +10,10 @@ import scala.scalajs.js.JSConverters.*
 /**
  * The JS transports: the global `fetch` and the global `WebSocket`.
  *
- * Raw `js.Dynamic` rather than scala-js-dom, matching `llm.TransportJs`
- * and the dependency rule. That fork is recorded in specs/http.md so it
- * is decided rather than drifted into: if the untyped surface here
- * costs more in bugs than the facade costs in weight, the trade is
- * worth revisiting, but not silently.
+ * No scala-js-dom (the dependency rule in specs/http.md), and since
+ * typed-js-facades no raw `js.Dynamic` either: the globals are stated
+ * once, in types, in okay.Web — the trade the spec said to revisit
+ * out loud, revisited.
  *
  * "JS" in this repository means NODE — okay-cluster's JS side uses
  * `require("net")` and `process`. The two APIs used here are the
@@ -37,46 +36,42 @@ object Transports {
   def fetch: Http = new Http:
     def send(r: Request): Response ! Async =
       Async.await[Response] { k =>
-        val init = js.Object().asInstanceOf[js.Dynamic]
-        init.updateDynamic("method")(r.method.name)
-        val hs = js.Object().asInstanceOf[js.Dynamic]
-        r.headers.foreach((h, v) => hs.updateDynamic(h)(v))
-        init.updateDynamic("headers")(hs)
+        val init = new Web.RequestInit {}
+        init.method = r.method.name
+        init.headers = js.Dictionary(r.headers*)
         r.body match
           case Body.Empty => ()
-          case Body.Text(s) => init.updateDynamic("body")(s)
+          case Body.Text(s) => init.body = s
           case Body.Bytes(b) =>
-            init.updateDynamic("body")(Uint8Array.from(b.map(x => (x & 0xff).toShort).toJSArray))
+            init.body = Uint8Array.from(b.map(x => (x & 0xff).toShort).toJSArray)
 
-        js.Dynamic.global.fetch(r.url, init).`then`({ (res: js.Dynamic) =>
-          val status = res.status.asInstanceOf[Int]
+        Web.Global.fetch(r.url, init).`then`({ (res: Web.Response) =>
           val headers =
             try
               val out = scala.collection.mutable.ListBuffer.empty[(String, String)]
-              res.headers.forEach({ (v: js.Any, key: js.Any) =>
-                out += ((key.toString, v.toString)); ()
-              }: js.Function2[js.Any, js.Any, Unit])
+              res.headers.forEach((v, key) => { out += ((key, v)); () })
               out.toSeq
             catch case _: Throwable => Nil
-          k(Right(Response(status, headers, ofReader(res.body.getReader()))))
+          k(Right(Response(res.status, headers, ofReader(res.body.getReader()))))
           ()
-        }: js.Function1[js.Dynamic, Unit]).asInstanceOf[js.Dynamic]
-          .`catch`({ (e: js.Any) =>
+        }: js.Function1[Web.Response, Unit])
+          .`catch`({ (e: Any) =>
             k(Left(js.JavaScriptException(e))); ()
-          }: js.Function1[js.Any, Unit])
+          }: js.Function1[Any, Unit | js.Thenable[Unit]])
         () => ()
       }
 
   /** a ReadableStream reader as a Source, one `read()` per chunk */
-  def ofReader(reader: js.Dynamic): Source[Chunk[Byte]] =
+  def ofReader(reader: Web.Reader): Source[Chunk[Byte]] =
     type F = Writer % Chunk[Byte] + Async
     def go: Source[Chunk[Byte]] =
       effect[F, Chunk[Byte] | Null](Async.Await[Chunk[Byte] | Null] { k =>
-        reader.read().`then`({ (r: js.Dynamic) =>
-          if r.done.asInstanceOf[Boolean] then k(Right(null))
-          else k(Right(chunkOf(r.value.asInstanceOf[Uint8Array])))
+        reader.read().`then`({ (r: Web.ReadResult) =>
+          r.value.toOption match
+            case Some(v) if !r.done => k(Right(chunkOf(v)))
+            case _ => k(Right(null))
           ()
-        }: js.Function1[js.Dynamic, Unit])
+        }: js.Function1[Web.ReadResult, Unit])
         () => ()
       }).flatMap {
         case null => pure(())
@@ -114,44 +109,33 @@ object Transports {
         // takes an options object. Passing them is best-effort and
         // documented as such — see specs/http.md, Out of scope.
         val ws =
-          if subprotocols.isEmpty then
-            js.Dynamic.newInstance(js.Dynamic.global.WebSocket)(url)
-          else
-            js.Dynamic.newInstance(js.Dynamic.global.WebSocket)(
-              url, subprotocols.toJSArray)
+          if subprotocols.isEmpty then new Web.WebSocket(url)
+          else new Web.WebSocket(url, subprotocols.toJSArray)
         ws.binaryType = "arraybuffer"
 
         val q = new Channel[Frame](capacity)
 
-        ws.onmessage = { (e: js.Dynamic) =>
-          val d = e.data
-          val f =
-            if js.typeOf(d) == "string" then Frame.Text(d.asInstanceOf[String])
-            else Frame.Binary(chunkOf(new Uint8Array(d.asInstanceOf[js.Any]
-              .asInstanceOf[scala.scalajs.js.typedarray.ArrayBuffer])))
+        ws.onmessage = (e: Web.MessageEvent) =>
+          // a text frame is a string, a binary one an ArrayBuffer: a
+          // type TEST, not a cast
+          val f = e.data match
+            case s: String => Frame.Text(s)
+            case buf: scala.scalajs.js.typedarray.ArrayBuffer => Frame.Binary(chunkOf(new Uint8Array(buf)))
+            case other => Frame.Text(other.toString)
           q.sendAsync(f)(_ => ())
-          ()
-        }: js.Function1[js.Dynamic, Unit]
 
-        ws.onclose = { (e: js.Dynamic) =>
-          q.sendAsync(Frame.Close(
-            try e.code.asInstanceOf[Int] catch case _: Throwable => Frame.Normal,
-            try e.reason.asInstanceOf[String] catch case _: Throwable => ""))(_ => ())
+        ws.onclose = (e: Web.CloseEvent) =>
+          q.sendAsync(Frame.Close(e.code, e.reason))(_ => ())
           q.close()
-          ()
-        }: js.Function1[js.Dynamic, Unit]
 
-        ws.onerror = { (_: js.Dynamic) =>
-          q.fail(RuntimeException(s"websocket error: $url")); ()
-        }: js.Function1[js.Dynamic, Unit]
+        ws.onerror = (_: js.Any) => q.fail(RuntimeException(s"websocket error: $url"))
 
-        ws.onopen = { (_: js.Dynamic) => k(Right(of(ws, q))); () }
-          : js.Function1[js.Dynamic, Unit]
+        ws.onopen = (_: js.Any) => k(Right(of(ws, q)))
 
         () => ws.close()
       }
 
-  private def of(ws: js.Dynamic, q: Channel[Frame]): Socket = new Socket:
+  private def of(ws: Web.WebSocket, q: Channel[Frame]): Socket = new Socket:
     def send(f: Frame): Unit ! Async = async {
       f match
         case Frame.Text(s) => ws.send(s)

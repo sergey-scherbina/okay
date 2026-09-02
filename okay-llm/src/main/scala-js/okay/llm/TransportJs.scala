@@ -1,6 +1,6 @@
 package okay.llm
 
-import okay.{!, %, +, Async, Writer, effect, pure}
+import okay.{!, %, +, Async, Web, Writer, effect, pure}
 import scala.scalajs.js
 
 /**
@@ -27,18 +27,15 @@ object Transports:
       // that would never come. The Left is the row's error channel,
       // which is where a failed request belongs.
       val request = Async.await[String] { k =>
-        val opts = js.Dynamic.literal(
-          method = "POST",
-          headers = js.Dictionary(headers.toSeq*).asInstanceOf[js.Any],
-          body = body)
-        js.Dynamic.global.fetch(url, opts)
-          .asInstanceOf[js.Promise[js.Dynamic]]
-          .`then`((r: js.Dynamic) => r.text().asInstanceOf[js.Promise[String]])
-          .asInstanceOf[js.Promise[String]]
+        val opts = new Web.RequestInit {}
+        opts.method = "POST"
+        opts.headers = js.Dictionary(headers.toSeq*)
+        opts.body = body
+        Web.Global.fetch(url, opts)
+          .`then`[String]((r: Web.Response) => r.text())
           .`then`((t: String) => { k(Right(t)); () }: Unit)
-          .asInstanceOf[js.Promise[Unit]]
           .`catch`((e: Any) => {
-            k(Left(js.JavaScriptException(e.asInstanceOf[js.Any]))); ()
+            k(Left(js.JavaScriptException(e))); ()
           }: Unit | js.Thenable[Unit]): Unit
         () => ()      // fetch is not cancellable here; nothing to undo
       }
