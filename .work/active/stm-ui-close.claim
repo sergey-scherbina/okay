@@ -1,0 +1,5 @@
+slug: stm-ui-close
+branch: feature/stm-ui-close
+worktree: ../okay-wt-stm-ui-close
+claimed: 2026-09-02
+scope: Ui.runCmd's closing decision (pending/unprocessed/upstreamDone, three atomics + a documented past race) becomes one TRef[CloseState] via TRef.modify — the mutation and the close decision are one atomic step, structurally removing the race class the comment describes. specs/stm.md: the first real consumer, Results entry.
