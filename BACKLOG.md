@@ -1,5 +1,53 @@
 # Backlog
 
+## Casts — the audit of 2026-09-02 (operator's rule: no cast without a real necessity)
+185 `asInstanceOf` + 28 non-`resume` `@unchecked` in src/main, in five
+groups; the recipe for the first two is the one that made Stm.scala
+cast-free (stm-typed-interpreter: `perform[X](op: Op[X]): X`, GADT
+matching on `Bind(Effect(e), k)`, typed helper classes, a decision at
+construction instead of a type test per value).
+- [ ] cast-free-condition — Condition.scala (12): the run loop's
+      erasure casts go by GADT typing; the row casts
+      (`effect(Op.Signal(c)).asInstanceOf[A ! Op]`) go by giving the
+      ops their answer type (`Signal[A]`, `Leave`, `Within[A]`); the
+      policy boundary stays checked at runtime (BadResume). FIRST.
+- [ ] cast-free-delim — Delim.scala (9): the segment stack
+      (`Seg.K(f.asInstanceOf[Any => Any])`, `Prompt[Any]`) — typed
+      segments, a Held-like carrier per prompt; keep the multi-prompt
+      semantics exactly (its suite is the spec).
+- [ ] cast-free-sim — Sim.scala (7): the same run-loop recipe;
+      `SimChannel[Any]` ops become `Send[A]`/`Receive[A]` with the
+      channel's type.
+- [ ] cast-free-effects — Effects.scala (4): `<|>` splits a row by
+      runtime CLASS (typeableKByClass) — the two `Right(other
+      .asInstanceOf[G[A]])` are that design's one claim; isolate in
+      one function with the statement; the `cont` cast at 458 goes by
+      GADT.
+- [ ] cast-free-schema — Json (9), Cbor (9), Typed (11): `Schema` is
+      not a GADT — `SVector(of: () => Schema[?])` loses the link to
+      `Vector[A]`, so every codec casts `Schema[Any]` and the result
+      to `A`. Make the cases carry their type
+      (`SVector[A](of) extends Schema[Vector[A]]`), write
+      `encode[A](s: Schema[A])(a: A)` by matching; Typed's value
+      casts by SqlType need a typed Shape. One lane, three files
+      plus Schema; the biggest single win (29).
+- [ ] typed-js-facades — okay-http Transports.js (11), okay-llm
+      TransportJs (6): `js.Dynamic` casts to Int/String/Uint8Array
+      are the browser API without types; `js.native` facades for
+      Response, the stream reader and WebSocket events state them
+      once.
+- [ ] casts-encapsulated — the inherent ones, each to ONE function
+      with its reason: ChunkBuf (7, Array through reflection, the
+      comment exists), Eager (6, value-or-program at runtime is its
+      point), Pipe (3: resumeWith/reinject stay, `unreachable` via
+      `null.asInstanceOf` becomes a throw), Same (2 witnesses, the
+      axioms).
+- [ ] direct-upcast-ascription — Direct.scala (4): `x.asInstanceOf
+      [T]` in generated code after the macro checked `V <:< T` is an
+      upcast; write it as an ascription in the quote.
+- [ ] unchecked-audit — the 28 non-`resume` `@unchecked` patterns,
+      same triage.
+
 ## STM — after stm (2026-09-02, specs/stm.md)
 - [ ] stm-ui-close — Ui.scala's closing decision is three atomics
       (pending, unprocessed, upstreamDone) and a maybeClose that
