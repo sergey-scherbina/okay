@@ -1,5 +1,0 @@
-slug: cast-free-codec
-branch: feature/cast-free-codec
-worktree: ../okay-wt-cast-free-codec
-claimed: 2026-09-02
-scope: BACKLOG cast-free-schema, part 1 (okay-codec): Schema's product fields and sum cases become TYPED (Field[A, X] with a getter, Case[A, X <: A] with a match), so Json/Cbor encode/decode are written by GADT matching on the schema — the Mirror's erased productElement/ordinal stays as the one kernel inside Schema.derived. Part 2 (okay-sql Typed's Shape) is a separate lane. Siblings on okay-codec: shout.

@@ -1,5 +1,25 @@
 # Changelog
 
+## cast-free-codec — Json and Cbor by GADT matching; the Mirror's erasure stated once
+Completed: 2026-09-02
+Landed as 2a8aca1. Schema was a GADT already; the codecs cast out of
+habit (eighteen `Schema[Any]` / `asInstanceOf[A]` in Json and Cbor).
+Now they match the schema and bind the element type (`case l:
+Schema.SList[a]`), so a nested decode is typed by the compiler. The
+erasure the Mirror leaves is stated once, in Schema: `eachField`
+(parts is productIterator in field order — the i-th value is the
+i-th field's type) and `theCase` (caseOf is the ordinal — the value
+is that case's type) hand each value to the codec at its own type
+through a polymorphic function; sum cases are `Schema[? <: A]`, the
+bound claimed in `derived` where the Mirror gives the element types.
+Product decoding needs no kernel: each field decodes at its type and
+joins the erased parts `fromProduct` takes. Codec suites unchanged,
+51 green on each of JVM/JS/Native; agent and sql suites green
+(agent's TestLive HANGS while the local gateway is up but drowned at
+host load 20 — the wire is slow, not broken; liveTest skips a drop,
+not a crawl — noted for the live-skip lane's follow-up); every module
+compiles. Typed (okay-sql) is next: cast-free-typed.
+
 ## cast-free-delim — the delimited-control machine on a typed chain
 Completed: 2026-09-02
 Landed as 3370692. Delim's segment stack is a typed chain
