@@ -1,0 +1,5 @@
+slug: stm-orelse
+branch: feature/stm-orelse
+worktree: ../okay-wt-stm-orelse
+claimed: 2026-09-02
+scope: Tx gains OrElse(a, b) — run b when a retries, blocking on the union of both branches' reads if both retry; a's writes are discarded on retry (nested log). One case in the language, one in perform (shared by tl2/direct/sim). specs/stm.md Behavior + Results.
