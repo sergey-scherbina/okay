@@ -1,5 +1,0 @@
-slug: same-by-value
-branch: feature/same-by-value
-worktree: ../okay-wt-same-by-value
-claimed: 2026-09-02
-scope: Same for VALUE keys (typed ids over primitives): Same.byValue — equal value AND equal runtime tag of the type parameter, since value equality alone cannot witness A =:= B; Same.Tagged helper; example Id[A](n: Long) with a ClassTag; tests incl. the unsound case refused. Operator: "можешь определить Same для примитивов тоже?".

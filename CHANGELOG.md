@@ -1,5 +1,22 @@
 # Changelog
 
+## same-by-value — Same for value keys, with the tag that makes it sound
+Completed: 2026-09-02
+Landed as c8ce5a4 (2 commits). The operator asked for Same over
+primitives. A typed id over a primitive cannot witness `A =:= B` by
+equal values alone — `Id[User](5)` and `Id[Order](5)` are equal
+numbers and different keys — so `Same.byValue(equal, tag)` calls two
+keys the same only when value AND a runtime tag of the type
+parameter agree; the tag is a ClassTag (exact for concrete types,
+erased for generic ones — value keys are for concrete types, stated
+on the method). Example `Id[A](n: Long)(using ClassTag[A])`. Tests:
+through TMap, `Id[String](5)` and `Id[Int](5)` are two entries each
+at its own type; through HMap the same two vals are two typed
+entries and a fresh equal id is not in the type (keys there are the
+vals' singleton types). Core 360 green on JVM, JS/Native green,
+every module compiles; rebased three times over sibling landings
+(demo-en-phrasebook and its release) before the merge went through.
+
 ## demo-en-phrasebook — the offline driver speaks two languages
 Completed: 2026-09-02
 Landed as 81ae611 (spec) + 7e90da4 (impl). scriptedAgent spoke only
