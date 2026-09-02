@@ -77,17 +77,20 @@ object TRef {
     def value: Any = this
   }
 
-  /** the wrapper for values that are not Stamped themselves */
-  final class Slot(override val value: Any) extends Stamped
+  /** the wrapper for values that are not Stamped themselves; typed
+   * for the reader — the cell holds it as AnyRef and re-attaches A
+   * once, in valueOf (a generic Stamped would need an F-bound on
+   * every user value for nothing but this field) */
+  final class Slot[+A](override val value: A) extends Stamped
 
   /** a commit in flight owns the content it found */
   private[okay] final class Owned(val inner: Stamped, val token: AnyRef)
 
   /** stamp and install-shape a USER value (never an existing Slot:
    * wrap is only ever given what a transaction or modify produced) */
-  private[okay] def wrap(a: Any, v: Long): Stamped = a match
+  private[okay] def wrap[A](a: A, v: Long): Stamped = a match
     case s: Stamped => s.stamp = v; s
-    case other => val s = Slot(other); s.stamp = v; s
+    case other => val s = Slot[A](other); s.stamp = v; s
 
   private[okay] def valueOf[A](c: AnyRef): A = c match
     case o: Owned => o.inner.value.asInstanceOf[A]

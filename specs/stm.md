@@ -133,6 +133,10 @@ document.
   see what a transaction or modify PRODUCED — never an existing
   Slot; the code has no such path and the comment says so. A/B
   (three rounds): equal within noise on both channel paths.
+  `Slot[+A]` is generic for the reader (stm-slot-generic): the cell
+  still holds AnyRef and re-attaches A once in valueOf; `Stamped`
+  stays unparameterized because a typed `value = this` would need an
+  F-bound on every user value for nothing but that field.
 
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark
