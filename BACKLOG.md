@@ -172,11 +172,6 @@
       Transports.http() + Secrets.env, the test wires a canned wire +
       memory Secrets and runs the LIVE Anthropic.stream path offline;
       offline suites run over a DEAD wire. Closes the Elsewhere gate.
-- [ ] demo-replay-projections — an admin endpoint + UI button that
-      DROPS the read models and rebuilds them from the persist log.
-      Makes the log-first claim demonstrable in one click instead of
-      architectural prose; also the natural regression test that
-      projections really are derivable.
 - [ ] demo-market-live — /market subscribes to the SSE inbox and
       updates live as offers/needs/deals land (today: static render
       on page load); attribute-facet filtering while there.
