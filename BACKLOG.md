@@ -346,22 +346,19 @@ construction instead of a type test per value).
 
 ## Reusable modules extracted from the demo (user ask 2026-09-02)
 
-okay-subscription landed (specs/subscription.md); these two are the
-rest of that ask, designed but not built — API sketches below so a
-claim starts from a decided shape:
+okay-subscription and okay-admin landed (specs/subscription.md,
+specs/admin.md); this is the last of that ask, designed but not
+built — API sketch below so a claim starts from a decided shape:
 
-- [ ] okay-admin — `adminRoutes(verify: String => okay.security.
-      Verified, policy: okay.security.Policy = Policy.scoped("admin"),
-      replay: () => Long, onReplayed: () => Unit): PartialFunction[
-      Request, Response ! Async]`, built on `Secure.granted` (the same
-      401/403 ladder every other protected route in this stack uses).
-      Fixes a real gap found while planning the extraction: the demo's
-      `POST /admin/replay` is completely UNAUTHENTICATED today.
-      `replay`/`onReplayed` are injected closures — the marketplace-
-      specific `replayProjections(chatLog)`/`marketChanged("replay")`
-      stay in the demo. Highest-risk of the three extracted-module
-      asks — first authenticated route this repo ships — land it
-      deliberately, with okay-security's own scrutiny bar.
+- [x] okay-admin — LANDED 2026-09-02: `Admin.routes(verify, policy =
+      Policy.scoped("admin"), realm)(replay, onReplayed)` on
+      `Secure.granted`, plus `Admin.Issuer` (an ES256 keypair, same
+      shape as `okay.demo.Login`) so a consumer has a credential to
+      test/use it with. Fixed the real gap named when this was filed:
+      the demo's `POST /admin/replay` is no longer reachable without
+      an admin-scoped bearer token; the token rides the server
+      console at startup (same "no delivery channel yet" precedent
+      Login's one-time code already set).
 - [ ] okay-chat — the demo's `Model` type + `scripted`/`live`/`local`/
       `model`/`modeName` + `sse`/`reply`/`obj` (Cut-guarded SSE
       framing) + `fieldOf`/`messagesOf`/`appJs`, and `chatRoute(m,

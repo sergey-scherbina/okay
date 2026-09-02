@@ -10,6 +10,7 @@ import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool
 import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
 import okay.ops.Ops
 import okay.security.Secure
+import okay.admin.Admin
 import okay.subscription.Subscription
 import okay.subscription.Subscription.Period
 import okay.persist.{FileStore, MemoryStore, Policy}
@@ -860,6 +861,7 @@ object ChatDemo {
 
   def routes(m: Model, budget: Int)(using Transport, Secrets, MatchStore)
   : PartialFunction[Request, Response ! Async] =
+    val core: PartialFunction[Request, Response ! Async] = {
     case r if r.method == okay.http.Method.Get && r.url == "/" =>
       val html = (if appJs.isDefined then reactPage else page)
         .replace("MODE", modeName)
@@ -886,8 +888,8 @@ object ChatDemo {
           |<h2>предложения</h2><ul id="offers">${rowsOf(Side.Offer)}</ul>
           |<h2>запросы</h2><ul id="needs">${rowsOf(Side.Need)}</ul>
           |<p><a style="color:#6b9fff" href="/">← в чат</a> · видно только Public — ворота держат и здесь · обновляется вживую</p>
-          |<form method="post" action="/admin/replay"><button style="background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer">перестроить из лога</button>
-          |<span style="color:#7a869c;font-size:.85em"> — сбросить проекцию и заново вывести её из журнала чатов</span></form>
+          |<button id="replay" style="background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer">перестроить из лога</button>
+          |<span style="color:#7a869c;font-size:.85em"> — сбросить проекцию и заново вывести её из журнала чатов (нужен admin-токен, okay-admin)</span>
           |<script>
           |let facet = null;
           |async function render() {
@@ -913,6 +915,12 @@ object ChatDemo {
           |}
           |new EventSource('/events/market').addEventListener('market', render);
           |render();
+          |document.getElementById('replay').onclick = async () => {
+          |  const t = prompt('admin token (okay-admin):'); if (!t) return;
+          |  const res = await fetch('/admin/replay', {method: 'POST', headers: {authorization: 'Bearer ' + t}});
+          |  alert(res.ok ? await res.text() : 'отказано: ' + res.status);
+          |  render();
+          |};
           |</script>
           |""".stripMargin.getBytes(UTF_8))))
 
@@ -966,17 +974,6 @@ object ChatDemo {
               |<p><a style="color:#6b9fff" href="/market">→ /market</a></p>
               |""".stripMargin.getBytes(UTF_8))))
 
-    case r if r.method == okay.http.Method.Post && r.url == "/admin/replay" =>
-      // log-first in one click: the projection is dropped and rebuilt
-      // from the persist log through the live extraction
-      val n = replayProjections(chatLog)
-      marketChanged("replay")
-      val html = "<!doctype html><meta charset=\"utf-8\"><title>replay</title>" +
-        "<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}</style>" +
-        s"<p>проекция перестроена из журнала: $n ходов</p>" +
-        "<p><a style=\"color:#6b9fff\" href=\"/market\">→ /market</a></p>"
-      pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-        Http.one(html.getBytes(UTF_8))))
 
     case r if r.method == okay.http.Method.Get && r.url == "/app.js" && appJs.isDefined =>
       pure(Response(200, Seq("content-type" -> "text/javascript"),
@@ -1050,6 +1047,12 @@ object ChatDemo {
       else
         pure(Response(200, Seq("content-type" -> "text/event-stream"),
           reply(m, budget)(messages)))
+    }
+    // admin routes are okay-admin now (extracted 2026-09-02,
+    // specs/admin.md): Secure.granted + Policy.scoped("admin") —
+    // /admin/replay is no longer reachable without an admin token
+    core.orElse(Admin.routes(Admin.Issuer.verify)(
+      () => replayProjections(chatLog), () => marketChanged("replay")))
 
   /** the whole demo as ONE value awaiting its environment
    * (demo-ctx-wiring): `main` wires production, a test wires stubs —
@@ -1069,6 +1072,9 @@ object ChatDemo {
     provide(Transports.http(), Secrets.env, market)(Resource.run[Unit, Pure](
       Jetty.serve(port)(handler(budget))().map { s =>
         println(s"chat: http://127.0.0.1:${Jetty.port(s)}  (model: $mode)")
+        // no delivery channel yet (same limit Login.start states about
+        // its one-time code) — the admin token rides the console
+        println(s"admin token (okay-admin, /admin/replay): ${Admin.Issuer.issue()}")
         Thread.sleep(Long.MaxValue)   // ctrl-c ends the process and the Resource
       }).runWith)
 

@@ -752,6 +752,18 @@ class TestChatDemo extends munit.FunSuite {
     assertEquals(snapshot(store), live)
   }
 
+  test("ADMIN: /admin/replay is gated on an admin-scoped token (okay-admin) — no token, no scope, then success") {
+    withServer(512) { port =>
+      val noToken = postJson(port, "/admin/replay", "")
+      assertEquals(noToken._1, 401)
+      val garbage = postJson(port, "/admin/replay", "", Some("garbage"))
+      assertEquals(garbage._1, 401)
+      val ok = postJson(port, "/admin/replay", "", Some(okay.admin.Admin.Issuer.issue()))
+      assertEquals(ok._1, 200)
+      assert(ok._2.contains("перестроена"), ok._2.take(200))
+    }
+  }
+
   private def postJson(port: Int, path: String, body: String, auth: Option[String] = None): (Int, String) =
     val b = HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path"))
       .header("content-type", "application/json")
