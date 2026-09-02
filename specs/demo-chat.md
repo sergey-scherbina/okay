@@ -107,6 +107,20 @@ engine). The ask made the store interface nominal: `MatchStore`
       `sslrootcert`). The URL parse is pure and tested; the store is
       proven by okay-match's engine suite against the dockerized
       Postgres
+- [ ] log-first, demonstrable (demo-replay-projections): every
+      `/match` turn lands in a persist `ChatLog` FIRST (OKAY_CHAT_LOG,
+      a FileStore directory; ":memory:" for tests) and the log
+      offset IS the provenance of what the turn asserts — no
+      in-memory counter that restarts at zero. `MatchStore.reset()`
+      drops the projection (memory: the maps; sql: the tables,
+      recreated); `POST /admin/replay` resets the store and rebuilds
+      it from the log through the SAME extraction the live chat
+      uses, answering how many turns it replayed; a button on
+      /market does it in one click. Tested with a memory log: after
+      two turns, reset + replay yields the same market; replaying
+      over the live store changes nothing. Under a model, replay
+      re-runs the model per user turn — stated, that is what "the
+      projection is derivable" costs
 
 ## The reverse chain (demo-chat-async)
 Events arrive in EITHER order. A need with no match is STORED (the
