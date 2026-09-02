@@ -299,6 +299,60 @@ object OAuth2:                           // the client flows, over trait Http
         good keys around them survive
   - [x] the pure battery runs on JS too (shared test) — the dance
         exists everywhere even while EC keys are JVM-only
+- **6 — security-sessions**: a recipe, extracted 2026-09-02 from
+  okay-demo (round-two demo reusable-module pass, user ask):
+  `okay.demo.Login`'s ES256 keypair-plus-`issue`/`verify` shape was
+  independently copied ONCE already, in okay-admin's `Admin.Issuer`
+  (same four-line keypair generator, same `Jwt.sign`/`Jwt.verify`
+  wrapping — found while landing okay-admin) — the second copy is
+  the signal a recipe belongs beside the primitives it wraps, not in
+  an app that happened to need it first. `SessionIssuer` is the
+  session half both call sites shared; `OneTimeCode` is Login's own
+  confirm-and-sign half, moved alongside since a session issuer
+  gains its most natural consumer paired with a way to CONFIRM
+  before issuing — generic enough that Login is simply its first
+  caller, not baked into the demo's shape.
+
+  ```scala
+  // okay-security, jvm (java.security.KeyPairGenerator, ES256 already is)
+  final class SessionIssuer(ttlSec: Long = 24L * 3600):
+    /** a bearer token for `subject`, carrying `scopes` (admin's use;
+     * empty for a plain login session) */
+    def issue(subject: String, scopes: Set[String] = Set.empty,
+              now: Long = System.currentTimeMillis()): String
+    def verify(token: String, now: Long = System.currentTimeMillis()): Verified
+
+  final class OneTimeCode(ttlMs: Long = 10L * 60 * 1000):
+    /** mint a fresh 6-digit code for `key` (an email, typically),
+     * replacing any earlier one */
+    def start(key: String, now: Long = System.currentTimeMillis())(using Crypto): String
+    /** spend the code: right key, right code, not expired, ONCE */
+    def confirm(key: String, code: String, now: Long = System.currentTimeMillis()): Boolean
+  ```
+
+  One process-lifetime keypair per `SessionIssuer` instance (a
+  restart signs out every session it issued — the same limit `Login`
+  already stated about itself, now stated once for every caller);
+  `OneTimeCode` rides `okay.security.Crypto.randomBytes` — the
+  module's OWN Crypto, no `okay.crypto` dependency needed (Login's
+  original used the shared crypto-only seam because it lived
+  outside okay-security; inside, the richer local `Crypto` already
+  has `randomBytes`).
+
+  Behavior:
+  - [ ] `SessionIssuer`: a token it issues is a token it verifies,
+        carrying the subject and scopes named at issue time
+  - [ ] an expired token (past `ttlSec`) refuses; a token from a
+        DIFFERENT `SessionIssuer` instance refuses (independent
+        keypairs, as `Admin.Issuer` and `Login` already were)
+  - [ ] `OneTimeCode`: start-then-confirm with the right code
+        succeeds ONCE — a second confirm with the same code fails
+        (spent); a wrong code, or a confirm past `ttlMs`, fails
+        without spending the real one
+  - [ ] `okay.demo.Login` and `okay.admin.Admin.Issuer` both become
+        thin wrappers over `SessionIssuer` (Login also composing
+        `OneTimeCode`) — through the real demo's existing session
+        and admin-auth tests, unchanged in substance
 
 ## Out of scope (module-wide, until a stage names them)
 - being an authorization SERVER (issuing codes/tokens to third
