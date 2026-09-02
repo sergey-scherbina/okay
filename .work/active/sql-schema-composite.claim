@@ -1,0 +1,5 @@
+slug: sql-schema-composite
+branch: feature/sql-schema-composite
+worktree: ../okay-wt-sql-schema-composite
+claimed: 2026-09-02
+scope: okay-sql Typed/Schema layer — SqlType.Arr/Row, Shape-based decode/encode of SVector/SList/nested SProduct; okay-jdbc getArray/Object[] bind; okay-pg describe types arrays/composites. specs/sql.md.
