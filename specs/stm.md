@@ -112,10 +112,30 @@ document.
   delayed by retrying.
 - **`Sim` gets a handler, not new ops** — one `Yield` op suffices
   for the scheduler to interleave at every transactional step.
+- **Stamped values, no wrapper on the fast path** — the first cut
+  wrapped every value in a `Slot(value, version, owner)` and cost
+  the Channel 10% (A/B, three rounds). A value may carry its own
+  version (`TRef.Stamped`, an abstract CLASS so the type test is a
+  primary-supers check, not an interface scan — that alone was half
+  the gap): the cell installs it bare and stamps it; `Slot` wraps
+  only other values; the `Owned` marker exists only during a
+  commit. A Stamped value belongs to one cell and one install — an
+  immutable case class rebuilt by `copy` on every transition, as the
+  Channel's State is, satisfies that by construction.
 
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark
-(src/jmh ChannelBenchmark, `-wi 2 -w 1 -i 3 -r 1 -f 1`, medians):
-recorded in src/jmh/history.tsv under `channel-offer-receive-1k`
-and `channel-program-1k`, before (AtomicReference[State] in the
-channel) and after (TRef[State].modify).
+(src/jmh ChannelBenchmark, alternating A/B rounds, medians, busy
+host; rows in src/jmh/history.tsv): the buffer path (offer, then a
+receive that finds the element, ×1000) 32.1 µs on master's
+AtomicReference[State] vs 29.6 µs on TRef.modify — 8% FASTER
+(one type test and no unwrapping where the old code pattern-matched
+a tuple); the program path (send and receive as Async programs
+under runAsync, ×1000) 65.4 vs 65.8 µs — equal within noise. The
+brief ("without losing performance") holds. Tests: transfers under
+eight threads keep the sum and a reader never sees a torn pair;
+retry parks the transaction and only the commit that changes what
+it read wakes it; a thousand parked transactions hold no thread;
+the cross suite runs the same programs through tl2 and direct; the
+Sim suite runs them under sixty seeds and checks the scheduler did
+interleave.

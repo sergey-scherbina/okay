@@ -1,5 +1,18 @@
 # Backlog
 
+## STM — after stm (2026-09-02, specs/stm.md)
+- [ ] stm-ui-close — Ui.scala's closing decision is three atomics
+      (pending, unprocessed, upstreamDone) and a maybeClose that
+      reads all three; the comment there records the race it once
+      lost. Three TRefs and one transaction; the first STM consumer.
+- [ ] stm-sessions — McpHttp's session table + pushes fan-out, and
+      Fiber's cell/subscribers/cancel, as transactions.
+- [ ] stm-orelse — `OrElse(a, b)`: run b when a retries; the
+      language grows one node, the handlers one case.
+- [ ] stm-js-direct-bench — the direct handler is the JS given by
+      construction; price it against tl2 on Node once a JS
+      benchmark harness exists.
+
 ## Async — after channel-callback (2026-09-02)
 - [ ] native-scheduler-pool — the Native Scheduler forks one OS
       thread per fiber (src/main/scala-native/Platform.scala). With

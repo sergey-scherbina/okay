@@ -175,3 +175,5 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-02			ctx-monad-quiet	4336			ns/1k binds; +-250ns quiet box (was 5305 loaded); ~2.5x faster than the relay per bind, stack-bounded 2-5k; table dagger row
 2026-09-02			direct-okay-pair	313427			ns/10k binds direct while+var vs 95805 flatMap (quiet, load 2.8): 3.3x = the Monadic Cont layer; recursion form 410203 (4.3x); FILED: emit plain flatMaps for sequential fragments
 2026-09-02			direct-competitors	156584			ns kyo defer (2.8x over its 56k) and 119485 zio-direct (0.64x — FASTER than hand foldLeft, better-shaped emission); both forbid var in blocks, okay alone allows the imperative form
+2026-09-02	d8ff4bb+stm	3.5	channel-offer-receive-1k	29.6	32.1	0.92	Channel on TRef.modify (Stamped state, no wrapper) vs master AtomicReference[State]; medians of 3 alternating A/B rounds, jmh -wi2 -w1 -i3 -r1 -f1, busy host
+2026-09-02	d8ff4bb+stm	3.3	channel-program-1k	65.8	65.4	1.01	same, send/receive as Async programs under runAsync; medians of 2 alternating rounds at -wi3 -i6

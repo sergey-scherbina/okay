@@ -135,7 +135,9 @@ cross-build lands so nothing has to be broken later.
   side effect — the Drive handshake's shape, applied to the whole
   channel. No thread holds anything, ever; on JS the reference is a
   plain cell. Cost: an allocation per operation and a retry under
-  contention. Test: eight producers × 1000 through a 16-slot
+  contention. Since stm (2026-09-02) that cell is a `TRef` and the
+  transition is `TRef.modify` — the channel is a one-cell STM
+  structure (specs/stm.md), measured 8% faster on the buffer path. Test: eight producers × 1000 through a 16-slot
   channel into four consumers — 8000 elements, each exactly once.
 - **A discarded program is a compile error** (discarded-program-lint,
   2026-09-02). The migration to `send: Boolean ! Async` showed the
