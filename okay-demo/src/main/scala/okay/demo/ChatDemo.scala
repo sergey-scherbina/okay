@@ -254,11 +254,34 @@ object ChatDemo {
             s"все кандидаты отказались: ${deal.what} — запрос остаётся в силе, сообщу о новых"))
       case _ => ()
 
+  // ---- the live market feed (demo-market-live) -----------------------
+  //
+  // /market subscribes; every market mutation pings every open page.
+  // The publish points are the chainedTable wraps below — the model
+  // path and the deterministic driver share them, so the feed is
+  // model-independent. A closed page's channel stays registered until
+  // process end — stated, not hidden: the demo's subscriber count is
+  // human-scale.
+
+  private val marketFeed =
+    java.util.concurrent.CopyOnWriteArrayList[Channel[String]]()
+
+  /** a new /market subscriber's own channel */
+  def marketSub(): Channel[String] =
+    val c = Channel[String]()
+    marketFeed.add(c)
+    c
+
+  /** ring every open /market page: something on the market moved */
+  def marketChanged(kind: String): Unit =
+    marketFeed.forEach(c => c.offer(kind): Unit)
+
   /** the tool table with the reverse chain wrapped around asserts */
   def chainedTable(using store: MatchStore): Map[String, okay.agent.ToolCall => String] =
     val base = MatchTools.table(store)
     base.updated("flow_advance", { c =>
       val out = base("flow_advance")(c)
+      marketChanged("flow")
       // a successful advance fired a transition: deliver its
       // notifications to the role-holders' inboxes, templates filled
       Json.parse(out) match
@@ -280,6 +303,7 @@ object ChatDemo {
       out
     }).updated("match_inquire", { c =>
       val out = base("match_inquire")(c)
+      marketChanged("deal")
       val provider = c.args match
         case JObj(fs) => fs.collectFirst { case ("provider", JStr(x)) => x }.getOrElse("")
         case _ => ""
@@ -294,6 +318,7 @@ object ChatDemo {
       out
     }).updated("match_respond", { c =>
       val out = base("match_respond")(c)
+      marketChanged("deal")
       Json.parse(out) match
         case JObj(fs) =>
           val n = fs.collectFirst { case ("deal", JNum(x)) => x.toLong }.getOrElse(0L)
@@ -318,6 +343,7 @@ object ChatDemo {
         case _ => ""
       if text.nonEmpty then reverseChain(
         if side == "need" then okay.matching.Side.Need else okay.matching.Side.Offer, text)
+      marketChanged("facts")
       out
     })
 
@@ -656,6 +682,9 @@ object ChatDemo {
     case r if r.method == okay.http.Method.Get && r.url == "/market" =>
       val store = summon[MatchStore]
       import okay.matching.*
+      // rows stay SERVER-RENDERED at load (works without JS, and the
+      // gate test keeps reading plain HTML); the script below then
+      // re-renders from /market.json on every feed ping
       def rowsOf(side: Side) = store.candidates(Query(side, k = 50)).map { h =>
         val texts = h.disclosed.map(f => Value.text(f.value)).filter(_.nonEmpty)
         s"<li>${texts.mkString(" · ")}</li>"
@@ -663,18 +692,64 @@ object ChatDemo {
       pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
         Http.one(s"""<!doctype html><meta charset="utf-8"><title>market</title>
           |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
-          |h2{color:#7a869c}</style>
-          |<h2>предложения</h2><ul>${rowsOf(Side.Offer)}</ul>
-          |<h2>запросы</h2><ul>${rowsOf(Side.Need)}</ul>
-          |<p><a style="color:#6b9fff" href="/">← в чат</a> · видно только Public — ворота держат и здесь</p>
+          |h2{color:#7a869c}
+          |#facets button{font-size:.8em;background:#1d2430;border:1px solid #2a3342;color:#9fb0c8;border-radius:.6rem;padding:.3rem .7rem;margin-right:.3rem;cursor:pointer}
+          |#facets button.on{background:#3563a8;color:#fff}</style>
+          |<div id="facets"></div>
+          |<h2>предложения</h2><ul id="offers">${rowsOf(Side.Offer)}</ul>
+          |<h2>запросы</h2><ul id="needs">${rowsOf(Side.Need)}</ul>
+          |<p><a style="color:#6b9fff" href="/">← в чат</a> · видно только Public — ворота держат и здесь · обновляется вживую</p>
           |<form method="post" action="/admin/replay"><button style="background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer">перестроить из лога</button>
           |<span style="color:#7a869c;font-size:.85em"> — сбросить проекцию и заново вывести её из журнала чатов</span></form>
+          |<script>
+          |let facet = null;
+          |async function render() {
+          |  const d = await (await fetch('/market.json')).json();
+          |  const attrs = [...new Set([...d.offers, ...d.needs].flatMap(r => r.facts.map(f => f.attr)))];
+          |  const fc = document.getElementById('facets'); fc.innerHTML = '';
+          |  for (const a of attrs) {
+          |    const b = document.createElement('button');
+          |    b.textContent = a; if (a === facet) b.className = 'on';
+          |    b.onclick = () => { facet = facet === a ? null : a; render(); };
+          |    fc.appendChild(b);
+          |  }
+          |  const fill = (id, rows) => {
+          |    const ul = document.getElementById(id); ul.innerHTML = '';
+          |    for (const r of rows) {
+          |      if (facet && !r.facts.some(f => f.attr === facet)) continue;
+          |      const li = document.createElement('li');
+          |      li.textContent = r.facts.map(f => f.text).filter(t => t).join(' · ');
+          |      ul.appendChild(li);
+          |    }
+          |  };
+          |  fill('offers', d.offers); fill('needs', d.needs);
+          |}
+          |new EventSource('/events/market').addEventListener('market', render);
+          |render();
+          |</script>
           |""".stripMargin.getBytes(UTF_8))))
+
+    case r if r.method == okay.http.Method.Get && r.url == "/market.json" =>
+      val store = summon[MatchStore]
+      import okay.matching.*
+      // the page's data: each disclosed fact with its ATTRIBUTE name —
+      // the facet key; `disclosed` is Public-only for an anonymous
+      // viewer, so the gate holds on the JSON exactly as on the HTML
+      def rows(side: Side) = JArr(store.candidates(Query(side, k = 50)).map { h =>
+        JObj(Vector("facts" -> JArr(h.disclosed
+          .filter(f => Value.text(f.value).nonEmpty)
+          .map(f => JObj(Vector(
+            "attr" -> JStr(f.attr), "text" -> JStr(Value.text(f.value))))))))
+      })
+      pure(Response(200, Seq("content-type" -> "application/json"),
+        Http.one(Json.print(JObj(Vector(
+          "offers" -> rows(Side.Offer), "needs" -> rows(Side.Need)))).getBytes(UTF_8))))
 
     case r if r.method == okay.http.Method.Post && r.url == "/admin/replay" =>
       // log-first in one click: the projection is dropped and rebuilt
       // from the persist log through the live extraction
       val n = replayProjections(chatLog)
+      marketChanged("replay")
       val html = "<!doctype html><meta charset=\"utf-8\"><title>replay</title>" +
         "<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}</style>" +
         s"<p>проекция перестроена из журнала: $n ходов</p>" +
@@ -685,6 +760,15 @@ object ChatDemo {
     case r if r.method == okay.http.Method.Get && r.url == "/app.js" && appJs.isDefined =>
       pure(Response(200, Seq("content-type" -> "text/javascript"),
         Http.one(java.nio.file.Files.readAllBytes(appJs.get))))
+    case r if r.method == okay.http.Method.Get && r.url == "/events/market" =>
+      // the market-wide feed — matched BEFORE the /events/<email>
+      // prefix route: "market" must not parse as an email
+      val src: Source[Chunk[Byte]] =
+        effect[Writer % Chunk[Byte] + Async, Unit](Writer(sse("hello", "")))
+          .flatMap(_ => Writer.map(Writer.of(marketSub()))(kind =>
+            sse("market", Json.print(JStr(kind)))))
+      pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
+
     case r if r.method == okay.http.Method.Get && r.url.startsWith("/events/") =>
       // the email rides the PATH: requestOf keeps the path only, a
       // query string never reaches the route (found the hard way)

@@ -236,11 +236,11 @@ that MOVES. Three pieces, all riding machinery the demo already has:
   /market.json, re-renders on every feed ping, and offers the
   attribute facets as toggle chips (client-side filter).
 
-- [ ] market.json: the seeded Public skill shows with its attr; the
+- [x] market.json: the seeded Public skill shows with its attr; the
       Matched phone stays off it (the gates hold on the JSON too)
-- [ ] a subscribed /events/market stream rings when a new offer
+- [x] a subscribed /events/market stream rings when a new offer
       lands through the real /match route
-- [ ] the page carries the live script (EventSource on
+- [x] the page carries the live script (EventSource on
       /events/market) and the facet container; rows still server-
       rendered (the existing polish assertions stay green)
 

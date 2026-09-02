@@ -423,6 +423,47 @@ class TestChatDemo extends munit.FunSuite {
     assert(whole != null)
   }
 
+  test("MARKET LIVE: market.json carries attrs (gates hold); /events/market rings on a new offer") {
+    val store = okay.matching.MemoryMatch()
+    val p = store.register("live-m@x")
+    store.assert(p, "skill", okay.matching.Side.Offer,
+      okay.matching.Value.VText("кладу плитку"),
+      okay.matching.Provenance("c", 1, "..."), 1.0, okay.matching.Vis.Public)
+    store.assert(p, "phone", okay.matching.Side.Offer,
+      okay.matching.Value.VText("+380-SECRET"),
+      okay.matching.Provenance("c", 2, "..."), 1.0, okay.matching.Vis.Matched)
+    withServer(512, store) { port =>
+      // the JSON: the Public skill with its attr; the Matched phone off
+      val mj = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/market.json")).GET().build(),
+        HttpResponse.BodyHandlers.ofString()).body()
+      assert(mj.contains("\"attr\":\"skill\"") && mj.contains("плитку"), mj.take(300))
+      assert(!mj.contains("SECRET"), "the gates hold on the JSON too")
+      // the page: rows still server-rendered, plus the live script
+      val html = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/market")).GET().build(),
+        HttpResponse.BodyHandlers.ofString()).body()
+      assert(html.contains("плитку") && html.contains("/events/market") &&
+        html.contains("id=\"facets\""), html.take(400))
+      // the feed: subscribe, land an offer through the real route, ring
+      val feed = client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/events/market"))
+          .GET().build(), HttpResponse.BodyHandlers.ofInputStream()).body()
+      new String(post(port,
+        """{"messages":[{"role":"user","content":"/match умею шпаклевать стены email live-n@x"}]}""").readAllBytes(), UTF_8)
+      val got = java.util.concurrent.CompletableFuture.supplyAsync { () =>
+        val sb = new StringBuilder; val buf = new Array[Byte](512)
+        while !sb.toString.contains("event: market") do
+          val n = feed.read(buf)
+          if n < 0 then throw new AssertionError(s"stream ended: $sb")
+          sb.append(new String(buf, 0, n, UTF_8))
+        sb.toString
+      }.get(10, java.util.concurrent.TimeUnit.SECONDS)
+      assert(got.contains("facts"), got)
+      feed.close()
+    }
+  }
+
   test("CONDITIONS at the intake: one program, three outcomes, chosen by policy") {
     // lenient (the demo default): the guest restart — the old silent
     // default, now a DECISION on the record
