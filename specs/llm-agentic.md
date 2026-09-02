@@ -479,6 +479,57 @@ Their breadth (OpenAI, Anthropic, Gemini, Bedrock, Ollama, Azure,
 Mistral...) arrives by the caller constructing any of their models
 and handing it in; this module depends on core only.
 
+### rag-langchain4j (the EmbeddingModel half) — SHIPPED, narrower than named
+
+A consumer finally named a store: demo-embeddings-attr (BACKLOG) asked
+for `okay-match`'s registry to collide "разработчик"/"программист"
+BEFORE the registry drifts — semantic search-before-create, not the
+hashing embedder's lexical stand-in. `okay-match`'s `MatchStore`
+already takes `embed: String => Embedding` as a plain constructor
+parameter (Memory.scala) — no `okay-rag` retrieval pipeline needed at
+all to satisfy that ask; a REAL embedder is the whole gap.
+
+Scope note: what shipped is the **EmbeddingModel** half — their
+`EmbeddingModel.embed(text)` as `String => Embedding` and as
+`okay.Handler[Embed]` (okay-rag's effect, so `Retrieve.vector` and
+the rest of the retrieval pipeline can use it too). Their
+**EmbeddingStore** (a vector database behind `okay.rag.VectorStore`)
+is a SEPARATE, larger integration — swapping okay-rag's own
+`MemoryStore`/`PgVector` for one of theirs — and stays unbuilt; this
+module's name keeps it filed as the same item until a consumer names
+a STORE specifically, not just an embedder.
+
+`okay-langchain4j-embed` (JVM, `dev.langchain4j:
+langchain4j-embeddings-all-minilm-l6-v2`): a LOCAL ONNX model, no
+network, no API key — the offline-first doctrine survives the
+upgrade from a hash to a real embedding. Two functions:
+
+- `embed(model: EmbeddingModel): String => Embedding` — the exact
+  shape `MemoryMatch`'s constructor already accepts; a consumer wires
+  it with zero `okay-match` changes
+- `handler(model: EmbeddingModel): Handler[Embed]` — the same model,
+  fitting `okay-rag`'s effect for a program built against
+  `Retrieve.vector`
+
+**Deliberately kept OUT of `okay-demo`'s build and the root
+`.aggregate(...)` list.** The bundled ONNX model is a real ~90MB
+download; nothing about running this repo's tests or the chat demo
+should force it on a contributor who never touches embeddings. The
+module proves itself with its OWN test suite (a real semantic
+collision, no demo wiring) — `demo-embeddings-attr` stays open in
+BACKLOG, now unblocked rather than closed: a future session wires
+`Langchain4jEmbed.embed(...)` into `ChatDemo`'s `MemoryMatch(embed =
+...)` construction as its own small, opt-in change.
+
+Behavior:
+- [ ] "разработчик" and "программист" (near-synonyms, zero shared
+      substring) score near each other under the real embedder — and
+      do NOT under `Vectors.hashing()`, proving the upgrade is real
+- [ ] `embed`/`handler` agree: the same model wrapped either way
+      answers the same vector for the same text
+- [ ] no network call: the model loads and embeds fully offline
+      (proven by the test suite running with no external host reachable)
+
 ## Behavior
 - [x] a tool call round-trips: model asks, handler executes, result
       goes back, conversation continues (scripted model, no network)
