@@ -1,0 +1,5 @@
+slug: demo-en-phrasebook
+branch: feature/demo-en-phrasebook
+worktree: ../okay-wt-demo-en-phrasebook
+claimed: 2026-09-02
+scope: an English phrasebook beside the Russian one in the offline driver (scriptedAgent), picked per message -- makes the offline demo shareable outside one language. specs/demo-chat.md.
