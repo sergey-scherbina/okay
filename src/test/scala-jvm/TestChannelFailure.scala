@@ -34,7 +34,7 @@ class TestChannelFailure extends munit.FunSuite {
     try
       var more = true
       while more do
-        c.receive() match
+        c.receiveBlocking() match
           case Some(a) => got += a
           case None => more = false
     catch case e: Throwable => outcome = s"threw: ${e.getMessage}"
@@ -52,7 +52,7 @@ class TestChannelFailure extends munit.FunSuite {
     try
       var more = true
       while more do
-        c.receive() match
+        c.receiveBlocking() match
           case Some(a) => got += a
           case None => more = false
     catch case _: Throwable => failed = true

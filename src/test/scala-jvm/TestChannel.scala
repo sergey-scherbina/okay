@@ -8,19 +8,61 @@ class TestChannel extends munit.FunSuite {
 
   test("a channel is a linear async stream: send, close, drain") {
     val c = Channel[Int]()
-    assert(c.send(1)); assert(c.send(2)); c.close()
+    assert(c.offer(1)); assert(c.offer(2)); c.close()
     assertEquals(c.toLazyList.toList, List(1, 2))
-    assertEquals(c.receive(), None)
+    assertEquals(c.receiveBlocking(), None)
   }
 
   test("send after close is refused, not thrown: false, the element dropped, the end unchanged") {
     val c = Channel[Int]()
-    assert(c.send(1)); c.close()
-    assert(!c.send(2), "a closed channel took an element")
-    assertEquals(c.receive(), Some(1))
-    assertEquals(c.receive(), None)
-    assert(!c.send(3))
-    assertEquals(c.receive(), None)
+    assert(c.offer(1)); c.close()
+    assert(!c.offer(2), "a closed channel took an element")
+    assert(!c.sendBlocking(2), "a closed channel took an element")
+    assertEquals(c.receiveBlocking(), Some(1))
+    assertEquals(c.receiveBlocking(), None)
+    assert(!c.offer(3))
+    assertEquals(c.receiveBlocking(), None)
+  }
+
+  test("a waiting receiver holds no thread: a thousand parked receives, freed by offers") {
+    // each receive is a program parked in the channel's queue — no
+    // thread, no poll; the offer runs the rest of it on the way through
+    val chans = Vector.fill(1000)(Channel[Int]())
+    val futs = chans.map(c => Async.runAsync(c.receive))
+    assert(futs.forall(!_.isCompleted))
+    chans.zipWithIndex.foreach((c, i) => assert(c.offer(i)))
+    futs.zipWithIndex.foreach((f, i) =>
+      assertEquals(scala.concurrent.Await.result(f, scala.concurrent.duration.Duration(1, "s")), Some(i)))
+  }
+
+  test("a bounded send suspends as a program, and resumes when the consumer takes") {
+    val c = Channel[Int](capacity = 1)
+    val first = Async.runAsync(c.send(1))
+    assertEquals(scala.concurrent.Await.result(first, scala.concurrent.duration.Duration(1, "s")), true)
+    val second = Async.runAsync(c.send(2))
+    Thread.sleep(20)
+    assert(!second.isCompleted, "a send into a full channel completed without room")
+    assertEquals(c.receiveBlocking(), Some(1))
+    assertEquals(scala.concurrent.Await.result(second, scala.concurrent.duration.Duration(1, "s")), true)
+    assertEquals(c.receiveBlocking(), Some(2))
+  }
+
+  test("close wakes a parked receiver at once; a parked sender's element was accepted and drains") {
+    val c = Channel[Int](capacity = 1)
+    val waiting = Async.runAsync(c.receive)
+    Thread.sleep(20)
+    assert(!waiting.isCompleted)
+    c.close()
+    assertEquals(scala.concurrent.Await.result(waiting, scala.concurrent.duration.Duration(1, "s")), None)
+    val d = Channel[Int](capacity = 1)
+    assert(d.offer(1))
+    val parked = Async.runAsync(d.send(2))
+    Thread.sleep(20)
+    d.close()
+    assertEquals(scala.concurrent.Await.result(parked, scala.concurrent.duration.Duration(1, "s")), true)
+    assertEquals(d.receiveBlocking(), Some(1))
+    assertEquals(d.receiveBlocking(), Some(2))
+    assertEquals(d.receiveBlocking(), None)
   }
 
   test("the send/close race is exact: every accepted send is received, every refused one is not") {
@@ -37,12 +79,12 @@ class TestChannel extends munit.FunSuite {
         var i = 0
         var on = true
         while on && i < 10000 do
-          if c.send(i) then accepted.add(i): Unit else on = false
+          if c.sendBlocking(i) then accepted.add(i): Unit else on = false
           i += 1
       }
       val consumer = Thread.ofVirtual().start { () =>
         var go = true
-        while go do c.receive() match
+        while go do c.receiveBlocking() match
           case Some(v) => received += v
           case None => go = false
       }

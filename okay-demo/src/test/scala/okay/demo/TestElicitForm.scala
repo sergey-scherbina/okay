@@ -39,7 +39,7 @@ class TestElicitForm extends munit.FunSuite {
     val up = Channel[String]()
     val down = Channel[String]()
     def link(out: Channel[String], in: Channel[String]): Link = new Link:
-      def send(line: String): Unit ! Async = async(out.send(line))
+      def send(line: String): Unit ! Async = out.send(line).map(_ => ())
       def lines: Source[String] = Writer.of(in)
     (link(up, down), link(down, up))
 
@@ -51,7 +51,7 @@ class TestElicitForm extends munit.FunSuite {
         okay.Stage.tell[Rpc, Rpc](Rpc.Answer(id, Mcp.initializeResult(serverInfo)))
           .flatMap(_ => okay.Stage.tell[Rpc, Rpc](Rpc.Request(Json.JStr("e1"),
             Mcp.ElicitationCreate, Duplex.elicitParams("index what?", schema))))
-      case Rpc.Answer(Json.JStr("e1"), result) => pure(answers.send(Duplex.answerOf(result)))
+      case Rpc.Answer(Json.JStr("e1"), result) => pure(answers.offer(Duplex.answerOf(result)): Unit)
       case _ => pure(())
     }, pure)
 
@@ -79,7 +79,7 @@ class TestElicitForm extends munit.FunSuite {
         okay.Stage.tell[Rpc, Rpc](Rpc.Answer(id, Mcp.initializeResult(serverInfo)))
           .flatMap(_ => okay.Stage.tell[Rpc, Rpc](Rpc.Request(Json.JStr("e1"),
             Mcp.ElicitationCreate, Duplex.elicitParams("sure?", schema))))
-      case Rpc.Answer(Json.JStr("e1"), result) => pure(answers.send(Duplex.answerOf(result)))
+      case Rpc.Answer(Json.JStr("e1"), result) => pure(answers.offer(Duplex.answerOf(result)): Unit)
       case _ => pure(())
     }, pure)
 

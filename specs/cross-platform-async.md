@@ -27,9 +27,15 @@ cross-build lands so nothing has to be broken later.
   (onComplete / cancel / joinAsync). Blocking `join()` is
   evidence-gated (a `CanBlock` capability given only on JVM/Native),
   so misuse is a compile error on JS, not a runtime hang.
-- Channel: the blocking receive is jvm+native; JS gets the
-  Await-based channel (callback hand-off) behind the same interface
-  where possible.
+- Channel: ONE callback-based channel for all platforms
+  (channel-callback, 2026-09-02) — src/main/scala/Channel.scala.
+  `receive: Option[A] ! Async` and `send(a): Boolean ! Async` are
+  programs; waiting lives in the channel's queues, never in a
+  thread; the parking forms `receiveBlocking()`/`sendBlocking(a)`
+  exist only under CanBlock, like Fiber.join. The state (buffer,
+  waiting receivers, waiting senders with their elements) sits
+  under a short lock, callbacks run outside it; on JS the lock is
+  a no-op.
 - Cross-platform interop between RUNNING programs (client here,
   server there) = okay-codec + a transport module; not Async's job.
 
@@ -94,16 +100,43 @@ cross-build lands so nothing has to be broken later.
   receiver's second poll after a closed check is the other half of
   the same race (an element put BEFORE the close, seen after the
   first poll). On JS one thread makes the check trivially exact.
+  Under channel-callback the same contract holds by construction:
+  every decision is one critical section, no take-back needed.
+- **The channel waits in queues, not in threads** (channel-callback,
+  2026-09-02). The parking channel (LinkedBlockingQueue) broke the
+  stack's own rule — blocking must be GRANTED through CanBlock, and
+  `receive()` parked without it — and it polled every 10ms to notice
+  a close. On the JVM a parked virtual thread is cheap; on Native
+  there is no Loom (the Scheduler there is one OS thread per fiber),
+  so every waiting receiver was an OS thread asleep, and a
+  fixed-size pool would deadlock on them. The JS design — a receiver
+  leaves a callback, a sender leaves its element and a callback,
+  close wakes them — costs nothing to wait and is exact under a
+  short lock, so it became the only design. Consequences, stated: a
+  suspended program continues on the thread that completed it (the
+  sender's, at its send) — the JS behaviour, now everywhere; a
+  ping-pong between two channels nests those continuations on one
+  stack (the Drive's synchronous fast path bounds the common case);
+  the parking forms are derived from the async ones the way
+  Fiber.join is, and a JS call to them is a compile error naming
+  CanBlock. Not done here: the Native Scheduler still forks an OS
+  thread per fiber — a fixed pool is now safe to introduce (BACKLOG
+  native-scheduler-pool).
 
 ## Open boxes
 - [x] an error channel in Await — done (see Decisions); callback par
       and joinAsync landed with it
 - [x] cancellable Await registrations — done; Timer.after answers the
       canceller on every platform
-- [x] the Await-based Channel for JS — src/main/scala-js/Channel.scala:
-      same surface (send/close/receiveAsync + the Stream instance +
-      merge/buffer/mergeChunks); capacity is advisory on JS (a sender
-      cannot park). The blocking Channel and Parallel moved to
-      src/main/scala-jvm-native — one source for both parking
-      platforms.
+- [x] the Await-based Channel for JS — SUPERSEDED (channel-callback,
+      2026-09-02): that design is now THE channel on every platform,
+      src/main/scala/Channel.scala; the parking channel in
+      scala-jvm-native is gone (Parallel stays there). Capacity is
+      real on JS too: a sender into a full channel suspends as a
+      program. Tests: a thousand parked receives hold no thread and
+      are freed by offers; a bounded send suspends and resumes on the
+      consumer's take; close wakes a parked receiver at once and
+      drains a parked sender's accepted element; the 200-round
+      send/close race keeps its accounting invariant on the parking
+      forms; the cross suite checks refusal after close everywhere.
 - [x] run the cross suite on Native — done, in CI

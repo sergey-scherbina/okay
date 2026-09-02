@@ -1,5 +1,14 @@
 # Backlog
 
+## Async — after channel-callback (2026-09-02)
+- [ ] native-scheduler-pool — the Native Scheduler forks one OS
+      thread per fiber (src/main/scala-native/Platform.scala). With
+      the callback channel nobody waits in a thread anymore, so a
+      fixed-size pool with a task queue (the JVM's Schedulers.pool
+      shape) is safe: fibers become cheap on Native. Blocking forms
+      (CanBlock) on a pool thread still park it — document, or size
+      the pool for it.
+
 ## Direct style — the roads named by the 2026-09-01 survey (docs/direct-style.md)
 - [ ] direct-try-ctx — `try` inside direct[[X] =>> E ?=> X] (the
       Reader-elimination monad) CRASHES dotty 3.7.4 at erasure

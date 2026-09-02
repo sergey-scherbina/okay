@@ -17,9 +17,10 @@ import scala.util.Random
  * freer-tree program and its `k` at every operation IS the captured
  * delimited continuation — the Cont foundation this stack is built
  * on, made scheduler food. Blocking primitives become OPERATIONS
- * (`SimChannel` send/receive suspend to the scheduler instead of
- * parking a thread), which is exactly why the real Channel cannot
- * be simulated but the simulated one can be chosen: the multi-
+ * (`SimChannel` send/receive suspend to the scheduler, as the real
+ * Channel's do to whoever completes them), and the simulated one is
+ * chosen where the real one's timing is not the scheduler's to
+ * decide: the multi-
  * prompt `Delim` effect joins this seam unchanged when fibers
  * carry intervening delimiters of their own.
  *

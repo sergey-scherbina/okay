@@ -24,10 +24,10 @@ class TestRemote extends munit.FunSuite {
 
     // this node: fold the remote chunks into a partial accumulator
     var remoteAcc = agg.init
-    var c = received.receive()
+    var c = received.receiveBlocking()
     while c.isDefined do
       remoteAcc = c.get.foldLeft(remoteAcc)(agg.add)
-      c = received.receive()
+      c = received.receiveBlocking()
 
     val localAcc = local.foldLeft(agg.init)(agg.add)
     val together = agg.present(agg.merge(localAcc, remoteAcc))
@@ -46,8 +46,8 @@ class TestRemote extends munit.FunSuite {
     out.println("[4,5]")
     sock.close()
     var all = List.empty[Long]
-    var c = received.receive()
-    while c.isDefined do { all = all ++ c.get; c = received.receive() }
+    var c = received.receiveBlocking()
+    while c.isDefined do { all = all ++ c.get; c = received.receiveBlocking() }
     assertEquals(all, List(1L, 2L, 3L, 4L, 5L))
     server.close()
   }
