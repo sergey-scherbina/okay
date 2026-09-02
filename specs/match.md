@@ -264,6 +264,34 @@ Behavior:
 - [x] the typed builder: an undeclared state in a transition is a
       compile error; the built value equals the hand-written data
 
+## The gate policy, live (demo-gate-ui)
+`PlatformPolicy` (stage 2) was already DATA — an immutable
+`Map[String, Gate]` — but it was bound at CONSTRUCTION time, a
+constructor parameter never reassigned; flipping a gate meant editing
+code and restarting. The BACKLOG ask ("let a viewer flip it and
+watch /market react") needed one seam: the policy an operator sees
+live, not the one baked in at boot.
+
+- **`MatchStore.gate(attr): Gate`** — the current gate, `Allow`
+  unless overridden; **`setGate(attr, g): Unit`** — flips it live, no
+  restart; **`gateOverrides: Map[String, Gate]`** — everything
+  currently overridden, for an admin listing.
+- Both engines keep a `livePolicy` VAR seeded from the constructor's
+  `policy` (the STARTING value); every disclosure check
+  (`candidates`, `disclosed`) reads the var, so a flip takes effect
+  on the very next query — no cache to invalidate, because there
+  never was one.
+- Configuration, not projection: `reset()` does not touch it, the
+  same reasoning as scenario definitions (Scenarios as data, above).
+
+Behavior:
+- [x] setGate takes effect on the NEXT query, no restart — candidates
+      filtered/withheld differently before and after the same call
+- [x] gateOverrides answers exactly what was set, nothing implied by
+      the default
+- [x] reset() leaves the gate policy untouched (configuration, not
+      projection — the scenario-definitions precedent)
+
 ## Conditions at the tools (match-conditions)
 The v1 coercions of malformed tool values (a "num" tag with no
 number quietly became 0.0) are now a NAMED policy. `valueOr` signals

@@ -414,6 +414,40 @@ makes this possible; help mentions `/scenarios` as the editor.
 - [x] help text names the currently-registered scenarios, not a
       hardcoded string — proven by defining one and asking for help
 
+## The gate policy, switchable (demo-gate-ui)
+
+The two-gate visibility model (specs/match.md, stage 2) is the
+business story — a fact's owner sets Public/Matched/Private, and the
+PLATFORM independently decides Allow/AfterMatch/Withhold per
+attribute — but the platform's half was fixed in code, an immutable
+`PlatformPolicy` bound at store construction. `MatchStore.gate/
+setGate/gateOverrides` (specs/match.md, "The gate policy, live") make
+it a live var instead; `/market` gets a small panel so a viewer can
+flip it and WATCH the effect, admin-token gated the same way
+`/admin/replay` is.
+
+```
+POST /admin/gate  — body: {"attr":"<name>","gate":"Allow"|"AfterMatch"|"Withhold"}
+                     admin-token gated (Secure.granted + Admin.Issuer,
+                     the same 401/403 ladder as /admin/replay);
+                     on success, marketChanged("gate") pings /events/
+                     market so /market re-renders live
+GET  /market.json — gained a "gates" field: the current overrides,
+                     {"attr": "Allow"|"AfterMatch"|"Withhold", ...}
+```
+
+`/market`'s new panel lists the current overrides and a small form
+(attribute + gate select) that prompts for the admin token and POSTs,
+mirroring the existing replay button's client shape exactly.
+
+- [x] the gate flip is admin-token gated: no token refuses, and
+      nothing changes until a valid token is presented
+- [x] a flip takes effect on the VERY NEXT read — Withhold makes a
+      previously-visible Public fact disappear from /market.json,
+      with no restart
+- [x] an unknown gate value is refused, nothing registered
+- [x] /market.json's "gates" field reflects exactly what was set
+
 ## Polish (demo-polish)
 - The page states its MODE (scripted/local/live) and links /market.
 - `/market` — the marketplace, visible: offers and needs as lists of
