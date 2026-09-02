@@ -1,5 +1,38 @@
 # Changelog
 
+## staged-codecs — the STAGED fold mode, kept
+Completed: 2026-09-02
+Landed as 92fc9ed (5 commits). The operator asked what final tagless
+and staging could still buy; every effect-side staging lane was
+already measured (staged-tagless 1.6x, staged-effects 1.9x, pipelines
+~10x, direct 1.06x of hand), and the one promise left unkept was
+specs/codecs.md's "the fold runs in two modes, interpreted or
+STAGED". Step 0 priced it: the interpreted Schema fold was 6.0x over
+a hand-written encoder and 7.6x over a hand-written AST decoder,
+circe between. Step 1 is `Staged.json[A]`, a macro that folds the
+Mirror at expansion and emits straight-line StringBuilder appends and
+field lookups: encode 168 ns vs 820 (4.9x, 1.25x of hand, 3.2x
+faster than circe), decode-from-AST 114 vs 634 (5.6x, 1.6x of hand,
+2.4x faster than circe). Faithfulness is a construction-time SHAPE
+check, not derived-detection: the first cut tried to read whether a
+field's Schema came from Schema.derived and a probe proved a given
+val is a bare reference at the macro (derived=false everywhere, the
+"staged" codec level with the fold because everything delegated), so
+each product/sum gets one hoisted `val ok_T` comparing the run-time
+schema's names with the Mirror's, and every staged node is `if ok_T
+then straight-line else the fold`. TestStaged agrees byte-for-byte
+and Left-for-Left over products, sums, Option/List/Vector, all the
+totality doors, an Iso field and a recursive type, on JVM, JS and
+Native. The finding that is not this lane's: Json.parse of a
+150-byte object is 14.6 µs against circe's 0.55 (the lossless CST
+parser) — with decode at 0.1 µs, text→value is all parser; filed as
+json-value-parser. Also filed: staged-cbor, staged-runtime. On the
+way: Json.escape public, six jmh -Wall warnings gone (three that
+remain are kyo's macros). Rebased over five siblings' landings; the
+build's `clean; Test/compile` shows 3 warnings from siblings' fresh
+landings (okay-live TestHub/TestRegistry imports, ChatDemo.scala:863)
+— theirs to take, reported in the room.
+
 ## demo-e2e-browser — one chat round through a real headless browser
 Completed: 2026-09-02
 Landed as d0dbf4e (spec) + 03b2099 (impl). Every existing demo test
