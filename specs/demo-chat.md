@@ -599,6 +599,59 @@ engine has no opinion about lives beside it, keyed by profile uuid.
       exactly when gated, absent otherwise (a stub Transport/handler
       test, not a live-model assertion)
 
+## A browser-level proof (demo-e2e-browser)
+
+Every test so far hits the HTTP/SSE seam directly (`java.net.http.
+HttpClient`) — proving the SERVER honestly, but never actually
+running the shipped bundle in a JS engine. `ChatUi`'s view/update
+fold is already JVM-tested (specs/demo-chat.md, React frontend); what
+was untested is the remaining glue in `Main.scala` — the real
+`fetch`+`ReadableStream` reader driving `/chat` and the real
+`EventSource` driving `/events/:email` — both of which a JVM unit
+test cannot exercise, only a real JS engine can.
+
+Weighed three ways to get one: HtmlUnit (pure JVM, no browser
+binary, but its own JS engine's `fetch`-stream and `EventSource`
+support is exactly the patchy weak spot this test needs to be solid
+on — the wrong tool for proving the two things that are actually in
+question); Selenium (needs a real browser + matching driver
+pre-installed on whatever machine runs the test — a precondition
+outside sbt's control, fragile to pin); Playwright for Java (one
+Maven dependency, downloads its OWN Chromium on first use into a
+user cache — no system browser needed anywhere, full real-browser
+fidelity for both `fetch` streaming and `EventSource`). Took
+Playwright for the same reason `okay-langchain4j-embed` took the
+local ONNX model over a network API: self-contained, no external
+service, but it IS a real download this task should not force on
+every contributor.
+
+`okay-demo-e2e-browser` (JVM, `com.microsoft.playwright:playwright`):
+one test, driving one real chat round through a headless Chromium
+against the SAME `ChatDemo.routes` every other test boots
+(`Jetty.serve`, scripted model, a random port) — type into the
+`data-key="draft"` input, click the `data-key="send"` button, wait
+for the bot bubble under `data-key="log"` to carry the scripted
+echo. **Deliberately kept OUT of `okay-demo`'s own test sourceset and
+the root `.aggregate(...)` list** (build.sbt) — Playwright's browser
+download is a first-run cost no ordinary `sbt test` should pay;
+invoke it explicitly: `sbt "okayChatWebJS/fastLinkJS"
+"okayDemoE2eBrowser/test"` (the bundle must be linked first — the
+demo server serves the React page only when `Chat.appJs` finds one,
+same precondition `TestChatDemo`'s own React-page test already
+`assume`s on). Absent browsers/driver (no install run yet) SKIPS,
+named — the same "the dependency isn't here" discipline as `liveTest`
+for a missing local model, not a failure.
+
+Behavior:
+- [ ] one chat round through a REAL browser: typed text appears in
+      the user bubble, the scripted reply streams in token by token
+      and the bot bubble ends up carrying it — proving `fetch` +
+      `ReadableStream` actually decodes the SSE frames in a real
+      engine, not just in the JVM unit test's string-splitting
+- [ ] the test SKIPS, named, when the bundle is not linked or
+      Playwright's browser is not installed — never a false failure
+      for an absent local precondition
+
 ## Out of scope
 - Persistence of conversations, multi-user rooms (okay-match's
   DURABLE store is one constructor swap for facts/deals/flows; the
