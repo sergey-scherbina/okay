@@ -211,6 +211,15 @@ document.
   `asInstanceOf[A =:= B]` on the witness is the one claim in the
   file; the bound to references also removes the `AnyRef` casts that
   `eq` needed. TRef provides its Keyed in its companion.
+  Then (same-typeclass, 2026-09-02, the operator's request) the
+  proof became a typeclass of its own, `okay.Same[K[_]]` in
+  Same.scala — `same(a: K[A], b: K[B]): Option[A =:= B]`,
+  `Same.byIdentity` for reference tokens (the one witness cast in
+  the stack), `a.sameAs(b)` — and TMap uses it. Scala 3's own
+  equality, `CanEqual[L, R]` under `strictEquality`, is the
+  sibling that permits `==` without proving anything; from a
+  `Same[K]` a `CanEqual[K[A], K[B]]` is derived at package level,
+  so token keys compare with `==` in strict mode too (tested).
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark
 (src/jmh ChannelBenchmark, alternating A/B rounds, medians, busy

@@ -5,7 +5,7 @@ package okay
 class TestTMap extends munit.FunSuite {
 
   final class Key[A](val name: String)
-  given TMap.Keyed[Key] = TMap.Keyed.byIdentity
+  given Same[Key] = Same.byIdentity
 
   test("a key holds a value of its own type; a wrong type does not compile") {
     val n = Key[Int]("n")
@@ -18,7 +18,7 @@ class TestTMap extends munit.FunSuite {
     val errors = compileErrors("""
       val t = new okay.TestTMap()
       val k = t.Key[Int]("k")
-      okay.TMap.empty[t.Key].updated(k, "not an int")(using t.given_Keyed_Key)""")
+      okay.TMap.empty[t.Key].updated(k, "not an int")(using t.given_Same_Key)""")
     assert(errors.nonEmpty, "a String under an Int key compiled")
   }
 
