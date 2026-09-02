@@ -1,5 +1,25 @@
 # Changelog
 
+## demo-streaming-cut — the demo as llm-streaming-cut's first consumer
+Completed: 2026-09-02
+Landed as 0aa67f4 (spec) + b1bd957 (impl). Cut.guard shipped earlier
+(specs/llm-agentic.md) but the demo only ever checked the token
+BUDGET; okay-chat's reply/chatRoute gain an optional policy:
+(Int, String) => Option[Cut.Violation], checked alongside the budget
+inside the SAME Cut.checked — additive, defaults to never-violate, so
+every existing caller (okay-chat's own prior tests included) is
+unchanged. okay-demo wires a small banned-word content policy (a
+stand-in for "off-policy content" — the point is the MECHANISM, a
+live generation aborting on what it SAYS, not just how much);
+Chat.scripted echoes the user's own message, so typing the banned
+word is itself the trigger, offline, no separate demo-only model
+needed. 5 new okay-chat unit tests, 2 new demo integration tests.
+Closes BOTH backlog gates this pair had open: demo-streaming-cut
+(okay-demo section) and llm-streaming-cut (Elsewhere). Suite 32-33/33
+clean over three runs, one red the known LIVE-model-endpoint flake
+(and a stale sbt/zinc symbol cache in okay-ops hit along the way,
+fixed by clearing its target dir — unrelated build-tooling noise).
+
 ## security-sessions — SessionIssuer + OneTimeCode, the recipe two callers already duplicated
 Completed: 2026-09-02
 Landed as dc968be (spec) + 2ff03c9 (impl). Third and last of the

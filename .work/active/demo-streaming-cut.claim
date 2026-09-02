@@ -1,5 +1,0 @@
-slug: demo-streaming-cut
-branch: feature/demo-streaming-cut
-worktree: ../okay-wt-demo-streaming-cut
-claimed: 2026-09-02
-scope: the demo as llm-streaming-cut's first consumer (BACKLOG.md okay-demo + Elsewhere). Cut.guard already ships (specs/llm-agentic.md) but the demo only ever checks the token BUDGET; this widens Chat.reply with a pluggable content check so a validator can ABORT mid-stream on content, not just length, and wires a demonstrable content policy + scripted trigger phrase into the demo. specs/demo-chat.md + specs/llm-agentic.md (close the Elsewhere consumer gate).

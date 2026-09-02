@@ -295,11 +295,13 @@ construction instead of a type test per value).
       (Jetty's did not — found by mcp-push, fixed there)
 
 ## okay-demo (the showcase lane — specs/demo-chat.md, specs/match.md)
-- [ ] demo-streaming-cut — the demo as llm-streaming-cut's first
-      consumer: Cut.guarded installs a named prompt over the LIVE
-      generation and a validator ABORTS a stream that goes off-policy
-      mid-flight (today Cut guards only the token budget). Opens the
-      gate on the Elsewhere entry; ADDITIVE — the unguarded path stays.
+- [x] demo-streaming-cut — LANDED 2026-09-02: `Chat.reply`/`chatRoute`
+      gain a `policy: (Int, String) => Option[Cut.Violation]`, checked
+      alongside the token budget in the SAME `Cut.checked` — additive,
+      defaults to never-violate. The demo wires a banned-word content
+      policy; `Chat.scripted` echoes the user's message, so typing the
+      banned word is itself the trigger, offline. Closes the Elsewhere
+      gate on `llm-streaming-cut`.
 - [x] demo-ctx-wiring — LANDED 2026-09-02: ChatDemo.handler(budget)
       is `(Transport, Secrets, MatchStore) ?=> Route`; main wires
       Transports.http() + Secrets.env, the test wires a canned wire +
@@ -456,13 +458,11 @@ not a new primitive from scratch.
 - [ ] ctx-reader-bridge — `(A ?=> B) <-> B ! Reader % A`, one
       Conversion each way; GATED: no consumer named
       (specs/context-functions.md)
-- [ ] llm-streaming-cut — the OPEN P9 item given its mechanism:
-      Cut.guarded installs a named prompt over a streamed
-      generation, a validator ABORTS to it (Delim; the doctrine's
-      PRIMARY case — cross-boundary exit has no handler
-      equivalent); ADDITIVE as an API: the unguarded path stays
-      (specs/llm-agentic.md, Streaming validation; consumer named:
-      demo-streaming-cut)
+- [x] llm-streaming-cut — CLOSED 2026-09-02: the mechanism shipped
+      earlier (Cut.guarded/checked/screened) and the consumer landed
+      (demo-streaming-cut) — okay-chat's reply/chatRoute take a
+      content `policy` alongside the token-budget check
+      (specs/llm-agentic.md, Streaming validation)
 - [ ] logic-named-cut — GATED on a search consumer
       (specs/backtracking.md)
 - [ ] r-restarts — GATED twice: on r-subprocess and on a restart
