@@ -1,0 +1,5 @@
+slug: channel-cas
+branch: feature/channel-cas
+worktree: ../okay-wt-channel-cas
+claimed: 2026-09-02
+scope: Channel without the lock — one immutable State (persistent queues + counters) in an AtomicReference, every operation a pure State => (State, action) applied by a CAS loop (the Drive handshake's shape); action runs after the CAS. Same surface, same tests + a multi-producer/multi-consumer stress. specs/cross-platform-async.md. Operator: "сделай все неблокирующим через cas immutable state".
