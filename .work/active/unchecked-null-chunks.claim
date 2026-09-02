@@ -1,0 +1,5 @@
+slug: unchecked-null-chunks
+branch: feature/unchecked-null-chunks
+worktree: ../okay-wt-unchecked-null-chunks
+claimed: 2026-09-02
+scope: BACKLOG unchecked-audit — the five `case c: Chunk[Byte] @unchecked` over a `Chunk[Byte] | Null` scrutinee (blob Backup/Fs, http Transports jvm+js, Nio) become null-first matches with flow typing; the Fold specialization tests (Chunks/Writer, 8) and Throws' union dispatch (12) recorded as the stated kernels.
