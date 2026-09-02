@@ -709,17 +709,10 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
-  test("OKAY_CHAT_DB=postgres://… parses purely: user/pass/host/port/db, sslmode as the TLS ladder, refusals named") {
-    val Right(t) = PgTarget.parse("postgres://okay:s3cret@db.internal:5433/market?sslmode=verify-full&sslrootcert=/etc/ca.crt"): @unchecked
-    assertEquals((t.host, t.port, t.user, t.password, t.database), ("db.internal", 5433, "okay", "s3cret", "market"))
-    assertEquals(t.tls, Some(okay.tls.TlsConfig(mode = okay.tls.SslMode.VerifyFull, caFile = Some("/etc/ca.crt"))))
-    // the defaults are the dockerized ones: port 5432, plaintext, db = user
-    assertEquals(PgTarget.parse("postgresql://okay@localhost").map(x => (x.port, x.database, x.tls)),
-      Right((5432, "okay", None)))
-    assert(PgTarget.parse("postgres://h/db?sslmode=prefer").left.exists(_.contains("prefer")))
-    assert(!PgTarget.is("okay-chat.db") && PgTarget.is("postgres://h/db"))
-  }
-
+  // PgTarget's own parsing behavior is proven in okay-pg's
+  // TestPgTarget now (specs/sql.md) — moved 2026-09-02, it never had
+  // a demo dependency. This test stays: it proves the DEMO'S OWN
+  // wiring (marketOf -> SqlMatch over the live wire driver).
   test("OKAY_CHAT_DB=postgres://… is a live marketplace on the wire driver (skips without the dockerized Postgres)") {
     val host = sys.env.getOrElse("OKAY_PG_HOST", "127.0.0.1")
     val port = sys.env.get("OKAY_PG_PORT").flatMap(_.toIntOption).getOrElse(5432)

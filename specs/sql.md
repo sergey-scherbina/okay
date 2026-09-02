@@ -348,7 +348,7 @@ import — and the platforms it runs on.
       and the live SCRAM handshake proves the seam end to end. The
       signing surface (RSA/ECDSA, JWT key handles) stays in
       okay-security, which owns those heavier concerns
-- [ ] `PgTarget.parse` round-trips every field a `postgres://` URL
+- [x] `PgTarget.parse` round-trips every field a `postgres://` URL
       names (user/pass/host/port/db), the `sslmode` ladder
       (disable/require/verify-ca/verify-full) maps onto `TlsConfig`,
       `sslrootcert` carries through to `verify-ca`/`verify-full`,
