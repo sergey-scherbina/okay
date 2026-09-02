@@ -185,6 +185,22 @@ construction instead of a type test per value).
       module) — green in isolation immediately after (4/4). Pattern
       is firmly environmental; escalate to the owner lane for the
       isolate-under-load fix rather than re-triaging per landing.
+      FIFTH sighting, a new family, 2026-09-02 (direct-tail-fusion
+      matrix): okay.docs.mongo.TestMongoDocs, okay.kafka.
+      TestElectionKafka, okay.kafka.TestKafkaEos timed out (30-120s,
+      the driver's own serverSelectionTimeout/munit deadline) rather
+      than skipping in milliseconds — TWICE, once under sibling load
+      and once on an otherwise-quiet box (docker daemon absent
+      entirely both times: `docker ps` -> "no such file or
+      directory"); Direct.scala (a compile-time macro, zero I/O) was
+      the only changed module. All three green (clean skip) in
+      isolation immediately after, both isolated runs. Same
+      signature as netty-ws-matrix-flake, a different service
+      family: the availability PROBE (not the feature) starves under
+      sbt's own full-matrix forked-JVM parallelism. Settle with the
+      same fix as netty-ws-matrix-flake, one lane: a probe deadline
+      short enough to survive full-matrix contention, or the
+      isolate-under-load loop.
 
 ## Correctness and the core (specs/sim.md, specs/typestate.md)
 
