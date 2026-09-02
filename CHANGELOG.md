@@ -1,5 +1,24 @@
 # Changelog
 
+## unchecked-null-chunks — the audit's last lane, and a slip on the way
+Completed: 2026-09-02
+Landed as 9eaf17f (2 commits). The five `case c: Chunk[Byte]
+@unchecked` over a `Chunk[Byte] | Null` scrutinee (blob Backup and
+Fs, http Transports on JVM and JS, Nio) are null-first matches — after
+`case null`, flow typing types `c` — no annotation needed. The other
+non-`resume` `@unchecked` are the stated kernels: Chunks/Writer's
+Fold specialization dispatch (8) and Throws' union dispatch (12),
+both commented at their site. The slip, reported plainly: the first
+commit of this lane carried only the BACKLOG entry — the perl
+substitution had not matched, the count line said 5 remained, and I
+read the passing tests as the edit's success; the second commit has
+the edits, verified by the count reaching 0. The cast tally for
+src/main across the day: 185 → 97; what remains is kernels with a
+stated reason (ChunkBuf, Eager, Pipe, Same, Schema, Effects), JVM
+interop (blob S3/Offload/Backup, java Streams, CryptoJvm, kyo) and
+small ones in ui/rag — named in BACKLOG for the next audit. Also
+the JS fetch chain's unused promise is discarded explicitly.
+
 ## typed-js-facades — the web globals stated once, in types
 Completed: 2026-09-02
 Landed as 871e36a. The "raw js.Dynamic, no scala-js-dom" decision in
