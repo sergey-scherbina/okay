@@ -1,5 +1,18 @@
 # Changelog
 
+## same-operator — === is the witness
+Completed: 2026-09-02
+Landed as bf7825d. The operator: "можем определить оператор ===
+такой как нам нужно". What the stack needs from equality of typed
+tokens is the proof, so `a === b` (with a `Same[K]`) is
+`Option[A =:= B]`: in the `Some(ev)` branch the compiler knows A is
+B and `ev` converts; `=!=` is the Boolean "not the same key"; `==`
+stays `equals` for a plain yes or no (permitted under strictEquality
+by the derived CanEqual). TMap's lookups read `e.key === k`. Test:
+a value moves from one key to another only with the proof in hand,
+and an A is not a B without it (compile error). JS/Native green,
+every module compiles.
+
 ## same-by-value — Same for value keys, with the tag that makes it sound
 Completed: 2026-09-02
 Landed as c8ce5a4 (2 commits). The operator asked for Same over
