@@ -128,9 +128,6 @@
 ## okay-pg (specs/sql.md — the wire driver)
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
-- [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:
-      driver availability, not performance — virtual threads
-      already cover JDBC-behind-Async)
 
 ## okay-conf (specs/conf.md)
 

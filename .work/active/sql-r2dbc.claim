@@ -1,5 +1,0 @@
-slug: sql-r2dbc
-branch: feature/sql-r2dbc
-worktree: ../okay-wt-sql-r2dbc
-claimed: 2026-09-02
-scope: okay-r2dbc — the JVM reactive-driver hatch behind Sql: R2dbcSql(connection) over io.r2dbc.spi (query as pulled chunks, update/batch, transactions, describe honestly framed), r2dbc-h2 in tests, r2dbc-postgresql live. specs/sql.md (the hatch box), docs/modules.

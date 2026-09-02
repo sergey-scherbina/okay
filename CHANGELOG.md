@@ -1,5 +1,24 @@
 # Changelog
 
+## sql-r2dbc — okay-r2dbc, the R2DBC hatch behind Sql
+Completed: 2026-09-02
+Landed as e8aa08d (operator: "НУЖЕН"). A new JVM module: `R2dbcSql(conn)`
+over any `io.r2dbc.spi.Connection` — query as PULLED chunks through a
+demand-driven Subscriber (request(fetchSize), park behind Async.Run),
+update/batch summing every Result's count, transact with the granted
+isolation read back, the seam's SqlValue/Col vocabulary; the typed
+layer runs unchanged, the same suite on H2 (r2dbc-h2) and the
+dockerized Postgres (r2dbc-postgresql). Two SPI lessons recorded in
+specs/sql.md: Results must be consumed one at a time (collecting them
+first hangs against the Postgres driver — H2 is eager and hid it; the
+hang is what all those SIGTERM'd runs were sitting in), and metadata
+exists only with a row, so describe reads the first row's, an empty
+result describes as EMPTY, and nullability is the driver's word
+(r2dbc-postgresql: UNKNOWN, so verify names every non-Option column).
+Docs: docs/modules/okay-r2dbc.md. Matrix: 70 suites in chunks, green
+except the demo's LIVE model tests, which the local endpoint drops
+under load (a sibling has claimed live-skip-on-gateway-loss).
+
 ## stm-typed-interpreter — the handlers typed, one cast left, a rule in AGENTS.md
 Completed: 2026-09-02
 Landed as f50387f. The operator saw the remaining casts in
