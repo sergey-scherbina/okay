@@ -141,16 +141,17 @@ object Grounded {
       view
 
     val nt: Context ==> ([X] =>> X ! F) =
-      [X] => (e: Context[X]) => (e match
-        case Context.Remember(t) => okay.pure[F, Unit](st.remember(t))
+      // the row is covariant, so a case gives X >: its answer; `!` is
+      // invariant in the answer, so each branch is built AT X
+      [X] => (e: Context[X]) => e match
+        case Context.Remember(t) => okay.pure[F, X](st.remember(t))
         case Context.Recall() =>
           val conversation = st.recall
           lastQuestion(conversation) match
-            case None => onRecall(conversation); okay.pure[F, Seq[Turn]](conversation)
-            case Some(q) => retriever.retrieve(q, k).map(assemble(conversation, _))
-        case Context.Mark() => okay.pure[F, Snapshot](st.mark)
-        case Context.Restore(s) => okay.pure[F, Unit](st.restore(s))
-      ).asInstanceOf[X ! F]
+            case None => onRecall(conversation); okay.pure[F, X](conversation)
+            case Some(q) => retriever.retrieve(q, k).map[X](assemble(conversation, _))
+        case Context.Mark() => okay.pure[F, X](st.mark)
+        case Context.Restore(s) => okay.pure[F, X](st.restore(s))
 
     (st, nt)
 }

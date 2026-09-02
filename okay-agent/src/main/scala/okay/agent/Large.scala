@@ -66,8 +66,9 @@ object Large {
               full.substring(from, to) + tail
         )
 
-      case Tool.Call(_) =>
-        val full: String = inner.handle(e).asInstanceOf[String]
+      case Tool.Call(c) =>
+        // asked as a Tool[String], the inner handler answers a String
+        val full: String = inner.handle(Tool.Call(c))
         (if full.length <= limit then full
         else
           val id = store.put(full)

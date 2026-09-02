@@ -62,6 +62,14 @@ object Schema {
       def one[X](name: String, sc: Schema[X], v: Any): R = f(name, sc, v.asInstanceOf[X])
       p.parts(a).toVector.zip(p.fields).map((v, fld) => one(fld._1, fld._2(), v))
 
+  /** the DEFAULTS kernel, once: `defaults` is aligned with `fields`
+   * (Defaults.of builds it from the Mirror in field order), so the
+   * i-th default IS the i-th field's type */
+  extension [A](p: SProduct[A])
+    def defaultAt[R](i: Int)(f: [X] => (Schema[X], X) => R): Option[R] =
+      def one[X](sc: Schema[X], d: () => Any): R = f(sc, d().asInstanceOf[X])
+      p.defaults.lift(i).flatten.map(d => one(p.fields(i)._2(), d))
+
   /** the SUM kernel, once: `caseOf` is the Mirror's ordinal, so the
    * value IS that case's type — a codec sees it at that type through f */
   extension [A](su: SSum[A])

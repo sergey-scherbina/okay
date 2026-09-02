@@ -180,7 +180,7 @@ object Durable {
       val key = keyFor(n, original)
       if !recorded.exists(_.seq == n) then
         journal.append(Entry(n, original.name, fp, key, None))
-      val answer = inner.handle(Tool.Call(toRun)).asInstanceOf[String]
+      val answer: String = inner.handle(Tool.Call(toRun))
       journal.complete(n, answer)
       answer
 

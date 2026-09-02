@@ -45,7 +45,7 @@ object ToolSpec {
         (n, defaulted(i) match
           case Some(d) => base match
             case Json.JObj(fs) => Json.JObj(fs :+
-              ("default" -> Json.parse(Json.encode(f().asInstanceOf[Schema[Any]])(d()))))
+              ("default" -> Json.parse(p.defaultAt(i)([X] => (sc: Schema[X], x: X) => Json.encode(sc)(x)).get)))
             case other => other
           case None => base)
       }

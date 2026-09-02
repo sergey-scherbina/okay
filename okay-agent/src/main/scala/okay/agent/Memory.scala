@@ -33,12 +33,12 @@ object Memory {
       case Context.Remember(t) => (policy.add(s, t), ())
       case Context.Recall() => (s, policy.present(s))
       case Context.Mark() => (s, Snapshot(s))
-      case Context.Restore(m) => (m.state.asInstanceOf[S], ())
+      case Context.Restore(m) => (m.stateAs[S], ())
 
     @tailrec def loop(s: S)(x: A ! (Context + F)): (S, A) ! F = (x.resume: @unchecked) match
       case Pure(a) => Pure((s, a))
       case Effect(e) => okay.<|>[Context, F](e) match
-        case Left(c) => Pure(answer(s, c).asInstanceOf[(S, A)])
+        case Left(c) => Pure(answer(s, c))
         case Right(g) => Effect(g).map((s, _))
       case Bind(Effect(e), k) => okay.<|>[Context, F](e) match
         case Left(c) =>

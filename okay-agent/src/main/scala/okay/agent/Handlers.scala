@@ -32,7 +32,7 @@ object Handlers {
 
     def mark: Snapshot = Snapshot(acc)
 
-    def restore(s: Snapshot): Unit = acc = s.state.asInstanceOf[S]
+    def restore(s: Snapshot): Unit = acc = s.stateAs[S]
 
     /** the whole history the policy kept, uncompacted by present */
     def state: S = acc
@@ -90,7 +90,7 @@ object Handlers {
 
     okay.!.translate[A, Tool, F](prog) {
       [X] => (e: Tool[X]) => e match
-        case Tool.Call(c) => okay.pure(answer(c).asInstanceOf[X])
+        case Tool.Call(c) => okay.pure[F, X](answer(c))
     }
 
   // ---------------------------------------------------------------- model

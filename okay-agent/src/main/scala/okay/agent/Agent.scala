@@ -75,7 +75,14 @@ enum Context[+A]:
 object Context:
   given okay.TypeableK[Context] = okay.typeableK(classOf[Context[?]])
 /** an opaque handle to a context state (a persistent value) */
-final class Snapshot(private[agent] val state: Any)
+final class Snapshot(private[agent] val state: Any):
+  /** the SNAPSHOT kernel, once: a snapshot is only ever made by a
+   * ContextState's `mark` and only ever restored into the same
+   * policy's state — the Context row carries no S (the agent never
+   * names its memory's type), so the erased state comes back as the
+   * S of whoever asks, and that caller is by construction the one
+   * that made it */
+  private[agent] def stateAs[S]: S = state.asInstanceOf[S]
 
 /**
  * The row an agent lives in. The ORDER is deliberate: peeling from

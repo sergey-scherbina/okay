@@ -151,14 +151,15 @@ object Provider {
     // Model operation answers with a PROGRAM in Async, which is what
     // Handler[Model] = Model ==> Id could not express — Id has
     // nowhere to put the suspension
-    okay.!.translate[A, Model, okay.Async + F](
-      okay.!.widen[A, Model + F, okay.Async](prog)
-        .asInstanceOf[A ! (Model + (okay.Async + F))]) {
+    // a row is a union, so (Model + F) + Async IS Model + (Async + F):
+    // the ascription is the compiler's own equality, not a cast
+    val widened: A ! (Model + (okay.Async + F)) = okay.!.widen[A, Model + F, okay.Async](prog)
+    okay.!.translate[A, Model, okay.Async + F](widened) {
       [X] => (e: Model[X]) => e match
-        case Model.Complete(ctx, tools) =>
-          okay.!.widen[Reply, okay.Async, F](complete(ctx, tools))
-            .asInstanceOf[X ! (okay.Async + F)]
-        case Model.Count(text) => okay.pure(count(text))
+        // covariant row: X >: the case's answer, and `!` is invariant —
+        // so the answer is lifted to X (a map, not a cast)
+        case Model.Complete(ctx, tools) => okay.!.widen[Reply, okay.Async, F](complete(ctx, tools)).map[X](r => r)
+        case Model.Count(text) => okay.pure[okay.Async + F, X](count(text))
     }
 
   /** the OpenAI-compatible provider as a relay — the cross-platform door */
