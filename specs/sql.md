@@ -53,6 +53,7 @@ enum SqlValue:
   case I32(v: Int); case I64(v: Long); case F64(v: Double)
   case Text(v: String)
   case Bytes(v: Array[Byte])
+  case Num(v: BigDecimal)              // numeric/decimal, EXACT (pg-scalar-types)
   case Arr(elems: Vector[SqlValue])    // a SQL array (pg-composite-decode)
   case Row(fields: Vector[SqlValue])   // a composite / ROW() value
 
@@ -61,6 +62,7 @@ enum SqlValue:
  * checked against (sql-schema-composite) */
 enum SqlType:
   case Bool, I32, I64, F64, Text, Bytes
+  case Num                             // numeric/decimal: exact, arbitrary precision
   case Other(name: String)             // a vendor type, by name
   case Arr(elem: SqlType)              // an array column
   case Row(fields: Vector[SqlType])    // a composite column
@@ -215,6 +217,28 @@ import — and the platforms it runs on.
       table's ROW-type (relkind='r') selected whole — every table
       would join the preload; the `(t).*` expansion or `row_to_json →
       Schema` is the road until a consumer names the need
+- [ ] numeric is EXACT and the vendor scalars are NAMED
+      (pg-scalar-types). `numeric`/`decimal` decoded to F64 was a
+      stated v1 loss; it silently rounded money. Now both drivers
+      carry `SqlValue.Num(BigDecimal)` under `SqlType.Num` (pg 1700
+      from its text form, NaN/±Infinity falling to F64 since a
+      BigDecimal has none; JDBC NUMERIC/DECIMAL via getBigDecimal/
+      setBigDecimal), and bind `Num` params. The Schema layer: a
+      `Double` field still reads a Num column (lossy BY THE FIELD'S
+      CHOICE — the v1 consumers keep working, the loss is now in the
+      user's type, not the driver's); a `String` field reads it as its
+      exact decimal text; `given Schema[BigDecimal]` (okay.sql, a
+      wrap over String so it also travels as text in JSON/CBOR) gives
+      the exact typed field, and verify passes it against Num.
+      The pg scalars that fell through to `Other("oid:N")` — uuid,
+      json, jsonb, timestamp, timestamptz, date, time, timetz,
+      interval, inet, cidr, macaddr, xml, money — are now NAMED
+      `Other("uuid")` etc. in describe; their VALUES stay pg's
+      canonical text (`Text`) — bind-don't-model, and no java.time in
+      a JVM/JS/Native module. A `String` field (or any wrapper over
+      String: `Schema.wrap(UUID.fromString, _.toString)` on the JVM)
+      fits ANY `Other` column with a clean verify: the text IS what
+      the wire carries. Proven live on pg and over H2
 - [x] the Schema layer binds Arr/Row (sql-schema-composite): a
       case-class field typed `Vector[T]`/`List[T]` decodes from
       `SqlValue.Arr` (elements recursed through the same shape, so
