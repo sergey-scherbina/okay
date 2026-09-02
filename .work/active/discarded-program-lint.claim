@@ -1,0 +1,5 @@
+slug: discarded-program-lint
+branch: feature/discarded-program-lint
+worktree: ../okay-wt-discarded-program-lint
+claimed: 2026-09-02
+scope: make a DISCARDED effect program (`A ! F` in statement position, or adapted to Unit) a compile ERROR via -Wconf escalation of the existing -Wall lints; probe first which shapes the compiler sees (statement, Unit def, lambda adaptation, foreach, for-do), record the holes. Operator's question after channel-callback.
