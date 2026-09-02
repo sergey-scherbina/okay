@@ -110,7 +110,8 @@ object Json {
   // ----------------------------------------------------------------
   // the two Schema algebras
 
-  private def escape(s: String): String =
+  /** JSON string escaping, public: a staged or hand-written encoder needs the same rule */
+  def escape(s: String): String =
     s.flatMap {
       case '"' => "\\\""
       case '\\' => "\\\\"
