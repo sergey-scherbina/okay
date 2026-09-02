@@ -52,6 +52,10 @@ object Sim {
     case Send(ch: SimChannel[Any], a: Any) extends Op[Unit]
     case Receive(ch: SimChannel[Any]) extends Op[Option[Any]]
     case Close(ch: SimChannel[Any]) extends Op[Unit]
+    /** a scheduling point and nothing else: the fiber goes back to
+     * the runnable set and the seeded choice picks again (the STM
+     * handler puts one before every transactional step) */
+    case Yield() extends Op[Unit]
 
   // ── the program-side surface ───────────────────────────────────
 
@@ -64,6 +68,7 @@ object Sim {
     effect(Op.Send(ch.asInstanceOf[SimChannel[Any]], a))
   def receive[A](ch: SimChannel[A]): Option[A] ! Op =
     effect(Op.Receive(ch.asInstanceOf[SimChannel[Any]])).asInstanceOf[Option[A] ! Op]
+  def yieldNow: Unit ! Op = effect(Op.Yield())
   def close[A](ch: SimChannel[A]): Unit ! Op =
     effect(Op.Close(ch.asInstanceOf[SimChannel[Any]]))
 
@@ -184,6 +189,9 @@ object Sim {
           steps += s"$fid:recv-park(${ch.id})"
           recvWait.getOrElseUpdate(ch.id, mutable.Queue.empty)
             .enqueue((fid, (o: Option[Any]) => k(o)))
+      case Op.Yield() =>
+        steps += s"$fid:yield"
+        runnable += Task(fid, () => k(()))
       case Op.Close(ch) =>
         ch.closed = true
         steps += s"$fid:close(${ch.id})"

@@ -1,7 +1,6 @@
 package okay
 
-import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
-import scala.annotation.tailrec
+import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.immutable.Queue
 
 /**
@@ -16,10 +15,10 @@ import scala.collection.immutable.Queue
  * programs — the RUNTIME decides how to wait (runAsync: not at all;
  * Async.run: one park at the boundary, under CanBlock), and the
  * channel itself parks no thread and polls nothing. The state is
- * ONE immutable value in an AtomicReference, every operation a pure
- * transition installed by CAS (channel-cas): no lock, not even a
- * short one; callbacks run after the CAS, outside any critical
- * section.
+ * ONE immutable value in a TRef (the STM's cell, specs/stm.md),
+ * every operation a pure transition installed by its single CAS
+ * (channel-cas, then stm): no lock, not even a short one; callbacks
+ * run after the CAS, outside any critical section.
  *
  * A channel is itself a Stream (in Async), but a LINEAR one: the
  * observation consumes — a repeated uncons reads the NEXT element,
@@ -35,7 +34,7 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
    * is a pure State => (State, action); the action runs only after
    * the CAS that installed the new state won — the Drive handshake's
    * shape, so no thread ever holds a lock, not even for an instant */
-  private final case class State(
+  private[okay] final case class State(
     buf: Queue[A], size: Int,
     receivers: Queue[End => Unit],
     senders: Queue[(A, Boolean => Unit)],
@@ -44,12 +43,13 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
   // invariant: receivers waiting => buf empty and no sender waiting;
   // senders waiting => buf full (or capacity 0) and no receiver waiting
 
-  private val state = AtomicReference(State(Queue.empty, 0, Queue.empty, Queue.empty, true, null))
+  /** the channel IS a one-cell STM structure (specs/stm.md): its
+   * state is a TRef, its transitions go through TRef.modify — the
+   * single-CAS path a one-op transaction takes — and the full
+   * transaction language works on the same cell */
+  private[okay] val cell = TRef(State(Queue.empty, 0, Queue.empty, Queue.empty, true, null))
 
-  @tailrec private def transact[R](f: State => (State, () => R)): R =
-    val s = state.get
-    val (s2, act) = f(s)
-    if (s2 eq s) || state.compareAndSet(s, s2) then act() else transact(f)
+  private def transact[R](f: State => (State, () => R)): R = cell.modify(f)()
 
   private def endOf(s: State): End =
     if s.failure != null then Left(s.failure.nn) else Right(None)
@@ -157,9 +157,9 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
   }
 
   /** what ended the stream, if anything did badly */
-  def failed: Option[Throwable] = Option(state.get.failure)
+  def failed: Option[Throwable] = Option(cell.get.failure)
 
-  def isClosed: Boolean = !state.get.open
+  def isClosed: Boolean = !cell.get.open
 }
 
 /** a channel is an async stream of what it receives (linear: see
