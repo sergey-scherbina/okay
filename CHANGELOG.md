@@ -1,5 +1,28 @@
 # Changelog
 
+## deploy-package — a reusable deploy scaffold, not one app's Dockerfile
+Completed: 2026-09-02
+Landed as 3e0d390 (operator ask, following ops-monitoring). sbt-
+assembly packages any Okay service into one fat jar; a service opts
+in with two build.sbt lines (`assembly/mainClass`,
+`assembly/assemblyJarName := "app.jar"`) — okay-demo is the first.
+`deploy/Dockerfile` is ARG-parameterized by sbt module id, so one
+file serves every future service; `deploy/scripts/okay-package.sh
+<module> [tag]` wraps the jar build and, where a daemon answers, the
+image build too — and says so plainly when it does not (no Docker
+daemon was running during this landing; the operator had stopped it
+to free memory). `deploy/helm/okay-app` is one Helm chart,
+values-parameterized (image/tag/port/env), whose probes and
+`prometheus.io/scrape` annotation point at exactly the routes
+okay-ops already answers — proven with `helm lint` (clean) and `helm
+template` (rendered and inspected against a DemoChat example values
+file); Terraform's `helm` provider (or plain `helm install`) applies
+the same chart unchanged for a second service. The fat jar itself
+WAS proven live: `java -jar app.jar` served `/`, `/healthz`,
+`/readyz`, `/stats`, `/metrics` all 200 — the actual hard part
+(classpath, merge conflicts, one main), independent of whether a
+daemon exists to containerize it. specs/deploy.md; docs/deploy.md.
+
 ## okay-admin — protected admin routes, fixing the demo's unauthenticated /admin/replay
 Completed: 2026-09-02
 Landed as 1d29269 (spec) + 38ea057 (impl). Second of the three reusable-

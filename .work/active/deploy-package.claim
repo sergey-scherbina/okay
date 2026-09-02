@@ -1,5 +1,0 @@
-slug: deploy-package
-branch: feature/deploy-package
-worktree: ../okay-wt-deploy-package
-claimed: 2026-09-02
-scope: a REUSABLE deploy scaffold for any Okay app, not tied to one service — sbt-assembly for fat jars, a generic multi-stage Dockerfile (ARG-parameterized: MODULE, MAIN_CLASS), a build/run utility script, a generic Helm chart (probes at /healthz,/readyz, Prometheus scrape annotation at /metrics — okay-ops's own contract), DemoChat as the first concrete worked instance. specs/deploy.md, docs.
