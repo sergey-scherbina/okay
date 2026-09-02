@@ -177,10 +177,11 @@
       generation and a validator ABORTS a stream that goes off-policy
       mid-flight (today Cut guards only the token budget). Opens the
       gate on the Elsewhere entry; ADDITIVE — the unguarded path stays.
-- [ ] demo-ctx-wiring — the demo as ctx-wiring's first adopter:
-      ChatDemo's handler assembled as a handlers-awaiting-environment
-      value (`Http ?=> Secrets ?=> Handler`-shaped; room n244). Wiring
-      beauty only — behavior unchanged; closes the Elsewhere gate.
+- [x] demo-ctx-wiring — LANDED 2026-09-02: ChatDemo.handler(budget)
+      is `(Transport, Secrets, MatchStore) ?=> Route`; main wires
+      Transports.http() + Secrets.env, the test wires a canned wire +
+      memory Secrets and runs the LIVE Anthropic.stream path offline;
+      offline suites run over a DEAD wire. Closes the Elsewhere gate.
 - [ ] demo-replay-projections — an admin endpoint + UI button that
       DROPS the read models and rebuilds them from the persist log.
       Makes the log-first claim demonstrable in one click instead of
@@ -230,11 +231,10 @@
       business story, so let a viewer flip it and watch /market react.
 
 ## Elsewhere
-- [ ] ctx-wiring — handlers-awaiting-environment: factories
-      returning `Http ?=> Secrets ?=> Handler[Model]`-shaped values;
-      okay-demo adopts first (gate possibly OPEN since
-      demo-chat — offered to that lane, room n244; consumer named:
-      demo-ctx-wiring) (specs/context-functions.md)
+- [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and
+      shipped (demo-ctx-wiring — ChatDemo.handler as a
+      handlers-awaiting-environment value, genuinely rewired in
+      tests) (specs/context-functions.md)
 - [ ] ctx-reader-bridge — `(A ?=> B) <-> B ! Reader % A`, one
       Conversion each way; GATED: no consumer named
       (specs/context-functions.md)

@@ -1,5 +1,20 @@
 # Changelog
 
+## demo-ctx-wiring — the demo's handler as one value awaiting its environment
+Completed: 2026-09-02
+Landed as e812eb3 (spec) + ce7d346 (impl). ChatDemo.handler(budget) is
+`(Transport, Secrets, MatchStore) ?=> Route` — ctx-wiring's factory half,
+closed 2026-09-01 for want of "a consumer that actually rewires", reopened
+with that consumer and shipped: main wires Transports.http() + Secrets.env
+(the sys.env edge), the CTX WIRING test wires a canned Transport + memory
+Secrets and runs the REAL Anthropic.stream parsing offline (untestable
+before); every offline suite runs over a DEAD wire that throws on touch.
+Model dispatch (live/local/scripted) reads ambient Secrets as env:NAME
+refs. Merged over demo-replay-projections mid-flight (matchTurn's offset
+threaded through the ambient signatures); okay-chat.log/ (the FileStore
+the through-route tests now grow) gitignored. Suite 19/19; the one red
+seen was the local model flapping mid-load (the TestLive lesson).
+
 ## stm-typed-content — the cell's content typed end to end
 Completed: 2026-09-02
 Landed as e591d8e. The operator asked for Owned to be generic for
