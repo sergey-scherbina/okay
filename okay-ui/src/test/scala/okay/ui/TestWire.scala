@@ -104,7 +104,7 @@ class TestWire extends munit.FunSuite {
 
     val fiber = Async.spawn(Wire.client(host)(Writer.of(down), l => up.send(l).map(_ => ())))
     Seq(Event.Pressed("inc"), Event.Pressed("inc"), Event.Pressed("dec"), Event.Closed)
-      .foreach(feed.send)
+      .foreach(feed.offer)
     fiber.join()
 
     assertEquals(frames.toList, List(view(0), view(1), view(2), view(1)))

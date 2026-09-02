@@ -42,7 +42,7 @@ object ReactJs {
     @volatile private var current: Ui = Ui.Text("")
     def render(ui: Ui): Unit ! Async = async {
       current = ui
-      root.render(element(react, React.elem(ui), feed.send, () => current))
+      root.render(element(react, React.elem(ui), e => feed.offer(e): Unit, () => current))
       ()
     }
     def events: Source[Event] = Writer.of(feed)

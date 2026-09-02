@@ -19,7 +19,7 @@ class TestPortable extends munit.FunSuite {
       def render(ui: Ui): Unit ! Async = async { frames += ui; () }
       def events: Source[Event] = Writer.of(feed)
     val fiber = Async.spawn(Ui.run(0)(view)(update)(host))
-    Seq(Event.Pressed("inc"), Event.Pressed("inc"), Event.Closed).foreach(feed.send)
+    Seq(Event.Pressed("inc"), Event.Pressed("inc"), Event.Closed).foreach(feed.offer)
     assertEquals(fiber.join(), 2)
 
     // the terminal draws exactly these frames — same trees, same

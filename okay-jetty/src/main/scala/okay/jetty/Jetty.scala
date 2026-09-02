@@ -229,11 +229,11 @@ object Jetty {
   private def adapter(q: Channel[Frame]): Listen =
     Listen(new Listen.Sink:
       def open(session: Session): Unit = ()
-      def text(message: String): Unit = q.send(Frame.Text(message))
+      def text(message: String): Unit = q.offer(Frame.Text(message)): Unit
       def binary(payload: Array[Byte]): Unit =
-        q.send(Frame.Binary(scala.collection.immutable.ArraySeq.unsafeWrapArray(payload)))
+        q.offer(Frame.Binary(scala.collection.immutable.ArraySeq.unsafeWrapArray(payload))): Unit
       def closed(code: Int, reason: String): Unit =
-        q.send(Frame.Close(code, reason))
+        q.offer(Frame.Close(code, reason)): Unit
         q.close()
       def failed(cause: Throwable): Unit = q.fail(cause))
 
@@ -275,11 +275,11 @@ object Jetty {
     Listen(new Listen.Sink:
       def open(s: Session): Unit =
         Async.spawn(okay.http.Ws.over(socket(s, q))(stage)): Unit
-      def text(message: String): Unit = q.send(Frame.Text(message))
+      def text(message: String): Unit = q.offer(Frame.Text(message)): Unit
       def binary(payload: Array[Byte]): Unit =
-        q.send(Frame.Binary(scala.collection.immutable.ArraySeq.unsafeWrapArray(payload)))
+        q.offer(Frame.Binary(scala.collection.immutable.ArraySeq.unsafeWrapArray(payload))): Unit
       def closed(code: Int, reason: String): Unit =
-        q.send(Frame.Close(code, reason))
+        q.offer(Frame.Close(code, reason)): Unit
         q.close()
       def failed(cause: Throwable): Unit = q.fail(cause))
 }

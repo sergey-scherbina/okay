@@ -90,7 +90,7 @@ class TestScreens extends munit.FunSuite {
       def render(ui: Ui): Unit ! Async = async { frames += ui; () }
       def events: Source[Event] = Writer.of(feed)
     val fiber = Async.spawn(Nav.run(counter(0, "count"))(host))
-    Seq(Pressed("inc"), Pressed("open"), Pressed("back"), Closed).foreach(feed.send)
+    Seq(Pressed("inc"), Pressed("open"), Pressed("back"), Closed).foreach(feed.offer)
     fiber.join()
     assertEquals(Frame.render(frames.last)(0), "count: 1")
   }

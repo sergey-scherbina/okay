@@ -224,7 +224,7 @@ object Ui {
         events.close()
     def offer(e: Event): Unit =
       unprocessed.incrementAndGet()
-      events.send(e)
+      events.offer(e): Unit
 
     def drain(src: Source[Event]): Unit ! Async =
       Writer.uncons[Event, Unit, Async](src).flatMap {

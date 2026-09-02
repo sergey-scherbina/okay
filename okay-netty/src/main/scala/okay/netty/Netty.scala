@@ -73,7 +73,7 @@ object Netty {
                         if buf.readableBytes > 0 then
                           val a = new Array[Byte](buf.readableBytes)
                           buf.readBytes(a)
-                          q.send(scala.collection.immutable.ArraySeq.unsafeWrapArray(a))
+                          q.offer(scala.collection.immutable.ArraySeq.unsafeWrapArray(a)): Unit
                         if msg.isInstanceOf[LastHttpContent] then
                           q.close(); ctx.close(): Unit
                       case _ => ()
@@ -142,7 +142,7 @@ object Netty {
                         if opened.compareAndSet(false, true) then
                           k(Right(socket(ctx.channel, q)))
                       else msg match
-                        case f: WebSocketFrame => q.send(frameOf(f))
+                        case f: WebSocketFrame => q.offer(frameOf(f)): Unit
                         case _ => ()
 
                     override def channelInactive(ctx: ChannelHandlerContext): Unit =
@@ -251,7 +251,7 @@ object Netty {
     else
       ctx.pipeline.addLast(new SimpleChannelInboundHandler[WebSocketFrame] {
         def channelRead0(c: ChannelHandlerContext, f: WebSocketFrame): Unit =
-          q.send(frameOf(f))
+          q.offer(frameOf(f)): Unit
         override def channelInactive(c: ChannelHandlerContext): Unit = q.close()
       })
       handshaker.handshake(ctx.channel, req).addListener { (f: ChannelFuture) =>

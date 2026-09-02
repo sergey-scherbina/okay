@@ -108,5 +108,5 @@ object Dom {
       if key.nonEmpty then
         val tv = ev.target.value
         val value = if js.isUndefined(tv) || tv == null then "" else tv.toString
-        React.event(mirror, key, kind, value).foreach(feed.send)
+        React.event(mirror, key, kind, value).foreach(feed.offer)
 }

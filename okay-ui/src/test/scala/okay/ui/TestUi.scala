@@ -33,7 +33,7 @@ class TestUi extends munit.FunSuite {
   test("the loop: scripted events, frames in order, Closed answers the state") {
     val host = TestHost()
     val fiber = Async.spawn(Ui.run(0)(view)(update)(host))
-    for e <- Seq(Pressed("inc"), Pressed("inc"), Pressed("dec"), Closed) do host.feed.send(e)
+    for e <- Seq(Pressed("inc"), Pressed("inc"), Pressed("dec"), Closed) do host.feed.offer(e): Unit
     assertEquals(fiber.join(), 1)
     assertEquals(host.frames.toList, List(view(0), view(1), view(2), view(1)))
   }
@@ -41,7 +41,7 @@ class TestUi extends munit.FunSuite {
   test("an unchanged view is not re-rendered") {
     val host = TestHost()
     val fiber = Async.spawn(Ui.run(0)(view)(update)(host))
-    for e <- Seq(Pressed("nope"), Pressed("inc"), Closed) do host.feed.send(e)
+    for e <- Seq(Pressed("nope"), Pressed("inc"), Closed) do host.feed.offer(e): Unit
     assertEquals(fiber.join(), 1)
     assertEquals(host.frames.toList, List(view(0), view(1)))   // the no-op pressed nothing
   }
@@ -51,9 +51,9 @@ class TestUi extends munit.FunSuite {
     val ticks = Channel[Event]()
     val fiber = Async.spawn(
       Ui.run(0)(view)(update)(host, external = Writer.of(ticks)))
-    ticks.send(Pressed("inc"))
-    host.feed.send(Pressed("inc"))
-    ticks.send(Pressed("inc"))
+    ticks.offer(Pressed("inc")): Unit
+    host.feed.offer(Pressed("inc")): Unit
+    ticks.offer(Pressed("inc")): Unit
     // no Closed race: end both sources; the merged stream ends when
     // both do, and the loop answers the state it reached
     ticks.close(); host.feed.close()
