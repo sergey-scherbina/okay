@@ -172,7 +172,36 @@ document.
   woken transaction re-validates and parks again). `A` stays
   unbounded: `TRef[Int]` keeps compiling, and nothing in the cell is
   cast.
-
+- **The handlers are typed too** (stm-typed-interpreter, 2026-09-02;
+  the operator's rule, now in AGENTS.md: no cast without a real
+  necessity). `perform[X](op: Tx[X]): X` and `interpret[A]` type
+  every step by GADT matching on the freer tree (`case
+  Bind(Effect(e), k)` types e and k), the commit holds each taken
+  cell in a `Held[X]`, `park` is generic in the answer. `wrap`'s
+  `@unchecked` went by deciding the cell's KIND at construction:
+  `TRef(init)` wraps every value in a Slot, `TRef.bare[A <:
+  Stamped[A]](init)` installs bare and is the only kind that can
+  answer "unchanged" (`a eq content`, typed) — the Channel uses it.
+  The `resume: @unchecked` matches are the stack's stated convention
+  (Effects.scala), an exhaustiveness claim, not a cast.
+- **Two heterogeneous maps, and which one the write set is** (tmap,
+  2026-09-02, the operator's design). `okay.TMap[K[_]]` is the
+  DYNAMIC one: a key `K[A]` holds an `A`, keys are identities, the
+  store is a cons stack of typed pairs `Entry[K, A]` (a class,
+  because a `(K[?], ?)` tuple cannot say "the same A on both
+  sides"), `foreach` takes a polymorphic function so iteration sees
+  each value at its key's type, and the one cast of the problem —
+  identity of a typed key IS type equality — is stated once, in
+  `TMap.get`. The STM's write set is a TMap: its cells are runtime
+  values from anywhere, and Stm.scala is cast-free. `okay.HMap[K,
+  T <: Tuple]` is the STATIC one, the operator's `((A,B),(C,D),
+  (E,F))`: the map's TYPE is the tuple of `(key.type, Value)` pairs,
+  `get` is a typeclass `Select[T, k.type, V]` derived by induction
+  over the tuple type, membership is a compile-time fact and there
+  is no cast anywhere. Its price is that keys must be stable
+  identifiers known at the use site, which a transaction's write
+  set never has — so HMap exists for the code that does have them,
+  and the write set stays a TMap.
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark
 (src/jmh ChannelBenchmark, alternating A/B rounds, medians, busy
