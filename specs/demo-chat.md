@@ -294,13 +294,13 @@ no Cyrillic either and would otherwise misroute). Both phrasebooks
 speak the SAME tool table through the SAME wraps (chainedTable) —
 language is presentation, not a second code path.
 
-- [ ] the full offer -> need -> ask -> accept round, phrased entirely
+- [x] the full offer -> need -> ask -> accept round, phrased entirely
       in English, through the real route: matches the Russian round's
       shape (demo-chat-match/match-deals), replies in English
       throughout
-- [ ] "help" answers the English phrasebook; "помощь" still answers
+- [x] "help" answers the English phrasebook; "помощь" still answers
       the Russian one — the empty-string trap named above is covered
-- [ ] a scenario/flow round (scenario ... ; step N ...; flow N)
+- [x] a scenario/flow round (scenario ... ; step N ...; flow N)
       phrased in English walks the SAME escrow scenario the Russian
       OFFLINE FLOWS test walks, in English throughout
 

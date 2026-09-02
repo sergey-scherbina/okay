@@ -407,6 +407,62 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
+  test("EN PHRASEBOOK: an offer -> need -> ask -> accept round entirely in English") {
+    withServer(512) { port =>
+      def turn(text: String): String =
+        new String(post(port,
+          s"""{"messages":[{"role":"user","content":"$text"}]}""").readAllBytes(), UTF_8)
+      val stored = turn("/match can: lay tile email tiler@en")
+      assert(stored.contains("stored") && stored.contains("offer:") && stored.contains("lay"),
+        stored.take(200))
+      val found = turn("/match need: tile work email client@en")
+      assert(found.contains("found") && found.contains("1)") && found.contains("ask"), found.take(300))
+      assert(found.contains("tile"), "the offer's skill surfaces in English")
+      val asked = turn("/match ask all email client@en")
+      assert(asked.contains("asked") && asked.contains("1"), asked.take(300))
+      val accepted = turn("/match accept 1 email tiler@en")
+      assert(accepted.contains("accepted"), accepted.take(200))
+      // "помощь" stays Russian, "help" answers the English phrasebook
+      val enHelp = turn("/match help")
+      assert(enHelp.contains("can:") && enHelp.contains("scenario"), enHelp.take(300))
+      val ruHelp = turn("/match помощь")
+      assert(ruHelp.contains("умею") && ruHelp.contains("сценарий"), ruHelp.take(300))
+    }
+  }
+
+  test("EN PHRASEBOOK: scenario/step/flow, entirely in English, walks the same escrow shape") {
+    val store = okay.matching.MemoryMatch()
+    val sale = okay.matching.ScenarioDef(
+      name = "escrow-sale-en",
+      roles = Vector("buyer", "seller", "escrow"),
+      initial = "offered",
+      states = Vector("offered", "under-contract", "funded", "closed"),
+      terminal = Set("closed"),
+      transitions = Vector(
+        okay.matching.Transition("sign", "offered", "under-contract", by = "seller",
+          notifies = Vector("buyer" -> "seller signed: {what}")),
+        okay.matching.Transition("fund", "under-contract", "funded", by = "buyer"),
+        okay.matching.Transition("release", "funded", "closed", by = "escrow",
+          notifies = Vector("buyer" -> "deal closed: {what}"))))
+    assertEquals(store.defineScenario(sale), Vector.empty)
+    withServer(512, store) { port =>
+      def turn(text: String): String =
+        new String(post(port,
+          s"""{"messages":[{"role":"user","content":"$text"}]}""").readAllBytes(), UTF_8)
+      val started = turn(
+        "/match scenario escrow-sale-en buyer=b@en seller=s@en escrow=e@en email b@en")
+      assert(started.contains("started"), started.take(300))
+      val flowN = "flow (\\d+)".r.findFirstMatchIn(started).map(_.group(1)).getOrElse("1")
+      // the buyer holds the seller's transition — refused with the reason
+      assert(turn(s"/match step $flowN sign email b@en").contains("refused"), "role enforced")
+      assert(turn(s"/match step $flowN sign email s@en").contains("under-contract"))
+      assert(turn(s"/match step $flowN fund email b@en").contains("funded"))
+      assert(turn(s"/match step $flowN release email e@en").contains("closed"))
+      val hist = turn(s"/match flow $flowN")
+      assert(hist.contains("sign") && hist.contains("fund") && hist.contains("release"), hist.take(300))
+    }
+  }
+
   test("polish: /market shows Public only; a dying model is an error frame; help answers") {
     val store = okay.matching.MemoryMatch()
     val p = store.register("m@x")

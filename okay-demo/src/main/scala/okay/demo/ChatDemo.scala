@@ -472,10 +472,24 @@ object ChatDemo {
 
   /** the deterministic offline "agent": the SAME tool table, driven
    * by two fixed phrasings — the tests' and the no-model mode's path */
+  /** the demo speaks two languages, picked PER MESSAGE (demo-en-
+   * phrasebook): a message carrying no Cyrillic is English. English
+   * triggers pair one-for-one with the Russian ones (умею -> can:,
+   * спроси -> ask, сценарий -> scenario, шаг -> step, флоу -> flow,
+   * берусь/отказываюсь -> accept/decline; помощь/help already
+   * paired) — content alone picks which reply template answers */
+  def isEnglish(s: String): Boolean = !s.exists(c => c >= 'Ѐ' && c <= 'ӿ')
+
+  private val russianHelp =
+    """матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>; сценарии: сценарий <имя> роль=email ...; шаг <N> <переход>; флоу <N>"""
+  private val englishHelp =
+    """match mode: say "can: <what>" / "offer: <what>" or "want: <who>" / "need: <what>" (and email <address>); after a candidate list: ask 1 2 / ask all; as a candidate: accept <N> / decline <N>; scenarios: scenario <name> role=email ...; step <N> <transition>; flow <N>"""
+
   def scriptedAgent(text: String, off: Long = turnNo.incrementAndGet())
                    (using store: MatchStore): String =
     import okay.codec.Json.*
     val t = chainedTable(off)
+    val en = isEnglish(text)
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
     val email = resolveEmail(text, intakePolicy)
@@ -484,8 +498,8 @@ object ChatDemo {
         case JObj(fs) => fs.collectFirst { case ("profile", JStr(p)) => p }.get
         case _ => ""
     text match
-      case s if s.contains("умею") || s.contains("offer:") =>
-        val skill = s.replaceAll(".*(умею|offer:)\\s*", "").replaceAll("email [^ ]+", "").trim
+      case s if s.contains("умею") || s.contains("can:") || s.contains("offer:") =>
+        val skill = s.replaceAll(".*(умею|can:|offer:)\\s*", "").replaceAll("email [^ ]+", "").trim
         call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("skill"),
           "side" -> JStr("offer"), "chat" -> JStr("web-demo"),
           "offset" -> JNum(off.toDouble), "span" -> JStr(text),
@@ -497,9 +511,10 @@ object ChatDemo {
           "offset" -> JNum(off.toDouble), "span" -> JStr(text),
           "vis" -> JStr("matched"),
           "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(email))))
-        s"""записал предложение: \"$skill\" (профиль $email)"""
-      case s if s.contains("нужен") || s.contains("нужно") || s.contains("need:") =>
-        val want = s.replaceAll(".*(нужен|нужно|need:)\\s*", "").replaceAll("email [^ ]+", "").trim
+        if en then s"""stored offer: "$skill" (profile $email)"""
+        else s"""записал предложение: \"$skill\" (профиль $email)"""
+      case s if s.contains("нужен") || s.contains("нужно") || s.contains("want:") || s.contains("need:") =>
+        val want = s.replaceAll(".*(нужен|нужно|want:|need:)\\s*", "").replaceAll("email [^ ]+", "").trim
         // the need is STORED first — the reverse chain fires from it
         // when the matching offer arrives later
         call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("need"),
@@ -522,11 +537,16 @@ object ChatDemo {
                 s"${i + 1}) ${texts.filter(_.nonEmpty).mkString(", ")}"
               case (_, i) => s"${i + 1}) ?"
             }
-            s"нашёл ${hits.length}: ${lines.mkString("; ")} — скажите: спроси 1 2 (или: спроси всех)"
-          case _ => "пока никого не нашёл — запомнил ваш запрос и сообщу, когда исполнитель появится"
-      case s if s.contains("спроси") =>
+            if en then s"found ${hits.length}: ${lines.mkString("; ")} — say: ask 1 2 (or: ask all)"
+            else s"нашёл ${hits.length}: ${lines.mkString("; ")} — скажите: спроси 1 2 (или: спроси всех)"
+          case _ =>
+            if en then "nobody yet — I remembered your request and will tell you when one shows up"
+            else "пока никого не нашёл — запомнил ваш запрос и сообщу, когда исполнитель появится"
+      case s if s.contains("спроси") || s.contains("ask") =>
         val mine = Option(lastHits.get(email)).getOrElse(Vector.empty)
-        if mine.isEmpty then "сначала спросите, что вам нужно — я найду кандидатов"
+        if mine.isEmpty then
+          if en then "ask for what you need first — I'll find candidates"
+          else "сначала спросите, что вам нужно — я найду кандидатов"
         else
           val me0 = store.register(email)
           val what = store.profileOf(me0)
@@ -534,26 +554,32 @@ object ChatDemo {
               .lastOption.map(f => okay.matching.Value.text(f.value)))
             .getOrElse("заказ")
           val chosen =
-            if s.contains("всех") then mine.indices.toVector
+            if s.contains("всех") || s.contains("all") then mine.indices.toVector
             else "\\d+".r.findAllIn(s).map(_.toInt - 1).toVector.filter(mine.indices.contains)
-          if chosen.isEmpty then "кого спросить? назовите номера или скажите: спроси всех"
+          if chosen.isEmpty then
+            if en then "who to ask? name the numbers, or say: ask all"
+            else "кого спросить? назовите номера или скажите: спроси всех"
           else
             val me = store.register(email)
             chosen.foreach { i =>
               call("match_inquire", "seeker" -> JStr(me.uuid),
                 "provider" -> JStr(mine(i).uuid), "what" -> JStr(what))
             }
-            s"спросил ${chosen.length} кандидатов — сообщу, кто возьмётся"
-      case s if s.startsWith("сценарий ") =>
-        // сценарий <имя> роль=email роль=email ... — flow_start
-        val parts = s.stripPrefix("сценарий ").split("\\s+").toVector
+            if en then s"asked ${chosen.length} candidates — I'll tell you who takes it"
+            else s"спросил ${chosen.length} кандидатов — сообщу, кто возьмётся"
+      case s if s.startsWith("сценарий ") || s.startsWith("scenario ") =>
+        // сценарий/scenario <имя> роль=email роль=email ... — flow_start
+        val body = if s.startsWith("scenario ") then s.stripPrefix("scenario ") else s.stripPrefix("сценарий ")
+        val parts = body.split("\\s+").toVector
         val name = parts.headOption.getOrElse("")
         val parties = parts.tail.collect {
           case kv if kv.contains("=") =>
             val i = kv.indexOf('='); kv.take(i) -> kv.drop(i + 1)
         }
         store.scenario(name) match
-          case None => s"нет сценария '$name' — зарегистрированные видны через scenario_get"
+          case None =>
+            if en then s"no such scenario '$name' — registered ones show via scenario_get"
+            else s"нет сценария '$name' — зарегистрированные видны через scenario_get"
           case Some(d) =>
             val partyIds = parties.map((r, mail) => r -> JStr(store.register(mail).uuid))
             Json.parse(call("flow_start", "scenario" -> JStr(name),
@@ -561,16 +587,20 @@ object ChatDemo {
               "parties" -> JObj(partyIds))) match
               case JObj(fs) if fs.exists(_._1 == "flow") =>
                 val n = fs.collectFirst { case ("flow", JNum(x)) => x.toLong }.get
-                s"сценарий '$name' начат (флоу $n, состояние ${d.initial}); шаги: " +
+                if en then s"scenario '$name' started (flow $n, state ${d.initial}); steps: " +
+                  d.transitions.map(t => s"${t.name} (${t.by})").mkString(", ") +
+                  s" — command: step $n <transition>"
+                else s"сценарий '$name' начат (флоу $n, состояние ${d.initial}); шаги: " +
                   d.transitions.map(t => s"${t.name} (${t.by})").mkString(", ") +
                   s" — команда: шаг $n <переход>"
               case JObj(fs) =>
-                fs.collectFirst { case ("refused", JStr(r)) => s"отказ: $r" }
-                  .getOrElse("отказ")
-              case _ => "отказ"
-      case s if s.startsWith("шаг ") =>
-        // шаг <N> <переход> — flow_advance от лица пишущего
-        val parts = s.stripPrefix("шаг ").split("\\s+").toVector
+                fs.collectFirst { case ("refused", JStr(r)) => if en then s"refused: $r" else s"отказ: $r" }
+                  .getOrElse(if en then "refused" else "отказ")
+              case _ => if en then "refused" else "отказ"
+      case s if s.startsWith("шаг ") || s.startsWith("step ") =>
+        // шаг/step <N> <переход> — flow_advance от лица пишущего
+        val body = if s.startsWith("step ") then s.stripPrefix("step ") else s.stripPrefix("шаг ")
+        val parts = body.split("\\s+").toVector
         (parts.headOption.flatMap(_.toLongOption), parts.lift(1)) match
           case (Some(n), Some(tr)) =>
             val me = store.register(email)
@@ -578,19 +608,23 @@ object ChatDemo {
               "transition" -> JStr(tr), "by" -> JStr(me.uuid))) match
               case JObj(fs) if fs.exists(_._1 == "state") =>
                 val st = fs.collectFirst { case ("state", JStr(x)) => x }.get
-                s"переход '$tr' сделан — состояние: $st"
+                if en then s"transition '$tr' done — state: $st"
+                else s"переход '$tr' сделан — состояние: $st"
               case JObj(fs) =>
-                fs.collectFirst { case ("refused", JStr(r)) => s"отказ: $r" }
-                  .getOrElse("отказ")
-              case _ => "отказ"
-          case _ => "формат: шаг <номер флоу> <переход>"
-      case s if s.startsWith("флоу ") =>
-        s.stripPrefix("флоу ").trim.toLongOption match
-          case None => "формат: флоу <номер>"
+                fs.collectFirst { case ("refused", JStr(r)) => if en then s"refused: $r" else s"отказ: $r" }
+                  .getOrElse(if en then "refused" else "отказ")
+              case _ => if en then "refused" else "отказ"
+          case _ => if en then "format: step <flow number> <transition>" else "формат: шаг <номер флоу> <переход>"
+      case s if s.startsWith("флоу ") || s.startsWith("flow ") =>
+        val body = if s.startsWith("flow ") then s.stripPrefix("flow ") else s.stripPrefix("флоу ")
+        body.trim.toLongOption match
+          case None => if en then "format: flow <number>" else "формат: флоу <номер>"
           case Some(n) => store.flow(okay.matching.FlowId(n)) match
-            case None => s"нет флоу $n"
+            case None => if en then s"no flow $n" else s"нет флоу $n"
             case Some(f) =>
-              s"флоу $n: сценарий ${f.scenario}, состояние ${f.state}, " +
+              if en then s"flow $n: scenario ${f.scenario}, state ${f.state}, " +
+                s"history: ${f.history.map(_._1).mkString(" -> ")}"
+              else s"флоу $n: сценарий ${f.scenario}, состояние ${f.state}, " +
                 s"история: ${f.history.map(_._1).mkString(" -> ")}"
       case s if s.startsWith("сценарий ") =>
         // сценарий <имя> роль=email ... — flow_start by phrase
@@ -638,20 +672,26 @@ object ChatDemo {
               s"флоу $n: сценарий ${f.scenario}, состояние ${f.state}, " +
                 s"история: ${f.history.map(_._1).mkString(" -> ")}"
       case s if s.trim == "помощь" || s.trim == "help" =>
-        scriptedAgent("")   // the default branch IS the help
-      case s if s.contains("берусь") || s.contains("отказываюсь") =>
-        val accept = s.contains("берусь")
+        // the default branch IS the help — decided by the TRIGGER
+        // word, not `en`: an empty string carries no Cyrillic either
+        if s.trim == "help" then englishHelp else russianHelp
+      case s if s.contains("берусь") || s.contains("отказываюсь") || s.contains("accept") || s.contains("decline") =>
+        val accept = s.contains("берусь") || s.contains("accept")
         "\\d+".r.findFirstIn(s).map(_.toLong) match
-          case None => "назовите номер сделки: берусь <N> / отказываюсь <N>"
+          case None =>
+            if en then "name the deal number: accept <N> / decline <N>"
+            else "назовите номер сделки: берусь <N> / отказываюсь <N>"
           case Some(n) =>
             val me = store.register(email)
             Json.parse(call("match_respond", "deal" -> JNum(n.toDouble),
               "by" -> JStr(me.uuid), "accept" -> JBool(accept))) match
-              case JObj(_) => if accept then "передал согласие — заказчик получил ваш контакт"
-                              else "передал отказ"
-              case _ => "эта сделка не ваша или уже закрыта"
-      case _ =>
-        """матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>; сценарии: сценарий <имя> роль=email ...; шаг <N> <переход>; флоу <N>"""
+              case JObj(_) =>
+                if en then (if accept then "accepted — the seeker got your contact" else "declined")
+                else (if accept then "передал согласие — заказчик получил ваш контакт" else "передал отказ")
+              case _ =>
+                if en then "not your deal, or already closed"
+                else "эта сделка не ваша или уже закрыта"
+      case _ => if en then englishHelp else russianHelp
 
   /** which agent serves /match turns: real model when one is
    * configured (by the AMBIENT secrets, over the AMBIENT wire), the
