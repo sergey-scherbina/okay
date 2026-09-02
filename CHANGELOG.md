@@ -1,5 +1,24 @@
 # Changelog
 
+## stm-ui-close — the first STM consumer outside the engine itself
+Completed: 2026-09-02
+Landed as bc9059a. `Ui.runCmd`'s closing decision (`okay-ui`) held
+three atomics — `pending`/`unprocessed`/`upstreamDone` — read one at
+a time in `maybeClose`; a command launched from the last buffered
+event could land in the window between two of those reads and its
+answer was lost (a flaky test had already caught and named this
+once). Now one `TRef[CloseState]`: `TRef.modify` makes mutate-then-
+decide-whether-ready ONE step, removing the window by construction.
+Single-cell fast path only (no `Tx`/`Stm[F]` needed — the composite
+condition lives in one cell), exactly the case specs/stm.md's
+Behavior list already named, chosen this time by the caller rather
+than the interpreter. Existing UI suites stayed green (67→68 JVM, 4
+JS, Native compiles/links clean); new stress test fires 200 commands
+x 50 runs under the real JVM scheduler (virtual threads, no `Pure`
+interpreter) and accounts for every answer — the shape of the exact
+race the old comment described, exercised for real. specs/stm.md
+Results entry. Matrix 78 suites, zero failures.
+
 ## rag-langchain4j (EmbeddingModel half) — a local embedder, kept out of the root build
 Completed: 2026-09-02
 Landed as 01c4955 (spec) + bcb29c0 (impl). A consumer finally named a
