@@ -1,5 +1,30 @@
 # Changelog
 
+## demo-pg-backend — the marketplace on live Postgres, one env var
+Completed: 2026-09-02
+Landed as 0da8033 (spec 39bd411). okay-sql gains
+`Placeholders.numbered` — `?` outside quoted literals/identifiers
+becomes `$1..$n`, the ONE mechanical dialect difference
+bind-don't-model itself created between the JDBC and pg drivers;
+pure, tested on JVM/JS/Native, and recorded in specs/sql.md as NOT a
+dialect layer (the strings stay the DBA's). SqlMatch takes a
+`placeholders` seam (identity by default) and its DDL says `DOUBLE
+PRECISION` — two changes, and a 60-statement `?` program runs on the
+pg wire. The sqlite suite, which had its three tests pasted three
+times over behind stray braces (compiling by accident, running
+three), is now `MatchEngineSuite` with two engines: TestSqliteMatch
+(a temp file) and TestPgMatch (live, one schema per store, dropped
+after) — guarantees, deals, flows, each surviving a reconnect, the
+same text on both. The demo: `OKAY_CHAT_DB=postgres://user:pass@host
+:port/db?sslmode=…&sslrootcert=…` is parsed purely (`PgTarget`,
+tested: defaults, the TLS ladder by its postgres names, refusals
+named) and `marketOf` puts the marketplace on PgSql or PgTls; a live
+test drives it against the dockerized Postgres. Docs: okay-demo's
+env table, okay-match's "Postgres is the same line" now cites the
+test. Boards: the wire-typestate umbrella closed (resolved by
+pg-scram-typestate, sql-typestate and the pg-wire-typestate decline);
+a TestMcpAuth matrix flake filed (green alone).
+
 ## stm-slot-generic — Slot[+A], for the reader
 Completed: 2026-09-02
 Landed as 2f6d73c. The operator asked why Stamped and Slot were not

@@ -1,5 +1,0 @@
-slug: demo-pg-backend
-branch: feature/demo-pg-backend
-worktree: ../okay-wt-demo-pg-backend
-claimed: 2026-09-02
-scope: SqlMatch over the pg wire driver (portable DDL, `?`→`$n` renumbering helper in okay-sql), live TestPgMatch, the demo switches to live Postgres by OKAY_CHAT_DB=postgres://…; specs/sql.md, specs/match.md, specs/demo-chat.md; docs.

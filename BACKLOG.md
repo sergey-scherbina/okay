@@ -62,6 +62,13 @@
       same family as the Native-SIGKILL-under-load incidents, not a
       code defect. Leave filed; re-triage only if it recurs with a
       NON-environmental signature.
+- [ ] mcp-auth-matrix-flake — okay.security.TestMcpAuth "the
+      metadata documents are servable without any token" failed once
+      under the full matrix (2026-09-02, `java.io.IOException:
+      HTTP/1.1 header parser received no bytes` — the client read an
+      empty reply from a server the suite had just started); ran
+      alone right after: 4/4 green. The port/readiness family
+      (flaky-port-roulette); leave filed, fix with that family.
 - [ ] netty-ws-matrix-flake — okay.netty.TestBackends "every WebSocket
       client talks to every WebSocket server" failed once under the
       full sbt test matrix (jetty StaticException: Closed,
@@ -83,10 +90,6 @@
       isolate-under-load fix rather than re-triaging per landing.
 
 ## Correctness and the core (specs/sim.md, specs/typestate.md)
-- [ ] wire-typestate — PState at the protocol seams
-      (specs/typestate.md; user ask 2026-09-01): SCRAM's step
-      order and PgSql's connection phases as types (out-of-order =
-      compile error), the Sql transact protocol for driver authors
 
 ## Cross-cutting — the 2026-09-01 audit (specs landed e3b5a74; slugs are implementation)
 
@@ -189,10 +192,6 @@
 - [ ] demo-deal-timeline — render a deal's negotiation history from
       the log (proposed → responded → settled), each fact with its
       provenance — the append-only + supersede story made visible.
-- [ ] demo-pg-backend — the same MatchStore on okay-pg: SqlMatch is
-      driver-neutral (sqlite today), so one env var should switch the
-      demo to live Postgres. Proves the Sql seam with a second driver
-      in a real consumer; exercises the pg wire path under app load.
 - [ ] demo-sessions — signed sessions over okay-security ES256 JWT:
       the email identity (BadEmail condition already guards entry)
       gets a real confirm-and-sign login instead of trust-the-field;
