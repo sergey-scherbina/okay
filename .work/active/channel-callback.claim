@@ -1,0 +1,5 @@
+slug: channel-callback
+branch: feature/channel-callback
+worktree: ../okay-wt-channel-callback
+claimed: 2026-09-02
+scope: ONE Channel for all platforms, callback-based (the JS design under a short lock): receive/send are Async programs (Await), waiting lives in queues not threads, close wakes waiters (no 10ms poll), blocking forms only under CanBlock. Replaces scala-js/Channel.scala + scala-jvm-native/Channel.scala. specs/cross-platform-async.md. Operator: "Давай, делай колбэчный канал".
