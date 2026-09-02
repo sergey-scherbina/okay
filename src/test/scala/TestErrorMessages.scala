@@ -56,4 +56,15 @@ class TestErrorMessages extends munit.FunSuite {
       "import okay.Direct.*; okay.Direct.direct[Option] { List(1).reflect }(using summon[Monad[Option]]) ")
     assert(neither.contains("neither"), neither)
   }
+
+  test("the sanctioned channel spellings compile (the discard lint itself lives in build.sbt)") {
+    // `c.send(1)` in statement position, as a Unit def's body, or
+    // eta-expanded into a Unit function is a compile ERROR — a -Wconf
+    // escalation in build.sbt, verified with a probe file (the three
+    // shapes error, Sim's nested-`!` Queue does not). compileErrors
+    // cannot see lints (they are reported after typer), so the
+    // negative half is not testable here; the positive half is.
+    assertEquals(compileErrors("val c = okay.Channel[Int](); def f(): Unit = c.offer(1): Unit"), "")
+    assertEquals(compileErrors("val c = okay.Channel[Int](); val p: Unit ! okay.Async = c.send(1).map(_ => ())"), "")
+  }
 }

@@ -66,6 +66,15 @@ force, all already practiced, none previously written down:
   lock; a `ps`/`ls` would have shown it in a second. If you think
   "X is probably the reason", run the one command that would show
   X, and only then believe it (operator directive, 2026-09-02).
+- A DISCARDED PROGRAM is a compile ERROR (build.sbt, -Wconf): an
+  `A ! F` value in statement position, as a Unit def's body, or
+  eta-expanded into a Unit function builds a program and drops it —
+  `c.send(x)` alone sends nothing. From plain code write
+  `c.offer(x): Unit`; inside a program, flatMap/map the send. The
+  compiler cannot see `xs.foreach(c.send)` or `for x <- xs do
+  c.send(x)` (foreach takes any result) — those two shapes are on
+  you. Found by channel-callback (2026-09-02): ten silent discards
+  across ui/jetty/netty/chatweb before the lint existed.
 - `sbt test` runs everything, JVM + JS + Native. The core suite forks
   (see build.sbt for why); `.jvmopts` gives sbt 6g.
 - Live suites (`TestLive` in okay-agent and okay-mcp) hit a local

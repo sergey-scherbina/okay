@@ -24,7 +24,7 @@ object Main {
     val root = g.ReactDOM.createRoot(g.document.getElementById("root"))
     def render(ui: Ui): Unit =
       current = ui
-      root.render(ReactJs.element(react, React.elem(ui), bus.send, () => current))
+      root.render(ReactJs.element(react, React.elem(ui), e => bus.offer(e): Unit, () => current))
       ()
 
     def loop(s: ChatUi.State): Unit ! Async =
@@ -51,8 +51,8 @@ object Main {
       subscribed = true
       val es = js.Dynamic.newInstance(g.EventSource)(s"/events/$email")
       es.addEventListener("match", { (ev: js.Dynamic) =>
-        bus.send(okay.ui.Event.Edited("$match",
-          js.JSON.parse(ev.data.asInstanceOf[String]).asInstanceOf[String]))
+        bus.offer(okay.ui.Event.Edited("$match",
+          js.JSON.parse(ev.data.asInstanceOf[String]).asInstanceOf[String])): Unit
       }: js.Function1[js.Dynamic, Unit])
       ()
 
@@ -75,10 +75,10 @@ object Main {
         val ev = "(?m)^event: (.*)$".r.findFirstMatchIn(text).map(_.group(1)).getOrElse("data")
         val data = "(?m)^data: (.*)$".r.findFirstMatchIn(text).map(_.group(1)).getOrElse("")
         ev match
-          case "data" => bus.send(Event.Edited("$token",
-            js.JSON.parse(data).asInstanceOf[String]))
-          case "cut" => bus.send(Event.Edited("$cut", data))
-          case _ => bus.send(Event.Pressed("$done"))
+          case "data" => bus.offer(Event.Edited("$token",
+            js.JSON.parse(data).asInstanceOf[String])): Unit
+          case "cut" => bus.offer(Event.Edited("$cut", data)): Unit
+          case _ => bus.offer(Event.Pressed("$done")): Unit
       def pump(): Unit =
         reader.read().`then` { (r: js.Dynamic) =>
           if r.done.asInstanceOf[Boolean] then

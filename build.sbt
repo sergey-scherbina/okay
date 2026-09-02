@@ -26,6 +26,19 @@ ThisBuild / scalacOptions ++= Seq(
   // forty-three `.toString` calls that change not one byte of output
   // and hide the warnings that mean something. Said once, here.
   "-Wconf:msg=interpolation uses toString:s",
+  // A DISCARDED PROGRAM is a bug, not a style issue: `c.send(x)` in
+  // statement position, or as the body of a Unit def, or eta-expanded
+  // into a Unit function, builds an `A ! F` value and throws it away —
+  // nothing runs. -Wall already sees these three shapes (value
+  // discard, non-unit statement); here they are errors when the
+  // discarded type is a program. Found by channel-callback (2026-09-02):
+  // five silent discards across ui/jetty/netty. The remaining holes,
+  // where the compiler cannot help: `xs.foreach(c.send)` and
+  // `for x <- xs do c.send(x)` (foreach takes any result). Write
+  // `offer(x): Unit` from plain code, or flatMap the program.
+  // (the regex takes the TOP-LEVEL type only — a `!` nested inside a
+  // Queue[...] element type is not a program being dropped)
+  "-Wconf:msg=^(discarded non-Unit|unused) value of type ([^\\[ ]+|[^\\[ ]+\\[[^\\]]*\\]) ! :e",
   // The safe-initialization checker cannot see through munit's
   // `test("…") { … }`, which necessarily captures `this` from a
   // FunSuite body. It is the framework's shape, not ours, and there

@@ -122,6 +122,22 @@ cross-build lands so nothing has to be broken later.
   CanBlock. Not done here: the Native Scheduler still forks an OS
   thread per fiber — a fixed pool is now safe to introduce (BACKLOG
   native-scheduler-pool).
+- **A discarded program is a compile error** (discarded-program-lint,
+  2026-09-02). The migration to `send: Boolean ! Async` showed the
+  hazard of programs-as-values: `c.send(x)` in statement position
+  is a value nobody runs, and the first migration pass left ten of
+  them (ui, jetty, netty, chatweb) — the -Wall value-discard and
+  non-unit-statement warnings saw them, but warnings scroll past.
+  build.sbt now escalates exactly those two warnings to ERRORS when
+  the discarded TOP-LEVEL type is a `!` program (a regex on the
+  message; a `!` nested inside a Queue element type, as in Sim, is
+  not matched). Probed shapes: statement `{ c.send(1); () }`, Unit
+  def `def f(): Unit = c.send(1)`, eta-expansion `val g: Int => Unit
+  = c.send` — all errors; `xs.foreach(c.send)`, `for x <- xs do
+  c.send(x)`, `xs.foreach(x => c.send(x))` — invisible to the
+  compiler (foreach's `U` accepts anything), stated in AGENTS.md.
+  Not testable through munit's compileErrors (lints are reported
+  after typer), so the record is this paragraph plus the probe.
 
 ## Open boxes
 - [x] an error channel in Await — done (see Decisions); callback par
