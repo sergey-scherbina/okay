@@ -1,5 +1,22 @@
 # Changelog
 
+## demo-en-phrasebook — the offline driver speaks two languages
+Completed: 2026-09-02
+Landed as 81ae611 (spec) + 7e90da4 (impl). scriptedAgent spoke only
+Russian; language is now picked PER MESSAGE — isEnglish(text) is "no
+Cyrillic character", content alone decides the reply template, no
+session state. Every trigger pairs 1:1 (умею/can:/offer:,
+нужен-нужно/want:-need:, спроси/ask (+ всех/all), сценарий/scenario,
+шаг/step, флоу/flow, берусь/accept, отказываюсь/decline; помощь/help
+was already paired — decided by the TRIGGER WORD rather than the
+isEnglish flag, since an empty string carries no Cyrillic either and
+would otherwise misroute the recursive help call). Both phrasebooks
+drive the exact same chainedTable — language is presentation, not a
+second code path. Noted in passing, not fixed (out of scope): the file
+already carried dead duplicate match arms for сценарий/шаг/флоу
+(unreachable, shadowed by identical live arms above them) — only the
+live arms got English twins. Suite 22/22 three runs.
+
 ## same-typeclass — sameness of typed tokens, and strict equality from it
 Completed: 2026-09-02
 Landed as 1b13209. The operator asked for the `A =:= B` trick as a
