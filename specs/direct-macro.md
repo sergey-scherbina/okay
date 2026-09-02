@@ -67,7 +67,13 @@ stays for expression positions.
 - [x] `val p: Int ! W = direct { ... }` — F inferred from the
   expected type, no type argument written
 - [x] marks in SUBEXPRESSIONS are hoisted in evaluation order:
-  `f(a.!?, b.!?)` binds a before b, exactly left-to-right
+  `f(a.!?, b.!?)` binds a before b, exactly left-to-right; and a
+  PURE sibling that precedes a mark is hoisted to a val before it
+  (audit-fixes, 2026-09-02: `g({log += "a"; 1}, xs.reflect)` used to
+  evaluate the pure argument after the effect and once per
+  continuation under multi-shot — "aaa" for a List of three; now
+  once, first). Pure siblings after the last mark stay in place and
+  run per continuation, as the source reads.
 - [x] `if`/`match` with marks in condition/scrutinee and branches:
   only the taken branch's effects run
 - [x] a mark under a lambda is a COMPILE error naming the position
@@ -132,7 +138,13 @@ stays for expression positions.
   `given CanTry[M] = CanTry.strict`, and a lazy one is a compile
   error that says why. (A context-function instance was written and
   withheld: direct-try over `E ?=> X` crashes dotty 3.7.4 at erasure
-  — BACKLOG direct-try-ctx.)
+  — BACKLOG direct-try-ctx.) Stated limitation, over a condition
+  frame: a direct-try whose body reflects a `within`/`frame` does
+  not catch a throw from a PURE segment inside that frame's body —
+  Condition.run's Within case runs the frame body through its own
+  `loop`, outside the guarded continuation steps of the enclosing
+  try; the throw reaches the run as an exception. Catch inside the
+  frame (a direct-try in its body), or use a restart for that path.
 - **Answer-type modification inside a block** — the block is the
   DIAGONAL (one F, answers F[A] throughout); that fixed answer type
   is exactly what makes the scoped macro cheap (no re-typing tower).

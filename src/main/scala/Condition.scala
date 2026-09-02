@@ -54,7 +54,8 @@ object Condition {
    * in the policy, named as such */
   final case class NoSuchRestart(restart: String, menu: Vector[String])
     extends RuntimeException(
-      s"no restart '$restart' on the menu (${menu.mkString(", ")})")
+      s"no restart '$restart' on the menu (${
+        if menu.isEmpty then "none" else menu.mkString(", ")})")
 
   /** raise a condition; resumes with the policy's value */
   def signal[A](condition: Any): A ! Op =
@@ -140,36 +141,45 @@ object Condition {
    */
   def run[A, F[+_]](policy: (Any, Vector[String]) => Decision)
                    (prog: A ! (Op + F)): A ! F = {
-    def loop[X](p: X ! (Op + F), menu: List[Frame]): Out[X] ! F =
-      (p.resume: @unchecked) match
-        case Pure(x) => pure(Out.Done(x.asInstanceOf[X]))
-        case Effect(e) => <|>[Op, F](e) match
-          case Left(op) => handle(op, (a: Any) => Free.Pure(a).asInstanceOf[X ! (Op + F)], menu)
-          case Right(f) => Effect(f).map(x => Out.Done(x.asInstanceOf[X]))
-        case Bind(Effect(e), k) => <|>[Op, F](e) match
-          case Left(op) => handle(op, k.asInstanceOf[Any => X ! (Op + F)], menu)
-          case Right(f) => Effect(f).flatMap(x => loop(k(x), menu))
-
-    def handle[X](op: Op[?], k: Any => X ! (Op + F), menu: List[Frame]): Out[X] ! F =
+    // the Resume path is a WHILE loop, not a recursion (the
+    // Resource.run shape): a decode loop signalling once per record
+    // resumes a hundred thousand times in a row, and every one of
+    // them would otherwise be a JVM frame. Frames (Within) nest by
+    // lexical depth, which is bounded; forwarded effects suspend
+    // under flatMap, so their recursion lives in closures.
+    def loop[X](p0: X ! (Op + F), menu: List[Frame]): Out[X] ! F =
       val names = menu.map(_.name).toVector
-      op match
-        case Op.Leave(handle, v) =>
-          // a handle that leaked out of its frame: the frame is gone
-          if !menu.exists(_.id eq handle) then throw NoSuchRestart(handle.name, names)
-          pure(Out.Escape(handle, v))
-        case Op.Signal(c) =>
-          policy(c, names) match
-            case Decision.Resume(v) => loop(k(v), menu)
-            case Decision.Invoke(name, v) =>
-              if !names.contains(name) then throw NoSuchRestart(name, names)
-              pure(Out.Escape(name, v))
-            case Decision.Fail => throw Unhandled(c, names)
-        case Op.Within(name, id, body, recover) =>
-          loop(body.asInstanceOf[Any ! (Op + F)], Frame(name, id) :: menu).flatMap {
-            case Out.Done(b) => loop(k(b), menu)
-            case Out.Escape(t, v) if t == name || (t eq id) => loop(k(recover(v)), menu)
-            case Out.Escape(t, v) => pure(Out.Escape(t, v)) // an outer frame's
-          }
+      var p = p0
+      while true do
+        val (op, k): (Op[?], Any => X ! (Op + F)) = (p.resume: @unchecked) match
+          case Pure(x) => return pure(Out.Done(x.asInstanceOf[X]))
+          case Effect(e) => <|>[Op, F](e) match
+            case Left(op) => (op, (a: Any) => Free.Pure(a).asInstanceOf[X ! (Op + F)])
+            case Right(f) => return Effect(f).map(x => Out.Done(x.asInstanceOf[X]))
+          case Bind(Effect(e), k) => <|>[Op, F](e) match
+            case Left(op) => (op, k.asInstanceOf[Any => X ! (Op + F)])
+            case Right(f) =>
+              val cont = k.asInstanceOf[Any => X ! (Op + F)]
+              return Effect(f).flatMap(x => loop(cont(x), menu))
+        op match
+          case Op.Leave(handle, v) =>
+            // a handle that leaked out of its frame: the frame is gone
+            if !menu.exists(_.id eq handle) then throw NoSuchRestart(handle.name, names)
+            return pure(Out.Escape(handle, v))
+          case Op.Signal(c) =>
+            policy(c, names) match
+              case Decision.Resume(v) => p = k(v)
+              case Decision.Invoke(name, v) =>
+                if !names.contains(name) then throw NoSuchRestart(name, names)
+                return pure(Out.Escape(name, v))
+              case Decision.Fail => throw Unhandled(c, names)
+          case Op.Within(name, id, body, recover) =>
+            return loop(body.asInstanceOf[Any ! (Op + F)], Frame(name, id) :: menu).flatMap {
+              case Out.Done(b) => loop(k(b), menu)
+              case Out.Escape(t, v) if t == name || (t eq id) => loop(k(recover(v)), menu)
+              case Out.Escape(t, v) => pure(Out.Escape(t, v)) // an outer frame's
+            }
+      throw IllegalStateException("unreachable")
 
     loop(prog, Nil).map {
       case Out.Done(a) => a

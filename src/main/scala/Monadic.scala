@@ -26,8 +26,7 @@ object Monadic:
       shift(k => m.flatMap(k))
     /** the symbolic μ — the collision-free survivor (see
      * specs/direct-macro.md Decisions for the three-strikes story) */
-    inline def !?[B]: Cont[A, F[B], F[B]] =
-      shift(k => m.flatMap(k))
+    inline def !?[B]: Cont[A, F[B], F[B]] = reflect[B]
 
   /** the delimiter: a direct-style block back into its monad */
   inline def reify[F[_], A, B](p: Cont[A, F[A], F[B]])(using M: Monad[F]): F[B] =

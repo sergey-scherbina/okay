@@ -141,7 +141,10 @@ object Condition:
 
 Landed (conditions, 2026-09-01): `Condition` in the core — ~120
 lines for the machine, in the Resource.run shape (a loop that owns
-its frames and forwards everything else) with Delim's payload
+its frames and forwards everything else; since audit-fixes
+2026-09-02 a genuine `while` — the first cut recursed once per
+Resume and overflowed at ~10k consecutive signals; 100k is now a
+test) with Delim's payload
 discipline (a Within's body is a program in the same row, erased
 at the operation, re-typed inside the one owner). Eight tests: the
 full battery plus a policy bug of its own class (`NoSuchRestart` —

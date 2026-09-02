@@ -64,13 +64,18 @@ while retry.!? do backoff()                        // while: effectful cond
   the shapes `Apply(TypeApply(Select(xs, "foreach"|"map"), _),
   List(Lambda(param, body)))` with `hasMark(body)`, receiver
   `<:< IterableOnce`.
-- foreach emits: materialize `xs.iterator.toList` once, then
-  `def loop(rest: List[T]): Cont[Unit, F[A], F[A]] = rest match
-  { case Nil => Pure(()); case h :: tl => bodyCont(h).flatMap(_ =>
-  loop(tl)) }` — recursion through flatMap rides Cont's Bind spill
-  (stack-safe), and the immutable List is what makes multi-shot
-  re-entry sound.
-- map emits the same loop with an accumulator, `acc.reverse` at Nil.
+- foreach emits: take `xs.iterator.to(LazyList)` once, then
+  `def loop(rest: LazyList[T]): Cont[Unit, F[A], F[A]] = rest match
+  { case h #:: tl => bodyCont(h).flatMap(_ => loop(tl)); case _ =>
+  Pure(()) }` — recursion through flatMap rides Cont's Bind spill
+  (stack-safe), and the immutable, memoized LazyList is what makes
+  multi-shot re-entry sound. Lazy (audit-fixes, 2026-09-02; was
+  `.toList`): an unbounded receiver — `LazyList.from(1)`, an
+  iterator over a stream — is forced only as far as the monad
+  drives the loop, so `for i <- LazyList.from(1) do
+  (if i < 5 then Some(()) else None).reflect` stops at 5 under
+  Option instead of hanging at materialization.
+- map emits the same loop with an accumulator, `acc.reverse` at the end.
 - while emits `def loop(): Cont[Unit, F[A], F[A]] =
   condCont.flatMap(c => if c then bodyCont.flatMap(_ => loop())
   else Pure(()))` — the spliced cond/body terms sit inside the def
