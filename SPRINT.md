@@ -1,12 +1,6 @@
 # Sprint
 
 ## Doing
-- [ ] audit-fixes — the 2026-09-02 master audit's mechanical items:
-      the resurrected direct-effect-provide BACKLOG entry, three
-      stale .? example spellings (tutorial, context-functions,
-      condition specs), and the typed-doors reconciliation done:
-      Of derives Answers — one door, two spellings (operator: "всё
-      исправь", 2026-09-02)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

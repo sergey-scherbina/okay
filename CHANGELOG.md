@@ -1,5 +1,30 @@
 # Changelog
 
+## audit-fixes — the 2026-09-02 master audit, everything found fixed
+Completed: 2026-09-02
+Landed as LANDING (4 commits). The operator asked for an audit of
+master and then "всё исправь". Mechanical: the resurrected
+direct-effect-provide BACKLOG entry, three stale `.?` spellings.
+Reconciled: Of[A] derives Answers — one typed condition door, two
+spellings (raiseC takes an Of; a bad resume is BadResume, named).
+Defects, each with a test: two same-named condition frames aliased
+(a Restart handle targets its frame by IDENTITY now; the policy's
+Invoke stays by name); a marked `val` lost its symbol, so a local
+def after it or a `var` bound from a mark failed to compile
+(re-bound in place, symbol kept); a catch-all `CanTry` let a LAZY
+monad's try never fire (named instances; a lazy monad is a compile
+error that says why); Condition.run recursed per Resume and
+overflowed near 10k (a while loop; 100k tested); a pure argument
+before a marked one ran AFTER the effect and once per continuation
+under multi-shot (hoisted first, once); foreach/map materialized
+the receiver with `.toList` (LazyList — an unbounded receiver is
+forced only as far as the monad drives it). Cleanup: rowOf by
+symbol not name, one `stripped`, wrapPure via wrapStat, asCont's
+dead parameter, identity matches after &&/||, `!?` delegates to
+reflect, NoSuchRestart says "none". Stated in the specs: direct-try
+over a `within` frame body's pure segments; direct-try-ctx BACKLOG
+(dotty 3.7.4 erasure crash). Full gate green after rebase.
+
 ## pg-scalar-types — numeric is exact; vendor scalars are named
 Completed: 2026-09-02
 Landed as 96191fb (spec 1 commit before). numeric/decimal no longer
