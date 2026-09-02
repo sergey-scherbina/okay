@@ -1,0 +1,5 @@
+slug: typed-js-facades
+branch: feature/typed-js-facades
+worktree: ../okay-wt-typed-js-facades
+claimed: 2026-09-02
+scope: BACKLOG typed-js-facades — okay-http scala-js Transports (11 casts) and okay-llm TransportJs (6): js.native facades for fetch's Response/Headers, the body stream reader, and WebSocket events, so the browser API is stated once in types instead of cast at every use. JS suites + a Node link as the gate.
