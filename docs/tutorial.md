@@ -446,7 +446,7 @@ provide(Env("ada", 7)) { !.run(Writer.run(told)) }
 ```
 
 No `for`, no `yield`, no `<-`: the `direct` block rewrites plain
-statements into the binds you would have written, and marks (`m.?`)
+statements into the binds you would have written, and marks (`m.reflect`, `m.!?`, prefix `!m`)
 or opt-in auto-coloring let monadic values stand in plain positions.
 Multi-shot survives — a bare `List(1, 2, 3)` statement re-runs the
 rest of the block per element. The block composes with chapter 19:

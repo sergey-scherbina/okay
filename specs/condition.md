@@ -207,7 +207,7 @@ def raiseC[C, A](c: C)(using Answers[C, A]): A ! Op
   menu) — typing the policy per-condition was considered and
   declined: a policy is one function precisely so a deployment can
   hold its whole stance in one place. What the instance buys is the
-  SIGNAL side: `raiseC(HowMany("k")).?` is an `Int` with no
+  SIGNAL side: `raiseC(HowMany("k")).!?` is an `Int` with no
   annotation, and a `Resume` whose value does not conform is a
   policy bug caught at the signal point (a checked cast against the
   instance's evidence — ClassTag carried by the instance).

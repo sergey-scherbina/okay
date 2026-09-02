@@ -166,7 +166,7 @@ Every claim below was compiled, not assumed:
 - **Conditions join the composition** (E21, 2026-09-01): `def
   checked(n: Int): Env ?=> Int ! (Condition.Op + Pure) = direct {
   val floor = wire[Env].min; if n < floor then
-  signal[Int](TooSmall(n)).? else n }` — a resumable signal inside
+  signal[Int](TooSmall(n)).!? else n }` — a resumable signal inside
   a direct block inside a capability door; `provide` installs the
   environment, the policy decides at `Condition.run`, Resume flows
   the repaired value back INTO the block. Conditions are a row
