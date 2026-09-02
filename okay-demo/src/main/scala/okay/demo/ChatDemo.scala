@@ -438,6 +438,73 @@ object ChatDemo {
       tools = MatchTools.specs :+ Subscription.paySpec,
       call = mcpTable))
 
+  // ---- scenarios as data, authored (demo-scenario-editor) -------------
+  //
+  // ScenarioDef (specs/match.md, match-scenarios) has no "steps" or
+  // "prompts" field of its own — those ARE transitions and notifies
+  // templates; the editor's textarea is the plain JSON shape of the
+  // existing type, not a new schema.
+
+  private val scenarioTemplate: String =
+    """{
+      |  "name": "escrow-sale",
+      |  "roles": ["seller", "buyer"],
+      |  "initial": "listed",
+      |  "states": ["listed", "paid", "shipped", "closed"],
+      |  "terminal": ["closed"],
+      |  "transitions": [
+      |    {"name": "pay", "from": "listed", "to": "paid", "by": "buyer",
+      |      "notifies": [["seller", "paid: {what}"]]},
+      |    {"name": "ship", "from": "paid", "to": "shipped", "by": "seller",
+      |      "unlocks": [["buyer", "contact"]],
+      |      "notifies": [["buyer", "shipped: {what}"]]},
+      |    {"name": "confirm", "from": "shipped", "to": "closed", "by": "buyer",
+      |      "notifies": [["seller", "confirmed: {what}"]]}
+      |  ]
+      |}""".stripMargin
+
+  private def parseScenarioDef(raw: String): Either[String, okay.matching.ScenarioDef] =
+    import okay.matching.{ScenarioDef, Transition}
+    def str(j: Json): Option[String] = j match
+      case JStr(s) => Some(s)
+      case _ => None
+    def strs(j: Json): Vector[String] = j match
+      case JArr(xs) => xs.flatMap(str)
+      case _ => Vector.empty
+    def pair(j: Json): Option[(String, String)] = j match
+      case JArr(Vector(JStr(a), JStr(b))) => Some((a, b))
+      case _ => None
+    def pairs(j: Json): Vector[(String, String)] = j match
+      case JArr(xs) => xs.flatMap(pair)
+      case _ => Vector.empty
+    def transitionOf(j: Json): Option[Transition] = j match
+      case JObj(fs) =>
+        for
+          name <- fs.collectFirst { case ("name", JStr(x)) => x }
+          from <- fs.collectFirst { case ("from", JStr(x)) => x }
+          to <- fs.collectFirst { case ("to", JStr(x)) => x }
+          by <- fs.collectFirst { case ("by", JStr(x)) => x }
+        yield Transition(name, from, to, by,
+          fs.collectFirst { case ("unlocks", v) => pairs(v) }.getOrElse(Vector.empty),
+          fs.collectFirst { case ("notifies", v) => pairs(v) }.getOrElse(Vector.empty))
+      case _ => None
+    try
+      Json.parse(raw) match
+        case JObj(fs) =>
+          (for
+            name <- fs.collectFirst { case ("name", JStr(x)) => x }
+            initial <- fs.collectFirst { case ("initial", JStr(x)) => x }
+          yield ScenarioDef(name,
+            fs.collectFirst { case ("roles", v) => strs(v) }.getOrElse(Vector.empty),
+            initial,
+            fs.collectFirst { case ("states", v) => strs(v) }.getOrElse(Vector.empty),
+            fs.collectFirst { case ("terminal", v) => strs(v) }.getOrElse(Vector.empty).toSet,
+            fs.collectFirst { case ("transitions", JArr(xs)) => xs.flatMap(transitionOf) }
+              .getOrElse(Vector.empty)))
+            .toRight("missing required field: name or initial")
+        case _ => Left("not a JSON object")
+    catch case e: Throwable => Left(s"parse error: ${Option(e.getMessage).getOrElse(e.toString)}")
+
   /** an agent turn over the match tools: the LLM structures the
    * chat into the store and searches it — the okay-match story */
   def agentTurn(text: String, history: Seq[Anthropic.Message],
@@ -534,10 +601,14 @@ object ChatDemo {
    * paired) — content alone picks which reply template answers */
   def isEnglish(s: String): Boolean = !s.exists(c => c >= 'Ѐ' && c <= 'ӿ')
 
-  private val russianHelp =
-    """матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>; сценарии: сценарий <имя> роль=email ...; шаг <N> <переход>; флоу <N>; подписка: оплатить"""
-  private val englishHelp =
-    """match mode: say "can: <what>" / "offer: <what>" or "want: <who>" / "need: <what>" (and email <address>); after a candidate list: ask 1 2 / ask all; as a candidate: accept <N> / decline <N>; scenarios: scenario <name> role=email ...; step <N> <transition>; flow <N>; subscription: pay"""
+  // scenario names ride the help text LIVE (demo-scenario-editor): a
+  // scenario authored through /scenarios shows up here without a
+  // code change, the same "extensibility without touching code" the
+  // editor page itself demonstrates
+  private def russianHelp(using store: MatchStore) =
+    s"""матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>; сценарии (${store.scenarios.map(_.name).mkString(", ")} — редактор: /scenarios): сценарий <имя> роль=email ...; шаг <N> <переход>; флоу <N>; подписка: оплатить"""
+  private def englishHelp(using store: MatchStore) =
+    s"""match mode: say "can: <what>" / "offer: <what>" or "want: <who>" / "need: <what>" (and email <address>); after a candidate list: ask 1 2 / ask all; as a candidate: accept <N> / decline <N>; scenarios (${store.scenarios.map(_.name).mkString(", ")} — editor: /scenarios): scenario <name> role=email ...; step <N> <transition>; flow <N>; subscription: pay"""
 
   def scriptedAgent(text: String, off: Long = turnNo.incrementAndGet(),
                     identity: Option[String] = None, now: Period = Period.now())
@@ -863,6 +934,56 @@ object ChatDemo {
           |""".stripMargin.getBytes(UTF_8))))
 
     case r if r.url == "/mcp" => mcpR(r)
+
+    case r if r.method == okay.http.Method.Get && r.url == "/scenarios" =>
+      val store = summon[MatchStore]
+      def rowOf(d: okay.matching.ScenarioDef): String =
+        s"<li><b>${d.name}</b> — roles: ${d.roles.mkString(", ")}; " +
+          s"states: ${d.states.mkString(" → ")}; " +
+          s"transitions: ${d.transitions.map(_.name).mkString(", ")}</li>"
+      pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
+        Http.one(s"""<!doctype html><meta charset="utf-8"><title>scenarios</title>
+          |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem;max-width:720px;margin:0 auto}
+          |h2{color:#7a869c}
+          |textarea{width:100%;height:260px;background:#1d2430;color:#e6e9ef;border:1px solid #2a3342;
+          |  border-radius:.5rem;padding:.6rem;font-family:ui-monospace,monospace;box-sizing:border-box}
+          |button{background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;
+          |  cursor:pointer;margin-top:.5rem}
+          |#err{color:#ff8080;white-space:pre-wrap}
+          |code{color:#9fb0c8}</style>
+          |<h2>registered scenarios</h2>
+          |<ul>${store.scenarios.map(rowOf).mkString}</ul>
+          |<h2>define one — a scenario as data</h2>
+          |<p>extensibility without touching code: a scenario is roles, states, and
+          |transitions (each <code>by</code> one role, optionally <code>unlocks</code>
+          |a fact attribute and <code>notifies</code> a role's inbox with a
+          |<code>{scenario}/{state}/{by}/{what}</code> template — the deal hook IS
+          |<code>notifies</code>, the same mechanism the built-in "deal" scenario uses).</p>
+          |<textarea id="def">${scenarioTemplate}</textarea>
+          |<div><button id="save">save</button></div>
+          |<div id="err"></div>
+          |<p><a style="color:#6b9fff" href="/">← в чат</a></p>
+          |<script>
+          |document.getElementById('save').onclick = async () => {
+          |  const err = document.getElementById('err'); err.textContent = '';
+          |  const body = document.getElementById('def').value;
+          |  try { JSON.parse(body); } catch (e) { err.textContent = 'invalid JSON: ' + e; return; }
+          |  const res = await fetch('/scenarios', {method: 'POST', body});
+          |  const text = await res.text();
+          |  if (res.ok) location.reload(); else err.textContent = text;
+          |};
+          |</script>
+          |""".stripMargin.getBytes(UTF_8))))
+
+    case r if r.method == okay.http.Method.Post && r.url == "/scenarios" =>
+      val store = summon[MatchStore]
+      parseScenarioDef(new String(r.body.bytes, UTF_8)) match
+        case Left(err) => pure(Response(400, Nil, Http.one(err.getBytes(UTF_8))))
+        case Right(d) =>
+          val bad = store.defineScenario(d)
+          if bad.isEmpty then pure(Response(200, Nil, Http.one("ok".getBytes(UTF_8))))
+          else pure(Response(400, Nil, Http.one(
+            bad.map(b => s"${b.where}: ${b.what}").mkString("\n").getBytes(UTF_8))))
 
     case r if r.method == okay.http.Method.Get && r.url == "/market.json" =>
       val store = summon[MatchStore]

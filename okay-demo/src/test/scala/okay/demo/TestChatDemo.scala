@@ -808,6 +808,72 @@ class TestChatDemo extends munit.FunSuite {
     client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path")).GET().build(),
       HttpResponse.BodyHandlers.ofInputStream()).body()
 
+  private def postTo(port: Int, path: String, body: String): java.net.http.HttpResponse[String] =
+    client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path"))
+      .POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+      HttpResponse.BodyHandlers.ofString())
+
+  // ---- authoring scenarios (demo-scenario-editor) ----------------------
+
+  test("SCENARIOS: /scenarios lists the built-in deal scenario") {
+    withServer(512) { port =>
+      val html = getText(port, "/scenarios")
+      assert(html.contains("deal"), html.take(300))
+      assert(html.contains("seeker") || html.contains("provider"), html.take(300))
+    }
+  }
+
+  test("SCENARIOS: posting a valid scenario registers it, immediately listed and playable") {
+    withServer(512) { port =>
+      val json =
+        """{"name":"escrow-sale","roles":["seller","buyer"],"initial":"listed",
+          |"states":["listed","paid","closed"],"terminal":["closed"],
+          |"transitions":[
+          |  {"name":"pay","from":"listed","to":"paid","by":"buyer",
+          |   "notifies":[["seller","paid: {what}"]]},
+          |  {"name":"confirm","from":"paid","to":"closed","by":"seller",
+          |   "notifies":[["buyer","confirmed: {what}"]]}
+          |]}""".stripMargin
+      val res = postTo(port, "/scenarios", json)
+      assertEquals(res.statusCode(), 200, res.body())
+      val html = getText(port, "/scenarios")
+      assert(html.contains("escrow-sale"), html.take(500))
+      // immediately playable through the existing phrase driver
+      def turn(text: String): String =
+        new String(post(port, s"""{"messages":[{"role":"user","content":"$text"}]}""")
+          .readAllBytes(), UTF_8)
+      val started = turn("/match сценарий escrow-sale seller=seller@x buyer=buyer@x")
+      assert(started.contains("флоу"), started.take(300))
+    }
+  }
+
+  test("SCENARIOS: an invalid scenario (unknown role on a transition) is refused, nothing registered") {
+    withServer(512) { port =>
+      val json =
+        """{"name":"broken","roles":["a"],"initial":"s0","states":["s0","s1"],
+          |"terminal":["s1"],"transitions":[
+          |  {"name":"go","from":"s0","to":"s1","by":"nobody"}
+          |]}""".stripMargin
+      val res = postTo(port, "/scenarios", json)
+      assertEquals(res.statusCode(), 400, res.body())
+      assert(res.body().contains("unknown role"), res.body())
+      assert(!getText(port, "/scenarios").contains("broken"))
+    }
+  }
+
+  test("SCENARIOS: help text names the currently-registered scenarios") {
+    withServer(512) { port =>
+      val json =
+        """{"name":"named-in-help","roles":["a"],"initial":"s0","states":["s0","s1"],
+          |"terminal":["s1"],"transitions":[{"name":"go","from":"s0","to":"s1","by":"a"}]}"""
+          .stripMargin
+      assertEquals(postTo(port, "/scenarios", json).statusCode(), 200)
+      val help = new String(post(port, """{"messages":[{"role":"user","content":"/match help"}]}""")
+        .readAllBytes(), UTF_8)
+      assert(help.contains("named-in-help"), help.take(400))
+    }
+  }
+
   // PgTarget's own parsing behavior is proven in okay-pg's
   // TestPgTarget now (specs/sql.md) — moved 2026-09-02, it never had
   // a demo dependency. This test stays: it proves the DEMO'S OWN

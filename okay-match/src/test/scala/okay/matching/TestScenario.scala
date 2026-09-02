@@ -107,4 +107,17 @@ class TestScenario extends munit.FunSuite {
       "  .route(\"t\", \"a\", \"NOWHERE\", \"r\")")
     assert(errors.nonEmpty && errors.contains("In["), errors)
   }
+
+  test("scenarios lists every registered definition, deal always among them (demo-scenario-editor)") {
+    val m = MemoryMatch()
+    assertEquals(m.scenarios.map(_.name), Vector("deal"))
+    val sale = ScenarioDef("sale", Vector("a"), "s0", Vector("s0", "s1"), Set("s1"),
+      Vector(Transition("go", "s0", "s1", by = "a")))
+    m.defineScenario(sale): Unit
+    assertEquals(m.scenarios.map(_.name).toSet, Set("deal", "sale"))
+    // an invalid definition is not registered, so it never appears
+    val bad = ScenarioDef("bad", Vector("a"), "nowhere", Vector("s0"), Set.empty, Vector.empty)
+    m.defineScenario(bad): Unit
+    assertEquals(m.scenarios.map(_.name).toSet, Set("deal", "sale"))
+  }
 }

@@ -403,15 +403,15 @@ instead of a static "scenarios:" hint that could name a scenario the
 store doesn't have — `MatchStore.scenarios` (specs/match.md) is what
 makes this possible; help mentions `/scenarios` as the editor.
 
-- [ ] `/scenarios` lists the built-in `deal` scenario (and any others
+- [x] `/scenarios` lists the built-in `deal` scenario (and any others
       registered) with its roles/states/transitions
-- [ ] POSTing a valid scenario JSON registers it — immediately
+- [x] POSTing a valid scenario JSON registers it — immediately
       listed, immediately playable through the existing phrase driver
       (сценарий/шаг/флоу — demo-flows) with no restart
-- [ ] POSTing an invalid scenario (an unknown role on a transition)
+- [x] POSTing an invalid scenario (an unknown role on a transition)
       is REFUSED — the store's own validate() malformation reaches
       the caller as text, nothing is registered
-- [ ] help text names the currently-registered scenarios, not a
+- [x] help text names the currently-registered scenarios, not a
       hardcoded string — proven by defining one and asking for help
 
 ## Polish (demo-polish)

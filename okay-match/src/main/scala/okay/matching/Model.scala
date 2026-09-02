@@ -227,6 +227,9 @@ trait MatchStore:
    * invalid definition is NOT registered */
   def defineScenario(d: ScenarioDef): Vector[BadScenario]
   def scenario(name: String): Option[ScenarioDef]
+  /** every registered definition — an editor listing them needs this;
+   * the built-in `deal` is always among them */
+  def scenarios: Vector[ScenarioDef]
   def startFlow(scenario: String, parties: Map[String, ProfileId],
                 what: String): Either[NoAdvance, FlowId]
   /** the one engine step; on success the unlocks are RECORDED and

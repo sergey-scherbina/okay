@@ -291,21 +291,23 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
 
   // ---- scenarios as data --------------------------------------------
 
-  private var scenarios: Map[String, ScenarioDef] = Map("deal" -> ScenarioDef.deal)
+  private var scenarioDefs: Map[String, ScenarioDef] = Map("deal" -> ScenarioDef.deal)
   private var flows: Vector[Flow] = Vector.empty
   private var nextFlow = 1L
   private var unlocks: Set[(ProfileId, ProfileId, String)] = Set.empty
 
   def defineScenario(d: ScenarioDef): Vector[BadScenario] =
     val bad = ScenarioDef.validate(d)
-    if bad.isEmpty then scenarios += d.name -> d
+    if bad.isEmpty then scenarioDefs += d.name -> d
     bad
 
-  def scenario(name: String): Option[ScenarioDef] = scenarios.get(name)
+  def scenario(name: String): Option[ScenarioDef] = scenarioDefs.get(name)
+
+  def scenarios: Vector[ScenarioDef] = scenarioDefs.values.toVector
 
   def startFlow(sc: String, parties: Map[String, ProfileId],
                 what: String): Either[NoAdvance, FlowId] =
-    scenarios.get(sc) match
+    scenarioDefs.get(sc) match
       case None => Left(NoAdvance(s"unknown scenario '$sc'"))
       case Some(d) if d.roles.toSet != parties.keySet =>
         Left(NoAdvance(s"parties must cover roles ${d.roles.mkString(",")}"))
@@ -319,7 +321,7 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
     flows.find(_.id == id) match
       case None => Left(NoAdvance("no such flow"))
       case Some(f) =>
-        val d = scenarios(f.scenario)
+        val d = scenarioDefs(f.scenario)
         if d.terminal(f.state) then Left(NoAdvance(s"the flow is closed ('${f.state}')"))
         else Flow.advance(d, f, transition, by, now()).map { (f2, t) =>
           flows = flows.map(x => if x.id == id then f2 else x)
@@ -374,7 +376,7 @@ final class MemoryMatch(embed: String => Embedding = Vectors.hashing(),
     deals = Vector.empty; nextDeal = 1L
     tokens = Map.empty
     summaries = Map.empty
-    scenarios = Map("deal" -> ScenarioDef.deal)
+    scenarioDefs = Map("deal" -> ScenarioDef.deal)
     flows = Vector.empty; nextFlow = 1L
     unlocks = Set.empty
 }

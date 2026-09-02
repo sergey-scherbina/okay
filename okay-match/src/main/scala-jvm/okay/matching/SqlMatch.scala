@@ -104,7 +104,7 @@ final class SqlMatch(sql: Sql,
     Vector("match_attrs", "match_profiles", "match_facts", "match_recovery", "match_links", "match_deals", "match_flows", "match_flow_hist", "match_unlocks", "match_tokens").foreach(t => exec(s"DROP TABLE IF EXISTS $t"))
     createSchema()
     nextAttr = 1L; nextFact = 1L; nextDeal = 1L; nextFlow = 1L
-    scenarios = Map("deal" -> ScenarioDef.deal)
+    scenarioDefs = Map("deal" -> ScenarioDef.deal)
 
   private def maxId(table: String): Long = rows(s"SELECT MAX(id) FROM $table") match
     case Vector(Vector(I64(n))) => n
@@ -450,15 +450,17 @@ final class SqlMatch(sql: Sql,
   // The DEFINITIONS are configuration (registered at boot, `deal`
   // built in); the FLOWS and the unlocks they grant are durable.
 
-  private var scenarios: Map[String, ScenarioDef] = Map("deal" -> ScenarioDef.deal)
+  private var scenarioDefs: Map[String, ScenarioDef] = Map("deal" -> ScenarioDef.deal)
   private var nextFlow = maxId("match_flows") + 1
 
   def defineScenario(d: ScenarioDef): Vector[BadScenario] =
     val bad = ScenarioDef.validate(d)
-    if bad.isEmpty then scenarios += d.name -> d
+    if bad.isEmpty then scenarioDefs += d.name -> d
     bad
 
-  def scenario(name: String): Option[ScenarioDef] = scenarios.get(name)
+  def scenario(name: String): Option[ScenarioDef] = scenarioDefs.get(name)
+
+  def scenarios: Vector[ScenarioDef] = scenarioDefs.values.toVector
 
   private def encodeParties(ps: Map[String, ProfileId]): String =
     ps.toVector.sortBy(_._1).map((r, p) => s"$r=${p.uuid}").mkString(";")
@@ -477,7 +479,7 @@ final class SqlMatch(sql: Sql,
 
   def startFlow(sc: String, parties: Map[String, ProfileId],
                 what: String): Either[NoAdvance, FlowId] =
-    scenarios.get(sc) match
+    scenarioDefs.get(sc) match
       case None => Left(NoAdvance(s"unknown scenario '$sc'"))
       case Some(d) if d.roles.toSet != parties.keySet =>
         Left(NoAdvance(s"parties must cover roles ${d.roles.mkString(",")}"))
@@ -493,7 +495,7 @@ final class SqlMatch(sql: Sql,
     flow(id) match
       case None => Left(NoAdvance("no such flow"))
       case Some(f) =>
-        val d = scenarios(f.scenario)
+        val d = scenarioDefs(f.scenario)
         if d.terminal(f.state) then Left(NoAdvance(s"the flow is closed ('${f.state}')"))
         else Flow.advance(d, f, transition, by, now()).map { (f2, t) =>
           exec("UPDATE match_flows SET state = ? WHERE id = ?",
