@@ -233,6 +233,18 @@ construction instead of a type test per value).
 
 
 ## okay-codec
+- [ ] json-value-parser — a fast VALUE parser beside the lossless CST
+      one: staged-codecs step 0 measured Json.parse at 14.6 µs on a
+      150-byte object vs circe's 0.55 (26x); with decode now 0.1 µs
+      staged, text→value is all parser. Same Json values, same JErr
+      totality contract, no trivia. The CST parser stays the
+      lossless layer.
+- [ ] staged-cbor — Cbor's algebra through the Staged generator (a
+      second emitter over the same Mirror walk) when a wire names it
+- [ ] staged-runtime — `scala.quoted.staging` for run-time schemas
+      (ToolSpec from a model, Pg composites from the catalog);
+      JVM-only opt-in module, compiler dependency; only on a named
+      workload (specs/codecs.md, Staged fold mode, Out of scope)
 
 ## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
 - [ ] py-arrow — frames via pyarrow (twin of r-arrow; nearer —

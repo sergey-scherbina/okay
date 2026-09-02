@@ -207,3 +207,80 @@ at its own type and joins the erased parts that `fromProduct` takes.
 Both codec suites unchanged, green on JVM, JS and Native. Next:
 okay-sql's Typed (cast-free-typed) — its Shape mirrors Schema
 untyped.
+
+## Staged fold mode (2026-09-02, staged-codecs)
+
+The Overview's promise, kept: the fold over Schema runs in two modes.
+`Json.encode/decode` interpret the GADT per value; `Staged.json[A]`
+folds the TYPE's shape at compile time and emits straight-line code —
+Spark's ExpressionEncoder trick, P6's whole-stage codegen applied to a
+data shape. Same algebra, one more instance of it.
+
+### Interface
+- `Staged.json[A]: JsonCodec[A]` — a macro; `JsonCodec` is
+  `encode(a: A): String` and `decode(j: Json): Either[String, A]`.
+  Needs a `Schema[A]` and a `Mirror.Of[A]` in scope, like `derived`.
+- `Json.escape` is public: any encoder outside the fold needs the
+  one escaping rule.
+
+### Behavior
+- [x] agreement: staged and interpreted are one algebra — encode
+      byte-for-byte, decode Left-for-Left, over products, nested
+      products, Option/List/Vector, sums (every case, unknown case, a
+      sum inside a list), all the totality doors (absent with a
+      declared default, absent optional, absent required, damaged
+      optional, damaged elements, wrong shapes with the fold's own
+      refusal words), an Iso field, a recursive type (TestStaged,
+      JVM/JS/Native)
+- [x] the price, step 0 first (CodecBenchmark, compare, Order = 7
+      fields + nested Address + List + two Options): the interpreted
+      fold was 6.0x over a hand-written encoder and 7.6x over a
+      hand-written AST decoder, circe between them
+- [x] the staged fold: encode 168 ns vs 820 (4.9x; 1.25x of the hand
+      floor, 3.2x faster than circe), decode-from-AST 114 vs 634
+      (5.6x; 1.6x of hand, 2.4x faster than circe) — history.tsv
+      staged-codecs-step1
+- [x] the staged path is the one TAKEN for a derived schema and not
+      for a wrapped one (`Staged.productShape`/`sumShape`, tested)
+
+### Decisions
+- **Faithfulness is a construction-time SHAPE check, not
+  derived-detection.** The first cut tried to read at expansion
+  whether the field's `Schema` given came from `Schema.derived`;
+  verified impossible — `given Schema[T] = Schema.derived` reaches
+  the macro as a bare reference to the given val, and a hand-written
+  given looks identical (a probe printed `derived=false` for every
+  type, and the "staged" codec measured level with the fold because
+  everything delegated). So each product or sum the codec meets gets
+  one `val ok_T` hoisted before the codec object, comparing the
+  run-time schema's field/case NAMES in order with the Mirror's, and
+  each staged node is `if ok_T then <straight-line> else <the fold
+  with that schema>`. One stable boolean read per node; an Iso from
+  wrap/refine, a hand-written instance, and a reordered schema all
+  take the fold, so a newtype travels as its underlying type in both
+  modes.
+- **Delegation, not expansion, for recursion** — a type met again
+  inside itself folds at run time; the alternative (a generated
+  recursive method per type) is a later refinement if a recursive
+  hot path names it.
+- **Refusal messages are the fold's own** — every cold path
+  (wrong shape, wrong primitive) calls `Json.decode(schema)` for
+  that node, so the words never diverge.
+- **The second macro of the module** — Defaults.scala was "the one";
+  Staged earns the exception the same way (reads what the compiler
+  knows, hands back an ordinary value) and the codecs spec promised
+  it.
+- **The parser is the elephant, and not this lane's** — `Json.parse`
+  of the 150-byte fixture is 14.6 µs against circe's 0.55 µs (26x):
+  the lossless CST parser (trivia, totality, error-carrying) is what
+  text→value pays, and decode is 0.6 µs of that 15.2. Filed as its
+  own road (a fast VALUE parser beside the lossless one), separate
+  from staging.
+
+### Out of scope
+- Cbor/Yaml/Xml staged algebras (the same generator, another
+  emitter — when a wire names it).
+- Run-time staging (`scala.quoted.staging`) for schemas that exist
+  only at run time (a ToolSpec from a model, Pg composites from the
+  catalog): JVM-only, a compiler dependency; only if such a workload
+  appears.
