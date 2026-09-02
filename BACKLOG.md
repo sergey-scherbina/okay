@@ -89,19 +89,6 @@
 ## okay-cache (specs/cache.md)
 
 ## okay-sql (the neutral seam — Typed/Schema layer)
-- [ ] sql-schema-composite — Schema-layer binding of SqlValue.Arr/Row
-      (the natural close of the composite story). Today the pg driver
-      decodes composites/arrays into Arr/Row at the SqlValue level, but
-      Typed.decodeCell only maps SCALARS: a case-class field typed
-      Vector[T] or a nested case class hits `case _ => Bad("expected
-      …, got Arr/Row")`. Teach decodeCell to read Schema.SArray from
-      Arr (elements recursed) and Schema.SProduct from Row (fields by
-      position, then by label once named-composite field NAMES are
-      carried). Cross-driver: JDBC's getArray/getObject lands here too;
-      the encode side (Schema value -> Arr/Row -> textOf) mirrors it.
-      Deliverable: a case class with a Vector field and a nested
-      composite decodes end to end (live pg + a JDBC/H2 array case).
-
 ## okay-pg (specs/sql.md — the wire driver)
 - [ ] pg-composite-rowtype — the last sliver after pg-composite-array
       (landed): type a TABLE'S row-type (relkind='r') selected whole

@@ -1,5 +1,25 @@
 # Changelog
 
+## sql-schema-composite — Vector and nested case classes bind to Arr/Row
+Completed: 2026-09-02
+Landed as d92c2a5 (spec 1 commit before). The Schema layer closes the
+composite story: a case-class field typed Vector[T]/List[T] decodes
+from SqlValue.Arr and a nested case class from SqlValue.Row, both
+recursive (Vector[Option[Int]], Vector[Vector[Int]], Vector[Addr],
+Option[Addr]); the encode side mirrors it, so Vector/nested params
+bind as Arr/Row. Typed's field shape became a recursive Shape
+(Prim/Opt/Iso/Arr/Row) — decode and encode are two folds, the old
+into/outof closures retired. SqlType gains Arr(elem)/Row(fields) for
+verify (fits recurses; Arr(Other) from JDBC metadata passes, decode
+checks the elements). JdbcSql: Types.ARRAY, getArray, Object[] bind.
+PgSql: describe types columns through the composite/array caches.
+Proven: okay-sql 8/8 on JVM+JS+Native (one-frame fake driver),
+okay-jdbc TestTyped 15/15 over H2 (array column read/verify/bind),
+okay-pg TestPgComposite 14/14 live (Person with Vector[Int], Addr,
+Vector[Addr], Option[Addr] via Typed.rows from a table, clean verify,
+a Wrong shape drifts on the column; rowsOf binds Vector+Addr params).
+Composite fields bind by POSITION (no names on the wire).
+
 ## condition-typed-signal — the typed door, and the gate lesson paid in full
 Completed: 2026-09-02
 Landed as 1281a4c + FIX 96f5b3c. Of[A] + the typed signal edge + the
