@@ -3,7 +3,6 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
-import !.*
 
 /**
  * Stream pipelines across the ecosystem: map, filter, take(N), sum —

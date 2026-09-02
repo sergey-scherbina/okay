@@ -26,7 +26,7 @@ class AsyncBenchmark {
     import java.util.concurrent.CompletableFuture
     val fs = (1 to K).map: _ =>
       val f = CompletableFuture[Int]()
-      Thread.startVirtualThread(() => f.complete(1))
+      Thread.startVirtualThread(() => f.complete(1): Unit)
       f
     fs.map(_.join()).sum
 

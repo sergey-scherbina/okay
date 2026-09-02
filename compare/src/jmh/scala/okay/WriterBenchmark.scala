@@ -3,7 +3,6 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
-import !.*
 
 /**
  * The Writer effect across the ecosystem: tell N values, collect them

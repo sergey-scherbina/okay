@@ -34,7 +34,6 @@ class CompareBenchmark {
 
   @Benchmark
   def catsFree(): Int =
-    import cats.catsInstancesForId
     (1 to N).foldLeft(cats.free.Free.pure[cats.Id, Int](0)): (m, _) =>
       m.flatMap(x => cats.free.Free.liftF[cats.Id, Int](x + 1))
     .foldMap(cats.arrow.FunctionK.id[cats.Id])

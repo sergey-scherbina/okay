@@ -2,7 +2,6 @@ package okay
 
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
-import !.*
 
 /**
  * The other three Fold consumers, before and after the dispatch.
