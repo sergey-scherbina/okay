@@ -1,5 +1,0 @@
-slug: cast-free-typed
-branch: feature/cast-free-typed
-worktree: ../okay-wt-cast-free-typed
-claimed: 2026-09-02
-scope: BACKLOG cast-free-typed — okay-sql Typed.scala (11 casts): a typed Shape[A] GADT built from the Schema (Prim carries its codec, Opt/Arr/Iso/Row carry their element types), encode/decode by matching; the row kernel through Schema.eachField; the Mirror's make stays the one erased boundary.

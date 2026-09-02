@@ -1,5 +1,20 @@
 # Changelog
 
+## cast-free-typed — the SQL typed layer's Shape is a GADT
+Completed: 2026-09-02
+Landed as 38ed3b2. Typed's Shape mirrored the Schema untyped
+(`Iso(Any => …)`, `Arr(Vector[Any] => Any)`, value casts by SqlType
+on encode) — eleven casts. Now `Shape[A]` is a GADT: `Prim[A]` carries
+its typed decode (with the column widenings I32 → I64, Num → F64/Text)
+and encode, `Opt`/`Iso`/`Arr` carry their element types, `Row[A]`
+carries the field shapes by position for decoding (the Mirror's
+`make` takes them erased — no kernel needed) and its Schema for
+encoding through `eachField`; decode/encode are written by matching
+(`case o: Shape.Opt[a]`), `encodeParams[P]` is typed. Zero casts in
+Typed.scala. sql suites on JVM/JS/Native, jdbc, r2dbc, pg, persist,
+match, demo green; every module compiles; rebased over
+demo-subscription-gate and re-verified demo + match.
+
 ## demo-subscription-gate — free join month, then paid-per-period or gated, never deleted
 Completed: 2026-09-02
 Landed as 87d6e70 (spec) + c06bc42 (impl). User ask: a profile shows and
