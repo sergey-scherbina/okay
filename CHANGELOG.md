@@ -1,5 +1,23 @@
 # Changelog
 
+## stm-no-anyref-cast — nothing in the cell is cast
+Completed: 2026-09-02
+Landed as 951ac50. The operator: "я хочу избавиться от
+asInstanceOf[AnyRef]". modify skipped the CAS when the answer was
+the same object as the content, and `eq` on an unbounded A needed
+both sides cast to AnyRef. The skip only matters for Stamped
+values (the Channel's State returns itself on a receive that
+changes nothing) and a Stamped is a reference by type, so the check
+is now a pattern — `case same: Stamped[?] if same eq s` — and a
+wrapped value always installs, an equal one included (a version
+bump and a spurious wake-up of a retry on that cell; the woken
+transaction re-validates and parks again). A stays unbounded,
+TRef[Int] keeps compiling. A/B two rounds once the host quieted
+(load 6 after a 20+ stretch of sibling sbt runs): equal. Gate green
+in six pieces under that load; rebased over pg-composite-rowtype
+and demo-ctx-wiring and re-verified core + pg + demo + match +
+chatweb before the merge.
+
 ## pg-composite-rowtype — a table's row selected whole is a typed Row
 Completed: 2026-09-02
 Landed as 3e817cc (operator: "НУЖЕН"). The connect preload joins

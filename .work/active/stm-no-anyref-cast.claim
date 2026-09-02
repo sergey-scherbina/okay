@@ -1,5 +1,0 @@
-slug: stm-no-anyref-cast
-branch: feature/stm-no-anyref-cast
-worktree: ../okay-wt-stm-no-anyref-cast
-claimed: 2026-09-02
-scope: modify's "unchanged, skip the CAS" check compares identity only for Stamped answers (they are AnyRef by type), wrapped values always CAS — no asInstanceOf[AnyRef] anywhere in Stm.scala. Operator: "я хочу избавиться от asInstanceOf[AnyRef]".
