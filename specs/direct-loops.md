@@ -37,7 +37,10 @@ while retry.!? do backoff()                        // while: effectful cond
   the receiver before the loop
 - [x] `while cond do body` with marks in cond and/or body: cond
   re-evaluates per iteration; the loop is emitted as a recursive
-  Cont, stack-safe through Bind spill
+  def over F's own flatMap (direct-flatmap-emission retargeted it
+  from Cont, 2026-09-02) — a lazy F (Free) defers the recursive
+  call inside its flatMap, so the loop inherits F's stack
+  discipline exactly as a hand-written one would
 - [x] multi-shot safety: the emitted loops recurse over an IMMUTABLE
   materialized List, never a live iterator — a List-monad reflect
   inside a loop body re-runs the rest of the loop per element
@@ -65,10 +68,11 @@ while retry.!? do backoff()                        // while: effectful cond
   List(Lambda(param, body)))` with `hasMark(body)`, receiver
   `<:< IterableOnce`.
 - foreach emits: take `xs.iterator.to(LazyList)` once, then
-  `def loop(rest: LazyList[T]): Cont[Unit, F[A], F[A]] = rest match
-  { case h #:: tl => bodyCont(h).flatMap(_ => loop(tl)); case _ =>
-  Pure(()) }` — recursion through flatMap rides Cont's Bind spill
-  (stack-safe), and the immutable, memoized LazyList is what makes
+  `def loop(rest: LazyList[T]): F[Unit] = rest match
+  { case h #:: tl => M.flatMap(bodyF(h))(_ => loop(tl)); case _ =>
+  M.pure(()) }` (the Cont-typed original retargeted by
+  direct-flatmap-emission) — recursion through flatMap inherits F's
+  stack discipline, and the immutable, memoized LazyList is what makes
   multi-shot re-entry sound. Lazy (audit-fixes, 2026-09-02; was
   `.toList`): an unbounded receiver — `LazyList.from(1)`, an
   iterator over a stream — is forced only as far as the monad

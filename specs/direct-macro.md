@@ -218,6 +218,25 @@ The rewrite is statement-level monadic normalization (ANF for marks):
 
 ## Results
 
+- direct-flatmap-emission, measured (2026-09-02, quiet box, spike
+  watcher clean; docs/benchmarks.md §1b): 10k binds — while+var
+  313µs -> **189µs** (3.3x -> 2.0x over the 95µs hand chain, and the
+  remaining 2.0x is exactly the loop's sequencing bind per iteration,
+  two binds against the chain's one); recursion 410µs -> **56µs**
+  (4.3x -> **0.59x — faster than the hand-written foldLeft chain**,
+  because the macro emits right-nested binds where foldLeft builds
+  left-nested ones the Free interpreter must reassociate — the same
+  mechanism the table credits zio-direct for, and level with kyo's
+  hand-written 56µs). Every TestDirect* suite green unchanged, full
+  sbt test green. Paid for once, in the rewrite: a nested quote
+  inside a splice referencing a type param bound outside the
+  enclosing quote does not pickle (the loops keep flatMap in the
+  outer quote and precompute the body's element type from types
+  alone); anonymous `(_: Type[T])` poly-lambda params do not pickle
+  once quotes deepen — named; the hoisted Monad val is built by hand
+  (Symbol.newVal) so the term stays in one Quotes context. Recorded
+  road, not promised: a continuation-passing sequencing pass could
+  merge the while loop's two binds per iteration into one (~1x).
 - 16 tests in TestDirect, all green: vals, subexpression hoisting
   (order asserted), if/match, multi-shot (List, 6 continuation runs
   counted), effects over `!` (single row and a two-effect

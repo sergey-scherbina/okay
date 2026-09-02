@@ -151,10 +151,16 @@ def add(mx: Option[Int], my: Option[Int]): Option[Int] =
 ```
 
 **What the macro actually does — and does not.** `direct[F] { block }`
-rewrites the block, at compile time, into exactly the
-`Monadic.reflect`/`reify` chain of Layer 1. Every program it emits is
-one you could have written by hand; multi-shot, short-circuit and the
-stack discipline are *inherited*, not re-implemented. The mark `.?`
+rewrites the block, at compile time, into the monad's own plain
+`flatMap` binds — exactly the chain a careful hand would write.
+(The first cut emitted Layer 1's `Monadic.reflect`/`reify` instead;
+the benchmark priced that runtime layer at 3.3x over the hand-written
+chain and the target retired — direct-flatmap-emission in
+specs/direct-macro.md. Layer 1 remains as the semantic floor and the
+no-macro API: `reflect(m)` *is* `shift(k => m.flatMap(k))`, so the
+two emissions mean the same program.) Every program the macro emits
+is one you could have written by hand; multi-shot, short-circuit and
+the stack discipline are *inherited*, not re-implemented. The mark `.?`
 inside a block is a different symbol from `Monadic.!?` — it typechecks
 as `A` (the block must typecheck *before* the macro expands; that is
 how inline macros work), never executes, and throws loudly if it
