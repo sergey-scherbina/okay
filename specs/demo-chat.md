@@ -151,6 +151,31 @@ the engine test's domain).
       list, ask-all, one declines (seeker told), one accepts (seeker
       told WITH the contact), the third stands down (told)
 
+## The deal timeline (demo-deal-timeline)
+
+`Deal` (okay-match) carries only its CURRENT state — no history. The
+demo layer makes the negotiation visible without touching the
+engine: `chainedTable` gains a threaded `off: Long` (the same log
+offset `scriptedAgent`/`agentTurn` already carry for facts_assert's
+provenance — default `turnNo.incrementAndGet()` when a caller has
+none), and the `match_inquire`/`match_respond` wraps each append a
+`DealEvent(state, by, Provenance("web-demo", off, what))` to an
+in-memory per-deal log — append-only, never rewritten, the same
+story `supersede` tells for facts. `GET /deals/<n>` (and
+`/deals/<n>.json`) renders the deal's current state plus its full
+event vector, each event's provenance shown (offset — the ChatLog
+turn that caused it — and the span of what was asked/answered): the
+Asked → Accepted/Declined arc, or Asked → Withdrawn when the round's
+other asks stand down.
+
+- [ ] a full round (ask two, one declines, one accepts) through the
+      real route: /deals/<n>.json for each shows its own event
+      vector (Asked; Asked, Declined; Asked, Accepted) with
+      provenance on every event
+- [ ] the withdrawn stand-down carries its own event (Asked,
+      Withdrawn) — the "someone else was chosen" story on the record
+- [ ] a deal that never existed answers 404, not an empty timeline
+
 ## Flows in the demo (demo-flows)
 The generic scenarios reach the chat: flow_advance is wrapped like
 the rest of the tool table — a fired transition's notifications are
