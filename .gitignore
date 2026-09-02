@@ -9,3 +9,4 @@ target/
 .worktrees/
 okay-chat*.db
 okay-chat.log/
+hs_err_pid*.log
