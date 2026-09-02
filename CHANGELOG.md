@@ -2,7 +2,7 @@
 
 ## pg-scalar-types — numeric is exact; vendor scalars are named
 Completed: 2026-09-02
-Landed as LANDING (spec 1 commit before). numeric/decimal no longer
+Landed as 96191fb (spec 1 commit before). numeric/decimal no longer
 rounds through a Double in either driver: SqlValue.Num(BigDecimal)
 under SqlType.Num (pg 1700 from text, NaN/±Infinity to F64; JDBC via
 getBigDecimal/setBigDecimal). Typed: a Double field still reads Num
