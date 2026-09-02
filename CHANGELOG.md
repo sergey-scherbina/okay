@@ -1,5 +1,24 @@
 # Changelog
 
+## cast-free-delim — the delimited-control machine on a typed chain
+Completed: 2026-09-02
+Landed as 3370692. Delim's segment stack is a typed chain
+`Segs[F, A, Z]` — from the current answer to the run's answer, `K`
+chaining types through each Bind's continuation, `Mark` carrying its
+prompt and so the answer type under it. The cut at a prompt goes
+through `Same[Prompt]`'s witness (`q === p`: the mark's type is the
+prompt's), `reify`/`split`/the loop are typed by the chain and GADT
+matching, the state between steps is `Next(prog, kont)`. Nine casts
+became the two claims the file's header always stated (a Push's body,
+a Capture's f: programs in the machine's row, erased because F is not
+the operation's to name), each at its line. One frame more per push
+(the K carrying the prompt's answer up to the op's); DelimBenchmark
+A/B on a loaded host (load 6–9, error bars wider than the values)
+shows no loss — pushOnly 24.7–29.3 µs vs 48.6 µs baseline in the one
+clean-ish pair. TestDelim unchanged; core 362 green on JVM, JS/Native
+green, every module compiles. specs/delimited-control.md gained the
+section.
+
 ## casts-encapsulated — three audit lanes in one: Effects, the kernels, the macro's upcasts
 Completed: 2026-09-02
 Landed as d6feb48. Effects.scala: Handler.union splits through `<|>`

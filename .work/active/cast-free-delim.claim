@@ -1,5 +1,0 @@
-slug: cast-free-delim
-branch: feature/cast-free-delim
-worktree: ../okay-wt-cast-free-delim
-claimed: 2026-09-02
-scope: Delim.scala (9 casts): a TYPED segment stack Segs[In, Out] (K chains types, a Mark carries its prompt's answer type), the split at a prompt through Same[Prompt]'s witness, reify/loop typed; the payload casts (Push.body, Capture.f — the row's F is not the op's to name) stay as the stated claims, isolated. The suite is the spec: TestDelim unchanged.
