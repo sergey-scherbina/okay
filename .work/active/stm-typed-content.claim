@@ -1,5 +1,0 @@
-slug: stm-typed-content
-branch: feature/stm-typed-content
-worktree: ../okay-wt-stm-typed-content
-claimed: 2026-09-02
-scope: the cell's content is typed end to end: Stamped[+A] { def value: A }, Slot[A], Owned[A], AtomicReference[Stamped[A]]; TRef.get/modify without casts; a user value says `extends TRef.Stamped[Self] { def value = this }`. Operator: "сделай Owned тоже дженерик для безопасности типов".

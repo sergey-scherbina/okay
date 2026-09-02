@@ -1,5 +1,21 @@
 # Changelog
 
+## stm-typed-content — the cell's content typed end to end
+Completed: 2026-09-02
+Landed as e591d8e. The operator asked for Owned to be generic for
+type safety. Over an untyped Stamped that would be a phantom
+parameter, so the whole content is typed: `Stamped[+A] { def value:
+A }`, `Slot[A]`, `Owned[A]`, `AtomicReference[Stamped[A]]` — and
+TRef.get/modify have no cast at all. A user value writes one line,
+`extends TRef.Stamped[State] { def value = this }` (a self type
+argument, not the F-bound the earlier objection made it out to
+be); Channel.State does. What remains: one `@unchecked` in `wrap`
+(a Stamped inside a TRef[A] is a Stamped[A] by contract, invisible
+through erasure) and the interpreter's erasure casts over Tx[Any].
+A/B two rounds: equal. Gate green (chunk C in two halves — the host
+was at load 14 with siblings' sbt runs and the first attempt hit
+the tool's timeout); rebased over two claim-only commits.
+
 ## stm-one-content — the cell holds one type
 Completed: 2026-09-02
 Landed as f3a2d18. The operator disliked that Owned and
