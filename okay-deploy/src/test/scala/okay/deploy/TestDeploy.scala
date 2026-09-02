@@ -37,7 +37,7 @@ class TestDeploy extends munit.FunSuite:
 
   test("write then drift is empty; a hand edit is named; a missing file is named") {
     val root = Files.createTempDirectory("okay-deploy")
-    Deploy.write(d, root)
+    Deploy.write(d, root): Unit
     assertEquals(Deploy.drift(d, root), Vector.empty)
     val f = root.resolve(d.dir).resolve("helm/values.yaml")
     Files.writeString(f, Files.readString(f) + "\n# hand edit\n")
