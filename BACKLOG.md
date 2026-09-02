@@ -98,15 +98,6 @@
       cost until a consumer names the need; `(t).*` or row_to_json →
       Schema is the road meanwhile. Anonymous record ROW() stays text
       (genuinely unresolvable — no typrelid).
-- [ ] pg-scalar-types — the OIDs still falling through valueOf to
-      Text: uuid (2950), json/jsonb (114/3802), timestamp/timestamptz
-      (1114/1184), date (1082), time (1083/1266), inet/cidr, interval.
-      Decode the common ones to typed/normalized SqlValue (or a named
-      SqlType.Other kept honest). SEPARATELY and IMPORTANT: numeric
-      (1700) is decoded as F64 today — LOSSY. Carry it exact (a
-      SqlValue.Num(BigDecimal) or the text preserved) so money/precise
-      decimals do not silently round. Bind-don't-model stays the
-      default for the exotic ones; this is about the ones that bite.
 - [ ] pg-mtls — client-certificate auth for the pg TLS path
       (specs/tls.md mTLS rung, staged): TlsConfig already carries
       clientCert/clientKey and PgTls threads Secrets, so wire the

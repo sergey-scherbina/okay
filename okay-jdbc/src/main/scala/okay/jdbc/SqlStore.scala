@@ -120,7 +120,8 @@ final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
   private def longOf(v: SqlValue): Long = v match
     case SqlValue.I64(x) => x
     case SqlValue.I32(x) => x.toLong
-    case SqlValue.F64(x) => x.toLong // H2 types SUM(expr) as NUMERIC
+    case SqlValue.Num(x) => x.toLong // H2 types SUM(expr) as NUMERIC
+    case SqlValue.F64(x) => x.toLong
     case SqlValue.Null => 0L
     case other => throw IllegalStateException(s"expected a number, got $other")
 

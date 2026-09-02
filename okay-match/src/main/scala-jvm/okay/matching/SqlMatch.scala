@@ -106,7 +106,7 @@ final class SqlMatch(sql: Sql,
   private def s(v: SqlValue): String = v match { case Text(x) => x; case _ => "" }
   private def sOpt(v: SqlValue): Option[String] = v match { case Text(x) => Some(x); case _ => None }
   private def dbl(v: SqlValue): Double = v match
-    case F64(x) => x; case I64(x) => x.toDouble; case I32(x) => x.toDouble; case _ => 0.0
+    case F64(x) => x; case Num(x) => x.toDouble; case I64(x) => x.toDouble; case I32(x) => x.toDouble; case _ => 0.0
   private def lng(v: SqlValue): Long = v match
     case I64(x) => x; case I32(x) => x.toLong; case F64(x) => x.toLong; case _ => 0L
   private def lOpt(v: SqlValue): Option[Long] = v match

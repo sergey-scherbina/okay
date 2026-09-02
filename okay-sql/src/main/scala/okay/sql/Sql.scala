@@ -26,6 +26,9 @@ enum SqlValue:
   case F64(v: Double)
   case Text(v: String)
   case Bytes(v: Array[Byte])
+  /** numeric/decimal, EXACT (pg-scalar-types): money does not round
+   * in the driver; a Double field rounds it by the field's choice */
+  case Num(v: BigDecimal)
   /** a SQL array: the elements typed by the driver (pg-composite-decode).
    * Nested arrays are Arr-of-Arr; a SQL NULL element is `Null`. */
   case Arr(elems: Vector[SqlValue])
@@ -39,6 +42,8 @@ enum SqlValue:
  * name so a drift report can say what it found rather than shrug */
 enum SqlType:
   case Bool, I32, I64, F64, Text, Bytes
+  /** numeric/decimal: exact, arbitrary precision */
+  case Num
   case Other(name: String)
   /** an array column; `Other` as the element when the driver's
    * metadata cannot name it (JDBC) — decode checks the elements */

@@ -134,6 +134,35 @@ class TestSqlPure extends munit.FunSuite {
     assertEquals(b1.row, 1L)
   }
 
+  // ── pg-scalar-types: numeric exact, vendor scalars as text ───────
+
+  final case class Acct(id: Int, balance: BigDecimal, approx: Double, asText: String, when: String)
+  given Schema[Acct] = Schema.derived
+
+  val acctCols = Vector(Col("id", SqlType.I32, false), Col("balance", SqlType.Num, false),
+    Col("approx", SqlType.Num, false), Col("as_text", SqlType.Num, false),
+    Col("when", SqlType.Other("timestamptz"), false))
+  val money = BigDecimal("12345678901234567890.123456789")   // beyond a Double's 15-17 digits
+
+  test("a Num decodes exactly into BigDecimal and String, lossy into Double by the field's choice; a String reads any vendor type") {
+    val row = Vector(SqlValue.I32(1), SqlValue.Num(money), SqlValue.Num(money), SqlValue.Num(money),
+      SqlValue.Text("2026-09-02 06:00:00+00"))
+    val out = decoded[Acct](OneFrame(acctCols, Vector(row)))
+    assertEquals(out, Vector(Right(Acct(1, money, money.toDouble, money.toString, "2026-09-02 06:00:00+00"))))
+    assert(BigDecimal(money.toDouble) != money)   // the Double IS lossy — the point of Num
+    // and the BigDecimal binds back as its exact text
+    assertEquals(Params.bind(Acct(1, money, 0.0, "", ""))(1), SqlValue.Text(money.toString))
+  }
+
+  test("verify: BigDecimal/Double/String fit Num, String fits Other; an Int does not fit Num") {
+    def drifts(cols: Vector[Col]) = pureOf(Typed.verify[Acct](OneFrame(cols, Vector.empty), "q"))
+    assertEquals(drifts(acctCols), Vector.empty)
+    final case class Whole(id: Int, balance: Int)
+    given Schema[Whole] = Schema.derived
+    val d = pureOf(Typed.verify[Whole](OneFrame(acctCols, Vector.empty), "q"))
+    assertEquals(d.map(_.column), Vector("balance"))
+  }
+
   test("Granted names a downgrade so the caller can refuse it") {
     assert(!Granted(Isolation.Serializable, Isolation.Serializable).downgraded)
     assert(Granted(Isolation.Serializable, Isolation.ReadCommitted).downgraded)

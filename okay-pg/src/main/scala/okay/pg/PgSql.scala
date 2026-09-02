@@ -517,16 +517,31 @@ object PgSql:
     case 16 => SqlType.Bool
     case 21 | 23 => SqlType.I32
     case 20 => SqlType.I64
-    case 700 | 701 | 1700 => SqlType.F64
+    case 700 | 701 => SqlType.F64
+    case 1700 => SqlType.Num
     case 25 | 1043 | 18 | 19 => SqlType.Text
     case 17 => SqlType.Bytes
-    case other => SqlType.Other(s"oid:$other")
+    case other => SqlType.Other(vendorNames.getOrElse(other, s"oid:$other"))
+
+  /** the scalars that stay TEXT on purpose (bind-don't-model; no
+   * java.time in a JVM/JS/Native module), named so verify can say what
+   * it found — a String field fits any of them (pg-scalar-types) */
+  private val vendorNames: Map[Int, String] = Map(
+    2950 -> "uuid", 114 -> "json", 3802 -> "jsonb", 142 -> "xml",
+    1114 -> "timestamp", 1184 -> "timestamptz", 1082 -> "date",
+    1083 -> "time", 1266 -> "timetz", 1186 -> "interval",
+    869 -> "inet", 650 -> "cidr", 829 -> "macaddr", 790 -> "money")
 
   private def valueOf(oid: Int, s: String): SqlValue = oid match
     case 16 => SqlValue.Bool(s == "t")
     case 21 | 23 => SqlValue.I32(s.toInt)
     case 20 => SqlValue.I64(s.toLong)
-    case 700 | 701 | 1700 => SqlValue.F64(s.toDouble)
+    case 700 | 701 => SqlValue.F64(s.toDouble)
+    // numeric is EXACT; pg's NaN/Infinity have no BigDecimal, so they
+    // fall to the float they are
+    case 1700 => s match
+      case "NaN" | "Infinity" | "-Infinity" => SqlValue.F64(s.toDouble)
+      case _ => SqlValue.Num(BigDecimal(s))
     case 17 =>
       val hex = s.drop(2)
       val out = new Array[Byte](hex.length / 2)
@@ -637,6 +652,7 @@ object PgSql:
     case SqlValue.I32(x) => Some(x.toString)
     case SqlValue.I64(x) => Some(x.toString)
     case SqlValue.F64(x) => Some(x.toString)
+    case SqlValue.Num(x) => Some(x.toString)
     case SqlValue.Text(s) => Some(s)
     case SqlValue.Bytes(bs) =>
       Some("\\x" + bs.map(b => f"${b & 0xff}%02x").mkString)

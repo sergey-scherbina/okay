@@ -217,7 +217,7 @@ import — and the platforms it runs on.
       table's ROW-type (relkind='r') selected whole — every table
       would join the preload; the `(t).*` expansion or `row_to_json →
       Schema` is the road until a consumer names the need
-- [ ] numeric is EXACT and the vendor scalars are NAMED
+- [x] numeric is EXACT and the vendor scalars are NAMED
       (pg-scalar-types). `numeric`/`decimal` decoded to F64 was a
       stated v1 loss; it silently rounded money. Now both drivers
       carry `SqlValue.Num(BigDecimal)` under `SqlType.Num` (pg 1700
@@ -396,7 +396,7 @@ The seam and its first driver landed (sql-seam, 2026-09-01).
   the region still rolls back via `cancel()` in the Resource
   finalizer.
 - **JdbcSql** (okay-jdbc): the JdbcInterop chunk shape behind the
-  seam; java.sql.Types→SqlType (NUMERIC/DECIMAL→F64 v1, stated);
+  seam; java.sql.Types→SqlType (NUMERIC/DECIMAL→F64 v1, stated — retired by pg-scalar-types: Num, exact);
   begin refuses nested loudly, reads back the granted level;
   commit/rollback/cancel restore autocommit.
 - **A core find, fixed where it lives**: `Resource.run`'s residual
@@ -443,6 +443,26 @@ The seam and its first driver landed (sql-seam, 2026-09-01).
   per-platform crypto given. Every behavior box of this spec is now
   checked; the pg family is a connect call away from a Native
   binary or a Node process too.
+- **pg-scalar-types landed** (2026-09-02): `SqlValue.Num(BigDecimal)`
+  / `SqlType.Num` on both drivers; pg names uuid/json/jsonb/xml/
+  timestamp/timestamptz/date/time/timetz/interval/inet/cidr/macaddr/
+  money in describe (values stay text). Typed: `fits` gained
+  `F64←Num` (lossy by the field), `Text←Num` (exact text) and
+  `Text←Other(_)` (a String reads any vendor type); decode renders
+  `Num` into Double or String accordingly; `given decimalSchema:
+  Schema[BigDecimal]` (a refine over String — `import okay.sql.given`)
+  is the exact typed field and travels as a string in JSON/CBOR (the
+  Writes journal derives Schema[SqlValue] through it). Finds:
+  sqlite-jdbc's `getBigDecimal` does not mark the column, so a
+  following `wasNull` throws "column -1 out of bounds" — the Num read
+  decides nullness from the value (SqlStore's `SUM(expr)` over H2 is
+  the consumer that arrives as Num now). pg `'NaN'::numeric` has no
+  BigDecimal — falls to `F64(NaN)`, stated. Tests: okay-sql 10/10 on
+  three platforms; TestTyped 16/16 (decimal(30,9) exact into
+  BigDecimal, rounded into Double, param round-trip, timestamp as
+  text with a clean verify); TestPgComposite 15/15 live (numeric(30,9)
+  exact via Typed.rows, describe names uuid/jsonb/timestamptz, String
+  fields verify clean, Num param lands exact, numeric[] → Arr(Num)).
 - **sql-schema-composite landed** (2026-09-02): `Typed`'s field
   shape became a recursive `Shape` (Prim/Opt/Iso/Arr/Row) read off
   the Schema once — decode and encode are two folds over it, so the

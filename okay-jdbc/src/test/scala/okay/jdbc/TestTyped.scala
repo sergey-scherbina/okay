@@ -4,6 +4,7 @@ import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Throws, effect}
 import okay.given
 import okay.codec.Schema
 import okay.sql.{Bad, Drift, Granted, Isolation, Sql, SqlValue, Typed}
+import okay.sql.given
 import java.sql.DriverManager
 
 /**
@@ -55,6 +56,9 @@ class TestTyped extends munit.FunSuite {
       st.execute("create table tagged(id int not null, tags varchar(16) array not null, nums int array)")
       st.execute("insert into tagged values (1, array['a', 'b'], array[1, null, 3]), (2, array[], null)")
       st.execute("grant select, insert on tagged to app")
+      st.execute("create table ledger(id int not null, amount decimal(30, 9) not null, at timestamp with time zone not null)")
+      st.execute("insert into ledger values (1, 12345678901234567890.123456789, '2026-09-02 06:00:00+00')")
+      st.execute("grant select, insert on ledger to app")
       st.close()
     finally admin.close()
 
@@ -351,6 +355,29 @@ class TestTyped extends munit.FunSuite {
       assertEquals(n, 1L)
       val back = allRows[Tagged](db, "select id, tags, nums from tagged where id = 3")
       assertEquals(back, Vector(Right(Tagged(3, Vector("x"), Some(List(None, Some(9)))))))
+    }
+  }
+
+  // ── pg-scalar-types over JDBC: decimal exact, a vendor type as text ──
+
+  final case class Ledger(id: Int, amount: BigDecimal, at: String)
+  given Schema[Ledger] = Schema.derived
+  final case class Rounded(id: Int, amount: Double)
+  given Schema[Rounded] = Schema.derived
+
+  test("a DECIMAL column is exact in a BigDecimal field and lossy in a Double one; a timestamp reads as text with a clean verify") {
+    val money = BigDecimal("12345678901234567890.123456789")
+    withDb { db =>
+      assertEquals(allRows[Ledger](db, "select id, amount, at from ledger"),
+        Vector(Right(Ledger(1, money, "2026-09-02 06:00:00+00"))))
+      assertEquals(run(Typed.verify[Ledger](db, "select id, amount, at from ledger")), Vector.empty)
+      val Vector(Right(r)) = allRows[Rounded](db, "select id, amount from ledger"): @unchecked
+      assert(BigDecimal(r.amount) != money, "the Double field rounds — by its choice")
+      // a BigDecimal param binds as its exact text and lands exact
+      assertEquals(run(Typed.update(db, "insert into ledger values (?, ?, ?)")(
+        Ledger(2, money + 1, "2026-09-02 07:00:00+00"))), 1L)
+      assertEquals(allRows[Ledger](db, "select id, amount, at from ledger where id = 2").map(_.map(_.amount)),
+        Vector(Right(money + 1)))
     }
   }
 

@@ -5,6 +5,7 @@ import okay.given
 import okay.crypto.given
 import okay.sql.SqlValue
 import okay.sql.SqlValue.*
+import okay.sql.given
 
 /**
  * The pg driver decodes COMPOSITE / ROW() and ARRAY types into
@@ -180,5 +181,39 @@ class TestPgComposite extends munit.FunSuite:
       val rows = collectChunks(okay.sql.Typed.rowsOf[Out, In](db,
         "select $1::int[] as nums, $2::okay_addr as home")(In(Vector(4, 5), Addr("a\"b,c", None, true)))).flatten
       assertEquals(rows, List(Right(Out(Vector(4, 5), Addr("a\"b,c", None, true)))))
+    finally db.close()
+  }
+
+  // ── pg-scalar-types: numeric exact, vendor scalars named and read as text ──
+
+  final case class Ledger(id: Int, amount: BigDecimal, ref: String, doc: String, at: String)
+  given okay.codec.Schema[Ledger] = okay.codec.Schema.derived
+
+  test("numeric is exact (Num), NaN falls to F64; uuid/jsonb/timestamptz are NAMED and a String field fits them") {
+    assume(available, "no Postgres at the configured endpoint")
+    val money = BigDecimal("12345678901234567890.123456789")
+    assertEquals(cell("select 12345678901234567890.123456789::numeric"), Num(money))
+    cell("select 'NaN'::numeric") match
+      case F64(x) => assert(x.isNaN)
+      case other => fail(s"expected F64(NaN), got $other")
+    assertEquals(cell("select array[1.5, 2.25]::numeric[]"), Arr(Vector(Num(BigDecimal("1.5")), Num(BigDecimal("2.25")))))
+    val db = connect()
+    try
+      run(db.update("drop table if exists okay_ledger"))
+      run(db.update("create table okay_ledger(id int not null, amount numeric(30, 9) not null, " +
+        "ref uuid not null, doc jsonb not null, at timestamptz not null)"))
+      run(db.update("insert into okay_ledger values (1, 12345678901234567890.123456789, " +
+        "'6ba7b810-9dad-11d1-80b4-00c04fd430c8', '{\"k\": [1, 2]}', '2026-09-02 06:00:00+00')"))
+      val sql = "select id, amount, ref, doc, at from okay_ledger"
+      assertEquals(run(db.describe(sql)).map(_.tpe), Vector(okay.sql.SqlType.I32, okay.sql.SqlType.Num,
+        okay.sql.SqlType.Other("uuid"), okay.sql.SqlType.Other("jsonb"), okay.sql.SqlType.Other("timestamptz")))
+      assertEquals(run(okay.sql.Typed.verify[Ledger](db, sql)), Vector.empty)
+      val rows = collectChunks(okay.sql.Typed.rows[Ledger](db, sql)).flatten
+      assertEquals(rows.map(_.map(r => (r.amount, r.ref, r.doc))),
+        List(Right((money, "6ba7b810-9dad-11d1-80b4-00c04fd430c8", "{\"k\": [1, 2]}"))))
+      // the BigDecimal param binds as its exact text; pg types $2 from the column
+      assertEquals(run(db.update("insert into okay_ledger values (2, $1, $2::uuid, '{}', now())",
+        Vector(Num(money + 1), Text("6ba7b810-9dad-11d1-80b4-00c04fd430c9")))), 1L)
+      assertEquals(cell("select amount from okay_ledger where id = 2"), Num(money + 1))
     finally db.close()
   }

@@ -135,6 +135,7 @@ object PgVector:
     case other => throw IllegalStateException(s"expected an int, got $other")
   private def dbl(v: SqlValue): Double = v match
     case SqlValue.F64(x) => x
+    case SqlValue.Num(x) => x.toDouble
     case SqlValue.I32(x) => x.toDouble
     case SqlValue.I64(x) => x.toDouble
     case SqlValue.Text(s) => s.toDouble

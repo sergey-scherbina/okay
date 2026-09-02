@@ -113,15 +113,14 @@ object JdbcSql:
         md.isNullable(i) != ResultSetMetaData.columnNoNulls)
     }
 
-  /** java.sql.Types → the neutral vocabulary. NUMERIC/DECIMAL map to
-   * F64 in v1 — stated, not hidden; a decimal algebra type joins
-   * when a consumer hurts without it (specs/jdbc.md, out of scope) */
+  /** java.sql.Types → the neutral vocabulary. NUMERIC/DECIMAL are
+   * exact (`Num`, pg-scalar-types) — the v1 F64 mapping rounded */
   private def typeOf(t: Int, vendorName: String): SqlType = t match
     case Types.BOOLEAN | Types.BIT => SqlType.Bool
     case Types.TINYINT | Types.SMALLINT | Types.INTEGER => SqlType.I32
     case Types.BIGINT => SqlType.I64
-    case Types.FLOAT | Types.DOUBLE | Types.REAL |
-         Types.NUMERIC | Types.DECIMAL => SqlType.F64
+    case Types.FLOAT | Types.DOUBLE | Types.REAL => SqlType.F64
+    case Types.NUMERIC | Types.DECIMAL => SqlType.Num
     case Types.CHAR | Types.VARCHAR | Types.LONGVARCHAR |
          Types.NCHAR | Types.NVARCHAR | Types.LONGNVARCHAR | Types.CLOB => SqlType.Text
     case Types.BINARY | Types.VARBINARY | Types.LONGVARBINARY | Types.BLOB => SqlType.Bytes
@@ -140,7 +139,7 @@ object JdbcSql:
     case l: java.lang.Long => SqlValue.I64(l)
     case d: java.lang.Double => SqlValue.F64(d)
     case f: java.lang.Float => SqlValue.F64(f.toDouble)
-    case d: java.math.BigDecimal => SqlValue.F64(d.doubleValue)
+    case d: java.math.BigDecimal => SqlValue.Num(BigDecimal(d))
     case s: String => SqlValue.Text(s)
     case bs: Array[Byte] => SqlValue.Bytes(bs)
     case a: java.sql.Array => arrayOf(a)
@@ -154,18 +153,26 @@ object JdbcSql:
   private def rowOf(rs: ResultSet, cols: Vector[SqlType]): Vector[SqlValue] =
     Vector.tabulate(cols.length) { ix =>
       val i = ix + 1
-      val v: SqlValue = cols(ix) match
-        case SqlType.Bool => SqlValue.Bool(rs.getBoolean(i))
-        case SqlType.I32 => SqlValue.I32(rs.getInt(i))
-        case SqlType.I64 => SqlValue.I64(rs.getLong(i))
-        case SqlType.F64 => SqlValue.F64(rs.getDouble(i))
-        case SqlType.Text => SqlValue.Text(rs.getString(i))
-        case SqlType.Bytes => SqlValue.Bytes(rs.getBytes(i))
-        case SqlType.Arr(_) => arrayOf(rs.getArray(i))
-        case SqlType.Other(_) | SqlType.Row(_) =>
-          val s = rs.getString(i)
-          SqlValue.Text(if s == null then "" else s)
-      if rs.wasNull then SqlValue.Null else v
+      cols(ix) match
+        // the reference reads carry their own null; sqlite-jdbc's
+        // getBigDecimal does not mark the column, so wasNull after it
+        // throws — decide nullness from the value here
+        case SqlType.Num =>
+          val d = rs.getBigDecimal(i)
+          if d == null then SqlValue.Null else SqlValue.Num(BigDecimal(d))
+        case t =>
+          val v: SqlValue = t match
+            case SqlType.Bool => SqlValue.Bool(rs.getBoolean(i))
+            case SqlType.I32 => SqlValue.I32(rs.getInt(i))
+            case SqlType.I64 => SqlValue.I64(rs.getLong(i))
+            case SqlType.F64 => SqlValue.F64(rs.getDouble(i))
+            case SqlType.Text => SqlValue.Text(rs.getString(i))
+            case SqlType.Bytes => SqlValue.Bytes(rs.getBytes(i))
+            case SqlType.Arr(_) => arrayOf(rs.getArray(i))
+            case SqlType.Num | SqlType.Other(_) | SqlType.Row(_) =>
+              val s = rs.getString(i)
+              SqlValue.Text(if s == null then "" else s)
+          if rs.wasNull then SqlValue.Null else v
     }
 
   private def bindAll(ps: PreparedStatement, params: Vector[SqlValue]): Unit =
@@ -177,6 +184,7 @@ object JdbcSql:
         case SqlValue.I32(v) => ps.setInt(i + 1, v)
         case SqlValue.I64(v) => ps.setLong(i + 1, v)
         case SqlValue.F64(v) => ps.setDouble(i + 1, v)
+        case SqlValue.Num(v) => ps.setBigDecimal(i + 1, v.bigDecimal)
         case SqlValue.Text(v) => ps.setString(i + 1, v)
         case SqlValue.Bytes(v) => ps.setBytes(i + 1, v)
         // an Object[] is what H2 (and the pg driver's setObject) take
@@ -193,6 +201,7 @@ object JdbcSql:
     case SqlValue.I32(x) => java.lang.Integer.valueOf(x)
     case SqlValue.I64(x) => java.lang.Long.valueOf(x)
     case SqlValue.F64(x) => java.lang.Double.valueOf(x)
+    case SqlValue.Num(x) => x.bigDecimal
     case SqlValue.Text(s) => s
     case SqlValue.Bytes(bs) => bs
     case SqlValue.Arr(elems) => elems.map(jdbcOf).toArray

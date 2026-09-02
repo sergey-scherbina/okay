@@ -104,6 +104,13 @@ object Typed:
    * column serves an I64 field; everything else is exact */
   private def fits(field: SqlType, col: SqlType): Boolean = (field, col) match
     case (SqlType.I64, SqlType.I32) => true
+    // a Double reads a numeric column — lossy, by the FIELD's choice;
+    // a String reads it exactly (its decimal text), and a String reads
+    // ANY vendor type: the text is what the wire carries
+    // (pg-scalar-types, bind-don't-model)
+    case (SqlType.F64, SqlType.Num) => true
+    case (SqlType.Text, SqlType.Num) => true
+    case (SqlType.Text, SqlType.Other(_)) => true
     // the driver could not name the element type (JDBC metadata):
     // decode checks the elements, and decode is total
     case (SqlType.Arr(_), SqlType.Arr(SqlType.Other(_))) => true
@@ -151,7 +158,9 @@ object Typed:
       case (SqlType.I64, SqlValue.I64(x)) => Right(x)
       case (SqlType.I64, SqlValue.I32(x)) => Right(x.toLong)
       case (SqlType.F64, SqlValue.F64(x)) => Right(x)
+      case (SqlType.F64, SqlValue.Num(x)) => Right(x.toDouble)
       case (SqlType.Text, SqlValue.Text(x)) => Right(x)
+      case (SqlType.Text, SqlValue.Num(x)) => Right(x.toString)
       case (SqlType.Bytes, SqlValue.Bytes(x)) => Right(x)
       case _ => Left(s"expected $t, got $other")
     case (Shape.Arr(el, build, _), SqlValue.Arr(elems)) =>
@@ -343,3 +352,11 @@ object Typed:
 object Params:
 
   def bind[P](p: P)(using s: Schema[P]): Vector[SqlValue] = Typed.encodeParams(s, p)
+
+/** the exact decimal field (pg-scalar-types): on the row it is the
+ * numeric's text (verify passes Text against Num; decode renders a
+ * Num exactly), and in JSON/CBOR it travels as a string — no float on
+ * either road. `import okay.sql.given` */
+given decimalSchema: Schema[BigDecimal] = Schema.refine[BigDecimal, String](
+  s => try Right(BigDecimal(s)) catch { case _: NumberFormatException => Left(s"not a decimal: '$s'") },
+  _.toString)

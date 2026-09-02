@@ -108,6 +108,8 @@ final class Writes(db: Sql, topic: Topic, run: String):
 
 object Writes:
 
+  // Num travels as its decimal text on the journal (okay.sql's given)
+  import okay.sql.decimalSchema
   given Schema[SqlValue] = Schema.derived
 
   /** the journal's records; intent and completion are SEPARATE —

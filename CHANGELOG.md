@@ -1,5 +1,21 @@
 # Changelog
 
+## pg-scalar-types — numeric is exact; vendor scalars are named
+Completed: 2026-09-02
+Landed as LANDING (spec 1 commit before). numeric/decimal no longer
+rounds through a Double in either driver: SqlValue.Num(BigDecimal)
+under SqlType.Num (pg 1700 from text, NaN/±Infinity to F64; JDBC via
+getBigDecimal/setBigDecimal). Typed: a Double field still reads Num
+(lossy by the FIELD's choice — v1 consumers keep working), a String
+reads its exact text, and `given decimalSchema: Schema[BigDecimal]`
+(import okay.sql.given) is the exact typed field. pg describe names
+uuid/json/jsonb/xml/timestamp(tz)/date/time(tz)/interval/inet/cidr/
+macaddr/money instead of oid:N; values stay text and a String field
+fits ANY Other column with a clean verify (bind-don't-model). Find:
+sqlite-jdbc getBigDecimal + wasNull throws — nullness decided from
+the value. okay-sql 10/10 ×3, TestTyped 16/16, live pg 15/15,
+okay-match 28/28 (sqlite), full matrix green.
+
 ## sql-schema-composite — Vector and nested case classes bind to Arr/Row
 Completed: 2026-09-02
 Landed as d7c8e0d (spec 1 commit before). The Schema layer closes the
