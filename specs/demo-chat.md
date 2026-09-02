@@ -693,6 +693,16 @@ promise of live consistency.
   5. close the reopened store — no handle survives past one tick
   `isLeader`/`leaderNode` answer from the LAST tick's cached
   decision — never touch a store handle between ticks.
+  `OKAY_CHAT_TICK_MS` (default 500) and `OKAY_CHAT_LEASE_MS`
+  (default 5000) tune the poll cadence and the lease length.
+  **A cold start caught in testing**: two nodes provisioning a
+  BRAND-NEW shared directory at the exact same moment can race on a
+  topic's first segment file (`FileAlreadyExistsException` —
+  `FileStore` takes no cross-process lock, specs/persist.md); the
+  constructor's first, synchronous tick catches and logs rather than
+  crashing `main`, and the very next tick (one `tickMs` later) finds
+  the segment the other node just created and proceeds normally —
+  the race is real, and the recovery is "try again shortly," stated.
 - **`TwoNode.leaderGated(node)(inner)`** wraps the WHOLE route
   `PartialFunction` (not each write route individually — the
   smallest honest cut): a `POST` from a non-leader answers 503
@@ -722,21 +732,21 @@ distinguish read-only MCP calls like `tools/list` from writing ones
 — a stated over-refusal, not a correctness gap).
 
 Behavior:
-- [ ] two `ChatDemo` processes over the SAME `OKAY_CHAT_LOG`
+- [x] two `ChatDemo` processes over the SAME `OKAY_CHAT_LOG`
       directory: exactly one is leader at a time (proven by reading
       both nodes' `/whoami`-style leader report — see below —
       agreeing on one node)
-- [ ] a `/chat` turn accepted by the leader is visible on the
+- [x] a `/chat` turn accepted by the leader is visible on the
       FOLLOWER's `/market.json` within one tick interval, with no
       restart
-- [ ] the follower refuses a write (`POST /chat`) with 503 naming
+- [x] the follower refuses a write (`POST /chat`) with 503 naming
       the leader; its `GET /market`/`/market.json` keep answering
       throughout
-- [ ] killing the leader process: within lease + skew, the follower
+- [x] killing the leader process: within lease + skew, the follower
       takes over (`tryTakeover` succeeds), the market it already
       held from polling is immediately servable, and it now accepts
       writes too — the showcase's own claim, "the market survives"
-- [ ] `OKAY_CHAT_NODE` unset: the demo's existing behavior and full
+- [x] `OKAY_CHAT_NODE` unset: the demo's existing behavior and full
       test suite are UNCHANGED — this is additive, not a rewrite
 
 ## Out of scope

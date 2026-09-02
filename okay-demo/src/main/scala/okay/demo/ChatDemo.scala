@@ -1180,9 +1180,22 @@ object ChatDemo {
       if sys.env.contains("ANTHROPIC_API_KEY") then "live"
       else if sys.env.contains("OKAY_CHAT_BASE") then s"local ${sys.env("OKAY_CHAT_BASE")}"
       else "scripted"
+    // OKAY_CHAT_NODE (demo-two-nodes): absent, everything below is
+    // exactly as it always was — every existing test constructs
+    // routes(...) directly and never sets this env var
+    val node = sys.env.get("OKAY_CHAT_NODE")
     provide(Transports.http(), Secrets.env, market)(Resource.run[Unit, Pure](
-      Jetty.serve(port)(handler(budget))().map { s =>
+      Jetty.serve(port)(node match
+        case Some(n) =>
+          val logDir = sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log")
+          val tickMs = sys.env.get("OKAY_CHAT_TICK_MS").flatMap(_.toLongOption).getOrElse(500L)
+          val leaseMs = sys.env.get("OKAY_CHAT_LEASE_MS").flatMap(_.toLongOption).getOrElse(5000L)
+          val twoNode = TwoNode(java.nio.file.Path.of(logDir), n, tickMs, leaseMs)
+          TwoNode.leaderGated(twoNode)(routes(Chat.model, budget))
+        case None => handler(budget)
+      )().map { s =>
         println(s"chat: http://127.0.0.1:${Jetty.port(s)}  (model: $mode)")
+        node.foreach(n => println(s"two-node: $n — leader status at /whoami"))
         // no delivery channel yet (same limit Login.start states about
         // its one-time code) — the admin token rides the console
         println(s"admin token (okay-admin, /admin/replay): ${Admin.Issuer.issue()}")
