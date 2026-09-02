@@ -233,16 +233,16 @@ object Stm {
       log.write(r, a2)
       b
     case Tx.Retry() => throw RetryNow
-    case op: Tx.OrElse[X] =>
+    case Tx.OrElse(progA, progB) =>
       val branchA = new Log(parent = Some(log))
-      val ra = try Some(runWithLog(op.a, branchA)) catch case RetryNow => None
+      val ra = try Some(runWithLog(progA, branchA)) catch case RetryNow => None
       log.reads ++= branchA.reads   // read either way: a real retry blocks on it too
       ra match
         case Some(a) => log.absorb(branchA); a
         case None =>
           val branchB = new Log(parent = Some(log))
           try
-            val b = runWithLog(op.b, branchB)
+            val b = runWithLog(progB, branchB)
             log.reads ++= branchB.reads
             log.absorb(branchB)
             b
