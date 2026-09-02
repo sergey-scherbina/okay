@@ -1,5 +1,23 @@
 # Changelog
 
+## eager-dispatch-regression — fold goes inline, closes 3.45x UNDER the pre-regression baseline
+Completed: 2026-09-02
+Landed as 55f4aa3. The other half of the bench-sweep report's two
+findings (channel-merge-regression was the first, and turned out not
+to be a regression at all). This one was real and traced exactly:
+casts-encapsulated (d6feb48) centralized Eager's two casts into one
+`fold` taking ordinary Function1 arguments — every flatMap call
+built a closure for BOTH branches (the one not taken included, since
+arguments evaluate before fold is entered) and dispatched through a
+virtual call instead of an inlined match arm. 5.1 -> 17.6us, 3.45x,
+on the pure-bind hot path that is the entire point of Eager. Fix:
+`fold` becomes `private inline def` with `inline` value/tree params
+— the casts stay in the one documented function, but each call
+site's branch compiles in place, nothing built for the arm not
+taken. Measured 4.83 ±0.03us — under the original 5.1, not just
+back to it. TestEager 4/4, full sbt test green. docs/benchmarks.md
+§1 and specs/eager.md Decisions carry the finding and the fix.
+
 ## demo-package — the React bundle rides into the image next to the jar
 Completed: 2026-09-02
 Landed as 04abb38+e3bab74 (spec) + 8485498 (impl). `Chat.appJs`

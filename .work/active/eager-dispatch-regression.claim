@@ -1,1 +1,0 @@
-claimed: eager-dispatch-regression — Eager.flatMap 3.45x slower (5.1->17.6us, casts-encapsulated d6feb48); fix: fold as inline def with inline value/tree params, keeps the two casts in one documented place, eliminates the per-call closure for the branch not taken and the virtual dispatch through it
