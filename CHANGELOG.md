@@ -1,5 +1,19 @@
 # Changelog
 
+## stm-slot-stamped — the cell's content is two kinds, not three
+Completed: 2026-09-02
+Landed as 0577ab3. The operator's suggestion after stm: `Slot
+extends Stamped`. The cell now holds a Stamped — the value itself
+when it carries its version, or a Slot wrapping any other value,
+itself a Stamped with `value` overridden (`Stamped.value` defaults
+to `this`) — or the Owned commit marker. `valueOf` and `versionOf`
+are a field read behind one Owned check, `modify` has one path for
+every value type, `wrap` and the commit's ownership CAS type against
+Stamped. Caveat recorded: `wrap` stamps what it is given, so it must
+only see what a transaction or modify produced, never an existing
+Slot. A/B three alternating rounds: equal within noise on both
+channel paths (history.tsv row). Gate green in three chunks.
+
 ## stm — one transaction language, a family of handlers; the Channel on it, faster
 Completed: 2026-09-02
 Landed as 5ac9b4d (5 commits; spec first). The operator's brief:
