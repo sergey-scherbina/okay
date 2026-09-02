@@ -1,0 +1,4 @@
+lane: bench-direct
+owner: fable-ctx
+started: 2026-09-02
+scope: DirectBenchmark — okay direct macro + Monadic reflection vs kyo defer and zio-direct, flatMap baselines each; docs section, history
