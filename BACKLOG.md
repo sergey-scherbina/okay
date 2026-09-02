@@ -47,8 +47,18 @@ construction instead of a type test per value).
       statement-position loop's `F[Any]` cast to Unit — now an
       explicit discard `(_: V) => ()`, Scala's own value-discard rule
       said in the macro.
-- [ ] unchecked-audit — the 28 non-`resume` `@unchecked` patterns,
-      same triage.
+- [x-landed] unchecked-audit — landed: the five `case c: Chunk[Byte]
+      @unchecked` over a `Chunk[Byte] | Null` scrutinee are
+      null-first matches (flow typing types `c`). The rest are the
+      stated kernels: Chunks/Writer's Fold specialization dispatch
+      (8: a runtime class test on the Fold instance, the type
+      argument erased — commented at Chunks) and Throws' union
+      dispatch (12: `A | E | Either | Try` told apart at runtime,
+      commented at Throws). Casts in src/main: 185 → 97; what is
+      left is kernels with their reason (ChunkBuf, Eager, Pipe,
+      Same, Schema, Effects), JVM interop (blob S3/Offload/Backup,
+      java Streams, CryptoJvm, kyo) and small ones in ui/rag — the
+      next audit's list.
 
 ## STM — after stm (2026-09-02, specs/stm.md)
 - [ ] stm-ui-close — Ui.scala's closing decision is three atomics
