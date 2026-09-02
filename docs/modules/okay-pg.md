@@ -42,6 +42,15 @@ and a role under `hostssl … cert clientcert=verify-full` logs in with
 no password at all (specs/tls.md). The dockerized test Postgres is
 provisioned for this by `okay-pg/mtls-provision.sh`.
 
+**A connection string, parsed purely.** `PgTarget.parse(url)` reads
+`postgres://user:pass@host:port/db?sslmode=…&sslrootcert=…` as
+operators write it — `sslmode` by the TLS seam's own names (absent
+means plaintext), `sslrootcert` the CA for verify-ca/full — so
+whether a URL configures TLS the way you meant is testable with no
+server. `PgTarget.is(s)` recognizes the scheme. Moved here 2026-09-02
+from `okay-demo` (it never depended on the demo); `okay-demo`'s
+`OKAY_CHAT_DB=postgres://…` still uses it, now via `okay-pg`.
+
 **Errors survive.** A backend error is drained to `ReadyForQuery`
 before the throw, so the session keeps working; `cancel()` (the
 region's sync brake) rolls back on the spot.
