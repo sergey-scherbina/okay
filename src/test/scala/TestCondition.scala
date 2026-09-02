@@ -67,7 +67,7 @@ class TestCondition extends munit.FunSuite {
           signal[String]("which?")
         }(s => s"inner got $s")
       }(n => s"outer got $n")
-    assertEquals(!.run(Condition.run[String, Pure]((_, menu) =>
+    assertEquals(!.run(Condition.run[String, Pure]((_, _) =>
       Decision.Invoke("retry", "x"))(byName)), "inner got x")
   }
 
@@ -88,7 +88,7 @@ class TestCondition extends munit.FunSuite {
     assert(bad.getMessage.contains("not a"), bad.getMessage)
     // restarts compose with the typed door exactly as with signal
     val viaRestart = Condition.run[Int, Pure](
-      (_, menu) => Decision.Invoke("default", ()))(
+      (_, _) => Decision.Invoke("default", ()))(
       within[Int, Pure]("default")(
         raiseC(HowMany("retries")))(_ => 7))
     assertEquals(!.run(viaRestart), 7)
@@ -181,9 +181,12 @@ class TestCondition extends munit.FunSuite {
     assertEquals(out, 42)
   }
 
+  /** records where "x" is damage; a class-level member (not local to
+   * the test) so its type test in the policy matches below is
+   * statically checkable — a local class cannot be, by JVM rule */
+  private final case class Damaged(raw: String)
+
   test("the repair story: one decode loop, three outcomes, chosen at run") {
-    // records where "x" is damage; the loop offers skip and patch
-    final case class Damaged(raw: String)
     def decode(raw: String): Int ! Op =
       raw.toIntOption match
         case Some(n) => pure(n)

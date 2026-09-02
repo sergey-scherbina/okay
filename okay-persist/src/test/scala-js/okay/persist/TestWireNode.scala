@@ -6,7 +6,7 @@ import scala.concurrent.{Future, Promise}
 import okay.{!, Async}
 import okay.given
 import okay.codec.Cbor
-import WireProtocol.{Req, Resp, given}
+import WireProtocol.{Req, Resp}
 
 /**
  * The openness acceptance, literal (specs/net.md): a SCRIPTED NODE
@@ -25,7 +25,7 @@ class TestWireNode extends munit.FunSuite:
     val net = js.Dynamic.global.require("net")
     val server = net.createServer({ (sock: js.Dynamic) =>
       var buf = new Array[Byte](0)
-      sock.on("data", { (d: js.Dynamic) =>
+      val _ = sock.on("data", { (d: js.Dynamic) =>
         val u = d.asInstanceOf[Uint8Array]
         val add = new Array[Byte](u.length)
         var i = 0
@@ -48,12 +48,12 @@ class TestWireNode extends munit.FunSuite:
             frame(2) = (bs.length >> 8).toByte
             frame(3) = bs.length.toByte
             System.arraycopy(bs, 0, frame, 4, bs.length)
-            sock.write(byteArray2Int8Array(frame))
+            val _ = sock.write(byteArray2Int8Array(frame))
             ()
       }: js.Function1[js.Dynamic, Unit])
       ()
     }: js.Function1[js.Dynamic, Unit])
-    server.listen(0, { () =>
+    val _ = server.listen(0, { () =>
       p.success((server, server.address().port.asInstanceOf[Int]))
     }: js.Function0[Unit])
     p.future
@@ -75,7 +75,7 @@ class TestWireNode extends munit.FunSuite:
           rd <- c.read("events", 0, 0L, 10)
         yield (c.topics, off, end, rd)
       Async.runAsync(prog).map { (topics, off, end, rd) =>
-        server.close()
+        val _ = server.close()
         assertEquals(topics, Vector("events"))
         assertEquals(off, 7L)
         assertEquals(end, 8L)
@@ -92,11 +92,11 @@ class TestWireNode extends munit.FunSuite:
       Async.runAsync(WireProtocol.Client.connect("127.0.0.1", port, "stranger"))
         .transform {
           case scala.util.Failure(e: WireProtocol.WireRefused) =>
-            server.close()
+            val _ = server.close()
             assert(e.reason.contains("token"), e.reason)
             scala.util.Success(())
           case other =>
-            server.close()
+            val _ = server.close()
             scala.util.Failure(new AssertionError(s"expected WireRefused, got $other"))
         }
     }

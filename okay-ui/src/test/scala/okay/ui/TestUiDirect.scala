@@ -3,7 +3,7 @@ package okay.ui
 import okay.*
 import okay.given
 import okay.Direct.*
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 
 /** ui-direct: the direct wizard, askWith's three outcomes, the
  * ambient-Host doors — one test per promise */

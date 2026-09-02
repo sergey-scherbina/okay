@@ -1,6 +1,6 @@
 package okay.obs
 
-import okay.{!, Async, pure}
+import okay.{!, Async}
 import okay.given
 import okay.codec.{Cbor, Json}
 import okay.http.{Http, Method, Request, Response}

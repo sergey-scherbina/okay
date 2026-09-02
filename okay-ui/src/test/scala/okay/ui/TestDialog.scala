@@ -2,7 +2,7 @@ package okay.ui
 
 import okay.*
 import okay.given
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 
 /**
  * Scenarios are programs: a wizard is show-await-validate-branch with

@@ -2,7 +2,7 @@ package okay.delta
 
 import okay.{!, +, Async, Chunk, ChunkBuf, Handler, Produce}
 import okay.given
-import okay.sql.{Col, SqlType, SqlValue, Typed}
+import okay.sql.{SqlType, SqlValue, Typed}
 import okay.sql.given
 import okay.jdbc.JdbcSql
 import java.nio.file.Files
@@ -72,13 +72,13 @@ class TestDelta extends munit.FunSuite:
 
   test("a load id lands ONCE: the same (app, version) appended twice is one append") {
     val path = freshTable()
-    run(Delta.create(path, columns))
-    run(Delta.append(path, rows(0, 10), loadId = Some(("okay-load", 1L))))
-    val again = try { run(Delta.append(path, rows(0, 10), loadId = Some(("okay-load", 1L)))); Right(()) }
+    run(Delta.create(path, columns)): Unit
+    run(Delta.append(path, rows(0, 10), loadId = Some(("okay-load", 1L)))): Unit
+    val again = try { run(Delta.append(path, rows(0, 10), loadId = Some(("okay-load", 1L)))): Unit; Right(()) }
                 catch { case e: Exception => Left(e.getClass.getSimpleName) }
     assert(again.isLeft, s"the duplicate load was accepted: $again")
     assertEquals(run(Delta.rows(path)).length, 10)
-    run(Delta.append(path, rows(10, 20), loadId = Some(("okay-load", 2L))))
+    run(Delta.append(path, rows(10, 20), loadId = Some(("okay-load", 2L)))): Unit
     assertEquals(run(Delta.rows(path)).length, 20)
   }
 
@@ -86,7 +86,7 @@ class TestDelta extends munit.FunSuite:
     val path = freshTable()
     val e1 = intercept[IllegalArgumentException](run(Delta.create(path, Vector(Delta.Column("tags", SqlType.Arr(SqlType.Text))))))
     assert(e1.getMessage.contains("tags"), e1.getMessage)
-    run(Delta.create(path, columns))
+    run(Delta.create(path, columns)): Unit
     val e2 = intercept[IllegalArgumentException](run(Delta.append(path, ChunkBuf.of(Vector(
       Vector(SqlValue.Text("not an id"), SqlValue.Text("s"), SqlValue.Null, SqlValue.Null, SqlValue.Null, SqlValue.Null))))))
     assert(e2.getMessage.contains("'id'"), e2.getMessage)
@@ -94,8 +94,8 @@ class TestDelta extends munit.FunSuite:
 
   test("road 1: the kernel-written table read through the JDBC seam by DuckDB's delta extension — typed rows, verify (skips offline)") {
     val path = freshTable()
-    run(Delta.create(path, columns))
-    run(Delta.append(path, rows(0, 50)))
+    run(Delta.create(path, columns)): Unit
+    run(Delta.append(path, rows(0, 50))): Unit
     val conn = DriverManager.getConnection("jdbc:duckdb:")
     try
       val loaded =

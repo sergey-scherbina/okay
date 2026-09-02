@@ -85,10 +85,10 @@ abstract class DocsSuite extends FunSuite:
 
   test("query walks a DECLARED index, bounded; an undeclared field refuses loudly") {
     val d = mkDocs()
-    run(d.put("a", Person("A", "Kyiv")))
-    run(d.put("b", Person("B", "Lviv")))
-    run(d.put("c", Person("C", "Kyiv")))
-    run(d.put("d", Person("D", "Kyiv")))
+    run(d.put("a", Person("A", "Kyiv"))): Unit
+    run(d.put("b", Person("B", "Lviv"))): Unit
+    run(d.put("c", Person("C", "Kyiv"))): Unit
+    run(d.put("d", Person("D", "Kyiv"))): Unit
     val kyiv = collect(d.query("city", "Kyiv", max = 2))
     assertEquals(kyiv.length, 2)
     assert(kyiv.forall(_._2.city == "Kyiv"))

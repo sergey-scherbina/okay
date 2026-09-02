@@ -23,9 +23,9 @@ class TestRepair extends FunSuite:
   def seeded(): Typed[Ev] =
     val t = MemoryStore().topic("events")
     val typed = Typed[Ev](t, version = 1, upcasts = Map.empty)
-    typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable)
-    t.append(0, bytes("k"), Array[Byte](9, 9, 9), Ack.Durable)
-    typed.append(0, bytes("k"), Ev("c", 3), Ack.Durable)
+    typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable): Unit
+    t.append(0, bytes("k"), Array[Byte](9, 9, 9), Ack.Durable): Unit
+    typed.append(0, bytes("k"), Ev("c", 3), Ack.Durable): Unit
     typed
 
   def road(typed: Typed[Ev]): Vector[(Long, Ev)] ! Condition.Op =
@@ -68,7 +68,7 @@ class TestRepair extends FunSuite:
   test("a clean slice never signals: the policy is never consulted") {
     val t = MemoryStore().topic("clean")
     val typed = Typed[Ev](t, 1, Map.empty)
-    typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable)
+    typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable): Unit
     var consulted = false
     val out = !.run(Condition.run[Vector[(Long, Ev)], okay.Pure] { (_, _) =>
       consulted = true; Fail

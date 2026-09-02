@@ -189,7 +189,7 @@ class TestChatDemo extends munit.FunSuite {
     assert(offerStored(a1), s"neither stored nor asked (after retry): $a1")
     // SMALL TALK: the marketplace must stay untouched
     val before = store.candidates(okay.matching.Query(okay.matching.Side.Offer, k = 100)).length
-    turn("Какая столица Франции?")
+    turn("Какая столица Франции?"): Unit
     val after = store.candidates(okay.matching.Query(okay.matching.Side.Offer, k = 100)).length
     assertEquals(after, before, "small talk must not touch the marketplace")
   }
@@ -206,7 +206,7 @@ class TestChatDemo extends munit.FunSuite {
     store.assert(p, "skill", okay.matching.Side.Offer,
       okay.matching.Value.VText("ремонт велосипедов, замена цепи и тормозов"),
       okay.matching.Provenance("seed", 1, "умею чинить велосипеды"), 1.0,
-      okay.matching.Vis.Public)
+      okay.matching.Vis.Public): Unit
     def modelH = okay.agent.Provider.openAi(okay.llm.Transports.http(),
       "local", "default", s"$base/v1/chat/completions")
     val q1 = "мне нужно починить велосипед, найди мне кого-нибудь"
@@ -236,7 +236,7 @@ class TestChatDemo extends munit.FunSuite {
           .GET().build(),
         HttpResponse.BodyHandlers.ofInputStream()).body()
       // window two, TOMORROW: the provider shows up
-      turn("/match умею велосипед ремонт email master@late")
+      turn("/match умею велосипед ремонт email master@late"): Unit
       // the chain fired: the waiting inbox receives the match, live —
       // read past the hello frame, under a watchdog
       val got = java.util.concurrent.CompletableFuture.supplyAsync { () =>
@@ -272,9 +272,9 @@ class TestChatDemo extends munit.FunSuite {
         }.get(10, java.util.concurrent.TimeUnit.SECONDS)
 
       // the THIRD domain: hiring — three developers offer their work
-      turn("/match offer: разработчик scala, ищу проект email dev1@jobs")
-      turn("/match offer: разработчик scala и котлин email dev2@jobs")
-      turn("/match offer: разработчик джуниор scala email dev3@jobs")
+      turn("/match offer: разработчик scala, ищу проект email dev1@jobs"): Unit
+      turn("/match offer: разработчик scala и котлин email dev2@jobs"): Unit
+      turn("/match offer: разработчик джуниор scala email dev3@jobs"): Unit
       // the employer's need lists them NUMBERED
       val found = turn("/match need: нужен разработчик scala в команду email boss@jobs")
       assert(found.contains("1)") && found.contains("2)") && found.contains("3)"), found.take(400))
@@ -292,14 +292,14 @@ class TestChatDemo extends munit.FunSuite {
       val (n1, n2, n3) = (dealNo(ask1), dealNo(ask2), dealNo(ask3))
 
       // dev1 declines; the boss hears it
-      turn(s"/match отказываюсь $n1 email dev1@jobs")
-      readUntil(boss, "отказался")
+      turn(s"/match отказываюсь $n1 email dev1@jobs"): Unit
+      readUntil(boss, "отказался"): Unit
       // dev2 accepts: the boss gets the CONTACT (the Matched unlock),
       // dev3 gets the stand-down (withdrawn), and cannot accept anymore
-      turn(s"/match берусь $n2 email dev2@jobs")
+      turn(s"/match берусь $n2 email dev2@jobs"): Unit
       val won = readUntil(boss, "согласился")
       assert(won.contains("dev2@jobs"), s"the unlocked contact must surface: $won")
-      readUntil(d3, "отбой")   // the unchosen-anymore hears the stand-down
+      readUntil(d3, "отбой"): Unit // the unchosen-anymore hears the stand-down
       // (that a withdrawn ask cannot be accepted is the engine's
       // guarantee, proven in TestMatch — not re-proven over SSE)
 
@@ -342,13 +342,13 @@ class TestChatDemo extends munit.FunSuite {
     val provider = store.register("flow-prov@x")
     store.assert(provider, "contact", okay.matching.Side.Offer,
       okay.matching.Value.VText("tg:@prov"),
-      okay.matching.Provenance("c", 1, "..."), 1.0, okay.matching.Vis.Matched)
+      okay.matching.Provenance("c", 1, "..."), 1.0, okay.matching.Vis.Matched): Unit
     val Right(id) = store.startFlow("deal",
       Map("seeker" -> seeker, "provider" -> provider), "полка"): @unchecked
     // the provider accepts THROUGH THE TOOL — the seeker's inbox rings
     val inb = ChatDemo.inbox("flow-seeker@x")
     call("flow_advance", "flow" -> Json.JNum(id.n.toDouble),
-      "transition" -> Json.JStr("accept"), "by" -> Json.JStr(provider.uuid))
+      "transition" -> Json.JStr("accept"), "by" -> Json.JStr(provider.uuid)): Unit
     val note = java.util.concurrent.CompletableFuture.supplyAsync { () =>
       var r: Option[String] = None
       while r.isEmpty do r = inb.receiveBlocking()
@@ -470,10 +470,10 @@ class TestChatDemo extends munit.FunSuite {
     val p = store.register("m@x")
     store.assert(p, "skill", okay.matching.Side.Offer,
       okay.matching.Value.VText("кладу плитку"),
-      okay.matching.Provenance("c", 1, "..."), 1.0, okay.matching.Vis.Public)
+      okay.matching.Provenance("c", 1, "..."), 1.0, okay.matching.Vis.Public): Unit
     store.assert(p, "phone", okay.matching.Side.Offer,
       okay.matching.Value.VText("+380-SECRET"),
-      okay.matching.Provenance("c", 2, "..."), 1.0, okay.matching.Vis.Matched)
+      okay.matching.Provenance("c", 2, "..."), 1.0, okay.matching.Vis.Matched): Unit
     withServer(512, store) { port =>
       val market = client.send(
         HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/market")).GET().build(),
@@ -512,10 +512,10 @@ class TestChatDemo extends munit.FunSuite {
     val p = store.register("live-m@x")
     store.assert(p, "skill", okay.matching.Side.Offer,
       okay.matching.Value.VText("кладу плитку"),
-      okay.matching.Provenance("c", 1, "..."), 1.0, okay.matching.Vis.Public)
+      okay.matching.Provenance("c", 1, "..."), 1.0, okay.matching.Vis.Public): Unit
     store.assert(p, "phone", okay.matching.Side.Offer,
       okay.matching.Value.VText("+380-SECRET"),
-      okay.matching.Provenance("c", 2, "..."), 1.0, okay.matching.Vis.Matched)
+      okay.matching.Provenance("c", 2, "..."), 1.0, okay.matching.Vis.Matched): Unit
     withServer(512, store) { port =>
       // the JSON: the Public skill with its attr; the Matched phone off
       val mj = client.send(
@@ -597,7 +597,7 @@ class TestChatDemo extends munit.FunSuite {
       // landed between them.
       val waiter = store.register("waiter@sub")
       store.assert(waiter, "need", Side.Need, Value.VText("нужен электрик"),
-        Provenance("seed", 1, "..."), 1.0, Vis.Public)
+        Provenance("seed", 1, "..."), 1.0, Vis.Public): Unit
       okay.subscription.Subscription.backdateJoin(waiter.uuid, oldPeriod)
       val ch = ChatDemo.inbox("waiter@sub")
       ch.offer("sentinel-before"): Unit
@@ -728,8 +728,8 @@ class TestChatDemo extends munit.FunSuite {
     val store = MemoryMatch()
     val log = ChatDemo.logOf(":memory:")
     def turn(t: String) = provide(deadWire, noSecrets, store: MatchStore)(ChatDemo.matchTurnLogged(t, Nil, log))
-    turn("умею класть плитку email master@demo")
-    turn("нужен плиточник email client@demo")
+    turn("умею класть плитку email master@demo"): Unit
+    turn("нужен плиточник email client@demo"): Unit
     def snapshot(s: MatchStore) =
       (s.candidates(Query(Side.Offer, text = "плитку")).map(_.disclosed.map(f => Value.text(f.value))),
        s.candidates(Query(Side.Need, text = "плиточник")).map(_.disclosed.map(f => Value.text(f.value))),

@@ -2,7 +2,7 @@ package okay.jetty
 
 import okay.*
 import okay.given
-import okay.http.{Acceptance, Frame, Transports}
+import okay.http.{Acceptance, Transports}
 
 /**
  * The acceptance run: a JS client against a JVM server, one

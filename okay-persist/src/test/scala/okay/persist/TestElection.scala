@@ -65,7 +65,7 @@ class TestElectionReplicated extends FunSuite:
     assertEquals(b.tryTakeover(0), Some(2L))
     data.promote(0, replica = 1)
 
-    intercept[Replicated.Fenced](data.append(oldHandle, bytes("k"), bytes("late"), Ack.Durable))
+    intercept[Replicated.Fenced](data.append(oldHandle, bytes("k"), bytes("late"), Ack.Durable)): Unit
     // and the ops topic says so
     val ops = data.replicaStats // fencing lands on the coordinator's ops topic; assert via stats epoch
     assertEquals(ops.partitions.head.epoch, 2L)
@@ -73,7 +73,7 @@ class TestElectionReplicated extends FunSuite:
 
   test("arbiter down: data serves, failover waits, the operator path still works") {
     val (data, control, nodes) = cluster()
-    val Vector(a, b, _) = nodes: @unchecked
+    val Vector(a, _, _) = nodes: @unchecked
     assertEquals(a.tryTakeover(0), Some(1L))
     (0 until 2).foreach(i => data.append(0, bytes("k"), bytes(s"v$i"), Ack.Replicated))
 

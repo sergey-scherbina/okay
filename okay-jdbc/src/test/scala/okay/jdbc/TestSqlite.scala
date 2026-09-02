@@ -124,7 +124,7 @@ class TestSqlite extends munit.FunSuite {
       val topic = MemoryStore().topic("writes")
       // the crash: intent journaled, statement executed, ack lost
       PTyped[Writes.Rec](topic, 1, Map.empty).append(0, "run-1".getBytes("UTF-8"),
-        Writes.Rec.Intent(0, upsert, params, "60"), okay.persist.Ack.Durable)
+        Writes.Rec.Intent(0, upsert, params, "60"), okay.persist.Ack.Durable): Unit
       assertEquals(run(db.update(upsert, params)), 1L)
 
       val w = Writes(db, topic, "run-1")
@@ -148,7 +148,7 @@ class TestSqlite extends munit.FunSuite {
       assertEquals(rs.length, 2)
       // and any write — DML or DDL — refuses
       intercept[java.sql.SQLException](
-        run(db.update("insert into customer(id, user_name, balance, active) values (70, 'w', 0, 1)")))
+        run(db.update("insert into customer(id, user_name, balance, active) values (70, 'w', 0, 1)"))): Unit
       intercept[java.sql.SQLException](run(db.update("create table mine(x int)")))
     finally conn.close()
   }

@@ -1,6 +1,6 @@
 package okay.cache
 
-import okay.{!, Async, pure}
+import okay.{!, Async}
 import okay.given
 import okay.codec.Schema
 

@@ -63,7 +63,7 @@ class TestElicitForm extends munit.FunSuite {
 
     val (client, server) = wire()
     Async.spawn(Server.over(server)(asking)): Unit
-    Client.connect(client, Mcp.Info("ui", "1"), Duplex.Peer(
+    val _ = Client.connect(client, Mcp.Info("ui", "1"), Duplex.Peer(
       elicit = Some(formElicit(_ => Scripted(user))))).runWith
 
     assertEquals(answers.receiveBlocking(), Some(Duplex.Answer.Accept(Json.JObj(Vector(
@@ -86,7 +86,7 @@ class TestElicitForm extends munit.FunSuite {
     val user = Seq(Event.Pressed("$cancel"))
     val (client, server) = wire()
     Async.spawn(Server.over(server)(asking)): Unit
-    Client.connect(client, Mcp.Info("ui", "1"), Duplex.Peer(
+    val _ = Client.connect(client, Mcp.Info("ui", "1"), Duplex.Peer(
       elicit = Some(formElicit(_ => Scripted(user))))).runWith
     assertEquals(answers.receiveBlocking(), Some(Duplex.Answer.Decline))
   }

@@ -55,10 +55,10 @@ class TestReplicated extends FunSuite:
 
   test("a down follower is counted out: quorum holds, lag shows, replicate catches up") {
     val (t, rs) = cluster()
-    t.append(0, bytes("k"), bytes("v0"), Ack.Replicated)
+    t.append(0, bytes("k"), bytes("v0"), Ack.Replicated): Unit
     rs(2).paused = true
     // 2 of 3 is still a quorum: the ack holds, the lag is visible
-    t.append(0, bytes("k"), bytes("v1"), Ack.Replicated)
+    t.append(0, bytes("k"), bytes("v1"), Ack.Replicated): Unit
     assertEquals(t.end(0), 2L)
     val lagging = t.replicaStats.partitions.head.replicas(2)
     assertEquals(lagging.lag, 1L)
@@ -70,19 +70,19 @@ class TestReplicated extends FunSuite:
 
   test("short of quorum: Replicated refuses loudly, and NOTHING unconfirmed is readable") {
     val (t, rs) = cluster()
-    t.append(0, bytes("k"), bytes("v0"), Ack.Replicated)
+    t.append(0, bytes("k"), bytes("v0"), Ack.Replicated): Unit
     rs(1).paused = true
     rs(2).paused = true
 
     // a Durable append lands on the leader but the hwm cannot move:
     // a reader must not observe what a failover could unwrite
-    t.append(0, bytes("k"), bytes("v1"), Ack.Durable)
+    t.append(0, bytes("k"), bytes("v1"), Ack.Durable): Unit
     assertEquals(t.end(0), 1L, "the hwm advanced without a quorum")
     assertEquals(records(t.read(0, 0, 100)).map(r => str(r.value)), Vector("v0"))
 
     // and the ack that PROMISES a quorum refuses when there is none
     intercept[Replicated.NoQuorum](
-      t.append(0, bytes("k"), bytes("v2"), Ack.Replicated))
+      t.append(0, bytes("k"), bytes("v2"), Ack.Replicated)): Unit
 
     rs(1).paused = false
     rs(2).paused = false
@@ -94,11 +94,11 @@ class TestReplicated extends FunSuite:
 
   test("a deposed leader's append is fenced, and the rejection is an ops event") {
     val (t, rs) = cluster()
-    t.append(0, bytes("k"), bytes("v0"), Ack.Replicated)
+    t.append(0, bytes("k"), bytes("v0"), Ack.Replicated): Unit
     val old = t.leader(0)
     t.promote(0, replica = 1)
 
-    intercept[Replicated.Fenced](t.append(old, bytes("k"), bytes("late"), Ack.Durable))
+    intercept[Replicated.Fenced](t.append(old, bytes("k"), bytes("late"), Ack.Durable)): Unit
     // the new epoch's handle writes; history survived the failover
     assertEquals(t.append(t.leader(0), bytes("k"), bytes("v1"), Ack.Replicated), 1L)
     assertEquals(records(t.read(0, 0, 10)).map(r => str(r.value)), Vector("v0", "v1"))
@@ -127,7 +127,7 @@ class TestReplicated extends FunSuite:
 
     assertEquals(t.produce(0, "prod-1", seq = 2, bytes("k"), bytes("v2"), Ack.Replicated), first + 1)
     intercept[Replicated.ReplayBeyondWindow](
-      t.produce(0, "prod-1", seq = 0, bytes("k"), bytes("old"), Ack.Replicated))
+      t.produce(0, "prod-1", seq = 0, bytes("k"), bytes("old"), Ack.Replicated)): Unit
     // producers are independent
     assertEquals(t.produce(0, "prod-2", seq = 1, bytes("k"), bytes("w"), Ack.Replicated), 2L)
   }

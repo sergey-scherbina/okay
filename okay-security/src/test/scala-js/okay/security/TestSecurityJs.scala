@@ -48,8 +48,6 @@ class TestSecurityJs extends munit.FunSuite {
   }
 
   test("RSA on JS refuses honestly instead of pretending") {
-    val t = Jwt.sign(Claims(subject = Some("u"), expires = Some(now + 60)),
-      Jwt.Key.Hmac(secret))
     // an RSA key cannot verify anything here — a refusal, not a crash
     assertEquals(Jwks.parse(Json.parse("""{"keys":[]}""")), Map.empty)
   }

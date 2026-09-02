@@ -46,11 +46,11 @@ class TestMatch extends munit.FunSuite {
     val m = MemoryMatch(policy = PlatformPolicy.withhold("phone"))
     val p = m.register("master@example.com")
     m.assert(p, "skill", Side.Offer, Value.VText("plumbing repair"),
-      prov("c", 1, "умею чинить сантехнику"), 1.0, Vis.Public)
+      prov("c", 1, "умею чинить сантехнику"), 1.0, Vis.Public): Unit
     m.assert(p, "phone", Side.Offer, Value.VText("+380501234567"),
-      prov("c", 2, "мой телефон"), 1.0, Vis.Public)      // owner would show it; the platform won't
+      prov("c", 2, "мой телефон"), 1.0, Vis.Public): Unit // owner would show it; the platform won't
     m.assert(p, "secret", Side.Offer, Value.VText("do not match me on this"),
-      prov("c", 3, "..."), 1.0, Vis.Private)
+      prov("c", 3, "..."), 1.0, Vis.Private): Unit
     val hits = m.candidates(Query(Side.Offer, text = "plumbing repair"))
     assertEquals(hits.head.profile, p)
     val attrs = hits.head.disclosed.map(_.attr)
@@ -82,15 +82,15 @@ class TestMatch extends munit.FunSuite {
     val m = MemoryMatch()
     val kyiv = m.register("kyiv-tiler@example.com")
     m.assert(kyiv, "skill", Side.Offer, Value.VText("tiling bathrooms kitchens"),
-      prov("c1", 1, "..."), 1.0, Vis.Public)
+      prov("c1", 1, "..."), 1.0, Vis.Public): Unit
     m.assert(kyiv, "location", Side.Offer, Value.VGeo(50.45, 30.52),
-      prov("c1", 2, "..."), 1.0, Vis.Public)
-    m.assert(kyiv, "price", Side.Offer, Value.VNum(500), prov("c1", 3, "..."), 1.0, Vis.Public)
+      prov("c1", 2, "..."), 1.0, Vis.Public): Unit
+    m.assert(kyiv, "price", Side.Offer, Value.VNum(500), prov("c1", 3, "..."), 1.0, Vis.Public): Unit
     val lviv = m.register("lviv-tiler@example.com")
     m.assert(lviv, "skill", Side.Offer, Value.VText("tiling bathrooms"),
-      prov("c2", 1, "..."), 1.0, Vis.Public)
+      prov("c2", 1, "..."), 1.0, Vis.Public): Unit
     m.assert(lviv, "location", Side.Offer, Value.VGeo(49.84, 24.03),
-      prov("c2", 2, "..."), 1.0, Vis.Public)
+      prov("c2", 2, "..."), 1.0, Vis.Public): Unit
     // the seeker: needs a tiler near Kyiv under 600
     val hits = m.candidates(Query(Side.Offer,
       filters = Vector(
@@ -101,7 +101,7 @@ class TestMatch extends munit.FunSuite {
     // symmetric: the need is stored by the same machinery and searchable
     val seeker = m.register("seeker@example.com")
     m.assert(seeker, "need", Side.Need, Value.VText("need bathroom tiling in Kyiv"),
-      prov("c3", 1, "нужно выложить плитку в ванной"), 1.0, Vis.Public)
+      prov("c3", 1, "нужно выложить плитку в ванной"), 1.0, Vis.Public): Unit
     val needs = m.candidates(Query(Side.Need, text = "bathroom tiling"))
     assertEquals(needs.head.profile, seeker)
   }
@@ -110,10 +110,10 @@ class TestMatch extends munit.FunSuite {
     val m = MemoryMatch()
     val plumber = m.register("plumber@example.com")
     m.assert(plumber, "skill", Side.Offer, Value.VText("fixing pipes and taps"),
-      prov("c1", 1, "..."), 1.0, Vis.Public)
+      prov("c1", 1, "..."), 1.0, Vis.Public): Unit
     val tiler = m.register("tiler@example.com")
     m.assert(tiler, "skill", Side.Offer, Value.VText("tiling bathrooms"),
-      prov("c2", 1, "..."), 1.0, Vis.Public)
+      prov("c2", 1, "..."), 1.0, Vis.Public): Unit
     given Handler[Find + Rerank] = new:
       def handle[A](e: Find[A] | Rerank[A]): A = e match
         case f: Find.Candidates => m.find.handle(f)
@@ -125,8 +125,8 @@ class TestMatch extends munit.FunSuite {
   test("stage 2 — the policy engine names what waits behind the match gate") {
     val m = MemoryMatch(policy = PlatformPolicy.afterMatch("phone"))
     val p = m.register("master@example.com")
-    m.assert(p, "skill", Side.Offer, Value.VText("welding"), prov("c", 1, "..."), 1.0, Vis.Public)
-    m.assert(p, "phone", Side.Offer, Value.VText("+38050"), prov("c", 2, "..."), 1.0, Vis.Public)
+    m.assert(p, "skill", Side.Offer, Value.VText("welding"), prov("c", 1, "..."), 1.0, Vis.Public): Unit
+    m.assert(p, "phone", Side.Offer, Value.VText("+38050"), prov("c", 2, "..."), 1.0, Vis.Public): Unit
     val hit = m.candidates(Query(Side.Offer, text = "welding")).head
     assert(!hit.disclosed.exists(_.attr == "phone"))
     assertEquals(hit.withheld, Vector("phone"))         // THAT it matched — not WHAT
@@ -135,14 +135,14 @@ class TestMatch extends munit.FunSuite {
   test("stage 2 — volatility: a stale volatile fact drags the rank, a stable one does not") {
     var clock = 0L
     val m = MemoryMatch(halfLifeMs = 1000, now = () => clock)
-    m.propose(AttrDraft("availability", Kind.Time, "when free this week", volatile = true))
+    m.propose(AttrDraft("availability", Kind.Time, "when free this week", volatile = true)): Unit
     val stale = m.register("stale@example.com")
-    m.assert(stale, "skill", Side.Offer, Value.VText("painting walls"), prov("c1", 1, "..."), 1.0, Vis.Public)
-    m.assert(stale, "availability", Side.Offer, Value.VTime("this week"), prov("c1", 2, "..."), 1.0, Vis.Public)
+    m.assert(stale, "skill", Side.Offer, Value.VText("painting walls"), prov("c1", 1, "..."), 1.0, Vis.Public): Unit
+    m.assert(stale, "availability", Side.Offer, Value.VTime("this week"), prov("c1", 2, "..."), 1.0, Vis.Public): Unit
     clock = 10_000                                       // ten half-lives later
     val fresh = m.register("fresh@example.com")
-    m.assert(fresh, "skill", Side.Offer, Value.VText("painting walls"), prov("c2", 1, "..."), 1.0, Vis.Public)
-    m.assert(fresh, "availability", Side.Offer, Value.VTime("this week"), prov("c2", 2, "..."), 1.0, Vis.Public)
+    m.assert(fresh, "skill", Side.Offer, Value.VText("painting walls"), prov("c2", 1, "..."), 1.0, Vis.Public): Unit
+    m.assert(fresh, "availability", Side.Offer, Value.VTime("this week"), prov("c2", 2, "..."), 1.0, Vis.Public): Unit
     val hits = m.candidates(Query(Side.Offer, text = "painting walls"))
     assertEquals(hits.map(_.profile), Vector(fresh, stale))
     assert(hits(0).score > hits(1).score * 100)          // exp2(-10) is dust
@@ -159,16 +159,16 @@ class TestMatch extends munit.FunSuite {
   }
 
   test("identity-x — candidates: identifying attrs only, masked hint, no facts, no values") {
-    var clock = 1000L
+    val clock = 1000L
     val m = MemoryMatch(now = () => clock)
-    m.propose(AttrDraft("phone", Kind.Text, "contact phone number", identifying = true))
-    m.propose(AttrDraft("skill", Kind.Text, "what the provider can do"))
+    m.propose(AttrDraft("phone", Kind.Text, "contact phone number", identifying = true)): Unit
+    m.propose(AttrDraft("skill", Kind.Text, "what the provider can do")): Unit
     val old = m.register("master@example.com")
-    m.assert(old, "phone", Side.Offer, Value.VText("+380501112233"), prov("tg", 1, "..."), 1.0, Vis.Matched)
-    m.assert(old, "skill", Side.Offer, Value.VText("welding"), prov("tg", 2, "..."), 1.0, Vis.Public)
+    m.assert(old, "phone", Side.Offer, Value.VText("+380501112233"), prov("tg", 1, "..."), 1.0, Vis.Matched): Unit
+    m.assert(old, "skill", Side.Offer, Value.VText("welding"), prov("tg", 2, "..."), 1.0, Vis.Public): Unit
     val fresh = m.register("viber-user@example.com")
-    m.assert(fresh, "phone", Side.Offer, Value.VText("+380501112233"), prov("vb", 1, "..."), 1.0, Vis.Matched)
-    m.assert(fresh, "skill", Side.Offer, Value.VText("welding"), prov("vb", 2, "..."), 1.0, Vis.Public)
+    m.assert(fresh, "phone", Side.Offer, Value.VText("+380501112233"), prov("vb", 1, "..."), 1.0, Vis.Matched): Unit
+    m.assert(fresh, "skill", Side.Offer, Value.VText("welding"), prov("vb", 2, "..."), 1.0, Vis.Public): Unit
     val hints = m.linkCandidates(fresh)
     assertEquals(hints, Vector(LinkHint("phone", "m***@e***.com")))  // attr + mask, nothing else
     // skill matches too — but it is not identifying, so it says nothing
@@ -204,11 +204,11 @@ class TestMatch extends munit.FunSuite {
   test("identity-x — the linked class reads as one person") {
     val m = MemoryMatch()
     val old = m.register("old@example.com")
-    m.assert(old, "skill", Side.Offer, Value.VText("welding gates"), prov("tg", 1, "..."), 1.0, Vis.Public)
+    m.assert(old, "skill", Side.Offer, Value.VText("welding gates"), prov("tg", 1, "..."), 1.0, Vis.Public): Unit
     val fresh = m.register("new@example.com")
-    m.assert(fresh, "price", Side.Offer, Value.VNum(700), prov("vb", 1, "..."), 1.0, Vis.Public)
+    m.assert(fresh, "price", Side.Offer, Value.VNum(700), prov("vb", 1, "..."), 1.0, Vis.Public): Unit
     val t = m.requestLink(fresh, old).get
-    m.confirmLink(t.token, fresh, prov("vb", 2, "..."))
+    m.confirmLink(t.token, fresh, prov("vb", 2, "...")): Unit
     // one candidate carrying facts from BOTH profiles
     val hits = m.candidates(Query(Side.Offer, text = "welding",
       filters = Vector("price" -> Pred.AtMost(1000))))
@@ -224,15 +224,15 @@ class TestMatch extends munit.FunSuite {
     // HOUSING, because the machinery never knew it was about repairs
     val flat1 = m.register("flat1@demo")
     m.assert(flat1, "offer", Side.Offer, Value.VText("сдаю квартиру в центре, 2 комнаты"),
-      Provenance("c1", 1, "..."), 1.0, Vis.Public)
-    m.assert(flat1, "phone", Side.Offer, Value.VText("+380-1"), Provenance("c1", 2, "..."), 1.0, Vis.Public)
+      Provenance("c1", 1, "..."), 1.0, Vis.Public): Unit
+    m.assert(flat1, "phone", Side.Offer, Value.VText("+380-1"), Provenance("c1", 2, "..."), 1.0, Vis.Public): Unit
     val flat2 = m.register("flat2@demo")
     m.assert(flat2, "offer", Side.Offer, Value.VText("сдаю квартиру у парка"),
-      Provenance("c2", 1, "..."), 1.0, Vis.Public)
-    m.assert(flat2, "contact", Side.Offer, Value.VText("tg:@flat2"), Provenance("c2", 2, "..."), 1.0, Vis.Matched)
+      Provenance("c2", 1, "..."), 1.0, Vis.Public): Unit
+    m.assert(flat2, "contact", Side.Offer, Value.VText("tg:@flat2"), Provenance("c2", 2, "..."), 1.0, Vis.Matched): Unit
     val flat3 = m.register("flat3@demo")
     m.assert(flat3, "offer", Side.Offer, Value.VText("сдаю квартиру дальнюю"),
-      Provenance("c3", 1, "..."), 1.0, Vis.Public)
+      Provenance("c3", 1, "..."), 1.0, Vis.Public): Unit
     val seeker = m.register("tenant@demo")
 
     val hits = m.candidates(Query(Side.Offer, text = "снять квартиру"))
@@ -254,7 +254,7 @@ class TestMatch extends munit.FunSuite {
     assertEquals(m.contacts(seeker, flat1), Vector.empty, "declined unlocks nothing")
     // the AfterMatch platform gate also opens under the accepted deal
     val d3 = m.inquire(seeker, flat1, "всё же спрошу ещё раз")
-    m.respond(d3, flat1, accept = true)
+    m.respond(d3, flat1, accept = true): Unit
     assertEquals(m.contacts(seeker, flat1).map(f => Value.text(f.value)), Vector("+380-1"))
     // a declined-then-nothing pair stays locked; withdraw cleans a pending ask
     val d4 = m.inquire(seeker, flat3, "запасной вариант")
@@ -286,7 +286,7 @@ class TestMatch extends munit.FunSuite {
       case (Tools.MalformedValue(_, payload), _) =>
         okay.Condition.Decision.Resume(Value.VText(Json.print(payload)))
       case _ => okay.Condition.Decision.Fail
-    assertWith(repair, m2)
+    assertWith(repair, m2): Unit
     m2.profileOf(m2.register("m@x")).get.current.head.value match
       case Value.VText(x) => assert(x.contains("num"))
       case x => fail(s"$x")
@@ -308,7 +308,7 @@ class TestMatch extends munit.FunSuite {
     t4("facts_assert")(okay.agent.ToolCall("1", "facts_assert", JObj(Vector(
       "profile" -> JStr(p4.uuid), "attr" -> JStr("price"), "side" -> JStr("offer"),
       "chat" -> JStr("c"), "offset" -> JNum(1), "span" -> JStr("..."),
-      "value" -> JObj(Vector("t" -> JStr("num"), "n" -> JNum(42)))))))
+      "value" -> JObj(Vector("t" -> JStr("num"), "n" -> JNum(42))))))): Unit
     assertEquals(m4.profileOf(p4).get.current.head.value, Value.VNum(42.0))
   }
 
@@ -326,12 +326,12 @@ class TestMatch extends munit.FunSuite {
     // the provider's chat
     val provider = str(call("facts_register", "email" -> Json.JStr("master@example.com")), "profile")
     call("registry_propose", "slug" -> Json.JStr("skill"), "kind" -> Json.JStr("text"),
-      "description" -> Json.JStr("what the provider can do"))
+      "description" -> Json.JStr("what the provider can do")): Unit
     call("facts_assert", "profile" -> Json.JStr(provider), "attr" -> Json.JStr("skill"),
       "side" -> Json.JStr("offer"), "chat" -> Json.JStr("chat-1"),
       "span" -> Json.JStr("клею обои, шпаклюю стены"),
       "value" -> Json.JObj(Vector("t" -> Json.JStr("text"),
-        "s" -> Json.JStr("wallpapering and wall finishing"))))
+        "s" -> Json.JStr("wallpapering and wall finishing")))): Unit
     // the seeker's chat
     val hits = call("find_candidates", "side" -> Json.JStr("offer"),
       "text" -> Json.JStr("wallpapering my flat"))

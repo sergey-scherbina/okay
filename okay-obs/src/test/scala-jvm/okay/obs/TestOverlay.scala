@@ -62,7 +62,7 @@ class TestOverlay extends munit.FunSuite:
     val liveTracer = Tracer(liveTopic)
     liveTracer.root("incident") {
       Durable.tools(payTool, j)(trace = Some(opTrace(liveTracer))).handle(Tool.Call(charge))
-    }
+    }: Unit
     val liveKey = chargeSpan(spansOf(liveTopic)).attrs.find(_.key == "durable.key").map(_.value)
 
     // replay offline, no tools touched, under a fresh trace

@@ -43,7 +43,7 @@ class TestScenario extends munit.FunSuite {
     val m = MemoryMatch()
     val seeker = m.register("seeker@x"); val provider = m.register("prov@x")
     m.assert(provider, "contact", Side.Offer, Value.VText("tg:@prov"),
-      prov(1), 1.0, Vis.Matched)
+      prov(1), 1.0, Vis.Matched): Unit
     val Right(id) = m.startFlow("deal",
       Map("seeker" -> seeker, "provider" -> provider), "кран"): @unchecked
     assertEquals(m.unlockedBy(seeker, provider), Vector.empty)
@@ -74,7 +74,7 @@ class TestScenario extends munit.FunSuite {
     val m = MemoryMatch()
     assertEquals(m.defineScenario(sale), Vector.empty)
     val b = m.register("buyer@x"); val sl = m.register("seller@x"); val e = m.register("escrow@x")
-    m.assert(sl, "address", Side.Offer, Value.VText("ул. Ясная 5"), prov(1), 1.0, Vis.Matched)
+    m.assert(sl, "address", Side.Offer, Value.VText("ул. Ясная 5"), prov(1), 1.0, Vis.Matched): Unit
     val Right(id) = m.startFlow("escrow-sale",
       Map("buyer" -> b, "seller" -> sl, "escrow" -> e), "квартира"): @unchecked
     // the walk, each step its role's alone

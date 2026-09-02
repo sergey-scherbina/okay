@@ -37,8 +37,8 @@ class TestElicit extends munit.FunSuite {
     val got = Channel[Duplex.Answer]()
     val (client, server) = wire()
     Async.spawn(Server.over(server)(asking(got))): Unit
-    Client.connect(client, Mcp.Info("c", "1"), Duplex.Peer(
-      elicit = Some((msg, sch) => {
+    val _ = Client.connect(client, Mcp.Info("c", "1"), Duplex.Peer(
+      elicit = Some((msg, _) => {
         assertEquals(msg, "which file?")
         Duplex.Answer.Accept(Json.parse("""{"path":"/tmp"}"""))
       }))).runWith
@@ -50,14 +50,14 @@ class TestElicit extends munit.FunSuite {
     val got = Channel[Duplex.Answer]()
     val (client, server) = wire()
     Async.spawn(Server.over(server)(asking(got))): Unit
-    Client.connect(client, Mcp.Info("c", "1"), Duplex.Peer(
+    val _ = Client.connect(client, Mcp.Info("c", "1"), Duplex.Peer(
       elicit = Some((_, _) => Duplex.Answer.Decline))).runWith
     assertEquals(got.receiveBlocking(), Some(Duplex.Answer.Decline))
 
     val got2 = Channel[Duplex.Answer]()
     val (client2, server2) = wire()
     Async.spawn(Server.over(server2)(asking(got2))): Unit
-    Client.connect(client2, Mcp.Info("c", "1")).runWith   // no handler
+    val _ = Client.connect(client2, Mcp.Info("c", "1")).runWith // no handler
     assertEquals(got2.receiveBlocking(), Some(Duplex.Answer.Cancel))  // the refusal arrived
   }
 

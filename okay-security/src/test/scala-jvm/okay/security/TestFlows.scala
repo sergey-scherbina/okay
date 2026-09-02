@@ -2,7 +2,7 @@ package okay.security
 
 import okay.*
 import okay.given
-import okay.codec.Json
+
 import okay.http.{Body, Http, Method, Request, Response, Server, Transports}
 
 /**

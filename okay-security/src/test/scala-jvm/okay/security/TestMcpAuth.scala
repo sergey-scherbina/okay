@@ -77,6 +77,7 @@ class TestMcpAuth extends munit.FunSuite {
       case r if r.url.startsWith(McpAuth.WellKnown) =>
         McpAuth.metadata("mcp", Seq(s"http://127.0.0.1:$port0"))(r)
       case r if route.isDefinedAt(r) => route(r)
+      case r => throw new NoSuchElementException(s"unrouted: ${r.url}")
     }).map { s =>
       port0 = Server.port(s)
       body(port0)
@@ -121,10 +122,11 @@ class TestMcpAuth extends munit.FunSuite {
       assertEquals(run(McpAuth.connect(http, s"http://127.0.0.1:$port/mcp",
         "not-robot", None, Nil)).left.map(_.contains("invalid_client")), Left(true))
 
-      // a valid token without the scope the policy wants
-      val link = run(McpAuth.connect(http, s"http://127.0.0.1:$port/mcp",
+      // a valid token without the scope the policy wants: connect
+      // still succeeds — the 403 below is the policy's, not the AS's
+      run(McpAuth.connect(http, s"http://127.0.0.1:$port/mcp",
         "robot", None, Seq("mcp"))) match
-        case Right(l) => l
+        case Right(_) => ()
         case Left(e) => fail(e)
       val r = run(http.send(Request.post(s"http://127.0.0.1:$port/mcp",
         Body.Text("{}"), Seq(("content-type", "application/json"),

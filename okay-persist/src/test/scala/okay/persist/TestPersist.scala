@@ -58,7 +58,7 @@ abstract class StoreSuite extends FunSuite:
     (0 until 3).foreach(i => t.append(0, Array.empty, bytes(s"v$i"), Ack.Durable))
     val caughtUp = t.end(0)
     assertEquals(records(t.read(0, caughtUp, 10)), Vector.empty)
-    t.append(0, Array.empty, bytes("late"), Ack.Durable)
+    t.append(0, Array.empty, bytes("late"), Ack.Durable): Unit
     assertEquals(records(t.read(0, caughtUp, 10)).map(r => str(r.value)), Vector("late"))
     assertEquals(t.end(0), caughtUp + 1)
   }
@@ -151,11 +151,11 @@ abstract class StoreSuite extends FunSuite:
   test("typed view: Schema at the edge, damage is data naming the offset") {
     val t = mkStore().topic("typed", partitions = 1)
     val v = t.of[Ev]()
-    v.append(0, bytes("k"), Ev("x", 1), Ack.Durable)
+    v.append(0, bytes("k"), Ev("x", 1), Ack.Durable): Unit
     // a raw, unenveloped record lands between the typed ones
-    t.append(0, bytes("k"), bytes("garbage-bytes"), Ack.Durable)
-    t.append(0, bytes("k"), Array[Byte](1, 2), Ack.Durable)
-    v.append(0, bytes("k"), Ev("y", 2), Ack.Durable)
+    t.append(0, bytes("k"), bytes("garbage-bytes"), Ack.Durable): Unit
+    t.append(0, bytes("k"), Array[Byte](1, 2), Ack.Durable): Unit
+    v.append(0, bytes("k"), Ev("y", 2), Ack.Durable): Unit
 
     v.read(0, 0L, 10) match
       case Typed.Read.TooEarly(b) => fail(s"unexpected TooEarly($b)")
@@ -177,12 +177,12 @@ abstract class StoreSuite extends FunSuite:
 
   test("a v1 record reads under v2 through the upcast; an unknown version is an error value") {
     val t = mkStore().topic("evolving", partitions = 1)
-    Typed[EvV1](t, version = 1, upcasts = Map.empty).append(0, bytes("k"), EvV1("old"), Ack.Durable)
+    Typed[EvV1](t, version = 1, upcasts = Map.empty).append(0, bytes("k"), EvV1("old"), Ack.Durable): Unit
     val v2 = Typed[Ev](t, version = 2,
       upcasts = Map(1 -> Typed.step[EvV1, Ev](o => Ev(o.id, 0))))
-    v2.append(0, bytes("k"), Ev("new", 5), Ack.Durable)
+    v2.append(0, bytes("k"), Ev("new", 5), Ack.Durable): Unit
     // a record from the future, and one this reader has no road to
-    t.append(0, bytes("k"), Typed.seal(3, Array[Byte](0x60.toByte)), Ack.Durable)
+    t.append(0, bytes("k"), Typed.seal(3, Array[Byte](0x60.toByte)), Ack.Durable): Unit
 
     val ds = v2.read(0, 0L, 10) match
       case Typed.Read.Records(ds) => ds
@@ -232,9 +232,9 @@ abstract class StoreSuite extends FunSuite:
     val s = mkStore()
     val sn = Snapshots(s)
     assertEquals(sn.latest(bytes("sess")), None)
-    sn.put(bytes("sess"), bytes("s1"))
+    sn.put(bytes("sess"), bytes("s1")): Unit
     val off = sn.put(bytes("sess"), bytes("s2"))
-    sn.put(bytes("other"), bytes("o1"))
+    sn.put(bytes("other"), bytes("o1")): Unit
 
     val r = sn.latest(bytes("sess")).getOrElse(fail("no snapshot"))
     assertEquals(r.offset, off)
@@ -243,7 +243,7 @@ abstract class StoreSuite extends FunSuite:
     sn.topic.compact(0)
     assertEquals(sn.latest(bytes("sess")).map(x => str(x.value)), Some("s2"))
     // the Schema'd pair, for consumers whose state has one
-    sn.putValue(bytes("n"), Ev("z", 9))
+    sn.putValue(bytes("n"), Ev("z", 9)): Unit
     assertEquals(sn.latestValue[Ev](bytes("n")).map(_._2), Some(Right(Ev("z", 9))))
   }
 

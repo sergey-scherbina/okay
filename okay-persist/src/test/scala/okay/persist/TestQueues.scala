@@ -68,8 +68,8 @@ class TestQueues extends FunSuite:
 
     // two ingress passes, each bounded — the broker never saw the ack
     // so it handed the same message back the second time
-    Queues.ingress(broker, topic, max = 1)
-    Queues.ingress(broker, topic, max = 1)
+    Queues.ingress(broker, topic, max = 1): Unit
+    Queues.ingress(broker, topic, max = 1): Unit
 
     val rs = records(topic.read(0, 0, 10))
     assertEquals(rs.size, 2, "at-least-once: the redelivery IS in the log")
@@ -102,7 +102,7 @@ class TestQueues extends FunSuite:
     assertEquals(next, 3L)
     // the crash: the offset was never journaled, so the resume starts
     // from 0 again and re-publishes what it already sent
-    Queues.egress(topic, sink, from = 0, max = 3)
+    Queues.egress(topic, sink, from = 0, max = 3): Unit
 
     assertEquals(sink.raw.size, 6, "at-least-once: it published all three twice")
     assertEquals(sink.distinct.keys.toVector, Vector("id0", "id1", "id2"))  // exactly-once outcome

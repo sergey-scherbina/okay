@@ -28,20 +28,20 @@ class TestPg extends munit.FunSuite {
     if !available then return
     val db = connect()
     try
-      run(db.update("drop table if exists customer"))
+      run(db.update("drop table if exists customer")): Unit
       run(db.update("""create table customer(
         id bigint primary key not null,
         user_name varchar(64) not null,
         age int,
         balance double precision not null,
         active boolean not null,
-        avatar bytea)"""))
+        avatar bytea)""")): Unit
       run(db.update("insert into customer values " +
         "(1, 'ann', 25, 10.5, true, '\\x0102')," +
-        "(2, 'bob', null, -3.25, false, null)"))
-      run(db.update("drop table if exists big"))
-      run(db.update("create table big(n int not null, label varchar(32) not null)"))
-      run(db.update("insert into big select g, 'row-' || g from generate_series(1, 500) g"))
+        "(2, 'bob', null, -3.25, false, null)")): Unit
+      run(db.update("drop table if exists big")): Unit
+      run(db.update("create table big(n int not null, label varchar(32) not null)")): Unit
+      run(db.update("insert into big select g, 'row-' || g from generate_series(1, 500) g")): Unit
       ()
     finally db.close()
 
@@ -164,8 +164,8 @@ class TestPg extends munit.FunSuite {
   test("batch: one parse, many binds, summed counts") {
     assume(available, s"no Postgres at $host:$port — the live suite skips")
     withDb { db =>
-      run(db.update("drop table if exists batched"))
-      run(db.update("create table batched(n int not null)"))
+      run(db.update("drop table if exists batched")): Unit
+      run(db.update("create table batched(n int not null)")): Unit
       val rows = okay.ChunkBuf.of((1 to 10).map(i => Vector[SqlValue](SqlValue.I32(i))))
       assertEquals(run(db.batch("insert into batched values ($1)", rows)), 10L)
       val n = collectChunks(db.query("select count(*) from batched")).flatten

@@ -37,7 +37,7 @@ class TestScram extends munit.FunSuite {
   test("the one-object adapter speaks the same bytes, and misorder is NAMED") {
     val s = Scram("user", "pencil", clientNonce)
     // out of order BEFORE the handshake: a PgError, not an NPE
-    intercept[PgError](s.verifyServerFinal(serverFinal))
+    intercept[PgError](s.verifyServerFinal(serverFinal)): Unit
     assertEquals(new String(s.clientFirst, UTF_8), expectedFirst)
     assertEquals(new String(s.clientFinal(serverFirst), UTF_8), expectedFinal)
     s.verifyServerFinal(serverFinal)

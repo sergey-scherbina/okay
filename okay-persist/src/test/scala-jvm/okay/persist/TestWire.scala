@@ -127,10 +127,10 @@ class TestWire extends FunSuite:
     try
       val c = Wire.Remote.connect("127.0.0.1", srv.port, "the-admin")
       try
-        run(c.append("events", 0, Array.empty, bytes("v0")))
+        run(c.append("events", 0, Array.empty, bytes("v0"))): Unit
         val caughtUp = run(c.end("events", 0))
         // another writer appends behind our back
-        store.topic("events").append(0, Array.empty, bytes("late"), Ack.Durable)
+        store.topic("events").append(0, Array.empty, bytes("late"), Ack.Durable): Unit
         run(c.read("events", 0, caughtUp, 10)) match
           case Topic.Read.Records(rs) => assertEquals(rs.map(r => str(r.value)), Vector("late"))
           case other => fail(s"unexpected $other")

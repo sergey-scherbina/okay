@@ -2,10 +2,10 @@ package okay.jetty
 
 import okay.*
 import okay.given
-import okay.codec.{Json, Schema}
-import okay.http.{Http, McpHttp, Request, Response, Transports}
-import okay.mcp.{Client, Duplex, Mcp, Rpc, Server as McpServer}
-import okay.agent.{ToolCall, ToolSpec}
+import okay.codec.Schema
+import okay.http.{McpHttp, Request, Response, Transports}
+import okay.mcp.{Client, Duplex, Mcp, Server as McpServer}
+
 import okay.persist.MemoryStore
 
 /**

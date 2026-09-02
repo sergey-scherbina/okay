@@ -26,7 +26,7 @@ class TestInvalidations extends munit.FunSuite {
     // node A commits, invalidates ITSELF, and appends the event
     truth = Map("okay" -> 150L)
     val _ = run(WriteThrough.write(a, "okay")(okay.async(())))
-    Invalidations.append(topic, "okay")
+    Invalidations.append(topic, "okay"): Unit
 
     // B has not drained yet: the honest window, cross-node edition
     assertEquals(run(b.getOrLoad("okay")(load)), 100L)
@@ -49,8 +49,8 @@ class TestInvalidations extends munit.FunSuite {
 
     // the world moves while the node is down
     truth = Map("k1" -> 10L, "k2" -> 20L)
-    Invalidations.append(topic, "k1")
-    Invalidations.append(topic, "k2")
+    Invalidations.append(topic, "k1"): Unit
+    Invalidations.append(topic, "k2"): Unit
 
     // it comes back knowing only offset 0 — replay converges it
     val next = run(Invalidations.drain(topic, down, identity, 0))

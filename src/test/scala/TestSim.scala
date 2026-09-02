@@ -37,7 +37,7 @@ class TestSim extends munit.FunSuite {
   test("different seeds explore different interleavings") {
     val seen = (0L until 50L).map { s =>
       val o = collection.mutable.Buffer.empty[String]
-      Sim.run(s)(racing(o))
+      Sim.run(s)(racing(o)): Unit
       o.toList
     }.toSet
     assert(seen.size > 1, s"fifty seeds, one interleaving: $seen")
@@ -174,7 +174,7 @@ class TestSim extends munit.FunSuite {
   test("the runCmd close race: the OLD rule loses the answer under some seed; the fix survives the sweep") {
     val losing = (0L until 200L).filter { s =>
       val c = collection.mutable.Buffer.empty[String]
-      Sim.run(s)(runCmdModel(newRule = false, c))
+      Sim.run(s)(runCmdModel(newRule = false, c)): Unit
       c.toList != List("boom", "answer")
     }
     assert(losing.nonEmpty,
@@ -190,7 +190,7 @@ class TestSim extends munit.FunSuite {
     // and the shipped rule survives every one of the same seeds
     for s <- 0L until 200L do
       val c = collection.mutable.Buffer.empty[String]
-      Sim.run(s)(runCmdModel(newRule = true, c))
+      Sim.run(s)(runCmdModel(newRule = true, c)): Unit
       assertEquals(c.toList, List("boom", "answer"), s"the FIXED rule lost the answer under seed $s")
   }
 }

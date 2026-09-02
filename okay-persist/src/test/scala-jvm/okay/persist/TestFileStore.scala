@@ -23,7 +23,7 @@ class TestFileStore extends StoreSuite:
       if Files.isDirectory(p) then
         val l = Files.list(p)
         try l.forEach(wipe) finally l.close()
-      Files.deleteIfExists(p)
+      Files.deleteIfExists(p): Unit
     dirs.foreach(wipe)
 
   def mkStore(): Store = FileStore.open(tmp())
@@ -111,7 +111,7 @@ class TestFileStore extends StoreSuite:
   test("a newer segment format is refused loudly, naming the file") {
     val root = tmp()
     val s1 = FileStore.open(root)
-    s1.topic("journal").append(0, Array.empty, bytes("v0"), Ack.Durable)
+    s1.topic("journal").append(0, Array.empty, bytes("v0"), Ack.Durable): Unit
     s1.close()
 
     // forge the header's format version to one that does not exist
@@ -210,8 +210,8 @@ class TestFileStore extends StoreSuite:
   test("reopen sees topics on disk without re-declaring them") {
     val root = tmp()
     val s1 = FileStore.open(root)
-    s1.topic("a").append(0, Array.empty, bytes("x"), Ack.Durable)
-    s1.topic("b").append(0, Array.empty, bytes("y"), Ack.Durable)
+    s1.topic("a").append(0, Array.empty, bytes("x"), Ack.Durable): Unit
+    s1.topic("b").append(0, Array.empty, bytes("y"), Ack.Durable): Unit
     s1.close()
     assertEquals(FileStore.open(root).topics, Vector("a", "b"))
   }

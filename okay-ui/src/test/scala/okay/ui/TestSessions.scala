@@ -59,7 +59,7 @@ class TestSessions extends munit.FunSuite {
 
     // the crash: two lines, then the transport dies (no Closed)
     val s = fresh("crashy")
-    live(s, whole.take(2))
+    live(s, whole.take(2)): Unit
     // a new process: recover and feed the rest
     val continued = live(s, whole.drop(2))
     assertEquals(continued, ref)
@@ -67,23 +67,23 @@ class TestSessions extends munit.FunSuite {
 
   test("intent-first: appended but never processed is still history") {
     val s = fresh()
-    live(s, Seq(press("inc"), closed))
+    live(s, Seq(press("inc"), closed)): Unit
     // the crash happened after the append, before the update
-    Sessions.append(s, press("inc"))
+    Sessions.append(s, press("inc")): Unit
     val (recovered, _) = Sessions.recover(s)(Count(0))(view)(update)
     assertEquals(recovered, Count(2))
   }
 
   test("snapshot bounds the refold: only the tail is folded, and the state agrees") {
     val s = fresh()
-    live(s, Seq(press("inc"), press("inc"), press("inc"), closed))
+    live(s, Seq(press("inc"), press("inc"), press("inc"), closed)): Unit
     val (full, upTo) = Sessions.recover(s)(Count(0))(view)(update)
     assertEquals(full, Count(3))
-    Sessions.snapshot(s, full, upTo - 1)
+    Sessions.snapshot(s, full, upTo - 1): Unit
 
     // two more events after the snapshot
-    Sessions.append(s, press("dec"))
-    Sessions.append(s, press("dec"))
+    Sessions.append(s, press("dec")): Unit
+    Sessions.append(s, press("dec")): Unit
 
     folded.set(0)
     val (recovered, _) = Sessions.recover(s)(Count(0))(view)(update)
@@ -91,7 +91,7 @@ class TestSessions extends munit.FunSuite {
     assertEquals(folded.get(), 2, "the refold saw more than the tail")
 
     // and the newest snapshot wins over an older one
-    Sessions.snapshot(s, recovered, s.topic.end(s.partition) - 1)
+    Sessions.snapshot(s, recovered, s.topic.end(s.partition) - 1): Unit
     assertEquals(Sessions.latest[Count](s).map(_._1), Some(Count(1)))
   }
 
@@ -100,15 +100,15 @@ class TestSessions extends munit.FunSuite {
     val topic = store.topic("ui", 1)   // ONE partition: forced sharing
     val a = Sessions.Session(topic, "alice")
     val b = Sessions.Session(topic, "bob")
-    live(a, Seq(press("inc"), press("inc"), closed))
-    live(b, Seq(press("dec"), closed))
+    live(a, Seq(press("inc"), press("inc"), closed)): Unit
+    live(b, Seq(press("dec"), closed)): Unit
     assertEquals(Sessions.recover(a)(Count(0))(view)(update)._1, Count(2))
     assertEquals(Sessions.recover(b)(Count(0))(view)(update)._1, Count(-1))
   }
 
   test("serve = recover + journal + continue: the patches keep flowing after recovery") {
     val s = fresh()
-    live(s, Seq(press("inc")))
+    live(s, Seq(press("inc"))): Unit
     // the second serve recovers at 1 and continues from there; its
     // FIRST outbound line is the full tree at the recovered state
     val sent = scala.collection.mutable.Buffer[String]()

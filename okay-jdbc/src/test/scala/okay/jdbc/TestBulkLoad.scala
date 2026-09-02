@@ -2,7 +2,7 @@ package okay.jdbc
 
 import okay.{!, Async}
 import okay.given
-import okay.sql.{Sql, SqlValue}
+import okay.sql.Sql
 import java.sql.DriverManager
 
 /**
@@ -51,7 +51,7 @@ class TestBulkLoad extends munit.FunSuite {
   test("a failing COPY rolls its claim back — the fixed retry starts clean, never half-loaded") {
     val (c, db) = duck()
     intercept[Exception](run(BulkLoad.load(db, "load-x",
-      "copy facts from '/no/such/file.csv' (header)")))
+      "copy facts from '/no/such/file.csv' (header)"))): Unit
     assertEquals(count(c), 0)
     // the claim died with the transaction: the SAME id now loads
     val file = csv("7,7.0")
@@ -61,15 +61,15 @@ class TestBulkLoad extends munit.FunSuite {
   }
 
   test("the OLAP posture refuses row DML by name; reads and COPY pass") {
-    val (c, db) = duck()
+    val (_, db) = duck()
     val olap = BulkLoad.olap(db)
     val e = intercept[UnsupportedOperationException](
       run(olap.update("insert into facts values (1, 1.0)")))
     assert(e.getMessage.contains("stage a file"), e.getMessage)
     intercept[UnsupportedOperationException](
-      run(olap.update("update facts set amount = 0")))
+      run(olap.update("update facts set amount = 0"))): Unit
     intercept[UnsupportedOperationException](
-      run(olap.batch("insert into facts values (?, ?)", okay.Chunks.emptyChunk)))
+      run(olap.batch("insert into facts values (?, ?)", okay.Chunks.emptyChunk))): Unit
     // the right doors stay open
     val file = csv("9,9.9")
     assertEquals(run(BulkLoad.load(db, "load-olap", s"copy facts from '$file' (header)")),

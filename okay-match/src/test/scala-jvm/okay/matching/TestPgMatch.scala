@@ -23,7 +23,7 @@ class TestPgMatch extends MatchEngineSuite {
   private def connect(): PgSql =
     !.run(Async.run[PgSql, Nothing](PgSql.connect(host, port, "okay", "okay", "okay")))
   private def exec(db: PgSql, sql: String): Unit =
-    !.run(Async.run[Long, Nothing](db.update(sql)))
+    !.run(Async.run[Long, Nothing](db.update(sql))): Unit
 
   lazy val available: Boolean =
     try { connect().close(); true } catch { case _: Throwable => false }

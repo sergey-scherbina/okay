@@ -46,7 +46,7 @@ class TestKafkaEos extends FunSuite:
         val s = KafkaStore(bootstrap)
         // force the coordinator handshake once; a broker without txn
         // support throws here and the battery skips
-        s.topic(fresh("probe"), 1)
+        s.topic(fresh("probe"), 1): Unit
         s.transaction(fresh("probe-txn"))(_ => ())
         Some(s)
       catch case _: Throwable => None
@@ -57,10 +57,10 @@ class TestKafkaEos extends FunSuite:
     val name = fresh("commit")
     val t = store.topic(name, 1)
     store.transaction(fresh("txn-commit")) { tx =>
-      tx.append(name, 0, bytes("k0"), bytes("a"))
-      tx.append(name, 0, bytes("k1"), bytes("b"))
-      tx.append(name, 0, bytes("k2"), bytes("c"))
-    }
+      tx.append(name, 0, bytes("k0"), bytes("a")): Unit
+      tx.append(name, 0, bytes("k1"), bytes("b")): Unit
+      tx.append(name, 0, bytes("k2"), bytes("c")): Unit
+    }: Unit
     assertEquals(readUntil(t, 0, 3).map(r => str(r.value)), Vector("a", "b", "c"))
   }
 
@@ -69,11 +69,11 @@ class TestKafkaEos extends FunSuite:
     val store = txnReady.get
     val name = fresh("abort")
     val t = store.topic(name, 1)
-    t.append(0, Array.empty, bytes("v0"), Ack.Durable) // a committed baseline
+    t.append(0, Array.empty, bytes("v0"), Ack.Durable): Unit // a committed baseline
 
     val e = intercept[RuntimeException](
       store.transaction(fresh("txn-abort")) { tx =>
-        tx.append(name, 0, Array.empty, bytes("doomed"))
+        tx.append(name, 0, Array.empty, bytes("doomed")): Unit
         throw RuntimeException("boom")
       })
     assert(e.getMessage.contains("boom"), e.getMessage)
@@ -90,9 +90,9 @@ class TestKafkaEos extends FunSuite:
     val ta = store.topic(a, 1)
     val tb = store.topic(b, 1)
     store.transaction(fresh("txn-cross")) { tx =>
-      tx.append(a, 0, Array.empty, bytes("in-a"))
-      tx.append(b, 0, Array.empty, bytes("in-b"))
-    }
+      tx.append(a, 0, Array.empty, bytes("in-a")): Unit
+      tx.append(b, 0, Array.empty, bytes("in-b")): Unit
+    }: Unit
     assertEquals(readUntil(ta, 0, 1).map(r => str(r.value)), Vector("in-a"))
     assertEquals(readUntil(tb, 0, 1).map(r => str(r.value)), Vector("in-b"))
   }

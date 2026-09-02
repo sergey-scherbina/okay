@@ -72,7 +72,7 @@ class TestAgentOverMcp extends munit.FunSuite {
     given rowCA: Handler[Context + Async] = Handler.union[Context, Async]
     given rowTCA: Handler[Tool + (Context + Async)] = Handler.union[Tool, Context + Async]
     given rowAll: Handler[Agent] = Handler.union[Model, Tool + (Context + Async)]
-    program.runWith: Unit
+    val _ = program.runWith
 
     assertEquals(seen.map(_.name).toList, List("search"))
     // the tool RESULT in the conversation is the MCP server's answer

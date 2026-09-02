@@ -1,5 +1,6 @@
 import okay.*
 import okay.given
+import scala.annotation.nowarn
 
 /**
  * Typestate on the stream (specs/stage-pipeline.md, stage-phased):
@@ -10,6 +11,9 @@ import okay.given
 class TestPhased extends munit.FunSuite {
 
   /** feed lines through a stage, collect (outputs, answer) */
+  // Writer.run's inline body checks the answer at O, abstract here —
+  // the trusted kernel's warning (Effects.scala), not a cast added here
+  @nowarn("msg=cannot be checked at runtime")
   def runStage[O, A](lines: Seq[String])(st: Stage[String, O, A]): (Seq[O], A) =
     val told: String ! Writer % String =
       lines.foldLeft(pure[Writer % String, String]("")):
@@ -96,6 +100,9 @@ class TestPhased extends munit.FunSuite {
  * http message — request-line -> headers -> body */
 class TestPhased3 extends munit.FunSuite {
 
+  // Writer.run's inline body checks the answer at O, abstract here —
+  // the trusted kernel's warning (Effects.scala), not a cast added here
+  @nowarn("msg=cannot be checked at runtime")
   def runStage[O, A](lines: Seq[String])(st: Stage[String, O, A]): (Seq[O], A) =
     val told: String ! Writer % String =
       lines.foldLeft(pure[Writer % String, String]("")):

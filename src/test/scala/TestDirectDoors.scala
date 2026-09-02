@@ -1,7 +1,7 @@
 package okay
 
 import okay.given
-import okay.!.*
+
 import okay.Direct.*
 
 /**
@@ -17,8 +17,8 @@ class TestDirectDoors extends munit.FunSuite {
   case class Env(user: String, uid: Int)
 
   def told: Env ?=> Int ! (Writer % String) = direct {
-    Writer(s"hello ${wire[Env].user}")   // bare statement: do-notation
-    Writer("bye")
+    Writer(s"hello ${wire[Env].user}"): Unit // bare statement: do-notation
+    Writer("bye"): Unit
     wire[Env].uid                        // the door, inside the block
   }
 

@@ -26,13 +26,12 @@ class TestPyWorkers extends munit.FunSuite {
 
   test("N workers are N real processes: concurrent calls land on distinct pids") {
     val p = pool(3)
-    val results = java.util.concurrent.ConcurrentLinkedQueue[Long]()
     val gate = java.util.concurrent.CountDownLatch(1)
     val threads = (1 to 3).map { _ =>
       Thread.startVirtualThread { () =>
         gate.await()
         // hold the worker long enough that three calls MUST overlap
-        call(p.handler, "time:sleep", F64(0.3))
+        call(p.handler, "time:sleep", F64(0.3)): Unit
         ()
       }
     }
@@ -50,7 +49,7 @@ class TestPyWorkers extends munit.FunSuite {
     val w = PySubprocess.start(TestPy.python.get)
     try
       def draw(): Double =
-        call(w.handler, "random:seed", I64(42))
+        call(w.handler, "random:seed", I64(42)): Unit
         call(w.handler, "random:random") match
           case Right(F64(d)) => d
           case other => fail(other.toString)
@@ -61,7 +60,7 @@ class TestPyWorkers extends munit.FunSuite {
 
   test("the supervisor: a killed worker throws, its replacement is fresh and correct") {
     val p = pool(1)
-    intercept[IllegalStateException](call(p.handler, "os:_exit", I64(0)))
+    intercept[IllegalStateException](call(p.handler, "os:_exit", I64(0))): Unit
     // the retry lands on the replacement — imports cold, answers right
     assertEquals(call(p.handler, "math:sqrt", F64(25)), Right(F64(5)))
     // and it is a DIFFERENT process

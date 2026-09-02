@@ -38,7 +38,7 @@ class TestDirectAuto extends munit.FunSuite {
     def ask: Reader[Int, Int] = Reader.Ask()
     val prog: Int ! F = direct {
       val env: Int = ask                      // colored via the marker
-      Writer(s"env=$env")                     // bare statement: do-notation,
+      Writer(s"env=$env"): Unit // bare statement: do-notation,
                                               // the statement IS the mark
       env + 1
     }
@@ -49,9 +49,9 @@ class TestDirectAuto extends munit.FunSuite {
   }
 
   test("do-notation: a bare statement of the block's monad runs") {
-    assertEquals(direct[Option] { Option(1); 2 }, Some(2))
-    assertEquals(direct[Option] { (None: Option[Int]); 2 }, None)
-    assertEquals(direct[Option] { None; 2 }, None)
+    assertEquals(direct[Option] { Option(1): Unit; 2 }, Some(2))
+    assertEquals(direct[Option] { (None: Option[Int]): Unit; 2 }, None)
+    assertEquals(direct[Option] { None: Unit; 2 }, None)
   }
 
   test("do-notation: a bare List statement re-runs the rest per element") {
@@ -61,7 +61,7 @@ class TestDirectAuto extends munit.FunSuite {
         override def flatMap[B](f: A => List[B]): List[B] = m.flatMap(f)
     var runs = 0
     val r = direct[List] {
-      List(1, 2, 3)
+      List(1, 2, 3): Unit
       runs += 1
       7
     }

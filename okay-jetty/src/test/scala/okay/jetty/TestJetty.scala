@@ -2,8 +2,8 @@ package okay.jetty
 
 import okay.*
 import okay.given
-import okay.codec.{Json, Schema}
-import okay.http.{Frame, Http, Method, Request, Response, Server as OkayServer, Transports, Ws}
+import okay.codec.Schema
+import okay.http.{Frame, Http, Request, Response, Server as OkayServer, Transports, Ws}
 
 /**
  * Jetty behind the same two seams — and the gap closed.
@@ -135,7 +135,7 @@ class TestJetty extends munit.FunSuite {
       Jetty.serve(0) { case _ => OkayServer.text(200, "up") }().map(Jetty.port)).runWith
     val failed =
       try
-        Async.run[Int, Pure](Transports.http()
+        val _ = Async.run[Int, Pure](Transports.http()
           .send(Request.get(s"http://127.0.0.1:$port/")).map(_.status)).runWith
         false
       catch case _: Throwable => true

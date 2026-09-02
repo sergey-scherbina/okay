@@ -2,7 +2,7 @@ package okay.netty
 
 import okay.*
 import okay.given
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 import okay.http.{Frame, Http, Request, Response, Server as OkayServer, Transports, Ws}
 
 /**
@@ -152,7 +152,7 @@ class TestNetty extends munit.FunSuite {
       Netty.serve(0) { case _ => OkayServer.text(200, "up") }().map(Netty.port)).runWith
     val failed =
       try
-        Async.run[Int, Pure](Transports.http()
+        val _ = Async.run[Int, Pure](Transports.http()
           .send(Request.get(s"http://127.0.0.1:$port/")).map(_.status)).runWith
         false
       catch case _: Throwable => true

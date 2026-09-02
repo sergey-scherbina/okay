@@ -3,6 +3,7 @@ package okay.demo
 import okay.*
 import okay.given
 import java.time.Instant
+import scala.annotation.nowarn
 
 /**
  * The exercise's own tests, in the two halves the implementation is
@@ -82,6 +83,10 @@ class TestCombine extends munit.FunSuite {
   // ---- the same join, written as fs2 writes it ----
 
   /** the accumulating formulation, run the same way */
+  // Writer.run's inline body checks the answer's shape at the type
+  // parameter it was called with (the same kernel Effects.scala
+  // states); exposed here at the call site, not a cast this file adds
+  @nowarn("msg=cannot be checked at runtime")
   private def foldAccumulating(repo: StateRepo, events: Seq[Event]): Seq[Option[Output]] =
     !.run(Writer.run(through(Writer.of(events.toList))(accumulating(repo))))._1
 

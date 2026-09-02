@@ -2,6 +2,7 @@ package okay.sql
 
 import okay.{!, +, Async, Chunk, Produce, effect}
 import okay.codec.Schema
+import scala.annotation.nowarn
 
 /** the platform-free half: name mapping, parameter binding, the
  * granted-isolation vocabulary — runs on JVM, JS and Native, which
@@ -93,6 +94,11 @@ class TestSqlPure extends munit.FunSuite {
       case Pure(a) => a
       case other => fail(s"an effect where none was expected: $other")
 
+  // <|>'s own split (Effects.scala: "the union's excluded middle") does
+  // an Async[Nothing] type test that erasure cannot verify — the
+  // trusted kernel's warning, inlined into this call site, not a cast
+  // this file introduces
+  @nowarn("msg=cannot be checked at runtime")
   def decoded[A: Schema](db: Sql): Vector[Either[Bad, A]] =
     import okay.!.*
     def go(rest: Chunk[Either[Bad, A]] ! (Produce + Async), acc: Vector[Either[Bad, A]]): Vector[Either[Bad, A]] =

@@ -2,7 +2,7 @@ package okay.jdbc
 
 import okay.{!, Async}
 import okay.given
-import okay.sql.{Sql, SqlValue}
+import okay.sql.Sql
 import java.sql.DriverManager
 
 /**

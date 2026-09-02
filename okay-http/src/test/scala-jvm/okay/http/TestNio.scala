@@ -2,7 +2,7 @@ package okay.http
 
 import okay.*
 import okay.given
-import okay.codec.{Json, Schema}
+import okay.codec.Json
 import okay.mcp.{Mcp, Rpc}
 
 /**

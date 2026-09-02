@@ -41,17 +41,17 @@ class TestSqlMatch extends munit.FunSuite {
     assertEquals(profile.history.find(_.id == f1).get.supersededBy, Some(f2))
     // visibility, both gates
     m.assert(p, "phone", Side.Offer, Value.VText("+380501112233"),
-      prov("c1", 2, "тел"), 1.0, Vis.Public)
+      prov("c1", 2, "тел"), 1.0, Vis.Public): Unit
     m.assert(p, "secret", Side.Offer, Value.VText("hidden"), prov("c1", 3, "..."),
-      1.0, Vis.Private)
+      1.0, Vis.Private): Unit
     val hits = m.candidates(Query(Side.Offer, text = "tiling"))
     val attrs = hits.head.disclosed.map(_.attr)
     assert(attrs.contains("skill") && !attrs.contains("phone") && !attrs.contains("secret"))
     // hybrid: geo filter excludes
     val lviv = m.register("lviv@example.com")
-    m.assert(lviv, "skill", Side.Offer, Value.VText("tiling"), prov("c3", 1, "..."), 1.0, Vis.Public)
-    m.assert(lviv, "location", Side.Offer, Value.VGeo(49.84, 24.03), prov("c3", 2, "..."), 1.0, Vis.Public)
-    m.assert(p, "location", Side.Offer, Value.VGeo(50.45, 30.52), prov("c1", 4, "..."), 1.0, Vis.Public)
+    m.assert(lviv, "skill", Side.Offer, Value.VText("tiling"), prov("c3", 1, "..."), 1.0, Vis.Public): Unit
+    m.assert(lviv, "location", Side.Offer, Value.VGeo(49.84, 24.03), prov("c3", 2, "..."), 1.0, Vis.Public): Unit
+    m.assert(p, "location", Side.Offer, Value.VGeo(50.45, 30.52), prov("c1", 4, "..."), 1.0, Vis.Public): Unit
     assertEquals(m.candidates(Query(Side.Offer,
       filters = Vector("location" -> Pred.Within(50.45, 30.52, 50)))).map(_.profile), Vector(p))
   }
@@ -60,7 +60,7 @@ class TestSqlMatch extends munit.FunSuite {
     val m1 = fresh("restart")
     val p = m1.register("master@example.com")
     m1.assert(p, "skill", Side.Offer, Value.VText("wallpapering"),
-      prov("c1", 1, "клею обои"), 1.0, Vis.Public)
+      prov("c1", 1, "клею обои"), 1.0, Vis.Public): Unit
     val m2 = fresh("restart")   // same jdbc url = same database
     assertEquals(m2.register("master@example.com"), p)
     assertEquals(m2.profileOf(p).get.current.map(_.attr), Vector("skill"))
@@ -78,7 +78,7 @@ class TestSqlMatch extends munit.FunSuite {
       if t.role == "user" then
         val skill = t.text.stripPrefix("умею: ")
         if skill != t.text then
-          m.assert(t.profile, "skill", Side.Offer, Value.VText(skill), prov, 1.0, Vis.Public)
+          m.assert(t.profile, "skill", Side.Offer, Value.VText(skill), prov, 1.0, Vis.Public): Unit
           ()
     val master = live.register("master@example.com")
     Vector(
@@ -93,22 +93,22 @@ class TestSqlMatch extends munit.FunSuite {
     val rebuilt = fresh("rebuilt")
     assertEquals(rebuilt.register("master@example.com"), rebuilt.register("master@example.com"))
     val master2 = rebuilt.register("master@example.com")
-    log.replay((t, prov) => extractInto(rebuilt)(t.copy(profile = master2), prov))
+    log.replay((t, prov) => extractInto(rebuilt)(t.copy(profile = master2), prov)): Unit
     assertEquals(rebuilt.profileOf(master2).get.current.map(_.value),
       live.profileOf(master).get.current.map(_.value))
     // and replaying over the LIVE store changes nothing (idempotence over the same log)
-    log.replay(extractInto(live))
+    log.replay(extractInto(live)): Unit
     assertEquals(live.profileOf(master).get.history.length, 2)
   }
 
   test("identity-x holds on the durable store too") {
     val m = fresh("identity")
-    m.propose(AttrDraft("phone", Kind.Text, "contact phone", identifying = true))
+    m.propose(AttrDraft("phone", Kind.Text, "contact phone", identifying = true)): Unit
     val old = m.register("old@example.com")
-    m.assert(old, "skill", Side.Offer, Value.VText("welding"), prov("tg", 1, "..."), 1.0, Vis.Public)
-    m.assert(old, "phone", Side.Offer, Value.VText("+38050"), prov("tg", 2, "..."), 1.0, Vis.Matched)
+    m.assert(old, "skill", Side.Offer, Value.VText("welding"), prov("tg", 1, "..."), 1.0, Vis.Public): Unit
+    m.assert(old, "phone", Side.Offer, Value.VText("+38050"), prov("tg", 2, "..."), 1.0, Vis.Matched): Unit
     val nw = m.register("new@example.com")
-    m.assert(nw, "phone", Side.Offer, Value.VText("+38050"), prov("vb", 1, "..."), 1.0, Vis.Matched)
+    m.assert(nw, "phone", Side.Offer, Value.VText("+38050"), prov("vb", 1, "..."), 1.0, Vis.Matched): Unit
     assertEquals(m.linkCandidates(nw), Vector(LinkHint("phone", "o***@e***.com")))
     val t = m.requestLink(nw, old).get
     assertEquals(m.confirmLink(t.token, nw, prov("vb", 2, "...")), Some(old))
@@ -121,10 +121,10 @@ class TestSqlMatch extends munit.FunSuite {
 
   test("registry migration: a synonym merge moves the facts, the winner answers") {
     val m = fresh("merge")
-    m.propose(AttrDraft("schedule", Kind.Time, "when available"))
-    m.propose(AttrDraft("grafik", Kind.Time, "рабочий график недели"))  // the drift that slipped through
+    m.propose(AttrDraft("schedule", Kind.Time, "when available")): Unit
+    m.propose(AttrDraft("grafik", Kind.Time, "рабочий график недели")): Unit // the drift that slipped through
     val p = m.register("master@example.com")
-    m.assert(p, "grafik", Side.Offer, Value.VTime("weekdays"), prov("c1", 1, "по будням"), 1.0, Vis.Public)
+    m.assert(p, "grafik", Side.Offer, Value.VTime("weekdays"), prov("c1", 1, "по будням"), 1.0, Vis.Public): Unit
     m.mergeAttr(loser = "grafik", winner = "schedule")
     assertEquals(m.get("grafik"), None)
     assertEquals(m.profileOf(p).get.current.map(_.attr), Vector("schedule"))

@@ -52,7 +52,7 @@ class TestCacheFlight extends munit.FunSuite {
   test("a failing flight fails every waiter, then the key recovers") {
     val c = Cache.memory[String, String](Regime.Invalidated, 100)
     val gate = CountDownLatch(1)
-    def failing(k: String): String ! Async = okay.async {
+    def failing(@scala.annotation.unused k: String): String ! Async = okay.async {
       gate.await(2, TimeUnit.SECONDS)
       throw RuntimeException("boom")
     }
@@ -70,6 +70,6 @@ class TestCacheFlight extends munit.FunSuite {
     gate.countDown()
     assert(done.await(5, TimeUnit.SECONDS), "waiters hung on the failed flight")
     assertEquals(failures.get(), n)
-    assertEquals(run(c.getOrLoad("k")(k => okay.async("fine"))), "fine")
+    assertEquals(run(c.getOrLoad("k")(_ => okay.async("fine"))), "fine")
   }
 }

@@ -122,7 +122,7 @@ class TestTopicJournal extends munit.FunSuite {
     val j = TopicJournal(topic, "run-1")
     j.append(Durable.Entry(0, "charge", "charge({})", "charge-0", None))
     // garbage lands in the partition (a foreign writer, a torn record)
-    topic.append(0, "run-1".getBytes("UTF-8"), Array[Byte](1, 2), Ack.Durable)
+    topic.append(0, "run-1".getBytes("UTF-8"), Array[Byte](1, 2), Ack.Durable): Unit
     j.complete(0, "receipt-1")
 
     // the completion sits BEYOND the damage: everything before the

@@ -26,7 +26,7 @@ class TestKafkaRepair extends FunSuite:
     TestKafkaSupport.reachable(bootstrap) && (
       try
         val s = KafkaStore(bootstrap)
-        try { s.topics; true } finally s.close()
+        try { s.topics: Unit; true } finally s.close(): Unit
       catch case _: Throwable => false)
 
   final case class Ev(id: String, n: Int)
@@ -40,9 +40,9 @@ class TestKafkaRepair extends FunSuite:
   def seeded(store: KafkaStore): Typed[Ev] =
     val t = store.topic(fresh(), 1, Policy())
     val typed = Typed[Ev](t, version = 1, upcasts = Map.empty)
-    typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable)
-    t.append(0, bytes("k"), Array[Byte](9, 9, 9), Ack.Durable)
-    typed.append(0, bytes("k"), Ev("c", 3), Ack.Durable)
+    typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable): Unit
+    t.append(0, bytes("k"), Array[Byte](9, 9, 9), Ack.Durable): Unit
+    typed.append(0, bytes("k"), Ev("c", 3), Ack.Durable): Unit
     typed
 
   def road(typed: Typed[Ev]): Vector[(Long, Ev)] ! Condition.Op =

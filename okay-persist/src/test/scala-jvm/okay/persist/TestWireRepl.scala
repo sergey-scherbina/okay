@@ -49,8 +49,8 @@ class TestWireRepl extends FunSuite:
     try
       val c = Wire.Remote.connect("127.0.0.1", srv.port, "op")
       try
-        run(c.produce("orders", 0, "p1", 1L, Array.empty, bytes("a")))
-        run(c.produce("orders", 0, "p1", 2L, Array.empty, bytes("b")))
+        run(c.produce("orders", 0, "p1", 1L, Array.empty, bytes("a"))): Unit
+        run(c.produce("orders", 0, "p1", 2L, Array.empty, bytes("b"))): Unit
         assertEquals(coord.replicaStats.partitions(0).leader, 0)
 
         run(c.promote("orders", 0, 2))
@@ -93,8 +93,8 @@ class TestWireRepl extends FunSuite:
     try
       val c = Wire.Remote.connect("127.0.0.1", srv.port, "op")
       try
-        run(c.append("kv", 0, bytes("k"), bytes("v0")))
-        run(c.append("kv", 0, bytes("k"), bytes("v1")))
+        run(c.append("kv", 0, bytes("k"), bytes("v0"))): Unit
+        run(c.append("kv", 0, bytes("k"), bytes("v1"))): Unit
         val endBefore = run(c.end("kv", 0))
         run(c.compact("kv", 0))
         assertEquals(run(c.end("kv", 0)), endBefore)   // end does not move
@@ -131,7 +131,7 @@ class TestWireRepl extends FunSuite:
         assertEquals(coord.end(0), 1L)
 
         // now make the remote lag, then replicate-PULL catches it up
-        here.topic("orders").append(0, bytes("k"), bytes("later"), Ack.Durable)
+        here.topic("orders").append(0, bytes("k"), bytes("later"), Ack.Durable): Unit
         assert(backing.topic("orders").end(0) < here.topic("orders").end(0))
         coord.replicate(0)
         assertEquals(backing.topic("orders").end(0), 2L)

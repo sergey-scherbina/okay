@@ -1,6 +1,6 @@
 package okay.mcp
 
-import okay.*
+
 import okay.given
 import okay.agent.{ToolCall, Turn}
 import okay.codec.Json

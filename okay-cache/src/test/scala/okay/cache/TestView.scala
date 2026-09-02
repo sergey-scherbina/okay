@@ -21,7 +21,7 @@ class TestView extends munit.FunSuite {
   private def str(b: Array[Byte]): String = new String(b, "UTF-8")
 
   /** last-write-wins per key; an empty value is the tombstone */
-  def lww(prev: Option[String], r: Record): Option[String] =
+  def lww(@scala.annotation.unused prev: Option[String], r: Record): Option[String] =
     if r.value.isEmpty then None else Some(str(r.value))
 
   def mkView(topic: okay.persist.Topic): View[String, String] =
@@ -32,8 +32,8 @@ class TestView extends munit.FunSuite {
     val v = mkView(t)
     assertEquals(v.lag, 0L)
 
-    t.append(bytes("a"), bytes("1"), Ack.Received)
-    t.append(bytes("b"), bytes("2"), Ack.Received)
+    t.append(bytes("a"), bytes("1"), Ack.Received): Unit
+    t.append(bytes("b"), bytes("2"), Ack.Received): Unit
     assertEquals(v.lag, 2L, "appends did not move the lag")
     assertEquals(run(v.latest("a")), None, "latest read past the consumed offset")
 
@@ -42,7 +42,7 @@ class TestView extends munit.FunSuite {
     assertEquals(run(v.latest("a")), Some("1"))
     assertEquals(run(v.latest("b")), Some("2"))
 
-    t.append(bytes("a"), bytes("10"), Ack.Received)
+    t.append(bytes("a"), bytes("10"), Ack.Received): Unit
     assertEquals(v.lag, 1L)
     assertEquals(run(v.latest("a")), Some("1"), "the view ran ahead of its consumption")
     run(v.refresh())
@@ -52,8 +52,8 @@ class TestView extends munit.FunSuite {
   test("a tombstone removes the key from the view") {
     val t = MemoryStore().topic("kv", partitions = 1, policy = Policy(compact = true))
     val v = mkView(t)
-    t.append(bytes("a"), bytes("1"), Ack.Received)
-    t.append(bytes("a"), Array.empty, Ack.Received)
+    t.append(bytes("a"), bytes("1"), Ack.Received): Unit
+    t.append(bytes("a"), Array.empty, Ack.Received): Unit
     run(v.refresh())
     assertEquals(run(v.latest("a")), None)
   }

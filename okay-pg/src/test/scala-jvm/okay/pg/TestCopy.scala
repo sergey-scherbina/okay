@@ -32,9 +32,9 @@ class TestCopy extends munit.FunSuite {
   override def beforeAll(): Unit =
     if !available then return
     withDb { db =>
-      run(db.update("drop table if exists bulk"))
-      run(db.update("create table bulk(id bigint not null, label text, amount double precision)"))
-      run(db.update("drop table if exists okay_loads"))
+      run(db.update("drop table if exists bulk")): Unit
+      run(db.update("create table bulk(id bigint not null, label text, amount double precision)")): Unit
+      run(db.update("drop table if exists okay_loads")): Unit
       run(Load.ensure(db))
       ()
     }
@@ -59,7 +59,7 @@ class TestCopy extends munit.FunSuite {
   test("copyIn streams a thousand rows in one command; special characters survive the text format") {
     assume(available, s"no Postgres at $host:$port — the live suite skips")
     withDb { db =>
-      run(db.update("truncate bulk"))
+      run(db.update("truncate bulk")): Unit
       val rows = (1 to 1000).iterator.map(i =>
         PgSql.copyRow(Vector(SqlValue.I64(i), SqlValue.Text(s"row-$i"), SqlValue.F64(i / 2.0))))
       assertEquals(run(db.copyIn("copy bulk (id, label, amount) from stdin", rows)), 1000L)
@@ -99,8 +99,8 @@ class TestCopy extends munit.FunSuite {
   test("the load id dedups: the same load twice lands once, and says so") {
     assume(available, s"no Postgres at $host:$port — the live suite skips")
     withDb { db =>
-      run(db.update("truncate bulk"))
-      run(db.update("delete from okay_loads"))
+      run(db.update("truncate bulk")): Unit
+      run(db.update("delete from okay_loads")): Unit
       val rows = (1 to 50).toVector.map(i =>
         Vector[SqlValue](SqlValue.I64(i), SqlValue.Text(s"r$i"), SqlValue.F64(1.0)))
       assertEquals(run(Load.load(db, "batch-2026-09-01", "bulk",
@@ -114,13 +114,13 @@ class TestCopy extends munit.FunSuite {
 
   test("a crash between COPY and commit rolls back the CLAIM too: the retry lands, once overall") {
     assume(available, s"no Postgres at $host:$port — the live suite skips")
-    withDb { db => run(db.update("truncate bulk")); run(db.update("delete from okay_loads")); () }
+    withDb { db => run(db.update("truncate bulk")): Unit; run(db.update("delete from okay_loads")): Unit }
     val rows = (1 to 20).toVector.map(i =>
       Vector[SqlValue](SqlValue.I64(i), SqlValue.Text(s"r$i"), SqlValue.F64(1.0)))
 
     // the crash: claim + COPY, then the connection DIES uncommitted
     val dying = connect()
-    run(dying.begin(okay.sql.Isolation.ReadCommitted))
+    run(dying.begin(okay.sql.Isolation.ReadCommitted)): Unit
     assertEquals(run(dying.update(
       "insert into okay_loads(load_id) values ($1) on conflict do nothing",
       Vector(SqlValue.Text("batch-crash")))), 1L)

@@ -101,8 +101,8 @@ class TestPgComposite extends munit.FunSuite:
   private def defineType(): Unit =
     val setup = connect()
     try
-      run(setup.update("drop type if exists okay_addr cascade"))
-      run(setup.update("create type okay_addr as (street text, zip int, active bool)"))
+      run(setup.update("drop type if exists okay_addr cascade")): Unit
+      run(setup.update("create type okay_addr as (street text, zip int, active bool)")): Unit
     finally setup.close()
 
   test("a named composite type's fields are TYPED, not handed back as text") {
@@ -151,11 +151,11 @@ class TestPgComposite extends munit.FunSuite:
     val db = connect()
     try
       // a table, so describe can answer nullability from the catalog
-      run(db.update("drop table if exists okay_people"))
+      run(db.update("drop table if exists okay_people")): Unit
       run(db.update("create table okay_people(id int not null, nums int[] not null, " +
-        "home okay_addr not null, moves okay_addr[] not null, prev okay_addr)"))
+        "home okay_addr not null, moves okay_addr[] not null, prev okay_addr)")): Unit
       run(db.update("insert into okay_people values (1, array[1, 2, 3], " +
-        "row('main st', 90210, true), array[row('elm', null, false)::okay_addr], null)"))
+        "row('main st', 90210, true), array[row('elm', null, false)::okay_addr], null)")): Unit
       val sql = "select id, nums, home, moves, prev from okay_people"
       val rows = collectChunks(okay.sql.Typed.rows[Person](db, sql)).flatten
       assertEquals(rows, List(Right(Person(1, Vector(1, 2, 3), Addr("main st", Some(90210), true),
@@ -181,9 +181,9 @@ class TestPgComposite extends munit.FunSuite:
     defineType()
     val setup = connect()
     try
-      run(setup.update("drop table if exists okay_people"))
+      run(setup.update("drop table if exists okay_people")): Unit
       run(setup.update("create table okay_people(id int not null, nums int[] not null, " +
-        "home okay_addr not null, moves okay_addr[] not null, prev okay_addr)"))
+        "home okay_addr not null, moves okay_addr[] not null, prev okay_addr)")): Unit
       run(setup.update("insert into okay_people values (1, array[1, 2, 3], " +
         "row('main st', 90210, true), array[row('elm', null, false)::okay_addr], null)"))
     finally setup.close()
@@ -218,9 +218,9 @@ class TestPgComposite extends munit.FunSuite:
         case other => fail(s"not an Arr(Row): $other"), 5)
       // a table created AFTER connect is unknown to THIS connection (stated):
       // its row type has an OID the preload never saw, so the cell is the raw text
-      run(db.update("drop table if exists okay_later"))
-      run(db.update("create table okay_later(a int, b text)"))
-      run(db.update("insert into okay_later values (7, 'x')"))
+      run(db.update("drop table if exists okay_later")): Unit
+      run(db.update("create table okay_later(a int, b text)")): Unit
+      run(db.update("insert into okay_later values (7, 'x')")): Unit
       assertEquals(collectChunks(db.query("select l from okay_later l")).flatten.head.head,
         SqlValue.Text("(7,x)"))
       // and a reconnect knows it
@@ -262,11 +262,11 @@ class TestPgComposite extends munit.FunSuite:
     assertEquals(cell("select array[1.5, 2.25]::numeric[]"), Arr(Vector(Num(BigDecimal("1.5")), Num(BigDecimal("2.25")))))
     val db = connect()
     try
-      run(db.update("drop table if exists okay_ledger"))
+      run(db.update("drop table if exists okay_ledger")): Unit
       run(db.update("create table okay_ledger(id int not null, amount numeric(30, 9) not null, " +
-        "ref uuid not null, doc jsonb not null, at timestamptz not null)"))
+        "ref uuid not null, doc jsonb not null, at timestamptz not null)")): Unit
       run(db.update("insert into okay_ledger values (1, 12345678901234567890.123456789, " +
-        "'6ba7b810-9dad-11d1-80b4-00c04fd430c8', '{\"k\": [1, 2]}', '2026-09-02 06:00:00+00')"))
+        "'6ba7b810-9dad-11d1-80b4-00c04fd430c8', '{\"k\": [1, 2]}', '2026-09-02 06:00:00+00')")): Unit
       val sql = "select id, amount, ref, doc, at from okay_ledger"
       assertEquals(run(db.describe(sql)).map(_.tpe), Vector(okay.sql.SqlType.I32, okay.sql.SqlType.Num,
         okay.sql.SqlType.Other("uuid"), okay.sql.SqlType.Other("jsonb"), okay.sql.SqlType.Other("timestamptz")))

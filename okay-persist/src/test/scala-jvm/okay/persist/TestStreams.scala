@@ -61,7 +61,7 @@ class TestStreams extends munit.FunSuite {
     (0 until 3).foreach(i => t.append(0, Array.empty, bytes(s"v$i"), Ack.Received))
     val writer = new Thread(() => {
       Thread.sleep(80)
-      t.append(0, Array.empty, bytes("late"), Ack.Received)
+      t.append(0, Array.empty, bytes("late"), Ack.Received): Unit
       ()
     })
     writer.start()

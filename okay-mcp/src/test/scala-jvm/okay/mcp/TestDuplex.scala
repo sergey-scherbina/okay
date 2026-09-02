@@ -2,7 +2,7 @@ package okay.mcp
 
 import okay.*
 import okay.given
-import okay.agent.{Handlers, Model, Reply, ToolCall, ToolSpec, Turn}
+import okay.agent.{Handlers, Reply, ToolCall, ToolSpec, Turn}
 import okay.codec.{Json, Schema}
 
 /**
@@ -116,7 +116,7 @@ class TestDuplex extends munit.FunSuite {
     val model = Handlers.scripted(Seq(Reply("4", Nil)))
     val (client, server) = wire()
     Async.spawn(Server.over(server)(stage)): Unit
-    Client.connect(client, Mcp.Info("test", "1"),
+    val _ = Client.connect(client, Mcp.Info("test", "1"),
       Duplex.Peer(sample = Some(model))).runWith
     assertEquals(answered.receiveBlocking().map(_.text), Some("4"))
   }
@@ -135,14 +135,13 @@ class TestDuplex extends munit.FunSuite {
 
     val (client, server) = wire()
     Async.spawn(Server.over(server)(stage)): Unit
-    Client.connect(client, Mcp.Info("test", "1")).runWith
+    val _ = Client.connect(client, Mcp.Info("test", "1")).runWith
     assertEquals(answered.receiveBlocking(), Some(s"refused ${Rpc.MethodNotFound}"))
   }
 
   test("answers, requests and notifications interleave on one wire") {
     // the server asks the client to sample DURING a tools/call, and
     // both the sampling answer and the call's own answer arrive
-    val table = Map[String, ToolCall => String]("add" -> (_ => "3"))
     val stage: Stage[Rpc, Rpc, Unit] = Stage.transduce(())((_, msg: Rpc) => msg match {
       case Rpc.Request(id, Mcp.Initialize, _) =>
         Stage.tell[Rpc, Rpc](Rpc.Answer(id, Mcp.initializeResult(info)))
@@ -175,7 +174,7 @@ class TestDuplex extends munit.FunSuite {
 
     val (client, server) = wire()
     Async.spawn(Server.over(server)(stage)): Unit
-    Client.connect(client, Mcp.Info("test", "1"),
+    val _ = Client.connect(client, Mcp.Info("test", "1"),
       Duplex.Peer(roots = Seq(Mcp.Root("file:///w")),
         sample = Some(Handlers.scripted(Nil)))).runWith
     val params = seen.receiveBlocking().get

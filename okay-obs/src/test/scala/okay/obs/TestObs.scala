@@ -1,6 +1,6 @@
 package okay.obs
 
-import okay.codec.{Cbor, Json, Schema}
+import okay.codec.{Cbor, Json}
 import okay.persist.{MemoryStore, Policy, Topic}
 
 /** the pure claims: total parse, propagation, the wrapping
@@ -69,7 +69,7 @@ class TestObs extends munit.FunSuite {
 
   test("a throw closes the span with an error status and rethrows") {
     val (t, spans) = tracer()
-    intercept[RuntimeException](t.root("boom") { throw RuntimeException("nope") })
+    intercept[RuntimeException](t.root("boom") { throw RuntimeException("nope") }): Unit
     assertEquals(spans().map(_.status), Vector("error: nope"))
   }
 

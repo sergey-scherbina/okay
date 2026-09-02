@@ -1,6 +1,7 @@
 package okay
 
 import !.*
+import scala.annotation.nowarn
 
 /** Coroutine pipelines: tell meets await, one element at a time. */
 class TestPipe extends munit.FunSuite {
@@ -83,7 +84,9 @@ class TestPipe extends munit.FunSuite {
     // Option[Output] and filters downstream.
     val evensOnly: Stage[Int, Option[Int], Int] = Stage.mapAccumulate(0)((sum, i) =>
       (sum + i, if i % 2 == 0 then Some(sum + i) else None))
-    assertEquals(!.run(Writer.run(through(told)(evensOnly)))._1,
+    @nowarn("msg=cannot be checked at runtime")
+    val out = !.run(Writer.run(through(told)(evensOnly)))._1
+    assertEquals(out,
       Seq(None, Some(3), None, Some(10)))   // two Nones nobody wanted
   }
 

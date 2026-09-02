@@ -19,7 +19,7 @@ class TestConditionTyped extends munit.FunSuite {
     val out = !.run(Condition.run[Int, Pure] {
       case (HowMany, _) => resume(HowMany)(40)
       case (WhichName, _) => resume(WhichName)("ab")
-      case (c, menu) => Fail
+      case (_, _) => Fail
     }(prog))
     assertEquals(out, 42)
   }

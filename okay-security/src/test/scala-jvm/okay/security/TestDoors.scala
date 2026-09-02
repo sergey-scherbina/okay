@@ -45,7 +45,7 @@ class TestDoors extends munit.FunSuite {
       json = Json.JObj(Vector("name" -> Json.JStr("Ada")))), Jwt.Key.Hmac(secret))
     val route = McpAuth.granted(
       t => Jwt.verify(t, _ => Some(Jwt.Key.Hmac(secret)), Some("api"), now),
-      "http://x/.well-known/oauth-protected-resource") { r =>
+      "http://x/.well-known/oauth-protected-resource") { _ =>
       pure(Response(200, Nil,
         okay.http.Http.one(s"mcp for ${summon[Principal].name}".getBytes("UTF-8"))))
     }

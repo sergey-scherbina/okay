@@ -167,7 +167,7 @@ class TestChannel extends munit.FunSuite {
           .flatMap(_ => rest)
 
     def took(body: => Any): Long =
-      val t = System.nanoTime(); body; (System.nanoTime() - t) / 1000000
+      val t = System.nanoTime(); body: Unit; (System.nanoTime() - t) / 1000000
 
     // eight sources, three elements each, 100ms an element: 2.4s of
     // work. Chaining merges does not serialize them — each hop is its

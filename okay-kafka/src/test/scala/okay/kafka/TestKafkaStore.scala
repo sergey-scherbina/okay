@@ -1,6 +1,6 @@
 package okay.kafka
 
-import okay.persist.{Ack, Policy, Topic}
+import okay.persist.{Ack, Topic}
 import munit.FunSuite
 
 /**
@@ -20,7 +20,7 @@ class TestKafkaStore extends FunSuite:
     TestKafkaSupport.reachable(bootstrap) && (
       try
         val s = KafkaStore(bootstrap)
-        try { s.topics; true } finally s.close()
+        try { s.topics: Unit; true } finally s.close(): Unit
       catch case _: Throwable => false)
 
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
@@ -52,10 +52,10 @@ class TestKafkaStore extends FunSuite:
     val store = KafkaStore(bootstrap)
     try
       val t = store.topic(fresh())
-      t.append(0, Array.empty, bytes("v0"), Ack.Durable)
+      t.append(0, Array.empty, bytes("v0"), Ack.Durable): Unit
       val caughtUp = t.end(0)
       assertEquals(records(t.read(0, caughtUp, 10)), Vector.empty)
-      t.append(0, Array.empty, bytes("late"), Ack.Durable)
+      t.append(0, Array.empty, bytes("late"), Ack.Durable): Unit
       assertEquals(records(t.read(0, caughtUp, 10)).map(r => str(r.value)), Vector("late"))
     finally store.close()
   }
@@ -80,8 +80,8 @@ class TestKafkaStore extends FunSuite:
       given okay.codec.Schema[Ev] = okay.codec.Schema.derived
       val t = store.topic(fresh())
       val typed = okay.persist.Typed[Ev](t, version = 1, upcasts = Map.empty)
-      typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable)
-      typed.append(0, bytes("k"), Ev("b", 2), Ack.Durable)
+      typed.append(0, bytes("k"), Ev("a", 1), Ack.Durable): Unit
+      typed.append(0, bytes("k"), Ev("b", 2), Ack.Durable): Unit
       typed.read(0, 0L, 10) match
         case okay.persist.Typed.Read.Records(ds) =>
           assertEquals(ds.collect { case okay.persist.Typed.Decoded.Ok(_, _, _, e) => e },

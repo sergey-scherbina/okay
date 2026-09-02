@@ -26,8 +26,8 @@ class TestConfigs extends munit.FunSuite {
 
   test("two names on one topic do not bleed — keys filter") {
     val c = fresh()
-    c.put("db", Db("u1", "a", "env:X"))
-    c.put("cache", Db("u2", "b", "env:Y"))
+    c.put("db", Db("u1", "a", "env:X")): Unit
+    c.put("cache", Db("u2", "b", "env:Y")): Unit
     assertEquals(c.latest[Db]("db").map(_._2.map(_.url)), Some(Right("u1")))
     assertEquals(c.history[Db]("cache").length, 1)
   }
@@ -35,7 +35,7 @@ class TestConfigs extends munit.FunSuite {
   test("a damaged stored value is a Left in place; the rest of the history is intact") {
     val c = fresh()
     val good = c.put("db", Db("u", "a", "env:X"))
-    c.topic.append("db".getBytes("UTF-8"), "{not json".getBytes("UTF-8"), Ack.Durable)
+    c.topic.append("db".getBytes("UTF-8"), "{not json".getBytes("UTF-8"), Ack.Durable): Unit
     val after = c.put("db", Db("u", "a", "env:Y"))
     val h = c.history[Db]("db")
     assertEquals(h.length, 3)
@@ -45,12 +45,12 @@ class TestConfigs extends munit.FunSuite {
     // latest is the damaged-free newest? No: latest is the NEWEST —
     // here the newest is fine, and the damage sits in the audit
     assertEquals(c.latest[Db]("db").map(_._2.map(_.password)), Some(Right("env:Y")))
-  }
+  }: Unit
 
   test("after compact: latest and its offset unchanged, history shortened honestly") {
     val c = fresh()
-    c.put("db", Db("u", "a", "env:1"))
-    c.put("db", Db("u", "a", "env:2"))
+    c.put("db", Db("u", "a", "env:1")): Unit
+    c.put("db", Db("u", "a", "env:2")): Unit
     val last = c.put("db", Db("u", "a", "env:3"))
     val partition = Topic.route("db".getBytes("UTF-8"), c.topic.partitions)
     c.topic.compact(partition)

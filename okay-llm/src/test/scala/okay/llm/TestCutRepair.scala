@@ -2,7 +2,7 @@ package okay.llm
 
 import okay.*
 import okay.given
-import okay.Condition.{Decision, Unhandled}
+import okay.Condition.Decision
 import Cut.*
 
 /** The repair door (specs/condition.md x llm-streaming-cut): one
@@ -39,7 +39,8 @@ class TestCutRepair extends munit.FunSuite {
     val (emitted, result) = screenedRun(src,
       { case (_: Violation, menu) =>
           assertEquals(menu, Vector("drop", "cut"))
-          Decision.Resume("beep") })
+          Decision.Resume("beep")
+        case other => throw new MatchError(s"unexpected condition: $other") })
     assertEquals(result, Right("done"))
     assertEquals(emitted, Vector("fine", "beep", "also"))
     assertEquals(src.pulled, 3)

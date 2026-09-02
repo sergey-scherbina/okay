@@ -3,7 +3,7 @@ package okay.security
 import okay.*
 import okay.given
 import okay.codec.Json
-import okay.http.{Body, Http, Method, Request, Response, Server, Transports}
+import okay.http.{Http, Method, Request, Response, Server, Transports}
 
 /**
  * OIDC against a stub IdP on a real port: discovery, the login url,
@@ -75,7 +75,7 @@ class TestOidc extends munit.FunSuite {
       assert(attempt.url.contains("nonce=" + attempt.nonce))
 
       // "the browser": hit /auth so the IdP learns the nonce
-      run(http.send(Request.get(attempt.url)))
+      run(http.send(Request.get(attempt.url))): Unit
 
       run(Oidc.callback(http, p, "app", "http://localhost/cb",
         attempt, "c0de", now)) match

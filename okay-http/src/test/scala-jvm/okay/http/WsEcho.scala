@@ -25,7 +25,7 @@ final class WsEcho(val fragmentEvery: Int = 0,
                    val partingWords: Int = 0) extends AutoCloseable {
   private val server = ServerSocket(0)
   @volatile private var client: TcpSocket = null
-  private val thread = Thread.startVirtualThread(() => try serve() catch case _: Throwable => ())
+  Thread.startVirtualThread(() => try serve() catch case _: Throwable => ()): Unit
 
   def port: Int = server.getLocalPort
   def url: String = s"ws://127.0.0.1:$port"

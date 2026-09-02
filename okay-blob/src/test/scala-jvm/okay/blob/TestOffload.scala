@@ -55,7 +55,7 @@ class TestOffload extends munit.FunSuite:
     assertEquals(run(Offload.evict(root, bl, keepLocalBytes = 0L)), Vector.empty)
     assertEquals(logsUnder(root).length, before)
 
-    run(Backup.copy(root, bl))
+    run(Backup.copy(root, bl)): Unit
     val evicted = run(Offload.evict(root, bl, keepLocalBytes = 500L))
     assert(evicted.nonEmpty, "nothing evicted under a tiny budget")
     val after = logsUnder(root)
@@ -73,8 +73,8 @@ class TestOffload extends munit.FunSuite:
   test("the tiered read serves blob history + local tail, byte-exact and bounded") {
     val root = tmp(); val bl = Fs(tmp())
     seeded(root)
-    run(Backup.copy(root, bl))
-    run(Offload.evict(root, bl, keepLocalBytes = 500L))
+    run(Backup.copy(root, bl)): Unit
+    run(Offload.evict(root, bl, keepLocalBytes = 500L)): Unit
 
     val s = FileStore.open(root)
     val t = s.topic("events", 1, Policy(segmentBytes = 200))
@@ -97,7 +97,7 @@ class TestOffload extends munit.FunSuite:
   test("a stored copy parses through the documented format, and says it is sound") {
     val root = tmp(); val bl = Fs(tmp())
     seeded(root, n = 10)
-    run(Backup.copy(root, bl))
+    run(Backup.copy(root, bl)): Unit
     val key = run {
       val S = summon[okay.Stream[[X] =>> X ! (Produce + Async), Async]]
       def first(p: okay.Chunk[Meta] ! (Produce + Async)): Option[Meta] ! Async =

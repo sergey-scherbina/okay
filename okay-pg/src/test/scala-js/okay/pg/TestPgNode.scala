@@ -1,6 +1,6 @@
 package okay.pg
 
-import scala.concurrent.Future
+
 import okay.{!, +, Async, Chunk, Produce, Stream}
 import okay.given
 import okay.crypto.given

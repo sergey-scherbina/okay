@@ -41,7 +41,7 @@ class TestPoll extends munit.FunSuite {
     seqs.foreach(s => run(db.update(s"insert into events values ($s, 'p-$s')")))
     ()
 
-  def clear(db: Sql): Unit = { run(db.update("delete from events")); () }
+  def clear(db: Sql): Unit = { run(db.update("delete from events")): Unit }
 
   val bySeq = "select seq, payload from events where seq > ? order by seq"
 
@@ -111,16 +111,16 @@ class TestPoll extends munit.FunSuite {
       clear(db)
       // seq 2 carries a NULL payload; Ev.payload is not Option
       val byseqD = "select seq, payload from events_d where seq > ? order by seq"
-      run(db.update("insert into events_d values (1, 'ok')"))
-      run(db.update("insert into events_d(seq) values (2)"))
-      run(db.update("insert into events_d values (3, 'ok')"))
+      run(db.update("insert into events_d values (1, 'ok')")): Unit
+      run(db.update("insert into events_d(seq) values (2)")): Unit
+      run(db.update("insert into events_d values (3, 'ok')")): Unit
       val p = Poll(db, Offsets(MemoryStore()), "g", "events_d")
       val b = run(p.poll[Ev](byseqD)(_.seq))
       assertEquals(b.rows.map(_.seq), Vector(1L))
       assert(b.damage.isDefined, "the damage did not surface")
       assertEquals(b.watermark, 1L, "the watermark passed a row that did not decode")
       // the fix arrives; the next poll re-serves from the damage on
-      run(db.update("update events_d set payload = 'fixed' where seq = 2"))
+      run(db.update("update events_d set payload = 'fixed' where seq = 2")): Unit
       assertEquals(run(p.poll[Ev](byseqD)(_.seq)).rows.map(_.seq), Vector(2L, 3L))
     }
   }

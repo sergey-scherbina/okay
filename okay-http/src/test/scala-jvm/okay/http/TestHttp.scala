@@ -2,7 +2,7 @@ package okay.http
 
 import okay.*
 import okay.given
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 
 /**
  * The transports, for real: a server and a client in one process,
@@ -158,7 +158,7 @@ class TestHttp extends munit.FunSuite {
     // the scope ended, so a connect must now fail rather than answer
     val failed =
       try
-        Async.run[Int, Pure](
+        val _ = Async.run[Int, Pure](
           client.send(Request.get(s"http://127.0.0.1:$port/"))
             .map(_.status)).runWith
         false

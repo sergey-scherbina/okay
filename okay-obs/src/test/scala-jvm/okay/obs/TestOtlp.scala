@@ -42,7 +42,7 @@ class TestOtlp extends munit.FunSuite {
     tracer.root("GET /q") {
       tracer.span("sql", Attr("db.system", "h2")) { () }
       intercept[RuntimeException](tracer.span("boom") { throw RuntimeException("nope") })
-    }
+    }: Unit
     collector() { (port, seen) =>
       val out = run(OtlpPush.push(http, topic, s"http://127.0.0.1:$port", "svc", 0))
       assertEquals(out, Right(3L))

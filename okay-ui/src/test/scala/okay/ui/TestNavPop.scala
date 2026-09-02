@@ -1,6 +1,6 @@
 package okay.ui
 
-import okay.*
+
 
 /**
  * The named boundary (specs/ui.md, nav-pop-to-screen): pop across

@@ -2,7 +2,7 @@ package okay.r2dbc
 
 import okay.{!, +, Async, Chunk, Handler, Produce}
 import okay.given
-import okay.sql.{Col, Isolation, SqlType, SqlValue, Typed}
+import okay.sql.{Isolation, SqlValue, Typed}
 import okay.sql.given
 import io.r2dbc.spi.Connection
 
@@ -42,9 +42,9 @@ abstract class R2dbcSuite extends munit.FunSuite:
 
   def fresh(): R2dbcSql =
     val db = R2dbcSql(open(), fetchSize = 8)
-    run(db.update("drop table if exists okay_r2dbc"))
+    run(db.update("drop table if exists okay_r2dbc")): Unit
     run(db.update("create table okay_r2dbc(id int not null, name varchar(50) not null, " +
-      "score double precision not null, active boolean not null, balance decimal(12,2) not null, note varchar(200))"))
+      "score double precision not null, active boolean not null, balance decimal(12,2) not null, note varchar(200))")): Unit
     db
 
   test(s"$engine: update, batch, a streamed query in pulled chunks, params bound by index") {
@@ -72,7 +72,7 @@ abstract class R2dbcSuite extends munit.FunSuite:
     try
       run(db.update("insert into okay_r2dbc values ($1, $2, $3, $4, $5, $6)",
         Vector(SqlValue.I32(1), SqlValue.Text("ann"), SqlValue.F64(1.5), SqlValue.Bool(true),
-          SqlValue.Num(BigDecimal("10.25")), SqlValue.Null)))
+          SqlValue.Num(BigDecimal("10.25")), SqlValue.Null))): Unit
       val sql = "select id, name, score, active, balance, note from okay_r2dbc"
       assertEquals(collectChunks(Typed.rows[Person](db, sql)).flatten,
         List(Right(Person(1, "ann", 1.5, true, BigDecimal("10.25"), None))))
@@ -96,7 +96,7 @@ abstract class R2dbcSuite extends munit.FunSuite:
     try
       val g = run(db.begin(Isolation.Serializable))
       assertEquals(g.requested, Isolation.Serializable)
-      run(db.update("insert into okay_r2dbc values (1, 'x', 0, true, 0, null)"))
+      run(db.update("insert into okay_r2dbc values (1, 'x', 0, true, 0, null)")): Unit
       val _ = intercept[IllegalStateException](run(db.begin(Isolation.ReadCommitted)))
       run(db.rollback())
       assertEquals(collectChunks(db.query("select count(*) from okay_r2dbc")).flatten.head.head match
@@ -104,8 +104,8 @@ abstract class R2dbcSuite extends munit.FunSuite:
         case SqlValue.I32(n) => n.toLong
         case SqlValue.Num(n) => n.toLong
         case other => fail(s"count: $other"), 0L)
-      run(db.begin(Isolation.ReadCommitted))
-      run(db.update("insert into okay_r2dbc values (2, 'y', 0, true, 0, null)"))
+      run(db.begin(Isolation.ReadCommitted)): Unit
+      run(db.update("insert into okay_r2dbc values (2, 'y', 0, true, 0, null)")): Unit
       run(db.commit())
       assertEquals(collectChunks(db.query("select id from okay_r2dbc")).flatten, List(Vector(SqlValue.I32(2))))
     finally db.close()

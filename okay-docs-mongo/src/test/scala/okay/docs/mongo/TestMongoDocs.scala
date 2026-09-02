@@ -31,8 +31,8 @@ class TestMongoDocs extends DocsSuite:
     try
       val settings = com.mongodb.MongoClientSettings.builder()
         .applyConnectionString(com.mongodb.ConnectionString(uri))
-        .applyToClusterSettings(_.serverSelectionTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS))
-        .applyToSocketSettings(_.connectTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS))
+        .applyToClusterSettings(b => { b.serverSelectionTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS): Unit })
+        .applyToSocketSettings(b => { b.connectTimeout(1500, java.util.concurrent.TimeUnit.MILLISECONDS): Unit })
         .build()
       val c = com.mongodb.client.MongoClients.create(settings)
       c.listDatabaseNames().first() // forces a round-trip

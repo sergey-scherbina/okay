@@ -22,7 +22,7 @@ class TestCtxReaderElim extends munit.FunSuite {
   /** the elimination: the environment is a using parameter — the
    * Reader row is GONE, wire reads it, the elaborator wires it */
   def viaCtx: Int ?=> Int ! W = direct {
-    Writer(s"env=${wire[Int]}")
+    Writer(s"env=${wire[Int]}"): Unit
     wire[Int] + 1
   }
 

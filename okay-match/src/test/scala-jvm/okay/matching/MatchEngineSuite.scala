@@ -24,15 +24,15 @@ abstract class MatchEngineSuite extends munit.FunSuite {
 
   test(s"the guarantees hold on $engine; the store survives a restart") {
     val (m, reopen) = fresh()
-    m.propose(AttrDraft("phone", Kind.Text, "contact phone", identifying = true))
-    m.propose(AttrDraft("availability", Kind.Time, "when free", volatile = true))
+    m.propose(AttrDraft("phone", Kind.Text, "contact phone", identifying = true)): Unit
+    m.propose(AttrDraft("availability", Kind.Time, "when free", volatile = true)): Unit
     val p = m.register("master@example.com")
     val f1 = m.assert(p, "skill", Side.Offer, Value.VText("tiling"), prov("c", 1), 1.0, Vis.Public)
     assertEquals(m.assert(p, "skill", Side.Offer, Value.VText("tiling"), prov("c", 1), 1.0, Vis.Public), f1)
-    m.assert(p, "phone", Side.Offer, Value.VText("+380"), prov("c", 2), 1.0, Vis.Matched)
+    m.assert(p, "phone", Side.Offer, Value.VText("+380"), prov("c", 2), 1.0, Vis.Matched): Unit
     // identifying survived the round-trip (the dialect trap)
     val other = m.register("other@example.com")
-    m.assert(other, "phone", Side.Offer, Value.VText("+380"), prov("d", 1), 1.0, Vis.Matched)
+    m.assert(other, "phone", Side.Offer, Value.VText("+380"), prov("d", 1), 1.0, Vis.Matched): Unit
     assertEquals(m.linkCandidates(other).map(_.attr), Vector("phone"))
     // search + restart over the same data
     val m2 = reopen()
@@ -45,7 +45,7 @@ abstract class MatchEngineSuite extends munit.FunSuite {
     val seeker = m.register("tenant@demo")
     val flat = m.register("flat@demo")
     m.assert(flat, "contact", Side.Offer, Value.VText("tg:@flat"),
-      prov("c", 1), 1.0, Vis.Matched)
+      prov("c", 1), 1.0, Vis.Matched): Unit
     val d = m.inquire(seeker, flat, "снять квартиру")
     assertEquals(m.respond(d, seeker, accept = true), None)   // the seeker is not the asked one
     assertEquals(m.respond(d, flat, accept = true).map(_.state), Some(DealState.Accepted))
@@ -58,7 +58,7 @@ abstract class MatchEngineSuite extends munit.FunSuite {
     val (m, reopen) = fresh()
     val seeker = m.register("s@x"); val provider = m.register("p@x")
     m.assert(provider, "contact", Side.Offer, Value.VText("tg:@p"),
-      prov("c", 1), 1.0, Vis.Matched)
+      prov("c", 1), 1.0, Vis.Matched): Unit
     val Right(id) = m.startFlow("deal",
       Map("seeker" -> seeker, "provider" -> provider), "кран"): @unchecked
     assert(m.advanceFlow(id, "accept", provider).isRight)
@@ -75,7 +75,7 @@ abstract class MatchEngineSuite extends munit.FunSuite {
     val p = m.register("gone@example.com")
     val f = m.assert(p, "skill", Side.Offer, Value.VText("tiling"), prov("c", 1), 1.0, Vis.Public)
     val q = m.register("other@example.com")
-    m.inquire(q, p, "tiles")
+    m.inquire(q, p, "tiles"): Unit
     m.reset()
     assertEquals(m.candidates(Query(Side.Offer, text = "tiling")), Vector.empty)
     assertEquals(m.dealsFor(p), Vector.empty)

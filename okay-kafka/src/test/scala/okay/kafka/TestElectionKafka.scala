@@ -22,7 +22,7 @@ class TestElectionKafka extends ElectionSuite:
     else
       try
         val s = KafkaStore(bootstrap)
-        s.topics
+        s.topics: Unit
         Some(s)
       catch case _: Throwable => None
 

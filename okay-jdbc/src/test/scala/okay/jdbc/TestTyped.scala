@@ -3,7 +3,7 @@ package okay.jdbc
 import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Throws, effect}
 import okay.given
 import okay.codec.Schema
-import okay.sql.{Bad, Drift, Granted, Isolation, Sql, SqlValue, Typed}
+import okay.sql.{Bad, Granted, Isolation, Sql, SqlValue, Typed}
 import okay.sql.given
 import java.sql.DriverManager
 
@@ -225,7 +225,7 @@ class TestTyped extends munit.FunSuite {
     val conn = DriverManager.getConnection(url, "app", "app")
     try
       val db = JdbcSql(conn)
-      val prog = Typed.transact[Long, Async](db, Isolation.ReadCommitted) { g =>
+      val prog = Typed.transact[Long, Async](db, Isolation.ReadCommitted) { _ =>
         !.widen[Long, Async, Resource](
           db.update("insert into customer(id, user_name, balance, active) values (20, 'tx', 1.0, true)"))
       }
@@ -274,7 +274,7 @@ class TestTyped extends munit.FunSuite {
           .map(_ => throw RuntimeException("boom"))
       }
       intercept[RuntimeException](
-        !.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog))))
+        !.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog)))): Unit
       assert(conn.getAutoCommit, "autocommit not restored after rollback")
       assertEquals(countBy(db, "id = 21"), 0L, "the insert survived the exception")
     finally conn.close()

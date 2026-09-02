@@ -3,8 +3,7 @@ package okay.http
 import okay.*
 import okay.given
 import okay.codec.{Json, Schema}
-import okay.mcp.{Mcp, Rpc, Server as McpServer}
-import okay.agent.{ToolCall, ToolSpec}
+import okay.mcp.{Mcp, Rpc}
 
 /**
  * The WebSocket transport against a real socket — the handshake, the
@@ -132,11 +131,6 @@ class TestWs extends munit.FunSuite {
     // that runs over pipes runs over a socket, and this is the proof.
     val echo = WsEcho()
     try
-      val spec = ToolSpec[Add]("add", "add two numbers")
-      val table = Map[String, ToolCall => String]("add" -> { c =>
-        ToolSpec.args[Add](c).fold(e => s"bad args: $e", x => (x.a + x.b).toString)
-      })
-
       // the echo server bounces our own lines back, so a client sending
       // an initialize sees exactly the bytes a Link carries — enough to
       // prove the Link is well formed over frames

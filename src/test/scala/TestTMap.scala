@@ -42,7 +42,7 @@ class TestTMap extends munit.FunSuite {
     assertEquals(seen.toList, List("n=2", "s=ab"))
     // and a typed use of the value inside: lengths and doubles without a cast
     var total = 0
-    m.foreach([A] => (k: Key[A], v: A) => v match
+    m.foreach([A] => (_: Key[A], v: A) => v match
       case i: Int => total += i * 10
       case str: String => total += str.length
       case _ => ())

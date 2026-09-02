@@ -1,6 +1,6 @@
 package okay.cache
 
-import okay.{!, +, Async, Produce, Stream, pure}
+import okay.{!, +, Async, Produce, Stream}
 import okay.given
 import okay.jdbc.JdbcSql
 import okay.sql.{Sql, SqlValue, Typed}

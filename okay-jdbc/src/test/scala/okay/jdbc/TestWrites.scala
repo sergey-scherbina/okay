@@ -2,7 +2,7 @@ package okay.jdbc
 
 import okay.{!, Async}
 import okay.given
-import okay.persist.{Ack, MemoryStore, Topic, Typed}
+import okay.persist.{Ack, MemoryStore, Typed}
 import okay.sql.{Sql, SqlValue}
 import java.sql.DriverManager
 
@@ -32,13 +32,13 @@ class TestWrites extends munit.FunSuite {
 
   def run[A](prog: A ! Async): A = !.run(Async.run[A, Nothing](prog))
 
-  def clear(db: Sql): Unit = { run(db.update("delete from orders")); () }
+  def clear(db: Sql): Unit = { run(db.update("delete from orders")): Unit }
 
   val merge = "merge into orders key(id) values (?, ?)"
   def params(id: String, amount: Double) =
     Vector(SqlValue.Text(id), SqlValue.F64(amount))
 
-  def orderCount(db: Sql, id: String): Long =
+  def orderCount(@scala.annotation.unused db: Sql, id: String): Long =
     var n = -1L
     val c = DriverManager.getConnection(url, "sa", "")
     try
@@ -70,7 +70,7 @@ class TestWrites extends munit.FunSuite {
       // the crash: intent journaled, statement EXECUTED, ack lost
       // before the completion record — the worst window
       Typed[Writes.Rec](topic, 1, Map.empty).append(0, "run-1".getBytes("UTF-8"),
-        Writes.Rec.Intent(0, merge, params("ord-2", 20.0), "ord-2"), Ack.Durable)
+        Writes.Rec.Intent(0, merge, params("ord-2", 20.0), "ord-2"), Ack.Durable): Unit
       assertEquals(run(db.update(merge, params("ord-2", 20.0))), 1L)
 
       // the process comes back: a fresh bridge over the same topic
@@ -92,7 +92,7 @@ class TestWrites extends munit.FunSuite {
       // throw on the primary key — proving reconcile never re-runs
       val insert = "insert into orders(id, amount) values (?, ?)"
       Typed[Writes.Rec](topic, 1, Map.empty).append(0, "run-1".getBytes("UTF-8"),
-        Writes.Rec.Intent(0, insert, params("ord-3", 30.0), "ord-3"), Ack.Durable)
+        Writes.Rec.Intent(0, insert, params("ord-3", 30.0), "ord-3"), Ack.Durable): Unit
       assertEquals(run(db.update(insert, params("ord-3", 30.0))), 1L)
 
       val w = Writes(db, topic, "run-1")
@@ -110,7 +110,7 @@ class TestWrites extends munit.FunSuite {
       val topic = MemoryStore().topic("writes")
       // the other crash: intent journaled, statement NEVER ran
       Typed[Writes.Rec](topic, 1, Map.empty).append(0, "run-1".getBytes("UTF-8"),
-        Writes.Rec.Intent(0, merge, params("ord-4", 40.0), "ord-4"), Ack.Durable)
+        Writes.Rec.Intent(0, merge, params("ord-4", 40.0), "ord-4"), Ack.Durable): Unit
 
       val w = Writes(db, topic, "run-1")
       val rec = run(w.recover(_ =>

@@ -27,15 +27,15 @@ abstract class ElectionSuite extends FunSuite:
     val observer = mkNode(control, "C")
     // the race, made literal: both claims land before either refolds
     val typed = Typed[Election.Claim](control, 1, Map.empty)
-    typed.append(0, Array.empty, Election.Claim.Take(0, 1, "A"), Ack.Durable)
-    typed.append(0, Array.empty, Election.Claim.Take(0, 1, "B"), Ack.Durable)
+    typed.append(0, Array.empty, Election.Claim.Take(0, 1, "A"), Ack.Durable): Unit
+    typed.append(0, Array.empty, Election.Claim.Take(0, 1, "B"), Ack.Durable): Unit
 
     for n <- Vector(a, b, observer) do
       assertEquals(n.leader(0), Some((1L, "A")), s"${n.node}'s fold disagreed")
     // a raw winner that never leases WOULD lose the seat (that is
     // the liveness rule working); once it holds a lease, the loser
     // observes its loss and cannot claim
-    typed.append(0, Array.empty, Election.Claim.Lease(0, 1, "A", now + 5000), Ack.Durable)
+    typed.append(0, Array.empty, Election.Claim.Lease(0, 1, "A", now + 5000), Ack.Durable): Unit
     assertEquals(b.tryTakeover(0), None)
   }
 
@@ -71,8 +71,8 @@ abstract class ElectionSuite extends FunSuite:
     val b = mkNode(control, "B")
     val typed = Typed[Election.Claim](control, 1, Map.empty)
     // the automatic claim lands FIRST; the human still wins the epoch
-    typed.append(0, Array.empty, Election.Claim.Take(0, 1, "A"), Ack.Durable)
-    typed.append(0, Array.empty, Election.Claim.Operator(0, 1, "B"), Ack.Durable)
+    typed.append(0, Array.empty, Election.Claim.Take(0, 1, "A"), Ack.Durable): Unit
+    typed.append(0, Array.empty, Election.Claim.Operator(0, 1, "B"), Ack.Durable): Unit
     for n <- Vector(a, b) do
       assertEquals(n.leader(0), Some((1L, "B")), s"${n.node}'s fold let automation outrank the operator")
   }

@@ -1,6 +1,6 @@
 package okay.admin
 
-import okay.{!, Async, pure}
+import okay.{!, Async}
 import okay.given
 import okay.http.{Http, Method, Request, Response}
 import okay.security.{Claims, Jwt, Verified}

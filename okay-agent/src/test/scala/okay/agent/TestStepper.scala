@@ -57,9 +57,8 @@ class TestStepper extends munit.FunSuite {
   test("the operator edits a result mid-flight; the program is none the wiser") {
     def model = Handlers.scripted(Seq(
       Reply("", Seq(search)), Reply("done", Nil)))
-    var toolSaw = ""
     val edited = drive(stepped(
-      Agent.complete().flatMap(r => Agent.call(r.calls.head)))) { c =>
+      Agent.complete().flatMap(r => Agent.call(r.calls.head)))) { _ =>
       pure("EDITED: nothing like what the tool would say")
     }
     val result = runRest(edited)(model, freshCtx)

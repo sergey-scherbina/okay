@@ -53,7 +53,7 @@ class TestCache extends munit.FunSuite {
     run(c.invalidate("a"))
     assertEquals(run(c.get("a")), None)
     var loaded = 0
-    assertEquals(run(c.getOrLoad("a") { k => okay.async { loaded += 1; "three" } }), "three")
+    assertEquals(run(c.getOrLoad("a") { _ => okay.async { loaded += 1; "three" } }), "three")
     assertEquals(loaded, 1, "the read after invalidate did not reload")
   }
 
@@ -75,7 +75,7 @@ class TestCache extends munit.FunSuite {
     now = 0
     val c = Cache.memory[String, Option[String]](Regime.Budget(500), 10, () => clock())
     var loads = 0
-    def look(k: String): Option[String] ! Async = okay.async { loads += 1; None }
+    def look(@scala.annotation.unused k: String): Option[String] ! Async = okay.async { loads += 1; None }
 
     assertEquals(run(c.getOrLoad("missing")(look)), None)
     assertEquals(run(c.getOrLoad("missing")(look)), None)
@@ -88,11 +88,10 @@ class TestCache extends munit.FunSuite {
 
   test("stats match the scenario: hits, misses, loads") {
     val c = mk(Regime.Invalidated)
-    var n = 0
-    def load(k: String): String ! Async = okay.async { n += 1; k }
-    run(c.getOrLoad("x")(load))   // miss + load
-    run(c.getOrLoad("x")(load))   // hit
-    run(c.getOrLoad("y")(load))   // miss + load
+    def load(k: String): String ! Async = okay.async { k }
+    run(c.getOrLoad("x")(load)): Unit // miss + load
+    run(c.getOrLoad("x")(load)): Unit // hit
+    run(c.getOrLoad("y")(load)): Unit // miss + load
     assertEquals(run(c.get("z")), None) // miss
     val s = c.stats
     assertEquals(s.loads, 2L)
@@ -104,7 +103,7 @@ class TestCache extends munit.FunSuite {
   test("a failing loader propagates and does not poison the key") {
     val c = mk(Regime.Invalidated)
     intercept[RuntimeException](
-      run(c.getOrLoad("k")(_ => okay.async[String](throw RuntimeException("boom")))))
+      run(c.getOrLoad("k")(_ => okay.async[String](throw RuntimeException("boom"))))): Unit
     // the claim is released: the next load succeeds
     assertEquals(run(c.getOrLoad("k")(_ => okay.async("fine"))), "fine")
   }

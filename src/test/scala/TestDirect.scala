@@ -46,7 +46,7 @@ class TestDirect extends munit.FunSuite {
     type W = [A] =>> A ! Writer % String
     val prog: Int ! Writer % String = direct[W] {
       try
-        val a = !okay.effect[Writer % String, Unit](Writer("before"))
+        val _ = !okay.effect[Writer % String, Unit](Writer("before"))
         if true then throw new IllegalStateException("mid-stream") else 0
       catch case _: IllegalStateException => 7
     }
@@ -75,7 +75,7 @@ class TestDirect extends munit.FunSuite {
   test("the ! mark: one glyph, prefix, on the rows where ? is ambiguous") {
     // a Free-row program collapses under its own type's symbol
     val prog: Int ! Writer % String = direct[[A] =>> A ! Writer % String] {
-      val a = !okay.effect[Writer % String, Unit](Writer("hi"))
+      val _ = !okay.effect[Writer % String, Unit](Writer("hi"))
       21 + 21
     }
     val ((logged, n)) = Writer.run[String, Int, Pure](prog).runWith
@@ -346,7 +346,7 @@ class TestDirect extends munit.FunSuite {
     type W = Writer % String
     var n = 0
     val prog: Int ! W = direct {
-      while { n += 1; pure[W, Boolean](n < 3).reflect } do Writer(s"tick$n")
+      while { n += 1; pure[W, Boolean](n < 3).reflect } do Writer(s"tick$n"): Unit
       n
     }
     val (ws, a) = !.run(Writer.run[String, Int, okay.Pure](prog))

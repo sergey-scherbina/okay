@@ -49,15 +49,15 @@ class TestAcceptance extends munit.FunSuite {
 
   /** the shared setup: the same table, each engine's own DDL accent */
   def setUp(db: Sql, serialBigint: String): Unit =
-    run(db.update("drop table if exists acceptance"))
+    run(db.update("drop table if exists acceptance")): Unit
     run(db.update(s"""create table acceptance(
       id $serialBigint primary key not null,
       user_name varchar(64) not null,
       age int,
       balance double precision not null,
-      active boolean not null)"""))
+      active boolean not null)""")): Unit
     run(db.update("insert into acceptance values " +
-      "(1, 'ann', 25, 10.5, true), (2, 'bob', null, -3.25, false)"))
+      "(1, 'ann', 25, 10.5, true), (2, 'bob', null, -3.25, false)")): Unit
     ()
 
   /**
@@ -79,7 +79,7 @@ class TestAcceptance extends munit.FunSuite {
     val inserted = run(Typed.update(db,
       s"insert into acceptance(id, user_name, balance, active) values ($params)")(
       NewRow(90, "zed", 1.0, true)))
-    run(db.update("delete from acceptance where id = 90"))
+    run(db.update("delete from acceptance where id = 90")): Unit
 
     def drifts[A: Schema](sql: String): Vector[String] =
       run(Typed.verify[A](db, sql)).map(_.column.toLowerCase).distinct

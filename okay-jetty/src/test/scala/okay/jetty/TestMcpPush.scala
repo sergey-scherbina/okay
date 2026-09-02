@@ -3,7 +3,7 @@ package okay.jetty
 import okay.*
 import okay.given
 import okay.codec.{Json, Schema}
-import okay.http.{Body, Http, McpHttp, Method, Request, Response, Transports}
+import okay.http.{McpHttp, Request, Response, Transports}
 import okay.mcp.{Client, Mcp, Duplex, Server as McpServer}
 import okay.agent.{ToolCall, ToolSpec}
 
