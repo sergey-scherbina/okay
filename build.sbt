@@ -655,10 +655,10 @@ lazy val okayMatch = crossProject(JVMPlatform, JSPlatform)
     // the sqlite driver registers per classloader (the okay-jdbc
     // lesson at line ~268): the suite forks to see it
     Test / fork := true,
-    // forked for the same DriverManager reason as okayJdbc
-    Test / fork := true,
   )
-  .jvmConfigure(_.dependsOn(okayJdbc % Test))
+  // okay-pg in test scope: the engine suite runs against live Postgres
+  // over the wire driver too (demo-pg-backend)
+  .jvmConfigure(_.dependsOn(okayJdbc % Test, okayPg.jvm % Test))
 
 /** agents as programs: tool calls are operations, the conversation
  * is a fold, policy lives in handlers (P9) */
@@ -977,7 +977,7 @@ lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
   )
 
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc)
+  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm)
   .settings(
     name := "okay-demo",
     libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.47.1.0",

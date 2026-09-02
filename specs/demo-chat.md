@@ -99,7 +99,7 @@ engine). The ask made the store interface nominal: `MatchStore`
 - [x] sqlite parity: the store guarantees hold on sqlite (the
       booleans-as-integers dialect trap caught and fixed) and the
       marketplace survives a restart over the same file
-- [ ] Postgres backend (demo-pg-backend): `OKAY_CHAT_DB=postgres://
+- [x] Postgres backend (demo-pg-backend): `OKAY_CHAT_DB=postgres://
       user:pass@host:port/db[?sslmode=…&sslrootcert=…]` puts the
       marketplace on live Postgres through the wire driver — the
       same SqlMatch, one env var; `sslmode` rides the URL as

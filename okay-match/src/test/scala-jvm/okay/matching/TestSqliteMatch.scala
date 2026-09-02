@@ -1,132 +1,15 @@
 package okay.matching
 
-import okay.*
 import okay.given
 import okay.jdbc.JdbcSql
 import java.sql.DriverManager
 
-/**
- * The open-backend principle, exercised: the SAME store guarantees
- * over sqlite — a different engine is a different connection string
- * (demo-chat-match runs on exactly this). Dynamic typing is the
- * dialect trap: sqlite answers booleans as integers, and this suite
- * is what caught it.
- */
-class TestSqliteMatch extends munit.FunSuite {
-
-  def fresh(): (SqlMatch, java.nio.file.Path) =
+/** sqlite: a temp file per store; reopening is a second connection
+ * to the same file */
+class TestSqliteMatch extends MatchEngineSuite {
+  def engine = "sqlite"
+  def fresh(): (SqlMatch, () => SqlMatch) =
     val f = java.nio.file.Files.createTempFile("okay-match", ".db")
-    (SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f"))), f)
-
-  def prov(chat: String, off: Long) = Provenance(chat, off, "...")
-
-  test("the guarantees hold on sqlite; the store survives a restart") {
-    val (m, f) = fresh()
-    m.propose(AttrDraft("phone", Kind.Text, "contact phone", identifying = true))
-    m.propose(AttrDraft("availability", Kind.Time, "when free", volatile = true))
-    val p = m.register("master@example.com")
-    val f1 = m.assert(p, "skill", Side.Offer, Value.VText("tiling"), prov("c", 1), 1.0, Vis.Public)
-    assertEquals(m.assert(p, "skill", Side.Offer, Value.VText("tiling"), prov("c", 1), 1.0, Vis.Public), f1)
-    m.assert(p, "phone", Side.Offer, Value.VText("+380"), prov("c", 2), 1.0, Vis.Matched)
-    // identifying survived the integer round-trip (the dialect trap)
-    val other = m.register("other@example.com")
-    m.assert(other, "phone", Side.Offer, Value.VText("+380"), prov("d", 1), 1.0, Vis.Matched)
-    assertEquals(m.linkCandidates(other).map(_.attr), Vector("phone"))
-    // search + restart over the same file
-    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
-    assertEquals(m2.candidates(Query(Side.Offer, text = "tiling")).length, 2)
-    assertEquals(m2.register("master@example.com"), p)
-  
-  test("deals hold on sqlite and survive a restart") {
-    val (m, f) = fresh()
-    val seeker = m.register("tenant@demo")
-    val flat = m.register("flat@demo")
-    m.assert(flat, "contact", Side.Offer, Value.VText("tg:@flat"),
-      prov("c", 1), 1.0, Vis.Matched)
-    val d = m.inquire(seeker, flat, "снять квартиру")
-    assertEquals(m.respond(d, seeker, accept = true), None)   // the seeker is not the asked one
-    assertEquals(m.respond(d, flat, accept = true).map(_.state), Some(DealState.Accepted))
-    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
-    assertEquals(m2.contacts(seeker, flat).map(x => Value.text(x.value)), Vector("tg:@flat"))
-    assertEquals(m2.dealsFor(flat).map(_.state), Vector(DealState.Accepted))
-  
-  test("flows survive a restart on sqlite; unlocks persist") {
-    val (m, f) = fresh()
-    val seeker = m.register("s@x"); val provider = m.register("p@x")
-    m.assert(provider, "contact", Side.Offer, Value.VText("tg:@p"),
-      prov("c", 1), 1.0, Vis.Matched)
-    val Right(id) = m.startFlow("deal",
-      Map("seeker" -> seeker, "provider" -> provider), "кран"): @unchecked
-    assert(m.advanceFlow(id, "accept", provider).isRight)
-    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
-    assertEquals(m2.flow(id).get.state, "accepted")
-    assertEquals(m2.flow(id).get.history.map(_._1), Vector("accept"))
-    assertEquals(m2.unlockedBy(seeker, provider).map(x => Value.text(x.value)),
-      Vector("tg:@p"))
-    assert(m2.advanceFlow(id, "decline", provider).isLeft, "closed stays closed")
-  }
-}
-
-  test("flows survive a restart on sqlite; unlocks persist") {
-    val (m, f) = fresh()
-    val seeker = m.register("s@x"); val provider = m.register("p@x")
-    m.assert(provider, "contact", Side.Offer, Value.VText("tg:@p"),
-      prov("c", 1), 1.0, Vis.Matched)
-    val Right(id) = m.startFlow("deal",
-      Map("seeker" -> seeker, "provider" -> provider), "кран"): @unchecked
-    assert(m.advanceFlow(id, "accept", provider).isRight)
-    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
-    assertEquals(m2.flow(id).get.state, "accepted")
-    assertEquals(m2.flow(id).get.history.map(_._1), Vector("accept"))
-    assertEquals(m2.unlockedBy(seeker, provider).map(x => Value.text(x.value)),
-      Vector("tg:@p"))
-    assert(m2.advanceFlow(id, "decline", provider).isLeft, "closed stays closed")
-  }
-}
-
-  test("deals hold on sqlite and survive a restart") {
-    val (m, f) = fresh()
-    val seeker = m.register("tenant@demo")
-    val flat = m.register("flat@demo")
-    m.assert(flat, "contact", Side.Offer, Value.VText("tg:@flat"),
-      prov("c", 1), 1.0, Vis.Matched)
-    val d = m.inquire(seeker, flat, "снять квартиру")
-    assertEquals(m.respond(d, seeker, accept = true), None)   // the seeker is not the asked one
-    assertEquals(m.respond(d, flat, accept = true).map(_.state), Some(DealState.Accepted))
-    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
-    assertEquals(m2.contacts(seeker, flat).map(x => Value.text(x.value)), Vector("tg:@flat"))
-    assertEquals(m2.dealsFor(flat).map(_.state), Vector(DealState.Accepted))
-  
-  test("flows survive a restart on sqlite; unlocks persist") {
-    val (m, f) = fresh()
-    val seeker = m.register("s@x"); val provider = m.register("p@x")
-    m.assert(provider, "contact", Side.Offer, Value.VText("tg:@p"),
-      prov("c", 1), 1.0, Vis.Matched)
-    val Right(id) = m.startFlow("deal",
-      Map("seeker" -> seeker, "provider" -> provider), "кран"): @unchecked
-    assert(m.advanceFlow(id, "accept", provider).isRight)
-    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
-    assertEquals(m2.flow(id).get.state, "accepted")
-    assertEquals(m2.flow(id).get.history.map(_._1), Vector("accept"))
-    assertEquals(m2.unlockedBy(seeker, provider).map(x => Value.text(x.value)),
-      Vector("tg:@p"))
-    assert(m2.advanceFlow(id, "decline", provider).isLeft, "closed stays closed")
-  }
-}
-
-  test("flows survive a restart on sqlite; unlocks persist") {
-    val (m, f) = fresh()
-    val seeker = m.register("s@x"); val provider = m.register("p@x")
-    m.assert(provider, "contact", Side.Offer, Value.VText("tg:@p"),
-      prov("c", 1), 1.0, Vis.Matched)
-    val Right(id) = m.startFlow("deal",
-      Map("seeker" -> seeker, "provider" -> provider), "кран"): @unchecked
-    assert(m.advanceFlow(id, "accept", provider).isRight)
-    val m2 = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
-    assertEquals(m2.flow(id).get.state, "accepted")
-    assertEquals(m2.flow(id).get.history.map(_._1), Vector("accept"))
-    assertEquals(m2.unlockedBy(seeker, provider).map(x => Value.text(x.value)),
-      Vector("tg:@p"))
-    assert(m2.advanceFlow(id, "decline", provider).isLeft, "closed stays closed")
-  }
+    def open() = SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")))
+    (open(), () => open())
 }

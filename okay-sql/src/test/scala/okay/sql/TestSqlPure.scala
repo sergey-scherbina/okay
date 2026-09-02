@@ -167,4 +167,12 @@ class TestSqlPure extends munit.FunSuite {
     assert(!Granted(Isolation.Serializable, Isolation.Serializable).downgraded)
     assert(Granted(Isolation.Serializable, Isolation.ReadCommitted).downgraded)
   }
+
+  test("Placeholders.numbered: `?` becomes `$1..$n`; quoted literals and identifiers are left alone") {
+    assertEquals(Placeholders.numbered("SELECT a FROM t WHERE x = ? AND y IN (?, ?)"),
+      "SELECT a FROM t WHERE x = $1 AND y IN ($2, $3)")
+    assertEquals(Placeholders.numbered("UPDATE t SET s = 'why?', \"odd?col\" = ? WHERE q = 'it''s?' AND id = ?"),
+      "UPDATE t SET s = 'why?', \"odd?col\" = $1 WHERE q = 'it''s?' AND id = $2")
+    assertEquals(Placeholders.numbered("SELECT 1"), "SELECT 1")
+  }
 }

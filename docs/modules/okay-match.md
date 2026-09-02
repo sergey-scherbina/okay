@@ -104,9 +104,12 @@ folds the class into one candidate, nothing is rewritten.
 - `MemoryMatch` — the cross reference (tests, single-user).
 - `SqlMatch(JdbcSql(conn))` — ANY `Sql` driver: H2 in tests, sqlite
   (`jdbc:sqlite:file.db` — booleans come back as integers; the
-  decoder knows) and Postgres are the same line. Facts, deals,
-  flows, unlocks, links: durable, restart-proven. Scenario
-  DEFINITIONS are configuration, registered at boot.
+  decoder knows), and Postgres over the wire driver —
+  `SqlMatch(pg, placeholders = Placeholders.numbered)`, the `?`
+  program renumbered to `$n`, proven by the same engine suite
+  against a live server. Facts, deals, flows, unlocks, links:
+  durable, restart-proven on every engine. Scenario DEFINITIONS are
+  configuration, registered at boot.
 
 Entropy, hashing, embedding, platform policy — all constructor
 seams with working defaults; production fills them

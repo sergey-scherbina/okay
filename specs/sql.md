@@ -262,7 +262,7 @@ import — and the platforms it runs on.
       of the trait alone, two drivers, ONE equal answer; only the
       SQL strings differ ($n vs ?), which bind-don't-model already
       decided is the dialect's to show
-- [ ] `Placeholders.numbered` (demo-pg-backend): the ONE mechanical
+- [x] `Placeholders.numbered` (demo-pg-backend): the ONE mechanical
       dialect difference bind-don't-model itself introduced — `?` on
       JDBC, `$n` on the pg wire — gets a pure renumbering helper in
       the neutral seam (`?` outside quoted literals/identifiers
@@ -510,3 +510,12 @@ The seam and its first driver landed (sql-seam, 2026-09-01).
   live SCRAM battery proves the seam end to end. The signing surface
   stays in okay-security. The crypto seam is now available to any
   future consumer that needs primitives without the http drag.
+demo-pg-backend (2026-09-02): the first `?`-written program crossed
+to the pg driver — okay-match's SqlMatch, 60-odd statements, changed
+in exactly two places: `DOUBLE` became the portable `DOUBLE
+PRECISION`, and the statements pass through `Placeholders.numbered`
+(a constructor seam, identity by default). The engine suite that
+proved sqlite runs verbatim against live Postgres. So the acceptance
+line "only the SQL strings differ ($n vs ?)" now has its mechanical
+half in the seam and the seam's Out-of-scope line (no dialect
+layer) still holds — nothing but the placeholder spelling moved.

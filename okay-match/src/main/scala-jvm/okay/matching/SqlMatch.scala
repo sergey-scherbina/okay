@@ -40,7 +40,8 @@ final class SqlMatch(sql: Sql,
                      hash: String => String = identity,
                      verifyHash: (String, String) => Boolean = _ == _,
                      now: () => Long = () => System.currentTimeMillis(),
-                     fresh: () => String = SecureEntropy.strong)(using CanBlock)
+                     fresh: () => String = SecureEntropy.strong,
+                     placeholders: String => String = identity)(using CanBlock)
   extends MatchStore {
 
   private def run[A](p: A ! Async): A = Async.run[A, Pure](p).runWith
@@ -53,10 +54,10 @@ final class SqlMatch(sql: Sql,
         case None => pure(acc)
         case Some((c, rest)) => go(rest, acc ++ c)
       }
-    run(go(sql.query(q, ps), Vector.empty))
+    run(go(sql.query(placeholders(q), ps), Vector.empty))
 
   private def exec(q: String, ps: Vector[SqlValue] = Vector.empty): Long =
-    run(sql.update(q, ps))
+    run(sql.update(placeholders(q), ps))
 
   // ---- schema -------------------------------------------------------
 
@@ -69,9 +70,9 @@ final class SqlMatch(sql: Sql,
   exec("""CREATE TABLE IF NOT EXISTS match_facts(
     id BIGINT PRIMARY KEY, profile VARCHAR(64), attr VARCHAR(255),
     side VARCHAR(8), vkind VARCHAR(8), vtext VARCHAR(4000),
-    vnum DOUBLE, vlo DOUBLE, vhi DOUBLE, vlat DOUBLE, vlon DOUBLE,
+    vnum DOUBLE PRECISION, vlo DOUBLE PRECISION, vhi DOUBLE PRECISION, vlat DOUBLE PRECISION, vlon DOUBLE PRECISION,
     chat VARCHAR(255), off BIGINT, span VARCHAR(4000),
-    confidence DOUBLE, ts BIGINT, vis VARCHAR(8),
+    confidence DOUBLE PRECISION, ts BIGINT, vis VARCHAR(8),
     superseded_by BIGINT, reason VARCHAR(4000))""")
   exec("""CREATE TABLE IF NOT EXISTS match_recovery(
     profile VARCHAR(64) PRIMARY KEY, secret VARCHAR(1000))""")

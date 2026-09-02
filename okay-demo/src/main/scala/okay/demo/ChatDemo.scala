@@ -9,6 +9,11 @@ import okay.llm.{Anthropic, Cut, OpenAi, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
 import okay.matching.{MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
 import okay.jdbc.JdbcSql
+import okay.pg.{PgSql, PgTls}
+import okay.sql.Placeholders
+import okay.tls.{SslMode, TlsConfig}
+import okay.conf.Secrets
+import okay.crypto.given
 import okay.codec.Json
 import okay.codec.Json.*
 import java.nio.charset.StandardCharsets.UTF_8
@@ -76,10 +81,23 @@ object ChatDemo {
 
   /** ONE marketplace for the whole server, DURABLE by default: a
    * sqlite file (OKAY_CHAT_DB; ":memory:" asks for the memory
-   * engine) — the open-backend principle is a connection string */
-  lazy val market: MatchStore =
-    val db = sys.env.getOrElse("OKAY_CHAT_DB", "okay-chat.db")
+   * engine; `postgres://user:pass@host:port/db[?sslmode=…]` puts it
+   * on live Postgres over the wire driver) — the open-backend
+   * principle is a connection string */
+  lazy val market: MatchStore = marketOf(sys.env.getOrElse("OKAY_CHAT_DB", "okay-chat.db"))
+
+  /** the connection string → the engine (pure in its choice, so the
+   * live test can drive it without the env) */
+  def marketOf(db: String): MatchStore =
     if db == ":memory:" then MemoryMatch()
+    else if PgTarget.is(db) then
+      // the SAME SqlMatch, its `?` renumbered to pg's `$n` — one env
+      // var switches the engine (demo-pg-backend)
+      val t = PgTarget.parse(db).fold(e => throw IllegalArgumentException(s"OKAY_CHAT_DB: $e"), identity)
+      val conn = t.tls match
+        case None => PgSql.connect(t.host, t.port, t.user, t.password, t.database)
+        case Some(cfg) => PgTls.connect(t.host, t.port, t.user, t.password, t.database, cfg, Secrets.file)
+      SqlMatch(!.run(Async.run[PgSql, Nothing](conn)), placeholders = Placeholders.numbered)
     else
       // under the parallel matrix DriverManager can see another
       // module's loader first; naming the driver removes the race
@@ -752,3 +770,46 @@ f.onsubmit = async (ev) => {
 };
 </script>"""
 }
+
+/**
+ * A Postgres URL as operators write it: `postgres://user:pass@host
+ * :port/db?sslmode=…&sslrootcert=…` — parsed purely so the demo's
+ * one env var can be tested without a server. `sslmode` is the TLS
+ * seam's ladder by its postgres names; absent means plaintext (the
+ * dockerized default); `sslrootcert` is the CA for verify-ca/full.
+ */
+final case class PgTarget(host: String, port: Int, user: String, password: String,
+                          database: String, tls: Option[TlsConfig])
+
+object PgTarget:
+  def is(s: String): Boolean = s.startsWith("postgres://") || s.startsWith("postgresql://")
+
+  def parse(url: String): Either[String, PgTarget] =
+    try
+      val u = java.net.URI(url)
+      if u.getHost == null then Left(s"no host in '$url'")
+      else
+        val userInfo: String = Option(u.getUserInfo).getOrElse("")
+        val (user, pass): (String, String) =
+          if userInfo.isEmpty then ("okay", "")
+          else userInfo.split(":", 2) match
+            case Array(un, pw) => (un, pw)
+            case Array(un) => (un, "")
+            case _ => ("okay", "")
+        val path: String = Option(u.getPath).getOrElse("")
+        val db: String = if path.stripPrefix("/").isEmpty then user else path.stripPrefix("/")
+        val query: String = Option(u.getQuery).getOrElse("")
+        val q: Map[String, String] = query.split("&").toVector.filter(_.nonEmpty).map { kv =>
+          kv.split("=", 2) match
+            case Array(k, v) => k -> v
+            case _ => kv -> ""
+        }.toMap
+        val ca: Option[String] = q.get("sslrootcert")
+        val tls: Either[String, Option[TlsConfig]] = q.get("sslmode") match
+          case None | Some("disable") => Right(None)
+          case Some("require") => Right(Some(TlsConfig(SslMode.Require, None, None, None)))
+          case Some("verify-ca") => Right(Some(TlsConfig(SslMode.VerifyCa, ca, None, None)))
+          case Some("verify-full") => Right(Some(TlsConfig(SslMode.VerifyFull, ca, None, None)))
+          case Some(bad) => Left(s"sslmode '$bad' is not one of disable/require/verify-ca/verify-full")
+        tls.map(t => PgTarget(u.getHost, if u.getPort < 0 then 5432 else u.getPort, user, pass, db, t))
+    catch case e: Exception => Left(s"not a URL: ${e.getMessage}")
