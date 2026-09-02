@@ -37,6 +37,8 @@ object Nav {
 
   /** a boundary's identity AND its answer type (the Prompt shape) */
   final class Key[A]
+  /** a key is its own typed token: the same key names the same A */
+  given okay.Same[Key] = okay.Same.byIdentity
   def key[A]: Key[A] = new Key[A]
 
   /**
@@ -105,21 +107,21 @@ object Nav {
    * data, and a name not on it names nothing */
   private def popTo[A](stack: List[Screen], k: Key[A], a: A)
   : (List[Screen], Vector[okay.![Event, okay.Async]]) =
-    val at = stack.indexWhere {
-      case b: Boundary[?] => b.k eq k
-      case _ => false
-    }
-    if at < 0 then (stack, Vector.empty)
-    else
-      val b = stack(at).asInstanceOf[Boundary[A]]   // key identity carries the type
-      val remaining = stack.drop(at)
-      b.done(a) match
-        case Stay(s) => (s :: remaining.tail, Vector.empty)
-        case Push(next) => (next :: remaining, Vector.empty)
-        case Pop => (remaining.tail, Vector.empty)
-        case To(s) => (s :: remaining.tail, Vector.empty)
-        case Run(prog, s) => (s :: remaining.tail, Vector(prog))
-        case PopTo(k2, a2) => popTo(remaining, k2, a2)   // boundaries chain
+    // the boundary whose key IS k — and by Same's witness, a Boundary[A]
+    def boundaryFor(s: Screen): Option[Boundary[A]] = s match
+      case b: Boundary[x] => (b.k === k).map(ev => ev.liftCo[Boundary](b))
+      case _ => None
+    stack.iterator.zipWithIndex.flatMap((s, i) => boundaryFor(s).map(b => (b, i))).nextOption() match
+      case None => (stack, Vector.empty)
+      case Some((b, at)) =>
+        val remaining = stack.drop(at)
+        b.done(a) match
+          case Stay(s) => (s :: remaining.tail, Vector.empty)
+          case Push(next) => (next :: remaining, Vector.empty)
+          case Pop => (remaining.tail, Vector.empty)
+          case To(s) => (s :: remaining.tail, Vector.empty)
+          case Run(prog, s) => (s :: remaining.tail, Vector(prog))
+          case PopTo(k2, a2) => popTo(remaining, k2, a2)   // boundaries chain
 
   /** run a stack on a host: ends when the host closes (an emptied
    * stack shows nothing and ignores everything until then) */

@@ -5,11 +5,25 @@ import scala.scalajs.js.typedarray.*
 
 /** the node:crypto leg — reached through the global require, so it
  * needs no module-kind ceremony (the okay-pg pattern, now shared) */
-given Crypto = new Crypto:
-  private val crypto = js.Dynamic.global.require("crypto")
+/** the shape of node:crypto this leg uses — stated once, at the
+ * module boundary (the global require answers untyped; this project
+ * has no module kind for a JSImport), instead of cast per result */
+@js.native
+private trait NodeHash extends js.Object:
+  def update(data: Int8Array): NodeHash = js.native
+  def digest(): Uint8Array = js.native
 
-  private def bytesOf(d: js.Dynamic): Array[Byte] =
-    val u = d.asInstanceOf[Uint8Array]
+@js.native
+private trait NodeCrypto extends js.Object:
+  def createHmac(alg: String, key: Int8Array): NodeHash = js.native
+  def createHash(alg: String): NodeHash = js.native
+  def pbkdf2Sync(password: String, salt: Int8Array, iterations: Int, keylen: Int, digest: String): Uint8Array = js.native
+  def randomBytes(n: Int): Uint8Array = js.native
+
+given Crypto = new Crypto:
+  private val crypto: NodeCrypto = js.Dynamic.global.require("crypto").asInstanceOf[NodeCrypto]
+
+  private def bytesOf(u: Uint8Array): Array[Byte] =
     val out = new Array[Byte](u.length)
     var i = 0
     while i < u.length do { out(i) = (u(i).toInt & 0xff).toByte; i += 1 }

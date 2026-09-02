@@ -82,8 +82,9 @@ object Form {
       case Json.JStr(x) => x }.getOrElse(""), key = k, label = name)
     case p: Schema.SProduct[?] =>
       // the titled section: the nested fields carry the dotted prefix
-      Ui.Column(Ui.Text(name, Style(bold = true)) +:
-        render(p, v.getOrElse(Json.JObj(Vector.empty)), errors, k).asInstanceOf[Ui.Column].children)
+      Ui.Column(Ui.Text(name, Style(bold = true)) +: (render(p, v.getOrElse(Json.JObj(Vector.empty)), errors, k) match
+        case c: Ui.Column => c.children     // a product renders as a column
+        case other => Vector(other)))
     case su: Schema.SSum[?] => sumUi(su, v.getOrElse(Json.JObj(Vector.empty)), errors, k, name)
     case Schema.SList(of) => listUi(name, k, of(), v, errors)
     case Schema.SVector(of) => listUi(name, k, of(), v, errors)
@@ -277,15 +278,14 @@ object Form {
       case Left(msg) => Vector(k -> msg)
       case Right(_) => Vector.empty
 
-  private def decodeField(s: Schema[?], v: Option[Json]): Either[String, Any] = s match
-    case Schema.SIso(u, to, _) =>
-      decodeField(u(), v).flatMap(x => to.asInstanceOf[Any => Either[String, Any]](x))
-    case Schema.SOption(of) => v match
+  private def decodeField[X](s: Schema[X], v: Option[Json]): Either[String, X] = s match
+    case Schema.SIso(u, to, _) => decodeField(u(), v).flatMap(to)
+    case o: Schema.SOption[a] => v match
       case None | Some(Json.JNull) | Some(Json.JStr("")) => Right(None)
-      case Some(x) => decodeField(of(), Some(x)).map(Some(_))
+      case Some(x) => decodeField(o.of(), Some(x)).map(Some(_))
     case other => v match
       case None => Left("required")
-      case Some(x) => Json.decode(other.asInstanceOf[Schema[Any]])(x)
+      case Some(x) => Json.decode(other)(x)
 
   /** the SAME decoder the wire uses — that is the whole point */
   def decode[A](using s: Schema[A]): Json => Either[String, A] = Json.decode(s)

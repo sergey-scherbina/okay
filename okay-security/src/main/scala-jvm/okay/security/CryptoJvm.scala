@@ -15,9 +15,18 @@ given Crypto = new Crypto:
   def sha256(data: Array[Byte]): Array[Byte] =
     java.security.MessageDigest.getInstance("SHA-256").digest(data)
 
+  /** a handle holds a java.security key on this platform; asked for
+   * the wrong kind, it refuses NAMED (a type test, not a cast) */
+  private def privateKeyOf(h: Crypto.Handle): java.security.PrivateKey = h.value match
+    case k: java.security.PrivateKey => k
+    case other => throw IllegalArgumentException(s"signing needs a private key, got ${other.getClass.getName}")
+  private def publicKeyOf(h: Crypto.Handle): java.security.PublicKey = h.value match
+    case k: java.security.PublicKey => k
+    case other => throw IllegalArgumentException(s"verifying needs a public key, got ${other.getClass.getName}")
+
   def signRsaSha256(key: Crypto.Handle, data: Array[Byte]): Array[Byte] =
     val s = java.security.Signature.getInstance("SHA256withRSA")
-    s.initSign(key.value.asInstanceOf[java.security.PrivateKey])
+    s.initSign(privateKeyOf(key))
     s.update(data)
     s.sign()
 
@@ -25,7 +34,7 @@ given Crypto = new Crypto:
                       sig: Array[Byte]): Boolean =
     try
       val s = java.security.Signature.getInstance("SHA256withRSA")
-      s.initVerify(key.value.asInstanceOf[java.security.PublicKey])
+      s.initVerify(publicKeyOf(key))
       s.update(data)
       s.verify(sig)
     catch case _: Exception => false   // a mangled signature (or a wrong
@@ -50,7 +59,7 @@ given Crypto = new Crypto:
 
   def signEcdsaSha256(key: Crypto.Handle, data: Array[Byte]): Array[Byte] =
     val s = java.security.Signature.getInstance("SHA256withECDSA")
-    s.initSign(key.value.asInstanceOf[java.security.PrivateKey])
+    s.initSign(privateKeyOf(key))
     s.update(data)
     s.sign()
 
@@ -58,7 +67,7 @@ given Crypto = new Crypto:
                         derSig: Array[Byte]): Boolean =
     try
       val s = java.security.Signature.getInstance("SHA256withECDSA")
-      s.initVerify(key.value.asInstanceOf[java.security.PublicKey])
+      s.initVerify(publicKeyOf(key))
       s.update(data)
       s.verify(derSig)
     catch case _: Exception => false   // same rule as RSA: a refusal, not a fault

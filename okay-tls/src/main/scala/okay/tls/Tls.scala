@@ -74,9 +74,9 @@ object Tls {
       pem <- secrets.get(key)
       ctx <- contextOf(None, Some((certFile, pem)))
     yield
-      val ss = ctx.getServerSocketFactory.createServerSocket(port)
-        .asInstanceOf[SSLServerSocket]
-      ss
+      ctx.getServerSocketFactory.createServerSocket(port) match
+        case ss: SSLServerSocket => ss
+        case other => throw IllegalStateException(s"the SSL factory answered a plain server socket: $other")
 
   /** the ambient-Secrets door (ctx-everywhere), wiring-shaped: the
    * server awaiting its resolver — provide(secrets) { Tls.served(...) } */
@@ -148,8 +148,9 @@ object Tls {
   private def handshake(ctx: SSLContext, sock: Socket, host: String,
                         mode: SslMode): Either[String, Socket] =
     try
-      val ssl = ctx.getSocketFactory
-        .createSocket(sock, host, sock.getPort, true).asInstanceOf[SSLSocket]
+      val ssl = ctx.getSocketFactory.createSocket(sock, host, sock.getPort, true) match
+        case s: SSLSocket => s
+        case other => throw IllegalStateException(s"the SSL factory answered a plain socket: $other")
       ssl.setUseClientMode(true)
       if mode == SslMode.VerifyFull then
         val p = ssl.getSSLParameters

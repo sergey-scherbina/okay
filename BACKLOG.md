@@ -78,14 +78,20 @@ construction instead of a type test per value).
       typed through `frame[…, Violation]` (the ClassTag door), kyo's
       Throws matched at its E and the continuations uncast (kyo's
       types line up); 10 → 0.
-- [ ] cast-free-small — Rx's AnyRef queue (2: a typed item ADT),
-      Async's handshake cell (1: typed Got[X]), Native Platform's
-      null placeholder (1), Java API downcasts as type TESTS with a
-      named refusal (Nio, Jetty, Netty ×2, Tls ×2, CryptoJvm ×4 —
-      typed key kinds), JS facades for process.argv, childNodes and
-      Buffer data (Client ×2, Dom, NetNode, CryptoJs ×2), ui Form
-      (3, the codec recipe) and Screen (2, Same's witness), Collect
-      (1), jdbc/r2dbc Object[] arrays (2, interop kernels).
+- [x-landed] cast-free-small — landed: Rx's queue is a typed message
+      ADT, Async's handshake cell is `Got[X] | Moved | Null`, Native's
+      placeholder an Option, the Java API downcasts are type tests
+      with a named refusal (Nio, Jetty, Netty, Tls; CryptoJvm through
+      privateKeyOf/publicKeyOf), Node facades for process.argv and the
+      Buffer callbacks (Web.Process, NetNode, both CryptoJs — the
+      require-based one keeps ONE claim at the module boundary),
+      Form decodes fields at their type, Screen finds a boundary by
+      Same's witness, Collect always calls the finisher, jdbc/r2dbc
+      walk any array by the runtime. Casts in src/main: 97 → 36.
+      Left in this group: Screen's `Nav | S` union split (an API
+      design: S itself may be a Nav — an Either would fix it, a
+      public signature change), Dom.scala's js.Dynamic (a ui-js
+      facade lane).
 - kernels that stay, each with its reason at its line: Same (2),
   Eager (2), Pipe (2), Condition (1), Delim (2), Schema (5), Effects
   (2), Writer (1), Http (1), Chunks (2), ChunkBuf (1), Generate (1),

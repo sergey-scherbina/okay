@@ -139,7 +139,7 @@ object Async {
 
   /** the callback may fire during registration, on this thread or
    * another: whoever loses the atomic exchange continues the drive */
-  private final class Got(val x: Any)
+  private final class Got[X](val x: Either[Throwable, X])
   private object Moved
 
   /**
@@ -168,7 +168,9 @@ object Async {
                 cur = k(f())
                 looping = !stopped
               case Await(reg) =>
-                val cell = AtomicReference[AnyRef](null)
+                // the cell holds the answer, the "moved on" marker, or nothing:
+                // typed, so what comes out is the operation's Either
+                val cell = AtomicReference[Got[X] | Moved.type | Null](null)
                 val cancelReg = reg { r =>
                   if !cell.compareAndSet(null, Got(r)) then
                     if !stopped then r match
@@ -176,8 +178,8 @@ object Async {
                       case Left(e) => { val _ = p.tryFailure(e) }
                 }
                 cell.getAndSet(Moved) match
-                  case g: Got =>
-                    g.x.asInstanceOf[Either[Throwable, X]] match
+                  case g: Got[X] =>
+                    g.x match
                       case Right(x) =>
                         cur = k(x)
                         looping = !stopped

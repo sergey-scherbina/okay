@@ -65,12 +65,11 @@ object Collect {
       val accumulator = c.accumulator
       val combiner = c.combiner
       val finisher = c.finisher
-      val identity =
-        c.characteristics.contains(Collector.Characteristics.IDENTITY_FINISH)
       Right(new Aggregator[In, Acc, Out]:
         def init: Acc = supplier.get()
         def add(acc: Acc, in: In): Acc = { accumulator.accept(acc, in); acc }
         def merge(a: Acc, b: Acc): Acc = combiner.apply(a, b)
-        def present(acc: Acc): Out =
-          if identity then acc.asInstanceOf[Out] else finisher.apply(acc))
+        // an IDENTITY_FINISH collector's finisher IS identity: calling
+        // it is one dispatch, and no claim about Acc being an Out
+        def present(acc: Acc): Out = finisher.apply(acc))
 }

@@ -16,14 +16,15 @@ private final class NodeConn(sock: js.Dynamic) extends NetConn:
   private var waiter: Option[(Int, Either[Throwable, Array[Byte]] => Unit)] = None
 
   locally {
-    sock.on("data", { (d: js.Dynamic) =>
-      val u = d.asInstanceOf[Uint8Array]
+    // a "data" event hands a Buffer, which IS a Uint8Array: typed at
+    // the callback, not cast inside it
+    sock.on("data", { (u: Uint8Array) =>
       val add = new Array[Byte](u.length)
       var i = 0
       while i < u.length do { add(i) = (u(i).toInt & 0xff).toByte; i += 1 }
       buf = buf ++ add
       pump()
-    }: js.Function1[js.Dynamic, Unit])
+    }: js.Function1[Uint8Array, Unit])
     sock.on("end", { () => eof = true; pump() }: js.Function0[Unit])
     sock.on("close", { () => eof = true; pump() }: js.Function0[Unit])
     sock.on("error", { (e: js.Dynamic) =>

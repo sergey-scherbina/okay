@@ -22,7 +22,7 @@ import scala.util.{Failure, Success}
 object Client {
 
   def main(args: Array[String]): Unit =
-    val argv = js.Dynamic.global.process.argv.asInstanceOf[js.Array[String]]
+    val argv = okay.Web.Process.argv
     val port = argv(2).toInt
 
     Async.runAsync(

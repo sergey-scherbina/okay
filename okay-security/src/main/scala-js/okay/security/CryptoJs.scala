@@ -14,18 +14,23 @@ import scala.scalajs.js.typedarray.{Int8Array, Uint8Array}
  * service-to-service case (HS256, passwords, API keys, PKCE) is what
  * this stage serves, and serves fully.
  */
+/** a node:crypto Hash/Hmac: update, then a Buffer (a Uint8Array) */
+@js.native
+private trait NodeHash extends js.Object:
+  def update(data: Uint8Array): NodeHash = js.native
+  def digest(): Uint8Array = js.native
+
 @js.native @JSImport("crypto", JSImport.Namespace)
 private object NodeCrypto extends js.Any:
-  def createHmac(alg: String, key: Uint8Array): js.Dynamic = js.native
-  def createHash(alg: String): js.Dynamic = js.native
+  def createHmac(alg: String, key: Uint8Array): NodeHash = js.native
+  def createHash(alg: String): NodeHash = js.native
   def pbkdf2Sync(password: String, salt: Uint8Array, iterations: Int,
-                 keylen: Int, digest: String): js.Dynamic = js.native
-  def randomBytes(n: Int): js.Dynamic = js.native
+                 keylen: Int, digest: String): Uint8Array = js.native
+  def randomBytes(n: Int): Uint8Array = js.native
 
 given Crypto = new Crypto:
 
-  private def toBytes(buf: js.Dynamic): Array[Byte] =
-    val u = buf.asInstanceOf[Uint8Array]
+  private def toBytes(u: Uint8Array): Array[Byte] =
     val out = new Array[Byte](u.length)
     var i = 0
     while i < u.length do { out(i) = u(i).toByte; i += 1 }

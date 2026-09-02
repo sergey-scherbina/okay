@@ -137,8 +137,9 @@ object Netty {
 
                     def channelRead0(ctx: ChannelHandlerContext, msg: Any): Unit =
                       if !handshaker.isHandshakeComplete then
-                        handshaker.finishHandshake(ctx.channel,
-                          msg.asInstanceOf[FullHttpResponse])
+                        msg match
+                          case r: FullHttpResponse => handshaker.finishHandshake(ctx.channel, r)
+                          case other => throw IllegalStateException(s"handshake expected a full response, got $other")
                         if opened.compareAndSet(false, true) then
                           k(Right(socket(ctx.channel, q)))
                       else msg match
@@ -200,8 +201,9 @@ object Netty {
     yield ch
 
   /** the port a server bound to — useful when 0 asked for any free one */
-  def port(c: NettyChannel): Int =
-    c.localAddress.asInstanceOf[java.net.InetSocketAddress].getPort
+  def port(c: NettyChannel): Int = c.localAddress match
+    case a: java.net.InetSocketAddress => a.getPort
+    case other => throw IllegalStateException(s"not an inet listener: $other")
 
   private def requestOf(req: FullHttpRequest): Request =
     val hs = req.headers.entries.asScala.toSeq.map(e => (e.getKey, e.getValue))

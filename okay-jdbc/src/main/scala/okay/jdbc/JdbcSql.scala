@@ -130,7 +130,7 @@ object JdbcSql:
     case _ => SqlType.Other(vendorName)
 
   /** an array element as the driver hands it back (java boxes) */
-  private def valueOf(o: AnyRef): SqlValue = o match
+  private def valueOf(o: Any): SqlValue = o match
     case null => SqlValue.Null
     case b: java.lang.Boolean => SqlValue.Bool(b)
     case i: java.lang.Integer => SqlValue.I32(i)
@@ -148,7 +148,11 @@ object JdbcSql:
 
   private def arrayOf(a: java.sql.Array): SqlValue =
     if a == null then SqlValue.Null
-    else SqlValue.Arr(a.getArray.asInstanceOf[Array[AnyRef]].toVector.map(valueOf))
+    else a.getArray match
+      // any component type (a primitive int[] included): walked by the runtime
+      case arr: Array[?] => SqlValue.Arr(Vector.tabulate(scala.runtime.ScalaRunTime.array_length(arr))(i =>
+        valueOf(scala.runtime.ScalaRunTime.array_apply(arr, i))))
+      case other => SqlValue.Text(other.toString)
 
   private def rowOf(rs: ResultSet, cols: Vector[SqlType]): Vector[SqlValue] =
     Vector.tabulate(cols.length) { ix =>

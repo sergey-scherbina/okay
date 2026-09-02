@@ -105,8 +105,9 @@ object Nio {
     }(s => try s.close() catch case _: Throwable => ())
 
   /** the port a listener bound to — useful when 0 asked for any free one */
-  def port(s: ServerSocketChannel): Int =
-    s.getLocalAddress.asInstanceOf[InetSocketAddress].getPort
+  def port(s: ServerSocketChannel): Int = s.getLocalAddress match
+    case a: InetSocketAddress => a.getPort
+    case other => throw IllegalStateException(s"not an inet listener: $other")
 
   /**
    * A connection AS an MCP link: newline-delimited lines over a raw

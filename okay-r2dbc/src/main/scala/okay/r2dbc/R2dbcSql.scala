@@ -176,7 +176,7 @@ object R2dbcSql:
     Vector.tabulate(n)(i => valueOf(row.get(i)))
 
   /** a value as the driver hands it back (java boxes) */
-  private def valueOf(o: AnyRef): SqlValue = o match
+  private def valueOf(o: Any): SqlValue = o match
     case null => SqlValue.Null
     case b: java.lang.Boolean => SqlValue.Bool(b)
     case i: java.lang.Integer => SqlValue.I32(i)
@@ -191,7 +191,8 @@ object R2dbcSql:
     case bs: Array[Byte] => SqlValue.Bytes(bs)
     case bb: ByteBuffer =>
       val bs = new Array[Byte](bb.remaining); bb.duplicate().get(bs); SqlValue.Bytes(bs)
-    case arr: Array[?] => SqlValue.Arr(arr.toVector.map(x => valueOf(x.asInstanceOf[AnyRef])))
+    case arr: Array[?] => SqlValue.Arr(Vector.tabulate(scala.runtime.ScalaRunTime.array_length(arr))(i =>
+      valueOf(scala.runtime.ScalaRunTime.array_apply(arr, i))))
     case other => SqlValue.Text(other.toString)   // dates, uuids, json: named by describe, text on the row
 
   private def bindAll(st: Statement, params: Vector[SqlValue]): Unit =

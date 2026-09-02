@@ -143,8 +143,9 @@ object Jetty {
     }(_.stop())
 
   /** the port a server bound to — useful when 0 asked for any free one */
-  def port(s: Server): Int =
-    s.getConnectors.head.asInstanceOf[ServerConnector].getLocalPort
+  def port(s: Server): Int = s.getConnectors.head match
+    case c: ServerConnector => c.getLocalPort
+    case other => throw IllegalStateException(s"not a server connector: $other")
 
   // ---- the two directions of a session, over Jetty's own listener
 

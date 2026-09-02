@@ -9,10 +9,10 @@ given CanBlock = new:
   def block[A](register: (A => Unit) => (() => Unit)): A =
     val lock = new Object
     var done = false
-    var v: A = null.asInstanceOf[A]
+    var v: Option[A] = None
     val cancel = register { a =>
       lock.synchronized:
-        v = a
+        v = Some(a)
         done = true
         lock.notifyAll()
     }
@@ -20,7 +20,7 @@ given CanBlock = new:
       lock.synchronized:
         while !done do lock.wait()
     catch case e: Throwable => { cancel(); throw e }
-    v
+    v.get   // done implies Some: the callback wrote it under the lock
 
 /** the timer: a thread sleeps for the duration; cancelling
  * interrupts it out of the sleep */

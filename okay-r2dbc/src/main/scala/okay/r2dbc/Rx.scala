@@ -13,8 +13,6 @@ import java.util.concurrent.{CountDownLatch, LinkedBlockingQueue}
  */
 private[r2dbc] object Rx:
 
-  private object Done
-  private final case class Failed(e: Throwable)
 
   /** subscribe, pull everything, answer it all — for the small
    * publishers (row counts, commit, begin) */
@@ -39,16 +37,21 @@ private[r2dbc] object Rx:
   /** a demand-driven subscriber: `next(n)` requests n items and parks
    * until n arrived or the stream ended; `(items, done)` */
   final class Pull[T](p: Publisher[T]) extends Subscriber[T]:
-    private val q = LinkedBlockingQueue[AnyRef]()
+    /** what the publisher can hand over, typed: an item, the failure, the end */
+    private enum Msg:
+      case Item(t: T)
+      case Failed(e: Throwable)
+      case Done
+    private val q = LinkedBlockingQueue[Msg]()
     private val subscribed = CountDownLatch(1)
     @volatile private var sub: Subscription = null
     @volatile private var ended = false
     p.subscribe(this)
 
     def onSubscribe(s: Subscription): Unit = { sub = s; subscribed.countDown() }
-    def onNext(t: T): Unit = q.put(t.asInstanceOf[AnyRef])
-    def onError(e: Throwable): Unit = { q.put(Failed(e)) }
-    def onComplete(): Unit = { q.put(Done) }
+    def onNext(t: T): Unit = q.put(Msg.Item(t))
+    def onError(e: Throwable): Unit = q.put(Msg.Failed(e))
+    def onComplete(): Unit = q.put(Msg.Done)
 
     def next(n: Int): (Vector[T], Boolean) =
       if ended then (Vector.empty, true)
@@ -60,9 +63,9 @@ private[r2dbc] object Rx:
         var done = false
         while got < n && !done do
           q.take() match
-            case Done => done = true; ended = true
-            case Failed(e) => ended = true; throw e
-            case item => out += item.asInstanceOf[T]; got += 1
+            case Msg.Done => done = true; ended = true
+            case Msg.Failed(e) => ended = true; throw e
+            case Msg.Item(t) => out += t; got += 1
         (out.result(), done)
 
     def cancel(): Unit =

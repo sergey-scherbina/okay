@@ -76,4 +76,10 @@ object Web {
   @JSGlobalScope
   object Global extends js.Object:
     def fetch(url: String, init: RequestInit): js.Promise[Response] = js.native
+
+  /** Node's `process`, the one member the stack reads */
+  @js.native
+  @JSGlobal("process")
+  object Process extends js.Object:
+    val argv: js.Array[String] = js.native
 }
