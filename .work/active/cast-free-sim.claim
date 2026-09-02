@@ -1,5 +1,0 @@
-slug: cast-free-sim
-branch: feature/cast-free-sim
-worktree: ../okay-wt-cast-free-sim
-claimed: 2026-09-02
-scope: Sim.scala (7 casts): SimChannel ops typed (Chan[A], Send[A], Receive[A], Close[A]) and the run loop's perform typed by GADT; the scheduler's wait queues keep their erased payloads behind one typed door if needed. BACKLOG cast-free-sim.

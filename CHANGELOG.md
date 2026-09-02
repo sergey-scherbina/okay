@@ -1,5 +1,17 @@
 # Changelog
 
+## cast-free-sim — the simulator typed, zero casts
+Completed: 2026-09-02
+Landed as a8baab9. Second lane of the cast audit. Sim's channel ops
+carry the channel's element type (`Chan[A]`, `Send[A]`,
+`Receive[A]`, `Close[A]`), the parked receivers and senders live
+TYPED on the channel itself instead of in erased maps keyed by id,
+and `perform[Y](fid, op: Op[Y], k: Y => …)` is typed by GADT
+matching on the tree; the deadlock count sums the channels' queues.
+Seven casts to none. Traces unchanged by seed (TestSim, TestStmSim
+green), core 362 green on JVM, JS/Native green, every module
+compiles.
+
 ## cast-free-condition — the condition machine typed; the audit in the backlog
 Completed: 2026-09-02
 Landed as 6cfb79b. The operator asked where casts remained and to
