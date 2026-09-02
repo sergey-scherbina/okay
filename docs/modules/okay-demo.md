@@ -60,6 +60,13 @@ ANTHROPIC_API_KEY=... sbt okayDemo/run                  # Anthropic
   the React page (okay-ui's tree rendered by CDN React UMD through
   `ReactJs`; the chat's brain is `okay-demo/web`'s pure
   `view`/`update`, JVM-tested; the Elm fold runs on `runAsync`).
+- **Deployment** (deploy-module): `DemoDeploy.spec` is the value,
+  `okay-demo/deploy/` its rendering (Dockerfile, compose.yaml, helm/) —
+  regenerate with `sbt "okayDemo/runMain okay.demo.DemoDeploy"`,
+  `TestDemoDeploy` refuses drift; build the jar/image with
+  `okay-deploy/bin/okay-package.sh okayDemo okay-demo` (docs/modules/
+  okay-deploy.md).
+
 - **Sessions** (demo-sessions): a `/match` turn under a verified
   session is asserted under THAT email, not whatever "email x@y" the
   message text says — `POST /login` then `/login/confirm` mints an

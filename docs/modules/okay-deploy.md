@@ -7,9 +7,11 @@
 > application declares its own `Deploy` and OWNS the rendered files.
 
 Depends on: `okay-codec` (a `Deploy` has a Schema — JSON-inspectable
-like every other value here). Build half: `project/OkayDeploy.scala`
-(`OkayDeploy.deployable(mainClass)` — sbt-assembly with a stable jar
-name, one line in a module's build entry).
+like every other value here). Build half: `okay-deploy/sbt-plugin`, a
+SOURCE sbt plugin the root `project/plugins.sbt` depends on (it brings
+sbt-assembly) — `okay.deploy.sbt.OkayDeploy.deployable(mainClass)` is
+one line in a module's build entry, and nothing deploy-shaped sits at
+the repository root.
 
 ## Guide
 
@@ -24,7 +26,8 @@ object MyDeploy:
   def main(args: Array[String]): Unit = Deploy.write(spec, Deploy.repoRoot())
 ```
 
-and in build.sbt: `.dependsOn(okayDeploy).settings(OkayDeploy.deployable("okay.mysvc.Main"))`.
+and in build.sbt: `.dependsOn(okayDeploy).settings(_root_.okay.deploy.sbt.OkayDeploy.deployable("okay.mysvc.Main"))`
+(`_root_` because the core project is itself named `okay` in the build).
 
 **Render** — `sbt "okayMySvc/runMain okay.mysvc.MyDeploy"` writes
 `okay-my-svc/deploy/{Dockerfile, compose.yaml, helm/…}`. Commit them:

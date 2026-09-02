@@ -1,16 +1,21 @@
-import sbt._
-import sbt.Keys._
+package okay.deploy.sbt
+
+import _root_.sbt._
+import _root_.sbt.Keys._
+import sbtassembly.AssemblyPlugin
 import sbtassembly.AssemblyPlugin.autoImport._
 import sbtassembly.MergeStrategy
 
 /**
- * The build half of okay-deploy (specs/deploy.md): what a module says
- * to become deployable. ONE line in its build entry —
- * `.settings(OkayDeploy.deployable("your.Main"))` — and the fat jar
- * lands at a stable name the rendered Dockerfile relies on. Nothing
- * here knows any particular application.
+ * What a module says to become deployable (specs/deploy.md): ONE
+ * line in its build entry — `.settings(OkayDeploy.deployable("your.Main"))`
+ * — and the fat jar lands at the stable name the rendered Dockerfile
+ * relies on. Knows no particular application.
  */
-object OkayDeploy {
+object OkayDeploy extends AutoPlugin {
+  override def requires = AssemblyPlugin
+  override def trigger = noTrigger
+
   val jarName = "app.jar"
 
   def deployable(mainClass: String): Seq[Setting[_]] = Seq(

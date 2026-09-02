@@ -1077,7 +1077,7 @@ lazy val okayDeploy = (project in file("okay-deploy"))
 lazy val okayDemo = (project in file("okay-demo"))
   .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayAdmin, okayChat, okayDeploy)
   // deployable (specs/deploy.md): the fat jar DemoDeploy's Dockerfile runs
-  .settings(OkayDeploy.deployable("okay.demo.ChatDemo"))
+  .settings(_root_.okay.deploy.sbt.OkayDeploy.deployable("okay.demo.ChatDemo"))
   .settings(
     name := "okay-demo",
     libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.47.1.0",

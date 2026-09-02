@@ -27,9 +27,11 @@ scaffold is proven against, not the thing the scaffold is FOR.
 - **The module knows no application.** okay-deploy carries the
   generic Helm chart as resources (every knob a value in
   values.yaml), the renderers, and the build half
-  (`project/OkayDeploy.scala`: `OkayDeploy.deployable(mainClass)` —
-  sbt-assembly with a stable jar name, one line in a module's build
-  entry). An application declares its `Deploy` in its OWN module,
+  (`okay-deploy/sbt-plugin`, a SOURCE sbt plugin the root
+  `project/plugins.sbt` depends on; it brings sbt-assembly, and
+  `OkayDeploy.deployable(mainClass)` is one line in a module's build
+  entry). Nothing deploy-shaped lives at the repository root — the
+  operator's rule: everything in okay-deploy or in the application. An application declares its `Deploy` in its OWN module,
   renders it with a one-line main, commits the result, and keeps one
   drift test — the committed deployment IS the rendered value, or
   the test says which file is not.
@@ -134,3 +136,10 @@ One trap found: a forked `run` has the MODULE directory as cwd, so
 Docker/kubectl remain unproven live this session (no daemon, no
 cluster); `java -jar`, `helm lint` and `helm template` are the
 offline proof.
+Second pass the same day (operator: nothing deploy-related at the
+root): `docs/deploy.md` folded into the module docs, and the sbt
+helper moved out of `project/` into `okay-deploy/sbt-plugin` as a
+source plugin the root `plugins.sbt` merely points at — proven by a
+clean `okayDemo/assembly` through it. One name clash to know: the
+core project is `okay`, so the build entry says
+`_root_.okay.deploy.sbt.OkayDeploy`.
