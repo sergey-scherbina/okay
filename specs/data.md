@@ -297,7 +297,7 @@ list in its spec or spec section)
       default and verify therefore requires Option fields, which is
       the fingerprint lesson working: a lake column really can be
       null under you)
-- [ ] Delta without Spark (lake-delta, roads 1+2): okay-delta wraps
+- [x] Delta without Spark (lake-delta, roads 1+2): okay-delta wraps
       Delta Kernel — `Delta.create(path, columns)` and
       `Delta.append(path, rows, loadId)` write a table from SqlValue
       rows (the seam's vocabulary; Bool/I32/I64/F64/Num/Text/Bytes,
@@ -314,7 +314,10 @@ list in its spec or spec section)
       rows and verify — the extension installs from the network,
       so that leg skips offline. Proven: written by the kernel,
       read back equal by the kernel AND by DuckDB; the same loadId
-      appended twice counts once
+      appended twice counts once. DuckDB describes `delta_scan`
+      columns as nullable whatever the Delta schema says — the
+      Parquet lesson again: verify names the non-Option fields, and
+      a lake Schema takes Option or accepts the named drift
 - [x] a bulk load with a load id, retried across a simulated crash,
       lands once (DuckDB as the double: the history table's unique
       key IS the dedup — WithKey at batch granularity; a failing
@@ -395,3 +398,23 @@ list in its spec or spec section)
 cross-class findings — the first being whether the Docs contract
 truly fits Dynamo AND Mongo AND the View engine without growing
 engine-shaped warts)
+
+lake-delta (2026-09-02): Delta without Spark landed as okay-delta —
+Delta Kernel 4.4 (api + defaults) behind `Delta.create/append/
+snapshot/rows`, the rows in the seam's SqlValue vocabulary through a
+columnar batch of our own (no kernel-internal classes), the commit
+protocol the kernel's. Two things the kernel taught: the Parquet
+writer takes a decimal's unscaled value at the COLUMN's scale, so a
+7.25 written as scale-2 came back 7.25E-16 until the value is
+rescaled to the column first; and the engine wraps a row's refusal
+in RuntimeException, sometimes twice, so the named IllegalArgument
+is dug out of the cause chain. The load id (Delta's transaction
+identifier) refuses the second landing of the same (app, version)
+and admits the next version — the bulk-load dedup in Delta's own
+words. Road 1 proven on the kernel-written table: DuckDB's delta
+extension reads it through the JDBC seam, typed rows equal; DuckDB
+describes `delta_scan` columns nullable, so verify names the
+non-Option fields (the Parquet lesson, third telling). The extension
+downloads on INSTALL, so that leg skips offline. Not here: partitioned
+tables, arrays/composites, Delta Kernel reads at scale (DuckDB is
+that road), Iceberg (`iceberg-core` when named).
