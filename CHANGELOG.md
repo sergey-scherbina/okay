@@ -1,5 +1,33 @@
 # Changelog
 
+## tidy-warnings-tests — the whole build compiles warning-free
+Completed: 2026-09-02
+Landed as dc7fec5 (4 commits). Extends tidy-warnings-screen-dom's rule
+to every test source: a `clean; Test/compile` of the whole build had
+533 warnings (424 unused values, 88 unused symbols, 12 unchecked type
+tests, 7 discarded values, 2 non-exhaustive matches); now 0, main and
+test both. Same recipe — a discarded result says so (`: Unit`, or
+`val _ =` when the value's type is driven by a `using` clause or is
+js.Dynamic, where an ascription alone does not stick), unused pattern
+binders become `?`, unused lambda/def parameters become `_` or
+`@unused` where a bare `_` cannot name a method parameter, dead
+imports and dead locals removed. Two shapes needed their own
+treatment: `Damaged` in TestCondition's repair-story test was a LOCAL
+class, whose type test cannot be checked at runtime by JVM rule —
+hoisted to a class-level member instead of suppressed, since local
+scope was never load-bearing there; two inherent erasure-kernel
+exposures (Writer.run's inline body checked at an abstract answer
+type, the same trusted kernel Effects.scala names) got `@nowarn` with
+a one-line reason, the first use of that annotation in the codebase.
+Found and fixed along the way, each from a sibling's landing that ran
+concurrently: four dead imports in ChatDemo.scala (pg-target-in-okay-
+pg) and one discarded write in okay-deploy's own new test
+(deploy-module) — both are proof the invariant holds even under
+concurrent development, not exceptions to it. Full gate green in
+three chunks, twice (before and after the second rebase); the branch
+was rebased four times over five siblings' landings before the
+fast-forward went through clean.
+
 ## deploy-docs — the okay-deploy usage guide
 Completed: 2026-09-02
 Landed as 8d23c9e (docs only, no code — no matrix run). docs/modules/
