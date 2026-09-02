@@ -108,10 +108,9 @@ object Handler {
   def union[F[+_], G[+_]](using T: TypeableK[F], hf: Handler[F], hg: Handler[G])
   : Handler[F + G] = new Handler[F + G]:
     def handle[A](a: F[A] | G[A]): A =
-      val split: Either[F[A], G[A]] = a match
-        case T(f) => Left(f)
-        case other => Right(other.asInstanceOf[G[A]])
-      split.fold(f => hf.handle(f), g => hg.handle(g))
+      // the split is `<|>`'s, the one place the union's excluded
+      // middle is claimed
+      <|>[F, G](a).fold(f => hf.handle(f), g => hg.handle(g))
 }
 
 /**
@@ -455,10 +454,10 @@ object ! {
         case Left(f) => h(f)
         case Right(g) => Effect(g)
       case Bind(Effect(e), k) =>
-        val cont = k.asInstanceOf[Any => A ! (F + G)]
+        // the Bind node types e and k together
         <|>[F, G](e) match
-          case Left(f) => h(f).flatMap(x => translate[A, F, G](cont(x))(h))
-          case Right(g) => Effect(g).flatMap(x => translate[A, F, G](cont(x))(h))
+          case Left(f) => h(f).flatMap(x => translate[A, F, G](k(x))(h))
+          case Right(g) => Effect(g).flatMap(x => translate[A, F, G](k(x))(h))
 
   /**
    * handle_relay (Kiselyov): tail-resumptive handling, measured 1.45x

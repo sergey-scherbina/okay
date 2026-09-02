@@ -17,11 +17,10 @@ construction instead of a type test per value).
 - [x-landed] cast-free-sim — landed: Chan[A]/Send[A]/Receive[A]/
       Close[A], the wait queues typed on the channel itself,
       perform[Y] by GADT; zero casts; traces unchanged by seed.
-- [ ] cast-free-effects — Effects.scala (4): `<|>` splits a row by
-      runtime CLASS (typeableKByClass) — the two `Right(other
-      .asInstanceOf[G[A]])` are that design's one claim; isolate in
-      one function with the statement; the `cont` cast at 458 goes by
-      GADT.
+- [x-landed] cast-free-effects — landed (casts-encapsulated):
+      Handler.union splits through `<|>` (the one claim), translate's
+      cont typed by the Bind node; typeableK's class-test kernel
+      stays, stated.
 - [ ] cast-free-schema — Json (9), Cbor (9), Typed (11): `Schema` is
       not a GADT — `SVector(of: () => Schema[?])` loses the link to
       `Vector[A]`, so every codec casts `Schema[Any]` and the result
@@ -35,15 +34,18 @@ construction instead of a type test per value).
       are the browser API without types; `js.native` facades for
       Response, the stream reader and WebSocket events state them
       once.
-- [ ] casts-encapsulated — the inherent ones, each to ONE function
-      with its reason: ChunkBuf (7, Array through reflection, the
-      comment exists), Eager (6, value-or-program at runtime is its
-      point), Pipe (3: resumeWith/reinject stay, `unreachable` via
-      `null.asInstanceOf` becomes a throw), Same (2 witnesses, the
-      axioms).
-- [ ] direct-upcast-ascription — Direct.scala (4): `x.asInstanceOf
-      [T]` in generated code after the macro checked `V <:< T` is an
-      upcast; write it as an ascription in the quote.
+- [x-landed] casts-encapsulated — landed: ChunkBuf's array kernel
+      is one `wrap` (7 → 2, in it) and `sized` replaced the Vector
+      casts; Eager's encoding dispatch is one `fold` (6 → 2, in it);
+      Pipe.unreachable throws instead of handing out a null; Same's
+      two witnesses stay as the axioms.
+- [x-landed] direct-upcast-ascription — landed: the macro summons
+      `V <:< T` at expansion time and splices it (`upcast`), so the
+      generated code carries the compiler's evidence, not a cast;
+      found on the way: one of the four was NOT an upcast — a
+      statement-position loop's `F[Any]` cast to Unit — now an
+      explicit discard `(_: V) => ()`, Scala's own value-discard rule
+      said in the macro.
 - [ ] unchecked-audit — the 28 non-`resume` `@unchecked` patterns,
       same triage.
 

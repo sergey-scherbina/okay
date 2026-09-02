@@ -104,11 +104,9 @@ object ChunkBuf {
    * `update`'s, already told, once.
    */
   def of[A](xs: IterableOnce[A]): Chunk[A] =
-    val known = xs.knownSize
     // an unknown size costs one pass to learn it, which is what the
     // `toArray` these callers used was doing internally anyway
-    val seq = if known >= 0 then xs else xs.iterator.toVector
-    val n = if known >= 0 then known else seq.asInstanceOf[Vector[A]].length
+    val (seq, n) = sized(xs)
     val buf = ChunkBuf[A](n)
     val it = seq.iterator
     var i = 0
@@ -239,9 +237,7 @@ object ChunkBuf {
   inline def ofSpecialized[A](xs: IterableOnce[A]): Chunk[A] =
     summonFrom {
       case ct: ClassTag[A] =>
-        val known = xs.knownSize
-        val seq = if known >= 0 then xs else xs.iterator.toVector
-        val n = if known >= 0 then known else seq.asInstanceOf[Vector[A]].length
+        val (seq, n) = sized(xs)
         val arr = ct.newArray(n)
         val it = seq.iterator
         var i = 0
@@ -253,6 +249,23 @@ object ChunkBuf {
       case _ => of(xs)
     }
 
+  /** the sequence with its size known: as is when it says, else
+   * materialized once */
+  private def sized[A](xs: IterableOnce[A]): (IterableOnce[A], Int) =
+    val known = xs.knownSize
+    if known >= 0 then (xs, known)
+    else
+      val v = xs.iterator.toVector
+      (v, v.length)
+
+  /** THE array kernel, once: an array whose component type is A's
+   * runtime representation (boxed, or the specialized primitive)
+   * IS a Chunk[A] — `update` told that lie at every write, this is
+   * where the reading side repeats it. `raw` comes from reflection
+   * (java.lang.reflect.Array.newInstance answers Object) */
+  private def wrap[A](raw: AnyRef): Chunk[A] =
+    ArraySeq.unsafeWrapArray(raw.asInstanceOf[Array[?]]).asInstanceOf[Chunk[A]]
+
   extension [A](buf: ChunkBuf[A]) {
     /** the assertion, once: what goes in is an A */
     inline def update(i: Int, a: A): Unit =
@@ -261,17 +274,15 @@ object ChunkBuf {
     inline def capacity: Int = buf.length
 
     /** the chunk, whole — the array is not copied */
-    inline def chunk: Chunk[A] =
-      ArraySeq.unsafeWrapArray(buf).asInstanceOf[Chunk[A]]
+    inline def chunk: Chunk[A] = wrap[A](buf)
 
     /** trimmed to n, into an array of the SAME component type — or
      * every stream's short final chunk falls back to boxed */
     inline def take(n: Int): Chunk[A] =
       if n == buf.length then buf.chunk
       else
-        val out = java.lang.reflect.Array
-          .newInstance(buf.getClass.getComponentType, n).asInstanceOf[Array[?]]
+        val out = java.lang.reflect.Array.newInstance(buf.getClass.getComponentType, n)
         System.arraycopy(buf, 0, out, 0, n)
-        ArraySeq.unsafeWrapArray(out).asInstanceOf[Chunk[A]]
+        wrap[A](out)
   }
 }

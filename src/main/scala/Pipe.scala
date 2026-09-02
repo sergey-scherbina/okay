@@ -354,9 +354,10 @@ private object Erased {
    * (`Take % I`, `Writer % O`) fix that type by their only injector */
   def reinject[E](e: Any): E = e.asInstanceOf[E]
 
-  /** a phantom answer that is never read: the upstream has ended, so
-   * this position exists only to have a type */
-  def unreachable[A]: A = null.asInstanceOf[A]
+  /** a position that exists only to have a type: the upstream has
+   * ended, and reading it would be the machine's bug — so it throws,
+   * named, rather than handing out a null dressed as an A */
+  def unreachable[A]: A = throw IllegalStateException("unreachable: the upstream has ended")
 }
 
 def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O, B] = {

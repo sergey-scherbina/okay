@@ -130,6 +130,14 @@ object Direct:
    * Monad.flatMap call, the pure tail is M.pure — exactly the
    * program a careful hand would write, with no Cont layer between
    * the block and its monad. */
+  /** the compiler's own evidence that V is a T, summoned at macro
+   * time and spliced: the generated code upcasts through it, so no
+   * `asInstanceOf` is ever emitted — the macro checked V <:< T on
+   * the TypeReprs before asking, and a refusal here would be its bug */
+  private def upcast[V: Type, T: Type](using q: Quotes): Expr[V <:< T] =
+    Expr.summon[V <:< T].getOrElse(
+      q.reflect.report.errorAndAbort(s"direct: ${Type.show[V]} is not a ${Type.show[T]} (macro bug)"))
+
   private def pipeline[F[_] : Type, A: Type](using q: Quotes)(topLevelBody: q.reflect.Term,
                                              M0: Expr[Monad[F]]): Expr[F[A]] =
     import q.reflect.*
@@ -295,9 +303,14 @@ object Direct:
           case Out.Eff(f, e) =>
             if e.widen =:= tpe.widen then f
             else tpe2(e.widen) { [V] => (tV: Type[V]) ?=>
-              // V <:< tpe was the reason we are here — the cast is
-              // an erased no-op the abstract types cannot spell
-              '{ $M.fmap[V, T](${ f.asExprOf[F[V]] }, (x: V) => x.asInstanceOf[T]) }.asTerm
+              // a STATEMENT's value is discarded (Scala's own rule for a
+              // Unit position) — said so, not cast; anything else is an
+              // upcast the compiler vouches for
+              if TypeRepr.of[T] =:= TypeRepr.of[Unit] then
+                '{ $M.fmap[V, Unit](${ f.asExprOf[F[V]] }, (_: V) => ()) }.asTerm
+              else
+                val ev = upcast[V, T]
+                '{ $M.fmap[V, T](${ f.asExprOf[F[V]] }, (x: V) => $ev(x)) }.asTerm
             }
       }
 
@@ -356,7 +369,7 @@ object Direct:
                     asFAt(compile(subst(lbody, param.symbol, 'h.asTerm)), uRepr)
                       .changeOwner(Symbol.spliceOwner).asExprOf[F[U]]
                   })[W]((b: U) => loop(tl, b :: acc))
-                case _ => $M.pure[W](acc.reverse.asInstanceOf[W]) // List[U] <:< W checked above
+                case _ => $M.pure[W](${ upcast[List[U], W] }(acc.reverse)) // List[U] <:< W checked above
               loop(items, Nil)
             }.asTerm
           }
@@ -514,10 +527,12 @@ object Direct:
             // a body ending in throw types Nothing <: T: upcast
             // through the monad (F need not be covariant)
             if bodyT =:= TypeRepr.of[T] then raw.asTerm
-            else '{
-              given Monad[F] = $M
-              ${ raw }.flatMap((x: B) => $M.pure[T](x.asInstanceOf[T]))
-            }.asTerm
+            else
+              val ev = upcast[B, T]
+              '{
+                given Monad[F] = $M
+                ${ raw }.flatMap((x: B) => $M.pure[T]($ev(x)))
+              }.asTerm
           }
           // catch bodies may carry marks too: a marked rhs goes
           // through the same pipeline at the join type; a pure rhs
@@ -528,10 +543,12 @@ object Direct:
               tpe2(joinUnions(c.rhs.tpe.widen)) { [H] => (tH: Type[H]) ?=>
                 val hp = pipeline[F, H](c.rhs.changeOwner(Symbol.spliceOwner), M)
                 if TypeRepr.of[H] =:= TypeRepr.of[T] then hp.asTerm
-                else '{
-                  given Monad[F] = $M
-                  ${ hp }.flatMap((x: H) => $M.pure[T](x.asInstanceOf[T]))
-                }.asTerm
+                else
+                  val ev = upcast[H, T]
+                  '{
+                    given Monad[F] = $M
+                    ${ hp }.flatMap((x: H) => $M.pure[T]($ev(x)))
+                  }.asTerm
               }
             else '{ $M.pure[T](${ c.rhs.asExprOf[T] }) }.asTerm
           val handler: Term = '{ (e: Throwable) =>

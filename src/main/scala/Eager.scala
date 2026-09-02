@@ -21,10 +21,17 @@ opaque type Eager[F[+_], A] = A | (A ! F)
 
 object Eager {
 
+  /** THE dispatch of the encoding, once: an Eager[F, A] is either a
+   * plain A or a tree A ! F, told apart at runtime by the one class
+   * a tree has — the two casts here are the encoding's definition
+   * (the opaque type is `A | (A ! F)`), and every operation below
+   * goes through them */
+  private def fold[F[+_], A, B](m: Eager[F, A])(value: A => B, tree: (A ! F) => B): B = m match
+    case t: Free[?, ?] => tree(t.asInstanceOf[A ! F])
+    case a => value(a.asInstanceOf[A])
+
   /** normalize into the tree world */
-  def toFree[F[+_], A](m: Eager[F, A]): A ! F = m match
-    case t: Free[?, ?] => t.asInstanceOf[A ! F]
-    case a => Free.Pure(a.asInstanceOf[A])
+  def toFree[F[+_], A](m: Eager[F, A]): A ! F = fold(m)(Free.Pure(_), identity)
 
   // the Free instance, named: in this scope A ! F conforms to
   // Eager[F, A ! F], so unqualified extension calls would recurse
@@ -35,10 +42,8 @@ object Eager {
     override inline def perform[F[+_], A](e: F[A]): Eager[F, A] = Free.Inject(e)
 
     extension [F[+_], A](m: Eager[F, A])
-      override def flatMap[B](f: A => Eager[F, B]): Eager[F, B] = m match
-        case t: Free[?, ?] =>
-          t.asInstanceOf[A ! F].flatMap(x => toFree(f(x)))
-        case a => f(a.asInstanceOf[A])
+      override def flatMap[B](f: A => Eager[F, B]): Eager[F, B] =
+        fold(m)(a => f(a), t => t.flatMap(x => toFree(f(x))))
 
       override def foldCont[S](h: F !> S): A /> S =
         FreeE.foldCont(toFree(m))(h)
@@ -47,7 +52,5 @@ object Eager {
         FreeE.foldIn(toFree(m))(h)
 
       /** a pure value runs in O(1); a suspended tree runs like Free */
-      override def runWith(using Handler[F]): A = m match
-        case t: Free[?, ?] => FreeE.runWith(t.asInstanceOf[A ! F])
-        case a => a.asInstanceOf[A]
+      override def runWith(using Handler[F]): A = fold(m)(identity, FreeE.runWith(_))
 }
