@@ -259,12 +259,12 @@ object Condition:
   def resume[A](c: Of[A])(v: A): Decision
 ```
 
-- [ ] a typed condition round-trips: `object HowMany extends Of[Int]`,
+- [x] a typed condition round-trips: `object HowMany extends Of[Int]`,
   `HowMany.signal` answers Int, the policy resumes via `resume(c)(41)`
-- [ ] a wrong-typed resume is a COMPILE error at the policy
-- [ ] the typed edge works in direct blocks (`HowMany.signal.reflect`)
+- [x] a wrong-typed resume is a COMPILE error at the policy
+- [x] the typed edge works in direct blocks (`HowMany.signal.reflect`)
   and with restarts unchanged
-- [ ] the floor is untouched: untyped signal/policy tests all pass
+- [x] the floor is untouched: untyped signal/policy tests all pass
   as-is
 
 Out of scope: making the MACHINE dependent on Of — the erasure

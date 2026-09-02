@@ -1,6 +1,0 @@
-feature/condition-typed 2026-09-02T04:08:53Z
-agent: claude-code
-heartbeat: 2026-09-02T04:08:53Z
-status: in-progress
-done-so-far: LANDED UNGATED by operator directive (sbt lock blocks all test runs); typed door on master
-next: post-landing verification the moment the lock clears; then release

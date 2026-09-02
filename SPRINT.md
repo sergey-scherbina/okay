@@ -1,12 +1,6 @@
 # Sprint
 
 ## Doing
-- [ ] condition-typed-signal — the typed condition/answer pair as an
-      ADDITIVE door (PState/Delim doctrine): Condition.Of[A] marker,
-      the typed signal edge, the typed resume helper for policies —
-      wrong-typed resume stops compiling; the Any floor stays
-      (promoted from BACKLOG; Zhang-Myers named the discipline in
-      theory ch9)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

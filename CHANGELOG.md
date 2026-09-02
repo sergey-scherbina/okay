@@ -1,5 +1,20 @@
 # Changelog
 
+## condition-typed-signal — the typed door, and the gate lesson paid in full
+Completed: 2026-09-02
+Landed as 1281a4c + FIX 96f5b3c. Of[A] + the typed signal edge + the
+typed resume: a wrong-typed resume stops compiling; the machine
+stays erased, the Any floor untouched. The ONE ungated landing of
+this arc (operator directive, under what looked like a machine-wide
+sbt lock) shipped the arc's ONE real defect: the typed signal
+self-resolved (Of[A] beats Any), the self tail call compiled to
+while(true), and the forked test JVM burned 47 CPU-minutes — which
+ITSELF was the "lock": sbt-2 batch buffering hid all post-load
+output, my own timeouts sent the 143s, and the zombie's CPU/swap
+pressure stalled the machine. The (c: Any) ascription is
+load-bearing and commented as such. 17/17 condition suites; full
+matrix green in 106s on the freed machine, exit 0.
+
 ## pg-composite-array — arrays of a named composite decode to Arr of typed Row
 Completed: 2026-09-02
 The first sliver after pg-composite-fields-typed: an array whose ELEMENT
