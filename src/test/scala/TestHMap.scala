@@ -33,4 +33,23 @@ class TestHMap extends munit.FunSuite {
     assert(k eq a)
     assertEquals(v, 3)
   }
+
+  test("value keys of one number under two types are two entries, each typed by its key") {
+    final case class Id[A](n: Long)
+    val s5 = Id[String](5)
+    val i5 = Id[Int](5)
+    val m = HMap.empty[Id].updated(s5, "five").updated(i5, 5)
+    val str: String = m.get(s5)
+    val int: Int = m.get(i5)
+    assertEquals(str, "five")
+    assertEquals(int, 5)
+    assertEquals(m.size, 2)
+    // HMap keys are the vals' singleton types: an equal but fresh id is not in the type
+    val errors = compileErrors("""
+      final case class Id[A](n: Long)
+      val s5 = Id[String](5)
+      val m = okay.HMap.empty[Id].updated(s5, "five")
+      m.get(Id[String](5))""")
+    assert(errors.nonEmpty, "a fresh equal id found an entry in the static map")
+  }
 }
