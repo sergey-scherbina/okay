@@ -1,5 +1,22 @@
 # Changelog
 
+## channel-cas — the channel without a lock
+Completed: 2026-09-02
+Landed as 500efb7. The operator: "сделай все неблокирующим через
+cas immutable state". The channel's state is now ONE immutable
+value in an AtomicReference — persistent queues for the buffer,
+the waiting receivers and the waiting senders with their elements,
+a size counter, the open flag, the failure. Every operation is a
+pure `State => (State, action)`; a CAS loop installs the state and
+only then runs the action, so a retry re-runs a pure function,
+never a callback (the Drive handshake's shape over the whole
+channel). No thread holds anything, ever; on JS the reference is a
+plain cell. Same surface, same tests, plus a multi-producer/multi-
+consumer stress: 8 virtual-thread producers × 1000 through a
+16-slot channel into 4 consumers — 8000 elements, each exactly
+once. Spec decision in specs/cross-platform-async.md. Gate green in
+three chunks on all platforms.
+
 ## discarded-program-lint — a dropped program is a compile error
 Completed: 2026-09-02
 Landed as 8213968. The operator asked whether the channel rule
