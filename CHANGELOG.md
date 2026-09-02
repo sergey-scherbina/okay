@@ -1,5 +1,30 @@
 # Changelog
 
+## demo-scenario-editor — author a ScenarioDef through a page, no code change
+Completed: 2026-09-02
+Landed as 2dac9be (spec) + ad2d196 (impl). GET /scenarios lists every
+registered scenario; a textarea (pre-filled with an escrow-sale
+example) edits the plain JSON shape of the EXISTING ScenarioDef/
+Transition case classes directly, POSTed to /scenarios and passed to
+MatchStore.defineScenario — no new schema. The BACKLOG bullet's
+"steps"/"prompts"/"deal hook" turned out to already be the type's own
+transitions/notifies fields (the built-in `deal` scenario rings
+inboxes through `notifies` already); design work was recognizing
+that, not inventing anything. A malformation (validate's BadScenario)
+comes back as 400 + one line each; success reloads the page, so the
+scenario is immediately listed AND immediately playable through the
+existing offline phrase driver.
+MatchStore gained `scenarios: Vector[ScenarioDef]` — no list-all
+method existed before this. Both engines' private scenario map
+renamed `scenarioDefs` to avoid shadowing the new public def. Stated
+limit, pre-existing: SqlMatch doesn't persist scenario definitions to
+a table the way it persists flows — not touched here. Help text
+(help/помощь) now names the currently-registered scenarios instead
+of a static hint that could name one the store doesn't have.
+Tests: okay-match's TestScenario +1, okay-demo's TestChatDemo +4.
+Full okayMatchJVM suite 30/30; TestChatDemo+TestLogin 40/40 clean
+over three bare-JUnitCore runs.
+
 ## demo-mcp-market — the marketplace served over MCP at /mcp
 Completed: 2026-09-02
 Landed as af5bae9 (spec) + 55b1b82 (impl). chainedTable — already the

@@ -333,10 +333,16 @@ construction instead of a type test per value).
       leader and watch the market survive — the persist/Election
       machinery in a consumer-visible showcase. Sized LARGE; take
       only when a distributed demo is named wanted.
-- [ ] demo-scenario-editor — scenarios are already data
+- [x] demo-scenario-editor — scenarios are already data
       (ScenarioDef): a UI page to author one (steps, prompts, deal
       hook), saved through the store, listed by the help command —
       extensibility without touching code, shown not told.
+      LANDED 2026-09-02: GET/POST /scenarios edits the plain JSON
+      shape of ScenarioDef/Transition directly — "steps"/"prompts"/
+      "deal hook" turned out to already BE transitions/notifies, no
+      new schema needed. MatchStore gained `scenarios` (no list-all
+      method existed); help text now names what's registered instead
+      of a static hint.
 - [x] demo-en-phrasebook — LANDED 2026-09-02: isEnglish(text) (no
       Cyrillic) picks the reply template per message, no session
       state; every trigger pairs 1:1 (умею/can:, нужен/need:-want:,
