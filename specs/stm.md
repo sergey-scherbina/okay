@@ -202,6 +202,15 @@ document.
   identifiers known at the use site, which a transaction's write
   set never has — so HMap exists for the code that does have them,
   and the write set stays a TMap.
+- **The identity axiom is a witness, not a cast in the map** (tmap-
+  keyed, 2026-09-02, the operator's follow-up). TMap no longer casts:
+  a key type provides `TMap.Keyed[K]` — `same(a: K[A], b: K[B]):
+  Option[A =:= B]` — and `get`/`updated` only APPLY the witness.
+  `Keyed.byIdentity[K[X] <: AnyRef]` states the axiom for reference
+  keys once ("this token IS that token, so A is B"), and that single
+  `asInstanceOf[A =:= B]` on the witness is the one claim in the
+  file; the bound to references also removes the `AnyRef` casts that
+  `eq` needed. TRef provides its Keyed in its companion.
 ## Results
 Landed (stm, 2026-09-02): see CHANGELOG. Channel benchmark
 (src/jmh ChannelBenchmark, alternating A/B rounds, medians, busy

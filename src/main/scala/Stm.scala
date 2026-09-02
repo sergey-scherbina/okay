@@ -73,6 +73,9 @@ sealed abstract class TRef[A] {
 }
 
 object TRef {
+  /** a cell is its own typed token: the same cell holds the same type */
+  given TMap.Keyed[TRef] = TMap.Keyed.byIdentity
+
   /** a cell for any value: the value travels in a Slot */
   def apply[A](init: A): TRef[A] = Wrapped(init)
 

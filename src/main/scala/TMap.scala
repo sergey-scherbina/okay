@@ -15,27 +15,30 @@ package okay
  * on both sides"; that is where the key/value link is established,
  * once, by the type system.
  *
- * One cast lives here and nowhere else: in `get`, "the entry whose
- * key IS this key holds this key's type". Identity of a typed token
- * is the definition of type equality for a heterogeneous map, and
- * the compiler cannot see through it — so the claim is made in one
- * line, in the one function that needs it, and every user of TMap
- * (the STM's write set first) is cast-free.
+ * The map itself has no cast. What it needs from a key type is a
+ * PROOF that two keys are the same key — and so hold the same type:
+ * `Keyed[K].same(a: K[A], b: K[B]): Option[A =:= B]`. The key type
+ * states that axiom once, where it belongs; for reference keys
+ * `Keyed.byIdentity` is that statement ("this key IS that key, so
+ * A is B"), and it is the one place in the file where a witness is
+ * claimed rather than derived. TMap only ever APPLIES the witness.
  */
 final class TMap[K[_]] private (private val stack: List[TMap.Entry[K, ?]]) {
-  import TMap.Entry
+  import TMap.{Entry, Keyed}
 
-  /** the value under k, if any — typed by the key */
-  def get[A](k: K[A]): Option[A] =
-    stack.find(_.key.asInstanceOf[AnyRef] eq k.asInstanceOf[AnyRef])
-      .map(e => e.asInstanceOf[Entry[K, A]].value)   // THE cast: identity of a typed key is type equality
+  /** the value under k, if any — typed by the key, through the key
+   * type's own sameness proof */
+  def get[A](k: K[A])(using keyed: Keyed[K]): Option[A] =
+    def at[X](e: Entry[K, X]): Option[A] = keyed.same(e.key, k).map(ev => ev(e.value))
+    stack.iterator.map(e => at(e)).collectFirst { case Some(v) => v }
 
-  def contains[A](k: K[A]): Boolean = get(k).isDefined
+  def contains[A](k: K[A])(using Keyed[K]): Boolean = get(k).isDefined
 
-  /** k now holds v; an entry for the same key (by identity) is replaced in place */
-  def updated[A](k: K[A], v: A): TMap[K] =
+  /** k now holds v; an entry for the same key is replaced in place */
+  def updated[A](k: K[A], v: A)(using keyed: Keyed[K]): TMap[K] =
     val e = Entry(k, v)
-    if contains(k) then TMap(stack.map(x => if x.key.asInstanceOf[AnyRef] eq k.asInstanceOf[AnyRef] then e else x))
+    def isK[X](x: Entry[K, X]): Boolean = keyed.same(x.key, k).isDefined
+    if contains(k) then TMap(stack.map(x => if isK(x) then e else x))
     else TMap(e :: stack)
 
   def isEmpty: Boolean = stack.isEmpty
@@ -60,6 +63,20 @@ final class TMap[K[_]] private (private val stack: List[TMap.Entry[K, ?]]) {
 object TMap {
   /** the typed pair: one A on both sides, fixed at construction */
   final case class Entry[K[_], A](key: K[A], value: A)
+
+  /** how a key type proves that two of its keys are THE SAME key —
+   * and therefore hold the same value type */
+  trait Keyed[K[_]]:
+    def same[A, B](a: K[A], b: K[B]): Option[A =:= B]
+
+  object Keyed:
+    /** the axiom for reference keys: identity. This is the one place
+     * a `=:=` is claimed rather than derived — a typed token that IS
+     * another typed token has that token's type — stated once, as a
+     * witness, for every key type that opts in */
+    def byIdentity[K[X] <: AnyRef]: Keyed[K] = new Keyed[K]:
+      def same[A, B](a: K[A], b: K[B]): Option[A =:= B] =
+        if a eq b then Some(summon[A =:= A].asInstanceOf[A =:= B]) else None
 
   def empty[K[_]]: TMap[K] = new TMap[K](Nil)
 }
