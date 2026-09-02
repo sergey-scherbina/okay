@@ -72,7 +72,7 @@ object Wire:
 
     val port: Int = listener.getLocalPort
 
-    private val acceptor = Thread.ofVirtual().start(() => acceptLoop())
+    locally { val _ = Thread.ofVirtual().start(() => acceptLoop()) }
 
     private def acceptLoop(): Unit =
       while !closed do

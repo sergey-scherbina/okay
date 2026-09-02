@@ -1,6 +1,6 @@
 package okay.matching
 
-import okay.rag.Embedding
+
 
 /**
  * The data model of okay-match (specs/match.md), stage 0.

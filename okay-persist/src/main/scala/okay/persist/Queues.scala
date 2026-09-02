@@ -63,7 +63,7 @@ object Queues:
         case Some(msg) =>
           // append FIRST, ack SECOND: the order is the whole
           // at-least-once guarantee (a crash between them redelivers)
-          topic.append(partition, msg.id.getBytes("UTF-8"), msg.value, Ack.Durable)
+          topic.append(partition, msg.id.getBytes("UTF-8"), msg.value, Ack.Durable): Unit
           source.ack(msg.id)
           bridged += 1
     bridged

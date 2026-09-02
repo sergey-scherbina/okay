@@ -1,6 +1,6 @@
 package okay.blob
 
-import okay.{!, +, Async, Chunk, Produce, Stream, Writer, async, effect, pure}
+import okay.{!, +, Async, Chunk, Produce, Stream, Writer, effect, pure}
 import okay.given
 import okay.http.{Body, Http, Method, Request, Response}
 import scala.collection.immutable.ArraySeq

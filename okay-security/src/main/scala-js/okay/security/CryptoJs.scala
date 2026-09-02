@@ -2,7 +2,7 @@ package okay.security
 
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
-import scala.scalajs.js.typedarray.{Int8Array, Uint8Array}
+import scala.scalajs.js.typedarray.Uint8Array
 
 /**
  * The Crypto seam over node:crypto — the security-node stage. What

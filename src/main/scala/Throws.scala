@@ -164,8 +164,9 @@ object CanTry:
       def step(p: () => A ! Fx): A ! Fx =
         (try Right(p().resume) catch case e: Throwable => Left(e)) match
           case Left(e) => h(e)
-          case Right(Pure(a)) => Free.Pure(a)
-          case Right(Effect(op)) => Free.Inject(op)
-          case Right(Bind(Effect(op), k)) =>
-            Free.Bind(Free.Inject(op), x => step(() => k(x)))
+          // the stack's convention: resume answers one of three shapes
+          case Right(head) => (head: @unchecked) match
+            case Pure(a) => Free.Pure(a)
+            case Effect(op) => Free.Inject(op)
+            case Bind(Effect(op), k) => Free.Bind(Free.Inject(op), x => step(() => k(x)))
       step(() => fa)

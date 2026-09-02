@@ -1,6 +1,6 @@
 package okay.pg
 
-import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Net, NetConn, Produce, async, effect, pure}
+import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Net, NetConn, Produce, effect, pure}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
 import okay.crypto.Crypto
 import java.nio.charset.StandardCharsets.UTF_8
@@ -282,7 +282,7 @@ final class PgSql private (conn: NetConn) extends Sql:
 
   private def bindMsg(params: Vector[SqlValue]): Array[Byte] =
     val b = Array.newBuilder[Byte]
-    b ++= str("") ++= str("")
+    b ++= str("") ++= str(""): Unit
     b ++= i16(0)
     b ++= i16(params.length)
     for p <- params do
@@ -310,7 +310,7 @@ final class PgSql private (conn: NetConn) extends Sql:
       val tableOid = i32r()
       val attnum = i16r()
       val typeOid = i32r()
-      i16r(); i32r(); i16r()
+      i16r(): Unit; i32r(): Unit; i16r(): Unit
       (label, typeOid, tableOid, attnum)
     }
 

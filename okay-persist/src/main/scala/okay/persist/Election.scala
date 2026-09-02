@@ -91,7 +91,7 @@ final class Election(control: Topic, val node: String,
     refresh()
     for (p, d) <- state if d.node == node do
       typed.append(0, Array.empty, Claim.Lease(p, d.epoch, node, clock() + leaseMillis),
-        Ack.Durable)
+        Ack.Durable): Unit
       ()
     refresh()
   }
@@ -109,14 +109,14 @@ final class Election(control: Topic, val node: String,
     if !vacant(partition) then None
     else
       val e = state.get(partition).map(_.epoch + 1).getOrElse(1L)
-      typed.append(0, Array.empty, Claim.Take(partition, e, node), Ack.Durable)
+      typed.append(0, Array.empty, Claim.Take(partition, e, node), Ack.Durable): Unit
       refresh()
       state.get(partition) match
         case Some(d) if d.epoch == e && d.node == node && !d.operator =>
           // hold the seat immediately, so a racing second claimant
           // sees a live lease, not a vacancy
           typed.append(0, Array.empty, Claim.Lease(partition, e, node, clock() + leaseMillis),
-            Ack.Durable)
+            Ack.Durable): Unit
           refresh()
           Some(e)
         case Some(d) if d.epoch == e && d.node == node => Some(e) // the operator chose us
@@ -128,7 +128,7 @@ final class Election(control: Topic, val node: String,
   def operatorAssign(partition: Int, chosen: String): Long = synchronized {
     refresh()
     val e = state.get(partition).map(_.epoch + 1).getOrElse(1L)
-    typed.append(0, Array.empty, Claim.Operator(partition, e, chosen), Ack.Durable)
+    typed.append(0, Array.empty, Claim.Operator(partition, e, chosen), Ack.Durable): Unit
     refresh()
     e
   }

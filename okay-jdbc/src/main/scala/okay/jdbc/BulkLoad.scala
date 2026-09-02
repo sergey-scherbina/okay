@@ -1,6 +1,6 @@
 package okay.jdbc
 
-import okay.{!, +, Async, Chunk, Produce, async}
+import okay.{!, Async, Chunk, async}
 import okay.given
 import okay.sql.{Granted, Isolation, Sql, SqlValue}
 
@@ -43,7 +43,7 @@ object BulkLoad {
               try
                 okay.!.run(Async.run[Long, Nothing](db.update(
                   s"insert into $history (load_id, loaded_at) values (?, ?)",
-                  Vector(SqlValue.Text(loadId), SqlValue.I64(System.currentTimeMillis)))))
+                  Vector(SqlValue.Text(loadId), SqlValue.I64(System.currentTimeMillis))))): Unit
                 true
               catch case e: Exception =>
                 // a refused insert must mean the KEY, not a dead wire:

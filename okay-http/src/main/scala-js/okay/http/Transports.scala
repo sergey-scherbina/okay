@@ -71,7 +71,7 @@ object Transports {
             case Some(v) if !r.done => k(Right(chunkOf(v)))
             case _ => k(Right(null))
           ()
-        }: js.Function1[Web.ReadResult, Unit])
+        }: js.Function1[Web.ReadResult, Unit]): Unit
         () => ()
       }).flatMap {
         case null => pure(())

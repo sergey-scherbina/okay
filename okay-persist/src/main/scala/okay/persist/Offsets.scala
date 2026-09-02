@@ -40,7 +40,7 @@ final class Offsets(val topic: Topic):
   def commit(group: String, topicName: String, partition: Int, offset: Long,
              ack: Ack = Ack.Durable): Unit = synchronized:
     val key = keyOf(group, topicName, partition)
-    topic.append(key, bytesOf(offset), ack)
+    topic.append(key, bytesOf(offset), ack): Unit
     committedByKey = committedByKey.updated(ArraySeq.unsafeWrapArray(key), offset)
 
   /** the last committed NEXT-offset for this group and partition —

@@ -88,7 +88,7 @@ object Form {
     case su: Schema.SSum[?] => sumUi(su, v.getOrElse(Json.JObj(Vector.empty)), errors, k, name)
     case Schema.SList(of) => listUi(name, k, of(), v, errors)
     case Schema.SVector(of) => listUi(name, k, of(), v, errors)
-    case other => Ui.Text(s"unsupported field: $name")
+    case _ => Ui.Text(s"unsupported field: $name")
 
   /** items in order, each with its remover, and the adder at the end */
   private def listUi(name: String, k: String, item: Schema[?],
@@ -182,7 +182,7 @@ object Form {
                   set(value, n, Json.JArr(arr.updated(i, leaf(item, ev, Some(arr(i))))))
                 else set(value, n, Json.JArr(arr.updated(i, editAt(item, arr(i), rest, ev))))
         // list add/del addressed at the FIELD itself
-        case (p: Schema.SProduct[?], Nil) => value
+        case (_: Schema.SProduct[?], Nil) => value
         case _ => value
 
   private def isList(s: Schema[?]): Boolean = s match
@@ -257,9 +257,9 @@ object Form {
         }
       case su: Schema.SSum[?] => value match
         case Json.JObj(Vector((n, v))) =>
-          su.cases.find(_._1 == n) match
-            case Some((_, cs)) => errorsOf(cs(), v, prefix)
-            case None => Vector(prefix -> s"unknown case '$n'")
+          su.cases.find(_._1 == n)
+            .map((_, cs) => errorsOf(cs(), v, prefix))
+            .getOrElse(Vector(prefix -> s"unknown case '$n'"))
         case _ => Vector(key(prefix, "$case") -> "choose one")
       case other => fieldError(other, Some(value), prefix)
 
@@ -280,7 +280,7 @@ object Form {
 
   private def decodeField[X](s: Schema[X], v: Option[Json]): Either[String, X] = s match
     case Schema.SIso(u, to, _) => decodeField(u(), v).flatMap(to)
-    case o: Schema.SOption[a] => v match
+    case o: Schema.SOption[?] => v match
       case None | Some(Json.JNull) | Some(Json.JStr("")) => Right(None)
       case Some(x) => decodeField(o.of(), Some(x)).map(Some(_))
     case other => v match

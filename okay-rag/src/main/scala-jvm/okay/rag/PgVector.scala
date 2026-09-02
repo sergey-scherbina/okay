@@ -1,6 +1,6 @@
 package okay.rag
 
-import okay.{!, +, Async, Chunk, Produce, Stream, async}
+import okay.{!, +, Async, Chunk, Produce, Stream}
 import okay.given
 import okay.lex.Span
 import okay.sql.{Sql, SqlValue}

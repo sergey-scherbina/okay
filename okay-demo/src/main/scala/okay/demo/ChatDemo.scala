@@ -151,7 +151,7 @@ object ChatDemo {
     val me = store.register(sessionEmail.getOrElse(resolveEmail(text, intakePolicy)))
     val off = log.append(ChatTurn(me, "user", text))
     val answer = matchTurn(text, history, off, sessionEmail)
-    log.append(ChatTurn(me, "assistant", answer))
+    log.append(ChatTurn(me, "assistant", answer)): Unit
     answer
 
   /** log-first made demonstrable: drop the projection, rebuild it
@@ -163,9 +163,9 @@ object ChatDemo {
     var n = 0L
     log.replay { (t, prov) =>
       if t.role == "user" then
-        matchTurn(t.text, Nil, prov.offset)
+        matchTurn(t.text, Nil, prov.offset): Unit
         n += 1
-    }
+    }: Unit
     n
 
   private val matchSystem =
@@ -261,7 +261,7 @@ object ChatDemo {
         store.dealsFor(deal.seeker)
           .filter(d => d.state == DealState.Asked && d.what == deal.what)
           .foreach { d =>
-            store.withdraw(d.id, deal.seeker)
+            store.withdraw(d.id, deal.seeker): Unit
             store.profileOf(d.provider).map(_.email).foreach(m =>
               inbox(m).offer(s"отбой по заказу: ${d.what} — исполнитель уже найден"))
           }
@@ -392,7 +392,7 @@ object ChatDemo {
       Json.parse(out) match
         case JObj(fs) =>
           val n = fs.collectFirst { case ("deal", JNum(x)) => x.toLong }.getOrElse(0L)
-          store.dealsFor(okay.matching.ProfileId("")) // no-op keeps types honest
+          store.dealsFor(okay.matching.ProfileId("")): Unit // no-op keeps types honest
           val byId = c.args match
             case JObj(a) => a.collectFirst { case ("by", JStr(x)) => x }.getOrElse("")
             case _ => ""
@@ -586,14 +586,14 @@ object ChatDemo {
         call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("skill"),
           "side" -> JStr("offer"), "chat" -> JStr("web-demo"),
           "offset" -> JNum(off.toDouble), "span" -> JStr(text),
-          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(skill))))
+          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(skill)))): Unit
         // the contact rides as a MATCHED fact: only an accepted deal
         // will show it to anyone — the demo of the second gate
         call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("contact"),
           "side" -> JStr("offer"), "chat" -> JStr("web-demo"),
           "offset" -> JNum(off.toDouble), "span" -> JStr(text),
           "vis" -> JStr("matched"),
-          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(email))))
+          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(email)))): Unit
         if en then s"""stored offer: "$skill" (profile $email)"""
         else s"""записал предложение: \"$skill\" (профиль $email)"""
       case s if s.contains("нужен") || s.contains("нужно") || s.contains("want:") || s.contains("need:") =>
@@ -603,7 +603,7 @@ object ChatDemo {
         call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("need"),
           "side" -> JStr("need"), "chat" -> JStr("web-demo"),
           "offset" -> JNum(off.toDouble), "span" -> JStr(text),
-          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(want))))
+          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(want)))): Unit
         Json.parse(call("find_candidates", "side" -> JStr("offer"),
           "text" -> JStr(want))) match
           case JArr(hits) if hits.nonEmpty =>
@@ -776,7 +776,7 @@ object ChatDemo {
                 else "эта сделка не ваша или уже закрыта"
       case s if s.contains("оплатить") || s.contains("pay") =>
         val me = store.register(email)
-        call("subscription_pay", "profile" -> JStr(me.uuid))
+        call("subscription_pay", "profile" -> JStr(me.uuid)): Unit
         if en then "subscription paid for this period — back in search and matching"
         else "подписка оплачена на этот месяц — снова в поиске и матчинге"
       case _ => if en then englishHelp else russianHelp

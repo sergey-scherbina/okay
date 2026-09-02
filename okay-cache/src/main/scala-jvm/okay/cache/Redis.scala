@@ -48,8 +48,8 @@ object Redis {
      * them, loud on a wire this client does not speak */
     private def reply(): Either[String, Option[Array[Byte]]] =
       in.read() match
-        case '+' => line(); Right(Some(Array.empty))          // +OK and friends
-        case ':' => line(); Right(Some(Array.empty))          // integer acks (DEL)
+        case '+' => line(): Unit; Right(Some(Array.empty)) // +OK and friends
+        case ':' => line(): Unit; Right(Some(Array.empty)) // integer acks (DEL)
         case '-' => Left(line())                              // -ERR, as data
         case '$' =>
           val n = line().toInt
@@ -140,7 +140,7 @@ object Redis {
                 val v = okay.!.run(Async.run[V, Nothing](load(k)))
                 okay.!.run(Async.run[Unit, Nothing](put(k, v)))
                 v
-          } finally flights.remove(key)
+          } finally flights.remove(key): Unit
         }
       }
 

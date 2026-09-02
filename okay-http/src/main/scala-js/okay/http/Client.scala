@@ -37,6 +37,6 @@ object Client {
     }
 
   private def exit(code: Int): Unit =
-    js.Dynamic.global.process.exit(code)
+    val _ = js.Dynamic.global.process.exit(code)
     ()
 }

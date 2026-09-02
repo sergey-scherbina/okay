@@ -251,7 +251,8 @@ object ChunkBuf {
 
   /** the sequence with its size known: as is when it says, else
    * materialized once */
-  private def sized[A](xs: IterableOnce[A]): (IterableOnce[A], Int) =
+  @scala.annotation.publicInBinary
+  private[okay] def sized[A](xs: IterableOnce[A]): (IterableOnce[A], Int) =
     val known = xs.knownSize
     if known >= 0 then (xs, known)
     else
@@ -263,7 +264,8 @@ object ChunkBuf {
    * IS a Chunk[A] — `update` told that lie at every write, this is
    * where the reading side repeats it. `raw` comes from reflection
    * (java.lang.reflect.Array.newInstance answers Object) */
-  private def wrap[A](raw: AnyRef): Chunk[A] =
+  @scala.annotation.publicInBinary
+  private[okay] def wrap[A](raw: AnyRef): Chunk[A] =
     ArraySeq.unsafeWrapArray(raw.asInstanceOf[Array[?]]).asInstanceOf[Chunk[A]]
 
   extension [A](buf: ChunkBuf[A]) {

@@ -18,16 +18,16 @@ private final class NodeConn(sock: js.Dynamic) extends NetConn:
   locally {
     // a "data" event hands a Buffer, which IS a Uint8Array: typed at
     // the callback, not cast inside it
-    sock.on("data", { (u: Uint8Array) =>
+    val _ = sock.on("data", { (u: Uint8Array) =>
       val add = new Array[Byte](u.length)
       var i = 0
       while i < u.length do { add(i) = (u(i).toInt & 0xff).toByte; i += 1 }
       buf = buf ++ add
       pump()
     }: js.Function1[Uint8Array, Unit])
-    sock.on("end", { () => eof = true; pump() }: js.Function0[Unit])
-    sock.on("close", { () => eof = true; pump() }: js.Function0[Unit])
-    sock.on("error", { (e: js.Dynamic) =>
+    val _ = sock.on("end", { () => eof = true; pump() }: js.Function0[Unit])
+    val _ = sock.on("close", { () => eof = true; pump() }: js.Function0[Unit])
+    val _ = sock.on("error", { (e: js.Dynamic) =>
       failed = js.JavaScriptException(e)
       eof = true
       pump()
@@ -54,12 +54,12 @@ private final class NodeConn(sock: js.Dynamic) extends NetConn:
     }
 
   def write(bytes: Array[Byte]): Unit ! Async = async {
-    sock.write(byteArray2Int8Array(bytes))
+    val _ = sock.write(byteArray2Int8Array(bytes))
     ()
   }
 
   def close(): Unit =
-    sock.end()
+    val _ = sock.end()
     ()
 
 given Net = new Net:
@@ -69,10 +69,10 @@ given Net = new Net:
       var settled = false
       val sock = net.connect(port, host)
       val conn = NodeConn(sock)
-      sock.once("connect", { () =>
+      val _ = sock.once("connect", { () =>
         if !settled then { settled = true; k(Right(conn)) }
       }: js.Function0[Unit])
-      sock.once("error", { (e: js.Dynamic) =>
+      val _ = sock.once("error", { (e: js.Dynamic) =>
         if !settled then { settled = true; k(Left(js.JavaScriptException(e))) }
       }: js.Function1[js.Dynamic, Unit])
       () => ()

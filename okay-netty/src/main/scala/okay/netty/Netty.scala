@@ -12,7 +12,7 @@ import io.netty.channel.socket.SocketChannel
 import io.netty.channel.socket.nio.{NioServerSocketChannel, NioSocketChannel}
 import io.netty.handler.codec.http.*
 import io.netty.handler.codec.http.websocketx.*
-import io.netty.util.CharsetUtil
+
 
 import java.net.URI
 import java.nio.charset.StandardCharsets.UTF_8
@@ -83,7 +83,7 @@ object Netty {
                     if answered.compareAndSet(false, true) then k(Left(e))
                     else q.fail(e)
                     ctx.close(): Unit
-                })
+                }): Unit
           })
 
         b.connect(uri.getHost, port).addListener { (f: ChannelFuture) =>
@@ -154,7 +154,7 @@ object Netty {
                       if opened.compareAndSet(false, true) then k(Left(e))
                       else q.fail(e)
                       ctx.close(): Unit
-                  })
+                  }): Unit
             })
           b.connect(uri.getHost, port).addListener { (f: ChannelFuture) =>
             if !f.isSuccess && opened.compareAndSet(false, true) then k(Left(f.cause))
@@ -194,7 +194,7 @@ object Netty {
                         req.headers.get(HttpHeaderNames.UPGRADE)) then
                       upgrade(ctx, req, ws(r))
                     else answer(ctx, r, routes)
-                })
+                }): Unit
           })
         b.bind(port).sync().channel
       }(c => { c.close().sync(): Unit })
@@ -259,7 +259,7 @@ object Netty {
       handshaker.handshake(ctx.channel, req).addListener { (f: ChannelFuture) =>
         if f.isSuccess then
           Async.spawn(okay.http.Ws.over(socket(ctx.channel, q))(stage)): Unit
-      }
+      }: Unit
 
   // ---- frames, both directions
 

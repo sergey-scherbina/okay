@@ -109,7 +109,7 @@ object Doctor {
             frames += 1
             lastOffset = Some(offset)
             derived += 1
-            buf.position(buf.position + len)
+            buf.position(buf.position + len): Unit
     if go && buf.remaining > 0 then
       damage = Some(s"${buf.remaining} trailing bytes after the last frame — torn tail")
     Segment(name, topic, partition, format, base, frames, lastOffset, damage)

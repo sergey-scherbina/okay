@@ -22,11 +22,11 @@ object Placeholders:
     while i < sql.length do
       val c = sql.charAt(i)
       if quote != 0 then
-        sb.append(c)
+        sb.append(c): Unit
         if c == quote then quote = 0
       else c match
-        case '\'' | '"' => quote = c; sb.append(c)
-        case '?' => n += 1; sb.append('$').append(n)
-        case _ => sb.append(c)
+        case '\'' | '"' => quote = c; sb.append(c): Unit
+        case '?' => n += 1; sb.append('$').append(n): Unit
+        case _ => sb.append(c): Unit
       i += 1
     sb.result()

@@ -16,7 +16,7 @@ final case class Health(live: Boolean, ready: Boolean, reason: Option[String] = 
 object Health:
   def of(store: Store): Health =
     try
-      store.stats
+      store.stats: Unit
       Health(live = true, ready = true)
     catch case e: Throwable =>
       Health(live = false, ready = false, reason = Some(

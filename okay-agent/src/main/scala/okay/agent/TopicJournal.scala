@@ -33,10 +33,10 @@ final class TopicJournal(topic: Topic, run: String) extends Durable.Journal:
   private val partition = Topic.route(runKey, topic.partitions)
 
   def append(e: Durable.Entry): Unit =
-    typed.append(partition, runKey, Rec.Intent(e.seq, e.op, e.fingerprint, e.key), Ack.Durable)
+    typed.append(partition, runKey, Rec.Intent(e.seq, e.op, e.fingerprint, e.key), Ack.Durable): Unit
 
   def complete(seq: Int, answer: String): Unit =
-    typed.append(partition, runKey, Rec.Complete(seq, answer), Ack.Durable)
+    typed.append(partition, runKey, Rec.Complete(seq, answer), Ack.Durable): Unit
 
   def all: Vector[Durable.Entry] =
     var entries = Vector.empty[Durable.Entry]

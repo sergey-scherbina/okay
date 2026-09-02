@@ -37,7 +37,7 @@ final class Writes(db: Sql, topic: Topic, run: String):
     }.flatMap { _ =>
       db.update(sql, params).flatMap { count =>
         async {
-          typed.append(partition, runKey, Rec.Done(n, count), Ack.Durable)
+          typed.append(partition, runKey, Rec.Done(n, count), Ack.Durable): Unit
           count
         }
       }

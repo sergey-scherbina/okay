@@ -27,7 +27,7 @@ import okay.sql.{Sql, SqlValue}
  * is the truth, the caches are caches.
  */
 final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
-  import SqlStore.*
+
 
   private val records = s"${prefix}_records"
   private val topicsT = s"${prefix}_topics"
@@ -42,11 +42,11 @@ final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
          ts bigint not null,
          k varbinary(4096) not null,
          v varbinary(1048576) not null,
-         primary key (topic, part, off))"""))
+         primary key (topic, part, off))""")): Unit
     run(db.update(
       s"""create table if not exists $topicsT(
          name varchar(128) primary key not null,
-         parts int not null)"""))
+         parts int not null)""")): Unit
     // begin moves ONLY under retention (compaction leaves holes but
     // never the start), so it is state of its own, not min(off)
     run(db.update(
@@ -54,7 +54,7 @@ final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
          topic varchar(128) not null,
          part int not null,
          begin_off bigint not null,
-         primary key (topic, part))"""))
+         primary key (topic, part))""")): Unit
     ()
 
   private var open = Vector.empty[SqlTopic]
@@ -77,7 +77,7 @@ final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
           case Some(_) => ()
           case None =>
             run(db.update(s"insert into $topicsT values (?, ?)",
-              Vector(SqlValue.Text(name), SqlValue.I32(partitions))))
+              Vector(SqlValue.Text(name), SqlValue.I32(partitions)))): Unit
             ()
         val t = new SqlTopic(name, partitions, policy)
         open :+= t
@@ -165,7 +165,7 @@ final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
         run(db.update(s"insert into $records values (?, ?, ?, ?, ?, ?)",
           Vector(SqlValue.Text(name), SqlValue.I32(partition), SqlValue.I64(off),
             SqlValue.I64(System.currentTimeMillis()),
-            SqlValue.Bytes(key), SqlValue.Bytes(value))))
+            SqlValue.Bytes(key), SqlValue.Bytes(value)))): Unit
         next(partition) = off + 1
         bytes(partition) += key.length.toLong + value.length + frameOverhead
         if !policy.compact then retain(partition)
@@ -183,14 +183,14 @@ final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
           Vector(SqlValue.Text(name), SqlValue.I32(partition), SqlValue.I64(head)))
           .map(longOf).getOrElse(0L)
         run(db.update(s"delete from $records where topic = ? and part = ? and off = ?",
-          Vector(SqlValue.Text(name), SqlValue.I32(partition), SqlValue.I64(head))))
+          Vector(SqlValue.Text(name), SqlValue.I32(partition), SqlValue.I64(head)))): Unit
         bytes(partition) -= dropped
         begins(partition) = head + 1
         moved = true
       if moved then
         run(db.update(s"merge into ${prefix}_begins key (topic, part) values (?, ?, ?)",
           Vector(SqlValue.Text(name), SqlValue.I32(partition),
-            SqlValue.I64(begins(partition)))))
+            SqlValue.I64(begins(partition))))): Unit
         ()
 
     private def countOf(partition: Int): Long =
@@ -219,7 +219,7 @@ final class SqlStore(db: Sql, prefix: String = "okay_persist") extends Store:
           s"""delete from $records r where r.topic = ? and r.part = ? and exists (
              select 1 from $records r2 where r2.topic = r.topic and r2.part = r.part
              and r2.k = r.k and r2.off > r.off)""",
-          Vector(SqlValue.Text(name), SqlValue.I32(partition))))
+          Vector(SqlValue.Text(name), SqlValue.I32(partition)))): Unit
         bytes(partition) = one(
           s"select sum(length(k) + length(v) + $frameOverhead) from $records " +
             "where topic = ? and part = ?",

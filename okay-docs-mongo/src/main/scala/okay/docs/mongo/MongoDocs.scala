@@ -34,7 +34,7 @@ final class MongoDocs[A](coll: MongoCollection[Document],
       coll.createIndex(Indexes.ascending(s"ix_$f"), IndexOptions()); ()
     }
 
-  private def fieldsOf(id: String, a: A): List[org.bson.conversions.Bson] =
+  private def fieldsOf(@scala.annotation.unused id: String, a: A): List[org.bson.conversions.Bson] =
     Updates.set("d", Binary(Cbor.write(a))) ::
       indexes.toList.map((f, get) => Updates.set(s"ix_$f", get(a)))
 

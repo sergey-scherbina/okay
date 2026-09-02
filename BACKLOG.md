@@ -88,10 +88,12 @@ construction instead of a type test per value).
       Form decodes fields at their type, Screen finds a boundary by
       Same's witness, Collect always calls the finisher, jdbc/r2dbc
       walk any array by the runtime. Casts in src/main: 97 → 36.
-      Left in this group: Screen's `Nav | S` union split (an API
-      design: S itself may be a Nav — an Either would fix it, a
-      public signature change), Dom.scala's js.Dynamic (a ui-js
-      facade lane).
+      Left in this group: Dom.scala's js.Dynamic (a ui-js facade
+      lane; decided for now — the backend takes a real document or a
+      test's fake, and js.Dynamic is what fits both). Screen's
+      `Nav | S` split is SOUND since tidy-warnings-screen-dom: a
+      `NotGiven[S <:< Nav]` evidence refuses an S that is a Nav at
+      compile time, so the runtime test on Nav decides the union.
 - kernels that stay, each with its reason at its line: Same (2),
   Eager (2), Pipe (2), Condition (1), Delim (2), Schema (5), Effects
   (2), Writer (1), Http (1), Chunks (2), ChunkBuf (1), Generate (1),

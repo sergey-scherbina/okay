@@ -43,7 +43,7 @@ object ToolSpec {
       val props = p.fields.zipWithIndex.map { case ((n, f), i) =>
         val base = jsonSchema(f())
         (n, defaulted(i) match
-          case Some(d) => base match
+          case Some(_) => base match
             case Json.JObj(fs) => Json.JObj(fs :+
               ("default" -> Json.parse(p.defaultAt(i)([X] => (sc: Schema[X], x: X) => Json.encode(sc)(x)).get)))
             case other => other

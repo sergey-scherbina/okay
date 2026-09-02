@@ -67,12 +67,16 @@ object Nav {
       case other => other
 
   /** a screen from a plain (state, view, update) triple — update may
-   * answer a Nav, or just the next state (which means Stay) */
-  def screen[S](init: S)(v: S => Ui)(u: (S, Event) => Nav | S): Screen = new Screen:
+   * answer a Nav, or just the next state (which means Stay). The
+   * split is a runtime test on Nav, so S must NOT be a Nav — the
+   * `NotGiven` evidence refuses such an S at compile time, which is
+   * what makes the second branch's claim ("not a Nav, so an S") true */
+  def screen[S](init: S)(v: S => Ui)(u: (S, Event) => Nav | S)
+               (using scala.util.NotGiven[S <:< Nav]): Screen = new Screen:
     def view: Ui = v(init)
     def step(e: Event): Nav = u(init, e) match
       case n: Nav => n
-      case s => Stay(screen(s.asInstanceOf[S])(v)(u))
+      case s => Stay(screen(s.asInstanceOf[S])(v)(u))   // not a Nav: an S, by the evidence above
 
   /**
    * The stack as ONE application for `Ui.run`: the state is the
@@ -109,7 +113,7 @@ object Nav {
   : (List[Screen], Vector[okay.![Event, okay.Async]]) =
     // the boundary whose key IS k — and by Same's witness, a Boundary[A]
     def boundaryFor(s: Screen): Option[Boundary[A]] = s match
-      case b: Boundary[x] => (b.k === k).map(ev => ev.liftCo[Boundary](b))
+      case b: Boundary[x] => ((b.k: Key[x]) === k).map(ev => ev.liftCo[Boundary](b))
       case _ => None
     stack.iterator.zipWithIndex.flatMap((s, i) => boundaryFor(s).map(b => (b, i))).nextOption() match
       case None => (stack, Vector.empty)

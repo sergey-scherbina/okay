@@ -59,8 +59,8 @@ object View:
                 for r <- rs do
                   val k = ArraySeq.unsafeWrapArray(r.key)
                   fold(state.get(k), r) match
-                    case Some(v) => state.put(k, v)
-                    case None => state.remove(k)  // the tombstone
+                    case Some(v) => state.put(k, v): Unit
+                    case None => state.remove(k): Unit  // the tombstone
                   consumed(p) = r.offset + 1
         p += 1
     }

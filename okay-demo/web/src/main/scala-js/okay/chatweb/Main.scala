@@ -24,7 +24,7 @@ object Main {
     val root = g.ReactDOM.createRoot(g.document.getElementById("root"))
     def render(ui: Ui): Unit =
       current = ui
-      root.render(ReactJs.element(react, React.elem(ui), e => bus.offer(e): Unit, () => current))
+      val _ = root.render(ReactJs.element(react, React.elem(ui), e => bus.offer(e): Unit, () => current))
       ()
 
     def loop(s: ChatUi.State): Unit ! Async =
@@ -50,7 +50,7 @@ object Main {
     if !subscribed then
       subscribed = true
       val es = js.Dynamic.newInstance(g.EventSource)(s"/events/$email")
-      es.addEventListener("match", { (ev: js.Dynamic) =>
+      val _ = es.addEventListener("match", { (ev: js.Dynamic) =>
         bus.offer(okay.ui.Event.Edited("$match",
           js.JSON.parse(ev.data.asInstanceOf[String]).asInstanceOf[String])): Unit
       }: js.Function1[js.Dynamic, Unit])
@@ -67,7 +67,7 @@ object Main {
       "method" -> "POST",
       "headers" -> js.Dictionary("content-type" -> "application/json"),
       "body" -> body)
-    g.fetch("/chat", init).`then` { (res: js.Dynamic) =>
+    val _ = g.fetch("/chat", init).`then` { (res: js.Dynamic) =>
       val reader = res.body.getReader()
       val decoder = js.Dynamic.newInstance(g.TextDecoder)()
       var buf = ""
@@ -80,7 +80,7 @@ object Main {
           case "cut" => bus.offer(Event.Edited("$cut", data)): Unit
           case _ => bus.offer(Event.Pressed("$done")): Unit
       def pump(): Unit =
-        reader.read().`then` { (r: js.Dynamic) =>
+        val _ = reader.read().`then` { (r: js.Dynamic) =>
           if r.done.asInstanceOf[Boolean] then
             if buf.nonEmpty then frame(buf)
           else

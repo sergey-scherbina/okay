@@ -65,35 +65,35 @@ final class SqlMatch(sql: Sql,
     exec("""CREATE TABLE IF NOT EXISTS match_attrs(
       id BIGINT PRIMARY KEY, slug VARCHAR(255), kind VARCHAR(16),
       description VARCHAR(4000), synonyms VARCHAR(4000),
-      status VARCHAR(300), volatile BOOLEAN, identifying BOOLEAN)""")
+      status VARCHAR(300), volatile BOOLEAN, identifying BOOLEAN)"""): Unit
     exec("""CREATE TABLE IF NOT EXISTS match_profiles(
-      uuid VARCHAR(64) PRIMARY KEY, email VARCHAR(255))""")
+      uuid VARCHAR(64) PRIMARY KEY, email VARCHAR(255))"""): Unit
     exec("""CREATE TABLE IF NOT EXISTS match_facts(
       id BIGINT PRIMARY KEY, profile VARCHAR(64), attr VARCHAR(255),
       side VARCHAR(8), vkind VARCHAR(8), vtext VARCHAR(4000),
       vnum DOUBLE PRECISION, vlo DOUBLE PRECISION, vhi DOUBLE PRECISION, vlat DOUBLE PRECISION, vlon DOUBLE PRECISION,
       chat VARCHAR(255), off BIGINT, span VARCHAR(4000),
       confidence DOUBLE PRECISION, ts BIGINT, vis VARCHAR(8),
-      superseded_by BIGINT, reason VARCHAR(4000))""")
+      superseded_by BIGINT, reason VARCHAR(4000))"""): Unit
     exec("""CREATE TABLE IF NOT EXISTS match_recovery(
-      profile VARCHAR(64) PRIMARY KEY, secret VARCHAR(1000))""")
+      profile VARCHAR(64) PRIMARY KEY, secret VARCHAR(1000))"""): Unit
     exec("""CREATE TABLE IF NOT EXISTS match_links(
-      a VARCHAR(64), b VARCHAR(64))""")
+      a VARCHAR(64), b VARCHAR(64))"""): Unit
     exec("""CREATE TABLE IF NOT EXISTS match_deals(
       id BIGINT PRIMARY KEY, seeker VARCHAR(64), provider VARCHAR(64),
-      what VARCHAR(4000), state VARCHAR(16), ts BIGINT)""")
+      what VARCHAR(4000), state VARCHAR(16), ts BIGINT)"""): Unit
     exec("""CREATE TABLE IF NOT EXISTS match_flows(
       id BIGINT PRIMARY KEY, scenario VARCHAR(255), what VARCHAR(4000),
-      state VARCHAR(255), parties VARCHAR(4000))""")
+      state VARCHAR(255), parties VARCHAR(4000))"""): Unit
     exec("""CREATE TABLE IF NOT EXISTS match_flow_hist(
-      flow BIGINT, transition VARCHAR(255), by_p VARCHAR(64), ts BIGINT)""")
+      flow BIGINT, transition VARCHAR(255), by_p VARCHAR(64), ts BIGINT)"""): Unit
     exec("""CREATE TABLE IF NOT EXISTS match_unlocks(
-      viewer VARCHAR(64), other VARCHAR(64), attr VARCHAR(255))""")
+      viewer VARCHAR(64), other VARCHAR(64), attr VARCHAR(255))"""): Unit
     exec("""CREATE TABLE IF NOT EXISTS match_tokens(
       token VARCHAR(64) PRIMARY KEY, pfrom VARCHAR(64), pto VARCHAR(64),
-      expires BIGINT)""")
-    exec("CREATE INDEX IF NOT EXISTS match_facts_attr ON match_facts(attr)")
-    exec("CREATE INDEX IF NOT EXISTS match_facts_profile ON match_facts(profile)")
+      expires BIGINT)"""): Unit
+    exec("CREATE INDEX IF NOT EXISTS match_facts_attr ON match_facts(attr)"): Unit
+    exec("CREATE INDEX IF NOT EXISTS match_facts_profile ON match_facts(profile)"): Unit
 
   createSchema()
 
@@ -192,7 +192,7 @@ final class SqlMatch(sql: Sql,
       exec("INSERT INTO match_attrs VALUES(?,?,?,?,?,?,?,?)", Vector(
         I64(a.id.n), Text(a.slug), Text(a.kind.toString), Text(a.description),
         Text(a.synonyms.mkString("\u0001")), Text("Provisional"), Bool(a.volatile),
-        Bool(a.identifying)))
+        Bool(a.identifying))): Unit
       a
     }
 
@@ -202,9 +202,9 @@ final class SqlMatch(sql: Sql,
    * winner — a projection rebuild in place; the log never changed */
   def mergeAttr(loser: String, winner: String): Unit =
     exec("UPDATE match_facts SET attr = ? WHERE attr = ?",
-      Vector(Text(winner), Text(loser)))
+      Vector(Text(winner), Text(loser))): Unit
     exec("UPDATE match_attrs SET status = ? WHERE slug = ?",
-      Vector(Text(s"MergedInto:$winner"), Text(loser)))
+      Vector(Text(s"MergedInto:$winner"), Text(loser))): Unit
     ()
 
   // ---- facts --------------------------------------------------------
@@ -214,7 +214,7 @@ final class SqlMatch(sql: Sql,
       case Vector(Vector(Text(u))) => ProfileId(u)
       case _ =>
         val id = ProfileId(fresh())
-        exec("INSERT INTO match_profiles VALUES(?,?)", Vector(Text(id.uuid), Text(email)))
+        exec("INSERT INTO match_profiles VALUES(?,?)", Vector(Text(id.uuid), Text(email))): Unit
         id
 
   def assert(p: ProfileId, attr: String, side: Side, v: Value,
@@ -244,7 +244,7 @@ final class SqlMatch(sql: Sql,
         Text(f.prov.chat), I64(f.prov.offset), Text(f.prov.span),
         F64(f.confidence), I64(f.ts), Text(f.vis.toString),
         f.supersededBy.map(x => I64(x.n)).getOrElse(Null),
-        f.reason.map(Text(_)).getOrElse(Null)))
+        f.reason.map(Text(_)).getOrElse(Null))): Unit
     ()
 
   def supersede(id: FactId, v: Value, reason: String, prov: Provenance): FactId =
@@ -258,7 +258,7 @@ final class SqlMatch(sql: Sql,
         nextFact += 1
         insertFact(nf)
         exec("UPDATE match_facts SET superseded_by = ? WHERE id = ?",
-          Vector(I64(nf.id.n), I64(id.n)))
+          Vector(I64(nf.id.n), I64(id.n))): Unit
         nf.id
 
   def profileOf(id: ProfileId): Option[Profile] =
@@ -311,15 +311,15 @@ final class SqlMatch(sql: Sql,
       val t = LinkToken(fresh(), from, to,
         now() + 15L * 60 * 1000)
       exec("INSERT INTO match_tokens VALUES(?,?,?,?)",
-        Vector(Text(t.token), Text(from.uuid), Text(to.uuid), I64(t.expiresAt)))
+        Vector(Text(t.token), Text(from.uuid), Text(to.uuid), I64(t.expiresAt))): Unit
       Some(t)
 
   def confirmLink(token: String, by: ProfileId, prov: Provenance): Option[ProfileId] =
     rows("SELECT pfrom, pto, expires FROM match_tokens WHERE token = ?",
       Vector(Text(token))) match
       case Vector(Vector(Text(f), Text(t), exp)) if f == by.uuid && now() <= lng(exp) =>
-        exec("DELETE FROM match_tokens WHERE token = ?", Vector(Text(token)))
-        exec("INSERT INTO match_links VALUES(?,?)", Vector(Text(f), Text(t)))
+        exec("DELETE FROM match_tokens WHERE token = ?", Vector(Text(token))): Unit
+        exec("INSERT INTO match_links VALUES(?,?)", Vector(Text(f), Text(t))): Unit
         Some(ProfileId(t))
       case _ => None
 
@@ -331,7 +331,7 @@ final class SqlMatch(sql: Sql,
           case Vector(Vector(Text(st))) => verifyHash(secret, st)
           case _ => false
         if ok then
-          exec("INSERT INTO match_links VALUES(?,?)", Vector(Text(from.uuid), Text(u)))
+          exec("INSERT INTO match_links VALUES(?,?)", Vector(Text(from.uuid), Text(u))): Unit
           Some(ProfileId(u))
         else None
       case _ => None
@@ -373,9 +373,9 @@ final class SqlMatch(sql: Sql,
   // ---- identity recovery (stage 2): the hash seam, no dependency ----
 
   def setRecovery(p: ProfileId, secret: String): Unit =
-    exec("DELETE FROM match_recovery WHERE profile = ?", Vector(Text(p.uuid)))
+    exec("DELETE FROM match_recovery WHERE profile = ?", Vector(Text(p.uuid))): Unit
     exec("INSERT INTO match_recovery VALUES(?,?)",
-      Vector(Text(p.uuid), Text(hash(secret))))
+      Vector(Text(p.uuid), Text(hash(secret)))): Unit
     ()
 
   def rebind(oldEmail: String, newEmail: String, secret: String): Option[ProfileId] =
@@ -388,7 +388,7 @@ final class SqlMatch(sql: Sql,
           case _ => false
         if ok then
           exec("UPDATE match_profiles SET email = ? WHERE uuid = ?",
-            Vector(Text(newEmail), Text(u)))
+            Vector(Text(newEmail), Text(u))): Unit
           Some(ProfileId(u))
         else None
       case _ => None
@@ -403,7 +403,7 @@ final class SqlMatch(sql: Sql,
     val id = DealId(nextDeal); nextDeal += 1
     exec("INSERT INTO match_deals VALUES(?,?,?,?,?,?)", Vector(
       I64(id.n), Text(seeker.uuid), Text(provider.uuid), Text(what),
-      Text("Asked"), I64(now())))
+      Text("Asked"), I64(now()))): Unit
     id
 
   def respond(deal: DealId, by: ProfileId, accept: Boolean): Option[Deal] =
@@ -413,7 +413,7 @@ final class SqlMatch(sql: Sql,
       .map { d =>
         val st = if accept then "Accepted" else "Declined"
         exec("UPDATE match_deals SET state = ?, ts = ? WHERE id = ?",
-          Vector(Text(st), I64(now()), I64(deal.n)))
+          Vector(Text(st), I64(now()), I64(deal.n))): Unit
         d.copy(state = DealState.valueOf(st), ts = now())
       }
 
@@ -428,7 +428,7 @@ final class SqlMatch(sql: Sql,
       .filter(d => d.state == DealState.Asked && d.seeker == by)
       .map { d =>
         exec("UPDATE match_deals SET state = 'Withdrawn', ts = ? WHERE id = ?",
-          Vector(I64(now()), I64(deal.n)))
+          Vector(I64(now()), I64(deal.n))): Unit
         d.copy(state = DealState.Withdrawn, ts = now())
       }
 
@@ -485,7 +485,7 @@ final class SqlMatch(sql: Sql,
         val id = FlowId(nextFlow); nextFlow += 1
         exec("INSERT INTO match_flows VALUES(?,?,?,?,?)", Vector(
           I64(id.n), Text(sc), Text(what), Text(d.initial),
-          Text(encodeParties(parties))))
+          Text(encodeParties(parties)))): Unit
         Right(id)
 
   def advanceFlow(id: FlowId, transition: String, by: ProfileId)
@@ -497,9 +497,9 @@ final class SqlMatch(sql: Sql,
         if d.terminal(f.state) then Left(NoAdvance(s"the flow is closed ('${f.state}')"))
         else Flow.advance(d, f, transition, by, now()).map { (f2, t) =>
           exec("UPDATE match_flows SET state = ? WHERE id = ?",
-            Vector(Text(f2.state), I64(id.n)))
+            Vector(Text(f2.state), I64(id.n))): Unit
           exec("INSERT INTO match_flow_hist VALUES(?,?,?,?)",
-            Vector(I64(id.n), Text(transition), Text(by.uuid), I64(now())))
+            Vector(I64(id.n), Text(transition), Text(by.uuid), I64(now()))): Unit
           for (vr, attr) <- t.unlocks; viewer <- f2.parties.get(vr);
               (r, other) <- f2.parties if r != vr do
             exec("INSERT INTO match_unlocks VALUES(?,?,?)",

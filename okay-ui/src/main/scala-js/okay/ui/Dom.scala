@@ -45,11 +45,11 @@ object Dom {
     private def applyNow(p: Patch): Unit = p match
       case Patch.Replace(Nil, ui) =>
         val built = build(React.elem(ui))
-        if kids(root).length > 0 then root.replaceChild(built, kids(root)(0))
-        else root.appendChild(built)
+        if kids(root).length > 0 then { val _ = root.replaceChild(built, kids(root)(0)) }
+        else { val _ = root.appendChild(built) }
       case Patch.Replace(path, ui) =>
         val parent = at(path.init)
-        parent.replaceChild(build(React.elem(ui)), kids(parent)(path.last))
+        val _ = parent.replaceChild(build(React.elem(ui)), kids(parent)(path.last))
       case Patch.SetText(path, s) => at(path).textContent = s
       case Patch.SetValue(path, v) => input(at(path)).value = v
       case Patch.SetChecked(path, on) => input(at(path)).checked = on
@@ -58,7 +58,7 @@ object Dom {
         n.selectedIndex = i
       case Patch.Remove(path, i) =>
         val n = at(path)
-        n.removeChild(kids(n)(i))
+        val _ = n.removeChild(kids(n)(i))
       case Patch.Reorder(path, order) =>
         // appendChild MOVES a live node — the DOM's own primitive is
         // the patch's meaning, and a shuffle creates nothing
@@ -69,7 +69,7 @@ object Dom {
       case Patch.Insert(path, i, ui) =>
         val n = at(path)
         val ref = if i < kids(n).length then kids(n)(i) else null
-        n.insertBefore(build(React.elem(ui)), ref)
+        val _ = n.insertBefore(build(React.elem(ui)), ref)
 
     /** a leaf's editable element: the node itself, or the input
      * inside its label wrapper */

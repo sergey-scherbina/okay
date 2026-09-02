@@ -71,7 +71,7 @@ object Wire {
    * lines. Ends when the line stream does, or the user closes.
    */
   def client(host: Host)(lines: Source[String], send: String => Unit ! Async)
-            (using Scheduler, CanBlock): Unit ! Async =
+            (using Scheduler): Unit ! Async =
     var tree: Ui = Ui.Text("")
 
     def receive(rest: Source[String]): Unit ! Async =

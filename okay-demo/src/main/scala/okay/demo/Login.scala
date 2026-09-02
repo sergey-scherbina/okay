@@ -1,6 +1,6 @@
 package okay.demo
 
-import okay.security.{Claims, Crypto, Jwt, Keys, Verified}
+import okay.security.{Claims, Jwt, Keys, Verified}
 import okay.security.given
 import java.util.concurrent.atomic.AtomicReference
 

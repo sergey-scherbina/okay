@@ -31,11 +31,11 @@ given Crypto = new Crypto:
 
   def hmacSha256(key: Array[Byte], data: Array[Byte]): Array[Byte] =
     val h = crypto.createHmac("sha256", byteArray2Int8Array(key))
-    h.update(byteArray2Int8Array(data))
+    h.update(byteArray2Int8Array(data)): Unit
     bytesOf(h.digest())
   def sha256(data: Array[Byte]): Array[Byte] =
     val h = crypto.createHash("sha256")
-    h.update(byteArray2Int8Array(data))
+    h.update(byteArray2Int8Array(data)): Unit
     bytesOf(h.digest())
   def pbkdf2(password: Array[Char], salt: Array[Byte], iterations: Int, bits: Int): Array[Byte] =
     bytesOf(crypto.pbkdf2Sync(new String(password), byteArray2Int8Array(salt),

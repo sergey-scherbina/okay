@@ -1,6 +1,6 @@
 package okay.security
 
-import okay.{!, Async, pure}
+import okay.{!, Async}
 import okay.codec.Json
 import okay.http.{Body, Http, Request}
 

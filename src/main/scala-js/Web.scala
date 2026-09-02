@@ -61,7 +61,8 @@ object Web {
 
   @js.native
   @JSGlobal("WebSocket")
-  class WebSocket(url: String, protocols: js.UndefOr[js.Array[String]] = js.native) extends js.Object:
+  class WebSocket(@scala.annotation.unused url: String,
+                  @scala.annotation.unused protocols: js.UndefOr[js.Array[String]] = js.native) extends js.Object:
     var binaryType: String = js.native
     var onopen: js.Function1[js.Any, Unit] = js.native
     var onmessage: js.Function1[MessageEvent, Unit] = js.native

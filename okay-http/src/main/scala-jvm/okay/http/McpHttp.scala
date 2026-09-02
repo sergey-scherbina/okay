@@ -187,7 +187,7 @@ object McpHttp {
    * the GET simply never delivers anything).
    */
   def route(serving: McpServer.Serving)
-           (using Scheduler, CanBlock): Request => Response ! Async =
+           (using Scheduler): Request => Response ! Async =
     routed(serving)._1
 
   /**

@@ -108,7 +108,8 @@ object Direct:
       case Typed(inner, _) => stripped(inner)
       case _ => t
 
-  private def directImpl[F[_] : Type, A: Type](block: Expr[DirectCtx[F] ?=> A],
+  @scala.annotation.publicInBinary
+  private[okay] def directImpl[F[_] : Type, A: Type](block: Expr[DirectCtx[F] ?=> A],
                                                M: Expr[Monad[F]])
                                               (using Quotes): Expr[F[A]] =
     import quotes.reflect.*
@@ -421,7 +422,7 @@ object Direct:
             case HofCall(xs, "foreach", param, lbody)
               if runnableElemT(lbody.tpe).isDefined =>
               hofLoop(t, xs, "foreach", param, lbody)
-            case While(c, b) if runnableElemT(b.tpe).isDefined =>
+            case While(_, b) if runnableElemT(b.tpe).isDefined =>
               compileMarked(t)
             case _ => Out.Pure(t)
 
@@ -578,12 +579,15 @@ object Direct:
       // qualifier, arguments) left to right; the callee structure —
       // Selects, TypeApplies, curried Apply lists — is rebuilt, never
       // hoisted (a partially applied method is not a value)
-      case _: (Apply | TypeApply | Select) =>
+      case Apply(_, _) | TypeApply(_, _) | Select(_, _) =>
         spineSlots(t) match
           case Some((slots, rebuild)) => anf(slots, t.tpe)(rebuild)
           case None => refuse(t, "in a call shape v1 does not rewrite")
 
-      case Typed(e, tp) => anf(List(e), t.tpe) { case List(e2) => Typed.copy(t)(e2, tp) }
+      case Typed(e, tp) => anf(List(e), t.tpe) {
+        case e2 :: Nil => Typed.copy(t)(e2, tp)
+        case other => report.errorAndAbort(s"direct: one slot expected, got ${other.length} (macro bug)")
+      }
 
       case other => refuse(other, s"in an unsupported position (${other.getClass.getSimpleName})")
 
@@ -608,7 +612,10 @@ object Direct:
       case TypeApply(fun, targs) =>
         spineSlots(fun).map((fs, fr) => (fs, vs => TypeApply.copy(t)(fr(vs), targs)))
       case sel @ Select(qual, nm) =>
-        Some((List(qual), { case List(q) => Select.copy(sel)(q, nm) }))
+        Some((List(qual), {
+          case q :: Nil => Select.copy(sel)(q, nm)
+          case other => report.errorAndAbort(s"direct: one slot expected, got ${other.length} (macro bug)")
+        }))
       case id: Ident => Some((Nil, _ => id))
       case _ => None
 

@@ -194,7 +194,7 @@ final class FileStore(root: Path) extends Store:
       channel = FileChannel.open(path, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
       val header = headerBytes(base)
       val buf = ByteBuffer.wrap(header)
-      while buf.hasRemaining do channel.write(buf)
+      while buf.hasRemaining do channel.write(buf): Unit
       val s = new Segment(path, base)
       s.size = header.length
       segments :+= s
@@ -224,7 +224,7 @@ final class FileStore(root: Path) extends Store:
       val seg = segments.last
       val off = seg.base + seg.count
       val frame = frameOf(off, System.currentTimeMillis(), key, value)
-      while frame.hasRemaining do channel.write(frame)
+      while frame.hasRemaining do channel.write(frame): Unit
       if ack != Ack.Received then channel.force(false)
       seg.size += frameSize
       seg.count += 1
@@ -249,7 +249,7 @@ final class FileStore(root: Path) extends Store:
                 need -= 1
                 want = off + 1
               need > 0
-            }
+            }: Unit
         Topic.Read.Records(out.result())
 
     /** keep the latest record per key across the CLOSED segments,
@@ -279,10 +279,10 @@ final class FileStore(root: Path) extends Store:
           StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)
         try
           val hdr = ByteBuffer.wrap(headerBytes(head.base))
-          while hdr.hasRemaining do ch.write(hdr)
+          while hdr.hasRemaining do ch.write(hdr): Unit
           for r <- survivors do
             val f = frameOf(r.offset, r.timestamp, r.key, r.value)
-            while f.hasRemaining do ch.write(f)
+            while f.hasRemaining do ch.write(f): Unit
           ch.force(false)
         finally ch.close()
         Files.move(tmp, head.path,

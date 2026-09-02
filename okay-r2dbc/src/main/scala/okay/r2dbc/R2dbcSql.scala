@@ -32,7 +32,7 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
     var cols = Vector.empty[Col]
     eachResult(st) { r =>
       if cols.isEmpty then cols = Rx.first(r.map((_: Row, md: RowMetadata) => colsOf(md))).getOrElse(Vector.empty)
-      else Rx.all(r.getRowsUpdated)   // consumed, as the SPI demands
+      else Rx.all(r.getRowsUpdated): Unit // consumed, as the SPI demands
     }
     cols
   }
@@ -69,7 +69,7 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
       val st = conn.createStatement(sql)
       var i = 0
       rows.foreach { r =>
-        if i > 0 then st.add()
+        if i > 0 then st.add(): Unit
         bindAll(st, r)
         i += 1
       }
@@ -80,19 +80,19 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
     if inTx then throw IllegalStateException(
       "nested transaction: this connection is already in one — " +
         "refuse rather than silently flatten (specs/jdbc.md)")
-    Rx.all(conn.beginTransaction())
-    Rx.all(conn.setTransactionIsolationLevel(levelOf(isolation)))
+    Rx.all(conn.beginTransaction()): Unit
+    Rx.all(conn.setTransactionIsolationLevel(levelOf(isolation))): Unit
     inTx = true
     Granted(isolation, isolationOf(conn.getTransactionIsolationLevel))
   }
 
   def commit(): Unit ! Async = async {
-    Rx.all(conn.commitTransaction())
+    Rx.all(conn.commitTransaction()): Unit
     inTx = false
   }
 
   def rollback(): Unit ! Async = async {
-    Rx.all(conn.rollbackTransaction())
+    Rx.all(conn.rollbackTransaction()): Unit
     inTx = false
   }
 
@@ -100,9 +100,9 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
   def cancel(): Unit =
     if inTx then
       inTx = false
-      Rx.all(conn.rollbackTransaction())
+      Rx.all(conn.rollbackTransaction()): Unit
 
-  def close(): Unit = Rx.all(conn.close())
+  def close(): Unit = Rx.all(conn.close()): Unit
 
   /** every Result's updated count, summed (a statement may answer
    * several results — a batch does) */

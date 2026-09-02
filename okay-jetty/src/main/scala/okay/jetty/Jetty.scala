@@ -130,7 +130,7 @@ object Jetty {
       val upgrade = WebSocketUpgradeHandler.from(server,
         (container: org.eclipse.jetty.websocket.server.ServerWebSocketContainer) => {
           container.addMapping("/*",
-            (req: ServerUpgradeRequest, res: ServerUpgradeResponse, cb: Callback) => {
+            (req: ServerUpgradeRequest, _: ServerUpgradeResponse, _: Callback) => {
               val r = requestOf(req)
               if ws.isDefinedAt(r) then session(ws(r)) else null
             })

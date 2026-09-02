@@ -85,11 +85,11 @@ object Typed:
     case Schema.SBool => Right(bool)
     case Schema.SString => Right(text)
     case Schema.SBytes => Right(bytes)
-    case o: Schema.SOption[a] => shapeOf(o.of()).map(Shape.Opt(_))
+    case o: Schema.SOption[?] => shapeOf(o.of()).map(Shape.Opt(_))
     case Schema.SIso(u, to, from) => shapeOf(u()).map(Shape.Iso(_, to, from))
     case v: Schema.SVector[a] => shapeOf(v.of()).map(Shape.Arr[a, Vector[a]](_, identity, identity))
     case l: Schema.SList[a] => shapeOf(l.of()).map(Shape.Arr[a, List[a]](_, _.toList, _.toVector))
-    case p: Schema.SProduct[a] =>
+    case p: Schema.SProduct[?] =>
       shapesOf(p).map(Shape.Row(_, p))
     case other => Left(s"not row-shaped (a row holds primitives, bytes, Option, Vector/List and nested products): $other")
 
@@ -167,13 +167,13 @@ object Typed:
 
   /** total: damage is a message, never a throw — typed by the shape */
   private def decode[A](sh: Shape[A], v: SqlValue): Either[String, A] = sh match
-    case o: Shape.Opt[a] => v match
+    case o: Shape.Opt[?] => v match
       case SqlValue.Null => Right(None)
       case other => decode(o.of, other).map(Some(_))
     case Shape.Iso(of, to, _) => decode(of, v).flatMap(to)   // a refining wrapper may refuse
     case _ if v == SqlValue.Null => Left("NULL in a non-Option field")
     case Shape.Prim(_, dec, _) => dec(v)
-    case arr: Shape.Arr[a, c] => v match
+    case arr: Shape.Arr[a, ?] => v match
       case SqlValue.Arr(elems) =>
         val out = Vector.newBuilder[a]
         var err: String = null
@@ -185,7 +185,7 @@ object Typed:
           i += 1
         if err == null then Right(arr.build(out.result())) else Left(err)
       case other => Left(s"expected ${sh.tpe}, got $other")
-    case row: Shape.Row[a] => v match
+    case row: Shape.Row[?] => v match
       case SqlValue.Row(fields) =>
         if fields.length != row.fields.length then
           Left(s"expected a composite of ${row.fields.length} fields, got ${fields.length}")
@@ -216,8 +216,8 @@ object Typed:
       case None => SqlValue.Null
       case Some(x) => encode(o.of, x)
     case Shape.Prim(_, _, enc) => enc(v)
-    case arr: Shape.Arr[a, c] => SqlValue.Arr(arr.parts(v).map(encode(arr.elem, _)))
-    case row: Shape.Row[a] =>
+    case arr: Shape.Arr[?, ?] => SqlValue.Arr(arr.parts(v).map(encode(arr.elem, _)))
+    case row: Shape.Row[?] =>
       SqlValue.Row(row.schema.eachField(v)([X] => (name: String, sc: Schema[X], x: X) =>
         shapeOf(sc) match
           case Right(sh) => encode(sh, x)
@@ -225,7 +225,7 @@ object Typed:
 
   /** parameter encoding by Schema, positionally (used by Params) */
   private[sql] def encodeParams[P](s: Schema[P], p: P): Vector[SqlValue] = shapeOf(s) match
-    case Right(row: Shape.Row[a]) =>
+    case Right(row: Shape.Row[?]) =>
       row.schema.eachField(p)([X] => (name: String, sc: Schema[X], x: X) =>
         shapeOf(sc) match
           case Right(sh) => encode(sh, x)

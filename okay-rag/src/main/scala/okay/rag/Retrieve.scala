@@ -105,7 +105,7 @@ object Retrieve {
    * round-robin router expresses it — the alternation is over the
    * SEARCH, not over a list.
    */
-  def fair[F[+_] : TypeableK](a: Seq[Scored], b: Seq[Scored], k: Int): Seq[Scored] =
+  def fair[F[+_]](a: Seq[Scored], b: Seq[Scored], k: Int): Seq[Scored] =
     // the alternatives never perform an F: built in Choose + Pure and
     // observed there, no re-typing needed (F stays the signature's
     // promise to callers)

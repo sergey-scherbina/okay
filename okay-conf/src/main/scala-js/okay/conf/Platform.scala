@@ -20,6 +20,6 @@ private[conf] object Platform {
       case ("file", _) => Left("'file:' is a JVM/Native ability (Node fs joins when a consumer needs it)")
       case _ => Secrets.unrecognized(s)
 
-  private[conf] def slurp(path: String): Either[String, String] =
+  private[conf] def slurp(@scala.annotation.unused path: String): Either[String, String] =
     Left("Conf.load is a JVM/Native ability (Node fs joins when a consumer needs it)")
 }

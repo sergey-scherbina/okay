@@ -41,10 +41,10 @@ final class TopicDocs[A](topic: Topic,
             else
               for r <- rs do
                 val id = new String(r.key, "UTF-8")
-                if r.value.isEmpty then state.remove(id)          // the tombstone
+                if r.value.isEmpty then state.remove(id): Unit // the tombstone
                 else typed.decode(r) match
                   case Typed.Decoded.Ok(off, _, _, a) =>
-                    state.put(id, Docs.Versioned(off, a))
+                    state.put(id, Docs.Versioned(off, a)): Unit
                   case Typed.Decoded.Bad(_, _) => ()             // damage is data; skip
                 consumed(p) = r.offset + 1
       p += 1

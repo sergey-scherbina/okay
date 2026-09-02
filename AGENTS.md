@@ -91,6 +91,12 @@ force, all already practiced, none previously written down:
   c.send(x)` (foreach takes any result) — those two shapes are on
   you. Found by channel-callback (2026-09-02): ten silent discards
   across ui/jetty/netty/chatweb before the lint existed.
+- The main sources compile WARNING-FREE under -Wall (tidy-warnings,
+  2026-09-02: 255 → 0). Keep it so: a discarded Java/JS result is
+  `x: Unit` (or `val _ = x` for a js.Dynamic, which `: Unit` does
+  not silence), an unused pattern type is `?`, an unused parameter
+  that an API forces is `@unused`. `clean; compile` shows the truth —
+  an incremental compile hides warnings in files it did not touch.
 - `sbt test` runs everything, JVM + JS + Native. The core suite forks
   (see build.sbt for why); `.jvmopts` gives sbt 6g.
 - Live suites (`TestLive` in okay-agent and okay-mcp, the LIVE tests

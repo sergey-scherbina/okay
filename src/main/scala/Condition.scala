@@ -175,7 +175,7 @@ object Condition {
               if !names.contains(name) then throw NoSuchRestart(name, names)
               Right(pure(Out.Escape(name, v)))
             case Decision.Fail => throw Unhandled(c, names)
-        case w: Op.Within[a, v] =>
+        case w: Op.Within[a, ?] =>
           // THE claim of this file: the payload is a program in this
           // machine's row — erased at the operation because F is not
           // the operation's to name, re-typed here where F is known

@@ -89,7 +89,7 @@ final class Replicated private (val name: String, val partitions: Int,
     part.synchronized {
       if l.epoch != part.epoch then
         opsTyped.append(0, opsKey, Op.FencedAppend(l.partition, l.epoch, part.epoch),
-          Ack.Durable)
+          Ack.Durable): Unit
         throw Fenced(l.partition, l.epoch, part.epoch)
 
       val leaderAck = if ack == Ack.Replicated then Ack.Durable else ack
@@ -146,7 +146,7 @@ final class Replicated private (val name: String, val partitions: Int,
       part.leader = replica
       opsTyped.append(0, opsKey, Op.Promoted(partition, part.epoch, from, replica),
         Ack.Durable)
-    }
+    }: Unit
 
   /** the pull: every follower reads what it lacks from the leader
    * and writes it — replication as a consumer, verbatim; then the

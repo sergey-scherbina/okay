@@ -97,12 +97,12 @@ object Cache:
     private def lookup(k: K): Option[V] = synchronized {
       entries.get(k) match
         case Some(e) if fresh(e) =>
-          entries.remove(k)
-          entries.put(k, e)
+          entries.remove(k): Unit
+          entries.put(k, e): Unit
           hits += 1
           Some(e.value)
         case Some(_) =>
-          entries.remove(k)
+          entries.remove(k): Unit
           misses += 1
           None
         case None =>
@@ -111,10 +111,10 @@ object Cache:
     }
 
     private def store(k: K, v: V): Unit = synchronized {
-      entries.remove(k)
-      entries.put(k, Entry(v, clock()))
+      entries.remove(k): Unit
+      entries.put(k, Entry(v, clock())): Unit
       while entries.size > maxEntries do
-        entries.remove(entries.head._1)
+        entries.remove(entries.head._1): Unit
         evictions += 1
     }
 
@@ -123,7 +123,7 @@ object Cache:
     def put(k: K, v: V): Unit ! Async = async(store(k, v))
 
     def invalidate(k: K): Unit ! Async = async {
-      synchronized { entries.remove(k) }
+      synchronized { entries.remove(k) }: Unit
       ()
     }
 
@@ -138,7 +138,7 @@ object Cache:
               case Some(f) => Right((f, false))
               case None =>
                 val f = Flight[V]()
-                flights.put(k, f)
+                flights.put(k, f): Unit
                 loads += 1
                 Right((f, true))
         }
@@ -154,7 +154,7 @@ object Cache:
               Async.runAsync(load(k)).onComplete { t =>
                 val r = t.toEither
                 synchronized {
-                  flights.remove(k)
+                  flights.remove(k): Unit
                   r.foreach(v => store(k, v))
                 }
                 flight.complete(r)

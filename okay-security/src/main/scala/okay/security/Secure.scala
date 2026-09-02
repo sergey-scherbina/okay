@@ -1,7 +1,7 @@
 package okay.security
 
 import okay.{!, Async, pure}
-import okay.http.{Http, Request, Response}
+import okay.http.{Request, Response}
 
 /**
  * Protection as a ROUTE WRAPPER: the protected route is a

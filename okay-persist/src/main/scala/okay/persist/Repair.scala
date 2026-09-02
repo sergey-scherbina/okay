@@ -1,7 +1,7 @@
 package okay.persist
 
 import okay.{!, Condition, Pure, pure}
-import okay.codec.Schema
+
 
 /**
  * Typed.Bad meets Condition (specs/condition.md's first consumer
@@ -33,7 +33,7 @@ object Repair {
   /** decode records through the typed view, damage signalling as it
    * goes; answers (offset, value) pairs in record order */
   def decode[A](typed: Typed[A], records: Vector[Record])
-               (using Schema[A], scala.reflect.ClassTag[A]): Vector[(Long, A)] ! Condition.Op =
+               (using scala.reflect.ClassTag[A]): Vector[(Long, A)] ! Condition.Op =
     records.foldLeft(pure[Condition.Op, Vector[(Long, A)]](Vector.empty)) { (acc, r) =>
       acc.flatMap { done =>
         typed.decode(r) match
@@ -50,7 +50,7 @@ object Repair {
    * (TooEarly is an answer, not a condition — it needs no repair,
    * it needs a decision about WHERE to read) */
   def read[A](typed: Typed[A], partition: Int, from: Long, max: Int)
-             (using Schema[A], scala.reflect.ClassTag[A]): Vector[(Long, A)] ! Condition.Op =
+             (using scala.reflect.ClassTag[A]): Vector[(Long, A)] ! Condition.Op =
     typed.topic.read(partition, from, max) match
       case Topic.Read.TooEarly(_) => pure(Vector.empty)
       case Topic.Read.Records(rs) => decode(typed, rs)
