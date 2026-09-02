@@ -60,6 +60,12 @@ force, all already practiced, none previously written down:
   Decisions/Results — that history is why the specs exist.
 
 ## Build facts that bite
+- A guess about the build is a HYPOTHESIS, not a fact: check it
+  before acting on it. Incident (2026-09-02): an agent decided a
+  sibling's sbt run "held a lock" and waited on it — there was no
+  lock; a `ps`/`ls` would have shown it in a second. If you think
+  "X is probably the reason", run the one command that would show
+  X, and only then believe it (operator directive, 2026-09-02).
 - `sbt test` runs everything, JVM + JS + Native. The core suite forks
   (see build.sbt for why); `.jvmopts` gives sbt 6g.
 - Live suites (`TestLive` in okay-agent and okay-mcp) hit a local
