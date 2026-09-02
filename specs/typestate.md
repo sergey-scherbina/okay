@@ -102,9 +102,9 @@ change public traits.
 ## Out of scope
 
 - typestate on public traits — rejected above, it is the decision
-- PgSql's full extended-protocol phase graph — after Scram proves
-  the pattern; the graph is bigger and the payoff must be measured
-  against readability inside one file
+- PgSql's full extended-protocol phase graph — MEASURED after Scram
+  proved the pattern (pg-wire-typestate, 2026-09-02) and declined;
+  the measurement is in Decisions below
 - RaftStore's roles — that claim's own work (specs/consensus.md
   already carries the note)
 
@@ -125,7 +125,42 @@ change public traits.
   exists for is itself tested. Rejected: trusting the types
   silently.
 
+- **PgSql's phase graph stays untyped — measured, not assumed**
+  (pg-wire-typestate, 2026-09-02). The graph inside PgSql.scala,
+  phase by phase against the criteria above: startup → auth →
+  ready is ALREADY one-way by construction — `PgSql`'s constructor
+  is private and the object exists only when `connectOver` reads
+  ReadyForQuery, and the auth line inside it is Scram's phase
+  objects; ready ↔ in-transaction is a CYCLE on the public `Sql`
+  seam (begin/commit/rollback), which the rule above forbids typing
+  and which `Typed.region`'s `Db[S]` already types for callers —
+  the `inTx` runtime guard is what the trait's contract demands;
+  the portal (`openPortal` → `readChunk`* → `finishPortal`) and
+  COPY (`awaitCopy` → rows → `collectReady`) sequences are local
+  defs inside ONE method each, whose only caller is a for-binding
+  three lines below — the "lexically-visible, covered by
+  for-bindings" case; and the one cross-cutting order rule someone
+  COULD forget — every public entry must pass through `settled`
+  (cancel's pending rollback) — was checked entry by entry (all
+  eight do), and is a structural property a Portal or Session type
+  would not express anyway. A `Portal(oids)` phase object was the
+  cheapest candidate; its whole gain is one threaded parameter
+  becoming a field, at the price of a class where a local def
+  reads in place. PState does not fit at all: no phase changes the
+  state's TYPE. Rejected: typing the graph for symmetry with Scram
+  — the pattern pays where the order crosses an abstract boundary,
+  and here every remaining order is either already a type, a
+  public cycle, or a single method. The box closes as a decision;
+  the entry point that would reopen it is a second consumer of the
+  driver's internals (a pool or a pipeline that interleaves
+  portals), which would make the portal phase an abstract boundary.
+
 ## Results
 
 (after implementation — Scram on PState with the live battery
 green, the compile-error assertions, the internals-typed transact)
+pg-wire-typestate (2026-09-02): the pg graph measured and left
+untyped — see the Decision; PgSql.scala unchanged, which is the
+result. The spec's "cheapest adequate mechanism" criterion now has
+its zero case on record: sometimes the adequate mechanism is the
+for-binding already there.
