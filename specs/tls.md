@@ -74,6 +74,20 @@ transport gets TLS from one seam and adds nothing of its own.
 - [x] a private key configured inline (not a Secret ref) is refused
       at config decode (the seam refuses a ref that smuggles PEM,
       client and server)
+- [ ] mTLS — the client PRESENTS an identity (pg-mtls): with
+      `clientCert` (PEM chain path) AND `clientKey` (PKCS#8 Secret
+      ref) set, `Tls.client` builds key managers exactly as the server
+      half builds its identity and offers the certificate when the
+      server asks; one of the two without the other is refused by name
+      (a half identity is a misconfiguration, not a downgrade); the
+      inline-PEM refusal already covers the client key. Zero signature
+      change — the fields rode in TlsConfig from day one. Proven live
+      against the dockerized Postgres: a dedicated role `okay_mtls`
+      under `hostssl … cert clientcert=verify-full` (the CN must equal
+      the role) connects with the client certificate and NO password;
+      the same role without a certificate is refused by the server
+      ("connection requires a valid client certificate"); the existing
+      password roles and plaintext connections are untouched
 
 ## Out of scope
 
