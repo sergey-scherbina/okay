@@ -382,6 +382,42 @@ route tables instead of holding their logic inline.
       inbox JS); the demo keeps its own copy, reusing `Chat.Model`/
       `reply`/`sse`.
 
+## Round two: what else in the demo is reusable (user ask 2026-09-02)
+
+The first three extractions left ~1160 lines in ChatDemo.scala.
+Surveyed for what else earns a move — not everything does; the
+condition-based intake (BadEmail/resolveEmail) and the deal timeline
+stay demo-local, named and reasoned in specs/demo-chat.md already.
+Three do earn it:
+
+- [ ] okay-live (new module) — a generic pub-sub pair, found by
+      NOTICING the SAME pattern already independently duplicated
+      twice in one file: `marketFeed`/`marketSub`/`marketChanged`
+      (broadcast a ping to every subscriber) and `inboxes`/`inbox`
+      (a per-key `Channel` registry, keyed by email). Neither
+      mentions the marketplace — a `Hub[A]` (broadcast) and a
+      `Registry[K]` (per-key channel, created on first use) cover
+      both, and the demo's third potential use (a live admin
+      dashboard) would be a THIRD consumer proving it further.
+- [ ] pg-target-in-okay-pg (existing module: okay-pg) — `PgTarget`
+      (ChatDemo.scala, near the bottom): a pure parser for
+      `postgres://user:pass@host:port/db?sslmode=...&sslrootcert=...`
+      into host/port/user/password/database/TLS config. Zero demo
+      dependencies, already independently tested
+      (TestChatDemo's `OKAY_CHAT_DB=postgres://…` test) — belongs
+      beside the driver it configures, not in an app that happens to
+      use it.
+- [ ] login-in-okay-security (existing module: okay-security) —
+      `okay.demo.Login` (its own file already, 65 lines): an
+      in-process ES256 keypair issuing/verifying sessions, plus a
+      one-time 6-digit code start/confirm flow (the demo's "no email
+      transport yet" answer — the code rides the response and the
+      console). `okay-security` has the JWT/ES256 primitives Login
+      is built from but no OTP-plus-session RECIPE of its own yet;
+      `Admin.Issuer` (okay-admin) already copied Login's session-
+      issuer half once — a second copy is the signal this earns a
+      home nearer the primitives it wraps.
+
 ## Elsewhere
 - [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and
       shipped (demo-ctx-wiring — ChatDemo.handler as a
