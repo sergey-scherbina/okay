@@ -379,7 +379,15 @@ Doors added by this sweep (all additive, explicit forms stay):
   nobody swaps Http under a factory; where the factory shape pays,
   the doors already shipped (`S3.wired`, `Langchain4j.wired`,
   `Configs.ambient`). Audited against the demo sources; reopen only
-  with a consumer that actually rewires.
+  with a consumer that actually rewires. REOPENED AND SHIPPED
+  2026-09-02 (demo-ctx-wiring): the consumer arrived — the demo's
+  handler is one value awaiting `(Transport, Secrets, MatchStore)`
+  (specs/demo-chat.md, "The wiring value"), and it genuinely
+  rewires: the test wires a canned Transport + memory Secrets and
+  runs the LIVE `Anthropic.stream` path offline (untestable
+  before), while offline suites wire a DEAD transport that throws
+  on touch. `main` stays the sys.env edge, installing
+  `Transports.http()` + `Secrets.env`.
 - **ctx-reader-bridge** — `(A ?=> B) <-> B ! Reader % A`: a context
   function IS a pure Reader program and the tower has Reader.scala.
   GATE LIFTED (2026-09-01, ctx-reader-elim): the consumer is the

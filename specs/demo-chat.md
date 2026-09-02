@@ -178,6 +178,40 @@ sqlite) is gone structurally. `Cut.checked` gained the ambient-
 prompt door (additive in okay-llm), so the guard site reads
 `Cut.guard { Cut.checked(tokens)(rule) }`.
 
+## The wiring value (demo-ctx-wiring)
+
+The factory half of ctx-wiring (specs/context-functions.md, Filed)
+closed 2026-09-01 "reopen only with a consumer that actually
+rewires" — this is that consumer. The demo's whole handler is ONE
+value awaiting its environment:
+
+```scala
+def handler(budget: Int)
+: (Transport, Secrets, MatchStore) ?=> PartialFunction[Request, Response ! Async]
+```
+
+`Transport` (okay-llm) is the wire; `Secrets` (okay-conf) is where
+the config lives, read as `env:NAME` references (`secret(name)`);
+`MatchStore` was already ambient (demo-ctx). `main` — the process
+edge, the one place `sys.env` belongs — installs the production
+environment: `provide(Transports.http(), Secrets.env, market)`. A
+test installs stubs: `Secrets.memory` decides the model DISPATCH
+(live/local/scripted — previously an untestable `sys.env` read),
+and a canned `Transport` feeds `Anthropic.stream` real SSE lines —
+the LIVE parsing path runs offline for the first time. Offline
+tests wire a DEAD transport that throws on touch, so "offline never
+reaches the wire" is asserted, not assumed.
+
+- [ ] the same `handler` value wired twice: with a canned wire + a
+      key in memory-Secrets the LIVE branch streams the canned
+      tokens through the real `Anthropic.stream`; with no key the
+      scripted branch answers — one value, two environments
+- [ ] every offline suite runs over the DEAD wire (a touch is an
+      AssertionError) and stays green
+- [ ] behavior unchanged at the edge: `main` wires `Transports.
+      http()` + `Secrets.env`, which resolve the same env vars the
+      old `sys.env` reads did
+
 ## Polish (demo-polish)
 - The page states its MODE (scripted/local/live) and links /market.
 - `/market` — the marketplace, visible: offers and needs as lists of
