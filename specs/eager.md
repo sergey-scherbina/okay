@@ -35,3 +35,26 @@ pure code and pays with kyo's hazards, stated plainly.
 - a Flat-style evidence (documented rule first; evidence if misuse
   actually bites); Eager streams (the laziness contract is what our
   stream layer is built on — Eager is for bind-heavy computation)
+
+## Decisions
+
+- **`fold`'s two casts stay centralized, but the function goes
+  `inline`** (eager-dispatch-regression, 2026-09-02): `casts-
+  encapsulated` (d6feb48) centralized the encoding's two casts into
+  one `private def fold(m)(value, tree)`, replacing each operation's
+  own hand-written match. Measured cost on the pure-bind hot path
+  (the whole point of Eager): 5.1 -> 17.6us, 3.45x (docs/
+  benchmarks.md §1). Two compounding costs, both from `fold` being
+  an ordinary method taking ordinary `Function1` arguments: every
+  call built a closure for BOTH branches (arguments are evaluated
+  before `fold` is entered, so the branch not taken still allocates)
+  and dispatched through a virtual `.apply()` instead of an inlined
+  match arm. `flatMap` additionally wrapped `f` in a redundant
+  `a => f(a)` on top. Fix: `fold` becomes `private inline def` with
+  `inline value`/`inline tree` parameters — the two casts stay
+  textually in the one function (the goal survives), but each call
+  site's argument EXPRESSIONS are substituted directly into the
+  match arms at compile time, so only the arm actually taken builds
+  anything, and `flatMap`'s pure branch compiles to exactly what the
+  pre-refactor hand-written match did. Gate: TestEager unchanged
+  green; the benchmark is the receipt.
