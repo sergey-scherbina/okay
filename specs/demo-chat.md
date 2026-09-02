@@ -314,10 +314,46 @@ a repairing policy can RESUME with a corrected address,
 menu. One intake, three outcomes, chosen at run — and an email
 present never consults the policy at all.
 
+## Sessions (demo-sessions)
+- [x] confirm-and-sign login replaces trust-the-field: `POST /login`
+      `{email}` mints a one-time 6-digit code (this stack has no
+      email transport yet, specs/security.md — the code rides the
+      response AND the server console, named as the demo's stated
+      limit, not hidden); `POST /login/confirm` `{email,code}` spends
+      it once and answers a signed ES256 session (`okay-security`'s
+      `Jwt`, an in-process key pair — a restart signs everyone out,
+      stated); the client presents it as `Authorization: Bearer` on
+      every following call
+- [x] a verified session is the identity of RECORD for a `/match`
+      turn: it registers the ChatLog speaker AND is what the tool
+      table asserts facts under, overriding a DIFFERENT "email x@y"
+      the message text claims (proven: a session as `real@x` asserts
+      facts under `real@x` even when the same message names
+      `spoofed@x`; the deterministic driver enforces this today, a
+      live model is TOLD the session and asked to honor it, unproven
+      without a live key). The text-parsed email stays the fallback
+      for a turn with no session — scripted/offline callers, and the
+      existing tests, are unchanged
+- [x] the vanilla page gets a real login widget: email → code → the
+      token in `localStorage`, sent on every `/chat` call; logging in
+      subscribes the SSE inbox by the same email, so the demo's
+      "email chip" workflow is no longer required to see a match
+- Cross-channel identity RIDES the token now (the ask's phrase): the
+  same signed-in session resolves to one email everywhere it is
+  presented, so identity no longer depends on what a message happens
+  to say. Deeper cross-channel work — driving `requestLink`/
+  `confirmLink` from two live sessions in the UI — is a separate,
+  smaller box if named wanted; the identity primitive it would need
+  (a verified session) is what this box delivers
+
 ## Out of scope
-- Auth, persistence of conversations, multi-user rooms (persist owns
-  durable history; okay-match's DURABLE store is one constructor swap
-  — the demo keeps memory).
+- Persistence of conversations, multi-user rooms (okay-match's
+  DURABLE store is one constructor swap for facts/deals/flows; the
+  chat HISTORY itself stays client-side, by the SSE over WebSocket
+  decision below).
+- Passwordless is not passwordFREE forever: real email delivery,
+  rate limiting the code endpoint, and a refresh/rotate story are
+  this box's stated gaps — a demo's session, not a production one.
 - (Lifted 2026-09-01 by user ask: the React frontend landed as
   okay-chat-web.) The ui-wire browser leg stays its own demo.
 

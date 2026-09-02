@@ -40,6 +40,8 @@ ANTHROPIC_API_KEY=... sbt okayDemo/run                  # Anthropic
 | `OKAY_CHAT_DB` | the marketplace's engine: a sqlite file; `:memory:` opts out; `postgres://user:pass@host:port/db[?sslmode=…&sslrootcert=…]` is live Postgres over the wire driver | `okay-chat.db` |
 | `OKAY_CHAT_LOG` | the chat log's FileStore directory — every `/match` turn lands here FIRST, the marketplace is its projection (`POST /admin/replay` rebuilds it; a button on `/market`); `:memory:` keeps nothing | `okay-chat.log` |
 | `OKAY_CHAT_BASE` | an OpenAI-compatible endpoint (local models fit) | — |
+| `POST /login` `{email}` | mints a one-time 6-digit code (demo-sessions; no email transport exists yet, so it rides the response AND the server console) | — |
+| `POST /login/confirm` `{email,code}` | spends the code once, answers `{token}` — a signed ES256 session; present it as `Authorization: Bearer` on `/chat` | — |
 | `ANTHROPIC_API_KEY` | the Anthropic model | — |
 | `OKAY_CHAT_APP` | path to the linked frontend | auto-discovered |
 
@@ -58,6 +60,14 @@ ANTHROPIC_API_KEY=... sbt okayDemo/run                  # Anthropic
   the React page (okay-ui's tree rendered by CDN React UMD through
   `ReactJs`; the chat's brain is `okay-demo/web`'s pure
   `view`/`update`, JVM-tested; the Elm fold runs on `runAsync`).
+- **Sessions** (demo-sessions): a `/match` turn under a verified
+  session is asserted under THAT email, not whatever "email x@y" the
+  message text says — `POST /login` then `/login/confirm` mints an
+  ES256 token (`okay-security`'s `Jwt`, one in-process key pair; a
+  restart signs everyone out); the vanilla page's login widget stores
+  it and sends `Authorization: Bearer` on every `/chat` call. No
+  email transport exists yet, so the confirm code rides the response.
+
 - **The marketplace**: one shared `MatchStore` per server — sqlite
   by default, durable across restarts.
 

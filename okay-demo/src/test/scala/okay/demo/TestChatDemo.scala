@@ -3,6 +3,8 @@ package okay.demo
 import okay.*
 import okay.given
 import okay.jetty.Jetty
+import okay.codec.Json
+import okay.codec.Json.*
 import java.net.http.{HttpClient, HttpRequest, HttpResponse}
 import java.net.URI
 import java.nio.charset.StandardCharsets.UTF_8
@@ -655,5 +657,57 @@ class TestChatDemo extends munit.FunSuite {
     // the same log over the same store: a no-op (idempotence by provenance)
     assertEquals(provide(deadWire, noSecrets, store: MatchStore)(ChatDemo.replayProjections(log)), 2L)
     assertEquals(snapshot(store), live)
+  }
+
+  private def postJson(port: Int, path: String, body: String, auth: Option[String] = None): (Int, String) =
+    val b = HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path"))
+      .header("content-type", "application/json")
+    auth.foreach(t => b.header("authorization", s"Bearer $t"))
+    val res = client.send(b.POST(HttpRequest.BodyPublishers.ofString(body)).build(),
+      HttpResponse.BodyHandlers.ofString())
+    (res.statusCode(), res.body())
+
+  test("demo-sessions: confirm-and-sign — the login+confirm exchange mints a token, a wrong code is refused") {
+    withServer(512) { port =>
+      val (s1, b1) = postJson(port, "/login", """{"email":"ann@example.com"}""")
+      assertEquals(s1, 200)
+      val code = Json.parse(b1) match
+        case JObj(fs) => fs.collectFirst { case ("devCode", JStr(c)) => c }.get
+        case _ => fail(s"no devCode in $b1")
+      val (wrongStatus, _) = postJson(port, "/login/confirm", s"""{"email":"ann@example.com","code":"000000"}""")
+      assertEquals(wrongStatus, 401)
+      val (s2, b2) = postJson(port, "/login/confirm", s"""{"email":"ann@example.com","code":"$code"}""")
+      assertEquals(s2, 200)
+      assert(Json.parse(b2).toString.contains("ann@example.com"))
+    }
+  }
+
+  test("demo-sessions: a verified session is the identity of record — it overrides a DIFFERENT email typed in the message") {
+    val store = okay.matching.MemoryMatch()
+    withServer(512, store) { port =>
+      val (_, b1) = postJson(port, "/login", """{"email":"real@example.com"}""")
+      val code = Json.parse(b1) match
+        case JObj(fs) => fs.collectFirst { case ("devCode", JStr(c)) => c }.get
+        case _ => fail(s"no devCode in $b1")
+      val (_, b2) = postJson(port, "/login/confirm", s"""{"email":"real@example.com","code":"$code"}""")
+      val token = Json.parse(b2) match
+        case JObj(fs) => fs.collectFirst { case ("token", JStr(t)) => t }.get
+        case _ => fail(s"no token in $b2")
+      client.send(
+        HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/chat"))
+          .header("content-type", "application/json").header("authorization", s"Bearer $token")
+          .POST(HttpRequest.BodyPublishers.ofString(
+            """{"messages":[{"role":"user","content":"/match умею плитка email spoofed@example.com"}]}"""))
+          .build(),
+        HttpResponse.BodyHandlers.ofString())
+      // the session's email registered the profile, the text-typed
+      // one under the SAME message never did
+      import okay.matching.*
+      assertEquals(store.candidates(Query(Side.Offer, text = "плитка")).length, 1)
+      val real = store.register("real@example.com")
+      val spoofed = store.register("spoofed@example.com")
+      assertEquals(store.profileOf(real).map(_.current.length), Some(2))
+      assertEquals(store.profileOf(spoofed).map(_.current.length), Some(0))
+    }
   }
 }

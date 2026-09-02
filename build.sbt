@@ -1016,7 +1016,7 @@ lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
   )
 
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm)
+  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm)
   .settings(
     name := "okay-demo",
     libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.47.1.0",

@@ -8,6 +8,7 @@ import okay.jetty.Jetty
 import okay.llm.{Anthropic, Cut, OpenAi, Transport, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
 import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
+import okay.security.Secure
 import okay.persist.{FileStore, MemoryStore, Policy}
 import okay.jdbc.JdbcSql
 import okay.pg.{PgSql, PgTls}
@@ -130,13 +131,17 @@ object ChatDemo {
     ChatLog(store.topic("web-demo", 1, Policy.default))
 
   /** a /match turn, LOGGED: register the speaker, append the turn,
-   * extract with the log offset as provenance, log the answer too */
-  def matchTurnLogged(text: String, history: Seq[Anthropic.Message], log: ChatLog)
+   * extract with the log offset as provenance, log the answer too.
+   * A verified session (demo-sessions) is the identity of RECORD; the
+   * text-parsed "email x@y" stays the fallback for scripted/offline
+   * turns, which present no session at all */
+  def matchTurnLogged(text: String, history: Seq[Anthropic.Message], log: ChatLog,
+                      sessionEmail: Option[String] = None)
                      (using Transport, Secrets, MatchStore): String =
     val store = summon[MatchStore]
-    val me = store.register(resolveEmail(text, intakePolicy))
+    val me = store.register(sessionEmail.getOrElse(resolveEmail(text, intakePolicy)))
     val off = log.append(ChatTurn(me, "user", text))
-    val answer = matchTurn(text, history, off)
+    val answer = matchTurn(text, history, off, sessionEmail)
     log.append(ChatTurn(me, "assistant", answer))
     answer
 
@@ -398,11 +403,17 @@ object ChatDemo {
   /** an agent turn over the match tools: the LLM structures the
    * chat into the store and searches it — the okay-match story */
   def agentTurn(text: String, history: Seq[Anthropic.Message],
-                modelH: okay.Handler[AgentModel], off: Option[Long] = None)(using MatchStore): String =
+                modelH: okay.Handler[AgentModel], off: Option[Long] = None,
+                identity: Option[String] = None)(using MatchStore): String =
     // the log's offset, when the turn came through the log: the model
-    // is TOLD the provenance instead of inventing one
+    // is TOLD the provenance instead of inventing one; a verified
+    // session (demo-sessions) is told too, as the identity to use for
+    // facts_register regardless of what the message text claims
     val system = matchSystem + off.fold("")(n =>
-      "\nProvenance for THIS turn: chat \"web-demo\", offset " + n + " — pass exactly these to facts_assert.")
+      "\nProvenance for THIS turn: chat \"web-demo\", offset " + n + " — pass exactly these to facts_assert.") +
+      identity.fold("")(e =>
+        s"\nThe speaker is a SIGNED-IN session as $e — use this email for facts_register, " +
+        "even if the message names a different one.")
     given okay.Handler[AgentModel] = modelH
     given okay.Handler[Tool] = Handlers.tools(chainedTable(off.getOrElse(turnNo.incrementAndGet())))
     val ctx = Handlers.context(Compact.all)._2
@@ -485,14 +496,18 @@ object ChatDemo {
   private val englishHelp =
     """match mode: say "can: <what>" / "offer: <what>" or "want: <who>" / "need: <what>" (and email <address>); after a candidate list: ask 1 2 / ask all; as a candidate: accept <N> / decline <N>; scenarios: scenario <name> role=email ...; step <N> <transition>; flow <N>"""
 
-  def scriptedAgent(text: String, off: Long = turnNo.incrementAndGet())
+  def scriptedAgent(text: String, off: Long = turnNo.incrementAndGet(),
+                    identity: Option[String] = None)
                    (using store: MatchStore): String =
     import okay.codec.Json.*
     val t = chainedTable(off)
     val en = isEnglish(text)
     def call(name: String, args: (String, Json)*): String =
       t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
-    val email = resolveEmail(text, intakePolicy)
+    // a verified session (demo-sessions) is the identity of record;
+    // the text-parsed "email x@y" is the fallback for turns with no
+    // session at all (scripted/offline callers)
+    val email = identity.getOrElse(resolveEmail(text, intakePolicy))
     def profile: String =
       Json.parse(call("facts_register", "email" -> JStr(email))) match
         case JObj(fs) => fs.collectFirst { case ("profile", JStr(p)) => p }.get
@@ -696,14 +711,15 @@ object ChatDemo {
   /** which agent serves /match turns: real model when one is
    * configured (by the AMBIENT secrets, over the AMBIENT wire), the
    * deterministic table-driver otherwise */
-  def matchTurn(text: String, history: Seq[Anthropic.Message], off: Long)
+  def matchTurn(text: String, history: Seq[Anthropic.Message], off: Long,
+                identity: Option[String] = None)
                (using t: Transport, s: Secrets, m: MatchStore): String =
     secret("ANTHROPIC_API_KEY").map { key =>
-      agentTurn(text, history, Provider.anthropic(t, key, "claude-sonnet-4-5"), Some(off))
+      agentTurn(text, history, Provider.anthropic(t, key, "claude-sonnet-4-5"), Some(off), identity)
     }.orElse(secret("OKAY_CHAT_BASE").map { base =>
       agentTurn(text, history, Provider.openAi(
-        t, "local", "default", s"$base/v1/chat/completions"), Some(off))
-    }).getOrElse(scriptedAgent(text, off))
+        t, "local", "default", s"$base/v1/chat/completions"), Some(off), identity)
+    }).getOrElse(scriptedAgent(text, off, identity))
 
   // ---- the SSE reply -------------------------------------------------
 
@@ -731,6 +747,11 @@ object ChatDemo {
   private def obj(fs: (String, Json)*): Json = JObj(fs.toVector)
 
   // ---- the routes ----------------------------------------------------
+
+  private def fieldOf(body: Body, name: String): String =
+    Json.parse(new String(body.bytes, UTF_8)) match
+      case JObj(fs) => fs.collectFirst { case (`name`, JStr(v)) => v }.getOrElse("")
+      case _ => ""
 
   private def messagesOf(body: Body): Seq[Anthropic.Message] =
     Json.parse(new String(body.bytes, UTF_8)) match
@@ -905,13 +926,40 @@ object ChatDemo {
             sse("match", Json.print(JStr(note)))))
       pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
+    case r if r.method == okay.http.Method.Post && r.url == "/login" =>
+      val email = fieldOf(r.body, "email")
+      if email.isEmpty then
+        pure(Response(400, Seq("content-type" -> "application/json"),
+          Http.one(Json.print(JObj(Vector("error" -> JStr("email required")))).getBytes(UTF_8))))
+      else
+        val code = Login.start(email)
+        println(s"login code for $email: $code (10 min)")
+        // no email transport exists in this stack yet (specs/security.md):
+        // the code rides the response so the demo is usable end to end;
+        // real delivery replaces this ONE field with silence
+        pure(Response(200, Seq("content-type" -> "application/json"),
+          Http.one(Json.print(JObj(Vector("sent" -> JBool(true), "devCode" -> JStr(code)))).getBytes(UTF_8))))
+
+    case r if r.method == okay.http.Method.Post && r.url == "/login/confirm" =>
+      val email = fieldOf(r.body, "email")
+      val code = fieldOf(r.body, "code")
+      if Login.confirm(email, code) then
+        val token = Login.issue(email)
+        pure(Response(200, Seq("content-type" -> "application/json"),
+          Http.one(Json.print(JObj(Vector("ok" -> JBool(true), "email" -> JStr(email), "token" -> JStr(token)))).getBytes(UTF_8))))
+      else
+        pure(Response(401, Seq("content-type" -> "application/json"),
+          Http.one(Json.print(JObj(Vector("ok" -> JBool(false), "error" -> JStr("wrong or expired code")))).getBytes(UTF_8))))
+
     case r if r.method == okay.http.Method.Post && r.url == "/chat" =>
       val messages = messagesOf(r.body)
       val last = messages.lastOption.map(_.content).getOrElse("")
+      val sessionEmail = Secure.bearerToken(r).flatMap(Login.verify(_))
       if last.startsWith("/match") then
         // the matchmaking turn: the agent works the okay-match tools,
-        // the answer streams through the same SSE framing
-        val answer = matchTurnLogged(last.stripPrefix("/match").trim, messages.init, chatLog)
+        // the answer streams through the same SSE framing; a verified
+        // session identifies the speaker over the text-parsed email
+        val answer = matchTurnLogged(last.stripPrefix("/match").trim, messages.init, chatLog, sessionEmail)
         def stream(ts: List[String]): Unit ! (Writer % String + Async) = ts match
           case Nil => pure(())
           case t :: rest => effect[Writer % String + Async, Unit](
@@ -983,6 +1031,7 @@ object ChatDemo {
 <main>
   <h1>okay chat — streamed by okay-jetty, guarded by Cut</h1>
   <div id="status" style="color:#7a869c;font-size:.85em"></div>
+  <div id="login" style="display:flex;gap:.4rem;align-items:center;font-size:.85em;color:#9fb0c8;margin:.3rem 0"></div>
   <div id="chips" style="display:flex;gap:.4rem;flex-wrap:wrap;margin:.4rem 0"></div>
   <div id="log"></div>
   <form id="f"><input id="i" autocomplete="off" placeholder="say something — or /match умею класть плитку email me@x"><button>send</button></form>
@@ -1013,6 +1062,46 @@ function subscribe(email) {
     log.scrollTop = log.scrollHeight;
   });
 }
+
+// real login (demo-sessions): confirm-and-sign, not trust-the-field —
+// the signed token then rides every /chat call as a Bearer header
+const loginBox = document.getElementById('login');
+function authHeaders() {
+  const t = localStorage.getItem('okay_token');
+  return t ? {authorization: 'Bearer ' + t} : {};
+}
+function renderLogin() {
+  const email = localStorage.getItem('okay_email');
+  loginBox.innerHTML = '';
+  if (email) {
+    loginBox.append('вошли как ' + email + ' ');
+    const out = document.createElement('button');
+    out.type = 'button'; out.textContent = 'выйти';
+    out.onclick = () => { localStorage.removeItem('okay_token'); localStorage.removeItem('okay_email'); renderLogin(); };
+    loginBox.appendChild(out);
+    subscribe(email);
+  } else {
+    const ei = document.createElement('input'); ei.placeholder = 'email'; ei.style.cssText = 'width:11rem;padding:.3rem .5rem';
+    const lb = document.createElement('button'); lb.type = 'button'; lb.textContent = 'войти';
+    lb.onclick = async () => {
+      if (!ei.value.trim()) return;
+      await fetch('/login', {method: 'POST', headers: {'content-type': 'application/json'},
+        body: JSON.stringify({email: ei.value.trim()})});
+      const ci = document.createElement('input'); ci.placeholder = 'код из консоли сервера'; ci.style.cssText = 'width:11rem;padding:.3rem .5rem';
+      const cb = document.createElement('button'); cb.type = 'button'; cb.textContent = 'подтвердить';
+      cb.onclick = async () => {
+        const res = await fetch('/login/confirm', {method: 'POST', headers: {'content-type': 'application/json'},
+          body: JSON.stringify({email: ei.value.trim(), code: ci.value.trim()})});
+        const d = await res.json();
+        if (d.ok) { localStorage.setItem('okay_token', d.token); localStorage.setItem('okay_email', d.email); renderLogin(); }
+        else { cb.textContent = 'не то — ещё раз'; }
+      };
+      loginBox.innerHTML = ''; loginBox.append('код для ' + ei.value.trim() + ': '); loginBox.appendChild(ci); loginBox.appendChild(cb);
+    };
+    loginBox.appendChild(ei); loginBox.appendChild(lb);
+  }
+}
+renderLogin();
 function bubble(cls) { const d = document.createElement('div'); d.className = 'm ' + cls; log.appendChild(d); return d; }
 f.onsubmit = async (ev) => {
   ev.preventDefault();
@@ -1022,7 +1111,7 @@ f.onsubmit = async (ev) => {
   history.push({role: 'user', content: text});
   const em = text.match(/[\w.+-]+@[\w.-]+/); if (em) subscribe(em[0]);
   const bot = bubble('bot');
-  const res = await fetch('/chat', {method: 'POST', headers: {'content-type': 'application/json'},
+  const res = await fetch('/chat', {method: 'POST', headers: Object.assign({'content-type': 'application/json'}, authHeaders()),
     body: JSON.stringify({messages: history})});
   const reader = res.body.getReader(); const dec = new TextDecoder();
   let buf = '', answer = '', closed = false;
