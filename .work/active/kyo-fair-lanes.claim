@@ -1,5 +1,0 @@
-slug: kyo-fair-lanes
-branch: feature/kyo-fair-lanes
-worktree: ../okay-wt-kyo-fair-lanes
-claimed: 2026-09-02
-scope: audit of the kyo comparison lanes — Reader/Writer/Resource headline kyo numbers are the left-nested foldLeft shape, O(N²) in kyo (KyoContinue re-applies the inner continuation on every resume); add right-nested kyo*Rec lanes and a chunked Stream.range lane, re-measure, make the natural-shape numbers the table entries in docs/benchmarks.md (left-nested stays as the quadratic-trap footnote). Files: compare/src/jmh Reader/Writer/Resource/StreamOps benchmarks, docs/benchmarks.md, history.tsv, CHANGELOG.
