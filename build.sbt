@@ -1122,6 +1122,27 @@ lazy val okayLangchain4j = (project in file("okay-langchain4j"))
     ),
   )
 
+/**
+ * The interop sentence's OTHER half, narrower than the name
+ * (specs/llm-agentic.md, rag-langchain4j): their EmbeddingModel as
+ * String => Embedding and as okay-rag's Handler[Embed]. A SEPARATE
+ * module from okayLangchain4j (chat) — the local ONNX model this
+ * pulls in is a real ~90MB download, and DELIBERATELY NOT in the
+ * root `.aggregate(...)` list below: nothing about compiling or
+ * testing this repo should force that download on a contributor who
+ * never touches embeddings. Build/test it explicitly:
+ * `sbt okayLangchain4jEmbed/test`.
+ */
+lazy val okayLangchain4jEmbed = (project in file("okay-langchain4j-embed"))
+  .dependsOn(okayRag.jvm)
+  .settings(
+    name := "okay-langchain4j-embed",
+    libraryDependencies ++= Seq(
+      "dev.langchain4j" % "langchain4j-embeddings-all-minilm-l6-v2" % "1.19.0-beta29",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,

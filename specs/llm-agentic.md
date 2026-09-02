@@ -522,12 +522,12 @@ BACKLOG, now unblocked rather than closed: a future session wires
 ...)` construction as its own small, opt-in change.
 
 Behavior:
-- [ ] "разработчик" and "программист" (near-synonyms, zero shared
+- [x] "разработчик" and "программист" (near-synonyms, zero shared
       substring) score near each other under the real embedder — and
       do NOT under `Vectors.hashing()`, proving the upgrade is real
-- [ ] `embed`/`handler` agree: the same model wrapped either way
+- [x] `embed`/`handler` agree: the same model wrapped either way
       answers the same vector for the same text
-- [ ] no network call: the model loads and embeds fully offline
+- [x] no network call: the model loads and embeds fully offline
       (proven by the test suite running with no external host reachable)
 
 ## Behavior
