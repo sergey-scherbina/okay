@@ -1,7 +1,8 @@
 package okay
 
-import java.util.concurrent.atomic.AtomicInteger
-import scala.collection.mutable
+import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
+import scala.annotation.tailrec
+import scala.collection.immutable.Queue
 
 /**
  * A channel: a queue between fibers, the missing primitive of
@@ -14,8 +15,11 @@ import scala.collection.mutable
  * the first waiter. `receive` and `send` are therefore Async
  * programs — the RUNTIME decides how to wait (runAsync: not at all;
  * Async.run: one park at the boundary, under CanBlock), and the
- * channel itself parks no thread and polls nothing. The state is a
- * few queues under a short lock; callbacks run outside it.
+ * channel itself parks no thread and polls nothing. The state is
+ * ONE immutable value in an AtomicReference, every operation a pure
+ * transition installed by CAS (channel-cas): no lock, not even a
+ * short one; callbacks run after the CAS, outside any critical
+ * section.
  *
  * A channel is itself a Stream (in Async), but a LINEAR one: the
  * observation consumes — a repeated uncons reads the NEXT element,
@@ -25,63 +29,67 @@ import scala.collection.mutable
 final class Channel[A](capacity: Int = Int.MaxValue) {
 
   private type End = Either[Throwable, Option[A]]
-  private val lock = new AnyRef
-  private val buf = mutable.Queue[A]()
-  private val receivers = mutable.Queue[End => Unit]()
-  private val senders = mutable.Queue[(A, Boolean => Unit)]()
-  private var open = true
-  private var failure: Throwable | Null = null
+
+  /** the whole channel as ONE immutable value: persistent queues and
+   * a size counter (immutable.Queue's size is O(n)). Every operation
+   * is a pure State => (State, action); the action runs only after
+   * the CAS that installed the new state won — the Drive handshake's
+   * shape, so no thread ever holds a lock, not even for an instant */
+  private final case class State(
+    buf: Queue[A], size: Int,
+    receivers: Queue[End => Unit],
+    senders: Queue[(A, Boolean => Unit)],
+    open: Boolean,
+    failure: Throwable | Null)
   // invariant: receivers waiting => buf empty and no sender waiting;
   // senders waiting => buf full (or capacity 0) and no receiver waiting
 
-  private def end: End = if failure != null then Left(failure.nn) else Right(None)
+  private val state = AtomicReference(State(Queue.empty, 0, Queue.empty, Queue.empty, true, null))
+
+  @tailrec private def transact[R](f: State => (State, () => R)): R =
+    val s = state.get
+    val (s2, act) = f(s)
+    if (s2 eq s) || state.compareAndSet(s, s2) then act() else transact(f)
+
+  private def endOf(s: State): End =
+    if s.failure != null then Left(s.failure.nn) else Right(None)
 
   /** the callback form of send: k(true) once the channel TOOK the
    * element (handed to a receiver, or buffered — now, or later when
    * room opens), k(false) if it is closed: the element is dropped,
    * nothing thrown. A producer that outlives its stream is ordinary;
    * its send is a fact to read, not a fault to unwind. */
-  def sendAsync(a: A)(k: Boolean => Unit): Unit =
-    val go: () => Unit = lock.synchronized {
-      if !open then () => k(false)
-      else if receivers.nonEmpty then
-        val r = receivers.dequeue()
-        () => { r(Right(Some(a))); k(true) }
-      else if buf.size < capacity then
-        buf.enqueue(a)
-        () => k(true)
-      else
-        senders.enqueue((a, k))
-        () => ()
-    }
-    go()
+  def sendAsync(a: A)(k: Boolean => Unit): Unit = transact[Unit] { s =>
+    if !s.open then (s, () => k(false))
+    else if s.receivers.nonEmpty then
+      val (r, rest) = s.receivers.dequeue
+      (s.copy(receivers = rest), () => { r(Right(Some(a))); k(true) })
+    else if s.size < capacity then
+      (s.copy(buf = s.buf.enqueue(a), size = s.size + 1), () => k(true))
+    else (s.copy(senders = s.senders.enqueue((a, k))), () => ())
+  }
 
   /** the callback form of receive: now if an element (or the end) is
    * ready, later when one arrives. The end is Right(None), or Left of
    * the producer's failure — buffered elements drain first, the
    * failure is what the END of the stream is */
-  def receiveAsync(k: End => Unit): Unit =
-    val go: () => Unit = lock.synchronized {
-      if buf.nonEmpty then
-        val a = buf.dequeue()
-        if senders.nonEmpty then
-          // room opened: admit the first parked sender
-          val (b, sk) = senders.dequeue()
-          buf.enqueue(b)
-          () => { sk(true); k(Right(Some(a))) }
-        else () => k(Right(Some(a)))
-      else if senders.nonEmpty then
-        // capacity 0: the rendezvous
-        val (b, sk) = senders.dequeue()
-        () => { sk(true); k(Right(Some(b))) }
-      else if !open then
-        val e = end
-        () => k(e)
-      else
-        receivers.enqueue(k)
-        () => ()
-    }
-    go()
+  def receiveAsync(k: End => Unit): Unit = transact[Unit] { s =>
+    if s.buf.nonEmpty then
+      val (a, rest) = s.buf.dequeue
+      if s.senders.nonEmpty then
+        // room opened: admit the first parked sender
+        val ((b, sk), more) = s.senders.dequeue
+        (s.copy(buf = rest.enqueue(b), senders = more), () => { sk(true); k(Right(Some(a))) })
+      else (s.copy(buf = rest, size = s.size - 1), () => k(Right(Some(a))))
+    else if s.senders.nonEmpty then
+      // capacity 0: the rendezvous
+      val ((b, sk), more) = s.senders.dequeue
+      (s.copy(senders = more), () => { sk(true); k(Right(Some(b))) })
+    else if !s.open then
+      val e = endOf(s)
+      (s, () => k(e))
+    else (s.copy(receivers = s.receivers.enqueue(k)), () => ())
+  }
 
   /** send as a program: suspends while the buffer is full, answers
    * whether the channel took the element (false: closed, dropped) */
@@ -89,7 +97,7 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
     Async.await { k =>
       val cb: Boolean => Unit = b => k(Right(b))
       sendAsync(a)(cb)
-      () => lock.synchronized { senders.removeFirst(_._2 eq cb): Unit }
+      () => transact[Unit](s => (s.copy(senders = s.senders.filterNot(_._2 eq cb)), () => ()))
     }
 
   /** receive as a program: suspends while the channel is empty and
@@ -98,24 +106,21 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
   def receive: Option[A] ! Async =
     Async.await { k =>
       receiveAsync(k)
-      () => lock.synchronized { receivers.removeFirst(_ eq k): Unit }
+      () => transact[Unit](s => (s.copy(receivers = s.receivers.filterNot(_ eq k)), () => ()))
     }
 
   /** the non-suspending send: true if taken NOW (handed over or
    * buffered), false if the channel is closed or full — never
    * waits, never drops silently */
-  def offer(a: A): Boolean =
-    val go: () => Boolean = lock.synchronized {
-      if !open then () => false
-      else if receivers.nonEmpty then
-        val r = receivers.dequeue()
-        () => { r(Right(Some(a))); true }
-      else if buf.size < capacity then
-        buf.enqueue(a)
-        () => true
-      else () => false
-    }
-    go()
+  def offer(a: A): Boolean = transact[Boolean] { s =>
+    if !s.open then (s, () => false)
+    else if s.receivers.nonEmpty then
+      val (r, rest) = s.receivers.dequeue
+      (s.copy(receivers = rest), () => { r(Right(Some(a))); true })
+    else if s.size < capacity then
+      (s.copy(buf = s.buf.enqueue(a), size = s.size + 1), () => true)
+    else (s, () => false)
+  }
 
   /** the parking forms, only where parking is GRANTED (JVM/Native;
    * a compile error on JS): the same programs, forced at this point */
@@ -128,16 +133,15 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
   /** end the stream: the buffered elements still drain, parked
    * senders' elements were accepted before the end and join the
    * buffer, waiting receivers hear the end at once */
-  def close(): Unit =
-    val go: () => Unit = lock.synchronized {
-      open = false
-      val admitted = senders.dequeueAll(_ => true)
-      admitted.foreach((b, _) => buf.enqueue(b))
-      val woken = if buf.isEmpty then receivers.dequeueAll(_ => true) else Seq.empty
-      val e = end
-      () => { admitted.foreach((_, sk) => sk(true)); woken.foreach(_(e)) }
-    }
-    go()
+  def close(): Unit = transact[Unit] { s =>
+    val admitted = s.senders
+    val buf = admitted.foldLeft(s.buf)((q, e) => q.enqueue(e._1))
+    val woken = if buf.isEmpty then s.receivers else Queue.empty
+    val s2 = s.copy(buf = buf, size = s.size + admitted.size, senders = Queue.empty,
+      receivers = if buf.isEmpty then Queue.empty else s.receivers, open = false)
+    val e = endOf(s2)
+    (s2, () => { admitted.foreach(_._2(true)); woken.foreach(_(e)) })
+  }
 
   /**
    * Record that a producer broke. It does NOT close: in a merge the
@@ -148,12 +152,14 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
    * something went wrong. Without this a producer that failed halfway
    * was indistinguishable from one that finished.
    */
-  def fail(e: Throwable): Unit = lock.synchronized { if failure == null then failure = e }
+  def fail(e: Throwable): Unit = transact[Unit] { s =>
+    if s.failure == null then (s.copy(failure = e), () => ()) else (s, () => ())
+  }
 
   /** what ended the stream, if anything did badly */
-  def failed: Option[Throwable] = lock.synchronized(Option(failure))
+  def failed: Option[Throwable] = Option(state.get.failure)
 
-  def isClosed: Boolean = lock.synchronized(!open)
+  def isClosed: Boolean = !state.get.open
 }
 
 /** a channel is an async stream of what it receives (linear: see

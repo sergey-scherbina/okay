@@ -122,6 +122,21 @@ cross-build lands so nothing has to be broken later.
   CanBlock. Not done here: the Native Scheduler still forks an OS
   thread per fiber — a fixed pool is now safe to introduce (BACKLOG
   native-scheduler-pool).
+- **The channel is lock-free: one immutable State, CAS transitions**
+  (channel-cas, 2026-09-02). channel-callback kept a short
+  `synchronized` around the queues; the operator asked for it to go.
+  The whole channel is now one immutable value — persistent queues
+  for the buffer, the waiting receivers and the waiting senders
+  (with their elements), a size counter (immutable.Queue's size is
+  O(n)), the open flag, the failure — in an AtomicReference. Every
+  operation is a pure `State => (State, action)`; a CAS loop
+  installs the new state and only then runs the action (the
+  callbacks), so a retry re-runs a pure function and never a
+  side effect — the Drive handshake's shape, applied to the whole
+  channel. No thread holds anything, ever; on JS the reference is a
+  plain cell. Cost: an allocation per operation and a retry under
+  contention. Test: eight producers × 1000 through a 16-slot
+  channel into four consumers — 8000 elements, each exactly once.
 - **A discarded program is a compile error** (discarded-program-lint,
   2026-09-02). The migration to `send: Boolean ! Async` showed the
   hazard of programs-as-values: `c.send(x)` in statement position

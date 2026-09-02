@@ -65,6 +65,33 @@ class TestChannel extends munit.FunSuite {
     assertEquals(d.receiveBlocking(), None)
   }
 
+  test("many producers, many consumers, one bounded channel: every element exactly once (CAS)") {
+    // eight virtual-thread producers push a thousand each through a
+    // 16-slot channel into four consumers; the CAS transitions must
+    // neither lose nor duplicate under real contention
+    val c = Channel[Int](capacity = 16)
+    val received = java.util.concurrent.ConcurrentLinkedQueue[Int]()
+    val producers = (0 until 8).map { p =>
+      Thread.ofVirtual().start { () =>
+        for i <- 0 until 1000 do assert(c.sendBlocking(p * 1000 + i))
+      }
+    }
+    val consumers = (0 until 4).map { _ =>
+      Thread.ofVirtual().start { () =>
+        var go = true
+        while go do c.receiveBlocking() match
+          case Some(v) => received.add(v): Unit
+          case None => go = false
+      }
+    }
+    producers.foreach(_.join())
+    c.close()
+    consumers.foreach(_.join())
+    val got = received.asScala.toList
+    assertEquals(got.size, 8000)
+    assertEquals(got.toSet, (0 until 8000).toSet)
+  }
+
   test("the send/close race is exact: every accepted send is received, every refused one is not") {
     // a producer sends as fast as it can; the consumer drains; the
     // main thread closes at an arbitrary moment. The invariant is
