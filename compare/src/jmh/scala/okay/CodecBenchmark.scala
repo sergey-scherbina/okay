@@ -2,7 +2,7 @@ package okay
 
 import org.openjdk.jmh.annotations.*
 import java.util.concurrent.TimeUnit
-import okay.codec.{Json, Schema}
+import okay.codec.{Cbor, Json, Schema}
 import okay.codec.Json.*
 
 /**
@@ -106,12 +106,19 @@ class CodecBenchmark {
   import CodecFixture.*
 
   val staged = okay.codec.Staged.json[Order]
+  val stagedCbor = okay.codec.Staged.cbor[Order]
+  val cborBytes: Array[Byte] = Cbor.write(order)
 
   @Benchmark def encodeInterp(): String = Json.encode(summon[Schema[Order]])(order)
   @Benchmark def encodeStaged(): String = staged.encode(order)
   @Benchmark def decodeStagedAst(): Either[String, Order] = staged.decode(ast)
   @Benchmark def encodeHand(): String = handEncode(order)
   @Benchmark def encodeCirce(): String = summon[io.circe.Encoder[Order]](order).noSpaces
+
+  @Benchmark def cborEncodeInterp(): Array[Byte] = Cbor.write(order)(using summon[Schema[Order]])
+  @Benchmark def cborEncodeStaged(): Array[Byte] = stagedCbor.encode(order)
+  @Benchmark def cborDecodeInterp(): Either[String, Order] = Cbor.read(cborBytes)(using summon[Schema[Order]])
+  @Benchmark def cborDecodeStaged(): Either[String, Order] = stagedCbor.decode(cborBytes)
 
   @Benchmark def parseOnly(): Json = Json.parse(text)
   @Benchmark def parseValueOnly(): Json = Json.parseValue(text)
