@@ -1,5 +1,0 @@
-slug: demo-replay-projections
-branch: feature/demo-replay-projections
-worktree: ../okay-wt-demo-replay-projections
-claimed: 2026-09-02
-scope: the demo's /match turns land in a persist ChatLog (OKAY_CHAT_LOG, FileStore) with the log offset as provenance; MatchStore.reset() (memory + sql); POST /admin/replay drops the projection and rebuilds it from the log, a button on /market; tested with a memory log. specs/demo-chat.md, docs.
