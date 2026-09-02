@@ -73,9 +73,13 @@ per-program, instead of as the only semantics.
 
 ## 2. Reader — 10k asks · Writer — 10k tells
 
-| Reader | **Okay** | ZIO | cats Kleisli | atnos | kyo Env |
-|---|---|---|---|---|---|
-| | **110** | 240 | 350 | 1737 | 362 756* |
+| Reader | **Okay ctx direct** | **Okay ctx instance** | **Okay row** | ZIO | cats Kleisli | atnos | kyo Env |
+|---|---|---|---|---|---|---|---|
+| | **0.3** | **43**† | **110** | 240 | 350 | 1737 | 362 756* |
+
+(† the ctx instance is measured at 1 000 binds — 4.3 µs, scaled ×10
+here — because the chain is stack-bounded at ~2-5k binds; see the
+paragraph below.)
 
 | Writer | **Okay** | cats WriterT/Chain | atnos | kyo Emit |
 |---|---|---|---|---|
@@ -93,14 +97,13 @@ opaque IDENTITY signature — telling w IS the value w, no wrapper
 node; the handler is a bespoke tail loop into a Vector.
 
 **The ctx-function reader** (capabilities.md), measured into the
-same case (2026-09-01, loaded box — ratios, not digits, are the
-claim): direct style — 10k ambient reads via `wire[Int]` under one
-`provide` — runs at **0.48 µs**, two-plus orders of magnitude below
-the relay, because there is nothing to interpret: a read is a
-parameter access, the "monad" is gone at elaboration. The same
-chain built THROUGH the `ctxMonad` instance (N flatMaps, each
-literally `f(fb)`) measures **~5.3 µs per 1 000 binds** — about 2x
-the relay's per-bind rate — but is stack-bounded: no trampoline,
+same case (quiet box, 2026-09-02): direct style — 10k ambient
+reads via `wire[Int]` under one `provide` — runs at **0.31 µs**,
+~350x below the relay, because there is nothing to interpret: a
+read is a parameter access, the "monad" is gone at elaboration. The
+same chain built THROUGH the `ctxMonad` instance (N flatMaps, each
+literally `f(fb)`) measures **4.3 µs per 1 000 binds** — ~2.5x
+faster than the relay per bind — but is stack-bounded: no trampoline,
 ~2-5k binds on a default stack, and it must be built by recursion
 (a mutating-var build self-captures — E22 in
 specs/context-functions.md). Width is the instance's domain
