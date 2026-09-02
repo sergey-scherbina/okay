@@ -1,5 +1,24 @@
 # Changelog
 
+## casts-encapsulated — three audit lanes in one: Effects, the kernels, the macro's upcasts
+Completed: 2026-09-02
+Landed as d6feb48. Effects.scala: Handler.union splits through `<|>`
+(the union's excluded-middle claim lives in one place), translate's
+continuation is typed by the Bind node; typeableK's class-test kernel
+stays, stated. Pipe.unreachable throws instead of handing out a null
+dressed as an A. Eager's value-or-tree dispatch is ONE `fold` holding
+the encoding's two casts; toFree, flatMap, runWith go through it.
+ChunkBuf's array kernel is one `wrap` (reflection answers Object, and
+an array of A's representation IS a Chunk[A] — the lie `update` tells,
+repeated once on the reading side) and `sized` replaced the Vector
+casts. Direct: the macro summons `V <:< T` at expansion time and
+splices the compiler's evidence instead of emitting a cast (`upcast`)
+— and that exposed one of the four as NOT an upcast: a
+statement-position loop's `F[Any]` cast to Unit, now an explicit
+discard `(_: V) => ()`, Scala's own value-discard rule said in the
+macro. Core 362 green on JVM, JS/Native green, every module compiles;
+rebased over a claim-only commit.
+
 ## cast-free-sim — the simulator typed, zero casts
 Completed: 2026-09-02
 Landed as a8baab9. Second lane of the cast audit. Sim's channel ops
