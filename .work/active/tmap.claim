@@ -1,0 +1,5 @@
+slug: tmap
+branch: feature/tmap
+worktree: ../okay-wt-tmap
+claimed: 2026-09-02
+scope: okay.TMap[K[_]] — a heterogeneous map with typed keys (a key K[A] holds an A), stored as a cons stack of typed Entry[K, A] pairs; typed get/updated/foreach (polymorphic function), keys by identity; the ONE cast (identity => type equality) lives in TMap.get. Stm's Log uses it: no cast in Stm.scala. Operator's design.
