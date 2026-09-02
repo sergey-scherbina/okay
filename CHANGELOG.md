@@ -1,5 +1,27 @@
 # Changelog
 
+## cast-free-condition — the condition machine typed; the audit in the backlog
+Completed: 2026-09-02
+Landed as 6cfb79b. The operator asked where casts remained and to
+write the audit down and work it: BACKLOG "Casts" lists five groups
+(185 asInstanceOf + 28 @unchecked in src/main) with a lane and a
+recipe each. First lane, Condition.scala (12 casts, 1 left): the
+operations carry their answer type — `Signal[A](condition, accept)`,
+`Within[A, V](…, recover, accept)`, `Leave[V](handle, value)` — and
+the policy's untyped answers cross ONE door, `accept`, a ClassTag
+test that refuses a wrong value as BadResume; the run loop is typed
+by GADT matching (`step[Y](op: Op[Y], k)`, Left = continue on the
+Resume path, Right = answer) so its erasure casts are gone; `raiseC`
+IS `signal[A]` with the Answers tag, and every signal has the
+checked resume now. `signal[A]` and `frame[A, V, F]` take a ClassTag
+(none written for concrete types; Repair.decode/read gained the
+bound). The one claim left, stated at its line: a Within's body is a
+program in the machine's row, erased at the operation because F is
+not the operation's to name. All condition tests unchanged (one that
+built Op.Signal by hand uses signal[Int]); core 362 green on JVM,
+JS/Native green, every module compiles; persist, llm, match suites
+green. specs/condition.md gained the section.
+
 ## demo-sessions — confirm-and-sign login replaces trust-the-field
 Completed: 2026-09-02
 Landed as cd4591b. `POST /login` mints a one-time 6-digit code (this

@@ -1,5 +1,0 @@
-slug: cast-free-condition
-branch: feature/cast-free-condition
-worktree: ../okay-wt-cast-free-condition
-claimed: 2026-09-02
-scope: the cast audit written to BACKLOG (five groups, 185 casts) and specs/stm.md; then group 1 begins with Condition.scala — typed ops (Signal[A], Leave, Within carry their answer type), perform[X] + GADT matching in run, no asInstanceOf but the policy boundary (Resume(v: Any) checked by BadResume). Operator: "напиши в беклог все это и делай".
