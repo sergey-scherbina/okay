@@ -1,5 +1,0 @@
-slug: deploy-docs
-branch: feature/deploy-docs
-worktree: ../okay-wt-deploy-docs
-claimed: 2026-09-02
-scope: docs/modules/okay-deploy.md rewritten as a full usage guide (operator ask); docs only.

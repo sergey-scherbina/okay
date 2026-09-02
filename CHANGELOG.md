@@ -1,5 +1,19 @@
 # Changelog
 
+## deploy-docs — the okay-deploy usage guide
+Completed: 2026-09-02
+Landed as 8d23c9e (docs only, no code — no matrix run). docs/modules/
+okay-deploy.md rewritten as a full guide (operator ask): a five-step
+quick start for making any service deployable, the `Deploy` value
+field by field, what each rendered file is, build/run for a laptop
+(compose), a cluster (helm) and Terraform (`helm_release` over the
+rendered chart, overrides layered by `set`), monitoring once deployed
+(nothing to add — the chart already points at okay-ops's routes), the
+rule for changing things (a knob: edit the value and re-render; a
+chart gap: extend okay-deploy's template once for everyone, never the
+rendered copy), and the things that bite (`_root_.okay...`, the forked
+`run` cwd, the `app.jar` contract).
+
 ## deploy-module — okay-deploy as a module; the app owns its deploy
 Completed: 2026-09-02
 Landed as ba959d4 + d5c9398 (tip acaeee3). Operator: "в самом
