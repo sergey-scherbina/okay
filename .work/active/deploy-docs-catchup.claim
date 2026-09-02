@@ -1,0 +1,5 @@
+slug: docs-catchup
+branch: feature/docs-catchup
+worktree: ../okay-wt-docs-catchup
+claimed: 2026-09-02
+scope: docs/modules for the five reusable-module extractions that shipped without one (okay-admin, okay-chat, okay-subscription, okay-live) plus okay-pg.md (PgTarget moved in) and okay-demo.md (reflect the composed routes: Chat/Admin/Subscription/Live, admin token at startup). Docs only.
