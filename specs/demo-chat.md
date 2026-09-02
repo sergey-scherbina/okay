@@ -280,6 +280,38 @@ that MOVES. Three pieces, all riding machinery the demo already has:
       /events/market) and the facet container; rows still server-
       rendered (the existing polish assertions stay green)
 
+## Streaming content cut (demo-streaming-cut)
+
+The demo as `llm-streaming-cut`'s first consumer (specs/llm-agentic.md
+— the Elsewhere gate this closes). Until now `Chat.reply` guarded ONE
+rule: the token budget (`i >= budget`). `okay-chat`'s `reply`/
+`chatRoute` gain an optional `policy: (Int, String) =>
+Option[Cut.Violation]`, checked inside the SAME `Cut.checked` call
+alongside the budget — additive, defaults to never-violate so every
+existing caller (including `okay-chat`'s own tests) is unchanged.
+
+The demo supplies a content policy: a small banned-word set standing
+in for "off-policy content" (no real moderation claim — the point is
+the MECHANISM, a live generation aborting mid-stream on what it
+SAYS, not just how much). Demonstrable OFFLINE, the doctrine once
+more: `scripted`'s reply ECHOES the user's own message
+(`"You said: $last — ..."`), so typing a banned word is itself the
+trigger — no separate demo-only model wrapper needed. An example
+chip on the page invites it directly.
+
+- [ ] a scripted reply containing a banned word is CUT before the
+      full echo streams: `event: cut` names the content-policy rule,
+      and no token after the banned one is emitted (through the real
+      `/chat` route, not just the guard in isolation)
+- [ ] a scripted reply with NO banned word streams to `event: done`
+      exactly as before this change (the passing path is unchanged)
+- [ ] over-budget still cuts on `token-budget` when a reply is both
+      long AND clean — the two rules coexist in one guard, neither
+      shadows the other
+- [ ] `Chat.chatRoute`'s default (`policy` omitted) behaves BYTE-
+      IDENTICAL to the pre-widening signature — proven directly in
+      okay-chat's own suite, not just asserted here
+
 ## Polish (demo-polish)
 - The page states its MODE (scripted/local/live) and links /market.
 - `/market` — the marketplace, visible: offers and needs as lists of

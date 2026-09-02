@@ -407,6 +407,17 @@ Behavior:
       cut by a length rule, the connection released — OPEN: needs an
       API key on the box; the mechanism is fully covered scripted
 
+**Consumer landed 2026-09-02 (demo-streaming-cut):** `okay-chat`'s
+`reply`/`chatRoute` gained an optional `policy: (Int, String) =>
+Option[Cut.Violation]` — additive (defaults to never-violate, so
+existing callers are unchanged) — combined with the existing
+token-budget check inside the SAME `Cut.checked`. `okay-demo` wires
+a content policy (a banned-word stand-in for "off-policy content")
+alongside the budget check, so a LIVE generation can now abort mid-
+stream on CONTENT, not only length — the gate this spec's own
+"consumer named: demo-streaming-cut" line was waiting on. Full
+account: specs/demo-chat.md, "Streaming content cut."
+
 ### The repair door (2026-09-01, llm-cut-conditions)
 
 `Cut.screened` joins checked/watched: a violating token SIGNALS the
