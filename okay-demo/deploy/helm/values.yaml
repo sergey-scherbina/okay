@@ -18,4 +18,6 @@ env:
     value: "8090"
   - name: OKAY_CHAT_LOG
     value: ":memory:"
+  - name: OKAY_CHAT_APP
+    value: "/app/app.js"
 resources: {}

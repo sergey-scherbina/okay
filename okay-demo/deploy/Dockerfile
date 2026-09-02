@@ -5,11 +5,12 @@ COPY project project
 COPY build.sbt .
 RUN sbt update
 COPY . .
-RUN sbt "okayDemo/assembly"
+RUN sbt "okayDemo/assembly" "okayChatWebJS/fastLinkJS"
 
 FROM eclipse-temurin:21-jre-alpine
 RUN addgroup -S okay && adduser -S okay -G okay
 COPY --from=build /src/okay-demo/target/scala-*/app.jar /app/app.jar
+COPY --from=build /src/okay-demo/web/.js/target/scala-*/*-fastopt/main.js /app/app.js
 USER okay
 WORKDIR /app
 EXPOSE 8090

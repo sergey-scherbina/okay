@@ -17,6 +17,24 @@ class TestDeploy extends munit.FunSuite:
     assert(!f.contains("ARG "), "nothing is left to a build arg: the value decided everything")
   }
 
+  test("extraBuild/extraCopy add a build task and a COPY line; empty is byte-identical (demo-package)") {
+    val withExtras = d.copy(
+      extraBuild = Vector("okayChatWebJS/fastLinkJS"),
+      extraCopy = Vector(Copy("okay-demo/web/.js/target/scala-*/*-fastopt/main.js", "/app/app.js")))
+    val f = Dockerfile.render(withExtras)
+    assert(f.contains("""RUN sbt "okaySvc/assembly" "okayChatWebJS/fastLinkJS""""), f)
+    assert(f.contains(
+      "COPY --from=build /src/okay-demo/web/.js/target/scala-*/*-fastopt/main.js /app/app.js"), f)
+    // the extra COPY lands BEFORE the user switches to non-root
+    val jarAt = f.indexOf("app.jar /app/app.jar")
+    val extraAt = f.indexOf("app.js")
+    val userAt = f.indexOf("USER okay")
+    assert(jarAt < extraAt && extraAt < userAt, f)
+    // and with no extras, the render is UNCHANGED from before this feature
+    assertEquals(Dockerfile.render(d), Dockerfile.render(d.copy(extraBuild = Vector.empty, extraCopy = Vector.empty)))
+    assert(!Dockerfile.render(d).contains("okayChatWebJS"))
+  }
+
   test("values.yaml carries every knob as a quoted scalar; the chart carries none") {
     val v = Helm.values(d)
     assert(v.contains("""repository: "okay/svc""""), v)

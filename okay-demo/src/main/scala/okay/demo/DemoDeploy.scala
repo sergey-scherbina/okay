@@ -1,6 +1,6 @@
 package okay.demo
 
-import okay.deploy.{Deploy, Env, Image}
+import okay.deploy.{Copy, Deploy, Env, Image}
 
 /**
  * DemoChat's deployment, as the value it is (specs/deploy.md): the
@@ -20,7 +20,16 @@ object DemoDeploy:
     env = Vector(
       Env("OKAY_CHAT_PORT", "8090"),
       Env("OKAY_CHAT_LOG", ":memory:"),   // a real deployment mounts a volume here
-    ))
+      // the React bundle, linked and copied in below — Chat.appJs
+      // already reads this env var first (demo-package)
+      Env("OKAY_CHAT_APP", "/app/app.js"),
+    ),
+    // one-command run (demo-package): the build stage links the
+    // React frontend too, and its output rides into the image next
+    // to the jar — no separate node/dev-server step
+    extraBuild = Vector("okayChatWebJS/fastLinkJS"),
+    extraCopy = Vector(Copy(
+      "okay-demo/web/.js/target/scala-*/*-fastopt/main.js", "/app/app.js")))
 
   def main(args: Array[String]): Unit =
     // `run` forks with the MODULE directory as cwd; the deploy dir is

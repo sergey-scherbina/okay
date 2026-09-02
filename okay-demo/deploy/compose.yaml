@@ -10,3 +10,4 @@ services:
     environment:
       OKAY_CHAT_PORT: "8090"
       OKAY_CHAT_LOG: ":memory:"
+      OKAY_CHAT_APP: "/app/app.js"
