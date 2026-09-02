@@ -197,9 +197,25 @@ construction instead of a type test per value).
       isolation immediately after, both isolated runs. Same
       signature as netty-ws-matrix-flake, a different service
       family: the availability PROBE (not the feature) starves under
-      sbt's own full-matrix forked-JVM parallelism. Settle with the
-      same fix as netty-ws-matrix-flake, one lane: a probe deadline
-      short enough to survive full-matrix contention, or the
+      sbt's own full-matrix forked-JVM parallelism — evidenced by
+      TestKafkaStore/TestKafkaRepair, whose 120s `munitTimeout`
+      override let the SAME slow probe land as a 60s skip instead of
+      a hard failure, right there in the same matrix run. NARROWED
+      and PARTLY FIXED (same landing): TestElectionKafka carried no
+      `munitTimeout` override at all (its three Kafka siblings all
+      do, 120s) — the 30s munit default was firing before even a
+      merely-slow probe could finish; added, matching the sibling
+      pattern exactly. TestMongoDocs carried none either (DocsSuite's
+      base has none) — added the same 120s override. Both verified
+      green (clean skip) in isolation after the fix. STILL OPEN:
+      TestKafkaEos already carried the 120s override and blew through
+      it anyway (120.297s) — a probe that itself starves past two
+      minutes is the netty-ws-matrix-flake root cause verbatim
+      (unbounded sbt test-matrix forked-JVM parallelism, no `Global /
+      concurrentRestrictions` cap in build.sbt), not a per-suite
+      timeout to tune upward. Settle with the same fix as
+      netty-ws-matrix-flake, one lane: a build.sbt-wide concurrency
+      cap (cross-cutting, needs its own claim and buy-in) or the
       isolate-under-load loop.
 
 ## Correctness and the core (specs/sim.md, specs/typestate.md)

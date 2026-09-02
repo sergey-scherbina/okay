@@ -7,6 +7,14 @@ import okay.persist.{ElectionSuite, Topic}
  * engine whose KRaft did the twenty years. Live; skips absent. */
 class TestElectionKafka extends ElectionSuite:
 
+  // the live-check probe itself can stretch well past its own
+  // 1s socket deadline under a loaded sbt test matrix (found
+  // 2026-09-02, BACKLOG matrix-flake fifth sighting) — the three
+  // sibling Kafka suites already carry this override; this one
+  // didn't, so a slow-but-correct skip read as a hard 30s failure
+  override def munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(120, "s")
+
   val bootstrap = sys.env.getOrElse("OKAY_KAFKA", "127.0.0.1:9092")
 
   lazy val store: Option[KafkaStore] =

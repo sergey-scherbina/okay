@@ -10,6 +10,14 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class TestMongoDocs extends DocsSuite:
 
+  // the availability probe's own 1.5s driver deadline can still
+  // stretch well past 30s under a loaded sbt test matrix (found
+  // 2026-09-02, BACKLOG matrix-flake fifth sighting; matches the
+  // same override the kafka live suites already carry) — without
+  // it, a slow-but-correct skip reads as a hard 30s failure
+  override def munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(120, "s")
+
   val uri = sys.env.getOrElse("OKAY_MONGO", "mongodb://127.0.0.1:27017")
 
   /** the DRIVER's own defaults make "nothing is listening" a 30s
