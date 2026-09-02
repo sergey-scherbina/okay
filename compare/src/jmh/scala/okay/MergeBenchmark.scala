@@ -28,10 +28,10 @@ class MergeBenchmark {
   def okayChunksMerge(): Long =
     val merged = Chunks.range(0, N) merge Chunks.range(N, 2L * N)
     var sum = 0L
-    var c = merged.receive()
+    var c = merged.receiveBlocking()
     while c.isDefined do
       sum += c.get.sum
-      c = merged.receive()
+      c = merged.receiveBlocking()
     sum
 
   /** the merge in the program shape: what the Writer walk adds over

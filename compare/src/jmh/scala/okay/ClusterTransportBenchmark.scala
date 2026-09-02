@@ -51,10 +51,10 @@ class ClusterTransportBenchmark {
     chunks.foreach(sender.send)
     sender.close()
     var sum = 0L
-    var c = ch.receive()
+    var c = ch.receiveBlocking()
     while c.isDefined do
       sum += c.get.sum
-      c = ch.receive()
+      c = ch.receiveBlocking()
     server.close()
     assert(sum == expected)
     sum
