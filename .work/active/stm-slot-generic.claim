@@ -1,0 +1,5 @@
+slug: stm-slot-generic
+branch: feature/stm-slot-generic
+worktree: ../okay-wt-stm-slot-generic
+claimed: 2026-09-02
+scope: Slot[+A](value: A) — a covariant override of Stamped.value; readability only, no F-bound on Stamped. Operator: "да сделай".
