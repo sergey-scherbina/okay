@@ -351,11 +351,12 @@ construction instead of a type test per value).
       today it is set in code — the two-gate visibility model is the
       business story, so let a viewer flip it and watch /market react.
 
-## Reusable modules extracted from the demo (user ask 2026-09-02)
+## Reusable modules extracted from the demo (user ask 2026-09-02) — DONE
 
-okay-subscription and okay-admin landed (specs/subscription.md,
-specs/admin.md); this is the last of that ask, designed but not
-built — API sketch below so a claim starts from a decided shape:
+All three landed: okay-subscription, okay-admin, okay-chat (specs/
+subscription.md, specs/admin.md, specs/chat.md). The demo now
+composes three independent modules plus okay-match via `orElse`
+route tables instead of holding their logic inline.
 
 - [x] okay-admin — LANDED 2026-09-02: `Admin.routes(verify, policy =
       Policy.scoped("admin"), realm)(replay, onReplayed)` on
@@ -366,20 +367,20 @@ built — API sketch below so a claim starts from a decided shape:
       an admin-scoped bearer token; the token rides the server
       console at startup (same "no delivery channel yet" precedent
       Login's one-time code already set).
-- [ ] okay-chat — the demo's `Model` type + `scripted`/`live`/`local`/
-      `model`/`modeName` + `sse`/`reply`/`obj` (Cut-guarded SSE
-      framing) + `fieldOf`/`messagesOf`/`appJs`, and `chatRoute(m,
-      budget, turnOverride: Seq[Anthropic.Message] => Option[Source[
-      Chunk[Byte]]] = _ => None)`. The override returns an
-      ALREADY-SSE-FRAMED Source, not a bare String, so a consumer's
-      special-cased turns (the demo's `/match` prefix) keep their own
-      token-streaming shape. page/reactPage HTML stays OUT of the
-      module (the demo's copy is market-flavored — a market link,
-      example chips, `/events/<email>` inbox JS — templating that via
-      a config case class was considered and rejected as string-
-      templating wearing a case-class costume, no real type safety
-      gained); the module can ship its own minimal generic page later
-      if a non-marketplace consumer asks.
+- [x] okay-chat — LANDED 2026-09-02: `Model`/`scripted`/`live`/
+      `local`/`model`/`modeName`, `sse`/`obj`/`reply` (Cut-guarded
+      SSE, `sse`/`obj` public — a consumer's OTHER streams reuse the
+      same framing), `fieldOf`/`messagesOf`/`appJs`, and `chatRoute(
+      m, budget, turnOverride: (Request, Seq[Anthropic.Message]) =>
+      Option[Source[Chunk[Byte]]] = (_, _) => None)`. Widened from
+      the original sketch (`Seq[Anthropic.Message] => ...`) to also
+      carry the full `Request` — found while wiring the demo: the
+      `/match` override needs the bearer token off the request's
+      headers, which parsed messages alone cannot carry. page/
+      reactPage HTML stayed OUT of the module as planned (market-
+      flavored — a market link, example chips, `/events/<email>`
+      inbox JS); the demo keeps its own copy, reusing `Chat.Model`/
+      `reply`/`sse`.
 
 ## Elsewhere
 - [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and

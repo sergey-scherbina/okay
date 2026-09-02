@@ -11,6 +11,7 @@ import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tool
 import okay.ops.Ops
 import okay.security.Secure
 import okay.admin.Admin
+import okay.chat.Chat
 import okay.subscription.Subscription
 import okay.subscription.Subscription.Period
 import okay.persist.{FileStore, MemoryStore, Policy}
@@ -39,60 +40,10 @@ import java.nio.charset.StandardCharsets.UTF_8
  */
 object ChatDemo {
 
-  /** the model seam: history in, token stream out — scripted and
-   * live both fit it, which is the whole doctrine */
-  type Model = Seq[Anthropic.Message] => Unit ! (Writer % String + Async)
-
-  /** offline: stream a deterministic reply, token by token, the
-   * same shape the wire produces */
-  def scripted: Model = messages =>
-    val last = messages.lastOption.map(_.content).getOrElse("")
-    val reply = s"You said: $last — and this reply is streamed token by token " +
-      "by the scripted model (set ANTHROPIC_API_KEY for the real one)."
-    def go(ts: List[String]): Unit ! (Writer % String + Async) = ts match
-      case Nil => pure(())
-      case t :: rest =>
-        effect[Writer % String + Async, Unit](Writer(t + " ")).flatMap(_ => go(rest))
-    go(reply.split(' ').toList)
-
-  /** the demo's config rides the Secrets capability as `env:NAME`
-   * references (demo-ctx-wiring): `main` — the process edge —
-   * installs Secrets.env, a test installs Secrets.memory, and the
-   * model DISPATCH below becomes testable without touching the
-   * process environment */
-  def secret(name: String)(using s: Secrets): Option[String] =
-    s.get(Secret(s"env:$name")).toOption
-
-  /** live: the provider's stream through okay-llm, over the AMBIENT
-   * wire — a test wires a canned Transport and runs this very path
-   * offline */
-  def live(key: String)(using t: Transport): Model = messages =>
-    Anthropic.stream(t, key, Anthropic.Request(
-      model = "claude-sonnet-4-5", max_tokens = 1024,
-      messages = messages.toList, stream = true))
-
-  /** an OpenAI-compatible endpoint (the local rozum model on :8089
-   * fits): the same seam, one more filling */
-  def local(base: String)(using t: Transport): Model = messages =>
-    val body = Json.print(JObj(Vector(
-      "model" -> JStr("default"),
-      "stream" -> JBool(true),
-      "max_tokens" -> JNum(1024),
-      "messages" -> JArr(messages.toVector.map(m => JObj(Vector(
-        "role" -> JStr(m.role), "content" -> JStr(m.content))))))))
-    OpenAi.stream(t, "local", body, s"$base/v1/chat/completions")
-
-  /** which model serves — shown on the page and at startup */
-  def modeName(using Secrets): String =
-    if secret("ANTHROPIC_API_KEY").isDefined then "live (Anthropic)"
-    else secret("OKAY_CHAT_BASE") match
-      case Some(base) => s"local ($base)"
-      case None => "scripted (no model — set OKAY_CHAT_BASE or ANTHROPIC_API_KEY)"
-
-  def model(using Transport, Secrets): Model =
-    secret("ANTHROPIC_API_KEY").map(live)
-      .orElse(secret("OKAY_CHAT_BASE").map(local))
-      .getOrElse(scripted)
+  // the chat mechanics are okay-chat now (extracted 2026-09-02,
+  // specs/chat.md): Chat.Model/scripted/live/local/modeName/model/
+  // reply/sse/obj/fieldOf/messagesOf/appJs, a bare String uuid-free
+  // seam with no opinion about MatchStore/ChatLog held here or there.
 
   // ---- the matchmaking side (okay-match wired in) --------------------
 
@@ -792,79 +743,21 @@ object ChatDemo {
   def matchTurn(text: String, history: Seq[Anthropic.Message], off: Long,
                 identity: Option[String] = None)
                (using t: Transport, s: Secrets, m: MatchStore): String =
-    secret("ANTHROPIC_API_KEY").map { key =>
+    Chat.secret("ANTHROPIC_API_KEY").map { key =>
       agentTurn(text, history, Provider.anthropic(t, key, "claude-sonnet-4-5"), Some(off), identity)
-    }.orElse(secret("OKAY_CHAT_BASE").map { base =>
+    }.orElse(Chat.secret("OKAY_CHAT_BASE").map { base =>
       agentTurn(text, history, Provider.openAi(
         t, "local", "default", s"$base/v1/chat/completions"), Some(off), identity)
     }).getOrElse(scriptedAgent(text, off, identity))
 
-  // ---- the SSE reply -------------------------------------------------
-
-  private def sse(kind: String, data: String): Chunk[Byte] =
-    scala.collection.immutable.ArraySeq.unsafeWrapArray(
-      (if kind == "data" then s"data: $data\n\n"
-       else s"event: $kind\ndata: $data\n\n").getBytes(UTF_8))
-
-  /** the guarded stream as SSE frames: tokens, then done — or cut */
-  def reply(m: Model, budget: Int)(messages: Seq[Anthropic.Message])
-  : Source[Chunk[Byte]] =
-    val guarded: Either[Cut.Violation, Unit] ! (Writer % String + Async) =
-      Cut.guard {
-        Cut.checked(m(messages))((i, _) =>
-          if i >= budget then Some(Cut.Violation("token-budget", i, s"> $budget tokens"))
-          else None)
-      }
-    Writer.map(guarded)(t => sse("data", Json.print(JStr(t)))).flatMap {
-      case Right(_) => effect[Writer % Chunk[Byte] + Async, Unit](
-        Writer(sse("done", "")))
-      case Left(v) => effect[Writer % Chunk[Byte] + Async, Unit](
-        Writer(sse("cut", Json.print(obj("rule" -> JStr(v.rule), "at" -> JNum(v.at))))))
-    }
-
-  private def obj(fs: (String, Json)*): Json = JObj(fs.toVector)
-
   // ---- the routes ----------------------------------------------------
 
-  private def fieldOf(body: Body, name: String): String =
-    Json.parse(new String(body.bytes, UTF_8)) match
-      case JObj(fs) => fs.collectFirst { case (`name`, JStr(v)) => v }.getOrElse("")
-      case _ => ""
-
-  private def messagesOf(body: Body): Seq[Anthropic.Message] =
-    Json.parse(new String(body.bytes, UTF_8)) match
-      case JObj(fs) => fs.collectFirst { case ("messages", JArr(ms)) => ms }
-        .getOrElse(Vector.empty).flatMap {
-          case JObj(m) =>
-            for r <- m.collectFirst { case ("role", JStr(x)) => x }
-                c <- m.collectFirst { case ("content", JStr(x)) => x }
-            yield Anthropic.Message(r, c)
-          case _ => None
-        }
-      case _ => Vector.empty
-
-  /** the linked React app, if a link has been run (sbt
-   * okayChatWebJS/fastLinkJS — the module lives in okay-demo/web);
-   * absent, the vanilla page serves */
-  def appJs: Option[java.nio.file.Path] =
-    sys.env.get("OKAY_CHAT_APP").map(java.nio.file.Path.of(_))
-      .filter(java.nio.file.Files.exists(_))
-      .orElse {
-        val glob = java.nio.file.Path.of("okay-demo/web/.js/target")
-        if !java.nio.file.Files.exists(glob) then None
-        else
-          import scala.jdk.CollectionConverters.*
-          java.nio.file.Files.walk(glob).iterator().asScala
-            .find(p => p.getFileName.toString == "main.js" &&
-              p.toString.contains("fastopt"))
-      }
-
-  def routes(m: Model, budget: Int)(using Transport, Secrets, MatchStore)
+  def routes(m: Chat.Model, budget: Int)(using Transport, Secrets, MatchStore)
   : PartialFunction[Request, Response ! Async] =
     val core: PartialFunction[Request, Response ! Async] = {
     case r if r.method == okay.http.Method.Get && r.url == "/" =>
-      val html = (if appJs.isDefined then reactPage else page)
-        .replace("MODE", modeName)
+      val html = (if Chat.appJs.isDefined then reactPage else page)
+        .replace("MODE", Chat.modeName)
       pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
         Http.one(html.getBytes(UTF_8))))
     case r if r.method == okay.http.Method.Get && r.url == "/market" =>
@@ -947,9 +840,9 @@ object ChatDemo {
         case None => pure(Response(404, Seq("content-type" -> "application/json"),
           Http.one("""{"error":"no such deal"}""".getBytes(UTF_8))))
         case Some((d, events)) =>
-          val json = obj(
+          val json = Chat.obj(
             "deal" -> JNum(n.toDouble), "what" -> JStr(d.what), "state" -> JStr(d.state.toString),
-            "events" -> JArr(events.map(e => obj(
+            "events" -> JArr(events.map(e => Chat.obj(
               "state" -> JStr(e.state),
               "chat" -> JStr(e.prov.chat), "offset" -> JNum(e.prov.offset.toDouble),
               "span" -> JStr(e.prov.span)))))
@@ -975,16 +868,16 @@ object ChatDemo {
               |""".stripMargin.getBytes(UTF_8))))
 
 
-    case r if r.method == okay.http.Method.Get && r.url == "/app.js" && appJs.isDefined =>
+    case r if r.method == okay.http.Method.Get && r.url == "/app.js" && Chat.appJs.isDefined =>
       pure(Response(200, Seq("content-type" -> "text/javascript"),
-        Http.one(java.nio.file.Files.readAllBytes(appJs.get))))
+        Http.one(java.nio.file.Files.readAllBytes(Chat.appJs.get))))
     case r if r.method == okay.http.Method.Get && r.url == "/events/market" =>
       // the market-wide feed — matched BEFORE the /events/<email>
       // prefix route: "market" must not parse as an email
       val src: Source[Chunk[Byte]] =
-        effect[Writer % Chunk[Byte] + Async, Unit](Writer(sse("hello", "")))
+        effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
           .flatMap(_ => Writer.map(Writer.of(marketSub()))(kind =>
-            sse("market", Json.print(JStr(kind)))))
+            Chat.sse("market", Json.print(JStr(kind)))))
       pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
     case r if r.method == okay.http.Method.Get && r.url.startsWith("/events/") =>
@@ -997,15 +890,15 @@ object ChatDemo {
       // the hello frame flushes the headers so the subscriber's
       // request completes at once; matches follow whenever they land
       val src: Source[Chunk[Byte]] =
-        effect[Writer % Chunk[Byte] + Async, Unit](Writer(sse("hello", "")))
+        effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
           .flatMap(_ => Writer.map(Writer.of(inbox(email)))(note =>
-            sse("match", Json.print(JStr(note)))))
+            Chat.sse("match", Json.print(JStr(note)))))
       pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
     case r if Ops.routes(chatStore).isDefinedAt(r) => Ops.routes(chatStore)(r)
 
     case r if r.method == okay.http.Method.Post && r.url == "/login" =>
-      val email = fieldOf(r.body, "email")
+      val email = Chat.fieldOf(r.body, "email")
       if email.isEmpty then
         pure(Response(400, Seq("content-type" -> "application/json"),
           Http.one(Json.print(JObj(Vector("error" -> JStr("email required")))).getBytes(UTF_8))))
@@ -1019,8 +912,8 @@ object ChatDemo {
           Http.one(Json.print(JObj(Vector("sent" -> JBool(true), "devCode" -> JStr(code)))).getBytes(UTF_8))))
 
     case r if r.method == okay.http.Method.Post && r.url == "/login/confirm" =>
-      val email = fieldOf(r.body, "email")
-      val code = fieldOf(r.body, "code")
+      val email = Chat.fieldOf(r.body, "email")
+      val code = Chat.fieldOf(r.body, "code")
       if Login.confirm(email, code) then
         val token = Login.issue(email)
         pure(Response(200, Seq("content-type" -> "application/json"),
@@ -1029,30 +922,29 @@ object ChatDemo {
         pure(Response(401, Seq("content-type" -> "application/json"),
           Http.one(Json.print(JObj(Vector("ok" -> JBool(false), "error" -> JStr("wrong or expired code")))).getBytes(UTF_8))))
 
-    case r if r.method == okay.http.Method.Post && r.url == "/chat" =>
-      val messages = messagesOf(r.body)
+    }
+    // /chat itself is okay-chat now (extracted 2026-09-02, specs/
+    // chat.md): the marketplace's /match turns ride the turnOverride
+    // seam instead of a hardcoded prefix check inside the route
+    val marketplaceTurnOverride: Chat.TurnOverride = (r, messages) =>
       val last = messages.lastOption.map(_.content).getOrElse("")
-      val sessionEmail = Secure.bearerToken(r).flatMap(Login.verify(_))
-      if last.startsWith("/match") then
-        // the matchmaking turn: the agent works the okay-match tools,
-        // the answer streams through the same SSE framing; a verified
-        // session identifies the speaker over the text-parsed email
+      Option.when(last.startsWith("/match")) {
+        // a verified session identifies the speaker over the
+        // text-parsed email
+        val sessionEmail = Secure.bearerToken(r).flatMap(Login.verify(_))
         val answer = matchTurnLogged(last.stripPrefix("/match").trim, messages.init, chatLog, sessionEmail)
         def stream(ts: List[String]): Unit ! (Writer % String + Async) = ts match
           case Nil => pure(())
           case t :: rest => effect[Writer % String + Async, Unit](
             Writer(t + " ")).flatMap(_ => stream(rest))
-        pure(Response(200, Seq("content-type" -> "text/event-stream"),
-          reply(_ => stream(answer.split(' ').toList), budget)(messages)))
-      else
-        pure(Response(200, Seq("content-type" -> "text/event-stream"),
-          reply(m, budget)(messages)))
-    }
+        Chat.reply(_ => stream(answer.split(' ').toList), budget)(messages)
+      }
     // admin routes are okay-admin now (extracted 2026-09-02,
     // specs/admin.md): Secure.granted + Policy.scoped("admin") —
     // /admin/replay is no longer reachable without an admin token
-    core.orElse(Admin.routes(Admin.Issuer.verify)(
-      () => replayProjections(chatLog), () => marketChanged("replay")))
+    core.orElse(Chat.chatRoute(m, budget, marketplaceTurnOverride))
+      .orElse(Admin.routes(Admin.Issuer.verify)(
+        () => replayProjections(chatLog), () => marketChanged("replay")))
 
   /** the whole demo as ONE value awaiting its environment
    * (demo-ctx-wiring): `main` wires production, a test wires stubs —
@@ -1060,7 +952,7 @@ object ChatDemo {
    * error, not a container exception */
   def handler(budget: Int)
   : (Transport, Secrets, MatchStore) ?=> PartialFunction[Request, Response ! Async] =
-    routes(model, budget)
+    routes(Chat.model, budget)
 
   def main(args: Array[String]): Unit =
     val port = sys.env.get("OKAY_CHAT_PORT").flatMap(_.toIntOption).getOrElse(8090)

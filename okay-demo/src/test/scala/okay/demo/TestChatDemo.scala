@@ -51,7 +51,7 @@ class TestChatDemo extends munit.FunSuite {
                     store: okay.matching.MatchStore = okay.matching.MemoryMatch())
                    (f: Int => A): A =
     provide(deadWire, noSecrets, store)(Resource.run[A, Pure](
-      Jetty.serve(0)(ChatDemo.routes(ChatDemo.scripted, budget))()
+      Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.scripted, budget))()
         .map(s => f(Jetty.port(s)))).runWith)
 
   val client = HttpClient.newHttpClient()
@@ -96,7 +96,7 @@ class TestChatDemo extends munit.FunSuite {
   }
 
   test("the React page serves when the linked app exists, with CDN React and /app.js") {
-    assume(ChatDemo.appJs.isDefined, "no linked app (sbt okayChatWebJS/fastLinkJS) — skipped")
+    assume(okay.chat.Chat.appJs.isDefined, "no linked app (sbt okayChatWebJS/fastLinkJS) — skipped")
     withServer(512) { port =>
       val res = client.send(
         HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/")).GET().build(),
@@ -120,7 +120,7 @@ class TestChatDemo extends munit.FunSuite {
     assume(up, s"no local model at $base — skipped")
     provide(okay.llm.Transports.http(), noSecrets,
       okay.matching.MemoryMatch(): okay.matching.MatchStore)(Resource.run[Unit, Pure](
-      Jetty.serve(0)(ChatDemo.routes(ChatDemo.local(base), 512))()
+      Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.local(base), 512))()
         .map { s =>
           val port = Jetty.port(s)
           val whole = new String(post(port,
@@ -491,7 +491,7 @@ class TestChatDemo extends munit.FunSuite {
       assert(h.contains("умею") && h.contains("сценарий"), h.take(200))
     }
     // a model that dies mid-turn: the ERROR frame, not a 500
-    val dying: ChatDemo.Model = _ => throw new RuntimeException("boom-model")
+    val dying: okay.chat.Chat.Model = _ => throw new RuntimeException("boom-model")
     val whole = provide(deadWire, noSecrets,
       okay.matching.MemoryMatch(): okay.matching.MatchStore)(
       Resource.run[String, Pure](

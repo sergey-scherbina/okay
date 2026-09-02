@@ -25,8 +25,9 @@ instead of forcing a rewrite on either side.
   process environment.
 - **`reply`** — `Cut`-guards a `Model`'s stream against a token
   budget and frames it as SSE (`data:` per token, `event: done` or
-  `event: cut` naming the violation). `sse`/`obj` are its private
-  framing helpers.
+  `event: cut` naming the violation). `sse`/`obj` are its framing
+  helpers, PUBLIC: a consumer's other streams (a live feed, an
+  inbox) reuse the exact same SSE convention, not just `/chat`.
 - **`chatRoute`** — the `POST /chat` handler as a `PartialFunction`,
   parameterized by an optional `turnOverride` hook (below).
 - **`fieldOf`/`messagesOf`** — pure JSON body parsing (one named
@@ -38,24 +39,31 @@ instead of forcing a rewrite on either side.
 ## The `turnOverride` seam
 
 ```scala
-type TurnOverride = Seq[Anthropic.Message] => Option[Source[Chunk[Byte]]]
+type TurnOverride = (Request, Seq[Anthropic.Message]) => Option[Source[Chunk[Byte]]]
 
-def chatRoute(m: Model, budget: Int, turnOverride: TurnOverride = _ => None)
-             (using Transport, Secrets)
+def chatRoute(m: Model, budget: Int, turnOverride: TurnOverride = (_, _) => None)
 : PartialFunction[Request, Response ! Async]
 ```
 
-The override returns an ALREADY-SSE-FRAMED `Source`, not a bare
-`String` — the demo's `/match` branch has its own token-splitting
-shape (the marketplace agent's whole answer, split and restreamed
-word by word through the same `Writer` loop `reply` uses), and
-forcing every override into "just a string" would either lose that
-shape or make this module reimplement it generically for a single
-caller. When `turnOverride(messages)` answers `None`, `chatRoute`
-falls through to `reply(m, budget)(messages)` — the plain path,
-unchanged. The demo supplies `turnOverride = messages => Option.
-when(messages.lastOption.exists(_.content.startsWith("/match")))
-(marketplaceStream(messages))`, keeping `MatchStore`, `ChatLog`,
+The route itself needs no capabilities — `Model` was already applied
+to `m`, and `turnOverride`/parsing are pure; a consumer's own
+`Transport`/`Secrets` matter only to WHICH `Model` it hands in
+(`Chat.model` reads them, `chatRoute` does not). The override takes
+the FULL `Request`, not just the parsed messages — found while
+wiring the demo: its `/match` branch needs the bearer token off
+`r`'s headers (a verified session identifies the speaker), which the
+parsed `Seq[Anthropic.Message]` alone cannot carry. It returns an
+ALREADY-SSE-FRAMED `Source`, not a bare `String` — the demo's
+`/match` branch has its own token-splitting shape (the marketplace
+agent's whole answer, split and restreamed word by word through the
+same `Writer` loop `reply` uses), and forcing every override into
+"just a string" would either lose that shape or make this module
+reimplement it generically for a single caller. When
+`turnOverride(r, messages)` answers `None`, `chatRoute` falls
+through to `reply(m, budget)(messages)` — the plain path, unchanged.
+The demo supplies `turnOverride = (r, messages) => Option.when(
+messages.lastOption.exists(_.content.startsWith("/match")))
+(marketplaceStream(r, messages))`, keeping `MatchStore`, `ChatLog`,
 `Secure.bearerToken`, and `Login.verify` entirely on its side — this
 module never learns those types exist.
 
@@ -94,14 +102,15 @@ object Chat:
   def modeName(using Secrets): String
   def model(using Transport, Secrets): Model
 
+  def sse(kind: String, data: String): Chunk[Byte]
+  def obj(fs: (String, Json)*): Json
   def reply(m: Model, budget: Int)(messages: Seq[Anthropic.Message]): Source[Chunk[Byte]]
 
   def fieldOf(body: Body, name: String): String
   def messagesOf(body: Body): Seq[Anthropic.Message]
   def appJs: Option[java.nio.file.Path]
 
-  def chatRoute(m: Model, budget: Int, turnOverride: TurnOverride = _ => None)
-               (using Transport, Secrets)
+  def chatRoute(m: Model, budget: Int, turnOverride: TurnOverride = (_, _) => None)
   : PartialFunction[Request, Response ! Async]
 ```
 
@@ -115,16 +124,16 @@ object Chat:
   qualified. `fieldOf` is reused by `/login`/`/login/confirm` too
   (it was never marketplace-specific).
 
-- [ ] the scripted path streams token by token and ends with
+- [x] the scripted path streams token by token and ends with
       `event: done` — through `Chat.chatRoute`, byte-identical to
       the pre-extraction behavior (the existing offline test, moved
       to prove the module rather than the demo's own copy)
-- [ ] over budget the stream is CUT, named, and no tokens follow —
+- [x] over budget the stream is CUT, named, and no tokens follow —
       same test, same assertion, now against the module
-- [ ] `turnOverride` answering `Some` short-circuits `reply` entirely
+- [x] `turnOverride` answering `Some` short-circuits `reply` entirely
       (the override's frames are what the client sees, unmodified);
       answering `None` falls through to the plain model path
-- [ ] through the real demo route: `/match`-prefixed turns still
+- [x] through the real demo route: `/match`-prefixed turns still
       reach the marketplace (unchanged from before this landing),
       proving the seam moved without moving the behavior
 

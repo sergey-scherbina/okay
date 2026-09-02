@@ -965,6 +965,14 @@ lazy val okayAdmin = project
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+lazy val okayChat = project
+  .in(file("okay-chat"))
+  .dependsOn(okayLlm.jvm, okayHttp.jvm, okayConf.jvm)
+  .settings(
+    name := "okay-chat",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayNetty = project
   .in(file("okay-netty"))
   .dependsOn(okayHttp.jvm, okayJetty % Test)
@@ -1054,7 +1062,7 @@ lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
   )
 
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayAdmin)
+  .dependsOn(okayAgent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayAdmin, okayChat)
   // deploy-package: one fat jar, one main, a stable name the
   // Dockerfile does not have to guess
   .settings(
@@ -1121,7 +1129,7 @@ lazy val root = (project in file("."))
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
-    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin,
+    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)
