@@ -169,6 +169,69 @@ class TestPgComposite extends munit.FunSuite:
     finally db.close()
   }
 
+  // a whole-row column has no table column behind it, so pg cannot
+  // promise it not null (an outer join nulls the whole row): Option
+  final case class Wrap(p: Option[Person])
+  given okay.codec.Schema[Wrap] = okay.codec.Schema.derived
+  final case class WrapStrict(p: Person)
+  given okay.codec.Schema[WrapStrict] = okay.codec.Schema.derived
+
+  test("a TABLE's row type selected whole is a typed Row; describe names it; Typed.rows reads it nested (pg-composite-rowtype)") {
+    assume(available, "no Postgres at the configured endpoint")
+    defineType()
+    val setup = connect()
+    try
+      run(setup.update("drop table if exists okay_people"))
+      run(setup.update("create table okay_people(id int not null, nums int[] not null, " +
+        "home okay_addr not null, moves okay_addr[] not null, prev okay_addr)"))
+      run(setup.update("insert into okay_people values (1, array[1, 2, 3], " +
+        "row('main st', 90210, true), array[row('elm', null, false)::okay_addr], null)"))
+    finally setup.close()
+    // a FRESH connection preloads the table's row type beside the composites
+    val t0 = System.nanoTime()
+    val db = connect()
+    val connectMs = (System.nanoTime() - t0) / 1e6
+    try
+      val sql = "select p from okay_people p"
+      assertEquals(collectChunks(db.query(sql)).flatten, List(Vector(SqlValue.Row(Vector(
+        SqlValue.I32(1), SqlValue.Arr(Vector(SqlValue.I32(1), SqlValue.I32(2), SqlValue.I32(3))),
+        SqlValue.Row(Vector(SqlValue.Text("main st"), SqlValue.I32(90210), SqlValue.Bool(true))),
+        SqlValue.Arr(Vector(SqlValue.Row(Vector(SqlValue.Text("elm"), SqlValue.Null, SqlValue.Bool(false))))),
+        SqlValue.Null)))))
+      // describe names the row type's fields, nested
+      assertEquals(run(db.describe(sql)).map(_.tpe), Vector(okay.sql.SqlType.Row(Vector(
+        okay.sql.SqlType.I32, okay.sql.SqlType.Arr(okay.sql.SqlType.I32),
+        okay.sql.SqlType.Row(Vector(okay.sql.SqlType.Text, okay.sql.SqlType.I32, okay.sql.SqlType.Bool)),
+        okay.sql.SqlType.Arr(okay.sql.SqlType.Row(Vector(okay.sql.SqlType.Text, okay.sql.SqlType.I32, okay.sql.SqlType.Bool))),
+        okay.sql.SqlType.Row(Vector(okay.sql.SqlType.Text, okay.sql.SqlType.I32, okay.sql.SqlType.Bool))))))
+      // the Schema layer reads the whole row as a nested case class
+      assertEquals(collectChunks(okay.sql.Typed.rows[Wrap](db, sql)).flatten,
+        List(Right(Wrap(Some(Person(1, Vector(1, 2, 3), Addr("main st", Some(90210), true),
+          Vector(Addr("elm", None, false)), None))))))
+      assertEquals(run(okay.sql.Typed.verify[Wrap](db, sql)), Vector.empty)
+      // and the strict shape is told WHY: the whole-row column is nullable
+      assertEquals(run(okay.sql.Typed.verify[WrapStrict](db, sql)).map(d => (d.column, d.found)),
+        Vector(("p", "nullable")))
+      // an ARRAY of the row type
+      assertEquals(collectChunks(db.query("select array(select p from okay_people p)")).flatten.head.head match
+        case SqlValue.Arr(Vector(SqlValue.Row(fs))) => fs.length
+        case other => fail(s"not an Arr(Row): $other"), 5)
+      // a table created AFTER connect is unknown to THIS connection (stated):
+      // its row type has an OID the preload never saw, so the cell is the raw text
+      run(db.update("drop table if exists okay_later"))
+      run(db.update("create table okay_later(a int, b text)"))
+      run(db.update("insert into okay_later values (7, 'x')"))
+      assertEquals(collectChunks(db.query("select l from okay_later l")).flatten.head.head,
+        SqlValue.Text("(7,x)"))
+      // and a reconnect knows it
+      val db2 = connect()
+      try assertEquals(collectChunks(db2.query("select l from okay_later l")).flatten.head.head,
+        SqlValue.Row(Vector(SqlValue.I32(7), SqlValue.Text("x"))))
+      finally db2.close()
+      println(f"pg-composite-rowtype: connect with the row-type preload took $connectMs%.1f ms")
+    finally db.close()
+  }
+
   test("a Vector param and a nested case class param bind as Arr/Row and are read back typed") {
     assume(available, "no Postgres at the configured endpoint")
     defineType()

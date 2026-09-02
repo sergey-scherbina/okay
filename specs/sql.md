@@ -213,10 +213,24 @@ import — and the platforms it runs on.
       cell decode became a connection-aware `decodeCell` that uses
       ITSELF as the array element decoder — so `array[row(..)::addr,
       ..]` yields `Arr(Row(...))`, nested and NULL elements included.
-      Still deferred (weighed against the preload cost): typing a
-      table's ROW-type (relkind='r') selected whole — every table
-      would join the preload; the `(t).*` expansion or `row_to_json →
-      Schema` is the road until a consumer names the need
+      Typing a table's ROW-type selected whole was deferred here on
+      the preload cost; the operator named the need and it is the
+      next box
+- [x] a TABLE'S row type selected whole is a typed Row
+      (pg-composite-rowtype, operator: needed): the connect preload
+      joins tables, views, materialized views and partitioned tables
+      (relkind r/v/m/p) to the named composites (relkind c), in the
+      USER namespaces only (pg_catalog, information_schema and toast
+      excluded — the catalog's own thousand columns are the cost that
+      deferred this), so `select t from t` decodes to `Row` with typed
+      fields, `describe` names it, `Typed.rows` reads it into a nested
+      case class, and an array of a row type is `Arr(Row(...))`. The
+      preload stays ONE simple query at connect; its cost is measured
+      on the test database and stated in Results. A table created
+      after connect is unknown until reconnect, as for composites.
+      A whole-row column has no table column behind it, so `describe`
+      reports it nullable (an outer join nulls the whole row) — the
+      field is `Option[Row]`, or verify names the drift
 - [x] numeric is EXACT and the vendor scalars are NAMED
       (pg-scalar-types). `numeric`/`decimal` decoded to F64 was a
       stated v1 loss; it silently rounded money. Now both drivers
@@ -519,3 +533,20 @@ proved sqlite runs verbatim against live Postgres. So the acceptance
 line "only the SQL strings differ ($n vs ?)" now has its mechanical
 half in the seam and the seam's Out-of-scope line (no dialect
 layer) still holds — nothing but the placeholder spelling moved.
+pg-composite-rowtype (2026-09-02, operator: needed): the connect
+preload now joins tables, views, matviews and partitioned tables
+(relkind r/v/m/p) to the named composites, in user schemas only —
+one simple query, measured at 6.5 ms for the whole connect on the
+test database (a handful of user tables; the catalog's own columns,
+the cost that deferred this, are excluded by the namespace filter).
+`select p from okay_people p` decodes to a Row whose fields are
+themselves typed — an int[], a named composite, an array of
+composites, a NULL — because `parseCompositeTyped` now decodes
+fields with the connection-aware `decodeCell` (it used the static
+scalar map before, so a composite inside a composite stayed text;
+found by this test, fixed). `describe` names the nested type,
+`Typed.rows[Wrap(p: Option[Person])]` reads it, verify is clean; the
+strict `p: Person` drifts with found "nullable" because a whole-row
+column has no table column behind it. A table created after connect
+is unknown to that connection: its cell is the raw text until
+reconnect, as for composites.

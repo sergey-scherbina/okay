@@ -333,7 +333,9 @@ final class PgSql private (conn: NetConn) extends Sql:
    * which still handles record/ROW() and the built-in scalar arrays */
   private def decodeCell(oid: Int, s: String): SqlValue =
     composites.get(oid) match
-      case Some(fieldOids) => parseCompositeTyped(s, fieldOids)
+      // the fields decode with THIS function too, so a composite (or a
+      // table row) holding composites and arrays nests all the way down
+      case Some(fieldOids) => parseCompositeTyped(s, fieldOids, decodeCell)
       case None =>
         arrayElem.get(oid).orElse(arrayElemDyn.get(oid)) match
           case Some(el) => parseArray(s, r => decodeCell(el, r))
@@ -341,17 +343,28 @@ final class PgSql private (conn: NetConn) extends Sql:
 
   /** preload every named composite type's field OIDs once, at connect
    * (pg-composite-fields-typed): a simple 'Q' query in the ready state,
-   * safe because no portal is open. `relkind='c'` selects user-defined
-   * composite types (CREATE TYPE ... AS); a table's row-type and an
-   * anonymous record are deliberately not here. Robust: a catalog it
+   * safe because no portal is open. `relkind` c/r/v/m/p selects the
+   * user-defined composite types (CREATE TYPE ... AS) AND the row types
+   * of tables, views, matviews and partitioned tables in the user's
+   * schemas (pg-composite-rowtype); an anonymous record has no OID to
+   * find and stays fields-as-text. Robust: a catalog it
    * cannot read leaves the cache empty and composites fall back to
    * text, never a failed connect. */
+  /** which relations lend their row type to the preload: named
+   * composites AND tables/views/matviews/partitioned tables
+   * (pg-composite-rowtype) — in the user's schemas only; the catalog's
+   * own relations are the thousand columns that made this a cost */
+  private val rowKinds = "c.relkind in ('c', 'r', 'v', 'm', 'p')"
+  private val userSchemas =
+    "n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg\\_toast%'"
+
   private def loadComposites(): Unit ! Async =
     compositeRows(
       "select ty.oid, a.atttypid from pg_type ty " +
       "join pg_class c on c.oid = ty.typrelid " +
+      "join pg_namespace n on n.oid = c.relnamespace " +
       "join pg_attribute a on a.attrelid = c.oid " +
-      "where c.relkind = 'c' and a.attnum > 0 and not a.attisdropped " +
+      s"where $rowKinds and $userSchemas and a.attnum > 0 and not a.attisdropped " +
       "order by ty.oid, a.attnum").flatMap { rows =>
       composites.clear()
       for (typeOid, fieldOid) <- rows do
@@ -369,7 +382,8 @@ final class PgSql private (conn: NetConn) extends Sql:
       "select ty.oid, ty.typelem from pg_type ty " +
       "join pg_type el on el.oid = ty.typelem " +
       "join pg_class c on c.oid = el.typrelid " +
-      "where c.relkind = 'c'").map { rows =>
+      "join pg_namespace n on n.oid = c.relnamespace " +
+      s"where $rowKinds and $userSchemas").map { rows =>
       arrayElemDyn.clear()
       for (arrayOid, elemOid) <- rows do arrayElemDyn.update(arrayOid, elemOid)
     }
@@ -622,11 +636,12 @@ object PgSql:
    * SQL NULL. If the field count and the OID count disagree (a type
    * changed under a live connection), the extra fields fall back to
    * text rather than throw. */
-  private[pg] def parseCompositeTyped(s: String, fieldOids: Vector[Int]): SqlValue =
+  private[pg] def parseCompositeTyped(s: String, fieldOids: Vector[Int],
+                                      field: (Int, String) => SqlValue = valueOf): SqlValue =
     val inner = s.stripPrefix("(").stripSuffix(")")
     SqlValue.Row(splitMembers(inner, braces = false).zipWithIndex.map { case ((raw, quoted), i) =>
       if !quoted && raw.isEmpty then SqlValue.Null
-      else if i < fieldOids.length then valueOf(fieldOids(i), raw)
+      else if i < fieldOids.length then field(fieldOids(i), raw)
       else SqlValue.Text(raw)
     })
 
