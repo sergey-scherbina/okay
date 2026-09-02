@@ -1,5 +1,0 @@
-slug: pg-wire-typestate
-branch: feature/pg-wire-typestate
-worktree: ../okay-wt-pg-wire-typestate
-claimed: 2026-09-02
-scope: measure PgSql's connection-phase graph against specs/typestate.md's criteria and record the verdict (Decisions/Results); code only if the measurement says so.

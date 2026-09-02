@@ -108,12 +108,6 @@
       cost until a consumer names the need; `(t).*` or row_to_json →
       Schema is the road meanwhile. Anonymous record ROW() stays text
       (genuinely unresolvable — no typrelid).
-- [ ] pg-wire-typestate — PgSql's connection-phase graph as types
-      (the pg half of wire-typestate; specs/typestate.md marks it
-      CAUTIOUS — after Scram's phase objects proved the pattern, and
-      only if the readability gain inside the one file is measured
-      worth the plumbing). Idle/in-tx/in-copy as phases so a mis-
-      ordered call does not compile.
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:

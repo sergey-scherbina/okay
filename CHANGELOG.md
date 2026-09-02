@@ -1,5 +1,23 @@
 # Changelog
 
+## pg-wire-typestate — measured, declined, recorded
+Completed: 2026-09-02
+Landed as ac1d76a (spec only; PgSql.scala unchanged — that is the
+result). specs/typestate.md said the pg graph could be typed only
+if the readability gain inside the one file measured worth the
+plumbing, after Scram proved the pattern. Measured phase by phase:
+startup → auth → ready is already one-way by construction (private
+constructor, Scram phase objects); ready ↔ in-tx is a public-seam
+cycle the spec forbids typing and Typed.region already types for
+callers; portal and COPY are local defs inside one method each,
+called from the for-binding below; the one cross-cutting rule
+(every public entry passes through `settled`) was checked entry by
+entry — all eight do. The cheapest candidate, a Portal(oids) phase
+object, turns one threaded parameter into a field and nothing else;
+PState fits nowhere (no phase changes the state's type). Decision
+and the reopening condition (a second consumer of the driver's
+internals) recorded in the spec's Decisions/Results.
+
 ## pg-mtls — the client presents an identity; the TLS seam's last rung
 Completed: 2026-09-02
 Landed as 69b5f5d. `Tls.client` turns `clientCert` + `clientKey` into
