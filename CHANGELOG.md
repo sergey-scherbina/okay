@@ -1,5 +1,28 @@
 # Changelog
 
+## tmap — two heterogeneous maps; the STM's write set on the dynamic one
+Completed: 2026-09-02
+Landed as a6a6d7c (2 commits). The operator's design for the STM's
+write set and a question that followed it. `okay.TMap[K[_]]` (dynamic):
+a key K[A] holds an A, keys compare by identity, the store is a cons
+stack of typed `Entry[K, A]` pairs — a class, since a `(K[?], ?)`
+tuple cannot say "the same A on both sides" — `foreach` takes a
+polymorphic function so iteration is typed, `entries` is the
+existential view (an abstract K cannot be applied to a wildcard), and
+the one cast of the heterogeneous-map problem is stated once in
+`TMap.get`: identity of a typed key IS type equality. Stm's Log is a
+TMap; Stm.scala has no cast left. `okay.HMap[K, T <: Tuple]`
+(static, the operator's `((A,B),(C,D),(E,F))`): the map's TYPE is
+the tuple of `(key.type, Value)` pairs, `get` is a `Select[T,
+k.type, V]` derived by induction over the tuple (V a type parameter
+so inference carries it out), membership is a compile-time fact,
+no cast anywhere; keys must be stable identifiers, which a
+transaction's write set never has — so it exists for code that has
+them. Tests: typed get, wrong type does not compile, identity vs
+equality, typed iteration; HMap: get at the key's type, a missing
+key does not compile, shadowing. Core suites green on JVM/JS/Native,
+every module compiles; rebased over three claim-only commits.
+
 ## direct-flatmap-emission — the direct macro compiles to plain flatMaps; the Cont target retires
 Completed: 2026-09-02
 Landed as 454036a (merge; f5dcd7f compare receiveBlocking fix,
