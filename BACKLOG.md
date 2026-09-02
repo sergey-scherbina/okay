@@ -169,12 +169,74 @@
 - [ ] http-post-body-audit — Netty/NIO: do POST bodies reach routes?
       (Jetty's did not — found by mcp-push, fixed there)
 
+## okay-demo (the showcase lane — specs/demo-chat.md, specs/match.md)
+- [ ] demo-streaming-cut — the demo as llm-streaming-cut's first
+      consumer: Cut.guarded installs a named prompt over the LIVE
+      generation and a validator ABORTS a stream that goes off-policy
+      mid-flight (today Cut guards only the token budget). Opens the
+      gate on the Elsewhere entry; ADDITIVE — the unguarded path stays.
+- [ ] demo-ctx-wiring — the demo as ctx-wiring's first adopter:
+      ChatDemo's handler assembled as a handlers-awaiting-environment
+      value (`Http ?=> Secrets ?=> Handler`-shaped; room n244). Wiring
+      beauty only — behavior unchanged; closes the Elsewhere gate.
+- [ ] demo-replay-projections — an admin endpoint + UI button that
+      DROPS the read models and rebuilds them from the persist log.
+      Makes the log-first claim demonstrable in one click instead of
+      architectural prose; also the natural regression test that
+      projections really are derivable.
+- [ ] demo-market-live — /market subscribes to the SSE inbox and
+      updates live as offers/needs/deals land (today: static render
+      on page load); attribute-facet filtering while there.
+- [ ] demo-deal-timeline — render a deal's negotiation history from
+      the log (proposed → responded → settled), each fact with its
+      provenance — the append-only + supersede story made visible.
+- [ ] demo-pg-backend — the same MatchStore on okay-pg: SqlMatch is
+      driver-neutral (sqlite today), so one env var should switch the
+      demo to live Postgres. Proves the Sql seam with a second driver
+      in a real consumer; exercises the pg wire path under app load.
+- [ ] demo-sessions — signed sessions over okay-security ES256 JWT:
+      the email identity (BadEmail condition already guards entry)
+      gets a real confirm-and-sign login instead of trust-the-field;
+      cross-channel identity then rides the token. Gated on
+      security-es256 landing.
+- [ ] demo-mcp-market — expose the market tools (search / assert /
+      deal / flow) as an MCP server over okay-http's MCP: any MCP
+      client (Claude included) becomes a market participant; the chat
+      UI unchanged, the marketplace becomes the shared substrate.
+- [ ] demo-two-nodes — two demo processes over one shared durable
+      log: Election picks the writer, both serve reads, kill the
+      leader and watch the market survive — the persist/Election
+      machinery in a consumer-visible showcase. Sized LARGE; take
+      only when a distributed demo is named wanted.
+- [ ] demo-scenario-editor — scenarios are already data
+      (ScenarioDef): a UI page to author one (steps, prompts, deal
+      hook), saved through the store, listed by the help command —
+      extensibility without touching code, shown not told.
+- [ ] demo-en-phrasebook — an English phrasebook beside the Russian
+      one in the offline driver, picked per message; makes the
+      offline demo shareable outside one language.
+- [ ] demo-e2e-browser — a browser-level test of the React UI
+      (today's tests hit the HTTP/SSE seam directly, so the React
+      layer itself is untested); smallest honest version: build the
+      bundle, drive one chat round through a headless browser.
+- [ ] demo-embeddings-attr — search-before-create for attributes via
+      embeddings instead of substring match (twin of rag-langchain4j;
+      an embedding store as Retrieve handler): "разработчик" and
+      "программист" should collide BEFORE the registry drifts.
+- [ ] demo-package — one-command run: bundle the React build into
+      the jar's static assets (+ optionally a Dockerfile); today the
+      demo needs sbt and a node dev server side by side.
+- [ ] demo-gate-ui — the platform Gate policy (Allow / AfterMatch /
+      Withhold) switchable from an admin page per attribute class;
+      today it is set in code — the two-gate visibility model is the
+      business story, so let a viewer flip it and watch /market react.
+
 ## Elsewhere
 - [ ] ctx-wiring — handlers-awaiting-environment: factories
       returning `Http ?=> Secrets ?=> Handler[Model]`-shaped values;
       okay-demo adopts first (gate possibly OPEN since
-      demo-chat — offered to that lane, room n244)
-      (specs/context-functions.md)
+      demo-chat — offered to that lane, room n244; consumer named:
+      demo-ctx-wiring) (specs/context-functions.md)
 - [ ] ctx-reader-bridge — `(A ?=> B) <-> B ! Reader % A`, one
       Conversion each way; GATED: no consumer named
       (specs/context-functions.md)
@@ -183,7 +245,8 @@
       generation, a validator ABORTS to it (Delim; the doctrine's
       PRIMARY case — cross-boundary exit has no handler
       equivalent); ADDITIVE as an API: the unguarded path stays
-      (specs/llm-agentic.md, Streaming validation)
+      (specs/llm-agentic.md, Streaming validation; consumer named:
+      demo-streaming-cut)
 - [ ] logic-named-cut — GATED on a search consumer
       (specs/backtracking.md)
 - [ ] r-restarts — GATED twice: on r-subprocess and on a restart
