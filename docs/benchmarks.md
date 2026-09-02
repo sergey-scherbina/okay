@@ -320,6 +320,23 @@ finding: session-to-session environment, not code.) The `Okay
 elementwise`/`Okay chunked` numbers above are the current honest
 baseline; 158 is retired.
 
+**Follow-on: is there a real optimization here at all?**
+(writer-covariance, specs/writer-covariance.md) `Writer[W, +A]`
+became `Writer[+W, +A]` — the correct variance (`W` is only ever
+told, never consumed) — and `Source.merge` swapped `Writer.map(s)
+(identity[A|B])` for a `Writer.widen` that reuses the told operation
+instead of rebuilding it. Measured neutral: 305-308us either way,
+because that per-element allocation was never the dominant cost. A
+further attempt — fusing the source's own construction with the
+re-tell into one unfold — was implemented, tested, and measured
+WORSE (336-349us, noisier) and was not shipped. Two diagnostics for
+whoever profiles this next: a bare `Source` with no merge at all
+already costs 48.9us against a native `LazyList`'s 11.1us for the
+same 1000 elements (~38ns/element, the honest price of the program
+abstraction) — under half the ~180us gap this section's numbers
+show, so most of the cost is specific to how `Channel.merge` pulls a
+Writer-shaped stream, not to Source-wrapping in general.
+
 ## 7. Resource — 1000 bracketed acquire/use/release
 
 | | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |

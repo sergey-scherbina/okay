@@ -29,7 +29,7 @@ package okay
  * class-distinct from W. A `Say` is class-distinct from everything.
  * docs/existentials.md has the five encodings tried before this one.
  */
-enum Writer[W, +A]:
+enum Writer[+W, +A]:
   case Say(w: W) extends Writer[W, Unit]
 
 /**
@@ -121,8 +121,12 @@ object Writer {
    * untouched, in order, so the result is a source like the input.
    *
    * It is also what makes two DIFFERENTLY typed sources mergeable:
-   * `Writer` is invariant in what it tells, so re-telling at a common
-   * type is a walk, not a subtyping step (see Source.merge).
+   * `Free` is invariant in its row, so re-telling at a common type is
+   * a WALK over the program's nodes, not a subtyping step (see
+   * Source.merge) — `Writer[+W, +A]` (2026-09-02) narrows what the
+   * walk must actually rebuild: see `widen` below for the case with
+   * no transform, where only the Free nodes need rebuilding and the
+   * told OPERATION can be reused as is.
    */
   def map[W, V, A, G[+_] : TypeableK](a: A ! Writer % W + G)(f: W => V)
   : A ! (Writer % V + G) = (a.resume: @unchecked) match
@@ -135,6 +139,31 @@ object Writer {
     case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
       case Left(g) => Effect(g).flatMap(x => map[W, V, A, G](k(x))(f))
       case Right(Say(w)) => Effect(Writer(f(w))).flatMap(_ => map[W, V, A, G](k(()))(f))
+
+  /**
+   * Re-tell at a WIDER element type with NO transform — `map`'s
+   * identity case, priced separately because it is common (every
+   * merge of differently-typed sources goes through it) and cheaper
+   * now that `Writer[+W, +A]` is covariant: the told OPERATION
+   * (`Say(w): Writer[W, Unit]`) already IS a `Writer[V, Unit]` for
+   * any `V >: W`, so this only rebuilds the Free nodes the walk
+   * cannot avoid (Free stays invariant in its row) — `map`'s per-
+   * element `Writer(f(w))` allocation is gone, `f` never runs.
+   */
+  def widen[W, V >: W, A, G[+_] : TypeableK](a: A ! Writer % W + G)
+  : A ! (Writer % V + G) = (a.resume: @unchecked) match
+    case Free.Pure(x) => Free.Pure(x)
+    case Effect(e) => <|>[G, Writer % W](e) match
+      case Left(g) => Effect(g)
+      // Say is Writer's ONLY constructor, so a value that reaches
+      // here IS one — sound by the enum's shape, same as map's
+      // Say(w) destructure; @unchecked because BINDING the whole
+      // instance (not just its field) needs W's erased type
+      // argument to verify, which map's plain destructure does not
+      case Right(sw @ (_: Say[W, Unit] @unchecked)) => Effect(sw: Writer[V, Unit])
+    case Bind(Effect(e), k) => <|>[G, Writer % W](e) match
+      case Left(g) => Effect(g).flatMap(x => widen[W, V, A, G](k(x)))
+      case Right(sw @ (_: Say[W, Unit] @unchecked)) => Effect(sw: Writer[V, Unit]).flatMap(_ => widen[W, V, A, G](k(())))
 
   /**
    * ANY stream as a writer program: its elements told one by one, its

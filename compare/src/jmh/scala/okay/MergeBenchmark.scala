@@ -41,6 +41,18 @@ class MergeBenchmark {
     (Source.of(LazyList.range(0L, N.toLong)) merge Source.of(LazyList.range(N.toLong, 2L * N)))
       .toLazyList.foldLeft(0L)(_ + _)
 
+  /** DIAGNOSTIC (channel-merge-regression follow-up): ONE Source,
+   * no Channel.merge, no fiber, no Async at all — isolates the raw
+   * cost of wrapping a LazyList as a Writer program and draining it,
+   * against the native LazyList doing the exact same walk */
+  @Benchmark
+  def okaySourceSingleDrain(): Long =
+    Source.of(LazyList.range(0L, 2L * N)).toLazyList.foldLeft(0L)(_ + _)
+
+  @Benchmark
+  def rawLazyListDrain(): Long =
+    LazyList.range(0L, 2L * N).foldLeft(0L)(_ + _)
+
   @Benchmark
   def fs2Merge(): Long =
     import cats.effect.IO

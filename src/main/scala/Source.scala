@@ -39,9 +39,14 @@ extension [A](s: Source[A])
    *
    * The element types need NOT agree: the result tells their union,
    * which is what a join of two differently shaped feeds actually is
-   * — the consumer splits it by an ordinary type test. (Writer is
-   * invariant in what it tells, so each side is re-told at the union
-   * by Writer.map; that walk is the whole cost.)
+   * — the consumer splits it by an ordinary type test. (Free is
+   * invariant in its row, so each side is re-told at the union by
+   * `Writer.widen` — a walk over the program's nodes, but with
+   * `Writer[+W, +A]` covariant no transform runs and no operation is
+   * rebuilt, only the Free nodes around it. Fusing that walk into
+   * the original construction — one unfold per side instead of
+   * build-then-widen — was TRIED and MEASURED WORSE, not better:
+   * specs/writer-covariance.md Results.)
    *
    * Lazy at the seam: the fibers start at the FIRST PULL, not when
    * this is called — a source nobody consumes drains nothing.
@@ -64,7 +69,7 @@ extension [A](s: Source[A])
     type S[W] = Unit ! (Writer % W + Async)
     pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
       Writer.of(Channel.merge[A | B, S, Async, S, Async](
-        Writer.map(s)(identity[A | B]), Writer.map(t)(identity[A | B]), capacity))
+        Writer.widen[A, A | B, Unit, Async](s), Writer.widen[B, A | B, Unit, Async](t), capacity))
 
 extension [A](s: Chunks[A])
   /**
