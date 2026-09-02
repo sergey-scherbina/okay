@@ -169,3 +169,5 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-01			ctx-direct	480			ns/10k ambient reads via wire under provide; +-245 loaded box; ~2 orders below the relay — nothing to interpret
 2026-09-01			ctx-monad-chain	5305			ns/1k binds through ctxMonad (f(fb) each); ~2x relay per bind; stack-bounded 2-5k, recursion-built only (E22 var self-capture)
 2026-09-01			regression-screen-loaded	0			19 okay legs, -f1, box under sibling sbt load: error bars 50-200%, INCONCLUSIVE; cats matched doc (337 vs 350) while all effectful legs 2-5x elevated incl zio — load profile, not regression; Writer (504/614 vs doc 286) flagged for quiet-box recheck; today's changes additive (new files, inline alias, one given)
+2026-09-02			writer-quiet-recheck	201516			ns/10k tells; +-4.7us QUIET box — loaded-box 504/614 was pure load, NO regression; 30% better than the doc's 286, table row refreshed same-run (cats 1030, atnos 3215, kyo 342761)
+2026-09-02			reader-quiet-recheck	108299			ns/10k asks; +-6.3us quiet box, matches the doc's 110 exactly — loaded 231+-388 was noise

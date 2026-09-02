@@ -79,7 +79,7 @@ per-program, instead of as the only semantics.
 
 | Writer | **Okay** | cats WriterT/Chain | atnos | kyo Emit |
 |---|---|---|---|---|
-| | **286** | 1127 | 3202 | 386 322* |
+| | **202** | 1030 | 3215 | 342 761* |
 
 **What they measure.** Handled operations at volume — the everyday
 shape of effectful code.
