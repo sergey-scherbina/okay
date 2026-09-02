@@ -1,5 +1,0 @@
-slug: stm-typed-interpreter
-branch: feature/stm-typed-interpreter
-worktree: ../okay-wt-stm-typed-interpreter
-claimed: 2026-09-02
-scope: the handlers' erasure casts go — perform/interpret/fast/sim typed through GADT matching; the heterogeneous log's one cast isolated in Log.pending; wrap's @unchecked replaced by the cell's KIND chosen at construction (TRef(init) wraps, TRef.bare[A <: Stamped[A]] installs bare; Channel uses bare). A/B on the channel. Operator: "я вижу еще касты — от них можно избавиться?".

@@ -1,5 +1,32 @@
 # Changelog
 
+## stm-typed-interpreter — the handlers typed, one cast left, a rule in AGENTS.md
+Completed: 2026-09-02
+Landed as f50387f. The operator saw the remaining casts in
+Stm.scala and asked whether they could go; on the honest answer
+("the first draft's laziness") came the rule, now in AGENTS.md
+"Code rules the operator has set": no cast without a real
+necessity. All but one went: `perform[X](op: Tx[X]): X` and
+`interpret[A]` are typed by GADT matching on the freer tree
+(`case Bind(Effect(e), k)` types e and k), the commit holds each
+taken cell in a `Held[X]` that releases or installs it, `park` is
+generic in the answer, the Sim handler's loop is typed the same
+way. `wrap`'s @unchecked went by deciding the cell's KIND at
+construction: `TRef(init)` wraps every value, `TRef.bare[A <:
+Stamped[A]](init)` installs bare and is the only kind that can
+answer "unchanged" (`a eq content`, typed); the Channel uses it.
+The one cast left is `Log.pending`: a write set keyed by cell
+identity and heterogeneous in value — the key's type is the
+value's, which no map type can say — isolated and explained. Gate
+green in seven pieces on a host at load 10–16 from sibling sbt
+runs; the only red was TestChatDemo's LIVE tests, twice, two
+different tests, "HTTP/1.1 header parser received no bytes" from
+the local model gateway on :8089 (okay.llm.Transports → JDK
+HttpClient) — the endpoint, not the code (operator asked that
+those tests SKIP when the gateway is absent: next lane). A/B in a
+quiet window: 30.8–31.4 µs vs a noisy 34–41 baseline, no
+regression.
+
 ## stm-no-anyref-cast — nothing in the cell is cast
 Completed: 2026-09-02
 Landed as 951ac50. The operator: "я хочу избавиться от
