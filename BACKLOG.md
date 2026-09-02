@@ -399,14 +399,12 @@ Three do earn it:
       `Registry[K]` (per-key channel, created on first use) cover
       both, and the demo's third potential use (a live admin
       dashboard) would be a THIRD consumer proving it further.
-- [ ] pg-target-in-okay-pg (existing module: okay-pg) — `PgTarget`
-      (ChatDemo.scala, near the bottom): a pure parser for
-      `postgres://user:pass@host:port/db?sslmode=...&sslrootcert=...`
-      into host/port/user/password/database/TLS config. Zero demo
-      dependencies, already independently tested
-      (TestChatDemo's `OKAY_CHAT_DB=postgres://…` test) — belongs
-      beside the driver it configures, not in an app that happens to
-      use it.
+- [x] pg-target-in-okay-pg — LANDED 2026-09-02: `PgTarget` moved to
+      `okay-pg/src/main/scala-jvm` (the JVM leg PgTls.scala already
+      lives on). Its own TestPgTarget suite in okay-pg (4 tests,
+      3 new: disable/absent plaintext, require carries no CA,
+      malformed URL never throws); the demo keeps only the live-
+      Postgres integration test (proves marketOf's own wiring).
 - [ ] login-in-okay-security (existing module: okay-security) —
       `okay.demo.Login` (its own file already, 65 lines): an
       in-process ES256 keypair issuing/verifying sessions, plus a

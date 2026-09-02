@@ -1,5 +1,20 @@
 # Changelog
 
+## PgTarget — moved into okay-pg, beside the driver it configures
+Completed: 2026-09-02
+Landed as d3880a8 (spec) + a792dd2 (impl). First of the round-two demo
+reusable-module pass (user ask): PgTarget (a pure postgres:// connection
+URL parser) had zero demo dependencies from the start — moved to
+okay-pg/src/main/scala-jvm (the JVM leg PgTls.scala already lives on,
+TlsConfig being JVM-only), no behavior change. TestChatDemo's pure-
+parsing test moved to okay-pg's own TestPgTarget, +3 new edge-case
+tests (disable/absent plaintext, require carries no CA, malformed URL
+never throws); the live-Postgres integration test stays in the demo,
+proving marketOf's own wiring rather than parsing. Caught and fixed
+before commit: a stray NULL byte landed in the new test file during
+authoring (git flagged the diff binary) — verified and fixed by direct
+byte inspection, the admin.md-incident lesson applied a second time.
+
 ## okay-chat — a streaming LLM chat component, extracted from the demo
 Completed: 2026-09-02
 Landed as 96e61b7 (spec) + c63af13 (impl). Third and last of the three
