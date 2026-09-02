@@ -299,16 +299,16 @@ more: `scripted`'s reply ECHOES the user's own message
 trigger — no separate demo-only model wrapper needed. An example
 chip on the page invites it directly.
 
-- [ ] a scripted reply containing a banned word is CUT before the
+- [x] a scripted reply containing a banned word is CUT before the
       full echo streams: `event: cut` names the content-policy rule,
       and no token after the banned one is emitted (through the real
       `/chat` route, not just the guard in isolation)
-- [ ] a scripted reply with NO banned word streams to `event: done`
+- [x] a scripted reply with NO banned word streams to `event: done`
       exactly as before this change (the passing path is unchanged)
-- [ ] over-budget still cuts on `token-budget` when a reply is both
+- [x] over-budget still cuts on `token-budget` when a reply is both
       long AND clean — the two rules coexist in one guard, neither
       shadows the other
-- [ ] `Chat.chatRoute`'s default (`policy` omitted) behaves BYTE-
+- [x] `Chat.chatRoute`'s default (`policy` omitted) behaves BYTE-
       IDENTICAL to the pre-widening signature — proven directly in
       okay-chat's own suite, not just asserted here
 

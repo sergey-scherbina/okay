@@ -5,7 +5,7 @@ import okay.given
 import okay.Condition
 import okay.http.{Http, Request, Response}
 import okay.jetty.Jetty
-import okay.llm.{Anthropic, Transport, Transports}
+import okay.llm.{Anthropic, Cut, Transport, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
 import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
 import okay.ops.Ops
@@ -747,6 +747,23 @@ object ChatDemo {
         t, "local", "default", s"$base/v1/chat/completions"), Some(off), identity)
     }).getOrElse(scriptedAgent(text, off, identity))
 
+  // ---- the streaming content cut (demo-streaming-cut) -----------------
+  //
+  // okay-chat's `reply`/`chatRoute` guard the token BUDGET; this is
+  // the demo's own EXTRA rule, riding the same `policy` seam
+  // (specs/llm-agentic.md, llm-streaming-cut) — a stand-in for
+  // "off-policy content," proving the mechanism cuts on what a
+  // stream SAYS, not only how much of it there is. Demonstrable
+  // OFFLINE: `Chat.scripted` ECHOES the user's own message, so
+  // typing a banned word is itself the trigger — no separate
+  // demo-only model needed.
+
+  private val bannedWords = Set("секрет", "пароль")
+
+  def contentPolicy(i: Int, token: String): Option[Cut.Violation] =
+    bannedWords.find(w => token.toLowerCase.contains(w))
+      .map(w => Cut.Violation("content-policy", i, token))
+
   // ---- the routes ----------------------------------------------------
 
   def routes(m: Chat.Model, budget: Int)(using Transport, Secrets, MatchStore)
@@ -939,7 +956,7 @@ object ChatDemo {
     // admin routes are okay-admin now (extracted 2026-09-02,
     // specs/admin.md): Secure.granted + Policy.scoped("admin") —
     // /admin/replay is no longer reachable without an admin token
-    core.orElse(Chat.chatRoute(m, budget, marketplaceTurnOverride))
+    core.orElse(Chat.chatRoute(m, budget, marketplaceTurnOverride, contentPolicy))
       .orElse(Admin.routes(Admin.Issuer.verify)(
         () => replayProjections(chatLog), () => marketChanged("replay")))
 
@@ -1021,7 +1038,8 @@ const examples = [
   'умею класть плитку email tiler@x',
   'нужен сантехник email client@x',
   'спроси всех email client@x',
-  'какая столица Франции?'];
+  'какая столица Франции?',
+  'расскажи про секрет'];
 const chips = document.getElementById('chips');
 for (const ex of examples) {
   const b = document.createElement('button');

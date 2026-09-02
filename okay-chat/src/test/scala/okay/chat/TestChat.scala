@@ -3,7 +3,7 @@ package okay.chat
 import okay.*
 import okay.given
 import okay.http.{Body, Http, Method, Request, Response}
-import okay.llm.Anthropic
+import okay.llm.{Anthropic, Cut}
 import okay.conf.Secrets
 import java.nio.charset.StandardCharsets.UTF_8
 
@@ -37,6 +37,50 @@ class TestChat extends munit.FunSuite {
     assert(after.head.contains("token-budget"), "the rule is named")
     assertEquals(after.length, 1, "nothing follows the cut")
     assert(!whole.contains("event: done"))
+  }
+
+  // ---- the content policy (demo-streaming-cut) ------------------------
+
+  private val banned: (Int, String) => Option[Cut.Violation] =
+    (i, t) => if t.toLowerCase.contains("banned") then Some(Cut.Violation("content-policy", i, t)) else None
+
+  test("policy: a violating token is cut, named, no token after it") {
+    // scripted ECHOES the message, so "banned" in the input lands in the stream
+    val whole = text(Chat.reply(Chat.scripted, budget = 512, policy = banned)(
+      Seq(Anthropic.Message("user", "banned"))))
+    val frames = whole.split("\n\n").toVector.filter(_.nonEmpty)
+    val (tokens, after) = frames.span(!_.startsWith("event: cut"))
+    assert(after.nonEmpty, s"expected a cut: $frames")
+    assert(after.head.contains("content-policy"), "the rule is named")
+    assertEquals(after.length, 1, "nothing follows the cut")
+    assert(!whole.contains("event: done"))
+    // the FIRST token is the violation ("You" precedes "said:" precedes
+    // "banned" in the echo) — prove no token past it leaked through
+    assert(!tokens.exists(_.contains("streamed")), s"a later word must not appear: $tokens")
+  }
+
+  test("policy: a clean reply is unaffected — byte-identical to no policy at all") {
+    val withPolicy = text(Chat.reply(Chat.scripted, budget = 512, policy = banned)(
+      Seq(Anthropic.Message("user", "hello okay"))))
+    val withoutPolicy = text(Chat.reply(Chat.scripted, budget = 512)(
+      Seq(Anthropic.Message("user", "hello okay"))))
+    assertEquals(withPolicy, withoutPolicy)
+    assert(withPolicy.contains("event: done"))
+  }
+
+  test("policy: the token budget still cuts when a reply is long AND clean — neither rule shadows the other") {
+    val whole = text(Chat.reply(Chat.scripted, budget = 3, policy = banned)(
+      Seq(Anthropic.Message("user", "anything"))))
+    assert(whole.contains("token-budget"), whole.take(200))
+    assert(!whole.contains("content-policy"))
+  }
+
+  test("chatRoute's default policy behaves byte-identical to reply's own default") {
+    val route = Chat.chatRoute(Chat.scripted, budget = 512)
+    val req = Request(Method.Post, "/chat", Nil,
+      Body.Text("""{"messages":[{"role":"user","content":"hello okay"}]}"""))
+    val whole = text(run(route(req)).body)
+    assert(whole.contains("event: done") && !whole.contains("event: cut"), whole.take(200))
   }
 
   test("messagesOf parses the OpenAI-shaped body") {

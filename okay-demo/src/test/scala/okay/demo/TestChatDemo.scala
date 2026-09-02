@@ -709,6 +709,30 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
+  test("STREAMING CUT: a banned word in the echoed reply is cut, named content-policy, no tokens follow") {
+    withServer(budget = 512) { port =>
+      // scripted ECHOES the message — typing the banned word is the trigger
+      val whole = new String(post(port,
+        """{"messages":[{"role":"user","content":"расскажи про секрет"}]}""").readAllBytes(), UTF_8)
+      val frames = whole.split("\n\n").toVector.filter(_.nonEmpty)
+      val (tokens, after) = frames.span(!_.startsWith("event: cut"))
+      assert(after.nonEmpty, s"expected a cut: $frames")
+      assert(after.head.contains("content-policy"), "the rule is named")
+      assertEquals(after.length, 1, "nothing follows the cut")
+      assert(!whole.contains("event: done"))
+      assert(!tokens.exists(_.contains("scripted")), s"no token past the violation must leak: $tokens")
+    }
+  }
+
+  test("STREAMING CUT: a clean reply is unaffected — still ends with done, no content-policy") {
+    withServer(budget = 512) { port =>
+      val whole = new String(post(port,
+        """{"messages":[{"role":"user","content":"hello okay"}]}""").readAllBytes(), UTF_8)
+      assert(whole.contains("event: done"))
+      assert(!whole.contains("content-policy"))
+    }
+  }
+
   // PgTarget's own parsing behavior is proven in okay-pg's
   // TestPgTarget now (specs/sql.md) — moved 2026-09-02, it never had
   // a demo dependency. This test stays: it proves the DEMO'S OWN

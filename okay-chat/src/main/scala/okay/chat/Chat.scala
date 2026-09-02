@@ -91,14 +91,20 @@ object Chat {
 
   def obj(fs: (String, Json)*): Json = JObj(fs.toVector)
 
-  /** the guarded stream as SSE frames: tokens, then done — or cut */
-  def reply(m: Model, budget: Int)(messages: Seq[Anthropic.Message])
+  /** the guarded stream as SSE frames: tokens, then done — or cut.
+   * `policy` is an EXTRA rule checked alongside the token budget
+   * (specs/llm-agentic.md, llm-streaming-cut) — a validator that can
+   * abort on what the stream SAYS, not just how much of it there is.
+   * Additive: defaults to never-violate, so the default call is
+   * byte-identical to before this parameter existed. */
+  def reply(m: Model, budget: Int, policy: (Int, String) => Option[Cut.Violation] = (_, _) => None)
+           (messages: Seq[Anthropic.Message])
   : Source[Chunk[Byte]] =
     val guarded: Either[Cut.Violation, Unit] ! (Writer % String + Async) =
       Cut.guard {
-        Cut.checked(m(messages))((i, _) =>
+        Cut.checked(m(messages))((i, t) =>
           if i >= budget then Some(Cut.Violation("token-budget", i, s"> $budget tokens"))
-          else None)
+          else policy(i, t))
       }
     Writer.map(guarded)(t => sse("data", Json.print(JStr(t)))).flatMap {
       case Right(_) => effect[Writer % Chunk[Byte] + Async, Unit](
@@ -145,11 +151,13 @@ object Chat {
 
   /** `POST /chat`: `turnOverride` gets first refusal at a turn (an
    * already-framed SSE source of its own); `None` falls through to
-   * the plain guarded model stream */
-  def chatRoute(m: Model, budget: Int, turnOverride: TurnOverride = (_, _) => None)
+   * the plain guarded model stream. `policy` rides straight through
+   * to `reply` — see there. */
+  def chatRoute(m: Model, budget: Int, turnOverride: TurnOverride = (_, _) => None,
+                policy: (Int, String) => Option[Cut.Violation] = (_, _) => None)
   : PartialFunction[Request, Response ! Async] =
     case r if r.method == Method.Post && r.url == "/chat" =>
       val messages = messagesOf(r.body)
       pure(Response(200, Seq("content-type" -> "text/event-stream"),
-        turnOverride(r, messages).getOrElse(reply(m, budget)(messages))))
+        turnOverride(r, messages).getOrElse(reply(m, budget, policy)(messages))))
 }
