@@ -1,5 +1,0 @@
-slug: condition-run-warning
-branch: feature/condition-run-warning
-worktree: ../okay-wt-condition-run-warning
-claimed: 2026-09-02
-scope: Condition.run's while-loop (audit-fixes) ascribes the (op, k) pair as Op[?] against an Op[Any] rhs — a "pattern's type is more specialized" warning; ascribe Op[Any]. No behavior change.
