@@ -1,5 +1,29 @@
 # Changelog
 
+## demo-sessions — confirm-and-sign login replaces trust-the-field
+Completed: 2026-09-02
+Landed as cd4591b. `POST /login` mints a one-time 6-digit code (this
+stack has no email transport yet, specs/security.md — the code rides
+the response AND the server console, named as the demo's stated
+limit); `POST /login/confirm` spends it once and answers a session
+signed with okay-security's `Jwt` over an in-process ES256 key pair.
+The session is the identity of RECORD for a `/match` turn: threaded
+through `matchTurnLogged` -> `matchTurn` -> `scriptedAgent`/
+`agentTurn`, it registers the ChatLog speaker and is what facts get
+asserted under, overriding a DIFFERENT email the message text claims
+(proven on the deterministic driver: a session as `real@x` asserts
+under `real@x` even when the same message names `spoofed@x`; a live
+model is told the session in its system prompt and asked to honor
+it). The text-parsed "email x@y" stays the fallback for turns with
+no session, so scripted/offline callers are unchanged. The vanilla
+page gets a real login widget (email, code, `localStorage`, sent as
+`Authorization: Bearer`). Landed alongside a sibling's demo-en-
+phrasebook on the same function's signature — one straightforward
+rebase conflict, resolved by keeping both parameter additions.
+specs/demo-chat.md's new Sessions section; docs/modules/okay-demo.md.
+TestLogin (4 tests) + two demo-level tests over a real socket. Matrix
+70 suites in chunks, zero failures.
+
 ## same-operator — === is the witness
 Completed: 2026-09-02
 Landed as bf7825d. The operator: "можем определить оператор ===

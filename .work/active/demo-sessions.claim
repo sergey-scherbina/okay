@@ -1,5 +1,0 @@
-slug: demo-sessions
-branch: feature/demo-sessions
-worktree: ../okay-wt-demo-sessions
-claimed: 2026-09-02
-scope: real login for the chat demo — email confirm-and-sign over okay-security's ES256 JWT (Jwt.sign/verify), replacing the trust-the-field email; the token carries identity across turns/reconnects and rides cross-channel link recovery. specs/demo-chat.md, docs.

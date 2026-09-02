@@ -180,11 +180,6 @@
       GET /deals/<n> and /deals/<n>.json render the full history with
       provenance; a withdrawn stand-down gets its own event; unknown
       deal is 404.
-- [ ] demo-sessions — signed sessions over okay-security ES256 JWT:
-      the email identity (BadEmail condition already guards entry)
-      gets a real confirm-and-sign login instead of trust-the-field;
-      cross-channel identity then rides the token. Gated on
-      security-es256 landing.
 - [ ] demo-mcp-market — expose the market tools (search / assert /
       deal / flow) as an MCP server over okay-http's MCP: any MCP
       client (Claude included) becomes a market participant; the chat
