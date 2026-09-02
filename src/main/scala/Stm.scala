@@ -74,7 +74,7 @@ object TRef {
    * installs it bare. The cell STAMPS it at install: a Stamped value
    * belongs to one cell and one install — build a new one for every
    * transition (an immutable case class does, through copy) */
-  trait Stamped { private[okay] var stamp: Long = 0L }
+  abstract class Stamped { private[okay] var stamp: Long = 0L }   // a class, not a trait: the type test is a primary-supers check, not an interface scan
 
   /** any other value, with its version */
   final class Slot[+A](val value: A, val version: Long)
