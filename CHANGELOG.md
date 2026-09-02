@@ -1,5 +1,19 @@
 # Changelog
 
+## typed-js-facades — the web globals stated once, in types
+Completed: 2026-09-02
+Landed as 871e36a. The "raw js.Dynamic, no scala-js-dom" decision in
+specs/http.md asked to be revisited out loud; the cast audit was the
+occasion. `okay.Web` (core scala-js) declares `fetch` with
+`RequestInit`, `Response`, `Headers`, the body `Reader` and its
+`ReadResult`, `WebSocket` with `MessageEvent`/`CloseEvent` as
+`js.native` facades — still no scala-js-dom — and both JS transports
+(okay-http's fetch and sockets, okay-llm's fetch) are written on them:
+seventeen casts to none. A message's `data` is declared `Any` so text
+versus binary is a type TEST, not a cast. JS suites for core, http,
+llm, mcp, chatweb, cluster green; every module compiles. Also: the
+stale `+` import in Repair.scala.
+
 ## cast-free-typed — the SQL typed layer's Shape is a GADT
 Completed: 2026-09-02
 Landed as 38ed3b2. Typed's Shape mirrored the Schema untyped
