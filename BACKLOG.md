@@ -126,13 +126,6 @@
 ## okay-sql (the neutral seam — Typed/Schema layer)
 
 ## okay-pg (specs/sql.md — the wire driver)
-- [ ] pg-composite-rowtype — the last sliver after pg-composite-array
-      (landed): type a TABLE'S row-type (relkind='r') selected whole
-      (select t from t). Same cache shape as named composites, but
-      every table would join the connect preload — DEFERRED on that
-      cost until a consumer names the need; `(t).*` or row_to_json →
-      Schema is the road meanwhile. Anonymous record ROW() stays text
-      (genuinely unresolvable — no typrelid).
 
 ## okay-jdbc (specs/jdbc.md — the foreign database)
 - [ ] sql-r2dbc — the JVM reactive-driver hatch behind Sql (LOW:

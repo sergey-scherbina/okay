@@ -1,5 +1,0 @@
-slug: pg-composite-rowtype
-branch: feature/pg-composite-rowtype
-worktree: ../okay-wt-pg-composite-rowtype
-claimed: 2026-09-02
-scope: a table's/view's ROW-type (relkind r/v/m/p, user namespaces) joins the connect preload so `select t from t` decodes to a typed Row and describe names it; arrays of row types too; the preload cost measured and stated. specs/sql.md, okay-pg, TestPgComposite.

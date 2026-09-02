@@ -1,5 +1,24 @@
 # Changelog
 
+## pg-composite-rowtype — a table's row selected whole is a typed Row
+Completed: 2026-09-02
+Landed as 3e817cc (operator: "НУЖЕН"). The connect preload joins
+tables, views, matviews and partitioned tables (relkind r/v/m/p) to
+the named composites, in user schemas only — still ONE simple query,
+measured at 6.5 ms for the whole connect on the test database (the
+catalog's own columns, the cost that deferred this, are excluded by
+the namespace filter). `select p from okay_people p` decodes to a
+Row whose fields are typed all the way down — this found and fixed a
+real gap: `parseCompositeTyped` decoded fields with the static scalar
+map, so a composite inside a composite stayed text; it now decodes
+with the connection-aware `decodeCell`. `describe` names the nested
+type; `Typed.rows[Wrap(p: Option[Person])]` reads it and verify is
+clean, while the strict `p: Person` drifts with found "nullable" —
+a whole-row column has no table column behind it. A table created
+after connect is the raw text until reconnect (stated). Matrix: 69
+suites in 8 chunks, zero failures — chunked because full runs keep
+dying of an external SIGTERM (exit 143) that siblings report too.
+
 ## demo-ctx-wiring — the demo's handler as one value awaiting its environment
 Completed: 2026-09-02
 Landed as e812eb3 (spec) + ce7d346 (impl). ChatDemo.handler(budget) is
