@@ -2,7 +2,7 @@
 
 ## audit-fixes — the 2026-09-02 master audit, everything found fixed
 Completed: 2026-09-02
-Landed as LANDING (4 commits). The operator asked for an audit of
+Landed as 5580283 (6 commits, AGENTS.md rule on top). The operator asked for an audit of
 master and then "всё исправь". Mechanical: the resurrected
 direct-effect-provide BACKLOG entry, three stale `.?` spellings.
 Reconciled: Of[A] derives Answers — one typed condition door, two

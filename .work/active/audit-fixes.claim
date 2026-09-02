@@ -1,6 +1,0 @@
-feature/audit-fixes 2026-09-02T04:26:53Z
-agent: claude-code
-heartbeat: 2026-09-02T04:26:53Z
-status: in-progress
-done-so-far:
-next: mechanical fixes + reconciliation task recorded
