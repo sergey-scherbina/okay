@@ -2,8 +2,7 @@ package okay.admin
 
 import okay.{!, Async, pure}
 import okay.http.{Http, Method, Request, Response}
-import okay.security.{Claims, Jwt, Keys, Policy, Verified}
-import okay.security.given
+import okay.security.{Policy, SessionIssuer, Verified}
 import java.nio.charset.StandardCharsets.UTF_8
 
 /**
@@ -39,27 +38,19 @@ object Admin {
       "<p><a style=\"color:#6b9fff\" href=\"/market\">→ /market</a></p>"
 
   /**
-   * A minimal in-process admin credential — the same shape as
-   * `okay.demo.Login` (an ES256 keypair, one per process; a restart
-   * signs the admin out too, stated not hidden). Exists so a
-   * consumer has SOMETHING to test/use `routes` with; a deployment
-   * with a real identity provider supplies its own `verify` instead
-   * — `routes` only ever needs `String => Verified`.
+   * A minimal in-process admin credential — okay-security's
+   * `SessionIssuer` (specs/security.md, security-sessions), scoped
+   * "admin". Exists so a consumer has SOMETHING to test/use `routes`
+   * with; a deployment with a real identity provider supplies its
+   * own `verify` instead — `routes` only ever needs
+   * `String => Verified`.
    */
   object Issuer:
-    private val pair =
-      val g = java.security.KeyPairGenerator.getInstance("EC")
-      g.initialize(java.security.spec.ECGenParameterSpec("secp256r1"))
-      g.generateKeyPair()
-    private val key = Keys.ecPair(pair.getPublic, pair.getPrivate)
-    private val ttlSec = 24L * 3600
+    private val issuer = SessionIssuer()
 
     /** a long-lived admin-scoped token */
     def issue(now: Long = System.currentTimeMillis()): String =
-      val sec = now / 1000
-      Jwt.sign(Claims(subject = Some("admin"), scopes = Set("admin"),
-        issuedAt = Some(sec), expires = Some(sec + ttlSec)), key)
+      issuer.issue("admin", scopes = Set("admin"), now = now)
 
-    val verify: String => Verified =
-      t => Jwt.verify(t, _ => Some(key), audience = None, now = System.currentTimeMillis() / 1000)
+    val verify: String => Verified = t => issuer.verify(t)
 }

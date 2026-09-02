@@ -1,6 +1,6 @@
 package okay.demo
 
-import okay.crypto.given
+import okay.security.given
 
 /**
  * Confirm-and-sign (demo-sessions): a code, spent once, becomes a

@@ -10,6 +10,7 @@ import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool
 import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
 import okay.ops.Ops
 import okay.security.Secure
+import okay.security.given
 import okay.admin.Admin
 import okay.chat.Chat
 import okay.live.{Hub, Registry}

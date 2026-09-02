@@ -340,16 +340,16 @@ object OAuth2:                           // the client flows, over trait Http
   has `randomBytes`).
 
   Behavior:
-  - [ ] `SessionIssuer`: a token it issues is a token it verifies,
+  - [x] `SessionIssuer`: a token it issues is a token it verifies,
         carrying the subject and scopes named at issue time
-  - [ ] an expired token (past `ttlSec`) refuses; a token from a
+  - [x] an expired token (past `ttlSec`) refuses; a token from a
         DIFFERENT `SessionIssuer` instance refuses (independent
         keypairs, as `Admin.Issuer` and `Login` already were)
-  - [ ] `OneTimeCode`: start-then-confirm with the right code
+  - [x] `OneTimeCode`: start-then-confirm with the right code
         succeeds ONCE — a second confirm with the same code fails
         (spent); a wrong code, or a confirm past `ttlMs`, fails
         without spending the real one
-  - [ ] `okay.demo.Login` and `okay.admin.Admin.Issuer` both become
+  - [x] `okay.demo.Login` and `okay.admin.Admin.Issuer` both become
         thin wrappers over `SessionIssuer` (Login also composing
         `OneTimeCode`) — through the real demo's existing session
         and admin-auth tests, unchanged in substance
