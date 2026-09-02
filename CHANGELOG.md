@@ -1,5 +1,22 @@
 # Changelog
 
+## channel-merge-regression — investigated, not a code regression
+Completed: 2026-09-02
+Landed as f5ad554 (bbefd79). The bench-sweep report flagged
+Source.merge at 1.95x over its doc baseline (158 -> 307us) the same
+day the STM channel landed, and STM was the obvious suspect. A new
+concurrent-contention benchmark (ChannelBenchmark.
+concurrentSendReceive1k — two virtual threads racing sendBlocking
+into one channel, real CAS contention; the STM lane's own benches
+were single-threaded) showed only ~13% overhead, not 95%. The
+settling check: today's HEAD and the last pre-STM commit
+(channel-cas, 500efb7) measured within noise of each other on the
+identical merge benchmark, same run (308±19 vs 290±11). Whatever
+moved the doc's 158 baseline predates every 2026-09-02 landing —
+retired to 308 in docs/benchmarks.md §6; the investigation and the
+refuted hypothesis are recorded in specs/stm.md Results. No source
+change beyond the new benchmark.
+
 ## demo-scenario-editor — author a ScenarioDef through a page, no code change
 Completed: 2026-09-02
 Landed as 2dac9be (spec) + ad2d196 (impl). GET /scenarios lists every
