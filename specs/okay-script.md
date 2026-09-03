@@ -506,18 +506,6 @@ explicitly).
 
 ### What this is NOT (filed to BACKLOG, not built here)
 
-- **Request-object injection** — a script reading the CURRENT HTTP
-  request (query params, headers, method) the way it already reads
-  `Meta.current` for file metadata. The proven pattern (a plain
-  always-fresh method + mutable var, not a `given` — see "Metadata as
-  context" for why) would transfer directly, but exposing
-  `okay.http.Request` from `okay.script`'s own code would be
-  `okay-script`'s first real dependency beyond `scala3-compiler` —
-  deliberately not taken in this pass. A caller can already thread
-  per-request data into a render TODAY by building the markdown TEXT
-  per request (string-templating the request's own data into the `.md`
-  before calling `render`) — clumsy, but it works without a new
-  dependency, and is the reason this was not treated as blocking.
 - **Concurrent-safety of `Page.render()` under real concurrent HTTP
   load** — `Page`'s cache check-then-compile-or-invoke is `synchronized`
   (one render at a time per `Page` instance), which is correct but
@@ -525,6 +513,60 @@ explicitly).
   fine for the hot-reload use case (a low-traffic admin page, a
   documentation site), not measured or intended for a high-throughput
   server. Filed as a possible follow-on if a real consumer needs it.
+
+## Request context — `Web` (okay-script-web, 2026-09-03)
+
+The remaining half of "a new JSP": a script reading the CURRENT HTTP
+request (query params, headers, method) the way it already reads
+`Meta.current` for file metadata. `Hot-reload`'s own "not built" list
+named the obstacle: the proven pattern (a plain always-fresh method +
+mutable var, NOT a `given` — see "Metadata as context" for the
+empirical reason) transfers directly, but exposing `okay.http.Request`
+from `okay.script`'s own code would have been `okay-script`'s first
+real dependency beyond `scala3-compiler`.
+
+**Resolved by NOT exposing `okay.http.Request` at all.** `Web` is a
+plain, dependency-free value:
+
+```scala
+package okay.script
+
+final case class Web(method: String, path: String, query: Map[String, String] = Map.empty, headers: Map[String, String] = Map.empty)
+
+object Web:
+  val empty: Web
+  def current: Web
+  def setCurrent(w: Web): Unit
+```
+
+A caller (an `okay-jetty` route) translates its OWN real `Request`
+into `Web` — `Web(r.method.toString, path(r), queryOf(r), r.headers.
+toMap)` — before calling `render`/`Page.render`. `okay-script` never
+imports `okay.http` at all; the translation is the caller's own glue
+code, matching how the storefront example's `/order` route is already
+hand-written glue, not something `okay-script` provides.
+
+**Unlike `Meta.current`, `Web` is NOT auto-injected by the tokenizer**
+— there is exactly ONE request per render call (no per-heading
+transitions the way file metadata has), so a script just imports
+`okay.script.Web` and calls `Web.current` itself, wherever it needs
+it, in a ```scala block or a `${expr}` marker.
+
+**`Page.render(web: Web = Web.current)` sets it FIRST, inside the
+SAME lock `Page` already takes** for its cache check — this is the
+one place concurrency actually matters: two threads calling
+`page.render(webA)` and `page.render(webB)` concurrently on the SAME
+`Page` must never let one thread's script read the OTHER thread's
+`Web`. Because `Page.render` is `synchronized` end to end (was already
+true for the cache/compile logic; `setCurrent` now happens inside that
+same block, before `invoke()`), this holds. `ScalaScript.render` gets
+the same optional `web` parameter for API symmetry, but is NOT
+synchronized (a one-shot call was never meant to serialize) — a caller
+mixing concurrent one-shot `render` calls WITH real per-request `Web`
+data takes on the same single-threaded caveat `Meta.current` already
+carries; `Page` is the safe path for that use case, by design.
+
+## Classloader isolation — resolved 2026-09-03 (okay-script-classloader-isolation)
 
 Each `run` call already gets its OWN `URLClassLoader` — two scripts
 running in the same JVM do not collide with each other, since each
@@ -629,6 +671,13 @@ object Deps:
     case Failed(message: String)
   def resolve(coords: Vector[String]): Resolved
 
+/** An already-compiled program, invokable repeatedly without
+ * recompiling -- see "Hot-reload" above.
+ */
+trait Compiled:
+  def invoke(): Result
+  def close(): Unit
+
 object ScalaScript:
   def blocks(markdown: String): Vector[Block]
   /** classpath defaults to Classpath.ambient; a script's own `using
@@ -641,8 +690,34 @@ object ScalaScript:
   def run(markdown: String, classpath: Classpath = Classpath.ambient): Result
   /** the whole document, prose and code, as ONE program: ${expr}
    * markers in prose are evaluated and substituted; the rendered
-   * document is Result.stdout on success. See "Interpolation" above. */
-  def render(markdown: String, classpath: Classpath = Classpath.ambient): Result
+   * document is Result.stdout on success. `web` seeds `Web.current`
+   * for a script that reads it -- see "Request context" above; NOT
+   * synchronized, see that section's own concurrency note. See
+   * "Interpolation" above. */
+  def render(markdown: String, classpath: Classpath = Classpath.ambient, web: Web = Web.current): Result
+  /** `render`'s compile step, split from invocation -- see
+   * "Hot-reload" above; the primitive `Page` is built on. */
+  def compileRender(markdown: String, classpath: Classpath = Classpath.ambient): Either[Result, Compiled]
+
+/** A `render`-mode `.md` file, compiled once and cached by mtime,
+ * re-invoked (not re-compiled) while unchanged -- see "Hot-reload"
+ * above.
+ */
+final class Page(path: Path, classpath: Classpath = Classpath.ambient):
+  /** `web` is set INSIDE this call's own lock, before invoking --
+   * see "Request context" above for why that ordering matters. */
+  def render(web: Web = Web.current): Result
+  def close(): Unit
+
+/** The incoming HTTP request a script is answering, as plain,
+ * dependency-free data -- no `okay.http` import here at all. See
+ * "Request context" above.
+ */
+final case class Web(method: String, path: String, query: Map[String, String] = Map.empty, headers: Map[String, String] = Map.empty)
+object Web:
+  val empty: Web
+  def current: Web
+  def setCurrent(w: Web): Unit
 
 /** Front-matter + heading-scoped ```yaml metadata, as a typed AST and
  * as a current-position Context -- see "Metadata as context" above.
@@ -899,6 +974,16 @@ only this one step, and only when a script asks for it, does.
       output directory from disk — the same "leaves no temp file
       behind" property `render`'s own one-shot path already has, now
       checked for `Page`'s hold-it-open-across-calls shape too.
+- [x] a script reading `okay.script.Web.current` sees the method/path/
+      query/headers the CALLER set via `page.render(web)` — no
+      `okay.http` type anywhere in `okay-script`'s own compiled source.
+- [x] `page.render(webA)` then `page.render(webB)` on the SAME `Page`
+      (sequential, proving ordering, not concurrency) reflects the
+      RIGHT `Web` each time — not a stale value left over from the
+      previous call.
+- [x] `Web.empty`/omitting the `web` argument does not crash a script
+      that never reads `Web.current` — the parameter is additive, not
+      a new required contract.
 
 ## Results
 
