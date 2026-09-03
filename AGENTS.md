@@ -11,6 +11,24 @@ CHANGELOG: CHANGELOG.md
   `.agents/plugins/<name>/commands/<name>.md` and follow it. In a
   worktree the submodule is checked out only in the main repo — read
   skills from there, never `submodule update --init` in the worktree.
+- Two of them bind to tools rozum serves for THIS project on the same
+  MCP connection as the meeting room, so they are worth naming here
+  rather than leaving to the index — what an index cannot tell you is
+  WHEN:
+  - `rag.search` (the `rag` skill): semantic search over this repo's
+    own code and docs. Reach for it when you do not know the token,
+    symbol or path — a concept, a symptom, an unfamiliar area whose
+    shape you need first. Do NOT reach for it when you do know: grep
+    and Read are exact, instant and never stale, and a hit here is a
+    pointer to open, not an answer. It earned its keep in this repo
+    already: it is how the `journal-versions` design error was found,
+    by asking the other repo what it had built for the same problem.
+  - `state.get` / `state.update` / `state.reset` (the `task-state`
+    skill): a durable per-project JSON fact store that does not live
+    in the conversation, so `/clear` and a fresh session cannot lose
+    it. Read it at the start of a task and after any compaction;
+    write a fact the moment you learn it, rather than trusting the
+    transcript to still be carrying it later.
 
 Several agents commit to one `master` from one machine. The rules in
 force, all already practiced, none previously written down:
