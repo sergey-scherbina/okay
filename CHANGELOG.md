@@ -1,5 +1,31 @@
 # Changelog
 
+## channel-queue-reversal — measured and declined: Vector and a hand-rolled Fifo both tried against Channel.State's Queue, neither wins, nothing lands
+Completed: 2026-09-03
+Landed as 7371afa (docs/history only — Channel.scala is byte-
+identical to master). Follow-on to writer-of-resume-fix: profiling
+`okayChannelMerge` found 30% of CPU in `Queue.dequeue`'s amortized
+`List.reverse`. First read: near-lockstep producer/consumer timing
+defeats the amortization. Two fixes, each measured on the real
+`Channel.merge` benchmarks:
+
+`Vector` (no reversal ever) won an isolated single-threaded lockstep
+microbenchmark 16x, LOST 13-15% on the real multi-fiber benchmark —
+under CAS-retry contention a failed `TRef.modify` attempt rebuilds
+the whole `State`, and `Vector`'s per-attempt trie-copy cost, times
+retries, beat `Queue`'s occasional reversal. A hand-rolled `Fifo`
+(List-based, special-casing the 0/1-element reversal the profiler
+flagged) measured EXACT PARITY with `Queue` on both benchmarks — no
+win. Re-profiling corrected the original premise: nearly all
+remaining reversals landed in the 2+-element general case, not the
+assumed 0/1 fast path — `Channel.merge`'s real access pattern under
+fiber timing DOES form multi-element batches, so `Queue`'s
+amortization is doing real, intended work, not being defeated. The
+30% CPU number was real; the explanation drawn from it was wrong,
+corrected in specs/stm.md Results. Both attempts reverted cleanly;
+the exploratory benchmark file was removed rather than kept, since
+its lockstep premise doesn't hold for the real workload.
+
 ## writer-of-resume-fix — profiled (JFR), not guessed: Writer.of stops re-wrapping every element
 Completed: 2026-09-03
 Landed as 3f558a0. `compare/Jmh/run -prof jfr` on `okaySourceMerge`
