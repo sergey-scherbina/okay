@@ -566,9 +566,23 @@ Landed 2026-09-03 (core), extended 2026-09-03 (runtime-app follow-on:
 explicit `Classpath`, `//> using dep` + Coursier resolution; lifecycle:
 `Thread.interrupt()` on the caller's own thread, no new API; worked
 example: examples/it-consulting-storefront.md; classloader isolation:
-platform-only parent per script). Traps found by the tests, all fixed
-before landing:
+platform-only parent per script; interpolation: `render`, `${expr}` in
+prose, examples/render-storefront.md). Traps found by the tests, all
+fixed before landing:
 
+- **`render` needed no traps fixed — the design held on the first real
+  run**, INCLUDING the case that most looked like it would break: a
+  `${expr}` whose own expression contains a NESTED real Scala string
+  interpolation (`s"- ${it.name} — ${priceOf(it)}"` inside an outer
+  `${services.map(...).mkString(...)}` marker, in
+  examples/render-storefront.md). The quote-aware brace scanner handled
+  it correctly on the first try. The one real refinement made BEFORE
+  any test ran (not a bug fix after the fact): switching from a
+  buffer-then-flush-at-the-end design to a direct `print(...)` per
+  segment, once it was clear a buffered design would silently reorder
+  a code block's own `println` output after the whole rendered
+  document instead of interleaving it correctly — caught while writing
+  the spec, not by a failing test.
 - **Classloader isolation's fix genuinely closes a leak — confirmed by
   temporarily reverting it.** Before landing, the fix was reverted
   (`ClassLoader.getPlatformClassLoader()` back to

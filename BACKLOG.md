@@ -734,6 +734,33 @@ not a new primitive from scratch.
       one) — confirmed as a REAL regression check by temporarily
       reverting the fix and watching the test fail before restoring
       it. specs/okay-script.md "Classloader isolation".
+- [x] okay-script-interpolation — LANDED 2026-09-03: the operator's
+      own framing for `okay-script` — "a new JSP, but Scala+Markdown".
+      New `ScalaScript.render(markdown, classpath): Result`, separate
+      from `run` (untouched — still for apps/effects like the
+      storefront). `render` recognizes `${expr}` in PROSE (outside
+      ```scala fences; `$${` escapes to a literal `${`) as a Scala
+      expression evaluated in the SAME document-order scope
+      ```scala blocks build, `.toString`-printed in place; everything
+      else — prose, other-language fences — passes through verbatim.
+      Brace-depth- and quote-aware scanner (handles a NESTED real
+      `s"${x}"` string interpolation inside an `${...}` marker's own
+      expr). The rendered document is `Result.stdout`. Worked example:
+      `examples/render-storefront.md`. One design refinement made
+      BEFORE any test ran: direct `print(...)` per segment instead of
+      a buffer flushed at the end, so a code block's own `println`
+      output stays in true document order instead of reordered after
+      the whole rendered text. specs/okay-script.md "Interpolation".
+- [ ] okay-script: per-request execution + hot-reload — the SECOND
+      half of "a new JSP" that this pass deliberately did not build:
+      JSP recompiles a page when its file changes and runs it PER
+      REQUEST with `request`/`response` as implicit context; `render`
+      today is a one-shot call with no file-watching or request
+      binding. Naturally sits closer to an `okay-jetty` ROUTE (a
+      handler that stats the `.md` file, recompiles on change, calls
+      `render` per request) than to `okay-script` itself — GATED on
+      deciding whether that lives in `okay-script` or in a consuming
+      module.
 
 ## Elsewhere
 - [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and

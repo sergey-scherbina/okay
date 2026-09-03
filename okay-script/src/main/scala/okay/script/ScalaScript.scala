@@ -15,6 +15,22 @@ import java.nio.file.{Files, Path, Paths}
  */
 final case class Block(code: String, startLine: Int)
 
+/** A markdown document's `render` tokens, in document order --
+ * see specs/okay-script.md "Interpolation".
+ */
+enum Segment:
+  /** prose (or a non-scala fenced block, fence markers included),
+   * verbatim -- rendered byte-identical except for any `${...}`
+   * markers, which are split out as their own Interp segments. */
+  case Text(s: String)
+  /** a ```scala fence's content, verbatim -- runs for its side
+   * effects (definitions visible to LATER segments, direct output via
+   * println), exactly like a `run` block. */
+  case Code(s: String)
+  /** a `${expr}` marker's inner expression -- evaluated, `.toString`
+   * printed in place. */
+  case Interp(expr: String)
+
 final case class Result(
   ok: Boolean,
   stdout: String,
@@ -114,6 +130,98 @@ object ScalaScript:
         i += 1
     out.result()
 
+  /** The whole document, tokenized in document order: a ```scala fence
+   * (found exactly as `blocks` finds them) becomes ONE Code segment;
+   * everything else -- prose, other-language fences, fence markers
+   * included -- is scanned for `${...}` markers and split into
+   * Text/Interp segments around them.
+   */
+  private def segments(markdown: String): Vector[Segment] =
+    val lines = markdown.linesWithSeparators.toVector.map(_.stripLineEnd)
+    val out = Vector.newBuilder[Segment]
+    val textLines = Vector.newBuilder[String]
+    def flushText(): Unit =
+      val t = textLines.result()
+      if t.nonEmpty then out ++= splitInterpolations(t.mkString("\n"))
+      textLines.clear()
+    var i = 0
+    while i < lines.length do
+      if fenceOpen.matches(lines(i)) then
+        flushText()
+        var j = i + 1
+        val body = Vector.newBuilder[String]
+        while j < lines.length && !fenceClose.matches(lines(j)) do
+          body += lines(j)
+          j += 1
+        out += Segment.Code(body.result().mkString("\n"))
+        i = j + 1
+      else
+        textLines += lines(i)
+        i += 1
+    flushText()
+    out.result()
+
+  /** Splits a text run on `${expr}` markers (`$${` escapes to a
+   * literal `${`). Brace-depth-aware, and quote-aware within the
+   * expr -- a `{`/`}` inside a `"..."` span in the expression (e.g. a
+   * NESTED `s"${x}"` string interpolation) does not affect the depth
+   * that closes the marker.
+   */
+  private def splitInterpolations(text: String): Vector[Segment] =
+    val out = Vector.newBuilder[Segment]
+    val buf = new StringBuilder
+    val n = text.length
+    var i = 0
+    while i < n do
+      if i + 2 < n && text(i) == '$' && text(i + 1) == '$' && text(i + 2) == '{' then
+        buf ++= "${"
+        i += 3
+      else if i + 1 < n && text(i) == '$' && text(i + 1) == '{' then
+        if buf.nonEmpty then
+          out += Segment.Text(buf.toString)
+          buf.clear()
+        val start = i + 2
+        var depth = 1
+        var inString = false
+        var escaped = false
+        var k = start
+        while k < n && depth > 0 do
+          val c = text(k)
+          if inString then
+            if escaped then escaped = false
+            else if c == '\\' then escaped = true
+            else if c == '"' then inString = false
+          else if c == '"' then inString = true
+          else if c == '{' then depth += 1
+          else if c == '}' then depth -= 1
+          k += 1
+        val exprEnd = if depth == 0 then k - 1 else k
+        out += Segment.Interp(text.substring(start, exprEnd))
+        i = k
+      else
+        buf += text(i)
+        i += 1
+    if buf.nonEmpty then out += Segment.Text(buf.toString)
+    out.result()
+
+  /** A Text segment as Scala source: a raw triple-quoted string when
+   * safe (no embedded `"""` run, does not end in `"` -- either would
+   * make the closing `"""` ambiguous), else a normal escaped literal.
+   */
+  private def scalaStringLiteral(s: String): String =
+    if s.contains("\"\"\"") || s.endsWith("\"") then
+      val esc = s.flatMap {
+        case '\\' => "\\\\"
+        case '"' => "\\\""
+        case '\n' => "\\n"
+        case '\r' => "\\r"
+        case '\t' => "\\t"
+        case c => c.toString
+      }
+      "\"" + esc + "\""
+    else
+      "\"\"\"" + s + "\"\"\""
+
   /** Compile and run a markdown file's ```scala blocks as one program
    * (see Block/Result docs). `classpath` defaults to the calling
    * process's own -- see Classpath's doc for why that is a hypothesis,
@@ -121,6 +229,28 @@ object ScalaScript:
    * resolved and appended to it before compiling.
    */
   def run(markdown: String, classpath: Classpath = Classpath.ambient): Result =
+    withDeps(markdown, classpath): cp =>
+      val src = blocks(markdown).map(_.code).mkString("\n\n")
+      val body = if src.isEmpty then "  ()" else src.linesWithSeparators.map("  " + _).mkString
+      compileAndRun(body, cp)
+
+  /** The whole document -- prose AND code -- as one program: `${expr}`
+   * markers in prose (outside ```scala fences) are evaluated and their
+   * `.toString` substituted in place; everything else passes through
+   * verbatim. The rendered document is `Result.stdout` on success. See
+   * specs/okay-script.md "Interpolation".
+   */
+  def render(markdown: String, classpath: Classpath = Classpath.ambient): Result =
+    withDeps(markdown, classpath): cp =>
+      val body = segments(markdown).map {
+        case Segment.Text(s) if s.nonEmpty => "  print(" + scalaStringLiteral(s) + ")"
+        case Segment.Text(_) => ""
+        case Segment.Interp(expr) => s"  print(($expr).toString)"
+        case Segment.Code(code) => code.linesWithSeparators.map("  " + _).mkString
+      }.mkString("\n")
+      compileAndRun(if body.isEmpty then "  ()" else body, cp)
+
+  private def withDeps(markdown: String, classpath: Classpath)(f: Classpath => Result): Result =
     val coords = Deps.declared(markdown)
     Deps.resolve(coords) match
       case Deps.Resolved.Failed(msg) =>
@@ -128,11 +258,9 @@ object ScalaScript:
       case Deps.Resolved.ToolMissing =>
         Result(ok = false, stdout = "", errors = Vector("`using dep` declared but no cs/coursier found on PATH"), thrown = None)
       case Deps.Resolved.Jars(extra) =>
-        runWith(markdown, classpath ++ extra)
+        f(classpath ++ extra)
 
-  private def runWith(markdown: String, classpath: Classpath): Result =
-    val src = blocks(markdown).map(_.code).mkString("\n\n")
-    val body = if src.isEmpty then "  ()" else src.linesWithSeparators.map("  " + _).mkString
+  private def compileAndRun(body: String, classpath: Classpath): Result =
     val wrapped =
       s"""@main def okayScriptMain(): Unit =
          |$body
