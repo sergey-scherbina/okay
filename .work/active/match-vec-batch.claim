@@ -1,5 +1,0 @@
-slug: match-vec-batch
-branch: feature/match-vec-batch
-worktree: ../okay-wt-match-vec-batch
-claimed: 2026-09-03
-scope: SqlMatch.candidates fetches every cached vector in ONE statement instead of one SELECT per candidate (measured downstream: ~1.3ms per row, 65ms for 50). okay-match only: SqlMatch.scala, specs/match.md, TestVecCache. Does NOT touch build.sbt or MemoryMatch.

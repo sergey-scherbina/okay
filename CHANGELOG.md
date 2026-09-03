@@ -1,5 +1,24 @@
 # Changelog
 
+## match-vec-batch — one statement for many vectors
+Completed: 2026-09-03
+Landed as f1cb3b1 (spec) + fe82ceb (impl). The follow-up match-vec-cache
+named. That change removed the model inferences from `candidates()` and
+left the ROUND TRIPS: a per-entity lookup is a SELECT per candidate,
+and it grows with the marketplace exactly as the inferences did —
+measured in a downstream deployment at ~1.3ms a row, 65ms for fifty.
+`candidates()` now reads every cached vector for the passing set in ONE
+statement and embeds only the misses. Chunked at 500, because a
+database that accepts an `IN` list does not accept an unbounded one and
+a marketplace is allowed to be bigger than one statement. The misses
+are still written back one at a time deliberately: a miss is a model
+inference, which dwarfs the round trip a batched write would save.
+Tests: 2 new (10 in TestVecCache), and the first counts STATEMENTS
+rather than time — a forwarding `Sql` wrapper counting reads of the
+vector table — because "one read, not twenty" is the claim and a timing
+assertion would be a flake. Rebased on master and re-gated after a
+sibling landed: 76 suites, 2001 tests, 0 failures, 0 warnings.
+
 ## flush-op — `Flush.now`: the chunk boundary as an operation, where the producer knows it
 Completed: 2026-09-03
 Landed as 749e5f5. The half of the request `chunk-flush` answered
