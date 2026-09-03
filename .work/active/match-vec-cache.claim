@@ -1,0 +1,5 @@
+slug: match-vec-cache
+branch: feature/match-vec-cache
+worktree: ../okay-wt-match-vec-cache
+claimed: 2026-09-03
+scope: SqlMatch gains a PERSISTED vector cache (new table match_vecs, keyed by an entity key with a fingerprint of the text it was computed from, so it self-invalidates and survives a restart) used by candidates() and registrySearch(); an additive `embedTag` constructor parameter so switching encoders invalidates rather than silently serving noise. okay-match only: SqlMatch.scala, specs/match.md, its JVM test suites. Does NOT touch build.sbt, MemoryMatch's existing cache, or any other module.
