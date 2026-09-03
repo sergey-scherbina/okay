@@ -1,5 +1,60 @@
 # Changelog
 
+## intent-precedence-rule — the design answer is right, the measurement sank it, and it is not shipped
+Completed: 2026-09-04
+Landed as 0fc1ff41, as a REFUSAL. The reference literature calls
+overlapping classes "mutually exclusive in practice" and prescribes a
+stated precedence rule. This lane asked where such a rule LIVES, built
+the answer, measured it, and threw the answer away.
+
+THE DESIGN ANSWER STANDS, and is written into the spec. A doc comment
+cannot be read at runtime; a prompt parameter does not travel with the
+type, so the next caller reconstructs it or does without. The
+construction that fits this library is a typeclass beside the schema —
+`Taxonomy[I]` carrying `precedence: List[String]`, its empty default one
+priority lower so a stated taxonomy wins over the silent one instead of
+being ambiguous with it. It travels exactly as far as the type does,
+which is the point of the taxonomy BEING a type.
+
+THE MEASUREMENT SANK IT. Two arms over the same 120 messages, differing
+only in whether the taxonomy declares its rules:
+
+| arm | macro F1 | Proposal | Request | Notification | Other |
+|---|---|---|---|---|---|
+| no precedence stated | 0.909 | 0.95 | 0.93 | 0.89 | 0.86 |
+| precedence stated | 0.866 | 0.92 | 0.89 | 0.84 | 0.81 |
+
+Every class fell by roughly the same amount — and the rules were
+written to match this fixture's own labelling, so they should have
+helped BY CONSTRUCTION. The claim said so before the run, precisely so
+the outcome could not be reinterpreted afterwards. The uniformity is
+the diagnosis: two more sentences of instruction did not sharpen the
+boundary they named, they diluted the whole prompt. The second rule
+aimed at `Notification`, and `Notification` recall fell 0.83 -> 0.77.
+
+So the mechanism is not shipped: an API whose only measurement says it
+costs 0.043 macro F1 is an unearned claim written in code, and this
+line has already deleted one of those from prose. The four lines are in
+the lane's history and cost nothing to restore when there is evidence.
+Reverting also left the prompt unchanged, so the recorded journal stays
+valid — intent-eval-on-journal paying for itself the same day.
+
+Filed as intent-tiebreak-by-example: render a tie-break as EXAMPLES of
+the disputed case rather than as prose (few-shot examples are the one
+lever that has consistently paid in this line), and use one rule rather
+than a list.
+
+CARRIED IN THIS LANE, unrelated and mine to fix: two compiler warnings
+my previous two lanes left on master (unused imports in TestEvalJournal
+and TestCutStops). I had been grepping gates for test failures only, and
+an incremental compile hides warnings — AGENTS.md says `clean;
+Test/compile` is the only truthful check, and I was not running it. The
+gate is now two shorter commands, a clean compile for warnings and a
+warm run for failures, which also collides less with a sibling's sbt
+than one long clean-and-test did.
+
+Gate: clean compile 0 warnings; full matrix 2134 tests, 0 failures.
+
 ## intent-eval-on-journal — the non-model half of evaluation stops costing a model
 Completed: 2026-09-04
 Landed as 551dda2d. Every measurement in this line has been a live run
