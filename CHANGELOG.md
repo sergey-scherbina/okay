@@ -1,5 +1,34 @@
 # Changelog
 
+## source-merge-chunked — Source.mergeChunked: 4-5x, the first thing in this arc that actually gets faster
+Completed: 2026-09-03
+Landed as 9971a0d. Four lanes had refuted the COST side of the
+per-element merge (queue data structure, retry rate, kernel tree
+shape, row variance). The question put directly — if `Chunks.merge`
+is 10.7us where `Source.merge` is 299.7, why does `Source.merge` not
+chunk underneath? — was the right one. A profiler pass attributing
+EVERY frame (not just the two already suspected) found 71% of
+samples in the per-element channel TRANSACTION: 33% the CAS itself,
+19% the immutable Queue rebuilt around it, 19% `resume`'s per-pull
+rotation. Nothing there is cheaper than it is; there are too many.
+
+`Source.mergeChunked(other, size)` divides the count by `size` and
+hands back an ordinary `Source`:
+
+| 2 x N | `merge` | `mergeChunked` |
+|---|---|---|
+| N=2000, size 16 | 1169.9 ±9.3 | **223.5 ±2.9** (5.2x) |
+| N=2000, size 64 | 1163.4 ±12.7 | **247.2 ±1.8** (4.7x) |
+| N=500, size 16 | 292.8 ±3.5 | **70.2 ±1.0** (4.2x) |
+
+A separate combinator rather than a change to `merge`, for a
+semantic reason: it batches, and the win comes precisely from
+batching sends that would otherwise have succeeded immediately (a
+consumer that keeps up creates no backpressure to absorb), so it
+cannot be made invisible. Readiness stays `merge`'s promise. Three
+tests cover element identity and per-source order, the flushed
+partial final chunk, and empty sources.
+
 ## free-row-variance — the upcast that is not free: Free stays invariant, now with a number behind it
 Completed: 2026-09-03
 Landed as 70d7e95 (a benchmark, docs and one corrected doc comment —
