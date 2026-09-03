@@ -1,5 +1,35 @@
 # Changelog
 
+## chunks-size-one — why `Source` is not just replaced by `Chunks`: measured, not asserted
+Completed: 2026-09-03
+Landed as 6ac716f2. The operator's question: `Chunks` (array-native)
+already beats `ZStream`'s own default 5.7x, so why keep `Source`
+(the per-element, Free-tree representation) separately rather than
+collapsing onto `Chunks`?
+
+Hypothesis checked rather than assumed: an array-of-chunks
+representation pays a chunk allocation per PRODUCTION regardless of
+size, so `Chunks` forced to size 1 — what a genuinely one-at-a-time
+live source (LLM tokens, SSE) hands it — should degrade the same way
+`ZStream(chunkSize=1)` measured 12x worse than `Source.merge`.
+Confirmed: `Chunks.merge` at size 1 costs **780.7 ±14.1**, a 33x
+collapse from its own 64-element default (23.5 ±0.2) — structural to
+the representation, not a ZIO quirk.
+
+The number that answers the actual question: at that forced size,
+`Chunks(1)` (780.7 ±14.1) and `Source.merge` (819.6 ±4.8) land within
+a few percent of each other. Genuinely per-element load collapses
+BOTH of okay's representations to the same floor — the cost of
+per-element semantics itself. `ZStream` forced the same way costs
+**9984.9 ±125.0**, 12.2x worse than either, with nowhere else to go:
+the array-native shape is its only representation. `Source` is not
+an unmerged duplicate kept out of inertia; it is what keeps
+genuinely per-element work off the cliff every array-native
+representation, ours included, pays for the same structural reason.
+
+`docs/theory/07-logic-streams.md` carries the general form:
+amortization is a property of the batch, not of a representation.
+
 ## okay-script-runtime — explicit Classpath + `//> using dep` (Coursier), and the fork-classpath bug behind it
 Completed: 2026-09-03
 Landed as e543c2d0, fast-forwarded onto master. The operator clarified
