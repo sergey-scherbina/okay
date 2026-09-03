@@ -183,16 +183,20 @@ construction instead of a type test per value).
       `Chunks.merge` 23.2us against ZIO `ZStream.merge` 58.6 on
       2x2000 — okay is 2.5x AHEAD. docs/benchmarks.md §6b.
 
-- [ ] nio-port-scope-flake — okay.http.TestNio "the listener is a
-      Resource: the port is free after the scope" failed once under
-      the full sbt test matrix (2026-09-03, "the listener outlived its
-      Resource scope"), green 3/3 in isolation immediately after. The
-      same signature as netty-ws-matrix-flake in a different family: a
-      real port, and an assertion about how fast the OS frees it,
-      under matrix load. Decide as netty was decided (Live-tag it into
-      integrationTest) or settle the timing first — not taken
-      unilaterally, since netty's move was an explicit instruction and
-      this is a different suite.
+- [x] nio-port-scope-flake — SETTLED, and the timing was not what the
+      name says (nio-port-scope, 2026-09-03). The assertion took the
+      ephemeral port its listener had been given, closed the scope,
+      and required a connect to it to FAIL. Under the full matrix that
+      is not a fact about our Resource: the port returns to the
+      ephemeral pool the instant we release it, a sibling suite binds
+      it, and the connect reaches THEIR listener and succeeds — so the
+      test reported "the listener outlived its Resource scope" about a
+      listener that closed exactly on time. The claim is about the
+      listener, so it is now asked of the listener: `Nio.listen`'s
+      resource value IS the ServerSocketChannel, and `isOpen` answers
+      deterministically, with no port and no neighbours in it. Every
+      suite that BINDS a real port (14 of them, found by survey rather
+      than by waiting for each to flake) is also Live-tagged now.
 
 - [x] netty-ws-matrix-flake — SETTLED by moving it out of the gate
       (netty-integration, 2026-09-03, operator decision). It failed

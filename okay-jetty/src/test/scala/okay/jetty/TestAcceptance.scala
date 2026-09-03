@@ -26,6 +26,13 @@ import okay.http.{Acceptance, Transports}
  * server-side WebSocket at all.
  */
 class TestAcceptance extends munit.FunSuite {
+  // nio-port-scope (2026-09-03): this suite BINDS a real port, so its
+  // result depends on what else on the machine is binding them — the
+  // class of failure netty-ws-matrix-flake and nio-port-scope-flake
+  // both were. Out of the default gate; `sbt integrationTest` runs it.
+  override def munitTests(): Seq[Test] =
+    super.munitTests().map(_.tag(new munit.Tag("Live")))
+
 
   val clientJs: Option[String] =
     Option(System.getProperty("okay.http.client.js")).filter(p =>

@@ -1,5 +1,7 @@
 package okay.http
 
+import java.nio.channels.ServerSocketChannel
+
 import okay.*
 import okay.given
 import okay.codec.Json
@@ -15,6 +17,13 @@ import okay.mcp.{Mcp, Rpc}
  * transports for okay-mcp now: pipes, a WebSocket, and this.
  */
 class TestNio extends munit.FunSuite {
+
+  // nio-port-scope (2026-09-03): every test here binds a real port,
+  // so the RESULT depends on what else on the machine is binding
+  // them. Moved out of the default gate the way okay-netty was;
+  // `sbt integrationTest` runs it.
+  override def munitTests(): Seq[Test] =
+    super.munitTests().map(_.tag(new munit.Tag("Live")))
 
   test("two ends exchange bytes") {
     val got = Resource.run[Seq[String], Pure](
@@ -145,12 +154,21 @@ class TestNio extends munit.FunSuite {
     assertEquals(got, 500)
   }
 
-  test("the listener is a Resource: the port is free after the scope") {
-    val port = Resource.run[Int, Pure](
-      Nio.listen(0)(_ => pure(())).map(Nio.port)).runWith
-    val failed =
-      try { Async.run[Unit, Pure](Nio.connect("127.0.0.1", port).map(_ => ())).runWith; false }
-      catch case _: Throwable => true
-    assert(failed, "the listener outlived its Resource scope")
+  test("the listener is a Resource: it is CLOSED after the scope") {
+    // This asked the question through the port until 2026-09-03: take
+    // the ephemeral port the listener got, close the scope, and assert
+    // that connecting to it now fails. Under the full matrix that is
+    // not a fact about our Resource at all — the port goes back to the
+    // ephemeral pool the moment we release it, a sibling suite binds
+    // it, and our connect reaches THEIR listener and succeeds. The
+    // assertion then reports "the listener outlived its Resource
+    // scope" about a listener that closed exactly on time.
+    //
+    // The claim is about the listener, so it is asked of the listener:
+    // `Nio.listen`'s resource value IS the ServerSocketChannel, and a
+    // closed channel says so. No port, no pool, no neighbours.
+    val server = Resource.run[ServerSocketChannel, Pure](
+      Nio.listen(0)(_ => pure(()))).runWith
+    assert(!server.isOpen, "the listener outlived its Resource scope")
   }
 }

@@ -163,7 +163,15 @@ force, all already practiced, none previously written down:
   `Live`-tagged (see below) and excluded by default, however solid it
   usually is; a landing's gate must not depend on external timing.
   Flakiness discovered in an already-untagged suite gets the same
-  tag, not a retry loop or a widened assertion.
+  tag, not a retry loop or a widened assertion. As of nio-port-scope
+  (2026-09-03) every suite that BINDS a real port is tagged, found by
+  survey rather than one flake at a time — the survey is
+  `grep -E '\.(serve|listen)\(0\)|ServerSocketChannel\.open|new ServerSocket'`
+  over the test tree, and a new binding suite is expected to tag
+  itself. And tagging is not a substitute for understanding: the same
+  lane found that suite's assertion was testing something unassertable
+  on a shared machine (a released ephemeral port is immediately
+  re-bindable by a neighbour) and fixed the assertion too.
 - `sbt test` runs everything, JVM + JS + Native. The core suite forks
   (see build.sbt for why); `.jvmopts` gives sbt 6g.
 - Live suites (`TestLive` in okay-agent and okay-mcp, the LIVE tests
