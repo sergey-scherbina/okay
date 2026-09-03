@@ -38,7 +38,22 @@ class TestLogin extends munit.FunSuite:
     val token = Login.issue("eve@example.com", now)
     assertEquals(Login.verify(token, now + 23L * 3600 * 1000), Some("eve@example.com"))
     assertEquals(Login.verify(token, now + 25L * 3600 * 1000), None)
-    assertEquals(Login.verify(token.dropRight(2) + "xx"), None)
+    // flip a MIDDLE character, not the last one (BACKLOG
+    // test-login-tamper-flake): the original `+ "xx"` could
+    // reconstruct the SAME token when it already ended in "xx"
+    // (~1 in 4096) — but flipping only the LAST char has its own,
+    // much bigger trap: a 64-byte ES256 signature base64url-encodes
+    // to 86 chars carrying 516 bits for 512 bits of real signature,
+    // so the FINAL char holds just 2 significant bits (4 are
+    // decoder-ignored padding) — many single-char flips there decode
+    // to the IDENTICAL signature bytes, verifying anyway (~40%
+    // observed empirically, not the rare edge case the first fix
+    // assumed). A middle character sits inside a fully-significant
+    // 6-bit block on any reasonable token length, so every flip
+    // there changes real bytes.
+    val i = token.length / 2
+    val flipped = token.updated(i, if token(i) == 'x' then 'y' else 'x')
+    assertEquals(Login.verify(flipped), None)
     assertEquals(Login.verify("not.a.jwt"), None)
     assertEquals(Login.verify(""), None)
   }
