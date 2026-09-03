@@ -104,6 +104,13 @@ of each, not how each works internally.
   unchanged — `Vectors.hashing()`, `0.85f`) are where a real embedder
   plugs in; `okay-demo-embed` (docs/modules/okay-demo-embed.md) is
   the live proof, kept out of okay-demo's own dependencies.
+  Measured, so nobody plans around a defense that is not there: at
+  the default the similarity check is very nearly inert. Hashing is
+  character-trigram counting, so it scores surface overlap and not
+  meaning — "разработчик"/"программист" comes out at 0.231 and even
+  "разработчик"/"разработчики" at 0.815, both under the 0.85 default.
+  Out of the box the EXACT-SLUG path is what dedupes; the similarity
+  path is the seam a real embedder switches on.
 
 ### How the model runs the marketplace
 

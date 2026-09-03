@@ -790,6 +790,24 @@ module, `okay-demo-embed` (depends on `okayDemo` +
       threshold to its own distribution
 - [x] an exact slug hit still dedupes regardless of which embedder is
       wired in (the cheap path `propose` already had is untouched)
+- [x] FINDING (measured 2026-09-03, gate-honesty): with the DEFAULT
+      `Vectors.hashing()` the similarity branch is very nearly inert,
+      and this is now a number rather than an impression. That
+      embedder is 64-dimensional character-TRIGRAM counting — it
+      scores surface overlap, not meaning — so against the 0.85
+      default it scores "разработчик"/"программист" at 0.231, the two
+      sentences "ищу разработчика на scala"/"нужен программист на
+      скале" at 0.411, and even the same word in the plural,
+      "разработчик"/"разработчики", at 0.815 — UNDER the threshold.
+      Only a near-identical string clears it ("scala developer" vs
+      "scala developer needed": 0.852). So in the demo's default
+      configuration the exact-slug path is what actually dedupes, and
+      the similarity path is a seam waiting for a real embedder, not
+      a working defense. Deliberately NOT fixed by lowering the
+      default: 0.85 is calibrated to the hashing distribution's
+      collision floor (64 buckets inflate every score), and the
+      threshold belongs to whichever embedder is wired in — which is
+      exactly why `marketOf` takes them as one pair.
 
 ## Out of scope
 - Persistence of conversations, multi-user rooms (okay-match's

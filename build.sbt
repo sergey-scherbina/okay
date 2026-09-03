@@ -1170,6 +1170,15 @@ lazy val okayDemo = (project in file("okay-demo"))
     // because RepoAgent indexes File(".")
     Test / fork := true,
     Test / baseDirectory := (ThisBuild / baseDirectory).value,
+    // test isolation (gate-honesty): `chatStore` is a lazy singleton
+    // reading OKAY_CHAT_LOG, and its default is a FileStore directory
+    // — under the forked baseDirectory above that is `okay-chat.log/`
+    // in the REPO ROOT, so a suite run inherited every previous run's
+    // facts and left its own behind. Tests get a MemoryStore; a test
+    // that wants a real file store still asks for one by name
+    // (`ChatDemo.logOf(path)`, or its own env, as TestTwoNode does
+    // for the child processes it spawns).
+    Test / envVars += "OKAY_CHAT_LOG" -> ":memory:",
     run / connectInput := true,
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )

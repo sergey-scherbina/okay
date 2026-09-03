@@ -55,6 +55,17 @@ a different construction that happens to deserve the same words.
 - [x] okay's own monads reflect too: an `A ! F` program via
   `Monad[Free[F, *]]` — Writer effects survive the round trip and
   run under their handler afterwards
+- [x] `runWith` IS `foldCont(handler) / identity` (TestLowering,
+  gate-honesty). The definition lives in `Effects`; `Free` and
+  `Eager` both override it with a one-pass fast path, and each said
+  in a comment that it computes the same answer. The claim is now
+  checked directly instead of being trusted: per encoding (Free,
+  Eager, Eff) and per bind-tree shape (pure, one operation, map
+  only, pure bound, right-nested, left-nested, a dropped
+  continuation, mixed associations, and 5000-deep chains both ways),
+  the fast path and the lowering are compared on the ANSWER TOGETHER
+  WITH THE TRACE — the order the effects happened in, not only the
+  value they produced
 
 ## Out of scope
 

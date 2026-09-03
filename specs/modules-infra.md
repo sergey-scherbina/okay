@@ -37,6 +37,16 @@ forever; ScalaCheck is allowed in test scope only.
       publishLocal dry-runs green for okay_3, okay_sjs1_3 and
       okay_native0.5_3 (real publishing still waits for the domain)
 - [x] `compare` keeps working against the JVM core unchanged
+- [x] the module index cannot silently rot (TestDocsIndex in
+      okay-deploy, gate-honesty): every `docs/modules/<m>.md` is
+      linked from the table in `docs/README.md`, every row in that
+      table points at a page that exists, and every module root the
+      build declares — `file("okay-x")` in either the `project in`
+      or the crossProject `.in` form — has a page. It found three
+      undocumented modules on its first run (okay-crypto,
+      okay-script, okay-demo-e2e-browser), which is the whole
+      argument for it: eight rows had gone missing earlier with
+      nothing to notice
 
 ## Out of scope
 - actually publishing (waits for the domain); satellite content
