@@ -360,6 +360,28 @@ private object Erased {
   def unreachable[A]: A = throw IllegalStateException("unreachable: the upstream has ended")
 }
 
+/**
+ * How deep the producer/stage handshake may recurse before it unwinds
+ * itself (chunk-stack-safety, 2026-09-03).
+ *
+ * `through` drives a stage by calling into the producer and back, and
+ * a stage that ACCUMULATES — `chunked`, a fold, a window — takes that
+ * path once per element WITHOUT emitting, because only an emission
+ * goes through a `flatMap` and lets the stack unwind. So the chain is
+ * as deep as the run between two emissions: `chunked(16)` never came
+ * near it, `chunked(4096)` overflowed, and so did a smaller chunk on
+ * a stream too short to fill it (reproduced on b8c65c7, so it long
+ * predates the combinator that made it easy to reach).
+ *
+ * Past the budget the loop answers with a DEFERRED program instead of
+ * recursing: `resume` rotates that node away and the Scala stack
+ * unwinds. The cost is one extra node per `PullBudget` elements
+ * rather than per element — the latter being exactly what
+ * writer-of-resume-fix removed from this same hot path, which is why
+ * this is a budget and not an unconditional defer.
+ */
+private inline val PullBudget = 256
+
 def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O, B] = {
   type Res = Take % I + Writer % O
 
@@ -378,14 +400,17 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
           effect[Res, Option[I]](Take.Await()).flatMap(oi => pull(k(oi))(cont))
         case Right(Writer.Say(w)) => cont(Some(w), k(()))
 
-  def loop(u: Stage[I, M, A], d: Stage[M, O, B]): B ! Res =
+  def loop(u: Stage[I, M, A], d: Stage[M, O, B], depth: Int = 0): B ! Res =
     (d.resume: @unchecked) match
       case Pure(b) => pure(b)
       case Effect(e) => <|>[Take % M, Writer % O](e) match
         case Left(Take.Await()) => pull(u)((om, _) => pure(om))
         case Right(o) => effect[Res, B](Erased.reinject[Res[B]](o))
       case Bind(Effect(e), k) => <|>[Take % M, Writer % O](e) match
-        case Left(Take.Await()) => pull(u)((om, u2) => loop(u2, k(om)))
+        case Left(Take.Await()) =>
+          if depth >= PullBudget
+          then pull(u)((om, u2) => pure[Res, Unit](()).flatMap(_ => loop(u2, k(om))))
+          else pull(u)((om, u2) => loop(u2, k(om), depth + 1))
         case Right(o) =>
           effect[Res, Any](Erased.reinject[Res[Any]](o)).flatMap(x => loop(u, k(Erased.resumeWith(x))))
 
@@ -396,16 +421,22 @@ def through[I, M, O, A, B](up: Stage[I, M, A])(down: Stage[M, O, B]): Stage[I, O
  * awaits, the stage's tells are the result stream */
 @scala.annotation.targetName("throughProducer")
 def through[W, M, A, B](p: A ! Writer % W)(s: Stage[W, M, B]): B ! Writer % M = {
-  def loop(rest: A ! Writer % W, d: Stage[W, M, B]): B ! Writer % M =
+  def loop(rest: A ! Writer % W, d: Stage[W, M, B], depth: Int = 0): B ! Writer % M =
     (d.resume: @unchecked) match
       case Pure(b) => pure(b)
       case Effect(e) => <|>[Take % W, Writer % M](e) match
         case Left(Take.Await()) => pure(Erased.resumeWith[B](Writer.uncons(rest).toOption.map(_._1)))
         case Right(m) => effect[Writer % M, B](Erased.reinject[(Writer % M)[B]](m))
       case Bind(Effect(e), k) => <|>[Take % W, Writer % M](e) match
-        case Left(Take.Await()) => Writer.uncons(rest) match
-          case Right((w, r)) => loop(r, k(Erased.resumeWith(Some(w))))
-          case Left(_) => loop(rest, k(None))
+        case Left(Take.Await()) =>
+          if depth >= PullBudget then
+            pure[Writer % M, Unit](()).flatMap: _ =>
+              Writer.uncons(rest) match
+                case Right((w, r)) => loop(r, k(Erased.resumeWith(Some(w))))
+                case Left(_) => loop(rest, k(None))
+          else Writer.uncons(rest) match
+            case Right((w, r)) => loop(r, k(Erased.resumeWith(Some(w))), depth + 1)
+            case Left(_) => loop(rest, k(None), depth + 1)
         case Right(m) =>
           effect[Writer % M, Any](Erased.reinject[(Writer % M)[Any]](m)).flatMap(x => loop(rest, k(Erased.resumeWith(x))))
 
@@ -446,14 +477,17 @@ def through[I, M, O, G[+_] : TypeableK, A, B](up: A ! (Take % I + (Writer % M + 
             .flatMap(x => pull(k(Erased.resumeWith(x)))(cont))
           case Right(Writer.Say(w)) => cont(Some(w), k(()))
 
-  def loop(u: A ! Up, d: B ! (Take % M + (Writer % O + G))): B ! Res =
+  def loop(u: A ! Up, d: B ! (Take % M + (Writer % O + G)), depth: Int = 0): B ! Res =
     (d.resume: @unchecked) match
       case Pure(b) => pure(b)
       case Effect(e) => <|>[Take % M, Writer % O + G](e) match
         case Left(Take.Await()) => pull(u)((om, _) => pure(om))
         case Right(o) => effect[Res, B](Erased.reinject[Res[B]](o))
       case Bind(Effect(e), k) => <|>[Take % M, Writer % O + G](e) match
-        case Left(Take.Await()) => pull(u)((om, u2) => loop(u2, k(om)))
+        case Left(Take.Await()) =>
+          if depth >= PullBudget
+          then pull(u)((om, u2) => pure[Res, Unit](()).flatMap(_ => loop(u2, k(om))))
+          else pull(u)((om, u2) => loop(u2, k(om), depth + 1))
         case Right(o) =>
           effect[Res, Any](Erased.reinject[Res[Any]](o)).flatMap(x => loop(u, k(Erased.resumeWith(x))))
 
@@ -485,14 +519,17 @@ def through[W, M, G[+_] : TypeableK, A, B](p: A ! (Writer % W + G))
           .flatMap(x => pull(k(Erased.resumeWith(x)))(cont))
         case Right(Writer.Say(w)) => cont(Some(w), k(()))
 
-  def loop(rest: A ! Src, d: B ! (Take % W + (Writer % M + G))): B ! Res =
+  def loop(rest: A ! Src, d: B ! (Take % W + (Writer % M + G)), depth: Int = 0): B ! Res =
     (d.resume: @unchecked) match
       case Pure(b) => pure(b)
       case Effect(e) => <|>[Take % W, Writer % M + G](e) match
         case Left(Take.Await()) => pull(rest)((ow, _) => pure(ow))
         case Right(o) => effect[Res, B](Erased.reinject[Res[B]](o))
       case Bind(Effect(e), k) => <|>[Take % W, Writer % M + G](e) match
-        case Left(Take.Await()) => pull(rest)((ow, r2) => loop(r2, k(ow)))
+        case Left(Take.Await()) =>
+          if depth >= PullBudget
+          then pull(rest)((ow, r2) => pure[Res, Unit](()).flatMap(_ => loop(r2, k(ow))))
+          else pull(rest)((ow, r2) => loop(r2, k(ow), depth + 1))
         case Right(o) =>
           effect[Res, Any](Erased.reinject[Res[Any]](o)).flatMap(x => loop(rest, k(Erased.resumeWith(x))))
 

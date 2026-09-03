@@ -259,7 +259,21 @@ every consumer match on something that is not its data): a source in
 the `Flushing` row emits it, and `a.mergeFlushing(b)` puts what that
 side holds on the wire at exactly that point. It costs the ordinary
 chunked path nothing — the two feeds are separate walks precisely
-because routing both through the flushing one measured 11% dearer. On JVM/Native it parks
+because routing both through the flushing one measured 11% dearer.
+
+Chunking is a property of the STREAM, not a parameter of whatever
+consumes it: `s.chunked(size)` gives `Source[Chunk[A]]` and
+`.unchunked` gives the elements back, so `merge`, `buffer` and
+anything else that crosses a channel gets batching without a flag of
+its own — `s.chunked(8).buffer(4)` needs nothing added to `buffer`.
+`merge(chunked = true)` is the fused spelling of exactly that
+composition, and it exists because the TIMED case would otherwise
+need a second channel (a timer has to fire while the source is
+silent); composing costs nothing where no timer is involved (222.3us
+against the fused 223.7 on 2x2000). Keep the size modest — a stage
+that accumulates without emitting is bounded by `PullBudget` but a
+chunk in the thousands buys nothing here anyway (docs/benchmarks.md
+§6b has the curve, and where ZIO is still ahead of us). On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`
