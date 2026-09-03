@@ -1,5 +1,64 @@
 # Changelog
 
+## intent-fixture-too-small — 120 messages and six languages, and the small-fixture conclusion holds
+Completed: 2026-09-03
+Landed as 1b4e177a. The instrument before the experiment: the previous
+lane said no gap in its arms table should be defended at n=24, where a
+one-reply difference is not a difference and a mid-lane wording change
+had already moved an arm by two. So the fixture was taken first, ahead
+of the hypothesis it exists to test.
+
+`IntentFixture` is now 120 messages, thirty per class, with the DOMAIN
+stated inside it ("meeting and scheduling intents") because the last
+lane established that nothing else states it. Hard cases are marked
+rather than avoided: Proposal/Request overlap, indirect phrasing,
+cancellation without a proposal, and — where the bucket actually broke
+— out-of-domain messages written in the register of a request.
+
+THE PREVIOUS CONCLUSION REPRODUCED, five times larger: macro F1 0.553
+-> 0.906, `Other` F1 0.00 -> 0.86, decode rate 68% -> 91%. That is the
+result that matters here; the earlier table was measuring something
+real and not the shape of twenty-four sentences.
+
+LANGUAGE IS NOT FREE, and its failure runs the other way. A parallel
+set carries twelve meanings in six languages (en, fr, de, es, ru, ja),
+so the only thing varying between rows is the wording and a drop is
+attributable to the language rather than to whichever sentence happened
+to be foreign — scattering foreign lines through the main lists, which
+is what the fixture did before, proved nothing.
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| macro F1 | 0.914 | 0.804 | 0.792 | 0.813 | 0.727 | 0.813 |
+| `Other` precision | 1.00 | 0.75 | 1.00 | 1.00 | 0.60 | 1.00 |
+| `Other` recall | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+
+Recall holds at 1.00 everywhere: the gate does not stop recognising
+out-of-domain messages when they stop being English. What it loses is
+PRECISION — in Russian (0.60) and French (0.75) it pushes genuine
+meeting messages OUT of the domain. English absorbs what does not
+belong; the others reject what does. Filed as intent-gate-non-english,
+to be measured per language rather than in aggregate.
+
+The live sweep was trimmed to the decisive pair (before, after): the
+six-arm sweep that established WHY is recorded in the spec, and
+re-deriving it over 120 messages would be an hour of calls for a
+conclusion already drawn. The orphaned helper went with it — dead code
+kept to commemorate a measurement is not how a measurement is kept.
+
+LIMITATIONS, recorded in the fixture itself rather than in a commit
+message nobody re-reads: 120 author-written messages are enough for
+stable per-class metrics and not enough to claim coverage, and the
+translations are by the same hand as the classifier, so an awkward
+rendering is a confound the numbers cannot separate from a model
+weakness.
+
+Also filed: intent-decode-rate-residue — 11 of 120 replies are still
+undecodable on the best arm. The rendered example took that from 32% to
+9% and then stopped, and nobody has looked at what remains.
+
+Full matrix green: 2103 tests, 0 failures.
+
 ## okay-script-web — request-object injection, a dependency-free Web value, and two real bugs it found
 Completed: 2026-09-03
 Landed as ebfdfefd. The remaining half of "a new JSP": a script
