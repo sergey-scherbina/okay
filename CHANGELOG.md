@@ -1,5 +1,39 @@
 # Changelog
 
+## algebraicity-note — what the middle constructor decides
+Completed: 2026-09-03
+Landed as 90c49a96 (docs and comments only, no behavior change).
+From an operator observation: `Free` and `Cont` differ in exactly one
+constructor, `Pure` and `Bind` being identical in both. docs/theory
+ch.5 gains two sections making that load-bearing instead of
+incidental. The middle constructor IS the signature, and the
+difference between `Inject` and `Shift` is Plotkin-Power's
+algebraicity equation: it fixes the arity of the types (one index
+against three, answer-type modification being the price of seeing the
+continuation), it licenses reordering/batching/hoisting over `Free`
+and forbids them over `Cont`, and it is why programs are `Free` while
+handlers are `Cont` (Filinski 1994, Kammar-Lindley-Oury 2013, Forster
+et al. 2017 added to the chapter's references).
+
+The second section answers the hazard the first raises. Two nodes here
+carry computations, `Sim.Op.Fork` and `Stm.Tx.OrElse`, which is the
+scoped-effects shape (Wu-Schrijvers-Hinze 2014, Piróg et al. 2018)
+that a relay cannot see into, and `!.relay` indeed walks the spine
+only. It cannot bite: the kind `F[+_]` gives a signature no way to
+name the ambient row, so a payload is necessarily CLOSED over its own
+signature and nothing can hide in it. The same kind is what forbids
+forking a program that also logs; widening needs higher-order
+signatures. Two comments at the nodes say so.
+
+Worth recording as process: three proposals went into this and two
+dissolved on inspection. "Lower Free into Cont for speed" already
+exists and is the foundation (`foldCont` IS that lowering, `Eff` is
+the full Church encoding, and `Free.runWith` is a deliberate one-pass
+runner instead of two). "Guard scoped payloads with a marker type" is
+unnecessary because the kind already enforces it. What survived was
+the smallest piece: name the constraint where it lives, and write the
+theory down once. Core 438/27/31 green on JVM/JS/Native.
+
 ## intent-other-collapse — the Other bucket is rescued by a gate, and the decode rate turns out to be a prompt property
 Completed: 2026-09-03
 Landed as e26c1b07. The negative finding intent-classify left behind,
