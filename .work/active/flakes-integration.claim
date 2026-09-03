@@ -1,0 +1,10 @@
+slug: flakes-integration
+agent: claude (session 0117WufMiBxApL8MwqDzA98G)
+started: 2026-09-03
+scope: the operator's call (2026-09-03) — the remaining recorded flake family out
+  of the default gate. TestMcpAuth and TestBackends were already tagged today by
+  siblings; what is left is okay.persist.TestElectionReplicated
+  (persist-election-replicated-flake), plus the board/spec record of what the
+  Live tag now means.
+files: okay-persist/src/test/scala/okay/persist/TestElection.scala,
+       specs/integration-test-gate.md, BACKLOG.md, build.sbt (comment only)
