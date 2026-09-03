@@ -617,6 +617,73 @@ as before. Some diagnostics (dotc's own summary line, `"1 error
 found"`) carry NO position at all — also confirmed by the same probe
 — and are reported unprefixed too.
 
+## Output-comparison testing — `check`, ```stdout (okay-script-check, 2026-09-03)
+
+mdoc-style literate testing: a block's EXPECTED output written inline
+in the markdown, checked against what a real `run` actually produced.
+`run` already captures everything needed (`Result.stdout`); the
+missing piece was the markdown convention for "expected output" and
+the comparison step.
+
+### The convention: a ```stdout fence
+
+A ` ```stdout ` fence names the output the document should have
+printed BY THAT POINT — since `run`'s program is ONE FLAT compilation
+unit (document order, side effects accumulate), "by that point" reads
+naturally as "since the start", not "just this one block":
+
+````markdown
+```scala
+println("hello")
+```
+
+```stdout
+hello
+```
+````
+
+Like ` ```yaml `, ` ```stdout ` is a THIRD special fence tag (`run`/
+`render` still only special-case the ` ```scala `/` ```yaml ` pair —
+`check` is the only function that looks for ` ```stdout ` at all, and
+it ignores every OTHER fence tag the same way `blocks` always has).
+Content is compared TRIMMED (leading/trailing whitespace stripped) —
+exact trailing-newline matching is a needless annoyance for a markdown
+author, internal whitespace still matters.
+
+### `ScalaScript.check`
+
+```scala
+final case class CheckResult(ok: Boolean, mismatches: Vector[String], run: Result)
+
+object ScalaScript:
+  def check(markdown: String, classpath: Classpath = Classpath.ambient): CheckResult
+```
+
+Purely ADDITIVE and host-side — no synthesis changes, no new fence
+recognized by `tokenize`/`run`/`render` at all. `check`:
+1. Extracts every ` ```stdout ` fence's content, in document order (a
+   plain line-scanner mirroring `blocks`' own, not reusing `tokenize`
+   since ```stdout plays no role in compilation).
+2. Runs the WHOLE document once via the ordinary `run` (unchanged).
+3. If `run` itself failed (`!ok`) `check` fails immediately with ONE
+   mismatch entry summarizing the compile/runtime failure — checking
+   OUTPUT against a program that never finished is not meaningful.
+4. Otherwise, walks the expected chunks IN ORDER: each chunk's
+   (trimmed) text must appear as a substring of `run.stdout`, at a
+   position AFTER the previous chunk's match ended. A found-but-out-
+   of-order or not-found chunk is a mismatch, reported with its index
+   and the missing text; `check` keeps checking the REST (all
+   mismatches are collected, not just the first) rather than bailing
+   at the first failure.
+
+This is deliberately NOT precise incremental partitioning (no
+CHECKPOINT is injected into the compiled program itself) — the
+in-order-substring check proves the RIGHT OUTPUT happened in the RIGHT
+RELATIVE SEQUENCE without needing to know exactly which `println` in a
+multi-statement block produced which characters. A caller wanting
+byte-exact segment boundaries can still get them: `Result.stdout` is
+right there in `CheckResult.run`.
+
 Each `run` call already gets its OWN `URLClassLoader` — two scripts
 running in the same JVM do not collide with each other, since each
 loader is a fresh instance with its own namespace. The gap BACKLOG
@@ -747,6 +814,12 @@ object ScalaScript:
   /** `render`'s compile step, split from invocation -- see
    * "Hot-reload" above; the primitive `Page` is built on. */
   def compileRender(markdown: String, classpath: Classpath = Classpath.ambient): Either[Result, Compiled]
+  /** mdoc-style: runs the document once via `run`, then checks every
+   * ```stdout fence's content appears as an IN-ORDER substring of the
+   * actual output -- see "Output-comparison testing" above. */
+  def check(markdown: String, classpath: Classpath = Classpath.ambient): CheckResult
+
+final case class CheckResult(ok: Boolean, mismatches: Vector[String], run: Result)
 
 /** A `render`-mode `.md` file, compiled once and cached by mtime,
  * re-invoked (not re-compiled) while unchanged -- see "Hot-reload"
@@ -1074,6 +1147,27 @@ only this one step, and only when a script asks for it, does.
 - [x] a diagnostic with NO position at all (dotc's own summary line,
       `"N error(s) found"`) is still reported, unprefixed, never
       dropped or crashing the lookup.
+- [x] `check` on a document whose ```stdout content matches what the
+      program actually printed: `CheckResult.ok` is `true`,
+      `mismatches` is empty.
+- [x] `check` on a document with TWO ```stdout fences, both correct
+      and in the right relative order, succeeds.
+- [x] `check` on a document whose SECOND ```stdout fence's expected
+      text does not appear (or appears only BEFORE the first fence's
+      match, out of order) fails with a mismatch naming that fence —
+      the FIRST fence still matching does not mask it.
+- [x] `check` reports ALL mismatches, not just the first, when more
+      than one ```stdout fence fails.
+- [x] `check` on a document whose `run` itself fails to compile fails
+      immediately with one mismatch summarizing the compile failure —
+      never attempts a substring search against a `Result` that never
+      produced meaningful output.
+- [x] leading/trailing whitespace differences between the ```stdout
+      content and the actual output do not fail the check; an INTERNAL
+      whitespace/content difference does.
+- [x] a ```scala/```yaml fence is not mistaken for a ```stdout fence,
+      and vice versa — `check`'s own fence scan is independent of
+      `blocks`'/`tokenize`'s.
 
 ## Results
 
