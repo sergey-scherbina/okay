@@ -698,3 +698,41 @@ not stepping.
 - [x] an edited result flows into the program unnoticed
 - [x] multi-shot: one pause resumed twice yields two futures
 - [x] the transparent driver equals the direct run
+
+## An MCP server for it (2026-09-03, state-mcp)
+
+`StateMcp` (okay-demo) is the bounded-execution-state idea offered to
+an EXTERNAL agent — Claude Code, or any MCP client — that is not
+built on this library's `Context`/`Turn`/`Aggregator` at all. It
+cannot be `Compact.skillState`, because that policy lives inside our
+own agent's context loop; what crosses the boundary is the one
+format-level primitive both would need regardless: `Json.mergePatch`.
+
+Three tools over one durable `Json` value, persisted to a file:
+`get_state` (read it), `update_state` (an RFC 7396 patch, merged and
+persisted), `reset_state` (back to `{}`). `okay-mcp`'s existing
+`Server`/`Stdio` carry the whole protocol — this is wiring, the same
+shape `RepoMcp.scala` already is.
+
+**What this buys, honestly.** Claude Code's own conversation is not
+ours to intercept; it keeps its transcript and compacts it its own
+way regardless of this server. What the server gives a task is a
+fact store that never lived in that transcript at all, so `/clear`
+and `/compact` cannot lose it — call `get_state` after either to
+recover exactly where a task stood.
+
+**What it does not do.** No compile-time `Schema[S]` validates a
+patch before it lands (`Compact.validatePatch`'s role in our own
+agents needs a known type; a tool a different, arbitrary project
+points at has none), so a patch is accepted once it is a JSON object
+— the state's actual shape is a convention between whoever calls
+`update_state` and whoever reads the file, same trust boundary as any
+hand-edited JSON file. A project wanting typed validation defines its
+own `Schema[S]` and calls `Compact.validatePatch` in its own copy of
+the handler — four lines, not a fork.
+
+Tested over the real protocol (`TestStateMcp`: initialize, list, call
+— `TestDuplex`'s in-memory `Link`, no process) and as a real
+subprocess talking newline-delimited JSON-RPC over actual pipes
+(manual verification: initialize, tools/list, update_state, get_state,
+the file on disk after).
