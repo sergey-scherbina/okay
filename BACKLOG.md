@@ -590,13 +590,36 @@ not a new primitive from scratch.
       answers HTTP while alive, stops answering after interrupt, the
       returned `Result` carries the `InterruptedException`.
       specs/okay-script.md "Lifecycle".
-- [ ] okay-script: a worked runtime-storefront example — a `.md` file
-      that calls `okay.jetty.Jetty.serve` + `okay.ui`, compiled and run
-      through `ScalaScript.run` end to end, with an explicit
-      `Classpath` naming exactly the okay-ui/okay-jetty jars it needs,
-      following the now-proven lifecycle recipe above (own Thread,
-      interrupt to stop). Not built this pass — the operator pointed at
-      `../it-consulting` as source content for the example.
+- [x] okay-script-storefront-example — LANDED 2026-09-03:
+      `okay-script/examples/it-consulting-storefront.md` — a real
+      `okay-jetty` server (page + `/order/<key>` route), content
+      (services/prices) taken verbatim from `../it-consulting/site/
+      site.md`, compiled and run end to end through `ScalaScript.run`
+      using the proven lifecycle recipe (own `Thread`, `Thread.
+      interrupt()` to stop). No `busi`/`scalascript` DSL reused — only
+      the data; the page and `/order` handler are ordinary Scala.
+      Proved by `TestScalaScriptStorefront` (Live): all five services
+      render with prices, `/order/<key>` confirms the right one,
+      interrupt stops the server. Found and fixed along the way: the
+      example's first cut used a QUERY STRING (`/order?key=<x>`), which
+      okay-jetty's `Request.url` silently never carries (`Jetty.scala`'s
+      `requestOf` uses `getPathInContext` — path only, no query-string
+      field on `okay.http.Request` at all) — see the next entry.
+      specs/okay-script.md "Worked example".
+- [ ] okay-http/okay-jetty: no query-string support on `Request` at
+      all — `requestOf` (okay-jetty/src/main/scala/okay/jetty/
+      Jetty.scala) builds `Request.url` from Jetty's
+      `getPathInContext`, which is PATH ONLY; a `?key=value` a client
+      sends is silently dropped before a route ever sees it, no error,
+      no truncation warning — a route matching on `r.url` just never
+      finds the key. FOUND 2026-09-03 building
+      okay-script-storefront-example (the `/order?key=<x>` route
+      404'd every time; worked around there by moving the key into the
+      PATH, `/order/<key>`, which is not a real fix, just a route that
+      does not need one). Any consumer wanting real query parameters
+      hits this; `okay.http.Request` needs either a parsed `query:
+      Map[String, String]` field or at least `url` carrying the raw
+      query string so a caller can parse it itself.
 - [ ] okay-script: classloader isolation between multiple
       runtime-compiled scripts sharing one host JVM (e.g. two
       generated storefronts pulling conflicting versions of the same

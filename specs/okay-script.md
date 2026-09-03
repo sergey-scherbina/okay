@@ -176,7 +176,7 @@ so a test can inject a free one without editing the file. Proved by `TestScalaSc
 the `.md` file from disk, runs it via `ScalaScript.run` on a
 background thread (the caller-owned-thread recipe), confirms `GET /`
 renders all five services with their prices, confirms `GET
-/order?key=<x>` returns a confirmation page naming that service (proof
+/order/<x>` returns a confirmation page naming that service (proof
 the route actually ran, not just that SOME 200 came back), then
 `Thread.interrupt()`s the thread and confirms the server stops
 answering. `ScalaScript.run`'s own `stdout` capture is not usable as
@@ -398,16 +398,28 @@ only this one step, and only when a script asks for it, does.
 - [x] (Live) `examples/it-consulting-storefront.md`, read from disk and
       run via `ScalaScript.run`: `GET /` renders all five services
       (name + price) from `../it-consulting/site/site.md`'s real data;
-      `GET /order?key=<x>` returns a confirmation page naming that
+      `GET /order/<x>` returns a confirmation page naming that
       service; `Thread.interrupt()` stops the server.
 
 ## Results
 
 Landed 2026-09-03 (core), extended 2026-09-03 (runtime-app follow-on:
 explicit `Classpath`, `//> using dep` + Coursier resolution; lifecycle:
-`Thread.interrupt()` on the caller's own thread, no new API). Traps
-found by the tests, all fixed before landing:
+`Thread.interrupt()` on the caller's own thread, no new API; worked
+example: examples/it-consulting-storefront.md). Traps found by the
+tests, all fixed before landing:
 
+- **The storefront example's `/order` route used a QUERY STRING
+  (`/order?key=<x>`) — okay-jetty's `Request.url` never carries one.**
+  `Jetty.scala`'s `requestOf` builds `Request.url` from
+  `org.eclipse.jetty.server.Request.getPathInContext(req)` — PATH
+  ONLY; `okay.http.Request` has no separate query-string field at all.
+  The route matched fine (`/order` on the path), but the key extraction
+  always saw `""` and every order 404'd. Fixed by moving the key into
+  the PATH instead (`/order/<key>`, matched with `r.url.startsWith(
+  "/order/")` — a design any `okay-script` app should follow until
+  okay-http/okay-jetty grow real query-string parsing, not a workaround
+  specific to this example.
 - **Lifecycle needed no fix — the hypothesis held on the first real
   run.** `TestScalaScriptLifecycle` confirmed, against a REAL
   `okay-jetty` server (not a mock): the server answers HTTP while its
