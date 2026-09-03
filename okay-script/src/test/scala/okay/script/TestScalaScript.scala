@@ -86,6 +86,31 @@ class TestScalaScript extends munit.FunSuite:
     assertEquals(r.stdout, "")
   }
 
+  test("Deps.declared: extracts `using dep` coordinates from scala blocks, deduplicated") {
+    val md =
+      """```scala
+        |//> using dep "org.scalameta::munit:1.1.1"
+        |println(1)
+        |```
+        |
+        |```scala
+        |//> using dep "org.scalameta::munit:1.1.1"
+        |//> using dep "com.example::other:2.0"
+        |```
+        |""".stripMargin
+    assertEquals(
+      Deps.declared(md),
+      Vector("org.scalameta::munit:1.1.1", "com.example::other:2.0"),
+    )
+  }
+
+  test("run: an explicit classpath overrides ambient -- an empty one fails to find the scala runtime") {
+    val md = "```scala\nprintln(1)\n```\n"
+    val r = ScalaScript.run(md, classpath = Classpath(Vector.empty))
+    assert(!r.ok)
+    assert(r.errors.nonEmpty, r.errors.mkString("\n"))
+  }
+
   test("run: leaves no temp file/directory behind, success or failure") {
     import scala.jdk.CollectionConverters.*
     val tmp = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))

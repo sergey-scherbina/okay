@@ -45,6 +45,68 @@ over; only the negative result (no reusable pattern) is recorded here.
   walk of `specs/*.md` in the default gate. A caller (a future CLI, a
   future sbt task, a test) decides when to invoke it.
 
+## The real goal (operator, 2026-09-03) — runtime app generation
+
+The narrower "smoke test for docs" framing above is not the end goal.
+The actual target, stated directly: generate a `.md` file AT RUNTIME
+and have it come up as a live web application — frontend and
+backend — the way `../scalascript` already does for ITS OWN language
+("Идея в том чтобы сгенерировать файл md и потом его откомпилировать
+и показывать как веб приложение — это удобно для создания
+магазинов... все происходит в рантайме (даже компиляция)"). `okay`
+already has the application-shaped pieces scalascript had to invent
+its own language to get (`okay-ui`'s declarative reactive widgets,
+`okay-jetty`'s `serve`) — so `okay-script` does not need to grow a
+rendering layer at all. A markdown file's ```scala block IS the app:
+ordinary code that imports `okay.ui`/`okay.jetty` and calls `serve`.
+`okay-script`'s only job stays what it already was — compile and run
+that code — but two assumptions baked into the first cut do not
+survive contact with "generate this at runtime, for an app I did not
+build the JVM around":
+
+- **The classpath cannot stay ambient.** `Classpath.ambient` (below)
+  is a convenience default, not a foundation — a runtime-generated
+  script needs to be handed EXACTLY what it needs (its own
+  okay-ui/okay-jetty jars, whatever else the generator decided this
+  storefront needs), not whatever happens to be on the host process's
+  own `-cp`. This was also a live, present-tense BUG, not just a
+  future concern: see `okay-script-scalac-classpath` below.
+- **A script may need a library `okay` itself was never built
+  against.** A generated storefront could reasonably want a charting
+  library, a payment SDK — something with no reason to be a
+  dependency of `okay-script` or even of the host application.
+  `//> using dep` (below) is how a script asks for one.
+- **Blocking/lifecycle of a live server is deliberately left to the
+  CALLER**, not solved inside `ScalaScript` — `okay-jetty`'s own
+  `serve` returns `Server ! Resource`, and how long that resource
+  stays acquired (i.e. how long the app stays up) is a decision for
+  whoever generated the script and invoked `run`, typically on its own
+  thread/fiber so `run` blocking (because the script's own body blocks
+  to keep the server alive) does not block the generator.
+
+## okay-script-scalac-classpath — found and fixed 2026-09-03
+
+Found by a sibling agent gating an unrelated change: `okayScript/test`
+failed 5/7 on `master` itself, reproducing identically on a fresh
+worktree — an environment break, not a code regression. Root cause,
+confirmed by printing `System.getProperty("java.class.path")` from
+inside the failing test JVM: `okay-script`'s `build.sbt` block never
+set `Test / fork := true` (every other project in this build does),
+so its tests ran INSIDE SBT'S OWN JVM — whose `java.class.path`
+system property is just `sbt-launch.jar`'s own path. sbt manages its
+real classpath through its own layered classloaders, invisible to
+that property. `Classpath.ambient` (then just a raw call to that
+property) handed dotc a one-entry classpath with no scala-library on
+it at all, and dotc crashed deep in the Typer trying to resolve
+`scala.Int` (`NoSymbol` where a `ClassSymbol` was expected). Fixed by
+adding `Test / fork := true` — confirmed alone sufficient to take
+`okayScript/test` from 5 failures to 0 before any of the classpath
+redesign below was even written. The redesign below is a second,
+independent fix: `Classpath.ambient` remains only as correct as the
+JVM that read it was launched — a real `-cp`, not a manifest-jar
+trampoline — which is exactly why a runtime app generator should
+prefer an EXPLICIT `Classpath` over depending on it.
+
 ## The model
 
 ```scala
@@ -59,9 +121,37 @@ final case class Result(
   thrown: Option[Throwable], // set iff it compiled but the run threw
 )
 
+/** Explicit classpath entries a script compiles and runs against.
+ * `ambient` reads the CALLING JVM's own -cp -- a hypothesis about the
+ * environment (see okay-script-scalac-classpath above), not a given.
+ */
+final case class Classpath(entries: Vector[Path]):
+  def ++(extra: Vector[Path]): Classpath
+  def asString: String
+object Classpath:
+  val ambient: Classpath
+
+/** `//> using dep "org:artifact:version"` (scala-cli's own directive,
+ * reused rather than inventing another one), hoisted from a script's
+ * blocks and resolved to jars by shelling out to the `cs`/`coursier`
+ * CLI -- fetching a coordinate is inherently a network operation, so
+ * this reuses the standard external resolver instead of embedding
+ * one; dotc compilation itself stays fully in-process.
+ */
+object Deps:
+  def declared(markdown: String): Vector[String]
+  enum Resolved:
+    case Jars(paths: Vector[Path])
+    case ToolMissing
+    case Failed(message: String)
+  def resolve(coords: Vector[String]): Resolved
+
 object ScalaScript:
   def blocks(markdown: String): Vector[Block]
-  def run(markdown: String): Result
+  /** classpath defaults to Classpath.ambient; a script's own `using
+   * dep` coordinates are resolved and appended before compiling,
+   * regardless of which classpath was passed in. */
+  def run(markdown: String, classpath: Classpath = Classpath.ambient): Result
 ```
 
 - `blocks` extracts every ` ```scala ` … ` ``` ` fenced region (a line
@@ -113,14 +203,28 @@ Wrapping as a METHOD BODY (not a top-level script) means:
 
 The synthetic source is written to a fresh temp file per `run` call
 (`Files.createTempDirectory("okay-script-")`), compiled with
-`-d <that dir> -classpath <current classpath>` via
+`-d <that dir> -classpath <classpath.asString>` via
 `dotty.tools.dotc.Driver`, and — success or failure — the temp
 directory is deleted before `run` returns (a script run leaves no
 litter, matching `okay`'s general no-temp-file-residue expectation).
+The `URLClassLoader` used to load and run the compiled class is built
+from that SAME classpath (plus the temp output dir) — not from
+whatever the calling JVM happens to expose — so compiling and running
+see identical types.
 
 Compiler errors are collected from a custom `Reporter` (not dotc's
 default, which prints to stderr) and returned as `errors`, one string
 per diagnostic, instead of thrown.
+
+`run`'s dependency step (`Deps.declared` + `Deps.resolve`) runs BEFORE
+compilation: a script's `//> using dep` coordinates are resolved to
+jars via the `cs`/`coursier` CLI (a `ProcessBuilder` around `cs fetch
+<coords>`, one jar path per stdout line) and appended to whichever
+`Classpath` was passed in. A resolution failure (bad coordinate, no
+network) or a missing `cs`/`coursier` binary is reported through the
+ordinary `Result.errors` channel — never thrown — so a caller sees it
+exactly like a compile error. `dotc` itself never touches the network;
+only this one step, and only when a script asks for it, does.
 
 ## What this is NOT (filed to BACKLOG, not built here)
 
@@ -137,6 +241,22 @@ per diagnostic, instead of thrown.
   source to the original `.md` file's line numbers — `Block.startLine`
   is captured for this purpose but not yet used to translate a dotc
   diagnostic's line number.
+- **A worked runtime-storefront example** (a `.md` that actually calls
+  `okay.jetty.Jetty.serve` + `okay.ui` and is compiled/run through
+  `ScalaScript.run` end to end) — the pieces this spec's "real goal"
+  section names are now in place (explicit classpath, `using dep`),
+  but no example was built or run this pass; filed to BACKLOG as the
+  next concrete step, since it is what would surface whatever the
+  `Server ! Resource` lifecycle question above still leaves open.
+- **Classloader isolation** between multiple runtime-compiled scripts
+  running in the same host JVM at once (two generated storefronts
+  loading conflicting versions of the same library, say). The
+  `URLClassLoader` built per `run` call already gives each script its
+  OWN classes, but its parent is still `getClass.getClassLoader` (this
+  module's own loader) rather than a minimal platform-only parent, so
+  isolation from the host is partial, not guaranteed. Filed to
+  BACKLOG; not needed until a caller actually runs more than one
+  generated app per JVM.
 
 ## Behavior
 
@@ -160,11 +280,26 @@ per diagnostic, instead of thrown.
 - [x] no temp file/directory survives a `run` call, success or
       failure (checked by diffing `Files.list` of the system temp
       root before/after).
+- [x] `Deps.declared` extracts every `//> using dep "..."` coordinate
+      from a markdown file's blocks, in order, deduplicated.
+- [x] `run` honors an explicit `Classpath` override: an EMPTY one
+      fails to compile even the trivial `println(1)` script (no
+      scala-library reachable) — proving the parameter is not silently
+      ignored in favor of ambient.
+- [x] (Live) `Deps.resolve` on a real Maven coordinate, with `cs`/
+      `coursier` present, returns jar paths that exist on disk.
+- [x] (Live) a script declaring `//> using dep` for a library NOT
+      already reachable on `okay-script`'s own classpath (`fansi`, not
+      a transitive dep of anything in this build) compiles and runs
+      successfully, loading a class from the resolved jar — proving
+      the resolved jar was actually added to the classpath, not that
+      the class happened to already be visible.
 
 ## Results
 
-Landed 2026-09-03. Two implementation traps found by the tests, both
-fixed before landing (not left for a future session):
+Landed 2026-09-03 (core), extended 2026-09-03 (runtime-app follow-on:
+explicit `Classpath`, `//> using dep` + Coursier resolution). Traps
+found by the tests, all fixed before landing:
 
 - **`println` inside the compiled script did not land in `stdout`** —
   `System.setOut` alone does not redirect it, because Scala's
@@ -180,7 +315,22 @@ fixed before landing (not left for a future session):
   the body to `()` when there are no blocks — the "zero blocks is
   trivially ok" behavior lives in the wrapping step, not as a special
   case in `run`.
+- **`okayScript/test` was silently broken on master itself**
+  (okay-script-scalac-classpath, see above) — `Test / fork := true`
+  was missing from `okay-script`'s own `build.sbt` block, so its tests
+  ran inside sbt's own JVM, and `Classpath.ambient`'s
+  `System.getProperty("java.class.path")` read `sbt-launch.jar`'s path
+  instead of the real test classpath. A sibling agent found this while
+  gating an unrelated change; fixed here by adding the missing
+  `Test / fork := true`, confirmed alone sufficient before the
+  `Classpath`/`Deps` redesign was even written.
 
 `blocks`' `startLine` is the line of the first CODE line inside the
 fence (one past the ` ```scala ` line itself), confirmed against a
 hand-counted markdown fixture in the test.
+
+`Deps.resolve` shells out to `cs`/`coursier` (found on `PATH`, tried
+as both names) via a plain `ProcessBuilder` rather than embedding
+Coursier as a library dependency — avoids pulling a resolver into
+`okay-script`'s own compile-time dependency graph for a step that only
+runs when a script actually asks for an external library.

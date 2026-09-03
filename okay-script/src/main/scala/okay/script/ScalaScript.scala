@@ -4,9 +4,9 @@ import dotty.tools.dotc.Driver
 import dotty.tools.dotc.core.Contexts.Context
 import dotty.tools.dotc.reporting.{Reporter, Diagnostic}
 
-import java.io.{ByteArrayOutputStream, PrintStream}
+import java.io.{ByteArrayOutputStream, File, PrintStream}
 import java.net.URLClassLoader
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, Path, Paths}
 
 /** A markdown file's ```scala fenced code blocks, taken as a single
  * literate Scala program: extracted, compiled through the REAL Scala 3
@@ -21,6 +21,75 @@ final case class Result(
   errors: Vector[String],
   thrown: Option[Throwable],
 )
+
+/** The set of classpath entries a script compiles and runs against.
+ * `ambient` (the calling JVM's own `-cp`) is a HYPOTHESIS about the
+ * environment, not a fact: it reads
+ * `System.getProperty("java.class.path")`, which is only correct when
+ * the JVM was launched with a real `-cp` -- an un-forked sbt test JVM
+ * reports just `sbt-launch.jar` there (found 2026-09-03,
+ * okay-script-scalac-classpath: sbt manages its actual classpath
+ * through its own classloaders, invisible to that property, and a
+ * script compiled against it saw no scala-library at all). A caller
+ * building a RUNTIME app from a generated `.md` file -- a storefront,
+ * say -- should not depend on inheriting the host process's classpath
+ * at all: it supplies exactly what the script needs (its own
+ * okay-ui/okay-jetty jars, resolved `using dep` artifacts) instead.
+ */
+final case class Classpath(entries: Vector[Path]):
+  def ++(extra: Vector[Path]): Classpath = Classpath(entries ++ extra)
+  def asString: String = entries.map(_.toString).mkString(File.pathSeparator)
+
+object Classpath:
+  val ambient: Classpath = Classpath(
+    System.getProperty("java.class.path").split(File.pathSeparatorChar).toVector.map(Paths.get(_))
+  )
+
+/** `//> using dep "org:artifact:version"` directives -- scala-cli's own
+ * convention, reused rather than inventing another one -- hoisted out
+ * of a markdown file's ```scala blocks and resolved to jars.
+ *
+ * Fetching a Maven coordinate is inherently a network operation, so
+ * this shells out to the standard `cs`/`coursier` CLI rather than
+ * embedding a resolver in-process: dotc's own compilation stays
+ * in-process (see ScalaScript.run), only dependency FETCHING crosses
+ * the process boundary, and only when a script actually declares one.
+ */
+object Deps:
+  private val usingDep = """//>\s*using\s+dep\s+"([^"]+)"""".r
+
+  def declared(markdown: String): Vector[String] =
+    ScalaScript.blocks(markdown).flatMap(b => usingDep.findAllMatchIn(b.code).map(_.group(1))).distinct
+
+  enum Resolved:
+    case Jars(paths: Vector[Path])
+    case ToolMissing
+    case Failed(message: String)
+
+  def resolve(coords: Vector[String]): Resolved =
+    if coords.isEmpty then Resolved.Jars(Vector.empty)
+    else
+      findTool() match
+        case None => Resolved.ToolMissing
+        case Some(bin) =>
+          val proc = new ProcessBuilder((Vector(bin, "fetch") ++ coords)*).start()
+          val out = new String(proc.getInputStream.readAllBytes(), "UTF-8")
+          val err = new String(proc.getErrorStream.readAllBytes(), "UTF-8")
+          val code = proc.waitFor()
+          if code == 0 then
+            Resolved.Jars(out.linesIterator.filter(_.nonEmpty).map(Paths.get(_)).toVector)
+          else
+            Resolved.Failed(err.trim)
+
+  private def findTool(): Option[String] =
+    val path = Option(System.getenv("PATH")).getOrElse("")
+    val names = Vector("cs", "coursier")
+    path
+      .split(File.pathSeparatorChar)
+      .toVector
+      .flatMap(dir => names.map(n => Paths.get(dir, n)))
+      .find(p => Files.isRegularFile(p) && Files.isExecutable(p))
+      .map(_.toString)
 
 object ScalaScript:
 
@@ -45,7 +114,23 @@ object ScalaScript:
         i += 1
     out.result()
 
-  def run(markdown: String): Result =
+  /** Compile and run a markdown file's ```scala blocks as one program
+   * (see Block/Result docs). `classpath` defaults to the calling
+   * process's own -- see Classpath's doc for why that is a hypothesis,
+   * not a given -- and a script's own `//> using dep` directives are
+   * resolved and appended to it before compiling.
+   */
+  def run(markdown: String, classpath: Classpath = Classpath.ambient): Result =
+    val coords = Deps.declared(markdown)
+    Deps.resolve(coords) match
+      case Deps.Resolved.Failed(msg) =>
+        Result(ok = false, stdout = "", errors = Vector(s"dependency resolution failed: $msg"), thrown = None)
+      case Deps.Resolved.ToolMissing =>
+        Result(ok = false, stdout = "", errors = Vector("`using dep` declared but no cs/coursier found on PATH"), thrown = None)
+      case Deps.Resolved.Jars(extra) =>
+        runWith(markdown, classpath ++ extra)
+
+  private def runWith(markdown: String, classpath: Classpath): Result =
     val src = blocks(markdown).map(_.code).mkString("\n\n")
     val body = if src.isEmpty then "  ()" else src.linesWithSeparators.map("  " + _).mkString
     val wrapped =
@@ -62,9 +147,8 @@ object ScalaScript:
       val diagnostics = Vector.newBuilder[String]
       val reporter = collectingReporter(diagnostics)
 
-      val classpath = System.getProperty("java.class.path")
       val args = Array(
-        "-classpath", classpath,
+        "-classpath", classpath.asString,
         "-d", outDir.toString,
         "-color:never",
         srcFile.toString,
@@ -79,7 +163,8 @@ object ScalaScript:
       if summary.hasErrors then
         Result(ok = false, stdout = "", errors = errs, thrown = None)
       else
-        val loader = new URLClassLoader(Array(outDir.toUri.toURL), getClass.getClassLoader)
+        val loaderUrls = (outDir +: classpath.entries).map(_.toUri.toURL).toArray
+        val loader = new URLClassLoader(loaderUrls, getClass.getClassLoader)
         val cls = loader.loadClass("okayScriptMain")
         val method = cls.getMethod("main", classOf[Array[String]])
 

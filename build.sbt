@@ -1009,6 +1009,15 @@ lazy val okayScript = project
       "org.scala-lang" %% "scala3-compiler" % scalaVersion.value,
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
+    // MUST fork (okay-script-scalac-classpath, 2026-09-03): un-forked,
+    // the test JVM IS sbt's own JVM, whose System.getProperty(
+    // "java.class.path") is just sbt-launch.jar -- sbt manages its
+    // real classpath through its own classloaders, invisible to that
+    // property. Classpath.ambient (ScalaScript.scala) reads that
+    // property, so a script compiled with it saw no scala-library
+    // and dotc crashed deep in the Typer (NoSymbol -> ClassSymbol on
+    // IntClass). Forking gives the test JVM a real `-cp`.
+    Test / fork := true,
   )
 
 lazy val okayAdmin = project

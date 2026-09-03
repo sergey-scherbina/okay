@@ -18,7 +18,7 @@
       verify. Fixed by flipping a MIDDLE character instead (always
       inside a fully-significant 6-bit block); 0/50 stress runs clean.
 
-- [ ] okay-script-scalac-classpath — `okayScript/test` fails 5/7 on
+- [x] okay-script-scalac-classpath — `okayScript/test` fails 5/7 on
       master itself, unrelated to any branch: `summonFrom` not found in
       `scala.compiletime`, and `NoSymbol cannot be cast to ClassSymbol`
       in dotc's Namer/Typer. Reproduces identically on master and on a
@@ -27,6 +27,19 @@
       2026-09-03 while gating json-unicode-escape; that claim's own
       suites (okayCodecJVM, okayHttp*, okayMatch*, TestTelegram-style
       consumers) were unaffected and green.
+      LANDED 2026-09-03 (okay-script-runtime) — not a toolchain drift:
+      `okay-script`'s own `build.sbt` block never set `Test / fork :=
+      true` (every other project in this build does), so its tests ran
+      INSIDE SBT'S OWN JVM. `ScalaScript.run` built the compile
+      classpath from `System.getProperty("java.class.path")`, and in
+      that un-forked JVM that property is just `sbt-launch.jar`'s own
+      path — sbt manages its real classpath through its own layered
+      classloaders, invisible to that property — so dotc compiled
+      against a classpath with no scala-library on it at all and
+      crashed resolving `scala.Int`. Confirmed by printing the
+      property from inside the failing test JVM. Fixed by adding
+      `Test / fork := true`; `okayScript/test` went 5 failures -> 0
+      before any further change. specs/okay-script.md.
 
 - [ ] chunked-source-sweep — one same-session StreamOps run with every
       library's CHUNKED source (fs2 `Stream.range`, `ZStream.range`,
@@ -551,6 +564,35 @@ not a new primitive from scratch.
       numbers. `Block.startLine` is captured for this but unused so
       far — a dotc diagnostic's line currently reports against the
       synthetic file, not the markdown.
+- [x] okay-script-runtime — LANDED 2026-09-03: the REAL goal named by
+      the operator is runtime app generation (generate a `.md`,
+      compile+run it AT RUNTIME, come up as a live web app — a
+      storefront), not a doc smoke-test; see specs/okay-script.md
+      "The real goal". Added `Classpath` (explicit classpath entries,
+      `ambient` as a documented-fragile default) and `Deps`
+      (`//> using dep "org:artifact:version"`, resolved via the
+      `cs`/`coursier` CLI) so a generated script can be handed exactly
+      the jars it needs (okay-ui/okay-jetty, an extra library) instead
+      of inheriting the host process's own classpath. Also fixed
+      okay-script-scalac-classpath above as part of the same pass (the
+      bug that made the classpath question concrete, not hypothetical).
+- [ ] okay-script: a worked runtime-storefront example — a `.md` file
+      that calls `okay.jetty.Jetty.serve` + `okay.ui`, compiled and run
+      through `ScalaScript.run` end to end, with an explicit
+      `Classpath` naming exactly the okay-ui/okay-jetty jars it needs.
+      Not built this pass. This is what would surface the open
+      `Server ! Resource` lifecycle question (specs/okay-script.md,
+      "The real goal": who holds the resource open, on what
+      thread/fiber, for how long).
+- [ ] okay-script: classloader isolation between multiple
+      runtime-compiled scripts sharing one host JVM (e.g. two
+      generated storefronts pulling conflicting versions of the same
+      library via `using dep`). Each `run` call's `URLClassLoader`
+      already isolates the script's OWN classes, but its parent is
+      still `getClass.getClassLoader` rather than a minimal
+      platform-only parent — isolation from the host (and between
+      scripts sharing that parent) is partial. Not needed until a
+      caller runs more than one generated app per JVM.
 
 ## Elsewhere
 - [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and
