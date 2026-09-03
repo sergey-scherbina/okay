@@ -1,0 +1,5 @@
+slug: state-mcp-native
+branch: feature/state-mcp-native
+worktree: ../okay-wt-state-mcp-native
+claimed: 2026-09-03
+scope: a reproducible native-image build script for StateMcp (PGO two-stage + -march=native), documented in specs/llm-agentic.md. The actual binary is already built and installed to ~/.local/bin/okay-state-mcp and registered with `claude mcp add okay-state --scope user` on this machine — this lane lands the script so the build reproduces elsewhere, not the local install itself.
