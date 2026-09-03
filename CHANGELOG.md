@@ -1,5 +1,33 @@
 # Changelog
 
+## okay-script-interpolation — render(): ${expr} interpolation in markdown prose, "a new JSP, but Scala+Markdown"
+Completed: 2026-09-03
+Landed as b13027c6. The operator's own framing for `okay-script`.
+New `ScalaScript.render(markdown, classpath): Result`, separate from
+`run` (untouched — `run` stays about apps/effects like the
+storefront). `render` treats the WHOLE document — prose and code —
+as one program: `${expr}` markers in prose (outside ```scala fences)
+are Scala expressions, evaluated in the same document-order scope
+```scala blocks already build, their `.toString` printed in place;
+everything else passes through verbatim. `$${` escapes to a literal
+`${`, mirroring Scala's own `s"...$$..."` convention. The scanner is
+brace-depth- and quote-aware, not a naive first-`}`-wins regex: an
+`if/else` with braces inside an expr, and a NESTED real Scala string
+interpolation (`s"${x}"`) inside an `${...}` marker's own expression,
+both parse correctly. Reuses `run`'s exact compile/load/invoke/
+stdout-capture engine (`compileAndRun`, extracted from what used to
+be `runWith`'s tail) — only the source-synthesis step differs. Each
+segment prints directly, in document order, rather than buffering and
+flushing at the end — a design refinement made while writing the
+spec, before any test ran, once it was clear a buffered design would
+silently reorder a code block's own `println` output after the whole
+rendered document instead of interleaving it correctly. Worked
+example: `examples/render-storefront.md`, exercising the
+nested-interpolation case for real. Filed to BACKLOG: per-request
+execution + hot-reload, the second half of "a new JSP" deliberately
+left out this pass — closer to an `okay-jetty` route than to
+`okay-script` itself. specs/okay-script.md "Interpolation".
+
 ## intent-classify — one Schema derivation is the taxonomy, the frame and the parser
 Completed: 2026-09-03
 Landed as 8ebad9bf (spec abd41ff5, backlog b9043dea, correction
