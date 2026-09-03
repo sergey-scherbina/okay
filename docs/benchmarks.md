@@ -444,6 +444,20 @@ split per element. Two walks sharing the accumulation is what the
 numbers bought. The default path is unaffected
 either way — 307.2 ±2.0 against master's 310.2 ±18.4 the same hour.
 
+**The receive side, which needed no trade at all (channel-drain).**
+Chunking cuts the per-element transaction count on the SEND side, and
+pays for it by delaying an element that could have gone now — which
+is why it is opt-in. The consumer's half of that same 71% has no such
+price: what is already in the buffer is already late, so taking up to
+64 of them under one CAS hands over exactly the same elements in
+exactly the same order. `Channel.receiveMany` does that, and the
+merge's output reads through a carrier that serves from the batch and
+touches the channel only when it runs out. Measured on 2x2000 in one
+window: **828.3 ±11.3 against 1180.5 ±11.8, 30% faster**, with no
+flag and no semantic change — the largest single win on the
+per-element path in this whole arc, and the one that needed no
+permission from the caller.
+
 ## 6b. Chunking and flushing — the three shapes, three libraries
 
 Merging two streams has three shapes worth measuring, and fs2 and ZIO

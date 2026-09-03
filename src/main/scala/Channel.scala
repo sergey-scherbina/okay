@@ -75,23 +75,7 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
    * ready, later when one arrives. The end is Right(None), or Left of
    * the producer's failure — buffered elements drain first, the
    * failure is what the END of the stream is */
-  def receiveAsync(k: End => Unit): Unit = transact[Unit] { s =>
-    if s.buf.nonEmpty then
-      val (a, rest) = s.buf.dequeue
-      if s.senders.nonEmpty then
-        // room opened: admit the first parked sender
-        val ((b, sk), more) = s.senders.dequeue
-        (s.copy(buf = rest.enqueue(b), senders = more), () => { sk(true); k(Right(Some(a))) })
-      else (s.copy(buf = rest, size = s.size - 1), () => k(Right(Some(a))))
-    else if s.senders.nonEmpty then
-      // capacity 0: the rendezvous
-      val ((b, sk), more) = s.senders.dequeue
-      (s.copy(senders = more), () => { sk(true); k(Right(Some(b))) })
-    else if !s.open then
-      val e = endOf(s)
-      (s, () => k(e))
-    else (s.copy(receivers = s.receivers.enqueue(k)), () => ())
-  }
+  def receiveAsync(k: End => Unit): Unit = transact[Unit](receiveOne(_)(k))
 
   /** send as a program: suspends while the buffer is full, answers
    * whether the channel took the element (false: closed, dropped) */
@@ -109,6 +93,79 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
     Async.await { k =>
       receiveAsync(k)
       () => transact[Unit](s => (s.copy(receivers = s.receivers.filterNot(_ eq k)), () => ()))
+    }
+
+  /**
+   * Take up to `max` elements that are ALREADY buffered, in ONE
+   * transaction — the receive side's answer to what chunking does on
+   * the send side, and without its price.
+   *
+   * Profiling put 71% of the per-element merge inside the channel
+   * transaction (CAS 33%, the immutable queues 19%, `resume`'s
+   * rotation 19%), and four lanes established that the transaction
+   * cannot be made cheaper — only rarer. Chunking makes it rarer by
+   * batching SENDS, which delays an element that could have gone now,
+   * which is why it is opt-in. Batching RECEIVES delays nothing: what
+   * is already in the buffer is already late, and taking ten of them
+   * under one CAS instead of ten hands the consumer exactly the same
+   * elements in exactly the same order. So this needs no flag.
+   *
+   * An empty buffer falls back to the single receive, parking as
+   * before: `max` is a ceiling on what may be taken, never a quota to
+   * wait for. Parked senders are admitted into the room this frees,
+   * as the single receive does, and their callbacks fire after the
+   * CAS like every other action here.
+   */
+  private[okay] def receiveManyAsync(max: Int)(k: Either[Throwable, Chunk[A]] => Unit): Unit =
+    transact[Unit] { s =>
+      if s.buf.isEmpty then
+        // nothing buffered: exactly the single receive, its one
+        // element handed over as a chunk of one
+        receiveOne(s)(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
+      else
+        val take = math.min(max, s.size)
+        val out = ChunkBuf[A](take)
+        var b = s.buf
+        var senders = s.senders
+        var n = s.size
+        var woken = Vector.empty[Boolean => Unit]
+        var i = 0
+        while i < take && b.nonEmpty do
+          val (a, rest) = b.dequeue
+          out.update(i, a)
+          i += 1
+          if senders.nonEmpty then
+            // room opened: admit the first parked sender, as the
+            // single receive does — the size does not move
+            val ((sa, sk), more) = senders.dequeue
+            b = rest.enqueue(sa); senders = more; woken = woken :+ sk
+          else { b = rest; n -= 1 }
+        val s2 = s.copy(buf = b, size = n, senders = senders)
+        (s2, () => { woken.foreach(_(true)); k(Right(out.take(i))) })
+    }
+
+  /** the single receive's transition, shared with the batched one */
+  private def receiveOne(s: State)(k: End => Unit): (State, () => Unit) =
+    if s.buf.nonEmpty then
+      val (a, rest) = s.buf.dequeue
+      if s.senders.nonEmpty then
+        val ((b, sk), more) = s.senders.dequeue
+        (s.copy(buf = rest.enqueue(b), senders = more), () => { sk(true); k(Right(Some(a))) })
+      else (s.copy(buf = rest, size = s.size - 1), () => k(Right(Some(a))))
+    else if s.senders.nonEmpty then
+      val ((b, sk), more) = s.senders.dequeue
+      (s.copy(senders = more), () => { sk(true); k(Right(Some(b))) })
+    else if !s.open then
+      val e = endOf(s)
+      (s, () => k(e))
+    else (s.copy(receivers = s.receivers.enqueue(k)), () => ())
+
+  /** up to `max` buffered elements as a program; an empty answer is
+   * the end of the stream */
+  private[okay] def receiveMany(max: Int): Chunk[A] ! Async =
+    Async.await { k =>
+      receiveManyAsync(max)(k)
+      () => ()
     }
 
   /** the non-suspending send: true if taken NOW (handed over or
@@ -166,6 +223,35 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
 
 /** a channel is an async stream of what it receives (linear: see
  * above); the uncons is an Await, served by whoever sends */
+/**
+ * A channel read in BATCHES, one element at a time.
+ *
+ * The carrier is the channel plus whatever the last transaction took
+ * and how far the consumer has got through it, so `uncons` answers
+ * from memory until the batch runs out and only then touches the
+ * channel. The elements, and their order, are exactly the channel's;
+ * the only difference is how often the CAS is paid — which profiling
+ * made the whole cost of the per-element path (channel-drain).
+ *
+ * Nothing waits for a batch to fill: `receiveMany` takes what is
+ * ALREADY buffered and falls back to a single parking receive when
+ * nothing is. So this is not chunking's trade, and needs no flag.
+ */
+final case class Drain[A](c: Channel[A], held: Chunk[A], at: Int)
+
+object Drain:
+  /** how many elements one transaction may take. Large enough to
+   * amortise the CAS, small enough that a batch is cheap to build */
+  private[okay] inline val Batch = 64
+
+  def apply[A](c: Channel[A]): Drain[A] = Drain(c, Chunks.emptyChunk[A], 0)
+
+given Stream[Drain, Async] with
+  def uncons[A](d: Drain[A]): Option[(A, Drain[A])] ! Async =
+    if d.at < d.held.length then pure(Some((d.held(d.at), d.copy(at = d.at + 1))))
+    else d.c.receiveMany(Drain.Batch).map: got =>
+      if got.isEmpty then None else Some((got(0), Drain(d.c, got, 1)))
+
 given Stream[Channel, Async] with
   def uncons[A](c: Channel[A]): Option[(A, Channel[A])] ! Async =
     c.receive.map(_.map((_, c)))
