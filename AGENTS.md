@@ -54,6 +54,19 @@ force, all already practiced, none previously written down:
   (`.agents/plugins/multi-agent/commands/multi-agent.md`); this file
   only fixes the repo-specific facts. The branch is `master` (not `main`), there is
   no remote sync step — claims and merges are local.
+- **NEVER `reset` or `merge` to `origin/*`.** `origin/master` is STALE
+  BY DESIGN — it is days behind, because nothing here pushes. The
+  skill's claim procedure literally says `git fetch origin` and
+  `git merge --ff-only origin/main`; followed in this repo that
+  discards every lane landed since the last push. INCIDENT
+  2026-09-03 23:22: a `reset: moving to origin/master` in the main
+  checkout moved master back four commits and dropped three landed
+  lanes (gate-honesty, flakes-integration, ring-channel) off the
+  branch pointer. They came back only because an unrelated ff-merge
+  26 seconds later happened to carry them. If it happens again:
+  `git reflog show master` names the old tip, and
+  `git reset --hard <tip>` restores it — the reflog is local and only
+  yours, so ask in the room before anyone commits on the wrong base.
 - Claims live in `.work/active/<slug>.claim`, committed to `master`.
   One claim is one task; release it (`git rm` + commit) when the task
   lands, naming the landing commit.
