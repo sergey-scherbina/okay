@@ -190,6 +190,50 @@ extension [A](s: Source[A])
           !.widen[Unit, Take % Chunk[A | B] + Writer % (A | B), Async](
             Stage.unchunk[A | B]))
 
+extension [A](s: Source[A])
+  /**
+   * Chunking as a property of the STREAM rather than a parameter of
+   * whatever consumes it — the orthogonal form, and the one to reach
+   * for first.
+   *
+   * Everything that crosses a channel pays per crossing (71% of the
+   * elementwise merge's CPU is one channel transaction, measured in
+   * source-merge-chunked), so everything that crosses a channel wants
+   * the option of crossing it in batches: `merge`, `buffer`, and
+   * whatever comes next. Giving each of them its own `chunked` flag
+   * would be the same concept spelled once per consumer; giving the
+   * SOURCE a `chunked` combinator gives it to all of them at once and
+   * costs nothing to compose — `a.chunked() merge b.chunked()`
+   * measured 223.2us on 2x2000 against the fused `merge(chunked =
+   * true)`'s 230.1, so composing is if anything the cheaper road.
+   *
+   * This form needs no concurrency: it is a pure transducer, one
+   * `Chunk` per `size` elements plus a short final one.
+   *
+   * KNOWN LIMIT on `size`. A stage that accumulates without emitting
+   * recurses once per element in `through`'s pull loop, so a chunk
+   * larger than roughly two thousand elements can overflow the stack
+   * — as can a SMALLER chunk that never fills because the stream is
+   * shorter than it. Reproduced on b8c65c7 with `through` and
+   * `Stage.chunked` alone, so it predates this combinator rather than
+   * being introduced by it; filed as chunk-stack-safety. Sizes in the
+   * tens or hundreds, which is where the throughput is anyway, are
+   * unaffected. A TIMED flush
+   * does need concurrency (a timer has to fire while the source is
+   * silent), which is why `within` lives on `merge` rather than here —
+   * see `merge`'s own `flushAfter`, which fuses the two so the timed
+   * case still needs only ONE channel.
+   */
+  def chunked(size: Int = Source.ChunkSize): Source[Chunk[A]] =
+    through(s)(!.widen[Unit, Take % A + Writer % Chunk[A], Async](Stage.chunked[A](size)))
+
+extension [A](s: Source[Chunk[A]])
+  /** chunks back into elements — the inverse of `chunked`, so a
+   * pipeline can batch where it crosses a channel and go back to
+   * per-element semantics on the other side */
+  def unchunked: Source[A] =
+    through(s)(!.widen[Unit, Take % Chunk[A] + Writer % A, Async](Stage.unchunk[A]))
+
 extension [A](s: Flushing[A])
   /**
    * Merge two sources that mark their own chunk boundaries. Same

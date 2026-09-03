@@ -444,6 +444,72 @@ split per element. Two walks sharing the accumulation is what the
 numbers bought. The default path is unaffected
 either way — 307.2 ±2.0 against master's 310.2 ±18.4 the same hour.
 
+## 6b. Chunking and flushing — the three shapes, three libraries
+
+Merging two streams has three shapes worth measuring, and fs2 and ZIO
+have a direct spelling of each, so this is like-for-like rather than
+one library's feature against another's absence: elementwise, in
+chunks, and in chunks with a TIME bound on a partial one — okay's
+`flushAfter`, fs2's `groupWithin`, ZIO's `groupedWithin`. Every lane
+folds the same 2x2000 elements to one Long, chunk 16.
+
+| 2x2000 elements | okay | ZIO | fs2 |
+|---|---|---|---|
+| elementwise | 1177.0 ±15.7 | **59.1 ±0.5** | 35332 ±281 |
+| chunked | 223.7 ±5.0 | **127.2 ±2.2** | 38508 ±403 |
+| chunked + timed flush | **244.3 ±3.5** | 4907 ±98 | 54270 ±1790 |
+
+**Where we win, and by how much: the timed flush.** A bound on how
+long a partial chunk may wait is what makes chunking safe on a live
+source, and it is the shape both competitors are worst at — ZIO's
+`groupedWithin` costs 37x its own plain `grouped` (4907 against 127),
+fs2's `groupWithin` 1.4x its own `chunkN`. okay's `flushAfter` costs
+9% over its own chunked merge (244.3 against 223.7), because the
+flusher is one sleeping fiber beside the feed rather than machinery
+in the per-element path. Against ZIO that is **20x**, against fs2
+**222x**.
+
+**Where ZIO wins, and why the elementwise row is not what it looks
+like.** ZIO's "elementwise" 59.1 is faster than its own chunked
+127.2, which is the tell: `ZStream` is chunked by construction (4096
+by default), so that row is ZIO's natural chunking, and `.grouped(16)`
+makes it *slower* by re-chunking downward. Read as chunking-vs-
+chunking at the same size, ZIO is ahead of us — and the gap widens
+with the chunk:
+
+| chunk size | okay | ZIO | fs2 |
+|---|---|---|---|
+| 16 | 222.3 ±4.0 | 127.2 ±2.2 | 38508 ±403 |
+| 256 | 277.2 ±4.5 | **75.1 ±7.3** | 38045 ±313 |
+| 1024 | 438.3 ±14.4 | **75.2 ±10.4** | 38329 ±1337 |
+
+Ours gets WORSE with a bigger chunk where theirs gets better. Not
+from stack depth — the budget trampoline below caps that and moved
+these numbers not at all (222.3 after against 224.5 before) — so it
+is the representation: we accumulate into a `Vector` and copy it into
+an `ArraySeq` per chunk, two structures where a flat fill would do.
+Filed rather than guessed at; the honest reading today is that okay
+is the fastest of the three at small chunks and at anything timed,
+and ZIO is ahead once the chunk grows.
+
+fs2's numbers are its worst case (singleton elements through its
+concurrency machinery) and are stated as such — it is 30-160x behind
+both throughout, at every chunk size, in every shape.
+
+**The stack-safety bug this found (chunk-stack-safety).** Writing the
+edge cases turned up an overflow that predates all of it: `through`
+drives a stage by calling into the producer and back, and only an
+EMISSION goes through a `flatMap` that lets the stack unwind, so a
+stage that accumulates recurses once per element. `chunked(16)` never
+came near it; `chunked(4096)` over 4000 elements blew the stack, as
+did any chunk a short stream cannot fill. Reproduced on b8c65c7 with
+`through` and `Stage.chunked` alone. Fixed with a budget rather than
+an unconditional defer — past `PullBudget` the loop answers with a
+deferred program instead of recursing, one extra node per 256
+elements rather than per element, since per-element deferral is
+exactly what writer-of-resume-fix removed from this same path. Free
+at the sizes anyone uses: 222.3 ±4.0 after against 224.5 ±3.7 before.
+
 ## 7. Resource — 1000 bracketed acquire/use/release
 
 | | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
