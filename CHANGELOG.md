@@ -1,5 +1,39 @@
 # Changelog
 
+## direct-try-ctx — a context-function CanTry, deferred to application, no crash and no version bump
+Completed: 2026-09-03
+Landed as 4b9f3ee (spec) + 7935a23 (impl). The 2026-09-02 audit
+withheld a `CanTry` instance for context functions because the
+obvious shape (reusing `CanTry.strict`) crashed dotty 3.7.4 at
+erasure ("bad adapt for M$proxy2.pure(a)") inside the direct macro's
+generated code.
+That shape was also semantically wrong regardless of the crash: a
+context function `E ?=> A` is a CLOSURE over its environment —
+evaluating (constructing) it never runs the body, only APPLYING it
+with a given `E` does. `try fa catch ...` around the construction
+tries a value that has not executed anything yet, so a throw from
+inside the body would never be caught — the same "catch silently
+never fires" trap the audit named for `Eff`, reappearing here for a
+different reason.
+`ctxFn` defers the try to APPLICATION time instead — the honest
+counterpart to the Free row instance's per-step guard:
+```
+def tryIn[A](fa: => (E ?=> A))(h: Throwable => (E ?=> A)): E ?=> A =
+  (e: E) ?=> (try fa(using e) catch case ex => h(ex)(using e))
+```
+This different generated-code shape sidesteps the erasure crash too
+— confirmed by compiling `direct[[X] =>> E ?=> X] { try ... catch
+... }` clean. No Scala version bump needed (3.7.4 is already the
+latest 3.7.x patch — the next available versions are 3.8.x/3.9.x, a
+much bigger, unrelated change nobody asked for here).
+Test: try/catch inside a context-function direct block, the SAME
+produced value applied twice via `provide()` with different
+environments, both catching correctly — proving the deferred, not
+one-shot, semantics. Full okayJVM suite 418/418 (the existing
+`TestErrorMessages` "no CanTry" assertion for `Eff`, the genuinely
+lazy Cont monad, still passes — a different, unaffected `F`).
+okayJS/okayNative main sources compile clean.
+
 ## native-scheduler-pool — a fixed worker pool, safe now that waiting is in queues not threads
 Completed: 2026-09-03
 Landed as 46b2704 (spec) + e372171 (impl). The Native Scheduler

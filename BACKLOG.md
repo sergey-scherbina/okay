@@ -142,13 +142,20 @@ construction instead of a type test per value).
       the same worker.
 
 ## Direct style — the roads named by the 2026-09-01 survey (docs/direct-style.md)
-- [ ] direct-try-ctx — `try` inside direct[[X] =>> E ?=> X] (the
+- [x-landed] direct-try-ctx — `try` inside direct[[X] =>> E ?=> X] (the
       Reader-elimination monad) CRASHES dotty 3.7.4 at erasure
       ("bad adapt for M$proxy2.pure(a)") when a CanTry instance for
       context functions exists (found by the 2026-09-02 audit;
       the instance was withheld so the case is a clean "no CanTry"
       compile error instead). Minimize, report upstream, or emit
       the try's pure branch differently for context-function F.
+      LANDED 2026-09-03: the crashing shape reused CanTry.strict
+      verbatim, which was also the WRONG semantics (a context
+      function is a closure — constructing it never runs the body,
+      only applying it does, so a strict try never sees a throw
+      from inside). `ctxFn` defers the try to APPLICATION time
+      instead (the honest counterpart to the Free row's per-step
+      guard) — different generated code, no crash, no version bump.
 - [x-landed] condition-typed-reconcile — landed in audit-fixes: Of[A]
       derives the Answers instance (Answers.fromOf), so the two typed
       doors are one door with two spellings (specs/condition.md,
