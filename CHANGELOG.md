@@ -1,5 +1,42 @@
 # Changelog
 
+## okay-script-meta — code in an .md file reads front-matter + heading-scoped yaml as its current context
+Completed: 2026-09-03
+Landed as fdf8b7ec. Answers the operator's ask directly: code inside
+an `.md` file can now read the metadata defined in the markup AROUND
+it. Source of metadata is front-matter (`---`, file-level) plus
+nested ```yaml fenced blocks scoped by heading ancestry — the exact
+shape `../it-consulting/site/site.md` already uses (`tagline`/
+`contact` in front-matter, a `services` list under its own heading).
+New module `okay.script.Meta`: a typed AST (`Value = Str|Arr|Obj`,
+`Section(level,title,yaml,children)`, `Doc(frontMatter,root)`) built
+by a minimal YAML-subset parser (flat mapping, and a list of flat
+mappings), plus `Context(doc,path)` with untyped `get`/`apply` AND the
+full typed `Doc` for tree navigation — both forms of access asked for,
+through one value. Exposed to BOTH `run` and `render` via
+`Meta.current`/`setCurrent` — NOT a `given`, despite that being the
+FIRST design written into the spec: tested empirically before landing
+(not discovered by a failing test), local `given` re-declaration at
+the same flat scope is a compile error, and even past that a plain
+`given` is evaluated once, never re-evaluated per `summon`.
+`Meta.current` is a plain always-fresh method backed by a mutable var;
+the shared tokenizer emits a `Meta.setCurrent(...)` statement whenever
+a segment's heading path differs from the one before it — ordinary
+statements have none of `given`'s restrictions. A script wanting
+`given`/context-function ergonomics can still have them by declaring
+`given Meta.Context = Meta.current` itself, locally, immediately
+before use. ```yaml fences are now METADATA (consumed, not shown in
+`render`'s output) — every other fenced language is unaffected.
+Metadata wiring is emitted ONLY when a document actually has
+front-matter/yaml/a heading (`hasMeta`) — a metadata-free document
+never references `okay.script.Meta` in its synthesized source, keeping
+`run`/`render` self-sufficient (scala-library only) for the common
+case; the first cut skipped this check and broke it, caught
+immediately by `TestScalaScriptClassloaderIsolation`'s own
+minimal-Classpath test. The existing storefront example now reads its
+`tagline`/`contact` from real front-matter via `Meta.current` instead
+of a hardcoded second copy. specs/okay-script.md "Metadata as context".
+
 ## okay-script-interpolation — render(): ${expr} interpolation in markdown prose, "a new JSP, but Scala+Markdown"
 Completed: 2026-09-03
 Landed as b13027c6. The operator's own framing for `okay-script`.

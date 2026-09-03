@@ -761,6 +761,30 @@ not a new primitive from scratch.
       `render` per request) than to `okay-script` itself — GATED on
       deciding whether that lives in `okay-script` or in a consuming
       module.
+- [x] okay-script-meta — LANDED 2026-09-03: code inside an .md file
+      reads the metadata defined in the markup AROUND it, as its
+      current context (operator ask). Front-matter (`---`, file-level)
+      plus nested ```yaml fences scoped by heading ancestry — the
+      shape `../it-consulting/site/site.md` already uses. New module
+      `okay.script.Meta`: a typed AST (`Value`/`Section`/`Doc`) built
+      by a minimal YAML-subset parser, plus `Context(doc, path)` with
+      untyped `get`/`apply` AND the full typed `doc` — both forms of
+      access asked for, through one value, reachable via
+      `Meta.current` (a plain always-fresh method, NOT a `given` — see
+      the spec's "How code reaches it" for why a `given` genuinely
+      does not work for this: confirmed empirically, a plain `given`
+      is evaluated once and local re-declaration at the same flat
+      scope is a compile error, neither known before this landing
+      tested it directly). `run`/`render` emit the `Meta` wiring only
+      when a document actually HAS metadata (`hasMeta`), preserving
+      self-sufficiency for the common metadata-free case — the first
+      cut skipped that check and broke it, caught by
+      `TestScalaScriptClassloaderIsolation`'s own minimal-Classpath
+      test. A ```yaml fence is now metadata (consumed, not shown in
+      `render`'s output) — every other fenced language is unaffected.
+      The storefront example now reads its tagline/contact from real
+      front-matter instead of a hardcoded second copy.
+      specs/okay-script.md "Metadata as context".
 
 ## Elsewhere
 - [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and
