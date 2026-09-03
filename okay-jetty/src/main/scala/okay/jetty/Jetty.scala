@@ -170,10 +170,21 @@ object Jetty {
         bb.get(bytes)
         r.copy(body = Body.Bytes(scala.collection.immutable.ArraySeq.unsafeWrapArray(bytes)))
 
+
+  /** the sender's HOST, without the port (http-peer-address): a port
+   * changes per connection, and keying anything on one hands every
+   * connection a fresh budget */
+  private def hostOf(a: java.net.SocketAddress): Option[String] = a match
+    case i: java.net.InetSocketAddress =>
+      Option(i.getAddress).map(_.getHostAddress).orElse(Option(i.getHostString))
+    case null => None
+    case other => Option(other.toString).filter(_.nonEmpty)
+
   private def requestOf(req: org.eclipse.jetty.server.Request): Request =
     val hs = req.getHeaders.asScala.toSeq.map(f => (f.getName, f.getValue))
     val m = Method.values.find(_.name == req.getMethod).getOrElse(Method.Get)
-    Request(m, org.eclipse.jetty.server.Request.getPathInContext(req), hs)
+    Request(m, org.eclipse.jetty.server.Request.getPathInContext(req), hs,
+      peer = hostOf(req.getConnectionMetaData.getRemoteSocketAddress))
 
   /**
    * A Jetty session, told into a channel — the same shape the JDK and

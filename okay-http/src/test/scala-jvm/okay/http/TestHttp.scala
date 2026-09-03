@@ -35,6 +35,19 @@ class TestHttp extends munit.FunSuite {
     Async.run[A, Pure](client.send(Request.get(s"http://127.0.0.1:$port$path"))
       .flatMap(f)).runWith
 
+  // specs/http.md, http-peer-address
+  test("okay-http's own server fills the peer's host") {
+    val seen = java.util.concurrent.atomic.AtomicReference[Option[String]](None)
+    Resource.run[Unit, Pure](Server.serve(0) { r =>
+      seen.set(r.peer)
+      pure(Response(200, Nil, Http.one("ok".getBytes("UTF-8"))))
+    }.map { s =>
+      val _ = Async.run[Response, Pure](Transports.http().send(
+        Request.get(s"http://127.0.0.1:${Server.port(s)}/x"))).runWith
+    }).runWith
+    assertEquals(seen.get(), Some("127.0.0.1"))
+  }
+
   test("a route answers, and the client reads status, headers and body") {
     serving {
       case r if Server.path(r) == "/hello" =>

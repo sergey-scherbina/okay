@@ -40,6 +40,15 @@ object Server {
   /** the port a server bound to — useful when 0 asked for any free one */
   def port(s: JdkServer): Int = s.getAddress.getPort
 
+  /** the sender's HOST, without the port (http-peer-address): a port
+   * changes per connection, and keying anything on one hands every
+   * connection a fresh budget */
+  private def hostOf(a: java.net.SocketAddress): Option[String] = a match
+    case i: java.net.InetSocketAddress =>
+      Option(i.getAddress).map(_.getHostAddress).orElse(Option(i.getHostString))
+    case null => None
+    case other => Option(other.toString).filter(_.nonEmpty)
+
   private def handle(x: HttpExchange, route: Request => Response ! Async)
                     (using CanBlock): Unit =
     try
@@ -49,7 +58,8 @@ object Server {
       val body = x.getRequestBody.readAllBytes()
       val req = Request(method, x.getRequestURI.toString, headers,
         if body.isEmpty then Body.Empty
-        else Body.Bytes(scala.collection.immutable.ArraySeq.unsafeWrapArray(body)))
+        else Body.Bytes(scala.collection.immutable.ArraySeq.unsafeWrapArray(body)),
+        peer = hostOf(x.getRemoteAddress))
 
       // the route is a program; running it here parks a virtual thread,
       // which is what the executor above is for

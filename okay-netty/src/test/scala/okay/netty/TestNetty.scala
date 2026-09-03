@@ -62,6 +62,23 @@ class TestNetty extends munit.FunSuite {
     assertEquals(got, (200, "hello from netty"))
   }
 
+  // specs/http.md, http-peer-address: over a real socket, because the
+  // claim is about what a transport knows
+  test("a served request carries the peer's host, without the port") {
+    val seen = java.util.concurrent.atomic.AtomicReference[Option[String]](None)
+    Resource.run[Unit, Pure](
+      Netty.serve(0) {
+        case r =>
+          seen.set(r.peer)
+          OkayServer.text(200, "ok")
+      }().map { server =>
+        val _ = Async.run[okay.http.Response, Pure](Transports.http().send(
+          Request.get(s"http://127.0.0.1:${Netty.port(server)}/x"))).runWith
+      }).runWith
+    assertEquals(seen.get(), Some("127.0.0.1"))
+    assert(!seen.get().get.contains(":"), s"the port leaked in: ${seen.get()}")
+  }
+
   test("an unrouted path is a 404, and a route that throws is a 500") {
     val got = Resource.run[(Int, Int, String), Pure](
       Netty.serve(0) {

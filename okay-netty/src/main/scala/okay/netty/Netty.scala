@@ -188,7 +188,7 @@ object Netty {
                 .addLast(new SimpleChannelInboundHandler[FullHttpRequest] {
                   def channelRead0(ctx: ChannelHandlerContext,
                                    req: FullHttpRequest): Unit =
-                    val r = requestOf(req)
+                    val r = requestOf(req, hostOf(ctx.channel.remoteAddress))
                     if ws.isDefinedAt(r) &&
                       HttpHeaderValues.WEBSOCKET.contentEqualsIgnoreCase(
                         req.headers.get(HttpHeaderNames.UPGRADE)) then
@@ -205,7 +205,18 @@ object Netty {
     case a: java.net.InetSocketAddress => a.getPort
     case other => throw IllegalStateException(s"not an inet listener: $other")
 
-  private def requestOf(req: FullHttpRequest): Request =
+
+  /** the sender's HOST, without the port (http-peer-address): a port
+   * changes per connection, and keying anything on one hands every
+   * connection a fresh budget */
+  private def hostOf(a: java.net.SocketAddress): Option[String] = a match
+    case i: java.net.InetSocketAddress =>
+      Option(i.getAddress).map(_.getHostAddress).orElse(Option(i.getHostString))
+    case null => None
+    case other => Option(other.toString).filter(_.nonEmpty)
+
+  private def requestOf(req: FullHttpRequest,
+                        peer: Option[String] = None): Request =
     val hs = req.headers.entries.asScala.toSeq.map(e => (e.getKey, e.getValue))
     val m = Method.values.find(_.name == req.method.name).getOrElse(Method.Get)
     // the body travels too: an aggregated request HAS its content here,
@@ -217,7 +228,7 @@ object Netty {
         val a = new Array[Byte](buf.readableBytes)
         buf.getBytes(buf.readerIndex, a)
         Body.Bytes(scala.collection.immutable.ArraySeq.unsafeWrapArray(a))
-    Request(m, req.uri, hs, body)
+    Request(m, req.uri, hs, body, peer)
 
   private def answer(ctx: ChannelHandlerContext, r: Request,
                      routes: PartialFunction[Request, Response ! Async])

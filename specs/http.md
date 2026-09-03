@@ -317,11 +317,11 @@ the proxy's claim and a consumer's own decision to trust; this is what
 the socket says. A consumer that has both should prefer the proxy's
 value only when it has decided the proxy is real.
 
-- [ ] a served request carries the peer's host on jetty
-- [ ] the same on netty
-- [ ] the same on okay-http's JVM server
-- [ ] a client-built request carries `None`
-- [ ] the field is additive: every existing construction compiles and
+- [x] a served request carries the peer's host on jetty
+- [x] the same on netty
+- [x] the same on okay-http's JVM server
+- [x] a client-built request carries `None`
+- [x] the field is additive: every existing construction compiles and
       behaves unchanged
 
 ## Out of scope

@@ -45,7 +45,25 @@ enum Body:
 
 final case class Request(method: Method, url: String,
                          headers: Seq[(String, String)] = Nil,
-                         body: Body = Body.Empty)
+                         body: Body = Body.Empty,
+                         /**
+                          * Where it came from, as the TRANSPORT knows
+                          * it (http-peer-address). A server fills this;
+                          * a client leaves it `None`, because a client
+                          * builds the request rather than receiving it.
+                          *
+                          * The HOST, without the port: a port changes
+                          * per connection, so keying anything on
+                          * `host:port` hands every connection a fresh
+                          * budget, which is the bug this field exists
+                          * to fix.
+                          *
+                          * `None` means UNKNOWN, never "trusted zero".
+                          * And it is not `X-Forwarded-For`: that stays
+                          * a proxy's claim and the consumer's own
+                          * decision to trust.
+                          */
+                         peer: Option[String] = None)
 
 object Request:
   def get(url: String, headers: Seq[(String, String)] = Nil): Request =
