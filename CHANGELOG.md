@@ -1,5 +1,37 @@
 # Changelog
 
+## match-vec-cache — SqlMatch stops re-embedding what has not changed
+Completed: 2026-09-03
+Landed as a0e57ff (spec) + 6572e14 (impl). MemoryMatch has cached
+profile summaries since stage 0 and invalidates them at four write
+sites; SqlMatch — the engine a deployment actually runs — had nothing,
+and embedded every candidate's summary on every `candidates()` and
+every live attribute on every `registrySearch()`. Invisible while
+`embed` defaulted to `Vectors.hashing` (arithmetic over character
+trigrams, which is what it was written against); one model inference
+per candidate per query with a real encoder. Measured in a downstream
+deployment on a real multilingual encoder, 50 profiles, 1 vCPU: 4.4s
+for the first search, 1.5s for each one after, ~80ms per profile.
+A TABLE, not a hook: `match_vecs(k, fp, dim, vec)`, where `k` names the
+entity (`p:<uuid>:<side>`, `a:<slug>`) so rows stay bounded by entities
+and an update overwrites, and `fp` is a SHA-256 of the text the vector
+was computed from. The fingerprint is the whole design: a changed fact
+is a changed summary is a changed fingerprint, so the stale row is
+simply not used and there is NO invalidation logic to forget at the
+fifth write path somebody adds later. It also survives the process,
+which a cache in memory cannot, so a restart no longer re-embeds the
+marketplace. New constructor parameter `embedTag`, empty by default and
+therefore inert for every existing construction: vectors from one
+encoder are noise to another and the dimension often matches even when
+the model does not, so a deployment that can switch models names its
+own. The query text is still embedded fresh — one call per query, not
+an entity, and caching users' sentences would grow without bound.
+Tests: 8 in TestVecCache, one per spec box, all counting CALLS to the
+encoder rather than checking answers (the answers were already right),
+including the one that matters most — ranking unchanged, same order and
+same scores, cached or not. Full gate green on a quiet box: 76 suites,
+1997 tests, 0 failures.
+
 ## rag-index-freshness — the index stops going quietly stale
 Completed: 2026-09-03
 The rag index is per project, lives in the main checkout, and does not
