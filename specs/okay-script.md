@@ -246,25 +246,35 @@ then synthesized into ONE `@main` body:
 
 ```scala
 @main def okayScriptMain(): Unit =
-  val _okayScriptOut_ = new StringBuilder
-  _okayScriptOut_.append("""<a Text segment, raw triple-quoted>""")
+  print("""<a Text segment, raw triple-quoted>""")
   <a Code segment's statements, verbatim>
-  _okayScriptOut_.append((<an Interp segment's expr>).toString)
+  print((<an Interp segment's expr>).toString)
   ...
-  print(_okayScriptOut_.toString)
 ```
 
-— reusing `run`'s exact compile/load/invoke/stdout-capture machinery
-(`compileAndRun`, extracted from the code that used to be `runWith`'s
-body) with only the SOURCE-SYNTHESIS step swapped: `run` concatenates
-```scala blocks only; `render` walks the whole document. A `Text`
-segment is embedded as a raw `"""..."""` string (unescaped — Scala's
-plain triple-quoted strings do not interpret `$`, so a stray `$` in
-prose that is NOT part of a `${` marker needs no escaping at all) UNLESS
-it contains a `"""` run or ends in a `"` (either would make the closing
-`"""` ambiguous), in which case it falls back to a normal escaped
-string literal (`\`, `"`, and newlines escaped) — always correct, just
-less readable in the synthesized source, which nothing ever reads.
+Each `Text`/`Interp` segment is an inline `print(...)` call in document
+order, NOT an append to a buffer flushed once at the end — deliberate:
+`render` reuses `run`'s exact stdout-capture machinery
+(`compileAndRun`, extracted from what used to be `runWith`'s tail), so
+the rendered document IS what gets captured. If a code block ALSO
+calls `println` for its own reasons (debugging, or a genuine part of
+the output), a buffer-then-flush design would print the whole rendered
+document first and any such interleaved output afterward, out of
+order; direct `print` per segment keeps everything in true document
+order, whatever mix of substitution and side-effecting code produced
+it. `run` is unaffected — this only changes the source `render`
+synthesizes, not `run`'s own block-concatenation.
+
+— the SOURCE-SYNTHESIS step is the only thing that differs between
+`run` and `render`: `run` concatenates ```scala blocks only; `render`
+walks the whole document. A `Text` segment is embedded as a raw
+`"""..."""` string (unescaped — Scala's plain triple-quoted strings do
+not interpret `$`, so a stray `$` in prose that is NOT part of a `${`
+marker needs no escaping at all) UNLESS it contains a `"""` run or ends
+in a `"` (either would make the closing `"""` ambiguous), in which
+case it falls back to a normal escaped string literal (`\`, `"`, and
+newlines escaped) — always correct, just less readable in the
+synthesized source, which nothing ever reads.
 
 ## Classloader isolation — resolved 2026-09-03 (okay-script-classloader-isolation)
 
