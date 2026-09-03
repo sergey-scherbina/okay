@@ -1,6 +1,16 @@
 # Backlog
 
 ## Benchmarks — after kyo-fair-lanes (2026-09-02, docs/benchmarks.md §2/§5/§7)
+- [ ] test-login-tamper-flake — `TestLogin`'s "a tampered token is
+      refused" builds its tamper as `token.dropRight(2) + "xx"`, which
+      is the SAME token whenever the JWT happens to end in `xx`. Base64
+      url alphabet, so roughly 1 in 4096 runs fails a merge gate for
+      nobody's mistake. FOUND 2026-09-03 during http-peer-address's
+      gate; reproduced by running the suite alone (3/3 clean), so the
+      failure is the data and not the code. Fix: tamper by flipping a
+      character to one it is not, e.g. `init :+ (if last == 'x' then
+      'y' else 'x')`.
+
 - [ ] chunked-source-sweep — one same-session StreamOps run with every
       library's CHUNKED source (fs2 `Stream.range`, `ZStream.range`,
       kyo `Stream.range`, Okay Chunks) next to the per-element lanes;
