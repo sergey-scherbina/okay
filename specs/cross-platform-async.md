@@ -173,3 +173,24 @@ cross-build lands so nothing has to be broken later.
       send/close race keeps its accounting invariant on the parking
       forms; the cross suite checks refusal after close everywhere.
 - [x] run the cross suite on Native — done, in CI
+- [ ] native-scheduler-pool — a fixed worker pool as a SECOND
+      Native `Scheduler`, safe now that waiting is in queues, not
+      threads (channel-callback closed the deadlock risk this was
+      gated on, see Decisions above). `Schedulers.pool(size)`: a
+      hand-rolled task queue (no `java.util.concurrent` collection
+      assumed on Native's javalib — `scala.collection.mutable.Queue`
+      under a `synchronized`/`wait`/`notify` lock, the same shape
+      `CanBlock`'s own `FiberCell` already uses) feeding `size`
+      worker threads; `Schedulers.threads` keeps today's
+      one-per-fiber scheduler under its own name. The default
+      `given Scheduler` stays `threads` — a fiber that genuinely
+      blocks (a `CanBlock` form, still real OS parking on Native) on
+      a SHARED pool thread can starve the pool if every worker ends
+      up parked at once; `pool` is opt-in until a consumer names the
+      tradeoff acceptable, sized for its own workload. Stated, not
+      solved: `cancel()` on a pool-scheduled fiber is best-effort
+      (the trait's own contract) — a queued-but-not-yet-started task
+      is simply dropped; a running one is interrupted via the
+      worker thread currently executing it, tracked per task to
+      avoid interrupting whatever DIFFERENT task that worker picks
+      up next.
