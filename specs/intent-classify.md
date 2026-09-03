@@ -67,6 +67,20 @@ object Classify:
    * matrix over GROUPS, full depth over leaves. */
   def label[I](i: I, depth: Int = Int.MaxValue)(using Schema[I]): String
 
+  /** the SHAPE of an answer, rendered from the schema: optional
+   * fields omitted, one list element, a sum tagged by its first case.
+   * A shape, not a valid value — a placeholder cannot satisfy a
+   * refined leaf. */
+  def example[A](using Schema[A]): String
+
+  /** the full instruction; `examples` are shown as message -> intent */
+  def prompt[I](message: String, examples: List[(String, I)] = Nil)(using Schema[I]): String
+
+  /** the in-domain gate: one binary question asked BEFORE the taxonomy */
+  final case class InDomain(why: String, inDomain: Boolean)
+  def inDomainPrompt[I](message: String)(using Schema[I]): String
+  def readInDomain(reply: String): Either[String, InDomain]
+
   /** what a caller acts on: act on `High`/`Medium`, ask on `Low` */
   enum Decision[+I]:
     case Act(spans: List[(String, I)])
@@ -113,6 +127,11 @@ object Eval:
       the classes that fell more than the tolerance
 - [x] the taxonomy section of the prompt is generated from the schema:
       adding a case changes it without an edit
+- [x] the example answer is rendered from the schema: a sum appears
+      TAGGED, an optional field is omitted, a list shows one element
+- [x] the prompt carries that example
+- [x] the gate asks with an example object rather than with a schema
+- [x] a gate verdict decodes, and a malformed one is a `Left`
 
 ## Out of scope
 
@@ -192,6 +211,30 @@ intended path, not as something that exists.
   a LEAF: its fields are slots, not a sub-taxonomy. Both kernels the
   walk uses (`theCase`, `eachField`) hand the value over at its own
   type, so the whole walk takes no cast.
+- **Show an EXAMPLE, not only a schema** — measured twice in this
+  lane, in opposite corners of it. A schema for the two-field gate
+  answer came back as the schema itself, the verdict buried in
+  `properties`. And shown only the reading's schema, the model wrote
+  `"intent": "Proposal"` as a bare name where the encoding wants
+  `{"Proposal": {...}}`, dropped `alts`, and merged `conf` into the
+  intent object: 20 of 24 replies undecodable. A rendered example is
+  derived from the schema, so it cannot drift from it.
+- **The example is a SHAPE and says so** — its leaf placeholders cannot
+  satisfy a refined schema (`"..."` is neither a confidence nor an
+  ISO-8601 date), and nothing generic can invent a value that passes an
+  arbitrary `SIso`. Rejected: pretending otherwise (the first version of
+  the test asserted the example decodes, and it does not).
+- **A sentinel is not a class** — the harness first fed its own
+  `undecodable` marker into the confusion matrix, where it became a
+  predicted-only class with F1 0 and dragged macro F1 with the DECODE
+  rate rather than the classification. Two runs with identical per-class
+  scores reported 0.916 and 0.748 because they differed by one
+  undecodable reply. `Eval`'s rule that an invented label is still a
+  class is right for a real label and wrong for a marker one made up;
+  the fix is at the call site, and macro F1 is now reported over decoded
+  replies WITH the decode rate beside it. Neither number means anything
+  alone: the `bare` arm scores 0.733 on the four replies it managed to
+  produce.
 - **One tier before three** — the symbolic and vector tiers are
   deferred until measurement shows cost or latency binding. Rejected:
   building all three now (three dictionaries to keep in sync, three
@@ -261,3 +304,62 @@ One behaviour worth recording because the test's first expectation was
 wrong about it: a single confusion damages BOTH classes it involves —
 B called A costs B its recall and A its precision. A promotion rule
 that named only the missed class would let half the damage through.
+
+## Results — intent-other-collapse (2026-09-03)
+
+The collapse was chased down in the repository rather than in a script
+beside it: `TestClassifyLive` (Live-tagged, out of the default gate)
+runs six arms over `IntentFixture`'s 24 messages, and `IntentFixture`
+is shared so the next lane compares against the same baseline instead
+of inventing one.
+
+Same local 4B gateway, temperature as the server defaults it. Macro F1
+is over DECODED replies, so it must be read together with the decode
+rate — the two columns are one measurement.
+
+| arm | decoded | macro F1 | `Other` recall |
+|---|---|---|---|
+| bare — the schema alone | 4/24 | 0.733 | 0.00 |
+| rules — schema + written rules | 18/24 | 0.587 | 0.00 |
+| shipped — rules + rendered example shape | 21/24 | 0.681 | 0.17 |
+| examples — shipped + 5 labelled examples | 23/24 | 0.908 | 0.67 |
+| gate — in-domain question, then shipped | 21/24 | 0.826 | 0.50 |
+| **examples + gate** | **23/24** | **0.955** | **0.83** |
+
+Read as three separate findings.
+
+**The decode rate is a prompt property, not a model property.** 4 -> 18
+-> 21 -> 23 of 24 replies decoded, from the same model, purely on how
+the answer was asked for. The rendered example is the mechanical fix;
+the written rules do most of the rest.
+
+**Few-shot examples are the quality lever** (0.681 -> 0.908), and they
+are drawn from OUTSIDE the fixture, so no arm is scored on its own
+teaching material.
+
+**The gate is what actually addresses the collapse.** Recall for
+`Other` went 0.00 -> 0.17 with the example, 0.67 with examples, and
+0.83 with the gate on top, at precision 1.00 throughout. A binary
+in-domain question does not offer the model a choice among positive
+classes, which is the thing it was losing to. It costs one extra call
+per message — the price is visible and the caller chooses.
+
+So the answer to the original finding stands and is now sharpened:
+declaring an `Other` case is necessary and not sufficient; what
+rescues it is not asking the taxonomy question at all until a separate
+question has said the message belongs.
+
+**What is still wrong.** One of six out-of-domain messages is still
+absorbed even by the best arm, and the residue is not random: the
+fixture's `Other` mixes "not about this at all" (a birthday wish, a
+recipe) with "about a different topic in the same register" (a double
+charge, a cancellation), and a taxonomy of `Proposal`/`Request`/
+`Notification` carrying a bare `what: String` does not tell the model
+its domain is meetings. The case NAMES carry the domain or nothing
+does. Filed.
+
+And a caution about this table: at n=24 a difference of one or two
+replies is not a difference. The wording of the example line was
+changed mid-lane and moved `shipped` by two replies — noise, reported
+as noise. The fixture needs to grow before any of these gaps is
+defended as real.

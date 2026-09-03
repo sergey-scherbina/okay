@@ -61,7 +61,18 @@ object Eval {
     val macro_ = if scores.isEmpty then 0.0 else scores.map(_._2.f1).sum / scores.length
     Report(scores.toMap, macro_)
 
-  /** one streaming pass over (gold, predicted) pairs */
+  /**
+   * One streaming pass over (gold, predicted) pairs.
+   *
+   * Feed it only REAL labels. A caller's own sentinel ("undecodable",
+   * "timed out") becomes a predicted-only class with F1 0 — correct by
+   * the rule above, and wrong for a marker nobody is classifying — and
+   * macro F1 then moves with the sentinel's rate instead of with the
+   * classification. Measured: two runs whose per-class scores were
+   * identical reported 0.916 and 0.748 because they differed by one
+   * such row (intent-other-collapse). Count sentinels separately and
+   * report them beside the score, never inside it.
+   */
   val confusion: Aggregator[(String, String), Confusion, Report] =
     new Aggregator[(String, String), Confusion, Report]:
       def init: Confusion = Confusion()

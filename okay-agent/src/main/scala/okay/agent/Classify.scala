@@ -113,6 +113,53 @@ object Classify {
     Json.print(ToolSpec.jsonSchema(s))
 
   /**
+   * An EXAMPLE ANSWER, built from the schema rather than written
+   * beside it.
+   *
+   * A JSON Schema tells a model what is legal; it does not show it
+   * what to type. Measured in this lane: shown only the schema, a 4B
+   * model wrote `"intent": "Proposal"` where the encoding wants
+   * `{"Proposal": {...}}`, dropped `alts`, and merged `conf` into the
+   * intent object — 20 of 24 replies undecodable on a bare prompt. The
+   * same lesson had already appeared in `inDomainPrompt`, where a
+   * schema for a two-field object came back as the schema itself.
+   *
+   * Optional fields are omitted (that is what optional means to a
+   * reader), a list shows exactly one element, and a sum shows its
+   * FIRST case — enough to fix the shape without implying the choice.
+   *
+   * It is a SHAPE, not a valid value, and the prompt says so: the leaf
+   * placeholders do not survive a refined schema (`"..."` is not a
+   * confidence and not an ISO-8601 date), because nothing generic can
+   * invent a value that satisfies an arbitrary `SIso`. Callers who
+   * want a valid example pass a real one through `prompt`'s
+   * `examples` — which is also, measured, the far bigger win.
+   */
+  def example[A](using s: Schema[A]): String = Json.print(skeleton(s))
+
+  private def skeleton(s: Schema[?]): Json = s match
+    case Schema.SString | Schema.SChar => Json.JStr("...")
+    case Schema.SBytes => Json.JStr("")
+    case Schema.SInt | Schema.SLong | Schema.SDouble => Json.JNum(0)
+    case Schema.SBool => Json.JBool(true)
+    case Schema.SOption(of) => skeleton(of())
+    case Schema.SList(of) => Json.JArr(Vector(skeleton(of())))
+    case Schema.SVector(of) => Json.JArr(Vector(skeleton(of())))
+    case Schema.SIso(under, _, _) => skeleton(under())
+    case p: Schema.SProduct[?] =>
+      Json.JObj(p.fields.collect {
+        // an optional field is left out: showing it invites a null
+        case (n, f) if !f().isInstanceOf[Schema.SOption[?]] => (n, skeleton(f()))
+      })
+    case su: Schema.SSum[?] =>
+      // `.map` rather than a match on the Option: destructuring the
+      // pair in a pattern loses exhaustivity against the existential
+      // in `cases`, and a suppressed warning would be worse than this
+      su.cases.headOption
+        .map(c => Json.JObj(Vector((c._1, skeleton(c._2())))))
+        .getOrElse(Json.JObj(Vector.empty))
+
+  /**
    * The instruction for one message.
    *
    * Everything variable in it is generated: the taxonomy from
@@ -120,12 +167,21 @@ object Classify {
    * case to the taxonomy changes the prompt, the parser and the tool
    * declaration together or not at all.
    */
-  def prompt[I](message: String)(using s: Schema[I]): String =
+  def prompt[I](message: String, examples: List[(String, I)] = Nil)
+               (using s: Schema[I]): String =
     val r = ToolSpec.jsonSchema(reading[I](using s))
+    val shown =
+      if examples.isEmpty then ""
+      else examples.map((m, i) => s"""  "$m" -> ${Json.write(i)(using s)}""")
+        .mkString("Examples of the intent for a single-span message:\n", "\n", "\n\n")
     s"""Segment the message and classify the intent of each segment.
        |
        |Answer with ONE JSON object and nothing else, matching this schema:
        |${Json.print(r)}
+       |
+       |The SHAPE of an answer, with placeholder values you must replace
+       |(and as many spans and alts as the message needs):
+       |${Classify.example(using reading[I](using s))}
        |
        |Rules:
        |- One span per intent. A message carrying two intents has two spans.
@@ -135,7 +191,46 @@ object Classify {
        |- If nothing in the taxonomy fits, say so through its own case
        |  rather than choosing the nearest positive class.
        |
+       |$shown""".stripMargin + s"Message: $message"
+
+  /**
+   * The in-domain gate: one yes/no question asked BEFORE the taxonomy.
+   *
+   * It exists because of a measurement, not a hunch. Asked to choose
+   * among positive classes, a model chooses one — the out-of-domain
+   * bucket collapsed to recall 0.17 (specs/intent-classify.md). A
+   * separate binary question does not offer it that choice.
+   *
+   * `why` precedes the verdict for the same reason it does in a span,
+   * and the field order is what puts it there.
+   */
+  final case class InDomain(why: String, inDomain: Boolean)
+
+  given Schema[InDomain] = Schema.derived
+
+  def inDomainPrompt[I](message: String)(using s: Schema[I]): String =
+    // an EXAMPLE VALUE, not the schema: shown a schema for a shape
+    // this small, a model echoes the schema back with its answer
+    // buried in `properties` — measured, and it cost a whole arm of
+    // the Other-collapse experiment before it was seen
+    val shape = Json.write(InDomain("one sentence saying why", true))
+    s"""Decide whether the message is about any of the following at all.
+       |
+       |The subject matter, as a schema:
+       |${Json.print(ToolSpec.jsonSchema(s))}
+       |
+       |Answer with ONE JSON object and nothing else, of exactly this
+       |shape (the same two fields, your own values):
+       |$shape
+       |
+       |Answer `false` when the message is about something else entirely,
+       |however polite, urgent or well-written it is.
+       |
        |Message: $message""".stripMargin
+
+  /** decode the gate's answer */
+  def readInDomain(reply: String): Either[String, InDomain] =
+    Json.decode(summon[Schema[InDomain]])(Json.parseValue(reply))
 
   /**
    * Decode a reply.

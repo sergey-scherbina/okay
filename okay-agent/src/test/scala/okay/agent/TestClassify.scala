@@ -145,4 +145,61 @@ class TestClassify extends munit.FunSuite {
     val r = Reading(List(Span[Meeting]("odd", "no idea", Nil)))
     assert(Classify.decide(r).isInstanceOf[Classify.Decision.Clarify[?]])
   }
+
+  // ---------------------------------------------------------------
+  // the example answer, built from the schema (specs Results: it took
+  // undecodable replies from 6/24 to 1/24 — a schema says what is
+  // legal, an example shows what to type)
+
+  test("the example answer is derived, and carries the shape the decoder wants") {
+    val ex = Classify.example(using sReading)
+    // it is a SHAPE, not a value: the leaf placeholders cannot satisfy
+    // a refined schema (no generic rule invents an ISO-8601 date), so
+    // what is asserted is the structure, and the prompt calls them
+    // placeholders rather than pretending otherwise
+    val j = Json.parseValue(ex)
+    assertEquals(Json.print(j), ex, "the example must at least be JSON")
+    for part <- Seq("\"spans\"", "\"text\"", "\"why\"", "\"alts\"", "\"intent\"", "\"conf\"")
+    do assert(ex.contains(part), s"the example is missing $part: $ex")
+    // and the intent appears TAGGED, which is the failure it exists to
+    // prevent (`"intent": "Proposal"` as a bare name)
+    assert(ex.contains("\"intent\":{\"Proposal\""), s"the intent is not tagged: $ex")
+  }
+
+  test("the example shows a sum as its tagged first case, not as a bare name") {
+    val ex = Classify.example(using summon[Schema[Meeting]])
+    assert(ex.contains("\"Proposal\""), ex)
+    assert(ex.contains("{"), "a case must appear tagged, as an object")
+    // the failure this prevents: `"intent": "Proposal"` as a bare string
+    assertNotEquals(ex.trim, "\"Proposal\"")
+  }
+
+  test("the example omits an optional field and shows one list element") {
+    val ex = Classify.example(using summon[Schema[ProposalKind]])
+    assert(ex.contains("\"when\""), ex)
+    assert(ex.contains("\"who\""), ex)
+    assert(!ex.contains("\"where\""), s"an optional field invites a null: $ex")
+    assertEquals(ex.count(_ == '['), 1, s"a list should show exactly one element: $ex")
+  }
+
+  test("the prompt carries the example, so the shape is shown and not only specified") {
+    val p = Classify.prompt[Meeting]("hello")
+    assert(p.contains(Classify.example(using sReading)), "the prompt lost its example")
+  }
+
+  // ---------------------------------------------------------------
+  // the in-domain gate
+
+  test("the gate asks with an example object, not with a schema for the answer") {
+    val p = Classify.inDomainPrompt[Meeting]("hello")
+    // measured: shown a schema for a two-field object, the model
+    // answered with the schema, its verdict buried in `properties`
+    assert(p.contains("\"inDomain\":true"), s"no example answer in the gate prompt: $p")
+  }
+
+  test("a gate verdict decodes, and a malformed one is a Left") {
+    assertEquals(Classify.readInDomain("""{"why":"a greeting","inDomain":false}"""),
+      Right(Classify.InDomain("a greeting", false)))
+    assert(Classify.readInDomain("""{"type":"object","properties":{}}""").isLeft)
+  }
 }

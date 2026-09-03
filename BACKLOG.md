@@ -840,7 +840,18 @@ not a new primitive from scratch.
       still open — this box stays unchecked for that.
 
 ## okay-agent: intent classification — after intent-classify (2026-09-03, specs/intent-classify.md)
-- [ ] intent-other-collapse — the lane's own measurement: declaring an
+- [x] intent-other-collapse — LANDED 2026-09-03. Six arms over the same
+      24-message fixture, in-repo as `TestClassifyLive` (Live-tagged):
+      the answer is examples + a binary in-domain gate, 0.955 macro F1
+      over 23/24 decoded replies with `Other` recall 0.83 at precision
+      1.00, against 0.587 and recall 0.00 for the prompt as it was.
+      Two things fell out that were not the question: the decode rate
+      is a PROMPT property (4 -> 23 of 24 decoded, same model, purely
+      on how the answer was asked for — a rendered example beats a
+      schema), and a harness sentinel must not enter the confusion
+      matrix or macro F1 tracks the decode rate instead of the
+      classification. Original entry follows.
+- [ ] intent-other-collapse (original) — the lane's own measurement: declaring an
       `Other` case is NOT enough. On 24 labelled messages the local 4B
       model gave `Other` recall 0.17 with reasoning first and 0.00
       without, absorbing every out-of-domain message into a positive
@@ -887,3 +898,15 @@ not a new primitive from scratch.
       intended fixture; the lane deliberately did not build it, and the
       seam it needs is only that `Eval` takes label pairs from
       anywhere.
+- [ ] intent-domain-in-names — the residue the gate does not catch: one
+      of six out-of-domain messages is still absorbed, and the fixture's
+      `Other` mixes "not about this at all" (a birthday wish) with
+      "another topic in the same register" (a double charge, a
+      cancellation). A taxonomy of `Proposal`/`Request`/`Notification`
+      with a bare `what: String` never says its domain is meetings — the
+      case NAMES carry the domain or nothing does. Try domain-bearing
+      case names before adding any prompt machinery.
+- [ ] intent-fixture-too-small — at n=24 a difference of one or two
+      replies is not a difference, and a mid-lane wording change moved
+      an arm by two. Grow `IntentFixture` past the reference's minimum
+      (30 per class) before defending any gap in the arms table as real.
