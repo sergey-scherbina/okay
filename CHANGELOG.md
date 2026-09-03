@@ -1,5 +1,44 @@
 # Changelog
 
+## intent-gate-non-english — the gate does not pay in any language, and its worst damage is in English
+Completed: 2026-09-04
+Landed as dd20b366. A re-measurement, not a new hypothesis: the spec's
+language table was taken with generic names and the in-domain gate, and
+intent-domain-in-names had since demoted the gate to a fallback — so the
+spec was carrying numbers for a mechanism nobody should reach for
+first. Both arms re-run on domain-bearing names, twelve meanings per
+language.
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| domain names | 0.881 | 0.900 | 0.813 | 0.914 | 0.652 | 0.813 |
+| domain names + gate | 0.602 | 0.900 | 0.727 | 0.914 | 0.548 | 0.813 |
+
+THE ITEM'S OWN PREMISE IS REFUTED. It was filed as "the gate loses
+precision OUTSIDE English". With domain-bearing names the gate does not
+pay in ANY of the six languages — neutral in three, costly in three —
+and its worst damage is in ENGLISH (0.881 -> 0.602, −0.28), not in
+Russian (−0.10). The non-English framing was an artifact of having
+measured the gate only against generic names, so the demotion decided
+last lane generalises across languages instead of being an English-only
+result.
+
+The language gap itself survives, and naming does not close it: Russian
+is weakest at 0.652 with names alone, across two independent runs. Nor
+is it a simple English-first ordering — Spanish (0.914) and French
+(0.900) sit above English (0.881) — so the effect lands on particular
+languages, and on this evidence Russian and German are the ones to
+look at.
+
+Filed as intent-language-gap, with two candidates to try SEPARATELY
+because they cost different things (case names in the message's
+language; an explicit domain sentence), and with the parallel fixture to
+be grown first: twelve messages support "there is an effect", not the
+size of any single number. The old table is marked superseded in the
+spec rather than deleted, so what replaced it and why stays readable.
+
+Full matrix green: 2131 tests, 0 failures.
+
 ## intent-live-provider — the early stop saves nothing here, and the spec loses a sentence it had not earned
 Completed: 2026-09-03
 Landed as 0c93e006. A debt, paid: three lanes shipped while the spec
