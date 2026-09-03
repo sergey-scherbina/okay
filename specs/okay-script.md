@@ -431,7 +431,100 @@ case it falls back to a normal escaped string literal (`\`, `"`, and
 newlines escaped) — always correct, just less readable in the
 synthesized source, which nothing ever reads.
 
-## Classloader isolation — resolved 2026-09-03 (okay-script-classloader-isolation)
+## Hot-reload — `Page` (okay-script-page, 2026-09-03)
+
+The FIRST of two things separating a real JSP page from `render` as
+built so far ("The real goal" above already named the second,
+per-request/hot-reload, and deliberately left it out): JSP compiles a
+page's servlet class ONCE and calls its `_jspService` method once PER
+REQUEST — it does not recompile on every hit, only when the `.jsp`
+file on disk actually changes. `render`, as landed, does the opposite:
+every call is a full `dotc` compile from source text. Fine for a
+one-shot document, wrong for a page a server would call on every
+request.
+
+**Scope, narrower than the BACKLOG entry that named this**: hot-reload
+(compile once, cache by file `mtime`, re-INVOKE not re-compile on
+every call) is built here. Request-object injection (JSP's implicit
+`request`/`response`) is NOT — see "Not built" below.
+
+### `Page`
+
+```scala
+final class Page(path: Path, classpath: Classpath = Classpath.ambient):
+  /** compiles on the FIRST call, or whenever `path`'s mtime has
+   * changed since the last compile; otherwise re-invokes the
+   * already-compiled program. */
+  def render(): Result
+  /** releases the cached compiled program's classloader/temp dir. */
+  def close(): Unit
+```
+
+`Page` wraps `ScalaScript.render`'s machinery but needs NOTHING
+`render` itself doesn't already have — no new dependency, `okay-jetty`
+included, matches the BACKLOG entry's own framing ("closer to an
+okay-jetty route than to okay-script itself"): `Page` stays inside
+`okay-script`, and an ACTUAL jetty route is glue code a caller writes,
+wrapping `page.render().stdout` into a `Response` — the SAME thing the
+storefront example already does by hand for `run`, just for a page
+that changes.
+
+### Compile/invoke split — `ScalaScript.compileRender`
+
+`render`'s existing `compileAndRun` did compile, invoke, capture, AND
+delete the temp output directory, all in one call — right for a
+one-shot render, wrong for something meant to be invoked repeatedly
+(deleting the classfiles a live classloader may still need to satisfy
+a LATER lazy class load is exactly the kind of bug that would only
+show up occasionally, not on the first render). Split into:
+
+```scala
+object ScalaScript:
+  /** compiles once; Left carries a Result with compile/dependency
+   * errors (never throws), Right an invokable, repeatable handle. */
+  def compileRender(markdown: String, classpath: Classpath = Classpath.ambient): Either[Result, Compiled]
+
+trait Compiled:
+  /** runs the ALREADY-COMPILED program again -- no recompilation.
+   * Each call is a fresh top-to-bottom run (a fresh `println`, a
+   * fresh `Meta.current` sequence), the way a servlet's per-request
+   * method is a fresh call over already-loaded bytecode. */
+  def invoke(): Result
+  /** releases the classloader and deletes the temp output directory
+   * -- must be called when no more `invoke()`s are coming, or the
+   * temp directory and loaded classes leak for the process's life. */
+  def close(): Unit
+```
+
+`render(markdown, classpath)` itself is now `compileRender(...).fold(
+identity, c => try c.invoke() finally c.close())` — compile, invoke
+once, close immediately; unchanged observable behavior for every
+existing `render` caller. `Page.render()` instead HOLDS the `Compiled`
+handle across calls, closing the OLD one only when the file changed
+and a fresh compile replaces it (or when `Page.close()` is called
+explicitly).
+
+### What this is NOT (filed to BACKLOG, not built here)
+
+- **Request-object injection** — a script reading the CURRENT HTTP
+  request (query params, headers, method) the way it already reads
+  `Meta.current` for file metadata. The proven pattern (a plain
+  always-fresh method + mutable var, not a `given` — see "Metadata as
+  context" for why) would transfer directly, but exposing
+  `okay.http.Request` from `okay.script`'s own code would be
+  `okay-script`'s first real dependency beyond `scala3-compiler` —
+  deliberately not taken in this pass. A caller can already thread
+  per-request data into a render TODAY by building the markdown TEXT
+  per request (string-templating the request's own data into the `.md`
+  before calling `render`) — clumsy, but it works without a new
+  dependency, and is the reason this was not treated as blocking.
+- **Concurrent-safety of `Page.render()` under real concurrent HTTP
+  load** — `Page`'s cache check-then-compile-or-invoke is `synchronized`
+  (one render at a time per `Page` instance), which is correct but
+  serializes concurrent requests to the SAME page through one lock;
+  fine for the hot-reload use case (a low-traffic admin page, a
+  documentation site), not measured or intended for a high-throughput
+  server. Filed as a possible follow-on if a real consumer needs it.
 
 Each `run` call already gets its OWN `URLClassLoader` — two scripts
 running in the same JVM do not collide with each other, since each
@@ -780,6 +873,32 @@ only this one step, and only when a script asks for it, does.
 - [x] a script that wants `given`/context-function ergonomics can
       still have them by writing `given Meta.Context = Meta.current`
       itself, locally, immediately before use.
+- [x] `Page.render()` twice with no file change in between compiles
+      ONCE, not twice (checked by a coarse timing gap between a first
+      render that must compile and a second that must not, since
+      `dotc` compilation is orders of magnitude slower than reflection
+      invocation of already-loaded bytecode).
+- [x] editing the file and bumping its mtime, then calling
+      `Page.render()` again, picks up the NEW content — proving the
+      cache is genuinely invalidated by a real change, not just
+      never-invalidated.
+- [x] editing the file's CONTENT but leaving its mtime UNCHANGED (set
+      explicitly, not relying on wall-clock granularity) still returns
+      the OLD compiled output on the next `render()` — proving the
+      cache keys strictly on mtime, not on a content hash or a "did
+      the file change" heuristic — a deliberate, documented limitation.
+- [x] `Page.render()` reflects the SAME `okay.script.Meta`
+      metadata-as-context machinery `render` itself has (front-matter/
+      heading-scoped yaml) — `Page` is a caching wrapper, not a
+      parallel implementation.
+- [x] a compile ERROR on the file's CURRENT content is reported
+      through `Page.render()`'s `Result.errors`, exactly like a direct
+      `render` call — `Page` does not swallow or reshape compiler
+      diagnostics.
+- [x] `Page.close()` releases the cached compiled program's temp
+      output directory from disk — the same "leaves no temp file
+      behind" property `render`'s own one-shot path already has, now
+      checked for `Page`'s hold-it-open-across-calls shape too.
 
 ## Results
 
