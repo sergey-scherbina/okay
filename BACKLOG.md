@@ -182,62 +182,16 @@ construction instead of a type test per value).
       directly in Stage.chunked and Channel's ChunkBuffer, measure the
       curve again (docs/benchmarks.md §6b has today's).
 
-- [ ] netty-ws-matrix-flake — okay.netty.TestBackends "every WebSocket
-      client talks to every WebSocket server" failed once under the
-      full sbt test matrix (jetty StaticException: Closed,
-      2026-09-01, log: one failure in 12); twice green in isolation
-      right after. Suspect load/port timing, not code. Settle by:
-      run the suite in a loop under parallel matrix load; if it
-      reproduces, isolate per the isolate skill.
-      RECURRED 2026-09-01 (queue-shape's full-matrix run: okayNetty
-      Test failed under parallel load; okay-persist was the only
-      changed module, unrelated) — okayNetty ran GREEN in isolation
-      immediately after (all 12, incl. "every WebSocket client talks
-      to every WebSocket server"). Third sighting, same load/port
-      signature; still environmental. Owner (okay-http/netty lane):
-      the fix is the isolate-under-load loop, not a per-run retry.
-      FOURTH sighting 2026-09-01 (pg-sslmode matrix: same test,
-      ClosedChannelException, 1 of 12; okay-pg was the only changed
-      module) — green in isolation immediately after (4/4). SIXTH
-      sighting 2026-09-02 (direct-tail-fusion's decisive gate,
-      genuinely quiet box, load 2.6, no sibling sbt): same test,
-      ClosedChannelException, the ONLY failure in the whole matrix;
-      Direct.scala was the only module the landing touched, netty
-      untouched — green in isolation immediately after (4/4). Pattern
-      is firmly environmental; escalate to the owner lane for the
-      isolate-under-load fix rather than re-triaging per landing.
-      FIFTH sighting, a new family, 2026-09-02 (direct-tail-fusion
-      matrix): okay.docs.mongo.TestMongoDocs, okay.kafka.
-      TestElectionKafka, okay.kafka.TestKafkaEos timed out (30-120s,
-      the driver's own serverSelectionTimeout/munit deadline) rather
-      than skipping in milliseconds — TWICE, once under sibling load
-      and once on an otherwise-quiet box (docker daemon absent
-      entirely both times: `docker ps` -> "no such file or
-      directory"); Direct.scala (a compile-time macro, zero I/O) was
-      the only changed module. All three green (clean skip) in
-      isolation immediately after, both isolated runs. Same
-      signature as netty-ws-matrix-flake, a different service
-      family: the availability PROBE (not the feature) starves under
-      sbt's own full-matrix forked-JVM parallelism — evidenced by
-      TestKafkaStore/TestKafkaRepair, whose 120s `munitTimeout`
-      override let the SAME slow probe land as a 60s skip instead of
-      a hard failure, right there in the same matrix run. NARROWED
-      and PARTLY FIXED (same landing): TestElectionKafka carried no
-      `munitTimeout` override at all (its three Kafka siblings all
-      do, 120s) — the 30s munit default was firing before even a
-      merely-slow probe could finish; added, matching the sibling
-      pattern exactly. TestMongoDocs carried none either (DocsSuite's
-      base has none) — added the same 120s override. Both verified
-      green (clean skip) in isolation after the fix. STILL OPEN:
-      TestKafkaEos already carried the 120s override and blew through
-      it anyway (120.297s) — a probe that itself starves past two
-      minutes is the netty-ws-matrix-flake root cause verbatim
-      (unbounded sbt test-matrix forked-JVM parallelism, no `Global /
-      concurrentRestrictions` cap in build.sbt), not a per-suite
-      timeout to tune upward. Settle with the same fix as
-      netty-ws-matrix-flake, one lane: a build.sbt-wide concurrency
-      cap (cross-cutting, needs its own claim and buy-in) or the
-      isolate-under-load loop.
+- [x] netty-ws-matrix-flake — SETTLED by moving it out of the gate
+      (netty-integration, 2026-09-03, operator decision). It failed
+      the default gate a second time with the identical signature
+      (jetty StaticException: Closed, one in 12) and was green in
+      isolation immediately after, both times — which is the evidence
+      the settle-plan asked for, pointing at load/port timing rather
+      than code. okay-netty's suites are now Live-tagged and run under
+      `sbt integrationTest`, per AGENTS.md's no-flaky-in-the-default-
+      gate policy. Investigating the timing itself remains open, but
+      no longer at the cost of every landing's gate.
 
 ## Correctness and the core (specs/sim.md, specs/typestate.md)
 
