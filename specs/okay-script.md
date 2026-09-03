@@ -235,7 +235,7 @@ object Meta:
     /** nearest-enclosing-heading-wins, then front-matter */
     def get(key: String): Option[String]
     def apply(key: String): String   // throws if absent
-    def section: Option[Section]     // the nearest enclosing heading, if any
+    def section: Option[Section]     // nearest REAL heading (excludes the synthetic root)
 ```
 
 - `Context.get`/`apply` is the UNTYPED access the operator asked for —
@@ -253,34 +253,66 @@ object Meta:
   synthesized code once the WHOLE file has been parsed, so it is
   always complete). This is a real, documented asymmetry, not a bug.
 
-### How code reaches it — an injected `given`, not a runtime re-parse
+### How code reaches it — `Meta.current`, NOT an injected `given`
 
-Both `run` and `render` share ONE tokenizer pass that, alongside the
-existing Text/Code/Interp segmentation, tracks the CURRENT heading
-path as it walks the document and pairs every segment/block with it.
-Source synthesis, whenever a segment's path differs from the previous
-one, emits a fresh local binding BEFORE that segment's own code:
+The first design written here injected a fresh local `given
+okay.script.Meta.Context` before each segment whose heading path
+differed from the one before it, reasoning that Scala local
+re-declaration shadows forward the way `val` does for `run`'s own
+`val`/`def` visibility. **Tested before landing, empirically, and
+WRONG on both counts**, corrected here rather than silently:
+
+1. **Re-declaring a `given` with the same name at the same flat scope
+   is a COMPILE ERROR** (`"_okayScriptMeta_ is already defined as
+   given instance _okayScriptMeta_"`) — unlike a plain `val`, a
+   `given` does not get the ordinary local-shadowing leniency.
+2. Even past that: **a plain `given x: T = expr` is evaluated ONCE**
+   (memoized, like a `lazy val`), not re-evaluated per `summon` —
+   confirmed with a throwaway two-line probe (`given ctx: Int =
+   Holder.v`, print `summon[Int]`, mutate `Holder.v`, print again:
+   `1` `1`, not `1` `2`). So even giving each declaration a UNIQUE
+   name would not have worked: whichever one got summoned would keep
+   answering with ITS OWN one-time snapshot, and worse, more than one
+   same-TYPE given in one flat scope is ambiguous for `summon`/`using`
+   resolution regardless of name. A real per-position auto-refreshing
+   `given` needs actual NESTED lexical scopes — which `run`/`render`
+   deliberately do NOT have, because that is exactly what keeps a
+   `val`/`def` from one ```scala block visible to every LATER block
+   in the file.
+
+The actual mechanism: `Meta.current: Context` (a plain, always-fresh
+method reading a mutable var) and `Meta.setCurrent(c: Context): Unit`.
+The shared tokenizer (below) still tracks the heading path per
+segment/block, and source synthesis still emits something before each
+segment whose path differs from the one before it — but a PLAIN
+STATEMENT, not a binding:
 
 ```scala
-given _okayScriptMeta_: okay.script.Meta.Context = <the Context, LITERALIZED as a Scala constructor call>
+okay.script.Meta.setCurrent(okay.script.Meta.Context(_okayScriptDoc_, Vector(<path, LITERALIZED>)))
 ```
 
-Local `given`/`val` re-declaration at the SAME flat scope shadows
-forward from its point of declaration (ordinary Scala redefinition
-semantics) — so code textually under a DEEPER heading, appearing
-LATER in the flat synthesized body, sees a Context whose `path` is
-longer (or different), and a `def`/`val` from an earlier ```scala
-block stays visible throughout (the flat single-scope model `run`
-already relies on is UNCHANGED — only `given Meta.Context` is
-introduced additively). The Context is LITERALIZED at compile time
-(rendered as `Meta.Context(Meta.Doc(...), Vector(Meta.Section(...),
-...))` source text) rather than embedding the raw markdown for the
-script to re-parse at its own runtime — simpler, and it means using
-this feature does not require `okay.script.Meta`'s PARSER (only its
-data types) to be reachable from the script's own `Classpath`, though
-referencing the `Meta.Context`/`Section`/`Value` TYPES in a `${expr}`
-or a ```scala block obviously still does need `okay-script`'s classes
-on that `Classpath`.
+Plain statements have none of `given`'s restrictions — this compiles
+and behaves exactly as intended, verified by the actual test suite
+(not just a probe). `_okayScriptDoc_` is a `val` holding the WHOLE
+`Meta.Doc`, literalized ONCE at the top of the synthesized body (a
+Scala constructor-call source string, e.g. `Meta.Doc(Map(...),
+Meta.Section(...))`) rather than embedding the raw markdown for the
+script to re-parse at its own runtime.
+
+**This metadata machinery is emitted ONLY when the document actually
+has some** (`hasMeta`: non-empty front-matter, or the root has yaml or
+a heading) — a document with none of those (every script/example that
+predates this feature, and the common case going forward for a plain
+app/script) gets NO `okay.script.Meta` reference in its synthesized
+source at all. This matters beyond tidiness: it is what keeps
+`run`/`render` SELF-SUFFICIENT (compilable against scala-library
+alone) for a metadata-free script — the first version of this feature
+unconditionally emitted the `Meta` reference and broke exactly that,
+caught by `TestScalaScriptClassloaderIsolation`'s minimal-Classpath
+test (`Not found: okay` — `okay-script`'s own classes were not on that
+test's deliberately narrow `Classpath`). Using this feature AT ALL
+still needs `okay-script`'s classes reachable from the script's own
+`Classpath`, same as any other library a script imports.
 
 Access from a script (an excerpt of an `.md` file, shown as markdown
 itself — the outer fence below is 4 backticks specifically so its
@@ -289,11 +321,23 @@ OWN inner ```scala fence renders literally):
 ````markdown
 ```scala
 import okay.script.Meta
-val greeting = summon[Meta.Context]("tagline")
+val greeting = Meta.current("tagline")
 ```
 
-Всего услуг: ${summon[Meta.Context].section.map(_.yaml.size).getOrElse(0)}
+Всего услуг: ${Meta.current.section.map(_.yaml.size).getOrElse(0)}
 ````
+
+A script that wants `given`/context-function ERGONOMICS can still
+have them — just declared LOCALLY, immediately before use, which is
+correct precisely because it is a fresh read at that exact point, not
+something the injected machinery carries forward across a heading
+transition:
+
+```scala
+def greet()(using ctx: Meta.Context): String = "hi " + ctx("name")
+given Meta.Context = Meta.current
+println(greet())
+```
 
 ## Interpolation — `render`, "JSP but Scala+Markdown" (okay-script-interpolation, 2026-09-03)
 
@@ -496,10 +540,11 @@ object ScalaScript:
   def blocks(markdown: String): Vector[Block]
   /** classpath defaults to Classpath.ambient; a script's own `using
    * dep` coordinates are resolved and appended before compiling,
-   * regardless of which classpath was passed in. Every ```scala block
-   * (and, for `render`, every `${expr}` too) sees a local
-   * `given okay.script.Meta.Context` scoped to its own heading
-   * position -- see "Metadata as context" above. */
+   * regardless of which classpath was passed in. If the document has
+   * front-matter/yaml/headings, `okay.script.Meta.current` reflects
+   * the right position for every ```scala block (and, for `render`,
+   * every `${expr}` too) as execution reaches it -- see "Metadata as
+   * context" above. */
   def run(markdown: String, classpath: Classpath = Classpath.ambient): Result
   /** the whole document, prose and code, as ONE program: ${expr}
    * markers in prose are evaluated and substituted; the rendered
@@ -524,6 +569,13 @@ object Meta:
     def section: Option[Section]
 
   def parse(markdown: String): Doc
+
+  /** the metadata for wherever synthesized code has most recently
+   * told `setCurrent` it is -- a plain, always-fresh method (NOT a
+   * `given` -- see "How code reaches it" above for why one does not
+   * work here). */
+  def current: Context
+  def setCurrent(c: Context): Unit
 ```
 
 - `blocks` extracts every ` ```scala ` … ` ``` ` fenced region (a line
@@ -700,22 +752,34 @@ only this one step, and only when a script asks for it, does.
       length.
 - [x] code under a DEEPER heading sees that heading's OWN yaml, its
       PARENT heading's yaml, and the front-matter, all through ONE
-      `summon[Meta.Context]` — nearest-wins on a key present at more
-      than one level.
+      `Meta.current` — nearest-wins on a key present at more than one
+      level.
+- [x] a code block under a PARENT heading, appearing BEFORE a deeper
+      child's own yaml is declared, does not see it — document order,
+      the same rule `val`/`def` visibility already follows.
 - [x] code OUTSIDE any heading (before the first one, or in a document
-      with none) still sees the front-matter via `Context.get`/`apply`
-      — `path` is just `Vector(root)`, not an error.
+      with none) still sees the front-matter via `Meta.current.get`/
+      `apply` — `path` is just `Vector(root)`, not an error, and
+      `Context.section` is `None` there.
 - [x] a ```yaml fence's content does NOT appear in `render`'s output
       (consumed as metadata), while a ```json fence (or any OTHER
       non-scala language tag) still passes through verbatim — proving
       the yaml special-case does not leak into the general rule.
-- [x] `${...}` in prose can read `summon[Meta.Context]` directly (not
-      just a ```scala block) — the given is in scope for interpolation
-      markers too, since they compile into the SAME flat method body.
+- [x] `${...}` in prose can read `Meta.current` directly (not just a
+      ```scala block) — it compiles into the SAME flat method body.
 - [x] `run` (not just `render`) gives its ```scala blocks the same
-      `given Meta.Context`, scoped by their own heading position —
-      proving this is a property of the FILE, not of which mode
-      compiles it.
+      `Meta.current`, scoped by their own heading position — proving
+      this is a property of the FILE, not of which mode compiles it.
+- [x] `Meta.current.doc` reaches the FULL typed tree independent of
+      position — the `site.md` `services` shape, read back through
+      `doc.root.children.head.yaml`.
+- [x] a metadata-free document (no front-matter, no yaml, no headings)
+      never references `okay.script.Meta` in its synthesized source —
+      an explicit `Classpath` of scala-runtime-jars-only still compiles
+      and runs it (self-sufficiency preserved for the common case).
+- [x] a script that wants `given`/context-function ergonomics can
+      still have them by writing `given Meta.Context = Meta.current`
+      itself, locally, immediately before use.
 
 ## Results
 
@@ -724,9 +788,31 @@ explicit `Classpath`, `//> using dep` + Coursier resolution; lifecycle:
 `Thread.interrupt()` on the caller's own thread, no new API; worked
 example: examples/it-consulting-storefront.md; classloader isolation:
 platform-only parent per script; interpolation: `render`, `${expr}` in
-prose, examples/render-storefront.md). Traps found by the tests, all
-fixed before landing:
+prose, examples/render-storefront.md; metadata: `okay.script.Meta`,
+front-matter + heading-scoped ```yaml as `Meta.current`). Traps found
+by the tests, all fixed before landing:
 
+- **`Meta.current` was NOT the first design — a `given`-based one was,
+  and it failed on BOTH counts an empirical probe checked, not just
+  one.** See "How code reaches it" above for the full account: local
+  `given` re-declaration at the same flat scope is a compile error
+  (unlike `val`), and even past that, a plain `given` is evaluated
+  ONCE (memoized), never re-evaluated per `summon` — verified with a
+  two-line throwaway probe BEFORE rewriting anything, not discovered
+  via a failing test after the fact. The real, working mechanism —
+  `Meta.current`/`setCurrent`, a plain always-fresh method plus a
+  mutable var — has none of `given`'s restrictions because it never
+  asks Scala's implicit resolution to do per-position work it isn't
+  built for.
+- **The FIRST version of `Meta`'s wiring unconditionally referenced
+  `okay.script.Meta` in every synthesized program**, breaking
+  self-sufficiency for a metadata-free script (the common case, and
+  every existing example/test) — caught immediately by
+  `TestScalaScriptClassloaderIsolation`'s deliberately minimal
+  `Classpath` test (`Not found: okay`, since that Classpath has no
+  reason to carry `okay-script`'s own classes). Fixed by `hasMeta`:
+  the `Meta` reference is emitted only when the document actually HAS
+  front-matter, yaml, or a heading.
 - **`render` needed no traps fixed — the design held on the first real
   run**, INCLUDING the case that most looked like it would break: a
   `${expr}` whose own expression contains a NESTED real Scala string

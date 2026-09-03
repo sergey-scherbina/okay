@@ -130,36 +130,129 @@ object ScalaScript:
         i += 1
     out.result()
 
-  /** The whole document, tokenized in document order: a ```scala fence
-   * (found exactly as `blocks` finds them) becomes ONE Code segment;
-   * everything else -- prose, other-language fences, fence markers
-   * included -- is scanned for `${...}` markers and split into
-   * Text/Interp segments around them.
+  private val yamlFenceOpen = """```yaml(\s+\S+)?\s*""".r
+  private val headingRe = """(#{1,6})\s+(.*?)\s*""".r
+
+  /** The whole document, tokenized in document order, each segment
+   * paired with its heading-ancestor path (root..nearest enclosing
+   * heading) -- see specs/okay-script.md "Metadata as context". A
+   * ```scala fence (found exactly as `blocks` finds them) becomes ONE
+   * Code segment; a ```yaml fence is METADATA -- folded into the
+   * current section's `yaml` (via `Meta.parseYaml`), producing no
+   * Segment at all; a heading line updates the path AND is itself
+   * kept as ordinary text (headings render); everything else --
+   * prose, other-language fences, fence markers included -- is
+   * scanned for `${...}` markers and split into Text/Interp segments.
+   * Front-matter (if any) is skipped here -- it plays no role in the
+   * PATH, only in `Meta.Context.get`'s fallback, via the separately
+   * parsed `Meta.Doc`.
    */
-  private def segments(markdown: String): Vector[Segment] =
+  private def tokenize(markdown: String): Vector[(Segment, Vector[Meta.Section])] =
     val lines = markdown.linesWithSeparators.toVector.map(_.stripLineEnd)
-    val out = Vector.newBuilder[Segment]
+    var i = 0
+    if lines.headOption.contains("---") then
+      val end = lines.indexWhere(_ == "---", 1)
+      if end > 0 then i = end + 1
+
+    final case class Building(level: Int, title: String, var yaml: Vector[Meta.Value])
+    val stack = scala.collection.mutable.ArrayBuffer(Building(0, "", Vector.empty))
+    def currentPath: Vector[Meta.Section] =
+      stack.toVector.map(b => Meta.Section(b.level, b.title, b.yaml, Vector.empty))
+    def closeTo(level: Int): Unit =
+      while stack.length > 1 && stack.last.level >= level do stack.remove(stack.length - 1): Unit
+
+    val out = Vector.newBuilder[(Segment, Vector[Meta.Section])]
     val textLines = Vector.newBuilder[String]
     def flushText(): Unit =
       val t = textLines.result()
-      if t.nonEmpty then out ++= splitInterpolations(t.mkString("\n"))
+      if t.nonEmpty then
+        val path = currentPath
+        splitInterpolations(t.mkString("\n")).foreach(seg => out += (seg -> path))
       textLines.clear()
-    var i = 0
+
     while i < lines.length do
-      if fenceOpen.matches(lines(i)) then
+      val line = lines(i)
+      if fenceOpen.matches(line) then
         flushText()
         var j = i + 1
         val body = Vector.newBuilder[String]
         while j < lines.length && !fenceClose.matches(lines(j)) do
-          body += lines(j)
-          j += 1
-        out += Segment.Code(body.result().mkString("\n"))
+          body += lines(j); j += 1
+        out += (Segment.Code(body.result().mkString("\n")) -> currentPath)
+        i = j + 1
+      else if yamlFenceOpen.matches(line) then
+        flushText()
+        var j = i + 1
+        val body = Vector.newBuilder[String]
+        while j < lines.length && !fenceClose.matches(lines(j)) do
+          body += lines(j); j += 1
+        stack.last.yaml = stack.last.yaml :+ Meta.parseYaml(body.result())
         i = j + 1
       else
-        textLines += lines(i)
-        i += 1
+        line match
+          case headingRe(hashes, title) =>
+            flushText()
+            closeTo(hashes.length)
+            stack += Building(hashes.length, title, Vector.empty)
+            textLines += line
+            i += 1
+          case _ =>
+            textLines += line
+            i += 1
     flushText()
     out.result()
+
+  /** A `Meta.Value` as Scala source -- a constructor call, structurally
+   * recursive over the (small) parsed metadata tree.
+   */
+  private def metaValueLiteral(v: Meta.Value): String = v match
+    case Meta.Value.Str(s) => s"okay.script.Meta.Value.Str(${scalaStringLiteral(s)})"
+    case Meta.Value.Arr(items) =>
+      s"okay.script.Meta.Value.Arr(Vector(${items.map(metaValueLiteral).mkString(", ")}))"
+    case Meta.Value.Obj(fields) =>
+      val fs = fields.map((k, v) => s"(${scalaStringLiteral(k)}, ${metaValueLiteral(v)})").mkString(", ")
+      s"okay.script.Meta.Value.Obj(Vector($fs))"
+
+  private def sectionLiteral(s: Meta.Section): String =
+    val yaml = s.yaml.map(metaValueLiteral).mkString(", ")
+    val children = s.children.map(sectionLiteral).mkString(", ")
+    s"okay.script.Meta.Section(${s.level}, ${scalaStringLiteral(s.title)}, Vector($yaml), Vector($children))"
+
+  private def docLiteral(d: Meta.Doc): String =
+    val fm = d.frontMatter.map((k, v) => s"(${scalaStringLiteral(k)}, ${scalaStringLiteral(v)})").mkString(", ")
+    s"okay.script.Meta.Doc(Map($fm), ${sectionLiteral(d.root)})"
+
+  private def hasMeta(doc: Meta.Doc): Boolean =
+    doc.frontMatter.nonEmpty || doc.root.yaml.nonEmpty || doc.root.children.nonEmpty
+
+  /** Wraps a sequence of (heading-path, statement-source) pairs into
+   * ONE body. A document with NO front-matter, yaml, or headings emits
+   * no `okay.script.Meta` reference at all -- `run`/`render` stay
+   * self-sufficient (scala-library only) for the common metadata-free
+   * case, which is every script/example that predates this feature.
+   * Otherwise: a `val` holding the whole `Meta.Doc` (literalized
+   * ONCE), then -- whenever a path differs from the one before it --
+   * `okay.script.Meta.setCurrent(...)` (a plain statement; `given`
+   * cannot do this -- see Meta.scala's own comment: a plain `given` is
+   * evaluated once, not per summon, confirmed empirically), then the
+   * segment/block's own statement.
+   */
+  private def withMeta(doc: Meta.Doc, items: Vector[(Vector[Meta.Section], String)]): String =
+    val sb = new StringBuilder
+    if hasMeta(doc) then
+      sb ++= "  val _okayScriptDoc_ : okay.script.Meta.Doc = " ++= docLiteral(doc) ++= "\n": Unit
+      var prevPath: Option[Vector[Meta.Section]] = None
+      for (path, code) <- items do
+        if !prevPath.contains(path) then
+          val p = path.map(sectionLiteral).mkString(", ")
+          sb ++= s"  okay.script.Meta.setCurrent(okay.script.Meta.Context(_okayScriptDoc_, Vector($p)))\n"
+          prevPath = Some(path)
+        if code.nonEmpty then sb ++= code ++= "\n": Unit
+    else
+      for (_, code) <- items do
+        if code.nonEmpty then sb ++= code ++= "\n": Unit
+    sb ++= "  ()\n"
+    sb.toString
 
   /** Splits a text run on `${expr}` markers (`$${` escapes to a
    * literal `${`). Brace-depth-aware, and quote-aware within the
@@ -226,29 +319,38 @@ object ScalaScript:
    * (see Block/Result docs). `classpath` defaults to the calling
    * process's own -- see Classpath's doc for why that is a hypothesis,
    * not a given -- and a script's own `//> using dep` directives are
-   * resolved and appended to it before compiling.
+   * resolved and appended to it before compiling. Every block sees a
+   * local `given okay.script.Meta.Context` scoped to its own heading
+   * position -- see specs/okay-script.md "Metadata as context".
    */
   def run(markdown: String, classpath: Classpath = Classpath.ambient): Result =
     withDeps(markdown, classpath): cp =>
-      val src = blocks(markdown).map(_.code).mkString("\n\n")
-      val body = if src.isEmpty then "  ()" else src.linesWithSeparators.map("  " + _).mkString
-      compileAndRun(body, cp)
+      val doc = Meta.parse(markdown)
+      val items = tokenize(markdown).collect { case (Segment.Code(code), path) =>
+        (path, code.linesWithSeparators.map("  " + _).mkString)
+      }
+      compileAndRun(withMeta(doc, items), cp)
 
   /** The whole document -- prose AND code -- as one program: `${expr}`
    * markers in prose (outside ```scala fences) are evaluated and their
    * `.toString` substituted in place; everything else passes through
-   * verbatim. The rendered document is `Result.stdout` on success. See
-   * specs/okay-script.md "Interpolation".
+   * verbatim (a ```yaml fence is METADATA and does not appear in the
+   * output; any OTHER non-scala language tag still does). The
+   * rendered document is `Result.stdout` on success. Every segment
+   * sees the same local `given okay.script.Meta.Context` `run` gives
+   * its blocks. See specs/okay-script.md "Interpolation" and
+   * "Metadata as context".
    */
   def render(markdown: String, classpath: Classpath = Classpath.ambient): Result =
     withDeps(markdown, classpath): cp =>
-      val body = segments(markdown).map {
-        case Segment.Text(s) if s.nonEmpty => "  print(" + scalaStringLiteral(s) + ")"
-        case Segment.Text(_) => ""
-        case Segment.Interp(expr) => s"  print(($expr).toString)"
-        case Segment.Code(code) => code.linesWithSeparators.map("  " + _).mkString
-      }.mkString("\n")
-      compileAndRun(if body.isEmpty then "  ()" else body, cp)
+      val doc = Meta.parse(markdown)
+      val items = tokenize(markdown).map {
+        case (Segment.Text(s), path) if s.nonEmpty => (path, "  print(" + scalaStringLiteral(s) + ")")
+        case (Segment.Text(_), path) => (path, "")
+        case (Segment.Interp(expr), path) => (path, s"  print(($expr).toString)")
+        case (Segment.Code(code), path) => (path, code.linesWithSeparators.map("  " + _).mkString)
+      }
+      compileAndRun(withMeta(doc, items), cp)
 
   private def withDeps(markdown: String, classpath: Classpath)(f: Classpath => Result): Result =
     val coords = Deps.declared(markdown)

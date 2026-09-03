@@ -69,6 +69,9 @@ class TestScalaScriptStorefront extends munit.FunSuite:
     assert(rootBody.contains("Настройка CI/CD под ключ"), rootBody)
     assert(rootBody.contains("Искусственный интеллект, который решает"), rootBody)
     assert(rootBody.contains("4500"), rootBody)
+    // tagline/contact now come from front-matter via Meta.current (okay-script-meta), not a hardcoded literal
+    assert(rootBody.contains("Решаю любые IT-проблемы любого масштаба"), rootBody)
+    assert(rootBody.contains("Напишите — отвечаю в течение дня"), rootBody)
 
     val (orderCode, orderBody) = get(s"http://127.0.0.1:$port/order/audit").get
     assertEquals(orderCode, 200)

@@ -15,14 +15,14 @@ class TestScalaScriptRender extends munit.FunSuite:
     assertEquals(r.stdout, "\nHello, okay!")
   }
 
-  test("render: a document with no ${...} at all passes through verbatim") {
+  test("render: a document with no ${...} at all passes through verbatim, including a non-scala/non-yaml fence") {
     val md =
       """# Title
         |
         |Just prose, no interpolation.
         |
-        |```yaml
-        |a: 1
+        |```json
+        |{"a": 1}
         |```
         |
         |More prose.
@@ -30,6 +30,24 @@ class TestScalaScriptRender extends munit.FunSuite:
     val r = ScalaScript.render(md)
     assert(r.ok, r.errors.mkString("\n"))
     assertEquals(r.stdout, md.stripLineEnd)
+  }
+
+  test("render: a ```yaml fence is METADATA -- consumed, not shown, unlike any other fenced language") {
+    val md =
+      """# Title
+        |
+        |```yaml
+        |a: 1
+        |```
+        |
+        |After.
+        |""".stripMargin
+    val r = ScalaScript.render(md)
+    assert(r.ok, r.errors.mkString("\n"))
+    assert(!r.stdout.contains("yaml"), r.stdout)
+    assert(!r.stdout.contains("a: 1"), r.stdout)
+    assert(r.stdout.contains("# Title"), r.stdout)
+    assert(r.stdout.contains("After."), r.stdout)
   }
 
   test("render: $${ escapes to a literal ${, alongside a real ${...} elsewhere in the same document") {

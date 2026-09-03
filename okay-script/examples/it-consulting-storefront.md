@@ -1,3 +1,8 @@
+---
+tagline: Решаю любые IT-проблемы любого масштаба. Адекватный подход. Цена договорная.
+contact: Напишите — отвечаю в течение дня. Консультация по записи.
+---
+
 # IT Consulting — storefront
 
 A worked example for `okay-script` (specs/okay-script.md, "Worked
@@ -14,11 +19,18 @@ behavior is normally a `scalascript` snippet (`on order: receive job;
 line work; line delivery`) — neither is reused here. Only the DATA
 crosses over; the page and the order handler below are ordinary Scala.
 
+The `tagline`/`contact` above are real front-matter (okay-script-meta,
+specs/okay-script.md "Metadata as context") — the page below reads
+them via `okay.script.Meta.current`, the same way `site.md`'s own
+front-matter feeds `busi`'s rendering, instead of hardcoding them a
+second time as Scala string literals.
+
 ```scala
 import okay.*
 import okay.given
 import okay.jetty.Jetty
 import okay.http.{Request, Response, Http, Server as OkayServer}
+import okay.script.Meta
 
 final case class Service(key: String, name: String, description: String, price: Double, currency: String)
 
@@ -57,9 +69,9 @@ def page: String =
      |</style>
      |<main>
      |  <h1>IT Consulting</h1>
-     |  <p class="tagline">Решаю любые IT-проблемы любого масштаба. Адекватный подход. Цена договорная.</p>
+     |  <p class="tagline">${Meta.current("tagline")}</p>
      |  ${services.sortBy(_.key).map(card).mkString("\n  ")}
-     |  <p class="contact">Напишите — отвечаю в течение дня. Консультация по записи.</p>
+     |  <p class="contact">${Meta.current("contact")}</p>
      |</main>""".stripMargin
 
 def orderPage(s: Service): String =
