@@ -1,5 +1,81 @@
 # Changelog
 
+## intent-classify — one Schema derivation is the taxonomy, the frame and the parser
+Completed: 2026-09-03
+Landed as 8ebad9bf (spec abd41ff5, backlog b9043dea, correction
+0ed33a1b). Intent classification in `okay-agent`, built from the three
+published approaches rather than from one: a structured-output LLM
+classifier, a hierarchical taxonomy, and an ontology/FrameNet system
+that uses no model at all.
+
+The synthesis is that a LABEL cannot be acted on and a filled FRAME
+can. "Proposal" does not answer an email; `Proposal(when, who, where)`
+does. Both come from ONE `Schema[I]`: FrameNet's Frame Elements are a
+product's required fields, which is exactly what `ToolSpec.jsonSchema`
+already computes from "not `Option`, no default". So the enumeration
+the model is shown and the decoder that reads its answer are the same
+value, and a label outside the taxonomy is a DECODE ERROR rather than
+a class of parsing bug — as is a slot that fails its own schema (a
+`When` that is not ISO-8601, through `SIso`).
+
+Two axes kept apart, which is the mistake the sources make: MULTI-INTENT
+is spans (both acted on), AMBIGUITY is ranked alts within a span (one
+chosen). A flat list expresses neither, and a caller holding one cannot
+tell which case it is in.
+
+Hierarchy costs nothing — the derivation already recurses — but the
+walk needed one thing the reading did not reveal: Scala encodes a
+hierarchy as a case WRAPPING the sub-enum, so a group node is a
+product, not a sum, and a walk that only descended sums stopped at
+"Proposal". Found by the first test run. A group is now "a one-field
+case whose field is itself a taxonomy"; a case whose single field is a
+plain value is a leaf. Both kernels used (`theCase`, `eachField`) hand
+the value over at its own type, so the whole walk takes no cast.
+
+Evaluation is a fold because a confusion matrix is a Monoid (the
+property `Postings` has, for the same reason), and the promotion rule
+is EXECUTABLE: `regressions` returns the classes that fell more than
+the tolerance, so "promote only if no class regresses by more than two
+points" is a function rather than a paragraph someone remembers.
+
+MEASURED FIRST, before any code, because a design decision rested on
+it: on the local 4B gateway, 24 labelled messages, both field orders.
+Schema field order reaches the wire (48/48 replies honoured it), and
+`why` BEFORE the label is worth 0.136 macro F1 (0.615 vs 0.479) at a
+cost of ~130 characters — so `Structured.cut`'s saving is real but buys
+the worse arm. Quality wins at that price.
+
+The useful finding is negative: the `Other` bucket COLLAPSES. Recall
+0.17 with reasoning, 0.00 without; every out-of-domain message was
+absorbed into a positive class (charged twice -> Request, birthday
+wishes -> Notification). "Always include an other bucket" is necessary
+and NOT sufficient — a model asked to choose among positive classes
+will choose one. Macro F1 alone reads as mediocre-but-working; only the
+matrix says a class is entirely absent, which is why `Report` is per
+class and why a test now pins that shape.
+
+A fine-tuned encoder was considered and REFUSED, on three independent
+grounds: the cost is the labels (1k-5k per class, so 18-90k examples
+for an 18-class taxonomy) rather than the compute; serving one needs
+ONNX Runtime or DJL, a JVM-only native library, inside a library that
+cross-builds to JS; and the conditions under which it wins are ">50
+qps and a stable taxonomy", while the taxonomy is the thing that will
+change most. Its replacement when a fast tier is finally justified is
+in the backlog: a linear probe over frozen embeddings, 72KB of weights,
+~18us for 18 classes (a cosine at 1536 components measured 1.04us in
+`Store.scala`), trained from LLM-distilled labels at 30-100 examples
+per class and needing no dependency at all.
+
+Deliberately NOT built, and said so in the spec rather than left to
+read as shipped: the `Structured.cut` wiring (so the token saving is
+reasoned about, not measured) and the `Rerun`-journal fixture. Those,
+plus the `Other` collapse, a Proposal/Request precedence rule, the
+symbolic and vector tiers and temporal slots, are six backlog entries,
+each carrying the trigger that would promote it.
+
+24 tests (`TestClassify` 13, `TestEval` 11, three ScalaCheck
+properties). Full matrix green: 2065 tests, 0 failures.
+
 ## okay-script-classloader-isolation — platform-only parent per script, closes a leak-through-host gap
 Completed: 2026-09-03
 Landed as e22ba638. Each `ScalaScript.run` call already got its OWN
