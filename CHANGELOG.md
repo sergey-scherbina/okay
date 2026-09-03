@@ -1,5 +1,43 @@
 # Changelog
 
+## ring-channel — two channel implementations written, measured, and deliberately not landed
+Completed: 2026-09-03
+Landed as 03b6c55e (backlog and measurements only — the code is
+withdrawn). Answers the operator's question, is a Michael-Scott
+channel better than the default, with numbers on one harness (one
+producer, one consumer, 4000 elements):
+
+| | µs |
+|---|---|
+| `zioQueue` (outside reference) | **122.2 ±9.7** |
+| `casChannel` (MS, unbounded) | **143.9 ±16.3** |
+| `stmChannelUnbounded` | 187.7 ±18.2 |
+| `ringChannel` (bounded) | 249.9 ±31.2 |
+| `stmChannel` (bounded) | 418.2 ±95.3 |
+
+So yes: **1.3x over the default on the honest pair** (both unbounded,
+since a ring cannot be unbounded) and within 18% of `zio.Queue`. That
+also corrects `backlog-dedup`, which had dropped MS after comparing it
+to a segmented ring that does not exist rather than to the default it
+would replace.
+
+**Neither implementation landed.** Their accounting test fails about
+one FULL GATE in three, always the same way — an element accepted by
+`k(true)` and never delivered. Three causes were found and fixed
+(ending on `closed` alone; a self-claimed waiter recursing on the
+stack until it overflowed; the open-check/enqueue pair losing
+atomicity once elements leave the state) and it still recurs, so a
+fourth remains undiagnosed. Shipping code with a known correctness bug
+behind a seam is still shipping it. Everything learned is filed as
+`channel-impls-correctness`, with where to look next and the warning
+that eight clean runs of the two suites preceded a gate failure.
+
+What survives is the property the exercise established:
+`StmChannel`'s single-CAS state is not merely slower — it is what
+makes open-check-and-enqueue **atomic**, and any implementation that
+splits elements out of the state owes that atomicity back explicitly.
+Three of the four bugs were that debt coming due.
+
 ## intent-domain-in-names — the case names ARE half the classifier
 Completed: 2026-09-03
 Landed as b3585b17. The hypothesis the two previous lanes left

@@ -1,5 +1,0 @@
-claimed: ring-channel — RingChannel behind the channel-seam interface, NOT as the default: the factory keeps returning StmChannel, so master stays green even if the protocol is wrong again. That safety is the whole reason the seam was built.
-
-The protocol, fixing channel-ring-integration's diagnosed bug (a waiter was temporarily REMOVED to attempt a pop, and a producer pushing in that window stranded the element): a waiter is {claimed: AtomicBoolean, resume: () => Unit}, and whoever CASes the claim OWNS completing it. A claimer never puts a waiter back untouched -- it runs resume, which re-attempts the whole operation and re-parks if needed. Removing a waiter from the queue is only ever done by its claimer or to discard one already claimed (dead), so the window cannot reopen. Both sides symmetric; close claims and runs everyone.
-
-Validate by running the EXISTING brutal concurrency test (TestChannel's 200-round producer/consumer/close accounting, which is what caught the last attempt) against RingChannel specifically, then measure it against StmChannel and zio.Queue on one harness.
