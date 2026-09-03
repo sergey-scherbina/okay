@@ -1,5 +1,0 @@
-slug: http-peer-address
-branch: feature/http-peer-address
-worktree: ../okay-wt-http-peer-address
-claimed: 2026-09-03
-scope: okay-http's Request gains an ADDITIVE `peer: Option[String]` (default None), and the three server-side constructors fill it where the transport knows it: okay-jetty, okay-netty, and okay-http's own JVM Server. Clients leave it None. Motivation: a downstream deployment can only rate-limit per IP behind a proxy header today, which is forgeable. Touches okay-http (Http.scala, scala-jvm/Server.scala), okay-jetty, okay-netty, specs/http.md and their tests. Does NOT touch build.sbt.

@@ -1,5 +1,35 @@
 # Changelog
 
+## http-peer-address — a served Request knows where it came from
+Completed: 2026-09-03
+Landed as 7b2b2b6 (spec) + 4fd1d62 (impl). `Request` carried the
+method, the url, the headers and the body — and nothing about WHO sent
+it. Fine for a client, which builds the request; wrong for a server,
+which is handed one and has to decide whether to answer it. The
+consumer that named it: a downstream service rate-limiting its
+endpoints could key only on identities the caller supplies, all
+forgeable, or on `X-Forwarded-For`, which is a claim in a header.
+`peer: Option[String] = None` — additive and defaulted, so every
+existing construction compiles and behaves unchanged, `Request.get`/
+`post`/`json` included: those build what a CLIENT sends. The three
+server-side constructors fill it through one `hostOf` helper each:
+okay-jetty, okay-netty and okay-http's own JVM server. The HOST,
+without the port, because a port changes per connection and keying a
+limiter on `host:port` hands every connection a fresh budget — which
+is the bug the field exists to fix, so each test asserts the absence
+of a colon rather than trusting the shape. `None` means UNKNOWN, never
+"trusted zero", and this is not `X-Forwarded-For`: that stays a
+proxy's claim and a consumer's decision to trust.
+Tests over real sockets on all three backends (the netty and okay-http
+ones are Live-tagged, as those suites already were).
+Gate: 75 suites, 1940 tests, 0 failures, 0 warnings — after two
+flakes that were NOT this change and were each reproduced away in
+isolation: okayCodecNative erroring under parallel load (77/77 alone),
+and TestLogin's tamper test, which builds its tamper as
+`token.dropRight(2) + "xx"` and therefore passes the ORIGINAL token
+whenever a JWT ends in `xx`, roughly 1 run in 4096. The second is
+recorded in BACKLOG as test-login-tamper-flake.
+
 ## nio-port-scope — every socket-binding suite into `integrationTest`, and one assertion that was testing the machine
 Completed: 2026-09-03
 Landed as a975ebe. Fourteen suites that BIND a real port move out of
