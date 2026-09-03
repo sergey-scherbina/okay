@@ -184,6 +184,88 @@ that proof: it only becomes readable once `run` RETURNS, and this
 script's `run` call does not return until interrupted — the response
 BODY is the observable side channel here, not the process's stdout.
 
+## Interpolation — `render`, "JSP but Scala+Markdown" (okay-script-interpolation, 2026-09-03)
+
+The operator's own framing for where `okay-script` sits: a new JSP,
+except the markup is Markdown and the embedded language is real
+Scala. Two things separate JSP from `run` as built: JSP mixes
+expressions directly INTO the markup text (`<%= expr %>`), not only in
+a separate code block; and JSP recompiles/reruns per request. This
+step is the first: prose-level interpolation. Per-request/hot-reload
+is a separate, later question (closer to an `okay-jetty` route than to
+`okay-script` itself) and is not addressed here.
+
+**A new function, `render`, not a change to `run`.** `run` stays
+exactly what it is — compile the concatenated ```scala blocks, run
+them for their SIDE EFFECTS (the storefront's server, an app's
+println output) — because every existing consumer (the storefront
+example, the lifecycle tests) depends on that contract and has no
+prose-interpolation need. `render(markdown, classpath):
+Result` is new and separate: it treats the ENTIRE document — prose
+AND code — as the program, and its product is the RENDERED TEXT, not
+side effects. It reuses `Result` (the rendered document is
+`Result.stdout` on success) rather than inventing a second result
+type, since the underlying mechanism is identical: compile one
+synthesized program, run it, capture what it printed.
+
+### The `${expr}` marker
+
+```
+Здесь пять услуг, дороже всех — ${services.maxBy(_.price).name}.
+```
+
+- `${...}` in PROSE (i.e. outside a ```scala fence) is a Scala
+  expression; `render` evaluates it in the SAME document-order scope
+  the enclosing ```scala blocks build (a `val`/`def` from an EARLIER
+  block, or an earlier interpolation's side effect, is visible; one
+  from a LATER block is not — identical scoping rule to `run`'s
+  block-concatenation, just extended to interpolations too), and
+  appends its `.toString` to the output in place of the marker.
+- `$${` is the escape for a literal `${` in the output (mirrors
+  Scala's own `s"...$$..."` convention for a literal `$`) — needed for
+  documentation ABOUT `okay-script` itself, this spec included.
+- The scanner is brace-depth- and quote-aware, not a naive
+  first-`}`-wins regex: `${ if (n > 0) "yes" else "no" }` and
+  `${services.map(s => s"${s.name}").mkString(", ")}` (a NESTED real
+  Scala string interpolation inside the expr) both parse correctly —
+  a `{`/`}` inside a double-quoted span within the expression does not
+  count toward the brace depth that closes the marker.
+- `${...}` has no special meaning INSIDE a ```scala fence — code
+  there is Scala already; if it contains its OWN `s"...${x}..."`
+  string interpolation, that is ordinary Scala, untouched.
+- Everything outside `${...}` markers — prose text, headings, other
+  fenced blocks (` ```yaml `, etc.) — passes through to the output
+  BYTE-IDENTICAL, fence markers included. `render` renders the whole
+  document; only `${...}` substitutes.
+
+### Compilation strategy
+
+The document is tokenized (line-by-line, mirroring `blocks`' own fence
+detection) into `Text` / `Code` / `Interp` segments in document order,
+then synthesized into ONE `@main` body:
+
+```scala
+@main def okayScriptMain(): Unit =
+  val _okayScriptOut_ = new StringBuilder
+  _okayScriptOut_.append("""<a Text segment, raw triple-quoted>""")
+  <a Code segment's statements, verbatim>
+  _okayScriptOut_.append((<an Interp segment's expr>).toString)
+  ...
+  print(_okayScriptOut_.toString)
+```
+
+— reusing `run`'s exact compile/load/invoke/stdout-capture machinery
+(`compileAndRun`, extracted from the code that used to be `runWith`'s
+body) with only the SOURCE-SYNTHESIS step swapped: `run` concatenates
+```scala blocks only; `render` walks the whole document. A `Text`
+segment is embedded as a raw `"""..."""` string (unescaped — Scala's
+plain triple-quoted strings do not interpret `$`, so a stray `$` in
+prose that is NOT part of a `${` marker needs no escaping at all) UNLESS
+it contains a `"""` run or ends in a `"` (either would make the closing
+`"""` ambiguous), in which case it falls back to a normal escaped
+string literal (`\`, `"`, and newlines escaped) — always correct, just
+less readable in the synthesized source, which nothing ever reads.
+
 ## Classloader isolation — resolved 2026-09-03 (okay-script-classloader-isolation)
 
 Each `run` call already gets its OWN `URLClassLoader` — two scripts
@@ -295,6 +377,10 @@ object ScalaScript:
    * dep` coordinates are resolved and appended before compiling,
    * regardless of which classpath was passed in. */
   def run(markdown: String, classpath: Classpath = Classpath.ambient): Result
+  /** the whole document, prose and code, as ONE program: ${expr}
+   * markers in prose are evaluated and substituted; the rendered
+   * document is Result.stdout on success. See "Interpolation" above. */
+  def render(markdown: String, classpath: Classpath = Classpath.ambient): Result
 ```
 
 - `blocks` extracts every ` ```scala ` … ` ``` ` fenced region (a line
@@ -441,6 +527,28 @@ only this one step, and only when a script asks for it, does.
       `ClassNotFoundException`, surfaced through `Result.thrown` —
       proving the platform-only parent actually isolates, not just
       that it compiles.
+- [x] `render` on a document with a preceding ```scala block and a
+      `${expr}` in prose referencing that block's `val`: the rendered
+      output has the prose with the expression's value substituted in
+      place, byte-identical elsewhere.
+- [x] `render` on a document with NO `${...}` at all: the output is
+      the document verbatim (prose passes through unchanged, including
+      any non-scala fenced blocks).
+- [x] `$${` in prose renders as a literal `${` — proven on text that
+      ALSO contains a real `${expr}` elsewhere, so both the escape and
+      the live marker are exercised in the same document.
+- [x] a `${expr}` whose expr itself contains braces (an `if/else`
+      block) and one containing a NESTED real Scala string
+      interpolation (`s"${x}"`) both render correctly — proving the
+      scanner is brace-depth- and quote-aware, not a naive
+      first-`}`-wins regex.
+- [x] literal text containing a `"` at the end of a chunk, and text
+      containing a `"""` run, both render correctly via the escaped
+      fallback — proving the raw-triple-quote optimization's own
+      safety check is actually exercised, not just the common case.
+- [x] a `${expr}` referencing an undefined name is a compile error via
+      `Result.errors`, exactly like a bad `run` block — `render` never
+      throws a compiler exception out of itself either.
 
 ## Results
 
