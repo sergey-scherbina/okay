@@ -1,0 +1,15 @@
+slug: gate-honesty
+agent: claude (session 0117WufMiBxApL8MwqDzA98G)
+started: 2026-09-03
+scope:
+  - the stated-but-untested obligation: runWith == foldCont(handler) / identity,
+    over program shapes, for Free and Eager (TestReflect cannot catch a
+    divergence — both of its sides call runWith)
+  - a guard test: docs/modules/*.md <-> docs/README.md index rows <-> build.sbt
+    project list (8 rows were missing and nothing noticed)
+  - okay-demo test isolation: OKAY_CHAT_LOG=:memory: for Test, so the suite
+    stops depending on leftover disk state from the shared chatStore singleton
+  - one measured sentence: with the DEFAULT Vectors.hashing() embedder the
+    0.85 similarity branch in propose is inert
+files: src/test/scala/*, okay-deploy/src/test/*, build.sbt (okayDemo Test envVars),
+       specs/demo-chat.md, docs/
