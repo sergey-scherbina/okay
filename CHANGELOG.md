@@ -1,5 +1,26 @@
 # Changelog
 
+## chunk-size-representation — declined, and the premise it rested on was wrong
+Completed: 2026-09-03
+Landed as a6f4f89 (a benchmark lane and docs — the optimisation
+itself was reverted). The suspicion was that chunked merging gets
+dearer with the chunk size because `Stage.chunked` accumulates into a
+`Vector` and copies it into an `ArraySeq` per chunk. Filling a
+`ChunkBuf` instead, measured against master in one window: 2.2% WORSE
+at the default 16 (223.5 ±2.8 against 218.7 ±1.7, bars
+non-overlapping), 11% better at 256, 8% at 1024 — helping only sizes
+nobody picks and leaving the curve's shape intact. Declined.
+
+What survives is better than the optimisation would have been: the
+curve was never a chunking defect. It compared our per-element
+`Source`, chunked after the fact, against a stream chunked by
+CONSTRUCTION, which never had elements to pay for. On the
+like-for-like pair — okay `Chunks.merge` **23.2 ±0.2** against ZIO
+`ZStream.merge` 58.6 ±0.7 on 2x2000 — **okay is 2.5x ahead**. So the
+cost is what a per-element source costs before any chunking, and the
+way past it is not to have one. `docs/benchmarks.md` §6b and the
+guide now say that instead of leaving "ZIO is ahead of us" standing.
+
 ## netty-integration — okay-netty out of the default gate, into `integrationTest`
 Completed: 2026-09-03
 Landed as 1d7fbb1. Real sockets and real ports: `TestBackends` failed
