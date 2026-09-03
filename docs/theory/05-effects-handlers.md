@@ -24,6 +24,102 @@ and inferable. Kiselyov, Sabry and Swords' extensible effects
 a single monad over an open union of signatures — the design Okay
 follows, with chapter 4's freer monad as the carrier.
 
+## What the middle constructor decides
+
+`Free` and `Cont` are the same three constructors. `Pure` and `Bind` are
+identical in both; only the node between them differs:
+
+```scala
+case Inject(a: F[A])                 // Free.scala
+case Shift (f: (A => S) => R, depth) // Cont.scala
+```
+
+`Pure` and `Bind` are the free monad's *skeleton* — returning and
+sequencing — and they coincide because neither depends on what an
+operation is. The middle constructor **is** the signature. And the
+difference between the two is exactly the boundary this chapter opened
+with: `Inject` does not mention the continuation, `Shift` receives it.
+
+That is an equation, not a matter of style. An operation is
+**algebraic** when it commutes with sequencing:
+
+```
+op(...) >>= k   =   op(... >>= k)
+```
+
+`Inject` satisfies it by construction — there is nowhere in the node to
+put a `k`, because chapter 4's freer design keeps the continuation
+*beside* the operation, in `Bind`. `Shift` cannot satisfy it: the
+continuation is its argument. Three things follow, and all three are
+visible in the library.
+
+**It fixes the arity of the types.** `Free[F, A]` needs one index;
+`Cont[A, S, R]` needs three. Answer-type modification (chapter 3) is
+the price of seeing the continuation, and only the type that sees it
+pays.
+
+**It licenses rewrites.** Because algebraic operations commute with
+bind, a program over `Free` may have its operations reordered, batched
+or hoisted without changing meaning — the equation *is* the permission.
+Over `Cont` none of that is sound. So the choice of node is not
+taxonomy: it is a static marker of which transformations a program
+admits.
+
+**And it places Okay's two machines.** Programs are `Free` (`A ! F`);
+handlers are `Cont` (`F !> S`, that is `F ==> ([X] =>> X /> S)`), and
+`foldCont` sends the first into the second. The formal ground is
+Filinski's: any monad can be represented in a language with first-class
+delimited continuations \[[Filinski 1994](#ref-filinski-1994)\], which
+is why the effect layer can rest on the control layer rather than
+beside it. That handlers and delimited control are interdefinable is
+Kammar, Lindley and Oury's \[[2013](#ref-kammar-2013)\]; the sharpest
+comparison of the three ways to expose user-defined effects is Forster,
+Kammar, Lindley and Pretnar's \[[2017](#ref-forster-2017)\].
+
+## Scoped operations, and the kind that rules them out
+
+Some operations refuse to be algebraic for a reason no encoding can
+argue away: they take a *computation* as an argument, not just a
+continuation. `catch`, `local`, `bracket`, `once` are the standard
+examples, and handler order changes their meaning — the subject of
+Wu, Schrijvers and Hinze's "effect handlers in scope"
+\[[2014](#ref-wu-2014)\] and, with a semantics, Piróg, Schrijvers, Wu
+and Jaskelioff's \[[2018](#ref-pirog-2018)\].
+
+Two nodes in this library do carry computations:
+
+```scala
+case Fork(prog: Unit ! Op)            extends Op[Fiber]  // Sim.scala
+case OrElse[A](a: A ! Tx, b: A ! Tx)  extends Tx[A]      // Stm.scala
+```
+
+The literature's hazard is that a handler relaying the row underneath
+such a node cannot see inside it, so an operation hidden in the payload
+escapes the handler that was supposed to remove it. Okay's `relay`
+would indeed miss it: it walks the *spine*, and re-injects a foreign
+node unchanged without descending into its payload.
+
+It cannot happen here, and the reason is the **kind** of a signature.
+`Free[F[+_], A]` takes a first-order `F`, so a signature has no way to
+name the ambient row inside its own nodes: writing
+`Fork(prog: Unit ! (Op + G))` would need a `G` that the declaration of
+`Op` cannot mention. A payload can therefore only be closed over its
+own signature — exactly what the two nodes above show — and a closed
+payload cannot smuggle a foreign operation past a handler. The scoped
+hazard is ruled out by the kind, not by a convention anyone must
+remember.
+
+The same kind is what limits them: you cannot fork a program that also
+logs, because `Unit ! (Op + Writer % String)` is unspeakable there.
+Lifting that restriction means going to **higher-order signatures** —
+`F[M[+_], +A]` instead of `F[+A]`, with an operation that rewrites the
+nested computations when a handler relays the row beneath them, which
+is what the scoped-effects papers above construct. That is a change to
+the kind of every signature in the system, and it is not made here
+because no consumer has asked for it. The two comments at the nodes say
+so, so that the next person to want it learns the price before paying
+it by accident.
+
 ## Rows as unions, and the trusted kernel
 
 Okay's effect row is a *type-level union of signatures*:
@@ -103,6 +199,18 @@ refinement both read it.
   ESOP 2009.
 - <a id="ref-kiselyov-2013"></a>Oleg Kiselyov, Amr Sabry, Cameron Swords. *[Extensible effects: an
   alternative to monad transformers.](https://okmij.org/ftp/Haskell/extensible/exteff.pdf)* Haskell Symposium 2013.
+- <a id="ref-filinski-1994"></a>Andrzej Filinski. *[Representing
+  monads.](https://doi.org/10.1145/174675.178047)* POPL 1994.
+- <a id="ref-kammar-2013"></a>Ohad Kammar, Sam Lindley, Nicolas Oury. *[Handlers in
+  action.](https://doi.org/10.1145/2500365.2500590)* ICFP 2013.
+- <a id="ref-forster-2017"></a>Yannick Forster, Ohad Kammar, Sam Lindley, Matija Pretnar. *[On the
+  expressive power of user-defined effects: effect handlers, monadic reflection,
+  delimited control.](https://doi.org/10.1145/3110257)* ICFP 2017.
+- <a id="ref-wu-2014"></a>Nicolas Wu, Tom Schrijvers, Ralf Hinze. *[Effect handlers in
+  scope.](https://doi.org/10.1145/2633357.2633358)* Haskell Symposium 2014.
+- <a id="ref-pirog-2018"></a>Maciej Piróg, Tom Schrijvers, Nicolas Wu, Mauro Jaskelioff.
+  *[Syntax and semantics for operations with
+  scopes.](https://doi.org/10.1145/3209108.3209166)* LICS 2018.
 - <a id="ref-kiselyov-2015"></a>Oleg Kiselyov, Hiromi Ishii. *[Freer monads, more extensible
   effects.](https://okmij.org/ftp/Haskell/extensible/more.pdf)* Haskell Symposium 2015.
 

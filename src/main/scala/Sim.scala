@@ -50,6 +50,15 @@ object Sim {
 
   /** the simulation's operations — the scheduling points */
   enum Op[+A]:
+    /** SCOPED, not algebraic: the node carries a computation, so it
+     * does not commute with bind (docs/theory/05, "what the middle
+     * constructor decides"). Safe because the payload is CLOSED over
+     * this signature: `Unit ! Op` cannot mention an ambient row, so
+     * nothing hides here from a handler relaying the row underneath —
+     * and `!.relay` would not see it, since it walks the spine and
+     * passes a foreign node through without descending. Widening this
+     * to `Unit ! (Op + G)` is unspeakable at the kind `F[+_]` and
+     * needs higher-order signatures; read the price there first. */
     case Fork(prog: Unit ! Op) extends Op[Fiber]
     case Sleep(millis: Long) extends Op[Unit]
     case Now() extends Op[Long]

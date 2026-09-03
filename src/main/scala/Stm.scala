@@ -138,7 +138,16 @@ enum Tx[+A] {
   /** run `a`; if IT retries (not on any other failure), run `b`
    * instead — `a`'s writes are discarded, never committed, as if it
    * never ran. If `b` ALSO retries, the whole thing retries, parked
-   * on whatever EITHER branch read (the classic STM combinator) */
+   * on whatever EITHER branch read (the classic STM combinator).
+   *
+   * SCOPED, not algebraic: the node carries computations, so it does
+   * not commute with bind (docs/theory/05, "what the middle
+   * constructor decides") — `perform` descends into the branches
+   * itself, which is exactly what a generic relay could not do. Safe
+   * because the payload is CLOSED over this signature: `A ! Tx`
+   * cannot mention an ambient row, so no foreign operation can hide
+   * in a branch and escape its handler. Widening it needs
+   * higher-order signatures; read the price there first. */
   case OrElse[A](a: A ! Tx, b: A ! Tx) extends Tx[A]
 }
 
