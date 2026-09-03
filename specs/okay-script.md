@@ -569,7 +569,53 @@ mixing concurrent one-shot `render` calls WITH real per-request `Web`
 data takes on the same single-threaded caveat `Meta.current` already
 carries; `Page` is the safe path for that use case, by design.
 
-## Classloader isolation — resolved 2026-09-03 (okay-script-classloader-isolation)
+## Line-accurate errors (okay-script-line-mapping, 2026-09-03)
+
+Since the beginning, a compile error's line number reported through
+`Result.errors` was dotc's own — a line in the SYNTHESIZED wrapped
+source (`object OkayScriptMain: def run(args): Unit = ...`), never
+translated back to the `.md` file a real author is actually looking
+at. `Block.startLine` was captured from the start for exactly this,
+and sat unused until now.
+
+**The mechanism**: as `run`/`render` build the synthesized body, they
+now build a PARALLEL `Vector[Int]` — one entry per synthetic source
+line, giving that line's ORIGINAL markdown line number (1-based, same
+convention as `Block.startLine`), or `-1` for a line with NO original
+counterpart (wrapper boilerplate — `object OkayScriptMain:`, `def
+run(args...):` — and any injected `okay.script.Meta.setCurrent`/
+`okay.script.Web.decodeArgs` statement). `Segment.Code` and
+`Segment.Interp` both gained a `startLine: Int` (set by `tokenize`,
+mirroring how `blocks` already computes `Block.startLine`); `Segment.
+Text` did not, since a raw string literal cannot itself carry a
+compile error worth mapping precisely.
+
+**Per-line precision within a segment**: a multi-line `Code` block's
+`k`-th physical line maps to `startLine + k` (an error on the block's
+5th line correctly reports the ORIGINAL 5th line, not just the
+block's first). An `Interp` segment collapses to ONE synthesized
+source line (`print((<expr>).toString)`) UNLESS the expr itself
+contains a literal embedded newline (a genuinely multi-line `${...}`
+marker, not exercised by any test) — in that one case every physical
+line of the generated call maps to the marker's single `startLine`,
+an accepted imprecision for an edge case that does not currently
+occur in practice.
+
+**Diagnostic collection** (`collectingReporter`) now reads
+`dia.position()` (dotc's `Optional[interfaces.SourcePosition]` — the
+line-only accessor that needs no `Context` argument, unlike
+`SourcePosition.line(using Context)`) — confirmed EMPIRICALLY to be
+0-based via a throwaway probe (an error on a file's physical 3rd line
+reported `line() == 2`) before writing anything, not assumed from the
+API's own naming. When present, `line() + 1` is looked up in the
+mapping vector; a hit prefixes the message with `"L<n>: "` (the
+ORIGINAL `.md` line); a miss (out of range, or mapped to `-1` —
+meaning the error is in SYNTHESIZED code, e.g. malformed injected
+`Meta`/`Web` plumbing, which would be an `okay-script` bug, not a
+markdown author's) falls back to the RAW message, unprefixed, exactly
+as before. Some diagnostics (dotc's own summary line, `"1 error
+found"`) carry NO position at all — also confirmed by the same probe
+— and are reported unprefixed too.
 
 Each `run` call already gets its OWN `URLClassLoader` — two scripts
 running in the same JVM do not collide with each other, since each
@@ -645,7 +691,7 @@ final case class Block(code: String, startLine: Int)
 final case class Result(
   ok: Boolean,
   stdout: String,
-  errors: Vector[String],   // compiler diagnostics, empty if it compiled
+  errors: Vector[String],   // compiler diagnostics, empty if it compiled -- "L<n>: <message>" where n is the ORIGINAL .md line, when known (see "Line-accurate errors")
   thrown: Option[Throwable], // set iff it compiled but the run threw
 )
 
@@ -753,12 +799,11 @@ object Meta:
   matching ` ```scala ` exactly opens one, the next ` ``` ` line
   closes it — fences for any OTHER language tag, e.g. ` ```yaml `, are
   skipped whole). `startLine` is the 1-based line of the first line of
-  code inside the fence, in the ORIGINAL markdown — carried so a
-  future caller can map a compiler error's line back to the `.md`
-  file, even though the extraction step does not do that mapping
-  itself (see Results below — the current implementation reports
-  dotc's own line numbers against the SYNTHETIC wrapped source, not
-  yet translated back).
+  code inside the fence, in the ORIGINAL markdown. `blocks` itself is
+  UNCHANGED and does not do any line-mapping (still a plain extractor,
+  used by `Deps.declared`) — `tokenize` is the function that actually
+  carries `startLine` through to compile-error mapping, one layer up;
+  see "Line-accurate errors" below.
 - `run` takes `blocks(markdown)`, concatenates their `code` bodies (in
   order, separated by a blank line) and wraps the result as the body
   of a single synthetic `@main def` (see Compilation below), compiles
@@ -832,7 +877,9 @@ see identical types.
 
 Compiler errors are collected from a custom `Reporter` (not dotc's
 default, which prints to stderr) and returned as `errors`, one string
-per diagnostic, instead of thrown.
+per diagnostic, instead of thrown — prefixed `"L<n>: "` with the
+ORIGINAL `.md` line when the diagnostic's position maps to one; see
+"Line-accurate errors" below.
 
 `run`'s dependency step (`Deps.declared` + `Deps.resolve`) runs BEFORE
 compilation: a script's `//> using dep` coordinates are resolved to
@@ -1010,6 +1057,23 @@ only this one step, and only when a script asks for it, does.
 - [x] `Web.empty`/omitting the `web` argument does not crash a script
       that never reads `Web.current` — the parameter is additive, not
       a new required contract.
+- [x] a compile error on a MULTI-LINE ```scala block's LATER line (not
+      its first) is reported with THAT line's own original number, not
+      the block's `startLine` — proving per-physical-line mapping
+      within one segment, not just per-segment.
+- [x] a compile error on the SECOND of two ```scala blocks reports the
+      SECOND block's own original line, not a line number relative to
+      the first block or the synthesized file as a whole.
+- [x] a compile error inside a `${expr}` marker (`render`) reports the
+      marker's original line.
+- [x] a document with front-matter/headings (so `okay.script.Meta`
+      plumbing IS injected) still reports the CORRECT original line
+      for a user error, proving injected lines are excluded from the
+      mapping (mapped to `-1`), not silently shifting every later
+      line's mapping by however many lines the plumbing added.
+- [x] a diagnostic with NO position at all (dotc's own summary line,
+      `"N error(s) found"`) is still reported, unprefixed, never
+      dropped or crashing the lookup.
 
 ## Results
 
