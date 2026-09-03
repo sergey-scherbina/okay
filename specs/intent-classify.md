@@ -363,3 +363,57 @@ replies is not a difference. The wording of the example line was
 changed mid-lane and moved `shipped` by two replies — noise, reported
 as noise. The fixture needs to grow before any of these gaps is
 defended as real.
+
+## Results — intent-fixture-too-small (2026-09-03)
+
+The fixture grew from 24 to 120 messages, thirty per class, with the
+domain stated inside it ("meeting and scheduling intents") because the
+previous lane established that nothing else states it. Hard cases are
+marked rather than avoided: Proposal/Request overlap, indirect
+phrasing, cancellation without a proposal, and — where the bucket
+actually broke — out-of-domain messages written in the register of a
+request.
+
+**The 24-message conclusion holds at 120.**
+
+| arm | decoded | macro F1 | `Other` P / R / F1 |
+|---|---|---|---|
+| rules (before) | 82/120 | 0.553 | 0.00 / 0.00 / 0.00 |
+| examples + gate (after) | 109/120 | 0.906 | 0.92 / 0.81 / 0.86 |
+
+That matters more than the numbers themselves: a five-fold larger
+fixture reproduced both effects, so the earlier table was measuring
+something real and not the shape of twenty-four sentences. `Other` goes
+from never predicted to F1 0.86, and the decode rate again moves with
+the prompt (68% -> 91%).
+
+**Language is not free**, and this is the lane's new finding. Twelve
+meanings, six languages, one arm (examples + gate), so the only thing
+varying between rows is the wording:
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| macro F1 | 0.914 | 0.804 | 0.792 | 0.813 | 0.727 | 0.813 |
+| `Other` precision | 1.00 | 0.75 | 1.00 | 1.00 | 0.60 | 1.00 |
+| `Other` recall | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+| undecodable | 0/12 | 1/12 | 1/12 | 0/12 | 1/12 | 0/12 |
+
+Every language keeps `Other` RECALL at 1.00 — the gate does not stop
+recognising out-of-domain messages when they stop being English. What
+it loses is PRECISION: in Russian (0.60) and French (0.75) the gate
+pushed genuine meeting messages OUT of the domain, and that is where
+the macro F1 gap comes from. So the failure has a direction, and it is
+the opposite of the English failure: English absorbed out-of-domain
+messages into positive classes; non-English rejects in-domain ones.
+
+Scope, stated so the table is not over-read: twelve messages per
+language, one 4B local model, and translations written by the same hand
+as the classifier — an awkward rendering is a confound these numbers
+cannot separate from a model weakness. What the table supports is
+"there is a language effect and it lands on gate precision", not its
+size.
+
+**Honest limitation of the whole fixture**: 120 author-written messages
+are enough for stable per-class metrics and not enough to claim
+coverage. They show that a change moves the needle on cases someone
+thought of.

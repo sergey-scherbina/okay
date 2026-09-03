@@ -53,18 +53,12 @@ class TestClassifyLive extends munit.FunSuite {
     OpenAi.complete(Transports.http(), key, body, url).runWith
       .choices.headOption.flatMap(_.message).flatMap(_.content).getOrElse("")
 
-  /** the baseline: the schema and nothing else */
-  private def barePrompt(message: String): String =
-    s"""Segment the message and classify the intent of each segment.
-       |
-       |Answer with ONE JSON object and nothing else, matching this schema:
-       |${Json.print(ToolSpec.jsonSchema(sReading))}
-       |
-       |Message: $message""".stripMargin
-
   /** the schema plus the written rules, but no rendered example — what
-   * `Classify.prompt` WAS before this lane, kept as its own arm so the
-   * example's effect is isolated instead of bundled */
+   * `Classify.prompt` WAS before the gate lane, kept as the BEFORE arm.
+   * The schema-only arm that completed the six-arm sweep is gone with
+   * the sweep: its result is recorded in the spec, and keeping dead
+   * code to commemorate a measurement is not how a measurement is
+   * kept. */
   private def rulesPrompt(message: String): String =
     s"""Segment the message and classify the intent of each segment.
        |
@@ -102,8 +96,12 @@ class TestClassifyLive extends munit.FunSuite {
         "undecodable"
 
   private def arm(name: String, classify: String => String): Unit =
+    armOver(name, IntentFixture.labelled, classify)
+
+  private def armOver(name: String, data: List[(String, String)],
+                      classify: String => String): Unit =
     reasons.clear()
-    val pairs = IntentFixture.labelled.map((m, gold) => (gold, classify(m)))
+    val pairs = data.map((m, gold) => (gold, classify(m)))
     val undecodable = pairs.count(_._2 == "undecodable")
     val empty = pairs.count(_._2 == "empty")
     // the sentinels are MINE, not classes: left in the matrix they
@@ -127,20 +125,37 @@ class TestClassifyLive extends munit.FunSuite {
     // ours to assert: the decoder read the shape we asked for at all
     assert(undecodable < pairs.length, s"[$name] nothing at all decoded — the harness, not the model")
 
-  test("live: the Other bucket across four prompt arms") {
+  private def gated(fallback: String => String)(m: String): String =
+    Classify.readInDomain(ask(Classify.inDomainPrompt[Support](m))) match
+      case Right(v) if !v.inDomain => "Other"
+      case _ => fallback(m)
+
+  private def best(m: String): String =
+    predict(ask(Classify.prompt[Support](m, IntentFixture.examples)))
+
+  /**
+   * The decisive pair only. The six-arm sweep that established WHY
+   * (specs/intent-classify.md, Results) ran on 24 messages; at 120 it
+   * would be an hour of calls to re-derive a conclusion already drawn,
+   * so what runs here is the before and the after.
+   */
+  test("live: the taxonomy prompt, before and after, over the whole fixture") {
     assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    arm("rules (before)", m => predict(ask(rulesPrompt(m))))
+    arm("examples+gate (after)", gated(best))
+  }
 
-    arm("bare", m => predict(ask(barePrompt(m))))
-    arm("rules", m => predict(ask(rulesPrompt(m))))
-    arm("shipped", m => predict(ask(Classify.prompt[Support](m))))
-    arm("examples", m => predict(ask(Classify.prompt[Support](m, IntentFixture.examples))))
-    def gated(fallback: String => String)(m: String): String =
-      Classify.readInDomain(ask(Classify.inDomainPrompt[Support](m))) match
-        case Right(v) if !v.inDomain => "Other"
-        case _ => fallback(m)
-
-    arm("gate", gated(m => predict(ask(Classify.prompt[Support](m)))))
-    arm("examples+gate",
-      gated(m => predict(ask(Classify.prompt[Support](m, IntentFixture.examples)))))
+  /**
+   * The same twelve meanings in six languages, one arm.
+   *
+   * Scattering foreign sentences through the main fixture proved
+   * nothing — a miss could always be the sentence rather than the
+   * language. Here a drop is attributable, because the only thing that
+   * varies between the rows is the wording.
+   */
+  test("live: the same intents across languages") {
+    assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    for lang <- IntentFixture.languages do
+      armOver(s"lang $lang", IntentFixture.inLanguage(lang), gated(best))
   }
 }

@@ -931,7 +931,25 @@ not a new primitive from scratch.
       with a bare `what: String` never says its domain is meetings — the
       case NAMES carry the domain or nothing does. Try domain-bearing
       case names before adding any prompt machinery.
-- [ ] intent-fixture-too-small — at n=24 a difference of one or two
+- [x] intent-fixture-too-small — LANDED 2026-09-03. 120 messages, 30
+      per class, domain stated inside the fixture, hard cases marked;
+      plus a parallel set of 12 meanings in 6 languages so a language
+      effect is attributable instead of anecdotal. The n=24 conclusion
+      reproduced (macro F1 0.553 -> 0.906, `Other` F1 0.00 -> 0.86).
+      Original entry follows.
+- [ ] intent-fixture-too-small (original) — at n=24 a difference of one or two
       replies is not a difference, and a mid-lane wording change moved
       an arm by two. Grow `IntentFixture` past the reference's minimum
       (30 per class) before defending any gap in the arms table as real.
+- [ ] intent-gate-non-english — the gate loses PRECISION outside
+      English: `Other` precision 1.00 en, 0.75 fr, 0.60 ru, with recall
+      1.00 everywhere, so it is pushing genuine in-domain messages out
+      rather than failing to catch out-of-domain ones. Opposite
+      direction to the English failure. Try stating the domain in the
+      gate prompt in the message's own language, or giving the gate the
+      same few-shot treatment that fixed the taxonomy prompt; measure
+      per language on `IntentFixture.parallel`, not in aggregate.
+- [ ] intent-decode-rate-residue — 11 of 120 replies still undecodable
+      on the best arm (9%). The rendered example took this from 32% to
+      9% and then stopped; what remains has not been looked at, and a
+      caller cannot tell a hard message from a malformed reply.
