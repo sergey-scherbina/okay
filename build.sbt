@@ -998,6 +998,19 @@ lazy val okaySubscription = project
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+lazy val okayScript = project
+  .in(file("okay-script"))
+  .settings(
+    name := "okay-script",
+    // drives dotty.tools.dotc IN-PROCESS -- no scala/scala-cli
+    // subprocess, no new language: markdown fenced ```scala blocks
+    // are compiled and run through the real Scala 3 compiler API.
+    libraryDependencies ++= Seq(
+      "org.scala-lang" %% "scala3-compiler" % scalaVersion.value,
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
 lazy val okayAdmin = project
   .in(file("okay-admin"))
   .dependsOn(okaySecurity.jvm)
@@ -1241,7 +1254,7 @@ lazy val root = (project in file("."))
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
-    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive,
+    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)

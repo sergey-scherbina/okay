@@ -140,27 +140,47 @@ per diagnostic, instead of thrown.
 
 ## Behavior
 
-- [ ] `blocks` extracts every fenced ` ```scala ` region in document
+- [x] `blocks` extracts every fenced ` ```scala ` region in document
       order, with the correct 1-based `startLine`, and skips fences
       tagged with any other language.
-- [ ] a markdown file with one ` ```scala ` block that prints and
+- [x] a markdown file with one ` ```scala ` block that prints and
       returns normally: `run` reports `ok = true`, `stdout` contains
       what was printed, `errors` is empty, `thrown` is `None`.
-- [ ] a markdown file with two ` ```scala ` blocks, where the second
+- [x] a markdown file with two ` ```scala ` blocks, where the second
       references a `val`/`def` the first introduced: `run` succeeds —
       proving the single-compilation-unit scoping decision.
-- [ ] a markdown file whose Scala block has a compile error: `run`
+- [x] a markdown file whose Scala block has a compile error: `run`
       reports `ok = false`, `errors` non-empty, `thrown = None` (never
       throws a compiler exception out of `run` itself).
-- [ ] a markdown file whose Scala block compiles but throws at
+- [x] a markdown file whose Scala block compiles but throws at
       runtime: `run` reports `ok = false`, `thrown = Some(...)`,
       `errors` empty (it DID compile).
-- [ ] a markdown file with zero ` ```scala ` blocks: `run` reports
+- [x] a markdown file with zero ` ```scala ` blocks: `run` reports
       `ok = true` trivially.
-- [ ] no temp file/directory survives a `run` call, success or
+- [x] no temp file/directory survives a `run` call, success or
       failure (checked by diffing `Files.list` of the system temp
       root before/after).
 
 ## Results
 
-(filled in as tests land)
+Landed 2026-09-03. Two implementation traps found by the tests, both
+fixed before landing (not left for a future session):
+
+- **`println` inside the compiled script did not land in `stdout`** —
+  `System.setOut` alone does not redirect it, because Scala's
+  `println`/`Predef` goes through `scala.Console.out`, a
+  `DynamicVariable` that is NOT re-read from `System.out` on every
+  call. Fix: wrap the invocation in `scala.Console.withOut(ps)`
+  *in addition to* `System.setOut` (a reflective callee could still
+  write directly to `System.out`, so both are captured).
+- **A markdown file with zero code blocks failed to COMPILE**, not
+  just failed to do anything useful: the synthesized
+  `@main def okayScriptMain(): Unit =` followed by an empty body is a
+  syntax error (a method body must be present). Fixed by defaulting
+  the body to `()` when there are no blocks — the "zero blocks is
+  trivially ok" behavior lives in the wrapping step, not as a special
+  case in `run`.
+
+`blocks`' `startLine` is the line of the first CODE line inside the
+fence (one past the ` ```scala ` line itself), confirmed against a
+hand-counted markdown fixture in the test.
