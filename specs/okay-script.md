@@ -145,6 +145,45 @@ UP by a real HTTP GET before interrupting, and confirmed DOWN (the
 port refuses connections again) after — with the `Result` showing the
 `InterruptedException`.
 
+## Worked example — okay-script-storefront-example (2026-09-03)
+
+`okay-script/examples/it-consulting-storefront.md`: a real storefront
+— a services page and an `/order` route — served by a REAL
+`okay-jetty` server, compiled and run entirely through
+`ScalaScript.run`. This is the "generate a `.md`, compile it at
+runtime, get a live web app" scenario the whole `okay-script-runtime`
+pivot was for, proven end to end rather than left as a claim.
+
+The service DATA (names, descriptions, prices, currency) is taken
+verbatim from `../it-consulting/site/site.md` — the REAL IT consulting
+line's site content, today rendered by a different system (`busi`'s
+own declarative-site engine). Only the data crosses over; none of
+`busi`'s or `scalascript`'s own rendering/DSL code does — the page and
+the `/order` handler are ordinary Scala, written directly in the
+```scala block, using nothing beyond `okay-http`'s `Response`/`Request`
+and `okay-jetty`'s `serve`. `site.md`'s own `on order: receive job;
+line work; line delivery` (a `scalascript` snippet, a different
+language entirely) is NOT executed or reused — the example's `/order`
+route does the equivalent (log the order, confirm it) as plain Scala
+instead, which is exactly the point: `okay-script` runs code, not a
+second DSL.
+
+The example follows the lifecycle recipe settled above verbatim:
+`Resource.run(Jetty.serve(port)(routes)().map { s => println(...);
+Thread.sleep(Long.MaxValue) }).runWith`, with the port read from a
+system property (`okay.script.storefront.port`, defaulting to 8099)
+so a test can inject a free one without editing the file. Proved by `TestScalaScriptStorefront` (Live: binds a real port): reads
+the `.md` file from disk, runs it via `ScalaScript.run` on a
+background thread (the caller-owned-thread recipe), confirms `GET /`
+renders all five services with their prices, confirms `GET
+/order?key=<x>` returns a confirmation page naming that service (proof
+the route actually ran, not just that SOME 200 came back), then
+`Thread.interrupt()`s the thread and confirms the server stops
+answering. `ScalaScript.run`'s own `stdout` capture is not usable as
+that proof: it only becomes readable once `run` RETURNS, and this
+script's `run` call does not return until interrupted — the response
+BODY is the observable side channel here, not the process's stdout.
+
 ## okay-script-scalac-classpath — found and fixed 2026-09-03
 
 Found by a sibling agent gating an unrelated change: `okayScript/test`
@@ -302,13 +341,6 @@ only this one step, and only when a script asks for it, does.
   source to the original `.md` file's line numbers — `Block.startLine`
   is captured for this purpose but not yet used to translate a dotc
   diagnostic's line number.
-- **A worked runtime-storefront example** (a `.md` that actually calls
-  `okay.jetty.Jetty.serve` + `okay.ui` and is compiled/run through
-  `ScalaScript.run` end to end) — the pieces this spec's "real goal"
-  section names are now in place (explicit classpath, `using dep`),
-  but no example was built or run this pass; filed to BACKLOG as the
-  next concrete step, since it is what would surface whatever the
-  `Server ! Resource` lifecycle question above still leaves open.
 - **Classloader isolation** between multiple runtime-compiled scripts
   running in the same host JVM at once (two generated storefronts
   loading conflicting versions of the same library, say). The
@@ -363,6 +395,11 @@ only this one step, and only when a script asks for it, does.
       thread, the SAME GET starts failing (the server actually
       stopped, not just the thread abandoned), and the eventual
       `Result` has `thrown = Some(_: InterruptedException)`.
+- [x] (Live) `examples/it-consulting-storefront.md`, read from disk and
+      run via `ScalaScript.run`: `GET /` renders all five services
+      (name + price) from `../it-consulting/site/site.md`'s real data;
+      `GET /order?key=<x>` returns a confirmation page naming that
+      service; `Thread.interrupt()` stops the server.
 
 ## Results
 
