@@ -1,5 +1,34 @@
 # Changelog
 
+## okay-script-lifecycle — Thread.interrupt() cleanly stops a Resource-run Jetty server, no new API
+Completed: 2026-09-03
+Landed as eb7e2a9d, fast-forwarded onto master. Settles the lifecycle
+question okay-script-runtime left open: how a runtime-compiled app
+(a generated storefront) starts without blocking the generator, and
+stops CLEANLY later rather than just being abandoned. No new
+`ScalaScript` API was needed — the answer was already the idiom
+`okay-demo/ChatDemo.main` has run a real server through all session:
+`Resource.run(Jetty.serve(port)(routes)().map { s => ...;
+Thread.sleep(Long.MaxValue) }).runWith`. Two facts make it a
+STOPPABLE app: `Resource.run`'s `_loop` releases every acquired
+finalizer on any escaping `Throwable` (Resource.scala), including a
+plain `Thread.sleep`'s `InterruptedException`; and `ScalaScript.run`
+invokes the compiled script's `main` synchronously on whatever thread
+called it, so a caller running `run` on its own dedicated `Thread`
+holds the exact thread the script blocks on, and `.interrupt()` on it
+is a real, targeted stop, not a best-effort kill. Proved against a
+REAL `okay-jetty` server, not asserted: `okayJetty` added as a
+Test-scope dependency of `okay-script`; new Live-tagged
+`TestScalaScriptLifecycle` starts a script's server on a background
+thread, confirms it answers HTTP, interrupts, confirms it stops
+answering (the release actually ran the server's own stop), and
+confirms the returned `Result` carries the `InterruptedException`. The
+hypothesis held on the first real run — nothing needed fixing.
+specs/okay-script.md "Lifecycle"; closes the okay-script-lifecycle
+BACKLOG entry, and the storefront-example entry now names
+`../it-consulting` as source content, per the operator, for the next
+pass.
+
 ## chunks-size-one — why `Source` is not just replaced by `Chunks`: measured, not asserted
 Completed: 2026-09-03
 Landed as 6ac716f2. The operator's question: `Chunks` (array-native)

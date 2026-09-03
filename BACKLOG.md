@@ -576,14 +576,27 @@ not a new primitive from scratch.
       of inheriting the host process's own classpath. Also fixed
       okay-script-scalac-classpath above as part of the same pass (the
       bug that made the classpath question concrete, not hypothetical).
+- [x] okay-script-lifecycle — LANDED 2026-09-03: the `Server !
+      Resource` lifecycle question above is settled, no new
+      `ScalaScript` API needed. `Resource.run` releases every acquired
+      finalizer on ANY escaping `Throwable` (Resource.scala's `_loop`),
+      and `ScalaScript.run` invokes the compiled script synchronously
+      on whatever thread called it — so a caller runs `run` on its own
+      `Thread` (does not block the generator) and stops the app with
+      `Thread.interrupt()` (makes the script's own `Thread.sleep(
+      Long.MaxValue)` throw, which `Resource.run` turns into a real
+      `server.stop()`, not just an abandoned thread). Proved against a
+      REAL `okay-jetty` server in `TestScalaScriptLifecycle` (Live):
+      answers HTTP while alive, stops answering after interrupt, the
+      returned `Result` carries the `InterruptedException`.
+      specs/okay-script.md "Lifecycle".
 - [ ] okay-script: a worked runtime-storefront example — a `.md` file
       that calls `okay.jetty.Jetty.serve` + `okay.ui`, compiled and run
       through `ScalaScript.run` end to end, with an explicit
-      `Classpath` naming exactly the okay-ui/okay-jetty jars it needs.
-      Not built this pass. This is what would surface the open
-      `Server ! Resource` lifecycle question (specs/okay-script.md,
-      "The real goal": who holds the resource open, on what
-      thread/fiber, for how long).
+      `Classpath` naming exactly the okay-ui/okay-jetty jars it needs,
+      following the now-proven lifecycle recipe above (own Thread,
+      interrupt to stop). Not built this pass — the operator pointed at
+      `../it-consulting` as source content for the example.
 - [ ] okay-script: classloader isolation between multiple
       runtime-compiled scripts sharing one host JVM (e.g. two
       generated storefronts pulling conflicting versions of the same
