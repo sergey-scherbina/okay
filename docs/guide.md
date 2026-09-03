@@ -240,7 +240,12 @@ and ~160ns once two fibers race for the channel's cell. So where
 throughput is the point rather than per-element semantics, merge the
 CHUNKED streams — `Chunks.merge` is one queue operation per chunk
 instead of per element, and measures 10.7us against 299.7us for the
-same 2x500. On JVM/Native it parks
+same 2x500. For a source that is elementwise BY NATURE but consumed
+in bulk, `source.mergeChunked(other, size)` does the same trick
+underneath and hands back an ordinary `Source` — 4-5x over `merge`
+on the same elements. It batches, so an element waits for up to
+`size - 1` more: reach for it when throughput is the point, and keep
+`merge` when an element's arrival time is. On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`

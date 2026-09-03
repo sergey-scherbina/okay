@@ -141,6 +141,39 @@ class TestStream extends munit.FunSuite {
     assertEquals(St.uncons(src).runWith.map(_._1), Some(1))
   }
 
+  test("mergeChunked: the same elements as merge, both sources drained, union typed") {
+    val a: Source[Int] = Source.of((1 to 50).toList)
+    val b: Source[String] = Source.of((51 to 100).map(_.toString).toList)
+
+    // the elements are exactly merge's, whatever the interleaving
+    val chunked = a.mergeChunked(b, size = 8).toLazyList.toList
+    val plain = Source.of((1 to 50).toList).merge(Source.of((51 to 100).map(_.toString).toList))
+      .toLazyList.toList
+    assertEquals(chunked.length, 100)
+    assertEquals(chunked.toSet, plain.toSet)
+    // the union survives: each element is one side or the other
+    assertEquals(chunked.collect { case i: Int => i }.sorted, (1 to 50).toList)
+    assertEquals(chunked.collect { case s: String => s.toInt }.sorted, (51 to 100).toList)
+    // and each source's own order is preserved within the merge
+    assertEquals(chunked.collect { case i: Int => i }, (1 to 50).toList)
+  }
+
+  test("mergeChunked: a partial final chunk is flushed, not dropped") {
+    // 7 and 5 elements at size 4: both sides end mid-chunk
+    val out = Source.of((1 to 7).toList).mergeChunked(Source.of((8 to 12).toList), size = 4)
+      .toLazyList.toList
+    assertEquals(out.length, 12)
+    assertEquals(out.toSet, (1 to 12).toSet)
+  }
+
+  test("mergeChunked: an empty source contributes nothing and does not hang") {
+    val out = Source.of(List.empty[Int]).mergeChunked(Source.of(List(1, 2, 3)), size = 4)
+      .toLazyList.toList
+    assertEquals(out, List(1, 2, 3))
+    assertEquals(Source.of(List.empty[Int]).mergeChunked(Source.of(List.empty[Int]), size = 4)
+      .toLazyList.toList, List.empty[Int])
+  }
+
   test("a writer program joins through toLazyList") {
     def count(n: Int): Nothing ! Writer % Int =
       Writer.tell(n).flatMap(_ => count(n + 1))

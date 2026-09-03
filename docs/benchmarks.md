@@ -404,6 +404,31 @@ head-normal tree, so the rotation it saves is not paid per pull
 inside the contended region. Declined; `Free` stays invariant as a
 measured choice. `WidenBenchmark` guards the conclusion.
 
+**And then the thing that actually works (source-merge-chunked).**
+Four lanes had refuted the COST side of the per-element merge (the
+queue's data structure, the retry rate, the kernel's tree shape, the
+row's variance). Profiling it one more time, this time attributing
+every frame rather than the two already suspected, said why: 71% of
+samples sit in the per-element channel TRANSACTION — 33% the CAS
+itself, 19% the immutable Queue rebuilt around it, 19% the rotation
+`resume` does per pull. Nothing there is cheaper than it is; there
+are simply too many of them. `Source.mergeChunked` divides the count
+by its chunk size — the same sources, the same channel, one
+transaction per `size` elements — and lands 4-5x:
+
+| 2 x N elements | `merge` | `mergeChunked` |
+|---|---|---|
+| N=2000, size 16 | 1169.9 ±9.3 | **223.5 ±2.9** (5.2x) |
+| N=2000, size 64 | 1163.4 ±12.7 | **247.2 ±1.8** (4.7x) |
+| N=500, size 16 | 292.8 ±3.5 | **70.2 ±1.0** (4.2x) |
+
+It is a separate combinator, not a change to `merge`, because it
+batches: an element that could have been handed over now waits for up
+to `size - 1` more. The win is not from absorbing backpressure (a
+consumer that keeps up creates none) but precisely from batching
+sends that would have succeeded immediately — so it cannot be made
+invisible, and readiness stays `merge`'s promise.
+
 ## 7. Resource — 1000 bracketed acquire/use/release
 
 | | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
