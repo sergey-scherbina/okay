@@ -252,6 +252,63 @@ construction instead of a type test per value).
       suite that BINDS a real port (14 of them, found by survey rather
       than by waiting for each to flake) is also Live-tagged now.
 
+- [ ] channel-ring-integration — wire `Ring` into `Channel`. The ring
+      itself is landed, tested (MPMC and SPSC on real threads) and
+      measured at 3.4x the rebuild-per-operation model it replaces
+      (channel-ring), which matches the 3.6x gap to `zio.Queue`. The
+      integration was ATTEMPTED in that lane and reverted, with the
+      bug found and understood rather than left as "it hung":
+
+      THE BUG — the take-do-put-back window. The first protocol had
+      `deliverToReceiver` temporarily REMOVE a waiter from the queue
+      to try a `pop`, putting it back if the ring turned out empty.
+      A producer pushing during that window sees an empty waiter
+      queue, wakes nobody, and the element sits in the ring with the
+      receiver parked forever. Reproduced deterministically by the
+      existing `TestChannel` "producer/consumer/close accounting"
+      test (capacity 4, 200 rounds); the virtual-thread dump shows
+      the consumer parked in `receiveBlocking` on a callback that is
+      never invoked. `admitOneSender` has the identical hole.
+
+      THE FIX — claim, do not remove. Keep the waiter in the queue
+      and give it a one-shot `AtomicBoolean`; a deliverer takes the
+      ELEMENT first, then CASes a waiter's claim, retrying the next
+      if that one was already claimed. The element is in hand the
+      whole time, so nothing can be stranded. Needs the waiter
+      representation changed on both sides (`receivers` and
+      `senders`), which is why it is its own lane rather than a
+      patch. Also still to settle there: `close` must hand the end to
+      claimed-but-undelivered waiters, and `receiveManyRing`'s batch
+      must admit parked senders without reopening the same window.
+
+- [ ] channel-ring-unbounded — channel-ring gives the allocation-free
+      fast path to BOUNDED channels only (a ring is a fixed array).
+      `Channel.merge`'s own default capacity is `Int.MaxValue`, so it
+      does NOT get the fast path; `Source.merge` (64) and
+      `Channel.buffer(n)` do. Options, in the order they look
+      sensible: linked ring SEGMENTS (covers everything, the
+      Segmented-Queue shape from Afek et al. that Koch-Sanders-
+      Williams 2025 SS3 surveys); or change `Channel.merge`'s default
+      to bounded (an API decision, not a performance one); or leave
+      unbounded on the rebuild path permanently. Settle by measuring
+      whether the unbounded path matters in practice first — nothing
+      in the library defaults to it except `Channel.merge` itself.
+
+- [ ] channel-multififo-many-producers — if a channel ever has MANY
+      producer fibers (work distribution to p workers), head/tail
+      contention becomes the bottleneck the ring does not solve, and
+      the known answer is relaxed multi-subqueue FIFO (MultiFIFO /
+      BlockFIFO, Koch, Sanders & Williams, "BlockFIFO & MultiFIFO:
+      Scalable Relaxed Queues", arXiv:2507.22764, an order of
+      magnitude at p=32..192). NOT applicable today and deliberately
+      not taken: their gain needs many threads (at p=1-2 all designs
+      are within a small factor, their Fig. 6.2) and it costs RELAXED
+      ordering — elements come out with bounded rank error — while
+      `Channel` promises FIFO and TestChunkEdges asserts each
+      source's own order survives a merge. Revisit only if a
+      many-producer channel appears AND its consumer can accept
+      relaxed order.
+
 - [x] netty-ws-matrix-flake — SETTLED by moving it out of the gate
       (netty-integration, 2026-09-03, operator decision). It failed
       the default gate a second time with the identical signature
