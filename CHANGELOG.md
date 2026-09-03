@@ -1,5 +1,52 @@
 # Changelog
 
+## version-store — a version tree that outlives the process
+Completed: 2026-09-03
+`Rerun` shipped with only `MemoryVersions`, so a branch died with the
+JVM that made it. `FileVersions` (JVM) is the same `Versions` contract
+over a directory: one JSON file per version, named by id, written
+atomically (temp file then rename) so a reader never sees half a
+version.
+
+Flat on disk, deliberately. Every version already names its `parent`,
+so the tree lives in the pointers and a listing is the set of
+versions; a nested layout would have to be rewritten the moment a
+branch appears, which is exactly when nothing should have to move. The
+on-disk shape is its own model rather than derived from the runtime
+types — the same call `Staged` makes about storage formats, and the
+one rozum's `replay.rs` makes in Rust: a derived format turns every
+internal rename into a silent format change, and thirty lines of
+explicit mapping buys a file a person can read with `cat`, which is
+most of the point, since a version tree nobody can audit by hand is a
+tree nobody audits. A file that does not parse is skipped rather than
+fatal, because a directory is a place other things end up.
+
+Eight tests cover what only a file can get wrong: reading back whole
+across a restart, keeping parent/branchedAt/divergence, a lineage that
+walks after the process is gone, a version from disk still replaying
+with no world at all, legibility, a stray file not poisoning the
+listing, and a rewrite replacing rather than accumulating. okay-agent
+101/101 on JVM plus JS from clean, no warnings.
+
+## mcp-project-binding — rag and state were answering for the wrong repo
+Completed: 2026-09-03
+Landed as e0f0a0e. The user-scope rozum registration is
+`http://127.0.0.1:8779/mcp` with no `?project=`, so one daemon served
+every repo from its launchd default, the rozum checkout. Measured
+rather than suspected: `state.update` called from a session in THIS
+repo wrote into rozum's `.rozum/state.json`, and `rag.search` answered
+out of rozum's index, which is why its hits kept being Rust files in a
+Scala repo. The per-project multiplexing exists and works; nothing was
+using it.
+
+`.mcp.json` now pins `?project=` for this repo (project scope wins over
+the user-scope entry) and AGENTS.md says why the query must stay, since
+dropping it fails silently rather than loudly. Verified after: state
+landed here, and `rag.search` answered `Delim.scala` for a
+continuations query and `Rerun.scala` for a journal one. The index is
+per project and not automatic — `rozum rag index --root .` built 705
+files into 9525 chunks in under a second.
+
 ## quiet-needs-live-model — the fork's precondition, caught by the other repo
 Completed: 2026-09-03
 journal-versions shipped `OnDiverge.Quiet` (continue past a divergence,
