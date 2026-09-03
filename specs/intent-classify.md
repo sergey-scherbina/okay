@@ -173,12 +173,10 @@ distributes and partial runs merge — the property `Postings` has for
 the same reason, and the property test here checks exactly that: two
 partial runs merged give the same report as folding the whole.
 
-The INTENDED fixture is a `Rerun` journal, so that a prompt change
-replays deterministically and a regression points at a step number
-rather than at a number that fell. That binding is not built in this
-lane — `Eval` takes `(gold, predicted)` label pairs from wherever the
-caller has them, and nothing here depends on where. Stated as the
-intended path, not as something that exists.
+The fixture IS a `Rerun` journal — built in intent-eval-on-journal,
+see its Results. `Eval` still takes `(gold, predicted)` pairs from
+wherever the caller has them, so nothing in it depends on the journal;
+the journal is what feeds it without a model.
 
 ## Decisions
 
@@ -648,3 +646,45 @@ Scope: 120 messages, one 4B local model, one run per arm. A 10-to-0
 change on a single systematic shape is stronger evidence than its n
 suggests — the mechanism was named in advance and the predicted shape
 is precisely what disappeared.
+
+## Results — intent-eval-on-journal (2026-09-04)
+
+Every measurement in this line has been a live run of ten to thirty
+minutes, which is why several questions went four lanes without being
+asked — including the one whose answer turned out to be a `groupBy`.
+This makes the parts that do not involve a model cost nothing.
+
+Nothing new had to be invented to hold the recording, because **a
+recording IS a journal**: `Durable.Entry` already carries
+`(seq, op, fingerprint, key, answer)`, `Rerun.Version` already groups
+entries under a provenance, and `FileVersions` already stores them. The
+model's reply goes in `answer`, the message in `key`, and the PROMPT's
+fingerprint in `fingerprint`.
+
+| | live | over the recording |
+|---|---|---|
+| whole fixture, best config | ~13 min | **0.046 s** |
+| needs a model | yes | no |
+| runs in the default gate | no | yes |
+
+The replay reproduces the live report exactly — Proposal 0.952, Request
+0.929, Notification 0.893, Other 0.862 — which is the evidence that the
+replay path is faithful rather than merely fast.
+
+**Two guards, both verified by breaking them on purpose**, because a
+guard that cannot fail is worse than none:
+
+- The PROMPT FINGERPRINT. A recording describes the question that was
+  asked; change the prompt and it describes nothing. Adding a single
+  space to the prompt fails the check with "re-record rather than
+  trusting these numbers". That is the correct signal, not an obstacle
+  to route around — there is no honest way to score old answers against
+  a new question.
+- The PROMOTION RULE. `Eval.regressions` has been executable since the
+  first lane and had never guarded anything. It guards now: raising a
+  baseline by four points fails the run and prints every class's F1.
+
+So a change to the decoder, the label mapping, the gate logic or the
+metrics is a second-long check in the default gate, and only a PROMPT
+change still costs a live run. The recording is 54KB of JSON, committed
+— the size of keeping four lanes' worth of measurement reproducible.

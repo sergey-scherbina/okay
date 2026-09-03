@@ -1022,7 +1022,14 @@ not a new primitive from scratch.
       The end-to-end run belongs with `TestLive`'s gating, and it is
       what would let `Structured.cut`'s token saving be measured rather
       than reasoned about.
-- [ ] intent-eval-on-journal — bind `Eval` to a `Rerun` journal so an
+- [x] intent-eval-on-journal — LANDED 2026-09-04. A recording IS a
+      journal: `Durable.Entry` + `Rerun.Version` + `FileVersions` held
+      it with nothing new invented. 13 minutes of live calls become
+      0.046 s in the default gate, reproducing the live report exactly.
+      Two guards, both verified by breaking them: the prompt
+      fingerprint refuses a stale recording, and `Eval.regressions`
+      finally guards something. Original entry follows.
+- [ ] intent-eval-on-journal (original) — bind `Eval` to a `Rerun` journal so an
       evaluation run is replayable and a regression names the step that
       changed, not just the class that fell. The spec names this as the
       intended fixture; the lane deliberately did not build it, and the
