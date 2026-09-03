@@ -82,6 +82,26 @@ extend it with `merge` into Spark's `(zero, seqOp, combOp)` triple
 exactly (`Aggregate.scala:7–9`), so one aggregator runs locally,
 distributed, and as a `java.util.stream.Collector` unchanged.
 
+A third note the theory also predicts, discovered by asking why the
+amortization is not the whole answer: batching a representation
+amortizes the STEP cost over a batch, and that only helps when a batch
+exists to amortize over. Forced to batches of one — the shape a
+genuinely per-element source (an LLM's tokens, one SSE event at a
+time) hands any array-native representation — `Chunks.merge` costs
+33x its own default-sized run (measured, chunk-size-representation and
+chunks-size-one, 2026-09-03), because an array-of-chunks pays a chunk
+allocation per *production*, independent of how many elements land in
+it. The number that matters is what happens next: at that same forced
+size, `Chunks` and `Source` (the Free-tree representation of chapters
+4–5, no array anywhere) land within a few percent of each other —
+780.7µs against 819.6µs on 2×2000 elements — while `ZStream`, ZIO's
+one representation, forced the same way costs 9985µs, 12x worse than
+either. The amortization is real, but it is a property of the BATCH,
+not of any one representation; a system with only the batched
+representation has nowhere to go when the batch collapses to one,
+which is the concrete, measured reason this library keeps two
+representations of a stream rather than one.
+
 ## Sketches: approximation with stated error
 
 Some aggregations are impossible exactly in bounded space — distinct
