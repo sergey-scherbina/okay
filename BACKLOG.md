@@ -983,7 +983,15 @@ not a new primitive from scratch.
       gate ahead of the taxonomy. Measure each against the same
       fixture with `Eval.regressions` — this is exactly the loop that
       rule exists for.
-- [ ] intent-precedence-rule — `Proposal` vs `Request` confused 3 of 6
+- [x] intent-precedence-rule — LANDED 2026-09-04 as a REFUSAL. The
+      design answer (a `Taxonomy[I]` typeclass beside the schema, so a
+      tie-break travels as far as the type) was built and measured, and
+      stating the rules cost 0.043 macro F1 with every class falling —
+      including the class the second rule was aimed at. Not shipped: an
+      API whose only measurement says it hurts is an unearned claim in
+      code. The four lines are in the lane's history. Original entry
+      follows.
+- [ ] intent-precedence-rule (original) — `Proposal` vs `Request` confused 3 of 6
       in the same run, and it is genuine overlap rather than model
       error ("Can we move Thursday's sync to Friday?" is both). Needs a
       stated precedence rule travelling WITH the taxonomy (a doc
@@ -1106,3 +1114,9 @@ not a new primitive from scratch.
       per language on `IntentFixture.parallel`; and grow that set past
       twelve per language first, because twelve supports "there is an
       effect" and not the size of any one number.
+- [ ] intent-tiebreak-by-example — the precedence lane's own suggestion
+      for what to try before reaching for stated rules again: render a
+      tie-break as EXAMPLES of the disputed case rather than as prose
+      (few-shot examples are the one lever that has consistently paid
+      in this line), and use one rule rather than a list. The prose
+      version cost 0.043 macro F1 and diluted every class.

@@ -25,7 +25,6 @@ class TestCutStops extends munit.FunSuite {
   /** a stream that says how far it was pulled */
   private def counted(pieces: List[String], emitted: java.util.concurrent.atomic.AtomicInteger)
   : Unit ! (Writer % String + Async) =
-    import okay.!.*
     type F = Writer % String + Async
     pieces.foldRight(okay.pure(()): Unit ! F) { (p, rest) =>
       okay.!.widen[Unit, Writer % String, F](Writer.tell[String](p)).flatMap { _ =>

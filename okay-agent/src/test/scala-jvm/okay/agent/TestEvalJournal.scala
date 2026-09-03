@@ -1,6 +1,6 @@
 package okay.agent
 
-import java.nio.file.{Files, Path, Paths}
+import java.nio.file.{Files, Paths}
 
 /**
  * Evaluation over a RECORDING instead of a model

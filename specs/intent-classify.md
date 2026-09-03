@@ -688,3 +688,51 @@ So a change to the decoder, the label mapping, the gate logic or the
 metrics is a second-long check in the default gate, and only a PROMPT
 change still costs a live run. The recording is 54KB of JSON, committed
 — the size of keeping four lanes' worth of measurement reproducible.
+
+## Results — intent-precedence-rule (2026-09-04)
+
+The reference literature calls overlapping classes "mutually exclusive
+in practice" and prescribes a stated precedence rule. This lane asked
+where such a rule LIVES, built the answer, measured it, and threw the
+answer away.
+
+**The design answer, which stands.** A doc comment cannot be read at
+runtime; a prompt parameter does not travel with the type, so the next
+caller reconstructs it or does without. The construction that fits this
+library is a typeclass beside the schema — `Taxonomy[I]` with a
+`precedence: List[String]`, its empty default one priority lower so a
+stated taxonomy wins over the silent one rather than being ambiguous
+with it. It travels exactly as far as the type does, which is the point
+of the taxonomy BEING a type.
+
+**The measurement, which sank it.** Two arms differing only in whether
+the taxonomy declares its precedence, over the same 120 messages:
+
+| arm | macro F1 | Proposal | Request | Notification | Other |
+|---|---|---|---|---|---|
+| no precedence stated | **0.909** | 0.95 | 0.93 | 0.89 | 0.86 |
+| precedence stated | 0.866 | 0.92 | 0.89 | 0.84 | 0.81 |
+
+Every class fell, by roughly the same amount. And the rules were
+written to match this fixture's own labelling, so they should have
+helped BY CONSTRUCTION — that was stated in the claim before the run,
+precisely so this outcome could not be reinterpreted afterwards.
+
+The uniformity is the diagnosis: two more sentences of instruction did
+not sharpen the boundary they named, they diluted the whole prompt. The
+second rule is the sharpest evidence — it said a cancellation with no
+new time is a `MeetingNotification`, and `Notification` recall FELL
+from 0.83 to 0.77. A rule aimed at a class made that class worse.
+
+**So the mechanism is not shipped.** An API whose only measurement says
+it costs 0.043 macro F1 is an unearned claim in code, and this line has
+already deleted one of those from prose. The design answer is recorded
+here, the four lines that implement it are in this history, and adding
+them back when there is evidence costs nothing. Reverting also left the
+prompt unchanged, so the recorded journal stays valid — which is
+`intent-eval-on-journal` paying for itself the same day.
+
+What to try before reaching for this again: rules rendered as EXAMPLES
+of the disputed case rather than as prose (few-shot examples are the
+one lever that has consistently paid in this line), and a single rule
+rather than a list. Filed.
