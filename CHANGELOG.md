@@ -1,5 +1,24 @@
 # Changelog
 
+## theory-linearity — the linearity measurement written into the textbook, where the third road was claimed
+Completed: 2026-09-03
+Landed as 606d7ea (docs only). `docs/theory/04-free-freer.md`
+already named the three answers to the left-nested-bind problem
+(codensity, type-aligned sequences, and okay's own "normalize in the
+one interpreter") and declared the third road taken — a structural
+argument, unchecked, with a profiler putting 38% of a merge
+benchmark on the normalizer, which is what BOTH readings look like.
+The chapter now carries the sweep that decides it (per-element cost
+flat across 8x in every lane), the general lesson rather than the
+local fact (reflection without remorse pays on LEFT-nested binds; a
+recursive stream producer is right-nested; whether you are in the
+trap is a property of how programs are built, not of the encoding),
+and what the sweep found instead — the Writer layer ~5x dearer
+inside the contended merge than alone, pointing at fewer steps in
+the contended region rather than a cheaper step. `docs/guide.md`
+gets the practical half (the per-element price against the chunked
+merge's 10.7us); the theory index and README summaries follow.
+
 ## merge-scaling-shape — the Bind tree is LINEAR: the kernel rewrite is off the table, measured
 Completed: 2026-09-03
 Landed as 9420f1d (a benchmark plus docs — no library code changed).
