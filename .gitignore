@@ -10,3 +10,7 @@ target/
 okay-chat*.db
 okay-chat.log/
 hs_err_pid*.log
+
+# JMH -prof jfr writes its recording beside the project
+*.jfr
+compare/okay.*-AverageTime-*/
