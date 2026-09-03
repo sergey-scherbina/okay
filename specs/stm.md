@@ -347,3 +347,52 @@ which subscribers this call gets to fire, firing happens outside it
 (never inside `f`, which the doc comment on `modify` already warns
 may run more than once). Both are single-cell fast paths — no `Tx`/
 `Stm[F]` needed, the same shape every consumer here has taken so far.
+
+**channel-queue-reversal (2026-09-03): a data-structure hunt that
+measured its own premise wrong, corrected in the open.** Profiling
+`MergeBenchmark.okayChannelMerge` (JFR) found 30% of CPU in
+`scala.collection.immutable.Queue.dequeue`'s amortized `List.reverse`
+— `Channel.State`'s `buf`/`receivers`/`senders` fields. The FIRST
+read of that number: a channel's producer and consumer run near
+lockstep, so the queue rarely holds more than 0-1 elements, which is
+exactly the shape that defeats amortization (the batch it is FOR
+never forms). Two candidate fixes, each measured on the real
+`Channel.merge` benchmarks, not just in isolation:
+
+- `Vector` (no reversal, ever) won an isolated single-threaded
+  lockstep micro-benchmark 16x — and LOST 13-15% on the real,
+  multi-fiber `okayChannelMerge` (128 -> 143-147us). Under genuine
+  CAS-retry contention a failed `TRef.modify` attempt rebuilds the
+  whole `State` from scratch, and `Vector`'s higher per-attempt
+  construction cost (trie-node copying), multiplied by retries, cost
+  more than `Queue`'s occasional reversal did.
+- A hand-rolled `Fifo` (List-based, like `Queue`, but special-casing
+  the ONE allocation profiled as wasteful — reversing a 0- or
+  1-element list, which needs no reversal at all) measured EXACT
+  PARITY with `Queue` on both `okayChannelMerge` (126 vs 125-128)
+  and `okaySourceMerge` (300 vs 299-305) — no regression, but no win
+  either. Re-profiling explained why, and corrected the original
+  premise: nearly all of `Fifo`'s remaining `List.reverse` calls
+  were landing in the GENERAL case (2+ elements in `in`), not the
+  0/1 fast path — meaning `Channel.merge`'s actual access pattern
+  under real fiber timing DOES form multi-element batches often
+  enough that `Queue`'s amortized design is doing real, intended
+  work, not being defeated by a pathological near-empty oscillation.
+  The first profiling read was real (30% of CPU IS reversal) but the
+  EXPLANATION for it — assumed from the profile alone, without
+  checking the actual batch sizes at the moment of reversal — was
+  wrong.
+
+**Declined, reverted, nothing landed**: both attempts backed out
+cleanly (`git checkout` back to `Queue`, matching master exactly);
+the exploratory benchmark file was removed rather than kept, since
+its own premise (a near-empty lockstep access pattern) does not hold
+for the real workload and would mislead a future reader into
+re-trying the same fix. What's real and worth keeping: `Queue`'s
+reversal genuinely costs what the profiler measured (30% of CPU is
+not nothing), but no drop-in replacement tried here beats it without
+losing elsewhere — a data structure that is cheap to REBUILD under
+CAS-retry contention (List-based) is not the same property as being
+cheap to dequeue FROM (which is what the reversal buys), and the two
+candidates each optimized for only one of those. A structure that
+is genuinely better at both remains unproven, not ruled out.
