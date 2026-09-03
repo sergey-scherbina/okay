@@ -1255,6 +1255,21 @@ lazy val compare = (project in file("compare"))
   .settings(
     name := "okay-compare",
     publish / skip := true,
+    // The comparison lanes are written in the COMPETITORS' idioms on
+    // purpose — a benchmark that rewrites a library's natural shape to
+    // please our linter is measuring the rewrite, not the library. Two
+    // of their shapes warn, and neither is ours to fix: kyo's `Loop`
+    // takes a default argument the recursive call necessarily uses
+    // (E221, GeneratorBenchmark/StreamOpsBenchmark), and kyo-direct's
+    // `defer` macro expands to a lambda with a parameter its own
+    // expansion does not read (E198 at the `defer`, not at our
+    // `kloop`, whose parameters are both used). Silenced HERE, scoped
+    // to this project alone, so the zero-warnings rule stays sharp
+    // everywhere it can catch a real defect (jmh-warnings, 2026-09-03).
+    scalacOptions ++= Seq(
+      "-Wconf:msg=Recursive call used a default argument:s",
+      "-Wconf:msg=unused explicit parameter:s",
+    ),
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     libraryDependencies ++= Seq(
       "org.typelevel" %% "cats-free" % "2.12.0",

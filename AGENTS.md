@@ -91,8 +91,8 @@ force, all already practiced, none previously written down:
   c.send(x)` (foreach takes any result) — those two shapes are on
   you. Found by channel-callback (2026-09-02): ten silent discards
   across ui/jetty/netty/chatweb before the lint existed.
-- **POLICY: no warnings, ever — main or test, any platform** (2026-09-03,
-  reinforcing tidy-warnings' 255 → 0). A landing that introduces a
+- **POLICY: no warnings, ever — main, test AND Jmh, any platform**
+  (2026-09-03, reinforcing tidy-warnings' 255 → 0). A landing that introduces a
   warning is not done; fix the code or, for a warning the compiler
   cannot actually resolve correctly either way (see the `-Wconf`
   entries in build.sbt, each with its own dated comment explaining
@@ -109,6 +109,20 @@ force, all already practiced, none previously written down:
   (e.g. a JVM-only erasure check) is expected to look "unused" on the
   others; that specific message is silenced project-wide rather than
   chasing it per-platform (see `-Wconf:msg=@nowarn annotation...`).
+  **`Test/compile` does NOT reach Jmh sources** — they are their own
+  configuration, which is how three warnings sat unnoticed in
+  `compare/src/jmh` through the sweep that took main+test to zero
+  (jmh-warnings, 2026-09-03). Check them with `compare/Jmh/compile`
+  and `okayJVM/Jmh/compile`, after `rm -rf <project>/target` — the
+  JMH generator caches hard, and a stale cache reports success
+  without recompiling (it will also fail `Jmh/run` with "Unable to
+  find the resource: /META-INF/BenchmarkList", whose fix is the same
+  full `rm -rf`, not deleting `src_managed`/`jmh-classes` alone).
+  Where a comparison benchmark warns because it is written in a
+  COMPETITOR's idiom, the suppression is scoped to the `compare`
+  project, never `ThisBuild`: a benchmark rewritten to please our
+  linter measures the rewrite, not the library, but the main tree
+  must keep the lint that would catch a real defect.
 - **POLICY: no flaky tests in the default gate — only in `integrationTest`**
   (2026-09-03). Anything whose result depends on something `sbt test`
   cannot control — a live model gateway, docker, network timing — is

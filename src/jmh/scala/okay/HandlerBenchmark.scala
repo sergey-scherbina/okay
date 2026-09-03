@@ -4,6 +4,7 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
 import !.*
+import scala.annotation.nowarn
 
 /** an operation carrying its own answer, for handler benchmarks */
 case class Ask[+A](a: A)
@@ -30,10 +31,18 @@ class HandlerBenchmark {
     (1 to N).foldLeft(effect[Ask + Produce, Int](Ask(0))): (m, i) =>
       m.flatMap(x => effect[Ask + Produce, Int](if i % 100 == 0 then Ask(x + 1) else x + 1))
 
+  // relay/handle inline a type test on the operation type, which
+  // erasure cannot verify for Ask[Nothing] — the trusted kernel's
+  // warning (Effects.scala), not a cast this file adds
+  @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def relayForward(): Int =
     relay[Int, Int, Ask, Produce](prog)(pure(_))([X, Y] => a => Cont.Pure(a.a)).runWith
 
+  // relay/handle inline a type test on the operation type, which
+  // erasure cannot verify for Ask[Nothing] — the trusted kernel's
+  // warning (Effects.scala), not a cast this file adds
+  @nowarn("msg=cannot be checked at runtime")
   @Benchmark
   def handleForward(): Int =
     Effects[Free].handle[Ask, Produce, Int, Int](prog)(pure(_))([X] => a => Cont.Pure(a.a)).runWith
