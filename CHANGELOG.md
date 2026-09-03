@@ -1,5 +1,30 @@
 # Changelog
 
+## integration-test-gate — Live-tagged suites out of the default gate; zero warnings enforced as policy
+Completed: 2026-09-03
+Landed as bb5ccba. ~25 suites reaching outside the JVM (a live model
+gateway, docker services — kafka/mongo/pg/redis/tls/s3, external
+tools — python3/spark) are now tagged `Live` via a shared
+`munitTests()` override and excluded from `sbt test` by default;
+`sbt integrationTest` runs the exact same suite with nothing
+excluded. Motivated by this session's own TestChatDemo LIVE suite
+failing identically on untouched master, twice, under live-model
+load — a flake indistinguishable from a regression until re-run
+against master proved it wasn't one. Verified both directions: `sbt
+test` green with the tagged suites absent (TestChatDemo alone
+38 → 34), `sbt integrationTest` runs them and reproduces the same
+flake in the right gate.
+
+Also closed the zero-warnings gap it surfaced along the way: two
+real exhaustivity misses (`Turn.StatePatch` unhandled in
+Mcp.scala/Langchain4j.scala), two `Ordering.reverse` calls needing
+`using`, an unused lambda param, two unused imports, a missing
+`scala.language.implicitConversions` import, a deprecated
+`Char + String` concat, and a `-Wconf` entry so four
+platform-only-real `@nowarn` suppressions stop false-positiving as
+"unused" on Scala.js/Native. AGENTS.md now states both — no
+warnings, no flaky tests in the default gate — as explicit policy.
+
 ## channel-queue-reversal — measured and declined: Vector and a hand-rolled Fifo both tried against Channel.State's Queue, neither wins, nothing lands
 Completed: 2026-09-03
 Landed as 7371afa (docs/history only — Channel.scala is byte-
