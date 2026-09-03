@@ -1,5 +1,35 @@
 # Changelog
 
+## json-unicode-escape — decode \uXXXX in both JSON parsers
+Completed: 2026-09-03
+Landed as 1cd5255b (spec) + 15f96859 (impl). `Json.unquote`'s escape
+handling had cases for `\n`/`\t`/`\r` and a catch-all that appended the
+character AFTER the backslash literally, advancing by two — written for
+the single-character escapes (`\"`, `\\`, `\/`) and silently wrong for
+the multi-character one: `\u0041` decoded to the five literal
+characters `u0041`, not `A`. `JsonValue.scala`'s fast path had the
+IDENTICAL bug, documented in its own header as the two roads'
+deliberately-agreed reading rather than named as a defect — TestJsonValue
+asserts fast-road output equals lossless-road output on every document,
+so fixing one road alone would have broken that invariant instead of
+fixing the bug. Both now share one `hex4` decoder. A surrogate pair
+needs no special handling: two escapes decoding to two `Char`s that
+form a valid high/low pair are already a correct Scala `String`. A
+malformed/truncated escape falls back to the old wrong-but-safe
+single-character reading rather than throwing (`unquote` returns a bare
+`String`, not a `Json`, so there is no `JErr` for it to become).
+Found downstream, live: a chat service consuming Telegram's Bot API
+(which escapes non-ASCII as `\uXXXX`) decoded every Cyrillic character
+of every incoming message into runs of literal hex digits — a defect
+that looked, for a full day, like a chatbot failing to understand
+Russian, and was in fact text that never reached the intent parser
+intact. One pre-existing test asserted the old broken reading
+verbatim; corrected, with the reasoning recorded so a future "fix"
+does not flip it back. Gate: 76 suites, 2017 tests — five pre-existing
+failures in `okay-script` (an unrelated toolchain break, logged
+separately, reproduces identically on master) aside, everything else
+green.
+
 ## okay-script — markdown ```scala fenced blocks compiled and run via the real dotty compiler API
 Completed: 2026-09-03
 Landed as a7d50b5 (spec) + 4543a93 (impl), fast-forwarded onto master.
