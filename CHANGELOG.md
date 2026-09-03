@@ -1,5 +1,41 @@
 # Changelog
 
+## okay-script-line-mapping — compile errors point at the original .md line, not the synthesized source
+Completed: 2026-09-03
+Landed as 14e8c96e. A dotc diagnostic's line number used to report
+against the SYNTHETIC wrapped source, never translated back to the
+`.md` file a real author is looking at — `Block.startLine` was
+captured for exactly this since the beginning and sat unused.
+`Segment.Code`/`Interp` both gain a `startLine` (1-based, same
+convention as `Block.startLine`), set by `tokenize`; `withMeta` now
+builds the synthesized body AND a parallel `Vector[Int]` line-origin
+map — one entry per physical body line, giving that line's original
+markdown line, or `-1` for a line with no original counterpart
+(wrapper boilerplate, injected `Meta.setCurrent`/`Web.decodeArgs`
+statements). A multi-line `Code` block's k-th physical line maps to
+`startLine + k`, so an error on a block's 5th line correctly reports
+the ORIGINAL 5th line, not just the block's first. `collectingReporter`
+reads `dia.position()` (dotc's `Optional<interfaces.SourcePosition>`,
+needing no `Context` argument, unlike `SourcePosition.line(using
+Context)`) — confirmed 0-based via a throwaway probe BEFORE writing
+anything, not assumed from the API's own naming. A hit prefixes the
+message `"L<n>: "`; a miss (no position, or `-1` — synthesized code,
+an `okay-script` bug not the author's) falls back to the bare message,
+unchanged. Found and fixed along the way: the SAME bug shape as
+`okay-script-web`'s `compileOnly` fix, one function over —
+`withMeta`'s first cut indented EVERY physical line of a `Text`/
+`Interp` segment's synthesized `print("""...""")` call uniformly,
+corrupting embedded multi-line string DATA the same way at a
+different layer; `TestScalaScriptRender`'s own no-interpolation test
+caught it again, immediately. Fixed with an explicit `isStatement:
+Boolean` per item (`Text`/`Interp` indent only their first physical
+line; `Code` indents every line, preserving a block's own internal
+relative indentation). Two landings hitting the identical bug shape is
+itself the finding worth recording: any code re-indenting already-
+assembled text by scanning physical lines is suspect near a raw
+triple-quoted string, regardless of layer. specs/okay-script.md
+"Line-accurate errors".
+
 ## intent-fixture-too-small — 120 messages and six languages, and the small-fixture conclusion holds
 Completed: 2026-09-03
 Landed as 1b4e177a. The instrument before the experiment: the previous

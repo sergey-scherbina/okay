@@ -653,11 +653,27 @@ not a new primitive from scratch.
       against `Result.stdout` from a real run. `run` already captures
       everything needed; the markdown convention for "expected
       output" and the comparison step are the missing piece.
-- [ ] okay-script: line-accurate compiler-error mapping back from the
-      synthetic wrapped source to the original `.md` file's line
-      numbers. `Block.startLine` is captured for this but unused so
-      far — a dotc diagnostic's line currently reports against the
-      synthetic file, not the markdown.
+- [x] okay-script-line-mapping — LANDED 2026-09-03: a compile error's
+      line number now reports the ORIGINAL `.md` file's line, not the
+      SYNTHETIC wrapped source dotc actually compiled. `Segment.Code`/
+      `Interp` gained a `startLine` (`tokenize` computes it, same
+      convention as `Block.startLine`); `withMeta` builds the
+      synthesized body PLUS a parallel `Vector[Int]` line-origin map
+      (one entry per physical body line, `-1` for injected/synthesized
+      lines); `collectingReporter` reads `dia.position()` (confirmed
+      0-based empirically, via a throwaway probe, before writing
+      anything) and prefixes a mapped diagnostic `"L<n>: "`. A
+      multi-line block's error correctly reports ITS OWN line, not
+      just the block's first. Found and fixed along the way: the SAME
+      bug shape as okay-script-web's `compileOnly` fix, one function
+      over — `withMeta`'s first cut indented EVERY physical line of a
+      `Text`/`Interp` segment's synthesized `print("""...""")`
+      uniformly, corrupting embedded multi-line string DATA the same
+      way the earlier fix corrupted it at a different layer;
+      `TestScalaScriptRender`'s own test caught it again immediately.
+      Fixed with an explicit `isStatement` flag per item (`Text`/
+      `Interp` indent only their first physical line; `Code` indents
+      every line). specs/okay-script.md "Line-accurate errors".
 - [x] okay-script-runtime — LANDED 2026-09-03: the REAL goal named by
       the operator is runtime app generation (generate a `.md`,
       compile+run it AT RUNTIME, come up as a live web app — a
