@@ -73,6 +73,28 @@ object Source {
    * Lazy in the same way `Writer.of` is: nothing is told until the
    * result is consumed.
    */
+  /**
+   * The general generator: peel one element off `s` at a time, no
+   * collection anywhere — `range` below is this specialised to
+   * `Long`, kept separately only because a `Long => Option[(Long,
+   * Long)]` step allocates a tuple this one's hand-written loop does
+   * not (measured, idiomatic-api-compare: close enough not to matter
+   * for most `S`, but `range`'s existence says the specialised form
+   * is worth having when the step itself is this trivial).
+   *
+   * Verified against `ZStream.unfold` (zio-streams 2.1.14 sources,
+   * `ZStream.scala:5076-5091`): the same shape, `Chunk.single(a)` per
+   * step there — genuinely one element per production, not a
+   * degenerate case of chunking. This is that shape, at the row this
+   * library already had for it.
+   */
+  def unfold[S, A](s: S)(f: S => Option[(A, S)]): Source[A] =
+    def go(s: S): Source[A] = f(s) match
+      case Some((a, s2)) =>
+        okay.effect[Writer % A + Async, Unit](Writer(a)).flatMap(_ => go(s2))
+      case None => okay.pure(())
+    okay.pure[Writer % A + Async, Unit](()).flatMap(_ => go(s))
+
   def range(from: Long, until: Long): Source[Long] =
     def go(i: Long): Source[Long] =
       if i >= until then okay.pure(())
@@ -89,6 +111,42 @@ object Source {
 }
 
 extension [A](s: Source[A])
+  /**
+   * The whole stream, as a `Vector` — the shape `ZStream#runCollect`
+   * and fs2's `compile.toVector` both have, under the name this
+   * library already uses for a terminal effect (`Writer.run`,
+   * `Async.run`, `!.run`): a program, not a value forced by parking.
+   *
+   * `toLazyList` also reads the whole stream, but forces each pull
+   * through `CanBlock` to hand back a plain `LazyList` — the right
+   * shape for a synchronous caller (a benchmark, a REPL). `runCollect`
+   * stays IN the program: walking `Writer.uncons`'s `Async` answer
+   * never leaves the effect row, so it composes with `flatMap` like
+   * any other step and is what an async caller — the shape every
+   * competitor's terminal actually returns — wants.
+   */
+  def runCollect: Vector[A] ! Async =
+    def go(rest: Source[A], acc: Vector[A]): Vector[A] ! Async =
+      Writer.uncons[A, Unit, Async](rest).flatMap:
+        case Right((a, more)) => go(more, acc :+ a)
+        case Left(_) => okay.pure(acc)
+    go(s, Vector.empty)
+
+  /**
+   * Run `f` for each element, in order — `ZStream#runForeach`,
+   * fs2's `compile.foreach`, at this library's own `run` prefix. `f`
+   * is itself a program, so a caller doing real work per element (an
+   * I/O call, a send) writes it as one and this sequences it; a
+   * caller with a plain side effect lifts it with `Async.Run` at the
+   * call site, same as anywhere else in this library.
+   */
+  def runForeach(f: A => Unit ! Async): Unit ! Async =
+    def go(rest: Source[A]): Unit ! Async =
+      Writer.uncons[A, Unit, Async](rest).flatMap:
+        case Right((a, more)) => f(a).flatMap(_ => go(more))
+        case Left(_) => okay.pure(())
+    go(s)
+
   /**
    * Merge two sources by READINESS, back into a source — the
    * concurrent join, in the shape the pipeline combinators consume

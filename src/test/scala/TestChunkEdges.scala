@@ -106,6 +106,42 @@ class TestChunkEdges extends munit.FunSuite {
     assertEquals(empty.mergeFlushing(empty).toLazyList.toList, Nil)
   }
 
+  test("runCollect: the whole stream, as a Vector, no blocking pull to get there") {
+    assertEquals(Source.of(List(1, 2, 3)).runCollect.runWith, Vector(1, 2, 3))
+    assertEquals(Source.of(List.empty[Int]).runCollect.runWith, Vector.empty[Int])
+    // composes: it is a program, not a forced value
+    val doubled: Vector[Int] ! Async = Source.of(List(1, 2, 3)).runCollect.map(_.map(_ * 2))
+    assertEquals(doubled.runWith, Vector(2, 4, 6))
+  }
+
+  test("runForeach: runs f for every element, in order, as one program") {
+    val seen = collection.mutable.ArrayBuffer.empty[Int]
+    val p: Unit ! Async = Source.of(List(1, 2, 3)).runForeach(i =>
+      !.widen[Unit, Async, Async](okay.effect[Async, Unit](Async.Run(() => seen += i))))
+    p.runWith
+    assertEquals(seen.toList, List(1, 2, 3))
+  }
+
+  test("runForeach on an empty source runs f zero times") {
+    var calls = 0
+    Source.of(List.empty[Int]).runForeach(_ =>
+      okay.effect[Async, Unit](Async.Run(() => calls += 1))).runWith
+    assertEquals(calls, 0)
+  }
+
+  test("Source.unfold peels the step until it says None, lazily") {
+    assertEquals(Source.unfold(0)(i => if i < 5 then Some((i, i + 1)) else None)
+      .toLazyList.toList, List(0, 1, 2, 3, 4))
+    assertEquals(Source.unfold(0)(_ => None: Option[(Int, Int)]).toLazyList.toList, Nil)
+    // lazy: an endless unfold is fine as long as the consumer stops
+    assertEquals(Source.unfold(0)(i => Some((i, i + 1))).toLazyList.take(4).toList,
+      List(0, 1, 2, 3))
+    // range IS this, specialised -- same stream either way
+    assertEquals(
+      Source.unfold(0L)(i => if i < 40 then Some((i, i + 1)) else None).toLazyList.toList,
+      Source.range(0, 40).toLazyList.toList)
+  }
+
   test("Source.range tells exactly the half-open range, and is lazy") {
     assertEquals(Source.range(0, 5).toLazyList.toList, List(0L, 1L, 2L, 3L, 4L))
     assertEquals(Source.range(3, 3).toLazyList.toList, Nil)

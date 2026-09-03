@@ -191,7 +191,7 @@ class ChunkFlushBenchmark {
   def fs2PerElement(): Long =
     import cats.effect.IO, cats.effect.unsafe.implicits.global
     val (a, b) = fs2Pair
-    a.unchunk.merge(b.unchunk).compile.fold(0L)(_ + _).unsafeRunSync()
+    a.chunkLimit(1).unchunks.merge(b.chunkLimit(1).unchunks).compile.fold(0L)(_ + _).unsafeRunSync()
 
   /** fs2 at its own natural chunking, the chunk-native row */
   @Benchmark

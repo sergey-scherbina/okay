@@ -96,6 +96,19 @@ lands in LazyList and forgets that the elements are still to be
 performed. An asynchronous stream has a name of its own —
 `Source[W] = Unit ! (Writer % W + Async)`, built by `Source(a, b, c)`
 or `Source.of(stream)` — and is an ordinary `Stream` in `Async`.
+`Source.unfold(s)(f)` generates one directly from a step function
+(`ZStream.unfold`'s shape — 3x ahead of it, measured, since `unfold`
+pays a chunk-of-one tax any array-native representation does);
+`Source.range` is that specialised to `Long` and costs one fewer
+tuple allocation per step. Two terminals read the whole thing while
+staying IN the program — `runCollect: Vector[A] ! Async` and
+`runForeach(f: A => Unit ! Async): Unit ! Async`, this library's own
+`run`-prefix (`Writer.run`, `Async.run`) at the shape `ZStream`'s and
+fs2's terminals have — for a caller composing further with `flatMap`
+rather than reading synchronously; `toLazyList` still blocks per pull
+and measures faster in a single-threaded run (`runCollect` is 30%
+slower building a `Vector` this way), so reach for the terminal that
+matches the caller, not by default (docs/benchmarks.md §6c).
 
 Consumption is algebra: `Fold[A, S]` (a start and a step; every
 `Monoid` gives one; `Group` adds the inverse that makes sliding
