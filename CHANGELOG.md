@@ -1,5 +1,35 @@
 # Changelog
 
+## native-scheduler-pool — a fixed worker pool, safe now that waiting is in queues not threads
+Completed: 2026-09-03
+Landed as 46b2704 (spec) + e372171 (impl). The Native Scheduler
+forked one OS thread per fiber because a fiber waiting on a Channel
+held that thread asleep — on a shared pool, enough waiters would
+deadlock every worker at once. channel-callback (2026-09-02) closed
+that: Channel now waits in queues, never in a thread, so ordinary
+fiber work never blocks a pool worker — only an explicit CanBlock
+park still does (still real OS parking on Native, no Loom there).
+`Schedulers.pool(size)`: a hand-rolled task queue
+(`scala.collection.mutable.Queue` under `synchronized`/`wait`/
+`notify` — no `java.util.concurrent` collection assumed on Native's
+javalib) feeding `size` worker threads. `Schedulers.threads` keeps
+today's one-per-fiber scheduler and stays the DEFAULT — a blocking
+workload on a shared pool can starve every worker, so `pool` is
+opt-in until a consumer sizes it for a workload that does not park.
+`cancel()` is best-effort (`Fiber.cancel`'s own stated contract): a
+queued-but-not-started task is dropped; a running one is interrupted
+through the worker thread CURRENTLY running it, tracked per task so
+a stale cancel can never reach a later, unrelated task the same
+worker picks up next.
+New Native-only test source dir: `Test/unmanagedSourceDirectories`
+for the native leg was `:=`-overwritten to just the cross suite
+(like JS); appended `src/test/scala-native` for what only makes
+sense there (CanBlock-based).
+Tests: `TestNativeScheduler` (4 tests) — 20 fibers complete on a
+2-worker pool without deadlock, par on the pool, `threads` unchanged,
+a task cancelled while queued never runs. 3/3 clean runs on the
+linked native binary; full `okayNative` suite 26/26.
+
 ## chunked-profile — two small levers, and the fair comparison the previous section owed
 Completed: 2026-09-03
 Landed as ceb77a4. Profiling the chunked path (stale since chunking

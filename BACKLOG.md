@@ -126,13 +126,20 @@ construction instead of a type test per value).
       benchmark harness exists.
 
 ## Async — after channel-callback (2026-09-02)
-- [ ] native-scheduler-pool — the Native Scheduler forks one OS
+- [x] native-scheduler-pool — the Native Scheduler forks one OS
       thread per fiber (src/main/scala-native/Platform.scala). With
       the callback channel nobody waits in a thread anymore, so a
       fixed-size pool with a task queue (the JVM's Schedulers.pool
       shape) is safe: fibers become cheap on Native. Blocking forms
       (CanBlock) on a pool thread still park it — document, or size
       the pool for it.
+      LANDED 2026-09-03: Schedulers.pool(size), hand-rolled queue (no
+      java.util.concurrent assumed on Native's javalib);
+      Schedulers.threads keeps today's behavior and stays the
+      DEFAULT — a blocking workload on a shared pool can starve it,
+      so pool is opt-in, sized per workload. cancel() best-effort,
+      tracked per-task so a stale cancel never hits a later task on
+      the same worker.
 
 ## Direct style — the roads named by the 2026-09-01 survey (docs/direct-style.md)
 - [ ] direct-try-ctx — `try` inside direct[[X] =>> E ?=> X] (the
