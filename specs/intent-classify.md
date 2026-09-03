@@ -62,11 +62,16 @@ object Classify:
   /** decode a reply; a label outside `I` is a Left, not a silent Other */
   def read[I](reply: String)(using Schema[Reading[I]]): Either[String, Reading[I]]
 
+  /** the class label of a value: the case name, or for a nested
+   * taxonomy the path through its groups. `depth = 1` scores the
+   * matrix over GROUPS, full depth over leaves. */
+  def label[I](i: I, depth: Int = Int.MaxValue)(using Schema[I]): String
+
   /** what a caller acts on: act on `High`/`Medium`, ask on `Low` */
-  enum Decision[I]:
+  enum Decision[+I]:
     case Act(spans: List[(String, I)])
-    case Clarify(span: Span[I])
-    case Nothing
+    case Clarify[I](span: Span[I]) extends Decision[I]
+    case Empty
   def decide[I](r: Reading[I], floor: Conf = Conf.Medium): Decision[I]
 
 object Eval:
@@ -76,8 +81,11 @@ object Eval:
   final case class ClassScore(precision: Double, recall: Double, f1: Double)
   final case class Report(perClass: Map[String, ClassScore], macroF1: Double)
 
-  /** one streaming pass over labelled examples */
-  def confusion[I]: Aggregator[(String, String), Confusion, Report]
+  /** one streaming pass over (gold, predicted) label pairs */
+  val confusion: Aggregator[(String, String), Confusion, Report]
+
+  /** the scores a matrix implies, without the fold */
+  def report(m: Confusion): Report
 
   /** the promotion rule, EXECUTABLE: the classes that regressed by
    * more than `tolerance` F1 points. Empty means promotable. */
@@ -87,23 +95,23 @@ object Eval:
 
 ## Behavior
 
-- [ ] a sum type derives a schema whose cases are the taxonomy, nested
+- [x] a sum type derives a schema whose cases are the taxonomy, nested
       sums nesting as groups
-- [ ] a required frame slot is a non-`Option` field with no default;
+- [x] a required frame slot is a non-`Option` field with no default;
       an optional slot is `Option`
-- [ ] a reply naming a label outside the taxonomy decodes to a `Left`,
+- [x] a reply naming a label outside the taxonomy decodes to a `Left`,
       naming the offending label
-- [ ] a reply whose slot fails its own schema (a `When` that is not
+- [x] a reply whose slot fails its own schema (a `When` that is not
       ISO-8601) decodes to a `Left`
-- [ ] two intents in one message produce two spans
-- [ ] one uncertain intent produces one span with several alts, ranked
-- [ ] `decide` returns `Clarify` when the best alt is `Low`, and the
+- [x] two intents in one message produce two spans
+- [x] one uncertain intent produces one span with several alts, ranked
+- [x] `decide` returns `Clarify` when the best alt is `Low`, and the
       clarification carries the alternatives to choose between
-- [ ] `Confusion` is a lawful Monoid (associative, identity)
-- [ ] `Report` gives per-class precision/recall/F1 and macro F1
-- [ ] `regressions` is empty for an identical report and names exactly
+- [x] `Confusion` is a lawful Monoid (associative, identity)
+- [x] `Report` gives per-class precision/recall/F1 and macro F1
+- [x] `regressions` is empty for an identical report and names exactly
       the classes that fell more than the tolerance
-- [ ] the taxonomy section of the prompt is generated from the schema:
+- [x] the taxonomy section of the prompt is generated from the schema:
       adding a case changes it without an edit
 
 ## Out of scope
@@ -166,6 +174,15 @@ instead of a number that fell.
 - **`Other` is a case of the taxonomy, not a convention** — so it
   cannot be forgotten. But see Results: declaring it is NOT enough,
   and this is the lane's most useful negative finding.
+- **A group is a one-field case whose field is a taxonomy** — that is
+  how the walk knows to descend. Scala's enums encode a hierarchy as a
+  case wrapping the sub-enum (`case Proposal(p: ProposalKind)`), so
+  the group node is a product, not a sum, and a walk that only
+  descended sums stopped at "Proposal" — found by the first run of the
+  test, not by reading. A case whose single field is a plain value is
+  a LEAF: its fields are slots, not a sub-taxonomy. Both kernels the
+  walk uses (`theCase`, `eachField`) hand the value over at its own
+  type, so the whole walk takes no cast.
 - **One tier before three** — the symbolic and vector tiers are
   deferred until measurement shows cost or latency binding. Rejected:
   building all three now (three dictionaries to keep in sync, three
@@ -224,3 +241,14 @@ Scope of these numbers, stated so nobody quotes them further than they
 go: one 4B local model, n=24, no constrained decoding. They decide the
 FIELD ORDER and they expose the `Other` collapse. They are not a
 quality claim for the design.
+
+**Implementation.** `Classify.scala` and `Eval.scala` in `okay-agent`,
+24 tests (`TestClassify` 13, `TestEval` 11, three of them ScalaCheck
+properties for the Monoid laws and for partial runs merging to the
+same report as the whole). No casts: the taxonomy walk goes through
+`Schema`'s existing `theCase` and `eachField` kernels.
+
+One behaviour worth recording because the test's first expectation was
+wrong about it: a single confusion damages BOTH classes it involves —
+B called A costs B its recall and A its precision. A promotion rule
+that named only the missed class would let half the damage through.
