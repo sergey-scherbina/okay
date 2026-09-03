@@ -1,0 +1,5 @@
+slug: mcp-project-binding
+branch: feature/mcp-project-binding
+worktree: ../okay-wt-mcp-project-binding
+claimed: 2026-09-03
+scope: bind this repo's rozum MCP tools to THIS project. The user-scope registration carries no ?project=, so the daemon fell back to its launchd default (the rozum repo): state.update from an okay session wrote into rozum's state file and rag.search answered from rozum's index. A project-scoped .mcp.json with ?project= fixes it; AGENTS.md gets the one line that says why it must be there.
