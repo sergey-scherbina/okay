@@ -214,6 +214,37 @@ class TestClassifyLive extends munit.FunSuite {
   }
 
   /**
+   * The language table, re-measured on what is actually recommended.
+   *
+   * The first one was taken with generic names and the gate, and the
+   * gate has since been demoted to a fallback — so those numbers
+   * describe a mechanism nobody should now reach for first. Both arms
+   * run here because the open question is whether the gate still pays
+   * outside English: it held `Other` recall at 1.00 everywhere while
+   * losing precision to 0.60 in Russian, which is the gate pushing
+   * genuine meeting messages out of the domain.
+   */
+  test("live: languages under domain-bearing names, with and without the gate") {
+    assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    import IntentFixture.Meeting
+    given sM: Schema[Meeting] = summon[Schema[Meeting]]
+    val mReading = Classify.reading[Meeting]
+
+    def named(m: String) =
+      predictIn[Meeting](ask(Classify.prompt[Meeting](m, IntentFixture.meetingExamples)))(
+        using sM, mReading)
+    def namedGated(m: String) =
+      Classify.readInDomain(ask(Classify.inDomainPrompt[Meeting](m)(using sM))) match
+        case Right(v) if !v.inDomain => "Other"
+        case _ => named(m)
+
+    for lang <- IntentFixture.languages do
+      armOver(s"$lang names", IntentFixture.inLanguage(lang), named)
+    for lang <- IntentFixture.languages do
+      armOver(s"$lang names+gate", IntentFixture.inLanguage(lang), namedGated)
+  }
+
+  /**
    * Ablating the names.
    *
    * The previous lane's result rests on four identifiers, so this asks

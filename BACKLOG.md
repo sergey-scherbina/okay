@@ -1053,7 +1053,15 @@ not a new primitive from scratch.
       replies is not a difference, and a mid-lane wording change moved
       an arm by two. Grow `IntentFixture` past the reference's minimum
       (30 per class) before defending any gap in the arms table as real.
-- [ ] intent-gate-non-english — the gate loses PRECISION outside
+- [x] intent-gate-non-english — LANDED 2026-09-04, and it REFUTED its
+      own premise. Re-measured on domain-bearing names, the gate does
+      not pay in any of six languages: neutral in three, costly in
+      three, and its worst damage is in ENGLISH (0.881 -> 0.602), not
+      outside it. The "non-English" framing came from having measured
+      the gate only against generic names. The language gap itself is
+      real and naming does not close it — Russian stays weakest (0.652)
+      across two independent runs. Original entry follows.
+- [ ] intent-gate-non-english (original) — the gate loses PRECISION outside
       English: `Other` precision 1.00 en, 0.75 fr, 0.60 ru, with recall
       1.00 everywhere, so it is pushing genuine in-domain messages out
       rather than failing to catch out-of-domain ones. Opposite
@@ -1081,3 +1089,13 @@ not a new primitive from scratch.
       nonsense qualifier: if the nonsense one also lifts `Other`, what
       helps is the model noticing the names were chosen, not the domain
       they name.
+- [ ] intent-language-gap — Russian 0.652 and German 0.813 against
+      Spanish 0.914 and French 0.900, with domain-bearing names and no
+      gate, so this is not a gate artifact and not a simple
+      English-first ordering (English is 0.881, below both Spanish and
+      French). Two candidates, worth trying SEPARATELY because they
+      cost different things: case names written in the message's
+      language, and an explicit domain sentence in the prompt. Measure
+      per language on `IntentFixture.parallel`; and grow that set past
+      twelve per language first, because twelve supports "there is an
+      effect" and not the size of any one number.

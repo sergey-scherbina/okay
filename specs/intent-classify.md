@@ -388,7 +388,10 @@ the prompt (68% -> 91%).
 
 **Language is not free**, and this is the lane's new finding. Twelve
 meanings, six languages, one arm (examples + gate), so the only thing
-varying between rows is the wording:
+varying between rows is the wording. SUPERSEDED IN PART — this table was
+taken with generic names and the gate, both of which later measurements
+demoted; read it with the intent-gate-non-english Results below, which
+re-take it on what is actually recommended:
 
 | | en | fr | de | es | ru | ja |
 |---|---|---|---|---|---|---|
@@ -560,3 +563,41 @@ decision stands on its own without the discount it was credited with.
 Scope: 20 messages, two streamed completions each, one 4B local model.
 The comparison assumes the server answers the same request the same way
 twice, which every run in this lane has supported.
+
+## Results — intent-gate-non-english (2026-09-04)
+
+A re-measurement, not a new hypothesis: the language table above was
+taken with generic names and the gate, and the gate has since been
+demoted to a fallback, so those numbers described a mechanism nobody
+should reach for first. Both arms run here, on domain-bearing names,
+twelve meanings per language.
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| domain names | 0.881 | 0.900 | 0.813 | **0.914** | **0.652** | 0.813 |
+| domain names + gate | 0.602 | 0.900 | 0.727 | 0.914 | 0.548 | 0.813 |
+
+**The premise of this backlog item is refuted.** It was filed as "the
+gate loses precision OUTSIDE English". With domain-bearing names the
+gate does not pay in ANY of the six languages: it is neutral in three
+and costs in three, and its worst damage is in ENGLISH (0.881 -> 0.602,
+−0.28), not in Russian (−0.10). So the demotion decided by
+intent-domain-in-names generalises across languages rather than being an
+English-only result, and the "non-English" framing was an artifact of
+having measured the gate only against generic names.
+
+**The language gap is real and naming does not close it.** Russian is
+the weakest at 0.652 with names alone and stays the weakest — this is
+not a gate artifact. Spanish (0.914) and French (0.900) sit above
+English (0.881), so the effect is not a simple English-first ordering
+either; it lands on particular languages, and on this evidence Russian
+and German are the ones to look at. Filed as its own item: the
+candidates are case names in the message's language and an explicit
+domain sentence, and they are worth trying separately because they cost
+different things.
+
+Scope: twelve messages per language, one 4B local model, one run per
+arm. Twelve messages is a signal, not a measurement of a language —
+what it supports is "the gate does not pay anywhere here" (six
+languages agreeing) and "Russian is consistently weakest across two
+independent runs", not the individual numbers.
