@@ -26,9 +26,108 @@ import okay.!.*
  * not the same one. Bridge to LazyList (toLazyList memoizes) for a
  * re-observable view.
  */
-final class Channel[A](capacity: Int = Int.MaxValue) {
+/**
+ * A channel: the INTERFACE, so the mechanism underneath can be chosen
+ * and compared rather than assumed.
+ *
+ * There is more than one good way to build a queue between fibers and
+ * they trade against each other, which channel-ring measured rather
+ * than argued: an immutable state rebuilt under one CAS composes with
+ * the STM (`Tx`, `orElse`, several cells in one transaction) and
+ * costs an allocation per operation; a mutable ring allocates nothing
+ * and cannot compose that way; a relaxed queue buys throughput under
+ * many producers at the price of exact FIFO. None of those is simply
+ * better, so the choice belongs at construction, and the operations
+ * belong to an interface every implementation answers.
+ *
+ * WHAT THE INTERFACE DELIBERATELY DOES NOT PROMISE: STM
+ * composability. `StmChannel` exposes its own cell, and `TestStm`
+ * reads it inside a transaction — a real property, and one a
+ * ring-backed channel cannot offer because it has no such cell. It
+ * stays on the implementation that has it rather than being promised
+ * here and thrown by everyone else.
+ *
+ * An implementation provides the callback primitives and the two
+ * cancellers; everything a caller usually touches — `send`,
+ * `receive`, the blocking pair, the batched read — is derived here
+ * once, so implementations cannot drift apart on them.
+ */
+trait Channel[A] {
 
-  private type End = Either[Throwable, Option[A]]
+  private[okay] type End = Either[Throwable, Option[A]]
+
+  /** k(true) once the channel TOOK the element, k(false) if it is
+   * closed: the element is dropped, nothing thrown */
+  def sendAsync(a: A)(k: Boolean => Unit): Unit
+
+  /** now if an element (or the end) is ready, later when one arrives */
+  def receiveAsync(k: End => Unit): Unit
+
+  /** the non-suspending send: true if taken NOW, never waits */
+  def offer(a: A): Boolean
+
+  /** end the stream: buffered elements still drain */
+  def close(): Unit
+
+  /** record that a producer broke, WITHOUT closing */
+  def fail(e: Throwable): Unit
+
+  def failed: Option[Throwable]
+  def isClosed: Boolean
+
+  /** un-register a waiter that gave up — what a cancelled `send` or
+   * `receive` must do, and the one part of waiting only the
+   * implementation can express */
+  private[okay] def cancelSend(cb: Boolean => Unit): Unit
+  private[okay] def cancelReceive(k: End => Unit): Unit
+
+  /** send as a program: suspends while the buffer is full, answers
+   * whether the channel took the element (false: closed, dropped) */
+  def send(a: A): Boolean ! Async =
+    Async.await { k =>
+      val cb: Boolean => Unit = b => k(Right(b))
+      sendAsync(a)(cb)
+      () => cancelSend(cb)
+    }
+
+  /** receive as a program: suspends while the channel is empty and
+   * open; None once closed and drained, the producer's failure
+   * (through the error channel) if one ended it */
+  def receive: Option[A] ! Async =
+    Async.await { k =>
+      receiveAsync(k)
+      () => cancelReceive(k)
+    }
+
+  /** the parking forms, only where parking is GRANTED (JVM/Native;
+   * a compile error on JS): the same programs, forced at this point */
+  def sendBlocking(a: A)(using cb: CanBlock): Boolean =
+    cb.block[Boolean](k => { sendAsync(a)(k); () => () })
+
+  def receiveBlocking()(using cb: CanBlock): Option[A] =
+    cb.block[End](k => { receiveAsync(k); () => () }).fold(e => throw e, identity)
+
+  /**
+   * Take up to `max` elements that are ALREADY buffered, in one go.
+   * The default is the honest one-at-a-time answer, so a new
+   * implementation is correct before it is fast; an implementation
+   * that can do better overrides it (see `StmChannel`).
+   */
+  private[okay] def receiveManyAsync(@annotation.unused max: Int)
+                                    (k: Either[Throwable, Chunk[A]] => Unit): Unit =
+    // the default IGNORES max on purpose: one element, handed over as
+    // a chunk of one, is always a correct answer to "up to max", and
+    // an implementation that can do better says so by overriding
+    receiveAsync(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
+
+  /** up to `max` buffered elements as a program; an empty answer is
+   * the end of the stream */
+  private[okay] def receiveMany(max: Int): Chunk[A] ! Async =
+    Async.await { k => receiveManyAsync(max)(k); () => () }
+}
+
+final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
+
 
   /** the whole channel as ONE immutable value: persistent queues and
    * a size counter (immutable.Queue's size is O(n)). Every operation
@@ -79,21 +178,14 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
 
   /** send as a program: suspends while the buffer is full, answers
    * whether the channel took the element (false: closed, dropped) */
-  def send(a: A): Boolean ! Async =
-    Async.await { k =>
-      val cb: Boolean => Unit = b => k(Right(b))
-      sendAsync(a)(cb)
-      () => transact[Unit](s => (s.copy(senders = s.senders.filterNot(_._2 eq cb)), () => ()))
-    }
+  private[okay] def cancelSend(cb: Boolean => Unit): Unit =
+    transact[Unit](s => (s.copy(senders = s.senders.filterNot(_._2 eq cb)), () => ()))
 
   /** receive as a program: suspends while the channel is empty and
    * open; None once closed and drained, the producer's failure
    * (through the error channel) if one ended it */
-  def receive: Option[A] ! Async =
-    Async.await { k =>
-      receiveAsync(k)
-      () => transact[Unit](s => (s.copy(receivers = s.receivers.filterNot(_ eq k)), () => ()))
-    }
+  private[okay] def cancelReceive(k: End => Unit): Unit =
+    transact[Unit](s => (s.copy(receivers = s.receivers.filterNot(_ eq k)), () => ()))
 
   /**
    * Take up to `max` elements that are ALREADY buffered, in ONE
@@ -116,7 +208,7 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
    * as the single receive does, and their callbacks fire after the
    * CAS like every other action here.
    */
-  private[okay] def receiveManyAsync(max: Int)(k: Either[Throwable, Chunk[A]] => Unit): Unit =
+  private[okay] override def receiveManyAsync(max: Int)(k: Either[Throwable, Chunk[A]] => Unit): Unit =
     transact[Unit] { s =>
       if s.buf.isEmpty then
         // nothing buffered: exactly the single receive, its one
@@ -162,11 +254,6 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
 
   /** up to `max` buffered elements as a program; an empty answer is
    * the end of the stream */
-  private[okay] def receiveMany(max: Int): Chunk[A] ! Async =
-    Async.await { k =>
-      receiveManyAsync(max)(k)
-      () => ()
-    }
 
   /** the non-suspending send: true if taken NOW (handed over or
    * buffered), false if the channel is closed or full — never
@@ -183,11 +270,6 @@ final class Channel[A](capacity: Int = Int.MaxValue) {
 
   /** the parking forms, only where parking is GRANTED (JVM/Native;
    * a compile error on JS): the same programs, forced at this point */
-  def sendBlocking(a: A)(using cb: CanBlock): Boolean =
-    cb.block[Boolean](k => { sendAsync(a)(k); () => () })
-
-  def receiveBlocking()(using cb: CanBlock): Option[A] =
-    cb.block[End](k => { receiveAsync(k); () => () }).fold(e => throw e, identity)
 
   /** end the stream: the buffered elements still drain, parked
    * senders' elements were accepted before the end and join the
@@ -275,6 +357,21 @@ given Stream[Channel, Async] with
     c.receive.map(_.map((_, c)))
 
 object Channel {
+
+  /**
+   * A channel with the default mechanism — the STM one, unchanged,
+   * so every existing call site means exactly what it always did.
+   *
+   * The name is the factory on purpose: `Channel[A](capacity)` was a
+   * constructor before this seam existed and is an `apply` after it,
+   * so making the mechanism swappable cost no call site anything.
+   * Ask for a specific one by name (`StmChannel`, and whatever else
+   * earns its place) when the trade matters — channel-ring measured
+   * one such trade at 3.4x, in exchange for the STM composability
+   * only this implementation has.
+   */
+  def apply[A](capacity: Int = Int.MaxValue): Channel[A] = StmChannel[A](capacity)
+
 
   /** unfold a stream into the channel as an Async program; stops
    * early if the channel refuses (closed under the producer) */

@@ -81,7 +81,7 @@ class TestStm extends munit.FunSuite {
   }
 
   test("the channel's cell is a TRef: a transaction can read the channel's state") {
-    val c = Channel[Int]()
+    val c = StmChannel[Int]()
     assert(c.offer(1)); assert(c.offer(2))
     val n = Stm[Async].atomically(Tx.read(c.cell).map(_.size)).runWith
     assertEquals(n, 2)

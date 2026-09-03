@@ -72,7 +72,7 @@ object Jetty {
         def connect(url: String, headers: Seq[(String, String)],
                     subprotocols: Seq[String]): Socket ! Async =
           Async.await[Socket] { k =>
-            val q = new Channel[Frame](Int.MaxValue)
+            val q = Channel[Frame](Int.MaxValue)
             val listener = adapter(q)
             val upgrade = org.eclipse.jetty.websocket.client.ClientUpgradeRequest()
             headers.foreach((h, v) => upgrade.setHeader(h, v))
@@ -283,7 +283,7 @@ object Jetty {
    */
   private def session(stage: okay.Stage[Frame, Frame, Unit])
                      (using Scheduler): Listen =
-    val q = new Channel[Frame](Int.MaxValue)
+    val q = Channel[Frame](Int.MaxValue)
     Listen(new Listen.Sink:
       def open(s: Session): Unit =
         Async.spawn(okay.http.Ws.over(socket(s, q))(stage)): Unit

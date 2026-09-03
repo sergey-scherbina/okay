@@ -113,7 +113,7 @@ object Transports {
           else new Web.WebSocket(url, subprotocols.toJSArray)
         ws.binaryType = "arraybuffer"
 
-        val q = new Channel[Frame](capacity)
+        val q = Channel[Frame](capacity)
 
         ws.onmessage = (e: Web.MessageEvent) =>
           // a text frame is a string, a binary one an ArrayBuffer: a
