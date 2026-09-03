@@ -84,6 +84,67 @@ build the JVM around":
   thread/fiber so `run` blocking (because the script's own body blocks
   to keep the server alive) does not block the generator.
 
+## Lifecycle — resolved 2026-09-03 (okay-script-lifecycle)
+
+The operator asked to settle this before the storefront example: how
+does a runtime-compiled app start without blocking the generator, and
+stop CLEANLY (not just get abandoned) later. No new `ScalaScript` API
+was needed — the answer was already sitting in `okay-demo/
+ChatDemo.main`, which has run a real `okay-jetty` server this whole
+session via exactly this idiom:
+
+```scala
+Resource.run[Unit, Pure](
+  Jetty.serve(port)(routes)().map { s =>
+    println(s"...: http://127.0.0.1:${Jetty.port(s)}")
+    Thread.sleep(Long.MaxValue)   // ctrl-c ends the process and the Resource
+  }
+).runWith
+```
+
+A script wanting to be a long-lived app writes exactly this shape. The
+two facts that make it work as a STOPPABLE app, not just a permanently
+blocked one:
+
+1. **`Resource.run` releases on any escaping `Throwable`.**
+   `Resource.scala`'s `_loop` wraps the whole scope in a
+   `try ... catch { case e: Throwable => releaseAll(fin); throw e }` —
+   an exception from ANYWHERE inside the scope, including a plain JVM
+   `Thread.sleep` call (not itself an effect), runs every acquired
+   release (in reverse order) before propagating. `Jetty.serve`'s
+   `Resource.acquire` release closure stops the Jetty `Server`.
+2. **`Thread.interrupt()` on the exact thread running the script makes
+   `Thread.sleep` throw `InterruptedException`.** `ScalaScript.run`
+   invokes the compiled script's `main` via reflection SYNCHRONOUSLY,
+   on whatever thread called `run` — no thread-hop inside `run` itself
+   — so a caller that puts `run` on its OWN dedicated `java.lang.Thread`
+   holds the exact thread the script's `Thread.sleep` blocks on, and
+   `.interrupt()` on it is a real, targeted stop signal, not a
+   best-effort kill.
+
+So the full recipe for a caller running a generated app:
+
+```scala
+val t = new Thread(() => resultBox.set(ScalaScript.run(md, classpath)))
+t.start()                 // does not block the generator
+// ... later, to stop this one app:
+t.interrupt()             // Thread.sleep throws -> Resource releases -> server.stop()
+```
+
+`ScalaScript.run`'s returned `Result` (once the interrupted thread's
+`run` call actually returns) carries `ok = false` and
+`thrown = Some(interruptedException)` — indistinguishable, by design,
+from any other uncaught exception a script could throw; a caller that
+deliberately interrupted its own thread already knows why, so `Result`
+does not need a separate "stopped on purpose" case.
+
+Proved, not just asserted, by `TestScalaScriptLifecycle` (Live-tagged:
+binds a real port): a script starting a real `Jetty.serve` on a free
+port, run via `ScalaScript.run` on a background thread, is confirmed
+UP by a real HTTP GET before interrupting, and confirmed DOWN (the
+port refuses connections again) after — with the `Result` showing the
+`InterruptedException`.
+
 ## okay-script-scalac-classpath — found and fixed 2026-09-03
 
 Found by a sibling agent gating an unrelated change: `okayScript/test`
@@ -294,6 +355,14 @@ only this one step, and only when a script asks for it, does.
       successfully, loading a class from the resolved jar — proving
       the resolved jar was actually added to the classpath, not that
       the class happened to already be visible.
+- [x] (Live) a script that starts a real `okay-jetty` server through
+      `Resource.run(Jetty.serve(...)().map { s => ...; Thread.sleep(
+      Long.MaxValue) }).runWith`, run via `ScalaScript.run` on a
+      background thread: an HTTP GET against the bound port succeeds
+      WHILE the thread is alive; after `Thread.interrupt()` on that
+      thread, the SAME GET starts failing (the server actually
+      stopped, not just the thread abandoned), and the eventual
+      `Result` has `thrown = Some(_: InterruptedException)`.
 
 ## Results
 
