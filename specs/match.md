@@ -307,6 +307,56 @@ never consults the policy.
       coercion, repair-as-text, refusal with nothing stored — and a
       well-formed value never consults the policy
 
+## The vector cache (match-vec-cache)
+
+`MemoryMatch` has cached profile summaries since stage 0: `summaries`,
+keyed `(profile, side)`, dropped on assert, supersede, an identity
+link and reset. `SqlMatch` — the engine a deployment actually runs —
+had nothing, and embedded every candidate's summary on every
+`candidates()` and every live attribute's text on every
+`registrySearch()`.
+
+That was invisible while `embed` defaulted to `Vectors.hashing`, which
+is arithmetic over character trigrams. With a real encoder it is one
+model inference per candidate per query. Measured in a downstream
+deployment on a real multilingual encoder, 50 profiles, 1 vCPU: 4.4s
+for the first search, 1.5s for each one after, about 80ms per profile.
+
+The fix is a table, not a hook:
+
+    match_vecs(k VARCHAR PRIMARY KEY, fp VARCHAR, dim INT, vec BLOB)
+
+`k` names the entity — `p:<uuid>:<side>` for a profile summary,
+`a:<slug>` for an attribute — so the row count is bounded by entities
+and an update overwrites rather than accumulates. `fp` is a SHA-256 of
+the text the vector was computed from, and it is what makes this
+correct without any invalidation logic: a changed fact is a changed
+summary is a changed fingerprint, and a stale row is simply not used.
+
+This matters more than it sounds. The alternative — invalidating on
+every write path — is the design `MemoryMatch` uses, and it needs four
+separate call sites to remember (assert, supersede, identity link,
+reset); a fifth write path added later silently serves stale vectors.
+The fingerprint cannot be forgotten, because it is derived from the
+same text the vector is.
+
+`embedTag` is a new constructor parameter, empty by default. Vectors
+from one encoder are noise to another, and the dimension often matches
+even when the model does not, so a deployment that can switch encoders
+passes its model name and the fingerprint changes with it. Empty means
+"unversioned", which is what every existing construction gets.
+
+- [ ] a second `candidates()` over the same facts embeds nothing
+- [ ] a changed fact changes the fingerprint and the vector is recomputed
+- [ ] a superseded fact does the same
+- [ ] the cache survives a new `SqlMatch` over the same database — the
+      restart case the memory engine cannot have
+- [ ] `registrySearch` embeds each live attribute once, not once per call
+- [ ] a different `embedTag` recomputes rather than serving the old vector
+- [ ] `reset()` drops the cache with everything else
+- [ ] ranking is UNCHANGED: the same query answers the same order and
+      the same scores it did before the cache existed
+
 ## Out of scope
 - The account-recovery security flow (recorded above; stage 2).
 - Payment/monetization mechanics — the platform gate EXISTS in the
