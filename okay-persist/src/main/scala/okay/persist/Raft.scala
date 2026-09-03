@@ -1,5 +1,7 @@
 package okay.persist
 
+import okay.codec.Schema
+
 /**
  * Own Raft, stage 0 (specs/consensus.md, persist-raft): the
  * consensus ALGORITHM's core state machine — leader election and
@@ -22,7 +24,7 @@ package okay.persist
 /** one log entry: the term it was appended under (the log matching
  * property needs it) plus an opaque payload — what the payload
  * MEANS is the eventual Store engine's business, not this core's */
-final case class RaftEntry(term: Long, data: Array[Byte])
+final case class RaftEntry(term: Long, data: Array[Byte]) derives Schema
 
 enum RaftRole:
   case Follower, Candidate, Leader
@@ -46,7 +48,7 @@ final case class RaftState(
   nextIndex: Map[String, Long] = Map.empty,
   matchIndex: Map[String, Long] = Map.empty)
 
-enum RaftMsg:
+enum RaftMsg derives Schema:
   case RequestVote(term: Long, candidateId: String, lastLogIndex: Long, lastLogTerm: Long)
   case RequestVoteResp(term: Long, from: String, voteGranted: Boolean)
   case AppendEntries(term: Long, leaderId: String, prevLogIndex: Long, prevLogTerm: Long,
