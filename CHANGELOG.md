@@ -1,5 +1,17 @@
 # Changelog
 
+## netty-integration — okay-netty out of the default gate, into `integrationTest`
+Completed: 2026-09-03
+Landed as 1d7fbb1. Real sockets and real ports: `TestBackends` failed
+the default gate twice with the identical signature (jetty
+`StaticException: Closed`, one in 12, 2026-09-01 and 2026-09-03) and
+was green in isolation immediately after both times. That is the
+evidence `netty-ws-matrix-flake`'s settle-plan asked for, and it
+resolves the standing conflict between that plan and AGENTS.md's
+no-flaky-in-the-default-gate policy in the policy's favour, on the
+operator's call. Both suites Live-tagged; verified both directions
+(0 tests in the default gate, all 12 green under `--include-tags=Live`).
+
 ## chunk-bench-matrix — the chunk/flush surface measured and compared, the API made orthogonal, one pre-existing overflow fixed
 Completed: 2026-09-03
 Landed as e986da5.
