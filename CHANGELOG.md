@@ -1,5 +1,35 @@
 # Changelog
 
+## merge-chunk-param — the chunked merge folded into `merge` as a flag, beside the `capacity` it has to respect
+Completed: 2026-09-03
+Landed as 8c4d7b0. `mergeChunked` became `merge(chunked = true)`,
+for discoverability — the previous lane's finding is that callers of
+`merge` silently pay 5x, and a sibling method only reaches those who
+already know it exists. Folding it in exposed two things the separate
+combinator had hidden.
+
+`capacity` had stopped meaning what it says: the channel holds
+CHUNKS, so a caller asking for 64 elements was silently getting
+64 x 64 = 4096. Now the channel gets `capacity / ChunkSize` slots, so
+`capacity` counts elements either way — which costs half the win at
+the default and lets the knob buy it back explicitly:
+
+| 2x2000 | | |
+|---|---|---|
+| `chunked = false` | 1163.4 ±21.2 | readiness, exact |
+| `chunked = true`, capacity 64 | **443.6 ±23.8** | 2.6x, same budget |
+| `chunked = true`, capacity 1024 | **226.5 ±1.2** | 5.1x |
+
+(226.5 against a hand-built chunk pipeline's 223.2 — nothing lost to
+the composition.) And the chunk SIZE stopped deserving to be a
+parameter: it moves the number ~10% across a 4x span while exposing
+it is exactly what breaks `capacity`. Fixed at 16.
+
+Off by default for a stronger reason than politeness, verified in
+`Stage.chunked`'s body: it emits when a chunk is full or its input
+ends, with no flush on time — so on the slow or unending sources this
+merge exists for, an element waits for 15 others that may never come.
+
 ## source-merge-chunked — Source.mergeChunked: 4-5x, the first thing in this arc that actually gets faster
 Completed: 2026-09-03
 Landed as 9971a0d. Four lanes had refuted the COST side of the
