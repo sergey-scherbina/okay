@@ -144,6 +144,32 @@ class TestChunkEdges extends munit.FunSuite {
       assertEquals(out.init.forall(_.length == k), true, s"full chunks at k=$k")
   }
 
+  test("the same chunking stage VALUE driven twice does not share its buffer") {
+    // a Stage is a VALUE, and `mergeFlushing` drives one `chunker`
+    // for both sides — so a chunking stage must not carry state
+    // between runs. Free today (the accumulator is immutable), and
+    // the guard on any future attempt to make it a mutable buffer,
+    // which chunk-size-representation tried and declined
+    val st = Stage.chunked[Int](8)
+    val a = through(ints(1 to 20))(
+      !.widen[Unit, Take % Int + Writer % Chunk[Int], Async](st)).toLazyList.toList
+    val b = through(ints(101 to 120))(
+      !.widen[Unit, Take % Int + Writer % Chunk[Int], Async](st)).toLazyList.toList
+    assertEquals(a.flatten, (1 to 20).toList)
+    assertEquals(b.flatten, (101 to 120).toList)
+    assertEquals(a.map(_.length), List(8, 8, 4))
+  }
+
+  test("chunks are independent objects: an earlier one is not overwritten by a later") {
+    val all = ints(1 to 64).chunked(8).toLazyList.toList
+    assertEquals(all.length, 8)
+    // read them AFTER the whole stream is built: a chunk must own its
+    // storage, so a shared or reused buffer would show the last
+    // chunk's contents in every slot
+    assertEquals(all.map(_.head), List(1, 9, 17, 25, 33, 41, 49, 57))
+    assertEquals(all.flatten, (1 to 64).toList)
+  }
+
   // ── flushAfter at the edges ─────────────────────────────────────
 
   test("flushAfter on a source that ends first: the end wins, no extra chunk") {

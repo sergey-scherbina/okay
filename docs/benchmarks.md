@@ -469,28 +469,39 @@ flusher is one sleeping fiber beside the feed rather than machinery
 in the per-element path. Against ZIO that is **20x**, against fs2
 **222x**.
 
-**Where ZIO wins, and why the elementwise row is not what it looks
-like.** ZIO's "elementwise" 59.1 is faster than its own chunked
+**Where ZIO looked ahead, and what the like-for-like pair actually
+says.** ZIO's "elementwise" 59.1 is faster than its own chunked
 127.2, which is the tell: `ZStream` is chunked by construction (4096
-by default), so that row is ZIO's natural chunking, and `.grouped(16)`
-makes it *slower* by re-chunking downward. Read as chunking-vs-
-chunking at the same size, ZIO is ahead of us — and the gap widens
-with the chunk:
+by default), so that row is ZIO's natural chunking and `.grouped(16)`
+makes it *slower* by re-chunking downward. Chunking a stream at
+matching sizes therefore reads as ZIO ahead, and further ahead as the
+chunk grows:
 
 | chunk size | okay | ZIO | fs2 |
 |---|---|---|---|
-| 16 | 222.3 ±4.0 | 127.2 ±2.2 | 38508 ±403 |
-| 256 | 277.2 ±4.5 | **75.1 ±7.3** | 38045 ±313 |
-| 1024 | 438.3 ±14.4 | **75.2 ±10.4** | 38329 ±1337 |
+| 16 | 218.7 ±1.7 | 127.2 ±2.2 | 38508 ±403 |
+| 256 | 276.2 ±0.9 | **75.1 ±7.3** | 38045 ±313 |
+| 1024 | 437.7 ±2.9 | **75.2 ±10.4** | 38329 ±1337 |
 
-Ours gets WORSE with a bigger chunk where theirs gets better. Not
-from stack depth — the budget trampoline below caps that and moved
-these numbers not at all (222.3 after against 224.5 before) — so it
-is the representation: we accumulate into a `Vector` and copy it into
-an `ArraySeq` per chunk, two structures where a flat fill would do.
-Filed rather than guessed at; the honest reading today is that okay
-is the fastest of the three at small chunks and at anything timed,
-and ZIO is ahead once the chunk grows.
+But that table compares our PER-ELEMENT `Source`, chunked after the
+fact, against a stream that never had elements to pay for. okay's
+equivalent of `ZStream` is `Chunks` — chunks from the start, no
+program node per element — and against it the answer reverses:
+
+| chunk-native, 2x2000 | |
+|---|---|
+| okay `Chunks.merge` | **23.2 ±0.2** |
+| ZIO `ZStream.merge` | 58.6 ±0.7 |
+
+**2.5x ahead.** So the cost the size-curve shows is not a chunking
+defect to be optimised away; it is what a per-element `Source` costs
+before any chunking happens, and it is avoidable by not having a
+per-element stream in the first place. Confirmed by trying the
+optimisation anyway: filling a `ChunkBuf` instead of a `Vector` in
+`Stage.chunked` measured 11% better at 256 and 8% at 1024 while
+2.2% WORSE at the default 16 (bars non-overlapping), helping only
+the sizes nobody uses and leaving the shape unchanged — declined and
+reverted (chunk-size-representation).
 
 fs2's numbers are its worst case (singleton elements through its
 concurrency machinery) and are stated as such — it is 30-160x behind

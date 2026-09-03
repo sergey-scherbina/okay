@@ -272,8 +272,11 @@ need a second channel (a timer has to fire while the source is
 silent); composing costs nothing where no timer is involved (222.3us
 against the fused 223.7 on 2x2000). Keep the size modest — a stage
 that accumulates without emitting is bounded by `PullBudget` but a
-chunk in the thousands buys nothing here anyway (docs/benchmarks.md
-§6b has the curve, and where ZIO is still ahead of us). On JVM/Native it parks
+chunk in the thousands buys nothing here anyway. And where throughput
+really is the point, the deeper answer is not to chunk a per-element
+source at all but to start chunked: `Chunks.merge` never builds a
+program node per element and measures 23.2us against ZIO's 58.6 on
+the same 2x2000 (docs/benchmarks.md §6b). On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`

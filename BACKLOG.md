@@ -171,16 +171,28 @@ construction instead of a type test per value).
       empty reply from a server the suite had just started); ran
       alone right after: 4/4 green. The port/readiness family
       (flaky-port-roulette); leave filed, fix with that family.
-- [ ] chunk-size-representation — `merge(chunked)`/`chunked(size)` gets
-      SLOWER as the chunk grows (222/277/438us on 2x2000 at 16/256/
-      1024) where ZIO's gets faster (127/75/75), so ZIO is ahead of us
-      at every equal chunk size and the gap widens. Not stack depth —
-      chunk-stack-safety's budget trampoline moved these numbers not
-      at all. Suspect the representation: we accumulate into a Vector
-      and copy it into an ArraySeq per chunk, two structures where a
-      flat fill of a known size would do. Settle by: fill an array
-      directly in Stage.chunked and Channel's ChunkBuffer, measure the
-      curve again (docs/benchmarks.md §6b has today's).
+- [x] chunk-size-representation — SETTLED, and the premise was wrong
+      (2026-09-03). The suspected cause (Vector-then-ArraySeq per
+      chunk) was tried: filling a `ChunkBuf` in `Stage.chunked`
+      measured 11% better at chunk 256 and 8% at 1024 while 2.2%
+      WORSE at the default 16, bars non-overlapping — helping only
+      sizes nobody uses. Declined and reverted. The real reading is
+      that the curve was never a chunking defect: it compared our
+      per-element `Source`, chunked after the fact, against a stream
+      chunked by construction. Against the like-for-like pair — okay
+      `Chunks.merge` 23.2us against ZIO `ZStream.merge` 58.6 on
+      2x2000 — okay is 2.5x AHEAD. docs/benchmarks.md §6b.
+
+- [ ] nio-port-scope-flake — okay.http.TestNio "the listener is a
+      Resource: the port is free after the scope" failed once under
+      the full sbt test matrix (2026-09-03, "the listener outlived its
+      Resource scope"), green 3/3 in isolation immediately after. The
+      same signature as netty-ws-matrix-flake in a different family: a
+      real port, and an assertion about how fast the OS frees it,
+      under matrix load. Decide as netty was decided (Live-tag it into
+      integrationTest) or settle the timing first — not taken
+      unilaterally, since netty's move was an explicit instruction and
+      this is a different suite.
 
 - [x] netty-ws-matrix-flake — SETTLED by moving it out of the gate
       (netty-integration, 2026-09-03, operator decision). It failed

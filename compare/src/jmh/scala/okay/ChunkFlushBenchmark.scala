@@ -112,4 +112,20 @@ class ChunkFlushBenchmark {
     val (a, b) = zioPair
     runZio(a.merge(b).groupedWithin(K, Duration.fromMillis(1000)).flattenChunks
       .runFold(0L)(_ + _))
+
+  /**
+   * The question the chunk-size curve really asks: ZIO is not merging
+   * a per-element stream in chunks, it never HAS a per-element stream
+   * — ZStream is chunked by construction. okay's equivalent is
+   * `Chunks`, a stream of chunks from the start, which never builds a
+   * program node per element at all. This is the like-for-like pair,
+   * and the one the curve above was not.
+   */
+  @Benchmark
+  def okayChunksNative(): Long =
+    val merged = Chunks.range(0, N.toLong) merge Chunks.range(N.toLong, 2L * N)
+    var sum = 0L
+    var c = merged.receiveBlocking()
+    while c.isDefined do { sum += c.get.sum; c = merged.receiveBlocking() }
+    sum
 }
