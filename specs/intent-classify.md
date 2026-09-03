@@ -146,12 +146,21 @@ rendered, so it cannot drift from the parser.
 **One model tier.** `Structured.cut` validates the reply as it arrives
 and stops generation the moment the value is complete; for a
 classification the value is small, so the answer costs the answer.
+NOT YET WIRED HERE: this lane builds the prompt and the decoder, and
+leaves the streaming call to the caller — so the token saving is
+reasoned about, not measured (backlog: intent-live-provider).
 
 **Evaluation is a fold.** `Confusion` is a Monoid, so evaluation
 distributes and partial runs merge — the property `Postings` has for
-the same reason. The fixture is a `Rerun` journal, so a prompt change
+the same reason, and the property test here checks exactly that: two
+partial runs merged give the same report as folding the whole.
+
+The INTENDED fixture is a `Rerun` journal, so that a prompt change
 replays deterministically and a regression points at a step number
-instead of a number that fell.
+rather than at a number that fell. That binding is not built in this
+lane — `Eval` takes `(gold, predicted)` label pairs from wherever the
+caller has them, and nothing here depends on where. Stated as the
+intended path, not as something that exists.
 
 ## Decisions
 

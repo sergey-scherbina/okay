@@ -793,3 +793,9 @@ not a new primitive from scratch.
       The end-to-end run belongs with `TestLive`'s gating, and it is
       what would let `Structured.cut`'s token saving be measured rather
       than reasoned about.
+- [ ] intent-eval-on-journal — bind `Eval` to a `Rerun` journal so an
+      evaluation run is replayable and a regression names the step that
+      changed, not just the class that fell. The spec names this as the
+      intended fixture; the lane deliberately did not build it, and the
+      seam it needs is only that `Eval` takes label pairs from
+      anywhere.
