@@ -1,5 +1,40 @@
 # Changelog
 
+## okay-script-runtime — explicit Classpath + `//> using dep` (Coursier), and the fork-classpath bug behind it
+Completed: 2026-09-03
+Landed as e543c2d0, fast-forwarded onto master. The operator clarified
+the actual goal behind okay-script: not a doc smoke-test, but runtime
+app generation — generate a `.md` file at runtime, compile+run it, and
+have it come up live as a web app (a storefront), the way
+`../scalascript` does for its own language. `okay` already has the
+application-shaped pieces (`okay-ui`, `okay-jetty`'s `serve`) that
+scalascript had to invent a whole language to get, so `okay-script`
+only needed two additions: `Classpath` (explicit classpath entries a
+script compiles and runs against, instead of always the calling
+process's ambient classpath — `run` now takes one, defaulting to
+`Classpath.ambient`) and `Deps` (`//> using dep "org:artifact:version"`
+— scala-cli's own directive — hoisted from a script's blocks and
+resolved to jars by shelling out to the `cs`/`coursier` CLI, appended
+to the classpath before compiling; dotc itself stays fully in-process,
+only this one step touches the network, and only when a script asks).
+Along the way, reproduced and fixed a sibling-found regression,
+`okay-script-scalac-classpath` (BACKLOG): `okayScript/test` failed
+5/7 on master itself because the project's `build.sbt` block never set
+`Test / fork := true`, so its tests ran INSIDE SBT'S OWN JVM, where
+`System.getProperty("java.class.path")` is just `sbt-launch.jar`'s own
+path, not the real classpath — dotc compiled against a classpath with
+no scala-library on it and crashed resolving `scala.Int`. Confirmed by
+printing the property from inside the failing test JVM; fixed by
+adding the missing `Test / fork := true` alone, before any of the
+Classpath/Deps redesign. New Live-tagged suite `TestScalaScriptDeps`
+proves end-to-end `using dep` resolution + execution against a real,
+non-transitive dependency (`fansi`) — not already reachable on
+okay-script's own classpath, so the test proves the resolved jar was
+actually used. Filed to BACKLOG, not built: a worked
+okay-ui/okay-jetty storefront example end to end (the concrete next
+step), and classloader isolation between multiple runtime-compiled
+scripts sharing one host JVM.
+
 ## json-unicode-escape — decode \uXXXX in both JSON parsers
 Completed: 2026-09-03
 Landed as 1cd5255b (spec) + 15f96859 (impl). `Json.unquote`'s escape
