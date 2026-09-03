@@ -1,5 +1,0 @@
-slug: skills-rag-state
-branch: feature/skills-rag-state
-worktree: ../okay-wt-skills-rag-state
-claimed: 2026-09-03
-scope: bump the .agents/plugins submodule to the version carrying the rag / task-state / replay skills, and add to AGENTS.md the advice to reach for rag.search and state.get/update — with the WHEN, which the skills index cannot give: rag only where grep genuinely loses, state at the start of a task and after any compaction.
