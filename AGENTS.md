@@ -38,7 +38,13 @@ CHANGELOG: CHANGELOG.md
   rozum index, which is why its hits kept being Rust. The index is
   per project too and is not automatic — `rozum rag index --root .`
   builds it (incremental, under a second here), and a stale index
-  reports its own age in every result.
+  reports its own age in every result. After the first build, keeping
+  it fresh is the hooks' job: `sh scripts/githooks/install.sh` once
+  per clone points `core.hooksPath` at the tracked hooks, which
+  re-index the MAIN checkout after a merge, a commit or a checkout.
+  They never fail the git operation that called them and do nothing
+  at all when `rozum` is absent — an index is a convenience, a commit
+  is not.
 
 Several agents commit to one `master` from one machine. The rules in
 force, all already practiced, none previously written down:

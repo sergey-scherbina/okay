@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# Tracked hook: see scripts/githooks/reindex.sh (installed by scripts/githooks/install.sh).
+exec "$(dirname "$0")/reindex.sh"
