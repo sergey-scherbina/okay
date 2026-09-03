@@ -178,7 +178,10 @@ extension [A](s: Source[A])
     val tw = Writer.widen[B, A | B, Unit, Async](t)
     if !chunked then
       pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
-        Writer.of(Channel.merge[A | B, S, Async, S, Async](sw, tw, capacity))
+        // read in batches: the elements and their order are the
+        // channel's, only the CAS is paid once per batch instead of
+        // once per element (channel-drain)
+        Writer.of(Drain(Channel.merge[A | B, S, Async, S, Async](sw, tw, capacity)))
     else
       // capacity counts ELEMENTS, so the channel gets that many
       // divided by what each of its slots now holds
