@@ -1,5 +1,50 @@
 # Changelog
 
+## intent-name-sensitivity — the domain word is read, and a nonsense qualifier costs
+Completed: 2026-09-03
+Landed as 25aed59c. The previous lane's recommendation rested on four
+identifiers, so this ablates them: four taxonomies differing ONLY in
+case names, with no examples and no gate in any arm, because examples
+would teach what the names are supposed to say on their own and a gate
+would add a second signal.
+
+| taxonomy | macro F1 | `Other` P / R / F1 | undecodable |
+|---|---|---|---|
+| generic (`Proposal`...) | 0.649 | 0.83 / 0.19 / 0.30 | 10/120 |
+| true domain (`Meeting`...) | 0.688 | 0.92 / 0.43 / 0.59 | 7/120 |
+| wrong domain (`Shipping`...) | 0.635 | 0.72 / 0.45 / 0.55 | 2/120 |
+| nonsense (`Zarnic`...) | 0.528 | 1.00 / 0.11 / 0.20 | 13/120 |
+
+THE CONTROL COULD HAVE HOLLOWED OUT THE RECOMMENDATION AND DID NOT.
+`Zarnic` is the worst arm of the four — below generic on macro F1 and
+on `Other` recall, with the highest undecodable count — so what helps
+is the domain a name names, not the appearance of names having been
+deliberately chosen. An uninterpretable qualifier does not merely fail
+to help; it costs.
+
+THE DOMAIN WORD IS READ, proved by damage. `Shipping` lifts `Other`
+recall to 0.45, as high as the true domain's 0.43, while halving
+`Proposal` recall (0.85 -> 0.45): meeting messages are being pushed
+into `NotAboutShipping`, which is the correct reading of a taxonomy
+that says its subject is shipping. The model answers the question the
+names ask.
+
+`Other` PRECISION is what separates a right domain from a wrong one —
+0.92 against 0.72 — where recall calls the two arms equivalent and they
+are not. `Zarnic`'s 1.00 precision sits on 0.11 recall: precision over
+almost nothing, and reading it as a win is the trap the table's two
+columns exist to prevent.
+
+Scale, stated against the arms that carry examples: names alone move
+`Other` recall 0.19 -> 0.43, where names plus examples reached 0.96. So
+naming buys roughly a quarter of the distance and few-shot examples
+remain the larger lever. Nothing shipped changes — the recommendation
+was measured with examples on both sides — but its mechanism is now
+known rather than assumed, which is the whole point of running a
+control after the result is already in.
+
+Full matrix green: 2121 tests, 0 failures.
+
 ## ring-channel — two channel implementations written, measured, and deliberately not landed
 Completed: 2026-09-03
 Landed as 03b6c55e (backlog and measurements only — the code is
