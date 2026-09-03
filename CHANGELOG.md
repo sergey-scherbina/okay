@@ -1,5 +1,27 @@
 # Changelog
 
+## http-request-query — fix Jetty silently dropping the query string from Request.url
+Completed: 2026-09-03
+Landed as e9901797, fast-forwarded onto master. Follow-on from
+okay-script-storefront-example, which found `okay-jetty`'s `/order?
+key=<x>` route 404ing every time and worked around it with a path-
+based route. Root cause was narrower than first filed: not "okay-http
+has no query-string support" — `okay.http.Server` (JDK,
+`getRequestURI().toString()`) and `okay-netty` (`req.uri`) both
+already carry the full request-target, path+query. Only `okay-jetty`'s
+`requestOf` was broken, building `Request.url` from the static
+`getPathInContext(req)` (path only) — a route matching on `r.url`
+never saw a `?key=value` a client sent, silently, no error. Fixed by
+reading `req.getHttpURI.getPathQuery` instead: verified against the
+Jetty 12 sources that it returns the bare path with no query (so every
+existing route sees a byte-identical string) and `path?query`
+otherwise; no `ContextHandler` is used anywhere in `Jetty.serve`, so
+nothing about existing routing changes. `TestJetty` gained a
+query-string round-trip test. specs/http-backends.md notes the deeper
+gap: `TestBackends`' cross-backend matrix never exercised a query
+string on any backend, which is how this shipped unnoticed until a
+real consumer hit it.
+
 ## channel-ring — the lock-free ring that eliminates the rebuild-per-operation cost
 Completed: 2026-09-03
 Landed as 31435023. `idiomatic-api-compare` traced our 3.6x deficit
