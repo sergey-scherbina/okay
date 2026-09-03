@@ -383,14 +383,31 @@ moved.
   step, the call, what was recorded and what the world said now. The
   default, and what CI should use: a journal that no longer
   reproduces is a finding.
-- **`Quiet`** accepts the new answer, continues LIVE from there, and
-  branches a new `Version`.
+- **`ForkWithLiveModel`** accepts the new answer, continues LIVE from
+  there, and branches a new `Version`.
 
-`Quiet` never means silent. The divergence is reported in the
-`Outcome` AND carried on the new version, so a reader of the store
-alone still learns it. Snapshot testing already taught the industry
-that an auto-accept nobody reads is worse than no test; quiet moves
-the run forward, it hides nothing.
+A fork never means silent. The divergence is reported in the `Outcome`
+AND carried on the new version, so a reader of the store alone still
+learns it. Snapshot testing already taught the industry that an
+auto-accept nobody reads is worse than no test; a fork moves the run
+forward, it hides nothing.
+
+**The fork's precondition is in its name.** Past the divergence the
+MODEL must be live. A rerun normally scripts the model from the
+recording, and that is sound only while the tools still agree: the
+recorded reply for step k+1 was produced while looking at the OLD
+answer to step k, so once the world answers differently every later
+recorded reply answers a question this run is no longer asking.
+Continuing to script it would not be a weaker replay but a
+confidently wrong one. So `Loud` is the mode for a scripted model,
+stopping is the sound thing, and the fork says what it needs in its
+own name. Caught by rozum's `ReplayLiveTools`, built independently
+against the same problem, which stops for exactly this reason — and
+by its fork mode, which abandons the old journal and hands a LIVE
+model the new result. The handler cannot see the caller's model, so
+what it does is abandon the journal at the fork and report
+`branchedAt`, which is the step from which the caller's model must
+be live.
 
 ### Why a divergence branches instead of patching
 Once step k answers differently, every entry after k is unusable: the
@@ -421,11 +438,14 @@ structurally the situation is identical; they are named apart because
 they mean different things to whoever reads the version: the world
 moved under your code, or your code changed.
 
-### The model half needs nothing new
-A rerun fixes the model with `Handlers.scripted` over the recorded
-replies and lets the TOOLS run live, which is the combination that
-tests your code against fixed model behaviour. Of the four
-record/replay combinations only two earn their keep: this one, and
+### The model half needs nothing new, and needs saying carefully
+Under `Loud`, a rerun fixes the model with `Handlers.scripted` over
+the recorded replies and lets the TOOLS run live: the combination
+that tests your code against fixed model behaviour, sound precisely
+because it stops the moment the tools stop agreeing. Under
+`ForkWithLiveModel` the caller supplies a LIVE model and pays for it
+only from the fork, since the prefix replayed for free. Of the four
+record/replay combinations only these earn their keep, plus
 `Durable.replaying` (both sides journalled) for reproducing an
 incident. A live model over journalled tools is nondeterministic
 anyway; both live is just recording.
@@ -433,9 +453,13 @@ anyway; both live is just recording.
 ### Behavior
 - [x] a world that has not moved reproduces, stores no new version
 - [x] `Loud` stops at the first divergence with both sides named
-- [x] `Quiet` branches: prefix shared with the parent, tail live (the
-      journal's later answers must NOT come back)
-- [x] `Quiet` still reports, on the outcome and on the version
+- [x] `ForkWithLiveModel` branches: prefix shared with the parent,
+      tail live (the journal's later answers must NOT come back)
+- [x] a fork still reports, on the outcome and on the version
+- [x] past the fork the journal is abandoned entirely, and
+      `branchedAt` names the step from which the model must be live
+- [x] `Loud` stops before the first stale reply, which is what a
+      scripted-model rerun needs
 - [x] the branch point is the FIRST divergence
 - [x] `Kind.Call` vs `Kind.Answer`, including past the journal's end
 - [x] a lineage walks a chain of branches back to the root

@@ -61,12 +61,12 @@ class TestRerun extends munit.FunSuite {
     assert(e.getMessage.contains("no longer reproduces"), e.getMessage)
   }
 
-  test("QUIET: a divergence branches a version — shared prefix, live tail") {
+  test("FORK: a divergence branches a version — shared prefix, live tail") {
     val base = recorded(june, calls)
     val september = world(Map("read:a" -> "alpha", "read:b" -> "BETA-CHANGED", "read:c" -> "GAMMA-TOO"))
     val store = Rerun.MemoryVersions()
     val prov = Rerun.Provenance(revision = "sept", model = "m", tools = "read")
-    val (run, h) = Rerun.live(base, september, Rerun.OnDiverge.Quiet, prov, store)
+    val (run, h) = Rerun.live(base, september, Rerun.OnDiverge.ForkWithLiveModel, prov, store)
     calls.foreach(c => h.handle(Tool.Call(c)): Unit)
 
     val out = run.outcome
@@ -85,14 +85,14 @@ class TestRerun extends munit.FunSuite {
     assertEquals(store.all.map(_.id), Vector(out.version.id))
   }
 
-  test("QUIET is not silent: the divergence is on the version and in the outcome") {
+  test("a fork is not silent: the divergence is on the version and in the outcome") {
     val base = recorded(june, calls)
     val september = world(Map("read:a" -> "MOVED", "read:b" -> "beta", "read:c" -> "gamma"))
-    val (run, h) = Rerun.live(base, september, Rerun.OnDiverge.Quiet)
+    val (run, h) = Rerun.live(base, september, Rerun.OnDiverge.ForkWithLiveModel)
     calls.foreach(c => h.handle(Tool.Call(c)): Unit)
 
     val out = run.outcome
-    assert(out.divergence.isDefined, "quiet must still report")
+    assert(out.divergence.isDefined, "a fork must still report")
     assertEquals(out.version.divergence, out.divergence,
       "and the version carries it, so a reader of the store alone still learns it")
     assert(out.divergence.get.describe.contains("the world answered differently"),
@@ -102,7 +102,7 @@ class TestRerun extends munit.FunSuite {
   test("only the FIRST divergence is the branch point, later ones do not move it") {
     val base = recorded(june, calls)
     val september = world(Map("read:a" -> "alpha", "read:b" -> "B2", "read:c" -> "C2"))
-    val (run, h) = Rerun.live(base, september, Rerun.OnDiverge.Quiet)
+    val (run, h) = Rerun.live(base, september, Rerun.OnDiverge.ForkWithLiveModel)
     calls.foreach(c => h.handle(Tool.Call(c)): Unit)
     assertEquals(run.outcome.version.branchedAt, Some(1),
       "the branch is where the runs parted, not where they last differed")
@@ -111,7 +111,7 @@ class TestRerun extends munit.FunSuite {
   test("a program that asks something ELSE is a Call divergence, told apart from an Answer one") {
     val base = recorded(june, calls)
     val store = Rerun.MemoryVersions()
-    val (run, h) = Rerun.live(base, june, Rerun.OnDiverge.Quiet, versions = store)
+    val (run, h) = Rerun.live(base, june, Rerun.OnDiverge.ForkWithLiveModel, versions = store)
     h.handle(Tool.Call(calls(0))): Unit
     h.handle(Tool.Call(call("read", "z"))): Unit   // the code changed: a different question
 
@@ -123,7 +123,7 @@ class TestRerun extends munit.FunSuite {
 
   test("running past the end of the journal is a divergence too, not a quiet success") {
     val base = recorded(june, calls.take(2))
-    val (run, h) = Rerun.live(base, june, Rerun.OnDiverge.Quiet)
+    val (run, h) = Rerun.live(base, june, Rerun.OnDiverge.ForkWithLiveModel)
     calls.foreach(c => h.handle(Tool.Call(c)): Unit)
     val d = run.outcome.divergence.get
     assertEquals(d.seq, 2)
@@ -137,13 +137,13 @@ class TestRerun extends munit.FunSuite {
     store.put(base)
 
     val september = world(Map("read:a" -> "alpha", "read:b" -> "B2", "read:c" -> "gamma"))
-    val (run1, h1) = Rerun.live(base, september, Rerun.OnDiverge.Quiet,
+    val (run1, h1) = Rerun.live(base, september, Rerun.OnDiverge.ForkWithLiveModel,
       Rerun.Provenance(revision = "sept"), store)
     calls.foreach(c => h1.handle(Tool.Call(c)): Unit)
     val v2 = run1.outcome.version
 
     val october = world(Map("read:a" -> "A3", "read:b" -> "B2", "read:c" -> "gamma"))
-    val (run2, h2) = Rerun.live(v2, october, Rerun.OnDiverge.Quiet,
+    val (run2, h2) = Rerun.live(v2, october, Rerun.OnDiverge.ForkWithLiveModel,
       Rerun.Provenance(revision = "oct"), store)
     calls.foreach(c => h2.handle(Tool.Call(c)): Unit)
     val v3 = run2.outcome.version
@@ -152,6 +152,41 @@ class TestRerun extends munit.FunSuite {
     assertEquals(v3.parent, Some(v2.id))
     assertEquals(v2.parent, Some(base.id))
     assertEquals(base.parent, None)
+  }
+
+  /**
+   * The rule the fork's NAME exists to carry, pinned as behaviour: past the
+   * fork point the journal is abandoned, so a caller who kept scripting the
+   * model from the recording would be feeding it replies written against the
+   * OLD tool answer. The handler cannot see the caller's model, so what it
+   * can do — and does — is stop consulting the journal at all from the fork,
+   * and say where that fork is, so the caller knows from which step its model
+   * must be live.
+   */
+  test("past the fork the journal is abandoned entirely, and the outcome says where") {
+    val base = recorded(june, calls)
+    val september = world(Map("read:a" -> "alpha", "read:b" -> "B2", "read:c" -> "C2"))
+    val (run, h) = Rerun.live(base, september, Rerun.OnDiverge.ForkWithLiveModel)
+    calls.foreach(c => h.handle(Tool.Call(c)): Unit)
+
+    val out = run.outcome
+    assertEquals(out.version.branchedAt, Some(1),
+      "the fork point is what tells a caller from which step its model must be live")
+    // every entry from the fork on is the live world's, never the journal's
+    assertEquals(out.version.entries.drop(1).flatMap(_.answer), Vector("B2", "C2"))
+    assert(!out.version.entries.drop(1).flatMap(_.answer).contains("beta"),
+      "the journal's answers must not reappear after the fork")
+  }
+
+  test("Loud is the mode a scripted model needs: it stops before the first stale reply") {
+    val base = recorded(june, calls)
+    val september = world(Map("read:a" -> "alpha", "read:b" -> "MOVED", "read:c" -> "gamma"))
+    val (run, h) = Rerun.live(base, september, Rerun.OnDiverge.Loud)
+    h.handle(Tool.Call(calls(0))): Unit
+    intercept[Rerun.Diverged](h.handle(Tool.Call(calls(1))): Unit): Unit
+    // nothing past the divergence ran, so no recorded model reply was ever
+    // consumed against an answer it was not written for
+    assertEquals(run.divergence, None, "Loud throws rather than recording a branch")
   }
 
   test("a version IS a journal: Durable.replaying reads one back with no world at all") {
@@ -163,7 +198,7 @@ class TestRerun extends munit.FunSuite {
   test("a branched version replays as ITS OWN run, not the parent's") {
     val base = recorded(june, calls)
     val september = world(Map("read:a" -> "alpha", "read:b" -> "B2", "read:c" -> "C2"))
-    val (run, h) = Rerun.live(base, september, Rerun.OnDiverge.Quiet)
+    val (run, h) = Rerun.live(base, september, Rerun.OnDiverge.ForkWithLiveModel)
     calls.foreach(c => h.handle(Tool.Call(c)): Unit)
 
     val replay = Durable.replaying(run.outcome.version.journal)

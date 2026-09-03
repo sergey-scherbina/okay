@@ -22,14 +22,30 @@ import okay.codec.Json
  *     call, what was recorded and what the world said now. This is
  *     the default and what CI should use: a journal that no longer
  *     reproduces is a finding, not a nuisance.
- *   - `Quiet` accepts the new answer, keeps going LIVE from there,
- *     and branches a new [[Version]]: the entries before the
- *     divergence shared with the parent, a fresh live tail after it.
+ *   - `ForkWithLiveModel` accepts the new answer, keeps going LIVE
+ *     from there, and branches a new [[Version]]: the entries before
+ *     the divergence shared with the parent, a fresh live tail after
+ *     it.
  *
- * `Quiet` never means silent. The divergence is recorded on the new
+ * Forking never means silent. The divergence is recorded on the new
  * version and reported in the [[Outcome]] — snapshot testing already
  * taught the industry that an auto-accept nobody reads is worse than
- * no test. Quiet moves the run forward; it does not hide anything.
+ * no test. A fork moves the run forward; it does not hide anything.
+ *
+ * **The fork's precondition, and why it is in the name.** Past the
+ * divergence the MODEL must be live. A rerun normally scripts the
+ * model from the recording, and that is sound only while the tools
+ * still agree: the recorded reply for step k+1 was produced while
+ * looking at the OLD answer to step k. Once the world answers
+ * differently, every later recorded reply answers a question this run
+ * is no longer asking, so continuing to script the model would not be
+ * a weaker replay but a confidently wrong one. `Loud` is therefore the
+ * mode for a scripted model — stopping is the sound thing to do — and
+ * the fork carries its requirement in its own name so a call site
+ * cannot quietly assume otherwise. (The rule was caught by rozum's
+ * `ReplayLiveTools`, built independently against the same problem,
+ * which stops for exactly this reason, and by its fork mode, which
+ * abandons the old journal and hands a LIVE model the new result.)
  *
  * **Why a divergence branches instead of patching.** Once step k
  * answers differently, every entry after k is unusable: the model
@@ -47,14 +63,18 @@ import okay.codec.Json
  * the provenance header is the only place the world gets pinned at
  * all, and it is pinned by whatever the caller can honestly state.
  *
- * **The model half needs nothing new.** A rerun fixes the model with
- * `Handlers.scripted` over the recorded replies and lets the TOOLS
- * run live, which is the combination that tests your code against
- * fixed model behaviour. Of the four record/replay combinations only
- * two earn their keep: this one, and `Durable.replaying` (both
- * sides from the journal) for reproducing an incident. A live model
- * over journalled tools is nondeterministic anyway, and both live is
- * just recording.
+ * **The model half needs nothing new, and needs saying carefully.**
+ * Under `Loud`, a rerun fixes the model with `Handlers.scripted` over
+ * the recorded replies and lets the TOOLS run live: that is the
+ * combination that tests your code against fixed model behaviour, and
+ * it is sound precisely because it stops the moment the tools stop
+ * agreeing. Under `ForkWithLiveModel` the caller supplies a LIVE
+ * model, and pays for it only from the fork — the prefix cost
+ * nothing, since it replayed. Of the four record/replay combinations
+ * only these earn their keep, plus `Durable.replaying` (both sides
+ * journalled) for reproducing an incident. A live model over
+ * journalled tools is nondeterministic anyway, and both live is just
+ * recording.
  */
 object Rerun {
 
@@ -141,9 +161,19 @@ object Rerun {
     def get(id: String): Option[Version] = byId.get(id)
     def all: Vector[Version] = order.flatMap(byId.get)
 
-  /** how a divergence is treated: stop, or branch and carry on */
+  /**
+   * How a divergence is treated.
+   *
+   *   - `Loud` stops at the first one. The only sound mode when the
+   *     model is scripted from the recording, and the right default
+   *     for CI.
+   *   - `ForkWithLiveModel` branches and carries on — and REQUIRES,
+   *     as its name says, that the model be live from the fork on.
+   *     A scripted model past the fork answers the question the old
+   *     tool result raised, which is a confidently wrong run.
+   */
   enum OnDiverge:
-    case Loud, Quiet
+    case Loud, ForkWithLiveModel
 
   /** a rerun under `Loud` met a divergence */
   final class Diverged(val at: Divergence)
@@ -161,10 +191,12 @@ object Rerun {
    * Before a divergence, every call is checked against the journal
    * and then EXECUTED anyway: the point is to learn whether the world
    * still answers the same, which cannot be learned without asking
-   * it. After a divergence under `Quiet`, the journal is left behind
-   * entirely and the rest of the run is live — because from there on
-   * it is a different run, and pretending otherwise is the one thing
-   * this design refuses to do.
+   * it. After a divergence under `ForkWithLiveModel`, the journal is
+   * left behind entirely and the rest of the run is live — because
+   * from there on it is a different run, and pretending otherwise is
+   * the one thing this design refuses to do. That is also why the
+   * caller's MODEL must be live from that point: see the mode's own
+   * note above.
    */
   def live(base: Version, inner: Handler[Tool],
            mode: OnDiverge = OnDiverge.Loud,
@@ -240,11 +272,11 @@ object Rerun {
                 diverge(Divergence(n, c.name, Divergence.Kind.Answer, was, answer))
               record(n, c, fp, answer)
 
-    /** Loud stops here; Quiet notes it and lets the run continue. */
+    /** Loud stops here; a fork notes it and lets the run continue. */
     private def diverge(d: Divergence): Unit =
       mode match
         case OnDiverge.Loud => throw Diverged(d)
-        case OnDiverge.Quiet => if found.isEmpty then found = Some(d)
+        case OnDiverge.ForkWithLiveModel => if found.isEmpty then found = Some(d)
 
     private def record(n: Int, c: ToolCall, fp: String, answer: String): String =
       kept = kept :+ Entry(n, c.name, fp, Durable.keyFor(n, c), Some(answer))
