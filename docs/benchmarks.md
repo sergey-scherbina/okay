@@ -590,6 +590,64 @@ elements rather than per element, since per-element deferral is
 exactly what writer-of-resume-fix removed from this same path. Free
 at the sizes anyone uses: 222.3 ±4.0 after against 224.5 ±3.7 before.
 
+## 6c. Idiomatic API — what each library's own surface offers, not a forced mode
+
+The chunk-size-one lane compared okay against `ZStream` forced to
+`chunkSize = 1`, which turned out to be exactly `ZStream.unfold`'s own
+mechanism (`Chunk.single(a)` per step, verified in zio-streams 2.1.14
+sources) — a real number under the wrong name. This section drops the
+forcing and asks what each library's OWN idiomatic surface gives you,
+paired axis by axis, N=4000.
+
+**Sending a collection, reading the whole stream.**
+`ZStream.fromIterable(list).runSum` against
+`Source.of(list).toLazyList.foldLeft`: **ZIO 3x ahead** (49.1 ±1.2
+against 145.6 ±6.2) — the chunk-native-vs-per-element-walk gap this
+whole arc keeps finding, now on `List` rather than `LazyList` and
+still there.
+
+**Generating by an effectful step, no collection.**
+`Source.range` against `ZStream.unfold`: **okay 3x ahead** (90.6
+±0.5 against 276.9 ±8.4) — the one axis where per-element cost
+genuinely favours the Free-tree representation over any array-native
+one, because `unfold` pays the same chunk-of-one tax `Chunks(1)` was
+measured paying.
+
+**`Source.unfold` — the general form of `range`, added on request.**
+`def unfold[S, A](s: S)(f: S => Option[(A, S)]): Source[A]`, the same
+shape as `ZStream.unfold` verified above. `range` stays as the
+specialised form since a generic step allocates a tuple per call that
+a hand-written `Long` loop does not, but the two produce identical
+streams (tested).
+
+**`runCollect`/`runForeach` — added for API parity, and it is an
+honest trade, not a free one.** `Source` gained `runCollect: Vector[A]
+! Async` and `runForeach(f: A => Unit ! Async): Unit ! Async` at this
+library's own `run`-prefix (`Writer.run`, `Async.run`, `!.run`) —
+programs, not values forced by `CanBlock`, unlike `toLazyList`. That
+turns out to cost something in a single-threaded run: `runCollect`
+measures **188.7 ±4.3 against `toLazyList.foldLeft`'s 145.6 ±6.2 —
+30% SLOWER**, bars non-overlapping — the `Either`-unwrap through
+`Writer.uncons` plus a `Vector :+` per element outweighs `CanBlock`'s
+per-pull park here. `runForeach` (153.5 ±9.6, no `Vector` to build)
+sits close to `toLazyList` instead. Kept for the composability
+`toLazyList` cannot offer — an async caller wants a program back, not
+a value already forced — but it is an ergonomics addition, not a
+performance one, and is stated as such rather than assumed free.
+
+**Reading one at a time from a buffered channel.**
+`Channel.buffer(1024)(list).drained` against a bounded `Queue` +
+`ZStream.fromQueue(...).runForeach`: **ZIO 3.6x ahead** (412.5 ±9.0
+against 114.2 ±1.8). Profiled rather than guessed at: ~52 of ~140
+attributed samples in `Queue`'s reversal (`channel-queue-reversal`,
+already investigated and declined), ~28 in `resume`'s rotation, ~21
+in `Drain`/`ChunkBuf`'s batching machinery, ~14 in the consumer-side
+`LazyList` cells `toLazyList` itself allocates. The same channel-
+transaction cost four prior lanes (queue structure, CAS contention,
+tree shape, row variance) already declined to optimise further,
+visible here from a new angle rather than a new opportunity — filed,
+not chased.
+
 ## 7. Resource — 1000 bracketed acquire/use/release
 
 | | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
