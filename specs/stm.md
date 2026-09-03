@@ -140,17 +140,29 @@ consumer of `okay-live` is named yet, so whether it (or `okay-demo`)
 becomes crossProject at that point is a decision worth making once,
 not by accretion.
 
+A limit found, not hidden (a 64-thread stress test on
+`computeIfAbsent`): `mk` inherits `TRef.modify`'s own "f may run more
+than once" rule under CAS contention — a losing attempt already
+evaluated `mk` before losing the race, and that value is discarded.
+Every caller still observes the SAME winning value (no torn read, no
+duplicate STORED entry) — that is what is actually guaranteed. Fine
+for a pure `mk` (`joinedOf`'s `now`, used here); a `mk` with a real
+side effect or allocation (`Registry.apply`'s `Channel()`) pays for
+every lost attempt too — a reason `okay-live`'s migration stays
+filed separately rather than assumed identical to this one's.
+
 Behavior:
-- [ ] `computeIfAbsent` creates at most once under concurrent callers
-      racing the same missing key — no lost update, no duplicate
-      create (the exact race `Registry.apply`/`joinedOf` need closed)
-- [ ] `updateAt` is one atomic read-modify-write — two concurrent
+- [x] `computeIfAbsent`: every caller racing the same missing key
+      observes the SAME winning value, none lost or torn — NOT "mk
+      runs at most once" (found false under real contention; `mk`
+      MAY re-run on a CAS retry, its doc comment says so now)
+- [x] `updateAt` is one atomic read-modify-write — two concurrent
       callers updating the SAME key never lose either's contribution
       (proven against `paidPeriods`' original concurrent-set shape)
-- [ ] `TDict`/`TList` compile and pass their own suite on JVM, JS,
+- [x] `TDict`/`TList` compile and pass their own suite on JVM, JS,
       and Native (core `okay`, cross by construction — `TRef` already
       is) with NO platform-specific code
-- [ ] `okay-subscription`'s full existing test suite passes unchanged
+- [x] `okay-subscription`'s full existing test suite passes unchanged
       after the migration — a pure swap, no behavior change
 
 ## Out of scope
