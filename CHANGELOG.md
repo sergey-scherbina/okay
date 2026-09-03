@@ -1,5 +1,22 @@
 # Changelog
 
+## channel-cas-contention — measured and closed: elevated CAS-retry rate is a symptom of Writer/Bind-rotation cost, not an independent tax
+Completed: 2026-09-03
+Landed as c47eaac (docs only — no code changed, the instrumentation
+used to measure it was reverted). Follow-on to writer-of-resume-fix,
+closing the second item it filed (channel-queue-reversal closed the
+other). Instrumented `TRef.modify` directly and measured
+attempt/CAS-fail counts across `Channel.merge`/`Source.merge` at
+matched capacities: the Writer wrapping does add real contention
+beyond capacity alone (28.1% -> 34.3% fail rate at the same
+`Int.MaxValue` capacity), and capacity's own effect compounds with
+it (49.0% at `Source.merge`'s own default 64) rather than adding.
+But `TRef.modify`'s retry is a spin, never a park, and the existing
+wall-clock measurement in `Source.scala` already shows capacity
+moves nothing this benchmark can see — so the elevated retry rate is
+what a slower critical section looks like from the CAS's side, not a
+separate cost. Nothing to land; specs/stm.md carries the numbers.
+
 ## integration-test-gate — Live-tagged suites out of the default gate; zero warnings enforced as policy
 Completed: 2026-09-03
 Landed as bb5ccba. ~25 suites reaching outside the JVM (a live model
