@@ -281,6 +281,49 @@ needed for). If a hand parser ever becomes real — a Native http
 leg without a platform codec is the one imaginable door — phased3
 is ready for it, and this note is where that conversation resumes.
 
+## The peer address (http-peer-address)
+
+`Request` carried the method, the url, the headers and the body — and
+nothing about WHO sent it. That is fine for a client, which builds the
+request, and wrong for a server, which is handed one and has to decide
+whether to answer it.
+
+The consumer that named it: a downstream service rate-limiting its
+endpoints could only key on identities the caller supplies, all of them
+forgeable, or on `X-Forwarded-For`, which is a claim in a header. A
+flood with a fresh handle per request met nothing but a global ceiling
+that throttles everyone at once.
+
+    peer: Option[String] = None
+
+Additive, defaulted, and therefore inert for every existing
+construction — including `Request.get`/`post`/`json`, which build what
+a CLIENT sends and leave it `None`. It is the servers that fill it, and
+only where the transport actually knows: okay-jetty, okay-netty and
+okay-http's own JVM server.
+
+**The HOST, without the port.** A port changes per connection, so
+keying a rate limiter on `host:port` would give every connection a
+fresh budget — which is the bug the field exists to fix. What is
+recorded is what identifies the sender across connections.
+
+**`None` means unknown, never "trusted zero".** A transport that cannot
+say (a client-built request, a test, a future backend) says nothing,
+and a caller deciding on it must treat absence as absence rather than
+as a default address everyone shares.
+
+**It is not a header and never becomes one.** `X-Forwarded-For` remains
+the proxy's claim and a consumer's own decision to trust; this is what
+the socket says. A consumer that has both should prefer the proxy's
+value only when it has decided the proxy is real.
+
+- [ ] a served request carries the peer's host on jetty
+- [ ] the same on netty
+- [ ] the same on okay-http's JVM server
+- [ ] a client-built request carries `None`
+- [ ] the field is additive: every existing construction compiles and
+      behaves unchanged
+
 ## Out of scope
 - **Serving WebSocket.** The JDK has no server-side WebSocket API and
   `HttpServer` does not surrender its socket, so this would mean
