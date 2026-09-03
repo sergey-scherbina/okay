@@ -1,5 +1,42 @@
 # Changelog
 
+## persist-raft stage 0 — the Raft algorithm's core, staged explicitly
+Completed: 2026-09-03
+Landed as 81f0bfc (spec) + e3224c0 (impl). `specs/consensus.md`
+itself scoped own-Raft as "months of careful work... justified only
+when a deployment cannot run Kafka and has outgrown the arbiter" —
+the operator asked to start it anyway, understanding a session lands
+a slice, not the whole climb. Staged rather than attempted whole,
+matching how this stack prices every large claim.
+Stage 0: `okay.persist.Raft` (`RaftState`/`RaftMsg`/`RaftEntry`,
+`Raft.handle`/`startElection`/`replicate`) — a PURE value
+transition, no engine, no network, no `Store` yet: the textbook core
+(Ongaro & Ousterhout, Figure 2). `Election` does not change by
+construction when this eventually lands as a `RaftStore` behind a
+`Topic` — the reduction's whole argument. A higher term seen on ANY
+message steps a node down first, unconditionally, before the message
+is otherwise handled.
+Tests (`TestRaft`, 7, driven EXPLICITLY — no wall clock, matching
+`TestElectionReplicated`'s own manual-clock style): a lone candidate
+wins a majority and becomes leader; two simultaneous candidates
+never both lead in one term; a client entry replicates to a majority
+and the leader commits it; a heartbeat propagates `commitIndex`; a
+follower diverged at an OLDER term is corrected, not appended past
+(same-term-same-index divergence is impossible under Leader
+Completeness); a stale-term message is refused untouched, a
+higher-term message steps a leader down; the Figure 8 trap — a
+previous-term entry is never committed by majority count alone.
+Two real bugs caught in testing, both in the TEST's own setup, not
+the algorithm: asserting `votedFor` resets after a refused stale
+message (it doesn't); injecting a same-term "rogue" divergence,
+which cannot legitimately arise under Raft's own safety property.
+Full `okayPersistJVM` suite 95/95. Stage 1 (the `Store`/`Topic`
+engine wrapper + network transport — the actual `RaftStore` the
+BACKLOG bullet names) and stage 2 (compaction, membership changes)
+filed, not attempted here; so is the seed-swept `Sim.scala`-driven
+fuzz harness this repo's own prior notes asked for, once stage 1
+gives it something real to fuzz.
+
 ## direct-try-ctx — a context-function CanTry, deferred to application, no crash and no version bump
 Completed: 2026-09-03
 Landed as 4b9f3ee (spec) + 7935a23 (impl). The 2026-09-02 audit

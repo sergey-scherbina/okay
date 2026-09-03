@@ -291,6 +291,14 @@ construction instead of a type test per value).
 - [ ] persist-raft — RaftStore: consensus as one more control-log
       engine under the unchanged Election machinery (specs/
       consensus.md own-Raft notes; typestate per specs/typestate.md)
+      STAGE 0 LANDED 2026-09-03 (operator: "start it anyway," a
+      months-scale effort taken as a staged climb, not attempted
+      whole): okay.persist.Raft — the pure algorithm core, leader
+      election + log replication, seven tests proving election
+      safety, log matching, the Figure 8 commit trap. Stage 1 (the
+      Store/Topic engine wrapper + network transport — the actual
+      RaftStore this bullet names) and stage 2 (compaction,
+      membership changes) remain open; box stays unchecked for those.
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,
