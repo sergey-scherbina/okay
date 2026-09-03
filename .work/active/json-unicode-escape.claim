@@ -1,0 +1,5 @@
+slug: json-unicode-escape
+branch: feature/json-unicode-escape
+worktree: ../okay-wt-json-unicode-escape
+claimed: 2026-09-03
+scope: okay-codec's Json.unquote has NO \uXXXX escape handling — the catch-all case appends the literal char after the backslash and advances by 2, so `​` decodes to the literal characters "u200b" instead of U+200B. Any JSON producer that escapes non-ASCII (Telegram's Bot API among them, confirmed against a live gateway) silently corrupts every non-ASCII string it sends. Fix: decode \uXXXX as a UTF-16 code unit (surrogate pairs handled for free since two appended chars form a valid pair automatically); a malformed/truncated escape is a decode error, not a throw — okay-codec's whole parser promises totality. Touches okay-codec/src/main/scala/okay/codec/Json.scala and its tests only. Does NOT touch build.sbt.
