@@ -40,6 +40,32 @@ object IntentFixture {
     case Notification(what: String)
     case Other(what: String)
 
+  /**
+   * The SAME four classes, named so that the names say what the
+   * subject is.
+   *
+   * This exists to test one thing: whether a taxonomy carries its
+   * domain in its case names or nowhere. `Support` above says
+   * `Proposal`/`Request`/`Notification` and carries a bare
+   * `what: String`, which never mentions meetings — so "please refund
+   * my card" reads as a `Request` honestly rather than mistakenly, and
+   * every prompt-level fix for that is arguing with a type that did
+   * not state its subject.
+   */
+  enum Meeting derives Schema:
+    case MeetingProposal(what: String)
+    case MeetingRequest(what: String)
+    case MeetingNotification(what: String)
+    case NotAboutMeetings(what: String)
+
+  /** the domain-bearing names, mapped back to the canonical classes,
+   * so two taxonomies are scored on ONE axis */
+  val canonical: Map[String, String] = Map(
+    "MeetingProposal" -> "Proposal",
+    "MeetingRequest" -> "Request",
+    "MeetingNotification" -> "Notification",
+    "NotAboutMeetings" -> "Other")
+
   /** proposing or moving a time */
   val proposals: List[(String, String)] = List(
     "Putting forward a meeting next Thursday at 2pm." -> "Proposal",
@@ -185,6 +211,15 @@ object IntentFixture {
     "Note that payroll runs a day early this month." -> Support.Notification("payroll early"),
     "What is the capital of Portugal?" -> Support.Other("general knowledge"),
     "My headphones arrived broken, I want a replacement." -> Support.Other("a support issue"))
+
+  /** the same five examples in the domain-bearing taxonomy, so the
+   * arms differ in the NAMES and in nothing else */
+  val meetingExamples: List[(String, Meeting)] = List(
+    "Are you free to meet on Wednesday afternoon?" -> Meeting.MeetingProposal("meet Wednesday"),
+    "Please forward me the signed contract." -> Meeting.MeetingRequest("forward the contract"),
+    "Note that payroll runs a day early this month." -> Meeting.MeetingNotification("payroll early"),
+    "What is the capital of Portugal?" -> Meeting.NotAboutMeetings("general knowledge"),
+    "My headphones arrived broken, I want a replacement." -> Meeting.NotAboutMeetings("a support issue"))
 
 
   // ----------------------------------------------------------------

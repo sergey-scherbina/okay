@@ -85,10 +85,20 @@ class TestClassifyLive extends munit.FunSuite {
   private val reasons = scala.collection.mutable.Buffer[String]()
 
   private def predict(reply: String): String =
-    Classify.read[Support](reply)(using sReading) match
+    predictIn[Support](reply)(using summon[Schema[Support]], sReading)
+
+  /** the same reading, over whatever taxonomy — so an arm can change
+   * the TYPE and change nothing else. Case names are mapped back to
+   * the canonical classes, because two taxonomies are only comparable
+   * on one axis. */
+  private def predictIn[I](reply: String)
+                          (using si: Schema[I], sr: Schema[Reading[I]]): String =
+    Classify.read[I](reply)(using sr) match
       case Right(r) =>
         r.spans.headOption.flatMap(_.alts.headOption)
-          .map(a => Classify.label(a.intent)).getOrElse:
+          .map(a => IntentFixture.canonical.getOrElse(
+            Classify.label(a.intent)(using si), Classify.label(a.intent)(using si)))
+          .getOrElse:
             reasons += s"decoded but empty: ${reply.take(120)}"
             "empty"
       case Left(e) =>
@@ -143,6 +153,50 @@ class TestClassifyLive extends munit.FunSuite {
     assume(reachable, s"no OpenAI-compatible endpoint at $url")
     arm("rules (before)", m => predict(ask(rulesPrompt(m))))
     arm("examples+gate (after)", gated(best))
+  }
+
+  /**
+   * Does a taxonomy carry its domain in its case NAMES?
+   *
+   * Three arms over the same 120 messages, differing in the type and
+   * in nothing else. If the names alone rescue `Other`, the fix
+   * belongs in the type and the gate is a workaround for a domain
+   * nobody stated; if they do not, the gate is doing work no naming
+   * can do — and either answer is worth more than another prompt.
+   */
+  test("live: does the taxonomy carry its domain in its case names") {
+    assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    import IntentFixture.Meeting
+    given sMeeting: Schema[Meeting] = summon[Schema[Meeting]]
+    val mReading = Classify.reading[Meeting]
+
+    def generic(m: String) =
+      predict(ask(Classify.prompt[Support](m, IntentFixture.examples)))
+    def domain(m: String) =
+      predictIn[Meeting](ask(Classify.prompt[Meeting](m, IntentFixture.meetingExamples)))(
+        using sMeeting, mReading)
+
+    arm("generic names, no gate", generic)
+    arm("domain names, no gate", domain)
+  }
+
+  /** whether naming the domain and gating for it COMPOSE, or whether
+   * the second stops paying once the first is done. Its own test
+   * because three arms over 120 messages is half an hour of calls and
+   * a box that is shared. */
+  test("live: domain names with the gate on top") {
+    assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    import IntentFixture.Meeting
+    given sMeeting: Schema[Meeting] = summon[Schema[Meeting]]
+    val mReading = Classify.reading[Meeting]
+    def domain(m: String) =
+      predictIn[Meeting](ask(Classify.prompt[Meeting](m, IntentFixture.meetingExamples)))(
+        using sMeeting, mReading)
+
+    arm("domain names + gate", m =>
+      Classify.readInDomain(ask(Classify.inDomainPrompt[Meeting](m)(using sMeeting))) match
+        case Right(v) if !v.inDomain => "Other"
+        case _ => domain(m))
   }
 
   /**

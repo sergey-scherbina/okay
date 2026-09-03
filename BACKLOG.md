@@ -994,7 +994,14 @@ not a new primitive from scratch.
       intended fixture; the lane deliberately did not build it, and the
       seam it needs is only that `Eval` takes label pairs from
       anywhere.
-- [ ] intent-domain-in-names — the residue the gate does not catch: one
+- [x] intent-domain-in-names — LANDED 2026-09-03, and it changed the
+      recommendation: naming the domain in the case names does the
+      gate's work at half the calls (macro F1 0.907, `Other` F1 0.92,
+      vs 0.906 / 0.86 for generic names + gate), and the two do NOT
+      compose (0.830 together). The gate is now documented as the
+      fallback for taxonomies that cannot be renamed. Original entry
+      follows.
+- [ ] intent-domain-in-names (original) — the residue the gate does not catch: one
       of six out-of-domain messages is still absorbed, and the fixture's
       `Other` mixes "not about this at all" (a birthday wish) with
       "another topic in the same register" (a double charge, a
@@ -1024,3 +1031,10 @@ not a new primitive from scratch.
       on the best arm (9%). The rendered example took this from 32% to
       9% and then stopped; what remains has not been looked at, and a
       caller cannot tell a hard message from a malformed reply.
+- [ ] intent-name-sensitivity — the whole result rests on four
+      identifiers, so the obvious question is how much of it is the
+      word "Meeting" and how much is any qualifier at all. Try a third
+      taxonomy with a DIFFERENT domain word and a fourth with a
+      nonsense qualifier: if the nonsense one also lifts `Other`, what
+      helps is the model noticing the names were chosen, not the domain
+      they name.

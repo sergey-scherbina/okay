@@ -201,6 +201,18 @@ object Classify {
    * bucket collapsed to recall 0.17 (specs/intent-classify.md). A
    * separate binary question does not offer it that choice.
    *
+   * REACH FOR IT SECOND. A later measurement over the same 120
+   * messages found that naming the domain in the taxonomy's own case
+   * names does the same work for free: `MeetingProposal` /
+   * `NotAboutMeetings` scored macro F1 0.907 with `Other` F1 0.92 and
+   * ONE call per message, against 0.906 / 0.86 for generic names with
+   * this gate and two calls. Worse, the two do not compose — gating an
+   * already-named taxonomy dropped it to 0.830, because a second judge
+   * over-rejects what the first accepted. So: name the domain in the
+   * type; use the gate when the taxonomy cannot be renamed (someone
+   * else's types, a wire format, a taxonomy shared with a system that
+   * has its own names).
+   *
    * `why` precedes the verdict for the same reason it does in a span,
    * and the field order is what puts it there.
    */

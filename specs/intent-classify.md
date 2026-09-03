@@ -417,3 +417,51 @@ size.
 are enough for stable per-class metrics and not enough to claim
 coverage. They show that a change moves the needle on cases someone
 thought of.
+
+## Results — intent-domain-in-names (2026-09-03)
+
+The hypothesis the previous two lanes left standing: a taxonomy carries
+its domain in its case NAMES or nowhere. `Proposal`/`Request`/
+`Notification` with a bare `what: String` never mentions meetings, so
+"please refund my card" reads as a `Request` honestly rather than
+mistakenly, and every prompt-level fix for that is arguing with a type
+that did not state its subject.
+
+Four configurations, the same 120 messages, the same examples, the same
+prompt. The only thing that changes is the TYPE.
+
+| configuration | calls / message | macro F1 | `Other` P / R / F1 |
+|---|---|---|---|
+| generic names, no gate | 1 | 0.872 | 0.94 / 0.65 / 0.77 |
+| generic names + gate | 2 | 0.906 | 0.92 / 0.81 / 0.86 |
+| **domain names, no gate** | **1** | **0.907** | 0.87 / 0.96 / **0.92** |
+| domain names + gate | 2 | 0.830 | 0.68 / 0.97 / 0.80 |
+
+**The names do the gate's work, for free.** `MeetingProposal` /
+`MeetingRequest` / `MeetingNotification` / `NotAboutMeetings` matched
+the gated configuration's macro F1 and beat its `Other` F1, at half the
+model calls. `Other` recall went 0.65 -> 0.96 with nothing changed but
+the four identifiers.
+
+**And they do not compose.** Gating an already-named taxonomy is WORSE
+than either half alone (0.830): `Other` precision falls to 0.68 and
+`Notification` recall to 0.68, because a second judge re-rejects what
+the first accepted. Two mechanisms for one job is not twice the
+safety.
+
+So the gate is demoted from "the answer" to "the fallback", and that
+now says so in its own doc comment: name the domain in the type; use
+the gate when the taxonomy cannot be renamed — someone else's types, a
+wire format, a taxonomy shared with a system that owns its names.
+
+**The price of clear names, stated because it is real.** `Other`
+precision falls 0.94 -> 0.87 and `Request` recall 0.92 -> 0.77:
+domain-bearing names make the model readier to push a borderline
+message out of the domain. Which error is cheaper is the caller's
+call — a misrouted request costs a wrong action, a wrongly rejected one
+costs a human's attention — and this is the trade to state in a
+taxonomy's documentation rather than to settle by default.
+
+This is the strongest form of the claim the whole feature rests on: the
+taxonomy IS the type, so the type's names are not labels for humans,
+they are half the classifier.
