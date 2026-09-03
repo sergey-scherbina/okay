@@ -163,11 +163,10 @@ decode round-trips". The prompt's taxonomy section is that value
 rendered, so it cannot drift from the parser.
 
 **One model tier.** `Structured.cut` validates the reply as it arrives
-and stops generation the moment the value is complete; for a
-classification the value is small, so the answer costs the answer.
-NOT YET WIRED HERE: this lane builds the prompt and the decoder, and
-leaves the streaming call to the caller — so the token saving is
-reasoned about, not measured (backlog: intent-live-provider).
+and stops the walk the moment the value is complete. What that is worth
+here was measured in the intent-live-provider lane, and the answer is
+ZERO — see its Results. The sentence this paragraph used to carry
+("so the answer costs the answer") was unearned and is gone.
 
 **Evaluation is a fold.** `Confusion` is a Monoid, so evaluation
 distributes and partial runs merge — the property `Postings` has for
@@ -512,3 +511,52 @@ both sides — but the mechanism is now known rather than assumed.
 
 Same scope as before: 120 author-written messages, one 4B local model,
 one run per arm.
+
+## Results — intent-live-provider (2026-09-03)
+
+This lane exists to pay a debt: three lanes shipped while the spec said
+`Structured.cut` makes a classification "cost the answer" and admitted
+in the same breath that the saving was reasoned about rather than
+measured. Now it is measured, and the claim does not survive.
+
+**Against a real model, through the real streaming transport, the early
+stop saves nothing — 0.0% in both regimes, for opposite reasons.**
+
+| prompt | tokens with cut | tokens generated | saved |
+|---|---|---|---|
+| strict ("ONE JSON object and nothing else") | 250 | 250 | 0.0% |
+| prose-inviting | 643 | 643 | 0.0% |
+
+Under the strict prompt the accumulated text at the stop is exactly the
+whole reply — 280 chars against 280, 291 against 291, message after
+message. The model emits the closing brace and stops on its own, so
+there is nothing after it to avoid. Under a prose-inviting prompt the
+value never decodes at all (`decoded=false`), so the walk runs to the
+end — the safe direction `Structured` documents, and again no saving.
+
+**The mechanism is not broken; there is simply nothing for it to do
+here.** That distinction is not an inference: `TestCutStops` runs the
+walk over a synthetic stream that COUNTS how far it was pulled, in the
+default gate with no model at all. A value followed by five hundred
+pieces of commentary stops after the value and leaves the source
+un-pulled; a stream that never completes is drained in full. Both are
+asserted, not observed.
+
+So the honest statement is: **`cut` is insurance against a model that
+keeps talking after a complete value, not a saving in the normal case.**
+A classification prompt that says "and nothing else" already buys what
+`cut` would have bought, and buys it from the model rather than from
+the client. Where `cut` still earns its place is a model or a setting
+you do not control — an endpoint that appends a summary, a chat model
+without a strict-output mode, a provider that ignores the instruction.
+
+This also settles a question left open by the field-order decision.
+That trade was priced in CHARACTERS of prose (~130 for reasoning
+first), with a note that `cut` made the cheap arm cheaper. It does not:
+both arms pay for every token the model generates. The 0.136 macro F1
+that reasoning-first buys is paid for in tokens either way, and the
+decision stands on its own without the discount it was credited with.
+
+Scope: 20 messages, two streamed completions each, one 4B local model.
+The comparison assumes the server answers the same request the same way
+twice, which every run in this lane has supported.

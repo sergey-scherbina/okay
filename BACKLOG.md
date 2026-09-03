@@ -1008,7 +1008,16 @@ not a new primitive from scratch.
       filled. A Duckling-equivalent over `okay-lex`/`okay-parse` is its
       own lane; until it exists the model does the conversion and the
       schema checks it.
-- [ ] intent-live-provider — `Classify.prompt`/`read` are tested
+- [x] intent-live-provider — LANDED 2026-09-03, and it REFUTED the
+      claim it set out to quantify: the early stop saves 0.0% against a
+      real model, under a strict prompt (nothing follows the closing
+      brace) and under a prose-inviting one (the value never decodes,
+      so the walk runs to the end). The mechanism itself works — proven
+      on a counting synthetic stream in the default gate — but a
+      classification prompt that says "and nothing else" already buys
+      what `cut` would buy. Spec sentence removed rather than softened.
+      Original entry follows.
+- [ ] intent-live-provider (original) — `Classify.prompt`/`read` are tested
       against hand-built and round-tripped values, not a live model.
       The end-to-end run belongs with `TestLive`'s gating, and it is
       what would let `Structured.cut`'s token saving be measured rather
