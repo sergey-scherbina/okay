@@ -1085,8 +1085,32 @@ platform-only parent per script; interpolation: `render`, `${expr}` in
 prose, examples/render-storefront.md; metadata: `okay.script.Meta`,
 front-matter + heading-scoped ```yaml as `Meta.current`; hot-reload:
 `Page`, compile-once-invoke-many; request context: `Web`, dependency-
-free, `String[]`-encoded across the classloader boundary). Traps found
-by the tests, all fixed before landing:
+free, `String[]`-encoded across the classloader boundary; line-accurate
+errors: a per-line origin map through `withMeta`). Traps found by the
+tests, all fixed before landing:
+
+- **The SAME bug shape as okay-script-web's `compileOnly` fix hit
+  again, one function over — a re-indentation pass blindly touching a
+  `Text` segment's embedded string DATA.** Moving indentation INTO
+  `withMeta` (so no caller has to re-indent already-built text
+  afterward) was meant to close this off for good — and the FIRST cut
+  of doing so reopened it in a NEW spot: `emitCode` indented EVERY
+  physical line of whatever string it was given, uniformly — correct
+  for a genuine multi-line `Code` segment (each physical line really
+  is a new source line) but wrong for a `Text`/`Interp` segment's
+  synthesized `print("""...""")` call, whose continuation lines (when
+  the text spans several lines) are STRING DATA, not source lines —
+  the lexer does not care about their indentation, and adding some
+  edits what gets printed. `TestScalaScriptRender`'s own
+  no-interpolation test caught it again, immediately. Fixed with an
+  explicit `isStatement: Boolean` per item: `true` (`Text`/`Interp`)
+  indents ONLY the first physical line; `false` (`Code`) indents every
+  line, preserving a multi-line block's own internal relative
+  indentation. Two landings hitting the identical bug shape
+  (`compileOnly`'s wrapper-depth fix, now `withMeta` itself) is itself
+  the finding worth recording: ANY code that re-indents already-
+  assembled text by scanning its physical lines is suspect near a raw
+  triple-quoted string, regardless of which layer it lives in.
 
 - **`Web` hit the SAME classloader-identity trap the Console fix
   found, one level up — for a USER-DEFINED type this time, not a JDK

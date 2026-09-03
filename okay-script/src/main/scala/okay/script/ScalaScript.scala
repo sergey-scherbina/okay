@@ -21,15 +21,21 @@ final case class Block(code: String, startLine: Int)
 enum Segment:
   /** prose (or a non-scala fenced block, fence markers included),
    * verbatim -- rendered byte-identical except for any `${...}`
-   * markers, which are split out as their own Interp segments. */
+   * markers, which are split out as their own Interp segments. No
+   * `startLine`: a raw string literal cannot itself carry a compile
+   * error worth mapping precisely. */
   case Text(s: String)
   /** a ```scala fence's content, verbatim -- runs for its side
    * effects (definitions visible to LATER segments, direct output via
-   * println), exactly like a `run` block. */
-  case Code(s: String)
+   * println), exactly like a `run` block. `startLine` is the 1-based
+   * ORIGINAL markdown line of the block's first line (same convention
+   * as `Block.startLine`) -- see specs/okay-script.md "Line-accurate
+   * errors". */
+  case Code(s: String, startLine: Int)
   /** a `${expr}` marker's inner expression -- evaluated, `.toString`
-   * printed in place. */
-  case Interp(expr: String)
+   * printed in place. `startLine` is the 1-based ORIGINAL markdown
+   * line the `${` itself starts on. */
+  case Interp(expr: String, startLine: Int)
 
 final case class Result(
   ok: Boolean,
@@ -174,23 +180,24 @@ object ScalaScript:
       while stack.length > 1 && stack.last.level >= level do stack.remove(stack.length - 1): Unit
 
     val out = Vector.newBuilder[(Segment, Vector[Meta.Section])]
-    val textLines = Vector.newBuilder[String]
+    val textLines = scala.collection.mutable.ArrayBuffer.empty[String]
+    var textStartLine = 0
     def flushText(): Unit =
-      val t = textLines.result()
-      if t.nonEmpty then
+      if textLines.nonEmpty then
         val path = currentPath
-        splitInterpolations(t.mkString("\n")).foreach(seg => out += (seg -> path))
+        splitInterpolations(textLines.mkString("\n"), textStartLine).foreach(seg => out += (seg -> path))
       textLines.clear()
 
     while i < lines.length do
       val line = lines(i)
       if fenceOpen.matches(line) then
         flushText()
+        val codeStart = i + 2 // 1-based line of the fence's first content line
         var j = i + 1
         val body = Vector.newBuilder[String]
         while j < lines.length && !fenceClose.matches(lines(j)) do
           body += lines(j); j += 1
-        out += (Segment.Code(body.result().mkString("\n")) -> currentPath)
+        out += (Segment.Code(body.result().mkString("\n"), codeStart) -> currentPath)
         i = j + 1
       else if yamlFenceOpen.matches(line) then
         flushText()
@@ -206,9 +213,11 @@ object ScalaScript:
             flushText()
             closeTo(hashes.length)
             stack += Building(hashes.length, title, Vector.empty)
+            textStartLine = i + 1
             textLines += line
             i += 1
           case _ =>
+            if textLines.isEmpty then textStartLine = i + 1
             textLines += line
             i += 1
     flushText()
@@ -250,9 +259,28 @@ object ScalaScript:
    */
   private def hasWeb(body: String): Boolean = body.contains("Web")
 
-  /** Wraps a sequence of (heading-path, statement-source) pairs into
-   * ONE body. A document with NO front-matter, yaml, or headings emits
-   * no `okay.script.Meta` reference at all -- `run`/`render` stay
+  /** Wraps a sequence of (heading-path, source, startLine, isStatement)
+   * items into ONE body PLUS a parallel line-origin map (one entry per
+   * physical body line: the ORIGINAL markdown line it came from, `-1`
+   * for a line with no original counterpart -- see
+   * specs/okay-script.md "Line-accurate errors"). Indentation is
+   * applied HERE, once, per physical line -- not by a caller
+   * re-indenting already-assembled text afterward (that corrupted
+   * multi-line string-literal DATA, see okay-script-web's Results).
+   *
+   * `isStatement = true` (a `render` segment's synthesized `print(...)`
+   * call) indents ONLY its first physical line -- a `Text`/`Interp`
+   * call's later physical lines, if any, are CONTINUATION DATA inside
+   * a raw string literal (the lexer does not care about their
+   * indentation at all), and adding spaces there would edit what gets
+   * printed, the same class of bug the FIRST line-mapping attempt
+   * found in `compileOnly` itself, here one level up. `isStatement =
+   * false` (a verbatim ```scala `Code` segment) indents EVERY physical
+   * line uniformly, preserving the block's own internal relative
+   * indentation -- correct for genuine multi-line Scala source.
+   *
+   * A document with NO front-matter, yaml, or headings emits no
+   * `okay.script.Meta` reference at all -- `run`/`render` stay
    * self-sufficient (scala-library only) for the common metadata-free
    * case, which is every script/example that predates this feature.
    * Otherwise: a `val` holding the whole `Meta.Doc` (literalized
@@ -262,34 +290,47 @@ object ScalaScript:
    * evaluated once, not per summon, confirmed empirically), then the
    * segment/block's own statement.
    */
-  private def withMeta(doc: Meta.Doc, items: Vector[(Vector[Meta.Section], String)]): String =
+  private def withMeta(doc: Meta.Doc, items: Vector[(Vector[Meta.Section], String, Int, Boolean)]): (String, Vector[Int]) =
     val sb = new StringBuilder
+    val origins = Vector.newBuilder[Int]
+    def emitLine(text: String, origin: Int): Unit =
+      sb ++= "    " ++= text ++= "\n": Unit
+      origins += origin: Unit
+    def emitCode(code: String, startLine: Int, isStatement: Boolean): Unit =
+      val ls = code.linesWithSeparators.toVector.map(_.stripLineEnd)
+      for (l, idx) <- ls.zipWithIndex do
+        if idx == 0 || !isStatement then sb ++= "    " ++= l ++= "\n": Unit
+        else sb ++= l ++= "\n": Unit
+        origins += (if startLine < 0 then -1 else startLine + idx): Unit
     if hasMeta(doc) then
-      sb ++= "    val _okayScriptDoc_ : okay.script.Meta.Doc = " ++= docLiteral(doc) ++= "\n": Unit
+      emitLine("val _okayScriptDoc_ : okay.script.Meta.Doc = " + docLiteral(doc), -1)
       var prevPath: Option[Vector[Meta.Section]] = None
-      for (path, code) <- items do
+      for (path, code, startLine, isStatement) <- items do
         if !prevPath.contains(path) then
           val p = path.map(sectionLiteral).mkString(", ")
-          sb ++= s"    okay.script.Meta.setCurrent(okay.script.Meta.Context(_okayScriptDoc_, Vector($p)))\n"
+          emitLine(s"okay.script.Meta.setCurrent(okay.script.Meta.Context(_okayScriptDoc_, Vector($p)))", -1)
           prevPath = Some(path)
-        if code.nonEmpty then sb ++= code ++= "\n": Unit
+        if code.nonEmpty then emitCode(code, startLine, isStatement)
     else
-      for (_, code) <- items do
-        if code.nonEmpty then sb ++= code ++= "\n": Unit
-    sb ++= "    ()\n"
-    sb.toString
+      for (_, code, startLine, isStatement) <- items do
+        if code.nonEmpty then emitCode(code, startLine, isStatement)
+    emitLine("()", -1)
+    (sb.toString, origins.result())
 
   /** Splits a text run on `${expr}` markers (`$${` escapes to a
    * literal `${`). Brace-depth-aware, and quote-aware within the
    * expr -- a `{`/`}` inside a `"..."` span in the expression (e.g. a
    * NESTED `s"${x}"` string interpolation) does not affect the depth
-   * that closes the marker.
+   * that closes the marker. `textStartLine` (1-based, the ORIGINAL
+   * markdown line `text`'s own first line came from) plus a running
+   * newline count give each `Interp` segment its own `startLine`.
    */
-  private def splitInterpolations(text: String): Vector[Segment] =
+  private def splitInterpolations(text: String, textStartLine: Int): Vector[Segment] =
     val out = Vector.newBuilder[Segment]
     val buf = new StringBuilder
     val n = text.length
     var i = 0
+    var line = textStartLine
     while i < n do
       if i + 2 < n && text(i) == '$' && text(i + 1) == '$' && text(i + 2) == '{' then
         buf ++= "${"
@@ -298,6 +339,7 @@ object ScalaScript:
         if buf.nonEmpty then
           out += Segment.Text(buf.toString)
           buf.clear()
+        val markerLine = line
         val start = i + 2
         var depth = 1
         var inString = false
@@ -305,6 +347,7 @@ object ScalaScript:
         var k = start
         while k < n && depth > 0 do
           val c = text(k)
+          if c == '\n' then line += 1
           if inString then
             if escaped then escaped = false
             else if c == '\\' then escaped = true
@@ -314,9 +357,10 @@ object ScalaScript:
           else if c == '}' then depth -= 1
           k += 1
         val exprEnd = if depth == 0 then k - 1 else k
-        out += Segment.Interp(text.substring(start, exprEnd))
+        out += Segment.Interp(text.substring(start, exprEnd), markerLine)
         i = k
       else
+        if text(i) == '\n' then line += 1
         buf += text(i)
         i += 1
     if buf.nonEmpty then out += Segment.Text(buf.toString)
@@ -352,10 +396,11 @@ object ScalaScript:
   def run(markdown: String, classpath: Classpath = Classpath.ambient): Result =
     resolvedClasspath(markdown, classpath).fold(identity, cp =>
       val doc = Meta.parse(markdown)
-      val items = tokenize(markdown).collect { case (Segment.Code(code), path) =>
-        (path, code.linesWithSeparators.map("    " + _).mkString)
+      val items = tokenize(markdown).collect { case (Segment.Code(code, startLine), path) =>
+        (path, code, startLine, false)
       }
-      compileAndRun(withMeta(doc, items), cp))
+      val (body, lineMap) = withMeta(doc, items)
+      compileAndRun(body, lineMap, cp))
 
   /** The whole document -- prose AND code -- as one program: `${expr}`
    * markers in prose (outside ```scala fences) are evaluated and their
@@ -386,12 +431,13 @@ object ScalaScript:
     resolvedClasspath(markdown, classpath).flatMap: cp =>
       val doc = Meta.parse(markdown)
       val items = tokenize(markdown).map {
-        case (Segment.Text(s), path) if s.nonEmpty => (path, "    print(" + scalaStringLiteral(s) + ")")
-        case (Segment.Text(_), path) => (path, "")
-        case (Segment.Interp(expr), path) => (path, s"    print(($expr).toString)")
-        case (Segment.Code(code), path) => (path, code.linesWithSeparators.map("    " + _).mkString)
+        case (Segment.Text(s), path) if s.nonEmpty => (path, "print(" + scalaStringLiteral(s) + ")", -1, true)
+        case (Segment.Text(_), path) => (path, "", -1, true)
+        case (Segment.Interp(expr, startLine), path) => (path, s"print(($expr).toString)", startLine, true)
+        case (Segment.Code(code, startLine), path) => (path, code, startLine, false)
       }
-      compileOnly(withMeta(doc, items), cp)
+      val (body, lineMap) = withMeta(doc, items)
+      compileOnly(body, lineMap, cp)
 
   private def resolvedClasspath(markdown: String, classpath: Classpath): Either[Result, Classpath] =
     val coords = Deps.declared(markdown)
@@ -403,8 +449,8 @@ object ScalaScript:
       case Deps.Resolved.Jars(extra) =>
         Right(classpath ++ extra)
 
-  private def compileAndRun(body: String, classpath: Classpath): Result =
-    compileOnly(body, classpath).fold(identity, c => try c.invoke() finally c.close())
+  private def compileAndRun(body: String, lineMap: Vector[Int], classpath: Classpath): Result =
+    compileOnly(body, lineMap, classpath).fold(identity, c => try c.invoke() finally c.close())
 
   /** Compiles `body` (an `object OkayScriptMain: def run(args: Array[
    * String]): Unit` body -- NOT `@main`, see the `args`-encoding
@@ -414,7 +460,7 @@ object ScalaScript:
    * anything: the returned `Compiled` owns both (its `close()` deletes
    * the temp dir this creates).
    */
-  private def compileOnly(body: String, classpath: Classpath): Either[Result, Compiled] =
+  private def compileOnly(body: String, lineMap: Vector[Int], classpath: Classpath): Either[Result, Compiled] =
     // `body`'s callers (run/render/withMeta) already build it at the
     // FINAL 4-space depth `def run(...): Unit =` needs -- do NOT
     // re-indent it here by prefixing every physical line: `body` can
@@ -424,12 +470,15 @@ object ScalaScript:
     // the source formatting (found by TestScalaScriptRender's
     // no-interpolation test failing with extra leading spaces on
     // every rendered line, when this WAS a line-prefixing pass).
-    val decodeWeb = if hasWeb(body) then "    okay.script.Web.setCurrent(okay.script.Web.decodeArgs(args))\n" else ""
-    val wrapped =
-      s"""object OkayScriptMain:
-         |  def run(args: Array[String]): Unit =
-         |$decodeWeb$body
-         |""".stripMargin
+    val decodeWeb = if hasWeb(body) then Some("    okay.script.Web.setCurrent(okay.script.Web.decodeArgs(args))") else None
+    val header = Vector("object OkayScriptMain:", "  def run(args: Array[String]): Unit =") ++ decodeWeb
+    val wrapped = header.map(_ + "\n").mkString + body
+    // one entry per PHYSICAL line of `wrapped`, aligned with dotc's
+    // own 0-based line() -- header lines (and, when present, the
+    // injected Web-decode line) have no original counterpart (-1);
+    // `lineMap` (built alongside `body` in `withMeta`) supplies the
+    // rest, entry for entry.
+    val fullLineMap = Vector.fill(header.length)(-1) ++ lineMap
 
     val dir = Files.createTempDirectory("okay-script-")
     val srcFile = dir.resolve("OkayScriptMain.scala")
@@ -437,7 +486,7 @@ object ScalaScript:
     val outDir = Files.createDirectory(dir.resolve("out"))
 
     val diagnostics = Vector.newBuilder[String]
-    val reporter = collectingReporter(diagnostics)
+    val reporter = collectingReporter(diagnostics, fullLineMap)
 
     val args = Array(
       "-classpath", classpath.asString,
@@ -523,11 +572,28 @@ object ScalaScript:
           loader.close()
           deleteRecursively(dir))
 
-  private def collectingReporter(sink: scala.collection.mutable.Builder[String, Vector[String]]): Reporter =
+  /** `lineMap` maps a 0-based synthetic-source line (dotc's own
+   * `SourcePosition.line()` convention, confirmed empirically -- see
+   * specs/okay-script.md "Line-accurate errors") to the 1-based
+   * ORIGINAL markdown line, or `-1` when there is none. A diagnostic
+   * WITH a position that maps to a real line is prefixed `"L<n>: "`;
+   * one with no position, or a position outside/unmapped in
+   * `lineMap` (synthesized code -- an `okay-script` bug, not the
+   * markdown author's), is reported bare, exactly as before this
+   * feature.
+   */
+  private def collectingReporter(
+    sink: scala.collection.mutable.Builder[String, Vector[String]],
+    lineMap: Vector[Int],
+  ): Reporter =
     new dotty.tools.dotc.reporting.StoreReporter(null):
       override def doReport(dia: Diagnostic)(using Context): Unit =
         if dia.level >= dotty.tools.dotc.interfaces.Diagnostic.ERROR then
-          sink += dia.msg.message
+          val origin =
+            if dia.position().isPresent then
+              lineMap.lift(dia.position().get().line()).filter(_ >= 1)
+            else None
+          sink += origin.fold(dia.msg.message)(n => s"L$n: ${dia.msg.message}")
 
   private def deleteRecursively(p: Path): Unit =
     if Files.exists(p) then
