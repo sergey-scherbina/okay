@@ -297,7 +297,41 @@ construction instead of a type test per value).
       parameterised over the implementation rather than written per
       lane.
 
-- [ ] channel-ring-integration — wire `Ring` into `Channel`. The ring
+- [ ] raft-wire-election-flake — okay.persist.TestRaftWire "killing
+      the leader: the survivors elect a new one and keep committing"
+      failed once under the full sbt matrix (2026-09-03, one gate in
+      three), green 3/3 in isolation immediately after. Leader
+      election is timeout-driven, so this is the netty-ws-matrix-flake
+      / nio-port-scope-flake family: a schedule-sensitive assertion
+      under matrix load. Established as NOT caused by the lane that
+      observed it (ring-channel): that lane's only edit to existing
+      code is an added `Ring.isFull`, everything else is new files
+      nothing references, and the Channel factory still returns
+      StmChannel -- there is no code path from it to Raft. Settle by
+      the survey in AGENTS.md (does it bind ports / depend on
+      timeouts?) and either tag it Live or fix the timing.
+
+- [ ] ring-channel-waiters — `RingChannel` is landed behind the seam
+      and correct, but measures 1.7x over the bounded default where
+      the RING MECHANISM alone measured 3.4x (channel-ring). The
+      waiter protocol around it eats more than half the win, and the
+      causes are known rather than suspected: the waiter queue is an
+      `AtomicReference[List]` walked with `last`/`init` (O(n) per
+      wake), a fresh `Waiter` is allocated on every retry iteration
+      and purged afterwards, and the close barrier spins. Fix by
+      giving the waiters their own lock-free queue (CasChannel's node
+      code is right there) and by not re-registering per iteration.
+      Measure against the 3.4x mechanism ceiling, not against the
+      default.
+
+- [x] channel-ring-integration — SUPERSEDED by channel-seam plus
+      ring-channel: the implementation lives behind the interface
+      instead of replacing Channel's mechanism in place, which is why
+      three real defects could be found without master ever being at
+      risk. Original
+      diagnosis kept below for the record.
+
+- [x] channel-ring-integration (original) — wire `Ring` into `Channel`. The ring
       itself is landed, tested (MPMC and SPSC on real threads) and
       measured at 3.4x the rebuild-per-operation model it replaces
       (channel-ring), which matches the 3.6x gap to `zio.Queue`. The

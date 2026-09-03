@@ -101,6 +101,11 @@ private[okay] final class Ring[A](requested: Int) {
 
   def isEmpty: Boolean = head.get >= tail.get
 
+  /** a snapshot, like `size`: true means it was full a moment ago,
+   * which is all a caller deciding whether to RE-CHECK needs — the
+   * decision that matters is still `push`'s own answer */
+  def isFull: Boolean = tail.get - head.get >= capacity
+
   /**
    * Take a slot at the tail and publish `a` into it. False means the
    * ring was full at some point during the attempt — the caller
