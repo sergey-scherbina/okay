@@ -1,5 +1,31 @@
 # Changelog
 
+## channel-drain — batch the RECEIVE side: 30% off the per-element merge, no flag, no semantic change
+Completed: 2026-09-03
+Landed as e7987aa. Profiling had put 71% of the per-element merge
+inside the channel transaction, and four lanes established it cannot
+be made cheaper, only rarer. Chunking made it rarer on the SEND side
+and had to be opt-in, since batching sends delays an element that
+could have gone now.
+
+The receive side carries no such price, and nobody had looked: what
+is ALREADY buffered is already late, so taking up to 64 of them under
+one CAS hands the consumer exactly the same elements in exactly the
+same order. `Channel.receiveMany` does it in one transition —
+admitting parked senders into the room it frees, falling back to the
+ordinary parking receive when nothing is buffered, so the count is a
+ceiling and never a quota to wait for — and the single receive now
+shares that transition so the two cannot drift. `Drain` is the
+carrier that serves from the batch and touches the channel only when
+it runs out.
+
+**828.3 ±11.3 against 1180.5 ±11.8 on 2x2000, in one window — 30%
+faster.** The largest single win on the per-element path in this arc,
+and the only one that needed no permission from the caller. Seven
+tests cover where order could go wrong: capacity 4, 1 and 0, an end
+landing either side of a batch boundary, a failing producer, and
+batched against single read element for element.
+
 ## http-peer-address — a served Request knows where it came from
 Completed: 2026-09-03
 Landed as 7b2b2b6 (spec) + 4fd1d62 (impl). `Request` carried the
