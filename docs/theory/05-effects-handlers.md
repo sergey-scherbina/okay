@@ -170,6 +170,136 @@ constraint enforces it once: on JS there is no `CanBlock`, so a
 comonadic `Handler[Async]` does not exist there *by type*, and code
 must peel to `Async.runAsync` instead (`cross-platform-async.md`).
 
+## Lowering: how a program becomes its meaning
+
+The third handler shape needs the operation's continuation, and a
+program does not hand one over: chapter 4's freer tree keeps the
+continuation *beside* the operation, in `Bind`, as data. `Cont` is the
+type whose whole subject is continuations. Interpreting a program is
+therefore a move between the two, and `foldCont` is that move.
+
+It is worth being exact about its status, because it is easy to read it
+as an optimization. `Free[F, *]` is the **free** monad on the signature:
+given an interpretation of `F` in any other monad, there is exactly one
+structure-preserving map out of it. `foldCont` is that unique map,
+instantiated at `Cont` with the handler as the interpretation. That is
+why `Effects.scala` says a computation's *meaning* is its image in the
+continuation paramonad, and why `handle` and `runWith` are defined
+through it rather than beside it. The lowering is the semantics; the
+fast paths below are what the library does when it can prove a cheaper
+route agrees.
+
+### The mechanism, line by line
+
+```scala
+override def foldCont[S](h: F !> S): A /> S =
+  m.fold(Cont.Pure(_))([X] => e => k => h(e).flatMap(k(_).foldCont(h)))
+```
+
+Three parts, and each does one thing.
+
+`Free.fold` supplies the *normal form*. Its rotations (chapter 4) mean
+that whatever the shape of the tree, what reaches the second argument is
+always an operation together with its continuation `k`. A program that
+was built left-nested arrives here right-nested; the interpreter never
+sees a `Bind` of a `Bind`.
+
+`h(e)` is the handler's answer for that one operation: a `Cont`, not a
+value. This is where the handler may decide to drop the continuation, to
+call it once, or to call it many times, and nothing downstream has to
+know which.
+
+`k(_).foldCont(h)` lowers *the rest of the program* and binds it after.
+So the Free spine is rebuilt as a `Cont` spine, one node at a time, with
+the handler's own `Cont` spliced in at each. `Pure` maps to `Cont.Pure`.
+Nothing is executed yet: the result is still a description, just one
+whose sequencing now lives in the carrier that can talk about
+continuations.
+
+### What running it does
+
+`Cont`'s runner is five cases, and the split between them is the whole
+story:
+
+```scala
+@tailrec final infix def /(k: A => S): R = this match
+  case Pure(a)              => k(a)
+  case Shift(f, _)          => f(k)
+  case Bind(Bind(a, f), g)  => Bind(a, f(_).flatMap(g)) / k   // rotate
+  case Bind(Pure(a), f)     => f(a) / k                       // discharge
+  case Bind(Shift(s, _), f) => s(f(_)(k))                     // hand over
+```
+
+The middle three are a loop: they rebalance left-nests and discharge
+pure prefixes, tail-recursively, so the length of a `flatMap` chain
+costs no stack. The last line is the handover, where the handler's
+`s` finally receives the continuation of everything after it. Note what
+this means for stack safety honestly: the *spine* is safe by
+construction, and what happens inside a handler is the handler's own
+business — one that resumes deep inside its own work nests there, as it
+must.
+
+One detail from chapter 4 completes the picture: `Cont.flatMap` fuses
+into the `Shift` closure while a depth budget lasts and spills into
+`Bind` data past it. Short chains never allocate a node; long ones
+become data before the JVM stack could notice. The budget is the dial
+between the two encodings, set in one place.
+
+### Forwarding, in the same language
+
+The other half of `handle` shows what an *unhandled* operation looks
+like once lowered:
+
+```scala
+case Right(e) => shift(k => perform(e).flatMap(k))
+```
+
+Read aloud: not mine, so perform it again in the residual row and
+continue with the captured continuation. That is exactly the licence
+the previous section described. Because the operation is algebraic, it
+commutes with what follows, so re-performing it and resuming is the
+same program; a scoped node could not be forwarded this way, which is
+why the two of them are interpreted by runners that descend into their
+payloads instead.
+
+### Why the common case does not go this way
+
+`Free`'s `runWith` overrides the definition:
+
+```scala
+/** the same answer as the foldCont definition, in one pass instead of two */
+override def runWith(using Handler[F]): A = runFree(m)
+```
+
+`runFree` is a five-case tail-recursive loop that walks the tree and
+answers each operation on the spot. It is allowed to exist because a
+comonadic `Handler[F]` uses each continuation exactly once and
+immediately: there is nothing for a reified continuation to buy, so
+building one is pure overhead, and the tree can be consumed in one pass
+instead of being rebuilt as `Cont` and then run. The comment states the
+obligation that comes with any such shortcut, which is that it must
+give *the same answer* as the definition.
+
+This is the library's standing pattern rather than a one-off: define by
+the general construction, then override where a weaker handler shape
+provably suffices. The three-shapes table above is the same idea read
+from the other end.
+
+### And where lowering is the identity
+
+```scala
+type Eff[F[+_], A] = [S] => F !> S => A /> S
+override inline def foldCont[S](h: F !> S): A /> S = m[S](h)
+```
+
+In the Church encoding a program *is* its own `foldCont`: it was never a
+tree, so there is nothing to walk, and lowering costs nothing because it
+already happened at construction. What that buys and what it costs are
+symmetric with `Free` — no tree means no stepping, no staged relay, and
+no stack safety on a left-nested `flatMap`. `fromFree` and `reify` move
+a program between the two, so the choice is not made once for the whole
+library.
+
 ## The worked example: Writer's six encodings
 
 `docs/existentials.md` is this chapter's laboratory. The Writer effect

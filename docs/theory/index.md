@@ -30,8 +30,9 @@ library needed.
 
 **[5 · Algebraic effects and handlers](05-effects-handlers.md)**
 Operations first, meaning elsewhere; rows as unions; three shapes of
-handler on one line; what the middle constructor decides, and the kind
-that rules scoped operations out.
+handler on one line; what the middle constructor decides, the kind that
+rules scoped operations out, and how a program becomes its meaning by
+lowering into Cont.
 *Plotkin & Power 2003 · Plotkin & Pretnar 2009 · Kiselyov, Sabry & Swords 2013 · Filinski 1994 · Kammar, Lindley & Oury 2013 · Forster et al. 2017 · Wu, Schrijvers & Hinze 2014*
 
 ### Part III · Making it fast, making it search
