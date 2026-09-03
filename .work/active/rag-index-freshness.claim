@@ -1,0 +1,5 @@
+slug: rag-index-freshness
+branch: feature/rag-index-freshness
+worktree: ../okay-wt-rag-index-freshness
+claimed: 2026-09-03
+scope: keep this repo's rag index fresh without anyone remembering to. Tracked git hooks (scripts/githooks + an installer, rozum's convention) that re-index the MAIN checkout incrementally after a merge or a commit; never fail a git operation, skip silently when rozum is absent. AGENTS.md gains the install line. The failure this prevents is the silent one: a tool that answers confidently out of a stale tree.
