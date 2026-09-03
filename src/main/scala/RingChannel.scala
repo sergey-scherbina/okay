@@ -180,7 +180,15 @@ final class RingChannel[A](requested: Int) extends Channel[A] {
     // this check -- it answered k(true), so the element is accepted,
     // and ending the stream here strands it. Found by the accounting
     // test, round 170: one element accepted and never delivered.
-    else if closed.get && ring.isEmpty then k(endNow)
+      // CLOSED IS STILL NOT ENOUGH. The close barrier makes `close`
+      // wait for announced sends, but a CONSUMER that reads the flag
+      // directly does not: a producer can pass its open-check, close
+      // can set the flag, the consumer can see closed-and-empty and
+      // end, and only then does the push land -- accepted and lost.
+      // The end of the stream is therefore closed AND nothing in
+      // flight AND empty; with no sends in flight and the flag set,
+      // no new send can start, so the emptiness read is stable.
+    else if closed.get && inFlight.get == 0 && ring.isEmpty then k(endNow)
     else
       val w = Waiter(() => attemptReceive(k))
       enqueue(receivers, w)

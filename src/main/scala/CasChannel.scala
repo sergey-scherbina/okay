@@ -125,9 +125,15 @@ final class CasChannel[A] extends Channel[A] {
   private def attempt(k: End => Unit): Unit =
     val a = pop()
     if a != null then k(Right(Some(a.nn)))
-    // closed is not enough: a closed channel still owes what is
-    // buffered (the bug the accounting test caught in RingChannel)
-    else if closed.get && isEmpty then k(endNow)
+      // CLOSED IS STILL NOT ENOUGH. The close barrier makes `close`
+      // wait for announced sends, but a CONSUMER that reads the flag
+      // directly does not: a producer can pass its open-check, close
+      // can set the flag, the consumer can see closed-and-empty and
+      // end, and only then does the push land -- accepted and lost.
+      // The end of the stream is therefore closed AND nothing in
+      // flight AND empty; with no sends in flight and the flag set,
+      // no new send can start, so the emptiness read is stable.
+    else if closed.get && inFlight.get == 0 && isEmpty then k(endNow)
     else
       val w = Waiter(() => attempt(k))
       enqueue(w)

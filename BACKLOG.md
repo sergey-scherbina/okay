@@ -289,6 +289,20 @@ construction instead of a type test per value).
       parameterised over the implementation rather than written per
       lane.
 
+- [ ] raft-wire-election-flake — okay.persist.TestRaftWire "killing
+      the leader: the survivors elect a new one and keep committing"
+      failed once under the full sbt matrix (2026-09-03, one gate in
+      three), green 3/3 in isolation immediately after. Leader
+      election is timeout-driven, so this is the netty-ws-matrix-flake
+      / nio-port-scope-flake family: a schedule-sensitive assertion
+      under matrix load. Established as NOT caused by the lane that
+      observed it (ring-channel): that lane's only edit to existing
+      code is an added `Ring.isFull`, everything else is new files
+      nothing references, and the Channel factory still returns
+      StmChannel -- there is no code path from it to Raft. Settle by
+      the survey in AGENTS.md (does it bind ports / depend on
+      timeouts?) and either tag it Live or fix the timing.
+
 - [ ] ring-channel-waiters — `RingChannel` is landed behind the seam
       and correct, but measures 1.7x over the bounded default where
       the RING MECHANISM alone measured 3.4x (channel-ring). The
