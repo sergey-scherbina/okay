@@ -44,6 +44,11 @@ final case class Result(
   thrown: Option[Throwable],
 )
 
+/** `ScalaScript.check`'s verdict -- see specs/okay-script.md
+ * "Output-comparison testing". `mismatches` is empty iff `ok`.
+ */
+final case class CheckResult(ok: Boolean, mismatches: Vector[String], run: Result)
+
 /** An already-compiled program, invokable repeatedly WITHOUT
  * recompiling -- the compile/invoke split `Page` needs for hot-reload
  * (okay-script-page). See specs/okay-script.md "Hot-reload".
@@ -143,6 +148,31 @@ object ScalaScript:
           body += lines(j)
           j += 1
         out += Block(body.result().mkString("\n"), start + 1)
+        i = j + 1
+      else
+        i += 1
+    out.result()
+
+  private val stdoutFenceOpen = """```stdout\s*""".r
+
+  /** Every ` ```stdout ` fence's content, in document order -- a
+   * plain line-scanner mirroring `blocks`' own, independent of
+   * `tokenize` (```stdout plays no role in compilation at all, only
+   * in `check`) -- see specs/okay-script.md "Output-comparison
+   * testing".
+   */
+  private def stdoutBlocks(markdown: String): Vector[String] =
+    val lines = markdown.linesWithSeparators.toVector.map(_.stripLineEnd)
+    val out = Vector.newBuilder[String]
+    var i = 0
+    while i < lines.length do
+      if stdoutFenceOpen.matches(lines(i)) then
+        var j = i + 1
+        val body = Vector.newBuilder[String]
+        while j < lines.length && !fenceClose.matches(lines(j)) do
+          body += lines(j)
+          j += 1
+        out += body.result().mkString("\n")
         i = j + 1
       else
         i += 1
@@ -438,6 +468,30 @@ object ScalaScript:
       }
       val (body, lineMap) = withMeta(doc, items)
       compileOnly(body, lineMap, cp)
+
+  /** mdoc-style: runs the whole document once via `run`, then checks
+   * every ` ```stdout ` fence's (trimmed) content appears as an
+   * IN-ORDER substring of the actual output -- proving the right
+   * output happened in the right relative sequence without injecting
+   * a checkpoint into the compiled program itself. See
+   * specs/okay-script.md "Output-comparison testing".
+   */
+  def check(markdown: String, classpath: Classpath = Classpath.ambient): CheckResult =
+    val expected = stdoutBlocks(markdown)
+    val r = run(markdown, classpath)
+    if !r.ok then
+      CheckResult(ok = false, mismatches = Vector(s"run failed before any output could be checked: ${r.errors.mkString("; ")}"), run = r)
+    else
+      var pos = 0
+      val mismatches = Vector.newBuilder[String]
+      for (chunk, i) <- expected.zipWithIndex do
+        val needle = chunk.trim
+        val idx = r.stdout.indexOf(needle, pos)
+        if idx < 0 then
+          mismatches += s"expected output #${i + 1} not found (in order, from position $pos): ${needle}"
+        else
+          pos = idx + needle.length
+      CheckResult(ok = mismatches.result().isEmpty, mismatches = mismatches.result(), run = r)
 
   private def resolvedClasspath(markdown: String, classpath: Classpath): Either[Result, Classpath] =
     val coords = Deps.declared(markdown)

@@ -1180,7 +1180,15 @@ prose, examples/render-storefront.md; metadata: `okay.script.Meta`,
 front-matter + heading-scoped ```yaml as `Meta.current`; hot-reload:
 `Page`, compile-once-invoke-many; request context: `Web`, dependency-
 free, `String[]`-encoded across the classloader boundary; line-accurate
-errors: a per-line origin map through `withMeta`). Traps found by the
+errors: a per-line origin map through `withMeta`; output-comparison
+testing: `check`, a ```stdout fence, in-order substring matching).
+`check` needed NO fix — the first cut passed all 8 tests on the first
+run, a real contrast with the two landings right before it (`Web`,
+line-mapping) that both hit the SAME re-indentation bug shape:
+`check` is purely ADDITIVE and host-side (no synthesis change, no new
+fence recognized by `tokenize`/`withMeta` at all — the exact design
+choice made to avoid touching that code again), and it shows. Traps
+found by the
 tests, all fixed before landing:
 
 - **The SAME bug shape as okay-script-web's `compileOnly` fix hit
