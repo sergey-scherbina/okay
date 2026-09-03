@@ -80,6 +80,72 @@ handlers, and a fused closure cannot be split on a row. The pair of
 types is one design at two points: `Cont` optimizes for *running*,
 `Free` for *being interpreted*.
 
+## Does the third road actually hold? (the linearity measurement)
+
+The argument above is structural, and structural arguments about
+asymptotics have a way of being believed rather than checked. The
+rotation is *cheap per pass*, but it runs on every pull, and a
+profiler had already put 38% of a merge benchmark's samples on
+exactly those two lines. That is the shape of a question, not an
+answer: 38% of CPU in the normalizer is what you would see both if
+the tree were linear and the constant merely large, and if the tree
+were quadratic and the library slowly drowning.
+
+The two readings prescribe opposite work. If the cost per element
+*grows*, the third road has failed on the shapes this library
+actually builds, and the remedy is the published one — a
+type-aligned sequence in place of the binary `Bind`, appending in
+O(1), rotation abolished as a concept. If the cost per element is
+*flat*, that rewrite removes an asymptotic that was never there,
+and pays for it in a cast (or a heavy GADT) plus the 42 sites that
+depend on `resume`'s three-shape invariant.
+
+So it was measured, by sweeping the element count over an 8x range
+and reading the numbers *per element* — with a bare `LazyList` walk
+as the control for the platform's own scaling:
+
+| per element | 500 el | 1000 el | 2000 el | 4000 el |
+|---|---|---|---|---|
+| `LazyList` (control) | 11.3ns | 11.4 | 11.0 | 10.6 |
+| one `Source`, drained | 41.2ns | 39.6 | 41.5 | 40.6 |
+| `Channel.merge` | 142.3ns | 121.9 | 127.9 | 131.8 |
+| `Source` merge | 303.5ns | 299.7 | 300.7 | 291.6 |
+
+Flat in every lane — drifting slightly *down*, as warm-up amortizes
+over longer runs. The trees this library builds are linear, and the
+third road holds.
+
+The reason is worth stating, because it is the general lesson and
+not a fact about okay. Reflection without remorse pays where binds
+are **left**-nested, and a recursive stream producer is naturally
+**right**-nested: each step's continuation contains the rest of the
+walk, so `resume`'s first rule has almost nothing to rotate.
+Left-nesting is what a `foldLeft` over a program builds — which is
+why chapter 1's worst-case benchmark constructs exactly that, and
+why `docs/benchmarks.md` §1 is careful to print the right-nested row
+beside the left-nested one: a system without reassociation is
+quadratic on the first shape (measured ×109 from N=1k to N=10k) and
+linear on the second, so quoting only the first describes the
+pathology rather than the library. The same discipline applies here,
+pointed at ourselves: the trap is real, and whether you are *in* it
+is a property of how programs are built, not of the encoding.
+
+What the sweep found instead lives one level out. The `Writer` layer
+costs ~30ns per element on its own (41 against the control's 11) and
+~160ns per element *inside the merge* (292 against `Channel.merge`'s
+132) — the same interpretation, some five times dearer once two
+fibers contend for one channel cell. That is not a statement about
+trees at all: a slower step simply spends longer in the window where
+a competing CAS can land, which was measured directly as a retry
+rate rising from 28.1% to 34.3% at matched capacity. The lever it
+identifies is *fewer interpretation steps inside the contended
+region* rather than a cheaper step — which is what a chunked stream
+already is, one queue operation per chunk instead of per element,
+and it measures 10.7µs against the per-element merge's 299.7µs on
+the same work. The per-element price buys per-element semantics; the
+chapter's honest summary is that the encoding was not the thing to
+fix. `docs/benchmarks.md` §6 carries the full numbers.
+
 ## Freer's second dividend: GADT refinement
 
 Storing operations bare means an operation's constructor can carry its

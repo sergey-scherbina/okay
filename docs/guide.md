@@ -229,7 +229,18 @@ benchmark can see. `Channel.merge` underneath keeps its unbounded
 default: there the capacity is the caller's explicit business.
 Chaining merges does not serialize them — each hop is its own fiber,
 so eight chained sources overlap as eight (2.4s of parked work in
-0.3s). On JVM/Native it parks
+0.3s). What the program shape COSTS is measured and flat: ~300ns per
+element, against ~130ns for the bare `Channel.merge` under it and
+~11ns for a native `LazyList` walk — and flat is the operative word,
+since a scaling sweep over 8x found the per-element price constant
+(the Free tree is linear, `docs/theory/04-free-freer.md`). Most of
+that gap is not the interpretation itself but the interpretation
+INSIDE the contention: the same layer costs ~30ns per element alone
+and ~160ns once two fibers race for the channel's cell. So where
+throughput is the point rather than per-element semantics, merge the
+CHUNKED streams — `Chunks.merge` is one queue operation per chunk
+instead of per element, and measures 10.7us against 299.7us for the
+same 2x500. On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`

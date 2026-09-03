@@ -23,8 +23,9 @@ diagonal back to ordinary monads.
 ### Part II · The machinery
 
 **[4 · Free and freer](04-free-freer.md)**
-Programs as data, signatures without constraints, and three answers to
-the left-nested-bind problem.
+Programs as data, signatures without constraints, three answers to the
+left-nested-bind problem — and the measurement showing which one this
+library needed.
 *Swierstra 2008 · Kiselyov & Ishii 2015 · Voigtländer 2008 · van der Ploeg & Kiselyov 2014*
 
 **[5 · Algebraic effects and handlers](05-effects-handlers.md)**
