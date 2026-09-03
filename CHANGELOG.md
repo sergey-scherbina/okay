@@ -1,5 +1,57 @@
 # Changelog
 
+## chunk-bench-matrix — the chunk/flush surface measured and compared, the API made orthogonal, one pre-existing overflow fixed
+Completed: 2026-09-03
+Landed as e986da5.
+
+**Edge cases** (26 tests): counts around the chunk boundary
+(0,1,15,16,17,31,32,33), an empty side either way and both, a side
+shorter than a chunk, an early-stopping consumer, a failing source
+that must not swallow the other side, and every `Flush` edge — a
+flush with nothing buffered, one immediately before the end, two in a
+row, one inside a full chunk.
+
+**The API, made orthogonal.** Chunking was a flag on `merge`, which
+is the same concept spelled once per consumer. It is now a property
+of the STREAM — `s.chunked(size)` / `.unchunked` — so `merge`,
+`buffer` and whatever comes next get batching without a flag of their
+own (a test composes `chunked` with `buffer`, which needed nothing
+added). `merge(chunked = true)` stays as the fused spelling, and is
+justified rather than duplicated: composing costs nothing where no
+timer is involved (222.3 against 223.7), but the TIMED case would
+otherwise need a second channel.
+
+**The comparison** — fs2 and ZIO have direct spellings of all three
+shapes (`groupWithin`, `groupedWithin`), so this is like-for-like. On
+2x2000 at chunk 16:
+
+| | okay | ZIO | fs2 |
+|---|---|---|---|
+| elementwise | 1177.0 ±15.7 | **59.1 ±0.5** | 35332 ±281 |
+| chunked | 223.7 ±5.0 | **127.2 ±2.2** | 38508 ±403 |
+| chunked + timed flush | **244.3 ±3.5** | 4907 ±98 | 54270 ±1790 |
+
+The timed flush is where okay wins outright — 20x over ZIO, 222x over
+fs2 — because the flusher is a sleeping fiber beside the feed rather
+than machinery in the per-element path. ZIO's elementwise row is not
+elementwise (`ZStream` is chunked by construction, which is why
+`.grouped(16)` makes it *slower*), and read at equal chunk sizes ZIO
+is ahead and pulls further ahead as the chunk grows: ours 222/277/438
+at 16/256/1024 against theirs 127/75/75. Stated rather than omitted;
+the cause is not stack depth but our Vector-then-ArraySeq
+representation, filed.
+
+**The bug it found (chunk-stack-safety).** `through` drives a stage
+by calling into the producer and back, and only an EMISSION goes
+through a `flatMap` that unwinds the stack — so an ACCUMULATING stage
+recurses once per element. `chunked(4096)` over 4000 elements
+overflowed, as did any chunk a short stream cannot fill. Pre-existing
+(reproduced on b8c65c7 with `through` and `Stage.chunked` alone),
+fixed in all four `through` overloads with a BUDGET rather than an
+unconditional defer — per-element deferral being exactly what
+writer-of-resume-fix removed from this path. Free where it matters:
+222.3 ±4.0 after against 224.5 ±3.7 before.
+
 ## match-vec-batch — one statement for many vectors
 Completed: 2026-09-03
 Landed as f1cb3b1 (spec) + fe82ceb (impl). The follow-up match-vec-cache

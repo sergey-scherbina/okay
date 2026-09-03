@@ -171,6 +171,17 @@ construction instead of a type test per value).
       empty reply from a server the suite had just started); ran
       alone right after: 4/4 green. The port/readiness family
       (flaky-port-roulette); leave filed, fix with that family.
+- [ ] chunk-size-representation — `merge(chunked)`/`chunked(size)` gets
+      SLOWER as the chunk grows (222/277/438us on 2x2000 at 16/256/
+      1024) where ZIO's gets faster (127/75/75), so ZIO is ahead of us
+      at every equal chunk size and the gap widens. Not stack depth —
+      chunk-stack-safety's budget trampoline moved these numbers not
+      at all. Suspect the representation: we accumulate into a Vector
+      and copy it into an ArraySeq per chunk, two structures where a
+      flat fill of a known size would do. Settle by: fill an array
+      directly in Stage.chunked and Channel's ChunkBuffer, measure the
+      curve again (docs/benchmarks.md §6b has today's).
+
 - [ ] netty-ws-matrix-flake — okay.netty.TestBackends "every WebSocket
       client talks to every WebSocket server" failed once under the
       full sbt test matrix (jetty StaticException: Closed,
