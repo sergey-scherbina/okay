@@ -1,5 +1,34 @@
 # Changelog
 
+## state-mcp — bounded execution state, offered over MCP
+Completed: 2026-09-03
+Landed as fcef57c (2 commits, rebased twice over sibling landings).
+The operator asked how skill-state's idea reaches a real agent
+session they run today — specifically Claude Code, which is not
+built on this library's Context/Turn/Aggregator and cannot host
+Compact.skillState directly. `StateMcp` (okay-demo) is the answer
+that fits the actual boundary: a standalone stdio MCP server, built
+from okay-mcp's existing Server/Stdio (the same shape RepoMcp.scala
+already is) and okay-codec's Json.mergePatch from the skill-state
+lane, exposing three tools over one durable Json value persisted to
+a file — get_state, update_state (an RFC 7396 patch), reset_state.
+No compile-time Schema validates a patch here, on purpose: a tool an
+arbitrary project points at has no known type to check against, so
+any JSON object is accepted and the state's shape is a convention
+between caller and reader, the same trust boundary a hand-edited
+JSON file already has — a project wanting typed validation defines
+its own Schema[S] and calls Compact.validatePatch in its own copy of
+the handler, four lines. TestStateMcp: 7/7 over the real protocol
+(TestDuplex's in-memory Link — initialize, tools/list, tools/call),
+covering persistence across a restart, a non-object patch refused
+with Sigma untouched, and a damaged state file starting empty (the
+lossless parser's own damage markers, walked recursively). Verified
+once more as an actual subprocess over real stdio pipes end to end,
+file on disk included. specs/llm-agentic.md gains "An MCP server for
+it", naming plainly what crosses the boundary (the format primitive)
+and what stays inside our own agents (the policy, the typed
+validation). Gate green, no warnings, from clean.
+
 ## channel-cas-contention — measured and closed: elevated CAS-retry rate is a symptom of Writer/Bind-rotation cost, not an independent tax
 Completed: 2026-09-03
 Landed as c47eaac (docs only — no code changed, the instrumentation
