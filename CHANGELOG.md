@@ -1,5 +1,34 @@
 # Changelog
 
+## writer-of-resume-fix — profiled (JFR), not guessed: Writer.of stops re-wrapping every element
+Completed: 2026-09-03
+Landed as 3f558a0. `compare/Jmh/run -prof jfr` on `okaySourceMerge`
+(JMH's built-in JFR profiler, no extra install) found 38% of CPU
+samples in two lines of `!.resume` — the tailrec rotation that
+normalizes a Free tree before `Writer.uncons` can read it, called on
+every pull. Traced to `Writer.of`: the recursive step wraps EVERY
+element in `pure(()).flatMap` for laziness, load-bearing exactly
+once at the top (the recursive call already sits inside the
+previous step's own `flatMap`) — wrapping again is N-1 redundant
+`Bind(Pure(()), k)` nodes per source, each needing rotation. Fix:
+split `of` into a one-wrap entry and a private `ofLoop` the
+recursion calls directly; the external laziness contract is
+unchanged.
+
+Measured: the bare `Source.of(xs).toLazyList` floor closed 18%
+(48.9 -> 40.3us, clean). `okaySourceMerge` moved only ~2-3% (305 ->
+299us) — re-profiling explains why: the targeted rotation line
+dropped 28 samples to 5 as aimed, but a DIFFERENT rotation case rose
+18 to 33 (no reset point between elements now, so recursive
+`Bind`-building nests deeper more often), and `TRef.modify` —
+`Channel.merge`'s own transaction machinery under real multi-fiber
+contention — is now the dominant frame in the merge path (75/~210
+at depth 3), untouched by this fix. Landed anyway: real, verified,
+zero-regression improvement on `Writer.of`'s own terms; full `sbt
+test` green. The `Channel.merge` contention cost is filed as a
+separate, deeper investigation — specs/writer-covariance.md carries
+both profiler runs' numbers.
+
 ## writer-covariance — Writer[+W, +A] lands; the merge-fusion it was meant to unlock measured worse and was declined
 Completed: 2026-09-02
 Landed as b469c20. Follow-on to channel-merge-regression: with the
