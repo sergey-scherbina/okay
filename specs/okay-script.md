@@ -184,6 +184,49 @@ that proof: it only becomes readable once `run` RETURNS, and this
 script's `run` call does not return until interrupted — the response
 BODY is the observable side channel here, not the process's stdout.
 
+## Classloader isolation — resolved 2026-09-03 (okay-script-classloader-isolation)
+
+Each `run` call already gets its OWN `URLClassLoader` — two scripts
+running in the same JVM do not collide with each other, since each
+loader is a fresh instance with its own namespace. The gap BACKLOG
+named was narrower and easy to miss: that loader's PARENT was
+`getClass.getClassLoader` — `okay-script`'s own defining classloader —
+and `URLClassLoader` is parent-FIRST by default. So a script could
+silently resolve a class that was never in its own `Classpath` at all,
+as long as it happened to be reachable from `okay-script`'s OWN build
+classpath (in the test JVM: `munit`, `scala3-compiler`, and in Test
+scope `okay-jetty` and everything it drags in). That defeats the
+entire point of `Classpath`/`Deps` (okay-script-runtime): a caller
+handing a script an EXPLICIT, minimal classpath was not actually
+getting isolation — the host's own classes leaked through the parent
+regardless of what the caller listed.
+
+Fixed by giving each script's `URLClassLoader` a PLATFORM-only parent
+(`ClassLoader.getPlatformClassLoader()` — JDK core modules, no
+application classpath at all) instead of `getClass.getClassLoader`.
+A script now sees exactly: its own compiled classes (the temp `outDir`
+that `run` produces), whatever `Classpath` the caller passed in (or
+`Classpath.ambient` by default), and the JDK. Nothing from
+`okay-script`'s own build leaks in unless the caller explicitly put it
+in the `Classpath`.
+
+`Classpath.ambient` callers see NO behavior change (the ambient
+classpath already lists essentially everything the JVM was launched
+with, so the platform-only parent's absence of it is filled straight
+back in by the child URLs) — this only changes what happens for a
+caller using an EXPLICIT, narrower `Classpath`, which is exactly the
+runtime-app scenario (okay-script-runtime, storefront generation) the
+isolation gap mattered for.
+
+Proved, not just asserted: `TestScalaScriptClassloaderIsolation`
+constructs a deliberately minimal `Classpath` (only the scala runtime
+jars, filtered out of `Classpath.ambient` by filename) and confirms a
+script given it can no longer `Class.forName("munit.Assertions")` —
+`munit` IS on `okay-script`'s own test classpath, so before this fix
+that lookup silently succeeded (the leak); after, it throws
+`ClassNotFoundException` inside the script, surfaced through
+`Result.thrown`, exactly as any other runtime failure would be.
+
 ## okay-script-scalac-classpath — found and fixed 2026-09-03
 
 Found by a sibling agent gating an unrelated change: `okayScript/test`
@@ -341,16 +384,6 @@ only this one step, and only when a script asks for it, does.
   source to the original `.md` file's line numbers — `Block.startLine`
   is captured for this purpose but not yet used to translate a dotc
   diagnostic's line number.
-- **Classloader isolation** between multiple runtime-compiled scripts
-  running in the same host JVM at once (two generated storefronts
-  loading conflicting versions of the same library, say). The
-  `URLClassLoader` built per `run` call already gives each script its
-  OWN classes, but its parent is still `getClass.getClassLoader` (this
-  module's own loader) rather than a minimal platform-only parent, so
-  isolation from the host is partial, not guaranteed. Filed to
-  BACKLOG; not needed until a caller actually runs more than one
-  generated app per JVM.
-
 ## Behavior
 
 - [x] `blocks` extracts every fenced ` ```scala ` region in document
@@ -400,6 +433,14 @@ only this one step, and only when a script asks for it, does.
       (name + price) from `../it-consulting/site/site.md`'s real data;
       `GET /order/<x>` returns a confirmation page naming that
       service; `Thread.interrupt()` stops the server.
+- [x] a script given an explicit, minimal `Classpath` cannot reach a
+      class that is on `okay-script`'s own host classpath but NOT in
+      that `Classpath` (`munit.Assertions`, present via `okay-script`'s
+      own test dependency, absent from a `Classpath` built from just
+      the scala runtime jars): `Class.forName` inside the script throws
+      `ClassNotFoundException`, surfaced through `Result.thrown` —
+      proving the platform-only parent actually isolates, not just
+      that it compiles.
 
 ## Results
 
