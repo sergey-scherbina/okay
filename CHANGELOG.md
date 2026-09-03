@@ -1,5 +1,31 @@
 # Changelog
 
+## nio-port-scope — every socket-binding suite into `integrationTest`, and one assertion that was testing the machine
+Completed: 2026-09-03
+Landed as a975ebe. Fourteen suites that BIND a real port move out of
+the default gate, found by surveying the test tree rather than by
+waiting for each to flake in turn: okay-http (TestHttp, TestMcpHttp,
+TestWs, TestNio), okay-jetty (TestJetty, TestAcceptance,
+TestResumable, TestMcpPush), okay-obs (TestOtlp, TestCrossing),
+okay-ops (TestOpsRoutes), okay-security (TestOidc, TestFlows,
+TestMcpAuth), okay-ui (TestWire). Verified both directions — the
+default gate green with them absent, all 62 of their tests green
+under `--include-tags=Live`.
+
+And the timing was continued rather than hidden. `TestNio`'s "the
+port is free after the scope" was not failing because the OS is slow
+to release a port: it took the ephemeral port its listener had been
+given, closed the scope, and required a connect to FAIL — which under
+the full matrix is not a fact about our `Resource`. The port returns
+to the ephemeral pool the instant we release it, a sibling suite
+binds it, and our connect reaches THEIR listener and succeeds, so the
+suite reported "the listener outlived its Resource scope" about a
+listener that had closed exactly on time. The claim is about the
+listener, so it is now asked of the listener — `Nio.listen`'s
+resource value IS the `ServerSocketChannel`, and `isOpen` answers it
+with no port and no neighbours in it. AGENTS.md records the survey
+command so a new binding suite tags itself.
+
 ## chunk-size-representation — declined, and the premise it rested on was wrong
 Completed: 2026-09-03
 Landed as a6f4f89 (a benchmark lane and docs — the optimisation
