@@ -1,0 +1,5 @@
+slug: version-store
+branch: feature/version-store
+worktree: ../okay-wt-version-store
+claimed: 2026-09-03
+scope: a file-backed Rerun.Versions, so a version tree outlives the process. One JSON file per version under a directory, readable by hand; the on-disk shape is its own model (not the internal types) so the format is a decision rather than an accident. Lineage still walks by parent pointer. Files: okay-agent Rerun.scala (a FileVersions beside MemoryVersions), TestRerun, specs/llm-agentic.md.
