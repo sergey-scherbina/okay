@@ -1,5 +1,34 @@
 # Changelog
 
+## free-row-variance — the upcast that is not free: Free stays invariant, now with a number behind it
+Completed: 2026-09-03
+Landed as 70d7e95 (a benchmark, docs and one corrected doc comment —
+the kernel spike itself was reverted). merge-scaling-shape named the
+last cheap lever: `Source.merge` calls `Writer.widen` per source, and
+widen rebuilds every Free node because "Free is invariant in its
+signature" — so delete the invariance, delete the pass.
+
+The invariance IS removable: `enum Free[+F[+_], A]` passes the
+variance check, and the row subtyping then holds pointwise at
+concrete rows. Adopting it costs re-typing the tree walkers (a
+covariant row captures a fresh subtype at every `Bind(Inject(e), k)`
+match); `fold`'s and `resume`'s rotation were recovered cleanly and
+cast-free, ~6 more sites would each need a helper, and a generic
+`up[H[+_] >: F]` does not typecheck at all.
+
+Measured before paying that price — and the prize is NEGATIVE. Widen
+costs 7.4–10.4ns/element in isolation (+18%/+27%), but the same merge
+built without it is SLOWER: 1141.8 ±6.7 with against 1202.6 ±14.6
+without on 2x2000, and 1162.4 ±11.4 against 1240.1 ±10.1 on a
+repeat, bars non-overlapping both runs. The walk is also a
+NORMALIZATION — it hands `feed` an already head-normal tree, so the
+rotation it saves is not paid per pull inside the contended region.
+Declined; `Free` stays invariant as a measured choice, and
+`Effects.widen`'s comment now says so. `WidenBenchmark` guards it.
+`docs/theory/04-free-freer.md` carries the general form: a coercion
+the type system performs for free performs no normalization either,
+and the interpreter pays it later, in the worse place.
+
 ## jmh-warnings — the zero-warnings policy extended to Jmh sources, and taken to zero there
 Completed: 2026-09-03
 Landed as 2d20d5b. `Test/compile` does not reach Jmh sources — they
