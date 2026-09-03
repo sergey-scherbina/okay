@@ -1,5 +1,36 @@
 # Changelog
 
+## chunked-profile — two small levers, and the fair comparison the previous section owed
+Completed: 2026-09-03
+Landed as ceb77a4. Profiling the chunked path (stale since chunking
+and channel-drain moved past the old 71%-in-the-transaction reading)
+named two concrete frames: `boxToLong` per element, and `LazyList`'s
+own machinery nearly as large as the interpreter's.
+
+`Stage.chunked` is now `inline` — `ChunkBuf` allocates unboxed when
+the element type is concrete at the point of expansion, and a plain
+`def` hid it behind an abstract `T`. 197.5 ±0.8 against 206.3 ±3.2,
+same window, bars non-overlapping. `Source.range` generates a
+half-open range directly, no `LazyList` cell per element: −22% on
+the per-element path (646.8 ±23.9 against 829.5 ±5.1), +9% WORSE on
+the chunked path (the cell's cost is already amortised across 16
+elements sharing a transaction there) — kept as the per-element
+specialisation, not a blanket replacement.
+
+**And a methodology bug in the comparison table itself, found and
+fixed.** It read okay's per-element `Source.merge` against
+`ZStream`'s own chunk-native 4096 default and labelled both rows
+"elementwise" — not a comparison, since `ZStream` has no per-element
+representation. Forced onto equal footing (`ZStream.range(chunkSize
+= 1)`, fs2's `.unchunk`):
+
+| | okay | ZIO |
+|---|---|---|
+| per-element | **824.9 ±6.9** | 10032.5 ±111.0 (okay 12x ahead) |
+| chunk-native | **22.3 ±0.3** | 126.2 ±1.0 (okay 5.7x ahead, was 2.5x) |
+
+`docs/benchmarks.md` §6b rewritten with this methodology.
+
 ## buffer-drain — `Channel.buffer` inherits the batched read: 2.4x, and it had never been measured
 Completed: 2026-09-03
 Landed as 2519ad2. `channel-drain` cut the merge's consumer side 30%
