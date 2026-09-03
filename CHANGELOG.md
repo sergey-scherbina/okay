@@ -1,5 +1,49 @@
 # Changelog
 
+## intent-eval-on-journal — the non-model half of evaluation stops costing a model
+Completed: 2026-09-04
+Landed as 551dda2d. Every measurement in this line has been a live run
+of ten to thirty minutes, which is why several questions went four
+lanes without being asked — including one whose answer turned out to be
+a `groupBy` over data already sitting in memory. This makes the parts
+that do not involve a model cost nothing.
+
+Nothing new was invented to hold the recording, because A RECORDING IS
+A JOURNAL: `Durable.Entry` already carries
+`(seq, op, fingerprint, key, answer)`, `Rerun.Version` groups entries
+under a provenance, `FileVersions` stores them. The model's reply goes
+in `answer`, the message in `key`, the PROMPT's fingerprint in
+`fingerprint`.
+
+| | live | over the recording |
+|---|---|---|
+| whole fixture, best config | ~13 min | 0.046 s |
+| needs a model | yes | no |
+| runs in the default gate | no | yes |
+
+The replay reproduces the live report exactly — Proposal 0.952, Request
+0.929, Notification 0.893, Other 0.862 — which is what makes it
+evidence rather than merely speed.
+
+TWO GUARDS, BOTH VERIFIED BY BREAKING THEM ON PURPOSE, since a guard
+that cannot fail is worse than none. The prompt fingerprint: one added
+space fails the check with "re-record rather than trusting these
+numbers", because there is no honest way to score old answers against a
+new question. And `Eval.regressions` — executable since the first lane
+and guarding nothing until now — fails the run and prints every class's
+F1 when a baseline is raised four points.
+
+So a change to the decoder, the label mapping, the gate logic or the
+metrics is now a second-long check in the default gate; only a PROMPT
+change still costs a live run. The spec's standing promise that the
+fixture "IS the intended `Rerun` journal", carried as an admission
+since lane one, is now a statement of fact.
+
+54KB of committed JSON is the price of keeping four lanes of
+measurement reproducible.
+
+Full matrix green: 2134 tests, 0 failures.
+
 ## intent-decode-rate-residue — the last 9% was one malformation, and field order fixes it
 Completed: 2026-09-04
 Landed as 03cf0da4. Nine percent of replies were still undecodable on
