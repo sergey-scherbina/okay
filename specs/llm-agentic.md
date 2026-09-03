@@ -450,6 +450,21 @@ record/replay combinations only these earn their keep, plus
 incident. A live model over journalled tools is nondeterministic
 anyway; both live is just recording.
 
+### Where versions live
+`MemoryVersions` for a test; `FileVersions` (JVM) for a tree that
+outlives the process — one JSON file per version in a directory, named
+by id, written atomically (temp file then rename) so a reader never
+sees half a version. The layout is FLAT on purpose: every version
+names its `parent`, so the tree is in the pointers and a listing is
+the set of versions, whereas a nested layout would have to be
+rewritten the moment a branch appears, which is exactly when nothing
+should move. The on-disk shape is its own model rather than derived
+from the runtime types, the same call `Staged` makes about storage
+formats: a derived format turns every internal rename into a silent
+format change, and a version tree nobody can read with `cat` is a
+tree nobody audits. A file that does not parse is skipped, not fatal
+— a directory is a place other things end up.
+
 ### Behavior
 - [x] a world that has not moved reproduces, stores no new version
 - [x] `Loud` stops at the first divergence with both sides named
@@ -465,6 +480,11 @@ anyway; both live is just recording.
 - [x] a lineage walks a chain of branches back to the root
 - [x] a version IS a journal, so `Durable.replaying` reads one back,
       and a branched version replays as its own run
+- [x] `FileVersions`: a version reads back whole across a restart,
+      keeps parent/branch point/divergence, a lineage walks after the
+      process is gone, the file is legible, a stray file in the
+      directory does not make the tree unreadable, and a rewrite
+      replaces rather than accumulates
 
 ## A live provider (shipped)
 
