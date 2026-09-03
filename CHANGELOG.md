@@ -1,5 +1,30 @@
 # Changelog
 
+## rag-index-freshness — the index stops going quietly stale
+Completed: 2026-09-03
+The rag index is per project, lives in the main checkout, and does not
+update itself. Left alone it keeps answering, confidently, out of a
+tree that no longer exists — the same silent-failure class as the
+`?project=` binding fixed an hour earlier. A search that returned
+nothing would at least be honest; one that returns yesterday's file is
+not.
+
+`scripts/githooks` plus an installer (rozum's convention, tracked so
+the rule is reviewable and survives a clone): post-merge, post-commit
+and post-checkout all run one `reindex.sh`. Three rules, ordered by how
+badly they would bite. Never fail the git operation that called us, so
+every path exits 0 — an index is a convenience, a commit is not. Index
+the MAIN checkout rather than a worktree, since worktrees share the
+hooks path and a branch's tree is not what a reader searches. Do
+nothing at all when `rozum` is off PATH, so a fresh clone commits
+normally. The run is bounded by `timeout` where available, because a
+hook that hangs is a hook that gets deleted.
+
+Verified by running it rather than by reading it: 0.33 s, silent, exit
+0, the main checkout's index mtime moved, no index appeared in the
+worktree, and with `rozum` off PATH it still exited 0. Installed here
+(`core.hooksPath -> scripts/githooks`).
+
 ## chunk-flush — `flushAfter`: a bounded wait for a partial chunk, so chunking is safe on a live source
 Completed: 2026-09-03
 Landed as e72a18d. `merge(chunked = true)` emitted only on a full
