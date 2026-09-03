@@ -1,0 +1,5 @@
+slug: journal-versions
+branch: feature/journal-versions
+worktree: ../okay-wt-journal-versions
+claimed: 2026-09-03
+scope: versioned replay journals with a LIVE tool half (the third mode beside Durable.tools and Durable.replaying): rerun a journal against today's world, compare each answer, and treat a divergence either LOUDLY (stop, name both sides) or QUIETLY (branch a new version: shared prefix up to the divergence, live tail after it) — never silently. A version carries its provenance (what produced it) and a parent pointer, so versions form a tree branching at divergence points and a lineage is walkable. Files: okay-agent Rerun.scala (new), TestRerun (new), specs/llm-agentic.md.
