@@ -396,3 +396,48 @@ CAS-retry contention (List-based) is not the same property as being
 cheap to dequeue FROM (which is what the reversal buys), and the two
 candidates each optimized for only one of those. A structure that
 is genuinely better at both remains unproven, not ruled out.
+
+**channel-cas-contention (2026-09-03): the OTHER item filed at the
+end of writer-of-resume-fix, closed as a symptom, not a cost.** That
+lane found `TRef.modify`'s own machinery (not `Queue`) was the
+biggest sampled frame in `okaySourceMerge` under real fiber
+contention, and filed "needs its own profiler pass" as the next
+step. Instrumented `modify` directly (a throwaway `AtomicLong` per
+attempt/CAS-fail/Owned-spin, reverted after — not landed) and ran
+both benchmarks' exact shape 2000x:
+
+| shape | attempts (2M elements) | CAS-fail rate |
+|---|---|---|
+| `Channel.merge` @ `Int.MaxValue` (bare benchmark's default) | 5.57M | 28.1% |
+| `Channel.merge` @ `64` (Source's default) | 5.73M | 30.1% |
+| `Source.merge` @ `Int.MaxValue` | 6.09M | 34.3% |
+| `Source.merge` @ `64` (its own default) | 7.84M | 49.0% |
+
+Two things settled by holding capacity fixed across each pair:
+capacity alone barely moves bare `Channel.merge` (28.1% -> 30.1%),
+so the `64` default is not itself the driver; the Writer wrapping
+adds real contention even at MATCHED capacity (28.1% -> 34.3% at
+`Int.MaxValue` on both), and the two effects compound rather than
+add when combined (49.0% at `Source.merge`'s own default sits well
+above either alone) — a fiber running the slower, Bind-rotation-heavy
+Writer-wrapped step spends more wall time per logical send/receive,
+which widens the window the OTHER fiber can land a colliding CAS in;
+bounded capacity's extra park/match round trips give that window
+more chances to matter.
+
+Real numbers, but NOT a cost: `TRef.modify`'s retry path is a spin,
+never a park (a few instructions, no backoff, no syscall) — and
+`Source.scala`'s own comment already carries the wall-clock control
+this needed (2x500 elements: 210.1us +/-9.7 unbounded against 232.7
++/-20.4 at 64, bars overlapping) — capacity moves the attempt COUNT
+measured here by 3-37% across these four rows and moves wall time by
+nothing this benchmark can see. The elevated retry rate is what a
+slower critical section looks like from the CAS's side, not an
+independent tax on top of it. The only real remaining lever is
+`!.resume`'s own Bind-rotation cost (writer-of-resume-fix already
+took the cheap win there; the profiler in that lane found the
+remaining share split between the two rotation cases roughly evenly,
+structural to how `widen` and `ofLoop` build nested Binds together,
+not a further isolated fix). Nothing lands here; both filed items
+from writer-of-resume-fix are now closed — one declined
+(channel-queue-reversal), one explained away as a symptom (this).
