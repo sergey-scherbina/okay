@@ -750,3 +750,46 @@ not a new primitive from scratch.
       build and the root aggregate (a real ~90MB model download).
       The EmbeddingStore/VectorStore half named in the title is
       still open — this box stays unchecked for that.
+
+## okay-agent: intent classification — after intent-classify (2026-09-03, specs/intent-classify.md)
+- [ ] intent-other-collapse — the lane's own measurement: declaring an
+      `Other` case is NOT enough. On 24 labelled messages the local 4B
+      model gave `Other` recall 0.17 with reasoning first and 0.00
+      without, absorbing every out-of-domain message into a positive
+      class (charged twice -> Request, birthday wishes ->
+      Notification). Candidates, in the order I would try them: an
+      explicit none-of-the-above instruction in the prompt, `Other`
+      examples shown in the prompt, and a separate binary in-domain
+      gate ahead of the taxonomy. Measure each against the same
+      fixture with `Eval.regressions` — this is exactly the loop that
+      rule exists for.
+- [ ] intent-precedence-rule — `Proposal` vs `Request` confused 3 of 6
+      in the same run, and it is genuine overlap rather than model
+      error ("Can we move Thursday's sync to Friday?" is both). Needs a
+      stated precedence rule travelling WITH the taxonomy (a doc
+      comment the prompt renders), not a better classifier.
+- [ ] intent-symbolic-tier — an LU dictionary over `Postings`/BM25 as a
+      first pass that answers the easy majority without a model call.
+      TRIGGER: measurement shows cost or latency binding on the model
+      tier. Linagora's ontology system answers in <150ms with no model
+      at all, so the tier is not a rudiment — it is just not yet
+      justified here by a number.
+- [ ] intent-vector-tier — class centroids, then a linear probe over
+      frozen embeddings, trained from LLM-distilled labels (keep only
+      `Conf.High` plus the human confirmations the `Clarify` path
+      produces). 18x1024 weights is 72KB; a cosine at 1536 components
+      measured 1.04us in `Store.scala`, so ~18us for 18 classes — the
+      "sub-millisecond encoder" tier with no dependency and no training
+      pipeline. Needs 30-100 examples per class, not the 1k-5k a
+      fine-tuned encoder wants. TRIGGER: the symbolic tier starts
+      missing paraphrases.
+- [ ] intent-temporal-slots — a `When` slot takes ISO-8601 and refuses
+      anything else through `SIso`, so "next thursday" cannot be
+      filled. A Duckling-equivalent over `okay-lex`/`okay-parse` is its
+      own lane; until it exists the model does the conversion and the
+      schema checks it.
+- [ ] intent-live-provider — `Classify.prompt`/`read` are tested
+      against hand-built and round-tripped values, not a live model.
+      The end-to-end run belongs with `TestLive`'s gating, and it is
+      what would let `Structured.cut`'s token saving be measured rather
+      than reasoned about.
