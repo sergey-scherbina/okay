@@ -520,6 +520,35 @@ cannot be pre-chunked — reach for `Source.range`/`chunked`; where it
 does not, `Chunks` is both native to the data and ahead of ZIO's own
 native path.
 
+**Why not just replace `Source` with `Chunks` entirely?** The
+operator's question, and the honest answer is that we already made
+the ZIO-shaped representation — `Chunks`, array-native, 5.7x ahead of
+`ZStream`'s own default — and keep `Source` separately on purpose,
+for a reason this section can now put a number on rather than assert.
+
+An array-of-chunks representation pays a chunk allocation per
+PRODUCTION regardless of size. Forced to size 1 — what a genuinely
+one-at-a-time live source (LLM tokens, SSE) would force on it —
+`Chunks.merge` costs **780.7 ±14.1**, a 33x collapse from its own
+64-element default (23.5 ±0.2). That is not a ZIO implementation
+quirk: it is structural to representing a stream as arrays, and
+`Chunks` pays it exactly as `ZStream` does.
+
+The number that decides the question: at that same forced size,
+`Chunks(1)` (780.7 ±14.1) and `Source.merge` (819.6 ±4.8) are within
+a few percent of each other — genuinely per-element load collapses
+BOTH of okay's representations to the same floor, because that floor
+is the cost of per-element semantics itself, not a property either
+data structure adds or removes. `ZStream` forced the same way costs
+**9984.9 ±125.0** — 12.2x worse than either — because it has no
+second representation to fall back to; the array-native shape is all
+it has, and there is nowhere else for the pathology to go.
+
+So `Source` is not an unmerged duplicate of `Chunks`; it is what
+keeps genuinely per-element work off the 33x cliff that any
+array-native representation, ours included, pays for the same reason
+ZIO's does.
+
 **Two more levers found by profiling the per-element path, both
 small and both kept.** `Stage.chunked` became `inline`: `ChunkBuf`
 allocates an unboxed array when the element type is concrete at the

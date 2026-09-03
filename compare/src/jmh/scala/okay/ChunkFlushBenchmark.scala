@@ -199,4 +199,29 @@ class ChunkFlushBenchmark {
     import cats.effect.IO, cats.effect.unsafe.implicits.global
     val (a, b) = fs2Pair
     a.merge(b).chunks.map(_.foldLeft(0L)(_ + _)).compile.fold(0L)(_ + _).unsafeRunSync()
+
+  // ── does the array-native representation degrade at size 1 too? ──
+  // The operator's question: why not just replace Source with Chunks
+  // entirely, the array-native shape that beats ZIO's own chunk-
+  // native default 5.7x? Hypothesis: an array-of-chunks
+  // representation pays a chunk allocation per PRODUCTION regardless
+  // of size, so at size=1 -- what a genuinely one-at-a-time live
+  // source (LLM tokens, SSE) forces -- it should degrade the same way
+  // ZStream(chunkSize=1) measured 12x worse than Source.merge.
+
+  @Benchmark
+  def chunksMergeSize1(): Long =
+    val merged = Chunks.range(0, N.toLong, 1) merge Chunks.range(N.toLong, 2L * N, 1)
+    var sum = 0L
+    var c = merged.receiveBlocking()
+    while c.isDefined do { sum += c.get.sum; c = merged.receiveBlocking() }
+    sum
+
+  @Benchmark
+  def chunksMergeSize16(): Long =
+    val merged = Chunks.range(0, N.toLong, 16) merge Chunks.range(N.toLong, 2L * N, 16)
+    var sum = 0L
+    var c = merged.receiveBlocking()
+    while c.isDefined do { sum += c.get.sum; c = merged.receiveBlocking() }
+    sum
 }
