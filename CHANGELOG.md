@@ -1,5 +1,21 @@
 # Changelog
 
+## buffer-drain — `Channel.buffer` inherits the batched read: 2.4x, and it had never been measured
+Completed: 2026-09-03
+Landed as 2519ad2. `channel-drain` cut the merge's consumer side 30%
+by taking what is already buffered under one transaction;
+`Channel.buffer` is the other per-element channel consumer, had never
+been benchmarked at all, and has exactly the same shape.
+`Channel.buffer(1024)(xs).drained` measures **437.2 ±2.6 against
+1068.5 ±18.4 element by element — 2.4x**.
+
+`.drained` is an explicit carrier rather than a change to the
+`Stream[Channel, Async]` instance, and that is forced rather than
+chosen: that instance's carrier IS the channel, so it has nowhere to
+hold a batch, and hiding one inside would hand a second consumer
+elements the first had already taken. Also fixes two warnings that
+arrived with `http-peer-address`.
+
 ## channel-drain — batch the RECEIVE side: 30% off the per-element merge, no flag, no semantic change
 Completed: 2026-09-03
 Landed as e7987aa. Profiling had put 71% of the per-element merge
