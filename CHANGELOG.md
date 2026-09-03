@@ -1,5 +1,46 @@
 # Changelog
 
+## intent-decode-rate-residue — the last 9% was one malformation, and field order fixes it
+Completed: 2026-09-04
+Landed as 03cf0da4. Nine percent of replies were still undecodable on
+the best configuration and no lane had looked at them, because the
+harness printed two examples of a failure and dropped the rest — four
+lanes watched the NUMBER without ever seeing its SHAPE. The diagnosis
+was a `groupBy` over failures the harness was already collecting and
+silently discarding, and it settled the question in one run.
+
+THE RESIDUE WAS NOT A RESIDUE. Nine of the ten failures were the same
+malformation:
+
+    "intent": { "MeetingRequest": { "what": "..." }, "conf": "high" }
+
+The model closes the intent's object one brace too late and swallows
+the sibling field. (The tenth was the last surviving bare-name intent.)
+Nothing in it was a hard message or a model limit — it was one
+systematic shape error wearing the costume of a long tail.
+
+So the fix follows from the shape rather than from taste: `conf` was
+declared after `intent` and therefore emitted where a nested object was
+still open. Declared FIRST it has nothing to fall into.
+
+| `Alt` field order | undecodable | macro F1 |
+|---|---|---|
+| `(intent, conf)` | 10/120 | 0.907 |
+| `(conf, intent)` | 0/120 | 0.909 |
+
+Every reply now decodes. Accuracy is unchanged, which is the honest
+reading: this was never an accuracy problem, it was ten messages whose
+answers never reached the output at all.
+
+Third time in this line that FIELD ORDER turned out to be load-bearing,
+after reasoning-before-label (worth 0.136 macro F1) and `why` before
+`alts`. The declaration order of an `SProduct` is not presentation, and
+a test pins this one because it looks exactly like something a later
+reader would tidy.
+
+Full matrix green: 2132 tests, 0 failures. (Two earlier runs died at
+exit 143 with a sibling sbt on the box; a truncated gate is not a gate.)
+
 ## intent-gate-non-english — the gate does not pay in any language, and its worst damage is in English
 Completed: 2026-09-04
 Landed as dd20b366. A re-measurement, not a new hypothesis: the spec's
