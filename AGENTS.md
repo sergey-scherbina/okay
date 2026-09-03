@@ -29,6 +29,16 @@ CHANGELOG: CHANGELOG.md
     it. Read it at the start of a task and after any compaction;
     write a fact the moment you learn it, rather than trusting the
     transcript to still be carrying it later.
+- Both are bound to THIS project by `.mcp.json`, whose URL carries
+  `?project=` — do not drop it. rozum serves every project from one
+  daemon and picks the project from that query; without it the daemon
+  falls back to ITS OWN launchd default, and the failure is silent:
+  measured 2026-09-03, `state.update` from a session here wrote into
+  the rozum repo's state file and `rag.search` answered out of the
+  rozum index, which is why its hits kept being Rust. The index is
+  per project too and is not automatic — `rozum rag index --root .`
+  builds it (incremental, under a second here), and a stale index
+  reports its own age in every result.
 
 Several agents commit to one `master` from one machine. The rules in
 force, all already practiced, none previously written down:
