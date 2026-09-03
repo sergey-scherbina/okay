@@ -1,5 +1,35 @@
 # Changelog
 
+## channel-ring — the lock-free ring that eliminates the rebuild-per-operation cost
+Completed: 2026-09-03
+Landed as 31435023. `idiomatic-api-compare` traced our 3.6x deficit
+to `zio.Queue` to the mechanism itself: `Channel.State` is an
+immutable value `TRef.modify` rebuilds per operation, while
+`zio.Queue` is a mutable `RingBuffer` (verified in its sources) with
+zero allocation per operation. Three earlier lanes swapped the
+structure INSIDE that rebuild model and all failed — the rebuild is
+the cost, not the structure being rebuilt.
+
+`Ring` is Vyukov's bounded MPMC algorithm under both constraints the
+operator set: **no casts** (slots are an
+`AtomicReferenceArray[A | Null]` — generic, so an element reads back
+at its own type, and an empty slot is honestly nullable rather than
+`null.asInstanceOf[A]`) and **no thread blocking** (short CAS loops
+that answer full/empty; waiting stays a registered callback).
+Measured against the same two operations as `Channel.State` does
+them: **23.4 ±0.03 against 78.9 ±6.0 — 3.4x**, matching the 3.6x gap
+and confirming the diagnosis. A boundary test found a real bug:
+capacity 1 degenerates, so the floor is two — ZIO draws the same line
+with a separate `OneElementConcurrentQueue`.
+
+**The integration is deliberately not in this lane.** It was written
+and it deadlocked `TestChannel`'s producer/consumer/close test; a
+virtual-thread dump located the cause exactly — the protocol
+temporarily REMOVED a waiter to attempt a pop, and a producer pushing
+during that window wakes nobody and strands the element. The fix is
+to claim rather than remove. Filed as `channel-ring-integration` with
+the full diagnosis; `Channel.scala` is byte-identical to master.
+
 ## okay-script-storefront-example — a real storefront .md, content from ../it-consulting, compiled and run at runtime
 Completed: 2026-09-03
 Landed as 1e52a28b, fast-forwarded onto master. The worked example for
