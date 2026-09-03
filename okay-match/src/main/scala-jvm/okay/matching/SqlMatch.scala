@@ -385,9 +385,16 @@ final class SqlMatch(sql: Sql,
     // not an entity, and caching a user's sentence would grow without
     // bound. The candidates are the loop that mattered.
     val qe = if q.text.nonEmpty then embed(q.text) else null
-    passing.toVector.map { (p, fs) =>
-      val base = if qe == null then 1.0f else Vectors.cosine(qe,
-        vectorOf(s"p:${p.uuid}:${q.side}", summaryText(fs)))
+    val ranked = passing.toVector
+    // one read for the whole passing set, before the scoring loop
+    val vecs =
+      if qe == null then Map.empty[String, Embedding]
+      else vectorsOf(ranked.map((p, fs) => s"p:${p.uuid}:${q.side}" -> summaryText(fs)))
+    ranked.map { (p, fs) =>
+      val base =
+        if qe == null then 1.0f
+        else vecs.get(s"p:${p.uuid}:${q.side}")
+          .map(Vectors.cosine(qe, _)).getOrElse(0.0f)
       val (open, gated) = disclose(fs)
       Ranked(p, base * freshness(fs), open, gated)
     }.sortBy(-_.score).take(q.k)
@@ -496,6 +503,41 @@ final class SqlMatch(sql: Sql,
     var i = 0
     while i < dim do { out(i) = bb.getFloat; i += 1 }
     embedding(out)
+
+  /**
+   * Many vectors, ONE statement.
+   *
+   * The per-entity cache removed the model inferences and left the
+   * round trips: a lookup per candidate is a SELECT per candidate, and
+   * that grows with the marketplace exactly as the inferences did.
+   * This reads the whole passing set at once, then embeds and stores
+   * only what was missing.
+   *
+   * Chunked, because a database that accepts an `IN` list does not
+   * accept an unbounded one, and a marketplace is allowed to be
+   * larger than one statement.
+   */
+  private def vectorsOf(wanted: Vector[(String, String)],
+                        chunk: Int = 500): Map[String, Embedding] =
+    val fps = wanted.map((k, text) => k -> fingerprint(text)).toMap
+    val cached = wanted.map(_._1).distinct.grouped(chunk).flatMap { ks =>
+      val holes = Vector.fill(ks.length)("?").mkString(",")
+      rows(s"SELECT k, fp, dim, vec FROM match_vecs WHERE k IN ($holes)",
+        ks.map(Text(_))).flatMap {
+        case Vector(Text(k), Text(f), d, Bytes(bs)) if fps.get(k).contains(f) =>
+          val dim = d match
+            case I64(n) => n.toInt
+            case I32(n) => n
+            case _ => 0
+          Option.when(dim > 0)(k -> decode(bs, dim))
+        case _ => None
+      }
+    }.toMap
+    // the misses, computed and written back one at a time: a miss is
+    // a model inference, which dwarfs the round trip it saves
+    val missing = wanted.filterNot((k, _) => cached.contains(k))
+      .map((k, text) => k -> vectorOf(k, text))
+    cached ++ missing
 
   /** the embedding of `text`, remembered under `k`. A hit requires the
    * fingerprint AND the dimension to agree; anything else recomputes
