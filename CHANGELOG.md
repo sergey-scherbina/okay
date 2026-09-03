@@ -1,5 +1,53 @@
 # Changelog
 
+## intent-live-provider — the early stop saves nothing here, and the spec loses a sentence it had not earned
+Completed: 2026-09-03
+Landed as 0c93e006. A debt, paid: three lanes shipped while the spec
+claimed `Structured.cut` makes a classification "cost the answer" and
+admitted in the same breath that the saving was reasoned about rather
+than measured. Measured, it is 0.0% — twice over, for opposite reasons.
+
+| prompt | tokens with cut | tokens generated | saved |
+|---|---|---|---|
+| strict ("ONE JSON object and nothing else") | 250 | 250 | 0.0% |
+| prose-inviting | 643 | 643 | 0.0% |
+
+Under the strict prompt the text accumulated at the stop IS the whole
+reply — 280 chars against 280, 291 against 291, message after message.
+The model emits the closing brace and stops on its own, so there is
+nothing after it to avoid. Under a prose-inviting prompt the value
+never decodes, so the walk runs to the end — the safe direction
+`Structured` already documents — and again nothing is saved.
+
+THE MECHANISM IS NOT BROKEN, and that is asserted rather than assumed:
+`TestCutStops` runs the walk over a synthetic stream that COUNTS how
+far it was pulled, in the default gate with no model at all. A value
+followed by 500 pieces of commentary stops after the value and leaves
+the source un-pulled; a stream that never completes is drained in full.
+
+So `cut` is insurance against a model that keeps talking after a
+complete value, not a saving in the normal case: a prompt that says
+"and nothing else" buys the same thing from the model instead of from
+the client. Where it still earns its place is a model or endpoint you
+do not control — one that appends a summary, a chat model with no
+strict-output mode, a provider that ignores the instruction. That is
+now what the spec says, and the old sentence is gone rather than
+softened.
+
+It also settles the field-order trade from the first lane, which was
+priced in CHARACTERS of prose and credited with a discount from `cut`
+that does not exist. Both arms pay for every token generated, so the
+0.136 macro F1 that reasoning-first buys costs what it costs.
+
+The first live control written for this was itself confounded — it
+showed the model an example whose placeholder values cannot decode, so
+completion was never declared — and is deleted rather than kept as
+scenery.
+
+Full matrix green: 2131 tests, 0 failures. (The run before it died at
+1385 on exit 143 with a sibling sbt live on the box; a truncated gate
+is not a gate, so it was rerun rather than reported.)
+
 ## channel-laws — the `Channel` contract written down, property-checked, and one primitive that stops implementations deriving it wrongly
 Completed: 2026-09-03
 Landed as 592f0b2d. After `ring-channel` withdrew two implementations
