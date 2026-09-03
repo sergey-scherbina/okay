@@ -1,5 +1,31 @@
 # Changelog
 
+## okay-script — markdown ```scala fenced blocks compiled and run via the real dotty compiler API
+Completed: 2026-09-03
+Landed as a7d50b5 (spec) + 4543a93 (impl), fast-forwarded onto master.
+New module `okay-script`: a `.md` file's fenced ```scala blocks are
+one compilation unit (concatenated in document order into a single
+`@main` body — a later block sees an earlier block's val/def,
+REPL-session style), compiled and run through `dotty.tools.dotc`
+IN-PROCESS — no `scala`/`scala-cli` subprocess, no custom language or
+interpreter, per the operator's explicit framing ("наша цель только
+лишь извлечение метаданных из разметки и минимальный препроцессинг и
+метакомпиляция"). Two real traps found and fixed by the tests before
+landing: `println` inside the compiled script did not land in
+captured `stdout` (Scala's `println` goes through
+`scala.Console.out`, a `DynamicVariable` that `System.setOut` alone
+does not redirect — fixed by wrapping the call in
+`scala.Console.withOut` as well); and a zero-block markdown file
+FAILED TO COMPILE, not just did nothing (`@main def ... Unit =`
+followed by nothing is a syntax error — fixed by defaulting the
+wrapped body to `()`). Investigated `../scalascript` first per the
+operator's pointer — a full custom markdown-as-syntax language,
+unrelated in kind, nothing reusable; recorded as a negative result in
+specs/okay-script.md rather than silently dropped. Library API only
+(`ScalaScript.blocks`/`run`); no sbt-test integration and no
+output-comparison (mdoc-style) checking yet — both filed to
+BACKLOG.md as named follow-ons.
+
 ## persist-raft stage 1a — a real peer-to-peer wire transport, RaftMsg over real sockets
 Completed: 2026-09-03
 Landed as 8c27109 (spec) + 01acf2c (impl). `RaftEntry`/`RaftMsg` now

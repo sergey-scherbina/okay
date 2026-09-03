@@ -518,6 +518,30 @@ not a new primitive from scratch.
       NOT done — the operator's ask named `okay-subscription`
       specifically; box stays unchecked for that half.
 
+## okay-script (specs/okay-script.md) — markdown ```scala fenced blocks as Scala source
+- [x] okay-script core — LANDED 2026-09-03: `blocks`/`run`, one .md
+      file = one compilation unit (blocks concatenate in document
+      order, later blocks see earlier ones' val/def), driven through
+      dotty.tools.dotc IN-PROCESS (no scala-cli subprocess, no custom
+      language/interpreter). Success = compiles + runs without
+      throwing; stdout captured. Investigated ../scalascript first —
+      unrelated (a full custom markdown-as-syntax language), nothing
+      reusable found, recorded as a negative result in the spec.
+- [ ] okay-script: sbt-test / CI integration — a task walking
+      `specs/*.md` (or a configured dir), failing the build on the
+      first `!ok` Result. Deliberately not built with the core
+      (operator: "библиотека/API, без интеграции в sbt test пока").
+- [ ] okay-script: mdoc-style output-comparison literate testing — a
+      block's expected stdout written inline in the markdown, checked
+      against `Result.stdout` from a real run. `run` already captures
+      everything needed; the markdown convention for "expected
+      output" and the comparison step are the missing piece.
+- [ ] okay-script: line-accurate compiler-error mapping back from the
+      synthetic wrapped source to the original `.md` file's line
+      numbers. `Block.startLine` is captured for this but unused so
+      far — a dotc diagnostic's line currently reports against the
+      synthetic file, not the markdown.
+
 ## Elsewhere
 - [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and
       shipped (demo-ctx-wiring — ChatDemo.handler as a
