@@ -95,3 +95,34 @@ and the `widen` swap; `okay.demo.TestChatDemo`'s one LIVE-model
 failure reproduces identically on unmodified master (confirmed
 before trusting the gate) — unrelated, pre-existing model-answer
 flakiness, not this lane's doing.
+
+## The follow-up: profiled, not guessed (writer-of-resume-fix, 2026-09-03)
+
+Static reading stalled at "most of the cost is Channel.merge-side,
+not explained" above. `compare/Jmh/run -prof jfr` (JMH's built-in
+profiler, ships with the JDK) on `okaySourceMerge` settled it: of
+~120 CPU samples landing in `okay.*` frames, **46 (38%) are two
+lines in `!.resume`** (Effects.scala:375-376, the `Bind(Bind(a,h),k)`
+and `Bind(Pure(a),k)` rotation cases) — called from `Writer.uncons`
+on every pull. The cheap already-normal case (`case a => a`) is
+barely sampled; the tree `Writer.of` builds needs REAL rotation work
+per element, not a trivial match.
+
+Traced to the idiom: `Writer.of`'s recursive step wraps EVERY
+element's work in `okay.pure(()).flatMap: _ => ...` — one
+`Bind(Pure(()), k)` node per element, purely for laziness (deferring
+`St.uncons(s)` to interpretation time, not construction time — the
+method's own doc: "nothing is pulled until consumed"). That wrapper
+is load-bearing exactly ONCE, at the top: the RECURSIVE calls
+(`of(rest)`) already sit inside the previous step's own
+`.flatMap(_ => of(rest))`, which is itself the deferral the next
+step needs — wrapping them AGAIN is N-1 redundant rotations for an
+N-element source, paid by `resume` on every pull.
+
+**Fix**: split `of` into the public entry (wraps ONCE) and a private
+`ofLoop` the recursion calls directly (no re-wrap per element) — the
+external laziness contract is unchanged (still nothing pulled before
+the first consume), only the redundant per-element `Bind(Pure(()),
+k)` nodes are gone. See Results below for whether it moved the
+number — this section is written before running it, per the same
+discipline the rest of this spec follows.
