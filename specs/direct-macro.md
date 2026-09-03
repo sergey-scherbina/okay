@@ -83,6 +83,11 @@ stays for expression positions.
 - [x] `try` containing marks — SHIPPED (direct-try, see Out of
   scope below for the seam); `while`/foreach/map graduated too
   (specs/direct-loops.md)
+- [x] `try` inside `direct[[X] =>> E ?=> X]` — SHIPPED (direct-try-ctx,
+  2026-09-03): catches a throw from the body, deferred to the
+  context function's APPLICATION (`provide`), not its construction —
+  a repeated `provide` over the same produced value catches
+  correctly each time, not just once
 - [x] a marked val KEEPS ITS SYMBOL (audit-fixes, 2026-09-02): the
   val is re-bound to the continuation's parameter rather than
   substituted away, so a local `def` after it still refers to it,
@@ -138,9 +143,17 @@ stays for expression positions.
   catch silently never fired. Now Option/Either/List/Vector/Try and
   Free rows have instances, a strict monad of your own declares
   `given CanTry[M] = CanTry.strict`, and a lazy one is a compile
-  error that says why. (A context-function instance was written and
-  withheld: direct-try over `E ?=> X` crashes dotty 3.7.4 at erasure
-  — BACKLOG direct-try-ctx.) Stated limitation, over a condition
+  error that says why. Context functions (`E ?=> X`) have an instance
+  too (direct-try-ctx, 2026-09-03): the FIRST attempt reused the
+  strict shape and crashed dotty 3.7.4 at erasure ("bad adapt for
+  M$proxy2.pure(a)") — but strict was also the WRONG semantics for a
+  context function, which is lazy in its environment (a closure, not
+  run until applied): a try wrapped around merely CONSTRUCTING the
+  closure would never see a throw from inside its body. `ctxFn`
+  (Throws.scala) defers the try to APPLICATION time instead — the
+  honest counterpart to the Free row's per-step guard — and that
+  different generated-code shape sidesteps the crash too; no Scala
+  version bump needed. Stated limitation, over a condition
   frame: a direct-try whose body reflects a `within`/`frame` does
   not catch a throw from a PURE segment inside that frame's body —
   Condition.run's Within case runs the frame body through its own
