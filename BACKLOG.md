@@ -493,7 +493,7 @@ engine's OWN write-set bookkeeping already leans on an internal
 map, a transactional growing list) is buildable on what exists,
 not a new primitive from scratch.
 
-- [ ] okay-stm-collections — a small cross-platform layer ON TRef:
+- [x] okay-stm-collections — a small cross-platform layer ON TRef:
       at minimum a `TMap[K, A]`-shaped wrapper (get/put/computeIfAbsent
       equivalent, atomically) and a `TList[A]`/append+snapshot shape
       — public API, not the STM engine's private bookkeeping TMap.
@@ -504,12 +504,24 @@ not a new primitive from scratch.
       whether that's an acceptable API change for every call site,
       or whether a thin JVM-only synchronous facade stays over a
       cross-platform STM core (facade cost vs. honest effect type).
+      LANDED 2026-09-03: `TRef.modify` is ALREADY synchronous, so a
+      single-cell dict/list never needs `Tx`/`Stm[F]` at all — no
+      facade, the plain shape IS the honest one. Named `TDict` (not
+      `TMap`: that name is taken, by exactly the engine bookkeeping
+      type this bullet warned about). A 64-thread stress test found
+      a real, stated limit: `computeIfAbsent`'s `mk` may run more
+      than once under CAS contention (only the winner's value is
+      ever stored) — fixed the doc, not hidden.
 - [ ] Once landed: migrate `okay-subscription`'s two maps and
       `okay-live`'s `Hub`/`Registry` onto it, and reconsider whether
       either module (or okay-demo itself) should become crossProject
       at that point — no JS/Native consumer is named yet, so this is
       NOT urgent; filed so the decision is made once, deliberately,
       not by accretion the next time this exact tradeoff recurs.
+      PARTIAL 2026-09-03: `okay-subscription` migrated, a pure swap
+      (9/9 existing tests unchanged). `okay-live`'s `Hub`/`Registry`
+      NOT done — the operator's ask named `okay-subscription`
+      specifically; box stays unchecked for that half.
 
 ## Elsewhere
 - [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and

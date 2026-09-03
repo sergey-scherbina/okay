@@ -1,5 +1,41 @@
 # Changelog
 
+## okay-stm-collections — TDict/TList over one TRef, synchronous by honest construction
+Completed: 2026-09-03
+Landed as 1b9c688 (spec fix) + 7f88f25 (impl) on top of an initial
+spec commit. The real design question, answered before building
+(BACKLOG named it): does an STM-backed map/list make plain
+synchronous call sites (`Hub.subscribe()`, `Registry.apply(key)`,
+`Subscription`'s two maps) effectful? No — `TRef.modify` is ALREADY
+synchronous (one CAS loop, no `Tx`, no `F`); `Tx`/`Stm[F]` exists to
+coordinate MANY cells in one transaction, and a dict/list backed by
+ONE `TRef` never needs more than that cell for any of its own
+operations. The synchronous shape is the honest one, not a facade.
+Named `TDict`, not `TMap`: `okay.TMap[K[_]]` already exists (the STM
+engine's own heterogeneous write-set bookkeeping) — a real collision
+the BACKLOG bullet's own reminder anticipated.
+`TDict[K, A]`: get/put/remove/computeIfAbsent/updateAt/snapshot/size/
+clear. `TList[A]`: append/snapshot/size/clear. Both in core `okay`
+(cross by construction), zero platform-specific code.
+Real bug caught by a 64-thread JVM stress test: `computeIfAbsent`'s
+`mk` inherits `TRef.modify`'s own "f may run more than once" rule
+under CAS contention — a losing attempt already evaluated `mk`
+before losing the race, silently discarded. What's guaranteed is
+that every racer observes the SAME winning value, not that `mk` runs
+at most once; fixed the doc comment and the test's own assertion.
+`okay-subscription` migrated: `joinedPeriod` is `computeIfAbsent`/
+`put` exactly (a pure `mk`, so the may-run-twice limit costs
+nothing); `paidPeriods` needed `updateAt` — a plain get-then-put
+would race two concurrent `pay()` calls on the same subject. No
+call-site API changed. `okay-live`'s `Hub`/`Registry` — the same
+BACKLOG bullet's other half — NOT migrated here (named specifically
+by the operator's ask); left filed.
+Tests: `TestTDictCross` (5, JVM/JS/Native) + `TestTDict` (3,
+JVM-only stress: 64 racers on one key, 100 concurrent `updateAt`,
+200 concurrent appends — none lost). `okay-subscription`'s existing
+suite 9/9 unchanged, 3x clean. `okayDemo` compiles clean against the
+migrated `Subscription`.
+
 ## persist-raft stage 0 — the Raft algorithm's core, staged explicitly
 Completed: 2026-09-03
 Landed as 81f0bfc (spec) + e3224c0 (impl). `specs/consensus.md`
