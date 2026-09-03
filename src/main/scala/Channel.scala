@@ -66,7 +66,45 @@ trait Channel[A] {
   /** the non-suspending send: true if taken NOW, never waits */
   def offer(a: A): Boolean
 
-  /** end the stream: buffered elements still drain */
+  /**
+   * End the stream: buffered elements still drain.
+   *
+   * THE CONTRACT, and why it is written here rather than left to be
+   * rediscovered. This promise is strictly stronger than what a
+   * queue usually offers — `zio.Queue.shutdown`, for comparison,
+   * INTERRUPTS pending offers and takes and guarantees no drain at
+   * all — and it is where every defect in `ring-channel` lived. Two
+   * implementations were written against this method and each
+   * rediscovered the same invariants by failing a gate, because the
+   * interface named the operation and said nothing about what it
+   * must be true of. So:
+   *
+   *  - CLOSE IS TWO-PHASE, and only the second phase is observable.
+   *    First refuse new sends; then wait for sends already accepted
+   *    but not yet in the buffer; only THEN publish the state a
+   *    consumer terminates on. Publishing the flag first is the bug
+   *    that took three attempts to kill: a producer passes its
+   *    open-check, the consumer sees closed-and-empty and ends, and
+   *    the element lands afterwards — accepted by `k(true)` and
+   *    never delivered.
+   *
+   *  - THE END COMES AFTER THE BUFFER, never instead of it. A
+   *    receiver sees `None` only once every accepted element has
+   *    been handed over.
+   *
+   *  - ACCEPTANCE IS FINAL. If `send` answered true, that element
+   *    WILL be delivered to some receiver, close or no close. This
+   *    is the law the accounting test checks, and the one all four
+   *    bugs broke.
+   *
+   * `StmChannel` gets all three for free: it decides "is it open"
+   * and enqueues inside ONE atomic transition, so there is no window
+   * to lose an element in. That is not merely a faster design, it is
+   * the reason it is correct — and any implementation that moves the
+   * elements out of that state owes the atomicity back explicitly.
+   *
+   * `TestChannelLaws` checks these against every implementation.
+   */
   def close(): Unit
 
   /** record that a producer broke, WITHOUT closing */
@@ -74,6 +112,28 @@ trait Channel[A] {
 
   def failed: Option[Throwable]
   def isClosed: Boolean
+
+  /**
+   * Is the channel closed AND finished — the single fact a consumer
+   * terminates on, and the one an implementation must not let it
+   * derive for itself.
+   *
+   * This exists because deriving it was the trap. A consumer that
+   * reads a raw "closed" flag and an "is it empty" check separately
+   * can see both true while a send that was already ACCEPTED has not
+   * yet reached the buffer, and then it ends the stream on an
+   * element that was promised delivery. Three of the four defects in
+   * `ring-channel` were versions of that, each fixed one step deeper
+   * than the last.
+   *
+   * So the interface asks for the conclusion, not the ingredients:
+   * answer true only once no further element can ever be delivered.
+   * `StmChannel` reads it off one atomic state; an implementation
+   * that keeps elements outside its state must do the two-phase
+   * close described on `close` and publish this only at the end of
+   * it.
+   */
+  private[okay] def finished: Boolean
 
   /** un-register a waiter that gave up — what a cancelled `send` or
    * `receive` must do, and the one part of waiting only the
@@ -301,6 +361,14 @@ final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
   def failed: Option[Throwable] = Option(cell.get.failure)
 
   def isClosed: Boolean = !cell.get.open
+
+  /** ONE read of ONE atomic state answers it: closed, with nothing
+   * left to hand over. No barrier, no in-flight counter, no ordering
+   * argument — which is exactly the property an implementation that
+   * moves elements out of this state has to reconstruct by hand */
+  private[okay] def finished: Boolean =
+    val s = cell.get
+    !s.open && s.buf.isEmpty && s.senders.isEmpty
 }
 
 /** a channel is an async stream of what it receives (linear: see
