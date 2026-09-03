@@ -36,7 +36,7 @@ class TestCutStops extends munit.FunSuite {
 
   test("the walk stops pulling once the value is complete") {
     val value = Reading(List(Span[Meeting]("x", "y",
-      List(Alt(Meeting.MeetingProposal("meet"), Conf.High)))))
+      List(Alt(Conf.High, Meeting.MeetingProposal("meet"))))))
     val json = okay.codec.Json.write(value)(using mReading)
     // the value, then a great deal of prose nobody should pay for
     val pieces: List[String] = json.toList.map(_.toString) ++ List.fill(500)(" and then some commentary")

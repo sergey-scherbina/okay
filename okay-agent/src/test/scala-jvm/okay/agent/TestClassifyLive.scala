@@ -102,7 +102,7 @@ class TestClassifyLive extends munit.FunSuite {
             reasons += s"decoded but empty: ${reply.take(120)}"
             "empty"
       case Left(e) =>
-        reasons += s"undecodable ($e): ${reply.take(120)}"
+        reasons += s"undecodable ($e): ${reply.take(200)}"
         "undecodable"
 
   private def arm(name: String, classify: String => String): Unit =
@@ -125,7 +125,12 @@ class TestClassifyLive extends munit.FunSuite {
     val report = Eval.confusion.run(pairs.filterNot((_, p) => p == "undecodable" || p == "empty"))
     val other = report.perClass.get("Other")
     println(f"\n[$name] macro F1 ${report.macroF1}%.3f (over decoded replies)   undecodable $undecodable/${pairs.length}   empty $empty/${pairs.length}")
-    reasons.take(2).foreach(r => println(s"  eg $r"))
+    // every failure, grouped by the decoder's own words: two examples
+    // told us the rate and nothing about the shape, which is how 9%
+    // sat unexamined for four lanes
+    val byShape = reasons.groupBy(r => r.takeWhile(_ != ':')).view.mapValues(_.size).toList.sortBy(-_._2)
+    byShape.foreach((shape, n) => println(f"  $n%3d  $shape"))
+    reasons.take(3).foreach(r => println(s"  eg $r"))
     println(f"  Other  P=${other.map(_.precision).getOrElse(0.0)}%.2f " +
             f"R=${other.map(_.recall).getOrElse(0.0)}%.2f " +
             f"F1=${other.map(_.f1).getOrElse(0.0)}%.2f")
@@ -267,5 +272,23 @@ class TestClassifyLive extends munit.FunSuite {
     arm("true domain (Meeting)", m => bare[Meeting](m)(using sM, Classify.reading[Meeting]))
     arm("wrong domain (Shipping)", m => bare[Shipping](m)(using sS, Classify.reading[Shipping]))
     arm("nonsense qualifier (Zarnic)", m => bare[Zarnic](m)(using sZ, Classify.reading[Zarnic]))
+  }
+
+  /**
+   * What is left undecodable on the best configuration, and why.
+   *
+   * The decode rate has been the dominant lever in every lane of this
+   * line — 32% of replies unreadable on a bare prompt, 9% on the best
+   * one — and the last 9% was never looked at, because the harness
+   * printed two examples and dropped the rest.
+   */
+  test("live: what the remaining undecodable replies actually are") {
+    assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    import IntentFixture.Meeting
+    given sM: Schema[Meeting] = summon[Schema[Meeting]]
+    val mReading = Classify.reading[Meeting]
+    arm("best config, whole fixture", m =>
+      predictIn[Meeting](ask(Classify.prompt[Meeting](m, IntentFixture.meetingExamples)))(
+        using sM, mReading))
   }
 }

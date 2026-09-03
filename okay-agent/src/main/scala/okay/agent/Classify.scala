@@ -48,8 +48,17 @@ object Conf:
    * drift from the decoder that accepts them */
   def vocabulary: String = Conf.values.map(_.toString.toLowerCase).mkString(", ")
 
-/** one candidate reading of a span */
-final case class Alt[I](intent: I, conf: Conf)
+/**
+ * One candidate reading of a span.
+ *
+ * `conf` comes FIRST, and that is a measured decision rather than a
+ * stylistic one. With `intent` first, nine of ten remaining
+ * undecodable replies were the same malformation: the model wrote
+ * `{"MeetingRequest": {...}, "conf": "high"}` — closing the intent's
+ * object one brace too late and swallowing the sibling field. Emitted
+ * before the nested object, `conf` has no object to fall into.
+ */
+final case class Alt[I](conf: Conf, intent: I)
 
 /**
  * One stretch of the message carrying one intent.

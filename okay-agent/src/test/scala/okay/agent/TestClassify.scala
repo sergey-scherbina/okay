@@ -34,7 +34,7 @@ class TestClassify extends munit.FunSuite {
   import Classify.given
   private val sReading = summon[Schema[Reading[Meeting]]]
 
-  private def alt(i: Meeting, c: Conf) = Alt(i, c)
+  private def alt(i: Meeting, c: Conf) = Alt(c, i)
   private def span(t: String, a: Alt[Meeting]*) = Span(t, "because", a.toList)
 
   private val slot = Meeting.Proposal(ProposalKind.NewSlot(When("2026-09-10T14:00"), List("ann"), None))
@@ -201,5 +201,18 @@ class TestClassify extends munit.FunSuite {
     assertEquals(Classify.readInDomain("""{"why":"a greeting","inDomain":false}"""),
       Right(Classify.InDomain("a greeting", false)))
     assert(Classify.readInDomain("""{"type":"object","properties":{}}""").isLeft)
+  }
+
+  test("conf precedes intent on the wire, and that is load-bearing") {
+    // measured: with `intent` first, 9 of 10 remaining undecodable
+    // replies were the model closing the intent's object one brace too
+    // late and swallowing `conf`. Emitted BEFORE the nested object it
+    // has nothing to fall into, and the residue went to 0 of 120.
+    // Reordering these two fields to tidy them re-opens that.
+    val ex = Classify.example(using sReading)
+    val c = ex.indexOf("\"conf\"")
+    val i = ex.indexOf("\"intent\"")
+    assert(c >= 0 && i >= 0, ex)
+    assert(c < i, s"conf must be emitted before intent: $ex")
   }
 }

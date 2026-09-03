@@ -601,3 +601,50 @@ arm. Twelve messages is a signal, not a measurement of a language —
 what it supports is "the gate does not pay anywhere here" (six
 languages agreeing) and "Russian is consistently weakest across two
 independent runs", not the individual numbers.
+
+## Results — intent-decode-rate-residue (2026-09-04)
+
+Nine percent of replies were still undecodable on the best
+configuration, and no lane had looked at them: the harness printed two
+examples of a failure and dropped the rest, so four lanes watched the
+NUMBER without ever seeing its SHAPE. Grouping the decoder's own
+messages — a `groupBy` over what the harness was already collecting and
+silently discarding — settled it in one run.
+
+**The residue was not a residue.** Nine of the ten failures were one
+malformation:
+
+```json
+"intent": { "MeetingRequest": { "what": "..." }, "conf": "high" }
+```
+
+The model closes the intent's object one brace too late and swallows
+the sibling field. (The tenth was the last surviving `"intent":
+"NotAboutMeetings"` — a bare name where the encoding wants a tagged
+case.) Nothing in the residue was a hard message or a model limit; it
+was one systematic shape error.
+
+**The fix follows from the shape.** `conf` was declared after `intent`
+and therefore emitted after it, right where a nested object was still
+open. Declared FIRST it has nothing to fall into:
+
+| `Alt` field order | undecodable | macro F1 |
+|---|---|---|
+| `(intent, conf)` | 10/120 | 0.907 |
+| `(conf, intent)` | **0/120** | 0.909 |
+
+Every reply now decodes. Accuracy is unchanged, which is the honest
+reading: this was never an accuracy problem, it was ten messages that
+never reached the classifier's output at all.
+
+This is the third time in this line that FIELD ORDER turned out to be
+load-bearing — first for reasoning before the label (0.136 macro F1),
+then for `why` before `alts`, now for `conf` before `intent`. The
+declaration order of an `SProduct` is not presentation. A test pins
+this one, because it looks exactly like something a later reader would
+tidy.
+
+Scope: 120 messages, one 4B local model, one run per arm. A 10-to-0
+change on a single systematic shape is stronger evidence than its n
+suggests — the mechanism was named in advance and the predicted shape
+is precisely what disappeared.
