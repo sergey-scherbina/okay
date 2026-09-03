@@ -1,5 +1,0 @@
-slug: lowering-note
-branch: feature/lowering-note
-worktree: ../okay-wt-lowering-note
-claimed: 2026-09-03
-scope: docs/theory ch.5 gains "Lowering: how a program becomes its meaning" — why foldCont exists (initiality, handlers are continuations), the mechanism line by line (Free.fold's normal form, the rebuilt Cont spine, Cont's tail-recursive runner, the fusion budget, forwarding as shift), why runWith deliberately does not take that road, and why lowering is the identity for Eff. Docs only.

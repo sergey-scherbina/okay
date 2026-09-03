@@ -1,5 +1,37 @@
 # Changelog
 
+## lowering-note — the textbook explains foldCont
+Completed: 2026-09-03
+Landed as cb82e6fe (docs only). Operator asked why `Free` is lowered
+into `Cont` and how exactly it happens; docs/theory ch.5 gains
+"Lowering: how a program becomes its meaning".
+
+Why: the third handler shape needs the operation's continuation, and
+the freer tree keeps continuations *beside* operations as data while
+`Cont` is the type whose subject they are. The chapter is careful about
+`foldCont`'s status, since it reads like an optimization and is not:
+`Free[F, *]` is the free monad, so there is exactly one
+structure-preserving map out of it given an interpretation, and
+`foldCont` is that map at `Cont`. Hence `handle` and `runWith` are
+defined *through* it.
+
+How: `Free.fold` supplies the normal form, so an operation always
+arrives with its continuation; `h(e)` is the handler's `Cont` for that
+operation; `k(_).foldCont(h)` lowers the rest and binds it after, so the
+Free spine is rebuilt as a Cont spine. Then `Cont`'s five-case runner,
+with the split named: three cases rotate and discharge tail-recursively
+(chain length costs no stack), one hands the continuation over, and the
+fusion budget decides whether a node is materialized at all. Forwarding
+appears as `shift(k => perform(e).flatMap(k))`, algebraicity spelled in
+`Cont` and licensed by the section added in 90c49a96.
+
+And the two escapes: `runWith` overrides with `runFree`, one pass
+instead of two, allowed because a comonadic handler uses each
+continuation once and immediately; in `Eff` lowering is the identity
+because the program IS its own `foldCont`, with the symmetric costs
+stated. Every quoted snippet was checked verbatim against the source so
+the chapter cannot drift silently.
+
 ## algebraicity-note — what the middle constructor decides
 Completed: 2026-09-03
 Landed as 90c49a96 (docs and comments only, no behavior change).
