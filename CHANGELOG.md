@@ -1,5 +1,48 @@
 # Changelog
 
+## journal-versions — the third mode of a journal, and what a divergence means
+Completed: 2026-09-03
+Landed as 5537049. A journal had two modes: `Durable.tools` records
+and recovers, `Durable.replaying` answers everything from the journal
+and touches nothing. `Rerun.live` is the third: run the journal again
+against TODAY'S world with the tools ACTUALLY executing, and compare.
+The distinction that earns it: replaying proves the program is
+deterministic given the same answers; rerunning proves the world still
+gives those answers. A journal recorded in June and rerun in September
+either reproduces, or names the step where reality moved.
+
+Divergence is loud or quiet, never silent. `Loud` throws at the first
+one, naming step, call, recorded and got (the default, and what CI
+should use). `Quiet` accepts the new answer, continues LIVE, and
+branches a `Version` — while still reporting the divergence on the
+outcome AND carrying it on the version, so a reader of the store alone
+learns it. Snapshot testing already taught the industry that an
+auto-accept nobody reads is worse than no test.
+
+The branch-instead-of-patch is structural, not a preference: once step
+k answers differently, every later entry is unusable, because the model
+that consumed X asked its next question because of X. So a version is a
+shared prefix plus a live tail, versions form a tree (`parent` +
+`branchedAt`, `Versions.lineage` walks it), and only the FIRST
+divergence is the branch point. `Provenance` rides on each version
+because a diff that cannot say what produced either side says nothing;
+the layer carries the caller's claim and cannot verify it, which is the
+same boundary the journal already has (it sees calls, not the world
+under them). A rerun that reproduced stores nothing and hands the base
+back unchanged.
+
+`Kind.Answer` and `Kind.Call` are told apart (the world moved under the
+same question, versus the program asking a different one, including
+running past the journal's end) though they branch identically. The
+model half needed nothing new: `Handlers.scripted` over the recorded
+replies plus live tools IS the mode, and of the four record/replay
+combinations only that one and `Durable.replaying` earn their keep.
+Written after the same design was worked out for rozum's Rust agent
+runtime and posted to its room; this is the Scala half, and the two
+agree on the shape without sharing a line.
+
+TestRerun 10/10, okay-agent 91/91 on JVM plus JS, no warnings, from clean.
+
 ## merge-chunk-param — the chunked merge folded into `merge` as a flag, beside the `capacity` it has to respect
 Completed: 2026-09-03
 Landed as 8c4d7b0. `mergeChunked` became `merge(chunked = true)`,
