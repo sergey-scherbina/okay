@@ -1,5 +1,41 @@
 # Changelog
 
+## okay-script-page — compile-once, invoke-many hot-reload for render-mode .md files, and the isolated-Console bug it found
+Completed: 2026-09-03
+Landed as 1a015f15. The hot-reload half of "per-request execution +
+hot-reload" (BACKLOG's own framing for the JSP metaphor's second
+half). New `Page(path, classpath)`: compiles a `render`-mode `.md`
+file ONCE, cached by the file's mtime, re-INVOKES (not re-compiles) on
+every `render()` call while the file is unchanged — the actual JSP
+shape (a page's servlet class compiles once, its per-request method
+runs once per request, it does not recompile on every hit). No new
+dependency — `Page` only wraps `ScalaScript.render`'s existing
+machinery; an actual `okay-jetty` route stays glue code a caller
+writes. Split `ScalaScript.compileAndRun` into `compileOnly` (`dotc` +
+classloader load, returns an invokable `Compiled` handle or a `Result`
+with compile errors) and `Compiled.invoke()` (callable repeatedly
+without recompiling); `render()` itself is now `compileRender(...).
+fold(identity, c => try c.invoke() finally c.close())` — unchanged
+observable behavior for every existing caller. Found and fixed along
+the way: a SECOND `invoke()` on the same compiled program silently
+printed NOTHING — a real, previously-invisible bug from
+okay-script-classloader-isolation that a one-shot `run`/`render`
+could never have exposed. Root cause: the isolated script classloader
+loads its OWN separate copy of `scala.Console`, so the original
+host-side `scala.Console.withOut` fix (for capturing `println`) never
+touched the copy the script's own `println` reads — it "worked" for a
+one-shot call only by coincidence, since the isolated `Console`'s lazy
+default binds to whatever `System.out` is at ITS OWN first touch and
+stays bound to that one stream forever after. Traced to a minimal
+bare-classloader reproduction before writing the fix, not guessed at.
+Fixed by driving the isolated classloader's OWN `Console` via
+reflection (`setOutDirect`) on every `invoke()` call — applies
+uniformly to `run`/`render`'s one-shot path too, though it was
+invisible there. Request-object injection (JSP's implicit `request`/
+`response`) is deliberately NOT in this pass — filed to BACKLOG, since
+it would add `okay-script`'s first real dependency beyond
+`scala3-compiler`. specs/okay-script.md "Hot-reload".
+
 ## okay-script-meta — code in an .md file reads front-matter + heading-scoped yaml as its current context
 Completed: 2026-09-03
 Landed as fdf8b7ec. Answers the operator's ask directly: code inside

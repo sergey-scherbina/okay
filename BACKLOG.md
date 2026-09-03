@@ -751,16 +751,41 @@ not a new primitive from scratch.
       a buffer flushed at the end, so a code block's own `println`
       output stays in true document order instead of reordered after
       the whole rendered text. specs/okay-script.md "Interpolation".
-- [ ] okay-script: per-request execution + hot-reload — the SECOND
-      half of "a new JSP" that this pass deliberately did not build:
-      JSP recompiles a page when its file changes and runs it PER
-      REQUEST with `request`/`response` as implicit context; `render`
-      today is a one-shot call with no file-watching or request
-      binding. Naturally sits closer to an `okay-jetty` ROUTE (a
-      handler that stats the `.md` file, recompiles on change, calls
-      `render` per request) than to `okay-script` itself — GATED on
-      deciding whether that lives in `okay-script` or in a consuming
-      module.
+- [x] okay-script-page — LANDED 2026-09-03: the HOT-RELOAD half of
+      "per-request execution + hot-reload" (the REQUEST-OBJECT
+      injection half is still open, see the next entry). New
+      `Page(path, classpath)`: compiles a `render`-mode `.md` file
+      ONCE, cached by the file's mtime, re-INVOKES (not re-compiles)
+      on every `render()` call while the file is unchanged — the
+      actual JSP shape (a page's servlet class compiles once, its
+      per-request method runs once per request). No new dependency;
+      an actual `okay-jetty` route stays glue code a caller writes.
+      Split `ScalaScript.compileAndRun` into `compileOnly` (returns an
+      invokable `Compiled` handle or a `Result` with compile errors)
+      and `Compiled.invoke()` (callable repeatedly). Found and fixed
+      along the way: a SECOND `invoke()` on the same compiled program
+      silently printed nothing — a real, previously-invisible bug from
+      okay-script-classloader-isolation (the isolated script
+      classloader loads its OWN separate `scala.Console`, so the
+      original host-side `scala.Console.withOut` fix for capturing
+      `println` never touched it; it only "worked" for a one-shot call
+      by coincidence). Traced to a minimal bare-classloader
+      reproduction before writing the fix. Fixed by driving the
+      isolated classloader's OWN `Console` via reflection
+      (`setOutDirect`) on every `invoke()` — applies to `run`/`render`
+      too, though it was invisible there. specs/okay-script.md
+      "Hot-reload".
+- [ ] okay-script: request-object injection — the REMAINING half of
+      "a new JSP": a script reading the CURRENT HTTP request (query
+      params, headers, method) the way it already reads `Meta.current`
+      for file metadata. The proven pattern (a plain always-fresh
+      method + mutable var, not a `given`) would transfer directly,
+      but exposing `okay.http.Request` from `okay.script`'s own code
+      would be its first real dependency beyond `scala3-compiler` —
+      deliberately not taken when `Page` landed. A caller can already
+      thread per-request data into a render TODAY by string-templating
+      it into the markdown TEXT before calling `render` — clumsy, not
+      blocking.
 - [x] okay-script-meta — LANDED 2026-09-03: code inside an .md file
       reads the metadata defined in the markup AROUND it, as its
       current context (operator ask). Front-matter (`---`, file-level)
