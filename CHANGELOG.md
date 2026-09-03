@@ -1,5 +1,52 @@
 # Changelog
 
+## gate-honesty — the untested foldCont/runWith obligation, a docs-index guard, demo tests off the disk
+Completed: 2026-09-03
+Landed as dde1e151. Three holes in the CHECKS, not three features.
+
+`runWith` is defined as `foldCont(handler) / identity`, and Free and
+Eager both override it with a one-pass fast path whose comment claims
+the same answer. Nothing checked that claim: TestReflect proves the
+encodings agree with EACH OTHER, but both of its sides call `runWith`
+— a fast path that drifted would take every encoding with it and pass.
+TestLowering now runs the two paths against each other per encoding
+(Free, Eager, Eff) and per bind shape (pure, one op, map only, pure
+bound, right- and left-nested, a dropped continuation, mixed
+associations, 5000-deep both ways), comparing the answer TOGETHER WITH
+the effect trace. 11 green — the obligation holds. It bites, checked
+by mutation: duplicating one `H.handle(e)` in `runFree` fails 7 of the
+11, and the 4 it does not fail name the shapes that are load-bearing
+(a bare Inject with no Bind above it cannot see that mutation).
+
+The module index in docs/README.md was hand-kept and unguarded —
+eight rows had gone missing earlier with nothing to notice.
+TestDocsIndex (in okay-deploy, beside TestDemoDeploy, which already
+owns "compare the committed tree against what it should be") checks
+every direction: every page linked, every link resolving, every module
+root the build declares having a page. First run found three modules
+shipping with no page at all — okay-crypto, okay-script,
+okay-demo-e2e-browser — now written.
+
+okay-demo's tests fork with the repo root as their working directory
+and `chatStore` defaulted to a FileStore, so the suite read and wrote
+`okay-chat.log/` in the REPO ROOT and every run inherited the previous
+run's facts. Test now sets `OKAY_CHAT_LOG=:memory:`; TestTwoNode's
+spawned children still pass their own, and a test that wants a real
+file store still asks by name.
+
+MEASURED, correcting an impression rather than adding a feature: with
+the default `Vectors.hashing()` the `propose` similarity branch is
+very nearly inert. It counts character trigrams into 64 buckets, so it
+scores surface overlap and not meaning — "разработчик"/"программист"
+is 0.231 against the 0.85 default, and even one word against its own
+plural is 0.815, still under. Out of the box the exact-slug path is
+what dedupes. Deliberately not "fixed" by lowering the default: 0.85
+is calibrated to that collision floor and the threshold belongs to
+whichever embedder is wired in, which is why `marketOf` takes the pair
+together. specs/demo-chat.md, docs/modules/okay-demo.md.
+
+Green: okayJVM 449, okayDeploy 9, okayDemo 66 (2 skipped).
+
 ## okay-script-check — mdoc-style output-comparison literate testing via a ```stdout fence
 Completed: 2026-09-03
 Landed as 5b9a5aad. A block's expected stdout, written inline in the
