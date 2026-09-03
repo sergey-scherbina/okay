@@ -311,8 +311,49 @@ construction instead of a type test per value).
       the survey in AGENTS.md (does it bind ports / depend on
       timeouts?) and either tag it Live or fix the timing.
 
-- [ ] ring-channel-waiters — `RingChannel` is landed behind the seam
-      and correct, but measures 1.7x over the bounded default where
+- [ ] channel-impls-correctness — RingChannel (bounded, on Ring) and
+      CasChannel (unbounded, Michael-Scott) were both WRITTEN and both
+      MEASURED, and neither is correct yet, so neither landed. Numbers
+      first, since they are real and answer the question that prompted
+      them (one producer, one consumer, 4000 elements):
+
+        zioQueue             122.2 +/-9.7   (outside reference)
+        casChannel           143.9 +/-16.3
+        stmChannelUnbounded  187.7 +/-18.2
+        ringChannel          249.9 +/-31.2
+        stmChannel (bounded) 418.2 +/-95.3
+
+      So MS beats the default 1.3x on the honest pair (both unbounded)
+      and comes within 18% of zio.Queue; the ring gives 1.7x where the
+      ring MECHANISM alone gives 3.4x, the waiter protocol eating the
+      rest.
+
+      THE UNFINISHED PART: the accounting test (200 rounds of
+      producer/consumer/close) fails roughly one FULL GATE in three,
+      always the same way -- an element accepted by k(true) and never
+      delivered. Three causes were found and fixed and it still
+      recurs, so a fourth remains:
+        1. ending on `closed` alone strands what was buffered (fixed);
+        2. a thread claiming its OWN waiter called resume(), recursing
+           on the stack until it overflowed (fixed, now a loop);
+        3. checking "open" and enqueueing are two steps once elements
+           leave the state, so close can slip between them -- fixed
+           with an in-flight barrier, and the consumer's end condition
+           extended to `closed && inFlight == 0 && isEmpty`.
+      The remaining one is not diagnosed. Suspect a double-invocation
+      of the continuation (CompletableFuture.complete silently drops
+      the second value, which would look exactly like a lost element),
+      or a waiter dropped by wakeOne's CAS-and-claim. Reproduce with
+      the full gate, not with the two suites alone -- eight clean runs
+      of those preceded a gate failure.
+
+      THE PROPERTY WORTH KEEPING whatever the fix: `StmChannel`'s
+      single-CAS state is not merely slower, it is what makes
+      open-check-and-enqueue atomic. Every implementation that splits
+      elements out of the state owes that atomicity back explicitly.
+
+- [ ] ring-channel-waiters — (after channel-impls-correctness) the
+      ring's waiter protocol measures 1.7x over the bounded default where
       the RING MECHANISM alone measured 3.4x (channel-ring). The
       waiter protocol around it eats more than half the win, and the
       causes are known rather than suspected: the waiter queue is an
