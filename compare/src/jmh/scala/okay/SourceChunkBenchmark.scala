@@ -59,6 +59,12 @@ class SourceChunkBenchmark {
 
   /** the shipped combinator, on the same elements */
   @Benchmark
-  def mergeChunked(): Long =
-    left.mergeChunked(right, size = k).toLazyList.foldLeft(0L)(_ + _)
+  def mergeChunkParam(): Long =
+    left.merge(right, chunked = true).toLazyList.foldLeft(0L)(_ + _)
+
+  /** the same flag with a larger ELEMENT budget: capacity is the
+   * knob that buys the rest of the win back */
+  @Benchmark
+  def mergeChunkedRoomy(): Long =
+    left.merge(right, capacity = 1024, chunked = true).toLazyList.foldLeft(0L)(_ + _)
 }

@@ -241,11 +241,14 @@ throughput is the point rather than per-element semantics, merge the
 CHUNKED streams — `Chunks.merge` is one queue operation per chunk
 instead of per element, and measures 10.7us against 299.7us for the
 same 2x500. For a source that is elementwise BY NATURE but consumed
-in bulk, `source.mergeChunked(other, size)` does the same trick
-underneath and hands back an ordinary `Source` — 4-5x over `merge`
-on the same elements. It batches, so an element waits for up to
-`size - 1` more: reach for it when throughput is the point, and keep
-`merge` when an element's arrival time is. On JVM/Native it parks
+in bulk, `merge`'s own `chunked = true` does the same trick
+underneath and still hands back an ordinary `Source`: 2.6x at the
+default capacity, 5.1x with `capacity = 1024`, since `capacity`
+counts elements either way and the rest of the win is bought
+explicitly with memory. It is off by default because chunking has no
+flush on time — on a slow or unending source an element waits for 15
+others that may never come, so it is for fast finite sources, not
+live feeds. On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`

@@ -141,12 +141,12 @@ class TestStream extends munit.FunSuite {
     assertEquals(St.uncons(src).runWith.map(_._1), Some(1))
   }
 
-  test("mergeChunked: the same elements as merge, both sources drained, union typed") {
+  test("merge(chunked): the same elements as merge, both sources drained, union typed") {
     val a: Source[Int] = Source.of((1 to 50).toList)
     val b: Source[String] = Source.of((51 to 100).map(_.toString).toList)
 
     // the elements are exactly merge's, whatever the interleaving
-    val chunked = a.mergeChunked(b, size = 8).toLazyList.toList
+    val chunked = a.merge(b, chunked = true).toLazyList.toList
     val plain = Source.of((1 to 50).toList).merge(Source.of((51 to 100).map(_.toString).toList))
       .toLazyList.toList
     assertEquals(chunked.length, 100)
@@ -158,19 +158,24 @@ class TestStream extends munit.FunSuite {
     assertEquals(chunked.collect { case i: Int => i }, (1 to 50).toList)
   }
 
-  test("mergeChunked: a partial final chunk is flushed, not dropped") {
-    // 7 and 5 elements at size 4: both sides end mid-chunk
-    val out = Source.of((1 to 7).toList).mergeChunked(Source.of((8 to 12).toList), size = 4)
+  test("merge(chunked): a partial final chunk is flushed, not dropped") {
+    // fewer elements than one chunk on each side: nothing is emitted
+    // until the source ENDS, and the flush must not drop them
+    val out = Source.of((1 to 7).toList).merge(Source.of((8 to 12).toList), chunked = true)
       .toLazyList.toList
     assertEquals(out.length, 12)
     assertEquals(out.toSet, (1 to 12).toSet)
+    // and a size that straddles the chunk boundary either way
+    val straddle = Source.of((1 to 40).toList).merge(Source.of((41 to 45).toList), chunked = true)
+      .toLazyList.toList
+    assertEquals(straddle.toSet, (1 to 45).toSet)
   }
 
-  test("mergeChunked: an empty source contributes nothing and does not hang") {
-    val out = Source.of(List.empty[Int]).mergeChunked(Source.of(List(1, 2, 3)), size = 4)
+  test("merge(chunked): an empty source contributes nothing and does not hang") {
+    val out = Source.of(List.empty[Int]).merge(Source.of(List(1, 2, 3)), chunked = true)
       .toLazyList.toList
     assertEquals(out, List(1, 2, 3))
-    assertEquals(Source.of(List.empty[Int]).mergeChunked(Source.of(List.empty[Int]), size = 4)
+    assertEquals(Source.of(List.empty[Int]).merge(Source.of(List.empty[Int]), chunked = true)
       .toLazyList.toList, List.empty[Int])
   }
 

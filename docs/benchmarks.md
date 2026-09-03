@@ -412,22 +412,26 @@ every frame rather than the two already suspected, said why: 71% of
 samples sit in the per-element channel TRANSACTION — 33% the CAS
 itself, 19% the immutable Queue rebuilt around it, 19% the rotation
 `resume` does per pull. Nothing there is cheaper than it is; there
-are simply too many of them. `Source.mergeChunked` divides the count
-by its chunk size — the same sources, the same channel, one
-transaction per `size` elements — and lands 4-5x:
+are simply too many of them. `merge`'s `chunked = true` divides the
+count by a fixed chunk size — the same sources, the same channel, one
+transaction per 16 elements — on 2x2000:
 
-| 2 x N elements | `merge` | `mergeChunked` |
+| | 2x2000 | |
 |---|---|---|
-| N=2000, size 16 | 1169.9 ±9.3 | **223.5 ±2.9** (5.2x) |
-| N=2000, size 64 | 1163.4 ±12.7 | **247.2 ±1.8** (4.7x) |
-| N=500, size 16 | 292.8 ±3.5 | **70.2 ±1.0** (4.2x) |
+| `chunked = false` | 1163.4 ±21.2 | readiness, exact |
+| `chunked = true`, capacity 64 | **443.6 ±23.8** | 2.6x, same 64-element budget |
+| `chunked = true`, capacity 1024 | **226.5 ±1.2** | 5.1x |
 
-It is a separate combinator, not a change to `merge`, because it
-batches: an element that could have been handed over now waits for up
-to `size - 1` more. The win is not from absorbing backpressure (a
-consumer that keeps up creates none) but precisely from batching
-sends that would have succeeded immediately — so it cannot be made
-invisible, and readiness stays `merge`'s promise.
+The two knobs stay orthogonal because `capacity` counts ELEMENTS
+either way: the channel gets `capacity / 16` slots when chunking, so
+turning the flag on alone buys 2.6x while holding the same amount of
+data, and the rest is bought explicitly with memory. 226.5 is the
+ceiling — a hand-built chunk pipeline measures 223.2.
+
+It is OFF by default, and not out of politeness: `chunked` emits when
+a chunk is full or when its input ends, with no flush on time. On the
+slow or unending sources this merge exists for — a model's tokens, a
+live feed — an element would wait for 15 others that may never come.
 
 ## 7. Resource — 1000 bracketed acquire/use/release
 
