@@ -118,6 +118,24 @@ has no `request(n)`, for the reason `specs/http.md` gives.
       the port refuses a connection, on all three servers
 - [x] a route that throws is a 500 on every server, and an unrouted path
       is a 404 — damage as data does not depend on the backend
+- [x] a request's query string survives to `Request.url` the SAME way
+      on every server backend (2026-09-03, http-request-query) — found
+      broken on Jetty only, by okay-script-storefront-example, which
+      built a real app against it. `okay.http.Server` (JDK-based)
+      already round-trips it (`getRequestURI().toString()` is the
+      request-target, path+query); so does Netty (`req.uri` is the raw
+      HTTP/1.1 request-target too). Jetty's own `requestOf` silently
+      dropped it (`getPathInContext` — path only), so a route matching
+      on `r.url` never saw a `?key=value` a client sent, no error, no
+      truncation warning. Fixed by building `Request.url` from
+      `req.getHttpURI.getPathQuery` instead — a strict superset for
+      every route already written against it: with no query string it
+      is byte-identical to the old path (`HttpURI`'s own
+      `getPathQuery` returns bare `_path` when `_query == null`), and
+      no `ContextHandler`/context-path mounting is used anywhere in
+      this codebase's `Jetty.serve`, so `getPathInContext` and
+      `getHttpURI.getPath` already coincided — nothing about routing
+      an EXISTING no-query route changes.
 
 ## Decisions
 - **Three backends, three reasons** — chosen because symmetry is not a
@@ -160,6 +178,19 @@ built its `Request` from the method, uri and headers and forgot the
 content, so every route saw an empty body. One test posts, and it
 caught it. The lesson is that a conversion between two request types
 wants a test per FIELD, not per happy path.
+
+**A server that could not see a query string, and the matrix test
+never noticed** (http-request-query, 2026-09-03). Same lesson as the
+POST body, a session later: `TestBackends`' cross-backend matrix tests
+one route shape per backend and none of them carry a `?...` — a field
+this spec's own "same program runs on every backend" claim never
+actually exercised. Found instead by a REAL consumer,
+okay-script-storefront-example, whose `/order?key=<x>` route 404'd
+every time on Jetty (worked around there by moving the key into the
+path). The fix here is the real one: `Jetty.scala`'s `requestOf` now
+reads `req.getHttpURI.getPathQuery` instead of the static
+`getPathInContext(req)`. `TestJetty` gained a query-string test so the
+matrix's blind spot does not reopen.
 
 One divergence from this spec, corrected here rather than in the code:
 `Netty.serve` answers `io.netty.channel.Channel ! Resource` — aliased
