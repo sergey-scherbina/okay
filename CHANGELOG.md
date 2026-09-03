@@ -1,5 +1,34 @@
 # Changelog
 
+## okay-script-storefront-example — a real storefront .md, content from ../it-consulting, compiled and run at runtime
+Completed: 2026-09-03
+Landed as 1e52a28b, fast-forwarded onto master. The worked example for
+the whole `okay-script-runtime` pivot:
+`okay-script/examples/it-consulting-storefront.md` — a real
+`okay-jetty` server (a services page and an `/order/<key>` route),
+compiled and run end to end through `ScalaScript.run`, using the
+lifecycle recipe proven in `okay-script-lifecycle` (own `Thread`,
+`Thread.interrupt()` to stop). Content — the IT-consulting services
+list, names/descriptions/prices — is taken verbatim from
+`../it-consulting/site/site.md`, the real business line's own site
+data; only the DATA crosses over, not `busi`'s declarative-site
+engine or the `scalascript` snippet that content normally uses for
+its `/order` behavior — the example's page and order handler are
+ordinary Scala, proving the actual point: `okay-script` runs code, not
+a second DSL. Found and fixed along the way: the first cut's `/order`
+route used a query string (`/order?key=<x>`), which `okay-jetty`'s
+`Request.url` never carries AT ALL — `Jetty.scala`'s `requestOf`
+builds it from Jetty's `getPathInContext` (path only; `okay.http.
+Request` has no query-string field, full stop) — so the key extraction
+always saw `""` and every order 404'd. Not an `okay-script` bug;
+worked around in the example by moving the key into the path
+(`/order/<key>`) and filed the real gap to BACKLOG for
+okay-http/okay-jetty. Proved by `TestScalaScriptStorefront` (Live):
+reads the `.md` from disk, runs it on a background thread, confirms
+all five services render with their prices, confirms `/order/<key>`
+returns the right confirmation, confirms interrupt stops the server.
+specs/okay-script.md "Worked example".
+
 ## okay-script-lifecycle — Thread.interrupt() cleanly stops a Resource-run Jetty server, no new API
 Completed: 2026-09-03
 Landed as eb7e2a9d, fast-forwarded onto master. Settles the lifecycle
