@@ -364,6 +364,84 @@ the fingerprint and stops the replay loudly.
   (re-execute when idempotent, ask a human, or fail) — the same
   at-least-once honesty as the Kafka source.
 
+## Journal versions (2026-09-03, journal-versions)
+
+A journal has three modes, not two. `Durable.tools` records (and
+recovers from a crash). `Durable.replaying` answers everything from
+the journal and touches nothing. `Rerun.live` is the third: run the
+journal again against TODAY'S world, with the tools ACTUALLY
+executing, and compare each answer to what was recorded.
+
+The distinction that makes it worth having: `replaying` proves the
+program is deterministic given the same answers; rerunning proves the
+WORLD still gives those answers. A journal recorded in June and rerun
+in September either still reproduces, or names the step where reality
+moved.
+
+### Loud and quiet
+- **`Loud`** throws `Diverged` at the first divergence, naming the
+  step, the call, what was recorded and what the world said now. The
+  default, and what CI should use: a journal that no longer
+  reproduces is a finding.
+- **`Quiet`** accepts the new answer, continues LIVE from there, and
+  branches a new `Version`.
+
+`Quiet` never means silent. The divergence is reported in the
+`Outcome` AND carried on the new version, so a reader of the store
+alone still learns it. Snapshot testing already taught the industry
+that an auto-accept nobody reads is worse than no test; quiet moves
+the run forward, it hides nothing.
+
+### Why a divergence branches instead of patching
+Once step k answers differently, every entry after k is unusable: the
+model that consumed answer X asked its next question because of X, and
+a run that saw Y asks something else. So a new version is never a patch
+over the old one. It is the shared prefix up to k plus whatever the
+live run does after it, which is why versions form a TREE branching at
+divergence points (`parent` + `branchedAt`, `Versions.lineage` walks
+it) and why the readable diff is always "diverged at k: recorded X,
+got Y". Only the FIRST divergence is the branch point; later ones do
+not move it, because the runs parted once.
+
+### What a version carries
+`Provenance` — code revision, model, tool set, a note — because
+otherwise a diff between two versions says behaviour changed and
+connects it to nothing. This layer cannot verify a revision, only
+carry the caller's claim; it is the only place the world gets pinned
+at all, since the journal sees calls and not the world underneath
+them. A rerun that reproduced stores NOTHING and returns the base
+version unchanged: a store full of identical versions would say
+"nothing happened" badly.
+
+### Two kinds of divergence, told apart
+`Kind.Answer` (the world answered differently to the same question)
+and `Kind.Call` (the program asks something else than it did, including
+running past the end of the journal). Both branch the same way, since
+structurally the situation is identical; they are named apart because
+they mean different things to whoever reads the version: the world
+moved under your code, or your code changed.
+
+### The model half needs nothing new
+A rerun fixes the model with `Handlers.scripted` over the recorded
+replies and lets the TOOLS run live, which is the combination that
+tests your code against fixed model behaviour. Of the four
+record/replay combinations only two earn their keep: this one, and
+`Durable.replaying` (both sides journalled) for reproducing an
+incident. A live model over journalled tools is nondeterministic
+anyway; both live is just recording.
+
+### Behavior
+- [x] a world that has not moved reproduces, stores no new version
+- [x] `Loud` stops at the first divergence with both sides named
+- [x] `Quiet` branches: prefix shared with the parent, tail live (the
+      journal's later answers must NOT come back)
+- [x] `Quiet` still reports, on the outcome and on the version
+- [x] the branch point is the FIRST divergence
+- [x] `Kind.Call` vs `Kind.Answer`, including past the journal's end
+- [x] a lineage walks a chain of branches back to the root
+- [x] a version IS a journal, so `Durable.replaying` reads one back,
+      and a branched version replays as its own run
+
 ## A live provider (shipped)
 
 `Provider.openAi` is a `Handler[Model]` speaking the
