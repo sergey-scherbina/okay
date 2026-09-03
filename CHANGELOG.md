@@ -1,5 +1,34 @@
 # Changelog
 
+## persist-raft stage 1a — a real peer-to-peer wire transport, RaftMsg over real sockets
+Completed: 2026-09-03
+Landed as 8c27109 (spec) + 01acf2c (impl). `RaftEntry`/`RaftMsg` now
+`derives Schema`. `okay.persist.RaftWire.Node` (JVM-only): real
+`ServerSocket`s, real threads, the SAME `[len:int32][CBOR]` framing
+`Wire.scala` already uses for the client-facing wire — reused here
+for NODE-TO-NODE `RaftMsg` exchange. One-shot connections (connect,
+write one frame, close) rather than a persistent connection pool per
+peer — simple and correct first; Raft's own retry-by-heartbeat
+already tolerates a dropped send. A background tick thread drives
+REAL wall-clock election timeouts (randomized per node) and leader
+heartbeats — the first real non-determinism this algorithm has run
+under; stage 0's tests drove everything by explicit tick.
+`propose(data)` is the client seam: succeeds only on the current
+leader, `false` otherwise (no forwarding to the real leader yet —
+stage 1b). `onCommit(index, entry)` fires once per newly committed
+index, in order.
+Deliberately NOT here: the `Store`/`Topic` wrapper itself (`Election`
+still cannot construct a topic over this), and persistent storage
+for `currentTerm`/`votedFor` (a real crash forgets them here —
+Raft's own safety proof assumes stable storage for exactly those two
+fields, stated not hidden).
+Tests (`TestRaftWire`, 3, real sockets/threads/wall-clock): three
+real nodes elect exactly one leader and agree on who it is; a client
+entry proposed to the leader replicates and commits on every node, a
+non-leader refuses; killing the leader — the survivors elect a new
+one and keep committing. 5/5 clean runs. Full `okayPersistJVM` suite
+98/98.
+
 ## test-login-tamper-flake — the suggested fix had its own, bigger flake
 Completed: 2026-09-03
 Landed as d260ddf. `TestLogin`'s "a tampered token is refused" built

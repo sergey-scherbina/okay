@@ -283,10 +283,17 @@ construction instead of a type test per value).
       months-scale effort taken as a staged climb, not attempted
       whole): okay.persist.Raft — the pure algorithm core, leader
       election + log replication, seven tests proving election
-      safety, log matching, the Figure 8 commit trap. Stage 1 (the
-      Store/Topic engine wrapper + network transport — the actual
-      RaftStore this bullet names) and stage 2 (compaction,
-      membership changes) remain open; box stays unchecked for those.
+      safety, log matching, the Figure 8 commit trap.
+      STAGE 1a LANDED 2026-09-03: okay.persist.RaftWire.Node — a
+      real peer-to-peer wire transport, RaftMsg over real sockets
+      (the SAME [len:int32][CBOR] framing Wire.scala uses), real
+      wall-clock election timeouts/heartbeats. Three real nodes
+      elect a leader, replicate and commit a client entry, and fail
+      over on a killed leader — all over an actual network. Stage
+      1b (the Store/Topic engine wrapper — the actual RaftStore this
+      bullet names — plus persistent currentTerm/votedFor) and stage
+      2 (compaction, membership changes) remain open; box stays
+      unchecked for those.
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,
