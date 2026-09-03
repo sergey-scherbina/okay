@@ -47,7 +47,7 @@ object Netty {
         val uri = URI.create(r.url)
         val port = if uri.getPort > 0 then uri.getPort
           else if uri.getScheme == "https" then 443 else 80
-        val q = new okay.Channel[Chunk[Byte]](Int.MaxValue)
+        val q = okay.Channel[Chunk[Byte]](Int.MaxValue)
         val answered = java.util.concurrent.atomic.AtomicBoolean(false)
 
         val b = Bootstrap()
@@ -65,7 +65,7 @@ object Netty {
                         val hs = res.headers.entries.asScala.toSeq
                           .map(e => (e.getKey, e.getValue))
                         if answered.compareAndSet(false, true) then
-                          k(Right(Response(res.status.code, hs, Writer.of(q))))
+                          k(Right(Response(res.status.code, hs, Writer.of(q)(using okay.given_Stream_Channel_Async))))
                       case _ => ()
                     msg match
                       case c: HttpContent =>
@@ -114,7 +114,7 @@ object Netty {
           val uri = URI.create(url)
           val port = if uri.getPort > 0 then uri.getPort
             else if uri.getScheme == "wss" then 443 else 80
-          val q = new okay.Channel[Frame](Int.MaxValue)
+          val q = okay.Channel[Frame](Int.MaxValue)
           val opened = java.util.concurrent.atomic.AtomicBoolean(false)
 
           val hs = DefaultHttpHeaders()
@@ -254,7 +254,7 @@ object Netty {
   private def upgrade(ctx: ChannelHandlerContext, req: FullHttpRequest,
                       stage: okay.Stage[Frame, Frame, Unit])
                      (using Scheduler): Unit =
-    val q = new okay.Channel[Frame](Int.MaxValue)
+    val q = okay.Channel[Frame](Int.MaxValue)
     val handshaker = WebSocketServerHandshakerFactory(
       "ws://" + req.headers.get(HttpHeaderNames.HOST) + req.uri, null, true)
       .newHandshaker(req)
@@ -308,7 +308,7 @@ object Netty {
         () => ()
       }
 
-      def frames: Source[Frame] = Writer.of(q)
+      def frames: Source[Frame] = Writer.of(q)(using okay.given_Stream_Channel_Async)
 
       def close(code: Int, reason: String): Unit ! Async =
         send(Frame.Close(code, reason))

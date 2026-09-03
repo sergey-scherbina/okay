@@ -252,6 +252,31 @@ construction instead of a type test per value).
       suite that BINDS a real port (14 of them, found by survey rather
       than by waiting for each to flake) is also Live-tagged now.
 
+- [ ] channel-impls — implementations behind the `Channel` seam
+      (channel-seam landed the interface; `StmChannel` is the default
+      and unchanged). Each is its own lane, each measured against the
+      others AND against `zio.Queue` on the same harness, because the
+      point of the seam is that none of them is simply better:
+
+      * RingChannel (bounded, mutable) — `Ring` is already landed and
+        measured at 3.4x the rebuild model. Needs the claim-not-remove
+        waiter protocol from channel-ring-integration; that lane's
+        diagnosis is the starting point.
+      * UnboundedCasChannel — a Michael-Scott / linked-segment queue,
+        for the capacity `Channel.merge` actually defaults to. Costs
+        one node allocation per element instead of a whole state
+        rebuild, so it should sit between the two.
+      * RelaxedChannel / MultiFifoChannel — Koch, Sanders & Williams
+        (arXiv:2507.22764). An order of magnitude at p=32..192, at
+        the price of bounded rank error, so ONLY for a channel whose
+        consumer accepts relaxed order — not for `merge`, whose
+        per-source order `TestChunkEdges` asserts. See
+        channel-multififo-many-producers for when it applies.
+
+      The comparison harness belongs to the first of these to land,
+      parameterised over the implementation rather than written per
+      lane.
+
 - [ ] channel-ring-integration — wire `Ring` into `Channel`. The ring
       itself is landed, tested (MPMC and SPSC on real threads) and
       measured at 3.4x the rebuild-per-operation model it replaces

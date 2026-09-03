@@ -95,7 +95,7 @@ object Transports {
     def connect(url: String, headers: Seq[(String, String)],
                 subprotocols: Seq[String]): Socket ! Async =
       Async.await[Socket] { k =>
-        val q = new Channel[Frame](Int.MaxValue)
+        val q = Channel[Frame](Int.MaxValue)
         val text = new StringBuilder
         val bin = scala.collection.mutable.ArrayBuilder.make[Byte]
 
