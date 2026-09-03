@@ -1,7 +1,7 @@
 # Backlog
 
 ## Benchmarks — after kyo-fair-lanes (2026-09-02, docs/benchmarks.md §2/§5/§7)
-- [ ] test-login-tamper-flake — `TestLogin`'s "a tampered token is
+- [x] test-login-tamper-flake — `TestLogin`'s "a tampered token is
       refused" builds its tamper as `token.dropRight(2) + "xx"`, which
       is the SAME token whenever the JWT happens to end in `xx`. Base64
       url alphabet, so roughly 1 in 4096 runs fails a merge gate for
@@ -10,6 +10,13 @@
       failure is the data and not the code. Fix: tamper by flipping a
       character to one it is not, e.g. `init :+ (if last == 'x' then
       'y' else 'x')`.
+      LANDED 2026-09-03 — and the suggested recipe above was ITSELF
+      flawed: flipping the LAST char flaked worse (~40% of runs, not
+      1-in-4096), because a 64-byte ES256 signature's base64url tail
+      char carries only 2 significant bits (4 are decoder-ignored
+      padding) — many flips there decode to the SAME bytes and still
+      verify. Fixed by flipping a MIDDLE character instead (always
+      inside a fully-significant 6-bit block); 0/50 stress runs clean.
 
 - [ ] chunked-source-sweep — one same-session StreamOps run with every
       library's CHUNKED source (fs2 `Stream.range`, `ZStream.range`,
@@ -233,16 +240,9 @@ construction instead of a type test per value).
       gate policy. Investigating the timing itself remains open, but
       no longer at the cost of every landing's gate.
 
-## Correctness and the core (specs/sim.md, specs/typestate.md)
-
-## Cross-cutting — the 2026-09-01 audit (specs landed e3b5a74; slugs are implementation)
-
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
-
-## okay-security (specs/security.md — staged, like persist)
-
 
 ## okay-codec
 - [x] json-value-parser — landed: JsonValue.parse, a strict
@@ -274,18 +274,6 @@ construction instead of a type test per value).
       acceptance
 - [ ] r-arrow — frames as Arrow files/streams once the JSON-frame
       road hurts
-
-## The data landscape (specs/data.md — umbrella; vendor = seam impl)
-
-## okay-cache (specs/cache.md)
-
-## okay-sql (the neutral seam — Typed/Schema layer)
-
-## okay-pg (specs/sql.md — the wire driver)
-
-## okay-jdbc (specs/jdbc.md — the foreign database)
-
-## okay-conf (specs/conf.md)
 
 ## okay-persist (specs/persist.md — staged design; stage 0 landed)
 - [ ] persist-raft — RaftStore: consensus as one more control-log
@@ -325,7 +313,7 @@ construction instead of a type test per value).
 - [ ] http-post-body-audit — Netty/NIO: do POST bodies reach routes?
       (Jetty's did not — found by mcp-push, fixed there)
 
-## okay-demo (the showcase lane — specs/demo-chat.md, specs/match.md)
+## okay-demo (the showcase lane — specs/demo-chat.md, specs/match.md) — DONE, all 11 landed
 - [x] demo-streaming-cut — LANDED 2026-09-02: `Chat.reply`/`chatRoute`
       gain a `policy: (Int, String) => Option[Cut.Violation]`, checked
       alongside the token budget in the SAME `Cut.checked` — additive,
