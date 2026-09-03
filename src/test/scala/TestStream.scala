@@ -179,6 +179,42 @@ class TestStream extends munit.FunSuite {
       .toLazyList.toList, List.empty[Int])
   }
 
+  test("merge(chunked) without flushAfter STALLS a partial chunk — the hazard, shown") {
+    // three elements is fewer than one chunk, and the source never
+    // ends, so nothing can trigger an emission
+    def trickle: Source[Int] =
+      Source.of(List(1, 2, 3)).flatMap(_ =>
+        !.widen[Unit, Async, Writer % Int](Async.sleep(60000)))
+    val merged = trickle.merge(trickle, chunked = true)
+    val f = java.util.concurrent.CompletableFuture.supplyAsync(() =>
+      merged.toLazyList.take(3).toList)
+    val stalled = intercept[java.util.concurrent.TimeoutException](
+      f.get(500, java.util.concurrent.TimeUnit.MILLISECONDS))
+    assert(stalled != null)   // the wait expired: nothing was emitted
+    val _ = f.cancel(true)
+  }
+
+  test("merge(chunked, flushAfter) delivers a partial chunk from a source that never ends") {
+    def trickle: Source[Int] =
+      Source.of(List(1, 2, 3)).flatMap(_ =>
+        !.widen[Unit, Async, Writer % Int](Async.sleep(60000)))
+    val merged = trickle.merge(trickle, chunked = true, flushAfter = Some(50))
+    val f = java.util.concurrent.CompletableFuture.supplyAsync(() =>
+      merged.toLazyList.take(6).toList)
+    // flushes at 50ms; ten seconds is margin, not a measurement
+    val got = f.get(10, java.util.concurrent.TimeUnit.SECONDS)
+    assertEquals(got.sorted, List(1, 1, 2, 2, 3, 3))
+  }
+
+  test("merge(chunked, flushAfter) still chunks: a full source is not degraded to singletons") {
+    // 40 elements a side at chunk 16 and a flush far longer than the
+    // run: the timer must not turn this into the elementwise path
+    val out = Source.of((1 to 40).toList)
+      .merge(Source.of((41 to 80).toList), chunked = true, flushAfter = Some(30000))
+      .toLazyList.toList
+    assertEquals(out.toSet, (1 to 80).toSet)
+  }
+
   test("a writer program joins through toLazyList") {
     def count(n: Int): Nothing ! Writer % Int =
       Writer.tell(n).flatMap(_ => count(n + 1))

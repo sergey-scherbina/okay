@@ -428,10 +428,14 @@ turning the flag on alone buys 2.6x while holding the same amount of
 data, and the rest is bought explicitly with memory. 226.5 is the
 ceiling — a hand-built chunk pipeline measures 223.2.
 
-It is OFF by default, and not out of politeness: `chunked` emits when
-a chunk is full or when its input ends, with no flush on time. On the
-slow or unending sources this merge exists for — a model's tokens, a
-live feed — an element would wait for 15 others that may never come.
+It is OFF by default, and not out of politeness: on its own `chunked`
+emits when a chunk is full or when its input ends, with no flush on
+time. On the slow or unending sources this merge exists for — a
+model's tokens, a live feed — an element would wait for 15 others
+that may never come. `flushAfter = Some(millis)` bounds that wait and
+costs nothing standing: 230.0 ±3.3 with a 30-second window against
+230.1 ±0.9 without, the same number. The default path is unaffected
+either way — 307.2 ±2.0 against master's 310.2 ±18.4 the same hour.
 
 ## 7. Resource — 1000 bracketed acquire/use/release
 
