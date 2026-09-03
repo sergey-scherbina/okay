@@ -18,6 +18,9 @@ object TestPy:
 
 class TestPy extends munit.FunSuite {
 
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   override def munitIgnore: Boolean = TestPy.python.isEmpty
 
   private var workers = List.empty[PySubprocess]

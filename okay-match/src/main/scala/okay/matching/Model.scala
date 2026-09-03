@@ -129,7 +129,7 @@ object LinkHint:
   /** m***@e***.com — enough to recognize your own, useless to a stranger */
   def mask(email: String): String = email.split('@') match
     case Array(u, d) =>
-      def m(x: String) = if x.isEmpty then "*" else x.head + "***" + x.drop(1).dropWhile(_ != '.')
+      def m(x: String) = if x.isEmpty then "*" else s"${x.head}***${x.drop(1).dropWhile(_ != '.')}"
       m(u).takeWhile(_ != '.') + "@" + m(d)
     case _ => "***"
 

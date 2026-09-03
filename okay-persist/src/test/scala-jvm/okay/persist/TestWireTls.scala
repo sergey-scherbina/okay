@@ -32,6 +32,9 @@ object TestWireTls:
 
 class TestWireTls extends FunSuite:
 
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   override def munitIgnore: Boolean = !TestWireTls.generated
 
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")

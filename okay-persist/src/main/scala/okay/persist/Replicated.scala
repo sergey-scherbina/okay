@@ -172,7 +172,7 @@ final class Replicated private (val name: String, val partitions: Int,
     }
 
   private def advanceHwm(part: Part, partition: Int): Unit =
-    val ends = topics.map(_.end(partition)).sorted(Ordering[Long].reverse)
+    val ends = topics.map(_.end(partition)).sorted(using Ordering[Long].reverse)
     part.hwm = math.max(part.hwm, ends(quorum - 1))
 
   /** per partition: epoch, leader, hwm, every replica's end and lag

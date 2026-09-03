@@ -1,5 +1,7 @@
 package okay
 
+import scala.language.implicitConversions
+
 case class Fault(msg: String) extends Exception(msg)
 
 class TestThrows extends munit.FunSuite {

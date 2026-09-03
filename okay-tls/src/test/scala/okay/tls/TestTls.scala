@@ -24,6 +24,9 @@ object TestTls:
 
 class TestTls extends munit.FunSuite {
 
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   override def munitIgnore: Boolean = !TestTls.generated
 
   def cert = s"${TestTls.dir}/cert.pem"

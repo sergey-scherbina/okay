@@ -36,8 +36,11 @@ class TestChatDemo extends munit.FunSuite {
    * gateway under load: "HTTP/1.1 header parser received no bytes")
    * is absent in the same sense. Anything from the wire — an
    * IOException anywhere in the cause chain — SKIPS the test, named;
-   * a judgment failure still fails */
-  def liveTest(name: String)(body: => Any): Unit = test(name) {
+   * a judgment failure still fails. Tagged `Live` (integration-test-
+   * gate): a real model answering is real work, but its RESULT is
+   * not something `sbt test` can hold a landing to — out of the
+   * default gate, into `sbt integrationTest`. */
+  def liveTest(name: String)(body: => Any): Unit = test(name.tag(new munit.Tag("Live"))) {
     try body
     catch case e: Throwable if okay.llm.Live.wireDropped(e) =>
       assume(false, s"the local model gateway went away mid-test (${okay.llm.Live.root(e).getMessage}) — skipped")

@@ -10,6 +10,9 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class TestMongoDocs extends DocsSuite:
 
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   // the availability probe's own 1.5s driver deadline can still
   // stretch well past 30s under a loaded sbt test matrix (found
   // 2026-09-02, BACKLOG matrix-flake fifth sighting; matches the

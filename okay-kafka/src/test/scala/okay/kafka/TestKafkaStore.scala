@@ -11,6 +11,9 @@ import munit.FunSuite
  */
 class TestKafkaStore extends FunSuite:
 
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   override def munitTimeout: scala.concurrent.duration.Duration =
     scala.concurrent.duration.Duration(120, "s")
 

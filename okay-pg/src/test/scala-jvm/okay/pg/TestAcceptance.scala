@@ -18,6 +18,9 @@ import java.sql.DriverManager
  */
 class TestAcceptance extends munit.FunSuite {
 
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   final case class Customer(id: Long, userName: String, age: Option[Int],
                             balance: Double, active: Boolean)
   given Schema[Customer] = Schema.derived

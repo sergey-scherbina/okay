@@ -15,6 +15,9 @@ import okay.sql.Placeholders
  * connection with the same search_path.
  */
 class TestPgMatch extends MatchEngineSuite {
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   def engine = "postgres"
 
   val host = sys.env.getOrElse("OKAY_PG_HOST", "127.0.0.1")

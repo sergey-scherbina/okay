@@ -873,7 +873,7 @@ object ChatDemo {
 
   def contentPolicy(i: Int, token: String): Option[Cut.Violation] =
     bannedWords.find(w => token.toLowerCase.contains(w))
-      .map(w => Cut.Violation("content-policy", i, token))
+      .map(_ => Cut.Violation("content-policy", i, token))
 
   // ---- the routes ----------------------------------------------------
 

@@ -24,6 +24,9 @@ import okay.codec.Json
  */
 class TestLive extends munit.FunSuite {
 
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   override val munitTimeout = scala.concurrent.duration.Duration(180, "s")
 
   val command: Seq[String] =

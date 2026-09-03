@@ -123,7 +123,7 @@ object Ui {
         val newSet = newKeys.toSet
         // 1. removals, descending, of keys that vanished
         val removals = oldKeys.zipWithIndex.collect {
-          case (k, i) if !newSet(k) => i }.sorted(Ordering[Int].reverse)
+          case (k, i) if !newSet(k) => i }.sorted(using Ordering[Int].reverse)
           .map(i => Patch.Remove(at, i))
         val survivors = oldKeys.filter(newSet)
         // 2. one reorder of the survivors into the new relative order

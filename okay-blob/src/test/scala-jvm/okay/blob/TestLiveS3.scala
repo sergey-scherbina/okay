@@ -24,6 +24,9 @@ object TestLiveS3:
 
 class TestLiveS3 extends BlobContract("s3") {
 
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   override def munitIgnore: Boolean = !TestLiveS3.up
 
   private val creds = SigV4.Creds("minioadmin", "minioadmin")

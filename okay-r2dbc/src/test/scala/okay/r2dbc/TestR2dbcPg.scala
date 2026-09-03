@@ -7,6 +7,9 @@ import io.r2dbc.spi.Connection
  * server (the dockerized one; skips where absent). The same suite as
  * H2's: the seam's contract does not know which driver is under it. */
 class TestR2dbcPg extends R2dbcSuite:
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   def engine = "postgres (r2dbc)"
   override def knowsNullability = false
   val host = sys.env.getOrElse("OKAY_PG_HOST", "127.0.0.1")

@@ -25,6 +25,11 @@ import scala.collection.mutable
  */
 class TestLive extends munit.FunSuite {
 
+  // integration-test-gate: out of the default `sbt test` gate, into
+  // `sbt integrationTest` — a real model answering is real work, but
+  // its result is not something the default gate can hold a landing to
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   override val munitTimeout = scala.concurrent.duration.Duration(180, "s")
 
   val url = sys.env.getOrElse("OKAY_LLM_URL", "http://127.0.0.1:8089/v1/chat/completions")

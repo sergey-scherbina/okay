@@ -17,6 +17,9 @@ object TestRedis:
 
 class TestRedis extends munit.FunSuite {
 
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   override def munitIgnore: Boolean = !TestRedis.up
 
   final case class Quote(sym: String, price: Double, tags: Vector[String] = Vector.empty)

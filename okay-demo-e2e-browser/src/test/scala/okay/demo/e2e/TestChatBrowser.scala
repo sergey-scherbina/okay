@@ -20,6 +20,9 @@ import com.microsoft.playwright.options.LoadState
  * "okayDemoE2eBrowser/test".
  */
 class TestChatBrowser extends munit.FunSuite {
+  // integration-test-gate: out of the default gate, into `sbt integrationTest`
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   override val munitTimeout = scala.concurrent.duration.Duration(60, "s")
 
   val deadWire: okay.llm.Transport = (url, _, _) =>

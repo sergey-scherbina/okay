@@ -1,6 +1,5 @@
 package okay.live
 
-import okay.*
 import okay.given
 
 /** specs/live.md — a per-key channel, created lazily, reused after. */

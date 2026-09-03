@@ -38,6 +38,7 @@ object Langchain4j {
       // match by id, and their type tolerates the absent name
       M.ToolExecutionResultMessage(id, "", content)
     case Turn.Summary(s, _) => M.SystemMessage.from(s)
+    case Turn.StatePatch(patch) => M.SystemMessage.from(Json.print(patch))
 
   /** the FOURTH algebra's JSON schema, translated node for node into
    * their element tree; a key we do not map (like codec-defaults'

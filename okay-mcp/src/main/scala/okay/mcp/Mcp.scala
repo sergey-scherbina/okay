@@ -334,6 +334,7 @@ object McpDocs {
     val (role, text) = t match
       case Turn.Assistant(x, _) => ("assistant", x)
       case Turn.System(x) => ("user", x)
+      case Turn.StatePatch(patch) => ("user", Json.print(patch))
       case Turn.User(x) => ("user", x)
       case Turn.Result(_, c) => ("user", c)
       case Turn.Summary(x, _) => ("user", x)

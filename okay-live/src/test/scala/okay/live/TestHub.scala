@@ -1,6 +1,5 @@
 package okay.live
 
-import okay.*
 import okay.given
 
 /** specs/live.md — broadcast: every current subscriber gets every publish. */
