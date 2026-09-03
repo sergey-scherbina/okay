@@ -137,23 +137,79 @@ caveats are stated, not hidden:
       the stage-2 manual promote never passes through the control
       log at all
 
+## Own Raft (persist-raft) — staged
+
+Filed for months, taken up 2026-09-03 (operator: "start it anyway,"
+understanding a session lands a slice, not the whole climb). Staged
+explicitly rather than attempted whole, matching how this stack
+prices every large claim:
+
+- **Stage 0 — the algorithm's core state machine, LANDED
+  2026-09-03.** `okay.persist.Raft` (`RaftState`, `RaftMsg`,
+  `RaftEntry`, `Raft.handle`/`startElection`/`replicate`): a PURE
+  value transition, no engine, no network, no `Store` yet — the
+  textbook core (Ongaro & Ousterhout, Figure 2) minus everything
+  staged below. `RaftState.log` is 1-indexed to match the paper's
+  own proofs. Every RPC (RequestVote/AppendEntries, request and
+  response) is `handle`'s one case; a higher term seen on ANY
+  message steps a node down first, unconditionally, before the
+  message is otherwise handled — Raft's own rule, applied once at
+  the top rather than repeated per case.
+  Proven by seven tests, DRIVEN EXPLICITLY (a test calls
+  `electionTimeout`/`heartbeat`/`deliverAll` itself — no wall clock,
+  no autonomous timer, matching `TestElectionReplicated`'s own
+  manual-clock style): a lone candidate wins a majority and becomes
+  leader; two simultaneous candidates never BOTH become leader in
+  one term (a genuine split vote resolves on a retried, higher-term
+  election); a client entry replicates to a majority and the leader
+  commits it; a heartbeat propagates `commitIndex` to followers; a
+  follower whose log diverged at an OLDER term (never a same-term
+  same-index difference — Leader Completeness forbids that from ever
+  legitimately arising) is corrected by the next AppendEntries, not
+  merely appended past; a stale-term message is refused untouched, a
+  higher-term message steps a leader down; and the Figure 8 trap —
+  an entry from a PREVIOUS term is never committed by majority count
+  alone, only ridden forward by a later entry of the leader's OWN
+  term. `okayPersistJVM` full suite 95/95 (the reduction's existing
+  battery unaffected — this stage touches no file it depends on).
+- **Stage 1 — the `Store`/`Topic` engine wrapper (not started).**
+  Turn `RaftState` into something `Election` can construct a
+  `Topic` over — the reduction's whole argument is that this slots
+  in without Election changing BY CONSTRUCTION. Needs a real network
+  transport (okay-http or a raw socket seam) and a persistence layer
+  for `RaftState` itself (a crash must not forget `currentTerm`/
+  `votedFor` — Raft's OWN safety proof assumes stable storage for
+  exactly those two fields).
+- **Stage 2 — log compaction / snapshotting, membership changes**
+  (not started). The control log the reduction already runs on is
+  small and slow-changing (election traffic only); an actual
+  Raft-replicated DATA log needs both before it can run unbounded.
+- **The typestate note, still open** (asked by the user, 2026-09-01):
+  the ROLE protocol (Follower → Candidate → Leader, each with its
+  own legal actions) is the textbook typestate case; `PState` (the
+  type-changing state paramonad) could make "a follower may not
+  append as leader" a COMPILE error rather than the plain
+  `if s.role != RaftRole.Leader` runtime check stage 0 uses — its
+  per-op cost is irrelevant at election rates. Not done in stage 0:
+  the plain enum kept the FIRST slice's diff small and legible
+  against the paper; revisit once stage 1 gives typestate something
+  real to guard (a network handler that must not even COMPILE an
+  AppendEntries send from a Follower).
+- **The Sim-driven fuzz harness, still open** (the same 2026-09-01
+  note): the honest way to test consensus at scale is deterministic
+  simulation (FoundationDB-style interleaving of many nodes by
+  seed) — `src/main/scala/Sim.scala` (specs/sim.md) is exactly that
+  machinery, each node a fiber, the simulator choosing who wakes
+  next, every found bug replayable byte for byte. Stage 0's tests
+  drive the SAME pure `Raft.handle` explicitly instead — sufficient
+  to prove the seven safety properties above, but a seed-swept
+  Sim harness (randomized election timeouts, message reordering
+  and loss, partition injection) is the next honest step before
+  trusting this under real concurrency, filed here rather than
+  attempted in the same pass as the core.
+
 ## Out of scope
 
-- own Raft (RaftStore) — filed separately when a deployment names
-  the need; the reduction above is designed so it slots in as an
-  engine. Two notes for that future claim, from the core this
-  stack already owns (asked by the user, 2026-09-01): the ROLE
-  protocol (Follower → Candidate → Leader, each with its own legal
-  actions) is the textbook typestate case, and `PState` (the
-  type-changing state paramonad) can make "a follower may not
-  append as leader" a COMPILE error rather than a runtime check —
-  its per-op cost is irrelevant at election rates; and the honest
-  way to TEST consensus is deterministic simulation
-  (FoundationDB-style interleaving of many nodes by seed), which
-  is exactly what multi-prompt `Delim` is machinery for — each
-  node under its own Prompt, the simulator capturing at
-  send/receive points and choosing who wakes next, every found
-  bug replayable byte for byte.
 - membership changes / rebalancing partitions across nodes — the
   control log can carry assignment records later; static
   assignment stands until then
