@@ -908,9 +908,35 @@ explicit `Classpath`, `//> using dep` + Coursier resolution; lifecycle:
 example: examples/it-consulting-storefront.md; classloader isolation:
 platform-only parent per script; interpolation: `render`, `${expr}` in
 prose, examples/render-storefront.md; metadata: `okay.script.Meta`,
-front-matter + heading-scoped ```yaml as `Meta.current`). Traps found
-by the tests, all fixed before landing:
+front-matter + heading-scoped ```yaml as `Meta.current`; hot-reload:
+`Page`, compile-once-invoke-many). Traps found by the tests, all fixed
+before landing:
 
+- **`Page` surfaced a REAL, previously-invisible bug from
+  okay-script-classloader-isolation: a second `invoke()` on the SAME
+  compiled program silently printed NOTHING** — not a `Page` bug per
+  se, a latent defect in `compileOnly`'s stdout capture that a
+  one-shot `run`/`render` could never have exposed. Root cause: the
+  isolated script classloader (okay-script-classloader-isolation)
+  loads its OWN, separate copy of `scala.Console` — a different class
+  than the host's — so host-side `scala.Console.withOut(ps)` (the fix
+  from the ORIGINAL `println`-capture trap, "The model" above) never
+  touches the copy the script's own `println` actually reads. It
+  "worked" for a one-shot call only by coincidence: the isolated
+  `Console`'s lazily-initialized default value binds to whatever
+  `System.out` is AT ITS OWN FIRST TOUCH — which happened to be our
+  redirected stream, on that one call — and then stays bound to THAT
+  SAME stream forever after, so a genuinely SECOND `invoke()` writes
+  into the FIRST call's already-drained buffer instead of the current
+  one, which comes back empty. Traced from a failing `TestPage` test
+  down to a minimal reproduction (a bare isolated `URLClassLoader`
+  double-invoke, no `Page` involved) before writing the fix, to be
+  certain of the mechanism rather than guessing at a patch. Fixed by
+  driving the ISOLATED classloader's OWN `Console` object via
+  reflection (`Console$.MODULE$.setOutDirect(ps)`, restored after) on
+  EVERY `invoke()` call, instead of the host-side `withOut` — applies
+  uniformly to `run`/`render`'s one-shot path too, though it was
+  invisible there.
 - **`Meta.current` was NOT the first design — a `given`-based one was,
   and it failed on BOTH counts an empirical probe checked, not just
   one.** See "How code reaches it" above for the full account: local
@@ -975,9 +1001,17 @@ by the tests, all fixed before landing:
   `System.setOut` alone does not redirect it, because Scala's
   `println`/`Predef` goes through `scala.Console.out`, a
   `DynamicVariable` that is NOT re-read from `System.out` on every
-  call. Fix: wrap the invocation in `scala.Console.withOut(ps)`
-  *in addition to* `System.setOut` (a reflective callee could still
-  write directly to `System.out`, so both are captured).
+  call. Original fix: wrap the invocation in `scala.Console.withOut
+  (ps)` *in addition to* `System.setOut`. **Superseded by
+  okay-script-page** (see its own Results entry below): once scripts
+  ran in an isolated classloader (okay-script-classloader-isolation),
+  that `withOut` call was touching the HOST's `Console` class, not the
+  isolated script's own separate copy — invisible for a one-shot call,
+  wrong for `Page`'s repeated `invoke()`. The current mechanism drives
+  the isolated classloader's OWN `Console` via reflection
+  (`setOutDirect`) instead; `System.setOut` (JVM-global, no classloader
+  identity issue) stays as the belt-and-braces catch for a reflective
+  callee that writes directly to `System.out`.
 - **A markdown file with zero code blocks failed to COMPILE**, not
   just failed to do anything useful: the synthesized
   `@main def okayScriptMain(): Unit =` followed by an empty body is a

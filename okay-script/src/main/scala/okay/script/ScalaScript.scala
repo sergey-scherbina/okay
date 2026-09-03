@@ -38,6 +38,18 @@ final case class Result(
   thrown: Option[Throwable],
 )
 
+/** An already-compiled program, invokable repeatedly WITHOUT
+ * recompiling -- the compile/invoke split `Page` needs for hot-reload
+ * (okay-script-page). See specs/okay-script.md "Hot-reload".
+ */
+trait Compiled:
+  /** runs the ALREADY-COMPILED program again, fresh top-to-bottom --
+   * no recompilation. */
+  def invoke(): Result
+  /** releases the classloader and deletes the temp output directory.
+   * Must be called when no more `invoke()`s are coming. */
+  def close(): Unit
+
 /** The set of classpath entries a script compiles and runs against.
  * `ambient` (the calling JVM's own `-cp`) is a HYPOTHESIS about the
  * environment, not a fact: it reads
@@ -319,30 +331,42 @@ object ScalaScript:
    * (see Block/Result docs). `classpath` defaults to the calling
    * process's own -- see Classpath's doc for why that is a hypothesis,
    * not a given -- and a script's own `//> using dep` directives are
-   * resolved and appended to it before compiling. Every block sees a
-   * local `given okay.script.Meta.Context` scoped to its own heading
-   * position -- see specs/okay-script.md "Metadata as context".
+   * resolved and appended to it before compiling. If the document has
+   * front-matter/yaml/headings, `okay.script.Meta.current` reflects
+   * the right position for every block as execution reaches it -- see
+   * specs/okay-script.md "Metadata as context".
    */
   def run(markdown: String, classpath: Classpath = Classpath.ambient): Result =
-    withDeps(markdown, classpath): cp =>
+    resolvedClasspath(markdown, classpath).fold(identity, cp =>
       val doc = Meta.parse(markdown)
       val items = tokenize(markdown).collect { case (Segment.Code(code), path) =>
         (path, code.linesWithSeparators.map("  " + _).mkString)
       }
-      compileAndRun(withMeta(doc, items), cp)
+      compileAndRun(withMeta(doc, items), cp))
 
   /** The whole document -- prose AND code -- as one program: `${expr}`
    * markers in prose (outside ```scala fences) are evaluated and their
    * `.toString` substituted in place; everything else passes through
    * verbatim (a ```yaml fence is METADATA and does not appear in the
    * output; any OTHER non-scala language tag still does). The
-   * rendered document is `Result.stdout` on success. Every segment
-   * sees the same local `given okay.script.Meta.Context` `run` gives
-   * its blocks. See specs/okay-script.md "Interpolation" and
-   * "Metadata as context".
+   * rendered document is `Result.stdout` on success. Same
+   * `okay.script.Meta.current` `run` has. See specs/okay-script.md
+   * "Interpolation" and "Metadata as context". One-shot: compiles,
+   * invokes once, closes -- see `compileRender`/`Page` for a
+   * compile-once-invoke-many alternative (specs/okay-script.md
+   * "Hot-reload").
    */
   def render(markdown: String, classpath: Classpath = Classpath.ambient): Result =
-    withDeps(markdown, classpath): cp =>
+    compileRender(markdown, classpath).fold(identity, c => try c.invoke() finally c.close())
+
+  /** `render`'s compile step, split from invocation: `Left` carries a
+   * `Result` with dependency-resolution or compile errors (never
+   * throws); `Right` an invokable `Compiled` handle, callable
+   * repeatedly without recompiling -- the primitive `Page` (hot-reload)
+   * is built on. See specs/okay-script.md "Hot-reload".
+   */
+  def compileRender(markdown: String, classpath: Classpath = Classpath.ambient): Either[Result, Compiled] =
+    resolvedClasspath(markdown, classpath).flatMap: cp =>
       val doc = Meta.parse(markdown)
       val items = tokenize(markdown).map {
         case (Segment.Text(s), path) if s.nonEmpty => (path, "  print(" + scalaStringLiteral(s) + ")")
@@ -350,88 +374,115 @@ object ScalaScript:
         case (Segment.Interp(expr), path) => (path, s"  print(($expr).toString)")
         case (Segment.Code(code), path) => (path, code.linesWithSeparators.map("  " + _).mkString)
       }
-      compileAndRun(withMeta(doc, items), cp)
+      compileOnly(withMeta(doc, items), cp)
 
-  private def withDeps(markdown: String, classpath: Classpath)(f: Classpath => Result): Result =
+  private def resolvedClasspath(markdown: String, classpath: Classpath): Either[Result, Classpath] =
     val coords = Deps.declared(markdown)
     Deps.resolve(coords) match
       case Deps.Resolved.Failed(msg) =>
-        Result(ok = false, stdout = "", errors = Vector(s"dependency resolution failed: $msg"), thrown = None)
+        Left(Result(ok = false, stdout = "", errors = Vector(s"dependency resolution failed: $msg"), thrown = None))
       case Deps.Resolved.ToolMissing =>
-        Result(ok = false, stdout = "", errors = Vector("`using dep` declared but no cs/coursier found on PATH"), thrown = None)
+        Left(Result(ok = false, stdout = "", errors = Vector("`using dep` declared but no cs/coursier found on PATH"), thrown = None))
       case Deps.Resolved.Jars(extra) =>
-        f(classpath ++ extra)
+        Right(classpath ++ extra)
 
   private def compileAndRun(body: String, classpath: Classpath): Result =
+    compileOnly(body, classpath).fold(identity, c => try c.invoke() finally c.close())
+
+  /** Compiles `body` (an `@main def okayScriptMain(): Unit` body) and,
+   * on success, loads it into a fresh isolated `URLClassLoader` --
+   * platform-only parent, see okay-script-classloader-isolation --
+   * WITHOUT invoking or deleting anything: the returned `Compiled`
+   * owns both (its `close()` deletes the temp dir this creates).
+   */
+  private def compileOnly(body: String, classpath: Classpath): Either[Result, Compiled] =
     val wrapped =
       s"""@main def okayScriptMain(): Unit =
          |$body
          |""".stripMargin
 
     val dir = Files.createTempDirectory("okay-script-")
-    try
-      val srcFile = dir.resolve("OkayScriptMain.scala")
-      Files.writeString(srcFile, wrapped)
-      val outDir = Files.createDirectory(dir.resolve("out"))
+    val srcFile = dir.resolve("OkayScriptMain.scala")
+    Files.writeString(srcFile, wrapped)
+    val outDir = Files.createDirectory(dir.resolve("out"))
 
-      val diagnostics = Vector.newBuilder[String]
-      val reporter = collectingReporter(diagnostics)
+    val diagnostics = Vector.newBuilder[String]
+    val reporter = collectingReporter(diagnostics)
 
-      val args = Array(
-        "-classpath", classpath.asString,
-        "-d", outDir.toString,
-        "-color:never",
-        srcFile.toString,
-      )
+    val args = Array(
+      "-classpath", classpath.asString,
+      "-d", outDir.toString,
+      "-color:never",
+      srcFile.toString,
+    )
 
-      val driver = new Driver:
-        override protected def sourcesRequired: Boolean = false
+    val driver = new Driver:
+      override protected def sourcesRequired: Boolean = false
 
-      val summary = driver.process(args, reporter, null)
-      val errs = diagnostics.result()
+    val summary = driver.process(args, reporter, null)
+    val errs = diagnostics.result()
 
-      if summary.hasErrors then
-        Result(ok = false, stdout = "", errors = errs, thrown = None)
-      else
-        // platform-only parent (okay-script-classloader-isolation,
-        // 2026-09-03): getClass.getClassLoader would let a script
-        // resolve anything on okay-script's OWN build classpath
-        // (URLClassLoader is parent-first) regardless of what the
-        // caller actually put in `classpath` -- defeating the
-        // isolation Classpath/Deps exist for. A script sees exactly
-        // its own compiled classes, its own Classpath, and the JDK.
-        val loaderUrls = (outDir +: classpath.entries).map(_.toUri.toURL).toArray
-        val loader = new URLClassLoader(loaderUrls, ClassLoader.getPlatformClassLoader())
-        val cls = loader.loadClass("okayScriptMain")
-        val method = cls.getMethod("main", classOf[Array[String]])
+    if summary.hasErrors then
+      deleteRecursively(dir)
+      Left(Result(ok = false, stdout = "", errors = errs, thrown = None))
+    else
+      // platform-only parent (okay-script-classloader-isolation,
+      // 2026-09-03): getClass.getClassLoader would let a script
+      // resolve anything on okay-script's OWN build classpath
+      // (URLClassLoader is parent-first) regardless of what the
+      // caller actually put in `classpath` -- defeating the
+      // isolation Classpath/Deps exist for. A script sees exactly
+      // its own compiled classes, its own Classpath, and the JDK.
+      val loaderUrls = (outDir +: classpath.entries).map(_.toUri.toURL).toArray
+      val loader = new URLClassLoader(loaderUrls, ClassLoader.getPlatformClassLoader())
+      val cls = loader.loadClass("okayScriptMain")
+      val method = cls.getMethod("main", classOf[Array[String]])
 
-        val capturedOut = new ByteArrayOutputStream()
-        var thrown: Option[Throwable] = None
-        try
+      // okay-script-page (2026-09-03): `scala.Console.withOut` on the
+      // HOST side does not work here -- the isolated classloader
+      // (okay-script-classloader-isolation) loads its OWN copy of
+      // `scala.Console`, a class distinct from the host's, so
+      // host-side `withOut` never touches the copy the script's own
+      // `println` actually reads. It APPEARED to work for a one-shot
+      // `run`/`render` only by coincidence: the isolated Console's
+      // lazily-initialized default binds to whatever `System.out` is
+      // AT ITS OWN FIRST TOUCH, which happened to be our redirected
+      // stream on the FIRST call -- and then stays bound to THAT one
+      // stream forever after, so a SECOND `invoke()` (what `Page`
+      // needs) silently writes into the first call's already-consumed
+      // buffer instead of the second's, which is empty. Found by
+      // `TestPage`'s two-calls-return-different-content tests, not
+      // guessed. Fixed by driving the ISOLATED classloader's OWN
+      // `Console` object via reflection every call, not the host's.
+      val consoleCls = loader.loadClass("scala.Console$")
+      val consoleModule = consoleCls.getField("MODULE$").get(null)
+      val consoleSetOut = consoleCls.getMethod("setOutDirect", classOf[PrintStream])
+      val consoleOut = consoleCls.getMethod("out")
+
+      Right(new Compiled:
+        def invoke(): Result =
+          val capturedOut = new ByteArrayOutputStream()
+          var thrown: Option[Throwable] = None
           val prevOut = System.out
           val ps = new PrintStream(capturedOut, true, "UTF-8")
           System.setOut(ps)
+          val prevConsoleOut = consoleOut.invoke(consoleModule).asInstanceOf[PrintStream]
+          consoleSetOut.invoke(consoleModule, ps)
           try
-            scala.Console.withOut(ps):
-              try method.invoke(null, Array.empty[String])
-              catch
-                case e: java.lang.reflect.InvocationTargetException =>
-                  thrown = Some(Option(e.getCause).getOrElse(e))
-                case e: Throwable =>
-                  thrown = Some(e)
+            try method.invoke(null, Array.empty[String])
+            catch
+              case e: java.lang.reflect.InvocationTargetException =>
+                thrown = Some(Option(e.getCause).getOrElse(e))
+              case e: Throwable =>
+                thrown = Some(e)
           finally
+            consoleSetOut.invoke(consoleModule, prevConsoleOut)
             System.setOut(prevOut)
-        finally
-          loader.close()
+          Result(ok = thrown.isEmpty, stdout = capturedOut.toString("UTF-8"), errors = Vector.empty, thrown = thrown)
 
-        Result(
-          ok = thrown.isEmpty,
-          stdout = capturedOut.toString("UTF-8"),
-          errors = Vector.empty,
-          thrown = thrown,
-        )
-    finally
-      deleteRecursively(dir)
+        def close(): Unit =
+          loader.close()
+          deleteRecursively(dir))
 
   private def collectingReporter(sink: scala.collection.mutable.Builder[String, Vector[String]]): Reporter =
     new dotty.tools.dotc.reporting.StoreReporter(null):
