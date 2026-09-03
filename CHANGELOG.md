@@ -1,5 +1,32 @@
 # Changelog
 
+## quiet-needs-live-model — the fork's precondition, caught by the other repo
+Completed: 2026-09-03
+journal-versions shipped `OnDiverge.Quiet` (continue past a divergence,
+branch a version) beside a module doc saying a rerun scripts the model
+from the recording. Together those were wrong, and the error was
+shipped: the recorded reply for step k+1 was produced while looking at
+the OLD answer to step k, so once a live tool answers differently,
+every later recorded reply answers a question the run is no longer
+asking. Continuing to script the model there is not a weaker replay, it
+is a confidently wrong one.
+
+Caught by rozum's `replay.rs`, built independently against the same
+problem in Rust while this lane was landing: its `ReplayLiveTools`
+STOPS at a live-tool divergence for exactly this reason, and its fork
+mode abandons the old journal and hands a LIVE model the new result.
+Found by asking that repo's own `rag.search` about the area — the first
+time this session's cross-repo work paid back in that direction rather
+than out of it.
+
+`Quiet` is now `ForkWithLiveModel`, so the name carries the
+requirement and a call site cannot assume otherwise, and `Loud` is
+documented as the mode a scripted-model rerun needs (stopping is the
+sound thing there). The handler cannot see the caller's model, so it
+does what it can: abandons the journal at the fork and reports
+`branchedAt`, the step from which the caller's model must be live. Two
+tests pin it. okay-agent 93/93 on JVM plus JS from clean, no warnings.
+
 ## journal-versions — the third mode of a journal, and what a divergence means
 Completed: 2026-09-03
 Landed as 5537049. A journal had two modes: `Durable.tools` records

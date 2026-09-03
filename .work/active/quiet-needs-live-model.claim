@@ -1,5 +1,0 @@
-slug: quiet-needs-live-model
-branch: feature/quiet-needs-live-model
-worktree: ../okay-wt-quiet-needs-live-model
-claimed: 2026-09-03
-scope: correct journal-versions' Quiet mode. It continues past a divergence, but the module doc also says a rerun scripts the model from the recording — together those are UNSOUND: past the divergence the scripted model answers the question the old tool result raised, not the new one. Caught by rozum's independently-built ReplayLiveTools/fork modes, which stop or fork onto a LIVE model for exactly this reason. Rename the case so the precondition cannot be misread, state it, and pin it with a test.
