@@ -22,8 +22,13 @@ final class Page(path: Path, classpath: Classpath = Classpath.ambient):
    * changed since the last compile; otherwise re-invokes the
    * already-compiled program. Compile errors are reported the same
    * way `ScalaScript.render` reports them, through `Result.errors`.
+   * `web` is set FIRST, inside this call's own lock -- two threads
+   * calling `render` concurrently on the SAME `Page` must never let
+   * one thread's script read the other's `Web` (specs/okay-script.md
+   * "Request context").
    */
-  def render(): Result = synchronized:
+  def render(web: Web = Web.current): Result = synchronized:
+    Web.setCurrent(web)
     val mtime = Files.getLastModifiedTime(path)
     cached match
       case Some((t, c)) if t == mtime =>

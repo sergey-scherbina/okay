@@ -397,14 +397,17 @@ synthesized program, run it, capture what it printed.
 
 The document is tokenized (line-by-line, mirroring `blocks`' own fence
 detection) into `Text` / `Code` / `Interp` segments in document order,
-then synthesized into ONE `@main` body:
+then synthesized into ONE `run` body (see the top-level "Compilation
+strategy" for why it is `object OkayScriptMain: def run(args)`, not
+`@main`):
 
 ```scala
-@main def okayScriptMain(): Unit =
-  print("""<a Text segment, raw triple-quoted>""")
-  <a Code segment's statements, verbatim>
-  print((<an Interp segment's expr>).toString)
-  ...
+object OkayScriptMain:
+  def run(args: Array[String]): Unit =
+    print("""<a Text segment, raw triple-quoted>""")
+    <a Code segment's statements, verbatim>
+    print((<an Interp segment's expr>).toString)
+    ...
 ```
 
 Each `Text`/`Interp` segment is an inline `print(...)` call in document
@@ -778,20 +781,43 @@ standalone program without a named entry point, so the concatenated
 block text is wrapped:
 
 ```scala
-@main def okayScriptMain(): Unit =
-  <concatenated block bodies>
+object OkayScriptMain:
+  def run(args: Array[String]): Unit =
+    <concatenated block bodies>
 ```
 
-This is the one and only piece of synthesized syntax — everything
-inside the braces is exactly what the markdown author wrote, unedited.
-Wrapping as a METHOD BODY (not a top-level script) means:
+**NOT `@main`** (was, until okay-script-web): `@main`'s generated
+`main(Array[String])` forwarder does not hand `args` through to the
+underlying body when the `@main` method itself declares zero
+parameters, which it always did here — no way to get `Web`'s encoded
+request data (see "Request context") into the running program through
+it. A plain top-level `object` needs no compiler-macro cooperation and
+gives full control of the method signature; Scala still emits a
+static forwarder class (`OkayScriptMain.run(String[])`, confirmed by
+decompiling it) exactly the way `@main` did, so the load-and-invoke
+step below is otherwise unchanged.
+
+Everything inside `run`'s body is exactly what the markdown author
+wrote (plus, when the document has metadata or might reference `Web`,
+one or two synthesized statements at the top — see "Metadata as
+context" / "Request context"), unedited. Wrapping as a METHOD BODY
+(not a top-level script) means:
 - `import`, `val`, `def`, `class`, `given` are all legal, at any point
   in the concatenation, because a method body can contain local
   definitions — this is what makes "each block sees the previous
   block's definitions" true without extra plumbing.
 - there is exactly one compiled artifact per run: a single
-  `okayScriptMain` class with a generated `main(Array[String])`
+  `OkayScriptMain` class with a generated `run(Array[String])` static
   forwarder, found and invoked via reflection after compilation.
+
+Every body-line producer (`run`, `render`, `withMeta`) builds its
+lines at the FINAL indentation `run`'s body needs directly, rather
+than assembling text at one depth and re-indenting it afterward by
+prefixing every physical line — a real bug (okay-script-web) found
+exactly that way: a `Text` segment's raw triple-quoted string literal
+can span several physical lines, and a blind re-indentation pass
+cannot tell "a line of Scala source" from "a line INSIDE a string
+literal's data", so it corrupted the SECOND kind too.
 
 The synthetic source is written to a fresh temp file per `run` call
 (`Files.createTempDirectory("okay-script-")`), compiled with
@@ -994,8 +1020,55 @@ example: examples/it-consulting-storefront.md; classloader isolation:
 platform-only parent per script; interpolation: `render`, `${expr}` in
 prose, examples/render-storefront.md; metadata: `okay.script.Meta`,
 front-matter + heading-scoped ```yaml as `Meta.current`; hot-reload:
-`Page`, compile-once-invoke-many). Traps found by the tests, all fixed
-before landing:
+`Page`, compile-once-invoke-many; request context: `Web`, dependency-
+free, `String[]`-encoded across the classloader boundary). Traps found
+by the tests, all fixed before landing:
+
+- **`Web` hit the SAME classloader-identity trap the Console fix
+  found, one level up — for a USER-DEFINED type this time, not a JDK
+  one.** A host-built `Web` instance handed directly to the isolated
+  script (as a `Compiled.invoke()` argument) fails reflection's
+  argument-type check: the isolated classloader compiles its OWN
+  separate `Web` class, and a host instance is not an instance of it.
+  Fixed by encoding `Web` into a flat `Array[String]` on the host side
+  (`Web.encodeArgs`) and decoding it back INSIDE the isolated
+  classloader (`Web.decodeArgs`, called from the synthesized source
+  itself) — only `String`/`Array[String]` ever cross the boundary.
+  This also meant abandoning `@main def okayScriptMain(): Unit` for
+  the wrapper entirely: `@main`'s generated `main(Array[String])`
+  forwarder does not hand `args` through to the underlying body at
+  all when the `@main` method itself declares zero parameters (which
+  it always did, since nothing needed `args` before `Web`). Switched
+  to a plain `object OkayScriptMain: def run(args: Array[String]):
+  Unit`, which needed no compiler-macro cooperation and gave full
+  control of the signature — confirmed by decompiling both shapes
+  (`javap`) before writing the change, not assumed.
+- **The wrapper change broke output for EVERY existing example,
+  discovered immediately by `TestScalaScriptRender`'s own
+  no-interpolation test** — not a `Web`-specific bug, a synthesis bug
+  the nesting-depth change exposed. The naive fix (prefix every
+  physical line of the already-built `body` with 2 more spaces, since
+  the body now sits one level deeper under `object`/`def`) corrupted
+  DATA: a `Text` segment's raw triple-quoted string literal can span
+  several physical lines, and `body`'s own line-prefixing pass could
+  not tell "a line of Scala source" from "a line INSIDE a string
+  literal's data" — it added the same 2 spaces to both, so every
+  rendered line of output gained a spurious leading indent. Fixed by
+  having EVERY body-line producer (`run`, `render`, `withMeta`) build
+  its lines at the FINAL required depth (4 spaces) directly, removing
+  the second, unsafe re-indentation pass entirely — indentation is
+  decided ONCE, at the point each line is actually constructed, never
+  re-derived by scanning already-assembled text.
+- **The unconditional `Web.decodeArgs` call in the wrapper repeated
+  `hasMeta`'s own lesson from the previous landing** — caught by the
+  SAME test that caught it the first time
+  (`TestScalaScriptClassloaderIsolation`'s minimal-Classpath case):
+  referencing `okay.script.Web` in every synthesized program, even one
+  that never uses it, breaks self-sufficiency for the common
+  Web-free case. Fixed the same way `hasMeta` was: a cheap check
+  (`hasWeb`, a substring scan for `"Web"` in the body) gates the
+  decode call, emitted only when the script might actually reference
+  it.
 
 - **`Page` surfaced a REAL, previously-invisible bug from
   okay-script-classloader-isolation: a second `invoke()` on the SAME
