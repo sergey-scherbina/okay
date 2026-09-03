@@ -102,6 +102,16 @@ object Json {
   def value(c: Cst[K]): Json =
     values(c).headOption.getOrElse(JErr("empty input"))
 
+  /** a hex digit string, parsed as one UTF-16 code unit; anything not
+   * four clean hex digits is not a code point this function can name.
+   * Package-visible: JsonValue's fast path decodes the identical
+   * escape and must agree with this one exactly, not just resemble it. */
+  private[codec] def hex4(s: String): Option[Char] =
+    if s.length == 4 && s.forall(c => c.isDigit ||
+      (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
+    then scala.util.Try(Integer.parseInt(s, 16).toChar).toOption
+    else None
+
   private def unquote(lexeme: String): String =
     val inner = lexeme.stripPrefix("\"").stripSuffix("\"")
     val b = new StringBuilder
@@ -113,6 +123,18 @@ object Json {
           case 'n' => b.append('\n'); i += 2
           case 't' => b.append('\t'); i += 2
           case 'r' => b.append('\r'); i += 2
+          // a surrogate PAIR needs no special handling here: two
+          // \uXXXX escapes that each decode to one UTF-16 code unit,
+          // appended in order, are already a correct Scala String —
+          // that is what a UTF-16 string always was
+          case 'u' if i + 6 <= inner.length =>
+            hex4(inner.substring(i + 2, i + 6)) match
+              case Some(ch) => b.append(ch); i += 6
+              // damage, not a throw: unquote returns a bare String, so
+              // there is no JErr for a malformed escape to become —
+              // every other case here already falls back to the
+              // literal character rather than failing loudly
+              case None => b.append('u'); i += 2
           case x => b.append(x); i += 2
       else { b.append(c); i += 1 }
     b.toString

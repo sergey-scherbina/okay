@@ -49,9 +49,40 @@ class TestJsonValue extends munit.FunSuite {
     }
   }
 
-  test("the projection's escape reading is kept: \\u is four letters, \\b is b") {
-    assertEquals(JsonValue.parse("\"\\u0041\\b\""), Some(JStr("u0041b")))
+  test("the projection's escape reading: \\u names a code point now, \\b is still b") {
+    // json-unicode-escape (2026-09-03): \u used to decode to the four
+    // literal letters that named it — "u0041" — because the catch-all
+    // single-character-escape case handled it the same as \b. \b keeps
+    // its non-RFC reading (this project's own choice, unrelated to the
+    // bug); \u no longer shares its fate.
+    assertEquals(JsonValue.parse("\"\\u0041\\b\""), Some(JStr("Ab")))
     assertEquals(JsonValue.parse("\"a\\nb\""), Some(JStr("a\nb")))
+  }
+
+  test("a surrogate pair reconstructs the one character it names") {
+    // U+1F600, GRINNING FACE — outside the BMP, so JSON (and this
+    // parser) sees it as two \u escapes; two appended UTF-16 code
+    // units that form a valid pair are already a correct String,
+    // needing no pairing logic of this parser's own
+    assertEquals(JsonValue.parse("\"\\ud83d\\ude00\""), Some(JStr("😀")))
+    assertEquals(Json.parse("\"\\ud83d\\ude00\""), JStr("😀"))
+  }
+
+  test("Cyrillic survives an escaping JSON producer, not just a raw one") {
+    // the case that found the bug: Telegram's own Bot API escapes
+    // non-ASCII, and every character of it was coming through as
+    // garbage before this fix
+    assertEquals(JsonValue.parse("\"\\u043d\\u0443\\u0436\\u043d\\u0430\""), Some(JStr("нужна")))
+    assertEquals(Json.parse("\"\\u043d\\u0443\\u0436\\u043d\\u0430\""), JStr("нужна"))
+  }
+
+  test("a truncated escape at the end of a string does not throw") {
+    // fewer than four hex digits before the closing quote: damage,
+    // answered the same wrong-but-safe way every other case here is —
+    // unquote returns a bare String, so there is no JErr to become,
+    // and the parser falls back to the un-decoded single-char reading
+    assertEquals(Json.parse("\"ab\\u12\""), JStr("abu12"))
+    assertEquals(JsonValue.parse("\"ab\\u12\""), Some(JStr("abu12")))
   }
 
   test("numbers are toDouble's, including the edges") {

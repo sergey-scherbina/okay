@@ -24,10 +24,18 @@ import Json.*
  * refusals land on the lossless answer too.
  *
  * Two readings are the projection's, not RFC's, kept on purpose so
- * the two roads agree: escapes `\\n` `\\t` `\\r` are the control
- * characters and ANY other escaped character is itself (`\\u0041` is
- * the four letters "u0041", `\\b` is "b"); a number is whatever
- * `toDouble` makes of its RFC-shaped lexeme (`1e999` is Infinity).
+ * the two roads agree: `\\n` `\\t` `\\r` are the control characters,
+ * `\\uXXXX` is the named UTF-16 code unit, and any OTHER escaped
+ * character is itself (`\\b` is "b"); a number is whatever `toDouble`
+ * makes of its RFC-shaped lexeme (`1e999` is Infinity).
+ *
+ * `\\uXXXX` was NOT decoded here until json-unicode-escape (2026-09-03):
+ * both roads treated it as the literal characters "uXXXX", which this
+ * comment used to document as the agreed reading rather than naming
+ * as the bug it was. Found downstream, by a JSON producer (Telegram's
+ * own Bot API, confirmed live) that escapes non-ASCII text — every
+ * such character it sent came through as four to six garbage letters,
+ * with nothing anywhere in the chain reporting an error.
  */
 object JsonValue {
 
@@ -138,18 +146,24 @@ object JsonValue {
       else if plain then { at = i + 1; s.substring(start, i) }
       else
         // the projection's unquote, verbatim: n t r are control
-        // characters, any other escaped character is itself
+        // characters, \uXXXX is one UTF-16 code unit (a surrogate
+        // pair needs nothing extra — two appended code units that
+        // form one are already a correct String), and any OTHER
+        // escaped character is itself
         val b = new java.lang.StringBuilder(i - start)
         var j = start
         while j < i do
           val c = s.charAt(j)
           if c == '\\' && j + 1 < i then
             s.charAt(j + 1) match
-              case 'n' => b.append('\n'): Unit
-              case 't' => b.append('\t'): Unit
-              case 'r' => b.append('\r'): Unit
-              case x => b.append(x): Unit
-            j += 2
+              case 'n' => b.append('\n'): Unit; j += 2
+              case 't' => b.append('\t'): Unit; j += 2
+              case 'r' => b.append('\r'): Unit; j += 2
+              case 'u' if j + 6 <= i =>
+                Json.hex4(s.substring(j + 2, j + 6)) match
+                  case Some(ch) => b.append(ch): Unit; j += 6
+                  case None => b.append('u'): Unit; j += 2
+              case x => b.append(x): Unit; j += 2
           else { b.append(c): Unit; j += 1 }
         at = i + 1
         b.toString
