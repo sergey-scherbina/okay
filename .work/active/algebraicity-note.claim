@@ -1,0 +1,5 @@
+slug: algebraicity-note
+branch: feature/algebraicity-note
+worktree: ../okay-wt-algebraicity-note
+claimed: 2026-09-03
+scope: docs/theory ch.5 gains the section the operator's question surfaced — Pure/Bind is the skeleton, the middle constructor is the signature, algebraicity is the commuting equation, and the kind F[+_] is what makes a scoped payload necessarily closed; two source comments (Sim.Op.Fork, Stm.Tx.OrElse) naming that constraint. Docs + comments only.
