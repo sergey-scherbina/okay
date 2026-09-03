@@ -149,9 +149,13 @@ lazy val okay = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-native",
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
-    // like JS: the cross suite is the native test source
+    // the cross suite (Await-based programs) plus a native-only dir
+    // for what only makes sense here (native-scheduler-pool: the
+    // pool Scheduler, CanBlock-based — the cross suite deliberately
+    // never uses CanBlock)
     Test / unmanagedSourceDirectories :=
-      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+        baseDirectory.value.getParentFile / "src" / "test" / "scala-native"),
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
 

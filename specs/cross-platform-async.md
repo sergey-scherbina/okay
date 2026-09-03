@@ -173,7 +173,7 @@ cross-build lands so nothing has to be broken later.
       send/close race keeps its accounting invariant on the parking
       forms; the cross suite checks refusal after close everywhere.
 - [x] run the cross suite on Native — done, in CI
-- [ ] native-scheduler-pool — a fixed worker pool as a SECOND
+- [x] native-scheduler-pool — a fixed worker pool as a SECOND
       Native `Scheduler`, safe now that waiting is in queues, not
       threads (channel-callback closed the deadlock risk this was
       gated on, see Decisions above). `Schedulers.pool(size)`: a

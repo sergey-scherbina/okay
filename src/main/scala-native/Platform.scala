@@ -32,17 +32,94 @@ given Timer = new:
     t.start()
     () => t.interrupt()
 
-/** one OS thread per fiber */
-given Scheduler = new:
-  def fork[A](prog: () => A ! Async): Fiber[A] =
-    val cell = FiberCell[A]()
-    val t = Thread(() =>
-      try cell.complete(Right(prog().runWith))
-      catch case e: Throwable => cell.complete(Left(e)))
-    t.start()
-    new Fiber[A]:
-      def onComplete(k: Either[Throwable, A] => Unit): Unit = cell.subscribe(k)
-      def cancel(): Unit = t.interrupt()
+/**
+ * Native schedulers (specs/cross-platform-async.md,
+ * native-scheduler-pool). `threads` is the original one-per-fiber
+ * design and stays the default: a fiber that genuinely blocks (a
+ * CanBlock form — still real OS parking here, there is no Loom) on
+ * a SHARED pool thread can starve every worker at once, so `pool`
+ * is opt-in until a consumer sizes it for a workload that does not
+ * park. What made a pool unsafe before — a waiting Channel held an
+ * OS thread asleep — is gone (channel-callback): waiting is in
+ * queues now, so ordinary fiber work never blocks a pool thread,
+ * only an explicit park does.
+ */
+object Schedulers {
+
+  /** one OS thread per fiber: heavy, but a blocking fiber never
+   * competes with others for a shared worker */
+  val threads: Scheduler = new:
+    def fork[A](prog: () => A ! Async): Fiber[A] =
+      val cell = FiberCell[A]()
+      val t = Thread(() =>
+        try cell.complete(Right(prog().runWith))
+        catch case e: Throwable => cell.complete(Left(e)))
+      t.start()
+      new Fiber[A]:
+        def onComplete(k: Either[Throwable, A] => Unit): Unit = cell.subscribe(k)
+        def cancel(): Unit = t.interrupt()
+
+  /** a fixed pool of worker threads pulling fiber-start tasks from a
+   * hand-rolled queue (no java.util.concurrent collection assumed
+   * on Native's javalib) — fibers become cheap; a park still costs
+   * a whole worker for as long as it parks */
+  def pool(size: Int = 4): Scheduler = new:
+    private val q = TaskQueue()
+    for _ <- 0 until math.max(1, size) do
+      val t = Thread(() => while true do q.take().run())
+      t.setDaemon(true)
+      t.start()
+
+    def fork[A](prog: () => A ! Async): Fiber[A] =
+      val cell = FiberCell[A]()
+      val task = new Task(() =>
+        try cell.complete(Right(prog().runWith))
+        catch case e: Throwable => cell.complete(Left(e)))
+      q.offer(task)
+      new Fiber[A]:
+        def onComplete(k: Either[Throwable, A] => Unit): Unit = cell.subscribe(k)
+        // best effort (Fiber.cancel's own contract): a task still
+        // queued is simply skipped when its turn comes; a task
+        // already RUNNING is interrupted through the worker that
+        // is currently running it — precisely THAT task, never a
+        // later, unrelated one the same worker picks up next
+        def cancel(): Unit = task.cancel()
+}
+
+/** the default scheduler is one thread per fiber */
+given Scheduler = Schedulers.threads
+
+/** one queued unit of work, cancellable while queued or running —
+ * the runner reference is set only for the task actually executing
+ * on it, so a stale cancel() can never reach a later task */
+private final class Task(body: () => Unit):
+  @volatile private var cancelled = false
+  @volatile private var runner: Thread = null
+
+  def run(): Unit =
+    if !cancelled then
+      runner = Thread.currentThread()
+      if !cancelled then body()
+
+  def cancel(): Unit =
+    cancelled = true
+    val r = runner
+    if r != null then r.interrupt()
+
+/** a plain FIFO queue, hand-rolled: workers block in wait() (a real
+ * park — pool workers are meant to be few and long-lived, not the
+ * thing native-scheduler-pool is optimizing away) */
+private final class TaskQueue:
+  private val lock = new Object
+  private val q = scala.collection.mutable.Queue.empty[Task]
+
+  def offer(task: Task): Unit = lock.synchronized:
+    q.enqueue(task)
+    lock.notify()
+
+  def take(): Task = lock.synchronized:
+    while q.isEmpty do lock.wait()
+    q.dequeue()
 
 /** one result, many subscribers (stm-sessions, specs/stm.md): a
  * `TRef[State]` instead of a hand-rolled `synchronized` cell — the
