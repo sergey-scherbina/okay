@@ -1,5 +1,70 @@
 # Changelog
 
+## intent-other-collapse — the Other bucket is rescued by a gate, and the decode rate turns out to be a prompt property
+Completed: 2026-09-03
+Landed as e26c1b07. The negative finding intent-classify left behind,
+chased down in the repository rather than in a script beside it:
+`TestClassifyLive` (Live-tagged, out of the default gate) runs six arms
+over `IntentFixture`'s 24 messages, and the fixture is shared so the
+next lane compares against the same baseline instead of inventing one.
+
+| arm | decoded | macro F1 | `Other` recall |
+|---|---|---|---|
+| bare — the schema alone | 4/24 | 0.733 | 0.00 |
+| rules — schema + written rules | 18/24 | 0.587 | 0.00 |
+| shipped — rules + rendered example shape | 21/24 | 0.681 | 0.17 |
+| examples — shipped + 5 labelled examples | 23/24 | 0.908 | 0.67 |
+| gate — in-domain question, then shipped | 21/24 | 0.826 | 0.50 |
+| examples + gate | 23/24 | 0.955 | 0.83 |
+
+Macro F1 is over DECODED replies and means nothing without the decode
+rate beside it — the bare arm's 0.733 is over the four replies it
+managed to produce.
+
+THE ANSWER: declaring an `Other` case is necessary and not sufficient.
+What rescues it is not asking the taxonomy question at all until a
+separate binary question has said the message belongs — recall 0.00 ->
+0.83 at precision 1.00. A model offered a choice among positive classes
+takes one; a yes/no question does not offer that choice. The gate costs
+one extra call per message, visibly, and the caller chooses.
+
+TWO FINDINGS THAT WERE NOT THE QUESTION.
+
+The decode rate is a property of the PROMPT, not of the model: 4 -> 18
+-> 21 -> 23 of 24 replies decoded from the same model purely on how the
+answer was asked for. A schema says what is legal and does not show
+what to type — shown only the schema, the model wrote
+`"intent": "Proposal"` as a bare name where the encoding wants a tagged
+case, dropped `alts`, and merged `conf` into the intent object. The fix
+is `Classify.example`, an answer SHAPE rendered from the schema itself
+(optional fields omitted, one list element, a sum tagged by its first
+case) so it cannot drift from the parser. The same lesson had already
+appeared at the other end of the lane: shown a schema for the gate's
+two-field answer, the model replied with the schema, its verdict buried
+in `properties`. It is a shape and says so — a placeholder cannot
+satisfy a refined leaf, and the first version of its test asserted it
+decodes, and failed.
+
+A harness sentinel must not enter a confusion matrix. Left in,
+"undecodable" becomes a predicted-only class with F1 0 — correct by
+`Eval`'s own rule for a real label, wrong for a marker nobody is
+classifying — and macro F1 then tracks the decode rate instead of the
+classification: two runs whose per-class scores were identical read
+0.916 and 0.748 because they differed by ONE such row. The warning now
+lives on `Eval.confusion`, where the next caller will read it.
+
+Still wrong, and filed: one of six out-of-domain messages is absorbed
+even by the best arm, and the residue is not random — a taxonomy of
+`Proposal`/`Request`/`Notification` carrying a bare `what: String` never
+says its domain is meetings, so the case NAMES must carry it. And at
+n=24 a difference of one or two replies is not a difference; a wording
+change mid-lane moved an arm by two, reported as the noise it is. The
+fixture needs to grow past 30 per class before any gap here is
+defended.
+
+30 unit tests in the default gate, six live arms outside it. Full
+matrix green: 2099 tests, 0 failures.
+
 ## okay-script-page — compile-once, invoke-many hot-reload for render-mode .md files, and the isolated-Console bug it found
 Completed: 2026-09-03
 Landed as 1a015f15. The hot-reload half of "per-request execution +
