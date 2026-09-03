@@ -18,6 +18,16 @@
       verify. Fixed by flipping a MIDDLE character instead (always
       inside a fully-significant 6-bit block); 0/50 stress runs clean.
 
+- [ ] okay-script-scalac-classpath — `okayScript/test` fails 5/7 on
+      master itself, unrelated to any branch: `summonFrom` not found in
+      `scala.compiletime`, and `NoSymbol cannot be cast to ClassSymbol`
+      in dotc's Namer/Typer. Reproduces identically on master and on a
+      fresh worktree, so it is an environment/toolchain break (a JDK or
+      dotty version drift most likely), not a code regression. FOUND
+      2026-09-03 while gating json-unicode-escape; that claim's own
+      suites (okayCodecJVM, okayHttp*, okayMatch*, TestTelegram-style
+      consumers) were unaffected and green.
+
 - [ ] chunked-source-sweep — one same-session StreamOps run with every
       library's CHUNKED source (fs2 `Stream.range`, `ZStream.range`,
       kyo `Stream.range`, Okay Chunks) next to the per-element lanes;
