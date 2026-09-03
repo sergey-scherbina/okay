@@ -1,5 +1,31 @@
 # Changelog
 
+## flakes-integration — the last recorded flake out of the default gate
+Completed: 2026-09-03
+Landed as a3ecf5b8, on the operator's call. Two of the three were
+tagged earlier the same day by siblings — TestMcpAuth (nio-port-scope)
+and TestBackends (netty-integration), both real port binders. This
+closes the family with the one left, okay.persist
+.TestElectionReplicated, and says plainly in the record that it is not
+of a kind with the other two: it binds no port, starts no thread and
+does no IO (MemoryStore, a manual clock), and its triage could not
+reproduce the failure — alone on JS 3/3, on Native 3/3. What failed on
+2026-09-01 was the RUNNER, at suite level, under parallel matrix load.
+It is excluded by DECISION, not by evidence against the suite, and the
+comment at the suite, the spec and the BACKLOG entry all say so.
+
+The argument that carries it is the gate's own purpose: a red that can
+be the machine's fault teaches nothing about the landing being
+measured. So the `Live` tag is widened, in build.sbt's comment and in
+specs/integration-test-gate.md, from "reaches outside the JVM" to "its
+result depends on something `sbt test` cannot control". Nothing stops
+being run: `sbt integrationTest` runs all of it, and if the consensus
+fold ever genuinely breaks, that is where it surfaces.
+
+Verified: `okayPersistJVM/testOnly okay.persist.TestElectionReplicated`
+reports 0 tests under the default gate and 3/3 with
+`--include-tags=Live`. okayPersistJVM/test: 95 green.
+
 ## gate-honesty — the untested foldCont/runWith obligation, a docs-index guard, demo tests off the disk
 Completed: 2026-09-03
 Landed as dde1e151. Three holes in the CHECKS, not three features.
