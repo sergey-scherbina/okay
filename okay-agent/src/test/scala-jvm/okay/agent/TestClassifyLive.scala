@@ -212,4 +212,29 @@ class TestClassifyLive extends munit.FunSuite {
     for lang <- IntentFixture.languages do
       armOver(s"lang $lang", IntentFixture.inLanguage(lang), gated(best))
   }
+
+  /**
+   * Ablating the names.
+   *
+   * The previous lane's result rests on four identifiers, so this asks
+   * how much of it is the domain they name. NO examples and NO gate in
+   * any arm: examples would teach what the names are supposed to say on
+   * their own, and a gate would add a second signal. The names are the
+   * only thing that differs.
+   */
+  test("live: how much of the domain effect is the domain word") {
+    assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    import IntentFixture.{Meeting, Shipping, Zarnic}
+    given sM: Schema[Meeting] = summon[Schema[Meeting]]
+    given sS: Schema[Shipping] = summon[Schema[Shipping]]
+    given sZ: Schema[Zarnic] = summon[Schema[Zarnic]]
+
+    def bare[I](m: String)(using si: Schema[I], sr: Schema[Reading[I]]): String =
+      predictIn[I](ask(Classify.prompt[I](m)(using si)))(using si, sr)
+
+    arm("generic names, no examples", m => bare[Support](m)(using summon[Schema[Support]], sReading))
+    arm("true domain (Meeting)", m => bare[Meeting](m)(using sM, Classify.reading[Meeting]))
+    arm("wrong domain (Shipping)", m => bare[Shipping](m)(using sS, Classify.reading[Shipping]))
+    arm("nonsense qualifier (Zarnic)", m => bare[Zarnic](m)(using sZ, Classify.reading[Zarnic]))
+  }
 }

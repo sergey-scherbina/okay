@@ -465,3 +465,50 @@ taxonomy's documentation rather than to settle by default.
 This is the strongest form of the claim the whole feature rests on: the
 taxonomy IS the type, so the type's names are not labels for humans,
 they are half the classifier.
+
+## Results — intent-name-sensitivity (2026-09-03)
+
+The previous lane's recommendation rested on four identifiers, so this
+ablates them. Four taxonomies differing ONLY in case names, with no
+examples and no gate in any arm — examples would teach what the names
+are supposed to say on their own, and a gate would add a second signal.
+
+| taxonomy | macro F1 | `Other` P / R / F1 | undecodable |
+|---|---|---|---|
+| generic (`Proposal`...) | 0.649 | 0.83 / 0.19 / 0.30 | 10/120 |
+| true domain (`Meeting`...) | 0.688 | 0.92 / 0.43 / 0.59 | 7/120 |
+| wrong domain (`Shipping`...) | 0.635 | 0.72 / 0.45 / 0.55 | 2/120 |
+| nonsense (`Zarnic`...) | 0.528 | 1.00 / 0.11 / 0.20 | 13/120 |
+
+**The control did its job: the effect is not "names that look
+chosen".** `Zarnic` is the WORST arm — macro F1 0.528 against generic's
+0.649, `Other` recall 0.11 against 0.19, and the highest undecodable
+count of the four. An uninterpretable qualifier does not merely fail to
+help, it actively costs. So the previous lane's recommendation survives
+the test that could have hollowed it out.
+
+**The domain word is READ, not decorated with.** The wrong-domain arm
+is the proof, and it is proof by damage: `Shipping` raises `Other`
+recall to 0.45 — as high as the true domain's 0.43 — while `Proposal`
+recall halves, 0.85 -> 0.45. Meeting messages are being pushed into
+`NotAboutShipping`, which is the correct reading of a taxonomy that
+says its subject is shipping. The model is answering the question the
+names ask.
+
+**And `Other` precision is what separates a right domain from a wrong
+one**: 0.92 for `Meeting` against 0.72 for `Shipping`. Both reject at a
+similar rate; only one rejects the right things. A recall column alone
+would have called these two arms equivalent, which they are not.
+(`Zarnic`'s 1.00 precision is on a recall of 0.11 — it is precision
+over almost nothing, and reading it as a win is the trap this table
+exists to avoid.)
+
+**Scale, against the arms with examples.** Names alone move `Other`
+recall 0.19 -> 0.43; names plus examples reached 0.96 in the previous
+lane. So the naming is real and partial: it buys roughly a quarter of
+the distance, and few-shot examples remain the larger lever. Nothing in
+the shipped recommendation changes — it was measured WITH examples on
+both sides — but the mechanism is now known rather than assumed.
+
+Same scope as before: 120 author-written messages, one 4B local model,
+one run per arm.

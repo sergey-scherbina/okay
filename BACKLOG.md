@@ -1072,7 +1072,16 @@ not a new primitive from scratch.
       on the best arm (9%). The rendered example took this from 32% to
       9% and then stopped; what remains has not been looked at, and a
       caller cannot tell a hard message from a malformed reply.
-- [ ] intent-name-sensitivity — the whole result rests on four
+- [x] intent-name-sensitivity — LANDED 2026-09-03. The control held: a
+      nonsense qualifier (`Zarnic`) is the WORST arm, not a free win, so
+      the effect is the domain and not the appearance of deliberate
+      naming. A wrong domain (`Shipping`) proved the word is read, by
+      damage: it lifts `Other` recall as much as the true domain while
+      halving `Proposal` recall, i.e. it pushes meeting messages into
+      `NotAboutShipping`. `Other` PRECISION separates right from wrong
+      domain (0.92 vs 0.72) where recall does not. Original entry
+      follows.
+- [ ] intent-name-sensitivity (original) — the whole result rests on four
       identifiers, so the obvious question is how much of it is the
       word "Meeting" and how much is any qualifier at all. Try a third
       taxonomy with a DIFFERENT domain word and a fourth with a

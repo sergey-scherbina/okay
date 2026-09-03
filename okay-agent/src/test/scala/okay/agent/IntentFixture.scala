@@ -58,13 +58,51 @@ object IntentFixture {
     case MeetingNotification(what: String)
     case NotAboutMeetings(what: String)
 
-  /** the domain-bearing names, mapped back to the canonical classes,
-   * so two taxonomies are scored on ONE axis */
+  /**
+   * A WRONG domain: the same four classes named for a subject these
+   * messages are not about.
+   *
+   * If the model reads the domain word rather than treating a
+   * qualifier as decoration, meeting messages should land in
+   * `NotAboutShipping` and the positive classes should empty out. That
+   * would be a FAILURE of accuracy and a SUCCESS of the hypothesis,
+   * which is exactly why the arm is worth running.
+   */
+  enum Shipping derives Schema:
+    case ShippingProposal(what: String)
+    case ShippingRequest(what: String)
+    case ShippingNotification(what: String)
+    case NotAboutShipping(what: String)
+
+  /**
+   * A qualifier that names nothing at all.
+   *
+   * The control the previous lane was missing: if `Zarnic` lifts
+   * `Other` the way `Meeting` did, then what helped was that the names
+   * look deliberately chosen, not the domain they name — and the
+   * recommendation that shipped is weaker than it sounds.
+   */
+  enum Zarnic derives Schema:
+    case ZarnicProposal(what: String)
+    case ZarnicRequest(what: String)
+    case ZarnicNotification(what: String)
+    case NotAboutZarnic(what: String)
+
+  /** every taxonomy's names mapped back to the canonical classes, so
+   * they are all scored on ONE axis */
   val canonical: Map[String, String] = Map(
     "MeetingProposal" -> "Proposal",
     "MeetingRequest" -> "Request",
     "MeetingNotification" -> "Notification",
-    "NotAboutMeetings" -> "Other")
+    "NotAboutMeetings" -> "Other",
+    "ShippingProposal" -> "Proposal",
+    "ShippingRequest" -> "Request",
+    "ShippingNotification" -> "Notification",
+    "NotAboutShipping" -> "Other",
+    "ZarnicProposal" -> "Proposal",
+    "ZarnicRequest" -> "Request",
+    "ZarnicNotification" -> "Notification",
+    "NotAboutZarnic" -> "Other")
 
   /** proposing or moving a time */
   val proposals: List[(String, String)] = List(
