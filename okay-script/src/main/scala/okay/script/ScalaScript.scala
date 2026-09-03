@@ -163,8 +163,15 @@ object ScalaScript:
       if summary.hasErrors then
         Result(ok = false, stdout = "", errors = errs, thrown = None)
       else
+        // platform-only parent (okay-script-classloader-isolation,
+        // 2026-09-03): getClass.getClassLoader would let a script
+        // resolve anything on okay-script's OWN build classpath
+        // (URLClassLoader is parent-first) regardless of what the
+        // caller actually put in `classpath` -- defeating the
+        // isolation Classpath/Deps exist for. A script sees exactly
+        // its own compiled classes, its own Classpath, and the JDK.
         val loaderUrls = (outDir +: classpath.entries).map(_.toUri.toURL).toArray
-        val loader = new URLClassLoader(loaderUrls, getClass.getClassLoader)
+        val loader = new URLClassLoader(loaderUrls, ClassLoader.getPlatformClassLoader())
         val cls = loader.loadClass("okayScriptMain")
         val method = cls.getMethod("main", classOf[Array[String]])
 

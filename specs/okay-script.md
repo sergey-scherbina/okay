@@ -447,20 +447,24 @@ only this one step, and only when a script asks for it, does.
 Landed 2026-09-03 (core), extended 2026-09-03 (runtime-app follow-on:
 explicit `Classpath`, `//> using dep` + Coursier resolution; lifecycle:
 `Thread.interrupt()` on the caller's own thread, no new API; worked
-example: examples/it-consulting-storefront.md). Traps found by the
-tests, all fixed before landing:
+example: examples/it-consulting-storefront.md; classloader isolation:
+platform-only parent per script). Traps found by the tests, all fixed
+before landing:
 
+- **Classloader isolation's fix genuinely closes a leak — confirmed by
+  temporarily reverting it.** Before landing, the fix was reverted
+  (`ClassLoader.getPlatformClassLoader()` back to
+  `getClass.getClassLoader`) and the isolation test rerun: it failed
+  exactly as expected (`munit-reachable:true`, the leak), proving the
+  test was not a false positive and the fix was not a no-op. Restored
+  before landing.
 - **The storefront example's `/order` route used a QUERY STRING
-  (`/order?key=<x>`) — okay-jetty's `Request.url` never carries one.**
-  `Jetty.scala`'s `requestOf` builds `Request.url` from
-  `org.eclipse.jetty.server.Request.getPathInContext(req)` — PATH
-  ONLY; `okay.http.Request` has no separate query-string field at all.
-  The route matched fine (`/order` on the path), but the key extraction
-  always saw `""` and every order 404'd. Fixed by moving the key into
-  the PATH instead (`/order/<key>`, matched with `r.url.startsWith(
-  "/order/")` — a design any `okay-script` app should follow until
-  okay-http/okay-jetty grow real query-string parsing, not a workaround
-  specific to this example.
+  (`/order?key=<x>`) — okay-jetty's `Request.url` never carried one at
+  the time.** Fixed separately and since landed as `http-request-query`
+  (`Jetty.scala`'s `requestOf` now reads `getHttpURI.getPathQuery`);
+  the storefront example itself still uses the path-based `/order/
+  <key>` route it landed with, since a working route needed no further
+  change once the underlying bug was fixed elsewhere.
 - **Lifecycle needed no fix — the hypothesis held on the first real
   run.** `TestScalaScriptLifecycle` confirmed, against a REAL
   `okay-jetty` server (not a mock): the server answers HTTP while its

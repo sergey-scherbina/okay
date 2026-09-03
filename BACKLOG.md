@@ -702,15 +702,26 @@ not a new primitive from scratch.
       query-string test; `TestBackends`' cross-backend matrix never
       exercised one either (noted in specs/http-backends.md as the gap
       that let this ship unnoticed). specs/http-backends.md.
-- [ ] okay-script: classloader isolation between multiple
-      runtime-compiled scripts sharing one host JVM (e.g. two
-      generated storefronts pulling conflicting versions of the same
-      library via `using dep`). Each `run` call's `URLClassLoader`
-      already isolates the script's OWN classes, but its parent is
-      still `getClass.getClassLoader` rather than a minimal
-      platform-only parent — isolation from the host (and between
-      scripts sharing that parent) is partial. Not needed until a
-      caller runs more than one generated app per JVM.
+- [x] okay-script-classloader-isolation — LANDED 2026-09-03: each
+      `run` call already had its OWN `URLClassLoader` (scripts do not
+      collide with EACH OTHER), but its parent was
+      `getClass.getClassLoader` — `okay-script`'s own defining
+      classloader — and `URLClassLoader` is parent-FIRST, so a script
+      could silently resolve a class from `okay-script`'s own build
+      (munit, in Test scope okay-jetty, ...) regardless of what the
+      caller's explicit `Classpath` actually listed — the isolation
+      `Classpath`/`Deps` (okay-script-runtime) were built for was not
+      actually enforced. Fixed: parent is now
+      `ClassLoader.getPlatformClassLoader()` (JDK core only) — a script
+      sees exactly its own compiled classes, its own `Classpath`, and
+      the JDK. No behavior change for `Classpath.ambient` callers (it
+      already lists ~everything). Proved by
+      `TestScalaScriptClassloaderIsolation`: a script given a minimal
+      `Classpath` can no longer reach `munit.Assertions` (present on
+      `okay-script`'s own test classpath, absent from that minimal
+      one) — confirmed as a REAL regression check by temporarily
+      reverting the fix and watching the test fail before restoring
+      it. specs/okay-script.md "Classloader isolation".
 
 ## Elsewhere
 - [x] ctx-wiring — CLOSED 2026-09-02: the consumer arrived and
