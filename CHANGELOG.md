@@ -1,5 +1,36 @@
 # Changelog
 
+## channel-seam — `Channel` becomes an interface, so mechanisms can be chosen and compared instead of replaced
+Completed: 2026-09-03
+Landed as a9dd71ca. The operator's design, and better than what
+`channel-ring` attempted: that lane tried to replace the mechanism
+INSIDE `Channel`, so one mistake in the waiter protocol took
+everything down (it deadlocked and was reverted). Behind a seam each
+mechanism arrives in its own lane, is measured against the others,
+and cannot break the ones already there.
+
+`trait Channel[A]` carries the callback primitives plus two
+cancellers — the one part of waiting only an implementation can
+express — and derives `send`, `receive`, the blocking pair and
+`receiveMany` once, so implementations cannot drift apart on them.
+`receiveManyAsync` has a correct default (one element as a chunk of
+one) so a new implementation is correct before it is fast.
+
+**Zero behaviour change.** The existing implementation moved behind
+the trait unchanged as `StmChannel`, with `Channel.apply` as the
+factory — and because `Channel[A](capacity)` was a constructor and is
+now an `apply`, all 73 construction sites across 68 files compiled
+untouched.
+
+**What the interface refuses to promise:** STM composability.
+`TestStm` reads a channel's own cell inside a transaction — real, and
+impossible for a ring-backed channel that has no such cell. It stays
+named on `StmChannel` rather than being promised on the interface and
+thrown by everyone else. Making `Channel` a trait also surfaced a
+latent given-ambiguity the class had hidden (`Writer.of(q)` could no
+longer choose between the `Channel` and `Drain` stream instances),
+now said explicitly. Implementations filed as `channel-impls`.
+
 ## http-request-query — fix Jetty silently dropping the query string from Request.url
 Completed: 2026-09-03
 Landed as e9901797, fast-forwarded onto master. Follow-on from
