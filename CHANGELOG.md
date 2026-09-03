@@ -1,5 +1,37 @@
 # Changelog
 
+## flush-op — `Flush.now`: the chunk boundary as an operation, where the producer knows it
+Completed: 2026-09-03
+Landed as 749e5f5. The half of the request `chunk-flush` answered
+only with a timer. A chunking consumer emits when the chunk is full,
+when the input ends, or when `flushAfter` expires — three rules that
+all GUESS, while a producer usually knows: this token ended the
+model's turn, that byte ended the frame.
+
+An operation, not a distinguished element: a boundary is not data,
+and making it one would widen every element type to `A | Boundary`
+and make every consumer match on something outside its stream. So
+`Flush` is a one-constructor signature with its own `TypeableK`, and
+`Source` gains a `Flushing` row plus `mergeFlushing`. It is
+interpreted by a walk of the source PROGRAM rather than by pulling
+through `Stream.uncons`, because it must take effect at the exact
+point the producer put it — and `relay` cannot serve, since its
+handler answers with a VALUE while `Flush.Now` must become a channel
+send.
+
+The design that did not survive measurement: routing the ordinary
+chunked merge through that same walk, for one accumulation path
+instead of two. Tidier, and **11% dearer on the common path** —
+244.3 ±15.2 against master's 219.6 ±1.5 in the same window — for one
+extra widen rebuild per source and one extra row split per element.
+Split back into two walks sharing the accumulation helpers: 220.5
+±0.7, bars overlapping master. Only sources that use the operation
+pay for it.
+
+Also fixed two warnings that arrived on master with `match-vec-cache`
+(unused pattern variables in `TestVecCache`), since the tree is meant
+to stay at zero.
+
 ## match-vec-cache — SqlMatch stops re-embedding what has not changed
 Completed: 2026-09-03
 Landed as a0e57ff (spec) + 6572e14 (impl). MemoryMatch has cached

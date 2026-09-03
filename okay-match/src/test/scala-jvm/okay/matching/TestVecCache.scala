@@ -69,7 +69,7 @@ class TestVecCache extends munit.FunSuite {
   // the case a cache in memory cannot have, and the reason this one
   // lives in the database
   test("the cache survives a NEW store over the same file") {
-    val (calls, embed) = counting
+    val (_, embed) = counting
     val (_, open) = onFile()
     val first = open(embed)
     val p = first.register("a@x")
@@ -94,7 +94,7 @@ class TestVecCache extends munit.FunSuite {
   }
 
   test("a different embedTag recomputes rather than serving the old vector") {
-    val (calls, embed) = counting
+    val (_, embed) = counting
     val f = java.nio.file.Files.createTempFile("okay-vec", ".db")
     def open(tag: String, e: String => Embedding) =
       SqlMatch(JdbcSql(DriverManager.getConnection(s"jdbc:sqlite:$f")),
