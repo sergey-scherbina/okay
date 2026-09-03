@@ -183,7 +183,12 @@ object Jetty {
   private def requestOf(req: org.eclipse.jetty.server.Request): Request =
     val hs = req.getHeaders.asScala.toSeq.map(f => (f.getName, f.getValue))
     val m = Method.values.find(_.name == req.getMethod).getOrElse(Method.Get)
-    Request(m, org.eclipse.jetty.server.Request.getPathInContext(req), hs,
+    // getPathInContext(req) is PATH ONLY -- it silently dropped the
+    // query string (http-request-query, 2026-09-03), unlike the JDK
+    // (okay.http.Server) and Netty backends, which both carry the
+    // full request-target. getHttpURI.getPathQuery matches them: bare
+    // path when there is no query, "path?query" when there is.
+    Request(m, req.getHttpURI.getPathQuery, hs,
       peer = hostOf(req.getConnectionMetaData.getRemoteSocketAddress))
 
   /**

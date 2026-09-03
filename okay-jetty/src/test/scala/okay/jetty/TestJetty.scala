@@ -64,6 +64,19 @@ class TestJetty extends munit.FunSuite {
     assertEquals(got, (200, "hello from jetty"))
   }
 
+  test("a request's query string reaches the route, not just the path (http-request-query)") {
+    val got = Resource.run[(Int, String), Pure](
+      Jetty.serve(0) {
+        case r if r.url.startsWith("/search") => OkayServer.text(200, r.url)
+      }().map { server =>
+        val c = Transports.http()
+        Async.run[(Int, String), Pure](
+          c.send(Request.get(s"http://127.0.0.1:${Jetty.port(server)}/search?q=okay&limit=5"))
+            .flatMap(r => Http.text(r).map(t => (r.status, t)))).runWith
+      }).runWith
+    assertEquals(got, (200, "/search?q=okay&limit=5"))
+  }
+
   test("a route that throws is a 500 with its message, as on the built-in server") {
     val got = Resource.run[(Int, String), Pure](
       Jetty.serve(0) {

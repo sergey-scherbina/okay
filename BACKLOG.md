@@ -663,20 +663,20 @@ not a new primitive from scratch.
       `requestOf` uses `getPathInContext` — path only, no query-string
       field on `okay.http.Request` at all) — see the next entry.
       specs/okay-script.md "Worked example".
-- [ ] okay-http/okay-jetty: no query-string support on `Request` at
-      all — `requestOf` (okay-jetty/src/main/scala/okay/jetty/
-      Jetty.scala) builds `Request.url` from Jetty's
-      `getPathInContext`, which is PATH ONLY; a `?key=value` a client
-      sends is silently dropped before a route ever sees it, no error,
-      no truncation warning — a route matching on `r.url` just never
-      finds the key. FOUND 2026-09-03 building
-      okay-script-storefront-example (the `/order?key=<x>` route
-      404'd every time; worked around there by moving the key into the
-      PATH, `/order/<key>`, which is not a real fix, just a route that
-      does not need one). Any consumer wanting real query parameters
-      hits this; `okay.http.Request` needs either a parsed `query:
-      Map[String, String]` field or at least `url` carrying the raw
-      query string so a caller can parse it itself.
+- [x] http-request-query — LANDED 2026-09-03: NOT "no query-string
+      support at all" as first written — `okay.http.Server` (JDK) and
+      `okay-netty` both already carry the query string in `Request.url`
+      (`getRequestURI().toString()` / `req.uri` are both full
+      request-targets). Only `okay-jetty` was broken: `requestOf` built
+      `url` from the static `getPathInContext(req)`, PATH ONLY. Fixed:
+      `req.getHttpURI.getPathQuery` instead — a route with no query
+      string sees the byte-identical string as before (`HttpURI`'s own
+      `getPathQuery` returns the bare path when there is no query), and
+      no `ContextHandler` is used anywhere in `Jetty.serve`, so nothing
+      about an existing route's matching changes. `TestJetty` gained a
+      query-string test; `TestBackends`' cross-backend matrix never
+      exercised one either (noted in specs/http-backends.md as the gap
+      that let this ship unnoticed). specs/http-backends.md.
 - [ ] okay-script: classloader isolation between multiple
       runtime-compiled scripts sharing one host JVM (e.g. two
       generated storefronts pulling conflicting versions of the same
