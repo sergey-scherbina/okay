@@ -1,5 +1,24 @@
 # Changelog
 
+## jmh-warnings — the zero-warnings policy extended to Jmh sources, and taken to zero there
+Completed: 2026-09-03
+Landed as 2d20d5b. `Test/compile` does not reach Jmh sources — they
+are their own configuration — which is how five warnings sat
+unnoticed through the sweep that took main+test to zero. Two in the
+root `src/jmh` (`HandlerBenchmark`): the `Ask[Nothing]` type test
+erasure cannot verify, inlined from `relay`/`handle` — same class as
+the four documented suppressions in the test tree, fixed the same
+documented way. Three in `compare/src/jmh`, all artifacts of the
+COMPETITORS' idioms (kyo's `Loop` default argument x2, kyo-direct's
+`defer` macro expansion) — silenced by `-Wconf` scoped to the
+`compare` project ALONE, never `ThisBuild`, since a benchmark
+rewritten to please our linter measures the rewrite rather than the
+library, while the main tree must keep the lint that catches real
+defects. AGENTS.md now says main, test AND Jmh, and records how to
+check them (per-project `Jmh/compile` after `rm -rf <project>/target`
+— the JMH generator caches hard enough to report success without
+recompiling). Full gate green.
+
 ## theory-linearity — the linearity measurement written into the textbook, where the third road was claimed
 Completed: 2026-09-03
 Landed as 606d7ea (docs only). `docs/theory/04-free-freer.md`
