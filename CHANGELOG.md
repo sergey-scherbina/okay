@@ -1,5 +1,34 @@
 # Changelog
 
+## okay-script-check — mdoc-style output-comparison literate testing via a ```stdout fence
+Completed: 2026-09-03
+Landed as 5b9a5aad. A block's expected stdout, written inline in the
+markdown, checked against what a real `run` actually printed — `run`
+already captured everything needed; the missing piece was the
+markdown convention for "expected output" and the comparison step.
+New fenced tag ` ```stdout `: content immediately following a
+` ```scala ` block names the output the document should have produced
+BY THAT POINT (`run`'s program is one flat compilation unit, so "by
+that point" naturally means "since the start", not "just this
+block"). `ScalaScript.check(markdown, classpath): CheckResult` is
+purely ADDITIVE and host-side — no synthesis changes, no new fence
+recognized by `tokenize`/`withMeta` at all, deliberately, right after
+two landings in a row (`okay-script-web`, `okay-script-line-mapping`)
+hit the SAME re-indentation bug shape there. `check` extracts every
+` ```stdout ` fence's (trimmed) content via a plain line-scanner
+mirroring `blocks`' own, runs the document once via the ordinary
+`run`, and — if that succeeded — verifies each expected chunk appears
+as an IN-ORDER, non-overlapping substring of the actual stdout (each
+search starts after the previous chunk's match end), proving the
+right output happened in the right relative sequence without
+injecting a checkpoint into the compiled program itself. All
+mismatches are collected, not just the first; a `run` that fails to
+compile fails `check` immediately with one summarizing mismatch
+rather than attempting a substring search against output that never
+happened. The first cut passed all 8 tests on the first run — no bug
+found, a real contrast with the two landings immediately before it.
+specs/okay-script.md "Output-comparison testing".
+
 ## okay-script-line-mapping — compile errors point at the original .md line, not the synthesized source
 Completed: 2026-09-03
 Landed as 14e8c96e. A dotc diagnostic's line number used to report

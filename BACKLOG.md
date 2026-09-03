@@ -648,11 +648,24 @@ not a new primitive from scratch.
       `specs/*.md` (or a configured dir), failing the build on the
       first `!ok` Result. Deliberately not built with the core
       (operator: "библиотека/API, без интеграции в sbt test пока").
-- [ ] okay-script: mdoc-style output-comparison literate testing — a
-      block's expected stdout written inline in the markdown, checked
-      against `Result.stdout` from a real run. `run` already captures
-      everything needed; the markdown convention for "expected
-      output" and the comparison step are the missing piece.
+- [x] okay-script-check — LANDED 2026-09-03: mdoc-style literate
+      testing — a block's expected stdout, written inline as a NEW
+      ```stdout fence, checked against what a real `run` actually
+      printed. `ScalaScript.check(markdown, classpath): CheckResult`
+      is purely ADDITIVE and host-side — no synthesis changes, no new
+      fence recognized by `tokenize`/`withMeta` at all (deliberate,
+      right after two landings in a row hit the same re-indentation
+      bug shape there). Extracts every ```stdout fence's (trimmed)
+      content via a plain line-scanner mirroring `blocks`' own, runs
+      the document once via ordinary `run`, then verifies each
+      expected chunk appears as an IN-ORDER, non-overlapping substring
+      of the actual stdout — proving the right output happened in the
+      right relative sequence without injecting a checkpoint into the
+      compiled program. All mismatches collected, not just the first;
+      a `run` that fails to compile fails `check` immediately with one
+      summarizing mismatch. First cut passed all 8 tests on the first
+      run — no bug found, unlike the two landings right before it.
+      specs/okay-script.md "Output-comparison testing".
 - [x] okay-script-line-mapping — LANDED 2026-09-03: a compile error's
       line number now reports the ORIGINAL `.md` file's line, not the
       SYNTHETIC wrapped source dotc actually compiled. `Segment.Code`/
