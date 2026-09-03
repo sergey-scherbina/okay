@@ -1,5 +1,6 @@
 package okay.subscription
 
+import okay.TDict
 import okay.agent.ToolSpec
 import okay.codec.Json.*
 
@@ -25,36 +26,39 @@ object Subscription:
       Period(d.getYear, d.getMonthValue)
     def now(): Period = of(System.currentTimeMillis())
 
-  private val joinedPeriod =
-    java.util.concurrent.ConcurrentHashMap[String, Period]()
-  private val paidPeriods =
-    java.util.concurrent.ConcurrentHashMap[String, java.util.Set[String]]()
+  // okay-stm-collections (specs/stm.md), migrated 2026-09-03: a pure
+  // swap for both maps, no behavior change. joinedOf's `now` is a
+  // pure mapping function, so TDict.computeIfAbsent's "mk may run
+  // more than once under contention" limit costs nothing here.
+  private val joinedPeriod = TDict.empty[String, Period]
+  private val paidPeriods = TDict.empty[String, Set[String]]
 
   /** the first period a subject was ever gate-checked — anchored
    * LAZILY, so a subject this module never touched defaults to "just
    * joined" rather than surprise-gated */
   private def joinedOf(uuid: String, now: Period): Period =
-    joinedPeriod.computeIfAbsent(uuid, _ => now)
+    joinedPeriod.computeIfAbsent(uuid)(now)
 
   private def paidThisPeriod(uuid: String, now: Period): Boolean =
-    Option(paidPeriods.get(uuid)).exists(_.contains(now.key))
+    paidPeriods.get(uuid).exists(_.contains(now.key))
 
   /** free for the join period; after that, paid-this-period or gated */
   def subscribed(uuid: String, now: Period = Period.now()): Boolean =
     joinedOf(uuid, now) == now || paidThisPeriod(uuid, now)
 
   /** takes effect IMMEDIATELY — the very next `subscribed` check
-   * (same turn, even) sees it */
+   * (same turn, even) sees it. One atomic updateAt, not a
+   * computeIfAbsent-then-add pair: two concurrent payers for the
+   * SAME subject must not race each other's addition away */
   def pay(uuid: String, now: Period = Period.now()): Unit =
-    paidPeriods.computeIfAbsent(uuid, _ => java.util.concurrent.ConcurrentHashMap.newKeySet[String]())
-      .add(now.key): Unit
+    paidPeriods.updateAt(uuid)(_.getOrElse(Set.empty) + now.key): Unit
 
   /** the test seam for "a month passed": `subscribed` only ANCHORS
    * `joined` on a subject's first-ever check (so production never
    * needs this) — a test that wants a subject ALREADY past its free
    * month calls this to force the anchor back in time */
   def backdateJoin(uuid: String, period: Period): Unit =
-    joinedPeriod.put(uuid, period): Unit
+    joinedPeriod.put(uuid, period)
 
   def subscriptionNotice(uuid: String, now: Period = Period.now()): Option[String] =
     if subscribed(uuid, now) then None
