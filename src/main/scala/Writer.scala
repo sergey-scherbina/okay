@@ -178,14 +178,25 @@ object Writer {
    *
    * Lazy: nothing is pulled until the result is consumed, one element
    * per pull, and the F-operations stay in the row rather than being
-   * run behind the caller's back.
+   * run behind the caller's back. The deferral is `pure(()).flatMap`
+   * — a `Bind(Pure(()), k)` node `!.resume` must ROTATE away before
+   * reading past it (Effects.scala, the tailrec rotation cases) — and
+   * it is load-bearing ONCE: the recursive step below already sits
+   * inside the PREVIOUS step's `flatMap`, which is itself deferral
+   * enough for the next pull. Re-wrapping every element cost a
+   * rotation per pull for nothing (profiled: writer-of-resume-fix,
+   * specs/writer-covariance.md — 38% of okaySourceMerge's CPU
+   * samples were exactly these two rotation lines).
    */
   def of[S[_], F[+_], A](s: S[A])(using St: Stream[S, F]): Unit ! (Writer % A + F) =
     okay.pure[Writer % A + F, Unit](()).flatMap: _ =>
-      !.widen[Option[(A, S[A])], F, Writer % A](St.uncons(s)).flatMap:
-        case Some((a, rest)) =>
-          okay.effect[Writer % A + F, Unit](Writer(a)).flatMap(_ => of[S, F, A](rest))
-        case None => okay.pure(())
+      ofLoop[S, F, A](s)
+
+  private def ofLoop[S[_], F[+_], A](s: S[A])(using St: Stream[S, F]): Unit ! (Writer % A + F) =
+    !.widen[Option[(A, S[A])], F, Writer % A](St.uncons(s)).flatMap:
+      case Some((a, rest)) =>
+        okay.effect[Writer % A + F, Unit](Writer(a)).flatMap(_ => ofLoop[S, F, A](rest))
+      case None => okay.pure(())
 
   /**
    * The observation of the writer as codata: the same shape as

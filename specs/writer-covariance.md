@@ -123,6 +123,41 @@ N-element source, paid by `resume` on every pull.
 `ofLoop` the recursion calls directly (no re-wrap per element) — the
 external laziness contract is unchanged (still nothing pulled before
 the first consume), only the redundant per-element `Bind(Pure(()),
-k)` nodes are gone. See Results below for whether it moved the
-number — this section is written before running it, per the same
-discipline the rest of this spec follows.
+k)` nodes are gone.
+
+**Results, re-profiled — a real but partial win.** `Source.of(xs).
+toLazyList` alone (no `Channel.merge`): 48.9us -> **40.3us, -18%**,
+clean (±0.14 vs ±0.20). `okaySourceMerge`: 305-308us -> **298.9us**,
+±2.8 — real but small, ~2-3%. The profiler explains the gap between
+those two results: re-profiling `okaySourceMerge` after the fix, the
+targeted line (`Bind(Pure(a),k)`, Effects.scala:376) dropped from 28
+samples to 5 — the fix worked exactly where aimed — but the OTHER
+rotation case (`Bind(Bind(a,h),k)`, line 375) rose from 18 to 33:
+without the pure-wrapper acting as a natural reset point between
+elements, `widen`'s own recursive Bind-building and `ofLoop`'s
+`.flatMap` stack into deeper nested Binds more often, and `resume`
+pays a different rotation instead. Net: `resume`'s total share fell
+modestly (46 -> 38 of ~205-209 samples), which is why the isolated
+floor improved cleanly but the merge total barely moved.
+
+**What actually dominates `okaySourceMerge` now**: at stack-depth 3,
+`okay.TRef.modify` is the single most-sampled frame (75 of ~210) —
+`Channel.merge`'s own transactional machinery under REAL fiber
+contention (two Loom fibers genuinely racing to send, unlike the
+single-threaded `ChannelBenchmark.offerReceive1k`/
+`sendReceiveProgram1k` the STM lane measured, or even
+`concurrentSendReceive1k`'s synthetic two-thread race from channel-
+merge-regression, which only showed ~13% contention overhead — real
+`Async`-scheduled fiber contention through `feed`/`sch.fork` appears
+to cost more than that simpler benchmark could see). This is a
+DIFFERENT, deeper investigation than `Writer.of`'s construction
+shape — filed, not chased further here.
+
+**Landed**: the `of`/`ofLoop` split — real, verified, zero
+regression (full `sbt test` green, JVM+JS+Native), and it is the
+correct shape regardless of `Channel.merge`'s own remaining cost.
+**Not landed / filed for next**: `Channel.merge`'s `TRef.modify`
+cost under genuine multi-fiber contention — needs its own profiler
+pass, likely in `ChannelBenchmark` or a new fiber-contention
+benchmark closer to `Channel.merge`'s actual `feed`/`sch.fork` shape
+than `concurrentSendReceive1k`'s synthetic two-thread race.

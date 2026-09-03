@@ -337,6 +337,26 @@ abstraction) — under half the ~180us gap this section's numbers
 show, so most of the cost is specific to how `Channel.merge` pulls a
 Writer-shaped stream, not to Source-wrapping in general.
 
+**Profiled (writer-of-resume-fix): the 38ns/element floor, explained
+and partly closed.** `-prof jfr` on `okaySourceMerge` found 38% of
+its CPU samples in two lines of `!.resume` (Effects.scala — the
+tailrec rotation that normalizes a Free tree before it can be read),
+called from `Writer.uncons` every pull. Traced to `Writer.of`
+re-wrapping EVERY recursive step in `pure(()).flatMap` for laziness
+— load-bearing once, at the top, since each recursive call already
+sits inside the previous step's own `flatMap`. Splitting `of` into a
+one-wrap entry and an un-wrapped `ofLoop` closed the bare-`Source`
+floor 18% (48.9 -> 40.3us) but moved `okaySourceMerge` only ~2-3%
+(305 -> 299us) — re-profiling showed why: the ROTATION CASE `resume`
+pays shifted (one line dropped 28 samples to 5, another rose 18 to
+33 without the pure-wrapper's reset point), and a different frame —
+`TRef.modify`, `Channel.merge`'s own transaction machinery under
+REAL multi-fiber contention — now dominates the merge path's deeper
+samples (75 of ~210). Landed anyway: real, verified, zero-regression
+improvement to `Writer.of` on its own terms. The `Channel.merge`
+contention cost is a separate, deeper investigation, filed not
+chased.
+
 ## 7. Resource — 1000 bracketed acquire/use/release
 
 | | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
