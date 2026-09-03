@@ -228,3 +228,66 @@ removed because its premise did not hold): this one's premise held
 and it answered its question, and it is the scaling control any
 future "should we rewrite the kernel" question should have to pass
 first.
+
+## free-row-variance (2026-09-03): the upcast that is not free, measured
+
+merge-scaling-shape closed the kernel-rewrite question and named one
+cheap lever still standing: `Source.merge` calls `Writer.widen` once
+per source, and widen REBUILDS every Free node of the walk — for a
+reason `Effects.scala` stated as a fact, "Free is invariant in its
+signature". If that invariance were removable, both calls would
+collapse into subtyping and a whole per-element pass would vanish.
+
+**The invariance is removable.** A spike settled the type-level half:
+`enum Free[+F[+_], A]` passes the variance check — F occurs only in
+covariant positions (`Inject`'s field, `Bind`'s `Free`-typed field,
+and its continuation's RESULT) — and an isolated test confirmed the
+consequence that matters, that `Box[Row[Int], A] <: Box[Row[Int |
+String], A]` holds pointwise at concrete rows, exactly the shape
+`Source.merge` needs.
+
+It is not free to adopt. Matching `Bind(Inject(e), k)` under a
+covariant row captures a fresh subtype per level, so the interpreter's
+own rewrites stop typechecking in place. Two were recovered cleanly
+and without a cast, by naming the existentials in a helper: the
+associativity rotation in `Free.fold` and in `!.resume` (the hottest
+path in the library) both went through a `rotate(a, f, g)` whose three
+arguments reach their parameters by ordinary subtype coercion. About
+six more walker sites — `Effects.widen`, `Generate.uncons`,
+`Logic.msplit`, `Writer.map`/`widen` — resisted inference, each
+needing its own hand-typed helper. A generic `up[H[+_] >: F]` upcast
+does NOT work: an abstract type-constructor bound gives no coercion,
+though a concrete row does.
+
+**And then the prize was measured, before paying that price — which
+is just as well, because the prize is negative.** In isolation widen
+costs what it looks like: 20.430 -> 24.126us at 500 elements (+18%,
+7.4ns/element), 77.465 -> 98.343us at 2000 (+27%, 10.4ns/element).
+Inside the merge it does the opposite. The same merge built without
+the two widen passes, at one element type so the union collapses and
+widen is the ONLY difference:
+
+| 2x2000 elements | with widen | without widen |
+|---|---|---|
+| run 1 | 1162.4 ±11.4 | 1240.1 ±10.1 (+6.7%) |
+| run 2 (quiet box) | 1141.8 ±6.7 | 1202.6 ±14.6 (+5.3%) |
+
+Bars non-overlapping in both runs, same direction. **Removing widen
+makes the merge slower.** The walk is not only a re-injection, it is
+a NORMALIZATION: it resumes each node and hands `Channel.merge`'s
+`feed` an already head-normal, right-nested tree. Without it `feed`'s
+per-pull `resume` pays that rotation itself — per pull, inside the
+contended region, where this same lane already measured the Writer
+layer costing ~5x what it costs alone. Widen moves the work OUT of
+the contended region and does it once; that is worth more than the
+pass costs.
+
+**Declined, nothing landed but the benchmark.** The covariance spike
+was reverted; `Free` stays invariant in its row — now as a choice with
+a number behind it rather than an unexamined constraint, and
+`Effects.widen`'s doc comment says so. `WidenBenchmark` is kept: its
+premise held, and it is the guard on this conclusion. The general
+lesson is the one this whole arc keeps arriving at from new
+directions: an upcast that is free at the type level is not free
+operationally, and where work is DONE matters more than how much of
+it there is.

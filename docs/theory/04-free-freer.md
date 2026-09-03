@@ -146,6 +146,37 @@ the same work. The per-element price buys per-element semantics; the
 chapter's honest summary is that the encoding was not the thing to
 fix. `docs/benchmarks.md` §6 carries the full numbers.
 
+## The upcast that is not free
+
+One more thing the sweep's frame makes visible, and it is a statement
+about free monads rather than about this library. `Free` is invariant
+in its signature, so widening a program into a larger row walks the
+tree and re-injects each operation. That looks like pure tax, and the
+type-level cure is available: `F` occurs only covariantly in the
+three cases, `enum Free[+F[+_], A]` passes the variance check, and
+the row subtyping then holds pointwise at concrete rows — the two
+`widen` calls in a merge would become coercions and the pass would
+disappear.
+
+Measured, removing that pass makes the merge **slower** — 5–7% on
+2×2000 elements, bars non-overlapping across two runs. The reason is
+that the walk is not only a re-injection; it is a *normalization*.
+It resumes every node on the way through, so what reaches the
+consuming loop is already in the head-normal, right-nested form the
+interpreter wants, and the rotation it would otherwise perform — per
+pull, inside the region where two fibers contend — has been done once
+in advance, outside it.
+
+So the two readings of a widening pass are not "cost" and "no cost"
+but *where the same work is done*. A coercion that the type system
+performs for free performs no normalization either; the interpreter
+then pays it later, in the worse place. This is the practical edge of
+the same fact chapter 1 states about `fold`: normalization is real
+work with real value, and a design is entitled to *place* it. The
+invariance of `Free`'s row is therefore a choice with a number behind
+it, not a limitation to be engineered away — which is only knowable
+by measuring the cure rather than reasoning about the disease.
+
 ## Freer's second dividend: GADT refinement
 
 Storing operations bare means an operation's constructor can carry its

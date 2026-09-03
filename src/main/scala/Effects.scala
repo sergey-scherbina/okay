@@ -415,7 +415,18 @@ object ! {
 
   /** re-inject into a wider row: effect subsumption. Free is invariant
    * in its signature, so widening walks the tree — one re-injected
-   * node per operation, deferred as it goes. */
+   * node per operation, deferred as it goes.
+   *
+   * The invariance is a CHOICE, and measured (free-row-variance,
+   * 2026-09-03): `enum Free[+F[+_], A]` does pass the variance check
+   * — F occurs only covariantly — and the row subtyping then holds at
+   * concrete rows, which would delete this walk from every widening
+   * call site. It was not taken, because deleting the walk makes
+   * things SLOWER where it matters: the walk is also a NORMALIZATION,
+   * and `Source.merge` without it runs 5-7% slower (specs/writer-
+   * covariance.md), since the rotation it saves would otherwise be
+   * paid per pull inside the merge's contended region. An upcast free
+   * at the type level is not free operationally. */
   def widen[A, F[+_], G[+_]](p: A ! F): A ! (F + G) = (p.resume: @unchecked) match
     case Pure(a) => Pure(a)
     case Effect(e) => Effect(e)

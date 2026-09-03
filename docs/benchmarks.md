@@ -388,6 +388,22 @@ step — which is `Chunks.merge` (one queue operation per chunk),
 already in the library and already measured at 10.7us for 2x500
 against `sourceMerge`'s 299.7us.
 
+**The last lever, tried and negative (free-row-variance).**
+`Source.merge` calls `Writer.widen` per source, and widen rebuilds
+every Free node — because `Free` is invariant in its row. That
+invariance turns out to be removable (`enum Free[+F[+_], A]` passes
+the variance check; the row subtyping then holds at concrete rows),
+so the pass could in principle become a coercion. Measured before
+adopting: widen costs 7.4–10.4ns/element in ISOLATION (20.4 -> 24.1us
+at 500 el, 77.5 -> 98.3us at 2000), but the same merge built WITHOUT
+it, at one element type so widen is the only difference, is *slower* —
+1141.8 ±6.7 against 1202.6 ±14.6us on 2x2000, and 1162.4 ±11.4
+against 1240.1 ±10.1 on a repeat, bars non-overlapping both times.
+The walk is also a NORMALIZATION: it hands `feed` an already
+head-normal tree, so the rotation it saves is not paid per pull
+inside the contended region. Declined; `Free` stays invariant as a
+measured choice. `WidenBenchmark` guards the conclusion.
+
 ## 7. Resource — 1000 bracketed acquire/use/release
 
 | | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
