@@ -102,14 +102,29 @@ extension [A](s: Source[A])
    * of the win is bought explicitly with memory. (226.5 is the
    * ceiling: a hand-built chunk-merge pipeline measures 223.2.)
    *
-   * WHY IT IS OFF BY DEFAULT, and it is not politeness. `chunked`
-   * emits a chunk when it is FULL or when its input ENDS — there is
-   * no flush on time. On a slow or unending source, which is what
-   * this merge is for (a model's tokens, a chat's turns, a live
-   * feed), an element therefore waits for `ChunkSize - 1` others
-   * that may be a long time coming, or may never come. Turn it on
-   * where the sources are fast and finite and throughput is the
-   * point; leave it off for anything live.
+   * WHY IT IS OFF BY DEFAULT, and it is not politeness. On its own,
+   * `chunked` emits when a chunk is FULL or when its input ENDS. On a
+   * slow or unending source — which is what this merge is for (a
+   * model's tokens, a chat's turns, a live feed) — an element
+   * therefore waits for `ChunkSize - 1` others that may be a long
+   * time coming, or may never come. There is a test that shows
+   * exactly that stall rather than describing it.
+   *
+   * `flushAfter` is the answer to it: a partial chunk waits at most
+   * that many milliseconds before being sent anyway, so chunking
+   * becomes safe on a live source. It costs nothing when it does not
+   * fire (230.0us +/-3.3 with a 30-second window against 230.1
+   * +/-0.9 without, on 2x2000 — the same number), because the
+   * flusher is a fiber that sleeps beside the feed rather than
+   * anything the per-element path pays for.
+   *
+   * It also, deliberately, never touches the PULL. The obvious way
+   * to bound the wait is to race the source's `uncons` against a
+   * timer, and it is wrong: `Async.timeout` cancels the loser, and
+   * cancelling an in-flight `uncons` on a live source can lose the
+   * element it was about to yield. The flusher instead takes what
+   * has already accumulated, out of a cell the feed writes into,
+   * which is safe whatever the pull is doing.
    *
    * The SIZE is not a parameter, on purpose. It barely matters — 16
    * against 64 measured ~10% apart across a 4x span — while exposing
@@ -125,8 +140,9 @@ extension [A](s: Source[A])
    * instead — 10.7us on 2x500, since it never builds a program node
    * per element at all.)
    */
-  infix def merge[B](t: Source[B], capacity: Int = 64, chunked: Boolean = false)
-                    (using Scheduler, CanBlock): Source[A | B] =
+  infix def merge[B](t: Source[B], capacity: Int = 64, chunked: Boolean = false,
+                     flushAfter: Option[Long] = None)
+                    (using Scheduler, CanBlock, Timer): Source[A | B] =
     type S[W] = Unit ! (Writer % W + Async)
     val sw = Writer.widen[A, A | B, Unit, Async](s)
     val tw = Writer.widen[B, A | B, Unit, Async](t)
@@ -134,21 +150,15 @@ extension [A](s: Source[A])
       pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
         Writer.of(Channel.merge[A | B, S, Async, S, Async](sw, tw, capacity))
     else
-      def chunker: Unit ! (Take % (A | B) + (Writer % Chunk[A | B] + Async)) =
-        !.widen[Unit, Take % (A | B) + Writer % Chunk[A | B], Async](
-          Stage.chunked[A | B](Source.ChunkSize))
       // capacity counts ELEMENTS, so the channel gets that many
       // divided by what each of its slots now holds
       val slots = math.max(1, capacity / Source.ChunkSize)
-      // the chunk streams themselves merge ELEMENTWISE: one
-      // transaction per chunk is the whole point, and chunking the
-      // chunks again would be the bug the compiler warns about here
-      // if this said nothing (E221, a recursive call on a default)
-      val merged: Source[Chunk[A | B]] =
-        through(sw)(chunker).merge(through(tw)(chunker), slots, chunked = false)
-      through(merged)(
-        !.widen[Unit, Take % Chunk[A | B] + Writer % (A | B), Async](
-          Stage.unchunk[A | B]))
+      pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
+        through(
+          Writer.of(Channel.mergeChunked[A | B, S, Async, S, Async](
+            sw, tw, slots, Source.ChunkSize, flushAfter)))(
+          !.widen[Unit, Take % Chunk[A | B] + Writer % (A | B), Async](
+            Stage.unchunk[A | B]))
 
 extension [A](s: Chunks[A])
   /**

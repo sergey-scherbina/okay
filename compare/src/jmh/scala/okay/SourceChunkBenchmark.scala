@@ -67,4 +67,11 @@ class SourceChunkBenchmark {
   @Benchmark
   def mergeChunkedRoomy(): Long =
     left.merge(right, capacity = 1024, chunked = true).toLazyList.foldLeft(0L)(_ + _)
+
+  /** the flusher fiber's standing cost: a flush window far longer
+   * than the run, so it never fires and only its presence is paid */
+  @Benchmark
+  def mergeChunkedFlusher(): Long =
+    left.merge(right, capacity = 1024, chunked = true, flushAfter = Some(30000))
+      .toLazyList.foldLeft(0L)(_ + _)
 }

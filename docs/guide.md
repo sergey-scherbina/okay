@@ -245,10 +245,13 @@ in bulk, `merge`'s own `chunked = true` does the same trick
 underneath and still hands back an ordinary `Source`: 2.6x at the
 default capacity, 5.1x with `capacity = 1024`, since `capacity`
 counts elements either way and the rest of the win is bought
-explicitly with memory. It is off by default because chunking has no
+explicitly with memory. It is off by default because chunking on its own has no
 flush on time — on a slow or unending source an element waits for 15
-others that may never come, so it is for fast finite sources, not
-live feeds. On JVM/Native it parks
+others that may never come. `flushAfter = Some(millis)` bounds that
+wait and makes chunking safe on a live source; it costs nothing when
+it does not fire, and it never races the source's pull (cancelling an
+in-flight `uncons` could lose an element), taking only what has
+already accumulated. On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`

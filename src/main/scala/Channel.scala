@@ -183,6 +183,88 @@ object Channel {
     go(u)
 
   /**
+   * The chunking feed: accumulate up to `size` elements and send them
+   * as one chunk, so the channel runs one transaction per chunk
+   * rather than per element (source-merge-chunked: 71% of the
+   * elementwise merge's CPU is that transaction).
+   *
+   * The buffer is a `TRef` rather than a local, because a FLUSHER may
+   * take it concurrently — and that is the whole design constraint
+   * here. The obvious way to bound a partial chunk's wait is to race
+   * the pull against a timer, and it is wrong: `Async.timeout`
+   * cancels the loser, and cancelling an in-flight `uncons` on a live
+   * source can lose the element it was about to yield. So the timer
+   * never touches the pull. It runs beside it and takes whatever has
+   * accumulated, which is safe whatever the pull is doing.
+   */
+  private def feedChunked[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int,
+                                          buf: TRef[ChunkBuffer[A]])
+                                         (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+    def take(full: Boolean): Option[Chunk[A]] = buf.modify: b =>
+      if b.pending.isEmpty || (!full && b.pending.length < size)
+      then (b, None)
+      else (ChunkBuffer(Vector.empty), Some(ChunkBuf.ofSpecialized(b.pending)))
+    def go(x: U[A]): Unit ! Async =
+      async(St.uncons(x).runWith).flatMap:
+        case Some((a, r)) =>
+          buf.modify(b => (ChunkBuffer(b.pending :+ a), ()))
+          take(full = false) match
+            case Some(ch) => c.send(ch).flatMap(ok => if ok then go(r) else pure(()))
+            case None => go(r)
+        // the source ended: whatever is left is a chunk, however short
+        case None => take(full = true) match
+          case Some(ch) => c.send(ch).map(_ => ())
+          case None => pure(())
+    go(u)
+
+  /** the buffer a chunking feed accumulates into, in a cell of its
+   * own so a flusher can take it without racing the pull */
+  private[okay] final case class ChunkBuffer[A](pending: Vector[A])
+    extends TRef.Stamped[ChunkBuffer[A]]:
+    def value: ChunkBuffer[A] = this
+
+  /**
+   * Merge two streams as CHUNKS: the same readiness merge, one
+   * channel transaction per `size` elements. `within` bounds how long
+   * a partial chunk may wait — without it a chunk is emitted only
+   * when full or when its source ends, which on a slow or unending
+   * source means an element can wait indefinitely.
+   *
+   * The flusher is a fiber per source that sleeps and then TAKES what
+   * has accumulated; it never cancels or races the pull (see
+   * `feedChunked`). It stops when its source's feed completes.
+   */
+  def mergeChunked[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int, size: Int,
+                                                within: Option[Long])
+                                               (using Stream[S, F], Handler[F],
+                                                Stream[T, G], Handler[G])
+                                               (using sch: Scheduler, timer: Timer)
+  : Channel[Chunk[A]] =
+    val c = Channel[Chunk[A]](capacity)
+    val alive = AtomicInteger(2)
+    def flusher(buf: TRef[ChunkBuffer[A]], done: AtomicInteger): Unit = within.foreach: ms =>
+      def tick(): Unit ! Async =
+        Async.sleep(ms).flatMap: _ =>
+          if done.get > 0 then
+            buf.modify(b =>
+              if b.pending.isEmpty then (b, None)
+              else (ChunkBuffer(Vector.empty), Some(ChunkBuf.ofSpecialized(b.pending)))) match
+              case Some(ch) => c.send(ch).flatMap(_ => tick())
+              case None => tick()
+          else pure(())
+      val _ = sch.fork(() => tick())
+    def watch(f: Fiber[Unit], mine: AtomicInteger): Unit = f.onComplete { r =>
+      mine.set(0)
+      r.left.foreach(e => c.fail(e))
+      if alive.decrementAndGet() == 0 then c.close()
+    }
+    val (bs, bt) = (TRef.bare(ChunkBuffer[A](Vector.empty)), TRef.bare(ChunkBuffer[A](Vector.empty)))
+    val (ds, dt) = (AtomicInteger(1), AtomicInteger(1))
+    watch(sch.fork(() => feedChunked(c, s, size, bs)), ds); flusher(bs, ds)
+    watch(sch.fork(() => feedChunked(c, t, size, bt)), dt); flusher(bt, dt)
+    c
+
+  /**
    * Merge two streams by READINESS, not by turns: a fiber per source
    * feeds one channel, the loser of every race simply arrives later.
    * This is the concurrency zip and ++ cannot express — they are
