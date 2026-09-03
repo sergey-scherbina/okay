@@ -161,3 +161,70 @@ cost under genuine multi-fiber contention — needs its own profiler
 pass, likely in `ChannelBenchmark` or a new fiber-contention
 benchmark closer to `Channel.merge`'s actual `feed`/`sch.fork` shape
 than `concurrentSendReceive1k`'s synthetic two-thread race.
+
+## merge-scaling-shape (2026-09-03): linear, so the kernel rewrite is off the table
+
+The two lanes above closed with one question left standing. The
+remaining cost is `!.resume`'s Bind rotation, and the textbook fix
+for THAT is reflection without remorse (Van der Ploeg & Kiselyov
+2014): replace `Bind(m, k)`'s single continuation with a
+type-aligned queue of them, so appending is O(1) and the rotation
+disappears as a concept. It is a real technique with a real cost —
+type-alignment in Scala 3 wants either a cast (against this
+project's own rule) or a heavy GADT, and it changes the shape 42
+sites depend on through `resume`'s three-form invariant, plus
+`widen`, `relay`, `<|>`, `runFree`, `foldCont`, `foldIn`, on three
+platforms.
+
+But that technique removes QUADRATIC behaviour on left-nested
+binds. It does nothing for a constant per-element cost. So the
+question that decides whether any of that risk is worth taking is
+not "how expensive is rotation" — it is "does the cost per element
+GROW with the element count". `ScalingBenchmark` asks exactly that,
+by sweeping `n` and reading the numbers per element rather than as
+totals, with the bare `LazyList` walk as the control for the
+platform's own scaling.
+
+| per element | 500 el | 1000 el | 2000 el | 4000 el | over 8x |
+|---|---|---|---|---|---|
+| `rawLazyListDrain` (control) | 11.3ns | 11.4 | 11.0 | 10.6 | x0.94 |
+| `sourceSingleDrain` | 41.2ns | 39.6 | 41.5 | 40.6 | x0.98 |
+| `channelMerge` | 142.3ns | 121.9 | 127.9 | 131.8 | x0.93 |
+| `sourceMerge` | 303.5ns | 299.7 | 300.7 | 291.6 | x0.96 |
+
+**Every lane is flat across an 8x range** — the per-element cost
+does not grow, it drifts DOWN slightly (warm-up amortizing over a
+longer run). The Bind tree the Writer path builds is linear. There
+is no quadratic to remove, so reflection without remorse would buy
+nothing here, and the kernel rewrite has no measured justification.
+That avenue is closed with data rather than left open as a
+someday-maybe — which was the whole point of asking before
+rewriting. (The shape is what `ofLoop` builds: right-nested
+`flatMap`, where rotation is cheap. Left-nesting is what makes the
+technique pay, and this codebase already learned that lesson once
+from the other side — the 1000x kyo numbers were a left-nested
+`foldLeft` artifact, at parity right-nested.)
+
+**What the sweep exposes instead.** Decomposing the flat numbers:
+the Writer layer costs ~30ns per element ALONE (41 against the
+control's 11), and ~160ns per element INSIDE the merge (292 against
+`channelMerge`'s 132) — the same layer, roughly **5x more
+expensive** in the merged shape. That is not a tree-shape fact, and
+it is the quantified form of what channel-cas-contention found
+qualitatively (a slower step widens the window a competing fiber's
+CAS can land in; measured there as 28.1% -> 34.3% fail rate at
+matched capacity). The lever it points at is not a cheaper
+interpretation step but FEWER of them inside the contended region —
+which is what the library already offers as `Chunks.merge`, one
+queue operation per chunk rather than per element, and which the
+same benchmark family measures at 10.7us for 2x500 against
+`sourceMerge`'s 299.7us. The per-element `Source` path pays ~300ns
+per element for per-element program semantics; the batched path is
+the answer where throughput is what matters, and it already exists.
+
+**Nothing landed but the benchmark.** `ScalingBenchmark` is kept
+(unlike channel-queue-reversal's exploratory file, which was
+removed because its premise did not hold): this one's premise held
+and it answered its question, and it is the scaling control any
+future "should we rewrite the kernel" question should have to pass
+first.

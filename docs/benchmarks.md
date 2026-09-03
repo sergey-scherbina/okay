@@ -357,6 +357,37 @@ improvement to `Writer.of` on its own terms. The `Channel.merge`
 contention cost is a separate, deeper investigation, filed not
 chased.
 
+**Scaled (merge-scaling-shape): linear, so the story ends here.**
+The filed follow-ups closed one after another — the `Queue` in
+`Channel.State` measured and declined (two replacements, neither
+wins), the `TRef.modify` contention measured and explained as a
+symptom rather than a cost (its retry is a spin, never a park). What
+was left was `!.resume`'s rotation itself, whose textbook fix
+(reflection without remorse — a type-aligned continuation queue in
+place of the binary Bind tree) is a kernel rewrite touching 42 sites
+through `resume`'s three-form invariant. That technique removes
+QUADRATIC behaviour on left-nested binds and does nothing for a
+constant per-element cost, so `ScalingBenchmark` swept `n` and read
+the numbers PER ELEMENT:
+
+| per element | 500 el | 1000 el | 2000 el | 4000 el |
+|---|---|---|---|---|
+| `rawLazyListDrain` (control) | 11.3ns | 11.4 | 11.0 | 10.6 |
+| `sourceSingleDrain` | 41.2ns | 39.6 | 41.5 | 40.6 |
+| `channelMerge` | 142.3ns | 121.9 | 127.9 | 131.8 |
+| `sourceMerge` | 303.5ns | 299.7 | 300.7 | 291.6 |
+
+Flat everywhere across an 8x range — the tree is linear, there is no
+quadratic to remove, and the rewrite has no measured justification.
+What the sweep exposes instead: the Writer layer costs ~30ns per
+element alone (41 vs the control's 11) and ~160ns per element inside
+the merge (292 vs `channelMerge`'s 132) — the same layer, ~5x more
+expensive in the contended shape. The lever is therefore fewer
+interpretation steps inside the contended region, not a cheaper
+step — which is `Chunks.merge` (one queue operation per chunk),
+already in the library and already measured at 10.7us for 2x500
+against `sourceMerge`'s 299.7us.
+
 ## 7. Resource — 1000 bracketed acquire/use/release
 
 | | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
