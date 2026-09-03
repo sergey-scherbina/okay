@@ -135,14 +135,18 @@ given throwsK[E]: TypeableK[Throws % E] = typeableKByClass(classOf[Throws[?, ?]]
  * instance guards the continuations through the tree — a throw from
  * a pure segment between effects lands in the handler, while a
  * throw from inside an effect's HANDLER stays that handler's
- * business (stated, not hidden). The instances are NAMED, not a
- * catch-all: a lazy monad (a Cont diagonal, Eff) given the strict
- * instance would try the CONSTRUCTION and never the run, and the
- * catch would silently never fire — so an F without an instance is
- * a compile error that says so, and a strict monad of your own
- * declares itself in one line: `given CanTry[M] = CanTry.strict`.
+ * business (stated, not hidden). A context function (`E ?=> X`,
+ * direct-try-ctx) is lazy a THIRD way — a closure over its
+ * environment, not run until applied — so its instance defers the
+ * try to APPLICATION time (`ctxFn` below), the honest counterpart to
+ * the Free row's per-step guard. The instances are NAMED, not a
+ * catch-all: a lazy monad given the STRICT instance would try the
+ * CONSTRUCTION and never the run, and the catch would silently never
+ * fire — so an F without an instance is a compile error that says
+ * so, and a strict monad of your own declares itself in one line:
+ * `given CanTry[M] = CanTry.strict`.
  */
-@implicitNotFound("no CanTry[${F}]: `try` in a direct block needs to know how ${F} catches a throw.\nStrict monads (Option, Either, List, Vector, Try) and Free rows have instances;\nfor a strict monad of your own declare `given CanTry[${F}] = CanTry.strict` — a LAZY monad\n(a Cont diagonal, Eff) has no honest instance: its body runs after the try, catch in the run instead.")
+@implicitNotFound("no CanTry[${F}]: `try` in a direct block needs to know how ${F} catches a throw.\nStrict monads (Option, Either, List, Vector, Try), Free rows, and context functions (E ?=> X)\nhave instances; for a strict monad of your own declare `given CanTry[${F}] = CanTry.strict` — a\nCont-shaped LAZY monad (Eff) has no honest instance: its body runs after the try, catch in the run instead.")
 trait CanTry[F[_]]:
   def tryIn[A](fa: => F[A])(h: Throwable => F[A]): F[A]
 
@@ -158,6 +162,16 @@ object CanTry:
   given list: CanTry[List] = strict
   given vector: CanTry[Vector] = strict
   given tries: CanTry[Try] = strict
+  /** direct-try-ctx: a context function is lazy in its environment
+   * (a closure, not run until applied), so the try must defer to
+   * APPLICATION time, not construction — the honest counterpart to
+   * `rows`' per-step guard. Also sidesteps the dotty 3.7.4 erasure
+   * crash ("bad adapt for M$proxy2.pure(a)") the STRICT shape hit
+   * when tried here during the 2026-09-02 audit — a different
+   * generated-code shape, not a version bump */
+  given ctxFn: [E] => CanTry[[X] =>> E ?=> X] = new:
+    def tryIn[A](fa: => (E ?=> A))(h: Throwable => (E ?=> A)): E ?=> A =
+      (e: E) ?=> (try fa(using e) catch case ex: Throwable => h(ex)(using e))
   /** Free rows: guard construction AND every continuation step */
   given rows: [Fx[+_]] => CanTry[[X] =>> X ! Fx] = new:
     def tryIn[A](fa: => A ! Fx)(h: Throwable => A ! Fx): A ! Fx =
