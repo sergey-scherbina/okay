@@ -262,10 +262,22 @@ construction instead of a type test per value).
         measured at 3.4x the rebuild model. Needs the claim-not-remove
         waiter protocol from channel-ring-integration; that lane's
         diagnosis is the starting point.
-      * UnboundedCasChannel — a Michael-Scott / linked-segment queue,
-        for the capacity `Channel.merge` actually defaults to. Costs
-        one node allocation per element instead of a whole state
-        rebuild, so it should sit between the two.
+      * an UNBOUNDED implementation, for the capacity
+        `Channel.merge` actually defaults to — see
+        channel-ring-unbounded, which is the same work: linked ring
+        SEGMENTS. Not a separate Michael-Scott lane, because a
+        segmented ring dominates MS on every axis (allocation
+        amortised over a segment rather than a node per element,
+        cache-friendly, no per-element node) and is the Segmented
+        Queue construction Koch-Sanders-Williams 2025 SS3 surveys.
+        How it differs from `StmChannel`, so the lane need not
+        re-derive it: `StmChannel` costs THREE allocations per send
+        (a cons cell, a `Queue`, a `State`) and CASes the whole
+        six-field state, so a concurrent operation on an unrelated
+        field forces the entire transition to re-run — measured at
+        28-49% CAS-failure rates in channel-cas-contention. A
+        segmented ring allocates once per segment and contends only
+        on the head and tail positions.
       * RelaxedChannel / MultiFifoChannel — Koch, Sanders & Williams
         (arXiv:2507.22764). An order of magnitude at p=32..192, at
         the price of bounded rank error, so ONLY for a channel whose
