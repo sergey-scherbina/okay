@@ -412,3 +412,45 @@ wire frame, every snapshot), so it is named now.
 - Yaml/Xml through the same generator (no hot path names them yet).
 - Streaming CBOR (a value larger than fits comfortably in memory) —
   the interpreted fold does not offer it either.
+
+## JSON \u escapes (2026-09-03, json-unicode-escape)
+
+`Json.unquote` had no `\uXXXX` handling. Its catch-all escape case —
+written for the single-character escapes (`\"`, `\\`, `\/`) — silently
+mishandled the multi-character one too: seeing `\`, it read the next
+character (`u`), appended it LITERALLY, and advanced by two. `​`
+therefore decoded to the five literal characters `u`, `2`, `0`, `0`,
+`b`, not U+200B — and this was not a corner case. Any producer that
+escapes non-ASCII as `\uXXXX` (a common, standards-legal JSON choice —
+confirmed live against Telegram's own Bot API) had every non-ASCII
+character in every string it sent silently turned into garbage, four
+to six letters per character, with no error anywhere in the chain.
+
+Found downstream: a chat service consuming Telegram's API decoded
+Cyrillic messages into runs of literal hex digits, which explained a
+day of "the bot doesn't understand Russian" reports that were never
+about intent parsing at all.
+
+The fix decodes a `\uXXXX` escape as one UTF-16 code unit. A surrogate
+pair (a codepoint outside the BMP, most emoji among them) needs no
+special-casing: two escapes decoding to two `Char`s that happen to form
+a valid high/low surrogate pair are automatically a correct Scala
+`String`, because that is what a UTF-16 string already is. A malformed
+or truncated escape — fewer than four hex digits left before the
+string ends, or non-hex characters — is a decode the same way any other
+damage in this parser is: `unquote` cannot fail loudly (it returns a
+plain `String`, not a `Json`, so there is no `JErr` for it to become),
+so a bad escape is left as the literal characters it names, exactly
+the wrong-but-safe behavior every other case already had. It does not
+throw.
+
+- [x] `\uXXXX` decodes to the named code point
+- [x] a surrogate pair reconstructs the correct single character
+- [x] the existing single-character escapes are unaffected
+- [x] a truncated escape at the end of a string does not throw
+
+### Out of scope
+
+Re-encoding (`Json.print`/`escape`) still emits raw UTF-8 rather than
+`\uXXXX` — legal JSON either way, and not the defect: the defect was
+one direction only, decoding what someone else already escaped.
