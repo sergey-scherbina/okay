@@ -1,5 +1,34 @@
 # Changelog
 
+## channel-laws — the `Channel` contract written down, property-checked, and one primitive that stops implementations deriving it wrongly
+Completed: 2026-09-03
+Landed as 592f0b2d. After `ring-channel` withdrew two implementations
+that had each rediscovered the same invariants by failing a gate.
+
+**Laws.** The interface named its operations and said nothing about
+what must be true of them. `TestChannelLaws` now states the contract
+as eight laws, parameterised over the implementation, so a new
+mechanism earns its place by passing them rather than by surviving a
+gate a few times. They were **proven to catch the real defect**
+before being trusted: restoring the withdrawn `CasChannel` with its
+in-flight fix reverted fails law 1 — "an accepted element is always
+delivered" — in 0.05s, naming the law, where the full gate needed
+roughly three runs to show the same thing.
+
+**A narrower primitive.** Verified from ZIO's sources:
+`Queue.shutdown` interrupts offers and takes and promises no drain,
+while our `close` promises buffered elements still drain — strictly
+harder, and where all four defects lived. The interface now asks for
+the conclusion: `finished` means "nothing further can ever be
+delivered", instead of letting a consumer derive it from a raw closed
+flag plus an emptiness check, which is the derivation three of the
+four defects got wrong. `close`'s contract is written on the method:
+two-phase, the end after the buffer, acceptance is final.
+
+The compiler also caught one of the new laws checking nothing —
+`forAll` inside a `test` discards the `Prop` it returns. It is a
+`property` now.
+
 ## intent-name-sensitivity — the domain word is read, and a nonsense qualifier costs
 Completed: 2026-09-03
 Landed as 25aed59c. The previous lane's recommendation rested on four
