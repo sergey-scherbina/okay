@@ -1,5 +1,38 @@
 # Changelog
 
+## chunk-flush — `flushAfter`: a bounded wait for a partial chunk, so chunking is safe on a live source
+Completed: 2026-09-03
+Landed as e72a18d. `merge(chunked = true)` emitted only on a full
+chunk or on end of input, so on the slow or unending sources this
+merge exists for (a model's tokens, a live feed) an element could
+wait for 15 others that never come. A test now SHOWS that stall
+rather than describing it: three elements into a source that never
+ends, and nothing arrives in 500ms.
+
+`flushAfter = Some(millis)` bounds it, and two constraints shaped how:
+
+It must not race the PULL — the obvious bound is `Async.timeout` on
+the source's `uncons`, and it is wrong, because timeout cancels the
+loser and cancelling an in-flight `uncons` on a live source can lose
+the element it was about to yield. The timer therefore never touches
+the pull: the feed accumulates into a `TRef` and a flusher fiber
+takes what is already there.
+
+It must not add a channel — chunking through a second channel would
+double the transactions and erase the win it exists to deliver. So
+the accumulation moved into the feed (`Channel.mergeChunked`), and
+the existing merge channel stays the only one.
+
+| measured, quiet box | |
+|---|---|
+| `chunked = false` (the default path) | 307.2 ±2.0 vs master's 310.2 ±18.4 |
+| `chunked = true`, capacity 1024 | 230.1 ±0.9 (was 226.5 ±1.2 via the Stage) |
+| the same + `flushAfter = Some(30000)` | 230.0 ±3.3 (never fires) |
+
+The default path is untouched, the rewrite is at parity with the
+chunking it replaces, and a flusher that does not fire costs nothing
+standing.
+
 ## version-store — a version tree that outlives the process
 Completed: 2026-09-03
 `Rerun` shipped with only `MemoryVersions`, so a branch died with the
