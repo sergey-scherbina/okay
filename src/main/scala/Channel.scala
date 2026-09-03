@@ -2,6 +2,7 @@ package okay
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.immutable.Queue
+import okay.!.*
 
 /**
  * A channel: a queue between fibers, the missing primitive of
@@ -200,10 +201,7 @@ object Channel {
   private def feedChunked[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int,
                                           buf: TRef[ChunkBuffer[A]])
                                          (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
-    def take(full: Boolean): Option[Chunk[A]] = buf.modify: b =>
-      if b.pending.isEmpty || (!full && b.pending.length < size)
-      then (b, None)
-      else (ChunkBuffer(Vector.empty), Some(ChunkBuf.ofSpecialized(b.pending)))
+    def take(full: Boolean): Option[Chunk[A]] = takeChunk(buf, size, full)
     def go(x: U[A]): Unit ! Async =
       async(St.uncons(x).runWith).flatMap:
         case Some((a, r)) =>
@@ -216,6 +214,63 @@ object Channel {
           case Some(ch) => c.send(ch).map(_ => ())
           case None => pure(())
     go(u)
+
+  /**
+   * The chunking feed for a source that marks its OWN boundaries. It
+   * walks the program instead of pulling through `Stream.uncons`,
+   * because `Flush` has to be interpreted where it occurs — at the
+   * exact point in the told sequence the producer put it.
+   *
+   * `relay` cannot serve: its handler answers an operation with a
+   * VALUE, while `Flush.Now` must become a channel send, an Async
+   * program that suspends. So this is the walk `Writer.widen` and
+   * `Generate.uncons` are written in — resume, split the row,
+   * rebuild — with the accumulation in between.
+   *
+   * It is a SECOND walk rather than the only one, and that was
+   * measured rather than assumed: routing the ordinary chunked merge
+   * through here too (widening every source into the flushing row,
+   * paying one more tree rebuild per source and one more row split
+   * per element) cost 11% on the common path — 244.3us +/-15.2
+   * against 219.6 +/-1.5 in the same window. `Flush` is opt-in and
+   * rare; plain chunking is not, so the duplication is the accumulation
+   * helpers shared and the walk written twice (flush-op, 2026-09-03).
+   */
+  private def feedFlushing[A](c: Channel[Chunk[A]], p: Flushing[A], size: Int,
+                              buf: TRef[ChunkBuffer[A]]): Unit ! Async =
+    def sendIf(o: Option[Chunk[A]])(rest: => Unit ! Async): Unit ! Async = o match
+      case Some(ch) => c.send(ch).flatMap(ok => if ok then rest else okay.pure(()))
+      case None => rest
+    def step[X](e: Flush[X] | (Writer % A + Async)[X], k: X => Flushing[A]): Unit ! Async =
+      <|>[Flush, Writer % A + Async](e) match
+        // the producer's own boundary: emit what is held, however short
+        case Left(Flush.Now) => sendIf(takeChunk(buf, size, full = true))(go(k(())))
+        case Right(rest) => <|>[Async, Writer % A](rest) match
+          case Left(a) => Effect(a).flatMap(x => go(k(x)))
+          case Right(Writer.Say(w)) =>
+            buf.modify(b => (ChunkBuffer(b.pending :+ w), ()))
+            sendIf(takeChunk(buf, size, full = false))(go(k(())))
+    def go(p: Flushing[A]): Unit ! Async = (p.resume: @unchecked) match
+      case Pure(_) => sendIf(takeChunk(buf, size, full = true))(okay.pure(()))
+      case Effect(e) => step(e, _ => okay.pure(()))
+      case Bind(Effect(e), k) => step(e, k)
+    go(p)
+
+  /** what both chunking feeds do to the buffer: take a chunk if one
+   * is due — `full` meaning "whatever is there, the input is over or
+   * the producer said so" */
+  private def takeChunk[A](buf: TRef[ChunkBuffer[A]], size: Int, full: Boolean)
+  : Option[Chunk[A]] = buf.modify: b =>
+    if b.pending.isEmpty || (!full && b.pending.length < size)
+    then (b, None)
+    else (ChunkBuffer(Vector.empty), Some(ChunkBuf.ofSpecialized(b.pending)))
+
+  /** the same merge, for sources that mark their own boundaries */
+  def mergeFlushing[A](s: Flushing[A], t: Flushing[A], capacity: Int, size: Int,
+                       within: Option[Long])
+                      (using sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
+    chunkedMerge(capacity, size, within)(
+      (c, buf) => feedFlushing(c, s, size, buf), (c, buf) => feedFlushing(c, t, size, buf))
 
   /** the buffer a chunking feed accumulates into, in a cell of its
    * own so a flusher can take it without racing the pull */
@@ -234,21 +289,17 @@ object Channel {
    * has accumulated; it never cancels or races the pull (see
    * `feedChunked`). It stops when its source's feed completes.
    */
-  def mergeChunked[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int, size: Int,
-                                                within: Option[Long])
-                                               (using Stream[S, F], Handler[F],
-                                                Stream[T, G], Handler[G])
-                                               (using sch: Scheduler, timer: Timer)
-  : Channel[Chunk[A]] =
+  private def chunkedMerge[A](capacity: Int, size: Int, within: Option[Long])
+                             (feedS: (Channel[Chunk[A]], TRef[ChunkBuffer[A]]) => Unit ! Async,
+                              feedT: (Channel[Chunk[A]], TRef[ChunkBuffer[A]]) => Unit ! Async)
+                             (using sch: Scheduler, timer: Timer): Channel[Chunk[A]] =
     val c = Channel[Chunk[A]](capacity)
     val alive = AtomicInteger(2)
     def flusher(buf: TRef[ChunkBuffer[A]], done: AtomicInteger): Unit = within.foreach: ms =>
       def tick(): Unit ! Async =
         Async.sleep(ms).flatMap: _ =>
           if done.get > 0 then
-            buf.modify(b =>
-              if b.pending.isEmpty then (b, None)
-              else (ChunkBuffer(Vector.empty), Some(ChunkBuf.ofSpecialized(b.pending)))) match
+            takeChunk(buf, size, full = true) match
               case Some(ch) => c.send(ch).flatMap(_ => tick())
               case None => tick()
           else pure(())
@@ -260,9 +311,20 @@ object Channel {
     }
     val (bs, bt) = (TRef.bare(ChunkBuffer[A](Vector.empty)), TRef.bare(ChunkBuffer[A](Vector.empty)))
     val (ds, dt) = (AtomicInteger(1), AtomicInteger(1))
-    watch(sch.fork(() => feedChunked(c, s, size, bs)), ds); flusher(bs, ds)
-    watch(sch.fork(() => feedChunked(c, t, size, bt)), dt); flusher(bt, dt)
+    watch(sch.fork(() => feedS(c, bs)), ds); flusher(bs, ds)
+    watch(sch.fork(() => feedT(c, bt)), dt); flusher(bt, dt)
     c
+
+  /** the chunking merge for ordinary sources: the common path, fed
+   * through `feedChunked` rather than the flushing walk because that
+   * routing measured 11% dearer (see `feedFlushing`) */
+  def mergeChunked[A, S[_], F[+_], T[_], G[+_]](s: S[A], t: T[A], capacity: Int, size: Int,
+                                                within: Option[Long])
+                                               (using Stream[S, F], Handler[F],
+                                                Stream[T, G], Handler[G])
+                                               (using Scheduler, Timer): Channel[Chunk[A]] =
+    chunkedMerge(capacity, size, within)(
+      (c, buf) => feedChunked(c, s, size, buf), (c, buf) => feedChunked(c, t, size, buf))
 
   /**
    * Merge two streams by READINESS, not by turns: a fiber per source

@@ -434,7 +434,14 @@ time. On the slow or unending sources this merge exists for — a
 model's tokens, a live feed — an element would wait for 15 others
 that may never come. `flushAfter = Some(millis)` bounds that wait and
 costs nothing standing: 230.0 ±3.3 with a 30-second window against
-230.1 ±0.9 without, the same number. The default path is unaffected
+230.1 ±0.9 without, the same number. `Flush.now` is the exact form of
+the same thing — a boundary the producer states rather than a timer
+guesses — and it too costs the ordinary path nothing (220.5 ±0.7
+against 219.6 ±1.5), but only after a refuted tidier design: routing
+BOTH row shapes through the one flushing walk measured 244.3 ±15.2,
+11% worse, for one extra tree rebuild per source and one extra row
+split per element. Two walks sharing the accumulation is what the
+numbers bought. The default path is unaffected
 either way — 307.2 ±2.0 against master's 310.2 ±18.4 the same hour.
 
 ## 7. Resource — 1000 bracketed acquire/use/release
