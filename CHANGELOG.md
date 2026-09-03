@@ -1,5 +1,60 @@
 # Changelog
 
+## intent-domain-in-names — the case names ARE half the classifier
+Completed: 2026-09-03
+Landed as b3585b17. The hypothesis the two previous lanes left
+standing, tested at last on a fixture big enough to defend it: a
+taxonomy carries its domain in its case NAMES or nowhere.
+
+Four configurations, the same 120 messages, the same examples, the same
+prompt. The only thing that changes is the type.
+
+| configuration | calls / message | macro F1 | `Other` P / R / F1 |
+|---|---|---|---|
+| generic names, no gate | 1 | 0.872 | 0.94 / 0.65 / 0.77 |
+| generic names + gate | 2 | 0.906 | 0.92 / 0.81 / 0.86 |
+| domain names, no gate | 1 | 0.907 | 0.87 / 0.96 / 0.92 |
+| domain names + gate | 2 | 0.830 | 0.68 / 0.97 / 0.80 |
+
+Renaming four identifiers — `MeetingProposal`, `MeetingRequest`,
+`MeetingNotification`, `NotAboutMeetings` — took `Other` recall from
+0.65 to 0.96 and matched the gated configuration's macro F1 at HALF the
+model calls. `Proposal`/`Request`/`Notification` carrying a bare
+`what: String` never says its subject is meetings, so "please refund my
+card" reads as a `Request` honestly rather than mistakenly, and every
+prompt-level fix for that was arguing with a type that had not stated
+its subject.
+
+AND THEY DO NOT COMPOSE. Gated, the named taxonomy drops to 0.830 —
+worse than either half alone — with `Other` precision at 0.68 and
+`Notification` recall at 0.68, because a second judge re-rejects what
+the first accepted. Two mechanisms for one job is not twice the safety.
+
+So the in-domain gate, which the previous lane established as the
+answer, is demoted to the FALLBACK for taxonomies that cannot be
+renamed (someone else's types, a wire format, a taxonomy shared with a
+system that owns its names). That correction went into its own doc
+comment, not only into the spec: otherwise the code would keep
+asserting what the first measurement said.
+
+The price of clear names is real and stated rather than buried:
+`Other` precision 0.94 -> 0.87 and `Request` recall 0.92 -> 0.77, since
+domain-bearing names make the model readier to push a borderline
+message out of the domain. Which error is cheaper — a misrouted request
+costs a wrong action, a wrongly rejected one costs a human's attention
+— belongs to the caller, and is the trade to write into a taxonomy's
+documentation rather than settle by default.
+
+This is the strongest form of the claim the whole feature rests on: the
+taxonomy IS the type, so its names are not labels for humans, they are
+half the classifier.
+
+Filed: how much of this is the word "Meeting" and how much is any
+qualifier at all — a nonsense-qualifier arm would say, and until it
+runs the mechanism is assumed rather than known.
+
+Full matrix green: 2133 tests, 0 failures.
+
 ## flakes-integration — the last recorded flake out of the default gate
 Completed: 2026-09-03
 Landed as a3ecf5b8, on the operator's call. Two of the three were
