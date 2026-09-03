@@ -184,6 +184,117 @@ that proof: it only becomes readable once `run` RETURNS, and this
 script's `run` call does not return until interrupted — the response
 BODY is the observable side channel here, not the process's stdout.
 
+## Metadata as context — `okay.script.Meta` (okay-script-meta, 2026-09-03)
+
+The operator's ask directly: code defined inside an `.md` file should
+be able to read the metadata defined in the markup AROUND it, as its
+CURRENT CONTEXT — the way `../it-consulting/site/site.md` carries YAML
+front-matter (`tagline`, `contact`, ...) plus a nested ```yaml
+`services` list under its own "# Услуги" heading, and code living
+under that heading (or a deeper one) should see both without the
+markdown author having to re-declare them as Scala literals.
+
+### What counts as metadata
+
+- **Front-matter**: a `---` / `---` delimited block at the very START
+  of the file, `key: value` lines, FILE-LEVEL (visible everywhere).
+- **Nested ```yaml fences**, scoped by the HEADING (`#`…`######`) they
+  physically sit under — the shape already seen in `site.md`'s own
+  `services` block (a `- key: v` list of flat objects) and `model.md`
+  (a flat mapping). A yaml fence attaches to the NEAREST ENCLOSING
+  heading (or to the file root if it appears before any heading).
+- Heading STRUCTURE itself (level + title) is part of the AST too
+  (`Section.level`/`.title`), not just the yaml payload — a heading
+  with no yaml block at all is still a real `Section` node.
+
+A YAML fence's content is METADATA — CONSUMED, not shown in `render`'s
+output (a deliberate, documented change from "every non-```scala fence
+passes through verbatim": that rule still holds for every OTHER
+language tag, e.g. ```json — only ```yaml is now special). A heading
+LINE itself (`## Услуги`) is ordinary prose too and still renders
+verbatim, in addition to driving the section tree.
+
+### The typed AST — `okay.script.Meta`
+
+```scala
+package okay.script
+
+object Meta:
+  enum Value:
+    case Str(s: String)
+    case Arr(items: Vector[Value])
+    case Obj(fields: Vector[(String, Value)])
+
+  final case class Section(level: Int, title: String, yaml: Vector[Value], children: Vector[Section])
+  final case class Doc(frontMatter: Map[String, String], root: Section)  // root: level=0, title=""
+
+  /** `doc` is the WHOLE file's tree, always navigable; `path` is the
+   * ancestor chain (root..nearest heading) for THIS position in the
+   * document. */
+  final case class Context(doc: Doc, path: Vector[Section]):
+    /** nearest-enclosing-heading-wins, then front-matter */
+    def get(key: String): Option[String]
+    def apply(key: String): String   // throws if absent
+    def section: Option[Section]     // the nearest enclosing heading, if any
+```
+
+- `Context.get`/`apply` is the UNTYPED access the operator asked for —
+  no schema needed, works on any front-matter/yaml shape.
+- `Context.doc` is the TYPED AST access also asked for — the full
+  tree, independent of where in the document the reading code sits
+  (want a SIBLING section's data, or the whole file's structure? walk
+  `doc.root`).
+- **A path Section's `children` reflects only what had CLOSED by the
+  time that position was reached** (document order, same rule
+  `run`/`render` already apply to `val`/`def` visibility) — a
+  currently-OPEN ancestor's later subsections are not yet in its
+  `children` field for a `path` entry, even though they ARE present on
+  the SAME section reached via `doc.root` (which is only handed to
+  synthesized code once the WHOLE file has been parsed, so it is
+  always complete). This is a real, documented asymmetry, not a bug.
+
+### How code reaches it — an injected `given`, not a runtime re-parse
+
+Both `run` and `render` share ONE tokenizer pass that, alongside the
+existing Text/Code/Interp segmentation, tracks the CURRENT heading
+path as it walks the document and pairs every segment/block with it.
+Source synthesis, whenever a segment's path differs from the previous
+one, emits a fresh local binding BEFORE that segment's own code:
+
+```scala
+given _okayScriptMeta_: okay.script.Meta.Context = <the Context, LITERALIZED as a Scala constructor call>
+```
+
+Local `given`/`val` re-declaration at the SAME flat scope shadows
+forward from its point of declaration (ordinary Scala redefinition
+semantics) — so code textually under a DEEPER heading, appearing
+LATER in the flat synthesized body, sees a Context whose `path` is
+longer (or different), and a `def`/`val` from an earlier ```scala
+block stays visible throughout (the flat single-scope model `run`
+already relies on is UNCHANGED — only `given Meta.Context` is
+introduced additively). The Context is LITERALIZED at compile time
+(rendered as `Meta.Context(Meta.Doc(...), Vector(Meta.Section(...),
+...))` source text) rather than embedding the raw markdown for the
+script to re-parse at its own runtime — simpler, and it means using
+this feature does not require `okay.script.Meta`'s PARSER (only its
+data types) to be reachable from the script's own `Classpath`, though
+referencing the `Meta.Context`/`Section`/`Value` TYPES in a `${expr}`
+or a ```scala block obviously still does need `okay-script`'s classes
+on that `Classpath`.
+
+Access from a script (an excerpt of an `.md` file, shown as markdown
+itself — the outer fence below is 4 backticks specifically so its
+OWN inner ```scala fence renders literally):
+
+````markdown
+```scala
+import okay.script.Meta
+val greeting = summon[Meta.Context]("tagline")
+```
+
+Всего услуг: ${summon[Meta.Context].section.map(_.yaml.size).getOrElse(0)}
+````
+
 ## Interpolation — `render`, "JSP but Scala+Markdown" (okay-script-interpolation, 2026-09-03)
 
 The operator's own framing for where `okay-script` sits: a new JSP,
@@ -385,12 +496,34 @@ object ScalaScript:
   def blocks(markdown: String): Vector[Block]
   /** classpath defaults to Classpath.ambient; a script's own `using
    * dep` coordinates are resolved and appended before compiling,
-   * regardless of which classpath was passed in. */
+   * regardless of which classpath was passed in. Every ```scala block
+   * (and, for `render`, every `${expr}` too) sees a local
+   * `given okay.script.Meta.Context` scoped to its own heading
+   * position -- see "Metadata as context" above. */
   def run(markdown: String, classpath: Classpath = Classpath.ambient): Result
   /** the whole document, prose and code, as ONE program: ${expr}
    * markers in prose are evaluated and substituted; the rendered
    * document is Result.stdout on success. See "Interpolation" above. */
   def render(markdown: String, classpath: Classpath = Classpath.ambient): Result
+
+/** Front-matter + heading-scoped ```yaml metadata, as a typed AST and
+ * as a current-position Context -- see "Metadata as context" above.
+ */
+object Meta:
+  enum Value:
+    case Str(s: String)
+    case Arr(items: Vector[Value])
+    case Obj(fields: Vector[(String, Value)])
+
+  final case class Section(level: Int, title: String, yaml: Vector[Value], children: Vector[Section])
+  final case class Doc(frontMatter: Map[String, String], root: Section)
+
+  final case class Context(doc: Doc, path: Vector[Section]):
+    def get(key: String): Option[String]
+    def apply(key: String): String
+    def section: Option[Section]
+
+  def parse(markdown: String): Doc
 ```
 
 - `blocks` extracts every ` ```scala ` … ` ``` ` fenced region (a line
@@ -543,7 +676,8 @@ only this one step, and only when a script asks for it, does.
       place, byte-identical elsewhere.
 - [x] `render` on a document with NO `${...}` at all: the output is
       the document verbatim (prose passes through unchanged, including
-      any non-scala fenced blocks).
+      any non-scala, non-yaml fenced block — a ```yaml fence is now
+      METADATA, consumed rather than shown; see okay-script-meta below).
 - [x] `$${` in prose renders as a literal `${` — proven on text that
       ALSO contains a real `${expr}` elsewhere, so both the escape and
       the live marker are exercised in the same document.
@@ -559,6 +693,29 @@ only this one step, and only when a script asks for it, does.
 - [x] a `${expr}` referencing an undefined name is a compile error via
       `Result.errors`, exactly like a bad `run` block — `render` never
       throws a compiler exception out of itself either.
+- [x] `Meta.parse` on a document with front-matter and one heading
+      carrying a `- key: v` list ```yaml block (the `site.md` shape):
+      the resulting `Doc` has the front-matter keys AND one child
+      `Section` whose `yaml` is `Vector(Value.Arr(...))` of the right
+      length.
+- [x] code under a DEEPER heading sees that heading's OWN yaml, its
+      PARENT heading's yaml, and the front-matter, all through ONE
+      `summon[Meta.Context]` — nearest-wins on a key present at more
+      than one level.
+- [x] code OUTSIDE any heading (before the first one, or in a document
+      with none) still sees the front-matter via `Context.get`/`apply`
+      — `path` is just `Vector(root)`, not an error.
+- [x] a ```yaml fence's content does NOT appear in `render`'s output
+      (consumed as metadata), while a ```json fence (or any OTHER
+      non-scala language tag) still passes through verbatim — proving
+      the yaml special-case does not leak into the general rule.
+- [x] `${...}` in prose can read `summon[Meta.Context]` directly (not
+      just a ```scala block) — the given is in scope for interpolation
+      markers too, since they compile into the SAME flat method body.
+- [x] `run` (not just `render`) gives its ```scala blocks the same
+      `given Meta.Context`, scoped by their own heading position —
+      proving this is a property of the FILE, not of which mode
+      compiles it.
 
 ## Results
 
