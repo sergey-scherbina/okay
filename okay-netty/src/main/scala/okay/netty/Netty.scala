@@ -215,8 +215,7 @@ object Netty {
     case null => None
     case other => Option(other.toString).filter(_.nonEmpty)
 
-  private def requestOf(req: FullHttpRequest,
-                        peer: Option[String] = None): Request =
+  private def requestOf(req: FullHttpRequest, peer: Option[String]): Request =
     val hs = req.headers.entries.asScala.toSeq.map(e => (e.getKey, e.getValue))
     val m = Method.values.find(_.name == req.method.name).getOrElse(Method.Get)
     // the body travels too: an aggregated request HAS its content here,

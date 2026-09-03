@@ -2,7 +2,7 @@ package okay.jetty
 
 import okay.*
 import okay.given
-import okay.http.{Body, Http, Method, Request, Response, Transports}
+import okay.http.{Http, Request, Response, Transports}
 
 /**
  * specs/http.md, http-peer-address — over a REAL socket, because the

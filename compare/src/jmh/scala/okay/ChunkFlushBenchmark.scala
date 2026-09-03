@@ -128,4 +128,19 @@ class ChunkFlushBenchmark {
     var c = merged.receiveBlocking()
     while c.isDefined do { sum += c.get.sum; c = merged.receiveBlocking() }
     sum
+
+  // ── Channel.buffer: the other per-element channel consumer ───────
+
+  /** a producer run ahead into a bounded channel, read one element
+   * per transaction — the shape buffer has always had */
+  @Benchmark
+  def bufferPerElement(): Long =
+    Writer.of(Channel.buffer(1024)(LazyList.range(0L, 2L * N)))
+      .toLazyList.foldLeft(0L)(_ + _)
+
+  /** the same, read in batches */
+  @Benchmark
+  def bufferDrained(): Long =
+    Channel.buffer(1024)(LazyList.range(0L, 2L * N)).drained
+      .toLazyList.foldLeft(0L)(_ + _)
 }

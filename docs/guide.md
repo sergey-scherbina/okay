@@ -266,6 +266,11 @@ consumes it: `s.chunked(size)` gives `Source[Chunk[A]]` and
 `.unchunked` gives the elements back, so `merge`, `buffer` and
 anything else that crosses a channel gets batching without a flag of
 its own — `s.chunked(8).buffer(4)` needs nothing added to `buffer`.
+Reading a channel back is batched the same way and with no trade at
+all: `c.drained` takes what is already buffered under one
+transaction instead of one per element (2.4x on a buffered
+producer), delaying nothing, since what is in the buffer is
+already late.
 `merge(chunked = true)` is the fused spelling of exactly that
 composition, and it exists because the TIMED case would otherwise
 need a second channel (a timer has to fire while the source is

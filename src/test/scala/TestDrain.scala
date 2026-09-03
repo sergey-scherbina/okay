@@ -59,4 +59,10 @@ class TestDrain extends munit.FunSuite {
     val single = Writer.of(fill).toLazyList.toList
     assertEquals(batched, single)
   }
+
+  test("Channel.buffer read through `drained` is the same stream as element by element") {
+    def make = Channel.buffer(8)((1 to 300).toList)
+    assertEquals(make.drained.toLazyList.toList, (1 to 300).toList)
+    assertEquals(Writer.of(make).toLazyList.toList, (1 to 300).toList)
+  }
 }

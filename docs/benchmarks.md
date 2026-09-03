@@ -458,6 +458,15 @@ flag and no semantic change — the largest single win on the
 per-element path in this whole arc, and the one that needed no
 permission from the caller.
 
+`Channel.buffer` is the other per-element channel consumer, and had
+never been benchmarked at all. It inherits the same win through the
+same carrier — `Channel.buffer(1024)(xs).drained` reads at one
+transaction per 64 elements: **437.2 ±2.6 against 1068.5 ±18.4, 2.4x**.
+It is an explicit `.drained` rather than the default because the
+plain `Stream[Channel, Async]` instance has nowhere to keep a batch —
+its carrier IS the channel, and keeping one inside would hand a
+second consumer elements the first had already taken.
+
 ## 6b. Chunking and flushing — the three shapes, three libraries
 
 Merging two streams has three shapes worth measuring, and fs2 and ZIO

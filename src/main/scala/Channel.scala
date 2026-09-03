@@ -252,6 +252,24 @@ given Stream[Drain, Async] with
     else d.c.receiveMany(Drain.Batch).map: got =>
       if got.isEmpty then None else Some((got(0), Drain(d.c, got, 1)))
 
+extension [A](c: Channel[A])
+  /**
+   * The channel as a source that reads it in BATCHES.
+   *
+   * The plain `Stream[Channel, Async]` instance below cannot do this:
+   * its carrier IS the channel, so there is nowhere to hold a batch,
+   * and holding one inside the channel would be wrong the moment a
+   * second consumer read from it. `Drain` is that place, and this is
+   * the one-word way to get it — `Channel.buffer(n)(xs).drained` is a
+   * buffered producer read at one transaction per 64 elements rather
+   * than per element, which is what channel-drain measured at 30% on
+   * the merge.
+   *
+   * Nothing is delayed for a batch: `receiveMany` takes only what is
+   * already buffered and parks for a single element when nothing is.
+   */
+  def drained: Source[A] = Writer.of(Drain(c))
+
 given Stream[Channel, Async] with
   def uncons[A](c: Channel[A]): Option[(A, Channel[A])] ! Async =
     c.receive.map(_.map((_, c)))
