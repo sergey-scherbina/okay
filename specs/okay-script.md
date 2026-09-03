@@ -367,8 +367,21 @@ only this one step, and only when a script asks for it, does.
 ## Results
 
 Landed 2026-09-03 (core), extended 2026-09-03 (runtime-app follow-on:
-explicit `Classpath`, `//> using dep` + Coursier resolution). Traps
+explicit `Classpath`, `//> using dep` + Coursier resolution; lifecycle:
+`Thread.interrupt()` on the caller's own thread, no new API). Traps
 found by the tests, all fixed before landing:
+
+- **Lifecycle needed no fix — the hypothesis held on the first real
+  run.** `TestScalaScriptLifecycle` confirmed, against a REAL
+  `okay-jetty` server (not a mock): the server answers HTTP while its
+  driving thread is alive, `Thread.interrupt()` makes it stop
+  answering (not just abandon the thread — `Resource.run`'s
+  catch-and-release actually ran the server's own stop), and the
+  returned `Result` carries the `InterruptedException`. Confirms
+  `okay-script` needed zero new API for a stoppable runtime app: the
+  `ChatDemo.main` idiom (`Resource.run(...).map { s => ...;
+  Thread.sleep(Long.MaxValue) }.runWith`) plus running `ScalaScript.run`
+  on a caller-owned `Thread` is the whole answer.
 
 - **`println` inside the compiled script did not land in `stdout`** —
   `System.setOut` alone does not redirect it, because Scala's
