@@ -2,7 +2,7 @@ package okay.matching
 
 import okay.*
 import okay.given
-import okay.rag.{Embedding, Vectors}
+import okay.rag.{Embedding, Vectors, embedding}
 import okay.sql.{Sql, SqlValue}
 import okay.sql.SqlValue.*
 
@@ -34,6 +34,14 @@ object SecureEntropy:
  */
 final class SqlMatch(sql: Sql,
                      embed: String => Embedding = Vectors.hashing(),
+                     /** which encoder produced the cached vectors
+                      * (match-vec-cache). Vectors from one model are
+                      * noise to another and the dimension often matches
+                      * even when the model does not, so a deployment
+                      * that can switch encoders names its own; empty
+                      * means unversioned, which is what every prior
+                      * construction gets. */
+                     embedTag: String = "",
                      policy: PlatformPolicy = PlatformPolicy.open,
                      proposeThreshold: Float = 0.85f,
                      halfLifeMs: Long = 7L * 24 * 3600 * 1000,
@@ -97,6 +105,12 @@ final class SqlMatch(sql: Sql,
     exec("""CREATE TABLE IF NOT EXISTS match_tokens(
       token VARCHAR(64) PRIMARY KEY, pfrom VARCHAR(64), pto VARCHAR(64),
       expires BIGINT)"""): Unit
+    // the vector cache (match-vec-cache): `k` names the entity so the
+    // row count is bounded by entities and an update overwrites; `fp`
+    // is a fingerprint of the text the vector was computed from, and
+    // it is what makes the cache correct with NO invalidation logic
+    exec("""CREATE TABLE IF NOT EXISTS match_vecs(
+      k VARCHAR(300) PRIMARY KEY, fp VARCHAR(64), dim INT, vec BLOB)"""): Unit
     exec("CREATE INDEX IF NOT EXISTS match_facts_attr ON match_facts(attr)"): Unit
     exec("CREATE INDEX IF NOT EXISTS match_facts_profile ON match_facts(profile)"): Unit
 
@@ -106,7 +120,7 @@ final class SqlMatch(sql: Sql,
    * the id counters back to 1, the built-in scenario alone (log-first:
    * `ChatLog.replay` rebuilds all of it) */
   def reset(): Unit =
-    Vector("match_attrs", "match_profiles", "match_facts", "match_recovery", "match_links", "match_deals", "match_flows", "match_flow_hist", "match_unlocks", "match_tokens").foreach(t => exec(s"DROP TABLE IF EXISTS $t"))
+    Vector("match_attrs", "match_profiles", "match_facts", "match_recovery", "match_links", "match_deals", "match_flows", "match_flow_hist", "match_unlocks", "match_tokens", "match_vecs").foreach(t => exec(s"DROP TABLE IF EXISTS $t"))
     createSchema()
     nextAttr = 1L; nextFact = 1L; nextDeal = 1L; nextFlow = 1L
     scenarioDefs = Map("deal" -> ScenarioDef.deal)
@@ -181,7 +195,7 @@ final class SqlMatch(sql: Sql,
 
   def registrySearch(text: String): Vector[AttrDef] =
     val q = embed(text)
-    liveAttrs.map(a => a -> Vectors.cosine(q, embed(attrText(a))))
+    liveAttrs.map(a => a -> Vectors.cosine(q, vectorOf(s"a:${a.slug}", attrText(a))))
       .sortBy(-_._2).take(8).map(_._1)
 
   def propose(d: AttrDraft): AttrDef =
@@ -367,10 +381,13 @@ final class SqlMatch(sql: Sql,
         fs.exists(f => f.attr == slug && Pred.holds(pred, f.value))
       }
     }
+    // the QUERY text is embedded fresh: it is one call per query, it is
+    // not an entity, and caching a user's sentence would grow without
+    // bound. The candidates are the loop that mattered.
     val qe = if q.text.nonEmpty then embed(q.text) else null
     passing.toVector.map { (p, fs) =>
       val base = if qe == null then 1.0f else Vectors.cosine(qe,
-        embed(fs.map(f => f.attr + " " + Value.text(f.value)).mkString(" ")))
+        vectorOf(s"p:${p.uuid}:${q.side}", summaryText(fs)))
       val (open, gated) = disclose(fs)
       Ranked(p, base * freshness(fs), open, gated)
     }.sortBy(-_.score).take(q.k)
@@ -450,6 +467,58 @@ final class SqlMatch(sql: Sql,
       "AND superseded_by IS NULL", Vector(Text(other.uuid))).map(factOf)
       .filter(f => f.vis == Vis.Matched ||
         (f.vis == Vis.Public && livePolicy.gate(f.attr) == Gate.AfterMatch))
+
+  // ---- the vector cache (match-vec-cache) ----------------------------
+  //
+  // MemoryMatch has cached summaries since stage 0 and invalidates them
+  // at four write sites. This engine takes the other road: the row
+  // carries a FINGERPRINT of the text its vector was computed from, so
+  // a changed fact is a changed summary is a changed fingerprint and
+  // the stale row is simply not used. There is no invalidation to
+  // forget at a fifth write path added later, and — unlike a cache in
+  // memory — it survives the process.
+
+  private def fingerprint(text: String): String =
+    val md = java.security.MessageDigest.getInstance("SHA-256")
+    md.update(embedTag.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+    md.update(0.toByte)
+    md.digest(text.getBytes(java.nio.charset.StandardCharsets.UTF_8))
+      .iterator.map(b => f"$b%02x").mkString
+
+  private def encode(e: Embedding): Array[Byte] =
+    val bb = java.nio.ByteBuffer.allocate(e.length * 4)
+    e.foreach(bb.putFloat)
+    bb.array()
+
+  private def decode(bs: Array[Byte], dim: Int): Embedding =
+    val bb = java.nio.ByteBuffer.wrap(bs)
+    val out = new Array[Float](dim)
+    var i = 0
+    while i < dim do { out(i) = bb.getFloat; i += 1 }
+    embedding(out)
+
+  /** the embedding of `text`, remembered under `k`. A hit requires the
+   * fingerprint AND the dimension to agree; anything else recomputes
+   * and overwrites. */
+  private def vectorOf(k: String, text: String): Embedding =
+    val fp = fingerprint(text)
+    val hit = rows("SELECT fp, dim, vec FROM match_vecs WHERE k = ?", Vector(Text(k)))
+      .collectFirst {
+        case Vector(Text(f), I64(d), Bytes(bs)) if f == fp && d.toInt > 0 =>
+          decode(bs, d.toInt)
+        case Vector(Text(f), I32(d), Bytes(bs)) if f == fp && d > 0 =>
+          decode(bs, d)
+      }
+    hit.getOrElse {
+      val e = embed(text)
+      exec("DELETE FROM match_vecs WHERE k = ?", Vector(Text(k))): Unit
+      exec("INSERT INTO match_vecs(k, fp, dim, vec) VALUES(?,?,?,?)",
+        Vector(Text(k), Text(fp), I64(e.length.toLong), Bytes(encode(e)))): Unit
+      e
+    }
+
+  private def summaryText(fs: Vector[Fact]): String =
+    fs.map(f => f.attr + " " + Value.text(f.value)).mkString(" ")
 
   // ---- scenarios as data --------------------------------------------
   // The DEFINITIONS are configuration (registered at boot, `deal`

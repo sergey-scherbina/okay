@@ -346,15 +346,15 @@ even when the model does not, so a deployment that can switch encoders
 passes its model name and the fingerprint changes with it. Empty means
 "unversioned", which is what every existing construction gets.
 
-- [ ] a second `candidates()` over the same facts embeds nothing
-- [ ] a changed fact changes the fingerprint and the vector is recomputed
-- [ ] a superseded fact does the same
-- [ ] the cache survives a new `SqlMatch` over the same database — the
+- [x] a second `candidates()` over the same facts embeds nothing
+- [x] a changed fact changes the fingerprint and the vector is recomputed
+- [x] a superseded fact does the same
+- [x] the cache survives a new `SqlMatch` over the same database — the
       restart case the memory engine cannot have
-- [ ] `registrySearch` embeds each live attribute once, not once per call
-- [ ] a different `embedTag` recomputes rather than serving the old vector
-- [ ] `reset()` drops the cache with everything else
-- [ ] ranking is UNCHANGED: the same query answers the same order and
+- [x] `registrySearch` embeds each live attribute once, not once per call
+- [x] a different `embedTag` recomputes rather than serving the old vector
+- [x] `reset()` drops the cache with everything else
+- [x] ranking is UNCHANGED: the same query answers the same order and
       the same scores it did before the cache existed
 
 ## Out of scope
