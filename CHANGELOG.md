@@ -1,5 +1,26 @@
 # Changelog
 
+## state-mcp-native — a reproducible native build, and the real install
+Completed: 2026-09-03
+Landed as 7264d2f. The operator asked for an optimized native build
+of StateMcp, installed and connected to the Claude Code they use.
+Built with GraalVM native-image (Oracle GraalVM 21.0.11): a two-stage
+PGO build (instrument, run 200+ rounds of get/update/reset through
+it, rebuild against the collected profile) plus `-march=native` — 17MB,
+sub-10ms cold start, no reflection config needed (a Mirror-derived
+codec has little to reflect on; native-image's analysis reached the
+library unassisted). Installed to `~/.local/bin/okay-state-mcp` and
+registered with Claude Code at user scope (`claude mcp add okay-state
+--scope user`, connected, verified by `claude mcp list`) — no
+state-file argument, so `StateMcp`'s own default (`.claude/state.json`)
+resolves per project against wherever Claude Code spawns the server,
+making one user-scope registration serve every project. This lane
+lands `okay-demo/scripts/native-image-state-mcp.sh`, the exact
+sequence, so the build reproduces on another machine; the local
+install itself is outside the repository by nature. specs/llm-agentic.md
+gains a paragraph on why native matters specifically for an MCP
+server (its whole cost IS process-spawn latency).
+
 ## state-mcp — bounded execution state, offered over MCP
 Completed: 2026-09-03
 Landed as fcef57c (2 commits, rebased twice over sibling landings).
