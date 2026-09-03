@@ -251,7 +251,15 @@ others that may never come. `flushAfter = Some(millis)` bounds that
 wait and makes chunking safe on a live source; it costs nothing when
 it does not fire, and it never races the source's pull (cancelling an
 in-flight `uncons` could lose an element), taking only what has
-already accumulated. On JVM/Native it parks
+already accumulated. A timer is a guess, though, and a producer often
+KNOWS where the boundary is — this token ended the model's turn, this
+byte ended the frame. `Flush.now` says so as an OPERATION (not a
+distinguished element, which would widen every element type and make
+every consumer match on something that is not its data): a source in
+the `Flushing` row emits it, and `a.mergeFlushing(b)` puts what that
+side holds on the wire at exactly that point. It costs the ordinary
+chunked path nothing — the two feeds are separate walks precisely
+because routing both through the flushing one measured 11% dearer. On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`

@@ -11,6 +11,35 @@ package okay
  * kept); the two here are the async ones, and `merge` below is the
  * concurrency that only this carrier can express.
  */
+/**
+ * The chunk boundary as an OPERATION, not a value.
+ *
+ * A chunking consumer emits when its chunk is full, when its input
+ * ends, or (with `flushAfter`) when a timer expires — three rules
+ * that all guess. A producer usually KNOWS: this token ended the
+ * model's turn, that byte ended the frame. `Flush.now` says so
+ * directly, and the boundary lands exactly where it belongs rather
+ * than wherever the size or the clock happened to fall.
+ *
+ * It is an operation rather than a distinguished element because a
+ * boundary is not data: making it one would widen every element type
+ * to `A | Boundary` and force every consumer to match on something
+ * that is not part of its stream.
+ */
+enum Flush[+A]:
+  case Now extends Flush[Unit]
+
+object Flush:
+  given TypeableK[Flush] = typeableK(classOf[Flush[?]])
+
+  /** emit whatever the chunker holds, full or not */
+  def now[F[+_]]: Unit ! (Flush + F) = effect(Flush.Now)
+
+/** a source that can also mark its own chunk boundaries. An ordinary
+ * `Source` widens into it (it simply never uses the operation), so
+ * the chunking path has one implementation rather than two */
+type Flushing[W] = Unit ! (Flush + (Writer % W + Async))
+
 type Source[W] = Unit ! (Writer % W + Async)
 
 object Source {
@@ -33,6 +62,7 @@ object Source {
    * `capacity`, which counts elements rather than chunks. 16 is the
    * better of the two measured (source-merge-chunked). */
   private[okay] val ChunkSize = 16
+
 }
 
 extension [A](s: Source[A])
@@ -159,6 +189,31 @@ extension [A](s: Source[A])
             sw, tw, slots, Source.ChunkSize, flushAfter)))(
           !.widen[Unit, Take % Chunk[A | B] + Writer % (A | B), Async](
             Stage.unchunk[A | B]))
+
+extension [A](s: Flushing[A])
+  /**
+   * Merge two sources that mark their own chunk boundaries. Same
+   * merge, same chunking, except that `Flush.now` in either source
+   * emits what that side holds at exactly that point — so a boundary
+   * lands where the producer says it is, rather than where the chunk
+   * size or `flushAfter` happened to fall.
+   *
+   * Always chunked: an unchunked merge has nothing to flush, and the
+   * operation would be silently meaningless. `flushAfter` still
+   * applies as the backstop for a producer that goes quiet WITHOUT
+   * marking a boundary.
+   */
+  infix def mergeFlushing[B](t: Flushing[B], capacity: Int = 64,
+                             flushAfter: Option[Long] = None)
+                            (using Scheduler, Timer): Source[A | B] =
+    val slots = math.max(1, capacity / Source.ChunkSize)
+    val sw = !.widen[Unit, Flush + (Writer % A + Async), Writer % (A | B)](s)
+    val tw = !.widen[Unit, Flush + (Writer % B + Async), Writer % (A | B)](t)
+    pure[Writer % (A | B) + Async, Unit](()).flatMap: _ =>
+      through(
+        Writer.of(Channel.mergeFlushing[A | B](sw, tw, slots, Source.ChunkSize, flushAfter)))(
+        !.widen[Unit, Take % Chunk[A | B] + Writer % (A | B), Async](
+          Stage.unchunk[A | B]))
 
 extension [A](s: Chunks[A])
   /**
