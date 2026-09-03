@@ -143,4 +143,60 @@ class ChunkFlushBenchmark {
   def bufferDrained(): Long =
     Channel.buffer(1024)(LazyList.range(0L, 2L * N)).drained
       .toLazyList.foldLeft(0L)(_ + _)
+
+  // ── is the SOURCE the difference? ────────────────────────────────
+  // Profiling okayChunkedComposed put ~130 samples in LazyList itself
+  // (state$lzycompute, unfold) against 132 in `resume` — so a large
+  // part of what looked like our chunking cost is the benchmark's
+  // source, a lazy list allocating a cell per element, against ZIO's
+  // ZStream.range which emits arrays. These hold everything else
+  // fixed and vary only that.
+
+  private val listL: List[Long] = (0L until N.toLong).toList
+  private val listR: List[Long] = (N.toLong until 2L * N).toList
+
+  @Benchmark
+  def chunkedFromList(): Long =
+    Source.of(listL).chunked(k).merge(Source.of(listR).chunked(k), capacity = 64)
+      .unchunked.toLazyList.foldLeft(0L)(_ + _)
+
+  /** the generated range: no collection, no cell per element */
+  @Benchmark
+  def chunkedFromRange(): Long =
+    Source.range(0, N.toLong).chunked(k)
+      .merge(Source.range(N.toLong, 2L * N).chunked(k), capacity = 64)
+      .unchunked.toLazyList.foldLeft(0L)(_ + _)
+
+  @Benchmark
+  def elementwiseFromRange(): Long =
+    (Source.range(0, N.toLong) merge Source.range(N.toLong, 2L * N))
+      .toLazyList.foldLeft(0L)(_ + _)
+
+  // ── like-for-like, forced ────────────────────────────────────────
+  // The table used to read okay's PER-ELEMENT merge against ZIO's
+  // chunk-native one, which is not a comparison: ZStream has no
+  // per-element representation, its "element" is a slot in an array.
+  // Both libraries can be MADE to work per element (a chunk of one),
+  // so the honest row asks all three the same question rather than
+  // pricing what one of them does not do.
+
+  @Benchmark
+  def zioPerElement(): Long =
+    import _root_.zio.stream.ZStream
+    val a = ZStream.range(0, N, 1).map(_.toLong)
+    val b = ZStream.range(N, 2 * N, 1).map(_.toLong)
+    runZio(a.merge(b).runFold(0L)(_ + _))
+
+  @Benchmark
+  def fs2PerElement(): Long =
+    import cats.effect.IO, cats.effect.unsafe.implicits.global
+    val (a, b) = fs2Pair
+    a.unchunk.merge(b.unchunk).compile.fold(0L)(_ + _).unsafeRunSync()
+
+  /** fs2 at its own natural chunking, the chunk-native row */
+  @Benchmark
+  def fs2ChunkNative(): Long =
+    import cats.effect.IO, cats.effect.unsafe.implicits.global
+    val (a, b) = fs2Pair
+    a.merge(b).chunks.map(_.foldLeft(0L)(_ + _)).compile.fold(0L)(_ + _).unsafeRunSync()
 }

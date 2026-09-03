@@ -106,6 +106,18 @@ class TestChunkEdges extends munit.FunSuite {
     assertEquals(empty.mergeFlushing(empty).toLazyList.toList, Nil)
   }
 
+  test("Source.range tells exactly the half-open range, and is lazy") {
+    assertEquals(Source.range(0, 5).toLazyList.toList, List(0L, 1L, 2L, 3L, 4L))
+    assertEquals(Source.range(3, 3).toLazyList.toList, Nil)
+    assertEquals(Source.range(5, 3).toLazyList.toList, Nil)
+    // lazy: an endless range is fine as long as the consumer stops
+    assertEquals(Source.range(0, Long.MaxValue).toLazyList.take(4).toList,
+      List(0L, 1L, 2L, 3L))
+    // and it is the same stream as the collection form
+    assertEquals(Source.range(0, 40).toLazyList.toList,
+      Source.of(LazyList.range(0L, 40L)).toLazyList.toList)
+  }
+
   // ── the orthogonal combinators ──────────────────────────────────
 
   test("chunked/unchunked compose to the identity, at every edge size") {

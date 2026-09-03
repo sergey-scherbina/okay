@@ -280,8 +280,15 @@ that accumulates without emitting is bounded by `PullBudget` but a
 chunk in the thousands buys nothing here anyway. And where throughput
 really is the point, the deeper answer is not to chunk a per-element
 source at all but to start chunked: `Chunks.merge` never builds a
-program node per element and measures 23.2us against ZIO's 58.6 on
-the same 2x2000 (docs/benchmarks.md §6b). On JVM/Native it parks
+program node per element and measures 22.3us against ZIO's own
+chunk-native default of 126.2 on the same 2x2000 — okay ahead by
+5.7x on equal footing, not the 2.5x an earlier, unfair comparison
+claimed (docs/benchmarks.md §6b). For a source that really is
+elementwise (a live feed, arriving one token at a time, nothing to
+pre-chunk), `Source.range` generates a half-open range with no
+collection underneath, and okay's per-element `merge` measures 12x
+ahead of ZIO forced onto the same footing (`chunkSize = 1`), not
+behind it as comparing against ZIO's chunked default once suggested. On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`

@@ -467,68 +467,85 @@ plain `Stream[Channel, Async]` instance has nowhere to keep a batch —
 its carrier IS the channel, and keeping one inside would hand a
 second consumer elements the first had already taken.
 
-## 6b. Chunking and flushing — the three shapes, three libraries
+## 6b. Chunking and flushing — the three shapes, three libraries, and one methodology bug this section itself had
 
 Merging two streams has three shapes worth measuring, and fs2 and ZIO
-have a direct spelling of each, so this is like-for-like rather than
-one library's feature against another's absence: elementwise, in
-chunks, and in chunks with a TIME bound on a partial one — okay's
-`flushAfter`, fs2's `groupWithin`, ZIO's `groupedWithin`. Every lane
-folds the same 2x2000 elements to one Long, chunk 16.
+have a direct spelling of each: elementwise, in chunks, and in chunks
+with a TIME bound on a partial one — okay's `flushAfter`, fs2's
+`groupWithin`, ZIO's `groupedWithin`. Every lane folds the same
+2x2000 elements to one Long.
+
+The first cut of this table read okay's per-element `Source.merge`
+against `ZStream`'s own chunk-of-4096 default and called the row
+"elementwise" for both. That is not a comparison — `ZStream` has NO
+per-element representation to measure; its "element" is a slot in an
+array, and every operation is a loop over the array. Naming ZIO's
+number 59.1us "elementwise" priced a chunked walk against a
+per-element one and made okay look 20x slower than it is. The fix is
+not to omit the row — both libraries CAN be forced to work one
+element at a time (`ZStream.range(chunkSize = 1)`, fs2's `.unchunk`)
+— it is to ask every library the same question:
 
 | 2x2000 elements | okay | ZIO | fs2 |
 |---|---|---|---|
-| elementwise | 1177.0 ±15.7 | **59.1 ±0.5** | 35332 ±281 |
-| chunked | 223.7 ±5.0 | **127.2 ±2.2** | 38508 ±403 |
+| per-element (chunk of one, forced on ZIO/fs2) | **824.9 ±6.9** | 10032.5 ±111.0 | 36030 ±1204 |
+| chunk-native (each library's own default) | **22.3 ±0.3** | 126.2 ±1.0 | 44443 ±2359 |
+| chunked at a matched size (16) | 223.7 ±5.0 | **127.2 ±2.2** | 38508 ±403 |
 | chunked + timed flush | **244.3 ±3.5** | 4907 ±98 | 54270 ±1790 |
 
-**Where we win, and by how much: the timed flush.** A bound on how
-long a partial chunk may wait is what makes chunking safe on a live
-source, and it is the shape both competitors are worst at — ZIO's
+**Forced onto equal footing, okay is ahead in every shape.** Per
+element, 12x ahead of ZIO (824.9 against 10032.5) — `chunkSize = 1`
+is not "a small chunk" for `ZStream`, it is a pathological mode that
+wraps every element in its own one-slot array and pays the chunk
+machinery on top, which costs more than walking okay's program tree
+does. Chunk-native, 5.7x ahead (22.3 against 126.2) — this is the
+pair the first cut of the table should have used throughout: neither
+library builds a node per element, and the ~100ns/element gap between
+them is genuinely `Chunks.merge` against `ZStream.merge`, not an
+artefact of which library got to use its home field. fs2 is 30-1600x
+behind both in every shape and is stated as such rather than
+compared row by row.
+
+**The one place ZIO wins is a size we do not need to match.**
+Chunking okay's per-element `Source` at a size ZIO would use as its
+OWN default (rather than forcing ZIO down to ours) is the only row
+left where ZIO leads, and even there the lead does not grow the way
+an earlier draft of this section claimed — see chunk-size-
+representation, which tried to close it and found the size-curve's
+premise wrong. The honest reading: `chunked` at matched sizes prices
+what a per-element `Source` costs before chunking, against a stream
+that never had elements to price. Where that per-element cost has to
+be paid — a live source whose elements arrive one at a time and
+cannot be pre-chunked — reach for `Source.range`/`chunked`; where it
+does not, `Chunks` is both native to the data and ahead of ZIO's own
+native path.
+
+**Two more levers found by profiling the per-element path, both
+small and both kept.** `Stage.chunked` became `inline`: `ChunkBuf`
+allocates an unboxed array when the element type is concrete at the
+point of expansion, and a plain `def` hid that type behind an
+abstract `T`, boxing every element on the way into a chunk — the
+profiler named `boxToLong` among its frames. Measured, same window:
+197.5 ±0.8 against 206.3 ±3.2, bars non-overlapping. `Source.range`
+generates a half-open range directly rather than walking a
+`LazyList`, cutting a cell allocation the profiler also named. It
+helps where the cost of that cell is not already amortised —
+per-element, 646.8 ±23.9 against 829.5 ±5.1 (-22%) — and slightly
+HURTS where it is: chunked, 214.4 ±2.0 against 197.5 ±0.8, because the
+`Bind`-chain `range` builds pays per node exactly where `LazyList`'s
+per-cell cost was already spread across 16 elements sharing one
+transaction. Kept as the specialised choice for a per-element
+producer, not a universal replacement for `Source.of`.
+
+**Where okay wins outright: the timed flush.** A bound on how long a
+partial chunk may wait is what makes chunking safe on a live source,
+and it is the shape both competitors are worst at — ZIO's
 `groupedWithin` costs 37x its own plain `grouped` (4907 against 127),
 fs2's `groupWithin` 1.4x its own `chunkN`. okay's `flushAfter` costs
 9% over its own chunked merge (244.3 against 223.7), because the
 flusher is one sleeping fiber beside the feed rather than machinery
 in the per-element path. Against ZIO that is **20x**, against fs2
 **222x**.
-
-**Where ZIO looked ahead, and what the like-for-like pair actually
-says.** ZIO's "elementwise" 59.1 is faster than its own chunked
-127.2, which is the tell: `ZStream` is chunked by construction (4096
-by default), so that row is ZIO's natural chunking and `.grouped(16)`
-makes it *slower* by re-chunking downward. Chunking a stream at
-matching sizes therefore reads as ZIO ahead, and further ahead as the
-chunk grows:
-
-| chunk size | okay | ZIO | fs2 |
-|---|---|---|---|
-| 16 | 218.7 ±1.7 | 127.2 ±2.2 | 38508 ±403 |
-| 256 | 276.2 ±0.9 | **75.1 ±7.3** | 38045 ±313 |
-| 1024 | 437.7 ±2.9 | **75.2 ±10.4** | 38329 ±1337 |
-
-But that table compares our PER-ELEMENT `Source`, chunked after the
-fact, against a stream that never had elements to pay for. okay's
-equivalent of `ZStream` is `Chunks` — chunks from the start, no
-program node per element — and against it the answer reverses:
-
-| chunk-native, 2x2000 | |
-|---|---|
-| okay `Chunks.merge` | **23.2 ±0.2** |
-| ZIO `ZStream.merge` | 58.6 ±0.7 |
-
-**2.5x ahead.** So the cost the size-curve shows is not a chunking
-defect to be optimised away; it is what a per-element `Source` costs
-before any chunking happens, and it is avoidable by not having a
-per-element stream in the first place. Confirmed by trying the
-optimisation anyway: filling a `ChunkBuf` instead of a `Vector` in
-`Stage.chunked` measured 11% better at 256 and 8% at 1024 while
-2.2% WORSE at the default 16 (bars non-overlapping), helping only
-the sizes nobody uses and leaving the shape unchanged — declined and
-reverted (chunk-size-representation).
-
-fs2's numbers are its worst case (singleton elements through its
-concurrency machinery) and are stated as such — it is 30-160x behind
-both throughout, at every chunk size, in every shape.
 
 **The stack-safety bug this found (chunk-stack-safety).** Writing the
 edge cases turned up an overflow that predates all of it: `through`

@@ -250,18 +250,36 @@ object Stage {
 
   /** batch inputs into chunks of the given size (the tail flushes on
    * end of input — a stage may still tell after seeing None) */
-  def chunked[T](size: Int): Stage[T, Chunk[T], Unit] =
-    // named, not inlined into the `.map` below: as the RECEIVER of a
-    // call the transduce gets no expected type, and then `I` has
-    // nothing to be inferred from
-    val batched: Stage[T, Chunk[T], Vector[T]] =
-      transduce(Vector.empty[T])((buf, t) => {
-        val b = buf :+ t
-        if b.length < size then pure(b)
-        else tell[T, Chunk[T]](ChunkBuf.ofSpecialized(b)).map(_ => Vector.empty[T])
-      }, buf =>
-        if buf.isEmpty then pure(buf)
-        else tell[T, Chunk[T]](ChunkBuf.ofSpecialized(buf)).map(_ => buf))
+  /**
+   * `inline` for one reason, and it is measured: `ChunkBuf` allocates
+   * an UNBOXED array when the element type is concrete at the point
+   * of expansion (its `summonFrom` finds a `ClassTag`), and a plain
+   * `def` hides that type behind an abstract `T` so every element is
+   * boxed on the way into the chunk. Profiling the chunked merge
+   * found `boxToLong` among its named frames; inlining is what lets
+   * `s.chunked(16)` on a `Source[Long]` fill an `Array[Long]`
+   * (chunked-profile, 2026-09-03). A caller whose element type is
+   * still abstract loses nothing — the fallback is the boxed array it
+   * would have had anyway.
+   *
+   * The state starts EMPTY rather than holding a fresh buffer,
+   * because a Stage is a VALUE and driving the same value twice must
+   * not share one array between the runs; allocating on the first
+   * element keeps each run's buffer its own.
+   */
+  inline def chunked[T](size: Int): Stage[T, Chunk[T], Unit] =
+    val batched: Stage[T, Chunk[T], (ChunkBuf[T] | Null, Int)] =
+      transduce[T, Chunk[T], (ChunkBuf[T] | Null, Int)]((null, 0))((acc, t) => {
+        val (held, n) = acc
+        val buf = if held == null then ChunkBuf[T](size) else held.nn
+        buf.update(n, t)
+        if n + 1 < size then pure((buf, n + 1))
+        // the chunk leaves owning its array; the next one starts fresh
+        else tell[T, Chunk[T]](buf.chunk).map(_ => (null, 0))
+      }, acc => {
+        val (held, n) = acc
+        if n == 0 then pure(acc) else tell[T, Chunk[T]](held.nn.take(n)).map(_ => acc)
+      })
 
     batched.map(_ => ())
 

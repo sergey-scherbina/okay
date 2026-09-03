@@ -56,6 +56,29 @@ object Source {
   /** these elements, told in order */
   def apply[A](as: A*): Source[A] = of(as.toList)
 
+  /**
+   * The half-open range, told one element at a time, with no
+   * collection underneath at all.
+   *
+   * `of(LazyList.range(...))` has to walk a lazy list, and profiling
+   * the chunked merge found LazyList's own frames
+   * (`state$lzycompute`, `unfold`) as large as the interpreter's —
+   * a cell allocated and forced per element, for a sequence a
+   * counter can produce. A `List` is no better: also a cell per
+   * element, also traversed (measured, chunked-profile: 223.3 against
+   * 212.9, no difference worth the name). This generates instead,
+   * which is what `ZStream.range` does and what `Chunks.range`
+   * already did on the chunked side.
+   *
+   * Lazy in the same way `Writer.of` is: nothing is told until the
+   * result is consumed.
+   */
+  def range(from: Long, until: Long): Source[Long] =
+    def go(i: Long): Source[Long] =
+      if i >= until then okay.pure(())
+      else okay.effect[Writer % Long + Async, Unit](Writer(i)).flatMap(_ => go(i + 1))
+    okay.pure[Writer % Long + Async, Unit](()).flatMap(_ => go(from))
+
   /** what `merge(chunked = true)` batches by. Not a parameter: the
    * size barely moves the number (16 against 64 measured ~10% apart
    * across a 4x span) and exposing it would quietly break
