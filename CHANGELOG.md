@@ -1,5 +1,31 @@
 # Changelog
 
+## test-login-tamper-flake — the suggested fix had its own, bigger flake
+Completed: 2026-09-03
+Landed as d260ddf. `TestLogin`'s "a tampered token is refused" built
+its tamper as `token.dropRight(2) + "xx"` — the SAME token whenever
+the JWT happened to already end in `xx` (~1 in 4096 runs). BACKLOG's
+own suggested recipe (flip the last char to one it is not) turned
+out worse: stress-tested at ~40% failure, not rare at all. Root
+cause: a 64-byte ES256 signature base64url-encodes to 86 characters
+carrying 516 bits for 512 bits of real signature — the FINAL
+character holds only 2 significant bits (4 are decoder-ignored
+padding), so many single-character flips there decode to the
+IDENTICAL signature bytes and verify anyway. Fixed by flipping a
+MIDDLE character instead — always inside a fully-significant 6-bit
+block on any reasonable token length. 0/50 stress runs, plus the
+normal suite green.
+Also swept the rest of BACKLOG.md against the actual code/specs
+(operator: "half of it seems already done"): removed nine now-empty
+section headers (Correctness and the core, Cross-cutting,
+okay-security, The data landscape, okay-cache, okay-sql, okay-pg,
+okay-jdbc, okay-conf) that had accreted to zero items; marked
+okay-demo's section DONE (all 11 items were already checked, just
+missing the closing marker the other finished sections use).
+Spot-checked the remaining open items (ctx-reader-bridge,
+stm-js-direct-bench, okay-http's flake ledger) — all still
+accurately open, no further staleness found.
+
 ## okay-stm-collections — TDict/TList over one TRef, synchronous by honest construction
 Completed: 2026-09-03
 Landed as 1b9c688 (spec fix) + 7f88f25 (impl) on top of an initial
