@@ -721,6 +721,20 @@ fact store that never lived in that transcript at all, so `/clear`
 and `/compact` cannot lose it — call `get_state` after either to
 recover exactly where a task stood.
 
+**A native build, for the honest reason an MCP server has: it is a
+subprocess Claude Code spawns per session, so its whole latency cost
+IS startup.** `okay-demo/scripts/native-image-state-mcp.sh` builds
+`StateMcp` with GraalVM `native-image`, PGO two-stage (an instrumented
+build runs a representative workload, the real build compiles against
+its profile) plus `-march=native`: 17MB, sub-10ms cold start, no JVM
+warmup, on the JVM classpath a Scala Mirror-derived codec already
+walks with no runtime reflection to speak of — `native-image`'s
+analysis reached 77% of the JAR's types unassisted, no reflection
+config file needed. Registered once, project-agnostic, at user scope
+(`claude mcp add okay-state --scope user -- ~/.local/bin/okay-state-mcp`,
+no state-file argument so the default `.claude/state.json` resolves
+per project, against whatever directory Claude Code spawns it in).
+
 **What it does not do.** No compile-time `Schema[S]` validates a
 patch before it lands (`Compact.validatePatch`'s role in our own
 agents needs a known type; a tool a different, arbitrary project
