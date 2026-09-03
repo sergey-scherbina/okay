@@ -80,6 +80,79 @@ document.
       `orElse` is visible inside a branch (the branch's log falls
       through to its parent's pending writes)
 
+## Collections on TRef (okay-stm-collections)
+
+The real design question, answered before building (BACKLOG named
+it): `Hub.subscribe()`/`Registry.apply(key)` (okay-live) and
+`Subscription`'s two maps (okay-subscription) are PLAIN synchronous
+methods today — does an STM-backed version make them effectful
+(`... ! F`, run inside a transaction), or does a synchronous facade
+stay? The answer fell out of `TRef.modify` itself: it is ALREADY
+synchronous (one CAS loop, no `Tx`, no `F`) — `Tx`/`Stm[F]` exists
+for coordinating MANY cells in one transaction, and a map or list
+backed by a SINGLE `TRef[Map[K, A]]` (or `TRef[Vector[A]]`) never
+needs more than that one cell for any of its own operations. So
+there is no facade, honest or otherwise, to choose between — the
+synchronous shape IS the honest one for a single-cell collection,
+cross-platform, no `Async` anywhere in the type.
+
+Named `TDict`, not `TMap`: `okay.TMap[K[_]]` already exists (the STM
+engine's own heterogeneous write-set bookkeeping, a different shape
+— keyed by a type CONSTRUCTOR, not a plain key type) — the BACKLOG
+bullet's own reminder ("not the STM engine's private bookkeeping
+TMap") made the collision concrete rather than hypothetical.
+
+```scala
+final class TDict[K, A](init: Map[K, A] = Map.empty):
+  def get(k: K): Option[A]
+  def put(k: K, v: A): Unit
+  def remove(k: K): Unit
+  def computeIfAbsent(k: K)(mk: => A): A     // Registry.apply's exact seam
+  def updateAt(k: K)(f: Option[A] => A): A   // read-modify-write at one key, atomically
+  def snapshot: Map[K, A]
+  def size: Int
+  def clear(): Unit
+
+final class TList[A](init: Vector[A] = Vector.empty):
+  def append(a: A): Unit
+  def snapshot: Vector[A]
+  def size: Int
+  def clear(): Unit
+```
+
+`okay-subscription` migrated (LANDED 2026-09-03): `joinedPeriod`
+(`ConcurrentHashMap[String, Period]`) is a `TDict`'s
+`computeIfAbsent`/`put` exactly; `paidPeriods`
+(`ConcurrentHashMap[String, java.util.Set[String]]`, a per-key
+concurrent SET) needed `updateAt` — a plain get-then-put would race
+two concurrent `pay` calls on the same subject (lost update), where
+the original `computeIfAbsent(...).add(...)` was safe by construction
+(adding to an already-thread-safe set); `updateAt` closes that gap
+with one atomic read-modify-write instead of two calls. No call-site
+API changed — `Subscription.subscribed`/`pay`/`backdateJoin` keep
+their exact synchronous signatures.
+
+`okay-live`'s `Hub`/`Registry` — the backlog's SAME migration bullet
+— NOT done here: the operator's ask this pass named `TMap`/`TList`
+plus the `okay-subscription` migration specifically, not `okay-live`.
+Left filed, deliberately, per the backlog's own note: no JS/Native
+consumer of `okay-live` is named yet, so whether it (or `okay-demo`)
+becomes crossProject at that point is a decision worth making once,
+not by accretion.
+
+Behavior:
+- [ ] `computeIfAbsent` creates at most once under concurrent callers
+      racing the same missing key — no lost update, no duplicate
+      create (the exact race `Registry.apply`/`joinedOf` need closed)
+- [ ] `updateAt` is one atomic read-modify-write — two concurrent
+      callers updating the SAME key never lose either's contribution
+      (proven against `paidPeriods`' original concurrent-set shape)
+- [ ] `TDict`/`TList` compile and pass their own suite on JVM, JS,
+      and Native (core `okay`, cross by construction — `TRef` already
+      is) with NO platform-specific code
+- [ ] `okay-subscription`'s full existing test suite passes unchanged
+      after the migration — a pure swap, no behavior change
+
 ## Out of scope
 - opacity by global clock (TL2 proper): per-ref versions with
   incremental validation give a consistent snapshot without the
