@@ -1,0 +1,5 @@
+slug: state-mcp
+branch: feature/state-mcp
+worktree: ../okay-wt-state-mcp
+claimed: 2026-09-03
+scope: a standalone stdio MCP server (Scala, okay-mcp's Server/Stdio, reusing okay-codec's Json.mergePatch from the skill-state lane) exposing durable, schema-free session state to any MCP client (Claude Code named specifically): get_state, update_state (RFC 7396 merge patch), reset_state, persisted to a JSON file on disk. New file okay-demo/src/main/scala/okay/demo/StateMcp.scala (mirrors RepoMcp.scala's shape), a test, a short usage note (registration with Claude Code via .mcp.json / claude mcp add).
