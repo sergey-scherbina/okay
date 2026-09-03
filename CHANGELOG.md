@@ -1,5 +1,28 @@
 # Changelog
 
+## okay-script-classloader-isolation — platform-only parent per script, closes a leak-through-host gap
+Completed: 2026-09-03
+Landed as e22ba638. Each `ScalaScript.run` call already got its OWN
+`URLClassLoader` (scripts do not collide with EACH OTHER), but its
+parent was `getClass.getClassLoader` — `okay-script`'s own defining
+classloader — and `URLClassLoader` is parent-FIRST, so a script could
+silently resolve a class from `okay-script`'s own build (`munit`, and
+in Test scope `okay-jetty` and everything it drags in) regardless of
+what the caller's explicit `Classpath` actually listed — the isolation
+`Classpath`/`Deps` (okay-script-runtime) were built for was not
+actually enforced. Fixed: parent is now
+`ClassLoader.getPlatformClassLoader()` (JDK core modules only) — a
+script sees exactly its own compiled classes, its own `Classpath`, and
+the JDK. `Classpath.ambient` callers see no behavior change, since it
+already lists essentially everything the JVM was launched with. Proved
+by `TestScalaScriptClassloaderIsolation`: a script given a minimal
+`Classpath` (just the scala runtime jars) can no longer reach
+`munit.Assertions` — present on `okay-script`'s own test classpath,
+absent from that minimal one — confirmed as a REAL regression check
+(not a tautology) by temporarily reverting the fix and watching the
+test fail (`munit-reachable:true`) before restoring it.
+specs/okay-script.md "Classloader isolation".
+
 ## channel-seam — `Channel` becomes an interface, so mechanisms can be chosen and compared instead of replaced
 Completed: 2026-09-03
 Landed as a9dd71ca. The operator's design, and better than what
