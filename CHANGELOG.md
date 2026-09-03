@@ -1,5 +1,32 @@
 # Changelog
 
+## merge-scaling-shape — the Bind tree is LINEAR: the kernel rewrite is off the table, measured
+Completed: 2026-09-03
+Landed as 9420f1d (a benchmark plus docs — no library code changed).
+Closes the question left standing by writer-of-resume-fix: is
+`!.resume`'s rotation cost quadratic (which reflection-without-
+remorse — a type-aligned continuation queue replacing the binary
+`Bind` tree — fixes, justifying a kernel rewrite through `resume`'s
+three-form invariant and the 42 sites depending on it) or constant
+per element (which it does not)? `ScalingBenchmark` sweeps `n` and
+reads PER ELEMENT, with the bare `LazyList` walk as control:
+
+| per element | 500 el | 1000 el | 2000 el | 4000 el |
+|---|---|---|---|---|
+| `rawLazyListDrain` (control) | 11.3ns | 11.4 | 11.0 | 10.6 |
+| `sourceSingleDrain` | 41.2ns | 39.6 | 41.5 | 40.6 |
+| `channelMerge` | 142.3ns | 121.9 | 127.9 | 131.8 |
+| `sourceMerge` | 303.5ns | 299.7 | 300.7 | 291.6 |
+
+Flat everywhere across 8x — linear, no quadratic to remove, so the
+rewrite buys nothing and is closed with data. What the sweep exposes
+instead: the Writer layer costs ~30ns/element alone but ~160ns
+INSIDE the merge (~5x), the quantified form of channel-cas-
+contention's qualitative finding. The lever is fewer interpretation
+steps in the contended region, not a cheaper step — i.e.
+`Chunks.merge`, already in the library at 10.7us for 2x500 against
+`sourceMerge`'s 299.7us.
+
 ## state-mcp-native — a reproducible native build, and the real install
 Completed: 2026-09-03
 Landed as 7264d2f. The operator asked for an optimized native build
