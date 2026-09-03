@@ -357,6 +357,22 @@ passes its model name and the fingerprint changes with it. Empty means
 - [x] ranking is UNCHANGED: the same query answers the same order and
       the same scores it did before the cache existed
 
+### One statement for many vectors (match-vec-batch)
+
+The cache above removed the model inferences and left the round trips:
+`candidates()` looked a vector up per candidate, which is one SELECT
+per row. Measured downstream: ~1.3ms a row, 65ms for fifty, and it
+grows with the marketplace exactly as the thing it replaced did.
+
+`candidates()` now reads every cached vector for the passing set in
+ONE statement, then embeds and stores only the misses. The batch is
+chunked, because a database that accepts an `IN` list does not accept
+an unbounded one.
+
+- [x] a warm `candidates()` over N profiles issues ONE read, not N
+- [x] a partly warm set embeds only the misses
+- [x] ranking is unchanged, again: same order, same scores
+
 ## Out of scope
 - The account-recovery security flow (recorded above; stage 2).
 - Payment/monetization mechanics — the platform gate EXISTS in the
