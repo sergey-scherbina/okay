@@ -15,6 +15,21 @@ class TestElection extends ElectionSuite:
  */
 class TestElectionReplicated extends FunSuite:
 
+  // OPERATOR CALL, 2026-09-03 (flakes-integration): out of the
+  // default gate with the rest of the recorded flake family. This
+  // one is NOT of a kind with TestMcpAuth and TestBackends and the
+  // record should say so — it binds no port, starts no thread and
+  // does no IO (MemoryStore, a manual clock), and the triage on
+  // 2026-09-01 could not reproduce it: alone on JS 3/3, on Native
+  // 3/3. Its one failure was a suite-level runner error under
+  // parallel matrix load — the same family as the Native SIGKILLs,
+  // an environmental crash rather than anything this code does.
+  // Excluded by decision, not by evidence against the suite; `sbt
+  // integrationTest` runs it, and if the fold ever breaks, that is
+  // where it will be caught.
+  override def munitTests(): Seq[Test] =
+    super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   private def bytes(s: String): Array[Byte] = s.getBytes("UTF-8")
   private def str(b: Array[Byte]): String = new String(b, "UTF-8")
 

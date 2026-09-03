@@ -205,26 +205,34 @@ construction instead of a type test per value).
       the whole turn once before asserting in LIVE UNGATED and LIVE
       SEEKER (stochastic judgment — one retry is a quadratic flake
       cut; a consistent failure still fails). 15/15 with the retry.
-- [ ] persist-election-replicated-flake — okay.persist
-      .TestElectionReplicated errored at suite level on one platform
-      under the full matrix (2026-09-01, Errors 1 with 0 failures;
-      JVM tests of the same suite green in the same run); second
-      platform run printed the header with no tests. Suspect
-      platform init under load. TRIAGED 2026-09-01: ran alone on
-      JS (3/3) and Native (3/3) — did NOT reproduce. The suite is
-      pure and deterministic (MemoryStore + Election + Replicated, a
-      manual clock, no threads/IO), so the suite-level error was an
-      environmental runner crash under parallel matrix load — the
-      same family as the Native-SIGKILL-under-load incidents, not a
-      code defect. Leave filed; re-triage only if it recurs with a
-      NON-environmental signature.
-- [ ] mcp-auth-matrix-flake — okay.security.TestMcpAuth "the
+- [x] persist-election-replicated-flake — SETTLED by exclusion
+      (flakes-integration, 2026-09-03, OPERATOR CALL). History:
+      okay.persist.TestElectionReplicated errored at suite level on
+      one platform under the full matrix (2026-09-01, Errors 1 with 0
+      failures; JVM tests of the same suite green in the same run);
+      the second platform run printed the header with no tests.
+      TRIAGED 2026-09-01: alone on JS (3/3) and Native (3/3) — did
+      NOT reproduce. The suite is pure and deterministic (MemoryStore
+      + Election + Replicated, a manual clock, no threads, no IO), so
+      what failed was the RUNNER under parallel matrix load, the same
+      family as the Native-SIGKILL-under-load incidents, not a code
+      defect. Now `Live`-tagged with the rest of the recorded flake
+      family and run by `sbt integrationTest`. Noted honestly at the
+      suite and in specs/integration-test-gate.md: this one is
+      excluded by DECISION, not by evidence against the suite — it is
+      the only member of the family that touches nothing outside the
+      JVM. Re-triage only if it recurs with a non-environmental
+      signature, where it will now show up in the integration run.
+- [x] mcp-auth-matrix-flake — SETTLED by exclusion (nio-port-scope
+      tagged the suite, 2026-09-03; closed here with the rest of the
+      family, flakes-integration). okay.security.TestMcpAuth "the
       metadata documents are servable without any token" failed once
       under the full matrix (2026-09-02, `java.io.IOException:
       HTTP/1.1 header parser received no bytes` — the client read an
       empty reply from a server the suite had just started); ran
-      alone right after: 4/4 green. The port/readiness family
-      (flaky-port-roulette); leave filed, fix with that family.
+      alone right after: 4/4 green. It BINDS A REAL PORT, so its red
+      can be the machine's rather than the code's: `Live`-tagged, out
+      of the default gate, run by `sbt integrationTest`.
 - [x] chunk-size-representation — SETTLED, and the premise was wrong
       (2026-09-03). The suspected cause (Vector-then-ArraySeq per
       chunk) was tried: filling a `ChunkBuf` in `Stage.chunked`

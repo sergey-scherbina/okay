@@ -115,6 +115,22 @@ session.
   `TestSparkInterop`'s skip is a JDK-version compatibility gate
   (deterministic, same box, same result every run) — not the
   environment-timing flakiness this tag exists for.
+- **The tag was WIDENED on 2026-09-03, by the operator's call, from
+  "reaches outside the JVM" to "its result depends on something `sbt
+  test` cannot control".** The deferred case below was taken up the
+  same day (`TestMcpAuth`, `TestBackends` — real ports, no external
+  service), and then `TestElectionReplicated` with it. That last one
+  is worth naming separately because it does NOT fit even the widened
+  rule read narrowly: it binds nothing, threads nothing, does no IO
+  (MemoryStore + a manual clock), and its triage could not reproduce
+  the failure (alone: JS 3/3, Native 3/3) — what failed was the
+  RUNNER, at suite level, under parallel matrix load. The argument
+  that carried it is the gate's own purpose: a red that can be the
+  machine's fault teaches nothing about the landing being measured,
+  and a pure suite excluded by decision is still run, and still read,
+  by `sbt integrationTest`. Recorded as a decision, not as evidence
+  against the suite — if the consensus fold ever genuinely breaks,
+  the integration run is where it surfaces.
 - **`netty-ws-matrix-flake` (BACKLOG.md) is a related, DEFERRED
   case, not folded in here.** `TestBackends` and other real-socket
   suites (no external service, just port/timing flakiness under the

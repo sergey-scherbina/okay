@@ -83,6 +83,17 @@ ThisBuild / versionScheme := Some("early-semver")
  * runs the exact same suite with nothing excluded — the services
  * still SKIP where absent (`assume`/`munitIgnore`, unchanged), this
  * only removes them from the gate a landing is measured against.
+ *
+ * The tag has since been widened, by the operator's call (2026-09-03),
+ * past "reaches outside the JVM" to "its result depends on something
+ * `sbt test` cannot control": the real-socket suites that flake on
+ * port and readiness timing under the full matrix (TestMcpAuth,
+ * TestBackends), and TestElectionReplicated, whose single recorded
+ * failure was the RUNNER crashing under parallel load rather than
+ * anything the suite does. The rule stays what the name says — a
+ * green gate must mean the code is good, so a test whose red can be
+ * the machine's fault belongs in `integrationTest`, where it still
+ * runs and is still read.
  */
 ThisBuild / Test / testOptions += Tests.Argument(TestFrameworks.MUnit, "--exclude-tags=Live")
 addCommandAlias("integrationTest",
