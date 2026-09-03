@@ -172,14 +172,37 @@ prices every large claim:
   alone, only ridden forward by a later entry of the leader's OWN
   term. `okayPersistJVM` full suite 95/95 (the reduction's existing
   battery unaffected — this stage touches no file it depends on).
-- **Stage 1 — the `Store`/`Topic` engine wrapper (not started).**
-  Turn `RaftState` into something `Election` can construct a
-  `Topic` over — the reduction's whole argument is that this slots
-  in without Election changing BY CONSTRUCTION. Needs a real network
-  transport (okay-http or a raw socket seam) and a persistence layer
-  for `RaftState` itself (a crash must not forget `currentTerm`/
-  `votedFor` — Raft's OWN safety proof assumes stable storage for
-  exactly those two fields).
+- **Stage 1a — the peer-to-peer wire transport, LANDED 2026-09-03.**
+  `okay.persist.RaftWire.Node` (JVM-only, `okay-persist/src/main/
+  scala-jvm`): real `ServerSocket`s, real threads, the SAME
+  `[len:int32][CBOR]` framing `Wire.scala` already uses for the
+  client-facing wire — reused here for NODE-TO-NODE `RaftMsg`
+  exchange (`RaftEntry`/`RaftMsg` now `derives Schema`). One-shot
+  connections (connect, write one frame, close) rather than a
+  persistent connection pool per peer — simple and correct first,
+  not yet optimized; Raft's own retry-by-heartbeat already tolerates
+  a dropped send. A background tick thread drives REAL wall-clock
+  election timeouts (randomized, per node) and leader heartbeats —
+  the first REAL non-determinism this algorithm has run under,
+  stage 0's tests having driven everything by explicit tick.
+  `propose(data)` is the client seam: succeeds only on the current
+  leader, `false` otherwise (no forwarding to the real leader yet —
+  a stage 1b refinement). `onCommit(index, entry)` fires once per
+  newly committed index, in order — the exact seam a future `Store`
+  wrapper applies to its own topic.
+  Deliberately NOT here: the `Store`/`Topic` wrapper itself (so
+  `Election` still cannot construct a topic over this — that is
+  stage 1b), and persistent storage for `currentTerm`/`votedFor` (a
+  real process crash forgets them here — Raft's OWN safety proof
+  assumes stable storage for exactly those two fields; `RaftWire`
+  runs safely today only as long as no participating node crashes
+  mid-term, stated not hidden).
+- **Stage 1b — the `Store`/`Topic` engine wrapper, and persistent
+  `currentTerm`/`votedFor` (not started).** Turn a running
+  `RaftWire.Node` into something `Election` can construct a `Topic`
+  over — the reduction's whole argument is that this slots in
+  without `Election` changing BY CONSTRUCTION — plus the stable
+  storage stage 1a's own limit named.
 - **Stage 2 — log compaction / snapshotting, membership changes**
   (not started). The control log the reduction already runs on is
   small and slow-changing (election traffic only); an actual
