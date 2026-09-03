@@ -775,17 +775,42 @@ not a new primitive from scratch.
       (`setOutDirect`) on every `invoke()` — applies to `run`/`render`
       too, though it was invisible there. specs/okay-script.md
       "Hot-reload".
-- [ ] okay-script: request-object injection — the REMAINING half of
-      "a new JSP": a script reading the CURRENT HTTP request (query
-      params, headers, method) the way it already reads `Meta.current`
-      for file metadata. The proven pattern (a plain always-fresh
-      method + mutable var, not a `given`) would transfer directly,
-      but exposing `okay.http.Request` from `okay.script`'s own code
-      would be its first real dependency beyond `scala3-compiler` —
-      deliberately not taken when `Page` landed. A caller can already
-      thread per-request data into a render TODAY by string-templating
-      it into the markdown TEXT before calling `render` — clumsy, not
-      blocking.
+- [x] okay-script-web — LANDED 2026-09-03: the REMAINING half of "a
+      new JSP" — a script reading the CURRENT HTTP request (method,
+      path, query, headers) the way it already reads `Meta.current`
+      for file metadata. Scoped to avoid the dependency this entry
+      itself flagged: new `Web` is a plain, dependency-free case class
+      (`String`/`Map` only) — no `okay.http.Request` import anywhere
+      in `okay-script`'s own code; a caller (an `okay-jetty` route)
+      translates its own `Request` into `Web` before calling `render`/
+      `Page.render`. `Page.render(web)` sets it FIRST, inside the
+      page's existing lock, so concurrent requests never race on which
+      request's `Web` a given call sees. Found and fixed along the
+      way: `Web` hit the SAME classloader-identity trap
+      okay-script-page's Console fix found, one level up, for a
+      user-defined type — a host-built `Web` handed directly to the
+      isolated script fails reflection's argument-type check (the
+      isolated loader compiles its own separate `Web` class). Fixed by
+      encoding `Web` into a flat `Array[String]` host-side and
+      decoding it back INSIDE the isolated classloader — only
+      `String`/`Array[String]` cross the boundary — which meant
+      abandoning `@main def okayScriptMain(): Unit` (its generated
+      forwarder never hands `args` through when the `@main` method
+      itself takes zero parameters, which it always did here) for a
+      plain `object OkayScriptMain: def run(args: Array[String]):
+      Unit`, confirmed via `javap` before writing the change. That
+      wrapper change broke output for EVERY existing example — caught
+      immediately by `TestScalaScriptRender`'s own test, not a
+      `Web`-specific failure — because the naive fix (re-indent the
+      already-built body by prefixing every physical line) corrupted
+      DATA inside a `Text` segment's multi-line raw string literal,
+      indistinguishable from source formatting to a blind line-prefix
+      pass. Fixed by having every body-line producer build lines at
+      their FINAL depth directly. Also repeated (and fixed the same
+      way as) `hasMeta`'s own self-sufficiency lesson: an unconditional
+      `Web` reference broke `TestScalaScriptClassloaderIsolation`'s
+      minimal-Classpath case again; `hasWeb` gates it now.
+      specs/okay-script.md "Request context".
 - [x] okay-script-meta — LANDED 2026-09-03: code inside an .md file
       reads the metadata defined in the markup AROUND it, as its
       current context (operator ask). Front-matter (`---`, file-level)

@@ -1,5 +1,46 @@
 # Changelog
 
+## okay-script-web — request-object injection, a dependency-free Web value, and two real bugs it found
+Completed: 2026-09-03
+Landed as ebfdfefd. The remaining half of "a new JSP": a script
+reading the CURRENT HTTP request (method, path, query, headers) the
+way it already reads `Meta.current` for file metadata. Scoped to
+avoid the dependency the BACKLOG entry itself flagged: `Web` is a
+plain, dependency-free case class (`String`/`Map` only) — no
+`okay.http.Request` import anywhere in `okay-script`'s own code; a
+caller (an `okay-jetty` route) translates its own `Request` into
+`Web` before calling `render`/`Page.render`. `Page.render(web)` sets
+it FIRST, inside the page's existing lock, so concurrent requests to
+the same `Page` never race on which request's `Web` a given call
+sees. Two real bugs found and fixed before landing: `Web` hit the
+SAME classloader-identity trap `okay-script-page`'s `Console` fix
+found, one level up, for a user-defined type — a host-built `Web`
+handed directly to the isolated script fails reflection's
+argument-type check, since the isolated loader compiles its own
+separate `Web` class. Fixed by encoding `Web` into a flat
+`Array[String]` on the host side and decoding it back INSIDE the
+isolated classloader (only `String`/`Array[String]` ever cross the
+boundary) — which meant abandoning `@main def okayScriptMain(): Unit`
+for the wrapper entirely, since its generated forwarder never hands
+`args` through when the `@main` method itself takes zero parameters
+(which it always did here); switched to a plain `object
+OkayScriptMain: def run(args: Array[String]): Unit`, confirmed via
+`javap` before writing the change, not assumed. That wrapper change
+then broke output for EVERY existing example — caught immediately by
+`TestScalaScriptRender`'s own no-interpolation test, not a
+`Web`-specific failure: the naive fix (re-indent the already-built
+body by prefixing every physical line for the new nesting depth)
+corrupted DATA inside a `Text` segment's multi-line raw string
+literal, indistinguishable from source formatting to a blind
+line-prefix pass. Fixed by having every body-line producer (`run`,
+`render`, `withMeta`) build its lines at the FINAL required depth
+directly, removing the unsafe re-indentation pass entirely. Also
+repeated — and fixed the same way as — `hasMeta`'s own
+self-sufficiency lesson from the previous landing: an unconditional
+`Web` reference broke `TestScalaScriptClassloaderIsolation`'s
+minimal-Classpath case again; `hasWeb` (a cheap substring check) gates
+it now. specs/okay-script.md "Request context".
+
 ## lowering-note — the textbook explains foldCont
 Completed: 2026-09-03
 Landed as cb82e6fe (docs only). Operator asked why `Free` is lowered
