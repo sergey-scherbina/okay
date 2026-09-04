@@ -2111,3 +2111,65 @@ person should show what they typed rather than what it parsed to.
 The caller's test that recorded this defect now pins the property
 instead of the workaround — which is the shape a fixed friction should
 leave behind.
+
+## Spec — intent-cues-for-a-taxonomy (2026-09-04)
+
+The second friction the first caller exposed. `Patterns.meeting` is a
+`Vector[Cue]` whose `cls` fields are bare strings, so nothing connects
+a cue set to the taxonomy it is supposed to decide. Two consequences,
+both visible in `IntentRouter`:
+
+1. A caller whose taxonomy is domain-bearing (`MeetingProposal`, not
+   `Proposal`) writes a translation by hand.
+2. That translation ends in `case _ =>`, so a cue class the author
+   forgot — or a class added to the cue set later — is routed to
+   whatever the fallthrough names, silently and forever.
+
+The second is the real defect. The first is friction; the second is a
+wrong answer that no test can see, because a total function over
+strings has no hole to trip on.
+
+### Interface
+
+- [ ] `Cues(taxon: Taxon, all: Vector[Cue])` — a cue set is a cue set
+      TOGETHER WITH the taxonomy it decides. Constructed only through
+      `Cues.of`, which returns `Left` naming every cue whose class the
+      taxonomy does not hold.
+- [ ] `Cues.silent: Vector[String]` — the classes no cue can ever
+      produce. Not an error: a tier that cannot reach a class is a
+      fact worth being able to read, and for the canonical set it is
+      empty.
+- [ ] `Cues.renamed(onto: Taxon, mapping: Map[String, String])` —
+      `Either[String, Cues]`, and TOTAL in both directions: every
+      class the cues use must appear as a key, and every value must be
+      a class `onto` holds. Missing keys and unknown targets are both
+      `Left`, which is precisely the `case _ =>` the router had.
+- [ ] `Patterns.score` / `Patterns.classify` take a `Cues`. So does
+      `NoModel`.
+- [ ] `Patterns.canonical: Taxon` — the four names the shipped cue set
+      speaks — and `Patterns.meeting: Cues` stated against it.
+
+### Behavior
+
+- [ ] A cue naming a class outside the taxonomy fails construction,
+      and the message names the class.
+- [ ] A rename that omits a source class fails, and the message names
+      the omitted class — the router's silent fallthrough, turned into
+      an error.
+- [ ] A rename whose target is not in the destination taxonomy fails.
+- [ ] A successful rename decides the same messages as the original,
+      under the new names: same winner, same margin.
+- [ ] `IntentRouter` drops `canonicalToTaxonomy` and holds a renamed
+      `Cues` instead, so its `taxonomy.has` filter has nothing left to
+      catch.
+
+### Decision — why not a type parameter
+
+`Cues[I]` with the classes as a sum type was the first draft and is
+wrong for the same reason `Taxon` is a value: the taxonomy a service
+edits arrives as DATA, from a distilled corpus or a config file, and
+cannot be a type. The check therefore happens at CONSTRUCTION, once,
+and every use downstream is total — which is the same bargain
+`Schema`-derived code makes and the one this module already took when
+`Taxonomy[I]` was withdrawn.
+
