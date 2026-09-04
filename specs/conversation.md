@@ -94,18 +94,18 @@ not be the process that asked, and the answer may arrive days later.
 
 ## Behavior
 
-- [ ] a suspension survives a restart: the pending question is in the
+- [x] a suspension survives a restart: the pending question is in the
       log, and a fresh process resumes it without a stack
-- [ ] a resumed value is a `Reply`, not a `String` — the caller's
+- [x] a resumed value is a `Reply`, not a `String` — the caller's
       deterministic layer decides which case it is
-- [ ] only an `Interrupt` aborts an intake; a fuzzy or a similarity
+- [x] only an `Interrupt` aborts an intake; a fuzzy or a similarity
       guess never does
-- [ ] a value `read` rejects is asked again ONCE and then accepted as
+- [x] a value `read` rejects is asked again ONCE and then accepted as
       text
-- [ ] the language is resolved once for the exchange and pinned to it
-- [ ] with `confirm`, nothing reaches the caller as `Filled` until a
+- [x] the language is resolved once for the exchange and pinned to it
+- [x] with `confirm`, nothing reaches the caller as `Filled` until a
       `Yes` follows a `ReadBack`
-- [ ] an opening sentence answers `opening` and every slot whose
+- [x] an opening sentence answers `opening` and every slot whose
       `extract` reads it, and those are not asked
 - [ ] replay reconstructs from RECORDED decisions and asks nothing,
       sends nothing, and reaches nobody
@@ -210,9 +210,44 @@ field containing the word "blue". A slot that declares what its answer
 means is also declaring what it cannot accept, and the honest response
 to that is to ask again rather than to file it.
 
-## Results
+## Results — conversation-runtime (2026-09-04)
 
-None yet — this is the spec ahead of the implementation. The behavior
-list above is the checklist to tick off as tests cover it, and the
-Decisions carry the incidents that produced them, from a working
-implementation of the same shape.
+Built as `Conversation.scala` on `durable-waiting-on-a-person`, with
+`Durable` supplying the suspension and nothing here holding state of
+its own. Ten tests. Two items stay unticked and are honest about it:
+replay-from-recorded-verdicts is the CALLER's discipline (this module
+never re-classifies anything, so it cannot violate it, and cannot
+enforce it either), and reaching someone who is not present is not
+this module's business at all — it was listed in the spec's behavior
+because a conversation needs it, and it belongs to whoever owns the
+channels.
+
+**The unused parameter that found a hole.** The first cut had the
+runtime emit `Say.Ask(frame, slot)` and let the caller render, on the
+principle that no words live here. The compiler then reported `lang`
+as unused — correctly, because nothing ever applied `Slot.ask`. That
+is not a tidying problem: with no rendering at ask time, the LANGUAGE
+of an exchange is stored nowhere, and a restarted process holding only
+the journal cannot render the outstanding question without
+re-deriving a language from whatever was typed last. Which is exactly
+the failure the Decisions section already recorded from the source
+implementation, arriving a second time by a different route.
+
+So every `Say` now carries the text as it was ACTUALLY asked, rendered
+once through the caller's own function, and `Frame` gained
+`readBack: (L, Map[String, Json]) => String` for the one sentence a
+slot cannot compose. The module still authors no words — it applies
+the caller's — and the language is pinned by construction rather than
+by remembering to pin it. `pending(journal)` therefore answers with
+something renderable on its own.
+
+**What the caller supplies, in full:** a `Frame` of `Slot`s, each with
+a name, a question per language, a `read` that says what an answer
+means, and optionally an `extract` that reads the opening sentence.
+Everything else — which question is next, when to ask again, what a
+`Reply` that is not an answer does, where the state lives — is here.
+
+**Values are `Json`.** okay-agent does not depend on okay-match, and
+`Json` is already the currency of tool arguments and answers in this
+module, so a slot's `read` produces one. A caller with a richer value
+type converts at its own edge.

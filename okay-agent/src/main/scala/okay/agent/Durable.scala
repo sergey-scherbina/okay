@@ -124,6 +124,23 @@ object Durable {
    * sequence: a later question cannot have been asked before an
    * earlier one was answered.
    */
+  /**
+   * What an entry's operation ASKED FOR, read back out of its
+   * fingerprint.
+   *
+   * The fingerprint is `op(args)` by construction (`fingerprintOf`),
+   * built for comparison rather than for reading — so the reading
+   * lives here, next to the writing, and a caller never has to know
+   * the shape. This is what makes `awaiting` enough to render an
+   * outstanding question after a restart: the entry says not only
+   * that something was asked but what.
+   */
+  def argsOf(e: Entry): Option[Json] =
+    Option(e.fingerprint)
+      .filter(f => f.startsWith(e.op + "(") && f.endsWith(")"))
+      .map(f => f.drop(e.op.length + 1).dropRight(1))
+      .flatMap(s => scala.util.Try(Json.parse(s)).toOption)
+
   def awaiting(journal: Journal): Option[Entry] =
     journal.all.sortBy(_.seq).find(_.answer.isEmpty)
 

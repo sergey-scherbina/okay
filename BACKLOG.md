@@ -1251,7 +1251,15 @@ centroid 80.0%, kNN 58.3%, chargrams 60.0%, patterns 51.7% (89% where
 they fire), BM25 45.0%; the model tier is ~90%. Everything below is
 ordered by what it would FIX, not by novelty.
 
-- [ ] conversation-runtime — specs/conversation.md. The runtime a
+- [x] conversation-runtime — LANDED 2026-09-04 as `Conversation.scala`
+      on durable-waiting-on-a-person. Frame/Slot described by the
+      caller, a Reply that is a choice, an intake that asks the next
+      unanswered slot, re-asks once, reads back, and holds no state of
+      its own. The compiler found the design hole: with no rendering
+      at ask time `lang` was unused, which meant the language of an
+      exchange was stored nowhere — every Say now carries the text as
+      it was asked. Original entry follows.
+- [x] conversation-runtime (original) — specs/conversation.md. The runtime a
       human-facing conversation needs, with the boundary drawn so a
       caller owns only its own domain: an intake driver over frames and
       slots, a re-ask when a slot cannot read its answer, a read-back
