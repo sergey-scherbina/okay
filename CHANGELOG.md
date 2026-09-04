@@ -1,5 +1,52 @@
 # Changelog
 
+## intent-consumer-seams-a — name the dependency, hand back the abstention's ranking, and one flake out of the gate
+Completed: 2026-09-04
+Landed as 8fe8e809. Two of the seven requests a consumer wrote into
+this spec (0fc7386b), taken first because one of them was misleading
+readers today — plus an operator call that arrived mid-lane.
+
+Recorded because it is the part worth not repeating: I rebased over
+that consumer's commit SIX TIMES before reading it, looking only at my
+own Results sections rather than at the file, and one of its notes —
+that the language key was worth doing BEFORE the embedding bake-off —
+was advice I had already walked past by the time I read it.
+
+(6) THE DEPENDENCY IS `String => Embedding`, NOT "A SERVER". The
+bake-off tables said "needs a server", which describes the reader's
+deployment rather than the tier, and it argued for the wrong one: where
+the encoder is in process, the probe at 86.7% is the CHEAPEST row on
+the table rather than the dearest. The column is now `dependency`, the
+vector tiers name the function they require, and the 12ms figures are
+labelled as this machine's HTTP round trip rather than a property of
+the method.
+
+(3) AN ABSTENTION HANDS BACK WHAT IT COULD NOT SEPARATE.
+`NoModel.Verdict` kept `best` and dropped the runner-up and ranking
+that `Probe.Verdict` had already computed, so declining told a caller
+only THAT it declined. `Verdict` now carries `runnerUp` and the full
+`ranked` list, and `NoModel.decide` returns the answer (or `None`)
+together with the verdict it CONSIDERED, from one call so the two
+cannot disagree. Wanted by an interface that shows a person the choice
+it could not make, and by active learning, which ranks on uncertainty
+rather than on the winner.
+
+AND A THIRD KIND OF INTEGRATION TEST. A full matrix failed on exactly
+one test — `okay.script.TestScalaScript`'s "leaves no temp file behind"
+— which snapshots every `okay-script-*` path under the system temp
+directory before and after, and so fails whenever a sibling suite in
+the same module creates one in between. The diff named two files the
+test never touched; alone the suite passes 9/9. On the operator's call
+it is now `Live`-tagged, AT THE TEST rather than at the suite, since
+the other eight are deterministic and belong in the gate.
+`specs/integration-test-gate.md` gains it as a third kind: not a test
+that reaches outside the JVM, nor one that depends on a live model, but
+one whose OBSERVATION is shared. The real fix — scoping the snapshot to
+the paths the test itself creates — stays owed by whoever owns
+okay-script (`script-temp-snapshot-crosstalk`).
+
+Gate: clean compile 0 warnings; full matrix 2198 tests, 0 failures.
+
 ## intent-second-embedder — the bigger vectoriser does not lift the ceiling, and the first reading of why was wrong
 Completed: 2026-09-04
 Landed as ada1b28f. The experiment `intent-embedding-choice` was
