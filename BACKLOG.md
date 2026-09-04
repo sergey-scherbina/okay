@@ -1671,3 +1671,13 @@ subtraction.
       cannot be compared against one taken under different terms. This
       is cheap, and it is the defect behind the retraction in
       intent-centroid-reconsidered rather than a nice-to-have.
+- [ ] intent-split-other — `Other` is one diffuse bin (mean pairwise
+      cosine 0.55-0.645 against 0.68-0.78 for every real class) and it
+      carries two thirds of the probe's lead over the centroid while
+      being a quarter of the rows. Converting it to an abstention is 20
+      points WORSE (68.3% against 88.3%), so the remaining option is
+      the consumer's other one: split it into named classes that are
+      individually coherent — Gratitude, SupportIssue, Unrelated, or
+      whatever the corpus actually holds. Cheap to try on the existing
+      fixture by relabelling, and it would let every per-class number
+      in the spec be read without an asterisk.

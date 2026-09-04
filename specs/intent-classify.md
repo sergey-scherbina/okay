@@ -1814,3 +1814,75 @@ moving it would have recreated exactly the circularity the
 importing both modules, and their reason is the better one: a
 suspension mechanism belongs with the runtime it suspends, not with
 the classifier that happens to sit beside it in a caller's code.
+
+## Results — intent-other-is-a-bin (2026-09-04)
+
+A consumer's observation, promised in the room and owed: `Other` holds
+social pleasantries and support complaints, which share nothing, so a
+centroid over them is a point between two clouds and a probe's boundary
+for them is wherever the mixture fell. Every per-class number in this
+spec was computed with `Other` counted as a class, so the answer
+reaches back through the programme. The diagnosis is right and
+measured. The remedy is wrong and measured too.
+
+**Two thirds of the probe's lead over the centroid lives in `Other`.**
+
+| | probe | centroid | lead |
+|---|---|---|---|
+| all 60 test rows | 53 | 50 | +3 |
+| the 15 `Other` rows | 15 | 13 | **+2** |
+| the other 45 | 38 | 37 | +1 |
+
+`Other` is a quarter of the rows and carries two thirds of the gap. The
+tier comparison this programme has run for several lanes is, to that
+extent, a comparison of how two models cope with one incoherent class.
+
+**It is incoherent, and it is NOT two clusters — it is one diffuse
+bin.** Mean pairwise cosine, on framed embeddings:
+
+| | |
+|---|---|
+| within the pleasantries | 0.645 |
+| within the complaints | 0.560 |
+| **across the two halves** | **0.551** |
+| within `Proposal` | 0.782 |
+| within `Request` | 0.705 |
+| within `Notification` | 0.684 |
+
+Every real class is tighter than anything inside `Other`. But the
+across-halves figure (0.551) is barely below within-complaints (0.560),
+so the pleasantry/complaint split is not the structure either: the
+complaints half is as loose as the whole. The consumer said two clouds;
+the measurement says one cloud with no shape.
+
+**And yet treating it as a REJECTION is worse than treating it as a
+class.** Fitting only the three positive classes and answering `Other`
+below a confidence floor:
+
+| | best accuracy | `Other` recall there |
+|---|---|---|
+| probe, as abstention | 68.3% | 26.7% |
+| centroid, as abstention | 68.3% | 53.3% |
+| (either, with `Other` as a CLASS) | **88.3%** | — |
+
+Twenty points worse. The reason is visible in the diffuseness that
+suggested the remedy: an incoherent bin can still be LEARNED when its
+members are individually distinctive — "charged twice", "the app
+crashes" and "password reset link expired" have their own vocabulary,
+and a class can hold them without their resembling each other.
+Rejection-by-threshold discards exactly that evidence and keeps only
+"none of the three fit", which is a weaker signal than the one
+available.
+
+So: `Other` is not a class in the geometric sense the other three are,
+its incoherence explains most of the centroid's disadvantage, and the
+fix is NOT to convert it into an abstention. If it is to be improved,
+it is by splitting it into named classes that are individually
+coherent — which is the consumer's other option and remains open.
+
+One measurement defect of my own, recorded because it nearly became a
+finding: the first version swept both tiers over the same floors. A
+probe margin is a difference of PROBABILITIES and a centroid margin a
+difference of COSINES; sharing a range made the centroid abstain on
+everything above 0.1 and reported 25% accuracy as though it meant
+something. Each now sweeps the range its own measure occupies.
