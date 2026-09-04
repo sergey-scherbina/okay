@@ -1,5 +1,49 @@
 # Changelog
 
+## intent-end-to-end — the first caller, and the three things it broke
+Completed: 2026-09-04
+Landed as 848f7a3a. Twenty lanes measured these tiers and nothing used
+them: inside okay there was no path where a message arrives and a
+decision leaves. A consumer had their own router; `okay-intent` had no
+caller of its own, and a library with no callers has the wrong API and
+cannot find out.
+
+`okay.demo.IntentRouter` is the caller — deliberately a ROUTER rather
+than a classifier demo, because the interesting part is what happens
+AFTER the class: the frame it needs, the question it is missing, and
+the decision to ask a person instead of guessing. Its tier order is the
+one the measurements argued for, and it runs in the default gate with
+no model and no network.
+
+WHAT MATTERS IS THE THREE FRICTIONS IT EXPOSED, none of which any test
+had found.
+
+A FILLED FRAME HANDS BACK TEXT, not the parsed value. The router knows
+the meeting is on the 10th — `Temporal` parsed "next thursday" to prove
+the answer was acceptable — and `Frame.filled` can only return the
+string the user typed. To act, the caller parses it AGAIN, with the
+same reference day, and nothing in the type says so.
+
+THE PATTERN TIER SPEAKS CANONICAL NAMES, so a caller with a
+domain-bearing taxonomy writes a mapping. `IntentRouter` carries a
+private `canonicalToTaxonomy`, and every caller after it will write the
+same one.
+
+`Taxon` IS CONNECTED TO NONE OF THE TIERS THAT CLASSIFY. Request 1
+asked for one taxonomy both tiers read; what landed is one taxonomy
+neither reads — `Classify` takes a `Schema[I]`, `Patterns` takes cues,
+`Centroid` takes whatever labels it was fitted on — with the caller
+checking `taxonomy.has` by hand afterwards.
+
+None is fixed here. The lane existed to find what a caller has to work
+around, and quietly repairing them would have hidden the answer: they
+are filed as `intent-frame-typed-values`, `intent-cues-for-a-taxonomy`
+and `intent-taxon-wired-to-tiers`, and the router keeps its workarounds
+visible so the next reader can see the shape of what is missing.
+
+Gate: clean compile 0 warnings; okayIntent, okayDemo and okayDeploy,
+180 tests, 0 failures.
+
 ## intent-russian-rows-fixed — the fixture was flattering itself, and fixing it cost 13 points
 Completed: 2026-09-04
 Landed as dfafec09. The last of what the consumer's review left owed,
