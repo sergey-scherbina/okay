@@ -1770,6 +1770,15 @@ subtraction.
       carry any names: what is missing is a way to state a cue set
       AGAINST a `Taxon`, and a check that every cue names a class the
       taxonomy holds.
+- [ ] frame-language-with-grammatical-gender — the migrating consumer
+      raised it and could not test it: `Slot.ask` is keyed by a
+      language CODE, and a language whose question differs by the
+      grammatical gender of the ADDRESSEE (Polish Pan/Pani, and the
+      formal registers around it) needs more than a code — or needs
+      the caller to key by "pl-formal-f" and own the choice. Their
+      four languages dodge it because Polish there addresses
+      informally. Worth settling before the Map-keyed language is
+      called done for all languages.
 - [ ] intent-temporal-multilingual — (absorbs the older
       intent-temporal-other-languages, filed twice by me before I
       noticed the first.) `Temporal` parses English, so

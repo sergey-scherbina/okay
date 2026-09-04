@@ -87,4 +87,23 @@ class TestFrame extends munit.FunSuite {
     assertEquals(f.valueOf(count), Some(4))
     assertEquals(f.said("count"), None)
   }
+
+  test("the words a parser cannot read are still what the person said") {
+    // the consumer's case, from a live domain: a price slot parses
+    // money, and "negotiable" is a perfectly good thing for a listing
+    // to say. It is content, not a failure — a read-back built from
+    // `filled` alone loses it.
+    val f = form.take("where", "Wrocław").take("count", "negotiable")
+    assertEquals(f.filled, Map("where" -> "Wrocław"))
+    assertEquals(f.words, Map("where" -> "Wrocław", "count" -> "negotiable"))
+    // and the typed reader still refuses to invent one
+    assertEquals(f.valueOf(count), None)
+  }
+
+  test("a slot answered later is in `words` once, as the answer") {
+    val f = form.take("count", "a few").take("count", "4")
+    assertEquals(f.words("count"), "4")
+    assertEquals(f.words.size, 1)
+  }
 }
+

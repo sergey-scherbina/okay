@@ -143,8 +143,9 @@ final case class Frame[I](intent: I,
                           slots: Vector[Slot[?]],
                           lang: String = Slot.Fallback,
                           answers: Map[String, Answered] = Map.empty,
-                          /** what was SAID for a slot that could not
-                           * read it — see `heard` */
+                          /** what was SAID for a slot whose parser
+                           * could not read it — which is not the same
+                           * thing as a mistake. See `said`. */
                           unread: Map[String, String] = Map.empty):
 
   /**
@@ -160,11 +161,37 @@ final case class Frame[I](intent: I,
 
   def has(name: String): Boolean = answers.contains(name)
 
-  /** what a person said, for a frame being shown back to them */
+  /** the text of the answers that PARSED, for a frame being shown
+   * back to them. Not everything the person said — see `words`. */
   def filled: Map[String, String] = answers.view.mapValues(_.text).toMap
 
-  /** the words said for a slot that could not read them */
+  /**
+   * The words said for a slot whose parser could not read them.
+   *
+   * NOT AN ESCAPE HATCH — the other half of the answer, and the first
+   * consumer to migrate onto this frame said so from a live domain. A
+   * price slot parses money; "negotiable", "по договорённости",
+   * "договорімось" are things a listing legitimately says, and no
+   * parser will ever read one. They are CONTENT, not a failure.
+   *
+   * Which is why the words are kept beside the slot instead of being
+   * stored AS its value: a `Money` field holding the sentence
+   * "negotiable" is a lie the type checker cannot see, and dropping
+   * the sentence loses what the person told you. Read `words` for
+   * both, and `valueOf` when only a parsed value will do.
+   */
   def said(name: String): Option[String] = unread.get(name)
+
+  /**
+   * EVERYTHING the person said, parsed or not.
+   *
+   * The door the first migrating consumer had to write by hand, on
+   * the day they found their read-back had lost a real answer. A
+   * frame shown back to someone should show what they told you; only
+   * the code that must have a typed value should care which half it
+   * came from.
+   */
+  def words: Map[String, String] = filled ++ unread
 
   /**
    * The parsed value, at the type the slot promised.

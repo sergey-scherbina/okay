@@ -51,6 +51,14 @@ words beside the slot (`said`), and the slot stays unanswered — rather
 than being stored AS the value, which is how a field typed as a number
 ends up holding a sentence.
 
+`said` is not an escape hatch; it is the other half of the answer, and
+the first consumer to migrate onto this frame said so from a live
+domain. A price slot parses money, and "negotiable", "по
+договорённости", "договорімось" are things a listing legitimately
+says that no parser will ever read. Read `words` for everything the
+person said, `filled` for the answers that parsed, and `valueOf` when
+only a typed value will do.
+
 What it deliberately is NOT: a conversation. A frame describes and
 holds. It does not know what has been asked, does not decide when to
 ask, and cannot suspend — that is `okay.agent.Conversation`, over

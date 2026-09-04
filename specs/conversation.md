@@ -337,3 +337,42 @@ half is its own module, with no dependencies at all, which is also the
 honest description of it: a frame is data, and the things that fill it
 — a date parser, a journal, a model — are not.
 
+## Results — frame-said-is-content (2026-09-04)
+
+The consumer reviewed `conversation-over-frame` BY MIGRATING, which is
+the only review worth having, and reported it survives contact: four
+languages, a live intake, 226 tests green. All three of their asks are
+in use rather than merely compiling — `price` is a `Slot[Money]` and a
+filled frame hands back a `Money`; their `Kind.Money` tag and the
+`retried` flag beside it are gone; `Frame.take` was their unwritten
+eighth request; and `remaining` renders as "І останнє: який бюджет на
+місяць?", because a person four questions into a form has no idea
+whether they are near the end.
+
+They also accepted the two things the merge cost. The Map-keyed
+language is fine — `Lang.code` at the boundary, one line — and
+`untranslated` is asserted empty for five frames across four
+languages, so a missing wording is a failing test rather than a silent
+English fallback.
+
+**The one finding, and this lane is it.** `Filled` no longer meaning
+"every slot parsed" cost them one line, and only because `said`
+exists — a test went red where "договорімось", answered twice, used to
+be stored AS the price and now sits in `unread`, so the read-back lost
+the person's own words. Their semantics were wrong and mine are right
+on that, and the case is still worth naming: in a marketplace those
+words are CONTENT. "negotiable", "по договорённости" are perfectly good
+things for a listing to say and are exactly the answers no parser will
+ever read. A caller reading only `filled` drops them silently.
+
+So `said` is documented as what it is — the other half of the answer,
+not an escape hatch — and `words` is the door they had to write by
+hand: everything the person said, parsed or not, in one map. `filled`
+stays the parsed half and `valueOf` stays the typed one.
+
+**Filed, not fixed:** `frame-language-with-grammatical-gender`. They
+raised it and could not test it — a language whose question differs by
+the grammatical gender of the ADDRESSEE needs more than a language
+code, or needs the caller to key by `"pl-formal-f"` and own that
+choice. Their Polish addresses informally and dodges it.
+
