@@ -1126,3 +1126,48 @@ embedding call and no tokens. The model tier is ~90%. The gap is
 credibly a DATA gap rather than a method gap, and the lane that closes
 it is `intent-label-distillation`: use the model once, offline, to
 label a large corpus, and keep it out of the request path entirely.
+
+## Results — intent-learning-curve (2026-09-04)
+
+The cheapest lane in the programme, run to decide where the expensive
+ones go — and it overturned the plan it was meant to confirm.
+
+| training examples | probe | centroid | chargrams |
+|---|---|---|---|
+| 8 | 51.7% | 48.3% | 30.0% |
+| 16 | 66.7% | 65.0% | 38.3% |
+| 24 | 75.0% | 78.3% | 46.7% |
+| 32 | **85.0%** | 75.0% | 53.3% |
+| 40 | 81.7% | 83.3% | 55.0% |
+| 48 | 85.0% | 83.3% | 55.0% |
+| 56 | 86.7% | 80.0% | 65.0% |
+| 60 | 85.0% | 80.0% | 60.0% |
+
+**The probe flattens at about 32 examples.** Everything from 32 to 60 —
+nearly a doubling — moves it between 81.7% and 86.7%, which is noise on
+sixty held-out messages. The centroid flattens in the same place at a
+slightly lower level, and it fits four vectors against the probe's 4096
+weights: two models with three orders of magnitude between their
+parameter counts stop improving at the same point, which is what a
+SIGNAL ceiling looks like and not a capacity one.
+
+**So the standing plan was wrong, and it was mine.** I had written that
+the 86.7%-against-90% gap was "credibly a data gap rather than a method
+gap" and named `intent-label-distillation` as the lane that closes it.
+The curve says the labels are not the binding constraint: another
+sixty of them buy nothing measurable. What is left is the
+representation, so `intent-embedding-choice` moves ahead of
+distillation.
+
+**One tier is still climbing, and it is the interesting one.**
+Chargrams go 30.0 → 65.0 across the same range and have not flattened.
+That is the ZERO-NETWORK path — no embedding server, no per-message
+round trip — sitting at 60-65% because it is starved, not because it
+is finished. Distillation is not dead; it simply belongs to the tier
+that can still eat, and a chargram model trained on thousands of
+distilled labels is the only candidate for a classifier with no network
+at all.
+
+Read this against its size: 60 test messages, so a 3-4 point move is
+noise, and the flatness of the right-hand half is the finding rather
+than any single cell.

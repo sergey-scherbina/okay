@@ -1230,7 +1230,11 @@ removes both without a cast, but it changes an abstract primitive on
       the five few-shot examples is untried, and examples OF A CLASS are
       the one lever that has consistently paid here — unlike every prose
       addition, which has now cost four times running.
-- [ ] intent-symbolic-patterns — the symbolic tier failed as BM25 over
+- [x] intent-symbolic-patterns — ALREADY DONE, closed 2026-09-04: the
+      bake-off built it as the `Patterns` tier (88.6-90.9% where a cue
+      fires, 58.3% coverage, 96us, no network) and nobody marked the
+      entry. Original entry follows.
+- [x] intent-symbolic-patterns (original) — the symbolic tier failed as BM25 over
       examples because BM25 matches CONTENT words and an intent is
       carried by function words and syntax ("could you" vs "shall we").
       Linagora's system did not do BM25: it matched lexical-unit
@@ -1247,7 +1251,13 @@ centroid 80.0%, kNN 58.3%, chargrams 60.0%, patterns 51.7% (89% where
 they fire), BM25 45.0%; the model tier is ~90%. Everything below is
 ordered by what it would FIX, not by novelty.
 
-- [ ] intent-label-distillation — THE ONE THAT MOVES THE NUMBER. Every
+- [ ] intent-label-distillation — REPRIORITISED 2026-09-04 by
+      intent-learning-curve: NOT the one that moves the probe, whose
+      curve is flat past 32 examples. It is the lane for CHARGRAMS,
+      which are still climbing at 65% and are the only candidate for a
+      classifier with no network at all. The text below was written
+      before the curve and its premise about the probe is refuted.
+      ORIGINAL: Every
       tier here is fitted on 60 labelled messages, and the probe's
       86.7% is a data limit rather than a method limit: it fits 4096
       weights on 60 rows. Use the model OFFLINE, once, to label a large
@@ -1257,7 +1267,16 @@ ordered by what it would FIX, not by novelty.
       ("few-shot LLM as a bootstrap for data generation") and the only
       route by which a no-model classifier reaches model accuracy.
       TRIGGER: none needed — it is the cheapest large gain available.
-- [ ] intent-learning-curve — before distilling, measure what more data
+- [x] intent-learning-curve — LANDED 2026-09-04, and it OVERTURNED the
+      plan it was meant to confirm. The probe flattens at ~32 examples;
+      32 to 60 moves it 81.7-86.7%, which is noise. The centroid, with
+      three orders of magnitude fewer parameters, flattens in the same
+      place — a signal ceiling, not a capacity one. So labels are NOT
+      the binding constraint for the embedding tiers and
+      intent-embedding-choice moves ahead of intent-label-distillation.
+      Chargrams are still climbing (30 -> 65%) and are the tier that
+      distillation should feed. Original entry follows.
+- [x] intent-learning-curve (original) — before distilling, measure what more data
       is worth: refit the probe at 15, 30, 45, 60 examples and plot.
       If the curve is still climbing steeply, distillation pays; if it
       has flattened, the ceiling is the representation and
