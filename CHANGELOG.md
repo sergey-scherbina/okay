@@ -1,5 +1,58 @@
 # Changelog
 
+## intent-fitted-model-ships — a model a caller can load, with the numbers it earns
+Completed: 2026-09-04
+Landed as d42c03ca. Nine tiers measured and none shipped: every fitted
+model existed inside the test that fitted it, so a caller had the
+types, the accuracy tables and no route from a pile of messages to a
+working classifier.
+
+`CharGrams` is the only tier that CAN ship. The vector tiers need an
+embedder — a gateway on the network, or a distilled table somebody
+builds first — so shipping one ships a dependency rather than a model;
+the cue tier ships already but is not fitted at all.
+
+`Models.meeting` is that fit, and `Fit` is the door a caller uses for
+their own corpus: `Fit.grams(rows)`, `Fit.save`, `Fit.grams(json)`.
+
+DIM CHOSEN BY MEASUREMENT, against the module's own default of 4096:
+held-out English 61.7% at 1024, 63.3% at 4096, 58.3% at 8192 — more
+dimensions stop helping at this corpus size — and 42KB against 170KB.
+
+WHAT IT DELIVERS. Alone, 61.7%, which would not be worth shipping.
+Behind the cue tier at FULL COVERAGE on 60 held-out English messages:
+**76.7%**, with no network, no gateway and no fitting on the startup
+path. The cues answer the 53% they fire on at 90.6%; the model answers
+the other 28 messages at 61%. Both halves are asserted in tests, so
+the doc comment cannot drift from the code.
+
+NOT SHIPPED, DELIBERATELY: the six-language fit. Fifteen held-out rows
+per language give fr 53-67%, de 40-47%, es 33-53%, ru 33-40%, ja
+53-60% — noise at that size — and it costs English three points.
+`CharGrams` is language-agnostic by construction and this fixture
+cannot demonstrate it; `intent-language-fixture-growth` is the lane.
+
+REPRODUCIBLE, NOT A BLOB: `MakeModel` writes the artifact and a test
+asserts the committed bytes are exactly what the generator produces
+from the same corpus — which holds because `CharGrams.train` is
+deterministic. It is a generated SOURCE rather than a classpath
+resource because this module is cross-built.
+
+AND A GATE CORRECTION, found while proving that last point.
+`TestModelsCross` was written to run on JS, so I ran `okayIntentJS/
+test` — it finished in one second having run ZERO tests. This module's
+`.jsSettings` point the JS test scope at `src/test/scala-cross`, which
+did not exist. So today's entries for `intent-frame-typed-values`,
+`intent-cues-for-a-taxonomy`, `intent-slot-extraction` and
+`conversation-over-frame` say "okayIntent JVM+JS" where the JS side
+was a COMPILE and no tests. (The okay-agent and okay-frame JS numbers
+in those entries are real — those modules have cross suites.)
+`scala-cross` is now non-empty and on both platforms' test paths.
+
+Gate: clean compile 0 warnings; okayIntentJVM 121, okayIntentJS 4
+(really run, this time), okayDemo 75, okayAgentJVM 121, okayDeploy 9 —
+0 failures.
+
 ## conversation-over-frame — one slot model, the frame under the suspension
 Completed: 2026-09-04
 Landed as 99b3344c. Two slot models appeared in this repository on the
