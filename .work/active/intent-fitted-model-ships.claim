@@ -1,0 +1,26 @@
+task: intent-fitted-model-ships
+agent: opus5-intent
+started: 2026-09-04
+branch: feature/intent-fitted-model-ships
+worktree: ../okay-wt-model
+
+why: Nothing ships a fitted model and there is no documented path from
+  "I have messages" to "I have a model". Every tier above the pattern
+  cues needs a Trained that exists only inside a test. `Fitted` can
+  write one as data and nothing writes it.
+
+plan: CharGrams needs no embedder at all, so it is the tier that CAN
+  ship — fit it on the fixture, serialise with Fitted, commit the
+  artifact, and load it with no network and no fitting on the startup
+  path. Measure dim against size and accuracy before choosing. Plus
+  the door a caller uses for their OWN data, and a test that the
+  shipped artifact reproduces from the same corpus, so it is not a
+  mystery blob.
+
+honesty: it is a worked example fitted on ~150 author-written
+  messages over four meeting classes, not a general intent model, and
+  the doc must say so with the held-out number beside it.
+
+files: okay-intent/src/main/scala/okay/intent/{Models,Fit}.scala,
+  the artifact, okay-intent tests, docs/modules/okay-intent.md,
+  specs/intent-classify.md, BACKLOG.md
