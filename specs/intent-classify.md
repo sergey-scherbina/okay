@@ -998,3 +998,59 @@ Scope: 60 train / 60 test, one split, one 4B-era embedding model at
 1024 dimensions, gold labels author-written. The 100% at margin 0.10 is
 five messages and means nothing on its own; the shape of the curve is
 the finding, not any single cell.
+
+## Results — intent-tier-bakeoff (2026-09-04)
+
+**The goal changed mid-programme and the reporting changed with it.**
+These tiers were built as cheap filters in FRONT of a model; the target
+is now a classifier that needs no generation on the request path at
+all. So the number that decides a tier is its accuracy at FULL
+coverage, and the margin table is beside it for whoever wants to hand
+the uncertain tail to a person rather than to a model.
+
+Embeddings stay inside that budget: a vectoriser is 12ms and no tokens,
+and labels may come from a model once, offline. The ban is on a model
+being present when a message arrives.
+
+Five tiers, one split, one table.
+
+| tier | accuracy over ALL | per message | network |
+|---|---|---|---|
+| symbolic (BM25) | 45.0% | 147µs | none |
+| patterns | 51.7% | 96µs | none |
+| kNN (k=5) | 58.3% | 158µs | one embed |
+| centroid | 80.0% | 75µs | one embed |
+| **linear probe** | **86.7%** | 76µs | one embed |
+| (model tier, for scale) | ~90% | seconds | a generation |
+
+**The probe is within a few points of the model** at 12ms plus 76µs,
+with no generation, and it fits in 164ms on 60 examples. At margin 0.60
+it answers 65% of messages at 97.4% — ABOVE the model — which is the
+shape that makes a hand-off to a person cheap rather than embarrassing.
+
+**Patterns confirmed the mechanism the BM25 failure implied.** Where a
+cue fires it is 88.6-90.9% accurate against BM25's 63%, on the same
+messages, with no network and 96µs. The cues match syntax and never a
+subject: "shall we" is a proposal, "could you" a request, "FYI" at the
+START a notification. What limits it is coverage — 58.3% of messages
+contain no cue at all — not precision.
+
+**kNN was my prediction, and it was wrong.** I expected nearest
+neighbours to beat the centroid because `Other` is a deliberate
+grab-bag whose mean resembles none of its members. It scored 58.3%
+against the centroid's 80.0%. The reason is not shape but SIZE: with
+fifteen examples per class, five neighbours are mostly noise, and
+averaging is what rescues a small sample. The hypothesis was about
+geometry and the answer was about sample size.
+
+**Ordering the tiers by what they cost.** Two of them need no network
+at all and neither reaches 52%. Every tier that clears 80% needs an
+embedding. So the honest statement of the no-model target is: it is
+reachable, and it costs one 12ms vector call per message — not zero
+infrastructure, but no generation, no tokens, and no per-call price.
+
+What this leaves for the cascade lane: patterns answer 58% at ~89% for
+free, and the probe answers everything at 86.7%. Whether running
+patterns first and the probe second beats the probe alone is an
+arithmetic question with a real answer, and it is measured next rather
+than assumed here.
