@@ -237,7 +237,8 @@ trait Channel[A] {
     Async.await { k => receiveManyAsync(max)(k); () => () }
 }
 
-final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
+final class StmChannel[A](capacity: Int = Int.MaxValue,
+                          emptyBuf: () => Fifo[A] = () => Fifo.array[A]) extends Channel[A] {
 
 
   /** the whole channel as ONE immutable value: persistent queues and
@@ -259,7 +260,7 @@ final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
    * state is a TRef, its transitions go through TRef.modify — the
    * single-CAS path a one-op transaction takes — and the full
    * transaction language works on the same cell */
-  private[okay] val cell = TRef.bare(State(Fifo.empty[A], 0, Queue.empty, Queue.empty, true, null))
+  private[okay] val cell = TRef.bare(State(emptyBuf(), 0, Queue.empty, Queue.empty, true, null))
 
   private def transact[R](f: State => (State, () => R)): R = cell.modify(f)()
 

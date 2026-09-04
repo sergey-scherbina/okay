@@ -101,6 +101,33 @@ class ChannelGuaranteeBenchmark {
     val t = produce(c.sendBlocking(_): Unit, c.close())
     val s = sumChunk(c, counted = false); t.join(); s
 
+  // ── the two persistent buffers, side by side ────────────────────
+  //    They must run in the SAME invocation. Measured across separate
+  //    runs the answer was noise: `zioStrongChunk`, whose code nobody
+  //    touched, read anywhere from 116 to 138 today, so a 2-5% effect
+  //    cannot be seen between two runs an hour apart. Here both see
+  //    the same host, and `okayStrong*` above is the control.
+
+  @Benchmark def okayStmListChunk(): Long =
+    val c = StmChannel[Long](Cap, () => Fifo.list[Long])
+    val t = produce(c.sendBlocking(_): Unit, c.close())
+    val s = sumChunk(c, counted = false); t.join(); s
+
+  @Benchmark def okayStmArrayChunk(): Long =
+    val c = StmChannel[Long](Cap, () => Fifo.array[Long])
+    val t = produce(c.sendBlocking(_): Unit, c.close())
+    val s = sumChunk(c, counted = false); t.join(); s
+
+  @Benchmark def okayStmListElem(): Long =
+    val c = StmChannel[Long](Cap, () => Fifo.list[Long])
+    val t = produce(c.sendBlocking(_): Unit, c.close())
+    val s = sumElem(c, counted = false); t.join(); s
+
+  @Benchmark def okayStmArrayElem(): Long =
+    val c = StmChannel[Long](Cap, () => Fifo.array[Long])
+    val t = produce(c.sendBlocking(_): Unit, c.close())
+    val s = sumElem(c, counted = false); t.join(); s
+
   // ── the UNBOUNDED default: the same channel over Segments ───────
   //    This is the lane the work was for. Channel.apply defaults to
   //    unbounded, that case used to be StmChannel, and it was the one

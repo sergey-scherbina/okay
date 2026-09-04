@@ -325,3 +325,24 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
   private[okay] def cancelSend(cb: Accepted): Unit = ()
   private[okay] def cancelReceive(k: End => Unit): Unit = ()
 }
+
+object SentinelChannel {
+
+  /**
+   * A channel over a buffer of the caller's choosing.
+   *
+   * The factory is POLYMORPHIC, and that is not ceremony: this channel
+   * stores more than the caller's element type, because termination
+   * travels as a mark through the same buffer. Only the channel knows
+   * what it needs to hold, so it asks for a way to make a buffer of
+   * whatever type it decides — and `Mark` stays private, which means
+   * no caller can put one in and forge an end of stream.
+   *
+   * {{{
+   * SentinelChannel.over[Int](1024)([T] => (n: Int) => Ring[T](n))
+   * SentinelChannel.over[Int](0)([T] => (_: Int) => Segments[T]())
+   * }}}
+   */
+  def over[A](capacity: Int)(newBuffer: [T] => Int => Buffer[T]): SentinelChannel[A] =
+    SentinelChannel[A](newBuffer[A | Mark](capacity))
+}

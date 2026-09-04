@@ -1,5 +1,43 @@
 # Changelog
 
+## fifo-array-front — two persistent buffers, and the seams opened to callers
+
+`Fifo` becomes a seam with two implementations, measured side by side
+because separate runs could not settle it: `zioStrongChunk`, whose
+code nobody touched, read anywhere from 116 to 138 in one day, so a
+host with sibling builds on it hides a 5% effect completely. Both
+variants now run as lanes in the SAME invocation, with an untouched
+zio lane as the control.
+
+`ListFifo` is the banker's pair of lists. `ArrayFifo` carries
+`Segments`' idea into a persistent structure — the front an immutable
+chunk plus an index, each version keeping its own — so turning the
+back round allocates one array instead of n cons cells, `dequeue` is
+index arithmetic, and `drop` within the front only moves the index.
+
+Elementwise **271.4 → 253.0**, a 7.3% gap whose error bars still
+overlap; chunked is a tie (131.7 vs 129.4), exactly as predicted,
+since the batched path stopped materialising a reversed list in
+`stm-fifo-post-cas`. Three independent measurements all favour the
+array, which is the evidence: a difference of zero would flip sign
+about half the time. `ArrayFifo` is the default, `ListFifo` stays
+named.
+
+**The pieces are now public.** `Buffer`, `Ring`, `Segments`, `Fifo`,
+`ListFifo` and `ArrayFifo` were all `private[okay]`, so the menu this
+design had become could not be ordered from: a caller could pick a
+channel by name and nothing else. `SentinelChannel.over` takes a
+POLYMORPHIC buffer factory, because the channel holds more than the
+caller's element type — termination travels as a mark through the same
+buffer — so only the channel knows what it needs to allocate, and
+`Mark` stays private, which means no caller can forge an end of
+stream.
+
+```scala
+SentinelChannel.over[Int](1024)([T] => (n: Int) => Ring[T](n))
+```
+
+Gate 500, full matrix 2259, clean build, no warnings.
 ## intent-frame-typed-values — a filled frame hands back the value, not the text again
 Completed: 2026-09-04
 Landed as 6a5b8e4d. The blocker the first caller found, and the one

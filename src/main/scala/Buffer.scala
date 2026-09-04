@@ -16,7 +16,7 @@ package okay
  * `popMany` that loops over `pop` is correct and worthless — measured,
  * batching the handshake without batching the queue bought 4%.
  */
-private[okay] trait Buffer[A] {
+trait Buffer[A] {
 
   /** the bound, or `Int.MaxValue` when there is none */
   def capacity: Int
