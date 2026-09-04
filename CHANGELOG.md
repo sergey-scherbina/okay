@@ -1,5 +1,45 @@
 # Changelog
 
+## intent-model-persistence — a fitted model is data, so fitting leaves the startup path
+Completed: 2026-09-04
+Landed as c2fc1949. Request 4 of the consumer's seven, and the piece
+that makes "no generation on the request path" also mean NO FITTING on
+it. Without a codec, fitting lives wherever loading lives: every
+process start re-fits, re-fitting needs the teacher, and an embedding
+server is dragged into the STARTUP path of a service whose request path
+was carefully kept clean.
+
+`Fitted` gives `Probe.Trained`, `Centroid.Trained`, `CharGrams.Trained`
+and `Static.Table` a record apiece with a derived `Schema`, so a model
+is fitted at build time and loaded at boot.
+
+THE SCHEMAS ARE HAND-BUILT, AND THE REASON IS SMALLER THAN THE FIRST
+COMMENT CLAIMED. Weights are `Array[Double]`, vectors are
+`ArraySeq[Float]`, and a derivation sends each as a JSON array of
+numbers — which is how an embedding once travelled as `List[Double]`.
+Numbers ride as bytes instead. Measured: a two-class probe over 1024
+dimensions is 21KB as bytes against 36KB as decimal literals — 1.7x,
+not the order of magnitude I had written, because base64 hands back a
+third of what binary saves. The comment now carries the measured figure
+and the reason that survives it: no boxing on the way through, and a
+matrix that carries its width so a reader can check it, rather than a
+nested list whose rows might disagree.
+
+WHAT THE TESTS ASSERT IS THE CLASSIFIER, NOT THE BYTES. Round-tripping
+fields is the easy half; a caller needs the loaded model to ANSWER what
+the fitted one answered. Every case compares predictions across the
+trip, the probe's compares probabilities to 1e-12 — identical rather
+than merely agreeing — and a ScalaCheck property does the same over
+random fits.
+
+One thing a table cannot carry is its splitter: `Static.Table` holds a
+`String => Vector[String]`, and a function is not data. `load` takes it
+back as an argument rather than defaulting, because handing
+`Static.tokens` to a table distilled over `Static.units` is a silent
+accuracy loss — pairs stop being looked up and nothing errors.
+
+Gate: clean compile 0 warnings; full matrix 2205 tests, 0 failures.
+
 ## intent-consumer-seams-a — name the dependency, hand back the abstention's ranking, and one flake out of the gate
 Completed: 2026-09-04
 Landed as 8fe8e809. Two of the seven requests a consumer wrote into
