@@ -246,7 +246,7 @@ final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
    * the CAS that installed the new state won — the Drive handshake's
    * shape, so no thread ever holds a lock, not even for an instant */
   private[okay] final case class State(
-    buf: Queue[A], size: Int,
+    buf: Fifo[A], size: Int,
     receivers: Queue[End => Unit],
     senders: Queue[(A, Accepted)],
     open: Boolean,
@@ -259,7 +259,7 @@ final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
    * state is a TRef, its transitions go through TRef.modify — the
    * single-CAS path a one-op transaction takes — and the full
    * transaction language works on the same cell */
-  private[okay] val cell = TRef.bare(State(Queue.empty, 0, Queue.empty, Queue.empty, true, null))
+  private[okay] val cell = TRef.bare(State(Fifo.empty[A], 0, Queue.empty, Queue.empty, true, null))
 
   private def transact[R](f: State => (State, () => R)): R = cell.modify(f)()
 
@@ -327,24 +327,37 @@ final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
         receiveOne(s)(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
       else
         val take = math.min(max, s.size)
-        val out = ChunkBuf[A](take)
-        var b = s.buf
+        // THE TRANSITION IS CHEAP AND THE WORK IS NOT IN IT. What the
+        // transaction has to decide is only the FINAL state: which
+        // buffer remains and which parked senders are admitted. The
+        // O(take) part -- allocating the chunk and filling it -- goes
+        // into the action, which `transact` runs only after the CAS
+        // has won. A losing transaction now pays for nothing but this
+        // arithmetic, where before it rebuilt the whole queue.
         var senders = s.senders
-        var n = s.size
-        var woken = Vector.empty[Accepted]
-        var i = 0
-        while i < take && b.nonEmpty do
-          val (a, rest) = b.dequeue
-          out.update(i, a)
-          i += 1
-          if senders.nonEmpty then
-            // room opened: admit the first parked sender, as the
-            // single receive does — the size does not move
-            val ((sa, sk), more) = senders.dequeue
-            b = rest.enqueue(sa); senders = more; woken = woken :+ sk
-          else { b = rest; n -= 1 }
-        val s2 = s.copy(buf = b, size = n, senders = senders)
-        (s2, () => { woken.foreach(_(true)); k(Right(out.take(i))) })
+        var admitted = List.empty[A]
+        var woken = List.empty[Accepted]
+        var m = 0
+        while m < take && senders.nonEmpty do
+          // a freed slot admits a parked sender, as the single
+          // receive does -- the size does not move for those
+          val ((sa, sk), more) = senders.dequeue
+          admitted = sa :: admitted
+          woken = sk :: woken
+          senders = more
+          m += 1
+        val rest = s.buf.drop(take, s.size)
+        val b2 = admitted.foldRight(rest)((a, q) => q.enqueue(a))
+        // the OLD buffer: immutable, and the CAS makes this take
+        // exclusive, so the action may read it after publication
+        val taken = s.buf
+        val size0 = s.size
+        val s2 = s.copy(buf = b2, size = size0 - take + m, senders = senders)
+        (s2, () =>
+          val out = ChunkBuf[A](take)
+          taken.fill(out, take, size0)
+          woken.foreach(_(true))
+          k(Right(out.take(take))))
     }
 
   /** the single receive's transition, shared with the batched one */
