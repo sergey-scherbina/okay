@@ -1251,6 +1251,17 @@ centroid 80.0%, kNN 58.3%, chargrams 60.0%, patterns 51.7% (89% where
 they fire), BM25 45.0%; the model tier is ~90%. Everything below is
 ordered by what it would FIX, not by novelty.
 
+- [ ] conversation-runtime — specs/conversation.md. The runtime a
+      human-facing conversation needs, with the boundary drawn so a
+      caller owns only its own domain: an intake driver over frames and
+      slots, a re-ask when a slot cannot read its answer, a read-back
+      before anything is written, a language pinned to the exchange,
+      and a reply that is a CHOICE rather than a string. Depends on
+      durable-waiting-on-a-person for the suspension; without it this
+      is another hand-written state machine, which is what it exists to
+      stop. The spec carries the incidents from a working
+      implementation of the same shape, including the one where a
+      re-derived language flipped mid-intake.
 - [ ] durable-waiting-on-a-person — `Durable` journals INTENT FIRST and
       the answer after, so an `Entry` with `answer = None` is
       structurally a question asked and not yet answered. But recovery
