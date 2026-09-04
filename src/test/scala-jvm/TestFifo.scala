@@ -15,43 +15,63 @@ import org.scalacheck.Prop.forAll
  */
 class TestFifo extends munit.ScalaCheckSuite {
 
-  /** the same contents, as a plain list in FIFO order */
-  private def model[A](q: Fifo[A]): List[A] = q.front ++ q.back.reverse
+  /** every implementation under test, by name — a structure with two
+   * plausible shapes answers for the SAME model, or the choice between
+   * them is not a performance question but a behaviour one */
+  private val impls: List[(String, () => Fifo[Int])] =
+    List("ListFifo" -> (() => Fifo.list[Int]), "ArrayFifo" -> (() => Fifo.array[Int]))
 
-  private def build(xs: List[Int]): Fifo[Int] =
-    xs.foldLeft(Fifo.empty[Int])(_.enqueue(_))
+  private def each(name: String)(law: (String, () => Fifo[Int]) => Unit): Unit =
+    impls.foreach((n, mk) => test(s"$name — $n")(law(n, mk)))
+
+  private def eachProp(name: String)(law: (String, () => Fifo[Int]) => org.scalacheck.Prop): Unit =
+    impls.foreach((n, mk) => property(s"$name — $n")(law(n, mk)))
+
+  /** the same contents, as a plain list in FIFO order — read through
+   * the interface, so it says nothing about how either one stores it */
+  private def model[A](q: Fifo[A]): List[A] =
+    var out = List.empty[A]
+    var c = q
+    while c.nonEmpty do
+      val (a, rest) = c.dequeue
+      out = a :: out
+      c = rest
+    out.reverse
+
+  private def build(mk: () => Fifo[Int], xs: List[Int]): Fifo[Int] =
+    xs.foldLeft(mk())(_.enqueue(_))
 
   /** a buffer whose front is non-empty too, which only happens after a
    * dequeue has refilled it */
-  private def buildMixed(xs: List[Int], split: Int): Fifo[Int] =
-    val q = build(xs)
+  /** a buffer whose front chunk is non-empty AND part-way consumed —
+   * the shape a refill leaves behind, and the one both `drop` and
+   * `fill` have to get right from opposite ends */
+  private def buildMixed(mk: () => Fifo[Int], xs: List[Int], split: Int): Fifo[Int] =
+    val q = build(mk, xs)
     if xs.isEmpty then q
     else
       var out = q
       var i = 0
-      // dequeue `split` and put them back, which moves the boundary
-      var taken = List.empty[Int]
       while i < math.min(split, xs.length) do
-        val (a, rest) = out.dequeue
-        taken = a :: taken
+        val (_, rest) = out.dequeue
         out = rest
         i += 1
-      taken.foldRight(out)((a, acc) => Fifo(a :: acc.front, acc.back))
+      out
 
-  test("enqueue then dequeue is FIFO") {
-    val q = build((1 to 5).toList)
+  each("enqueue then dequeue is FIFO") { (n, mk) =>
+    val q = build(mk, (1 to 5).toList)
     var out = List.empty[Int]
     var c = q
     while c.nonEmpty do
       val (a, rest) = c.dequeue
       out = a :: out
       c = rest
-    assertEquals(out.reverse, (1 to 5).toList)
+    assertEquals(out.reverse, (1 to 5).toList, n)
   }
 
-  property("fill answers the n oldest, in order") {
+  eachProp("fill answers the n oldest, in order") { (_, mk) =>
     forAll { (xs: List[Int], split: Int, n: Int) =>
-      val q = buildMixed(xs, math.abs(split % 8))
+      val q = buildMixed(mk, xs, math.abs(split % 8))
       val m = model(q)
       val k = if m.isEmpty then 0 else math.abs(n % (m.length + 1))
       val out = ChunkBuf[Int](math.max(k, 1))
@@ -60,18 +80,18 @@ class TestFifo extends munit.ScalaCheckSuite {
     }
   }
 
-  property("drop answers what fill did not take") {
+  eachProp("drop answers what fill did not take") { (_, mk) =>
     forAll { (xs: List[Int], split: Int, n: Int) =>
-      val q = buildMixed(xs, math.abs(split % 8))
+      val q = buildMixed(mk, xs, math.abs(split % 8))
       val m = model(q)
       val k = if m.isEmpty then 0 else math.abs(n % (m.length + 1))
       model(q.drop(k, m.length)) == m.drop(k)
     }
   }
 
-  property("fill and drop together are the whole buffer") {
+  eachProp("fill and drop together are the whole buffer") { (_, mk) =>
     forAll { (xs: List[Int], split: Int, n: Int) =>
-      val q = buildMixed(xs, math.abs(split % 8))
+      val q = buildMixed(mk, xs, math.abs(split % 8))
       val m = model(q)
       val k = if m.isEmpty then 0 else math.abs(n % (m.length + 1))
       val out = ChunkBuf[Int](math.max(k, 1))
@@ -80,13 +100,17 @@ class TestFifo extends munit.ScalaCheckSuite {
     }
   }
 
-  test("a partial take that reaches into the back") {
-    // front = 1,2  back holds 5,4,3 (newest first) -> FIFO 1,2,3,4,5
-    val q = Fifo(List(1, 2), List(5, 4, 3))
-    assertEquals(model(q), List(1, 2, 3, 4, 5))
-    val out = ChunkBuf[Int](4)
-    q.fill(out, 4, 5)
-    assertEquals(out.take(4).toList, List(1, 2, 3, 4))
-    assertEquals(model(q.drop(4, 5)), List(5))
+  each("a partial take that reaches into the back") { (nm, mk) =>
+    // front chunk = 1,2  back holds 5,4,3 (newest first) -> 1..5
+    // built through the interface so both shapes reach it: five
+    // enqueued, two taken, so the front is part-way consumed
+    val q0 = build(mk, (1 to 5).toList)
+    val (_, q1) = q0.dequeue
+    val q = q1
+    assertEquals(model(q), List(2, 3, 4, 5), nm)
+    val out = ChunkBuf[Int](3)
+    q.fill(out, 3, 4)
+    assertEquals(out.take(3).toList, List(2, 3, 4), nm)
+    assertEquals(model(q.drop(3, 4)), List(5), nm)
   }
 }

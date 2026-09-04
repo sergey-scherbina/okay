@@ -319,3 +319,7 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-04	stm-fifo-post-cas	ChannelGuaranteeBenchmark	okayStrongElem	223.446	us/op	N=4000 cap=1024 f=3 i=8	the same lane elementwise, 235.7 -> 223.4
 2026-09-04	stm-fifo-post-cas	ChannelGuaranteeBenchmark	zioStrongChunk	123.764	us/op	N=4000 cap=1024 f=3 i=8	Queue.bounded[Option] + collectWhileSome, same run
 2026-09-04	stm-fifo-post-cas	ChannelGuaranteeBenchmark	zioStrongElem	302.016	us/op	N=4000 cap=1024 f=3 i=8	Queue.bounded[Option] elementwise, same run
+2026-09-04	fifo-array-front	ChannelGuaranteeBenchmark	okayStmArrayElem	252.972	us/op	N=4000 cap=1024 side by side	ArrayFifo: front as an immutable chunk + index, 60 samples
+2026-09-04	fifo-array-front	ChannelGuaranteeBenchmark	okayStmListElem	271.350	us/op	N=4000 cap=1024 side by side	ListFifo: the banker's pair of lists, same run -- array ahead by 7.3%
+2026-09-04	fifo-array-front	ChannelGuaranteeBenchmark	okayStmArrayChunk	129.354	us/op	N=4000 cap=1024 side by side	chunked: a tie with the list (131.7), as predicted -- the reverse was already gone from this path
+2026-09-04	fifo-array-front	ChannelGuaranteeBenchmark	okayStmListChunk	131.710	us/op	N=4000 cap=1024 side by side	chunked, same run

@@ -54,7 +54,7 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicLongArray, AtomicReference
  * the element is published, because it does not look at the tail — it
  * looks at the stamp of the slot it wants.
  */
-private[okay] final class Ring[A](requested: Int) extends Buffer[A] {
+final class Ring[A](requested: Int) extends Buffer[A] {
 
   /**
    * Capacity is rounded UP to a power of two so the index is a mask

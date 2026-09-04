@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicLong, AtomicLongArray, 
  * not — and `stamp(i) == p + 1` says it, with a fresh segment's zeros
  * meaning "not yet".
  */
-private[okay] final class Segments[A](segShift: Int = 8) extends Buffer[A] {
+final class Segments[A](segShift: Int = 8) extends Buffer[A] {
 
   private final val SegSize = 1 << segShift
   private final val SegMask = (SegSize - 1).toLong
