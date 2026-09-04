@@ -12,6 +12,13 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
 - **[Tutorial](tutorial.md)** — the same layers by use, twenty-two
   worked chapters from a pure program to an agent with remote tools;
   every snippet's shape runs in the repo's tests.
+- **[Building a chat application](building-a-chat-app.md)** — from an
+  EMPTY DIRECTORY to a running streaming chat, outside this
+  repository: how to depend on a library that is not published yet
+  (the awkward step, three roads, one recommended), the backend route,
+  the Scala.js frontend whose logic is tested on the JVM, the tests
+  over a real socket, and running it. Every command executed before it
+  was written down.
 - **[The theory of Okay](theory/index.md)** — the textbook: which
   theories the library stands on, who established them (Moggi, Wadler,
   Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &

@@ -1,5 +1,10 @@
 # okay-demo
 
+Building something like this yourself, from an empty directory and
+outside this repository, is [Building a chat
+application](../building-a-chat-app.md) — the same route, the same UI
+construction, at a size you can read in one sitting.
+
 The showcase module — every demo is a real program exercising the
 stack end to end, and several double as acceptance tests.
 
