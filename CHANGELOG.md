@@ -1,5 +1,54 @@
 # Changelog
 
+## intent-vector-tier — the first cheap tier that earns its place
+Completed: 2026-09-04
+Landed as 03736b16. Same fixture, same odd/even split as the symbolic
+tier, same three numbers, so the tables compare line for line.
+
+| margin ≥ | coverage | agreement | (symbolic) |
+|---|---|---|---|
+| 0.00 | 100.0% | 80.0% | 45.0% |
+| 0.02 | 76.7% | 87.0% | 54.5% |
+| 0.05 | 45.0% | 96.3% | 63.6% |
+| 0.10 | 8.3% | 100.0% | 62.1% |
+
+THE AGREEMENT RISES WITH THE MARGIN — monotonically — where the
+symbolic tier's plateaued and then fell. That answers the question the
+symbolic lane left open: the binding constraint was the
+REPRESENTATION, not the idea of a cheap tier. BM25 matches content
+words, and an intent is carried by function words and syntax ("could
+you" against "shall we"), which it drops as stopwords or weights by
+rarity rather than by role.
+
+The operating point is real: at margin 0.05 the tier answers 45% of
+messages at 96.3% agreement, ABOVE the model tier's ~90% macro F1 on
+the same fixture. On the slice it accepts it is not merely cheaper but
+more accurate, and the model's value is on the half it declines —
+exactly the shape a first pass should have.
+
+Cost, with the number a batch hides: 12ms for one message's embedding
+round trip plus 90µs to classify, against seconds for a generation.
+Production embeds one message at a time, so 12ms is the honest figure.
+
+This also changes the trigger's terms. The tier was filed behind "cost
+or latency binding", which still has not fired — and does not need to,
+because being more accurate on the traffic it accepts is a better
+reason than saving money, and a different one from what the backlog
+anticipated.
+
+Composition is three lines at the call site, deliberately not hidden
+behind a wrapper that would obscure which call is being paid for.
+`Centroid` never calls a gateway itself, so it tests on every platform.
+
+Named `Centroid` rather than `Vectors`: a demo imports `okay.agent._`
+and `okay.rag._` together and `okay.rag.Vectors` already exists, so the
+reference went ambiguous. Caught by the FULL gate rather than the
+module's own compile, which is what a full gate is for. It also reads
+better beside `Symbolic` now that both tiers share a shape — `train`,
+`score`, `classify`, `Trained`.
+
+Gate: clean compile 0 warnings; full matrix 2156 tests, 0 failures.
+
 ## intent-symbolic-tier — 112µs per message, and a margin that carries no confidence
 Completed: 2026-09-04
 Landed as 186f412b, NOT wired in. Built on the operator's instruction
