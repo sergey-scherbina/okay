@@ -14,12 +14,26 @@ import scala.jdk.CollectionConverters.*
  * earns its place by passing these, not by surviving a gate a few
  * times. `StmChannel` is the reference, and it is the reference
  * because its single atomic transition gives the invariants for free.
+ *
+ * The laws come in TWO TIERS, because the contract itself does. The
+ * core tier is what "channel" means at all — order, no duplication,
+ * a closed channel accepts nothing more — and every implementation
+ * answers for it. The DRAIN tier is the stronger promise `StmChannel`
+ * makes and `AbruptChannel` deliberately refuses: acceptance is
+ * final, and close ends the channel only after the buffer is spent.
+ *
+ * Splitting them is what makes the trade a fact rather than a
+ * comment. `AbruptChannel` does not "fail" five laws; it does not
+ * claim them, and the suite records which laws each implementation
+ * signed up for.
  */
 class TestChannelLaws extends munit.ScalaCheckSuite {
 
-  /** every implementation under test, by name */
-  private val impls: List[(String, Int => Channel[Int])] = List(
-    "StmChannel" -> (cap => StmChannel[Int](cap)),
+  /** does this implementation promise that a closed channel still
+   * yields what it already accepted? */
+  private val impls: List[(String, Boolean, Int => Channel[Int])] = List(
+    ("StmChannel", true, cap => StmChannel[Int](cap)),
+    ("AbruptChannel", false, cap => AbruptChannel[Int](cap)),
     // add a mechanism here and it must answer for the whole contract.
     // These were checked against the withdrawn CasChannel with its
     // in-flight fix reverted, and law 1 failed in 0.05s naming itself
@@ -27,15 +41,28 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     // three. That is the point of writing them down.
   )
 
+  private def drains(name: String): Boolean = impls.find(_._1 == name).exists(_._2)
+
+  /** a law of the core tier: every implementation answers for it */
   private def each(name: String)(law: (String, Int => Channel[Int]) => Unit): Unit =
-    impls.foreach((n, mk) => test(s"$name — $n")(law(n, mk)))
+    impls.foreach((n, _, mk) => test(s"$name — $n")(law(n, mk)))
+
+  /** a law of the drain tier: only implementations that promise it.
+   * The others are RECORDED as ignored rather than silently skipped,
+   * so the gate's own output says which guarantees each mechanism
+   * signed for -- an implementation that stops claiming one has to
+   * edit the table above, where it is visible. */
+  private def drainers(name: String)(law: (String, Int => Channel[Int]) => Unit): Unit =
+    impls.foreach: (n, drains, mk) =>
+      if drains then test(s"$name — $n")(law(n, mk))
+      else test(s"$name — $n (not claimed)".ignore)(())
 
   // ── LAW 1: acceptance is final ──────────────────────────────────
   // If send answered true, that element WILL be delivered. This is
   // the law all four ring-channel bugs broke, and the reason the
   // producer/consumer/close shape is a law rather than one test.
 
-  each("law: an accepted element is always delivered, whenever close lands") { (n, mk) =>
+  drainers("law: an accepted element is always delivered, whenever close lands") { (n, mk) =>
     for round <- 1 to 60 do
       val c = mk(4)
       val accepted = java.util.concurrent.ConcurrentHashMap.newKeySet[Int]()
@@ -64,7 +91,7 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
   // `Prop` that `forAll` answers with -- so writing this as `each`
   // silently checked nothing. The compiler said so (discarded
   // non-Unit value of type Prop) and it was right
-  impls.foreach: (n, mk) =>
+  impls.filter(_._2).foreach: (n, _, mk) =>
     property(s"law: close does not discard what is already buffered — $n") {
       forAll { (xs: List[Int]) =>
         val c = mk(1024)
@@ -76,7 +103,7 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
       }
     }
 
-  each("law: a receiver sees None only once the buffer is drained") { (n, mk) =>
+  drainers("law: a receiver sees None only once the buffer is drained") { (n, mk) =>
     val c = mk(8)
     assert(c.offer(1)); assert(c.offer(2))
     c.close()
@@ -98,7 +125,7 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
 
   // ── LAW 3b: `finished` is the conclusion, not the ingredients ────
 
-  each("law: finished is false while anything remains, true once nothing can arrive") { (n, mk) =>
+  drainers("law: finished is false while anything remains, true once nothing can arrive") { (n, mk) =>
     val c = mk(8)
     assert(!c.finished, s"$n: an open, empty channel is not finished")
     assert(c.offer(1))
@@ -109,7 +136,7 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     assertEquals(c.receiveBlocking(), None)
   }
 
-  each("law: an accepted element keeps finished false until it is delivered") { (n, mk) =>
+  drainers("law: an accepted element keeps finished false until it is delivered") { (n, mk) =>
     // the shape the ring-channel defects lived in: an element already
     // accepted must keep the channel unfinished, so no consumer can
     // conclude the stream ended while it is still owed
@@ -132,7 +159,10 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     }
     val out = Iterator.continually(c.receiveBlocking()).takeWhile(_.isDefined).flatten.toList
     p.join()
-    assertEquals(out, sent, s"$n: FIFO per producer")
+    // ORDER, not completeness: a channel that discards on close still
+    // owes that what it DID deliver came in the order it was sent, so
+    // the law reads as a prefix and the drain tier owns the tail
+    assertEquals(out, sent.take(out.length), s"$n: FIFO per producer")
   }
 
   // ── LAW 5: nothing is duplicated, whatever the interleaving ──────
@@ -151,7 +181,13 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
         case None => go = false
     }
     ps.foreach(_.join()); c.close(); q.join()
-    assertEquals(got.length, 4 * per, s"$n: count")
-    assertEquals(got.toSet, (0 until 4 * per).toSet, s"$n: contents")
+    // no duplication and nothing invented: true of ANY channel. The
+    // count is the drain tier's claim -- and it must be asserted from
+    // the table, not from whether a race happened to leave the buffer
+    // empty at close, which is how this law passed by luck once
+    assertEquals(got.length, got.toSet.size, s"$n: duplicated")
+    assert(got.forall(v => v >= 0 && v < 4 * per), s"$n: invented an element")
+    if drains(n) then
+      assertEquals(got.toSet, (0 until 4 * per).toSet, s"$n: contents")
   }
 }
