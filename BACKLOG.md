@@ -1777,6 +1777,21 @@ subtraction.
       carry any names: what is missing is a way to state a cue set
       AGAINST a `Taxon`, and a check that every cue names a class the
       taxonomy holds.
+- [ ] intent-temporal-multilingual — `Temporal` parses English, so
+      `Frame.fillFrom` fills English rows and declines the other five
+      languages: measured 5/5 in English and 0/5 in fr, de, es, ru, ja
+      over the parallel fixture (2026-09-04). The router degrades
+      correctly — it asks, in the reader's language — so this is a
+      coverage lane rather than a correctness one. The shape is
+      already there: `parse` is a word-list scan over weekday, month
+      and relative-day vocabularies, so a second language is those
+      three vocabularies plus its own qualifier words ("prochain",
+      "nächsten", "próximo", "следующий"), not a new design. Japanese
+      needs a different tokeniser and should be its own decision.
+- [ ] intent-extract-more-slots — only `when` and whole-message text
+      have extractors. Named entities (who), durations, places and
+      amounts are the obvious next ones, and each is a `Slot.extract`
+      rather than a design.
 - [ ] intent-taxon-wired-to-tiers — request 1 asked for one taxonomy
       both tiers read, and what landed is one taxonomy that NEITHER
       tier reads: `Classify` takes a `Schema[I]`, `Patterns` takes

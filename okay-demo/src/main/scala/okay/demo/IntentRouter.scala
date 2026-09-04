@@ -61,13 +61,35 @@ object IntentRouter {
       "Notification" -> "MeetingNotification",
       "Other" -> "NotAboutMeetings")).fold(m => sys.error(m), identity)
 
-  /** what each class needs before it can be acted on */
-  def frameFor(intent: String, today: Temporal.Date): Frame[String] = intent match
-    case "MeetingProposal" => Frame.of(intent, Slots.when(today),
-      Slots.text("who", Map("en" -> "Who should be there?"), required = false))
-    case "MeetingRequest" => Frame.of(intent,
-      Slots.text("what", Map("en" -> "What would you like done?")))
-    case _ => Frame.of(intent)
+  /**
+   * The slots this router's frames are built from, HELD AS VALUES.
+   *
+   * Not a namespace and not ceremony: `Frame.valueOf` identifies a
+   * slot by identity, so a caller that cannot name the slot object
+   * cannot get the typed value out — and the first draft of this file
+   * built `Slots.when(today)` inside `frameFor`, where nobody could
+   * reach it. The slots depend on the day the conversation is
+   * happening, so they are a value parameterised by it rather than
+   * constants.
+   *
+   * The wildcard in `Frame.slots` is deliberate on the other side of
+   * the same fact: a `Slot[?]` recovered from a frame cannot be asked
+   * for a type, which is what stops a caller inventing one.
+   */
+  final case class Meeting(today: Temporal.Date):
+    val when: Slot[Temporal.When] = Slots.when(today)
+    val who: Slot[String] =
+      Slots.text("who", Map("en" -> "Who should be there?"), required = false)
+    // the request IS the message, so asking "what would you like
+    // done?" of someone who has just said is a question about nothing
+    val what: Slot[String] =
+      Slots.text("what", Map("en" -> "What would you like done?"), fromMessage = true)
+
+    /** what each class needs before it can be acted on */
+    def frameFor(intent: String): Frame[String] = intent match
+      case "MeetingProposal" => Frame.of(intent, when, who)
+      case "MeetingRequest" => Frame.of(intent, what)
+      case _ => Frame.of(intent)
 
   /**
    * One message in, one action out.
@@ -77,7 +99,7 @@ object IntentRouter {
    * first; the vector tier answers the rest; and below its threshold
    * nobody guesses — a person sees the two candidates instead.
    */
-  def route(message: String, today: Temporal.Date,
+  def route(message: String, slots: Meeting,
             lang: String = "en",
             vectors: Option[(Centroid.Trained, String => Embedding)] = None,
             floor: Double = 0.02): Action =
@@ -101,7 +123,10 @@ object IntentRouter {
           if candidates.isEmpty then "no cue fired and no vector model is loaded"
           else s"the top two are within $floor of each other")
       case Right(intent) =>
-        val frame = frameFor(intent, today)
+        // fill from the message BEFORE asking: "Are you free Wednesday
+        // afternoon?" carries its own `when`, and a router that asks
+        // for it is asking the person who just said
+        val frame = slots.frameFor(intent).fillFrom(message)
         frame.missing(lang).headOption match
           case Some((slot, question)) => Action.Ask(intent, slot, question)
           case None => Action.Act(intent, frame)

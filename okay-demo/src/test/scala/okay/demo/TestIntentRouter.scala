@@ -17,19 +17,35 @@ import okay.intent.*
  */
 class TestIntentRouter extends munit.FunSuite {
 
-  private val today = Temporal.Date(2026, 9, 4)
+  private val today = Temporal.Date(2026, 9, 4) // a Friday
+  private val slots = IntentRouter.Meeting(today)
 
   test("a message with a cue reaches an action without a model or a network") {
-    IntentRouter.route("Could you send me the agenda?", today) match
-      case IntentRouter.Action.Ask(intent, slot, question) =>
+    // this used to end in a question — "what would you like done?" —
+    // asked of someone who had just said. The request IS the message.
+    IntentRouter.route("Could you send me the agenda?", slots) match
+      case IntentRouter.Action.Act(intent, frame) =>
         assertEquals(intent, "MeetingRequest")
-        assertEquals(slot, "what")
-        assertEquals(question, "What would you like done?")
-      case other => fail(s"expected a question, got $other")
+        assertEquals(frame.valueOf(slots.what), Some("Could you send me the agenda?"))
+      case other => fail(s"expected an action, got $other")
   }
 
-  test("a proposal is not actionable until it has a time, and the router says which") {
-    IntentRouter.route("Shall we meet on Tuesday?", today) match
+  test("a proposal that carries its own time is acted on, not asked about") {
+    // the end-to-end extractor, from the outside: the class comes from
+    // the cue tier, the date comes out of the same sentence, and
+    // nobody is asked a question they have already answered
+    IntentRouter.route("Shall we meet on Tuesday?", slots) match
+      case IntentRouter.Action.Act(intent, frame) =>
+        assertEquals(intent, "MeetingProposal")
+        assertEquals(frame.valueOf(slots.when).map(_.date.iso), Some("2026-09-08"))
+        // and the evidence is echoable: what the router understood,
+        // in the person's own words
+        assertEquals(frame.filled("when"), "Tuesday")
+      case other => fail(s"expected an action, got $other")
+  }
+
+  test("a proposal with no time in it still asks, and says which slot") {
+    IntentRouter.route("Shall we meet?", slots) match
       case IntentRouter.Action.Ask(intent, slot, question) =>
         assertEquals(intent, "MeetingProposal")
         assertEquals(slot, "when")
@@ -38,7 +54,7 @@ class TestIntentRouter extends munit.FunSuite {
   }
 
   test("a class with nothing to fill is actionable at once") {
-    IntentRouter.route("FYI the room has moved to B2", today) match
+    IntentRouter.route("FYI the room has moved to B2", slots) match
       case IntentRouter.Action.Act(intent, frame) =>
         assertEquals(intent, "MeetingNotification")
         assert(frame.complete())
@@ -46,7 +62,7 @@ class TestIntentRouter extends munit.FunSuite {
   }
 
   test("nothing recognised escalates to a person rather than guessing") {
-    IntentRouter.route("zzz qqq xxx", today) match
+    IntentRouter.route("zzz qqq xxx", slots) match
       case IntentRouter.Action.Escalate(candidates, why) =>
         assertEquals(candidates, Seq.empty[String])
         assert(why.contains("no cue"), why)
@@ -54,7 +70,9 @@ class TestIntentRouter extends munit.FunSuite {
   }
 
   test("the question comes in the reader's language, from the same call") {
-    IntentRouter.route("Shall we meet on Tuesday?", today, lang = "ru") match
+    // no date in it, so there is a question to ask — and it arrives
+    // in the reader's language from the same call
+    IntentRouter.route("Shall we meet?", slots, lang = "ru") match
       case IntentRouter.Action.Ask(_, _, question) =>
         assertEquals(question, "Когда вам удобно встретиться?")
       case other => fail(s"$other")
@@ -74,7 +92,7 @@ class TestIntentRouter extends munit.FunSuite {
     // reference day, because nothing in the type said to. Fixed in
     // intent-frame-typed-values, and the test now pins the property
     // rather than the workaround.
-    val slot = Slots.when(today)
+    val slot = slots.when
     val f = Frame.of("MeetingProposal", slot)
     val filled = f.answer("when", "en", "next thursday").toOption.get
     assert(filled.complete())

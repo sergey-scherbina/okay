@@ -2235,37 +2235,37 @@ message it arrived in.
 
 ### Interface
 
-- [ ] `Found[A](text: String, value: A)` — a value together with the
+- [x] `Found[A](text: String, value: A)` — a value together with the
       SPAN of the message it came from. The span is not decoration: a
       value a person did not type has to be echoable ("Thursday 10
       Sep — right?"), and the whole message is not an echo.
-- [ ] `Slot[A].extract: String => Option[Found[A]]`, defaulting to
+- [x] `Slot[A].extract: String => Option[Found[A]]`, defaulting to
       "nothing found". A slot that cannot extract is the normal case
       and stays a two-line value.
-- [ ] `Frame.fillFrom(message, lang)` — runs the extractor of every
+- [x] `Frame.fillFrom(message)` — runs the extractor of every
       UNANSWERED slot and stores what it finds. Never overwrites an
       answer: a person's own reply outranks a guess about their
       earlier sentence.
-- [ ] `Temporal.find(message, today): Option[Found[When]]` — the value
+- [x] `Temporal.find(message, today): Option[Found[When]]` — the value
       is `parse`'s own answer over the whole message, unchanged; the
       span is the SHORTEST window of words that yields that same
       value. Minimal evidence for the answer the parser already gave,
       rather than a second, differently-behaved parser.
-- [ ] `Slots.text(..., fromMessage = true)` — a text slot whose
+- [x] `Slots.text(..., fromMessage = true)` — a text slot whose
       evidence is the whole message, for the frames where the request
       IS the message.
-- [ ] `IntentRouter` fills before it asks.
+- [x] `IntentRouter` fills before it asks.
 
 ### Behavior
 
-- [ ] "Are you free Wednesday afternoon?" fills `when` and the router
+- [x] "Are you free Wednesday afternoon?" fills `when` and the router
       ACTS instead of asking.
-- [ ] The evidence span is the date phrase, not the sentence.
-- [ ] "Shall we meet?" still asks — nothing was said, nothing is
+- [x] The evidence span is the date phrase, not the sentence.
+- [x] "Shall we meet?" still asks — nothing was said, nothing is
       invented.
-- [ ] A slot already answered by a person is not overwritten by
+- [x] A slot already answered by a person is not overwritten by
       extraction.
-- [ ] Extraction and asking agree: a value extracted from a message
+- [x] Extraction and asking agree: a value extracted from a message
       equals the value obtained by asking and being told the same
       phrase.
 
@@ -2288,4 +2288,61 @@ therefore fill English rows and decline every other language, and the
 router degrades to asking — in the reader's own language, which it
 already does. The number goes in the Results, and the lane to fix it
 is `intent-temporal-multilingual`.
+
+## Results — intent-slot-extraction (2026-09-04)
+
+The router now ACTS on messages it used to ask about, and the two
+rewritten tests are the whole result: "Could you send me the agenda?"
+used to end in "What would you like done?" — asked of someone who had
+just said — and "Shall we meet on Tuesday?" used to end in "When would
+you like to meet?". Both are actions now, and the second carries
+`2026-09-08` as a `Temporal.When`, with `Tuesday` kept beside it as
+the words it rests on.
+
+**The minimal span is shorter than the phrase a person would quote,
+and that is correct.** "Shall we meet next thursday at 2pm about the
+roadmap?" yields `thursday at 2pm`, not `next thursday at 2pm`,
+because a bare weekday already resolves to the coming one — the
+shorter window reproduces the same `When`, so it is the minimum
+evidence for the answer. The test asserts the short form and says why.
+
+**A design fault this lane exposed in the previous one.** `valueOf`
+identifies a slot by IDENTITY, which is what makes its cast true — and
+`IntentRouter` built `Slots.when(today)` INSIDE `frameFor`, where no
+caller could reach it. The typed value was therefore unreachable
+through the very door the last lane opened: `Frame.slots` hands back
+`Slot[?]`, and a wildcard cannot be asked for a type. The fix is
+caller-side and is the pattern to document: slots are HELD AS VALUES,
+in a `Meeting(today)` the caller keeps, and `route` takes that value
+instead of a bare date. Found by writing a test with `private def when`
+instead of `private val when` and watching it return `None`.
+
+### Coverage, per language
+
+Five of the thirty parallel meanings carry a date in their English
+reading. Extraction finds all five in English and none in the other
+five languages:
+
+| lang | found | of |
+|------|-------|----|
+| en   | 5     | 5  |
+| fr   | 0     | 5  |
+| de   | 0     | 5  |
+| es   | 0     | 5  |
+| ru   | 0     | 5  |
+| ja   | 0     | 5  |
+
+That is `Temporal` being English, stated as a measured number in a
+test that prints it rather than as a comment claiming it. The router
+degrades the right way — it asks, in the reader's own language, which
+it already did — and `intent-temporal-multilingual` is the lane.
+
+### Decision — no `lang` on `fillFrom`
+
+`missing` takes a language because asking is addressed to a reader.
+`fillFrom` does not, because extraction reads what is in front of it
+and today's only extractor is English. Adding the parameter now would
+put an argument in the signature that every implementation ignores,
+which is how a signature starts lying; when `Temporal` learns a second
+language the parameter arrives with a reader.
 

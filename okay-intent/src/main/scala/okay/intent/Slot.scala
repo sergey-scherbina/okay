@@ -24,10 +24,31 @@ package okay.intent
  * that property is worth more than the convenience of putting a
  * dialogue here.
  */
+/**
+ * A value together with the SPAN of the message it came from.
+ *
+ * The span is not decoration. A value a person TYPED needs no
+ * evidence — they can see what they wrote. A value taken out of a
+ * sentence they wrote for another purpose has to be echoable back
+ * ("Thursday 10 Sep — right?"), and the whole message is not an echo.
+ */
+final case class Found[A](text: String, value: A)
+
 final case class Slot[A](name: String,
                          ask: Map[String, String],
                          parse: String => Option[A],
-                         required: Boolean = true):
+                         required: Boolean = true,
+                         /**
+                          * Find this slot's value IN a message that
+                          * was not written to answer anything.
+                          *
+                          * Defaults to finding nothing, which is the
+                          * common case and keeps a plain slot two
+                          * lines long. A slot that can extract says
+                          * so; a slot that cannot stays silent rather
+                          * than guessing.
+                          */
+                         extract: String => Option[Found[A]] = (_: String) => None):
   /** the question, in the reader's language, falling back to the one
    * language a slot must have */
   def question(lang: String): String =
@@ -104,6 +125,36 @@ final case class Frame[I](intent: I, slots: Vector[Slot[?]],
       case Some(a) if a.slot eq s => Some(a.value.asInstanceOf[A])
       case _ => None
 
+  /**
+   * Fill what the message itself already says.
+   *
+   * This is the difference between a classifier and a router that can
+   * act. "Are you free Wednesday afternoon?" is a proposal WITH its
+   * `when` in it, and a frame that can only be asked will ask the
+   * person who just said.
+   *
+   * An answered slot is never overwritten: a person's own reply
+   * outranks a guess about their earlier sentence, and an extractor
+   * that could revise an answer would make the order of calls matter.
+   *
+   * No `lang` here, though `missing` takes one. Asking is addressed to
+   * a reader and must be in their language; extraction reads what is
+   * in front of it, and today's one extractor is `Temporal`, which is
+   * English. When that changes the language will reach the extractor
+   * as an argument — adding it now would be a parameter every slot
+   * ignores, which is how a signature starts lying.
+   */
+  def fillFrom(message: String): Frame[I] =
+    slots.foldLeft(this)((f, s) => f.extracted(s, message))
+
+  /** typed on its own, for the same reason `store` is: the found value
+   * keeps its type on the way into the map */
+  private def extracted[A](s: Slot[A], message: String): Frame[I] =
+    if has(s.name) then this
+    else s.extract(message) match
+      case Some(f) => copy(answers = answers.updated(s.name, Answered(s, f.text, f.value)))
+      case None => this
+
   /** the questions still to ask, in order, in the reader's language */
   def missing(lang: String = Slot.Fallback): Vector[(String, String)] =
     slots.filter(s => s.required && !has(s.name)).map(s => s.name -> s.question(lang))
@@ -153,8 +204,17 @@ object Slots:
         "es" -> "¿Cuándo le gustaría que nos reuniéramos?",
         "ru" -> "Когда вам удобно встретиться?",
         "ja" -> "いつがご都合よろしいですか。"),
-      parse = s => Temporal.parse(s, today))
+      parse = s => Temporal.parse(s, today),
+      extract = s => Temporal.find(s, today))
   /** a plain text slot, for the frames whose fields are not parsed at
    * all — most of them, and there is no shame in it */
-  def text(name: String, ask: Map[String, String], required: Boolean = true): Slot[String] =
-    Slot(name, ask, s => Option.when(s.trim.nonEmpty)(s.trim), required)
+  def text(name: String, ask: Map[String, String], required: Boolean = true,
+           fromMessage: Boolean = false): Slot[String] =
+    val read = (s: String) => Option.when(s.trim.nonEmpty)(s.trim)
+    // `fromMessage` is for the frames where the request IS the
+    // message: a "what would you like done?" asked of someone who has
+    // just written a paragraph saying so is a question about nothing.
+    // It is opt-in because the opposite frame — a field the message
+    // happens not to mention — must keep asking.
+    Slot(name, ask, read, required,
+      extract = if fromMessage then s => read(s).map(v => Found(v, v)) else _ => None)

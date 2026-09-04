@@ -167,4 +167,36 @@ object Temporal {
             case _ => plusDays(today, if delta == 0 then 7 else delta)
         })
       }.orElse(if set.contains("week") && set.contains("next") then Some(plusDays(today, 7)) else None)
+
+  /**
+   * The same answer as `parse`, plus the words it rests on.
+   *
+   * The value is `parse`'s own verdict over the WHOLE message, so this
+   * cannot disagree with the parser; only the evidence is searched
+   * for. That ordering is the design. Sliding a window and taking the
+   * first or the longest hit would be a SECOND parser: a window can
+   * read to something the whole sentence would not, and then a frame
+   * filled by extraction and the same frame filled by asking would
+   * hold different dates.
+   *
+   * The span is the SHORTEST window of words reproducing that value —
+   * minimal evidence for an answer already given. It always exists,
+   * since the whole message is one of the windows.
+   *
+   * O(n^2) parses of very short strings, on a message that is being
+   * classified anyway; the classifier is the expensive thing on this
+   * path, not this.
+   */
+  def find(message: String, today: Date): Option[Found[When]] =
+    parse(message, today).map { v =>
+      val toks = message.split("\\s+").filter(_.nonEmpty)
+      val windows =
+        for len <- 1 to toks.length; i <- 0 to toks.length - len yield (i, len)
+      val span = windows
+        .find((i, len) => parse(toks.slice(i, i + len).mkString(" "), today).contains(v))
+        .map((i, len) => toks.slice(i, i + len).mkString(" "))
+        .getOrElse(message)
+      Found(span.replaceAll("^[\\p{Punct}]+|[\\p{Punct}]+$", "").trim, v)
+    }
 }
+
