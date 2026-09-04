@@ -1430,3 +1430,53 @@ dimensions is 5.2MB as float32. A production vocabulary of 30k units
 would be about 120MB, or 60MB at float16 — which is the argument for
 distilling into fewer dimensions as `model2vec` does with PCA, filed
 rather than done.
+
+## Results — intent-second-embedder (2026-09-04)
+
+The experiment `intent-embedding-choice` was blocked on. A second
+embedding model is now served — `Qwen3-Embedding-4B`, 2560 dimensions
+against the 0.6B's 1024, genuinely different vectors — so the
+vectoriser could finally be the only thing that changes.
+
+| model | framing | probe | centroid |
+|---|---|---|---|
+| 0.6B | bare | 86.7% | 80.0% |
+| **0.6B** | **classify instruction** | **88.3%** | **83.3%** |
+| 4B | bare | 76.7% | 76.7% |
+| 4B | classify instruction | 85.0% | 80.0% |
+
+**Bigger is not better here, and the first reading of that was wrong.**
+Bare, the 4B scores ten points BELOW the 0.6B, which looks like a
+verdict on the model. It is not: Qwen3-Embedding is instruction-tuned,
+and the larger model turns out to be far more sensitive to being told
+what the vector is for — the classify instruction is worth +8.3 to it
+against +1.6 to the small one. Framed properly it climbs to 85.0% and
+still does not beat the framed 0.6B.
+
+**The mechanism is the one the learning curve already found.** At 2560
+dimensions the probe fits two and a half times as many weights on the
+same sixty examples, and that curve showed data — not capacity — is
+what binds here. A richer representation is a liability in a small-data
+regime, which is the opposite of the intuition that sent me looking for
+a bigger embedder. It also costs six times the wall clock: 2000ms
+against 345ms for 120 messages.
+
+**So 88.3% is this TASK at this data size, not this vectoriser.** Two
+independent vectorisers, one of them four times the size, land within
+three points of each other, while the model tier reaches ~90% and
+shares none of the probe's errors. The remaining gap is not something
+another embedding model closes.
+
+**The per-language table is under-powered and no conclusion is drawn
+from it.** Trained per language, each arm has fifteen examples — the
+learning curve put the probe's stabilisation at about thirty-two — and
+the numbers swing from 46.7% to 86.7% accordingly. They are recorded
+for the next lane rather than interpreted:
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| 0.6B | 73.3% | 53.3% | 60.0% | 53.3% | 86.7% | 60.0% |
+| 4B | 73.3% | 66.7% | 66.7% | 46.7% | 60.0% | 53.3% |
+
+A per-language verdict needs the parallel set grown to at least thirty
+examples per language, which is `intent-language-fixture-growth`.

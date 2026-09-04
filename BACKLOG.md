@@ -1460,7 +1460,16 @@ bottleneck, so speeding it may pay twice — directly, and by keeping
 the ring off its full mark. Failing that, wake senders on a watermark
 rather than on every pop, which is the same idea as
 `channel-chunk-batch-size` read from the other end.
-- [ ] intent-second-embedder — install a second embedding model and
+- [x] intent-second-embedder — LANDED 2026-09-04 and it settled the
+      ceiling question: 4B (2560 dims) does NOT beat 0.6B (1024). Bare
+      it scores ten points lower, but that is framing — the larger
+      instruction-tuned model gains +8.3 from a classify instruction
+      against the small one's +1.6 — and framed it reaches 85.0%
+      against 88.3%. The mechanism is the learning curve's: 2.5x the
+      weights on the same 60 examples, in a regime where data binds.
+      So 88.3% is the TASK at this data size, not the vectoriser.
+      Original entry follows.
+- [x] intent-second-embedder (original) — install a second embedding model and
       re-run the bake-off and the per-language table; this is the
       experiment intent-embedding-choice could not run. Candidates
       against our constraints (local, MLX, multilingual):
@@ -1497,3 +1506,17 @@ rather than on every pop, which is the same idea as
       table), and `model2vec`'s PCA step to cut 1024 dimensions to
       256 — 1303 units already cost 5.2MB as float32, and a production
       vocabulary of 30k would be 120MB.
+- [ ] intent-language-fixture-growth — the per-language arms train on
+      FIFTEEN examples each, where the learning curve put the probe's
+      stabilisation at about thirty-two, and the numbers swing from
+      46.7% to 86.7% accordingly. No per-language claim about
+      embedders or classifiers is defensible until the parallel set has
+      at least 30 messages per language, which means growing it from 30
+      meanings to 120. That is a translation job, and the
+      author-written-translation limitation grows with it.
+- [ ] intent-4b-with-more-data — the 4B embedder is worse at 60
+      examples because 2560 dimensions need more of them, which is a
+      prediction rather than a defeat: re-run the learning curve on
+      BOTH embedders and find where the lines cross. If the 4B
+      overtakes past some n, it is the right vectoriser for a
+      distilled corpus even though it is the wrong one today.
