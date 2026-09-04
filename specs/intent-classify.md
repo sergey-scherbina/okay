@@ -2217,3 +2217,75 @@ same command passed at load 17 with nothing else running. Consistent
 with the standing note that gates run on a quiet box, and no evidence
 either way about the 1449-test kill on master.
 
+## Spec — intent-slot-extraction (2026-09-04)
+
+The end-to-end extractors, asked for by the operator, and the hole
+between the classifier and the act.
+
+A frame today can only be ASKED. `Frame.answer` takes a reply to a
+question, so the only way a slot gets filled is that somebody asks
+one — and the router therefore classifies "Are you free Wednesday
+afternoon?" as a proposal and then asks "When would you like to
+meet?" of the person who just said. Every part needed to do better
+already exists: `Temporal.parse` scans a whole word list and finds the
+date wherever in the sentence it sits. Nothing wires it to a slot.
+
+So a slot may carry an EXTRACTOR, and a frame may be filled from the
+message it arrived in.
+
+### Interface
+
+- [ ] `Found[A](text: String, value: A)` — a value together with the
+      SPAN of the message it came from. The span is not decoration: a
+      value a person did not type has to be echoable ("Thursday 10
+      Sep — right?"), and the whole message is not an echo.
+- [ ] `Slot[A].extract: String => Option[Found[A]]`, defaulting to
+      "nothing found". A slot that cannot extract is the normal case
+      and stays a two-line value.
+- [ ] `Frame.fillFrom(message, lang)` — runs the extractor of every
+      UNANSWERED slot and stores what it finds. Never overwrites an
+      answer: a person's own reply outranks a guess about their
+      earlier sentence.
+- [ ] `Temporal.find(message, today): Option[Found[When]]` — the value
+      is `parse`'s own answer over the whole message, unchanged; the
+      span is the SHORTEST window of words that yields that same
+      value. Minimal evidence for the answer the parser already gave,
+      rather than a second, differently-behaved parser.
+- [ ] `Slots.text(..., fromMessage = true)` — a text slot whose
+      evidence is the whole message, for the frames where the request
+      IS the message.
+- [ ] `IntentRouter` fills before it asks.
+
+### Behavior
+
+- [ ] "Are you free Wednesday afternoon?" fills `when` and the router
+      ACTS instead of asking.
+- [ ] The evidence span is the date phrase, not the sentence.
+- [ ] "Shall we meet?" still asks — nothing was said, nothing is
+      invented.
+- [ ] A slot already answered by a person is not overwritten by
+      extraction.
+- [ ] Extraction and asking agree: a value extracted from a message
+      equals the value obtained by asking and being told the same
+      phrase.
+
+### Decision — the value is `parse`'s, the span is the minimum
+
+Two ways to find a span, and only one of them keeps the semantics.
+Sliding a window and taking the FIRST or LONGEST window that parses
+makes a new parser with new answers — a window can parse to something
+the whole sentence would not. Taking `parse`'s answer over the whole
+message first, and then searching for the shortest window that
+reproduces it, cannot change any answer: the extractor agrees with the
+parser by construction, and only the evidence is searched for. The
+cost is O(n²) parses of short strings on a message that is already
+being classified, which is not the expensive thing on this path.
+
+### Known limit, filed rather than hidden
+
+`Temporal` is English. Extraction over the six-language fixture will
+therefore fill English rows and decline every other language, and the
+router degrades to asking — in the reader's own language, which it
+already does. The number goes in the Results, and the lane to fix it
+is `intent-temporal-multilingual`.
+
