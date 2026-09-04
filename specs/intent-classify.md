@@ -228,14 +228,29 @@ key rather than new mathematics, and it turns a measured caveat into a
 knob. WORTH DOING BEFORE the embedding bake-off rather than after: the
 comparison it is designed to make is per language.
 
-**3. Hand back the ranking at the abstention boundary.** PARTLY DONE
-2026-09-04 (probe-ranked): `Probe.ranked` exposes the distribution the
-verdict is drawn from, and `score` is a thin wrapper on it. The
-request was filed in the morning and hit by a consumer the same
-afternoon, wiring the probe into a router: an operator diagnostic that
-lists every class could not be built without re-implementing the
-softmax outside. `NoModel.Verdict` still drops `margin` and
-`runnerUp`, and `intent-active-learning` will still want them.
+**3. Hand back the ranking at the abstention boundary.** DONE
+2026-09-04, in three lanes and worth reading as one story.
+`intent-consumer-seams-a` gave `NoModel.Verdict` its `runnerUp` and
+`ranked`; `probe-ranked` exposed the distribution `Probe.score` was
+drawing its verdict from, after a consumer wiring the probe into a
+router found that an operator diagnostic listing every class could not
+be built without re-implementing the softmax outside; and
+`nomodel-real-distribution` connected them.
+
+IT HAD TO BE THREE, because the middle one was a seam nobody could
+reach for until it existed. Without it `NoModel` asked the probe for
+one probability at a time and gave every non-winner the SAME
+fabricated share, `(1 - p(best)) / (n - 1)` — so `ranked` was ordered
+arbitrarily below rank 1, `runnerUp` was whichever class `sortBy` saw
+first among the ties, and a pattern cue could promote the class the
+probe ranked LAST past the one it ranked second. Both consumers named
+below read exactly that fabricated part.
+
+The lesson for the tests, not just the code: at TWO classes the
+fabrication is arithmetically exact, `(1 - p) / 1`, and the whole
+calibration suite was built on two classes. It went green throughout.
+A property about a distribution needs three of something to be a
+distribution at all.
 
 `Probe.Verdict` carries `margin` and `runnerUp`; `NoModel.Verdict`
 keeps `best` and drops them, so a caller that abstains knows only THAT

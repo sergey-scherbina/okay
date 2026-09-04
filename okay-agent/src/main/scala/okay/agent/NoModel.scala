@@ -75,22 +75,12 @@ object NoModel {
    */
   private def blend(t: Probe.Trained, cues: Vector[Patterns.Cue], w: Double,
                     text: String, v: Embedding): Seq[(String, Double)] =
-    val base = Probe.score(t, v) match
-      case Some(_) =>
-        val classes = t.classes
-        classes.map(c => c -> probabilityOf(t, v, c))
-      case None => Seq.empty
+    val base = Probe.ranked(t, v)
     val cue = Patterns.score(cues, text)
     base.map { (c, p) =>
       val bonus = cue.filter(_.best == c).map(_.margin * w).getOrElse(0.0)
       c -> (p + bonus)
     }.sortBy(-_._2)
-
-  private def probabilityOf(t: Probe.Trained, v: Embedding, cls: String): Double =
-    Probe.score(t, v) match
-      case Some(x) if x.best == cls => x.probability
-      case Some(x) => math.max(0.0, (1.0 - x.probability) / math.max(t.classes.length - 1, 1))
-      case None => 0.0
 
   /**
    * Fit on a training half and CALIBRATE on a held-out half.

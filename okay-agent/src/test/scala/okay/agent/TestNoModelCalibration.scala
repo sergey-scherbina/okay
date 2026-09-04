@@ -28,6 +28,59 @@ class TestNoModelCalibration extends munit.FunSuite {
       (s"row-$i", vec(x, (i % 7) * 0.01), label)
     }
 
+  /**
+   * THREE classes, because the defect this pins was EXACT at two.
+   *
+   * With the probe's distribution unavailable, `blend` asked for one
+   * probability at a time and gave every non-winner the same
+   * fabricated share, `(1 - p(best)) / (n - 1)`. At two classes that
+   * is exactly `1 - p` and nothing is wrong — which is why every test
+   * here passed while the ranking below rank 1 was invented. At three
+   * it is fiction, and it is precisely the part both stated consumers
+   * read: an interface showing a person the choice it could not make,
+   * and an example-selector ranking on UNCERTAINTY, a property of the
+   * distribution and not of the winner. Equal shares also make
+   * `runnerUp` whichever class `sortBy` happened to see first, and let
+   * a cue promote the class the probe ranked LAST past the one it
+   * ranked second.
+   */
+  private def corner(x: Double, y: Double, z: Double): Embedding =
+    embedding(Array(x.toFloat, y.toFloat, z.toFloat))
+
+  private def threeClasses: Seq[(String, Embedding, String)] =
+    (0 until 30).map { i =>
+      val n = (i % 5) * 0.01
+      i % 3 match
+        case 0 => (s"east-$i", corner(1.0, n, 0.0), "east")
+        case 1 => (s"north-$i", corner(n, 1.0, 0.0), "north")
+        case _ => (s"up-$i", corner(0.0, n, 1.0), "up")
+    }
+
+  test("the losing classes are ranked, not handed equal shares") {
+    val m = NoModel.fit(threeClasses, threeClasses)
+    // nearer north than up, so the two losers are genuinely unequal
+    // and a ranking that says otherwise is not reporting the model
+    val q = corner(1.0, 0.3, 0.0)
+    val r = NoModel.decide(m, "x", q).considered.ranked
+    assertEquals(r.length, 3, s"every class or none: $r")
+    assertNotEquals(r(1)._2, r(2)._2,
+      s"the non-winners carry one fabricated share between them: $r")
+    assertEquals(r(1)._1, "north", s"the runner-up is not the nearer loser: $r")
+  }
+
+  test("the ranking IS the probe's, where no cue speaks for a class") {
+    // the default weight is zero, so `decide` should hand back the
+    // distribution unchanged rather than a reconstruction of it
+    val m = NoModel.fit(threeClasses, threeClasses)
+    assertEquals(m.patternWeight, 0.0)
+    for q <- Seq(corner(1.0, 0.3, 0.0), corner(0.0, 1.0, 0.2), corner(0.2, 0.2, 1.0)) do
+      val said = NoModel.decide(m, "x", q).considered
+      val probe = Probe.ranked(m.probe, q)
+      assertEquals(said.ranked.map(_._1), probe.map(_._1), "a different ORDER")
+      said.ranked.zip(probe).foreach((a, b) => assertEqualsDouble(a._2, b._2, 1e-12))
+      assertEquals(said.runnerUp, Some(probe(1)._1))
+  }
+
   test("no promise is made from a sample that cannot carry one") {
     val fit = rows(40, clean = true)
     val cal = rows(20, clean = true)     // ~no errors at all
