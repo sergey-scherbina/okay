@@ -1919,3 +1919,55 @@ error one level down.** The distilled count was DERIVED as
 arm that has no human rows at all. A condition that lies is worse than
 one that is missing, because it invites exactly the comparison it
 misdescribes. Counts are passed now, not inferred.
+
+## Results — intent-slot-descriptor (2026-09-04)
+
+Request 5 of the consumer's seven, the last still open, proposed rather
+than held: they said write the shape and they would bring real usage to
+the review instead of specifying from outside a second time.
+
+The Overview of this feature has promised since the first lane that a
+label cannot be acted on and a filled FRAME can, and no type held a
+frame. `Temporal` parsed one slot in one language and nothing said what
+a slot IS, so a second language was a rewrite and a learned tagger
+would have been a rival design.
+
+**The shape, which is theirs.** A slot is a NAME, a QUESTION per
+language, and a PARSER whose failure is a re-ask:
+
+```scala
+final case class Slot[A](name: String, ask: Map[String, String],
+                         parse: String => Option[A], required: Boolean = true)
+final case class Frame[I](intent: I, slots: Vector[Slot[?]],
+                          filled: Map[String, String] = Map.empty)
+```
+
+Three things follow that did not before. `Temporal` becomes one
+implementation of `parse` rather than a special case — `Slots.when`
+is it, wearing the descriptor. Another language is another `ask` entry
+and another parser, not a rewrite. And `intent-crf-slots`, when it
+comes, is an alternative `parse` behind the same seam.
+
+**`read` returns the QUESTION on failure, not an error.** The caller's
+next move is to ask, so that is what it is handed; an error string
+would have to be turned into a question at every call site, in every
+language. `Frame.answer` returns the frame UNCHANGED when a parse
+fails, which is the property the consumer asked for by name: a slot
+that cannot read an answer must not store it. The alternative — keeping
+the raw string and hoping — is how a field typed as a date comes to
+hold "next thursday".
+
+**`missing` is why the type exists at all.** A classifier says
+`Proposal`; a caller cannot act until it knows when. The distance
+between "I have a class" and "I can act" is a list of unanswered
+questions in the reader's language, not a boolean.
+
+**What it deliberately is not: a conversation.** The descriptor
+describes. It holds no session state, does not know what has been
+asked, and does not decide when to ask — the classifier stays a pure
+function of a message, which is what keeps it testable, cacheable and
+foldable, and that is worth more than the convenience of putting a
+dialogue here. Suspension is `Conversation`'s, in okay-agent, on
+`Durable`.
+
+Sent for review rather than declared finished.

@@ -1401,7 +1401,16 @@ ordered by what it would FIX, not by novelty.
       vectors at build time wants to fit there too and load weights at
       boot. Makes "no generation on the request path" also mean "no
       fitting on it".
-- [ ] intent-slot-descriptor — `Temporal` parses one slot in one
+- [x] intent-slot-descriptor — PROPOSED 2026-09-04 and sent for review,
+      not declared finished. `Slot[A]` is a name, a question per
+      language and a parser whose failure is a RE-ASK; `Frame[I]` holds
+      what is filled and answers `missing` in the reader's language.
+      `Temporal` is now one implementation of `parse` rather than a
+      special case, and `intent-crf-slots` becomes an alternative
+      behind the same seam. The descriptor holds no conversation state:
+      suspension stays `Conversation`'s, on `Durable`. Original entry
+      follows.
+- [x] intent-slot-descriptor (original) — `Temporal` parses one slot in one
       language and intent-crf-slots is filed for the general case. A
       slot as a NAME, a question per language, and a parser
       `String => Option[Value]` whose failure is a RE-ASK: then
