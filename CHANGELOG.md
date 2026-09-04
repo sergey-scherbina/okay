@@ -1,3 +1,42 @@
+# Changelog
+
+## intent-taxonomy-and-language — one taxonomy both tiers read, and a fit that knows its languages
+Completed: 2026-09-04
+Landed as 0cf1f7c5. Requests 1 and 2 of the consumer's seven, taken
+together because both are about what a fit KNOWS.
+
+(1) ONE TAXONOMY VALUE, TWO DOORS. The model tier took its classes from
+`Schema[I]`, a fitted tier inferred them from whatever labels its rows
+carried, and nothing connected the two. `Taxon` is a value with `of[I]`
+reading it from a `Schema` and `parsed` building it from strings.
+
+The sharper half was about DATA: a taxonomy arriving as a corpus could
+not reach the model tier at all, and a corpus is what
+`intent-label-distillation` produces — able to define examples but
+never a class. `Taxon` derives a `Schema`, so it round-trips and can be
+edited without a compiler. `Taxon.check` refuses an unknown label
+rather than letting a typo become a class that `Eval` would then score.
+
+Named `Taxon` and not `Taxonomy`: the precedence lane shipped and
+withdrew a `Taxonomy[I]` typeclass, and a name that means one thing in
+the history and another in the code is worse than a slightly odd one.
+
+(2) LANGUAGE AS A KEY IN THE FIT. A row was `(text, embedding, class)`,
+so a multilingual corpus pooled every language into one boundary. `Row`
+carries a `lang` and `ByLanguage.fit` groups by it, with a pooled
+fallback for a language below `minRows` — defaulting to 32, where the
+learning curve put the probe's stabilisation. An untagged corpus is
+unchanged, since `Row.Any` is both "no language" and the pooled key.
+
+THE MEASUREMENT IS DELIBERATELY NOT RUN: per-language fitting needs 32
+rows and the parallel set holds 30 messages per language, so an arm
+would train on fifteen — below where the probe means anything, which is
+why the previous lane's per-language table was unreadable. The seam is
+built and tested; the measurement waits on
+`intent-language-fixture-growth`.
+
+Gate: clean compile 0 warnings; full matrix 2212 tests, 0 failures.
+
 ## probe-ranked — the distribution the probe already computed, handed back
 Completed: 2026-09-04
 Landed as 2052e5a3. `Probe.score` reported `best`, `probability`,
@@ -29,8 +68,6 @@ The tests assert the classifier, not the arithmetic: that the ranking
 covers every class, sums to one, is ordered, and that `score`'s verdict
 is exactly its head and first gap. Four cases over hand-built corner
 vectors, so they carry no encoder and are not Live.
-
-# Changelog
 
 ## intent-model-persistence — a fitted model is data, so fitting leaves the startup path
 Completed: 2026-09-04
