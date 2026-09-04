@@ -1,0 +1,318 @@
+package okay
+
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
+
+/**
+ * A mark travelling in the ring alongside the elements. `end` closes
+ * the stream at that exact position; a void is a slot a sender won
+ * and then declined to use, which the receiver steps over.
+ *
+ * It is `private[okay]` and has no public constructor, so no caller
+ * can put one into a channel: a `Channel[Any]` cannot be handed a
+ * value that this class would confuse for termination.
+ */
+private[okay] final class Mark(val end: Boolean, val error: Throwable | Null)
+
+/**
+ * The default channel: a mutable ring for the mechanism and a mark in
+ * the FIFO stream for the guarantee.
+ *
+ * WHY THIS SHAPE, measured rather than guessed. `StmChannel` gives
+ * the same contract by making the whole channel one immutable value
+ * rebuilt per transaction. Profiled at chunk granularity, 40% of its
+ * leaf samples are `List.reverse` and about 75% the persistent queue
+ * around it: `immutable.Queue` is two lists with an amortized
+ * reverse, and in a bulk receive the amortization does not hold,
+ * because the producer keeps refilling `in` while the consumer drains
+ * `out`, so nearly every batch reverses a buffer up to 1024 deep.
+ * It measured 166.1us against `zio.Queue` carrying our contract at
+ * 124.0 — the one lane we lost.
+ *
+ * The same contract assembled the other way round — a weak mutable
+ * ring plus a sentinel riding the buffer — measured 115.9. This is
+ * that, made a real channel: 2.4% over the weak mechanism, where the
+ * invariant cost 47%.
+ *
+ * WHY THE MARK IS IN THE RING and not beside it. The hard part of
+ * drain-on-close is not draining, it is that "the channel is open"
+ * and "my element is in" are two facts a sender learns at two
+ * different instants. Between them close can land, and then the
+ * element is either stranded after the end (the sender was told true)
+ * or resent (told false, but published anyway). Four `RingChannel`
+ * drafts met that window and each patch — an in-flight counter, a
+ * two-phase close — moved it rather than closed it.
+ *
+ * Here termination is an ELEMENT. It takes a position through the
+ * same tail CAS as everything else, so the ring's own atomics order
+ * it against every send, and there is no second structure to
+ * reconcile. A sender decides what to publish only after winning its
+ * position (`Ring.pushDeciding`): if close has already landed by
+ * then, it publishes a void and answers false. So a sender ordered
+ * after the end mark ALWAYS sees the close — its own CAS is the fence
+ * — and never claims acceptance, while a sender ordered before it is
+ * delivered. The window has nowhere to open.
+ */
+final class SentinelChannel[A](requested: Int = 1024) extends Channel[A] {
+
+  private final class Waiter(val resume: () => Unit):
+    val claimed = AtomicBoolean(false)
+    def claim(): Boolean = claimed.compareAndSet(false, true)
+
+  private val ring = Ring[A | Mark](requested)
+  private val receivers = AtomicReference[List[Waiter]](Nil)
+  private val senders = AtomicReference[List[Waiter]](Nil)
+
+  /** close has been decided: no further element is accepted */
+  private val closing = AtomicBoolean(false)
+  /** the end mark did not fit yet; the next freed slot takes it */
+  private val endPending = AtomicBoolean(false)
+  /** the end mark has been REACHED by a receiver: nothing can arrive */
+  private val ended = AtomicBoolean(false)
+  /** the end mark, once a receiver has taken it out of the ring but
+   * not yet answered with it (a bulk receive that also carried
+   * elements) */
+  private val reached = AtomicReference[Mark | Null](null)
+  private val failure = AtomicReference[Throwable | Null](null)
+  /**
+   * How many MARKS the ring currently holds. Marks are rare — one end
+   * and, only under a close race, a void — so this counter is not on
+   * the hot path, which is the whole reason it counts marks and not
+   * elements. Elements outstanding is then `ring.size - marks`, and
+   * that is all `finished` needs.
+   *
+   * A first draft counted elements instead: an atomic increment per
+   * send and decrement per receive, on a cell shared by producer and
+   * consumer. It answered the same question and cost 2x — it slowed
+   * the PRODUCER, which shrank the batches the consumer could take
+   * (8.0 elements against `AbruptChannel`'s 17.5), and the loss
+   * compounded from there.
+   */
+  private val marks = java.util.concurrent.atomic.AtomicInteger(0)
+
+  /** the one declined-slot value, held for the life of the channel:
+   * allocating it per declined send would put an allocation in the
+   * claim-to-publish window, which is the last place that can afford
+   * one */
+  private val void: A | Mark = Mark(false, null)
+
+  val capacity: Int = ring.capacity
+
+  /**
+   * The ONE cast in this file, and the argument for it.
+   *
+   * A slot holds `A | Mark`, and every `Mark` is matched on the line
+   * above every call to this. What is left is an element — but the
+   * compiler cannot know that, because `A` is unconstrained and could
+   * in principle BE `Mark`, so the union does not narrow.
+   *
+   * It cannot: `Mark` is `private[okay]` and has no public
+   * constructor, so the only `Mark` values that exist are the ones
+   * this class writes into its own ring, and each is matched before
+   * this narrowing runs.
+   *
+   * The typed routes were tried and each costs more than it saves. A
+   * sealed `Elem(a) | Mark` wrapper is an allocation per element,
+   * which is the exact cost this channel exists to remove. A parallel
+   * tag array inside `Ring` keeps the types honest but adds an atomic
+   * write and read per operation on the hot path, and changes a
+   * primitive the laws already cover. Recording an end POSITION
+   * instead of a mark is the design whose two-facts-two-instants
+   * window broke four ring-channel drafts.
+   */
+  private inline def element(x: A | Mark): A = x.asInstanceOf[A]
+
+  private def enqueue(q: AtomicReference[List[Waiter]], w: Waiter): Unit =
+    var go = true
+    while go do
+      val cur = q.get
+      if q.compareAndSet(cur, w :: cur) then go = false
+
+  private def wakeOne(q: AtomicReference[List[Waiter]]): Boolean =
+    var out = false
+    var go = true
+    while go do
+      val cur = q.get
+      if cur.isEmpty then go = false
+      else if q.compareAndSet(cur, cur.init) then
+        val oldest = cur.last
+        if oldest.claim() then { oldest.resume(); out = true; go = false }
+    out
+
+  private def wakeAll(q: AtomicReference[List[Waiter]]): Unit =
+    var go = true
+    while go do
+      val cur = q.get
+      if cur.isEmpty then go = false
+      else if q.compareAndSet(cur, Nil) then
+        cur.reverse.foreach(w => if w.claim() then w.resume())
+        go = false
+
+  /** put the end mark in as soon as a slot exists for it. Nothing can
+   * be accepted after `closing`, so whatever is already in the ring
+   * stays ahead of it and the mark is the last thing in the stream */
+  private def placeEnd(): Unit =
+    if endPending.get then
+      if ring.push(Mark(true, failure.get)) then
+        marks.incrementAndGet(): Unit
+        endPending.set(false)
+      else ()
+
+  private def endAnswer: End =
+    val e = failure.get
+    if e != null then Left(e.nn) else Right(None)
+
+  private def endReached(m: Mark): End =
+    ended.set(true)
+    wakeAll(receivers)
+    val e = m.error
+    if e != null then Left(e.nn) else Right(None)
+
+  def sendAsync(a: A)(k: Accepted): Unit = attemptSend(a, granted0 = false)(k)
+
+  private def attemptSend(a: A, granted0: Boolean)(k: Accepted): Unit =
+    val granted = granted0
+    var go = true
+    while go do
+      go = false
+      if closing.get then k(false)
+      else if granted || senders.get.isEmpty then
+        // the decision rides INSIDE the claim: what comes back is
+        // what the ring published at the position just won
+        ring.pushDeciding(a, closing, void) match
+          case null =>
+            // full: park, and re-check afterwards in case a pop freed
+            // a slot between the failed push and the registration
+            val w = Waiter(() => attemptSend(a, granted0 = true)(k))
+            enqueue(senders, w)
+            if (ring.size < ring.capacity || closing.get) && w.claim() then
+              val _ = senders.updateAndGet(_.filterNot(_.claimed.get))
+              go = true
+          case _: Mark =>
+            // close landed between the open check and the claim; the
+            // slot carries a void the receiver steps over
+            marks.incrementAndGet(): Unit
+            k(false)
+            val _ = wakeOne(receivers)
+          case _ =>
+            k(true)
+            val _ = wakeOne(receivers)
+      else
+        val w = Waiter(() => attemptSend(a, granted0 = true)(k))
+        enqueue(senders, w)
+        if (ring.size < ring.capacity || closing.get) && w.claim() then
+          val _ = senders.updateAndGet(_.filterNot(_.claimed.get))
+          go = true
+
+  def receiveAsync(k: End => Unit): Unit =
+    var go = true
+    while go do
+      go = false
+      if ended.get then k(endAnswer)
+      else
+        var answered = false
+        var stepped = true
+        while stepped && !answered do
+          stepped = false
+          ring.pop() match
+            case null => ()
+            case m: Mark =>
+              marks.decrementAndGet(): Unit
+              val _ = wakeOne(senders)
+              placeEnd()
+              // a void: the slot a sender won and declined. Step over
+              // it and keep looking within the same call
+              if m.end then { k(endReached(m)); answered = true }
+              else stepped = true
+            case other =>
+              k(Right(Some(element(other))))
+              val _ = wakeOne(senders)
+              placeEnd()
+              answered = true
+        // the ring is spent. If a bulk receive already took the end
+        // mark out and answered with elements instead, this is where
+        // that mark is finally delivered -- parking here would park
+        // for good, since close has already woken everyone it will
+        val orphan = reached.get
+        if !answered && orphan != null then
+          k(endReached(orphan.nn))
+          answered = true
+        if !answered then
+          val w = Waiter(() => receiveAsync(k))
+          enqueue(receivers, w)
+          if (!ring.isEmpty || ended.get) && w.claim() then
+            val _ = receivers.updateAndGet(_.filterNot(_.claimed.get))
+            go = true
+
+  /**
+   * The bulk receive: one head CAS for the whole run.
+   *
+   * Voids are stepped over here as they are singly. The end mark is
+   * different: a batch can carry elements AND the end, and the
+   * convention is that an empty chunk IS the end, so the two cannot
+   * ride out together. The mark is parked in `reached` and delivered
+   * on the next call — sound because nothing but voids can follow it,
+   * so no element can be stranded behind it.
+   */
+  private[okay] override def receiveManyAsync(max: Int)
+                                             (k: Either[Throwable, Chunk[A]] => Unit): Unit =
+    if ended.get then k(endAnswer.map(_ => Chunks.emptyChunk[A]))
+    else
+      val room = if max < ring.capacity then max else ring.capacity
+      val out = ChunkBuf[A](room)
+      var n = 0
+      val took = ring.popMany(room):
+        case m: Mark => { marks.decrementAndGet(): Unit; if m.end then reached.set(m) }
+        case other => { out.update(n, element(other)); n += 1 }
+      if n > 0 then
+        var i = 0
+        while i < took do { val _ = wakeOne(senders); i += 1 }
+        placeEnd()
+        k(Right(out.take(n)))
+      else
+        val m = reached.get
+        if m != null then k(endReached(m.nn).map(_ => Chunks.emptyChunk[A]))
+        else
+          if took > 0 then
+            var i = 0
+            while i < took do { val _ = wakeOne(senders); i += 1 }
+            placeEnd()
+          // nothing but voids, or nothing at all: the honest single
+          // receive, its one element handed over as a chunk of one
+          receiveAsync(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
+
+  def offer(a: A): Boolean =
+    if closing.get || !senders.get.isEmpty then false
+    else
+      ring.pushDeciding(a, closing, void) match
+        case null => false
+        case _: Mark =>
+          marks.incrementAndGet(): Unit
+          val _ = wakeOne(receivers); false
+        case _ => { val _ = wakeOne(receivers); true }
+
+  def close(): Unit =
+    if closing.compareAndSet(false, true) then
+      // a parked sender was never accepted, so refusing it is the
+      // truthful answer, and it clears the way for the mark
+      wakeAll(senders)
+      endPending.set(true)
+      placeEnd()
+      wakeAll(receivers)
+
+  def fail(e: Throwable): Unit =
+    val _ = failure.compareAndSet(null, e)
+    close()
+
+  def failed: Option[Throwable] = Option(failure.get)
+  def isClosed: Boolean = closing.get
+
+  /** nothing further can be delivered. Either a receiver has reached
+   * the end mark — which by construction means everything ahead of it
+   * was delivered — or the channel is closed, so nothing more can be
+   * accepted, and nothing accepted is still outstanding */
+  private[okay] def finished: Boolean =
+    ended.get || (closing.get && ring.size <= marks.get)
+
+  private[okay] def cancelSend(cb: Accepted): Unit = ()
+  private[okay] def cancelReceive(k: End => Unit): Unit = ()
+}

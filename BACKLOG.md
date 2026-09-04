@@ -1326,3 +1326,29 @@ ordered by what it would FIX, not by novelty.
       because sixty rows cannot support a fitted second-level model.
       When the corpus grows (see distillation), replace the grid with a
       real stacking model and measure whether it beats the blend.
+
+## channel-chunk-batch-size — the batch is set by how far the producer runs ahead
+
+`SentinelChannel` wins elementwise (208.9 against `StmChannel`'s
+300.1) and is level chunked (175.3 against 172.3), so the one lane we
+lose to `zio.Queue` — `zioStrongChunk` at 128.0 — is still open.
+
+The lever is measured and it is not per-operation cost. Average
+elements per bulk receive: `StmChannel` 363.6, `AbruptChannel` 65.6,
+`SentinelChannel` 43.5. A ring wakes a receiver on every push, so the
+consumer returns before the buffer accumulates; `StmChannel`'s
+transaction hands over whatever the buffer holds, and its consumer
+therefore takes it in eleven operations rather than ninety.
+
+Two directions, neither obviously right. Hold a woken receiver back
+until either a small dwell has passed or the ring has n elements —
+throughput bought with latency, and the flush machinery from
+`source-merge-chunked` already exists to bound it. Or wake on a
+watermark rather than on every push, which costs nothing in latency
+when the consumer is already behind and nothing at all when it is
+keeping up. Measure both; the second looks cheaper.
+
+Related: this is also why `Ring.pushDeciding` takes a flag and not a
+function. Anything between the claim and the publish truncates a
+concurrent `popMany` scan, which counts CONSECUTIVE published slots —
+a closure there cost 65.6 elements per batch down to 43.5.

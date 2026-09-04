@@ -462,19 +462,38 @@ given Stream[Channel, Async] with
 
 object Channel {
 
+  /** the largest ring worth allocating up front: 2^20 slots is an
+   * 8MB array, and past that the persistent structure's growth on
+   * demand is the better trade */
+  private final val MaxRing = 1 << 20
+
   /**
-   * A channel with the default mechanism — the STM one, unchanged,
-   * so every existing call site means exactly what it always did.
+   * The default channel, chosen by the capacity asked for. Both
+   * mechanisms keep the SAME contract — every law in
+   * `TestChannelLaws`, both tiers — so this is a performance
+   * decision made at construction and nothing a caller can observe
+   * except in the timing.
    *
-   * The name is the factory on purpose: `Channel[A](capacity)` was a
-   * constructor before this seam existed and is an `apply` after it,
-   * so making the mechanism swappable cost no call site anything.
-   * Ask for a specific one by name (`StmChannel`, and whatever else
-   * earns its place) when the trade matters — channel-ring measured
-   * one such trade at 3.4x, in exchange for the STM composability
-   * only this implementation has.
+   * A BOUNDED channel gets `SentinelChannel`: a mutable ring with
+   * termination travelling in it as a mark. Measured elementwise at
+   * 208.9us against `StmChannel`'s 300.1 and `zio.Queue` carrying the
+   * same contract at 320.1. At chunk granularity the two are level
+   * (175.3 against 172.3), so this is a win on one axis and a wash on
+   * the other, not a win everywhere.
+   *
+   * An UNBOUNDED one stays on `StmChannel`, because a ring cannot be:
+   * `Int.MaxValue` is the default here and it is not an array. So
+   * does a capacity below two, which is a rendezvous rather than a
+   * buffer and which the ring's stamp scheme cannot express (see
+   * `Ring.capacity`).
+   *
+   * Ask for a mechanism by name when the trade matters — `StmChannel`
+   * is the one with STM composability, `AbruptChannel` the one that
+   * trades drain-on-close away for speed.
    */
-  def apply[A](capacity: Int = Int.MaxValue): Channel[A] = StmChannel[A](capacity)
+  def apply[A](capacity: Int = Int.MaxValue): Channel[A] =
+    if capacity >= 2 && capacity <= MaxRing then SentinelChannel[A](capacity)
+    else StmChannel[A](capacity)
 
 
   /** unfold a stream into the channel as an Async program; stops

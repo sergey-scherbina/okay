@@ -287,3 +287,9 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	okayStrongElem	279.429	us/op	N=4000 cap=1024 f=3 i=8	the invariant costs 37% elementwise
 2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	zioStrongElem	294.886	us/op	N=4000 cap=1024 f=3 i=8	their queue, our contract, their granularity fixed to ours
 2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	zioWeakElem	298.302	us/op	N=4000 cap=1024 f=3 i=8	q.take per element -- the row the old table hid behind ZStream
+2026-09-04	channel-sentinel-default	ChannelGuaranteeBenchmark	okaySentinelElem	208.913	us/op	N=4000 cap=1024 f=3 i=8	SentinelChannel: the strong contract via a mark in the ring -- 1.44x past StmChannel, 1.53x past zioStrongElem
+2026-09-04	channel-sentinel-default	ChannelGuaranteeBenchmark	okaySentinelChunk	175.303	us/op	N=4000 cap=1024 f=3 i=8	level with StmChannel (172.3); the zioStrongChunk gap (128.0) is NOT closed
+2026-09-04	channel-sentinel-default	ChannelGuaranteeBenchmark	okayStrongElem	300.134	us/op	N=4000 cap=1024 f=3 i=8	StmChannel, same run
+2026-09-04	channel-sentinel-default	ChannelGuaranteeBenchmark	okayStrongChunk	172.332	us/op	N=4000 cap=1024 f=3 i=8	StmChannel, same run
+2026-09-04	channel-sentinel-default	ChannelGuaranteeBenchmark	zioStrongElem	320.092	us/op	N=4000 cap=1024 f=3 i=8	Queue[Option], elementwise, same run
+2026-09-04	channel-sentinel-default	ChannelGuaranteeBenchmark	zioStrongChunk	127.975	us/op	N=4000 cap=1024 f=3 i=8	Queue[Option] + collectWhileSome, same run
