@@ -2489,3 +2489,64 @@ the model it ships. It obeys `Cues.renamed`'s rule exactly — total in
 both directions, a partial map is an error rather than a silent
 bucket — and touches only the labels, not the weights.
 
+## Spec — intent-second-author (2026-09-04)
+
+Every accuracy in this file was measured on a corpus written by one
+hand. Until this evening that was a caveat; now it is load-bearing,
+because `Models.meeting` SHIPS and quotes 76.7% in a doc comment, a
+module page and a changelog entry.
+
+A consumer demonstrated the failure four times today, most sharply
+this evening: leave-one-out said 98.4%, and three of twelve real
+answers written AFTER their corpus were taken by the wrong class —
+while LOO did not move when they fixed it (98.4 to 98.2). Their
+sentence is the one this lane is about: *if your bake-off corpora are
+authored the same way, the number they report about themselves is not
+the number that decides anything.*
+
+I cannot fix that by writing more messages. I am the same hand, and a
+second corpus by the same author measures the same thing twice. What I
+can do is measure the GAP, in two ways that do not need new data.
+
+### 1. Where does the score live?
+
+- [ ] For each held-out message, its nearest neighbour in the training
+      half by character-trigram Jaccard.
+- [ ] Accuracy stratified by that distance. If the composite's 76.7%
+      is carried by the near half and collapses on the far half, the
+      corpus is scoring itself and the honest number for an unseen
+      message is the far-half one.
+
+### 2. What does a register shift cost?
+
+Perturbations applied to the held-out set, MECHANICALLY — a
+transformation cannot be authored to flatter the model, and a
+different author differs at least this much:
+
+- [ ] `lower` — lowercased, final punctuation dropped
+- [ ] `hedge` — a hedge in front ("hmm, ", "so ", "quick one — ")
+- [ ] `tail` — a trailing clause (", if that works", " — no rush")
+- [ ] `typo` — one deterministic transposition in the longest word
+- [ ] `blunt` — the politeness frame removed ("Could you please X" ->
+      "X"), which for a Request deletes the very cue the tier fires
+      on. Reported SEPARATELY, because it is not a register shift so
+      much as a test of what the cue tier is really keyed to.
+
+Measured through `Router.offline()` — the door a caller actually
+gets — reporting coverage and accuracy per perturbation.
+
+### 3. Then rewrite the numbers
+
+- [ ] Every load-bearing quote of 76.7% gets whatever this finds
+      beside it, or gets replaced. A number that only holds for
+      messages of the same register as its training data must say so
+      where it is quoted, not in a spec nobody reads before calling
+      `route`.
+
+### What this is not
+
+A perturbed corpus is a LOWER BOUND on the gap, not the gap. A real
+second author differs in vocabulary, length, structure and intent
+distribution all at once, and none of that is here. If the drop is
+already large under a mechanical shift, the real one is larger.
+
