@@ -87,5 +87,15 @@ class TestVectorTier extends munit.FunSuite {
 
     assert(scored.forall((_, v) => v.forall(x => x.similarity >= -1.01 && x.similarity <= 1.01)),
       "a cosine outside [-1, 1] means the vectors are not what we think they are")
+
+    // the cost argument needs the number the batch hides: what ONE
+    // message costs to embed, since production embeds one at a time
+    val single = test.head._1
+    val warm = embed(Seq(single))
+    assertEquals(warm.length, 1)
+    val t1 = System.nanoTime()
+    for _ <- 1 to 5 do embed(Seq(single)): Unit
+    val embedMs = (System.nanoTime() - t1) / 1000000 / 5
+    println(f"[vector] one message embedded: ${embedMs}ms round trip, then ${micros}us to classify")
   }
 }

@@ -941,3 +941,60 @@ better representation rather than a better threshold — which is exactly
 what the vector tier tests next, and the honest reading of this table
 is that it makes that lane MORE interesting, not less: paraphrase is
 where BM25 is structurally weak.
+
+## Results — intent-vector-tier (2026-09-04)
+
+The last tier, and the first one that earns its place. Same fixture,
+same odd/even split as the symbolic tier, same three numbers, so the
+two tables are comparable line for line.
+
+| margin ≥ | coverage | agreement | (symbolic, for contrast) |
+|---|---|---|---|
+| 0.00 | 100.0% | **80.0%** | 45.0% |
+| 0.02 | 76.7% | **87.0%** | 54.5% |
+| 0.05 | 45.0% | **96.3%** | 63.6% |
+| 0.10 | 8.3% | 100.0% | 62.1% |
+
+**The agreement RISES with the margin — monotonically — where the
+symbolic tier's plateaued and then fell.** That is the answer to the
+question the symbolic lane left open: the binding constraint was the
+REPRESENTATION, not the idea of a cheap tier. BM25 matches words, and
+the words that carry an intent are function words and syntax ("could
+you" against "shall we"), which it either drops as stopwords or weights
+by rarity rather than by role.
+
+**And the operating point is real.** At margin 0.05 the tier answers
+45% of messages at 96.3% agreement — ABOVE the model tier's ~90% macro
+F1 on the same fixture. So on the slice it accepts, it is not merely
+cheaper, it is more accurate; the model's remaining value is on the
+half it declines, which is exactly the shape a first pass should have.
+
+**Cost, with the number the batch hides.** 12ms for one message's
+embedding round trip plus 90µs to classify, against seconds for a
+generation. Production embeds one message at a time, so 12ms is the
+honest figure rather than the batched one.
+
+**What this changes about the trigger.** The tier was filed behind
+"cost or latency binding", and that trigger still has not fired. It
+does not need to: the tier is more accurate than the model on the
+traffic it accepts, which is a better reason than saving money, and a
+different one from the one the backlog anticipated.
+
+**How to compose it** — three lines at the call site, deliberately not
+hidden behind a wrapper, because a wrapper would obscure which call you
+are paying for:
+
+```scala
+val v = embedOne(message)                       // your gateway, your effect
+Vectors.classify(centroids, v, floor = 0.05)    // 90us, answers ~45%
+  .getOrElse(askTheModel(message))              // the rest costs what it always did
+```
+
+`Vectors` never calls a gateway itself, which is why it tests on every
+platform and why the embedding effect stays where the caller can see
+it.
+
+Scope: 60 train / 60 test, one split, one 4B-era embedding model at
+1024 dimensions, gold labels author-written. The 100% at margin 0.10 is
+five messages and means nothing on its own; the shape of the curve is
+the finding, not any single cell.

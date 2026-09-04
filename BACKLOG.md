@@ -1009,7 +1009,15 @@ not a new primitive from scratch.
       tier. Linagora's ontology system answers in <150ms with no model
       at all, so the tier is not a rudiment — it is just not yet
       justified here by a number.
-- [ ] intent-vector-tier — class centroids, then a linear probe over
+- [x] intent-vector-tier — LANDED 2026-09-04, and it EARNS its place,
+      unlike the symbolic one. Agreement rises monotonically with the
+      margin (80% -> 87% -> 96.3%) where BM25's plateaued at 60-64%: the
+      constraint was representation. At margin 0.05 it answers 45% of
+      messages at 96.3%, ABOVE the model tier's ~90%, for 12ms of
+      embedding plus 90us. Composition is three lines at the call site;
+      no wrapper, so the caller sees which call is being paid for.
+      Original entry follows.
+- [x] intent-vector-tier (original) — class centroids, then a linear probe over
       frozen embeddings, trained from LLM-distilled labels (keep only
       `Conf.High` plus the human confirmations the `Clarify` path
       produces). 18x1024 weights is 72KB; a cosine at 1536 components
@@ -1222,3 +1230,11 @@ removes both without a cast, but it changes an abstract primitive on
       the five few-shot examples is untried, and examples OF A CLASS are
       the one lever that has consistently paid here — unlike every prose
       addition, which has now cost four times running.
+- [ ] intent-symbolic-patterns — the symbolic tier failed as BM25 over
+      examples because BM25 matches CONTENT words and an intent is
+      carried by function words and syntax ("could you" vs "shall we").
+      Linagora's system did not do BM25: it matched lexical-unit
+      PATTERNS tied to frames. That is a different mechanism, it targets
+      exactly the failure measured here, and it is cheap to try — but
+      only worth it if a zero-network tier is wanted, since the vector
+      tier already covers 45% at 96.3% for 12ms.
