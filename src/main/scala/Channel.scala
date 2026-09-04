@@ -496,11 +496,15 @@ object Channel {
    * (175.3 against 172.3), so this is a win on one axis and a wash on
    * the other, not a win everywhere.
    *
-   * An UNBOUNDED one stays on `StmChannel`, because a ring cannot be:
-   * `Int.MaxValue` is the default here and it is not an array. So
-   * does a capacity below two, which is a rendezvous rather than a
-   * buffer and which the ring's stamp scheme cannot express (see
-   * `Ring.capacity`).
+   * An UNBOUNDED one gets `SentinelChannel` over `Segments`: the same
+   * channel, its buffer a linked list of fixed arrays instead of one
+   * fixed array. `StmChannel` held this case while a ring could not
+   * be unbounded, and it was the last lane behind `zio.Queue` (130.6
+   * against 122.2 chunked, 40% of its samples in `List.reverse`).
+   *
+   * A capacity below two still goes to `StmChannel`: that is a
+   * rendezvous rather than a buffer, and the ring's stamp scheme
+   * cannot express it (see `Ring.capacity`).
    *
    * Ask for a mechanism by name when the trade matters — `StmChannel`
    * is the one with STM composability, `AbruptChannel` the one that
@@ -508,6 +512,7 @@ object Channel {
    */
   def apply[A](capacity: Int = Int.MaxValue): Channel[A] =
     if capacity >= 2 && capacity <= MaxRing then SentinelChannel[A](capacity)
+    else if capacity > MaxRing then SentinelChannel[A](Segments[A | Mark]())
     else StmChannel[A](capacity)
 
 

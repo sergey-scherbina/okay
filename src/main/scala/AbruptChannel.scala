@@ -114,7 +114,7 @@ final class AbruptChannel[A](requested: Int) extends Channel[A] {
         else
           val w = Waiter(() => receiveAsync(k))
           enqueue(receivers, w)
-          if (!ring.isEmpty || closed.get) && w.claim() then
+          if (ring.hasReady || closed.get) && w.claim() then
             val _ = receivers.updateAndGet(_.filterNot(_.claimed.get))
             go = true
 

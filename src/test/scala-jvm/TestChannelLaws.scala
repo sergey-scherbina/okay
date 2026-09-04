@@ -34,6 +34,10 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
   private val impls: List[(String, Boolean, Int => Channel[Int])] = List(
     ("StmChannel", true, cap => StmChannel[Int](cap)),
     ("SentinelChannel", true, cap => SentinelChannel[Int](cap)),
+    // the unbounded one answers for the SAME laws: it ignores the
+    // capacity because it has none, and a law that leans on a full
+    // buffer must still hold when the buffer never fills
+    ("SentinelChannel/unbounded", true, _ => SentinelChannel[Int](Segments[Int | Mark]())),
     ("AbruptChannel", false, cap => AbruptChannel[Int](cap)),
     // add a mechanism here and it must answer for the whole contract.
     // These were checked against the withdrawn CasChannel with its
@@ -166,6 +170,37 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     assertEquals(out, sent.take(out.length), s"$n: FIFO per producer")
   }
 
+  // ── LAW: a failure records, it does not close ────────────────────
+  // Caught by the full gate and not by these laws, which is why it is
+  // one now. `Channel.merge` feeds one channel from two sources: if
+  // one fails and that silences the other, the healthy source's
+  // elements are lost. The failure belongs at the END of the stream,
+  // after everything already accepted has been handed over.
+
+  each("law: fail records without closing — a healthy producer still sends") { (n, mk) =>
+    val c = mk(16)
+    assert(c.offer(1), s"$n: offer before the failure")
+    c.fail(RuntimeException("boom"))
+    assert(!c.isClosed, s"$n: fail closed the channel")
+    assert(c.offer(2), s"$n: a healthy producer was silenced by another's failure")
+    assertEquals(c.failed.map(_.getMessage), Some("boom"), s"$n: the failure was not recorded")
+  }
+
+  // the rest of it is the drain tier's: a channel that discards on
+  // close cannot promise that what was accepted arrives BEFORE the
+  // failure does, because it promises nothing arrives after close
+  drainers("law: a failure is the END — everything accepted arrives before it") { (n, mk) =>
+    val c = mk(16)
+    assert(c.offer(1), s"$n: offer before the failure")
+    c.fail(RuntimeException("boom"))
+    assert(c.offer(2), s"$n: offer after the failure")
+    c.close()
+    assertEquals(c.receiveBlocking(), Some(1), s"$n: buffered before the failure")
+    assertEquals(c.receiveBlocking(), Some(2), s"$n: sent after the failure")
+    val thrown = intercept[RuntimeException](c.receiveBlocking())
+    assertEquals(thrown.getMessage, "boom", s"$n: the failure is the end")
+  }
+
   // ── LAW: the bulk send is the elementwise one, batched ───────────
   // Two producers offering runs into the same ring make the bulk
   // claim contend with itself, which is the case the single-CAS
@@ -182,7 +217,16 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
           val room = math.min(16, per - i)
           val base = w * per + i
           val took = c.sendManyNow(room)(j => base + j)
-          if took == 0 then Thread.onSpinWait() else i += took
+          // PARK, do not retry in a loop. Two producers retrying
+          // against a 64-slot buffer burn every carrier they are
+          // given, and the consumer they are waiting for gets none:
+          // on a quiet box this passed, on a loaded one it took the
+          // matrix past thirteen minutes in this one law. Yielding
+          // instead of spinning was not enough, because the retry
+          // loop itself is the cost. A blocking send parks, which is
+          // also how a caller would really write this.
+          if took == 0 then { val _ = c.sendBlocking(base); i += 1 }
+          else i += took
       })
       val seen = scala.collection.mutable.ArrayBuffer.empty[Int]
       val q = Thread.ofVirtual().start { () =>
@@ -227,7 +271,7 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
       // fill again -- only close can release it, and it must not
       // happen before the count is in, or the drain-tier channel
       // would be asked to deliver what it already delivered
-      while counted.get < total do Thread.onSpinWait()
+      while counted.get < total do Thread.`yield`()
       c.close()
       qs.foreach(_.join())
       val got = seen.asScala.toList

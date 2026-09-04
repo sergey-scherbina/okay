@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
  * can put one into a channel: a `Channel[Any]` cannot be handed a
  * value that this class would confuse for termination.
  */
-private[okay] final class Mark(val end: Boolean, val error: Throwable | Null)
+private[okay] final class Mark(val end: Boolean)
 
 /**
  * The default channel: a mutable ring for the mechanism and a mark in
@@ -52,13 +52,16 @@ private[okay] final class Mark(val end: Boolean, val error: Throwable | Null)
  * — and never claims acceptance, while a sender ordered before it is
  * delivered. The window has nowhere to open.
  */
-final class SentinelChannel[A](requested: Int = 1024) extends Channel[A] {
+final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
+
+  /** the bounded channel: a fixed ring */
+  def this(requested: Int) = this(Ring[A | Mark](requested))
 
   private final class Waiter(val resume: () => Unit):
     val claimed = AtomicBoolean(false)
     def claim(): Boolean = claimed.compareAndSet(false, true)
 
-  private val ring = Ring[A | Mark](requested)
+  private val ring: Buffer[A | Mark] = buf
   private val receivers = AtomicReference[List[Waiter]](Nil)
   private val senders = AtomicReference[List[Waiter]](Nil)
 
@@ -93,7 +96,7 @@ final class SentinelChannel[A](requested: Int = 1024) extends Channel[A] {
    * allocating it per declined send would put an allocation in the
    * claim-to-publish window, which is the last place that can afford
    * one */
-  private val void: A | Mark = Mark(false, null)
+  private val void: A | Mark = Mark(false)
 
   val capacity: Int = ring.capacity
 
@@ -152,7 +155,7 @@ final class SentinelChannel[A](requested: Int = 1024) extends Channel[A] {
    * stays ahead of it and the mark is the last thing in the stream */
   private def placeEnd(): Unit =
     if endPending.get then
-      if ring.push(Mark(true, failure.get)) then
+      if ring.push(Mark(true)) then
         marks.incrementAndGet(): Unit
         endPending.set(false)
       else ()
@@ -161,11 +164,14 @@ final class SentinelChannel[A](requested: Int = 1024) extends Channel[A] {
     val e = failure.get
     if e != null then Left(e.nn) else Right(None)
 
-  private def endReached(m: Mark): End =
+  /** the failure is read HERE, at the end, and not carried on the
+   * mark: `fail` records without closing — a merge whose one source
+   * breaks must let the other finish sending — so the failure can
+   * arrive after the mark was already placed */
+  private def endReached(): End =
     ended.set(true)
     wakeAll(receivers)
-    val e = m.error
-    if e != null then Left(e.nn) else Right(None)
+    endAnswer
 
   def sendAsync(a: A)(k: Accepted): Unit = attemptSend(a, granted0 = false)(k)
 
@@ -221,7 +227,7 @@ final class SentinelChannel[A](requested: Int = 1024) extends Channel[A] {
               placeEnd()
               // a void: the slot a sender won and declined. Step over
               // it and keep looking within the same call
-              if m.end then { k(endReached(m)); answered = true }
+              if m.end then { k(endReached()); answered = true }
               else stepped = true
             case other =>
               k(Right(Some(element(other))))
@@ -234,12 +240,12 @@ final class SentinelChannel[A](requested: Int = 1024) extends Channel[A] {
         // for good, since close has already woken everyone it will
         val orphan = reached.get
         if !answered && orphan != null then
-          k(endReached(orphan.nn))
+          k(endReached())
           answered = true
         if !answered then
           val w = Waiter(() => receiveAsync(k))
           enqueue(receivers, w)
-          if (!ring.isEmpty || ended.get) && w.claim() then
+          if (ring.hasReady || ended.get) && w.claim() then
             val _ = receivers.updateAndGet(_.filterNot(_.claimed.get))
             go = true
 
@@ -270,7 +276,7 @@ final class SentinelChannel[A](requested: Int = 1024) extends Channel[A] {
         k(Right(out.take(n)))
       else
         val m = reached.get
-        if m != null then k(endReached(m.nn).map(_ => Chunks.emptyChunk[A]))
+        if m != null then k(endReached().map(_ => Chunks.emptyChunk[A]))
         else
           if took > 0 then
             var i = 0
@@ -299,9 +305,12 @@ final class SentinelChannel[A](requested: Int = 1024) extends Channel[A] {
       placeEnd()
       wakeAll(receivers)
 
+  /** RECORD, do not close. A failed producer does not silence a
+   * healthy one: the failure rides the END of the stream, which is
+   * where a receiver meets it after everything already accepted has
+   * been delivered */
   def fail(e: Throwable): Unit =
     val _ = failure.compareAndSet(null, e)
-    close()
 
   def failed: Option[Throwable] = Option(failure.get)
   def isClosed: Boolean = closing.get

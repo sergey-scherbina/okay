@@ -1638,3 +1638,20 @@ rather than on every pop, which is the same idea as
       "probe first"; re-read them with the centroid as the subject, and
       re-run the ones where the conclusion turned on the probe's
       number.
+
+## channel-sender-livelock — the mirror of the isEmpty/hasReady defect
+
+`receiveAsync` used to recheck `isEmpty` before parking, which counts
+a CLAIMED-but-unpublished position as "something is there", so the
+consumer spun instead of waiting and starved the very publisher it
+waited for. Fixed by asking `hasReady` instead.
+
+The sender side still has the mirror: it rechecks `ring.size <
+ring.capacity`, and `size` is `tail - head`, which counts a position
+whose slot has been popped but whose stamp has not yet been
+republished. So a sender can be told there is room, fail its push, and
+go round again. The window is two stores wide on a bounded ring and it
+has never been observed, but it is the same shape and deserves the
+same treatment: a `hasRoom` on `Buffer`, answered from the stamp of
+the position the tail is about to claim rather than from a
+subtraction.
