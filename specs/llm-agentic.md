@@ -364,6 +364,66 @@ the fingerprint and stops the replay loudly.
   (re-execute when idempotent, ask a human, or fail) — the same
   at-least-once honesty as the Kafka source.
 
+## Waiting on a person (2026-09-04, durable-waiting-on-a-person)
+
+An `Entry` whose `answer` is `None` had exactly one meaning: the crash
+window, an outcome nobody can know, for the policy to resolve. There
+is a second, and the journal already has the shape for it — a question
+was asked and has not been answered yet. Nothing is broken, nothing is
+unknown, and the right response is neither to repeat nor to fail but
+to WAIT, possibly for days.
+
+That is the suspension specs/conversation.md needs and the reason it
+cannot be built without this: a conversation with a person is a
+program that stops at every question, and a closure on the heap cannot
+be appended to a log and read back after a deploy. Journalled intent
+first, answered later, resumed by re-running: the machinery is already
+here, pointed at tool calls.
+
+**`OnRepeat.Await`, and why it lives in an enum named for repeats.**
+Every case of `OnRepeat` answers one question — what does a missing
+answer MEAN for this operation — and for an operation whose answer
+comes from outside the program, it means "not yet". It is the nearest
+neighbour of `Escalate` (a human decides) and differs in when: an
+escalation resolves inside the call through a callback, an await
+leaves the program parked and returns control to whoever ran it.
+
+Consulted in BOTH branches, which is what makes it different from the
+rest of the enum. The others answer only the recovery question, so
+they are read when an entry exists without an answer. An awaiting
+operation must also be recognised on its FIRST encounter — there is no
+inner effect to run, because the effect is a person reading the
+question — so the intent is journalled and the program parks there and
+then.
+
+**Parking is a control transfer, not a failure.** `Handler.handle[A]`
+must produce an `A`, so leaving without one is a non-local exit; the
+handler already exits that way for `Drift` and `Unresolved`.
+`Awaiting` is thrown the same way and carries what a caller needs to
+render the question and to answer it later — the op, its arguments,
+the sequence number and the key. It is `NoStackTrace`, because being
+parked is the normal state of a conversation and not an incident.
+
+**Resuming is `complete` plus re-running.** No new mechanism: the
+answer is journalled against the parked sequence number, the program
+runs again from the top, every prior operation is answered from the
+journal without touching the world (which `Durable` already does), and
+the operation that parked now finds its answer and proceeds. The cost
+is re-execution of pure work between suspensions, which is the price
+every durable-execution engine pays and the reason determinism
+matters.
+
+**What a caller can ask the journal:** `Durable.awaiting` names the
+entry a program is parked on, or `None` when it is not parked. That is
+enough to render the outstanding question after a restart without
+running the program first.
+
+Two properties the tests hold down: an awaiting operation NEVER
+reaches the inner handler (the world is untouched by a question), and
+a journal answered out of order still resumes in order, because the
+program's own sequence — not the order answers arrived — decides what
+runs next.
+
 ## Journal versions (2026-09-03, journal-versions)
 
 A journal has three modes, not two. `Durable.tools` records (and
