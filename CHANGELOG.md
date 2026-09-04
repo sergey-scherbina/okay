@@ -1,5 +1,39 @@
 # Changelog
 
+## intent-cues-for-a-taxonomy — a cue set carries the taxonomy it decides
+Completed: 2026-09-04
+Landed as ae449ebd. `Patterns.Cues` pairs the cues with a `Taxon` and
+is built only through `Cues.of`, which refuses a cue naming a class
+the taxonomy does not hold. `renamed` moves a set onto another
+taxonomy and is TOTAL IN BOTH DIRECTIONS — every class the cues use
+must be named, and every name given must be a class the destination
+holds.
+
+That totality is the whole point, and it is what a `Map` would not
+have bought. `IntentRouter` translated the canonical names in a
+`match` ending in `case _ =>`, so a class the author forgot — or one
+added upstream later — went to `NotAboutMeetings` silently and
+forever; `getOrElse` is the same defect in different syntax. A match
+over strings is total, so no test can see the hole. Now the router
+holds a renamed set and has DELETED both the translation and the
+`.filter(taxonomy.has)` standing downstream of it: the filter existed
+only because the translation could produce anything.
+
+`Cues.silent` names the classes no cue can reach — empty for the
+shipped set, and worth having measured rather than assumed, since a
+cue set that cannot produce one of its own classes has a recall
+ceiling nobody would find by reading it. `Cues.unsafe` is used once,
+by `Patterns.meeting` itself, where a failure would be a bug in that
+file rather than a caller's mistake.
+
+Gate: clean compile 0 warnings; okayIntent JVM+JS, okayDemo, okayAgent
+— 296 tests, 0 failures. Re-run after rebasing onto the sibling's
+`fifo-array-front`, which had touched core `Fifo`/`Channel`.
+
+The two SIGTERMs this lane hit were a sibling's sbt at `-Xmx6g` with
+load average 27, not the repo's own broken matrix: the same command
+passed at load 17 with nothing else running.
+
 ## fifo-array-front — two persistent buffers, and the seams opened to callers
 
 `Fifo` becomes a seam with two implementations, measured side by side
