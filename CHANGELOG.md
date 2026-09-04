@@ -1,5 +1,48 @@
 # Changelog
 
+## intent-second-embedder — the bigger vectoriser does not lift the ceiling, and the first reading of why was wrong
+Completed: 2026-09-04
+Landed as ada1b28f. The experiment `intent-embedding-choice` was
+blocked on: `Qwen3-Embedding-4B` is now served alongside the 0.6B —
+2560 dimensions against 1024, genuinely different vectors — so the
+vectoriser could finally be the only thing that changes.
+
+| model | framing | probe | centroid |
+|---|---|---|---|
+| 0.6B | bare | 86.7% | 80.0% |
+| 0.6B | classify instruction | **88.3%** | **83.3%** |
+| 4B | bare | 76.7% | 76.7% |
+| 4B | classify instruction | 85.0% | 80.0% |
+
+BIGGER IS NOT BETTER HERE, AND THE FIRST READING OF THAT WAS WRONG.
+Bare, the 4B scores ten points below the 0.6B, which reads as a verdict
+on the model and is not one: Qwen3-Embedding is instruction-tuned, and
+the larger model is far more sensitive to being told what the vector is
+for — the classify instruction is worth +8.3 to it against +1.6 to the
+small one. Framed properly it reaches 85.0% and still does not beat the
+framed 0.6B.
+
+THE MECHANISM IS THE LEARNING CURVE'S. At 2560 dimensions the probe
+fits two and a half times as many weights on the same sixty examples,
+in a regime that curve already showed to be data-bound. A richer
+representation is a LIABILITY in small data — the opposite of the
+intuition that sent me looking for a bigger embedder — and it costs six
+times the wall clock (2000ms against 345ms for 120 messages).
+
+So 88.3% is this TASK at this data size, not this vectoriser: two
+independent embedders, one four times the size, land within three
+points of each other, while the model tier reaches ~90% and shares none
+of the probe's errors.
+
+The per-language table is under-powered and explicitly not interpreted
+— fifteen training examples per arm against the thirty-two where the
+probe stabilises, with numbers swinging 46.7% to 86.7%. Filed:
+`intent-language-fixture-growth`, and `intent-4b-with-more-data` (the
+4B's disadvantage is a prediction about small data, so find where the
+two curves cross).
+
+Gate: clean compile 0 warnings; full matrix 2197 tests, 0 failures.
+
 ## intent-static-embeddings — no gateway at request time, 63.3% once pairs are in the table
 Completed: 2026-09-04
 Landed as 64910bc9. A classifier with no external server when a message
