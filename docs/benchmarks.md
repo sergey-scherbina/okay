@@ -599,12 +599,45 @@ sources) — a real number under the wrong name. This section drops the
 forcing and asks what each library's OWN idiomatic surface gives you,
 paired axis by axis, N=4000.
 
-**Sending a collection, reading the whole stream.**
-`ZStream.fromIterable(list).runSum` against
-`Source.of(list).toLazyList.foldLeft`: **ZIO 3x ahead** (49.1 ±1.2
-against 145.6 ±6.2) — the chunk-native-vs-per-element-walk gap this
-whole arc keeps finding, now on `List` rather than `LazyList` and
-still there.
+**Sending a collection, reading the whole stream.** This row read
+"ZIO 3x ahead" for a long time, and it was measuring the wrong thing.
+
+`ZStream.fromIterable(list).runSum` makes ONE chunk of the collection
+and walks the array. It was paired against
+`Source.of(list).toLazyList.foldLeft` — our per-element surface, plus
+a bridge that allocates a `LazyList` cell per element and buys
+re-observability the zio lane never pays for. Mismatched on
+granularity AND memoisation, at once.
+
+Re-measured 2026-09-05 with the like-for-like partner, which existed
+in the library all along and simply was not used:
+
+| lane | us/op |
+|---|---|
+| `Chunks.foldLeft(Chunks.fromIterator(list.iterator, N))` | **11.0 ±0.5** |
+| `ZStream.fromIterable(list).runSum` | 49.6 ±2.8 |
+| `Source.of(list).toLazyList.foldLeft` (kept, ours only) | 154.1 ±17.5 |
+
+**4.5x ahead, where the mismatched row said 3.1x behind.** The
+elementwise lane stays in the table because it measures a real thing —
+what our per-element surface with a memoising bridge costs — but it is
+not what `ZStream.fromIterable` does and never was.
+
+Four control lanes in the same run agree with their recorded values
+(`okayStep_elem_lazyList` 90.3 against 90.4, `zioCollection_chunk_
+runSum` 49.6 against 49.2, `zioStep_elem_runSum` 280.0 against 275.3,
+`zioCollectionForeach` 85.5 against 85.3), so the flip is the pairing
+and not the weather.
+
+**This is the third appearance of one mistake**, after §6b (our
+per-element merge priced against `ZStream`'s chunk-of-4096, both rows
+called "elementwise") and the guarantee table (§15). Three is a
+pattern, so the fix is a rule rather than another correction: every
+lane in `IdiomaticApiBenchmark` now carries its properties in its
+NAME — `_elem_` or `_chunk_` for granularity, `_lazyList_` against
+`_runForeach_`/`_runSum_` for whether the consumer memoises. A
+mismatched pair is then visible in the results table itself, without
+reading a single benchmark body.
 
 **Generating by an effectful step, no collection.**
 `Source.range` against `ZStream.unfold`: **okay 3x ahead** (90.6
@@ -649,7 +682,20 @@ values to within a few percent (`zioCollectionWhole` 49.2 against
 against 276.9), so this is a real change in the code and not in the
 weather.
 
-**ZIO is still 2.05x ahead here, and the remaining cost is no longer
+Re-measured again 2026-09-05 with the memoisation removed as well:
+`.drained.runForeach` reads **226.8 ±3.8** against
+`.drained.toLazyList.foreach`'s **219.1 ±9.6** — no cheaper. So
+memoisation was not the cost here either, and the row is now honestly
+1.77x behind `zioChannelForeach` at 123.7.
+
+A chunked lane was tried on this row and is kept as a warning:
+`.drained.chunked().runForeach` reads **318.7**, SLOWER than
+elementwise, because `.drained` already batches internally through
+`receiveMany` — putting `.chunked()` on top adds a layer instead of
+removing one. Chunking pays only where it replaces a per-element
+coordination step, and on this path there was none left to replace.
+
+**ZIO is still ahead here, and the remaining cost is no longer
 the channel.** The original profile attributed ~52 of ~140 samples
 to `Queue`'s reversal inside the channel — that structure is gone,
 replaced by a ring with termination travelling in it — and the rest
