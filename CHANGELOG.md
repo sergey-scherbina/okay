@@ -1,5 +1,50 @@
 # Changelog
 
+## intent-learning-curve — the probe flattens at 32 examples, so labels are not the constraint
+Completed: 2026-09-04
+Landed as 47ebf72e. The cheapest lane in the programme, run to decide
+where the expensive ones go — and it overturned the plan it was meant
+to confirm.
+
+| training examples | probe | centroid | chargrams |
+|---|---|---|---|
+| 8 | 51.7% | 48.3% | 30.0% |
+| 16 | 66.7% | 65.0% | 38.3% |
+| 24 | 75.0% | 78.3% | 46.7% |
+| 32 | 85.0% | 75.0% | 53.3% |
+| 40 | 81.7% | 83.3% | 55.0% |
+| 48 | 85.0% | 83.3% | 55.0% |
+| 56 | 86.7% | 80.0% | 65.0% |
+| 60 | 85.0% | 80.0% | 60.0% |
+
+Everything from 32 to 60 examples moves the probe between 81.7% and
+86.7%, which is noise on sixty held-out messages. The centroid flattens
+in the same place while fitting FOUR VECTORS against the probe's 4096
+weights: two models three orders of magnitude apart in capacity stop
+improving together, and that is what a signal ceiling looks like rather
+than a capacity one.
+
+SO THE STANDING PLAN WAS WRONG, AND IT WAS MINE. The spec said the
+86.7%-against-~90% gap was "credibly a data gap rather than a method
+gap" and named `intent-label-distillation` as the lane that closes it.
+Another sixty labels buy nothing measurable, so
+`intent-embedding-choice` moves ahead of it.
+
+Distillation is not dead; it belongs to a different tier. Chargrams go
+30.0 → 65.0 across the same range without flattening, and they are the
+ZERO-NETWORK path — no embedding server, no per-message round trip —
+sitting at 60-65% because they are starved rather than finished. A
+chargram model trained on thousands of distilled labels is the only
+candidate for a classifier that needs no network at all.
+
+Read against its size: 60 test messages, so a 3-4 point move is noise
+and the flatness of the right-hand half is the finding, not any cell.
+
+Also closes `intent-symbolic-patterns`, which the bake-off had already
+built as the `Patterns` tier and nobody marked done.
+
+Gate: clean compile 0 warnings; full matrix 2170 tests, 0 failures.
+
 ## intent-no-model — the assembled classifier, and an abstention that knows when it cannot promise
 Completed: 2026-09-04
 Landed as 998d1c75. The assembly the bake-off argued for, plus the two
