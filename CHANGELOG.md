@@ -1,5 +1,67 @@
 # Changelog
 
+## conversation-over-frame — one slot model, the frame under the suspension
+Completed: 2026-09-04
+Landed as 99b3344c. Two slot models appeared in this repository on the
+same day, and the consumer of the older one asked for the merge rather
+than a rival. Each half had exactly what the other lacked:
+`okay.intent` had the FRAME — typed values, an answer addressed by
+name, a list of what is still unanswered — and
+`okay.agent.Conversation` had the SUSPENSION, a straight-line intake
+parked in a journal across a restart.
+
+NEW MODULE `okay-frame`, with no dependencies at all. Neither of the
+two may depend on the other: okay-intent's test scope reaches for
+okay-agent's journal to replay recorded model answers, and sbt rejects
+the cycle — verified rather than assumed (`recursive lazy value
+okayAgent needs type`). The shared half being dependency-free is also
+the honest description of it: a frame is data, and the things that
+fill it — a date parser, a journal, a model — are not.
+
+The three defects the consumer named, all closed:
+
+1. Their `Slot.read` returned `Option[Json]`: it parsed an answer to
+   check it was acceptable, stored the TEXT, and parsed it again
+   later — the same defect `intent-frame-typed-values` had just closed
+   in the other module. `Outcome.Filled` carries the FRAME now, and
+   `valueOf(price)` is a `Double`.
+2. `Conversation` answered only the pending question, so "Wrocław, and
+   remote works" took the city and then asked about the terms it had
+   just been told. `Frame.take` answers the named slot and offers the
+   same sentence to every other slot's extractor, and the loop
+   recomputes `missing` each round.
+3. `Say.Ask` carries `remaining` — `Option[Int]`, because a journal
+   outlives a deploy: an entry parked by the previous build decodes as
+   `None`, meaning "not written down" rather than "none left", and a
+   caller renders no count instead of a wrong one. Tested with that
+   entry shape.
+
+AND THE WARNING, WHICH CHANGED THE DESIGN. The consumer's: a language
+must be an argument of the whole conversation, not a parameter of
+every call — they measured an intake flipping language on a three-word
+answer, on the second-to-last question of a profile. Both halves took
+one per call. The frame carries it now: `in(lang)` once, where the
+exchange begins, and no method takes another. `intake` has no `lang`
+parameter at all, and the router takes it where it takes the day,
+`Meeting(today, lang)`. `untranslated` names the slots that would
+silently fall back to English, so a four-language intake can assert it
+empty before it ships.
+
+What the merge cost, stated for the review: the opaque caller-defined
+`L` language type gives way to a code, because a language that must
+survive a RESTART has to be writable to a journal — which is exactly
+why the old runtime stored every rendered question as text.
+`Frame.opening` gives way to a slot's own extractor. And
+`Outcome.Filled` no longer means every slot parsed: it means the
+exchange ended with a yes, `complete` says whether everything was
+read, and `said(name)` keeps the words for a slot asked twice and
+still unread — instead of storing them AS the value, which is how a
+field typed as a number held a sentence.
+
+Gate: clean compile 0 warnings; okayFrame, okayIntent, okayAgent on
+JVM and JS, okayDemo and okayDeploy (the docs-index guard) — 342
+tests, 0 failures.
+
 ## intent-slot-extraction — a frame is filled from the message it arrived in
 Completed: 2026-09-04
 Landed as 99af30b1. The end-to-end extractors: a slot may carry an
