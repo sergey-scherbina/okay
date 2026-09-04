@@ -1,0 +1,16 @@
+lane: channel-bulk-and-alloc
+why: three follow-ups from channel-weak-gap, all in the same files.
+  1. ChannelGuaranteeBenchmark compares our ELEMENTWISE lanes against
+     ZIO lanes that go through ZStream and are therefore CHUNKED
+     (zioWeak 114.8 matches zioChunked 114.0; okayWeak 203.7 matches
+     okayElementwise 197.1). Cross-library rows there are not
+     readable. Both libraries must appear at both granularities.
+  2. channel-bulk-send: Ring.push still takes the tail one element at
+     a time, so a chunked SEND pays a tail CAS per element the way the
+     receive side did before popMany. Mirror it: claim a run of
+     writable slots with one compareAndSet, publish each stamp.
+  3. channel-callback-allocation: boxToBoolean 8% of leaf samples
+     (Function1 is not specialized on Boolean) and Right.apply 3.4%
+     plus its Some (End = Either[Throwable, Option[A]] wraps every
+     element twice). Dedicated callback types remove both without a
+     cast. Only 9 call sites and End is private[okay].
