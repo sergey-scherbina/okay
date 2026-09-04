@@ -293,3 +293,9 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-04	channel-sentinel-default	ChannelGuaranteeBenchmark	okayStrongChunk	172.332	us/op	N=4000 cap=1024 f=3 i=8	StmChannel, same run
 2026-09-04	channel-sentinel-default	ChannelGuaranteeBenchmark	zioStrongElem	320.092	us/op	N=4000 cap=1024 f=3 i=8	Queue[Option], elementwise, same run
 2026-09-04	channel-sentinel-default	ChannelGuaranteeBenchmark	zioStrongChunk	127.975	us/op	N=4000 cap=1024 f=3 i=8	Queue[Option] + collectWhileSome, same run
+2026-09-04	channel-send-fastpath	ChannelGuaranteeBenchmark	okaySentinelChunk	58.730	us/op	N=4000 cap=1024 f=3 i=8	offer-first sendBlocking: batch 35.4 -> 444.4 elements, 2.06x past zioStrongChunk
+2026-09-04	channel-send-fastpath	ChannelGuaranteeBenchmark	okaySentinelElem	268.700	us/op	N=4000 cap=1024 f=3 i=8	the other side of the trade: a producer that fills the ring parks per element
+2026-09-04	channel-send-fastpath	ChannelGuaranteeBenchmark	okayStrongChunk	128.624	us/op	N=4000 cap=1024 f=3 i=8	StmChannel gains from the same fast path (was 172.3)
+2026-09-04	channel-send-fastpath	ChannelGuaranteeBenchmark	okayStrongElem	235.458	us/op	N=4000 cap=1024 f=3 i=8	StmChannel, same run
+2026-09-04	channel-send-fastpath	ChannelGuaranteeBenchmark	zioStrongChunk	120.744	us/op	N=4000 cap=1024 f=3 i=8	Queue[Option] + collectWhileSome, same run
+2026-09-04	channel-send-fastpath	ChannelGuaranteeBenchmark	zioStrongElem	279.583	us/op	N=4000 cap=1024 f=3 i=8	Queue[Option], elementwise, same run

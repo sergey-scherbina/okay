@@ -1352,3 +1352,23 @@ Related: this is also why `Ring.pushDeciding` takes a flag and not a
 function. Anything between the claim and the publish truncates a
 concurrent `popMany` scan, which counts CONSECUTIVE published slots —
 a closure there cost 65.6 elements per batch down to 43.5.
+
+## channel-elementwise-wakeups — the other side of the offer-first trade
+
+`channel-send-fastpath` took the chunked lane from 175.3us to 58.7 and
+cost the elementwise one 208.9 -> 268.7, which also puts
+`SentinelChannel` behind `StmChannel` on that axis (235.5).
+
+The cause is not the extra failed `offer`. It is that the producer can
+now saturate the ring, so every send parks and every pop wakes a
+sender — one unpark per element on the consumer's critical path. A
+chunked consumer amortizes those wakeups across a whole batch; an
+elementwise one pays one each.
+
+Worth trying, cheapest first. Give the RECEIVE side the same fast path
+the send side just got: `receiveBlocking` still allocates a handshake
+slot per element, and in the elementwise shape the consumer is the
+bottleneck, so speeding it may pay twice — directly, and by keeping
+the ring off its full mark. Failing that, wake senders on a watermark
+rather than on every pop, which is the same idea as
+`channel-chunk-batch-size` read from the other end.
