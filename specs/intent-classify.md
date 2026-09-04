@@ -1570,3 +1570,55 @@ a `String => Vector[String]`, and a function is not data. `load` takes
 it back as an argument rather than defaulting, because passing
 `Static.tokens` to a table distilled over `Static.units` is a silent
 accuracy loss — pairs stop being looked up and nothing errors.
+
+## Results — intent-taxonomy-and-language (2026-09-04)
+
+Requests 1 and 2 of the consumer's seven, taken together because both
+are about what a fit KNOWS.
+
+**(1) One taxonomy value, two doors.** The model tier took its classes
+from `Schema[I]`; a fitted tier inferred them from whatever labels its
+rows happened to carry; nothing connected the two. `Taxon` is now a
+value with `of[I]` reading it out of a `Schema` and `parsed` building
+it from strings, and everything downstream takes the value without
+caring which door it came through.
+
+The sharper half of the request was the one about DATA: a taxonomy
+that arrives as a corpus could not reach the model tier at all, and a
+corpus is exactly what `intent-label-distillation` produces — it can
+define examples but never a class. `Taxon` derives a `Schema`, so it
+round-trips as data and can be edited without a compiler, which is what
+that consumer needs and what distillation will need.
+
+`Taxon.check` refuses a label that is not in the taxonomy rather than
+letting it through. Without it a typo becomes a class, and then
+`Eval`'s rule that an invented label is still a class — right for a
+classifier, wrong for a misspelling — quietly scores it.
+
+Named `Taxon` and not `Taxonomy` because the precedence lane shipped
+and withdrew a `Taxonomy[I]` typeclass; a name meaning one thing in the
+history and another in the code is worse than a slightly odd name.
+
+**(2) Language as a key in the fit.** A row was `(text, embedding,
+class)`, so the language had nowhere to live and a multilingual corpus
+pooled every language into one boundary. `Row` now carries a `lang`,
+and `ByLanguage.fit` groups by it — with the fallback that makes it
+usable: a language with fewer than `minRows` examples borrows the
+pooled model rather than getting one built from four rows. The
+threshold defaults to 32 because that is where the learning curve put
+the probe's stabilisation, so it is a policy with a measurement behind
+it rather than a round number.
+
+An untagged corpus behaves exactly as before: `Row.Any` is both "no
+language" and the pooled key, so nothing changes for a caller who has
+one language.
+
+**THE MEASUREMENT IS NOT RUN, DELIBERATELY.** Fitting per language
+needs at least 32 rows per language and the parallel set has 30
+MESSAGES per language, so a per-language arm would train on fifteen —
+below the point where the probe's numbers mean anything, which is
+precisely why the previous lane's per-language table was unreadable.
+Running it now would produce the same undefendable numbers with a
+better excuse. The seam is built and tested; the measurement waits on
+`intent-language-fixture-growth`, and that ordering is the whole
+lesson of having run the bake-off before this existed.
