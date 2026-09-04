@@ -1,5 +1,52 @@
 # Changelog
 
+## intent-other-is-a-bin — the diagnosis holds, the remedy does not
+Completed: 2026-09-04
+Landed as 4d97b233. A consumer's observation, promised in the room and
+owed: `Other` holds social pleasantries and support complaints, which
+share nothing, so a centroid over them is a point between two clouds.
+Every per-class number in this spec counted `Other` as a class, so the
+answer reaches back through the programme.
+
+TWO THIRDS OF THE PROBE'S LEAD OVER THE CENTROID LIVES IN `Other`: +2
+of a +3 overall lead, on 15 of 60 rows. A quarter of the rows carrying
+two thirds of the gap means several lanes of tier comparison were
+partly a comparison of how two models cope with one incoherent class.
+
+IT IS INCOHERENT, AND IT IS NOT TWO CLUSTERS. Mean pairwise cosine:
+within pleasantries 0.645, within complaints 0.560, ACROSS the two
+halves 0.551 — against 0.782, 0.705 and 0.684 for `Proposal`,
+`Request` and `Notification`. Every real class is tighter than anything
+inside `Other`, and the across-halves figure sits inside the
+complaints' own spread, so the proposed split is not the structure
+either. One cloud with no shape.
+
+AND YET AS A REJECTION IT IS TWENTY POINTS WORSE. Fitting only the
+three positive classes and answering `Other` below a confidence floor
+peaks at 68.3% for both tiers, against 88.3% with `Other` as a class.
+The reason is the diffuseness that suggested the remedy: an incoherent
+bin can still be LEARNED when its members are individually distinctive
+— "charged twice", "the app crashes", "password reset link expired"
+have their own vocabulary — and rejection-by-threshold discards that
+evidence for the weaker signal "none of the three fit".
+
+So `Other` is not a class in the geometric sense the other three are,
+its incoherence explains most of the centroid's disadvantage, and the
+fix is not abstention. What remains is the consumer's other option,
+filed as `intent-split-other`: split it into named classes that are
+individually coherent.
+
+One measurement defect of mine, recorded because it nearly became a
+finding: the first sweep gave both tiers the same floors, though a
+probe margin is a difference of PROBABILITIES and a centroid margin a
+difference of COSINES. That made the centroid abstain on everything
+above 0.1 and report 25% accuracy as though it meant something.
+
+Gate: scoped as the split lane's — clean compile 0 warnings; okayIntent
+JVM+JS, okayAgent and okayDeploy, 213 tests, 0 failures. The full
+matrix remains broken on master (exit 143 at ~1449 tests on an
+untouched checkout), reported to the room.
+
 ## intent-module-split — okay-intent, and the JSON Schema algebra goes where it belongs
 Completed: 2026-09-04
 Landed as 62e92751. The only one of the consumer's seven requests
