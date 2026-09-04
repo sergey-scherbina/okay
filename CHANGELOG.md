@@ -1,5 +1,53 @@
 # Changelog
 
+## intent-module-split — okay-intent, and the JSON Schema algebra goes where it belongs
+Completed: 2026-09-04
+Landed as 62e92751. The only one of the consumer's seven requests
+asking for a BOUNDARY rather than a type, and the one they turned from
+a preference into a decision by volunteering to eat the migration.
+
+Fourteen files that turn a message into a class and a frame moved from
+`okay.agent` to `okay.intent`. Nothing else moved: `Agent`,
+`Provider`, `Stepper`, `Durable`, `Rerun`, `ToolSpec` and
+`Conversation` all stay, so a caller importing any of those is
+untouched.
+
+ONE FACTORING TURNED A CIRCULAR DEPENDENCY INTO A SPLIT, and it
+improves okay-codec on its own terms. Only `Classify` reached back into
+okay-agent, for `ToolSpec.jsonSchema` — the Schema → JSON Schema
+algebra, the FOURTH over `Schema[A]` after Json, Cbor and YAML, which
+never had anything to do with agents. Moved to `okay.codec.JsonSchema`
+with `ToolSpec` delegating in one line, okay-intent depends on
+okay-codec and okay-rag and NOT on okay-agent. The live suites keep
+test-only dependencies on okay-agent (its journal, for replaying
+recorded answers) and okay-llm (a gateway), named in the build rather
+than left implicit.
+
+`Conversation` STAYS, on the consumer's argument rather than my
+instinct: it is built on `Durable`, whose journal is its state, so
+moving it would have recreated exactly the circularity the `JsonSchema`
+move had just removed. Their formulation is the better one — a
+suspension mechanism belongs with the runtime it suspends, not with the
+classifier that happens to sit beside it in a caller's code.
+
+Two things the CLEAN compile and the docs guard caught that a module
+compile did not: the moved suites summon a `Handler[Async]` needing a
+`CanBlock` that JS lacks, so they fail to COMPILE there — okay-intent
+now scopes its JS test sources the way okay-agent already did. And
+`okay-deploy`'s `TestDocsIndex` failed because a new module had no page
+and no index entry, which is that guard doing exactly its job.
+
+GATE, STATED HONESTLY: scoped, not full. okayIntent JVM+JS, okayAgent,
+okayCodec and okayDeploy — every module this touches plus the docs
+guard — are 293 tests, 0 failures, in 17 seconds, on a clean compile
+with 0 warnings. The FULL matrix could not be got green because it is
+currently broken on master: `sbt test` on an untouched main checkout
+dies at exit 143 after 1449 tests, against 1445 on this branch. Same
+failure four tests apart on trees differing by one module, so it is not
+the module; reported to the room with the measurement rather than
+diagnosed, since two earlier attributions of a 143 today were refuted
+by controlled experiment.
+
 ## segments-two-consumers — the read pass must keep the segment the scan found
 
 A correctness defect in `channel-ring-unbounded`, found by dumping a
