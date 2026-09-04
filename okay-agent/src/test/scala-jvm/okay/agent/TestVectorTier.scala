@@ -70,10 +70,10 @@ class TestVectorTier extends munit.FunSuite {
     assertEquals(testVecs.length, test.length)
     println(s"\n[vector] dim ${trainVecs.head.length}, ${train.length} train / ${test.length} test")
 
-    val centroids = Vectors.train(trainVecs.zip(train.map(_._2)))
+    val centroids = Centroid.train(trainVecs.zip(train.map(_._2)))
 
     val t0 = System.nanoTime()
-    val scored = testVecs.zip(test.map(_._2)).map((v, gold) => (gold, Vectors.score(centroids, v)))
+    val scored = testVecs.zip(test.map(_._2)).map((v, gold) => (gold, Centroid.score(centroids, v)))
     val micros = (System.nanoTime() - t0) / 1000 / math.max(test.length, 1)
 
     println(f"[vector] ${micros}us per message once embedded")

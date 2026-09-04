@@ -986,11 +986,11 @@ are paying for:
 
 ```scala
 val v = embedOne(message)                       // your gateway, your effect
-Vectors.classify(centroids, v, floor = 0.05)    // 90us, answers ~45%
+Centroid.classify(centroids, v, floor = 0.05)    // 90us, answers ~45%
   .getOrElse(askTheModel(message))              // the rest costs what it always did
 ```
 
-`Vectors` never calls a gateway itself, which is why it tests on every
+`Centroid` never calls a gateway itself, which is why it tests on every
 platform and why the embedding effect stays where the caller can see
 it.
 

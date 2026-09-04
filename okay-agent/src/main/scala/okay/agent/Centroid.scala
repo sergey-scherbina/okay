@@ -19,10 +19,15 @@ import okay.rag.Embedding
  *
  * Embedding is the caller's job — this file never calls a gateway, so
  * it stays testable and stays on every platform.
+ *
+ * Named `Centroid` rather than `Vectors` because `okay.rag.Vectors`
+ * already exists and callers import both packages: the newcomer gives
+ * way. It also reads better beside `Symbolic`, since the two tiers now
+ * share a shape — `train`, `score`, `classify`, and a `Trained`.
  */
-object Vectors {
+object Centroid {
 
-  final case class Centroids(byClass: Map[String, Embedding])
+  final case class Trained(byClass: Map[String, Embedding])
 
   final case class Verdict(best: String, similarity: Double,
                            margin: Double, runnerUp: Option[String])
@@ -55,7 +60,7 @@ object Vectors {
    * is normalised again, which makes a long example count the same as
    * a short one.
    */
-  def train(labelled: Seq[(Embedding, String)]): Centroids =
+  def train(labelled: Seq[(Embedding, String)]): Trained =
     val byClass = labelled.groupBy(_._2).map { (cls, rows) =>
       val dim = rows.head._1.length
       val acc = Array.fill(dim)(0.0f)
@@ -67,7 +72,7 @@ object Vectors {
           i += 1
       cls -> normalise(okay.rag.embedding(acc))
     }
-    Centroids(byClass)
+    Trained(byClass)
 
   /**
    * Nearest centroid, with the gap to the runner-up as the margin.
@@ -77,7 +82,7 @@ object Vectors {
    * ratio would exaggerate the gap wherever the absolute similarity is
    * small — which is exactly where the tier should be least sure.
    */
-  def score(c: Centroids, v: Embedding): Option[Verdict] =
+  def score(c: Trained, v: Embedding): Option[Verdict] =
     if c.byClass.isEmpty then None
     else
       val u = normalise(v)
@@ -88,6 +93,6 @@ object Vectors {
 
   /** answer above the margin, defer below it — the same contract the
    * symbolic tier has, so the two are comparable on one axis */
-  def classify(c: Centroids, v: Embedding, floor: Double = 0.02): Option[String] =
+  def classify(c: Trained, v: Embedding, floor: Double = 0.02): Option[String] =
     score(c, v).filter(_.margin >= floor).map(_.best)
 }
