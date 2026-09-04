@@ -58,7 +58,7 @@ trait Channel[A] {
 
   /** k(true) once the channel TOOK the element, k(false) if it is
    * closed: the element is dropped, nothing thrown */
-  def sendAsync(a: A)(k: Boolean => Unit): Unit
+  def sendAsync(a: A)(k: Accepted): Unit
 
   /** now if an element (or the end) is ready, later when one arrives */
   def receiveAsync(k: End => Unit): Unit
@@ -138,14 +138,14 @@ trait Channel[A] {
   /** un-register a waiter that gave up — what a cancelled `send` or
    * `receive` must do, and the one part of waiting only the
    * implementation can express */
-  private[okay] def cancelSend(cb: Boolean => Unit): Unit
+  private[okay] def cancelSend(cb: Accepted): Unit
   private[okay] def cancelReceive(k: End => Unit): Unit
 
   /** send as a program: suspends while the buffer is full, answers
    * whether the channel took the element (false: closed, dropped) */
   def send(a: A): Boolean ! Async =
     Async.await { k =>
-      val cb: Boolean => Unit = b => k(Right(b))
+      val cb: Accepted = b => k(Right(b))
       sendAsync(a)(cb)
       () => cancelSend(cb)
     }
@@ -162,10 +162,46 @@ trait Channel[A] {
   /** the parking forms, only where parking is GRANTED (JVM/Native;
    * a compile error on JS): the same programs, forced at this point */
   def sendBlocking(a: A)(using cb: CanBlock): Boolean =
-    cb.block[Boolean](k => { sendAsync(a)(k); () => () })
+    // blockAccepted, not block[Boolean]: the generic wait boxes the
+    // answer twice over, once into its slot and once through
+    // Function1.apply(Object)
+    cb.blockAccepted(k => { sendAsync(a)(k); () => () })
 
   def receiveBlocking()(using cb: CanBlock): Option[A] =
     cb.block[End](k => { receiveAsync(k); () => () }).fold(e => throw e, identity)
+
+  /**
+   * Put up to `n` elements, read from `src` by index, in ONE go, and
+   * answer how many were taken. Never waits: what does not fit is the
+   * caller's to retry, exactly as `offer` leaves it.
+   *
+   * The mirror of `receiveMany`, and it needs saying WHY it is not
+   * already covered by the chunked feed. `feedChunked` amortizes the
+   * send by REPRESENTATION: it fills a `ChunkBuffer` and puts whole
+   * chunks into a `Channel[Chunk[A]]`, so the channel already pays one
+   * transaction per chunk. This is for the other case -- a producer
+   * holding a batch of ELEMENTS for an element channel, which until
+   * now had to offer them one at a time and pay a tail CAS per
+   * element, the shape `popMany` removed on the receive side.
+   *
+   * BATCH BOTH ENDS OR NEITHER. Measured with a draining consumer
+   * this is 66.9us against 109.0 for the same work sent one element
+   * at a time -- and measured against an ELEMENTWISE consumer it is
+   * 280.4 against 196.7, a 1.4x loss. The reason is not the claim but
+   * the room: a consumer taking one element at a time keeps the ring
+   * full, every bulk attempt then fails its scan and falls back to a
+   * single send anyway, so the scan is pure overhead on top of the
+   * work that had to happen regardless.
+   *
+   * The default is the honest one-at-a-time answer, so a new
+   * implementation is correct before it is fast.
+   */
+  private[okay] def sendManyNow(n: Int)(src: Int => A): Int =
+    var i = 0
+    var go = true
+    while go && i < n do
+      if offer(src(i)) then i += 1 else go = false
+    i
 
   /**
    * Take up to `max` elements that are ALREADY buffered, in one go.
@@ -197,7 +233,7 @@ final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
   private[okay] final case class State(
     buf: Queue[A], size: Int,
     receivers: Queue[End => Unit],
-    senders: Queue[(A, Boolean => Unit)],
+    senders: Queue[(A, Accepted)],
     open: Boolean,
     failure: Throwable | Null) extends TRef.Stamped[State]:
     def value: State = this
@@ -220,7 +256,7 @@ final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
    * room opens), k(false) if it is closed: the element is dropped,
    * nothing thrown. A producer that outlives its stream is ordinary;
    * its send is a fact to read, not a fault to unwind. */
-  def sendAsync(a: A)(k: Boolean => Unit): Unit = transact[Unit] { s =>
+  def sendAsync(a: A)(k: Accepted): Unit = transact[Unit] { s =>
     if !s.open then (s, () => k(false))
     else if s.receivers.nonEmpty then
       val (r, rest) = s.receivers.dequeue
@@ -238,7 +274,7 @@ final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
 
   /** send as a program: suspends while the buffer is full, answers
    * whether the channel took the element (false: closed, dropped) */
-  private[okay] def cancelSend(cb: Boolean => Unit): Unit =
+  private[okay] def cancelSend(cb: Accepted): Unit =
     transact[Unit](s => (s.copy(senders = s.senders.filterNot(_._2 eq cb)), () => ()))
 
   /** receive as a program: suspends while the channel is empty and
@@ -280,7 +316,7 @@ final class StmChannel[A](capacity: Int = Int.MaxValue) extends Channel[A] {
         var b = s.buf
         var senders = s.senders
         var n = s.size
-        var woken = Vector.empty[Boolean => Unit]
+        var woken = Vector.empty[Accepted]
         var i = 0
         while i < take && b.nonEmpty do
           val (a, rest) = b.dequeue

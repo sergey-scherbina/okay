@@ -21,6 +21,13 @@ private final class Slot[A]:
   val filled = java.util.concurrent.atomic.AtomicBoolean(false)
   @volatile var waiter: Thread | Null = null
 
+/** the same one-shot handoff with the value as a primitive: a
+ * `Slot[Boolean]` would box on the way in and out */
+private final class BoolSlot:
+  var value: Boolean = false
+  val filled = java.util.concurrent.atomic.AtomicBoolean(false)
+  @volatile var waiter: Thread | Null = null
+
 /**
  * The JVM can park, and on Loom parking is free: blocking IS
  * asynchrony here. CanBlock parks the current (ideally virtual)
@@ -42,6 +49,26 @@ given CanBlock = new:
     else
       // publish who to wake BEFORE re-reading the flag: a completer
       // that misses the waiter is one whose flag we are about to see
+      slot.waiter = Thread.currentThread()
+      var out = false
+      while !out do
+        if slot.filled.get then out = true
+        else
+          java.util.concurrent.locks.LockSupport.park(slot)
+          if Thread.interrupted() then
+            cancel()
+            throw InterruptedException()
+      slot.value
+
+  def blockAccepted(register: Accepted => (() => Unit)): Boolean =
+    val slot = BoolSlot()
+    val cancel = register: a =>
+      slot.value = a
+      slot.filled.set(true)
+      val t = slot.waiter
+      if t != null then java.util.concurrent.locks.LockSupport.unpark(t.nn)
+    if slot.filled.get then slot.value
+    else
       slot.waiter = Thread.currentThread()
       var out = false
       while !out do

@@ -125,6 +125,47 @@ private[okay] final class Ring[A](requested: Int) {
     done
 
   /**
+   * Publish up to `n` elements with ONE move of the tail, taking them
+   * from `src` by index. Answers how many were written.
+   *
+   * The mirror of `popMany`, and it exists for the same measurement:
+   * a chunked SEND that loops over `push` batches the handshake and
+   * leaves the ring paying a tail CAS per element -- exactly the
+   * shape that made a real 13-element batch buy 4% on the receive
+   * side.
+   *
+   * The scan looks for a run of slots whose stamp says a push at that
+   * position may proceed; one `compareAndSet` takes the whole run,
+   * and only the slot write and its stamp stay per element. A
+   * consumer parked on one of those positions waits for its stamp,
+   * which we publish as we go -- so it never sees a position claimed
+   * before its element is in.
+   */
+  def pushMany(n: Int)(src: Int => A): Int =
+    val limit = if n < capacity then n else capacity
+    var took = 0
+    var pos = 0L
+    var claimed = false
+    while !claimed do
+      pos = tail.get
+      var k = 0
+      var scanning = true
+      while scanning && k < limit do
+        val i = ((pos + k) & mask).toInt
+        if stamp.get(i) - (pos + k) == 0 then k += 1 else scanning = false
+      if k == 0 then { took = 0; claimed = true }
+      else if tail.compareAndSet(pos, pos + k) then { took = k; claimed = true }
+      // else another pusher moved the tail; scan again from where it
+      // left it
+    var j = 0
+    while j < took do
+      val i = ((pos + j) & mask).toInt
+      slots.set(i, src(j))
+      stamp.set(i, pos + j + 1)   // publish: a pop at this position may proceed
+      j += 1
+    took
+
+  /**
    * Take the element at the head, or `null` — which is why this is
    * private to the library and wrapped by a typed caller: `Option`
    * here would allocate per element and undo the point of the ring.

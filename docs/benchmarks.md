@@ -1143,6 +1143,78 @@ because the element was already buffered. Replaced by a typed one-shot
 slot with a fast path that never parks: ~8% elementwise, and no cast,
 since the slot is parameterised on `A`.
 
+## 15. Both ends, and the guarantee table on one axis
+
+Three follow-ups from §14, measured together.
+
+**The guarantee table was on two axes.** Its okay lanes were
+elementwise and its zio lanes went through `ZStream`, which is
+chunked — `zioWeak` read 114.8 against `zioChunked`'s 114.0, and
+`okayWeak` read 203.7 against `okayElementwise`'s 197.1. No row could
+be read across. Every lane now names its granularity, and only lanes
+sharing a suffix compare:
+
+| | elementwise | chunked |
+|---|---|---|
+| okayStrong — drain-on-close as an INVARIANT | 279.4 | 166.1 |
+| okayWeak — close discards | 204.6 | 113.1 |
+| **okayLayered — the same strong contract as a LAYER** | **194.5** | **115.9** |
+| zioStrong — `Queue[Option]` | 294.9 | 124.0 |
+| zioWeak — `Queue` | 298.3 | 115.3 |
+
+The layer result survives the correction and gets sharper: the strong
+contract costs 2.4% bought as a sentinel (115.9 over 113.1) and 47%
+baked into the mechanism (166.1 over 113.1); elementwise the layer
+costs nothing at all. `okayLayeredChunk` at 115.9 delivers the same
+contract as `zioStrongChunk` at 124.0.
+
+The elementwise column also shows what the old table hid: `zioWeakElem`
+is 298.3, not 114.8. Their advantage was never the queue.
+
+**The send side needed the same treatment, and answered differently.**
+`Ring.pushMany` claims a run of writable slots with one tail CAS, and
+`Channel.sendManyNow` exposes it. Note first what does NOT need it:
+`feedChunked` amortizes by REPRESENTATION, putting whole chunks into a
+`Channel[Chunk[A]]`, so its channel already pays one transaction per
+chunk. `sendManyNow` is for a producer holding a batch of ELEMENTS.
+
+| lane | us/op |
+|---|---|
+| okaySendBulk + chunked receive | **66.9** |
+| okayChunked | 105.9 |
+| okaySendElem + chunked receive | 109.0 |
+| zioChunked | 114.8 |
+| okaySendElem + elementwise receive | 196.7 |
+| okaySendBulk + elementwise receive | **280.4** |
+
+**Batch both ends or neither.** Against a draining consumer the bulk
+send is 1.63x (66.9 against 109.0) and lands 1.71x past `zioChunked`.
+Against an ELEMENTWISE consumer it is a 1.43x LOSS. The cause is room,
+not the claim: a consumer taking one element at a time keeps the ring
+full, so every bulk attempt fails its scan and falls back to a single
+send anyway — the scan is pure overhead on top of work that had to
+happen regardless. A batched primitive is not a free upgrade; it is a
+bet that the other end leaves room.
+
+**The acceptance answer stopped boxing.** `Function1` is specialised
+on Int, Long, Float and Double and not on Boolean, so every send's
+answer went through `apply(Object)` — 8% of the leaf samples. `Accepted`
+is a SAM with a primitive signature, and `CanBlock.blockAccepted` is
+the wait that carries the bit as a bit, since generic `block` boxes
+into its own slot as well. The `Right`+`Some` on the receive side was
+left alone deliberately: `receiveBlocking` returns `Option[A]`, so on
+that path the wrapper is in the return type rather than the
+implementation, and only an internal consumer can avoid it.
+
+### A note on the measurements themselves
+
+Two runs were discarded. In one, `zioChunked` moved from 114 to 216
+without its code changing; in another the control lane
+`okaySendElemRecvChunk` — whose body is `okayChunked`'s — read 414
+±244 against its own 106. Both were the box, contested by a sibling
+build. The control lane exists for exactly this: two lanes that must
+agree, so a run can be checked before it is believed.
+
 ## Why the good numbers, in one place
 
 1. **No runtime where none is needed.** Pure binds are plain data
