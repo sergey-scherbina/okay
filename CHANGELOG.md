@@ -1,5 +1,31 @@
 # Changelog
 
+## channel-send-fastpath — offer first; the handshake exists to wait
+
+`sendBlocking` went through `CanBlock.blockAccepted` on every element
+— a slot allocated, filled and read back — even when the ring had room
+and there was nothing to wait for. `offer` is the non-suspending send
+and needs none of it.
+
+What makes this worth a lane is not the handshake's own cost but where
+it lands. It slows the PRODUCER, and a producer that cannot run ahead
+leaves the consumer nothing to batch. Measured on both sides of the
+same load: `ZStream.fromQueue` averaged 137.9 elements per queue
+operation against `SentinelChannel`'s 35.4 — that ratio, not
+per-operation cost, was the chunked gap. With the fast path ours
+averages 444.4 over 9 receive operations instead of 113.
+
+Chunked: **175.3us → 58.7**, which is 2.06x past `zioStrongChunk` at
+120.7. `StmChannel` gains from the same path, 172.3 → 128.6.
+
+The trade, stated rather than buried: elementwise goes 208.9 → 268.7,
+which puts `SentinelChannel` behind `StmChannel` on that axis. The
+cause is saturation, not the extra failed `offer` — the producer now
+fills the ring, so every send parks and every pop wakes a sender, one
+unpark per element on the consumer's critical path, where a chunked
+consumer amortizes them across a whole batch. Filed as
+`channel-elementwise-wakeups`.
+
 ## channel-sentinel-default — a bounded channel is a ring, and termination is an element in it
 
 `Channel.apply` now dispatches on the capacity asked for. Bounded gets
