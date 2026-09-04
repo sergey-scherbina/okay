@@ -1,5 +1,24 @@
 # Changelog
 
+## channel-guarantees — what the contract costs, on both sides
+
+`AbruptChannel`: a channel whose `close` ends it at once and abandons
+the buffer. The weaker trade named rather than hidden, for feeds where
+a stopped consumer makes the remainder stale.
+
+`TestChannelLaws` gains a second tier. The core laws — order, no
+duplication, a closed channel accepts nothing — bind every mechanism;
+the drain laws bind only what claims them, and an implementation that
+refuses one is recorded as refusing it, in the gate's own output.
+
+The measurement refuted the hypothesis. Weakening the contract was
+meant to explain the distance to `zio.Queue`; it explains a third.
+The rest is HOW the guarantee is bought: they carry it above the queue
+as one sentinel in FIFO order (11%), we bake it into a transition
+every send and receive must read (62%). Our contract bought their way,
+over the weak channel, runs 177us against `StmChannel`'s 334us — past
+`zioStrong`'s 187us. Filed as `channel-sentinel-default`.
+
 ## intent-precedence-rule — the design answer is right, the measurement sank it, and it is not shipped
 Completed: 2026-09-04
 Landed as 0fc1ff41, as a REFUSAL. The reference literature calls
