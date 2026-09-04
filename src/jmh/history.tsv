@@ -269,3 +269,21 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-04	channel-weak-gap	ChannelGranularityBenchmark	okayElementwise	192.834	us/op	N=4000 cap=1024 f=3	one receiveBlocking per element, after the CanBlock slot replaced CompletableFuture
 2026-09-04	channel-weak-gap	ChannelGranularityBenchmark	zioChunked	156.151	us/op	N=4000 cap=1024 f=3	ZStream.fromQueue: up to 4096 elements per queue op
 2026-09-04	channel-weak-gap	ChannelGranularityBenchmark	zioElementwise	423.354	us/op	N=4000 cap=1024 f=3	q.take per element -- their queue at OUR granularity
+2026-09-04	channel-bulk-and-alloc	ChannelGranularityBenchmark	okaySendBulkRecvChunk	66.929	us/op	N=4000 cap=1024 batch=64 f=3 i=10	sendManyNow + chunked receive: batch BOTH ends -- 1.71x past zioChunked
+2026-09-04	channel-bulk-and-alloc	ChannelGranularityBenchmark	okaySendElemRecvChunk	109.041	us/op	N=4000 cap=1024 batch=64 f=3 i=10	elementwise send + chunked receive; the control, matches okayChunked
+2026-09-04	channel-bulk-and-alloc	ChannelGranularityBenchmark	okayChunked	105.851	us/op	N=4000 cap=1024 batch=64 f=3 i=10	chunked both ways via receiveManyAsync/popMany
+2026-09-04	channel-bulk-and-alloc	ChannelGranularityBenchmark	okaySendElem	196.715	us/op	N=4000 cap=1024 batch=64 f=3 i=10	elementwise send + elementwise receive
+2026-09-04	channel-bulk-and-alloc	ChannelGranularityBenchmark	okaySendBulk	280.380	us/op	N=4000 cap=1024 batch=64 f=3 i=10	sendManyNow against an ELEMENTWISE consumer: 1.43x LOSS, the ring is always full
+2026-09-04	channel-bulk-and-alloc	ChannelGranularityBenchmark	zioChunked	114.827	us/op	N=4000 cap=1024 batch=64 f=3 i=10	ZStream.fromQueue, up to 4096 per queue op
+2026-09-04	channel-bulk-and-alloc	ChannelGranularityBenchmark	okayElementwise	222.065	us/op	N=4000 cap=1024 batch=64 f=3 i=10	one receiveBlocking per element
+2026-09-04	channel-bulk-and-alloc	ChannelGranularityBenchmark	zioElementwise	308.988	us/op	N=4000 cap=1024 batch=64 f=3 i=10	q.take per element
+2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	okayLayeredChunk	115.857	us/op	N=4000 cap=1024 f=3 i=8	the STRONG contract as a sentinel layer: 2.4% over okayWeakChunk, and past zioStrongChunk
+2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	okayWeakChunk	113.149	us/op	N=4000 cap=1024 f=3 i=8	weak contract, chunked
+2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	okayStrongChunk	166.057	us/op	N=4000 cap=1024 f=3 i=8	StmChannel: the same contract as an INVARIANT costs 47%
+2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	zioStrongChunk	124.024	us/op	N=4000 cap=1024 f=3 i=8	Queue[Option] + collectWhileSome
+2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	zioWeakChunk	115.297	us/op	N=4000 cap=1024 f=3 i=8	Queue + take(N)
+2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	okayLayeredElem	194.473	us/op	N=4000 cap=1024 f=3 i=8	the layer costs nothing elementwise (okayWeakElem 204.6)
+2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	okayWeakElem	204.630	us/op	N=4000 cap=1024 f=3 i=8	weak contract, elementwise
+2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	okayStrongElem	279.429	us/op	N=4000 cap=1024 f=3 i=8	the invariant costs 37% elementwise
+2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	zioStrongElem	294.886	us/op	N=4000 cap=1024 f=3 i=8	their queue, our contract, their granularity fixed to ours
+2026-09-04	channel-bulk-and-alloc	ChannelGuaranteeBenchmark	zioWeakElem	298.302	us/op	N=4000 cap=1024 f=3 i=8	q.take per element -- the row the old table hid behind ZStream

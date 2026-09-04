@@ -55,11 +55,31 @@ inline def await[A](register: (A => Unit) => Unit): A ! Async =
 type Blocking[A] = CanBlock ?=> A
 
 @implicitNotFound("no CanBlock capability in scope.\nBlocking parks a thread, so it must be GRANTED, not assumed: take it through the door\n(a `Blocking[A]` = `CanBlock ?=> A` parameter, or `using CanBlock`), and the runtime installs\nit where parking is safe (a virtual thread on the JVM). JS has no blocking — restructure with Async.")
+/**
+ * The answer to a send: was the element taken?
+ *
+ * A dedicated type rather than `Boolean => Unit`, because
+ * `scala.Function1` is specialised on Int, Long, Float and Double and
+ * NOT on Boolean — so every acceptance answer went through
+ * `Function1.apply(Object)` and boxed a `java.lang.Boolean`. It was
+ * 8% of the leaf samples on the elementwise channel path, spent
+ * entirely on carrying one bit. A single abstract method taking a
+ * primitive boxes nothing, and a lambda still reads the same at the
+ * call site.
+ */
+trait Accepted:
+  def apply(accepted: Boolean): Unit
+
 trait CanBlock:
   /** park the current thread until the registered callback fires; if
    * the park itself fails (interruption), the registration is
    * cancelled on the way out */
   def block[A](register: (A => Unit) => (() => Unit)): A
+
+  /** the same wait, for the one answer that is a primitive: `block`
+   * is generic, so its slot and its callback both box a Boolean.
+   * This one carries the bit as a bit. */
+  def blockAccepted(register: Accepted => (() => Unit)): Boolean
 
 /** the platform timer: run a callback after the duration (a sleeping
  * virtual thread on the JVM, setTimeout on JS); the answer cancels */

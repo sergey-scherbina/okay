@@ -68,7 +68,7 @@ final class AbruptChannel[A](requested: Int) extends Channel[A] {
     val f = failure.get
     if f != null then Left(f.nn) else Right(None)
 
-  def sendAsync(a: A)(k: Boolean => Unit): Unit = attemptSend(a, granted0 = false)(k)
+  def sendAsync(a: A)(k: Accepted): Unit = attemptSend(a, granted0 = false)(k)
 
   /**
    * `granted` is the wakeup being spent. A first attempt yields to any
@@ -81,7 +81,7 @@ final class AbruptChannel[A](requested: Int) extends Channel[A] {
    */
   // a LOOP, never recursion: a thread that claims its own waiter would
   // otherwise resume on its own stack and overflow it under load
-  private def attemptSend(a: A, granted0: Boolean)(k: Boolean => Unit): Unit =
+  private def attemptSend(a: A, granted0: Boolean)(k: Accepted): Unit =
     val granted = granted0
     var go = true
     while go do
@@ -151,6 +151,18 @@ final class AbruptChannel[A](requested: Int) extends Channel[A] {
     else if ring.push(a) then { val _ = wakeOne(receivers); true }
     else false
 
+  /** the bulk offer: one tail move for the whole run, and a receiver
+   * woken per element admitted */
+  private[okay] override def sendManyNow(n: Int)(src: Int => A): Int =
+    // the same fairness gate `offer` keeps: a parked sender was
+    // promised the next slot, so a bulk offer must not jump it
+    if closed.get || !senders.get.isEmpty then 0
+    else
+      val took = ring.pushMany(n)(src)
+      var i = 0
+      while i < took do { val _ = wakeOne(receivers); i += 1 }
+      took
+
   def close(): Unit =
     closed.set(true)
     wakeAll(senders)
@@ -165,6 +177,6 @@ final class AbruptChannel[A](requested: Int) extends Channel[A] {
    * this channel's weaker promise */
   private[okay] def finished: Boolean = closed.get
 
-  private[okay] def cancelSend(cb: Boolean => Unit): Unit = ()
+  private[okay] def cancelSend(cb: Accepted): Unit = ()
   private[okay] def cancelReceive(k: End => Unit): Unit = ()
 }

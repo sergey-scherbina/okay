@@ -165,6 +165,36 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     assertEquals(out, sent.take(out.length), s"$n: FIFO per producer")
   }
 
+  // ── LAW: the bulk send is the elementwise one, batched ───────────
+  // Two producers offering runs into the same ring make the bulk
+  // claim contend with itself, which is the case the single-CAS
+  // scan exists for. Partial acceptance is the contract, so a
+  // producer retries what did not fit.
+
+  each("law: sendManyNow takes a prefix of what it was offered, losing and duplicating nothing") { (n, mk) =>
+    for _ <- 1 to 20 do
+      val c = mk(64)
+      val per = 1000
+      val ps = (0 until 2).map(w => Thread.ofVirtual().start { () =>
+        var i = 0
+        while i < per do
+          val room = math.min(16, per - i)
+          val base = w * per + i
+          val took = c.sendManyNow(room)(j => base + j)
+          if took == 0 then Thread.onSpinWait() else i += took
+      })
+      val seen = scala.collection.mutable.ArrayBuffer.empty[Int]
+      val q = Thread.ofVirtual().start { () =>
+        while seen.length < 2 * per do
+          c.receiveBlocking() match
+            case Some(v) => seen += v
+            case None => seen += -1
+      }
+      ps.foreach(_.join()); q.join(); c.close()
+      assertEquals(seen.length, 2 * per, s"$n: bulk send count")
+      assertEquals(seen.toSet, (0 until 2 * per).toSet, s"$n: bulk send lost or duplicated")
+  }
+
   // ── LAW: the bulk receive is the elementwise one, batched ────────
   // A batched primitive that loses or reorders is worse than none:
   // it fails only under load, which is where it is used. Two

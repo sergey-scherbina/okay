@@ -1,5 +1,36 @@
 # Changelog
 
+## channel-bulk-and-alloc — both ends, and the guarantee table on one axis
+
+`ChannelGuaranteeBenchmark` had the fault its sibling was written to
+expose: okay lanes elementwise, zio lanes through `ZStream` and so
+chunked. Every lane now names its granularity. The layer result
+survives and sharpens — the strong contract costs 2.4% as a sentinel
+and 47% as an invariant of the mechanism, and `okayLayeredChunk`
+delivers it at 115.9 against `zioStrongChunk`'s 124.0. The corrected
+elementwise column shows what the old table hid: `zioWeakElem` is
+298.3, not 114.8.
+
+`Ring.pushMany` and `Channel.sendManyNow`: the send side's bulk claim,
+one tail CAS per run. It is NOT what `feedChunked` needed — that
+amortizes by representation, putting whole chunks into a
+`Channel[Chunk[A]]` — but for a producer holding a batch of elements.
+Measured: 66.9us against a draining consumer, 1.71x past `zioChunked`;
+280.4 against an elementwise one, a 1.43x LOSS, because a consumer
+taking one element at a time keeps the ring full and every bulk
+attempt then fails its scan and falls back anyway. Batch both ends or
+neither, written into the method's own documentation.
+
+`Accepted` and `CanBlock.blockAccepted` end the boxing of the send's
+acceptance answer — `Function1` is specialised on Int, Long, Float and
+Double and not on Boolean, and the generic `block` boxed into its slot
+besides. The receive side's `Right`+`Some` was left: `receiveBlocking`
+returns `Option[A]`, so there the wrapper is the return type, not the
+implementation.
+
+Laws for both bulk primitives, each with two threads contending for
+the same claim. See benchmarks §15.
+
 ## intent-language-gap — neither candidate fixes it, and the larger fixture refuted this spec's own ordering claim
 Completed: 2026-09-04
 Landed as 33a6e4ee. The precondition first, as the backlog entry

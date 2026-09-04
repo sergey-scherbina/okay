@@ -22,6 +22,21 @@ given CanBlock = new:
     catch case e: Throwable => { cancel(); throw e }
     v.get   // done implies Some: the callback wrote it under the lock
 
+  def blockAccepted(register: Accepted => (() => Unit)): Boolean =
+    val lock = new Object
+    var done = false
+    var v = false
+    val cancel = register: a =>
+      lock.synchronized:
+        v = a
+        done = true
+        lock.notifyAll()
+    try
+      lock.synchronized:
+        while !done do lock.wait()
+    catch case e: Throwable => { cancel(); throw e }
+    v
+
 /** the timer: a thread sleeps for the duration; cancelling
  * interrupts it out of the sleep */
 given Timer = new:
