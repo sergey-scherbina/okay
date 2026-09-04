@@ -1,5 +1,32 @@
 # Changelog
 
+## durable-waiting-on-a-person — an answerless entry can also mean a question
+Completed: 2026-09-04
+Landed as 8f61155a. `Durable` read every entry without an answer as the
+crash window — an outcome nobody can know. There is a second reading
+and the journal already had the shape for it: a question asked and not
+yet answered, where the right response is neither to repeat nor to
+fail but to wait, possibly for days.
+
+`OnRepeat.Await` is read in BOTH branches, unlike every other case.
+The others answer only the recovery question, so an entry must exist
+for them to matter; an awaiting operation is recognised on its FIRST
+encounter too, because there is no inner effect to run — the effect is
+a person reading the question. The inner handler is never reached:
+asking someone touches no world.
+
+`Awaiting` leaves the handler the way `Drift` and `Unresolved` already
+do, `Durable.awaiting` names the entry a program is parked on, and
+resuming is `complete` plus re-running with no new mechanism. This is
+the suspension specs/conversation.md is written against.
+
+One test found a mistake in another the way it was meant to: a
+stateful scripted model reused across two runs made the second start
+at the second reply, and `Drift` stopped it loudly rather than
+answering the wrong question.
+
+Gate: clean compile 0 warnings; full matrix 2187 tests, 0 failures.
+
 ## channel-send-fastpath — offer first; the handshake exists to wait
 
 `sendBlocking` went through `CanBlock.blockAccepted` on every element
