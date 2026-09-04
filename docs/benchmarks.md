@@ -637,16 +637,27 @@ performance one, and is stated as such rather than assumed free.
 
 **Reading one at a time from a buffered channel.**
 `Channel.buffer(1024)(list).drained` against a bounded `Queue` +
-`ZStream.fromQueue(...).runForeach`: **ZIO 3.6x ahead** (412.5 ±9.0
-against 114.2 ±1.8). Profiled rather than guessed at: ~52 of ~140
-attributed samples in `Queue`'s reversal (`channel-queue-reversal`,
-already investigated and declined), ~28 in `resume`'s rotation, ~21
-in `Drain`/`ChunkBuf`'s batching machinery, ~14 in the consumer-side
-`LazyList` cells `toLazyList` itself allocates. The same channel-
-transaction cost four prior lanes (queue structure, CAS contention,
-tree shape, row variance) already declined to optimise further,
-visible here from a new angle rather than a new opportunity — filed,
-not chased.
+`ZStream.fromQueue(...).runForeach`.
+
+Re-measured 2026-09-04 after the channel arc (`channel-sentinel-
+default` through `relaxed-queues-builder`): **412.5 → 232.6 ±9.8**,
+a 1.77x improvement, against `zioChannelForeach` at **113.2 ±1.0**
+— which had read 114.2 before and did not move, as the control it
+is. Four other lanes in the same run agree with their recorded
+values to within a few percent (`zioCollectionWhole` 49.2 against
+49.1, `okayStepWhole` 90.4 against 90.6, `zioStepWhole` 275.3
+against 276.9), so this is a real change in the code and not in the
+weather.
+
+**ZIO is still 2.05x ahead here, and the remaining cost is no longer
+the channel.** The original profile attributed ~52 of ~140 samples
+to `Queue`'s reversal inside the channel — that structure is gone,
+replaced by a ring with termination travelling in it — and the rest
+to machinery ABOVE the channel: ~28 in `resume`'s rotation, ~21 in
+`Drain`/`ChunkBuf`'s batching, ~14 in the `LazyList` cells
+`toLazyList` allocates on the consumer side. So the next move on
+this lane, if it is worth making, is `Drain` and the bridge, not the
+queue underneath it.
 
 ## 7. Resource — 1000 bracketed acquire/use/release
 

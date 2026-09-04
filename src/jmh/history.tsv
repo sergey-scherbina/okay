@@ -330,3 +330,9 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-04	relaxed-queues-builder	ManyProducersBenchmark	oneRing/16	3149.829	us/op	Total=8000 cap=1024 f=2 i=5	a single bounded ring, 16 producers
 2026-09-04	relaxed-queues-builder	ManyProducersBenchmark	oneUnbounded/16	741.780	us/op	Total=8000 cap=1024 f=2 i=5	a single growable buffer, 16 producers
 2026-09-04	relaxed-queues-builder	ManyProducersBenchmark	zioQueue/16	2967.204	us/op	Total=8000 cap=1024 f=2 i=5	zio.Queue.bounded + ZStream, 16 producers
+2026-09-04	idiomatic-recheck	IdiomaticApiBenchmark	okayChannelForeach	232.566	us/op	N=4000 f=3 i=6	after the channel arc: 412.5 -> 232.6, 1.77x; the rest is Drain and the LazyList bridge, not the queue
+2026-09-04	idiomatic-recheck	IdiomaticApiBenchmark	zioChannelForeach	113.205	us/op	N=4000 f=3 i=6	unchanged control -- 114.2 before
+2026-09-04	idiomatic-recheck	IdiomaticApiBenchmark	okayCollectionWhole	152.694	us/op	N=4000 f=3 i=6	control, 145.6 before
+2026-09-04	idiomatic-recheck	IdiomaticApiBenchmark	zioCollectionWhole	49.216	us/op	N=4000 f=3 i=6	control, 49.1 before
+2026-09-04	idiomatic-recheck	IdiomaticApiBenchmark	okayStepWhole	90.398	us/op	N=4000 f=3 i=6	control, 90.6 before
+2026-09-04	idiomatic-recheck	IdiomaticApiBenchmark	zioStepWhole	275.325	us/op	N=4000 f=3 i=6	control, 276.9 before
