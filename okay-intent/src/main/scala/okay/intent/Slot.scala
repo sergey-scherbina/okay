@@ -1,4 +1,5 @@
 package okay.intent
+
 /**
  * What a slot IS (specs/intent-classify.md).
  *
