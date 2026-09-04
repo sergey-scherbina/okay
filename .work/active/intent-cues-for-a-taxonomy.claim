@@ -1,0 +1,17 @@
+task: intent-cues-for-a-taxonomy
+agent: opus5-intent
+started: 2026-09-04
+branch: feature/intent-cues-for-a-taxonomy
+worktree: ../okay-wt-cues
+
+why: The second of the three frictions the first caller exposed.
+  `Patterns.meeting` hardcodes the canonical class names, so a caller
+  with a domain-bearing taxonomy writes a mapping by hand —
+  `IntentRouter.canonicalToTaxonomy` does, and its `case _ =>` sends
+  every unmapped name to one class silently. A cue set should be
+  stated AGAINST a `Taxon`, and renaming it onto another taxonomy
+  should be total and checked.
+
+files: okay-intent/src/main/scala/okay/intent/{Patterns,NoModel}.scala,
+  okay-intent tests, okay-demo/src/main/scala/okay/demo/IntentRouter.scala,
+  specs/intent-classify.md, BACKLOG.md
