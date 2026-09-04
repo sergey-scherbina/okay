@@ -1,5 +1,62 @@
 # Changelog
 
+## intent-language-gap — neither candidate fixes it, and the larger fixture refuted this spec's own ordering claim
+Completed: 2026-09-04
+Landed as 33a6e4ee. The precondition first, as the backlog entry
+demanded: the parallel set grew from 12 meanings to 30 in all six
+languages, weighted toward the out-of-domain boundary where the
+classifier actually breaks.
+
+THAT GROWTH IMMEDIATELY CORRECTED SOMETHING THE SPEC WAS CARRYING. At
+n=12 Spanish (0.914) and French (0.900) sat above English (0.881), and
+the previous lane concluded "not a simple English-first ordering". At
+n=30: English 0.929, German 0.895, Spanish 0.890, Japanese 0.888,
+French 0.887, Russian 0.741. The middle was noise — twelve messages
+could not tell those four apart, exactly as the entry warned when it
+made growing the set a precondition. What survives is the gap itself:
+Russian sits ~0.19 below English in two independent runs at two sizes.
+
+CANDIDATE ONE — case names in the message's own language. Five
+taxonomies (`RencontreFr`, `BesprechungDe`, `ReunionEs`, `ВстречаRu`,
+`会議Ja`); Scala takes non-ASCII identifiers, so testing this cost only
+typing.
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| English names | 0.929 | 0.887 | 0.895 | 0.890 | 0.741 | 0.888 |
+| native names | 0.929 | 0.927 | 0.788 | 0.732 | 0.791 | 0.891 |
+
+Helps French (+0.040) and Russian (+0.050), badly hurts German (−0.107)
+and Spanish (−0.158): −0.029 on average. If a name worked by being
+UNDERSTOOD the gain would be systematic, and it is not. The English
+pair is the harness's own guard — same taxonomy both sides, 0.929
+exactly both sides.
+
+CANDIDATE TWO — say the subject out loud in the reader's language,
+leaving the English names alone: −0.052 on average, German −0.207, and
+only Russian gains (+0.024).
+
+So this is the FOURTH prose addition in this line to cost, after
+precedence rules, tie-break examples and now a domain sentence. What
+has ever paid here is structural: the rendered example shape, few-shot
+examples OF A CLASS, domain-bearing names, and field order. This prompt
+is at the point where more words make it worse.
+
+Filed rather than confounded in: the example MESSAGES stayed English
+throughout so the names arm moved one variable, and translating them is
+the obvious untried candidate (intent-examples-in-language).
+
+ALSO CARRIED, and mine: the two compiler warnings the temporal lane
+reported as fixed had been fixed in a worktree and never committed,
+then destroyed when that worktree was force-removed — so they landed on
+master while the changelog said otherwise. Re-applied here, and that
+entry now says what happened. A green re-gate proves a fix works; it
+does not prove the fix was kept, and I reported the first as the
+second.
+
+Gate: clean compile, 0 warnings of my own (3 remain from a sibling's
+`AbruptChannel`); full matrix 2152 tests, 0 failures.
+
 ## channel-weak-gap — batching the handshake is not batching the queue
 
 `Ring.popMany` claims a run of consecutive published slots with ONE
