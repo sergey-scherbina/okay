@@ -107,6 +107,16 @@ final class Segments[A](segShift: Int = 8) extends Buffer[A] {
     publish(p, v)
     v
 
+  /** one `getAndAdd` claims the whole run, since an unbounded buffer
+   * can never refuse; only the slot writes stay per element */
+  override def pushMany(n: Int)(src: Int => A): Int =
+    if n <= 0 then 0
+    else
+      val base = tail.getAndAdd(n.toLong)
+      var i = 0
+      while i < n do { publish(base + i, src(i)); i += 1 }
+      n
+
   override def pop(): A | Null =
     var out: A | Null = null
     var empty = false
@@ -176,6 +186,9 @@ final class Segments[A](segShift: Int = 8) extends Buffer[A] {
     if n < 0 then 0 else if n > Int.MaxValue then Int.MaxValue else n.toInt
 
   override def isEmpty: Boolean = head.get >= tail.get
+
+  /** always: an unbounded buffer never refuses */
+  override def hasRoom: Boolean = true
 
   override def hasReady: Boolean =
     val p = head.get

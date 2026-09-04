@@ -47,6 +47,24 @@ trait Buffer[A] {
    * and hand each element to `sink` in order; answers how many */
   def popMany(max: Int)(sink: A => Unit): Int
 
+  /**
+   * Publish up to `n` elements, read from `src` by index, with ONE
+   * atomic; answers how many were written.
+   *
+   * The default is the honest one-at-a-time answer, so an
+   * implementation is correct before it is fast. An implementation
+   * that can claim a run should override it — and the caveat from
+   * `Channel.sendManyNow` applies: batch BOTH ends or neither, since
+   * a consumer taking one element at a time keeps the buffer full and
+   * every bulk attempt then fails its scan and falls back anyway.
+   */
+  def pushMany(n: Int)(src: Int => A): Int =
+    var i = 0
+    var go = true
+    while go && i < n do
+      if push(src(i)) then i += 1 else go = false
+    i
+
   /** a snapshot, for reporting only — never for a decision */
   def size: Int
 
@@ -68,4 +86,78 @@ trait Buffer[A] {
   /** something is published and can be taken right now — the question
    * a receiver must ask before it decides to wait */
   def hasReady: Boolean
+
+  /**
+   * The part a producer should push to, decided once per send.
+   *
+   * A relaxed buffer keeps one producer's elements in order only
+   * because that producer stays on one part — and "producer" cannot
+   * mean "thread", because a send that PARKS is resumed on the thread
+   * of whoever woke it, which is the consumer. Binding by thread of
+   * execution therefore scatters exactly the sends that had to wait,
+   * and the per-producer order law fails on precisely the elements
+   * that were under contention.
+   *
+   * So the route is taken once, at the first attempt, and carried
+   * through every retry. Buffers with a single order ignore it.
+   */
+  def route(): Int = 0
+
+  /** as `push`, to a route taken earlier */
+  def pushAt(@annotation.unused route: Int, a: A): Boolean = push(a)
+
+  /** as `pushDeciding`, to a route taken earlier */
+  def pushDecidingAt(@annotation.unused route: Int, a: A,
+                     unless: java.util.concurrent.atomic.AtomicBoolean,
+                     orElse: A): A | Null = pushDeciding(a, unless, orElse)
+
+  /** is there room on that route right now — the question a sender
+   * must ask before it decides to wait */
+  def hasRoomAt(@annotation.unused route: Int): Boolean = hasRoom
+
+  /**
+   * Is there room for THIS thread to push right now — the question a
+   * sender must ask before it decides to wait.
+   *
+   * Not the same as `size < capacity`, and the difference is a
+   * spin. On a relaxed buffer a producer is bound to ONE part, so the
+   * sum having room says nothing about whether ITS part does: the
+   * sender wakes itself, fails to push again, and never stops. It is
+   * the mirror of `isEmpty` versus `hasReady`, and it cost a
+   * benchmark forty-five minutes of spinning before the stack said so.
+   */
+  def hasRoom: Boolean = size < capacity
+
+  /**
+   * How many independent orders this buffer keeps. One means a single
+   * global FIFO: what goes in first comes out first, full stop. More
+   * than one means a RELAXED buffer — each part is a FIFO of its own
+   * and a producer stays on one part, so the elements of ONE producer
+   * keep their order, while the interleaving between producers does
+   * not.
+   *
+   * It is stated here rather than left implicit because a relaxed
+   * buffer that quietly passes a global-FIFO test is a test that is
+   * not testing anything.
+   */
+  def parts: Int = 1
+
+  /**
+   * Put `mark` where nothing can come out after it, and answer how
+   * many copies were placed BY THIS CALL.
+   *
+   * A part with no room right now cannot take its mark, so this may
+   * place fewer than `parts` and must be called again as room frees
+   * up. It is idempotent per part: a part already sealed is not
+   * sealed twice. The caller keeps asking until the total reaches
+   * `parts`.
+   *
+   * A channel whose termination travels as an element needs exactly
+   * this and cannot get it from `push` alone: with one order a single
+   * mark suffices, but with `parts` orders a mark in one part is
+   * reached while other parts still hold elements, and the stream
+   * would end early on what was already accepted. Sealing every part
+   * and counting the marks back keeps drain-on-close.
+   */
+  def seal(mark: A): Int = if push(mark) then 1 else 0
 }

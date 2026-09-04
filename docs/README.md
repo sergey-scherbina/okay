@@ -24,6 +24,11 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   gates, do-notation statements — with the rationale for every
   boundary and the graveyard of refuted alternatives. The theory
   chapter with the literature is [theory/08](theory/08-direct-style.md).
+- **[Channels and queues](queues.md)** — the two decisions a channel
+  is (contract, then mechanism), every implementation and what it
+  trades, the builder, recipes, the measured table, and the
+  literature: Vyukov, Michael & Scott, Okasaki, Koch–Sanders–Williams
+  on relaxed FIFO, Herlihy & Shavit.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
 - **[Capabilities](capabilities.md)** — context functions as the

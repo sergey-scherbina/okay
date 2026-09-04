@@ -38,6 +38,12 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     // capacity because it has none, and a law that leans on a full
     // buffer must still hold when the buffer never fills
     ("SentinelChannel/unbounded", true, _ => SentinelChannel[Int](Segments[Int | Mark]())),
+    // the RELAXED one answers for every law here, which is the point
+    // of the tier split: what it gives up is the order BETWEEN
+    // producers, and no law states that. Drain-on-close it still
+    // owes, and keeps only because close seals every part
+    ("SentinelChannel/relaxed", true,
+      cap => Queues.strong[Int].relaxed(parts = 4, each = math.max(2, cap)).build),
     ("AbruptChannel", false, cap => AbruptChannel[Int](cap)),
     // add a mechanism here and it must answer for the whole contract.
     // These were checked against the withdrawn CasChannel with its

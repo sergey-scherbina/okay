@@ -71,6 +71,14 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
   private val endPending = AtomicBoolean(false)
   /** the end mark has been REACHED by a receiver: nothing can arrive */
   private val ended = AtomicBoolean(false)
+  /** how many parts have their end mark in, and how many marks a
+   * receiver has met. The stream is over when the second reaches the
+   * buffer's `parts`: every independent order has been sealed AND
+   * drained. Counting marks met against `parts` rather than against
+   * marks placed is what stops an early end while other parts are
+   * still full and unsealed. */
+  private val partsSealed = java.util.concurrent.atomic.AtomicInteger(0)
+  private val metEnds = java.util.concurrent.atomic.AtomicInteger(0)
   /** the end mark, once a receiver has taken it out of the ring but
    * not yet answered with it (a bulk receive that also carried
    * elements) */
@@ -150,15 +158,26 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
         cur.reverse.foreach(w => if w.claim() then w.resume())
         go = false
 
-  /** put the end mark in as soon as a slot exists for it. Nothing can
-   * be accepted after `closing`, so whatever is already in the ring
-   * stays ahead of it and the mark is the last thing in the stream */
+  /**
+   * Put the end mark in as soon as there is room. Nothing can be
+   * accepted after `closing`, so whatever is already buffered stays
+   * ahead of it and the mark is the last thing in the stream.
+   *
+   * ONE MARK PER ORDER. A buffer with several independent orders — a
+   * relaxed one, `MultiFifo` — needs a mark in each, or the stream
+   * ends at the first mark reached while other parts still hold
+   * elements that were already accepted. `seal` answers how many it
+   * placed, and the receiver counts them back: only the LAST one ends
+   * the stream.
+   */
   private def placeEnd(): Unit =
     if endPending.get then
-      if ring.push(Mark(true)) then
-        marks.incrementAndGet(): Unit
-        endPending.set(false)
-      else ()
+      val placed = ring.seal(Mark(true))
+      if placed > 0 then
+        marks.addAndGet(placed): Unit
+        // a FULL part cannot take its mark now; keep asking, or the
+        // stream never ends and the producers behind it never move
+        if partsSealed.addAndGet(placed) >= ring.parts then endPending.set(false)
 
   private def endAnswer: End =
     val e = failure.get
@@ -173,9 +192,13 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
     wakeAll(receivers)
     endAnswer
 
-  def sendAsync(a: A)(k: Accepted): Unit = attemptSend(a, granted0 = false)(k)
+  def sendAsync(a: A)(k: Accepted): Unit =
+    // the route is taken HERE, once, and carried through every retry:
+    // a parked send resumes on the waker's thread, so asking again
+    // there would scatter one producer's elements across parts
+    attemptSend(a, granted0 = false, ring.route())(k)
 
-  private def attemptSend(a: A, granted0: Boolean)(k: Accepted): Unit =
+  private def attemptSend(a: A, granted0: Boolean, route: Int)(k: Accepted): Unit =
     val granted = granted0
     var go = true
     while go do
@@ -184,13 +207,13 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
       else if granted || senders.get.isEmpty then
         // the decision rides INSIDE the claim: what comes back is
         // what the ring published at the position just won
-        ring.pushDeciding(a, closing, void) match
+        ring.pushDecidingAt(route, a, closing, void) match
           case null =>
             // full: park, and re-check afterwards in case a pop freed
             // a slot between the failed push and the registration
-            val w = Waiter(() => attemptSend(a, granted0 = true)(k))
+            val w = Waiter(() => attemptSend(a, granted0 = true, route)(k))
             enqueue(senders, w)
-            if (ring.size < ring.capacity || closing.get) && w.claim() then
+            if (ring.hasRoomAt(route) || closing.get) && w.claim() then
               val _ = senders.updateAndGet(_.filterNot(_.claimed.get))
               go = true
           case _: Mark =>
@@ -203,9 +226,9 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
             k(true)
             val _ = wakeOne(receivers)
       else
-        val w = Waiter(() => attemptSend(a, granted0 = true)(k))
+        val w = Waiter(() => attemptSend(a, granted0 = true, route)(k))
         enqueue(senders, w)
-        if (ring.size < ring.capacity || closing.get) && w.claim() then
+        if (ring.hasRoomAt(route) || closing.get) && w.claim() then
           val _ = senders.updateAndGet(_.filterNot(_.claimed.get))
           go = true
 
@@ -227,7 +250,10 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
               placeEnd()
               // a void: the slot a sender won and declined. Step over
               // it and keep looking within the same call
-              if m.end then { k(endReached()); answered = true }
+              if m.end then
+                if metEnds.incrementAndGet() >= ring.parts then
+                  k(endReached()); answered = true
+                else stepped = true   // another order still has elements
               else stepped = true
             case other =>
               k(Right(Some(element(other))))
@@ -267,7 +293,11 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
       val out = ChunkBuf[A](room)
       var n = 0
       val took = ring.popMany(room):
-        case m: Mark => { marks.decrementAndGet(): Unit; if m.end then reached.set(m) }
+        case m: Mark =>
+          marks.decrementAndGet(): Unit
+          // the last end mark is the one that ends it; the earlier
+          // ones only say that THAT part is spent
+          if m.end && metEnds.incrementAndGet() >= ring.parts then reached.set(m)
         case other => { out.update(n, element(other)); n += 1 }
       if n > 0 then
         var i = 0
@@ -289,7 +319,8 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
   def offer(a: A): Boolean =
     if closing.get || !senders.get.isEmpty then false
     else
-      ring.pushDeciding(a, closing, void) match
+      // offer never parks, so it takes its route here and now
+      ring.pushDecidingAt(ring.route(), a, closing, void) match
         case null => false
         case _: Mark =>
           marks.incrementAndGet(): Unit

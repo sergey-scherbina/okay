@@ -1,5 +1,65 @@
 # Changelog
 
+## relaxed-queues-builder — relaxed FIFO, a builder, and the fourth defect of one family
+
+`MultiFifo`: k independent buffers, a producer bound to one, a
+consumer taking from whichever has something. What it gives up is the
+order BETWEEN producers; what it keeps — and what makes it usable as a
+channel's buffer — is that one producer's own elements stay in order,
+which is exactly the law the suite states.
+
+**It scales, and only over growable parts.** `Total=8000`, us/op:
+
+| producers | one ring | relaxed, bounded | one growable | relaxed, growable | zio.Queue |
+|---|---|---|---|---|---|
+| 1 | 414.9 | 415.8 | 231.3 | 354.3 | 241.6 |
+| 4 | 862.4 | 3873.0 | 401.0 | **177.9** | 740.4 |
+| 16 | 3149.8 | **111546.4** | 741.8 | **169.9** | 2967.2 |
+
+At sixteen producers the growable form is **17.5x** past `zio.Queue`
+and faster than it was at one — 354 → 178 → 170. Adding producers
+makes it quicker, which is the whole point of a relaxed queue and the
+first time that scaling has appeared in this repository.
+
+The bounded form is 35x WORSE than not relaxing at all, and the number
+is kept rather than hidden because the cause is a design mismatch, not
+a setting: the channel keeps ONE queue of waiting senders while the
+resource is per part, so a freed slot wakes an arbitrary sender who
+finds its own part still full and parks again — one useful wakeup in
+k. Filed as `channel-per-part-waiters`.
+
+`Buffer` grew four operations, each because something concrete broke
+without it: `parts` (a relaxed buffer that quietly passes a global
+FIFO test is a test that is not testing), `seal` (with k orders a
+single end mark is met while other parts still hold accepted
+elements — and a FULL part cannot take its mark, so sealing is
+retried until every part has one), `route` with `pushDecidingAt` and
+`hasRoomAt` (a parked send resumes on the WAKER's thread, so binding a
+producer to a part by thread of execution scatters exactly the sends
+that had to wait), and `hasRoom` (a sender asking `size < capacity`
+about a partitioned buffer wakes itself forever, because the sum
+having room says nothing about its own part).
+
+Those are the second, third and fourth of one family, after
+`isEmpty` vs `hasReady`: **the channel asking about the buffer as a
+whole where the question belongs to one part.** The third was hidden
+by the second — a sender that spun instead of parking never exposed
+the routing bug, and it surfaced the moment the spin was fixed.
+
+`Queues` is the builder: pick a contract, pick a mechanism. Sixteen
+combinations, each of them built and run in `TestQueues`, because a
+menu nobody orders from is a menu nobody checked. `AbruptChannel` now
+takes a `Buffer` too, so the weak contract has the same menu as the
+strong one rather than a hardcoded ring.
+
+`docs/queues.md` is the long-form explanation: what a channel is, why
+termination is the hard part (with the race written out step by step
+and why the obvious in-flight-counter patch fails), the stamp scheme
+traced by hand, how to choose, the measured tables, and the
+literature — Vyukov, Michael & Scott, Okasaki, Koch–Sanders–Williams,
+Herlihy & Shavit.
+
+Gate 536, full matrix 2300, clean build, no warnings.
 ## intent-one-entry-point — the composed door, with the demo as its caller
 Completed: 2026-09-04
 Landed as 53ae71d3. The tier order was measured over twenty lanes and

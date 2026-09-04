@@ -101,6 +101,13 @@ final class Ring[A](requested: Int) extends Buffer[A] {
 
   override def isEmpty: Boolean = head.get >= tail.get
 
+  /** the stamp at the position a push would claim, which is the
+   * honest question -- `size` counts a slot whose stamp has not been
+   * republished yet */
+  override def hasRoom: Boolean =
+    val pos = tail.get
+    stamp.get((pos & mask).toInt) - pos == 0
+
   override def hasReady: Boolean =
     val pos = head.get
     stamp.get((pos & mask).toInt) - (pos + 1) == 0
@@ -191,7 +198,7 @@ final class Ring[A](requested: Int) extends Buffer[A] {
    * which we publish as we go -- so it never sees a position claimed
    * before its element is in.
    */
-  def pushMany(n: Int)(src: Int => A): Int =
+  override def pushMany(n: Int)(src: Int => A): Int =
     val limit = if n < capacity then n else capacity
     var took = 0
     var pos = 0L
