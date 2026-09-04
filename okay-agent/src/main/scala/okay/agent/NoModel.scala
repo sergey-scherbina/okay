@@ -49,7 +49,21 @@ object NoModel {
                            calibrationErrors: Int,
                            errorsNeeded: Int)
 
-  final case class Verdict(best: String, confidence: Double, fromPattern: Boolean)
+  /**
+   * What the classifier concluded — INCLUDING what it nearly concluded
+   * instead.
+   *
+   * `runnerUp` and the ranking are computed anyway, one layer down, and
+   * the first version of this type discarded them: an abstention then
+   * told a caller only THAT it declined. Two consumers need the rest.
+   * An interface that abstains has to show a person the two candidates
+   * it could not separate, and active learning selects the next
+   * examples to label by uncertainty, which is a property of the
+   * DISTRIBUTION and not of the winner.
+   */
+  final case class Verdict(best: String, confidence: Double, fromPattern: Boolean,
+                           runnerUp: Option[String] = None,
+                           ranked: Seq[(String, Double)] = Seq.empty)
 
   /**
    * Blend a pattern verdict into the probe's distribution.
@@ -155,13 +169,24 @@ object NoModel {
 
   /** the whole classifier: an answer, or `None` meaning "ask a person" */
   def classify(t: Trained, text: String, v: Embedding): Option[Verdict] =
+    decide(t, text, v).answer
+
+  /**
+   * The full decision, whether or not it clears the threshold.
+   *
+   * `classify` answers or declines; this says what the declining LOOKED
+   * like, which is what a person is shown and what an example-selector
+   * ranks on. Returning both from one call keeps them from disagreeing.
+   */
+  final case class Decision(answer: Option[Verdict], considered: Verdict)
+
+  def decide(t: Trained, text: String, v: Embedding): Decision =
     val ranked = blend(t.probe, t.cues, t.patternWeight, text, v)
-    ranked.headOption.flatMap { (cls, s0) =>
-      val conf = s0 - ranked.lift(1).map(_._2).getOrElse(0.0)
-      if conf >= t.threshold then
-        Some(Verdict(cls, conf, Patterns.score(t.cues, text).exists(_.best == cls)))
-      else None
-    }
+    val (cls, s0) = ranked.headOption.getOrElse(("", 0.0))
+    val conf = s0 - ranked.lift(1).map(_._2).getOrElse(0.0)
+    val full = Verdict(cls, conf, Patterns.score(t.cues, text).exists(_.best == cls),
+      ranked.lift(1).map(_._1), ranked)
+    Decision(if ranked.nonEmpty && conf >= t.threshold then Some(full) else None, full)
 
   /** what it answers when it must answer — for measuring the tier at
    * full coverage beside the abstaining one */

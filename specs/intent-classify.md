@@ -1153,13 +1153,13 @@ being present when a message arrives.
 
 Five tiers, one split, one table.
 
-| tier | accuracy over ALL | per message | network |
+| tier | accuracy over ALL | per message | dependency |
 |---|---|---|---|
 | symbolic (BM25) | 45.0% | 147µs | none |
 | patterns | 51.7% | 96µs | none |
-| kNN (k=5) | 58.3% | 158µs | one embed |
-| centroid | 80.0% | 75µs | one embed |
-| **linear probe** | **86.7%** | 76µs | one embed |
+| kNN (k=5) | 58.3% | 158µs | `String => Embedding` |
+| centroid | 80.0% | 75µs | `String => Embedding` |
+| **linear probe** | **86.7%** | 76µs | `String => Embedding` |
 | (model tier, for scale) | ~90% | seconds | a generation |
 
 **The probe is within a few points of the model** at 12ms plus 76µs,
@@ -1181,6 +1181,17 @@ against the centroid's 80.0%. The reason is not shape but SIZE: with
 fifteen examples per class, five neighbours are mostly noise, and
 averaging is what rescues a small sample. The hypothesis was about
 geometry and the answer was about sample size.
+
+**A note on the "dependency" column, added after a consumer pointed
+out that it was arguing for the wrong tier.** These tables used to say
+"needs a server", and that is a statement about how the READER is
+deployed, not about the tier. What the vector tiers actually require is
+a `String => Embedding` — and where that function is in process, the
+probe at 86.7% is the CHEAPEST option on the table rather than the most
+expensive one, because no network is involved at all. The measurements
+here were taken over HTTP because that is what this machine offers; a
+caller with an in-process encoder should read every "12ms round trip"
+as their own encoder's latency and re-rank accordingly.
 
 **Ordering the tiers by what they cost.** Two of them need no network
 at all and neither reaches 52%. Every tier that clears 80% needs an
@@ -1417,7 +1428,7 @@ no-network path to its best number so far.
 | patterns | 51.7% (89% where a cue fires) | nothing |
 | chargrams | 60.0% | nothing |
 | **static, words + pairs** | **63.3%** | a 5MB table |
-| teacher | 86.7% | an embedding server |
+| teacher | 86.7% | `String => Embedding` |
 
 So no external gateway is reachable at 63%, and the remaining 23 points
 are CONTEXT: a static table gives a unit the same vector wherever it
@@ -1480,3 +1491,36 @@ for the next lane rather than interpreted:
 
 A per-language verdict needs the parallel set grown to at least thirty
 examples per language, which is `intent-language-fixture-growth`.
+
+## Results — intent-consumer-seams-a (2026-09-04)
+
+The two smallest of the seven requests a consumer wrote into this spec
+(0fc7386b), taken first because one of them was misleading readers
+today. Recorded before anything else: I rebased over that commit six
+times before reading it, looking only at my own Results sections rather
+than at the file, and one of its notes — that the language key was
+worth doing BEFORE the embedding bake-off — was advice I had already
+walked past by the time I read it.
+
+**(6) The dependency is `String => Embedding`, not "a server".** The
+bake-off tables said "needs a server", which describes the reader's
+deployment rather than the tier, and it argued for the wrong tier: with
+an in-process encoder the probe at 86.7% is the CHEAPEST row on the
+table, not the most expensive. The column is now `dependency`, the
+vector tiers name the function they actually require, and a note says
+that the 12ms figures are this machine's HTTP round trip rather than a
+property of the method.
+
+**(3) An abstention hands back what it could not separate.**
+`Probe.Verdict` had `margin` and `runnerUp`; `NoModel.Verdict` kept
+`best` and dropped both, so declining told a caller only THAT it
+declined — while the two candidates it could not separate had already
+been computed one layer down. `Verdict` now carries `runnerUp` and the
+full `ranked` list, and `NoModel.decide` returns both the answer (or
+`None`) and the verdict it CONSIDERED, from one call so the two cannot
+disagree.
+
+Two consumers of that value, and neither is hypothetical: an interface
+that abstains has to show a person the choice it could not make, and
+active learning selects the next examples to label by uncertainty,
+which is a property of the distribution rather than of the winner.
