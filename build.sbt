@@ -775,6 +775,38 @@ lazy val okayMatch = crossProject(JVMPlatform, JSPlatform)
 
 /** agents as programs: tool calls are operations, the conversation
  * is a fold, policy lives in handlers (P9) */
+/**
+ * The classification tiers, split out of okay-agent (2026-09-04) at the
+ * request of a consumer who imports them and has never touched the
+ * agent loop. Thirteen files that turn a message into a class and a
+ * frame, with no dependency on Agent, Provider, Stepper or Rerun --
+ * which is the point: a caller wanting a probe should not compile a
+ * conversation.
+ */
+lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-intent"))
+  .dependsOn(okayCodec, okayRag)
+  // TEST only, and worth naming: the live suites reach for okay-agent's
+  // journal (Rerun, FileVersions) to replay recorded model answers, and
+  // for okay-llm to talk to a gateway. Neither is a dependency of the
+  // tiers themselves — main compiles against codec and rag alone, which
+  // is the boundary this split exists to draw.
+  .dependsOn(okayAgent % Test, okayLlm % Test)
+  .settings(
+    name := "okay-intent",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+    ),
+  )
+  .jvmSettings(
+    // the live suites are JVM-only: they hold an HTTP connection to a
+    // gateway, and the tiers themselves are portable
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
 lazy val okayAgent = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-agent"))
@@ -1289,7 +1321,7 @@ lazy val root = (project in file("."))
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
-    okayAgent.jvm, okayAgent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
+    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)

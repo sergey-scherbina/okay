@@ -1778,3 +1778,39 @@ first. A programme this size accumulates conditions faster than it
 records them; the fix is not more care but fewer free variables — every
 future arm here states its framing in the printed row, not in the prose
 around it.
+
+## Results — intent-module-split (2026-09-04)
+
+The only one of the consumer's seven requests asking for a BOUNDARY
+rather than a type, and the one they made a decision rather than a
+preference by volunteering to eat the migration.
+
+Fourteen files that turn a message into a class and a frame moved from
+`okay.agent` to `okay.intent`: `Classify`, `Eval`, `Taxon`, `Rows`,
+`Fitted`, `Probe`, `Centroid`, `Nearest`, `Patterns`, `CharGrams`,
+`Static`, `Symbolic`, `NoModel`, `Temporal`. Nothing else moved — a
+caller importing `Agent`, `Provider`, `Stepper`, `Durable`, `Rerun`,
+`ToolSpec` or `Conversation` is untouched.
+
+**One factoring turned a circular dependency into a split, and it
+improves `okay-codec` on its own terms.** Only `Classify` reached back
+into `okay-agent`, for `ToolSpec.jsonSchema` — and that function is the
+Schema → JSON Schema algebra, the FOURTH algebra over `Schema[A]` after
+Json, Cbor and YAML. It never had anything to do with agents. Moved to
+`okay.codec.JsonSchema`, with `ToolSpec.jsonSchema` kept as a one-line
+delegation so no caller of a tool declaration notices, `okay-intent`
+depends on `okay-codec` and `okay-rag` and NOT on `okay-agent`.
+
+The live suites keep a test-only dependency on `okay-agent` (the
+journal, for replaying recorded model answers) and on `okay-llm` (a
+gateway). That is named in the build rather than left implicit: main
+compiles against codec and rag alone, which is the boundary the split
+exists to draw.
+
+**`Conversation` stays in `okay-agent`, on the consumer's own
+argument** — it is built on `Durable`, whose journal is its state, so
+moving it would have recreated exactly the circularity the
+`JsonSchema` move had just removed. They accept the residual cost of
+importing both modules, and their reason is the better one: a
+suspension mechanism belongs with the runtime it suspends, not with
+the classifier that happens to sit beside it in a caller's code.
