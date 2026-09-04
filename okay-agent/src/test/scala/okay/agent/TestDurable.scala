@@ -224,4 +224,114 @@ class TestDurable extends munit.FunSuite {
     assertEquals(span._2("durable.key"), entryKey)          // overlays the original
     assertEquals(span._2.get("durable.replay"), Some("true"))
   }
+
+  // ---- waiting on a person (durable-waiting-on-a-person) -------------
+  //
+  // An answerless entry had one meaning: the crash window. This is the
+  // other one — a question asked and not yet answered, which is not a
+  // failure and whose right response is to wait.
+
+  val ask = ToolCall("q1", "ask",
+    Json.JObj(Vector("question" -> Json.JStr("what is your budget?"))))
+
+  def asking = Handlers.scripted(Seq(
+    Reply("asking", Seq(ask)), Reply("done", Nil)))
+
+  /** a table that would answer the question if it were ever reached —
+   * which is the point: it must not be */
+  def answering(log: mutable.Buffer[ToolCall]): Handler[Tool] =
+    Handlers.recording(Handlers.tools(Map(
+      "ask" -> (_ => "THE INNER HANDLER ANSWERED, WHICH IT MUST NOT"),
+      "charge" -> (_ => "receipt-1"))))(log)
+
+  def waits(name: String): OnRepeat =
+    if name == "ask" then OnRepeat.Await else OnRepeat.Redo
+
+  test("a question parks the program instead of answering it") {
+    val j = Durable.MemoryJournal()
+    val touched = mutable.Buffer[ToolCall]()
+    val (_, ctx) = Handlers.context(Compact.all)
+
+    val parked = intercept[Durable.Awaiting] {
+      run(Agent.converse("ask me"))(asking, Durable.tools(answering(touched), j)(waits), ctx)
+    }
+    assertEquals(parked.op, "ask")
+    assertEquals(parked.seq, 0)
+    // asking a person touches no world
+    assertEquals(touched.toVector, Vector.empty)
+    // and the question itself is in the log, so a restart can find it
+    assertEquals(j.all.map(e => (e.op, e.answer)), Vector(("ask", None)))
+    assertEquals(Durable.awaiting(j).map(_.op), Some("ask"))
+  }
+
+  test("the answer arrives later, and re-running resumes where it stopped") {
+    val j = Durable.MemoryJournal()
+    val touched = mutable.Buffer[ToolCall]()
+    val (_, ctx1) = Handlers.context(Compact.all)
+    intercept[Durable.Awaiting] {
+      run(Agent.converse("ask me"))(asking, Durable.tools(answering(touched), j)(waits), ctx1)
+    }: Unit
+
+    // a person answers, possibly days later and in another process
+    j.complete(0, "3000")
+
+    val (_, ctx2) = Handlers.context(Compact.all)
+    val out = run(Agent.converse("ask me"))(
+      asking, Durable.tools(answering(touched), j)(waits), ctx2)
+    assert(out.nonEmpty, "the program did not run to completion")
+    assertEquals(Durable.awaiting(j), None, "still parked after being answered")
+    // the recorded answer was used; the inner handler was never asked
+    assertEquals(touched.toVector, Vector.empty)
+    assertEquals(j.all.map(e => (e.op, e.answer)), Vector(("ask", Some("3000"))))
+  }
+
+  test("a second question parks at the second one, not the first") {
+    // a FRESH script per run: `Handlers.scripted` carries its own
+    // position, and reusing one makes the second run start at the
+    // second reply — which `Drift` catches, correctly, as the program
+    // asking something other than what the journal recorded
+    def twice = Handlers.scripted(Seq(
+      Reply("first", Seq(ask)),
+      Reply("second", Seq(ToolCall("q2", "ask",
+        Json.JObj(Vector("question" -> Json.JStr("and for how long?")))))),
+      Reply("done", Nil)))
+    val j = Durable.MemoryJournal()
+    val (_, ctx1) = Handlers.context(Compact.all)
+    intercept[Durable.Awaiting] {
+      run(Agent.converse("ask me"))(twice, Durable.tools(answering(mutable.Buffer()), j)(waits), ctx1)
+    }: Unit
+    j.complete(0, "3000")
+
+    val (_, ctx2) = Handlers.context(Compact.all)
+    val second = intercept[Durable.Awaiting] {
+      run(Agent.converse("ask me"))(twice, Durable.tools(answering(mutable.Buffer()), j)(waits), ctx2)
+    }
+    assertEquals(second.seq, 1, "resumed at the wrong question")
+    assertEquals(Durable.awaiting(j).map(_.seq), Some(1))
+    // the first answer was not asked for again
+    assertEquals(j.all.map(_.answer), Vector(Some("3000"), None))
+  }
+
+  // the program's own order decides what runs next, not the order
+  // answers happened to arrive in
+  test("an answer to a later question does not skip an earlier one") {
+    val j = Durable.MemoryJournal()
+    j.append(Durable.Entry(0, "ask", "ask({})", "k0", None))
+    j.append(Durable.Entry(1, "ask", "ask({})", "k1", Some("later")))
+    assertEquals(Durable.awaiting(j).map(_.seq), Some(0))
+  }
+
+  // Await is the ONLY case that is read before an entry exists: the
+  // others answer a recovery question, and there is nothing to recover
+  test("an awaiting operation is recognised on its first encounter") {
+    val j = Durable.MemoryJournal()
+    val touched = mutable.Buffer[ToolCall]()
+    val (_, ctx) = Handlers.context(Compact.all)
+    intercept[Durable.Awaiting] {
+      run(Agent.converse("ask me"))(asking, Durable.tools(answering(touched), j)(waits), ctx)
+    }: Unit
+    // journalled by parking, not by executing
+    assertEquals(j.all.length, 1)
+    assertEquals(touched.length, 0)
+  }
 }

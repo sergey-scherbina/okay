@@ -52,9 +52,19 @@ trait OpTrace:
  */
 object Durable {
 
-  /** what to do when recovery finds an intent with no answer */
+  /**
+   * What a missing answer MEANS for this operation.
+   *
+   * Four of these answer the recovery question — the crash window,
+   * an outcome nobody can know. `Await` answers a different one: the
+   * answer comes from OUTSIDE the program and has not arrived yet,
+   * which is not a failure and not unknown. Nearest to `Escalate` (a
+   * human decides) and differing in when: an escalation resolves
+   * inside the call through a callback, an await leaves the program
+   * parked and hands control back to whoever ran it.
+   */
   enum OnRepeat:
-    case Redo, WithKey, Reconcile, Escalate, Fail
+    case Redo, WithKey, Reconcile, Escalate, Fail, Await
 
   /** one journalled step. `fingerprint` is what the program asked
    * for; a mismatch on replay means the code changed under us */
@@ -84,6 +94,38 @@ object Durable {
    * policy forbids repeating it */
   final class Unresolved(val op: String, val key: String)
     extends RuntimeException(s"unknown outcome for $op (key $key) and no way to resolve it")
+
+  /**
+   * Not a failure: the program asked something whose answer comes
+   * from outside it, and is parked until that answer is journalled.
+   *
+   * A control transfer rather than an error, for the same reason
+   * `Drift` and `Unresolved` are thrown from a handler that must
+   * otherwise produce an `A`: `Handler.handle` has no way to leave
+   * without one. `NoStackTrace` because being parked is the normal
+   * state of a conversation, not an incident — a stack trace per
+   * question is a cost paid on every turn for nothing.
+   *
+   * Carries what a caller needs to render the question now and to
+   * answer it later: the operation, its arguments, and the sequence
+   * number `Journal.complete` takes.
+   */
+  final class Awaiting(val op: String, val seq: Int, val key: String,
+                       val args: Json)
+    extends RuntimeException(s"awaiting an answer to $op (seq $seq, key $key)")
+    with scala.util.control.NoStackTrace
+
+  /**
+   * The entry a program is parked on, or `None` when it is not
+   * parked. Enough to render the outstanding question after a restart
+   * without running the program to find it.
+   *
+   * The FIRST answerless entry, because a program resumes in its own
+   * sequence: a later question cannot have been asked before an
+   * earlier one was answered.
+   */
+  def awaiting(journal: Journal): Option[Entry] =
+    journal.all.sortBy(_.seq).find(_.answer.isEmpty)
 
   /** the reserved argument a WithKey retry carries, so the far end
    * can deduplicate the second attempt against the first */
@@ -140,8 +182,12 @@ object Durable {
         // key), so a later replay lays over exactly this operation
         traced(trace, c, n) {
           recorded.find(_.seq == n) match
-            // never ran: execute and journal, intent first
-            case None => execute(n, c, fp, c)
+            // never ran: execute and journal, intent first — unless
+            // the answer is a person's, in which case there is no
+            // effect to run and the question is what gets recorded
+            case None =>
+              if policy(c.name) == OnRepeat.Await then park(n, c, fp)
+              else execute(n, c, fp, c)
 
             case Some(entry) =>
               if entry.fingerprint != fp then throw Drift(entry.fingerprint, fp)
@@ -149,8 +195,11 @@ object Durable {
                 // it already happened: hand the answer back, touch nothing
                 case Some(a) => a
 
-                // the crash window: the outcome is unknown
+                // the crash window: the outcome is unknown — except
+                // for an operation whose answer was never this
+                // program's to produce, where it means "not yet"
                 case None => policy(c.name) match
+                  case OnRepeat.Await => throw Awaiting(c.name, n, entry.key, c.args)
                   case OnRepeat.Redo => execute(n, c, fp, c)
                   case OnRepeat.WithKey =>
                     // the same key as the first attempt, so the far end
@@ -166,6 +215,14 @@ object Durable {
                       case None => throw Unresolved(c.name, entry.key)
                   case OnRepeat.Fail => throw Unresolved(c.name, entry.key)
         }
+
+    /** the question, recorded, and control handed back. The inner
+     * handler is never reached: asking a person touches no world. */
+    private def park(n: Int, c: ToolCall, fp: String): Nothing =
+      val key = keyFor(n, c)
+      if !recorded.exists(_.seq == n) then
+        journal.append(Entry(n, c.name, fp, key, None))
+      throw Awaiting(c.name, n, key, c.args)
 
     private def withKey(c: ToolCall, key: String): ToolCall =
       c.args match

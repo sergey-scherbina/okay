@@ -1262,7 +1262,17 @@ ordered by what it would FIX, not by novelty.
       stop. The spec carries the incidents from a working
       implementation of the same shape, including the one where a
       re-derived language flipped mid-intake.
-- [ ] durable-waiting-on-a-person — `Durable` journals INTENT FIRST and
+- [x] durable-waiting-on-a-person — LANDED 2026-09-04. `OnRepeat.Await`
+      is read in BOTH branches (an awaiting operation has no inner
+      effect to run, so it is recognised on its first encounter too),
+      `Durable.Awaiting` is the control transfer out, and
+      `Durable.awaiting(journal)` names the entry a program is parked
+      on. Resuming is `complete` plus re-running: no new mechanism.
+      Two properties held down by tests — an awaiting operation never
+      reaches the inner handler, and the program's own sequence
+      decides what runs next rather than the order answers arrived.
+      Original entry follows.
+- [x] durable-waiting-on-a-person (original) — `Durable` journals INTENT FIRST and
       the answer after, so an `Entry` with `answer = None` is
       structurally a question asked and not yet answered. But recovery
       reads every missing answer as the crash window, for `OnRepeat` to
