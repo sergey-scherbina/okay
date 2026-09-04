@@ -1,0 +1,9 @@
+slug: conversation-runtime
+what: a spec for the runtime a human-facing conversation needs - a
+  suspension that waits for a person, an intake driver over frames and
+  slots, and the boundary that leaves a caller owning only the data of
+  its own domain. Written from a working implementation that is being
+  offered upstream.
+touches: specs/conversation.md (new), BACKLOG.md  (NO source, NO tests)
+note: neighbours intent-classify.md (recognition) and llm-agentic.md
+  (Durable). Does not edit either.
