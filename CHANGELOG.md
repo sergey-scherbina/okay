@@ -1,5 +1,58 @@
 # Changelog
 
+## intent-temporal-slots — a parser does the arithmetic the model was doing
+Completed: 2026-09-04
+Landed as 6e0f838e (claim released in a8894086, whose message promised
+this entry and did not carry it — a `git worktree remove` failed and
+broke the `&&` chain that was supposed to write it, so the changelog
+went missing while the commit said otherwise).
+
+A slot typed as ISO-8601 refuses "next thursday", so until now the
+MODEL converted and the schema only checked — a model doing arithmetic,
+which is the one thing it is worst at and a parser is best at.
+`Temporal` does it instead, and it is the first lane in this line that
+needs no model at all, so it verifies entirely in the default gate.
+
+NOT BUILT ON `okay-lex`'s `Scan`, deliberately: that machinery earns
+its keep carrying lexer state across chunk boundaries and relexing
+incrementally after an edit, and a five-word phrase has neither. What a
+temporal parser needs is to be TOTAL and DETERMINISTIC, and that is a
+function.
+
+DETERMINISTIC means the reference day is an ARGUMENT. "Next Thursday"
+is not a value, it is a value relative to a day someone has to name,
+and a parser that reads the clock cannot be tested. Every test is
+anchored to Friday 2026-09-04.
+
+TOTAL means `None` rather than a guess, and the refusals are as much
+the deliverable as the parses. "soon", "end of the month", "the 14th",
+"later this week", "in a couple of days" are all guessable, and every
+guess would be ACTED on — a meeting booked, a deadline moved. A
+declined phrase is asked about instead, so declining is the cheap
+failure.
+
+Scope is the shapes scheduling mail actually uses: an explicit ISO
+date; today / tomorrow / the day after / yesterday; `in N days`, `N
+days from now`, `N days ago`; a bare or qualified weekday; `next week`;
+a month-and-day in either order taking the COMING year; and a time in
+either spelling riding along with any of them.
+
+The calendar underneath is Hinnant's civil algorithm rather than month
+tables and leap-year branches, which are wrong at exactly the dates
+nobody tests. Those are tested anyway: 2024-02-28, 2023-02-28,
+1900-02-28 (not a leap year), 2000-02-28 (but that one is), and a year
+boundary. No `java.time`, so the JS build keeps it.
+
+13 tests, three properties. One began as `forAll(...).check()` inside a
+`test` block, which prints and returns and cannot fail a suite —
+scenery, now a `property`.
+
+Gate: clean compile with 0 warnings of this lane's own (3 remain from a
+sibling's `AbruptChannel`, reported to its owner); full matrix 2150
+tests, 0 failures. Two warnings this lane DID introduce, an unused
+import and a discarded `Option`, were caught by the clean compile and
+fixed — a warm `testOnly` had compiled the same file and said nothing.
+
 ## intent-tiebreak-by-example — examples are worse than the prose they were meant to replace
 Completed: 2026-09-04
 Landed as 75f2ec79, as a second refusal. The precedence lane's own
