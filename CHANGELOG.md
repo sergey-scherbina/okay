@@ -1,5 +1,49 @@
 # Changelog
 
+## intent-tiebreak-by-example — examples are worse than the prose they were meant to replace
+Completed: 2026-09-04
+Landed as 75f2ec79, as a second refusal. The precedence lane's own
+suggestion, tested: carry a tie-break as EXAMPLES of the disputed case
+rather than as prose. Same two decisions, same 120 messages, two arms
+differing by exactly two added examples.
+
+| arm | macro F1 | Proposal | Request | Notification | Other |
+|---|---|---|---|---|---|
+| examples as shipped | 0.909 | 0.95 | 0.93 | 0.89 | 0.86 |
+| + two tie-break examples | 0.854 | 0.90 | 0.76 | 0.91 | 0.85 |
+| prose rules (previous lane) | 0.866 | 0.92 | 0.89 | 0.84 | 0.81 |
+
+Worse than the prose, and the damage is specific rather than diffuse:
+`Request` RECALL collapses 0.87 -> 0.63 while `Proposal` precision
+falls 0.91 -> 0.81. The example did exactly what it said — "a message
+that both proposes and asks is a proposal" — and the model applied it
+to requests that were not disputed at all. A tie-break shown as an
+instance does not stay inside the tie.
+
+SO THE OVERLAP IS NOT A PROMPT PROBLEM. Two independent channels have
+now moved this boundary in the intended direction and both paid more
+elsewhere than they gained, which the claim predicted before the run.
+`Proposal` and `Request` overlap because the TAXONOMY draws them that
+way, and a boundary a taxonomy draws is moved in its labels and class
+definitions, not in an instruction to the model.
+
+A caution worth more than the lane itself: few-shot examples improved
+every arm they touched across this whole line — decode rate, `Other`
+recall, macro F1 — and this is the FIRST measurement where they cost.
+The difference is what the example teaches. An example of a CLASS
+generalises usefully; an example of a BOUNDARY generalises past the
+boundary. "Add an example" has been free advice here until now.
+
+Nothing shipped; the two examples stay in `IntentFixture` as evidence
+for whoever reaches for this next, and the `Taxonomy[I]` typeclass
+refused in the precedence lane stays refused — neither channel earned
+it.
+
+Gate: clean compile carries one warning, and it is not this lane's —
+`AbruptChannel.scala:85` from channel-guarantees, reported to its owner
+rather than edited across a live sibling's tree. Full matrix 2137
+tests, 0 failures.
+
 ## channel-guarantees — what the contract costs, on both sides
 
 `AbruptChannel`: a channel whose `close` ends it at once and abandons
