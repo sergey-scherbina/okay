@@ -1,5 +1,56 @@
 # Changelog
 
+## intent-one-entry-point — the composed door, with the demo as its caller
+Completed: 2026-09-04
+Landed as 53ae71d3. The tier order was measured over twenty lanes and
+then lived in ONE FILE in `okay-demo`, so a caller outside that demo
+had to re-derive it by reading twenty Results sections.
+`okay.intent.Router` is that composition: cues first (90.6% where they
+fire, cost nothing), the vector tier next (85-88%, needs an embedder),
+the shipped model last (61%, needs nothing). `Router.of` refuses a
+tier whose classes are not in the taxonomy. `Action.Ask` carries how
+many questions remain — the same fix the conversation consumer asked
+for the same day, arriving in the other caller.
+
+`okay.demo.IntentRouter` is a caller now and is SHORTER for it, which
+is the shape a correct extraction leaves behind: what stayed is what a
+caller owns — its taxonomy, its names, the frames its classes need,
+the day the conversation is happening.
+
+THE FLOOR, CHOSEN TWICE, AND THE SECOND MEASUREMENT THAT DECIDED IT.
+On held-out English, raising the last tier's floor from 0.0 to 0.5
+lifts precision among answered messages from 76.7% to 83.7% while
+coverage falls from 60/60 to 43/60 — four tenths of a point per
+abstention. That argued for zero, and setting it broke a demo test
+asserting that "zzz qqq xxx" escalates to a person. The break was the
+useful part: the held-out set is all IN-DOMAIN and cannot measure the
+case a floor exists for. So I measured that case — margins on nonsense
+run 0.13-0.89, median 0.437, against median 0.434 on real English. The
+model is exactly as confident about garbage as about English, so no
+threshold separates them and a non-zero floor buys the LOOK of caution
+and none of it.
+
+The default stays zero, the doc comment says why with both numbers,
+and what replaces the property is a caller's explicit choice: load the
+last tier for coverage, or leave it out and the tier below it is a
+person. The demo now pins both — one test that nonsense gets a class
+when the model is loaded, named so nobody mistakes it for an
+endorsement, and one that a router built without the model still
+escalates. Calibrated abstention already exists and is not a margin:
+`NoModel`'s conformal threshold, whose promise is `None` when the
+sample cannot support it.
+
+`CharGrams.renamed` came with it: the demo's taxonomy is
+domain-bearing and the shipped model speaks canonical names, so
+without it the reference caller could not use the model this
+repository ships. Same rule as `Cues.renamed` — total in both
+directions, a partial map is an error rather than a silent bucket, and
+only the labels move, not the weights.
+
+Gate: clean compile 0 warnings; okayIntentJVM 126, okayIntentJS 9
+(`TestRouterCross` runs on both), okayDemo 76, okayDeploy 9 — 0
+failures.
+
 ## intent-fitted-model-ships — a model a caller can load, with the numbers it earns
 Completed: 2026-09-04
 Landed as d42c03ca. Nine tiers measured and none shipped: every fitted
