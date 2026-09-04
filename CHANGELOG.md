@@ -1,5 +1,48 @@
 # Changelog
 
+## intent-label-distillation — a supplement for the no-network tiers, 60.0% → 66.7%
+Completed: 2026-09-04
+Landed as 13b1d668. Scoped by this programme's own learning curve: NOT
+for the probe, which is flat past 32 examples, but for the tiers still
+climbing when the fixture ran out — the ones that need no network at
+all.
+
+The model is used ONCE, offline, in two passes: it writes messages for
+a class, a second pass classifies them back with the shipped prompt,
+and only agreements survive. Evaluation never touches generated data —
+the held-out half of the human fixture is the only thing scored.
+
+| trained on | rows | accuracy on held-out HUMAN data |
+|---|---|---|
+| the fixture alone | 60 | 60.0% |
+| the distilled corpus alone | 182 | 50.0% |
+| both | 242 | **66.7%** |
+
+DISTILLATION IS A SUPPLEMENT, NOT A SUBSTITUTE. Trained only on what
+the model wrote, chargrams score ten points BELOW a human fixture a
+third the size: the model's own writing has a different distribution
+from real messages, so it adds coverage rather than replacing evidence.
+Together they beat either, and 66.7% is the best zero-network number
+this programme has reached — above the static table's 63.3%.
+
+THE FILTER'S OWN NUMBER IS THE STRIKING ONE: 182 of 320 survived, 57%.
+The model disowns 43% of what it just wrote — asked to produce a
+Proposal and then asked what that message is, it frequently says
+something else. Two readings, not exclusive: the classes genuinely
+overlap where the fixture said they do, and a model asked to WRITE is
+doing a different task from one asked to JUDGE. Either way it is the
+argument for having the filter, since without it 43% of the corpus
+would carry labels its own labeller disowns.
+
+Generation had to be made RESUMABLE, which is a lesson about the
+harness rather than the method: thirty-two model calls do not fit in
+one command's budget and the first version lost the whole corpus to a
+cut-off run. Each batch is now written as it arrives, every run adds to
+what the last left, and a time budget makes the exit clean rather than
+a kill.
+
+Gate: clean compile 0 warnings; full matrix 2216 tests, 0 failures.
+
 ## intent-taxonomy-and-language — one taxonomy both tiers read, and a fit that knows its languages
 Completed: 2026-09-04
 Landed as 0cf1f7c5. Requests 1 and 2 of the consumer's seven, taken
