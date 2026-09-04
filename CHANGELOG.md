@@ -1,5 +1,48 @@
 # Changelog
 
+## stm-fifo-post-cas — the transaction needs the final state, not every state on the way
+
+`StmChannel`'s batched receive rebuilt its persistent queue ONCE PER
+ELEMENT inside a single transaction — four thousand intermediate
+buffers nobody would ever look at, 23% of the lane's profile in
+`Tuple2` and 8% in `Queue.dequeue` — and it did all of it BEFORE the
+CAS, so a losing transaction paid for the lot.
+
+Two changes, one idea. `Fifo` replaces `immutable.Queue` as the
+buffer: the same two lists, but it exposes them, so a batched take can
+be written against them instead of through `dequeue`. And the O(k)
+work — allocating the chunk and filling it — moves into the action,
+which `transact` already runs only after the CAS has won. The state
+transition is then arithmetic: taking the whole buffer, the common
+case, leaves the empty one.
+
+`List.reverse` does not get faster, it stops being needed. The back is
+newest-first, so its FIFO order is its reverse; `fill` walks the back
+FORWARD and writes at DESCENDING indices, and the order falls out of
+the arithmetic with no list allocated. Reading the old lists after the
+CAS is safe: they are immutable, and the CAS already made the take
+exclusive.
+
+**128.0us → 114.5**, which puts the last lane past `zioStrongChunk`'s
+123.8 — every pair in the table is now ours. Elementwise 235.7 → 223.4.
+
+The estimate was wrong in a way worth recording: I predicted ~70us
+from removing 45% of the profile, and got 10.5%. Profile shares are of
+samples across all threads, not of the lane's wall time — the receive
+transaction was never the sole serial bottleneck, so work removed from
+it partly hid behind the producer's.
+
+Inherent and staying: one `State` per transaction, which is the price
+of STM composability, and the amortized reverse on the elementwise
+path when the front runs out.
+
+`TestFifo` checks the structure against a plain list. Its first
+property run caught a real defect — the remainder of a PARTIAL take
+came back reversed — on a branch the channel's own laws never reach,
+because they ask for more than is buffered.
+
+Gate 500, full matrix 2247, clean build, no warnings.
+
 ## intent-state-the-framing — a row cannot be written without its terms
 Completed: 2026-09-04
 Landed as 336368c7. The defect behind this afternoon's retraction, not

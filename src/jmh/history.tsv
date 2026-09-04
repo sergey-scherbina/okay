@@ -315,3 +315,7 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-04	channel-ring-unbounded	ChannelGuaranteeBenchmark	okayStrongElem	235.687	us/op	N=4000 cap=1024 f=3 i=8 quiet box	StmChannel, elementwise -- ahead
 2026-09-04	channel-ring-unbounded	ChannelGuaranteeBenchmark	okayLayeredChunk	48.989	us/op	N=4000 cap=1024 f=3 i=8 quiet box	the sentinel-as-a-layer reference lane
 2026-09-04	channel-ring-unbounded	ChannelGuaranteeBenchmark	okayLayeredElem	229.722	us/op	N=4000 cap=1024 f=3 i=8 quiet box	the same, elementwise
+2026-09-04	stm-fifo-post-cas	ChannelGuaranteeBenchmark	okayStrongChunk	114.529	us/op	N=4000 cap=1024 f=3 i=8	StmChannel with Fifo + post-CAS fill: 128.0 -> 114.5, now past zioStrongChunk 123.8
+2026-09-04	stm-fifo-post-cas	ChannelGuaranteeBenchmark	okayStrongElem	223.446	us/op	N=4000 cap=1024 f=3 i=8	the same lane elementwise, 235.7 -> 223.4
+2026-09-04	stm-fifo-post-cas	ChannelGuaranteeBenchmark	zioStrongChunk	123.764	us/op	N=4000 cap=1024 f=3 i=8	Queue.bounded[Option] + collectWhileSome, same run
+2026-09-04	stm-fifo-post-cas	ChannelGuaranteeBenchmark	zioStrongElem	302.016	us/op	N=4000 cap=1024 f=3 i=8	Queue.bounded[Option] elementwise, same run
