@@ -336,3 +336,12 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-04	idiomatic-recheck	IdiomaticApiBenchmark	zioCollectionWhole	49.216	us/op	N=4000 f=3 i=6	control, 49.1 before
 2026-09-04	idiomatic-recheck	IdiomaticApiBenchmark	okayStepWhole	90.398	us/op	N=4000 f=3 i=6	control, 90.6 before
 2026-09-04	idiomatic-recheck	IdiomaticApiBenchmark	zioStepWhole	275.325	us/op	N=4000 f=3 i=6	control, 276.9 before
+2026-09-04	like-for-like-lanes	IdiomaticApiBenchmark	okayCollection_chunk_fold	11.016	us/op	N=4000 f=2 i=6	Chunks.fromIterator + foldLeft: the LIKE-FOR-LIKE partner -- 4.5x PAST zio, where the mismatched row read 3.1x behind
+2026-09-04	like-for-like-lanes	IdiomaticApiBenchmark	zioCollection_chunk_runSum	49.569	us/op	N=4000 f=2 i=6	ZStream.fromIterable.runSum, same run
+2026-09-04	like-for-like-lanes	IdiomaticApiBenchmark	okayCollection_elem_lazyList	154.093	us/op	N=4000 f=2 i=6	our elementwise surface plus a memoising bridge -- a real thing, but not zio's row
+2026-09-04	like-for-like-lanes	IdiomaticApiBenchmark	okayChannelForeach_elem_lazyList	219.082	us/op	N=4000 f=2 i=6	the channel row stands at 1.77x behind, honestly measured
+2026-09-04	like-for-like-lanes	IdiomaticApiBenchmark	okayChannelForeach_elem_runForeach	226.791	us/op	N=4000 f=2 i=6	runForeach is NOT cheaper here -- memoisation was not the cost
+2026-09-04	like-for-like-lanes	IdiomaticApiBenchmark	okayChannelForeach_chunk_fold	318.740	us/op	N=4000 f=2 i=6	chunking ON TOP of an already-batched source: a layer added, not removed
+2026-09-04	like-for-like-lanes	IdiomaticApiBenchmark	zioChannelForeach_chunk_runForeach	123.738	us/op	N=4000 f=2 i=6	control, 113-114 in earlier runs
+2026-09-04	like-for-like-lanes	IdiomaticApiBenchmark	okayStep_elem_lazyList	90.296	us/op	N=4000 f=2 i=6	control, 90.4 before
+2026-09-04	like-for-like-lanes	IdiomaticApiBenchmark	zioStep_elem_runSum	279.997	us/op	N=4000 f=2 i=6	control, 275-280 before
