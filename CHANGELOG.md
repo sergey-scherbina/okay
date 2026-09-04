@@ -1,5 +1,53 @@
 # Changelog
 
+## intent-static-embeddings — no gateway at request time, 63.3% once pairs are in the table
+Completed: 2026-09-04
+Landed as 64910bc9. A classifier with no external server when a message
+arrives. Rather than downloading `model2vec`, this does what model2vec
+DOES: distils a static table from the teacher already in use — embed
+each unit once, offline, then tokenize, look up, pool. Array arithmetic
+at request time, so it crosses to JS and Native where a native runtime
+could not follow, and no foreign tokenizer has to be matched.
+
+| table | units | sees of an unseen message | probe | centroid |
+|---|---|---|---|---|
+| words, training half only | 301 | 66.0% | 43.3% | 41.7% |
+| words, full dictionary | 1019 | 100.0% | 51.7% | 43.3% |
+| words + adjacent pairs | 1303 | — | **63.3%** | 58.3% |
+| (teacher, live vectors) | — | — | 86.7% | 80.0% |
+
+VOCABULARY WAS PART OF IT AND NOT MOST OF IT: complete coverage bought
+8.4 points and left the method at 51.7%, below even chargrams, so the
+dictionary was not the limit.
+
+THE LIMIT WAS THE BAG OF WORDS, and this line has met it before. A
+word-only table cannot tell "could you" from "we could" — one requests,
+the other proposes, and a bag holds the same tokens either way. That is
+exactly the mechanism that sank the BM25 tier, arriving a second time
+by a different road. Adjacent PAIRS are a unit the teacher embeds like
+any other, and they are worth 11.6 points to the probe and 15.0 to the
+centroid.
+
+Where that leaves the zero-infrastructure goal:
+
+| option | accuracy | needs |
+|---|---|---|
+| patterns | 51.7% (89% where a cue fires) | nothing |
+| chargrams | 60.0% | nothing |
+| static, words + pairs | 63.3% | a 5MB table |
+| teacher | 86.7% | an embedding server |
+
+So no external gateway is reachable at 63%, and the remaining 23 points
+are CONTEXT: a static table gives a unit the same vector wherever it
+appears, and representing a word differently in two sentences is most
+of what a transformer is for. A property of the method, not of this
+implementation.
+
+Filed: adjacent triples, and `model2vec`'s PCA step — 1303 units is
+already 5.2MB at float32 and a 30k vocabulary would be 120MB.
+
+Gate: clean compile 0 warnings; full matrix 2197 tests, 0 failures.
+
 ## intent-embedding-choice — the ceiling is representational, framing moves it 6.6 points, and the swap is blocked on installation
 Completed: 2026-09-04
 Landed as aa6b0e10. Promoted ahead of distillation by the learning
