@@ -1622,3 +1622,50 @@ Running it now would produce the same undefendable numbers with a
 better excuse. The seam is built and tested; the measurement waits on
 `intent-language-fixture-growth`, and that ordering is the whole
 lesson of having run the bake-off before this existed.
+
+## Results — intent-label-distillation (2026-09-04)
+
+Reprioritised by this programme's own learning curve and scoped to what
+it supports. NOT for the probe, which is flat past 32 examples. For the
+tiers that were still climbing when the fixture ran out — chargrams
+(30 → 65%) and the static table (63.3%) — which are the only
+candidates for a classifier that needs no network at all.
+
+The model is used ONCE, offline, in two passes: it writes messages for
+a class, then a second pass classifies them back with the shipped
+prompt, and only the ones where generation and classification AGREE
+survive. Evaluation never touches generated data — the held-out half of
+the human fixture is the only thing scored — so the number cannot be
+inflated by the corpus that produced it.
+
+| trained on | rows | accuracy on held-out HUMAN data |
+|---|---|---|
+| the fixture alone | 60 | 60.0% |
+| the distilled corpus alone | 182 | 50.0% |
+| **both** | 242 | **66.7%** |
+
+**Distillation is a supplement, not a substitute.** Trained only on
+what the model wrote, chargrams score 50.0% — ten points BELOW the
+human fixture that is a third the size. The model's own writing has a
+different distribution from real messages, so it adds coverage rather
+than replacing evidence. Together they beat either, and 66.7% is the
+best zero-network number this programme has reached, above the static
+table's 63.3%.
+
+**The filter's own number is the most interesting one here: 182 of 320
+survived, 57%.** The model contradicts its own label on 43% of what it
+just wrote — asked to produce a Proposal and then, moments later, asked
+what that message is, it frequently says something else. Two readings,
+and they are not exclusive: the classes genuinely overlap where the
+fixture said they do, and a model asked to WRITE is doing a different
+task from a model asked to JUDGE. Either way it is the argument for the
+filter — without it, 43% of the training corpus would carry labels the
+labeller disowns.
+
+**Generation had to be made resumable, which is a lesson about the
+harness rather than the method.** Thirty-two model calls do not fit in
+one command's budget, and the first version lost the whole corpus when
+the run was cut off. Each batch is now written the moment it arrives
+and every run adds to what the last one left, with a time budget so the
+exit is clean rather than a kill. 320 messages took 277 seconds across
+resumable passes.

@@ -1405,7 +1405,17 @@ ordered by what it would FIX, not by novelty.
       rather than a rewrite, and the CRF lane is an alternative
       implementation of the same seam. Gives "a filled frame" somewhere
       to live.
-- [ ] intent-label-distillation — REPRIORITISED 2026-09-04 by
+- [x] intent-label-distillation — LANDED 2026-09-04 for the ZERO-NETWORK
+      tiers, as the learning curve required. 320 generated, 182 kept by
+      self-consistency (57% — the model disowns 43% of its own labels),
+      and chargrams go 60.0% -> 66.7% on held-out HUMAN data when the
+      distilled corpus is ADDED to the fixture. Trained on the
+      distilled corpus alone it scores 50.0%, so this is a supplement
+      and not a substitute: the model's writing has a different
+      distribution from real messages. 66.7% is now the best
+      no-network number, above the static table's 63.3%. Original
+      entry follows.
+- [x] intent-label-distillation (original) — REPRIORITISED 2026-09-04 by
       intent-learning-curve: NOT the one that moves the probe, whose
       curve is flat past 32 examples. It is the lane for CHARGRAMS,
       which are still climbing at 65% and are the only candidate for a
@@ -1594,3 +1604,17 @@ rather than on every pop, which is the same idea as
       BOTH embedders and find where the lines cross. If the 4B
       overtakes past some n, it is the right vectoriser for a
       distilled corpus even though it is the wrong one today.
+- [ ] intent-distil-more — 320 generated messages bought chargrams 6.7
+      points and the curve was still climbing when the fixture ran out.
+      The generator is resumable, so this is machine time rather than
+      work: raise the target, re-filter, and find where the gain stops.
+      Also worth trying on the STATIC table, which was not fed here
+      because its vocabulary would have to be re-embedded — a second
+      pass over the teacher rather than a change of method.
+- [ ] intent-distil-diversity — the distilled corpus alone scores TEN
+      POINTS below a human fixture a third its size, which says its
+      distribution is narrow rather than its labels wrong. Prompting
+      for a persona, a register or a length before each batch is the
+      cheap thing to try; measuring the corpus's own diversity (say,
+      distinct trigram ratio against the human fixture's) is the honest
+      way to tell whether it worked.
