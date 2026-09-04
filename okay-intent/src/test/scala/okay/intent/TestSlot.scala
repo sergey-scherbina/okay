@@ -1,6 +1,6 @@
 package okay.intent
 
-import okay.frame.{Frame, Slot}
+import okay.frame.Frame
 
 /**
  * The slot descriptor (specs/intent-classify.md) — request 5 of the
