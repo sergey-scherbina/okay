@@ -1215,6 +1215,49 @@ without its code changing; in another the control lane
 build. The control lane exists for exactly this: two lanes that must
 agree, so a run can be checked before it is believed.
 
+## 16. Every capacity a ring — the table that closes the arc
+
+`ChannelGuaranteeBenchmark`, N=4000, cap=1024, one quiet box, f=3
+i=8. Only lanes sharing a guarantee AND a granularity compare — the
+methodology §15 had to correct twice.
+
+| pair | okay | zio | ratio |
+|---|---|---|---|
+| unbounded, chunked | **49.1** | 383.8 | **7.8x** |
+| unbounded, elementwise | **110.5** | 439.1 | **4.0x** |
+| bounded strong, chunked | **56.2** | 125.9 | 2.24x |
+| bounded strong, elementwise | **248.6** | 286.9 | 1.15x |
+| weak, chunked | **54.8** | 116.1 | 2.12x |
+| weak, elementwise | **237.6** | 304.0 | 1.28x |
+| `StmChannel`, elementwise | **235.7** | 286.9 | 1.22x |
+| `StmChannel`, chunked | 128.0 | 125.9 | zio by 1.6% |
+
+The unbounded pair is the largest gap in this file and it deserves the
+scepticism: `Queue.unbounded` is the like-for-like, not
+`Queue.bounded`, because a channel that never makes its producer wait
+is not the same object as one that does. Both sides here are
+unbounded, both carry drain-on-close, and both are read at the same
+granularity.
+
+WHERE THE ARC STARTED. `okayWeak 206` against `zioWeak 169`, read as a
+mechanism gap. It was four things, in this order:
+
+1. a **units** gap — `ZStream.fromQueue` takes up to 4096 elements per
+   queue operation and our consumer took one (§14);
+2. a **batched API over an unbatched primitive** — the chunked receive
+   looped over `pop`, so the ring still paid a head CAS per element
+   and a real 13-element batch bought 4% (§14);
+3. a **producer that could not run ahead** — `sendBlocking` ran the
+   parking handshake even with room in the ring, and a producer that
+   cannot get ahead leaves the consumer nothing to batch: their
+   average batch was 137.9 elements against our 35.4 (§15);
+4. a **guarantee bought in the wrong place** — drain-on-close as an
+   invariant of the mechanism cost 47%, as a mark travelling in the
+   FIFO stream 2.4%.
+
+None of the four was the mechanism being slower, and each was found by
+measuring the thing rather than the story about it.
+
 ## Why the good numbers, in one place
 
 1. **No runtime where none is needed.** Pure binds are plain data

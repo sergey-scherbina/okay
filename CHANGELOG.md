@@ -174,8 +174,28 @@ producers. Reverting the fix fails two of its three tests, the first
 in 0.136s. That matters: the full matrix passed WITH the defect
 present on one run, so a green matrix was not evidence.
 
-Gate 494, full matrix 2207, clean build, no warnings. Benchmark
-numbers to follow — every run so far landed on a contested box.
+Gate 494, full matrix 2207, clean build, no warnings.
+
+**The numbers, on a quiet box** (`ChannelGuaranteeBenchmark`, N=4000,
+cap=1024, us/op; only lanes sharing a guarantee AND a granularity
+compare):
+
+| pair | okay | zio | |
+|---|---|---|---|
+| unbounded, chunked | **49.1** | 383.8 | 7.8x |
+| unbounded, elementwise | **110.5** | 439.1 | 4.0x |
+| bounded strong, chunked | **56.2** | 125.9 | 2.24x |
+| bounded strong, elementwise | **248.6** | 286.9 | 1.15x |
+| weak, chunked | **54.8** | 116.1 | 2.12x |
+| weak, elementwise | **237.6** | 304.0 | 1.28x |
+| `StmChannel`, elementwise | **235.7** | 286.9 | 1.22x |
+| `StmChannel`, chunked | 128.0 | 125.9 | zio, 1.6% |
+
+Every lane `Channel.apply` can hand you is ours. The one that is not
+is `StmChannel` at chunk granularity, now within 1.6% — a hair rather
+than the 6.9% it was — and it is no longer the default for any
+capacity of two or more. It stays for the rendezvous case and for the
+STM composability nothing else offers.
 ## intent-distil-for-probe — forty distilled rows are worth ten points to the CENTROID
 Completed: 2026-09-04
 Landed as c0702617. The learning curve found the probe flat past 32
