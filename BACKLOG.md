@@ -1712,3 +1712,31 @@ subtraction.
       REVIEW, which is what was available and is now spent; what is
       missing is a second AUTHOR, for Russian and for whatever
       languages the fixture keeps.
+- [ ] intent-end-to-end — NOTHING CALLS ANY OF THIS. Thirteen files, a
+      dozen measured lanes, and inside okay there is no path where a
+      message arrives and a decision leaves. A consumer has their own
+      router; okay-intent has no caller of its own. This finds what
+      measurement cannot — awkward signatures, missing errors, the
+      order a caller actually needs things in — and there is already
+      one symptom: `Frame.filled` throws the parsed value away, which
+      surfaced the moment I tried to write how it would be used and
+      never in any test. Highest value of anything on this list.
+- [ ] intent-structured-output — every lane bought its answer's SHAPE
+      by persuasion: a rendered example, written rules, field order.
+      OpenAI-compatible gateways take `response_format` with a JSON
+      schema, which makes the shape a property of DECODING rather than
+      of asking nicely. Never tried once. If the gateway supports it,
+      it may close the decode question outright and take accuracy with
+      it — one experiment, not a research programme, and it is not a
+      data problem.
+- [ ] intent-multi-intent-measured — spans have been in the type since
+      the first lane and were argued for as the thing a flat list
+      cannot express, and the fixture contains NOT ONE message with two
+      intents. The mechanism has never been exercised. Either measure
+      it or stop claiming it.
+- [ ] intent-jmh-row — this line quotes microseconds everywhere (76us
+      probe, 90us centroid, 92us chargrams) and every one of them is a
+      `System.nanoTime` around a loop inside a test: no warmup, no JIT
+      accounting, one run. The repo keeps `src/jmh/history.tsv` for
+      exactly this, and by its standard those are not measurements. A
+      benchmark row per tier, or the numbers should stop being quoted.
