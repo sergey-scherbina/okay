@@ -146,4 +146,50 @@ private[okay] final class Ring[A](requested: Int) {
           out = a
       else if d < 0 then empty = true
     out
+
+  /**
+   * Claim up to `max` published slots with ONE move of the head, and
+   * hand each element to `sink` in order. Answers how many.
+   *
+   * This is the difference between batching the handshake and
+   * batching the QUEUE. Calling `pop` in a loop already amortized the
+   * callback, the parking and the boxing across a batch -- measured,
+   * 4000 handshakes became 299 -- and bought 4%, because the ring
+   * still paid a head CAS per element and that CAS was a quarter of
+   * the profile. Here the scan finds a run of consecutive published
+   * slots, one `compareAndSet` takes the whole run, and only the
+   * slot read and its stamp stay per element, because those carry the
+   * data.
+   *
+   * Safe for the same reason the single pop is: a position is ours
+   * only once we have won the head, and we only count positions whose
+   * stamp says a push already published them. A producer parked on
+   * one of those slots waits for its stamp, which we publish as we
+   * go, so it never sees a slot released before its element is out.
+   */
+  def popMany(max: Int)(sink: A => Unit): Int =
+    val limit = if max < capacity then max else capacity
+    var n = 0
+    var pos = 0L
+    var claimed = false
+    while !claimed do
+      pos = head.get
+      var k = 0
+      var scanning = true
+      while scanning && k < limit do
+        val i = ((pos + k) & mask).toInt
+        if stamp.get(i) - (pos + k + 1) == 0 then k += 1 else scanning = false
+      if k == 0 then { n = 0; claimed = true }
+      else if head.compareAndSet(pos, pos + k) then { n = k; claimed = true }
+      // else another consumer moved the head; scan again from where
+      // it left it
+    var j = 0
+    while j < n do
+      val i = ((pos + j) & mask).toInt
+      val a = slots.get(i)
+      slots.set(i, null)
+      stamp.set(i, pos + j + capacity)
+      sink(a.nn)
+      j += 1
+    n
 }

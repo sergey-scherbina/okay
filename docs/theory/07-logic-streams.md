@@ -155,3 +155,16 @@ where that property was established.
 ---
 
 ← [6 · Final tagless and staging](06-tagless-staging.md) · [Contents](index.md)
+
+**A fourth engineering note: a batched API over an unbatched
+primitive.** The third note said amortization is a property of the
+batch, not of a representation. There is a sharper form of the same
+mistake, and it is harder to see because the batch is real. Our
+chunked receive genuinely delivered batches — an average of 13.4
+elements, 4000 handshakes reduced to 299 — and bought 4%. Everything
+the batch touched did get cheaper by 13x; the batch simply did not
+touch the expensive part, because the bulk receive was a loop over the
+single receive, and the ring's per-element CAS survived inside it. An
+amortization argument is only as good as the inventory of what is
+paid per element. Counting the batch is not the same as counting the
+work.

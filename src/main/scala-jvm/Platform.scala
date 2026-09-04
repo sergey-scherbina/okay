@@ -3,16 +3,55 @@ package okay
 import java.util.concurrent.{CompletableFuture, CompletionException, ExecutionException, ExecutorService, ForkJoinPool}
 
 /**
+ * The one-shot handoff `block` waits on. Typed on A, so the value
+ * needs no cast on the way out; `filled` is the release fence, so a
+ * reader that sees it true also sees `value` written.
+ *
+ * It replaces a `CompletableFuture` per call. The future was correct
+ * but it is a general-purpose object: a node allocation, a Treiber
+ * stack of signallers and a spin before parking, all to carry one
+ * value to one waiter exactly once. The channel profile put
+ * `CanBlock.block` third among leaf frames, level with the ring's own
+ * CAS -- on a path where the callback usually fires SYNCHRONOUSLY,
+ * inside `register`, because the element was already buffered and
+ * there was never anything to wait for.
+ */
+private final class Slot[A]:
+  var value: A = scala.compiletime.uninitialized
+  val filled = java.util.concurrent.atomic.AtomicBoolean(false)
+  @volatile var waiter: Thread | Null = null
+
+/**
  * The JVM can park, and on Loom parking is free: blocking IS
  * asynchrony here. CanBlock parks the current (ideally virtual)
- * thread on a future; interruption cancels the wait.
+ * thread until the callback fires; interruption cancels the wait.
+ *
+ * The FAST PATH is the point: if `register` completed the slot before
+ * it returned, the value is already there and no park, no permit and
+ * no scheduler visit happen at all.
  */
 given CanBlock = new:
   def block[A](register: (A => Unit) => (() => Unit)): A =
-    val f = CompletableFuture[A]()
-    val cancel = register(a => { f.complete(a); () })
-    try f.get()
-    catch case e: Throwable => { cancel(); throw e }
+    val slot = Slot[A]()
+    val cancel = register: a =>
+      slot.value = a
+      slot.filled.set(true)          // release: value is written first
+      val t = slot.waiter
+      if t != null then java.util.concurrent.locks.LockSupport.unpark(t.nn)
+    if slot.filled.get then slot.value   // never waited
+    else
+      // publish who to wake BEFORE re-reading the flag: a completer
+      // that misses the waiter is one whose flag we are about to see
+      slot.waiter = Thread.currentThread()
+      var out = false
+      while !out do
+        if slot.filled.get then out = true
+        else
+          java.util.concurrent.locks.LockSupport.park(slot)
+          if Thread.interrupted() then
+            cancel()
+            throw InterruptedException()
+      slot.value
 
 /** the timer: a virtual thread sleeps for the duration; cancelling
  * interrupts it out of the sleep */

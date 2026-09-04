@@ -82,7 +82,7 @@ final class AbruptChannel[A](requested: Int) extends Channel[A] {
   // a LOOP, never recursion: a thread that claims its own waiter would
   // otherwise resume on its own stack and overflow it under load
   private def attemptSend(a: A, granted0: Boolean)(k: Boolean => Unit): Unit =
-    var granted = granted0
+    val granted = granted0
     var go = true
     while go do
       go = false
@@ -117,6 +117,33 @@ final class AbruptChannel[A](requested: Int) extends Channel[A] {
           if (!ring.isEmpty || closed.get) && w.claim() then
             val _ = receivers.updateAndGet(_.filterNot(_.claimed.get))
             go = true
+
+  /**
+   * Drain what the ring already holds, in one call. The batch is not
+   * a relaxation: an element already buffered is already late, so
+   * handing over ten of them costs no freshness -- but it does pay
+   * the ring's head CAS and stamp write ONCE for the batch instead of
+   * once per element, which is where the elementwise lane spends most
+   * of its samples.
+   */
+  private[okay] override def receiveManyAsync(max: Int)
+                                             (k: Either[Throwable, Chunk[A]] => Unit): Unit =
+    if closed.get then k(endNow.map(_ => Chunks.emptyChunk[A]))
+    else
+      // bounded by the RING, not by max: a producer refills while we
+      // drain, so "up to max" must not outrun the buffer we sized
+      val room = if max < ring.capacity then max else ring.capacity
+      val out = ChunkBuf[A](room)
+      var n = 0
+      val took = ring.popMany(room) { a => out.update(n, a); n += 1 }
+      if took == 0 then
+        // nothing buffered: exactly the single receive, its one
+        // element handed over as a chunk of one
+        receiveAsync(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
+      else
+        var i = 0
+        while i < took do { val _ = wakeOne(senders); i += 1 }
+        k(Right(out.take(took)))
 
   def offer(a: A): Boolean =
     if closed.get then false

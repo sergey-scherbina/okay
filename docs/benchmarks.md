@@ -1087,6 +1087,62 @@ state that can be shared and held, which is exactly what an in-place
 accumulator cannot be. The sketches could go mutable because nothing
 holds an old sketch; a builder is held by design.
 
+## 14. Granularity — the comparison that was never like for like
+
+`okayWeak 206us` against `zioWeak 169us` looked like a mechanism gap.
+It was a units gap. `ZStream.fromQueue` takes up to `maxChunkSize`
+(4096 by default) elements per queue operation; our consumer called
+`receiveBlocking` once per element. One coordination step per element
+was being measured against one per batch.
+
+Measured at BOTH granularities, both libraries at the same weak
+guarantee (`ChannelGranularityBenchmark`, N=4000, cap=1024):
+
+| lane | before `popMany` | after |
+|---|---|---|
+| okayElementwise | 190.1 | 212.3 |
+| okayChunked | 182.9 | **111.6** |
+| zioElementwise | 304.0 | 336.8 |
+| zioChunked | 113.7 | 149.5 |
+
+(The two columns are separate runs on a box whose absolute level
+drifts by ~30% between them — `zioChunked` moved without its code
+changing. Read the ratios inside a column, never a number across two.)
+
+Two things the table says.
+
+**Elementwise, we were already ahead** — 190 against 304, and 212
+against 337 in the later run. The original gap was entirely the
+granularity mismatch.
+
+**Chunking bought them 2.7x and us 1.04x**, and that was the defect
+worth finding. The batch was real: 4000 handshakes became 299, an
+average of 13.4 elements each. It bought 4%, because
+`receiveManyAsync` called `pop()` in a loop. We had batched the
+HANDSHAKE and not the QUEUE — the ring still paid a head CAS per
+element, and that CAS was 24% of the leaf samples.
+
+`Ring.popMany` claims a run of consecutive published slots with one
+`compareAndSet` and leaves only the slot read and the stamp write per
+element, since those carry the data. Chunking now buys 1.90x, and the
+chunked lane lands ahead of `zioChunked` in the same run.
+
+The general lesson is the one §6c already stated from the other side:
+amortization is a property of the batch, not of a representation. A
+batched API over an unbatched primitive amortizes only the part it
+touches, and here that part was 13% while the untouched part was 60%.
+
+### The handshake, separately
+
+The profile also put `CanBlock.block` third among leaf frames, level
+with the ring's own CAS. It allocated a `CompletableFuture` per
+operation — a node, a Treiber stack of signallers and a spin before
+parking — to carry one value to one waiter exactly once, on a path
+where the callback usually fires SYNCHRONOUSLY inside `register`
+because the element was already buffered. Replaced by a typed one-shot
+slot with a fast path that never parks: ~8% elementwise, and no cast,
+since the slot is parameterised on `A`.
+
 ## Why the good numbers, in one place
 
 1. **No runtime where none is needed.** Pure binds are plain data
