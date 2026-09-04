@@ -1084,7 +1084,13 @@ not a new primitive from scratch.
       gate prompt in the message's own language, or giving the gate the
       same few-shot treatment that fixed the taxonomy prompt; measure
       per language on `IntentFixture.parallel`, not in aggregate.
-- [ ] intent-decode-rate-residue — 11 of 120 replies still undecodable
+- [x] intent-decode-rate-residue — LANDED 2026-09-04 as 03cf0da4. Not a
+      residue: 9 of 10 failures were ONE malformation, the model closing
+      the intent's object a brace too late and swallowing `conf`.
+      Declaring `conf` before `intent` took undecodable from 10/120 to
+      0/120. The diagnosis was a `groupBy` over failures the harness
+      already collected and threw away. Original entry follows.
+- [x] intent-decode-rate-residue (original) — 11 of 120 replies still undecodable
       on the best arm (9%). The rendered example took this from 32% to
       9% and then stopped; what remains has not been looked at, and a
       caller cannot tell a hard message from a malformed reply.
