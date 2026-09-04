@@ -1,3 +1,49 @@
+# Changelog
+
+## intent-distil-for-probe — forty distilled rows are worth ten points to the CENTROID
+Completed: 2026-09-04
+Landed as c0702617. The learning curve found the probe flat past 32
+examples and this spec concluded labels are not its constraint. That
+was drawn on ONE author's sentences in one register, and the
+distillation lane had since shown the generated corpus is distributed
+differently — so the flatness might have been homogeneity rather than
+quantity. The corpus already existed; it only had to be embedded.
+
+| trained on | rows | probe | centroid |
+|---|---|---|---|
+| the human fixture alone | 60 | 86.7% | 80.0% |
+| + 40 distilled | 100 | 86.7% | **90.0%** |
+| + 80 distilled | 140 | 83.3% | 88.3% |
+| + 120 distilled | 180 | 83.3% | 86.7% |
+| + 320 distilled | 380 | 73.3% | 78.3% |
+| distilled alone | 320 | 50.0% | 63.3% |
+
+90.0% IS NOW THE BEST NUMBER IN THE PROGRAMME — matching the model
+tier's ~90%, from the SIMPLEST tier there is, at one embedding call and
+no generation. The probe, the headline for two lanes, does not move.
+
+MORE IS WORSE, MONOTONICALLY, for both: 90.0 → 88.3 → 86.7 → 78.3 as
+the distilled share grows. Distribution shift doing what it does — a
+mean broadened by a few diverse examples is a better mean, one dragged
+by three hundred is a mean of the wrong population. The probe suffers
+more because it fits a boundary, where the generated labels' noise
+lands, while a centroid averages it away.
+
+BOTH OF MY EARLIER READINGS WERE HALF RIGHT. "The probe is data-bound"
+was wrong: it is register-bound, and different data does not help it
+either. "Labels are not the constraint" was wrong for the centroid,
+which gained ten points from forty of them. The quantity that mattered
+was small, and the tier that mattered was the one I had stopped looking
+at.
+
+60 held-out messages, so ten points is six of them, and the claim rests
+on the monotone shape of the column rather than the best cell. These
+are the UNFILTERED 320; whether the self-consistency filter moves the
+optimum is filed (`intent-distil-dose`), with re-reading the programme
+around the centroid (`intent-centroid-reconsidered`).
+
+Gate: clean compile 0 warnings; full matrix 2216 tests, 0 failures.
+
 ## nomodel-real-distribution — the losing classes were a share split evenly, not a ranking
 Completed: 2026-09-04
 Landed as fdcf0d97. `NoModel.blend` had no way to ask the probe about
@@ -41,8 +87,6 @@ the fabricated one, and should be re-fitted rather than loaded.
 Gate: 2218 tests, 0 failures, 0 warnings, on a quiet box. An earlier
 run died at 1456 with SIGTERM 143 — the okay-cluster hazard, still
 open, still not anyone's branch.
-
-# Changelog
 
 ## intent-label-distillation — a supplement for the no-network tiers, 60.0% → 66.7%
 Completed: 2026-09-04
