@@ -1698,7 +1698,21 @@ subtraction.
       CONSTRUCTION and one meaning replaced across all six languages.
       Russian fell 86.7% -> 73.3%, which is what fixing a fixture that
       was flattering itself looks like.
-- [ ] intent-second-author — the provenance problem the review could
+- [ ] intent-typo-robustness — character n-grams are supposed to
+      survive a typo, and this model does not: one deterministic
+      transposition in the longest word takes it from 61.7% to 55.0%
+      (2026-09-04). At 60 training messages the hashed 3-5-grams are
+      too sparse for the redundancy that argument depends on. Two
+      measurable fixes — more rows, or a smaller n — and the suite
+      that found it (`TestSecondAuthor`) already measures the result.
+- [ ] intent-second-author — PARTLY ANSWERED 2026-09-04 by measuring
+      the gap instead of the corpus: 66.7% on the least-familiar half
+      against 86.7% on the most, 65-67% under mechanical register
+      shifts, and every shipped quote corrected to 65-70% for a
+      message somebody else wrote. What remains is the part no
+      measurement replaces — a corpus this repository did not write.
+      Original entry follows.
+- [ ] intent-second-author (original) — the provenance problem the review could
       not fix: the rows are still one hand's Russian, rewritten by the
       same hand that wrote them. A gap measured against my own language
       is a joint measurement of the model and me. The consumer offered

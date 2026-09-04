@@ -82,11 +82,23 @@ a promise.
 
 76.7% at full coverage on 60 held-out English messages over four
 meeting classes — the cue tier answers the 53% it fires on at 90.6%,
-and the shipped n-gram model answers the rest at 61%. It is fitted on
-60 author-written English messages from this repository's fixture; it
-is a worked example and a fallback, not a general intent model, and
-not multilingual (a six-language fit scores 33-67% per language on
-fifteen held-out rows each, which is too thin to stand behind).
+and the shipped n-gram model answers the rest at 61%.
+
+**And that 76.7% is a ceiling, not an estimate.** Those held-out
+messages were written by the same hand as the training ones, which is
+worth about ten points: 66.7% on the half least like anything in
+training (86.7% on the near half), 66.7% with one typo in the longest
+word, 65.0% with the politeness frame removed, unchanged under
+lowercasing or a hedge. Expect **65-70% from a message somebody else
+wrote**, and read the table in `Models` before quoting the bigger
+number. A real second author differs in vocabulary, length and
+structure at once, so even 65% is a lower bound on the gap.
+
+It is fitted on 60 author-written English messages from this
+repository's fixture; it is a worked example and a fallback, not a
+general intent model, and not multilingual (a six-language fit scores
+33-67% per language on fifteen held-out rows each, which is too thin
+to stand behind).
 
 For a real corpus:
 

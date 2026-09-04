@@ -28,6 +28,24 @@ package okay.intent
  *   - 76.7% at FULL COVERAGE behind the cue tier — cues answer the
  *     53% they fire on at 90.6%, this answers the rest at 61%
  *
+ * AND 76.7% IS A CEILING, NOT AN ESTIMATE. The held-out messages were
+ * written by the same hand as the training ones, on the same day, and
+ * that is worth about ten points:
+ *
+ *   - on the half of that same held-out set LEAST like anything in
+ *     training (character-trigram similarity), 66.7% against 86.7% on
+ *     the near half
+ *   - one deterministic typo in the longest word: 66.7%
+ *   - the politeness frame removed ("Could you please send X" ->
+ *     "Send X"): 65.0%
+ *   - lowercasing or a hedge in front: unchanged at 76.7%
+ *
+ * So expect 65-70% from a message somebody else wrote, and treat
+ * 76.7% as what this scores on prose of its own register. A real
+ * second author differs in vocabulary, length and structure at once,
+ * which a mechanical shift does not, so even 65% is a lower bound on
+ * the gap rather than a measurement of it.
+ *
  * WHAT IT IS NOT: a general intent model, and not multilingual. A fit
  * over all six languages of the fixture scores 33-67% per language on
  * fifteen held-out rows each — too thin to stand behind, and it costs

@@ -2510,9 +2510,9 @@ can do is measure the GAP, in two ways that do not need new data.
 
 ### 1. Where does the score live?
 
-- [ ] For each held-out message, its nearest neighbour in the training
+- [x] For each held-out message, its nearest neighbour in the training
       half by character-trigram Jaccard.
-- [ ] Accuracy stratified by that distance. If the composite's 76.7%
+- [x] Accuracy stratified by that distance. If the composite's 76.7%
       is carried by the near half and collapses on the far half, the
       corpus is scoring itself and the honest number for an unseen
       message is the far-half one.
@@ -2523,11 +2523,11 @@ Perturbations applied to the held-out set, MECHANICALLY — a
 transformation cannot be authored to flatter the model, and a
 different author differs at least this much:
 
-- [ ] `lower` — lowercased, final punctuation dropped
-- [ ] `hedge` — a hedge in front ("hmm, ", "so ", "quick one — ")
-- [ ] `tail` — a trailing clause (", if that works", " — no rush")
-- [ ] `typo` — one deterministic transposition in the longest word
-- [ ] `blunt` — the politeness frame removed ("Could you please X" ->
+- [x] `lower` — lowercased, final punctuation dropped
+- [x] `hedge` — a hedge in front ("hmm, ", "so ", "quick one — ")
+- [x] `tail` — a trailing clause (", if that works", " — no rush")
+- [x] `typo` — one deterministic transposition in the longest word
+- [x] `blunt` — the politeness frame removed ("Could you please X" ->
       "X"), which for a Request deletes the very cue the tier fires
       on. Reported SEPARATELY, because it is not a register shift so
       much as a test of what the cue tier is really keyed to.
@@ -2537,7 +2537,7 @@ gets — reporting coverage and accuracy per perturbation.
 
 ### 3. Then rewrite the numbers
 
-- [ ] Every load-bearing quote of 76.7% gets whatever this finds
+- [x] Every load-bearing quote of 76.7% gets whatever this finds
       beside it, or gets replaced. A number that only holds for
       messages of the same register as its training data must say so
       where it is quoted, not in a spec nobody reads before calling
@@ -2549,4 +2549,63 @@ A perturbed corpus is a LOWER BOUND on the gap, not the gap. A real
 second author differs in vocabulary, length, structure and intent
 distribution all at once, and none of that is here. If the drop is
 already large under a mechanical shift, the real one is larger.
+
+## Results — intent-second-author (2026-09-04)
+
+**The corpus is not scoring itself, and the number still moves ten
+points.** Both halves of that sentence matter.
+
+Nearest-training similarity across the held-out half has a median of
+0.152 by character-trigram Jaccard and a MAXIMUM of 0.328 — there are
+no near-duplicates, so the 76.7% is not the fixture recognising its
+own sentences. But split that same held-out set at the median:
+
+| | composite |
+|---|---|
+| the 30 least like anything trained on | 66.7% |
+| the 30 most like something trained on | 86.7% |
+
+Twenty points between "somewhat familiar" and "less familiar" INSIDE
+one author's corpus. A different author is further out than the far
+half is.
+
+**And the mechanical shifts, through `Router.offline()`:**
+
+| shift | composite | cues fired / right | model alone |
+|---|---|---|---|
+| as written | 76.7% | 32 / 29 | 61.7% |
+| lowercased | 76.7% | 32 / 29 | 60.0% |
+| hedge in front | 76.7% | 32 / 29 | 61.7% |
+| trailing clause | 73.3% | 32 / 29 | 55.0% |
+| one typo | 66.7% | 27 / 23 | 55.0% |
+| politeness removed | 65.0% | 19 / 19 | 55.0% |
+
+Three findings in that table, and two of them are about tiers rather
+than about the corpus.
+
+1. **The cue tier trades recall, never precision.** Strip "Could you
+   please" and it fires on 19 of 60 instead of 32 — and is right about
+   ALL NINETEEN. A syntactic frame is a high-precision, low-recall
+   signal, which is the argument for putting it first and for never
+   letting it be the only tier.
+2. **Character n-grams are not typo-robust here, though that is the
+   usual argument for them.** One transposition in the longest word
+   takes the model from 61.7% to 55.0%. At 60 training messages the
+   hashed 3-5-grams are too sparse for the redundancy that virtue
+   depends on. Filed as `intent-typo-robustness`; the fix is more
+   data or a smaller n, and both are measurable.
+3. **Casing and a hedge in front cost nothing**, which is worth
+   knowing before someone normalises input that did not need it.
+
+**What changed because of this.** `Models`, `Router` and
+`docs/modules/okay-intent.md` now quote 65-70% as what to expect from
+a message somebody else wrote, with 76.7% named as what the model
+scores on prose of its own register. The changelog entries for
+`intent-fitted-model-ships` and `intent-one-entry-point` quoted the
+bare 76.7%; the entry for this lane names them.
+
+**What this still is not.** A perturbed corpus is a LOWER BOUND. A
+real second author differs in vocabulary, length, structure and the
+distribution of intents all at once. The lane that would settle it is
+still open, and it needs a corpus nobody wrote for this repository.
 
