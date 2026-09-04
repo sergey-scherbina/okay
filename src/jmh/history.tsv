@@ -323,3 +323,10 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-04	fifo-array-front	ChannelGuaranteeBenchmark	okayStmListElem	271.350	us/op	N=4000 cap=1024 side by side	ListFifo: the banker's pair of lists, same run -- array ahead by 7.3%
 2026-09-04	fifo-array-front	ChannelGuaranteeBenchmark	okayStmArrayChunk	129.354	us/op	N=4000 cap=1024 side by side	chunked: a tie with the list (131.7), as predicted -- the reverse was already gone from this path
 2026-09-04	fifo-array-front	ChannelGuaranteeBenchmark	okayStmListChunk	131.710	us/op	N=4000 cap=1024 side by side	chunked, same run
+2026-09-04	relaxed-queues-builder	ManyProducersBenchmark	relaxedUnbounded/16	169.901	us/op	Total=8000 cap=1024 f=2 i=5	MultiFifo over Segments, 16 producers: 17.5x past zio.Queue, and FASTER than at 1 producer
+2026-09-04	relaxed-queues-builder	ManyProducersBenchmark	relaxedUnbounded/4	177.933	us/op	Total=8000 cap=1024 f=2 i=5	the same at 4
+2026-09-04	relaxed-queues-builder	ManyProducersBenchmark	relaxedUnbounded/1	354.289	us/op	Total=8000 cap=1024 f=2 i=5	the same at 1 -- relaxation costs a little when there is nothing to relax
+2026-09-04	relaxed-queues-builder	ManyProducersBenchmark	relaxed/16	111546.441	us/op	Total=8000 cap=1024 f=2 i=5	MultiFifo over Ring, 16 producers: 35x WORSE than one ring -- global waiters against a per-part resource
+2026-09-04	relaxed-queues-builder	ManyProducersBenchmark	oneRing/16	3149.829	us/op	Total=8000 cap=1024 f=2 i=5	a single bounded ring, 16 producers
+2026-09-04	relaxed-queues-builder	ManyProducersBenchmark	oneUnbounded/16	741.780	us/op	Total=8000 cap=1024 f=2 i=5	a single growable buffer, 16 producers
+2026-09-04	relaxed-queues-builder	ManyProducersBenchmark	zioQueue/16	2967.204	us/op	Total=8000 cap=1024 f=2 i=5	zio.Queue.bounded + ZStream, 16 producers

@@ -31,13 +31,16 @@ import scala.annotation.tailrec
  * delivered — which is true here precisely because the buffer is
  * abandoned.
  */
-final class AbruptChannel[A](requested: Int) extends Channel[A] {
+final class AbruptChannel[A](buf: Buffer[A]) extends Channel[A] {
+
+  /** the usual one: a fixed ring */
+  def this(requested: Int) = this(Ring[A](requested))
 
   private final class Waiter(val resume: () => Unit):
     val claimed = AtomicBoolean(false)
     def claim(): Boolean = claimed.compareAndSet(false, true)
 
-  private val ring = Ring[A](requested)
+  private val ring: Buffer[A] = buf
   private val receivers = AtomicReference[List[Waiter]](Nil)
   private val senders = AtomicReference[List[Waiter]](Nil)
   private val closed = AtomicBoolean(false)

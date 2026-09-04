@@ -1778,3 +1778,34 @@ subtraction.
       right and the wiring is absent — `Taxon` should be what a tier is
       fitted or built against, so a mismatch is a compile or fit error
       rather than a silent disagreement.
+
+## channel-per-part-waiters — a global waiter queue over a partitioned buffer
+
+`Queues.strong.relaxed(parts, each)` — a relaxed buffer with BOUNDED
+parts — measured 111546us at 16 producers against a single ring's
+3150. Not a tuning problem: a design mismatch.
+
+The channel keeps ONE queue of waiting senders while the resource is
+per part. A consumer frees a slot in part 7 and wakes an arbitrary
+sender, who finds its own part still full and parks again. With k
+parts the chance of waking a sender that can proceed is 1/k, and the
+rest is park/unpark churn. The consumer pays a scan across parts on
+top.
+
+`relaxedUnbounded` avoids the whole thing — parts that never fill mean
+senders never park — and is the fastest lane in the file: 169.9us at
+16 producers, 17.5x past `zio.Queue`, and FASTER at 16 than at 1.
+
+The fix, if the bounded form is to be kept: waiters per part, so a
+freed slot wakes a sender that can use it. That means the channel must
+learn WHERE room appeared, which `Buffer` does not currently say —
+`popMany` and `pop` would answer a route alongside their element, and
+`wakeOne` would take one. Until then `relaxed` stays in the menu with
+its measurement written next to it, and `relaxedUnbounded` is the one
+to reach for.
+
+Related: this is the fourth defect in this family, all the same shape
+— the channel asking about the buffer as a whole where the question
+belongs to one part. `isEmpty` vs `hasReady`, `size < capacity` vs
+`hasRoom`, the route taken on the waker's thread, and now the wakeup
+itself.
