@@ -1,0 +1,22 @@
+lane: relaxed-queues-builder
+why: the design became a menu -- three channels over four buffers --
+  and it wants two more entries and a way to order from it.
+what:
+  MultiFifo: k sub-buffers, a producer bound to one of them, a
+    consumer taking from whichever has something. Contention drops
+    with the number of producers; global FIFO is given up, and per
+    producer FIFO is NOT, because a producer stays on its part.
+  BlockFifo: a caller claims a run of positions and works inside it
+    privately, so coordination is per block rather than per element.
+  Channels.builder: pick a contract, pick a mechanism, get a channel.
+the catch, named up front: a relaxed buffer breaks the end mark.
+  SentinelChannel's termination rides the FIFO stream and relies on
+  nothing following the mark; with k parts a mark in one part is
+  reached while other parts still hold elements. Either such buffers
+  serve only AbruptChannel, or close must seal EVERY part and the
+  channel count them all -- the second keeps drain-on-close and is
+  what to build.
+  And Buffer's contract must say which order it promises, the way the
+  channel laws already split into tiers: global FIFO, or per-producer
+  only. A relaxed buffer that quietly passes a global-FIFO test is a
+  test that is not testing.
