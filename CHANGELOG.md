@@ -1,5 +1,37 @@
 # Changelog
 
+## segments-two-consumers — the read pass must keep the segment the scan found
+
+A correctness defect in `channel-ring-unbounded`, found by dumping a
+process instead of killing it.
+
+`Segments.popMany` re-derived its segment AFTER winning the head CAS,
+through `segmentFor(headSeg, ...)`. With more than one consumer the
+other advances `headSeg` past the claimed run in between — and the
+hint-is-ahead fallback added the day before cannot help here, because
+the hint IS `headSeg`. The read pass then walks a later segment and
+finds a null slot. The `NullPointerException` died unseen inside a
+virtual thread, the consumer vanished, and the law waiting on its
+counter spun for nineteen minutes.
+
+The fix is to keep the segment the SCAN used. It is the segment of
+`pos`, obtained before the CAS was won, and segments are never freed,
+so holding the reference is the whole guarantee.
+
+Proved rather than argued: with the defect, 2 rounds in 40 fail with
+that NPE; with the fix, 40 of 40 are clean.
+
+The test took two tries to become a test. The first version passed
+WITH the defect present — caught only because reverting the fix is now
+a step, not an afterthought. The second caught it only on a loaded
+box, and a test that needs a busy machine is not a test. What catches
+it is contention for the hint: four slots to a segment, so a
+64-element run crosses sixteen boundaries, and eight consumers, so
+someone is nearly always advancing `headSeg` while someone else is
+reading. The defect fails it; the fix passes it in 0.437s.
+
+Gate 495, full matrix 2239, clean build, no warnings.
+
 ## intent-centroid-reconsidered — the 90.0% headline does not reproduce, and I did not hold the framing fixed
 Completed: 2026-09-04
 Landed as 0b964d29. Three conclusions in this programme turned on the

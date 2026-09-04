@@ -49,6 +49,55 @@ class TestSegments extends munit.FunSuite {
     assertEquals(out.toList, (0 until 100).toList, "a run crossing a boundary lost its order")
   }
 
+  test("consumers taking in bulk: no loss, no duplication, no crash") {
+    // The shape that found the defect, and the parameters matter.
+    // ONE consumer cannot see it: the read pass re-derived its segment
+    // from `headSeg`, and only ANOTHER consumer can advance that hint
+    // past a run this one already claimed. The read then walks a later
+    // segment and hits a null slot, and the exception dies unseen
+    // inside a virtual thread.
+    //
+    // The numbers were tuned until the test actually caught it, and
+    // that took two tries. Two consumers at sixteen slots a segment
+    // passed WITH the defect present; so did three, unless the box
+    // was loaded — and a test that needs a busy machine is not a
+    // test. What catches it is CONTENTION FOR THE HINT: four slots to
+    // a segment, so a 64-element run crosses sixteen boundaries, and
+    // eight consumers, so someone is nearly always advancing
+    // `headSeg` while someone else is in a read pass. At those
+    // settings the defect fails this test and the fix passes it in
+    // under half a second. The deadline is there so a future
+    // regression fails rather than hangs.
+    val b0 = Segments[Int](segShift = 2)
+    assertEquals(b0.capacity, Int.MaxValue, "an unbounded buffer has no bound")
+    for _ <- 1 to 20 do
+      val b = Segments[Int](segShift = 2)
+      val total = 4000
+      val p = Thread.ofVirtual().start { () =>
+        var i = 0
+        while i < total do { val _ = b.push(i); i += 1 }
+      }
+      val seen = java.util.concurrent.ConcurrentLinkedQueue[Int]()
+      val n = java.util.concurrent.atomic.AtomicInteger(0)
+      // a consumer that dies silently turns this into a hang, so it
+      // reports instead -- that is exactly how the defect hid
+      val failure = java.util.concurrent.atomic.AtomicReference[Throwable | Null](null)
+      val deadline = System.currentTimeMillis() + 15000
+      val qs = (0 until 8).map(_ => Thread.ofVirtual().start { () =>
+        try
+          while n.get < total && System.currentTimeMillis() < deadline do
+            val took = b.popMany(64)(a => { seen.add(a): Unit; n.incrementAndGet(): Unit })
+            if took == 0 then Thread.`yield`()
+        catch case e: Throwable => failure.compareAndSet(null, e): Unit
+      })
+      p.join(); qs.foreach(_.join())
+      val err = failure.get
+      assert(err == null, s"a consumer threw: $err")
+      val got = scala.jdk.CollectionConverters.CollectionHasAsScala(seen).asScala.toList
+      assertEquals(got.length, got.toSet.size, "duplicated")
+      assertEquals(got.toSet, (0 until total).toSet, "lost")
+  }
+
   test("interleaved producers and a consumer lose nothing") {
     for _ <- 1 to 5 do
       val b = Segments[Int](segShift = 4)

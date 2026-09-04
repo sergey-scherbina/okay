@@ -127,10 +127,21 @@ private[okay] final class Segments[A](segShift: Int = 8) extends Buffer[A] {
   override def popMany(max: Int)(sink: A => Unit): Int =
     var n = 0
     var pos = 0L
+    // the segment the SCAN used, kept rather than re-derived. Deriving
+    // it again after the CAS was the defect: a second consumer
+    // advances `headSeg` past this run in between, and the
+    // hint-is-ahead fallback cannot help, because the hint IS
+    // `headSeg`. The read then walks a later segment and takes wrong
+    // values or a null slot -- which killed the consumer with an
+    // exception no one saw, inside a virtual thread. Holding the
+    // reference is enough here precisely because segments are never
+    // freed.
+    var start: Segment = first
     var claimed = false
     while !claimed do
       pos = head.get
       var seg = segmentFor(headSeg, pos >> segShift)
+      start = seg
       var k = 0
       var scanning = true
       while scanning && k < max do
@@ -148,7 +159,7 @@ private[okay] final class Segments[A](segShift: Int = 8) extends Buffer[A] {
       else if head.compareAndSet(pos, pos + k) then { n = k; claimed = true }
       // else another consumer moved the head; scan again from there
     var j = 0
-    var seg = segmentFor(headSeg, pos >> segShift)
+    var seg = start
     while j < n do
       val p = pos + j
       val id = p >> segShift
