@@ -1,5 +1,56 @@
 # Changelog
 
+## intent-russian-rows-fixed — the fixture was flattering itself, and fixing it cost 13 points
+Completed: 2026-09-04
+Landed as dfafec09. The last of what the consumer's review left owed,
+and the one where the defect was mine. All three hazards they warned
+about were present in my thirty Russian rows.
+
+THE PERSON MARKER CARRIED THE CLASS, ON ONE LETTER. "Не могли бы ВЫ
+забронировать" (Request) against "Не могли бы МЫ начать" (Proposal);
+"МОЖЕТЕ проверить" (Request) against "МОЖЕМ встретиться" and "МОЖЕТ,
+встретимся" (both Proposal) — three spellings of one word across two
+classes, and the third not even the same part of speech.
+
+TEMPLATE DUPLICATION. Eight Requests in three shapes, four opening
+"Пожалуйста, <imperative>", two of those the same sentence with the
+object swapped — plus a true near-duplicate pair inside `Other`, so
+leaving one out leaves its twin in the training half.
+
+TRANSLATIONESE. "Переговорная изменена на B2" (a room is not "changed
+to"), "С этого момента четверги удалённые" (a calque), "Подойдёт ли
+пятница утром". None wrong enough to fail a reader; all three wrong
+enough that the row is evidence about my English source sentence rather
+than about Russian.
+
+Ten rows rewritten by CONSTRUCTION rather than by word — swapping "вы"
+for a synonym would keep the class resting on one letter — and one
+MEANING replaced across all six languages, since the duplicated
+complaint could not be fixed in Russian alone without the parallel set
+ceasing to be parallel. After: no "не могли бы" rows, both remaining
+"мож-" openings inside ONE class, maximum pairwise Jaccard 0.20, zero
+pairs above 0.5.
+
+AND THE NUMBER WENT DOWN, WHICH IS THE POINT: Russian 86.7% → 73.3%,
+English 73.3% → 80.0% (every language's arm moved, since the replaced
+meaning is in all six). Russian lost 13 points by being fixed. That is
+what a fixture defect looks like from the inside — the twins and the
+dominant template made the task easier than the task is, and 86.7% was
+measuring my fixture rather than the classifier.
+
+Both arms still train on fifteen rows, below the thirty-two where the
+probe stabilises, so the swings carry noise; the DIRECTION is the one
+the review predicted, and a fixture edit that changed nothing
+measurable would have been one nobody could check.
+
+The provenance problem is unchanged and not pretended otherwise: I
+rewrote my own rows, so it is still one hand's Russian. The review
+bought the removal of the defects; it cannot buy a second author, which
+is filed as `intent-second-author`.
+
+Gate: clean compile 0 warnings; okayIntent JVM+JS, okayAgent and
+okayDeploy, 223 tests, 0 failures.
+
 ## stm-fifo-post-cas — the transaction needs the final state, not every state on the way
 
 `StmChannel`'s batched receive rebuilt its persistent queue ONCE PER
