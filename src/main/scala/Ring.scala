@@ -125,6 +125,52 @@ private[okay] final class Ring[A](requested: Int) {
     done
 
   /**
+   * Claim a slot, and only THEN decide what goes into it.
+   *
+   * The ordinary `push` fixes the value before it knows whether it
+   * won a position. That is enough for a queue and not enough for a
+   * channel that can close: between "I checked the channel is open"
+   * and "I won position p" the channel may close, and an element
+   * published after the end has been decided is either stranded (the
+   * sender was told true) or duplicated (the sender was told false
+   * and resends). Four ring-channel drafts failed on exactly that
+   * window, each time patched with an in-flight counter and each time
+   * leaking a new race.
+   *
+   * The test runs AFTER the position is won, so "accepted" and
+   * "ordered" become the same instant and the window has nowhere to
+   * open. The answer IS the published value, so a caller reads which
+   * way it went off the return rather than out of a captured
+   * variable.
+   *
+   * It takes a FLAG rather than a function on purpose, and the reason
+   * is measured. Whatever runs here runs between the claim and the
+   * publish, and a consumer's `popMany` counts a run of consecutive
+   * PUBLISHED slots -- so it stops at a slot that is claimed and not
+   * yet filled. Widening this window does not merely slow the
+   * producer, it truncates the consumer's batches: with a closure
+   * here the average batch fell from 65.6 elements to 43.5 and the
+   * lane went from 114us to 179. One volatile read is all this window
+   * can afford.
+   */
+  def pushDeciding(a: A, unless: java.util.concurrent.atomic.AtomicBoolean, orElse: A): A | Null =
+    var out: A | Null = null
+    var full = false
+    while out == null && !full do
+      val pos = tail.get
+      val i = (pos & mask).toInt
+      val st = stamp.get(i)
+      val d = st - pos
+      if d == 0 then
+        if tail.compareAndSet(pos, pos + 1) then
+          val v = if unless.get then orElse else a
+          slots.set(i, v)
+          stamp.set(i, pos + 1)
+          out = v
+      else if d < 0 then full = true
+    out
+
+  /**
    * Publish up to `n` elements with ONE move of the tail, taking them
    * from `src` by index. Answers how many were written.
    *

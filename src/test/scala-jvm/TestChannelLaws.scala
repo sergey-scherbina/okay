@@ -33,6 +33,7 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
    * yields what it already accepted? */
   private val impls: List[(String, Boolean, Int => Channel[Int])] = List(
     ("StmChannel", true, cap => StmChannel[Int](cap)),
+    ("SentinelChannel", true, cap => SentinelChannel[Int](cap)),
     ("AbruptChannel", false, cap => AbruptChannel[Int](cap)),
     // add a mechanism here and it must answer for the whole contract.
     // These were checked against the withdrawn CasChannel with its

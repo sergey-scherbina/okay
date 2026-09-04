@@ -1,5 +1,44 @@
 # Changelog
 
+## channel-sentinel-default — a bounded channel is a ring, and termination is an element in it
+
+`Channel.apply` now dispatches on the capacity asked for. Bounded gets
+`SentinelChannel`; unbounded stays on `StmChannel`, because a ring
+cannot be unbounded and `Int.MaxValue` is the default here, and so
+does a capacity below two, which is a rendezvous the stamp scheme
+cannot express. Both keep the same contract — every law, both tiers —
+so the choice shows only in the timing.
+
+The design point: the guarantee is an ELEMENT. Termination takes a
+position through the same tail CAS as everything else, so the ring's
+own atomics order it against every send and there is no second
+structure to reconcile. A sender decides what to publish only after
+winning its position, and if close already landed it publishes a void
+and answers false — so a sender ordered after the mark always sees the
+close, its own CAS being the fence. The window that broke four
+`RingChannel` drafts has nowhere to open, with no in-flight counter
+and no spin.
+
+Measured: 208.9us elementwise against `StmChannel`'s 300.1 and
+`zio.Queue` carrying the same contract at 320.1. At chunk granularity
+the two are level, 175.3 against 172.3 — a win on one axis and a wash
+on the other, and `zioStrongChunk` at 128.0 remains ahead. The lever
+there turns out to be batch size, not per-operation cost: `StmChannel`
+takes 363.6 elements per bulk receive against `SentinelChannel`'s
+43.5, because a ring wakes a receiver on every push. Filed as
+`channel-chunk-batch-size`.
+
+Two false starts kept in the record. Counting outstanding ELEMENTS to
+answer `finished` put an atomic increment per send on a cell shared
+with the consumer and cost 2x; counting MARKS answers the same
+question off the hot path. And passing a closure to `pushDeciding`
+truncated the consumer's batches — `popMany` counts CONSECUTIVE
+published slots, so it stops at one that is claimed and not yet
+filled, and anything in that window costs the reader, not just the
+writer.
+
+Full matrix 2182 tests, clean build, no warnings.
+
 ## channel-bulk-and-alloc — both ends, and the guarantee table on one axis
 
 `ChannelGuaranteeBenchmark` had the fault its sibling was written to

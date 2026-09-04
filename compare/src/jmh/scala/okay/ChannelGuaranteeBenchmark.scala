@@ -86,6 +86,21 @@ class ChannelGuaranteeBenchmark {
     val t = produce(c.sendBlocking(_): Unit, c.close())
     val s = sumChunk(c, counted = false); t.join(); s
 
+  // ── strong, the other way round: a mutable ring plus a mark in
+  //    the FIFO stream. The same contract as okayStrong, assembled
+  //    as okayLayered was, but as a real channel rather than a
+  //    benchmark's Option wrapper ─────────────────────────────────
+
+  @Benchmark def okaySentinelElem(): Long =
+    val c = SentinelChannel[Long](Cap)
+    val t = produce(c.sendBlocking(_): Unit, c.close())
+    val s = sumElem(c, counted = false); t.join(); s
+
+  @Benchmark def okaySentinelChunk(): Long =
+    val c = SentinelChannel[Long](Cap)
+    val t = produce(c.sendBlocking(_): Unit, c.close())
+    val s = sumChunk(c, counted = false); t.join(); s
+
   // ── weak: AbruptChannel, close discards, so the consumer counts ──
 
   @Benchmark def okayWeakElem(): Long =
