@@ -736,3 +736,44 @@ What to try before reaching for this again: rules rendered as EXAMPLES
 of the disputed case rather than as prose (few-shot examples are the
 one lever that has consistently paid in this line), and a single rule
 rather than a list. Filed.
+
+## Results — intent-tiebreak-by-example (2026-09-04)
+
+The precedence lane's own suggestion, tested: carry a tie-break as
+EXAMPLES of the disputed case rather than as prose. Same two decisions,
+same 120 messages, two arms differing by exactly two added examples.
+
+| arm | macro F1 | Proposal | Request | Notification | Other |
+|---|---|---|---|---|---|
+| examples as shipped | **0.909** | 0.95 | 0.93 | 0.89 | 0.86 |
+| + two tie-break examples | 0.854 | 0.90 | **0.76** | 0.91 | 0.85 |
+| (prose rules, previous lane) | 0.866 | 0.92 | 0.89 | 0.84 | 0.81 |
+
+**Worse than the prose it was supposed to improve on**, and the damage
+is specific rather than diffuse: `Request` RECALL collapses from 0.87
+to 0.63 while `Proposal` precision falls 0.91 -> 0.81. The example did
+exactly what it said — "a message that both proposes and asks is a
+proposal" — and the model applied it to requests that were not disputed
+at all. A tie-break shown as an instance does not stay inside the tie.
+
+**So the overlap is not fixable from the prompt.** Two independent
+channels, prose and example, both moved the boundary in the intended
+direction and both paid more elsewhere than they gained. That was
+written into the claim before the run, so it is a conclusion rather
+than a consolation: `Proposal` and `Request` overlap because the
+TAXONOMY draws them that way, and a boundary a taxonomy draws is moved
+in its labels and its class definitions, not in an instruction to the
+model.
+
+**And a caution about the one lever that had always paid.** Few-shot
+examples improved every arm they touched in this line — decode rate,
+`Other` recall, macro F1 — and this is the first measurement where they
+COST. The difference is what the example teaches: an example of a CLASS
+generalises usefully, an example of a BOUNDARY generalises past the
+boundary. That distinction is worth carrying into any prompt work here,
+because "add an example" has otherwise been free advice.
+
+Nothing shipped. The two tie-break examples stay in `IntentFixture` as
+the evidence for the next person who reaches for this, and the
+`Taxonomy[I]` typeclass refused in the precedence lane stays refused —
+neither channel earned it.

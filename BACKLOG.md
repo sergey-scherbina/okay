@@ -1120,7 +1120,16 @@ not a new primitive from scratch.
       per language on `IntentFixture.parallel`; and grow that set past
       twelve per language first, because twelve supports "there is an
       effect" and not the size of any one number.
-- [ ] intent-tiebreak-by-example — the precedence lane's own suggestion
+- [x] intent-tiebreak-by-example — LANDED 2026-09-04 as a REFUSAL, and
+      worse than the prose it was meant to improve on: 0.854 against
+      0.866 for prose and 0.909 for neither, with `Request` recall
+      collapsing 0.87 -> 0.63. An example of a BOUNDARY generalises
+      past the boundary, where an example of a CLASS generalises
+      usefully — the first measurement in this line where few-shot
+      examples cost anything. Conclusion: the Proposal/Request overlap
+      is not fixable from the prompt by either channel; it is a
+      labelling question. Original entry follows.
+- [x] intent-tiebreak-by-example (original) — the precedence lane's own suggestion
       for what to try before reaching for stated rules again: render a
       tie-break as EXAMPLES of the disputed case rather than as prose
       (few-shot examples are the one lever that has consistently paid

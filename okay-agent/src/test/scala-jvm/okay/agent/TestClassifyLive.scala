@@ -291,4 +291,25 @@ class TestClassifyLive extends munit.FunSuite {
       predictIn[Meeting](ask(Classify.prompt[Meeting](m, IntentFixture.meetingExamples)))(
         using sM, mReading))
   }
+
+  /**
+   * A tie-break as EXAMPLES rather than as prose.
+   *
+   * Two arms over the same messages, differing by exactly two added
+   * examples that carry the same two decisions the precedence lane
+   * stated in words and lost 0.043 macro F1 doing.
+   */
+  test("live: does a tie-break carried as examples pay") {
+    assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    import IntentFixture.Meeting
+    given sM: Schema[Meeting] = summon[Schema[Meeting]]
+    val mReading = Classify.reading[Meeting]
+
+    def withExamples(ex: List[(String, Meeting)])(m: String) =
+      predictIn[Meeting](ask(Classify.prompt[Meeting](m, ex)))(using sM, mReading)
+
+    arm("examples as shipped", withExamples(IntentFixture.meetingExamples))
+    arm("examples + two tie-breaks",
+      withExamples(IntentFixture.meetingExamples ++ IntentFixture.tieBreakExamples))
+  }
 }

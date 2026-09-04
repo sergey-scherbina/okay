@@ -250,6 +250,26 @@ object IntentFixture {
     "What is the capital of Portugal?" -> Support.Other("general knowledge"),
     "My headphones arrived broken, I want a replacement." -> Support.Other("a support issue"))
 
+  /**
+   * Two examples that settle a tie, instead of two sentences that
+   * state it.
+   *
+   * The precedence lane put the same two rules into the prompt as
+   * prose and lost 0.043 macro F1, diluting every class including the
+   * one the rule named. These carry the identical decisions —
+   * proposal-beats-request when a message does both, and a
+   * cancellation with no new time is a notification — as instances of
+   * the disputed case, which is the channel that has paid every time
+   * it was tried in this line.
+   *
+   * Deliberately not drawn from `labelled`, like the others.
+   */
+  val tieBreakExamples: List[(String, Meeting)] = List(
+    "Could you move our Tuesday call to Thursday instead?" ->
+      Meeting.MeetingProposal("move the call to Thursday"),
+    "I am cancelling Friday's review; nothing to reschedule for now." ->
+      Meeting.MeetingNotification("Friday's review cancelled"))
+
   /** the same five examples in the domain-bearing taxonomy, so the
    * arms differ in the NAMES and in nothing else */
   val meetingExamples: List[(String, Meeting)] = List(
