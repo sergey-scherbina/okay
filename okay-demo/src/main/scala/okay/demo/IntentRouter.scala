@@ -1,6 +1,5 @@
 package okay.demo
 
-import okay.codec.{Json, Schema}
 import okay.intent.*
 import okay.rag.Embedding
 
