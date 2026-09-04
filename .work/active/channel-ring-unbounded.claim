@@ -1,0 +1,16 @@
+lane: channel-ring-unbounded
+why: the one lane still behind zio.Queue is StmChannel at chunk
+  granularity (130.6 vs 122.2), and after channel-sentinel-default
+  that mechanism is reached only by UNBOUNDED channels -- which is
+  what Channel.apply defaults to. Its cost is List.reverse, 40% of
+  leaf samples, and it cannot be fixed inside the model: the reverse
+  is amortized one per element and three earlier lanes failed trying
+  to swap the structure. So the unbounded case needs a ring too.
+how: Segments -- a linked list of fixed arrays behind the same
+  position counters, so a claim is still one atomic and popMany still
+  takes a run with one CAS. Segments are NEVER reused or freed by
+  hand: a scanner holds its segment by reference and the GC reclaims
+  what nobody holds, which is what keeps the use-after-free class out
+  of this entirely. A Buffer seam lets SentinelChannel take either.
+  Must pass both law tiers, bounded and unbounded, before the default
+  moves.
