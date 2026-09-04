@@ -1,5 +1,54 @@
 # Changelog
 
+## intent-slot-descriptor — what a slot is, proposed for review
+Completed: 2026-09-04
+Landed as 0cc3afac. Request 5 of the consumer's seven, the last still
+open, PROPOSED rather than declared finished: they said write the shape
+and they would bring real usage to the review instead of specifying
+from outside a second time.
+
+The Overview has promised since the first lane that a label cannot be
+acted on and a filled FRAME can, and no type held a frame. `Temporal`
+parsed one slot in one language and nothing said what a slot IS, so a
+second language was a rewrite and a learned tagger would have been a
+rival design.
+
+The shape is theirs: a slot is a NAME, a QUESTION per language, and a
+PARSER whose failure is a re-ask.
+
+    final case class Slot[A](name: String, ask: Map[String, String],
+                             parse: String => Option[A], required: Boolean = true)
+    final case class Frame[I](intent: I, slots: Vector[Slot[?]],
+                              filled: Map[String, String] = Map.empty)
+
+Three things follow that did not before. `Temporal` becomes one
+implementation of `parse` rather than a special case (`Slots.when` is
+it, wearing the descriptor); another language is another `ask` entry
+and another parser; and `intent-crf-slots`, when it comes, is an
+alternative `parse` behind the same seam.
+
+`read` returns the QUESTION on failure rather than an error, because
+the caller's next move is to ask, and an error string would have to be
+turned into a question at every call site in every language.
+`Frame.answer` returns the frame UNCHANGED when a parse fails — the
+property the consumer asked for by name: a slot that cannot read an
+answer must not store it, since keeping the raw string is how a field
+typed as a date comes to hold "next thursday".
+
+`missing` is why the type exists: the distance between having a class
+and being able to act is a list of unanswered questions in the reader's
+language, not a boolean.
+
+IT IS DELIBERATELY NOT A CONVERSATION. The descriptor describes — no
+session state, no knowledge of what has been asked, no decision about
+when to ask. The classifier stays a pure function of a message, which
+is what keeps it testable, cacheable and foldable, and that is worth
+more than the convenience of putting a dialogue here. Suspension stays
+`Conversation`'s, in okay-agent, on `Durable`.
+
+Gate: clean compile 0 warnings; okayIntent JVM+JS, okayAgent and
+okayDeploy, 223 tests, 0 failures.
+
 ## intent-state-the-framing — a row cannot be written without its terms
 Completed: 2026-09-04
 Landed as 336368c7. The defect behind this afternoon's retraction, not
