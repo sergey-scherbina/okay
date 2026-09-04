@@ -1729,3 +1729,52 @@ rather than on the single best cell. The distilled rows here are the
 UNFILTERED 320; the self-consistency filter that kept 182 of them was
 not applied, and whether filtering changes the optimum is filed rather
 than assumed.
+
+## Results — intent-centroid-reconsidered (2026-09-04)
+
+The centroid reached 90.0% in the previous lane and every table before
+it had been read with the probe as the subject. Three conclusions
+turned on the probe's number specifically, so all three were re-run.
+One of them was mine from an hour earlier, and it did not survive.
+
+**The 90.0% headline does not reproduce, and the reason is a condition
+I failed to hold fixed.** The distillation lane embedded messages
+BARE; this one embeds them with the classify instruction that the
+embedding lane had already shown to be better. Same recipe, same
+corpus, same split:
+
+| distilled added | probe (framed) | centroid (framed) | centroid (bare, previous lane) |
+|---|---|---|---|
+| 0 | 88.3% | 83.3% | 80.0% |
+| 20 | 88.3% | **86.7%** | — |
+| 40 | 85.0% | 85.0% | **90.0%** |
+| 60 | 76.7% | 83.3% | — |
+| 120 | 80.0% | 75.0% | 86.7% |
+
+Framed, the centroid's gain from distilled rows is +3.4 at its peak
+rather than +10, and the peak moves from 40 rows to 20. On sixty
+held-out messages +3.4 is two messages and +10 is six, so the honest
+reading is that BOTH are near the noise floor and the previous lane's
+headline was over-read. What survives across both conditions is the
+DECLINE at larger doses — 75.0% at +120 here, 78.3% at +320 there —
+which is distribution shift and is visible well outside the noise.
+
+So the corrected claim: distilled data does not lift the centroid to
+the model tier's level. It may be worth a couple of points at a small
+dose, and it is reliably harmful at a large one.
+
+**The other two re-readings leave their conclusions standing.** The 4B
+embedder is worse for the centroid as well as for the probe (framed:
+80.0% against the 0.6B's 83.3%), so that verdict was not an artifact of
+the probe's parameter count. And the classify instruction helps the
+centroid MORE than the probe (+3.3 against +1.6), which means the
+default was chosen on the smaller of the two gains — it happens to be
+the same default, but the reason recorded for it was the weaker half.
+
+**What this lane is really about.** Two measurements an hour apart
+disagreed because one of them silently changed the embedding's framing,
+and the second only caught it because a lane existed to re-read the
+first. A programme this size accumulates conditions faster than it
+records them; the fix is not more care but fewer free variables — every
+future arm here states its framing in the printed row, not in the prose
+around it.

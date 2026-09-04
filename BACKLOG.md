@@ -1631,7 +1631,15 @@ rather than on every pop, which is the same idea as
       right knob is a dose at all or a WEIGHT — distilled rows counted
       at less than one in the fit, which a centroid can express and a
       grid over doses cannot.
-- [ ] intent-centroid-reconsidered — the centroid at 90.0% is now the
+- [x] intent-centroid-reconsidered — LANDED 2026-09-04 and it RETRACTED
+      the previous lane's headline: the centroid's 90.0% was measured on
+      BARE embeddings, and with the classify instruction the same recipe
+      gives 83.3% -> 85.0%, a peak gain of +3.4 at 20 rows instead of
+      +10 at 40. Both are near the noise floor on 60 test messages; what
+      survives is the DECLINE at large doses. The 4B and
+      instruction-prefix conclusions stand for the centroid too.
+      Original entry follows.
+- [x] intent-centroid-reconsidered (original) — the centroid at 90.0% is now the
       best result in the programme, beating the probe it was supposed
       to be a baseline for, at four vectors against 4096 weights. Every
       arm in the bake-off and the embedder comparison was read as
@@ -1655,3 +1663,11 @@ has never been observed, but it is the same shape and deserves the
 same treatment: a `hasRoom` on `Buffer`, answered from the stamp of
 the position the tail is about to claim rather than from a
 subtraction.
+- [ ] intent-state-the-framing — two measurements an hour apart
+      disagreed because one silently changed whether the embedding was
+      framed with a classify instruction, and nothing in either printed
+      row said which. Make every live arm print its conditions —
+      embedder, framing, split, corpus — beside its number, so a table
+      cannot be compared against one taken under different terms. This
+      is cheap, and it is the defect behind the retraction in
+      intent-centroid-reconsidered rather than a nice-to-have.
