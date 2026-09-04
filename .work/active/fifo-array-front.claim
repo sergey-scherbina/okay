@@ -1,0 +1,17 @@
+lane: fifo-array-front
+why: the segmented buffer's real idea is not mutability, it is that
+  ELEMENTS LIVE IN ARRAYS. That transfers to a persistent structure
+  intact: make Fifo's front an immutable array plus a start index.
+  Each state version keeps its own index, the array is never mutated,
+  so persistence and STM composability are untouched.
+  What it buys: the refill step (front empty, back must be turned
+  round) allocates ONE object instead of n cons cells; the elementwise
+  dequeue becomes index arithmetic instead of pointer chasing; a
+  batched take from the front becomes an array copy.
+  Honest about size: the batched path already builds no reversed list
+  (fill walks the back writing descending), so the gain there is
+  locality only. The elementwise path is where the tuple and the
+  amortized reverse still are.
+  Both lanes already lead zio (114.5 vs 123.8 chunked, 223.4 vs 302.0
+  elementwise), so this is finishing the structure, not closing a gap.
+  Land only if measured faster; revert if not.
