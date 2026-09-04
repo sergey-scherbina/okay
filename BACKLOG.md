@@ -1618,3 +1618,19 @@ rather than on every pop, which is the same idea as
       cheap thing to try; measuring the corpus's own diversity (say,
       distinct trigram ratio against the human fixture's) is the honest
       way to tell whether it worked.
+- [ ] intent-distil-dose — a little distilled data is worth ten points
+      to the centroid (80.0% -> 90.0% at +40 rows) and more is worse,
+      monotonically, down to 78.3% at +320. The optimum was found by
+      accident between two arms; find it properly, and find out whether
+      the self-consistency filter (which kept 182 of 320 and was NOT
+      applied in that run) moves it. Also worth asking whether the
+      right knob is a dose at all or a WEIGHT — distilled rows counted
+      at less than one in the fit, which a centroid can express and a
+      grid over doses cannot.
+- [ ] intent-centroid-reconsidered — the centroid at 90.0% is now the
+      best result in the programme, beating the probe it was supposed
+      to be a baseline for, at four vectors against 4096 weights. Every
+      arm in the bake-off and the embedder comparison was read as
+      "probe first"; re-read them with the centroid as the subject, and
+      re-run the ones where the conclusion turned on the probe's
+      number.

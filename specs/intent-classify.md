@@ -1684,3 +1684,48 @@ the run was cut off. Each batch is now written the moment it arrives
 and every run adds to what the last one left, with a time budget so the
 exit is clean rather than a kill. 320 messages took 277 seconds across
 resumable passes.
+
+## Results — intent-distil-for-probe (2026-09-04)
+
+The learning curve found the probe flat past 32 examples and this spec
+concluded that labels are not its constraint. That was drawn on ONE
+author's sentences in one register, and the distillation lane then
+showed the generated corpus has a measurably different distribution.
+So the flatness might have been about homogeneity rather than quantity.
+The corpus was already generated; it only had to be embedded.
+
+| trained on | rows | probe | centroid |
+|---|---|---|---|
+| the human fixture alone | 60 | 86.7% | 80.0% |
+| **+ 40 distilled** | 100 | 86.7% | **90.0%** |
+| + 80 distilled | 140 | 83.3% | 88.3% |
+| + 120 distilled | 180 | 83.3% | 86.7% |
+| + 320 distilled | 380 | 73.3% | 78.3% |
+| distilled alone | 320 | 50.0% | 63.3% |
+
+**A little different data is worth ten points to the centroid — and it
+is now the best number in the programme.** 90.0% matches the model
+tier's ~90%, from the SIMPLEST tier there is, at one embedding call and
+no generation. The probe, which was the headline for two lanes, does
+not move at all.
+
+**More of it is worse, monotonically**, for both: 90.0 → 88.3 → 86.7 →
+78.3 as the distilled share grows. That is distribution shift doing
+exactly what it does — a mean broadened by a few diverse examples is a
+better mean, and one dragged by three hundred of them is a mean of the
+wrong population. The probe suffers more because it fits a boundary and
+the generated labels carry noise a centroid averages away.
+
+**So both of my earlier readings were half right.** "The probe is
+data-bound" was wrong — it is register-bound, and different data does
+not help it either. "Labels are not the constraint" was wrong for the
+centroid, which gained ten points from forty of them. The quantity that
+mattered was small and the tier that mattered was the one I had stopped
+looking at.
+
+Read against its size: 60 held-out messages, so 80.0% → 90.0% is six
+messages, and the claim rests on the monotone shape of the column
+rather than on the single best cell. The distilled rows here are the
+UNFILTERED 320; the self-consistency filter that kept 182 of them was
+not applied, and whether filtering changes the optimum is filed rather
+than assumed.
