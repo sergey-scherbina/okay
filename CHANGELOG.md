@@ -1,5 +1,53 @@
 # Changelog
 
+## intent-slot-extraction — a frame is filled from the message it arrived in
+Completed: 2026-09-04
+Landed as 99af30b1. The end-to-end extractors: a slot may carry an
+extractor, and `Frame.fillFrom` runs the unanswered ones over the
+message BEFORE anyone is asked anything. The router now acts where it
+used to ask — "Could you send me the agenda?" no longer ends in "What
+would you like done?", asked of someone who had just said, and "Shall
+we meet on Tuesday?" comes back as an action carrying `2026-09-08` as
+a `Temporal.When`, with `Tuesday` beside it as the words it rests on.
+
+`Found[A]` keeps that span because a value a person did not TYPE has
+to be echoable, and the whole message is not an echo.
+
+The value stays `Temporal.parse`'s own verdict over the whole message
+and only the EVIDENCE is searched for — the shortest window of words
+reproducing that same value — so extraction cannot disagree with
+asking. Sliding a window and taking the first or longest hit would
+have been a second parser with its own answers, and a frame filled by
+extraction would then hold a different date from the same frame filled
+by asking. The minimum is also shorter than a person would quote:
+"next thursday at 2pm" yields `thursday at 2pm`, because a bare
+weekday already resolves to the coming one.
+
+FOUND A FAULT IN THE PREVIOUS LANE. `valueOf` identifies a slot by
+identity, which is what makes its cast true — and `IntentRouter` built
+`Slots.when(today)` INSIDE `frameFor`, where no caller could reach it,
+so the typed value was unreachable through the very door
+`intent-frame-typed-values` had opened (`Frame.slots` hands back
+`Slot[?]`, and a wildcard cannot be asked for a type). Slots are now
+held as values in a `Meeting(today)` the caller keeps, and `route`
+takes that instead of a bare date. Found by writing a test with
+`private def when` instead of `private val when` and watching `None`
+come back.
+
+Measured and filed rather than claimed: 5 of the 30 parallel meanings
+carry a date in their English reading, and extraction finds 5/5 in
+English, 0/5 in fr, de, es, ru and ja. `Temporal` is English; the
+router degrades the right way, by asking in the reader's own language;
+`intent-temporal-multilingual` is the lane, filed with the shape of
+the fix. `intent-extract-more-slots` filed beside it.
+
+`intent-taxon-wired-to-tiers` was claimed and released UNSTARTED to
+take this lane — no code was written, and it stays in the backlog
+unclaimed.
+
+Gate: clean compile 0 warnings; okayIntent JVM+JS, okayDemo, okayAgent
+— 304 tests, 0 failures.
+
 ## intent-cues-for-a-taxonomy — a cue set carries the taxonomy it decides
 Completed: 2026-09-04
 Landed as ae449ebd. `Patterns.Cues` pairs the cues with a `Taxon` and
