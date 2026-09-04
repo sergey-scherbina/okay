@@ -1,5 +1,46 @@
 # Changelog
 
+## tutorial-chat-app — building a chat application on okay, from an empty directory
+Completed: 2026-09-04
+Landed as 1dac481f. docs/building-a-chat-app.md: the page a person
+OUTSIDE this repository needed and did not have — an empty directory
+to a running streaming chat, as a user of the library rather than a
+contributor. Project scaffold, backend, frontend, tests, run.
+
+Written by doing it. The whole application was built in a scratch
+project first, every command executed in the order it appears and
+every output quoted the one that came back; the build.sbt in the page
+is the file that project was built with, copied back out of the page
+verbatim and clean-built once more (uiJVM 2 green, app 3 green, the
+bundle linked at exactly the path the page tells you to serve).
+
+The awkward step is first and gets the most words, because a reader
+cannot guess it: okay is not published, so `sbt publishLocal` —
+measured at 38 seconds for 86 artifacts across JVM, JS and Native —
+plus the coordinates (dev.okay, 0.1.0-SNAPSHOT, `%%` against `%%%`),
+the TASTy floor (the consumer's Scala must be at least the library's
+3.7.4), and the two roads not taken with reasons: a `ProjectRef`
+source dependency is right while you are changing okay itself,
+unmanaged jars lose the transitive dependencies.
+
+The rest follows the shape the library has: a route is a
+PartialFunction value composed with `orElse`, `Chat.Model` is the
+whole model seam (scripted / OpenAI-compatible / Anthropic behind one
+type), `provide` is the wiring, `Jetty.serve` answers a Resource. The
+frontend splits the way okay-ui means it to — a pure cross-compiled
+fold tested on the JVM with `Frame.render`, browser glue that decides
+nothing — so the tests need no browser, no mock server and no docker:
+a scripted model and port 0.
+
+Two failures met while writing are kept as Troubleshooting rather than
+silently fixed: `Transports` exists in both okay.llm and okay.http and
+only one satisfies the model seam; and a forked `run` takes the
+PROJECT directory as its working directory, so the relative path to
+the linked bundle misses until `run / baseDirectory` says otherwise.
+
+Linked from docs/README.md's "Start here" and from
+docs/modules/okay-demo.md.
+
 ## intent-second-author — the corpus is not scoring itself, and the number still moves ten points
 Completed: 2026-09-04
 Landed as 4851a8c1, with a doc correction in 5001c226.
