@@ -1,0 +1,17 @@
+lane: like-for-like-lanes
+why: the two rows where ZIO leads in the idiomatic table compare our
+  ELEMENTWISE surface plus a MEMOIZING bridge against their
+  chunk-native array walk -- mismatched on two axes at once.
+    okayCollectionWhole: Source.of(list).toLazyList.foldLeft
+    zioCollectionWhole:  ZStream.fromIterable(list).runSum
+    okayChannelForeach:  Channel.buffer(1024)(list).drained.toLazyList.foreach
+    zioChannelForeach:   ZStream.fromQueue(q).take(N).runForeach
+  The tools for the honest pair already exist and were not used:
+  Chunks.fromIterator is chunk-native, Source.runForeach consumes
+  without memoizing. Until the fair lane is measured, any work on
+  Drain aims at a gap of unknown size.
+how: add the fair lanes, KEEP the old ones, and rename every lane in
+  this benchmark so its granularity and whether it memoizes are in
+  the name -- the third appearance of this same error (6b, the
+  guarantee table, here) says the fix is a naming rule, not another
+  one-off correction.
