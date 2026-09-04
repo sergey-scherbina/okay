@@ -1120,3 +1120,34 @@ not a new primitive from scratch.
       (few-shot examples are the one lever that has consistently paid
       in this line), and use one rule rather than a list. The prose
       version cost 0.043 macro F1 and diluted every class.
+
+## channel-sentinel-default — buy drain-on-close as a layer, not as an invariant
+
+Measured 2026-09-04 (`ChannelGuaranteeBenchmark`, N=4000, cap=1024):
+
+| lane | us/op | contract |
+|---|---|---|
+| okayStrong (`StmChannel`) | 333.6 | drains on close, termination detected |
+| okayWeak (`AbruptChannel`) | 206.0 | close discards, no detection |
+| **okayLayered** (`AbruptChannel` + FIFO sentinel) | **177.4** | **same as okayStrong** |
+| zioStrong (`Queue[Option]`) | 187.1 | our contract, their queue |
+| zioWeak (`Queue` + `take(N)`) | 168.9 | count known up front |
+
+The result that matters is the one that refuted the expectation. The
+strong contract costs ZIO 11% (187 vs 169) and costs us 62% (334 vs
+206) — so the guarantee was never the whole gap, but the WAY we buy it
+is. They express it ABOVE the queue, as one sentinel travelling in
+FIFO order behind the buffered elements. We express it INSIDE the
+transition, so every send and every receive reads the state that makes
+termination derivable, and pays for it whether or not close is ever
+called.
+
+Buying it their way and keeping our contract lands at 177.4 — 1.9x
+cheaper than `StmChannel` and past `zioStrong`.
+
+The work: an end-marker carried in the channel's own element slot
+rather than a boxed `Option` (the benchmark boxes, and still wins),
+with the layer owning `close` so the sentinel cannot be overtaken.
+Then `Channel.apply` can default to the weak mechanism plus the layer
+and lose no promise. Blocked on nothing; wants the two-tier laws
+(landed) to hold the line while the default moves.
