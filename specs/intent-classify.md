@@ -1310,3 +1310,73 @@ at all.
 Read this against its size: 60 test messages, so a 3-4 point move is
 noise, and the flatness of the right-hand half is the finding rather
 than any single cell.
+
+## Results — intent-embedding-choice (2026-09-04)
+
+Promoted ahead of distillation by the learning curve, and half blocked
+by the machine: the central experiment needs a second embedding model
+and there is exactly one installed.
+
+**What the gateway actually does, stated correctly this time.**
+`/v1/embeddings` validates the `model` field and refuses anything that
+is not an embedding model with HTTP 400; asking for it by name or
+omitting it returns byte-identical vectors, and the response reports
+which model answered
+(`mlx-community/Qwen3-Embedding-0.6B-4bit-DWQ`, 1024 dimensions).
+An earlier note in this programme said the gateway "ignores the model
+field", inferred from two requests that both returned 1024 dimensions —
+two different models can share a dimension, and the vectors should have
+been compared instead of their shapes. Every measurement in this spec
+was made with that one model, and results should be read as facts about
+it rather than about embeddings in general.
+
+**Is the ceiling the representation or the task?** The learning curve
+ruled out capacity; this rules out the task. The recorded journal holds
+the model tier's answer for every fixture message, so the two can be
+compared with no calls at all:
+
+| | wrong of 60 |
+|---|---|
+| model tier | 4 |
+| probe | 8 |
+| **both** | **0** |
+
+Not one shared mistake. If the messages were inherently ambiguous the
+two would stumble over the same ones; instead each has its own blind
+spots, so the signal the probe misses IS present in the text and its
+representation is losing it. That is the ceiling, and it is
+representational.
+
+**Framing moves the same model by 6.6 points.** One embedding model,
+four ways of asking:
+
+| framing | probe | centroid |
+|---|---|---|
+| bare message | 86.7% | 80.0% |
+| "Classify the intent of this message: " | **88.3%** | **83.3%** |
+| long e5-style task instruction | 81.7% | 65.0% |
+| "Represent this message for intent classification: " | 81.7% | 78.3% |
+
+The short classification instruction is the best of the four, and the
+gain over bare text (+1.6 probe, +3.3 centroid) is at the edge of noise
+on sixty messages — but the SPREAD is not: 81.7 to 88.3 from wording
+alone, with both models moving together. So "choose the embedding" is
+not only a question of which model, and the same rule this line has
+found everywhere else applies here too — a short instruction helps, a
+long one costs.
+
+**Concatenating an orthogonal representation did not help**: embedding
+86.7%, chargrams 51.7%, both together 85.0%. A weak signal glued to a
+strong one is a poor test of orthogonality, so this refutes little.
+
+**What remains blocked, and it is installation rather than code.** A
+second embedding model would settle whether 88.3% is this vectoriser's
+limit. Candidates that fit the constraints (local, ideally MLX,
+multilingual for the Russian arm): `Qwen3-Embedding-4B/8B` as the
+same-family upgrade, `BGE-M3` and `multilingual-e5-large` for
+multilingual strength, `jina-embeddings-v3` for its classification
+adapter, `gte-multilingual-base` for size. And for the no-network goal
+specifically, static embeddings (`model2vec`/`potion`): a distilled
+lookup table with no neural inference at request time, which would slot
+straight into `Centroid` and `Probe` because neither cares where a
+vector came from.

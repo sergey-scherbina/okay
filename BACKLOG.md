@@ -1362,7 +1362,15 @@ ordered by what it would FIX, not by novelty.
       has flattened, the ceiling is the representation and
       `intent-embedding-choice` is the lane instead. One afternoon,
       no new code, and it decides which of the two to fund.
-- [ ] intent-embedding-choice — every tier above 80% goes through ONE
+- [x] intent-embedding-choice — PARTLY LANDED 2026-09-04, and blocked on
+      installation rather than code: exactly one embedding model is
+      served and the gateway refuses any other id with 400. Established
+      anyway that the ceiling IS representational — the model tier and
+      the probe share ZERO errors out of 60, so the signal is in the
+      text and the vector is losing it — and that framing moves the same
+      model 6.6 points (81.7% to 88.3%), with a SHORT classify
+      instruction the best of four. Original entry follows.
+- [x] intent-embedding-choice (original) — every tier above 80% goes through ONE
       embedding model, and the Russian gap (0.741 against English's
       0.929) is plausibly that model's multilingual quality rather than
       anything in this code. Swap in a second embedding model behind
@@ -1452,3 +1460,24 @@ bottleneck, so speeding it may pay twice — directly, and by keeping
 the ring off its full mark. Failing that, wake senders on a watermark
 rather than on every pop, which is the same idea as
 `channel-chunk-batch-size` read from the other end.
+- [ ] intent-second-embedder — install a second embedding model and
+      re-run the bake-off and the per-language table; this is the
+      experiment intent-embedding-choice could not run. Candidates
+      against our constraints (local, MLX, multilingual):
+      `Qwen3-Embedding-4B/8B` (same family, direct swap), `BGE-M3` and
+      `multilingual-e5-large` (multilingual strength, for the Russian
+      arm), `jina-embeddings-v3` (has a CLASSIFICATION adapter, not
+      just retrieval), `gte-multilingual-base` (half the size).
+- [ ] intent-static-embeddings — `model2vec`/`potion`: a transformer
+      distilled into a LOOKUP TABLE, so there is no neural inference at
+      request time at all — roughly 30MB, no server, no round trip.
+      The only candidate that could give embedding-grade accuracy with
+      the zero-network property chargrams have, and it drops straight
+      into `Centroid` and `Probe`, which do not care where a vector
+      came from. Directly serves the no-generation goal.
+- [ ] intent-instruction-prefix — a short "Classify the intent of this
+      message: " prefix measured +1.6 (probe) and +3.3 (centroid), and
+      the spread across four framings was 6.6 points. Both are at or
+      near the noise floor on 60 messages: re-measure on the grown
+      fixture before making it the default, and keep the finding that
+      LONG instructions cost (81.7% for the e5-style one).
