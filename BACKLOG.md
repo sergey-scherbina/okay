@@ -1712,7 +1712,14 @@ subtraction.
       REVIEW, which is what was available and is now spent; what is
       missing is a second AUTHOR, for Russian and for whatever
       languages the fixture keeps.
-- [ ] intent-end-to-end — NOTHING CALLS ANY OF THIS. Thirteen files, a
+- [x] intent-end-to-end — LANDED 2026-09-04 as `okay.demo.IntentRouter`,
+      the first caller these tiers have had, and it exposed three
+      frictions no test had found: a filled `Frame` hands back TEXT
+      rather than the parsed value, the pattern tier speaks canonical
+      names so every caller writes a mapping, and `Taxon` is connected
+      to none of the tiers that classify. All three filed rather than
+      quietly fixed. Original entry follows.
+- [x] intent-end-to-end (original) — NOTHING CALLS ANY OF THIS. Thirteen files, a
       dozen measured lanes, and inside okay there is no path where a
       message arrives and a decision leaves. A consumer has their own
       router; okay-intent has no caller of its own. This finds what
@@ -1740,3 +1747,27 @@ subtraction.
       accounting, one run. The repo keeps `src/jmh/history.tsv` for
       exactly this, and by its standard those are not measurements. A
       benchmark row per tier, or the numbers should stop being quoted.
+- [ ] intent-frame-typed-values — `Frame.filled` is `Map[String,
+      String]`: a slot knows its type `A`, parses the answer to prove
+      it is acceptable, and then stores the raw text. A caller that
+      wants the date parses it a SECOND time, with the same reference
+      day, and nothing in the type says so. Demonstrated from
+      `IntentRouter` rather than argued. The obstacle is holding
+      heterogeneous parsed values without a cast — a type-indexed map,
+      or `Frame` carrying a tuple of its slots' types; the consumer has
+      built one and may already know which.
+- [ ] intent-cues-for-a-taxonomy — `Patterns.meeting` hardcodes the
+      canonical class names, so a caller with a domain-bearing taxonomy
+      writes a mapping, as `IntentRouter.canonicalToTaxonomy` does and
+      as every caller after it will. `Cue.cls` is a `String` and could
+      carry any names: what is missing is a way to state a cue set
+      AGAINST a `Taxon`, and a check that every cue names a class the
+      taxonomy holds.
+- [ ] intent-taxon-wired-to-tiers — request 1 asked for one taxonomy
+      both tiers read, and what landed is one taxonomy that NEITHER
+      tier reads: `Classify` takes a `Schema[I]`, `Patterns` takes
+      cues, `Centroid` takes whatever labels it was fitted on, and a
+      caller checks `taxonomy.has` by hand afterwards. The value is
+      right and the wiring is absent — `Taxon` should be what a tier is
+      fitted or built against, so a mismatch is a compile or fit error
+      rather than a silent disagreement.

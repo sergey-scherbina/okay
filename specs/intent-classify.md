@@ -2029,3 +2029,53 @@ The provenance problem is unchanged and I will not pretend otherwise: I
 rewrote my own rows, so the fixture is still one hand's Russian. What
 the review bought is that the defects are gone; what it cannot buy is a
 second author.
+
+## Results — intent-end-to-end (2026-09-04)
+
+Twenty lanes measured these tiers and nothing used them: inside okay
+there was no path where a message arrives and a decision leaves. A
+consumer had their own router; `okay-intent` had no caller of its own,
+and a library with no callers has the wrong API and cannot find out.
+
+`okay.demo.IntentRouter` is the caller. It is deliberately a ROUTER
+rather than a demonstration of a classifier, because the interesting
+part is what happens AFTER the class: the frame that class needs, the
+question it is still missing, and the decision to ask a person instead
+of guessing. Its tier order is the one the measurements argued for —
+pattern cues first, since they cost nothing and are 89% accurate where
+they fire; the vector tier for the rest; and below its margin nobody
+guesses, a person sees the candidates.
+
+It works, in the default gate, with no model and no network. What
+matters is **the three frictions it exposed**, none of which any test
+had found.
+
+**1. A filled frame hands back TEXT, not the parsed value.** The router
+knows the meeting is on the 10th — `Temporal` parsed "next thursday" to
+prove the answer was acceptable — and `Frame.filled` can only return
+the string the user typed. To act, the caller parses it AGAIN, with the
+same reference day, and nothing in the type says so. This was named in
+the slot lane as a suspected hole; here it is demonstrated from the
+outside, with a test that shows the second parse.
+
+**2. The pattern tier speaks canonical names, so a caller with a
+domain-bearing taxonomy writes a mapping.** `Patterns.meeting` hardcodes
+`Proposal`/`Request`/`Notification`/`Other`, and the router's taxonomy
+is `MeetingProposal`/... — measurements having shown domain-bearing
+names are worth keeping. So `IntentRouter` carries a private
+`canonicalToTaxonomy`, which every other caller will now write too.
+`Cue.cls` is a `String` and could carry any names; what is missing is a
+way to say "these cues, against MY taxonomy".
+
+**3. `Taxon` is not connected to the tiers that classify.** The router
+holds a taxonomy AND a pattern set AND a centroid, and nothing checks
+that they agree — it calls `taxonomy.has` by hand after the fact.
+Request 1 asked for one taxonomy both tiers read, and this lane
+delivered one taxonomy that neither tier reads: `Classify` takes a
+`Schema[I]`, `Patterns` takes cues, `Centroid` takes whatever labels it
+was fitted on. The value exists and the wiring does not.
+
+None of the three is fixed here. The lane was to find out what a caller
+has to work around, and quietly repairing them would have hidden the
+answer — they are filed, and the router keeps its workarounds visible
+so the next reader can see the shape of what is missing.
