@@ -1,0 +1,26 @@
+task: intent-one-entry-point
+agent: opus5-intent
+started: 2026-09-04
+branch: feature/intent-one-entry-point
+worktree: ../okay-wt-door
+
+why: The composition of the tiers lives ONLY in okay.demo.IntentRouter
+  — cue tier first, vector tier below it, escalate under the margin,
+  fill the frame from the message, ask what is missing. That order is
+  the measured one, and a caller outside the demo has to re-derive it
+  by reading twenty Results sections. okay-intent should hold the
+  composed door, with the demo as its caller rather than its
+  definition.
+
+shape: a value the caller builds once (taxonomy, cues, an optional
+  model, an optional embedder, floors) and calls per message. It
+  answers with a class, a filled frame, the question still to ask, or
+  the candidates it could not separate — the same four outcomes the
+  demo already proved are the right ones.
+
+now possible: intent-fitted-model-ships landed, so the default door
+  can carry Models.meeting and answer with no network at all.
+
+files: okay-intent/src/main/scala/okay/intent/Router.scala,
+  okay-intent tests, okay-demo/IntentRouter.scala,
+  docs/modules/okay-intent.md, specs/intent-classify.md, BACKLOG.md
