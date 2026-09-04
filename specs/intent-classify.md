@@ -1524,3 +1524,41 @@ Two consumers of that value, and neither is hypothetical: an interface
 that abstains has to show a person the choice it could not make, and
 active learning selects the next examples to label by uncertainty,
 which is a property of the distribution rather than of the winner.
+
+## Results — intent-model-persistence (2026-09-04)
+
+Request 4 of the consumer's seven, and the piece that makes "no
+generation on the request path" also mean **no fitting on it**. Without
+a codec, fitting lives wherever loading lives: every process start
+re-fits, and re-fitting needs the teacher — so an embedding server is
+dragged into the STARTUP path of a service whose request path was
+carefully kept clean.
+
+`Fitted` gives `Probe.Trained`, `Centroid.Trained`, `CharGrams.Trained`
+and `Static.Table` a record apiece with a derived `Schema`, so a model
+is fitted at build time and loaded at boot.
+
+**The schemas are hand-built, and the reason turned out to be smaller
+than I first wrote.** Weights are `Array[Double]`, vectors are
+`ArraySeq[Float]`, and a derivation sends each as a JSON array of
+numbers — which is how an embedding once travelled as `List[Double]`.
+Numbers ride as bytes here instead. Measured: a two-class probe over
+1024 dimensions is **21KB as bytes against 36KB as decimal literals**,
+1.7x rather than the order of magnitude the first draft of the comment
+implied, because base64 hands back a third of what binary saves. What
+survives the number is the part worth keeping — no boxing on the way
+through, and a matrix that carries its width so a reader can check it,
+rather than a nested list whose rows might disagree.
+
+**What the tests assert is the classifier, not the bytes.** Round-
+tripping fields is the easy half; a caller needs the loaded model to
+ANSWER what the fitted one answered. So every case compares
+predictions across the trip, and the probe's case compares
+probabilities to 1e-12 — identical, not merely agreeing — with a
+ScalaCheck property doing the same over random fits.
+
+**One thing a table cannot carry: its splitter.** `Static.Table` holds
+a `String => Vector[String]`, and a function is not data. `load` takes
+it back as an argument rather than defaulting, because passing
+`Static.tokens` to a table distilled over `Static.units` is a silent
+accuracy loss — pairs stop being looked up and nothing errors.
