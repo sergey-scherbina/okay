@@ -1073,7 +1073,14 @@ Flat across languages, which is the design working — a 4-character
 window does not know what alphabet it is in, and the English advantage
 that every embedding tier shows is simply absent. On the English
 fixture it reaches 60.0% at full coverage, above patterns (51.7%) and
-BM25 (45.0%) and far below the probe (86.7%). At 60 training examples a
+BM25 (45.0%) and far below the probe (86.7%), at 92µs per message with
+a 404ms fit.
+
+(That per-message figure took a correction: the model is a lazy val and
+the first version of the timing block forced it INSIDE the loop, so a
+404ms fit was divided among sixty messages and reported as 6ms each.
+The full gate caught it, because a "fast tier" assertion failed once
+the JIT was cold — an assertion that exists precisely to notice this.) At 60 training examples a
 4096-dimension hashed model is under-fitted, so this is a DATA result
 rather than a verdict on the method (see `intent-label-distillation`).
 

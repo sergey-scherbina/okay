@@ -37,11 +37,18 @@ class TestCharGrams extends munit.FunSuite {
   }
 
   test("accuracy on the English fixture, at full coverage and at a margin") {
+    // force the fit BEFORE the timer: `model` is lazy, and the first
+    // version of this timed the training inside the scoring loop and
+    // reported it as a per-message cost
+    val fitStart = System.nanoTime()
+    val ready = model
+    val fitMs = (System.nanoTime() - fitStart) / 1000000
+    assert(ready.classes.nonEmpty)
     val t0 = System.nanoTime()
     val scored = test.map((m, gold) => (gold, CharGrams.score(model, m)))
     val micros = (System.nanoTime() - t0) / 1000 / math.max(test.length, 1)
     val right = scored.count { case (g, v) => v.exists(_.best == g) }
-    println(f"\n[chargrams] ${micros}us per message, no network")
+    println(f"\n[chargrams] ${micros}us per message (fit took ${fitMs}ms), no network")
     println(f"  accuracy over ALL messages: ${right * 100.0 / test.length}%5.1f%%")
     for floor <- Seq(0.0, 0.3, 0.6) do
       val answered = scored.collect { case (g, Some(v)) if v.margin >= floor => (g, v.best) }
