@@ -2414,7 +2414,20 @@ the test fails and names the fix.
 **A generated SOURCE rather than a classpath resource**, because
 `okay-intent` is cross-built and a resource is a JVM-only way to load
 a model into a module whose whole claim is that it needs nothing at
-runtime. `TestModelsCross` runs on JS.
+runtime.
+
+**And a gate correction found while proving that.** `TestModelsCross`
+was written to run on JS, so I ran `okayIntentJS/test` to check — it
+finished in one second having run ZERO tests. This module's
+`.jsSettings` point the JS test scope at `src/test/scala-cross`, which
+did not exist ("there is none yet", said the comment), so every gate
+today that reported "okayIntent JVM+JS" was reporting a JS COMPILE and
+no JS tests. The changelog entries for `intent-frame-typed-values`,
+`intent-cues-for-a-taxonomy`, `intent-slot-extraction` and
+`conversation-over-frame` say JVM+JS and meant it about okay-agent,
+which does have cross suites, but overstated it about okay-intent.
+`scala-cross` is now non-empty and on both platforms' test paths:
+`TestModelsCross`, four tests, passing on JS.
 
 **One door removed on review.** The first draft of `Fit` had
 `centroid(rows)` and `probe(rows)` wrappers for fitting. They renamed

@@ -828,15 +828,23 @@ lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
     // gateway, and the tiers themselves are portable
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
   )
   .jsSettings(
-    // The MAIN sources cross; the tests do not, and this mirrors what
-    // okay-agent already does. Several suites summon a Handler[Async],
-    // which needs a CanBlock that only the JVM has — on JS they do not
-    // merely fail at runtime, they fail to COMPILE, which is the
-    // platform saying the test is asking for something it does not
-    // have. `scala-cross` is where a portable suite would go; there is
-    // none yet.
+    // The MAIN sources cross; most of the tests do not, and this
+    // mirrors what okay-agent already does. Several suites summon a
+    // Handler[Async], which needs a CanBlock that only the JVM has —
+    // on JS they do not merely fail at runtime, they fail to COMPILE,
+    // which is the platform saying the test is asking for something it
+    // does not have.
+    //
+    // `scala-cross` holds the portable ones and is now non-empty: for
+    // months this said "there is none yet", which meant okayIntentJS
+    // ran ZERO tests while gates reported it as passing — a compile,
+    // honestly, and nothing more. `TestModelsCross` is the first, and
+    // it is there because a model that loads with no network should
+    // demonstrably load on the platform with no filesystem.
     Test / unmanagedSourceDirectories :=
       Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
   )
