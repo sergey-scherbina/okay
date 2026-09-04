@@ -299,9 +299,12 @@ chunk-native default of 126.2 on the same 2x2000 — okay ahead by
 claimed (docs/benchmarks.md §6b). For a source that really is
 elementwise (a live feed, arriving one token at a time, nothing to
 pre-chunk), `Source.range` generates a half-open range with no
-collection underneath, and okay's per-element `merge` measures 12x
-ahead of ZIO forced onto the same footing (`chunkSize = 1`), not
-behind it as comparing against ZIO's chunked default once suggested. On JVM/Native it parks
+collection underneath. Forcing `ZStream` onto that footing
+(`chunkSize = 1`) costs it 12x, but read that as what the forced mode
+costs a library with no per-element representation rather than as a
+scoreboard — nobody writes it. Reached through `ZStream.unfold`, where
+the same chunk-of-one is ZIO's OWN mechanism and nobody's forcing, the
+gap is 3x in okay's favour (docs/benchmarks.md §6c). On JVM/Native it parks
 (bounded, backpressure by parking); JS gets the Await-based channel
 behind the same surface (capacity advisory — a JS sender cannot
 park). `parMap` maps a chunked stream with a fiber per chunk; `retry`

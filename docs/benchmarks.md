@@ -486,27 +486,60 @@ not to omit the row — both libraries CAN be forced to work one
 element at a time (`ZStream.range(chunkSize = 1)`, fs2's `.unchunk`)
 — it is to ask every library the same question:
 
-| 2x2000 elements | okay | ZIO | fs2 |
-|---|---|---|---|
-| per-element (chunk of one, forced on ZIO/fs2) | **824.9 ±6.9** | 10032.5 ±111.0 | 36030 ±1204 |
-| chunk-native (each library's own default) | **22.3 ±0.3** | 126.2 ±1.0 | 44443 ±2359 |
-| chunked at a matched size (16) | 223.7 ±5.0 | **127.2 ±2.2** | 38508 ±403 |
-| chunked + timed flush | **244.3 ±3.5** | 4907 ±98 | 54270 ±1790 |
+| 2x2000 elements | okay | ZIO | fs2 | reads as |
+|---|---|---|---|---|
+| chunk-native (each library's own default) | **22.3 ±0.3** | 126.2 ±1.0 | 44443 ±2359 | comparison |
+| chunked at a matched size (16) | 223.7 ±5.0 | **127.2 ±2.2** | 38508 ±403 | comparison |
+| chunked + timed flush | **244.3 ±3.5** | 4907 ±98 | 54270 ±1790 | comparison |
+| per-element (chunk of one, forced on ZIO/fs2) | 824.9 ±6.9 | 10032.5 ±111.0 | 36030 ±1204 | diagnostic |
 
-**Forced onto equal footing, okay is ahead in every shape.** Per
-element, 12x ahead of ZIO (824.9 against 10032.5) — `chunkSize = 1`
-is not "a small chunk" for `ZStream`, it is a pathological mode that
-wraps every element in its own one-slot array and pays the chunk
-machinery on top, which costs more than walking okay's program tree
-does. Chunk-native, 5.7x ahead (22.3 against 126.2) — this is the
-pair the first cut of the table should have used throughout: neither
-library builds a node per element, and the ~100ns/element gap between
-them is genuinely `Chunks.merge` against `ZStream.merge`, not an
-artefact of which library got to use its home field. fs2 is 30-1600x
-behind both in every shape and is stated as such rather than
-compared row by row.
+**Three of these rows compare and one diagnoses, and an earlier draft
+read all four as a scoreboard.** It opened *"forced onto equal
+footing, okay is ahead in every shape"* — which its own matched-16 row
+contradicts, and which the paragraph beneath it then walked back.
+Rewritten in `idiomatic-headline-honest` (2026-09-05) after §6c named
+this section as the first of three places one mistake appeared. No
+number here was re-measured and none changed: the reading was what was
+wrong.
 
-**The one place ZIO wins is a size we do not need to match.**
+**Chunk-native is the row that compares.** Each library doing what its
+own users would write: **22.3 against 126.2, okay 5.7x ahead**.
+Neither builds a node per element, and the ~100ns/element gap is
+genuinely `Chunks.merge` against `ZStream.merge` rather than an
+artefact of which library got its home field.
+
+**At a matched chunk of 16, ZIO leads** — 127.2 against 223.7 — a
+real result, unpacked two paragraphs down.
+
+**Timed flush is okay's by 20x** (244.3 against 4907), which says
+more about `groupedWithin` than about either representation.
+
+**The forced per-element row is a DIAGNOSTIC, not a win.** Nobody
+writes `ZStream(chunkSize = 1)`: it wraps every element in a one-slot
+array and pays the chunk machinery on top, so 824.9-against-10032
+measures what that mode costs a library with no per-element
+representation — not what okay beats `ZStream` at. It earns its place
+because a genuinely one-at-a-time source exists (LLM tokens, SSE) and
+someone has to pay that cost; it does not earn a "12x ahead"
+headline. §6c reaches the same chunk-of-one mechanism through
+`ZStream.unfold`, where it is ZIO's own and nobody's forcing — a
+single stream rather than a merge, so not the same workload — and the
+gap there is 3x.
+
+**And read §6c before quoting any of this**, because the same
+methodology bug lived there too and moved a number by 14x when it was
+fixed: the collection row said "ZIO 3x ahead" while pairing
+`ZStream.fromIterable` against our per-element surface plus a
+memoising bridge; paired like-for-like it is **okay 4.5x ahead**. The
+lesson that section draws — every lane names its granularity and
+whether it memoises — is the one this table's four rows are trying to
+carry in a column instead.
+
+fs2 is 30-1600x behind both in every shape and is stated as such
+rather than compared row by row.
+
+**The row ZIO wins is a size we do not need to match — which is a
+reason, not an excuse.**
 Chunking okay's per-element `Source` at a size ZIO would use as its
 OWN default (rather than forcing ZIO down to ours) is the only row
 left where ZIO leads, and even there the lead does not grow the way
