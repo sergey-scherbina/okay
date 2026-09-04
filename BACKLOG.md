@@ -1011,7 +1011,14 @@ not a new primitive from scratch.
       pipeline. Needs 30-100 examples per class, not the 1k-5k a
       fine-tuned encoder wants. TRIGGER: the symbolic tier starts
       missing paraphrases.
-- [ ] intent-temporal-slots — a `When` slot takes ISO-8601 and refuses
+- [x] intent-temporal-slots — LANDED 2026-09-04. `Temporal` parses the
+      shapes scheduling mail uses, relative to a reference day passed as
+      an argument (a parser that reads the clock cannot be tested), and
+      REFUSES everything else rather than guessing — a wrong date is
+      acted on, a declined one is asked about. Hinnant's civil algorithm
+      rather than month tables, no `java.time`, so the JS build keeps
+      it. 13 tests, 3 properties. Original entry follows.
+- [x] intent-temporal-slots (original) — a `When` slot takes ISO-8601 and refuses
       anything else through `SIso`, so "next thursday" cannot be
       filled. A Duckling-equivalent over `okay-lex`/`okay-parse` is its
       own lane; until it exists the model does the conversion and the
@@ -1166,3 +1173,10 @@ with the layer owning `close` so the sentinel cannot be overtaken.
 Then `Channel.apply` can default to the weak mechanism plus the layer
 and lose no promise. Blocked on nothing; wants the two-tier laws
 (landed) to hold the line while the default moves.
+- [ ] intent-temporal-other-languages — `Temporal` is English only, and
+      the fixture's parallel set has "jeudi prochain", "am Montag",
+      "el martes", "во вторник" and Japanese weekday forms sitting
+      there already. The parse shapes are the same; what changes is the
+      vocabulary and, for some languages, the word order around the
+      qualifier. Worth doing only if a caller needs it — the model does
+      the conversion acceptably today and the schema checks it.

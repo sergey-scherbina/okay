@@ -141,9 +141,10 @@ object Eval:
   Decisions.
 - A fine-tuned encoder. Refused, see Decisions.
 - Answer generation from templates attached to the intent.
-- Natural-language temporal parsing ("jeudi prochain"). A slot takes
-  ISO-8601 and validates through `SIso`; a Duckling-equivalent is a
-  separate lane.
+- Natural-language temporal parsing in languages other than English.
+  English is done (`Temporal`, see Results); a slot still takes
+  ISO-8601 and validates through `SIso`, and the parser produces what
+  the slot accepts.
 
 ## Design
 
@@ -777,3 +778,48 @@ Nothing shipped. The two tie-break examples stay in `IntentFixture` as
 the evidence for the next person who reaches for this, and the
 `Taxonomy[I]` typeclass refused in the precedence lane stays refused —
 neither channel earned it.
+
+## Results — intent-temporal-slots (2026-09-04)
+
+A slot typed as ISO-8601 refuses "next thursday", so until now the
+MODEL did the conversion and the schema only checked it — a model doing
+arithmetic, which is the one thing it is worst at and a parser is best
+at. `Temporal` does it instead.
+
+**Not built on `okay-lex`'s `Scan`, deliberately.** That machinery
+earns its keep carrying lexer state across chunk boundaries and
+relexing incrementally after an edit; a five-word phrase has neither.
+What a temporal parser needs is to be TOTAL and DETERMINISTIC, and that
+is a function.
+
+**Deterministic means the reference day is an argument.** "Next
+Thursday" is not a value, it is a value relative to a day someone has
+to name — and a parser that reads the clock cannot be tested. Every
+test here is anchored to Friday 2026-09-04.
+
+**Total means `None` rather than a guess**, and the refusals are as
+much the deliverable as the parses: "soon", "end of the month", "the
+14th", "later this week", "in a couple of days" are all guessable, and
+each guess would be ACTED on — a meeting booked, a deadline moved.
+A declined phrase is asked about. Declining is the cheap failure.
+
+Scope, which is the list of shapes scheduling mail actually uses: an
+explicit ISO date, today/tomorrow/the day after/yesterday, `in N days`
+and `N days from now` and `N days ago`, a bare or qualified weekday
+(`thursday`, `next thursday`, `this tuesday`, `last friday`), `next
+week`, a month-and-day in either order taking the COMING year, and a
+time in either spelling (`at 2pm`, `at 14:30`) riding along with any of
+them.
+
+The calendar underneath is Hinnant's civil algorithm rather than month
+tables and leap-year branches, because the hand-rolled version is wrong
+at exactly the dates nobody tests. Those dates are tested here anyway:
+2024-02-28, 2023-02-28, 1900-02-28 (not a leap year), 2000-02-28 (but
+that one is), and a year boundary. No `java.time`, so this holds on the
+JS build too.
+
+13 tests, three of them properties: epoch-day round-trip over 200,000
+days, day-of-week advancing and wrapping, and totality over arbitrary
+ASCII. One of those started as `forAll(...).check()` inside a `test`
+block, which prints and returns and cannot fail a suite — it was
+scenery, and is now a `property`.
