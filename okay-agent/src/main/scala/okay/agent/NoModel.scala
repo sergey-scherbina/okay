@@ -134,7 +134,7 @@ object NoModel {
      * — refuse everything rather than promise from three data points.
      */
     val alpha = 1.0 - targetAccuracy
-    val wrong = scoredCal.filter(!_._2).map(_._1).sorted(Ordering[Double].reverse)
+    val wrong = scoredCal.filter(!_._2).map(_._1).sorted(using Ordering[Double].reverse)
     val m = wrong.length
     // rounded before the ceiling: at targetAccuracy 0.8 the subtraction
     // leaves alpha at 0.19999999999999996, the quotient at
