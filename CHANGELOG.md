@@ -1,5 +1,44 @@
 # Changelog
 
+## conversation-runtime — the intake as a program that stops at every question
+Completed: 2026-09-04
+Landed as 2fa6a4f8. specs/conversation.md built on
+durable-waiting-on-a-person. A caller describes a `Frame` of `Slot`s —
+a name, a question per language, a `read` that says what an answer
+MEANS, an optional `extract` for the opening sentence — and everything
+else is the module: which question is next, when to ask again, what a
+`Reply` that is not an answer does, and where the state lives, which
+is the journal.
+
+No words live here in any language. `Say` names a KIND; a `Reply` is a
+CHOICE (answer, interrupt, yes, no), because at every suspension the
+next message may be a correction or an exact command and only the
+caller can tell which. Only an interrupt aborts an intake: the
+free-text answer to a question about skills is exactly what a
+similarity layer misreads as a new request.
+
+THE COMPILER FOUND THE DESIGN HOLE. The first cut emitted
+`Say.Ask(frame, slot)` and let the caller render — and the
+unused-parameter warning on `lang` was the report that nothing ever
+applied `Slot.ask`. Not tidying: with no rendering at ask time the
+language of an exchange is stored nowhere, so a restarted process
+holding only the journal cannot render the outstanding question
+without re-deriving a language from whatever was typed last — the
+exact failure the spec had already recorded from the implementation it
+was lifted from, arriving a second time by a different route. Every
+`Say` now carries the text as it was ACTUALLY asked, and `Frame`
+gained `readBack` for the one sentence a slot cannot compose.
+
+`Durable.argsOf` reads an entry's arguments back out of its
+fingerprint (`op(args)` by construction), which is what makes
+`awaiting` enough to render a question after a restart.
+
+Ten tests, driven the way a conversation happens: a question, a
+process that dies, an answer later, a message that turns out not to be
+an answer.
+
+Gate: clean compile 0 warnings; full matrix 2197 tests, 0 failures.
+
 ## durable-waiting-on-a-person — an answerless entry can also mean a question
 Completed: 2026-09-04
 Landed as 8f61155a. `Durable` read every entry without an answer as the

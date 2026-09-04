@@ -1,9 +1,0 @@
-slug: conversation-runtime
-what: specs/conversation.md implemented on durable-waiting-on-a-person -
-  Frame/Slot described by the caller, a Reply that is a choice rather
-  than a string, and an intake driver that asks the next unanswered
-  slot, re-asks once when a slot cannot read its answer, reads back
-  before it is done, and carries no words in any language.
-touches: okay-agent/src/main/scala/okay/agent/Conversation.scala (new),
-  okay-agent/src/test/scala/okay/agent/TestConversation.scala (new),
-  specs/conversation.md, BACKLOG.md
