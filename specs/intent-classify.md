@@ -1380,3 +1380,53 @@ specifically, static embeddings (`model2vec`/`potion`): a distilled
 lookup table with no neural inference at request time, which would slot
 straight into `Centroid` and `Probe` because neither cares where a
 vector came from.
+
+## Results — intent-static-embeddings (2026-09-04)
+
+A classifier with no external gateway at request time. Rather than
+downloading `model2vec`, this does what model2vec DOES: distils a
+static table from the teacher already in use — embed each unit once,
+offline, then tokenize, look up and pool. Nothing but array arithmetic
+at request time, so it crosses to JS and Native where a native runtime
+could not follow, and no foreign tokenizer has to be matched.
+
+| table | units | sees, of an unseen message | probe | centroid |
+|---|---|---|---|---|
+| words, from the training half | 301 | 66.0% | 43.3% | 41.7% |
+| words, full dictionary | 1019 | 100.0% | 51.7% | 43.3% |
+| **words + adjacent pairs** | **1303** | — | **63.3%** | 58.3% |
+| (teacher, live vectors) | — | — | 86.7% | 80.0% |
+
+**Vocabulary was part of it and not most of it.** Going from a starved
+table to complete coverage bought 8.4 points and left the method at
+51.7%, below even chargrams — so the limit was not the dictionary.
+
+**The limit was the bag of words, and this line has met it before.** A
+word-only static table cannot tell "could you" from "we could": the
+first requests, the second proposes, and a bag holds the same three
+tokens either way. That is exactly the mechanism that sank the BM25
+tier, arriving a second time by a different road. Adding adjacent PAIRS
+to the vocabulary — a unit the teacher embeds like any other — is worth
+11.6 points to the probe and 15.0 to the centroid, and takes the
+no-network path to its best number so far.
+
+**Where that leaves the zero-infrastructure goal.**
+
+| option | accuracy | needs |
+|---|---|---|
+| patterns | 51.7% (89% where a cue fires) | nothing |
+| chargrams | 60.0% | nothing |
+| **static, words + pairs** | **63.3%** | a 5MB table |
+| teacher | 86.7% | an embedding server |
+
+So no external gateway is reachable at 63%, and the remaining 23 points
+are CONTEXT: a static table gives a unit the same vector wherever it
+appears, and representing a word differently in two sentences is most
+of what a transformer is for. That is the honest size of the trade, and
+it is a property of the method rather than of this implementation.
+
+Table size, since it decides whether this ships: 1303 units at 1024
+dimensions is 5.2MB as float32. A production vocabulary of 30k units
+would be about 120MB, or 60MB at float16 — which is the argument for
+distilling into fewer dimensions as `model2vec` does with PCA, filed
+rather than done.

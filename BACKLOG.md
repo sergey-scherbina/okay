@@ -1468,7 +1468,16 @@ rather than on every pop, which is the same idea as
       `multilingual-e5-large` (multilingual strength, for the Russian
       arm), `jina-embeddings-v3` (has a CLASSIFICATION adapter, not
       just retrieval), `gte-multilingual-base` (half the size).
-- [ ] intent-static-embeddings — `model2vec`/`potion`: a transformer
+- [x] intent-static-embeddings — LANDED 2026-09-04. Distilled from our
+      own teacher rather than downloaded, so no foreign tokenizer had
+      to be matched. Words alone cap at 51.7% even with complete
+      vocabulary coverage — a bag of words cannot tell "could you" from
+      "we could", the same mechanism that sank BM25 — and adding
+      adjacent PAIRS lifts it to 63.3%, the best no-network number so
+      far, above chargrams' 60.0%. The remaining 23 points to the
+      teacher are CONTEXT, which a static table cannot have. Original
+      entry follows.
+- [x] intent-static-embeddings (original) — `model2vec`/`potion`: a transformer
       distilled into a LOOKUP TABLE, so there is no neural inference at
       request time at all — roughly 30MB, no server, no round trip.
       The only candidate that could give embedding-grade accuracy with
@@ -1481,3 +1490,10 @@ rather than on every pop, which is the same idea as
       near the noise floor on 60 messages: re-measure on the grown
       fixture before making it the default, and keep the finding that
       LONG instructions cost (81.7% for the e5-style one).
+- [ ] intent-static-trigrams-and-pca — two obvious extensions of the
+      static table, both filed rather than guessed: adjacent TRIPLES as
+      well as pairs (pairs were worth 11.6 points, and the same
+      argument applies once more with diminishing returns and a bigger
+      table), and `model2vec`'s PCA step to cut 1024 dimensions to
+      256 — 1303 units already cost 5.2MB as float32, and a production
+      vocabulary of 30k would be 120MB.
