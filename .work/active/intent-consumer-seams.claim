@@ -1,0 +1,10 @@
+slug: intent-consumer-seams
+what: the seams a downstream consumer needs from the intent tiers -
+  a taxonomy both tiers read, language as a fit key, the ranking at
+  the abstention boundary, a fitted model that persists, and slots
+  described the way classes are. Spec-only: reasoning into
+  specs/intent-classify.md and entries onto the board, so the lanes
+  can be picked up by whoever is measuring.
+touches: specs/intent-classify.md, BACKLOG.md  (NO source, NO tests)
+note: intent-embedding-choice also edits this spec - expect a rebase
+  there, resolve by keeping both sections.
