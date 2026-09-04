@@ -101,6 +101,21 @@ class ChannelGuaranteeBenchmark {
     val t = produce(c.sendBlocking(_): Unit, c.close())
     val s = sumChunk(c, counted = false); t.join(); s
 
+  // ── the UNBOUNDED default: the same channel over Segments ───────
+  //    This is the lane the work was for. Channel.apply defaults to
+  //    unbounded, that case used to be StmChannel, and it was the one
+  //    place zio.Queue was still ahead.
+
+  @Benchmark def okayUnboundedElem(): Long =
+    val c = SentinelChannel[Long](Segments[Long | Mark]())
+    val t = produce(c.sendBlocking(_): Unit, c.close())
+    val s = sumElem(c, counted = false); t.join(); s
+
+  @Benchmark def okayUnboundedChunk(): Long =
+    val c = SentinelChannel[Long](Segments[Long | Mark]())
+    val t = produce(c.sendBlocking(_): Unit, c.close())
+    val s = sumChunk(c, counted = false); t.join(); s
+
   // ── weak: AbruptChannel, close discards, so the consumer counts ──
 
   @Benchmark def okayWeakElem(): Long =
@@ -172,6 +187,38 @@ class ChannelGuaranteeBenchmark {
         _ <- ZIO.foreachDiscard(0L until N.toLong)(q.offer).fork
         r <- Ref.make(0L)
         _ <- zio.stream.ZStream.fromQueue(q).take(N.toLong).runForeach(x => r.update(_ + x))
+        s <- r.get
+      yield s).getOrThrowFiberFailure())
+
+  // ── zio unbounded: the like-for-like for okayUnbounded ──────────
+  //    A channel that never makes its producer wait is not the same
+  //    thing as one that does, so the comparison has to be against
+  //    Queue.unbounded, not against the bounded one.
+
+  @Benchmark
+  def zioUnboundedElem(): Long =
+    import _root_.zio.*
+    _root_.zio.Unsafe.unsafe(implicit u =>
+      _root_.zio.Runtime.default.unsafe.run(for
+        q <- Queue.unbounded[Option[Long]]
+        _ <- (ZIO.foreachDiscard(0L until N.toLong)(i => q.offer(Some(i))) *> q.offer(None)).fork
+        r <- Ref.make(0L)
+        _ <- ZIO.foreachDiscard(0 until N)(_ => q.take.flatMap {
+               case Some(x) => r.update(_ + x)
+               case None => ZIO.unit
+             })
+        s <- r.get
+      yield s).getOrThrowFiberFailure())
+
+  @Benchmark
+  def zioUnboundedChunk(): Long =
+    import _root_.zio.*
+    _root_.zio.Unsafe.unsafe(implicit u =>
+      _root_.zio.Runtime.default.unsafe.run(for
+        q <- Queue.unbounded[Option[Long]]
+        _ <- (ZIO.foreachDiscard(0L until N.toLong)(i => q.offer(Some(i))) *> q.offer(None)).fork
+        r <- Ref.make(0L)
+        _ <- zio.stream.ZStream.fromQueue(q).collectWhileSome.runForeach(x => r.update(_ + x))
         s <- r.get
       yield s).getOrThrowFiberFailure())
 

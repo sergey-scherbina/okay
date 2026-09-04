@@ -54,7 +54,7 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicLongArray, AtomicReference
  * the element is published, because it does not look at the tail — it
  * looks at the stamp of the slot it wants.
  */
-private[okay] final class Ring[A](requested: Int) {
+private[okay] final class Ring[A](requested: Int) extends Buffer[A] {
 
   /**
    * Capacity is rounded UP to a power of two so the index is a mask
@@ -71,7 +71,7 @@ private[okay] final class Ring[A](requested: Int) {
    * a separate `OneElementConcurrentQueue` rather than to the ring.
    * Here a channel that small stays on the gate path instead.
    */
-  val capacity: Int =
+  override val capacity: Int =
     if requested <= 2 then 2
     else Integer.highestOneBit(requested - 1) << 1
 
@@ -95,18 +95,22 @@ private[okay] final class Ring[A](requested: Int) {
 
   /** how many elements are in the ring right now — a snapshot, and
    * only ever used for reporting, never for a decision */
-  def size: Int =
+  override def size: Int =
     val n = tail.get - head.get
     if n < 0 then 0 else if n > capacity then capacity else n.toInt
 
-  def isEmpty: Boolean = head.get >= tail.get
+  override def isEmpty: Boolean = head.get >= tail.get
+
+  override def hasReady: Boolean =
+    val pos = head.get
+    stamp.get((pos & mask).toInt) - (pos + 1) == 0
 
   /**
    * Take a slot at the tail and publish `a` into it. False means the
    * ring was full at some point during the attempt — the caller
    * decides what that means (park a sender, drop, refuse).
    */
-  def push(a: A): Boolean =
+  override def push(a: A): Boolean =
     var done = false
     var full = false
     while !done && !full do
@@ -153,7 +157,7 @@ private[okay] final class Ring[A](requested: Int) {
    * lane went from 114us to 179. One volatile read is all this window
    * can afford.
    */
-  def pushDeciding(a: A, unless: java.util.concurrent.atomic.AtomicBoolean, orElse: A): A | Null =
+  override def pushDeciding(a: A, unless: java.util.concurrent.atomic.AtomicBoolean, orElse: A): A | Null =
     var out: A | Null = null
     var full = false
     while out == null && !full do
@@ -217,7 +221,7 @@ private[okay] final class Ring[A](requested: Int) {
    * here would allocate per element and undo the point of the ring.
    * The public surface never sees this shape.
    */
-  def pop(): A | Null =
+  override def pop(): A | Null =
     var out: A | Null = null
     var empty = false
     while out == null && !empty do
@@ -254,7 +258,7 @@ private[okay] final class Ring[A](requested: Int) {
    * one of those slots waits for its stamp, which we publish as we
    * go, so it never sees a slot released before its element is out.
    */
-  def popMany(max: Int)(sink: A => Unit): Int =
+  override def popMany(max: Int)(sink: A => Unit): Int =
     val limit = if max < capacity then max else capacity
     var n = 0
     var pos = 0L
