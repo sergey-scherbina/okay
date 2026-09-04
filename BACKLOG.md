@@ -201,6 +201,18 @@ construction instead of a type test per value).
       only if the inference form (no type argument) bites a consumer.
 
 ## Flakes observed (record → fix loop when they recur)
+- [ ] script-temp-snapshot-crosstalk — `okay.script.TestScalaScript`'s
+      "run: leaves no temp file/directory behind" snapshots the temp
+      directory before and after, so it fails whenever ANOTHER suite in
+      the same module is creating temp files at the same moment. Seen
+      2026-09-04 in a full matrix (2199 tests, this the only failure);
+      the suite passes 9/9 alone. The diff is the evidence: before held
+      `okay-script-web-*.md` and `okay-script-<n>`, after held a
+      different `okay-script-<n>` — three different files, none of them
+      the one under test. Fix by scoping the snapshot to the paths this
+      test creates rather than to the whole directory; comparing a
+      shared namespace across a parallel run cannot be made reliable.
+      Not mine to take — okay-script belongs to another lane.
 - [x] demo-live-judgment-flake — FIXED 2026-09-02: `judged` retries
       the whole turn once before asserting in LIVE UNGATED and LIVE
       SEEKER (stochastic judgment — one retry is a quadratic flake
