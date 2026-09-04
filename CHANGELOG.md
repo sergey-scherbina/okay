@@ -1,5 +1,52 @@
 # Changelog
 
+## intent-tier-bakeoff — five tiers, one split, one table, and a linear probe at 86.7% with no generation
+Completed: 2026-09-04
+Landed as b95d5039. THE GOAL CHANGED MID-PROGRAMME and the reporting
+changed with it: these tiers were built as cheap filters in FRONT of a
+model, and the target is now a classifier that needs no generation on
+the request path at all. So the deciding number became accuracy at FULL
+coverage, with the margin table beside it for whoever wants to hand the
+uncertain tail to a person rather than to a model. Embeddings stay
+inside that budget — a vectoriser is 12ms and no tokens — and labels may
+come from a model once, offline; the ban is on a model being present
+when a message arrives.
+
+| tier | accuracy over ALL | per message | network |
+|---|---|---|---|
+| symbolic (BM25) | 45.0% | 147µs | none |
+| patterns | 51.7% | 96µs | none |
+| kNN (k=5) | 58.3% | 158µs | one embed |
+| centroid | 80.0% | 75µs | one embed |
+| linear probe | 86.7% | 76µs | one embed |
+| (model tier, for scale) | ~90% | seconds | a generation |
+
+The probe fits in 164ms on 60 examples and lands within a few points of
+the model. At margin 0.60 it answers 65% of messages at 97.4% — above
+the model — which is the shape that makes handing the tail to a person
+cheap rather than embarrassing.
+
+PATTERNS CONFIRMED THE MECHANISM the BM25 failure implied. Where a cue
+fires it is 88.6-90.9% accurate against BM25's 63% on the same
+messages, with no network and 96µs. The cues match syntax and never a
+subject — "shall we" proposes, "could you" requests, "FYI" at the START
+notifies. Its limit is coverage (58.3% of messages carry no cue), not
+precision.
+
+KNN WAS MY PREDICTION AND IT WAS WRONG. I expected neighbours to beat a
+centroid because `Other` is a deliberate grab-bag whose mean resembles
+none of its members. It scored 58.3% against 80.0%, and the reason is
+sample SIZE rather than shape: with fifteen examples per class, five
+neighbours are mostly noise, and averaging is what rescues a small
+sample. The hypothesis was about geometry; the answer was about data.
+
+Ordering by cost gives the honest version of the no-model target: both
+network-free tiers stay under 52%, and everything above 80% needs an
+embedding. So the target is reachable and it costs one 12ms vector call
+per message — no generation, no tokens, no per-call price.
+
+Gate: clean compile 0 warnings; full matrix 2160 tests, 0 failures.
+
 ## intent-vector-tier — the first cheap tier that earns its place
 Completed: 2026-09-04
 Landed as 03736b16. Same fixture, same odd/even split as the symbolic
