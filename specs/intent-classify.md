@@ -1054,3 +1054,68 @@ free, and the probe answers everything at 86.7%. Whether running
 patterns first and the probe second beats the probe alone is an
 arithmetic question with a real answer, and it is measured next rather
 than assumed here.
+
+## Results — intent-no-model (2026-09-04)
+
+The assembly the bake-off argued for, plus the two pieces it was
+missing: a character n-gram tier for the zero-network path, and a
+calibrated point at which the classifier declines to answer.
+
+**Character n-grams: the property arrived, the accuracy did not.** TF-IDF
+over hashed 3-5 character n-grams with the same optimiser as `Probe`,
+no tokenizer, no server, no network.
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| accuracy | 53.3% | 53.3% | 53.3% | 33.3% | 46.7% | 60.0% |
+
+Flat across languages, which is the design working — a 4-character
+window does not know what alphabet it is in, and the English advantage
+that every embedding tier shows is simply absent. On the English
+fixture it reaches 60.0% at full coverage, above patterns (51.7%) and
+BM25 (45.0%) and far below the probe (86.7%). At 60 training examples a
+4096-dimension hashed model is under-fitted, so this is a DATA result
+rather than a verdict on the method (see `intent-label-distillation`).
+
+**Stacking did not pay, and the default says so.** Pattern verdicts
+blended into the probe's distribution, weight fitted on a calibration
+split from a six-point grid: the search picked 0.8 and cost five points
+on held-out data (70.0% against the probe's own 75.0%). The sweep is
+monotone —
+
+| weight | 0.0 | 0.1 | 0.3 | 0.5 | 0.8 |
+|---|---|---|---|---|---|
+| accuracy | 75.0% | 75.0% | 72.5% | 72.5% | 70.0% |
+
+— so the shipped default grid is a single zero. Forty calibration rows
+cannot support choosing even one number, and that sentence is in the
+code beside the default.
+
+**The abstention took three attempts, and the third one is honest.**
+
+1. Threshold at the point where calibration accuracy still met the
+   target: promised 96.2% over 65%, DELIVERED 88.9% over 45%. This is
+   the classic error — choosing a threshold on a sample and quoting
+   that sample's accuracy as a prediction about the next one.
+2. A proper split-conformal quantile with the finite-sample rank
+   `ceil((1 - alpha)(m + 1))`: promised 100% over 55%, delivered 88.2%
+   over 42.5%. Better construction, same overclaim, because with ten
+   calibration errors the rank runs off the end of the list and the
+   bound silently degenerates.
+3. **The promise became an `Option`.** A conformal bound at error rate
+   `alpha` needs at least `(1 - alpha) / alpha` calibration MISTAKES to
+   exist — nineteen at 95%. Below that there is no bound to report, and
+   reporting the empirical number anyway is precisely the overclaim.
+   The classifier now says: *no promise, 6 calibration errors, 19
+   needed; the threshold still applies, the guarantee does not.*
+
+The threshold still earns its place without the guarantee: 88.2% on the
+42.5% it accepts, against 75.0% at full coverage. It is a good filter
+that is honest about not being a proof.
+
+**Where this leaves the no-generation target.** The probe answers
+everything at 86.7% (60 training examples) or 75.0% (40), for one 12ms
+embedding call and no tokens. The model tier is ~90%. The gap is
+credibly a DATA gap rather than a method gap, and the lane that closes
+it is `intent-label-distillation`: use the model once, offline, to
+label a large corpus, and keep it out of the request path entirely.
