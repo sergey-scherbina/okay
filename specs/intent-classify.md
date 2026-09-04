@@ -890,3 +890,54 @@ Scope: 30 meanings per language, one 4B local model, one run per arm.
 The translations are author-written, which more rows do not fix — a
 gap measured against my own Russian is a gap in a joint measurement of
 the model and the translator.
+
+## Results — intent-symbolic-tier (2026-09-04)
+
+Built on the operator's instruction rather than on its trigger, which
+never fired, and therefore measured as a hypothesis rather than shipped
+as a default.
+
+**It cost one file, because the tier is a projection of machinery that
+already exists.** FrameNet's "lexical units" are, here, BM25 over
+labelled examples: `okay-rag`'s `Postings` is already a `Fold` and a
+`Monoid`, `Keyword.search` already scores, and `Symbolic` is the
+mapping from a class to the examples that carried it. That is worth
+noting on its own — the retrieval stack and the classifier turned out
+to want the same index.
+
+Measured on a deterministic split: odd positions train, even positions
+are scored, no message in both. An index scored against its own
+examples measures nothing, because BM25 finds the identical document
+and reports a perfect margin.
+
+| margin ≥ | coverage | agreement with gold |
+|---|---|---|
+| 0.0 | 100.0% | 45.0% |
+| 0.1 | 73.3% | 54.5% |
+| 0.2 | 55.0% | 63.6% |
+| 0.3 | 48.3% | 62.1% |
+| 0.5 | 16.7% | 60.0% |
+
+**Speed is not the problem: 112µs per message**, against seconds for a
+model call, and the Linagora system's sub-150ms claim is clearly
+reachable this way.
+
+**The problem is that agreement does not rise with the margin.** It
+plateaus at 60-64% and FALLS at 0.5. A usable filter approaches the
+model's own accuracy as its threshold tightens; this one does not,
+which says the margin is not a confidence signal. Without a threshold
+at which the tier is safe to answer, there is no way to put it in front
+of anything.
+
+The arithmetic of shipping it anyway: at margin 0.2 it takes 55% of
+traffic at 64% accuracy where the model tier is near 90% — roughly 14
+points of end-to-end accuracy spent to save 55% of the calls. The
+trigger for this tier was "cost or latency binding", and neither is.
+
+**So it is not wired into `Classify`.** `Symbolic` is a working,
+tested, 112µs classifier that anyone can reach for; nothing calls it,
+and the reason is written here. What would change the verdict is a
+better representation rather than a better threshold — which is exactly
+what the vector tier tests next, and the honest reading of this table
+is that it makes that lane MORE interesting, not less: paraphrase is
+where BM25 is structurally weak.

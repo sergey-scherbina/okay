@@ -996,7 +996,14 @@ not a new primitive from scratch.
       error ("Can we move Thursday's sync to Friday?" is both). Needs a
       stated precedence rule travelling WITH the taxonomy (a doc
       comment the prompt renders), not a better classifier.
-- [ ] intent-symbolic-tier — an LU dictionary over `Postings`/BM25 as a
+- [x] intent-symbolic-tier — LANDED 2026-09-04, built on the operator's
+      word rather than its trigger, and NOT wired in: 112us per message
+      (fast enough), but agreement plateaus at 60-64% and does not rise
+      with the margin, so the margin is not a confidence signal and
+      there is no threshold at which it can safely answer. At margin 0.2
+      it would spend ~14 points of end-to-end accuracy to save 55% of
+      calls. Original entry follows.
+- [x] intent-symbolic-tier (original) — an LU dictionary over `Postings`/BM25 as a
       first pass that answers the easy majority without a model call.
       TRIGGER: measurement shows cost or latency binding on the model
       tier. Linagora's ontology system answers in <150ms with no model
