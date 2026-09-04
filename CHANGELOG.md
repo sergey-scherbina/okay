@@ -1,5 +1,70 @@
 # Changelog
 
+## intent-second-author — the corpus is not scoring itself, and the number still moves ten points
+Completed: 2026-09-04
+Landed as 4851a8c1, with a doc correction in 5001c226.
+
+Every accuracy this module quotes was measured on a corpus written by
+one hand, and this evening that became load-bearing: `Models.meeting`
+ships and quotes 76.7% in a doc comment, a module page and two
+changelog entries. A consumer demonstrated the failure four times
+today, most sharply with three of twelve real answers taken by the
+wrong class while leave-one-out did not move.
+
+That cannot be fixed by writing more messages — a second corpus by the
+same author measures the same thing twice — so this measures the GAP,
+two ways that need no new data.
+
+WHERE THE SCORE LIVES. Nearest-training similarity across the held-out
+half has median 0.152 and maximum 0.328 by character-trigram Jaccard:
+no near-duplicates, so 76.7% is not the fixture recognising its own
+sentences. But split that set at the median and the far half scores
+66.7% against the near half's 86.7% — twenty points inside ONE
+author's corpus, and a different author is further out than the far
+half is.
+
+WHAT A MECHANICAL SHIFT COSTS, through `Router.offline()`: as written
+76.7%, lowercased 76.7%, a hedge in front 76.7%, a trailing clause
+73.3%, one deterministic typo 66.7%, the politeness frame removed
+65.0%.
+
+Three findings, two of them about tiers rather than the corpus:
+
+1. The cue tier trades RECALL, never precision. Strip "Could you
+   please" and it fires on 19 of 60 instead of 32 — and is right about
+   all nineteen. That is the argument for putting it first and for
+   never letting it be the only tier.
+2. Character n-grams are NOT typo-robust here, though that is the
+   usual argument for them: one transposition takes the model from
+   61.7% to 55.0%. At 60 training rows the hashed 3-5-grams are too
+   sparse for the redundancy that virtue depends on. Filed as
+   `intent-typo-robustness`.
+3. Casing and a hedge cost nothing — worth knowing before someone
+   normalises input that did not need it.
+
+CORRECTIONS TO EARLIER ENTRIES. `intent-fitted-model-ships` and
+`intent-one-entry-point` quote a bare 76.7%. Read it as the ceiling:
+`Models`, `Router` and `docs/modules/okay-intent.md` now say 65-70%
+for a message somebody else wrote, with 76.7% named as what the model
+scores on prose of its own register.
+
+AND A COMMENT THAT DESCRIBED REMOVED BEHAVIOUR. `Router`'s class
+comment still said "Under the last margin nobody guesses — a person
+sees the candidates", which stopped being true inside the lane that
+wrote it. The paragraph meant to replace it never landed: a scripted
+edit matched no anchor and failed silently, and I did not check.
+Found while trying to add the register numbers on top of it, which had
+just failed the same way. Both are in now, and the anchor is asserted
+before the edit.
+
+A perturbed corpus is a LOWER BOUND, not the gap: a real second author
+differs in vocabulary, length, structure and intent distribution at
+once. `intent-second-author` stays open for the part no measurement
+replaces — a corpus this repository did not write.
+
+Gate: clean compile 0 warnings; okayIntentJVM 131, okayIntentJS 9,
+okayDemo 76, okayDeploy 9 — 0 failures.
+
 ## frame-said-is-content — the words a parser cannot read are still what a person said
 Completed: 2026-09-04
 Landed as 6cf17f49. The one finding from the consumer's review of
