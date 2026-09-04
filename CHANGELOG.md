@@ -1,5 +1,34 @@
 # Changelog
 
+## frame-said-is-content — the words a parser cannot read are still what a person said
+Completed: 2026-09-04
+Landed as 6cf17f49. The one finding from the consumer's review of
+`conversation-over-frame`, which they did BY MIGRATING — four
+languages, a live intake, 226 tests green, all three of their asks in
+use rather than merely compiling.
+
+`said` read as an escape hatch and in their domain it is the other
+half of the answer. A price slot parses money, and "negotiable", "по
+договорённости", "договорімось" are things a listing legitimately says
+that no parser will ever read. A caller reading only `filled` drops
+them silently — their read-back did, and a test caught it.
+
+So the doc comment says what `said` is, and `words` is the door they
+had to write by hand: everything the person said, parsed or not, in
+one map. `filled` stays the parsed half; `valueOf` stays the typed
+one. Their own verdict on the semantics that caused it: mine are right
+and storing unparsed words AS a `Money` was the defect — the case was
+still worth naming, and it was.
+
+Filed rather than fixed: `frame-language-with-grammatical-gender`. A
+language whose question differs by the grammatical gender of the
+ADDRESSEE needs more than a language code, or needs the caller to key
+by `"pl-formal-f"` and own that choice. They raised it and could not
+test it — their Polish addresses informally and dodges it.
+
+Gate: clean compile 0 warnings; okayFrame JVM+JS 11 each, okayIntent
+JVM 126 and JS 9, okayAgentJVM 121, okayDemo 76 — 0 failures.
+
 ## relaxed-queues-builder — relaxed FIFO, a builder, and the fourth defect of one family
 
 `MultiFifo`: k independent buffers, a producer bound to one, a
