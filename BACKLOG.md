@@ -1698,3 +1698,17 @@ subtraction.
       whatever the corpus actually holds. Cheap to try on the existing
       fixture by relabelling, and it would let every per-class number
       in the spec be read without an asterisk.
+- [x] intent-russian-rows-fixed — LANDED 2026-09-04. All three hazards
+      the consumer named were present: the person marker carrying the
+      class on one letter, eight Requests in three templates with a
+      duplicated pair, and three calques. Ten rows rewritten by
+      CONSTRUCTION and one meaning replaced across all six languages.
+      Russian fell 86.7% -> 73.3%, which is what fixing a fixture that
+      was flattering itself looks like.
+- [ ] intent-second-author — the provenance problem the review could
+      not fix: the rows are still one hand's Russian, rewritten by the
+      same hand that wrote them. A gap measured against my own language
+      is a joint measurement of the model and me. The consumer offered
+      REVIEW, which is what was available and is now spent; what is
+      missing is a second AUTHOR, for Russian and for whatever
+      languages the fixture keeps.
