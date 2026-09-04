@@ -179,6 +179,145 @@ see its Results. `Eval` still takes `(gold, predicted)` pairs from
 wherever the caller has them, so nothing in it depends on the journal;
 the journal is what feeds it without a model.
 
+## Open requests from a consumer (2026-09-04)
+
+Written from the outside, by an agent that BUILT a router on these
+ideas before this module existed and now has to decide whether to
+adopt it. The service is not the point and is deliberately not
+described; what is worth recording is which seams a caller cannot
+reach past, because every one of them is also a seam this module's own
+backlog needs.
+
+That caller's shape, only where it changes the argument: four
+languages with the encoder IN PROCESS, classes and their example
+phrasings authored as DATA and edited without a compiler, and an
+abstention that must show a person the two candidates it could not
+choose between.
+
+Two things this module already got right and should not be talked out
+of. The abstention scores the MARGIN (`s0 - s1`), not the top
+probability — a high score that is not separated from the runner-up is
+the dangerous case, and that lesson usually costs a production
+incident. And `promise` is an `Option`: a bound that the calibration
+sample cannot carry is absent rather than optimistic.
+
+**1. One taxonomy value that both tiers read.** The model tier takes
+its classes from `Schema[I]`; `NoModel.fit` infers them from the labels
+present in its training rows. Nothing connects the two, so the tiers
+cannot be pointed at the same taxonomy without aligning it by hand,
+and — the sharper problem — a taxonomy that arrives as DATA cannot
+reach the model tier at all. `intent-label-distillation` plans to
+generate a large labelled corpus; if classes are a Scala enum, that
+corpus can define examples but never a class. Proposed: a `Taxonomy`
+holding class names plus, optionally, examples per class, with
+`Taxonomy.of[I]` from `Schema` as ONE constructor and a parsed form as
+another. Both tiers take it.
+
+**2. Language as a key in the fit, not a caveat about it.** A training
+row is `(text, embedding, class)`; the language it was written in has
+nowhere to live, so a fit over a multilingual corpus pools every
+language into one boundary. `intent-language-gap` has already MEASURED
+what that costs (0.741 against English's 0.929), and
+`intent-embedding-choice` is about to re-run the bake-off per language
+against a second encoder — which the row shape cannot express. A
+centroid averaged across languages is a worse centroid than one per
+language for the same reason the gap exists at all. Proposed: rows
+carry a language tag and the fit groups by it, falling back to a pooled
+model where a language is too thin to fit its own. This is a grouping
+key rather than new mathematics, and it turns a measured caveat into a
+knob. WORTH DOING BEFORE the embedding bake-off rather than after: the
+comparison it is designed to make is per language.
+
+**3. Hand back the ranking at the abstention boundary.**
+`Probe.Verdict` carries `margin` and `runnerUp`; `NoModel.Verdict`
+keeps `best` and drops them, so a caller that abstains knows only THAT
+the classifier declined. Two consumers of the missing value: an
+interface that offers the two candidates it could not separate, and
+`intent-active-learning`, which selects the next examples to label by
+uncertainty and therefore needs the distribution rather than the
+winner. The value already exists one layer down; it is discarded on the
+way out.
+
+**4. A fitted model should persist as data.** `Trained` is arrays of
+doubles with no codec, so fitting lives wherever loading lives. A
+service that already compiles its vectors at BUILD time wants to fit
+there too and load weights at boot, never carrying the training path
+into the request path at all. Given `okay-codec` and Schema derivation
+this is a small piece, and it is what makes "no generation on the
+request path" also mean "no fitting on the request path".
+
+**5. Slots deserve the description classes already have.** `Temporal`
+parses one slot in one language; `intent-crf-slots` is filed for the
+general case and ordered after the class problem. The shape that
+consumer arrived at independently, and would contribute: a slot is a
+NAME, a question to ask when it is unanswered (per language), and a
+parser `String => Option[Value]` whose failure is a re-ask rather than
+a silently stored string. Under that description `Temporal` is one
+parser among several, another language is another parser rather than a
+rewrite, and a learned tagger (the CRF lane) becomes an alternative
+implementation of the same seam instead of a separate design. It also
+gives the frame half of "a label cannot be acted on; a filled frame
+can" somewhere to live, which the Overview promises and no type
+currently holds.
+
+**6. Name the dependency, not the deployment.** The bake-off's tables
+read "one embed" and "needs a server", and the second half is an
+assumption about how the caller is deployed rather than a property of
+the tier. With an in-process encoder the same row is a tier with NO
+network at all, which changes which one a reader picks — the probe at
+86.7% stops being the expensive option and becomes the cheap one. The
+dependency the tiers actually have is `String => Embedding`; saying
+that costs nothing and stops the tables from arguing for the wrong
+tier.
+
+**7. A suspension that is waiting for a PERSON.** The first draft of
+this section said conversation state — a pending question, an answer
+bound to the field that asked it, an interrupt — belongs to a caller
+and not here. That was two claims wearing one sentence, and only the
+first survives review.
+
+The one that holds: a CLASSIFIER stays pure. `NoModel.classify` is a
+function of a message, which is what makes it testable, cacheable and
+evaluable as a fold; giving it session state would cost all three.
+
+The one that does not: that the conversation itself has no home in
+this workspace. Written as a straight-line program over the effect
+system, an intake IS a delimited continuation — ask, ask, ask, then
+act — and an interrupt is an abort to the delimiter, which is what
+delimited control is FOR. The consumer hand-rolled a small state
+machine (an ADT of pending states, one case per suspension) not from
+principle but because it already had a log of its own and did not
+reach for the platform's. Defunctionalising a continuation by hand is
+a fair trade when the state must be inspected and rebuilt, and it has
+a cost that was paid in full: the language of the exchange, free as a
+captured variable in a continuation, had to be pinned into the state
+explicitly, and the bug that reached a user was exactly the turn where
+it was not.
+
+What `Durable` already has is the hard half. The journal is written
+INTENT FIRST and the answer after, and on recovery the recorded
+answers are handed back without touching the world — a program that
+resumes across a restart without its stack. An `Entry` whose `answer`
+is `None` is, structurally, a question that has been asked and not yet
+answered.
+
+What it does not have is that reading. Every missing answer is treated
+as the crash window — an anomaly for `OnRepeat` to resolve — and there
+is no state for "asked a person, waiting, and this is normal, possibly
+for days". Give it one and a conversation becomes a durable program
+rather than a hand-written state machine, with the pending question
+already in the log where a restart can find it.
+
+Two consequences worth stating before anyone builds it. Replay must
+resume from RECORDED verdicts, not recomputed ones: a router that
+re-classifies its own log rebuilds a different conversation the day
+the model is refitted, which is the same reason the model tier's
+turns are skipped on replay rather than re-asked. And the suspension
+point takes a message that may not be the answer at all — a
+correction, an unrelated request, an exact command — so the resumed
+value is a choice, not a string, and the handler is what decides
+which.
+
 ## Decisions
 
 - **`why` before the label** — chosen because it is worth 0.14 macro

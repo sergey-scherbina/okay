@@ -1251,6 +1251,57 @@ centroid 80.0%, kNN 58.3%, chargrams 60.0%, patterns 51.7% (89% where
 they fire), BM25 45.0%; the model tier is ~90%. Everything below is
 ordered by what it would FIX, not by novelty.
 
+- [ ] durable-waiting-on-a-person — `Durable` journals INTENT FIRST and
+      the answer after, so an `Entry` with `answer = None` is
+      structurally a question asked and not yet answered. But recovery
+      reads every missing answer as the crash window, for `OnRepeat` to
+      resolve; there is no state for "asked a person, waiting, and this
+      is normal, possibly for days". With one, a conversation is a
+      durable program — ask, ask, act, resumed across a restart from
+      the log — instead of a hand-written state machine, which is what
+      a consumer built for want of this. Two constraints it must carry:
+      replay resumes from RECORDED verdicts rather than recomputed ones
+      (a refitted classifier otherwise rebuilds a different
+      conversation), and a suspension takes a message that may be a
+      correction, an unrelated request or a command rather than the
+      answer, so the resumed value is a choice and the handler decides.
+      See "Open requests from a consumer" in specs/intent-classify.md.
+- [ ] intent-taxonomy-value — the model tier reads its classes from
+      `Schema[I]`, `NoModel.fit` infers them from its training rows,
+      and nothing connects the two: the tiers cannot be aimed at one
+      taxonomy without aligning it by hand, and a taxonomy that
+      arrives as DATA cannot reach the model tier at all. Blocks
+      intent-label-distillation from defining classes rather than only
+      examples. A `Taxonomy` (classes, optionally examples per class)
+      with `Taxonomy.of[I]` as one constructor and a parsed form as
+      another. See "Open requests from a consumer" in the spec.
+- [ ] intent-language-in-fit — a training row is `(text, embedding,
+      class)` and cannot say which language it is in, so a multilingual
+      fit pools every language into one boundary. intent-language-gap
+      measured what that costs (0.741 against 0.929) and
+      intent-embedding-choice is about to compare encoders PER
+      LANGUAGE, which this row shape cannot express. A grouping key,
+      not new mathematics; a pooled fallback where a language is too
+      thin. WORTH DOING BEFORE the embedding comparison, not after.
+- [ ] intent-verdict-ranking — `Probe.Verdict` carries `margin` and
+      `runnerUp`; `NoModel.Verdict` drops both, so an abstaining caller
+      knows only THAT it declined. Wanted by an interface that offers
+      the two candidates it could not separate, and required by
+      intent-active-learning, which samples by uncertainty and needs
+      the distribution. The value exists one layer down.
+- [ ] intent-trained-codec — `Trained` is arrays with no codec, so
+      fitting lives wherever loading lives. A caller that compiles its
+      vectors at build time wants to fit there too and load weights at
+      boot. Makes "no generation on the request path" also mean "no
+      fitting on it".
+- [ ] intent-slot-descriptor — `Temporal` parses one slot in one
+      language and intent-crf-slots is filed for the general case. A
+      slot as a NAME, a question per language, and a parser
+      `String => Option[Value]` whose failure is a RE-ASK: then
+      `Temporal` is one parser, another language is another parser
+      rather than a rewrite, and the CRF lane is an alternative
+      implementation of the same seam. Gives "a filled frame" somewhere
+      to live.
 - [ ] intent-label-distillation — REPRIORITISED 2026-09-04 by
       intent-learning-curve: NOT the one that moves the probe, whose
       curve is flat past 32 examples. It is the lane for CHARGRAMS,
