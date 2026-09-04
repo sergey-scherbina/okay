@@ -1,5 +1,38 @@
 # Changelog
 
+## intent-state-the-framing — a row cannot be written without its terms
+Completed: 2026-09-04
+Landed as 336368c7. The defect behind this afternoon's retraction, not
+a nice-to-have. Two measurements an hour apart disagreed by ten points,
+the disagreement was read as a finding and published, and a re-read
+then showed the runs had embedded their messages differently — one
+bare, one with a classify instruction — with neither row saying which.
+
+A CONVENTION WOULD NOT HAVE HELPED, because a convention is exactly
+what there was. `Conditions` makes the terms part of writing a row, and
+there is deliberately no `line` overload that omits them:
+
+    human + 40 distilled   probe 86.7%  centroid 90.0%
+      [embedder=Qwen3-Embedding-0.6B  framing=bare  train=100 test=60
+       corpus=both  distilled=40]
+
+That is the retracted cell, now printing the `framing=bare` whose
+absence made it look comparable to a framed one.
+
+Live-scope on purpose: a deterministic test carries its conditions in
+its own source, and only a measurement against a moving world — a
+gateway, a model, a corpus on disk — needs to say what the world was.
+
+One thing the first version got wrong, which is the same class of error
+a level down: the distilled count was DERIVED as `rows.length -
+trainH.length` and printed `distilled=260` for the arm that has no
+human rows at all. A condition that lies is worse than one that is
+missing, because it invites exactly the comparison it misdescribes.
+Counts are passed now, not inferred.
+
+Gate: clean compile 0 warnings; okayIntent JVM+JS, okayAgent and
+okayDeploy, 216 tests, 0 failures. Full matrix still broken on master.
+
 ## intent-other-is-a-bin — the diagnosis holds, the remedy does not
 Completed: 2026-09-04
 Landed as 4d97b233. A consumer's observation, promised in the room and
