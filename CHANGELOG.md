@@ -1,5 +1,38 @@
 # Changelog
 
+## intent-frame-typed-values — a filled frame hands back the value, not the text again
+Completed: 2026-09-04
+Landed as 6a5b8e4d. The blocker the first caller found, and the one
+that made "a label cannot be acted on; a filled FRAME can" untrue in
+the code that promised it. `Slot[A]` knew its type, parsed an answer to
+prove it was acceptable, and `Frame` stored the raw TEXT — so
+`IntentRouter`, having just established that "next thursday" was a
+date, got the string back and parsed it a SECOND time, with the same
+reference day, which nothing in the type told it to remember.
+
+`Frame` keeps `Answered` now: the slot, the text a person typed, and
+the value it parsed to. `valueOf` takes the SLOT rather than a name,
+and that is the mechanism rather than a convenience — the slot is the
+evidence that this answer has type `A`, so there is no way to ask for a
+type the slot never had.
+
+ON THE ONE CAST. `valueOf` contains an `asInstanceOf`, and this
+repository's rule permits one only with a real necessity. This is the
+shape the rule names as its own exception — a heterogeneous map keyed
+by identity — isolated in a single function whose guard is what makes
+it true: the value comes back only when `a.slot eq s`, so it was
+produced by THIS slot's parser and no other. The guard is tested rather
+than asserted, with a second slot of the same NAME and a different type
+handed nothing.
+
+`filled` survives as the text view, because a frame shown back to a
+person should show what they typed rather than what it parsed to. And
+the caller's test that recorded the defect now pins the property, which
+is the shape a fixed friction should leave behind.
+
+Gate: clean compile 0 warnings; okayIntent JVM+JS, okayDemo and
+okayAgent, 290 tests, 0 failures.
+
 ## intent-end-to-end — the first caller, and the three things it broke
 Completed: 2026-09-04
 Landed as 848f7a3a. Twenty lanes measured these tiers and nothing used
