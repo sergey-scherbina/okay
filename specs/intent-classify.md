@@ -1886,3 +1886,36 @@ probe margin is a difference of PROBABILITIES and a centroid margin a
 difference of COSINES; sharing a range made the centroid abstain on
 everything above 0.1 and reported 25% accuracy as though it meant
 something. Each now sweeps the range its own measure occupies.
+
+## Results — intent-state-the-framing (2026-09-04)
+
+Not a nice-to-have: this is the defect that produced the afternoon's
+retraction. Two measurements an hour apart disagreed by ten points, the
+disagreement was read as a finding and published, and a re-read then
+showed the runs had embedded their messages differently — one bare, one
+with a classify instruction — with neither row saying which.
+
+A convention would not have helped, because a convention is exactly
+what there was. `Conditions` makes the terms part of writing a row:
+
+```
+human + 40 distilled   probe 86.7%  centroid 90.0%
+  [embedder=Qwen3-Embedding-0.6B  framing=bare  train=100 test=60
+   corpus=both  distilled=40]
+```
+
+That is the retracted cell, printing the `framing=bare` whose absence
+made it look comparable to a framed one. There is deliberately no
+`line` overload without conditions, so a row cannot be formatted
+without them.
+
+Live-scope on purpose. A deterministic test carries its conditions in
+its own source; only a measurement against a moving world — a gateway,
+a model, a corpus on disk — needs to say what the world was.
+
+**And one thing the first version got wrong, which is the same class of
+error one level down.** The distilled count was DERIVED as
+`rows.length - trainH.length`, which printed `distilled=260` for the
+arm that has no human rows at all. A condition that lies is worse than
+one that is missing, because it invites exactly the comparison it
+misdescribes. Counts are passed now, not inferred.

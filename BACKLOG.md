@@ -1663,7 +1663,15 @@ has never been observed, but it is the same shape and deserves the
 same treatment: a `hasRoom` on `Buffer`, answered from the stamp of
 the position the tail is about to claim rather than from a
 subtraction.
-- [ ] intent-state-the-framing — two measurements an hour apart
+- [x] intent-state-the-framing — LANDED 2026-09-04. `Conditions` prints
+      embedder, framing, split, corpus and any extra beside every live
+      row, with no overload that omits them, so a row cannot be written
+      without its terms. Wired into the two suites whose rows were
+      compared across lanes. The first version DERIVED the distilled
+      count and printed `distilled=260` for an arm with no human rows —
+      a condition that lies being worse than one that is missing, the
+      counts are passed now. Original entry follows.
+- [x] intent-state-the-framing (original) — two measurements an hour apart
       disagreed because one silently changed whether the embedding was
       framed with a classify instruction, and nothing in either printed
       row said which. Make every live arm print its conditions —

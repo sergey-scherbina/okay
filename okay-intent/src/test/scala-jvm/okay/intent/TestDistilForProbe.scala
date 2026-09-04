@@ -90,21 +90,31 @@ class TestDistilForProbe extends munit.FunSuite {
     val testH = humanTest.map((t, c) => (byText(t), c))
     val trainD = distVecs.zip(distilled.map(_.cls))
 
-    def run(name: String, rows: Seq[(Embedding, String)]): Unit =
+    // every row carries the terms it was taken under: this lane's
+    // predecessor published a number that a later run could not
+    // reproduce, because the two framings were never printed
+    // the distilled count is PASSED, not derived: deriving it as
+    // rows.length - trainH.length said "distilled=260" for the arm
+    // that has no human rows at all, and a condition that lies is
+    // worse than one that is missing
+    def run(name: String, rows: Seq[(Embedding, String)], distilled: Int, corpus: String): Unit =
       val p = Probe.train(rows)
       val c = Centroid.train(rows)
       val pr = testH.count((v, g) => Probe.score(p, v).exists(_.best == g)) * 100.0 / testH.length
       val cr = testH.count((v, g) => Centroid.score(c, v).exists(_.best == g)) * 100.0 / testH.length
-      println(f"  $name%-34s probe $pr%5.1f%%   centroid $cr%5.1f%%   (${rows.length} rows)")
+      println(Conditions.line(
+        Conditions(Conditions.SmallEmbedder, Conditions.Bare, rows.length, testH.length,
+          corpus = corpus, extra = s"distilled=$distilled"),
+        name, f"probe $pr%5.1f%%  centroid $cr%5.1f%%"))
 
     println(f"\n=== held out: ${testH.length} human messages, never trained on ===")
-    run("human fixture alone", trainH)
-    run("distilled alone", trainD)
-    run("human + distilled", trainH ++ trainD)
+    run("human fixture alone", trainH, 0, "IntentFixture.labelled")
+    run("distilled alone", trainD, trainD.length, "intent-distilled.json")
+    run("human + distilled", trainH ++ trainD, trainD.length, "both")
     // and the question the learning curve could not ask: does MORE of
     // the different data keep helping, where more of the same did not
     for take <- Seq(40, 80, 120, trainD.length) do
-      run(s"human + $take distilled", trainH ++ trainD.take(take))
+      run(s"human + $take distilled", trainH ++ trainD.take(take), take, "both")
 
     assert(testH.nonEmpty)
   }

@@ -87,11 +87,14 @@ class TestCentroidFirst extends munit.FunSuite {
     assume(reachable, s"no endpoint at $url")
     val prefix = "Classify the intent of this message: "
     println("\n=== which model, and who is asking ===")
+    println("  " + Conditions(s"both", "both", 60, 60).header)
     for (m, name) <- Seq(small -> "0.6B", large -> "4B  ") do
       for (pre, how) <- Seq("" -> "bare  ", prefix -> "framed") do
         val vecs = human.grouped(32).flatMap(g => embed(m, g.map((t, _) => pre + t))).toVector
         val (p, c) = score(vecs)
-        println(f"  $name $how   probe $p%5.1f%%   centroid $c%5.1f%%")
+        println(Conditions.line(Conditions(if m == small then Conditions.SmallEmbedder else Conditions.LargeEmbedder,
+          if pre.isEmpty then Conditions.Bare else Conditions.Classify, trainIdx.length, testIdx.length),
+          s"$name $how", f"probe $p%5.1f%%  centroid $c%5.1f%%"))
   }
 
   test("live: the learning curve, with distilled data available") {
