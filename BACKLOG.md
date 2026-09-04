@@ -1238,3 +1238,72 @@ removes both without a cast, but it changes an abstract primitive on
       exactly the failure measured here, and it is cheap to try — but
       only worth it if a zero-network tier is wanted, since the vector
       tier already covers 45% at 96.3% for 12ms.
+
+## okay-agent: understanding without a model — after intent-tier-bakeoff (2026-09-04, specs/intent-classify.md)
+
+The goal is a classifier with NO GENERATION on the request path.
+Measured so far: linear probe 86.7% at full coverage (one 12ms embed),
+centroid 80.0%, kNN 58.3%, chargrams 60.0%, patterns 51.7% (89% where
+they fire), BM25 45.0%; the model tier is ~90%. Everything below is
+ordered by what it would FIX, not by novelty.
+
+- [ ] intent-label-distillation — THE ONE THAT MOVES THE NUMBER. Every
+      tier here is fitted on 60 labelled messages, and the probe's
+      86.7% is a data limit rather than a method limit: it fits 4096
+      weights on 60 rows. Use the model OFFLINE, once, to label a large
+      unlabelled corpus (its own accuracy is ~90%, and label noise at
+      that level is survivable), keep only `Conf.High` plus whatever a
+      human confirmed, and refit. This is the reference's own advice
+      ("few-shot LLM as a bootstrap for data generation") and the only
+      route by which a no-model classifier reaches model accuracy.
+      TRIGGER: none needed — it is the cheapest large gain available.
+- [ ] intent-learning-curve — before distilling, measure what more data
+      is worth: refit the probe at 15, 30, 45, 60 examples and plot.
+      If the curve is still climbing steeply, distillation pays; if it
+      has flattened, the ceiling is the representation and
+      `intent-embedding-choice` is the lane instead. One afternoon,
+      no new code, and it decides which of the two to fund.
+- [ ] intent-embedding-choice — every tier above 80% goes through ONE
+      embedding model, and the Russian gap (0.741 against English's
+      0.929) is plausibly that model's multilingual quality rather than
+      anything in this code. Swap in a second embedding model behind
+      the same seam and re-run the bake-off per language. Cheap, and it
+      is the only way to tell a representation problem from a
+      classifier problem.
+- [ ] intent-rule-induction — patterns are 88.6-90.9% accurate where
+      they fire and fire on only 58.3% of messages, and the cues are
+      hand-written. Induce them instead (RIPPER-style: grow a rule,
+      prune it against held-out data, repeat) so coverage grows with
+      the corpus rather than with someone's patience. Keeps the zero-
+      network property, which nothing else above 60% has.
+- [ ] intent-tfidf-word-linear — the classical baseline nobody ran:
+      word-level TF-IDF into the same logistic regression. It sits
+      between BM25 (45.0%) and chargrams (60.0%) in what it sees, and
+      it is thirty lines given `Probe`'s optimiser. Worth it to know
+      whether chargrams' 60% is about characters or just about having
+      a linear model at all.
+- [ ] intent-fasttext-subword — subword embeddings TRAINED on the
+      corpus plus a linear head, i.e. fastText's actual algorithm in
+      plain Scala. Bridges chargrams (language-agnostic, no network,
+      60%) and the probe (86.7%, needs a server): a trained
+      representation that still ships as an array. Only worth it if
+      `intent-embedding-choice` says the server is the problem.
+- [ ] intent-grammar-parse — intent by GRAMMAR over `okay-lex` and
+      `okay-parse`, the way `Temporal` does dates: deterministic,
+      explainable, and refusing rather than guessing. Expensive in
+      rules, and the honest reason to want it is a domain where a wrong
+      answer is worse than no answer.
+- [ ] intent-crf-slots — sequence labelling for the frame's SLOTS
+      (who, when, where) rather than its class. `Temporal` fills one
+      slot with a parser; the general case is a tagger, and a CRF is
+      the classical one. Only after the class problem is settled.
+- [ ] intent-active-learning — labels are the bottleneck everywhere
+      above, so choose the next ones to label by uncertainty rather
+      than by order. Directly compounds with `intent-label-distillation`
+      (the model labels, a human confirms the uncertain ones), and
+      needs the calibrated confidence `intent-no-model` is building.
+- [ ] intent-ensemble-weights — `NoModel` blends the probe with the
+      pattern tier using ONE fitted weight from a six-point grid,
+      because sixty rows cannot support a fitted second-level model.
+      When the corpus grows (see distillation), replace the grid with a
+      real stacking model and measure whether it beats the blend.
