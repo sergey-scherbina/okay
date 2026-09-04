@@ -27,6 +27,8 @@ rather than a class of parsing bug.
 | `Static` | a distilled lookup table: embeddings without an encoder at request time |
 | `NoModel` | the assembly — stacking, and a conformal abstention whose promise is an `Option` |
 | `Fitted` | every trained model as data, so fitting leaves the startup path |
+| `Fit` | the door: fit a corpus, write the model down, read it back |
+| `Models` | a fitted model that SHIPS — 76.7% at full coverage with no network |
 | `Rows` / `ByLanguage` | a training row knows its language; a thin language borrows the pooled fit |
 | `Temporal` | English temporal phrases to ISO-8601, total and deterministic, refusing rather than guessing |
 
@@ -46,3 +48,38 @@ lane, with what each number cost and what it does not support.
 
 Cross-built JVM + JS; the test suites are JVM-only, since several
 summon a `Handler[Async]` that needs a `CanBlock` JS does not have.
+
+## Getting a model
+
+Until 2026-09-04 this module measured nine tiers and shipped none of
+them: every fitted model existed inside the test that fitted it.
+
+```scala
+import okay.intent.*
+
+// what ships, with no network and no fitting at startup
+Patterns.classify(Models.cues, message, floor = 0.4)      // 90.6% where it fires
+  .orElse(CharGrams.score(Models.meeting, message).map(_.best))
+```
+
+76.7% at full coverage on 60 held-out English messages over four
+meeting classes — the cue tier answers the 53% it fires on at 90.6%,
+and the shipped n-gram model answers the rest at 61%. It is fitted on
+60 author-written English messages from this repository's fixture; it
+is a worked example and a fallback, not a general intent model, and
+not multilingual (a six-language fit scores 33-67% per language on
+fifteen held-out rows each, which is too thin to stand behind).
+
+For a real corpus:
+
+```scala
+val model = Fit.grams(rows)          // rows: Seq[(message, class)]
+Files.writeString(path, Fit.save(model))
+val loaded = Fit.grams(Files.readString(path))   // Either[String, Trained]
+```
+
+`Fit.save` / `Fit.probe` / `Fit.centroid` do the same for the tiers
+that need an embedder. The shipped artifact is regenerated with
+`sbt "okayIntentJVM/Test/runMain okay.intent.MakeModel"`, and a test
+fails if what is committed is not what the generator produces.
+

@@ -1786,7 +1786,14 @@ subtraction.
       The fixture's parallel set already carries "jeudi prochain", "am
       Montag", "el martes", "во вторник" and Japanese weekday forms,
       so the test data for this exists.
-- [ ] intent-fitted-model-ships — NOTHING SHIPS A FITTED MODEL, and
+- [x] intent-fitted-model-ships — LANDED 2026-09-04. `Models.meeting`
+      is a fitted CharGrams model that ships (43KB generated source,
+      cross-platform), `Fit` is the corpus->model->file->model door,
+      and `MakeModel` regenerates the artifact with a test asserting
+      the committed bytes are what it produces. 76.7% at full coverage
+      behind the cues on held-out English, no network. Original entry
+      follows.
+- [x] intent-fitted-model-ships (original) — NOTHING SHIPS A FITTED MODEL, and
       there is no documented way for a caller to obtain one. Every
       measured tier above the pattern cues needs a `Centroid.Trained`
       or a `Probe.Trained`, which today exists only inside a test that

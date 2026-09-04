@@ -2369,3 +2369,56 @@ Two changes to the shape this spec described:
   named slot and lets the same sentence fill whatever else it can.
   `answer` remains for a caller that wants the strict `Either`.
 
+## Results — intent-fitted-model-ships (2026-09-04)
+
+Nine tiers measured, none shipped. `Models.meeting` is the first
+fitted model in this repository that a caller can load, and `Fit` is
+the door from a corpus to a model and back.
+
+**Which tier can ship, and why only one.** The vector tiers need an
+embedder — a gateway on the network, or a distilled table somebody has
+to build first — so shipping one ships a dependency, not a model. The
+cue tier ships already but is not fitted. `CharGrams` is the tier in
+between: hashed character n-grams over the text, no embedder at all.
+
+**The dimension was chosen by measurement, against the module's own
+default.** `CharGrams.train` defaults to 4096; the shipped model uses
+1024. On held-out English: 61.7% at 1024, 63.3% at 4096, 58.3% at
+8192 — more dimensions stop helping at this corpus size, and 1024
+serialises to 42KB against 170KB. `Fit.grams` carries 1024 as its
+default and says why.
+
+**What it delivers, which is the number that justifies the artifact.**
+Alone it is 61.7% and would not be worth shipping. Behind the cue
+tier, at FULL COVERAGE on 60 held-out English messages: **76.7%**, with
+no network, no gateway and no fitting on the startup path. The cues
+answer the 53% they fire on at 90.6%; the model answers the remaining
+28 messages at 61%. Both halves of that split are asserted in the
+test, so the doc comment cannot drift from the code.
+
+**What I decided NOT to ship, and why.** A fit over all six languages
+of the fixture. Per-language held-out, fifteen rows each: fr 53-67%,
+de 40-47%, es 33-53%, ru 33-40%, ja 53-60% — noise-dominated at that
+size, and it costs English three points (73.3% composite against
+76.7%). `CharGrams` is language-agnostic BY CONSTRUCTION and this
+fixture cannot demonstrate it; `intent-language-fixture-growth` is the
+lane that would.
+
+**The artifact is reproducible, not a blob.** `MakeModel` writes it,
+and a test asserts that what is committed is byte-for-byte what the
+generator produces from the same corpus. `CharGrams.train` is
+deterministic — weights start at zero, rows are walked in order — so
+that test is a real check rather than a hope. If the fixture moves,
+the test fails and names the fix.
+
+**A generated SOURCE rather than a classpath resource**, because
+`okay-intent` is cross-built and a resource is a JVM-only way to load
+a model into a module whose whole claim is that it needs nothing at
+runtime. `TestModelsCross` runs on JS.
+
+**One door removed on review.** The first draft of `Fit` had
+`centroid(rows)` and `probe(rows)` wrappers for fitting. They renamed
+`Centroid.train` and `Probe.train` without adding anything, so they
+are gone; `Fit` keeps only what was actually missing — the measured
+default for `grams`, and writing a model down.
+
