@@ -1,5 +1,63 @@
 # Backlog
 
+## script-temp-tests-watch-a-shared-directory — a sibling run fails them
+
+Found 2026-09-04 alongside matrix-kill-by-process-group, and a second,
+independent reason a matrix cannot be trusted while another one runs.
+
+`TestScalaScript."run: leaves no temp file/directory behind"` and
+`TestPage."close() deletes the cached compiled program's temp output
+directory"` both snapshot the SHARED `java.io.tmpdir` for
+`okay-script-*` entries before and after, and assert the two sets are
+equal. Any other process creating one of those between the snapshots
+fails the assertion — which is precisely what a sibling worktree's
+okay-script tests do.
+
+Observed: both failed in a matrix run alongside other agents; both
+passed immediately afterwards when run alone (15/15), with no change
+to anything. So the tests are correct about the property and wrong
+about where they look for it.
+
+The work: give each test its own temp ROOT (a fresh directory passed
+to the code under test, or a system property scoped to the run) and
+snapshot that. The property being asserted — this code cleans up after
+itself — is worth keeping; watching a directory the whole machine
+shares is what makes it a false alarm.
+
+## matrix-kill-by-process-group — one suite takes down every sbt on the box
+
+Found 2026-09-04 while gating an unrelated four-line change. The full
+matrix dies with SIGTERM (exit 143) immediately after
+`okay.cluster.TestCluster`, and it is not the change, not memory and
+not a flaky test:
+
+- a feature branch died three times at exactly 1427 tests;
+- CLEAN MASTER, run from the main checkout with no changes at all,
+  died the same way at 1897;
+- different counts, the SAME suite boundary every time;
+- 53% of 36GB free, 5.7GB of java resident — nothing is being
+  OOM-killed, and 143 is a TERM rather than a KILL.
+
+`TestCluster`'s two tests are "a killed in-process worker's chunks
+recompute" and "a socket worker dies mid-stream". A kill issued to a
+process GROUP rather than to a pid does exactly what is observed: it
+reaches every sbt on the machine, including a sibling worktree's
+matrix minutes from finishing.
+
+This is the mechanism behind the folklore that two concurrent sbt runs
+SIGTERM each other here. It is not contention — it is one suite
+killing processes it does not own, and the practical cost is that a
+green matrix is currently obtainable only by running ALONE, which for
+several agents on one box is a serialisation nobody agreed to.
+
+The work: kill by pid, and if a test genuinely needs to signal a
+group, give the spawned worker a group of its own
+(`setsid`/`ProcessBuilder` with its own session) so the blast radius
+stops at the thing under test. Wants a law that a worker-killing test
+leaves other JVMs alone — hard to assert directly, but a sentinel
+child process that must still be alive at the end of the suite would
+catch a regression.
+
 ## Benchmarks — after kyo-fair-lanes (2026-09-02, docs/benchmarks.md §2/§5/§7)
 - [x] test-login-tamper-flake — `TestLogin`'s "a tampered token is
       refused" builds its tamper as `token.dropRight(2) + "xx"`, which

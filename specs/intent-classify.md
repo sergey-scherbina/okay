@@ -228,7 +228,15 @@ key rather than new mathematics, and it turns a measured caveat into a
 knob. WORTH DOING BEFORE the embedding bake-off rather than after: the
 comparison it is designed to make is per language.
 
-**3. Hand back the ranking at the abstention boundary.**
+**3. Hand back the ranking at the abstention boundary.** PARTLY DONE
+2026-09-04 (probe-ranked): `Probe.ranked` exposes the distribution the
+verdict is drawn from, and `score` is a thin wrapper on it. The
+request was filed in the morning and hit by a consumer the same
+afternoon, wiring the probe into a router: an operator diagnostic that
+lists every class could not be built without re-implementing the
+softmax outside. `NoModel.Verdict` still drops `margin` and
+`runnerUp`, and `intent-active-learning` will still want them.
+
 `Probe.Verdict` carries `margin` and `runnerUp`; `NoModel.Verdict`
 keeps `best` and drops them, so a caller that abstains knows only THAT
 the classifier declined. Two consumers of the missing value: an

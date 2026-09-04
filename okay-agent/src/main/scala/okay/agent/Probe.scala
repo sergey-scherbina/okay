@@ -79,16 +79,33 @@ object Probe {
       epoch += 1
     model
 
+  /**
+   * Every class with its probability, best first — the distribution
+   * the verdict is drawn FROM.
+   *
+   * `score` answers what to do; this answers what was considered, and
+   * the two are not the same question. A diagnostic that lists every
+   * class, and an uncertainty-sampled choice of what to label next,
+   * both need the whole ranking; without it a caller re-implements
+   * this softmax outside, against internals it should not have to
+   * know. Asked for by a consumer wiring the probe into a router, on
+   * the day the seam was filed.
+   */
+  def ranked(t: Trained, v: Embedding): Vector[(String, Double)] =
+    if t.classes.isEmpty then Vector.empty
+    else
+      val p = softmax(logits(t, v))
+      t.classes.indices.map(i => (t.classes(i), p(i))).sortBy(-_._2).toVector
+
   /** the margin is the gap between the top two PROBABILITIES, which is
    * already on a fixed scale — unlike a logit gap */
   def score(t: Trained, v: Embedding): Option[Verdict] =
-    if t.classes.isEmpty then None
-    else
-      val p = softmax(logits(t, v))
-      val ranked = t.classes.indices.map(i => (t.classes(i), p(i))).sortBy(-_._2)
-      val (best, p0) = ranked.head
-      Some(Verdict(best, p0, p0 - ranked.lift(1).map(_._2).getOrElse(0.0),
-        ranked.lift(1).map(_._1)))
+    ranked(t, v) match
+      case Vector() => None
+      case r =>
+        val (best, p0) = r.head
+        Some(Verdict(best, p0, p0 - r.lift(1).map(_._2).getOrElse(0.0),
+          r.lift(1).map(_._1)))
 
   def classify(t: Trained, v: Embedding, floor: Double = 0.3): Option[String] =
     score(t, v).filter(_.margin >= floor).map(_.best)
