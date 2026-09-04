@@ -1,0 +1,18 @@
+task: intent-taxon-wired-to-tiers
+agent: opus5-intent
+started: 2026-09-04
+branch: feature/intent-taxon-wired-to-tiers
+worktree: ../okay-wt-wired
+
+why: The third and last of the frictions the first caller exposed, and
+  the consumer's request 1 read literally. What landed as `Taxon` is
+  one taxonomy that NEITHER trained tier reads: every `train` infers
+  its classes from whatever labels its rows happen to carry, and a
+  caller checks `taxon.has` by hand afterwards. A tier should be
+  fittable AGAINST a taxonomy, and a `Trained` should carry the
+  taxonomy it was fitted to, so a disagreement is an error at fit time
+  rather than a wrong class at answer time.
+
+files: okay-intent/src/main/scala/okay/intent/{Centroid,Probe,Nearest,
+  CharGrams,NoModel,Patterns}.scala, okay-intent tests,
+  okay-demo/IntentRouter.scala, specs/intent-classify.md, BACKLOG.md
