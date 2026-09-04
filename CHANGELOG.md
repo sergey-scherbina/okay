@@ -1,5 +1,76 @@
 # Changelog
 
+## intent-no-model — the assembled classifier, and an abstention that knows when it cannot promise
+Completed: 2026-09-04
+Landed as 998d1c75. The assembly the bake-off argued for, plus the two
+pieces it was missing: a character n-gram tier for the zero-network
+path, and a calibrated point at which the classifier declines.
+
+CHARACTER N-GRAMS: the property arrived, the accuracy did not. Hashed
+3-5 character n-grams into the same optimiser as `Probe` — no
+tokenizer, no server, no network, 92µs per message with a 404ms fit.
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| accuracy | 53.3% | 53.3% | 53.3% | 33.3% | 46.7% | 60.0% |
+
+Flat across languages, which is the design working: a 4-character
+window does not know what alphabet it is in, and the English advantage
+every embedding tier shows is simply absent. On English it reaches
+60.0% at full coverage — above patterns (51.7%) and BM25 (45.0%), far
+below the probe (86.7%). At 60 training examples a 4096-dimension
+hashed model is under-fitted, so this is a data result, not a verdict
+on the method.
+
+STACKING DID NOT PAY, and the default says so. Pattern verdicts blended
+into the probe's distribution, weight fitted on a calibration split
+from a six-point grid: the search picked 0.8 and cost five points on
+held-out data (70.0% against the probe's 75.0%). The sweep is monotone
+— 75.0, 75.0, 72.5, 72.5, 70.0 for weights 0.0 to 0.8 — so the shipped
+default grid is a single zero, with that sentence in the code beside
+it. Forty calibration rows cannot support choosing even one number.
+
+THE ABSTENTION TOOK THREE ATTEMPTS.
+
+1. Threshold where calibration accuracy still met the target: promised
+   96.2% over 65%, delivered 88.9% over 45%. The classic error —
+   choosing a threshold on a sample and quoting that sample's accuracy
+   as a prediction about the next one.
+2. A proper split-conformal quantile with the finite-sample rank:
+   promised 100% over 55%, delivered 88.2% over 42.5%. Better
+   construction, same overclaim, because with ten calibration errors
+   the rank runs off the end of the list and the bound degenerates
+   silently.
+3. The promise became an `Option`. A conformal bound at error rate
+   `alpha` needs at least `(1 - alpha) / alpha` calibration MISTAKES to
+   exist — nineteen at 95%. Below that there is no bound, and reporting
+   the empirical number anyway IS the overclaim. The classifier now
+   says: no promise, 6 calibration errors, 19 needed; the threshold
+   still applies, the guarantee does not.
+
+The threshold earns its place without the guarantee: 88.2% on the 42.5%
+it accepts against 75.0% at full coverage. A good filter that is honest
+about not being a proof.
+
+Two of my own measurement errors were caught here and are recorded
+rather than quietly fixed: a `math.ceil` over floating-point arithmetic
+demanded a nineteenth error where eighteen were needed (0.8/0.2 came to
+4.000000000000001), and a lazy val forced INSIDE a timing block charged
+a 404ms fit to the first message and reported "6027µs each" — found by
+the full matrix, where a cold JIT tripped the "fast tier" assertion
+that exists for exactly that.
+
+WHERE THIS LEAVES THE NO-GENERATION TARGET: the probe answers
+everything at 86.7% (60 training examples) for one 12ms embedding call
+and no tokens; the model tier is ~90%. The gap is credibly DATA rather
+than method, and `intent-label-distillation` is the lane that closes it
+— use the model once, offline, and keep it out of the request path.
+
+Ten further methods are filed under a new backlog heading, each with
+what it would fix rather than what it is called.
+
+Gate: clean compile 0 warnings; full matrix 2170 tests, 0 failures.
+
 ## intent-tier-bakeoff — five tiers, one split, one table, and a linear probe at 86.7% with no generation
 Completed: 2026-09-04
 Landed as b95d5039. THE GOAL CHANGED MID-PROGRAMME and the reporting
