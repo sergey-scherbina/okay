@@ -1,6 +1,7 @@
 package okay.demo
 
 import okay.intent.*
+import okay.frame.Frame
 
 /**
  * The first caller okay-intent has ever had
@@ -57,7 +58,7 @@ class TestIntentRouter extends munit.FunSuite {
     IntentRouter.route("FYI the room has moved to B2", slots) match
       case IntentRouter.Action.Act(intent, frame) =>
         assertEquals(intent, "MeetingNotification")
-        assert(frame.complete())
+        assert(frame.complete)
       case other => fail(s"expected an action, got $other")
   }
 
@@ -72,7 +73,7 @@ class TestIntentRouter extends munit.FunSuite {
   test("the question comes in the reader's language, from the same call") {
     // no date in it, so there is a question to ask — and it arrives
     // in the reader's language from the same call
-    IntentRouter.route("Shall we meet?", slots, lang = "ru") match
+    IntentRouter.route("Shall we meet?", IntentRouter.Meeting(today, "ru")) match
       case IntentRouter.Action.Ask(_, _, question) =>
         assertEquals(question, "Когда вам удобно встретиться?")
       case other => fail(s"$other")
@@ -94,8 +95,8 @@ class TestIntentRouter extends munit.FunSuite {
     // rather than the workaround.
     val slot = slots.when
     val f = Frame.of("MeetingProposal", slot)
-    val filled = f.answer("when", "en", "next thursday").toOption.get
-    assert(filled.complete())
+    val filled = f.answer("when", "next thursday").toOption.get
+    assert(filled.complete)
     assertEquals(filled.valueOf(slot).map(_.iso), Some("2026-09-10"))
     // and the text survives, for showing a person what they typed
     assertEquals(filled.filled("when"), "next thursday")

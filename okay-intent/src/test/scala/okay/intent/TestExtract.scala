@@ -1,5 +1,7 @@
 package okay.intent
 
+import okay.frame.Frame
+
 /**
  * Filling a frame from the message it arrived in
  * (specs/intent-classify.md).
@@ -39,22 +41,22 @@ class TestExtract extends munit.FunSuite {
   test("a message that says nothing fills nothing") {
     assertEquals(Temporal.find("Shall we meet?", today), None)
     val f = Frame.of("Proposal", when).fillFrom("Shall we meet?")
-    assert(!f.complete())
-    assertEquals(f.missing().map(_._1), Vector("when"))
+    assert(!f.complete)
+    assertEquals(f.missing.map(_._1), Vector("when"))
   }
 
   test("extraction and asking agree") {
     // the same phrase, once taken out of a sentence and once given as
     // an answer — a frame filled either way holds the same date
     val extracted = Frame.of("Proposal", when).fillFrom("Can we meet next Tuesday?")
-    val asked = Frame.of("Proposal", when).answer("when", "en", "next Tuesday").toOption.get
+    val asked = Frame.of("Proposal", when).answer("when", "next Tuesday").toOption.get
     assertEquals(extracted.valueOf(when), asked.valueOf(when))
     assert(extracted.valueOf(when).isDefined)
   }
 
   test("a person's own answer is not overwritten by a guess") {
     val f = Frame.of("Proposal", when)
-      .answer("when", "en", "tomorrow").toOption.get
+      .answer("when", "tomorrow").toOption.get
       .fillFrom("Actually I said next Tuesday somewhere in this sentence")
     assertEquals(f.valueOf(when).map(_.date.iso), Some("2026-09-05"))
     assertEquals(f.filled("when"), "tomorrow")

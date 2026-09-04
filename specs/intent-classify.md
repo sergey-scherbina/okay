@@ -2346,3 +2346,26 @@ put an argument in the signature that every implementation ignores,
 which is how a signature starts lying; when `Temporal` learns a second
 language the parameter arrives with a reader.
 
+## Results — conversation-over-frame (2026-09-04)
+
+`Slot`, `Found`, `Answered` and `Frame` moved out of this module into
+`okay-frame`, and the reason is a consumer's: `okay.agent.Conversation`
+had grown its own slot model on the same day, and two in one
+repository is one too many. See `specs/conversation.md` for the merge.
+
+What stays here is what is about INTENTS rather than about forms:
+`Slots` (the parsers this programme has — `when` is `Temporal` wearing
+the descriptor), and every tier. `okay-intent` depends on `okay-frame`;
+`Frame` is imported rather than defined.
+
+Two changes to the shape this spec described:
+
+- `Frame` carries the LANGUAGE of the exchange. `missing`, `complete`
+  and `answer` no longer take one. The router therefore takes the
+  language where it takes the day — `Meeting(today, lang)` — which is
+  the right place for it: a language is a property of a conversation,
+  not of a call.
+- `Frame.take(name, text)` is the dialogue's door: it answers the
+  named slot and lets the same sentence fill whatever else it can.
+  `answer` remains for a caller that wants the strict `Either`.
+

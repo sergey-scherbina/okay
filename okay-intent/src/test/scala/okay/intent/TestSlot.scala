@@ -1,5 +1,7 @@
 package okay.intent
 
+import okay.frame.{Frame, Slot}
+
 /**
  * The slot descriptor (specs/intent-classify.md) — request 5 of the
  * consumer seven, proposed for review.
@@ -30,36 +32,36 @@ class TestSlot extends munit.FunSuite {
   test("a frame knows what it still has to ask, and in what language") {
     val f = Frame.of("Proposal", when,
       Slots.text("who", Map("en" -> "Who should be there?"), required = false))
-    assertEquals(f.missing("en"), Vector("when" -> "When would you like to meet?"))
-    assert(!f.complete())
+    assertEquals(f.missing, Vector("when" -> "When would you like to meet?"))
+    assert(!f.complete)
     // an optional slot never appears in the questions
-    assert(!f.missing("en").exists(_._1 == "who"))
+    assert(!f.missing.exists(_._1 == "who"))
   }
 
   test("an answer the slot cannot read leaves the frame UNCHANGED") {
     val f = Frame.of("Proposal", when)
-    val bad = f.answer("when", "en", "sometime soon")
+    val bad = f.answer("when", "sometime soon")
     assertEquals(bad, Left("When would you like to meet?"))
     // and the property that failure is about: nothing was stored
     assertEquals(f.filled, Map.empty[String, String])
-    val good = f.answer("when", "en", "next thursday")
-    assert(good.exists(_.complete()), s"$good")
+    val good = f.answer("when", "next thursday")
+    assert(good.exists(_.complete), s"$good")
     assert(good.exists(_.filled.contains("when")))
   }
 
   test("a frame with every required slot answered is complete") {
     val f = Frame.of("Proposal", when, Slots.text("who", Map("en" -> "Who?")))
     val done = for
-      a <- f.answer("when", "en", "tomorrow at 2pm")
-      b <- a.answer("who", "en", "the design team")
+      a <- f.answer("when", "tomorrow at 2pm")
+      b <- a.answer("who", "the design team")
     yield b
-    assert(done.exists(_.complete()), s"$done")
-    assertEquals(done.map(_.missing("en")), Right(Vector.empty))
+    assert(done.exists(_.complete), s"$done")
+    assertEquals(done.map(_.missing), Right(Vector.empty))
   }
 
   test("an unknown slot is named, not ignored") {
     val f = Frame.of("Proposal", when)
-    assertEquals(f.answer("where", "en", "room B2"), Left("no slot named where"))
+    assertEquals(f.answer("where", "room B2"), Left("no slot named where"))
   }
 
   test("the descriptor holds no conversation state") {
@@ -68,7 +70,7 @@ class TestSlot extends munit.FunSuite {
     val a = Frame.of("Proposal", when)
     val b = Frame.of("Proposal", when)
     assertEquals(a.filled, b.filled)
-    val answered = a.answer("when", "en", "tomorrow").toOption.get
+    val answered = a.answer("when", "tomorrow").toOption.get
     assertEquals(a.filled, Map.empty[String, String], "the original frame was mutated")
     assert(answered.filled.nonEmpty)
   }
@@ -79,7 +81,7 @@ class TestSlot extends munit.FunSuite {
     // string back, so it parsed it a second time with the same
     // reference day and nothing in the type said to
     val f = Frame.of("Proposal", when)
-    val filled = f.answer("when", "en", "next thursday").toOption.get
+    val filled = f.answer("when", "next thursday").toOption.get
     assertEquals(filled.valueOf(when).map(_.iso), Some("2026-09-10"))
     // the text is still there for showing a person what they typed
     assertEquals(filled.filled("when"), "next thursday")
@@ -91,7 +93,7 @@ class TestSlot extends munit.FunSuite {
     // same name cannot collect it
     val other = Slots.text("when", Map("en" -> "When, as text?"))
     val filled = Frame.of("Proposal", when)
-      .answer("when", "en", "tomorrow").toOption.get
+      .answer("when", "tomorrow").toOption.get
     assertEquals(filled.valueOf(when).map(_.iso), Some("2026-09-05"))
     assertEquals(filled.valueOf(other), None,
       "a slot that did not parse this answer must not be handed its value")

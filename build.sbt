@@ -783,10 +783,33 @@ lazy val okayMatch = crossProject(JVMPlatform, JSPlatform)
  * which is the point: a caller wanting a probe should not compile a
  * conversation.
  */
+/**
+ * What a FORM is: named slots, typed answers, and what is still
+ * missing (specs/conversation.md, specs/intent-classify.md).
+ *
+ * It is here rather than in okay-intent or okay-agent because BOTH
+ * need it and neither may depend on the other: okay-intent classifies
+ * a message and okay-agent conducts the exchange that follows, and in
+ * one day each had grown its own slot model. This is the merged one.
+ *
+ * No dependencies at all, deliberately — a frame is data, and the
+ * things that fill it (a date parser, a journal, a model) are not.
+ */
+lazy val okayFrame = crossProject(JVMPlatform, JSPlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-frame"))
+  .settings(
+    name := "okay-frame",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+    ),
+  )
+
 lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-intent"))
-  .dependsOn(okayCodec, okayRag)
+  .dependsOn(okayCodec, okayRag, okayFrame)
   // TEST only, and worth naming: the live suites reach for okay-agent's
   // journal (Rerun, FileVersions) to replay recorded model answers, and
   // for okay-llm to talk to a gateway. Neither is a dependency of the
@@ -822,8 +845,11 @@ lazy val okayAgent = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-agent"))
   // okay-persist backs the durable journal: intent and completion
-  // are records of a keyed topic (specs/persist.md, stage 1)
-  .dependsOn(okayLlm, okayRag, okayPersist)
+  // are records of a keyed topic (specs/persist.md, stage 1).
+  // okay-frame is the FORM a conversation fills: this module owns the
+  // suspension and okay-frame owns the slots, which is the split that
+  // ended two slot models living in one repository.
+  .dependsOn(okayLlm, okayRag, okayPersist, okayFrame)
   .settings(
     name := "okay-agent",
     libraryDependencies ++= Seq(
@@ -1332,6 +1358,7 @@ lazy val root = (project in file("."))
     okayObs.jvm, okayObs.js, okayObs.native,
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
+    okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,

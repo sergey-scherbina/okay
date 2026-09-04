@@ -3,6 +3,7 @@ package okay.agent
 import okay.!
 import okay.codec.Json
 import okay.codec.Json.*
+import okay.frame.Frame
 
 /**
  * A conversation with a PERSON (specs/conversation.md).
@@ -21,11 +22,17 @@ import okay.codec.Json.*
  * have, what those slots ask, and the words.
  *
  * NO WORDS LIVE HERE, in any language. `Say` names a KIND of message
- * and the caller renders it; a slot's own `ask` is a function of
- * whatever the caller uses to mean "language", which this module
- * carries and never inspects. The alternative — phrasing in the
- * library — makes it accumulate four-language copy for every product
- * that ever uses it.
+ * and the caller renders it; a slot's own `ask` is a map the caller
+ * writes, which this module reads by key and never composes. The
+ * alternative — phrasing in the library — makes it accumulate
+ * four-language copy for every product that ever uses it.
+ *
+ * WHAT IS NO LONGER HERE: the slots. This module had grown its own
+ * `Slot` and `Frame` on the same day `okay.intent` grew theirs, and
+ * two slot models in one repository is one too many. `okay.frame` is
+ * the merged form — typed values instead of `Option[Json]`, an answer
+ * addressed by NAME, and a count of what is left to ask — and this
+ * module keeps what the frame cannot have: the suspension.
  *
  * The suspension is `Durable`: an intake is a straight-line program
  * that stops at every question, and `OnRepeat.Await` is what parks it
@@ -53,40 +60,20 @@ object Conversation:
     name => if name == AskOp then Durable.OnRepeat.Await else inner(name)
 
   /**
-   * One question and what its answer means. The caller supplies
-   * these; nothing here knows what a `name` refers to.
+   * The words a frame cannot carry, and the one decision it does not
+   * make.
    *
-   * `L` is whatever the caller means by a language — an enum, a tag,
-   * `Unit` for a service that speaks one. It is carried and never
-   * inspected, which is what lets the language be PINNED to an
-   * exchange: it is an argument of the run, not something re-derived
-   * from each three-word answer.
+   * A `Frame` describes and holds; it has no opinion about whether an
+   * exchange ends with a read-back, and it cannot compose the sentence
+   * that says everything back at once — that sentence is the caller's,
+   * in the caller's language, and inventing it here is exactly the
+   * "no words live in this module" line being crossed.
    */
-  final case class Slot[L](name: String,
-                           ask: L => String,
-                           /** what the answer MEANS. `None` is not a
-                            * failure to store — it is a question to
-                            * ask again, once */
-                           read: String => Option[Json] = (s: String) =>
-                             Option.when(s.trim.nonEmpty)(JStr(s.trim)),
-                           /** what the OPENING sentence already
-                            * answered, so the intake does not ask for
-                            * what it was just told */
-                           extract: String => Option[Json] = (_: String) => None)
-
-  /** the shape of one kind of request */
-  final case class Frame[L](name: String,
-                            slots: Vector[Slot[L]],
-                            /** the whole thing said back, for a yes.
-                             * A sentence about every answer at once is
-                             * the caller's to compose — this module
-                             * would have to invent the words */
-                            readBack: (L, Map[String, Json]) => String,
-                            /** which slot the opening sentence
-                             * answers outright, if any */
-                            opening: Option[String] = None,
-                            /** ask before this is `Filled` */
-                            confirm: Boolean = true)
+  final case class Intake[I](frame: Frame[I],
+                             /** the whole thing said back, for a yes */
+                             readBack: Frame[I] => String,
+                             /** ask before this is `Filled` */
+                             confirm: Boolean = true)
 
   /**
    * What arrives at a suspension, and the reason it is not a
@@ -139,24 +126,38 @@ object Conversation:
    * module was lifted from, on the second-to-last question.
    */
   enum Say:
-    case Ask(frame: String, slot: String, text: String)
+    /**
+     * `remaining` is how many questions are still to ask, INCLUDING
+     * this one — which the caller had to count for itself, and could
+     * not after a restart, since only the journal is left.
+     *
+     * `Option` because a journal outlives a deploy: an entry parked
+     * before this field existed decodes as `None`, which is "not
+     * written down", not "none left". A caller renders no count for
+     * those rather than a wrong one.
+     */
+    case Ask(frame: String, slot: String, text: String,
+             remaining: Option[Int] = None)
     /** the slot could not read the last answer. Asked once, and then
      * whatever was said is taken as said — the caller renders its own
      * "I could not read that" around the same question */
-    case AskAgain(frame: String, slot: String, text: String)
+    case AskAgain(frame: String, slot: String, text: String,
+                  remaining: Option[Int] = None)
     case ReadBack(frame: String, values: Map[String, Json], text: String)
 
   object Say:
     def text(s: Say): String = s match
-      case Ask(_, _, t) => t
-      case AskAgain(_, _, t) => t
+      case Ask(_, _, t, _) => t
+      case AskAgain(_, _, t, _) => t
       case ReadBack(_, _, t) => t
 
+    private def asked(kind: String, f: String, sl: String, t: String, r: Option[Int]) =
+      JObj(Vector("say" -> JStr(kind), "frame" -> JStr(f), "slot" -> JStr(sl),
+        "text" -> JStr(t)) ++ r.map(n => "remaining" -> JNum(n.toDouble)))
+
     def encode(s: Say): Json = s match
-      case Ask(f, sl, t) => JObj(Vector(
-        "say" -> JStr("ask"), "frame" -> JStr(f), "slot" -> JStr(sl), "text" -> JStr(t)))
-      case AskAgain(f, sl, t) => JObj(Vector(
-        "say" -> JStr("askAgain"), "frame" -> JStr(f), "slot" -> JStr(sl), "text" -> JStr(t)))
+      case Ask(f, sl, t, r) => asked("ask", f, sl, t, r)
+      case AskAgain(f, sl, t, r) => asked("askAgain", f, sl, t, r)
       case ReadBack(f, vs, t) => JObj(Vector(
         "say" -> JStr("readBack"), "frame" -> JStr(f),
         "values" -> JObj(vs.toVector.sortBy(_._1)), "text" -> JStr(t)))
@@ -165,11 +166,15 @@ object Conversation:
       def str(fs: Vector[(String, Json)], k: String) =
         fs.collectFirst { case (`k`, JStr(v)) => v }
       j match
-        case JObj(fs) => (str(fs, "say"), str(fs, "text")) match
+        case JObj(fs) =>
+          // absent in every entry written before the field existed,
+          // and that is what None means here
+          val left = fs.collectFirst { case ("remaining", JNum(n)) => n.toInt }
+          (str(fs, "say"), str(fs, "text")) match
           case (Some("ask"), Some(t)) =>
-            for f <- str(fs, "frame"); s <- str(fs, "slot") yield Ask(f, s, t)
+            for f <- str(fs, "frame"); s <- str(fs, "slot") yield Ask(f, s, t, left)
           case (Some("askAgain"), Some(t)) =>
-            for f <- str(fs, "frame"); s <- str(fs, "slot") yield AskAgain(f, s, t)
+            for f <- str(fs, "frame"); s <- str(fs, "slot") yield AskAgain(f, s, t, left)
           case (Some("readBack"), Some(t)) =>
             for
               f <- str(fs, "frame")
@@ -179,12 +184,21 @@ object Conversation:
         case _ => None
 
   /** how an intake ended */
-  enum Outcome:
-    case Filled(values: Map[String, Json])
+  enum Outcome[+I]:
+    /**
+     * The filled FRAME, not a map of `Json`.
+     *
+     * The map was the defect: a slot parsed an answer to check it was
+     * acceptable, stored the TEXT, and the caller parsed it again —
+     * with whatever reference day it happened to have. The frame holds
+     * the value the slot's own parser produced, and `valueOf` hands it
+     * back at that type.
+     */
+    case Filled[I](frame: Frame[I]) extends Outcome[I]
     /** the person said no to the read-back; nothing was understood
      * wrongly, and nothing is written */
-    case Declined
-    case Interrupted(intent: String)
+    case Declined extends Outcome[Nothing]
+    case Interrupted(intent: String) extends Outcome[Nothing]
 
   /**
    * What a parked program is waiting to be told, without running the
@@ -206,56 +220,73 @@ object Conversation:
    * It suspends at every `ask`, which is an ordinary tool call that
    * `Durable` parks on. Nothing here is a state machine: the state is
    * the journal, and re-running is how the program gets back to where
-   * it stopped.
+   * it stopped. The frame is carried through the recursion and rebuilt
+   * on a replay from the same answers, so it never has to be stored.
    *
-   * `opening` is the sentence that started this — read by the frame's
-   * own `opening` slot and by every slot's `extract`, so the intake
-   * asks only for what it was not already told.
+   * `opening` is the sentence that started this. It is offered to
+   * every slot's extractor before anything is asked, so the intake
+   * asks only for what it was not already told — which is also what
+   * replaced the old `Frame.opening`: a slot that should swallow the
+   * whole opening says so with its own extractor, rather than the
+   * frame naming one slot as special.
+   *
+   * The LANGUAGE is not a parameter. It is the frame's, pinned when
+   * the frame was built, which is the point of the merge: an intake
+   * that takes a language per call can be handed a different one
+   * mid-exchange, and one was — on the second-to-last question.
    */
-  def intake[L](frame: Frame[L], lang: L, opening: String): Outcome ! Tool =
-    val seeded: Map[String, Json] =
-      frame.slots.flatMap(s => s.extract(opening).map(s.name -> _)).toMap ++
-        frame.opening.flatMap(n => frame.slots.find(_.name == n))
-          .flatMap(s => s.read(opening).map(s.name -> _)).toMap
+  def intake[I](in: Intake[I], opening: String): Outcome[I] ! Tool =
+    val name = in.frame.intent.toString
 
     def ask(say: Say, id: String): Reply ! Tool =
       okay.effect[Tool, String](Tool.Call(ToolCall(id, AskOp, Say.encode(say))))
         .map(s => Reply.decode(s).getOrElse(Reply.Answer(s)))
 
-    /** one slot, and the single re-ask its `read` earns */
-    def fill(s: Slot[L], again: Boolean): Either[Reply, Json] ! Tool =
+    /**
+     * One question, and the single re-ask its parser earns.
+     *
+     * `take` is what makes an answer able to answer more than was
+     * asked: told "Wrocław, and remote works" when asked where, the
+     * frame keeps the city AND lets the terms slot read the rest, so
+     * the next question is not one the person has already answered.
+     */
+    def fill(f: Frame[I], slot: String, skip: Set[String], again: Boolean)
+    : Outcome[I] ! Tool =
+      val question = f.missing.collectFirst { case (n, q) if n == slot => q }
+        .getOrElse(slot)
+      val left = Some(f.remaining)
       val say =
-        if again then Say.AskAgain(frame.name, s.name, s.ask(lang))
-        else Say.Ask(frame.name, s.name, s.ask(lang))
-      ask(say, s"${frame.name}-${s.name}${if again then "-again" else ""}").flatMap {
-        case Reply.Answer(text) => s.read(text) match
-          case Some(v) => okay.pure[Tool, Either[Reply, Json]](Right(v))
+        if again then Say.AskAgain(name, slot, question, left)
+        else Say.Ask(name, slot, question, left)
+      ask(say, s"$name-$slot${if again then "-again" else ""}").flatMap {
+        case Reply.Answer(text) =>
+          val next = f.take(slot, text)
+          if next.has(slot) then loop(next, skip)
+          else if !again then fill(next, slot, skip, again = true)
           // asked once, and then taken as it was said: a person who
           // answers the same way twice means it, and holding an intake
-          // hostage to a parser is worse than storing words as words
-          case None if !again => fill(s, again = true)
-          case None => okay.pure[Tool, Either[Reply, Json]](Right(JStr(text)))
-        case other => okay.pure[Tool, Either[Reply, Json]](Left(other))
+          // hostage to a parser is worse than moving on with the words
+          // kept. They are kept — `said(slot)` — rather than stored as
+          // the value, which is what the old runtime had to do.
+          else loop(next, skip + slot)
+        case Reply.Interrupt(i) => okay.pure[Tool, Outcome[I]](Outcome.Interrupted(i))
+        // a No or a Yes to a question that asked for neither is the
+        // person declining to go on with it
+        case _ => okay.pure[Tool, Outcome[I]](Outcome.Declined)
       }
 
-    def loop(todo: List[Slot[L]], have: Map[String, Json]): Outcome ! Tool =
-      todo match
-        case Nil => finish(have)
-        case s :: rest => fill(s, again = false).flatMap {
-          case Right(v) => loop(rest, have + (s.name -> v))
-          case Left(Reply.Interrupt(i)) => okay.pure[Tool, Outcome](Outcome.Interrupted(i))
-          // a No or a Yes to a question that asked for neither is the
-          // person declining to go on with it
-          case Left(_) => okay.pure[Tool, Outcome](Outcome.Declined)
-        }
+    def loop(f: Frame[I], skip: Set[String]): Outcome[I] ! Tool =
+      f.missing.map(_._1).find(n => !skip.contains(n)) match
+        case None => finish(f)
+        case Some(slot) => fill(f, slot, skip, again = false)
 
-    def finish(have: Map[String, Json]): Outcome ! Tool =
-      if !frame.confirm then okay.pure[Tool, Outcome](Outcome.Filled(have))
-      else ask(Say.ReadBack(frame.name, have, frame.readBack(lang, have)),
-        s"${frame.name}-readback").map {
-        case Reply.Yes => Outcome.Filled(have)
+    def finish(f: Frame[I]): Outcome[I] ! Tool =
+      if !in.confirm then okay.pure[Tool, Outcome[I]](Outcome.Filled(f))
+      else ask(Say.ReadBack(name, f.filled.view.mapValues(JStr(_)).toMap, in.readBack(f)),
+        s"$name-readback").map {
+        case Reply.Yes => Outcome.Filled(f)
         case Reply.Interrupt(i) => Outcome.Interrupted(i)
         case _ => Outcome.Declined
       }
 
-    loop(frame.slots.filterNot(s => seeded.contains(s.name)).toList, seeded)
+    loop(in.frame.fillFrom(opening), Set.empty)

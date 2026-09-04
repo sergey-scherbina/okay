@@ -1,5 +1,7 @@
 package okay.intent
 
+import okay.frame.Found
+
 /**
  * Temporal phrases to dates (specs/intent-classify.md).
  *

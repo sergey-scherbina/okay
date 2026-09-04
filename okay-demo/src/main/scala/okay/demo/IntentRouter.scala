@@ -1,6 +1,7 @@
 package okay.demo
 
 import okay.intent.*
+import okay.frame.{Frame, Slot}
 import okay.rag.Embedding
 
 /**
@@ -76,7 +77,7 @@ object IntentRouter {
    * the same fact: a `Slot[?]` recovered from a frame cannot be asked
    * for a type, which is what stops a caller inventing one.
    */
-  final case class Meeting(today: Temporal.Date):
+  final case class Meeting(today: Temporal.Date, lang: String = "en"):
     val when: Slot[Temporal.When] = Slots.when(today)
     val who: Slot[String] =
       Slots.text("who", Map("en" -> "Who should be there?"), required = false)
@@ -86,10 +87,10 @@ object IntentRouter {
       Slots.text("what", Map("en" -> "What would you like done?"), fromMessage = true)
 
     /** what each class needs before it can be acted on */
-    def frameFor(intent: String): Frame[String] = intent match
+    def frameFor(intent: String): Frame[String] = (intent match
       case "MeetingProposal" => Frame.of(intent, when, who)
       case "MeetingRequest" => Frame.of(intent, what)
-      case _ => Frame.of(intent)
+      case _ => Frame.of(intent)).in(lang)
 
   /**
    * One message in, one action out.
@@ -100,7 +101,6 @@ object IntentRouter {
    * nobody guesses — a person sees the two candidates instead.
    */
   def route(message: String, slots: Meeting,
-            lang: String = "en",
             vectors: Option[(Centroid.Trained, String => Embedding)] = None,
             floor: Double = 0.02): Action =
     // No `.filter(taxonomy.has)` and no translation: `cues` was built
@@ -127,7 +127,7 @@ object IntentRouter {
         // afternoon?" carries its own `when`, and a router that asks
         // for it is asking the person who just said
         val frame = slots.frameFor(intent).fillFrom(message)
-        frame.missing(lang).headOption match
+        frame.missing.headOption match
           case Some((slot, question)) => Action.Ask(intent, slot, question)
           case None => Action.Act(intent, frame)
 }

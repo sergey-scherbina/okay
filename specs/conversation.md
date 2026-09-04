@@ -251,3 +251,89 @@ Everything else — which question is next, when to ask again, what a
 `Json` is already the currency of tool arguments and answers in this
 module, so a slot's `read` produces one. A caller with a richer value
 type converts at its own edge.
+
+## Results — conversation-over-frame (2026-09-04)
+
+Two slot models appeared in this repository on the same day. This
+lane merged them, at the request of the consumer of the older one,
+who named three defects and one operational warning. All four are
+answered below; none of the four was my finding, and the warning is
+the one I would not have thought of.
+
+`okay.frame` is the merged form and `Conversation` keeps what a frame
+cannot have: the suspension. It no longer carries a `Slot` or a
+`Frame` of its own.
+
+### The three
+
+1. **A typed value, not `Option[Json]`.** The old `Slot.read` parsed
+   an answer to check it was acceptable and then stored the TEXT, so
+   the caller parsed it a second time — the same defect
+   `intent-frame-typed-values` had just closed in the other module.
+   `Outcome.Filled` now carries the FRAME, and `valueOf(price)` is a
+   `Double`.
+
+2. **An answer may answer more than was asked.** `Conversation`
+   answered only the pending question, so "Wrocław, and remote works"
+   yielded the city and then a question about the terms the person had
+   just given. `Frame.take` answers the named slot and offers the same
+   sentence to every other slot's extractor, and the loop recomputes
+   `missing` each round — so what an answer filled in passing is not
+   asked for.
+
+3. **How many questions are left.** `Say.Ask` carries `remaining`.
+   It is an `Option[Int]` because a journal outlives a deploy: an
+   entry parked by the previous build decodes as `None`, which is "not
+   written down" rather than "none left", and a caller renders no
+   count instead of a wrong one. There is a test for that entry shape.
+
+### The warning, which changed the design
+
+The consumer's own words: the language must be an argument of the
+whole conversation, not a parameter of every call — an intake that
+re-decides its language from a three-word answer switches it in the
+middle of a profile, and they measured one, on the second-to-last
+question.
+
+Both halves took a language per call (`question(lang)`, `answer(name,
+lang, text)`). The frame now CARRIES it: `in(lang)` once, where the
+exchange begins, and no method takes another. `intake` has no `lang`
+parameter at all. The property is tested rather than documented:
+answering and extracting leave `lang` alone, and there is no signature
+that could be handed a different one.
+
+`untranslated` came out of the same thought: a slot with no question
+in the frame's language falls back to English SILENTLY, which for a
+four-language intake is a defect that reaches a person. It is a list a
+test can assert empty.
+
+### What the merge cost
+
+`Slot.ask` is a `Map[String, String]`, so the old `L => String` with
+its opaque, caller-defined language type is gone. Two reasons, and the
+second is load-bearing: a map is DATA, so a service adds a language
+without a compiler; and a language that must survive a RESTART has to
+be something that can be written down — an opaque `L` cannot go in a
+journal, which is exactly why the old runtime had to store every
+rendered question as text. A caller with an enum passes its code.
+
+`Frame.opening` is gone too: a slot that should swallow the opening
+sentence says so with its own extractor, rather than the frame naming
+one slot as special.
+
+`Outcome.Filled` no longer means every slot parsed. It means the
+exchange ended with a yes; `frame.complete` says whether everything
+was read, and `said(name)` gives the words for a slot that was asked
+twice and still could not be read. The old runtime stored those words
+AS the value, which is how a field typed as a number held a sentence.
+
+### Where it lives, and why a module
+
+`okay-intent` and `okay-agent` may not depend on each other:
+okay-intent's test scope reaches for okay-agent's journal to replay
+recorded model answers, and sbt rejects the cycle (verified, not
+assumed — `recursive lazy value okayAgent needs type`). So the shared
+half is its own module, with no dependencies at all, which is also the
+honest description of it: a frame is data, and the things that fill it
+— a date parser, a journal, a model — are not.
+
