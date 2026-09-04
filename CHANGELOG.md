@@ -1,5 +1,52 @@
 # Changelog
 
+## intent-symbolic-tier — 112µs per message, and a margin that carries no confidence
+Completed: 2026-09-04
+Landed as 186f412b, NOT wired in. Built on the operator's instruction
+rather than on its trigger, which never fired, and therefore measured
+as a hypothesis rather than shipped as a default.
+
+IT COST ONE FILE, because the tier is a projection of machinery that
+already exists. FrameNet's "lexical units" are, here, BM25 over
+labelled examples: `okay-rag`'s `Postings` is already a `Fold` and a
+`Monoid`, `Keyword.search` already scores, and `Symbolic` is just the
+mapping from a class to the examples that carried it. The retrieval
+stack and the classifier want the same index.
+
+Measured on a deterministic split — odd positions train, even are
+scored, no message in both — because an index scored against its own
+examples measures nothing: BM25 finds the identical document and
+reports a perfect margin.
+
+| margin ≥ | coverage | agreement with gold |
+|---|---|---|
+| 0.0 | 100.0% | 45.0% |
+| 0.1 | 73.3% | 54.5% |
+| 0.2 | 55.0% | 63.6% |
+| 0.3 | 48.3% | 62.1% |
+| 0.5 | 16.7% | 60.0% |
+
+Speed is not the problem: 112µs per message against seconds for a model
+call, so Linagora's sub-150ms claim is clearly reachable this way. The
+problem is that AGREEMENT DOES NOT RISE WITH THE MARGIN — it plateaus
+at 60-64% and falls at 0.5. A usable filter approaches the model's own
+accuracy as its threshold tightens; this one does not, so the margin is
+not a confidence signal and there is no threshold at which the tier is
+safe to answer.
+
+The arithmetic of shipping it anyway: at margin 0.2 it takes 55% of
+traffic at 64% accuracy where the model tier is near 90% — roughly 14
+points of end-to-end accuracy spent to save 55% of the calls.
+
+So `Symbolic` is a working, tested, 112µs classifier that nothing
+calls, and the reason is written in the spec beside its numbers. What
+would change the verdict is a better REPRESENTATION rather than a
+better threshold, which makes the vector tier more interesting rather
+than less: paraphrase is exactly where BM25 is structurally weak.
+
+Gate: clean compile 0 warnings (the sibling's `AbruptChannel` one is
+gone too); full matrix 2156 tests, 0 failures.
+
 ## intent-language-gap — neither candidate fixes it, and the larger fixture refuted this spec's own ordering claim
 Completed: 2026-09-04
 Landed as 33a6e4ee. The precondition first, as the backlog entry
