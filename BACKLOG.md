@@ -1747,7 +1747,14 @@ subtraction.
       accounting, one run. The repo keeps `src/jmh/history.tsv` for
       exactly this, and by its standard those are not measurements. A
       benchmark row per tier, or the numbers should stop being quoted.
-- [ ] intent-frame-typed-values — `Frame.filled` is `Map[String,
+- [x] intent-frame-typed-values — LANDED 2026-09-04. `Frame` keeps
+      `Answered` (slot, text, parsed value) and `valueOf` takes the
+      SLOT, which is the evidence the answer has that type. One
+      isolated cast, guarded by `a.slot eq s` and tested with a
+      same-named slot of a different type getting nothing back. The
+      caller's test that recorded the defect now pins the property.
+      Original entry follows.
+- [x] intent-frame-typed-values (original) — `Frame.filled` is `Map[String,
       String]`: a slot knows its type `A`, parses the answer to prove
       it is acceptable, and then stores the raw text. A caller that
       wants the date parses it a SECOND time, with the same reference

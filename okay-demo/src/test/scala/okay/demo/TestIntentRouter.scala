@@ -68,16 +68,18 @@ class TestIntentRouter extends munit.FunSuite {
     assert(IntentRouter.taxonomy.check(Seq("Refund")).isLeft)
   }
 
-  test("WHAT THIS EXERCISE BROKE: a filled frame hands back text, not a date") {
-    // the hole named in the slot lane, now demonstrated from a caller.
-    // The router knows the meeting is on the 10th; the frame can only
-    // give the caller back the string the user typed.
-    val f = IntentRouter.frameFor("MeetingProposal", today)
+  test("a filled frame hands the caller a date, which is what acting on it needs") {
+    // This test used to record a defect: the frame gave back the
+    // string and the router parsed it a second time, with the same
+    // reference day, because nothing in the type said to. Fixed in
+    // intent-frame-typed-values, and the test now pins the property
+    // rather than the workaround.
+    val slot = Slots.when(today)
+    val f = Frame.of("MeetingProposal", slot)
     val filled = f.answer("when", "en", "next thursday").toOption.get
     assert(filled.complete())
+    assertEquals(filled.valueOf(slot).map(_.iso), Some("2026-09-10"))
+    // and the text survives, for showing a person what they typed
     assertEquals(filled.filled("when"), "next thursday")
-    // to act on it, the caller must parse it AGAIN, with the same
-    // reference day, and nothing in the type says so
-    assertEquals(Temporal.parse(filled.filled("when"), today).map(_.iso), Some("2026-09-10"))
   }
 }

@@ -2079,3 +2079,35 @@ None of the three is fixed here. The lane was to find out what a caller
 has to work around, and quietly repairing them would have hidden the
 answer — they are filed, and the router keeps its workarounds visible
 so the next reader can see the shape of what is missing.
+
+## Results — intent-frame-typed-values (2026-09-04)
+
+The blocker the first caller found, and the one that made "a label
+cannot be acted on; a filled FRAME can" untrue in the code that
+promised it. `Slot[A]` knew its type, parsed an answer to prove it was
+acceptable, and then `Frame` stored the raw TEXT — so `IntentRouter`,
+having just established that "next thursday" was a date, got the string
+back and parsed it a second time, with the same reference day, which
+nothing in the type told it to remember.
+
+`Frame` now keeps `Answered`: the slot, the text a person typed, and
+the VALUE it parsed to. `valueOf` takes the SLOT rather than a name,
+and that is the mechanism rather than a convenience — the slot is the
+evidence that this answer has type `A`, so there is no way to ask for a
+type the slot never had.
+
+**On the one cast.** `valueOf` contains an `asInstanceOf`, and the
+repository's rule is explicit that a cast needs a real necessity. This
+is the shape the rule itself names as the exception — a heterogeneous
+map keyed by identity — and it is isolated in one function whose guard
+is what makes it true: the value is returned only when `a.slot eq s`,
+so it was produced by THIS slot's own parser and by no other. That
+guard is tested, not asserted: a second slot with the SAME NAME and a
+different type is handed nothing.
+
+`filled` survives as the text view, because a frame shown back to a
+person should show what they typed rather than what it parsed to.
+
+The caller's test that recorded this defect now pins the property
+instead of the workaround — which is the shape a fixed friction should
+leave behind.

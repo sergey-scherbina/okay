@@ -72,4 +72,33 @@ class TestSlot extends munit.FunSuite {
     assertEquals(a.filled, Map.empty[String, String], "the original frame was mutated")
     assert(answered.filled.nonEmpty)
   }
+
+  test("a filled frame hands back the VALUE, not the text again") {
+    // the friction the first caller found: the router had proved
+    // "next thursday" was an acceptable date and could only get the
+    // string back, so it parsed it a second time with the same
+    // reference day and nothing in the type said to
+    val f = Frame.of("Proposal", when)
+    val filled = f.answer("when", "en", "next thursday").toOption.get
+    assertEquals(filled.valueOf(when).map(_.iso), Some("2026-09-10"))
+    // the text is still there for showing a person what they typed
+    assertEquals(filled.filled("when"), "next thursday")
+  }
+
+  test("the value comes back at the slot's own type, and only for that slot") {
+    // this is what makes the one cast in valueOf true: the answer
+    // remembers WHICH slot parsed it, so a different slot with the
+    // same name cannot collect it
+    val other = Slots.text("when", Map("en" -> "When, as text?"))
+    val filled = Frame.of("Proposal", when)
+      .answer("when", "en", "tomorrow").toOption.get
+    assertEquals(filled.valueOf(when).map(_.iso), Some("2026-09-05"))
+    assertEquals(filled.valueOf(other), None,
+      "a slot that did not parse this answer must not be handed its value")
+  }
+
+  test("an unanswered slot has no value, and asking is not an error") {
+    val f = Frame.of("Proposal", when)
+    assertEquals(f.valueOf(when), None)
+  }
 }

@@ -46,6 +46,35 @@ object Slot:
    * falls back to it */
   val Fallback: String = "en"
 /**
+ * One answered slot: the slot, the text a person typed, and the VALUE
+ * it parsed to.
+ *
+ * The pair is the point. `Frame` used to keep only the text, so a
+ * caller that had just proved "next thursday" was an acceptable date
+ * got the string back and parsed it a SECOND time — with the same
+ * reference day, which nothing in the type told it to remember. The
+ * first caller, `okay.demo.IntentRouter`, demonstrated exactly that
+ * and the demonstration is what this replaces.
+ *
+ * The abstract type is what lets one frame hold answers of different
+ * types without a cast at the call site: each `Answered` remembers the
+ * slot its value came from, and `valueOf` asks with that slot.
+ */
+sealed trait Answered:
+  type T
+  def slot: Slot[T]
+  def text: String
+  def value: T
+
+object Answered:
+  def apply[A](s: Slot[A], t: String, v: A): Answered { type T = A } =
+    new Answered:
+      type T = A
+      val slot = s
+      val text = t
+      val value = v
+
+/**
  * A frame: the slots one intent needs before it can be acted on.
  *
  * `missing` is the whole point of the type. A classifier says
@@ -54,12 +83,33 @@ object Slot:
  * unanswered questions rather than a boolean.
  */
 final case class Frame[I](intent: I, slots: Vector[Slot[?]],
-                          filled: Map[String, String] = Map.empty):
-  def has(name: String): Boolean = filled.contains(name)
+                          answers: Map[String, Answered] = Map.empty):
+
+  def has(name: String): Boolean = answers.contains(name)
+
+  /** what a person typed, for a frame being shown back to them */
+  def filled: Map[String, String] = answers.view.mapValues(_.text).toMap
+
+  /**
+   * The parsed value, at the type the slot promised.
+   *
+   * It takes the SLOT rather than a name, and that is the whole
+   * mechanism: the slot is the evidence that this answer has type `A`,
+   * so there is no way to ask for a type the slot never had. The match
+   * on `a.slot eq s` is what makes the cast beneath it true — the
+   * value was produced by THIS slot's own parser and by no other.
+   */
+  def valueOf[A](s: Slot[A]): Option[A] =
+    answers.get(s.name) match
+      case Some(a) if a.slot eq s => Some(a.value.asInstanceOf[A])
+      case _ => None
+
   /** the questions still to ask, in order, in the reader's language */
   def missing(lang: String = Slot.Fallback): Vector[(String, String)] =
     slots.filter(s => s.required && !has(s.name)).map(s => s.name -> s.question(lang))
+
   def complete(lang: String = Slot.Fallback): Boolean = missing(lang).isEmpty
+
   /**
    * Take an answer to one slot.
    *
@@ -72,7 +122,13 @@ final case class Frame[I](intent: I, slots: Vector[Slot[?]],
   def answer(name: String, lang: String, text: String): Either[String, Frame[I]] =
     slots.find(_.name == name) match
       case None => Left(s"no slot named $name")
-      case Some(s) => s.read(lang, text).map(_ => copy(filled = filled.updated(name, text)))
+      case Some(s) => store(s, lang, text)
+
+  /** typed on its own, so the parsed value never loses its type on the
+   * way into the map */
+  private def store[A](s: Slot[A], lang: String, text: String): Either[String, Frame[I]] =
+    s.read(lang, text).map(v => copy(answers = answers.updated(s.name, Answered(s, text, v))))
+
 object Frame:
   /** the frame an intent needs, described once beside the taxonomy */
   def of[I](intent: I, slots: Slot[?]*): Frame[I] = Frame(intent, slots.toVector)
