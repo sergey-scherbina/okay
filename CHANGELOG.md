@@ -1,5 +1,64 @@
 # Changelog
 
+## intent-embedding-choice — the ceiling is representational, framing moves it 6.6 points, and the swap is blocked on installation
+Completed: 2026-09-04
+Landed as aa6b0e10. Promoted ahead of distillation by the learning
+curve, and half blocked by the machine: the central experiment needs a
+second embedding model and exactly one is installed.
+
+STATED CORRECTLY THIS TIME. `/v1/embeddings` VALIDATES the `model`
+field and refuses a non-embedding id with HTTP 400; naming the
+embedding model or omitting it returns byte-identical vectors, and the
+response names what answered (`Qwen3-Embedding-0.6B-4bit-DWQ`, 1024
+dimensions). An earlier note in this programme said the gateway
+"ignores the model field", inferred from two requests that both
+returned 1024 dimensions — two models can share a dimension, and the
+vectors should have been compared rather than their shapes. Every
+number in this spec was measured with that one model.
+
+IS THE CEILING THE REPRESENTATION OR THE TASK? The learning curve ruled
+out capacity; the recorded journal rules out the task, for free — it
+already holds the model tier's answer for every fixture message.
+
+| | wrong of 60 |
+|---|---|
+| model tier | 4 |
+| probe | 8 |
+| both | **0** |
+
+Not one shared mistake. Inherently ambiguous messages would trip both;
+instead each has its own blind spots, so the signal the probe misses IS
+in the text and its representation is losing it.
+
+FRAMING MOVES THE SAME MODEL 6.6 POINTS. One model, four ways of asking:
+
+| framing | probe | centroid |
+|---|---|---|
+| bare message | 86.7% | 80.0% |
+| "Classify the intent of this message: " | 88.3% | 83.3% |
+| long e5-style task instruction | 81.7% | 65.0% |
+| "Represent this message for intent classification: " | 81.7% | 78.3% |
+
+The gain over bare text is at the noise floor on sixty messages; the
+SPREAD is not, and both models move together. The rule this line has
+found everywhere else holds here too — a short instruction helps, a
+long one costs.
+
+Concatenating chargrams with the embedding did not help (86.7% alone,
+85.0% together), but gluing a weak signal to a strong one is a poor
+test of orthogonality and refutes little.
+
+WHAT REMAINS IS INSTALLATION, NOT CODE. Filed: `intent-second-embedder`
+(Qwen3-Embedding-4B/8B as the same-family swap, BGE-M3 and
+multilingual-e5-large for the Russian arm, jina-embeddings-v3 for its
+classification adapter), `intent-static-embeddings` (model2vec/potion —
+a transformer distilled into a lookup table, no neural inference at
+request time, the only candidate offering embedding-grade accuracy with
+chargrams' zero-network property), and `intent-instruction-prefix`
+(re-measure the +1.6/+3.3 on the grown fixture before defaulting it).
+
+Gate: clean compile 0 warnings; full matrix 2197 tests, 0 failures.
+
 ## conversation-runtime — the intake as a program that stops at every question
 Completed: 2026-09-04
 Landed as 2fa6a4f8. specs/conversation.md built on
