@@ -1,5 +1,51 @@
 # Changelog
 
+## intent-centroid-reconsidered — the 90.0% headline does not reproduce, and I did not hold the framing fixed
+Completed: 2026-09-04
+Landed as 0b964d29. Three conclusions in this programme turned on the
+PROBE's number specifically, so all three were re-run with the centroid
+as the subject. One of them was mine from an hour earlier, and it did
+not survive.
+
+| distilled added | probe (framed) | centroid (framed) | centroid (bare, as reported) |
+|---|---|---|---|
+| 0 | 88.3% | 83.3% | 80.0% |
+| 20 | 88.3% | 86.7% | — |
+| 40 | 85.0% | 85.0% | **90.0%** |
+| 120 | 80.0% | 75.0% | 86.7% |
+
+THE DIFFERENCE IS A CONDITION I FAILED TO HOLD FIXED. The distillation
+lane embedded messages BARE; this one embeds them with the classify
+instruction an earlier lane had already shown to be better. Framed, the
+centroid's peak gain from distilled rows is +3.4 at 20 rows rather than
++10 at 40. On sixty held-out messages that is two messages against six,
+so both sit near the noise floor and a single cell was over-read.
+
+What survives in BOTH conditions, well outside the noise, is the
+DECLINE at larger doses — 75.0% at +120 framed, 78.3% at +320 bare.
+Distribution shift is real; the small-dose gain is not established.
+Corrected claim: distilled data does not lift the centroid to the model
+tier's level, and the probe remains the better tier on this fixture
+(88.3% against 83.3%).
+
+The other two re-readings stand. The 4B embedder is worse for the
+centroid too (80.0% against the 0.6B's 83.3%), so that verdict was not
+an artifact of the probe's parameter count. And the classify
+instruction helps the centroid MORE than the probe (+3.3 against +1.6),
+so the default was recorded with the weaker of its two reasons.
+
+THE REAL DEFECT is that two measurements an hour apart differed in a
+condition neither printed. Filed as `intent-state-the-framing`: every
+live arm prints its embedder, framing, split and corpus beside its
+number. The retraction is the symptom; the free variable is the cause.
+Retracted to the consumer in the room before landing, since they had
+said they would adopt the centroid if the result held.
+
+Gate: clean compile 0 warnings; full matrix 2238 tests, 0 failures.
+(One killed run in between failed `okay.persist.TestRaftWire`'s leader
+election — the `raft-wire-election-flake` already on the board, green on
+the rerun.)
+
 ## channel-ring-unbounded — every capacity gets a ring
 
 `Segments`: a linked list of fixed arrays behind one pair of position
