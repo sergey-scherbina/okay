@@ -88,6 +88,104 @@ object IntentFixture {
     case ZarnicNotification(what: String)
     case NotAboutZarnic(what: String)
 
+  /**
+   * The SAME four classes, named in each language of the parallel set.
+   *
+   * The first candidate for the language gap: a domain-bearing name is
+   * what rescued `Other` in English, and every measurement since has
+   * been made with ENGLISH names read against non-English messages. If
+   * the name has to be understood for the domain to land, a reader who
+   * is working in Russian is being handed the domain in a second
+   * language.
+   *
+   * Scala identifiers may be non-ASCII, so this costs nothing but the
+   * typing — which is the point of testing it before inventing
+   * machinery.
+   */
+  enum RencontreFr derives Schema:
+    case PropositionDeReunion(quoi: String)
+    case DemandeDeReunion(quoi: String)
+    case InformationDeReunion(quoi: String)
+    case PasUneReunion(quoi: String)
+
+  enum BesprechungDe derives Schema:
+    case Besprechungsvorschlag(was: String)
+    case Besprechungsanfrage(was: String)
+    case Besprechungshinweis(was: String)
+    case KeineBesprechung(was: String)
+
+  enum ReunionEs derives Schema:
+    case PropuestaDeReunion(que: String)
+    case SolicitudDeReunion(que: String)
+    case AvisoDeReunion(que: String)
+    case NoEsUnaReunion(que: String)
+
+  enum ВстречаRu derives Schema:
+    case ПредложениеВстречи(что: String)
+    case ПросьбаПоВстрече(что: String)
+    case СообщениеОВстрече(что: String)
+    case НеПроВстречу(что: String)
+
+  enum 会議Ja derives Schema:
+    case 会議の提案(内容: String)
+    case 会議の依頼(内容: String)
+    case 会議の連絡(内容: String)
+    case 会議ではない(内容: String)
+
+  /**
+   * The same five examples for each language taxonomy.
+   *
+   * The example MESSAGES stay English on purpose: this experiment
+   * isolates the NAMES, and translating the messages too would move
+   * two things at once. The residual oddity — Russian class names
+   * beside English examples — is the price of isolating a variable,
+   * and it is stated rather than hidden.
+   */
+  val examplesFr: List[(String, RencontreFr)] = List(
+    "Are you free to meet on Wednesday afternoon?" -> RencontreFr.PropositionDeReunion("meet Wednesday"),
+    "Please forward me the signed contract." -> RencontreFr.DemandeDeReunion("forward the contract"),
+    "Note that payroll runs a day early this month." -> RencontreFr.InformationDeReunion("payroll early"),
+    "What is the capital of Portugal?" -> RencontreFr.PasUneReunion("general knowledge"),
+    "My headphones arrived broken, I want a replacement." -> RencontreFr.PasUneReunion("a support issue"))
+
+  val examplesDe: List[(String, BesprechungDe)] = List(
+    "Are you free to meet on Wednesday afternoon?" -> BesprechungDe.Besprechungsvorschlag("meet Wednesday"),
+    "Please forward me the signed contract." -> BesprechungDe.Besprechungsanfrage("forward the contract"),
+    "Note that payroll runs a day early this month." -> BesprechungDe.Besprechungshinweis("payroll early"),
+    "What is the capital of Portugal?" -> BesprechungDe.KeineBesprechung("general knowledge"),
+    "My headphones arrived broken, I want a replacement." -> BesprechungDe.KeineBesprechung("a support issue"))
+
+  val examplesEs: List[(String, ReunionEs)] = List(
+    "Are you free to meet on Wednesday afternoon?" -> ReunionEs.PropuestaDeReunion("meet Wednesday"),
+    "Please forward me the signed contract." -> ReunionEs.SolicitudDeReunion("forward the contract"),
+    "Note that payroll runs a day early this month." -> ReunionEs.AvisoDeReunion("payroll early"),
+    "What is the capital of Portugal?" -> ReunionEs.NoEsUnaReunion("general knowledge"),
+    "My headphones arrived broken, I want a replacement." -> ReunionEs.NoEsUnaReunion("a support issue"))
+
+  val examplesRu: List[(String, ВстречаRu)] = List(
+    "Are you free to meet on Wednesday afternoon?" -> ВстречаRu.ПредложениеВстречи("meet Wednesday"),
+    "Please forward me the signed contract." -> ВстречаRu.ПросьбаПоВстрече("forward the contract"),
+    "Note that payroll runs a day early this month." -> ВстречаRu.СообщениеОВстрече("payroll early"),
+    "What is the capital of Portugal?" -> ВстречаRu.НеПроВстречу("general knowledge"),
+    "My headphones arrived broken, I want a replacement." -> ВстречаRu.НеПроВстречу("a support issue"))
+
+  val examplesJa: List[(String, 会議Ja)] = List(
+    "Are you free to meet on Wednesday afternoon?" -> 会議Ja.会議の提案("meet Wednesday"),
+    "Please forward me the signed contract." -> 会議Ja.会議の依頼("forward the contract"),
+    "Note that payroll runs a day early this month." -> 会議Ja.会議の連絡("payroll early"),
+    "What is the capital of Portugal?" -> 会議Ja.会議ではない("general knowledge"),
+    "My headphones arrived broken, I want a replacement." -> 会議Ja.会議ではない("a support issue"))
+
+  /** the second candidate: say the subject out loud, in the reader's
+   * language, and leave the (English) names alone */
+  val domainSentence: Map[String, String] = Map(
+    "en" -> "The subject matter is meetings and scheduling.",
+    "fr" -> "Le sujet est les réunions et la planification.",
+    "de" -> "Das Thema sind Besprechungen und Terminplanung.",
+    "es" -> "El tema son las reuniones y la planificación.",
+    "ru" -> "Тема — встречи и планирование.",
+    "ja" -> "話題は会議と日程調整です。")
+
   /** every taxonomy's names mapped back to the canonical classes, so
    * they are all scored on ONE axis */
   val canonical: Map[String, String] = Map(
@@ -102,7 +200,27 @@ object IntentFixture {
     "ZarnicProposal" -> "Proposal",
     "ZarnicRequest" -> "Request",
     "ZarnicNotification" -> "Notification",
-    "NotAboutZarnic" -> "Other")
+    "NotAboutZarnic" -> "Other",
+    "PropositionDeReunion" -> "Proposal",
+    "DemandeDeReunion" -> "Request",
+    "InformationDeReunion" -> "Notification",
+    "PasUneReunion" -> "Other",
+    "Besprechungsvorschlag" -> "Proposal",
+    "Besprechungsanfrage" -> "Request",
+    "Besprechungshinweis" -> "Notification",
+    "KeineBesprechung" -> "Other",
+    "PropuestaDeReunion" -> "Proposal",
+    "SolicitudDeReunion" -> "Request",
+    "AvisoDeReunion" -> "Notification",
+    "NoEsUnaReunion" -> "Other",
+    "ПредложениеВстречи" -> "Proposal",
+    "ПросьбаПоВстрече" -> "Request",
+    "СообщениеОВстрече" -> "Notification",
+    "НеПроВстречу" -> "Other",
+    "会議の提案" -> "Proposal",
+    "会議の依頼" -> "Request",
+    "会議の連絡" -> "Notification",
+    "会議ではない" -> "Other")
 
   /** proposing or moving a time */
   val proposals: List[(String, String)] = List(
@@ -381,7 +499,133 @@ object IntentFixture {
       "de" -> "Die App stürzt ab, wenn ich die Rechnungsseite öffne.",
       "es" -> "La aplicación se cierra cuando abro la página de facturación.",
       "ru" -> "Приложение падает, когда я открываю страницу оплаты.",
-      "ja" -> "請求ページを開くとアプリが落ちます。")))
+      "ja" -> "請求ページを開くとアプリが落ちます。")),
+    Parallel("propose-earlier", "Proposal", Map(
+      "en" -> "Could we start the meeting an hour earlier?",
+      "fr" -> "Pourrions-nous commencer la réunion une heure plus tôt ?",
+      "de" -> "Könnten wir die Besprechung eine Stunde früher beginnen?",
+      "es" -> "¿Podríamos empezar la reunión una hora antes?",
+      "ru" -> "Не могли бы мы начать встречу на час раньше?",
+      "ja" -> "会議を1時間早く始められますか。")),
+    Parallel("propose-split", "Proposal", Map(
+      "en" -> "Let's split this into two shorter sessions.",
+      "fr" -> "Séparons cela en deux séances plus courtes.",
+      "de" -> "Teilen wir das in zwei kürzere Sitzungen auf.",
+      "es" -> "Dividamos esto en dos sesiones más cortas.",
+      "ru" -> "Давайте разделим это на две более короткие встречи.",
+      "ja" -> "これを2回の短いセッションに分けましょう。")),
+    Parallel("propose-weekly", "Proposal", Map(
+      "en" -> "Shall we add a weekly check-in on Mondays?",
+      "fr" -> "Ajoutons-nous un point hebdomadaire le lundi ?",
+      "de" -> "Sollen wir einen wöchentlichen Termin am Montag einrichten?",
+      "es" -> "¿Añadimos una reunión semanal los lunes?",
+      "ru" -> "Добавим еженедельную встречу по понедельникам?",
+      "ja" -> "毎週月曜日に定例を追加しませんか。")),
+    Parallel("propose-after", "Proposal", Map(
+      "en" -> "How about we meet after the release instead?",
+      "fr" -> "Et si nous nous voyions plutôt après la mise en production ?",
+      "de" -> "Wie wäre es, wenn wir uns stattdessen nach dem Release treffen?",
+      "es" -> "¿Qué tal si nos vemos después del lanzamiento?",
+      "ru" -> "Может, встретимся после релиза?",
+      "ja" -> "リリース後に会うのはいかがでしょうか。")),
+    Parallel("request-slides", "Request", Map(
+      "en" -> "Please send the slides before Thursday.",
+      "fr" -> "Merci d'envoyer les diapositives avant jeudi.",
+      "de" -> "Bitte senden Sie die Folien vor Donnerstag.",
+      "es" -> "Por favor, envíe las diapositivas antes del jueves.",
+      "ru" -> "Пожалуйста, пришлите слайды до четверга.",
+      "ja" -> "木曜日までにスライドを送ってください。")),
+    Parallel("request-invite", "Request", Map(
+      "en" -> "Could you add me to the invitation?",
+      "fr" -> "Pourriez-vous m'ajouter à l'invitation ?",
+      "de" -> "Könnten Sie mich zur Einladung hinzufügen?",
+      "es" -> "¿Podría añadirme a la invitación?",
+      "ru" -> "Не могли бы вы добавить меня в приглашение?",
+      "ja" -> "招待に私を追加していただけますか。")),
+    Parallel("request-notes", "Request", Map(
+      "en" -> "Please take the minutes this time.",
+      "fr" -> "Merci de prendre les notes cette fois.",
+      "de" -> "Bitte führen Sie diesmal das Protokoll.",
+      "es" -> "Por favor, tome el acta esta vez.",
+      "ru" -> "Пожалуйста, ведите протокол в этот раз.",
+      "ja" -> "今回は議事録をお願いします。")),
+    Parallel("request-room", "Request", Map(
+      "en" -> "Can you check whether the room is free?",
+      "fr" -> "Pouvez-vous vérifier si la salle est libre ?",
+      "de" -> "Können Sie prüfen, ob der Raum frei ist?",
+      "es" -> "¿Puede comprobar si la sala está libre?",
+      "ru" -> "Можете проверить, свободна ли переговорная?",
+      "ja" -> "会議室が空いているか確認できますか。")),
+    Parallel("notify-late", "Notification", Map(
+      "en" -> "I will be ten minutes late.",
+      "fr" -> "Je serai en retard de dix minutes.",
+      "de" -> "Ich komme zehn Minuten später.",
+      "es" -> "Llegaré diez minutos tarde.",
+      "ru" -> "Я опоздаю на десять минут.",
+      "ja" -> "10分ほど遅れます。")),
+    Parallel("notify-agenda", "Notification", Map(
+      "en" -> "The agenda has been updated.",
+      "fr" -> "L'ordre du jour a été mis à jour.",
+      "de" -> "Die Tagesordnung wurde aktualisiert.",
+      "es" -> "El orden del día se ha actualizado.",
+      "ru" -> "Повестка обновлена.",
+      "ja" -> "議題が更新されました。")),
+    Parallel("notify-remote", "Notification", Map(
+      "en" -> "Thursdays are remote from now on.",
+      "fr" -> "Les jeudis se feront à distance désormais.",
+      "de" -> "Donnerstags wird ab jetzt remote gearbeitet.",
+      "es" -> "A partir de ahora los jueves son en remoto.",
+      "ru" -> "С этого момента четверги удалённые.",
+      "ja" -> "今後、木曜日はリモートになります。")),
+    Parallel("notify-recording", "Notification", Map(
+      "en" -> "Yesterday's recording is available now.",
+      "fr" -> "L'enregistrement d'hier est maintenant disponible.",
+      "de" -> "Die Aufzeichnung von gestern ist jetzt verfügbar.",
+      "es" -> "La grabación de ayer ya está disponible.",
+      "ru" -> "Вчерашняя запись уже доступна.",
+      "ja" -> "昨日の録画が利用可能になりました。")),
+    Parallel("other-thanks", "Other", Map(
+      "en" -> "Thank you, that was really helpful.",
+      "fr" -> "Merci, cela m'a beaucoup aidé.",
+      "de" -> "Danke, das war sehr hilfreich.",
+      "es" -> "Gracias, fue de mucha ayuda.",
+      "ru" -> "Спасибо, это очень помогло.",
+      "ja" -> "ありがとうございます。とても助かりました。")),
+    Parallel("other-refund", "Other", Map(
+      "en" -> "I was charged twice and want a refund.",
+      "fr" -> "J'ai été débité deux fois et je veux un remboursement.",
+      "de" -> "Mir wurde zweimal abgebucht und ich möchte eine Rückerstattung.",
+      "es" -> "Me cobraron dos veces y quiero un reembolso.",
+      "ru" -> "С меня списали дважды, я хочу возврат.",
+      "ja" -> "二重に請求されたので返金してほしいです。")),
+    Parallel("other-weather", "Other", Map(
+      "en" -> "It is supposed to snow this weekend.",
+      "fr" -> "Il doit neiger ce week-end.",
+      "de" -> "Am Wochenende soll es schneien.",
+      "es" -> "Se espera que nieve este fin de semana.",
+      "ru" -> "На выходных обещают снег.",
+      "ja" -> "今週末は雪が降るそうです。")),
+    Parallel("other-password", "Other", Map(
+      "en" -> "My password reset link has expired.",
+      "fr" -> "Mon lien de réinitialisation a expiré.",
+      "de" -> "Mein Link zum Zurücksetzen des Passworts ist abgelaufen.",
+      "es" -> "Mi enlace para restablecer la contraseña ha caducado.",
+      "ru" -> "Ссылка для сброса пароля истекла.",
+      "ja" -> "パスワード再設定のリンクの有効期限が切れました。")),
+    Parallel("other-congrats", "Other", Map(
+      "en" -> "Congratulations on the new role!",
+      "fr" -> "Félicitations pour ton nouveau poste !",
+      "de" -> "Herzlichen Glückwunsch zur neuen Stelle!",
+      "es" -> "¡Enhorabuena por el nuevo puesto!",
+      "ru" -> "Поздравляю с новой должностью!",
+      "ja" -> "新しい役職おめでとうございます。")),
+    Parallel("other-delivery", "Other", Map(
+      "en" -> "My order still has not arrived.",
+      "fr" -> "Ma commande n'est toujours pas arrivée.",
+      "de" -> "Meine Bestellung ist immer noch nicht angekommen.",
+      "es" -> "Mi pedido todavía no ha llegado.",
+      "ru" -> "Мой заказ до сих пор не пришёл.",
+      "ja" -> "注文した品がまだ届きません。")))
 
   /** the parallel set as (message, class) pairs for one language */
   def inLanguage(lang: String): List[(String, String)] =

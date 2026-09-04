@@ -823,3 +823,70 @@ days, day-of-week advancing and wrapping, and totality over arbitrary
 ASCII. One of those started as `forAll(...).check()` inside a `test`
 block, which prints and returns and cannot fail a suite — it was
 scenery, and is now a `property`.
+
+## Results — intent-language-gap (2026-09-04)
+
+The precondition first, as the entry demanded: the parallel set grew
+from 12 meanings to 30 in all six languages, weighted toward the
+out-of-domain boundary where the classifier actually breaks.
+
+**The larger fixture refuted a claim this spec was carrying.** At n=12
+Spanish (0.914) and French (0.900) sat above English (0.881), and the
+gate-non-english Results concluded from that "not a simple
+English-first ordering". At n=30 the ordering is: English 0.929, then
+German 0.895, Spanish 0.890, Japanese 0.888, French 0.887, and Russian
+0.741. The middle was noise; twelve messages could not tell those four
+apart, which is exactly what the backlog entry warned when it made
+growing the set a precondition.
+
+What survives is the gap itself: **Russian sits ~0.19 below English in
+two independent runs at two different fixture sizes.** That is the
+finding; the ranking of the middle is not.
+
+**Candidate one — case names in the message's own language.** Five
+taxonomies (`RencontreFr`, `BesprechungDe`, `ReunionEs`, `ВстречаRu`,
+`会議Ja`); Scala takes non-ASCII identifiers, so testing this cost only
+typing.
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| English names | 0.929 | 0.887 | 0.895 | 0.890 | 0.741 | 0.888 |
+| native names | 0.929 | 0.927 | 0.788 | 0.732 | 0.791 | 0.891 |
+
+Helps French (+0.040) and Russian (+0.050), badly hurts German (−0.107)
+and Spanish (−0.158); −0.029 on average. If the name worked by being
+UNDERSTOOD, the gain would be systematic and it is not. The English
+pair is the harness's own guard — both arms run the same taxonomy there
+and both score 0.929 exactly, so the comparison is comparing what it
+claims to.
+
+**Candidate two — say the subject out loud, in the reader's language**,
+leaving the English names alone.
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| plain | 0.929 | 0.887 | 0.895 | 0.890 | 0.741 | 0.888 |
+| domain stated | 0.848 | 0.887 | 0.688 | 0.844 | 0.765 | 0.888 |
+
+Also negative: −0.052 on average, German −0.207, only Russian gains
+(+0.024).
+
+**So neither candidate fixes the gap, and both cost.** That is the
+fourth time in this line that adding PROSE to the prompt has cost —
+after precedence rules, tie-break examples, and now a domain sentence.
+The things that have ever paid here are structural: the rendered
+example SHAPE, few-shot examples OF A CLASS, domain-bearing names in
+English, and field order. A pattern worth stating plainly: this prompt
+is at the point where more words make it worse, and the remaining
+levers are in the type and the examples, not in the instructions.
+
+One candidate remains untried and is filed rather than claimed: the
+example MESSAGES stayed English throughout, on purpose, so that the
+names arm moved one variable. Translating the examples themselves is
+the obvious next thing and it was deliberately not confounded into
+this lane.
+
+Scope: 30 meanings per language, one 4B local model, one run per arm.
+The translations are author-written, which more rows do not fix — a
+gap measured against my own Russian is a gap in a joint measurement of
+the model and the translator.

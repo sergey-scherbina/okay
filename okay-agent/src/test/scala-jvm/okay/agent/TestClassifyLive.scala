@@ -312,4 +312,65 @@ class TestClassifyLive extends munit.FunSuite {
     arm("examples + two tie-breaks",
       withExamples(IntentFixture.meetingExamples ++ IntentFixture.tieBreakExamples))
   }
+
+  /**
+   * Candidate one for the language gap: case names in the message's
+   * own language.
+   *
+   * Every measurement so far has read ENGLISH class names against
+   * non-English messages. A domain-bearing name is what rescued
+   * `Other`, and if the name has to be UNDERSTOOD for the domain to
+   * land, a reader working in Russian has been handed the domain in a
+   * second language.
+   */
+  test("live: case names in the message's own language") {
+    assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    import IntentFixture.*
+    given sM: Schema[Meeting] = summon[Schema[Meeting]]
+    val mReading = Classify.reading[Meeting]
+
+    def english(m: String) =
+      predictIn[Meeting](ask(Classify.prompt[Meeting](m, meetingExamples)))(using sM, mReading)
+
+    def native[I](ex: List[(String, I)])(using si: Schema[I])(m: String): String =
+      predictIn[I](ask(Classify.prompt[I](m, ex)(using si)))(using si, Classify.reading[I])
+
+    val inTongue: Map[String, String => String] = Map(
+      "en" -> english,
+      "fr" -> native(examplesFr),
+      "de" -> native(examplesDe),
+      "es" -> native(examplesEs),
+      "ru" -> native(examplesRu),
+      "ja" -> native(examplesJa))
+
+    for lang <- languages do
+      val data = inLanguage(lang)
+      armOver(s"$lang english names", data, english)
+      armOver(s"$lang native names", data, inTongue(lang))
+  }
+
+  /**
+   * Candidate two: say the subject out loud in the reader's language
+   * and leave the English names alone. Prepended, so the message stays
+   * last — and built from `Classify.prompt` rather than beside it, so
+   * the two arms cannot drift apart in anything but the sentence.
+   */
+  test("live: an explicit domain sentence, in the message's language") {
+    assume(reachable, s"no OpenAI-compatible endpoint at $url")
+    import IntentFixture.*
+    given sM: Schema[Meeting] = summon[Schema[Meeting]]
+    val mReading = Classify.reading[Meeting]
+
+    def plain(m: String) =
+      predictIn[Meeting](ask(Classify.prompt[Meeting](m, meetingExamples)))(using sM, mReading)
+    def stated(lang: String)(m: String) =
+      predictIn[Meeting](ask(
+        domainSentence(lang) + "\n\n" + Classify.prompt[Meeting](m, meetingExamples)))(
+        using sM, mReading)
+
+    for lang <- languages do
+      val data = inLanguage(lang)
+      armOver(s"$lang plain", data, plain)
+      armOver(s"$lang domain stated", data, stated(lang))
+  }
 }

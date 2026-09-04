@@ -1117,7 +1117,16 @@ not a new primitive from scratch.
       nonsense qualifier: if the nonsense one also lifts `Other`, what
       helps is the model noticing the names were chosen, not the domain
       they name.
-- [ ] intent-language-gap — Russian 0.652 and German 0.813 against
+- [x] intent-language-gap — LANDED 2026-09-04. Precondition done (12 ->
+      30 meanings per language) and it refuted the spec's own ordering
+      claim: at n=30 English is best (0.929) and the middle four cluster
+      at 0.887-0.895, so "Spanish and French above English" was
+      small-sample noise. The gap survives: Russian ~0.19 below English
+      across two runs at two sizes. BOTH candidates failed — native case
+      names −0.029 on average (helps fr/ru, badly hurts de/es), an
+      explicit domain sentence −0.052 (only ru gains). Original entry
+      follows.
+- [x] intent-language-gap (original) — Russian 0.652 and German 0.813 against
       Spanish 0.914 and French 0.900, with domain-bearing names and no
       gate, so this is not a gate artifact and not a simple
       English-first ordering (English is 0.881, below both Spanish and
@@ -1200,3 +1209,9 @@ makes both per-batch, which is why they were left; they still stand on
 the elementwise path. A dedicated SAM with `onValue`/`onEnd`/`onError`
 removes both without a cast, but it changes an abstract primitive on
 `Channel` and every implementation with it.
+- [ ] intent-examples-in-language — the candidate this lane deliberately
+      did not confound into itself: the example MESSAGES stayed English
+      throughout, so the native-names arm moved one variable. Translating
+      the five few-shot examples is untried, and examples OF A CLASS are
+      the one lever that has consistently paid here — unlike every prose
+      addition, which has now cost four times running.
