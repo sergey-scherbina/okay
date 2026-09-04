@@ -1,5 +1,56 @@
 # Changelog
 
+## channel-ring-unbounded — every capacity gets a ring
+
+`Segments`: a linked list of fixed arrays behind one pair of position
+counters. A claim is still one atomic — `getAndIncrement`, since an
+unbounded buffer can never refuse — and `popMany` still takes a run of
+published positions with one CAS, across segment boundaries. A
+`Buffer` seam lets `SentinelChannel` take either store, so
+`Channel.apply` now gives every capacity a ring: bounded a fixed one,
+unbounded a segmented one. `StmChannel` keeps capacity below two,
+which is a rendezvous the stamp scheme cannot express, and keeps being
+the one implementation with STM composability.
+
+Segments are never reused and never freed by hand. A thread reaches
+one by holding a reference, and a segment nobody holds is garbage —
+so the hazard a segmented queue usually carries, freeing a segment
+while a batched scan still walks it, has nowhere to live. The stamp is
+simpler than a ring's for the same reason: each position is used
+exactly once, so a slot needs one bit of state rather than a lap
+number.
+
+Three defects, none where I first looked.
+
+`fail` closed the channel; `StmChannel` only records. The difference
+shows in `merge` — one source failing must not lose the healthy
+source's elements, so the failure belongs at the END of the stream.
+Now a law, and split in two by tier: `AbruptChannel` cannot promise
+the failure arrives last, because it promises nothing arrives after
+close.
+
+`receiveAsync` rechecked `isEmpty` before parking, which counts a
+claimed-but-unpublished position as ready — so the consumer spun
+instead of waiting, and the CPU it burned came from the publisher it
+was waiting for. Two stores wide on a ring; a whole segment allocation
+wide here. `Buffer` now separates `isEmpty` from `hasReady`. The
+sender side has the same shape, filed as `channel-sender-livelock`.
+
+`segmentFor` walked forward from a hint that could be AHEAD. Producers
+claim with one increment and publish out of order, so a thread at
+position 800 could find the hint at the segment for 1100 and, with no
+backward link, write its element into another position's slot: 2000
+sent, 1502 received, **498 consecutive lost**. The head is the anchor
+that is never ahead, since it only advances past published positions.
+
+`TestSegments` covers the buffer directly — small segments, many
+producers. Reverting the fix fails two of its three tests, the first
+in 0.136s. That matters: the full matrix passed WITH the defect
+present on one run, so a green matrix was not evidence.
+
+Gate 494, full matrix 2207, clean build, no warnings. Benchmark
+numbers to follow — every run so far landed on a contested box.
+
 ## durable-waiting-on-a-person — an answerless entry can also mean a question
 Completed: 2026-09-04
 Landed as 8f61155a. `Durable` read every entry without an answer as the
