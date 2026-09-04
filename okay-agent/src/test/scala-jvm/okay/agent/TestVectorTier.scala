@@ -2,7 +2,6 @@ package okay.agent
 
 import okay.given
 import okay.rag.Embedding
-import okay.llm.Transports
 
 /**
  * The vector tier on the same split as the symbolic one
