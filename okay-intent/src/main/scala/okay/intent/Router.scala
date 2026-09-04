@@ -14,13 +14,26 @@ import okay.rag.Embedding
  * fire and cost nothing, the vector tier next because it answers
  * everything at 85-88% but needs an embedder, the shipped n-gram model
  * last because it needs nothing at all and is right about six times in
- * ten. Under the last margin nobody guesses — a person sees the
- * candidates.
+ * ten.
  *
  * That order is what this object is. It adds no new classification;
  * it is composition, and the reason it is worth a type is that every
  * one of those sentences is a MEASUREMENT that a caller would
  * otherwise have to rediscover.
+ *
+ * ONE CHOICE IS THE CALLER'S, and it is not a threshold: whether to
+ * load the last tier at all. With it, every message gets a class and
+ * so does nonsense — that model is exactly as confident about "asdf"
+ * as about English, and `Floors` carries the numbers. Without it,
+ * whatever the cues and vectors miss goes to a person. Coverage or
+ * caution; this door will not pretend to give both.
+ *
+ * AND THOSE PERCENTAGES ARE FOR PROSE OF THE FIXTURE'S OWN REGISTER.
+ * Under a mechanical shift the cue tier keeps its precision and loses
+ * recall — with the politeness frame stripped it fires on 19 messages
+ * of 60 instead of 32 and is right about all 19 — while the shipped
+ * model falls from 61.7% to 55%. `Models` has the whole table and the
+ * number to expect from somebody else's writing.
  *
  * The four outcomes are the demo's, which had a year of nothing else
  * to be: act, ask one question, escalate to a person, and — the one
