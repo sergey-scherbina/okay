@@ -1271,13 +1271,6 @@ with the layer owning `close` so the sentinel cannot be overtaken.
 Then `Channel.apply` can default to the weak mechanism plus the layer
 and lose no promise. Blocked on nothing; wants the two-tier laws
 (landed) to hold the line while the default moves.
-- [ ] intent-temporal-other-languages — `Temporal` is English only, and
-      the fixture's parallel set has "jeudi prochain", "am Montag",
-      "el martes", "во вторник" and Japanese weekday forms sitting
-      there already. The parse shapes are the same; what changes is the
-      vocabulary and, for some languages, the word order around the
-      qualifier. Worth doing only if a caller needs it — the model does
-      the conversion acceptably today and the schema checks it.
 
 ## channel-bulk-send — the push side is still per-element
 
@@ -1777,7 +1770,9 @@ subtraction.
       carry any names: what is missing is a way to state a cue set
       AGAINST a `Taxon`, and a check that every cue names a class the
       taxonomy holds.
-- [ ] intent-temporal-multilingual — `Temporal` parses English, so
+- [ ] intent-temporal-multilingual — (absorbs the older
+      intent-temporal-other-languages, filed twice by me before I
+      noticed the first.) `Temporal` parses English, so
       `Frame.fillFrom` fills English rows and declines the other five
       languages: measured 5/5 in English and 0/5 in fr, de, es, ru, ja
       over the parallel fixture (2026-09-04). The router degrades
@@ -1788,6 +1783,27 @@ subtraction.
       three vocabularies plus its own qualifier words ("prochain",
       "nächsten", "próximo", "следующий"), not a new design. Japanese
       needs a different tokeniser and should be its own decision.
+      The fixture's parallel set already carries "jeudi prochain", "am
+      Montag", "el martes", "во вторник" and Japanese weekday forms,
+      so the test data for this exists.
+- [ ] intent-fitted-model-ships — NOTHING SHIPS A FITTED MODEL, and
+      there is no documented way for a caller to obtain one. Every
+      measured tier above the pattern cues needs a `Centroid.Trained`
+      or a `Probe.Trained`, which today exists only inside a test that
+      fitted it from the fixture. A caller reading the module has the
+      types, the accuracy tables, and no path from "I have messages"
+      to "I have a model" — `Fitted` writes one as data and nothing
+      writes the file. Named to the operator as a usability blocker on
+      2026-09-04 and not filed until now, which is the miss this entry
+      exists to correct.
+- [ ] intent-one-entry-point — the composition of the tiers lives ONLY
+      in `okay.demo.IntentRouter`: cue tier first, vector tier below
+      it, escalate under the margin, fill the frame, ask what is
+      missing. That order is the measured one and a caller outside the
+      demo has to re-derive it by reading twenty Results sections.
+      okay-intent should hold the composed door itself, with the demo
+      as its caller rather than its definition. Also named on
+      2026-09-04 and unfiled until now.
 - [ ] intent-extract-more-slots — only `when` and whole-message text
       have extractors. Named entities (who), durations, places and
       amounts are the obvious next ones, and each is a `Slot.extract`
