@@ -29,6 +29,7 @@ rather than a class of parsing bug.
 | `Fitted` | every trained model as data, so fitting leaves the startup path |
 | `Fit` | the door: fit a corpus, write the model down, read it back |
 | `Models` | a fitted model that SHIPS — 76.7% at full coverage with no network |
+| `Router` | the composed door: the measured tier order, and four outcomes |
 | `Rows` / `ByLanguage` | a training row knows its language; a thin language borrows the pooled fit |
 | `Temporal` | English temporal phrases to ISO-8601, total and deterministic, refusing rather than guessing |
 
@@ -58,9 +59,26 @@ them: every fitted model existed inside the test that fitted it.
 import okay.intent.*
 
 // what ships, with no network and no fitting at startup
-Patterns.classify(Models.cues, message, floor = 0.4)      // 90.6% where it fires
-  .orElse(CharGrams.score(Models.meeting, message).map(_.best))
+Router.Router.offline().route(message) match
+  case Router.Action.Act(intent, frame)            => act(intent, frame)
+  case Router.Action.Ask(_, _, question, left)     => ask(question, left)
+  case Router.Action.Escalate(candidates, why)     => person(candidates, why)
 ```
+
+`Router` is the composition, not a new classifier: cues first (90.6%
+where they fire, cost nothing), the vector tier next if the caller has
+an embedder (85-88%, needs one), the shipped model last (61%, needs
+nothing). `Router.of` refuses a tier whose classes are not in the
+taxonomy, and `frames` says what each class needs before it can be
+acted on — omit it and every class is actionable at once.
+
+ONE CHOICE IS YOURS, and it is not a threshold: whether to load the
+last tier. With it, everything gets a class and so does nonsense — the
+shipped model's margin on garbage (median 0.437) is indistinguishable
+from its margin on real English (0.434), so no floor separates them.
+Without it, whatever the cues miss goes to a person. For calibrated
+abstention use `NoModel`, whose threshold is conformal and comes with
+a promise.
 
 76.7% at full coverage on 60 held-out English messages over four
 meeting classes — the cue tier answers the 53% it fires on at 90.6%,

@@ -119,4 +119,29 @@ object CharGrams {
 
   def classify(t: Trained, text: String, floor: Double = 0.3): Option[String] =
     score(t, text).filter(_.margin >= floor).map(_.best)
+
+  /**
+   * The same classifier under another taxonomy's names.
+   *
+   * A fitted model speaks the names its rows carried, and a caller
+   * whose taxonomy is domain-bearing ("MeetingProposal", not
+   * "Proposal") otherwise translates by hand — the exact defect
+   * `Cues.renamed` was built to end, one tier over. So this obeys the
+   * same rule and is TOTAL IN BOTH DIRECTIONS: every class the model
+   * knows must be named, and every name given must be a class the
+   * destination holds. A `Map` with a fallback would be the silent
+   * `case _ =>` again in different syntax.
+   *
+   * The weights are untouched: only the labels on the rows change.
+   */
+  def renamed(t: Trained, onto: Taxon, mapping: Map[String, String])
+  : Either[String, Trained] =
+    val unmapped = t.classes.filterNot(mapping.contains)
+    val offTaxon = mapping.values.toVector.distinct.filterNot(onto.has)
+    if unmapped.nonEmpty then
+      Left(s"no name given for: ${unmapped.sorted.mkString(", ")}")
+    else if offTaxon.nonEmpty then
+      Left(s"renamed onto classes the taxonomy does not hold: ${offTaxon.sorted.mkString(", ")}")
+    else Right(t.copy(classes = t.classes.map(mapping)))
 }
+

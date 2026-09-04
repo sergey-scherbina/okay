@@ -1803,7 +1803,14 @@ subtraction.
       writes the file. Named to the operator as a usability blocker on
       2026-09-04 and not filed until now, which is the miss this entry
       exists to correct.
-- [ ] intent-one-entry-point — the composition of the tiers lives ONLY
+- [x] intent-one-entry-point — LANDED 2026-09-04. `okay.intent.Router`
+      holds the measured tier order and the four outcomes;
+      `Router.of` refuses a tier that does not speak the taxonomy;
+      `Router.offline()` needs nothing. The demo is a caller now and
+      is shorter for it. `CharGrams.renamed` came with it, so a
+      domain-bearing taxonomy can use the shipped model. Original
+      entry follows.
+- [x] intent-one-entry-point (original) — the composition of the tiers lives ONLY
       in `okay.demo.IntentRouter`: cue tier first, vector tier below
       it, escalate under the margin, fill the frame, ask what is
       missing. That order is the measured one and a caller outside the

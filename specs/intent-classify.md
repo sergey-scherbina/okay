@@ -2435,3 +2435,57 @@ which does have cross suites, but overstated it about okay-intent.
 are gone; `Fit` keeps only what was actually missing — the measured
 default for `grams`, and writing a model down.
 
+## Results — intent-one-entry-point (2026-09-04)
+
+The composition lived in `okay.demo.IntentRouter` and now lives in
+`okay.intent.Router`, with the demo as its caller. The demo file got
+SHORTER, which is the shape a correct extraction leaves behind: what
+stayed there is what a caller actually owns — its taxonomy, the names
+it uses, the frames its classes need, the day the conversation is
+happening.
+
+`Router.of` checks that every tier speaks the taxonomy. `Action` keeps
+the demo's four outcomes, with one addition that came from the other
+consumer's ask the same day: `Ask` carries how many questions remain.
+
+### The floor I chose twice, and the second measurement that decided it
+
+First measurement, on held-out English: raising the last tier's floor
+from 0.0 to 0.5 lifts precision among answered messages from 76.7% to
+83.7% while coverage falls from 60/60 to 43/60 — four tenths of a
+point per abstention. That argued for a floor of 0, and I set it.
+
+That broke a demo test which had asserted that "zzz qqq xxx" escalates
+to a person, and the break was the useful part: the held-out set is
+all IN-DOMAIN, so it cannot measure the case a floor exists for. So I
+measured that case.
+
+| | median margin | range |
+|---|---|---|
+| real held-out English | 0.434 | 0.008 - 0.994 |
+| nonsense ("asdf", "qwerty uiop", "zzz qqq xxx") | 0.437 | 0.131 - 0.893 |
+
+The model is exactly as confident about garbage as about English. NO
+THRESHOLD SEPARATES THEM, so a non-zero floor buys the look of caution
+and none of it. The default stays 0 and the doc comment now says why
+with both numbers.
+
+What replaces the property: a caller chooses whether to load the last
+tier at all. With it, coverage; without it, the tier below is a
+person. The demo's test now pins BOTH — one that nonsense gets a class
+when the model is loaded, named so nobody mistakes it for an
+endorsement, and one that a router built without the model still
+escalates.
+
+Calibrated abstention already exists and is not a margin: `NoModel`'s
+conformal threshold, with a promise attached that is `None` when the
+sample cannot support it.
+
+### CharGrams.renamed
+
+The demo's taxonomy is domain-bearing and the shipped model speaks
+canonical names, so without this the reference caller could not use
+the model it ships. It obeys `Cues.renamed`'s rule exactly — total in
+both directions, a partial map is an error rather than a silent
+bucket — and touches only the labels, not the weights.
+

@@ -2,6 +2,7 @@ package okay.demo
 
 import okay.intent.*
 import okay.frame.Frame
+import okay.intent.Router
 
 /**
  * The first caller okay-intent has ever had
@@ -47,10 +48,12 @@ class TestIntentRouter extends munit.FunSuite {
 
   test("a proposal with no time in it still asks, and says which slot") {
     IntentRouter.route("Shall we meet?", slots) match
-      case IntentRouter.Action.Ask(intent, slot, question) =>
+      case IntentRouter.Action.Ask(intent, slot, question, left) =>
         assertEquals(intent, "MeetingProposal")
         assertEquals(slot, "when")
         assert(question.contains("When"), question)
+        // and how many are left, so a caller does not count for itself
+        assertEquals(left, 1)
       case other => fail(s"expected the when question, got $other")
   }
 
@@ -62,11 +65,30 @@ class TestIntentRouter extends munit.FunSuite {
       case other => fail(s"expected an action, got $other")
   }
 
-  test("nothing recognised escalates to a person rather than guessing") {
+  test("with the shipped model loaded, even nonsense gets a class — and that is what it costs") {
+    // This test used to assert an escalation, and the escalation was
+    // real: with no model behind the cues, nothing answered "zzz qqq
+    // xxx" and a person saw it. Wiring in the shipped model buys
+    // coverage and pays for it here, because that model has NO
+    // calibrated confidence — its margin on nonsense (median 0.437)
+    // is indistinguishable from its margin on real English (0.434),
+    // so no floor could have kept both properties.
     IntentRouter.route("zzz qqq xxx", slots) match
+      case IntentRouter.Action.Escalate(_, why) =>
+        fail(s"the model should have answered: $why")
+      case _ => ()
+  }
+
+  test("a router without the model escalates rather than guessing") {
+    // the property is not gone, it is a CHOICE: leave the last tier
+    // out and the tier below it is a person
+    val cautious = Router.Router.of(IntentRouter.taxonomy,
+      cues = Some(IntentRouter.cues), frames = slots.frameFor)
+      .getOrElse(fail("the router did not build"))
+    cautious.route("zzz qqq xxx") match
       case IntentRouter.Action.Escalate(candidates, why) =>
         assertEquals(candidates, Seq.empty[String])
-        assert(why.contains("no cue"), why)
+        assert(why.contains("no tier answered"), why)
       case other => fail(s"a router that guesses is the failure this prevents: $other")
   }
 
@@ -74,7 +96,7 @@ class TestIntentRouter extends munit.FunSuite {
     // no date in it, so there is a question to ask — and it arrives
     // in the reader's language from the same call
     IntentRouter.route("Shall we meet?", IntentRouter.Meeting(today, "ru")) match
-      case IntentRouter.Action.Ask(_, _, question) =>
+      case IntentRouter.Action.Ask(_, _, question, _) =>
         assertEquals(question, "Когда вам удобно встретиться?")
       case other => fail(s"$other")
   }

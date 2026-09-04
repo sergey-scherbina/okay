@@ -12,6 +12,13 @@ import okay.rag.Embedding
  * library with no callers has the wrong API and cannot find out, so
  * this exists to be the caller and to break on whatever is awkward.
  *
+ * It has now done that four times, and the fourth is why this file is
+ * SHORTER than it was: the composition it worked out — cues, then a
+ * model, then a person — moved into `okay.intent.Router`, where a
+ * caller outside this demo can find it. What is left here is what a
+ * caller actually owns: a taxonomy, the names it uses, the frames its
+ * classes need, and the day the conversation is happening.
+ *
  * It is deliberately a ROUTER and not a demonstration of a classifier:
  * the interesting part is what happens AFTER the class — the frame the
  * class needs, the question it is still missing, and the decision to
@@ -24,14 +31,9 @@ import okay.rag.Embedding
  */
 object IntentRouter {
 
-  /** what a router does with a message, rather than what it thinks */
-  enum Action:
-    /** enough is known to act, and the frame says so */
-    case Act(intent: String, frame: Frame[String])
-    /** the class is known and a slot is not: ask THIS, in their language */
-    case Ask(intent: String, slot: String, question: String)
-    /** not confident enough to act: show the alternatives to a person */
-    case Escalate(candidates: Seq[String], why: String)
+  /** the four outcomes are the library's now — this file proved they
+   * were the right four and no longer defines them */
+  export Router.Action
 
   /** the taxonomy, as DATA — a service edits this without a compiler */
   val taxonomy: Taxon = Taxon.parsed(
@@ -55,12 +57,14 @@ object IntentRouter {
    * initialisation, on the first message, by the test suite, not in
    * production a month later.
    */
+  val canonicalNames: Map[String, String] = Map(
+    "Proposal" -> "MeetingProposal",
+    "Request" -> "MeetingRequest",
+    "Notification" -> "MeetingNotification",
+    "Other" -> "NotAboutMeetings")
+
   val cues: Patterns.Cues =
-    Patterns.meeting.renamed(taxonomy, Map(
-      "Proposal" -> "MeetingProposal",
-      "Request" -> "MeetingRequest",
-      "Notification" -> "MeetingNotification",
-      "Other" -> "NotAboutMeetings")).fold(m => sys.error(m), identity)
+    Patterns.meeting.renamed(taxonomy, canonicalNames).fold(m => sys.error(m), identity)
 
   /**
    * The slots this router's frames are built from, HELD AS VALUES.
@@ -92,42 +96,34 @@ object IntentRouter {
       case "MeetingRequest" => Frame.of(intent, what)
       case _ => Frame.of(intent)).in(lang)
 
-  /**
-   * One message in, one action out.
+  /** the shipped model, under THIS router's names.
    *
-   * The tier order is the one the measurements argued for: the pattern
-   * cues cost nothing and are 89% accurate WHERE THEY FIRE, so they go
-   * first; the vector tier answers the rest; and below its threshold
-   * nobody guesses — a person sees the two candidates instead.
+   * `renamed` is total in both directions, exactly as it is for the
+   * cues, so a class the model knows and nobody mapped is an error
+   * here rather than a wrong answer in production.
    */
+  val model: CharGrams.Trained =
+    CharGrams.renamed(Models.meeting, taxonomy, canonicalNames)
+      .fold(m => sys.error(m), identity)
+
+  /**
+   * One message in, one action out — assembled from the library's
+   * door rather than by hand.
+   *
+   * The tier order, the floors and the four outcomes are
+   * `okay.intent.Router`'s. What this supplies is the domain: which
+   * classes exist, what each one needs before it can be acted on, and
+   * an optional embedder for the vector tier when a caller has a
+   * gateway.
+   */
+  def router(slots: Meeting,
+             vectors: Option[(Centroid.Trained, String => Embedding)] = None)
+  : Router.Router =
+    Router.Router.of(taxonomy, cues = Some(cues), grams = Some(model),
+      vectors = vectors, frames = slots.frameFor)
+      .fold(m => sys.error(m), identity)
+
   def route(message: String, slots: Meeting,
-            vectors: Option[(Centroid.Trained, String => Embedding)] = None,
-            floor: Double = 0.02): Action =
-    // No `.filter(taxonomy.has)` and no translation: `cues` was built
-    // against `taxonomy`, so every class it can answer with is one.
-    val fromCue = Patterns.classify(cues, message, floor = 0.4)
-
-    val decided: Either[Seq[String], String] = fromCue match
-      case Some(cls) => Right(cls)
-      case None => vectors match
-        case None => Left(Seq.empty)
-        case Some((model, embed)) =>
-          Centroid.score(model, embed(message)) match
-            case Some(v) if v.margin >= floor => Right(v.best)
-            case Some(v) => Left(Seq(v.best) ++ v.runnerUp)
-            case None => Left(Seq.empty)
-
-    decided match
-      case Left(candidates) =>
-        Action.Escalate(candidates,
-          if candidates.isEmpty then "no cue fired and no vector model is loaded"
-          else s"the top two are within $floor of each other")
-      case Right(intent) =>
-        // fill from the message BEFORE asking: "Are you free Wednesday
-        // afternoon?" carries its own `when`, and a router that asks
-        // for it is asking the person who just said
-        val frame = slots.frameFor(intent).fillFrom(message)
-        frame.missing.headOption match
-          case Some((slot, question)) => Action.Ask(intent, slot, question)
-          case None => Action.Act(intent, frame)
+            vectors: Option[(Centroid.Trained, String => Embedding)] = None): Action =
+    router(slots, vectors).route(message)
 }
