@@ -1,0 +1,11 @@
+lane: channel-send-fastpath
+why: chunked still trails zio (175.3 vs 128.0). Measured on both
+  sides now: ZStream.fromQueue averages 137.9 elements per queue
+  operation, SentinelChannel 35.4. Batch size is set by how far the
+  producer runs ahead, and ours cannot: sendBlocking goes through
+  CanBlock.blockAccepted on EVERY element -- a slot allocated, filled
+  and read -- even when the ring has room and there is nothing to wait
+  for. offer() is the non-suspending send and needs none of that.
+  Hypothesis to test, not assume: an offer-first fast path makes the
+  producer faster, which lets the buffer accumulate, which enlarges
+  the consumer's batches, which is the number that matters.
