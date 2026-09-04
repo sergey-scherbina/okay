@@ -1,5 +1,50 @@
 # Changelog
 
+## idiomatic-headline-honest — section 6b's headline said the opposite of its own table
+Completed: 2026-09-05
+Landed as 879bb156. `docs/benchmarks.md` §6b opened with *"forced onto
+equal footing, okay is ahead in every shape"* — which its OWN
+matched-16 row contradicts (ZIO leads, 127.2 against 223.7) and which
+the paragraph beneath it then walked back. The row leading the table
+was `ZStream` at `chunkSize = 1`, a mode nobody writes.
+
+`like-for-like-lanes` named this section as the first of three places
+one mistake appeared, and fixed the other two. This is the third.
+
+Rows reordered so the three that COMPARE come first and the DIAGNOSTIC
+last, each labelled in a column — §6c's own rule (name the
+granularity, name whether it memoises) carried into a table that
+cannot rename its lanes. The reading is rewritten around what each row
+can support: chunk-native compares and okay is 5.7x ahead; matched-16
+compares and okay loses; timed flush is okay's by 20x; the forced
+per-element row diagnoses what `chunkSize = 1` costs a library with no
+per-element representation. `docs/guide.md` repeated the 12x as a
+headline and now says what it is. No number was re-measured and none
+changed — the reading was what was wrong.
+
+TAKEN OVER from `idiomatic-api-compare`, claimed 2026-09-03 18:09 and
+untouched for 29 hours, announced in the room before starting. Its
+holder's worktree was left alone; while this lane ran, they returned
+and landed `like-for-like-lanes`, which supersedes the piece I had
+been about to land — so what would have been my finding is recorded as
+what it now is: an independent REPLICATION of theirs.
+
+That replication is one of two history rows. Their channel result
+reproduced at 3 forks × 8 iterations on a quiet box — 215.3 ±7.6
+against 220.7 ±7.0, control within 0.3% of theirs — confirming that
+staying inside the program does not close the ~2x to `zio.Queue`.
+
+The other row is a WARNING, not a result. My first run overlapped a
+sibling's JMH on the same machine and reported `zioStepWhole` at 597.5
+±430.1 where the same lane had measured 276.9 ±8.4 the day before. A
+contended box does not fail — it widens the interval — so any ratio
+taken from that window is fiction. Recorded so nobody quotes it, and
+as the argument for announcing "box: taking it" in the room before a
+benchmark run.
+
+Gate: `compare/Jmh/compile` after `rm -rf compare/target`, 0 warnings.
+No main or test source was touched.
+
 ## tutorial-chat-app — building a chat application on okay, from an empty directory
 Completed: 2026-09-04
 Landed as 1dac481f. docs/building-a-chat-app.md: the page a person
