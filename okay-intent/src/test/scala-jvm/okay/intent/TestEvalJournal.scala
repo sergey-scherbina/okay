@@ -1,6 +1,6 @@
 package okay.intent
 
-import okay.agent.{Durable, FileVersions, Rerun}
+import okay.agent.{FileVersions, Rerun}
 
 import java.nio.file.{Files, Paths}
 

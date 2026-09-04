@@ -806,6 +806,17 @@ lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )
+  .jsSettings(
+    // The MAIN sources cross; the tests do not, and this mirrors what
+    // okay-agent already does. Several suites summon a Handler[Async],
+    // which needs a CanBlock that only the JVM has — on JS they do not
+    // merely fail at runtime, they fail to COMPILE, which is the
+    // platform saying the test is asking for something it does not
+    // have. `scala-cross` is where a portable suite would go; there is
+    // none yet.
+    Test / unmanagedSourceDirectories :=
+      Seq(baseDirectory.value.getParentFile / "src" / "test" / "scala-cross"),
+  )
 
 lazy val okayAgent = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
