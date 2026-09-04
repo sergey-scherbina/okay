@@ -972,7 +972,7 @@ not a new primitive from scratch.
       schema), and a harness sentinel must not enter the confusion
       matrix or macro F1 tracks the decode rate instead of the
       classification. Original entry follows.
-- [ ] intent-other-collapse (original) — the lane's own measurement: declaring an
+- [x] intent-other-collapse (original) — the lane's own measurement: declaring an
       `Other` case is NOT enough. On 24 labelled messages the local 4B
       model gave `Other` recall 0.17 with reasoning first and 0.00
       without, absorbing every out-of-domain message into a positive
@@ -991,7 +991,7 @@ not a new primitive from scratch.
       API whose only measurement says it hurts is an unearned claim in
       code. The four lines are in the lane's history. Original entry
       follows.
-- [ ] intent-precedence-rule (original) — `Proposal` vs `Request` confused 3 of 6
+- [x] intent-precedence-rule (original) — `Proposal` vs `Request` confused 3 of 6
       in the same run, and it is genuine overlap rather than model
       error ("Can we move Thursday's sync to Friday?" is both). Needs a
       stated precedence rule travelling WITH the taxonomy (a doc
@@ -1025,7 +1025,7 @@ not a new primitive from scratch.
       classification prompt that says "and nothing else" already buys
       what `cut` would buy. Spec sentence removed rather than softened.
       Original entry follows.
-- [ ] intent-live-provider (original) — `Classify.prompt`/`read` are tested
+- [x] intent-live-provider (original) — `Classify.prompt`/`read` are tested
       against hand-built and round-tripped values, not a live model.
       The end-to-end run belongs with `TestLive`'s gating, and it is
       what would let `Structured.cut`'s token saving be measured rather
@@ -1037,7 +1037,7 @@ not a new primitive from scratch.
       Two guards, both verified by breaking them: the prompt
       fingerprint refuses a stale recording, and `Eval.regressions`
       finally guards something. Original entry follows.
-- [ ] intent-eval-on-journal (original) — bind `Eval` to a `Rerun` journal so an
+- [x] intent-eval-on-journal (original) — bind `Eval` to a `Rerun` journal so an
       evaluation run is replayable and a regression names the step that
       changed, not just the class that fell. The spec names this as the
       intended fixture; the lane deliberately did not build it, and the
@@ -1050,7 +1050,7 @@ not a new primitive from scratch.
       compose (0.830 together). The gate is now documented as the
       fallback for taxonomies that cannot be renamed. Original entry
       follows.
-- [ ] intent-domain-in-names (original) — the residue the gate does not catch: one
+- [x] intent-domain-in-names (original) — the residue the gate does not catch: one
       of six out-of-domain messages is still absorbed, and the fixture's
       `Other` mixes "not about this at all" (a birthday wish) with
       "another topic in the same register" (a double charge, a
@@ -1064,7 +1064,7 @@ not a new primitive from scratch.
       effect is attributable instead of anecdotal. The n=24 conclusion
       reproduced (macro F1 0.553 -> 0.906, `Other` F1 0.00 -> 0.86).
       Original entry follows.
-- [ ] intent-fixture-too-small (original) — at n=24 a difference of one or two
+- [x] intent-fixture-too-small (original) — at n=24 a difference of one or two
       replies is not a difference, and a mid-lane wording change moved
       an arm by two. Grow `IntentFixture` past the reference's minimum
       (30 per class) before defending any gap in the arms table as real.
@@ -1076,7 +1076,7 @@ not a new primitive from scratch.
       the gate only against generic names. The language gap itself is
       real and naming does not close it — Russian stays weakest (0.652)
       across two independent runs. Original entry follows.
-- [ ] intent-gate-non-english (original) — the gate loses PRECISION outside
+- [x] intent-gate-non-english (original) — the gate loses PRECISION outside
       English: `Other` precision 1.00 en, 0.75 fr, 0.60 ru, with recall
       1.00 everywhere, so it is pushing genuine in-domain messages out
       rather than failing to catch out-of-domain ones. Opposite
@@ -1097,7 +1097,7 @@ not a new primitive from scratch.
       `NotAboutShipping`. `Other` PRECISION separates right from wrong
       domain (0.92 vs 0.72) where recall does not. Original entry
       follows.
-- [ ] intent-name-sensitivity (original) — the whole result rests on four
+- [x] intent-name-sensitivity (original) — the whole result rests on four
       identifiers, so the obvious question is how much of it is the
       word "Meeting" and how much is any qualifier at all. Try a third
       taxonomy with a DIFFERENT domain word and a fourth with a
