@@ -1,8 +1,0 @@
-slug: probe-ranked
-what: Probe.score exposes best + margin + runnerUp; the distribution it
-  computed is discarded. A consumer wiring the probe into a router hit
-  it the same day the seam was filed: an operator diagnostic that lists
-  every class cannot be built without re-implementing the softmax
-  outside. Add Probe.ranked and make score a thin wrapper on it.
-touches: okay-agent/src/main/scala/okay/agent/Probe.scala,
-  okay-agent/src/test/scala/okay/agent/... , specs/intent-classify.md

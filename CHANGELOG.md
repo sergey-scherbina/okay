@@ -1,3 +1,35 @@
+## probe-ranked — the distribution the probe already computed, handed back
+Completed: 2026-09-04
+Landed as 2052e5a3. `Probe.score` reported `best`, `probability`,
+`margin` and `runnerUp` from a softmax over every class, and then
+dropped the softmax. `ranked` returns it — class and probability, in
+descending order — and `score` is now a thin wrapper that reads the
+head and the first gap, so the two cannot disagree about what the model
+said.
+
+Asked for by a consumer wiring the probe into a router: an operator
+diagnostic that lists what the classifier CONSIDERED cannot be built
+from a winner and a runner-up, and the alternative is re-implementing
+the softmax outside, against `weights` — a private shape whose
+normalisation would silently drift from this one.
+
+IT WAS ALREADY BEING RE-IMPLEMENTED, AND WRONGLY. Landing this, I
+found `NoModel.probabilityOf`: with the distribution unavailable, it
+called `score` once per class and gave every non-winner the SAME
+fabricated share, `(1 - p(best)) / (n - 1)`. Exact for two classes and
+fiction for three or more — which makes the `ranked` list that
+`intent-consumer-seams-a` added for active learning and for showing a
+person the choice arbitrary below rank 1, makes `runnerUp` a coin
+flip among ties, and lets a pattern cue promote the class the probe
+liked LEAST past the one it actually ranked second. Reported to the
+lane that holds the file rather than fixed here; the seam it needed
+now exists.
+
+The tests assert the classifier, not the arithmetic: that the ranking
+covers every class, sums to one, is ordered, and that `score`'s verdict
+is exactly its head and first gap. Four cases over hand-built corner
+vectors, so they carry no encoder and are not Live.
+
 # Changelog
 
 ## intent-model-persistence — a fitted model is data, so fitting leaves the startup path
