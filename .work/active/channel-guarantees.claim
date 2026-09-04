@@ -1,0 +1,9 @@
+claimed: channel-guarantees — put the comparison on the axis the operator named: not "which channel is fastest" but "which guarantees, at what price", measured on both sides symmetrically.
+
+Verified first, not assumed: zio.Queue.shutdown INTERRUPTS and promises no drain, but ZIO ships zio.stream.Take (Exit[Option[E], Chunk[A]]) precisely to carry an end-of-stream through a queue. So our stronger contract IS expressible in ZIO -- as a layer over the queue, not by the queue -- and that layer has a price nobody has measured.
+
+Two lanes, mirrored:
+  (a) ZIO with OUR guarantees: Queue[Take] (or an Option sentinel) so buffered elements still drain after the producer ends. Measures what the strong contract costs THEM.
+  (b) US with THEIR guarantees: a channel whose close interrupts and discards, so there is no termination detection at all. That is the exact part RingChannel and CasChannel kept failing -- the in-flight barrier and the closed-and-empty derivation exist only to honour drain-on-close. Weakening the contract should make them both tractable AND fast.
+
+Then the benchmark table gains a guarantees column, and Channel.apply's menu can be stated as a trade rather than a default.
