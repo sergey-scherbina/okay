@@ -1,3 +1,47 @@
+## nomodel-real-distribution — the losing classes were a share split evenly, not a ranking
+Completed: 2026-09-04
+Landed as fdcf0d97. `NoModel.blend` had no way to ask the probe about
+every class at once, so it asked about one at a time and invented the
+rest: `probabilityOf` gave the winner `p(best)` and handed every other
+class the SAME `(1 - p(best)) / (n - 1)`.
+
+Exact for two classes. Fiction for three or more — and fiction in
+exactly the part `intent-consumer-seams-a` had just built for two named
+consumers. `Verdict.ranked` was ordered arbitrarily below rank 1
+because every loser tied; `runnerUp` was whichever of those ties
+`sortBy` met first; and the cue bonus landed on top, so a pattern could
+lift the class the probe ranked LAST past the one it ranked second. An
+interface offering a person the two candidates it could not separate,
+and an example-selector ranking on uncertainty, read precisely that.
+
+`Probe.ranked` (2052e5a3) is the seam it lacked, and `blend` now reads
+the distribution in one pass rather than n calls to `score`.
+
+WHY THE SUITE WENT GREEN THROUGH ALL OF IT. `TestNoModelCalibration` is
+built on two classes, A and B, and at two classes `(1 - p) / 1` is
+arithmetically right. Every assertion passed honestly while the ranking
+below the winner was made up. The new fixture is three corners; on the
+old code it prints `north 0.0018245361588968279, up
+0.0018245361588968279` — bit-identical, the fabrication in plain sight.
+A property about a DISTRIBUTION needs three of something before there
+is one to have a property.
+
+REQUEST 3 OF THE CONSUMER'S SEVEN TOOK THREE LANES, and the spec now
+says why it could not take fewer: one added the field, one exposed the
+value, and this one connected them. The middle was a seam nobody could
+reach for until it existed — which is the argument for filing a seam
+request early even when the consumer can work around it.
+
+A note for persistence: `fit` calibrates `patternWeight` and
+`threshold` through `blend`, so anything fitted from here is
+calibrated against the corrected geometry. A model fitted BEFORE this
+and written out through `Fitted` carries a threshold chosen against
+the fabricated one, and should be re-fitted rather than loaded.
+
+Gate: 2218 tests, 0 failures, 0 warnings, on a quiet box. An earlier
+run died at 1456 with SIGTERM 143 — the okay-cluster hazard, still
+open, still not anyone's branch.
+
 # Changelog
 
 ## intent-label-distillation — a supplement for the no-network tiers, 60.0% → 66.7%
