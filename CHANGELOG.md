@@ -71,11 +71,15 @@ boundary. No `java.time`, so the JS build keeps it.
 `test` block, which prints and returns and cannot fail a suite —
 scenery, now a `property`.
 
-Gate: clean compile with 0 warnings of this lane's own (3 remain from a
-sibling's `AbruptChannel`, reported to its owner); full matrix 2150
-tests, 0 failures. Two warnings this lane DID introduce, an unused
-import and a discarded `Option`, were caught by the clean compile and
-fixed — a warm `testOnly` had compiled the same file and said nothing.
+Gate: full matrix 2150 tests, 0 failures. Two warnings this lane DID
+introduce, an unused import and a discarded `Option`, were caught by
+the clean compile — and then LOST: they were fixed in the worktree,
+never committed, and destroyed when the worktree was force-removed, so
+they landed on master anyway. Found the next morning by the next lane's
+clean compile and fixed there (intent-language-gap). The sentence you
+would have read here, that they "were fixed", was written from the
+green re-gate rather than from a commit, which is the difference
+between checking work and checking that work was kept.
 
 ## intent-tiebreak-by-example — examples are worse than the prose they were meant to replace
 Completed: 2026-09-04

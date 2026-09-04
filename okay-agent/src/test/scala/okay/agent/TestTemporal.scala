@@ -2,7 +2,7 @@ package okay.agent
 
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
-import okay.agent.Temporal.{Date, When}
+import okay.agent.Temporal.Date
 
 /** specs/intent-classify.md — the temporal slot */
 class TestTemporal extends munit.ScalaCheckSuite {
@@ -103,7 +103,7 @@ class TestTemporal extends munit.ScalaCheckSuite {
     // it cannot fail the suite, which makes it scenery. A `property`
     // is the shape that actually reports.
     forAll(Gen.asciiPrintableStr) { (s: String) =>
-      Temporal.parse(s, friday)
+      Temporal.parse(s, friday): Unit
       true
     }
   }
