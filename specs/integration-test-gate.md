@@ -152,3 +152,26 @@ with the 4 excluded being exactly its `liveTest`-wrapped ones.
 `sbt integrationTest` verified to run the tagged tests correctly
 (narrow: 4/4 `TestChatDemo` LIVE tests green in one run; broad: the
 full command across the build, logged in CHANGELOG/history.tsv).
+
+## A third kind, added 2026-09-04
+
+The two kinds above are suites that reach OUTSIDE the JVM and suites
+whose result depends on a live model's variance. A full matrix turned
+up a third: a test whose subject is fine but whose OBSERVATION is
+shared.
+
+`okay.script.TestScalaScript`'s "leaves no temp file/directory behind"
+snapshots every `okay-script-*` path under the system temp directory,
+before and after. The property it checks is real and worth keeping. The
+measurement is not isolable: a sibling suite in the same module creates
+and removes such paths while it runs, so in a parallel matrix the two
+snapshots describe different worlds. Seen as the only failure in a run
+of 2199 tests, with two files in the diff that the test never touched;
+alone it passes 9/9.
+
+Tagged rather than deleted, and tagged AT THE TEST rather than at the
+suite — the other eight tests in it are deterministic and belong in the
+gate. The real fix is to scope the snapshot to the paths the test
+itself creates, which is a change for whoever owns the module; a shared
+namespace compared across a parallel run cannot be made reliable by
+retrying it.

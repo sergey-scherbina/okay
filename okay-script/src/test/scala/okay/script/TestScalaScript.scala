@@ -111,7 +111,23 @@ class TestScalaScript extends munit.FunSuite:
     assert(r.errors.nonEmpty, r.errors.mkString("\n"))
   }
 
-  test("run: leaves no temp file/directory behind, success or failure") {
+  /**
+   * OUT OF THE DEFAULT GATE (operator call, 2026-09-04,
+   * specs/integration-test-gate.md). This snapshots a SHARED namespace
+   * — every `okay-script-*` path under the system temp directory — so
+   * it fails whenever another suite in this module creates or removes
+   * one between the two snapshots, which is exactly what a parallel
+   * matrix does. Observed in a full run of 2199 tests as the only
+   * failure, with `okay-script-web-*.md` and a second `okay-script-<n>`
+   * in the diff, none of them the file under test; the suite passes
+   * 9/9 alone.
+   *
+   * Tagged rather than deleted because the property is real and worth
+   * checking; the fix is to scope the snapshot to the paths this test
+   * creates, and that belongs to whoever owns okay-script
+   * (script-temp-snapshot-crosstalk).
+   */
+  test("run: leaves no temp file/directory behind, success or failure".tag(new munit.Tag("Live"))) {
     import scala.jdk.CollectionConverters.*
     val tmp = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))
     def snapshot(): Set[String] =

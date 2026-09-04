@@ -201,7 +201,11 @@ construction instead of a type test per value).
       only if the inference form (no type argument) bites a consumer.
 
 ## Flakes observed (record → fix loop when they recur)
-- [ ] script-temp-snapshot-crosstalk — `okay.script.TestScalaScript`'s
+- [ ] script-temp-snapshot-crosstalk — MOVED OUT OF THE DEFAULT GATE
+      2026-09-04 (operator call): the test is now `Live`-tagged, so it
+      runs under `sbt integrationTest` and no longer decides a landing.
+      The fix below is still owed by whoever owns okay-script.
+      `okay.script.TestScalaScript`'s
       "run: leaves no temp file/directory behind" snapshots the temp
       directory before and after, so it fails whenever ANOTHER suite in
       the same module is creating temp files at the same moment. Seen
