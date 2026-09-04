@@ -1,5 +1,30 @@
 # Changelog
 
+## channel-weak-gap — batching the handshake is not batching the queue
+
+`Ring.popMany` claims a run of consecutive published slots with ONE
+`compareAndSet` and leaves only the slot read and the stamp write per
+element. `AbruptChannel.receiveManyAsync` uses it; a law covers it,
+with two consumers contending for the same bulk claim.
+
+`CanBlock.block` on the JVM no longer allocates a `CompletableFuture`
+per operation. A typed one-shot slot carries the value, with a fast
+path that never parks — which is the usual case, because the callback
+fires synchronously inside `register` when the element was already
+buffered. No cast: the slot is parameterised on `A`.
+
+Both came out of one question — why our weak channel trailed
+`zio.Queue` — and the first answer was that it did not. The
+comparison was not like for like: `ZStream.fromQueue` takes up to
+4096 elements per queue operation while our consumer took one.
+Elementwise we were ahead (212 vs 337). What was true is that
+chunking bought them 2.7x and us 1.04x, because `receiveManyAsync`
+called `pop()` in a loop: the handshake was batched, the queue was
+not. 4000 handshakes had become 299 and bought 4%, since the ring
+still paid a head CAS per element and that CAS was a quarter of the
+profile. With the bulk claim, chunking buys 1.90x and the chunked
+lane lands ahead of `zioChunked` in the same run. See benchmarks §14.
+
 ## intent-tiebreak-by-example — examples are worse than the prose they were meant to replace
 Completed: 2026-09-04
 Landed as 75f2ec79, as a second refusal. The precedence lane's own

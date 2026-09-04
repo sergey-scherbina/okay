@@ -265,3 +265,7 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-04	channel-guarantees	ChannelGuaranteeBenchmark	okayLayered	177.442	us/op	N=4000 cap=1024	AbruptChannel + FIFO sentinel: the SAME contract as okayStrong, 1.9x cheaper
 2026-09-04	channel-guarantees	ChannelGuaranteeBenchmark	zioStrong	187.129	us/op	N=4000 cap=1024	zio.Queue[Option] + collectWhileSome: our contract, their queue
 2026-09-04	channel-guarantees	ChannelGuaranteeBenchmark	zioWeak	168.942	us/op	N=4000 cap=1024	zio.Queue + take(N): count known up front, no detection at all
+2026-09-04	channel-weak-gap	ChannelGranularityBenchmark	okayChunked	121.164	us/op	N=4000 cap=1024 f=3	AbruptChannel + Ring.popMany: one head CAS per batch; confirmed on two quiet runs (111.6, 121.2)
+2026-09-04	channel-weak-gap	ChannelGranularityBenchmark	okayElementwise	192.834	us/op	N=4000 cap=1024 f=3	one receiveBlocking per element, after the CanBlock slot replaced CompletableFuture
+2026-09-04	channel-weak-gap	ChannelGranularityBenchmark	zioChunked	156.151	us/op	N=4000 cap=1024 f=3	ZStream.fromQueue: up to 4096 elements per queue op
+2026-09-04	channel-weak-gap	ChannelGranularityBenchmark	zioElementwise	423.354	us/op	N=4000 cap=1024 f=3	q.take per element -- their queue at OUR granularity

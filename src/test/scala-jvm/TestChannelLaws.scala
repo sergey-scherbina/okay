@@ -165,6 +165,45 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     assertEquals(out, sent.take(out.length), s"$n: FIFO per producer")
   }
 
+  // ── LAW: the bulk receive is the elementwise one, batched ────────
+  // A batched primitive that loses or reorders is worse than none:
+  // it fails only under load, which is where it is used. Two
+  // consumers make the bulk claim contend with itself, which is the
+  // case the single-CAS-per-batch scan exists for.
+
+  each("law: receiveMany takes each element exactly once, under contending consumers") { (n, mk) =>
+    for _ <- 1 to 20 do
+      val c = mk(64)
+      val total = 3000
+      val p = Thread.ofVirtual().start { () =>
+        var i = 0
+        while i < total do { val _ = c.sendBlocking(i); i += 1 }
+      }
+      val seen = java.util.concurrent.ConcurrentLinkedQueue[Int]()
+      val counted = java.util.concurrent.atomic.AtomicInteger(0)
+      val cb = summon[CanBlock]
+      val qs = (0 until 2).map(_ => Thread.ofVirtual().start { () =>
+        while counted.get < total do
+          val chunk = cb.block[Either[Throwable, Chunk[Int]]] { k =>
+            c.receiveManyAsync(64)(k); () => ()
+          }.fold(throw _, identity)
+          var i = 0
+          while i < chunk.length do { seen.add(chunk(i)): Unit; i += 1 }
+          counted.addAndGet(chunk.length): Unit
+      })
+      p.join()
+      // the extra consumer is parked on a channel that will never
+      // fill again -- only close can release it, and it must not
+      // happen before the count is in, or the drain-tier channel
+      // would be asked to deliver what it already delivered
+      while counted.get < total do Thread.onSpinWait()
+      c.close()
+      qs.foreach(_.join())
+      val got = seen.asScala.toList
+      assertEquals(got.length, got.toSet.size, s"$n: bulk receive duplicated")
+      assertEquals(got.toSet, (0 until total).toSet, s"$n: bulk receive lost")
+  }
+
   // ── LAW 5: nothing is duplicated, whatever the interleaving ──────
 
   each("law: many producers, one consumer — no loss, no duplication") { (n, mk) =>

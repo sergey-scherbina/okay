@@ -1166,3 +1166,23 @@ with the layer owning `close` so the sentinel cannot be overtaken.
 Then `Channel.apply` can default to the weak mechanism plus the layer
 and lose no promise. Blocked on nothing; wants the two-tier laws
 (landed) to hold the line while the default moves.
+
+## channel-bulk-send — the push side is still per-element
+
+`Ring.popMany` batched the consumer's head CAS; `push` still takes the
+tail one element at a time, so a chunked SEND (`Channel.mergeChunked`,
+`feedChunked`) pays a tail CAS per element the way the receive side
+used to pay a head CAS. Symmetric fix: claim a run of writable slots
+with one `compareAndSet` on the tail, then publish each stamp. Wants
+the same contending-producers law the bulk receive got.
+
+## channel-callback-allocation — two allocations per element
+
+Leaf samples on the elementwise lane: `boxToBoolean` 8% (Function1 is
+not specialized on Boolean, so every `sendAsync` callback boxes) and
+`Right.apply` 3.4% plus the `Some` beside it (`End =
+Either[Throwable, Option[A]]` wraps each element twice). Chunking
+makes both per-batch, which is why they were left; they still stand on
+the elementwise path. A dedicated SAM with `onValue`/`onEnd`/`onError`
+removes both without a cast, but it changes an abstract primitive on
+`Channel` and every implementation with it.
