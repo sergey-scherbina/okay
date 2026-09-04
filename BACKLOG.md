@@ -1369,7 +1369,8 @@ ordered by what it would FIX, not by novelty.
       correction, an unrelated request or a command rather than the
       answer, so the resumed value is a choice and the handler decides.
       See "Open requests from a consumer" in specs/intent-classify.md.
-- [ ] intent-taxonomy-value — the model tier reads its classes from
+- [x] intent-taxonomy-value — DONE 2026-09-04 as `Taxon` (0cf1f7c5): a value with `of[I]` from a Schema and `parsed` from strings, deriving a Schema so it rides as data, plus `check` refusing a label the taxonomy does not hold. Original entry follows.
+- [x] intent-taxonomy-value (original) — the model tier reads its classes from
       `Schema[I]`, `NoModel.fit` infers them from its training rows,
       and nothing connects the two: the tiers cannot be aimed at one
       taxonomy without aligning it by hand, and a taxonomy that
@@ -1378,7 +1379,8 @@ ordered by what it would FIX, not by novelty.
       examples. A `Taxonomy` (classes, optionally examples per class)
       with `Taxonomy.of[I]` as one constructor and a parsed form as
       another. See "Open requests from a consumer" in the spec.
-- [ ] intent-language-in-fit — a training row is `(text, embedding,
+- [x] intent-language-in-fit — DONE 2026-09-04 as `Row.lang` and `ByLanguage.fit` (0cf1f7c5), with a pooled fallback below `minRows` (32, from the learning curve). The MEASUREMENT is deliberately not run: the parallel set has 30 messages per language, so an arm would train on fifteen — see intent-language-fixture-growth. Original entry follows.
+- [x] intent-language-in-fit (original) — a training row is `(text, embedding,
       class)` and cannot say which language it is in, so a multilingual
       fit pools every language into one boundary. intent-language-gap
       measured what that costs (0.741 against 0.929) and
@@ -1386,13 +1388,15 @@ ordered by what it would FIX, not by novelty.
       LANGUAGE, which this row shape cannot express. A grouping key,
       not new mathematics; a pooled fallback where a language is too
       thin. WORTH DOING BEFORE the embedding comparison, not after.
-- [ ] intent-verdict-ranking — `Probe.Verdict` carries `margin` and
+- [x] intent-verdict-ranking — DONE 2026-09-04 (8fe8e809), and then CORRECTED by a sibling (fdcf0d97): the ranking I handed back was invented below rank 1, because `blend` asked the probe one class at a time and split the remainder evenly. The seam was right and what flowed through it was not — my tests asserted the shape and never that rank 2 is the second most likely class. Original entry follows.
+- [x] intent-verdict-ranking (original) — `Probe.Verdict` carries `margin` and
       `runnerUp`; `NoModel.Verdict` drops both, so an abstaining caller
       knows only THAT it declined. Wanted by an interface that offers
       the two candidates it could not separate, and required by
       intent-active-learning, which samples by uncertainty and needs
       the distribution. The value exists one layer down.
-- [ ] intent-trained-codec — `Trained` is arrays with no codec, so
+- [x] intent-trained-codec — DONE 2026-09-04 as `Fitted` (c2fc1949): a record with a derived Schema for every trained model, numbers as bytes rather than digits (21KB against 36KB, 1.7x), and round-trip tests that compare PREDICTIONS rather than fields. Original entry follows.
+- [x] intent-trained-codec (original) — `Trained` is arrays with no codec, so
       fitting lives wherever loading lives. A caller that compiles its
       vectors at build time wants to fit there too and load weights at
       boot. Makes "no generation on the request path" also mean "no
