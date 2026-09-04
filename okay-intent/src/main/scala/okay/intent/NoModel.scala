@@ -41,7 +41,7 @@ object NoModel {
    * delivered 88.9% over 45% on unseen data.
    */
   final case class Trained(probe: Probe.Trained,
-                           cues: Vector[Patterns.Cue],
+                           cues: Patterns.Cues,
                            patternWeight: Double,
                            threshold: Double,
                            promise: Option[Double],
@@ -73,7 +73,7 @@ object NoModel {
    * units of probability, and it is fitted rather than chosen — see
    * `fit`.
    */
-  private def blend(t: Probe.Trained, cues: Vector[Patterns.Cue], w: Double,
+  private def blend(t: Probe.Trained, cues: Patterns.Cues, w: Double,
                     text: String, v: Embedding): Seq[(String, Double)] =
     val base = Probe.ranked(t, v)
     val cue = Patterns.score(cues, text)
@@ -92,7 +92,7 @@ object NoModel {
    */
   def fit(train: Seq[(String, Embedding, String)],
           calibrate: Seq[(String, Embedding, String)],
-          cues: Vector[Patterns.Cue] = Patterns.meeting,
+          cues: Patterns.Cues = Patterns.meeting,
           targetAccuracy: Double = 0.95,
           weights: Seq[Double] = Seq(0.0)): Trained =
     val probe = Probe.train(train.map((_, v, c) => (v, c)))

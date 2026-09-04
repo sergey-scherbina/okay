@@ -2131,35 +2131,35 @@ strings has no hole to trip on.
 
 ### Interface
 
-- [ ] `Cues(taxon: Taxon, all: Vector[Cue])` — a cue set is a cue set
+- [x] `Cues(taxon: Taxon, all: Vector[Cue])` — a cue set is a cue set
       TOGETHER WITH the taxonomy it decides. Constructed only through
       `Cues.of`, which returns `Left` naming every cue whose class the
       taxonomy does not hold.
-- [ ] `Cues.silent: Vector[String]` — the classes no cue can ever
+- [x] `Cues.silent: Vector[String]` — the classes no cue can ever
       produce. Not an error: a tier that cannot reach a class is a
       fact worth being able to read, and for the canonical set it is
       empty.
-- [ ] `Cues.renamed(onto: Taxon, mapping: Map[String, String])` —
+- [x] `Cues.renamed(onto: Taxon, mapping: Map[String, String])` —
       `Either[String, Cues]`, and TOTAL in both directions: every
       class the cues use must appear as a key, and every value must be
       a class `onto` holds. Missing keys and unknown targets are both
       `Left`, which is precisely the `case _ =>` the router had.
-- [ ] `Patterns.score` / `Patterns.classify` take a `Cues`. So does
+- [x] `Patterns.score` / `Patterns.classify` take a `Cues`. So does
       `NoModel`.
-- [ ] `Patterns.canonical: Taxon` — the four names the shipped cue set
+- [x] `Patterns.canonical: Taxon` — the four names the shipped cue set
       speaks — and `Patterns.meeting: Cues` stated against it.
 
 ### Behavior
 
-- [ ] A cue naming a class outside the taxonomy fails construction,
+- [x] A cue naming a class outside the taxonomy fails construction,
       and the message names the class.
-- [ ] A rename that omits a source class fails, and the message names
+- [x] A rename that omits a source class fails, and the message names
       the omitted class — the router's silent fallthrough, turned into
       an error.
-- [ ] A rename whose target is not in the destination taxonomy fails.
-- [ ] A successful rename decides the same messages as the original,
+- [x] A rename whose target is not in the destination taxonomy fails.
+- [x] A successful rename decides the same messages as the original,
       under the new names: same winner, same margin.
-- [ ] `IntentRouter` drops `canonicalToTaxonomy` and holds a renamed
+- [x] `IntentRouter` drops `canonicalToTaxonomy` and holds a renamed
       `Cues` instead, so its `taxonomy.has` filter has nothing left to
       catch.
 
@@ -2172,4 +2172,48 @@ cannot be a type. The check therefore happens at CONSTRUCTION, once,
 and every use downstream is total — which is the same bargain
 `Schema`-derived code makes and the one this module already took when
 `Taxonomy[I]` was withdrawn.
+
+## Results — intent-cues-for-a-taxonomy (2026-09-04)
+
+Landed as specified, and the interesting part is what the change
+DELETED rather than what it added.
+
+`IntentRouter` lost two lines it should never have needed: the
+`canonicalToTaxonomy` match and the `.filter(taxonomy.has)` that stood
+downstream of it. The filter was there because the translation could
+produce anything; the translation ended in `case _ =>` because a match
+over strings has to. Neither is needed once the cue set carries the
+taxonomy it decides — every class `Patterns.classify` can return is
+one the taxonomy holds, by construction, and there is nothing left for
+a filter to catch.
+
+`renamed` is total in both directions, which is the difference from
+what the router had. A `Map` passed where a `match` used to be would
+have bought nothing: `mapping.getOrElse(cls, fallback)` is the same
+silent fallthrough with different syntax. What makes it safe is the
+requirement that every class the cues USE appears as a key — so the
+mistake becomes a `Left` at construction, and the test that pins it
+deletes exactly one entry from the router's own map and reads the
+class name back out of the error.
+
+Two smaller facts fell out of stating a set against a taxonomy:
+
+- `silent` — the classes no cue can reach. Empty for the shipped set,
+  which is worth having MEASURED rather than assumed; a cue set that
+  cannot produce one of its own classes has a recall ceiling nobody
+  would find by reading it.
+- `Cues.unsafe`, used once, by `Patterns.meeting` itself. A set built
+  in the same file as the taxonomy it is checked against cannot fail
+  for a caller's reason, so an `Either` there would be an `Either`
+  every caller unwraps to reach a constant. The check still runs, at
+  class initialisation.
+
+Gate: clean compile 0 warnings; okayIntent JVM+JS, okayDemo,
+okayAgent — 296 tests, 0 failures.
+
+The two SIGTERMs this lane hit were a sibling's sbt, not the repo's
+own broken matrix: pid 56948 at `-Xmx6g` with load average 27, and the
+same command passed at load 17 with nothing else running. Consistent
+with the standing note that gates run on a quiet box, and no evidence
+either way about the 1449-test kill on master.
 

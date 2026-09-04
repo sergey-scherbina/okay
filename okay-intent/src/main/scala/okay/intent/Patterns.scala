@@ -34,6 +34,66 @@ object Patterns {
   final case class Cue(phrase: String, cls: String, weight: Double = 1.0,
                        atStart: Boolean = false)
 
+  /**
+   * A cue set TOGETHER WITH the taxonomy it decides.
+   *
+   * `Cue.cls` is a bare `String`, so on its own a cue set is connected
+   * to nothing: the first caller had to translate the canonical names
+   * onto its own domain-bearing ones by hand, and its translation
+   * ended in `case _ =>` — which routes a class the author forgot, or
+   * one added to the cue set later, to whatever the fallthrough names,
+   * silently and forever. A total function over strings has no hole to
+   * trip on, so no test could see it.
+   *
+   * Pairing the two lets the check happen ONCE, at construction, after
+   * which every use downstream is total.
+   */
+  final case class Cues private (taxon: Taxon, all: Vector[Cue]):
+
+    /** the classes no cue can ever produce.
+     *
+     * Not an error — a taxonomy may legitimately hold a class this
+     * tier declines to guess at — but a tier that cannot reach a class
+     * is a fact worth being able to read before trusting its recall.
+     */
+    def silent: Vector[String] =
+      val reached = all.map(_.cls).toSet
+      taxon.classes.filterNot(reached)
+
+    /**
+     * The same cues under another taxonomy's names.
+     *
+     * TOTAL IN BOTH DIRECTIONS, which is the whole point: every class
+     * these cues use must appear as a key, and every value must be a
+     * class `onto` holds. That is exactly the `case _ =>` the router
+     * had, turned into an error a caller must answer.
+     */
+    def renamed(onto: Taxon, mapping: Map[String, String]): Either[String, Cues] =
+      val mine = all.map(_.cls).distinct
+      val unmapped = mine.filterNot(mapping.contains)
+      val offTaxon = mapping.values.toVector.distinct.filterNot(onto.has)
+      if unmapped.nonEmpty then
+        Left(s"no name given for: ${unmapped.sorted.mkString(", ")}")
+      else if offTaxon.nonEmpty then
+        Left(s"renamed onto classes the taxonomy does not hold: ${offTaxon.sorted.mkString(", ")}")
+      else Cues.of(onto, all.map(c => c.copy(cls = mapping(c.cls))))
+
+  object Cues:
+    /** the only door: a cue naming a class the taxonomy does not hold
+     * is a cue that can never be right, and saying so here costs one
+     * `Either` and saves a wrong answer downstream */
+    def of(taxon: Taxon, cues: Vector[Cue]): Either[String, Cues] =
+      val stray = cues.map(_.cls).distinct.filterNot(taxon.has)
+      if stray.nonEmpty then
+        Left(s"cues name classes not in the taxonomy: ${stray.sorted.mkString(", ")}")
+      else Right(new Cues(taxon, cues))
+
+    /** for a set built in this file against a taxonomy declared beside
+     * it: the same check, but a failure is a bug here rather than a
+     * caller's mistake, so it is not the caller's `Either` to carry */
+    def unsafe(taxon: Taxon, cues: Vector[Cue]): Cues =
+      of(taxon, cues).fold(m => throw new IllegalArgumentException(m), identity)
+
   final case class Verdict(best: String, score: Double, margin: Double,
                            runnerUp: Option[String], fired: Seq[String])
 
@@ -45,7 +105,11 @@ object Patterns {
    * deliberate — cues drawn from the fixture's own vocabulary would
    * measure the fixture.
    */
-  val meeting: Vector[Cue] = Vector(
+  /** the four names the shipped cue set speaks */
+  val canonical: Taxon =
+    Taxon.parsed(Seq("Proposal", "Request", "Notification", "Other"))
+
+  private val meetingCues: Vector[Cue] = Vector(
     // proposing: a modal with a first-person plural, or an offer of time
     Cue("shall we", "Proposal", 2.0),
     Cue("can we", "Proposal", 1.5),
@@ -108,15 +172,17 @@ object Patterns {
     Cue("has not arrived", "Other", 2.5),
     Cue("i want to cancel my", "Other", 2.5))
 
+  val meeting: Cues = Cues.unsafe(canonical, meetingCues)
+
   /**
    * Score a message: every cue that fires adds its weight to its
    * class, and the margin is the winner's share of the total, so it is
    * comparable across messages that fire different numbers of cues.
    */
-  def score(cues: Vector[Cue], message: String): Option[Verdict] =
+  def score(cues: Cues, message: String): Option[Verdict] =
     val m = " " + message.toLowerCase.replaceAll("[\\n\\t]", " ") + " "
     val start = m.take(40)
-    val hits = cues.filter { c =>
+    val hits = cues.all.filter { c =>
       val where = if c.atStart then start else m
       if c.phrase.contains(".*") then where.matches(s".*${c.phrase}.*") else where.contains(c.phrase)
     }
@@ -131,6 +197,6 @@ object Patterns {
 
   /** the same contract as the other tiers: answer above the margin,
    * defer below it */
-  def classify(cues: Vector[Cue], message: String, floor: Double = 0.3): Option[String] =
+  def classify(cues: Cues, message: String, floor: Double = 0.3): Option[String] =
     score(cues, message).filter(_.margin >= floor).map(_.best)
 }

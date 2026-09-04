@@ -82,4 +82,14 @@ class TestIntentRouter extends munit.FunSuite {
     // and the text survives, for showing a person what they typed
     assertEquals(filled.filled("when"), "next thursday")
   }
+
+  test("the router's cues speak its own taxonomy, with nothing left to translate") {
+    // what replaced `canonicalToTaxonomy` and its silent `case _ =>`:
+    // the rename is checked once, so every class the cue tier can
+    // answer with is one the taxonomy holds
+    assertEquals(IntentRouter.cues.taxon, IntentRouter.taxonomy)
+    assert(IntentRouter.cues.all.map(_.cls).distinct.forall(IntentRouter.taxonomy.has))
+    assertEquals(IntentRouter.cues.silent, Vector.empty)
+  }
 }
+

@@ -55,4 +55,56 @@ class TestPatterns extends munit.FunSuite {
     assert(micros < 5000, s"a pattern pass taking ${micros}us is not a fast tier")
     assert(train.nonEmpty)
   }
+
+  // --- a cue set is stated against a taxonomy (intent-cues-for-a-taxonomy)
+
+  private val domain = Taxon.parsed(
+    Seq("MeetingProposal", "MeetingRequest", "MeetingNotification", "NotAboutMeetings"))
+
+  private val naming = Map(
+    "Proposal" -> "MeetingProposal",
+    "Request" -> "MeetingRequest",
+    "Notification" -> "MeetingNotification",
+    "Other" -> "NotAboutMeetings")
+
+  test("a cue naming a class the taxonomy does not hold cannot be built") {
+    val bad = Patterns.Cues.of(Patterns.canonical,
+      Vector(Patterns.Cue("shall we", "Proposal"), Patterns.Cue("ping", "Escalation")))
+    assert(bad.isLeft, bad)
+    assert(bad.left.exists(_.contains("Escalation")), bad)
+  }
+
+  test("the shipped set can reach every class it declares") {
+    assertEquals(Patterns.meeting.silent, Vector.empty)
+  }
+
+  test("a rename that forgets a class fails, and says which") {
+    // the router's `case _ =>`, which sent every name it had not
+    // thought of to one class and said nothing
+    val partial = Patterns.meeting.renamed(domain, naming - "Notification")
+    assert(partial.isLeft, partial)
+    assert(partial.left.exists(_.contains("Notification")), partial)
+  }
+
+  test("a rename onto a class the destination does not hold fails") {
+    val wrong = Patterns.meeting.renamed(domain,
+      naming.updated("Other", "OutOfScope"))
+    assert(wrong.isLeft, wrong)
+    assert(wrong.left.exists(_.contains("OutOfScope")), wrong)
+  }
+
+  test("a renamed set decides the same messages, under the new names") {
+    val renamed = Patterns.meeting.renamed(domain, naming).toOption.get
+    assertEquals(renamed.taxon, domain)
+    val agreed = test.forall { (m, _) =>
+      (Patterns.score(Patterns.meeting, m), Patterns.score(renamed, m)) match
+        case (None, None) => true
+        case (Some(a), Some(b)) =>
+          naming(a.best) == b.best && a.margin == b.margin &&
+            a.runnerUp.map(naming) == b.runnerUp
+        case _ => false
+    }
+    assert(agreed, "a rename changed a verdict")
+  }
 }
+

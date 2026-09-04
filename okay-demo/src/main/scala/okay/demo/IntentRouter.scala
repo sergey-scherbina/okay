@@ -41,6 +41,26 @@ object IntentRouter {
       "Note that payroll runs a day early this month." -> "MeetingNotification",
       "What is the capital of Portugal?" -> "NotAboutMeetings"))
 
+  /**
+   * The shipped cue set, under THIS router's names.
+   *
+   * The first version of this file translated the canonical class
+   * names by hand, in a `match` that ended in `case _ =>` — so a cue
+   * class it forgot, or one added upstream later, went to
+   * `NotAboutMeetings` silently. `renamed` is total in both
+   * directions: it fails unless every canonical class is named here
+   * and every name it is given belongs to the taxonomy above, which
+   * is why this can be a `get` — a mistake is caught at class
+   * initialisation, on the first message, by the test suite, not in
+   * production a month later.
+   */
+  val cues: Patterns.Cues =
+    Patterns.meeting.renamed(taxonomy, Map(
+      "Proposal" -> "MeetingProposal",
+      "Request" -> "MeetingRequest",
+      "Notification" -> "MeetingNotification",
+      "Other" -> "NotAboutMeetings")).fold(m => sys.error(m), identity)
+
   /** what each class needs before it can be acted on */
   def frameFor(intent: String, today: Temporal.Date): Frame[String] = intent match
     case "MeetingProposal" => Frame.of(intent, Slots.when(today),
@@ -61,9 +81,9 @@ object IntentRouter {
             lang: String = "en",
             vectors: Option[(Centroid.Trained, String => Embedding)] = None,
             floor: Double = 0.02): Action =
-    val fromCue = Patterns.classify(Patterns.meeting, message, floor = 0.4)
-      .map(canonicalToTaxonomy)
-      .filter(taxonomy.has)
+    // No `.filter(taxonomy.has)` and no translation: `cues` was built
+    // against `taxonomy`, so every class it can answer with is one.
+    val fromCue = Patterns.classify(cues, message, floor = 0.4)
 
     val decided: Either[Seq[String], String] = fromCue match
       case Some(cls) => Right(cls)
@@ -85,13 +105,4 @@ object IntentRouter {
         frame.missing(lang).headOption match
           case Some((slot, question)) => Action.Ask(intent, slot, question)
           case None => Action.Act(intent, frame)
-
-  /** the pattern tier speaks the canonical names; the taxonomy this
-   * router carries is domain-bearing, and the measurements say the
-   * domain-bearing names are worth keeping */
-  private def canonicalToTaxonomy(cls: String): String = cls match
-    case "Proposal" => "MeetingProposal"
-    case "Request" => "MeetingRequest"
-    case "Notification" => "MeetingNotification"
-    case _ => "NotAboutMeetings"
 }

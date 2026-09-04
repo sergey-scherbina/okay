@@ -1763,7 +1763,14 @@ subtraction.
       heterogeneous parsed values without a cast — a type-indexed map,
       or `Frame` carrying a tuple of its slots' types; the consumer has
       built one and may already know which.
-- [ ] intent-cues-for-a-taxonomy — `Patterns.meeting` hardcodes the
+- [x] intent-cues-for-a-taxonomy — LANDED 2026-09-04. `Patterns.Cues`
+      pairs a cue set with the `Taxon` it decides, checked once at
+      construction; `renamed` moves it onto another taxonomy and is
+      total in both directions, so the router's silent `case _ =>` is
+      now a `Left` naming the class nobody mapped. `IntentRouter` lost
+      both the translation and the `.filter(taxonomy.has)` behind it.
+      Original entry follows.
+- [x] intent-cues-for-a-taxonomy (original) — `Patterns.meeting` hardcodes the
       canonical class names, so a caller with a domain-bearing taxonomy
       writes a mapping, as `IntentRouter.canonicalToTaxonomy` does and
       as every caller after it will. `Cue.cls` is a `String` and could
