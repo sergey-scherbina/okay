@@ -1769,7 +1769,11 @@ subtraction.
       (every span's text must be in the message, which held 12/12
       across two runs) as decoder-side guards rather than prompt
       wording.
-- [ ] mail-loopback-tls — okay-mail's STARTTLS path is covered by the
+- [x] mail-loopback-tls — LANDED 2026-09-05. Needed `Tls.server`, the
+      missing mirror of `Tls.client` for upgrading an already-accepted
+      socket mid-protocol; with it, the client's whole STARTTLS path
+      runs against a real handshake. Original entry follows.
+- [x] mail-loopback-tls (original) — okay-mail's STARTTLS path is covered by the
       pure protocol tests and NOT over a real socket: the loopback leg
       runs in the clear, because a TLS server needs a certificate and
       a key and this module has no such fixture. okay-tls's own tests

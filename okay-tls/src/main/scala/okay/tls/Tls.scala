@@ -78,6 +78,41 @@ object Tls {
         case ss: SSLServerSocket => ss
         case other => throw IllegalStateException(s"the SSL factory answered a plain server socket: $other")
 
+  /**
+   * The OTHER half of a STARTTLS upgrade: wrap an already-accepted
+   * server socket, mid-protocol.
+   *
+   * `client` upgrades a connected client socket and had no mirror,
+   * which is a gap rather than a symmetry: STARTTLS is TWO-SIDED, and
+   * SMTP, IMAP, XMPP and Postgres all begin in the clear and upgrade
+   * in place. A server implementing one of those cannot use
+   * `serverSocket` — by the time it knows to upgrade, the socket is
+   * already accepted and has carried a greeting.
+   *
+   * Added for okay-mail's loopback test, where the client's whole
+   * upgrade path had never once run for want of something to upgrade
+   * against (mail-loopback-tls).
+   */
+  def server(sock: Socket, certFile: String, key: Secret,
+             secrets: Secrets): Either[String, Socket] =
+    for
+      _ <- noInlineKey(Some(key))
+      pem <- secrets.get(key)
+      ctx <- contextOf(None, Some((certFile, pem)))
+      out <- accept(ctx, sock)
+    yield out
+
+  private def accept(ctx: SSLContext, sock: Socket): Either[String, Socket] =
+    try
+      val ssl = ctx.getSocketFactory
+        .createSocket(sock, sock.getInetAddress.getHostAddress, sock.getPort, true) match
+          case s: SSLSocket => s
+          case other => throw IllegalStateException(s"the SSL factory answered a plain socket: $other")
+      ssl.setUseClientMode(false)
+      ssl.startHandshake()
+      Right(ssl)
+    catch case e: Exception => Left(s"the server side of the upgrade failed: ${e.getMessage}")
+
   /** the ambient-Secrets door (ctx-everywhere), wiring-shaped: the
    * server awaiting its resolver — provide(secrets) { Tls.served(...) } */
   def served(port: Int, certFile: String, key: Secret)
