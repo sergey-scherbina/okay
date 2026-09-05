@@ -1,3 +1,49 @@
+## filestore-first-segment-race — several processes may open one log at the same moment
+Completed: 2026-09-05
+Landed as fdef80b7. A shared log with several processes reading it is
+the arrangement this module's own two-node story describes, and it had
+a race at the very first moment: `FileAlreadyExistsException` on
+`00000000000000000000.log`, seven openers of eight.
+
+It survived because every test and every hand-run opens ONE store at a
+time. Staggered opens never hit it — a few seconds apart and all
+succeed. It took a demo test starting two real processes together to
+show it, and then two heavier runs to find the rest.
+
+THE RACE HAS THREE SIDES, and each was found by a heavier run than the
+last. Worth recording as a shape: a fix that passes on an idle machine
+has not been tested against the thing it fixes.
+
+(1) THE CREATE. Each opener lists the directory, finds no segments,
+and calls `newSegment(0)` with CREATE_NEW. One wins; the rest die.
+Losing is NORMAL — the winner's segment is precisely what this opener
+would have created — so the loser looks again.
+
+(2) THE HEADER. Looking again immediately is not enough. The winner
+has created the file and may not have written its header yet, a window
+of microseconds that a loaded machine makes real. The loser reads a
+zero-length file and reports "no header — not a segment", which is
+true and is not the answer: the segment is being born. So it waits for
+the header, bounded at two seconds; anything longer is a different
+problem and is reported rather than spun on.
+
+(3) THE OPENER WHO NEVER RACED. One that finds the file ALREADY in its
+listing never attempted a create, so it never waited — and walks into
+the same half-born segment. This one appeared only under a full
+matrix, one loser in twenty-four. The wait belongs on the path that
+READS, not only on the one that lost a create.
+
+The test uses threads rather than processes: the window is between the
+listing and the create, and that is the same window whether the loser
+is another thread or another JVM. Twenty-four openers on one barrier,
+because an idle machine hides sides two and three.
+
+TestTwoNode no longer pre-creates its log, which it had started doing
+to get past this. Two processes on one empty directory is what found
+the defect and is what keeps it found.
+
+Gate: 2328 tests, 0 failures, 0 warnings.
+
 # Changelog
 
 ## intent-english-corpus-twins — the corpus every number is measured on had the defect too
