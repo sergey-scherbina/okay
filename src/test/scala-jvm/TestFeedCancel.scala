@@ -1,22 +1,22 @@
 package okay
 
 /**
- * What the staged feed costs: CANCELLATION GRANULARITY.
+ * WHEN A FEED STOPS — pinned down, because a reader who closes a
+ * channel needs to know when the producer behind it actually gives up,
+ * and nothing said so before.
  *
- * The feed used to run the interpreter between every two elements, so
- * a cancelled fiber stopped almost at once. Now it loops while the
- * channel has room and builds a program only where it must wait — so
- * cancellation is noticed when the buffer fills, or at the end of the
- * source. On a BOUNDED channel that bound is the capacity; on an
- * unbounded one it is the whole source.
+ * A buffered producer runs ahead until the buffer fills, then parks.
+ * So it stops within one buffer of wherever it was when the channel
+ * closed, and a finite source simply finishes.
  *
- * That is a real change and it is written down as a test rather than
- * a sentence, because a reader who cancels a feed needs to know when
- * it will actually stop.
+ * These began as the cost of `feed-staged-loop`, which would have
+ * coarsened this to "one buffer, or the whole source". That lane was
+ * measured and declined, so the granularity is unchanged — but the
+ * questions it forced are worth keeping answered.
  */
 class TestFeedCancel extends munit.FunSuite {
 
-  test("a bounded feed stops within a buffer of where it was cancelled") {
+  test("a parked feed does not race ahead of its buffer") {
     // nobody consumes, so the producer fills the buffer and parks --
     // which is exactly where cancellation is noticed
     val produced = java.util.concurrent.atomic.AtomicInteger(0)
