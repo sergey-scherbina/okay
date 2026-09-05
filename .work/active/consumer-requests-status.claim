@@ -1,0 +1,28 @@
+task: consumer-requests-status
+agent: opus5-intent
+started: 2026-09-05
+branch: feature/consumer-requests-status
+worktree: ../okay-wt-reqs
+
+why: the consumer says request 5 is still open and that they are
+  waiting for a type proposal to review with live use rather than
+  guessing from outside. They are RIGHT to say it and the request is
+  not open: `okay.frame.Slot`/`Frame` shipped, they migrated onto it
+  themselves, and `Slot.choice` plus `Source` landed after that at
+  their own request.
+
+  What is actually broken is the DOCUMENT. "Open requests from a
+  consumer (2026-09-04)" marks exactly one of seven as DONE — number
+  3 — while 1, 2, 4, 5, 6 and 7 have all landed since, several of
+  them today. A consumer reading the spec is told the work is open,
+  so the list is lying to the one reader it exists for.
+
+  This is the same defect class as the numbers I re-published this
+  morning: a document that has stopped tracking the code.
+
+what: give every request its status, the type and commit that answers
+  it, and what genuinely remains — including where a request landed
+  DIFFERENTLY from what was proposed, which is the part a consumer
+  cannot see from outside and needs most.
+
+files: specs/intent-classify.md
