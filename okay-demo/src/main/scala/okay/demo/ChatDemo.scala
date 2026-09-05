@@ -48,497 +48,72 @@ object ChatDemo {
   // reply/sse/obj/fieldOf/messagesOf/appJs, a bare String uuid-free
   // seam with no opinion about MatchStore/ChatLog held here or there.
 
-  // ---- the matchmaking side (okay-match wired in) --------------------
-
-  /** ONE marketplace for the whole server, DURABLE by default: a
-   * sqlite file (OKAY_CHAT_DB; ":memory:" asks for the memory
-   * engine; `postgres://user:pass@host:port/db[?sslmode=…]` puts it
-   * on live Postgres over the wire driver) — the open-backend
-   * principle is a connection string */
-  lazy val market: MatchStore = marketOf(sys.env.getOrElse("OKAY_CHAT_DB", "okay-chat.db"))
-
-  /** the connection string → the engine (pure in its choice, so the
-   * live test can drive it without the env). `embed` is the registry's
-   * search-before-create similarity function (demo-embeddings-attr):
-   * `Vectors.hashing()` (lexical, the default — zero extra weight in
-   * this module) or a real embedder, e.g. okay-langchain4j-embed's
-   * `Langchain4jEmbed.embed(model)` — kept OUT of okay-demo's own
-   * dependencies (a real model download), so the wiring is a
-   * constructor parameter a SIBLING module (okay-demo-embed) supplies,
-   * never an import here. `proposeThreshold` (default 0.85, unchanged)
-   * rides along: a real embedder's OWN cosine distribution is a
-   * deployment's to calibrate, same as choosing the embedder is */
-  def marketOf(db: String, embed: String => Embedding = Vectors.hashing(),
-               proposeThreshold: Float = 0.85f): MatchStore =
-    if db == ":memory:" then MemoryMatch(embed = embed, proposeThreshold = proposeThreshold)
-    else if PgTarget.is(db) then
-      // the SAME SqlMatch, its `?` renumbered to pg's `$n` — one env
-      // var switches the engine (demo-pg-backend)
-      val t = PgTarget.parse(db).fold(e => throw IllegalArgumentException(s"OKAY_CHAT_DB: $e"), identity)
-      val conn = t.tls match
-        case None => PgSql.connect(t.host, t.port, t.user, t.password, t.database)
-        case Some(cfg) => PgTls.connect(t.host, t.port, t.user, t.password, t.database, cfg, Secrets.file)
-      SqlMatch(!.run(Async.run[PgSql, Nothing](conn)), embed = embed,
-        proposeThreshold = proposeThreshold, placeholders = Placeholders.numbered)
-    else
-      // under the parallel matrix DriverManager can see another
-      // module's loader first; naming the driver removes the race
-      // (the TestCrossing/H2 lesson, third telling)
-      Class.forName("org.sqlite.JDBC")
-      SqlMatch(JdbcSql(java.sql.DriverManager.getConnection(s"jdbc:sqlite:$db")),
-        embed = embed, proposeThreshold = proposeThreshold)
-  private val turnNo = java.util.concurrent.atomic.AtomicLong(0)
-
-  /** the LOG comes first (demo-replay-projections): every /match turn
-   * is appended to a persist topic before anything is extracted, and
-   * the offset that comes back is the provenance of what the turn
-   * asserts. OKAY_CHAT_LOG is a FileStore directory (":memory:" for
-   * a run that keeps nothing); the store above is a projection of it */
-  lazy val chatStore: okay.persist.Store = storeOf(sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log"))
-  lazy val chatLog: ChatLog = ChatLog(chatStore.topic("web-demo", 1, Policy.default))
-
-  def storeOf(path: String): okay.persist.Store =
-    if path == ":memory:" then MemoryStore() else FileStore.open(java.nio.file.Path.of(path))
-
-  /** for tests that want their OWN log without touching the ambient
-   * OKAY_CHAT_LOG store */
-  def logOf(path: String): ChatLog =
-    ChatLog(storeOf(path).topic("web-demo", 1, Policy.default))
-
-  /** a /match turn, LOGGED: register the speaker, append the turn,
-   * extract with the log offset as provenance, log the answer too.
-   * A verified session (demo-sessions) is the identity of RECORD; the
-   * text-parsed "email x@y" stays the fallback for scripted/offline
-   * turns, which present no session at all */
-  def matchTurnLogged(text: String, history: Seq[Anthropic.Message], log: ChatLog,
-                      sessionEmail: Option[String] = None)
-                     (using Transport, Secrets, MatchStore): String =
-    val store = summon[MatchStore]
-    val me = store.register(sessionEmail.getOrElse(resolveEmail(text, intakePolicy)))
-    val off = log.append(ChatTurn(me, "user", text))
-    val answer = matchTurn(text, history, off, sessionEmail)
-    log.append(ChatTurn(me, "assistant", answer)): Unit
-    answer
-
-  /** log-first made demonstrable: drop the projection, rebuild it
-   * from the log through the SAME extraction the live chat used;
-   * answers how many user turns it replayed */
-  def replayProjections(log: ChatLog)(using Transport, Secrets, MatchStore): Long =
-    val store = summon[MatchStore]
-    store.reset()
-    var n = 0L
-    log.replay { (t, prov) =>
-      if t.role == "user" then
-        matchTurn(t.text, Nil, prov.offset): Unit
-        n += 1
-    }: Unit
-    n
-
-  private val matchSystem =
-    """You are a helpful chat assistant that ALSO runs a marketplace
-      |over a structured database — ANY domain: services and repairs,
-      |housing (rent or sale), jobs (seeking work or hiring). Decide
-      |yourself when the tools apply: when the user OFFERS something
-      |or LOOKS FOR something, work the marketplace; for anything
-      |else just answer — no tools needed.
-      |Candidates may be several and may decline: list them numbered,
-      |let the user CHOOSE whom to ask, then match_inquire each
-      |chosen one (asking several is wise — someone agrees). The
-      |asked side answers with match_respond; an ACCEPTED deal
-      |unlocks contacts (match_contacts) — never reveal contacts
-      |before acceptance.
-      |The marketplace flow: facts_register (email -> profile id)
-      |first — ask for an email if none was given; registry_search
-      |BEFORE registry_propose; facts_assert to record an offer or a
-      |need (side "offer" or "need", value {"t":"text","s":...},
-      |chat "web-demo", span = the user's words) — ALWAYS store a need
-      |(side "need") before searching, so the user is notified when
-      |a matching offer arrives later; find_candidates to search
-      |offers, and report matches with their facts. Answer in
-      |the user's language, briefly, and say what you stored or
-      |found.""".stripMargin
-
-  // ---- the reverse chain (demo-chat-async) ---------------------------
+  // ---- the board (the demo's own small domain) -----------------------
   //
-  // Events arrive in EITHER order: a need stored today matches an
-  // offer arriving tomorrow. The chain is structural, not the
-  // model's: the tool table is WRAPPED, and every facts_assert of an
-  // OFFER runs the reverse search over stored NEEDS (and vice
-  // versa); a hit lands in the matched profile's inbox, which the
-  // page holds open as an SSE stream (/events). Model-independent:
-  // the agent and the deterministic driver go through the same wrap.
+  // What replaced the marketplace. The demo needs something to be
+  // ABOUT so it can show the mechanism: an agent calling tools, a
+  // projection rebuilt from a durable log, live notifications, an MCP
+  // front door, a page that streams. See `Board` for why it is a task
+  // list and deliberately not a two-sided market.
 
-  private val lastHits =
-    java.util.concurrent.ConcurrentHashMap[String, Vector[okay.matching.ProfileId]]()
+  /** a store at a path, or in memory for ":memory:" — the two-node
+   * lane opens its own handle on the same log */
+  def storeOf(path: String): okay.persist.Store = Board.store(path)
 
-  // the per-key channel registry is okay-live now (extracted
-  // 2026-09-02, specs/live.md): the SAME shape as the market feed
-  // below, noticed duplicated twice, generalized once.
+  /** ONE board for the whole server, durable by default */
+  lazy val boardStore: okay.persist.Store =
+    Board.store(sys.env.getOrElse("OKAY_CHAT_DB", "okay-board.log"))
+  lazy val board: Board = { val b = Board(Board.topicOf(boardStore)); b.replay(): Unit; b }
+
+  /** every open page, told when the board moves */
+  private val feed = Hub[String]()
+  def boardSub(): Channel[String] = feed.subscribe()
+  def boardChanged(kind: String): Unit = feed.publish(kind)
+
+  /** the per-person inbox an assignment rings (demo-chat-async) */
   private val inboxes = Registry[String, String]()
-
-  /** the open inbox of an email (created on first use) */
   def inbox(email: String): Channel[String] = inboxes(email)
 
-  private def emailOf(store: MatchStore, p: okay.matching.ProfileId): Option[String] =
-    store.profileOf(p).map(_.email)
+  private val turnNo = java.util.concurrent.atomic.AtomicLong(0)
 
-  // the subscription gate is okay-subscription now (extracted
-  // 2026-09-02, specs/subscription.md): `Subscription.subscribed`/
-  // `pay`/`backdateJoin`/`subscriptionNotice`/`paySpec`, a bare
-  // profile uuid, no opinion about MatchStore held here or there.
-
-  /** after a stored fact: who was WAITING for it, on the other side? */
-  def reverseChain(side: okay.matching.Side, text: String, now: Period = Period.now())
-                   (using store: MatchStore): Unit =
-    import okay.matching.*
-    val other = if side == Side.Offer then Side.Need else Side.Offer
-    // the floor keeps unrelated waiters quiet; how well related ones
-    // score is the embedder seam's business (hashing offline — token
-    // overlap; a real embedder in production understands morphology).
-    // A gated waiter does not participate in matching either.
-    val waiting = store.candidates(Query(other, text = text, k = 5))
-      .filter(_.score > 0.1f)
-      .filter(h => Subscription.subscribed(h.profile.uuid, now))
-    waiting.foreach { hit =>
-      emailOf(store, hit.profile).foreach { email =>
-        val what = hit.disclosed.map(f => Value.text(f.value)).mkString("; ")
-        val note =
-          if side == Side.Offer then s"появился исполнитель: $text (вы искали: $what)"
-          else s"появился заказ: $text (вы предлагали: $what)"
-        inbox(email).offer(note): Unit
-      }
-    }
-
-  /** the ROUND policy (store-driven, restart-surviving — deliberately
-   * NOT a fiber holding a continuation; see specs/match.md, Deals
-   * decision): on an acceptance, the seeker's other Asked deals for
-   * the same need are withdrawn and everyone hears the outcome */
-  def onResponded(deal: okay.matching.Deal)(using store: MatchStore): Unit =
-    import okay.matching.*
-    val seekerMail = store.profileOf(deal.seeker).map(_.email)
-    val providerMail = store.profileOf(deal.provider).map(_.email)
-    deal.state match
-      case DealState.Accepted =>
-        val contacts = store.contacts(deal.seeker, deal.provider)
-          .map(f => Value.text(f.value))
-        seekerMail.foreach(m => inbox(m).offer(
-          s"исполнитель согласился: ${deal.what}" +
-            (if contacts.nonEmpty then s" — контакт: ${contacts.mkString(", ")}" else "")))
-        // the rest of the round is withdrawn, each asked party told
-        store.dealsFor(deal.seeker)
-          .filter(d => d.state == DealState.Asked && d.what == deal.what)
-          .foreach { d =>
-            store.withdraw(d.id, deal.seeker): Unit
-            store.profileOf(d.provider).map(_.email).foreach(m =>
-              inbox(m).offer(s"отбой по заказу: ${d.what} — исполнитель уже найден"))
-          }
-      case DealState.Declined =>
-        seekerMail.foreach(m => inbox(m).offer(
-          s"кандидат отказался: ${deal.what}" + providerMail.fold("")(pm => s" ($pm)")))
-        // all asked declined and none accepted -> say so
-        val round = store.dealsFor(deal.seeker).filter(_.what == deal.what)
-        if round.nonEmpty && round.forall(d =>
-          d.state == DealState.Declined || d.state == DealState.Withdrawn) then
-          seekerMail.foreach(m => inbox(m).offer(
-            s"все кандидаты отказались: ${deal.what} — запрос остаётся в силе, сообщу о новых"))
-      case _ => ()
-
-  // ---- the live market feed (demo-market-live) -----------------------
-  //
-  // /market subscribes; every market mutation pings every open page.
-  // The publish points are the chainedTable wraps below — the model
-  // path and the deterministic driver share them, so the feed is
-  // model-independent. The broadcast itself is okay-live's Hub now
-  // (extracted 2026-09-02, specs/live.md) — the same pattern as the
-  // inbox registry above, generalized once.
-
-  private val marketFeed = Hub[String]()
-
-  /** a new /market subscriber's own channel */
-  def marketSub(): Channel[String] = marketFeed.subscribe()
-
-  /** ring every open /market page: something on the market moved */
-  def marketChanged(kind: String): Unit = marketFeed.publish(kind)
-
-  // ---- the deal timeline (demo-deal-timeline) -------------------------
-  //
-  // Deal (okay-match) carries only its CURRENT state — no history.
-  // This is the demo layer making the negotiation visible without
-  // touching the engine: an append-only per-deal event log, each
-  // event carrying the provenance of the turn that caused it (the
-  // ChatLog offset threaded through as `off`, the same one
-  // facts_assert already gets) — the same story `supersede` tells
-  // for facts, told here for deals.
-
-  final case class DealEvent(state: String, by: String, prov: okay.matching.Provenance)
-
-  // keyed by (store identity, deal id) — NOT bare deal id: two
-  // independent MemoryMatch() instances (one per test, typically)
-  // both number their deals from 1, and an unscoped map lets a
-  // SECOND store's events land on the FIRST store's deal — found
-  // while landing demo-subscription-gate, a pre-existing bug from
-  // demo-deal-timeline (cross-test collision, not concurrency: bare
-  // JUnitCore runs sequentially, but the map outlives every test)
-  private val dealEvents =
-    java.util.concurrent.ConcurrentHashMap[(Int, Long), java.util.concurrent.CopyOnWriteArrayList[DealEvent]]()
-
-  private def dealEvent(deal: Long, e: DealEvent)(using store: MatchStore): Unit =
-    dealEvents.computeIfAbsent((System.identityHashCode(store), deal),
-      _ => java.util.concurrent.CopyOnWriteArrayList())
-      .add(e): Unit
-
-  /** the current state plus the append-only history, for /deals/<n>;
-   * None when the deal id was never asked (the "Asked" event names
-   * the seeker, which is how the live Deal is found — the store has
-   * no deal-by-id lookup, only dealsFor(profile)) */
-  def dealTimeline(deal: Long)(using store: MatchStore): Option[(okay.matching.Deal, Vector[DealEvent])] =
-    for
-      events <- Option(dealEvents.get((System.identityHashCode(store), deal)))
-      es = { import scala.jdk.CollectionConverters.*; events.asScala.toVector }
-      asked <- es.find(_.state == "Asked")
-      d <- store.dealsFor(okay.matching.ProfileId(asked.by)).find(_.id.n == deal)
-    yield (d, es)
-
-  /** the tool table with the reverse chain wrapped around asserts;
-   * `off` is the ChatLog offset of the turn driving these calls
-   * (default: a fresh counter tick, for callers with no log turn);
-   * `now` is the subscription gate's period (default: the wall
-   * clock — tests advance it explicitly to simulate a month passing) */
-  def chainedTable(off: Long = turnNo.incrementAndGet(), now: Period = Period.now())
-                   (using store: MatchStore): Map[String, okay.agent.ToolCall => String] =
-    val base = MatchTools.table(store)
-    base.updated("flow_advance", { c =>
-      val out = base("flow_advance")(c)
-      marketChanged("flow")
-      // a successful advance fired a transition: deliver its
-      // notifications to the role-holders' inboxes, templates filled
+  /**
+   * The tool table, with the notification wrapped around `assign`.
+   *
+   * The demo's async claim in one place: a tool call is what somebody
+   * DID, and the person it happened TO is not in the room. Assigning a
+   * task rings their inbox, and an open page hears it over SSE.
+   */
+  def boardTable(b: Board): Map[String, okay.agent.ToolCall => String] =
+    val base = BoardTools.table(b)
+    base.updated("board_assign", { c =>
+      val out = base("board_assign")(c)
       Json.parse(out) match
-        case JObj(fs) if fs.exists(_._1 == "state") =>
-          val flowN = c.args match
-            case JObj(a) => a.collectFirst { case ("flow", JNum(x)) => x.toLong }.getOrElse(0L)
-            case _ => 0L
+        case JObj(fs) if fs.exists(_._1 == "id") =>
           for
-            f <- store.flow(okay.matching.FlowId(flowN))
-            d <- store.scenario(f.scenario)
-            (tname, byP, _) <- f.history.lastOption
-            t <- d.transitions.find(_.name == tname)
-            byRole = f.parties.collectFirst { case (r, p) if p == byP => r }.getOrElse("?")
-            (role, template) <- t.notifies
-            target <- f.parties.get(role)
-            email <- emailOf(store, target)
-          do inbox(email).offer(okay.matching.Flow.fill(template, d, f, byRole)): Unit
+            who <- fs.collectFirst { case ("assignee", JStr(v)) => v }
+            what <- fs.collectFirst { case ("text", JStr(v)) => v }
+          do inbox(who).offer(s"вам поручили: $what"): Unit
         case _ => ()
       out
-    }).updated("match_inquire", { c =>
-      val out = base("match_inquire")(c)
-      marketChanged("deal")
-      val provider = c.args match
-        case JObj(fs) => fs.collectFirst { case ("provider", JStr(x)) => x }.getOrElse("")
-        case _ => ""
-      val what = c.args match
-        case JObj(fs) => fs.collectFirst { case ("what", JStr(x)) => x }.getOrElse("")
-        case _ => ""
-      val dealN = Json.parse(out) match
-        case JObj(fs) => fs.collectFirst { case ("deal", JNum(n)) => n.toLong }.getOrElse(0L)
-        case _ => 0L
-      val seeker = c.args match
-        case JObj(fs) => fs.collectFirst { case ("seeker", JStr(x)) => x }.getOrElse("")
-        case _ => ""
-      dealEvent(dealN, DealEvent("Asked", seeker, okay.matching.Provenance("web-demo", off, what)))
-      emailOf(store, okay.matching.ProfileId(provider)).foreach(m =>
-        inbox(m).offer(s"заказ: $what (сделка $dealN) — ответьте: берусь $dealN / отказываюсь $dealN"))
-      out
-    }).updated("match_respond", { c =>
-      val out = base("match_respond")(c)
-      marketChanged("deal")
-      Json.parse(out) match
-        case JObj(fs) =>
-          val n = fs.collectFirst { case ("deal", JNum(x)) => x.toLong }.getOrElse(0L)
-          store.dealsFor(okay.matching.ProfileId("")): Unit // no-op keeps types honest
-          val byId = c.args match
-            case JObj(a) => a.collectFirst { case ("by", JStr(x)) => x }.getOrElse("")
-            case _ => ""
-          // find the deal to hand the policy (dealsFor by the responder)
-          val resolved = store.dealsFor(okay.matching.ProfileId(byId)).find(_.id.n == n)
-          resolved.foreach { d =>
-            dealEvent(n, DealEvent(d.state.toString, byId,
-              okay.matching.Provenance("web-demo", off, d.what)))
-            onResponded(d)
-            // WITHDRAWN stand-downs land as their own event too
-            if d.state == okay.matching.DealState.Accepted then
-              store.dealsFor(d.seeker)
-                .filter(o => o.state == okay.matching.DealState.Withdrawn && o.what == d.what)
-                .foreach(o => dealEvent(o.id.n,
-                  DealEvent("Withdrawn", "", okay.matching.Provenance("web-demo", off, o.what))))
-          }
-        case _ => ()
-      out
-    }).updated("facts_assert", { c =>
-      val out = base("facts_assert")(c)
-      val args = c.args
-      val side = args match
-        case JObj(fs) => fs.collectFirst { case ("side", JStr(x)) => x }.getOrElse("offer")
-        case _ => "offer"
-      val text = args match
-        case JObj(fs) => fs.collectFirst { case ("value", JObj(v)) =>
-          v.collectFirst { case ("s", JStr(x)) => x }.getOrElse("") }.getOrElse("")
-        case _ => ""
-      val profile = args match
-        case JObj(fs) => fs.collectFirst { case ("profile", JStr(x)) => x }.getOrElse("")
-        case _ => ""
-      // a GATED profile's new post does not enter matching at all —
-      // it must not surface to anyone waiting on the other side
-      if text.nonEmpty && Subscription.subscribed(profile, now) then reverseChain(
-        if side == "need" then okay.matching.Side.Need else okay.matching.Side.Offer, text, now)
-      marketChanged("facts")
-      out
-    }).updated("facts_register", { c =>
-      val out = base("facts_register")(c)
-      // the notice rides the tool result itself — the LIVE path's
-      // channel back to the model, which the system prompt teaches
-      // it to relay (the same way it already reads its provenance
-      // instruction from the tool it was told to use)
-      Json.parse(out) match
-        case JObj(fs) =>
-          val uuid = fs.collectFirst { case ("profile", JStr(x)) => x }.getOrElse("")
-          Subscription.subscriptionNotice(uuid, now) match
-            case Some(n) => Json.print(JObj(fs :+ ("notice" -> JStr(n))))
-            case None => out
-        case _ => out
-    }).updated("find_candidates", { c =>
-      // the ONE filter both paths share: the deterministic driver's
-      // search and the LIVE model's tool call both land here
-      Json.parse(base("find_candidates")(c)) match
-        case JArr(hits) =>
-          Json.print(JArr(hits.filter {
-            case JObj(fs) => fs.collectFirst { case ("profile", JStr(uuid)) => uuid }
-              .forall(Subscription.subscribed(_, now))
-            case _ => true
-          }))
-        case other => Json.print(other)
-    }).updated("subscription_pay", { c =>
-      val uuid = c.args match
-        case JObj(fs) => fs.collectFirst { case ("profile", JStr(x)) => x }.getOrElse("")
-        case _ => ""
-      Subscription.pay(uuid, now)
-      marketChanged("subscription")
-      Json.print(JObj(Vector("paid" -> JBool(true), "period" -> JStr(now.key))))
     })
 
-  // ---- the marketplace as an MCP server (demo-mcp-market) -------------
-  //
-  // chainedTable is already the ONE tool table both the LLM agent
-  // path and the deterministic driver drive; serving it over MCP is
-  // one more caller of the same substrate — a tool call from MCP
-  // fires the same wraps (reverse chain, market feed, deal timeline)
-  // a chat turn's tool call fires.
-
-  /** rebuilt PER CALL (not once at mount time) — a static off/now
-   * snapshot would give every MCP-driven fact the same stale ChatLog
-   * offset and subscription period; per-call freshness matches what
-   * the /chat route already does per HTTP request. MCP calls do NOT
-   * append to chatLog (demo-replay-projections stays the chat
-   * route's) — MCP is the marketplace's OTHER front door, not a
-   * second writer to the durable turn log */
-  def mcpTable(using MatchStore): Map[String, okay.agent.ToolCall => String] =
-    val names = chainedTable().keys
-    names.map(name => name -> ((c: okay.agent.ToolCall) =>
-      chainedTable(turnNo.incrementAndGet(), Period.now())(name)(c))).toMap
-
-  def mcpRoute(using MatchStore): Request => Response ! Async =
-    McpHttp.route(McpServer.Serving(
-      info = Mcp.Info("okay-demo-market", "0.1.0"),
-      tools = MatchTools.specs :+ Subscription.paySpec,
-      call = mcpTable))
-
-  // ---- scenarios as data, authored (demo-scenario-editor) -------------
-  //
-  // ScenarioDef (specs/match.md, match-scenarios) has no "steps" or
-  // "prompts" field of its own — those ARE transitions and notifies
-  // templates; the editor's textarea is the plain JSON shape of the
-  // existing type, not a new schema.
-
-  private val scenarioTemplate: String =
-    """{
-      |  "name": "escrow-sale",
-      |  "roles": ["seller", "buyer"],
-      |  "initial": "listed",
-      |  "states": ["listed", "paid", "shipped", "closed"],
-      |  "terminal": ["closed"],
-      |  "transitions": [
-      |    {"name": "pay", "from": "listed", "to": "paid", "by": "buyer",
-      |      "notifies": [["seller", "paid: {what}"]]},
-      |    {"name": "ship", "from": "paid", "to": "shipped", "by": "seller",
-      |      "unlocks": [["buyer", "contact"]],
-      |      "notifies": [["buyer", "shipped: {what}"]]},
-      |    {"name": "confirm", "from": "shipped", "to": "closed", "by": "buyer",
-      |      "notifies": [["seller", "confirmed: {what}"]]}
-      |  ]
-      |}""".stripMargin
-
-  private def parseScenarioDef(raw: String): Either[String, okay.matching.ScenarioDef] =
-    import okay.matching.{ScenarioDef, Transition}
-    def str(j: Json): Option[String] = j match
-      case JStr(s) => Some(s)
-      case _ => None
-    def strs(j: Json): Vector[String] = j match
-      case JArr(xs) => xs.flatMap(str)
-      case _ => Vector.empty
-    def pair(j: Json): Option[(String, String)] = j match
-      case JArr(Vector(JStr(a), JStr(b))) => Some((a, b))
-      case _ => None
-    def pairs(j: Json): Vector[(String, String)] = j match
-      case JArr(xs) => xs.flatMap(pair)
-      case _ => Vector.empty
-    def transitionOf(j: Json): Option[Transition] = j match
-      case JObj(fs) =>
-        for
-          name <- fs.collectFirst { case ("name", JStr(x)) => x }
-          from <- fs.collectFirst { case ("from", JStr(x)) => x }
-          to <- fs.collectFirst { case ("to", JStr(x)) => x }
-          by <- fs.collectFirst { case ("by", JStr(x)) => x }
-        yield Transition(name, from, to, by,
-          fs.collectFirst { case ("unlocks", v) => pairs(v) }.getOrElse(Vector.empty),
-          fs.collectFirst { case ("notifies", v) => pairs(v) }.getOrElse(Vector.empty))
-      case _ => None
-    try
-      Json.parse(raw) match
-        case JObj(fs) =>
-          (for
-            name <- fs.collectFirst { case ("name", JStr(x)) => x }
-            initial <- fs.collectFirst { case ("initial", JStr(x)) => x }
-          yield ScenarioDef(name,
-            fs.collectFirst { case ("roles", v) => strs(v) }.getOrElse(Vector.empty),
-            initial,
-            fs.collectFirst { case ("states", v) => strs(v) }.getOrElse(Vector.empty),
-            fs.collectFirst { case ("terminal", v) => strs(v) }.getOrElse(Vector.empty).toSet,
-            fs.collectFirst { case ("transitions", JArr(xs)) => xs.flatMap(transitionOf) }
-              .getOrElse(Vector.empty)))
-            .toRight("missing required field: name or initial")
-        case _ => Left("not a JSON object")
-    catch case e: Throwable => Left(s"parse error: ${Option(e.getMessage).getOrElse(e.toString)}")
-
-  /** an agent turn over the match tools: the LLM structures the
-   * chat into the store and searches it — the okay-match story */
-  def agentTurn(text: String, history: Seq[Anthropic.Message],
-                modelH: okay.Handler[AgentModel], off: Option[Long] = None,
-                identity: Option[String] = None,
-                now: Period = Period.now())(using MatchStore): String =
-    // the log's offset, when the turn came through the log: the model
-    // is TOLD the provenance instead of inventing one; a verified
-    // session (demo-sessions) is told too, as the identity to use for
-    // facts_register regardless of what the message text claims
-    val system = matchSystem + off.fold("")(n =>
-      "\nProvenance for THIS turn: chat \"web-demo\", offset " + n + " — pass exactly these to facts_assert.") +
-      identity.fold("")(e =>
-        s"\nThe speaker is a SIGNED-IN session as $e — use this email for facts_register, " +
-        "even if the message names a different one.") +
-      "\nSubscription gate: a profile's first month is free; after that it needs the CURRENT period paid" +
-      " to appear in search or matching. facts_register's answer may carry a \"notice\" field — relay it to" +
-      " the user, in their own language, when present. subscription_pay(profile) marks the current period paid" +
-      " when the user asks to pay/subscribe (\"оплатить\"/\"pay\")."
+  /**
+   * An agent turn over the board tools: the LLM turns a sentence into
+   * tool calls, and the tools are the only way it can touch anything.
+   *
+   * The demo's central claim, and the reason it needs a domain at all.
+   * The model never writes to the board; it calls `board_add` and the
+   * board writes to its log. What it cannot do is invent a task that
+   * is not there, because there is no path from a sentence to the
+   * projection that does not go through a tool.
+   */
+  def agentTurn(b: Board, text: String, history: Seq[Anthropic.Message],
+                modelH: okay.Handler[AgentModel], who: Option[String] = None): String =
+    val system = boardSystem + who.fold("")(e =>
+      s"\nThe speaker is a SIGNED-IN session as $e — use this as the owner, " +
+      "even if the message names somebody else.")
     given okay.Handler[AgentModel] = modelH
-    given okay.Handler[Tool] = Handlers.tools(chainedTable(off.getOrElse(turnNo.incrementAndGet()), now))
+    given okay.Handler[Tool] = Handlers.tools(boardTable(b))
     val ctx = Handlers.context(Compact.all)._2
     given okay.Handler[AgentContext] = ctx
     given r1: okay.Handler[AgentModel + Async] = okay.Handler.union[AgentModel, Async]
@@ -546,11 +121,6 @@ object ChatDemo {
       okay.Handler.union[AgentContext, AgentModel + Async]
     given r3: okay.Handler[Tool + (AgentContext + (AgentModel + Async))] =
       okay.Handler.union[Tool, AgentContext + (AgentModel + Async)]
-    // the DIRECT block (ui-direct's demo pass): the turn reads as
-    // straight-line code — remember the system prompt, seed the
-    // history, converse. The seeding loop stays a named helper: v1
-    // of the macro refuses marks under a lambda, and a recursive
-    // helper is the workaround it names.
     import okay.Direct.*
     def seed(ms: List[Anthropic.Message]): Unit ! okay.agent.Agent = ms match
       case Nil => pure(())
@@ -561,302 +131,59 @@ object ChatDemo {
     val prog = direct[[A] =>> A ! okay.agent.Agent] {
       Agent.remember(Turn.System(system)).reflect
       seed(history.toList).reflect
-      Agent.converse(text, MatchTools.specs :+ Subscription.paySpec).reflect
+      Agent.converse(text, BoardTools.specs).reflect
     }
     prog.runWith
 
-  // ---- the intake's conditions (demo-conditions) ---------------------
-  //
-  // The silent default was a policy decision nobody made: a phrase
-  // with no email quietly became guest@demo. Now it SIGNALS — the
-  // condition system's repair road — and the POLICY answers: the
-  // lenient demo invokes the "guest" restart (the old behavior, now
-  // chosen), a repairing policy can Resume with a corrected address
-  // (the signal point is still live), and OKAY_CHAT_STRICT=1 makes
-  // it Fail — an Unhandled naming the menu. One intake, three
-  // outcomes, chosen at run.
+  private val boardSystem =
+    """You keep a shared task board. Use the tools and nothing else: board_add to
+      |put a task on it, board_list to read it, board_assign to give one to
+      |somebody, board_done to finish one. Answer in the language the user wrote
+      |in. Never claim a task exists unless a tool said so.""".stripMargin
 
-  final case class BadEmail(text: String)
-  given Condition.Answers[BadEmail, String] = Condition.Answers.of[BadEmail, String]
+  /**
+   * The board WITHOUT a model, which is what runs by default.
+   *
+   * The offline mode is the demo: the same tool table, driven by a
+   * handful of recognised commands instead of by an LLM, so the
+   * application always runs and the tests exercise the same tools the
+   * key exercises. It answers in the language it was addressed in,
+   * because a demo that only speaks English is a demo of English.
+   */
+  def offlineTurn(b: Board, text: String, who: Option[String]): String =
+    val owner = who.getOrElse("guest")
+    val ru = text.exists(c => c >= 'а' && c <= 'я' || c == 'ё')
+    def list: String =
+      val ts = b.all
+      if ts.isEmpty then (if ru then "доска пуста" else "the board is empty")
+      else ts.map(t => s"${t.id}) ${t.text}" +
+        t.assignee.fold("")(a => (if ru then s" — на $a" else s" — $a")) +
+        (if t.done then (if ru then " ✓" else " (done)") else "")).mkString("\n")
+    val add = "(?iU)^(?:добавь|добавить|add)\\s+(.+)$".r
+    val assign = "(?iU)^(?:поручи|assign)\\s+(\\d+)\\s+(.+)$".r
+    val done = "(?iU)^(?:готово|сделано|done)\\s+(\\d+)$".r
+    text.trim match
+      case add(what) => b.add(what, owner)
+        .fold(if ru then "не получилось" else "could not add")(t =>
+          (if ru then s"добавил ${t.id}) ${t.text}" else s"added ${t.id}) ${t.text}"))
+      case assign(id, whom) => boardTable(b)("board_assign")(
+        okay.agent.ToolCall("1", "board_assign", JObj(Vector(
+          "id" -> JNum(id.toDouble), "who" -> JStr(whom.trim)))))
+        match
+          case out if out.contains("error") =>
+            if ru then s"нет задачи $id" else s"no task $id"
+          case _ => if ru then s"поручил $id: $whom" else s"assigned $id to $whom"
+      case done(id) => b.complete(id.toLong)
+        .fold(if ru then s"нет задачи $id" else s"no task $id")(t =>
+          if ru then s"готово: ${t.text}" else s"done: ${t.text}")
+      case _ => list
 
-  /** the demo's default: lenient — the guest restart */
-  val lenient: (Any, Vector[String]) => Condition.Decision =
-    case (_: BadEmail, menu) if menu.contains("guest") =>
-      Condition.Decision.Invoke("guest", ())
-    case _ => Condition.Decision.Fail
-
-  val strict: (Any, Vector[String]) => Condition.Decision =
-    (_, _) => Condition.Decision.Fail
-
-  def intakePolicy: (Any, Vector[String]) => Condition.Decision =
-    if sys.env.get("OKAY_CHAT_STRICT").contains("1") then strict else lenient
-
-  /** extract the author's email or SIGNAL; the guest frame is on the
-   * menu around it */
-  def emailIn(text: String): String ! Condition.Op =
-    "email ([^ ]+@[^ ]+)".r.findFirstMatchIn(text).map(_.group(1)) match
-      case Some(e) => pure(e)
-      case None => Condition.raiseC(BadEmail(text))
-
-  def resolveEmail(text: String,
-                   policy: (Any, Vector[String]) => Condition.Decision): String =
-    Condition.run[String, Pure](policy)(
-      Condition.within[String, Pure]("guest")(emailIn(text))(_ => "guest@demo")
-    ).runWith
-
-  /** the deterministic offline "agent": the SAME tool table, driven
-   * by two fixed phrasings — the tests' and the no-model mode's path */
-  /** the demo speaks two languages, picked PER MESSAGE (demo-en-
-   * phrasebook): a message carrying no Cyrillic is English. English
-   * triggers pair one-for-one with the Russian ones (умею -> can:,
-   * спроси -> ask, сценарий -> scenario, шаг -> step, флоу -> flow,
-   * берусь/отказываюсь -> accept/decline; помощь/help already
-   * paired) — content alone picks which reply template answers */
-  def isEnglish(s: String): Boolean = !s.exists(c => c >= 'Ѐ' && c <= 'ӿ')
-
-  // scenario names ride the help text LIVE (demo-scenario-editor): a
-  // scenario authored through /scenarios shows up here without a
-  // code change, the same "extensibility without touching code" the
-  // editor page itself demonstrates
-  private def russianHelp(using store: MatchStore) =
-    s"""матч-режим: скажите \"умею <что>\" / \"offer: <что>\" или \"нужен <кто>\" / \"need: <что>\" (и email <адрес>); после списка кандидатов: спроси 1 2 / спроси всех; исполнителю: берусь <N> / отказываюсь <N>; сценарии (${store.scenarios.map(_.name).mkString(", ")} — редактор: /scenarios): сценарий <имя> роль=email ...; шаг <N> <переход>; флоу <N>; подписка: оплатить"""
-  private def englishHelp(using store: MatchStore) =
-    s"""match mode: say "can: <what>" / "offer: <what>" or "want: <who>" / "need: <what>" (and email <address>); after a candidate list: ask 1 2 / ask all; as a candidate: accept <N> / decline <N>; scenarios (${store.scenarios.map(_.name).mkString(", ")} — editor: /scenarios): scenario <name> role=email ...; step <N> <transition>; flow <N>; subscription: pay"""
-
-  def scriptedAgent(text: String, off: Long = turnNo.incrementAndGet(),
-                    identity: Option[String] = None, now: Period = Period.now())
-                   (using store: MatchStore): String =
-    import okay.codec.Json.*
-    val t = chainedTable(off, now)
-    val en = isEnglish(text)
-    def call(name: String, args: (String, Json)*): String =
-      t(name)(okay.agent.ToolCall("d", name, JObj(args.toVector)))
-    // a verified session (demo-sessions) is the identity of record;
-    // the text-parsed "email x@y" is the fallback for turns with no
-    // session at all (scripted/offline callers)
-    val email = identity.getOrElse(resolveEmail(text, intakePolicy))
-    def profile: String =
-      Json.parse(call("facts_register", "email" -> JStr(email))) match
-        case JObj(fs) => fs.collectFirst { case ("profile", JStr(p)) => p }.get
-        case _ => ""
-    val answer = text match
-      case s if s.contains("умею") || s.contains("can:") || s.contains("offer:") =>
-        val skill = s.replaceAll(".*(умею|can:|offer:)\\s*", "").replaceAll("email [^ ]+", "").trim
-        call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("skill"),
-          "side" -> JStr("offer"), "chat" -> JStr("web-demo"),
-          "offset" -> JNum(off.toDouble), "span" -> JStr(text),
-          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(skill)))): Unit
-        // the contact rides as a MATCHED fact: only an accepted deal
-        // will show it to anyone — the demo of the second gate
-        call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("contact"),
-          "side" -> JStr("offer"), "chat" -> JStr("web-demo"),
-          "offset" -> JNum(off.toDouble), "span" -> JStr(text),
-          "vis" -> JStr("matched"),
-          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(email)))): Unit
-        if en then s"""stored offer: "$skill" (profile $email)"""
-        else s"""записал предложение: \"$skill\" (профиль $email)"""
-      case s if s.contains("нужен") || s.contains("нужно") || s.contains("want:") || s.contains("need:") =>
-        val want = s.replaceAll(".*(нужен|нужно|want:|need:)\\s*", "").replaceAll("email [^ ]+", "").trim
-        // the need is STORED first — the reverse chain fires from it
-        // when the matching offer arrives later
-        call("facts_assert", "profile" -> JStr(profile), "attr" -> JStr("need"),
-          "side" -> JStr("need"), "chat" -> JStr("web-demo"),
-          "offset" -> JNum(off.toDouble), "span" -> JStr(text),
-          "value" -> JObj(Vector("t" -> JStr("text"), "s" -> JStr(want)))): Unit
-        Json.parse(call("find_candidates", "side" -> JStr("offer"),
-          "text" -> JStr(want))) match
-          case JArr(hits) if hits.nonEmpty =>
-            val ids = hits.flatMap { case JObj(fs) =>
-              fs.collectFirst { case ("profile", JStr(x)) => okay.matching.ProfileId(x) }
-              case _ => None }
-            lastHits.put(email, ids)
-            val lines = hits.take(5).zipWithIndex.map {
-              case (JObj(fs), i) =>
-                val facts = fs.collectFirst { case ("facts", JArr(vs)) => vs }.getOrElse(Vector.empty)
-                val texts = facts.collect { case JObj(f) =>
-                  f.collectFirst { case ("value", JObj(v)) =>
-                    v.collectFirst { case ("s", JStr(x)) => x }.getOrElse("") }.getOrElse("") }
-                s"${i + 1}) ${texts.filter(_.nonEmpty).mkString(", ")}"
-              case (_, i) => s"${i + 1}) ?"
-            }
-            if en then s"found ${hits.length}: ${lines.mkString("; ")} — say: ask 1 2 (or: ask all)"
-            else s"нашёл ${hits.length}: ${lines.mkString("; ")} — скажите: спроси 1 2 (или: спроси всех)"
-          case _ =>
-            if en then "nobody yet — I remembered your request and will tell you when one shows up"
-            else "пока никого не нашёл — запомнил ваш запрос и сообщу, когда исполнитель появится"
-      case s if s.contains("спроси") || s.contains("ask") =>
-        val mine = Option(lastHits.get(email)).getOrElse(Vector.empty)
-        if mine.isEmpty then
-          if en then "ask for what you need first — I'll find candidates"
-          else "сначала спросите, что вам нужно — я найду кандидатов"
-        else
-          val me0 = store.register(email)
-          val what = store.profileOf(me0)
-            .flatMap(_.current.filter(_.side == okay.matching.Side.Need)
-              .lastOption.map(f => okay.matching.Value.text(f.value)))
-            .getOrElse("заказ")
-          val chosen =
-            if s.contains("всех") || s.contains("all") then mine.indices.toVector
-            else "\\d+".r.findAllIn(s).map(_.toInt - 1).toVector.filter(mine.indices.contains)
-          if chosen.isEmpty then
-            if en then "who to ask? name the numbers, or say: ask all"
-            else "кого спросить? назовите номера или скажите: спроси всех"
-          else
-            val me = store.register(email)
-            chosen.foreach { i =>
-              call("match_inquire", "seeker" -> JStr(me.uuid),
-                "provider" -> JStr(mine(i).uuid), "what" -> JStr(what))
-            }
-            if en then s"asked ${chosen.length} candidates — I'll tell you who takes it"
-            else s"спросил ${chosen.length} кандидатов — сообщу, кто возьмётся"
-      case s if s.startsWith("сценарий ") || s.startsWith("scenario ") =>
-        // сценарий/scenario <имя> роль=email роль=email ... — flow_start
-        val body = if s.startsWith("scenario ") then s.stripPrefix("scenario ") else s.stripPrefix("сценарий ")
-        val parts = body.split("\\s+").toVector
-        val name = parts.headOption.getOrElse("")
-        val parties = parts.tail.collect {
-          case kv if kv.contains("=") =>
-            val i = kv.indexOf('='); kv.take(i) -> kv.drop(i + 1)
-        }
-        store.scenario(name) match
-          case None =>
-            if en then s"no such scenario '$name' — registered ones show via scenario_get"
-            else s"нет сценария '$name' — зарегистрированные видны через scenario_get"
-          case Some(d) =>
-            val partyIds = parties.map((r, mail) => r -> JStr(store.register(mail).uuid))
-            Json.parse(call("flow_start", "scenario" -> JStr(name),
-              "what" -> JStr(name),
-              "parties" -> JObj(partyIds))) match
-              case JObj(fs) if fs.exists(_._1 == "flow") =>
-                val n = fs.collectFirst { case ("flow", JNum(x)) => x.toLong }.get
-                if en then s"scenario '$name' started (flow $n, state ${d.initial}); steps: " +
-                  d.transitions.map(t => s"${t.name} (${t.by})").mkString(", ") +
-                  s" — command: step $n <transition>"
-                else s"сценарий '$name' начат (флоу $n, состояние ${d.initial}); шаги: " +
-                  d.transitions.map(t => s"${t.name} (${t.by})").mkString(", ") +
-                  s" — команда: шаг $n <переход>"
-              case JObj(fs) =>
-                fs.collectFirst { case ("refused", JStr(r)) => if en then s"refused: $r" else s"отказ: $r" }
-                  .getOrElse(if en then "refused" else "отказ")
-              case _ => if en then "refused" else "отказ"
-      case s if s.startsWith("шаг ") || s.startsWith("step ") =>
-        // шаг/step <N> <переход> — flow_advance от лица пишущего
-        val body = if s.startsWith("step ") then s.stripPrefix("step ") else s.stripPrefix("шаг ")
-        val parts = body.split("\\s+").toVector
-        (parts.headOption.flatMap(_.toLongOption), parts.lift(1)) match
-          case (Some(n), Some(tr)) =>
-            val me = store.register(email)
-            Json.parse(call("flow_advance", "flow" -> JNum(n.toDouble),
-              "transition" -> JStr(tr), "by" -> JStr(me.uuid))) match
-              case JObj(fs) if fs.exists(_._1 == "state") =>
-                val st = fs.collectFirst { case ("state", JStr(x)) => x }.get
-                if en then s"transition '$tr' done — state: $st"
-                else s"переход '$tr' сделан — состояние: $st"
-              case JObj(fs) =>
-                fs.collectFirst { case ("refused", JStr(r)) => if en then s"refused: $r" else s"отказ: $r" }
-                  .getOrElse(if en then "refused" else "отказ")
-              case _ => if en then "refused" else "отказ"
-          case _ => if en then "format: step <flow number> <transition>" else "формат: шаг <номер флоу> <переход>"
-      case s if s.startsWith("флоу ") || s.startsWith("flow ") =>
-        val body = if s.startsWith("flow ") then s.stripPrefix("flow ") else s.stripPrefix("флоу ")
-        body.trim.toLongOption match
-          case None => if en then "format: flow <number>" else "формат: флоу <номер>"
-          case Some(n) => store.flow(okay.matching.FlowId(n)) match
-            case None => if en then s"no flow $n" else s"нет флоу $n"
-            case Some(f) =>
-              if en then s"flow $n: scenario ${f.scenario}, state ${f.state}, " +
-                s"history: ${f.history.map(_._1).mkString(" -> ")}"
-              else s"флоу $n: сценарий ${f.scenario}, состояние ${f.state}, " +
-                s"история: ${f.history.map(_._1).mkString(" -> ")}"
-      case s if s.startsWith("сценарий ") =>
-        // сценарий <имя> роль=email ... — flow_start by phrase
-        val parts = s.stripPrefix("сценарий ").split("\\s+").toVector
-        val name = parts.headOption.getOrElse("")
-        val parties = parts.tail.collect {
-          case kv if kv.contains("=") && !kv.startsWith("email") =>
-            val i = kv.indexOf('='); kv.take(i) -> kv.drop(i + 1)
-        }
-        store.scenario(name) match
-          case None => s"нет сценария '$name'"
-          case Some(d) =>
-            val partyIds = parties.map((r, mail) => r -> JStr(store.register(mail).uuid))
-            Json.parse(call("flow_start", "scenario" -> JStr(name),
-              "what" -> JStr(name), "parties" -> JObj(partyIds))) match
-              case JObj(fs) if fs.exists(_._1 == "flow") =>
-                val n = fs.collectFirst { case ("flow", JNum(x)) => x.toLong }.get
-                s"сценарий '$name' начат (флоу $n, состояние ${d.initial}); шаги: " +
-                  d.transitions.map(t => s"${t.name} (${t.by})").mkString(", ") +
-                  s"; команда: шаг $n <переход>"
-              case JObj(fs) =>
-                fs.collectFirst { case ("refused", JStr(r)) => s"отказ: $r" }.getOrElse("отказ")
-              case _ => "отказ"
-      case s if s.startsWith("шаг ") =>
-        // шаг <N> <переход> — flow_advance от лица пишущего
-        val parts = s.stripPrefix("шаг ").split("\\s+").toVector
-        (parts.headOption.flatMap(_.toLongOption), parts.lift(1)) match
-          case (Some(n), Some(tr)) =>
-            val me = store.register(email)
-            Json.parse(call("flow_advance", "flow" -> JNum(n.toDouble),
-              "transition" -> JStr(tr), "by" -> JStr(me.uuid))) match
-              case JObj(fs) if fs.exists(_._1 == "state") =>
-                s"переход '$tr' сделан — состояние: " +
-                  fs.collectFirst { case ("state", JStr(x)) => x }.get
-              case JObj(fs) =>
-                fs.collectFirst { case ("refused", JStr(r)) => s"отказ: $r" }.getOrElse("отказ")
-              case _ => "отказ"
-          case _ => "формат: шаг <номер флоу> <переход>"
-      case s if s.startsWith("флоу ") =>
-        s.stripPrefix("флоу ").trim.split("\\s+").head.toLongOption match
-          case None => "формат: флоу <номер>"
-          case Some(n) => store.flow(okay.matching.FlowId(n)) match
-            case None => s"нет флоу $n"
-            case Some(f) =>
-              s"флоу $n: сценарий ${f.scenario}, состояние ${f.state}, " +
-                s"история: ${f.history.map(_._1).mkString(" -> ")}"
-      case s if s.trim == "помощь" || s.trim == "help" =>
-        // the default branch IS the help — decided by the TRIGGER
-        // word, not `en`: an empty string carries no Cyrillic either
-        if s.trim == "help" then englishHelp else russianHelp
-      case s if s.contains("берусь") || s.contains("отказываюсь") || s.contains("accept") || s.contains("decline") =>
-        val accept = s.contains("берусь") || s.contains("accept")
-        "\\d+".r.findFirstIn(s).map(_.toLong) match
-          case None =>
-            if en then "name the deal number: accept <N> / decline <N>"
-            else "назовите номер сделки: берусь <N> / отказываюсь <N>"
-          case Some(n) =>
-            val me = store.register(email)
-            Json.parse(call("match_respond", "deal" -> JNum(n.toDouble),
-              "by" -> JStr(me.uuid), "accept" -> JBool(accept))) match
-              case JObj(_) =>
-                if en then (if accept then "accepted — the seeker got your contact" else "declined")
-                else (if accept then "передал согласие — заказчик получил ваш контакт" else "передал отказ")
-              case _ =>
-                if en then "not your deal, or already closed"
-                else "эта сделка не ваша или уже закрыта"
-      case s if s.contains("оплатить") || s.contains("pay") =>
-        val me = store.register(email)
-        call("subscription_pay", "profile" -> JStr(me.uuid)): Unit
-        if en then "subscription paid for this period — back in search and matching"
-        else "подписка оплачена на этот месяц — снова в поиске и матчинге"
-      case _ => if en then englishHelp else russianHelp
-    // the reminder rides EVERY reply from a gated user (computed
-    // AFTER dispatch, so a "pay" turn's own reply is already clear)
-    Subscription.subscriptionNotice(store.register(email).uuid, now) match
-      case Some(n) => answer + " — " + n
-      case None => answer
-
-  /** which agent serves /match turns: real model when one is
-   * configured (by the AMBIENT secrets, over the AMBIENT wire), the
-   * deterministic table-driver otherwise */
-  def matchTurn(text: String, history: Seq[Anthropic.Message], off: Long,
-                identity: Option[String] = None)
-               (using t: Transport, s: Secrets, m: MatchStore): String =
-    Chat.secret("ANTHROPIC_API_KEY").map { key =>
-      agentTurn(text, history, Provider.anthropic(t, key, "claude-sonnet-4-5"), Some(off), identity)
-    }.orElse(Chat.secret("OKAY_CHAT_BASE").map { base =>
-      agentTurn(text, history, Provider.openAi(
-        t, "local", "default", s"$base/v1/chat/completions"), Some(off), identity)
-    }).getOrElse(scriptedAgent(text, off, identity))
+  /** the board as an MCP server — the same operations, another door */
+  def mcpRoute(b: Board): Request => Response ! Async =
+    McpHttp.route(McpServer.Serving(
+      info = Mcp.Info("okay-demo-board", "0.1.0"),
+      tools = BoardTools.specs,
+      call = boardTable(b)))
 
   // ---- the streaming content cut (demo-streaming-cut) -----------------
   //
@@ -877,256 +204,86 @@ object ChatDemo {
 
   // ---- the routes ----------------------------------------------------
 
-  def routes(m: Chat.Model, budget: Int)(using Transport, Secrets, MatchStore)
+  def routes(m: Chat.Model, budget: Int)(using Transport, Secrets)
   : PartialFunction[Request, Response ! Async] =
-    // built ONCE per server, not per request — mcpRoute constructs a
-    // fresh McpHttp session table each time it is evaluated, and a
-    // session issued on one request must still be found on the next
-    val mcpR: Request => Response ! Async = mcpRoute
-    // the gate flip, admin-token gated the same way /admin/replay is
-    // (demo-gate-ui): the two-gate visibility model switchable from a
-    // page instead of fixed in code
-    val gateRoute: PartialFunction[Request, Response ! Async] =
-      Secure.granted(Admin.Issuer.verify) {
-        case r if r.method == okay.http.Method.Post && r.url == "/admin/gate" =>
-          val store = summon[MatchStore]
-          Json.parse(new String(r.body.bytes, UTF_8)) match
-            case JObj(fs) =>
-              val attr = fs.collectFirst { case ("attr", JStr(x)) => x }
-              val gate = fs.collectFirst { case ("gate", JStr(x)) => x }
-                .flatMap(g => scala.util.Try(okay.matching.Gate.valueOf(g)).toOption)
-              (attr, gate) match
-                case (Some(a), Some(g)) =>
-                  store.setGate(a, g)
-                  marketChanged("gate")
-                  pure(Response(200, Nil, Http.one("ok".getBytes(UTF_8))))
-                case _ => pure(Response(400, Nil, Http.one(
-                  "need attr and a valid gate (Allow/AfterMatch/Withhold)".getBytes(UTF_8))))
-            case _ => pure(Response(400, Nil, Http.one("not a JSON object".getBytes(UTF_8))))
-      }
+    // built ONCE per server, not per request — McpHttp keeps its
+    // session table inside the route, and a session issued on one
+    // request must still be found on the next
+    val mcpR: Request => Response ! Async = mcpRoute(board)
     val core: PartialFunction[Request, Response ! Async] = {
     case r if r.method == okay.http.Method.Get && r.url == "/" =>
       val html = (if Chat.appJs.isDefined then reactPage else page)
         .replace("MODE", Chat.modeName)
       pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
         Http.one(html.getBytes(UTF_8))))
-    case r if r.method == okay.http.Method.Get && r.url == "/market" =>
-      val store = summon[MatchStore]
-      import okay.matching.*
-      // rows stay SERVER-RENDERED at load (works without JS, and the
-      // gate test keeps reading plain HTML); the script below then
-      // re-renders from /market.json on every feed ping
-      def rowsOf(side: Side) = store.candidates(Query(side, k = 50))
-        .filter(h => Subscription.subscribed(h.profile.uuid)).map { h =>
-        val texts = h.disclosed.map(f => Value.text(f.value)).filter(_.nonEmpty)
-        s"<li>${texts.mkString(" · ")}</li>"
-      }.mkString
-      def gatesOf = store.gateOverrides.toVector
-        .map((a, g) => s"<li>$a → $g</li>").mkString
+
+    case r if r.method == okay.http.Method.Get && r.url == "/board" =>
+      // server-rendered at load (it works without JS), then re-rendered
+      // from /board.json on every feed ping
+      def rows = board.all.map(t =>
+        s"<li>${t.id}) ${t.text}" +
+          t.assignee.fold("")(a => s" <span style='color:#7a869c'>— $a</span>") +
+          (if t.done then " ✓" else "") + "</li>").mkString
       pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-        Http.one(s"""<!doctype html><meta charset="utf-8"><title>market</title>
+        Http.one(s"""<!doctype html><meta charset="utf-8"><title>board</title>
           |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
-          |h2{color:#7a869c}
-          |#facets button{font-size:.8em;background:#1d2430;border:1px solid #2a3342;color:#9fb0c8;border-radius:.6rem;padding:.3rem .7rem;margin-right:.3rem;cursor:pointer}
-          |#facets button.on{background:#3563a8;color:#fff}
-          |select,input{background:#1d2430;color:#e6e9ef;border:1px solid #2a3342;border-radius:.4rem;padding:.3rem}</style>
-          |<div id="facets"></div>
-          |<h2>предложения</h2><ul id="offers">${rowsOf(Side.Offer)}</ul>
-          |<h2>запросы</h2><ul id="needs">${rowsOf(Side.Need)}</ul>
-          |<p><a style="color:#6b9fff" href="/">← в чат</a> · видно только Public — ворота держат и здесь · обновляется вживую</p>
-          |<button id="replay" style="background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer">перестроить из лога</button>
-          |<span style="color:#7a869c;font-size:.85em"> — сбросить проекцию и заново вывести её из журнала чатов (нужен admin-токен, okay-admin)</span>
-          |<h2>ворота платформы (per-attribute gate)</h2>
-          |<ul id="gates">${gatesOf}</ul>
-          |<input id="gate-attr" placeholder="атрибут, напр. skill">
-          |<select id="gate-value"><option>Allow</option><option>AfterMatch</option><option>Withhold</option></select>
-          |<button id="gate-set" style="background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer">выставить</button>
-          |<span style="color:#7a869c;font-size:.85em"> — второе ограждение (два-gate модель): the business hook, switchable live (нужен admin-токен)</span>
+          |h2{color:#7a869c} li{margin:.2rem 0}
+          |button{background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;cursor:pointer}</style>
+          |<h2>the board</h2><ul id="tasks">$rows</ul>
+          |<p><a style="color:#6b9fff" href="/">← to the chat</a> · live</p>
+          |<button id="replay">rebuild from the log</button>
+          |<span style="color:#7a869c;font-size:.85em"> — drop the projection and derive it again from the durable log (needs an admin token)</span>
           |<script>
-          |let facet = null;
           |async function render() {
-          |  const d = await (await fetch('/market.json')).json();
-          |  const attrs = [...new Set([...d.offers, ...d.needs].flatMap(r => r.facts.map(f => f.attr)))];
-          |  const fc = document.getElementById('facets'); fc.innerHTML = '';
-          |  for (const a of attrs) {
-          |    const b = document.createElement('button');
-          |    b.textContent = a; if (a === facet) b.className = 'on';
-          |    b.onclick = () => { facet = facet === a ? null : a; render(); };
-          |    fc.appendChild(b);
-          |  }
-          |  const fill = (id, rows) => {
-          |    const ul = document.getElementById(id); ul.innerHTML = '';
-          |    for (const r of rows) {
-          |      if (facet && !r.facts.some(f => f.attr === facet)) continue;
-          |      const li = document.createElement('li');
-          |      li.textContent = r.facts.map(f => f.text).filter(t => t).join(' · ');
-          |      ul.appendChild(li);
-          |    }
-          |  };
-          |  fill('offers', d.offers); fill('needs', d.needs);
-          |  const gu = document.getElementById('gates'); gu.innerHTML = '';
-          |  for (const a in d.gates) {
-          |    const li = document.createElement('li');
-          |    li.textContent = a + ' → ' + d.gates[a];
-          |    gu.appendChild(li);
-          |  }
+          |  const d = await (await fetch('/board.json')).json();
+          |  document.getElementById('tasks').innerHTML = d.tasks.map(t =>
+          |    '<li>' + t.id + ') ' + t.text +
+          |    (t.assignee ? " <span style='color:#7a869c'>— " + t.assignee + '</span>' : '') +
+          |    (t.done ? ' ✓' : '') + '</li>').join('');
           |}
-          |new EventSource('/events/market').addEventListener('market', render);
-          |render();
+          |new EventSource('/events/board').addEventListener('board', render);
           |document.getElementById('replay').onclick = async () => {
-          |  const t = prompt('admin token (okay-admin):'); if (!t) return;
-          |  const res = await fetch('/admin/replay', {method: 'POST', headers: {authorization: 'Bearer ' + t}});
-          |  alert(res.ok ? await res.text() : 'отказано: ' + res.status);
+          |  const t = prompt('admin token'); if (!t) return;
+          |  await fetch('/admin/replay', {method:'POST', headers:{authorization:'Bearer ' + t}});
           |  render();
           |};
-          |document.getElementById('gate-set').onclick = async () => {
-          |  const attr = document.getElementById('gate-attr').value; if (!attr) return;
-          |  const gate = document.getElementById('gate-value').value;
-          |  const t = prompt('admin token (okay-admin):'); if (!t) return;
-          |  const res = await fetch('/admin/gate', {method: 'POST',
-          |    headers: {authorization: 'Bearer ' + t, 'content-type': 'application/json'},
-          |    body: JSON.stringify({attr, gate})});
-          |  alert(res.ok ? 'ok' : 'отказано: ' + res.status);
-          |  render();
-          |};
-          |</script>
-          |""".stripMargin.getBytes(UTF_8))))
+          |</script>""".stripMargin.getBytes(UTF_8))))
+
+    case r if r.method == okay.http.Method.Get && r.url == "/board.json" =>
+      pure(Response(200, Seq("content-type" -> "application/json"),
+        Http.one(Json.print(JObj(Vector("tasks" -> JArr(board.all.map(t => JObj(Vector(
+          "id" -> JNum(t.id.toDouble), "text" -> JStr(t.text), "owner" -> JStr(t.owner),
+          "assignee" -> t.assignee.map(JStr(_)).getOrElse(JNull),
+          "done" -> JBool(t.done)))))))).getBytes(UTF_8))))
 
     case r if r.url == "/mcp" => mcpR(r)
-
-    case r if r.method == okay.http.Method.Get && r.url == "/scenarios" =>
-      val store = summon[MatchStore]
-      def rowOf(d: okay.matching.ScenarioDef): String =
-        s"<li><b>${d.name}</b> — roles: ${d.roles.mkString(", ")}; " +
-          s"states: ${d.states.mkString(" → ")}; " +
-          s"transitions: ${d.transitions.map(_.name).mkString(", ")}</li>"
-      pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-        Http.one(s"""<!doctype html><meta charset="utf-8"><title>scenarios</title>
-          |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem;max-width:720px;margin:0 auto}
-          |h2{color:#7a869c}
-          |textarea{width:100%;height:260px;background:#1d2430;color:#e6e9ef;border:1px solid #2a3342;
-          |  border-radius:.5rem;padding:.6rem;font-family:ui-monospace,monospace;box-sizing:border-box}
-          |button{background:#2a3342;color:#e6e9ef;border:0;padding:.5rem .9rem;border-radius:.6rem;
-          |  cursor:pointer;margin-top:.5rem}
-          |#err{color:#ff8080;white-space:pre-wrap}
-          |code{color:#9fb0c8}</style>
-          |<h2>registered scenarios</h2>
-          |<ul>${store.scenarios.map(rowOf).mkString}</ul>
-          |<h2>define one — a scenario as data</h2>
-          |<p>extensibility without touching code: a scenario is roles, states, and
-          |transitions (each <code>by</code> one role, optionally <code>unlocks</code>
-          |a fact attribute and <code>notifies</code> a role's inbox with a
-          |<code>{scenario}/{state}/{by}/{what}</code> template — the deal hook IS
-          |<code>notifies</code>, the same mechanism the built-in "deal" scenario uses).</p>
-          |<textarea id="def">${scenarioTemplate}</textarea>
-          |<div><button id="save">save</button></div>
-          |<div id="err"></div>
-          |<p><a style="color:#6b9fff" href="/">← в чат</a></p>
-          |<script>
-          |document.getElementById('save').onclick = async () => {
-          |  const err = document.getElementById('err'); err.textContent = '';
-          |  const body = document.getElementById('def').value;
-          |  try { JSON.parse(body); } catch (e) { err.textContent = 'invalid JSON: ' + e; return; }
-          |  const res = await fetch('/scenarios', {method: 'POST', body});
-          |  const text = await res.text();
-          |  if (res.ok) location.reload(); else err.textContent = text;
-          |};
-          |</script>
-          |""".stripMargin.getBytes(UTF_8))))
-
-    case r if r.method == okay.http.Method.Post && r.url == "/scenarios" =>
-      val store = summon[MatchStore]
-      parseScenarioDef(new String(r.body.bytes, UTF_8)) match
-        case Left(err) => pure(Response(400, Nil, Http.one(err.getBytes(UTF_8))))
-        case Right(d) =>
-          val bad = store.defineScenario(d)
-          if bad.isEmpty then pure(Response(200, Nil, Http.one("ok".getBytes(UTF_8))))
-          else pure(Response(400, Nil, Http.one(
-            bad.map(b => s"${b.where}: ${b.what}").mkString("\n").getBytes(UTF_8))))
-
-    case r if r.method == okay.http.Method.Get && r.url == "/market.json" =>
-      val store = summon[MatchStore]
-      import okay.matching.*
-      // the page's data: each disclosed fact with its ATTRIBUTE name —
-      // the facet key; `disclosed` is Public-only for an anonymous
-      // viewer, so the gate holds on the JSON exactly as on the HTML
-      def rows(side: Side) = JArr(store.candidates(Query(side, k = 50))
-        .filter(h => Subscription.subscribed(h.profile.uuid)).map { h =>
-        JObj(Vector("facts" -> JArr(h.disclosed
-          .filter(f => Value.text(f.value).nonEmpty)
-          .map(f => JObj(Vector(
-            "attr" -> JStr(f.attr), "text" -> JStr(Value.text(f.value))))))))
-      })
-      pure(Response(200, Seq("content-type" -> "application/json"),
-        Http.one(Json.print(JObj(Vector(
-          "offers" -> rows(Side.Offer), "needs" -> rows(Side.Need),
-          // the current gate overrides (demo-gate-ui): what a viewer
-          // just flipped shows up here on the very next poll
-          "gates" -> JObj(store.gateOverrides.toVector.map((a, g) =>
-            a -> JStr(g.toString)))))).getBytes(UTF_8))))
-
-    case r if r.method == okay.http.Method.Get && r.url.startsWith("/deals/") && r.url.endsWith(".json") =>
-      val n = r.url.stripPrefix("/deals/").stripSuffix(".json").toLongOption.getOrElse(-1L)
-      dealTimeline(n) match
-        case None => pure(Response(404, Seq("content-type" -> "application/json"),
-          Http.one("""{"error":"no such deal"}""".getBytes(UTF_8))))
-        case Some((d, events)) =>
-          val json = Chat.obj(
-            "deal" -> JNum(n.toDouble), "what" -> JStr(d.what), "state" -> JStr(d.state.toString),
-            "events" -> JArr(events.map(e => Chat.obj(
-              "state" -> JStr(e.state),
-              "chat" -> JStr(e.prov.chat), "offset" -> JNum(e.prov.offset.toDouble),
-              "span" -> JStr(e.prov.span)))))
-          pure(Response(200, Seq("content-type" -> "application/json"),
-            Http.one(Json.print(json).getBytes(UTF_8))))
-
-    case r if r.method == okay.http.Method.Get && r.url.startsWith("/deals/") =>
-      val n = r.url.stripPrefix("/deals/").toLongOption.getOrElse(-1L)
-      dealTimeline(n) match
-        case None => pure(Response(404, Seq("content-type" -> "text/html; charset=utf-8"),
-          Http.one("<!doctype html><meta charset=\"utf-8\"><p>нет такой сделки</p>".getBytes(UTF_8))))
-        case Some((d, events)) =>
-          val rows = events.map(e =>
-            s"<li><b>${e.state}</b> — ${e.prov.span} <span style=\"color:#7a869c;font-size:.85em\">(chat ${e.prov.chat}, offset ${e.prov.offset})</span></li>")
-            .mkString
-          pure(Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
-            Http.one(s"""<!doctype html><meta charset="utf-8"><title>deal $n</title>
-              |<style>body{font:15px system-ui;background:#10141a;color:#e6e9ef;padding:2rem}
-              |h2{color:#7a869c}</style>
-              |<h2>сделка $n: ${d.what} — ${d.state}</h2>
-              |<ul>$rows</ul>
-              |<p><a style="color:#6b9fff" href="/market">→ /market</a></p>
-              |""".stripMargin.getBytes(UTF_8))))
-
 
     case r if r.method == okay.http.Method.Get && r.url == "/app.js" && Chat.appJs.isDefined =>
       pure(Response(200, Seq("content-type" -> "text/javascript"),
         Http.one(java.nio.file.Files.readAllBytes(Chat.appJs.get))))
-    case r if r.method == okay.http.Method.Get && r.url == "/events/market" =>
-      // the market-wide feed — matched BEFORE the /events/<email>
-      // prefix route: "market" must not parse as an email
+
+    case r if r.method == okay.http.Method.Get && r.url == "/events/board" =>
+      // the board-wide feed — matched BEFORE the /events/<email>
+      // prefix route: "board" must not parse as an email
       val src: Source[Chunk[Byte]] =
         effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
-          .flatMap(_ => Writer.map(Writer.of(marketSub()))(kind =>
-            Chat.sse("market", Json.print(JStr(kind)))))
+          .flatMap(_ => Writer.map(Writer.of(boardSub()))(kind =>
+            Chat.sse("board", Json.print(JStr(kind)))))
       pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
     case r if r.method == okay.http.Method.Get && r.url.startsWith("/events/") =>
       // the email rides the PATH: requestOf keeps the path only, a
       // query string never reaches the route (found the hard way)
-      val email = java.net.URLDecoder.decode(
-        r.url.stripPrefix("/events/"), "UTF-8")
-      // the inbox as a LIVE stream: jetty keeps it open, a match
-      // arriving tomorrow becomes a frame then
-      // the hello frame flushes the headers so the subscriber's
-      // request completes at once; matches follow whenever they land
+      val email = java.net.URLDecoder.decode(r.url.stripPrefix("/events/"), "UTF-8")
+      // the inbox as a LIVE stream: jetty holds it open, and a task
+      // assigned tomorrow becomes a frame then
       val src: Source[Chunk[Byte]] =
         effect[Writer % Chunk[Byte] + Async, Unit](Writer(Chat.sse("hello", "")))
           .flatMap(_ => Writer.map(Writer.of(inbox(email)))(note =>
-            Chat.sse("match", Json.print(JStr(note)))))
+            Chat.sse("note", Json.print(JStr(note)))))
       pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
-    case r if Ops.routes(chatStore).isDefinedAt(r) => Ops.routes(chatStore)(r)
+    case r if Ops.routes(boardStore).isDefinedAt(r) => Ops.routes(boardStore)(r)
 
     case r if r.method == okay.http.Method.Post && r.url == "/login" =>
       val email = Chat.fieldOf(r.body, "email")
@@ -1154,36 +311,34 @@ object ChatDemo {
           Http.one(Json.print(JObj(Vector("ok" -> JBool(false), "error" -> JStr("wrong or expired code")))).getBytes(UTF_8))))
 
     }
-    // /chat itself is okay-chat now (extracted 2026-09-02, specs/
-    // chat.md): the marketplace's /match turns ride the turnOverride
-    // seam instead of a hardcoded prefix check inside the route
-    val marketplaceTurnOverride: Chat.TurnOverride = (r, messages) =>
+    // /chat itself is okay-chat (extracted 2026-09-02, specs/chat.md):
+    // a "/board ..." turn rides the turnOverride seam rather than a
+    // hardcoded prefix check inside the route
+    val boardTurnOverride: Chat.TurnOverride = (r, messages) =>
       val last = messages.lastOption.map(_.content).getOrElse("")
-      Option.when(last.startsWith("/match")) {
-        // a verified session identifies the speaker over the
-        // text-parsed email
-        val sessionEmail = Secure.bearerToken(r).flatMap(Login.verify(_))
-        val answer = matchTurnLogged(last.stripPrefix("/match").trim, messages.init, chatLog, sessionEmail)
+      Option.when(last.startsWith("/board")) {
+        // a verified session identifies the speaker over anything the
+        // message text claims
+        val who = Secure.bearerToken(r).flatMap(Login.verify(_))
+        val answer = offlineTurn(board, last.stripPrefix("/board").trim, who)
         def stream(ts: List[String]): Unit ! (Writer % String + Async) = ts match
           case Nil => pure(())
           case t :: rest => effect[Writer % String + Async, Unit](
             Writer(t + " ")).flatMap(_ => stream(rest))
         Chat.reply(_ => stream(answer.split(' ').toList), budget)(messages)
       }
-    // admin routes are okay-admin now (extracted 2026-09-02,
-    // specs/admin.md): Secure.granted + Policy.scoped("admin") —
-    // /admin/replay is no longer reachable without an admin token
-    core.orElse(Chat.chatRoute(m, budget, marketplaceTurnOverride, contentPolicy))
+    // admin routes are okay-admin (extracted 2026-09-02, specs/admin.md):
+    // /admin/replay is not reachable without an admin token
+    core.orElse(Chat.chatRoute(m, budget, boardTurnOverride, contentPolicy))
       .orElse(Admin.routes(Admin.Issuer.verify)(
-        () => replayProjections(chatLog), () => marketChanged("replay")))
-      .orElse(gateRoute)
+        () => board.replay(), () => boardChanged("replay")))
 
   /** the whole demo as ONE value awaiting its environment
    * (demo-ctx-wiring): `main` wires production, a test wires stubs —
    * the same value both times, and a missing capability is a compile
    * error, not a container exception */
   def handler(budget: Int)
-  : (Transport, Secrets, MatchStore) ?=> PartialFunction[Request, Response ! Async] =
+  : (Transport, Secrets) ?=> PartialFunction[Request, Response ! Async] =
     routes(Chat.model, budget)
 
   def main(args: Array[String]): Unit =
@@ -1197,7 +352,7 @@ object ChatDemo {
     // exactly as it always was — every existing test constructs
     // routes(...) directly and never sets this env var
     val node = sys.env.get("OKAY_CHAT_NODE")
-    provide(Transports.http(), Secrets.env, market)(Resource.run[Unit, Pure](
+    provide(Transports.http(), Secrets.env)(Resource.run[Unit, Pure](
       Jetty.serve(port)(node match
         case Some(n) =>
           val logDir = sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log")

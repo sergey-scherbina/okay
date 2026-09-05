@@ -4,7 +4,6 @@ import okay.{Async, !, pure}
 import okay.http.{Http, Method, Request, Response}
 import okay.llm.Transport
 import okay.conf.Secrets
-import okay.matching.{ChatLog, MatchStore}
 import okay.persist.{Election, FileStore, Policy}
 import okay.codec.Json
 import okay.codec.Json.*
@@ -25,9 +24,8 @@ import java.nio.charset.StandardCharsets.UTF_8
  */
 final class TwoNode(root: Path, val node: String,
                     tickMs: Long = 500, leaseMillis: Long = 5000)
-                   (using Transport, Secrets, MatchStore) {
+                   (using Transport, Secrets) {
 
-  private val store = summon[MatchStore]
 
   @volatile private var leaderOf: Option[String] = None
 
@@ -46,9 +44,10 @@ final class TwoNode(root: Path, val node: String,
       leaderOf = decided
       if decided.contains(node) then election.heartbeat()
       else
-        val freshLog = ChatLog(fresh.topic("web-demo", 1, Policy.default))
-        store.reset()
-        ChatDemo.replayProjections(freshLog): Unit
+        // a FOLLOWER carries no authority of its own: it drops its
+        // projection and derives it again from the leader's log, which
+        // is the whole claim of a log-first design under two nodes
+        ChatDemo.board.replay(): Unit
     finally fresh match
       case f: FileStore => f.close()
       case _ => ()   // MemoryStore (a :memory: log): nothing to release

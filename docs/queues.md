@@ -274,37 +274,32 @@ only the last one ends the stream. That is what `Buffer.seal` is for.
 nothing: metrics from many workers, log lines, independent requests.
 
 **Both bounded and growable parts work, and they answer different
-questions.** Measured, `Total=8000`, us/op, lower is better:
+questions.** `Total=8000`, us/op, a chunked consumer on every side
+because that is what `ZStream.fromQueue` uses:
 
-| producers | one ring | relaxed, bounded parts | one growable | relaxed, growable parts | zio.Queue |
+| producers | one ring | relaxed, bounded | one growable | relaxed, growable | zio.Queue |
 |---|---|---|---|---|---|
-| 1 | 542.7 | 779.8 | 350.4 | 480.4 | 285.4 |
-| 4 | 1314.8 | **597.2** | 707.5 | **279.7** | 1164.7 |
-| 16 | 2586.3 | **485.3** | 804.3 | **183.1** | 2653.1 |
+| 1 | 205.9 | 306.6 | **157.7** | 249.7 | 427.7 |
+| 4 | 1242.0 | 366.9 | 677.0 | **196.0** | 1290.2 |
+| 16 | 2073.6 | 362.2 | 680.2 | **129.7** | 2540.8 |
 
-Both relaxed forms get FASTER as producers are added, which is the
-whole point of a relaxed queue: 780 → 597 → 485 bounded, 480 → 280 →
-183 growable. Everything else in the table gets slower. Choose the
-bounded form when you still want backpressure, the growable one when
-the producer must never wait.
+Two things to take from it.
 
-**One number here is worth more than the rest of the table.** The
-bounded form read **111546us** at sixteen producers until senders
-learned to wait per part — 230x worse than it should be, and worse
-than not relaxing at all. The cause was a mismatch rather than a
-setting: the channel kept ONE queue of waiting senders while the
-resource is per part, so a consumer freeing a slot in part 7 woke an
-arbitrary sender, who found *its own* part still full and parked
-again. With k parts, one wakeup in k is useful and the rest is churn.
+**No single configuration wins everywhere, which is why there is a
+menu.** At one producer relaxation costs — 249.7 against a plain
+growable buffer's 157.7 — because there is no contention to relax and
+a part still has to be chosen. From four producers up the relaxed
+growable form pulls away and keeps improving: 196.0, then 129.7.
+Everything unpartitioned gets slower as producers are added.
 
-That is the fourth defect of one family in this design, and they read
-as one sentence: **the channel asking about the buffer as a whole
-where the question belongs to one part.** `isEmpty` instead of
-`hasReady` before a receiver waits; `size < capacity` instead of
-`hasRoom` before a sender waits; a producer's part taken on the
-waker's thread rather than carried with the send; and the wakeup
-itself, aimed at no part in particular. If you partition a structure,
-audit every question the surrounding code asks it.
+**Read the granularity before reading the numbers.** An earlier
+version of this table put our ELEMENTWISE consumer beside zio's
+chunked one and showed zio ahead at a single producer. It was the
+fifth appearance of that mismatch in this repository, and the first
+introduced rather than found. With the same question asked on both
+sides, the fastest okay lane leads at every width — 2.7x, 6.6x, 19.6x
+— and the elementwise lanes remain as diagnostics, because `zio.Queue`
+has no per-element read of a queue to place beside them.
 
 ### `ListFifo` and `ArrayFifo` — persistent, for the composable channel
 

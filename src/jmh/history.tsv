@@ -360,3 +360,10 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-05	channel-per-part-waiters	ManyProducersBenchmark	relaxedUnbounded/16	183.096	us/op	Total=8000 cap=1024 f=2 i=5	still the fastest lane
 2026-09-05	channel-per-part-waiters	ManyProducersBenchmark	oneRing/16	2586.305	us/op	Total=8000 cap=1024 f=2 i=5	control
 2026-09-05	channel-per-part-waiters	ManyProducersBenchmark	zioQueue/16	2653.135	us/op	Total=8000 cap=1024 f=2 i=5	control
+2026-09-05	producers-chunked-consumer	ManyProducersBenchmark	oneUnbounded_chunk/1	157.707	us/op	Total=8000 f=2 i=5 chunked both sides	fair consumer on both sides: 2.7x past zio at one producer
+2026-09-05	producers-chunked-consumer	ManyProducersBenchmark	relaxedUnbounded_chunk/4	195.951	us/op	Total=8000 f=2 i=5 chunked both sides	6.6x past zio at four
+2026-09-05	producers-chunked-consumer	ManyProducersBenchmark	relaxedUnbounded_chunk/16	129.711	us/op	Total=8000 f=2 i=5 chunked both sides	19.6x past zio at sixteen
+2026-09-05	producers-chunked-consumer	ManyProducersBenchmark	relaxed_chunk/16	362.219	us/op	Total=8000 f=2 i=5 chunked both sides	bounded relaxed, chunked consumer
+2026-09-05	producers-chunked-consumer	ManyProducersBenchmark	oneRing_chunk/16	2073.553	us/op	Total=8000 f=2 i=5 chunked both sides	a single bounded ring
+2026-09-05	producers-chunked-consumer	ManyProducersBenchmark	zioQueue_chunk/1	427.736	us/op	Total=8000 f=2 i=5 chunked both sides	control; the earlier 285.4 was measured against our ELEMENTWISE consumer
+2026-09-05	producers-chunked-consumer	ManyProducersBenchmark	zioQueue_chunk/16	2540.774	us/op	Total=8000 f=2 i=5 chunked both sides	control
