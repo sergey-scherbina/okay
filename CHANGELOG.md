@@ -1,5 +1,48 @@
 # Changelog
 
+## mail-loopback-tls — the upgrade is performed now, not only decided
+Completed: 2026-09-05
+Landed as 47f1fc6f. `okay-mail` shipped an hour earlier with STARTTLS
+covered by the PURE tests and never run over a socket, and said so.
+That is worse than it sounds: the pure tests prove the client DECIDES
+to upgrade, while the code that performs it — `Tls.client` over the
+live socket, the new reader and writer, the second EHLO — had never
+once executed. An unverified upgrade in a mail client is the path
+where credentials travel in the clear if it silently does not happen.
+
+WRITING THE TEST NEEDED A HALF OF `okay-tls` THAT DID NOT EXIST.
+`Tls.client` upgrades a connected CLIENT socket and had no mirror, so
+nothing could play the server side of a STARTTLS: by the time a server
+knows to upgrade, its socket is already accepted and has carried a
+greeting, which is exactly what `serverSocket` cannot help with.
+`Tls.server(sock, cert, key, secrets)` is that mirror — symmetric to
+what was there rather than a change to it. SMTP, IMAP, XMPP and
+Postgres all begin in the clear and upgrade in place, so the gap was
+general and not this module's.
+
+Three things now hold against a real socket and a real handshake, with
+the toy server recording which lines arrived before the upgrade and
+which after:
+
+- **the upgrade happens** — `EHLO` and `STARTTLS` in the clear, and
+  `MAIL FROM`, `RCPT TO`, `DATA` and the encoded subject inside the
+  tunnel
+- **credentials go after it and never before**, with the server
+  advertising `AUTH` only once the channel is private, which is what a
+  real server does and what makes the second EHLO necessary rather
+  than decorative
+- **a certificate the client will not trust refuses the send**, and
+  the caller gets a `Rejection.Connection` naming STARTTLS rather than
+  an exception
+
+One client behaviour the second test found on the way: a login
+configured against a server that advertises no AUTH is refused rather
+than sent unauthenticated. That was already the code; nothing had
+asked it.
+
+Gate: clean compile 0 warnings; okayMail 16 in the default gate and 6
+`Live` (3 loopback + 3 STARTTLS), okayTls 9 `Live` — 0 failures.
+
 ## okay-mail — SMTP as a wire, send only, failure as data
 Completed: 2026-09-05
 Landed as 8b22895a. A consumer's first BLOCKING request rather than an
