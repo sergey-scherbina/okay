@@ -416,3 +416,44 @@ a question goes unanswered. Both are domain knowledge. The library
 gives them a place to be recorded honestly and no opinion about what
 they should be.
 
+## Results — frame-walk-end-to-end (2026-09-05)
+
+The consumer's third point, and the one I could not argue with: both
+of their defects that day lived BETWEEN two correct code paths with
+237 unit tests green. One showed a person their own address back — a
+two-argument contact lookup called with a fixed direction. The other
+told the person who had asked, waited and been accepted precisely
+nothing, because "they got your contact" was a claim in a comment
+rather than a call. Neither is inside any single seam.
+
+`TestWalk` (okay-demo, since it is the module that can see both the
+router and the suspension) walks one message to one produced thing:
+classify with the real tiers, fill from the message, park on the open
+question in a journal, DIE, rebuild every object from scratch, answer,
+read back, confirm, and then ACT — and it asserts the act. Three
+things the consumer's shape demands are asserted rather than implied:
+the value (`2026-09-08`), the DIRECTION (the confirmation goes to the
+asker and names the other party), and that something was produced at
+all.
+
+**It failed on its first run, for the right reason.** The exchange
+completed and `act` produced nothing. The cause was the test's own
+mistake and it is the one this design invites: `act` closed over the
+descriptor value built at the top of the file, while the frame came
+from the one rebuilt after the simulated restart — and `valueOf`
+matches a slot by IDENTITY. So the walk's first act was to catch,
+in itself, the exact failure it exists for: an exchange that ends
+"complete" while the caller gets nothing.
+
+The rule that follows is now written where a caller will meet it: ONE
+descriptor value per exchange, passed alongside the frame rather than
+captured. `act(frame, from, asker, other)`.
+
+**Not fixed in the library, filed instead.** `Frame.rebind(newSlots)`
+— re-derive a frame's answers against freshly built descriptors after
+a restart — is the obvious accommodation and it is dangerous in
+exactly one way that matters: re-parsing "next Tuesday" against a new
+reference day silently yields a different date, which is the defect
+`intent-frame-typed-values` removed. If it is built, it must be a
+caller's explicit request for re-derivation and must say what it did.
+

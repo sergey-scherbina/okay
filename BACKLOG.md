@@ -1702,7 +1702,13 @@ subtraction.
       CONSTRUCTION and one meaning replaced across all six languages.
       Russian fell 86.7% -> 73.3%, which is what fixing a fixture that
       was flattering itself looks like.
-- [ ] frame-walk-end-to-end — the consumer's third point, and the one
+- [x] frame-walk-end-to-end — LANDED 2026-09-05 as okay-demo's
+      TestWalk: one message to one produced booking, through the real
+      tiers, a real journal, a simulated process death and a
+      read-back, asserting the VALUE, the DIRECTION and that anything
+      was produced. It caught its own instance of the defect it exists
+      for on the first run. Original entry follows.
+- [x] frame-walk-end-to-end (original) — the consumer's third point, and the one
       I cannot argue with: okay-frame and okay-intent have ONE caller
       and it is a classifier demo. Both defects they hit today lived
       BETWEEN two correct code paths with 237 unit tests green —
@@ -1726,6 +1732,19 @@ subtraction.
       shipped model's 76.7%. Print per-class numbers and the class
       BALANCE beside every total; `Eval` already computes per-class
       scores, so this is a reporting lane, not a measurement one.
+- [ ] frame-rebind — after a restart a caller rebuilds its `Slot`
+      values, and `valueOf` matches by IDENTITY, so a frame read back
+      from a journal cannot be read with the new descriptors unless
+      the caller threads the rebuilt ones through everything.
+      `TestWalk` hit this and the rule ("one descriptor value per
+      exchange, passed with the frame") is documented, but a
+      `Frame.rebind(slots)` would make the restart case ordinary. THE
+      HAZARD, which is why it is not built yet: re-deriving a value
+      means re-parsing the stored text, and "next Tuesday" against a
+      new reference day is a DIFFERENT DATE — the exact defect
+      intent-frame-typed-values removed. It must be an explicit
+      request that reports what it re-derived, not a silent
+      convenience.
 - [ ] intent-typo-robustness — character n-grams are supposed to
       survive a typo, and this model does not: one deterministic
       transposition in the longest word takes it from 61.7% to 55.0%
