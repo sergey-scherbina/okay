@@ -1,5 +1,47 @@
 # Changelog
 
+## intent-uk-pl-rows — two more languages, and the shipped model is measured to be English
+Completed: 2026-09-05
+Landed as 94dfe75e. Owed to a consumer who runs in Ukrainian and
+Polish and asked twice. Thirty parallel meanings each, so the fixture
+is eight languages wide.
+
+STATED FIRST, because it is the disease this repository measured
+yesterday: these rows are MY writing, and a native speaker should read
+them before anything is claimed from them. They are worth adding
+because a fixture row is CORRECTABLE — the consumer speaks both and
+can fix a wording — and because the numbers are diagnostic even where
+the prose is not. `TestSlavicRows` prints every Slavic row the tier
+misreads, so the first thing a native reader meets is the list to
+check, not a score.
+
+THE SHIPPED MODEL IS ENGLISH, measured rather than cautioned:
+
+| en | fr | de | es | ru | ja | uk | pl |
+|---|---|---|---|---|---|---|---|
+| 76.7% | 26.7% | 30.0% | 23.3% | 30.0% | 23.3% | 26.7% | 26.7% |
+
+Four classes, so 25% is chance, and everything but English is at it.
+The cue tier — the half that carries the composite — fires ZERO times
+outside English because its cues are English phrases. Passing a
+Ukrainian message to `Router.offline()` is a coin flip with a
+confident face, and `Models` now says that in those words.
+
+FITTING ON ALL EIGHT DOES NOT RESCUE IT: en 86.7%, pl 46.7%, fr 53.3%,
+de 46.7%, es 40.0%, ja 40.0%, ru 33.3%, uk 33.3% on fifteen held-out
+rows each — and in EVERY non-English language at least one class
+scores F1 0.00, a class the tier never once produces. `CharGrams` is
+language-agnostic BY CONSTRUCTION, which is true and is not enough:
+the construction is free, the rows are not, and fifteen a language is
+not rows.
+
+Polish over Ukrainian is fifteen rows against fifteen and is NOT
+evidence that Latin script beats Cyrillic; said so rather than left to
+be read that way.
+
+Gate: clean compile 0 warnings; okayIntentJVM 136, okayIntentJS 9,
+okayDemo 79 — 0 failures.
+
 ## frame-walk-end-to-end — one message, one produced booking, and the walk caught its own defect first
 Completed: 2026-09-05
 Landed as 0e6c6d87. A consumer's third point, and the one I could not
