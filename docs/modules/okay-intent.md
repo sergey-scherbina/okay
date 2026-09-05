@@ -50,6 +50,26 @@ lane, with what each number cost and what it does not support.
 Cross-built JVM + JS; the test suites are JVM-only, since several
 summon a `Handler[Async]` that needs a `CanBlock` JS does not have.
 
+## The slot descriptor, for a caller who wants to review it
+
+It is not in this module. `Slot`, `Frame`, `Found`, `Answered` and
+`Source` live in [`okay-frame`](okay-frame.md), which exists because
+`okay.agent.Conversation` needed the same thing and neither module may
+depend on the other.
+
+```scala
+val when = Slots.when(today)                    // okay-intent supplies parsers
+val frame = Frame.of("MeetingProposal", when).in("ru")
+frame.fillFrom(message)                         // what the message already says
+     .answer("when", "next Tuesday")            // what a person then says
+     .map(_.valueOf(when))                      // a Temporal.When, not a string
+```
+
+`Slot.choice` for a closed set of values with per-value wordings,
+`assume` for a default nobody typed, `Source` for telling those apart,
+and `okay.agent.Conversation` to run the whole exchange across a
+restart. See specs/conversation.md.
+
 ## Multi-intent is one tier's property, not the module's
 
 `Span` and `Reading` let a message carry two intents, and only the

@@ -179,6 +179,54 @@ see its Results. `Eval` still takes `(gold, predicted)` pairs from
 wherever the caller has them, so nothing in it depends on the journal;
 the journal is what feeds it without a model.
 
+## Requests from a consumer (2026-09-04), and what happened to each
+
+STATUS, added 2026-09-05 because this list was lying to the one reader
+it exists for. It marked exactly ONE of seven as done — number 3 —
+while six others had landed, several of them the same day the
+consumer was told they were open. They said so: "request 5 remains
+open, and I am still waiting for a type proposal to review with live
+use rather than guessing from outside." The type had shipped, they had
+already MIGRATED onto it, and nothing in this document said so.
+
+| | request | status |
+|---|---|---|
+| 1 | one taxonomy both tiers read | **landed** — `Taxon` as a value (`of[I]` from a `Schema`, `parsed` from data); `Patterns.Cues` carries the taxonomy it decides (ae449ebd); every `Trained` carries the one it was fitted against and `against(taxon, rows)` refuses a stray label (90acdb51) |
+| 2 | language as a key in the fit | **landed** — `Rows`/`ByLanguage.fit` groups by language and falls back to the pooled model below `minRows` |
+| 3 | hand back the ranking at abstention | **landed**, and was the only one this list admitted |
+| 4 | a fitted model persists as data | **landed** — `Fitted` (arrays as bytes, not digits), `Fit.save`/`Fit.grams(json)` as the door, and `Models.meeting` as a model that actually ships (d42c03ca) |
+| 5 | slots deserve a description | **landed, and then twice more** — `okay.frame.Slot`/`Frame` (the module split out so both okay-intent and okay-agent can hold it, 99b3344c), typed values through `valueOf` (6a5b8e4d), extraction from the message (99af30b1), `Slot.choice` with per-VALUE wordings and `Source` provenance (60cf8f95) |
+| 6 | name the dependency, not the deployment | **landed** — the tables say `String => Embedding` |
+| 7 | a suspension waiting for a person | **landed** — `okay.agent.Conversation` over `okay.frame.Frame`, one slot model rather than two (99b3344c) |
+
+**Where 5 landed DIFFERENTLY from what was proposed**, which is the
+part a consumer cannot see from outside and is what they were asking
+for:
+
+- the descriptor lives in `okay-frame`, a module of its own, not in
+  okay-intent — because `okay.agent.Conversation` grew a rival slot
+  model the same day and neither module may depend on the other
+- `Frame` carries the LANGUAGE of the exchange, and `question`,
+  `answer` and `missing` take none. That was the consumer's own
+  operational warning and it changed the shape: a per-call language
+  makes a mid-exchange flip possible by accident, and they had
+  measured one
+- an answer knows where it came from (`Said` / `Found` / `Assumed`),
+  which nothing in request 5 asked for and their default-value case
+  demanded
+- `Slot.ask` is a `Map[String, String]` rather than a function of an
+  opaque language type: a language that must survive a RESTART has to
+  be writable to a journal
+
+**What of this list is still open: nothing.** The open work is
+elsewhere and is in BACKLOG.md — `frame-rebind`,
+`frame-language-with-grammatical-gender` (raised by the same consumer
+and confirmed to exist in this repository's own fixture),
+`intent-span-runaway`, and the corpus lanes that no amount of design
+will close.
+
+The requests as originally written follow, unedited.
+
 ## Open requests from a consumer (2026-09-04)
 
 Written from the outside, by an agent that BUILT a router on these
