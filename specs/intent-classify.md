@@ -2779,3 +2779,86 @@ The derived view and this suite stay in the repository: the map is a
 usable artefact, and the test is the guard that will say so if the
 answer ever changes.
 
+## Results — intent-slavic-collision (2026-09-05)
+
+A native reader read all sixty of my Ukrainian and Polish rows. Every
+correction they gave is applied. The experiment their second finding
+implied was run, and IT DID NOT CONFIRM THE HYPOTHESIS — including
+mine.
+
+### What they found, and what happened to it
+
+**1. A parallel fixture propagates a defect across every arm at
+once.** Their earlier Russian corrections went into the Russian arm;
+the same calques stayed in Ukrainian and Polish, because every arm is
+a translation of one English sentence. Fixed as given, and their rule
+— *review a row, not a language* — is now a test rather than a habit:
+`TestFixtureHygiene` flags near-twin rows within a class and language,
+which is the mechanical form of what they caught by reading.
+
+It caught six pairs immediately, in en, de, es, ja and uk — INCLUDING
+ONE I HAD JUST CREATED. My fix for their collision finding rewrote a
+Ukrainian Request into "Перевірте, будь ласка, чи вільна кімната",
+which is a twin of "Заброньте, будь ласка, кімнату на чотирьох". The
+guard caught it in the same run that introduced it.
+
+**2. The person-marker collision.** uk "Можемо зустрітися" (Proposal)
+against "Можете перевірити" (Request), pl "Czy możemy" against "Czy
+możesz" — one or two letters apart in the morpheme that carries the
+class.
+
+Whole-sentence similarity does not find this: those pairs score 0.047
+and 0.121 by trigram Jaccard over the message. The signal is in the
+OPENING WORD alone, so the guard measures edit distance between
+openings of different classes and nothing else.
+
+**And it generalises past the two languages they were reading**, which
+is the part neither of us expected:
+
+| | | |
+|---|---|---|
+| en | `would` (Proposal) vs `could` (Request) | 1 edit |
+| de | `können` vs `könnten` | 1 edit |
+| pl | `może` vs `moje` | 1 edit |
+| uk | `може` vs `моє`, `давайте` vs `додайте` | 2 edits |
+
+`would`/`could` is how English marks the distinction and
+`können`/`könnten` is how German does. A fixture that avoided them
+would be LESS like the language, not more — so the collision list is
+printed as a diagnostic of where the tier is structurally blind, and
+is not asserted against. In English, messages opening on a modal score
+**54.5% against 63.3%** for everything else. Eleven rows, so
+directional rather than decisive, and the errors are the predicted
+ones: Proposal↔Request↔Other.
+
+**3 and 4.** Three Polish rows addressed only a man (`mógłbyś`,
+`obecny`, `pytałeś`) — fixed, and it is the first evidence for
+`frame-language-with-grammatical-gender`, which I filed from their
+earlier message as a case I did not have and which turned out to be in
+my own fixture. One grammatical error and two register slips fixed as
+given.
+
+### The experiment, which failed to confirm
+
+The hypothesis was mine as much as theirs: fix the collision and the
+Slavic numbers move without adding a row. They did not.
+
+| | en | fr | de | es | ru | ja | uk | pl |
+|---|---|---|---|---|---|---|---|---|
+| before | 86.7 | 53.3 | 46.7 | 40.0 | 33.3 | 40.0 | 33.3 | 46.7 |
+| after | 86.7 | 66.7 | 40.0 | 26.7 | 40.0 | 46.7 | **33.3** | **26.7** |
+
+Ukrainian is unchanged and Polish is thirteen points WORSE. And the
+languages I did not touch scatter by the same ±13, which is the
+finding inside the finding: fifteen held-out rows means one message is
+6.7 points, so this instrument cannot resolve an effect of the size
+being looked for. Every number in that table moved by one or two
+messages.
+
+So this morning's conclusion stands, unweakened and now supported from
+a fifth direction: the binding constraint is corpus size, and it binds
+the MEASUREMENT as well as the model. The reader's mechanism is real
+— it is visible in the openings, and English pays for it too — but its
+cost cannot be measured on fifteen rows a language, and neither can
+its repair.
+

@@ -1745,6 +1745,15 @@ subtraction.
       whether recall moves with them. The suite that would show it
       already exists (`TestSplitOther`, `TestModels`), so this is a
       corpus lane with its measurement already written.
+- [ ] intent-english-corpus-twins — `TestFixtureHygiene` found three
+      near-twin pairs in `labelled`, the English corpus the shipped
+      model is fitted on and every published number is measured
+      against ("Suggestion: we meet on Monday at 9" against "Suggest
+      we cancel Monday and meet Wednesday instead"; two Requests that
+      both say "send me the agenda"; two Notifications about a room
+      change). Fixing them changes the shipped artifact and every
+      number quoted from it, so it is its own lane with its own
+      re-publish rather than a tidy-up.
 - [ ] intent-typo-robustness — character n-grams are supposed to
       survive a typo, and this model does not: one deterministic
       transposition in the longest word takes it from 61.7% to 55.0%
