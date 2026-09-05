@@ -1,5 +1,50 @@
 # Changelog
 
+## intent-taxon-wired-to-tiers — a tier knows what it was fitted against, and the ensemble cannot silently disagree
+Completed: 2026-09-05
+Landed as 90acdb51. The last of the three frictions the first caller
+exposed, parked twice for other work. Request 1 asked for one taxonomy
+both tiers read; what had landed was one taxonomy NEITHER TRAINED TIER
+read — every fit inferred its classes from whatever labels its rows
+happened to carry, and a caller checked agreement by hand or not at
+all.
+
+Every `Trained` now carries the `Taxon` it was fitted against. `train`
+still infers, because no caller should have to declare a taxonomy to
+fit two classes; `against(taxon, rows)` DECLARES one and refuses a
+label outside it at FIT time rather than as an invented class in a
+confusion matrix later. `silent` names the classes a declared taxonomy
+holds that the rows never taught.
+
+THE LATENT BUG, which is why this was not tidiness. `NoModel.blend`
+adds a cue's weight to a probe class BY STRING EQUALITY. Cues speaking
+`Proposal` against a probe fitted on `MeetingProposal` never match:
+every bonus is zero, the ensemble silently degrades to the plain
+probe, and nothing says so — no error, no warning, and an accuracy
+that looks entirely plausible because it IS the probe's. `NoModel.fit`
+refuses it now, and the check is one way on purpose: every class the
+PROBE knows must be in the cues' taxonomy, because those are the ones
+a bonus could ever apply to.
+
+AND A DEFAULT THAT WAS LYING. Enforcing the check broke ten existing
+tests, all fitting a probe on abstract labels while inheriting `fit`'s
+default cue set — and the default was the real defect:
+`Patterns.meeting` attached to every fit whatever the corpus was
+about, contributing nothing because the default weight grid is a
+single zero. A default that is inert is a default that lies about what
+it does. `cues` is `Option[Patterns.Cues] = None` now; a caller who
+wants the blend names them, and only then must the taxonomies agree.
+Behaviourally a no-op for every existing caller.
+
+The taxonomy is deliberately NOT persisted: `Fitted` infers it from
+the classes a model actually learned, so the wire format is unchanged
+and no file written by an earlier build stops decoding. The cost is
+stated where it can be read — a declared class no row ever taught does
+not survive a round trip. Fit-time knowledge, not model knowledge.
+
+Gate: clean compile 0 warnings; okayIntentJVM 153, okayIntentJS 9,
+okayDemo 79 — 0 failures.
+
 ## channel-per-part-waiters — wake where the room appeared
 
 `Queues.strong.relaxed(parts, each)` read **111546us** at sixteen
