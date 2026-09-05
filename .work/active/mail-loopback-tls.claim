@@ -1,0 +1,28 @@
+task: mail-loopback-tls
+agent: opus5-intent
+started: 2026-09-05
+branch: feature/mail-loopback-tls
+worktree: ../okay-wt-mtls
+
+why: I shipped okay-mail an hour ago with its STARTTLS path covered by
+  the PURE tests and never exercised over a real socket, and said so.
+  That is worse than it sounds: the pure tests prove the client
+  DECIDES to upgrade; the code that performs the upgrade — Tls.client
+  over the live socket, the new reader and writer, the second EHLO —
+  has never once run. An unverified upgrade in a mail client is the
+  path where credentials would travel in the clear if it silently did
+  not happen.
+
+what is actually missing, and it is not in okay-mail: okay-tls has
+  `client(sock, ...)` to upgrade a connected CLIENT socket and no
+  mirror for the server side. STARTTLS is a two-sided upgrade — SMTP,
+  IMAP, XMPP and Postgres all do it — and the seam has only one side,
+  which is why my test could not be written.
+
+  So: `Tls.server(sock, cert, key, secrets)`, the mirror of
+  `Tls.client`, and then the loopback SMTP server upgrades with it and
+  the client's whole STARTTLS path runs for real.
+
+not my module: okay-tls belongs to whoever wrote it. The addition is
+  symmetric to what is there, not a change to it, and I will say so in
+  the room.
