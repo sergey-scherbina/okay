@@ -730,6 +730,24 @@ sits close to `toLazyList` instead. Kept for the composability
 a value already forced — but it is an ergonomics addition, not a
 performance one, and is stated as such rather than assumed free.
 
+**Reading a collection under a callback.** The same pairing, and the
+same outcome. `ZStream.fromIterable(list).runForeach` walks arrays;
+the lanes it sat beside walked a program tree one element at a time.
+
+| lane | us/op |
+|---|---|
+| `Chunks.foldLeft(Chunks.fromIterator(...))` | **12.8 ±0.1** |
+| `ZStream.fromIterable(list).runForeach` | 96.9 ±3.1 |
+| `Source.of(list).runForeach` (diagnostic, ours only) | 169.8 ±20.8 |
+| `Source.of(list).toLazyList.foreach` (diagnostic) | 165.5 ±4.5 |
+
+**7.6x ahead.** With this row, five of the six places where zio
+appeared to lead this table were the same mismatch — our per-element
+surface against their chunk-native one — and every one of them flips
+when the question is asked the same way on both sides.
+
+**Exactly one genuine gap remains**, and it is the row below.
+
 **Reading one at a time from a buffered channel.**
 `Channel.buffer(1024)(list).drained` against a bounded `Queue` +
 `ZStream.fromQueue(...).runForeach`.

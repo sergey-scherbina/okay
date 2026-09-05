@@ -116,6 +116,21 @@ class IdiomaticApiBenchmark {
       okay.effect[Async, Unit](Async.Run(() => sum += x))).runWith
     sum
 
+  /**
+   * The like-for-like partner for the zio lane below.
+   * `ZStream.fromIterable(list).runForeach` walks arrays; the two
+   * `_elem_` lanes above walk a program tree one element at a time.
+   * Same pairing as the `runSum` row, which read "3.1x behind" until
+   * it was asked fairly and came out 4.5x ahead.
+   */
+  @Benchmark
+  def okayCollectionForeach_chunk_fold(): Long =
+    var sum = 0L
+    Chunks.foldLeft(Chunks.fromIterator(list.iterator, size = N))(0L) { (acc, x) =>
+      sum += x; acc
+    }
+    sum
+
   @Benchmark
   def zioCollectionForeach_chunk_runForeach(): Long =
     runZio(_root_.zio.Ref.make(0L).flatMap(r =>
