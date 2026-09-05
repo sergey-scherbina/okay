@@ -19,6 +19,35 @@ Scala Native — each platform contributes evidence (can it park? what
 is its timer? what schedules?), not API: the same Await-based test
 suite runs on a JVM, under Node and as a linked native binary.
 
+## Documentation
+
+Start here:
+
+| | |
+|---|---|
+| [User guide](docs/guide.md) | the concepts, layer by layer — control, effects, streams, the upper modules |
+| [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
+| [Building a chat application](docs/building-a-chat-app.md) | an empty directory to a running streaming chat, outside this repo: depending on an unpublished library, backend, frontend, tests, run |
+| [Typepedia](docs/typepedia.md) | every core type and typeclass, with its meaning and the recurring gotchas |
+| [Capabilities](docs/capabilities.md) | context functions as the wiring: doors, provide, wire — dependency injection with the container deleted |
+| [The theory of Okay](docs/theory/index.md) | the textbook: the theories the library stands on, the scientists, the papers, and why each design decision |
+
+Going deeper:
+
+| | |
+|---|---|
+| [Benchmarks](docs/benchmarks.md) | every measured case, why each number is what it is, and where the honest limits are |
+| [The cast that could not go](docs/existentials.md) | six encodings tried against one assertion; the five failures are the useful part |
+| [Specs](specs/) | the living design documents, one per feature, refutations kept |
+| [history.tsv](src/jmh/history.tsv) | the raw measurement log, refuted experiments included |
+
+Per module — every satellite has its own page under
+[docs/modules/](docs/modules/): the interop bridges (cats, zio, kyo,
+fs2, java, spark, flink, kafka, jdbc), the text stack (lex, parse,
+codec), retrieval and agents (rag, llm, agent, mcp), the network
+(http, jetty, netty) and the distributed runtime (cluster). The
+[docs index](docs/README.md) lists them all with one-line summaries.
+
 ## Architecture
 
 - `Cont[A, S, R]` (Cont.scala) — the parameterised continuation monad
@@ -262,31 +291,3 @@ its own separate 4g cap worth raising for the same reason.
 Benchmarks: `sbt 'Jmh/run .*FibBenchmark.*'`, comparisons in the
 `compare` module (`sbt 'compare/Jmh/run ...'`); history and refuted
 experiments in src/jmh/history.tsv.
-
-## Documentation
-
-Start here:
-
-| | |
-|---|---|
-| [User guide](docs/guide.md) | the concepts, layer by layer — control, effects, streams, the upper modules |
-| [Tutorial](docs/tutorial.md) | the same layers by use: worked, runnable examples |
-| [Typepedia](docs/typepedia.md) | every core type and typeclass, with its meaning and the recurring gotchas |
-| [Capabilities](docs/capabilities.md) | context functions as the wiring: doors, provide, wire — dependency injection with the container deleted |
-| [The theory of Okay](docs/theory/index.md) | the textbook: the theories the library stands on, the scientists, the papers, and why each design decision |
-
-Going deeper:
-
-| | |
-|---|---|
-| [Benchmarks](docs/benchmarks.md) | every measured case, why each number is what it is, and where the honest limits are |
-| [The cast that could not go](docs/existentials.md) | six encodings tried against one assertion; the five failures are the useful part |
-| [Specs](specs/) | the living design documents, one per feature, refutations kept |
-| [history.tsv](src/jmh/history.tsv) | the raw measurement log, refuted experiments included |
-
-Per module — every satellite has its own page under
-[docs/modules/](docs/modules/): the interop bridges (cats, zio, kyo,
-fs2, java, spark, flink, kafka, jdbc), the text stack (lex, parse,
-codec), retrieval and agents (rag, llm, agent, mcp), the network
-(http, jetty, netty) and the distributed runtime (cluster). The
-[docs index](docs/README.md) lists them all with one-line summaries.
