@@ -1,5 +1,55 @@
 # Changelog
 
+## intent-split-other — measured and DECLINED: carving the bin takes its recall from 46.7% to 6.7%
+Completed: 2026-09-05
+Landed as 8e9c12ad. `intent-other-is-a-bin` closed two remedies for
+`Other` and left one open — give its members NAMES they can be learned
+under. This is that one, measured, and it loses badly enough to close
+the question at this corpus size.
+
+Three groups, DERIVED rather than relabelled so every published number
+stays comparable: `Social` (a pleasantry or personal news, no action
+wanted), `Support` (something is wrong with a product or service),
+`Errand` (a real request or question, out of domain).
+
+| | accuracy | `Other` recall |
+|---|---|---|
+| unsplit, model alone | 61.7% | 46.7% |
+| split, folded back | 55.0% | **6.7%** |
+| unsplit, shipped composite | 76.7% | 46.7% |
+| split, composite | 75.0% | **26.7%** |
+
+And on the split taxonomy itself `Social`, `Support` and `Errand` all
+score **F1 0.00** — the model never emits any of them, not once.
+
+THE REASON IS NOT THE CARVING. The odd/even split leaves FIFTEEN
+`Other` rows to train on, and three ways leaves 4-6 per class. Nothing
+is learnable from four rows, so the classifier stops emitting those
+labels and every message that was going to `Other` goes to a meeting
+class instead — the exact production failure the lane set out to fix,
+four times worse. A coarser two-way carve (`Social` 6 against
+`Trouble` 9) also collapses: 55.0% accuracy, 13.3% recall. Row count,
+not where the line is drawn.
+
+Three remedies for `Other` are now measured and all three lost:
+abstention (−20 points), splitting into names (here), and the status
+quo — which is the best of the three.
+
+Also worth stating plainly: `Other`'s F1 of 0.58 is not an outlier
+beside `Notification`'s 0.77 and `Request`'s 0.80. The whole model is
+weak at 60 training rows. What makes `Other` the one to worry about is
+WHERE it fails, not how far — under-prediction routes out-of-domain
+traffic INTO a meeting intent.
+
+The remaining answer is rows, and this is the SECOND lane today to
+arrive there from the other side (`intent-uk-pl-rows` reached it about
+languages). Filed as `intent-other-more-rows`. The derived view and
+the suite stay in the repository: the map is a usable artefact, and
+the test is the guard that will say so if the answer ever changes.
+
+Gate: clean compile 0 warnings; okayIntentJVM 141, okayIntentJS 9,
+okayDemo 79 — 0 failures.
+
 ## script-temp-tests-watch-a-shared-directory — private temp root, not the shared one
 Completed: 2026-09-05
 Landed as 2dcd0c3e. `ScalaScript.compileOnly` created its compile
