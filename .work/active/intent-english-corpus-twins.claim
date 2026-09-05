@@ -1,0 +1,29 @@
+task: intent-english-corpus-twins
+agent: opus5-intent
+started: 2026-09-05
+branch: feature/intent-english-corpus-twins
+worktree: ../okay-wt-entwins
+
+why: the twin guard from intent-slavic-collision found three near-twin
+  pairs in `labelled` — the English corpus the SHIPPED MODEL is fitted
+  on and against which every published number is measured. A native
+  reader found the same defect in my Slavic arms by eye; the guard
+  found it here, in the corpus nobody had pointed it at.
+
+    [Proposal]     "Suggestion: we meet on Monday at 9."
+                || "Suggest we cancel Monday and meet Wednesday instead."
+    [Request]      "Send me the agenda when you get a chance."
+                || "Kindly send me the agenda."
+    [Notification] "FYI the meeting room has been changed to B2."
+                || "The meeting has moved to the other building."
+
+what: rewrite the second of each pair so the corpus teaches an intent
+  rather than a template; turn the guard on `labelled` from a report
+  into an assertion; regenerate the shipped artifact; RE-MEASURE and
+  RE-PUBLISH every number that moves — 76.7%, the per-class table, the
+  register shifts, the near/far stratification, the per-language rows.
+
+this is a re-publish lane, not a tidy-up: numbers in a doc comment, a
+  module page and four changelog entries are downstream of that corpus
+  and some of them will change. Any that move get corrected where they
+  are quoted, and the changelog entry names them.
