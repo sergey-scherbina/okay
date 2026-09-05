@@ -534,12 +534,12 @@ object Channel {
    * early if the channel refuses (closed under the producer) */
   private def feed[A, U[_], H[+_]](c: Channel[A], u: U[A])
                                   (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
-    def go(x: U[A]): Unit ! Async =
-      async(St.uncons(x).runWith).flatMap {
-        case Some((a, r)) => c.send(a).flatMap(ok => if ok then go(r) else pure(()))
-        case None => pure(())
-      }
-    go(u)
+    // the linear view, for the same reason as `feedBatched` above
+    val it = St.iterator(u)
+    def go: Unit ! Async =
+      if !it.hasNext then pure(())
+      else c.send(it.next()).flatMap(ok => if ok then go else pure(()))
+    go
 
   /**
    * The chunking feed: accumulate up to `size` elements and send them
@@ -578,16 +578,33 @@ object Channel {
    */
   private def feedBatched[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int)
                                          (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
-    def go(x: U[A], buf: ChunkBuf[A], n: Int): Unit ! Async =
-      async(St.uncons(x).runWith).flatMap:
-        case Some((a, r)) =>
-          buf.update(n, a)
-          if n + 1 == size then
-            c.send(buf.chunk).flatMap(ok => if ok then go(r, ChunkBuf[A](size), 0) else pure(()))
-          else go(r, buf, n + 1)
-        // the source ended: whatever is left is a chunk, however short
-        case None => if n == 0 then pure(()) else c.send(buf.take(n)).map(_ => ())
-    go(u, ChunkBuf[A](size), 0)
+    // THE LINEAR VIEW, not a recursion through uncons. Feeding a
+    // channel is a consume-once walk, and `Stream.iterator` is
+    // exactly that view -- its default IS `uncons(_).runWith`, so an
+    // effectful source behaves identically, while a pure collection
+    // hands back its own iterator and the walk stops building and
+    // interpreting a program per element.
+    //
+    // That was the largest cost left anywhere on this path: profiled,
+    // 54% of the fastest channel lane sat in `runFree`, against 5% in
+    // this feed and 12% in the chunk writes. Two interpreter passes
+    // per element, to take the head of a list.
+    val it = St.iterator(u)
+    def go(buf: ChunkBuf[A], n: Int): Unit ! Async =
+      if !it.hasNext then
+        if n == 0 then pure(()) else c.send(buf.take(n)).map(_ => ())
+      else
+        var i = n
+        while i < size && it.hasNext do
+          buf.update(i, it.next())
+          i += 1
+        if i < size then
+          // the source ended mid-chunk: whatever is left is a chunk,
+          // however short
+          c.send(buf.take(i)).map(_ => ())
+        else
+          c.send(buf.chunk).flatMap(ok => if ok then go(ChunkBuf[A](size), 0) else pure(()))
+    go(ChunkBuf[A](size), 0)
 
   private def feedChunked[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int,
                                           buf: TRef[ChunkBuffer[A]])
