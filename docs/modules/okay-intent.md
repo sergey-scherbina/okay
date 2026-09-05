@@ -50,6 +50,22 @@ lane, with what each number cost and what it does not support.
 Cross-built JVM + JS; the test suites are JVM-only, since several
 summon a `Handler[Async]` that needs a `CanBlock` JS does not have.
 
+## Multi-intent is one tier's property, not the module's
+
+`Span` and `Reading` let a message carry two intents, and only the
+MODEL tier can produce them. Everything that ships without a network —
+`Patterns`, `CharGrams`, `Centroid`, `Probe`, and `Router` over them —
+returns a single best class, so a two-intent message gets one label and
+the other intent is dropped.
+
+Measured on twelve two-intent messages (2026-09-05): the shipped path
+answered all twelve, matched the first intent 3 times and either
+intent 10; the cue tier's RUNNER-UP was the second gold intent 5 times,
+and `Action.Act` discards it. The model tier, live against a local 4B,
+returned two spans 6 times of 12, the right pair 5, the right pair in
+the right order 4 — and every span it produced was a real stretch of
+the message.
+
 ## Getting a model
 
 Until 2026-09-04 this module measured nine tiers and shipped none of

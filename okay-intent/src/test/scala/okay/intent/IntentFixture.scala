@@ -694,6 +694,46 @@ object IntentFixture {
   val classes: List[String] = List("Proposal", "Request", "Notification", "Other")
 
   /**
+   * Messages carrying TWO intents (intent-multi-intent-measured).
+   *
+   * `Span` has been in this programme's types since its first lane and
+   * was the argument for why a flat label is not enough — and no
+   * fixture row had ever carried two intents, so the mechanism was
+   * never exercised on a message. These are that, twelve of them,
+   * each labelled with the SET it carries and written so the two
+   * halves are genuinely separable rather than one intent phrased
+   * twice.
+   *
+   * The order in the set is the order they appear in the message,
+   * which is what a segmenting tier should reproduce.
+   */
+  val twoIntents: List[(String, List[String])] = List(
+    "Can we meet on Tuesday? Also please send the deck beforehand." ->
+      List("Proposal", "Request"),
+    "The room has moved to B2 — could you tell the others?" ->
+      List("Notification", "Request"),
+    "Thanks for the notes! Shall we go over them on Thursday?" ->
+      List("Other", "Proposal"),
+    "I will be on leave next week, so please reassign my reviews." ->
+      List("Notification", "Request"),
+    "Could you book a room, and would Friday at 10 suit everyone?" ->
+      List("Request", "Proposal"),
+    "My card was charged twice; separately, can we talk about it Monday?" ->
+      List("Other", "Proposal"),
+    "The agenda is attached. Please add anything I have missed." ->
+      List("Notification", "Request"),
+    "Happy birthday! Also, are you free for a quick sync tomorrow?" ->
+      List("Other", "Proposal"),
+    "Tomorrow's call is cancelled. Send me your notes instead." ->
+      List("Notification", "Request"),
+    "Would Wednesday work? If not, just let me know which day does." ->
+      List("Proposal", "Request"),
+    "The recording is up now, and I am out on Friday." ->
+      List("Notification", "Notification"),
+    "Please confirm attendance, and congratulations on the promotion." ->
+      List("Request", "Other"))
+
+  /**
    * `Other`, split into three groups that are individually coherent
    * — a DERIVED VIEW, not a relabel (intent-split-other).
    *

@@ -2991,3 +2991,66 @@ old numbers. They are correct for the corpus they were measured on and
 the changelog entry for this lane names them; nothing was quietly
 edited in the history.
 
+## Results — intent-multi-intent-measured (2026-09-05)
+
+`Span` has been in this programme's types since its first lane and was
+the argument for why a flat label is not enough — "charged twice AND
+the app crashes is two spans, both to be acted on". The fixture
+contained no message with two intents, so the sentence had never met
+one. Twelve now do, and the claim is measured on both sides.
+
+### What the shipped path does, which is nothing
+
+Every tier that ships returns a single best class, so a two-intent
+message gets one label BY CONSTRUCTION. On the twelve:
+
+- all twelve answered
+- the answer matched the FIRST intent 3 times and EITHER intent 10
+- the other intent is dropped with no trace in the `Action`
+
+The one place it survives: the cue tier ranks what it fired on, and
+its RUNNER-UP is the second gold intent in **5 of 12**. `Router` throws
+that away — `Action.Act` carries a winner and nothing else. So the
+signal exists, is measured, and is discarded at the door.
+
+The module's documentation has read as though multi-intent were a
+property of the module. It is a property of ONE tier, and that is now
+said where it is claimed.
+
+### What the model tier does, which is half of what the type promises
+
+Live, against the local 4B, `Classify.prompt` on the same twelve:
+
+| | |
+|---|---|
+| our decoder read the answer | 12 / 12 |
+| two spans came back | **6 / 12** |
+| the right SET of intents | 5 / 12 |
+| the right set AND the right order | 4 / 12 |
+| every span's text was IN the message | 12 / 12 |
+
+Half the time it collapses to one span, and the intent it keeps is the
+Request — "The room has moved to B2, could you tell the others?" comes
+back as a Request alone, "I will be on leave, so please reassign my
+reviews" likewise. The imperative half swallows the informative one.
+
+So the claim is not false and is much weaker than the type implies:
+the mechanism works, `decide` acts on two spans and stops the whole
+message when one is unsure (both tested), and the model produces the
+segmentation about half the time on this model at this size.
+
+### Two things found while measuring
+
+**Span texts are grounded.** Every span in every answer was a real
+stretch of the message — 12/12 across two runs. That is a property
+worth keeping and worth ASSERTING in a future decoder: a span whose
+text is not in the message is not a segmentation, it is an invention.
+
+**Nothing bounds the span count.** One run answered a nine-word
+message with TWENTY spans, cycling `Notification+Request+Other+
+Proposal` five times. It did not recur on the second run. Grounding
+would not have caught it — the repeated texts were real substrings —
+so the check that would is DISTINCTNESS: no two spans covering the
+same stretch. Filed as `intent-span-runaway` rather than guessed at
+here, with the observed shape recorded.
+

@@ -1759,6 +1759,16 @@ subtraction.
       change). Fixing them changes the shipped artifact and every
       number quoted from it, so it is its own lane with its own
       re-publish rather than a tidy-up.
+- [ ] intent-span-runaway — nothing bounds the number of spans a
+      `Reading` may carry. One live run answered a nine-word message
+      with TWENTY, cycling Notification+Request+Other+Proposal five
+      times; it did not recur on a second run. GROUNDING would not
+      catch it — the repeated texts were real substrings of the
+      message — so the check that would is DISTINCTNESS: no two spans
+      covering the same stretch. Worth pairing with the grounding rule
+      (every span's text must be in the message, which held 12/12
+      across two runs) as decoder-side guards rather than prompt
+      wording.
 - [ ] intent-typo-robustness — character n-grams are supposed to
       survive a typo, and this model does not: one deterministic
       transposition in the longest word takes it from 61.7% to 55.0%
@@ -1804,7 +1814,15 @@ subtraction.
       it may close the decode question outright and take accuracy with
       it — one experiment, not a research programme, and it is not a
       data problem.
-- [ ] intent-multi-intent-measured — spans have been in the type since
+- [x] intent-multi-intent-measured — LANDED 2026-09-05. Twelve
+      two-intent messages in the fixture; the shipped path answers
+      with one label by construction (matched either intent 10/12, and
+      the cue tier's runner-up carries the second 5/12 where the
+      router discards it); the model tier returns two spans 6/12, the
+      right pair 5/12, the right pair in order 4/12, every span
+      grounded in the message 12/12. The claim is a property of ONE
+      tier and now says so. Original entry follows.
+- [x] intent-multi-intent-measured (original) — spans have been in the type since
       the first lane and were argued for as the thing a flat list
       cannot express, and the fixture contains NOT ONE message with two
       intents. The mechanism has never been exercised. Either measure
