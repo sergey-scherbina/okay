@@ -1769,6 +1769,17 @@ subtraction.
       (every span's text must be in the message, which held 12/12
       across two runs) as decoder-side guards rather than prompt
       wording.
+- [ ] mail-loopback-tls — okay-mail's STARTTLS path is covered by the
+      pure protocol tests and NOT over a real socket: the loopback leg
+      runs in the clear, because a TLS server needs a certificate and
+      a key and this module has no such fixture. okay-tls's own tests
+      have one; borrowing that shape would close it.
+- [ ] mail-consumer-adoption — the consumer who asked for okay-mail
+      replaces `Identity.console` with it. Not my lane to do, but the
+      one that tells whether the seam is right: their `deliver` is
+      `(Channel, String, String) => Unit` and `Mail.Send` has to plug
+      in without anything else changing, which was their stated
+      requirement.
 - [ ] intent-typo-robustness — character n-grams are supposed to
       survive a typo, and this model does not: one deterministic
       transposition in the longest word takes it from 61.7% to 55.0%

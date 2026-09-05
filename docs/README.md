@@ -97,6 +97,7 @@ API reference, gotchas.
 | [`okay-docs-mongo`](modules/okay-docs-mongo.md) | the foreign adapter that proves the Docs seam, on Mongo's native CAS |
 | [`okay-conf`](modules/okay-conf.md) | configuration as data, secrets as REFERENCES — a config cannot leak what it does not contain |
 | [`okay-tls`](modules/okay-tls.md) | one TLS seam at the transport; the sslmode ladder, verify-full the only default; keys as Secret refs |
+| [`okay-mail`](modules/okay-mail.md) | sending mail: SMTP over a socket with STARTTLS, send only, and failure as data |
 | [`okay-blob`](modules/okay-blob.md) | the object-store seam: fs and S3 engines, OWN SigV4 pinned by the AWS vectors, persist backups |
 | [`okay-obs`](modules/okay-obs.md) | tracing without a framework: spans as values on a topic, W3C traceparent, capability routes, OTLP export as a consumer |
 | [`okay-py`](modules/okay-py.md) | Python as a handler: operations not eval, a clean-env shim with a version handshake, N workers past the GIL |

@@ -1008,6 +1008,22 @@ lazy val okayTls = (project in file("okay-tls"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+/**
+ * Sending mail: SMTP as a wire, not a driver dependency
+ * (specs/mail.md).
+ *
+ * The same shape as okay-pg -- a line-oriented protocol over a socket,
+ * STARTTLS over okay-tls, AUTH PLAIN and LOGIN -- and SEND ONLY:
+ * receiving is IMAP or POP and a much larger module. Asked for by a
+ * consumer whose service worked and could not have users without it.
+ */
+lazy val okayMail = (project in file("okay-mail"))
+  .dependsOn(okay.jvm, okayTls, okayConf.jvm)
+  .settings(
+    name := "okay-mail",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayJetty = project
   .in(file("okay-jetty"))
   .dependsOn(okayHttp.jvm)
@@ -1304,7 +1320,7 @@ lazy val root = (project in file("."))
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
     okaySql.jvm, okaySql.js, okaySql.native, okayPg.jvm, okayPg.js,
-    okayCrypto.jvm, okayCrypto.js,
+    okayCrypto.jvm, okayCrypto.js, okayMail,
     okayCache.jvm, okayCache.js, okayCache.native,
     okayDocs.jvm, okayDocs.js, okayDocs.native, okayDocsMongo,
     okayConf.jvm, okayConf.js, okayConf.native,
