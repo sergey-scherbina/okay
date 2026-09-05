@@ -775,8 +775,38 @@ elementwise, because `.drained` already batches internally through
 removing one. Chunking pays only where it replaces a per-element
 coordination step, and on this path there was none left to replace.
 
-**ZIO is still ahead here, and the remaining cost is no longer
-the channel.** The original profile attributed ~52 of ~140 samples
+**Closed 2026-09-05, and the fix was on the producer.**
+`Channel.bufferChunked(64, size = 256)(list).drained.runForeach` reads
+**90.4 ±2.1** against `zioChannelForeach`'s **135.6 ±6.3** — 1.5x
+ahead, from 264.5 before, and the last row where zio led anything in
+this table.
+
+The diagnosis took two attempts and the first was wrong. Profiled, the
+per-element lane spends 62% in effect machinery and 8% in the channel,
+so the obvious move was to batch the PROGRAM — a chunk-shaped read.
+That measured WORSE (447.9), and the reason was the batch size: the
+producer delivered **1.67 elements** per `receiveMany`. There was
+nothing to chunk.
+
+Both sides were paying a program-as-values step per element — `feed`
+does `uncons` + `async` + `flatMap` + `send` + `flatMap`, the consumer
+does `uncons` + a `Free` step — so neither could run ahead of the
+other and no buffer ever accumulated. zio's 137.9 elements per queue
+operation come from an ASYMMETRY: a cheap `offer` against a consumer
+paying a `Ref` update per element.
+
+`bufferChunked` builds that asymmetry. The producer accumulates into a
+LOCAL array — not the `TRef` that `feedChunked` needs for its timed
+flush, which costs a transaction per element — so an element costs an
+array store and a chunk costs one send. Then the batch is real and
+everything above it amortises.
+
+The lesson generalises past this row: **chunking cannot help until
+something can run ahead.** It is the same finding as
+`channel-send-fastpath`, one layer up, and it is why the per-element
+lanes stay in the table as diagnostics rather than being tuned.
+
+**What the elementwise row still measures.** The original profile attributed ~52 of ~140 samples
 to `Queue`'s reversal inside the channel — that structure is gone,
 replaced by a ring with termination travelling in it — and the rest
 to machinery ABOVE the channel: ~28 in `resume`'s rotation, ~21 in

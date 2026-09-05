@@ -556,6 +556,39 @@ object Channel {
    * never touches the pull. It runs beside it and takes whatever has
    * accumulated, which is safe whatever the pull is doing.
    */
+  /**
+   * The buffered producer's feed: accumulate into a LOCAL buffer and
+   * send whole chunks.
+   *
+   * Different from `feedChunked` below, which keeps its buffer in a
+   * `TRef` because a timer may flush it from another thread — and
+   * therefore pays a transaction per element. Nothing else touches
+   * this one, so an element costs an array store and a chunk costs
+   * one send.
+   *
+   * WHY IT MATTERS, measured. Reading a buffered channel one element
+   * at a time was the last row where `zio.Queue` led, and the cost was
+   * neither the queue (8% of the profile) nor `Drain`: both SIDES paid
+   * a program-as-values step per element, so the producer never ran
+   * ahead, the batch measured 1.67 elements, and chunking — worth
+   * 4-7x everywhere else here — had nothing to engage on. Their 137.9
+   * elements per queue operation come from an asymmetry: a cheap
+   * `offer` against a consumer paying an effect per element. This is
+   * that asymmetry, built.
+   */
+  private def feedBatched[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int)
+                                         (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
+    def go(x: U[A], buf: ChunkBuf[A], n: Int): Unit ! Async =
+      async(St.uncons(x).runWith).flatMap:
+        case Some((a, r)) =>
+          buf.update(n, a)
+          if n + 1 == size then
+            c.send(buf.chunk).flatMap(ok => if ok then go(r, ChunkBuf[A](size), 0) else pure(()))
+          else go(r, buf, n + 1)
+        // the source ended: whatever is left is a chunk, however short
+        case None => if n == 0 then pure(()) else c.send(buf.take(n)).map(_ => ())
+    go(u, ChunkBuf[A](size), 0)
+
   private def feedChunked[A, U[_], H[+_]](c: Channel[Chunk[A]], u: U[A], size: Int,
                                           buf: TRef[ChunkBuffer[A]])
                                          (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
@@ -709,6 +742,28 @@ object Channel {
    * ahead: a fiber unfolds the stream into a bounded channel — send
    * suspends the producer when the consumer lags by capacity.
    */
+  /**
+   * The same as `buffer`, in CHUNKS: the producer fills an array and
+   * sends it whole, so the channel carries batches and the consumer
+   * amortises everything above it.
+   *
+   * `capacity` counts CHUNKS, not elements — the buffer holds up to
+   * `capacity * size` elements, which is worth knowing before copying
+   * a number across from `buffer`.
+   *
+   * Read it with `.drained` (a `Source[Chunk[A]]`) and fold the arrays,
+   * or `.drained.unchunked` for elements again at the far end.
+   */
+  def bufferChunked[A, S[_], F[+_]](capacity: Int, size: Int = Source.ChunkSize)(s: S[A])
+                                   (using Stream[S, F], Handler[F])
+                                   (using sch: Scheduler): Channel[Chunk[A]] =
+    val c = Channel[Chunk[A]](capacity)
+    sch.fork(() => feedBatched(c, s, size)).onComplete { r =>
+      r.left.foreach(c.fail)
+      c.close()
+    }
+    c
+
   def buffer[A, S[_], F[+_]](capacity: Int)(s: S[A])
                             (using Stream[S, F], Handler[F])(using sch: Scheduler): Channel[A] =
     val c = Channel[A](capacity)

@@ -46,6 +46,39 @@ Gate: 2328 tests, 0 failures, 0 warnings.
 
 # Changelog
 
+## buffer-chunked-feed — the last gap closes, and the fix was on the producer
+
+`Channel.bufferChunked(capacity, size)`: a buffered producer that
+accumulates into a LOCAL array and sends whole chunks. Read it with
+`.drained` for a `Source[Chunk[A]]`, or `.drained.unchunked` for
+elements at the far end. `capacity` counts CHUNKS, so the buffer holds
+`capacity * size` elements — worth knowing before copying a number
+across from `buffer`.
+
+**90.4us ±2.1 against `ZStream.fromQueue`'s 135.6 ±6.3**, from 264.5
+before: 1.5x ahead, and the last row where zio led anything in the
+idiomatic table.
+
+The diagnosis took two attempts and the first was wrong, which is the
+part worth keeping. Profiled, the per-element lane spends 62% in
+effect machinery and 8% in the channel, so the obvious move was to
+batch the PROGRAM — `channel-chunks-native`, a chunk-shaped read. It
+measured 447.9, WORSE, and said why: the producer delivered **1.67
+elements** per `receiveMany`. There was nothing to chunk.
+
+Both sides paid a program-as-values step per element — `feed` does
+`uncons` + `async` + `flatMap` + `send` + `flatMap`, the consumer does
+`uncons` + a `Free` step — so neither ran ahead and no buffer
+accumulated. zio's 137.9 elements per queue operation come from an
+ASYMMETRY: a cheap `offer` against a consumer paying a `Ref` update
+per element. `bufferChunked` builds that asymmetry, and the existing
+`feedChunked` could not, because its buffer lives in a `TRef` for the
+timed flush and therefore costs a transaction per element.
+
+**Chunking cannot help until something can run ahead.** Same finding
+as `channel-send-fastpath` one layer up, and the reason the
+per-element lanes stay as diagnostics rather than being tuned.
+
 ## channel-chunks-native — measured and declined; the last gap is the interpreter
 
 The one row where zio genuinely led the idiomatic table — reading a
