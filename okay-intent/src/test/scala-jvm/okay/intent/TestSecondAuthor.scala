@@ -80,7 +80,7 @@ class TestSecondAuthor extends munit.FunSuite {
       .replaceAll("(?i)^please ", "")
       .replaceAll("(?i)^(shall|can|could) we ", "")
       .replaceAll("(?i)^(i would appreciate it if you could|would you mind) ", "")
-    if t == s then s else t.head.toUpper + t.tail
+    if t == s then s else s"${t.head.toUpper}${t.tail}"
 
   private val shifts: Vector[(String, (String, Int) => String)] = Vector(
     "as written" -> ((m, _) => m),

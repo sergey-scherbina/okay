@@ -82,6 +82,9 @@ final class MultiFifo[A](requested: Int, make: Int => Buffer[A]) extends Buffer[
 
   override def hasRoomAt(route: Int): Boolean = part(route % n).hasRoom
 
+  /** the cursor is already where the last take came from */
+  override def lastRoute: Int = cursor.get
+
   /** a part that is full right now cannot take its mark; it will be
    * asked again as room frees up, and a part already sealed is left
    * alone */

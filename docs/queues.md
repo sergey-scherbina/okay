@@ -273,38 +273,38 @@ only the last one ends the stream. That is what `Buffer.seal` is for.
 **Use it when** producers are many and their mutual order means
 nothing: metrics from many workers, log lines, independent requests.
 
-**And use it over parts that GROW.** This is the one place where the
-choice of part is not a matter of taste. Measured, `Total=8000`,
-us/op, lower is better:
+**Both bounded and growable parts work, and they answer different
+questions.** Measured, `Total=8000`, us/op, lower is better:
 
 | producers | one ring | relaxed, bounded parts | one growable | relaxed, growable parts | zio.Queue |
 |---|---|---|---|---|---|
-| 1 | 414.9 | 415.8 | 231.3 | 354.3 | 241.6 |
-| 4 | 862.4 | 3873.0 | 401.0 | **177.9** | 740.4 |
-| 16 | 3149.8 | **111546.4** | 741.8 | **169.9** | 2967.2 |
+| 1 | 542.7 | 779.8 | 350.4 | 480.4 | 285.4 |
+| 4 | 1314.8 | **597.2** | 707.5 | **279.7** | 1164.7 |
+| 16 | 2586.3 | **485.3** | 804.3 | **183.1** | 2653.1 |
 
-Two things to read out of that.
+Both relaxed forms get FASTER as producers are added, which is the
+whole point of a relaxed queue: 780 → 597 → 485 bounded, 480 → 280 →
+183 growable. Everything else in the table gets slower. Choose the
+bounded form when you still want backpressure, the growable one when
+the producer must never wait.
 
-**Relaxation delivers what it promises, and only over growable
-parts.** At sixteen producers it is 17.5x faster than `zio.Queue` and
-*faster than it was at one producer* — 354 → 178 → 170. Adding
-producers makes it quicker, which is the entire point of a relaxed
-queue and the first place in this repository where that scaling
-actually appeared.
+**One number here is worth more than the rest of the table.** The
+bounded form read **111546us** at sixteen producers until senders
+learned to wait per part — 230x worse than it should be, and worse
+than not relaxing at all. The cause was a mismatch rather than a
+setting: the channel kept ONE queue of waiting senders while the
+resource is per part, so a consumer freeing a slot in part 7 woke an
+arbitrary sender, who found *its own* part still full and parked
+again. With k parts, one wakeup in k is useful and the rest is churn.
 
-**Relaxation over BOUNDED parts is 35x worse than not relaxing at
-all,** and the reason is worth understanding because it is a design
-mismatch rather than a tuning problem. The channel keeps ONE queue of
-waiting senders, while the resource is per part. A consumer frees a
-slot in part 7 and wakes an arbitrary sender, who finds *its own* part
-still full and parks again. With k parts, one wakeup in k is useful
-and the rest is churn. Growable parts sidestep it completely: a sender
-never waits, so there is no wakeup to misdirect.
-
-The fix — waiters per part, so a freed slot wakes a sender that can
-use it — is filed as `channel-per-part-waiters`. Until then
-`.relaxed(parts, each)` stays in the menu with this number beside it,
-and `.relaxedUnbounded(parts)` is the one to reach for.
+That is the fourth defect of one family in this design, and they read
+as one sentence: **the channel asking about the buffer as a whole
+where the question belongs to one part.** `isEmpty` instead of
+`hasReady` before a receiver waits; `size < capacity` instead of
+`hasRoom` before a sender waits; a producer's part taken on the
+waker's thread rather than carried with the send; and the wakeup
+itself, aimed at no part in particular. If you partition a structure,
+audit every question the surrounding code asks it.
 
 ### `ListFifo` and `ArrayFifo` — persistent, for the composable channel
 
