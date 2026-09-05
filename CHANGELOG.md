@@ -1,5 +1,43 @@
 # Changelog
 
+## frame-walk-end-to-end — one message, one produced booking, and the walk caught its own defect first
+Completed: 2026-09-05
+Landed as 0e6c6d87. A consumer's third point, and the one I could not
+argue with: both of their defects that day lived BETWEEN two correct
+code paths with 237 unit tests green. One showed a person their OWN
+address back — a two-argument contact lookup called with a fixed
+direction. The other told the person who had asked, waited and been
+accepted precisely nothing, because "they got your contact" was a
+claim in a comment rather than a call.
+
+`TestWalk` (in okay-demo, the module that can see both the router and
+the suspension) goes from one message to one produced thing: classify
+with the real tiers, fill from the message, park on the open question
+in a journal, DIE, rebuild every object from scratch, answer, read
+back, confirm, and ACT — asserting the act. Three things their shape
+demands are asserted rather than implied: the value (`2026-09-08`),
+the DIRECTION (the confirmation goes to the asker and names the other
+party), and that anything was produced at all.
+
+IT FAILED ON ITS FIRST RUN, FOR THE RIGHT REASON. The exchange
+completed and `act` produced nothing — because `act` closed over the
+descriptor value built at the top of the file while the frame came
+from the one rebuilt after the simulated restart, and `valueOf`
+matches a slot by IDENTITY. The walk's first act was to catch, in
+itself, the exact failure it exists for: an exchange that ends
+"complete" while the caller gets nothing. The rule is now written
+where a caller meets it — one descriptor value per exchange, passed
+alongside the frame rather than captured.
+
+Filed rather than built: `frame-rebind`, which would make the restart
+case ordinary. The hazard is why it waits — re-deriving an answer
+means re-parsing its stored text, and "next Tuesday" against a new
+reference day is a DIFFERENT DATE, which is the defect
+`intent-frame-typed-values` removed.
+
+Gate: clean compile 0 warnings; okayDemo 79, okayFrameJVM 17,
+okayAgentJVM 121, okayIntentJVM 133 — 0 failures.
+
 ## intent-per-class-not-aggregate — the total was hiding a class, and it is the one that matters
 Completed: 2026-09-05
 Landed as 0fdb6d25. A consumer's finding, from their corpus rather
