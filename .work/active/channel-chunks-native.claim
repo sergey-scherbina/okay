@@ -1,0 +1,16 @@
+lane: channel-chunks-native
+why: the one genuine gap left in the idiomatic table -- reading a
+  buffered channel, 267us against zio's 138.5 -- profiles as 62%
+  EFFECT MACHINERY (runFree 26%, Async.handle 15%, Free node
+  construction 13%, resume 8%) and only 8% channel. So it is not
+  Drain that is slow: it is that every element crosses a
+  program-as-values step, while zio's lane goes through ZStream,
+  which is chunk-native.
+  Our chunk-native stream type is `Chunks`, and there is no
+  Chunks-view of a channel at all: `drained` gives Source[A],
+  per-element. The comparison has been streaming-layer against
+  streaming-layer only on their side.
+how: add `drainedChunks: Chunks[A]`, emitting whole batches from
+  receiveMany so the effect tree steps once per CHUNK. Measure it
+  against ZStream.fromQueue. Keep `drained` -- per-element reading is
+  a real thing to want, and it is the honest diagnostic lane.

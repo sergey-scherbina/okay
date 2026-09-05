@@ -148,13 +148,35 @@ final class FileStore(root: Path) extends Store:
       finally ch.close()
 
     // ── recovery ─────────────────────────────────────────────────
-    locally:
+    //
+    // LOSING THE CREATE IS NORMAL, and for a while it was fatal.
+    // Several processes opening one shared log is the arrangement this
+    // module's own two-node story describes, and they all arrive here
+    // at once: each lists the directory, each finds no segments, and
+    // each calls `newSegment(0)` with CREATE_NEW. One wins; the rest
+    // died with FileAlreadyExistsException.
+    //
+    // Staggered opens never hit it — a few seconds apart and every
+    // opener succeeds — which is why it survived: tests and hand-runs
+    // open one store at a time. It took two real processes starting
+    // together to show it.
+    //
+    // The answer is not a lock. A segment appearing between the
+    // listing and the create is the WINNER'S segment, and the loser's
+    // job is to recover from it exactly as it would have recovered
+    // from a segment left by a previous run. So: look again. Bounded,
+    // because a directory that empties itself between two glances is
+    // a different problem and should be reported rather than spun on.
+    private def openExisting(attempt: Int = 0): Unit =
       val listing = Files.list(dir)
       val found =
         try listing.iterator.asScala.toVector
           .filter(_.getFileName.toString.endsWith(".log")).sortBy(_.getFileName.toString)
         finally listing.close()
-      if found.isEmpty then newSegment(0L)
+      if found.isEmpty then
+        try newSegment(0L)
+        catch case _: java.nio.file.FileAlreadyExistsException if attempt < 3 =>
+          openExisting(attempt + 1)
       else
         segments = found.map { p =>
           val s = new Segment(p, p.getFileName.toString.stripSuffix(".log").toLong)
@@ -187,6 +209,9 @@ final class FileStore(root: Path) extends Store:
         // an active segment in an older format is closed as it stands
         // and a fresh one rolled: no segment ever mixes frame formats
         if v < Format then newSegment(endUnsafe)
+
+    // the recovery runs at construction, exactly where it used to
+    openExisting()
 
     private def newSegment(base: Long): Unit =
       if channel != null then { channel.force(false); channel.close() }

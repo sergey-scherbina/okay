@@ -76,12 +76,10 @@ class TestTwoNode extends munit.FunSuite {
 
   test("two real processes over one shared log: one leader, the follower serves reads, a kill fails over") {
     val logDir = Files.createTempDirectory("okay-two-node").toString
-    // the log EXISTS before the nodes do, which is how a shared log
-    // exists in production. Two processes racing to CREATE the first
-    // segment is a real okay-persist defect —
-    // FileAlreadyExistsException on 00000000000000000000.log — and
-    // reported as one; it is not what this test is about
-    Board(Board.topicOf(Board.store(logDir))).replay(): Unit
+    // the log does NOT exist yet, deliberately: two processes opening
+    // one empty directory together is what found the FileStore race
+    // (filestore-first-segment-race), and this is the test that keeps
+    // it found. Pre-creating the log here would hide it again
     val portA = 18091
     val portB = 18092
     val procA = spawn(portA, "a", logDir)

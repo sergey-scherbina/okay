@@ -215,3 +215,65 @@ class TestFileStore extends StoreSuite:
     s1.close()
     assertEquals(FileStore.open(root).topics, Vector("a", "b"))
   }
+
+/**
+ * Two openers, one empty directory.
+ *
+ * A shared log with several processes reading it is what this module's
+ * own two-node story describes, and it had a race at the very first
+ * moment: both openers list the directory, both find no segments, and
+ * both create `00000000000000000000.log` with CREATE_NEW. One wins and
+ * the other dies with FileAlreadyExistsException.
+ *
+ * Staggered opens never hit it — a four-second gap and both succeed —
+ * which is why it survived: every test and every hand-run opened one
+ * store at a time. It was found by a two-node test that starts two
+ * real processes at once.
+ *
+ * Threads rather than processes here: the race is between the listing
+ * and the create, and that window is the same whether the loser is in
+ * another thread or another JVM. Eight of them on one barrier
+ * reproduces it every run.
+ */
+class TestFileStoreRace extends munit.FunSuite {
+
+  test("several openers on one empty directory all succeed") {
+    val root = java.nio.file.Files.createTempDirectory("okay-race")
+    val n = 8
+    val start = java.util.concurrent.CountDownLatch(1)
+    val done = java.util.concurrent.CountDownLatch(n)
+    val failures = java.util.concurrent.ConcurrentLinkedQueue[Throwable]()
+    val stores = java.util.concurrent.ConcurrentLinkedQueue[FileStore]()
+    for _ <- 0 until n do
+      Thread.startVirtualThread { () =>
+        try
+          start.await()
+          val s = FileStore.open(root)
+          stores.add(s): Unit
+          // the topic is what actually creates the segment
+          s.topic("shared", 1, Policy.default).end(0): Unit
+        catch case t: Throwable => failures.add(t): Unit
+        finally done.countDown()
+      }: Unit
+    start.countDown()
+    done.await()
+    stores.forEach(_.close())
+    assert(failures.isEmpty,
+      s"${failures.size} of $n openers lost the race: " +
+        failures.stream().findFirst().map(_.toString).orElse(""))
+  }
+
+  test("the loser recovers the winner's segment rather than starting over") {
+    val root = java.nio.file.Files.createTempDirectory("okay-race2")
+    val first = FileStore.open(root)
+    val t1 = first.topic("shared", 1, Policy.default)
+    t1.append("k".getBytes, "one".getBytes, Ack.Durable): Unit
+    // a second opener on a directory that now HAS a segment must read
+    // what is in it, not replace it
+    val second = FileStore.open(root)
+    val t2 = second.topic("shared", 1, Policy.default)
+    assertEquals(t2.end(0), t1.end(0), "the second opener saw a different log")
+    first.close()
+    second.close()
+  }
+}
