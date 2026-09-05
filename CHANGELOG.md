@@ -46,6 +46,36 @@ Gate: 2328 tests, 0 failures, 0 warnings.
 
 # Changelog
 
+## channel-chunks-native — measured and declined; the last gap is the interpreter
+
+The one row where zio genuinely led the idiomatic table — reading a
+buffered channel one element at a time, **264.5us against
+`ZStream.fromQueue`'s 139.1** — profiles as **62% effect machinery**
+(`runFree` 26%, the `Async` handler 15%, allocating `Free` nodes 13%,
+`resume` 8%) against **8% in the channel**. The queue, whose structure
+was replaced twice over today, is not what is left.
+
+So the obvious move was to batch the PROGRAM the way `popMany` batched
+the queue: a `drainedChunks: Source[Chunk[A]]` stepping the tree once
+per batch rather than once per element. It measured **447.9 against
+the elementwise 264.5 — worse**, and the measurement said why: on this
+path the producer delivers an average of **1.67 elements** per
+`receiveMany`, max 64. There is nothing to chunk. `Channel.buffer`
+feeds the channel through the effect system at one `Free` step per
+element, so the consumer never falls behind and the buffer never
+fills.
+
+Which is the same finding as `channel-send-fastpath`, one layer up:
+**batch size is set by how far the producer can run ahead**, and here
+it cannot, because the producer's own per-element cost IS the
+interpreter. Withdrawn rather than shipped with a story attached.
+
+Filed as `channel-per-element-effect-cost` with the two routes that
+might work: make a per-element `Writer` step cheaper, or give
+`Channel.buffer` a chunk-native feed so the producer emits arrays —
+the second is likely smaller, since `Channel[Chunk[A]]` already exists
+and `mergeChunked` already uses it.
+
 ## intent-english-corpus-twins — the corpus every number is measured on had the defect too
 Completed: 2026-09-05
 Landed as 38009d08. The twin guard from `intent-slavic-collision`,
