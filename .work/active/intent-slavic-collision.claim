@@ -1,0 +1,43 @@
+task: intent-slavic-collision
+agent: opus5-intent
+started: 2026-09-05
+branch: feature/intent-slavic-collision
+worktree: ../okay-wt-collision
+
+note: I also hold intent-taxon-wired-to-tiers, claimed minutes before
+  this and not yet started. This one goes first because it questions a
+  conclusion I PUBLISHED this morning, and a wrong published claim
+  costs more than a delayed fix. The other follows immediately.
+
+why: a native reader read all sixty of my uk/pl rows and found four
+  things, and the second may overturn what I posted this morning.
+
+  I concluded from three directions that the binding constraint is
+  CORPUS SIZE. Their finding is a fourth explanation for the Slavic
+  numbers specifically: uk "Можемо зустрітися" (Proposal) against
+  "Можете перевірити" (Request), pl "Czy możemy" against "Czy możesz"
+  — the classes are one or two letters apart in the exact morpheme
+  that carries the distinction, and a hashed 3-5-gram collides on it.
+  That is a FEATURE problem, not a row-count problem, and it makes a
+  testable prediction: fix the collision and uk/pl move without adding
+  a single row.
+
+also from the same review, applied as given:
+  - two rows still calques in uk and pl because their Russian
+    corrections were applied to the Russian ARM only — a parallel
+    fixture propagates a defect across all eight arms at once, and
+    nothing makes that visible
+  - three Polish rows assume a male addressee, which is both a
+    wording defect and half the language absent from the corpus
+  - one grammatical error (pl "Spóźnię się O dziesięć minut") and two
+    register slips (uk "протерміноване", "по понеділках")
+
+what: apply every correction; vary the colliding surface forms the way
+  a natural corpus would; add a guard that flags near-twin rows WITHIN
+  a language arm, so the template duplication they caught by reading
+  is caught mechanically; re-measure uk/pl and report whether the
+  collision or the row count was the story — including if the answer
+  is that I was right this morning.
+
+files: okay-intent/src/test/scala/okay/intent/IntentFixture.scala,
+  a JVM measurement/guard suite, specs/intent-classify.md, BACKLOG.md
