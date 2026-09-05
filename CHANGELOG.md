@@ -1,5 +1,64 @@
 # Changelog
 
+## okay-mail — SMTP as a wire, send only, failure as data
+Completed: 2026-09-05
+Landed as 8b22895a. A consumer's first BLOCKING request rather than an
+improving one: a one-time code to an email address is how a stranger
+proves the address is theirs, and their delivery was a line printed to
+a server log marked development-only — so the service worked and could
+not have users. Everything they would do next was behind it, including
+the corpus of real messages that is the only lever left on every
+number this line measured this week.
+
+It belongs here for the reason okay-pg does. Postgres arrives as its
+own wire with its own SCRAM and TLS rather than as a driver
+dependency; SMTP is a smaller instance of the same job, over the
+`okay-tls` that already exists.
+
+THE WIRE IS A FUNCTION AND THE SOCKET IS A SHELL. `Session.next` takes
+the state and the server's reply and returns the lines to write, so
+SIXTEEN OF NINETEEN TESTS NEED NO NETWORK: multi-line replies,
+STARTTLS, both AUTH mechanisms, per-recipient rejection, dot-stuffing,
+the MIME trio, encoded words. The three that need a socket run against
+a forty-line loopback server, bind a real port, and are `Live`-tagged
+out of the default gate under the standing policy.
+
+Three decisions the consumer did not ask for and would have hit:
+
+- **Refusing to send in the clear is the DEFAULT.** A server with no
+  STARTTLS is refused unless `requireTls = false`. Sending
+  unencrypted has to be a caller's stated choice, not one inherited
+  from a server's capability list.
+- **A 550 mentioning relaying is not a bad address.** Same code, two
+  meanings; telling a person the wrong one sends them to fix
+  something that is not broken. `RelayRefused` is its own case.
+- **UTF-8 as base64 under a MIME trio, RFC 2047 for the subject.**
+  Eight-bit bytes through a server that never advertised 8BITMIME is
+  corruption nobody sees until a person reads it — and this consumer
+  writes Ukrainian and Polish, so their code mail would have arrived
+  as mojibake on the first non-ASCII subject.
+
+ONE THING ABOUT MY OWN PROCESS, in the spec because it nearly shipped:
+the SASL PLAIN payload is NUL user NUL password, and I typed the NULs
+as literal control characters. They were invisible in every view of
+the file and were caught only because a tool refused to run a command
+containing them. They are `\u0000` escapes now, with a comment saying
+why. A literal control character in a source file is a defect no
+review catches by reading.
+
+NOT MEASURED, and named as such: nothing here has a benchmark. It is a
+protocol, its cost is a network round trip, and a microsecond figure
+for line assembly would be exactly the kind of number this line spent
+today removing from another module.
+
+NOT DONE: STARTTLS over a real socket — the loopback leg runs in the
+clear because a TLS server needs a certificate and a key, a fixture
+this module does not have. Filed as `mail-loopback-tls`, with
+`mail-consumer-adoption` beside it.
+
+Gate: clean compile 0 warnings; okayMail 16 tests in the default gate
+and 3 `Live`, okayDeploy's docs guard 9 — 0 failures.
+
 ## consumer-requests-status — the request list said "open" for six things that had shipped
 Completed: 2026-09-05
 Landed as 5d74f2fd. A consumer wrote that request 5 is still open and
