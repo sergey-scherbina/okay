@@ -1,5 +1,54 @@
 # Changelog
 
+## frame-choice-and-provenance — a closed choice, and an answer that knows where it came from
+Completed: 2026-09-05
+Landed as 60cf8f95. A consumer asked, blocked on the answer, whether
+request 5's slot description was meant to carry value wordings and a
+non-constant default. It was not — request 5 was a name, a question
+per language and a parser, and that is exactly what shipped. Their
+case was good enough that the library should hold it anyway: whether
+a job can be done REMOTELY decides matching rather than wording, and
+it is the same question on both sides of their market, which is what
+makes it a type rather than a field.
+
+`Slot.choice` takes a closed set of values, each with its wordings per
+language. Those wordings do three jobs — offer the options
+(`options(lang)`), read what a person typed in their own language, and
+say the choice back in it (`show(v, lang)`) — which is why they belong
+beside the value; the caller still writes every word. Reading accepts
+a wording INSIDE the answer, because someone asked "on site or
+remote?" replies "можно и удалённо, если так" and means it. Longest
+wording wins so one value cannot swallow another, and every language's
+wordings are matched rather than only the exchange's.
+
+`Source` is the half their requirement demanded without naming it.
+Their words: overridable by what they do say, and VISIBLE so they can
+correct it. A default fires when NOTHING was said, so its value has no
+evidence behind it and would otherwise be indistinguishable from one a
+person typed. `Answered` now carries `Said` / `Found` / `Assumed`;
+`assume` fills a slot, `assumed` lists them, `filled` shows them back
+in the reader's own language so they can be corrected, and `words`
+leaves them out — "what you told me" must not contain what nobody told
+it. A person's answer beats an assumption in either order, tested both
+ways.
+
+Left out deliberately, and said so to them: the rule that reads "можно
+и удалённо" out of a CITY answer, and what to assume when a question
+goes unanswered. Both are domain knowledge. The library gives them a
+place to be recorded honestly and no opinion about what they are.
+
+Their other two points from the same message are FILED rather than
+half-done — `frame-walk-end-to-end` (both of their defects today lived
+between two correct code paths with 237 unit tests green) and
+`intent-per-class-not-aggregate` (their headline accuracy ROSE, 95.8%
+to 96.2%, while a class died, because accuracy on an imbalanced corpus
+rewards predicting the biggest class — and every aggregate this module
+publishes has the same exposure, starting with the shipped model's
+76.7%).
+
+Gate: clean compile 0 warnings; okayFrame JVM+JS 17 each, okayAgentJVM
+121, okayIntent JVM 131 and JS 9, okayDemo 76 — 0 failures.
+
 ## idiomatic-headline-honest — section 6b's headline said the opposite of its own table
 Completed: 2026-09-05
 Landed as 879bb156. `docs/benchmarks.md` §6b opened with *"forced onto
