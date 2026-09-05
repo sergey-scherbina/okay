@@ -748,6 +748,45 @@ JVM that read it was launched — a real `-cp`, not a manifest-jar
 trampoline — which is exactly why a runtime app generator should
 prefer an EXPLICIT `Classpath` over depending on it.
 
+## okay-script-tests-watch-a-shared-directory — found and fixed 2026-09-05
+
+`compileOnly` created its per-compile temp workspace with
+`Files.createTempDirectory("okay-script-")`, which resolves against
+the JVM-wide default (`java.io.tmpdir`) — a directory the whole
+machine shares. Two tests proved "this code leaves no temp file
+behind" by snapshotting that shared directory's `okay-script-*`
+entries before and after a run and asserting the two sets equal:
+`TestScalaScript`'s "run: leaves no temp file/directory behind" and
+`TestPage`'s "close() deletes the cached compiled program's temp
+output directory". Both are sound properties, unsoundly checked — any
+OTHER process creating a matching entry between the two snapshots
+fails the assertion for a reason that has nothing to do with either
+test's own cleanup, which is exactly what a sibling worktree's own
+concurrent okay-script tests do in a parallel matrix. Observed
+2026-09-04 in a full run of 2199 tests as the only failure (diff held
+`okay-script-web-*.md` and an unrelated `okay-script-<n>`, neither the
+file under test); passes 9/9 alone. Filed twice under two names
+(`script-temp-snapshot-crosstalk`, `script-temp-tests-watch-a-shared-
+directory`) before being recognized as the same defect and merged.
+
+Fixed at the source rather than by hardening the test: `ScalaScript`
+now exposes `defaultTempRoot: Path` (the old JVM-default lookup, kept
+as the default so no existing caller's behavior changes) and threads
+an explicit `tempRoot: Path = defaultTempRoot` parameter through
+`run`/`render`/`compileRender`/`check`/`compileAndRun`/`compileOnly`
+and through `Page`'s constructor. `compileOnly` creates its workspace
+with `Files.createTempDirectory(tempRoot, "okay-script-")` instead of
+the one-arg overload, so a caller that wants an isolation guarantee
+can hand it a PRIVATE directory and snapshot that instead of the
+shared one — which is exactly what both fixed tests now do (each
+creates its own `okay-script-test-root-*` directory, passes it as
+`tempRoot`, and deletes it in `finally`). `TestPage`'s old need to
+exclude `.md` files from the snapshot by name-suffix (to keep the
+test's own source file from tangling with the compiler's output
+directories) is gone too — nothing else writes into a private root.
+`TestScalaScript`'s test is back in the default gate; it no longer
+depends on shared-machine state.
+
 ## The model
 
 ```scala
