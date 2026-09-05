@@ -475,6 +475,81 @@ construction instead of a type test per value).
       gate policy. Investigating the timing itself remains open, but
       no longer at the cost of every landing's gate.
 
+## Task-oriented dialogue: the literature the operator brought (2026-09-05)
+
+Three papers, read together on 2026-09-05. Their common answer to
+"a new task must not need retraining" is to put the schema in the
+INPUT rather than in the weights — which is structurally where we
+already are (`Schema[I]` derives the tool declaration AND the
+decoder, specs/intent-classify.md). What follows is only what is NOT
+already done here, in the order it is worth doing.
+
+CAVEAT ON ALL THREE, stated once: every reported gain comes from a
+FINE-TUNED model (GPT-2, T5). What transfers is the construction of
+the input, not the numbers. Each item below is a hypothesis to
+measure on our own data, never a predicted result.
+
+- [ ] tod-demonstrations-from-the-log — "Show, Don't Tell" (Zhao &
+      Gupta, Google Research 2022; SDT arxiv 2204.04327, D3ST arxiv
+      2201.08904; SGD / MultiWOZ 2.4 / SGD-X). Their finding: ONE
+      annotated example dialogue in the input beats slot DESCRIPTIONS
+      — and descriptions are exactly the half we render today. The
+      okay-shaped part is where the example comes from: a recorded
+      turn in the durable ChatLog, together with the typed belief it
+      produced, IS an annotated example. The log stops being only an
+      audit trail and becomes prompt material. Highest value of the
+      three and the cheapest; offline-testable with a scripted model.
+- [ ] tod-schema-diagnostics — two experiments, not features, both
+      from the same pair of papers. (a) D3ST randomizes slot names to
+      arbitrary indices so a TRAINED model cannot lean on the names.
+      For a PROMPTED model that is not a technique we want — we WANT
+      the priors around a word like "email" — but it is an excellent
+      DIAGNOSTIC: shuffle the names to indices and measure the drop.
+      A collapse says our descriptions are decorative and the model
+      was riding the names. (b) SGD-X's robustness method: paraphrase
+      the attribute descriptions and measure whether extraction is
+      stable. Together they turn "our schemas are good" from an
+      assumption into a number, BEFORE we invest more in writing
+      them.
+- [ ] tod-schema-guided-retrieval — Labruna, Bonetta, Magnini (RANLP
+      2025, "Task-Oriented Dialogue Systems through Function
+      Calling", MultiWOZ 2.3): let the model call a schema-guided
+      query that fetches only the needed KB entries, instead of
+      putting the whole KB in the prompt; accuracy up, tokens and
+      time down, the gap widening as the KB grows. Their BASELINE is
+      not ours — we never put a KB in a prompt, and the demo's
+      central claim is that nothing reaches the projection except
+      through a tool. What IS new for us: deriving the RETRIEVAL tool
+      from the store's own `Schema` instead of hand-writing one tool
+      per query shape (okay-sql's typed layer, okay-match's
+      registry), so a new domain field becomes a queryable slot with
+      no new tool code. Pairs with a KB-size sweep — tokens per turn
+      and latency, full-KB against schema-guided — in
+      docs/benchmarks.md, because at the demo's current KB size the
+      effect is invisible by construction.
+- [ ] tod-single-sequence — SimpleTOD (Hosseini-Asl, McCann, Wu,
+      Yavuz, Socher, 2020, arxiv 2005.00796): belief state, actions
+      and response as ONE delimited sequence rather than three
+      models. Filed LAST, and the reason is the useful part. Its
+      result is a fine-tuning result (GPT-2 on MultiWOZ) that we
+      cannot reproduce without training; the 2025 paper above argues
+      the opposite architecture on ground that suits us better; and a
+      single delimited sequence WEAKENS the invariant the demo is
+      built on, since a belief cut out of raw text has not gone
+      through a tool (recoverable only by decoding it through
+      `Schema` before it touches the store — intent-classify's own
+      rule). What stays attractive is the SHAPE: SimpleTOD's
+      inference suspends after the belief state, queries the KB,
+      appends the result and resumes the SAME generation — a
+      coroutine that yields exactly once, which is `Stage` over
+      `Cont` and something okay expresses better than a framework
+      would. Worth building only if the items above leave a reason to.
+- [ ] tod-multiwoz-harness — OPTIONAL and honestly expensive: a
+      loader for MultiWOZ 2.3/2.4 plus the inform/success/joint-goal
+      metrics, so our dialogue lane has numbers comparable with the
+      outside world instead of only with itself. Keep separate from
+      the items above; it is a benchmark harness, not a feature.
+
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
