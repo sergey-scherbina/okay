@@ -105,5 +105,80 @@ class TestFrame extends munit.FunSuite {
     assertEquals(f.words("count"), "4")
     assertEquals(f.words.size, 1)
   }
+
+  // --- a closed choice, and where an answer came from --------------
+
+  private enum Where:
+    case Onsite, Remote, Either
+
+  private val where2 = Slot.choice[Where]("mode",
+    Map("en" -> "On site or remote?", "ru" -> "На месте или удалённо?"),
+    Seq(
+      Where.Onsite -> Map("en" -> "on site", "ru" -> "на месте"),
+      Where.Remote -> Map("en" -> "remote", "ru" -> "удалённо"),
+      Where.Either -> Map("en" -> "either", "ru" -> "можно и так и так")))
+
+  private def job = Frame.of("job", where2)
+
+  test("a choice reads a wording inside a real answer, in any language") {
+    // the consumer's own sentence, which is not a bare enum name
+    assertEquals(job.in("ru").answer("mode", "можно и удалённо, если так")
+      .toOption.flatMap(_.valueOf(where2)), Some(Where.Remote))
+    // and a language the exchange is not being held in still reads
+    assertEquals(job.in("ru").answer("mode", "remote")
+      .toOption.flatMap(_.valueOf(where2)), Some(Where.Remote))
+  }
+
+  test("the longest wording wins, so one value cannot swallow another") {
+    val f = job.answer("mode", "either").toOption.get
+    assertEquals(f.valueOf(where2), Some(Where.Either))
+  }
+
+  test("a choice offers its options and says a value back, in the reader's language") {
+    assertEquals(where2.options("ru"), Vector("на месте", "удалённо", "можно и так и так"))
+    assertEquals(where2.show(Where.Remote, "ru"), "удалённо")
+    assertEquals(where2.show(Where.Remote, "en"), "remote")
+    // a language nobody wrote falls back rather than failing a person
+    assertEquals(where2.show(Where.Remote, "de"), "remote")
+  }
+
+  test("an answer nobody gave is complete, and says so") {
+    val f = job.in("ru").assume(where2, Where.Onsite)
+    assert(f.complete, "a default fills the slot")
+    assertEquals(f.valueOf(where2), Some(Where.Onsite))
+    assertEquals(f.assumed, Vector("mode"))
+    assertEquals(f.sourceOf("mode"), Some(Source.Assumed))
+    // shown back in their language, so it can be corrected
+    assertEquals(f.filled("mode"), "на месте")
+    // but NOT among the things they told us
+    assertEquals(f.words, Map.empty[String, String])
+  }
+
+  test("a person's own answer beats an assumption, in either order") {
+    val assumedFirst = job.assume(where2, Where.Onsite)
+      .answer("mode", "remote").toOption.get
+    assertEquals(assumedFirst.valueOf(where2), Some(Where.Remote))
+    assertEquals(assumedFirst.assumed, Vector.empty)
+
+    val answeredFirst = job.answer("mode", "remote").toOption.get
+      .assume(where2, Where.Onsite)
+    assertEquals(answeredFirst.valueOf(where2), Some(Where.Remote))
+    assertEquals(answeredFirst.sourceOf("mode"), Some(Source.Said))
+  }
+
+  test("the three sources are distinguishable, which is the whole point") {
+    val said = form.answer("count", "3").toOption.get
+    assertEquals(said.sourceOf("count"), Some(Source.Said))
+    val found = form.fillFrom("about 9 rooms")
+    assertEquals(found.sourceOf("count"), Some(Source.Found))
+    assertEquals(found.filled("count"), "9")
+    val assumed = form.assume(count, 1)
+    assertEquals(assumed.sourceOf("count"), Some(Source.Assumed))
+    assertEquals(assumed.filled("count"), "1")
+    // and only the first two are things a person said
+    assertEquals(said.words.contains("count"), true)
+    assertEquals(found.words.contains("count"), true)
+    assertEquals(assumed.words.contains("count"), false)
+  }
 }
 

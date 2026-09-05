@@ -376,3 +376,43 @@ the grammatical gender of the ADDRESSEE needs more than a language
 code, or needs the caller to key by `"pl-formal-f"` and own that
 choice. Their Polish addresses informally and dodges it.
 
+## Results — frame-choice-and-provenance (2026-09-05)
+
+The consumer asked a blocking question in the room: does request 5's
+"description" carry value wordings and a non-constant default? The
+honest answer was NO — request 5 was a name, a question per language
+and a parser, and that is exactly what shipped. Their case was good
+enough that the library should hold it anyway, so the split is: the
+library owes the TYPE and the PROVENANCE, the caller keeps the
+inference rule.
+
+**`Slot.choice`.** A closed set of values, each carrying its wordings
+per language. Those wordings are needed three times — to offer, to
+read, to echo — which is why they belong beside the value rather than
+in the caller's rendering layer, and it is still the same "no words
+live here" boundary: the caller writes every one of them.
+
+Reading accepts a wording INSIDE the answer. A person asked "on site
+or remote?" writes "можно и удалённо, если так", and a parser that
+demands the bare token would re-ask someone who has already answered.
+Longest wording wins so one value cannot swallow another, and every
+language is matched rather than only the exchange's — someone in a
+Russian conversation still types "remote" sometimes.
+
+**`Source`, and this is the part their requirement demanded without
+naming it.** They wrote: overridable by what they do say, and VISIBLE
+so they can correct it. A default fires when NOTHING was said, so its
+value has no evidence behind it and would otherwise be
+indistinguishable from one a person typed. `Answered` now carries
+`Said` / `Found` / `Assumed`; `assume` fills a slot, `assumed` lists
+them, `filled` shows them back in the reader's language, and `words`
+leaves them out — because "what you told me" must not contain what
+nobody told it. A person's answer beats an assumption in either
+order, tested both ways.
+
+**What was deliberately left out.** The rule that reads "можно и
+удалённо" out of a CITY answer, and the choice of what to assume when
+a question goes unanswered. Both are domain knowledge. The library
+gives them a place to be recorded honestly and no opinion about what
+they should be.
+

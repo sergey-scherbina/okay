@@ -57,7 +57,20 @@ final case class Slot[A](name: String,
                           * so; a slot that cannot stays silent rather
                           * than guessing.
                           */
-                         extract: String => Option[Found[A]] = Slot.NothingFound):
+                         extract: String => Option[Found[A]] = Slot.NothingFound,
+                         /**
+                          * How to say a VALUE back, in a language.
+                          *
+                          * A text slot shows what was typed and needs
+                          * nothing; a closed choice must be echoed in
+                          * the reader's own words ("удалённо", not
+                          * `Remote`), and an assumed answer has no
+                          * typed text to fall back on at all.
+                          */
+                         show: (A, String) => String = Slot.AnyToString,
+                         /** the choices to offer, where there is a
+                          * closed set of them; empty otherwise */
+                         options: String => Vector[String] = Slot.NoOptions):
 
   /** the question, in the reader's language, falling back to the one
    * language a slot must have */
@@ -95,6 +108,59 @@ object Slot:
    * compile without writing the type out */
   val NothingFound: String => Option[Nothing] = _ => None
 
+  /** the default `show`. Typed `(Any, String)` for the same reason
+   * `NothingFound` is typed `Option[Nothing]` — a default mentioning
+   * `A` is elaborated before `A` is known. `Function2` is
+   * contravariant in its parameters, so this is a valid `(A, String)
+   * => String` for every `A`. */
+  val AnyToString: (Any, String) => String = (a, _) => a.toString
+
+  val NoOptions: String => Vector[String] = _ => Vector.empty
+
+  /** lowercase, punctuation-free, single-spaced — the form both a
+   * wording and an answer are compared in */
+  def normalise(s: String): String =
+    s.toLowerCase.replaceAll("[\\p{Punct}]", " ").replaceAll("\\s+", " ").trim
+
+  /**
+   * A slot whose answers are a CLOSED SET.
+   *
+   * Each value carries its wordings per language, and they are needed
+   * three times over: to OFFER the choices, to READ what a person
+   * typed in their own language, and to SAY the choice back in it.
+   * That is the same boundary the rest of this module draws — the
+   * caller supplies every word, the frame only holds them.
+   *
+   * Reading accepts the whole answer or a wording INSIDE it, because
+   * a person asked "on site or remote?" answers "можно и удалённо,
+   * если так" and means it. Longest wording wins, so a value whose
+   * wording contains another's cannot swallow it. Wordings from EVERY
+   * language are matched, not just the exchange's: someone in a
+   * Russian conversation may still type "remote".
+   *
+   * Asked for by a consumer with a real case — whether a job can be
+   * done remotely decides matching rather than wording, and their
+   * marketplace had nowhere to put it.
+   */
+  def choice[A](name: String, ask: Map[String, String],
+                values: Seq[(A, Map[String, String])],
+                required: Boolean = true): Slot[A] =
+    val wordings: Vector[(String, A)] =
+      values.toVector.flatMap((v, ws) => ws.values.map(w => normalise(w) -> v))
+        .sortBy(-_._1.length)
+    Slot(
+      name = name,
+      ask = ask,
+      parse = answer =>
+        val a = normalise(answer)
+        wordings.collectFirst { case (w, v) if w.nonEmpty && a.contains(w) => v },
+      required = required,
+      show = (v, lang) =>
+        values.collectFirst { case (x, ws) if x == v =>
+          ws.getOrElse(lang, ws.getOrElse(Fallback, v.toString)) }.getOrElse(v.toString),
+      options = lang =>
+        values.toVector.map((v, ws) => ws.getOrElse(lang, ws.getOrElse(Fallback, v.toString))))
+
 /**
  * One answered slot: the slot, the text a person said, and the VALUE
  * it parsed to.
@@ -109,21 +175,42 @@ object Slot:
  * types without a cast at the call site: each `Answered` remembers the
  * slot its value came from, and `valueOf` asks with that slot.
  */
+/**
+ * Where an answer came from.
+ *
+ * A frame that cannot tell these apart cannot be honest with the
+ * person it is talking to. `Said` is theirs. `Found` was taken out of
+ * a sentence they wrote for another purpose, and carries the span so
+ * it can be echoed. `Assumed` had NO evidence at all — a default that
+ * fired because they did not say, which most people will not — and it
+ * is the one that must never look like the other two.
+ *
+ * Asked for by a consumer whose slot needed a default and whose own
+ * requirement gave the reason: "overridable by what they do say, and
+ * VISIBLE so they can correct it".
+ */
+enum Source:
+  case Said, Found, Assumed
+
 sealed trait Answered:
   type T
   def slot: Slot[T]
   def text: String
   def value: T
+  def source: Source
 
 object Answered:
   /** a case class rather than an anonymous instance so that two frames
    * holding the same answers COMPARE equal — an anonymous class gives
    * identity equality, and a test that says "this intake ended with
    * that frame" then cannot be written */
-  private final case class Ans[A](slot: Slot[A], text: String, value: A) extends Answered:
+  private final case class Ans[A](slot: Slot[A], text: String, value: A,
+                                 source: Source) extends Answered:
     type T = A
 
-  def apply[A](s: Slot[A], t: String, v: A): Answered { type T = A } = Ans(s, t, v)
+  def apply[A](s: Slot[A], t: String, v: A,
+               source: Source = Source.Said): Answered { type T = A } =
+    Ans(s, t, v, source)
 
 /**
  * A frame: the slots one intent needs before it can be acted on, the
@@ -191,7 +278,8 @@ final case class Frame[I](intent: I,
    * the code that must have a typed value should care which half it
    * came from.
    */
-  def words: Map[String, String] = filled ++ unread
+  def words: Map[String, String] =
+    answers.collect { case (n, a) if a.source != Source.Assumed => n -> a.text }.toMap ++ unread
 
   /**
    * The parsed value, at the type the slot promised.
@@ -265,6 +353,32 @@ final case class Frame[I](intent: I,
       case Left(_) => heard(name, text)
     answered.fillFrom(text)
 
+  /**
+   * Fill a slot with a value NOBODY SAID.
+   *
+   * A default, for the questions most people will not answer. It is
+   * an ordinary answer in every way except provenance: `complete`
+   * counts it, `valueOf` returns it, and `assumed` names it — so an
+   * interface can show it back for correction instead of pretending
+   * a person chose it. `words` leaves it out, because a frame shown
+   * back as "what you told me" must not contain what nobody told it.
+   *
+   * A person's own answer always wins: `answer` and `take` overwrite
+   * an assumption, and an assumption never overwrites an answer.
+   */
+  def assume[A](s: Slot[A], v: A): Frame[I] =
+    if has(s.name) then this
+    else copy(answers = answers.updated(s.name,
+      Answered(s, s.show(v, lang), v, Source.Assumed)))
+
+  /** the answers nobody gave — for an interface that must show what it
+   * decided on someone's behalf */
+  def assumed: Vector[String] =
+    answers.collect { case (n, a) if a.source == Source.Assumed => n }.toVector.sorted
+
+  /** where each answer came from */
+  def sourceOf(name: String): Option[Source] = answers.get(name).map(_.source)
+
   /** keep what was said for a slot that could not read it */
   def heard(name: String, text: String): Frame[I] =
     copy(unread = unread.updated(name, text))
@@ -295,14 +409,15 @@ final case class Frame[I](intent: I,
   private def extracted[A](s: Slot[A], message: String): Frame[I] =
     if has(s.name) then this
     else s.extract(message) match
-      case Some(f) => copy(answers = answers.updated(s.name, Answered(s, f.text, f.value)))
+      case Some(f) =>
+        copy(answers = answers.updated(s.name, Answered(s, f.text, f.value, Source.Found)))
       case None => this
 
   /** typed on its own, so the parsed value never loses its type on the
    * way into the map */
   private def store[A](s: Slot[A], text: String): Either[String, Frame[I]] =
     s.read(lang, text).map(v =>
-      copy(answers = answers.updated(s.name, Answered(s, text, v)),
+      copy(answers = answers.updated(s.name, Answered(s, text, v, Source.Said)),
         unread = unread - s.name))
 
 object Frame:

@@ -1698,6 +1698,24 @@ subtraction.
       CONSTRUCTION and one meaning replaced across all six languages.
       Russian fell 86.7% -> 73.3%, which is what fixing a fixture that
       was flattering itself looks like.
+- [ ] frame-walk-end-to-end — the consumer's third point, and the one
+      I cannot argue with: okay-frame and okay-intent have ONE caller
+      and it is a classifier demo. Both defects they hit today lived
+      BETWEEN two correct code paths with 237 unit tests green —
+      contacts shown to the wrong side, and a notification that was a
+      claim rather than a call. A test that walks a whole exchange
+      (classify, fill from the message, ask, answer, assume, confirm,
+      act) would have caught both and is worth more than another tier.
+- [ ] intent-per-class-not-aggregate — the consumer's imbalance
+      finding: they filled a corpus hole, one class grew to 137 of 184
+      rows, a probe leaned to the majority, and "сегодня в москве шёл
+      дождь" came back as a REQUEST at 0.90 — while HEADLINE ACCURACY
+      ROSE, 95.8% to 96.2%, because accuracy on an imbalanced corpus
+      rewards predicting the biggest class. Every aggregate this
+      module publishes has the same exposure, starting with the
+      shipped model's 76.7%. Print per-class numbers and the class
+      BALANCE beside every total; `Eval` already computes per-class
+      scores, so this is a reporting lane, not a measurement one.
 - [ ] intent-typo-robustness — character n-grams are supposed to
       survive a typo, and this model does not: one deterministic
       transposition in the longest word takes it from 61.7% to 55.0%

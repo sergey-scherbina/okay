@@ -15,6 +15,8 @@ and depends on nothing at all.
 | | |
 |---|---|
 | `Slot[A]` | a name, a question per language, a parser, and an optional extractor |
+| `Slot.choice` | a closed set of values, each with its wordings per language |
+| `Source` | where an answer came from: said, found in a sentence, or assumed |
 | `Found[A]` | a value together with the span of the message it came from |
 | `Answered` | one filled slot: the slot, the words, and the parsed value |
 | `Frame[I]` | the slots an intent needs, the answers so far, and the language of the exchange |
@@ -63,3 +65,46 @@ What it deliberately is NOT: a conversation. A frame describes and
 holds. It does not know what has been asked, does not decide when to
 ask, and cannot suspend — that is `okay.agent.Conversation`, over
 this.
+
+## A closed choice, and where an answer came from
+
+Added for a consumer whose slot was neither a string, a date nor a
+number: whether a job can be done remotely is a fact that decides
+MATCHING rather than wording, and it is the same question on both
+sides of their market.
+
+```scala
+val mode = Slot.choice[Where]("mode",
+  Map("en" -> "On site or remote?", "ru" -> "На месте или удалённо?"),
+  Seq(Where.Onsite -> Map("en" -> "on site", "ru" -> "на месте"),
+      Where.Remote -> Map("en" -> "remote",  "ru" -> "удалённо")))
+```
+
+The wordings per VALUE are needed three times over — to offer the
+choices (`options(lang)`), to read what a person typed in their own
+language, and to say the choice back in it (`show(v, lang)`). Reading
+accepts a wording inside a real answer, because someone asked "on site
+or remote?" replies "можно и удалённо, если так" and means it; the
+longest wording wins, and every language's wordings are matched, not
+only the exchange's.
+
+**And an answer knows where it came from.** `Source` is `Said`,
+`Found` (taken out of a sentence written for another purpose) or
+`Assumed` — a default that fired because nobody answered, which for
+some questions is most people.
+
+```scala
+frame.assume(mode, Where.Onsite)   // fills it; complete() is now true
+frame.assumed                      // Vector("mode") — show these for correction
+frame.words                        // what the PERSON said; the assumption is not here
+```
+
+That distinction is the point. A default that looks like an answer is
+a lie a form tells quietly; `filled` shows the assumption back in the
+reader's own language so it can be corrected, `words` leaves it out,
+and a person's own answer always wins in either order.
+
+What the library does NOT decide: what to assume, or how to read one
+slot's value out of another's answer. That is domain knowledge and it
+stays with the caller.
+
