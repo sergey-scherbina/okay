@@ -245,7 +245,7 @@ lap number.
 **Use it when** the producer must never wait. `Channel.apply()` with
 no capacity gives you this.
 
-### `MultiFifo` — relaxed, for many producers
+### `AdaptiveFifo` — partitioned, for many producers
 
 `parts` independent buffers. A producer is bound to one for the life
 of its thread; a consumer takes from whichever has something.
@@ -326,7 +326,7 @@ is a bad default. Reach for `adaptive` when the producer count is
 unknown or varies with load.
 
 **The 19% is the price of PARTITIONING, not of adapting.** A
-hand-tuned `relaxedUnbounded` measured 151.8 at one producer against
+a hand-tuned `relaxed` measured 151.8 at one producer against
 the adaptive 145.8 in the same run — the same cost. Splitting a buffer
 into parts costs a route lookup, an indirection and a scan; deciding
 the part count automatically costs nothing on top. Which also means
@@ -334,13 +334,21 @@ there is no version of this that is free at one producer and fast at
 sixteen: the choice is partitioned or not.
 
 ```scala
-Queues.strong[Int].adaptive.bounded(1024).build   // capacity PER PART
+Queues.strong[Int].adaptive.each(1024).build        // capacity PER PART
 Queues.strong[Int].adaptive.unbounded.build
-Queues.strong[Int].adaptive.parts(4).bounded(256).build
+Queues.strong[Int].adaptive.parts(4).each(256).build
+
+Queues.strong[Int].relaxed.parts(8).each(256).build // fixed parts
+Queues.weak[Int].adaptive.parts(4).each(64).build   // the same menu
 ```
 
-`bounded(n)` counts per part here, unlike the plain `bounded(n)`, and
-that is forced rather than chosen: a part's ring is fixed when the
+**The unit is in the name.** `each(n)` is per part; the plain
+`bounded(n)` on a single buffer is a total. Four spellings with three
+meanings accumulated while these mechanisms were added one at a time,
+and a number copied between them silently meant something else —
+naming the unit is the fix, documenting each case separately was not.
+
+Per part is forced rather than chosen: a part's ring is fixed when the
 part opens, and how many parts there will be is exactly what this does
 not know yet. Dividing a total by the cap gave a lone producer a
 sixteenth of what it asked for and parked it constantly — 969.8us
@@ -394,7 +402,8 @@ change what your program *does*.
 |---|---|
 | one or a few producers | leave it — a single buffer |
 | many producers, mutual order is meaningful | a single buffer, and accept the contention |
-| many producers, mutual order is noise | `.relaxed(parts, each)` |
+| many producers, mutual order is noise | `.relaxed.parts(k).each(n)` |
+| the producer count is unknown or varies | `.adaptive.each(n)` |
 
 If question 3 is not obviously "many", the answer is "leave it". A
 relaxed buffer at one producer can only lose: a part to choose and
@@ -415,7 +424,10 @@ val log = Queues.strong[String].unbounded.build
 val ui = Queues.weak[Event].bounded(256).build
 
 // sixteen workers reporting metrics; their mutual order is noise
-val metrics = Queues.strong[Metric].relaxed(parts = 16, each = 128).build
+val metrics = Queues.strong[Metric].relaxed.parts(16).each(128).build
+
+// the same, when nobody knows how many workers there will be
+val reports = Queues.strong[Report].adaptive.each(128).build
 
 // a transactional take from either side
 val work = Queues.composable[Job](1024).build
@@ -557,8 +569,10 @@ the batched path avoids doing it at all.
 FIFO Queues*, arXiv:2507.22764 (2025) — the relaxed queues, the rank
 error as the measure of how far from true FIFO a design strays, and
 the observation that the gains appear at p=32..192 producers. Our
-`MultiFifo` is the MultiFIFO idea with producer affinity, which is
-what preserves per-producer order. BlockFIFO's held block is not built
+`AdaptiveFifo` is the MultiFIFO idea with producer affinity, which is
+what preserves per-producer order — with the parts either fixed
+(`relaxed`) or opened as producers arrive (`adaptive`), one flag apart
+rather than two structures. BlockFIFO's held block is not built
 here: our `pushMany`/`popMany` already claim a run with one CAS, and a
 *held* block means positions claimed and unpublished, which truncates
 a concurrent batched scan — measured, that cost more than it saved.

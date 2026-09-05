@@ -1,5 +1,44 @@
 # Changelog
 
+## queues-api-polish — the unit goes in the name, and two structures become one
+
+Four warts left by adding mechanisms one at a time, and none of them
+changes behaviour: the gate, the matrix and the benchmark all read the
+same afterwards, which is how a rename proves it was a rename.
+
+**The capacity argument meant four things** — `bounded(n)` a total,
+`relaxed(parts, each)` per part, `adaptive.bounded(n)` per part,
+`bufferChunked(capacity, size)` a count of CHUNKS. A number copied
+between them silently meant something else. Now the unit is in the
+name: `each(n)` per part, `bounded(n)` only where it is a total.
+
+**Two spellings in one builder** became one. `relaxed` gets the
+sub-builder shape `adaptive` had, and the weak contract gets the same
+menu as the strong one — which also gave it an adaptive form it simply
+did not have.
+
+```scala
+Queues.strong[Int].relaxed.parts(8).each(256).build
+Queues.strong[Int].adaptive.each(1024).build
+Queues.weak[Int].adaptive.parts(4).each(64).build
+```
+
+**`MultiFifo` is gone**, folded into `AdaptiveFifo` behind an `eager`
+flag: "k parts from the start" against "parts as producers arrive" is
+a parameter, not a type. That is not tidying — two nearly identical
+lock-free structures are two places for one defect to hide, and this
+design has already produced five of a single family. Its tests moved
+across as the eager form's, and the lanes that ran through it are
+unchanged in speed (240.5 → 249.9, 119.5 → 118.9), which is the part
+tests could not have told us.
+
+Left alone deliberately: `Drain.Batch = 64` and `Source.ChunkSize`.
+Today's measurements do put them in doubt — asked for 64, measured
+1.67 — but that is an adaptive feed with its own measurement, not a
+rename.
+
+Gate 558, full matrix 2370, clean build, no warnings.
+
 ## adaptive-parts — a buffer that picks its own part count
 
 `AdaptiveFifo`: parts appear as producers do, up to a cap, reachable

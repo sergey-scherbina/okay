@@ -1,8 +1,11 @@
 package okay
 
 /**
- * The buffer that grows parts as producers appear, and the one window
- * that design opens.
+ * The partitioned buffer: parts that grow as producers appear, and —
+ * with `eager` — the fixed form that used to be a separate class.
+ * Merging them was not tidying: two nearly identical lock-free
+ * structures are two places for the same defect to hide, and this
+ * design produced five of one family already.
  */
 class TestAdaptiveFifo extends munit.FunSuite {
 
@@ -46,7 +49,7 @@ class TestAdaptiveFifo extends munit.FunSuite {
   }
 
   test("a channel over it still ends, with producers arriving late") {
-    val c = Queues.strong[Int].adaptive.parts(4).bounded(32).build
+    val c = Queues.strong[Int].adaptive.parts(4).each(32).build
     // the consumer runs THROUGHOUT: a producer filling its own part
     // with nobody draining would wait for ever, which is what the
     // first version of this test did to itself
@@ -73,5 +76,59 @@ class TestAdaptiveFifo extends munit.FunSuite {
     assertEquals(scala.jdk.CollectionConverters.CollectionHasAsScala(got).asScala.toSet,
       (0 until 20).toSet + 100,
       "everything accepted arrives, and the stream ends")
+  }
+
+  // ── the EAGER form: every part from the start ───────────────────
+
+  test("what it keeps: one producer's own elements stay in order") {
+    for _ <- 1 to 5 do
+      val b = AdaptiveFifo[Int](4, () => Ring[Int](64), eager = true)
+      val per = 500
+      val ps = (0 until 4).map(w => Thread.ofVirtual().start { () =>
+        var i = 0
+        while i < per do
+          if b.push(w * per + i) then i += 1 else Thread.`yield`()
+      })
+      val got = scala.collection.mutable.ArrayBuffer.empty[Int]
+      val deadline = System.currentTimeMillis() + 15000
+      val q = Thread.ofVirtual().start { () =>
+        while got.length < 4 * per && System.currentTimeMillis() < deadline do
+          b.pop() match
+            case null => Thread.`yield`()
+            case v => got += v.nn
+      }
+      ps.foreach(_.join()); q.join()
+      assertEquals(got.toSet, (0 until 4 * per).toSet, "lost or invented")
+      assertEquals(got.length, got.toSet.size, "duplicated")
+      // each producer's own run, in the order it arrived, must be the
+      // order it was sent -- this is the guarantee a bound producer
+      // buys, and it is what the channel laws lean on
+      for w <- 0 until 4 do
+        val mine = got.filter(v => v / per == w).toList
+        assertEquals(mine, mine.sorted, s"producer $w came out of order")
+  }
+
+  test("what it gives up: the order BETWEEN producers is not promised") {
+    // stated as a test so the relaxation is recorded, not assumed. It
+    // asserts the WEAKER claim -- that the buffer is allowed to
+    // interleave -- by showing parts are independent: a later push to
+    // an empty part comes out before an earlier one still queued
+    // behind others.
+    val b = AdaptiveFifo[Int](2, () => Ring[Int](8), eager = true)
+    assertEquals(b.parts, 2, "a relaxed buffer says how many orders it keeps")
+    val t1 = Thread.ofPlatform().start(() => { (1 to 4).foreach(i => b.push(i): Unit) })
+    t1.join()
+    val t2 = Thread.ofPlatform().start(() => { val _ = b.push(99) })
+    t2.join()
+    val out = Iterator.continually(b.pop()).takeWhile(_ != null).map(_.nn).toList
+    assertEquals(out.toSet, Set(1, 2, 3, 4, 99))
+    // no assertion on WHERE 99 lands: that is exactly the freedom
+  }
+
+  test("seal puts one mark in every part") {
+    val b = AdaptiveFifo[Int](3, () => Ring[Int](8), eager = true)
+    assertEquals(b.seal(-1), 3, "a mark must reach every independent order")
+    val b1 = Ring[Int](8)
+    assertEquals(b1.seal(-1), 1, "one order needs one mark")
   }
 }

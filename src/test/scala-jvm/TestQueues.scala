@@ -14,14 +14,15 @@ class TestQueues extends munit.FunSuite {
   private val menu: List[(String, () => Channel[Int], Boolean)] = List(
     ("strong.bounded",           () => Queues.strong[Int].bounded(16).build, true),
     ("strong.unbounded",         () => Queues.strong[Int].unbounded.build, true),
-    ("strong.relaxed",           () => Queues.strong[Int].relaxed(parts = 4, each = 8).build, true),
-    ("strong.relaxedUnbounded",  () => Queues.strong[Int].relaxedUnbounded(parts = 3).build, true),
+    ("strong.relaxed",           () => Queues.strong[Int].relaxed.parts(4).each(8).build, true),
+    ("strong.relaxedUnbounded",  () => Queues.strong[Int].relaxed.parts(3).unbounded.build, true),
     ("strong.on(ring)",          () => Queues.strong[Int].on([T] => (_: Int) => Ring[T](16)).build, true),
     ("strong.default",           () => Queues.strong[Int].build, true),
     ("weak.bounded",             () => Queues.weak[Int].bounded(16).build, false),
     ("weak.unbounded",           () => Queues.weak[Int].unbounded.build, false),
-    ("weak.relaxed",             () => Queues.weak[Int].relaxed(parts = 4, each = 8).build, false),
-    ("weak.relaxedUnbounded",    () => Queues.weak[Int].relaxedUnbounded(parts = 3).build, false),
+    ("weak.relaxed",             () => Queues.weak[Int].relaxed.parts(4).each(8).build, false),
+    ("weak.relaxedUnbounded",    () => Queues.weak[Int].relaxed.parts(3).unbounded.build, false),
+    ("weak.adaptive",            () => Queues.weak[Int].adaptive.parts(4).each(8).build, false),
     ("weak.on(segments)",        () => Queues.weak[Int].on(Segments[Int]()).build, false),
     ("composable.array",         () => Queues.composable[Int](16).arrayBuffer.build, true),
     ("composable.list",          () => Queues.composable[Int](16).listBuffer.build, true),
@@ -64,6 +65,6 @@ class TestQueues extends munit.FunSuite {
   test("the relaxed ones say how many orders they keep") {
     assertEquals(Ring[Int](8).parts, 1)
     assertEquals(Segments[Int]().parts, 1)
-    assertEquals(MultiFifo[Int](5, _ => Ring[Int](8)).parts, 5)
+    assertEquals(AdaptiveFifo[Int](5, () => Ring[Int](8), eager = true).parts, 5)
   }
 }
