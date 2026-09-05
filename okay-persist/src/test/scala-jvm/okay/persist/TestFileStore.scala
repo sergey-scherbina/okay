@@ -239,7 +239,12 @@ class TestFileStoreRace extends munit.FunSuite {
 
   test("several openers on one empty directory all succeed") {
     val root = java.nio.file.Files.createTempDirectory("okay-race")
-    val n = 8
+    // enough openers, and enough LOAD, that the second half of the
+    // race shows: the loser looking again can arrive between the
+    // winner's create and the winner's header. Under an idle machine
+    // that window is microseconds and the test passes either way; it
+    // took a full matrix to expose it, so the count is high here
+    val n = 24
     val start = java.util.concurrent.CountDownLatch(1)
     val done = java.util.concurrent.CountDownLatch(n)
     val failures = java.util.concurrent.ConcurrentLinkedQueue[Throwable]()

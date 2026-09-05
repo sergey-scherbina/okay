@@ -176,8 +176,22 @@ final class FileStore(root: Path) extends Store:
       if found.isEmpty then
         try newSegment(0L)
         catch case _: java.nio.file.FileAlreadyExistsException if attempt < 3 =>
+          // the winner has created the file but may not have written
+          // its header yet — a window of microseconds that a loaded
+          // machine makes real. A reader arriving inside it sees a
+          // zero-length file and reports "no header", which is true
+          // and is not the answer: the segment is being born. So wait
+          // for it, briefly and boundedly, and then recover from it.
+          awaitHeader(dir.resolve(f"${0L}%020d.log"))
           openExisting(attempt + 1)
       else
+        // and the opener who found the file ALREADY in its listing
+        // never attempted a create, so it never waited — it walks
+        // straight into the same half-born segment. The wait belongs
+        // on the path that READS, not only on the one that lost a
+        // create; for a segment that is already whole it is a size
+        // check and nothing more.
+        awaitHeader(found.last)
         segments = found.map { p =>
           val s = new Segment(p, p.getFileName.toString.stripSuffix(".log").toLong)
           s.size = Files.size(p)
@@ -212,6 +226,15 @@ final class FileStore(root: Path) extends Store:
 
     // the recovery runs at construction, exactly where it used to
     openExisting()
+
+    /** a segment that exists but is still empty is one somebody else
+     * is writing this instant; anything longer than a moment is a
+     * different problem and is left to the reader to report */
+    private def awaitHeader(path: Path): Unit =
+      val least = headerBytes(0L).length
+      val deadline = System.nanoTime() + 2_000_000_000L
+      while System.nanoTime() < deadline &&
+        (!Files.exists(path) || Files.size(path) < least) do Thread.onSpinWait()
 
     private def newSegment(base: Long): Unit =
       if channel != null then { channel.force(false); channel.close() }
