@@ -354,3 +354,9 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-05	chunk-size-sweep	ChunkFlushBenchmark	okayChunkedComposed/1024	409.433	us/op	2x2000 f=2 i=6	composed form; an earlier run's apparent degradation with k was NOISE (bars +-71 to +-142)
 2026-09-05	chunk-size-sweep	ChunkFlushBenchmark	zioChunked/16	126.438	us/op	2x2000 f=2 i=6	control
 2026-09-05	chunk-size-sweep	ChunkFlushBenchmark	zioChunked/1024	68.494	us/op	2x2000 f=2 i=6	control
+2026-09-05	channel-per-part-waiters	ManyProducersBenchmark	relaxed/16	485.276	us/op	Total=8000 cap=1024 f=2 i=5	per-part waiters: 111546 -> 485, a 230x fix; 5.3x past one ring and 5.5x past zio.Queue
+2026-09-05	channel-per-part-waiters	ManyProducersBenchmark	relaxed/4	597.248	us/op	Total=8000 cap=1024 f=2 i=5	and it now scales the right way: 780 -> 597 -> 485
+2026-09-05	channel-per-part-waiters	ManyProducersBenchmark	relaxed/1	779.813	us/op	Total=8000 cap=1024 f=2 i=5	relaxation costs a little when there is nothing to relax
+2026-09-05	channel-per-part-waiters	ManyProducersBenchmark	relaxedUnbounded/16	183.096	us/op	Total=8000 cap=1024 f=2 i=5	still the fastest lane
+2026-09-05	channel-per-part-waiters	ManyProducersBenchmark	oneRing/16	2586.305	us/op	Total=8000 cap=1024 f=2 i=5	control
+2026-09-05	channel-per-part-waiters	ManyProducersBenchmark	zioQueue/16	2653.135	us/op	Total=8000 cap=1024 f=2 i=5	control

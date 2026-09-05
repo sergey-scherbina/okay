@@ -72,17 +72,20 @@ object Queues {
     def unbounded: Strong[A] = copy(buffer = Some(Mechanism.segments))
 
     /**
-     * RELAXED over BOUNDED parts — and measured much worse than a
-     * single ring, so prefer `relaxedUnbounded` unless you know why
-     * you want this one.
+     * RELAXED over BOUNDED parts: producers stop contending for one
+     * tail, and a full buffer still makes a producer wait — the
+     * relaxation with backpressure kept.
      *
-     * 111546us at 16 producers, against 3150 for one ring. The cause
-     * is not the relaxation: this channel keeps ONE queue of waiting
-     * senders while the resource is per part, so a freed slot wakes an
-     * arbitrary sender, who finds its own part still full and parks
-     * again. With k parts, one wakeup in k is useful. Filed as
-     * `channel-per-part-waiters`; kept here because the shape is
-     * right and only the waiting is wrong.
+     * Measured 485us at sixteen producers, against 2586 for a single
+     * ring and 2653 for `zio.Queue`, and it gets faster as producers
+     * are added (780 at one, 597 at four, 485 at sixteen).
+     *
+     * It read 111546us until senders learned to wait PER PART. One
+     * queue of waiting senders over a partitioned buffer means a
+     * freed slot wakes an arbitrary sender, who finds its own part
+     * still full and parks again — one useful wakeup in k. Waking
+     * where the room appeared is worth 230x here, which is worth
+     * knowing before designing the next partitioned thing.
      */
     def relaxed(parts: Int, each: Int): Strong[A] =
       copy(buffer = Some(Mechanism.multiRing(parts, each)))

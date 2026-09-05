@@ -1,5 +1,40 @@
 # Changelog
 
+## channel-per-part-waiters — wake where the room appeared
+
+`Queues.strong.relaxed(parts, each)` read **111546us** at sixteen
+producers, against 2586 for a single ring — 35x worse than not
+relaxing at all. It now reads **485**, a 230x fix, and is 5.3x past
+the single ring and 5.5x past `zio.Queue`, scaling the right way at
+last: 780 at one producer, 597 at four, 485 at sixteen.
+
+The cause was a mismatch, not a setting. The channel kept ONE queue of
+waiting senders while the resource is per part, so a consumer freeing
+a slot in part 7 woke an arbitrary sender, who found its own part
+still full and parked again — one useful wakeup in k, the rest churn.
+Senders now wait per part, and `Buffer.lastRoute` reports which part a
+take came from so the wakeup can be aimed. It is a hint by design: a
+wrong answer costs one wasted wakeup, never correctness, and for
+`MultiFifo` it is simply the consumer's cursor.
+
+A single-order buffer keeps exactly one queue, so nothing about the
+ordinary path changes.
+
+**This is the fourth defect of one family, and they read as one
+sentence: the channel asking about the buffer as a whole where the
+question belongs to one part.** `isEmpty` instead of `hasReady` before
+a receiver waits; `size < capacity` instead of `hasRoom` before a
+sender waits; a producer's part taken on the waker's thread instead of
+carried with the send; and the wakeup aimed at no part in particular.
+Written into `docs/queues.md` as the lesson, because the next
+partitioned structure will have the same four.
+
+Also fixed here: a deprecation warning in `okay-intent`'s
+`TestSecondAuthor` (`Char + String`), which is not this lane's code
+but was failing the zero-warnings policy in the shared gate.
+
+Gate 536, full matrix 2395, clean build, no warnings.
+
 ## intent-split-other — measured and DECLINED: carving the bin takes its recall from 46.7% to 6.7%
 Completed: 2026-09-05
 Landed as 8e9c12ad. `intent-other-is-a-bin` closed two remedies for
