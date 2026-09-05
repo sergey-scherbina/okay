@@ -1923,3 +1923,35 @@ Senders wait per part now, and the buffer reports `lastRoute` so a
 freed slot wakes a sender that can use it. 111546us to 485 at sixteen
 producers, a 230x fix; the bounded relaxed channel is now 5.3x past a
 single ring and 5.5x past `zio.Queue`, and scales the right way.
+
+
+## channel-per-element-effect-cost — the last gap is the interpreter, not the queue
+
+Reading a buffered channel one element at a time: **264.5us against
+`ZStream.fromQueue`'s 139.1**, the one row in the idiomatic table
+where zio genuinely leads after five mismatched pairings were fixed.
+
+Profiled (`okayChannelForeach_elem_runForeach`): **62% effect
+machinery** — `runFree` 26%, the `Async` handler 15%, allocating
+`Free` nodes 13%, `resume` 8% — against **8% in the channel itself**.
+The queue is not the cost; the per-element program step is.
+
+**A chunk-native read was tried and WITHDRAWN, measured.** The idea
+was to batch the PROGRAM the way `popMany` batched the queue: a
+`drainedChunks: Source[Chunk[A]]` whose tree steps once per batch. It
+measured **447.9 against the elementwise 264.5** — worse, and the
+reason is the batch size: on this path the producer delivers an
+average of **1.67 elements** per `receiveMany` (max 64). There is
+nothing to chunk. `Channel.buffer` feeds the channel through the
+effect system at one `Free` step per element, so the consumer never
+falls behind and the buffer never fills.
+
+That is the same finding as `channel-send-fastpath`, one layer up:
+batch size is set by how far the PRODUCER can run ahead, and here it
+cannot, because its own per-element cost is the interpreter.
+
+So the work, if it is taken: make a per-element `Writer` step cheaper,
+or give `Channel.buffer` a chunk-native feed so the producer emits
+arrays. The second is likely the smaller change — `Channel[Chunk[A]]`
+already exists and `mergeChunked` already uses it — and it would make
+a chunked read worth having, which it is not today.
