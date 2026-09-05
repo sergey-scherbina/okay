@@ -1,0 +1,19 @@
+lane: channel-per-part-waiters
+why: Queues.strong.relaxed(parts, each) -- relaxed over BOUNDED parts
+  -- measured 111546us at 16 producers against a single ring's 3150.
+  A broken menu entry is worse than a missing one, and it is held back
+  only by a warning in its own scaladoc.
+  The cause is a mismatch, not a setting: the channel keeps ONE queue
+  of waiting senders while the resource is per part, so a consumer
+  freeing a slot in part 7 wakes an arbitrary sender, who finds its
+  own part still full and parks again. One wakeup in k is useful.
+how: the wakeup has to know WHERE room appeared. `pop`/`popMany`
+  already know which part they took from, so the buffer can report it
+  and the channel can wake a sender waiting on THAT part. That means
+  senders parked per route rather than in one list.
+  This is the fourth of one family -- isEmpty vs hasReady, size vs
+  hasRoom, the route taken on the waker's thread, and now the wakeup
+  itself -- so the shape of the fix is known: the question belongs to
+  a part, so ask it of a part.
+  Land only if measured better than the single ring at 16 producers;
+  otherwise withdraw the bounded relaxed entry and say so.
