@@ -132,6 +132,15 @@ object Deps:
 
 object ScalaScript:
 
+  /** Parent directory for a compiled script's temp workspace --
+   * defaults to the system default, but callers (tests, chiefly) can
+   * pass a private directory instead so a "no litter left behind"
+   * check watches only its own scoped tree rather than the whole
+   * machine's shared temp dir, which any concurrent process can write
+   * into (script-temp-tests-watch-a-shared-directory).
+   */
+  val defaultTempRoot: Path = Paths.get(System.getProperty("java.io.tmpdir"))
+
   private val fenceOpen = """```scala\s*""".r
   private val fenceClose = """```\s*""".r
 
@@ -423,14 +432,14 @@ object ScalaScript:
    * the right position for every block as execution reaches it -- see
    * specs/okay-script.md "Metadata as context".
    */
-  def run(markdown: String, classpath: Classpath = Classpath.ambient): Result =
+  def run(markdown: String, classpath: Classpath = Classpath.ambient, tempRoot: Path = defaultTempRoot): Result =
     resolvedClasspath(markdown, classpath).fold(identity, cp =>
       val doc = Meta.parse(markdown)
       val items = tokenize(markdown).collect { case (Segment.Code(code, startLine), path) =>
         (path, code, startLine, false)
       }
       val (body, lineMap) = withMeta(doc, items)
-      compileAndRun(body, lineMap, cp))
+      compileAndRun(body, lineMap, cp, tempRoot))
 
   /** The whole document -- prose AND code -- as one program: `${expr}`
    * markers in prose (outside ```scala fences) are evaluated and their
@@ -447,9 +456,9 @@ object ScalaScript:
    * `Page` for a compile-once-invoke-many alternative (specs/
    * okay-script.md "Hot-reload").
    */
-  def render(markdown: String, classpath: Classpath = Classpath.ambient, web: Web = Web.current): Result =
+  def render(markdown: String, classpath: Classpath = Classpath.ambient, web: Web = Web.current, tempRoot: Path = defaultTempRoot): Result =
     Web.setCurrent(web)
-    compileRender(markdown, classpath).fold(identity, c => try c.invoke() finally c.close())
+    compileRender(markdown, classpath, tempRoot).fold(identity, c => try c.invoke() finally c.close())
 
   /** `render`'s compile step, split from invocation: `Left` carries a
    * `Result` with dependency-resolution or compile errors (never
@@ -457,7 +466,7 @@ object ScalaScript:
    * repeatedly without recompiling -- the primitive `Page` (hot-reload)
    * is built on. See specs/okay-script.md "Hot-reload".
    */
-  def compileRender(markdown: String, classpath: Classpath = Classpath.ambient): Either[Result, Compiled] =
+  def compileRender(markdown: String, classpath: Classpath = Classpath.ambient, tempRoot: Path = defaultTempRoot): Either[Result, Compiled] =
     resolvedClasspath(markdown, classpath).flatMap: cp =>
       val doc = Meta.parse(markdown)
       val items = tokenize(markdown).map {
@@ -467,7 +476,7 @@ object ScalaScript:
         case (Segment.Code(code, startLine), path) => (path, code, startLine, false)
       }
       val (body, lineMap) = withMeta(doc, items)
-      compileOnly(body, lineMap, cp)
+      compileOnly(body, lineMap, cp, tempRoot)
 
   /** mdoc-style: runs the whole document once via `run`, then checks
    * every ` ```stdout ` fence's (trimmed) content appears as an
@@ -476,9 +485,9 @@ object ScalaScript:
    * a checkpoint into the compiled program itself. See
    * specs/okay-script.md "Output-comparison testing".
    */
-  def check(markdown: String, classpath: Classpath = Classpath.ambient): CheckResult =
+  def check(markdown: String, classpath: Classpath = Classpath.ambient, tempRoot: Path = defaultTempRoot): CheckResult =
     val expected = stdoutBlocks(markdown)
-    val r = run(markdown, classpath)
+    val r = run(markdown, classpath, tempRoot)
     if !r.ok then
       CheckResult(ok = false, mismatches = Vector(s"run failed before any output could be checked: ${r.errors.mkString("; ")}"), run = r)
     else
@@ -503,8 +512,8 @@ object ScalaScript:
       case Deps.Resolved.Jars(extra) =>
         Right(classpath ++ extra)
 
-  private def compileAndRun(body: String, lineMap: Vector[Int], classpath: Classpath): Result =
-    compileOnly(body, lineMap, classpath).fold(identity, c => try c.invoke() finally c.close())
+  private def compileAndRun(body: String, lineMap: Vector[Int], classpath: Classpath, tempRoot: Path): Result =
+    compileOnly(body, lineMap, classpath, tempRoot).fold(identity, c => try c.invoke() finally c.close())
 
   /** Compiles `body` (an `object OkayScriptMain: def run(args: Array[
    * String]): Unit` body -- NOT `@main`, see the `args`-encoding
@@ -514,7 +523,7 @@ object ScalaScript:
    * anything: the returned `Compiled` owns both (its `close()` deletes
    * the temp dir this creates).
    */
-  private def compileOnly(body: String, lineMap: Vector[Int], classpath: Classpath): Either[Result, Compiled] =
+  private def compileOnly(body: String, lineMap: Vector[Int], classpath: Classpath, tempRoot: Path): Either[Result, Compiled] =
     // `body`'s callers (run/render/withMeta) already build it at the
     // FINAL 4-space depth `def run(...): Unit =` needs -- do NOT
     // re-indent it here by prefixing every physical line: `body` can
@@ -534,7 +543,7 @@ object ScalaScript:
     // rest, entry for entry.
     val fullLineMap = Vector.fill(header.length)(-1) ++ lineMap
 
-    val dir = Files.createTempDirectory("okay-script-")
+    val dir = Files.createTempDirectory(tempRoot, "okay-script-")
     val srcFile = dir.resolve("OkayScriptMain.scala")
     Files.writeString(srcFile, wrapped)
     val outDir = Files.createDirectory(dir.resolve("out"))

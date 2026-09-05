@@ -104,21 +104,27 @@ class TestPage extends munit.FunSuite:
       Files.deleteIfExists(f): Unit
   }
 
+  /**
+   * Was watching the SHARED system temp directory
+   * (script-temp-tests-watch-a-shared-directory, 2026-09-04): another
+   * process's `okay-script-*` entry appearing between the two
+   * snapshots -- a sibling worktree's own okay-script tests running
+   * concurrently, say -- failed this assertion for a reason that had
+   * nothing to do with this `Page`'s own cleanup. Fixed by giving the
+   * `Page` its own private temp ROOT and snapshotting THAT, which also
+   * drops the old need to exclude the test's own `.md` source file by
+   * name -- nothing else writes into a private root.
+   */
   test("Page.close() deletes the cached compiled program's temp output directory") {
     import scala.jdk.CollectionConverters.*
-    val tmp = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))
-    // "okay-script-" prefixes BOTH the compiler's own temp dirs and
-    // this test's own source .md file (tempMd's prefix) -- snapshot
-    // strictly BEFORE creating the .md file, and exclude .md files
-    // from the filter, so the two temp-file lifecycles do not tangle.
+    val tmp = Files.createTempDirectory("okay-script-test-root-")
     def snapshot(): Set[String] =
       Files.list(tmp).iterator().asScala
-        .filter(p => p.getFileName.toString.startsWith("okay-script-") && !p.getFileName.toString.endsWith(".md"))
         .map(_.toString)
         .toSet
     val before = snapshot()
     val f = tempMd("```scala\nprintln(1)\n```\n")
-    val page = Page(f)
+    val page = Page(f, tempRoot = tmp)
     try
       page.render(): Unit
       assert(snapshot() != before, "expected a temp dir to exist while the Page holds a compiled program")
@@ -126,5 +132,6 @@ class TestPage extends munit.FunSuite:
       page.close()
       Files.deleteIfExists(f): Unit
     assertEquals(snapshot(), before)
+    Files.deleteIfExists(tmp): Unit
   }
 

@@ -112,33 +112,31 @@ class TestScalaScript extends munit.FunSuite:
   }
 
   /**
-   * OUT OF THE DEFAULT GATE (operator call, 2026-09-04,
-   * specs/integration-test-gate.md). This snapshots a SHARED namespace
-   * — every `okay-script-*` path under the system temp directory — so
-   * it fails whenever another suite in this module creates or removes
-   * one between the two snapshots, which is exactly what a parallel
-   * matrix does. Observed in a full run of 2199 tests as the only
-   * failure, with `okay-script-web-*.md` and a second `okay-script-<n>`
-   * in the diff, none of them the file under test; the suite passes
-   * 9/9 alone.
-   *
-   * Tagged rather than deleted because the property is real and worth
-   * checking; the fix is to scope the snapshot to the paths this test
-   * creates, and that belongs to whoever owns okay-script
-   * (script-temp-snapshot-crosstalk).
+   * Was watching the SHARED system temp directory (script-temp-
+   * snapshot-crosstalk / script-temp-tests-watch-a-shared-directory,
+   * 2026-09-04): any other process creating an `okay-script-*` entry
+   * between the two snapshots -- exactly what a sibling worktree's own
+   * okay-script tests do in a parallel matrix -- failed this
+   * assertion for a reason that had nothing to do with this code's own
+   * cleanup. Fixed by giving the test its own private temp ROOT
+   * (`tempRoot`, threaded through `run`/`render`/`compileRender`/
+   * `compileOnly`) and snapshotting THAT instead -- back in the
+   * default gate.
    */
-  test("run: leaves no temp file/directory behind, success or failure".tag(new munit.Tag("Live"))) {
+  test("run: leaves no temp file/directory behind, success or failure") {
     import scala.jdk.CollectionConverters.*
-    val tmp = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"))
-    def snapshot(): Set[String] =
-      java.nio.file.Files.list(tmp).iterator().asScala
-        .filter(_.getFileName.toString.startsWith("okay-script-"))
-        .map(_.toString)
-        .toSet
-    val before = snapshot()
-    ScalaScript.run("```scala\nprintln(1)\n```\n"): Unit
-    ScalaScript.run("```scala\nval x: Int = \"bad\"\n```\n"): Unit
-    ScalaScript.run("```scala\nthrow new RuntimeException(\"x\")\n```\n"): Unit
-    val after = snapshot()
-    assertEquals(after, before)
+    val tmp = java.nio.file.Files.createTempDirectory("okay-script-test-root-")
+    try
+      def snapshot(): Set[String] =
+        java.nio.file.Files.list(tmp).iterator().asScala
+          .map(_.toString)
+          .toSet
+      val before = snapshot()
+      ScalaScript.run("```scala\nprintln(1)\n```\n", tempRoot = tmp): Unit
+      ScalaScript.run("```scala\nval x: Int = \"bad\"\n```\n", tempRoot = tmp): Unit
+      ScalaScript.run("```scala\nthrow new RuntimeException(\"x\")\n```\n", tempRoot = tmp): Unit
+      val after = snapshot()
+      assertEquals(after, before)
+    finally
+      java.nio.file.Files.deleteIfExists(tmp): Unit
   }

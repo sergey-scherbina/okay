@@ -15,7 +15,7 @@ import java.nio.file.attribute.FileTime
  * Response ! Async]` wrapping `render().stdout` into a `Response`) is
  * glue code a caller writes; `Page` itself stays inside `okay-script`.
  */
-final class Page(path: Path, classpath: Classpath = Classpath.ambient):
+final class Page(path: Path, classpath: Classpath = Classpath.ambient, tempRoot: Path = ScalaScript.defaultTempRoot):
   private var cached: Option[(FileTime, Either[Result, Compiled])] = None
 
   /** Compiles on the FIRST call, or whenever `path`'s mtime has
@@ -36,7 +36,7 @@ final class Page(path: Path, classpath: Classpath = Classpath.ambient):
       case _ =>
         cached.foreach { case (_, Right(c)) => c.close(); case _ => () }
         val markdown = Files.readString(path)
-        val compiled = ScalaScript.compileRender(markdown, classpath)
+        val compiled = ScalaScript.compileRender(markdown, classpath, tempRoot)
         cached = Some(mtime -> compiled)
         invoke(compiled)
 
