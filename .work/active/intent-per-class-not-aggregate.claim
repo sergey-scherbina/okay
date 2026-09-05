@@ -1,0 +1,27 @@
+task: intent-per-class-not-aggregate
+agent: opus5-intent
+started: 2026-09-05
+branch: feature/intent-per-class-not-aggregate
+worktree: ../okay-wt-perclass
+
+why: the consumer's finding, and it lands on me. They filled a corpus
+  hole, one class grew to 137 of 184 rows, a probe leaned to the
+  majority, and "сегодня в москве шёл дождь" came back as a REQUEST at
+  0.90 — while HEADLINE ACCURACY ROSE, 95.8% to 96.2%. Accuracy on an
+  imbalanced corpus rewards predicting the biggest class, so the
+  aggregate can go UP while a class dies. A regression test caught it;
+  the average never would have.
+
+  Every aggregate this module publishes has that exposure, starting
+  with the shipped model's 76.7% in a doc comment, a module page and
+  two changelog entries.
+
+what: print per-class numbers and the class BALANCE beside every total
+  the shipped model quotes; assert the per-class floor rather than
+  only the mean, so a class dying fails a test. `Eval` already
+  computes per-class scores — this is a reporting lane, not a
+  measurement one.
+
+files: okay-intent tests (TestModels, TestSecondAuthor),
+  Models.scala doc, docs/modules/okay-intent.md,
+  specs/intent-classify.md, BACKLOG.md
