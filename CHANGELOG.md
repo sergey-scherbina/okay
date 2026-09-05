@@ -1,5 +1,56 @@
 # Changelog
 
+## intent-multi-intent-measured — the module's oldest claim, measured on both sides
+Completed: 2026-09-05
+Landed as 4087436b. `Span` has been in these types since the first
+lane and was the argument for why a flat label is not enough —
+"charged twice AND the app crashes is two spans, both to be acted on"
+— and the fixture contained no message with two intents, so the
+sentence had never met one. Twelve now do.
+
+THE SHIPPED PATH CANNOT DO IT, structurally rather than by defect:
+every tier that ships returns a single best class. All twelve got an
+answer; it matched the FIRST intent 3 times and EITHER intent 10; the
+other intent is dropped with no trace in the `Action`. The one place
+it survives is the cue tier's RUNNER-UP, which is the second gold
+intent in **5 of 12** — and `Router.Action.Act` carries a winner and
+nothing else, so a measured signal is discarded at the door.
+
+THE MODEL TIER DOES HALF OF WHAT THE TYPE PROMISES. Live against the
+local 4B, `Classify.prompt` on the same twelve:
+
+| | |
+|---|---|
+| our decoder read the answer | 12 / 12 |
+| two spans came back | **6 / 12** |
+| the right SET | 5 / 12 |
+| the right set AND order | 4 / 12 |
+| every span's text was IN the message | 12 / 12 |
+
+Half the time it collapses to one span and keeps the Request: "the
+room has moved to B2, could you tell the others?" comes back as a
+Request alone, "I will be on leave, so please reassign my reviews"
+likewise — the imperative half swallows the informative one.
+
+So the claim is not false and is much weaker than the type implies.
+The mechanism itself works — `decide` acts on two spans and stops the
+whole message when one is unsure, both tested — and the documentation
+now says multi-intent is ONE TIER's property rather than the module's.
+
+TWO FINDINGS WHILE MEASURING. Span texts are GROUNDED: every span in
+every answer was a real stretch of the message, 12/12 across two runs,
+a property worth asserting in a future decoder. And NOTHING BOUNDS THE
+SPAN COUNT — one run answered a nine-word message with TWENTY spans,
+cycling four classes five times, and did not repeat it on the second
+run. Grounding would not have caught it (the repeated texts were real
+substrings); distinctness would. Filed as `intent-span-runaway` with
+the observed shape rather than guessed at.
+
+Gate: clean compile 0 warnings; okayIntentJVM 157, okayIntentJS 9,
+okayDemo 61 — 0 failures. The live suite is `Live`-tagged and out of
+the default gate; it was run against the local gateway for these
+numbers.
+
 ## demo-warnings-zero — master had 23 warnings and the policy says none
 Completed: 2026-09-05
 Landed as 97c7d133. They arrived with `match-moves-out`: the
