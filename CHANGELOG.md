@@ -1,5 +1,58 @@
 # Changelog
 
+## intent-slavic-collision — every correction applied, and the experiment they implied did not confirm
+Completed: 2026-09-05
+Landed as 877a4e89. A native reader read all sixty Ukrainian and
+Polish rows. Every correction goes in as given: two calques their
+earlier Russian fixes had never reached, three Polish rows that
+addressed only a man, one grammatical error, two register slips.
+
+THE FIRST FINDING WAS ABOUT THE FIXTURE'S SHAPE, not any row. A
+parallel arm is a translation of one English sentence, so a bad row is
+eight bad rows, fixing one fixes an eighth, and nothing says so. Their
+rule — review a ROW, not a language — is a test now:
+`TestFixtureHygiene` flags near-twin rows within a class and language.
+It caught six pairs at once in en, de, es, ja and uk, INCLUDING ONE I
+HAD JUST CREATED — my fix for their collision finding rewrote a
+Ukrainian Request into a twin of another Ukrainian Request, and the
+guard caught it in the same run that introduced it.
+
+THE COLLISION GENERALISES PAST THE LANGUAGES THEY READ. Whole-sentence
+similarity cannot see it — the pairs they named score 0.047 and 0.121
+by trigram Jaccard — so the guard measures edit distance between
+OPENING WORDS across classes: en `would`/`could` at one edit, de
+`können`/`könnten` at one, pl `może`/`moje`, uk `може`/`моє`. Those
+are how English and German mark the distinction, so the list is a
+printed DIAGNOSTIC of where the tier is blind, not a rule a corpus
+must obey. English messages opening on a modal score 54.5% against
+63.3% for everything else — eleven rows, directional.
+
+AND THE EXPERIMENT FAILED TO CONFIRM, mine as much as theirs: fix the
+collision and the Slavic numbers should move without adding a row.
+
+| | en | fr | de | es | ru | ja | uk | pl |
+|---|---|---|---|---|---|---|---|---|
+| before | 86.7 | 53.3 | 46.7 | 40.0 | 33.3 | 40.0 | 33.3 | 46.7 |
+| after | 86.7 | 66.7 | 40.0 | 26.7 | 40.0 | 46.7 | **33.3** | **26.7** |
+
+Ukrainian unchanged, Polish thirteen points WORSE — and the languages
+I never touched scatter by the same ±13, which is the finding inside
+the finding: fifteen held-out rows makes one message 6.7 points, so
+the instrument cannot resolve an effect of the size being looked for.
+
+So the corpus-size conclusion stands with a fifth direction behind it:
+it binds the MEASUREMENT as well as the model. Their mechanism is real
+and English pays for it too; its cost cannot be measured on fifteen
+rows a language, and neither can its repair.
+
+Filed: `intent-english-corpus-twins` — the same guard found three
+near-twin pairs in `labelled`, the corpus the shipped model is fitted
+on, and fixing those moves every published number.
+
+Gate: clean compile 0 warnings; okayIntentJVM 146, okayIntentJS 9,
+okayDemo 79 — 0 failures. `okayDemo` was SIGTERMed once at load 10
+with siblings on the box, and passed alone.
+
 ## intent-split-other — measured and DECLINED: carving the bin takes its recall from 46.7% to 6.7%
 Completed: 2026-09-05
 Landed as 8e9c12ad. `intent-other-is-a-bin` closed two remedies for
