@@ -2609,3 +2609,48 @@ real second author differs in vocabulary, length, structure and the
 distribution of intents all at once. The lane that would settle it is
 still open, and it needs a corpus nobody wrote for this repository.
 
+## Results — intent-per-class-not-aggregate (2026-09-05)
+
+A consumer's finding, arriving from their own corpus rather than from
+this one: they filled a hole, one class reached 137 of 184 rows, a
+probe leaned to the majority, "сегодня в москве шёл дождь" came back
+as a REQUEST at 0.90 — and their headline accuracy ROSE, 95.8% to
+96.2%, through the regression. On an imbalanced corpus accuracy
+rewards predicting the biggest class. A regression test caught it; the
+average could not.
+
+Every aggregate this module publishes had the same exposure, starting
+with the 76.7% now in a doc comment, a module page and two changelog
+entries. `Eval` gained the three numbers that close it — `support`,
+`balance`, `majorityBaseline` on the matrix, and `worst` on the report
+— and the shipped model's tests now print per class and ASSERT rather
+than describe.
+
+**The good half.** The held-out set is 15 messages of each class, so
+the majority baseline is 25% and the 76.7% is not being carried by one
+class. That is now asserted (`majorityBaseline < 0.40`), so a fixture
+that drifts into imbalance fails a test instead of quietly inflating a
+number.
+
+**The half the aggregate was hiding.**
+
+| class | precision | recall | F1 |
+|---|---|---|---|
+| `Proposal` | 0.87 | 0.87 | 0.87 |
+| `Request` | 0.70 | 0.93 | 0.80 |
+| `Notification` | 0.75 | 0.80 | 0.77 |
+| `Other` | 0.78 | **0.47** | 0.58 |
+
+`Other` misses more than half the messages that are not about
+meetings. In production that is the worst class to be weak at:
+out-of-domain traffic is routed INTO a meeting intent rather than out
+of the way, and a caller reading 76.7% would never have guessed it.
+The cue tier, separately, is right about every `Other` it fires on
+(precision 1.00) and fires on half of them — so the recall is lost in
+the model tier, which matches what `intent-split-other` already said
+about a diffuse bin and now attaches a number to it.
+
+A per-class floor (`F1 >= 0.50`) is asserted alongside, so a class
+dying fails the suite. That is the shape of the consumer's regression
+test, in a repository whose tables report means.
+

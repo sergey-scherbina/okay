@@ -49,4 +49,55 @@ class TestModels extends munit.FunSuite {
     assertEquals(fired.size, 32)
     assertEquals(fired.count((got, gold) => got == gold), 29)
   }
+
+  // --- what the aggregate hides (intent-per-class-not-aggregate) ---
+
+  private def confusionOf(f: String => Option[String]): Eval.Confusion =
+    heldOut.foldLeft(Eval.Confusion()) { case (m, (msg, gold)) =>
+      f(msg).fold(m)(pred => m.observe(gold, pred))
+    }
+
+  test("the shipped number, per class and against the majority baseline") {
+    // A consumer's finding, and it lands on this file: they filled a
+    // corpus hole, one class reached 137 of 184 rows, and their
+    // HEADLINE ACCURACY ROSE from 95.8% to 96.2% while a class died,
+    // because accuracy on an imbalanced corpus rewards predicting the
+    // biggest one. 76.7% is an aggregate with the same exposure.
+    val m = confusionOf(msg =>
+      Patterns.classify(Models.cues, msg, floor = 0.4)
+        .orElse(CharGrams.score(Models.meeting, msg).map(_.best)))
+    val r = Eval.report(m)
+    println(f"[balance] majority baseline ${100.0 * m.majorityBaseline}%.1f%%, " +
+      m.balance.toVector.sorted.map((c, sh) => f"$c%s ${100.0 * sh}%.0f%%").mkString(", "))
+    r.perClass.toVector.sortBy(_._1).foreach { (c, sc) =>
+      println(f"[class] $c%-13s P ${sc.precision}%.2f  R ${sc.recall}%.2f  F1 ${sc.f1}%.2f  n=${m.support(c)}%2d")
+    }
+    println(f"[macro] macro F1 ${r.macroF1}%.3f, worst class ${r.worst.map(_._1).getOrElse("-")}%s")
+
+    // the corpus is close to balanced, so the aggregate is not being
+    // carried by one class — asserted, because it is the premise
+    // under which 76.7% means anything
+    assert(m.majorityBaseline < 0.40,
+      f"the majority class is ${100.0 * m.majorityBaseline}%.0f%% of held-out rows; " +
+        "an accuracy quoted over that is a claim about the biggest class")
+    // and no class may collapse, which is what a mean would hide
+    val floor = r.perClass.values.map(_.f1).min
+    assert(floor >= 0.50,
+      f"a class fell to F1 $floor%.2f (${r.worst.map(_._1).getOrElse("?")}%s) — " +
+        "the total can rise while this falls, which is the failure this asserts against")
+  }
+
+  test("the cue tier alone, per class, since it is the half that is trusted") {
+    val m = confusionOf(msg => Patterns.classify(Models.cues, msg, floor = 0.4))
+    val r = Eval.report(m)
+    r.perClass.toVector.sortBy(_._1).foreach { (c, sc) =>
+      println(f"[cues] $c%-13s P ${sc.precision}%.2f  R ${sc.recall}%.2f  F1 ${sc.f1}%.2f  n=${m.support(c)}%2d")
+    }
+    // where it fires it is trusted, so its PRECISION is the property
+    // to hold rather than its coverage
+    val worstPrecision = r.perClass.values.map(_.precision).min
+    println(f"[cues] answered ${m.total}%2d of ${heldOut.size}%2d, worst precision $worstPrecision%.2f")
+    assert(worstPrecision >= 0.70, f"a cue class dropped to precision $worstPrecision%.2f")
+  }
 }
+

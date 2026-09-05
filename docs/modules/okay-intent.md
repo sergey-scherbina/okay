@@ -94,6 +94,22 @@ wrote**, and read the table in `Models` before quoting the bigger
 number. A real second author differs in vocabulary, length and
 structure at once, so even 65% is a lower bound on the gap.
 
+**And per class, because a total hides a class.** Fifteen held-out
+messages of each class, so the majority baseline is 25% and no single
+class is carrying the number:
+
+| class | precision | recall | F1 |
+|---|---|---|---|
+| `Proposal` | 0.87 | 0.87 | 0.87 |
+| `Request` | 0.70 | 0.93 | 0.80 |
+| `Notification` | 0.75 | 0.80 | 0.77 |
+| `Other` | 0.78 | **0.47** | 0.58 |
+
+`Other` is the row to read: it misses more than half the messages that
+are not about meetings, so out-of-domain traffic lands in a meeting
+class instead of out of the way. The 76.7% never said that, and no
+aggregate would.
+
 It is fitted on 60 author-written English messages from this
 repository's fixture; it is a worked example and a fallback, not a
 general intent model, and not multilingual (a six-language fit scores

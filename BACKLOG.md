@@ -1681,7 +1681,11 @@ subtraction.
       cannot be compared against one taken under different terms. This
       is cheap, and it is the defect behind the retraction in
       intent-centroid-reconsidered rather than a nice-to-have.
-- [ ] intent-split-other — `Other` is one diffuse bin (mean pairwise
+- [ ] intent-split-other — NOW WITH A NUMBER (2026-09-05): `Other`
+      scores recall 0.47 in the shipped composite, the worst class by
+      a distance, and it is the one whose failure routes out-of-domain
+      traffic into a meeting intent. Original entry: `Other` is one
+      diffuse bin (mean pairwise
       cosine 0.55-0.645 against 0.68-0.78 for every real class) and it
       carries two thirds of the probe's lead over the centroid while
       being a quarter of the rows. Converting it to an abstention is 20
@@ -1706,7 +1710,13 @@ subtraction.
       claim rather than a call. A test that walks a whole exchange
       (classify, fill from the message, ask, answer, assume, confirm,
       act) would have caught both and is worth more than another tier.
-- [ ] intent-per-class-not-aggregate — the consumer's imbalance
+- [x] intent-per-class-not-aggregate — LANDED 2026-09-05. `Eval` got
+      `support`/`balance`/`majorityBaseline`/`worst`; the shipped
+      model's tests print per class and assert both the balance
+      (majority baseline < 0.40) and a per-class floor (F1 >= 0.50).
+      Found what the total hid: `Other` recall 0.47. Original entry
+      follows.
+- [x] intent-per-class-not-aggregate (original) — the consumer's imbalance
       finding: they filled a corpus hole, one class grew to 137 of 184
       rows, a probe leaned to the majority, and "сегодня в москве шёл
       дождь" came back as a REQUEST at 0.90 — while HEADLINE ACCURACY

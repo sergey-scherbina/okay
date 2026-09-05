@@ -31,6 +31,34 @@ object Eval {
       cells.keys.flatMap((g, p) => Seq(g, p)).toVector.distinct.sorted
     def total: Int = cells.values.sum
 
+    /** how many rows a class actually HAS — the number an average
+     * hides. A class with four rows and a class with a hundred move a
+     * mean by very different amounts, and only one of them can carry
+     * a claim. */
+    def support(gold: String): Int =
+      cells.collect { case ((g, _), n) if g == gold => n }.sum
+
+    /** each class's share of the corpus */
+    def balance: Map[String, Double] =
+      val t = total
+      if t == 0 then Map.empty
+      else classes.map(c => c -> support(c).toDouble / t).filter(_._2 > 0.0).toMap
+
+    /**
+     * What a classifier that always guesses the biggest class would
+     * score — which is the number an accuracy has to BEAT before it
+     * means anything.
+     *
+     * A consumer measured the failure this exposes: they filled a
+     * corpus hole, one class grew to 137 of 184 rows, a probe leaned
+     * to the majority, and their headline accuracy ROSE from 95.8% to
+     * 96.2% while a class died. On an imbalanced corpus accuracy
+     * rewards predicting the biggest class, and the aggregate cannot
+     * tell you that is what happened.
+     */
+    def majorityBaseline: Double =
+      if total == 0 then 0.0 else balance.values.maxOption.getOrElse(0.0)
+
   object Confusion:
     /** matrices combine cellwise. In the companion, so the implicit
      * scope of Confusion finds it without an import. */
@@ -45,6 +73,10 @@ object Eval {
 
   final case class Report(perClass: Map[String, ClassScore], macroF1: Double):
     def f1(c: String): Double = perClass.get(c).map(_.f1).getOrElse(0.0)
+
+    /** the class that is doing worst, which is the one a mean hides
+     * and the one a regression shows up in first */
+    def worst: Option[(String, ClassScore)] = perClass.minByOption(_._2.f1)
 
   /** the scores a matrix implies */
   def report(m: Confusion): Report =

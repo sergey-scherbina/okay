@@ -46,6 +46,28 @@ package okay.intent
  * which a mechanical shift does not, so even 65% is a lower bound on
  * the gap rather than a measurement of it.
  *
+ * AND PER CLASS, BECAUSE A TOTAL HIDES A CLASS. On the same 60
+ * held-out messages, 15 of each class (so the majority baseline is
+ * 25% and the aggregate is not being carried by one class):
+ *
+ *   Proposal      P 0.87  R 0.87  F1 0.87
+ *   Request       P 0.70  R 0.93  F1 0.80
+ *   Notification  P 0.75  R 0.80  F1 0.77
+ *   Other         P 0.78  R 0.47  F1 0.58
+ *
+ * `Other` is the one to read. It MISSES MORE THAN HALF the messages
+ * that are not about meetings — recall 0.47 — so out-of-domain
+ * traffic lands in a meeting class rather than out of the way, and no
+ * aggregate was ever going to say so. It is a diffuse bin by
+ * construction (`intent-split-other`), and the cue tier is right
+ * about every `Other` it fires on (P 1.00) while firing on half of
+ * them.
+ *
+ * A consumer measured why this section exists: they filled a corpus
+ * hole, one class reached 137 of 184 rows, and their headline
+ * accuracy ROSE from 95.8% to 96.2% while a class died. A test here
+ * now asserts both the balance and a per-class floor.
+ *
  * WHAT IT IS NOT: a general intent model, and not multilingual. A fit
  * over all six languages of the fixture scores 33-67% per language on
  * fifteen held-out rows each — too thin to stand behind, and it costs
