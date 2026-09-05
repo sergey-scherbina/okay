@@ -1,8 +1,0 @@
-slug: readme-docs-index-link
-agent: claude (session 0117WufMiBxApL8MwqDzA98G)
-started: 2026-09-05
-scope: operator's call — the documentation HOME page (docs/README.md, whose first
-  section is "Start here") is only linked from the last paragraph of README's
-  Documentation section, where nobody finds it. Give it a visible link at the top
-  of that section.
-files: README.md

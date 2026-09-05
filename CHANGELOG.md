@@ -1,5 +1,15 @@
 # Changelog
 
+## readme-docs-index-link — the documentation home page linked where it can be seen
+Completed: 2026-09-05
+Landed as 0fdcd57f. docs/README.md is the documentation's home page —
+its first section is the "Start here" list — but README reached it
+only through the last paragraph of the Documentation section, phrased
+as an aside about module pages, so a reader going top to bottom met
+the tables and never learned an index existed. It now opens the
+section and says what it holds; the old mention becomes a
+back-reference rather than a second link to the same place.
+
 ## readme-docs-first — the Documentation section moves to the top of README
 Completed: 2026-09-05
 Landed as 6e8f2017, on the operator's call. It sat at the very END of
