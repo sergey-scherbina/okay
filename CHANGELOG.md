@@ -1,5 +1,16 @@
 # Changelog
 
+## readme-docs-first — the Documentation section moves to the top of README
+Completed: 2026-09-05
+Landed as 6e8f2017, on the operator's call. It sat at the very END of
+README.md, after benchmarks and the upper layers, so a reader who
+wanted the guide had to scroll past everything else to learn it
+exists. It now follows the opening section directly and precedes
+Architecture — where someone arriving at the repository is actually
+looking. A pure move, nothing rewritten; one row added while there,
+the from-scratch tutorial (docs/building-a-chat-app.md) joining
+"Start here".
+
 ## intent-uk-pl-rows — two more languages, and the shipped model is measured to be English
 Completed: 2026-09-05
 Landed as 94dfe75e. Owed to a consumer who runs in Ukrainian and

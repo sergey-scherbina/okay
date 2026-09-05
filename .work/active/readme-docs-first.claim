@@ -1,7 +1,0 @@
-slug: readme-docs-first
-agent: claude (session 0117WufMiBxApL8MwqDzA98G)
-started: 2026-09-05
-scope: operator's call — README.md's Documentation section moves from the END to
-  the top, straight after the opening section and before Architecture. Adds the
-  from-scratch tutorial row to its "Start here" table while there.
-files: README.md
