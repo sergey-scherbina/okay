@@ -2074,3 +2074,41 @@ or give `Channel.buffer` a chunk-native feed so the producer emits
 arrays. The second is likely the smaller change — `Channel[Chunk[A]]`
 already exists and `mergeChunked` already uses it — and it would make
 a chunked read worth having, which it is not today.
+
+
+## feed-staged-loop — measured and declined
+
+After `feed-linear-view`, the obvious next step was to stage the feed:
+loop with `offer` while the buffer has room and build a program only
+where waiting happens, so the remaining `send` + `flatMap` per element
+would go too.
+
+Measured, it does not pay:
+
+| lane | linear view | + staged loop |
+|---|---|---|
+| chunk-native | **19.66 ±0.17** | 20.47 ±0.54 |
+| elementwise | **209.3 ±3.5** | 241.3 ±3.2 |
+
+Neutral on the chunked path and 15% WORSE on the elementwise one, and
+the reason retires the idea rather than inviting a second attempt.
+
+On the chunked path there was nothing left to stage: `feedBatched`
+already sends per CHUNK, so the whole run built sixteen node pairs,
+not two per element. The per-element traffic had already been removed
+by the linear view.
+
+On the elementwise path the consumer is slow, so the buffer is
+saturated nearly always — and then the loop costs a FAILED `offer` and
+an `Option` per element and still builds the program to park. Strictly
+more work than the plain `send` it replaced. The loop only pays while
+there is room, and there is no room.
+
+**Staging removes the building of a program; it cannot remove the
+waiting.** What is left in the feed after the linear view IS the
+parking, and that is the work the program exists to describe.
+
+If anything revives this, it is the adaptive feed (see
+`channel-per-element-effect-cost`): a producer that notices it is
+saturated and stops trying to offer. That is a different lane, driven
+by state rather than by shape.
