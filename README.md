@@ -21,6 +21,11 @@ suite runs on a JVM, under Node and as a linked native binary.
 
 ## Documentation
 
+**[The documentation index](docs/README.md)** is the home page for all
+of it — it opens with the same *Start here* list below, then the
+modules one line each, how the claims are checked, the design
+documents and the papers underneath.
+
 Start here:
 
 | | |
@@ -46,7 +51,7 @@ Per module — every satellite has its own page under
 fs2, java, spark, flink, kafka, jdbc), the text stack (lex, parse,
 codec), retrieval and agents (rag, llm, agent, mcp), the network
 (http, jetty, netty) and the distributed runtime (cluster). The
-[docs index](docs/README.md) lists them all with one-line summaries.
+index above lists them all with one-line summaries.
 
 ## Architecture
 
