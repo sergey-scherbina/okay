@@ -1148,7 +1148,7 @@ are paying for:
 
 ```scala
 val v = embedOne(message)                       // your gateway, your effect
-Centroid.classify(centroids, v, floor = 0.05)    // 90us, answers ~45%
+Centroid.classify(centroids, v, floor = 0.05)    // 1.3us, answers ~45%
   .getOrElse(askTheModel(message))              // the rest costs what it always did
 ```
 
@@ -1178,14 +1178,22 @@ Five tiers, one split, one table.
 
 | tier | accuracy over ALL | per message | dependency |
 |---|---|---|---|
-| symbolic (BM25) | 45.0% | 147µs | none |
-| patterns | 51.7% | 96µs | none |
-| kNN (k=5) | 58.3% | 158µs | `String => Embedding` |
-| centroid | 80.0% | 75µs | `String => Embedding` |
-| **linear probe** | **86.7%** | 76µs | `String => Embedding` |
+| symbolic (BM25) | 45.0% | 147µs† | none |
+| patterns | 51.7% | 96µs† | none |
+| kNN (k=5) | 58.3% | 158µs† | `String => Embedding` |
+| centroid | 80.0% | 75µs† | `String => Embedding` |
+| **linear probe** | **86.7%** | 76µs† | `String => Embedding` |
 | (model tier, for scale) | ~90% | seconds | a generation |
 
-**The probe is within a few points of the model** at 12ms plus 76µs,
+†EVERY COST IN THAT COLUMN IS WRONG BY 50-70x, and they are kept only
+because the accuracies beside them were measured in the same run.
+Each was a `System.nanoTime` around a loop inside a test — no warmup,
+no JIT accounting, one run — so what they measured was mostly the JIT.
+Under JMH (`intent-jmh-row`, 2026-09-05): patterns **1.4 ±0.1µs**,
+centroid **1.3 ±0.1**, probe **1.7 ±0.1**, character n-grams **13.7
+±0.2**, kNN **13.9 ±1.1**. Read the JMH table below, not this column.
+
+**The probe is within a few points of the model** at 12ms plus 1.7µs,
 with no generation, and it fits in 164ms on 60 examples. At margin 0.60
 it answers 65% of messages at 97.4% — ABOVE the model — which is the
 shape that makes a hand-off to a person cheap rather than embarrassing.
@@ -1246,8 +1254,10 @@ Flat across languages, which is the design working — a 4-character
 window does not know what alphabet it is in, and the English advantage
 that every embedding tier shows is simply absent. On the English
 fixture it reaches 60.0% at full coverage, above patterns (51.7%) and
-BM25 (45.0%) and far below the probe (86.7%), at 92µs per message with
-a 404ms fit.
+BM25 (45.0%) and far below the probe (86.7%). The 92µs per message
+quoted here was a cold loop in a test; under JMH it is **13.7 ±0.2µs**
+on the shipped model, and the 404ms fit is **40.1 ±0.8ms**
+(`intent-jmh-row`).
 
 (That per-message figure took a correction: the model is a lazy val and
 the first version of the timing block forced it INSIDE the loop, so a
@@ -3053,4 +3063,50 @@ would not have caught it — the repeated texts were real substrings —
 so the check that would is DISTINCTNESS: no two spans covering the
 same stretch. Filed as `intent-span-runaway` rather than guessed at
 here, with the observed shape recorded.
+
+## Results — intent-jmh-row (2026-09-05)
+
+This line quoted microseconds for every tier and each one was a
+`System.nanoTime` around a loop inside a test: no warmup, no JIT
+accounting, one run, on whatever the machine was doing. The repository
+keeps `src/jmh/history.tsv` precisely so that a performance claim
+means something, and by that standard none of these did. I had quoted
+them myself.
+
+JMH, 2 forks × (4 warmup + 6 measurement) × 1s, on a quiet box
+announced in the room first:
+
+| what a caller pays | µs/op | was quoted |
+|---|---|---|
+| cue tier, one message | **1.4 ±0.1** | 96 |
+| `Router.offline().route`, a cue answers | **1.4 ±0.0** | — |
+| `Router.offline().route`, no cue fires | **15.3 ±1.4** | — |
+| centroid score (256-dim, no embedding) | **1.3 ±0.1** | 75-90 |
+| probe score (256-dim, no embedding) | **1.7 ±0.1** | 76 |
+| character n-grams, shipped model | **13.7 ±0.2** | 92 |
+| kNN over 60 examples | **13.9 ±1.1** | 158 |
+| **load the shipped model** | **58.9 ±1.1** | never measured |
+| fit centroid, 60 rows | 64.4 ±3.9 | — |
+| fit probe, 60 rows, 50 epochs | 3 743 ±194 | — |
+| fit character n-grams, 60 rows, dim 1024 | 40 090 ±754 | 404 000 |
+
+**Fifty to seventy times.** A cold loop in a test measures the JIT and
+divides it by the iteration count; that is the whole gap, and it is
+the reason this repository has a benchmark harness at all.
+
+Two things the table would imply if left alone:
+
+- The vector tiers score a 256-dimension synthetic vector and EXCLUDE
+  the embedding call. For a real caller that call is a network hop
+  and dominates everything here, so 1.3µs is the cost of the TIER and
+  not of the answer.
+- The door has two costs — 1.4µs when a cue fires, 15.3µs when none
+  does and the model is consulted. Both are in the table because
+  quoting one would be the same half-truth this lane exists to remove.
+
+And the number nobody had ever asked for: **58.9µs to decode the
+shipped model**, which is the whole of what `Models.meeting` costs a
+startup path, once. `intent-fitted-model-ships` argued that fitting
+must leave the startup path; this is what stayed there, and it is
+nothing.
 

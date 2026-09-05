@@ -775,6 +775,11 @@ lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
       "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
     ),
   )
+  // JMH on the JVM side: this module quoted microseconds for every
+  // tier and each was a System.nanoTime around a loop in a test — not
+  // a measurement by this repository's own standard
+  // (intent-jmh-row).
+  .jvmConfigure(_.enablePlugins(JmhPlugin))
   .jvmSettings(
     // the live suites are JVM-only: they hold an HTTP connection to a
     // gateway, and the tiers themselves are portable
@@ -782,6 +787,8 @@ lazy val okayIntent = crossProject(JVMPlatform, JSPlatform)
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-cross",
+    Jmh / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "jmh" / "scala",
   )
   .jsSettings(
     // The MAIN sources cross; most of the tests do not, and this

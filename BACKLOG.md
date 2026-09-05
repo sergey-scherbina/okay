@@ -1827,7 +1827,13 @@ subtraction.
       cannot express, and the fixture contains NOT ONE message with two
       intents. The mechanism has never been exercised. Either measure
       it or stop claiming it.
-- [ ] intent-jmh-row — this line quotes microseconds everywhere (76us
+- [x] intent-jmh-row — LANDED 2026-09-05. A JMH row per tier, plus
+      the load cost nobody had ever timed. The quoted microseconds
+      were 50-70x too high because a cold loop in a test measures the
+      JIT: probe 76 -> 1.7, centroid 90 -> 1.3, chargrams 92 -> 13.7,
+      the fit 404ms -> 40.1ms. Load of the shipped model: 58.9us.
+      Original entry follows.
+- [x] intent-jmh-row (original) — this line quotes microseconds everywhere (76us
       probe, 90us centroid, 92us chargrams) and every one of them is a
       `System.nanoTime` around a loop inside a test: no warmup, no JIT
       accounting, one run. The repo keeps `src/jmh/history.tsv` for
