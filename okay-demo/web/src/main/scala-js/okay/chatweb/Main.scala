@@ -45,13 +45,13 @@ object Main {
   private var subscribed = false
 
   /** the reverse chain's delivery: once we know the user's email,
-   * hold /events open — a match arriving LATER becomes a bubble */
+   * hold /events open — a note arriving LATER becomes a bubble */
   private def subscribe(email: String): Unit =
     if !subscribed then
       subscribed = true
       val es = js.Dynamic.newInstance(g.EventSource)(s"/events/$email")
-      val _ = es.addEventListener("match", { (ev: js.Dynamic) =>
-        bus.offer(okay.ui.Event.Edited("$match",
+      val _ = es.addEventListener("note", { (ev: js.Dynamic) =>
+        bus.offer(okay.ui.Event.Edited("$note",
           js.JSON.parse(ev.data.asInstanceOf[String]).asInstanceOf[String])): Unit
       }: js.Function1[js.Dynamic, Unit])
       ()

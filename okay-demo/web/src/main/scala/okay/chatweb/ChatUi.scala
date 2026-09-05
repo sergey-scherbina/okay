@@ -31,12 +31,12 @@ object ChatUi {
 
   def view(s: State): Ui =
     Ui.Column(Vector(
-      Ui.Text("okay chat — okay-ui on React; /match wires okay-match (умею… / нужен…)",
+      Ui.Text("okay chat — okay-ui on React; \"/board добавь …\" drives the task board",
         Style(bold = true)),
       Ui.Column(s.messages.zipWithIndex.map { (m, i) =>
         val bubble = Ui.Text(m.role match
           case "user" => "you: " + m.text
-          case "match" => "🔔 " + m.text
+          case "note" => "🔔 " + m.text
           case _ => "bot: " + m.text)
         m.cut match
           case Some(rule) => Ui.Column(Vector(bubble,
@@ -56,8 +56,8 @@ object ChatUi {
       val last = s.messages.last
       (s.copy(messages = s.messages.init :+ last.copy(text = last.text + t)), Go.Stay)
     case Event.Pressed("$done") => (s.copy(busy = false), Go.Stay)
-    case Event.Edited("$match", note) =>
-      (s.copy(messages = s.messages :+ Msg("match", note)), Go.Stay)
+    case Event.Edited("$note", note) =>
+      (s.copy(messages = s.messages :+ Msg("note", note)), Go.Stay)
     case Event.Edited("$cut", rule) =>
       val last = s.messages.last
       (s.copy(busy = false,

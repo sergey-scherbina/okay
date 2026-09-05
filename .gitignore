@@ -9,6 +9,8 @@ target/
 .worktrees/
 okay-chat*.db
 okay-chat.log/
+# the demo board is a FileStore directory the demo writes at its root
+okay-board.log/
 hs_err_pid*.log
 
 # JMH -prof jfr writes its recording beside the project
