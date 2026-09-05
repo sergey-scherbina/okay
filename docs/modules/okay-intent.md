@@ -28,7 +28,7 @@ rather than a class of parsing bug.
 | `NoModel` | the assembly — stacking, and a conformal abstention whose promise is an `Option` |
 | `Fitted` | every trained model as data, so fitting leaves the startup path |
 | `Fit` | the door: fit a corpus, write the model down, read it back |
-| `Models` | a fitted model that SHIPS — 76.7% at full coverage with no network |
+| `Models` | a fitted model that SHIPS — 75.0% at full coverage with no network |
 | `Router` | the composed door: the measured tier order, and four outcomes |
 | `Rows` / `ByLanguage` | a training row knows its language; a thin language borrows the pooled fit |
 | `Temporal` | English temporal phrases to ISO-8601, total and deterministic, refusing rather than guessing |
@@ -80,18 +80,17 @@ Without it, whatever the cues miss goes to a person. For calibrated
 abstention use `NoModel`, whose threshold is conformal and comes with
 a promise.
 
-76.7% at full coverage on 60 held-out English messages over four
+75.0% at full coverage on 60 held-out English messages over four
 meeting classes — the cue tier answers the 53% it fires on at 90.6%,
 and the shipped n-gram model answers the rest at 61%.
 
-**And that 76.7% is a ceiling, not an estimate.** Those held-out
+**And that 75.0% is a ceiling, not an estimate.** Those held-out
 messages were written by the same hand as the training ones, which is
 worth about ten points: 66.7% on the half least like anything in
-training (86.7% on the near half), 66.7% with one typo in the longest
-word, 65.0% with the politeness frame removed, unchanged under
-lowercasing or a hedge. Expect **65-70% from a message somebody else
-wrote**, and read the table in `Models` before quoting the bigger
-number. A real second author differs in vocabulary, length and
+training (83.3% on the near half), 63.3% with one typo in the longest
+word, 63.3% with the politeness frame removed, unchanged under
+lowercasing. Expect **63-67% from a message somebody else wrote**, and
+read the table in `Models` before quoting the bigger number. A real second author differs in vocabulary, length and
 structure at once, so even 65% is a lower bound on the gap.
 
 **And per class, because a total hides a class.** Fifteen held-out
@@ -102,12 +101,12 @@ class is carrying the number:
 |---|---|---|---|
 | `Proposal` | 0.87 | 0.87 | 0.87 |
 | `Request` | 0.70 | 0.93 | 0.80 |
-| `Notification` | 0.75 | 0.80 | 0.77 |
-| `Other` | 0.78 | **0.47** | 0.58 |
+| `Notification` | 0.73 | 0.73 | 0.73 |
+| `Other` | 0.70 | **0.47** | 0.56 |
 
 `Other` is the row to read: it misses more than half the messages that
 are not about meetings, so out-of-domain traffic lands in a meeting
-class instead of out of the way. The 76.7% never said that, and no
+class instead of out of the way. The 75.0% never said that, and no
 aggregate would.
 
 It is fitted on 60 author-written English messages from this

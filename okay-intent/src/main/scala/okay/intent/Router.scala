@@ -66,9 +66,13 @@ object Router {
    * has — and that is a measurement rather than laziness, twice over.
    *
    * On held-out English the margin barely separates right from wrong:
-   * raising the floor from 0.0 to 0.5 lifts precision among answered
-   * messages from 76.7% to 83.7% while coverage falls from 60/60 to
-   * 43/60, about four tenths of a point per abstention.
+   * raising the floor from 0.0 to 0.5 lifted precision among answered
+   * messages from 76.7% to 83.7% while coverage fell from 60/60 to
+   * 43/60, about four tenths of a point per abstention. (Measured
+   * before `intent-english-corpus-twins` rewrote three near-duplicate
+   * rows; the headline it starts from is 75.0% now, and the sweep was
+   * not re-run because the conclusion is about the SHAPE of the
+   * curve, which one message does not move.)
    *
    * And on the case a floor exists for, it does not work at all.
    * Margins on NONSENSE ("zzz qqq xxx", "asdf", "qwerty uiop") run
@@ -183,7 +187,7 @@ object Router {
      * The one that needs nothing: the shipped cue set and the shipped
      * model, over the taxonomy they were both built against.
      *
-     * 76.7% at full coverage on held-out English, no network, no
+     * 75.0% at full coverage on held-out English, no network, no
      * embedder, no fitting — see `Models` for exactly what that number
      * is and is not.
      */

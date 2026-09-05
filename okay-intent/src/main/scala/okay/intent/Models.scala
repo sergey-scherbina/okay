@@ -25,25 +25,26 @@ package okay.intent
  *     `Notification`, `Other`
  *   - 61.7% on the 60 held-out messages ALONE, which is why it is not
  *     offered alone
- *   - 76.7% at FULL COVERAGE behind the cue tier — cues answer the
+ *   - 75.0% at FULL COVERAGE behind the cue tier — cues answer the
  *     53% they fire on at 90.6%, this answers the rest at 61%
  *
- * AND 76.7% IS A CEILING, NOT AN ESTIMATE. The held-out messages were
+ * AND 75.0% IS A CEILING, NOT AN ESTIMATE. The held-out messages were
  * written by the same hand as the training ones, on the same day, and
  * that is worth about ten points:
  *
  *   - on the half of that same held-out set LEAST like anything in
- *     training (character-trigram similarity), 66.7% against 86.7% on
+ *     training (character-trigram similarity), 66.7% against 83.3% on
  *     the near half
- *   - one deterministic typo in the longest word: 66.7%
+ *   - one deterministic typo in the longest word: 63.3%
  *   - the politeness frame removed ("Could you please send X" ->
- *     "Send X"): 65.0%
- *   - lowercasing or a hedge in front: unchanged at 76.7%
+ *     "Send X"): 63.3%
+ *   - lowercasing: unchanged; a hedge in front: 78.3%, which is one
+ *     message up and says what the resolution of sixty rows is
  *
- * So expect 65-70% from a message somebody else wrote, and treat
- * 76.7% as what this scores on prose of its own register. A real
+ * So expect 63-67% from a message somebody else wrote, and treat
+ * 75.0% as what this scores on prose of its own register. A real
  * second author differs in vocabulary, length and structure at once,
- * which a mechanical shift does not, so even 65% is a lower bound on
+ * which a mechanical shift does not, so even 63% is a lower bound on
  * the gap rather than a measurement of it.
  *
  * AND PER CLASS, BECAUSE A TOTAL HIDES A CLASS. On the same 60
@@ -52,8 +53,8 @@ package okay.intent
  *
  *   Proposal      P 0.87  R 0.87  F1 0.87
  *   Request       P 0.70  R 0.93  F1 0.80
- *   Notification  P 0.75  R 0.80  F1 0.77
- *   Other         P 0.78  R 0.47  F1 0.58
+ *   Notification  P 0.73  R 0.73  F1 0.73
+ *   Other         P 0.70  R 0.47  F1 0.56
  *
  * `Other` is the one to read. It MISSES MORE THAN HALF the messages
  * that are not about meetings — recall 0.47 — so out-of-domain

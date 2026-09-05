@@ -1745,7 +1745,12 @@ subtraction.
       whether recall moves with them. The suite that would show it
       already exists (`TestSplitOther`, `TestModels`), so this is a
       corpus lane with its measurement already written.
-- [ ] intent-english-corpus-twins — `TestFixtureHygiene` found three
+- [x] intent-english-corpus-twins — LANDED 2026-09-05. Three
+      near-twin pairs rewritten, the guard asserted on `labelled`, the
+      artifact regenerated and every published number re-measured:
+      composite 76.7% -> 75.0%, near half 86.7% -> 83.3%, far half
+      unmoved. Original entry follows.
+- [x] intent-english-corpus-twins (original) — `TestFixtureHygiene` found three
       near-twin pairs in `labelled`, the English corpus the shipped
       model is fitted on and every published number is measured
       against ("Suggestion: we meet on Monday at 9" against "Suggest

@@ -113,7 +113,7 @@ class TestSecondAuthor extends munit.FunSuite {
 
   test("the shipped number is what the shipped door delivers") {
     val (right, _) = score(held)
-    assertEquals(right, 46, "the doc comment's 76.7% is this")
+    assertEquals(right, 45, "the doc comment's 75.0% is this")
   }
 
   test("and it does not survive a shift of register unchanged") {

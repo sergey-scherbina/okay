@@ -237,7 +237,7 @@ object IntentFixture {
     "Happy to walk you through it live if that is easier - say Friday?" -> "Proposal",  // hedged
     "Any chance of moving our call an hour later?" -> "Proposal",  // hedged, overlaps Request
     "Suggestion: we meet on Monday at 9." -> "Proposal",
-    "Suggest we cancel Monday and meet Wednesday instead." -> "Proposal",  // cancel + propose
+    "Rather than Monday, would Wednesday suit everyone better?" -> "Proposal",  // cancel + propose
     "Perhaps a short sync before the board meeting would help." -> "Proposal",  // very indirect
     "I can do Tuesday or Thursday afternoon, whichever suits you." -> "Proposal",  // offering slots
     "Should we bring the customer call forward to this week?" -> "Proposal",
@@ -269,7 +269,7 @@ object IntentFixture {
     "Could you check whether the room has a working camera?" -> "Request",
     "I would appreciate the slides in advance this time." -> "Request",  // indirect
     "Any chance you could take the minutes on Thursday?" -> "Request",  // hedged, overlaps Proposal
-    "Kindly send me the agenda." -> "Request",
+    "I still do not have the agenda — could you forward it?" -> "Request",
     "Please decline the meeting on my behalf if I am not needed." -> "Request",
     "Can you set up the call with their procurement team?" -> "Request",
     "Could you dial in five minutes early to test the audio?" -> "Request",
@@ -308,7 +308,7 @@ object IntentFixture {
     "The project channel has moved, links in the old one still work." -> "Notification",
     "We reached quorum, so the vote stands." -> "Notification",
     "Minutes from the last meeting are attached." -> "Notification",  // attachment, no ask
-    "The meeting has moved to the other building." -> "Notification",
+    "We are in the annexe today, not the usual place." -> "Notification",
     "Catering will be provided, so no need to bring lunch." -> "Notification",
     "The room is double-booked but we have the priority claim." -> "Notification",
     "For transparency: the decision was taken without a meeting." -> "Notification",

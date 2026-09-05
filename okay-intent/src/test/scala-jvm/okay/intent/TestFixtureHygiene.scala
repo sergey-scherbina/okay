@@ -72,11 +72,11 @@ class TestFixtureHygiene extends munit.FunSuite {
   }
 
   test("the English corpus every number is measured on, checked the same way") {
-    // `labelled` is what the shipped model is fitted on and what
-    // 76.7% is measured against, and the twin rule had never been
-    // pointed at it. Reported rather than fixed here: changing this
-    // corpus moves every published number, which is its own lane with
-    // its own re-publish.
+    // `labelled` is what the shipped model is fitted on and what the
+    // headline number is measured against, and the twin rule had
+    // never been pointed at it. It found three pairs; they were
+    // rewritten and the numbers re-published
+    // (intent-english-corpus-twins).
     val rows = IntentFixture.labelled
     val twins = for
       (a, i) <- rows.zipWithIndex
@@ -84,7 +84,10 @@ class TestFixtureHygiene extends munit.FunSuite {
       if i < j && a._2 == b._2 && similarity(a._1, b._1) >= 0.30
     yield f"${similarity(a._1, b._1)}%.2f  [${a._2}] ${a._1}  ||  ${b._1}"
     twins.foreach(t => println(s"[en-twin] $t"))
-    println(s"[en-twin] ${twins.size} near-twin pairs in the English corpus")
+    // ASSERTED since intent-english-corpus-twins: this is the corpus
+    // the shipped model is fitted on, so a template twin here is a
+    // twin in everything measured downstream of it
+    assert(twins.isEmpty, s"${twins.size} near-twin pairs in the English corpus")
   }
 
   test("no two rows of the same class in one language are built from one template") {

@@ -2929,3 +2929,65 @@ door. What changes is that the check is now possible one level down,
 where the tier itself knows what it was fitted against, and that the
 one place a mismatch could still go unnoticed is closed.
 
+## Results — intent-english-corpus-twins (2026-09-05)
+
+The twin guard, pointed at the corpus it had not been pointed at:
+`labelled`, which the shipped model is fitted on and against which
+every number this module publishes is measured. It found three pairs.
+
+    [Proposal]     "Suggestion: we meet on Monday at 9."
+                || "Suggest we cancel Monday and meet Wednesday instead."
+    [Request]      "Send me the agenda when you get a chance."
+                || "Kindly send me the agenda."
+    [Notification] "FYI the meeting room has been changed to B2."
+                || "The meeting has moved to the other building."
+
+Each second member is rewritten to say the same thing a different way,
+and the guard is an ASSERTION on `labelled` now rather than a report.
+
+### What it cost, which is the point of the lane
+
+| | before | after |
+|---|---|---|
+| composite, held-out English | 76.7% | **75.0%** |
+| model alone | 61.7% | 61.7% |
+| macro F1 | 0.756 | 0.740 |
+| `Notification` F1 | 0.77 | 0.73 |
+| `Other` F1 | 0.58 | 0.56 |
+| near half of held-out | 86.7% | 83.3% |
+| far half | 66.7% | 66.7% |
+| one typo | 66.7% | 63.3% |
+| politeness removed | 65.0% | 63.3% |
+
+The headline drops 1.7 points — ONE MESSAGE — and every place it was
+quoted is corrected: the `Models` doc comment, the module page, the
+`Router` doc, and the two tests that assert it. The old number was
+very slightly inflated by template redundancy, which is the direction
+the theory predicts, and one message is not evidence for the size of
+the effect, only for its sign.
+
+The NEAR half fell (86.7 to 83.3) and the FAR half did not move at
+all. That is the shape a duplicate-removal should have: the messages
+that were scoring well because something like them was in training are
+the ones that lose.
+
+"Expect 63-67% from a message somebody else wrote" replaces "65-70%"
+wherever it was published.
+
+### A number that went UP, and is not evidence of anything
+
+Under the "hedge in front" shift the composite now reads 78.3% —
+higher than the unshifted 75.0%. That is one message, in the
+direction that makes no sense, and it is the clearest statement
+available of what sixty rows can resolve: ±1.7 points is the
+instrument's floor, and every difference smaller than that in this
+spec should be read as zero.
+
+### What is superseded
+
+`intent-fitted-model-ships`, `intent-one-entry-point`,
+`intent-per-class-not-aggregate` and `intent-second-author` quote the
+old numbers. They are correct for the corpus they were measured on and
+the changelog entry for this lane names them; nothing was quietly
+edited in the history.
+
