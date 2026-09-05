@@ -1,0 +1,22 @@
+claimed: match-moves-out — okay-match leaves the public library, at the
+operator's decision: the matching marketplace is a commercial product
+and not part of what this repository offers.
+
+TOUCHING build.sbt, which this repo flags for coordination, and
+REMOVING modules. okay-match (15 files) goes; okay-demo loses ChatDemo,
+TwoNode and TestChatDemo, which are demos OF the marketplace; and the
+two single-test modules okay-demo-e2e-browser and okay-demo-embed go
+whole, since each contains nothing but a chat-demo test.
+
+Nothing else in the library imports okay.matching -- checked rather
+than assumed. okay-demo keeps Combine, DemoDeploy, IndexReport,
+IntentRouter, Login, RepoAgent, RepoMcp and StateMcp, none of which
+touch it.
+
+Documentation: docs/modules/okay-match.md and specs/match.md go, and
+the mentions in twelve other files are removed. The module dependencies
+stay public and unchanged -- okay-rag, okay-agent, okay-sql and
+okay-persist keep every other caller they have.
+
+The code is moved WITH ITS HISTORY into the private repository first
+and verified building there, before anything is deleted here.
