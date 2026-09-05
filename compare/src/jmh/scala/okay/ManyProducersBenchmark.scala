@@ -1,6 +1,7 @@
 package okay
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
+import cats.effect.IO
 import java.util.concurrent.TimeUnit
 
 /**
@@ -87,6 +88,19 @@ class ManyProducersBenchmark {
   @Benchmark def relaxedUnbounded_chunk(): Long =
     runChunked(Queues.strong[Long].relaxedUnbounded(parts = producers).build)
 
+  /**
+   * The whole point of this benchmark, now that the table above shows
+   * the answer depends on the producer count: a buffer that decides
+   * for itself. It must be no worse than one ring at a single
+   * producer and close to the relaxed lane at sixteen, or it is not
+   * worth having.
+   */
+  @Benchmark def adaptive_chunk(): Long =
+    runChunked(Queues.strong[Long].adaptive.parts(16).bounded(Cap).build)
+
+  @Benchmark def adaptiveUnbounded_chunk(): Long =
+    runChunked(Queues.strong[Long].adaptive.parts(16).unbounded.build)
+
   // ── DIAGNOSTIC: the same, read one element at a time. Kept because
   //    what it measures is real, but zio has no per-element read of a
   //    queue to put beside it ────────────────────────────────────────
@@ -114,6 +128,46 @@ class ManyProducersBenchmark {
 
   /** and one growable buffer, so the comparison is like for like */
   @Benchmark def oneUnbounded_elem(): Long = run(Queues.strong[Long].unbounded.build)
+
+  /**
+   * cats-effect + fs2, the third comparison: a bounded queue with a
+   * None sentinel — which is how fs2 spells a terminated queue — read
+   * by `fromQueueNoneTerminated`, whose `limit` makes it take a chunk
+   * at a time rather than an element. Same shape as the zio lane, and
+   * the same granularity as the okay `_chunk` lanes.
+   */
+  @Benchmark
+  def catsQueue_chunk(): Long =
+    import cats.effect.IO, cats.effect.unsafe.implicits.global
+    val per = Total / producers
+    // the consumer must run CONCURRENTLY with the producers: joining
+    // them first deadlocks on a bounded queue with nobody draining,
+    // which is what the first version of this lane did to itself
+    val prog = for
+      q <- cats.effect.std.Queue.bounded[IO, Option[Long]](Cap)
+      // a Stream, NOT foldLeft over IO: the fold builds a left-nested
+      // chain of `per` effects before anything runs, which is a shape
+      // this repository has already been burned by once (see the kyo
+      // note in benchmarks.md) and would price cats unfairly
+      fs <- (0 until producers).toList.traverseFibers(w =>
+              fs2.Stream.range(0L, per.toLong)
+                .evalMap(i => q.offer(Some(w.toLong * per + i)))
+                .compile.drain)
+      _ <- (fs.traverse_(_.join) *> q.offer(None)).start
+      s <- fs2.Stream.fromQueueNoneTerminated(q, limit = 4096)
+             .compile.fold(0L)(_ + _)
+    yield s
+    prog.unsafeRunSync()
+
+  extension [A](xs: List[A])
+    private def traverseFibers(f: A => IO[Unit]): IO[List[cats.effect.FiberIO[Unit]]] =
+      xs.foldLeft(IO.pure(List.empty[cats.effect.FiberIO[Unit]])) { (acc, a) =>
+        acc.flatMap(l => f(a).start.map(_ :: l))
+      }
+
+  extension [A](xs: List[A])
+    private def traverse_(f: A => IO[Any]): IO[Unit] =
+      xs.foldLeft(IO.unit)((acc, a) => acc *> f(a).void)
 
   /** their queue, for scale */
   @Benchmark

@@ -1,5 +1,61 @@
 # Changelog
 
+## adaptive-parts — a buffer that picks its own part count
+
+`AdaptiveFifo`: parts appear as producers do, up to a cap, reachable
+as `Queues.strong[A].adaptive.bounded(n)` / `.adaptive.unbounded` /
+`.adaptive.parts(k)...`. Nothing existing changes; `Channel.apply`
+still gives a plain ring.
+
+| producers | plain ring | adaptive, bounded | adaptive, growable |
+|---|---|---|---|
+| 1 | **116.8** | 138.8 | 168.1 |
+| 4 | 731.2 | 120.2 | **93.0** |
+| 16 | 3048.4 | 86.3 | **79.6** |
+
+**19% at one producer, 38x at sixteen** — and past the hand-tuned
+`relaxedUnbounded` at the wide end, which is the part that justifies
+it: the automatic choice beats the manual one where the manual one
+has to guess.
+
+NOTHING MIGRATES, which is the design rather than a detail. The
+obvious version — notice contention, move to a partitioned buffer —
+must relocate what is already buffered, a stop-the-world moment inside
+a lock-free structure. Here a new producer gets a NEW part, empty.
+
+**The 19% is the price of partitioning, not of adapting.** Hand-tuned
+`relaxedUnbounded` measured 151.8 at one producer against the adaptive
+145.8 in the same run. So there is no version that is free at one and
+fast at sixteen, and this is deliberately not the default: one
+producer is the common case.
+
+Three defects found by measurement, each worth its own line:
+
+**`parts` is what exists NOW, not what will exist.** The channel sized
+its per-part sender queues from `buf.parts` at construction — one, for
+an adaptive buffer — so every producer shared a queue and yesterday's
+per-part wakeup silently degraded into the single-queue behaviour it
+replaced: **86876us at sixteen producers**. `Buffer.maxParts` is the
+upper bound anything sized once must use. Fifth defect of one family,
+and the first where the error was in WHEN the question was asked.
+
+**`bounded(n)` cannot be a total here**, because a part's ring is
+fixed when the part opens and the part count is the unknown. Dividing
+by the cap gave a lone producer a sixteenth of its buffer: 969.8
+against 113.9.
+
+**A `Vector` behind an `AtomicReference` was on the hot path**, read
+and indexed on every push and pop where a plain ring reads a field.
+Replaced by a pre-sized `AtomicReferenceArray` with nulls for unopened
+parts: 110.9 → 88.3 at sixteen. My structural guess was right in
+direction and wrong in place — I expected it to hurt the narrow case
+and it hurt the wide one.
+
+Plus a single-part fast path — no cursor, no loop, no scan — which
+took the one-producer overhead from 30% to 19%.
+
+Gate 557.
+
 ## demo-warnings-zero — master had 23 warnings and the policy says none
 Completed: 2026-09-05
 Landed as 97c7d133. They arrived with `match-moves-out`: the

@@ -42,6 +42,10 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     // of the tier split: what it gives up is the order BETWEEN
     // producers, and no law states that. Drain-on-close it still
     // owes, and keeps only because close seals every part
+    // the adaptive one answers for every law too: it may choose its
+    // part count freely, and no law it must keep depends on that
+    ("SentinelChannel/adaptive", true,
+      cap => Queues.strong[Int].adaptive.parts(4).bounded(math.max(8, cap)).build),
     ("SentinelChannel/relaxed", true,
       cap => Queues.strong[Int].relaxed(parts = 4, each = math.max(2, cap)).build),
     ("AbruptChannel", false, cap => AbruptChannel[Int](cap)),

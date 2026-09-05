@@ -375,3 +375,10 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-05	buffer-chunked-feed	IdiomaticApiBenchmark	okayChannelForeach_chunkNative_runForeach	90.380	us/op	N=4000 cap=64 size=256 f=2 i=6	bufferChunked + drained: 264.5 -> 90.4, and 1.5x PAST zio -- the last gap in the idiomatic table closes
 2026-09-05	buffer-chunked-feed	IdiomaticApiBenchmark	zioChannelForeach_chunk_runForeach	135.626	us/op	N=4000 cap=64 size=256 f=2 i=6	control, same run
 2026-09-05	buffer-chunked-feed	IdiomaticApiBenchmark	okayChannelForeach_elem_runForeach	324.103	us/op	N=4000 cap=64 size=256 f=2 i=6	diagnostic: per-element on both sides, no batch to amortise (measured 1.67 elements)
+2026-09-05	adaptive-parts	ManyProducersBenchmark	adaptive_chunk/1	138.836	us/op	Total=8000 chunked consumer f=4 i=6	adaptive.bounded at one producer: 19% over a plain ring (116.8) after the single-part fast path, from 30%
+2026-09-05	adaptive-parts	ManyProducersBenchmark	adaptive_chunk/4	120.200	us/op	Total=8000 chunked consumer f=4 i=6	and 6.1x under the ring at four
+2026-09-05	adaptive-parts	ManyProducersBenchmark	adaptive_chunk/16	86.347	us/op	Total=8000 chunked consumer f=4 i=6	35x under the ring at sixteen
+2026-09-05	adaptive-parts	ManyProducersBenchmark	adaptiveUnbounded_chunk/4	92.958	us/op	Total=8000 chunked consumer f=4 i=6	the fastest lane at four
+2026-09-05	adaptive-parts	ManyProducersBenchmark	adaptiveUnbounded_chunk/16	79.621	us/op	Total=8000 chunked consumer f=4 i=6	38x under the ring at sixteen, and past the hand-tuned relaxed lane
+2026-09-05	adaptive-parts	ManyProducersBenchmark	oneRing_chunk/1	116.750	us/op	Total=8000 chunked consumer f=4 i=6	control: the plain ring, best at one producer
+2026-09-05	adaptive-parts	ManyProducersBenchmark	oneRing_chunk/16	3048.429	us/op	Total=8000 chunked consumer f=4 i=6	control

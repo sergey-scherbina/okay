@@ -301,6 +301,57 @@ sides, the fastest okay lane leads at every width — 2.7x, 6.6x, 19.6x
 — and the elementwise lanes remain as diagnostics, because `zio.Queue`
 has no per-element read of a queue to place beside them.
 
+### `AdaptiveFifo` — parts that appear as producers do
+
+The table above says the right buffer depends on the producer count,
+and a caller usually does not know that number where the channel is
+made. This one decides by watching: the first producer gets a part,
+the second a second, up to a cap. **Nothing ever migrates** — a new
+producer gets a NEW part, empty, and every element stays where it was
+written, which keeps the whole design clear of the stop-the-world
+problem a "detect contention and move" version would have inside a
+lock-free structure.
+
+| producers | plain ring | adaptive, bounded | adaptive, growable |
+|---|---|---|---|
+| 1 | **116.8** | 138.8 | 168.1 |
+| 4 | 731.2 | 120.2 | **93.0** |
+| 16 | 3048.4 | 86.3 | **79.6** |
+
+**It costs 19% at one producer and is 38x better at sixteen.** That is
+the trade, stated plainly, and it is why this is NOT the default:
+`Channel.apply` still gives a plain ring, because one producer is the
+common case and paying a fifth of it for readiness you may never need
+is a bad default. Reach for `adaptive` when the producer count is
+unknown or varies with load.
+
+**The 19% is the price of PARTITIONING, not of adapting.** A
+hand-tuned `relaxedUnbounded` measured 151.8 at one producer against
+the adaptive 145.8 in the same run — the same cost. Splitting a buffer
+into parts costs a route lookup, an indirection and a scan; deciding
+the part count automatically costs nothing on top. Which also means
+there is no version of this that is free at one producer and fast at
+sixteen: the choice is partitioned or not.
+
+```scala
+Queues.strong[Int].adaptive.bounded(1024).build   // capacity PER PART
+Queues.strong[Int].adaptive.unbounded.build
+Queues.strong[Int].adaptive.parts(4).bounded(256).build
+```
+
+`bounded(n)` counts per part here, unlike the plain `bounded(n)`, and
+that is forced rather than chosen: a part's ring is fixed when the
+part opens, and how many parts there will be is exactly what this does
+not know yet. Dividing a total by the cap gave a lone producer a
+sixteenth of what it asked for and parked it constantly — 969.8us
+against a plain ring's 113.9.
+
+**What it may decide, and why it is allowed to.** The laws promise
+each producer's own order, no loss and no duplication, and say nothing
+about the order BETWEEN producers. This trades exactly that silence.
+If your consumer relies on how two producers interleave, do not use
+it — nothing ever promised you that, but it may have happened to hold.
+
 ### `ListFifo` and `ArrayFifo` — persistent, for the composable channel
 
 Only `Queues.composable` uses these, because only it needs a buffer
