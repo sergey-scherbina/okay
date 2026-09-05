@@ -375,8 +375,18 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-05	buffer-chunked-feed	IdiomaticApiBenchmark	okayChannelForeach_chunkNative_runForeach	90.380	us/op	N=4000 cap=64 size=256 f=2 i=6	bufferChunked + drained: 264.5 -> 90.4, and 1.5x PAST zio -- the last gap in the idiomatic table closes
 2026-09-05	buffer-chunked-feed	IdiomaticApiBenchmark	zioChannelForeach_chunk_runForeach	135.626	us/op	N=4000 cap=64 size=256 f=2 i=6	control, same run
 2026-09-05	buffer-chunked-feed	IdiomaticApiBenchmark	okayChannelForeach_elem_runForeach	324.103	us/op	N=4000 cap=64 size=256 f=2 i=6	diagnostic: per-element on both sides, no batch to amortise (measured 1.67 elements)
+<<<<<<< HEAD
 2026-09-05	974b279b	3.5	intent-tier-latency	1400	96000	0.01	ns/op x1000 — cue tier one message, JMH 1.4 +/- 0.1us against the 96us this spec quoted from a System.nanoTime loop in a test. 50-70x, and the gap is the JIT the cold loop was measuring
 2026-09-05	974b279b	3.5	intent-router-offline	1400	15300	0.09	ns/op x1000 — Router.offline().route: 1.4 +/- 0.0us when a cue answers, 15.3 +/- 1.4us when none fires and the model is consulted. Both rows kept; the door has two costs
 2026-09-05	974b279b	3.5	intent-chargrams-score	13700	92000	0.15	ns/op x1000 — character n-grams on the shipped model, JMH 13.7 +/- 0.2us against 92us quoted
 2026-09-05	974b279b	3.5	intent-model-load	58900	0	0.00	ns/op x1000 — decoding the shipped model, 58.9 +/- 1.1us. NEVER MEASURED BEFORE: this is the whole cost Models.meeting puts on a startup path, once
 2026-09-05	974b279b	3.5	intent-fit-chargrams	40090000	404000000	0.10	ns/op — fitting character n-grams on 60 rows at dim 1024, JMH 40.1 +/- 0.8ms against the 404ms quoted from a test loop
+=======
+2026-09-05	adaptive-parts	ManyProducersBenchmark	adaptive_chunk/1	138.836	us/op	Total=8000 chunked consumer f=4 i=6	adaptive.bounded at one producer: 19% over a plain ring (116.8) after the single-part fast path, from 30%
+2026-09-05	adaptive-parts	ManyProducersBenchmark	adaptive_chunk/4	120.200	us/op	Total=8000 chunked consumer f=4 i=6	and 6.1x under the ring at four
+2026-09-05	adaptive-parts	ManyProducersBenchmark	adaptive_chunk/16	86.347	us/op	Total=8000 chunked consumer f=4 i=6	35x under the ring at sixteen
+2026-09-05	adaptive-parts	ManyProducersBenchmark	adaptiveUnbounded_chunk/4	92.958	us/op	Total=8000 chunked consumer f=4 i=6	the fastest lane at four
+2026-09-05	adaptive-parts	ManyProducersBenchmark	adaptiveUnbounded_chunk/16	79.621	us/op	Total=8000 chunked consumer f=4 i=6	38x under the ring at sixteen, and past the hand-tuned relaxed lane
+2026-09-05	adaptive-parts	ManyProducersBenchmark	oneRing_chunk/1	116.750	us/op	Total=8000 chunked consumer f=4 i=6	control: the plain ring, best at one producer
+2026-09-05	adaptive-parts	ManyProducersBenchmark	oneRing_chunk/16	3048.429	us/op	Total=8000 chunked consumer f=4 i=6	control
+>>>>>>> feature/adaptive-parts

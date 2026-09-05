@@ -55,6 +55,8 @@ final class MultiFifo[A](requested: Int, make: Int => Buffer[A]) extends Buffer[
 
   override def parts: Int = n
 
+  override def maxParts: Int = n
+
   override def push(a: A): Boolean = part(mine.get.intValue).push(a)
 
   override def pushDeciding(a: A, unless: AtomicBoolean, orElse: A): A | Null =

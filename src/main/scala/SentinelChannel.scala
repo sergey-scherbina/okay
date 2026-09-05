@@ -74,7 +74,10 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
    * the ordinary path changes.
    */
   private val senders: Array[AtomicReference[List[Waiter]]] =
-    Array.fill(if buf.parts < 1 then 1 else buf.parts)(AtomicReference[List[Waiter]](Nil))
+    // sized by maxParts, NOT parts: an adaptive buffer starts with one
+    // part and grows, so sizing from the current count would give
+    // every producer the same queue and undo the per-part wakeup
+    Array.fill(if buf.maxParts < 1 then 1 else buf.maxParts)(AtomicReference[List[Waiter]](Nil))
 
   private def sendersAt(route: Int): AtomicReference[List[Waiter]] =
     senders(if senders.length == 1 then 0 else Math.floorMod(route, senders.length))
