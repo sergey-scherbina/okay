@@ -68,11 +68,20 @@ package okay.intent
  * accuracy ROSE from 95.8% to 96.2% while a class died. A test here
  * now asserts both the balance and a per-class floor.
  *
- * WHAT IT IS NOT: a general intent model, and not multilingual. A fit
- * over all six languages of the fixture scores 33-67% per language on
- * fifteen held-out rows each — too thin to stand behind, and it costs
- * English three points to buy. `intent-language-fixture-growth` is the
- * lane that would change that.
+ * WHAT IT IS NOT: a general intent model, and NOT MULTILINGUAL — a
+ * measured statement now rather than a caution. On the parallel
+ * fixture's other seven languages this artifact scores 23-30%, which
+ * is chance for four classes, and the cue tier fires on NONE of them
+ * because its cues are English phrases. Passing a French or Ukrainian
+ * message to `Router.offline()` is a coin flip with a confident face.
+ *
+ * Fitting the same tier on all eight languages does not rescue it
+ * either: 33-53% per language on fifteen held-out rows each, with at
+ * least one class at F1 0.00 in every non-English language.
+ * `CharGrams` is language-agnostic BY CONSTRUCTION and that is true —
+ * what is not true is that the construction is enough. It needs rows,
+ * and fifteen a language is not rows.
+ * `intent-language-fixture-growth` is the lane.
  *
  * For a caller's own corpus: `Fit.grams(rows)`, `Fit.save`,
  * `Fit.grams(json)`. This object is what that path produces, run once

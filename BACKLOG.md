@@ -1596,7 +1596,12 @@ rather than on every pop, which is the same idea as
       table), and `model2vec`'s PCA step to cut 1024 dimensions to
       256 — 1303 units already cost 5.2MB as float32, and a production
       vocabulary of 30k would be 120MB.
-- [ ] intent-language-fixture-growth — the per-language arms train on
+- [ ] intent-language-fixture-growth — SHARPER NOW (2026-09-05): the
+      fixture is eight languages wide (uk and pl added) and every
+      non-English language has at least one class at F1 0.00 when
+      fitted on fifteen rows of it. The construction is
+      language-agnostic; the DATA is what is missing. Original entry:
+      the per-language arms train on
       FIFTEEN examples each, where the learning curve put the probe's
       stabilisation at about thirty-two, and the numbers swing from
       46.7% to 86.7% accordingly. No per-language claim about

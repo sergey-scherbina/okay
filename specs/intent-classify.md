@@ -2654,3 +2654,64 @@ A per-class floor (`F1 >= 0.50`) is asserted alongside, so a class
 dying fails the suite. That is the shape of the consumer's regression
 test, in a repository whose tables report means.
 
+## Results — intent-uk-pl-rows (2026-09-05)
+
+Ukrainian and Polish, owed to a consumer who runs in both and asked
+twice. Thirty parallel meanings each, so the fixture is eight
+languages wide.
+
+**Stated first, because it is the same disease this repository
+measured yesterday: these rows are MY writing.** A native speaker
+should read them before anything is claimed from them. What makes them
+worth adding anyway is that a fixture row is CORRECTABLE — the
+consumer speaks both languages and can fix a wording — and that the
+numbers below are diagnostic even where the prose is imperfect. The
+suite prints every Slavic row the tier gets wrong, so the first thing
+a native reader sees is the list to check.
+
+### The shipped model is English, and now it is measured rather than said
+
+| language | shipped model | cue tier fired on |
+|---|---|---|
+| en | 76.7% | 24 of 30 |
+| fr | 26.7% | 0 |
+| de | 30.0% | 0 |
+| es | 23.3% | 0 |
+| ru | 30.0% | 0 |
+| ja | 23.3% | 0 |
+| uk | 26.7% | 0 |
+| pl | 26.7% | 0 |
+
+Four classes, so 25% is chance. Everything but English is AT chance,
+and the cue tier — the half that carries the composite — fires zero
+times outside English because its cues are English phrases. Passing a
+Ukrainian message to `Router.offline()` is a coin flip with a
+confident face, and `Models` now says so in those words.
+
+### Fitting on all eight does not rescue it either
+
+Fifteen held-out rows per language, trained on the other fifteen plus
+the English corpus:
+
+| en | pl | fr | de | es | ja | ru | uk |
+|---|---|---|---|---|---|---|---|
+| 86.7% | 46.7% | 53.3% | 46.7% | 40.0% | 40.0% | 33.3% | 33.3% |
+
+And in EVERY non-English language at least one class scores F1 0.00 —
+a class the tier never once produces. `CharGrams` is language-agnostic
+by construction, which is true and is not enough: the construction is
+free, the rows are not, and fifteen a language is not rows.
+
+Polish (46.7%) over Ukrainian (33.3%) is fifteen rows against fifteen
+rows and should not be read as Latin script beating Cyrillic. It is
+noise until somebody grows the corpus, which is
+`intent-language-fixture-growth`.
+
+### What a consumer gets out of this
+
+Two languages they can correct, a printed list of the eighteen Slavic
+rows the tier currently misreads, and a number that says plainly: do
+not ship the English artifact into a Ukrainian or Polish product. Fit
+your own with `Fit.grams(rows)` — the door exists precisely because
+this one cannot be the answer.
+
