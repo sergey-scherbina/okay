@@ -692,4 +692,77 @@ object IntentFixture {
     parallel.flatMap(p => p.byLang.get(lang).map(_ -> p.label))
 
   val classes: List[String] = List("Proposal", "Request", "Notification", "Other")
+
+  /**
+   * `Other`, split into three groups that are individually coherent
+   * — a DERIVED VIEW, not a relabel (intent-split-other).
+   *
+   * `intent-other-is-a-bin` established that `Other` is one
+   * incoherent cloud rather than two clusters, that abstaining
+   * instead of learning it costs twenty points, and that what remains
+   * is to give its members NAMES they can be learned under. These are
+   * those names, and the canonical labels above are untouched so that
+   * every number this repository has published stays comparable.
+   *
+   * Social: a pleasantry or personal news, no action wanted.
+   * Support: something is wrong with a product or a service.
+   * Errand: a request or question that is real but out of domain.
+   */
+  val otherGroup: Map[String, String] = Map(
+    "Happy birthday! Hope you have a great day." -> "Social",
+    "Thanks a lot, that was really helpful." -> "Social",
+    "Congratulations on the promotion, well deserved!" -> "Social",
+    "I loved the book you recommended." -> "Social",
+    "Our cat had kittens over the weekend." -> "Social",
+    "Just finished the marathon, absolutely wrecked." -> "Social",
+    "Wishing you a restful holiday break." -> "Social",
+    "This newsletter is excellent, keep it up." -> "Social",
+    "I have accepted the job offer, starting in March." -> "Social",
+    "Great match yesterday, did you watch it?" -> "Social",
+    "Good morning! Coffee before we start?" -> "Social",
+
+    "My card was charged twice this month, please refund." -> "Support",
+    "The app crashes every time I open the billing page." -> "Support",
+    "I want to cancel my subscription effective immediately." -> "Support",
+    "My password reset link has expired, can you send another?" -> "Support",
+    "The parcel arrived damaged and I would like a replacement." -> "Support",
+    "Please stop sending me marketing emails." -> "Support",
+    "The invoice number on my statement does not match yours." -> "Support",
+    "I am writing to complain about the noise from the works." -> "Support",
+    "My order still has not been delivered." -> "Support",
+
+    "What is the capital of Portugal?" -> "Errand",
+    "Here is the recipe you asked about at lunch." -> "Errand",
+    "Can you recommend a good dentist nearby?" -> "Errand",
+    "Do you know if the canteen is open on Sundays?" -> "Errand",
+    "Any idea why my laptop keeps disconnecting from wifi?" -> "Errand",
+    "Could you water my plants while I am away?" -> "Errand",
+    "Please update my home address in your records." -> "Errand",
+    "Attached is the poem I mentioned." -> "Errand",
+    "The weather forecast says snow on the weekend." -> "Errand",
+    "Reminder: renew your gym membership this month." -> "Errand")
+
+  /** the same groups for the parallel set, keyed by meaning */
+  val otherGroupById: Map[String, String] = Map(
+    "birthday" -> "Social", "other-thanks" -> "Social", "other-congrats" -> "Social",
+    "charged-twice" -> "Support", "app-crashes" -> "Support",
+    "other-password" -> "Support", "other-delivery" -> "Support",
+    "other-recipe" -> "Errand", "other-weather" -> "Errand")
+
+  /** the three names `Other` splits into */
+  val otherGroups: List[String] = List("Social", "Support", "Errand")
+
+  /** fold a split label back to the canonical four, so a split model
+   * can be scored against an unsplit one on the same question */
+  def unsplit(label: String): String =
+    if otherGroups.contains(label) then "Other" else label
+
+  /** the English corpus under the split taxonomy */
+  val labelledSplit: List[(String, String)] =
+    labelled.map((m, l) => m -> (if l == "Other" then otherGroup(m) else l))
+
+  /** one language of the parallel set under the split taxonomy */
+  def inLanguageSplit(lang: String): List[(String, String)] =
+    parallel.flatMap(p => p.byLang.get(lang).map(_ ->
+      (if p.label == "Other" then otherGroupById(p.id) else p.label)))
 }

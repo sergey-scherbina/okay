@@ -2715,3 +2715,67 @@ not ship the English artifact into a Ukrainian or Polish product. Fit
 your own with `Fit.grams(rows)` — the door exists precisely because
 this one cannot be the answer.
 
+## Results — intent-split-other (2026-09-05) — MEASURED AND DECLINED
+
+`intent-other-is-a-bin` closed two remedies for `Other` and left one
+open: give its members NAMES they can be learned under. This is that
+one, measured, and it loses badly enough to close the question at this
+corpus size.
+
+Three groups, derived rather than relabelled so every published number
+stays comparable — `Social` (a pleasantry or personal news, no action
+wanted), `Support` (something is wrong with a product or service),
+`Errand` (a real request or question, out of domain).
+
+### The result
+
+| | accuracy | `Other` recall |
+|---|---|---|
+| unsplit, model alone | 61.7% | 46.7% |
+| split three ways, folded back | 55.0% | **6.7%** |
+| unsplit, shipped composite | 76.7% | 46.7% |
+| split three ways, composite | 75.0% | **26.7%** |
+
+And on the split taxonomy itself, `Social`, `Support` and `Errand` all
+score **F1 0.00** — the model never predicts any of them, not once.
+
+### Why, and it is not about the carving
+
+| | rows in the training half |
+|---|---|
+| unsplit | Proposal 15, Request 15, Notification 15, Other 15 |
+| split | Proposal 15, Request 15, Notification 15, **Social 6, Errand 5, Support 4** |
+
+The odd/even split leaves FIFTEEN `Other` rows to train on, and
+carving them three ways leaves four to six per class. Nothing is
+learnable from four rows, so the classifier stops emitting those
+labels entirely and every message that was going to `Other` goes to a
+meeting class instead — which is exactly the production failure the
+lane set out to fix, made four times worse.
+
+A coarser two-way carve (`Social` 6 against `Trouble` 9) was measured
+in case three names were simply too many: 55.0% accuracy, `Other`
+recall 13.3%. It does emit both new labels, and it still collapses.
+So the finding is about ROW COUNT, not about where the line is drawn.
+
+### What this closes, and what it leaves
+
+Three remedies for `Other` have now been measured and all three lost:
+abstention instead of learning it (−20 points, `intent-other-is-a-bin`),
+splitting it into names (recall 46.7% → 6.7% here), and doing nothing,
+which is the status quo and the best of the three.
+
+`Other`'s F1 of 0.58 is also not an outlier — `Notification` is 0.77,
+`Request` 0.80, and the whole model is weak at 60 training rows. What
+makes `Other` the one to worry about is not that it is worse but WHERE
+it fails: under-prediction sends out-of-domain traffic INTO a meeting
+intent.
+
+So the remaining answer is rows, which is the second lane today to
+arrive there — the eight-language measurement reached the same
+conclusion from the other side. Filed as `intent-other-more-rows`.
+
+The derived view and this suite stay in the repository: the map is a
+usable artefact, and the test is the guard that will say so if the
+answer ever changes.
+

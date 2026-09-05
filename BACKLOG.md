@@ -1663,7 +1663,15 @@ subtraction.
       cannot be compared against one taken under different terms. This
       is cheap, and it is the defect behind the retraction in
       intent-centroid-reconsidered rather than a nice-to-have.
-- [ ] intent-split-other — NOW WITH A NUMBER (2026-09-05): `Other`
+- [x] intent-split-other — MEASURED AND DECLINED 2026-09-05. Carving
+      the bin into Social/Support/Errand takes `Other` recall from
+      46.7% to 6.7% (composite 26.7%) and all three new classes score
+      F1 0.00, because the training half has 15 `Other` rows and three
+      ways leaves 4-6 each. A two-way carve also collapses (13.3%), so
+      it is row count and not where the line is drawn. All three
+      remedies are now measured and the status quo wins. Original
+      entry follows.
+- [x] intent-split-other (original) — NOW WITH A NUMBER (2026-09-05): `Other`
       scores recall 0.47 in the shipped composite, the worst class by
       a distance, and it is the one whose failure routes out-of-domain
       traffic into a meeting intent. Original entry: `Other` is one
@@ -1727,6 +1735,16 @@ subtraction.
       intent-frame-typed-values removed. It must be an explicit
       request that reports what it re-derived, not a silent
       convenience.
+- [ ] intent-other-more-rows — the answer that survived
+      intent-split-other, and the second lane today to land on corpus
+      size. `Other` is under-predicted (recall 0.47, precision 0.78)
+      on 15 training rows, and under-prediction is the failure that
+      matters: out-of-domain traffic routes INTO a meeting intent.
+      Neither abstention nor splitting fixed it; both made it worse.
+      What is untested is the obvious thing — more `Other` rows, and
+      whether recall moves with them. The suite that would show it
+      already exists (`TestSplitOther`, `TestModels`), so this is a
+      corpus lane with its measurement already written.
 - [ ] intent-typo-robustness — character n-grams are supposed to
       survive a typo, and this model does not: one deterministic
       transposition in the longest word takes it from 61.7% to 55.0%
