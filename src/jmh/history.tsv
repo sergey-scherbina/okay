@@ -347,3 +347,10 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-04	like-for-like-lanes	IdiomaticApiBenchmark	zioStep_elem_runSum	279.997	us/op	N=4000 f=2 i=6	control, 275-280 before
 2026-09-05	067efb98	2.0	idiomatic-channel-runforeach-REPLICATED	215300	220700	0.98	us/op okayChannelForeach_elem_runForeach vs _elem_lazyList, 3 forks x 8 iterations on a quiet box -- 215.3 +/- 7.6 against 220.7 +/- 7.0, bars overlapping. An INDEPENDENT REPLICATION of like-for-like-lanes' 226.8 vs 219.1, not a new finding: the read path is not what costs us ~2x against zio.Queue. Control zioChannelForeach 112.9 +/- 1.0 against 113.2 recorded hours earlier
 2026-09-05	067efb98	6.2	BENCHMARK-COLLISION-WARNING	597500	276900	2.16	us/op NOT A RESULT. zioStepWhole read 597.5 +/- 430.1 against 276.9 +/- 8.4 for the same benchmark the day before, because two agents ran JMH on this box at once. A contended box does not fail, it widens the interval, so any ratio taken from that window is fiction. Recorded so nobody quotes it, and as the argument for saying 'box: taking it' in the room before a run
+2026-09-05	chunk-size-sweep	ChunkFlushBenchmark	okayChunksNative/16	29.370	us/op	2x2000 f=2 i=6	Chunks-native, the LIKE-FOR-LIKE partner for zioChunked: 4.3x ahead at k=16
+2026-09-05	chunk-size-sweep	ChunkFlushBenchmark	okayChunksNative/256	31.822	us/op	2x2000 f=2 i=6	flat in the chunk size
+2026-09-05	chunk-size-sweep	ChunkFlushBenchmark	okayChunksNative/1024	24.847	us/op	2x2000 f=2 i=6	2.8x ahead of zioChunked at k=1024
+2026-09-05	chunk-size-sweep	ChunkFlushBenchmark	okayChunked/1024	217.214	us/op	2x2000 f=2 i=6	Source.merge(chunked=true): diagnostic, ZStream has no per-element source to chunk
+2026-09-05	chunk-size-sweep	ChunkFlushBenchmark	okayChunkedComposed/1024	409.433	us/op	2x2000 f=2 i=6	composed form; an earlier run's apparent degradation with k was NOISE (bars +-71 to +-142)
+2026-09-05	chunk-size-sweep	ChunkFlushBenchmark	zioChunked/16	126.438	us/op	2x2000 f=2 i=6	control
+2026-09-05	chunk-size-sweep	ChunkFlushBenchmark	zioChunked/1024	68.494	us/op	2x2000 f=2 i=6	control

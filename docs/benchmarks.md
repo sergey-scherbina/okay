@@ -493,6 +493,35 @@ element at a time (`ZStream.range(chunkSize = 1)`, fs2's `.unchunk`)
 | chunked + timed flush | **244.3 ±3.5** | 4907 ±98 | 54270 ±1790 | comparison |
 | per-element (chunk of one, forced on ZIO/fs2) | 824.9 ±6.9 | 10032.5 ±111.0 | 36030 ±1204 | diagnostic |
 
+**The matched-size row is the same mismatch a fourth time, corrected
+2026-09-05.** It priced our `Source.chunked(k).merge(...).unchunked`
+— chunking applied to a PER-ELEMENT source — against `ZStream`, which
+is chunk-native by construction. Our chunk-native equivalent is
+`Chunks`, not `Source.chunked`, and swept across the same sizes it
+wins at every one:
+
+| chunk size | okay `Chunks`-native | okay `Source` fused | okay `Source` composed | ZIO |
+|---|---|---|---|---|
+| 16 | **29.4 ±3.8** | 275.4 ±91.0 | 416.4 ±71.0 | 126.4 ±2.7 |
+| 256 | **31.8 ±7.3** | 216.3 ±14.2 | 333.2 ±142.2 | 72.4 ±2.1 |
+| 1024 | **24.8 ±2.0** | 217.2 ±4.3 | 409.4 ±8.7 | 68.5 ±2.3 |
+
+Flat in the chunk size, and 2.2x to 4.3x ahead. The two `Source`
+lanes stay and read as DIAGNOSTIC, not comparison: what they measure
+is real — the cost of chunking a per-element stream — but `ZStream`
+has no per-element representation to chunk, so there is nothing on
+the other side to put them beside.
+
+**A retraction belongs here.** An earlier run of the composed lane
+read 216.8 → 301.7 → 434.7 across those sizes, and it was written up
+as "our chunking gets worse as the chunk grows, the opposite of what
+chunking is for", with an explanation involving boxed arrays and the
+`through` trampoline. The re-run reads 416 → 333 → 409 — not monotone
+— and both runs carry error bars of ±44 to ±142 on a difference of
+that size. There was no trend; there was noise with a story attached
+to it. The `Chunks`-native lane, whose bars are ±2 to ±7, is flat,
+which is what a correct chunking path looks like.
+
 **Three of these rows compare and one diagnoses, and an earlier draft
 read all four as a scoreboard.** It opened *"forced onto equal
 footing, okay is ahead in every shape"* — which its own matched-16 row
