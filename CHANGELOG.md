@@ -1,5 +1,50 @@
 # Changelog
 
+## feed-linear-view — two interpreter passes per element, to take the head of a list
+
+Profiled on the FASTEST channel path, 54% of the time sat in
+`runFree` — the interpreter's dispatch loop — against 5% in the
+channel's own feed and 12% in chunk writes. The cause was in `feed`
+and `feedBatched`: per element they did
+
+```scala
+async(St.uncons(x).runWith).flatMap { ... }
+```
+
+which builds a `Free` program, interprets it, wraps the answer in
+`Async.Run`, and has that interpreted again by the outer loop. Two
+interpreter passes per element, to take the head of a list.
+
+`Stream` already declared the way out — `iterator`, "the linear view
+… an instance may specialize it to skip the per-element `Option` and
+tuple of `uncons`". The mechanism was there and the feed did not use
+it. Feeding a channel IS a linear consume-once walk, so both feeds now
+pull from `St.iterator`, and the pure collection instances hand back
+their own iterator.
+
+Equivalent by construction: the default `iterator` IS
+`uncons(_).runWith`, the same call with the same handler, so an
+effectful source behaves exactly as before.
+
+| lane | before | after |
+|---|---|---|
+| `okayChannelForeach_chunkNative` | 90.4 | **19.7 ±0.2** |
+| `okayChannelForeach_elem_runForeach` | 267.2 | 209.3 |
+| `zioChannelForeach` (control) | 135.6 | 133.0 |
+| `okayCollection_chunk_fold` (control, no feed) | 12.4 | 11.0 |
+
+**4.6x on the channel path, and 6.8x past `zio.Queue`** — a row that
+read as 3.6x BEHIND this morning. The controls did not move, which is
+what says the effect is where the profile pointed rather than smeared
+across the run.
+
+The risk, filed rather than assumed away: a `Stream` whose `iterator`
+and `uncons` disagree would now be read the other way round. For every
+instance here they are the same walk, and the channel laws run over
+all of them.
+
+Gate 558.
+
 ## queues-api-polish — the unit goes in the name, and two structures become one
 
 Four warts left by adding mechanisms one at a time, and none of them

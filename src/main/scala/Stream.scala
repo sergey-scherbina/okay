@@ -39,11 +39,21 @@ given Stream[LazyList, Pure] with
   def uncons[A](s: LazyList[A]): Option[(A, LazyList[A])] ! Pure =
     pure(if s.isEmpty then None else Some((s.head, s.tail)))
 
+  /** the collection's own walk: no `Option`, no tuple, and — the
+   * expensive part — no program built and interpreted per element.
+   * A linear consumer that takes this route saves two interpreter
+   * passes on every element it reads */
+  override def iterator[A](s: LazyList[A])(using Handler[Pure]): Iterator[A] =
+    s.iterator
+
 /** a List is a (finite, strict, pure) stream */
 given Stream[List, Pure] with
   def uncons[A](s: List[A]): Option[(A, List[A])] ! Pure = pure(s match
     case a :: t => Some((a, t))
     case Nil => None)
+
+  override def iterator[A](s: List[A])(using Handler[Pure]): Iterator[A] =
+    s.iterator
 
 /**
  * The stream carrier is the canonical MonadPlus: the empty stream is

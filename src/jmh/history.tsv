@@ -390,3 +390,8 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-05	adaptive-parts	ManyProducersBenchmark	oneRing_chunk/1	116.750	us/op	Total=8000 chunked consumer f=4 i=6	control: the plain ring, best at one producer
 2026-09-05	adaptive-parts	ManyProducersBenchmark	oneRing_chunk/16	3048.429	us/op	Total=8000 chunked consumer f=4 i=6	control
 >>>>>>> feature/adaptive-parts
+2026-09-06	feed-linear-view	IdiomaticApiBenchmark	okayChannelForeach_chunkNative_runForeach	19.664	us/op	N=4000 f=3 i=6	the linear-view feed: 90.4 -> 19.7, 4.6x, and 6.8x past zio (133.0)
+2026-09-06	feed-linear-view	IdiomaticApiBenchmark	okayChannelForeach_elem_runForeach	209.322	us/op	N=4000 f=3 i=6	the same feed fix reaches the elementwise lanes: 267.2 -> 209.3
+2026-09-06	feed-linear-view	IdiomaticApiBenchmark	zioChannelForeach_chunk_runForeach	133.001	us/op	N=4000 f=3 i=6	control, unmoved
+2026-09-06	feed-linear-view	IdiomaticApiBenchmark	okayCollection_chunk_fold	11.047	us/op	N=4000 f=3 i=6	control: no feed on this path, unmoved
+2026-09-06	feed-linear-view	IdiomaticApiBenchmark	zioCollection_chunk_runSum	51.795	us/op	N=4000 f=3 i=6	control, unmoved
