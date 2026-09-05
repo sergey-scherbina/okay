@@ -372,3 +372,6 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-05	collection-foreach-pair	IdiomaticApiBenchmark	okayCollection_chunk_fold	12.437	us/op	N=4000 f=2 i=6	4.5x past zioCollection_chunk_runSum, confirming the earlier 11.0
 2026-09-05	collection-foreach-pair	IdiomaticApiBenchmark	okayChannelForeach_elem_runForeach	267.181	us/op	N=4000 f=2 i=6	the ONE genuine gap left: 1.95x behind, and the cost is above the channel
 2026-09-05	collection-foreach-pair	IdiomaticApiBenchmark	zioChannelForeach_chunk_runForeach	138.493	us/op	N=4000 f=2 i=6	control
+2026-09-05	buffer-chunked-feed	IdiomaticApiBenchmark	okayChannelForeach_chunkNative_runForeach	90.380	us/op	N=4000 cap=64 size=256 f=2 i=6	bufferChunked + drained: 264.5 -> 90.4, and 1.5x PAST zio -- the last gap in the idiomatic table closes
+2026-09-05	buffer-chunked-feed	IdiomaticApiBenchmark	zioChannelForeach_chunk_runForeach	135.626	us/op	N=4000 cap=64 size=256 f=2 i=6	control, same run
+2026-09-05	buffer-chunked-feed	IdiomaticApiBenchmark	okayChannelForeach_elem_runForeach	324.103	us/op	N=4000 cap=64 size=256 f=2 i=6	diagnostic: per-element on both sides, no batch to amortise (measured 1.67 elements)

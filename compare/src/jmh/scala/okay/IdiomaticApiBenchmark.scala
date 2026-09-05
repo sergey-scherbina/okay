@@ -177,6 +177,21 @@ class IdiomaticApiBenchmark {
         while i < ch.length do { sum += ch(i); i += 1 }))).runWith
     sum
 
+  /**
+   * The like-for-like partner at last: a chunk-native producer AND a
+   * chunk-native read, which is what `ZStream.fromQueue` is on the
+   * other side. The `_elem_` lanes above stay diagnostic — `zio.Queue`
+   * has no per-element read of a queue to place beside them.
+   */
+  @Benchmark
+  def okayChannelForeach_chunkNative_runForeach(): Long =
+    var sum = 0L
+    Channel.bufferChunked(64, size = 256)(list).drained.runForeach(ch =>
+      okay.effect[Async, Unit](Async.Run(() =>
+        var i = 0
+        while i < ch.length do { sum += ch(i); i += 1 }))).runWith
+    sum
+
   @Benchmark
   def zioChannelForeach_chunk_runForeach(): Long =
     import _root_.zio.*
