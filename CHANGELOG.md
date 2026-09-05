@@ -1,5 +1,51 @@
 # Changelog
 
+## intent-per-class-not-aggregate — the total was hiding a class, and it is the one that matters
+Completed: 2026-09-05
+Landed as 0fdb6d25. A consumer's finding, from their corpus rather
+than this one: they filled a hole, one class reached 137 of 184 rows,
+a probe leaned to the majority, "сегодня в москве шёл дождь" came back
+as a REQUEST at 0.90 — and their headline accuracy ROSE, 95.8% to
+96.2%, through the regression. Accuracy on an imbalanced corpus
+rewards predicting the biggest class; their regression test caught
+what the average never would.
+
+Every aggregate this module publishes had the same exposure, starting
+with the 76.7% now in a doc comment, a module page and two changelog
+entries. `Eval` gained the numbers that close it — `support`,
+`balance`, `majorityBaseline` on the matrix, `worst` on the report —
+and the shipped model's tests now print per class and ASSERT rather
+than describe.
+
+THE GOOD HALF: the held-out set is 15 messages of each class, majority
+baseline 25%, so 76.7% is not being carried by one class. Asserted
+now, so a fixture drifting into imbalance fails a test instead of
+quietly inflating a number.
+
+THE HALF THE AGGREGATE WAS HIDING: `Other` at recall **0.47**.
+
+| class | precision | recall | F1 |
+|---|---|---|---|
+| `Proposal` | 0.87 | 0.87 | 0.87 |
+| `Request` | 0.70 | 0.93 | 0.80 |
+| `Notification` | 0.75 | 0.80 | 0.77 |
+| `Other` | 0.78 | **0.47** | 0.58 |
+
+It misses more than half the messages that are not about meetings —
+in production the worst class to be weak at, because out-of-domain
+traffic routes INTO a meeting intent rather than out of the way. The
+cue tier is right about every `Other` it fires on (precision 1.00) and
+fires on half of them, so the recall is lost in the model tier, which
+is what `intent-split-other` already said about a diffuse bin and now
+has a number for. A per-class floor (F1 >= 0.50) is asserted alongside
+so a class dying fails the suite.
+
+Gate: clean compile 0 warnings; okayIntentJVM 133, okayIntentJS 9,
+okayAgentJVM 121, okayDemo 76 — 0 failures. `okayDemo` failed once on
+`TestChatDemo`'s canned-wire test with an HTTP EOF after 30s and
+passed on a rerun — unrelated to this lane, and filed as the flake it
+is rather than retried into silence.
+
 ## frame-choice-and-provenance — a closed choice, and an answer that knows where it came from
 Completed: 2026-09-05
 Landed as 60cf8f95. A consumer asked, blocked on the answer, whether
