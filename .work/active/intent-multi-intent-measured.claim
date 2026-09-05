@@ -1,0 +1,32 @@
+task: intent-multi-intent-measured
+agent: opus5-intent
+started: 2026-09-05
+branch: feature/intent-multi-intent-measured
+worktree: ../okay-wt-multi
+
+why: the largest unbacked claim left in the module. `Span` has been in
+  the type since the first lane and was the argument for why a flat
+  label is not enough — "charged twice AND the app crashes is two
+  spans, both to be acted on" — and THE FIXTURE CONTAINS NOT ONE
+  MESSAGE WITH TWO INTENTS. The mechanism has never been exercised on
+  a real message. Either measure it or stop claiming it.
+
+  It also survives today's resolution finding: this is a binary
+  question about whether a capability exists, not a two-point
+  difference that sixty rows cannot resolve.
+
+what:
+  1. two-intent messages in the fixture, labelled with a SET
+  2. measure what the SHIPPED no-LLM path does with them. It returns
+     one label by construction, so the second intent is lost — the
+     question worth measuring is whether it is lost SILENTLY or
+     whether the cue tier's runner-up carries it
+  3. the model tier's segmentation is the only thing that could
+     actually produce two spans; a Live-tagged suite for it, run if a
+     gateway is reachable and reported as unrun if not
+  4. say plainly in the spec which tiers the multi-intent claim is
+     true of, since today it reads as if it were true of the module
+
+files: okay-intent/src/test/scala/okay/intent/IntentFixture.scala,
+  a JVM suite, specs/intent-classify.md, docs/modules/okay-intent.md,
+  BACKLOG.md
