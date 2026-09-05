@@ -1,5 +1,22 @@
 # Changelog
 
+## script-temp-tests-watch-a-shared-directory — private temp root, not the shared one
+Completed: 2026-09-05
+Landed as 2dcd0c3e. `ScalaScript.compileOnly` created its compile
+workspace against the JVM-wide `java.io.tmpdir`, and two tests proved
+"no temp litter left behind" by snapshotting that SHARED directory's
+`okay-script-*` entries before/after a run — sound property, unsound
+check: any other process (a sibling worktree's own concurrent
+okay-script tests, in a parallel matrix) creating a matching entry
+between the snapshots failed the assertion for a reason unrelated to
+either test's own cleanup. Fixed the same defect filed twice under two
+names (`script-temp-snapshot-crosstalk`, `script-temp-tests-watch-a-
+shared-directory`) with one change: `ScalaScript` and `Page` now take
+an explicit `tempRoot: Path`, defaulting to the old lookup, so a
+caller can point it at a private directory instead. Both tests do;
+`TestScalaScript`'s (Live-tagged out of the default gate 2026-09-04)
+is back in it.
+
 ## readme-docs-index-link — the documentation home page linked where it can be seen
 Completed: 2026-09-05
 Landed as 0fdcd57f. docs/README.md is the documentation's home page —

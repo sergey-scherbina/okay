@@ -1,29 +1,5 @@
 # Backlog
 
-## script-temp-tests-watch-a-shared-directory — a sibling run fails them
-
-Found 2026-09-04 alongside matrix-kill-by-process-group, and a second,
-independent reason a matrix cannot be trusted while another one runs.
-
-`TestScalaScript."run: leaves no temp file/directory behind"` and
-`TestPage."close() deletes the cached compiled program's temp output
-directory"` both snapshot the SHARED `java.io.tmpdir` for
-`okay-script-*` entries before and after, and assert the two sets are
-equal. Any other process creating one of those between the snapshots
-fails the assertion — which is precisely what a sibling worktree's
-okay-script tests do.
-
-Observed: both failed in a matrix run alongside other agents; both
-passed immediately afterwards when run alone (15/15), with no change
-to anything. So the tests are correct about the property and wrong
-about where they look for it.
-
-The work: give each test its own temp ROOT (a fresh directory passed
-to the code under test, or a system property scoped to the run) and
-snapshot that. The property being asserted — this code cleans up after
-itself — is worth keeping; watching a directory the whole machine
-shares is what makes it a false alarm.
-
 ## matrix-kill-by-process-group — one suite takes down every sbt on the box
 
 Found 2026-09-04 while gating an unrelated four-line change. The full
@@ -259,22 +235,23 @@ construction instead of a type test per value).
       only if the inference form (no type argument) bites a consumer.
 
 ## Flakes observed (record → fix loop when they recur)
-- [ ] script-temp-snapshot-crosstalk — MOVED OUT OF THE DEFAULT GATE
-      2026-09-04 (operator call): the test is now `Live`-tagged, so it
-      runs under `sbt integrationTest` and no longer decides a landing.
-      The fix below is still owed by whoever owns okay-script.
-      `okay.script.TestScalaScript`'s
-      "run: leaves no temp file/directory behind" snapshots the temp
-      directory before and after, so it fails whenever ANOTHER suite in
-      the same module is creating temp files at the same moment. Seen
-      2026-09-04 in a full matrix (2199 tests, this the only failure);
-      the suite passes 9/9 alone. The diff is the evidence: before held
-      `okay-script-web-*.md` and `okay-script-<n>`, after held a
-      different `okay-script-<n>` — three different files, none of them
-      the one under test. Fix by scoping the snapshot to the paths this
-      test creates rather than to the whole directory; comparing a
-      shared namespace across a parallel run cannot be made reliable.
-      Not mine to take — okay-script belongs to another lane.
+- [x] script-temp-snapshot-crosstalk — FIXED 2026-09-05 (same defect as
+      the since-removed `script-temp-tests-watch-a-shared-directory`
+      entry, filed separately and merged here): `TestScalaScript`'s
+      "run: leaves no temp file/directory behind" and `TestPage`'s
+      "close() deletes the cached compiled program's temp output
+      directory" both snapshotted the SHARED `java.io.tmpdir` for
+      `okay-script-*` entries before/after, so either failed whenever
+      another concurrent suite (a sibling worktree's own okay-script
+      tests, in a parallel matrix) created a matching entry between
+      the two snapshots — nothing to do with either test's own
+      cleanup. `ScalaScript` now takes an explicit `tempRoot: Path`
+      (threaded through `run`/`render`/`compileRender`/`check`/
+      `compileOnly` and `Page`), defaulting to the old shared lookup;
+      both tests now point it at a private directory and snapshot
+      that instead. `TestScalaScript`'s test is back in the default
+      gate (dropped the `Live` tag). See specs/okay-script.md
+      "okay-script-tests-watch-a-shared-directory".
 - [x] demo-live-judgment-flake — FIXED 2026-09-02: `judged` retries
       the whole turn once before asserting in LIVE UNGATED and LIVE
       SEEKER (stochastic judgment — one retry is a quadratic flake
