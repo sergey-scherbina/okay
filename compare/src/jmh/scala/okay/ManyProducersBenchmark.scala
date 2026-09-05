@@ -28,6 +28,33 @@ class ManyProducersBenchmark {
   final val Total = 8000
   final val Cap = 1024
 
+  /**
+   * The chunked consumer, and the one the zio lane's stream uses. The
+   * first version of this benchmark read every okay lane with
+   * `receiveBlocking` per element while `ZStream.fromQueue` pulled
+   * arrays -- the fifth appearance in this repository of one
+   * mismatch, and the first I introduced myself rather than found.
+   */
+  private def runChunked(c: Channel[Long]): Long =
+    val per = Total / producers
+    val ps = (0 until producers).map(w => Thread.ofVirtual().start { () =>
+      var i = 0L
+      while i < per do { val _ = c.sendBlocking(w.toLong * per + i); i += 1 }
+    })
+    val done = Thread.ofVirtual().start { () => ps.foreach(_.join()); c.close() }
+    val cb = summon[CanBlock]
+    var sum = 0L
+    var go = true
+    while go do
+      val chunk = cb.block[Either[Throwable, okay.Chunk[Long]]] { k =>
+        c.receiveManyAsync(4096)(k); () => ()
+      }.fold(throw _, identity)
+      if chunk.length == 0 then go = false
+      var i = 0
+      while i < chunk.length do { sum += chunk(i); i += 1 }
+    done.join()
+    sum
+
   private def run(c: Channel[Long]): Long =
     val per = Total / producers
     val ps = (0 until producers).map(w => Thread.ofVirtual().start { () =>
@@ -46,12 +73,30 @@ class ManyProducersBenchmark {
     done.join()
     sum
 
+  // ── the comparable lanes: a CHUNKED consumer, as zio's stream has ──
+
+  @Benchmark def oneRing_chunk(): Long =
+    runChunked(Queues.strong[Long].bounded(Cap).build)
+
+  @Benchmark def oneUnbounded_chunk(): Long =
+    runChunked(Queues.strong[Long].unbounded.build)
+
+  @Benchmark def relaxed_chunk(): Long =
+    runChunked(Queues.strong[Long].relaxed(parts = producers, each = Cap / producers max 8).build)
+
+  @Benchmark def relaxedUnbounded_chunk(): Long =
+    runChunked(Queues.strong[Long].relaxedUnbounded(parts = producers).build)
+
+  // ── DIAGNOSTIC: the same, read one element at a time. Kept because
+  //    what it measures is real, but zio has no per-element read of a
+  //    queue to put beside it ────────────────────────────────────────
+
   /** one ring: every producer contends for one tail */
-  @Benchmark def oneRing(): Long = run(Queues.strong[Long].bounded(Cap).build)
+  @Benchmark def oneRing_elem(): Long = run(Queues.strong[Long].bounded(Cap).build)
 
   /** parts as wide as the producers: contention only when two land on
    * the same part */
-  @Benchmark def relaxed(): Long =
+  @Benchmark def relaxed_elem(): Long =
     run(Queues.strong[Long].relaxed(parts = producers, each = Cap / producers max 8).build)
 
   /**
@@ -64,15 +109,15 @@ class ManyProducersBenchmark {
    * that never fill, no sender ever parks and the mismatch cannot
    * arise.
    */
-  @Benchmark def relaxedUnbounded(): Long =
+  @Benchmark def relaxedUnbounded_elem(): Long =
     run(Queues.strong[Long].relaxedUnbounded(parts = producers).build)
 
   /** and one growable buffer, so the comparison is like for like */
-  @Benchmark def oneUnbounded(): Long = run(Queues.strong[Long].unbounded.build)
+  @Benchmark def oneUnbounded_elem(): Long = run(Queues.strong[Long].unbounded.build)
 
   /** their queue, for scale */
   @Benchmark
-  def zioQueue(): Long =
+  def zioQueue_chunk(): Long =
     import _root_.zio.*
     val per = Total / producers
     _root_.zio.Unsafe.unsafe(implicit u =>

@@ -1,5 +1,32 @@
 # Changelog
 
+## producers-chunked-consumer — the fifth mismatch, and this one was mine
+
+`ManyProducersBenchmark` read every okay lane with `receiveBlocking`
+per element while its zio lane pulled arrays through
+`ZStream.fromQueue`. Written the same day I corrected that mismatch in
+three other tables, which makes it the first of the five I introduced
+rather than found.
+
+With a chunked consumer on both sides (`Total=8000`, us/op):
+
+| producers | one ring | relaxed, bounded | one growable | relaxed, growable | zio.Queue |
+|---|---|---|---|---|---|
+| 1 | 205.9 | 306.6 | **157.7** | 249.7 | 427.7 |
+| 4 | 1242.0 | 366.9 | 677.0 | **196.0** | 1290.2 |
+| 16 | 2073.6 | 362.2 | 680.2 | **129.7** | 2540.8 |
+
+The row where zio led at a single producer was the mismatch, not a
+result: asked the same question, the fastest okay lane leads at every
+width — 2.7x, 6.6x, 19.6x. The elementwise lanes stay as diagnostics,
+since `zio.Queue` has no per-element read to place beside them.
+
+And the honest caveat, which the table earns rather than spoils: NO
+SINGLE CONFIGURATION WINS EVERYWHERE. At one producer relaxation costs
+(249.7 against a plain growable buffer's 157.7) because there is no
+contention to relax and a part must still be chosen. That is what the
+menu is for.
+
 ## channel-per-part-waiters — wake where the room appeared
 
 `Queues.strong.relaxed(parts, each)` read **111546us** at sixteen
