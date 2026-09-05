@@ -14,7 +14,7 @@ approximated by string splitting on the server side.
 Kept in its own module and DELIBERATELY out of the root
 `.aggregate(...)`, the same reasoning as
 [`okay-langchain4j-embed`](okay-langchain4j-embed.md) and
-[`okay-demo-embed`](okay-demo-embed.md): Playwright's browser
+a heavyweight optional module: Playwright's browser
 download is a real cost this suite alone should pay. It is also
 `Live`-tagged, so `sbt integrationTest` runs it and the default gate
 does not (specs/integration-test-gate.md).

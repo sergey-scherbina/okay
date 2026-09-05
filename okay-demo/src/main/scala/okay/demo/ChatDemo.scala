@@ -8,7 +8,6 @@ import okay.mcp.{Mcp, Server as McpServer}
 import okay.jetty.Jetty
 import okay.llm.{Anthropic, Cut, Transport, Transports}
 import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
-import okay.matching.{ChatLog, ChatTurn, MatchStore, MemoryMatch, SqlMatch, Tools as MatchTools}
 import okay.rag.{Embedding, Vectors}
 import okay.ops.Ops
 import okay.security.Secure
@@ -60,10 +59,32 @@ object ChatDemo {
    * lane opens its own handle on the same log */
   def storeOf(path: String): okay.persist.Store = Board.store(path)
 
-  /** ONE board for the whole server, durable by default */
+  /**
+   * ONE handle on the log, opened once.
+   *
+   * Both the board and okay-ops read it, and opening it twice in one
+   * process is what stopped two nodes booting on a shared directory —
+   * found by the two-node test, which is the only place two processes
+   * meet one log.
+   */
   lazy val boardStore: okay.persist.Store =
     Board.store(sys.env.getOrElse("OKAY_CHAT_DB", "okay-board.log"))
-  lazy val board: Board = { val b = Board(Board.topicOf(boardStore)); b.replay(): Unit; b }
+  def opsStore: okay.persist.Store = boardStore
+
+  /**
+   * The production board, durable by default — and NOT what the
+   * routes read.
+   *
+   * The board arrives as a context parameter instead, which is the
+   * demo's own ctx-wiring claim made good: `main` wires this one, a
+   * test wires a memory board, and the same `routes` value serves
+   * both. A global the routes reached for directly would make every
+   * test share one file and every run inherit the last one's tasks.
+   */
+  lazy val board: Board =
+    val b = Board(Board.topicOf(boardStore))
+    b.replay(): Unit
+    b
 
   /** every open page, told when the board moves */
   private val feed = Hub[String]()
@@ -204,8 +225,9 @@ object ChatDemo {
 
   // ---- the routes ----------------------------------------------------
 
-  def routes(m: Chat.Model, budget: Int)(using Transport, Secrets)
+  def routes(m: Chat.Model, budget: Int)(using Transport, Secrets, Board)
   : PartialFunction[Request, Response ! Async] =
+    val board = summon[Board]
     // built ONCE per server, not per request — McpHttp keeps its
     // session table inside the route, and a session issued on one
     // request must still be found on the next
@@ -283,7 +305,7 @@ object ChatDemo {
             Chat.sse("note", Json.print(JStr(note)))))
       pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
-    case r if Ops.routes(boardStore).isDefinedAt(r) => Ops.routes(boardStore)(r)
+    case r if Ops.routes(opsStore).isDefinedAt(r) => Ops.routes(opsStore)(r)
 
     case r if r.method == okay.http.Method.Post && r.url == "/login" =>
       val email = Chat.fieldOf(r.body, "email")
@@ -338,7 +360,7 @@ object ChatDemo {
    * the same value both times, and a missing capability is a compile
    * error, not a container exception */
   def handler(budget: Int)
-  : (Transport, Secrets) ?=> PartialFunction[Request, Response ! Async] =
+  : (Transport, Secrets, Board) ?=> PartialFunction[Request, Response ! Async] =
     routes(Chat.model, budget)
 
   def main(args: Array[String]): Unit =
@@ -352,7 +374,7 @@ object ChatDemo {
     // exactly as it always was — every existing test constructs
     // routes(...) directly and never sets this env var
     val node = sys.env.get("OKAY_CHAT_NODE")
-    provide(Transports.http(), Secrets.env)(Resource.run[Unit, Pure](
+    provide(Transports.http(), Secrets.env, board)(Resource.run[Unit, Pure](
       Jetty.serve(port)(node match
         case Some(n) =>
           val logDir = sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log")

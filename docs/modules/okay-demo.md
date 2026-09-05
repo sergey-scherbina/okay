@@ -13,7 +13,7 @@ stack end to end, and several double as acceptance tests.
 | `Combine` | the stream-exercise ported from Cats/FS2: `Stage.transduce` and `mapAccumulate` doing the same join in a fraction of the code — the example that extracted those primitives into core |
 | `RepoAgent` / `RepoMcp` | this repository indexed by its own lex/parse/rag machinery, served as an agent and as an MCP server on stdio; the test asserts the index finds the library's own definitions |
 | `IndexReport` | the index, reported |
-| `ChatDemo` | the chat over okay-http + okay-llm + okay-match: streaming through the route, the match tools driven by a live local model where one answers (TestLive skip otherwise), sqlite via the Sql seam. Composed, not monolithic — okay-chat (the route and model seam), okay-admin (protected `/admin/replay`), okay-subscription (the pay gate), okay-live (Hub/Registry), okay-ops (health/metrics) and okay-deploy (its own committed deployment) are all extracted modules `ChatDemo.routes` wires together with `orElse` |
+| `ChatDemo` | the chat over okay-http + okay-llm: streaming through the route, and a shared task board (`Board`) the model drives through tools — log-first, so `POST /admin/replay` derives it again from the durable log. Composed, not monolithic — okay-chat (the route and model seam), okay-admin (protected `/admin/replay`), okay-subscription (the pay gate), okay-live (Hub/Registry), okay-ops (health/metrics) and okay-deploy (its own committed deployment) are all extracted modules `ChatDemo.routes` wires together with `orElse` |
 
 `run / fork := true` — RepoMcp owns its stdin (an MCP client
 launches the class directly; `sbt -batch` keeps stdin for itself).
@@ -23,7 +23,7 @@ launches the class directly; `sbt -batch` keeps stdin for itself).
 One JVM main serves a chat page and, behind it, most of the
 repository at once: okay-jetty streams the reply live, okay-llm
 speaks the model, Cut guards the stream, okay-ui renders on a real
-React, okay-match runs a marketplace with negotiations, and the
+React, `Board` keeps a shared task list, and the
 whole thing works — tested end to end — with NO model and NO build
 step, because the offline mode is the demo, not a mock of it.
 The design record is [specs/demo-chat.md](../../specs/demo-chat.md).
@@ -42,8 +42,8 @@ ANTHROPIC_API_KEY=... sbt okayDemo/run                  # Anthropic
 |---|---|---|
 | `OKAY_CHAT_PORT` | where to listen | 8090 |
 | `OKAY_CHAT_MAX` | the Cut token budget | 512 |
-| `OKAY_CHAT_DB` | the marketplace's engine: a sqlite file; `:memory:` opts out; `postgres://user:pass@host:port/db[?sslmode=…&sslrootcert=…]` is live Postgres over the wire driver | `okay-chat.db` |
-| `OKAY_CHAT_LOG` | the chat log's FileStore directory — every `/match` turn lands here FIRST, the marketplace is its projection (`POST /admin/replay` rebuilds it; a button on `/market`); `:memory:` keeps nothing | `okay-chat.log` |
+| `OKAY_CHAT_DB` | the board's log: a FileStore directory; `:memory:` keeps nothing | `okay-board.log` |
+| `OKAY_CHAT_LOG` | the two-node lane's shared log directory — a follower polls it and derives its own board from it | `okay-chat.log` |
 | `OKAY_CHAT_BASE` | an OpenAI-compatible endpoint (local models fit) | — |
 | `POST /login` `{email}` | mints a one-time 6-digit code (demo-sessions; no email transport exists yet, so it rides the response AND the server console) | — |
 | `POST /login/confirm` `{email,code}` | spends the code once, answers `{token}` — a signed ES256 session; present it as `Authorization: Bearer` on `/chat` | — |
@@ -65,12 +65,12 @@ of each, not how each works internally.
   (the page renders "✂ generation cut"). `Chat.Model` has three
   fillings (`scripted`/`local`/`live`); a `turnOverride` lets
   `ChatDemo` intercept a `/match`-prefixed message for its own
-  marketplace turn while everything else rides the plain model.
+  board turn while everything else rides the plain model.
   Details: docs/modules/okay-chat.md.
 - **Protected admin** (okay-admin): `Admin.routes` answers `POST
   /admin/replay` behind a bearer token — `Admin.Issuer` mints the
   in-process one this demo uses; `main()` prints it once at startup,
-  and `/market`'s replay button sends it as `Authorization: Bearer`.
+  and `/board`'s replay button sends it as `Authorization: Bearer`.
   Details: docs/modules/okay-admin.md.
 - **The pay gate** (okay-subscription): free for a profile's join
   month, gated (never deleted) after unless `Subscription.pay` was
@@ -78,7 +78,7 @@ of each, not how each works internally.
   and offered to the model as the `subscription_pay` tool.
   Details: docs/modules/okay-subscription.md.
 - **Live feeds** (okay-live): `Hub[String]` is the market-wide
-  broadcast behind `/events/market`; `Registry[String, String]` is
+  broadcast behind `/events/board`; `Registry[String, String]` is
   the per-email inbox behind `/events/<email>`. Details:
   docs/modules/okay-live.md.
 - **Health and metrics** (okay-ops): `Ops.routes(chatStore)` answers
@@ -101,31 +101,21 @@ of each, not how each works internally.
   restart signs everyone out); the vanilla page's login widget stores
   it and sends `Authorization: Bearer` on every `/chat` call. No
   email transport exists yet, so the confirm code rides the response.
-- **The marketplace**: one shared `MatchStore` per server — sqlite
-  by default (or live Postgres via `OKAY_CHAT_DB=postgres://…`,
-  parsed by okay-pg's `PgTarget`), durable across restarts.
-- **Real embeddings for the registry** (demo-embeddings-attr):
-  `marketOf`'s `embed`/`proposeThreshold` parameters (defaults
-  unchanged — `Vectors.hashing()`, `0.85f`) are where a real embedder
-  plugs in; `okay-demo-embed` (docs/modules/okay-demo-embed.md) is
-  the live proof, kept out of okay-demo's own dependencies.
-  Measured, so nobody plans around a defense that is not there: at
-  the default the similarity check is very nearly inert. Hashing is
-  character-trigram counting, so it scores surface overlap and not
-  meaning — "разработчик"/"программист" comes out at 0.231 and even
-  "разработчик"/"разработчики" at 0.815, both under the 0.85 default.
-  Out of the box the EXACT-SLUG path is what dedupes; the similarity
-  path is the seam a real embedder switches on.
+- **The board**: one shared `Board` per server, arriving as a context
+  parameter rather than reached for as a global — `main` wires the
+  durable one, a test wires a memory one, and the same `routes` value
+  serves both. The log is the truth and the board is a projection:
+  `POST /admin/replay` drops it and derives it again.
 
-### How the model runs the marketplace
+### How the model runs the board
 
-With a model configured there is NO gate: every turn is an agent
-turn (okay-agent's `converse` over `Provider.openAi`/`anthropic`),
-okay-match's tool table is always offered, and the system prompt
-hands the DECISION to the model — an offer or a need (services,
-housing, jobs — any domain) means work the tools; anything else
-means just answer. Proven live both ways: an offer with no prefix
-reaches the tools; small talk leaves the store untouched.
+With a model configured there is NO gate: every turn is an agent turn
+(okay-agent's `converse` over `Provider.openAi`/`anthropic`), the
+board's tool table is always offered, and the system prompt hands the
+DECISION to the model — a sentence about a task means work the tools,
+anything else means just answer. The model never writes to the board:
+there is no path from a sentence to the projection that does not go
+through a tool, so it cannot invent a task that is not there.
 
 The notification layer is STRUCTURAL, not the model's: the tool
 table is wrapped —

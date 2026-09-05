@@ -79,7 +79,6 @@ API reference, gotchas.
 | [`okay-frame`](modules/okay-frame.md) | what a form is: named slots, typed answers, the language of the exchange, and what is still missing |
 | [`okay-intent`](modules/okay-intent.md) | a message to a class and a filled frame, with a model or without one: one Schema is the taxonomy, the frame and the parser |
 | [`okay-rag`](modules/okay-rag.md) | retrieval: split the tree not the string, code in eight languages indexed by parsing it, symbols without embeddings |
-| [`okay-match`](modules/okay-match.md) | two-sided matching over LLM-structured chats: log-first, registries for attributes AND scenarios, negotiations with role-enforced flows, two-gate disclosure, safe cross-channel identity |
 | [`okay-cluster`](modules/okay-cluster.md) | the remote channel, distributed chunk work, the JS↔JVM acceptance |
 | [`okay-http`](modules/okay-http.md) | REST and WebSocket as programs: a body is a `Source`, a socket session is a `Stage[Frame, Frame, A]`, and a socket IS an MCP `Link` |
 | [`okay-jetty`](modules/okay-jetty.md) | Jetty behind the same two seams — and the WebSocket SERVER okay-http could not serve |
@@ -104,7 +103,6 @@ API reference, gotchas.
 | [`okay-script`](modules/okay-script.md) | markdown files as Scala source: fenced blocks through the real Scala 3 compiler in-process, errors pointing at the original `.md` line |
 | [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Handler[Model]` — their provider breadth behind our effect |
 | [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Handler[Embed]` |
-| [`okay-demo-embed`](modules/okay-demo-embed.md) | a live proof: the chat demo's registry wired to a real embedder, catching near-synonym duplicates hashing cannot |
 | [`okay-demo-e2e-browser`](modules/okay-demo-e2e-browser.md) | one chat round through a real headless browser — the fetch/ReadableStream glue a JVM test cannot reach |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector |
@@ -112,7 +110,7 @@ API reference, gotchas.
 | [`okay-admin`](modules/okay-admin.md) | protected admin routes over the same bearer-token 401/403 ladder as every other protected route |
 | [`okay-subscription`](modules/okay-subscription.md) | gate a resource behind a paid period: free for the join month, then paid-this-period or gated, never deleted |
 | [`okay-live`](modules/okay-live.md) | broadcast (Hub) and per-key channels (Registry) over the core's own Channel |
-| [`okay-demo`](modules/okay-demo.md) | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`); `RepoMcp`, the same repository served as an MCP server (tools, every file as a resource, an `explain` prompt); `ChatDemo`, the chat that runs the stack (streamed replies cut by a guard, a durable marketplace the model drives, scenarios ringing live pages — works with no model); and the worked examples — `Combine` joins two live telemetry streams twice, `Stage.transduce` against fs2's `mapAccumulate` shape, with tests pricing the difference |
+| [`okay-demo`](modules/okay-demo.md) | not a library: a coding agent over THIS repository, built from the public surface as a user would (`sbt 'okayDemo/runMain okay.demo.RepoAgent <question>'`); `RepoMcp`, the same repository served as an MCP server (tools, every file as a resource, an `explain` prompt); `ChatDemo`, the chat that runs the stack (streamed replies cut by a guard, a durable task board the model drives through tools, assignments ringing live pages — works with no model); and the worked examples — `Combine` joins two live telemetry streams twice, `Stage.transduce` against fs2's `mapAccumulate` shape, with tests pricing the difference |
 
 ## How the claims are checked
 

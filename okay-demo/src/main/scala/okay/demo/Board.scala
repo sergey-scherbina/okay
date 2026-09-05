@@ -120,15 +120,25 @@ final class Board(topic: Topic):
    * its memory has lost nothing. Nothing is rung while walking — a
    * restore rebuilds what happened, it does not announce it again.
    */
-  def replay(): Long = synchronized:
+  def replay(): Long = replayFrom(topic)
+
+  /**
+   * Rebuild from ANOTHER handle on the same log.
+   *
+   * A follower polls a log another process is writing, and a handle
+   * opened once does not see what arrived after it — so the two-node
+   * lane opens a fresh one per tick and replays through this. Same
+   * projection code either way; only the reader differs.
+   */
+  def replayFrom(t: Topic): Long = synchronized:
     tasks = Vector.empty
     next = 0L
     var n = 0L
-    for part <- 0 until topic.partitions do
-      var from = topic.begin(part)
+    for part <- 0 until t.partitions do
+      var from = t.begin(part)
       var going = true
       while going do
-        topic.read(part, from, 256) match
+        t.read(part, from, 256) match
           case Topic.Read.TooEarly(begin) => from = begin
           case Topic.Read.Records(rs) if rs.isEmpty => going = false
           case Topic.Read.Records(rs) =>

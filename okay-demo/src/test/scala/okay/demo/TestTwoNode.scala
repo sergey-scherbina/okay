@@ -31,7 +31,10 @@ class TestTwoNode extends munit.FunSuite {
     // per-node, a local projection kept in sync by replay — sharing
     // a sqlite file here was never the design and races the two
     // processes against each other on schema creation
-    env.put("OKAY_CHAT_DB", ":memory:")
+    // the board IS its log now: the projection and the record are one
+    // object, so both nodes must be pointed at the SHARED log rather
+    // than at a private in-memory store beside it
+    env.put("OKAY_CHAT_DB", logDir)
     env.put("OKAY_CHAT_TICK_MS", "200")
     env.put("OKAY_CHAT_LEASE_MS", "1000")
     pb.redirectErrorStream(true)
@@ -67,12 +70,18 @@ class TestTwoNode extends munit.FunSuite {
       HttpResponse.BodyHandlers.ofString())
     (res.statusCode(), res.body())
 
-  private def marketJson(port: Int): String =
-    client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/market.json")).GET().build(),
+  private def boardJson(port: Int): String =
+    client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/board.json")).GET().build(),
       HttpResponse.BodyHandlers.ofString()).body()
 
   test("two real processes over one shared log: one leader, the follower serves reads, a kill fails over") {
     val logDir = Files.createTempDirectory("okay-two-node").toString
+    // the log EXISTS before the nodes do, which is how a shared log
+    // exists in production. Two processes racing to CREATE the first
+    // segment is a real okay-persist defect —
+    // FileAlreadyExistsException on 00000000000000000000.log — and
+    // reported as one; it is not what this test is about
+    Board(Board.topicOf(Board.store(logDir))).replay(): Unit
     val portA = 18091
     val portB = 18092
     val procA = spawn(portA, "a", logDir)
@@ -90,20 +99,20 @@ class TestTwoNode extends munit.FunSuite {
 
       // the follower refuses a write, naming the leader; its reads keep answering
       val (followerStatus, followerBody) =
-        post(followerPort, """{"messages":[{"role":"user","content":"/match умею класть плитку email two-node@x"}]}""")
+        post(followerPort, """{"messages":[{"role":"user","content":"/board добавь класть плитку"}]}""")
       assertEquals(followerStatus, 503, followerBody)
       assert(followerBody.contains(leaderFromA), followerBody)
-      assertEquals(client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$followerPort/market.json")).GET().build(),
+      assertEquals(client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$followerPort/board.json")).GET().build(),
         HttpResponse.BodyHandlers.ofString()).statusCode(), 200, "the follower must still serve reads")
 
       // the leader accepts the write
       val (leaderStatus, leaderBody) =
-        post(leaderPort, """{"messages":[{"role":"user","content":"/match умею класть плитку email two-node@x"}]}""")
+        post(leaderPort, """{"messages":[{"role":"user","content":"/board добавь класть плитку"}]}""")
       assertEquals(leaderStatus, 200, leaderBody)
 
       // within one tick, the FOLLOWER's market reflects the leader's write
-      assert(waitUntil(5000)(marketJson(followerPort).contains("плитку")),
-        s"the follower never caught up: ${marketJson(followerPort)}")
+      assert(waitUntil(5000)(boardJson(followerPort).contains("плитку")),
+        s"the follower never caught up: ${boardJson(followerPort)}")
 
       // kill the leader; the follower must take over
       val killedNode = leaderFromA
@@ -111,11 +120,11 @@ class TestTwoNode extends munit.FunSuite {
       assert(waitUntil(10000)(whoami(followerPort).exists(_._2)),
         s"the surviving node never took the seat: ${whoami(followerPort)}")
 
-      // the market it already held from polling is immediately servable,
+      // the board it already held from polling is immediately servable,
       // and it now accepts writes too — the showcase's own claim
-      assert(marketJson(followerPort).contains("плитку"), "the market did not survive the kill")
+      assert(boardJson(followerPort).contains("плитку"), "the board did not survive the kill")
       val (newLeaderStatus, newLeaderBody) =
-        post(followerPort, """{"messages":[{"role":"user","content":"/match умею класть плитку email after-kill@x"}]}""")
+        post(followerPort, """{"messages":[{"role":"user","content":"/board добавь покрасить стену"}]}""")
       assertEquals(newLeaderStatus, 200, newLeaderBody)
     finally
       procA.destroyForcibly(): Unit

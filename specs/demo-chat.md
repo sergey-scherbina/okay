@@ -1,5 +1,42 @@
 # demo-chat — the chat with an LLM, as a web page
 
+## THE MARKETPLACE LEFT THIS REPOSITORY (2026-09-05)
+
+Everything below that names okay-match, `MatchStore`, `/match`,
+`/market`, deals, scenarios or the subscription gate describes what
+this demo USED to be about. The matching marketplace was a commercial
+product rather than a piece of infrastructure, and it moved out with
+its history; nothing in the library imports `okay.matching` any more.
+
+The record stays because it is a record: those items were built,
+measured and shipped, and rewriting the history to pretend otherwise
+would make every checkbox above suspect.
+
+WHAT REPLACED IT is `okay.demo.Board` — a shared task list, log-first,
+with an owner and an assignee and nothing that searches for a
+counterpart. It is deliberately NOT a two-sided market: matching is
+somebody else's product now, and a demo that re-implemented it would
+be demonstrating the thing this library does not carry.
+
+The demo keeps every mechanism the marketplace was there to show, and
+that was the point of replacing rather than deleting it:
+
+- an agent calling TOOLS and nothing else — there is no path from a
+  sentence to the projection that does not go through one, so a model
+  cannot invent a task
+- a projection rebuilt from a durable log (`POST /admin/replay`)
+- live notifications: an assignment rings the assignee's inbox, and an
+  open page hears it over SSE
+- the same tools behind an MCP front door
+- the board as a CONTEXT parameter, so `main` wires the durable one
+  and a test wires a memory one — the ctx-wiring claim, unchanged
+- two nodes over one shared log, the follower deriving its own board
+
+What went with the marketplace, because each was a claim about it
+rather than about the library: deals and their timeline, scenarios as
+data, the two-gate disclosure model, the subscription gate, and the
+attribute registry with its embedder.
+
 ## Overview
 The user-requested showcase: a demo web application for chatting
 with an LLM, built out of what the repository already ships and

@@ -24,7 +24,7 @@ import java.nio.charset.StandardCharsets.UTF_8
  */
 final class TwoNode(root: Path, val node: String,
                     tickMs: Long = 500, leaseMillis: Long = 5000)
-                   (using Transport, Secrets) {
+                   (using Transport, Secrets, Board) {
 
 
   @volatile private var leaderOf: Option[String] = None
@@ -45,9 +45,9 @@ final class TwoNode(root: Path, val node: String,
       if decided.contains(node) then election.heartbeat()
       else
         // a FOLLOWER carries no authority of its own: it drops its
-        // projection and derives it again from the leader's log, which
+        // projection and derives it again from the LEADER's log, which
         // is the whole claim of a log-first design under two nodes
-        ChatDemo.board.replay(): Unit
+        summon[Board].replayFrom(Board.topicOf(fresh)): Unit
     finally fresh match
       case f: FileStore => f.close()
       case _ => ()   // MemoryStore (a :memory: log): nothing to release

@@ -14,7 +14,7 @@ own code.
 
 The finished thing this is a small copy of is
 [`okay-demo`](modules/okay-demo.md)'s `ChatDemo` — the same route,
-the same UI construction, plus a marketplace, sessions, an admin
+the same UI construction, plus a task board, sessions, an admin
 surface and monitoring. When you want more than this tutorial gives,
 read that.
 
@@ -588,8 +588,8 @@ module page with its own worked shape:
   compose file, with a test that the committed files have not drifted
   from it.
 - **Do something with the conversation** —
-  [`okay-match`](modules/okay-match.md) is what the demo does with
-  it: an LLM-structured marketplace driven by the chat itself.
+  `Board` is what the demo does with it: a shared task list the
+  model reaches only through tools, rebuilt from its own log.
 - **Give the model tools** — [`okay-agent`](modules/okay-agent.md)
   and [`okay-mcp`](modules/okay-mcp.md): tools are operations, and an
   MCP server is a `Handler[Tool]`.

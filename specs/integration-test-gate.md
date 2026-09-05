@@ -145,7 +145,7 @@ session.
 
 Landed: `~25` suites tagged across ~15 projects
 (okay-agent, okay-blob, okay-cache, okay-demo, okay-demo-e2e-browser,
-okay-docs-mongo, okay-kafka ×4, okay-mcp, okay-match ×1, okay-persist,
+okay-docs-mongo, okay-kafka ×4, okay-mcp, okay-persist,
 okay-pg ×5, okay-py ×2, okay-r2dbc, okay-rag, okay-tls). Full `sbt
 test` green, `okay.demo.TestChatDemo` alone dropped 38 → 34 tests
 with the 4 excluded being exactly its `liveTest`-wrapped ones.

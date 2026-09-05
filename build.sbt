@@ -747,54 +747,6 @@ lazy val okayRag = crossProject(JVMPlatform, JSPlatform)
 /** two-sided matching over LLM-structured chats (specs/match.md):
  * log-first, an attribute registry against vocabulary drift, facts
  * with provenance, hybrid search */
-lazy val okayMatch = crossProject(JVMPlatform, JSPlatform)
-  .crossType(CrossType.Pure)
-  .in(file("okay-match"))
-  .dependsOn(okayRag, okayAgent, okaySql, okayPersist)
-  .settings(
-    name := "okay-match",
-    libraryDependencies ++= Seq(
-      "org.scalameta" %%% "munit" % "1.1.1" % Test,
-      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
-    ),
-  )
-  .jvmSettings(
-    Compile / unmanagedSourceDirectories +=
-      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
-    Test / unmanagedSourceDirectories +=
-      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
-    libraryDependencies += "com.h2database" % "h2" % "2.3.232" % Test,
-    libraryDependencies += "org.xerial" % "sqlite-jdbc" % "3.47.1.0" % Test,
-    // the sqlite driver registers per classloader (the okay-jdbc
-    // lesson at line ~268): the suite forks to see it
-    Test / fork := true,
-  )
-  // okay-pg in test scope: the engine suite runs against live Postgres
-  // over the wire driver too (demo-pg-backend)
-  .jvmConfigure(_.dependsOn(okayJdbc % Test, okayPg.jvm % Test))
-
-/** agents as programs: tool calls are operations, the conversation
- * is a fold, policy lives in handlers (P9) */
-/**
- * The classification tiers, split out of okay-agent (2026-09-04) at the
- * request of a consumer who imports them and has never touched the
- * agent loop. Thirteen files that turn a message into a class and a
- * frame, with no dependency on Agent, Provider, Stepper or Rerun --
- * which is the point: a caller wanting a probe should not compile a
- * conversation.
- */
-/**
- * What a FORM is: named slots, typed answers, and what is still
- * missing (specs/conversation.md, specs/intent-classify.md).
- *
- * It is here rather than in okay-intent or okay-agent because BOTH
- * need it and neither may depend on the other: okay-intent classifies
- * a message and okay-agent conducts the exchange that follows, and in
- * one day each had grown its own slot model. This is the merged one.
- *
- * No dependencies at all, deliberately — a frame is data, and the
- * things that fill it (a date parser, a journal, a model) are not.
- */
 lazy val okayFrame = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-frame"))
@@ -1240,7 +1192,7 @@ lazy val okayDeploy = (project in file("okay-deploy"))
   )
 
 lazy val okayDemo = (project in file("okay-demo"))
-  .dependsOn(okayAgent.jvm, okayIntent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayMatch.jvm, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayAdmin, okayChat, okayLive, okayDeploy)
+  .dependsOn(okayAgent.jvm, okayIntent.jvm, okayMcp.jvm, okayUi.jvm, okayJetty, okayJdbc, okayPg.jvm, okaySecurity.jvm, okaySubscription, okayOps.jvm, okayAdmin, okayChat, okayLive, okayDeploy)
   // deployable (specs/deploy.md): the fat jar DemoDeploy's Dockerfile runs
   .settings(_root_.okay.deploy.sbt.OkayDeploy.deployable("okay.demo.ChatDemo"))
   .settings(
@@ -1332,25 +1284,11 @@ lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
   )
 
 /**
- * A live proof that the demo's registry benefits from real
- * embeddings, not just the raw model wrapper (specs/demo-chat.md,
- * demo-embeddings-attr): `ChatDemo.marketOf`'s `embed` parameter,
- * given okay-langchain4j-embed's `Langchain4jEmbed.embed(model)`,
- * collides "разработчик"/"программист" in `propose`'s search-before-
- * create BEFORE the registry drifts into two near-duplicate
- * attributes — the same reasoning as okayLangchain4jEmbed and
- * okayDemoE2eBrowser above: a real ~90MB model download, so this is
- * DELIBERATELY NOT in the root `.aggregate(...)` list and not a
- * dependency of okayDemo's own test sourceset. Build/test it
- * explicitly: `sbt okayDemoEmbed/test`.
+ * The embedder demo module went with okay-match: what it measured
+ * was the marketplace's attribute registry deduplicating
+ * "разработчик" against "программист", which is a claim about a
+ * product this library no longer carries.
  */
-lazy val okayDemoEmbed = (project in file("okay-demo-embed"))
-  .dependsOn(okayDemo, okayLangchain4jEmbed)
-  .settings(
-    name := "okay-demo-embed",
-    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
-  )
-
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
@@ -1367,7 +1305,7 @@ lazy val root = (project in file("."))
     okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayFrame.jvm, okayFrame.js,
-    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayMatch.jvm, okayMatch.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
+    okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
     okayMcp.jvm, okayMcp.js, okayUi.jvm, okayUi.js, okayUi.native,
     okayHttp.jvm, okayHttp.js, okayJetty, okayNetty,
     okayCluster.jvm, okayCluster.js, compare)
