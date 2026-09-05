@@ -367,3 +367,8 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-05	producers-chunked-consumer	ManyProducersBenchmark	oneRing_chunk/16	2073.553	us/op	Total=8000 f=2 i=5 chunked both sides	a single bounded ring
 2026-09-05	producers-chunked-consumer	ManyProducersBenchmark	zioQueue_chunk/1	427.736	us/op	Total=8000 f=2 i=5 chunked both sides	control; the earlier 285.4 was measured against our ELEMENTWISE consumer
 2026-09-05	producers-chunked-consumer	ManyProducersBenchmark	zioQueue_chunk/16	2540.774	us/op	Total=8000 f=2 i=5 chunked both sides	control
+2026-09-05	collection-foreach-pair	IdiomaticApiBenchmark	okayCollectionForeach_chunk_fold	12.774	us/op	N=4000 f=2 i=6	the fifth mismatched row flips: 7.6x past zio, where the elementwise pairing read 1.7x behind
+2026-09-05	collection-foreach-pair	IdiomaticApiBenchmark	zioCollectionForeach_chunk_runForeach	96.889	us/op	N=4000 f=2 i=6	control
+2026-09-05	collection-foreach-pair	IdiomaticApiBenchmark	okayCollection_chunk_fold	12.437	us/op	N=4000 f=2 i=6	4.5x past zioCollection_chunk_runSum, confirming the earlier 11.0
+2026-09-05	collection-foreach-pair	IdiomaticApiBenchmark	okayChannelForeach_elem_runForeach	267.181	us/op	N=4000 f=2 i=6	the ONE genuine gap left: 1.95x behind, and the cost is above the channel
+2026-09-05	collection-foreach-pair	IdiomaticApiBenchmark	zioChannelForeach_chunk_runForeach	138.493	us/op	N=4000 f=2 i=6	control

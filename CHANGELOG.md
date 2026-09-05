@@ -71,6 +71,33 @@ module in neither for a minute.
 
 # Changelog
 
+## collection-foreach-pair — the fifth mismatched row, and what is left after it
+
+`ZStream.fromIterable(list).runForeach` (96.9us) sat beside
+`Source.of(list).runForeach` (169.8) and `toLazyList.foreach` (165.5)
+— arrays against a program tree walked one element at a time. Asked
+the same way, through `Chunks.fromIterator`, our side reads **12.8
+±0.1: 7.6x ahead**.
+
+That is five of the six rows where zio appeared to lead the idiomatic
+table, all the same mismatch, all flipping when the pairing is fixed:
+`runSum` 3.1x behind → 4.5x ahead, `runForeach` 1.7x behind → 7.6x
+ahead, the matched-size chunk row, the many-producers table, and the
+guarantee table before them.
+
+**One genuine gap is left**: reading a buffered channel one element at
+a time, 267.2 against 138.5, and today's channel work already
+established that its remaining cost sits ABOVE the channel — in
+`Drain`'s batching and the `LazyList` bridge — rather than in the
+queue, whose own structure was replaced twice over.
+
+The pattern is worth more than any single row. A library whose fast
+path is chunk-native and a library whose surface is per-element will
+compare as 3x apart in either direction depending on which lane is
+chosen, and the honest table has to ask both the same question. Every
+lane in this benchmark now carries its granularity in its name for
+that reason.
+
 ## producers-chunked-consumer — the fifth mismatch, and this one was mine
 
 `ManyProducersBenchmark` read every okay lane with `receiveBlocking`
