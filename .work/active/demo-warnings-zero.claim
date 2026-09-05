@@ -1,0 +1,17 @@
+task: demo-warnings-zero
+agent: opus5-intent
+started: 2026-09-05
+branch: feature/demo-warnings-zero
+worktree: ../okay-wt-warn
+
+why: master carries 23 warnings in okay-demo — unused imports left
+  behind when the marketplace moved out (match-moves-out), plus one
+  E176 unused-value in Board.scala. Reproduced on an untouched master
+  checkout, so it is not a stale cache. This repository has a lane
+  whose subtitle is "zero warnings enforced as policy" and it has been
+  broken since that merge.
+
+not my files: I asked the owner in the room first and offered to do
+  it; the OPERATOR then told me to fix it. Doing exactly that and
+  nothing else — no behaviour changes, no refactors, no opinions
+  about anyone's code.
