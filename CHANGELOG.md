@@ -1,5 +1,53 @@
 # Changelog
 
+## intent-jmh-row — the microseconds this module quoted were 50-70x too high
+Completed: 2026-09-05
+Landed as 3db2ae78. Every timing in this line — 76µs probe, 90µs
+centroid, 92µs chargrams, a 404ms fit — was a `System.nanoTime` around
+a loop inside a test: no warmup, no JIT accounting, one run, on
+whatever the machine was doing. The repository keeps
+`src/jmh/history.tsv` precisely so a performance claim means
+something, and by that standard none of these did. I had quoted them
+myself.
+
+JMH, 2 forks × (4 warmup + 6 measurement) × 1s, on a quiet box
+announced in the room first:
+
+| what a caller pays | µs/op | was quoted |
+|---|---|---|
+| cue tier, one message | **1.4 ±0.1** | 96 |
+| `route`, a cue answers | **1.4 ±0.0** | — |
+| `route`, no cue fires | **15.3 ±1.4** | — |
+| centroid score | **1.3 ±0.1** | 75-90 |
+| probe score | **1.7 ±0.1** | 76 |
+| character n-grams, shipped model | **13.7 ±0.2** | 92 |
+| kNN over 60 examples | **13.9 ±1.1** | 158 |
+| **load the shipped model** | **58.9 ±1.1** | never measured |
+| fit centroid, 60 rows | 64.4 ±3.9 | — |
+| fit probe, 60 rows | 3 743 ±194 | — |
+| fit character n-grams, 60 rows | 40 090 ±754 | 404 000 |
+
+A cold loop measures the JIT and divides it by the iteration count.
+That is the whole gap.
+
+Two things stated in the spec so the table cannot imply otherwise: the
+vector tiers score a 256-dim synthetic vector and EXCLUDE the
+embedding call, which for a real caller is a network hop that
+dominates everything here — 1.3µs is the TIER, not the answer; and the
+door has two costs, 1.4µs when a cue fires and 15.3µs when none does,
+which is why both rows exist.
+
+The number nobody had asked for: **58.9µs to decode the shipped
+model**, the whole of what `Models.meeting` costs a startup path,
+once. `intent-fitted-model-ships` argued that fitting must leave the
+startup path; this is what stayed there, and it is nothing.
+
+okay-intent gains `JmhPlugin` and `src/jmh/scala`. Five rows in
+`history.tsv`, each naming the number it replaces.
+
+Gate: clean compile 0 warnings across main, test AND Jmh;
+okayIntentJVM 157, okayIntentJS 9 — 0 failures.
+
 ## intent-multi-intent-measured — the module's oldest claim, measured on both sides
 Completed: 2026-09-05
 Landed as 4087436b. `Span` has been in these types since the first
