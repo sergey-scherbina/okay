@@ -2862,3 +2862,70 @@ the MEASUREMENT as well as the model. The reader's mechanism is real
 cost cannot be measured on fifteen rows a language, and neither can
 its repair.
 
+## Results — intent-taxon-wired-to-tiers (2026-09-05)
+
+The last of the three frictions the first caller exposed, parked twice
+for other work. Request 1 asked for one taxonomy both tiers read; what
+had landed was one taxonomy NEITHER TRAINED TIER read — every fit
+inferred its classes from whatever labels its rows happened to carry,
+and a caller checked agreement by hand or not at all.
+
+Every `Trained` now carries the `Taxon` it was fitted against.
+`train` still infers it, because that is the ordinary case and no
+caller should have to declare a taxonomy to fit two classes; `against
+(taxon, rows)` DECLARES one and refuses a label outside it, at fit
+time rather than as an invented class in a confusion matrix later.
+`silent` names the classes a declared taxonomy holds that the rows
+never taught — a tier that cannot reach a class is a fact worth
+reading before trusting its recall, the same shape `Cues.silent` has.
+
+### The latent bug, which is why this was not tidiness
+
+`NoModel.blend` adds a cue's weight to a probe class BY STRING
+EQUALITY. Cues speaking `Proposal` against a probe fitted on
+`MeetingProposal` therefore never match: every bonus is zero, the
+ensemble silently degrades to the plain probe, and nothing anywhere
+says so. No error, no warning, and an accuracy that looks entirely
+plausible — it would simply be the probe's.
+
+That is the same defect `Cues.renamed` was built to end one layer up,
+still reachable at this layer. `NoModel.fit` now refuses it, and the
+check is ONE WAY on purpose: every class the PROBE knows must be in
+the cues' taxonomy, because those are the classes a bonus could ever
+apply to. A cue class the probe has not learned is legal — a cue set
+may cover a class the corpus does not yet.
+
+### What is not persisted, and why
+
+`Fitted` does not write the taxonomy. On the way back in it is
+inferred from the classes the model actually learned, so the wire
+format is unchanged and no file written by an earlier build stops
+decoding. The cost is stated where it can be read: a taxonomy DECLARED
+with a class no row ever taught comes back without it, and `silent` is
+empty after a round trip. Fit-time knowledge, not model knowledge.
+
+### And a default that was lying
+
+Enforcing the check broke ten existing tests, all of them fitting a
+probe on abstract labels ("A"/"B", "north"/"east") while inheriting
+`fit`'s default cue set. The guard was right that the taxonomies
+disagreed and wrong to forbid it — "no cue tier, just the calibrated
+probe" is a real configuration.
+
+The default was the actual defect. `cues` defaulted to
+`Patterns.meeting`: a MEETING cue set attached to every fit whatever
+the corpus was about, contributing nothing because the default weight
+grid is a single zero. A default that is inert is a default that lies
+about what it does. It is `Option[Patterns.Cues] = None` now — a
+caller who wants the blend names the cues, and only then must the
+taxonomies agree. Behaviourally a no-op for every existing caller,
+since the inert default contributed nothing to begin with.
+
+### What this does not do
+
+It does not make a mismatch impossible between a fitted tier and the
+router that composes it — `Router.of` already checks that, at the
+door. What changes is that the check is now possible one level down,
+where the tier itself knows what it was fitted against, and that the
+one place a mismatch could still go unnoticed is closed.
+

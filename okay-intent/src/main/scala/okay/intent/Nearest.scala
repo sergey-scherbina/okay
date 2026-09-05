@@ -18,12 +18,20 @@ import okay.rag.Embedding
  */
 object Nearest {
 
-  final case class Trained(examples: Vector[(Embedding, String)])
+  final case class Trained(examples: Vector[(Embedding, String)], taxon: Taxon):
+    def silent: Vector[String] =
+      val seen = examples.map(_._2).toSet
+      taxon.classes.filterNot(seen)
 
   final case class Verdict(best: String, margin: Double, runnerUp: Option[String])
 
   def train(labelled: Seq[(Embedding, String)]): Trained =
-    Trained(labelled.map((v, c) => (Centroid.normalise(v), c)).toVector)
+    Trained(labelled.map((v, c) => (Centroid.normalise(v), c)).toVector,
+      Taxon.parsed(labelled.map(_._2).distinct.sorted))
+
+  /** fitted against a taxonomy the caller declares */
+  def against(taxon: Taxon, labelled: Seq[(Embedding, String)]): Either[String, Trained] =
+    taxon.check(labelled.map(_._2)).map(_ => train(labelled).copy(taxon = taxon))
 
   /**
    * Vote among the k nearest, each neighbour weighted by its

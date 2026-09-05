@@ -22,7 +22,11 @@ import okay.rag.Embedding
  */
 object Probe {
 
-  final case class Trained(classes: Vector[String], w: Array[Array[Double]], b: Array[Double])
+  /** the weights, and the taxonomy they were fitted against — see
+   * `Centroid.Trained` for why a tier records it */
+  final case class Trained(classes: Vector[String], w: Array[Array[Double]],
+                           b: Array[Double], taxon: Taxon):
+    def silent: Vector[String] = taxon.classes.filterNot(classes.contains)
 
   final case class Verdict(best: String, probability: Double,
                            margin: Double, runnerUp: Option[String])
@@ -61,7 +65,7 @@ object Probe {
     val w = Array.fill(classes.length)(Array.fill(dim)(0.0))
     val b = Array.fill(classes.length)(0.0)
     val rows = labelled.map((v, c) => (Centroid.normalise(v), classes.indexOf(c))).toVector
-    val model = Trained(classes, w, b)
+    val model = Trained(classes, w, b, Taxon.parsed(classes))
     var epoch = 0
     while epoch < epochs do
       for (u, target) <- rows do
@@ -78,6 +82,12 @@ object Probe {
           c += 1
       epoch += 1
     model
+
+  /** fitted against a taxonomy the caller declares */
+  def against(taxon: Taxon, labelled: Seq[(Embedding, String)], epochs: Int = 300,
+              rate: Double = 0.5): Either[String, Trained] =
+    taxon.check(labelled.map(_._2))
+      .map(_ => train(labelled, epochs, rate).copy(taxon = taxon))
 
   /**
    * Every class with its probability, best first — the distribution

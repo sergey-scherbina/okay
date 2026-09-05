@@ -25,7 +25,8 @@ object CharGrams {
 
   final case class Trained(classes: Vector[String], dim: Int,
                            w: Array[Array[Double]], b: Array[Double],
-                           low: Int, high: Int)
+                           low: Int, high: Int, taxon: Taxon):
+    def silent: Vector[String] = taxon.classes.filterNot(classes.contains)
 
   final case class Verdict(best: String, probability: Double,
                            margin: Double, runnerUp: Option[String])
@@ -89,7 +90,7 @@ object CharGrams {
     val classes = labelled.map(_._2).distinct.sorted.toVector
     val w = Array.fill(classes.length)(Array.fill(dim)(0.0))
     val b = Array.fill(classes.length)(0.0)
-    val model = Trained(classes, dim, w, b, low, high)
+    val model = Trained(classes, dim, w, b, low, high, Taxon.parsed(classes))
     val rows = labelled.map((text, c) => (features(text, dim, low, high), classes.indexOf(c))).toVector
     var epoch = 0
     while epoch < epochs do
@@ -107,6 +108,13 @@ object CharGrams {
           c += 1
       epoch += 1
     model
+
+  /** fitted against a taxonomy the caller declares */
+  def against(taxon: Taxon, labelled: Seq[(String, String)], dim: Int = 4096,
+              low: Int = 3, high: Int = 5, epochs: Int = 400,
+              rate: Double = 0.5): Either[String, Trained] =
+    taxon.check(labelled.map(_._2))
+      .map(_ => train(labelled, dim, low, high, epochs, rate).copy(taxon = taxon))
 
   def score(t: Trained, text: String): Option[Verdict] =
     if t.classes.isEmpty then None
@@ -142,6 +150,6 @@ object CharGrams {
       Left(s"no name given for: ${unmapped.sorted.mkString(", ")}")
     else if offTaxon.nonEmpty then
       Left(s"renamed onto classes the taxonomy does not hold: ${offTaxon.sorted.mkString(", ")}")
-    else Right(t.copy(classes = t.classes.map(mapping)))
+    else Right(t.copy(classes = t.classes.map(mapping), taxon = onto))
 }
 

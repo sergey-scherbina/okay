@@ -1901,7 +1901,14 @@ subtraction.
       have extractors. Named entities (who), durations, places and
       amounts are the obvious next ones, and each is a `Slot.extract`
       rather than a design.
-- [ ] intent-taxon-wired-to-tiers — request 1 asked for one taxonomy
+- [x] intent-taxon-wired-to-tiers — LANDED 2026-09-05. Every `Trained`
+      carries the `Taxon` it was fitted against; `train` infers,
+      `against(taxon, rows)` declares and refuses a label outside it,
+      `silent` names what a declared taxonomy holds and the rows never
+      taught. `NoModel.fit` refuses cues and a probe that speak
+      different names, which was a live silent-degradation bug. The
+      taxonomy is deliberately not persisted. Original entry follows.
+- [x] intent-taxon-wired-to-tiers (original) — request 1 asked for one taxonomy
       both tiers read, and what landed is one taxonomy that NEITHER
       tier reads: `Classify` takes a `Schema[I]`, `Patterns` takes
       cues, `Centroid` takes whatever labels it was fitted on, and a

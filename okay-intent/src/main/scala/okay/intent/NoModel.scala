@@ -41,7 +41,10 @@ object NoModel {
    * delivered 88.9% over 45% on unseen data.
    */
   final case class Trained(probe: Probe.Trained,
-                           cues: Patterns.Cues,
+                           /** `None` is "no cue tier", which is a real
+                            * configuration and now the DEFAULT — see
+                            * `fit` */
+                           cues: Option[Patterns.Cues],
                            patternWeight: Double,
                            threshold: Double,
                            promise: Option[Double],
@@ -73,10 +76,10 @@ object NoModel {
    * units of probability, and it is fitted rather than chosen — see
    * `fit`.
    */
-  private def blend(t: Probe.Trained, cues: Patterns.Cues, w: Double,
+  private def blend(t: Probe.Trained, cues: Option[Patterns.Cues], w: Double,
                     text: String, v: Embedding): Seq[(String, Double)] =
     val base = Probe.ranked(t, v)
-    val cue = Patterns.score(cues, text)
+    val cue = cues.flatMap(Patterns.score(_, text))
     base.map { (c, p) =>
       val bonus = cue.filter(_.best == c).map(_.margin * w).getOrElse(0.0)
       c -> (p + bonus)
@@ -92,10 +95,44 @@ object NoModel {
    */
   def fit(train: Seq[(String, Embedding, String)],
           calibrate: Seq[(String, Embedding, String)],
-          cues: Patterns.Cues = Patterns.meeting,
+          /**
+           * The cue tier to blend in, or `None` for the probe alone.
+           *
+           * It used to default to `Patterns.meeting` — a MEETING cue
+           * set attached to every fit, whatever the corpus was about,
+           * contributing nothing because the default weight grid is a
+           * single zero. A default that is inert is a default that is
+           * lying about what it does, so the honest one is `None`, and
+           * a caller who wants the blend says which cues.
+           */
+          cues: Option[Patterns.Cues] = None,
           targetAccuracy: Double = 0.95,
           weights: Seq[Double] = Seq(0.0)): Trained =
     val probe = Probe.train(train.map((_, v, c) => (v, c)))
+
+    /*
+     * THE CUES AND THE PROBE MUST SPEAK THE SAME NAMES, and until now
+     * nothing checked it.
+     *
+     * `blend` adds a cue's weight to a probe class by STRING
+     * EQUALITY. Cues speaking `Proposal` against a probe fitted on
+     * `MeetingProposal` therefore never match, every bonus is zero,
+     * and the ensemble silently degrades to the plain probe — with no
+     * error, no warning and a perfectly plausible accuracy. It is the
+     * exact defect `Cues.renamed` was built to prevent one layer up,
+     * and this is the layer it could still happen at.
+     *
+     * A cue class the probe has not learned is legal (a cue set may
+     * cover a class the corpus does not yet), so the check is one
+     * way: every class the PROBE knows must be in the cues' taxonomy
+     * — because those are the ones a bonus could ever apply to.
+     */
+    val strangers = cues.map(c => probe.classes.filterNot(c.taxon.has)).getOrElse(Nil)
+    require(strangers.isEmpty,
+      s"the probe was fitted on classes the cues' taxonomy does not hold: " +
+        s"${strangers.sorted.mkString(", ")}. Every pattern bonus would be zero " +
+        "and the ensemble would silently be the probe alone — rename the cue set " +
+        "with Cues.renamed, or fit the probe on the taxonomy the cues speak.")
 
     // The pattern weight, chosen on the calibration half. The DEFAULT
     // GRID IS A SINGLE ZERO, which is a measured decision and not
@@ -174,7 +211,8 @@ object NoModel {
     val ranked = blend(t.probe, t.cues, t.patternWeight, text, v)
     val (cls, s0) = ranked.headOption.getOrElse(("", 0.0))
     val conf = s0 - ranked.lift(1).map(_._2).getOrElse(0.0)
-    val full = Verdict(cls, conf, Patterns.score(t.cues, text).exists(_.best == cls),
+    val full = Verdict(cls, conf,
+      t.cues.flatMap(Patterns.score(_, text)).exists(_.best == cls),
       ranked.lift(1).map(_._1), ranked)
     Decision(if ranked.nonEmpty && conf >= t.threshold then Some(full) else None, full)
 

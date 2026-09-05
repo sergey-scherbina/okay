@@ -69,6 +69,15 @@ object Fitted {
 
   // ---------------------------------------------------------------
   // the models, each as a plain record
+  //
+  // THE TAXONOMY IS NOT PERSISTED, deliberately. A `Trained` carries
+  // the taxonomy it was fitted against (intent-taxon-wired-to-tiers),
+  // and on the way back in it is INFERRED from the classes the model
+  // actually learned. The wire format therefore does not change, and
+  // no file written by an earlier build stops decoding — the cost is
+  // that a taxonomy DECLARED with a class no row ever taught comes
+  // back without it, so `silent` is empty after a round trip. Fit-time
+  // knowledge, not model knowledge.
 
   final case class ProbeModel(classes: Vector[String], w: Matrix, b: Array[Double]) derives Schema
   final case class CentroidModel(classes: Vector[String], vectors: Vector[Embedding]) derives Schema
@@ -78,18 +87,20 @@ object Fitted {
                                vectors: Vector[Embedding], weights: Array[Double]) derives Schema
 
   def save(t: Probe.Trained): ProbeModel = ProbeModel(t.classes, Matrix.of(t.w.toSeq), t.b)
-  def load(m: ProbeModel): Probe.Trained = Probe.Trained(m.classes, m.w.rows.toArray, m.b)
+  def load(m: ProbeModel): Probe.Trained =
+    Probe.Trained(m.classes, m.w.rows.toArray, m.b, Taxon.parsed(m.classes))
 
   def save(t: Centroid.Trained): CentroidModel =
     val ks = t.byClass.keys.toVector.sorted
     CentroidModel(ks, ks.map(t.byClass))
   def load(m: CentroidModel): Centroid.Trained =
-    Centroid.Trained(m.classes.zip(m.vectors).toMap)
+    Centroid.Trained(m.classes.zip(m.vectors).toMap, Taxon.parsed(m.classes))
 
   def save(t: CharGrams.Trained): GramsModel =
     GramsModel(t.classes, t.dim, Matrix.of(t.w.toSeq), t.b, t.low, t.high)
   def load(m: GramsModel): CharGrams.Trained =
-    CharGrams.Trained(m.classes, m.dim, m.w.rows.toArray, m.b, m.low, m.high)
+    CharGrams.Trained(m.classes, m.dim, m.w.rows.toArray, m.b, m.low, m.high,
+      Taxon.parsed(m.classes))
 
   /**
    * A static table loses its `split` on the way out and takes it back

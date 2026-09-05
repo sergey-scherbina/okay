@@ -27,7 +27,20 @@ import okay.rag.Embedding
  */
 object Centroid {
 
-  final case class Trained(byClass: Map[String, Embedding])
+  /**
+   * The class means, and THE TAXONOMY THEY WERE FITTED AGAINST.
+   *
+   * A tier used to infer its classes from whatever labels its rows
+   * happened to carry, so a caller checked agreement by hand
+   * afterwards or not at all. `train` still infers — it is the
+   * ordinary case — but the answer is recorded, and `against`
+   * DECLARES a taxonomy and refuses rows that do not fit it.
+   */
+  final case class Trained(byClass: Map[String, Embedding], taxon: Taxon):
+    /** classes the taxonomy declares that this tier can never produce
+     * — none when the taxonomy was inferred, and the interesting case
+     * when it was declared */
+    def silent: Vector[String] = taxon.classes.filterNot(byClass.contains)
 
   final case class Verdict(best: String, similarity: Double,
                            margin: Double, runnerUp: Option[String])
@@ -72,7 +85,13 @@ object Centroid {
           i += 1
       cls -> normalise(okay.rag.embedding(acc))
     }
-    Trained(byClass)
+    Trained(byClass, Taxon.parsed(byClass.keys.toVector.sorted))
+
+  /** the same fit, against a taxonomy the caller DECLARES — a label
+   * outside it is an error here rather than an invented class later */
+  def against(taxon: Taxon, labelled: Seq[(Embedding, String)])
+  : Either[String, Trained] =
+    taxon.check(labelled.map(_._2)).map(_ => train(labelled).copy(taxon = taxon))
 
   /**
    * Nearest centroid, with the gap to the runner-up as the margin.
