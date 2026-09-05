@@ -1,4 +1,57 @@
-## match-moves-out — the marketplace leaves, and the demo keeps its point
+# Changelog
+
+## intent-english-corpus-twins — the corpus every number is measured on had the defect too
+Completed: 2026-09-05
+Landed as 38009d08. The twin guard from `intent-slavic-collision`,
+pointed at the corpus nobody had pointed it at: `labelled`, which the
+shipped model is fitted on and against which every number this module
+publishes is measured. Three pairs — two Proposals from one
+"Suggest..." shape, two Requests that both say "send me the agenda",
+two Notifications about a room change. Each second member is rewritten
+to say the same thing a different way, and the guard ASSERTS on
+`labelled` now rather than reporting.
+
+| | before | after |
+|---|---|---|
+| composite, held-out English | 76.7% | **75.0%** |
+| macro F1 | 0.756 | 0.740 |
+| `Notification` F1 | 0.77 | 0.73 |
+| `Other` F1 | 0.58 | 0.56 |
+| NEAR half of held-out | 86.7% | 83.3% |
+| FAR half | 66.7% | 66.7% |
+| one typo | 66.7% | 63.3% |
+| politeness removed | 65.0% | 63.3% |
+
+The near half fell and the far half did not move at all — the shape a
+duplicate-removal should have: the messages scoring well because
+something like them was in training are the ones that lose. One
+message is 1.7 points, so this is evidence for the SIGN and not the
+size; the old number was slightly inflated by template redundancy,
+which is the direction the theory predicts.
+
+Every place it was quoted is corrected — the `Models` doc comment, the
+module page, the `Router` doc, and the two tests that assert it.
+"Expect 63-67% from a message somebody else wrote" replaces "65-70%".
+
+AND A NUMBER THAT WENT UP AND IS NOT EVIDENCE OF ANYTHING: under the
+"hedge in front" shift the composite reads 78.3%, ABOVE the unshifted
+75.0%. One message, in the direction that makes no sense, and the
+clearest available statement of what sixty rows can resolve — ±1.7
+points is this instrument's floor, and every smaller difference in
+that spec should be read as zero.
+
+SUPERSEDED BUT NOT REWRITTEN: `intent-fitted-model-ships`,
+`intent-one-entry-point`, `intent-per-class-not-aggregate` and
+`intent-second-author` quote the old numbers and are correct for the
+corpus they were measured on. Named here rather than edited in place.
+
+Gate: okayIntentJVM 153, okayIntentJS 9, okayDemo 61 — 0 failures, and
+okay-intent compiles clean. NOT clean overall, and not mine: okay-demo
+carries 23 warnings that arrived on master with `match-moves-out`
+(unused imports left behind when the marketplace moved out),
+reproduced on an untouched master checkout and reported to the room.
+
+es-out — the marketplace leaves, and the demo keeps its point
 Completed: 2026-09-05
 Landed as 8f2c56d7. The matching marketplace is a commercial product
 and not a piece of infrastructure, so it moved to a private repository
