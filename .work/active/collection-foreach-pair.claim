@@ -1,0 +1,13 @@
+lane: collection-foreach-pair
+why: the last unchecked row of the idiomatic table.
+  zioCollectionForeach_chunk_runForeach (85.5) is
+  ZStream.fromIterable(list).runForeach -- chunk-native. Beside it sit
+  okayCollectionForeach_elem_lazyList (150.2) and _elem_runForeach
+  (149.4), both per-element. Same shape as the runSum row, which
+  flipped from "3.1x behind" to "4.5x ahead" once the pair was fair.
+  Check before optimising: the alternative is chasing a gap that is
+  not there, which is how four of the last five rows turned out.
+how: add okayCollectionForeach_chunk_fold over Chunks.fromIterator,
+  keep the elementwise lanes as diagnostics, measure. Then the only
+  remaining honest gap in the table is the channel row, where the cost
+  is in Drain and the toLazyList bridge rather than the queue.
