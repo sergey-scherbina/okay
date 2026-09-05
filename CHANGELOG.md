@@ -1,3 +1,74 @@
+## match-moves-out — the marketplace leaves, and the demo keeps its point
+Completed: 2026-09-05
+Landed as 8f2c56d7. The matching marketplace is a commercial product
+and not a piece of infrastructure, so it moved to a private repository
+— with its twenty-three commits of history, because the reasons for a
+decision are worth more than the decision.
+
+okay-match (15 files) and okay-demo-embed are gone. Nothing in the
+library imports `okay.matching` any more, and every module it was
+built ON — okay-rag, okay-agent, okay-sql, okay-persist — stays public
+with every other caller it had.
+
+THE DEMO STAYED, and that was the harder half. It was not "a chat demo
+that used okay-match": it was the demo OF okay-match plus streaming,
+and 800 of its 1365 lines were the marketplace. Stripping it would
+have left a page that streams a reply and nothing else.
+
+So the domain was REPLACED rather than removed. `okay.demo.Board` is a
+shared task list — log-first, an owner and an assignee, and nothing
+that searches for a counterpart. Deliberately NOT a two-sided market:
+matching is somebody else's product now, and a demo that
+re-implemented it would be demonstrating exactly the thing this
+library no longer carries.
+
+Every mechanism the marketplace was there to show survives, which is
+the argument for replacing over deleting: an agent that can touch the
+board ONLY through tools, so there is no path from a sentence to the
+projection and a model cannot invent a task; a projection rebuilt from
+a durable log; an assignment ringing the assignee's inbox and an open
+page hearing it over SSE; the same tools behind MCP; two nodes over
+one shared log with the follower deriving its own board; and the board
+as a context parameter, so `main` wires the durable one and a test
+wires a memory one.
+
+What went with the marketplace, each being a claim about IT rather
+than about the library: deals and their timeline, scenarios as data,
+the two-gate disclosure model, the subscription gate at the intake,
+and the attribute registry with its embedder.
+
+THREE THINGS THE MOVE FOUND, none of them planned.
+
+A FABRICATED VALUE IN THE NEW CODE, caught by its own test before it
+shipped. `Board.apply` returned an empty task carrying the asked-for
+id when no such task existed, so a caller could not tell "assigned"
+from "there is nothing to assign" — and a replay would have invented
+rows for records naming tasks the log never created.
+
+A REAL okay-persist DEFECT. Two processes racing to CREATE the first
+segment of a shared log both try to make
+`00000000000000000000.log`, and one dies with
+`FileAlreadyExistsException`. Staggered starts are fine; simultaneous
+ones are not. The two-node test now creates the log before the nodes,
+which is how a shared log exists in production, and the race is
+reported rather than papered over.
+
+AND A DESIGN POINT REMOVED BY ACCIDENT. `routes` taking its store as a
+context parameter is what gives each test its own isolated world.
+Replacing it with a global made two tests share one file and inherit
+each other's state; the board is a context parameter again, which is
+the demo's own ctx-wiring claim and not a detail.
+
+specs/demo-chat.md keeps its record and says at the top what moved and
+what replaced it. Those items were built, measured and shipped, and
+rewriting the history to pretend otherwise would make every checkbox
+in the file suspect.
+
+Gate: 2326 tests, 0 failures, 0 warnings. The code was verified
+building and passing in the private repository BEFORE anything was
+deleted here — a module in two places for an hour costs less than a
+module in neither for a minute.
+
 # Changelog
 
 ## producers-chunked-consumer — the fifth mismatch, and this one was mine
