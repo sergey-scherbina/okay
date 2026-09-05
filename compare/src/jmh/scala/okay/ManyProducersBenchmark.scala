@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
  * Everything measured so far was one producer and one consumer, and
  * at that width a single ring's tail CAS is uncontended and a relaxed
  * buffer can only lose — it adds a part to pick and gains nothing.
- * The reason `MultiFifo` exists is the other end of the curve, where
+ * The reason a partitioned buffer exists is the other end of the curve,
  * every producer fights for the same counter, and the only honest way
  * to say whether it earns its keep is to sweep the width.
  */
@@ -83,10 +83,10 @@ class ManyProducersBenchmark {
     runChunked(Queues.strong[Long].unbounded.build)
 
   @Benchmark def relaxed_chunk(): Long =
-    runChunked(Queues.strong[Long].relaxed(parts = producers, each = Cap / producers max 8).build)
+    runChunked(Queues.strong[Long].relaxed.parts(producers).each(Cap / producers max 8).build)
 
   @Benchmark def relaxedUnbounded_chunk(): Long =
-    runChunked(Queues.strong[Long].relaxedUnbounded(parts = producers).build)
+    runChunked(Queues.strong[Long].relaxed.parts(producers).unbounded.build)
 
   /**
    * The whole point of this benchmark, now that the table above shows
@@ -96,7 +96,7 @@ class ManyProducersBenchmark {
    * worth having.
    */
   @Benchmark def adaptive_chunk(): Long =
-    runChunked(Queues.strong[Long].adaptive.parts(16).bounded(Cap).build)
+    runChunked(Queues.strong[Long].adaptive.parts(16).each(Cap).build)
 
   @Benchmark def adaptiveUnbounded_chunk(): Long =
     runChunked(Queues.strong[Long].adaptive.parts(16).unbounded.build)
@@ -111,7 +111,7 @@ class ManyProducersBenchmark {
   /** parts as wide as the producers: contention only when two land on
    * the same part */
   @Benchmark def relaxed_elem(): Long =
-    run(Queues.strong[Long].relaxed(parts = producers, each = Cap / producers max 8).build)
+    run(Queues.strong[Long].relaxed.parts(producers).each(Cap / producers max 8).build)
 
   /**
    * The same relaxation over parts that GROW. The hypothesis this
@@ -124,7 +124,7 @@ class ManyProducersBenchmark {
    * arise.
    */
   @Benchmark def relaxedUnbounded_elem(): Long =
-    run(Queues.strong[Long].relaxedUnbounded(parts = producers).build)
+    run(Queues.strong[Long].relaxed.parts(producers).unbounded.build)
 
   /** and one growable buffer, so the comparison is like for like */
   @Benchmark def oneUnbounded_elem(): Long = run(Queues.strong[Long].unbounded.build)

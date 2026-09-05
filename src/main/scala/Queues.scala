@@ -15,13 +15,14 @@ package okay
  * {{{
  * Queues.strong[Int].bounded(1024).build              // the default, spelled out
  * Queues.strong[Int].unbounded.build                  // grows by segments
- * Queues.strong[Int].relaxed(parts = 8, each = 256).build
- * Queues.strong[Int].relaxedUnbounded(parts = 8).build
+ * Queues.strong[Int].relaxed.parts(8).each(256).build
+ * Queues.strong[Int].relaxed.parts(8).unbounded.build
+ * Queues.strong[Int].adaptive.each(1024).build
  * Queues.strong[Int].on([T] => (n: Int) => Ring[T](n)).build
  *
  * Queues.weak[Int].bounded(64).build                  // close discards
  * Queues.weak[Int].unbounded.build
- * Queues.weak[Int].relaxed(parts = 4, each = 64).build
+ * Queues.weak[Int].relaxed.parts(4).each(64).build
  *
  * Queues.composable[Int](1024).arrayBuffer.build      // STM, and slower
  * Queues.composable[Int](1024).listBuffer.build
@@ -58,9 +59,9 @@ object Queues {
     def segments: [T] => Int => Buffer[T] =
       [T] => (_: Int) => Segments[T]()
     def multiRing(parts: Int, each: Int): [T] => Int => Buffer[T] =
-      [T] => (_: Int) => MultiFifo[T](parts, _ => Ring[T](each))
+      [T] => (_: Int) => AdaptiveFifo[T](parts, () => Ring[T](each), eager = true)
     def multiSegments(parts: Int): [T] => Int => Buffer[T] =
-      [T] => (_: Int) => MultiFifo[T](parts, _ => Segments[T]())
+      [T] => (_: Int) => AdaptiveFifo[T](parts, () => Segments[T](), eager = true)
   }
 
   final case class Strong[A](private val buffer: Option[[T] => Int => Buffer[T]] = None) {
@@ -72,70 +73,51 @@ object Queues {
     def unbounded: Strong[A] = copy(buffer = Some(Mechanism.segments))
 
     /**
-     * RELAXED over BOUNDED parts: producers stop contending for one
-     * tail, and a full buffer still makes a producer wait — the
-     * relaxation with backpressure kept.
-     *
-     * Measured 485us at sixteen producers, against 2586 for a single
-     * ring and 2653 for `zio.Queue`, and it gets faster as producers
-     * are added (780 at one, 597 at four, 485 at sixteen).
-     *
-     * It read 111546us until senders learned to wait PER PART. One
-     * queue of waiting senders over a partitioned buffer means a
-     * freed slot wakes an arbitrary sender, who finds its own part
-     * still full and parks again — one useful wakeup in k. Waking
-     * where the room appeared is worth 230x here, which is worth
-     * knowing before designing the next partitioned thing.
-     */
-    def relaxed(parts: Int, each: Int): Strong[A] =
-      copy(buffer = Some(Mechanism.multiRing(parts, each)))
-
-    /**
-     * RELAXED over parts that GROW — the fastest channel here under
-     * many producers, and the one to reach for.
-     *
-     * Parts that never fill mean senders never park, so the waiting
-     * mismatch that ruins the bounded form cannot arise. Measured
-     * 169.9us at 16 producers against `zio.Queue`'s 2967 — 17.5x —
-     * and it gets FASTER as producers are added (354 at one, 178 at
-     * four, 170 at sixteen), which is the scaling relaxed queues are
-     * for.
-     *
-     * What it costs: no backpressure, so a producer that outruns the
-     * consumer is bounded only by memory; and the order BETWEEN
-     * producers, though each producer's own order is kept.
-     */
-    def relaxedUnbounded(parts: Int): Strong[A] =
-      copy(buffer = Some(Mechanism.multiSegments(parts)))
-
-    /**
-     * ADAPTIVE: parts appear as producers do, and the two choices
-     * stay apart — `adaptive` picks the part count for you,
-     * `bounded`/`unbounded` is still yours, because backpressure is
-     * semantics and no benchmark can decide it.
+     * RELAXED: `parts` independent buffers, a producer bound to one,
+     * so producers stop contending for a single tail. The price is
+     * the order BETWEEN producers; one producer's own elements still
+     * arrive in the order it sent them.
      *
      * {{{
-     * Queues.strong[Int].adaptive.bounded(1024).build
+     * Queues.strong[Int].relaxed.parts(8).each(256).build
+     * Queues.strong[Int].relaxed.parts(8).unbounded.build
+     * }}}
+     *
+     * Fixed parts, unlike `adaptive`: all of them exist from the
+     * start. Use it when the producer count is known; `adaptive` when
+     * it is not.
+     */
+    def relaxed: Parted[A] = Parted[A](this, eager = true)
+
+    /**
+     * ADAPTIVE: parts appear as producers do, up to the cap.
+     *
+     * {{{
+     * Queues.strong[Int].adaptive.each(1024).build
      * Queues.strong[Int].adaptive.unbounded.build
-     * Queues.strong[Int].adaptive.parts(4).bounded(256).build
+     * Queues.strong[Int].adaptive.parts(4).each(256).build
      * }}}
      *
      * The right part count depends on how many producers there turn
-     * out to be — one ring wins at one producer, a relaxed buffer by
-     * 19.6x at sixteen — and that is usually not known where the
-     * channel is made. This decides it by watching: the first
-     * producer gets one part, the second a second, and no element
-     * ever migrates, so there is no stop-the-world moment inside a
-     * lock-free structure.
+     * out to be — a plain ring wins at one, this is 38x faster at
+     * sixteen — and that is usually not known where the channel is
+     * made. No element ever migrates: a new producer gets a NEW part,
+     * empty, so there is no stop-the-world moment inside a lock-free
+     * structure.
+     *
+     * It costs 19% at one producer, which is the price of
+     * PARTITIONING rather than of adapting — a hand-tuned `relaxed`
+     * measured the same there. So this is not the default, and
+     * `Channel.apply` still gives a plain ring.
      *
      * What it may decide, and why. The laws promise each producer's
      * own order, no loss and no duplication, and say NOTHING about
      * the order BETWEEN producers. This trades exactly that silence
-     * — so if your consumer relies on how two different producers
-     * interleave, do not use it. Nothing ever promised you that, but
-     * it may have happened to hold.
+     * — if your consumer relies on how two producers interleave, do
+     * not use it. Nothing ever promised you that, but it may have
+     * happened to hold.
      */
-    def adaptive: Adaptive[A] = Adaptive[A](this)
+    def adaptive: Parted[A] = Parted[A](this, eager = false)
 
     /** your own mechanism, whatever it is */
     def on(buffer: [T] => Int => Buffer[T]): Strong[A] = copy(buffer = Some(buffer))
@@ -146,37 +128,43 @@ object Queues {
   }
 
   /**
-   * The adaptive mechanism, waiting for the one choice it will not
-   * make for you. `parts` caps how many it may open; the default is
-   * the machine's processor count, since more parts than cores buys
-   * nothing but scan.
+   * A partitioned mechanism, waiting for the one choice it will not
+   * make for you: `each`/`unbounded` is backpressure, which is
+   * semantics, and no benchmark decides it.
+   *
+   * `eager` is the difference between `relaxed` (every part from the
+   * start) and `adaptive` (parts as producers arrive) — one flag, not
+   * two mechanisms.
+   *
+   * THE UNIT IS IN THE NAME, deliberately. `each(n)` is per part;
+   * the plain `bounded(n)` on a single buffer is a total. A day of
+   * adding mechanisms one at a time left four spellings with three
+   * meanings, and a number copied between them silently meant
+   * something else. Documenting each case separately was the wrong
+   * fix.
    */
-  final case class Adaptive[A](private val back: Strong[A],
-                               private val maxParts: Int =
-                                 Runtime.getRuntime.availableProcessors) {
+  final case class Parted[A](private val back: Strong[A],
+                             private val eager: Boolean,
+                             private val maxParts: Int =
+                               Runtime.getRuntime.availableProcessors) {
 
-    def parts(n: Int): Adaptive[A] = copy(maxParts = if n < 1 then 1 else n)
+    def parts(n: Int): Parted[A] = copy(maxParts = if n < 1 then 1 else n)
 
     /**
-     * `capacity` is PER PART, like `relaxed(parts, each)` and unlike
-     * the plain `bounded`.
-     *
-     * It cannot be the total, and the reason is measured. A part's
-     * ring is fixed when the part is opened, and how many parts there
-     * will be is exactly what this mechanism does not know yet —
-     * so dividing a total by the CAP gives a lone producer a
-     * sixteenth of the buffer it asked for and parks it constantly:
-     * 969.8us against a plain ring's 113.9. Per part, one producer
-     * gets the ring it asked for and sixteen producers get sixteen of
-     * them, which is also the honest reading of "how much may be in
-     * flight" when the number of producers is the thing that varies.
+     * `capacity` PER PART, and it cannot be a total: a part's ring is
+     * fixed when the part opens, and how many parts there will be is
+     * exactly what an adaptive buffer does not know yet. Dividing a
+     * total by the cap gave a lone producer a sixteenth of its buffer
+     * and parked it constantly — 969.8us against a plain ring's
+     * 113.9.
      */
-    def bounded(capacity: Int): Strong[A] =
+    def each(capacity: Int): Strong[A] =
       val n = if maxParts < 1 then 1 else maxParts
-      back.on([T] => (_: Int) => AdaptiveFifo[T](n, () => Ring[T](math.max(2, capacity))))
+      back.on([T] => (_: Int) => AdaptiveFifo[T](n, () => Ring[T](math.max(2, capacity)), eager))
 
+    /** parts that grow instead of filling, so no producer ever waits */
     def unbounded: Strong[A] =
-      back.on([T] => (_: Int) => AdaptiveFifo[T](maxParts, () => Segments[T]()))
+      back.on([T] => (_: Int) => AdaptiveFifo[T](maxParts, () => Segments[T](), eager))
   }
 
   final case class Weak[A](private val buffer: Option[Buffer[A]] = None) {
@@ -184,11 +172,12 @@ object Queues {
     def bounded(capacity: Int): Weak[A] = copy(buffer = Some(Ring[A](capacity)))
     def unbounded: Weak[A] = copy(buffer = Some(Segments[A]()))
 
-    def relaxed(parts: Int, each: Int): Weak[A] =
-      copy(buffer = Some(MultiFifo[A](parts, _ => Ring[A](each))))
+    /** `parts` fixed buffers — the same spelling as on the strong
+     * contract, because the two menus must not drift apart */
+    def relaxed: PartedWeak[A] = PartedWeak[A](this, eager = true)
 
-    def relaxedUnbounded(parts: Int): Weak[A] =
-      copy(buffer = Some(MultiFifo[A](parts, _ => Segments[A]())))
+    /** parts as producers arrive */
+    def adaptive: PartedWeak[A] = PartedWeak[A](this, eager = false)
 
     /** your own mechanism. The weak contract needs no polymorphic
      * factory: nothing rides this buffer but the elements, because
@@ -196,6 +185,25 @@ object Queues {
     def on(buffer: Buffer[A]): Weak[A] = copy(buffer = Some(buffer))
 
     def build: Channel[A] = AbruptChannel[A](buffer.getOrElse(Ring[A](1024)))
+  }
+
+  /** the weak contract's partitioned mechanisms, spelled as the
+   * strong one's are. It needs no polymorphic factory: nothing rides
+   * this buffer but the elements, because this channel has no end
+   * mark to hide */
+  final case class PartedWeak[A](private val back: Weak[A],
+                                 private val eager: Boolean,
+                                 private val maxParts: Int =
+                                   Runtime.getRuntime.availableProcessors) {
+
+    def parts(n: Int): PartedWeak[A] = copy(maxParts = if n < 1 then 1 else n)
+
+    /** capacity PER PART */
+    def each(capacity: Int): Weak[A] =
+      back.on(AdaptiveFifo[A](maxParts, () => Ring[A](math.max(2, capacity)), eager))
+
+    def unbounded: Weak[A] =
+      back.on(AdaptiveFifo[A](maxParts, () => Segments[A](), eager))
   }
 
   final case class Composable[A](capacity: Int, private val buf: Option[() => Fifo[A]] = None) {

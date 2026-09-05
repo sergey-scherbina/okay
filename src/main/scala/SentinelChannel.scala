@@ -189,7 +189,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
    * ahead of it and the mark is the last thing in the stream.
    *
    * ONE MARK PER ORDER. A buffer with several independent orders — a
-   * relaxed one, `MultiFifo` — needs a mark in each, or the stream
+   * relaxed one, `AdaptiveFifo` — needs a mark in each, or the stream
    * ends at the first mark reached while other parts still hold
    * elements that were already accepted. `seal` answers how many it
    * placed, and the receiver counts them back: only the LAST one ends

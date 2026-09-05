@@ -36,7 +36,8 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReferenc
  * shape as four earlier defects in this design — a question about one
  * part asked of the whole — so it is a law, not an argument.
  */
-final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A]) extends Buffer[A] {
+final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = false)
+    extends Buffer[A] {
 
   private val cap = if limit < 1 then 1 else limit
 
@@ -52,11 +53,17 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A]) extends Buffer[A]
    * the thing it adapts away from. Here an index is an array read.
    */
   private val slots = AtomicReferenceArray[Buffer[A] | Null](cap)
-  slots.set(0, make())
+  // EAGER opens every part at once, which is the fixed relaxed buffer
+  // this file used to have as a separate class: the difference between
+  // "k parts from the start" and "parts as producers arrive" is one
+  // flag, not one type, and two nearly-identical lock-free structures
+  // is two places for the same defect to hide.
+  if eager then { var i = 0; while i < cap do { slots.set(i, make()); i += 1 } }
+  else slots.set(0, make())
 
   /** how many are open; grown only by the thread that opened one, so
    * a reader never has to walk the array to count */
-  private val open = AtomicInteger(1)
+  private val open = AtomicInteger(if eager then cap else 1)
 
   /** set once the channel is closing: no part may be opened after
    * that, or its end mark would never be placed */

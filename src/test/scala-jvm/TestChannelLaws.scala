@@ -45,9 +45,9 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
     // the adaptive one answers for every law too: it may choose its
     // part count freely, and no law it must keep depends on that
     ("SentinelChannel/adaptive", true,
-      cap => Queues.strong[Int].adaptive.parts(4).bounded(math.max(8, cap)).build),
+      cap => Queues.strong[Int].adaptive.parts(4).each(math.max(8, cap)).build),
     ("SentinelChannel/relaxed", true,
-      cap => Queues.strong[Int].relaxed(parts = 4, each = math.max(2, cap)).build),
+      cap => Queues.strong[Int].relaxed.parts(4).each(math.max(2, cap)).build),
     ("AbruptChannel", false, cap => AbruptChannel[Int](cap)),
     // add a mechanism here and it must answer for the whole contract.
     // These were checked against the withdrawn CasChannel with its
