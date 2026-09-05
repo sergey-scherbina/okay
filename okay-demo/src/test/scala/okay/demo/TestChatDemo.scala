@@ -231,19 +231,6 @@ class TestChatDemo extends munit.FunSuite {
 
 
 
-  private def getText(port: Int, path: String): String =
-    client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path")).GET().build(),
-      HttpResponse.BodyHandlers.ofString()).body()
-
-  private def getStream(port: Int, path: String): java.io.InputStream =
-    client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path")).GET().build(),
-      HttpResponse.BodyHandlers.ofInputStream()).body()
-
-  private def postTo(port: Int, path: String, body: String): java.net.http.HttpResponse[String] =
-    client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port$path"))
-      .POST(HttpRequest.BodyPublishers.ofString(body)).build(),
-      HttpResponse.BodyHandlers.ofString())
-
   // ---- authoring scenarios (demo-scenario-editor) ----------------------
 
 

@@ -151,7 +151,12 @@ final class Board(topic: Topic):
                   }
                   // a record that does not parse is skipped and not
                   // thrown: a log outlives the code that wrote it
-                  field("op").foreach(op => { apply(op, field); n += 1 })
+                  field("op").foreach { op =>
+                    // the applied task is not wanted here, only the
+                    // count — said with a type rather than dropped
+                    apply(op, field): Unit
+                    n += 1
+                  }
                 case _ => ()
             }
             from = rs.last.offset + 1

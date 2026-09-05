@@ -2,27 +2,18 @@ package okay.demo
 
 import okay.*
 import okay.given
-import okay.Condition
 import okay.http.{Http, McpHttp, Request, Response}
 import okay.mcp.{Mcp, Server as McpServer}
 import okay.jetty.Jetty
 import okay.llm.{Anthropic, Cut, Transport, Transports}
-import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Provider, Tool, Turn, Context as AgentContext}
-import okay.rag.{Embedding, Vectors}
+import okay.agent.{Agent, Compact, Handlers, Model as AgentModel, Tool, Turn, Context as AgentContext}
 import okay.ops.Ops
 import okay.security.Secure
 import okay.security.given
 import okay.admin.Admin
 import okay.chat.Chat
 import okay.live.{Hub, Registry}
-import okay.subscription.Subscription
-import okay.subscription.Subscription.Period
-import okay.persist.{FileStore, MemoryStore, Policy}
-import okay.jdbc.JdbcSql
-import okay.pg.{PgSql, PgTarget, PgTls}
-import okay.sql.Placeholders
 import okay.conf.Secrets
-import okay.crypto.given
 import okay.codec.Json
 import okay.codec.Json.*
 import java.nio.charset.StandardCharsets.UTF_8
@@ -94,8 +85,6 @@ object ChatDemo {
   /** the per-person inbox an assignment rings (demo-chat-async) */
   private val inboxes = Registry[String, String]()
   def inbox(email: String): Channel[String] = inboxes(email)
-
-  private val turnNo = java.util.concurrent.atomic.AtomicLong(0)
 
   /**
    * The tool table, with the notification wrapped around `assign`.
@@ -225,7 +214,7 @@ object ChatDemo {
 
   // ---- the routes ----------------------------------------------------
 
-  def routes(m: Chat.Model, budget: Int)(using Transport, Secrets, Board)
+  def routes(m: Chat.Model, budget: Int)(using Secrets, Board)
   : PartialFunction[Request, Response ! Async] =
     val board = summon[Board]
     // built ONCE per server, not per request — McpHttp keeps its

@@ -2,8 +2,6 @@ package okay.demo
 
 import okay.{Async, !, pure}
 import okay.http.{Http, Method, Request, Response}
-import okay.llm.Transport
-import okay.conf.Secrets
 import okay.persist.{Election, FileStore, Policy}
 import okay.codec.Json
 import okay.codec.Json.*
@@ -24,7 +22,7 @@ import java.nio.charset.StandardCharsets.UTF_8
  */
 final class TwoNode(root: Path, val node: String,
                     tickMs: Long = 500, leaseMillis: Long = 5000)
-                   (using Transport, Secrets, Board) {
+                   (using Board) {
 
 
   @volatile private var leaderOf: Option[String] = None
