@@ -1,5 +1,49 @@
 # Changelog
 
+## consumer-requests-status — the request list said "open" for six things that had shipped
+Completed: 2026-09-05
+Landed as 5d74f2fd. A consumer wrote that request 5 is still open and
+that they were waiting for a type proposal to review with live use
+rather than guessing from outside. They were right to say it, and the
+request was not open: `okay.frame.Slot`/`Frame` had shipped, THEY HAD
+MIGRATED ONTO IT THEMSELVES, and `Slot.choice` plus `Source` landed
+after that at their own request.
+
+What was broken is the document. "Open requests from a consumer"
+marked exactly ONE of seven as done — number 3 — while 1, 2, 4, 5, 6
+and 7 had all landed, several of them on the same day the list was
+still telling its reader they were open. A request list that does not
+track the code is worse than no list: it is a promise that reads as
+unkept.
+
+Every request now carries its status, and the type and commit that
+answers it. Request 5 also carries WHERE IT LANDED DIFFERENTLY from
+what was proposed, which is the part an outside reader cannot see and
+the part they were actually asking for:
+
+- the descriptor lives in `okay-frame`, its own module, because
+  `okay.agent.Conversation` grew a rival slot model the same day and
+  neither module may depend on the other
+- `Frame` carries the LANGUAGE of the exchange and `question`,
+  `answer` and `missing` take none — their own operational warning,
+  which changed the shape
+- an answer knows whether it was `Said`, `Found` or `Assumed`, which
+  request 5 never asked for and their default-value case demanded
+- `Slot.ask` is a map keyed by a language code rather than a function
+  of an opaque type, because a language that must survive a restart
+  has to be writable to a journal
+
+Nothing on that list is open. The open work is in `BACKLOG.md`.
+
+`docs/modules/okay-intent.md` now points at `okay-frame` for the
+descriptor with the four lines a caller needs — the module a type
+lives in is exactly what an outside reader cannot guess.
+
+Same defect class as this morning's re-publish: a document that had
+stopped tracking the code.
+
+Gate: docs only; okayDeploy's docs-index guard passes.
+
 ## intent-jmh-row — the microseconds this module quoted were 50-70x too high
 Completed: 2026-09-05
 Landed as 3db2ae78. Every timing in this line — 76µs probe, 90µs
