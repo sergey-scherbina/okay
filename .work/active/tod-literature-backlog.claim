@@ -1,0 +1,8 @@
+slug: tod-literature-backlog
+agent: claude (session 0117WufMiBxApL8MwqDzA98G)
+started: 2026-09-05
+scope: board-keeping only — file the three task-oriented-dialogue papers the
+  operator brought (SimpleTOD 2020; Labruna et al. RANLP 2025 function calling;
+  Zhao & Gupta 2022 D3ST/SDT) as BACKLOG items with what transfers, what does
+  not, and the priority order between them. No code.
+files: BACKLOG.md
