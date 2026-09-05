@@ -1,0 +1,43 @@
+task: okay-mail-smtp
+agent: opus5-intent
+started: 2026-09-05
+branch: feature/okay-mail-smtp
+worktree: ../okay-wt-mail
+
+why: a consumer's first BLOCKING request rather than an improving one.
+  A one-time code to an email address is how a stranger proves the
+  address is theirs; until they do, their profile is a draft. Their
+  delivery today is `Identity.console` — the code is printed to the
+  server log, marked development-only — so the service works and
+  cannot have users. Everything they would do next is behind it,
+  including the corpus of real messages that is the only lever left on
+  every number I measured this week.
+
+why in the library: sending mail is infrastructure, not a product, and
+  it lands in a row this repository has already built twice — okay-pg
+  is Postgres over the wire with its own SCRAM and TLS rather than a
+  driver dependency, okay-http and okay-tls the same shape. SMTP is a
+  smaller version of that job: a line-oriented text protocol over a
+  socket, STARTTLS over the okay-tls that exists, AUTH PLAIN and LOGIN
+  which are simpler than the SCRAM already written.
+
+the shape they asked for, and I am not widening it:
+  - SEND ONLY. Receiving is IMAP or POP, a different and much bigger
+    module, and they argued against bundling it.
+  - one message: envelope from, recipients, headers, a UTF-8 body. No
+    MIME framework, no templates, no attachments until somebody has a
+    case — "the feature arrives with its reader".
+  - an EFFECT, so a caller wires a real server in main and a recorder
+    in a test, the way `Transport` already works.
+  - FAILURE AS DATA. A rejected recipient, a full mailbox and a
+    refused relay are three different things and a caller answering a
+    person must tell them apart; an exception collapses all three.
+
+the design that makes it testable without a network: the WIRE is pure
+  — given the server's lines, produce the client's lines and the
+  outcome — and the socket is a thin shell over it. The pure half runs
+  in the default gate; the loopback half binds a port and is therefore
+  `Live`-tagged, per the standing policy.
+
+files: okay-mail/ (new), build.sbt, docs/modules/okay-mail.md,
+  docs/README.md, specs/mail.md (new), BACKLOG.md
