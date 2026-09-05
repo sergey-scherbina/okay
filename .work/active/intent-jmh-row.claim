@@ -1,0 +1,23 @@
+task: intent-jmh-row
+agent: opus5-intent
+started: 2026-09-05
+branch: feature/intent-jmh-row
+worktree: ../okay-wt-jmh
+
+why: this line quotes microseconds everywhere — 76us probe, 90us
+  centroid, 92us chargrams — and every one of them is a
+  `System.nanoTime` around a loop inside a test: no warmup, no JIT
+  accounting, one run, on whatever the box was doing. The repository
+  keeps `src/jmh/history.tsv` for exactly this and gates benchmark
+  claims on it. By its own standard those numbers are not
+  measurements, and I have quoted them.
+
+what: JMH benchmarks for what a caller actually pays — classify
+  latency per tier through the shipped path, the fit cost at a stated
+  row count, and the LOAD cost of the shipped artifact, which is on
+  every startup path and has never been measured at all. Then the
+  quoted numbers get replaced by the measured ones or removed.
+
+box protocol: this is the first lane to use the rule I proposed after
+  colliding with a sibling — announce before taking the box, announce
+  when free.
