@@ -1,0 +1,19 @@
+lane: feed-staged-loop
+why: after the linear view, the feed still builds TWO Free nodes per
+  element -- c.send(a) and the flatMap around it -- and both are
+  interpreted. The shape is fully known at the point of writing: "while
+  there are elements, send". That is exactly the condition under which
+  this library already stages: inline combinators fold a known
+  pipeline into one while-loop, measured at 1.6us against 16.9 for the
+  chunked interpreter on the same work.
+how: the feed runs on a forked fiber, on a virtual thread, where
+  CanBlock is granted -- so it can be ONE Async.Run holding a plain
+  loop over sendBlocking, instead of a program of 2N nodes. One Free
+  node for the whole feed.
+the cost, named up front: CANCELLATION GRANULARITY. Today a fiber can
+  be cancelled between elements because the interpreter runs between
+  them; inside a loop, cancellation is noticed only at the blocking
+  send, through interruption. That is a semantic change, so it needs
+  saying in the docs and a test that a cancelled feed actually stops.
+land only if measured faster than 19.7 on the chunk-native lane, and
+  only with the cancellation behaviour tested rather than assumed.
