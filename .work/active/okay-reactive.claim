@@ -1,0 +1,21 @@
+lane: okay-reactive
+why: reactive streams is the SPI that Akka/Pekko, RxJava, Reactor,
+  fs2 and ZIO all speak, so a bridge opens this library outward. And
+  it costs NOTHING in dependencies: java.util.concurrent.Flow has been
+  in the JDK since 9, so the zero-dependency rule holds.
+  The protocol is demand -- request(n), and a publisher may not send
+  more -- which is what a bounded channel already is. receiveMany(n)
+  takes "no more than n"; demand maps onto capacity almost directly.
+how: a JVM-only module okay-reactive (Flow is not on Scala.js or
+  Native), following okay-cats/okay-zio's shape.
+  Start with Source[A] -> Flow.Publisher[A], where demand falls onto
+  our capacity naturally, then Publisher[A] -> Source[A].
+  THE TCK IS NOT OPTIONAL. The spec is thirty-odd rules about what a
+  publisher must and must not do -- onNext may not outrun demand,
+  onComplete after onError is forbidden, cancellation must be
+  idempotent -- and writing to the prose is a reliable way to produce
+  something that works and is formally wrong. reactive-streams-tck is
+  a TEST dependency; without it this is an imitation of the standard,
+  not support for it.
+land only with the TCK passing; a bridge that fails the TCK is worse
+  than none, because a caller will believe it.
