@@ -1,4 +1,33 @@
-## filestore-first-segment-race — several processes may open one log at the same moment
+# Changelog
+
+## demo-warnings-zero — master had 23 warnings and the policy says none
+Completed: 2026-09-05
+Landed as 97c7d133. They arrived with `match-moves-out`: the
+marketplace left okay-demo and its imports stayed. Reproduced on an
+untouched master checkout before touching anything, so not a stale
+cache and not one worktree's problem. This repository has a lane whose
+subtitle is "zero warnings enforced as policy", and it had been broken
+since that merge.
+
+Sixteen unused imports across `ChatDemo` and `TwoNode`; three private
+helpers in `TestChatDemo` that nothing calls; one unused private val
+(`turnNo`); three `using` parameters no body reads (`Transport` in
+`ChatDemo.routes`, `Transport` and `Secrets` in `TwoNode`); and one
+E176 in `Board.scala` where an `Option[Task]` was discarded inside a
+`foreach` block — now said with a type, `apply(op, field): Unit`,
+rather than dropped silently.
+
+Nothing else: every edit is a deletion of something unused or an
+explicit discard. The three signatures that lost a `using` parameter
+lost one the compiler proved no body reads, which cannot break a
+caller.
+
+Not my module. Asked the owner in the room and offered first; the
+operator then said to fix it.
+
+Gate: clean compile 0 warnings; okayDemo 61 tests, 0 failures.
+
+-first-segment-race — several processes may open one log at the same moment
 Completed: 2026-09-05
 Landed as fdef80b7. A shared log with several processes reading it is
 the arrangement this module's own two-node story describes, and it had
