@@ -1,0 +1,13 @@
+task: stm-js-direct-bench (price the direct STM handler against tl2, on JS/Node and the JVM, in BenchCross)
+agent: okay-42
+started: 2026-09-06
+branch: feature/stm-js-direct-bench
+
+why: BACKLOG "stm-js-direct-bench — the direct handler is the JS given
+  by construction; price it against tl2 on Node once a JS benchmark
+  harness exists." BenchCross (src/test/scala-cross, Live, runAsync)
+  is that harness. Lanes: the same STM program (N transactions on a
+  few TRefs, single fibre) under the direct handler and under tl2, on
+  whichever platform compiles it; the JVM column read against a JMH
+  twin if one exists. Measurement only; the ledger and specs/stm.md
+  take the number.
