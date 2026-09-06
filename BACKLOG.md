@@ -2700,7 +2700,20 @@ specialised without a second trait — but worth one line in the actor
 docs, now written: give a behaviour an `AnyRef` state. Closed by the
 doc line; kept here so the sample count has a home.
 
-## actor-stop-strands — Supervise.Stop closes with accepted messages inside, and `stopped` is never true
+## actor-stop-strands — DONE 2026-09-07 (small-wins): a supervised Stop drains and discards, and `stopped` comes true
+
+The loop now calls `discardRest()` after `fail` + `close` under
+`Supervise.Stop` and `Escalate`: it reads the closed mailbox to its
+end -- which is the failure, since the channel was failed -- and drops
+what it reads. The messages were accepted and will never be handled;
+that was already true, silently. Now `finished` means what it says,
+`ActorRef.stopped` turns true, and the law in `TestPoisonLaws` asserts
+it again (19/19 across the actor module). The `stop()` doc carries the
+qualifier: a supervised stop drains and DISCARDS; a caller who needed
+those messages handled wanted `Resume` or `Restart`. Original entry
+follows.
+
+## as filed — Supervise.Stop closes with accepted messages inside, and `stopped` is never true
 
 Found 2026-09-06 writing a law for actor-receive-offer-first. On a
 poisonous message under `Supervise.Stop` (and `Escalate`) the loop
@@ -2777,3 +2790,51 @@ valid (NEW ran before the swap); the tree was rebuilt from the
 transcript and re-verified. Rule, now in memory: commit before any
 script rewrites tracked files; restore with `git checkout`, never
 `cp`.
+
+## source-unfold-tuple — DECLINED by design 2026-09-07
+
+`Source.unfold` costs 13% over `Source.range` on its lane (section 6c),
+and the cost is the `Some((a, s2))` per step. That pair is what the
+CALLER's `f: S => Option[(A, S)]` returns -- the `LazyList.unfold`
+signature, which is the point of offering `unfold` at all. `range` is
+faster only because it is not generic: it knows its step is `i + 1`
+and tells `i` with no state to carry. Removing the tuple means a
+second step type (`Step[S, A]` with `Emit(a, s)`/`Done`) that every
+caller would have to learn for a 13% that only shows on a stream that
+does nothing else. Not taken; a caller with a hot unfold writes the
+specialised source, as `range` does.
+
+## drain-copy-per-element — DECLINED by design 2026-09-07
+
+`Drain` is a case class and `Stream[Drain, Async].uncons` answers
+`Some((d.held(d.at), d.copy(at = d.at + 1)))`: three objects per
+element -- `Some`, the pair, the advanced cursor -- 42 of ~900
+allocation samples on the elementwise channel lane. The cursor is the
+library's re-observation law: `uncons` on the same `Drain` twice must
+answer the same element, so the advance MUST be a fresh value, and a
+mutable index would make a `Drain` a linear resource in disguise. The
+`Option[(A, S)]` pair is `Stream.uncons`'s contract for every stream.
+Neither is a hole; both are the representation. Recorded so the next
+profile does not re-file them.
+
+## actor-ask-timer — DONE 2026-09-07 (small-wins, §17d): 5.5 → 4.4 KB per ask
+
+The JVM `Timer` no longer starts a virtual thread per arm: one
+scheduled executor holds the delay as a task, and the callback gets a
+virtual thread only when it fires. A fast `ask` cancels before that,
+so it allocates the task and nothing else — `actorAsk` 1 108 493 →
+879 176 B/op, −20.7%; time 2594 → 2150 ±770 on a bursty box. What is
+left per ask is the `Reply` channel (a ring of two), the send and the
+race; a single-slot box instead of a channel is the remaining shape,
+not taken here. All actor laws 19/19, including the timeout ones.
+
+## drained-chunked-door — DONE 2026-09-07 (small-wins, §17d)
+
+§6c recorded that `.drained.chunked()` re-chunks what `Drain` already
+batched and reads 318.7 against 209 elementwise, and named it a
+footgun. It cannot be forbidden by type — a `Source[A]` does not say
+what it is made of — so the fix is the right door: `Channel#
+drainedChunks: Source[Chunk[A]]`, each `receiveMany` batch told as one
+chunk, nothing re-done. 79 469 B/op against 1 413 443 for the same
+channel read one at a time, 17.8x less; the scaladoc names `.chunked()`
+on a drained source as the wrong door.

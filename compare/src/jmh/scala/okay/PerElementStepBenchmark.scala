@@ -51,6 +51,25 @@ class PerElementStepBenchmark {
       okay.effect[Async, Unit](Async.Run(() => sum += x))).runWith
     sum
 
+  /**
+   * small-wins: `drainedChunks` -- the receiveMany batches told as
+   * chunks, the right door for arrays from an ELEMENT channel. Priced
+   * against `elem_effectCallback` (the same channel read one at a
+   * time) and against `IdiomaticApiBenchmark`'s chunkNative (19.66,
+   * a `Channel[Chunk[A]]` fed by `bufferChunked`, which pays the
+   * representation once per chunk on BOTH sides -- this door pays it
+   * per element on the send side and per batch on the receive side,
+   * so it should land between the two).
+   */
+  @Benchmark
+  def elem_drainedChunks(): Long =
+    var sum = 0L
+    Channel.buffer(1024)(list).drainedChunks.runForeach(ch =>
+      okay.effect[Async, Unit](Async.Run(() =>
+        var i = 0
+        while i < ch.length do { sum += ch(i); i += 1 }))).runWith
+    sum
+
   /** the same walk, with the callback as a plain function: one Inject
    * and one Bind fewer per element, nothing else changed */
   @Benchmark

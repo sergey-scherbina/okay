@@ -43,13 +43,14 @@ class TestPoisonLaws extends munit.FunSuite:
       else okay.effect[Async, Int](Async.Run(() => { seen += m; n + 1 }))
     }.runWith
     for i <- 0 until 10 do { val _ = a.tell(i).runWith }
-    // NOT `a.stopped`: Stop closes the mailbox with 6..9 still accepted
-    // inside it and nobody left to drain them, so `finished` -- "every
-    // accepted element handed over" -- is never true. That is the
-    // module's standing semantics (filed as actor-stop-strands), and
-    // the observable here is the closed mailbox: a tell is refused.
+    // Stop closes the mailbox with 6..9 still accepted inside it and
+    // then DRAINS them (actor-stop-strands), so `stopped` -- "every
+    // accepted element handed over" -- does come true, and a tell is
+    // refused. Both are asserted: the first was false for as long as
+    // the messages were stranded.
     val deadline = System.currentTimeMillis() + 5000
-    while a.tell(99).runWith && System.currentTimeMillis() < deadline do Thread.sleep(1)
+    while !a.stopped && System.currentTimeMillis() < deadline do Thread.`yield`()
+    assert(a.stopped, "the actor did not report stopped: the stranded messages were not drained")
     assert(!a.tell(100).runWith, "the mailbox did not close after the poisonous message")
     assertEquals(seen.toList, List(0, 1, 2, 3, 4))
   }

@@ -1816,3 +1816,36 @@ answers true and never parks; a miss registers; the end and a failure
 arrive through the handoff, synchronously or to a parked receiver;
 the STM channel's default path stays correct; 3000 elements through a
 ring of 2), all of `TestChannelLaws`, the poison laws; Native compiles.
+
+### 17d. Small wins: the timer off its thread, and a chunks door for the element channel
+
+Three small changes measured on one run (load 4–8 with a burst
+mid-run, so the time bars are wide; the bytes are the claim):
+
+| what | before | after |
+|---|---|---|
+| `actorAsk` — the JVM `Timer` armed per ask | 2594.4 us / 1 108 493 B/op (5.5 KB per ask) | 2150.1 ±770 / **879 176 B/op, −20.7%** (4.4 KB) |
+| `elem_drainedChunks` — the `receiveMany` batches told as chunks | (elementwise read of the same channel: 255.6 / 1 413 443) | 91.1 ±55 / **79 469 B/op — 17.8x less**, 20 bytes per element |
+
+`Timer.after` on the JVM started a virtual thread and slept it; every
+`ask` armed one and, on nearly every ask, cancelled it when the reply
+came a few microseconds later — 5.5 KB of stack chunk per ask for a
+thread that never ran its callback. One scheduled executor now holds
+every pending delay as a small task, and the callback gets its virtual
+thread only when the delay FIRES. What a cancelled timer costs is the
+task. Every `Timer` user gets it: `ask`, `Async.sleep`, `race`.
+
+`drainedChunks` is the door §6c said was missing: `.drained.chunked()`
+re-chunks what `Drain` already batched and read 318.7 against 209
+elementwise. This tells each `receiveMany` batch as one `Chunk[A]`,
+nothing re-done — 20 bytes per element against 350 for the same
+channel read one at a time. It sits between `chunkNative` (19.66,
+where `bufferChunked` pays the representation once per chunk on BOTH
+sides) and the elementwise read, because the send side here is still
+per element.
+
+Two of this lane's items were declined by design and are recorded on
+the board: `Source.unfold`'s pair per step is the caller's
+`Option[(A, S)]`, and `Drain`'s copy per element is the re-observation
+law's fresh cursor. A supervised `Stop` now drains and discards, so
+`ActorRef.stopped` comes true (`actor-stop-strands`).

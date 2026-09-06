@@ -114,12 +114,29 @@ given CanBlock = new:
 
 /** the timer: a virtual thread sleeps for the duration; cancelling
  * interrupts it out of the sleep */
+/**
+ * The timer: ONE scheduled executor thread holds every pending delay
+ * as a small task, and the callback runs on a virtual thread only
+ * when the delay FIRES. The previous shape started a virtual thread
+ * per timer and slept it: a stack chunk per arm -- 5.5 KB per `ask`,
+ * whose timer is armed on every call and cancelled by the reply on
+ * nearly all of them (docs/benchmarks.md section 17) -- and about a
+ * millisecond plus 40% over the asked sleep. A cancelled timer here
+ * allocates the task and nothing else; a fired one pays the virtual
+ * thread it always paid, so a callback that blocks still blocks
+ * nobody but itself.
+ */
+private lazy val timerWheel: java.util.concurrent.ScheduledExecutorService =
+  java.util.concurrent.Executors.newSingleThreadScheduledExecutor: r =>
+    val t = Thread(r, "okay-timer")
+    t.setDaemon(true)
+    t
+
 given Timer = new:
   def after(millis: Long)(k: () => Unit): () => Unit =
-    val t = Thread.startVirtualThread: () =>
-      try { Thread.sleep(millis); k() }
-      catch case _: InterruptedException => ()
-    () => t.interrupt()
+    val fire: Runnable = () => { Thread.startVirtualThread(() => k()); () }
+    val f = timerWheel.schedule(fire, millis, java.util.concurrent.TimeUnit.MILLISECONDS)
+    () => { f.cancel(false); () }
 
 /**
  * The JVM schedulers. The default given is Loom — one virtual thread

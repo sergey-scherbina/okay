@@ -505,6 +505,24 @@ extension [A](c: Channel[A])
    */
   def drained: Source[A] = Writer.of(Drain(c))
 
+  /**
+   * The channel as a source of CHUNKS: each `receiveMany` batch told
+   * as one `Chunk[A]`, exactly as it came out of the ring -- the door
+   * for a caller who wants to work on arrays from an element channel.
+   * `drained.chunked()` is the WRONG door for that: `Drain` already
+   * batches internally, and re-chunking on top of it adds a layer
+   * instead of removing one -- it measured 318.7us against 209
+   * elementwise (docs/benchmarks.md section 6c). This is the same
+   * batches with nothing re-done to them.
+   */
+  def drainedChunks: Source[Chunk[A]] =
+    def go: Source[Chunk[A]] =
+      okay.effect[Writer % Chunk[A] + Async, Chunk[A]](
+        Async.Await[Chunk[A]](k => { c.receiveManyAsync(Drain.Batch)(k); () => () })).flatMap: got =>
+        if got.isEmpty then okay.pure(())
+        else okay.effect[Writer % Chunk[A] + Async, Unit](Writer(got)).flatMap(_ => go)
+    okay.pure[Writer % Chunk[A] + Async, Unit](()).flatMap(_ => go)
+
 given Stream[Channel, Async] with
   def uncons[A](c: Channel[A]): Option[(A, Channel[A])] ! Async =
     c.receive.map(_.map((_, c)))

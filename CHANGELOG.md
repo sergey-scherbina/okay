@@ -1,5 +1,46 @@
 # Changelog
 
+## small-wins — the timer off its thread, a chunks door for the element channel, a supervised Stop that drains, and two declines
+
+The remainder of the operator's "take everything", minus JSON, which
+is its own lane. Five items, three of them code (§17d):
+
+**The JVM `Timer` armed a virtual thread per delay** and slept it.
+Every `ask` did that and, on nearly every ask, cancelled it a few
+microseconds later when the reply came — 5.5 KB of stack chunk per
+ask for a thread that never ran its callback. One scheduled executor
+now holds each delay as a small task, and the callback gets its
+virtual thread only when the delay fires; a cancelled timer costs the
+task. `actorAsk`: **1 108 493 → 879 176 B/op, −20.7%** (4.4 KB per
+ask), time 2594 → 2150 ±770 on a bursty box. Every `Timer` user gets
+it — `ask`, `Async.sleep`, `race` — and all nineteen actor laws,
+timeouts included, hold.
+
+**`drainedChunks`**, the door §6c said was missing: `.drained.chunked()`
+re-chunked what `Drain` already batched (318.7 against 209
+elementwise). This tells each `receiveMany` batch as one `Chunk[A]`,
+nothing re-done: **79 469 B/op against 1 413 443** for the same
+channel read one at a time — 17.8x less, 20 bytes per element. It sits
+between `chunkNative` and the elementwise read because the send side
+is still per element. The wrong door cannot be forbidden by type; it is
+named in the scaladoc.
+
+**A supervised `Stop` or `Escalate` now drains and discards** the
+messages behind the poisonous one — accepted, never to be handled,
+previously stranded so that `ActorRef.stopped` never came true. The
+law in `TestPoisonLaws` asserts `stopped` again; the `stop()` doc
+carries the qualifier (`actor-stop-strands`).
+
+**Two declined by design.** `Source.unfold`'s pair per step is the
+caller's `Option[(A, S)]` — the `LazyList.unfold` signature, which is
+the point of the door; `range` is faster only because it is not
+generic. `Drain`'s copy per element is the re-observation law's fresh
+cursor, and `Stream.uncons`'s `Option[(A, S)]` is every stream's
+contract. Both recorded so the next profile does not re-file them.
+
+JS and Native compile; laws 73/73 core, 19/19 actor, 10/10 reactive;
+no warnings.
+
 ## actor-receive-fused — the receive-side handshake, one object and no second scan: bytes down in both regimes, time at parity
 
 `actor-receive-offer-first` had lost 19% with an empty mailbox for a

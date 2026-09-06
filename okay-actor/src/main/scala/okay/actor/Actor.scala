@@ -99,7 +99,15 @@ final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M]):
   /** stop, DRAINING: with the strong contract every message already
    * accepted is handled first. An actor built on a weak channel stops
    * abruptly instead, and the difference is visible where it is
-   * built, not here */
+   * built, not here.
+   *
+   * A SUPERVISED stop is different: when a behaviour fails under
+   * `Supervise.Stop` or `Escalate`, the messages behind the poisonous
+   * one are accepted but will never be handled -- the actor is dead
+   * -- and the loop drains and DISCARDS them so that `stopped` comes
+   * true. A caller who needs them handled wanted `Resume` or
+   * `Restart`; a caller who needs to know they were dropped watches
+   * `stopped` on a `tell` that answered true. */
   def stop(): Unit ! Async = async {
     // LEAVES INWARD: a child must not outlive its parent's mailbox,
     // so the parent's stop completes only after every child has
@@ -161,6 +169,16 @@ object Actor:
       sch.fork { () => async {
         var state = init
         var running = true
+        // A supervised Stop or Escalate closes the mailbox with the
+        // messages behind the poisonous one still ACCEPTED inside it.
+        // Nobody will ever read them, so drain and discard them here:
+        // otherwise `finished` -- "every accepted element handed over"
+        // -- never comes true and `ActorRef.stopped` lies for ever
+        // (actor-stop-strands). The channel has been failed, so the
+        // drain ends in the failure; that is the end it is waiting for.
+        def discardRest(): Unit =
+          try while mailbox.receiveBlocking().isDefined do ()
+          catch case _: Throwable => ()
         while running do
           mailbox.receiveBlocking() match
             case None => running = false
@@ -175,9 +193,9 @@ object Actor:
                   case Supervise.Resume => ()
                   case Supervise.Restart(fresh) => state = fresh()
                   case Supervise.Escalate(to) =>
-                    to(e); mailbox.fail(e); mailbox.close(); running = false
+                    to(e); mailbox.fail(e); mailbox.close(); discardRest(); running = false
                   case Supervise.Stop =>
-                    mailbox.fail(e); mailbox.close(); running = false
+                    mailbox.fail(e); mailbox.close(); discardRest(); running = false
       }}: Unit
       ActorRef(mailbox)
     }
