@@ -1,5 +1,24 @@
 # Changelog
 
+## intent-temporal-multilingual — `Temporal` reads the fixture's other seven languages
+
+`Temporal.parse` filled English rows and declined the rest (5/5 en,
+0/5 elsewhere on the parallel fixture). It now carries a lexicon per
+language — fr, de, es, ru, uk, pl, and ja as a string scan — with the
+same shapes as the English parser: weekday, month and relative-day
+words matched as PREFIXES of a token, so `Freitagvormittag`,
+`четвергам`, `Jutrzejsza` and `щопонеділка` are the words they start
+with; the qualifier before or after the weekday (`jeudi prochain`,
+`nächsten Donnerstag`); `dans 3 jours` / `vor 3 Tagen` / `через 3
+дня` / `za 3 dni` / `3日後`; the next-week pair; `15h`, `15 Uhr`,
+`15時`, `M月D日`. English is tried first and unchanged; a weekday beats
+the tomorrow-word (`el viernes por la mañana` is Friday, `mañana`
+alone is tomorrow); what no lexicon says is still `None`. The law in
+`TestTemporalMultilingual`: every dated row of the parallel fixture
+reads the same `When` in every language as its English reading, and
+the relative and counted forms per language resolve against one
+Friday. The extraction suite's per-language table is the count.
+
 ## intent-window-by-dim — the window against the per-class law at both widths: 4096 keeps every class, and (2,3) @4096 is five points up
 
 `TestWindowByDim` (default gate) runs `Eval.report` for every

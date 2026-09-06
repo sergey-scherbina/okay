@@ -88,8 +88,9 @@ class TestExtract extends munit.FunSuite {
       println(f"[extract] $lang%2s  $hit%2d/$n%-2d  ${100.0 * hit / n}%5.1f%%"))
     assert(n >= 4, s"the fixture should carry several dates, found $n")
     assertEquals(covered.toMap.apply("en"), n, "English must cover its own reading")
-    // the honest expectation, not an aspiration: everything else is
-    // the `intent-temporal-multilingual` lane
-    assert(covered.filter(_._1 != "en").forall(_._2 <= n))
+    // since intent-temporal-multilingual every language of the fixture
+    // covers what English covers; TestTemporalMultilingual asserts the
+    // dates AGREE, this asserts the count does not slip
+    covered.foreach((lang, hit) => assertEquals(hit, n, s"$lang covers $hit of $n dated messages"))
   }
 }

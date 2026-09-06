@@ -32,7 +32,7 @@ rather than a class of parsing bug.
 | `Models` | a fitted model that SHIPS — 75.0% at full coverage with no network |
 | `Router` | the composed door: the measured tier order, and four outcomes |
 | `Rows` / `ByLanguage` | a training row knows its language; a thin language borrows the pooled fit |
-| `Temporal` | English temporal phrases to ISO-8601, total and deterministic, refusing rather than guessing |
+| `Temporal` | temporal phrases to ISO-8601 in the fixture's eight languages (en, fr, de, es, ru, uk, pl, ja), total and deterministic, refusing rather than guessing |
 
 **The dependency is `String => Embedding`, not "a server".** The vector
 tiers need a function; whether it is an HTTP call or an in-process

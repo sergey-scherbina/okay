@@ -2628,7 +2628,17 @@ subtraction.
       four languages dodge it because Polish there addresses
       informally. Worth settling before the Map-keyed language is
       called done for all languages.
-- [ ] intent-temporal-multilingual — (absorbs the older
+- [x] intent-temporal-multilingual — DONE 2026-09-07: `Temporal.
+      Multilingual`, a lexicon per language (fr, de, es, ru, uk, pl;
+      ja as a string scan) — weekday, month and relative-day words as
+      token PREFIXES so inflections and German compounds match, the
+      qualifier before or after the weekday, `N jours` / `vor N Tagen`
+      / `через N дня`, the next-week pair, `15h` / `15 Uhr` / `15時`,
+      `M月D日`. English is tried first and unchanged. The law
+      (`TestTemporalMultilingual`): every dated row of the parallel
+      fixture reads the same `When` in every language as in English;
+      the relative and counted forms per language against one Friday.
+      Original: (absorbs the older
       intent-temporal-other-languages, filed twice by me before I
       noticed the first.) `Temporal` parses English, so
       `Frame.fillFrom` fills English rows and declines the other five

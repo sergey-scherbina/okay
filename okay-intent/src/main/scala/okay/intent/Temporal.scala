@@ -109,6 +109,7 @@ object Temporal {
       dateIn(words, today).map(d => time match
         case Some((h, m)) => When(d, Some(h), m)
         case None => When(d))
+      .orElse(Multilingual.parse(phrase, today))
 
   private def timeIn(words: List[String]): Option[(Int, Int)] =
     words.collectFirst {
@@ -200,5 +201,175 @@ object Temporal {
         .getOrElse(message)
       Found(span.replaceAll("^[\\p{Punct}]+|[\\p{Punct}]+$", "").trim, v)
     }
+
+  /**
+   * The other seven languages of the parallel fixture
+   * (intent-temporal-multilingual). The same shapes as the English
+   * parser, over a lexicon per language: weekday, month and
+   * relative-day words as PREFIXES of a token, so an inflection or a
+   * German compound (`Freitagvormittag`, `четвергам`, `Jutrzejsza`)
+   * is the word it starts with; the qualifier (`prochain`, `nächste`,
+   * `следующ…`) before or after the weekday; `N jours` / `vor N
+   * Tagen` / `через N дня`; the next-week pair; `15h`, `15 Uhr`, `15時`.
+   * Japanese has no spaces, so it is scanned as a string, with the
+   * `M月D日` and `N日後` shapes as regexes.
+   *
+   * English is tried first and unchanged; a phrase reaches this only
+   * when English declined. Ambiguity is decided the way the parser
+   * decides everything: a weekday beats the tomorrow-word (`el viernes
+   * por la mañana` is Friday; `mañana` alone is tomorrow), and what a
+   * lexicon does not say is `None`, as before.
+   */
+  private object Multilingual:
+    final case class Lexicon(
+      weekdays: Vector[Seq[String]], months: Vector[Seq[String]],
+      today: Seq[String], tomorrow: Seq[String], dayAfter: Seq[String], yesterday: Seq[String],
+      next: Seq[String], last: Seq[String], week: Seq[String], days: Seq[String], ago: Seq[String])
+
+    private def is(tok: String, forms: Seq[String]): Boolean = forms.exists(f => tok.startsWith(f))
+    private def has(words: List[String], forms: Seq[String]): Boolean = words.exists(w => is(w, forms))
+
+    val fr = Lexicon(
+      Vector(Seq("lundi"), Seq("mardi"), Seq("mercredi"), Seq("jeudi"), Seq("vendredi"), Seq("samedi"), Seq("dimanche")),
+      Vector(Seq("janvier"), Seq("février", "fevrier"), Seq("mars"), Seq("avril"), Seq("mai"), Seq("juin"),
+        Seq("juillet"), Seq("août", "aout"), Seq("septembre"), Seq("octobre"), Seq("novembre"), Seq("décembre", "decembre")),
+      today = Seq("aujourd'hui", "aujourd’hui"), tomorrow = Seq("demain"), dayAfter = Seq("après-demain", "apres-demain"),
+      yesterday = Seq("hier"), next = Seq("prochain"), last = Seq("dernier", "dernière"), week = Seq("semaine"),
+      days = Seq("jour"), ago = Seq("il"))
+    val de = Lexicon(
+      Vector(Seq("montag"), Seq("dienstag"), Seq("mittwoch"), Seq("donnerstag"), Seq("freitag"), Seq("samstag", "sonnabend"), Seq("sonntag")),
+      Vector(Seq("januar", "jänner"), Seq("februar"), Seq("märz", "maerz"), Seq("april"), Seq("mai"), Seq("juni"),
+        Seq("juli"), Seq("august"), Seq("september"), Seq("oktober"), Seq("november"), Seq("dezember")),
+      today = Seq("heute", "heutig"), tomorrow = Seq("morgen", "morgig"), dayAfter = Seq("übermorgen", "uebermorgen"),
+      yesterday = Seq("gestern", "gestrig"), next = Seq("nächst", "naechst", "kommend"), last = Seq("letzt", "vergangen"),
+      week = Seq("woche"), days = Seq("tag"), ago = Seq("vor"))
+    val es = Lexicon(
+      Vector(Seq("lunes"), Seq("martes"), Seq("miércoles", "miercoles"), Seq("jueves"), Seq("viernes"), Seq("sábado", "sabado"), Seq("domingo")),
+      Vector(Seq("enero"), Seq("febrero"), Seq("marzo"), Seq("abril"), Seq("mayo"), Seq("junio"),
+        Seq("julio"), Seq("agosto"), Seq("septiembre", "setiembre"), Seq("octubre"), Seq("noviembre"), Seq("diciembre")),
+      today = Seq("hoy"), tomorrow = Seq("mañana", "manana"), dayAfter = Seq("pasado"), yesterday = Seq("ayer"),
+      next = Seq("próxim", "proxim", "siguiente"), last = Seq("pasad"), week = Seq("semana"), days = Seq("día", "dia"), ago = Seq("hace"))
+    val ru = Lexicon(
+      Vector(Seq("понедельник"), Seq("вторник"), Seq("сред"), Seq("четверг"), Seq("пятниц"), Seq("суббот"), Seq("воскресень")),
+      Vector(Seq("январ"), Seq("феврал"), Seq("март"), Seq("апрел"), Seq("мая", "май"), Seq("июн"),
+        Seq("июл"), Seq("август"), Seq("сентябр"), Seq("октябр"), Seq("ноябр"), Seq("декабр")),
+      today = Seq("сегодня"), tomorrow = Seq("завтра"), dayAfter = Seq("послезавтра"), yesterday = Seq("вчера"),
+      next = Seq("следующ", "будущ"), last = Seq("прошл", "прошедш"), week = Seq("недел"), days = Seq("дн", "день"), ago = Seq("назад"))
+    val uk = Lexicon(
+      Vector(Seq("понеділ", "щопонеділ"), Seq("вівтор", "щовівтор"), Seq("серед", "щосеред"), Seq("четвер", "щочетверг"),
+        Seq("п'ятниц", "п’ятниц", "щоп'ятниц", "щоп’ятниц"), Seq("субот", "щосубот"), Seq("неділ", "щонеділ")),
+      Vector(Seq("січ"), Seq("лют"), Seq("берез"), Seq("квіт"), Seq("трав"), Seq("черв"),
+        Seq("лип"), Seq("серп"), Seq("верес"), Seq("жовт"), Seq("листопад"), Seq("груд")),
+      today = Seq("сьогодні"), tomorrow = Seq("завтра"), dayAfter = Seq("післязавтра"), yesterday = Seq("вчора"),
+      next = Seq("наступн"), last = Seq("минул", "попередн"), week = Seq("тижд", "тижн"), days = Seq("дн", "день"), ago = Seq("тому"))
+    val pl = Lexicon(
+      Vector(Seq("poniedział"), Seq("wtor"), Seq("środ", "srod"), Seq("czwart"), Seq("piąt", "piat"), Seq("sobot"), Seq("niedziel")),
+      Vector(Seq("stycz"), Seq("lut"), Seq("marz", "marc"), Seq("kwiet"), Seq("maj"), Seq("czerw"),
+        Seq("lip"), Seq("sierp"), Seq("wrze"), Seq("październik", "pazdziernik"), Seq("listopad"), Seq("grud")),
+      today = Seq("dziś", "dzisiaj"), tomorrow = Seq("jutr"), dayAfter = Seq("pojutrze"), yesterday = Seq("wczoraj"),
+      next = Seq("przyszł", "przyszl", "następn", "nastepn"), last = Seq("zeszł", "zeszl", "ostatn", "poprzedn"),
+      week = Seq("tydz", "tygod"), days = Seq("dni", "dzień", "dzien"), ago = Seq("temu"))
+    val lexicons = Vector(fr, de, es, ru, uk, pl)
+    // qualifiers are the words most alike across the Cyrillic and Slavic
+    // pairs (ru "четверг" is a prefix of uk "четверга"), so a lexicon that
+    // finds the weekday reads the qualifier from EVERY lexicon: "минулого"
+    // is last whichever list named the day
+    private val anyLast = lexicons.flatMap(_.last)
+    private val anyAgo = lexicons.flatMap(_.ago)
+
+    private val hourFr = raw"(\d{1,2})h(\d{2})?".r
+    private val hourJa = raw"(\d{1,2})時(?:(\d{1,2})分)?".r
+    private val monthDayJa = raw"(\d{1,2})月(\d{1,2})日".r
+    private val daysAfterJa = raw"(\d{1,3})日後".r
+    private val daysBeforeJa = raw"(\d{1,3})日前".r
+
+    private def tokens(phrase: String): List[String] =
+      phrase.toLowerCase
+        .replaceAll("[.,!?;¿¡«»\"()]", " ")   // not the colon: 15:00 is a time
+        .split("\\s+").filter(_.nonEmpty).toList
+        .map(_.replaceAll("^[dl][’']", "")) // l'appel, d'hier
+
+    def parse(phrase: String, today: Date): Option[When] =
+      val words = tokens(phrase)
+      val time = timeIn(words).orElse(words.collectFirst {
+        case hourFr(h, m) if h.toInt < 24 => (h.toInt, Option(m).map(_.toInt).getOrElse(0))
+      }).orElse {
+        val i = words.indexWhere(_ == "uhr")
+        if i > 0 then words(i - 1).toIntOption.filter(_ < 24).map(h => (h, 0)) else None
+      }
+      val date = lexicons.iterator.map(lex => dateIn(words, today, lex)).collectFirst { case Some(d) => d }
+        .orElse(japanese(phrase, today))
+      date.map(d => time.orElse(japaneseTime(phrase)) match
+        case Some((h, m)) => When(d, Some(h), m)
+        case None => When(d))
+
+    private def dateIn(words: List[String], today: Date, lex: Lexicon): Option[Date] =
+      def weekdayAt(i: Int): Option[Int] =
+        val hit = lex.weekdays.indexWhere(forms => is(words(i), forms))
+        if hit >= 0 then Some(hit) else None
+      val weekday = words.indices.collectFirst { case i if weekdayAt(i).isDefined => i }.flatMap { i =>
+        weekdayAt(i).map { target =>
+          val around = List(words.lift(i - 1), words.lift(i + 1), words.lift(i - 2)).flatten
+          val delta = (target - dayOfWeek(today) + 7) % 7
+          if around.exists(w => is(w, anyLast)) then plusDays(today, if delta == 0 then -7 else delta - 7)
+          else plusDays(today, if delta == 0 then 7 else delta)
+        }
+      }
+      weekday.orElse(monthAndDay(words, today, lex)).orElse(relative(words, today, lex))
+
+    private def monthAndDay(words: List[String], today: Date, lex: Lexicon): Option[Date] =
+      val idx = words.indexWhere(w => lex.months.exists(forms => is(w, forms)))
+      if idx < 0 then None
+      else
+        val m = lex.months.indexWhere(forms => is(words(idx), forms)) + 1
+        def dayAt(j: Int) = words.lift(j).collect { case digits(d) if d.toInt >= 1 && d.toInt <= 31 => d.toInt }
+        dayAt(idx + 1).orElse(dayAt(idx - 1)).map { d =>
+          val thisYear = Date(today.year, m, d)
+          if toEpochDay(thisYear) >= toEpochDay(today) then thisYear else Date(today.year + 1, m, d)
+        }
+
+    private def relative(words: List[String], today: Date, lex: Lexicon): Option[Date] =
+      // "pasado mañana" is the day after tomorrow; "pasado" alone is a qualifier
+      val dayAfter = words.sliding(2).exists(p => p.length == 2 && is(p(0), lex.dayAfter) && is(p(1), lex.tomorrow)) ||
+        (lex.dayAfter.exists(_.length > 6) && has(words, lex.dayAfter))
+      if dayAfter then Some(plusDays(today, 2))
+      else if has(words, lex.tomorrow) then Some(plusDays(today, 1))
+      else if has(words, lex.yesterday) then Some(plusDays(today, -1))
+      else if has(words, lex.today) then Some(today)
+      else
+        val nDays =
+          if has(words, lex.days) then words.collectFirst { case digits(n) if n.toInt <= 366 => n.toInt } else None
+        nDays.map(n => plusDays(today, if has(words, anyAgo) then -n else n))
+          .orElse(if has(words, lex.week) && has(words, lex.next) then Some(plusDays(today, 7))
+                  else if has(words, lex.week) && has(words, anyLast) then Some(plusDays(today, -7))
+                  else None)
+
+    private val jaWeekdays = Vector("月曜", "火曜", "水曜", "木曜", "金曜", "土曜", "日曜")
+
+    private def japanese(phrase: String, today: Date): Option[Date] =
+      val s = phrase
+      monthDayJa.findFirstMatchIn(s).map { m =>
+        val (mo, d) = (m.group(1).toInt, m.group(2).toInt)
+        val thisYear = Date(today.year, mo, d)
+        if toEpochDay(thisYear) >= toEpochDay(today) then thisYear else Date(today.year + 1, mo, d)
+      }.orElse {
+        val hit = jaWeekdays.indexWhere(s.contains)
+        if hit >= 0 then
+          val delta = (hit - dayOfWeek(today) + 7) % 7
+          Some(if s.contains("先週") then plusDays(today, if delta == 0 then -7 else delta - 7)
+               else plusDays(today, if delta == 0 then 7 else delta))
+        else if s.contains("明後日") then Some(plusDays(today, 2))
+        else if s.contains("明日") then Some(plusDays(today, 1))
+        else if s.contains("昨日") then Some(plusDays(today, -1))
+        else if s.contains("今日") then Some(today)
+        else daysAfterJa.findFirstMatchIn(s).map(m => plusDays(today, m.group(1).toInt))
+          .orElse(daysBeforeJa.findFirstMatchIn(s).map(m => plusDays(today, -m.group(1).toInt)))
+          .orElse(if s.contains("来週") then Some(plusDays(today, 7))
+                  else if s.contains("先週") then Some(plusDays(today, -7)) else None)
+      }
+
+    private def japaneseTime(phrase: String): Option[(Int, Int)] =
+      hourJa.findFirstMatchIn(phrase).map(m => (m.group(1).toInt, Option(m.group(2)).map(_.toInt).getOrElse(0)))
+        .filter((h, m) => h < 24 && m < 60)
 }
 

@@ -141,10 +141,12 @@ object Eval:
   Decisions.
 - A fine-tuned encoder. Refused, see Decisions.
 - Answer generation from templates attached to the intent.
-- Natural-language temporal parsing in languages other than English.
-  English is done (`Temporal`, see Results); a slot still takes
-  ISO-8601 and validates through `SIso`, and the parser produces what
-  the slot accepts.
+- Natural-language temporal parsing beyond the fixture's eight
+  languages. English, and since intent-temporal-multilingual (see
+  Results) fr, de, es, ru, uk, pl and ja, are done (`Temporal`); a
+  slot still takes ISO-8601 and validates through `SIso`, and the
+  parser produces what the slot accepts. A ninth language is a
+  lexicon, not a design.
 
 ## Design
 
@@ -3323,3 +3325,43 @@ the reason `Fit` chose 1024 (a quarter of the size for two points at
 the time). Whether five points and eight under a typo are worth a
 170 KB source file is the shipped model's owner's call, filed as
 `intent-shipped-model-4096`; no default moves here.
+
+## Results — intent-temporal-multilingual (2026-09-07)
+
+**One meaning, eight wordings, one date.** `Temporal` parsed English
+and declined the rest: 5/5 en and 0/5 in every other language of the
+parallel fixture (intent-temporal-slots). It now carries a lexicon per
+language and the same shapes as the English parser — weekday, month
+and relative-day words matched as PREFIXES of a token, so an
+inflection or a compound is the word it starts with (`Freitagvormittag`,
+`четвергам`, `Jutrzejsza`, `щопонеділка`); the qualifier before or
+after the weekday; `dans 3 jours` / `vor 3 Tagen` / `через 3 дня` /
+`za 3 dni`; the next-week pair; `15h`, `15 Uhr`, `15時`, `M月D日` —
+and Japanese as a string scan, since it has no spaces. English is
+tried first and unchanged; a weekday beats the tomorrow-word (`el
+viernes por la mañana` is Friday, `mañana` alone is tomorrow); the
+qualifier is read from every lexicon at once, because ru `четверг` is
+a prefix of uk `четверга` and `минулого` must still mean last.
+
+The law is the fixture's own (`TestTemporalMultilingual`): a row that
+carries a date in English carries THE SAME `When` — date and time —
+in every other wording. Five dated rows, eight languages:
+
+| | en | fr | de | es | ru | ja | uk | pl |
+|---|---|---|---|---|---|---|---|---|
+| dated rows agreeing with the English reading | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 | 5/5 |
+
+And the relative and counted forms per language against one Friday
+(tomorrow, the day after, yesterday, next and last Thursday, in three
+days, three days ago, next week; `3月14日`), and the four time
+spellings, each asserted. `TestExtract`'s per-language table, which
+used to be the number that said "English only", asserts full
+coverage now. What no lexicon says is still `None` (`bientôt`,
+`soon`): the parser declines as before, in eight languages instead of
+one. A ninth is a lexicon.
+
+Two wordings the fixture does not have taught the parser something on
+the way: `15:00` was being split at the colon by the multilingual
+tokeniser (fixed: the colon is a time), and a Cyrillic qualifier was
+being read by the wrong lexicon (fixed: qualifiers are read from all
+of them). Both are in the suite.
