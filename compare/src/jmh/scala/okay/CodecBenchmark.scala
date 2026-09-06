@@ -128,6 +128,12 @@ class CodecBenchmark {
    * Schema, no tokens, no CST, no Json tree; the same answer as
    * `Json.read` on this (complete, well-formed) text */
   @Benchmark def textToOrderStrict(): Either[String, Order] = Json.readStrict[Order](text)
+  /** json-strict-staged: the same strict reader, generated for Order
+   * at compile time -- fields into locals, no name lookup, no erased
+   * parts; the interpreted door's answer, without the walk */
+  // fully qualified: `okay.Staged` (core) shadows `okay.codec.Staged` in this package
+  private val strictStaged: okay.codec.StrictJsonCodec[Order] = okay.codec.Staged.strict[Order]
+  @Benchmark def textToOrderStrictStaged(): Either[String, Order] = strictStaged.decode(text)
   /** the lossless door, for the same text: the price list's 10.3 */
   @Benchmark def textToOrderLossless(): Either[String, Order] = Json.read[Order](text)
   @Benchmark def decodeInterpAst(): Either[String, Order] = Json.decode(summon[Schema[Order]])(ast)

@@ -48,6 +48,16 @@ TAG="${OKAY_SENTINEL_TAG:-sbt-launch-sentinel}"
 
 # One source for all three; it must contain no "sbt" and no "java", so
 # that only the argument appended after it decides what matches.
+# A sentinel EXITS ON ITS OWN once its runner is gone: it is handed the
+# runner's pid and checks it exists each second (its own parent is
+# launchd from the start, being a $( ) child, so getppid is no use).
+# The EXIT trap below still kills by pid, but
+# that kill is not always delivered: a run ended by a signal skips the
+# trap, and a kill from a sandboxed tool shell does not reach a process
+# that was reparented -- five sentinels were found alive on 2026-09-07
+# where three belonged, and eight CPU burners started the same way ran
+# for twelve minutes after their "cleanup". Nothing here may depend on
+# a kill it cannot deliver.
 HEARTBEAT='
 import os, sys, time
 if sys.argv[1] == "own":
@@ -56,7 +66,17 @@ if sys.argv[1] == "own":
     except OSError:
         pass
 path = sys.argv[2]
+runner = int(sys.argv[3])
 while True:
+    # the runner is the script that started us; a sentinel is a $( )
+    # child, so its own parent is launchd from the first second and
+    # getppid() says nothing -- ask whether the runner still exists
+    try:
+        os.kill(runner, 0)
+    except ProcessLookupError:
+        sys.exit(0)
+    except OSError:
+        pass
     with open(path, "w") as f:
         f.write("%.3f" % time.time())
     time.sleep(1)
@@ -66,7 +86,8 @@ start_sentinel() {           # name session extra-argv...
   local name="$1" session="$2"; shift 2
   # stdout/stderr MUST be redirected: a background child that inherits
   # them holds the caller's pipe open, and the run never returns.
-  python3 -c "$HEARTBEAT" "$session" "$OUT/$name.hb" "$@" >/dev/null 2>&1 &
+  # $$ is this script's pid even inside the $( ) the caller wraps us in
+  python3 -c "$HEARTBEAT" "$session" "$OUT/$name.hb" "$$" "$@" >/dev/null 2>&1 &
   echo $!
 }
 

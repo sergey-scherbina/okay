@@ -1,5 +1,62 @@
 # Changelog
 
+## json-strict-staged — `Staged.strict[A]`: 2.45x circe, reading at the cost of scanning — and a correction the previous lane owes
+
+`json-fast-read` left one number on the table: its interpreted strict
+door spent about 3.3x the bare value parse on the `Schema` walk — a
+map of found fields, a vector of erased parts, `make` through the
+Mirror — none of which a reader that knows the type at compile time
+needs. The `Staged` macro already generated exactly that reader for a
+`Json` value and for CBOR bytes. This lane gives it a third target:
+`JsonStrict.Reader`.
+
+`Staged.strict[A]` is `CborGen`'s shape over the strict reader —
+primitives call the reader's own `number`/`string`/`bool`, so a
+primitive field needs no fold branch; products go field by field into
+slots by name with an undeclared field SKIPPED (JSON's rule, where
+CBOR refuses) and absences filled as the fold fills them; sums by the
+one-entry object; recursion and Mirror-less types fall back to the
+interpreted walk. `JsonStrict.Reader` became public for it, for the
+reason `Cbor.In` is: a package-private member reached from a quote is
+an "unstable inline accessor" in the caller's compilation unit —
+"access from wrong staging level" at compile time.
+
+**The law is a test.** `staged == interpreted strict == lossless` over
+a corpus of every schema shape, whitespace, unknown fields, defaults,
+and the refusals; 94/94 in the codec module, on three platforms (2485
+in the gate, 0 warnings). **Measured, two forks, load 25 → 7:**
+
+| | ns/op | B/op |
+|---|---|---|
+| `textToOrderStrictStaged` — `Staged.strict[Order]` | **323.1 ±15.6** | **2 320** |
+| `textToOrderStaged` — `parseValue` + `Staged.json[Order]` on the tree | 348.4 ±5.6 | 2 680 |
+| `textToOrderStrict` — `Json.readStrict`, interpreted | 764.1 ±36.6 | 4 968 |
+| `textToOrderCirce` | 792.8 ±18.9 | 3 416 |
+| `parseValueOnly` | 225.8 ±1.4 | 2 208 |
+
+2.45x faster than circe, 32% less allocation, 112 bytes over the bare
+value parse.
+
+**The correction.** The second row — `parseValue` plus the staged
+decode of the tree — has been in `CodecBenchmark` since staged-codecs
+and reads 2.3x circe. It was never on the price list, and the list's
+"need raw speed? use circe" stood beside it for days. `json-fast-read`
+measured its interpreted door at 0.92x circe and presented that as the
+choice; the existing staged road was already better, and that lane
+did not say so. The price list and the codec page now carry all three
+doors: `read` for the lossless contract, `readStrict` for a strict
+read with no derivation step, `Staged.strict` for derive-once /
+decode-many — the fastest JSON read in the library.
+
+Also in this lane: `scripts/gate-sentinels.sh`'s sentinels now exit on
+their own when their runner is gone (they are handed its pid and check
+it each second), because a kill from a sandboxed tool shell does not
+reach a process reparented to launchd — five sentinels were found
+alive where three belonged, and eight CPU burners started the same
+way ran twelve minutes past their "cleanup" and took the box to load
+42 until a sibling session found them. The burner pattern is retired
+in favour of `timeout`; the rule is in memory.
+
 ## raft-wire-flake — the last open flake moves to the integration tests, and is made robust where it now runs
 
 The operator's rule, restated 2026-09-07: every flake moves to the

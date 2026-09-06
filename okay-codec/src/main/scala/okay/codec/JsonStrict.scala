@@ -46,16 +46,25 @@ object JsonStrict {
       else Left(s"trailing input at ${r.at}")
     }
 
-  private final class Reader(s: String) {
+  /**
+   * PUBLIC, though it is an implementation detail, for the same
+   * reason `Cbor.In` is: the staged strict reader (`Staged.strict`)
+   * is generated code spliced into the CALLER's compilation unit,
+   * and a package-private member reached from a quote becomes an
+   * "unstable inline accessor" there -- "access from wrong staging
+   * level" at compile time. What is public is the scanning surface
+   * the generated code calls; `get` is the interpreted door's walk.
+   */
+  final class Reader(s: String) {
     var at = 0
     private val n = s.length
 
     def skipWs(): Unit =
       while at < n && { val c = s.charAt(at); c == ' ' || c == '\n' || c == '\r' || c == '\t' } do at += 1
 
-    private def peek: Int = if at < n then s.charAt(at).toInt else -1
+    def peek: Int = if at < n then s.charAt(at).toInt else -1
 
-    private def fail[X](what: String): Either[String, X] =
+    def fail[X](what: String): Either[String, X] =
       Left(s"$what at $at" + (if at < n then s" ('${s.charAt(at)}')" else " (end of input)"))
 
     /** the walk: `Cbor.get`'s shape, `Json.decode`'s rules */
@@ -64,10 +73,7 @@ object JsonStrict {
       case Schema.SInt => number().map(_.toInt)
       case Schema.SLong => number().map(_.toLong)
       case Schema.SDouble => number()
-      case Schema.SBool =>
-        if lit("true") then Right(true)
-        else if lit("false") then Right(false)
-        else fail("expected true or false")
+      case Schema.SBool => bool()
       case Schema.SString => string()
       case Schema.SChar => string().flatMap(x =>
         if x.length == 1 then Right(x.head) else Left(s"expected one character, got ${x.length}"))
@@ -79,14 +85,19 @@ object JsonStrict {
       case p: Schema.SProduct[A] => product(p)
       case su: Schema.SSum[A] => sum(su)
 
-    private def lit(word: String): Boolean =
+    def bool(): Either[String, Boolean] =
+      if lit("true") then Right(true)
+      else if lit("false") then Right(false)
+      else fail("expected true or false")
+
+    def lit(word: String): Boolean =
       if s.startsWith(word, at) then { at += word.length; true } else false
 
-    private def expect(c: Char): Either[String, Unit] =
+    def expect(c: Char): Either[String, Unit] =
       if at < n && s.charAt(at) == c then { at += 1; Right(()) } else fail(s"expected '$c'")
 
     /** `[` v (`,` v)* `]`, each element at the element schema */
-    private def array[X](of: Schema[X]): Either[String, Vector[X]] =
+    def array[X](of: Schema[X]): Either[String, Vector[X]] =
       expect('[').flatMap { _ =>
         skipWs()
         if peek == ']' then { at += 1; Right(Vector.empty) }
@@ -185,7 +196,7 @@ object JsonStrict {
     /** skip one value of any shape — an undeclared field's — without
      * building it: strings by their own scan, everything else by
      * bracket depth */
-    private def skipValue(): Either[String, Unit] =
+    def skipValue(): Either[String, Unit] =
       peek match
         case '"' => string().map(_ => ())
         case '{' | '[' =>
@@ -213,7 +224,7 @@ object JsonStrict {
      * as one UTF-16 code unit, any other escaped character is itself;
      * a raw control character is not ours.
      */
-    private def string(): Either[String, String] =
+    def string(): Either[String, String] =
       if at >= n || s.charAt(at) != '"' then fail("expected a string")
       else
         at += 1
@@ -251,7 +262,7 @@ object JsonStrict {
     /** RFC 8259 number, `-? int frac? exp?`, as `JsonValue.num` reads
      * it; the value is `parseDouble`'s, which is what `JNum` holds and
      * what `Json.decode` truncates for `SInt`/`SLong` */
-    private def number(): Either[String, Double] =
+    def number(): Either[String, Double] =
       val start = at
       var i = at
       if i < n && s.charAt(i) == '-' then i += 1

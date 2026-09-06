@@ -1124,13 +1124,36 @@ not sure of. Same run, two forks, load falling from 11 to 5:
 **0.92x circe in time, 1.48x its bytes; 19.2x faster and 25.3x less
 allocation than the lossless road.** The strict Schema walk costs
 about 3.3x the bare value parse — the field map, the erased parts and
-`make` — and a staged strict decoder, the shape the `Staged` macro
-already gives a `Json` value and CBOR bytes, is what would take the
-bytes to circe's; it is filed, not taken. So the sentence this
-paragraph used to end on is retired: need raw JSON decode speed and
-none of the lossless contract? `Json.readStrict`, same `Schema`, one
-identifier at the call site — and circe stays the honest external
-reference on the row.
+`make` — which is what a reader that knows the type at compile time
+does not need. The `Staged` macro gives it that reader as its third
+target (`json-strict-staged`, the same day), and the same run then
+reads, two forks, load 25 → 7:
+
+| | ns/op | B/op |
+|---|---|---|
+| `textToOrderStrictStaged` — `Staged.strict[Order]`, generated over the strict reader, no tree | **323.1 ±15.6** | **2 320** |
+| `textToOrderStaged` — `Json.parseValue` + `Staged.json[Order].decode` of the tree | 348.4 ±5.6 | 2 680 |
+| `textToOrderStrict` — `Json.readStrict`, interpreted | 764.1 ±36.6 | 4 968 |
+| `textToOrderCirce` | 792.8 ±18.9 | 3 416 |
+| `parseValueOnly` — the value parser alone | 225.8 ±1.4 | 2 208 |
+
+**The staged strict reader is 2.45x faster than circe with 32% less
+allocation, and 112 bytes over the bare value parse: it reads at the
+cost of scanning.**
+
+**A correction this section owes.** The second row — `parseValue`
+plus the staged decode of the tree — has been in `CodecBenchmark`
+since staged-codecs and reads 2.3x circe. It was never on the price
+list above, and the list's sentence "need raw speed? use circe" stood
+beside it for days. `json-fast-read` measured its interpreted door at
+0.92x circe and presented that as the choice; the existing staged road
+was already better, and that lane did not say so. So, stated once and
+plainly: the choice is three doors, not two. `Json.read` for the
+lossless contract; `Json.readStrict` for a strict read with no
+derivation step; `Staged.strict[A]` (or `Staged.json[A]` over
+`parseValue`) for a caller who derives once and decodes many times —
+and that is the fastest JSON read in this library, by 2.45x over the
+external reference.
 
 That was the whole of the explanation for a while, and charging each
 stage separately shows it is directionally right and wrongly

@@ -2928,3 +2928,34 @@ default), the unbounded ring is `Segments`, many-producer FIFO is
 `AdaptiveFifo` behind `Queues.relaxed`/`adaptive`. They are left in
 place for a reader of this section's history; a later audit may close
 them against those commits.
+
+## json-strict-staged — DONE 2026-09-07: `Staged.strict[A]`, 2.45x circe, and a correction
+
+The `Staged` macro's third target: `StrictJsonCodec[A]` from
+`Staged.strict[A]`, generated over `JsonStrict.Reader` the way the
+CBOR codec is generated over `Cbor.In` — primitives call the reader's
+own `number`/`string`/`bool`, products go field by field into slots by
+name with unknown fields SKIPPED (JSON's rule, not CBOR's refusal) and
+absences filled as the fold fills them, sums by the one-entry object,
+recursion and Mirror-less types falling back to the interpreted walk.
+Laws: staged == interpreted strict == lossless over a corpus, plus the
+refusals; 94/94 in the codec module, on three platforms (2485 in the
+gate). `JsonStrict.Reader` became public for it: a package-private
+member reached from a quote is an "unstable inline accessor" in the
+caller's compilation unit — "access from wrong staging level".
+
+**Measured (2 forks):** `textToOrderStrictStaged` **323.1 ±15.6 ns /
+2 320 B/op** — 2.45x faster than circe (792.8 / 3 416), 32% less
+allocation, 2.36x faster than the interpreted `readStrict` (764.1 /
+4 968), and 112 bytes over the bare value parse (225.8 / 2 208): it
+reads at the cost of scanning.
+
+**The correction.** `textToOrderStaged` — `Json.parseValue` plus
+`Staged.json[Order].decode` of the tree — reads 348.4 ns / 2 680 B in
+the same run: 2.3x circe, and it has been in `CodecBenchmark` since
+staged-codecs. It was never on the price list, and the list's
+sentence "need raw speed? use circe" stood beside it. `json-fast-read`
+measured its interpreted door at 0.92x circe and called that the
+choice; the existing staged road was already better, and that lane
+did not say so. The price list now carries all three doors and their
+prices; the fastest is this one.

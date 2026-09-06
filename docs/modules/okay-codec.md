@@ -154,7 +154,7 @@ answer:
 | a truncated document (a stream cut mid-value) | what arrived, decoded | `Left` |
 | a damaged document | damage as data (`JErr` leaves, the projection keeps the rest) | `Left` |
 | a stray or trailing character | projected around | `Left` |
-| cost | scanner, CST with every trivia token, projection, fold — ~128 KB and ~10 us on the benchmark order | characters straight into the `Schema`, no tree — ~5 KB, in circe's band |
+| cost | scanner, CST with every trivia token, projection, fold — ~128 KB and ~10 us on the benchmark order | characters straight into the `Schema`, no tree — ~5 KB, in circe's band; **`Staged.strict[A]`** is the same read generated for the type, ~2.3 KB and 2.45x faster than circe |
 
 Choose `read` when the contract matters — a document that may still
 be arriving (the LLM case), an input you must render back byte for
@@ -162,3 +162,8 @@ byte, damage you want to see rather than refuse. Choose `readStrict`
 for a complete document from a source you trust to be well-formed,
 which is most decoding. Both take the same `Schema`, so the choice is
 one identifier at the call site, and the wire contract does not move.
+A caller who derives once and decodes many times takes the third
+door: `val codec = Staged.strict[A]` at construction, `codec.decode(text)`
+on the hot path — the strict read generated for `A`, the same answer
+as `readStrict` (TestJsonStrictStaged holds them equal), 2.45x faster
+than circe with 32% less allocation.

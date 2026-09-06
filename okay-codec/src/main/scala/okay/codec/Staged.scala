@@ -14,6 +14,13 @@ trait CborCodec[A]:
   def encode(a: A): Array[Byte]
   def decode(bytes: Array[Byte]): Either[String, A]
 
+/** the strict JSON reader, staged: text straight into the type, with
+ * nothing looked up by name at run time that the type already knew
+ * (json-strict-staged). The same answer as `Json.readStrict` -- the
+ * interpreted walk over the same `JsonStrict.Reader` -- faster. */
+trait StrictJsonCodec[A]:
+  def decode(text: String): Either[String, A]
+
 /**
  * The STAGED fold mode specs/codecs.md promised: the same algebra as
  * Json.encode/decode and Cbor.write/read, but folded over the type's
@@ -68,6 +75,9 @@ object Staged {
 
   /** the staged CBOR codec for A: `val c = Staged.cbor[Order]` */
   inline def cbor[A]: CborCodec[A] = ${ cborImpl[A] }
+
+  /** the strict JSON reader for A, generated once at the call site */
+  inline def strict[A]: StrictJsonCodec[A] = ${ strictImpl[A] }
 
   // ---- run-time helpers the generated JSON code calls ----
 
@@ -156,6 +166,95 @@ object Staged {
           j += 1
         missing.toLeft(()).map(_ => make(slots))
 
+  // ---- run-time helpers the generated STRICT JSON code calls ----
+  /** `[` v (`,` v)* `]`, each element at its own staged reader; the
+   * first Left ends it, as the interpreted reader ends it */
+  def strictElems[X](r: JsonStrict.Reader)(f: JsonStrict.Reader => Either[String, X]): Either[String, List[X]] =
+    r.expect('[').flatMap { _ =>
+      r.skipWs()
+      if r.peek == ']' then { r.at += 1; Right(Nil) }
+      else
+        val b = List.newBuilder[X]
+        var err: Option[String] = None
+        var done = false
+        while err.isEmpty && !done do
+          r.skipWs()
+          f(r) match
+            case Left(e) => err = Some(e)
+            case Right(x) =>
+              b += x
+              r.skipWs()
+              r.peek match
+                case ',' => r.at += 1
+                case ']' => r.at += 1; done = true
+                case _ => err = r.fail[Unit]("expected ',' or ']'").swap.toOption
+        err.toLeft(b.result())
+    }
+  def strictElemsV[X](r: JsonStrict.Reader)(f: JsonStrict.Reader => Either[String, X]): Either[String, Vector[X]] =
+    strictElems(r)(f).map(_.toVector)
+  /** `{` "k" `:` v ... `}` by NAME into slots -- JSON's rule, not
+   * CBOR's: an undeclared field is SKIPPED, as `Json.decode` ignores
+   * it -- then absences filled as the fold fills them: declared
+   * default, then None-if-optional, then the refusal */
+  def strictProduct[T](r: JsonStrict.Reader, names: Array[String],
+                       readers: Array[JsonStrict.Reader => Either[String, Any]],
+                       absents: Array[Either[String, Any]],
+                       make: Array[Any] => T): Either[String, T] =
+    r.expect('{').flatMap { _ =>
+      val slots = new Array[Any](names.length)
+      val filled = new Array[Boolean](names.length)
+      var err: Option[String] = None
+      r.skipWs()
+      if r.peek == '}' then r.at += 1
+      else
+        var done = false
+        while err.isEmpty && !done do
+          r.skipWs()
+          r.string() match
+            case Left(e) => err = Some(e)
+            case Right(k) =>
+              r.skipWs()
+              r.expect(':') match
+                case Left(e) => err = Some(e)
+                case Right(_) =>
+                  r.skipWs()
+                  val idx = names.indexOf(k)
+                  val got: Either[String, Unit] =
+                    if idx < 0 then r.skipValue()
+                    else readers(idx)(r).map(v => { slots(idx) = v; filled(idx) = true })
+                  got match
+                    case Left(e) => err = Some(e)
+                    case Right(_) =>
+                      r.skipWs()
+                      r.peek match
+                        case ',' => r.at += 1
+                        case '}' => r.at += 1; done = true
+                        case _ => err = r.fail[Unit]("expected ',' or '}'").swap.toOption
+      err match
+        case Some(e) => Left(e)
+        case None =>
+          var j = 0
+          var missing: Option[String] = None
+          while missing.isEmpty && j < names.length do
+            if !filled(j) then
+              absents(j) match
+                case Right(d) => slots(j) = d
+                case Left(e) => missing = Some(e)
+            j += 1
+          missing.toLeft(()).map(_ => make(slots))
+    }
+  /** the one-entry object a sum is written as: `{"Case": value}` */
+  def strictSum[T](r: JsonStrict.Reader)(byName: String => Either[String, T]): Either[String, T] =
+    r.expect('{').flatMap { _ =>
+      r.skipWs()
+      r.string().flatMap { name =>
+        r.skipWs()
+        r.expect(':').flatMap { _ =>
+          r.skipWs()
+          byName(name).flatMap { v => r.skipWs(); r.expect('}').map(_ => v) }
+        }
+      }
+    }
   // ---- the construction-time shape checks, shared by both formats ----
 
   /** does this schema have the Mirror's shape (the names, in order)? */
@@ -191,6 +290,20 @@ object Staged {
         def decode(bytes: Array[Byte]): Either[String, A] =
           val in = new Cbor.In(bytes)
           ${ g.read[A]('in, Nil) }
+    }
+    g.hoisted(codec)
+
+  def strictImpl[A: Type](using Quotes): Expr[StrictJsonCodec[A]] =
+    val g = new StrictGen
+    val codec = '{
+      new StrictJsonCodec[A]:
+        def decode(text: String): Either[String, A] =
+          val r = new JsonStrict.Reader(text)
+          r.skipWs()
+          ${ g.read[A]('r, Nil) }.flatMap { a =>
+            r.skipWs()
+            if r.at == text.length then Right(a) else Left("trailing input at " + r.at)
+          }
     }
     g.hoisted(codec)
 
@@ -541,5 +654,80 @@ object Staged {
                        case n => Left("expected a one-entry map, got " + n + " entries")
                      }
                    } else $fold }
+              case _ => fold
+
+  /**
+   * The strict-JSON generator: `CborGen`'s shape over `JsonStrict.Reader`
+   * -- primitives call the reader's own `number`/`string`/`bool`, so a
+   * primitive field needs no fold branch; products, sums and sequences
+   * go through the `strict*` helpers with the field readers staged.
+   * Where the type is recursive or has no Mirror, it falls back to the
+   * interpreted walk (`Reader.get`), which is the same answer slower.
+   */
+  private class StrictGen(using Quotes) extends Reflect:
+    import q.reflect.*
+
+    def read[T: Type](r: Expr[JsonStrict.Reader], seen: List[TypeRepr]): Expr[Either[String, T]] =
+      Type.of[T] match
+        case '[Int] => '{ $r.number().map(_.toInt) }.asExprOf[Either[String, T]]
+        case '[Long] => '{ $r.number().map(_.toLong) }.asExprOf[Either[String, T]]
+        case '[Double] => '{ $r.number() }.asExprOf[Either[String, T]]
+        case '[Boolean] => '{ $r.bool() }.asExprOf[Either[String, T]]
+        case '[String] => '{ $r.string() }.asExprOf[Either[String, T]]
+        case '[Option[x]] => '{
+          if $r.lit("null") then Right(None)
+          else ${ read[x](r, seen) }.map(Some(_)) }.asExprOf[Either[String, T]]
+        case '[List[x]] =>
+          '{ Staged.strictElems[x]($r)(cur => ${ read[x]('cur, seen) }) }.asExprOf[Either[String, T]]
+        case '[Vector[x]] =>
+          '{ Staged.strictElemsV[x]($r)(cur => ${ read[x]('cur, seen) }) }.asExprOf[Either[String, T]]
+        case _ =>
+          val schema = schemaOf[T]
+          val fold = '{ $r.get($schema) }
+          if seenBefore[T](seen) then fold
+          else
+            val here = TypeRepr.of[T] :: seen
+            mirrorOf[T] match
+              case Some((Shape.Product, types, names, mirror)) =>
+                val ok = okFor[T](Shape.Product, names, schema)
+                val m = mirror.asExprOf[Mirror.ProductOf[T]]
+                val tname = TypeRepr.of[T].typeSymbol.name
+                val comp = TypeRepr.of[T].typeSymbol.companionModule
+                val readerExprs: List[Expr[JsonStrict.Reader => Either[String, Any]]] =
+                  types.map { tpe =>
+                    tpe.asType match
+                      case '[f] => '{ (cur: JsonStrict.Reader) => ${ read[f]('cur, here) }.map(x => x: Any) }
+                  }
+                val absentExprs: List[Expr[Either[String, Any]]] =
+                  types.zip(names).zipWithIndex.map { case ((tpe, name), i) =>
+                    tpe.asType match
+                      case '[f] =>
+                        val isOpt = Type.of[f] match { case '[Option[?]] => true; case _ => false }
+                        comp.methodMember("$lessinit$greater$default$" + (i + 1)) match
+                          case d :: Nil if d.paramSymss.isEmpty =>
+                            val dv = Ref(comp).select(d).asExprOf[f]
+                            '{ Right($dv: Any) }
+                          case _ if isOpt => '{ Right(None: Any) }
+                          case _ => '{ Left(${ Expr("missing field '" + name + "' in " + tname) }) }
+                  }
+                val namesArr = '{ Array(${ Varargs(names.map(Expr(_))) }*) }
+                val readersArr = '{ Array(${ Varargs(readerExprs) }*) }
+                val absentsArr = '{ Array(${ Varargs(absentExprs) }*) }
+                '{ if $ok then
+                     Staged.strictProduct[T]($r, $namesArr, $readersArr, $absentsArr,
+                       xs => $m.fromProduct(Tuple.fromArray(xs)))
+                   else $fold }
+              case Some((Shape.Sum, types, names, _)) =>
+                val ok = okFor[T](Shape.Sum, names, schema)
+                val tname = TypeRepr.of[T].typeSymbol.name
+                def chain(rest: List[(TypeRepr, String)], name: Expr[String]): Expr[Either[String, T]] =
+                  rest match
+                    case Nil => '{ Left("unknown case '" + $name + "' of " + ${ Expr(tname) }) }
+                    case (tpe, label) :: more => tpe.asType match
+                      case '[c] =>
+                        '{ if $name == ${ Expr(label) } then ${ read[c](r, here) }
+                           else ${ chain(more, name) } }.asExprOf[Either[String, T]]
+                '{ if $ok then Staged.strictSum[T]($r)(name => ${ chain(types.zip(names), 'name) })
+                   else $fold }
               case _ => fold
 }
