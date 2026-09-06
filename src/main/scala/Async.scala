@@ -185,39 +185,65 @@ object Async {
       stopped = true
       unregister()
 
+    /**
+     * A direct loop over the tree's cases, the shape `runFree` and
+     * Stm's runner have: the rotation and the `Bind(Pure, f)` step as
+     * in `Free.fold`, the operation dispatched by a method call.
+     * `fold` with a polymorphic handler value did the same work with a
+     * closure built per operation and the answer threaded back through
+     * it — measured at 12.6 us of a 4000-bind chain on the JVM
+     * (docs/benchmarks.md §18b/§18c).
+     */
     def apply(prog: A ! Async): Unit =
-      var cur = prog
+      var cur: A ! Async = prog
       var looping = !stopped
-      while looping do
-        looping = false
-        try
-          cur.fold[Unit](a => { val _ = p.trySuccess(a) })([X] => e => k =>
-            e match
-              case Run(f) =>
-                cur = k(f())
+      try
+        while looping do
+          looping = false
+          cur match
+            case Free.Pure(a) => { val _ = p.trySuccess(a) }
+            case Free.Bind(Free.Bind(a, f), g) =>
+              cur = Free.Bind(a, f(_).flatMap(g))
+              looping = !stopped
+            case Free.Bind(Free.Pure(a), f) =>
+              cur = f(a)
+              looping = !stopped
+            case Free.Bind(Free.Inject(e), f) =>
+              val next = op(e, f)
+              if next != null then
+                cur = next
                 looping = !stopped
-              case Await(reg) =>
-                // the cell holds the answer, the "moved on" marker, or nothing:
-                // typed, so what comes out is the operation's Either
-                val cell = AtomicReference[Got[X] | Moved.type | Null](null)
-                val cancelReg = reg { r =>
-                  if !cell.compareAndSet(null, Got(r)) then
-                    if !stopped then r match
-                      case Right(x) => apply(k(x))
-                      case Left(e) => { val _ = p.tryFailure(e) }
-                }
-                cell.getAndSet(Moved) match
-                  case g: Got[X] =>
-                    g.x match
-                      case Right(x) =>
-                        cur = k(x)
-                        looping = !stopped
-                      case Left(e) => { val _ = p.tryFailure(e) }
-                  case _ =>
-                    unregister = cancelReg
-                    if stopped then cancelReg()
-          )
-        catch case e: Throwable => { val _ = p.tryFailure(e) }
+            case Free.Inject(e) =>
+              val next = op(e, Free.Pure(_))
+              if next != null then
+                cur = next
+                looping = !stopped
+      catch case e: Throwable => { val _ = p.tryFailure(e) }
+
+    /** one operation: the continuation to drive next when the answer
+     * came synchronously, null when the drive parked on a callback
+     * (which re-enters `apply`) or the program finished here */
+    private def op[X](e: Async[X], k: X => A ! Async): (A ! Async) | Null = e match
+      case Run(f) => k(f())
+      case Await(reg) =>
+        // the cell holds the answer, the "moved on" marker, or nothing:
+        // typed, so what comes out is the operation's Either
+        val cell = AtomicReference[Got[X] | Moved.type | Null](null)
+        val cancelReg = reg { r =>
+          if !cell.compareAndSet(null, Got(r)) then
+            if !stopped then r match
+              case Right(x) => apply(k(x))
+              case Left(e) => { val _ = p.tryFailure(e) }
+        }
+        cell.getAndSet(Moved) match
+          case g: Got[X] =>
+            g.x match
+              case Right(x) => k(x)
+              case Left(e) => { val _ = p.tryFailure(e); null }
+          case _ =>
+            unregister = cancelReg
+            if stopped then cancelReg()
+            null
   }
 
   /** run the program on its own fiber (a virtual thread by default on

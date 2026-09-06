@@ -15,6 +15,26 @@ preamble/epilogue ignored, a body without the boundary yields no
 parts rather than a 500. 3 new tests, one through `Site.handle` with
 a binary part carrying CRLF and NUL; 81 green 3x.
 
+## async-direct-loop — `Drive.apply` as a direct loop: −26% Native, −20% JS (by minimum), −27% JVM on `runAsync`
+
+The `runAsync` terminal drove the tree by calling `Free.fold` afresh
+for every operation with a polymorphic handler value — a `k => …`
+closure built per operation and the answer threaded back through it
+(§18b priced it at 12.6 us of a 4000-bind chain on the JVM). It is
+now what `runFree` and Stm's runner already were: a `while` over
+`Free`'s own cases, the rotation and the `Bind(Pure, f)` step as in
+`fold`, the operation dispatched to a method returning the next
+program or null when the drive parked on a callback. The `Await`
+exchange cell, cancellation at the next operation and the callback
+re-entry are the same code, moved. Before/after in one session
+(§18c): Native `bindChain` 534.1 / 507.1 → 395.9 / 379.0 us; JS
+212.1 / 160.3 → 133.0 / 128.2; JMH `bind_runAsync` 40.2 → 29.2 us and
+608,184 → 541,040 B/op — the 67 KB gone are exactly one 16-byte
+closure per bind, and `runAsync` now sits 2.3 us over `runWith`.
+Controls held: `pureChain` on Native and `bind_runWith` unchanged; JS's
+`pureChain` drifted +15% the other way, so its −37% median is read as
+its −20% minimum. Async suites 27/27; full gate below.
+
 ## free-bind-node-count — the bind's floor without its effect: 56% of the Native bind is the injection
 
 `pureChain` beside `bindChain` (BenchCross) and `bind_pureChain`

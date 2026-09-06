@@ -2968,7 +2968,19 @@ A fourth `Free` case is declined by count: 118 sites outside
 Free.scala match on the three cases directly. What is open is the
 loop, not the node: `async-direct-loop`.
 
-## async-direct-loop — `Drive.apply` as a direct loop over `Free`, the way `runFree` and `Stm`'s runner already are
+## async-direct-loop — DONE 2026-09-06: a quarter off the bind on Native (−26%), JS (−20% by minimum) and the JVM's `runAsync` (−27%); §18c
+
+Landed: `Drive.apply` as a `while` over `Free`'s cases with the
+operation dispatched to `op` (next program, or null when parked).
+Native `bindChain` 534 → 396 us, JS 160 → 128 by minimum, JMH
+`bind_runAsync` 40.2 → 29.2 us and one 16-byte closure per bind gone;
+controls (`pureChain` Native, `bind_runWith`) unchanged. `runAsync`
+is 2.3 us over `runWith` now; what remains of Native's injection cost
+(163 of 396 us) is the three objects, the `op` call and `f()`, and
+the next lever there is `free-bind-node-count`'s declined node — not
+worth 118 match sites for it. Original entry:
+
+### as filed
 
 `free-bind-node-count` put a number on `runAsync`'s round-trip:
 `Drive.apply` calls `fold` afresh for every operation with a

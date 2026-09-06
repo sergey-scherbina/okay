@@ -2028,4 +2028,39 @@ Condition, Chunks, Cont…), and every one would have to learn it. The
 open lever is the loop, not the node: `Drive.apply` written as
 `runFree` and `Stm`'s runner already are, a direct match with `Run`
 and `Await` inlined — `async-direct-loop`, whose ceiling on the JVM is
-the 12.6 us and whose Native number this section will take.
+the 12.6 us and whose Native number §18c takes.
+
+### 18c. async-direct-loop: `Drive.apply` as a direct loop — a quarter off every platform's bind
+
+`Drive.apply` (the `runAsync` terminal) now matches `Free`'s cases in
+its own `while` — the rotation and the `Bind(Pure, f)` step as in
+`fold`, the operation dispatched to a method that returns the next
+program or null when the drive parked — instead of re-entering `fold`
+with a polymorphic handler value per operation. The `Await` exchange
+cell, cancellation at the next operation and the re-entry from a
+callback are the same code moved. Before and after in one session,
+BenchCross N=4000 median of 20 / min (us) and JMH `-prof gc`, two
+forks:
+
+| lane | before | after | Δ |
+|---|---|---|---|
+| `bindChain` native | 534.1 / 507.1 | 395.9 / 379.0 | −26% / −25% |
+| `bindChain` js | 212.1 / 160.3 | 133.0 / 128.2 | −37% / −20% |
+| `bind_runAsync` jvm | 40.2 us, 608,184 B | 29.2 us, 541,040 B | −27%, −11% |
+| `pureChain` native (control) | 235.6 / 225.6 | 232.5 / 226.5 | — |
+| `pureChain` js (control) | 61.7 / 60.5 | 70.9 / 69.8 | +15% / +15% |
+| `bind_runWith` jvm (control) | 27.6 us, 540,984 B | 26.9 us, 540,984 B | — |
+
+The bytes say what went: 67,144 B per 4000 binds is 16.8 per bind —
+one 16-byte closure per operation, the `k => …` that `h(a)` built —
+and `bind_runAsync` now sits 2.3 us over `bind_runWith`, which is the
+`Promise` and the `Await` in the harness. On Native the round-trip
+was 138 us of the 534 — a quarter of the bind, and 46% of the 300 us
+the injection cost in §18b; the 163 us that remain are the three
+objects, the `op` call and `f()`. JS took the most by median and the
+least by minimum, and its control drifted 15% the other way in the
+same run: read the JS minimum, −20%. Native's control did not move.
+
+The §18 table above is the run it records; the Native and JS
+`bindChain` cells read a quarter lower after this change, and the
+JVM column still reads against JMH, not as JMH.
