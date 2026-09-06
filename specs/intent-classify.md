@@ -3439,3 +3439,46 @@ counting parser is a people-word list and a call. On the more-slots
 entry `who` and places remain, and neither is a parser: a name is
 whatever the message says it is, and that is the model tier's job or
 a person's.
+
+## Results — intent-rule-induction (2026-09-07)
+
+**Cues induced from the corpus, measured where the hand-written ones
+are.** `Induced` is a RIPPER-shaped tier: literals are words, adjacent
+pairs and either at the start of the message (`^please`); a rule is a
+conjunction, grown on two thirds of the training half by FOIL gain,
+pruned on the other third by dropping trailing literals while its
+precision there holds, and kept on the whole training half at a
+support floor (two rows) and a precision floor; class by class,
+rarest first; deterministic; a `Trained` is rules a person can read.
+Same split as `TestCharGrams`, the held-out half, beside
+`Patterns.meeting` on the same rows, `classify` at margin 0.4:
+
+| | rules | fired on | right where fired |
+|---|---|---|---|
+| hand-written cues (`Patterns.meeting`) | — | 53.3% | 90.6% |
+| induced, support 2, floor 0.8 | 8 | 51.7% | 67.7% |
+| **induced, support 2, floor 0.9 (default)** | 4 | 11.7% | **85.7%** |
+| induced, support 3, floor 0.8 | 5 | 46.7% | 60.7% |
+| induced, support 3, floor 0.9 | 2 | 8.3% | 80.0% |
+| induced, support 4, floor 0.8 | 2 | 28.3% | 58.8% |
+
+The eight rules at the 0.8 floor read as cues a person could have
+written — `^please -> Request`, `you & could -> Request`, `^can &
+^can you -> Request`, `^the & now -> Notification`, `has & ^the ->
+Notification` — and as the ones a person would not: `we -> Proposal`,
+`no -> Notification`, `minute -> Proposal`, each right on every one
+of the few training rows it stood on and wrong on a third of the
+held-out ones it fires on. That is the finding: **at sixty rows
+induction buys coverage or precision, not both**, where the
+hand-written tier has both because its author had more than sixty
+rows in mind. The default keeps the cue tier's property — being right
+where it fires — at 85.7% and says how little that covers (11.7%);
+the grid is in the suite for the corpus that grows, which is where
+`intent-static-embeddings` and the learning curve put the limit for
+every other tier too. Two corrections the algorithm needed on the way
+are in the code: a literal that leaves a rule on fewer rows than the
+support floor is a row's name, not a literal; and keep-or-stop is
+judged on the whole training half, because a five-row pruning set
+was rejecting a rule right on all thirty rows it was grown on. The
+tier is not wired into the Router: its number does not earn a place
+ahead of the hand-written cues.

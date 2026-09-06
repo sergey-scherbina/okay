@@ -1945,7 +1945,20 @@ ordered by what it would FIX, not by novelty.
       the same seam and re-run the bake-off per language. Cheap, and it
       is the only way to tell a representation problem from a
       classifier problem.
-- [ ] intent-rule-induction — patterns are 88.6-90.9% accurate where
+- [x] intent-rule-induction — MEASURED 2026-09-07, not a replacement
+      at this corpus size: `Induced` (RIPPER-lite — literals are words,
+      adjacent pairs and either at the start; grown by FOIL gain on two
+      thirds of the training half, pruned on the third, kept on the
+      whole half at a support and a precision floor; deterministic; a
+      `Trained` is rules a person can read) beside `Patterns.meeting`
+      on the same held-out rows: hand-written fire 53.3% at 90.6%;
+      induced at floor 0.8 fire 51.7% at 67.7%, at floor 0.9 (the
+      default) 11.7% at 85.7%; support 3 or 4 is worse on both. At
+      sixty rows induction buys coverage or precision, not both — the
+      corpus is the limit, as intent-static-embeddings and the learning
+      curve found for the other tiers; the tier stays, with the grid
+      in the suite, for the corpus that grows. Original: patterns are
+      88.6-90.9% accurate where
       they fire and fire on only 58.3% of messages, and the cues are
       hand-written. Induce them instead (RIPPER-style: grow a rule,
       prune it against held-out data, repeat) so coverage grows with

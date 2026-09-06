@@ -1,5 +1,28 @@
 # Changelog
 
+## intent-rule-induction — cues induced from the corpus, measured beside the hand-written ones: coverage or precision, not both, at sixty rows
+
+`Induced`: a RIPPER-shaped tier — literals are words, adjacent pairs
+and either at the start of the message; a rule is grown on two thirds
+of the training half by FOIL gain, pruned on the other third by
+dropping trailing literals while its precision holds, and kept on the
+whole half at a support floor and a precision floor, class by class,
+rarest first; deterministic; a `Trained` is a vector of rules a person
+can read (`^please -> Request`, `you & could -> Request`, `^the & now
+-> Notification`). Measured on the `TestModels` held-out rows beside
+`Patterns.meeting`: the hand-written cues fire on 53.3% and are right
+90.6% of the time; the induced ones reach that coverage only at a 0.8
+floor (51.7% at 67.7%), or hold the cue tier's property — being right
+where they fire — at 85.7% on 11.7% of messages with the 0.9 floor
+that is the default; support 3 or 4 is worse on both axes. So at
+sixty rows induction buys one of the two, not both, and the tier
+stays with the grid in its suite for the corpus that grows. Two
+things the algorithm had to learn on the way, both in the code: a
+literal that leaves a rule on fewer rows than the support floor is a
+row's name, not a literal; and keep-or-stop is judged on the whole
+training half, because a five-row pruning set was rejecting a rule
+right on every one of the thirty it was grown on.
+
 ## intent-extract-people — how many people: `People.parse`/`find` and `Slots.people`, eight languages from the first commit
 
 The third parsed slot. `People.parse` reads a count beside a
