@@ -1,0 +1,13 @@
+task: intent-temporal-multilingual (Temporal's word-list scan learns the other five languages' weekday, month and relative-day words)
+agent: okay-42
+started: 2026-09-07
+branch: feature/intent-temporal-multilingual
+
+why: BACKLOG intent-temporal-multilingual: `Temporal` parses English, so
+  `Frame.fillFrom` fills English rows and declines the other five --
+  5/5 en, 0/5 fr/de/es/ru/ja on the parallel fixture. A coverage lane:
+  the parser is a scan over weekday, month and relative-day
+  vocabularies, so a second language is those lists, keyed by the
+  language the exchange already carries. Deterministic, no network,
+  measured on the same fixture rows; the router's "ask in the reader's
+  language" degradation stays for what the lists do not cover.
