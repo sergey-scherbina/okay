@@ -1,5 +1,23 @@
 # Changelog
 
+## intent-duration-multilingual — `Duration` reads the fixture's other seven languages
+
+The same shape `Temporal` took the day before: a lexicon per language
+(fr, de, es, ru, uk, pl; Japanese as a string scan) — unit words as
+token prefixes so a declension is the word it starts with (`heures`,
+`Stunden`, `часа`, `godziny`), number words with their genders and
+the one-and-a-half words (`anderthalb`, `полтора`, `półtorej`), a ten
+and a unit read as one number (`сорок пять`, `cuarenta y cinco`,
+`czterdzieści pięć`), the fraction phrases (`une demi-heure`, `un
+cuarto de hora`, `четверть часа`, `kwadrans`), `et demie` / `y media`
+after the hours and `с половиной` / `з половиною` / `i pół` before
+them, `N時間`, `N時間半`, `N分`, `半時間`. English is tried first and
+unchanged; what no lexicon says is `None`. The parallel fixture has
+no duration rows, so the fixture lives in `TestDurationMultilingual`:
+eight meanings, eight wordings each, dictionary facts rather than
+corpus data, under `Temporal`'s law — one meaning, one value — plus
+the phrases inside sentences with the evidence as the phrase.
+
 ## intent-extract-duration — a duration slot: `Duration.parse`/`find` and `Slots.duration`
 
 The second slot with a parser and an extractor, after `when`.

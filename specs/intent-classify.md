@@ -3387,3 +3387,29 @@ languages' number-and-unit words are filed (intent-duration-
 multilingual) with a fixture to be written first. `who`, places and
 amounts remain on the more-slots entry; `who` is the one that is not
 a parser.
+
+## Results — intent-duration-multilingual (2026-09-07)
+
+**Eight meanings, eight wordings each, one value.** `Duration` took
+the lexicon shape `Temporal` settled: unit words matched as token
+prefixes (`heures`, `Stunden`, `часа`, `godziny` are the words they
+start with), number words with their genders and the one-and-a-half
+words (`anderthalb`, `полтора`, `półtorej`), a ten and a unit read as
+one number (`сорок пять`, `cuarenta y cinco` through its connector,
+`czterdzieści pięć`), the fraction phrases (`une demi-heure`, `un
+quart d'heure`, `eine Viertelstunde`, `media hora`, `четверть часа`,
+`кwadrans`), and the half-hour that Romance puts after the hours (`et
+demie`, `y media`) and Slavic before them (`с половиной`, `з
+половиною`, `i pół`); Japanese as a string scan (`N時間`, `N時間半`,
+`N時間M分`, `N分`, `半時間`). English first and unchanged; `None` for
+what no lexicon says (`bientôt`, `eine Weile`, `un rato`, `скоро`,
+`chwilę`, `しばらく`).
+
+The parallel fixture carries no duration, so the fixture is in the
+suite (`TestDurationMultilingual`): `30 minutes`, `an hour`, `half an
+hour`, `an hour and a half`, `two hours`, `a quarter of an hour`,
+`forty-five minutes`, `2.5 hours` — each in eight languages,
+dictionary facts rather than corpus data — under the law that one
+meaning has one value whatever the wording, and the phrases inside a
+sentence in each language with the evidence as the phrase. A ninth
+language is a lexicon.

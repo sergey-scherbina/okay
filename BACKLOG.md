@@ -2728,12 +2728,19 @@ subtraction.
       `when` and whole-message text have extractors. Named entities
       (who), durations, places and amounts are the obvious next ones,
       and each is a `Slot.extract` rather than a design.
-- [ ] intent-duration-multilingual — `Duration` reads English; the
-      parallel fixture has no duration rows, so the law that settled
-      `Temporal`'s seven languages has nothing to hold on to yet. A
-      lexicon per language (units, the spoken fractions, number words)
-      and a fixture of duration phrases per language, then the same
-      "one meaning, eight wordings" law.
+- [x] intent-duration-multilingual — DONE 2026-09-07: `Duration.
+      Multilingual`, a lexicon per language (fr, de, es, ru, uk, pl;
+      ja as a string scan) — unit words as token prefixes, number
+      words with their genders and the one-and-a-half words
+      (`anderthalb`, `полтора`, `półtorej`), a ten and a unit as one
+      number (`сорок пять`, `cuarenta y cinco`), the fraction phrases,
+      `et demie` / `y media` after the hours and `с половиной` / `i
+      pół` before them, `N時間半`. The fixture is in the suite — eight
+      meanings, eight wordings each, dictionary facts — and the law is
+      `Temporal`'s: one meaning, one value. Original: `Duration` reads
+      English; the parallel fixture has no duration rows, so the law
+      that settled `Temporal`'s seven languages has nothing to hold on
+      to yet.
 - [x] intent-taxon-wired-to-tiers — LANDED 2026-09-05. Every `Trained`
       carries the `Taxon` it was fitted against; `train` infers,
       `against(taxon, rows)` declares and refuses a label outside it,
