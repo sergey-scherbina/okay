@@ -22,6 +22,21 @@ given CanBlock = new:
     catch case e: Throwable => { cancel(); throw e }
     v.get   // done implies Some: the callback wrote it under the lock
 
+  /** the Native handoff: the object is its own monitor, as `block`'s
+   * lock is; `filled` is written under it and the waiter notified */
+  private final class MonitorHandoff[A] extends Handoff[A]:
+    protected def signal(): Unit = this.synchronized { this.notifyAll() }
+
+  def handoff[A](): Handoff[A] = MonitorHandoff[A]()
+
+  def await(h: Handoff[?]): Unit =
+    if !h.filled then h match
+      case m: MonitorHandoff[?] =>
+        m.synchronized:
+          while !m.filled do m.wait()
+      case other =>
+        throw IllegalStateException("a handoff not made by this CanBlock: " + other.getClass.getName)
+
   def blockAccepted(register: Accepted => (() => Unit)): Boolean =
     val lock = new Object
     var done = false

@@ -176,6 +176,11 @@ sbt okayActorJVM/test
 
 The 1.49x is the receive side: the loop reads one message at a time
 (so supervision knows which one failed), and each `receiveBlocking()`
-is five allocations — the mirror of the send-side handshake the feed
-no longer pays. Give a `Behavior` an `AnyRef` state: a primitive one
-boxes on every step (141 of ~900 allocation samples on this lane).
+was five allocations — the mirror of the send-side handshake the feed
+no longer pays. Since `actor-receive-fused` (§17c) it is two: the
+`Handoff` that is its own callback, and the `Some` — bytes per
+message −5% with an empty mailbox and −13% with a full one, time at
+parity in both. What remains of the ratio is the loop's own
+`runWith` per message and the mailbox's ring. Give a `Behavior` an
+`AnyRef` state: a primitive one boxes on every step (141 of ~900
+allocation samples on this lane).

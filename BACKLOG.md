@@ -2749,3 +2749,31 @@ allocation for every caller, not only the actor. Expected: the full
 regime's −35% bytes kept, the empty regime at parity or better.
 Measure both with `actorTell` and `actorTellBacklog`; the A/B method
 is in §17a.
+
+## actor-receive-fused — DONE 2026-09-06 (§17c): the receive-side handshake, one object, no second scan
+
+`Handoff[A]` in core — the callback that is its own slot — with
+`CanBlock.handoff()`/`await(h)` on JVM (park/unpark) and Native
+(monitor), `Channel.receiveInto(h): Boolean` (default: register and
+answer false, correct before fast; `SentinelChannel`: the first scan
+with an early return on a hit), and `receiveBlocking` rebuilt on them.
+Old against new, both regimes: **bytes −5.2% (empty mailbox) and
+−12.9% (full), time at parity in both** — the regression that sank
+the poll-first loop does not occur, because the try is the scan the
+handshake was going to do. Every `receiveBlocking` caller in the
+library gets it. This also finishes `channel-callback-allocation`'s
+receive half for the blocking form: the `Right(Some(_))` pair is gone
+from the hit path, and the `Option[A]` return costs its one `Some`.
+The `receive` PROGRAM (`Async.Await` + callback) is untouched and
+still pays the pair; that is the remaining half, priced against the
+`End` type as before. Laws: `TestHandoff` (7), `TestChannelLaws`,
+`TestPoisonLaws`; Native compiles.
+
+Process note kept here because it cost an hour: the A/B chain that
+produced these numbers also WIPED the six uncommitted source edits —
+a quoted `$FILES` list made its backup `cp` fail while the
+`git show master:f > f` overwrite succeeded. The measurement was
+valid (NEW ran before the swap); the tree was rebuilt from the
+transcript and re-verified. Rule, now in memory: commit before any
+script rewrites tracked files; restore with `git checkout`, never
+`cp`.

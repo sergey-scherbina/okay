@@ -182,8 +182,28 @@ trait Channel[A] {
     if offer(a) then true
     else cb.blockAccepted(k => { sendAsync(a)(k); () => () })
 
+  /**
+   * The receive whose try is its own first scan. Answer true if an
+   * element was ready NOW and has been written into `h` with
+   * `Handoff.got`; otherwise register `h` as the callback — the end,
+   * a failure, or a later element all arrive through `h.apply` — and
+   * answer false. The default is correct before it is fast: it
+   * registers and answers false, and `receiveAsync`'s own synchronous
+   * path fills `h` before returning where it can. `SentinelChannel`
+   * overrides with the early return, and pays no second scan for it.
+   */
+  private[okay] def receiveInto(h: Handoff[A]): Boolean =
+    receiveAsync(h)
+    false
+
   def receiveBlocking()(using cb: CanBlock): Option[A] =
-    cb.block[End](k => { receiveAsync(k); () => () }).fold(e => throw e, identity)
+    // one handoff, which is the callback; a hit fills it on the way
+    // out of the first scan and never parks, allocating this and the
+    // Some below where five objects went before (§17); a miss parks
+    // on it exactly as the old slot parked
+    val h = cb.handoff[A]()
+    if !receiveInto(h) then cb.await(h)
+    h.answer
 
   /**
    * Put up to `n` elements, read from `src` by index, in ONE go, and

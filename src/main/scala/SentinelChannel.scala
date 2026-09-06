@@ -217,6 +217,59 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
     wakeAll(receivers)
     endAnswer
 
+  /**
+   * `receiveAsync`'s first scan, with an early return: an element that
+   * is ready goes into the handoff through `got` — no `Right(Some(_))`
+   * — and the caller never parks. Everything else is the same loop:
+   * voids stepped over, the end delivered through `h.apply` (a
+   * synchronous fill the caller's `await` sees at once), the orphaned
+   * end mark, the check-register-recheck. A miss is byte-identical to
+   * the old path, which is the point: `actor-receive-offer-first` lost
+   * 19% by making the try a SECOND scan of the line the producer
+   * writes; here it is the only scan.
+   */
+  override def receiveInto(h: Handoff[A]): Boolean =
+    var hit = false
+    var go = true
+    while go do
+      go = false
+      if ended.get then h(endAnswer)
+      else
+        var answered = false
+        var stepped = true
+        while stepped && !answered do
+          stepped = false
+          ring.pop() match
+            case null => ()
+            case m: Mark =>
+              marks.decrementAndGet(): Unit
+              wakeSender()
+              placeEnd()
+              if m.end then
+                if metEnds.incrementAndGet() >= ring.parts then
+                  h(endReached()); answered = true
+                else stepped = true   // another order still has elements
+              else stepped = true     // a void: step over it
+            case other =>
+              h.got(element(other))
+              hit = true
+              wakeSender()
+              placeEnd()
+              answered = true
+        val orphan = reached.get
+        if !answered && orphan != null then
+          h(endReached())
+          answered = true
+        if !answered then
+          // later wakeups take the ordinary callback path; the handoff
+          // is that callback
+          val w = Waiter(() => receiveAsync(h))
+          enqueue(receivers, w)
+          if (ring.hasReady || ended.get) && w.claim() then
+            val _ = receivers.updateAndGet(_.filterNot(_.claimed.get))
+            go = true
+    hit
+
   def sendAsync(a: A)(k: Accepted): Unit =
     // the route is taken HERE, once, and carried through every retry:
     // a parked send resumes on the waker's thread, so asking again

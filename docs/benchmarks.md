@@ -1782,3 +1782,37 @@ per element, `uncons`'s `Right`+`Tuple2`+`Some` on the pump, an atomic
 `decrementAndGet` of demand per element, boxing for a primitive
 element type, and the channel's ring push and pop. Those are the
 bridge's representation, not a hole.
+
+### 17c. The receive-side handshake, fused — allocation down in both regimes, time at parity
+
+`actor-receive-offer-first` (§17a) lost 19% with an empty mailbox
+because its try was a second scan of the cache line the producer
+writes. `actor-receive-fused` puts the try INSIDE the scan the
+handshake was going to do anyway, and makes the callback its own
+slot: `Handoff[A]` carries the value, the fence and the waiter, and
+IS the `End => Unit` the channel calls. `Channel.receiveInto(h)` is
+`receiveAsync`'s first scan with an early return — a hit writes the
+element into `h` with no `Right(Some(_))` and answers true; a miss is
+byte-identical to the old path and answers false, and `CanBlock.await`
+parks on `h`. `receiveBlocking` is those four lines. Measured old
+against new in both regimes (control `channelBuffer` 222–223 us /
+1 406 600 B/op stable):
+
+| regime | old | fused | bytes |
+|---|---|---|---|
+| mailbox empty (`actorTell`) | 442.3 ±253.8 / 1 774 080 | 344.6 ±22.7 / 1 682 538 | **−5.2%** |
+| mailbox full (`actorTellBacklog`) | 115.6 ±0.7 / 747 101 | 115.8 ±34.4 / 650 776 | **−12.9%** |
+
+The old empty-regime time is void at that error bar (a burst of load
+mid-run); the fused one sits on master's earlier 343.7. Time is at
+parity in both regimes — the point — and bytes are down in both. A
+receive that finds its element allocates a `Handoff` and a `Some`
+where five objects went; one that waits allocates the `Handoff` where
+two went. The −35% the poll-first loop showed in the full regime is
+not reached, because the handoff is still one object per receive; the
+poll-first's `Got` was the same one object, and its 19% loss elsewhere
+is what this design exists to not pay. Laws: `TestHandoff` (a hit
+answers true and never parks; a miss registers; the end and a failure
+arrive through the handoff, synchronously or to a parked receiver;
+the STM channel's default path stays correct; 3000 elements through a
+ring of 2), all of `TestChannelLaws`, the poison laws; Native compiles.

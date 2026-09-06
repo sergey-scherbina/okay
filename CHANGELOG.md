@@ -1,5 +1,56 @@
 # Changelog
 
+## actor-receive-fused — the receive-side handshake, one object and no second scan: bytes down in both regimes, time at parity
+
+`actor-receive-offer-first` had lost 19% with an empty mailbox for a
+physical reason: its try was a second scan of the cache line the
+producer writes. This lane puts the try INSIDE the scan the handshake
+was going to do anyway, and makes the callback its own slot.
+
+`Handoff[A]`, in core: the value, the release fence and the waiter in
+one object that IS the `End => Unit` the channel calls — `got(a)`
+fills it on the fast path with no `Right(Some(_))`, `apply(End)` fills
+it from a later wakeup or a synchronous end, `answer` gives back what
+`receive`'s program would. `CanBlock.handoff()` and `await(h)` on the
+JVM (park/unpark) and Native (the handoff is its own monitor); JS has
+no `CanBlock` and nothing to add. `Channel.receiveInto(h): Boolean` —
+"ready now: written into `h`, true; else registered, false" — with a
+default that registers and answers false (correct before fast) and a
+`SentinelChannel` override that is `receiveAsync`'s first scan with an
+early return; a miss is byte-identical to the old path. `receiveBlocking`
+is four lines on top. Nothing casts: the handoff is typed on `A`, and
+each platform narrows its own subclass by pattern.
+
+Old against new in both regimes, control `channelBuffer` 222–223 us /
+1 406 600 B/op stable (§17c):
+
+| regime | old | fused |
+|---|---|---|
+| mailbox empty (`actorTell`) | 442.3 ±253.8 / 1 774 080 | 344.6 ±22.7 / 1 682 538 — **−5.2% bytes** |
+| mailbox full (`actorTellBacklog`) | 115.6 ±0.7 / 747 101 | 115.8 ±34.4 / 650 776 — **−12.9% bytes** |
+
+Time at parity in both — the point; the old empty-regime figure is
+void at that error bar and the fused one sits on master's earlier
+343.7. A receive that finds its element now allocates a `Handoff` and
+a `Some` where five objects went; one that waits allocates the
+`Handoff` where two went. Every `receiveBlocking` caller in the
+library gets it, and `channel-callback-allocation`'s receive half is
+finished for the blocking form. Laws: `TestHandoff` (seven — a hit
+answers true and never parks, a miss registers, the end and a failure
+arrive through the handoff synchronously or to a parked receiver, the
+STM channel's default stays correct, 3000 elements through a ring of
+two), all of `TestChannelLaws`, the poison laws; Native compiles.
+
+**The A/B chain that produced those numbers also wiped the lane.** A
+quoted `$FILES` list made its backup `cp` fail while the
+`git show master:f > f` overwrite succeeded: six uncommitted source
+edits reverted to master, one new file deleted, the only copy in the
+transcript. The measurement was valid — NEW ran before the swap — and
+the tree was rebuilt from the transcript, committed at once, and
+re-verified (73/73, 3/3, Native, no warnings). The rule is in memory
+now: commit before any script rewrites tracked files, restore with
+`git checkout`, never `cp`.
+
 ## reactive-bridge-profile — the bridge halved, and only by both halves at once: 5.67x → 2.63x
 
 The largest ratio measured this morning, counted per side before it

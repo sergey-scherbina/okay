@@ -70,6 +70,28 @@ given CanBlock = new:
             throw InterruptedException()
       slot.value
 
+  /** the JVM handoff: the waiter is a parked (virtual) thread, woken
+   * by `LockSupport.unpark` — the same protocol as `block`'s slot,
+   * without the second object */
+  private final class ParkHandoff[A] extends Handoff[A]:
+    @volatile var waiter: Thread | Null = null
+    protected def signal(): Unit =
+      val t = waiter
+      if t != null then java.util.concurrent.locks.LockSupport.unpark(t.nn)
+
+  def handoff[A](): Handoff[A] = ParkHandoff[A]()
+
+  def await(h: Handoff[?]): Unit =
+    if !h.filled then h match
+      case p: ParkHandoff[?] =>
+        // publish who to wake BEFORE re-reading the flag, as `block` does
+        p.waiter = Thread.currentThread()
+        while !p.filled do
+          java.util.concurrent.locks.LockSupport.park(p)
+          if Thread.interrupted() then throw InterruptedException()
+      case other =>
+        throw IllegalStateException("a handoff not made by this CanBlock: " + other.getClass.getName)
+
   def blockAccepted(register: Accepted => (() => Unit)): Boolean =
     val slot = BoolSlot()
     val cancel = register: a =>

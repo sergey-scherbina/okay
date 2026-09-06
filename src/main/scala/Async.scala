@@ -81,6 +81,15 @@ trait CanBlock:
    * This one carries the bit as a bit. */
   def blockAccepted(register: Accepted => (() => Unit)): Boolean
 
+  /** a handoff this platform can park on — the callback that is its
+   * own slot (see `Handoff`); `receiveBlocking` makes one per call */
+  def handoff[A](): Handoff[A]
+
+  /** park until the handoff is filled. Returns at once if it already
+   * is — a `receiveInto` that answered the end synchronously has filled
+   * it before this is called. Interruption is rethrown. */
+  def await(h: Handoff[?]): Unit
+
 /** the platform timer: run a callback after the duration (a sleeping
  * virtual thread on the JVM, setTimeout on JS); the answer cancels */
 trait Timer:
