@@ -20,8 +20,11 @@ class TestAsk extends munit.FunSuite {
         case Msg.Get(r) => r(n); n
         case Msg.Ignore(_) => n)
     }.runWith
-    a.tell(Msg.Add(2)).runWith: Unit
-    a.tell(Msg.Add(3)).runWith: Unit
+    // `tell` answers whether the mailbox took the message, and a
+    // test that throws that away is asserting the sum of messages
+    // that may never have been sent
+    assert(a.tell(Msg.Add(2)).runWith)
+    assert(a.tell(Msg.Add(3)).runWith)
     assertEquals(a.ask(Msg.Get.apply, within = 5000).runWith, Some(5))
     a.stop().runWith
   }
@@ -41,7 +44,7 @@ class TestAsk extends munit.FunSuite {
   }
 
   test("law: asking a stopped actor answers None rather than hanging") {
-    val a = Actor.spawn(0) { (n: Int, m: Msg) => async(n) }.runWith
+    val a = Actor.spawn(0) { (n: Int, _: Msg) => async(n) }.runWith
     a.stop().runWith
     val deadline = System.currentTimeMillis() + 5000
     while !a.stopped && System.currentTimeMillis() < deadline do Thread.`yield`()

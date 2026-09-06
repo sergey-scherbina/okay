@@ -28,7 +28,7 @@ class TestSupervision extends munit.FunSuite {
       }
     }.runWith
     val _ = a.tell(1).runWith
-    a.tell(-1).runWith: Unit   // throws; state must survive
+    assert(a.tell(-1).runWith)  // taken by the mailbox, then throws; state must survive
     val _ = a.tell(1).runWith
     await(seen.size == 2, s"expected two survivors, saw ${seen.size}")
     val out = scala.jdk.CollectionConverters.CollectionHasAsScala(seen).asScala.toList
@@ -52,7 +52,7 @@ class TestSupervision extends munit.FunSuite {
       }
     }.runWith
     val _ = a.tell(5).runWith
-    a.tell(-1).runWith: Unit   // throws; state resets to 0
+    assert(a.tell(-1).runWith)  // taken by the mailbox, then throws; state resets to 0
     val _ = a.tell(3).runWith
     await(seen.size == 2, s"expected two survivors, saw ${seen.size}")
     val out = scala.jdk.CollectionConverters.CollectionHasAsScala(seen).asScala.toList
