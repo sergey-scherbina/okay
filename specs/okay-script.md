@@ -1150,6 +1150,92 @@ acknowledged and their next poll.
       second node on `RemoteStore` — a cart set through the remote
       node is read through the coordinator node and back.
 
+### Live pages — okay-ui as the front-end layer (okay-script-live, 2026-09-06)
+
+Operator ask: okay-ui as the front-end layer for pages. okay-ui's
+phase 3 already has the shape: `Wire.serve(init)(view)(update)` is a
+PURE stage — event lines in, tree/patch lines out — and "a page is
+then something a server SERVES" was written into specs/ui.md before
+this container existed. This section wires the two.
+
+```scala
+package okay.script.api
+final class Live[S](init: S, view: S => Ui, update: (S, Event) => S):
+  def first: Ui                             // view(init) — the SSR content
+  def session: Stage[String, String, Unit]  // Wire.serve, state discarded
+object Live:
+  def apply[S](init: S)(view: S => Ui)(update: (S, Event) => S): Live[S]
+  def html(ui: Ui): String                  // React.elem → HTML, escaped
+  val JsPath = "/__okay/live.js"
+def mount(id: String, app: Live[?]): String
+```
+
+A page declares the app once, at object level, and mounts it in
+prose:
+
+```markdown
+```scala declare
+import okay.ui.*
+val counter = Live(0)(n => Ui.Column(Vector(Ui.Text(s"count: $n"), Ui.Button("+1", "inc"))))(
+  (n, e) => e match { case Event.Pressed("inc") => n + 1; case _ => n })
+```
+${mount("counter", counter)}
+```
+
+`mount` emits `<div id="okay-live-counter">` holding `Live.html(first)`
+— the same element structure `React.elem` builds, so the page is
+complete WITHOUT JavaScript and a patch path into the server's tree is
+a path into the browser's — followed by a script tag for `JsPath` and
+`okayLive("counter")`. It also registers the app with the container
+(a `Container` hook, like `include`), keyed by (page file, id).
+
+`Site.ws: PartialFunction[Request, Stage[Frame, Frame, Unit]]` is the
+socket side: `Jetty.serve(port)(site.routes)(site.ws)` is the whole
+server. A socket at the page's own path plus `?__live=<id>` runs the
+app's `session` between two framing stages — text frames become
+event lines, a Close frame becomes the `Closed` event line, output
+lines become text frames — composed with the core's `through`, so
+`Wire.serve` is used verbatim: the first frame is the full tree, then
+narrow patches; a forged key (one not on the shown tree) is dropped
+before `update` sees it, okay-ui's own capability rule. One socket is
+one session with its own state, starting from `init`; a socket
+arriving before the page was rendered (a reconnect after a restart)
+renders the page once to register the app.
+
+`/__okay/live.js` is ~100 lines of dependency-free JavaScript, served
+by the container itself: it builds DOM from `WireJson` trees exactly
+as `React.elem`/`Dom` do, applies the eight patch kinds by
+`childNodes` path (the Scala.js `Dom` backend, transcribed), and maps
+DOM events back through one delegated listener per kind to
+`press`/`edit`/`toggle`/`choose` lines. Hand-written rather than
+linked from Scala.js on purpose: a Site needs no build step and no
+artifact — the page IS the deployment, which is the whole premise of
+okay-script.
+
+**Classloader, third prefix.** A page's `okay.ui.Ui` tree must BE the
+host's `Ui` for the container to run `Wire.serve` over it, so `okay.*`
+joins `scala.*` and `okay.script.api.*` as shared — the platform a
+page runs on is the host's okay, exactly as it is the host's Scala —
+EXCEPT `okay.script.*` outside the api package, which stays per
+script: `Meta.current` is set from inside the script and must not
+become one global across concurrently rendering pages. A `okay.*`
+class the host lacks falls back to the script's own classpath as
+before.
+
+- [x] `Live.html` renders every Ui shape to the HTML `React.elem`
+      implies (class names, data-key, checked, options), escaped.
+- [x] `mount` outside a Site yields the SSR content plus the script
+      tag and registers nothing.
+- [x] through `Site.handle`: a page mounting a counter serves the
+      SSR `count: 0`; `/__okay/live.js` is served as JavaScript;
+      `site.ws` is defined for `/counter?__live=counter`, also before
+      the page was ever rendered, and not for an unknown id.
+- [x] the session, driven in-JVM without a port: the first frame is
+      the full tree, a `press` frame yields one `SetText` patch, a
+      forged key yields nothing, a Close frame ends it.
+- [x] over a real Jetty WebSocket (Live): connect, receive the tree,
+      press, receive the patch.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
