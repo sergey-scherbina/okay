@@ -37,6 +37,24 @@ class TestScalaScriptClassloaderIsolation extends munit.FunSuite:
     assert(r.stdout.contains("munit-reachable:false"), r.stdout)
   }
 
+  test("okay.script.api is the SAME class on both sides: a script on the minimal classpath + Classpath.api reads the host's Web") {
+    val md =
+      """```scala
+        |println("path:" + okay.script.api.Web.current.path)
+        |val munitReachable =
+        |  try { Class.forName("munit.Assertions"); true }
+        |  catch { case _: ClassNotFoundException => false }
+        |println("munit-reachable:" + munitReachable)
+        |```
+        |""".stripMargin
+    val r = ScalaScript.render(md, classpath = minimalScalaRuntime ++ Classpath.api.entries,
+      web = okay.script.api.Web("GET", "/same-class"))
+    assert(r.ok, r.errors.mkString("\n") + r.thrown.map(_.toString).getOrElse(""))
+    // an isolated COPY of Web would print its own default, "/"
+    assert(r.stdout.contains("path:/same-class"), r.stdout)
+    assert(r.stdout.contains("munit-reachable:false"), r.stdout)
+  }
+
   test("the SAME script, given Classpath.ambient, DOES reach munit -- proving the isolation is about the Classpath given, not a blanket ban") {
     val md =
       """```scala

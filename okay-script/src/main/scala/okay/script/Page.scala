@@ -10,10 +10,8 @@ import java.nio.file.attribute.FileTime
  * per request, it does not recompile on every hit. See
  * specs/okay-script.md "Hot-reload".
  *
- * Needs no dependency beyond what `ScalaScript.render` already has --
- * an actual HTTP route (an `okay-jetty` `PartialFunction[Request,
- * Response ! Async]` wrapping `render().stdout` into a `Response`) is
- * glue code a caller writes; `Page` itself stays inside `okay-script`.
+ * `Site` maps a directory of these to URLs and serves them over
+ * okay-http/okay-jetty -- see "Site — the container".
  */
 final class Page(path: Path, classpath: Classpath = Classpath.ambient, tempRoot: Path = ScalaScript.defaultTempRoot):
   private var cached: Option[(FileTime, Either[Result, Compiled])] = None
@@ -22,27 +20,28 @@ final class Page(path: Path, classpath: Classpath = Classpath.ambient, tempRoot:
    * changed since the last compile; otherwise re-invokes the
    * already-compiled program. Compile errors are reported the same
    * way `ScalaScript.render` reports them, through `Result.errors`.
-   * `web` is set FIRST, inside this call's own lock -- two threads
-   * calling `render` concurrently on the SAME `Page` must never let
-   * one thread's script read the other's `Web` (specs/okay-script.md
-   * "Request context").
+   * Only the cache check/compile is locked: `web` is per-thread
+   * (`okay.script.api.Web.current`), and `Compiled.invoke` captures
+   * output per thread (`Capture`), so many requests can render the
+   * same page at once -- two threads calling `render(webA)` and
+   * `render(webB)` each see their own `Web`.
    */
-  def render(web: Web = Web.current): Result = synchronized:
-    Web.setCurrent(web)
+  def render(web: api.Web = api.Web.current): Result =
+    api.Web.setCurrent(web)
+    compiled() match
+      case Left(r) => r
+      case Right(c) => c.invoke()
+
+  private def compiled(): Either[Result, Compiled] = synchronized:
     val mtime = Files.getLastModifiedTime(path)
     cached match
-      case Some((t, c)) if t == mtime =>
-        invoke(c)
+      case Some((t, c)) if t == mtime => c
       case _ =>
         cached.foreach { case (_, Right(c)) => c.close(); case _ => () }
         val markdown = Files.readString(path)
-        val compiled = ScalaScript.compileRender(markdown, classpath, tempRoot)
-        cached = Some(mtime -> compiled)
-        invoke(compiled)
-
-  private def invoke(c: Either[Result, Compiled]): Result = c match
-    case Left(r) => r
-    case Right(compiled) => compiled.invoke()
+        val c = ScalaScript.compileRender(markdown, classpath, tempRoot)
+        cached = Some(mtime -> c)
+        c
 
   /** Releases the cached compiled program's classloader and deletes
    * its temp output directory. Call when no more `render()`s are

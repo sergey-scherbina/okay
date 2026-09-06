@@ -1108,12 +1108,14 @@ lazy val okaySubscription = project
 
 lazy val okayScript = project
   .in(file("okay-script"))
-  // okayJetty is TEST-only: proving a runtime-compiled script can
-  // start/stop a real okay-jetty server (okay-script-lifecycle) needs
-  // it on the FORKED TEST JVM's own classpath, which is what
-  // Classpath.ambient reads for the script itself -- okay-script's
-  // own main code has no okay-jetty dependency.
-  .dependsOn(okayJetty % Test)
+  // okayHttp.jvm is the MAIN dependency since okay-script-site: `Site`
+  // answers okay-http's `Request` with its `Response`, so any server
+  // speaking those (okay-jetty, okay.http.Server) serves a directory
+  // of pages. okayJetty stays TEST-only: proving a runtime-compiled
+  // script can start/stop a real server (okay-script-lifecycle) and
+  // serving a Site over a real port need it on the FORKED TEST JVM's
+  // own classpath, which is what Classpath.ambient reads.
+  .dependsOn(okayHttp.jvm, okayJetty % Test)
   .settings(
     name := "okay-script",
     // drives dotty.tools.dotc IN-PROCESS -- no scala/scala-cli

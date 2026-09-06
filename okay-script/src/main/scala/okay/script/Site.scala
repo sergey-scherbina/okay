@@ -1,0 +1,374 @@
+package okay.script
+
+import okay.*
+import okay.given
+import okay.http.{Http, Request, Response as HttpResponse}
+
+import java.net.URLDecoder
+import java.nio.charset.StandardCharsets.UTF_8
+import java.nio.file.{Files, Path}
+import java.nio.file.attribute.FileTime
+import java.util.concurrent.ConcurrentHashMap
+import scala.jdk.CollectionConverters.*
+
+/** In-memory sessions: id -> attributes, with a last-access time,
+ * swept of entries idle longer than `ttl` on every access. Ids are
+ * 128 random bits, URL-safe base64. A `Site` owns one; two `Site`s
+ * share sessions by sharing the object. See specs/okay-script.md
+ * "Session".
+ */
+final class Sessions(ttl: java.time.Duration = java.time.Duration.ofMinutes(30)):
+  private final class Entry(@volatile var lastAccess: Long):
+    val attrs = new ConcurrentHashMap[String, String]
+
+  private val entries = new ConcurrentHashMap[String, Entry]
+  private val random = new java.security.SecureRandom
+
+  def size: Int = entries.size
+
+  private def sweep(now: Long): Unit =
+    entries.entrySet().removeIf(e => now - e.getValue.lastAccess > ttl.toMillis): Unit
+
+  private def newId(): String =
+    val b = new Array[Byte](16)
+    random.nextBytes(b)
+    java.util.Base64.getUrlEncoder.withoutPadding.encodeToString(b)
+
+  /** the session a request sees: bound to `existing` if that id is
+   * live, else created on the first `set` -- `created`/`invalidated`
+   * tell the container which cookie to send back */
+  def handle(existing: Option[String], now: Long = System.currentTimeMillis()): Handle =
+    sweep(now)
+    new Handle(existing, now)
+
+  final class Handle private[Sessions] (existing: Option[String], now: Long) extends api.Session:
+    private var bound: Option[(String, Entry)] =
+      existing.flatMap(id => Option(entries.get(id)).map(id -> _))
+    bound.foreach(_._2.lastAccess = now)
+
+    @volatile private var _created = false
+    @volatile private var _invalidated = false
+
+    /** a new id was minted during this request */
+    def created: Boolean = _created
+
+    /** the client's cookie must be expired */
+    def invalidated: Boolean = _invalidated
+
+    def id: String = bound.map(_._1).getOrElse("")
+
+    def get(key: String): Option[String] = bound.flatMap(b => Option(b._2.attrs.get(key)))
+
+    def set(key: String, value: String): Unit =
+      if bound.isEmpty then
+        val id = newId()
+        val e = new Entry(now)
+        entries.put(id, e): Unit
+        bound = Some(id -> e)
+        _created = true
+        _invalidated = false
+      bound.foreach(_._2.attrs.put(key, value)): Unit
+
+    def remove(key: String): Unit = bound.foreach(_._2.attrs.remove(key)): Unit
+
+    def attributes: Map[String, String] = bound.map(_._2.attrs.asScala.toMap).getOrElse(Map.empty)
+
+    def invalidate(): Unit =
+      bound.foreach((id, _) => entries.remove(id): Unit)
+      if existing.isDefined || _created then _invalidated = true
+      bound = None
+      _created = false
+
+/** The container -- a directory of `.md` pages served as a site.
+ * `Jetty.serve(port)(site.routes)()` is the whole server. See
+ * specs/okay-script.md "Site — the container" for routing, the
+ * request/response/session model, include/forward, and error pages.
+ */
+final class Site(
+  root: Path,
+  classpath: Classpath = Classpath.ambient,
+  val sessions: Sessions = Sessions(),
+  tempRoot: Path = ScalaScript.defaultTempRoot,
+):
+  import Site.*
+
+  private val rootAbs = root.toAbsolutePath.normalize
+  private val pages = new ConcurrentHashMap[Path, Page]
+  private val fronts = new ConcurrentHashMap[Path, (FileTime, Map[String, String])]
+  /** the include stack on this thread, innermost first -- what a
+   * relative `include` resolves against, and the depth cap */
+  private val including: ThreadLocal[List[Path]] = ThreadLocal.withInitial(() => Nil)
+
+  /** what a path resolves to under `root`, if anything */
+  enum Hit:
+    case PageFile(file: Path, params: Map[String, String])
+    case Static(file: Path)
+
+  /** defined exactly when the path resolves to a page or a static
+   * file; anything else falls through to the server's own 404, or to
+   * the next route a caller chains with `orElse` */
+  def routes: PartialFunction[Request, HttpResponse ! Async] = {
+    case r if resolve(pathOf(r.url)).isDefined => pure(handle(r))
+  }
+
+  /** the synchronous core: one request in, one response out */
+  def handle(r: Request): HttpResponse =
+    val (path, query) = splitUrl(r.url)
+    resolve(path) match
+      case None => plain(404, "not found")
+      case Some(Hit.Static(f)) =>
+        HttpResponse(200, Vector("Content-Type" -> contentTypeOf(f)), Http.one(Files.readAllBytes(f)))
+      case Some(Hit.PageFile(f, params)) =>
+        servePage(r, path, query, params, f)
+
+  def close(): Unit =
+    pages.values.forEach(_.close())
+    pages.clear()
+
+  // ---- routing
+
+  def resolve(path: String): Option[Hit] =
+    segments(path).flatMap { segs =>
+      val trailingSlash = path.endsWith("/") || segs.isEmpty
+      literal(segs, trailingSlash).orElse(parametric(segs))
+    }
+
+  private def segments(path: String): Option[Vector[String]] =
+    val decoded = URLDecoder.decode(path.replace("+", "%2B"), UTF_8)
+    if decoded.contains('\u0000') then None
+    else
+      val segs = decoded.split("/").toVector.filter(_.nonEmpty)
+      if segs.exists(s => s == ".." || s == "." || s.startsWith("[")) then None else Some(segs)
+
+  private def under(p: Path): Boolean = p.toAbsolutePath.normalize.startsWith(rootAbs)
+
+  private def literal(segs: Vector[String], trailingSlash: Boolean): Option[Hit] =
+    val base = segs.foldLeft(rootAbs)(_.resolve(_))
+    if !under(base) then None
+    else
+      val md = if segs.isEmpty then None else Some(base.resolveSibling(base.getFileName.toString + ".md"))
+      val index = base.resolve("index.md")
+      if !trailingSlash && md.exists(Files.isRegularFile(_)) then md.map(Hit.PageFile(_, Map.empty))
+      else if Files.isDirectory(base) && Files.isRegularFile(index) then Some(Hit.PageFile(index, Map.empty))
+      else if !trailingSlash && Files.isRegularFile(base) && !base.getFileName.toString.endsWith(".md") then Some(Hit.Static(base))
+      else None
+
+  private val paramFile = """\[([A-Za-z_][A-Za-z0-9_]*)\]\.md""".r
+  private val paramDir = """\[([A-Za-z_][A-Za-z0-9_]*)\]""".r
+
+  private def listing(dir: Path): Vector[Path] =
+    if !Files.isDirectory(dir) then Vector.empty
+    else
+      val s = Files.list(dir)
+      try s.iterator().asScala.toVector.sortBy(_.getFileName.toString) finally s.close()
+
+  /** `[name].md` / `[name]/` segments: a literal match wins at every
+   * level; a parameter binds the segment's text */
+  private def parametric(segs: Vector[String]): Option[Hit] =
+    def go(dir: Path, rest: Vector[String], params: Map[String, String]): Option[Hit] =
+      rest.headOption match
+        case None =>
+          val index = dir.resolve("index.md")
+          if params.nonEmpty && Files.isRegularFile(index) then Some(Hit.PageFile(index, params)) else None
+        case Some(seg) =>
+          val tail = rest.tail
+          val viaLiteral =
+            if tail.isEmpty then
+              val md = dir.resolve(seg + ".md")
+              if params.nonEmpty && Files.isRegularFile(md) then Some(Hit.PageFile(md, params)) else None
+            else
+              val sub = dir.resolve(seg)
+              if Files.isDirectory(sub) then go(sub, tail, params) else None
+          viaLiteral.orElse {
+            val entries = listing(dir)
+            if tail.isEmpty then
+              entries.iterator.flatMap { p =>
+                p.getFileName.toString match
+                  case paramFile(name) if Files.isRegularFile(p) => Some(Hit.PageFile(p, params + (name -> seg)))
+                  case paramDir(name) if Files.isDirectory(p) && Files.isRegularFile(p.resolve("index.md")) =>
+                    Some(Hit.PageFile(p.resolve("index.md"), params + (name -> seg)))
+                  case _ => None
+              }.nextOption()
+            else
+              entries.iterator.flatMap { p =>
+                p.getFileName.toString match
+                  case paramDir(name) if Files.isDirectory(p) => go(p, tail, params + (name -> seg))
+                  case _ => None
+              }.nextOption()
+          }
+    if segs.isEmpty then None else go(rootAbs, segs, Map.empty)
+
+  // ---- serving a page
+
+  private def pageFor(f: Path): Page =
+    pages.computeIfAbsent(f, p => Page(p, classpath, tempRoot))
+
+  private def frontMatter(f: Path): Map[String, String] =
+    val mtime = Files.getLastModifiedTime(f)
+    fronts.get(f) match
+      case (t, fm) if t == mtime => fm
+      case _ =>
+        val fm = Meta.parse(Files.readString(f)).frontMatter
+        fronts.put(f, (mtime, fm)): Unit
+        fm
+
+  private def servePage(r: Request, path: String, query: String, params: Map[String, String], f: Path): HttpResponse =
+    val web = webOf(r, path, query, params)
+    val resp = new api.Response
+    resp.contentType(HtmlUtf8)
+    val sess = sessions.handle(web.cookies.get(SessionCookie))
+    api.Web.setCurrent(web)
+    api.Response.setCurrent(resp)
+    api.Session.setCurrent(sess)
+    api.Error.setCurrent(None)
+    api.Container.setIncluder(Some(includer))
+    try
+      val body = dispatch(f, web, resp, 0)
+      if sess.invalidated then resp.cookie(SessionCookie, "", maxAge = Some(0), httpOnly = true)
+      else if sess.created then resp.cookie(SessionCookie, sess.id, httpOnly = true)
+      val bytes = if resp.redirected.isDefined then Array.empty[Byte] else body.getBytes(UTF_8)
+      HttpResponse(resp.status, resp.headers, Http.one(bytes))
+    finally
+      api.Container.setIncluder(None)
+      api.Web.setCurrent(api.Web.empty)
+      api.Response.setCurrent(new api.Response)
+      api.Session.setCurrent(api.Session.detached)
+      api.Error.setCurrent(None)
+
+  /** renders `f`, following `forward`s (capped) and falling back to
+   * the error page on failure; returns the body text */
+  private def dispatch(f: Path, web: api.Web, resp: api.Response, forwards: Int): String =
+    frontMatter(f).get("contentType").foreach(resp.contentType)
+    val result = rendering(f)(pageFor(f).render(web))
+    result.thrown match
+      case Some(api.Forwarded(target)) =>
+        if forwards >= MaxForwards then
+          errorPage(f, web, resp, Result(ok = false, stdout = "", errors = Vector(s"forward chain longer than $MaxForwards, last to $target"), thrown = None))
+        else
+          resolve(pathOf(target)) match
+            case Some(Hit.PageFile(g, ps)) =>
+              val w2 = web.copy(params = web.params ++ ps + ("forwarded" -> target))
+              dispatch(g, w2, resp, forwards + 1)
+            case _ =>
+              resp.status = 404
+              resp.contentType(TextUtf8)
+              s"forward target not found: $target"
+      case _ if !result.ok => errorPage(f, web, resp, result)
+      case _ => result.stdout
+
+  private def errorPage(f: Path, web: api.Web, resp: api.Response, result: Result): String =
+    val message =
+      if result.errors.nonEmpty then result.errors.mkString("\n")
+      else result.thrown.map(_.toString).getOrElse("failed")
+    val err = api.Error(message, result.errors, result.thrown)
+    resp.status = 500
+    def plainText(extra: String): String =
+      resp.contentType(TextUtf8)
+      s"${rootAbs.relativize(f)}: $message$extra"
+    findErrorPage(f) match
+      case Some(ep) =>
+        api.Error.setCurrent(Some(err))
+        resp.contentType(HtmlUtf8)
+        frontMatter(ep).get("contentType").foreach(resp.contentType)
+        val r2 = rendering(ep)(pageFor(ep).render(web))
+        if r2.ok then r2.stdout
+        else
+          val second =
+            if r2.errors.nonEmpty then r2.errors.mkString("\n") else r2.thrown.map(_.toString).getOrElse("failed")
+          plainText(s"\n\nerror page ${rootAbs.relativize(ep)} failed too: $second")
+      case None => plainText("")
+
+  private def findErrorPage(f: Path): Option[Path] =
+    frontMatter(f).get("errorPage").flatMap(ref => relative(f, ref)).filter(Files.isRegularFile(_))
+      .orElse(Some(rootAbs.resolve("error.md")).filter(Files.isRegularFile(_)))
+      .filter(_ != f)
+
+  /** a page reference from inside `f`: absolute from the root with a
+   * leading `/`, else relative to `f`'s directory; never outside root */
+  private def relative(f: Path, ref: String): Option[Path] =
+    val p =
+      if ref.startsWith("/") then rootAbs.resolve(ref.drop(1))
+      else f.getParent.resolve(ref)
+    val n = p.toAbsolutePath.normalize
+    if under(n) then Some(n) else None
+
+  private def rendering[A](f: Path)(body: => A): A =
+    val prev = including.get()
+    including.set(f :: prev)
+    try body finally including.set(prev)
+
+  private def includer: String => String = name =>
+    val stack = including.get()
+    if stack.length > MaxIncludeDepth then
+      throw new IllegalStateException(s"include(\"$name\"): nesting deeper than $MaxIncludeDepth -- a page including itself?")
+    val from = stack.headOption.getOrElse(rootAbs.resolve("index.md"))
+    val g = relative(from, name).filter(Files.isRegularFile(_))
+      .getOrElse(throw new java.io.FileNotFoundException(s"include(\"$name\"): no such page under ${rootAbs.relativize(from.getParent)}"))
+    val r = rendering(g)(pageFor(g).render(api.Web.current))
+    if r.ok then r.stdout
+    else
+      r.thrown match
+        case Some(t) => throw t
+        case None => throw new RuntimeException(s"include(\"$name\") failed to compile: ${r.errors.mkString("; ")}")
+
+  // ---- the request, translated
+
+  private def webOf(r: Request, path: String, query: String, params: Map[String, String]): api.Web =
+    val headers = r.headers.toMap
+    val ct = r.headers.collectFirst { case (k, v) if k.equalsIgnoreCase("content-type") => v }.getOrElse("")
+    val bodyText = new String(r.body.bytes, UTF_8)
+    val form = if ct.startsWith("application/x-www-form-urlencoded") then parseQuery(bodyText) else Map.empty
+    val cookies = r.headers.collect { case (k, v) if k.equalsIgnoreCase("cookie") => v }
+      .flatMap(_.split(";").toVector)
+      .flatMap { kv =>
+        val i = kv.indexOf('=')
+        if i <= 0 then None else Some(kv.substring(0, i).trim -> kv.substring(i + 1).trim)
+      }.toMap
+    api.Web(r.method.name, path, parseQuery(query), headers, form, cookies, bodyText, params)
+
+object Site:
+  val SessionCookie = "OKAYSESSID"
+  val MaxForwards = 8
+  val MaxIncludeDepth = 16
+  private val HtmlUtf8 = "text/html; charset=utf-8"
+  private val TextUtf8 = "text/plain; charset=utf-8"
+
+  def splitUrl(url: String): (String, String) =
+    val i = url.indexOf('?')
+    if i < 0 then (url, "") else (url.substring(0, i), url.substring(i + 1))
+
+  def pathOf(url: String): String = splitUrl(url)._1
+
+  def parseQuery(q: String): Map[String, String] =
+    q.split("&").toVector.filter(_.nonEmpty).flatMap { kv =>
+      val i = kv.indexOf('=')
+      val (k, v) = if i < 0 then (kv, "") else (kv.substring(0, i), kv.substring(i + 1))
+      if k.isEmpty then None else Some(URLDecoder.decode(k, UTF_8) -> URLDecoder.decode(v, UTF_8))
+    }.toMap
+
+  private val contentTypes = Map(
+    "html" -> "text/html; charset=utf-8",
+    "htm" -> "text/html; charset=utf-8",
+    "css" -> "text/css; charset=utf-8",
+    "js" -> "text/javascript; charset=utf-8",
+    "json" -> "application/json",
+    "txt" -> "text/plain; charset=utf-8",
+    "svg" -> "image/svg+xml",
+    "png" -> "image/png",
+    "jpg" -> "image/jpeg",
+    "jpeg" -> "image/jpeg",
+    "gif" -> "image/gif",
+    "ico" -> "image/x-icon",
+    "woff2" -> "font/woff2",
+    "woff" -> "font/woff",
+  )
+
+  def contentTypeOf(f: Path): String =
+    val n = f.getFileName.toString
+    val ext = n.lastIndexOf('.') match
+      case -1 => ""
+      case i => n.substring(i + 1).toLowerCase
+    contentTypes.getOrElse(ext, "application/octet-stream")
+
+  private def plain(status: Int, s: String): HttpResponse =
+    HttpResponse(status, Vector("Content-Type" -> TextUtf8), Http.one(s.getBytes(UTF_8)))

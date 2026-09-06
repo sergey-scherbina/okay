@@ -1,18 +1,20 @@
 package okay.script
 
 import java.nio.file.Files
+import okay.script.api.Web
 
 /** okay-script-web: request-object injection, the remaining half of
- * "a new JSP" -- a plain, dependency-free `Web` value, no `okay.http`
- * import anywhere in `okay-script`'s own code. See
- * specs/okay-script.md "Request context".
+ * "a new JSP" -- a plain `Web` value. Since okay-script-site it lives
+ * in the SHARED `okay.script.api` package (one class on both sides of
+ * the classloader boundary) and is per-thread. See
+ * specs/okay-script.md "Request context" and "Site — the container".
  */
 class TestWeb extends munit.FunSuite:
 
   test("a script reads Web.current -- method/path/query/headers set by the caller") {
     val md =
       """```scala
-        |import okay.script.Web
+        |import okay.script.api.Web
         |val w = Web.current
         |println("method=" + w.method)
         |println("path=" + w.path)
@@ -30,7 +32,7 @@ class TestWeb extends munit.FunSuite:
   }
 
   test("${...} in prose can read Web.current directly, not just a ```scala block") {
-    val md = "Path: ${okay.script.Web.current.path}\n"
+    val md = "Path: ${okay.script.api.Web.current.path}\n"
     val r = ScalaScript.render(md, web = Web("GET", "/pricing"))
     assert(r.ok, r.errors.mkString("\n"))
     assert(r.stdout.contains("Path: /pricing"), r.stdout)
@@ -41,7 +43,7 @@ class TestWeb extends munit.FunSuite:
     Files.writeString(
       f,
       """```scala
-        |import okay.script.Web
+        |import okay.script.api.Web
         |```
         |
         |Path: ${Web.current.path}

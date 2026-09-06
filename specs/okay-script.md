@@ -817,12 +817,35 @@ response the page writes INTO has to be the host's own object.
 
 Resolved the way every servlet container resolves it: a webapp's
 classes are isolated, the servlet API is the container's. The
-script's loader delegates the package `okay.script.api.*` (and only
-it) to the classloader that loaded `okay-script` itself; everything
-else keeps the platform parent. One class identity on both sides, no
-encoding, no reflection beyond the entry point. `encodeArgs`/
-`decodeArgs` and the synthesized `Web.setCurrent(decodeArgs(args))`
-line are gone; `hasWeb` with them.
+script's loader delegates the package `okay.script.api.*` to the
+classloader that loaded `okay-script` itself; everything else keeps
+the platform parent. One class identity on both sides, no encoding,
+no reflection beyond the entry point. `encodeArgs`/`decodeArgs` and
+the synthesized `Web.setCurrent(decodeArgs(args))` line are gone;
+`hasWeb` with them.
+
+**Found on the first run, and the reason the delegation is two
+prefixes, not one:** delegating the API package ALONE fails at link
+time — `LinkageError: loader constraint violation: when resolving
+method 'scala.collection.immutable.Map okay.script.api.Web.query()'
+… have different Class objects for the type scala/collection/
+immutable/Map`. The API is written in Scala, so its signatures
+mention `Option`, `Map`, `Vector`; the JVM's loader-constraint check
+requires the caller's and the callee's loaders to agree on every type
+in a shared signature, and the script's own `scala-library` copy is a
+different `Map`. A servlet container has the same rule for the same
+reason: the API's runtime is shared along with the API. So `scala.*`
+is delegated to the host too (with a fallback to the script's own
+classpath for a `scala.*` class the host lacks — none in practice),
+and a page runs on the host's Scala runtime, the very version dotc
+compiled it against. Two consequences, both improvements: the
+`scala.Console` reflection `okay-script-page` needed (the isolated
+copy's `out` bound at first touch) is gone — the script's `println`
+IS the host's `Console`, scoped per thread with plain
+`Console.withOut`; and `TestScalaScriptClassloaderIsolation`'s
+"munit unreachable on a minimal classpath" still holds, because the
+isolation was always about the caller's classpath, never about the
+runtime.
 
 ```scala
 package okay.script.api            // DELEGATED — the host's classes
@@ -850,12 +873,26 @@ caller with an explicit classpath can still compile a page that
 imports the API; `Classpath.ambient` already contains it.
 
 The per-request state is `ThreadLocal`, not the `@volatile var` it
-was: Jetty serves requests on many threads at once, and a `Page` is
-`synchronized` only against ITSELF. The host sets `Web`/`Response`/
-`Session` on the request thread before `invoke()`, the page reads
-them on the same thread, `include` runs the included page on the
-same thread and so sees the same three — which is precisely what
-`<jsp:include>` means.
+was: Jetty serves requests on many threads at once. The host sets
+`Web`/`Response`/`Session` on the request thread before `invoke()`,
+the page reads them on the same thread, `include` runs the included
+page on the same thread and so sees the same three — which is
+precisely what `<jsp:include>` means.
+
+Two more things had to become per-thread for a server to be
+correct, and both were: stdout capture and `Page`'s lock.
+`Compiled.invoke` used to `System.setOut(buffer)` for its duration —
+JVM-global, so two pages on two threads would have captured each
+other's output. `Capture` installs ONE routing `PrintStream` as
+`System.out` (once, keeping the original as the fallback for threads
+that are not rendering) and scopes a `ThreadLocal` buffer per
+invocation, with `Console.withOut` covering `println`; nested capture
+(an `include`) saves and restores the enclosing buffer. And
+`Page.render` now holds its lock only for the mtime check and the
+compile — many requests render the same compiled page at once, each
+with its own `Web`. (Holding it across `invoke` would also have let
+two pages that include each other deadlock two threads; that cycle
+is now caught by the include depth cap instead.)
 
 ### Routing — `Site`
 
@@ -985,40 +1022,40 @@ throwable's `toString`.
 
 ### Behavior
 
-- [ ] `Site.handle` on `GET /` renders `index.md`; on `GET /shop`
+- [x] `Site.handle` on `GET /` renders `index.md`; on `GET /shop`
       renders `shop.md`; on `GET /shop/` renders `shop/index.md`; a
       path with no file is not in `routes`' domain.
-- [ ] a `..` segment never escapes `root` — undefined, not served.
-- [ ] a static file is served with its extension's content type and
+- [x] a `..` segment never escapes `root` — undefined, not served.
+- [x] a static file is served with its extension's content type and
       byte-identical body.
-- [ ] `[sku].md` answers `/product/anything` with `Web.current.params
+- [x] `[sku].md` answers `/product/anything` with `Web.current.params
       ("sku")`, and a literal sibling file wins over it.
-- [ ] `Web.current.form` carries a urlencoded POST body's fields;
+- [x] `Web.current.form` carries a urlencoded POST body's fields;
       `cookies` the `Cookie` header; `header` is case-insensitive.
-- [ ] `Response.current.status = 404` / `header` / `contentType` reach
+- [x] `Response.current.status = 404` / `header` / `contentType` reach
       the wire; `redirect` answers 302 with `Location` and no body.
-- [ ] front-matter `contentType:` sets the default content type.
-- [ ] a session set in one request is read in the next when the
+- [x] front-matter `contentType:` sets the default content type.
+- [x] a session set in one request is read in the next when the
       client returns the cookie; a request that never touches the
       session gets no `Set-Cookie`; `invalidate` expires it; an entry
       idle past `ttl` is gone.
-- [ ] `include` renders the named page in place, with the same `Web`
+- [x] `include` renders the named page in place, with the same `Web`
       and `Session`; the 17th nesting fails with a message, not a
       stack overflow.
-- [ ] `forward` answers with the target page's output and status, and
+- [x] `forward` answers with the target page's output and status, and
       none of the forwarding page's output.
-- [ ] a `declare` `val` is initialized once across many requests and
+- [x] a `declare` `val` is initialized once across many requests and
       re-initialized after the file changes; a `def` there is callable
       from a later block AND from an earlier `${expr}`; an error in a
       declare block reports its `.md` line.
-- [ ] a compile error / throw answers 500; with `error.md` present,
+- [x] a compile error / throw answers 500; with `error.md` present,
       that page renders it with `Error.current` populated; an error
       page that fails answers plain text 500.
-- [ ] `okay.script.api.Web` is the SAME class on both sides of the
+- [x] `okay.script.api.Web` is the SAME class on both sides of the
       boundary (a script compiled with `Classpath.api` alone sees the
       host's instance), while munit stays unreachable — isolation
       holds for everything outside the API package.
-- [ ] the whole thing over a real Jetty port (Live): a two-page store
+- [x] the whole thing over a real Jetty port (Live): a two-page store
       with a session-backed cart, a redirect after POST, an included
       header, and a 404 for a missing page.
 

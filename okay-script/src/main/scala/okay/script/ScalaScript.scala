@@ -4,7 +4,7 @@ import dotty.tools.dotc.Driver
 import dotty.tools.dotc.core.Contexts.Context
 import dotty.tools.dotc.reporting.{Reporter, Diagnostic}
 
-import java.io.{ByteArrayOutputStream, File, PrintStream}
+import java.io.File
 import java.net.URLClassLoader
 import java.nio.file.{Files, Path, Paths}
 
@@ -36,6 +36,11 @@ enum Segment:
    * printed in place. `startLine` is the 1-based ORIGINAL markdown
    * line the `${` itself starts on. */
   case Interp(expr: String, startLine: Int)
+  /** a ```scala declare fence's content -- emitted at OBJECT level,
+   * outside `run`, so a `val` there is initialized once per compile
+   * and a `def` there is a member every request can call (JSP's
+   * `<%! %>`). See specs/okay-script.md "Declarations". */
+  case Declare(s: String, startLine: Int)
 
 final case class Result(
   ok: Boolean,
@@ -82,6 +87,15 @@ final case class Classpath(entries: Vector[Path]):
 object Classpath:
   val ambient: Classpath = Classpath(
     System.getProperty("java.class.path").split(File.pathSeparatorChar).toVector.map(Paths.get(_))
+  )
+
+  /** where okay-script's OWN classes live (a jar, or a classes
+   * directory) -- what a page needs on its classpath to compile
+   * against `okay.script.api`. Already inside `ambient`; a caller
+   * with an explicit classpath appends this. See specs/okay-script.md
+   * "Site — the container". */
+  val api: Classpath = Classpath(
+    Vector(Paths.get(classOf[okay.script.api.Web].getProtectionDomain.getCodeSource.getLocation.toURI))
   )
 
 /** `//> using dep "org:artifact:version"` directives -- scala-cli's own
@@ -142,14 +156,20 @@ object ScalaScript:
   val defaultTempRoot: Path = Paths.get(System.getProperty("java.io.tmpdir"))
 
   private val fenceOpen = """```scala\s*""".r
+  private val declareFenceOpen = """```scala\s+declare\s*""".r
   private val fenceClose = """```\s*""".r
+
+  /** `blocks` takes BOTH kinds of scala fence -- a `using dep` in a
+   * declare block must be found too */
+  private def opensScala(line: String): Boolean =
+    fenceOpen.matches(line) || declareFenceOpen.matches(line)
 
   def blocks(markdown: String): Vector[Block] =
     val lines = markdown.linesWithSeparators.toVector.map(_.stripLineEnd)
     val out = Vector.newBuilder[Block]
     var i = 0
     while i < lines.length do
-      if fenceOpen.matches(lines(i)) then
+      if opensScala(lines(i)) then
         val start = i + 1
         val body = Vector.newBuilder[String]
         var j = start
@@ -229,14 +249,17 @@ object ScalaScript:
 
     while i < lines.length do
       val line = lines(i)
-      if fenceOpen.matches(line) then
+      if opensScala(line) then
         flushText()
+        val declare = declareFenceOpen.matches(line)
         val codeStart = i + 2 // 1-based line of the fence's first content line
         var j = i + 1
         val body = Vector.newBuilder[String]
         while j < lines.length && !fenceClose.matches(lines(j)) do
           body += lines(j); j += 1
-        out += (Segment.Code(body.result().mkString("\n"), codeStart) -> currentPath)
+        val code = body.result().mkString("\n")
+        val seg = if declare then Segment.Declare(code, codeStart) else Segment.Code(code, codeStart)
+        out += (seg -> currentPath)
         i = j + 1
       else if yamlFenceOpen.matches(line) then
         flushText()
@@ -285,18 +308,11 @@ object ScalaScript:
   private def hasMeta(doc: Meta.Doc): Boolean =
     doc.frontMatter.nonEmpty || doc.root.yaml.nonEmpty || doc.root.children.nonEmpty
 
-  /** A cheap, imprecise (substring) check for whether the synthesized
-   * body might reference `Web` -- mirrors `hasMeta`'s reason: emitting
-   * `okay.script.Web.setCurrent(...)` unconditionally would reference
-   * `okay-script`'s own classes even for a script that never touches
-   * `Web`, breaking self-sufficiency for the common case (found by
-   * `TestScalaScriptClassloaderIsolation`'s minimal-Classpath test
-   * failing once this was unconditional). A false positive (the word
-   * "Web" appearing for an unrelated reason) only costs one harmless
-   * extra statement, never a false negative that would silently leave
-   * `Web.current` unset for a script that DOES use it.
-   */
-  private def hasWeb(body: String): Boolean = body.contains("Web")
+  /** The synthesized program, in two parts: `body` goes inside `def
+   * run`, `decls` (the ```scala declare fences, in document order) at
+   * object level above it. Each part carries its own line-origin map
+   * -- see "Line-accurate errors". */
+  private final case class Synth(body: String, bodyLines: Vector[Int], decls: String, declLines: Vector[Int])
 
   /** Wraps a sequence of (heading-path, source, startLine, isStatement)
    * items into ONE body PLUS a parallel line-origin map (one entry per
@@ -329,7 +345,11 @@ object ScalaScript:
    * evaluated once, not per summon, confirmed empirically), then the
    * segment/block's own statement.
    */
-  private def withMeta(doc: Meta.Doc, items: Vector[(Vector[Meta.Section], String, Int, Boolean)]): (String, Vector[Int]) =
+  private def withMeta(
+    doc: Meta.Doc,
+    items: Vector[(Vector[Meta.Section], String, Int, Boolean)],
+    declares: Vector[(String, Int)],
+  ): Synth =
     val sb = new StringBuilder
     val origins = Vector.newBuilder[Int]
     def emitLine(text: String, origin: Int): Unit =
@@ -341,6 +361,15 @@ object ScalaScript:
         if idx == 0 || !isStatement then sb ++= "    " ++= l ++= "\n": Unit
         else sb ++= l ++= "\n": Unit
         origins += (if startLine < 0 then -1 else startLine + idx): Unit
+    // object-level declarations: 2-space depth, every physical line
+    // uniformly (genuine multi-line Scala source, never literal data)
+    val db = new StringBuilder
+    val dOrigins = Vector.newBuilder[Int]
+    for (code, startLine) <- declares if code.nonEmpty do
+      val ls = code.linesWithSeparators.toVector.map(_.stripLineEnd)
+      for (l, idx) <- ls.zipWithIndex do
+        db ++= "  " ++= l ++= "\n": Unit
+        dOrigins += startLine + idx: Unit
     if hasMeta(doc) then
       emitLine("val _okayScriptDoc_ : okay.script.Meta.Doc = " + docLiteral(doc), -1)
       var prevPath: Option[Vector[Meta.Section]] = None
@@ -354,7 +383,7 @@ object ScalaScript:
       for (_, code, startLine, isStatement) <- items do
         if code.nonEmpty then emitCode(code, startLine, isStatement)
     emitLine("()", -1)
-    (sb.toString, origins.result())
+    Synth(sb.toString, origins.result(), db.toString, dOrigins.result())
 
   /** Splits a text run on `${expr}` markers (`$${` escapes to a
    * literal `${`). Brace-depth-aware, and quote-aware within the
@@ -435,11 +464,14 @@ object ScalaScript:
   def run(markdown: String, classpath: Classpath = Classpath.ambient, tempRoot: Path = defaultTempRoot): Result =
     resolvedClasspath(markdown, classpath).fold(identity, cp =>
       val doc = Meta.parse(markdown)
-      val items = tokenize(markdown).collect { case (Segment.Code(code, startLine), path) =>
+      val toks = tokenize(markdown)
+      val items = toks.collect { case (Segment.Code(code, startLine), path) =>
         (path, code, startLine, false)
       }
-      val (body, lineMap) = withMeta(doc, items)
-      compileAndRun(body, lineMap, cp, tempRoot))
+      compileAndRun(withMeta(doc, items, declares(toks)), cp, tempRoot))
+
+  private def declares(toks: Vector[(Segment, Vector[Meta.Section])]): Vector[(String, Int)] =
+    toks.collect { case (Segment.Declare(code, startLine), _) => (code, startLine) }
 
   /** The whole document -- prose AND code -- as one program: `${expr}`
    * markers in prose (outside ```scala fences) are evaluated and their
@@ -456,8 +488,8 @@ object ScalaScript:
    * `Page` for a compile-once-invoke-many alternative (specs/
    * okay-script.md "Hot-reload").
    */
-  def render(markdown: String, classpath: Classpath = Classpath.ambient, web: Web = Web.current, tempRoot: Path = defaultTempRoot): Result =
-    Web.setCurrent(web)
+  def render(markdown: String, classpath: Classpath = Classpath.ambient, web: api.Web = api.Web.current, tempRoot: Path = defaultTempRoot): Result =
+    api.Web.setCurrent(web)
     compileRender(markdown, classpath, tempRoot).fold(identity, c => try c.invoke() finally c.close())
 
   /** `render`'s compile step, split from invocation: `Left` carries a
@@ -469,14 +501,15 @@ object ScalaScript:
   def compileRender(markdown: String, classpath: Classpath = Classpath.ambient, tempRoot: Path = defaultTempRoot): Either[Result, Compiled] =
     resolvedClasspath(markdown, classpath).flatMap: cp =>
       val doc = Meta.parse(markdown)
-      val items = tokenize(markdown).map {
+      val toks = tokenize(markdown)
+      val items = toks.map {
         case (Segment.Text(s), path) if s.nonEmpty => (path, "print(" + scalaStringLiteral(s) + ")", -1, true)
         case (Segment.Text(_), path) => (path, "", -1, true)
         case (Segment.Interp(expr, startLine), path) => (path, s"print(($expr).toString)", startLine, true)
         case (Segment.Code(code, startLine), path) => (path, code, startLine, false)
+        case (Segment.Declare(_, _), path) => (path, "", -1, true) // object-level, see `declares`
       }
-      val (body, lineMap) = withMeta(doc, items)
-      compileOnly(body, lineMap, cp, tempRoot)
+      compileOnly(withMeta(doc, items, declares(toks)), cp, tempRoot)
 
   /** mdoc-style: runs the whole document once via `run`, then checks
    * every ` ```stdout ` fence's (trimmed) content appears as an
@@ -512,8 +545,38 @@ object ScalaScript:
       case Deps.Resolved.Jars(extra) =>
         Right(classpath ++ extra)
 
-  private def compileAndRun(body: String, lineMap: Vector[Int], classpath: Classpath, tempRoot: Path): Result =
-    compileOnly(body, lineMap, classpath, tempRoot).fold(identity, c => try c.invoke() finally c.close())
+  private def compileAndRun(synth: Synth, classpath: Classpath, tempRoot: Path): Result =
+    compileOnly(synth, classpath, tempRoot).fold(identity, c => try c.invoke() finally c.close())
+
+  /** The script's classloader: isolated from the host (platform-only
+   * parent, okay-script-classloader-isolation) for everything EXCEPT
+   * two prefixes delegated to the loader that loaded okay-script
+   * itself -- one class identity on both sides, the way a servlet
+   * container shares the servlet API with an otherwise-isolated
+   * webapp. `okay.script.api.*` is the API; `scala.*` is the runtime
+   * that API is written in: an API method returning `Option`/`Map`
+   * fails the JVM's loader constraint check (`LinkageError: loader
+   * constraint violation`, found by TestWeb the first time the API
+   * package alone was delegated) unless BOTH sides see the same
+   * `scala.Option`. A script therefore runs on the host's Scala
+   * runtime -- the same version dotc compiled it against. A `scala.*`
+   * class the host does not have (none in practice) falls back to
+   * the script's own classpath. See specs/okay-script.md "Site — the
+   * container".
+   */
+  private final class ScriptClassLoader(urls: Array[java.net.URL], host: ClassLoader)
+      extends URLClassLoader(urls, ClassLoader.getPlatformClassLoader()):
+    override protected def loadClass(name: String, resolve: Boolean): Class[?] =
+      val shared =
+        if name.startsWith("okay.script.api.") then Some(host.loadClass(name))
+        else if name.startsWith("scala.") then
+          try Some(host.loadClass(name)) catch case _: ClassNotFoundException => None
+        else None
+      shared match
+        case Some(c) =>
+          if resolve then resolveClass(c)
+          c
+        case None => super.loadClass(name, resolve)
 
   /** Compiles `body` (an `object OkayScriptMain: def run(args: Array[
    * String]): Unit` body -- NOT `@main`, see the `args`-encoding
@@ -523,25 +586,29 @@ object ScalaScript:
    * anything: the returned `Compiled` owns both (its `close()` deletes
    * the temp dir this creates).
    */
-  private def compileOnly(body: String, lineMap: Vector[Int], classpath: Classpath, tempRoot: Path): Either[Result, Compiled] =
-    // `body`'s callers (run/render/withMeta) already build it at the
-    // FINAL 4-space depth `def run(...): Unit =` needs -- do NOT
-    // re-indent it here by prefixing every physical line: `body` can
-    // contain a Text segment's raw triple-quoted string literal
-    // spanning several physical lines, and blindly adding spaces to
-    // EVERY line would corrupt the LITERAL DATA inside it, not just
-    // the source formatting (found by TestScalaScriptRender's
-    // no-interpolation test failing with extra leading spaces on
-    // every rendered line, when this WAS a line-prefixing pass).
-    val decodeWeb = if hasWeb(body) then Some("    okay.script.Web.setCurrent(okay.script.Web.decodeArgs(args))") else None
-    val header = Vector("object OkayScriptMain:", "  def run(args: Array[String]): Unit =") ++ decodeWeb
-    val wrapped = header.map(_ + "\n").mkString + body
+  private def compileOnly(synth: Synth, classpath: Classpath, tempRoot: Path): Either[Result, Compiled] =
+    // `synth`'s parts are already at their FINAL depth (withMeta
+    // indents per physical line, once) -- do NOT re-indent here by
+    // prefixing every physical line: the body can contain a Text
+    // segment's raw triple-quoted string literal spanning several
+    // physical lines, and blindly adding spaces to EVERY line would
+    // corrupt the LITERAL DATA inside it, not just the source
+    // formatting (found by TestScalaScriptRender's no-interpolation
+    // test failing with extra leading spaces on every rendered line,
+    // when this WAS a line-prefixing pass).
+    //
+    // Shape: `object OkayScriptMain:` / the declare fences at object
+    // level / `def run(args): Unit =` / the body. `args` is unused
+    // since okay-script-site: the request reaches a page through the
+    // shared `okay.script.api` package, not through an encoding.
+    val declLines = synth.decls.linesWithSeparators.toVector
+    val wrapped = "object OkayScriptMain:\n" + synth.decls + "  def run(args: Array[String]): Unit =\n" + synth.body
     // one entry per PHYSICAL line of `wrapped`, aligned with dotc's
-    // own 0-based line() -- header lines (and, when present, the
-    // injected Web-decode line) have no original counterpart (-1);
-    // `lineMap` (built alongside `body` in `withMeta`) supplies the
-    // rest, entry for entry.
-    val fullLineMap = Vector.fill(header.length)(-1) ++ lineMap
+    // own 0-based line() -- the two header lines have no original
+    // counterpart (-1); the declare and body maps (built alongside
+    // their text in `withMeta`) supply the rest, entry for entry.
+    assert(declLines.length == synth.declLines.length, "declare line map out of step with its text")
+    val fullLineMap = (-1 +: synth.declLines) ++ (-1 +: synth.bodyLines)
 
     val dir = Files.createTempDirectory(tempRoot, "okay-script-")
     val srcFile = dir.resolve("OkayScriptMain.scala")
@@ -576,60 +643,32 @@ object ScalaScript:
       // isolation Classpath/Deps exist for. A script sees exactly
       // its own compiled classes, its own Classpath, and the JDK.
       val loaderUrls = (outDir +: classpath.entries).map(_.toUri.toURL).toArray
-      val loader = new URLClassLoader(loaderUrls, ClassLoader.getPlatformClassLoader())
+      val loader = new ScriptClassLoader(loaderUrls, getClass.getClassLoader)
       val cls = loader.loadClass("OkayScriptMain")
       val method = cls.getMethod("run", classOf[Array[String]])
 
-      // okay-script-page (2026-09-03): `scala.Console.withOut` on the
-      // HOST side does not work here -- the isolated classloader
-      // (okay-script-classloader-isolation) loads its OWN copy of
-      // `scala.Console`, a class distinct from the host's, so
-      // host-side `withOut` never touches the copy the script's own
-      // `println` actually reads. It APPEARED to work for a one-shot
-      // `run`/`render` only by coincidence: the isolated Console's
-      // lazily-initialized default binds to whatever `System.out` is
-      // AT ITS OWN FIRST TOUCH, which happened to be our redirected
-      // stream on the FIRST call -- and then stays bound to THAT one
-      // stream forever after, so a SECOND `invoke()` (what `Page`
-      // needs) silently writes into the first call's already-consumed
-      // buffer instead of the second's, which is empty. Found by
-      // `TestPage`'s two-calls-return-different-content tests, not
-      // guessed. Fixed by driving the ISOLATED classloader's OWN
-      // `Console` object via reflection every call, not the host's.
-      val consoleCls = loader.loadClass("scala.Console$")
-      val consoleModule = consoleCls.getField("MODULE$").get(null)
-      val consoleSetOut = consoleCls.getMethod("setOutDirect", classOf[PrintStream])
-      val consoleOut = consoleCls.getMethod("out")
-
+      // okay-script-page (2026-09-03) found that host-side
+      // `scala.Console.withOut` never reached a script's `println`:
+      // the isolated loader had its OWN `scala.Console`, bound at
+      // first touch to whatever `System.out` was then, forever. The
+      // fix was reflection into that copy on every invoke. Since
+      // okay-script-site `scala.*` is delegated to the host (see
+      // ScriptClassLoader), so the script's `println` IS the host's
+      // `Console` -- and `Capture.capturing` scopes it per thread with
+      // plain `Console.withOut`, no reflection, concurrent-safe.
       Right(new Compiled:
         def invoke(): Result =
-          val capturedOut = new ByteArrayOutputStream()
-          var thrown: Option[Throwable] = None
-          val prevOut = System.out
-          val ps = new PrintStream(capturedOut, true, "UTF-8")
-          System.setOut(ps)
-          val prevConsoleOut = consoleOut.invoke(consoleModule).asInstanceOf[PrintStream]
-          consoleSetOut.invoke(consoleModule, ps)
-          try
-            // Web.encodeArgs/decodeArgs (okay-script-web, 2026-09-03):
-            // Web.current (this HOST-side copy) cannot be handed to
-            // the script directly -- the isolated classloader loads
-            // its OWN separate Web class, and a host-built instance
-            // fails reflection's argument-type check against it. Only
-            // String/Array[String] cross the boundary safely, so the
-            // host-side Web is encoded into args here; the script's
-            // own (isolated) Web.decodeArgs reconstructs it entirely
-            // within its own classloader -- see Web.scala.
-            try method.invoke(null, Web.encodeArgs(Web.current))
+          val (thrown, out) = Capture.capturing[Option[Throwable]] {
+            try
+              method.invoke(null, Array.empty[String]): Unit
+              None
             catch
               case e: java.lang.reflect.InvocationTargetException =>
-                thrown = Some(Option(e.getCause).getOrElse(e))
+                Some(Option(e.getCause).getOrElse(e))
               case e: Throwable =>
-                thrown = Some(e)
-          finally
-            consoleSetOut.invoke(consoleModule, prevConsoleOut)
-            System.setOut(prevOut)
-          Result(ok = thrown.isEmpty, stdout = capturedOut.toString("UTF-8"), errors = Vector.empty, thrown = thrown)
+                Some(e)
+          }
+          Result(ok = thrown.isEmpty, stdout = out, errors = Vector.empty, thrown = thrown)
 
         def close(): Unit =
           loader.close()
