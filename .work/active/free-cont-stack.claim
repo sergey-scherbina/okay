@@ -1,0 +1,27 @@
+task: free-cont-stack (channel-per-element-effect-cost, the interpreter half)
+agent: okay-42
+started: 2026-09-06
+branch: feature/free-cont-stack
+
+why: the audit left this as the largest measured gap. Reading a
+  buffered channel one element at a time is 209.3us, and the profile
+  is 62% effect machinery against 8% channel: runFree 26%, the Async
+  handler 15%, allocating Free nodes 13%, resume 8%.
+
+target: runFree (Effects.scala:263) and Free.fold (Free.scala:54) both
+  re-associate a left-nested bind by REBUILDING the tree --
+  `Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g))` allocates a fresh
+  Bind AND a fresh closure every step. Replace with an explicit
+  continuation stack: Bind(inner, f) pushes f and descends. One cons
+  cell per bind instead of a node plus a closure, and no re-association
+  at all.
+
+how: keep the answer identical -- this is the interpreter every effect
+  in the library runs through, so the matrix is the correctness proof,
+  and stack safety is the property most at risk (Free exists to be the
+  stack-safe encoding). Measure before and after on the elementwise
+  lane; the honest number is the one the profile predicted moves.
+
+caveat accepted up front: a heterogeneous continuation stack needs one
+  cast. Operator rule stands -- isolate it in one commented place, do
+  not spread it.
