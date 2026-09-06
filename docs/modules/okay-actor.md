@@ -165,3 +165,17 @@ with them or does not land:
 ```
 sbt okayActorJVM/test
 ```
+
+## Numbers (2026-09-06, `ActorReactiveBenchmark`, docs/benchmarks.md §17)
+
+| what | cost |
+|---|---|
+| `tell`, 4000 messages as one program, then an `ask` | 295.9 us — **1.49x** the same messages through a bare `Channel.buffer(256).drained` |
+| `ask` round trip | **13.0 us and 5.5 KB** each — a `Reply` is a channel of two plus a timer armed per call |
+| `spawn` + `stop` | 1.04 us and 4.3 KB |
+
+The 1.49x is the receive side: the loop reads one message at a time
+(so supervision knows which one failed), and each `receiveBlocking()`
+is five allocations — the mirror of the send-side handshake the feed
+no longer pays. Give a `Behavior` an `AnyRef` state: a primitive one
+boxes on every step (141 of ~900 allocation samples on this lane).

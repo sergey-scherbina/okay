@@ -1,5 +1,48 @@
 # Changelog
 
+## actor-reactive-bench — the two modules with no numbers now have them, and three named next lanes
+
+`okay-actor` and `okay-reactive` had never been measured. Both sit on
+the channel that was measured all day, so optimising either blind
+would have repeated the day's mistakes; measuring them cost one lane
+and changed no code. Six lanes, each module against a control so its
+price is a ratio (`ActorReactiveBenchmark`, §17):
+
+| lane | us/op | B/op | against its control |
+|---|---|---|---|
+| `actorTell` — 4000 tells, then an ask | 295.9 ±14.1 | 1 837 075 | **1.49x** the bare mailbox shape |
+| `actorAsk` — 200 round trips | 2594.4 ±47.3 | 1 108 493 | **13.0 us, 5.5 KB per ask** |
+| `actorSpawnStop` — 100 lifecycles | 104.3 ±4.2 | 431 800 | 1.04 us, 4.3 KB each |
+| `reactiveRound` — out through `Flow.Publisher`, back through `Flow.Subscriber` | 312.9 ±13.0 | 2 951 724 | **5.67x** the plain source, 738 B/element |
+
+**The actor's 1.49x is the receive-side handshake**, and the JFR
+names it per message: `Slot` 142, `Right` 95, `Some` 89, the block
+lambda 87, the `Await` 87. The loop reads `receiveBlocking()` once per
+message on purpose — supervision must know which message was the
+poisonous one — and pays the full handshake even when the message is
+already there. It is the exact mirror of what `feed-offer-first`
+removed from the send side this afternoon, and it is filed as
+`actor-receive-offer-first` with the same expected size. A second
+141 samples are `java.lang.Long`: a `Behavior` over a primitive state
+boxes on every step; one line in the actor docs now says to use an
+`AnyRef` state.
+
+**`ask` at 13 microseconds** is a `Reply` — a channel of two — plus
+`Async.race` against `Async.sleep(within)`, a virtual-thread timer
+armed for every call. The 5.5 KB is the timer's stack chunk. Filed as
+`actor-ask-timer`, with the two cheaper shapes to measure.
+
+**The bridge at 5.67x is the largest ratio measured today**, and 738
+bytes per element the largest per-element cost. Two channels and two
+demand batches per window are in the shape; which of them is the cost
+is deliberately not guessed — `reactive-bridge-profile` says to count
+per side first, the method that settled every channel lane today.
+
+Landed: the benchmark, six ledger rows, §17, a Numbers section on
+both module pages, `compare` now depending on `okayActor.jvm` and
+`okayReactive` (two tokens on the shared `build.sbt` line), and four
+backlog entries. Library code: unchanged.
+
 ## feed-offer-first — the producer's 4000 handshakes, gone: −38% allocation on the elementwise channel lane
 
 `channel-batch-floor` found, by counting per side, that the elementwise

@@ -1665,3 +1665,57 @@ measuring the thing rather than the story about it.
   of the number and should never be quoted apart from it.
 - The host is a busy laptop; medians across forks and same-session
   grouping are the discipline, and history.tsv records the load.
+
+## 17. Actors and the reactive bridge — the first numbers
+
+`okay-actor` and `okay-reactive` had none. Both sit on the channel
+measured through §14–§16: an actor's mailbox IS a `Channel[M](256)`,
+`tell` is `mailbox.send`, and the loop reads `receiveBlocking()` one
+message at a time on purpose — supervision must know which message was
+the poisonous one. `ask` builds a `Reply`, which is a `Channel[R](2)`,
+and races its receive against `Async.sleep(within)`. The reactive
+bridge moves demand in half-window batches through a channel of
+`capacity`. Each lane has a control so the module's price is a ratio
+(`ActorReactiveBenchmark`, N=4000 elements or messages, 200 asks, 100
+lifecycles; load 3–4, no sibling build):
+
+| lane | us/op | B/op | against its control |
+|---|---|---|---|
+| `actorTell` — 4000 tells as one program, then one ask | 295.9 ±14.1 | 1 837 075 | **1.49x** `channelBuffer`, 1.31x the bytes |
+| `channelBuffer` — the mailbox's own shape, no actor | 198.5 ±2.1 | 1 407 042 | control |
+| `actorAsk` — 200 sequential round trips | 2594.4 ±47.3 | 1 108 493 | **13.0 us and 5.5 KB per ask** |
+| `actorSpawnStop` — 100 lifecycles | 104.3 ±4.2 | 431 800 | 1.04 us and 4.3 KB each |
+| `reactiveRound` — out through a `Flow.Publisher`, back through a `Flow.Subscriber` | 312.9 ±13.0 | 2 951 724 | **5.67x** `plainSource`, 3.43x the bytes |
+| `plainSource` — the same `Source.range`, no bridge | 55.2 ±2.4 | 861 088 | control |
+
+**What the actor's 1.49x is made of**, by JFR allocation samples on
+`actorTell`: `okay.Slot` 142, `java.lang.Long` 141, `scala.util.Right`
+95, `scala.Some` 89, the `Platform` block lambda 87, the `Async.Await`
+anon 87, `Free$Pure` 81, `Free$Bind` 49. Read per message: one
+`receiveBlocking()` is a `Slot`, an `Await`, its callback, and the
+`Right(Some(m))` that `End = Either[Throwable, Option[A]]` wraps the
+message in — five objects — and the `Behavior[Long, Msg]` boxes its
+`Long` state on every step. That is the RECEIVE side's per-element
+handshake, the mirror of the one `feed-offer-first` removed from the
+send side the same day, and it is there because the loop reads one
+message at a time. The 141 boxed Longs are the benchmark's own choice
+of a primitive state and are the cheapest thing on this page to avoid:
+an `AnyRef` state boxes nothing.
+
+**`ask` at 13 microseconds** is a channel with a ring of two, a send,
+a race, and a virtual-thread timer armed for every call whether or not
+the answer comes in a microsecond. 5.5 KB per ask says most of that is
+the timer's stack chunk. For an ask-heavy caller that is the number to
+change; for request-reply at human timescales it is invisible.
+
+**The bridge at 5.67x is the largest ratio on this page**, and 738
+bytes per element the largest per-element cost measured today — for a
+round trip that a plain `Source` does in 215. It is unprofiled here;
+the shape (publisher fiber → channel of 256 → half-window demand →
+subscriber → channel → source) has two channels and two demand
+batches per window in it, and the profile is the next lane's first
+move, not this one's guess.
+
+Nothing on this page changed code. It names three next lanes with
+their evidence: a receive-side offer-first for the actor loop, the
+`Reply` timer, and the bridge's profile.

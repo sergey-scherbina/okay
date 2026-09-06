@@ -2607,3 +2607,54 @@ Stream.scala:3981), and `emits`/`chunkN` is the chunked spelling.
 - `runForeach` — DONE (runforeach-one-walk, 2026-09-06): 159.7 → 99.9,
   0.63x. The channel lanes did not move: their per-element cost is the
   Async operation `.drained` forwards per element, not the walk.
+
+## actor-receive-offer-first — the mirror of feed-offer-first, on the loop that reads one message at a time
+
+Measured 2026-09-06 (`actorTell`, §17): 4000 tells through an actor
+read 295.9us against 198.5 through the bare mailbox shape, 1.49x, and
+the JFR says why per message: `Slot` 142, `Right` 95, `Some` 89, the
+`Platform` lambda 87, the `Await` anon 87. The actor loop calls
+`receiveBlocking()` once per message — deliberately, so supervision
+knows which message was the poisonous one — and each call runs the
+full handshake even when the message is already there, which under
+load it always is. `feed-offer-first` removed exactly this on the send
+side (−38%). The receive side needs a synchronous poll the loop can
+try first: a `receiveNow(): Option[A] | end` on `Channel`, answered
+from the ring without a `Slot`, an `Await` or the `Right(Some(_))`
+pair, falling back to `receiveBlocking()` only when empty. That also
+finishes `channel-callback-allocation`'s receive half for this caller.
+Laws: the one-message-at-a-time property must survive (a poll takes
+ONE), close/fail/end must be seen through the poll, and the ordering
+against parked receivers must hold. Expected: most of the 0.49x.
+
+## actor-ask-timer — 13 microseconds and 5.5 KB per ask
+
+`Reply` is a `Channel[R](2)` and `await` is `Async.race(box.receive,
+Async.sleep(within))`: a virtual-thread timer armed for every ask,
+whether the answer takes a microsecond or never comes. Measured
+(`actorAsk`, §17): 13.0us and 5.5 KB per round trip; the KB is the
+timer's stack chunk. Two cheaper shapes, to measure not assume: arm
+the timer only if the reply is not already in the box after the send
+(the common case under a responsive actor), or a single-slot box
+instead of a full channel. Matters only for ask-heavy callers.
+
+## reactive-bridge-profile — 5.67x and 738 bytes per element, unprofiled
+
+The largest ratio measured on 2026-09-06 (`reactiveRound` vs
+`plainSource`, §17): a round trip through `Flow.Publisher` and back
+through `Flow.Subscriber` costs 312.9us and 2.95 MB against 55.2us and
+0.86 MB. The shape has two channels of 256 and two half-window demand
+batches per window. Before anything is changed: a JFR class breakdown
+of `reactiveRound`, and a count per side of the awaits on each of the
+two channels — the method that settled the channel lanes today. The
+guess this entry refuses to make is which of the two channels, or the
+demand accounting, is the 738 bytes.
+
+## behavior-state-boxing — a primitive state boxes on every step
+
+`Behavior[S, M] = (S, M) => S ! Async` over `S = Long` allocates a
+`java.lang.Long` per message (141 of ~900 allocation samples on
+`actorTell`). Not a library defect — a generic `S` cannot be
+specialised without a second trait — but worth one line in the actor
+docs, now written: give a behaviour an `AnyRef` state. Closed by the
+doc line; kept here so the sample count has a home.

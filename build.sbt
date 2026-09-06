@@ -1386,7 +1386,8 @@ lazy val root = (project in file("."))
 
 /** comparison benchmarks against the ecosystem: the heavy dependencies live here */
 lazy val compare = (project in file("compare"))
-  .dependsOn(okay.jvm, okayLlm.jvm, okayRag.jvm, okayAgent.jvm, okayHttp.jvm, okayCluster.jvm)
+  .dependsOn(okay.jvm, okayLlm.jvm, okayRag.jvm, okayAgent.jvm, okayHttp.jvm, okayCluster.jvm,
+    okayActor.jvm, okayReactive)   // actor-reactive-bench: the two modules that had no numbers
   .enablePlugins(JmhPlugin)
   .settings(
     name := "okay-compare",
