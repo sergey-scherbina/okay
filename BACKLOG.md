@@ -995,6 +995,16 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] okay-script-cluster-sessions — LANDED 2026-09-06 (operator ask):
+      `Sessions.shared(topic)` — the persisted engine over a
+      `Replicated` coordinator (leader node) or a `RemoteStore` topic
+      over the wire (every other node), index kept current by tailing
+      the topic, own offsets skipped. Found by the test: a touch was
+      a full-state write, so a stale-cookie read on A racing an
+      invalidate on B resurrected the session in log order — a
+      logout that did not stick; a touch is now an 8-byte
+      update-if-present record. specs/okay-script.md "Clustered
+      sessions".
 - [x] okay-script-persistent-sessions — LANDED 2026-09-06: `Sessions`
       is a trait; `Sessions.memory` (default, unchanged) and
       `Sessions.persisted(store)` over an okay-persist keyed compacted

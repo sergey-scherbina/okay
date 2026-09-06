@@ -1,5 +1,26 @@
 # Changelog
 
+## okay-script-cluster-sessions — sessions shared across nodes over the replicated store
+Completed: 2026-09-06
+Landed as b8f9ba2d (spec then code, rebased). Operator ask.
+`Sessions.shared(topic, ttl, poll)` is the persisted engine over ANY
+okay-persist topic — the `Replicated` coordinator on the node that
+hosts it, `RemoteStore(Wire.Remote.connect(...)).topic("__sessions")`
+on every other — with the in-memory index kept current by a
+virtual-thread tailer that applies what it reads, skipping the
+offsets this node appended itself (an older own write re-applied
+would regress the index for a moment). A cart set on node A is read
+on node B within one poll; `Sessions.close()` stops the tailer. Found
+by the in-process test's invalidate step, and a real bug: a touch was
+a full-state write, so a stale-cookie read on A racing an invalidate
+on B landed AFTER the tombstone in log order and resurrected the
+session everywhere — a logout that did not stick. A touch is now its
+own 8-byte record (the length is the type: 0 tombstone, 8 touch, ≥12
+state), applied update-if-present on every index including the
+writer's own. 3 tests: two nodes over one `Replicated` topic
+in-process, and the same over `Wire.Server` + `RemoteStore` on a
+real port (Live); 86 green 3x.
+
 ## channel-elementwise-wakeups — measured and closed: no wakeup per element to remove
 
 The board's primary channel entry — three quarters of the elementwise
