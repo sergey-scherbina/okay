@@ -1,0 +1,27 @@
+task: feed-offer-first (channel-bulk-send, taken where the caller is)
+agent: okay-42
+started: 2026-09-06
+branch: feature/feed-offer-first
+
+why: counted per side on the elementwise channel lane -- the consumer
+  makes 64 awaits for 4000 elements, the PRODUCER makes 4000.
+  Channel.buffer's feed does c.send(it.next()) per element, and each
+  send is an Async.Await: a Slot, an acceptance callback, a Bind and
+  its closure, and the interpreter steps around them. Every
+  per-element handshake on that lane is the producer's.
+
+how: not sendManyNow. `offer` is synchronous and never waits; the
+  feed offers in a plain loop while the ring takes, and parks with ONE
+  `send` only on the element the ring refused -- held in hand, so
+  nothing is lost. This is sendBlocking's own OFFER-FIRST rule,
+  applied to the feed. Per full-ring cycle: ~capacity offers and one
+  handshake, so handshakes go from N to about N/capacity. d13cfd72's
+  1.43x loss does not apply: it came from bulk scans failing on a full
+  ring, and an `offer` is O(1) with an immediate fallback.
+
+measure, in this order: handshakes per side (Handler[Async] wrapper,
+  java -cp -- no sbt in the command line); then bytes/op and time on
+  elem_effectCallback; then the consumer's elements-per-await, which
+  can only rise. Laws: the existing channel laws already drive feed
+  through every Channel.buffer test; a refused element reaching the
+  consumer is the one new law worth writing.
