@@ -54,8 +54,8 @@ object Queues {
   /** every mechanism the strong and weak contracts can run on, in one
    * place so the two menus cannot drift apart */
   private object Mechanism {
-    def ring(capacity: Int): [T] => Int => Buffer[T] =
-      [T] => (_: Int) => Ring[T](capacity)
+    def ring(capacity: Int, singleConsumer: Boolean = false): [T] => Int => Buffer[T] =
+      [T] => (_: Int) => Ring[T](capacity, singleConsumer)
     def segments: [T] => Int => Buffer[T] =
       [T] => (_: Int) => Segments[T]()
     def multiRing(parts: Int, each: Int): [T] => Int => Buffer[T] =
@@ -66,8 +66,19 @@ object Queues {
 
   final case class Strong[A](private val buffer: Option[[T] => Int => Buffer[T]] = None) {
 
-    /** a fixed ring: the fastest, and it makes a full producer wait */
-    def bounded(capacity: Int): Strong[A] = copy(buffer = Some(Mechanism.ring(capacity)))
+    /**
+     * A fixed ring: the fastest, and it makes a full producer wait.
+     *
+     * `singleConsumer = true` is a PROMISE that exactly one thread of
+     * control ever receives from this channel — an actor's mailbox,
+     * a worker's inbox. The ring then moves its head with a store
+     * instead of a CAS per element (`Ring`), which is 35% of an
+     * elementwise consumer's profile (§17g). Two concurrent receivers
+     * on such a channel would take the same element twice; the laws
+     * that need contending consumers are not claimed for it.
+     */
+    def bounded(capacity: Int, singleConsumer: Boolean = false): Strong[A] =
+      copy(buffer = Some(Mechanism.ring(capacity, singleConsumer)))
 
     /** a ring that grows by segments, so a producer never waits */
     def unbounded: Strong[A] = copy(buffer = Some(Mechanism.segments))

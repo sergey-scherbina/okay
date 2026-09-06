@@ -48,6 +48,11 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
       cap => Queues.strong[Int].adaptive.parts(4).each(math.max(8, cap)).build),
     ("SentinelChannel/relaxed", true,
       cap => Queues.strong[Int].relaxed.parts(4).each(math.max(2, cap)).build),
+    // the single-consumer ring answers for every law but the one with
+    // contending consumers, which it declines by construction (see
+    // `oneConsumer` below): its head moves by a store, not a CAS
+    ("SentinelChannel/single-consumer", true,
+      cap => Queues.strong[Int].bounded(cap, singleConsumer = true).build),
     ("AbruptChannel", false, cap => AbruptChannel[Int](cap)),
     // add a mechanism here and it must answer for the whole contract.
     // These were checked against the withdrawn CasChannel with its
@@ -67,6 +72,15 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
    * so the gate's own output says which guarantees each mechanism
    * signed for -- an implementation that stops claiming one has to
    * edit the table above, where it is visible. */
+  /** a law that needs MORE THAN ONE consumer: an implementation built
+   * on the promise of exactly one does not claim it, and says so in
+   * the gate's output the way an un-drained one does */
+  private val singleConsumerOnly = Set("SentinelChannel/single-consumer")
+  private def manyConsumers(name: String)(law: (String, Int => Channel[Int]) => Unit): Unit =
+    impls.foreach: (n, _, mk) =>
+      if singleConsumerOnly(n) then test(s"$name — $n (single consumer: not claimed)".ignore)(())
+      else test(s"$name — $n")(law(n, mk))
+
   private def drainers(name: String)(law: (String, Int => Channel[Int]) => Unit): Unit =
     impls.foreach: (n, drains, mk) =>
       if drains then test(s"$name — $n")(law(n, mk))
@@ -256,7 +270,7 @@ class TestChannelLaws extends munit.ScalaCheckSuite {
   // consumers make the bulk claim contend with itself, which is the
   // case the single-CAS-per-batch scan exists for.
 
-  each("law: receiveMany takes each element exactly once, under contending consumers") { (n, mk) =>
+  manyConsumers("law: receiveMany takes each element exactly once, under contending consumers") { (n, mk) =>
     for _ <- 1 to 20 do
       val c = mk(64)
       val total = 3000

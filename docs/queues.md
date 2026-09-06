@@ -429,6 +429,23 @@ change what your program *does*.
 | never slow the producer; memory is the limit | `.unbounded` |
 | a synchronous handoff, no buffer at all | `Queues.rendezvous` |
 
+**2a. How many consumers?** One question the other menus do not ask,
+because the answer is usually "one" and costs nothing to say. If
+exactly one thread of control ever receives — an actor's mailbox, a
+worker's inbox — say so at construction:
+
+```scala
+Queues.strong[Job].bounded(1024, singleConsumer = true).build
+```
+
+The ring's head is then that consumer's private cursor and moves by
+a store where a multi-consumer ring pays a compare-and-swap per
+element (benchmarks §17g has the numbers). It is a PROMISE, not a
+hint: two receivers on a single-consumer channel would take the same
+element twice, and the channel laws that need contending consumers
+are not claimed for it. `Actor.spawn`'s default mailbox is built this
+way, because the loop is its only reader by construction.
+
 **3. How many producers, and does their mutual order matter?**
 
 | situation | pick |

@@ -74,6 +74,34 @@ class ActorReactiveBenchmark {
     a.stop().runWith
     sum.getOrElse(-1L)
 
+  /**
+   * receive-blocking-path-length: the actor's default mailbox is now a
+   * SINGLE-CONSUMER ring (the loop is its only reader). These two are
+   * the A/B against the multi-consumer ring it had, same run: the
+   * empty-mailbox regime (`actorTell` above) and the backlog one
+   * (`actorTellBacklog` above, whose explicit `Channel[Msg](8192)` IS
+   * the multi-consumer ring, so `actorTellBacklogSC` is its pair).
+   */
+  @Benchmark
+  def actorTellMpmc(): Long =
+    val a = Actor.spawn(0L, Channel[Msg](256), Supervise.Stop)(summing).runWith
+    def go(i: Long): Unit ! Async =
+      if i >= N then pure(())
+      else a.tell(Msg.Add(i)).flatMap(_ => go(i + 1))
+    val sum = go(0).flatMap(_ => a.ask(Msg.Get.apply, within = 10_000)).runWith
+    a.stop().runWith
+    sum.getOrElse(-1L)
+
+  @Benchmark
+  def actorTellBacklogSC(): Long =
+    val mailbox = Queues.strong[Msg].bounded(8192, singleConsumer = true).build
+    var i = 0L
+    while i < N do { mailbox.offer(Msg.Add(i)); i += 1 }
+    val a = Actor.spawn(0L, mailbox, Supervise.Stop)(summing).runWith
+    val sum = a.ask(Msg.Get.apply, within = 10_000).runWith
+    a.stop().runWith
+    sum.getOrElse(-1L)
+
   /** the control: the same N through the mailbox's own shape, no actor */
   @Benchmark
   def channelBuffer(): Long =

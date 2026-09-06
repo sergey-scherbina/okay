@@ -53,8 +53,19 @@ import java.util.concurrent.atomic.{AtomicLong, AtomicLongArray, AtomicReference
  * write the slot" safe: a consumer cannot see an advanced tail before
  * the element is published, because it does not look at the tail — it
  * looks at the stamp of the slot it wants.
+ *
+ * SINGLE CONSUMER, decided at construction. The head is contended
+ * only between consumers: producers never read it for a decision
+ * (they wait on stamps), so with ONE consumer the head is that
+ * consumer's private cursor and a plain release store moves it where
+ * `pop` otherwise pays a CAS per element — 35% of the elementwise
+ * consumer's profile (§17g). The flag is a promise the caller makes:
+ * a second concurrent consumer on a single-consumer ring would take
+ * the same position twice. An actor's mailbox is the shape it is
+ * for; `Queues.strong[A].bounded(n, singleConsumer = true)` is the
+ * door.
  */
-final class Ring[A](requested: Int) extends Buffer[A] {
+final class Ring[A](requested: Int, singleConsumer: Boolean = false) extends Buffer[A] {
 
   /**
    * Capacity is rounded UP to a power of two so the index is a mask
@@ -237,7 +248,13 @@ final class Ring[A](requested: Int) extends Buffer[A] {
       val st = stamp.get(i)
       val d = st - (pos + 1)
       if d == 0 then
-        if head.compareAndSet(pos, pos + 1) then
+        // SINGLE CONSUMER: the head is ours alone, so a plain release
+        // store moves it; the CAS was 35% of the elementwise consumer's
+        // profile (docs/benchmarks.md §17g) and, with one consumer,
+        // never contends with anything
+        val won = if singleConsumer then { head.lazySet(pos + 1); true }
+                  else head.compareAndSet(pos, pos + 1)
+        if won then
           val a = slots.get(i)
           slots.set(i, null)                    // release the reference
           stamp.set(i, pos + capacity)          // publish: next lap may push
@@ -278,6 +295,7 @@ final class Ring[A](requested: Int) extends Buffer[A] {
         val i = ((pos + k) & mask).toInt
         if stamp.get(i) - (pos + k + 1) == 0 then k += 1 else scanning = false
       if k == 0 then { n = 0; claimed = true }
+      else if singleConsumer then { head.lazySet(pos + k); n = k; claimed = true }
       else if head.compareAndSet(pos, pos + k) then { n = k; claimed = true }
       // else another consumer moved the head; scan again from where
       // it left it

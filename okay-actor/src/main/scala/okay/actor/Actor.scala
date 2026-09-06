@@ -173,7 +173,9 @@ object Actor:
   /** the unsupervised spawn: a behaviour that throws stops the actor */
   def spawn[S, M](init: S)(b: Behavior[S, M])
                  (using Scheduler, CanBlock): ActorRef[M] ! Async =
-    spawn(init, Channel[M](256), Supervise.Stop)(b)
+    // the loop is the mailbox's only reader, by construction: a
+    // single-consumer ring, whose pop is a store where a CAS was
+    spawn(init, Queues.strong[M].bounded(256, singleConsumer = true).build, Supervise.Stop)(b)
 
   /**
    * The full spawn: your own mailbox — so the contract, the capacity

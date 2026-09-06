@@ -1976,7 +1976,20 @@ real means holding a woken receiver for a dwell or a watermark —
 throughput bought with latency, which is `channel-chunk-batch-size`,
 and it should be taken there with that trade stated, not here.
 
-## receive-blocking-path-length — the 3.7x between elementwise and chunked is path, not parks and not bytes
+## receive-blocking-path-length — DONE 2026-09-06 (§17g): the head CAS was 35%; a single-consumer ring takes it, −25% elementwise
+
+Profiled first (JFR): the head compare-and-swap in `Ring.pop` is 35%
+of the elementwise consumer, the pop half of it. Landed
+`Queues.strong[A].bounded(n, singleConsumer = true)` — `Ring`'s flag,
+`pop`/`popMany` moving the head by a release store — and the actor's
+default mailbox built with it. `okaySentinelElem` 202.9 → 152.1 us at
+the same bytes; chunked and both actor regimes unchanged within their
+bars. Laws: the new flavour answers for ten, the
+contending-consumers law is recorded as not claimed. The `Handoff` per
+call (8%) and the slot read (14%, the element itself) are what
+remains; not taken. Original entry:
+
+### as filed — the 3.7x between elementwise and chunked is path, not parks and not bytes
 
 Filed 2026-09-06 by `channel-elementwise-wakeups`' closing count.
 `okaySentinelElem` 205.9 us and `okaySentinelChunk` 55.0 allocate the

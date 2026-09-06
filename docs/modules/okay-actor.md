@@ -41,8 +41,9 @@ Here backpressure is the ordinary case, and the caller picks the
 contract at construction from the same menu as any channel:
 
 ```scala
-// a mailbox that makes a flooding sender wait
-Actor.spawn(0, Queues.strong[Msg].bounded(1024).build, Supervise.Stop)(behaviour)
+// a mailbox that makes a flooding sender wait; singleConsumer because
+// the loop is the only reader -- the default spawn says the same
+Actor.spawn(0, Queues.strong[Msg].bounded(1024, singleConsumer = true).build, Supervise.Stop)(behaviour)
 
 // one that never blocks a sender, bounded only by memory
 Actor.spawn(0, Queues.strong[Msg].unbounded.build, Supervise.Stop)(behaviour)

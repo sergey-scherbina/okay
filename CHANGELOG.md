@@ -21,6 +21,27 @@ writer's own. 3 tests: two nodes over one `Replicated` topic
 in-process, and the same over `Wire.Server` + `RemoteStore` on a
 real port (Live); 86 green 3x.
 
+## receive-blocking-path-length — a single-consumer ring: the head by a store, −25% on the elementwise read
+
+JFR on `okaySentinelElem` put 35% of the consumer under one
+instruction, `Ring.pop`'s head compare-and-swap, and half of it under
+the pop. The CAS exists for a second consumer; with one, the head is
+a private cursor and producers never read it for a decision. So the
+promise is made at construction — `Queues.strong[A].bounded(n,
+singleConsumer = true)`, a flag on `Ring`, `pop`/`popMany` moving the
+head by a release store — and `Actor.spawn`'s default mailbox makes
+it, the loop being its only reader. Same run, `-prof gc`, two forks:
+`okaySentinelElem` 202.9 ±17.7 → **152.1 ±7.2 us**, bytes unchanged;
+`okaySentinelChunk` within error (one CAS per batch already);
+`actorTellBacklog` identical; `actorTell` indistinguishable across
+two noisy runs (its time is the park/unpark, not the pop). The channel
+laws run the new flavour: ten hold, the contending-consumers law is
+recorded as not claimed for it (`TestChannelLaws`, 98 + 6 ignored);
+docs/queues.md asks the consumer-count question, the actor doc shows
+the door. §17g. The §17f profile's next items — the slot read (the
+element arriving) and the `Handoff` per call (8%) — are left where
+they are.
+
 ## channel-elementwise-wakeups — measured and closed: no wakeup per element to remove
 
 The board's primary channel entry — three quarters of the elementwise

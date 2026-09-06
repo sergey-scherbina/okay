@@ -1961,6 +1961,53 @@ reads, ~37 ns over a chunk's share — not allocation. And the
 now (205.9 against 250.1), where the entry had it behind: the 208.9 →
 268.7 regression it cites was real when written and is gone.
 
+### 17g. receive-blocking-path-length: the head CAS, and a single-consumer ring — −25% elementwise
+
+Where the ~37 ns per element of §17f go, by JFR `ExecutionSample`
+on `okaySentinelElem` (one fork, ~420 samples, top frame):
+
+| frame | samples | share |
+|---|---|---|
+| `AtomicLong.compareAndSet` — `Ring.pop`'s head CAS | 149 | 35% |
+| `Ring.pop` (own code) | 60 | 14% |
+| `AtomicReferenceArray.get` — the slot read | 59 | 14% |
+| `ParkHandoff.<init>` — the handoff per call | 35 | 8% |
+| `SentinelChannel.receiveInto` (own code) | 34 | 8% |
+| the stamp read, the senders' queue head, `wakeOne` | 41 | 10% |
+
+Half the consumer's time is the pop, and a third of everything is
+one instruction: the compare-and-swap that moves the head. It exists
+because the ring is multi-consumer (Vyukov's MPMC): two consumers
+could claim the same position. With ONE consumer the head is that
+consumer's private cursor, and producers never read it for a
+decision — they wait on stamps — so a release store moves it. That is
+a promise only the caller can make, so it is made at construction:
+`Queues.strong[A].bounded(n, singleConsumer = true)`, `Ring`'s flag
+behind it, `pop` and `popMany` choosing the store. A second concurrent
+receiver on such a channel would take an element twice; the law that
+needs contending consumers is recorded as not claimed for it, the
+other ten hold. Same run, `-prof gc`, two forks:
+
+| lane | multi-consumer ring | single-consumer ring | Δ |
+|---|---|---|---|
+| `okaySentinelElem` | 202.9 ±17.7 us / 302 473 B | **152.1 ±7.2 us** / 300 593 B | **−25%** |
+| `okaySentinelChunk` | 56.0 ±5.3 / 311 717 B | 65.6 ±17.1 / 332 944 B | within error |
+| `actorTellBacklog` (full mailbox) | 93.1 ±28.7 / 645 410 B | 93.1 ±11.5 / 645 415 B | identical |
+| `actorTell` (empty mailbox), two runs | 382.0 ±75.5, then 595.9 ±181.8 | 594.9 ±444.9, then 423.8 ±28.9 | indistinguishable |
+
+The elementwise channel takes the whole prize the profile promised
+for the CAS, and its bytes do not move. The chunked lane already
+paid one CAS per batch, so nothing changes there. The actor's mailbox
+is the single-consumer shape by construction — the loop is its only
+reader — and `Actor.spawn`'s default mailbox is built that way now;
+in its two regimes the pop is not where the time is (the backlog
+regime is identical to the byte, the empty regime is the park/unpark
+between two virtual threads and flipped between two noisy runs), so
+the default is chosen for what the ring is, not for a number it
+moved. The next 22% of the elementwise consumer are the slot read and
+the `Handoff` allocation; the slot read is the element arriving and
+stays, and the handoff is 8% for one object per call.
+
 ## 18. Three platforms, one source — the first numbers off the JVM
 
 Every lane in this document so far ran on the JVM. The library is

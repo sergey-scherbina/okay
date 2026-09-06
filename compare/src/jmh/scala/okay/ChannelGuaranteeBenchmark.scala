@@ -101,6 +101,20 @@ class ChannelGuaranteeBenchmark {
     val t = produce(c.sendBlocking(_): Unit, c.close())
     val s = sumChunk(c, counted = false); t.join(); s
 
+  // ── the same ring, SINGLE CONSUMER by construction: the head moves
+  //    by a store, not a CAS (receive-blocking-path-length, §17g).
+  //    Read against okaySentinel* above, same run ─────────────────
+
+  @Benchmark def okaySentinelElemSC(): Long =
+    val c = Queues.strong[Long].bounded(Cap, singleConsumer = true).build
+    val t = produce(c.sendBlocking(_): Unit, c.close())
+    val s = sumElem(c, counted = false); t.join(); s
+
+  @Benchmark def okaySentinelChunkSC(): Long =
+    val c = Queues.strong[Long].bounded(Cap, singleConsumer = true).build
+    val t = produce(c.sendBlocking(_): Unit, c.close())
+    val s = sumChunk(c, counted = false); t.join(); s
+
   // ── the two persistent buffers, side by side ────────────────────
   //    They must run in the SAME invocation. Measured across separate
   //    runs the answer was noise: `zioStrongChunk`, whose code nobody
