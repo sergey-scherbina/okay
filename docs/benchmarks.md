@@ -1094,18 +1094,43 @@ REFERENCE) is what the layer exists for.
 |---|---|---|
 | **Okay CBOR** | **0.418** | **0.807** |
 | circe (JSON) | 0.422 | 0.623 |
-| **Okay JSON** | **0.628** | **10.3** |
+| **Okay JSON** (`Json.read`, lossless) | **0.628** | **10.3** |
+| **Okay JSON** (`Json.readStrict`, the second door — 2026-09-07) | — | **0.744** |
 
 Read this table as a price list for CONTRACTS. Our CBOR write ties
 circe's JSON write; our CBOR read is 1.3x it — that is the Schema
 fold on its own, right next to a hand-tuned parser. Our JSON write
-is 1.5x. But our JSON read is 16x slower, and that gap is the whole
-point: `Json.read` runs chars → total scanner → total driver →
-LOSSLESS CST → projection → Schema fold, where circe parses straight
-into its AST. What the gap buys is damage-as-data, byte-for-byte
-losslessness, and a HALF-ARRIVED document that still decodes (the
-LLM case). Need raw JSON decode speed and none of that? Use circe —
-and keep the same `Schema` for the wire where the contract matters.
+is 1.5x. Our LOSSLESS JSON read is 16x slower, and that gap is the
+whole point of that door: `Json.read` runs chars → total scanner →
+total driver → LOSSLESS CST → projection → Schema fold, where circe
+parses straight into its AST. What the gap buys is damage-as-data,
+byte-for-byte losslessness, and a HALF-ARRIVED document that still
+decodes (the LLM case).
+
+**Since 2026-09-07 there is a choice.** `Json.readStrict` goes
+characters straight into the `Schema` with no tree — `JsonValue`'s
+strict descent driving `Cbor.get`'s walk — and gives the SAME answer
+as `read` on a complete, well-formed document (`TestJsonStrict` holds
+them equal over a corpus) while refusing, as `Left`, anything it is
+not sure of. Same run, two forks, load falling from 11 to 5:
+
+| | ns/op | B/op |
+|---|---|---|
+| `textToOrderStrict` — `Json.readStrict` | **743.9 ±14.2** | 5 048 |
+| `textToOrderCirce` | 813.1 ±69.6 | 3 416 |
+| `textToOrderLossless` — `Json.read` | 14 264 ±125 | 127 724 |
+| `parseValueOnly` — the value parser alone, tree only | 226.5 ±2.5 | 2 208 |
+
+**0.92x circe in time, 1.48x its bytes; 19.2x faster and 25.3x less
+allocation than the lossless road.** The strict Schema walk costs
+about 3.3x the bare value parse — the field map, the erased parts and
+`make` — and a staged strict decoder, the shape the `Staged` macro
+already gives a `Json` value and CBOR bytes, is what would take the
+bytes to circe's; it is filed, not taken. So the sentence this
+paragraph used to end on is retired: need raw JSON decode speed and
+none of the lossless contract? `Json.readStrict`, same `Schema`, one
+identifier at the call site — and circe stays the honest external
+reference on the row.
 
 That was the whole of the explanation for a while, and charging each
 stage separately shows it is directionally right and wrongly

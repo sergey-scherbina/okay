@@ -2838,3 +2838,35 @@ drainedChunks: Source[Chunk[A]]`, each `receiveMany` batch told as one
 chunk, nothing re-done. 79 469 B/op against 1 413 443 for the same
 channel read one at a time, 17.8x less; the scaladoc names `.chunked()`
 on a drained source as the wrong door.
+
+## json-fast-read — DONE 2026-09-07: `Json.readStrict`, the second door
+
+The operator's call ("let there be a choice"). `Json.read` stays the
+lossless road — scanner, CST with every trivia token, projection,
+fold — and keeps its three promises: byte-for-byte losslessness,
+damage-as-data, a half-arrived document that still decodes.
+`Json.readStrict` goes characters → `Schema` with no tree: the strict
+recursive descent of `JsonValue.Parser` (an index, a slice for a plain
+string, `parseDouble` on a number's slice) driving `Cbor.get`'s walk —
+products by field name with the lossless decoder's own rules (unknown
+fields ignored; absent → declared default → None-if-optional →
+refusal), sums as the one-entry object `Json.encode` writes, options
+as `null`, lists/vectors, iso, bytes as base64, chars as one-character
+strings. It refuses — `Left` — anything it is not sure of, exactly as
+`JsonValue.parse` answers `None`.
+
+**The law, as a test:** `readStrict(write(a)) == read(write(a))` over
+a corpus with every schema shape, whitespace everywhere the grammar
+allows, unknown fields, defaults; and on a truncated or damaged
+document the strict door is `Left` where the lossless one still
+projects. 88/88 across the codec module.
+
+**Measured (2 forks, bars tight):** `textToOrderStrict` **743.9 ±14.2
+ns / 5 048 B/op** against circe's 813.1 ±69.6 / 3 416 and the lossless
+road's 14 264 ±125 / 127 724 — 0.92x circe in time, 1.48x its bytes;
+19.2x faster and 25.3x less allocation than `Json.read`. The strict
+Schema walk costs about 3.3x the bare value parse (227 ns / 2.2 KB): the field map, the
+erased parts and `make` are most of it, and a STAGED strict decoder —
+the macro `Staged` already generates for a `Json` value and for CBOR
+bytes — is the shape that would take it to circe's bytes. Filed as a
+next lane if wanted, not taken here.

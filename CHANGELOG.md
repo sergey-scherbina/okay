@@ -1,5 +1,52 @@
 # Changelog
 
+## json-fast-read — `Json.readStrict`: the second door, 0.92x circe, 19x the lossless road
+
+The operator's call: "let there be a choice." `Json.read` stays the
+lossless road — scanner, CST with every trivia token, projection,
+`Schema` fold — and keeps what it was built to keep: byte-for-byte
+losslessness, damage as data, a half-arrived document that still
+decodes. It read 10.3 us where circe read 0.623, and the codec price
+list said so and told a caller who needed raw speed to use circe.
+
+`Json.readStrict` goes characters straight into the `Schema`, no
+tokens, no CST, no `Json` tree: the strict recursive descent of
+`JsonValue.Parser` — an index, a slice for a plain string,
+`parseDouble` on a number's slice — driving `Cbor.get`'s walk over the
+`Schema`. Products by field name, with the lossless decoder's own
+rules (unknown fields ignored; absent → declared default →
+None-if-optional → refusal); sums as the one-entry object `encode`
+writes; options as `null`; lists, vectors, iso, base64 bytes,
+one-character strings. It refuses — `Left` — anything it is not sure
+of, exactly as `JsonValue.parse` answers `None`. The three scanning
+primitives are copied from `JsonValue` rather than shared, on purpose:
+that file promises the projection's value, this one the lossless
+decoder's answer, and coupling them would let either drift the other.
+
+**The law is a test.** `readStrict(write(a)) == read(write(a))` over a
+corpus with every schema shape, whitespace wherever the grammar allows
+it, unknown fields, defaults, escapes and unicode; and on a truncated
+or damaged document, a stray or trailing character, the strict door
+is `Left` where the lossless one still projects. 88/88 across the
+codec module, no warnings.
+
+**Measured, two forks, bars tight:**
+
+| | ns/op | B/op |
+|---|---|---|
+| `textToOrderStrict` — `Json.readStrict` | **743.9 ±14.2** | 5 048 |
+| `textToOrderCirce` | 813.1 ±69.6 | 3 416 |
+| `textToOrderLossless` — `Json.read` | 14 264 ±125 | 127 724 |
+
+0.92x circe in time, 1.48x its bytes; 19.2x faster and 25.3x less
+allocation than the lossless road. The price list's "16x slower" now
+reads "your choice", and its closing sentence — use circe for speed —
+is retired. The strict `Schema` walk costs about 3.3x the bare value
+parse (227 ns); a staged strict decoder, the shape the `Staged` macro
+already gives a `Json` value and CBOR bytes, would take the bytes to
+circe's. Filed, not taken. The codec page has a "Which JSON door"
+table.
+
 ## small-wins — the timer off its thread, a chunks door for the element channel, a supervised Stop that drains, and two declines
 
 The remainder of the operator's "take everything", minus JSON, which

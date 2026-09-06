@@ -281,6 +281,21 @@ object Json {
   def read[A](input: String)(using s: Schema[A]): Either[String, A] =
     decode(s)(parse(input))
 
+  /**
+   * THE OTHER DOOR: text to value with no tree in between — characters
+   * straight into the `Schema` (`JsonStrict`). The same answer as
+   * `read` on a complete, well-formed document (TestJsonStrict holds
+   * them equal), at a fraction of the cost, and `Left` on anything it
+   * is not sure of: a truncated document, a damaged one, a stray or
+   * trailing character. `read` still decodes those — a half-arrived
+   * document projects to what did arrive, damage becomes data — and
+   * that is exactly the price list in docs/benchmarks.md: choose
+   * `read` for the contract, `readStrict` for the speed, and never
+   * wonder which you got.
+   */
+  def readStrict[A](input: String)(using s: Schema[A]): Either[String, A] =
+    JsonStrict.read(input)
+
   /** value to text in one move */
   def write[A](a: A)(using s: Schema[A]): String = encode(s)(a)
 }

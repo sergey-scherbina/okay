@@ -124,6 +124,12 @@ class CodecBenchmark {
   @Benchmark def parseValueOnly(): Json = Json.parseValue(text)
   @Benchmark def textToOrderStaged(): Either[String, Order] = staged.decode(Json.parseValue(text))
   @Benchmark def textToOrderCirce(): Either[?, Order] = io.circe.parser.decode[Order](text)
+  /** json-fast-read: the strict door -- characters straight into the
+   * Schema, no tokens, no CST, no Json tree; the same answer as
+   * `Json.read` on this (complete, well-formed) text */
+  @Benchmark def textToOrderStrict(): Either[String, Order] = Json.readStrict[Order](text)
+  /** the lossless door, for the same text: the price list's 10.3 */
+  @Benchmark def textToOrderLossless(): Either[String, Order] = Json.read[Order](text)
   @Benchmark def decodeInterpAst(): Either[String, Order] = Json.decode(summon[Schema[Order]])(ast)
   @Benchmark def decodeHandAst(): Either[String, Order] = handDecode(ast)
   @Benchmark def decodeCirceAst(): Either[?, Order] = summon[io.circe.Decoder[Order]].decodeJson(circeAst)

@@ -142,3 +142,23 @@ Cst.errors(t).isEmpty               // reframed, not faulted
 Measured (see [benchmarks](../benchmarks.md)): Json vs Cbor vs circe
 on the same value — with the contract difference (total, lossless
 CST underneath) stated next to the numbers.
+
+## Which JSON door
+
+There are two, and they differ in what they promise, not in what they
+answer:
+
+| | `Json.read` | `Json.readStrict` |
+|---|---|---|
+| a complete, well-formed document | the value | **the same value** (TestJsonStrict holds them equal) |
+| a truncated document (a stream cut mid-value) | what arrived, decoded | `Left` |
+| a damaged document | damage as data (`JErr` leaves, the projection keeps the rest) | `Left` |
+| a stray or trailing character | projected around | `Left` |
+| cost | scanner, CST with every trivia token, projection, fold — ~128 KB and ~10 us on the benchmark order | characters straight into the `Schema`, no tree — ~5 KB, in circe's band |
+
+Choose `read` when the contract matters — a document that may still
+be arriving (the LLM case), an input you must render back byte for
+byte, damage you want to see rather than refuse. Choose `readStrict`
+for a complete document from a source you trust to be well-formed,
+which is most decoding. Both take the same `Schema`, so the choice is
+one identifier at the call site, and the wire contract does not move.
