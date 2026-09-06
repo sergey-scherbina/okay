@@ -1,0 +1,36 @@
+task: channel-batch-floor (channel-chunk-batch-size, taken with the trade stated)
+agent: okay-42
+started: 2026-09-06
+branch: feature/channel-batch-floor
+
+why: Drain calls receiveMany(64) and gets ONE element back -- counted:
+  block runs 4022 times for 4000 elements. Producer and consumer
+  ping-pong, the ring never accumulates, and every handshake pays a
+  Slot, an Async.Await, four Channel closures and a Drain copy: ~32%
+  of the 672 bytes per element, plus a third of the interpreter steps.
+
+the rule being reversed, on purpose and opt-in only: receiveMany's own
+  doc says "batching RECEIVES delays nothing ... so this needs no
+  flag". A batch FLOOR delays by design -- it holds the consumer until
+  k elements are buffered -- so it is a flag, off by default, and the
+  default path must not change by a byte.
+
+mechanism: wake on a WATERMARK, not on every push. A floor receiver
+  raises channel.floor = k and parks; the four push-side wake sites
+  wake a receiver only when ring.size >= floor; close/fail wake
+  unconditionally as today. WITHOUT a time bound this is a footgun
+  (a live stream stalls at 5 of 16 forever), so the floor comes with a
+  DWELL: Timer.after(dwell) wakes the receiver regardless, cancelled
+  when the floor is met. Both surface as Drain parameters:
+  c.drained(atLeast = 16, dwellMillis = 1).
+
+what is measured: the elementwise channel lane, default against
+  atLeast=16/dwell=1, by allocation count (immune to load) and by
+  time if the box allows; plus the LATENCY side of the trade -- time to
+  first element on a slow producer -- so the option is priced, not
+  just sold.
+
+hazard named: floor is one field per channel. Two consumers with
+  different floors on one channel share it (last writer wins). Drain
+  is per-consumer; a channel with several floor-drains is documented
+  as unsupported rather than made to work here.
