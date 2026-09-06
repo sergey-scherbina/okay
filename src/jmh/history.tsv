@@ -392,3 +392,10 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-06	feed-linear-view	IdiomaticApiBenchmark	zioChannelForeach_chunk_runForeach	133.001	us/op	N=4000 f=3 i=6	control, unmoved
 2026-09-06	feed-linear-view	IdiomaticApiBenchmark	okayCollection_chunk_fold	11.047	us/op	N=4000 f=3 i=6	control: no feed on this path, unmoved
 2026-09-06	feed-linear-view	IdiomaticApiBenchmark	zioCollection_chunk_runSum	51.795	us/op	N=4000 f=3 i=6	control, unmoved
+2026-09-06	idiomatic-verify	IdiomaticApiBenchmark	okayChannelForeach_chunkNative_runForeach	18.919	us/op	N=4000 f=2 i=6 quiet load=2.18	the row verified independently: ledger 19.664 -> 18.9, within 4%, on a box checked quiet with `pgrep -f sbt-launch` (load 2.18). 5.9x past zio in the same run
+2026-09-06	idiomatic-verify	IdiomaticApiBenchmark	zioChannelForeach_chunk_runForeach	112.352	us/op	N=4000 f=2 i=6 quiet load=2.18	control, unmoved across four days of this row changing (114.2 / 113.2 / 133.0 / 112.4)
+2026-09-06	idiomatic-verify	IdiomaticApiBenchmark	okayCollection_chunk_fold	10.849	us/op	N=4000 f=2 i=6 quiet load=2.18	control: 11.0 recorded, agrees
+2026-09-06	idiomatic-verify	IdiomaticApiBenchmark	okayStep_elem_lazyList	89.906	us/op	N=4000 f=2 i=6 quiet load=2.18	control: 90.4 recorded, agrees
+2026-09-06	idiomatic-verify	IdiomaticApiBenchmark	zioStep_elem_runSum	274.148	us/op	N=4000 f=2 i=6 quiet load=2.18	control: 276.9 recorded, agrees
+2026-09-06	idiomatic-verify	IdiomaticApiBenchmark	okayCollection_elem_runCollect	201.302	us/op	N=4000 f=2 i=6 quiet load=2.18	AGAINST us and kept: 36% slower than toLazyList's 148.5 in the same run, where the recorded pair read 30%. runCollect is an ergonomics addition, not a performance one
+2026-09-06	idiomatic-verify	IdiomaticApiBenchmark	okayStep_elem_unfold_lazyList	101.823	us/op	N=4000 f=2 i=6 quiet load=2.18	Source.unfold against range's 89.9 -- 13% for the general form, the tuple per step the API note predicts

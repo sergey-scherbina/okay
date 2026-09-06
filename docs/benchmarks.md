@@ -775,11 +775,52 @@ elementwise, because `.drained` already batches internally through
 removing one. Chunking pays only where it replaces a per-element
 coordination step, and on this path there was none left to replace.
 
-**Closed 2026-09-05, and the fix was on the producer.**
-`Channel.bufferChunked(64, size = 256)(list).drained.runForeach` reads
-**90.4 ±2.1** against `zioChannelForeach`'s **135.6 ±6.3** — 1.5x
-ahead, from 264.5 before, and the last row where zio led anything in
-this table.
+**Closed 2026-09-05 on the producer, and again 2026-09-06 in the
+interpreter.** `Channel.bufferChunked(64, size = 256)(list).drained.
+runForeach` read **90.4 ±2.1** against `zioChannelForeach`'s **135.6
+±6.3** after the producer fix — 1.5x ahead, from 264.5 before, and the
+last row where zio led anything in this table.
+
+Then `feed-linear-view` found the feed interpreting a `Free` program
+twice per element just to take the head of a list, and the same row
+reads **19.7 ±0.2** (ledger) — 4.6x again, 6.8x past `zio.Queue`.
+
+**Verified independently 2026-09-06** on a box checked quiet
+(`pgrep -f sbt-launch` empty, load 2.18), which is worth saying because
+the row has moved four times: **18.9 ±0.2** against `zioChannelForeach`
+at **112.4 ±1.0**, a second run agreeing with the ledger's 19.664 to
+within 4%. The controls in that run agree with their recorded values
+too — `okayCollection_chunk_fold` 10.8 against 11.0, `okayStep_elem_
+lazyList` 89.9 against 90.4, `zioStep_elem_runSum` 274.1 against 276.9,
+`zioCollection_chunk_runSum` 47.6 against 49.2 — so the 4.8x is in the
+code and not in the machine.
+
+The full re-measurement, same run, N=4000:
+
+| lane | us/op | recorded |
+|---|---|---|
+| `okayChannelForeach_chunkNative_runForeach` | **18.9 ±0.2** | 19.7 |
+| `okayCollectionForeach_chunk_fold` | **10.5 ±1.0** | 12.8 |
+| `okayCollection_chunk_fold` | **10.8 ±0.1** | 11.0 |
+| `zioCollection_chunk_runSum` | 47.6 ±0.5 | 49.2 |
+| `zioCollectionForeach_chunk_runForeach` | 89.6 ±9.8 | 85.5 |
+| `okayStep_elem_lazyList` | **89.9 ±0.9** | 90.4 |
+| `okayStep_elem_unfold_lazyList` | 101.8 ±1.2 | — |
+| `okayCollection_elem_lazyList` | 148.5 ±11.0 | 154.1 |
+| `okayCollectionForeach_elem_lazyList` | 150.2 ±16.2 | 165.5 |
+| `okayCollectionForeach_elem_runForeach` | 162.1 ±0.4 | 169.8 |
+| `okayCollection_elem_runCollect` | 201.3 ±0.9 | 188.7 |
+| `okayChannelForeach_elem_lazyList` | 206.2 ±2.1 | 219.1 |
+| `okayChannelForeach_elem_runForeach` | 208.2 ±1.6 | 209.3 |
+| `zioChannelForeach_chunk_runForeach` | 112.4 ±1.0 | 133.0 |
+| `okayChannelForeach_chunk_fold` | 338.1 ±3.5 | 318.7 |
+
+Two rows moved against us and are left as measured rather than
+trimmed: `runCollect` at 201.3 is 36% slower than `toLazyList`'s 148.5
+where the recorded pair said 30%, and the `_chunk_fold` warning lane
+got slower still. `Source.unfold` costs 13% over the specialised
+`range` (101.8 against 89.9), which is the tuple per step the API note
+above predicts.
 
 The diagnosis took two attempts and the first was wrong. Profiled, the
 per-element lane spends 62% in effect machinery and 8% in the channel,
