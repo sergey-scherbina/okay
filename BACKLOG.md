@@ -320,9 +320,28 @@ construction instead of a type test per value).
   java Streams (5, array specialization).
 
 ## STM — after stm (2026-09-02, specs/stm.md)
-- [ ] stm-js-direct-bench — the direct handler is the JS given by
-      construction; price it against tl2 on Node once a JS
-      benchmark harness exists.
+- [x] stm-js-direct-bench — DONE 2026-09-07 (§18d, specs/stm.md
+      Results): `BenchStmCross` on three platforms + `StmBenchmark`
+      under JMH. A one-`Modify` transaction is the same handler
+      twice (the structural fast path; JMH identical to the byte,
+      9 ns / 55 B per transaction). On a Read-then-Write `direct` is
+      ahead of `tl2` by 23% on Node and 19% on Native; the JVM pair
+      is inside its noise. The cost is the transaction (~800 B,
+      70–90 ns JVM / ~300 ns Node / ~1.5 us Native), not the handler.
+      Original: the direct handler is the JS given by construction;
+      price it against tl2 on Node once a JS benchmark harness exists.
+- [ ] stm-sync-commit-fastpath — an attempt that COMMITS never
+      parks, yet every non-fast-path `atomically` is staged as an
+      `Async.await` (a registration closure, the drive's exchange
+      cell, `k`) in both `tl2` and `direct`. Run the attempt first;
+      answer `pure(a)` when it commits (or `pure` of the failure's
+      throw), and reserve the `Await` for the `RetryNow` case, where
+      parking is the point. Measure on `StmBenchmark` `*ReadWrite`
+      (JVM, `-prof gc`) and `BenchStmCross` on JS/Native; the fast
+      path already answers `pure`, so a `Modify` lane is the
+      control. Laws: TestStm* on every platform, the retry laws in
+      particular (a retry after a write must still leave nothing
+      behind, and must still park rather than spin).
 
 ## Async — after channel-callback (2026-09-02)
 - [x] native-scheduler-pool — the Native Scheduler forks one OS

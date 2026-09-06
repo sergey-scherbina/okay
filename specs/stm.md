@@ -29,7 +29,7 @@ trait Stm[F[_]]:                        // the door
 
 object Stm:
   val tl2: Stm[Async]                   // JVM/Native: versions, CAS-owned commit, structural fast paths
-  val direct: Stm[Async]                // JS: one thread, no logs — a transaction is atomic by construction
+  val direct: Stm[Async]                // JS: one thread, no versions, no validation — a transaction is atomic by construction (writes are still buffered, so a retry after a write leaves nothing behind)
   val sim: Stm[Sim.Op]                  // deterministic: the Sim scheduler interleaves at every operation
 ```
 The row `Tx` has no `Async`, no `Run`: I/O inside a transaction is a
@@ -344,6 +344,25 @@ it read wakes it; a thousand parked transactions hold no thread;
 the cross suite runs the same programs through tl2 and direct; the
 Sim suite runs them under sixty seeds and checks the scheduler did
 interleave.
+
+**The two handlers, priced (stm-js-direct-bench, 2026-09-07,
+docs/benchmarks.md §18d).** `BenchStmCross` runs the same chain of
+4000 single-fibre transactions through `tl2` and `direct` on all
+three platforms, with the bare bind chain as the control. On a
+one-`Modify` transaction the two are the same handler: both take the
+structural fast path, and under JMH they read 64.5 and 64.2 us with
+762 032 bytes each — identical to the byte, 9 ns and 55 bytes per
+transaction over the bind. On a Read-then-Write transaction — a real
+log — `direct` is ahead of `tl2` by 23% on Node (1360 vs 1763 us by
+median) and 19% on Native (6409 vs 7920), and on the JVM the pair
+sits inside its own noise (JMH 398 vs 298 with tl2 ahead; the
+runAsync harness 409 vs 710 with direct ahead). What both pay is the
+transaction itself: ~900 bytes and 70–90 ns on the JVM, ~300 ns on
+Node, ~1.5 us on Native — the `Log` (a reads buffer, a persistent
+write map updated per write), the installed cell, and the
+`Async.await` staging of an attempt that never parks. So `direct`
+being the JS given is confirmed and cheap, and the next number to
+move is the log's, not the handler's (`stm-sync-commit-fastpath`).
 
 Under REAL concurrent contention, still no loss (channel-merge-
 regression, 2026-09-02): the original Channel benchmark above is

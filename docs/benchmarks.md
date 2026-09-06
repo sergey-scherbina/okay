@@ -2174,3 +2174,50 @@ same run: read the JS minimum, −20%. Native's control did not move.
 The §18 table above is the run it records; the Native and JS
 `bindChain` cells read a quarter lower after this change, and the
 JVM column still reads against JMH, not as JMH.
+
+### 18d. stm-js-direct-bench: the two STM handlers on three platforms
+
+`BenchStmCross` (src/test/scala-cross, the same harness rules as
+§18): 4000 transactions in a chain on one fibre, no contention, under
+`Stm.tl2` (versions, a CAS-owned commit) and `Stm.direct` (one thread,
+no versions, no validation — the JS given), and a `control` lane that
+is the same chain with `async(i)` in place of the transaction. Lane
+minus control is the transaction. Median of 20 / min, us:
+
+| lane | jvm | js | native |
+|---|---|---|---|
+| `control` — the bind chain alone | 100.4 / 92.7 | 206.5 / 150.5 | 385.0 / 368.7 |
+| `tl2Modify` — one `Modify` | 110.3 / 106.1 | 405.4 / 349.5 | 1119.0 / 1106.6 |
+| `directModify` | 174.8 / 115.9 | 357.8 / 294.2 | 1114.2 / 1107.5 |
+| `tl2ReadWrite` — a `Read` then a `Write` | 709.8 / 692.2 | 1762.8 / 1689.9 | 7920.3 / 6934.1 |
+| `directReadWrite` | 408.7 / 319.5 | 1360.3 / 1336.7 | 6409.4 / 4702.5 |
+
+And the JVM reference, `StmBenchmark` under JMH (`runWith`, `-prof
+gc`, two forks):
+
+| lane | us/op | B/op | per transaction over the control |
+|---|---|---|---|
+| `control` | 27.2 ±0.2 | 540 984 | — |
+| `tl2Modify` | 64.5 ±0.6 | 762 032 | 9.3 ns, 55 B |
+| `directModify` | 64.2 ±0.3 | 762 032 | 9.3 ns, 55 B |
+| `tl2ReadWrite` | 298.4 ±23.6 | 3 830 962 ±171 238 | 68 ns, 822 B |
+| `directReadWrite` | 398.1 ±1.8 | 3 638 963 | 93 ns, 774 B |
+
+Three readings. **A one-operation transaction is the same handler
+twice**: both take the structural fast path (`fast(tx)`, a root
+`Effect(Modify)`), and JMH has them identical to the byte — so the
+harness's JVM `directModify` at 174.8 against `tl2Modify`'s 110.3 is
+warm-up order, not a difference, and Native has them equal (1119 vs
+1114). **On a real transaction the JS handler is ahead where it is
+the given** — 23% on Node by median, 19% on Native — and on the JVM
+the pair is inside its own noise, flipping between the two
+terminals. **The cost is the transaction, not the handler**: a
+Read-then-Write pays ~800 bytes and 70–90 ns on the JVM, ~300 ns on
+Node and ~1.5 us on Native, in the `Log` (a reads buffer, a
+persistent write map updated per write, a boxed version per read),
+the installed cell, the transaction's own nodes, and the
+`Async.await` staging of an attempt that commits without ever
+parking. That last one is a shape, not a law — an attempt that
+commits could answer `pure` and reserve the `Await` for a `retry` —
+and it is filed as `stm-sync-commit-fastpath`, with these lanes as
+its A/B.

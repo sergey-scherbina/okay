@@ -1,5 +1,23 @@
 # Changelog
 
+## stm-js-direct-bench — the two STM handlers priced on three platforms: the log is the cost, not the handler
+
+`BenchStmCross` (Live, runAsync, three platforms) and `StmBenchmark`
+(JMH, `-prof gc`) run 4000 single-fibre transactions through
+`Stm.tl2` and `Stm.direct` with the bare bind chain as the control.
+A one-`Modify` transaction is the same handler twice — both take the
+structural fast path; JMH has them identical to the byte, 9 ns and
+55 B per transaction. On a Read-then-Write `direct` is ahead of
+`tl2` by 23% on Node (1360 vs 1763 us) and 19% on Native, and the JVM
+pair is inside its own noise (tl2 ahead under JMH, behind under the
+harness). What both pay is the transaction: ~800 B and 70–90 ns on
+the JVM, ~300 ns on Node, ~1.5 us on Native — the `Log`, the
+installed cell, and an `Async.await` staged for an attempt that
+never parks. Filed `stm-sync-commit-fastpath` for that last shape.
+specs/stm.md's "no logs" line for `direct` corrected: no versions
+and no validation; writes are buffered, as the code says. §18d.
+Measurement only; no library code changed.
+
 ## okay-script-live — okay-ui as the front-end layer for pages
 Completed: 2026-09-06
 Landed as 9fc20eb5 (spec then code, rebased). Operator ask.
