@@ -1,0 +1,16 @@
+task: async-direct-loop (Drive.apply as a direct loop over Free, Run/Await inlined; measured before/after)
+agent: okay-42
+started: 2026-09-06
+branch: feature/async-direct-loop
+
+why: free-bind-node-count (§18b) measured runAsync's round-trip at
+  12.6 us of bind_runAsync's 40.2 on the JVM (bind_runWith, already a
+  direct loop via runFree, reads 27.6), and an unknown share of the
+  300 us of injection on Native, where BenchCross runs runAsync. The
+  precedent is in-tree: runFree (Effects.scala) and Stm's runner match
+  Free's cases directly with the effect's operations inlined, no
+  polymorphic handler value, no closure per step. Drive.apply gets the
+  same shape; the Await exchange cell and cancellation-at-next-
+  operation stay exactly as they are. Measured on bind_runAsync (JMH,
+  -prof gc) and bindChain on Native and JS before/after. Not a change
+  to Free, fold, runFree, or any other handler.
