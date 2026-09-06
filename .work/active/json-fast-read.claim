@@ -1,0 +1,33 @@
+task: json-fast-read (the operator's call, 2026-09-07: "let there be a choice")
+agent: okay-42
+started: 2026-09-07
+branch: feature/json-fast-read
+
+why: Json.read is the lossless road -- scanner, CST with every trivia
+  token, projection, Schema fold -- and reads 10.3us where circe reads
+  0.623 (section on codecs, "our JSON read is 16x slower"). It buys
+  byte-for-byte losslessness, damage-as-data and a HALF-ARRIVED
+  document that still decodes. Most callers decoding a complete,
+  well-formed document want none of that and pay for all of it.
+
+what: a SECOND door, named for what it gives up -- Json.readStrict[A]
+  (name settled in the lane) -- that goes chars -> Schema straight,
+  the way Cbor.read does: the strict recursive descent of
+  JsonValue.Parser (index, skipWs, str, num) driving Cbor.get's Schema
+  walk, so no Json tree is built either. Products by field name with
+  the same default/None-if-optional rules as the lossless decoder,
+  sums in the same one-entry-object shape Json.encode writes, options
+  as null, lists/vectors, iso, bytes and chars as the lossless road
+  reads them. Refuses -- Left -- anything it is not sure of, exactly
+  as JsonValue.parse answers None.
+
+the law: for every a, readStrict(encode(a)) == decode(parse(encode(a)))
+  -- the same answer as the lossless road on well-formed input, checked
+  on the codec test corpus; and on a truncated or damaged document the
+  strict road answers Left where the lossless one still projects --
+  that is the trade, stated as a test, not a footnote.
+
+measure: CodecBenchmark, a textToOrderStrict lane against
+  textToOrderCirce (0.623) and the lossless textToOrder (10.3); bytes
+  and time. The doc's price-list table gains a row and the sentence
+  that tells a caller which door is theirs.
