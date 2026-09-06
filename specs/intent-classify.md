@@ -3255,3 +3255,32 @@ the grid above against the per-class law at each width
 window keep `Other` (`intent-other-more-rows`, already open). The
 word here is measured: a smaller n buys the typo back, and on this
 corpus it pays for it with the one class that must not be lost.
+
+## Results — intent-span-runaway (2026-09-07)
+
+**The decoder-side guard.** intent-multi-intent-measured recorded one
+live run answering a nine-word message with twenty spans, cycling
+`Notification+Request+Other+Proposal` five times, and noted that
+grounding would not have caught it: every span's text was a real
+substring of the message. The check that does is distinctness — no
+two spans over the same stretch — and it is a property of the
+DECODED reading, so it belongs beside the decoder, not in the prompt.
+
+`Reading.grounded(message)` keeps a span only if its text occurs in
+the message (lowercased, whitespace flattened) and only if the stretch
+it covers — its first occurrence — does not overlap a stretch already
+taken by a span kept before it. The model's order is preserved, so
+the first span over a stretch is the one that stays; a blank span has
+no stretch and drops. `decide` is unchanged: confidence remains its
+question, and the reading it sees is now bounded by the message's
+length in stretches rather than by the model's appetite.
+
+Laws (`TestClassify`, every platform): the twenty-span cycle over two
+stretches collapses to two spans carrying the first label on each;
+a span not in the message drops whatever its confidence; a grounded,
+distinct reading comes back exactly as it was; overlap is judged on
+the message's stretches, so `meet Tuesday` inside a kept `can we meet
+tuesday` is the same stretch, and a bare `the` lands at its first
+occurrence, inside a kept span. The live multi-intent suite applies
+the guard before it counts and prints what it dropped, so the next
+runaway is visible as a guard event rather than as twenty labels.

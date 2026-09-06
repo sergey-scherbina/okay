@@ -2450,7 +2450,18 @@ subtraction.
       change). Fixing them changes the shipped artifact and every
       number quoted from it, so it is its own lane with its own
       re-publish rather than a tidy-up.
-- [ ] intent-span-runaway — nothing bounds the number of spans a
+- [x] intent-span-runaway — DONE 2026-09-07: `Reading.grounded
+      (message)`, the decoder-side guard — a span is kept only if its
+      text is in the message (grounding) and its stretch is not
+      already covered by a span kept before it (distinctness, the
+      check the twenty-span run needed: every text was a real
+      substring). Matching on lowercased, whitespace-flattened text,
+      first occurrence, the model's order kept. Four laws in
+      `TestClassify` (the twenty-span cycle collapses to two, an
+      ungrounded span drops, a clean reading is the identity, overlap
+      is judged on stretches); the live suite guards before it counts
+      and prints what the guard dropped. `decide` unchanged. Original:
+      nothing bounds the number of spans a
       `Reading` may carry. One live run answered a nine-word message
       with TWENTY, cycling Notification+Request+Other+Proposal five
       times; it did not recur on a second run. GROUNDING would not

@@ -147,6 +147,51 @@ class TestClassify extends munit.FunSuite {
   }
 
   // ---------------------------------------------------------------
+  // the decoder-side guard (intent-span-runaway): grounded, distinct
+
+  private val nineWords = "Can we meet Tuesday, and please send the agenda?"
+  private val proposal = alt(slot, Conf.High)
+  private val request = alt(Meeting.Request(RequestKind.Send("agenda")), Conf.High)
+  private val note = alt(Meeting.Notification("fyi"), Conf.High)
+  private val other = alt(Meeting.Other("?"), Conf.High)
+
+  test("guard: twenty spans cycling four intents over two stretches collapse to the two") {
+    // the live run that filed the entry: every text a real substring,
+    // the same two stretches claimed ten times each under four labels
+    val cycle = List(proposal, request, note, other)
+    val runaway = Reading((0 until 20).toList.map { i =>
+      val text = if i % 2 == 0 then "Can we meet Tuesday" else "please send the agenda"
+      span(text, cycle(i % 4))
+    })
+    val g = runaway.grounded(nineWords)
+    assertEquals(g.spans.map(_.text), List("Can we meet Tuesday", "please send the agenda"))
+    // the FIRST span over each stretch is the one that stays
+    assertEquals(g.spans.map(_.alts.head.intent), List(slot, Meeting.Request(RequestKind.Send("agenda"))))
+  }
+
+  test("guard: a span whose text is not in the message is dropped, whatever its confidence") {
+    val r = Reading(List(span("Can we meet Tuesday", proposal), span("book the room", request)))
+    assertEquals(r.grounded(nineWords).spans.map(_.text), List("Can we meet Tuesday"))
+    assertEquals(Reading(List(span("", proposal), span("   ", request))).grounded(nineWords).spans, Nil)
+  }
+
+  test("guard: a grounded, distinct reading comes back exactly as it was") {
+    val r = Reading(List(span("Can we meet Tuesday", proposal), span("please send the agenda", request)))
+    assertEquals(r.grounded(nineWords), r)
+    assertEquals(Reading[Meeting](Nil).grounded(nineWords), Reading[Meeting](Nil))
+  }
+
+  test("guard: overlap is judged on the message's stretches, case and spacing aside") {
+    // a later span inside a kept one's stretch is the same stretch
+    val r = Reading(List(span("can we   MEET tuesday", proposal), span("meet Tuesday", request), span("send the agenda", note)))
+    assertEquals(r.grounded(nineWords).spans.map(_.text), List("can we   MEET tuesday", "send the agenda"))
+    // and a span that merely repeats a word found elsewhere is placed
+    // at its FIRST occurrence: "the" sits inside the kept second span
+    val again = Reading(List(span("please send the agenda", request), span("the", other)))
+    assertEquals(again.grounded(nineWords).spans.map(_.text), List("please send the agenda"))
+  }
+
+  // ---------------------------------------------------------------
   // the example answer, built from the schema (specs Results: it took
   // undecodable replies from 6/24 to 1/24 — a schema says what is
   // legal, an example shows what to type)

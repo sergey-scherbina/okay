@@ -48,10 +48,18 @@ class TestMultiIntentLive extends munit.FunSuite {
   /** the class each span carries, canonical, in the order the model
    * returned them — and the span TEXTS, which are the other half of a
    * segmentation and were never checked against the message */
-  private def spansOf(reply: String): Option[(List[String], List[String])] =
+  /** decoded AND guarded: `Reading.grounded` drops a span whose text
+   * is not in the message and any second span over a stretch already
+   * taken — the twenty-span run that filed intent-span-runaway reads
+   * as two here. The `ofTheMessage` check below is therefore a law
+   * the guard makes true by construction, kept as the statement. */
+  private def spansOf(reply: String, message: String): Option[(List[String], List[String])] =
     Json.decode(sReading)(Json.parseValue(reply)).toOption.map { r =>
-      (r.spans.flatMap(_.alts.headOption.map(a => Classify.label(a.intent, depth = 1))),
-        r.spans.map(_.text))
+      val g = r.grounded(message)
+      if g.spans.length != r.spans.length then
+        println(s"[live] GUARD dropped ${r.spans.length - g.spans.length} of ${r.spans.length} spans: $message")
+      (g.spans.flatMap(_.alts.headOption.map(a => Classify.label(a.intent, depth = 1))),
+        g.spans.map(_.text))
     }
 
   /** a segmentation segments THE MESSAGE: a span whose text is not in
@@ -69,7 +77,7 @@ class TestMultiIntentLive extends munit.FunSuite {
     var orderRight = 0
     var grounded = 0
     IntentFixture.twoIntents.foreach { (message, gold) =>
-      val got = spansOf(ask(Classify.prompt[Support](message)))
+      val got = spansOf(ask(Classify.prompt[Support](message)), message)
       got match
         case None => println(s"[live] UNREADABLE  $message")
         case Some((found, texts)) =>

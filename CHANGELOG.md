@@ -1,5 +1,22 @@
 # Changelog
 
+## intent-span-runaway — `Reading.grounded`: a span is in the message, and one span per stretch
+
+One live run answered a nine-word message with twenty spans cycling
+four intents; nothing bounded the count, and grounding — every
+span's text in the message, which held 12/12 — would not have caught
+it, since every text was a real substring. `Reading.grounded(message)`
+is the decoder-side guard: a span is kept only if its text is in the
+message and the stretch it covers is not already covered by a span
+kept before it, matched on lowercased whitespace-flattened text at
+the first occurrence, in the model's order. Four laws in
+`TestClassify`: the twenty-span cycle collapses to its two stretches
+with the first label on each, an ungrounded or blank span drops, a
+grounded distinct reading is the identity, and overlap is judged on
+the message's stretches. The live multi-intent suite guards before
+it counts and says what it dropped. `decide` is unchanged: confidence
+is still its question, and shape is now this one's.
+
 ## chat-demo-sessions-flake — the demo tests that open a port move to the integration run
 
 `okay.demo.TestChatDemo` "demo-sessions: a verified session is the

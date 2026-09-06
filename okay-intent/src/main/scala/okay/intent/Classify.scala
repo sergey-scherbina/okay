@@ -72,7 +72,41 @@ final case class Alt[I](conf: Conf, intent: I)
 final case class Span[I](text: String, why: String, alts: List[Alt[I]])
 
 /** what the model returns: the message, segmented */
-final case class Reading[I](spans: List[Span[I]])
+final case class Reading[I](spans: List[Span[I]]):
+  /**
+   * The decoder-side guard (intent-span-runaway). A span is kept only
+   * if its text is IN the message — grounding, which held 12/12 on
+   * the live runs and is cheap — and only if the stretch of the
+   * message it covers is not already covered by a span kept before
+   * it — distinctness, the check that catches what grounding cannot:
+   * one live run answered a nine-word message with TWENTY spans
+   * cycling four intents, every one of them a real substring. Matching
+   * is on the lowercased, whitespace-flattened text; a span's stretch
+   * is its first occurrence; the model's order is kept, so the first
+   * span over a stretch is the one that stays. Nothing else is judged
+   * here — `decide` still gates on confidence — and a reading that
+   * was grounded and distinct comes back as it was.
+   */
+  def grounded(message: String): Reading[I] =
+    val m = Reading.norm(message)
+    var taken = List.empty[(Int, Int)]
+    val kept = spans.filter { sp =>
+      val t = Reading.norm(sp.text)
+      if t.isEmpty then false
+      else
+        val at = m.indexOf(t)
+        if at < 0 then false
+        else
+          val end = at + t.length
+          val fresh = taken.forall((a, b) => end <= a || at >= b)
+          if fresh then taken = (at, end) :: taken
+          fresh
+    }
+    Reading(kept)
+
+object Reading:
+  private[intent] def norm(s: String): String =
+    s.toLowerCase.replaceAll("\\s+", " ").trim
 
 object Classify {
 
