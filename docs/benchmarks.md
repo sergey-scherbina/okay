@@ -1938,11 +1938,58 @@ handshakes is an OS-level wait with no Loom to make parking cheap —
 so on Native, read channels in chunks. The pure interpreter
 (`bindChain`) is where JS surprises: 164–230, on par with the JVM's
 warm figure, V8 handling the closure-per-bind shape well; Native's
-497–517 is 2–3x that, stable across runs, and it is the allocator —
-Scala Native's GC paying for the same `Free` nodes and closures the
-JVM's TLAB hands out for nothing. That is the first platform-specific
-cost this library has a number for, and it is filed.
+497–517 is 2–3x that, stable across runs, and it is the allocator.
+This paragraph first said "Scala Native's GC paying for the same
+`Free` nodes"; §18a measured it, and the collector is not where the
+time goes — the allocation path is. That is the first
+platform-specific cost this library has a number for.
 
 A ruler, not a scale: comparable across platforms for one lane, and
 against the JVM's JMH figure for the same shape; not a substitute for
 either.
+
+### 18a. native-interpreter-allocation: the collector, exonerated; the count, taken
+
+The question was whether Native's 2–3x on `bindChain` is the
+collector or the allocations themselves. Scala Native 0.5's immix
+writes one row per collection (mark / nullify / sweep, ns) to the file
+named by `GC_STATS_FILE`, the file is the whole process, so
+`BenchCross` gained `BENCH_LANES=bindChain` to run one lane per
+process; and `GC_INITIAL_HEAP_SIZE` fixes the heap. Two runs of the
+one lane, N=4000, median of 20 over 30 warmups, microseconds:
+
+| heap | median / min | collections in the process | collector time |
+|---|---|---|---|
+| default | 503.3 / 497.7 | 10 | 11.4 ms (mark 5.2, sweep 6.2) |
+| `GC_INITIAL_HEAP_SIZE=2G` | 570.2 / 558.8 | 0 | 0 |
+
+With the collector out of the picture entirely the lane is 13%
+SLOWER, not faster: without a collection the bump pointer only ever
+moves into pages the process has never written, and first-touch costs
+more than reuse. The cost is the mutator's allocation path, and it
+scales with what is allocated.
+
+How much is allocated is the same on every platform, so the JVM
+carries the count. `PerElementStepBenchmark.bind_runWith` is the same
+program under JMH with `-prof gc`, two forks:
+
+| lane | time | bytes/op | per bind |
+|---|---|---|---|
+| `bind_runWith` | 27.5 us | 540,984 B | 135 B |
+| `bind_runAsync` (the terminal BenchCross uses) | 39.9 us | 608,184 B | 152 B |
+
+135 bytes is about six objects: `Inject` (16), `Run` (16), the
+`() => i` thunk with its `Long` (24), `Bind` (24), the
+`x => go(i + 1, acc + x)` closure with two `Long`s (32), and — by the
+seven bytes the account is short of otherwise — a boxed `Long` for
+`x` through `flatMap`'s generic `Function1` (16). Native runs the same
+graph at about 21 ns per object-and-step; the JVM's TLAB and escape
+analysis run it at about 1. Fewer objects per bind is the only lever, and it
+is a lever on every platform: `free-bind-node-count`.
+
+Two readings the table forces. BenchCross's JVM column for this lane
+(189 on a quiet run, 483 under load) is 5–12x the JMH figure: thirty
+warmups of 4000 binds is not warm, exactly as the harness's header
+says, and the column is read against JMH, never as JMH. And Native's
+distance from the JVM is not 2–3x, that is its distance from JS; from
+the JVM's real number it is 12–18x, all of it in allocation.

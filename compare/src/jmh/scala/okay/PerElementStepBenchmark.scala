@@ -81,4 +81,26 @@ class PerElementStepBenchmark {
         case Left(_) => okay.pure(())
     go(Channel.buffer(1024)(list).drained).runWith
     sum
+
+  /**
+   * native-interpreter-allocation: the JVM reference for BenchCross's
+   * `bindChain` -- N right-nested `async(i).flatMap`, no channel, the
+   * shape that reads 2-3x slower on Native. `-prof gc` on this lane is
+   * the bytes-per-step figure the Native question needs: the object
+   * graph is the same on every platform, only the allocator differs.
+   * Two terminals, because BenchCross runs `runAsync` and the JMH
+   * reference elsewhere is `runWith`.
+   */
+  private def bindChain(): Long ! Async =
+    def go(i: Long, acc: Long): Long ! Async =
+      if i >= N then okay.pure(acc)
+      else async(i).flatMap(x => go(i + 1, acc + x))
+    go(0L, 0L)
+
+  @Benchmark
+  def bind_runWith(): Long = bindChain().runWith
+
+  @Benchmark
+  def bind_runAsync(): Long =
+    scala.concurrent.Await.result(Async.runAsync(bindChain()), scala.concurrent.duration.Duration.Inf)
 }

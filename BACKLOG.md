@@ -2902,7 +2902,7 @@ after `--` runs nothing. First numbers in §18 and the ledger. JS and
 Native stable across two runs; the JVM column is a ruler against JMH,
 not JMH.
 
-## native-interpreter-allocation — the first platform-specific cost with a number
+## native-interpreter-allocation — DONE 2026-09-06: the collector is not it; the count is six objects per bind
 
 §18: `bindChain`, N nested flatMaps with no channel, reads 497–517 us
 on Native against 164–230 on JS and the JVM's warm ~190 — 2–3x, stable
@@ -2916,6 +2916,38 @@ the case for the re-association, but did not measure for the
 closures. Native is also where `channelChunks` beats `channelElem` by
 the most (2.1–4.6x): whatever is done here, the chunks door is the
 Native reader's first move already.
+
+**Measured (docs/benchmarks.md §18a).** The counter is immix's
+`GC_STATS_FILE` (one row per collection), and `GC_INITIAL_HEAP_SIZE`
+takes the collector out of the picture. Default heap: 503 / 498 us,
+ten collections in the whole process, 11.4 ms of collector time.
+Heap 2G: ZERO collections, and the lane reads 570 / 559 us — slower,
+because every allocation now touches memory the process never wrote.
+So the collector is not the cost; the mutator's allocation path is,
+and it scales with objects allocated. The JVM reference for the same
+program (`PerElementStepBenchmark.bind_runWith`, `-prof gc`) is 27.5 us
+and 540,984 B/op: 135 bytes per bind, about six objects — `Inject`,
+`Run`, the `() => i` thunk, `Bind`, the `x => go(...)` closure, and
+by the byte count a boxed `Long` for `x`. Native pays roughly 21 ns
+per object-and-step for those where the JVM's TLAB and escape analysis
+pay near nothing. The lever is fewer objects per bind, on every
+platform, filed as `free-bind-node-count`. Note also that BenchCross's
+JVM column (189–483) is 5–12x the JMH figure for the same shape: 30
+warmups of 4000 binds is not warm; read that column against JMH, as
+its header says.
+
+## free-bind-node-count — six objects per `async(i).flatMap(f)`; which are necessary?
+
+`native-interpreter-allocation` counted 135 bytes and about six
+objects per bind on the JVM, and showed that on Native that count IS
+the cost (2G heap, zero collections, no faster). The candidates:
+`Inject(Run(() => a))` is three objects for one operation — a Free
+node that carries the thunk directly would be one; the `Bind` and its
+closure are the program and stay; the boxed `Long` argument is the
+generic `Function1` in `flatMap`. Measure on `bind_runWith` (JVM
+bytes/op) and on Native's `bindChain` before and after each; the
+Native number is the one that moves. Not a rewrite of `Free`: its
+`fold` is the interpreter and every handler matches on three cases.
 
 ## raft-wire-election-flake — DONE 2026-09-07: Live-tagged, and made robust where it now runs
 

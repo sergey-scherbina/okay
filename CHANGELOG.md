@@ -1,5 +1,27 @@
 # Changelog
 
+## native-interpreter-allocation — the collector exonerated on Native; six objects per bind, counted
+
+§18 said Native's 2–3x on `bindChain` was "Scala Native's GC paying
+for the same `Free` nodes". Measured, it is not the GC. immix writes
+a row per collection to `GC_STATS_FILE`, and `GC_INITIAL_HEAP_SIZE=2G`
+removes collections altogether: default heap 503 / 498 us with ten
+collections and 11.4 ms of collector time in the whole process; 2G
+heap 570 / 559 us with zero collections — slower, because a bump
+pointer that never turns around only meets untouched pages. The cost
+is the mutator's allocation path, and it scales with objects. The JVM
+took the count for the same program: `PerElementStepBenchmark` gains
+`bind_runWith` / `bind_runAsync`, 27.5 / 39.9 us and 540,984 /
+608,184 B/op under `-prof gc` — 135 bytes, about six objects per bind
+(`Inject`, `Run`, the thunk, `Bind`, the closure, and by the byte
+count a boxed `Long`). Native pays ~21 ns per object where the JVM
+pays ~1. Filed `free-bind-node-count`: `Inject(Run(thunk))` is three
+objects for one operation. `BenchCross` gains `BENCH_LANES=` so a
+process-wide instrument can own one lane. Two readings corrected in
+§18: BenchCross's JVM column is 5–12x JMH for this shape (not warm,
+as its header says), and Native's distance from the JVM is 12–18x,
+not 2–3x — 2–3x is its distance from JS. No library code changed.
+
 ## okay-script-site — okay-script as a JSP-level web framework
 Completed: 2026-09-06
 Landed as c0b37da2 (spec 986d4708 → code b3ddc914, rebased). Operator

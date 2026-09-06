@@ -61,9 +61,26 @@ class BenchCross extends munit.FunSuite:
     else if vm.contains("Native") then "native"
     else "jvm"
 
+  /** BENCH_LANES=bindChain,rangeFold runs only those lanes; the others
+   * print nothing and pass. For a process-wide instrument that cannot
+   * tell lanes apart -- Scala Native's immix writes one row per
+   * collection to the file named by GC_STATS_FILE, and the file is the
+   * whole process -- one lane per process is the only honest reading.
+   * JS has no environment, so JS always runs every lane. (Spelled out
+   * through java.lang.String with explicit types: the placeholder form
+   * typed `split`'s result as Array[Array[String]] under this file's
+   * imports, and finding out why is not this lane's question.) */
+  private val only: Set[String] =
+    val raw: java.lang.String | Null = System.getenv("BENCH_LANES")
+    if raw == null then Set.empty
+    else
+      val parts: Array[java.lang.String] = raw.split(",")
+      parts.toList.map(p => p.trim).filter(p => p.nonEmpty).toSet
+
   /** run `mk()` Warmup + Runs times in sequence, timing each, and
    * report the median and the minimum; the answer is checked every time */
   private def lane(name: String)(mk: () => Long ! Async): Future[Unit] =
+    if only.nonEmpty && !only(name) then return Future.unit
     def once(): Future[Long] =
       val t0 = System.nanoTime()
       Async.runAsync(mk()).map { sum =>
