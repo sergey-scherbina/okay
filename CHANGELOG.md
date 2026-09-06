@@ -1,5 +1,59 @@
 # Changelog
 
+## idiomatic-api-compare — closed, and the published table was four days behind its own ledger
+
+The claim (3 Sep) asked for the forced `chunkSize = 1` comparison to be
+replaced by what each library's OWN surface offers, four axes paired.
+That work landed and §6c has carried it since. What never happened was
+the release — and in the meantime the section went stale in the way a
+benchmark page can least afford.
+
+**§6c said 90.4us, 1.5x ahead, on the buffered-channel row.** True on
+5 Sep. `feed-linear-view` landed on 6 Sep, `history.tsv` has carried
+19.664 since, and the CHANGELOG entry has the full table — so the
+ledger knew, the changelog knew, and the document a reader actually
+opens understated this library by 4.8x on the one row the section
+exists to explain. A number is only published where somebody reads it.
+
+Re-measured independently, on a box checked quiet with the pattern that
+works (matrix-143 found the usual one matches nothing): **18.9 ±0.2
+against `zioChannelForeach`'s 112.4 ±1.0**, within 4% of the ledger,
+5.9x past zio in the same run. Four controls agree with their recorded
+values — 10.8/11.0, 89.9/90.4, 274.1/276.9, 47.6/49.2 — which is what
+makes the improvement the code rather than the machine. All sixteen
+lanes are in the table now.
+
+**Two rows moved against us and are published as measured.**
+`runCollect` is 36% slower than `toLazyList` where the recorded pair
+said 30%; the `_chunk_fold` warning lane got slower still, 338.1 from
+318.7. `Source.unfold` costs 13% over the specialised `range` —
+the tuple per step the API note predicted, so that one is a prediction
+confirmed rather than a loss. A table that only moves one way is a
+table nobody re-ran.
+
+Two defects fixed on the way, both in this lane's own files:
+
+- **`src/jmh/history.tsv` had raw git conflict markers committed in
+  it** — `<<<<<<< HEAD` / `=======` / `>>>>>>> feature/adaptive-parts`,
+  landed 5 Sep, five `intent-*` rows against seven `adaptive-parts`
+  ones. The file is append-only, so there was never a side to choose:
+  both blocks kept, three lines deleted. A conflict here is two agents
+  measuring at once, which is the normal case and not a disagreement.
+- **E176 in `IdiomaticApiBenchmark`**, the trap AGENTS.md already
+  names, since `Test/compile` does not reach Jmh sources and the matrix
+  therefore never showed it. Kept discarded deliberately: that lane
+  mirrors `runForeach`, whose zio partner pays a `Ref.update` per
+  element, so folding the sum purely would make our side cheaper than
+  theirs and recreate the very mismatched pair §6c exists to correct.
+
+The uncommitted leftover in the worktree was dropped rather than
+merged: a benchmark master already carries under a better name, and a
+history row measured before the pairing fix, which would have put a
+known-mismatched pair back in the ledger.
+
+Gate: 2438 tests, 82 module runs, 0 failures, 0 warnings; cold
+`compare/Jmh/compile` clean.
+
 ## matrix-143 — the matrix was never broken
 
 `sbt test` from a clean tree: **2422 tests, 81 module runs, 0 failed,
