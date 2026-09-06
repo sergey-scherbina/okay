@@ -1088,6 +1088,55 @@ Sessions.persisted(FileStore.open(dir)))` is the whole opt-in.
       the same directory — a cart set through one is read through the
       other with the same cookie.
 
+### Clustered sessions (okay-script-cluster-sessions, 2026-09-06)
+
+Operator ask: sessions shared across nodes over okay-persist's
+replicated store. `persisted` already writes every session to a
+topic; what a second node lacks is not the writes but the READS —
+its in-memory index was built once, at open. So:
+
+```scala
+object Sessions:
+  def shared(topic: okay.persist.Topic, ttl = 30min, poll = 200ms): Sessions
+trait Sessions:
+  def close(): Unit   // stops the tailer; the default engines have nothing to stop
+```
+
+`shared` is the persisted engine over ANY `Topic`, with the index
+kept current by TAILING the topic — a consumer that applies what it
+reads (a record puts, an empty value deletes; the last record in log
+order wins), polling from the offset the rebuild stopped at. The
+topology is okay-persist's own stage-2 one: the node that hosts the
+`Replicated` coordinator passes it as the topic; every other node
+passes `RemoteStore(Wire.Remote.connect(...)).topic("__sessions")`,
+whose appends and reads the coordinator's `Wire.Server` routes to the
+coordinator (appends fence by epoch, reads stop at the high-water
+mark — a session a failover would unwrite is never served). A cart
+set on node A is read on node B within one poll.
+
+One trap, found while designing rather than by a test: the tailer
+sees this node's OWN appends too, and re-applying them can regress
+the index for a moment — put v1 (offset 5), put v2 (offset 6), then
+the tailer applies 5 before 6 and a reader in between sees v1. Every
+`append` returns its offset, so the engine remembers the offsets it
+wrote and the tailer skips exactly those. Cross-node conflicts on
+one session are last-writer-in-log-order, which for a session (one
+browser, one request at a time) is the right answer.
+
+`persisted(store)` stays as it was — a single process has no one to
+tail — and is now `shared` without the tailer. Ordering across the
+two: a node's own write is visible to itself immediately (the index
+is written before the append), to others after the append is
+acknowledged and their next poll.
+
+- [x] in-process: two `Sessions.shared` over one `Replicated` topic
+      (three memory replicas) — set on A is read on B within a poll;
+      invalidate on B is gone on A; A's rapid v1/v2 never reads back
+      as v1 after the tailer passes.
+- [x] over the wire (Live): the coordinator behind `Wire.Server`, a
+      second node on `RemoteStore` — a cart set through the remote
+      node is read through the coordinator node and back.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
@@ -1097,9 +1146,10 @@ Sessions.persisted(FileStore.open(dir)))` is the whole opt-in.
 - **HTTPS, compression, virtual hosts.** Jetty's, or a later item.
   (Multipart uploads were filed here and built the same day — see
   "Uploads" below.)
-- **Session clustering.** `Sessions.persisted` keeps sessions across a
-  RESTART (below); sharing them across PROCESSES is what okay-persist's
-  replicated store is for, and is not wired here.
+- **Automatic failover of the session log.** `Sessions.shared` (below)
+  runs over okay-persist's stage-2 replication: static assignment,
+  operator-driven `promote`. Election is okay-persist's own stage 4,
+  not a session concern.
 - **A servlet-style filter chain.** `routes` is a `PartialFunction` —
   a caller wraps it.
 
