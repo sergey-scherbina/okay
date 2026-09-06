@@ -995,9 +995,14 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
-- [ ] okay-script-site: persistent sessions — `Sessions` is in-memory;
-      it is a class so a store-backed one (okay-persist) can replace
-      it, none written.
+- [x] okay-script-persistent-sessions — LANDED 2026-09-06: `Sessions`
+      is a trait; `Sessions.memory` (default, unchanged) and
+      `Sessions.persisted(store)` over an okay-persist keyed compacted
+      topic (whole state per write, tombstone on invalidate, rebuilt
+      on open) so a Site's carts survive a restart. Expiry stays the
+      sweep's job on the caller's clock — the first draft dropped
+      entries in the rebuild by wall clock, a synthetic-clock test
+      caught it. specs/okay-script.md "Persistent sessions".
 - [x] okay-script core — LANDED 2026-09-03: `blocks`/`run`, one .md
       file = one compilation unit (blocks concatenate in document
       order, later blocks see earlier ones' val/def), driven through

@@ -1,5 +1,22 @@
 # Changelog
 
+## okay-script-persistent-sessions — a Site's carts survive a restart
+Completed: 2026-09-06
+Landed as 1c0786f0 (spec then code, rebased). The second
+okay-script-site follow-on. `Sessions` is a trait now: `Sessions.memory`
+is the default and behaves exactly as the class did; `Sessions.
+persisted(store)` is that memory index written THROUGH to an
+okay-persist keyed, compacted topic — one key per session, the whole
+`State(lastAccess, attrs)` as a small binary frame, an empty value as
+the tombstone, `Ack.Durable` per write — and rebuilt from the topic on
+open. Touching a session is a write, because last-access is state.
+Expiry stays the sweep's job on the caller's clock: the first draft
+dropped "expired" entries during the rebuild by wall clock, and a
+synthetic-clock test caught it before it landed. `Site(root, sessions
+= Sessions.persisted(FileStore.open(dir)))` is the whole opt-in;
+`okayScript` gains `okayPersist.jvm` as a main dependency. 3 tests,
+one through two `Site`s on one on-disk store; 84 green 3x.
+
 ## okay-script-multipart — uploads reach a page as Web.parts / Web.file
 Completed: 2026-09-06
 Landed as 24838135 (spec then code, rebased). The first
