@@ -360,6 +360,39 @@ about the order BETWEEN producers. This trades exactly that silence.
 If your consumer relies on how two producers interleave, do not use
 it — nothing ever promised you that, but it may have happened to hold.
 
+### Feeding a channel, and why the producer's cost is the consumer's problem
+
+`Channel.buffer(n)(source)` runs the source into a channel on its own
+fiber. `Channel.bufferChunked(chunks, size)` does the same in arrays,
+and the difference is larger than it looks:
+
+| reading a buffered channel | us/op |
+|---|---|
+| `bufferChunked(...).drained.runForeach` | **19.7** |
+| `ZStream.fromQueue(...).runForeach` | 133.0 |
+| `buffer(...).drained.runForeach` (per element) | 209.3 |
+
+Two findings sit behind those numbers and both generalise.
+
+**Batch size is not what you asked for; it is how far the producer
+runs ahead.** Asking `receiveMany(64)` measured an average batch of
+**1.67** on the per-element path, because the producer paid the same
+per element as the consumer and neither could get in front. Chunking a
+consumer cannot help when nothing accumulates.
+
+**The producer's cost lands on the consumer.** `feed` used to do
+`async(uncons(x).runWith).flatMap` per element — build a program,
+interpret it, wrap the answer, interpret again: two interpreter passes
+to take the head of a list. `Stream.iterator` is the linear view and
+was always there; using it took the chunked path from 90.4us to 19.7.
+
+What did NOT work, measured and recorded: staging the feed into a loop
+of `offer`s. Neutral on the chunked path (the sends were already
+batched) and 15% worse on the per-element one, because a saturated
+buffer makes every loop pass a failed `offer` on top of the parking it
+still has to do. **Staging removes the building of a program; it
+cannot remove the waiting.**
+
 ### `ListFifo` and `ArrayFifo` — persistent, for the composable channel
 
 Only `Queues.composable` uses these, because only it needs a buffer
