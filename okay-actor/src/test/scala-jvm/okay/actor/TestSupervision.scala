@@ -9,10 +9,23 @@ import okay.given
  */
 class TestSupervision extends munit.FunSuite {
 
+  /** INTEGRATION, not the default gate (operator's rule, 2026-09-07:
+   * every flake moves to the integration tests). "the default is Stop
+   * -- a failure ends the actor" missed its 5s wait for `stopped` once
+   * under a full matrix at load 8, and passed 2/2 other full gates and
+   * 20/20 in isolation under four CPU burners the same day. The wait is
+   * wall-clock over a virtual thread that shares its carriers with
+   * forty forked JVMs, which is the matrix-load shape; `TestPoisonLaws`
+   * keeps `stopped`-after-poison under the default gate. */
+  override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
+
   given Scheduler = Schedulers.loom
 
+  /** the budget is the box's, not the law's: 30s where a quiet box
+   * needs microseconds, so a loaded integration run does not fail on
+   * scheduling alone */
   private def await(cond: => Boolean, why: String): Unit =
-    val deadline = System.currentTimeMillis() + 5000
+    val deadline = System.currentTimeMillis() + 30000
     while !cond && System.currentTimeMillis() < deadline do Thread.`yield`()
     assert(cond, why)
 

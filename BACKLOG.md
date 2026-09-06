@@ -2896,3 +2896,35 @@ the case for the re-association, but did not measure for the
 closures. Native is also where `channelChunks` beats `channelElem` by
 the most (2.1–4.6x): whatever is done here, the chunks door is the
 Native reader's first move already.
+
+## raft-wire-election-flake — DONE 2026-09-07: Live-tagged, and made robust where it now runs
+
+The operator's rule, stated again 2026-09-07: every flake moves to
+the integration tests. `TestRaftWire` is tagged `Live` -- out of the
+default gate, run by `sbt integrationTest` -- after failing three full
+gates in two days under matrix load while passing 3/3 in isolation
+every time. Two fixes went in with the tag, for the run it now has:
+the cluster is built through a retrying door (`freePort` closes its
+socket and the node binds later; the 2026-09-06 gate lost that race
+to a BindException) that closes half-built nodes before trying again,
+and the waits around the protocol are budgets a loaded box can meet
+(election 15s, settle 6s, commit 15s; the nodes' own 20/200/50ms
+timings are the law and are untouched). Verified: excluded from the
+gate, and 5/5 under the integration flag with four CPU burners
+running.
+
+The same day, the same rule, a second suite: `TestSupervision` ("the
+default is Stop -- a failure ends the actor") missed its 5s wait for
+`stopped` once under a full matrix at load 8, after 2/2 other full
+gates; 20/20 in isolation under four burners. Tagged `Live`, wait
+budget 30s; `TestPoisonLaws` keeps `stopped`-after-poison in the gate.
+
+Audit note on this section: its remaining `[ ]` items --
+channel-impls, channel-impls-correctness, ring-channel-waiters,
+channel-ring-unbounded, channel-multififo-many-producers -- are not
+flakes, and the channel rewrite of 2026-09-05/06 answered three of
+them under other names: the ring channel is `SentinelChannel` (the
+default), the unbounded ring is `Segments`, many-producer FIFO is
+`AdaptiveFifo` behind `Queues.relaxed`/`adaptive`. They are left in
+place for a reader of this section's history; a later audit may close
+them against those commits.

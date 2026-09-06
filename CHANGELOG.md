@@ -1,5 +1,46 @@
 # Changelog
 
+## raft-wire-flake — the last open flake moves to the integration tests, and is made robust where it now runs
+
+The operator's rule, restated 2026-09-07: every flake moves to the
+integration tests. `TestRaftWire` — three real nodes over real
+sockets, real threads, wall-clock waits — failed three full gates in
+two days under matrix load (twice "the survivors did not commit after
+failover" against a 3000ms wait at load 25–30, once a `BindException`
+from `freePort`'s close-then-bind window) and passed 3/3 in isolation
+every time. It is now tagged `Live`: out of the default gate, run by
+`sbt integrationTest`, where it still has to be green.
+
+Two changes went in with the tag, for that run and not as an excuse
+for it. The cluster is built through a retrying door that re-picks
+ports on `BindException` and closes the nodes already built before
+trying again, so a lost port race is a non-event and no half-built
+node leaks its accept and tick threads. And the waits around the
+protocol became budgets a loaded box can meet — election 15s, settle
+6s, commit 15s — while the nodes' own timings (tick 20ms, election
+200–400ms, heartbeat 50ms) stay exactly as they were: they are the law
+under test, the budgets are the box. Verified: the default gate does
+not run the suite; under the integration flag it passed 5/5 with four
+CPU burners loading the box.
+
+**A second one surfaced while this lane's gate ran.** `TestSupervision`
+— "the default is Stop: a failure ends the actor" — missed its 5s wait
+for `stopped` once, under a full matrix at load 8, after passing 2/2
+other full gates that day; twenty runs in isolation under four CPU
+burners at load 9–17 then passed 20/20. That is the matrix-load
+shape — a wall-clock wait over a virtual thread sharing its carriers
+with forty forked JVMs — so the same rule applies: tagged `Live`, and
+its wait given the box's budget (30s). `stopped`-after-poison stays
+under the default gate through `TestPoisonLaws`, which asserts the
+same thing and has not flaked.
+
+Of the flakes the board had recorded, this was the only one still
+open — the others were already `Live`. The board's "Flakes observed"
+section also carried five open items that are not flakes at all but
+channel work from before the channel rewrite; three of them were
+answered under other names (`SentinelChannel`, `Segments`,
+`AdaptiveFifo`), and the section now says so.
+
 ## bench-cross — the first numbers off the JVM: four shapes on JVM, JS and Native from one source
 
 Fifty-five modules cross-built for three platforms, and every one of
