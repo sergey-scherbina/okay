@@ -1,0 +1,14 @@
+task: actor-ask-timer (arm the timer only when the reply is not already there; a single-slot Reply; measured on actorAsk)
+agent: okay-42
+started: 2026-09-06
+branch: feature/actor-ask-timer
+
+why: BACKLOG `actor-ask-timer`: every ask arms a timer through
+  Async.race(box.receive, Async.sleep(within)) whether the answer takes a
+  microsecond or never comes, and Reply is a Channel[R](2) for one
+  value. The timer-executor lane already took -20.7% bytes/ask; what is
+  left is the shape. Two cheap variants, each measured against the
+  current actorAsk under JMH -prof gc: (1) after the send, take the
+  reply synchronously if it is already in the box and race only
+  otherwise; (2) Reply as a single-slot box instead of a channel. Laws:
+  the actor suites, the ask-timeout law, one reply per ask.
