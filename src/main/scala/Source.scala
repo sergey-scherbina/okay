@@ -126,11 +126,32 @@ extension [A](s: Source[A])
    * competitor's terminal actually returns — wants.
    */
   def runCollect: Vector[A] ! Async =
-    def go(rest: Source[A], acc: Vector[A]): Vector[A] ! Async =
-      Writer.uncons[A, Unit, Async](rest).flatMap:
-        case Right((a, more)) => go(more, acc :+ a)
-        case Left(_) => okay.pure(acc)
-    go(s, Vector.empty)
+    // ONE walk, not two (close-the-gaps, 2026-09-06). The first cut
+    // did `uncons` per element and rebuilt the rest as a new program
+    // -- `flatMap` per element -- which the Async handler then
+    // interpreted a second time: every element cost a Free node here
+    // and a step there. `Writer.run` is the tail loop the Writer
+    // handler already has: it walks the tree once, forwarding only
+    // the Async operations it meets. Measured 201 -> (see history.tsv)
+    // The split is on `TypeableK[Async]` -- concrete -- not on
+    // `TypeableK[Writer % A]`, whose derivation at an abstract A is
+    // an unchecked type test (E092, the TypeableK caveat). Same loop
+    // shape as `Writer.foldWith`: tail-recursive across tells,
+    // re-entered through `flatMap` only when an Async operation
+    // has to be forwarded.
+    import !.*
+    import scala.annotation.tailrec
+    def again(acc: Vector[A])(x: Source[A]): Vector[A] ! Async = loop(acc)(x)
+    @tailrec def loop(acc: Vector[A])(x: Source[A]): Vector[A] ! Async =
+      (x.resume: @unchecked) match
+        case Free.Pure(_) => okay.pure(acc)
+        case Effect(e) => <|>[Async, Writer % A](e) match
+          case Left(g) => Effect(g).map(_ => acc)
+          case Right(Writer.Say(a)) => okay.pure(acc :+ a)
+        case Bind(Effect(e), k) => <|>[Async, Writer % A](e) match
+          case Left(g) => Effect(g).flatMap(v => again(acc)(k(v)))
+          case Right(Writer.Say(a)) => loop(acc :+ a)(k(()))
+    loop(Vector.empty)(s)
 
   /**
    * Run `f` for each element, in order — `ZStream#runForeach`,

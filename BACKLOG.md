@@ -2370,3 +2370,20 @@ at their own N and put the row beside the singleton one — do not scale
 the N=2000 number. Same for `fs2.Stream.range` anywhere it feeds a
 competitor lane: it is per-element by construction (3.10.2,
 Stream.scala:3981), and `emits`/`chunkN` is the chunked spelling.
+
+## close-the-gaps — refuted attempts, so nobody tries them blind
+
+- `Chunks.elements` as a single cursor over the chunk walk (no
+  `Iterator.flatMap`): 23.3 → 22.5, inside noise. Boxing through
+  `Iterator[A]` is the per-element cost; the win is the chunk-native
+  path, which exists. Reverted 2026-09-06.
+- JVM `Fiber.joinEither` on `CompletableFuture.get()`: 19.6 → 22.3,
+  worse in all three rounds — `get()` spins before parking. Reverted
+  2026-09-06. If the join is ever revisited, the thing to try is a
+  fast path that reads the future's completed value without
+  registering a callback, NOT a different park.
+- `runForeach` still has the uncons+flatMap-per-element shape that
+  `runCollect` had; its callback returns a program per element, so
+  `foldWith`'s pure step does not fit. A walk that runs `f(a)`'s
+  program in place between tells would be the same 40 % — filed, not
+  measured.

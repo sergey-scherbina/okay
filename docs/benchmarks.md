@@ -276,6 +276,16 @@ schedulers, run-loops and interruption protocols; kyo sits close to
 the metal too (its scheduler is excellent) — we simply refuse to
 compete by NOT having one.
 
+**The 8 µs did not reproduce (close-the-gaps, 2026-09-06).** In three
+alternating rounds at `-f 1` on a quiet box, `okaySpawn` read 19.6
+against `rawLoom`'s 19.1 and kyo's 17.0 — about 5 ns of fiber
+bookkeeping per fork/join, not 80. The table above is from another
+session and is left as measured; the ratio to quote is ~1.0x the
+floor. An attempt to shave the join — parking on the
+`CompletableFuture` directly instead of through the fiber's
+callback and a slot — measured WORSE, 19.6 → 22.3 in every round
+(`get()` spins before it parks), and was reverted.
+
 ## 5. Stream pipeline — map/filter/take(1000)/sum
 
 | Iterator (floor) | **Staged** | **Okay chunked** | **Okay elements** | Okay iterator | Okay LazyList | kyo Stream.range | kyo singleton | ZIO | fs2 |
@@ -826,8 +836,20 @@ specialised form since a generic step allocates a tuple per call that
 a hand-written `Long` loop does not, but the two produce identical
 streams (tested).
 
-**`runCollect`/`runForeach` — added for API parity, and it is an
-honest trade, not a free one.** `Source` gained `runCollect: Vector[A]
+**`runCollect` — was a trade, is now a win (close-the-gaps,
+2026-09-06).** The first cut did `uncons` per element and rebuilt the
+rest as a new program, which the Async handler then interpreted a
+second time — a Free node here and a step there for every element.
+Rewritten as the one tail-recursive walk `Writer.foldWith` already
+uses, split on `TypeableK[Async]` (concrete) rather than
+`TypeableK[Writer % A]` (an unchecked type test at an abstract `A`):
+alternating A/B, three rounds, medians **200.4 → 119.6, 0.60x** —
+now 25 % FASTER than `toLazyList.foldLeft`'s 158.5 in the same runs,
+where the paragraph below had it 30 % slower. That paragraph stays as
+the record of what was measured before the fix.
+
+**`runCollect`/`runForeach` — added for API parity, and it was an
+honest trade, not a free one (as first measured).** `Source` gained `runCollect: Vector[A]
 ! Async` and `runForeach(f: A => Unit ! Async): Unit ! Async` at this
 library's own `run`-prefix (`Writer.run`, `Async.run`, `!.run`) —
 programs, not values forced by `CanBlock`, unlike `toLazyList`. That

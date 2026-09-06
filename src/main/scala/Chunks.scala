@@ -403,6 +403,13 @@ object Chunks {
   extension [A](p: Chunks[A])
     /** the element view: one tree step per chunk, an index per element */
     def elements: Iterator[A] =
+      // TRIED AND REFUTED (close-the-gaps, 2026-09-06): one cursor
+      // over the chunk walk instead of `flatMap(_.iterator)`, to
+      // drop the second iterator protocol per element. A/B medians
+      // 23.3 -> 22.5, inside the run's own noise (controls moved
+      // 4-5%). The per-element cost here is boxing through
+      // Iterator[A], not the protocol; the chunk-native path
+      // (`Chunks.map`/`fold`) is the one that avoids it, at 9.5.
       summon[Stream[Producer, okay.Pure]].iterator(p).flatMap(_.iterator)
 
     /** the chunks, memoized (first-order: see merge) */

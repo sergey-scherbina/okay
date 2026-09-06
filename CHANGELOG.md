@@ -1,5 +1,44 @@
 # Changelog
 
+## close-the-gaps — where okay was not first, taken as work: one win kept, two attempts refuted and recorded
+
+The operator, on the corrected tables: *if they can do better, why
+can't we?* Every row where okay is not first is either a stated
+design price or unfinished work. This lane took the second kind under
+the performance skill's protocol — prediction written before the
+number, alternating A/B against master, three rounds, medians — and
+kept exactly what moved.
+
+**Kept: `Source.runCollect`, 200.4 → 119.6 µs (0.60x).** It did
+`uncons` per element and rebuilt the rest as a new program, which the
+Async handler then interpreted a second time. Now one tail-recursive
+walk, the shape `Writer.foldWith` already has, split on the concrete
+`TypeableK[Async]` — the first cut used `Writer.run` and tripped E092,
+an unchecked type test at an abstract `A`. `runCollect` is now 25 %
+faster than `toLazyList.foldLeft` where §6c had it 30 % slower.
+
+**Refuted and reverted: `Chunks.elements` as one cursor** instead of
+`flatMap(_.iterator)`. 23.3 → 22.5, inside the run's own 4–5 %
+control swing. The per-element cost is boxing through `Iterator[A]`,
+not the second protocol; the chunk-native path avoids it at 9.5.
+
+**Refuted and reverted: JVM `Fiber.join` on `CompletableFuture.get()`**
+instead of `onComplete → Slot → park`. 19.6 → 22.3, worse in every
+round: `get()` spins before it parks, the slot parks at once. And a
+finding on the way — `okaySpawn` reads 19.6 against `rawLoom`'s 19.1
+in this session, so §4's "8 µs over the floor" is ~0.5 µs here; the
+table is left as measured with that beside it.
+
+**Stated, not attempted:** `Source.unfold`'s 13 % over `range` is the
+`Option`/tuple its signature promises (kyo and ZIO pay the same);
+`Cont`'s 89 against kyo's 58 is a lazy tree's rotation per left-nested
+bind against construction that evaluates, and `Eager` (4.8) is that
+trade offered per program rather than as the only semantics. Neither
+is a row to chase without changing what the API means.
+
+Both refutations are in the code where the next person would try
+them, in history.tsv, and here. Six ledger rows.
+
 ## free-cont-stack — the optimization was counted before it was written, and it was not there
 
 `channel-per-element-effect-cost` had been the largest measured gap on

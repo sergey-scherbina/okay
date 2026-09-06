@@ -108,6 +108,12 @@ object Schedulers {
       f.whenComplete((v, e) => k(if e == null then Right(v) else Left(unwrap(e))))
       ()
     def cancel(): Unit = interrupt()
+    // TRIED AND REFUTED (close-the-gaps, 2026-09-06): overriding
+    // joinEither to park on `f.get()` directly instead of through
+    // onComplete -> Slot -> park. Alternating A/B, three rounds,
+    // medians: 19.6 -> 22.3us per 100 fork/joins, WORSE in every
+    // round. CompletableFuture.get spins before it parks; the Slot
+    // path parks at once, and on a virtual thread that is cheaper.
 
   /** one Loom virtual thread per fiber: blocking parks, for free */
   val loom: Scheduler = new:
