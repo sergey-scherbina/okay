@@ -848,6 +848,18 @@ now 25 % FASTER than `toLazyList.foldLeft`'s 158.5 in the same runs,
 where the paragraph below had it 30 % slower. That paragraph stays as
 the record of what was measured before the fix.
 
+**`runForeach` — the same fix, the same day (runforeach-one-walk).**
+It had the identical double walk; a tell now embeds `f(a)` with one
+`Bind` and the walk continues inside it. Alternating A/B, three
+rounds, medians: **159.7 → 99.9, 0.63x** on the collection lane — now
+28 % faster than `toLazyList.foreach`'s 139.5 in the same runs. The
+channel lanes did NOT move (209.1 → 213.3, 1.02x), and that is the
+finding: `.drained` forwards an Async operation per element, so a
+`Bind` per element remains whatever the walk does — the elementwise
+channel row is bounded by the channel's per-element operation, not by
+`runForeach`. The chunk-native row (20.4 → 20.2) does its work inside
+the chunk and was predicted not to move.
+
 **`runCollect`/`runForeach` — added for API parity, and it was an
 honest trade, not a free one (as first measured).** `Source` gained `runCollect: Vector[A]
 ! Async` and `runForeach(f: A => Unit ! Async): Unit ! Async` at this

@@ -162,11 +162,24 @@ extension [A](s: Source[A])
    * call site, same as anywhere else in this library.
    */
   def runForeach(f: A => Unit ! Async): Unit ! Async =
-    def go(rest: Source[A]): Unit ! Async =
-      Writer.uncons[A, Unit, Async](rest).flatMap:
-        case Right((a, more)) => f(a).flatMap(_ => go(more))
-        case Left(_) => okay.pure(())
-    go(s)
+    // ONE walk (runforeach-one-walk, 2026-09-06), the same move as
+    // `runCollect` above: `uncons` built a program per element -- a
+    // Pure, an Either, a Bind and a call -- which the Async handler
+    // then interpreted beside f(a)'s own. Now a tell embeds f(a) with
+    // ONE Bind and the walk continues inside it; a forwarded Async
+    // operation re-enters the loop the way `Writer.foldWith` does.
+    // Same order, same effects; stack safety is the trampoline's, as
+    // before, since every element re-enters through flatMap.
+    import !.*
+    def loop(x: Source[A]): Unit ! Async = (x.resume: @unchecked) match
+      case Free.Pure(_) => okay.pure(())
+      case Effect(e) => <|>[Async, Writer % A](e) match
+        case Left(g) => Effect(g).map(_ => ())
+        case Right(Writer.Say(a)) => f(a)
+      case Bind(Effect(e), k) => <|>[Async, Writer % A](e) match
+        case Left(g) => Effect(g).flatMap(v => loop(k(v)))
+        case Right(Writer.Say(a)) => f(a).flatMap(_ => loop(k(())))
+    loop(s)
 
   /**
    * Merge two sources by READINESS, back into a source — the

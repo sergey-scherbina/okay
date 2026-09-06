@@ -1,5 +1,34 @@
 # Changelog
 
+## runforeach-one-walk — the double walk, removed from the other consumer
+
+`Source.runForeach` had exactly the shape `runCollect` had until
+close-the-gaps: `uncons` built a program per element, `flatMap`
+rebuilt the rest, and the Async handler interpreted both beside
+`f(a)`'s own. Now one walk: a tell embeds `f(a)` with a single `Bind`
+and continues inside it; a forwarded Async operation re-enters the
+loop as `Writer.foldWith` does. Same order, same effects, the
+trampoline's stack safety as before.
+
+Prediction in the claim before the number: 100–130 on the collection
+lane, the chunk-native channel row barely moving. Alternating A/B,
+three rounds, medians: **159.7 → 99.9 (0.63x)**, every round 98–103
+after against 138–161 before; controls within 5 %. `runForeach` is now
+28 % faster than `toLazyList.foreach` where §6c had it "close to".
+
+**The channel lanes did not move, and that is worth more than the
+win.** `okayChannelForeach_elem_runForeach` 209.1 → 213.3. `.drained`
+forwards an Async operation per element, so a `Bind` per element
+remains whatever the consumer's walk does: the elementwise channel row
+is bounded by the channel's per-element operation. The next lever on
+that row is in the channel, not in any consumer — which is what
+`channel-per-element-effect-cost` already said from the profile, now
+confirmed from the other side.
+
+Five ledger rows. A sibling's sbt appeared during two of the six arms;
+the controls held within 5 % and the rounds agree, so the number
+stands with that noted rather than re-run.
+
 ## matrix-kill-by-process-group — SETTLED: the 143 is a pkill, and the entry blamed the wrong thing for two days
 
 The trap set by `gate-143-mechanism` fired during this lane's own

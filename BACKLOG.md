@@ -2498,8 +2498,6 @@ Stream.scala:3981), and `emits`/`chunkN` is the chunked spelling.
   2026-09-06. If the join is ever revisited, the thing to try is a
   fast path that reads the future's completed value without
   registering a callback, NOT a different park.
-- `runForeach` still has the uncons+flatMap-per-element shape that
-  `runCollect` had; its callback returns a program per element, so
-  `foldWith`'s pure step does not fit. A walk that runs `f(a)`'s
-  program in place between tells would be the same 40 % — filed, not
-  measured.
+- `runForeach` — DONE (runforeach-one-walk, 2026-09-06): 159.7 → 99.9,
+  0.63x. The channel lanes did not move: their per-element cost is the
+  Async operation `.drained` forwards per element, not the walk.
