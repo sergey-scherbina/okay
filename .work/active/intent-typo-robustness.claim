@@ -1,0 +1,14 @@
+task: intent-typo-robustness (a typo's cost per tier, and the two fixes measured: smaller n, more rows)
+agent: okay-42
+started: 2026-09-07
+branch: feature/intent-typo-robustness
+
+why: BACKLOG intent-typo-robustness: one deterministic transposition in
+  the longest word took the chargram model from 61.7% to 55.0% on
+  2026-09-04, against the argument that character n-grams survive a
+  typo. Two measurable fixes are named — a smaller n, more rows — and
+  TestSecondAuthor already holds the transposition protocol. Measure:
+  the chargram model at (3,5), (2,4), (2,3) and the word TF-IDF tier as
+  the control that SHOULD collapse, clean and typo'd, on today's fixture
+  (grown since the 61.7%). The number decides whether the default n
+  moves; nothing else changes.
