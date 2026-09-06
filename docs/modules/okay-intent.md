@@ -34,6 +34,7 @@ rather than a class of parsing bug.
 | `Rows` / `ByLanguage` | a training row knows its language; a thin language borrows the pooled fit |
 | `Temporal` | temporal phrases to ISO-8601 in the fixture's eight languages (en, fr, de, es, ru, uk, pl, ja), total and deterministic, refusing rather than guessing |
 | `Duration` | duration phrases to minutes (`30 minutes`, `an hour and a half`, `1h30`, `une demi-heure`, `полтора часа`, `2時間半`) in the same eight languages as `Temporal`, the same two promises; `Slots.duration` is the slot |
+| `People` | how many people (`four people`, `six of us`, `vier Personen`, `на четверых`, `4人用`), eight languages, the same promises; `Slots.people` is the slot; `Numbers` holds the number words both parsers read |
 
 **The dependency is `String => Embedding`, not "a server".** The vector
 tiers need a function; whether it is an HTTP call or an in-process

@@ -2715,7 +2715,16 @@ subtraction.
       okay-intent should hold the composed door itself, with the demo
       as its caller rather than its definition. Also named on
       2026-09-04 and unfiled until now.
-- [ ] intent-extract-more-slots — durations DONE 2026-09-07
+- [ ] intent-extract-more-slots — people DONE 2026-09-07
+      (intent-extract-people): `People.parse`/`find` — a count beside a
+      people-word (`four people`, `six of us`, `a team of 5`, `vier
+      Personen`, `dla czterech osób`, `4人用`), the Slavic collective
+      numerals counting by themselves (`на четверых`, `на чотирьох`),
+      1..1000, `None` otherwise; `Slots.people`; the fixture's
+      book-room row counts four in all eight languages; number words
+      shared with `Duration` through `Numbers`. Left here: named
+      entities (who) and places — neither is a parser. Durations DONE
+      2026-09-07
       (intent-extract-duration): `Duration.parse`/`find` (minutes; a
       number and a unit, `1h30`, `90m`, the spoken fractions, number
       words, `and a half`; total and deterministic like `Temporal`)

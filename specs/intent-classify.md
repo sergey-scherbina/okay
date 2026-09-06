@@ -3413,3 +3413,29 @@ dictionary facts rather than corpus data — under the law that one
 meaning has one value whatever the wording, and the phrases inside a
 sentence in each language with the evidence as the phrase. A ninth
 language is a lexicon.
+
+## Results — intent-extract-people (2026-09-07)
+
+**The third parsed slot, and the first with its law in the fixture
+from the start.** `People.parse` reads a count beside a people-word —
+`a room for four people`, `4 people`, `six of us`, `a team of 5`, `12
+attendees`; `quatre personnes`, `vier Personen`, `cuatro personas`,
+`5 человек`, `трое участников`, `6 осіб`, `dla czterech osób`, `trzy
+osoby`, `4人用`, `6名` — and the Slavic collective numerals that count
+people by themselves (`на четверых`, `на чотирьох`, `czterech` after
+`dla`). A number with nothing to count is `None` (`for 4`, `room 4`,
+`at 3pm`, `in 30 minutes`), as is a bare number word and any count
+outside 1..1000. `People.find` is the evidence rule; `Slots.people`
+asks in `when`'s six languages.
+
+The parallel fixture's book-room row — "Could you book a room for four
+people?" — carries the count in all eight languages, so the law that
+took a fixture of its own for durations held here from the first
+commit: four in every wording. A `Proposal` frame of when, duration
+and people fills all three from "Can we meet next Tuesday for an hour,
+six of us?" with nothing left to ask. The number words moved out of
+`Duration` into `Numbers`, one place both parsers read; a fourth
+counting parser is a people-word list and a call. On the more-slots
+entry `who` and places remain, and neither is a parser: a name is
+whatever the message says it is, and that is the model tier's job or
+a person's.

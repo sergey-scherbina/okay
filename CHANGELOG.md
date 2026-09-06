@@ -1,5 +1,23 @@
 # Changelog
 
+## intent-extract-people — how many people: `People.parse`/`find` and `Slots.people`, eight languages from the first commit
+
+The third parsed slot. `People.parse` reads a count beside a
+people-word — `a room for four people`, `4 people`, `six of us`, `a
+team of 5`, `12 attendees`; `quatre personnes`, `vier Personen`,
+`cuatro personas`, `5 человек`, `6 осіб`, `dla czterech osób`, `4人用`
+— and the Slavic collective numerals that count people by themselves
+(`на четверых`, `на чотирьох`); a number with nothing to count (`for
+4`, `room 4`, `at 3pm`) is `None`, as is anything outside 1..1000.
+`People.find` keeps the shortest-window evidence rule; `Slots.people`
+asks in `when`'s six languages; a `Proposal` frame of when, duration
+and people fills all three from "Can we meet next Tuesday for an
+hour, six of us?". The parallel fixture's book-room row carries the
+count in all eight languages, so `Temporal`'s law held from the first
+commit. The number words moved out of `Duration` into `Numbers`, one
+place both parsers read. On the more-slots entry `who` and places
+remain; neither is a parser.
+
 ## intent-duration-multilingual — `Duration` reads the fixture's other seven languages
 
 The same shape `Temporal` took the day before: a lexicon per language

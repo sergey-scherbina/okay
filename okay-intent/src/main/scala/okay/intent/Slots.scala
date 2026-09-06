@@ -41,6 +41,20 @@ object Slots:
       extract = s => Duration.find(s),
       show = (v, _) => if v % 60 == 0 then s"${v / 60}h" else if v > 60 then s"${v / 60}h${v % 60}" else s"${v}min")
 
+  /** how many people — `People`'s parser and extractor */
+  val people: Slot[Int] =
+    Slot(
+      name = "people",
+      ask = Map(
+        "en" -> "How many people will attend?",
+        "fr" -> "Combien de personnes participeront ?",
+        "de" -> "Wie viele Personen nehmen teil?",
+        "es" -> "¿Cuántas personas asistirán?",
+        "ru" -> "Сколько человек будет?",
+        "ja" -> "何名で参加されますか。"),
+      parse = s => People.parse(s),
+      extract = s => People.find(s))
+
   /** a plain text slot, for the frames whose fields are not parsed at
    * all — most of them, and there is no shame in it */
   def text(name: String, ask: Map[String, String], required: Boolean = true,
