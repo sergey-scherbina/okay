@@ -1719,3 +1719,28 @@ move, not this one's guess.
 Nothing on this page changed code. It names three next lanes with
 their evidence: a receive-side offer-first for the actor loop, the
 `Reply` timer, and the bridge's profile.
+
+### 17a. The receive-side offer-first, measured in both regimes and declined
+
+`actor-receive-offer-first` built the mirror of `feed-offer-first` for
+the actor loop: a synchronous `receiveNow` on `Channel` (one `Poll.Got`
+allocation against the handshake's five) and a loop that polls before
+it parks. Laws held, 8 of 8. Then the A/B, old loop against new, in
+the two regimes an actor lives in (`actorTellBacklog` is the new lane;
+control `channelBuffer` 199–203 throughout):
+
+| regime | old loop | poll-first loop | time | bytes |
+|---|---|---|---|---|
+| mailbox empty (`actorTell`: a trivial behaviour outruns a producer paying an Await per tell) | 343.7 ±3.2 / 1 842 119 | 410.3 ±7.2, 412.6 ±14.8 / 1 583 795 | **+19%** | −14% |
+| mailbox full (`actorTellBacklog`: 4000 messages offered before the actor starts) | 114.5 ±0.7 / 811 257 | 95.0 ±1.8, 112.3 ±15.1 / 523 280 | −17% / ~0 | **−35%** |
+
+A failed poll is one more read of the cache line the producer is
+writing — about 17ns, and 4000 of them are the 67us the empty regime
+lost. The full regime wins because the producer is idle and the line
+is not contended. A responsive actor's mailbox is empty most of the
+time, so the loop change is a regression in the common case and was
+reverted; the benchmark keeps both regimes so the next attempt is
+judged on both. The design that wins in both is filed as
+`actor-receive-fused`: fold the try into `receiveAsync`'s own first
+scan so a hit costs no second read, and merge the slot with its
+callback into one object so a miss allocates one thing, not two.

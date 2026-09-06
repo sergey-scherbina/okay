@@ -2658,3 +2658,53 @@ demand accounting, is the 738 bytes.
 specialised without a second trait — but worth one line in the actor
 docs, now written: give a behaviour an `AnyRef` state. Closed by the
 doc line; kept here so the sample count has a home.
+
+## actor-stop-strands — Supervise.Stop closes with accepted messages inside, and `stopped` is never true
+
+Found 2026-09-06 writing a law for actor-receive-offer-first. On a
+poisonous message under `Supervise.Stop` (and `Escalate`) the loop
+does `mailbox.fail(e); mailbox.close(); running = false` — and stops
+READING. Messages already accepted behind the poisonous one stay in
+the mailbox, nobody drains them, and `ActorRef.stopped`, which is
+`mailbox.finished` — "every accepted element handed over" — can never
+become true. This is not the poll-first loop's doing: the old loop did
+exactly the same. It is a standing semantics, and it is at odds with
+the module's own note that `stop()` DRAINS under the strong contract.
+Two honest shapes: drain-and-discard the rest before closing (so
+`stopped` means what it says and the stranded messages are
+acknowledged as dropped), or document that a supervised stop strands
+and `stopped` is not the thing to wait on. Either way the actor docs'
+"stop, DRAINING" line needs a qualifier. Not taken in the lane that
+found it; the law there waits on the closed mailbox instead.
+
+## actor-receive-offer-first — MEASURED AND DECLINED 2026-09-06: +19% in the regime that matters
+
+Built: `receiveNow(): Poll[A]` on `Channel` (default `Empty`,
+`SentinelChannel` answering from the ring, refusing while a receiver is
+parked as `offer` refuses while a sender is), and the actor loop
+polling before it parks. Eight laws held. The A/B against the old loop
+in both regimes (§17a): **+19% time with an empty mailbox** (−14%
+bytes), −17%/~0 time and −35% bytes with a full one. A failed poll is
+a second read of the producer's cache line, ~17ns × 4000 = the 67us
+lost; a responsive actor's mailbox is empty most of the time. Reverted
+in full — no `receiveNow`, no `Poll`, the loop as before. Kept: the
+`actorTellBacklog` lane, so both regimes are always measured, and the
+poison laws (`TestPoisonLaws`), which held for the old loop and had
+never been written.
+
+## actor-receive-fused — the shape that wins in both regimes, not yet built
+
+Why offer-first loses on receive when it won on send: a failed `offer`
+reads the producer's OWN line (the ring tail it is about to write, no
+contention); a failed poll reads the line the OTHER side writes. So
+the try must not be a second scan. Fold it into `receiveAsync`'s first
+scan — a variant that RETURNS `Got(a)` when its first pop hits and
+only otherwise enqueues, rechecks and answers through the callback —
+so a hit is one scan and one small object, and a miss is exactly the
+old path. And the handshake a miss pays is a `Slot` plus a callback
+lambda: make the callback BE the slot (one object with `value`,
+`filled`, `waiter` and `apply`), which halves `CanBlock.block`'s
+allocation for every caller, not only the actor. Expected: the full
+regime's −35% bytes kept, the empty regime at parity or better.
+Measure both with `actorTell` and `actorTellBacklog`; the A/B method
+is in §17a.

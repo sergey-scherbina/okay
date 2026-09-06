@@ -56,6 +56,24 @@ class ActorReactiveBenchmark {
     a.stop().runWith
     sum.getOrElse(-1L)
 
+  /**
+   * The BACKLOG regime: the mailbox already holds all N messages when
+   * the actor starts, so every receive finds one waiting. `actorTell`
+   * is the opposite regime -- a trivial behaviour outruns a producer
+   * that pays an Await per tell, so the mailbox is nearly always empty.
+   * A poll-first loop wins here and loses there; both numbers are the
+   * trade, neither alone is.
+   */
+  @Benchmark
+  def actorTellBacklog(): Long =
+    val mailbox = Channel[Msg](8192)
+    var i = 0L
+    while i < N do { mailbox.offer(Msg.Add(i)); i += 1 }
+    val a = Actor.spawn(0L, mailbox, Supervise.Stop)(summing).runWith
+    val sum = a.ask(Msg.Get.apply, within = 10_000).runWith
+    a.stop().runWith
+    sum.getOrElse(-1L)
+
   /** the control: the same N through the mailbox's own shape, no actor */
   @Benchmark
   def channelBuffer(): Long =

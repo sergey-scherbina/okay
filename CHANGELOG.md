@@ -1,5 +1,54 @@
 # Changelog
 
+## actor-receive-offer-first — built, measured in both regimes, and declined: +19% where an actor lives
+
+The mirror of `feed-offer-first`, for the loop that reads one message
+at a time. Built in full: a synchronous `receiveNow` on `Channel` —
+one `Poll.Got` against the handshake's five objects, refusing while a
+receiver is parked as `offer` refuses while a sender is — and the
+actor loop polling before it parks. Eight laws held.
+
+**Then the A/B, old loop against new, in the two regimes an actor
+lives in.** With an empty mailbox (`actorTell`: a trivial behaviour
+outruns a producer paying an Await per tell): 343.7 → 410.3 us,
+**+19%**, at −14% bytes. With a full one (`actorTellBacklog`, a new
+lane: 4000 messages offered before the actor starts): 114.5 → 95.0 us,
+−17%, at **−35% bytes**. The control held at 199–203 throughout.
+
+Why the mirror does not mirror: a failed `offer` reads the producer's
+OWN cache line — the tail it is about to write, uncontended — while a
+failed poll reads the line the OTHER side is writing. About 17ns, and
+4000 of them are the 67us the empty regime lost. A responsive actor's
+mailbox is empty most of the time. So the change is a regression in
+the common case, and it is reverted in full — no `receiveNow`, no
+`Poll`, the loop as it was. `src` is byte-identical to master.
+
+What lands: the second regime as a permanent lane, so no future
+attempt is judged on one; the poison laws (`TestPoisonLaws` — every
+message once, in order; `Resume` skips exactly the poisonous one;
+`Stop` closes after the ones before it), which held for the old loop
+and had never been written; and the design that should win in both
+regimes, filed as `actor-receive-fused`: fold the try into
+`receiveAsync`'s own first scan so a hit costs no second read, and
+make the callback BE the slot so a miss allocates one object, not two
+— which would halve `CanBlock.block`'s allocation for every caller.
+
+Writing the Stop law found a standing semantics worth its own entry:
+under `Supervise.Stop` the loop closes the mailbox with the messages
+behind the poisonous one still accepted inside it, nobody drains them,
+and `ActorRef.stopped` — "every accepted element handed over" — is
+never true. The old loop did the same. Filed as `actor-stop-strands`;
+the law waits on the closed mailbox instead.
+
+The box, for the record: the JMH lock was held by a third worktree of
+the same neighbouring lane, at 0% CPU for seven minutes, beside three
+`ForkedMain` forks all at 0.0%. The lock file was removed; the
+processes were not touched. This lane's first full gate died at 1642
+green tests: the `named` sentinel 24 seconds before it, the sixth
+name-kill the trap has recorded today and the second to take a build
+with it. The `ps` snapshot before the kill shows a fork of theirs that
+had been asleep for five hours and thirty-seven minutes.
+
 ## actor-reactive-bench — the two modules with no numbers now have them, and three named next lanes
 
 `okay-actor` and `okay-reactive` had never been measured. Both sit on
