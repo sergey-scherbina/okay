@@ -1,0 +1,14 @@
+task: channel-entries-audit (boards only: close channel-impls and ring-channel-waiters against today's numbers, or say what is still open)
+agent: okay-42
+started: 2026-09-07
+branch: feature/channel-entries-audit
+
+why: both entries predate the channel rewrite and board-hygiene left them
+  open as "channel work filed in the wrong section". Their claims —
+  the waiter protocol eats half the ring's win (1.7x of 3.4x), the
+  RingChannel/CasChannel list still to build — are answered by §17f/§17g
+  (SentinelChannel elementwise 152-206 us ahead of StmChannel's 250; no
+  parks in the saturated regime; the head CAS, not the waiters, was the
+  cost) or are not. Read each claim against the ledger, close what is
+  answered with the commit that answered it, and leave open only what
+  a number still supports. No code.
