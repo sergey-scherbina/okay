@@ -30,15 +30,27 @@ final case class Web(
   cookies: Map[String, String] = Map.empty,
   body: String = "",
   params: Map[String, String] = Map.empty,
+  /** a multipart/form-data request's parts, in wire order; empty
+   * otherwise -- its non-file fields are ALSO in `form` */
+  parts: Vector[Part] = Vector.empty,
 ):
   /** a header by name, case-insensitively -- `headers` keeps the
    * wire's own spelling */
   def header(name: String): Option[String] =
     headers.collectFirst { case (k, v) if k.equalsIgnoreCase(name) => v }
 
+  /** the first uploaded FILE under that field name */
+  def file(name: String): Option[Part] = parts.find(p => p.name == name && p.isFile)
+
   /** a query or form field, whichever carries it (query wins) */
   def param(name: String): Option[String] =
     query.get(name).orElse(form.get(name)).orElse(params.get(name))
+
+/** One part of a multipart/form-data body -- a field or an uploaded
+ * file (`filename` present). See specs/okay-script.md "Uploads". */
+final case class Part(name: String, filename: Option[String], contentType: Option[String], bytes: Array[Byte]):
+  def text: String = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
+  def isFile: Boolean = filename.isDefined
 
 object Web:
   val empty: Web = Web("GET", "/")

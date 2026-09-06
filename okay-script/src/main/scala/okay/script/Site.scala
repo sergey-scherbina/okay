@@ -316,15 +316,22 @@ final class Site(
   private def webOf(r: Request, path: String, query: String, params: Map[String, String]): api.Web =
     val headers = r.headers.toMap
     val ct = r.headers.collectFirst { case (k, v) if k.equalsIgnoreCase("content-type") => v }.getOrElse("")
-    val bodyText = new String(r.body.bytes, UTF_8)
-    val form = if ct.startsWith("application/x-www-form-urlencoded") then parseQuery(bodyText) else Map.empty
+    val bodyBytes = r.body.bytes
+    val bodyText = new String(bodyBytes, UTF_8)
+    val parts =
+      if ct.regionMatches(true, 0, "multipart/form-data", 0, 19) then
+        Multipart.boundaryOf(ct).map(Multipart.parse(bodyBytes, _)).getOrElse(Vector.empty)
+      else Vector.empty
+    val form =
+      if ct.startsWith("application/x-www-form-urlencoded") then parseQuery(bodyText)
+      else parts.filter(!_.isFile).map(p => p.name -> p.text).toMap
     val cookies = r.headers.collect { case (k, v) if k.equalsIgnoreCase("cookie") => v }
       .flatMap(_.split(";").toVector)
       .flatMap { kv =>
         val i = kv.indexOf('=')
         if i <= 0 then None else Some(kv.substring(0, i).trim -> kv.substring(i + 1).trim)
       }.toMap
-    api.Web(r.method.name, path, parseQuery(query), headers, form, cookies, bodyText, params)
+    api.Web(r.method.name, path, parseQuery(query), headers, form, cookies, bodyText, params, parts)
 
 object Site:
   val SessionCookie = "OKAYSESSID"
