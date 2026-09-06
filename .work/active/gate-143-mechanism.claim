@@ -1,0 +1,34 @@
+task: gate-143-mechanism
+agent: okay-42
+started: 2026-09-06
+branch: feature/gate-143-mechanism (a script + a finding; no library code)
+
+why: matrix-kill-by-process-group names a mechanism it never verified,
+  and the team already serialises on the box because of it. Two of the
+  entry's own facts point away from it: TestTwoNode kills with
+  procA.destroyForcibly() -- by pid, SIGKILL -- while the victim gets
+  SIGTERM (143), and TestCluster spawns no OS process at all (its two
+  tests are an in-process worker and a socket worker). Meanwhile
+  CHANGELOG:8155 records the same signature with an ADMITTED cause:
+  "three full-matrix runs were SIGTERM-killed externally (a sibling
+  pkill, admitted in the room)". So the prescribed fix (kill by pid,
+  setsid the worker) may fix nothing.
+
+how: settle it before building anything. Run the matrix beside three
+  sentinels that discriminate the blast radius:
+    group  -- same session as the gate, no "sbt"/"java" in its argv
+    named  -- own session (os.setsid), "sbt-launch" IN its argv
+    plain  -- own session, neutral argv
+  Each heartbeats to a file every second, so its death time is known.
+  A group-directed kill takes `group` only; a `pkill -f sbt` takes
+  `named` only; an indiscriminate sweep takes all three; a targeted
+  kill of the gate takes none. Snapshot ps alongside.
+
+  Deliverable: scripts/gate-sentinels.sh so anyone can reproduce, plus
+  the first result recorded against the entry. NOT a fix -- the fix is
+  whatever the mechanism turns out to warrant.
+
+note: the `named` sentinel carries "sbt-launch" in its command line ON
+  PURPOSE, so a sibling's pkill would take it. That also means a
+  sibling's quiet-box check (pgrep -f sbt-launch) will see it while
+  this runs -- which is honest, the box IS busy then.
