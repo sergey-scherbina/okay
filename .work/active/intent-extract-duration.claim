@@ -1,0 +1,15 @@
+task: intent-extract-duration (the first of intent-extract-more-slots: a duration slot with a parser and an extractor, like `when`)
+agent: okay-42
+started: 2026-09-07
+branch: feature/intent-extract-duration
+
+why: BACKLOG intent-extract-more-slots: only `when` and whole-message
+  text have extractors; durations, amounts, places and people are
+  each a `Slot.extract` rather than a design. Durations first, because
+  a meeting frame asks "how long" right after "when": `Duration.parse`
+  (minutes; "30 minutes", "half an hour", "an hour and a half", "1.5h",
+  "45 min", "two hours"), total and deterministic like `Temporal`,
+  declining what it cannot read; `Duration.find` with the same
+  shortest-window evidence rule; `Slots.duration` asking in the same
+  languages `Slots.when` asks in. English phrases first; the other
+  languages' number-and-unit words are the follow-on, filed.
