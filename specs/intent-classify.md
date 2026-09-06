@@ -3206,3 +3206,52 @@ and the fixture's phrasing repeats. Neither is a tier to ship — the
 static table (63.3%, 5 MB) and the teacher remain the no-network and
 the accurate answers — but the question is answered, and it says the
 zero-network path's ceiling is the representation, not the head.
+
+## Results — intent-typo-robustness (2026-09-07)
+
+**A typo's cost per tier, and the window that buys it back.** The
+claim was that character n-grams survive a typo because a word's
+other windows still match; on 2026-09-04 one transposition in the
+longest word took the 3–5-gram model from 61.7% to 55.0%, and the
+entry named two fixes to measure rather than assume: a smaller n, more
+rows. The rows grew on their own (the same model reads 65.0% clean
+today); this is the window. `TestTypoRobustness`, default gate, the
+`TestCharGrams` split (60 train / 60 test), `TestSecondAuthor`'s
+deterministic transposition, the word TF-IDF tier beside as the
+control that should collapse:
+
+| window | clean @4096 | typo @4096 | clean @1024 | typo @1024 |
+|---|---|---|---|---|
+| (3,5) — the default | 65.0% | 55.0% (−10.0) | 61.7% | 53.3% (−8.3) |
+| (2,4) | 65.0% | 63.3% (−1.7) | 61.7% | 65.0% (+3.3) |
+| (2,3) | **68.3%** | **66.7%** (−1.7) | 58.3% | 66.7% (+8.3) |
+| (3,4) | 63.3% | 60.0% | 51.7% | 53.3% |
+| (4,6) | 56.7% | 60.0% | 50.0% | 48.3% |
+| word TF-IDF (control) | 61.7% | 56.7% (−5.0) | | |
+
+Both hash widths, because they interact: 4096 is `CharGrams`' own
+default, 1024 is `Fit`'s and the shipped model's (its (3,5) @1024
+column IS `Models.meeting`: 61.7% alone). The diagnosis in the entry
+holds: at sixty rows the 3–5-grams are too sparse for the redundancy
+the argument depends on — a six-letter word has four 3-grams and a
+transposition breaks three — while a 2–4 window keeps most of its
+windows, reads the same clean at both widths, and holds under the
+typo; 2–3 is better still at 4096. The control did what a vocabulary
+must: a transposed word is one it has never seen, five points.
+
+**And yet the default does not move, because a class does.** The
+shipped model was refitted at (2,4) and at (2,3) and run through its
+own laws (`TestModels`, `TestSecondAuthor`). The totals held or rose
+— 61.7% alone at (2,4), 75.0% behind the cues, the typo composite
+63.3 → 71.7% — and `Other` fell: recall 0.47 → 0.33, F1 0.56 → 0.45,
+under the 0.50 floor the per-class law asserts exactly so that a
+rising total cannot hide a dying class. `Other` is the class whose
+under-prediction routes out-of-domain traffic INTO a meeting intent
+(intent-other-more-rows), and fifteen rows of it are what a narrower
+window has to learn from. So `CharGrams.train` keeps (3,5), the
+artifact stays what it was measured as, and two things are filed:
+the grid above against the per-class law at each width
+(`intent-window-by-dim`), and the rows that would let the narrower
+window keep `Other` (`intent-other-more-rows`, already open). The
+word here is measured: a smaller n buys the typo back, and on this
+corpus it pays for it with the one class that must not be lost.

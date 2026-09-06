@@ -84,6 +84,22 @@ object CharGrams {
       s
     }
 
+  /**
+   * The 3–5 window stays the default, and the reason is a class, not
+   * a total (intent-typo-robustness, 2026-09-07, `TestTypoRobustness`
+   * and `TestModels`). Under one transposition in the longest word
+   * this window loses ten points at dim 4096 (65.0 → 55.0%) and eight
+   * at 1024 (61.7 → 53.3): at sixty rows its windows are too sparse
+   * for the redundancy the robustness argument depends on. A 2–4
+   * window reads the same clean at both widths and holds under the
+   * typo (63.3 / 65.0), and 2–3 is better still at 4096 — but at the
+   * shipped width every narrower window takes `Other`'s recall from
+   * 0.47 to 0.33 and its F1 below the 0.50 floor the shipped-model law
+   * asserts, while the total rises. A default that loses a class on
+   * the reference corpus is not a default; the way out is rows for
+   * that class (`intent-other-more-rows`), and the grid is filed as
+   * `intent-window-by-dim`. A model carries its own window.
+   */
   def train(labelled: Seq[(String, String)], dim: Int = 4096,
             low: Int = 3, high: Int = 5,
             epochs: Int = 400, rate: Double = 0.5): Trained =

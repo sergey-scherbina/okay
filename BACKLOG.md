@@ -432,6 +432,19 @@ construction instead of a type test per value).
       only if the inference form (no type argument) bites a consumer.
 
 ## Flakes observed (record → fix loop when they recur)
+
+- [ ] chat-demo-sessions-flake — `okay.demo.TestChatDemo` "demo-sessions:
+      a verified session is the identity of record" failed once in the
+      full matrix (2026-09-07, intent-typo-robustness' second gate, load
+      ~6): `java.io.IOException: HTTP/1.1 header parser received no
+      bytes` after 30.1 s, from `postJson` against a real Jetty port
+      (`withServer`, `Jetty.serve(0)`), the request thread's EOF. It
+      passed in the same lane's first gate forty minutes earlier and in
+      every gate of the day before it, and 3/3 in isolation right
+      after — the port/readiness family (flaky-port-roulette), not the
+      intent change beside it. Per the standing rule, the demo-sessions
+      tests over a real socket move to `Live` (`sbt integrationTest`);
+      the scripted-chat tests that never open a port stay in the gate.
 - [x] script-temp-snapshot-crosstalk — FIXED 2026-09-05 (same defect as
       the since-removed `script-temp-tests-watch-a-shared-directory`
       entry, filed separately and merged here): `TestScalaScript`'s
@@ -2458,7 +2471,28 @@ subtraction.
       `(Channel, String, String) => Unit` and `Mail.Send` has to plug
       in without anything else changing, which was their stated
       requirement.
-- [ ] intent-typo-robustness — character n-grams are supposed to
+- [ ] intent-window-by-dim — the n-gram window against the per-class
+      law at each hash width. intent-typo-robustness measured the
+      grid (specs, 2026-09-07): a 2–4 window survives a typo at both
+      widths and reads the same clean as 3–5, and at the shipped width
+      it takes `Other` from recall 0.47 to 0.33 while the total rises.
+      Two ways to a narrower default that keeps every class: more
+      `Other` rows (intent-other-more-rows — the class has fifteen),
+      or a wider hash at the narrower window (2–4 @4096 keeps its
+      classes? unmeasured: `TestModels`' per-class law runs on the
+      shipped dim only). Measure both on `TestModels`' laws before
+      moving the default; the typo grid is `TestTypoRobustness`.
+- [x] intent-typo-robustness — MEASURED 2026-09-07, default kept:
+      per window at both widths (`TestTypoRobustness`, default gate),
+      (3,5) 65.0 → 55.0% @4096 and 61.7 → 53.3 @1024 under one
+      transposition; (2,4) 65.0 → 63.3 / 61.7 → 65.0; (2,3) 68.3 →
+      66.7 / 58.3 → 66.7; the TF-IDF control 61.7 → 56.7. A smaller n
+      buys the typo back — and the shipped model refitted at (2,4) or
+      (2,3) loses `Other` (recall 0.47 → 0.33, F1 under the 0.50
+      per-class floor) while its totals rise, so the default stays
+      (3,5) and the reason is written on it. Filed
+      intent-window-by-dim; the rows are intent-other-more-rows.
+      Original: character n-grams are supposed to
       survive a typo, and this model does not: one deterministic
       transposition in the longest word takes it from 61.7% to 55.0%
       (2026-09-04). At 60 training messages the hashed 3-5-grams are

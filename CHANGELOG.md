@@ -1,5 +1,26 @@
 # Changelog
 
+## intent-typo-robustness — the n-gram window measured under a typo at both widths; the default stays, because a class would fall
+
+`TestTypoRobustness` (default gate, the `TestCharGrams` split, one
+deterministic transposition in the longest word, dims 4096 and 1024):
+the 3–5 default loses ten points under the typo at 4096 (65.0 → 55.0)
+and eight at 1024 (61.7 → 53.3); a 2–4 window reads the same clean at
+both widths and holds (63.3 / 65.0 under the typo); 2–3 is better
+still at 4096 (68.3 / 66.7); the word TF-IDF control 61.7 → 56.7, as
+a vocabulary must. The entry's diagnosis holds. The default was then
+moved and the shipped model refitted at (2,4) and (2,3) and run
+through its own laws: the totals held or rose (61.7% alone, 75.0%
+behind the cues, the typo composite 63.3 → 71.7) and `Other` fell —
+recall 0.47 → 0.33, F1 0.56 → 0.45, under the per-class floor
+`TestModels` asserts so that a rising total cannot hide a dying
+class. So the default stays (3,5), the artifact stays what it was
+measured as, and the reason is written where the default is; filed
+`intent-window-by-dim` (the grid against the per-class law), the
+rows for `Other` being the already-open `intent-other-more-rows`.
+The window's cost is flat under JMH either way (13.3 vs 13.7 us to
+score, 38.9 vs 40.1 ms to fit). Section in specs/intent-classify.md.
+
 ## intent-tfidf-word-linear — the classical baseline, run: 61.7%, three points under the n-gram tier
 
 `WordTfIdf` in okay-intent: tokens are runs of letters or digits in

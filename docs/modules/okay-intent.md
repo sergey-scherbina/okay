@@ -22,7 +22,7 @@ rather than a class of parsing bug.
 | `Centroid` | class means; four vectors, no training loop |
 | `Nearest` | kNN over example embeddings |
 | `Patterns` | syntax cues (`shall we`, `could you`, `FYI`) — no network at all |
-| `CharGrams` | hashed character n-grams with a linear head — language-agnostic by construction |
+| `CharGrams` | hashed character n-grams with a linear head — language-agnostic by construction; the window and the hash width interact (specs, intent-typo-robustness) |
 | `WordTfIdf` | the classical baseline: a word vocabulary and IDF fitted on the training half, into `Probe`'s linear head — within three points of `CharGrams` on English, behind it where words are not the unit (ja, ru) |
 | `Symbolic` | BM25 over labelled examples, via [`okay-rag`](okay-rag.md)'s `Postings` |
 | `Static` | a distilled lookup table: embeddings without an encoder at request time |
