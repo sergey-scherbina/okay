@@ -210,11 +210,19 @@ catch a regression.
       `Test / fork := true`; `okayScript/test` went 5 failures -> 0
       before any further change. specs/okay-script.md.
 
-- [ ] chunked-source-sweep — one same-session StreamOps run with every
-      library's CHUNKED source (fs2 `Stream.range`, `ZStream.range`,
-      kyo `Stream.range`, Okay Chunks) next to the per-element lanes;
-      today only kyo's chunked lane exists and the §5 table mixes
-      sessions with a ratio-to-floor caveat.
+- [x] chunked-source-sweep — DONE 2026-09-07: `zioStreamRange`,
+      `fs2StreamEmits` (pure) and `okayStaged` joined
+      `StreamOpsBenchmark`, all thirteen lanes ran in one session with
+      `-prof gc`, and §5 is that one table — floor 13.96, Staged 1.55
+      (0.11x), Okay chunked 9.52 (0.68x), Okay elements 22.5, fs2 emits
+      21.5, ZStream.range 31.4, kyo range 60.8, the per-element rows
+      243 / 618 / 1364. The old caveat's ratios held. (fs2's chunked
+      spelling is `emits`, not `range`: its `range` is a singleton
+      chunk per element, fs2-chunked-merge-lanes.) Original: one
+      same-session StreamOps run with every library's CHUNKED source
+      next to the per-element lanes; today only kyo's chunked lane
+      exists and the §5 table mixes sessions with a ratio-to-floor
+      caveat.
 - [ ] shape-check-new-lanes — every new competitor lane built by
       foldLeft gets a right-nested twin before its number is quoted
       (the kyo Env/Emit/Resource lesson: the foldLeft shape is O(N²) in

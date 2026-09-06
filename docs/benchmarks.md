@@ -288,19 +288,32 @@ callback and a slot — measured WORSE, 19.6 → 22.3 in every round
 
 ## 5. Stream pipeline — map/filter/take(1000)/sum
 
-| Iterator (floor) | **Staged** | **Okay chunked** | **Okay elements** | Okay iterator | Okay LazyList | kyo Stream.range | kyo singleton | ZIO | fs2 |
-|---|---|---|---|---|---|---|---|---|---|
-| 14 | **1.6*** | **16.9** | **23.6** | 53 | 143 | 64‡ | 239 | 692 | 1410 |
+One session, every lane of `StreamOpsBenchmark` (chunked-source-sweep,
+2026-09-07, `-prof gc`, two forks): each library's CHUNKED source
+beside its per-element one, us/op and bytes/op, the ratio to the
+Iterator floor of the same run.
 
-(*Staged and its same-run floor of 19.3 come from a different
-session; the rest is one session. The 12x-under-the-floor number is
-real: see below. ‡kyo `Stream.range` — kyo's own chunked source,
-4096-element chunks, the lane a kyo user would write for this
-pipeline — was added by kyo-fair-lanes (2026-09-02) and measured in
-its own session: 64 against a same-run Iterator floor of 15.3, Okay
-chunked 12.4/23.5 and the hand-emitted singleton kyo lane at 330.
-Ratios to the floor are what carry across sessions: kyo chunked
-4.2x, Okay chunked 0.8-1.5x, kyo singleton 22x.)
+| lane | us/op | B/op | vs floor |
+|---|---|---|---|
+| Iterator (floor) | 13.96 ±0.30 | 108 872 | 1x |
+| **Okay Staged** — whole-stage inline pipeline | **1.55 ±0.08** | **112** | **0.11x** |
+| **Okay chunked** — `Chunks.map/filter/take/fold` | **9.52 ±0.10** | 116 192 | **0.68x** |
+| **Okay elements** — the `.elements` door | **22.5 ±1.4** | 129 832 | 1.6x |
+| fs2 `Stream.emits` (pure, one chunk) | 21.5 ±2.8 | 152 896 | 1.5x |
+| ZIO `ZStream.range` (4096 a chunk) | 31.4 ±0.3 | 159 126 | 2.3x |
+| Okay iterator | 49.2 ±0.5 | 656 764 | 3.5x |
+| kyo `Stream.range` (4096 a chunk) | 60.8 ±0.9 | 336 168 | 4.4x |
+| Okay Producer / LazyList | 142.8 / 144.7 | 1 580 241 / 1 531 929 | 10x |
+| kyo singleton emit | 243 ±18 | 1 602 106 | 17x |
+| ZIO `ZStream.iterate` | 618 ±11 | 5 224 534 | 44x |
+| fs2 `Stream.iterate` | 1364 ±9 | 9 898 173 | 98x |
+
+(Until this run the table mixed three sessions — Staged from one, kyo
+`Stream.range` from another, ZIO's and fs2's chunked sources from the
+fairness audit's own — and carried a ratio-to-floor caveat. The
+ratios held: Staged 0.11x where the caveat said 12x under, Okay
+chunked 0.68x where it said 0.8–1.5x, kyo chunked 4.4x where it said
+4.2x, kyo singleton 17x where it said 22x.)
 
 **What it measures.** The bread-and-butter stream pipeline in each
 library's fastest mode.
@@ -308,17 +321,17 @@ library's fastest mode.
 **Why Okay's numbers, mode by mode.** This table is one design
 principle at four price points:
 
-- `toLazyList` (143): the memoized, re-observable bridge — you pay
+- `toLazyList` (145): the memoized, re-observable bridge — you pay
   for the caching.
-- `.iterator` (53): linear, fused, consume-once — a specialized
+- `.iterator` (49): linear, fused, consume-once — a specialized
   tree-walk with a mutable cursor, no Option/tuple per element
   (measured −44% over the generic unfold when introduced).
-- Chunks (23.6 / 16.9): the tree steps once per CHUNK; an element
+- Chunks (22.5 / 9.5): the tree steps once per CHUNK; an element
   costs an array index. Transformers are chunk-in/chunk-out array
-  passes; what remains over the Iterator floor is the Free-node
-  stepping per chunk — the price of programs-as-values, amortized 64
-  ways.
-- `Staged` (1.6): when the pipeline's shape is known where it is
+  passes, and the transformer form now reads UNDER the Iterator
+  floor; what the elements door pays over it is the per-element
+  cursor, not the tree.
+- `Staged` (1.55, 112 bytes): when the pipeline's shape is known where it is
   written, inline combinators beta-reduce the WHOLE pipeline into
   one while-loop with every lambda inlined — no operator dispatch,
   no iterator protocol, and `take(1000)` exits by a plain boolean.
@@ -336,32 +349,28 @@ the source is chunked the way its author intended — 5x under its
 singleton lane, and still 4x from the floor where Okay's chunks sit
 at ~1x.
 
-**Measured 2026-09-06 (benchmark-fairness-audit), and the table
-above was pricing both from their worst source.** Same pipeline,
-same N, quiet box, one run:
+**The chunked sources, found 2026-09-06 (benchmark-fairness-audit)
+and in the file since chunked-source-sweep.** The first version of
+this table priced ZIO and fs2 from their worst source only.
+`ZStream.range` is 20x under `ZStream.iterate` in the same run;
+`fs2.Stream.emits` is 63x under `fs2.Stream.iterate` — and PURE: an
+fs2 pipeline with no effect compiles synchronously, no runtime and
+no `unsafeRunSync` at all. fs2's `range` is `emit(o) ++ go(o + step)`
+(Stream.scala:3981-3993, 3.10.2), a singleton chunk per element, and
+its own scaladoc says to use `emits` for one chunk. The audit
+measured these in a session of their own (36.7 and 19.8 against a
+floor of 14.3); the table above has them in the session with
+everything else.
 
-| source | us/op | vs Iterator floor (14.3, same run) |
-|---|---|---|
-| `ZStream.iterate` (the table's ZIO row) | 628.0 ±12.4 | 44x |
-| **`ZStream.range`** — ZIO's chunked source | **36.7 ±0.6** | 2.6x |
-| `fs2.Stream.range` over IO (the table's fs2 row) | 1721 ±127 | 120x |
-| `fs2.Stream.range`, pure | 1331 ±11 | 93x |
-| **`fs2.Stream.emits(0 until n)`, pure** | **19.8 ±0.0** | 1.4x |
-
-`ZStream.range` is 17x under the ZIO row above; `Stream.emits` is
-60x under the fs2 row — and PURE: an fs2 pipeline with no effect
-compiles synchronously, no runtime and no `unsafeRunSync` at all.
-fs2's `range` is `emit(o) ++ go(o + step)` (Stream.scala:3981-3993,
-3.10.2), a singleton chunk per element, and its own scaladoc says to
-use `emits` for one chunk. kyo received its fair chunked lane on
-2 Sep; these two did not until now.
-
-With their sources the way their authors intended, ZIO sits at 2.6x
-the floor and fs2 at 1.4x — beside Okay's chunked 16.9 (1.2x) and
-elements 23.6 (1.7x), not two orders of magnitude behind them. The
-`iterate` rows stay in the table as what they are: the price of a
-per-element source in a chunked runtime, each library's worst case.
-They are not the library.
+With their sources the way their authors intended, ZIO sits at 2.3x
+the floor and fs2 at 1.5x — beside Okay's elements door at 1.6x and
+its chunked transformers at 0.68x, not two orders of magnitude
+behind them. The `iterate` rows stay in the table as what they are:
+the price of a per-element source in a chunked runtime, each
+library's worst case. They are not the library. The bytes column
+says the same thing the time column does, with less noise: the
+three fair chunked sources allocate 150–340 KB for the pipeline,
+the three per-element ones 1.6–9.9 MB.
 
 ## 6. Merge — two 500-element streams by readiness
 

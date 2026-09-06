@@ -1,5 +1,21 @@
 # Changelog
 
+## chunked-source-sweep — §5 from one session: every chunked source beside its per-element lane
+
+`StreamOpsBenchmark` gains `zioStreamRange` (ZIO's 4096-a-chunk
+source), `fs2StreamEmits` (fs2's one-chunk source, pure — no runtime)
+and `okayStaged` (the whole-stage inline pipeline), and all thirteen
+lanes ran in one session with `-prof gc`. §5's table is that run,
+with bytes: floor 13.96 us / 109 KB; Okay Staged **1.55 / 112 B**
+(0.11x); Okay chunked transformers **9.52** (0.68x — under the
+floor); Okay elements 22.5, fs2 `emits` 21.5, `ZStream.range` 31.4,
+kyo `Stream.range` 60.8 (1.5–4.4x); the per-element rows 243 / 618 /
+1364 (17–98x, 1.6–9.9 MB). The three-session caveat is gone and its
+ratios held. The commentary's numbers follow the table; the fairness
+audit's own-session numbers are kept as what they were. Benchmark
+and docs only — the `compare` module is outside the gate, compiled
+and run by JMH.
+
 ## channel-entries-audit — two pre-rewrite channel entries closed against today's numbers
 
 `channel-impls` asked for a bounded mutable ring, an unbounded

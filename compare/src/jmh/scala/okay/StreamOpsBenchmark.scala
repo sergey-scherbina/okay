@@ -53,6 +53,19 @@ class StreamOpsBenchmark {
         Chunks.filter(
           Chunks.map(Chunks.nats[Int]())(_ * 2))(_ % 3 == 0))(N))(using Fold.sum[Int])
 
+  /** the whole-stage form: inline combinators beta-reduce the
+   * pipeline into one while-loop (specs/staged-pipelines.md); §5's
+   * `Staged` column, until chunked-source-sweep measured in another
+   * session from the rest of this file */
+  @Benchmark
+  def okayStaged(): Long =
+    Staged.fold(
+      Staged.take(
+        Staged.filter(
+          Staged.map(Staged.range(0L, 3L * N + 4), (x: Long) => x * 2),
+          (x: Long) => x % 3 == 0),
+        N))(0L)((s: Long, x: Long) => s + x)
+
   @Benchmark
   def fs2Stream(): Int =
     fs2.Stream.iterate(0)(_ + 1).map(_ * 2).filter(_ % 3 == 0).take(N)
@@ -81,4 +94,23 @@ class StreamOpsBenchmark {
     Stream.range(0, 3 * N + 4)
       .map((x: Int) => x * 2).filter((x: Int) => x % 3 == 0).take(N)
       .runFold(0)((a: Int, v: Int) => a + v).eval
+
+  // ── chunked-source-sweep: the other two libraries' CHUNKED sources,
+  //    in the same file so §5 can be one session. `ZStream.range` is
+  //    ZIO's chunked source (4096 a chunk); `fs2.Stream.emits` is one
+  //    chunk and, with no effect, compiles PURE -- no runtime, no
+  //    unsafeRunSync (benchmark-fairness-audit found both 17x/60x
+  //    under the per-element lanes above, in its own session) ──────
+
+  @Benchmark
+  def zioStreamRange(): Int =
+    import _root_.zio.*
+    val s = _root_.zio.stream.ZStream.range(0, 3 * N + 4)
+      .map(_ * 2).filter(_ % 3 == 0).take(N).runFold(0)(_ + _)
+    Unsafe.unsafe(implicit u => Runtime.default.unsafe.run(s).getOrThrowFiberFailure())
+
+  @Benchmark
+  def fs2StreamEmits(): Int =
+    fs2.Stream.emits(0 until 3 * N + 4).map(_ * 2).filter(_ % 3 == 0).take(N)
+      .compile.fold(0)(_ + _)
 }
