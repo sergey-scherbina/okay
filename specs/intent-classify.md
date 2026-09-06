@@ -3284,3 +3284,42 @@ tuesday` is the same stretch, and a bare `the` lands at its first
 occurrence, inside a kept span. The live multi-intent suite applies
 the guard before it counts and prints what it dropped, so the next
 runaway is visible as a guard event rather than as twenty labels.
+
+## Results — intent-window-by-dim (2026-09-07)
+
+**The window against the per-class law, at both widths.** The open
+question from intent-typo-robustness: a narrower window survives a
+typo and takes `Other` under the 0.50 F1 floor at the shipped width —
+does it keep `Other` at 4096? `TestWindowByDim` (default gate) runs
+the per-class report for every (window, width) pair on the
+`TestModels` held-out half, for the grams alone and for the composite
+the law is stated on (cues first, grams for the rest), clean and
+under one transposition. Composite rows; `Other` F1 is the floor's
+class in every configuration:
+
+| window @ width | clean total | Other F1 | typo total | Other F1 |
+|---|---|---|---|---|
+| (3,5) @1024 — the shipped model | 75.0% | 0.56 | 63.3% | 0.42 |
+| (2,4) @1024 | 75.0% | 0.45 | 71.7% | 0.40 |
+| (2,3) @1024 | 76.7% | 0.45 | 71.7% | 0.38 |
+| (3,5) @4096 | 78.3% | 0.64 | 65.0% | 0.48 |
+| (2,4) @4096 | 78.3% | 0.52 | 71.7% | 0.43 |
+| **(2,3) @4096** | **80.0%** | **0.52** | **71.7%** | 0.43 |
+
+Grams alone, the same pairs: (2,3) @4096 is the one configuration
+whose `Other` holds under the typo as well (0.52 clean, 0.54 typo,
+totals 68.3 / 66.7); every window at 1024 loses it clean or typo'd.
+
+Three readings. **Yes, at 4096 the narrower windows keep every class
+clean** — at 0.52, on the floor, where the shipped window has 0.64.
+**The typo takes `Other` under the floor in every configuration**,
+the shipped one included (0.42): fifteen rows of the class that
+matters most cannot survive a transposition whatever the window, and
+that is the rows' number (intent-other-more-rows), not the window's.
+**The best configuration on the table is (2,3) @4096**: 80.0% behind
+the cues against the shipped 75.0, 71.7% under the typo against 63.3,
+`Other` on the floor clean — at four times the artifact, which is
+the reason `Fit` chose 1024 (a quarter of the size for two points at
+the time). Whether five points and eight under a typo are worth a
+170 KB source file is the shipped model's owner's call, filed as
+`intent-shipped-model-4096`; no default moves here.

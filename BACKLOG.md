@@ -2486,17 +2486,29 @@ subtraction.
       `(Channel, String, String) => Unit` and `Mail.Send` has to plug
       in without anything else changing, which was their stated
       requirement.
-- [ ] intent-window-by-dim — the n-gram window against the per-class
-      law at each hash width. intent-typo-robustness measured the
-      grid (specs, 2026-09-07): a 2–4 window survives a typo at both
-      widths and reads the same clean as 3–5, and at the shipped width
-      it takes `Other` from recall 0.47 to 0.33 while the total rises.
-      Two ways to a narrower default that keeps every class: more
-      `Other` rows (intent-other-more-rows — the class has fifteen),
-      or a wider hash at the narrower window (2–4 @4096 keeps its
-      classes? unmeasured: `TestModels`' per-class law runs on the
-      shipped dim only). Measure both on `TestModels`' laws before
-      moving the default; the typo grid is `TestTypoRobustness`.
+- [x] intent-window-by-dim — MEASURED 2026-09-07 (`TestWindowByDim`,
+      specs Results): at 4096 the narrower windows keep every class
+      clean on the composite (Other F1 0.52, on the floor; the shipped
+      (3,5) @4096 has 0.64), and (2,3) @4096 is the best configuration
+      on the table — 80.0% behind the cues against the shipped 75.0,
+      71.7% under a typo against 63.3. Under the typo `Other` falls
+      under the floor in EVERY configuration, the shipped one included
+      (0.42): that is the class's fifteen rows (intent-other-more-rows),
+      not the window. No default moved; the size-for-points decision
+      is filed below. Original: the n-gram window against the per-class
+      law at each hash width; a 2–4 window survives a typo at both
+      widths and at the shipped width takes `Other` from recall 0.47 to
+      0.33 while the total rises.
+- [ ] intent-shipped-model-4096 — the shipped model at (2,3) @4096:
+      +5.0 points behind the cues (80.0 vs 75.0%), +8.4 under a typo
+      (71.7 vs 63.3), `Other` F1 0.52 clean (the floor holds), at four
+      times the artifact — `Fit` chose 1024 for a quarter of the size
+      when the cost was two points. The owner's call: if taken, refit
+      through `MakeModel` with `dim = 4096, low = 2, high = 3`, re-take
+      every number `Models.scala`'s doc comment and `TestModels` /
+      `TestSecondAuthor` pin (61.7% alone, 75.0%, the register-shift
+      table, per language), and move `Fit.grams`' defaults with it so
+      the artifact stays what the generator produces.
 - [x] intent-typo-robustness — MEASURED 2026-09-07, default kept:
       per window at both widths (`TestTypoRobustness`, default gate),
       (3,5) 65.0 → 55.0% @4096 and 61.7 → 53.3 @1024 under one

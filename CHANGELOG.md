@@ -1,5 +1,21 @@
 # Changelog
 
+## intent-window-by-dim — the window against the per-class law at both widths: 4096 keeps every class, and (2,3) @4096 is five points up
+
+`TestWindowByDim` (default gate) runs `Eval.report` for every
+(window, width) pair on the `TestModels` held-out half, grams alone
+and behind the cues, clean and under one transposition. At the
+shipped width every narrower window takes `Other` under the 0.50
+floor; at 4096 they keep it (0.52 on the floor; the shipped window
+0.64 there), and **(2,3) @4096 reads 80.0% behind the cues against
+the shipped 75.0 and 71.7% under the typo against 63.3** — at four
+times the artifact, which is why `Fit` chose 1024 when the cost was
+two points. Under the typo `Other` falls under the floor in every
+configuration, the shipped one included: fifteen rows of the class
+that matters most, the rows' number, not the window's. No default
+moved; `intent-shipped-model-4096` is filed as the owner's
+size-for-points call. Section in specs/intent-classify.md.
+
 ## intent-span-runaway — `Reading.grounded`: a span is in the message, and one span per stretch
 
 One live run answered a nine-word message with twenty spans cycling
