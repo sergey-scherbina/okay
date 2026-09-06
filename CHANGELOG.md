@@ -1,5 +1,20 @@
 # Changelog
 
+## channel-entries-audit — two pre-rewrite channel entries closed against today's numbers
+
+`channel-impls` asked for a bounded mutable ring, an unbounded
+segmented one, a relaxed multi-FIFO, and a harness parameterised
+over the implementation; each exists under another name
+(`SentinelChannel` d7c69167, `Segments`, `AdaptiveFifo` cb51748c,
+`ChannelGuaranteeBenchmark` + `TestChannelLaws`) and the entry now
+says which. `ring-channel-waiters` claimed the waiter protocol eats
+half the ring's win; §17f counted no consumer parks and 12–20
+producer parks per 4000 elements on its own regime, and §17g found
+the per-element cost in the pop's head CAS, not in any waiter — so
+the premise is refuted and the entry closes, naming what is still
+literally in the code (a `Waiter` per park attempt, an O(n) wake) and
+why no number on the board supports keeping it open. Boards only.
+
 ## stm-log-cost — the transaction log, reshaped: −58% on `direct`, −23% on `tl2` for a Read-then-Write
 
 Profiled by JFR, then two changes measured one at a time on

@@ -494,7 +494,22 @@ construction instead of a type test per value).
       suite that BINDS a real port (14 of them, found by survey rather
       than by waiting for each to flake) is also Live-tagged now.
 
-- [ ] channel-impls — NOT A FLAKE (board-hygiene 2026-09-07): channel work filed in the wrong section, still open. Implementations behind the `Channel` seam
+- [x] channel-impls — CLOSED 2026-09-07 (channel-entries-audit): every
+      bullet below landed under another name, and the harness it asks
+      for exists. RingChannel → `SentinelChannel` (d7c69167, the ring
+      plus a mark in the FIFO stream), the default `Channel.apply`,
+      and since receive-blocking-path-length its head moves by a store
+      for a single consumer (§17g: 152 us elementwise against
+      `StmChannel`'s 250). UNBOUNDED → `Segments` behind
+      `Queues.strong[A].unbounded` (channel-ring-unbounded). Relaxed /
+      MultiFifo → `AdaptiveFifo` behind `Queues.relaxed` / `adaptive`
+      (cb51748c), measured at sixteen producers, order between
+      producers documented as the price. The comparison harness,
+      parameterised over the implementation: `ChannelGuaranteeBenchmark`
+      (a lane per mechanism at both granularities, zio beside them)
+      and `TestChannelLaws` (an `impls` table every mechanism must
+      answer for). Original:
+      Implementations behind the `Channel` seam
       (channel-seam landed the interface; `StmChannel` is the default
       and unchanged). Each is its own lane, each measured against the
       others AND against `zio.Queue` on the same harness, because the
@@ -580,7 +595,23 @@ construction instead of a type test per value).
       second value, which looks exactly like a lost element) or a
       waiter dropped by wakeOne's CAS-and-claim.
 
-- [ ] ring-channel-waiters — NOT A FLAKE (board-hygiene 2026-09-07): channel work filed in the wrong section; its prerequisite is now closed, and `SentinelChannel` waits per part already (channel-per-part-waiters) — re-read before taking. Original: (after channel-impls-correctness) the
+- [x] ring-channel-waiters — CLOSED 2026-09-07 (channel-entries-audit)
+      by two counts that refute its premise. The premise: the waiter
+      protocol eats more than half the ring's win. The counts: on the
+      elementwise saturated regime the consumer never parks and the
+      producer parks 12–20 times per 4000 elements (§17f, a probe on
+      `okaySentinelElem`), so no waiter code is on the per-element
+      path; and the per-element cost that WAS there was the head CAS
+      of the pop, a third of the consumer by JFR, taken for a single
+      consumer by a store (§17g, 203 → 152 us). `SentinelChannel`
+      reads ahead of `StmChannel` on every lane today. What the entry
+      names is still literally in the code — a `Waiter` per park
+      attempt, `wakeOne` walking a `List` with `last`/`init` — and
+      matters only in a regime that parks at scale; the sixteen-
+      producer regime already has its answer in per-part waiter
+      queues (channel-per-part-waiters, one useful wakeup in k). No
+      lane on the board measures a cost there, so nothing stays open.
+      Original: (after channel-impls-correctness) the
       ring's waiter protocol measures 1.7x over the bounded default where
       the RING MECHANISM alone measured 3.4x (channel-ring). The
       waiter protocol around it eats more than half the win, and the
