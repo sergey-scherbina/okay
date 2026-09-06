@@ -148,7 +148,15 @@ force, all already practiced, none previously written down:
   category wholesale. A discarded Java/JS result is `x: Unit` (or
   `val _ = x` for a js.Dynamic, which `: Unit` does not silence), an
   unused pattern type is `?`, an unused parameter that an API forces
-  is `@unused`. Verify with `clean; Test/compile` (add `-feature
+  is `@unused`. **`x: Unit` is not a universal off switch**, and
+  reading this line as one put five warnings on master: four
+  `a.tell(m).runWith: Unit` in okay-actor's tests still raised E175,
+  because build.sbt:41 escalates a discarded `!` PROGRAM to an error
+  and says nothing about a discarded plain value. When a discarded
+  value is one OUR code chose to return, the fix is usually to use it
+  — `tell` answers whether the mailbox took the message, so
+  `assert(a.tell(m).runWith)` is a real assertion where the ascription
+  was a comment (okay-actor-tell-warnings, 2026-09-06). Verify with `clean; Test/compile` (add `-feature
   -deprecation` via `set ThisBuild / scalacOptions += ...` when
   hunting — they are not on by default, so warnings under them can
   hide) — an incremental compile hides warnings in files it did not
