@@ -2219,5 +2219,28 @@ the installed cell, the transaction's own nodes, and the
 `Async.await` staging of an attempt that commits without ever
 parking. That last one is a shape, not a law — an attempt that
 commits could answer `pure` and reserve the `Await` for a `retry` —
-and it is filed as `stm-sync-commit-fastpath`, with these lanes as
-its A/B.
+and it was tried next, §18e.
+
+### 18e. stm-sync-commit-fastpath: tried, worse, reverted
+
+The first attempt inside a `Run` (nothing at construction), a commit
+answering `pure`, the `Await` only for a `retry`, in both handlers;
+the seventeen STM tests green. Same lanes, `-prof gc`, two forks,
+before (the §18d run, two hours earlier on the same box) → after:
+
+| lane | before | after | Δ |
+|---|---|---|---|
+| `tl2ReadWrite` jvm | 298.4 ±23.6 us / 3 830 962 B | 317.6 ±2.6 / 4 326 962 B | +6%, +124 B per tx |
+| `directReadWrite` jvm | 398.1 ±1.8 / 3 638 963 B | 450.9 ±5.5 / 4 246 963 B | **+13%, +152 B per tx** |
+| `directReadWrite` js / native (median) | 1360.3 / 6409.4 | 1402.2 / 6000.5 | flat / inside the bars |
+| `*Modify` (control) | 64.2–64.5 / 762 032 B | 64.2–64.4 / 762 032 B | unchanged |
+
+The `Run`, its thunk, the `Bind`, the closure and the `Either` cost
+more than what they replaced: the `Await`'s registration closure,
+the drive's exchange cell and its `Got`, which the synchronous-answer
+path settles in one compare-and-swap and a `getAndSet`. The
+estimate that the two were a wash on bytes was wrong by 150 bytes,
+and the atomics it expected to save did not show up as time.
+Reverted in full; the lanes stay. The log — ~800 bytes per
+Read-then-Write in a persistent write map, a tuple per read and the
+installed cell — is the untouched number.

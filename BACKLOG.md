@@ -330,18 +330,38 @@ construction instead of a type test per value).
       70–90 ns JVM / ~300 ns Node / ~1.5 us Native), not the handler.
       Original: the direct handler is the JS given by construction;
       price it against tl2 on Node once a JS benchmark harness exists.
-- [ ] stm-sync-commit-fastpath — an attempt that COMMITS never
+- [x] stm-sync-commit-fastpath — MEASURED AND DECLINED 2026-09-07
+      (§18e). Built as filed, with the first attempt inside a `Run`
+      so nothing runs at construction: `async(tryNow(tx)).flatMap {
+      Right(a) => pure(a); Left(log) => Async.await(park…) }` in
+      both handlers; 17 STM tests green. JMH `-prof gc`:
+      `directReadWrite` 398 → 451 us (+13%) and 3.64 → 4.25 MB/op
+      (+152 B per transaction), `tl2ReadWrite` 298 → 318 (+6%),
+      +124 B; JS flat, Native −3–6% inside its bars. The `Run` +
+      thunk + `Bind` + closure + `Either` cost MORE than the `Await`'s
+      registration closure, exchange cell and `Got` — which the
+      Drive's synchronous-answer path handles in one CAS and a
+      `getAndSet`, evidently well. Reverted in full; the lanes stay.
+      What the log costs (~800 B per Read-then-Write) is untouched
+      by this and is the number, if anyone wants it: the persistent
+      write map updated per write, the `(TRef, Long)` tuple per read,
+      the installed cell. Original: an attempt that COMMITS never
       parks, yet every non-fast-path `atomically` is staged as an
-      `Async.await` (a registration closure, the drive's exchange
-      cell, `k`) in both `tl2` and `direct`. Run the attempt first;
-      answer `pure(a)` when it commits (or `pure` of the failure's
-      throw), and reserve the `Await` for the `RetryNow` case, where
-      parking is the point. Measure on `StmBenchmark` `*ReadWrite`
-      (JVM, `-prof gc`) and `BenchStmCross` on JS/Native; the fast
-      path already answers `pure`, so a `Modify` lane is the
-      control. Laws: TestStm* on every platform, the retry laws in
-      particular (a retry after a write must still leave nothing
-      behind, and must still park rather than spin).
+      `Async.await`; run the attempt first, answer `pure(a)` on
+      commit, reserve the `Await` for `RetryNow`.
+- [ ] stm-log-cost — a Read-then-Write transaction allocates ~800 B
+      and costs 70–90 ns on the JVM, ~300 ns on Node, ~1.5 us on
+      Native (§18d), in the `Log`: a `TMap` write set rebuilt with
+      `updated` per write, a `(TRef, Long)` tuple with a boxed
+      version per read in an `ArrayBuffer`, the `Slot` installed per
+      written cell, `written`'s iterator and closures at commit.
+      Candidates, measured one at a time on `StmBenchmark
+      *ReadWrite` (`-prof gc`) with the `Modify` lanes as control: a
+      small-array write set for the one-to-few-refs case (the map for
+      more), reads kept as two parallel arrays (no tuple, no box), the
+      log reused across an attempt's retries. Laws: every TestStm* on
+      every platform; `orElse`'s branch logs (`parent`, `absorb`)
+      must keep their semantics.
 
 ## Async — after channel-callback (2026-09-02)
 - [x] native-scheduler-pool — the Native Scheduler forks one OS

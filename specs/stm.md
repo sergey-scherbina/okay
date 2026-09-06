@@ -361,8 +361,13 @@ transaction itself: ~900 bytes and 70–90 ns on the JVM, ~300 ns on
 Node, ~1.5 us on Native — the `Log` (a reads buffer, a persistent
 write map updated per write), the installed cell, and the
 `Async.await` staging of an attempt that never parks. So `direct`
-being the JS given is confirmed and cheap, and the next number to
-move is the log's, not the handler's (`stm-sync-commit-fastpath`).
+being the JS given is confirmed and cheap. Replacing that `Await`
+staging with a `Run` that answers `pure` on commit was tried the same
+day and measured WORSE (+13% time, +152 B per transaction on the JVM,
+§18e) — the drive's synchronous-answer path is cheaper than the
+nodes that would replace it — so the number left to move is the
+log's: the persistent write map, the tuple per read, the installed
+cell.
 
 Under REAL concurrent contention, still no loss (channel-merge-
 regression, 2026-09-02): the original Channel benchmark above is

@@ -1,5 +1,18 @@
 # Changelog
 
+## stm-sync-commit-fastpath — tried and declined: +13% time, +152 B per transaction on the JVM
+
+The shape §18d named — the first attempt inside a `Run`, a commit
+answering `pure`, the `Await` reserved for `retry` — built in both
+handlers with the STM suites green, and measured worse: JMH
+`directReadWrite` 398 → 451 us and 3.64 → 4.25 MB/op, `tl2ReadWrite`
+298 → 318 us and +124 B per transaction; JS flat, Native inside its
+bars. The `Run`, thunk, `Bind`, closure and `Either` cost more than
+the `Await`'s registration closure, exchange cell and `Got`, which
+the drive's synchronous-answer path settles in one CAS. Reverted in
+full; the ledger and §18e keep the numbers so nobody tries it blind.
+No library code changed.
+
 ## stm-js-direct-bench — the two STM handlers priced on three platforms: the log is the cost, not the handler
 
 `BenchStmCross` (Live, runAsync, three platforms) and `StmBenchmark`
