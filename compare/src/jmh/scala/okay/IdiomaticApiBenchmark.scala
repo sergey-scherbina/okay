@@ -126,8 +126,13 @@ class IdiomaticApiBenchmark {
   @Benchmark
   def okayCollectionForeach_chunk_fold(): Long =
     var sum = 0L
-    Chunks.foldLeft(Chunks.fromIterator(list.iterator, size = N))(0L) { (acc, x) =>
-      sum += x; acc
+    // the accumulator is deliberately unused: this lane mirrors
+    // `runForeach`, whose zio partner pays a `Ref.update` per element,
+    // so the side effect IS the work being measured. Folding the sum
+    // purely instead would make our side cheaper than theirs and
+    // recreate the mismatched pair this whole section exists to fix
+    val _ = Chunks.foldLeft(Chunks.fromIterator(list.iterator, size = N))(0L) {
+      (acc, x) => sum += x; acc
     }
     sum
 
