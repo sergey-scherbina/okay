@@ -52,12 +52,15 @@ TAG="${OKAY_SENTINEL_TAG:-sbt-launch-sentinel}"
 # runner's pid and checks it exists each second (its own parent is
 # launchd from the start, being a $( ) child, so getppid is no use).
 # The EXIT trap below still kills by pid, but
-# that kill is not always delivered: a run ended by a signal skips the
-# trap, and a kill from a sandboxed tool shell does not reach a process
-# that was reparented -- five sentinels were found alive on 2026-09-07
-# where three belonged, and eight CPU burners started the same way ran
-# for twelve minutes after their "cleanup". Nothing here may depend on
-# a kill it cannot deliver.
+# a run ended by a signal skips the trap, so five sentinels were found
+# alive on 2026-09-07 where three belonged. (An earlier version of this
+# comment blamed a sandboxed tool shell; there is none, and kill by pid
+# reaches a reparented process here. The eight CPU burners that
+# outlived their cleanup the same day were a zsh loop: `for p in $BURN`
+# does not word-split in zsh, so one kill got four pids as one
+# argument and its "illegal pid" went to a suppressed stderr. This
+# script is bash and quotes each pid.) Nothing here may depend on a
+# kill running.
 HEARTBEAT='
 import os, sys, time
 if sys.argv[1] == "own":

@@ -27,6 +27,39 @@ okay-script/examples/site; 78 tests green 3x, the 2 Live ones over a
 real Jetty port pass. Two follow-ons filed (multipart, persistent
 sessions).
 
+## board-hygiene — three stale statements set right, and the burner cause established
+
+**"Flakes observed" carried six open items, of which one was a flake.**
+`raft-wire-election-flake` was closed by its own lane and its bullet
+was still unchecked; checked. Four of the other five are channel work
+from before the channel rewrite, and three of them were answered by it
+under other names: `channel-impls-correctness` asked to bring
+`RingChannel` and `CasChannel` back under the laws — neither exists
+now, the ring channel is `SentinelChannel` (d7c69167) and
+`TestChannelLaws` judges it; `channel-ring-unbounded` is `Segments`
+above `MaxRing`; `channel-multififo-many-producers` is `AdaptiveFifo`
+behind `Queues.relaxed`/`adaptive` (cb51748c), measured at sixteen
+producers. Closed against those commits. `channel-impls` and
+`ring-channel-waiters` are still open and now say they are not flakes.
+
+**The burners.** The `json-strict-staged` entry below, and
+`scripts/gate-sentinels.sh`'s comment, said that a kill from a
+sandboxed tool shell does not reach a launchd-reparented process, and
+built the self-terminating sentinels on that. A sibling session
+checked: there is no sandbox on this box, and `kill <pid>` reaches a
+reparented process from a tool shell (they killed the eight leaked
+`yes` that way). The cause, once they named it, was in my own
+transcript: the tool shell is zsh, zsh does not word-split an unquoted
+variable in a `for` list, so `for p in $BURN; do kill $p 2>/dev/null`
+ran once with four pids as one argument, `kill` said "illegal pid" to
+a stderr I had silenced, and an unconditional echo said "killed". Two
+wrong guesses of mine preceded the right answer, and both are named
+where they were made. The self-terminating sentinels stay, for the
+reason that is true — a run ended by a signal skips its EXIT trap —
+and the script's comment now says exactly that.
+
+No code changed; the gate ran because the tree was touched.
+
 ## json-strict-staged — `Staged.strict[A]`: 2.45x circe, reading at the cost of scanning — and a correction the previous lane owes
 
 `json-fast-read` left one number on the table: its interpreted strict
@@ -77,12 +110,14 @@ decode-many — the fastest JSON read in the library.
 
 Also in this lane: `scripts/gate-sentinels.sh`'s sentinels now exit on
 their own when their runner is gone (they are handed its pid and check
-it each second), because a kill from a sandboxed tool shell does not
-reach a process reparented to launchd — five sentinels were found
-alive where three belonged, and eight CPU burners started the same
-way ran twelve minutes past their "cleanup" and took the box to load
-42 until a sibling session found them. The burner pattern is retired
-in favour of `timeout`; the rule is in memory.
+it each second), because a run ended by a signal skips the EXIT trap
+that used to clean them up — five were found alive where three
+belonged. (This paragraph first blamed a sandboxed tool shell unable to
+signal a reparented process; that was wrong, see `board-hygiene`
+above: there is no sandbox, and the eight leaked CPU burners of the
+same day were a zsh `for p in $BURN` that does not word-split.) The
+burner pattern is retired in favour of `timeout`; the rule is in
+memory.
 
 ## raft-wire-flake — the last open flake moves to the integration tests, and is made robust where it now runs
 

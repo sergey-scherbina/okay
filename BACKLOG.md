@@ -446,7 +446,7 @@ construction instead of a type test per value).
       suite that BINDS a real port (14 of them, found by survey rather
       than by waiting for each to flake) is also Live-tagged now.
 
-- [ ] channel-impls — implementations behind the `Channel` seam
+- [ ] channel-impls — NOT A FLAKE (board-hygiene 2026-09-07): channel work filed in the wrong section, still open. Implementations behind the `Channel` seam
       (channel-seam landed the interface; `StmChannel` is the default
       and unchanged). Each is its own lane, each measured against the
       others AND against `zio.Queue` on the same harness, because the
@@ -483,7 +483,7 @@ construction instead of a type test per value).
       parameterised over the implementation rather than written per
       lane.
 
-- [ ] raft-wire-election-flake — okay.persist.TestRaftWire "killing
+- [x] raft-wire-election-flake — CLOSED 2026-09-07 (raft-wire-flake): Live-tagged, budgets and a retrying cluster; see its own entry below. Original: okay.persist.TestRaftWire "killing
       the leader: the survivors elect a new one and keep committing"
       failed once under the full sbt matrix (2026-09-03, one gate in
       three), green 3/3 in isolation immediately after. Leader
@@ -507,7 +507,7 @@ construction instead of a type test per value).
       is enough to stop surveying and act: tag it Live, or give the
       failover assertion a budget that survives a loaded box.
 
-- [ ] channel-impls-correctness — bring RingChannel and CasChannel
+- [x] channel-impls-correctness — CLOSED 2026-09-07 (board-hygiene): not a flake, and answered by the channel rewrite — `RingChannel` and `CasChannel` no longer exist; the ring channel is `SentinelChannel` (d7c69167), judged by `TestChannelLaws` as this entry asked. Original: bring RingChannel and CasChannel
       back, now that channel-laws exists to judge them. They were
       written and measured (casChannel 143.9 +/-16.3 against
       stmChannelUnbounded 187.7 +/-18.2 and zio.Queue 122.2 +/-9.7;
@@ -532,7 +532,7 @@ construction instead of a type test per value).
       second value, which looks exactly like a lost element) or a
       waiter dropped by wakeOne's CAS-and-claim.
 
-- [ ] ring-channel-waiters — (after channel-impls-correctness) the
+- [ ] ring-channel-waiters — NOT A FLAKE (board-hygiene 2026-09-07): channel work filed in the wrong section; its prerequisite is now closed, and `SentinelChannel` waits per part already (channel-per-part-waiters) — re-read before taking. Original: (after channel-impls-correctness) the
       ring's waiter protocol measures 1.7x over the bounded default where
       the RING MECHANISM alone measured 3.4x (channel-ring). The
       waiter protocol around it eats more than half the win, and the
@@ -581,7 +581,7 @@ construction instead of a type test per value).
       claimed-but-undelivered waiters, and `receiveManyRing`'s batch
       must admit parked senders without reopening the same window.
 
-- [ ] channel-ring-unbounded — channel-ring gives the allocation-free
+- [x] channel-ring-unbounded — CLOSED 2026-09-07 (board-hygiene): not a flake; the unbounded ring is `Segments` behind `Channel.apply` above `MaxRing` (relaxed-queues-builder, cb51748c). Original: channel-ring gives the allocation-free
       fast path to BOUNDED channels only (a ring is a fixed array).
       `Channel.merge`'s own default capacity is `Int.MaxValue`, so it
       does NOT get the fast path; `Source.merge` (64) and
@@ -594,7 +594,7 @@ construction instead of a type test per value).
       whether the unbounded path matters in practice first — nothing
       in the library defaults to it except `Channel.merge` itself.
 
-- [ ] channel-multififo-many-producers — if a channel ever has MANY
+- [x] channel-multififo-many-producers — CLOSED 2026-09-07 (board-hygiene): not a flake; `MultiFifo` was folded into `AdaptiveFifo` behind `Queues.relaxed`/`adaptive` (cb51748c), and channel-per-part-waiters measured it at sixteen producers. Original: if a channel ever has MANY
       producer fibers (work distribution to p workers), head/tail
       contention becomes the bottleneck the ring does not solve, and
       the known answer is relaxed multi-subqueue FIFO (MultiFIFO /
