@@ -1114,7 +1114,20 @@ coordinator (appends fence by epoch, reads stop at the high-water
 mark — a session a failover would unwrite is never served). A cart
 set on node A is read on node B within one poll.
 
-One trap, found while designing rather than by a test: the tailer
+**Found by the in-process test's invalidate step:** a touch must not
+be a full-state write. The persisted engine wrote the whole state on
+every bind (last-access is state), and on a cluster that races: node
+A reads a stale cookie (bind → put, offset m+2) while node B
+invalidates (tombstone, m+1) — in log order the put comes AFTER the
+tombstone, so every node resurrects the session, and A's own local
+index never even sees the tombstone win. A logout that does not
+stick is a security bug, not a flake. So a touch is its own record
+type — exactly 8 bytes, the last-access time; a full state is at
+least 12, a tombstone 0, the length IS the type — applied as
+update-if-present on every index, the writer's included. A stale
+cookie read after a logout now touches nothing, on any node.
+
+One more trap, found while designing rather than by a test: the tailer
 sees this node's OWN appends too, and re-applying them can regress
 the index for a moment — put v1 (offset 5), put v2 (offset 6), then
 the tailer applies 5 before 6 and a reader in between sees v1. Every
