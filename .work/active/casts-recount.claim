@@ -1,9 +1,0 @@
-task: casts-recount (boards only: the cast floor re-counted after a day of lanes)
-agent: okay-42
-started: 2026-09-07
-branch: feature/casts-recount
-
-why: the operator's rule is no cast without necessity, and the audit
-  closed round two at 36. After a day of core, channel, STM, intent and
-  frame lanes the count is re-taken and written down, so creep is seen
-  the day it happens rather than at the next audit.
