@@ -69,6 +69,14 @@ signalled directly. The discriminator is verified: `group` shares the
 runner's pgid, the other two get their own via `os.setsid`, and
 `pgrep -f sbt-launch` matches `named` alone.
 
+Third run with the trap set, 2026-09-06 (free-cont-stack's gate):
+passed again — 2438 tests, 0 warnings, all sentinels alive — and this
+one ran with **another agent's sbt alive on the box the whole time**.
+That is one observation against the folklore this entry records
+("two concurrent sbt runs SIGTERM each other here") and against the
+serialisation it imposes. Two concurrent runs are not sufficient to
+cause a 143.
+
 First run with the trap set, 2026-09-06: **the matrix passed** — exit
 0, 2438 tests, 0 warnings, all three sentinels alive. That is one
 clean run, so it neither confirms nor refutes anything; it does show
@@ -1681,7 +1689,16 @@ function. Anything between the claim and the publish truncates a
 concurrent `popMany` scan, which counts CONSECUTIVE published slots —
 a closure there cost 65.6 elements per batch down to 43.5.
 
-## channel-elementwise-wakeups — OPEN, numbers need a re-run first
+## channel-elementwise-wakeups — OPEN, and now the PRIMARY lane
+
+Promoted 2026-09-06 by free-cont-stack, which went looking for the
+per-element cost in the interpreter and found it here instead. A
+`-prof stack` of the elementwise lane puts 58.3% of thread time in
+WAITING (86% of that `Unsafe.park`) and another 16.8% in
+TIMED_WAITING, all park — three quarters parked — against 24.9%
+RUNNABLE, of which the entire effect machinery is about 10 points.
+`channel-per-element-effect-cost` closed as an interpreter lane and
+points here; read it for the counts and the caveats.
 
 Audited 2026-09-06: still genuinely open — one unpark per element is
 on the consumer's critical path and nothing since has addressed it.
@@ -2163,7 +2180,76 @@ producers, a 230x fix; the bounded relaxed channel is now 5.3x past a
 single ring and 5.5x past `zio.Queue`, and scales the right way.
 
 
-## channel-per-element-effect-cost — WITHDRAWAL REVERSED, gap narrowed
+## channel-per-element-effect-cost — CLOSED as an interpreter lane 2026-09-06, redirected
+
+Taken as free-cont-stack on the hypothesis this entry invites: that
+the 26% in `runFree` and the 13% in Free allocation are the left-nested
+re-association, `Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g))`,
+which rebuilds a node and a closure every step, and that an explicit
+continuation stack removes it.
+
+**Counted before writing any of it, and the hypothesis is dead.** A
+probe in `runFree`, this lane's own shape, N=4000:
+
+| case | elementwise | chunk-native |
+|---|---|---|
+| `rotate` — the re-association | **64** | 4 |
+| `Bind(Pure, f)` | 4001 | 17 |
+| `Bind(Inject, f)` | 8020 | 36 |
+| `Pure` | 2 | 2 |
+
+The rotation is 64 steps out of 12085 — half a percent. The other
+12021 take the two fast branches, which allocate nothing today. A
+continuation stack would optimise 0.5% of the walk and add a cons cell
+to the 99.5%. Not written.
+
+What the counts DO show is the real structure — three interpreter
+steps and two effect injections per element — and they explain the
+chunked lane in one line: **59 steps against 12085** for the same 4000
+elements, which is why it reads 19.66 against 209.3.
+
+**Then the step count itself was measured, and it is not the lever
+either.** One of the two injections per element is the CALLBACK:
+`runForeach` takes `A => Unit ! Async`, so a plain side effect is
+lifted through `Async.Run`. Walking the same source with a plain
+function removes that injection, its `Bind`, and a third of the steps
+(`PerElementStepBenchmark`, N=4000, quiet):
+
+| lane | us/op |
+|---|---|
+| `elem_effectCallback` (today's surface) | 209.313 ±1.504 |
+| `elem_plainCallback` | 199.621 ±3.308 |
+
+**4.6%.** A third of the interpreter steps is worth five percent, so
+the interpreter is not where the lane's time goes. (That lane is a
+measurement, not a proposed API — `Source.runForeach`'s documentation
+states the lifting rule deliberately. And it would not be a fair pair
+against ZIO, whose `runForeach` callback is an effect too.)
+
+**A fresh profile says where it does go.** The profile this entry
+rests on predates `bufferChunked` and the linear-view feed. Re-taken
+today (`-prof stack`, 1 fork, elementwise lane):
+
+```
+58.3% WAITING (86.1% of it Unsafe.park)   24.9% RUNNABLE   16.8% TIMED_WAITING (all park)
+  within RUNNABLE:  go$4 3.9%   resume 3.7%   runFree 2.5%   receiveMany 0.8%   popMany 0.3%
+```
+
+`runFree` is **2.5% of wall time, not 26%**, and the whole effect
+machinery is around 10%. Three quarters of the time the thread is
+PARKED. Caveats stated: one fork, ten seconds, and JMH filtered half
+the runnable frames — so read the ordering, not the decimals.
+
+So the last gap on this lane is not the interpreter and not the queue.
+It is the wakeup handshake, which already has an entry:
+**`channel-elementwise-wakeups`** — one unpark per element on the
+consumer's critical path. That is where this work goes next, and it
+now has evidence rather than a hunch. The remaining interpreter idea
+(make a per-element `Writer` step cheaper) is not refuted, but it is
+priced: everything above says the ceiling is around a tenth of the
+lane.
+
+## the original entry, kept for the reasoning — WITHDRAWAL REVERSED, gap narrowed
 
 Audited 2026-09-06. This entry withdrew the chunk-native read as
 measured-and-worse (447.9 against elementwise 264.5) on the finding

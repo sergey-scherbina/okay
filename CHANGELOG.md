@@ -1,5 +1,54 @@
 # Changelog
 
+## free-cont-stack — the optimization was counted before it was written, and it was not there
+
+`channel-per-element-effect-cost` had been the largest measured gap on
+the board: the elementwise channel read at 209.3us with a profile
+reading 62% effect machinery against 8% channel — `runFree` 26%, Free
+allocation 13%. That invites one fix. `runFree` re-associates a
+left-nested bind by REBUILDING it, `Bind(Bind(a, f), g) => Bind(a,
+f(_).flatMap(g))`, a node and a closure per step; an explicit
+continuation stack removes both. The lane was claimed to write it.
+
+**A probe in the interpreter killed it before a line was written.**
+On this lane's own shape, N=4000: `rotate=64`, `bindPure=4001`,
+`bindInject=8020`. The re-association fires 64 times in 12085 steps.
+Half a percent — and the other 99.5% take branches that allocate
+nothing today, so the stack would have ADDED a cons cell to them. The
+same count explains the chunked lane in one line: 59 interpreter steps
+against 12085 for the same elements.
+
+**Then the step count was measured too, and it is not the lever.** One
+of the two injections per element is the callback, which `runForeach`
+requires as a program. Walking the same source with a plain function
+removes it, its `Bind`, and a third of all steps:
+209.313 ±1.504 against 199.621 ±3.308. **4.6%.** A third of the
+interpreter for a twentieth of the time.
+
+**A fresh profile says where the time actually is.** The entry's
+profile predates `bufferChunked` and the linear-view feed. Today:
+58.3% WAITING (86% of it `Unsafe.park`), 16.8% TIMED_WAITING (all
+park), 24.9% RUNNABLE — inside which `runFree` is **2.5% of wall time,
+not 26%**, and the whole effect machinery about ten points. Three
+quarters of the time the thread is parked. One fork, ten seconds, half
+the runnable frames filtered by JMH: read the ordering, not the
+decimals.
+
+So the entry closes as an interpreter lane and hands the work to
+`channel-elementwise-wakeups`, which is now the primary one and has
+evidence instead of a hunch. No library code changed. What landed is
+`PerElementStepBenchmark`, carrying the counts and the pair that
+priced them, so the next agent inherits the map rather than the
+hypothesis.
+
+Two process notes. The plain-callback lane is a MEASUREMENT, not a
+proposed API: `Source.runForeach` documents the lifting rule as a
+decision, and reversing a documented stance is not a thing to do
+sideways inside a performance lane. And a compile error appeared in
+`Stm.scala`, a file this lane never touched, after the probe was
+reverted — incremental state, gone under `clean`. Master was never
+broken; the check came before the alarm.
+
 ## gate-143-mechanism — the trap is set, and the hypothesis it tests is probably wrong
 
 `matrix-kill-by-process-group` has cost this team a serialisation
