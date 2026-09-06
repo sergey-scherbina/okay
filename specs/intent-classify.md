@@ -1507,7 +1507,8 @@ no-network path to its best number so far.
 | option | accuracy | needs |
 |---|---|---|
 | patterns | 51.7% (89% where a cue fires) | nothing |
-| chargrams | 60.0% | nothing |
+| chargrams | 60.0% (65.0% on the grown fixture, 2026-09-07) | nothing |
+| word TF-IDF + linear | 61.7% (same split and session as the 65.0%) | nothing |
 | **static, words + pairs** | **63.3%** | a 5MB table |
 | teacher | 86.7% | `String => Embedding` |
 
@@ -3158,3 +3159,50 @@ startup path, once. `intent-fitted-model-ships` argued that fitting
 must leave the startup path; this is what stayed there, and it is
 nothing.
 
+
+## Results — intent-tfidf-word-linear (2026-09-07)
+
+**The classical baseline, run.** `WordTfIdf`: tokens are runs of
+letters or digits in any script, lowercased; a vocabulary and a
+smoothed IDF (`log((N + 1) / (df + 1)) + 1`) fitted on the training
+half and carried with the model; the L2-normalised vector handed to
+`Probe.train` as an embedding, so the descent is the one every tier
+uses. It sits between BM25 and the character n-grams in what it sees,
+and it was run to answer one question about the n-gram tier: is its
+number about characters, or about having a linear model at all?
+
+Same split as `TestCharGrams` (odd rows train, even rows test), same
+session, the default gate, no network:
+
+| | word TF-IDF + linear | character n-grams + linear |
+|---|---|---|
+| English, accuracy over ALL | **61.7%** | 65.0% |
+| margin ≥ 0.3 (coverage / agreement) | 68.3% / 58.5% | 50.0% / 70.0% |
+| margin ≥ 0.6 | 46.7% / 64.3% | 28.3% / 76.5% |
+| per message / fit | 51 us / 66 ms, 303 words | 92 us / 367 ms |
+
+Three points apart at full coverage, so **the n-gram tier's number is
+the linear model's**, not the characters' — on English. (The 60.0%
+the tables above record for chargrams was the fixture before
+intent-language-fixture-growth; on today's it reads 65.0%, and the
+comparison is between numbers from one run.) The n-grams' margin is
+worth more: at 0.6 they answer fewer messages at higher agreement,
+where the word model's margin barely sorts right from wrong.
+
+Per language, one model trained on all six, fifteen held-out rows
+each — thin, and read as direction only:
+
+| | en | fr | de | es | ru | ja |
+|---|---|---|---|---|---|---|
+| word TF-IDF | 53.3 | **66.7** | 26.7 | 26.7 | 40.0 | 26.7 |
+| character n-grams | 40.0 | 46.7 | **40.0** | 20.0 | **53.3** | **60.0** |
+
+Characters win exactly where words are not the unit: Japanese has no
+spaces, so a `\p{L}+` token is the whole clause and the vocabulary
+never matches (26.7% is the four-class chance line); Russian inflects,
+so `встретиться` and `встретимся` are two words to a vocabulary and
+one window to an n-gram. Words win on French, where they are the unit
+and the fixture's phrasing repeats. Neither is a tier to ship — the
+static table (63.3%, 5 MB) and the teacher remain the no-network and
+the accurate answers — but the question is answered, and it says the
+zero-network path's ceiling is the representation, not the head.

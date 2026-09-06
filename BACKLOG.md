@@ -1898,7 +1898,19 @@ ordered by what it would FIX, not by novelty.
       prune it against held-out data, repeat) so coverage grows with
       the corpus rather than with someone's patience. Keeps the zero-
       network property, which nothing else above 60% has.
-- [ ] intent-tfidf-word-linear — the classical baseline nobody ran:
+- [x] intent-tfidf-word-linear — DONE 2026-09-07: `WordTfIdf` (a
+      vocabulary and IDF fitted on the training half, the vector into
+      `Probe`), `TestWordTfIdf` in the default gate beside
+      `TestCharGrams`. Same split, same session: **61.7% against
+      chargrams' 65.0%** on English (the 60.0% below is the older
+      fixture) — so the n-gram tier's number is about having a linear
+      model, not about characters, to within three points. Per
+      language (15 rows each, thin): tf-idf en 53 / fr 67 / de 27 /
+      es 27 / ru 40 / ja 27; chargrams en 40 / fr 47 / de 40 / es 20 /
+      ru 53 / ja 60 — characters win exactly where words are not the
+      unit (no spaces in ja, inflection in ru), words win on fr.
+      51 us per message, a 66 ms fit, 303 words. Original: the
+      classical baseline nobody ran:
       word-level TF-IDF into the same logistic regression. It sits
       between BM25 (45.0%) and chargrams (60.0%) in what it sees, and
       it is thirty lines given `Probe`'s optimiser. Worth it to know

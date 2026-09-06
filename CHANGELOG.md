@@ -1,5 +1,21 @@
 # Changelog
 
+## intent-tfidf-word-linear — the classical baseline, run: 61.7%, three points under the n-gram tier
+
+`WordTfIdf` in okay-intent: tokens are runs of letters or digits in
+any script, the vocabulary and the smoothed IDF are fitted on the
+training half and carried with the model, the L2-normalised vector
+goes into `Probe.train` as an embedding — the same descent as every
+tier. `TestWordTfIdf` runs in the default gate beside `TestCharGrams`,
+same split, same session: **61.7% against 65.0%** on English at full
+coverage (the spec's 60.0% for chargrams was the older fixture), 51
+us per message, a 66 ms fit over 303 words. So the n-gram tier's
+accuracy is the linear model's, not the characters' — except where
+words are not the unit: per language (fifteen rows each) characters
+win on ja (60 vs 27) and ru (53 vs 40), words on fr (67 vs 47). The
+spec's zero-infrastructure table and the module doc carry the row;
+specs/intent-classify.md gets the section.
+
 ## shape-check-new-lanes — the lane rules, written where a lane's author reads them
 
 The board carried a rule as an open item: a competitor lane built by
