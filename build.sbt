@@ -1115,7 +1115,10 @@ lazy val okayScript = project
   // script can start/stop a real server (okay-script-lifecycle) and
   // serving a Site over a real port need it on the FORKED TEST JVM's
   // own classpath, which is what Classpath.ambient reads.
-  .dependsOn(okayHttp.jvm, okayJetty % Test)
+  // okayPersist.jvm: Sessions.persisted writes sessions through to a
+  // keyed, compacted topic so a restart keeps them (okay-script-
+  // persistent-sessions).
+  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayJetty % Test)
   .settings(
     name := "okay-script",
     // drives dotty.tools.dotc IN-PROCESS -- no scala/scala-cli

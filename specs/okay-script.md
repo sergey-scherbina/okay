@@ -1064,9 +1064,12 @@ UTF, no codec dependency), an empty value as the tombstone,
 `Ack.Durable` on every write, `Policy(compact = true)` so
 `Topic.compact` can reclaim superseded states — the `Snapshots`
 shape, materialized. On open the index is rebuilt by scanning the
-topic from `begin` (a later record wins, a tombstone deletes) and
-entries that expired while the process was down are dropped rather
-than resurrected. A torn record decodes to `None` and is a lost
+topic from `begin` (a later record wins, a tombstone deletes);
+entries that expired while the process was down are dropped by the
+first sweep — `handle(now)`, i.e. the first request — on the caller's
+clock, not by the rebuild guessing with the wall clock (a test with a
+synthetic clock caught the first draft doing exactly that). A torn
+record decodes to `None` and is a lost
 session, not a lost site. Touching a session (any request that binds
 to it) IS a write, because the last-access time is part of the
 persisted state — otherwise a restart would expire every cart that
