@@ -1,0 +1,19 @@
+task: channel-elementwise-wakeups (the PRIMARY lane: re-measure its own harness, count wakeups per element, then a consumer-local wake policy)
+agent: okay-42
+started: 2026-09-06
+branch: feature/channel-elementwise-wakeups
+
+why: BACKLOG "the original entry — OPEN, and now the PRIMARY lane":
+  three quarters of the elementwise consumer's thread time is parked,
+  and the diagnosis is one unpark per element once the producer
+  saturates the ring. The entry says every number predates the chunked
+  feed and must be re-taken on its own harness first. Plan: (1) before
+  — ChannelGuaranteeBenchmark okaySentinelElem/okayStrongElem/
+  okaySentinelChunk and ChannelGranularityBenchmark okayElementwise/
+  okayChunked, -prof gc; (2) a probe counting wakeOne successes per
+  element in okaySentinelElem (one side, a static counter is honest
+  here: only the consumer wakes senders); (3) if the count is near one
+  per element, a consumer-local policy: wake one sender every k-th pop
+  and all senders before the consumer parks (liveness), no read of
+  the producer's line per pop — hasRoom/size read `tail`; (4) A/B on
+  the same lanes, laws TestChannelLaws + the cross channel suites.
