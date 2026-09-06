@@ -1,0 +1,34 @@
+task: actor-receive-fused (channel-callback-allocation's receive half, done right)
+agent: okay-42
+started: 2026-09-06
+branch: feature/actor-receive-fused
+
+why: actor-receive-offer-first measured +19% with an empty mailbox
+  and -35% bytes with a full one, and the reason is physical: a failed
+  offer reads the producer's OWN cache line, a failed poll reads the
+  line the OTHER side writes -- ~17ns, 4000 of them the 67us lost. So
+  the try must not be a second scan.
+
+design: (1) Handoff[A] in core -- the callback IS the slot: value,
+  filled, waiter, and apply(End) that fills it. One object where
+  CanBlock.block allocated a Slot plus a lambda. (2) Channel.receiveInto
+  (h): Boolean -- "an element is ready now: write it into h, answer
+  true; else register h, answer false". Default: receiveAsync(h);
+  false (correct before fast). SentinelChannel: receiveAsync's own
+  first scan with an early return on a hit -- no Right(Some(_)), no
+  second scan, the miss path byte-identical to today's. (3)
+  CanBlock.await(h): park until filled, per platform (JVM/Native; JS
+  has no CanBlock). (4) receiveBlocking = Handoff + receiveInto + await
+  + h.answer. A hit costs Handoff + Some (was five objects); a miss
+  costs Handoff (was two). No cast anywhere: Handoff is typed on A.
+
+measure: actorTell (empty regime) and actorTellBacklog (full regime)
+  against channelBuffer, A/B against master, bytes and time; the
+  two-regime harness from the declined lane. Expected: -35% bytes
+  kept in the full regime, parity or better in the empty one, and
+  every receiveBlocking caller in the library allocating less.
+
+laws: TestChannelLaws runs against every implementation and covers
+  receiveBlocking; TestPoisonLaws covers the actor loop; new: a
+  Handoff suite -- end and failure through the handoff, a synchronous
+  end, a parked receiver woken by send, close and fail.
