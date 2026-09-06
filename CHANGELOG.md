@@ -1,5 +1,67 @@
 # Changelog
 
+## okay-reactive — Reactive Streams, with the TCK passing
+
+A new JVM-only module bridging `Source[A]` and
+`java.util.concurrent.Flow.Publisher[A]`, so this library's streams
+meet Akka/Pekko, RxJava, Reactor, fs2 and ZIO on the SPI they all
+speak. `Flow` has been in the JDK since 9, so the artifact adds NO
+dependency; the TCK is test-only.
+
+```scala
+Reactive.publisher(Source.range(0, 1000))   // Source  -> Publisher
+Reactive.source(publisher, capacity = 256)  // Publisher -> Source
+Reactive.failed(RuntimeException("nope"))   // already in error
+```
+
+The protocol is demand, and a bounded channel already is demand:
+`receiveMany(n)` means "no more than n", so the bridge turns requests
+into reads rather than inventing backpressure. Both directions carry
+the library's own promises across — a publisher is COLD (each
+subscriber gets its own run, because a `Source` is a program), and a
+failure is the END (`onError` arrives after everything delivered,
+which is `Channel.fail`'s promise).
+
+**39 TCK checks pass, and three of them taught something the prose
+did not.** This is the argument for insisting on the TCK before
+landing:
+
+- the first "failed publisher" fixture was
+  `Source.of(lazyList.map(_ => throw))`, and the exception escaped
+  `subscribe` itself — because **`Source.of` forces its head**. The
+  TCK reported the bridge as throwing when it was the fixture;
+- the second failed on the PULL, and the pump only pulls once
+  something is requested, so a subscriber that requests nothing was
+  never told;
+- what the spec means by a failed publisher is one ALREADY in error:
+  terminal signals are not limited by demand. `Reactive.failed` exists
+  because the TCK insisted, not because the design anticipated it.
+
+**One defect worth naming, because it would have been silent.** The
+reverse bridge first asked for one more element inside `onNext` —
+demand following ARRIVAL. Outstanding demand then stays at the full
+window while elements pile up in the buffer, so a slow reader
+overflows it and `offer` starts dropping: elements lost with no
+exception and no hang. Demand now follows CONSUMPTION, in half-window
+batches — and the batching matters too, since requesting per element
+puts the subscriber back into the publisher on every element, and a
+publisher that emits inside `request` (the spec allows it, asking only
+that the recursion be bounded, 3.3) recurses as deep as the stream is
+long. Our own first test publisher did exactly that and overflowed the
+stack.
+
+Driven from munit rather than TestNG: the TCK's own `@Test` methods
+are enumerated and invoked with its `setUp` before each, so the checks
+are the standard's and only the harness is ours — with a guard test
+that fails if fewer than thirty cases are found, because the first
+attempt ran under a runner that could not see TestNG annotations and
+reported zero tests, zero seconds, green.
+
+Documented in `docs/modules/okay-reactive.md`; `docs/queues.md` gains
+the feed findings behind the numbers.
+
+Gate 561 + 49, full matrix 2422, clean build, no warnings.
+
 ## feed-linear-view — two interpreter passes per element, to take the head of a list
 
 Profiled on the FASTEST channel path, 54% of the time sat in

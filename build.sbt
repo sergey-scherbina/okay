@@ -231,6 +231,27 @@ lazy val okayFs2 = (project in file("okay-fs2"))
     ),
   )
 
+/**
+ * Reactive Streams interop, on `java.util.concurrent.Flow` — in the
+ * JDK since 9, so the zero-dependency rule holds for the main
+ * artifact. The TCK is a TEST dependency and is not optional: the
+ * spec is thirty-odd rules a publisher must obey, and writing to the
+ * prose is a reliable way to produce something that works and is
+ * formally wrong.
+ *
+ * JVM only: `Flow` exists on neither Scala.js nor Native.
+ */
+lazy val okayReactive = (project in file("okay-reactive"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-reactive",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+      "org.reactivestreams" % "reactive-streams-tck-flow" % "1.0.4" % Test,
+      "org.reactivestreams" % "reactive-streams-examples" % "1.0.4" % Test,
+    ),
+  )
+
 /** Kafka as chunked async streams: one poll, one chunk (P4) */
 lazy val okayKafka = (project in file("okay-kafka"))
   // okay-persist rides along: KafkaStore is the stage-3 interop
@@ -1313,7 +1334,7 @@ lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
  * product this library no longer carries.
  */
 lazy val root = (project in file("."))
-  .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native,
     okayParse.jvm, okayParse.js, okayParse.native,

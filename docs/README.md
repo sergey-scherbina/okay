@@ -31,6 +31,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   gates, do-notation statements — with the rationale for every
   boundary and the graveyard of refuted alternatives. The theory
   chapter with the literature is [theory/08](theory/08-direct-style.md).
+- **[okay-reactive](modules/okay-reactive.md)** — Reactive Streams
+  interop over the JDK's own `Flow`, with the TCK passing: what the
+  specification demands, and the three things it caught that reading
+  the prose did not.
 - **[Channels and queues](queues.md)** — the two decisions a channel
   is (contract, then mechanism), every implementation and what it
   trades, the builder, recipes, the measured table, and the
