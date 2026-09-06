@@ -365,9 +365,12 @@ being the JS given is confirmed and cheap. Replacing that `Await`
 staging with a `Run` that answers `pure` on commit was tried the same
 day and measured WORSE (+13% time, +152 B per transaction on the JVM,
 §18e) — the drive's synchronous-answer path is cheaper than the
-nodes that would replace it — so the number left to move is the
-log's: the persistent write map, the tuple per read, the installed
-cell.
+nodes that would replace it. The log's number moved next
+(stm-log-cost, §18f): the read set as two arrays and the commit as
+one typed walk of the write set, no reversed copy, no iterators, no
+lookup per install — a Read-then-Write is 51 ns / 695 B under `tl2`
+and 35 ns / 439 B under `direct` now (was 68 / 822 and 93 / 774),
+against 9 ns / 55 B for the `Modify` fast path.
 
 Under REAL concurrent contention, still no loss (channel-merge-
 regression, 2026-09-02): the original Channel benchmark above is

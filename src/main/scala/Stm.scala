@@ -229,16 +229,26 @@ object Stm {
       writes.get(r).orElse(parent.flatMap(_.pending(r)))
     def write[X](r: TRef[X], v: X): Unit = writes = writes.updated(r, v)
     def hasWrites: Boolean = writes.nonEmpty
-    def written: Iterator[TRef[?]] =
-      def key[X](e: TMap.Entry[TRef, X]): TRef[?] = e.key
-      writes.entries.map(e => key(e))
+
+    /** every pending write with its cell, typed, in one walk of the
+     * write set — what a commit iterates. It was an `Iterator` built
+     * from a reversed copy and a `map`, made twice per commit (install,
+     * then wake) and walked once more to look each value up again;
+     * a tenth of a transaction by CPU sample (stm-log-cost (b)) */
+    def eachWrite(f: [X] => (TRef[X], X) => Unit): Unit = writes.foreachUnordered(f)
+
+    /** the direct handler's commit: install every write at its cell's
+     * next version, then wake each cell's waiters */
+    def installAll(): Unit =
+      eachWrite([X] => (r: TRef[X], v: X) => r.ref.set(r.install(v, r.version + 1)))
+      eachWrite([X] => (r: TRef[X], _: X) => r.wake())
 
     /** a WINNING `orElse` branch's log, folded into this one: every
      * write it made becomes this log's own (typed through TMap's
      * polymorphic `foreach`, the one justified link between a cell
      * and what was written to it) */
     def absorb(child: Log): Unit =
-      child.writes.foreach([X] => (r: TRef[X], v: X) => write(r, v))
+      child.eachWrite([X] => (r: TRef[X], v: X) => write(r, v))
 
     /** everything read so far still at the version it was read at,
      * and none of it owned by a commit in flight */
@@ -251,9 +261,6 @@ object Stm {
         i += 1
       ok
 
-    /** install what this attempt wrote to r, at the next version */
-    def installTo[X](r: TRef[X], v: Long): Unit =
-      pending(r).foreach(x => r.ref.set(r.install(x, v)))
   }
 
   /** one operation against the log; a torn read aborts (Abort), a
@@ -306,16 +313,19 @@ object Stm {
   /** run the whole program against the log, synchronously */
   private def interpret[A](tx: A ! Tx, log: Log): A = runWithLog(tx, log)
 
-  /** a cell a commit has taken: release it, or install into it */
-  private final class Held[X](r: TRef[X], before: TRef.Stamped[X]):
+  /** a cell a commit has taken, with the value to install into it:
+   * release it, or install */
+  private final class Held[X](r: TRef[X], before: TRef.Stamped[X], value: X):
     def release(): Unit = r.ref.set(before)
-    def install(log: Log): Unit = log.installTo(r, before.stamp + 1)
+    def install(): Unit = r.ref.set(r.install(value, before.stamp + 1))
     def wake(): Unit = r.wake()
 
-  private def own[X](r: TRef[X], token: AnyRef): Option[Held[X]] =
+  /** take the cell for this commit, or null if another commit holds
+   * it (a typed null, not an Option: one per write per commit) */
+  private def own[X](r: TRef[X], value: X, token: AnyRef): Held[X] | Null =
     r.ref.get match
-      case _: TRef.Owned[?] => None
-      case s => if r.ref.compareAndSet(s, TRef.Owned(s, token)) then Some(Held(r, s)) else None
+      case _: TRef.Owned[?] => null
+      case s => if r.ref.compareAndSet(s, TRef.Owned(s, token)) then Held(r, s, value) else null
 
   /** own the write set by CAS, validate the read set, install, release —
    * or restore and answer false; nothing ever waits */
@@ -324,11 +334,10 @@ object Stm {
     val token = new AnyRef
     val owned = mutable.ArrayBuffer.empty[Held[?]]
     var ok = true
-    val it = log.written
-    while ok && it.hasNext do
-      own(it.next(), token) match
-        case Some(h) => owned += h
-        case None => ok = false
+    log.eachWrite([X] => (r: TRef[X], v: X) =>
+      if ok then
+        val h = own(r, v, token)
+        if h != null then owned += h else ok = false)
     if ok then
       var i = 0
       while ok && i < log.nReads do
@@ -338,7 +347,7 @@ object Stm {
           case _ => true)
         i += 1
     if ok then
-      owned.foreach(_.install(log))
+      owned.foreach(_.install())
       owned.foreach(_.wake())
       true
     else
@@ -406,8 +415,7 @@ object Stm {
       val log = new Log
       try
         val a = interpret(tx, log)
-        log.written.foreach(r => log.installTo(r, r.version + 1))
-        log.written.foreach(_.wake())
+        log.installAll()
         k(Right(a))
       catch
         case Abort => attempt(tx, k)   // cannot happen on one thread; stated

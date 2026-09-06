@@ -349,7 +349,16 @@ construction instead of a type test per value).
       parks, yet every non-fast-path `atomically` is staged as an
       `Async.await`; run the attempt first, answer `pure(a)` on
       commit, reserve the `Await` for `RetryNow`.
-- [ ] stm-log-cost — a Read-then-Write transaction allocates ~800 B
+- [x] stm-log-cost — DONE 2026-09-07 (§18f): the read set as two
+      parallel arrays (−55/−63 B per transaction, time flat) and the
+      commit as one typed walk of the write set — no reversed copy,
+      no iterators, no lookup per install — `directReadWrite` 398 →
+      167.5 us (−58%), `tl2ReadWrite` 298 → 229.3 (−23%); a
+      Read-then-Write is 35 ns / 439 B (`direct`), 51 ns / 695 B
+      (`tl2`) over the bind now. Not taken: the small-array write set
+      (the `TMap` walk is no longer the cost), the log reuse across
+      retries (a retry is rare and parks). Original: a Read-then-Write
+      transaction allocates ~800 B
       and costs 70–90 ns on the JVM, ~300 ns on Node, ~1.5 us on
       Native (§18d), in the `Log`: a `TMap` write set rebuilt with
       `updated` per write, a `(TRef, Long)` tuple with a boxed

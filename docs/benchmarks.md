@@ -2243,4 +2243,51 @@ estimate that the two were a wash on bytes was wrong by 150 bytes,
 and the atomics it expected to save did not show up as time.
 Reverted in full; the lanes stay. The log — ~800 bytes per
 Read-then-Write in a persistent write map, a tuple per read and the
-installed cell — is the untouched number.
+installed cell — is the untouched number, and §18f takes it.
+
+### 18f. stm-log-cost: the read set as arrays, the commit as one walk — −58% on `direct`, −23% on `tl2`
+
+Profiled first. By JFR allocation sample the largest item of a
+Read-then-Write transaction was the read set — an
+`ArrayBuffer[(TRef[?], Long)]`: the buffer, its sixteen-slot backing
+array, a tuple and a boxed version per read — and the second was the
+commit's iteration: `written` built an `Iterator` from a REVERSED
+copy of the write map's list and a `map`, twice per commit (install,
+then wake), and `installTo` looked every value up again through an
+`Option`. By CPU sample the iterators were a tenth. Two changes,
+measured one at a time (`StmBenchmark`, `-prof gc`, two forks; the
+`*Modify` lanes and `control` unchanged throughout):
+
+| lane | §18d baseline | (a) read set as two arrays | (b) + the commit as one walk |
+|---|---|---|---|
+| `tl2ReadWrite` | 298.4 ±23.6 us / 3 830 962 B | 321.4 ±2.2 / 3 610 034 | **229.3 ±0.9 / 3 322 034** |
+| `directReadWrite` | 398.1 ±1.8 us / 3 638 963 B | 400.4 ±8.1 / 3 386 035 | **167.5 ±3.6 / 2 298 033** |
+| per transaction, over the bind | 68 ns / 822 B ; 93 ns / 774 B | | **51 ns / 695 B ; 35 ns / 439 B** |
+
+(a) took 55–63 bytes per transaction and no time: small objects are
+what a TLAB is for. (b) took the time — −29% on `tl2`, **−58% on
+`direct`** — and 72–272 more bytes: the JFR's tenth was an
+under-count, because `direct`'s commit was two iterator walks plus a
+map lookup per install, and `tl2`'s one walk plus the same lookup
+inside `Held.install`. Now `TMap.foreachUnordered` walks the list
+forward with no copy and no iterator (`foreach` keeps its promised
+insertion order for the callers that read it), `Log.eachWrite` is
+the one typed walk a commit makes, `Held` carries the value it will
+install, and `own` answers a typed null instead of an `Option`. What
+a Read-then-Write costs now: 51 ns and 695 bytes under `tl2`, 35 ns
+and 439 under `direct`, against 9 ns and 55 for the `Modify` fast
+path. What remains is the program's own nodes, the `Long` boxing a
+generic cell implies, the `Slot` a wrapped cell installs, and the
+`Await` staging §18e showed is cheaper than its replacement. Laws:
+every STM suite, `TestTMap`'s insertion-order law included. A
+confirmation run on the landed code read 245.1 ±7.4 / 171.3 ±1.6 us
+at the same bytes.
+
+The other platforms, `BenchStmCross` after both changes (median,
+us): Native `directReadWrite` 6409 → **4777** (−25%) and
+`tl2ReadWrite` 7920 → 6718 (−15%); JS 1360 → 1462 and 1763 → 1850,
++5–7%, which is inside the run-to-run drift the same harness showed
+on unchanged code (+3%) — no win on Node, and none lost that the
+drift can distinguish. The iterators cost most where a JIT could not
+remove them: the JVM's escape analysis evidently did not, V8's
+evidently did.

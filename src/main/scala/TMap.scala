@@ -54,6 +54,18 @@ final class TMap[K[_]] private (private val stack: List[TMap.Entry[K, ?]]) {
     def one[A](e: Entry[K, A]): Unit = f(e.key, e.value)
     stack.reverseIterator.foreach(e => one(e))
 
+  /** the same typed iteration in NO promised order — a forward walk
+   * of the stack, no reversed copy, no iterator. For a caller whose
+   * per-entry work is independent of the others': the STM commit
+   * installs and wakes cells this way, where the reverse iterator was
+   * a tenth of a transaction by CPU sample (stm-log-cost). */
+  def foreachUnordered(f: [A] => (K[A], A) => Unit): Unit =
+    def one[A](e: Entry[K, A]): Unit = f(e.key, e.value)
+    var s = stack
+    while s.nonEmpty do
+      one(s.head)
+      s = s.tail
+
   override def toString: String =
     def show[A](e: Entry[K, A]): String = s"${e.key} -> ${e.value}"
     stack.reverseIterator.map(e => show(e)).mkString("TMap(", ", ", ")")

@@ -1,5 +1,27 @@
 # Changelog
 
+## stm-log-cost — the transaction log, reshaped: −58% on `direct`, −23% on `tl2` for a Read-then-Write
+
+Profiled by JFR, then two changes measured one at a time on
+`StmBenchmark` (§18f). (a) The `Log`'s read set is two parallel
+arrays grown on demand instead of an `ArrayBuffer[(TRef[?], Long)]`
+— no buffer, no sixteen-slot array, no tuple and no boxed version
+per read: −55/−63 bytes per transaction, time flat. (b) The commit
+is one typed walk of the write set: `TMap.foreachUnordered` walks
+the list forward with no reversed copy and no iterator (`foreach`
+keeps its insertion order), `Log.eachWrite`/`installAll` replace
+`written` (two iterators per commit) and `installTo` (a map lookup
+per install), `Held` carries the value it installs, `own` answers a
+typed null: `directReadWrite` 400 → **167.5 us**, `tl2ReadWrite` 321
+→ **229.3**. Against the §18d baseline a Read-then-Write is now 51 ns
+/ 695 B under `tl2` (was 68 / 822) and 35 ns / 439 B under `direct`
+(was 93 / 774); the `Modify` fast path and the control did not move.
+Native follows (`directReadWrite` 6409 → 4777 us, −25%; `tl2` −15%);
+JS is flat inside its drift (+5–7%, where unchanged code drifted +3%)
+— the iterators cost where a JIT could not remove them. Every STM
+suite green on the JVM, `TestTMap`'s insertion-order law included;
+full gate 2530 / 0 warnings.
+
 ## stm-sync-commit-fastpath — tried and declined: +13% time, +152 B per transaction on the JVM
 
 The shape §18d named — the first attempt inside a `Run`, a commit
