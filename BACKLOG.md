@@ -2229,3 +2229,16 @@ If anything revives this, it is the adaptive feed (see
 `channel-per-element-effect-cost`): a producer that notices it is
 saturated and stops trying to offer. That is a different lane, driven
 by state rather than by shape.
+
+## fs2-chunked-merge-lanes — the fs2 rows in §6 and ChunkFlush are the singleton spelling only
+
+Filed by benchmark-fairness-audit (2026-09-06). `ChunkFlushBenchmark`'s
+`fs2Chunked` lane chunks AFTER the merge (`a.merge(b).chunkN(k)`), so
+the merge itself still sees singletons; measured at N=2000, chunking
+BEFORE it (`Stream.emits(range).chunkN(256).unchunks` a side) reads
+281 against 35 700. §6's table is N=500 and was not re-paired: add
+the chunked-before lane to `MergeBenchmark` and `ChunkFlushBenchmark`
+at their own N and put the row beside the singleton one — do not scale
+the N=2000 number. Same for `fs2.Stream.range` anywhere it feeds a
+competitor lane: it is per-element by construction (3.10.2,
+Stream.scala:3981), and `emits`/`chunkN` is the chunked spelling.

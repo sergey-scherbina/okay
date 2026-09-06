@@ -1,5 +1,56 @@
 # Changelog
 
+## benchmark-fairness-audit — are we fair to cats, ZIO and fs2; measured, and in two places we were not
+
+The operator asked. The answer had only ever been given by reading
+the lanes, so this reads them against the library sources in the
+Coursier cache (cats-effect 3.5.7, zio 2.1.14, fs2 3.10.2) and then
+MEASURES what each competitor lane pays that is not the thing under
+test. `FairnessProbeBenchmark`, 29 lanes, kept as a permanent lane;
+the numbers below are from a run on a checked-quiet box, and a loaded
+run before it agreed within bars on every lane.
+
+**Two places we flattered ourselves, both in §5 (stream pipeline).**
+The table priced ZIO from `ZStream.iterate` (628) and fs2 from
+`Stream.range` (1331-1721) — each library's per-element worst case —
+against Okay's best mode, and its own footnote admitted the fair lanes
+were "not yet measured". Measured: **`ZStream.range` 36.7**, 17x
+under the row; **`Stream.emits` 19.8**, 60x under the row and PURE,
+no runtime at all. fs2's `range` is `emit(o) ++ go(o + step)`
+(Stream.scala:3981), a singleton per element, and its own scaladoc
+says use `emits` for one chunk. With their sources the way their
+authors intended, ZIO is 2.6x the Iterator floor and fs2 1.4x —
+beside Okay's chunked 1.2x, not two orders of magnitude behind.
+kyo got this correction on 2 Sep; ZIO and fs2 get it now.
+
+**One overstatement of 15%, in §1.** `IO(x + 1)` is a Delay node
+carrying a thunk; `Cont.Pure(x + 1)` is a value. With `IO.pure`, the
+cats row reads 124.1 against 149.1, and the 1.7x becomes 1.4x. ZIO's
+equivalent moves within its bars.
+
+**One floor nobody had measured, now §0.** cats `unsafeRunSync`
+schedules the fiber to the compute pool and blocks on an
+ArrayBlockingQueue (IO.scala:1031): **7.6us** per invocation, paid by
+every cats lane and no okay lane; kyo's async entry 7.2; ZIO 0.04.
+3-5% of the cats rows. Changes no ordering; was never stated.
+
+**§6 merge:** fs2 with the chunking BEFORE the merge reads 281 where
+the singleton spelling reads 35 700 at N=2000 — a 127x difference
+inside fs2 from where one combinator sits. The table's N=500 row is
+filed to re-pair rather than scaled.
+
+**Verified fair, and said so because it was suspected:** the ZIO
+queue consumer's `Ref.update` per element (112.3) is not penalising
+ZIO — a plain var is 106.3 and the idiomatic `runSum` is SLOWER at
+155.1; and the cats producer through fs2 `evalMap` against a bare IO
+loop, bars overlapping. The runtime entries themselves are idiomatic
+throughout: `Runtime.default` shared, `parTraverse`, `foreachPar`,
+`acquireReleaseWith`, `bracket`, Kleisli over Eval.
+
+No row was quietly replaced: the old rows stay labelled as what they
+measured, the fair rows sit beside them. Fifteen rows appended to
+history.tsv under `benchmark-fairness-audit`.
+
 ## backlog-audit — nine channel entries against the code: two stale, two refuted, one defect still live
 
 The board had drifted from the tree. Nine channel/chunk/feed entries

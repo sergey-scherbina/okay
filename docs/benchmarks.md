@@ -24,6 +24,35 @@ beside the microseconds it costs.
 
 ---
 
+## 0. The floor — what each runtime charges to run nothing
+
+| **Okay** | ZIO | kyo `.eval` | kyo `runAndBlock` | cats IO |
+|---|---|---|---|---|
+| **0.00** | 0.04 | 0.00 | 7.2 | 7.6 |
+
+(`FairnessProbeBenchmark`, `floor_*`, quiet box 2026-09-06: an
+already-finished program, run. Same run as the `chain_*`, `pipeline_*`
+and `queue_*` lanes cited below.)
+
+**Why this table exists.** Every cats lane in this document goes
+through `unsafeRunSync`, which in cats-effect 3.5.7 schedules the
+fiber onto the compute pool and blocks the caller on an
+`ArrayBlockingQueue` (`IO.scala:1031`, `IOPlatform.scala:70`) — two
+thread handoffs per invocation, **7.6 µs**, paid whether the program
+is one bind or ten thousand. ZIO's `unsafe.run` starts the fiber on
+the calling thread and returns its exit directly when it finishes
+without suspending (`Runtime.scala:143-165`); okay runs inline. kyo's
+`.eval` is free and its async entry pays the same 7.2 as cats.
+
+So a cats row of 140 (§4) is 132 of cats and 8 of entering it, and a
+row of 153 (§1) is 5% floor. Nothing here changes an ordering; it was
+still never stated, and a floor nobody has measured is a number
+nobody can subtract. (ZIO's fiber DOES leave the caller thread once
+it passes `MaxOperationsBeforeYield = 10240` operations,
+`FiberRuntime.scala:1503`, so the 10k-bind chain in §1 pays one
+handoff on the ZIO side too; the floor lane is one operation and
+cannot show it.)
+
 ## 1. Bind chain — 10k left-nested flatMaps, built and run
 
 | **Okay Eager** | kyo | **Okay Cont** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
@@ -66,6 +95,18 @@ fold re-associates by allocation); cats IO and ZIO run every bind
 through a fiber runtime — shift checks, trace buffers, interruption
 machinery — pure overhead when nothing suspends; atnos-eff pays the
 open-union tagging of classic freer on every operation.
+
+**The cats row is 15% node kind, not runtime (benchmark-fairness-
+audit, 2026-09-06).** The lane binds `IO(x + 1)` — what a cats user
+types, and a `Delay` node carrying a thunk — against `Cont.Pure(x +
+1)`, a value. The like-for-like cats twin of `Pure` is `IO.pure`, and
+with it the row reads **124.1 ±2.9 against 149.1 ±4.0** for the
+`IO(...)` spelling, same run, quiet box; `okayCont` 87.3 ±7.1 in that
+run. The 1.7x above is therefore 1.4x with the node kinds matched.
+ZIO's equivalent (`Exit.succeed` for `ZIO.succeed`) moves 5% and
+within its bars. The table keeps the `IO(...)` spelling because it is
+the one people write; this paragraph is so nobody reads the gap as
+all interpreter.
 
 **The asterisk that reframes the whole table.** kyo's 58 is
 FRONT-LOADED: construction evaluates. Build-only lanes
@@ -283,9 +324,34 @@ lanes are their worst case (a per-element source), noted as such;
 kyo's chunked `Stream.range` lane shows what the runtime costs when
 the source is chunked the way its author intended — 5x under its
 singleton lane, and still 4x from the floor where Okay's chunks sit
-at ~1x. (fs2 and ZStream have chunked `range` sources too; they are
-not yet measured — a same-session sweep of all three is the next
-step, filed.)
+at ~1x.
+
+**Measured 2026-09-06 (benchmark-fairness-audit), and the table
+above was pricing both from their worst source.** Same pipeline,
+same N, quiet box, one run:
+
+| source | us/op | vs Iterator floor (14.3, same run) |
+|---|---|---|
+| `ZStream.iterate` (the table's ZIO row) | 628.0 ±12.4 | 44x |
+| **`ZStream.range`** — ZIO's chunked source | **36.7 ±0.6** | 2.6x |
+| `fs2.Stream.range` over IO (the table's fs2 row) | 1721 ±127 | 120x |
+| `fs2.Stream.range`, pure | 1331 ±11 | 93x |
+| **`fs2.Stream.emits(0 until n)`, pure** | **19.8 ±0.0** | 1.4x |
+
+`ZStream.range` is 17x under the ZIO row above; `Stream.emits` is
+60x under the fs2 row — and PURE: an fs2 pipeline with no effect
+compiles synchronously, no runtime and no `unsafeRunSync` at all.
+fs2's `range` is `emit(o) ++ go(o + step)` (Stream.scala:3981-3993,
+3.10.2), a singleton chunk per element, and its own scaladoc says to
+use `emits` for one chunk. kyo received its fair chunked lane on
+2 Sep; these two did not until now.
+
+With their sources the way their authors intended, ZIO sits at 2.6x
+the floor and fs2 at 1.4x — beside Okay's chunked 16.9 (1.2x) and
+elements 23.6 (1.7x), not two orders of magnitude behind them. The
+`iterate` rows stay in the table as what they are: the price of a
+per-element source in a chunked runtime, each library's worst case.
+They are not the library.
 
 ## 6. Merge — two 500-element streams by readiness
 
@@ -299,6 +365,16 @@ later. Chunking the STREAM (not the queue — a chunked-queue variant
 was tried and REFUTED, it's in history.tsv) beat ZIO's own
 chunk-aware merge 3.2x. fs2's number is its worst case (singleton
 elements through its concurrency machinery), stated as such.
+
+**And fs2's fair spelling, measured (benchmark-fairness-audit,
+2026-09-06, N=2000 a side, same run, quiet box):** chunk the sources
+BEFORE the merge — `Stream.emits(range).chunkN(256).unchunks` on each
+side — and fs2 reads **281 ±7** where the singleton spelling reads
+35 700 ±169 at that N; `ZStream.range` merging in the same run 59.0
+±1.1. A 127x difference inside fs2, from where the chunking sits.
+`ChunkFlushBenchmark`'s `fs2Chunked` lane chunks AFTER the merge, so
+the merge itself still sees singletons — filed to fix at this
+table's N=500 rather than guessed by scaling.
 
 **Okay elementwise moved from 158 to 308 — investigated, NOT a
 regression** (channel-merge-regression, 2026-09-02). A full-sweep

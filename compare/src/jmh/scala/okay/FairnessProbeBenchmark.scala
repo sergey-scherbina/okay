@@ -4,26 +4,35 @@ import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 
 /**
- * PROBE, not a table: what the competitor lanes pay that is not the
- * thing being measured.
+ * What the competitor lanes pay that is not the thing being measured
+ * (benchmark-fairness-audit, 2026-09-06; docs/benchmarks.md §0, and
+ * the paragraphs it added to §1, §5 and §6).
  *
- * Two questions, both about whether this repository has been fair to
- * cats-effect and ZIO rather than to itself:
+ * This lane exists because the question "are we fair to cats and
+ * ZIO" had been answered by reading, never by measuring. Six probes,
+ * each a pair whose only difference is the thing suspected:
  *
- * 1. THE RUNTIME-ENTRY FLOOR. cats-effect 3.5.7's `unsafeRunSync`
- *    schedules the fiber onto the compute pool and blocks the caller
- *    on an ArrayBlockingQueue (IO.scala:1031, IOPlatform.scala:70) —
- *    two thread handoffs per benchmark invocation, paid by every
- *    cats lane in this project and by none of okay's, which run
- *    inline. ZIO's `unsafe.run` runs the fiber on the calling thread
- *    and only parks if it suspends. Nobody here has ever measured
- *    what that floor is, so nobody knows what share of "cats IO 140"
- *    is the handoff and what share is cats.
+ *  1. THE RUNTIME-ENTRY FLOOR. cats-effect 3.5.7's `unsafeRunSync`
+ *     schedules the fiber onto the compute pool and blocks the caller
+ *     on an ArrayBlockingQueue (IO.scala:1031, IOPlatform.scala:70):
+ *     7.6us per invocation, paid by every cats lane in this project
+ *     and by none of okay's. ZIO's `unsafe.run` starts on the calling
+ *     thread (Runtime.scala:143). Found: 7.6 / 0.04 / 0.00.
+ *  2. PURE AGAINST DELAY in the bind chain. `IO(x + 1)` is a Delay
+ *     node; `Cont.Pure(x + 1)` is a value. Found: 15% of the cats row.
+ *  3. THE QUEUE CONSUMER. Every zio queue lane here sums through
+ *     `Ref.update` per element. Found FAIR: a plain var is 5% cheaper
+ *     and the idiomatic `runSum` is slower.
+ *  4. THE §5 PIPELINE SOURCE. The table priced ZIO from `iterate` and
+ *     fs2 from `range`, both per-element. Found: `ZStream.range` 17x
+ *     under, `Stream.emits` (pure) 60x under.
+ *  5. THE CATS PRODUCER in ManyProducers, fs2 `evalMap` against a
+ *     bare IO loop. Found FAIR: bars overlap.
+ *  6. THE fs2 MERGE, chunked before the merge rather than after.
+ *     Found: 127x inside fs2 from where the chunking sits.
  *
- * 2. THE PURE-VS-DELAY PAIRING in the bind chain. `okayCont` binds
- *    `Cont.Pure(x + 1)`; `catsIO` binds `IO(x + 1)` — a Delay thunk,
- *    which is what a cats user types, but not the same node kind. The
- *    cats twin of `Pure` is `IO.pure`; ZIO's is `Exit.succeed`.
+ * The verified-fair pairs stay: a probe that is deleted when it finds
+ * nothing is a probe nobody can re-run when the code moves.
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
