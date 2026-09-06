@@ -433,6 +433,28 @@ construction instead of a type test per value).
 
 ## Flakes observed (record → fix loop when they recur)
 
+- [ ] native-runner-137 — the Native test binary
+      (`.native/target/scala-3.7.4/okay-test`) "finished with non-zero
+      value 137" in a full matrix (2026-09-07 01:25, the
+      frame-language-tag-fallback gate): the sbt-scala-native runner
+      logged `Force close java.net.SocketTimeoutException: Accept timed
+      out` and then "Test runner interrupted by fatal signal 9", and
+      `okay.TestChannelFailureCross` was the suite in flight. Neither
+      launchd guard killed anything (build-ram-guard.log: `killed=0`
+      every tick, okay worktrees `SPARE`d; kill-stale-builders' last
+      kill 19:22 the day before). The box was paging through the whole
+      run (pageouts 240–590/tick, "available" 8–10 GB, a sibling's
+      idle 601 MB sbt beside the gate), so the reading is the
+      adapter's own accept timeout under paging, followed by its
+      SIGKILL of the binary it could not reach. The timeout is a
+      constant: `scala.scalanative.testinterface.ComRunner` calls
+      `ServerSocket.setSoTimeout(40000)` (test-runner 0.5.12,
+      bytecode), so a Native test binary that takes more than 40 s to
+      start and connect — on a paging box, with the gate's own JVMs
+      beside it — is force-closed by its own runner. Nothing in
+      `nativeConfig` reaches it. Until upstream makes it a setting, a
+      137 with `Accept timed out` above it is the box, not the tree —
+      re-run, and keep the box quiet (one sbt) for the Native leg.
 - [x] chat-demo-sessions-flake — CLOSED 2026-09-07: the nine
       `withServer` tests of `TestChatDemo` are `portTest` now (the
       `Live` tag through a per-test helper, as `liveTest` already
@@ -2619,7 +2641,14 @@ subtraction.
       carry any names: what is missing is a way to state a cue set
       AGAINST a `Taxon`, and a check that every cue names a class the
       taxonomy holds.
-- [ ] frame-language-with-grammatical-gender — the migrating consumer
+- [x] frame-language-with-grammatical-gender — SETTLED 2026-09-07
+      (frame-language-tag-fallback): the caller keys by the tag it
+      owns (`pl-formal-f`) and `Slot.lookup` finds a wording along the
+      tag — the tag, each shorter prefix at a `-`, the fallback;
+      `question`, `show`, `options` and `speaks` all go through it, so
+      `untranslated` is honest for a tag. The library models nothing
+      about gender or register. Laws in `TestFrame`; docs/modules/
+      okay-frame.md says the rule. Original: the migrating consumer
       raised it and could not test it: `Slot.ask` is keyed by a
       language CODE, and a language whose question differs by the
       grammatical gender of the ADDRESSEE (Polish Pan/Pani, and the

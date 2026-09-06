@@ -65,6 +65,34 @@ class TestFrame extends munit.FunSuite {
     assertEquals(form.in("de").missing.map(_._2), Vector("Where?", "How many?"))
   }
 
+  test("the language is a tag the caller owns, and a wording is found along it") {
+    // Polish addresses a woman formally as Pani: the CALLER knows the
+    // register of the exchange, keys by it, and this module knows
+    // nothing about gender -- only that a closer wording beats a farther
+    val polite = Slot[String]("where",
+      Map("en" -> "Where?", "pl" -> "Gdzie?", "pl-formal-f" -> "Gdzie, proszę Pani?"),
+      s => Option.when(s.trim.nonEmpty)(s.trim))
+    assertEquals(Slot.along("pl-formal-f"), List("pl-formal-f", "pl-formal", "pl", "en"))
+    assertEquals(polite.question("pl-formal-f"), "Gdzie, proszę Pani?")
+    assertEquals(polite.question("pl-formal-m"), "Gdzie?")      // no wording for the tag: its language
+    assertEquals(polite.question("pl"), "Gdzie?")
+    assertEquals(polite.question("de-CH"), "Where?")            // nothing along the tag: the fallback
+    assert(polite.speaks("pl-formal-m") && polite.speaks("pl-formal-f") && !polite.speaks("de-CH"))
+    // so `untranslated` is honest for a tag, and `missing` asks in the closest wording
+    val f = Frame.of("repair", polite, count).in("pl-formal-f")
+    assertEquals(f.untranslated, Vector.empty)
+    assertEquals(f.missing.map(_._2), Vector("Gdzie, proszę Pani?", "Ile?"))
+    // a choice says its values back along the same chain
+    val size = Slot.choice[String]("size",
+      Map("en" -> "Which size?", "pl" -> "Jaki rozmiar?"),
+      Seq(
+        "small" -> Map("en" -> "small", "pl" -> "mały", "pl-formal-f" -> "mały (Pani)"),
+        "large" -> Map("en" -> "large", "pl" -> "duży")))
+    assertEquals(size.show("small", "pl-formal-f"), "mały (Pani)")
+    assertEquals(size.show("large", "pl-formal-f"), "duży")
+    assertEquals(size.options("pl-formal-f"), Vector("mały (Pani)", "duży"))
+  }
+
   test("an answer may answer more than was asked, and unread words are kept") {
     val f = form.take("where", "Wrocław, 2 rooms")
     assertEquals(f.valueOf(where), Some("Wrocław, 2 rooms"))

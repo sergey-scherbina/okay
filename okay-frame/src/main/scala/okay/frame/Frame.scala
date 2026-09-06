@@ -75,13 +75,13 @@ final case class Slot[A](name: String,
   /** the question, in the reader's language, falling back to the one
    * language a slot must have */
   def question(lang: String): String =
-    ask.getOrElse(lang, ask.getOrElse(Slot.Fallback, s"What is the $name?"))
+    Slot.lookup(ask, lang).getOrElse(s"What is the $name?")
 
   /** whether this slot can be asked in that language AT ALL, as
    * opposed to falling back to another one — a four-language intake
    * that quietly asks one question in English is a defect a caller
    * should be able to see before it ships */
-  def speaks(lang: String): Boolean = ask.contains(lang)
+  def speaks(lang: String): Boolean = Slot.tags(lang).exists(ask.contains)
 
   /**
    * Read an answer, or say what to ask again.
@@ -101,6 +101,34 @@ object Slot:
   /** the language a slot must have a question in; everything else
    * falls back to it */
   val Fallback: String = "en"
+
+  /**
+   * The tags a language tag falls back along: the tag itself, then
+   * each shorter prefix at a `-`, then the fallback — so a wording
+   * keyed `pl-formal-f` is found for that tag, and a tag nobody wrote
+   * a wording for reads `pl`'s before it reads English's.
+   *
+   * Why a tag and not a code (frame-language-tag-fallback): a language
+   * whose question changes with the ADDRESSEE — Polish `Pan`/`Pani`,
+   * the formal registers around it — needs more than a code, and it
+   * is the caller who knows which register an exchange is in. So the
+   * caller keys by the tag it owns, and this library models nothing
+   * about gender or register: it only promises never to ask in the
+   * wrong language when a closer wording exists. `speaks` answers for
+   * the same chain, so `untranslated` is honest for a tag too.
+   */
+  def along(lang: String): List[String] = (tags(lang) :+ Fallback).distinct
+
+  /** the tag and its shorter prefixes, WITHOUT the fallback: what
+   * `speaks` answers for, since a slot that only has the fallback's
+   * wording does not speak the language asked about */
+  def tags(lang: String): List[String] =
+    val parts = lang.split("-").toList.filter(_.nonEmpty)
+    (parts.length to 1 by -1).map(n => parts.take(n).mkString("-")).toList
+
+  /** the closest wording for a tag, along its fallback chain */
+  def lookup[V](wordings: Map[String, V], lang: String): Option[V] =
+    along(lang).iterator.flatMap(wordings.get).nextOption()
 
   /** the default extractor, typed `Option[Nothing]` on purpose: a
    * default that mentioned `A` would be elaborated before `A` is known
@@ -157,9 +185,9 @@ object Slot:
       required = required,
       show = (v, lang) =>
         values.collectFirst { case (x, ws) if x == v =>
-          ws.getOrElse(lang, ws.getOrElse(Fallback, v.toString)) }.getOrElse(v.toString),
+          lookup(ws, lang).getOrElse(v.toString) }.getOrElse(v.toString),
       options = lang =>
-        values.toVector.map((v, ws) => ws.getOrElse(lang, ws.getOrElse(Fallback, v.toString))))
+        values.toVector.map((v, ws) => lookup(ws, lang).getOrElse(v.toString)))
 
 /**
  * One answered slot: the slot, the text a person said, and the VALUE

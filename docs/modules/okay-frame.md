@@ -44,6 +44,17 @@ of a profile. `in(lang)` is called once, where the exchange begins.
 four-language intake that would quietly fall back to English is
 visible before it ships.
 
+**The language is a tag the caller owns, and a wording is found along
+it.** A code is not always enough: a language whose question changes
+with the addressee — Polish `Pan`/`Pani`, the formal registers around
+it — needs the caller to say which register the exchange is in. So
+`in("pl-formal-f")` is a fine language, and `question`, `show`,
+`options` and `speaks` look a wording up along the tag: `pl-formal-f`,
+then `pl`, then the fallback. The library models nothing about gender
+or register; it promises only never to ask in a farther language
+when a closer wording exists, and `untranslated` is honest for a tag
+(a slot that speaks `pl` speaks `pl-formal-f`).
+
 **An answer may answer more than was asked.** `take(name, text)`
 answers the named slot and offers the same sentence to every other
 slot's extractor: asked where and told "Wrocław, and remote works", a

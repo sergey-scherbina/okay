@@ -1,5 +1,21 @@
 # Changelog
 
+## frame-language-tag-fallback — a slot's wording is found along the language tag the caller owns
+
+A consumer asked how a slot should be asked in a language whose
+question changes with the addressee's grammatical gender (Polish
+`Pan`/`Pani`, the formal registers around it), and could not test it:
+`Slot.ask` was keyed by a language code, looked up exactly, falling
+straight to English. Now the language is a tag the caller owns —
+`in("pl-formal-f")` — and `Slot.lookup` finds a wording along it: the
+tag, each shorter prefix at a `-`, then the fallback. `question`,
+`show`, `options` and `speaks` all go through it, so a slot that
+speaks `pl` speaks `pl-formal-f` and `untranslated` stays honest for a
+tag. okay-frame models nothing about gender or register; it promises
+never to ask in a farther language when a closer wording exists. Laws
+in `TestFrame`; the rule in docs/modules/okay-frame.md; the board
+entry `frame-language-with-grammatical-gender` settled.
+
 ## intent-temporal-multilingual — `Temporal` reads the fixture's other seven languages
 
 `Temporal.parse` filled English rows and declined the rest (5/5 en,
