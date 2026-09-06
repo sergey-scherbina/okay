@@ -25,6 +25,22 @@ object Slots:
         "ja" -> "いつがご都合よろしいですか。"),
       parse = s => Temporal.parse(s, today),
       extract = s => Temporal.find(s, today))
+  /** how long, in minutes — `Duration`'s parser and extractor, the
+   * question in the languages `when` asks in */
+  val duration: Slot[Int] =
+    Slot(
+      name = "duration",
+      ask = Map(
+        "en" -> "How long should the meeting be?",
+        "fr" -> "Combien de temps devrait durer la réunion ?",
+        "de" -> "Wie lange soll die Besprechung dauern?",
+        "es" -> "¿Cuánto debería durar la reunión?",
+        "ru" -> "Сколько времени займёт встреча?",
+        "ja" -> "会議はどのくらいの長さにしますか。"),
+      parse = s => Duration.parse(s),
+      extract = s => Duration.find(s),
+      show = (v, _) => if v % 60 == 0 then s"${v / 60}h" else if v > 60 then s"${v / 60}h${v % 60}" else s"${v}min")
+
   /** a plain text slot, for the frames whose fields are not parsed at
    * all — most of them, and there is no shame in it */
   def text(name: String, ask: Map[String, String], required: Boolean = true,

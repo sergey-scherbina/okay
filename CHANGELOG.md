@@ -1,5 +1,23 @@
 # Changelog
 
+## intent-extract-duration — a duration slot: `Duration.parse`/`find` and `Slots.duration`
+
+The second slot with a parser and an extractor, after `when`.
+`Duration.parse` reads a phrase to minutes — a number and a unit
+(`30 minutes`, `45 min`, `2 hours`, `1.5 h`, `90m`, `1h30`, `a 2-hour
+workshop`), the spoken forms (`an hour`, `half an hour`, `a quarter of
+an hour`, `an hour and a half`, `two hours`, `forty-five minutes`) —
+and declines the rest (`a while`, `all day`, `a couple of hours`, a
+bare number, zero, more than a day), on `Temporal`'s two promises:
+total and deterministic. `Duration.find` keeps the evidence rule:
+the value is the whole message's, the span is the shortest window
+that reproduces it. `Slots.duration` asks in the six languages `when`
+asks in and says a value back as `1h30` / `2h` / `45min`; a frame of
+`when` and `duration` fills both from "Can we meet next Tuesday for 30
+minutes?". English phrases; the other languages' words are filed
+(intent-duration-multilingual), and `who`, places and amounts stay on
+the more-slots entry.
+
 ## frame-language-tag-fallback — a slot's wording is found along the language tag the caller owns
 
 A consumer asked how a slot should be asked in a language whose

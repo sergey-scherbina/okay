@@ -2715,10 +2715,25 @@ subtraction.
       okay-intent should hold the composed door itself, with the demo
       as its caller rather than its definition. Also named on
       2026-09-04 and unfiled until now.
-- [ ] intent-extract-more-slots — only `when` and whole-message text
-      have extractors. Named entities (who), durations, places and
-      amounts are the obvious next ones, and each is a `Slot.extract`
-      rather than a design.
+- [ ] intent-extract-more-slots — durations DONE 2026-09-07
+      (intent-extract-duration): `Duration.parse`/`find` (minutes; a
+      number and a unit, `1h30`, `90m`, the spoken fractions, number
+      words, `and a half`; total and deterministic like `Temporal`)
+      and `Slots.duration`, asked in `when`'s six languages, showing
+      `1h30`/`2h`/`45min` back. English phrases; the other languages'
+      number-and-unit words are filed as
+      intent-duration-multilingual. Still open here: named entities
+      (who), places, amounts — each a `Slot.extract` rather than a
+      design, and `who` the one that is not a parser. Original: only
+      `when` and whole-message text have extractors. Named entities
+      (who), durations, places and amounts are the obvious next ones,
+      and each is a `Slot.extract` rather than a design.
+- [ ] intent-duration-multilingual — `Duration` reads English; the
+      parallel fixture has no duration rows, so the law that settled
+      `Temporal`'s seven languages has nothing to hold on to yet. A
+      lexicon per language (units, the spoken fractions, number words)
+      and a fixture of duration phrases per language, then the same
+      "one meaning, eight wordings" law.
 - [x] intent-taxon-wired-to-tiers — LANDED 2026-09-05. Every `Trained`
       carries the `Taxon` it was fitted against; `train` infers,
       `against(taxon, rows)` declares and refuses a label outside it,

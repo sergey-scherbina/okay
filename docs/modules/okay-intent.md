@@ -33,6 +33,7 @@ rather than a class of parsing bug.
 | `Router` | the composed door: the measured tier order, and four outcomes |
 | `Rows` / `ByLanguage` | a training row knows its language; a thin language borrows the pooled fit |
 | `Temporal` | temporal phrases to ISO-8601 in the fixture's eight languages (en, fr, de, es, ru, uk, pl, ja), total and deterministic, refusing rather than guessing |
+| `Duration` | duration phrases to minutes (`30 minutes`, `an hour and a half`, `1h30`), the same two promises; `Slots.duration` is the slot, asked in `when`'s languages |
 
 **The dependency is `String => Embedding`, not "a server".** The vector
 tiers need a function; whether it is an HTTP call or an in-process

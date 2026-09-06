@@ -3365,3 +3365,25 @@ the way: `15:00` was being split at the colon by the multilingual
 tokeniser (fixed: the colon is a time), and a Cyrillic qualifier was
 being read by the wrong lexicon (fixed: qualifiers are read from all
 of them). Both are in the suite.
+
+## Results — intent-extract-duration (2026-09-07)
+
+**The second parsed slot.** `Temporal` settled what a slot with a
+parser and an extractor is: total, deterministic, the value the whole
+message's and the evidence the shortest window reproducing it.
+`Duration` is that shape for "how long": minutes from a number and a
+unit (`30 minutes`, `45 min`, `2 hours`, `1.5 h`, `90m`, `1h30`, `a
+2-hour workshop`) or the spoken forms (`an hour`, `half an hour`, `a
+quarter of an hour`, `an hour and a half`, `two hours`, `forty-five
+minutes`); `None` for what it cannot read (`a while`, `all day`, `a
+couple of hours`, a bare number, zero, more than a day). `Slots.
+duration` asks in the six languages `when` asks in and shows a value
+back as `1h30` / `2h` / `45min`; a `Proposal` frame of `when` and
+`duration` fills both from "Can we meet next Tuesday for 30 minutes?"
+with nothing left to ask. English phrases: the parallel fixture has no
+duration rows, so the "one meaning, eight wordings" law that settled
+`Temporal`'s languages has nothing to hold on to yet, and the other
+languages' number-and-unit words are filed (intent-duration-
+multilingual) with a fixture to be written first. `who`, places and
+amounts remain on the more-slots entry; `who` is the one that is not
+a parser.
