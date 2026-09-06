@@ -1744,3 +1744,41 @@ judged on both. The design that wins in both is filed as
 `actor-receive-fused`: fold the try into `receiveAsync`'s own first
 scan so a hit costs no second read, and merge the slot with its
 callback into one object so a miss allocates one thing, not two.
+
+### 17b. The bridge, halved — and only by both halves at once
+
+`reactive-bridge-profile` counted the round trip per side before
+touching it: the reader made **4001 awaits for 4000 elements** — one
+handshake per element where `drained` takes 62 through `receiveMany`
+— and the pump walked the source through `toLazyList`, a memoising
+cell, a `State$Cons` and a thunk per element (135 of ~900 allocation
+samples) for a re-observability a pump never uses. Two fixes, each a
+pattern this document already records: the reader takes a chunk and
+serves it, demand still following consumption; the pump takes the
+linear view, as `feed` did. Each was measured ALONE first, then
+together (`reactiveRound` against `plainSource`, control 55–58 us /
+861 088 B/op stable throughout; laws 49/49 at every step):
+
+| change | us/op | B/op | verdict alone |
+|---|---|---|---|
+| master | 312.9 ±13.0 | 2 951 724 | 5.67x the plain source |
+| reader batched, alone | 358.3 ±10.3 | 3 030 674 ±142 890 | worse — counted, the batches ARE 52–60 per await, and buy nothing |
+| pump linear view, alone | 364.7 ±46.2 | 2 727 369 | −7.6% bytes, time in the noise |
+| **both** | **152.5 ±5.3** | **1 746 516** | **−51% time, −41% bytes — 2.63x the plain source** |
+
+Alone, the batched reader drained a channel the pump could not keep
+full, and every empty batch was a park on both sides — the ±143 KB on
+its bytes is the park count varying. Alone, the linear view made the
+pump faster but the reader still paid a handshake per element. Together
+the pump runs AHEAD and the reader's batches fill. This is the third
+time today a consumer-side batch measured worthless behind a slow
+producer and reversed once the producer was fixed (`bufferChunked`
+after `feed-linear-view`; the floor lane's premise; here). The rule it
+teaches: measure a batch only after the side that fills it is fast,
+and never withdraw one on a measurement taken before that.
+
+What is left of the 2.63x: the round trip still carries `Writer$Say`
+per element, `uncons`'s `Right`+`Tuple2`+`Some` on the pump, an atomic
+`decrementAndGet` of demand per element, boxing for a primitive
+element type, and the channel's ring push and pop. Those are the
+bridge's representation, not a hole.

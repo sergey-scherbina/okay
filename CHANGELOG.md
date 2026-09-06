@@ -1,5 +1,68 @@
 # Changelog
 
+## reactive-bridge-profile — the bridge halved, and only by both halves at once: 5.67x → 2.63x
+
+The largest ratio measured this morning, counted per side before it
+was touched. The reader of `Reactive.source` made **4001 awaits for
+4000 elements** — one handshake per element, a slot, an Await, its
+callback and the `Right(Some(_))` pair each, where `drained` on the
+same channel takes 62 per await. The pump of `Reactive.publisher`
+walked the source through `toLazyList`: a memoising cell, a
+`State$Cons` and a thunk per element, 135 of ~900 allocation samples,
+buying a re-observability a pump never uses.
+
+Two fixes, each a pattern the library already recorded. The reader
+takes a chunk through `receiveManyAsync` and serves it, demand still
+following CONSUMPTION — `taken` counts elements served downstream, out
+of the channel and out of the chunk, so demand plus everything
+buffered never exceeds the window; the chunk only delays a request. The
+pump takes the linear view, `Iterator.unfold` over `Writer.uncons`, as
+`feed` did this afternoon.
+
+**Each alone measured neutral or worse. Together they halve the
+bridge.** Against `plainSource` at 55–58 us / 861 088 B/op stable, laws
+49/49 (TestReactive 10 + TCK 39) at every step:
+
+| change | us/op | B/op |
+|---|---|---|
+| master | 312.9 ±13.0 | 2 951 724 |
+| reader batched, alone | 358.3 ±10.3 | 3 030 674 ±142 890 |
+| pump linear view, alone | 364.7 ±46.2 | 2 727 369 |
+| **both** | **152.5 ±5.3** | **1 746 516** |
+
+The batched reader alone was counted, not assumed: its batches WERE
+52–60 per await, and bought nothing, because the reader was never the
+bottleneck — it drained a channel the pump could not keep full, and
+every empty batch was a park on both sides (the ±143 KB on its bytes
+is the park count varying). The linear view alone left the reader
+paying a handshake per element. Together the pump runs AHEAD and the
+batches fill. This is the third time today a consumer-side batch
+measured worthless behind a slow producer and reversed once the
+producer was fixed — `bufferChunked` after `feed-linear-view`, the
+floor lane's premise, and now this — and the rule is written into
+§17b: measure a batch only after the side that fills it is fast, and
+never withdraw one on a measurement taken before that.
+
+−51% time, −41% bytes, 437 bytes per element where there were 738.
+What remains is the bridge's representation, named in §17b, not a
+hole.
+
+**A correction this lane owes, about the box.** Three of its gates
+died at ~1640 tests, and this changelog has said all day that a
+sibling's `pkill` was killing builds. The sentinel run's `ps` caught
+the killer — `grep -E 'sbt-launch|xsbt\.boot|sbt\.script|…|org\.
+openjdk\.jmh'` then a kill — and the adversarial-lanes session traced
+the pattern to its source: two launchd agents from the operator's
+scalascript project, `io.scalascript.build-ram-guard` (every 20 s,
+kills the heaviest matching JVM under memory pressure — a matrix
+crosses the line 60–90 s in) and `io.scalascript.kill-stale-builders`
+(hourly; a JMH host waiting on its fork at 0 CPU is "idle" and dies,
+the fork holds `jmh.lock` — the orphans). Not an agent, not anyone's
+turn. The sibling this changelog blamed twice today was not killing
+anything, and neither was anyone else. AGENTS.md, the backlog and the
+memory now say so; the fix is in scalascript's scripts or in unloading
+both agents while okay builds, and the operator has it.
+
 ## actor-receive-offer-first — built, measured in both regimes, and declined: +19% where an actor lives
 
 The mirror of `feed-offer-first`, for the loop that reads one message

@@ -70,19 +70,22 @@ force, all already practiced, none previously written down:
 - Claims live in `.work/active/<slug>.claim`, committed to `master`.
   One claim is one task; release it (`git rm` + commit) when the task
   lands, naming the landing commit.
-- NEVER `pkill -f sbt`, `pkill java` or `killall java`. MEASURED
-  2026-09-06: this is what the 143 is. A full matrix died at 1635
-  tests with sentinels watching — the sentinel in its OWN session
-  carrying "sbt-launch" in its command line died with it, while a
-  sentinel in the gate's own process GROUP and one with a neutral name
-  both lived. Only a name-matching pkill does that. No other sbt was
-  on the box: an agent with nothing of its own running was tidying up
-  and took a sibling's matrix. `matrix-kill-by-process-group` blamed a
-  suite killing a process group for two days; it was never that, and
-  the setsid fix it prescribed would have fixed nothing.
-  Kill by PID, and check whose pid it is first — `ps -p <pid> -o args=`
-  before any signal. `scripts/gate-sentinels.sh` runs a gate with the
-  trap set if you meet a 143 again.
+- NEVER `pkill -f sbt`, `pkill java` or `killall java` — and the 143
+  is NOT one of those, see "THE 143, SOLVED" below. MEASURED 2026-09-06:
+  a full matrix died at 1635 tests with sentinels watching — the
+  sentinel in its OWN session carrying "sbt-launch" in its command
+  line died with it, while a sentinel in the gate's own process GROUP
+  and one with a neutral name both lived. Only a kill by NAME does
+  that; `matrix-kill-by-process-group` had blamed a suite killing a
+  process group for two days, and the setsid fix it prescribed would
+  have fixed nothing. This entry first read the killer as a sibling
+  agent tidying up — wrong, and corrected the same evening: it is the
+  scalascript launchd pair. The rule stands for humans and agents all
+  the same: kill by PID, and check whose pid it is first — `ps -p <pid>
+  -o args=` before any signal. `scripts/gate-sentinels.sh` runs a gate
+  with the trap set and a `ps` recorder, which is how the killer's
+  `grep -E 'sbt-launch|xsbt\.boot|sbt\.script|…|org\.openjdk\.jmh'` was
+  finally caught on the line two seconds before a build died.
   The same check before believing "the box is busy": a JMH fork that
   HANGS keeps `/var/folders/.../T/jmh.lock` for everyone. 2026-09-06
   one sat 37 minutes at 0.0% CPU, state S, and blocked a sibling's
@@ -92,6 +95,8 @@ force, all already practiced, none previously written down:
   its lock with `-jvmArgs -Djmh.ignoreLock=true` perturbs nothing.
   Do not kill it — it is someone's diagnostic state — and do not run
   past a lock whose holder is actually burning CPU.
+  The orphans are the idle reaper's leftovers — "THE 143, SOLVED"
+  below names both agents, their log, and the fix.
 - NEVER `git add -A`/`git add .` in the main checkout — stage the
   explicit paths you wrote. 2026-09-06: a `git add -A` beside a claim
   swept a sibling's in-progress 275-line benchmark into a commit

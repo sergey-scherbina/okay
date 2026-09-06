@@ -119,9 +119,14 @@ and each subscriber getting its own run.
 ## Numbers (2026-09-06, `ActorReactiveBenchmark`, docs/benchmarks.md §17)
 
 A round trip — `Source.range(0, 4000)` out through `Reactive.publisher`
-and back in through `Reactive.source(_, 256)` — reads **312.9 us and
-2.95 MB against 55.2 us and 0.86 MB for the plain source: 5.67x the
-time, 738 bytes per element.** That is the price of two channels and
-two demand batches per window, unprofiled as of this writing; the
-profile is the named next lane. The bridge is for crossing a library
+and back in through `Reactive.source(_, 256)` — reads **152.5 us and
+1.75 MB against 58.0 us and 0.86 MB for the plain source: 2.63x the
+time, 437 bytes per element** (docs/benchmarks.md §17b). It read 5.67x
+and 738 bytes the same morning; the pump now walks the source through
+the linear view rather than a memoising `LazyList`, and the reader
+takes elements in chunks of up to 64 per handshake, demand still
+following consumption. Each alone changed nothing; together they
+halved it. What remains is the bridge's representation — a `Writer`
+node per element, the pump's `uncons`, an atomic decrement of demand,
+the channel's push and pop. The bridge is for crossing a library
 boundary, not for a hot path that never leaves okay.

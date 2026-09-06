@@ -97,17 +97,33 @@ object Reactive {
     // asks only that the recursion be bounded (3.3) — then recurses
     // as deep as the stream is long.
     val refill = math.max(1, capacity / 2)
+    //
+    // IN BATCHES on the way out too. Counted per side
+    // (reactive-bridge-profile): this reader made 4001 awaits for 4000
+    // elements -- one handshake per element, a slot, an Await, its
+    // callback and the Right(Some(_)) pair each -- where `drained` on
+    // the same channel takes 62 per await through `receiveMany`. So
+    // the reader takes a chunk and serves it, exactly as `Drain` does.
+    // Demand still follows CONSUMPTION: `taken` counts elements SERVED
+    // downstream, which are out of the channel and out of the chunk,
+    // so demand plus everything still buffered never exceeds the
+    // window -- the chunk only delays a request, it cannot overrun.
+    // An empty chunk is the end; a failure arrives as the Await's
+    // Left, as before.
+    val batch = math.min(Drain.Batch, math.max(1, refill))
+    def serve(got: Chunk[A], i: Int, taken: Int): Source[A] =
+      if i >= got.length then go(taken)
+      else
+        okay.effect[Writer % A + Async, Unit](Writer(got(i))).flatMap: _ =>
+          if taken + 1 >= refill then
+            val s = sub.get
+            if s != null then s.nn.request(refill.toLong)
+            serve(got, i + 1, 0)
+          else serve(got, i + 1, taken + 1)
     def go(taken: Int): Source[A] =
-      okay.effect[Writer % A + Async, Option[A]](
-        Async.Await[Option[A]](k => { c.receiveAsync(k); () => () })).flatMap:
-        case None => okay.pure(())
-        case Some(a) =>
-          okay.effect[Writer % A + Async, Unit](Writer(a)).flatMap: _ =>
-            if taken + 1 >= refill then
-              val s = sub.get
-              if s != null then s.nn.request(refill.toLong)
-              go(0)
-            else go(taken + 1)
+      okay.effect[Writer % A + Async, Chunk[A]](
+        Async.Await[Chunk[A]](k => { c.receiveManyAsync(batch)(k); () => () })).flatMap: got =>
+        if got.isEmpty then okay.pure(()) else serve(got, 0, taken)
     okay.pure[Writer % A + Async, Unit](()).flatMap(_ => go(0))
 
   /**
@@ -175,7 +191,12 @@ object Reactive {
     def start(): Unit =
       summon[Scheduler].fork { () => okay.async {
         try
-          val it = source.toLazyList.iterator
+          // THE LINEAR VIEW, not toLazyList: a LazyList memoises -- a cell,
+          // a State$Cons and a thunk per element, 135 of ~900 allocation
+          // samples on the round trip (reactive-bridge-profile) -- to buy
+          // re-observability that a pump, which walks the source exactly
+          // once, never uses. The same reason feed took the linear view.
+          val it = Iterator.unfold(source)(Writer.uncons[A, Unit, Async](_).runWith.toOption)
           var running = true
           while running do
             if cancelled.get then running = false

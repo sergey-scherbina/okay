@@ -33,6 +33,32 @@ by pid; giving spawned workers their own session with `setsid` would
 have changed nothing, because nothing was killing by group. Do not
 build it.
 
+THE MECHANISM, IDENTIFIED AND NAMED (late 2026-09-06). The sentinel
+run's `ps` recorder caught it two seconds before the build died at
+1642 tests: `grep -E 'sbt-launch|xsbt\.boot|sbt\.script|sbt/standalone|
+bloop|scala-cli|scalacli|…|org\.openjdk\.jmh'` in a foreign process
+group, then a kill of the matches. The adversarial-lanes session traced
+the pattern string to its source, and it is NOT an agent and NOT
+anyone's pkill: two launchd agents from the operator's scalascript
+project. `io.scalascript.build-ram-guard` runs every 20 s and, under
+memory pressure (available < 3 GB with pageouts), kills the HEAVIEST
+JVM matching the regex — a full matrix crosses that line 60–90 s in,
+which is why three matrices died at ~1640 tests at +71, +91 and +56 s
+after their starts, and why four others got through. `io.scalascript.
+kill-stale-builders` runs hourly with `--idle 30 --kill`: a JMH host
+waiting on its fork sits at 0 CPU, counts as idle, and dies; the fork
+lives on holding `jmh.lock` — the three orphans found that afternoon,
+one alive five hours fifty-eight minutes. Its log,
+`~/Library/Logs/kill-stale-builders.log`, lists today's kills by pid
+and cwd across okay-wt-floor, okay-wt-advbase and others. `sbt.script`
+is in every sbt's arguments, so nothing in this repo can dodge it. So:
+not a suite, not a process group, not concurrency, and — the
+correction this entry owes the sibling it blamed twice today — not a
+neighbour's cleanup either. The fix is in scalascript's scripts (a
+builder burning CPU is never the one to kill; a host waiting on a fork
+is not idle) or in unloading both agents while okay builds run; the
+operator has it.
+
 Second firing, 2026-09-06 evening (channel-batch-floor's gate): the
 `named` sentinel died 41s before the gate returned — and the gate
 itself LIVED, exit 0, 2438 tests. A `pkill -f sbt` takes both, since
@@ -2638,7 +2664,22 @@ the timer only if the reply is not already in the box after the send
 (the common case under a responsive actor), or a single-slot box
 instead of a full channel. Matters only for ask-heavy callers.
 
-## reactive-bridge-profile — 5.67x and 738 bytes per element, unprofiled
+## reactive-bridge-profile — DONE 2026-09-06: 5.67x → 2.63x, −51% time, −41% bytes (§17b)
+
+Counted per side first: the reader made 4001 awaits for 4000 elements
+(one handshake each, where `drained` takes 62), and the pump walked
+the source through a memoising `toLazyList` — a cell, a `State$Cons`
+and a thunk per element. Two fixes, each alone neutral or worse, and
+together **312.9 → 152.5 us, 2 951 724 → 1 746 516 B/op**: the pump on
+the linear view runs ahead, so the reader's chunks (up to 64 per
+handshake, demand still following consumption) fill instead of
+parking. The third withdrawal-reversal of the day and the rule it
+leaves: measure a consumer-side batch only after the producer that
+fills it is fast. Laws 49/49 (TestReactive + TCK) at every step. What
+remains is representation: `Writer` per element, `uncons`'s three
+objects on the pump, an atomic decrement of demand, boxing, the ring.
+
+## as filed that morning — 5.67x and 738 bytes per element, unprofiled
 
 The largest ratio measured on 2026-09-06 (`reactiveRound` vs
 `plainSource`, §17): a round trip through `Flow.Publisher` and back
