@@ -1927,6 +1927,40 @@ the channel of two — is still open; it is worth 1.5 KB at most and
 probably a few hundred bytes, and the channel answers close and
 end-after-value for free.
 
+### 17f. channel-elementwise-wakeups: the wakeup that is not there
+
+The board's primary channel entry said the elementwise consumer
+spends three quarters of its time parked and pays one unpark per
+element once the producer saturates the ring. Its own harness,
+re-taken (first time since the chunked feed), `-prof gc`, two forks:
+
+| lane | us/op | B/op | per element |
+|---|---|---|---|
+| `okaySentinelElem` | 205.9 ±17.5 | 307 668 | 77 B |
+| `okaySentinelChunk` | 55.0 ±6.3 | 318 318 | 80 B |
+| `okayStrongElem` (StmChannel) | 250.1 ±47.4 | 1 521 385 | 380 B |
+| `okayElementwise` / `okayChunked` (granularity harness) | 146.1 ±1.0 / 54.9 ±3.2 | 299 401 / 315 803 | 75 / 79 B |
+
+Then the count the entry asked for, with a probe in `SentinelChannel`
+(reverted, not landed) on the `okaySentinelElem` shape, 100 runs after
+200 warmup, three processes:
+
+| per element | senders woken | senders parked | receivers parked |
+|---|---|---|---|
+| | 0.000–0.001 | 0.003–0.005 | 0.000 |
+
+Twelve to twenty producer parks per four thousand elements and a
+consumer that never parks: there is no unpark per element to
+amortise, so no wake policy can pay, and the entry closes measured.
+Two more things the table settles. The elementwise and chunked lanes
+allocate the SAME bytes per element (the `Long` box and the ring
+slot), so the 3.7x between them is the path length of a
+`receiveBlocking` — a `Handoff` per call, the scan, the shared
+reads, ~37 ns over a chunk's share — not allocation. And the
+`SentinelChannel` reads ahead of `StmChannel` on the elementwise axis
+now (205.9 against 250.1), where the entry had it behind: the 208.9 →
+268.7 regression it cites was real when written and is gone.
+
 ## 18. Three platforms, one source — the first numbers off the JVM
 
 Every lane in this document so far ran on the JVM. The library is

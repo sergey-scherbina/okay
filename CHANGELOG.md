@@ -1,5 +1,23 @@
 # Changelog
 
+## channel-elementwise-wakeups — measured and closed: no wakeup per element to remove
+
+The board's primary channel entry — three quarters of the elementwise
+consumer parked, one unpark per element once the ring saturates —
+asked to be re-measured on its own harness before anything was built.
+Re-taken (`-prof gc`, two forks): `okaySentinelElem` 205.9 ±17.5 us /
+307 668 B, `okaySentinelChunk` 55.0 / 318 318 B, `okayStrongElem`
+250.1 — the sentinel channel is ahead of `StmChannel` now, and the
+208.9 → 268.7 regression the entry cites is gone. Then counted with a
+probe on the entry's shape (100 runs, three processes): **senders
+woken 0.000–0.001 per element, senders parked 0.003–0.005, receivers
+parked 0.000** — twelve to twenty producer parks per four thousand
+elements and a consumer that never parks. No wake policy can pay;
+closed. What the harness does say: elementwise and chunked allocate
+the same 77–80 bytes per element, so the 3.7x is the path length of a
+`receiveBlocking`, filed as `receive-blocking-path-length` for whoever
+wants the ~37 ns. §17f. No code changed; the probe was reverted.
+
 ## okay-script-persistent-sessions — a Site's carts survive a restart
 Completed: 2026-09-06
 Landed as 1c0786f0 (spec then code, rebased). The second

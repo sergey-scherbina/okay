@@ -1966,7 +1966,48 @@ real means holding a woken receiver for a dwell or a watermark —
 throughput bought with latency, which is `channel-chunk-batch-size`,
 and it should be taken there with that trade stated, not here.
 
-## the original entry — OPEN, and now the PRIMARY lane
+## receive-blocking-path-length — the 3.7x between elementwise and chunked is path, not parks and not bytes
+
+Filed 2026-09-06 by `channel-elementwise-wakeups`' closing count.
+`okaySentinelElem` 205.9 us and `okaySentinelChunk` 55.0 allocate the
+same 77–80 bytes per element and neither side parks (§17f), so the
+150 us between them — ~37 ns per element — is what one
+`receiveBlocking` does over a chunk's per-element share: a `Handoff`
+made per call (`CanBlock.handoff()`), `receiveInto`'s scan with its
+shared reads (`ended`, `reached`, `endPending`, the senders' queue
+head), the `Mark` match, and `await`'s check of `filled`. Candidates,
+to measure not assume: a per-thread `Handoff` reused across calls
+(one thread blocks on at most one at a time; JVM/Native only, JS has
+no `CanBlock`); the shared reads folded into one; nothing that adds
+a read of the producer's line. The A/B lane is `okaySentinelElem`
+against `okaySentinelChunk` under `-prof gc`, and `TestChannelLaws`
+is the law.
+
+## the original entry — MEASURED AND CLOSED 2026-09-06: the wakeup per element is not there
+
+Counted, on the entry's own shape (`okaySentinelElem`: N=4000,
+cap=1024, a virtual-thread producer, the consumer on
+`receiveBlocking`), 100 runs after 200 warmup, three processes:
+**sender wakeups per element 0.000–0.001, sender parks 0.003–0.005,
+receiver parks 0.000.** Twelve to twenty producer parks per four
+thousand elements, and the consumer never parks at all. There is no
+unpark on the consumer's critical path to amortise; a watermark wake
+policy would remove nothing. The harness re-taken the same day (first
+time since the chunked feed, `-prof gc`, two forks): `okaySentinelElem`
+205.9 ±17.5 us / 307 668 B against `okaySentinelChunk` 55.0 / 318 318
+B — the SAME 77–80 bytes per element on both, so the 3.7x is path
+length per `receiveBlocking`, not allocation and not parking;
+`okayStrongElem` (StmChannel) 250.1, so the "SentinelChannel behind
+StmChannel" line below is stale too, and the 208.9 → 268.7 regression
+does not stand (§17f). What is left of the elementwise cost is the
+~37 ns a `receiveBlocking` spends over a chunk's share — a `Handoff`
+made per call, the scan, the shared reads — and that is a different
+entry if anyone wants it (`receive-blocking-path-length`). The
+three-quarters-parked profile that promoted this entry was taken on
+another lane at another time; it did not survive a count. Original
+entry follows.
+
+### as promoted — OPEN, the PRIMARY lane
 
 Promoted 2026-09-06 by free-cont-stack, which went looking for the
 per-element cost in the interpreter and found it here instead. A
