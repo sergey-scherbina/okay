@@ -177,6 +177,10 @@ object Stm {
   private object Abort extends RuntimeException(null, null, false, false)
   private object RetryNow extends RuntimeException(null, null, false, false)
 
+  /** the empty read set every log starts from — shared, never written */
+  private val noRefs: Array[TRef[?]] = new Array[TRef[?]](0)
+  private val noStamps: Array[Long] = new Array[Long](0)
+
   /** what one attempt has read (cell, version seen) and written. The
    * write set is a TMap keyed by the cells: a value written to a
    * TRef[X] comes back as an X, and the heterogeneous map's one
@@ -187,7 +191,36 @@ object Stm {
    * the `orElse` — but a branch's OWN writes stay local until
    * `absorb`, so a retried branch leaves nothing behind. */
   private final class Log(parent: Option[Log] = None) {
-    val reads = mutable.ArrayBuffer.empty[(TRef[?], Long)]
+    /**
+     * The read set: the cells and the versions seen, as two parallel
+     * arrays grown on demand, empty until the first read. It was an
+     * `ArrayBuffer[(TRef[?], Long)]`: the buffer, its sixteen-slot
+     * backing array, a tuple and a boxed version per read — together
+     * the largest allocation of a Read-then-Write transaction by JFR
+     * sample weight (stm-log-cost, §18f).
+     */
+    private var readRefs: Array[TRef[?]] = noRefs
+    private var readStamps: Array[Long] = noStamps
+    var nReads = 0
+    def addRead(r: TRef[?], v: Long): Unit =
+      if nReads == readRefs.length then
+        val n = if nReads == 0 then 4 else nReads * 2
+        readRefs = java.util.Arrays.copyOf(readRefs, n)
+        readStamps = java.util.Arrays.copyOf(readStamps, n)
+      readRefs(nReads) = r
+      readStamps(nReads) = v
+      nReads += 1
+    def readRef(i: Int): TRef[?] = readRefs(i)
+    def readStamp(i: Int): Long = readStamps(i)
+    def hasReads: Boolean = nReads > 0
+    /** a branch's reads become this log's: read either way, and a
+     * real retry parks on them too */
+    def addReads(child: Log): Unit =
+      var i = 0
+      while i < child.nReads do
+        addRead(child.readRefs(i), child.readStamps(i))
+        i += 1
+
     private var writes = TMap.empty[TRef]
 
     /** the value this attempt has written to r, if any — this log's
@@ -212,10 +245,9 @@ object Stm {
     def valid: Boolean =
       var i = 0
       var ok = true
-      while ok && i < reads.length do
-        val (r, v) = reads(i)
-        val c = r.ref.get
-        ok = !c.isInstanceOf[TRef.Owned[?]] && c.stamp == v
+      while ok && i < nReads do
+        val c = readRefs(i).ref.get
+        ok = !c.isInstanceOf[TRef.Owned[?]] && c.stamp == readStamps(i)
         i += 1
       ok
 
@@ -234,7 +266,7 @@ object Stm {
         case None =>
           val c = r.ref.get
           if c.isInstanceOf[TRef.Owned[?]] || !log.valid then throw Abort
-          log.reads += ((r, c.stamp))
+          log.addRead(r, c.stamp)
           c.value
     case Tx.Write(r, a) => log.write(r, a)
     case Tx.Modify(r, f) =>
@@ -245,18 +277,18 @@ object Stm {
     case Tx.OrElse(progA, progB) =>
       val branchA = new Log(parent = Some(log))
       val ra = try Some(runWithLog(progA, branchA)) catch case RetryNow => None
-      log.reads ++= branchA.reads   // read either way: a real retry blocks on it too
+      log.addReads(branchA)   // read either way: a real retry blocks on it too
       ra match
         case Some(a) => log.absorb(branchA); a
         case None =>
           val branchB = new Log(parent = Some(log))
           try
             val b = runWithLog(progB, branchB)
-            log.reads ++= branchB.reads
+            log.addReads(branchB)
             log.absorb(branchB)
             b
           catch case RetryNow =>
-            log.reads ++= branchB.reads
+            log.addReads(branchB)
             throw RetryNow   // both branches retried: so does the whole thing
 
   /** run one program against a log, synchronously — the freer
@@ -299,10 +331,9 @@ object Stm {
         case None => ok = false
     if ok then
       var i = 0
-      while ok && i < log.reads.length do
-        val (r, v) = log.reads(i)
-        val c = r.ref.get
-        ok = c.stamp == v && (c match
+      while ok && i < log.nReads do
+        val c = log.readRef(i).ref.get
+        ok = c.stamp == log.readStamp(i) && (c match
           case o: TRef.Owned[?] => o.token eq token
           case _ => true)
         i += 1
@@ -326,11 +357,14 @@ object Stm {
    * it through `again` — on the committing thread, as a channel
    * hands a value to a waiting receiver */
   private def park[A](log: Log, again: () => Unit, k: Either[Throwable, A] => Unit): Unit =
-    if log.reads.isEmpty then
+    if !log.hasReads then
       k(Left(IllegalStateException("retry with nothing read: nothing could ever wake it")))
     else
       val w = TRef.Waiter(again)
-      log.reads.foreach((r, _) => r.watch(w))
+      var i = 0
+      while i < log.nReads do
+        log.readRef(i).watch(w)
+        i += 1
       // a change that slipped in between our reads and the watch
       if !log.valid then w.fire()
 
