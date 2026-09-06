@@ -1,5 +1,44 @@
 # Changelog
 
+## gate-143-mechanism — the trap is set, and the hypothesis it tests is probably wrong
+
+`matrix-kill-by-process-group` has cost this team a serialisation
+nobody agreed to: a green matrix is obtainable only by running alone,
+because one suite is believed to kill a process GROUP. Nobody verified
+that, and the belief is now load-bearing.
+
+Two of the entry's own facts point away from it. `TestTwoNode` kills
+with `procA.destroyForcibly()` — by pid, and SIGKILL — while the
+signature under investigation is SIGTERM. `TestCluster` spawns no OS
+process at all; its two tests kill an in-process worker and drop a
+socket. Neither has a group to signal. Meanwhile CHANGELOG:8155
+already records the same signature with an admitted cause: a sibling's
+pkill. The prescribed fix — kill by pid, setsid the worker — would
+change nothing, because the kill is already by pid.
+
+`scripts/gate-sentinels.sh` settles it by blast radius instead of by
+argument. Three sentinels heartbeat beside the gate: one sharing its
+process group, one in its own session carrying "sbt-launch" in its
+command line, one in its own session carrying neither. Group only is a
+group kill; the named one is a pkill; all three is an indiscriminate
+sweep; none means the gate was signalled directly. The discriminator
+was verified before it was trusted — `group` shares the runner's pgid,
+the other two get their own from `os.setsid`, and `pgrep -f
+sbt-launch` matches the named one alone.
+
+Building it surfaced the bug that would have made it useless, and it
+announced itself in the signal being investigated: the first probe
+died at 143. A backgrounded sentinel inherits the caller's stdout and
+holds the pipe open, so the run never returns and the harness times it
+out. Every sentinel now redirects. A reminder that 143 has many
+senders, which is the whole point of the lane.
+
+**First run with the trap set: the matrix PASSED** — exit 0, 2438
+tests, 0 warnings, all three sentinels alive. One clean run refutes
+nothing; what it does show is that the instrument does not perturb the
+gate. The verdict waits for the next 143, and the trap is in the repo
+so whoever meets it can answer the question instead of inheriting it.
+
 ## fs2-chunked-merge-lanes — the fs2 column was the same bug a fifth time, and this time it hid a row fs2 wins
 
 §6b had already caught the per-element-against-chunk-native mismatch

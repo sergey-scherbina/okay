@@ -37,6 +37,46 @@ One observation is not the pattern the `TestCluster` finding rests on
 the killer — but if the fix is written against `TestCluster` alone it
 may not be enough. Recorded so the next 143 has something to match.
 
+MECHANISM NOT ESTABLISHED — read this before building the fix below
+(gate-143-mechanism, 2026-09-06). Two of this entry's own facts point
+away from a process-group kill:
+
+- `TestTwoNode` kills with `procA.destroyForcibly()` — that is BY PID
+  and it is SIGKILL. The victim gets SIGTERM, which is 143. A by-pid
+  SIGKILL does not produce the signature this entry is about.
+- `TestCluster` spawns no OS process at all. Its two tests are "a
+  killed in-process worker" and "a socket worker dies mid-stream" —
+  an in-process kill and a dropped connection. There is no group for
+  it to signal.
+
+And there is a competing explanation with an ADMITTED instance:
+CHANGELOG:8155 records "three full-matrix runs were SIGTERM-killed
+externally (a sibling pkill, admitted in the room)". Same signature,
+same box, a cause that is a person rather than a suite.
+
+So the prescribed work below may fix nothing: `destroyForcibly` is
+already by pid. Do not write the setsid fix until the mechanism is
+established.
+
+`scripts/gate-sentinels.sh` establishes it. Three sentinels heartbeat
+beside the gate: `group` shares the gate's process group and carries
+nothing matchable; `named` sits in its own session with "sbt-launch"
+in its command line; `plain` sits in its own session with neither.
+Which ones die names the blast radius — group only means a
+process-group kill, `named` means somebody ran a pkill matching "sbt",
+all three mean an indiscriminate sweep, none means the gate was
+signalled directly. The discriminator is verified: `group` shares the
+runner's pgid, the other two get their own via `os.setsid`, and
+`pgrep -f sbt-launch` matches `named` alone.
+
+First run with the trap set, 2026-09-06: **the matrix passed** — exit
+0, 2438 tests, 0 warnings, all three sentinels alive. That is one
+clean run, so it neither confirms nor refutes anything; it does show
+the instrument does not perturb the gate. The trap wants to be set on
+the next 143, which is why the script takes the sbt command as an
+argument and why `OKAY_SENTINEL_TAG` exists — narrow the tag and it
+stays out of a sibling's `pgrep -f sbt-launch` quiet check.
+
 The work: kill by pid, and if a test genuinely needs to signal a
 group, give the spawned worker a group of its own
 (`setsid`/`ProcessBuilder` with its own session) so the blast radius
