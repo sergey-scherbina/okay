@@ -1,5 +1,20 @@
 # Changelog
 
+## okay-script-multipart — uploads reach a page as Web.parts / Web.file
+Completed: 2026-09-06
+Landed as 24838135 (spec then code, rebased). The first
+okay-script-site follow-on, taken the same day it was filed: a store
+cannot take a product photo without it. `okay.script.api.Part(name,
+filename, contentType, bytes)`, `Web.parts` in wire order,
+`Web.file(name)` the first file part under that field; a multipart
+request's non-file fields land in `Web.form` too, so a page reads
+`form("title")` the same way for either encoding. The parser
+(`okay.script.Multipart`) is byte-level and binary-safe — boundary
+from the Content-Type quoted or bare, `CRLF--boundary` framing,
+preamble/epilogue ignored, a body without the boundary yields no
+parts rather than a 500. 3 new tests, one through `Site.handle` with
+a binary part carrying CRLF and NUL; 81 green 3x.
+
 ## free-bind-node-count — the bind's floor without its effect: 56% of the Native bind is the injection
 
 `pureChain` beside `bindChain` (BenchCross) and `bind_pureChain`

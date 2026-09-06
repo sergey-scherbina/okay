@@ -988,9 +988,13 @@ not a new primitive from scratch.
       Per-thread stdout capture (Capture) replaces the JVM-global
       System.setOut, so concurrent requests are correct. Example
       okay-script/examples/site (a store with a session cart).
-- [ ] okay-script-site: multipart/form-data — `Body.Bytes` carries an
-      upload verbatim, nothing parses it; `Web.form` is urlencoded
-      only. Filed from the spec's "deliberately NOT here".
+- [x] okay-script-multipart — LANDED 2026-09-06: multipart/form-data
+      uploads reach a page as `Web.parts` / `Web.file(name)`
+      (`api.Part`: name, filename, contentType, bytes); a multipart
+      request's non-file fields land in `Web.form` too. Byte-level,
+      binary-safe parser (`okay.script.Multipart`), no dependency;
+      damage yields no parts rather than a 500. specs/okay-script.md
+      "Uploads".
 - [ ] okay-script-site: persistent sessions — `Sessions` is in-memory;
       it is a class so a store-backed one (okay-persist) can replace
       it, none written.
