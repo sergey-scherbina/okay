@@ -1,0 +1,32 @@
+task: channel-elementwise-wakeups
+agent: okay-42
+started: 2026-09-06
+branch: feature/elementwise-wakeups
+
+why: promoted to primary by free-cont-stack. That lane went looking
+  for the per-element cost in the interpreter and found runFree at
+  2.5% of wall time -- while 58.3% of thread time sat in WAITING (86%
+  of it Unsafe.park) and another 16.8% in TIMED_WAITING, all park.
+
+the trap this lane must not fall into: -prof stack samples EVERY
+  thread. The producer fibre parked on a full ring and JMH's idle
+  threads are in that 75% too. "Three quarters parked" is NOT yet
+  "the consumer parks per element", and the last two lanes both died
+  of exactly this kind of unchecked inference.
+
+so: COUNT FIRST, on the consumer path specifically. receiveBlocking is
+  cb.block(k => receiveAsync(k)), which allocates a handshake Slot per
+  element even when receiveAsync fires SYNCHRONOUSLY because the
+  element was already buffered. Two numbers decide which fix is real:
+    - callback fires synchronously (no park)  -> the cost is the Slot
+      allocation, and the fix is the mirror of sendBlocking's
+      OFFER-FIRST: look in the buffer, return, allocate nothing.
+    - the consumer actually parks per element -> the Slot is not the
+      cost, and the fix is the entry's second proposal: wake on a
+      WATERMARK rather than on every pop.
+  Both are named in the entry; the count says which.
+
+ceiling, stated up front so the result is judged honestly: the effect
+  machinery is ~10 points of this lane and the rest is the handshake.
+  The 6.8x that chunked reading enjoys is structural -- 59 interpreter
+  steps against 12085 -- and is NOT available here.
