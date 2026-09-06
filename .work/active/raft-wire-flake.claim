@@ -1,0 +1,24 @@
+task: raft-wire-flake (BACKLOG raft-wire-election-flake: "two sightings, enough to act")
+agent: okay-42
+started: 2026-09-07
+branch: feature/raft-wire-flake
+
+why: TestRaftWire failed three full gates in two days -- twice on "the
+  survivors did not commit after failover" (waitUntil(3000) under
+  matrix load 25-30), once on BindException from freePort()'s
+  close-then-bind window. Green 3/3 in isolation every time. The
+  policy is "no flaky tests in the default gate": fix the timing, or
+  tag it Live.
+
+how: fix, not tag -- the test is a real law of the wire. Two changes,
+  both in the test: (1) the cluster is built under a retry that
+  re-picks ports on BindException (the race is between freePort's
+  close and the node's bind; three tries make it a non-event); (2) the
+  budgets that assume a quiet box get the box they actually run on:
+  election and commit waits scaled to seconds a loaded matrix can meet,
+  which cost nothing when the cluster is fast because waitUntil returns
+  early. The node's own timeouts (tick 20, election 200, heartbeat 50)
+  stay: the law is about the protocol, the budget is about the box.
+
+measure: the suite 10x in isolation before and after under a synthetic
+  load (a parallel compile), and the next full gates.
