@@ -1898,6 +1898,35 @@ the board: `Source.unfold`'s pair per step is the caller's
 law's fresh cursor. A supervised `Stop` now drains and discards, so
 `ActorRef.stopped` comes true (`actor-stop-strands`).
 
+### 17e. The ask's wait as one operation — two fibers per ask gone, −65% bytes
+
+`Reply.await` was `Async.race(box.receive, Async.sleep(within))`:
+the right contest, staged as two fibers — `race` spawns each side —
+for a wait whose two contestants are a channel callback and a timer
+callback and need no fiber at all. It is now one `Async.await`: the
+box's `receiveAsync` and `Timer.after`, whichever fires first wins by
+an `AtomicBoolean` and cancels the other; the canceller cancels the
+timer. `ask` no longer needs a `Scheduler`. Before and after, JMH
+`-prof gc`, two forks, 200 sequential asks per op:
+
+| | before | after | Δ |
+|---|---|---|---|
+| `actorAsk` | 2332.2 ±437 us / 880 429 B | 1557.0 ±201 us / **308 646 B** | −33% time, **−65% bytes** |
+| per ask | 11.7 us / 4.4 KB | 7.8 us / **1.5 KB** | |
+
+The 2.9 KB that left is the two fibers: two virtual threads' stack
+chunks, two `Fiber`s, `race`'s atomics and its three closures, per
+ask. What stays is the `Reply`'s channel of two, the send, the timer
+task and the ask's own `Await`. Time error bars are wide on both runs
+(the box at load 5–14) and the bytes are the number to read. The
+actor suites hold (14, plus the Live ones on purpose), including the
+ask-times-out law at `within = 200`.
+
+The entry's other shape — a single-slot box for `Reply` in place of
+the channel of two — is still open; it is worth 1.5 KB at most and
+probably a few hundred bytes, and the channel answers close and
+end-after-value for free.
+
 ## 18. Three platforms, one source — the first numbers off the JVM
 
 Every lane in this document so far ran on the JVM. The library is

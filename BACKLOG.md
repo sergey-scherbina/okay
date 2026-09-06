@@ -2682,7 +2682,19 @@ Laws: the one-message-at-a-time property must survive (a poll takes
 ONE), close/fail/end must be seen through the poll, and the ordering
 against parked receivers must hold. Expected: most of the 0.49x.
 
-## actor-ask-timer — 13 microseconds and 5.5 KB per ask
+## actor-ask-timer — DONE 2026-09-06 (§17e): the wait as one operation, 4.4 KB → 1.5 KB per ask
+
+The timer's thread went in `small-wins` (5.5 → 4.4 KB); the rest was
+`race` itself — a fiber per side for a contest between two callbacks.
+`Reply.await` is now one `Async.await` over `box.receiveAsync` and
+`Timer.after`, first wins, other cancelled; `ask` needs no
+`Scheduler`. `actorAsk` 2332 → 1557 us and 880 429 → 308 646 B/op
+(−33% / −65%). Of the two shapes filed below, "arm the timer only if
+the reply is already there" is moot for a sequential ask (the actor
+has not run yet when the send returns) and the single-slot `Reply`
+stays open at a few hundred bytes of upside. Original entry:
+
+### as filed — 13 microseconds and 5.5 KB per ask
 
 `Reply` is a `Channel[R](2)` and `await` is `Async.race(box.receive,
 Async.sleep(within))`: a virtual-thread timer armed for every ask,

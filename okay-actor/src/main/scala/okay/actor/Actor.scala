@@ -90,7 +90,7 @@ final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M]):
    * id -- nothing to leak, nothing to clean up, and a reply that
    * arrives after the timeout simply lands in a box nobody holds.
    */
-  def ask[R](f: Reply[R] => M, within: Long)(using Timer, Scheduler): Option[R] ! Async =
+  def ask[R](f: Reply[R] => M, within: Long)(using Timer): Option[R] ! Async =
     val box = Reply[R]()
     mailbox.send(f(box)).flatMap: accepted =>
       if !accepted then okay.pure(None)
@@ -148,8 +148,25 @@ final class Reply[R] private[actor] ():
    * here */
   def apply(r: R): Unit = { box.offer(r): Unit; box.close() }
 
-  private[actor] def await(within: Long)(using Timer, Scheduler): Option[R] ! Async =
-    Async.race(box.receive, Async.sleep(within).map(_ => None))
+  /**
+   * The wait is ONE operation: the box's asynchronous receive and the
+   * platform timer, whichever answers first, the other cancelled.
+   * It used to be `Async.race(box.receive, Async.sleep(within))`,
+   * which is the same contest with a fiber spawned for each side --
+   * two fibers per ask, measured at most of an ask's 4.4 KB
+   * (docs/benchmarks.md §17e). A reply that arrives after the timer
+   * fired lands in a box nobody reads, as before.
+   */
+  private[actor] def await(within: Long)(using T: Timer): Option[R] ! Async =
+    Async.await[Option[R]]: k =>
+      val done = java.util.concurrent.atomic.AtomicBoolean(false)
+      val cancelTimer = T.after(within): () =>
+        if !done.getAndSet(true) then k(Right(None))
+      box.receiveAsync: r =>
+        if !done.getAndSet(true) then
+          cancelTimer()
+          k(r)
+      () => { if !done.getAndSet(true) then cancelTimer() }
 
 object Actor:
 

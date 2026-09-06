@@ -17,6 +17,21 @@ synthetic-clock test caught it before it landed. `Site(root, sessions
 `okayScript` gains `okayPersist.jvm` as a main dependency. 3 tests,
 one through two `Site`s on one on-disk store; 84 green 3x.
 
+## actor-ask-timer — the ask's wait as one operation: −65% bytes, −33% time per ask
+
+`Reply.await` was `Async.race(box.receive, Async.sleep(within))` —
+a fiber spawned for each side of a contest between two callbacks. It
+is now one `Async.await`: `box.receiveAsync` against `Timer.after`,
+the first to fire wins by an `AtomicBoolean` and cancels the other,
+the canceller cancels the timer; `ask` drops its `Scheduler`
+requirement. JMH `-prof gc`, 200 sequential asks per op, before /
+after: 2332 ±437 → 1557 ±201 us and 880 429 → **308 646 B/op** —
+4.4 KB → 1.5 KB per ask, the 2.9 KB being two virtual-thread stack
+chunks, two `Fiber`s and `race`'s atomics and closures. The ask
+laws hold (TestAsk, incl. the timeout at `within = 200`); actor
+module 14/14, full gate below. The single-slot `Reply` half of the
+entry stays open (§17e says what it is worth).
+
 ## okay-script-multipart — uploads reach a page as Web.parts / Web.file
 Completed: 2026-09-06
 Landed as 24838135 (spec then code, rebased). The first

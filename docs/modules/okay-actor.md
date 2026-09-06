@@ -171,7 +171,7 @@ sbt okayActorJVM/test
 | what | cost |
 |---|---|
 | `tell`, 4000 messages as one program, then an `ask` | 295.9 us — **1.49x** the same messages through a bare `Channel.buffer(256).drained` |
-| `ask` round trip | **~11 us and 4.4 KB** each (§17d; was 13.0 / 5.5 KB) — a `Reply` is a channel of two plus a timer armed per call; the timer is now a task on one scheduled executor, not a thread |
+| `ask` round trip | **~8 us and 1.5 KB** each (§17e; was 13.0 / 5.5 KB, then 11 / 4.4) — a `Reply` is a channel of two plus a timer task armed per call; the wait is one operation (the box's callback against the timer's), no fiber spawned for either side |
 | `spawn` + `stop` | 1.04 us and 4.3 KB |
 
 The 1.49x is the receive side: the loop reads one message at a time
