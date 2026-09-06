@@ -295,6 +295,20 @@ construction instead of a type test per value).
       next audit's list.
 
 ## Casts, round two (2026-09-02, after the audit's 185 → 97)
+- [x] casts-recount — RE-COUNTED 2026-09-07, after a day of core, channel,
+      STM, intent and frame lanes: 33 `asInstanceOf` in src/main across
+      the modules (code lines; the round-two close said 36 and counted
+      comments that mention the word too) and 27 non-`resume`
+      `@unchecked`. Every site is one of the argued ones — `Same`'s
+      `=:=` witness, the erased `Chunk` array (`Chunks`, `ChunkBuf`),
+      `SentinelChannel`'s one cast with its argument, `Pipe`'s
+      `resumeWith`/`reinject`, `Effects`' `unapply` and the F-or-G
+      split, `Writer`'s `Say`, `Generate.produced`, `Delim`'s two,
+      `Agent.stateAs`, `Schema`'s kernel, `Frame.valueOf` by identity,
+      `Http`'s `ArraySeq` narrowing, the Java and JS interop in
+      okay-java / okay-crypto. Nothing crept in; the day's new code
+      (`Ring`'s single-consumer pop, `Stm`'s log, `Reading.grounded`,
+      `Temporal`/`Duration`/`People` lexicons, `Slot.lookup`) has none.
 - [x-landed] cast-free-agent — Provider/Grounded/Handlers/Memory/
       Large/Durable/ToolSpec (10 → 1): interpreters built at the
       GADT-bound X (a covariant row gives X >: the answer, `!` is
