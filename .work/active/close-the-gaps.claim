@@ -1,0 +1,29 @@
+task: close-the-gaps
+agent: opus5-intent
+started: 2026-09-06
+branch: feature/close-the-gaps
+worktree: ../okay-wt-gaps
+
+why: the operator, on the corrected tables: "if they can do better,
+  why can't we?" Every row where okay is not first is either a stated
+  design price or unfinished work; this lane takes the second kind
+  and, for the first kind, measures whether the price is what we
+  claim it is.
+
+targets, each with its recorded gap and a hypothesis to refute:
+  1. Source.runCollect 201 vs toLazyList.foldLeft 148 (§6c): Vector :+
+     per element plus Either unwrap through Writer.uncons. Builder +
+     specialised walk.
+  2. Source.unfold 101.8 vs range 89.9: tuple + Option per step.
+     Specialise the step.
+  3. §5 `Chunks.elements` 23.6 vs fs2 pure `emits` 19.8: the element
+     view over chunks pays a per-element protocol fs2's array walk
+     does not.
+  4. §4 Async.spawn 29 vs Loom floor 21 / kyo 25: 8us of bookkeeping
+     over a bare virtual thread. Find which 8.
+  5. §1 Cont 89 vs kyo 58: lazy vs eager is the design, but 8.9ns a
+     bind is not obviously the floor of a lazy tree. Profile
+     allocation per bind before deciding it is.
+
+protocol: performance skill -- profile first, one change per
+  measurement, ties in every run, refuted attempts recorded.
