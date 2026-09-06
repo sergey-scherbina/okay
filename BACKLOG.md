@@ -2936,7 +2936,7 @@ JVM column (189–483) is 5–12x the JMH figure for the same shape: 30
 warmups of 4000 binds is not warm; read that column against JMH, as
 its header says.
 
-## free-bind-node-count — six objects per `async(i).flatMap(f)`; which are necessary?
+## free-bind-node-count — DONE 2026-09-06: the injection is 56% of the Native bind; a fourth node declined, a direct loop filed
 
 `native-interpreter-allocation` counted 135 bytes and about six
 objects per bind on the JVM, and showed that on Native that count IS
@@ -2948,6 +2948,42 @@ generic `Function1` in `flatMap`. Measure on `bind_runWith` (JVM
 bytes/op) and on Native's `bindChain` before and after each; the
 Native number is the one that moves. Not a rewrite of `Free`: its
 `fold` is the interpreter and every handler matches on three cases.
+
+**Measured (§18b).** `pureChain` — the chain over `okay.pure(i)`,
+no injection — reads 232.9 / 228.1 us on Native against `bindChain`'s
+532.6 / 493.9 in the same process; under JMH 19.4 us / 380,984 B
+against 27.6 / 540,984. The injection is 40 of 135 bytes and 30% of
+the JVM bind but 56% of the Native one. The terminals differ:
+`runWith` on `Free` is already a direct loop (`runFree`, Effects.scala
+— `H.handle(e)` a plain call), so its 8 us is the objects and one
+virtual call; `runAsync`, which BenchCross runs everywhere, is
+`Drive.apply` re-entering `fold` per operation with a polymorphic
+handler value, a closure per step and the answer back through `k` —
+12.6 us on the JVM (`bind_runAsync` 40.2 vs `bind_runWith` 27.6).
+A fourth `Free` case is declined by count: 118 sites outside
+Free.scala match on the three cases directly. What is open is the
+loop, not the node: `async-direct-loop`.
+
+## async-direct-loop — `Drive.apply` as a direct loop over `Free`, the way `runFree` and `Stm`'s runner already are
+
+`free-bind-node-count` put a number on `runAsync`'s round-trip:
+`Drive.apply` calls `fold` afresh for every operation with a
+`[X] => F[X] => (X => Free) => Unit` value, `h(a)` builds the
+`k => …` closure per step, the answer returns through `k`, and the
+loop re-enters `fold` from the top — 12.6 us of `bind_runAsync`'s
+40.2 on the JVM, and an unknown share of Native's 300 us of injection
+(§18b), on a platform that inlines none of it. `runFree`
+(Effects.scala) and `Stm`'s runner (Stm.scala:271, `case
+Bind(Effect(e), k) => loop(k(perform(e, log)))`) are the precedent:
+a direct match over `Free`'s cases with the effect's operations
+inlined, no handler value. Write `Drive.apply` that way — the
+left-nested rotation and the `Bind(Pure, f)` step as in `fold`, `Run`
+inlined, `Await` keeping its exchange cell exactly — and measure
+`bind_runAsync` (JMH, `-prof gc`) and `bindChain` on Native and JS
+before and after; `bind_runWith` is the JVM ceiling and `pureChain`
+the floor. Laws: every Async suite; cancellation at the next
+operation and the callback-during-registration exchange do not move.
+Not a change to `Free`, `fold`, `runFree`, or any other handler.
 
 ## raft-wire-election-flake — DONE 2026-09-07: Live-tagged, and made robust where it now runs
 

@@ -1,5 +1,27 @@
 # Changelog
 
+## free-bind-node-count — the bind's floor without its effect: 56% of the Native bind is the injection
+
+`pureChain` beside `bindChain` (BenchCross) and `bind_pureChain`
+beside `bind_runWith` (JMH): the same chain over `okay.pure(i)`, so
+`Pure` + `Bind` + closure per step and none of `Inject`, `Run`, the
+thunk, or the handler round-trip. Native 232.9 / 228.1 us against
+532.6 / 493.9 in the same process; JVM 19.4 us and 380,984 B/op
+against 27.6 / 540,984. The injection is 40 of 135 bytes and 30% of
+the JVM bind, but 56% of the Native one. The two terminals differ:
+`runWith` on `Free` is already a direct loop (`runFree`, the handler
+a plain `H.handle(e)` call), while `runAsync` — what BenchCross runs
+on every platform — is `Drive.apply` calling `fold` afresh per
+operation with a polymorphic handler value, a closure built per step
+and the answer threaded back through `k`; on the JVM that round-trip
+is the 12.6 us between `bind_runAsync` (40.2) and `bind_runWith`
+(27.6). A fourth `Free` case was priced and declined: 118 sites
+outside Free.scala match its three cases directly. Filed
+`async-direct-loop`: `Drive.apply` as a direct match with `Run` and
+`Await` inlined, the way `runFree` and `Stm`'s runner already are;
+JVM ceiling 12.6 us, Native's split between objects and round-trip
+to be taken there. Measurement only, no library code changed. §18b.
+
 ## native-interpreter-allocation — the collector exonerated on Native; six objects per bind, counted
 
 §18 said Native's 2–3x on `bindChain` was "Scala Native's GC paying

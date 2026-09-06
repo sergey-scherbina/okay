@@ -1993,3 +1993,39 @@ warmups of 4000 binds is not warm, exactly as the harness's header
 says, and the column is read against JMH, never as JMH. And Native's
 distance from the JVM is not 2–3x, that is its distance from JS; from
 the JVM's real number it is 12–18x, all of it in allocation.
+
+### 18b. free-bind-node-count: the floor of a bind without its effect
+
+Before anything is fused, what fusing could buy at most: `pureChain`
+is `bindChain` with `okay.pure(i)` in place of `async(i)` — `Pure` +
+`Bind` + the closure per step, none of `Inject`, `Run`, the thunk, or
+the handler round-trip `Bind(Inject(a), f)` makes. Same run, same
+process, Native (BenchCross, N=4000, median of 20 / min, us) and the
+JVM (JMH `-prof gc`, two forks):
+
+| lane | native | jvm | jvm bytes/op | per step |
+|---|---|---|---|---|
+| `bindChain` / `bind_runWith` | 532.6 / 493.9 | 27.6 us | 540,984 B | 135 B |
+| `pureChain` / `bind_pureChain` | 232.9 / 228.1 | 19.4 us | 380,984 B | 95 B |
+
+The injection is 40 bytes and 30% of the bind on the JVM, and 56% of
+it on Native — 300 us of the 533, or 75 ns per step against the pure
+step's 58. The two terminals are not the same loop, and the table
+says so: `runWith` on `Free` is already a direct loop (`runFree` in
+Effects.scala — a tail-recursive match over the cases, the handler a
+plain `H.handle(e)` call), so its 8 us of injection is the three
+objects and one virtual call. `runAsync` — the terminal BenchCross
+runs on every platform — is `Drive.apply`, which calls `fold` afresh
+for every operation with a polymorphic handler value: `h(a)` builds
+the `k => …` closure per step, the answer returns through `k`, and
+the loop re-enters `fold` from the top. On the JVM that costs 12.6 us
+of `bind_runAsync`'s 40.2 over `bind_runWith`'s 27.6; on Native,
+which inlines none of it, the split between the objects and the
+round-trip is not yet known — it is the next measurement. A fourth
+`Free` case was priced and declined on the spot: 118 places outside
+Free.scala match on `Pure` / `Bind` / `Inject` directly (Stm,
+Condition, Chunks, Cont…), and every one would have to learn it. The
+open lever is the loop, not the node: `Drive.apply` written as
+`runFree` and `Stm`'s runner already are, a direct match with `Run`
+and `Await` inlined — `async-direct-loop`, whose ceiling on the JVM is
+the 12.6 us and whose Native number this section will take.

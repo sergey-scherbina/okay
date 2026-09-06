@@ -103,4 +103,14 @@ class PerElementStepBenchmark {
   @Benchmark
   def bind_runAsync(): Long =
     scala.concurrent.Await.result(Async.runAsync(bindChain()), scala.concurrent.duration.Duration.Inf)
+
+  /** free-bind-node-count: the chain with no effect in it -- `Pure` +
+   * `Bind` + closure per step; what `bind_runWith` would cost if the
+   * injection (`Inject`, `Run`, the thunk) were free. */
+  @Benchmark
+  def bind_pureChain(): Long =
+    def go(i: Long, acc: Long): Long ! Async =
+      if i >= N then okay.pure(acc)
+      else okay.pure[Async, Long](i).flatMap(x => go(i + 1, acc + x))
+    go(0L, 0L).runWith
 }

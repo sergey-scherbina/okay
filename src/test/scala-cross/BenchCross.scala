@@ -132,3 +132,16 @@ class BenchCross extends munit.FunSuite:
       go(0L, 0L)
     }
   }
+
+  /** free-bind-node-count: the same chain with no effect in it --
+   * `Pure` + `Bind` + the closure per step, none of `Inject`, `Run`
+   * and the thunk. The floor a fused effect node could reach, measured
+   * before any node is fused. */
+  test("bench: pureChain -- N nested flatMaps over okay.pure, no effect injected") {
+    lane("pureChain") { () =>
+      def go(i: Long, acc: Long): Long ! Async =
+        if i >= N then okay.pure(acc)
+        else okay.pure[Async, Long](i).flatMap(x => go(i + 1, acc + x))
+      go(0L, 0L)
+    }
+  }
