@@ -1,0 +1,14 @@
+task: stm-log-cost (the ~800 B / 70-90 ns a Read-then-Write transaction spends in the Log; measured one change at a time)
+agent: okay-42
+started: 2026-09-07
+branch: feature/stm-log-cost
+
+why: §18d priced the transaction, §18e showed the Await staging is not
+  it. What is left is the Log: a TMap write set rebuilt per write, a
+  (TRef, Long) tuple with a boxed version per read in an ArrayBuffer,
+  the Slot per installed cell, written's iterator + closures at commit.
+  Profile first (-prof gc + JFR allocation samples on directReadWrite /
+  tl2ReadWrite), then one change at a time, A/B on StmBenchmark
+  *ReadWrite with the Modify lanes as control, then BenchStmCross on
+  JS/Native. Laws: every TestStm* on every platform; orElse's branch
+  logs (parent/absorb) keep their semantics.
