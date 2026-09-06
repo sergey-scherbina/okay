@@ -83,6 +83,15 @@ force, all already practiced, none previously written down:
   Kill by PID, and check whose pid it is first — `ps -p <pid> -o args=`
   before any signal. `scripts/gate-sentinels.sh` runs a gate with the
   trap set if you meet a 143 again.
+  The same check before believing "the box is busy": a JMH fork that
+  HANGS keeps `/var/folders/.../T/jmh.lock` for everyone. 2026-09-06
+  one sat 37 minutes at 0.0% CPU, state S, and blocked a sibling's
+  benchmarks for half an hour of polite waiting. `pgrep -f
+  org.openjdk.jmh.runner.ForkedMain`, then `ps -o pcpu,etime,stat -p`:
+  a fork at 0% for minutes is asleep, not measuring, and running past
+  its lock with `-jvmArgs -Djmh.ignoreLock=true` perturbs nothing.
+  Do not kill it — it is someone's diagnostic state — and do not run
+  past a lock whose holder is actually burning CPU.
 - NEVER `git add -A`/`git add .` in the main checkout — stage the
   explicit paths you wrote. 2026-09-06: a `git add -A` beside a claim
   swept a sibling's in-progress 275-line benchmark into a commit

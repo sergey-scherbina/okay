@@ -1,5 +1,55 @@
 # Changelog
 
+## channel-batch-floor — built, measured, and reverted: the batch it was meant to create already existed
+
+Taken on the strongest number the day had produced: "`receiveMany(64)`
+hands back ONE element — 4022 handshakes for 4000". Built in full —
+a watermark on the four push-side wakes so a floor receiver is woken
+only once k elements are buffered, a dwell timer as the latency bound,
+`drained(atLeast, dwellMillis)` as the opt-in door, five laws, and a
+probe that priced the dwell: plain 0.2ms to the first element; floor
+16 with a dwell of 1/5/20ms: 2.0 / 8.5 / 28ms, which says `Timer.after`
+on Loom adds about a millisecond plus 40% over the sleep it was asked
+for.
+
+**Then the handshakes were counted PER SIDE, and the premise was
+mine, not the channel's.** A `Handler[Async]` wrapped around the
+consumer's `runWith` alone counts its awaits: **64 for 4000 elements,
+62.5 per await** — with or without a floor. The consumer already takes
+a full batch. The "4022" was a static counter in `CanBlock.block` that
+both fibres reach, summing the PRODUCER's 4000 sends with the
+consumer's 64 receives — 4064 − 64 = 4000, exactly one per element
+sent — and it was read as the consumer's. The floor had nothing to do,
+its 23% "win" sat inside a ±44.7 error bar, and the whole lane is
+reverted: not a byte of it lands.
+
+What lands is the correction, in three places on the board.
+`channel-chunk-batch-size` is refuted for the second time and closed.
+`channel-elementwise-wakeups` carries the correction of its own
+number. And `channel-bulk-send`, closed this morning as "no production
+caller", is REOPENED: the 4000 handshakes are `Channel.buffer`'s feed
+sending `c.send(it.next())` one at a time, and `sendManyNow` is the
+primitive for exactly that producer — with d13cfd72's caveat that
+bulk send loses 1.43x against a consumer that is not draining, which
+this one is, at 62 of 64.
+
+Two things about the box, recorded because they cost hours. A
+sibling's JMH fork sat 37 minutes at 0.0% CPU with its host dead, and
+a second host from the same worktree 15 minutes at 0% with no fork,
+between them holding `jmh.lock` through half an hour of polite
+waiting; the lock file was removed (their flock stays on the old
+inode) and AGENTS.md now says how to tell a hung fork from a busy box.
+And the same neighbour's `pkill -f sbt` killed three consecutive
+attempts to run five laws — the sentinels named it each time — while
+the fourth sbt hung at "set current project" for two hours before it
+was killed too. The probes that finally answered the question ran
+with `java -cp` and no "sbt" in their command line.
+
+The method is the keepable part: count per side, never with a static
+counter both fibres can reach. It took one day to make that mistake
+twice — the interpreter counts this morning were also both sides — and
+one probe to see it.
+
 ## runforeach-one-walk — the double walk, removed from the other consumer
 
 `Source.runForeach` had exactly the shape `runCollect` had until

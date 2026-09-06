@@ -33,6 +33,17 @@ by pid; giving spawned workers their own session with `setsid` would
 have changed nothing, because nothing was killing by group. Do not
 build it.
 
+Second firing, 2026-09-06 evening (channel-batch-floor's gate): the
+`named` sentinel died 41s before the gate returned — and the gate
+itself LIVED, exit 0, 2438 tests. A `pkill -f sbt` takes both, since
+the real sbt's command line carries `sbt-launch` too. So this kill
+matched the sentinel and spared the build: a first-match kill
+(`kill $(pgrep -f sbt-launch | head -1)` takes the OLDEST pid, which
+was the sentinel), or a pattern that fits `sbt-launch-sentinel` and
+not `sbt-launch.jar`. Not solved — recorded so the next firing can be
+read against it. Three of four sentinel verdicts today were name
+kills; the fourth was a two-hour sbt hang at "set current project".
+
 **The fix is a rule, not code, and it is now in AGENTS.md:** never
 `pkill -f sbt` / `killall java`. Kill by pid, and check whose the pid
 is first. The serialisation this entry imposed — "a green matrix is
@@ -1440,7 +1451,34 @@ Then `Channel.apply` can default to the weak mechanism plus the layer
 and lose no promise. Blocked on nothing; wants the two-tier laws
 (landed) to hold the line while the default moves.
 
-## channel-bulk-send — DONE 2026-09-05 (d13cfd72)
+## channel-bulk-send — REOPENED 2026-09-06: the caller exists, and it is the feed
+
+Closed this morning as "no production caller, by measurement". The
+measurement that reopens it (channel-batch-floor, counted per side):
+on the elementwise channel lane the CONSUMER makes 64 awaits for 4000
+elements, and the PRODUCER makes 4000 — `Channel.buffer`'s feed sends
+`c.send(it.next())` one element at a time, and each is an
+`Async.Await`, a `Slot`, an acceptance callback and the interpreter
+steps around them. Every per-element handshake on that lane is on the
+send side.
+
+`sendManyNow` is exactly the primitive for a producer holding a batch
+of elements for an element channel, and a feed over a strict
+collection (`St.iterator`) holds all of them. d13cfd72's caveat still
+binds: bulk send LOSES 1.43x against a consumer that is not draining,
+because a full ring fails every bulk scan. Here the consumer drains at
+62 of 64. So the shape to build is `feed` offering runs through
+`sendManyNow` while there is room and falling back to `send` when the
+ring is full — and to MEASURE it on both consumer shapes before
+believing it, since that is the trade the caveat names.
+
+Expected size, so it is judged honestly: the producer's 4000
+handshakes are the `Slot` (43 samples), `Async$Await` (31), the
+`Channel` closures (185) and the `Platform` lambda (30) in the
+allocation profile — roughly a third of the 672 bytes per element, and
+all of it on the producer's fibre.
+
+## as closed this morning — DONE 2026-09-05 (d13cfd72)
 
 Closed by `Ring.pushMany` + `Channel.sendManyNow` (`private[okay]`,
 two laws, each with two threads contending for the same claim). The
@@ -1698,7 +1736,38 @@ ordered by what it would FIX, not by novelty.
       When the corpus grows (see distillation), replace the grid with a
       real stacking model and measure whether it beats the blend.
 
-## channel-chunk-batch-size — PREMISE REFUTED, the idea survives
+## channel-chunk-batch-size — REFUTED TWICE 2026-09-06: the consumer already batches at 62 of 64
+
+Taken as channel-batch-floor on the finding that `receiveMany(64)`
+hands back ONE element — "4022 handshakes for 4000 elements". Built:
+a watermark on the four push-side wakes, a dwell timer as the latency
+bound, `drained(atLeast, dwellMillis)`, five laws, and a probe that
+priced the dwell (plain 0.2ms; floor16 with dwell 1/5/20ms: 2.0 / 8.5
+/ 28ms — `Timer.after` on Loom adds ~1ms plus 40% over the asked
+sleep). Then the handshakes were counted PER SIDE, with a counting
+`Handler[Async]` wrapped around the consumer's `runWith` only:
+
+| read | awaits (N=4000) | elements per await |
+|---|---|---|
+| `drained` (default) | 64 | 62.5 |
+| `drained(16, 1)` | 64 | 62.5 |
+| `drained(64, 1)` | 64 | 62.5 |
+
+**The default already takes a full batch.** There is no ping-pong and
+nothing for a floor to do; the whole lane was reverted, laws and all.
+The "4022" was a GLOBAL counter in `CanBlock.block` that summed the
+producer's 4000 sends with the consumer's 64 receives (4064 − 64 =
+4000, one per element sent) and was read as the consumer's. See
+`channel-elementwise-wakeups` for the correction and
+`channel-bulk-send` for where those 4000 actually live.
+
+What survives from the original entry below is nothing about batch
+SIZE. Its numbers predate two rounds of channel work and its central
+claim is now measured false; keep it only as the record of the idea.
+The one durable artefact is the method: count per side, never with a
+static counter both fibres can reach.
+
+## the original entry — PREMISE REFUTED, the idea survives
 
 Audited 2026-09-06. The entry opens by naming "the one lane we lose to
 `zio.Queue` — `zioStrongChunk` at 128.0". We do not lose it: d13cfd72
@@ -1738,7 +1807,25 @@ function. Anything between the claim and the publish truncates a
 concurrent `popMany` scan, which counts CONSECUTIVE published slots —
 a closure there cost 65.6 elements per batch down to 43.5.
 
-## channel-elementwise-wakeups — MEASURED 2026-09-06: the premise is wrong, and the cost is the representation
+## channel-elementwise-wakeups — CORRECTION 2026-09-06 (later the same day): the 4022 was both sides
+
+The count below — `fast=4022 slow=42 parks=42`, read as "the consumer
+calls `block` once per element" — came from a STATIC counter in
+`CanBlock.block`, which both fibres reach. Counted per side with a
+`Handler[Async]` wrapped around the consumer's `runWith` alone, the
+consumer performs **64 awaits for 4000 elements** — a full batch every
+time. The other 4000 are the PRODUCER's: `Channel.buffer`'s feed does
+`c.send(it.next())` once per element, and every `send` is an
+`Async.Await` through `block`. 4064 − 64 = 4000, one per element sent.
+
+So the conclusions here that rested on the consumer stand — it does
+not park, the watermark was never the lever, the 672 bytes are the
+representation — but the per-element HANDSHAKE cost is real and it is
+on the send side. That is `channel-bulk-send`'s territory, reopened
+with this evidence. The `AtomicBoolean` removal stands too: it saved
+one object per handshake on whichever side made it.
+
+## the entry as first written — MEASURED 2026-09-06: the premise is wrong, and the cost is the representation
 
 Taken, counted, and the entry's own framing does not survive.
 
