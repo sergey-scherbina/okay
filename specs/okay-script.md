@@ -787,6 +787,241 @@ directories) is gone too — nothing else writes into a private root.
 `TestScalaScript`'s test is back in the default gate; it no longer
 depends on shared-machine state.
 
+## Site — the container (okay-script-site, 2026-09-06)
+
+Operator ask: "Можешь из okay-script сделать полноценный web-framework
+уровня jsp?" — with two decisions taken up front: the API package is
+DELEGATED to the host classloader (servlet-API style), and the whole
+JSP feature set lands in one arc rather than as a minimal slice.
+
+Before this, `okay-script` was the page COMPILER of "a new JSP":
+`Page` (compile once, hot-reload by mtime), `Web` (method/path/query/
+headers), `${expr}` interpolation, `Meta`. What JSP has and this did
+not is everything the CONTAINER provides: a directory of pages mapped
+to URLs, a response the page can shape, a request with a body, a
+session, include/forward, class-level declarations, an error page,
+static files. This section adds exactly that, on top of `okay-http`'s
+`Request`/`Response` and served by `okay-jetty` — no server of its
+own.
+
+### The one architectural change: `okay.script.api` is shared
+
+`okay-script-classloader-isolation` gave a script a platform-parent
+`URLClassLoader`: it sees its own compiled classes, its own
+`Classpath`, and the JDK — nothing from the host. The price was paid
+once already: `Web` crossed the boundary as an `Array[String]`
+(`encodeArgs`/`decodeArgs`), because the host's `Web` and the
+script's `Web` were two classes. With `Response`, `Session`,
+`include` and `forward` that encoding does not scale — a mutable
+response the page writes INTO has to be the host's own object.
+
+Resolved the way every servlet container resolves it: a webapp's
+classes are isolated, the servlet API is the container's. The
+script's loader delegates the package `okay.script.api.*` (and only
+it) to the classloader that loaded `okay-script` itself; everything
+else keeps the platform parent. One class identity on both sides, no
+encoding, no reflection beyond the entry point. `encodeArgs`/
+`decodeArgs` and the synthesized `Web.setCurrent(decodeArgs(args))`
+line are gone; `hasWeb` with them.
+
+```scala
+package okay.script.api            // DELEGATED — the host's classes
+
+final case class Web(method, path, query, headers, form, cookies, body, params)
+object Web:  current / setCurrent   // ThreadLocal — one request per thread
+final class Response:               // mutable, per request
+  status / header / contentType / redirect / cookie
+object Response: current / setCurrent
+trait Session: id / get / set / remove / invalidate
+object Session: current / setCurrent
+def include(page: String): Unit     // renders another page INTO this output
+def forward(path: String): Nothing  // abandons this page, dispatches to another
+final case class Forwarded(path) extends RuntimeException  // what forward throws
+final case class Error(message, errors, thrown)             // what an error page reads
+object Error: current
+```
+
+`Web` moves from `okay.script` to `okay.script.api` (a breaking rename
+three days into the module's life, taken now rather than carried).
+`Meta` stays in `okay.script` and stays isolated — it is set from
+INSIDE the script by synthesized code and never crosses the boundary.
+`Classpath.api` is the location of `okay-script`'s own classes, so a
+caller with an explicit classpath can still compile a page that
+imports the API; `Classpath.ambient` already contains it.
+
+The per-request state is `ThreadLocal`, not the `@volatile var` it
+was: Jetty serves requests on many threads at once, and a `Page` is
+`synchronized` only against ITSELF. The host sets `Web`/`Response`/
+`Session` on the request thread before `invoke()`, the page reads
+them on the same thread, `include` runs the included page on the
+same thread and so sees the same three — which is precisely what
+`<jsp:include>` means.
+
+### Routing — `Site`
+
+```scala
+final class Site(root: Path, classpath: Classpath = Classpath.ambient, sessions: Sessions = Sessions()):
+  def routes: PartialFunction[okay.http.Request, okay.http.Response ! Async]
+  def handle(r: okay.http.Request): okay.http.Response   // the synchronous core
+  def close(): Unit
+```
+
+`Jetty.serve(port)(site.routes)()` is the whole server. `routes` is
+defined exactly when the path resolves to something under `root`, so
+an unmatched request falls through to Jetty's own 404 (or to the next
+route a caller chains with `orElse`).
+
+Resolution, in order, for a request path `p` (normalized; any `..`
+segment or NUL is rejected outright, and nothing outside `root` is
+ever opened):
+
+1. `root/p.md` — a page. `/` and any `/dir/` resolve to `index.md`.
+2. `root/p` as a regular non-`.md` file — static, content type by
+   extension (`html css js json png jpg jpeg gif svg ico txt woff2`),
+   `application/octet-stream` otherwise.
+3. A parameterized page: walking `p`'s segments, a directory with
+   exactly one `[name].md` (or `[name]` directory) matches any
+   segment and binds `Web.params(name)`. `/product/[sku].md` answers
+   `/product/ok-42` with `params("sku") == "ok-42"`. Literal matches
+   win over a parameter at every level.
+
+One `Page` per resolved `.md` file, cached for the `Site`'s life; a
+`Page` recompiles itself when its file changes (unchanged from
+"Hot-reload"). `close()` closes them all.
+
+### Request — `Web`, now with a body
+
+`Web(method, path, query, headers, form, cookies, body, params)`.
+`headers` keeps the wire's case; `header(name)` looks up
+case-insensitively. `form` is the parsed body when the content type is
+`application/x-www-form-urlencoded` (a POSTed HTML form), `Map.empty`
+otherwise; `cookies` is the parsed `Cookie` header; `body` the raw text.
+`Site` builds it from `okay.http.Request` — the translation that was
+"the caller's own glue" in "Request context" is now the container's.
+
+### Response — status, headers, redirect, cookies, content type
+
+The page's stdout is the body. Everything else is `Response.current`:
+`status = 404`, `header("X-Trace", "abc")`, `contentType("text/plain")`,
+`redirect("/cart")` (302 + `Location`, body discarded), `cookie(name,
+value, maxAge, path, httpOnly)` (one `Set-Cookie` each). The default
+content type is `text/html; charset=utf-8`, overridable per page by
+front-matter `contentType:` (JSP's `<%@ page contentType %>`) and per
+request by the call. A page can set status/headers at any point
+before it finishes — output is buffered, exactly as JSP buffers, so
+"headers already sent" cannot happen.
+
+### Session
+
+`Session.current` is cookie-backed (`OKAYSESSID`, `HttpOnly`,
+`Path=/`), created lazily on the first `set` — a request that never
+touches the session creates none, and gets no cookie. `Sessions` is
+the in-memory store: a `ConcurrentHashMap` of id → attributes with
+last-access time, swept of entries idle longer than `ttl` (default 30
+minutes, JSP's own default) on every access. Ids are 128 random bits,
+URL-safe base64. A `Site` owns one `Sessions`; two `Site`s share
+sessions by sharing the object. `invalidate()` drops the entry and
+expires the cookie.
+
+### include / forward
+
+`include("header.md")` — relative to the including page's directory,
+or absolute from `root` with a leading `/` — renders that page with
+the SAME `Web`/`Response`/`Session` and prints its output into the
+current page's, at the point of the call. Its own compile error or
+throw is the including page's failure, with the included file named.
+A page including itself is a bug, not a feature: depth is capped at
+16 and the 17th nesting fails with a clear message rather than a
+stack overflow.
+
+`forward("/login")` abandons the current page's output entirely and
+answers the request with the target page instead — the target sees
+the same `Web` (its `path` is the ORIGINAL request's; a forwarded page
+that needs to know it was forwarded to reads `Web.current.params
+("forwarded")`, which `Site` sets to the target path). Implemented as
+a control exception: `forward` throws `Forwarded(path)`, which passes
+through the page's `run` as `Result.thrown`, and `Site` dispatches on
+it. A forward chain is capped at 8.
+
+### Declarations — ```scala declare
+
+A ` ```scala declare ` fence is emitted at OBJECT level, outside
+`def run` — JSP's `<%! %>`. A `val` there is initialized once per
+compile and lives as long as the page's compiled classloader does
+(until the file changes); a `def` there is a method every request can
+call. Ordinary ` ```scala ` blocks and `${expr}` markers see
+declarations regardless of document order, because they are members
+of the same object. Line mapping covers them: an error in a declare
+block reports its own `.md` line. `tokenize` emits them as
+`Segment.Declare(code, startLine)`; `withMeta` returns them
+separately so `compileOnly` can place them in the header.
+
+### Error page
+
+A page that fails to compile, or throws anything other than
+`Forwarded`, answers 500. If `root/error.md` exists — or the failing
+page's front-matter names one with `errorPage:` (JSP's own
+directive), resolved like `include` — that page renders the response
+instead, with `Error.current` holding the message, the line-mapped
+compile errors and the throwable, and the same `Web`/`Session` the
+failing request had. An error page that itself fails answers a plain
+text 500 naming both failures; there is no third level. Without an
+error page the 500 body is plain text: the line-mapped errors, or the
+throwable's `toString`.
+
+### What is deliberately NOT here
+
+- **Tag libraries / JSTL / EL.** Scala is the expression language; a
+  `def` in a declare block is a tag. Nothing to add.
+- **A layout/template system.** `include` composes; a layout page that
+  includes the body by name is a page an author writes, not a feature.
+- **HTTPS, compression, virtual hosts, multipart uploads.** Jetty's,
+  or a later item. `Body.Bytes` carries a multipart body verbatim;
+  parsing it is filed, not built.
+- **Session persistence / clustering.** In-memory only; `Sessions` is
+  a class so a persistent one can be substituted, but none is written.
+- **A servlet-style filter chain.** `routes` is a `PartialFunction` —
+  a caller wraps it.
+
+### Behavior
+
+- [ ] `Site.handle` on `GET /` renders `index.md`; on `GET /shop`
+      renders `shop.md`; on `GET /shop/` renders `shop/index.md`; a
+      path with no file is not in `routes`' domain.
+- [ ] a `..` segment never escapes `root` — undefined, not served.
+- [ ] a static file is served with its extension's content type and
+      byte-identical body.
+- [ ] `[sku].md` answers `/product/anything` with `Web.current.params
+      ("sku")`, and a literal sibling file wins over it.
+- [ ] `Web.current.form` carries a urlencoded POST body's fields;
+      `cookies` the `Cookie` header; `header` is case-insensitive.
+- [ ] `Response.current.status = 404` / `header` / `contentType` reach
+      the wire; `redirect` answers 302 with `Location` and no body.
+- [ ] front-matter `contentType:` sets the default content type.
+- [ ] a session set in one request is read in the next when the
+      client returns the cookie; a request that never touches the
+      session gets no `Set-Cookie`; `invalidate` expires it; an entry
+      idle past `ttl` is gone.
+- [ ] `include` renders the named page in place, with the same `Web`
+      and `Session`; the 17th nesting fails with a message, not a
+      stack overflow.
+- [ ] `forward` answers with the target page's output and status, and
+      none of the forwarding page's output.
+- [ ] a `declare` `val` is initialized once across many requests and
+      re-initialized after the file changes; a `def` there is callable
+      from a later block AND from an earlier `${expr}`; an error in a
+      declare block reports its `.md` line.
+- [ ] a compile error / throw answers 500; with `error.md` present,
+      that page renders it with `Error.current` populated; an error
+      page that fails answers plain text 500.
+- [ ] `okay.script.api.Web` is the SAME class on both sides of the
+      boundary (a script compiled with `Classpath.api` alone sees the
+      host's instance), while munit stays unreachable — isolation
+      holds for everything outside the API package.
+- [ ] the whole thing over a real Jetty port (Live): a two-page store
+      with a session-backed cart, a redirect after POST, an included
+      header, and a 404 for a missing page.
+
 ## The model
 
 ```scala
