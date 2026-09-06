@@ -231,6 +231,24 @@ force, all already practiced, none previously written down:
   seconds warm** (matrix-143, 2026-09-06). It was believed broken for
   three days and everyone gated on scoped subsets instead, so nobody's
   green was the repository's green. Run the whole thing.
+- **THE 143, SOLVED (2026-09-06 evening, adversarial-lanes).** Not an
+  agent, not a pkill in anyone's turn, not a process group. Two launchd
+  agents from the operator's SCALASCRIPT project run for every session
+  on this Mac: `~/Library/LaunchAgents/io.scalascript.build-ram-guard.plist`
+  (every 20 s; under memory pressure — available < 3 GB with pageouts —
+  kills the heaviest JVM matching `sbt-launch|xsbt.boot|sbt.script|
+  sbt/standalone|bloop|scala-cli|…|org.openjdk.jmh`; a clean matrix
+  crosses that line 60–90 s in) and `io.scalascript.kill-stale-builders
+  .plist` (hourly, `--idle 30 --kill`: no CPU in a 20 s window and up
+  > 30 min — a JMH host JVM waiting on its fork is "idle" by that rule,
+  dies, and leaves the fork holding `$TMPDIR/jmh.lock`; that is every
+  orphan we found). Its log, `~/Library/Logs/kill-stale-builders.log`,
+  lists kills by pid and cwd. Proof: a bait with "sbt-launch" in its
+  argv died five times, a control without it never; no transcript in
+  any project ran a kill by name; the pattern string is in
+  scalascript's scripts. The fix is theirs or the operator's
+  (`launchctl unload` both while okay builds run); nothing in this
+  repository is at fault. If a 143 recurs, read that log first.
 - **Exit 143 is SIGTERM — somebody killed the build, no test failed.**
   Two senders found. (1) A run started as `nohup sbt ... &` INSIDE a
   tool call dies when that call's shell exits: the log stops mid-compile
