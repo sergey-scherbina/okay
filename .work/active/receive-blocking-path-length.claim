@@ -1,0 +1,16 @@
+task: receive-blocking-path-length (the ~37 ns per element a receiveBlocking spends over a chunk's share; A/B on okaySentinelElem)
+agent: okay-42
+started: 2026-09-06
+branch: feature/receive-blocking-path-length
+
+why: channel-elementwise-wakeups closed with a count — no parks on
+  either side — and the harness: okaySentinelElem 205.9 us against
+  okaySentinelChunk 55.0 at the same 77-80 B per element. So the 3.7x
+  is path length per call: a Handoff made per receiveBlocking, the scan's
+  shared reads, the await. Candidates, measured one at a time on
+  okaySentinelElem (-prof gc, 2 forks) with okaySentinelChunk as the
+  control: (1) a per-thread Handoff reused across calls on JVM/Native
+  (a thread blocks on at most one), (2) the scan's shared reads folded.
+  Nothing that reads the producer's line. Laws: TestChannelLaws, TestHandoff,
+  the cross channel suites; a Handoff reused must be reset before reuse
+  and never observed by a late callback from a previous call.
