@@ -1006,15 +1006,51 @@ text 500 naming both failures; there is no third level. Without an
 error page the 500 body is plain text: the line-mapped errors, or the
 throwable's `toString`.
 
+### Uploads — `multipart/form-data` (okay-script-multipart, 2026-09-06)
+
+The first follow-on, filed from the list below and taken the same
+day: a store cannot take a product photo without it, and a servlet
+container has had `Part` since 3.0. `Web` gains
+
+```scala
+final case class Part(name: String, filename: Option[String], contentType: Option[String], bytes: Array[Byte]):
+  def text: String            // the bytes as UTF-8
+  def isFile: Boolean         // a filename was sent
+Web.parts: Vector[Part]       // every part, in wire order; empty unless multipart
+Web.file(name): Option[Part]  // the first FILE part with that field name
+```
+
+and `Web.form` carries a multipart request's NON-file fields too, so
+a page reads `form("title")` the same way whichever encoding the
+browser chose; `Web.body` stays the raw text either way. The parser
+(`okay.script.Multipart`, host-side, no dependency) is byte-level and
+binary-safe: the boundary comes from the `Content-Type` parameter
+(quoted or bare), parts are delimited by `CRLF--boundary`, each part's
+headers end at the first blank line, `Content-Disposition` supplies
+`name`/`filename`, the closing `--boundary--` ends the walk, and a
+preamble or epilogue is ignored. A body that does not start with the
+boundary, or names no boundary at all, yields no parts rather than an
+error — a damaged upload is a page's own `form`/`file` miss, not a
+500. Parts are held in memory (`Body` is already materialized by
+`okay-http`); a size limit is the server's, not the page's.
+
+- [x] a multipart POST with a text field and a binary file part
+      (CRLF and NUL inside) reaches the page as `form("title")` and
+      `file("img")` with byte-identical content, the filename and the
+      part's content type; a file part is absent from `form`.
+- [x] a quoted boundary, a preamble, a missing final CRLF, and a
+      header in odd case all parse; a body without the boundary yields
+      no parts.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
   `def` in a declare block is a tag. Nothing to add.
 - **A layout/template system.** `include` composes; a layout page that
   includes the body by name is a page an author writes, not a feature.
-- **HTTPS, compression, virtual hosts, multipart uploads.** Jetty's,
-  or a later item. `Body.Bytes` carries a multipart body verbatim;
-  parsing it is filed, not built.
+- **HTTPS, compression, virtual hosts.** Jetty's, or a later item.
+  (Multipart uploads were filed here and built the same day — see
+  "Uploads" below.)
 - **Session persistence / clustering.** In-memory only; `Sessions` is
   a class so a persistent one can be substituted, but none is written.
 - **A servlet-style filter chain.** `routes` is a `PartialFunction` —
