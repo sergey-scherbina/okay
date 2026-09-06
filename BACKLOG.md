@@ -974,6 +974,26 @@ not a new primitive from scratch.
       specifically; box stays unchecked for that half.
 
 ## okay-script (specs/okay-script.md) — markdown ```scala fenced blocks as Scala source
+- [x] okay-script-site — LANDED 2026-09-06 (c0b37da2): the container,
+      "a new JSP" complete. `Site(root).routes` serves a directory of
+      `.md` pages over okay-http/okay-jetty (`/a/b` → `a/b.md`,
+      `index.md`, `[param].md`, static files); `okay.script.api`
+      (Web with form/cookies/body/params, Response with status/
+      headers/redirect/cookie, Session, Error, include, forward) is
+      DELEGATED to the host classloader servlet-API style — and so is
+      `scala.*`, because delegating the API alone fails the JVM's
+      loader-constraint check on `Option`/`Map` in its signatures
+      (found on the first run). ```scala declare (JSP `<%! %>`),
+      error.md / errorPage:, contentType: front-matter, TTL sessions.
+      Per-thread stdout capture (Capture) replaces the JVM-global
+      System.setOut, so concurrent requests are correct. Example
+      okay-script/examples/site (a store with a session cart).
+- [ ] okay-script-site: multipart/form-data — `Body.Bytes` carries an
+      upload verbatim, nothing parses it; `Web.form` is urlencoded
+      only. Filed from the spec's "deliberately NOT here".
+- [ ] okay-script-site: persistent sessions — `Sessions` is in-memory;
+      it is a class so a store-backed one (okay-persist) can replace
+      it, none written.
 - [x] okay-script core — LANDED 2026-09-03: `blocks`/`run`, one .md
       file = one compilation unit (blocks concatenate in document
       order, later blocks see earlier ones' val/def), driven through

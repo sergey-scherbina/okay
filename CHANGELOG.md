@@ -1,5 +1,32 @@
 # Changelog
 
+## okay-script-site — okay-script as a JSP-level web framework
+Completed: 2026-09-06
+Landed as c0b37da2 (spec 986d4708 → code b3ddc914, rebased). Operator
+ask: "полноценный web-framework уровня jsp", all of it in one arc.
+`Site(root).routes` serves a directory of `.md` pages through
+okay-http's `Request`/`Response`, so `Jetty.serve(port)(site.routes)()`
+is the whole server: `/a/b` → `a/b.md`, `index.md`, `[param].md`,
+static files by extension. Pages see the container through
+`okay.script.api` — `Web` (now with form, cookies, body, params),
+`Response` (status, headers, contentType, redirect, cookie),
+`Session` (cookie-backed, TTL-swept, created on first set),
+`include`/`forward`, `Error` — a package the script classloader
+delegates to the host, servlet-API style; `Web.encodeArgs`/
+`decodeArgs` are gone. Found on the first run: delegating the API
+alone fails with `LinkageError: loader constraint violation` on the
+`scala.Option`/`Map` in its signatures, so `scala.*` is delegated too
+(a page runs on the host's Scala runtime), which also retired the
+`scala.Console` reflection: stdout capture is per thread now
+(`Capture`), `Page` locks only across the compile, and concurrent
+requests render one page at once with their own `Web`. Also:
+```scala declare at object level (JSP `<%! %>`), `error.md` /
+`errorPage:`, `contentType:` front-matter. `okayScript` gains
+`okayHttp.jvm` as a main dependency. Example store in
+okay-script/examples/site; 78 tests green 3x, the 2 Live ones over a
+real Jetty port pass. Two follow-ons filed (multipart, persistent
+sessions).
+
 ## json-strict-staged — `Staged.strict[A]`: 2.45x circe, reading at the cost of scanning — and a correction the previous lane owes
 
 `json-fast-read` left one number on the table: its interpreted strict
