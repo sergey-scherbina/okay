@@ -1,0 +1,23 @@
+task: reactive-bridge-profile (measurement first; a change only where the count points)
+agent: okay-42
+started: 2026-09-06
+branch: feature/reactive-bridge-profile
+
+why: the largest ratio measured on 2026-09-06 -- a round trip through
+  Flow.Publisher and back reads 5.67x the plain source and 738 bytes
+  per element (section 17). Two channels and two demand batches per
+  window are in the shape; which of them is the cost was deliberately
+  not guessed.
+
+what is visible on reading: Reactive.source builds, PER ELEMENT, an
+  Async.Await around c.receiveAsync -- the five-object handshake --
+  plus a Writer node and two binds. It does not use receiveMany, which
+  Drain uses to take 62 elements per await on the same channel. The
+  Pump side is read next.
+
+method: count per side (a wrapping Handler[Async] on the reader; a
+  counting Subscriber for onNext/request), then a JFR class breakdown
+  of reactiveRound. If the reader's per-element Await is the cost, the
+  fix is the reader draining in batches the way `drained` does -- with
+  demand still following consumption, refilled per batch. Measured on
+  reactiveRound against plainSource; the TCK (39 rules) is the law.
