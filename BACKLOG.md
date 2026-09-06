@@ -2870,3 +2870,29 @@ erased parts and `make` are most of it, and a STAGED strict decoder —
 the macro `Staged` already generates for a `Json` value and for CBOR
 bytes — is the shape that would take it to circe's bytes. Filed as a
 next lane if wanted, not taken here.
+
+## bench-cross — DONE 2026-09-07 (§18): the same four shapes on JVM, JS and Native
+
+`BenchCross` in src/test/scala-cross: a Live-tagged munit suite, four
+shapes through `Async.runAsync`, thirty warmups, median of twenty and
+minimum, platform from `java.vm.name`. Run per platform with the
+build's `--exclude-tags=Live` REPLACED by an include (`set every Test /
+testOptions := ...`), as the `integrationTest` alias does; an include
+after `--` runs nothing. First numbers in §18 and the ledger. JS and
+Native stable across two runs; the JVM column is a ruler against JMH,
+not JMH.
+
+## native-interpreter-allocation — the first platform-specific cost with a number
+
+§18: `bindChain`, N nested flatMaps with no channel, reads 497–517 us
+on Native against 164–230 on JS and the JVM's warm ~190 — 2–3x, stable
+across two runs. Nothing platform-specific is in that code path; the
+difference is the allocator paying for the same `Free` nodes and
+closures. Before anything is changed: a Native allocation profile of
+that lane (Scala Native's GC has `-Dscalanative.gc.stats`-style
+counters), and a check whether the interpreter's per-step objects can
+be fewer on every platform — which `free-cont-stack` measured as not
+the case for the re-association, but did not measure for the
+closures. Native is also where `channelChunks` beats `channelElem` by
+the most (2.1–4.6x): whatever is done here, the chunks door is the
+Native reader's first move already.

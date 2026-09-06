@@ -1874,3 +1874,52 @@ the board: `Source.unfold`'s pair per step is the caller's
 `Option[(A, S)]`, and `Drain`'s copy per element is the re-observation
 law's fresh cursor. A supervised `Stop` now drains and discards, so
 `ActorRef.stopped` comes true (`actor-stop-strands`).
+
+## 18. Three platforms, one source — the first numbers off the JVM
+
+Every lane in this document so far ran on the JVM. The library is
+cross-built for JS and Native too, and the channel — a ring of CASes
+— runs on real threads with no Loom on Native and in one thread through
+the event loop on JS. `BenchCross` (src/test/scala-cross) times the
+same four shapes on whichever platform compiles it, through
+`Async.runAsync` so one source serves all three: a munit suite tagged
+`Live`, outside the default gate, run on purpose with the build's
+`--exclude-tags=Live` replaced by an include (the harness's header says
+how; an include given after `--` runs nothing, which the first attempt
+proved with three exit-0 runs of zero tests). N=4000, thirty warmup
+runs, the median of twenty and the minimum, in microseconds:
+
+| lane | jvm | js | native |
+|---|---|---|---|
+| `rangeFold` — `Source.range` through `runForeach` | 105.4 / 97.3 | 545.9 / 479.2 | 1193.4 / 1076.6 |
+| `channelElem` — `Channel.buffer(1024).drained`, one element at a time | 1615.8 / 1315.1 | 1061.7 / 963.3 | 2338.9 / 2230.5 |
+| `channelChunks` — the same channel through `drainedChunks` | 1092.0 / 945.9 | 348.8 / 315.7 | 1117.2 / 717.9 |
+| `bindChain` — N nested flatMaps, no channel | 482.7 / 470.3 | 230.3 / 164.3 | 517.0 / 497.1 |
+
+**Read the JVM column against JMH, not as JMH.** Thirty warmup runs
+is not JMH's seconds of warmup, `runAsync` is not `runWith`, and this
+run sat on a box at load 12–26. The JVM's channel lanes read 8–12x
+their JMH figures (188 and 91 on a quiet box, §17d); `bindChain` read
+483 where a first, quieter run read 189. The JVM's numbers live in
+the JMH sections. JS and Native are what this section is for, and
+they are stable: JS within 15% across two runs on every lane, Native
+within 15% on three of four.
+
+**What the ratios say, and they say it on both runs.** The chunks door
+pays everywhere and pays most where a handshake costs most: on JS
+`channelChunks` is 3.0x faster than the elementwise read, on Native
+2.1x by median and 3.1x by minimum (4.6x on the first run), on the
+JVM 1.5x here and 2.1x under JMH. Native's elementwise read is the
+slowest number on the page because every one of its 64-per-await
+handshakes is an OS-level wait with no Loom to make parking cheap —
+so on Native, read channels in chunks. The pure interpreter
+(`bindChain`) is where JS surprises: 164–230, on par with the JVM's
+warm figure, V8 handling the closure-per-bind shape well; Native's
+497–517 is 2–3x that, stable across runs, and it is the allocator —
+Scala Native's GC paying for the same `Free` nodes and closures the
+JVM's TLAB hands out for nothing. That is the first platform-specific
+cost this library has a number for, and it is filed.
+
+A ruler, not a scale: comparable across platforms for one lane, and
+against the JVM's JMH figure for the same shape; not a substitute for
+either.

@@ -1,5 +1,50 @@
 # Changelog
 
+## bench-cross — the first numbers off the JVM: four shapes on JVM, JS and Native from one source
+
+Fifty-five modules cross-built for three platforms, and every one of
+the thirty-four JMH lanes ran on the JVM. `BenchCross`
+(src/test/scala-cross) times the same four shapes — a `Source.range`
+fold, an elementwise channel read, a `drainedChunks` read, a chain of
+N nested flatMaps — on whichever platform compiles it, through
+`Async.runAsync` so one source serves all three. A munit suite tagged
+`Live`, outside the default gate: a measurement is not a law. It runs
+on purpose, with the build's `--exclude-tags=Live` REPLACED by an
+include the way the `integrationTest` alias does it — the first
+attempt passed `--include-tags` after `--`, which a build-wide exclude
+beats, and three platforms answered exit 0 with zero tests run; the
+harness's header now says so.
+
+Thirty warmups, median of twenty and minimum, microseconds, on a box
+at load 12–26 (§18):
+
+| lane | jvm | js | native |
+|---|---|---|---|
+| `rangeFold` | 105 / 97 | 546 / 479 | 1193 / 1077 |
+| `channelElem` | 1616 / 1315 | 1062 / 963 | 2339 / 2231 |
+| `channelChunks` | 1092 / 946 | 349 / 316 | 1117 / 718 |
+| `bindChain` | 483 / 470 | 230 / 164 | 517 / 497 |
+
+**The JVM column is a ruler against JMH, not JMH** — thirty warmups,
+`runAsync`, a loaded box — and §18 says so in its first bold line; the
+JVM's numbers live in the JMH sections. JS and Native, which the
+harness exists for, are stable: JS within 15% across two runs on
+every lane, Native within 15% on three of four.
+
+**What holds on both runs.** The chunks door pays everywhere and most
+where a handshake costs most: 3.0x on JS, 2.1–4.6x on Native (real
+threads, no Loom — each handshake is an OS-level wait), 1.5–2.1x on
+the JVM. So on Native, read channels in chunks. And the pure
+interpreter is where the platforms separate: JS's V8 runs the chain
+of binds on par with the JVM's warm figure; Native runs it 2–3x
+slower, stable, and the code is identical — it is the allocator
+paying for the same `Free` nodes and closures the JVM's TLAB hands
+out for nothing. That is the library's first platform-specific cost
+with a number, filed as `native-interpreter-allocation` with the
+profile it wants before anything is changed.
+
+Gate: 2475, 0 warnings, on the tree that carries `Json.readStrict`.
+
 ## json-fast-read — `Json.readStrict`: the second door, 0.92x circe, 19x the lossless road
 
 The operator's call: "let there be a choice." `Json.read` stays the
