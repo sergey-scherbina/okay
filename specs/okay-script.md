@@ -1042,6 +1042,49 @@ error — a damaged upload is a page's own `form`/`file` miss, not a
       header in odd case all parse; a body without the boundary yields
       no parts.
 
+### Persistent sessions (okay-script-persistent-sessions, 2026-09-06)
+
+The second follow-on: a shop that forgets every cart on redeploy is
+not a shop. `Sessions` is now a trait with two engines:
+
+```scala
+trait Sessions:
+  def handle(existing: Option[String], now: Long = ...): Sessions.Handle
+  def size: Int
+object Sessions:
+  def apply(ttl = 30min): Sessions = memory(ttl)          // unchanged default
+  def memory(ttl = 30min): Sessions
+  def persisted(store: okay.persist.Store, ttl = 30min, topic = "__sessions"): Sessions
+```
+
+`persisted` is the memory engine written THROUGH to an okay-persist
+topic: one key per session id, the whole `State(lastAccess, attrs)`
+as the value (a small binary frame — `DataOutputStream` long/int/
+UTF, no codec dependency), an empty value as the tombstone,
+`Ack.Durable` on every write, `Policy(compact = true)` so
+`Topic.compact` can reclaim superseded states — the `Snapshots`
+shape, materialized. On open the index is rebuilt by scanning the
+topic from `begin` (a later record wins, a tombstone deletes) and
+entries that expired while the process was down are dropped rather
+than resurrected. A torn record decodes to `None` and is a lost
+session, not a lost site. Touching a session (any request that binds
+to it) IS a write, because the last-access time is part of the
+persisted state — otherwise a restart would expire every cart that
+had been quietly in use.
+
+`Site`'s constructor is unchanged; `Site(root, sessions =
+Sessions.persisted(FileStore.open(dir)))` is the whole opt-in.
+`okayScript` gains `okayPersist.jvm` as a main dependency.
+
+- [x] `Sessions.memory` behaves exactly as the class did (the existing
+      `TestSite` session tests pass unchanged).
+- [x] over `MemoryStore`: set, reopen a NEW `Sessions.persisted` on
+      the same store, the attributes are back; invalidate, reopen, it
+      is gone; an entry idle past ttl is not resurrected on reopen.
+- [x] over `FileStore` on disk: the same across two `Site`s opened on
+      the same directory — a cart set through one is read through the
+      other with the same cookie.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
@@ -1051,8 +1094,9 @@ error — a damaged upload is a page's own `form`/`file` miss, not a
 - **HTTPS, compression, virtual hosts.** Jetty's, or a later item.
   (Multipart uploads were filed here and built the same day — see
   "Uploads" below.)
-- **Session persistence / clustering.** In-memory only; `Sessions` is
-  a class so a persistent one can be substituted, but none is written.
+- **Session clustering.** `Sessions.persisted` keeps sessions across a
+  RESTART (below); sharing them across PROCESSES is what okay-persist's
+  replicated store is for, and is not wired here.
 - **A servlet-style filter chain.** `routes` is a `PartialFunction` —
   a caller wraps it.
 
