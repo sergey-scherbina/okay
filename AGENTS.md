@@ -249,4 +249,19 @@ force, all already practiced, none previously written down:
   before optimizing, record in
   `src/jmh/history.tsv` (TABS, eight columns — literal `\t` has
   slipped in before and breaks parsing), keep refuted experiments.
+- **A competitor lane's SOURCE is checked in the competitor's own
+  code before the lane is named `_chunk_` or called "native"**
+  (benchmark-fairness-audit + fs2-chunked-merge-lanes, 2026-09-06).
+  The `_elem_`/`_chunk_` naming rule of 5 Sep caught four mismatches
+  on OUR side and missed the fifth because it never looked at the
+  other side: `fs2.Stream.range` is `emit(o) ++ go(o + step)` in
+  3.10.2 — a singleton per element — so every "chunk-native fs2" row
+  was a fold over one-element chunks (44 443 → 109, which is ahead
+  of ZIO); `ZStream.iterate` is per-element too (628 → 36.7 from
+  `ZStream.range`). Open the constructor you feed a competitor in
+  the sources jar in the Coursier cache, note the chunking with a
+  file:line in the lane's comment, and keep the old lane renamed as
+  the diagnostic it is. Also: every cats lane pays `unsafeRunSync`'s
+  7.6 µs thread handoff (§0 of docs/benchmarks.md) and no okay lane
+  does — quote it where a cats number is close.
 - `organization` is `dev.okay` (build.sbt is the decision in force).
