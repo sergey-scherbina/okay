@@ -2,7 +2,9 @@ package okay.script
 
 import okay.*
 import okay.given
-import okay.http.{Http, Request, Response as HttpResponse}
+import okay.codec.Json
+import okay.http.{Frame, Http, Request, Response as HttpResponse}
+import okay.ui.{Event, WireJson}
 
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets.UTF_8
@@ -27,6 +29,9 @@ final class Site(
   private val rootAbs = root.toAbsolutePath.normalize
   private val pages = new ConcurrentHashMap[Path, Page]
   private val fronts = new ConcurrentHashMap[Path, (FileTime, Map[String, String])]
+  /** the Live apps pages have mounted, by (page file, id) -- what a
+   * `?__live=<id>` WebSocket on that page's path runs */
+  private val lives = new ConcurrentHashMap[(Path, String), api.Live[?]]
   /** the include stack on this thread, innermost first -- what a
    * relative `include` resolves against, and the depth cap */
   private val including: ThreadLocal[List[Path]] = ThreadLocal.withInitial(() => Nil)
@@ -40,13 +45,51 @@ final class Site(
    * file; anything else falls through to the server's own 404, or to
    * the next route a caller chains with `orElse` */
   def routes: PartialFunction[Request, HttpResponse ! Async] = {
-    case r if resolve(pathOf(r.url)).isDefined => pure(handle(r))
+    case r if pathOf(r.url) == api.Live.JsPath || resolve(pathOf(r.url)).isDefined => pure(handle(r))
   }
+
+  /** the WebSocket side: a Live app's session on the page's own path
+   * plus `?__live=<id>` -- `Jetty.serve(port)(site.routes)(site.ws)`.
+   * Event lines arrive as text frames, the tree and its patches leave
+   * as text frames; a Close frame ends the session. A socket that
+   * arrives before the page was ever rendered (a reconnect after a
+   * restart) renders it once to register the app. */
+  def ws: PartialFunction[Request, Stage[Frame, Frame, Unit]] = {
+    case r if liveOf(r).isDefined => liveSession(liveOf(r).get)
+  }
+
+  private def liveOf(r: Request): Option[api.Live[?]] =
+    val (path, query) = splitUrl(r.url)
+    parseQuery(query).get("__live").flatMap { id =>
+      resolve(path) match
+        case Some(Hit.PageFile(f, _)) =>
+          Option(lives.get((f, id))).orElse {
+            handle(Request.get(path)): Unit // a render registers what the page mounts
+            Option(lives.get((f, id)))
+          }
+        case _ => None
+    }
+
+  private def liveSession(app: api.Live[?]): Stage[Frame, Frame, Unit] =
+    val closed = Json.print(WireJson.eventJson(Event.Closed))
+    val framesToLines: Stage[Frame, String, Unit] =
+      Stage.transduce(())((_, f) =>
+        f match
+          case Frame.Text(t) => Stage.tell[Frame, String](t)
+          case Frame.Close(_, _) => Stage.tell[Frame, String](closed)
+          case _ => pure(()),
+        _ => pure(()))
+    val linesToFrames: Stage[String, Frame, Unit] =
+      Stage.transduce(())((_, l) => Stage.tell[String, Frame](Frame.Text(l)), _ => pure(()))
+    through[Frame, String, Frame, Unit, Unit](
+      through[Frame, String, String, Unit, Unit](framesToLines)(app.session))(linesToFrames)
 
   /** the synchronous core: one request in, one response out */
   def handle(r: Request): HttpResponse =
     val (path, query) = splitUrl(r.url)
-    resolve(path) match
+    if path == api.Live.JsPath then
+      HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8"), Http.one(LiveJs.source.getBytes(UTF_8)))
+    else resolve(path) match
       case None => plain(404, "not found")
       case Some(Hit.Static(f)) =>
         HttpResponse(200, Vector("Content-Type" -> contentTypeOf(f)), Http.one(Files.readAllBytes(f)))
@@ -154,6 +197,8 @@ final class Site(
     api.Session.setCurrent(sess)
     api.Error.setCurrent(None)
     api.Container.setIncluder(Some(includer))
+    api.Container.setLiveRegistrar(Some((id, app) =>
+      lives.put((including.get().headOption.getOrElse(f), id), app): Unit))
     try
       val body = dispatch(f, web, resp, 0)
       if sess.invalidated then resp.cookie(SessionCookie, "", maxAge = Some(0), httpOnly = true)
@@ -162,6 +207,7 @@ final class Site(
       HttpResponse(resp.status, resp.headers, Http.one(bytes))
     finally
       api.Container.setIncluder(None)
+      api.Container.setLiveRegistrar(None)
       api.Web.setCurrent(api.Web.empty)
       api.Response.setCurrent(new api.Response)
       api.Session.setCurrent(api.Session.detached)

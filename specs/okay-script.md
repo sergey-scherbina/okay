@@ -1212,15 +1212,33 @@ linked from Scala.js on purpose: a Site needs no build step and no
 artifact — the page IS the deployment, which is the whole premise of
 okay-script.
 
-**Classloader, third prefix.** A page's `okay.ui.Ui` tree must BE the
-host's `Ui` for the container to run `Wire.serve` over it, so `okay.*`
-joins `scala.*` and `okay.script.api.*` as shared — the platform a
-page runs on is the host's okay, exactly as it is the host's Scala —
-EXCEPT `okay.script.*` outside the api package, which stays per
-script: `Meta.current` is set from inside the script and must not
-become one global across concurrently rendering pages. A `okay.*`
-class the host lacks falls back to the script's own classpath as
-before.
+**Classloader, the rule as it now stands.** A page's `okay.ui.Ui` tree
+must BE the host's `Ui` for the container to run `Wire.serve` over
+it, so `okay.*` joins `scala.*` and `okay.script.api.*` as shared —
+the platform a page runs on is the host's okay, exactly as it is the
+host's Scala — EXCEPT `okay.script.*` outside the api package, which
+stays per script: `Meta.current` is set from inside the script and
+must not become one global across concurrently rendering pages.
+
+Found the moment `okay.*` was shared, by `TestScalaScriptLifecycle`
+(a page that starts a Jetty server): `ClassCastException: class
+org.eclipse.jetty.server.Server cannot be cast to class
+org.eclipse.jetty.server.Server` — the host's `Jetty.serve` answers
+the host's `Server`, and the page, compiled against its own copy of
+the jetty jar, checkcasts to the page-loader's `Server`. A shared
+API hands out its libraries' types, so those libraries must be
+shared too. The rule: **a class that is on BOTH the page's classpath
+and the host's is the host's.** The page's classpath remains the
+capability list — a class it does not list is not reached through
+the host either (`TestScalaScriptClassloaderIsolation`'s munit case
+still holds) — only the IDENTITY of what it does list is unified,
+the way a servlet container's shared libraries win over a webapp's
+own copy of the same jar. A `using dep` the host lacks is the page's
+own, as before; one the host also has is the host's version.
+
+Also found by the example rather than a test: a ```scala declare
+block is object level, so its imports are its own — an
+`import okay.script.api.*` in a run-level block does not reach it.
 
 - [x] `Live.html` renders every Ui shape to the HTML `React.elem`
       implies (class names, data-key, checked, options), escaped.

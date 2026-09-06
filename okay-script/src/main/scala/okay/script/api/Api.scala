@@ -166,6 +166,13 @@ object Container:
 
   def setIncluder(f: Option[String => String]): Unit = local.set(f)
 
+  private val lives: ThreadLocal[Option[(String, Live[?]) => Unit]] = ThreadLocal.withInitial(() => None)
+
+  /** how `mount` tells the container which app answers which id */
+  def liveRegistrar: Option[(String, Live[?]) => Unit] = lives.get()
+
+  def setLiveRegistrar(f: Option[(String, Live[?]) => Unit]): Unit = lives.set(f)
+
 /** Renders another page -- relative to the including page's
  * directory, or from the site root with a leading `/` -- with the same
  * `Web`/`Response`/`Session`, and prints its output here, at the point

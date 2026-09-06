@@ -61,7 +61,7 @@ class TestScalaScriptLifecycle extends munit.FunSuite:
 
     val url = s"http://127.0.0.1:$port/hello"
     val up = waitUntil(10000)(statusOf(url).toOption.contains(200))
-    assert(up, s"server never answered $url")
+    assert(up, s"server never answered $url; result so far: ${result.map(r => r.errors.mkString("; ") + r.thrown.map(t => " thrown: " + t.toString + " " + t.getStackTrace.take(8).mkString(" | ")).getOrElse(""))}")
 
     t.interrupt()
 

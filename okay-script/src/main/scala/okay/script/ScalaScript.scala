@@ -567,9 +567,27 @@ object ScalaScript:
   private final class ScriptClassLoader(urls: Array[java.net.URL], host: ClassLoader)
       extends URLClassLoader(urls, ClassLoader.getPlatformClassLoader()):
     override protected def loadClass(name: String, resolve: Boolean): Class[?] =
+      // okay-script-live: `okay.*` joins the shared prefixes -- a page's
+      // `okay.ui.Ui` tree must BE the host's for the container to run
+      // `Wire.serve` over it -- EXCEPT `okay.script.*` (other than the
+      // api package), which stays per script: `Meta.current` is set
+      // from inside the script and must not be one global across
+      // pages. And a class that is on BOTH the page's classpath and
+      // the host's is the host's: a shared okay API hands out its
+      // library's types (okay.jetty.Jetty.serve answers a
+      // org.eclipse.jetty.server.Server), and a second copy of that
+      // type on the page side is a ClassCastException between two
+      // classes of the same name (found by TestScalaScriptLifecycle
+      // the moment okay.* was shared). The page's classpath is still
+      // the capability list -- a class it does not list is not
+      // reached through the host either -- only the IDENTITY of what
+      // it lists is unified, the way a servlet container's shared
+      // libraries win over a webapp's own copy.
       val shared =
         if name.startsWith("okay.script.api.") then Some(host.loadClass(name))
-        else if name.startsWith("scala.") then
+        else if name.startsWith("okay.script.") then None
+        else if name.startsWith("scala.") || name.startsWith("okay.")
+          || findResource(name.replace('.', '/') + ".class") != null then
           try Some(host.loadClass(name)) catch case _: ClassNotFoundException => None
         else None
       shared match

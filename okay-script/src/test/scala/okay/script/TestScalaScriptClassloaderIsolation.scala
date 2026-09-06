@@ -55,6 +55,18 @@ class TestScalaScriptClassloaderIsolation extends munit.FunSuite:
     assert(r.stdout.contains("munit-reachable:false"), r.stdout)
   }
 
+  test("a library on BOTH the page's classpath and the host's is the host's class (okay-script-live): jetty's Server has one identity") {
+    val md =
+      """```scala
+        |println("loader:" + classOf[org.eclipse.jetty.server.Server].getClassLoader.getClass.getSimpleName)
+        |```
+        |""".stripMargin
+    val r = ScalaScript.run(md, classpath = Classpath.ambient)
+    assert(r.ok, r.errors.mkString("\n") + r.thrown.map(_.toString).getOrElse(""))
+    // the host's app loader, not the script's own ScriptClassLoader
+    assert(!r.stdout.contains("ScriptClassLoader"), r.stdout)
+  }
+
   test("the SAME script, given Classpath.ambient, DOES reach munit -- proving the isolation is about the Classpath given, not a blanket ban") {
     val md =
       """```scala

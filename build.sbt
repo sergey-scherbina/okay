@@ -1118,7 +1118,9 @@ lazy val okayScript = project
   // okayPersist.jvm: Sessions.persisted writes sessions through to a
   // keyed, compacted topic so a restart keeps them (okay-script-
   // persistent-sessions).
-  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayJetty % Test)
+  // okayUi.jvm: a page's server-driven Live app is okay-ui's Wire.serve
+  // over the page's own WebSocket (okay-script-live).
+  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okayJetty % Test)
   .settings(
     name := "okay-script",
     // drives dotty.tools.dotc IN-PROCESS -- no scala/scala-cli

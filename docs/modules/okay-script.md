@@ -15,6 +15,7 @@ preprocessing, meta-compilation.
 | `Page` | render mode: a `.md` file compiled once and re-invoked per request, recompiled when the file changes (hot-reload) |
 | `Site` | the container — "a new JSP": a directory of pages served over okay-http/okay-jetty (`Jetty.serve(port)(site.routes)()`); `/a/b` → `a/b.md`, `index.md`, `[param].md`, static files; sessions (`Sessions.memory`, or `Sessions.persisted` over okay-persist so a restart keeps them); error page |
 | `okay.script.api` | what a page sees: `Web.current` (method, path, query, headers, form, cookies, params), `Response.current` (status, headers, redirect, cookies), `Session.current`, `include`/`forward`, `Error.current`. Shared with the host classloader, servlet-API style |
+| `Live` / `mount` | okay-ui as the front-end layer: a page declares `Live(init)(view)(update)` and mounts it; the container serves the SSR, `/__okay/live.js` and the page's own WebSocket session (`Jetty.serve(port)(site.routes)(site.ws)`) |
 | ` ```scala declare ` | an object-level block (JSP `<%! %>`): a `val` built once per compile, a `def` every request can call |
 | `Classpath` / `Deps` | the ambient classpath a script compiles against (`Classpath.api` for a page importing the API), plus `using dep` coordinate resolution |
 

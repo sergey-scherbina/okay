@@ -56,6 +56,9 @@ class TestSiteExample extends munit.FunSuite:
     assert(c.contains("Empty.") && c.contains("Cart (0)"), c)
     assert(sessionCookie(cleared).exists(_.endsWith("=")), cleared.headers.toString)
 
+    val live = text(site.handle(Request.get("/live")))
+    assert(live.contains("yes: 0   no: 0") && live.contains("""okayLive("poll")"""), live)
+
     val css = site.handle(Request.get("/style.css"))
     assertEquals(header(css, "content-type"), Some("text/css; charset=utf-8"))
   }
