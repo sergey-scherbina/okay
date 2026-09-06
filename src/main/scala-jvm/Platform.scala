@@ -47,6 +47,12 @@ private final class BoolSlot:
  * it returned, the value is already there and no park, no permit and
  * no scheduler visit happen at all.
  */
+// TRIED AND REFUTED (adversarial-lanes, 2026-09-06): a stackless
+// InterruptedException on the cancel path, on the theory that
+// fillInStackTrace on a thousand parked virtual threads was the cost
+// of cancelling them. A/B against the plain exception: 1082 -> 1087us
+// per 1000, 1.01x, inside the bars. The cost of a cancel is the
+// interrupt reaching the park and the join, not the trace.
 given CanBlock = new:
   def block[A](register: (A => Unit) => (() => Unit)): A =
     val slot = Slot[A]()

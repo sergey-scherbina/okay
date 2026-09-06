@@ -1,5 +1,6 @@
 package okay
 
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 
 /**
@@ -62,7 +63,16 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
     def claim(): Boolean = claimed.compareAndSet(false, true)
 
   private val ring: Buffer[A | Mark] = buf
-  private val receivers = AtomicReference[List[Waiter]](Nil)
+  // A ConcurrentLinkedQueue rather than an immutable List behind an
+  // AtomicReference (adversarial-lanes, 2026-09-06). The List's
+  // wakeOne took the oldest by `cur.init` + `cur.last`, O(n) twice
+  // under a CAS loop, and this was expected to be the many-to-many
+  // cost. MEASURED NOT TO BE: 4994 -> 4810us at 4x4, inside the bars.
+  // Kept because it is the simpler code (offer/poll, no CAS loop, no
+  // list copies), not because it is faster -- the many-to-many cost
+  // is contention on the one ring's ends, which the partitioned
+  // buffer removes (see Channel.apply).
+  private val receivers = ConcurrentLinkedQueue[Waiter]()
   /**
    * Senders wait PER PART, because room appears per part. One queue
    * over a partitioned buffer means a freed slot wakes an arbitrary
@@ -73,13 +83,13 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
    * A single-order buffer has exactly one of these, so nothing about
    * the ordinary path changes.
    */
-  private val senders: Array[AtomicReference[List[Waiter]]] =
+  private val senders: Array[ConcurrentLinkedQueue[Waiter]] =
     // sized by maxParts, NOT parts: an adaptive buffer starts with one
     // part and grows, so sizing from the current count would give
     // every producer the same queue and undo the per-part wakeup
-    Array.fill(if buf.maxParts < 1 then 1 else buf.maxParts)(AtomicReference[List[Waiter]](Nil))
+    Array.fill(if buf.maxParts < 1 then 1 else buf.maxParts)(ConcurrentLinkedQueue[Waiter]())
 
-  private def sendersAt(route: Int): AtomicReference[List[Waiter]] =
+  private def sendersAt(route: Int): ConcurrentLinkedQueue[Waiter] =
     senders(if senders.length == 1 then 0 else Math.floorMod(route, senders.length))
 
   /** wake a sender waiting where room has just appeared */
@@ -157,31 +167,25 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
    */
   private inline def element(x: A | Mark): A = x.asInstanceOf[A]
 
-  private def enqueue(q: AtomicReference[List[Waiter]], w: Waiter): Unit =
-    var go = true
-    while go do
-      val cur = q.get
-      if q.compareAndSet(cur, w :: cur) then go = false
+  private def enqueue(q: ConcurrentLinkedQueue[Waiter], w: Waiter): Unit =
+    val _ = q.offer(w)
 
-  private def wakeOne(q: AtomicReference[List[Waiter]]): Boolean =
+  /** the oldest live waiter, resumed; claimed ones are skipped */
+  private def wakeOne(q: ConcurrentLinkedQueue[Waiter]): Boolean =
     var out = false
     var go = true
     while go do
-      val cur = q.get
-      if cur.isEmpty then go = false
-      else if q.compareAndSet(cur, cur.init) then
-        val oldest = cur.last
-        if oldest.claim() then { oldest.resume(); out = true; go = false }
+      val w = q.poll()
+      if w == null then go = false
+      else if w.claim() then { w.resume(); out = true; go = false }
     out
 
-  private def wakeAll(q: AtomicReference[List[Waiter]]): Unit =
+  private def wakeAll(q: ConcurrentLinkedQueue[Waiter]): Unit =
     var go = true
     while go do
-      val cur = q.get
-      if cur.isEmpty then go = false
-      else if q.compareAndSet(cur, Nil) then
-        cur.reverse.foreach(w => if w.claim() then w.resume())
-        go = false
+      val w = q.poll()
+      if w == null then go = false
+      else if w.claim() then w.resume()
 
   /**
    * Put the end mark in as soon as there is room. Nothing can be
@@ -282,7 +286,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
     while go do
       go = false
       if closing.get then k(false)
-      else if granted || sendersAt(route).get.isEmpty then
+      else if granted || sendersAt(route).isEmpty then
         // the decision rides INSIDE the claim: what comes back is
         // what the ring published at the position just won
         ring.pushDecidingAt(route, a, closing, void) match
@@ -292,7 +296,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
             val w = Waiter(() => attemptSend(a, granted0 = true, route)(k))
             enqueue(sendersAt(route), w)
             if (ring.hasRoomAt(route) || closing.get) && w.claim() then
-              val _ = sendersAt(route).updateAndGet(_.filterNot(_.claimed.get))
+              val _ = sendersAt(route).remove(w)
               go = true
           case _: Mark =>
             // close landed between the open check and the claim; the
@@ -307,7 +311,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
         val w = Waiter(() => attemptSend(a, granted0 = true, route)(k))
         enqueue(sendersAt(route), w)
         if (ring.hasRoomAt(route) || closing.get) && w.claim() then
-          val _ = sendersAt(route).updateAndGet(_.filterNot(_.claimed.get))
+          val _ = sendersAt(route).remove(w)
           go = true
 
   def receiveAsync(k: End => Unit): Unit =
@@ -350,7 +354,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
           val w = Waiter(() => receiveAsync(k))
           enqueue(receivers, w)
           if (ring.hasReady || ended.get) && w.claim() then
-            val _ = receivers.updateAndGet(_.filterNot(_.claimed.get))
+            val _ = receivers.remove(w)
             go = true
 
   /**
@@ -397,7 +401,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
   def offer(a: A): Boolean =
     // offer never parks, so it takes its route here and now
     val r = ring.route()
-    if closing.get || !sendersAt(r).get.isEmpty then false
+    if closing.get || !sendersAt(r).isEmpty then false
     else
       ring.pushDecidingAt(r, a, closing, void) match
         case null => false
