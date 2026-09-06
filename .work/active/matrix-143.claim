@@ -1,0 +1,25 @@
+task: matrix-143
+agent: opus5-intent
+started: 2026-09-06
+branch: feature/matrix-143
+worktree: ../okay-wt-matrix
+
+why: the full `sbt test` matrix dies with exit 143 at ~1449 tests on an
+  untouched master, and has for three days. Every agent here gates on
+  a scoped subset because of it, which means nobody's green is the
+  repository's green. Unowned since it was found; the operator said
+  take it.
+
+what is already known, so this does not repeat it:
+  - 143 is SIGTERM, not a test failure: the run reports 0 failures
+  - I attributed it to a concurrent sbt once and REFUTED that by
+    controlled experiment (two builds, both finished, exit 0 and 0)
+  - it also happens at load, which is a different claim and may be a
+    second cause wearing the same number
+  - TestAcceptance and TestTwoNode are the only suites that kill a
+    process, and TestAcceptance is `Live`-tagged and out of this gate
+
+first move: reproduce and find WHERE, not why. The last suite before
+  the death, the memory in use, and whether the count is stable across
+  runs — a fixed count is a deterministic cause and a wandering one is
+  the machine.
