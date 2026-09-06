@@ -26,6 +26,17 @@ killing processes it does not own, and the practical cost is that a
 green matrix is currently obtainable only by running ALONE, which for
 several agents on one box is a serialisation nobody agreed to.
 
+Second observation, 2026-09-06 (backlog-audit's gate, `clean; test`):
+exit 143 again, but at a DIFFERENT boundary — the log ends on
+`okay.demo.TestTwoNode`, "two real processes over one shared log: one
+leader, the follower serves reads, a kill fails over", which is also a
+suite that kills a process it spawned. No sibling sbt was alive when
+it died (the next one started 19s later), so this was not contention.
+One observation is not the pattern the `TestCluster` finding rests on
+— sbt interleaves suite output, so the last line printed need not be
+the killer — but if the fix is written against `TestCluster` alone it
+may not be enough. Recorded so the next 143 has something to match.
+
 The work: kill by pid, and if a test genuinely needs to signal a
 group, give the spawned worker a group of its own
 (`setsid`/`ProcessBuilder` with its own session) so the blast radius
@@ -1293,7 +1304,15 @@ not a new primitive from scratch.
       in this line), and use one rule rather than a list. The prose
       version cost 0.043 macro F1 and diluted every class.
 
-## channel-sentinel-default — buy drain-on-close as a layer, not as an invariant
+## channel-sentinel-default — DONE 2026-09-04 (d7c69167)
+
+Closed by `SentinelChannel`: the end-marker travels in the channel's
+own element slot (`A | Mark`, one documented cast to read it back),
+the layer owns `close` so the sentinel cannot be overtaken, and
+`Channel.apply` defaults to it — ring under `MaxRing`, `Segments`
+above, `StmChannel` only for capacity < 2. The entry sat open for a
+day after landing; found by the 2026-09-06 audit. Original entry
+follows, as the record of why the layer was chosen over the invariant.
 
 Measured 2026-09-04 (`ChannelGuaranteeBenchmark`, N=4000, cap=1024):
 
@@ -1324,7 +1343,19 @@ Then `Channel.apply` can default to the weak mechanism plus the layer
 and lose no promise. Blocked on nothing; wants the two-tier laws
 (landed) to hold the line while the default moves.
 
-## channel-bulk-send — the push side is still per-element
+## channel-bulk-send — DONE 2026-09-05 (d13cfd72)
+
+Closed by `Ring.pushMany` + `Channel.sendManyNow` (`private[okay]`,
+two laws, each with two threads contending for the same claim). The
+primitive was the smaller half of the result; two findings outrank it.
+
+`feedChunked` never needed it — it amortizes by REPRESENTATION, putting
+whole chunks into a `Channel[Chunk[A]]`, so the absence of a production
+caller is the measured answer, not an omission. And the bulk send is
+66.9us against a draining consumer (1.71x past `zioChunked`) but 280.4
+against an elementwise one — a 1.43x LOSS, because a full ring makes
+every bulk attempt fail its scan and fall back anyway. Batch both ends
+or neither. Original entry follows.
 
 `Ring.popMany` batched the consumer's head CAS; `push` still takes the
 tail one element at a time, so a chunked SEND (`Channel.mergeChunked`,
@@ -1333,7 +1364,20 @@ used to pay a head CAS. Symmetric fix: claim a run of writable slots
 with one `compareAndSet` on the tail, then publish each stamp. Wants
 the same contending-producers law the bulk receive got.
 
-## channel-callback-allocation — two allocations per element
+## channel-callback-allocation — HALF DONE 2026-09-05 (d13cfd72)
+
+The send half is closed: `Accepted` plus `CanBlock.blockAccepted` end
+the boxing of the acceptance answer, so `boxToBoolean` is off the
+send path.
+
+What remains is the RECEIVE half, and it remains BY DECISION, not by
+neglect: `receiveBlocking` returns `Option[A]` and `End` is
+`Either[Throwable, Option[A]]`, so the `Right`+`Some` pair is in the
+return TYPE, not in the implementation. Removing it means the
+dedicated SAM below — an abstract primitive on `Channel` and every
+implementation with it. Do not reopen this as "two allocations per
+element"; it is one allocation pair on one side, priced against a
+public signature. Original entry follows.
 
 Leaf samples on the elementwise lane: `boxToBoolean` 8% (Function1 is
 not specialized on Boolean, so every `sendAsync` callback boxes) and
@@ -1557,7 +1601,21 @@ ordered by what it would FIX, not by novelty.
       When the corpus grows (see distillation), replace the grid with a
       real stacking model and measure whether it beats the blend.
 
-## channel-chunk-batch-size — the batch is set by how far the producer runs ahead
+## channel-chunk-batch-size — PREMISE REFUTED, the idea survives
+
+Audited 2026-09-06. The entry opens by naming "the one lane we lose to
+`zio.Queue` — `zioStrongChunk` at 128.0". We do not lose it: d13cfd72
+re-measured both sides on one granularity axis and the layered chunked
+lane reads **115.9 against zioStrongChunk's 124.0**. Whoever takes
+this must not take it to close a gap that is already closed.
+
+What survives is the MECHANISM, which is worth having on its own
+terms: a ring wakes a receiver on every push, so average elements per
+bulk receive are 43.5 where `StmChannel`'s transaction hands over
+363.6. The watermark direction is still the cheap one, and is now
+about throughput headroom rather than a deficit. Original entry
+follows; its comparison numbers predate the send fast path and the
+chunked feed, so re-measure before quoting any of them.
 
 `SentinelChannel` wins elementwise (208.9 against `StmChannel`'s
 300.1) and is level chunked (175.3 against 172.3), so the one lane we
@@ -1583,7 +1641,15 @@ function. Anything between the claim and the publish truncates a
 concurrent `popMany` scan, which counts CONSECUTIVE published slots —
 a closure there cost 65.6 elements per batch down to 43.5.
 
-## channel-elementwise-wakeups — the other side of the offer-first trade
+## channel-elementwise-wakeups — OPEN, numbers need a re-run first
+
+Audited 2026-09-06: still genuinely open — one unpark per element is
+on the consumer's critical path and nothing since has addressed it.
+But every number below predates the chunked feed (9fe22fdc), and they
+come from the guarantee/granularity harness, NOT from the idiomatic
+one where the elementwise lane reads 209.3 today. Do not cross the two
+sets, and do not assume the 208.9 -> 268.7 regression still stands:
+re-run this entry's own harness before deciding the size of the prize.
 
 `channel-send-fastpath` took the chunked lane from 175.3us to 58.7 and
 cost the elementwise one 208.9 -> 268.7, which also puts
@@ -1706,7 +1772,20 @@ rather than on every pop, which is the same idea as
       re-run the ones where the conclusion turned on the probe's
       number.
 
-## channel-sender-livelock — the mirror of the isEmpty/hasReady defect
+## channel-sender-livelock — DONE 2026-09-06 (this lane)
+
+`Ring.hasRoom` answers from the stamp of the position the tail is
+about to claim, exactly as this entry prescribed, and it landed with
+the relaxed queues (cb51748c). But it was only WIRED on the default
+lane: `SentinelChannel` asks `hasRoomAt(route)`, while
+`AbruptChannel:101` still subtracted `ring.size < ring.capacity`. The
+audit found the fix half-applied and finished it — the weak channel
+now asks `ring.hasRoom` too.
+
+The general lesson, this being the fifth defect of one family: adding
+the right primitive is not the fix; every caller of the wrong one is.
+Grep for the SHAPE (`size <`, `isEmpty`) after landing its
+replacement. Original entry follows.
 
 `receiveAsync` used to recheck `isEmpty` before parking, which counts
 a CLAIMED-but-unpublished position as "something is there", so the
@@ -2044,7 +2123,45 @@ producers, a 230x fix; the bounded relaxed channel is now 5.3x past a
 single ring and 5.5x past `zio.Queue`, and scales the right way.
 
 
-## channel-per-element-effect-cost — the last gap is the interpreter, not the queue
+## channel-per-element-effect-cost — WITHDRAWAL REVERSED, gap narrowed
+
+Audited 2026-09-06. This entry withdrew the chunk-native read as
+measured-and-worse (447.9 against elementwise 264.5) on the finding
+that there was nothing to chunk: the producer delivered 1.67 elements
+per `receiveMany`, because `Channel.buffer` fed the channel at one
+`Free` step per element.
+
+The entry then named its own fix — "give `Channel.buffer` a
+chunk-native feed so the producer emits arrays" — and that fix LANDED
+(9fe22fdc, `bufferChunked` + the linear-view feed). With the producer
+able to run ahead, the withdrawn lane is the fastest one we have:
+
+| consumer shape | producer | us/op |
+|---|---|---|
+| chunked read (`drained` over chunks) | `Channel.buffer`, per-element | 447.9 — withdrawn |
+| chunked read (`drained` over chunks) | `bufferChunked(64, 256)` | **19.66 ±0.17** |
+| elementwise (`okayChannelForeach_elem_runForeach`) | `Channel.buffer(1024)` | 209.3 ±3.5 (was 264.5) |
+| `zioChannelForeach_chunk_runForeach` | — | 133.0 ±16.4 (was 139.1) |
+
+Read those first two rows carefully: they are NOT one lane
+re-measured. Same consumer shape, different producer — which is the
+whole finding. A consumer-side batch is worthless while the producer
+is the bottleneck and worth 23x once it is not, so the withdrawal was
+correct about its own moment and wrong as a verdict. Generalise that
+before withdrawing anything else measured behind a slow producer.
+The elementwise row IS one lane re-measured, same harness, same name.
+
+What is genuinely left: the ELEMENTWISE path at 209.3, where 62% is
+still effect machinery (`runFree` 26%, `Async` handler 15%, `Free`
+allocation 13%, `resume` 8%) against 8% in the channel. Making a
+per-element `Writer` step cheaper is the remaining work, and it is a
+Cont/interpreter lane, not a channel one.
+
+NOT SETTLED HERE: whether 19.66-vs-133.0 is a fair pair at all — one
+is our chunk-native surface, the other ZIO's chunked one. That is
+precisely what `benchmark-fairness-audit` is measuring; take its
+verdict, not this table's, before quoting a ratio anywhere. Original
+entry follows.
 
 Reading a buffered channel one element at a time: **264.5us against
 `ZStream.fromQueue`'s 139.1**, the one row in the idiomatic table

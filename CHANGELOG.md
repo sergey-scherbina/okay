@@ -1,5 +1,63 @@
 # Changelog
 
+## backlog-audit — nine channel entries against the code: two stale, two refuted, one defect still live
+
+The board had drifted from the tree. Nine channel/chunk/feed entries
+were read against the code and the commit that touched each.
+
+**Two were simply done and never closed.** `channel-sentinel-default`
+described `SentinelChannel` — end-marker in the element slot, the
+layer owning `close`, `Channel.apply` defaulting to it — and all of
+that shipped in d7c69167 a day before the entry was read as open.
+`channel-bulk-send` shipped in d13cfd72.
+
+**One "problem" was already an answer.** `Channel.sendManyNow` has no
+production caller, which looks like a dangling operation until you
+read the commit that added it: `feedChunked` never needed it, because
+it amortizes by REPRESENTATION — whole chunks into a
+`Channel[Chunk[A]]`. It is `private[okay]`, carries two contention
+laws, and its absence of callers is a measured finding. It was
+reported to the operator as a loose end; it was not one.
+
+**Two entries' premises were refuted by later work.**
+`channel-chunk-batch-size` opens by naming "the one lane we lose to
+`zio.Queue`, `zioStrongChunk` at 128.0" — d13cfd72 put both sides on
+one granularity axis and the layered chunked lane reads 115.9 against
+their 124.0. And `channel-per-element-effect-cost` WITHDREW the
+chunk-native read as measured-and-worse (447.9), on the finding that
+the producer delivered 1.67 elements per receive so there was nothing
+to chunk. The entry then named its own fix, that fix landed
+(9fe22fdc), and the withdrawn shape is now **19.66us — the fastest
+read we have**. The withdrawal was right about its moment and wrong as
+a verdict: a consumer-side batch is worthless while the producer is
+the bottleneck and worth 23x once it is not.
+
+Recording that nearly repeated the error it describes. The two numbers
+are not one lane re-measured — same consumer shape, different
+producer — and the entry now says so in the table itself. Whether
+19.66-vs-133.0 is a fair PAIR at all is deliberately not settled here:
+`benchmark-fairness-audit` is measuring exactly that, and this entry
+defers to it rather than banking a ratio.
+
+**One entry was half-fixed and reported as fixed.** `Ring.hasRoom`
+answers from the stamp, as `channel-sender-livelock` prescribed, and
+landed in cb51748c. Only `SentinelChannel` was wired to it;
+`AbruptChannel:101` still asked `ring.size < ring.capacity`, which
+counts a popped-but-unrepublished position as room and lets a sender
+be told there is space its push cannot take. Fixed here, one line.
+Fifth defect of that family, and the first to be caused by the FIX for
+the previous four: adding the right primitive is not the change,
+wiring every caller of the wrong one is. Grep the shape, not the name.
+
+**The lane also cost a sibling something.** A `git add -A` beside the
+claim swept 275 lines of another agent's in-progress benchmark into a
+commit titled `claim: backlog-audit` and pushed it. The file was whole
+so master still built, and it was left in place rather than reverted —
+a revert deletes a file the sibling is still typing into. AGENTS.md
+now forbids `git add -A` in the main checkout and names the second
+reason a lane belongs in a worktree: `git add -p` does not exist here,
+so a file two agents are editing cannot be staged hunk-wise at all.
+
 ## idiomatic-api-compare — closed, and the published table was four days behind its own ledger
 
 The claim (3 Sep) asked for the forced `chunkSize = 1` comparison to be

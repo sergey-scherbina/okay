@@ -70,6 +70,16 @@ force, all already practiced, none previously written down:
 - Claims live in `.work/active/<slug>.claim`, committed to `master`.
   One claim is one task; release it (`git rm` + commit) when the task
   lands, naming the landing commit.
+- NEVER `git add -A`/`git add .` in the main checkout — stage the
+  explicit paths you wrote. 2026-09-06: a `git add -A` beside a claim
+  swept a sibling's in-progress 275-line benchmark into a commit
+  titled `claim: backlog-audit` and pushed it. The file was
+  syntactically whole so master still built, and it was left in place
+  rather than reverted — a revert deletes the file from the working
+  tree the sibling is still typing into. `git add -p` is unavailable
+  here, so a shared file another agent is editing cannot be staged
+  hunk-wise at all: that is the second reason the lane belongs in a
+  worktree, not just the merge discipline below.
 - All work happens on a `feature/<slug>` branch in a worktree OUTSIDE
   the repo (`../okay-wt-<slug>` — `.worktrees/` inside also occurs and
   is gitignored). The main checkout is for reading state, claims, and

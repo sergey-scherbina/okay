@@ -97,8 +97,11 @@ final class AbruptChannel[A](buf: Buffer[A]) extends Channel[A] {
         val w = Waiter(() => attemptSend(a, granted0 = true)(k))
         enqueue(senders, w)
         // check-register-recheck: a pop between the failed push and the
-        // enqueue leaves space no one will wake us for
-        if (ring.size < ring.capacity || closed.get) && w.claim() then
+        // enqueue leaves space no one will wake us for. Ask `hasRoom`,
+        // not `size < capacity`: `size` is tail - head, which counts a
+        // position already popped whose stamp has not been republished,
+        // so a subtraction can promise room the next push cannot take.
+        if (ring.hasRoom || closed.get) && w.claim() then
           val _ = senders.updateAndGet(_.filterNot(_.claimed.get))
           go = true
 
