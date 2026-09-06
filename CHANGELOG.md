@@ -1,5 +1,60 @@
 # Changelog
 
+## feed-offer-first — the producer's 4000 handshakes, gone: −38% allocation on the elementwise channel lane
+
+`channel-batch-floor` found, by counting per side, that the elementwise
+channel lane's per-element handshake was the PRODUCER's: `Channel.buffer`'s
+feed did `c.send(it.next())` once per element, and every `send` is an
+`Async.Await` — a `Slot`, an acceptance callback, a `Bind` with its
+closure, and the interpreter steps around them. The consumer, meanwhile,
+already took 62 elements per await.
+
+The fix is eight lines and a rule the file already stated for
+`sendBlocking`: OFFER FIRST. The feed now offers in a plain loop while
+the ring takes, and parks with one `send` only on the element the ring
+refused — held in hand, so a refusal loses nothing, and `offer`
+refuses on closed as well as full, which `send` then answers
+correctly. Per full ring: about `capacity` offers and one handshake.
+Not `sendManyNow`: that primitive's 1.43x loss (d13cfd72) came from
+bulk scans failing on a full ring, and an `offer` is O(1) with an
+immediate fallback.
+
+Measured on `elem_effectCallback`, N=4000, by the count a loaded box
+cannot distort: **2 279 774 → 1 410 624 B/op, −38%**, 217 bytes per
+element — re-measured on the lazy loop that lands, not the eager draft
+(1 411 988; the one `Bind` per ring cycle is invisible). Time on that
+run 187.9 ±7.4 at load 10.6. The JFR allocation profile shows what left: `okay.Slot` (43
+samples) and `Async$Await` (31) are gone from the top twelve, the four
+`Channel` closure classes (185) collapsed to one (45), the `Platform`
+lambda (30) is gone. What remains is the consumer's representation —
+`Free$Bind` 142, `Inject` 82, `Pure` 44, `Drain` 42, the `uncons` pair.
+Time read 190.5 ±30.9 against the day's 209–226 on a box at load 4–7;
+the trend is down and the number is not the claim.
+
+Three laws, each through a ring of capacity 2 against thousands of
+elements so the refusal path runs thousands of times: every element
+arrives, in order; the same through the unbounded and the STM-backed
+channels; and a producer parked on a refusal is released by a close
+under it, answering false and ending, not spinning.
+
+This closes `channel-bulk-send` for the second time today, the other
+way round: the caller existed, and it did not need the primitive.
+
+**The gate caught the first draft, on JS.** `TestChannelFailureCross`
+feeds a stream that throws on its fourth element and asserts the
+consumer's program fails with that error. The first loop sat in the
+body of `def go`, so it ran when the program was BUILT — every
+`it.next()` including the throwing one — on whatever thread called
+`feed`. The old one-send-per-element feed had evaluated only its first
+`next()` there and the rest lazily under the driver. On the JVM the
+fork thunk runs inside the fibre's try, so nothing showed; on JS
+`fork` does `d(prog())` synchronously on the caller with no guard, and
+the producer's exception left `Channel.buffer(...)` raw, into the
+test. The loop now lives behind `pure(()).flatMap`, one `Bind` per
+full ring, and the throw surfaces where it always did: in the
+producer's fibre, then as the consumer's failure. A cross-platform
+suite earned its keep: the JVM laws were green with the defect in.
+
 ## channel-batch-floor — built, measured, and reverted: the batch it was meant to create already existed
 
 Taken on the strongest number the day had produced: "`receiveMany(64)`

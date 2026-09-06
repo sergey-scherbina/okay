@@ -130,7 +130,11 @@ case "$(echo $verdict | tr -d ' ')" in
 esac
 
 echo
-echo "tests counted: $(grep -E '^\[info\] Passed: Total' "$OUT/gate.log" | awk -F'Total |,' '{s+=$2} END {print s+0}')"
+# anywhere in the line, not anchored: parallel modules interleave
+# their stdout, and a summary glued to another suite's output line
+# loses its `[info]` prefix -- the anchored form read 2423 on a run
+# whose real total was 2441, and looked like eighteen tests vanished
+echo "tests counted: $(grep -oE 'Passed: Total [0-9]+' "$OUT/gate.log" | awk '{s+=$3} END {print s+0}')"
 echo "warnings:      $(grep -cE '^\[warn\]' "$OUT/gate.log")"
 echo "last suite in the log: $(grep -oE '^[a-z0-9.]+(Test|Spec)[A-Za-z]*:|^okay\.[a-z.]+\.Test[A-Za-z]*:' "$OUT/gate.log" | tail -1)"
 exit "$GATE"

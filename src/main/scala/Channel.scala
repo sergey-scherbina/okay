@@ -536,9 +536,42 @@ object Channel {
                                   (using St: Stream[U, H], HH: Handler[H]): Unit ! Async =
     // the linear view, for the same reason as `feedBatched` above
     val it = St.iterator(u)
+    // OFFER FIRST, as `sendBlocking` does, and for the same reason: the
+    // handshake exists to wait, and a ring with room has nothing to
+    // wait for. Counted per side on the elementwise channel lane, the
+    // consumer made 64 awaits for 4000 elements and this loop made
+    // 4000 -- one `send` per element, each an Async.Await with its
+    // slot, its acceptance callback, a Bind and the interpreter steps
+    // around them. So: offer in a plain loop while the ring takes, and
+    // park with ONE `send` only on the element it refused. That element
+    // is held in `a`, so a refusal loses nothing; and `offer` refuses
+    // on closed as well as on full, which `send` then answers
+    // correctly -- false without waiting, or a park. Per full ring:
+    // about `capacity` offers and one handshake.
+    //
+    // The loop lives INSIDE a program step, behind `pure(()).flatMap`,
+    // and not in the body of `go`. A `def go = ...` body runs when the
+    // program is BUILT, on whatever thread calls `feed`; the old
+    // one-send-per-element feed evaluated only its first `it.next()`
+    // there and every later one lazily under the driver, and a first
+    // draft of this loop evaluated all of them eagerly -- so a
+    // producer that throws on its fourth element threw out of
+    // `Channel.buffer(...)` into the caller, where a fork that runs
+    // its thunk on the caller's thread has no fiber to fail. Behind
+    // the step, the throw surfaces where it always did: in the
+    // producer's fiber, and from there as the consumer's failure
+    // (TestChannelFailureCross). One Bind per full ring, not per element.
     def go: Unit ! Async =
-      if !it.hasNext then pure(())
-      else c.send(it.next()).flatMap(ok => if ok then go else pure(()))
+      pure(()).flatMap: _ =>
+        if !it.hasNext then pure(())
+        else
+          var a = it.next()
+          var taken = c.offer(a)
+          while taken && it.hasNext do
+            a = it.next()
+            taken = c.offer(a)
+          if taken then pure(())
+          else c.send(a).flatMap(ok => if ok then go else pure(()))
     go
 
   /**

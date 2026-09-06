@@ -1451,7 +1451,26 @@ Then `Channel.apply` can default to the weak mechanism plus the layer
 and lose no promise. Blocked on nothing; wants the two-tier laws
 (landed) to hold the line while the default moves.
 
-## channel-bulk-send — REOPENED 2026-09-06: the caller exists, and it is the feed
+## channel-bulk-send — DONE 2026-09-06 (feed-offer-first), without the primitive
+
+Closed the other way round from this morning: the caller existed —
+`Channel.buffer`'s feed, one `send` per element, 4000 handshakes for
+4000 elements — and it did not need `sendManyNow`. `offer` is
+synchronous and O(1); the feed now offers in a loop while the ring
+takes and parks with one `send` only on the refused element, which
+is `sendBlocking`'s own OFFER-FIRST rule applied one level up.
+
+**2 279 774 → 1 411 988 B/op on `elem_effectCallback`, −38%.** `Slot`
+and `Async$Await` left the allocation profile's top twelve; the four
+`Channel` closure classes collapsed to one. Three laws through a ring
+of 2 against thousands of elements: none lost, order kept, a producer
+parked on a refusal released by close.
+
+`sendManyNow` stays as landed in d13cfd72 — `private[okay]`, two laws,
+and now with the reason it has no caller stated twice: representation
+amortises the chunk feed, and offer-first amortises the element feed.
+
+## reopened earlier the same day — the caller exists, and it is the feed
 
 Closed this morning as "no production caller, by measurement". The
 measurement that reopens it (channel-batch-floor, counted per side):
