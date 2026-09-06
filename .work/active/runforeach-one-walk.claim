@@ -1,0 +1,21 @@
+task: runforeach-one-walk
+agent: opus5-intent
+started: 2026-09-06
+branch: feature/runforeach-one-walk
+worktree: ../okay-wt-foreach
+
+why: Source.runForeach has the double walk runCollect had until
+  close-the-gaps -- uncons builds a program per element, flatMap
+  rebuilds the rest, the Async handler interprets both. It sits under
+  every `_runForeach_` lane in §6c, the channel row (18.9) included.
+
+what: one walk over the tree; a tell embeds f(a) with a single
+  flatMap and continues; a forwarded Async op re-enters the loop as
+  foldWith does. No semantics change: same order, same effects.
+
+prediction (before the number): okayCollectionForeach_elem_runForeach
+  162 -> 100-130 (the uncons program per element -- a Pure, an Either,
+  a Bind, a call -- is replaced by one Bind). The chunkNative channel
+  row 18.9 moves little: its per-element work is inside the chunk, not
+  in the walk. Disqualifier: < 10% on the elem lane, which would say
+  the cost is f(a)'s own Async.Run through the handler, not the walk.
