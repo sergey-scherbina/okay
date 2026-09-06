@@ -187,6 +187,23 @@ force, all already practiced, none previously written down:
   re-bindable by a neighbour) and fixed the assertion too.
 - `sbt test` runs everything, JVM + JS + Native. The core suite forks
   (see build.sbt for why); `.jvmopts` gives sbt 6g.
+- **The full matrix PASSES: 2422 tests, 81 module runs, 0 failures, 83
+  seconds warm** (matrix-143, 2026-09-06). It was believed broken for
+  three days and everyone gated on scoped subsets instead, so nobody's
+  green was the repository's green. Run the whole thing.
+- **Exit 143 is SIGTERM — somebody killed the build, no test failed.**
+  Two senders found. (1) A run started as `nohup sbt ... &` INSIDE a
+  tool call dies when that call's shell exits: the log stops mid-compile
+  and nothing says why. Make sbt the background call's OWN command.
+  (2) Under a second full matrix on the same box a tracked run still
+  took a SIGTERM at 1607 tests; the same tree alone four minutes later
+  was green. Mechanism unidentified — if you hit it, you are sharing
+  the machine, not looking at a defect.
+- **`pgrep -f 'bin/java.*sbt-launch'` MATCHES NOTHING.** sbt's command
+  line begins with a plain `java`, so that pattern answers "the box is
+  quiet" every time, including while two matrices are running. Use
+  `pgrep -f sbt-launch`. This one broken check is most of why 143 was
+  blamed on the test suite for three days (matrix-143, 2026-09-06).
 - Live suites (`TestLive` in okay-agent and okay-mcp, the LIVE tests
   in okay-demo's TestChatDemo) hit a local model endpoint and npx
   respectively; they SKIP where those are absent — and since

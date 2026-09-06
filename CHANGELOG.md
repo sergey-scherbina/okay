@@ -1,5 +1,44 @@
 # Changelog
 
+## matrix-143 — the matrix was never broken
+
+`sbt test` from a clean tree: **2422 tests, 81 module runs, 0 failed,
+0 warnings, 83 seconds warm.** Reproduced independently from a second
+worktree at the same minute, same count. Nothing was fixed to get
+there; nothing needed to be. The okay-actor entry below reports
+2438 from a tree that has that module: 2422 + its 16 tests, which is
+the two runs agreeing rather than disagreeing.
+
+For three days the full matrix was believed to die at ~1449 tests, and
+every agent here gated on a scoped subset because of it — which meant
+nobody's green was the repository's green, and a subset gate is exactly
+how a cross-module break reaches master.
+
+Exit 143 is SIGTERM: the build was killed, no test failed. Two senders,
+one proven and one only narrowed, and the difference is stated because
+a half-diagnosis dressed up as a whole one is how this lasted three
+days:
+
+- **Proven.** A run started as `nohup sbt … &` inside a tool call is
+  killed when that call's shell exits. The log stops mid-compile and
+  nothing anywhere records a reason. Twice, deliberately.
+- **Narrowed.** A properly tracked run still took a SIGTERM at 1607
+  tests while a second full matrix ran in another worktree; the same
+  tree alone, four minutes later, was green. The box was sampled every
+  three seconds through both runs and the sender was not caught. Two
+  full matrices, 36GB, 4GB already swapped out — contention, mechanism
+  unknown.
+
+The finding worth more than the bug: **`pgrep -f 'bin/java.*sbt-launch'`
+matches nothing.** sbt's command line starts with a plain `java`, so
+the pattern used all round to check "is the box quiet" could only ever
+answer yes — including while two matrices were running. `pgrep -f
+sbt-launch` works, and with it the other build was visible in one
+command. A check that cannot fail is not a check, and this one cost
+three days of blaming a test suite for a neighbour.
+
+Recorded in AGENTS.md under "Build facts that bite". No code changed.
+
 ## okay-actor — the mailbox you already have, and the one thing you do not
 
 Actors as composition, cross-built for all three platforms. The
