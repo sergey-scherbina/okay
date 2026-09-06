@@ -175,6 +175,16 @@ force, all already practiced, none previously written down:
   c.send(x)` (foreach takes any result) — those two shapes are on
   you. Found by channel-callback (2026-09-02): ten silent discards
   across ui/jetty/netty/chatweb before the lint existed.
+- **Lane rules for comparison benchmarks** (docs/benchmarks.md, "Lane
+  rules"): before a competitor's number is quoted, (1) a lane built by
+  `foldLeft` gets a right-nested twin — kyo's left-nested shape read
+  ~1000x and was quoted as the library's price for a week; (2) only
+  lanes sharing a granularity and memoisation compare — five of six
+  "ZIO ahead" rows were mismatched pairs; (3) the competitor is priced
+  from the source its author intended (`ZStream.range`, `Stream.emits`,
+  kyo `Stream.range`), the per-element source beside it as the worst
+  case, never alone. A lane's header answers all three or the lane
+  lands without a number.
 - **POLICY: no warnings, ever — main, test AND Jmh, any platform**
   (2026-09-03, reinforcing tidy-warnings' 255 → 0). A landing that introduces a
   warning is not done; fix the code or, for a warning the compiler

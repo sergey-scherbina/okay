@@ -1723,6 +1723,34 @@ measuring the thing rather than the story about it.
 - The host is a busy laptop; medians across forks and same-session
   grouping are the discipline, and history.tsv records the load.
 
+### Lane rules — before a competitor's number is quoted
+
+Every wrong row this document has carried was a lane asking a
+different question of each side. Three checks, each with the row
+that taught it:
+
+1. **Shape.** A lane built by `foldLeft` gets a RIGHT-NESTED twin
+   before its number is quoted. kyo's Env/Emit/Resource read ~1000x
+   on the left-nested shape `((ask >>= f) >>= f) >>= f` — quadratic
+   in kyo, linear right-nested — and were quoted as the library's
+   price for a week (§2; `ReaderBenchmark` keeps both shapes side by
+   side, and its header says which is which). A number that changes
+   by orders of magnitude with the nesting is the SHAPE's price, not
+   the library's, until the twin says otherwise.
+2. **Pairing.** Only lanes sharing a granularity compare: chunked
+   against chunked, elementwise against elementwise, memoised against
+   memoised. Five of six "ZIO ahead" rows on 2026-09-04/05 were
+   mismatched pairs, and every one flipped once paired (§6b, §14–§16).
+   A lane names its granularity in its name.
+3. **Source.** A competitor is priced from the source its author
+   intended: `ZStream.range`, `fs2.Stream.emits`, kyo `Stream.range`
+   — not `iterate`, not fs2's `range`, which is a singleton chunk per
+   element by construction (§5). The per-element source stays in the
+   table as the worst case it is, beside the fair one, never alone.
+
+A new competitor lane lands with all three answered in its header,
+or it lands without a number.
+
 ## 17. Actors and the reactive bridge — the first numbers
 
 `okay-actor` and `okay-reactive` had none. Both sit on the channel

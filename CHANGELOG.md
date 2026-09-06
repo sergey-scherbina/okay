@@ -1,5 +1,17 @@
 # Changelog
 
+## shape-check-new-lanes — the lane rules, written where a lane's author reads them
+
+The board carried a rule as an open item: a competitor lane built by
+`foldLeft` gets a right-nested twin before its number is quoted,
+because kyo's Env/Emit/Resource read ~1000x on the left-nested shape
+— quadratic in kyo, linear right-nested — and that was quoted as the
+library's price for a week. A rule on the board is not applied; it
+now stands in docs/benchmarks.md ("Lane rules", with the pairing
+rule — same granularity, same memoisation, the source the author
+intended — and `ReaderBenchmark`'s pair as the example) and in
+AGENTS.md beside the Jmh warnings policy. Docs only.
+
 ## chunked-source-sweep — §5 from one session: every chunked source beside its per-element lane
 
 `StreamOpsBenchmark` gains `zioStreamRange` (ZIO's 4096-a-chunk

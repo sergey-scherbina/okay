@@ -223,7 +223,13 @@ catch a regression.
       next to the per-element lanes; today only kyo's chunked lane
       exists and the §5 table mixes sessions with a ratio-to-floor
       caveat.
-- [ ] shape-check-new-lanes — every new competitor lane built by
+- [x] shape-check-new-lanes — DONE 2026-09-07: a rule, now written
+      where a lane's author reads it — docs/benchmarks.md "Lane rules"
+      under "Where the numbers are honest about limits", and AGENTS.md
+      beside the Jmh warnings policy — with `ReaderBenchmark`'s
+      left-nested / right-nested pair as the worked example and the
+      pairing rule (granularity, memoisation, source) beside it.
+      Original: every new competitor lane built by
       foldLeft gets a right-nested twin before its number is quoted
       (the kyo Env/Emit/Resource lesson: the foldLeft shape is O(N²) in
       kyo, ~1000x, and read as the library's price for a week).
