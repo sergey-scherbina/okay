@@ -232,6 +232,30 @@ lazy val okayFs2 = (project in file("okay-fs2"))
   )
 
 /**
+ * Actors: a mailbox you already have (a `Channel`), a loop that reads
+ * it one message at a time, and the one thing composition does not
+ * give — supervision. specs/actor.md.
+ *
+ * Cross-built: nothing here needs a platform, because everything it
+ * stands on is already cross-built.
+ */
+lazy val okayActor = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-actor"))
+  .dependsOn(okay)
+  .settings(
+    name := "okay-actor",
+    libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+  )
+  // the laws need a Scheduler to fork with, and that is platform
+  // work -- so the module is cross-built and its LAWS are checked on
+  // the JVM, the same split the core uses
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
+  )
+
+/**
  * Reactive Streams interop, on `java.util.concurrent.Flow` — in the
  * JDK since 9, so the zero-dependency rule holds for the main
  * artifact. The TCK is a TEST dependency and is not optional: the
@@ -1334,7 +1358,7 @@ lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
  * product this library no longer carries.
  */
 lazy val root = (project in file("."))
-  .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native,
     okayParse.jvm, okayParse.js, okayParse.native,
