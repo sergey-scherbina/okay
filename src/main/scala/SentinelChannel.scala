@@ -180,12 +180,25 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
       else if w.claim() then { w.resume(); out = true; go = false }
     out
 
+  /**
+   * Wake a SNAPSHOT of the queue, never the queue itself
+   * (adversarial-lanes, 2026-09-06). A resumed receiver that finds
+   * nothing ready parks again -- into this same queue -- and a loop
+   * that polls until empty then wakes it again, and again: the closer
+   * spun at 100% CPU inside `close -> wakeAll -> receiveAsync` for
+   * twelve minutes in a JMH warmup, 28 minutes in the channel laws,
+   * and once in 20 000 rounds of the chunked merge, each time looking
+   * like a livelock in the buffer underneath. The List this replaced
+   * took its snapshot for free (`compareAndSet(cur, Nil)`); the queue
+   * has to take one on purpose.
+   */
   private def wakeAll(q: ConcurrentLinkedQueue[Waiter]): Unit =
+    val batch = scala.collection.mutable.ArrayBuffer.empty[Waiter]
     var go = true
     while go do
       val w = q.poll()
-      if w == null then go = false
-      else if w.claim() then w.resume()
+      if w == null then go = false else batch += w
+    batch.foreach(w => if w.claim() then w.resume())
 
   /**
    * Put the end mark in as soon as there is room. Nothing can be
@@ -270,7 +283,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
           val w = Waiter(() => receiveAsync(h))
           enqueue(receivers, w)
           if (ring.hasReady || ended.get) && w.claim() then
-            val _ = receivers.updateAndGet(_.filterNot(_.claimed.get))
+            val _ = receivers.remove(w)
             go = true
     hit
 

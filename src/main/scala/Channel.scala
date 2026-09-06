@@ -563,31 +563,35 @@ object Channel {
    * trades drain-on-close away for speed.
    */
   /**
-   * THE DEFAULT IS ADAPTIVE (operator decision, adversarial-lanes,
-   * 2026-09-06). A single ring loses to `zio.Queue` the moment there
-   * is more than one consumer: P producers and C consumers contend
-   * on the one ring's head and tail, and at 4x4 the default read
-   * 4964us against zio's 3122. The same channel over `AdaptiveFifo`
-   * — one part per producer, grown as producers appear, nothing ever
-   * migrated — read 2341, ahead of zio by 1.4x, and 1.9x at 16x16.
-   * One producer sees one part and pays a one-part scan, which is
-   * the width at which it must be indistinguishable from a ring;
-   * the P x 1 tables are re-measured under it and stand beside it.
+   * THE DEFAULT IS A SINGLE RING TODAY; the adaptive buffer is opt-in
+   * (`Queues.strong[A].adaptive.parts(n).each(capacity).build`) while
+   * the question of making it the default is measured properly
+   * (adversarial-lanes, 2026-09-06/07).
    *
-   * WHAT THIS CHANGES THAT A CALLER CAN SEE: `capacity` is PER PART,
-   * so per producer. A lone producer is bounded at exactly
-   * `capacity`; P producers can have up to P x capacity buffered
-   * between them. Backpressure per producer is unchanged. Dividing a
-   * total across parts instead was measured and is the wrong trade
-   * (Queues.Parted.each: a lone producer got a sixteenth of its
-   * buffer and parked constantly, 969.8 against 113.9).
+   * The case for adaptive: a single ring loses to `zio.Queue` the
+   * moment there is a second consumer -- 4964us against 3122 at
+   * 4 producers x 4 consumers -- and the same channel over
+   * `AdaptiveFifo` read 2341. The day it was first made the default,
+   * the P x C law that decision required found three defects, all
+   * now fixed and each under a law: the adaptive buffer opened parts
+   * at claim indices but scanned by count (`TestManyToMany`, elements
+   * of late producers lost); `seal` placed one end mark per CALLER
+   * rather than per part, then, once claimed, could leave a part
+   * unsealed for good when a refused push and a concurrent seal
+   * crossed (`TestChannelLaws`, a consumer parked on a closed empty
+   * channel); and the channel's waiter queue was woken from the live
+   * queue rather than a snapshot, so a receiver that re-parked was
+   * re-woken for ever (the 100% CPU "livelock"). None of those was
+   * the ring's; all three were in the day's changes or found by the
+   * day's laws. What remains before the default can change is the
+   * A/B of every single-producer path the default feeds -- buffer,
+   * bufferChunked, merge -- under the adaptive buffer, since its
+   * capacity is PER PART and a lone producer must not pay for parts
+   * it never opens.
    */
   def apply[A](capacity: Int = Int.MaxValue): Channel[A] =
-    val parts = Runtime.getRuntime.availableProcessors
-    if capacity >= 2 && capacity <= MaxRing then
-      SentinelChannel[A](AdaptiveFifo[A | Mark](parts, () => Ring[A | Mark](capacity)))
-    else if capacity > MaxRing then
-      SentinelChannel[A](AdaptiveFifo[A | Mark](parts, () => Segments[A | Mark]()))
+    if capacity >= 2 && capacity <= MaxRing then SentinelChannel[A](capacity)
+    else if capacity > MaxRing then SentinelChannel[A](Segments[A | Mark]())
     else StmChannel[A](capacity)
 
 

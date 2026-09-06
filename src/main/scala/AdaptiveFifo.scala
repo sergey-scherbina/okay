@@ -76,32 +76,56 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
 
   private val cursor = AtomicInteger(0)
 
-  /** a fresh part for a producer that has not sent here before —
-   * unless the buffer is frozen or the cap is reached, in which case
-   * it shares an existing one */
+  /**
+   * A fresh part for a producer that has not sent here before, unless
+   * the buffer is frozen or the cap is reached, in which case it shares
+   * an existing one.
+   *
+   * THE INDEX IS THE COUNT (adversarial-lanes, 2026-09-06). The first
+   * cut opened slot `want` -- the producer's claim number -- and every
+   * scan walked indices `0 until open`, a COUNT. Those agree only while
+   * producers open their parts in claim order. One producer delayed
+   * between claiming and opening, and the ones after it opened slots
+   * 6..11 with `open` at 11: slot 11 held a producer's whole output
+   * and no scan ever reached it. Measured at 16 x 16: the late
+   * producers' elements lost entirely, and, once their part filled,
+   * a producer parked on a full part with every consumer parked on
+   * "empty" -- a deadlock the many-to-many law reproduces. Now the
+   * slot a producer opens IS the value `open` had before it, so the
+   * scanned range is dense by construction; a scanner that sees the
+   * count before the slot is set skips the null and comes back.
+   */
   private def claimPart(): Integer =
     val want = nextPart.getAndIncrement()
     if want == 0 then Integer.valueOf(0)
-    else if want >= cap || frozen.get then Integer.valueOf(want % open.get)
+    else if frozen.get then Integer.valueOf(Math.floorMod(want, opened))
     else
-      // open the slot if it is still empty; whoever wins the CAS also
-      // counts it, so `open` never runs ahead of what exists
-      if slots.get(want) == null then
-        val fresh = make()
-        if slots.compareAndSet(want, null, fresh) then open.incrementAndGet(): Unit
-      if slots.get(want) == null then Integer.valueOf(want % open.get)
-      else Integer.valueOf(want)
+      val idx = open.getAndIncrement()
+      if idx < cap then
+        slots.set(idx, make())
+        Integer.valueOf(idx)
+      else
+        // the cap is reached: give the count back and share
+        open.decrementAndGet(): Unit
+        Integer.valueOf(Math.floorMod(want, cap))
+
+  /** the open count, never past the cap: a claimer may have taken the
+   * count one past it for the instant before it gives it back */
+  private def opened: Int =
+    val n = open.get
+    if n > cap then cap else if n < 1 then 1 else n
 
   private def part(i: Int): Buffer[A] =
     if open.get == 1 then slots.get(0).nn
     else partAt(i)
 
   private def partAt(i: Int): Buffer[A] =
-    val at = if i >= cap then i % cap else i
+    val n = opened
+    val at = if i >= n then i % n else i
     val b = slots.get(at)
     if b != null then b.nn else slots.get(0).nn
 
-  override def parts: Int = open.get
+  override def parts: Int = opened
 
   /** the cap, which is what a channel must size its own arrays by:
    * `parts` grows after construction and anything sized once from it
@@ -111,7 +135,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
 
   private def eachOpen(f: Buffer[A] => Unit): Unit =
     var i = 0
-    val n = open.get
+    val n = opened
     while i < n do
       val b = slots.get(i)
       if b != null then f(b.nn)
@@ -156,12 +180,31 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     frozen.set(true)
     var placed = 0
     var i = 0
-    val n = open.get
+    val n = opened
     while i < n do
       val b = slots.get(i)
-      if b != null && sealedAt.compareAndSet(i, 0, 1) then
-        if b.nn.push(mark) then placed += 1
-        else sealedAt.set(i, 0)
+      if b != null then
+        // Three states, not two: 0 unsealed, 1 a caller is mid-push, 2
+        // the mark is IN. The two-state version (claim, push, give the
+        // claim back on refusal) had a window the channel laws found
+        // (adversarial-lanes, 2026-09-06): the closer claims part 0 and
+        // its push is refused because the part is full; meanwhile the
+        // consumer pops the last element and ITS seal, finding the
+        // claim taken, places nothing; the closer gives the claim back
+        // -- and nobody is left to try again, since seal runs only from
+        // pops and the ring is now empty. The consumer parks for good
+        // on a closed, empty, unsealed channel. Now a caller that meets
+        // a mid-push claim waits for its verdict -- the holder's push is
+        // a few CASes, never a park -- and retries on a refusal.
+        var done = false
+        while !done do
+          val st = sealedAt.get(i)
+          if st == 2 then done = true
+          else if st == 0 && sealedAt.compareAndSet(i, 0, 1) then
+            if b.nn.push(mark) then { sealedAt.set(i, 2); placed += 1 }
+            else sealedAt.set(i, 0)
+            done = true
+          else if st == 1 then Thread.onSpinWait()
       i += 1
     placed
 
@@ -178,7 +221,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     else popScanning()
 
   private def popScanning(): A | Null =
-    val n = open.get
+    val n = opened
     var out: A | Null = null
     var tried = 0
     var i = cursor.get
@@ -195,7 +238,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     else popManyScanning(max)(sink)
 
   private def popManyScanning(max: Int)(sink: A => Unit): Int =
-    val n = open.get
+    val n = opened
     var took = 0
     var tried = 0
     var i = cursor.get
