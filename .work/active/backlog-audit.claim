@@ -1,0 +1,11 @@
+lane: backlog-audit
+why: the channel entries have gone stale. channel-sentinel-default is
+  filed as open and Channel.apply already dispatches on capacity --
+  I landed it and did not clear the entry. A stale backlog is worse
+  than a short one: the next agent takes a lane, runs a gate, and
+  finds the work already done.
+how: audit every channel/chunk/feed entry against the code, close what
+  is done (with the commit that did it), keep what is genuinely open,
+  and correct anything whose premise a later measurement refuted.
+  Also: sendManyNow has no production caller -- decide whether it gets
+  one or goes, rather than leaving a public operation nobody uses.
