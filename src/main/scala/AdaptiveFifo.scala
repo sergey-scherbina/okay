@@ -138,6 +138,20 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
 
   /** freeze first, THEN seal: a part opened between the two would
    * never get its mark, and the stream would never end */
+  /**
+   * ONE MARK PER PART, under concurrent callers (adversarial-lanes,
+   * 2026-09-06). `seal` is called by the channel after EVERY pop once
+   * closing has begun, from every consumer thread at once. The first
+   * cut checked `sealedAt` and then pushed -- a check-then-act -- so
+   * two consumers could both see 0 and both push, and a part ended
+   * up with several end marks. Receivers count marks met against the
+   * part count, so the extra marks satisfied "all parts ended" while
+   * parts still held thousands of elements: measured at 16x16, 83
+   * seals placed for 16 parts and 11 019 elements left unread when
+   * every consumer had already been told the stream was over. The
+   * claim is now a CAS BEFORE the push; a push a full part refuses
+   * gives the claim back so a later call retries it.
+   */
   override def seal(mark: A): Int =
     frozen.set(true)
     var placed = 0
@@ -145,9 +159,9 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     val n = open.get
     while i < n do
       val b = slots.get(i)
-      if b != null && sealedAt.get(i) == 0 && b.nn.push(mark) then
-        sealedAt.set(i, 1)
-        placed += 1
+      if b != null && sealedAt.compareAndSet(i, 0, 1) then
+        if b.nn.push(mark) then placed += 1
+        else sealedAt.set(i, 0)
       i += 1
     placed
 
