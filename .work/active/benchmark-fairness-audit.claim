@@ -1,0 +1,36 @@
+task: benchmark-fairness-audit
+agent: opus5-intent
+started: 2026-09-06
+branch: master (docs + one new benchmark class; measured, not refactored)
+
+why: the operator asked whether the cats/ZIO/fs2 lanes are honest and
+  optimal from THEIR side — "не хотелось бы самообманываться". Read
+  every competitor lane against the library sources in the Coursier
+  cache, then measured what the lanes pay that is not the thing under
+  test (FairnessProbeBenchmark, 29 lanes).
+
+found, same run, N as in the tables:
+  - cats `unsafeRunSync` hops to the compute pool and blocks on a
+    queue (IO.scala:1031): a 7.6us floor every cats lane pays and no
+    okay lane does. kyo runAndBlock 7.3. ZIO/okay ~0. Small (3-5% of
+    the cats rows) but never stated.
+  - §1 bind chain: `IO(x+1)` is a Delay node, `Cont.Pure(x+1)` is
+    not. With `IO.pure`: 147.5 -> 125.5. FIFTEEN PERCENT of the cats
+    row is the node kind, not the runtime. ZIO Exit vs succeed: 5%.
+  - §5 pipeline: ZIO from `iterate` 628; from `ZStream.range` 36.5.
+    fs2 from `range` 1340-1729 (`range` is emit++go, a singleton per
+    element, Stream.scala:3981); from `Stream.emits`, PURE, 23.3.
+    The table prices both from their worst source against okay's
+    best mode, and its own footnote admits the fair lanes were
+    "not yet measured". fs2 overstated 60x, ZIO 17x.
+  - §6 merge: fs2 chunked BEFORE the merge 303 vs singletons 35700
+    (N=2000). The table's fs2 row is the singleton spelling only.
+  - ZIO queue consumer: `Ref.update` 111.5, a plain var 105.5,
+    idiomatic `runSum` 152.6 — the project's spelling is NOT
+    penalising ZIO. Verified, no change.
+  - cats producer via fs2 evalMap vs an IO loop: 3666 vs 3233, bars
+    overlap — not the cause of the cats queue row. Verified.
+
+caveat on the run: one other sbt was alive when it started (load
+  3.1). Lane-to-lane inside the run is what the findings rest on; the
+  numbers going INTO the tables are re-measured quiet before landing.
