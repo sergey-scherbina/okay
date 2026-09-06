@@ -1,0 +1,15 @@
+task: intent-span-runaway (a decoder-side guard on a Reading: grounded in the message, no two spans over one stretch)
+agent: okay-42
+started: 2026-09-07
+branch: feature/intent-span-runaway
+
+why: BACKLOG intent-span-runaway: one live run answered a nine-word
+  message with twenty spans cycling four intents; nothing bounds the
+  count. Grounding (every span's text is in the message) held 12/12 and
+  would not have caught it -- the texts were real substrings -- so the
+  guard is DISTINCTNESS: no two kept spans covering the same stretch of
+  the message, grounding beside it as the cheap check. `Reading.grounded
+  (message)` in Classify.scala, laws in TestClassify (the twenty-span
+  cycle collapses, an ungrounded span drops, a clean reading is the
+  identity), the live suite applies it before counting. `decide` does
+  not change.
