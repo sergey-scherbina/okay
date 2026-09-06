@@ -1,5 +1,34 @@
 # Changelog
 
+## okay-script-live — okay-ui as the front-end layer for pages
+Completed: 2026-09-06
+Landed as 9fc20eb5 (spec then code, rebased). Operator ask.
+`okay.script.api.Live(init)(view)(update)` is okay-ui's `Wire.serve`
+shape held as a value; a page declares it at object level and mounts
+it in prose with `${mount("id", app)}` — the first tree as HTML
+(`React.elem` → HTML, the same structure the browser navigates, so
+the page is whole without JavaScript) plus the script tag, and a
+registration with the container. `Site.ws` runs the app's session for
+a socket at the page's own path + `?__live=<id>`: text frames become
+event lines, a Close frame the `Closed` event, lines become text
+frames, composed with the core's `through` so `Wire.serve` is used
+verbatim (a forged key is dropped by okay-ui's own capability rule).
+`/__okay/live.js` is ~100 lines of dependency-free JavaScript — the
+Scala.js `Dom` backend transcribed, speaking `WireJson` — served by
+the container itself: no build step, no artifact, the page is the
+deployment. `Jetty.serve(port)(site.routes)(site.ws)` is the whole
+server. Classloader: `okay.*` joins the shared prefixes (a page's
+`Ui` must BE the host's), `okay.script.*` outside the api package
+stays per script; and, found by `TestScalaScriptLifecycle` the moment
+`okay.*` was shared (`ClassCastException: Server cannot be cast to
+Server`), a class on BOTH the page's classpath and the host's is now
+the host's — a shared API hands out its libraries' types — while the
+page's classpath stays the capability list. `okayScript` gains
+`okayUi.jvm`. Example `examples/site/live.md` (a poll); 5 new tests
+incl. the session driven in-JVM and over a real Jetty WebSocket
+(Live); 91 green 3x, the 4 Live suites pass. Two follow-ons filed
+(reconnect with state via ui-durable, server-pushed updates).
+
 ## okay-script-cluster-sessions — sessions shared across nodes over the replicated store
 Completed: 2026-09-06
 Landed as b8f9ba2d (spec then code, rebased). Operator ask.

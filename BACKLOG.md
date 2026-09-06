@@ -995,6 +995,23 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] okay-script-live — LANDED 2026-09-06 (operator ask): okay-ui as
+      the front-end layer. `api.Live(init)(view)(update)` declared at
+      object level, `${mount("id", app)}` in prose: SSR of the first
+      tree (React.elem → HTML) + script; `Site.ws` runs okay-ui's
+      `Wire.serve` over the page's own WebSocket (`?__live=<id>`);
+      `/__okay/live.js` is a dependency-free WireJson patch consumer
+      served by the container. Classloader: `okay.*` shared with the
+      host, and — found by the lifecycle test's ClassCastException on
+      jetty's Server — any class on BOTH the page's classpath and the
+      host's is the host's. specs/okay-script.md "Live pages".
+- [ ] okay-script-live: reconnect with state — a socket is one session
+      from `init`; a browser that reconnects starts over. okay-ui's
+      ui-durable (journal + refold on okay-persist) is the mechanism;
+      key by session cookie.
+- [ ] okay-script-live: server-pushed updates — a Live app only
+      changes on a client event; a source merged in (`Ui.run`'s
+      `external`) is what a ticking clock or a shared poll needs.
 - [x] okay-script-cluster-sessions — LANDED 2026-09-06 (operator ask):
       `Sessions.shared(topic)` — the persisted engine over a
       `Replicated` coordinator (leader node) or a `RemoteStore` topic
