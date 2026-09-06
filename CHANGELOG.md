@@ -1,5 +1,54 @@
 # Changelog
 
+## okay-actor — the mailbox you already have, and the one thing you do not
+
+Actors as composition, cross-built for all three platforms. The
+mailbox is a `Channel`, one-message-at-a-time is one consumer on it,
+lock-free private state is a CONSEQUENCE of that rather than a
+mechanism, the address is the channel, spawning is `Scheduler.fork` —
+and `okay-cluster` already makes a remote channel indistinguishable
+from a local one, which is location transparency. So the module is
+small on purpose and adds only what composition does not give:
+**supervision**, `ask`, and stopping a subtree.
+
+`specs/actor.md` first, because restart policy is a DECISION. Four of
+them, each with the alternative it rejects:
+
+- **a message that threw is dropped, never retried** — redelivery is
+  how a system loops for ever on one poisonous message, and the loop
+  hides because every attempt looks like a fresh failure;
+- **`Restart` resets and `Resume` keeps**, which is why both exist: a
+  behaviour that threw may have left its state half-updated, and only
+  its author knows whether that state still means anything;
+- **the default is `Stop`** — an actor that fails and quietly carries
+  on is how a system goes wrong without saying so;
+- **`ask` has no default timeout** — an ask that can wait for ever is
+  a deadlock with good manners.
+
+One difference from the actor libraries this resembles, worth stating
+as a difference: **backpressure is the ordinary case**. Akka's default
+mailbox is unbounded and a bounded one drops or blocks by
+configuration; here the caller picks the contract at construction from
+the same menu as any channel, including the adaptive one.
+
+Eight laws over four stages, each landing with its laws: one at a
+time, order per sender, stop drains, a stopped actor answers false for
+ever, `Resume`/`Restart` semantics, `Escalate` reporting exactly once,
+an ask answering or timing out, and children dying first AND draining.
+
+**A test that was not running.** The suites first went into the shared
+cross-project source directory, where `CrossType.Pure` never looks for
+platform sources — so sixteen tests "passed" by not existing, and the
+full matrix read the same 2422 as before without noticing. Caught by
+comparing the count before and against after: it is now 2438, exactly
+sixteen more. The JVM test directory is wired the way the core module
+wires its own.
+
+Documented in `docs/modules/okay-actor.md`.
+
+Gate: 16 actor tests, full matrix 2438, clean build across JVM, JS and
+Native, no warnings.
+
 ## okay-reactive — Reactive Streams, with the TCK passing
 
 A new JVM-only module bridging `Source[A]` and

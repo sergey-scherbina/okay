@@ -31,6 +31,10 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   gates, do-notation statements — with the rationale for every
   boundary and the graveyard of refuted alternatives. The theory
   chapter with the literature is [theory/08](theory/08-direct-style.md).
+- **[okay-actor](modules/okay-actor.md)** — actors as composition: the
+  mailbox is a `Channel`, one-at-a-time is one consumer, and the only
+  new thing is supervision. With the four decisions it makes, and the
+  alternatives each rejects.
 - **[okay-reactive](modules/okay-reactive.md)** — Reactive Streams
   interop over the JDK's own `Flow`, with the TCK passing: what the
   specification demands, and the three things it caught that reading
