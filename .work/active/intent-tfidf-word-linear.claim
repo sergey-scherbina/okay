@@ -1,0 +1,13 @@
+task: intent-tfidf-word-linear (the classical baseline: word TF-IDF into the same logistic regression; measured on the bake-off)
+agent: okay-42
+started: 2026-09-07
+branch: feature/intent-tfidf-word-linear
+
+why: BACKLOG intent-tfidf-word-linear: BM25 reads 45.0% and character
+  n-grams 60.0% on the bake-off, both no-network; the classical
+  word-level TF-IDF + linear model sits between them in what it sees
+  and was never run. Thirty lines over Probe's optimiser, then the
+  same bake-off, per language, LOO and live where the harness offers
+  both. The question it answers: is chargrams' 60% about characters
+  or about having a linear model at all. Measurement; the tier table
+  in specs/intent-classify.md and the ledger take the number.
