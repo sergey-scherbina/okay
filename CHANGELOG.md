@@ -1,5 +1,43 @@
 # Changelog
 
+## fs2-chunked-merge-lanes — the fs2 column was the same bug a fifth time, and this time it hid a row fs2 wins
+
+§6b had already caught the per-element-against-chunk-native mismatch
+four times and turned it into a naming rule. The fs2 column escaped
+the rule: every fs2 lane was fed from `fs2.Stream.range`, which in
+3.10.2 is `emit(o) ++ go(o + step)` (Stream.scala:3981) — a singleton
+chunk per element — and the "matched size" lane chunked AFTER the
+merge, so the merge saw 2x2000 singletons whatever k was. "fs2
+chunk-native" was a fold over one-element chunks.
+
+Re-paired at each table's own N, quiet box, ties agreeing with their
+recorded values (`zioChunked` 129/71/77 vs 126/72/68, `okayChunksMerge`
+10.9 vs 10.7, `zioMerge` 44.6 vs 45):
+
+| row | fs2 was | fs2 is | ZIO | okay |
+|---|---|---|---|---|
+| §6 merge, N=500 | 8878 | **84.0** | 45 | **10.7** |
+| §6b chunk-native | 44 443 | **109.0** | 126.2 | **22.3** |
+| §6b matched k=16 | 38 508 | 2373 | **127.2** | 223.7 |
+| §6b timed flush | 54 270 | 14 597 | 4907 | **244.3** |
+
+**fs2 chunk-native at 109 is slightly ahead of ZIO** — the one row
+where fs2 was ever within an order of magnitude of anybody was the one
+nobody had measured. What remains is fs2's real price, now stated
+rather than strawmanned: about a microsecond per chunk through
+`merge`, linear in the chunk count (142 → 293 → 2373 from 1024 to
+16), and a `groupWithin` that is a timer per group.
+
+Old lanes are renamed, not deleted — `fs2MergeSingletons`,
+`fs2ChunkNative_rangeSource`, `fs2ChunkedAfterMerge`,
+`fs2GroupWithinSingletons` — each with a comment saying what it
+actually measures, and the old column stays in the table beside the
+new one. Thirteen rows in history.tsv.
+
+The lesson is the same one as benchmark-fairness-audit, one table
+over: check the SOURCE a competitor lane is fed from, in its own
+code, before calling anything "native".
+
 ## benchmark-fairness-audit — are we fair to cats, ZIO and fs2; measured, and in two places we were not
 
 The operator asked. The answer had only ever been given by reading

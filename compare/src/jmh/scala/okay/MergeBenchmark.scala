@@ -53,12 +53,31 @@ class MergeBenchmark {
   def rawLazyListDrain(): Long =
     LazyList.range(0L, 2L * N).foldLeft(0L)(_ + _)
 
+  /**
+   * DIAGNOSTIC, not fs2's price: `Stream.range` in 3.10.2 is
+   * `emit(o) ++ go(o + step)` (Stream.scala:3981), a singleton chunk
+   * per element, so this merges 2xN one-element chunks through fs2's
+   * concurrency machinery -- its own scaladoc says use `emits` for one
+   * chunk. Kept, renamed, because what it measures is real (a
+   * genuinely one-at-a-time source) and because it was the only fs2
+   * row for a week (fs2-chunked-merge-lanes, 2026-09-06).
+   */
   @Benchmark
-  def fs2Merge(): Long =
+  def fs2MergeSingletons(): Long =
     import cats.effect.IO
     import cats.effect.unsafe.implicits.global
     fs2.Stream.range(0L, N.toLong).covary[IO]
       .merge(fs2.Stream.range(N.toLong, 2L * N).covary[IO])
+      .compile.fold(0L)(_ + _).unsafeRunSync()
+
+  /** fs2 chunk-native: each side one chunk, the way `ZStream.range`
+   * hands ZIO an array and `Chunks.range` hands okay one */
+  @Benchmark
+  def fs2MergeChunkNative(): Long =
+    import cats.effect.IO
+    import cats.effect.unsafe.implicits.global
+    fs2.Stream.emits(0L until N.toLong).covary[IO]
+      .merge(fs2.Stream.emits(N.toLong until 2L * N).covary[IO])
       .compile.fold(0L)(_ + _).unsafeRunSync()
 
   @Benchmark

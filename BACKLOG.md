@@ -2232,6 +2232,8 @@ by state rather than by shape.
 
 ## fs2-chunked-merge-lanes — the fs2 rows in §6 and ChunkFlush are the singleton spelling only
 
+**CLOSED 2026-09-06** (fs2-chunked-merge-lanes): re-paired at N=500 and N=2000; fs2 chunk-native 84 / 109, slightly ahead of ZIO in §6b. See CHANGELOG.
+
 Filed by benchmark-fairness-audit (2026-09-06). `ChunkFlushBenchmark`'s
 `fs2Chunked` lane chunks AFTER the merge (`a.merge(b).chunkN(k)`), so
 the merge itself still sees singletons; measured at N=2000, chunking

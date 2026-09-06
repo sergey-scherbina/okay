@@ -63,9 +63,28 @@ class ChunkFlushBenchmark {
 
   // ── fs2 ──────────────────────────────────────────────────────────
 
+  /** `Stream.range` is `emit(o) ++ go(o + step)` in 3.10.2
+   * (Stream.scala:3981): a SINGLETON chunk per element. Every fs2 row
+   * in §6b was fed from this for a week and called chunk-native
+   * (fs2-chunked-merge-lanes, 2026-09-06). It stays as the
+   * per-element source, which is what it is. */
   private def fs2Pair =
     import cats.effect.IO
     (fs2.Stream.range(0L, N.toLong).covary[IO], fs2.Stream.range(N.toLong, 2L * N).covary[IO])
+
+  /** fs2's own chunked source: one chunk a side, as its scaladoc says
+   * to write it -- the counterpart of `ZStream.range` (4096 a chunk)
+   * and `Chunks.range` */
+  private def fs2PairChunked =
+    import cats.effect.IO
+    (fs2.Stream.emits(0L until N.toLong).covary[IO],
+     fs2.Stream.emits(N.toLong until 2L * N).covary[IO])
+
+  /** the chunked source re-cut to k a chunk, BEFORE anything merges */
+  private def fs2PairAt(k: Int) =
+    import cats.effect.IO
+    (fs2.Stream.emits(0L until N.toLong).chunkN(k).unchunks.covary[IO],
+     fs2.Stream.emits(N.toLong until 2L * N).chunkN(k).unchunks.covary[IO])
 
   @Benchmark
   def fs2Elementwise(): Long =
@@ -73,16 +92,36 @@ class ChunkFlushBenchmark {
     val (a, b) = fs2Pair
     a.merge(b).compile.fold(0L)(_ + _).unsafeRunSync()
 
+  /** DIAGNOSTIC: chunks AFTER the merge, so the merge itself still
+   * sees 2xN singletons -- this was the "matched size" fs2 row */
   @Benchmark
-  def fs2Chunked(): Long =
+  def fs2ChunkedAfterMerge(): Long =
     import cats.effect.IO, cats.effect.unsafe.implicits.global
     val (a, b) = fs2Pair
     a.merge(b).chunkN(k).flatMap(fs2.Stream.chunk).compile.fold(0L)(_ + _).unsafeRunSync()
 
+  /** the matched-size row asked properly: k a chunk on each side
+   * before the merge, the shape `zioChunked` and the okay lanes have */
   @Benchmark
-  def fs2GroupWithin(): Long =
+  def fs2ChunkedBeforeMerge(): Long =
+    import cats.effect.IO, cats.effect.unsafe.implicits.global
+    val (a, b) = fs2PairAt(k)
+    a.merge(b).compile.fold(0L)(_ + _).unsafeRunSync()
+
+  /** DIAGNOSTIC: the timed flush over a singleton source */
+  @Benchmark
+  def fs2GroupWithinSingletons(): Long =
     import cats.effect.IO, cats.effect.unsafe.implicits.global
     val (a, b) = fs2Pair
+    a.merge(b).groupWithin(K, 1.second).flatMap(fs2.Stream.chunk)
+      .compile.fold(0L)(_ + _).unsafeRunSync()
+
+  /** the timed flush the way `okayChunkedFlush` and `zioGroupedWithin`
+   * are asked: chunked sources, then the time-bounded regroup */
+  @Benchmark
+  def fs2GroupWithinChunked(): Long =
+    import cats.effect.IO, cats.effect.unsafe.implicits.global
+    val (a, b) = fs2PairAt(K)
     a.merge(b).groupWithin(K, 1.second).flatMap(fs2.Stream.chunk)
       .compile.fold(0L)(_ + _).unsafeRunSync()
 
@@ -193,11 +232,21 @@ class ChunkFlushBenchmark {
     val (a, b) = fs2Pair
     a.chunkLimit(1).unchunks.merge(b.chunkLimit(1).unchunks).compile.fold(0L)(_ + _).unsafeRunSync()
 
-  /** fs2 at its own natural chunking, the chunk-native row */
+  /** DIAGNOSTIC: was called "fs2 at its own natural chunking" and
+   * fed from `range` -- singletons, folded a chunk at a time, which is
+   * a fold over one-element chunks */
+  @Benchmark
+  def fs2ChunkNative_rangeSource(): Long =
+    import cats.effect.IO, cats.effect.unsafe.implicits.global
+    val (a, b) = fs2Pair
+    a.merge(b).chunks.map(_.foldLeft(0L)(_ + _)).compile.fold(0L)(_ + _).unsafeRunSync()
+
+  /** fs2 chunk-native, actually: one chunk a side from `emits`, the
+   * merge moves arrays, the fold walks them */
   @Benchmark
   def fs2ChunkNative(): Long =
     import cats.effect.IO, cats.effect.unsafe.implicits.global
-    val (a, b) = fs2Pair
+    val (a, b) = fs2PairChunked
     a.merge(b).chunks.map(_.foldLeft(0L)(_ + _)).compile.fold(0L)(_ + _).unsafeRunSync()
 
   // ── does the array-native representation degrade at size 1 too? ──

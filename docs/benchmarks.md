@@ -355,9 +355,17 @@ They are not the library.
 
 ## 6. Merge — two 500-element streams by readiness
 
-| **Okay chunked** | ZIO | Okay elementwise | fs2 |
-|---|---|---|---|
-| **10.7** | 45 | **308** | 8878 |
+| **Okay chunked** | ZIO | fs2 chunk-native | Okay elementwise | fs2 singletons |
+|---|---|---|---|---|
+| **10.7** | 45 | 84 | **308** | 8878 |
+
+(fs2 re-paired 2026-09-06, `fs2-chunked-merge-lanes`, same run and
+N=500: `Stream.emits` a side — fs2's own one-chunk source — reads
+**84.0 ±0.9**; the `Stream.range` spelling, which is a singleton chunk
+per element in 3.10.2, reads 8965 ±61 in that run, and the okay and
+ZIO ties 10.9 / 44.6 against the 10.7 / 45 recorded. 107x inside fs2,
+from the source alone. Okay chunked is 7.7x ahead of fs2 asked
+fairly, not 830x.)
 
 Readiness-merge is what zip and ++ cannot express: a fiber per
 source feeds one channel, the loser of every race simply arrives
@@ -562,12 +570,39 @@ not to omit the row — both libraries CAN be forced to work one
 element at a time (`ZStream.range(chunkSize = 1)`, fs2's `.unchunk`)
 — it is to ask every library the same question:
 
-| 2x2000 elements | okay | ZIO | fs2 | reads as |
-|---|---|---|---|---|
-| chunk-native (each library's own default) | **22.3 ±0.3** | 126.2 ±1.0 | 44443 ±2359 | comparison |
-| chunked at a matched size (16) | 223.7 ±5.0 | **127.2 ±2.2** | 38508 ±403 | comparison |
-| chunked + timed flush | **244.3 ±3.5** | 4907 ±98 | 54270 ±1790 | comparison |
-| per-element (chunk of one, forced on ZIO/fs2) | 824.9 ±6.9 | 10032.5 ±111.0 | 36030 ±1204 | diagnostic |
+| 2x2000 elements | okay | ZIO | fs2 (re-paired 2026-09-06) | fs2 as first measured | reads as |
+|---|---|---|---|---|---|
+| chunk-native (each library's own default) | **22.3 ±0.3** | 126.2 ±1.0 | **109.0 ±0.6** | 44443 ±2359 | comparison |
+| chunked at a matched size (16) | 223.7 ±5.0 | **127.2 ±2.2** | 2373 ±25 | 38508 ±403 | comparison |
+| chunked + timed flush | **244.3 ±3.5** | 4907 ±98 | 14597 ±371 | 54270 ±1790 | comparison |
+| per-element (chunk of one, forced on ZIO/fs2) | 824.9 ±6.9 | 10032.5 ±111.0 | 35507 ±447 | 36030 ±1204 | diagnostic |
+
+**The fs2 column was the same methodology bug a fifth time, and this
+section had already named it four (fs2-chunked-merge-lanes,
+2026-09-06).** Every fs2 lane was fed from `fs2.Stream.range`, which
+in 3.10.2 is `emit(o) ++ go(o + step)` (Stream.scala:3981-3993) — a
+singleton chunk per element — and the "matched size" lane put its
+`chunkN(k)` AFTER the merge, so the merge saw 2x2000 singletons
+regardless of k. So "fs2 chunk-native" measured a fold over
+one-element chunks, and "fs2 at 16" measured the same merge as the
+per-element row plus a regroup. Fed from `Stream.emits` (fs2's own
+one-chunk source, per its scaladoc) and chunked BEFORE the merge, the
+column becomes the one on the left; the old column stays on the right
+as what it was. The ZIO and okay ties in the re-pairing run agree with
+the recorded values (`zioChunked` 129.4/70.9/77.0 against 126.4/72.4/
+68.5, `okayChunksNative` 24.5/21.9/22.3 against 29.4/31.8/24.8,
+`zioPerElement` 10 021 against 10 033), so the column moved and the
+table did not.
+
+What the honest column says: **fs2 chunk-native at 109 is slightly
+AHEAD of ZIO's 126 and 4.9x behind Okay's `Chunks`** — the one row
+where fs2 was ever within an order of magnitude was the one nobody
+had measured. At a matched 16 it is 2373: fs2 genuinely pays about a
+microsecond per chunk through `merge` (142 at 1024, 293 at 256, 2373
+at 16 — linear in the chunk count), which is a real price and now a
+stated one rather than a strawman. `groupWithin` at 14 597 is
+genuinely expensive — a timer per group — and 3x ZIO's
+`groupedWithin`, which is itself 20x Okay's `flushAfter`.
 
 **The matched-size row is the same mismatch a fourth time, corrected
 2026-09-05.** It priced our `Source.chunked(k).merge(...).unchunked`
