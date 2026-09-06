@@ -433,7 +433,11 @@ construction instead of a type test per value).
 
 ## Flakes observed (record → fix loop when they recur)
 
-- [ ] chat-demo-sessions-flake — `okay.demo.TestChatDemo` "demo-sessions:
+- [x] chat-demo-sessions-flake — CLOSED 2026-09-07: the nine
+      `withServer` tests of `TestChatDemo` are `portTest` now (the
+      `Live` tag through a per-test helper, as `liveTest` already
+      was); the one test that never opens a port stays in the gate.
+      Original: `okay.demo.TestChatDemo` "demo-sessions:
       a verified session is the identity of record" failed once in the
       full matrix (2026-09-07, intent-typo-robustness' second gate, load
       ~6): `java.io.IOException: HTTP/1.1 header parser received no

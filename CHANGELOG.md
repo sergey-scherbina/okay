@@ -1,5 +1,18 @@
 # Changelog
 
+## chat-demo-sessions-flake — the demo tests that open a port move to the integration run
+
+`okay.demo.TestChatDemo` "demo-sessions: a verified session is the
+identity of record" failed once in a full matrix — an EOF from its
+real Jetty port after 30 s — and passed in the gate before it, in
+every other gate of the day, and 3/3 in isolation after: the
+port/readiness family, not a wrong answer. Per the standing rule
+(every flaky suite to the integration run), the nine tests that call
+`withServer` go through a `portTest` helper that carries the `Live`
+tag, beside the `liveTest` helper the suite already had; the one
+test that never opens a port stays in the default gate. `sbt
+integrationTest` runs them. Recorded under "Flakes observed".
+
 ## intent-typo-robustness — the n-gram window measured under a typo at both widths; the default stays, because a class would fall
 
 `TestTypoRobustness` (default gate, the `TestCharGrams` split, one

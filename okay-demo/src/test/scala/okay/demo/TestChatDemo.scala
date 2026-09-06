@@ -40,6 +40,14 @@ class TestChatDemo extends munit.FunSuite {
    * gate): a real model answering is real work, but its RESULT is
    * not something `sbt test` can hold a landing to — out of the
    * default gate, into `sbt integrationTest`. */
+  /** a test that opens a real Jetty port: `Live`, per AGENTS.md's
+   * no-flaky-in-the-default-gate rule (chat-demo-sessions-flake,
+   * 2026-09-07: one EOF from the socket after 30 s in a full matrix,
+   * green in isolation 3/3 and in every other gate that day — the
+   * port/readiness family). Run with `sbt integrationTest`. The one
+   * test here that never opens a port stays a plain `test`. */
+  def portTest(name: String)(body: => Any): Unit = test(name.tag(new munit.Tag("Live")))(body)
+
   def liveTest(name: String)(body: => Any): Unit = test(name.tag(new munit.Tag("Live"))) {
     try body
     catch case e: Throwable if okay.llm.Live.wireDropped(e) =>
@@ -70,7 +78,7 @@ class TestChatDemo extends munit.FunSuite {
         .POST(HttpRequest.BodyPublishers.ofString(body)).build(),
       HttpResponse.BodyHandlers.ofInputStream()).body()
 
-  test("the scripted reply streams token by token and ends with done") {
+  portTest("the scripted reply streams token by token and ends with done") {
     withServer(budget = 512) { port =>
       val in = post(port, """{"messages":[{"role":"user","content":"hello okay"}]}""")
       // read INCREMENTALLY: frames must be available before the end
@@ -90,7 +98,7 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
-  test("the page serves and carries the client script") {
+  portTest("the page serves and carries the client script") {
     withServer(512) { port =>
       val res = client.send(
         HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/")).GET().build(),
@@ -102,7 +110,7 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
-  test("the React page serves when the linked app exists, with CDN React and /app.js") {
+  portTest("the React page serves when the linked app exists, with CDN React and /app.js") {
     assume(okay.chat.Chat.appJs.isDefined, "no linked app (sbt okayChatWebJS/fastLinkJS) — skipped")
     withServer(512) { port =>
       val res = client.send(
@@ -182,7 +190,7 @@ class TestChatDemo extends munit.FunSuite {
     assert(scripted.contains("You") && scripted.contains("said:"), scripted.take(300))
   }
 
-  test("over budget the stream is cut, named, and no tokens follow") {
+  portTest("over budget the stream is cut, named, and no tokens follow") {
     withServer(budget = 3) { port =>
       val whole = new String(post(port,
         """{"messages":[{"role":"user","content":"anything"}]}""").readAllBytes(), UTF_8)
@@ -195,7 +203,7 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
-  test("STREAMING CUT: a banned word in the echoed reply is cut, named content-policy, no tokens follow") {
+  portTest("STREAMING CUT: a banned word in the echoed reply is cut, named content-policy, no tokens follow") {
     withServer(budget = 512) { port =>
       // scripted ECHOES the message — typing the banned word is the trigger
       val whole = new String(post(port,
@@ -210,7 +218,7 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
-  test("STREAMING CUT: a clean reply is unaffected — still ends with done, no content-policy") {
+  portTest("STREAMING CUT: a clean reply is unaffected — still ends with done, no content-policy") {
     withServer(budget = 512) { port =>
       val whole = new String(post(port,
         """{"messages":[{"role":"user","content":"hello okay"}]}""").readAllBytes(), UTF_8)
@@ -256,7 +264,7 @@ class TestChatDemo extends munit.FunSuite {
       HttpResponse.BodyHandlers.ofString())
     (res.statusCode(), res.body())
 
-  test("demo-sessions: confirm-and-sign — the login+confirm exchange mints a token, a wrong code is refused") {
+  portTest("demo-sessions: confirm-and-sign — the login+confirm exchange mints a token, a wrong code is refused") {
     withServer(512) { port =>
       val (s1, b1) = postJson(port, "/login", """{"email":"ann@example.com"}""")
       assertEquals(s1, 200)
@@ -271,7 +279,7 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
-  test("demo-sessions: a verified session is the identity of record — it overrides a DIFFERENT email typed in the message") {
+  portTest("demo-sessions: a verified session is the identity of record — it overrides a DIFFERENT email typed in the message") {
     val board = memoryBoard
     withServer(512, board) { port =>
       val (_, b1) = postJson(port, "/login", """{"email":"real@example.com"}""")
@@ -296,7 +304,7 @@ class TestChatDemo extends munit.FunSuite {
     }
   }
 
-  test("ops-monitoring: /healthz, /readyz, /stats, /metrics are wired into the demo's own routes") {
+  portTest("ops-monitoring: /healthz, /readyz, /stats, /metrics are wired into the demo's own routes") {
     withServer(512) { port =>
       val h = client.send(HttpRequest.newBuilder(URI.create(s"http://127.0.0.1:$port/healthz")).GET().build(),
         HttpResponse.BodyHandlers.ofString())

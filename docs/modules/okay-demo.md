@@ -153,8 +153,10 @@ Prefix `/match` forces the driver (and, with a model, is a hint).
 
 ### The tests as the tour
 
-`TestChatDemo` (13, over a real socket; live legs skip without a
-model): incremental streaming, the cut, the two-sided match, the
+`TestChatDemo` (ten: the nine over a real socket are `Live` — `sbt
+integrationTest` runs them, since a real port can flake on its own
+timing — and the one that never opens a port is in the default gate;
+the live legs skip without a model): incremental streaming, the cut, the two-sided match, the
 reverse chain's two windows, the jobs-domain negotiation round
 (decline → accept-with-contact → stand-down), the escrow scenario
 by phrases alone, the React page, and the model deciding by itself.
