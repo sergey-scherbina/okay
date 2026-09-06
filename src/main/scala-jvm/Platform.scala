@@ -15,17 +15,27 @@ import java.util.concurrent.{CompletableFuture, CompletionException, ExecutionEx
  * CAS -- on a path where the callback usually fires SYNCHRONOUSLY,
  * inside `register`, because the element was already buffered and
  * there was never anything to wait for.
+ *
+ * `filled` is a plain volatile rather than an AtomicBoolean, because
+ * it is only ever SET and READ — never compare-and-set — and a
+ * volatile write/read has exactly the memory semantics
+ * AtomicBoolean.set/get provide. The atomic was a SECOND allocation on
+ * every handshake. Counted on the elementwise channel lane
+ * (channel-elementwise-wakeups, N=4000): `block` runs once per element
+ * and takes the fast path 4022 times in 4064, parking 42 times — so
+ * the pair of objects was allocated 4000 times per operation to carry
+ * a value that was already there.
  */
 private final class Slot[A]:
   var value: A = scala.compiletime.uninitialized
-  val filled = java.util.concurrent.atomic.AtomicBoolean(false)
+  @volatile var filled = false
   @volatile var waiter: Thread | Null = null
 
 /** the same one-shot handoff with the value as a primitive: a
  * `Slot[Boolean]` would box on the way in and out */
 private final class BoolSlot:
   var value: Boolean = false
-  val filled = java.util.concurrent.atomic.AtomicBoolean(false)
+  @volatile var filled = false
   @volatile var waiter: Thread | Null = null
 
 /**
@@ -42,17 +52,17 @@ given CanBlock = new:
     val slot = Slot[A]()
     val cancel = register: a =>
       slot.value = a
-      slot.filled.set(true)          // release: value is written first
+      slot.filled = true          // release: value is written first
       val t = slot.waiter
       if t != null then java.util.concurrent.locks.LockSupport.unpark(t.nn)
-    if slot.filled.get then slot.value   // never waited
+    if slot.filled then slot.value   // never waited
     else
       // publish who to wake BEFORE re-reading the flag: a completer
       // that misses the waiter is one whose flag we are about to see
       slot.waiter = Thread.currentThread()
       var out = false
       while !out do
-        if slot.filled.get then out = true
+        if slot.filled then out = true
         else
           java.util.concurrent.locks.LockSupport.park(slot)
           if Thread.interrupted() then
@@ -64,15 +74,15 @@ given CanBlock = new:
     val slot = BoolSlot()
     val cancel = register: a =>
       slot.value = a
-      slot.filled.set(true)
+      slot.filled = true
       val t = slot.waiter
       if t != null then java.util.concurrent.locks.LockSupport.unpark(t.nn)
-    if slot.filled.get then slot.value
+    if slot.filled then slot.value
     else
       slot.waiter = Thread.currentThread()
       var out = false
       while !out do
-        if slot.filled.get then out = true
+        if slot.filled then out = true
         else
           java.util.concurrent.locks.LockSupport.park(slot)
           if Thread.interrupted() then

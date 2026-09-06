@@ -70,6 +70,19 @@ force, all already practiced, none previously written down:
 - Claims live in `.work/active/<slug>.claim`, committed to `master`.
   One claim is one task; release it (`git rm` + commit) when the task
   lands, naming the landing commit.
+- NEVER `pkill -f sbt`, `pkill java` or `killall java`. MEASURED
+  2026-09-06: this is what the 143 is. A full matrix died at 1635
+  tests with sentinels watching — the sentinel in its OWN session
+  carrying "sbt-launch" in its command line died with it, while a
+  sentinel in the gate's own process GROUP and one with a neutral name
+  both lived. Only a name-matching pkill does that. No other sbt was
+  on the box: an agent with nothing of its own running was tidying up
+  and took a sibling's matrix. `matrix-kill-by-process-group` blamed a
+  suite killing a process group for two days; it was never that, and
+  the setsid fix it prescribed would have fixed nothing.
+  Kill by PID, and check whose pid it is first — `ps -p <pid> -o args=`
+  before any signal. `scripts/gate-sentinels.sh` runs a gate with the
+  trap set if you meet a 143 again.
 - NEVER `git add -A`/`git add .` in the main checkout — stage the
   explicit paths you wrote. 2026-09-06: a `git add -A` beside a claim
   swept a sibling's in-progress 275-line benchmark into a commit

@@ -1,6 +1,45 @@
 # Backlog
 
-## matrix-kill-by-process-group — one suite takes down every sbt on the box
+## matrix-kill-by-process-group — SETTLED 2026-09-06, and the name is wrong: it is a PKILL, not a group
+
+The trap fired. `scripts/gate-sentinels.sh` was watching a full matrix
+when it died at 1635 tests, and the three sentinels answer the
+question this entry has carried since 4 September:
+
+```
+GATE EXIT -> 143
+  group  ALIVE     -- same process group as the gate, nothing matchable in its argv
+  named  DIED      -- its OWN session, "sbt-launch" in its command line
+  plain  ALIVE     -- its own session, nothing matchable
+```
+
+A process-group kill cannot do that: `group` shares the gate's group
+and lived. An indiscriminate sweep cannot do that: `plain` sat beside
+`named` in its own session and lived. The only thing that kills a
+process in a foreign session because of what its COMMAND LINE says is
+a **pkill matching "sbt"**. `named` stopped heartbeating one second
+before the gate returned.
+
+The `ps` recorder makes it worse and clearer: **no other sbt was
+running on the box at the time**. Only the gate (pgid 69895), its test
+JVMs and the sentinels. So this was not a contended box being tidied
+by someone who needed it — it was an agent with no sbt of its own
+running `pkill -f sbt` to clean up, and taking a sibling's matrix with
+it. That is exactly the cause CHANGELOG:8155 recorded as admitted, and
+it is NOT the mechanism this entry named.
+
+**So the prescribed work below is void.** `TestTwoNode` already kills
+by pid; giving spawned workers their own session with `setsid` would
+have changed nothing, because nothing was killing by group. Do not
+build it.
+
+**The fix is a rule, not code, and it is now in AGENTS.md:** never
+`pkill -f sbt` / `killall java`. Kill by pid, and check whose the pid
+is first. The serialisation this entry imposed — "a green matrix is
+obtainable only by running ALONE" — is also unfounded: a full matrix
+passed earlier the same day with another agent's sbt alive throughout.
+
+## the original entry — one suite takes down every sbt on the box
 
 Found 2026-09-04 while gating an unrelated four-line change. The full
 matrix dies with SIGTERM (exit 143) immediately after
@@ -420,6 +459,16 @@ construction instead of a type test per value).
       StmChannel -- there is no code path from it to Raft. Settle by
       the survey in AGENTS.md (does it bind ports / depend on
       timeouts?) and either tag it Live or fix the timing.
+      SECOND OBSERVATION 2026-09-06 (channel-elementwise-wakeups'
+      gate): same test, same assertion -- "the survivors did not
+      commit after failover: Vector((1,1), (2,1))" -- under matrix
+      load 25-30, then green 3/3 in isolation at load 12-13. The same
+      signature as 3 September. Not the lane that saw it either: its
+      only edit is `filled` from AtomicBoolean to @volatile in
+      CanBlock, and this flake is three days OLDER than that edit.
+      Two sightings, both load-shaped, both green in isolation -- that
+      is enough to stop surveying and act: tag it Live, or give the
+      failover assertion a budget that survives a loaded box.
 
 - [ ] channel-impls-correctness — bring RingChannel and CasChannel
       back, now that channel-laws exists to judge them. They were
@@ -1689,7 +1738,74 @@ function. Anything between the claim and the publish truncates a
 concurrent `popMany` scan, which counts CONSECUTIVE published slots —
 a closure there cost 65.6 elements per batch down to 43.5.
 
-## channel-elementwise-wakeups — OPEN, and now the PRIMARY lane
+## channel-elementwise-wakeups — MEASURED 2026-09-06: the premise is wrong, and the cost is the representation
+
+Taken, counted, and the entry's own framing does not survive.
+
+**The consumer does not park.** Counters in `CanBlock.block` on this
+lane's shape, N=4000: `fast=4022  slow=42  parks=42`. Once per element
+`block` runs, and 99% of the time `register` has already completed —
+the element was there, there was nothing to wait for. So "one unpark
+per element on the consumer's critical path" is not what happens, and
+the entry's second proposal, waking on a WATERMARK, is not the lever
+here: there are 42 wakeups to save, not 4000.
+
+That also retires the reading of the `-prof stack` profile that
+promoted this entry. Three quarters of thread time is parked, but it
+is the producer fibre and idle scheduler threads — not the consumer.
+Counting the consumer directly is what settled it; the sampler could
+not.
+
+**What the handshake did cost was an allocation, and one of them is
+gone.** `Slot` and `BoolSlot` held `filled` as an `AtomicBoolean`
+although it is only ever SET and READ — never compare-and-set — so a
+plain `@volatile var` has exactly the same memory semantics and one
+fewer object per handshake. Verified by counting bytes, which is the
+one measurement a loaded box cannot distort:
+
+| variant | B/op (two runs) | GC count |
+|---|---|---|
+| `AtomicBoolean` | 2 689 282 / 2 689 255 | 25 / 24 |
+| `@volatile` | 2 624 432 / 2 624 424 | 19 / 20 |
+
+64 840 B/op against 4064 x 16 = 65 024 predicted — 0.3% off — and a
+fifth fewer collections. **The timing effect was NOT measured**: an
+alternating A/B ran while a sibling's job took the box from load 8.5
+to 48, and its numbers (240 -> 1749 -> 2191 -> 6607, error bars to
+±9438) are void and are recorded here only so nobody mistakes them for
+a result. The change lands on the allocation count and on being
+semantically identical, not on a speed claim.
+
+**The real number this lane found is 672 bytes per element.** 2.62 MB
+per operation over 4000 elements, and the 16 bytes above are 2.4% of
+it. A JFR allocation profile says where the rest goes — and it is not
+one hole:
+
+| class | samples |
+|---|---|
+| `Free$Bind` | 161 |
+| `Channel` lambdas (four distinct classes) | 185 |
+| `Right` + `Tuple2` (uncons's answer) | 140 |
+| `Free$Inject` / `Free$Pure` | 59 / 52 |
+| `Slot` | 43 |
+| `Async$Await` / `Drain` / `Writer$Say` | 31 / 27 / 21 |
+
+Free nodes are 272 samples and closures about 248. That is the
+REPRESENTATION: a fragment of program is built and discarded for every
+element. There is no single allocation to remove, which is the same
+conclusion `channel-per-element-effect-cost` reached from the other
+side, and the way not to pay it is not to go per element —
+`bufferChunked` already pays it once per 256 elements and reads 19.66.
+
+**Left open, with the trade named.** `Drain` batches by holding a
+chunk and calling `receiveMany(64)`, yet `block` runs once per
+element: the batch comes back with ONE element, because producer and
+consumer ping-pong and the ring never accumulates. Making the batch
+real means holding a woken receiver for a dwell or a watermark —
+throughput bought with latency, which is `channel-chunk-batch-size`,
+and it should be taken there with that trade stated, not here.
+
+## the original entry — OPEN, and now the PRIMARY lane
 
 Promoted 2026-09-06 by free-cont-stack, which went looking for the
 per-element cost in the interpreter and found it here instead. A

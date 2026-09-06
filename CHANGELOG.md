@@ -1,5 +1,86 @@
 # Changelog
 
+## matrix-kill-by-process-group — SETTLED: the 143 is a pkill, and the entry blamed the wrong thing for two days
+
+The trap set by `gate-143-mechanism` fired during this lane's own
+gate. The matrix died at 1635 tests and the sentinels named the blast
+radius without argument:
+
+```
+group  ALIVE   -- the gate's own process group, nothing matchable in its argv
+named  DIED    -- its OWN session, "sbt-launch" in its command line
+plain  ALIVE   -- its own session, nothing matchable
+```
+
+A group kill cannot leave `group` alive. A sweep cannot leave `plain`
+alive beside `named`. What kills a process in a foreign session for
+what its command line SAYS is a pkill matching "sbt" — and `named`
+stopped heartbeating one second before the gate returned.
+
+The `ps` recorder adds the part that stings: **no other sbt was on the
+box**. Nobody needed it. An agent with nothing of its own running
+issued `pkill -f sbt` to tidy up and took a sibling's matrix with it —
+the cause CHANGELOG:8155 recorded as admitted five days ago, and not
+the process-group kill the entry has blamed since 4 September. The fix
+that entry prescribed — kill by pid, `setsid` the spawned worker —
+would have changed nothing: `TestTwoNode` already kills by pid.
+
+AGENTS.md now forbids `pkill -f sbt` / `killall java` outright: kill by
+pid, and read `ps -p <pid> -o args=` before signalling anything. The
+serialisation the entry imposed is unfounded too — a full matrix
+passed earlier the same day with a sibling's sbt alive throughout.
+
+Two days of "run alone" and a prescribed fix for a mechanism that was
+never there, ended by three `sleep` loops and a `ps` snapshot.
+
+## channel-elementwise-wakeups — the consumer never parked, and the cost is 672 bytes an element
+
+Promoted to primary by `free-cont-stack`, which found `runFree` at
+2.5% of wall time while three quarters of thread time sat parked. This
+lane counted the consumer directly instead of trusting that sampler,
+and the entry's premise did not survive.
+
+**`fast=4022  slow=42  parks=42`**, N=4000. `CanBlock.block` runs once
+per element and 99% of the time `register` has already completed —
+the element was buffered, there was nothing to wait for. The 75%
+parked belonged to the producer fibre and idle scheduler threads. So
+"one unpark per element on the consumer's critical path" is not what
+happens, and waking on a watermark would save 42 wakeups, not 4000.
+
+**One allocation was real and is gone.** `Slot` and `BoolSlot` held
+`filled` as an `AtomicBoolean` although it is only ever set and read,
+never compare-and-set: a `@volatile var` has identical memory
+semantics and one fewer object per handshake. Verified by counting
+bytes — the one measurement a loaded box cannot distort — at
+2 689 268 B/op before against 2 624 428 after, a difference of 64 840
+against 65 024 predicted, 0.3% off, with a fifth fewer collections.
+
+**The timing was not measured, and the attempt is recorded as void.**
+An alternating A/B ran while a sibling's job took the box from load
+8.5 to 48: 240 -> 1749 -> 2191 -> 6607 us with error bars reaching
+±9438. Those numbers are in the entry only so that nobody later reads
+them as a result. This change lands on the allocation count and on
+being semantically identical, not on a speed claim.
+
+**What the lane found is bigger than what it fixed: 672 bytes per
+element.** A JFR allocation profile spreads them across `Free$Bind`
+(161 samples), four distinct `Channel` lambda classes (185),
+`Right`+`Tuple2` (140), `Free$Inject`/`Free$Pure` (111), the `Slot`
+(43), `Async$Await`, `Drain`, `Writer$Say`. Free nodes 272, closures
+~248. That is the representation itself — a fragment of program built
+and discarded for every element — and it is the same conclusion
+`channel-per-element-effect-cost` reached from the other side. There
+is no single allocation to remove; the way not to pay it is not to go
+per element, which `bufferChunked` already does at 19.66.
+
+The one lever left is named with its price: `Drain` calls
+`receiveMany(64)` and gets ONE element back, because producer and
+consumer ping-pong and the ring never accumulates. Making that batch
+real means holding a woken receiver for a dwell or a watermark —
+throughput bought with latency. That belongs to
+`channel-chunk-batch-size`, with the trade stated, and not to a lane
+that was about wakeups.
+
 ## close-the-gaps — where okay was not first, taken as work: one win kept, two attempts refuted and recorded
 
 The operator, on the corrected tables: *if they can do better, why
