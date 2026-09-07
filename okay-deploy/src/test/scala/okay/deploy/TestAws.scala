@@ -149,5 +149,4 @@ class TestAws extends munit.FunSuite:
     val dir = java.nio.file.Path.of("/srv/shop/deploy/aws")
     assertEquals(Aws.up(dir), Vector("terraform", "-chdir=/srv/shop/deploy/aws", "apply"))
     assertEquals(Targets.byName("aws").map(_.name), Some("aws"))
-    assertEquals(Targets.all.length, 7)
   }

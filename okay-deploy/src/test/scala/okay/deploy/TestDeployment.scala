@@ -122,6 +122,16 @@ class TestDeployment extends munit.FunSuite:
         .forEach(p => java.nio.file.Files.deleteIfExists(p): Unit)
   }
 
+  test("the roster: every target this build has, named ONCE so a new one is a one-line edit") {
+    // three suites used to assert `Targets.all.length` and all three
+    // needed editing whenever a target landed. The list lives here.
+    assertEquals(Targets.all.map(_.name),
+      Vector("laptop", "host", "cluster", "fly", "render", "railway", "aws", "gcp", "azure"))
+    assertEquals(Targets.all.map(_.name).distinct.length, Targets.all.length)
+    for t <- Targets.all do assertEquals(Targets.byName(t.name).map(_.name), Some(t.name))
+    assertEquals(Targets.byName("nowhere"), None)
+  }
+
   test("targets name what they require, so a check can run before anything is applied") {
     assertEquals(Targets.byName("laptop").map(_.requires(one)), Some(Vector("docker", "docker compose")))
     assertEquals(Targets.byName("host").map(_.requires(one)), Some(Vector("systemctl", "java")))

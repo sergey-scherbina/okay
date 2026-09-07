@@ -16,7 +16,7 @@ import java.nio.file.Path
  */
 object Targets:
 
-  val all: Vector[Target] = Vector(Laptop, Host, Cluster, Paas.Fly, Paas.Render, Paas.Railway, Aws)
+  val all: Vector[Target] = Vector(Laptop, Host, Cluster, Paas.Fly, Paas.Render, Paas.Railway, Aws, Gcp, Azure)
 
   def byName(n: String): Option[Target] = all.find(_.name == n)
 

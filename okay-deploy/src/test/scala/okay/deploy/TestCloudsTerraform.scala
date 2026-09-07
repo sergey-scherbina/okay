@@ -6,7 +6,7 @@ import java.nio.file.{Files, Path}
 
 /**
  * The strongest gate in this arc (specs/deployment.md, stage 3, "The
- * gate").
+ * gate"), now over all THREE clouds.
  *
  * `terraform init` downloads the AWS provider and `terraform validate`
  * then checks every resource type, every required argument and every
@@ -23,7 +23,7 @@ import java.nio.file.{Files, Path}
  * provider. What it still does not prove is that an apply succeeds:
  * quotas, IAM and instance classes need an account, and stay manual.
  */
-class TestAwsTerraform extends munit.FunSuite:
+class TestCloudsTerraform extends munit.FunSuite:
 
   override def munitTests(): Seq[Test] = super.munitTests().map(_.tag(new munit.Tag("Live")))
 
@@ -58,12 +58,12 @@ class TestAwsTerraform extends munit.FunSuite:
 
   /** a rendered deployment, initialised once — `init` is the slow part
    * (it fetches the provider), so the tests that follow share one */
-  private def initialised(d: Deployment)(body: Path => Unit): Unit =
+  private def initialised(d: Deployment, target: Target = Aws)(body: Path => Unit): Unit =
     assume(Doctor.probe(Tools.docker).ok, "no usable docker on this machine")
     val root = Files.createTempDirectory("okay-tf")
     try
-      Deployment.write(d, Aws, root): Unit
-      val dir = root.resolve(Deployment.dir(d, Aws.name))
+      Deployment.write(d, target, root): Unit
+      val dir = root.resolve(Deployment.dir(d, target.name))
       val init = terraform(dir, "init", "-input=false")
       assume(init.ok || !init.text.contains("Failed to query available provider packages"),
         s"the provider registry is not reachable:\n${init.tail(4)}")
@@ -107,5 +107,37 @@ class TestAwsTerraform extends munit.FunSuite:
       needs = Vector(Need.Region("eu-central-1")))))) { dir =>
       val out = terraform(dir, "validate")
       assert(out.ok, out.text)
+    }
+  }
+
+  // ---- the other two clouds, same gate --------------------------------
+
+  /** what gcp can hold: no volume, because Cloud Run has no durable
+   * directory and the target refuses one by name */
+  private val onGcp = Deployment("shop", Vector(
+    web.copy(needs = web.needs.filterNot(_.isInstanceOf[Need.Volume])
+      .filterNot(_.isInstanceOf[Need.Region]) :+ Need.Region("europe-west1")),
+    worker.copy(needs = Vector(Need.Neighbour("web"), Need.Region("europe-west1")))))
+
+  private val onAzure = Deployment("shop", Vector(
+    web.copy(needs = web.needs.filterNot(_.isInstanceOf[Need.Region]) :+ Need.Region("westeurope")),
+    worker.copy(needs = Vector(Need.Neighbour("web"), Need.Region("westeurope")))))
+
+  test("gcp validates against the google provider's own schema") {
+    initialised(onGcp, Gcp) { dir =>
+      val out = terraform(dir, "validate")
+      assert(out.ok, s"terraform validate rejected the gcp rendering:\n${out.text}")
+      assert(terraform(dir, "fmt", "-check", "-diff").ok, "terraform fmt would reformat the gcp rendering")
+    }
+  }
+
+  test("azure validates against the azurerm provider's own schema, volume and all") {
+    initialised(onAzure, Azure) { dir =>
+      val out = terraform(dir, "validate")
+      assert(out.ok, s"terraform validate rejected the azure rendering:\n${out.text}")
+      assert(terraform(dir, "fmt", "-check", "-diff").ok, "terraform fmt would reformat the azure rendering")
+      // the volume really is in there: this is gcp's refusal being a
+      // decision rather than a gap
+      assert(java.nio.file.Files.readString(dir.resolve("web.tf")).contains("AzureFile"))
     }
   }
