@@ -1,5 +1,23 @@
 # Backlog
 
+## spark-4-2 — the Spark pin is now free to move on its own
+
+Found by scala-3-9 (2026-09-07) and deliberately NOT taken there.
+okay-spark pins `spark-sql` 4.0.0; 4.1.x and 4.2.0 have shipped. 4.2.0
+was tried during the LTS migration to see whether it fixed the
+SparkSession classpath failure — it does not, the mechanism was ours
+to fix (see the CHANGELOG entry and okay-spark's settings), so the pin
+was put back at 4.0.0 rather than bundling an unrelated upgrade into a
+Scala version bump.
+
+- [ ] spark-4-2 — bump `spark-sql` 4.0.0 -> 4.2.0 and move
+      `scala-reflect`/`legacyStdlib` from 2.13.16 to 2.13.18 with it
+      (4.2.0 resolves 2.13.18; the two must stay a matched pair, and
+      build.sbt says so beside the pins). The suite passed on 4.2.0
+      during the migration, so this is a read of the release notes and
+      a gate, not an investigation. Spark is still 2.13-only at 4.2.0,
+      so nothing about the `for3Use2_13` arrangement changes.
+
 ## deploy-everywhere — one declaration, every place it runs (specs/deployment.md)
 
 Designed 2026-09-07 on the operator's ask, with their answers taken:
