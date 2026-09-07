@@ -67,13 +67,18 @@ does not cross and stages the work; each stage below is its own claim.
       up` through the CLI (Live), a doctor run with a PATH emptied of
       docker, and the CLI driven from a COPY of okay-script's own
       artifacts directory.
-- [ ] script-config — okay-script's fourteen `OKAY_*` variables as ONE
-      Schema'd config case class, with the runtime order defaults →
-      file → environment pinned by a test that makes all three
-      disagree, and `Settings.of[A]` deriving the deployment's
-      environment names from that same schema. The second list of
-      names disappears; today the value and the reader agree only
-      because a person keeps them agreeing.
+- [x] script-config — LANDED 2026-09-07: `Serve.Config` is okay-script's
+      whole configuration as one flat case class; okay-conf gained
+      `envName` (the ONE derivation, which okay-deploy now exports
+      rather than repeats), `fromEnv` (a PATCH, only what is set,
+      typed by the schema, a wrong value refused BY NAME) and
+      `layered` (defaults → file → environment by RFC 7396). The
+      deployment writes only what it overrides, the rendered files
+      came out byte-identical, and a test walks every name the
+      deployment renders and fails on one the config has no field
+      for. Three behaviours changed: a non-numeric value is named
+      rather than silently dropped, an `OKAY_CONF` that is not there
+      refuses, and an empty variable means unset.
 - [ ] deploy-host-verified — put the rendered systemd unit in front of
       a real `systemd-analyze verify` and the install script in front
       of a real rented box. Needs a Linux host; the unit is currently

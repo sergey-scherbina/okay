@@ -1,5 +1,44 @@
 # Changelog
 
+## script-config — seventeen environment variables become one value
+Completed: 2026-09-07
+Landed as 4cd877cd (spec then code). okay-script read `OKAY_TLS_RELOAD`
+in one file while `ScriptDeploy` rendered `OKAY_PAGES`, `OKAY_PORT` and
+`OKAY_OPS` into a unit file in another. The two lists agreed because a
+person kept them agreeing, and a rename in either would have surfaced
+as a deployment quietly running on a default nobody chose.
+
+okay-conf gained the layering, because it is nobody's local trick.
+`Conf.envName` is the ONE derivation of an environment name from a
+field, camelCase to `PREFIX_SNAKE_CASE`, and okay-deploy's
+`Settings.envName` now exports it rather than repeating it.
+`Conf.fromEnv` reads the environment as a PATCH — only the fields a
+variable is actually set for, each typed by the schema — which is what
+lets `Conf.layered` merge defaults, then a file, then that patch by RFC
+7396, so a file naming one field changes one field. A wrong value is a
+refusal naming the variable and the setting. Only scalars and secret
+REFERENCES come from the environment; any other shape refuses by name,
+and only when someone actually sets a variable for it.
+
+`Serve.Config` is okay-script's whole configuration as one flat case
+class with the program's own defaults, and `Args.of` builds the pairs
+this program wants from it — a certificate with its key, an ACME email
+with its domains, a `kid:key` that is really a pair — so every existing
+refusal stayed where it was. `ScriptDeploy` derives its settings from
+that same value and writes only the three it OVERRIDES; the rendered
+files came out byte-identical, which is how the derivation was checked
+against the list it replaced.
+
+Three behaviours changed, all the same change. `OKAY_HSTS=soon` was
+silently `None` and is now named, while `OKAY_HSTS=0` still means off
+because zero is a value and `soon` is a typo. An `OKAY_CONF` naming a
+file that is not there refuses rather than running on defaults. And an
+empty variable means unset, because `OKAY_PAGES=` in a compose file is
+how an unset setting reaches a process. The test carrying the whole
+point walks every name the deployment renders and fails on one
+`Serve.Config` has no field for. 147 okay-script green 3x, 23
+okay-conf, 55 okay-deploy.
+
 ## deploy-doctor-cli — the clean machine gets a report, and the deployment gets a command line
 Completed: 2026-09-07
 Landed as 5dd02233 (spec then code). Stage 0's second half, and two
