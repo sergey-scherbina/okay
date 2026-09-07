@@ -1279,9 +1279,22 @@ not a new primitive from scratch.
       `Site.serve(port, ssl)`, `OKAY_TLS_CERT`+`OKAY_TLS_KEY` for
       Serve; half a pair refuses by name. Live over openssl.
       specs/okay-script.md "HTTPS", specs/tls.md Results.
-- [ ] script-tls: certificate reload without a restart, ALPN/HTTP2, a
-      plaintext→HTTPS redirect port. Filed from the spec's own "NOT
-      here": a proxy is today's answer, and HSTS/OCSP live there too.
+- [x] script-https-default — LANDED 2026-09-07 (operator ask: https out
+      of the box, with a proxy and without, minimally). Four switches:
+      `OKAY_TLS=self` (a self-signed PKCS#12 generated once by the
+      JDK's own keytool, openssl as fallback, fingerprint printed with
+      the warning it deserves), `OKAY_HSTS=<seconds>` (secure
+      responses only, off by default — it pins a browser), 
+      `OKAY_HTTPS_ONLY=1` (301 before routing, `Host` or a 400), and
+      `OKAY_HTTP_PORT=<n>` (a second server whose only route is that
+      redirect). This closes the redirect-port half of the old entry.
+      specs/okay-script.md "HTTPS out of the box".
+- [ ] script-tls: certificate reload without a restart, ALPN/HTTP2,
+      OCSP stapling, cipher policy — still the proxy's, and named as
+      such in the spec. A Site behind Caddy/nginx/an ingress needs
+      three things from the operator: pass Upgrade for EVERY path
+      (a live page's socket is on the page's own path),
+      `OKAY_FORWARDED=1`, and to treat `X-Forwarded-For` as a claim.
 - [x] okay-script-i18n — LANDED 2026-09-07 (operator ask): `Site(
       languages = ...)`; the request's language from `?lang=` (kept in
       the OKAYLANG cookie), the cookie, `Accept-Language` or the

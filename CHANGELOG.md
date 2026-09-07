@@ -1,5 +1,35 @@
 # Changelog
 
+## script-https-default — https out of the box, with a proxy and without
+Completed: 2026-09-07
+Landed as c6735296 (spec then code). Operator ask, held to four
+switches. `OKAY_TLS=self`: `Tls.selfSigned` — okay-tls, the same one
+transport seam — generates a PKCS#12 once, reuses it after that, and
+answers the context plus the certificate's SHA-256, which `Serve`
+prints beside the plain warning that nobody vouched for it; with
+`OKAY_DATA` the keystore sits beside the data, so a restart keeps the
+identity, and without it the fingerprint changes with the temp
+directory, which the printed line says rather than hides. It shells
+out to the JDK's own `keytool` (openssl as the fallback, a named
+refusal when neither is on the PATH) because no exported JDK API
+builds a certificate — `sun.security.x509` is not open — and a crypto
+dependency added for a development convenience would cost okay-tls
+its compile graph. `OKAY_HSTS=<seconds>` rides ONLY on a response the
+container knows was secure, since announcing HSTS over plaintext is
+how a site locks itself out, and is off by default because on a
+self-signed host it pins a browser for its whole max-age.
+`OKAY_HTTPS_ONLY=1` answers an insecure request with a 301 to the
+same URL on https BEFORE routing, so an unknown path is sent to https
+rather than told over http that it does not exist; the authority is
+the request's own `Host`, and a request without one gets a 400 that
+says so instead of a guessed hostname. `OKAY_HTTP_PORT=<n>` binds a
+second server whose only route is that redirect, spelling out the TLS
+port unless it is 443. Still the proxy's and still stated: ACME,
+rotation without a restart, ALPN/HTTP2, OCSP stapling, cipher policy.
+5 tests, the Live one generating a keystore, serving a page over a
+real handshake to a client that trusts that certificate and nothing
+else, and reusing it on the next start. 134 green 3x.
+
 ## okay-script-cookie-flags — Secure and SameSite on the cookies a Site sets
 Completed: 2026-09-07
 Landed as 1a95e8d4 (spec then code). Found by a question rather than
