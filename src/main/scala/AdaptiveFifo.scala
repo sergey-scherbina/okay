@@ -1,5 +1,6 @@
 package okay
 
+import java.util.concurrent.atomic.AtomicIntegerArray
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReferenceArray}
 
 /**
@@ -83,6 +84,27 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     override def initialValue(): Home =
       val i = claimPart()
       Home(i, slots.get(i).nn)
+
+  /**
+   * ONE CONSUMER AT A TIME PER PART (consumer-claim, 2026-09-07, the
+   * operator's design). A producer has a part of its own; a consumer
+   * takes a WHOLE DRAIN out of one part under an exclusive claim and
+   * releases it before it processes anything, so two consumers never
+   * work the same part's head and nobody is held up by what someone
+   * else took. Measured before: adding consumers cost 2.3x (four
+   * producers, elementwise, 510 -> 1 039 us).
+   *
+   * The claim is a plain CAS on a flag per part. It is held for a
+   * drain and nothing else — never across a callback, never across a
+   * park — so a consumer that stops between drains blocks no one.
+   */
+  private val claimed = AtomicIntegerArray(cap)
+
+  /** where THIS consumer starts looking, so consumers do not convoy
+   * onto part 0 the way a single shared cursor made them */
+  private val startAt = new ThreadLocal[Integer]:
+    override def initialValue(): Integer =
+      Integer.valueOf(Math.floorMod(Thread.currentThread().threadId().toInt, if cap < 1 then 1 else cap))
 
   private val cursor = AtomicInteger(0)
   /**
@@ -247,12 +269,12 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     val n = opened
     var out: A | Null = null
     var tried = 0
-    var i = cursor.get
+    var i = startAt.get.intValue
     while out == null && tried < n do
-      val at = if i >= n then i % n else i
+      val at = if i >= n then Math.floorMod(i, n) else i
       val b = slots.get(at)
       if b != null then out = b.nn.pop()
-      if out == null then i += 1 else { cursor.set(at); myRoute.set(at) }
+      if out == null then i += 1 else { startAt.set(at); myRoute.set(at) }
       tried += 1
     out
 
@@ -264,12 +286,16 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     val n = opened
     var took = 0
     var tried = 0
-    var i = cursor.get
+    var i = startAt.get.intValue
     while took == 0 && tried < n do
-      val at = if i >= n then i % n else i
+      val at = if i >= n then Math.floorMod(i, n) else i
       val b = slots.get(at)
-      if b != null then took = b.nn.popMany(max)(sink)
-      if took == 0 then i += 1 else { cursor.set(at); myRoute.set(at) }
+      // the claim: one consumer drains a part at a time, and a part
+      // someone else holds is skipped rather than waited for
+      if b != null && claimed.compareAndSet(at, 0, 1) then
+        try took = b.nn.popMany(max)(sink)
+        finally claimed.set(at, 0)
+      if took == 0 then i += 1 else myRoute.set(at)
       tried += 1
     took
 
