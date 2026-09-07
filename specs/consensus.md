@@ -245,10 +245,55 @@ prices every large claim:
   `RaftStore.append` still throws `NotLeader` for. The Live suite's
   first test now appends on a follower too, and every node applies
   it at the next offset.
-- **Stage 2 — log compaction / snapshotting, membership changes**
-  (not started). The control log the reduction already runs on is
-  small and slow-changing (election traffic only); an actual
-  Raft-replicated DATA log needs both before it can run unbounded.
+- **Stage 2a — membership changes, LANDED 2026-09-07
+  (raft-membership).** The single-server change of Ongaro's thesis
+  §4.1, the variant its authors recommend over joint consensus: a
+  configuration entry (`RaftEntry.members`, the whole cluster) in
+  the log, in force from the moment it is appended — committed or
+  not — on every node that holds it; `RaftState.configIndex` names
+  the latest one, kept by `Raft.append` and by AppendEntries'
+  splice, so a truncated change REVERTS with its entry. `peers`
+  became the bootstrap view; majorities, votes and replication run
+  over `Raft.members`. One change at a time: `Raft.reconfigure`
+  answers `None` while the previous configuration entry is
+  uncommitted — the rule that keeps two disjoint majorities from
+  forming. A leader removing itself leads until the entry commits,
+  sends one last heartbeat carrying that commit, then steps down; a
+  node the configuration does not name does not campaign (thesis
+  §4.2.3's disruption, answered by silence rather than pre-vote). On
+  the wire: `RaftWire.Node.reconfigure(cluster)` and
+  `RaftStore.reconfigure` — the entry's `data` carries the members'
+  addresses (`RaftWire.Address`), so the LOG is the directory and
+  every node that holds the entry can reach every member it names;
+  the Live test's first run showed why: only the leader that
+  accepted the change knew the newcomer's address, its successor
+  could not heartbeat the newcomer, the newcomer campaigned, and
+  the terms spun. Addresses grow, never shrink (a removed node is
+  owed that last heartbeat); the store applies neither
+  configuration entries nor no-ops. Two things the simulator forced
+  on the way, both the paper's own rules the core had skipped:
+  (1) **the blank no-op at the start of every term** (§8): five of
+  forty seeds never committed the leader's own removal — the leader
+  was deposed after appending it, and its successor, refusing a
+  second change while the first was uncommitted and with no client
+  entry of its own term to ride, waited for ever; with the no-op,
+  zero refusals on forty seeds. (2) **delete only CONFLICTING
+  entries in AppendEntries** (§5.3): the core truncated everything
+  after `prevLogIndex` unconditionally, so under reordering an
+  older AppendEntries arriving late cut entries the follower had
+  already acknowledged and the leader had already committed on that
+  acknowledgement — commitIndex past the end of the log, the safety
+  seed the no-op's timing exposed. Fixed as the paper states it,
+  with `matchIndex` and the follower's commit bound now what the
+  message ESTABLISHED (`prevLogIndex + entries.length`), not the
+  log's length, which may go on past it with entries the leader
+  never vouched for. Not here: the catch-up (non-voting) phase for
+  a joining server — it joins as a voter at once and is brought up
+  to date by ordinary replication, which the sweep shows suffices
+  at these sizes — and pre-vote. Compaction / snapshotting is the
+  open half of stage 2: the control log the reduction runs on is
+  small and slow-changing, but a Raft-replicated DATA log needs it
+  before it can run unbounded.
 - **The typestate note, still open** (asked by the user, 2026-09-01):
   the ROLE protocol (Follower → Candidate → Leader, each with its
   own legal actions) is the textbook typestate case; `PState` (the
@@ -286,8 +331,14 @@ prices every large claim:
   be, which the harness's first version wrongly counted as losses
   until the property was stated as the paper states it. A failing
   seed prints itself and replays byte for byte; the suite asserts
-  that too (seed 7 twice, equal states). Not swept: membership
-  changes and compaction, which do not exist yet (stage 2).
+  that too (seed 7 twice, equal states). Since stage 2a the same
+  harness also sweeps membership: a sixth node joins and whoever
+  leads removes itself, under the same loss and reordering, forty
+  seeds — 40 grew, 40 shrank without their leader, 40 converged,
+  every ack kept, zero changes refused; and it found the two
+  skipped rules recorded under stage 2a, which is the harness doing
+  what it was built for. Not swept: compaction, which does not
+  exist yet.
 
 ## Out of scope
 

@@ -907,9 +907,20 @@ measure on our own data, never a predicted result.
       the pure core — five nodes, random timeouts, reordering, 10%
       loss, a minority cut and healed — safety asserted after every
       event on 40 seeds, acked proposals never lost, convergence and
-      a late ack on a lossless stretch; replayable by seed. Stage 2
-      (compaction, membership changes) and the commit-wait as an
-      `Ack` level remain open; box stays unchecked for those.
+      a late ack on a lossless stretch; replayable by seed. STAGE 2a
+      LANDED 2026-09-07 (raft-membership): single-server membership
+      changes (thesis §4.1) — a configuration entry in the log, in
+      force on append, one change at a time, a removed leader steps
+      down at commit, a removed node stops campaigning;
+      `reconfigure(cluster)` on the wire node and the store; swept
+      by the simulator (a sixth node joins, the leader leaves, 40
+      seeds clean). The sweep forced two of the paper's rules the
+      core had skipped: the blank no-op at the start of a term (§8)
+      and conflict-only truncation in AppendEntries (§5.3) — a real
+      safety bug under reordering, fixed. Stage 2b (compaction /
+      snapshotting), the catch-up phase for a joiner, pre-vote, and
+      the commit-wait as an `Ack` level remain open; box stays
+      unchecked for those.
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,

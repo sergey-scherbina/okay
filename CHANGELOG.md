@@ -1,5 +1,44 @@
 # Changelog
 
+## raft-membership — cluster membership changes in the Raft core, and the two rules the simulator caught
+
+Stage 2a of persist-raft: the single-server configuration change of
+Ongaro's thesis §4.1. A configuration entry in the log names the whole
+cluster and is in force from the moment it is appended, committed or
+not; `configIndex` tracks the latest one and a truncated change
+reverts with its entry; majorities, votes and replication run over
+the current members; one change at a time (`Raft.reconfigure` is
+`None` while the previous one is uncommitted); a leader removing
+itself leads until the entry commits, sends one last heartbeat with
+that commit, then steps down; a node the configuration does not name
+does not campaign. `RaftWire.Node.reconfigure(cluster)` and
+`RaftStore.reconfigure` carry it to the wire, with the members'
+addresses inside the entry so every node that holds it can reach
+every member (the Live test's first run: only the accepting leader
+knew the newcomer, its successor could not, the terms spun); the
+store applies neither configuration entries nor no-ops. Four
+hand-written cases in
+`TestRaft` (join, one-at-a-time, self-removal, revert on truncation),
+a Live wire test (a fourth node joins and is counted, the leader
+removes itself, the rest go on, the removed node stays silent), and
+a forty-seed sweep in `TestRaftSim`: a sixth node joins and whoever
+leads removes itself under 10% loss and reordering — 40 grew, 40
+shrank, 40 converged, every ack kept, zero refusals.
+
+The sweep earned its keep twice. Five seeds never committed the
+leader's removal: the leader was deposed after appending it and its
+successor had no entry of its own term to carry the commit — the
+paper's blank no-op at the start of every term (§8), which the core
+had skipped; added. Then a safety seed: AppendEntries truncated
+everything after `prevLogIndex`, where the paper deletes only
+CONFLICTING entries (§5.3) — under reordering an older message
+arriving late cut entries the follower had acknowledged and the
+leader had committed on that acknowledgement. Fixed as stated, with
+`matchIndex` and the follower's commit bound now what the message
+established rather than the log's length. Existing index-sensitive
+tests moved by one for the no-op. Open: compaction (2b), the
+catch-up phase for a joiner, pre-vote.
+
 ## raft-sim-fuzz — the seed-swept simulation of the Raft core: safety on every event of forty seeds
 
 The consensus spec kept "the Sim-driven fuzz harness" open as the

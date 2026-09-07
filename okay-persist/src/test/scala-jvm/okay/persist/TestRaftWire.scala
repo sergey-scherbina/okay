@@ -62,7 +62,7 @@ class TestRaftWire extends munit.FunSuite {
         for id <- ids do
           built += id -> RaftWire.Node(id, ports(id), addr - id,
             tickMs = 20, electionTimeoutMs = 200, heartbeatMs = 50,
-            onCommit = (i, e) => commits(id).synchronized {
+            onCommit = (i, e) => if e.members.isEmpty then commits(id).synchronized {
               commits(id) += (i -> new String(e.data, "UTF-8")): Unit
             })
         built.toMap
@@ -107,11 +107,14 @@ class TestRaftWire extends munit.FunSuite {
       val follower = c.ids.find(_ != leader).get
       assert(c.nodes(follower).propose("via-follower".getBytes("UTF-8")))
 
-      assert(waitUntil(Commit)(c.ids.forall(id => c.nodes(id).commitIndex >= 2)),
+      // index 1 is the term's blank no-op (paper §8), reported to
+      // onCommit like any entry and applied by nobody
+      assert(waitUntil(Commit)(c.ids.forall(id => c.nodes(id).commitIndex >= 3)),
         s"not every node committed both: ${c.ids.map(id => id -> c.nodes(id).commitIndex)}")
       c.ids.foreach { id =>
-        assert(waitUntil(Settle)(c.commits(id).length >= 2), s"node $id never got both onCommits")
-        assertEquals(c.commits(id).take(2).toVector, Vector((1L, "hello-raft"), (2L, "via-follower")))
+        assert(waitUntil(Settle)(c.commits(id).synchronized(c.commits(id).count(_._2.nonEmpty)) >= 2), s"node $id never got both onCommits")
+        assertEquals(c.commits(id).synchronized(c.commits(id).toVector).filter(_._2.nonEmpty).map(_._2).take(2),
+          Vector("hello-raft", "via-follower"))
       }
     finally c.close()
   }
@@ -122,7 +125,7 @@ class TestRaftWire extends munit.FunSuite {
       assert(waitUntil(Elect)(c.leader.isDefined))
       val firstLeader = c.leader.get
       assert(c.nodes(firstLeader).propose("before-kill".getBytes("UTF-8")))
-      assert(waitUntil(Commit)(c.ids.forall(id => c.nodes(id).commitIndex >= 1)))
+      assert(waitUntil(Commit)(c.ids.forall(id => c.nodes(id).commitIndex >= 2)))
 
       c.nodes(firstLeader).close()
       val survivors = c.ids.filter(_ != firstLeader)
@@ -133,8 +136,56 @@ class TestRaftWire extends munit.FunSuite {
       assert(newLeader != firstLeader)
 
       assert(c.nodes(newLeader).propose("after-kill".getBytes("UTF-8")))
-      assert(waitUntil(Commit)(survivors.forall(id => c.nodes(id).commitIndex >= 2)),
+      // no-op, before-kill, the new term's no-op, after-kill
+      assert(waitUntil(Commit)(survivors.forall(id => c.nodes(id).commitIndex >= 4)),
         s"the survivors did not commit after failover: ${survivors.map(id => id -> c.nodes(id).commitIndex)}")
     finally c.close()
+  }
+
+  test("membership over the wire: a fourth node joins and is counted; the leader removes itself and the rest go on") {
+    val c = cluster()
+    val p3 = freePort()
+    val joined = collection.mutable.ArrayBuffer.empty[(Long, String)]
+    // the newcomer is started knowing the cluster, as an operator would
+    // configure it; it is nobody's member until the leader says so
+    val n3 = RaftWire.Node("3", p3, c.addr, tickMs = 20, electionTimeoutMs = 200, heartbeatMs = 50,
+      onCommit = (i, e) => if e.members.isEmpty then   // a configuration entry is the cluster's, not the state machine's
+        joined.synchronized { joined += (i -> new String(e.data, "UTF-8")): Unit })
+    val all = c.addr + ("3" -> ("127.0.0.1", p3))
+    try
+      assert(waitUntil(Elect)(c.leader.isDefined))
+      val leader = c.leader.get
+      assert(c.nodes(leader).propose("before-join".getBytes("UTF-8")))
+      assert(waitUntil(Commit)(c.nodes(leader).commitIndex >= 2))   // the no-op, then before-join
+
+      assert(c.nodes(leader).reconfigure(all), "the leader accepts a change with none pending")
+      assert(waitUntil(Commit)(n3.commitIndex >= 3 && n3.members == all.keySet),
+        s"the newcomer did not learn the cluster: commit ${n3.commitIndex}, members ${n3.members}")
+      assert(waitUntil(Settle)(c.ids.forall(id => c.nodes(id).members == all.keySet)),
+        s"the old members disagree on the cluster: ${c.ids.map(id => id -> c.nodes(id).members)}")
+      assert(c.nodes(leader).propose("after-join".getBytes("UTF-8")))
+      assert(waitUntil(Commit)(n3.commitIndex >= 4), "the newcomer commits like any member")
+      assertEquals(joined.synchronized(joined.toVector).filter(_._2.nonEmpty).map(_._2),
+        Vector("before-join", "after-join"), "neither the no-op nor the configuration entry is applied")
+
+      // the leader removes itself: leads until the change commits, then steps down
+      assert(c.nodes(leader).reconfigure(all - leader))
+      val rest = (c.ids :+ "3").filter(_ != leader)
+      val node = (id: String) => if id == "3" then n3 else c.nodes(id)
+      assert(waitUntil(Elect)(!c.nodes(leader).isLeader && rest.exists(id => node(id).isLeader)),
+        s"no successor among ${rest}: ${rest.map(id => id -> node(id).currentTerm)}")
+      val successor = rest.find(id => node(id).isLeader).get
+      assertEquals(node(successor).members, (all - leader).keySet)
+      assert(node(successor).propose("after-remove".getBytes("UTF-8")))
+      // ... the removal entry, the successor's no-op, after-remove
+      assert(waitUntil(Commit)(rest.forall(id => node(id).commitIndex >= 7)),
+        s"the rest did not commit after the removal: ${rest.map(id => id -> node(id).commitIndex)}")
+      // the removed node never campaigns: no term of its own past the removal
+      val termAtRemoval = node(successor).currentTerm
+      Thread.sleep(600)
+      assert(c.nodes(leader).currentTerm <= termAtRemoval, "a removed server must stay silent")
+      assert(!c.nodes(leader).isLeader)
+    finally
+      n3.close(); c.close()
   }
 }

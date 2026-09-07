@@ -17,10 +17,28 @@ class TestRaft extends munit.FunSuite {
   /** three nodes, an in-memory message bus; `deliverAll` runs to
    * quiescence — every message any handle() produces is delivered
    * before the call returns, so a test never races its own asserts */
-  final class Cluster(ids: Vector[String] = Vector("0", "1", "2")) {
+  final class Cluster(var ids: Vector[String] = Vector("0", "1", "2")) {
     var states: Map[String, RaftState] = ids.map(i => i -> RaftState(id = i)).toMap
-    private val peersOf: Map[String, Set[String]] = ids.map(i => i -> (ids.toSet - i)).toMap
+    /** each node's BOOTSTRAP view of the others; a configuration
+     * entry in its log overrides it (stage 2a) */
+    private var peersOf: Map[String, Set[String]] = ids.map(i => i -> (ids.toSet - i)).toMap
     private var inbox: Map[String, Vector[RaftMsg]] = ids.map(_ -> Vector.empty).toMap
+
+    /** a fresh server, started knowing the current cluster (as an
+     * operator would configure it), not yet a member of anything */
+    def addNode(id: String): Unit =
+      peersOf = peersOf.updated(id, ids.toSet)
+      ids = ids :+ id
+      states = states.updated(id, RaftState(id = id))
+      inbox = inbox.updated(id, Vector.empty)
+
+    /** an operator asks the leader for a new cluster; false when refused */
+    def reconfigure(leaderId: String, members: Set[String]): Boolean =
+      Raft.reconfigure(states(leaderId), peersOf(leaderId), members) match
+        case None => false
+        case Some((ns, out)) => states = states.updated(leaderId, ns); enqueue(out); true
+
+    def members(id: String): Set[String] = Raft.members(states(id), peersOf(id))
 
     private def enqueue(out: Vector[RaftOut]): Unit =
       out.foreach(o => inbox = inbox.updated(o.to, inbox(o.to) :+ o.msg))
@@ -52,8 +70,7 @@ class TestRaft extends munit.FunSuite {
     /** a client submits one entry to the (assumed) leader; queues
      * its replication at once, same as a real leader would */
     def clientAppend(leaderId: String, data: String): Unit =
-      val s = states(leaderId)
-      val ns = s.copy(log = s.log :+ RaftEntry(s.currentTerm, bytes(data)))
+      val ns = Raft.append(states(leaderId), RaftEntry(states(leaderId).currentTerm, bytes(data)))
       states = states.updated(leaderId, ns)
       enqueue(Raft.replicate(ns, peersOf(leaderId)))
 
@@ -96,10 +113,13 @@ class TestRaft extends munit.FunSuite {
     val c = Cluster()
     c.electionTimeout("0")
     c.deliverAll()
+    // a term opens with the leader's blank no-op (paper §8), so the
+    // client's entry is the term's second
+    assertEquals(c.states("0").log.map(text), Vector(""))
     c.clientAppend("0", "v0")
     c.deliverAll()
-    assertEquals(c.states("0").commitIndex, 1L)
-    assertEquals(c.states("0").log.map(text), Vector("v0"))
+    assertEquals(c.states("0").commitIndex, 2L)
+    assertEquals(c.states("0").log.map(text), Vector("", "v0"))
   }
 
   test("a heartbeat propagates the leader's commitIndex to followers") {
@@ -108,11 +128,11 @@ class TestRaft extends munit.FunSuite {
     c.deliverAll()
     c.clientAppend("0", "v0")
     c.deliverAll()
-    assertEquals(c.states("1").commitIndex, 0L, "not yet told")
+    assertEquals(c.states("1").commitIndex, 1L, "the no-op's commit rode along with v0; v0's own not yet told")
     c.heartbeat("0")
     c.deliverAll()
-    assertEquals(c.states("1").commitIndex, 1L)
-    assertEquals(c.states("2").commitIndex, 1L)
+    assertEquals(c.states("1").commitIndex, 2L)
+    assertEquals(c.states("2").commitIndex, 2L)
   }
 
   test("log matching: a follower with a conflicting suffix is corrected, not merely appended to") {
@@ -122,7 +142,7 @@ class TestRaft extends munit.FunSuite {
     c.clientAppend("0", "v0")
     c.clientAppend("0", "v1")
     c.deliverAll()
-    assertEquals(c.states("1").log.map(text), Vector("v0", "v1"))
+    assertEquals(c.states("1").log.map(text), Vector("", "v0", "v1"))
 
     // node 1 quietly diverges (as if it had accepted a stray entry
     // from a DIFFERENT term — an old, never-elected leader — the
@@ -132,10 +152,10 @@ class TestRaft extends munit.FunSuite {
     // overwrite the bad suffix, not append past it
     val bad = c.states("1")
     c.states = c.states.updated("1",
-      bad.copy(log = bad.log.updated(1, RaftEntry(bad.currentTerm - 1, bytes("ROGUE")))))
+      bad.copy(log = bad.log.updated(2, RaftEntry(bad.currentTerm - 1, bytes("ROGUE")))))
     c.clientAppend("0", "v2")
     c.deliverAll()
-    assertEquals(c.states("1").log.map(text), Vector("v0", "v1", "v2"),
+    assertEquals(c.states("1").log.map(text), Vector("", "v0", "v1", "v2"),
       "the follower's diverged entry must be overwritten by the leader's log")
   }
 
@@ -174,5 +194,73 @@ class TestRaft extends munit.FunSuite {
       RaftMsg.AppendEntriesResp(2, "2", success = true, matchIndex = 1L), Set("1", "2"))
     assertEquals(ns.commitIndex, 0L,
       "an old-term entry must not commit by majority count alone (Figure 8)")
+  }
+
+  // ---- stage 2a: membership changes (thesis §4.1) ------------------
+
+  test("a server joins: the configuration entry replicates, the newcomer receives the log, and majorities count it") {
+    val c = Cluster()
+    c.electionTimeout("0"); c.deliverAll()
+    c.clientAppend("0", "v0"); c.deliverAll()
+    c.addNode("3")
+    assert(c.reconfigure("0", Set("0", "1", "2", "3")))
+    // in force on the leader at once, before anyone has heard of it
+    assertEquals(c.members("0"), Set("0", "1", "2", "3"))
+    c.deliverAll()
+    for id <- c.ids do assertEquals(c.members(id), Set("0", "1", "2", "3"), s"node $id")
+    assertEquals(c.states("3").log.map(text), Vector("", "v0", ""), "the newcomer was brought up to date")
+    assertEquals(c.states("0").commitIndex, 3L, "the configuration entry committed")
+    // a later entry needs 3 of 4 now — and the newcomer is one of them
+    c.clientAppend("0", "v1"); c.deliverAll()
+    assertEquals(c.states("0").commitIndex, 4L)
+    c.heartbeat("0"); c.deliverAll()
+    assertEquals(c.states("3").commitIndex, 4L)
+  }
+
+  test("one change at a time: a second change is refused while the first is uncommitted, accepted once it commits") {
+    val c = Cluster()
+    c.electionTimeout("0"); c.deliverAll()
+    c.addNode("3"); c.addNode("4")
+    assert(c.reconfigure("0", Set("0", "1", "2", "3")))
+    assert(!c.reconfigure("0", Set("0", "1", "2", "3", "4")), "refused: the first change is not yet committed")
+    assert(!c.reconfigure("1", Set("0", "1", "2", "3", "4")), "refused: not the leader")
+    c.deliverAll()
+    assert(c.reconfigure("0", Set("0", "1", "2", "3", "4")), "accepted once the first change committed")
+    c.deliverAll()
+    for id <- c.ids do assertEquals(c.members(id), Set("0", "1", "2", "3", "4"), s"node $id")
+  }
+
+  test("a leader removing itself leads until the change commits, tells the followers, then steps down; the rest elect") {
+    val c = Cluster()
+    c.electionTimeout("0"); c.deliverAll()
+    c.clientAppend("0", "v0"); c.deliverAll()
+    assert(c.reconfigure("0", Set("1", "2")))
+    c.deliverAll()
+    assertEquals(c.states("0").role, RaftRole.Follower, "stepped down once its removal committed")
+    assertEquals(c.states("0").commitIndex, 3L)
+    assertEquals(c.states("1").commitIndex, 3L, "the last heartbeat carried the commit")
+    assertEquals(c.states("2").commitIndex, 3L)
+    // the removed node does not campaign; the remaining two elect among themselves
+    c.electionTimeout("0"); c.deliverAll()
+    assertEquals(c.leaders, Set.empty, "a removed server stays silent")
+    c.electionTimeout("1"); c.deliverAll()
+    assertEquals(c.leaders, Set("1"))
+    assertEquals(c.members("1"), Set("1", "2"))
+    assertEquals(c.states("1").commitIndex, 4L, "the new term's no-op committed by 2 of 2")
+    c.clientAppend("1", "v1"); c.deliverAll()
+    assertEquals(c.states("1").commitIndex, 5L, "2 of 2 is the new majority")
+  }
+
+  test("a truncated configuration reverts: an uncommitted change from a deposed leader is undone with its entry") {
+    val follower = RaftState(id = "1", currentTerm = 1,
+      log = Vector(RaftEntry(1, bytes("v0")), RaftEntry(1, Array.empty, Vector("0", "1", "2", "3"))),
+      configIndex = 2)
+    assertEquals(Raft.members(follower, Set("0", "2")), Set("0", "1", "2", "3"))
+    // a new leader (term 2) whose log has a different entry at index 2
+    val (ns, _) = Raft.handle(follower,
+      RaftMsg.AppendEntries(2, "2", 1, 1, Vector(RaftEntry(2, bytes("v1"))), 0), Set("0", "2"))
+    assertEquals(ns.log.map(text), Vector("v0", "v1"))
+    assertEquals(ns.configIndex, 0L)
+    assertEquals(Raft.members(ns, Set("0", "2")), Set("0", "1", "2"), "back to the bootstrap cluster")
   }
 }

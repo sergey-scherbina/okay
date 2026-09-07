@@ -31,13 +31,24 @@ class TestRaftSim extends munit.FunSuite {
     case ElectionTimeout(armed: Long)
     case Heartbeat
     case Propose(data: String)
+    /** an operator asks the node (the leader, one hopes) for a new cluster */
+    case Reconfigure(members: Set[String])
 
-  final class Sim(seed: Long, ids: Vector[String] = Vector("0", "1", "2", "3", "4"),
+  final class Sim(seed: Long, var ids: Vector[String] = Vector("0", "1", "2", "3", "4"),
                   var dropRate: Double = 0.1, maxDelay: Long = 40, electionMs: Long = 150,
                   heartbeatMs: Long = 50) {
     private val rnd = new scala.util.Random(seed)
-    private val peersOf: Map[String, Set[String]] = ids.map(i => i -> (ids.toSet - i)).toMap
+    /** each node's BOOTSTRAP view of the others (what it was started
+     * knowing); a configuration entry in its log overrides it */
+    private var boot: Map[String, Set[String]] = ids.map(i => i -> (ids.toSet - i)).toMap
     var states: Map[String, RaftState] = ids.map(i => i -> RaftState(id = i)).toMap
+    /** nodes shut down by the operator after their removal: their
+     * events are dropped, their frozen state is nobody's business */
+    var halted: Set[String] = Set.empty
+    def live: Vector[String] = ids.filterNot(halted)
+    /** how many membership changes the leader refused (an earlier one
+     * still uncommitted, or asked off the leader) — a stat, not a fault */
+    var refusedChanges = 0
     private var seq = 0L
     private val queue = collection.mutable.PriorityQueue.empty[Event](using Ordering.by[Event, (Long, Long)](e => (e.at, e.seq)).reverse)
     var now = 0L
@@ -92,7 +103,22 @@ class TestRaftSim extends munit.FunSuite {
         leadersByTerm = leadersByTerm.updated(ns.currentTerm, leadersByTerm.getOrElse(ns.currentTerm, Set.empty) + node)
       send(node, out)
 
-    def leader: Option[String] = states.values.find(_.role == RaftRole.Leader).map(_.id)
+    def leader: Option[String] = live.find(states(_).role == RaftRole.Leader)
+    def membersOf(id: String): Set[String] = Raft.members(states(id), boot(id))
+
+    /** a fresh server, started knowing the current cluster (as an
+     * operator would configure it), nobody's member until a leader
+     * says so; it runs its own timers from now on */
+    def addNode(id: String): Unit =
+      boot = boot.updated(id, live.toSet)
+      ids = ids :+ id
+      states = states.updated(id, RaftState(id = id))
+      armed = armed.updated(id, 0L)
+      armElection(id)
+      schedule(heartbeatMs, id, Kind.Heartbeat)
+
+    /** the operator shuts a removed node down */
+    def halt(id: String): Unit = halted = halted + id
 
     /** one event; false when the queue is empty */
     def step(): Boolean =
@@ -100,32 +126,40 @@ class TestRaftSim extends munit.FunSuite {
       else
         val e = queue.dequeue()
         now = e.at
-        e.kind match
+        if !halted(e.node) then e.kind match
           case Kind.Deliver(msg) =>
-            apply(e.node, s => Raft.handle(s, msg, peersOf(e.node)))
+            apply(e.node, s => Raft.handle(s, msg, boot(e.node)))
             msg match
               case _: RaftMsg.AppendEntries => armElection(e.node)
               case _ => ()
           case Kind.ElectionTimeout(a) =>
             if a == armed(e.node) && states(e.node).role != RaftRole.Leader then
-              apply(e.node, s => Raft.startElection(s, peersOf(e.node)))
+              apply(e.node, s => Raft.startElection(s, boot(e.node)))
               armElection(e.node)
           case Kind.Heartbeat =>
-            if states(e.node).role == RaftRole.Leader then send(e.node, Raft.replicate(states(e.node), peersOf(e.node)))
+            if states(e.node).role == RaftRole.Leader then send(e.node, Raft.replicate(states(e.node), boot(e.node)))
             schedule(heartbeatMs, e.node, Kind.Heartbeat)
           case Kind.Propose(data) =>
             states(e.node).role match
               case RaftRole.Leader =>
                 apply(e.node, s =>
-                  val ns = s.copy(log = s.log :+ RaftEntry(s.currentTerm, data.getBytes("UTF-8")))
-                  (ns, Raft.replicate(ns, peersOf(e.node))))
+                  val ns = Raft.append(s, RaftEntry(s.currentTerm, data.getBytes("UTF-8")))
+                  (ns, Raft.replicate(ns, boot(e.node))))
                 accepted = accepted :+ data
                 inFlight = inFlight :+ (e.node, states(e.node).log.length.toLong, data)
               case _ => ()   // a client that hit a follower retries later
+          case Kind.Reconfigure(members) =>
+            Raft.reconfigure(states(e.node), boot(e.node), members) match
+              case Some((ns, out)) => states = states.updated(e.node, ns); send(e.node, out)
+              case None => refusedChanges += 1
         settleAcks()
         true
 
     def propose(data: String): Unit = leader.foreach(l => schedule(0, l, Kind.Propose(data)))
+    def reconfigure(members: Set[String]): Unit = leader.foreach(l => schedule(0, l, Kind.Reconfigure(members)))
+    /** every live node counts `members` as the cluster and has committed that entry */
+    def settledOn(members: Set[String]): Boolean =
+      live.forall(id => membersOf(id) == members && states(id).commitIndex >= states(id).configIndex)
     def partition(side: Set[String]): Unit =
       cut = (for a <- ids; b <- ids if a != b && side(a) != side(b) yield (a, b)).toSet
     def heal(): Unit = cut = Set.empty
@@ -140,6 +174,7 @@ class TestRaftSim extends munit.FunSuite {
     def check(): Unit =
       // election safety: at most one leader per term
       leadersByTerm.foreach((t, ls) => assert(ls.size <= 1, s"seed $seed: term $t has leaders $ls"))
+      val ids = live
       // log matching: two logs with the same (index, term) agree on everything before it
       for a <- ids; b <- ids if a < b do
         val la = states(a).log; val lb = states(b).log
@@ -160,8 +195,12 @@ class TestRaftSim extends munit.FunSuite {
           assert(text(states(a).log(i)) == text(states(b).log(i)),
             s"seed $seed: $a and $b committed different entries at ${i + 1}")
           i += 1
-      // leader completeness: a current leader's log holds every entry any node has committed
-      leader.foreach { l =>
+      // leader completeness: the leader of the HIGHEST term holds every
+      // entry any node has committed. A cut-off old leader still calling
+      // itself one is exactly who the property does not cover — its
+      // uncommitted tail is what the paper says may be lost
+      val leaders = ids.filter(states(_).role == RaftRole.Leader)
+      leaders.maxByOption(states(_).currentTerm).foreach { l =>
         for n <- ids do
           val c = states(n).commitIndex.toInt
           assert(states(l).log.length >= c, s"seed $seed: leader $l lacks entries $n committed")
@@ -217,6 +256,52 @@ class TestRaftSim extends munit.FunSuite {
     val bad = results.filterNot((_, one, all, late, _, _, _) => one && all && late)
     println(f"[raft-sim] 40 seeds, 5 nodes, drop 10%%, delays 1-40, a minority cut rounds 2-4, then lossless: ${results.count(_._2)} converged, ${results.count(_._3)} kept every ack, ${results.count(_._4)} acked the late one; accepted ${results.map(_._5).sum}, acked ${results.map(_._6).sum}, committed per seed ${results.map(_._7).min}..${results.map(_._7).max}")
     assertEquals(bad.map(_._1), Vector.empty, s"seeds that did not converge, lost an ack, or never acked the late proposal: $bad")
+  }
+
+  /** stage 2a: a sixth node joins, then whoever leads removes itself,
+   * under the same loss and reordering; the removed node is shut down
+   * once its removal has committed somewhere, as an operator would */
+  private def membership(seed: Long): (Sim, Boolean, Boolean) =
+    val sim = Sim(seed)
+    var next = 0
+    def churn(rounds: Int): Unit =
+      for _ <- 1 to rounds do
+        sim.propose(s"e${next}"); next += 1
+        sim.runUntil(sim.now + 30 + sim.random(120)); sim.check()
+    def change(members: Set[String]): Boolean =
+      var tries = 0
+      while !sim.settledOn(members) && tries < 8 do
+        sim.reconfigure(members); tries += 1
+        sim.runUntil(sim.now + 600); sim.check()
+      sim.settledOn(members)
+    sim.runUntil(2000); sim.check()
+    churn(3)
+    sim.addNode("5")
+    val grew = change(Set("0", "1", "2", "3", "4", "5"))
+    churn(3)
+    val gone = sim.leader.getOrElse("0")
+    val shrank = change(Set("0", "1", "2", "3", "4", "5") - gone)
+    // the operator shuts the removed node down (it has stopped
+    // campaigning by itself: a non-member never starts an election)
+    sim.halt(gone)
+    churn(3)
+    sim.lossless()
+    sim.runUntil(sim.now + 3000); sim.check()
+    sim.propose("late"); sim.runUntil(sim.now + 3000); sim.check()
+    (sim, grew, shrank)
+
+  test("membership on every seed: a node joins and the leader removes itself under loss; safety holds and the rest go on") {
+    val results = (1L to 40L).map { seed =>
+      val (sim, grew, shrank) = membership(seed)
+      val commits = sim.live.map(sim.states(_).commitIndex).toSet
+      val committedTexts = sim.live.map(id => sim.states(id).log.take(sim.states(id).commitIndex.toInt).map(e => String(e.data, "UTF-8")).toSet)
+      val ackedEverywhere = committedTexts.forall(ts => sim.acked.forall(ts.contains))
+      val late = sim.acked.contains("late")
+      (seed, grew, shrank, commits.size == 1, ackedEverywhere, late, sim.refusedChanges, sim.leadersByTerm.size)
+    }
+    val bad = results.filterNot((_, grew, shrank, one, all, late, _, _) => grew && shrank && one && all && late)
+    println(f"[raft-sim] membership, 40 seeds, drop 10%%, delays 1-40: ${results.count(_._2)} grew to six, ${results.count(_._3)} shrank without their leader, ${results.count(_._4)} converged, ${results.count(_._5)} kept every ack, ${results.count(_._6)} acked the late one; changes refused ${results.map(_._7).sum}, terms per seed ${results.map(_._8).min}..${results.map(_._8).max}")
+    assertEquals(bad.map(_._1), Vector.empty, s"seeds that failed a membership change, lost an ack, or did not converge: $bad")
   }
 
   test("a seed replays byte for byte") {

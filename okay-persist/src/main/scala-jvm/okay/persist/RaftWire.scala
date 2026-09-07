@@ -21,6 +21,11 @@ import java.net.{ServerSocket, Socket}
  */
 object RaftWire:
 
+  /** one member's address, as carried inside a configuration entry
+   * (stage 2a): the log itself is the directory, so every node that
+   * holds the entry can reach every member it names */
+  final case class Address(id: String, host: String, port: Int) derives okay.codec.Schema
+
   /**
    * Stable storage for the two fields Raft's proof assumes survive a
    * crash: `currentTerm` and `votedFor`. Written before any message
@@ -108,7 +113,23 @@ object RaftWire:
     private def jitter(): Long =
       electionTimeoutMs + scala.util.Random.nextInt(electionTimeoutMs.toInt)
 
+    /** the bootstrap configuration (every other node this one was
+     * started knowing); a configuration entry in the log overrides it */
     private val peerIds: Set[String] = peers.keySet
+    /** where to reach each node — grows as configuration entries
+     * arrive (each carries its members' addresses), never shrinks: a
+     * removed node may still be owed a last heartbeat */
+    @volatile private var addresses: Map[String, (String, Int)] = peers
+
+    /** the log's latest configuration entry changed: learn the
+     * addresses it carries — on the leader that appended it and on
+     * every follower it reaches alike, so whoever leads next can
+     * reach a newcomer. Called under the lock. */
+    private def learned(before: RaftState, after: RaftState): Unit =
+      if after.configIndex != before.configIndex && after.configIndex > 0 then
+        Cbor.read[Vector[Address]](after.log(after.configIndex.toInt - 1).data) match
+          case Right(as) => addresses = addresses ++ as.filter(_.id != id).map(a => a.id -> (a.host, a.port))
+          case Left(_) => ()   // a configuration without addresses: reachable only as before
 
     private val listener = ServerSocket(port)
     @volatile private var closed = false
@@ -138,6 +159,7 @@ object RaftWire:
         val before = state.commitIndex
         val (ns, out) = Raft.handle(state, msg, peerIds)
         persisted(state, ns)
+        learned(state, ns)
         state = ns
         msg match
           case _: RaftMsg.AppendEntries => nextElectionAt = System.currentTimeMillis() + jitter()
@@ -151,7 +173,7 @@ object RaftWire:
       toSend.foreach(send)
 
     private def send(o: RaftOut): Unit =
-      peers.get(o.to).foreach { (host, p) =>
+      addresses.get(o.to).foreach { (host, p) =>
         try
           val sock = Socket()
           try
@@ -190,6 +212,28 @@ object RaftWire:
     def currentTerm: Long = lock.synchronized(state.currentTerm)
     def commitIndex: Long = lock.synchronized(state.commitIndex)
     def logSnapshot: Vector[RaftEntry] = lock.synchronized(state.log)
+    /** the cluster as this node currently counts it */
+    def members: Set[String] = lock.synchronized(Raft.members(state, peerIds))
+
+    /**
+     * A membership change (stage 2a): `cluster` is the WHOLE new
+     * cluster with an address for each node (this node's own, if it
+     * stays, is unused). Accepted only on the leader and only while no
+     * earlier change is still uncommitted — `false` otherwise, and the
+     * caller retries later or elsewhere. A leader removing itself keeps
+     * leading until the change commits, then steps down; a node that
+     * has been removed stops campaigning, and is closed by whoever
+     * removed it.
+     */
+    def reconfigure(cluster: Map[String, (String, Int)]): Boolean =
+      val directory = Cbor.write(cluster.toVector.sortBy(_._1).map((i, a) => Address(i, a._1, a._2)))
+      val toSend = lock.synchronized {
+        Raft.reconfigure(state, peerIds, cluster.keySet, directory).map { (ns, out) =>
+          learned(state, ns); state = ns; out }
+      }
+      toSend match
+        case None => false
+        case Some(out) => out.foreach(send); true
 
     /** the client seam: succeeds only on the CURRENT leader — no
      * forwarding to the real leader yet (stage 1b), so a caller
@@ -209,7 +253,7 @@ object RaftWire:
     def propose(n: Long, data: Array[Byte]): Boolean =
       val toSend = lock.synchronized {
         if state.role == RaftRole.Leader then
-          state = state.copy(log = state.log :+ RaftEntry(state.currentTerm, data))
+          state = Raft.append(state, RaftEntry(state.currentTerm, data))
           Some(Raft.replicate(state, peerIds))
         else state.leaderId.filter(_ != state.id).map(l =>
           Vector(RaftOut(l, RaftMsg.Propose(state.currentTerm, state.id, n, data))))

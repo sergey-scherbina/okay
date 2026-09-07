@@ -101,8 +101,15 @@ staged climb: the pure core, the peer-to-peer wire, and since stage
 1b `RaftStore` — a `Store` whose appends are proposed to the leader
 as log entries and applied on every node at commit, so `Election`
 constructs a `Topic` over it unchanged — with `RaftWire.Stable`
-holding the term and the vote across a crash (JVM only; compaction
-and membership changes are stage 2).
+holding the term and the vote across a crash (JVM only). Stage 2a
+adds membership: `reconfigure(cluster)` on the leader appends one
+configuration entry, in force from the moment it is appended, one
+change at a time; a leader removing itself steps down once the
+change commits, and a removed node stops campaigning. The core is
+swept by `TestRaftSim`, a seed-driven discrete-event simulator
+(loss, reordering, a partition, a node joining and the leader
+leaving) that asserts the safety properties after every event.
+Compaction is the open half of stage 2.
 
 `Configs.ambient(name)` reads an ambient `Store` (ctx-everywhere) —
 the managed-config convenience under `provide(store) { ... }`.

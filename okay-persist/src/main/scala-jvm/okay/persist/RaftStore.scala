@@ -52,7 +52,10 @@ final class RaftStore private (val id: String, local: Store, commitWaitMs: Long)
 
   /** the wire node's commit seam: apply, then wake the proposer */
   private def applied(index: Long, entry: RaftEntry): Unit =
-    Cbor.read[Op](entry.data) match
+    // a configuration entry (stage 2a) is the cluster's business, and
+    // a leader's blank no-op (paper §8) is the log's own: nothing to apply
+    if entry.members.nonEmpty || entry.data.isEmpty then ()
+    else Cbor.read[Op](entry.data) match
       case Right(Op.Append(topic, partition, key, value, proposer, n)) =>
         val off = local.topic(topic).append(partition, key, value, Ack.Durable)
         val p = pending.remove(s"$proposer/$n")
@@ -108,6 +111,12 @@ final class RaftStore private (val id: String, local: Store, commitWaitMs: Long)
   def isLeader: Boolean = node.isLeader
   def leaderId: Option[String] = node.leaderId
   def currentTerm: Long = node.currentTerm
+  /** the cluster as this node currently counts it */
+  def members: Set[String] = node.members
+  /** a membership change: the whole new cluster with addresses;
+   * accepted only on the leader with no earlier change pending —
+   * see `RaftWire.Node.reconfigure` */
+  def reconfigure(cluster: Map[String, (String, Int)]): Boolean = node.reconfigure(cluster)
   def close(): Unit = node.close()
 
 object RaftStore:
