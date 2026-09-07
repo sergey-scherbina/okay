@@ -59,8 +59,21 @@ talk to the wrong CA while believing it talked to the right one. It
 does not delete the certificate: it says so, because a revoked file
 left in place is a revoked identity served after the next restart.
 
-**Not a certificate manager.** No fleet, no multiple orders, no EAB
-(the external-account binding some commercial CAs require), no ARI
+**External account binding, since acme-eab (2026-09-07).** Some CAs
+(ZeroSSL, Google Trust Services, most commercial ones) will not open
+an account for a stranger: they hand you a key id and a MAC key out
+of band, and the `newAccount` request must carry an
+`externalAccountBinding` — an INNER JWS whose payload is our own
+account JWK, signed HS256 with that MAC key, its protected header
+naming the kid and the newAccount URL. No nonce in it, deliberately:
+the inner JWS is not a request but a credential carried inside one,
+and §7.3.4 gives its header exactly `alg`, `kid` and `url`. The MAC
+key is accepted padded or unpadded, because half the CAs that issue
+one pad it. `Config.eab`, or `OKAY_ACME_EAB=<kid>:<key>`. Proven
+against a Pebble configured to REQUIRE it: refused without, issued
+with.
+
+**Not a certificate manager.** No fleet, no multiple orders, no ARI
 (the renewal-window hint), no DNS-01 and so no wildcards. Each is a
 real thing a real manager does; a deployment that needs them runs
 certbot or a proxy, and this module says so instead of growing.
@@ -141,6 +154,8 @@ own config validates against.
       chain, for the name asked for, signed by an issuer that is not
       us — and a name it cannot reach is refused with the CA's own
       sentence, leaving no certificate behind.
+- [x] (Live, docker) a Pebble that REQUIRES an external account
+      binding refuses an account without one and issues with it.
 - [x] (Live, docker) Pebble REVOKES it when asked with a reason, and
       refuses the second attempt with its own `alreadyRevoked`;
       `Revoke.parse` refuses a missing certificate, a missing account
