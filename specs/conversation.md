@@ -445,6 +445,14 @@ matches a slot by IDENTITY. So the walk's first act was to catch,
 in itself, the exact failure it exists for: an exchange that ends
 "complete" while the caller gets nothing.
 
+Since frame-rebind (2026-09-07) the restart case also has an explicit
+door: `Frame.rebind(rebuilt*)` re-reads the stored answers by name
+with the rebuilt descriptors and answers a `Rebound` that lists what
+moved (a temporal answer against a later reference day) and what was
+lost — a change is reported, never taken silently. The rule below
+still holds for a caller who threads its own descriptors; `rebind` is
+for the one that cannot.
+
 The rule that follows is now written where a caller will meet it: ONE
 descriptor value per exchange, passed alongside the frame rather than
 captured. `act(frame, from, asker, other)`.

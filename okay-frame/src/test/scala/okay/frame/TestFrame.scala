@@ -208,5 +208,47 @@ class TestFrame extends munit.FunSuite {
     assertEquals(found.words.contains("count"), true)
     assertEquals(assumed.words.contains("count"), false)
   }
+
+  // ---------------------------------------------------------------
+  // the restart case: rebind to rebuilt descriptors, and say what moved
+
+  test("rebind: rebuilt descriptors read the stored text, and a rebind that changes nothing says so") {
+    val before = form.answer("where", "Wrocław").toOption.get.answer("count", "3").toOption.get
+    // the process dies; a restarted service builds EQUAL but not
+    // IDENTICAL slots, and valueOf by identity cannot see the answers
+    val where2 = where.copy()
+    val count2 = count.copy()
+    assertEquals(before.valueOf(where2), None)
+    val r = before.rebind(where2, count2)
+    assert(r.clean, s"rederived=${r.rederived} lost=${r.lost}")
+    assertEquals(r.frame.valueOf(where2), Some("Wrocław"))
+    assertEquals(r.frame.valueOf(count2), Some(3))
+    assertEquals(r.frame.remaining, 0)
+    assertEquals(r.frame.lang, before.lang)
+  }
+
+  test("rebind: a value that comes out different is REPORTED, with both values, not silently replaced") {
+    // a slot whose parser depends on a parameter the restarted service
+    // rebuilt differently -- the shape of a temporal slot's reference day
+    def offsetBy(k: Int) = Slot[Int]("count", Map("en" -> "How many?"), s => s.trim.toIntOption.map(_ + k))
+    val first = offsetBy(0)
+    val f = Frame.of("repair", where, first).answer("count", "3").toOption.get
+    val r = f.rebind(where.copy(), offsetBy(10))
+    assertEquals(r.rederived, Vector(Rebound.Change("count", "3", 3, 13)))
+    assertEquals(r.lost, Vector.empty)
+    assert(!r.clean)
+  }
+
+  test("rebind: what the new descriptor cannot read is lost from the values and kept in the words") {
+    val f = form.answer("count", "3").toOption.get
+    val strict = Slot[Int]("count", Map("en" -> "How many?"), s => s.trim.toIntOption.filter(_ > 10))
+    val r = f.rebind(where.copy(), strict)
+    assertEquals(r.lost, Vector("count"))
+    assertEquals(r.frame.valueOf(strict), None)
+    assertEquals(r.frame.said("count"), Some("3"))
+    assertEquals(r.frame.remaining, 2)
+    // and a name no rebuilt slot carries is lost too
+    assertEquals(f.rebind(where.copy()).lost, Vector("count"))
+  }
 }
 

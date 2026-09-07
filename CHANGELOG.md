@@ -1,5 +1,22 @@
 # Changelog
 
+## frame-rebind — the restart case made ordinary: `Frame.rebind` re-reads by name and reports what moved
+
+`valueOf` matches a slot by identity, so a frame read back from a
+journal after the process died could not be read with the `Slot`
+values a restarted service builds, unless the caller threaded the
+rebuilt ones through everything. `Frame.rebind(rebuilt*)` re-binds
+by name: each stored answer is re-read from the TEXT the person said
+by the new descriptor's parser, and the answer is a `Rebound` —
+the frame, `rederived` (every value that came out different, with
+the text and both values), `lost` (a name the new parser could not
+read, its words kept in `unread`, or one no rebuilt slot carries),
+and `clean` when neither. It reports rather than decides because
+re-deriving is re-parsing: `TestRebind` shows "next Tuesday" against
+a reference day a week later coming out as a different date, listed,
+not silently replaced — the defect intent-frame-typed-values removed,
+kept out. Laws in `TestFrame`; the rule in docs/modules/okay-frame.md.
+
 ## intent-rule-induction — cues induced from the corpus, measured beside the hand-written ones: coverage or precision, not both, at sixty rows
 
 `Induced`: a RIPPER-shaped tier — literals are words, adjacent pairs

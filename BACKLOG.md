@@ -2462,7 +2462,17 @@ subtraction.
       shipped model's 76.7%. Print per-class numbers and the class
       BALANCE beside every total; `Eval` already computes per-class
       scores, so this is a reporting lane, not a measurement one.
-- [ ] frame-rebind — after a restart a caller rebuilds its `Slot`
+- [x] frame-rebind — DONE 2026-09-07: `Frame.rebind(rebuilt*)` answers
+      a `Rebound` — the frame re-bound by NAME to the rebuilt
+      descriptors, each stored answer re-read from its text by the new
+      parser; `rederived` lists every value that came out different
+      (name, text, before, after), `lost` the names the new descriptor
+      could not read (their words kept in `unread`) or no rebuilt slot
+      carries; `clean` when neither. Laws in `TestFrame`; `TestRebind`
+      in okay-intent shows the hazard as filed — "next Tuesday" against
+      a reference day a week later is a different date, and the move
+      is reported, not made silently. Original: after a restart a
+      caller rebuilds its `Slot`
       values, and `valueOf` matches by IDENTITY, so a frame read back
       from a journal cannot be read with the new descriptors unless
       the caller threads the rebuilt ones through everything.

@@ -55,6 +55,20 @@ or register; it promises only never to ask in a farther language
 when a closer wording exists, and `untranslated` is honest for a tag
 (a slot that speaks `pl` speaks `pl-formal-f`).
 
+**After a restart, rebind — explicitly, and read the report.**
+`valueOf` matches a slot by identity, so a frame read back from a
+journal cannot be read with the descriptors a restarted service
+rebuilds. `frame.rebind(rebuilt*)` re-binds by name, re-reading each
+stored answer from the words the person said with the new parser,
+and answers a `Rebound`: the frame, `rederived` — every value that
+came out different, with the text and both values — and `lost`, the
+names the new descriptor could not read (their words stay in
+`unread`) or no rebuilt slot carries; `clean` when neither. It
+reports because re-deriving is re-parsing: "next Tuesday" against a
+reference day a week later is a different date, and a service that
+silently took the new one would act on a meeting nobody proposed.
+The caller reads `rederived` and decides — confirm, re-ask, or keep.
+
 **An answer may answer more than was asked.** `take(name, text)`
 answers the named slot and offers the same sentence to every other
 slot's extractor: asked where and told "Wrocław, and remote works", a

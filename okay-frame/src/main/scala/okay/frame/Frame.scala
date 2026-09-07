@@ -329,6 +329,47 @@ final case class Frame[I](intent: I,
       case Some(a) if a.slot eq s => Some(a.value.asInstanceOf[A])
       case _ => None
 
+  /**
+   * REBIND this frame to rebuilt descriptors — the restart case.
+   *
+   * `valueOf` matches by identity, so a frame read back from a
+   * journal after the process died cannot be read with the `Slot`
+   * values a restarted service builds, unless the caller threads the
+   * rebuilt ones through everything (the rule "one descriptor value
+   * per exchange, passed with the frame", which `TestWalk` obeys). This
+   * makes that case ordinary: each stored answer is re-read by the
+   * new descriptor of the same name, from the TEXT the person said.
+   *
+   * It is an explicit request that REPORTS, not a silent convenience,
+   * because re-deriving is re-parsing: "next Tuesday" against a new
+   * reference day is a different date — the exact defect
+   * intent-frame-typed-values removed. So an answer whose value came
+   * out different is listed in `rederived` with both values, an answer
+   * the new descriptor could not read moves to `unread` (its words are
+   * kept) and is listed in `lost`, and a name no rebuilt slot carries
+   * is lost too. The caller decides what a change means; nothing here
+   * does.
+   */
+  def rebind(rebuilt: Slot[?]*): Rebound[I] =
+    val byName = rebuilt.map(s => s.name -> s).toMap
+    var rederived = Vector.empty[Rebound.Change]
+    var lost = Vector.empty[String]
+    var kept = Map.empty[String, Answered]
+    var words = unread
+    for (name, a) <- answers.toVector.sortBy(_._1) do
+      def reread[A](s: Slot[A]): Unit =
+        s.parse(a.text) match
+          case Some(v) =>
+            kept = kept.updated(name, Answered(s, a.text, v, a.source))
+            if v != a.value then rederived = rederived :+ Rebound.Change(name, a.text, a.value, v)
+          case None =>
+            lost = lost :+ name
+            words = words.updated(name, a.text)
+      byName.get(name) match
+        case Some(s) => reread(s)
+        case None => lost = lost :+ name
+    Rebound(copy(slots = rebuilt.toVector, answers = kept, unread = words), rederived, lost)
+
   /** the questions still to ask, in order, in the language of the
    * exchange */
   def missing: Vector[(String, String)] =
@@ -447,6 +488,16 @@ final case class Frame[I](intent: I,
     s.read(lang, text).map(v =>
       copy(answers = answers.updated(s.name, Answered(s, text, v, Source.Said)),
         unread = unread - s.name))
+
+/** what `Frame.rebind` answers: the rebound frame, the answers whose
+ * value came out different when re-read (name, the text, before,
+ * after), and the names that could not be carried over */
+final case class Rebound[I](frame: Frame[I], rederived: Vector[Rebound.Change], lost: Vector[String]):
+  /** nothing moved and nothing was lost: the rebind was the identity on values */
+  def clean: Boolean = rederived.isEmpty && lost.isEmpty
+
+object Rebound:
+  final case class Change(name: String, text: String, before: Any, after: Any)
 
 object Frame:
   /** the frame an intent needs, described once beside the taxonomy */
