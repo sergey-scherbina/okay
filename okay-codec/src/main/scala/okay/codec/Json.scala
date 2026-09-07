@@ -1,8 +1,5 @@
 package okay.codec
 
-import okay.{!, %, Writer, through, pure}
-import okay.toLazyList
-import okay.lex.Scan
 import okay.lex.Json as JsonLex
 import okay.lex.Json.K
 import okay.parse.{Cst, JsonParse, Parse}
@@ -28,16 +25,31 @@ enum Json:
 object Json {
 
   // ----------------------------------------------------------------
-  // parse: chars -> scanner -> driver -> CST -> projection
+  // parse: scanner -> per-token instructions -> CST -> projection
 
-  private def chars(s: String, i: Int = 0): Unit ! Writer % Char =
-    if i >= s.length then pure(())
-    else Writer.tell(s.charAt(i)).flatMap(_ => chars(s, i + 1))
-
-  /** the lossless layer: any string yields a CST that render puts
-   * back byte-for-byte (trivia, ordering, duplicate keys, damage) */
-  def cst(s: String): Cst[K] = Parse.toCst(
-    through(through(chars(s))(Scan.stage(JsonLex.scan)))(JsonParse.driver).toLazyList)
+  /**
+   * The lossless layer: any string yields a CST that render puts back
+   * byte-for-byte (trivia, ordering, duplicate keys, damage).
+   *
+   * `Parse.full` is documented as "the common case: a per-token driver
+   * with no state of its own", and `JsonParse.instrs` is exactly that
+   * — it says "no cross-token state" in its own comment. So a batch
+   * parse needs no driver STAGE at all, and no streaming.
+   *
+   * It used to. Until json-cst-batch-road (2026-09-07) this fed the
+   * source ONE CHARACTER AT A TIME through the effect system —
+   * `Writer.tell(c).flatMap(...)` per char — into two transducer
+   * stages and a LazyList. Measured on 1.68 MB: 244 ms, of which
+   * merely moving the characters through `Writer` was 61-71 ms, four
+   * times the entire fast value parse. JSON was the last codec on
+   * that road; Xml already used `Parse.fullWith` and Yaml a hand
+   * loop.
+   *
+   * The streaming pipeline keeps its reason to exist — incremental
+   * reparse, and input that is not a String in hand — and this is the
+   * same `Scan` and the same `instrs`, so there is no second grammar.
+   */
+  def cst(s: String): Cst[K] = Parse.full(JsonLex.scan, JsonParse.instrs)(s).tree
 
   /** render = the lossless law made a function */
   def render(c: Cst[K]): String = Cst.lexemes(c)

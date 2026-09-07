@@ -955,10 +955,16 @@ was whether it hurts. A 500k-row × 3-column frame through okay-py:
 | our own decode walk | 0.03 s |
 | `Json.parseValue`, same text | **0.06 s** |
 
-Sixty percent of the round trip was our parser, and the fast road was
-79x quicker for a value the assert says is EQUAL. The Python
-boundary — the thing py-arrow proposed to replace — was a minority
-of the cost.
+Sixty percent of the round trip was our parser, for a value the assert
+says is EQUAL. The Python boundary — the thing py-arrow proposed to
+replace — was a minority of the cost.
+
+**The "79x" this section first claimed was measured badly** and is
+corrected below (json-cst-batch-road): those were SINGLE timed calls
+after one warm-up, which at this scale prices the JIT as much as the
+code. Best-of-twelve on 9.3 MB puts the two roads 37x apart, not 79x.
+The conclusion does not change and the fix does not change; the number
+does, and a number in a spec is a claim.
 
 So `Json.parse` IS the fast road now, falling back to the lossless one
 whenever `JsonValue.parse` is not sure. Nothing else changed:
@@ -983,3 +989,63 @@ The lesson worth keeping is not about JSON. A module had two roads to
 the same value, differing by 79x, and the DEFAULT was the slow one for
 long enough that a separate feature got filed to work around its
 symptom. `py-arrow` is re-filed with an honest number.
+
+
+## The batch road (2026-09-07, json-cst-batch-road)
+
+The operator's follow-on question to the section above: why is the
+lossless road slow, and how is it made fast.
+
+**Why.** It was not JSON, and not the tree. `Json.cst` fed the source
+ONE CHARACTER AT A TIME through the effect system —
+`Writer.tell(c).flatMap(...)` per char — into two transducer stages
+and a `LazyList`. Just moving the characters through `Writer`, with no
+lexer attached, cost 61-71 ms on 1.68 MB: four times the entire fast
+value parse. The real work — lexing, instructions, building — was
+about 26 ms each.
+
+**How.** No new machinery. `Parse.full(sc, step)` is documented as
+"the common case: a per-token driver with no state of its own", and
+`JsonParse.instrs` says "no cross-token state" in its own comment —
+they were written for each other. So a batch parse needs no driver
+stage and no streaming at all:
+
+```scala
+def cst(s: String): Cst[K] = Parse.full(JsonLex.scan, JsonParse.instrs)(s).tree
+```
+
+The same `Scan` and the same `instrs`, so there is no second grammar
+to keep in step. **JSON was the last codec on the per-char road** —
+Xml already used `Parse.fullWith`, Yaml a hand loop.
+
+Best of twelve, 9.3 MB:
+
+| | old | new |
+|---|---|---|
+| `Json.cst` | 1129 ms | 334 ms |
+| `Json.lossless` (tree + projection) | ~1196 ms | 402 ms |
+| `Json.parse`, the fast value road | 32 ms | 32 ms |
+
+**What the evidence is.** `TestJsonCst` compares the two roads' TREES
+— not their values, which is a weaker claim — over the same corpus
+`TestJsonValue` uses, with the same PREFIX SWEEP: every truncation of
+every document, well-formed and damaged. It also asserts the lossless
+law still holds (`render` puts every document back byte for byte) and
+that the diagnostics are the same errors in the same order. The corpus
+moved to `JsonCorpus` so both files provably mean the same documents.
+
+**What was NOT done, and why.** Two things measured as not worth it:
+
+- Skipping the reparse snapshots a batch `cst` throws away looked like
+  8% on a single-shot run and is 1.5% — inside the noise — on best-of-
+  twelve. The simpler code stands.
+- `Scan.step: (S, Char) => (S, Vector[Token[K]])` allocates a tuple
+  per character, which is the next wall. Fixing it means changing an
+  interface four codecs and okay-rag implement, and NO main-source
+  caller in this repository uses the lossless road at all: it serves
+  `Json.parse`'s damage fallback, the incremental reparse story, and
+  the tests. Optimising it further would be speculation, so the
+  measurement is recorded and the interface is left alone.
+
+At ~12x the fast road, the lossless one now costs about what keeping
+every token, span and piece of trivia should cost.
