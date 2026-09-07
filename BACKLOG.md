@@ -904,9 +904,24 @@ measure on our own data, never a predicted result.
       pyarrow is first-class)
 
 ## okay-r (specs/r.md — R as a handler)
-- [ ] r-subprocess — stage 0: the module, REval/RValue/RFrame,
-      Rscript engine (CBOR/JSON wire, clean env), verify(packages),
-      condition-as-data, dead-process-throws; Durable-replay test
+- [x] r-subprocess — LANDED 2026-09-07, stage 0: okay-r with
+      REval/RValue/RFrame, the versioned shim, the comonadic handler
+      over a clean-env Rscript, conditions as data, verify, dead-
+      process-throws. R's TWO absences are two cases (NULL vanishes
+      from a vector, NA poisons it — R's own arithmetic is the test)
+      and NA carries its TYPE. jsonlite is a NAMED prerequisite the
+      handshake refuses on. Proven against a live R in a container.
+      The "Durable-replay test" in this entry could not be written
+      and should not have been promised — see durable-any-operation.
+- [ ] durable-any-operation — `Durable.tools` wraps a `Handler[Tool]`
+      and `Tool.Call` carries a `ToolCall`, so there is NO generic
+      journal-any-operation. specs/r.md and specs/py.md both claimed
+      a foreign-runtime step is "journalable by Durable"; both are
+      corrected, and this is the item that would make it true. The
+      question to answer first is what a fingerprint and a key mean
+      for an arbitrary operation type — `ToolCall` gave both for
+      free, and an `REval.Frame` carrying a million rows gives
+      neither cheaply.
 - [ ] r-rserve — stage 1: the served engine (Java client behind a
       trait; own QAP1 over Async later if named); two-engine
       acceptance

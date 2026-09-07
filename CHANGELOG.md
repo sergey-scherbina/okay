@@ -1,5 +1,51 @@
 # Changelog
 
+## r-subprocess — okay-r stage 0, R as a handler
+Completed: 2026-09-07
+Landed as bb408e02 (spec then code). specs/r.md's model, built.
+okay-py implemented this shape first, so most of it is the twin:
+`REval`/`RValue`/`RFrame`, a versioned shim as a resource, the
+comonadic handler over a clean-env `Rscript`, conditions as data,
+dead-process-throws, `verify` naming a package.
+
+**What is not the twin is R's two absences**, and R's own arithmetic
+is the test: `mean(c(1, 2, NA))` is NA while `mean(c(1, 2, NULL))` is
+1.5, because the NULL vanished from the vector. So `RValue` carries
+`RNull` AND `NA`, and `NA` carries its type — R has four of them, and
+`c(1L, NA)` must come back an integer vector. Flattening those into
+one case would have been the "papered over" the spec's own behaviour
+list forbids.
+
+Three things the wire forced. A plain JSON number is always a DOUBLE
+here, because jsonlite reads `3` as an R integer and a caller's
+`F64(3)` was arriving in R as an integer — a type change nobody sees
+until a `class()` or a join behaves oddly. A wire array becomes an
+ATOMIC VECTOR when every element is a scalar, because `sum(c(1,2,NA))`
+is the call an analyst writes and `sum(list(...))` is an error about
+types. And `RValue.Int` became `I32`, because a case called `Int`
+shadows `scala.Int` for every caller who writes `import RValue.*`.
+jsonlite is a NAMED prerequisite the handshake refuses on, with the
+two commands that fix it — base R has no JSON reader, and our own
+parser at the trust boundary is a worse thing to own than one package
+every R installation has.
+
+**A correction that was not about R.** Both specs claimed a foreign
+step is "journalable by `Durable`". It is not: `Durable.tools` wraps a
+`Handler[Tool]` and `Tool.Call` carries a `ToolCall`, so there is no
+generic journal-any-operation, and okay-py had never tested the claim
+either. An R call reached THROUGH a tool is journalled because the
+tool is; journaling `REval` itself is filed as
+`durable-any-operation`. Both specs are corrected and the two claims
+that survive — handler-swap mocking and a total `TypeableK` split —
+are now proven without an R anywhere.
+
+Proven against a live R in a container where none is installed,
+reached by a shim at the same absolute path inside and out; the shim
+forwards the environment, because a stand-in for `Rscript` must
+inherit one as `Rscript` does, and without that the clean-env tests
+would have been measuring docker. 17 live green, 1 skipped by name, 6
+green with no R at all.
+
 ## sql-plan-cells — the cell decoders that were not faster, and the instrument that was wrong
 Completed: 2026-09-07
 Taken up on the operator's word despite the condition it was filed
