@@ -1110,11 +1110,11 @@ lazy val okayScript = project
   .in(file("okay-script"))
   // okayHttp.jvm is the MAIN dependency since okay-script-site: `Site`
   // answers okay-http's `Request` with its `Response`, so any server
-  // speaking those (okay-jetty, okay.http.Server) serves a directory
-  // of pages. okayJetty stays TEST-only: proving a runtime-compiled
-  // script can start/stop a real server (okay-script-lifecycle) and
-  // serving a Site over a real port need it on the FORKED TEST JVM's
-  // own classpath, which is what Classpath.ambient reads.
+  // speaking those serves a directory of pages. okayJetty joined as a
+  // MAIN dependency with okay-script-serve: `Site.serve(port)` and the
+  // stock `okay.script.Serve` entry point run a Site over Jetty with
+  // no code of the caller's own (it was Test-only before, for the
+  // lifecycle proof alone).
   // okayPersist.jvm: Sessions.persisted writes sessions through to a
   // keyed, compacted topic so a restart keeps them (okay-script-
   // persistent-sessions).
@@ -1122,7 +1122,7 @@ lazy val okayScript = project
   // over the page's own WebSocket (okay-script-live).
   // okaySecurity.jvm: a page's `secure:` front-matter is enforced with
   // okay-security's own Verified/Policy ladder (okay-script-secure).
-  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty % Test)
+  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty)
   .settings(
     name := "okay-script",
     // drives dotty.tools.dotc IN-PROCESS -- no scala/scala-cli

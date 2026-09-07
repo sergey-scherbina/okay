@@ -19,6 +19,7 @@ preprocessing, meta-compilation.
 | `secure:` front-matter | declarative page security, web.xml's constraint: a scope (or `any`) the caller must carry, checked by the deployment's `verify`; a login page (`login.md`) gets the redirect, an API client the 401/403 ladder; `Principal.current`, `login(token)`/`logout()` |
 | `Forms` / `Live.form` | typed forms from a `Schema` (okay-ui's `Form`): `Forms.html[A]`/`Forms.read[A]` is the plain `<form method=post>` road, `Live.form[A](submit)` the live one -- either way the page gets an `A`, never a `Json` |
 | `Application` / `signIn` | JSP's application scope: attributes shared by every page of a Site (`Application.current`, typed through a Schema's JSON, `persisted` over okay-persist); `signIn(subject, scopes)` mints through the Site's `issue`, the pair of its `verify` |
+| `Site.serve(port)` / `okay.script.Serve` | the one line to run a Site over Jetty (routes, sockets, pushes), and the stock entry point: `sbt "okayScript/runMain okay.script.Serve pages 8080"`; `OKAY_DATA=<dir>` makes sessions and the application scope persistent |
 | ` ```scala declare ` | an object-level block (JSP `<%! %>`): a `val` built once per compile, a `def` every request can call |
 | `Classpath` / `Deps` | the ambient classpath a script compiles against (`Classpath.api` for a page importing the API), plus `using dep` coordinate resolution |
 
@@ -31,5 +32,4 @@ runs without throwing — a smoke test, not an output checker
 Library API only: no CLI, no sbt-test integration, no automatic walk
 of `specs/*.md` in the default gate. Its tests FORK, because the
 compiler reads the test JVM's own classpath (okay-script-scalac-
-classpath). okay-jetty is a TEST-only dependency, for the proof that
-a compiled script can start and stop a real server.
+classpath). okay-jetty is a main dependency since `Site.serve`.
