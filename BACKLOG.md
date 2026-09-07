@@ -846,7 +846,7 @@ measure on our own data, never a predicted result.
 - [ ] ui-windows-terminal — raw mode beyond stty
 
 ## okay-codec
-- [ ] codec-jsonschema-refinement-enum — `JsonSchema.of` renders an
+- [x] codec-jsonschema-refinement-enum — `JsonSchema.of` renders an
       `SIso`/`Schema.refine` as its underlying type, so a refinement's
       vocabulary (`Conf`: three words over a string) reaches a
       `response_format` contract as a plain `string`; found by
@@ -855,7 +855,11 @@ measure on our own data, never a predicted result.
       its values (a finite `refine`, or an enum's Schema) should
       render as `"enum": [...]`. Filed, not done inside a measurement;
       worth doing when a gateway that ENFORCES its schema appears —
-      the rozum one does not, for nested sums and lists.
+      the rozum one does not, for nested sums and lists. DONE
+      2026-09-07: `Schema.enumeration(values, name)` — the vocabulary
+      as a second parameter list on `SIso`, so the twenty patterns
+      stay three-armed; only `JsonSchema.of` reads it (`enum` beside
+      the underlying type); `Conf` is one; JVM/JS/Native tests.
 - [x] json-value-parser — landed: JsonValue.parse, a strict
       recursive-descent parser yielding to the lossless CST parser on
       any doubt; Json.parseValue wires it in. 61x over Json.parse on

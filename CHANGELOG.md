@@ -1,5 +1,21 @@
 # Changelog
 
+## codec-jsonschema-refinement-enum — a refinement that names its vocabulary, and a JSON Schema that declares it
+
+intent-structured-output found the derived schema rendering `Conf` as
+a plain string. `Schema.enumeration[A, B](values, name)` is a refine
+over a finite vocabulary: on every wire it is the name out and the
+name back with an unknown spelling a decode error naming the
+vocabulary; in `JsonSchema.of` it is the underlying type plus `enum`,
+each value encoded by the underlying schema. The vocabulary rides on
+`SIso` as a second parameter list, so the twenty `SIso(u, to, from)`
+patterns across the folds are untouched and only the declaration
+reads it. `Conf` is an enumeration now, so a `response_format`
+contract or a tool declaration built from `Reading[I]` says `low,
+medium, high`. Tests on JVM, JS and Native: the wire unchanged, the
+schema carrying the enum, a plain refine not, an integer vocabulary
+declaring integers.
+
 ## intent-active-learning — a label chosen by uncertainty is worth a little, consistently: 80% at 28 labels where random needs 36
 
 Simulated on the fixture's own labels (`TestActiveLearning`, one

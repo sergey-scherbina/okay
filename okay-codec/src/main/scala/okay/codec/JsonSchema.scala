@@ -18,8 +18,14 @@ object JsonSchema {
 
   /** a datatype's shape as a JSON Schema value */
   def of[A](s: Schema[A]): Json = s match
-    // a wrapper does not exist to the tool schema — a Secret is a string
-    case Schema.SIso(u, _, _) => of(u())
+    // a wrapper does not exist to the tool schema — a Secret is a string —
+    // unless it names its vocabulary (`Schema.enumeration`), which the
+    // declaration carries as `enum` beside the underlying type
+    case iso @ Schema.SIso(u, _, _) => iso.vocabulary match
+      case Some(vs) => of(u()) match
+        case Json.JObj(fs) => Json.JObj(fs :+ ("enum" -> Json.JArr(vs.map(v => Json.parse(Json.encode(u())(v))))))
+        case other => other
+      case None => of(u())
     case Schema.SInt | Schema.SLong => obj("type" -> Json.JStr("integer"))
     case Schema.SDouble => obj("type" -> Json.JStr("number"))
     case Schema.SBool => obj("type" -> Json.JStr("boolean"))

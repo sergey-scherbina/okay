@@ -50,7 +50,14 @@ enum Schema[A]:
    * algebra the wrapper does not exist, which is the point. */
   case SIso[A, B](under: () => Schema[B],
                   to: B => Either[String, A],
-                  from: A => B) extends Schema[A]
+                  from: A => B)
+                 (/** the finite vocabulary of `B` this wrapper admits, when
+                   * there is one (`Schema.enumeration`): every algebra still
+                   * sees the wrapper as `under`, and only a DECLARATION —
+                   * the JSON Schema — reads it, as `"enum"`. A second
+                   * parameter list, so `SIso(u, to, from)` patterns stay
+                   * three-armed everywhere. */
+                  val vocabulary: Option[Vector[B]] = None) extends Schema[A]
 
 object Schema {
 
@@ -88,11 +95,26 @@ object Schema {
 
   /** a total wrapper — a newtype travels as what it wraps */
   def wrap[A, B](to: B => A, from: A => B)(using s: => Schema[B]): Schema[A] =
-    Schema.SIso(() => s, b => Right(to(b)), from)
+    Schema.SIso(() => s, b => Right(to(b)), from)()
 
   /** a refining wrapper — a Left is a decode error naming itself */
   def refine[A, B](to: B => Either[String, A], from: A => B)(using s: => Schema[B]): Schema[A] =
-    Schema.SIso(() => s, to, from)
+    Schema.SIso(() => s, to, from)()
+
+  /**
+   * A refinement over a FINITE vocabulary (codec-jsonschema-refinement-
+   * enum): `values` are the only `A`s, each spelt as `name(a)` on the
+   * wire, an unrecognised spelling a decode error naming itself. On
+   * every wire it is `refine`; in a JSON Schema it is
+   * `{"type": ..., "enum": [...]}` — so a contract or a tool
+   * declaration carries the vocabulary a prompt used to have to state.
+   */
+  def enumeration[A, B](values: Vector[A], name: A => B)(using s: => Schema[B]): Schema[A] =
+    val byName = values.map(a => name(a) -> a)
+    Schema.SIso[A, B](() => s,
+      b => byName.collectFirst { case (n, a) if n == b => a }
+        .toRight(s"unknown value '$b'; one of: ${byName.map(_._1).mkString(", ")}"),
+      name)(Some(byName.map(_._1)))
 
   given [A](using s: => Schema[A]): Schema[Option[A]] = Schema.SOption(() => s)
   given [A](using s: => Schema[A]): Schema[List[A]] = Schema.SList(() => s)

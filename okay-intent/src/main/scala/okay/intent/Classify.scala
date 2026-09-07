@@ -35,11 +35,11 @@ enum Conf:
 
 object Conf:
   /** on the wire a confidence is its own name, lowercased — and an
-   * unrecognised one is a decode error, not a silent `Low` */
-  given Schema[Conf] = Schema.refine[Conf, String](
-    s => Conf.values.find(_.toString.equalsIgnoreCase(s))
-      .toRight(s"unknown confidence '$s'"),
-    _.toString.toLowerCase)
+   * unrecognised one is a decode error, not a silent `Low`. An
+   * enumeration, so a JSON Schema (a `response_format` contract, a
+   * tool declaration) carries the three words the prompt states
+   * (codec-jsonschema-refinement-enum) */
+  given Schema[Conf] = Schema.enumeration[Conf, String](Conf.values.toVector, _.toString.toLowerCase)
 
   /** Low < Medium < High, by declaration order */
   def atLeast(c: Conf, floor: Conf): Boolean = c.ordinal >= floor.ordinal

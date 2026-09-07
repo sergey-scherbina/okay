@@ -26,6 +26,13 @@ one-entry maps keyed by case name, `None` as null — so
 are values (`Left`) in both: a missing required field, a wrong shape,
 a truncated CBOR buffer.
 
+**A wrapper that names its vocabulary.** `Schema.wrap`/`refine` make a
+newtype invisible to every algebra; `Schema.enumeration(values, name)`
+is a refine over a finite vocabulary that stays invisible on every
+wire and shows in exactly one place — `JsonSchema.of` declares it as
+`enum` — so a tool parameter or a `response_format` contract carries
+the words a prompt used to have to state.
+
 **Totality underneath.** `Json.parse` rides the okay-parse pipeline,
 so a damaged document projects `JErr` values and a truncated one
 still decodes the fields it carries — the LLM structured-output case.

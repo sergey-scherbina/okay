@@ -189,6 +189,48 @@ the keyed-diff patch trio (Remove/Reorder/Insert) — a server-driven
 reorder would have MatchErrored on encode. Wired and round-tripped
 here.
 
+## codec-enumeration — a refinement that names its vocabulary (2026-09-07, codec-jsonschema-refinement-enum)
+
+Found by intent-structured-output: `Conf` was `Schema.refine` over a
+string — three words the decoder accepts and everything else a Left —
+and `JsonSchema.of` rendered it as a plain `string`, because to every
+algebra the wrapper does not exist. So a `response_format` contract,
+or a tool declaration, could not carry the one thing the prompt had
+to state in prose. A declaration is the one consumer for which the
+wrapper's VOCABULARY should exist.
+
+```scala
+case SIso[A, B](under: () => Schema[B],
+                to: B => Either[String, A],
+                from: A => B)
+               (val vocabulary: Option[Vector[B]] = None)   // a second list
+
+object Schema:
+  /** a refinement over a FINITE vocabulary: `name(a)` on the wire,
+   * an unknown spelling a decode error naming the vocabulary,
+   * `"enum": [...]` in a JSON Schema */
+  def enumeration[A, B](values: Vector[A], name: A => B)(using Schema[B]): Schema[A]
+```
+
+The vocabulary rides on `SIso` as a SECOND parameter list, so the
+twenty `SIso(u, to, from)` patterns across the Json, CBOR, strict,
+form, sql and skeleton folds match exactly as before and read
+nothing new; only `JsonSchema.of` looks at it, and emits the
+underlying type's schema plus `enum` with each value encoded by the
+underlying schema (`["low","medium","high"]`, or `[1,2]` for an
+integer vocabulary). On every wire an enumeration IS a refine.
+
+Behavior:
+- [x] the wire is unchanged: the name goes out, the name comes back,
+      JSON and CBOR, alone and inside a product; an unknown name is a
+      decode error naming the vocabulary
+- [x] the JSON Schema of an enumeration is the underlying type plus
+      `enum`; a plain `refine` stays a plain string
+- [x] an integer vocabulary declares integer values
+- [x] `Conf` is an enumeration: a contract or a tool declaration built
+      from `Reading[I]` now says `low, medium, high` where the prompt
+      says it
+
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends
 Schema[Option[A]]` and the rest — and the codecs cast anyway
