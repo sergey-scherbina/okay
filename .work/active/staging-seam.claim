@@ -1,0 +1,5 @@
+lane: staging-seam
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: one door for a codec over a schema VALUE — okay.codec.Codecs.json/cbor with a pluggable Provider (default: the interpreter, cross-platform); okay-staging gets RuntimeStaged.cbor and install(); Codecs.autoInstall on the JVM by reflection so a program that adds okay-staging (okay-script's container first) gets staged codecs on every generic door without a dependency; the generic doors (script Application/Live, ui Sessions/Form, persist Typed/Snapshots/Configs/Wire, http, cluster, agent ToolSpec, llm, cache, mongo) go through the seam. Operator ask: "добавляй туда где полезно — в okay-script и так далее везде".
+touches: okay-codec Codecs.scala (+ scala-jvm autoInstall), okay-staging, okay-script, okay-ui, okay-persist, okay-http, okay-cluster, okay-agent, okay-llm, okay-cache, okay-docs-mongo, specs/codecs.md, docs, BACKLOG, CHANGELOG
