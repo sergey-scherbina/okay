@@ -1118,7 +1118,10 @@ lazy val okayAcme = (project in file("okay-acme"))
   // okayJetty is the client an operator's `Revoke` reaches the CA
   // with -- the module's own flow takes any `Http`, this is the one
   // it hands itself
-  .dependsOn(okayHttp.jvm, okaySecurity.jvm, okayJetty)
+  // okayBlob for its SigV4: Route 53 is signed with the repository's
+  // OWN signer at service=route53, rather than a second copy of AWS's
+  // signature algorithm living here (acme-dns-providers)
+  .dependsOn(okayHttp.jvm, okaySecurity.jvm, okayJetty, okayBlob.jvm, okayConf.jvm)
   .settings(
     name := "okay-acme",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

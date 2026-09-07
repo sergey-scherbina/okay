@@ -9,14 +9,14 @@ decisions.
 |---|---|
 | `Acme.ensure(cfg, http, challenges)` | issue if needed, renew when less than `renewBefore` is left, answer `Issued` or `Current` |
 | `Acme.Config` | email, domains, where the account key, certificate and key live, the directory, the renewal window |
-| `Acme.Dns` | the seam dns-01 needs: write a TXT record, remove it, and say how long this provider takes to propagate. No implementation ships |
+| `Acme.Dns` | the seam dns-01 needs: write a TXT record, remove it, and say how long this provider takes to propagate |
+| `Providers.cloudflare` / `.desec` / `.route53` | three of them, so that none is the favourite; a deployment's own `Dns` is just as first-class |
 | `Acme.Challenges.Memory` | somewhere to put the token, plus the `routes` to chain in front of a plaintext server |
 | `Acme.revoke(cfg, http, reason)` | take a certificate back before it expires (RFC 8555 §7.6); `okay.acme.Revoke` is the same thing from a shell |
 | `Acme.renewalWindow(cfg, http)` | the CA's suggested renewal window for the certificate on disk, when it publishes one |
 | `Acme.Directory` | Let's Encrypt's staging (the default) and production URLs |
 
-Narrow on purpose: one order, one server, no provider implementations
-(a `Dns` is the deployment's). HTTP-01 by default and DNS-01 — with
+Narrow on purpose: one order, one server. HTTP-01 by default and DNS-01 — with
 wildcards — when a `Dns` is given. Revocation, external account binding
 (`Config.eab`, for a CA that will not open an account for a stranger)
 and ARI (the CA's own renewal window, read beside `renewBefore` and
