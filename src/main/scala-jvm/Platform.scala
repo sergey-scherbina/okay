@@ -240,7 +240,7 @@ object Schedulers {
       cell.get match
         case r: Either[Throwable, A] @unchecked => k(r) // the cell only ever holds this task's own answer
         case w: Waiters[A] @unchecked => if !cell.compareAndSet(w, Waiters(k, w)) then onComplete(k)
-        case _ => if !cell.compareAndSet(null, Waiters(k, null)) then onComplete(k)
+        case null => if !cell.compareAndSet(null, Waiters(k, null)) then onComplete(k)
 
     override def cancel(): Unit = super[Drive].cancel()
 
