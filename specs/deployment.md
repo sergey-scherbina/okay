@@ -667,6 +667,76 @@ units. Three things the writing settled:
 - [x] okay-script's committed chart does not drift from its value,
       checked with the same test as every other target.
 
+## The PaaS targets (stage 2)
+
+Three platforms that take a repository and run it, and the interesting
+thing is that they disagree about what a "deployment" is:
+
+- **fly** is ONE app per `fly.toml`, so a system of three services is
+  three apps and three files, each in its own directory.
+- **render** is a Blueprint: one `render.yaml` describes every service
+  AND its managed databases together, which is the closest of the
+  three to the shape of our value.
+- **railway** is per-service JSON, with the project itself made in the
+  dashboard or by the CLI.
+
+None of them can be applied without an account, so `up` is the
+platform's own CLI and the honest gate stops at the rendering.
+
+### Delegated, not refused
+
+A managed database is where the rule from stage 0 needs a second
+sentence. `host` REFUSES a `Need.Database` because installing Postgres
+on somebody's rented box is not ours to do. `cluster` RENDERS one
+because a cluster runs containers by definition. A PaaS is the third
+case: the platform absolutely has a Postgres, but the deployment FILE
+cannot express it — on fly it is `fly postgres create` then `attach`,
+which sets `DATABASE_URL` behind our back.
+
+So the answer there is neither: the file renders without it, and
+`setup.sh` carries the exact commands, the same way the cluster target
+ships `secrets.sh`. Nothing is guessed and nothing is silent, which is
+what the rule was actually protecting. Render is the exception that
+proves it — a Blueprint has a `databases:` section, so there the
+database IS in the file.
+
+Secrets stay references everywhere: `fly secrets set`, Render's
+`sync: false` (which means "I will type this in the dashboard"), and
+`railway variables --set`. No platform gets a value from us.
+
+### The gate: a real parser per format
+
+Stage 1 taught this the hard way, so stage 2 does not repeat it: a
+golden-file test passes happily on output the consuming tool rejects,
+because the bytes are exactly what the renderer meant to write. There
+is no local validator for any of these three platforms — `flyctl
+config validate` wants an account — but there IS a real parser for
+every format, and a syntax error is the failure mode a string-building
+renderer actually has:
+
+| file | parser | where |
+|---|---|---|
+| `fly.toml` | python3 `tomllib` | Live |
+| `render.yaml` | `ruby -ryaml` | Live |
+| `railway.json` | okay-codec's own `Json` | default suite |
+
+The JSON one is in the default suite because it needs nothing outside
+the JVM. The other two shell out and are Live, per AGENTS.md — the
+same rule stage 1 corrected itself on.
+
+What this gate does NOT prove is that a platform accepts the SEMANTICS
+— that `primary_region = "iad"` is a region fly has, that a Render
+plan name still exists. That needs an account, stays a manual step,
+and is said here rather than implied by a green suite.
+
+### `Need.Region`
+
+Added to the model for this stage, and stage 3 wants it too: every
+PaaS and every cloud asks where to run, and no target can invent an
+answer. It is a `Need` like the others, so a target that does not care
+ignores it and a target that must have one refuses by name when it is
+absent.
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of
@@ -712,8 +782,9 @@ and each ends with something an operator can actually use:
   NOT own. Proven by `helm template` and `helm lint` — under
   `integrationTest` rather than the default gate, per the repository's
   Live rule; kind stays optional and unwritten.
-- **Stage 2 — PaaS.** fly/render/railway manifests, golden-tested; a
-  real deploy needs an account and stays a documented manual step.
+- **Stage 2 — PaaS.** fly/render/railway manifests, each gated by a
+  REAL parser for its format rather than a golden file; a real deploy
+  needs an account and stays a documented manual step.
 - **Stage 3 — the clouds.** Terraform per cloud, proven by
   `terraform validate` in a container. The AWS one first, because ECS
   plus RDS plus Secrets Manager exercises every part of the model.
