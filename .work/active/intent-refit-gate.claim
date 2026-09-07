@@ -1,0 +1,5 @@
+lane: intent-refit-gate
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: stage 4 of specs/intent-autonomy.md. Refitting the shipped artifact (MakeModel) writes whatever the corpus produces; nothing stops a refit that raises the headline while killing a class, which is the failure a consumer already lived (their corpus grew unevenly, one class reached 137 of 184 rows, accuracy rose 95.8 -> 96.2 and a class died). Make the refit REFUSE: fit, score on held-out rows, compare per class against the artifact in the tree, and answer Refused(named class, before, after) rather than writing. The whole harvest programme writes into this path, so the guard comes before the data.
+touches: okay-intent (Fit or a small Refit door), MakeModel, its suites, specs/intent-autonomy.md, specs/intent-classify.md, BACKLOG, CHANGELOG
