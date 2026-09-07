@@ -1306,7 +1306,9 @@ lazy val okayChatWeb = crossProject(JVMPlatform, JSPlatform)
  * app declares its own Deploy and owns the rendered files.
  */
 lazy val okayDeploy = (project in file("okay-deploy"))
-  .dependsOn(okayCodec.jvm)
+  // okayConf for `Secret`: a deployment carries secret REFERENCES and
+  // never values (specs/deployment.md)
+  .dependsOn(okayCodec.jvm, okayConf.jvm)
   .settings(
     name := "okay-deploy",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,

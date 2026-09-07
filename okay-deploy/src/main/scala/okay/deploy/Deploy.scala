@@ -43,7 +43,12 @@ final case class Deploy(
 final case class Image(repository: String, tag: String = "local")
 final case class Env(name: String, value: String)
 final case class Resources(cpuRequest: String, memoryRequest: String, cpuLimit: String, memoryLimit: String)
-final case class Health(livenessPath: String = "/healthz", readinessPath: String = "/readyz")
+/** the probes a target wires, and how long a start may take before
+ * one is believed. `startupSeconds` joined for the new model
+ * (specs/deployment.md) and defaults, so every existing `Deploy`
+ * value renders byte-identically. */
+final case class Health(livenessPath: String = "/healthz", readinessPath: String = "/readyz",
+                        startupSeconds: Int = 30)
 /** one `COPY --from=build <from> <to>` line — `from` a glob in the
  * build stage, `to` a path in the final image */
 final case class Copy(from: String, to: String)

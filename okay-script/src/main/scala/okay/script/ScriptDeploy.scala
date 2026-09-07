@@ -1,6 +1,6 @@
 package okay.script
 
-import okay.deploy.{Copy, Deploy, Env, Health, Image}
+import okay.deploy.{Copy, Deploy, Deployment, Env, Health, Image, Need, Run, Service, Settings, Targets, TlsMode}
 
 /**
  * okay-script's own deployment, as the value it is (specs/deploy.md):
@@ -49,6 +49,45 @@ object ScriptDeploy:
     health = Health(livenessPath = "/healthz", readinessPath = "/healthz"),
     extraCopy = Vector(Copy("okay-script/examples/site", "/app/pages")))
 
+  /**
+   * The same deployment in the model specs/deployment.md defines --
+   * a system of services and their needs, rather than one process
+   * and its env pairs (deploy-model).
+   *
+   * Both values live here on purpose during stage 0: `spec` still
+   * renders the Dockerfile and the Helm chart that exist, `system`
+   * renders the two new targets, and having them side by side in one
+   * real application is what proves the new model can say what the
+   * old one said. The env pairs become `Settings`, the `/app/pages`
+   * copy becomes what it always was -- a volume the deployment
+   * mounts -- and the port stops being written twice.
+   */
+  val system: Deployment = Deployment(
+    name = "okay-script",
+    services = Vector(Service(
+      name = "web",
+      run = Run.Module("okayScript", "okay-script", "okay.script.Serve"),
+      settings = Settings.of("okay")(
+        "pages" -> "/app/pages",
+        "port" -> "8080",
+        // /healthz, /stats and /metrics beside the pages
+        "ops" -> "1"),
+      needs = Vector(
+        Need.Port(8080),
+        // NOT baked into the image (script-tls): /app belongs to root
+        // and the process runs as `okay`, so a store path in the image
+        // is a container that crashes on its first boot. As a VOLUME
+        // it is the deployment's, which is what it always was.
+        Need.Volume("/app/data", name = "data"),
+        Need.Tls(TlsMode.Proxy)),
+      // a Site is ready when it is live: the pages were compiled
+      // before the port was bound (okay-script-warm)
+      health = Health(livenessPath = "/healthz", readinessPath = "/healthz"))))
+
   def main(args: Array[String]): Unit =
-    val written = Deploy.write(spec, Deploy.repoRoot())
-    written.foreach(p => println(s"wrote $p"))
+    val root = Deploy.repoRoot()
+    Deploy.write(spec, root).foreach(p => println(s"wrote $p"))
+    for target <- Vector(Targets.Laptop, Targets.Host) do
+      Deployment.write(system, target, root) match
+        case Right(paths) => paths.foreach(p => println(s"wrote $p"))
+        case Left(msg) => System.err.println(s"okay-script: the ${target.name} target refused: $msg")

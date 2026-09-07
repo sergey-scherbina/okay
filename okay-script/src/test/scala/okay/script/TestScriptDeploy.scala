@@ -9,6 +9,25 @@ class TestScriptDeploy extends munit.FunSuite:
     assertEquals(Deploy.drift(ScriptDeploy.spec, Deploy.repoRoot()), Vector.empty)
   }
 
+  test("okay-script/deploy does not drift from ScriptDeploy.system, on either new target") {
+    for target <- Vector(okay.deploy.Targets.Laptop, okay.deploy.Targets.Host) do
+      assertEquals(okay.deploy.Deployment.drift(ScriptDeploy.system, target, okay.deploy.Deploy.repoRoot()),
+        Right(Vector.empty), s"the ${target.name} target has drifted")
+  }
+
+  test("the new model says what the old value said: the port and the pages, each written once") {
+    val d = ScriptDeploy.system
+    val web = d.service("web").getOrElse(fail("no web service"))
+    assertEquals(web.mainPort, Some(8080))
+    assertEquals(web.settings.env.toMap.get("OKAY_PAGES"), Some("/app/pages"))
+    assertEquals(web.settings.env.toMap.get("OKAY_OPS"), Some("1"))
+    // the data directory is a VOLUME rather than an image path -- the
+    // reason OKAY_DATA was never baked into the image (script-tls)
+    assertEquals(web.volumes.map(_.path), Vector("/app/data"))
+    // and the value round-trips, since the CLI will read it as JSON
+    assertEquals(okay.deploy.Deployment.read(okay.deploy.Deployment.json(d)), Right(d))
+  }
+
   test("the image runs Serve over the pages it carries, with the ops routes on") {
     val d = ScriptDeploy.spec
     assertEquals(d.mainClass, "okay.script.Serve")
