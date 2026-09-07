@@ -464,17 +464,18 @@ object Schedulers {
         val _ = awake.incrementAndGet()
         // `stopped` ends the loop; a worker still finishes what it holds
         var spins = 0
-        var streakStart = 0L
-        var ranStreak = 0
+        var streakStart = 0L        // when this run of work began: "am I hogging?"
+        var windowStart = 0L        // the last checkpoint: "how big are the tasks NOW?"
+        var windowRan = 0
         while !stopped do
           var t = take()
           if t == null then { t = steal(); if t != null then stolen += 1L }
           if t != null then
             spins = 0
-            if streakStart == 0L then { streakStart = System.nanoTime(); ranStreak = 0 }
+            if streakStart == 0L then { streakStart = System.nanoTime(); windowStart = streakStart; windowRan = 0 }
             val _ = t.exec()
             ran += 1L
-            ranStreak += 1
+            windowRan += 1
             if stuckAfterMillis > 0L then { val _ = completed.incrementAndGet() }
             // THE HELPER RULE, in two clauses, because the fork/join
             // table has two columns. Work stays HOME while the queue
@@ -487,13 +488,22 @@ object Schedulers {
             // average is free: the checkpoint already holds the
             // elapsed time and the count. nanoTime is read once per
             // 16 tasks, under 2 ns a task.
-            if (ranStreak & 15) == 0 && size > 0 then
-              val elapsed = System.nanoTime() - streakStart
-              if elapsed > helpAfterNanos && elapsed / ranStreak > spreadAboveNanos then
+            if (windowRan & 15) == 0 && size > 0 then
+              val now = System.nanoTime()
+              // two different questions, two different spans. Have I
+              // been hogging? — since the run of work began. Are the
+              // tasks big enough to be worth another core? — over the
+              // LAST sixteen only, because the fiber that forks a
+              // burst is itself a long task and would otherwise make
+              // every burst look expensive (measured: it made the
+              // decision flip between iterations).
+              if now - streakStart > helpAfterNanos && (now - windowStart) / windowRan > spreadAboveNanos then
                 activateNext()
+              windowStart = now
+              windowRan = 0
           else if spins < spin then
             streakStart = 0L
-            ranStreak = 0
+            windowRan = 0
             spins += 1
             Thread.onSpinWait()
           else
