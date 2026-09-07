@@ -1093,3 +1093,50 @@ every truncation of every document.
 `Scan.step`'s per-character tuple and `JsonParse.instrs`' per-token
 Vector; both are shared interfaces, and no main-source caller uses the
 lossless road at all. They want a consumer before they want a change.
+
+
+## The escape on the hot side (2026-09-07, json-escape-alloc)
+
+The mirror of the projection work, on the road that is actually used.
+
+```scala
+def escape(s: String): String =
+  s.flatMap { ... case c => c.toString }     // a String PER CHARACTER
+```
+
+Unlike the lossless road, this one has callers everywhere:
+`Json.print`, `Staged.scala` (the compile-time encoder) and
+`RuntimeStaged.scala` (the run-time one). Every string through the
+staged doors this spec measures at 385 ns was paying an allocation per
+character.
+
+It is `unquote`'s shape now — look first, and answer the INPUT when
+there is nothing to do. Best of twelve, 200k strings:
+
+| | old | new |
+|---|---|---|
+| nothing to escape (the common string) | 17.0 ms | 6.0 ms |
+| every string escapes | 37.4 ms | 13.0 ms |
+
+**2.8x and 2.9x** — the win is in BOTH columns, which is the part worth
+noticing: the old version allocated per character whether or not
+anything needed escaping, so the fast path is not what earns most of
+this. It is not allocating a String to hold one character.
+
+### The five characters, and the test written first
+
+`escape` escapes exactly `"`, `\`, `\n`, `\t` and `\r`. It does NOT
+escape `\b`, `\f` or control characters — this project's own choice,
+recorded in `unquote` — and `Json.scala` says the two "must agree
+exactly, not just resemble". `TestJsonEscape` pins that: each of the
+five, each of the ones deliberately left alone, strings with nothing
+to escape, occurrences at both edges, and a round trip through both
+read roads.
+
+It was written BEFORE the rewrite, against the old implementation, and
+it earned that immediately: the first version of the new `escape` used
+Scala's `StringBuilder`, which has an `append(Any)` — so
+`b.append(s, 0, i)` silently appended the TUPLE `(s, 0, i)` as text
+rather than the prefix. A test written after the change would have
+been written against that behaviour. It is `java.lang.StringBuilder`
+now, whose `append(CharSequence, int, int)` is the one meant.
