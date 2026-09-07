@@ -1,0 +1,21 @@
+task: intent-4b-with-more-data
+agent: fable-persist
+started: 2026-09-07
+branch: feature/intent-4b-with-more-data
+worktree: ../okay-wt-4b
+
+why: the entry's prediction — "the 4B embedder is worse at 60
+  examples because 2560 dimensions need more of them": re-run the
+  learning curve on BOTH embedders and find where the lines cross.
+  The gateway has both (Qwen3-Embedding-0.6B at 1024 dims,
+  Qwen3-Embedding-4B at 2560), and intent-instruction-prefix just
+  measured the bar a single split cannot see past (ten points on
+  sixty test messages) — so the curve runs on both mirror splits.
+
+what: TestLearningCurveBoth (Live): each model embeds the 120-row
+  fixture once; for each mirror split the training half grows
+  class-balanced 8..60; probe and centroid at each n, per model, per
+  split, and the two splits' mean; a crossing is reported only if it
+  holds on both splits. Conditions on every row. No default moves on
+  this alone: it decides which vectoriser a distilled corpus should
+  be measured with.
