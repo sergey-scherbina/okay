@@ -44,12 +44,26 @@ does not cross and stages the work; each stage below is its own claim.
       and the rule that every shelled-out failure carries its
       command, exit code and last output. Testable without a clean
       machine by emptying PATH.
-- [ ] deploy-model — stage 0: `Deployment`/`Service`/`Need`/`Settings`
-      in okay-deploy, the `laptop` (compose) and `host` (systemd)
-      targets, `Up`/`Down`/`Doctor`, and okay-script's fourteen
-      `OKAY_*` variables re-expressed as a Schema'd config whose
-      environment names are DERIVED. Proven by a real `docker compose
-      up` and a unit `systemd-analyze verify` accepts.
+- [x] deploy-model — LANDED 2026-09-07, stage 0's first half:
+      `Deployment`/`Service`/`Run`/`Need`/`Settings`/`Scale` with
+      derived Schemas, `Settings.of[A]` deriving env names from a
+      Schema, `ordered` naming a cycle, and the two pure targets —
+      `laptop` (one compose file: services, their databases and
+      caches beside them, volumes, healthcheck, secrets as
+      pass-throughs plus .env.example) and `host` (a hardened systemd
+      unit per service, an EnvironmentFile, install/uninstall that
+      leave settings and data alone). okay-script's deployment is
+      expressed BOTH ways side by side, so the model is proven on a
+      real application: the port that was written in five places is
+      written once.
+- [ ] deploy-doctor-cli — stage 0's second half: `Tool`/`Presence`/
+      `Report` and the `okay deploy` CLI over `deployment.json`
+      (render/doctor/up/down/diff/targets), plus okay-script's
+      fourteen `OKAY_*` variables re-expressed as a Schema'd config
+      with the runtime order defaults→file→environment. Proven by a
+      real `docker compose up`, a unit `systemd-analyze verify`
+      accepts, a doctor run with a PATH emptied of docker, and the
+      CLI driven from a COPY of the artifacts directory.
 - [ ] deploy-cluster — stage 1: the Helm chart grown to ConfigMap,
       Secret stubs, PVC and Ingress with TLS; `helm template`/`lint`
       in the default gate, kind optional and Live.

@@ -1,5 +1,40 @@
 # Changelog
 
+## deploy-model — a deployment is a system of services and their needs
+Completed: 2026-09-07
+Landed as 82f33602 (spec then code). Stage 0's first half. okay-deploy
+gains `Deployment`/`Service`/`Run`/`Need`/`Settings`/`Scale` with
+derived Schemas — load-bearing rather than decorative, since `render`
+writes `deployment.json` beside the target's files so the CLI can read
+the value where no repository exists, which means what the JSON cannot
+carry the model may not hold. `Settings.of[A]` derives environment
+names from a Schema, camelCase to SNAKE_CASE, which is the difference
+between this and the second list of names okay-script's fourteen
+`OKAY_*` variables already are; `ordered` puts what is needed before
+what needs it and names a cycle rather than looping on it.
+
+Two pure targets. `laptop` renders one compose file an operator could
+have written by hand: services, their databases and caches as
+containers beside them, volumes, a healthcheck from the value's own
+probe, and secrets as PASS-THROUGHS plus a `.env.example` — never a
+value. `host` renders a systemd unit per service with a hardened
+`[Service]` section, an `EnvironmentFile`, and install/uninstall
+scripts that leave settings and data alone.
+
+Three decisions the writing forced. `Health` and `Resources` are the
+ones specs/deploy.md already had, extended with `startupSeconds` and
+defaulted so every existing render stays byte-identical — a second
+pair with the same meaning would have been the two-names-for-one-thing
+drift. A `Need` a target cannot honour REFUSES by name: `host` will
+not install a Postgres on someone's server, and a unit that assumed
+one was there would have failed at 3am instead. And a `Need.Volume`
+names the path the SERVICE sees — a mount under a container, a
+directory the install script creates under systemd: one value, two
+honest answers. okay-script's own deployment is now expressed both
+ways side by side, because a model proven on a fixture is not proven;
+the port that was written in five places is written once. 18
+okay-deploy green 3x, 138 okay-script green.
+
 ## script-cli (spec) — a command line for okay-script, and an answer I had closed wrong
 Completed: 2026-09-07
 Landed as the ff of feature/script-cli-spec. Operator ask: a CLI for
