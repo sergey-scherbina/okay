@@ -1,0 +1,16 @@
+task: frame-rebind (after a restart, a frame read back from a journal is re-bound to rebuilt descriptors by an explicit request that reports what it re-derived)
+agent: okay-42
+started: 2026-09-07
+branch: feature/frame-rebind
+
+why: BACKLOG frame-rebind: `valueOf` matches a slot by identity, so a
+  frame read back with rebuilt `Slot` values cannot be read unless the
+  caller threads the new descriptors through everything (TestWalk hit
+  it; the rule is documented). `Frame.rebind(slots)` makes the restart
+  case ordinary -- and the hazard is why it is explicit and reports:
+  re-deriving a value re-parses the stored text, and "next Tuesday"
+  against a new reference day is a different date. So: rebind by name,
+  re-parse each stored text with the new descriptor, and answer the
+  frame together with what changed (name, before, after) and what could
+  no longer be read; the caller decides. Laws in okay-frame; a temporal
+  case in okay-intent shows the date moving and being reported.
