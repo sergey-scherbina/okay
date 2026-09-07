@@ -1362,13 +1362,14 @@ not a new primitive from scratch.
       fixed ports, so one test could reach the PREVIOUS container and
       get a badNonce that looked like the client bug acme-pebble had
       just fixed — one instance per test now, ports from the OS.
-- [ ] acme-ari — Automated Renewal Information: the CA publishes a
-      suggested renewal window per certificate so a mass revocation
-      can be spread out, and the client renews inside it. Needs the
-      certID (the AKI key identifier and the serial, base64url) and a
-      window parse, then feeding that into the renew decision beside
-      `renewBefore`. The cost is not the code, it is that the draft
-      still moves.
+- [x] acme-ari — LANDED 2026-09-07: `Acme.renewalWindow` reads the CA's
+      suggested window and `ensure` honours it BESIDE `renewBefore`,
+      never instead — either brings a renewal on, and a CA that
+      publishes nothing or nonsense cannot stop one. The certID is
+      the leaf's AKI keyIdentifier and serial read out of its own DER
+      by hand (the JDK exposes the AKI only as raw extension bytes).
+      Proven against Pebble's renewalInfo and, for the decision rule,
+      a stub CA both ways.
 - [ ] acme-dns01 — the challenge for a name whose HTTP this server
       does not answer, and the ONLY road to wildcards. The protocol
       half is small (a TXT record holding base64url(SHA-256(key

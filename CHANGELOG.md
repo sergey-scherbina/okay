@@ -1,5 +1,27 @@
 # Changelog
 
+## acme-ari — the CA's own renewal window, honoured beside our countdown
+Completed: 2026-09-07
+Landed as 11eb0265 (spec then code, rebased). A CA that has to revoke
+a batch of certificates otherwise makes every client it has renew in
+the same minute; ARI is the answer to that — the CA publishes a
+SUGGESTED window per certificate (`renewalInfo` in the directory) and
+a client renews inside it rather than purely on its own countdown.
+`Acme.renewalWindow` reads it, and `ensure` uses it BESIDE
+`renewBefore` and never instead: either can bring a renewal on, and a
+CA that publishes nothing, or nonsense, cannot stop one our own
+countdown wants. That rule is what the tests assert — an open window
+renews a certificate the countdown calls current, a shut one changes
+nothing, a silent CA leaves the countdown's answer alone. The certID
+is the leaf's Authority Key Identifier and serial, base64url, joined
+by a dot, both read out of the certificate's own DER by hand: the JDK
+hands the AKI over only as raw extension bytes (an OCTET STRING
+around `SEQUENCE { [0] keyIdentifier }`), so three unwraps with short
+and long form lengths and a named refusal for anything shaped
+otherwise — a reader for two known shapes, not an ASN.1 library.
+Pebble publishes `renewalInfo`, so the Live test builds the id from a
+real certificate and reads a real window. 11 okay-acme green 3x.
+
 ## staging-seam — one door for a codec over a schema value, and okay-script installs the staged one
 Completed: 2026-09-07
 Operator ask: add run-time staging where it is useful — okay-script
