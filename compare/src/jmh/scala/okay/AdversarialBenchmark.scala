@@ -80,6 +80,26 @@ class AdversarialBenchmark {
     given Scheduler = drivePlain
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
 
+  /** the pool's own floor, no okay at all: 10 000 ForkJoinTasks
+   * submitted from the caller (an EXTERNAL push: a locked submission
+   * queue and a signal per task) and joined */
+  @Benchmark
+  def forkJoin10k_rawPool(): Long =
+    val pool = java.util.concurrent.ForkJoinPool.commonPool()
+    val fs = (0 until K).map(i => pool.submit(() => step(i)))
+    fs.foldLeft(0L)((acc, f) => acc + f.join())
+
+  /** the same tasks forked from INSIDE a worker (a plain array push
+   * onto the worker's own deque): what a scheduler that owns its
+   * threads gets for free */
+  @Benchmark
+  def forkJoin10k_rawPoolInternal(): Long =
+    import java.util.concurrent.{ForkJoinPool, RecursiveTask}
+    ForkJoinPool.commonPool().invoke(new RecursiveTask[Long]:
+      def compute(): Long =
+        val fs = (0 until K).map(i => new RecursiveTask[Int] { def compute(): Int = step(i) }.fork())
+        fs.foldLeft(0L)((acc, f) => acc + f.join()))
+
   @Benchmark
   def forkJoin10k_okayDrive(): Long =
     given Scheduler = Schedulers.drive()
