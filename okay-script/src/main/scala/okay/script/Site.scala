@@ -55,10 +55,20 @@ final class Site(
    * arrives before the page was ever rendered (a reconnect after a
    * restart) renders it once to register the app. */
   def ws: PartialFunction[Request, Stage[Frame, Frame, Unit]] = {
-    case r if liveOf(r).isDefined => liveSession(liveOf(r).get, cookiesOf(r).get(SessionCookie))
+    case r if liveOf(r).isDefined =>
+      val (app, id) = liveHit(r).get
+      val cookie = cookiesOf(r).get(SessionCookie)
+      // the session the cookie names, if it is live: a durable app reads
+      // and writes its state there. Only a BOUND handle is passed on —
+      // a stale cookie must not mint a session no browser will ever
+      // hear of (a socket carries no Set-Cookie)
+      val bound = cookie.map(c => sessions.handle(Some(c))).filter(_.id.nonEmpty)
+      liveSession(app, cookie, bound, id)
   }
 
-  private def liveOf(r: Request): Option[api.Live[?]] =
+  private def liveOf(r: Request): Option[api.Live[?]] = liveHit(r).map(_._1)
+
+  private def liveHit(r: Request): Option[(api.Live[?], String)] =
     val (path, query) = splitUrl(r.url)
     parseQuery(query).get("__live").flatMap { id =>
       resolve(path) match
@@ -66,7 +76,7 @@ final class Site(
           Option(lives.get((f, id))).orElse {
             handle(Request.get(path)): Unit // a render registers what the page mounts
             Option(lives.get((f, id)))
-          }
+          }.map(app => (app, id))
         case _ => None
     }
 
@@ -84,8 +94,10 @@ final class Site(
     through[Event, Frame, Async, Unit, Unit](app.push)(!.widen[Unit, Take % Event + Writer % Frame, Async](eventsToFrames))
 
   /** `key` is the session cookie, when the socket carries one: the
-   * app resumes the state that key last reached (script-live-resume) */
-  private def liveSession(app: api.Live[?], key: Option[String]): Stage[Frame, Frame, Unit] =
+   * app resumes the state that key last reached (script-live-resume);
+   * `bound` the live session it names, where a durable app keeps its
+   * state (script-live-durable); `name` the mount id */
+  private def liveSession(app: api.Live[?], key: Option[String], bound: Option[api.Session], name: String): Stage[Frame, Frame, Unit] =
     val closed = Json.print(WireJson.eventJson(Event.Closed))
     val framesToLines: Stage[Frame, String, Unit] =
       Stage.transduce(())((_, f) =>
@@ -97,7 +109,7 @@ final class Site(
     val linesToFrames: Stage[String, Frame, Unit] =
       Stage.transduce(())((_, l) => Stage.tell[String, Frame](Frame.Text(l)), _ => pure(()))
     through[Frame, String, Frame, Unit, Unit](
-      through[Frame, String, String, Unit, Unit](framesToLines)(app.session(key)))(linesToFrames)
+      through[Frame, String, String, Unit, Unit](framesToLines)(app.session(key, bound, name)))(linesToFrames)
 
   /** the synchronous core: one request in, one response out */
   def handle(r: Request): HttpResponse =

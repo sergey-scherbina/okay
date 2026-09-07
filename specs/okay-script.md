@@ -1316,14 +1316,36 @@ session. No cookie, no resume, nothing remembered.
 
 In memory, this process only — a restart starts over, and a key is
 never evicted while the process lives (human-scale, stated, like
-`Hub`). The durable half — okay-ui's ui-durable, a journal plus
-refold on okay-persist, so a restart resumes too — stays filed; this
-is the reconnect the entry named, not the restart.
+`Hub`) — for an app declared with `Live(...)`.
+
+**The durable half (script-live-durable, the same day).** The
+container already had the durable thing: `Sessions.persisted(store)`
+keeps a session's attributes across a restart, swept by TTL,
+clustered by `Sessions.shared`. So an app declared with
+`Live.durable(init)(view)(update)(using Schema[S])` keeps its state
+AS A SESSION ATTRIBUTE — `okay.live.<id>`, CBOR in base64 — read
+before the in-memory copy and written on `Closed`, through the
+`Handle` `Site.ws` binds from the socket's cookie. Only a BOUND
+handle is passed on: a socket with a stale cookie mints nothing (a
+socket carries no `Set-Cookie`, so a minted session would be one no
+browser ever hears of). A restart, a second node sharing the
+sessions topic, the TTL sweep, `invalidate` — all the session's,
+and now the app's, with nothing new to operate. Not the journal
+plus refold the entry named: the state is one value per session,
+written whole when the socket closes, which is what a session
+attribute is; a journal would buy replay of the events in between,
+which no page has asked for. A torn attribute decodes to `None` and
+the app starts over — damage is data.
 
 - [x] mounting a Live app opens the session: the page sets the cookie.
 - [x] in-JVM: the same cookie resumes where the last socket left off
       (the tree at `count: 2`, then `count: 3`); another cookie, or
       none, starts from `init`, and none remembers nothing.
+- [x] durable: over one `MemoryStore`, a second `Site` (a new
+      process's worth of memory) resumes the `Live.durable` counter
+      at 2 and goes on; a cookie the store never saw binds nothing
+      and mints nothing; the plain `Live` app forgets across Sites,
+      as stated.
 
 ### What is deliberately NOT here
 

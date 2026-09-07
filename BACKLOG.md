@@ -1209,8 +1209,14 @@ not a new primitive from scratch.
       last reached (a `TDict[String, S]` inside the app, no cast),
       `session(key)` starts from it and remembers on `Closed`;
       `Site.ws` reads the cookie, `mount` opens the session so the
-      page sets one. In memory, this process only; the durable half
-      (journal + refold, so a RESTART resumes too) stays filed here.
+      page sets one. In memory for a plain `Live`. DURABLE 2026-09-07
+      (script-live-durable): `Live.durable(...)(using Schema[S])`
+      keeps the state as a session attribute (`okay.live.<id>`, CBOR
+      in base64) through the bound `Sessions.Handle`, so
+      `Sessions.persisted`/`shared` make a restart and a second node
+      resume too, swept by the session TTL; not a journal + refold —
+      one value per session written on close is what a session
+      attribute is, and nobody has asked for replay in between.
 - [x] okay-script-live: server-pushed updates — a Live app only
       changes on a client event; a source merged in (`Ui.run`'s
       `external`) is what a ticking clock or a shared poll needs.

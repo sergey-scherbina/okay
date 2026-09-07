@@ -1,5 +1,22 @@
 # Changelog
 
+## script-live-durable — a Live app with a Schema keeps its state in the session, so a restart resumes too
+
+The container already had the durable thing: `Sessions.persisted`
+keeps a session's attributes across a restart, `Sessions.shared`
+across nodes, both swept by TTL. `Live.durable(init)(view)(update)
+(using Schema[S])` keeps the app's state as a session attribute
+(`okay.live.<id>`, CBOR in base64), read before the in-memory copy
+and written when the socket closes, through the handle `Site.ws`
+binds from the socket's cookie — only a bound one, so a stale cookie
+mints no session a browser will never hear of. A restart, a second
+node, the TTL sweep, `invalidate`: all the session's, and now the
+app's. Not a journal plus refold: one value per session written on
+close is what a session attribute is. In-JVM: two Sites over one
+store, the second resumes the counter at 2 and goes on; a cookie the
+store never saw binds nothing and mints nothing; a plain `Live`
+forgets across Sites, as stated.
+
 ## script-live-resume — a Live session resumes from the state its last socket reached, keyed by the session cookie
 
 A socket was one session from `init`; a reload started the app over.

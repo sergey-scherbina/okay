@@ -23,14 +23,23 @@ class TestLiveResume extends munit.FunSuite:
       |${mount("counter", counter)}
       |""".stripMargin
 
-  private def withSite[A](f: Site => A): A =
+  private val durablePage = page.replace("Live(0)", "Live.durable(0)")
+
+  private def withSite[A](f: Site => A): A = withSiteOf(page, Sessions())(f)
+
+  private def withSiteOf[A](text: String, sessions: Sessions)(f: Site => A): A =
     val root = Files.createTempDirectory("okay-script-live-resume-")
-    Files.writeString(root.resolve("counter.md"), page): Unit
-    val site = Site(root)
+    Files.writeString(root.resolve("counter.md"), text): Unit
+    val site = Site(root, sessions = sessions)
     try f(site)
     finally
       site.close()
       Files.walk(root).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => Files.deleteIfExists(p): Unit)
+
+  private def cookieOf(site: Site): String =
+    val resp = site.handle(Request.get("/counter"))
+    resp.headers.collect { case (k, v) if k.equalsIgnoreCase("set-cookie") && v.startsWith(s"${Site.SessionCookie}=") => v }
+      .head.drop(Site.SessionCookie.length + 1).takeWhile(_ != ';')
 
   private def press(k: String) = Frame.Text(Json.print(WireJson.eventJson(Event.Pressed(k))))
   private val close = Frame.Close(1000, "")
@@ -43,6 +52,41 @@ class TestLiveResume extends munit.FunSuite:
     out.collect { case Frame.Text(s) => s }.toVector
 
   private def treeText(line: String): Option[Ui] = WireJson.uiOf(Json.parse(line))
+
+  test("durable: a Live.durable app keeps its state in the session, and a second Site over the same store resumes it") {
+    val store = new okay.persist.MemoryStore
+    val cookie = withSiteOf(durablePage, Sessions.persisted(store)) { site =>
+      val c = cookieOf(site)
+      val first = drive(site, Some(c), List(press("inc"), press("inc"), close))
+      assertEquals(treeText(first(0)), Some(Ui.Column(Vector(Ui.Text("count: 0"), Ui.Button("+1", "inc")))))
+      // the state is an attribute of the session the cookie names
+      val sess = site.sessions.handle(Some(c))
+      assert(sess.get("okay.live.counter").isDefined, sess.attributes.toString)
+      c
+    }
+    // "a restart": a new Site, a new process's worth of memory, the same store
+    withSiteOf(durablePage, Sessions.persisted(store)) { site =>
+      assertEquals(treeText(drive(site, Some(cookie), List(press("inc"), close))(0)),
+        Some(Ui.Column(Vector(Ui.Text("count: 2"), Ui.Button("+1", "inc")))))
+      assertEquals(treeText(drive(site, Some(cookie), List(close))(0)),
+        Some(Ui.Column(Vector(Ui.Text("count: 3"), Ui.Button("+1", "inc")))))
+      // a cookie the store never saw binds nothing, mints nothing, resumes nothing
+      val before = site.sessions.size
+      assertEquals(treeText(drive(site, Some("stranger"), List(press("inc"), close))(0)),
+        Some(Ui.Column(Vector(Ui.Text("count: 0"), Ui.Button("+1", "inc")))))
+      assertEquals(site.sessions.size, before)
+    }
+    // the plain app forgets across Sites: memory only, as stated
+    val plain = withSiteOf(page, Sessions.persisted(store)) { site =>
+      val c = cookieOf(site)
+      drive(site, Some(c), List(press("inc"), close)): Unit
+      c
+    }
+    withSiteOf(page, Sessions.persisted(store)) { site =>
+      assertEquals(treeText(drive(site, Some(plain), List(close))(0)),
+        Some(Ui.Column(Vector(Ui.Text("count: 0"), Ui.Button("+1", "inc")))))
+    }
+  }
 
   test("mounting a Live app opens the session, so the page sets the cookie a socket can resume by") {
     withSite { site =>

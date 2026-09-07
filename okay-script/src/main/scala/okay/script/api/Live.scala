@@ -22,7 +22,12 @@ import okay.TDict
  * the shown tree has, which is how okay-ui's own timer test ticks.
  */
 final class Live[S](val init: S, val view: S => Ui, val update: (S, Event) => S,
-                    val push: Source[Event] = pure(())):
+                    val push: Source[Event] = pure(()),
+                    /** with a Schema, the state is also a SESSION ATTRIBUTE
+                     * (script-live-durable): read before the in-memory copy,
+                     * written on Closed -- so a restart, a second node sharing
+                     * the sessions topic, and the TTL sweep all apply to it */
+                    val schema: Option[okay.codec.Schema[S]] = None):
   /** the tree a fresh session shows first -- also the SSR content */
   def first: Ui = view(init)
 
@@ -38,10 +43,17 @@ final class Live[S](val init: S, val view: S => Ui, val update: (S, Event) => S,
    * pure `Wire.serve`); with a `key`, it starts from the state that
    * key last reached and, on Closed, remembers the state it reached
    * -- its first frame, the full tree, puts a reconnecting browser
-   * right. Without a key the final state is discarded. */
-  def session(key: Option[String]): Stage[String, String, Unit] =
-    val from = key.flatMap(resumed.get).getOrElse(init)
-    Wire.serve(from)(view)(update).map(s => key.foreach(k => resumed.put(k, s)))
+   * right. Without a key the final state is discarded. With a
+   * Schema and a bound session (`attrs`), the durable copy under
+   * `okay.live.<name>` is read first and written last. */
+  def session(key: Option[String], attrs: Option[Session] = None, name: String = ""): Stage[String, String, Unit] =
+    val attr = s"okay.live.$name"
+    val stored = for sc <- schema; a <- attrs; v <- a.get(attr); s <- Live.decode(sc, v) yield s
+    val from = stored.orElse(key.flatMap(resumed.get)).getOrElse(init)
+    Wire.serve(from)(view)(update).map { s =>
+      key.foreach(k => resumed.put(k, s))
+      for sc <- schema; a <- attrs do a.set(attr, Live.encode(sc, s))
+    }
 
   /** a session with no key: from `init`, remembering nothing */
   def session: Stage[String, String, Unit] = session(None)
@@ -52,6 +64,20 @@ final class Live[S](val init: S, val view: S => Ui, val update: (S, Event) => S,
 object Live:
   def apply[S](init: S)(view: S => Ui)(update: (S, Event) => S, push: Source[Event] = pure(())): Live[S] =
     new Live(init, view, update, push)
+
+  /** an app whose state survives the process: kept in the session
+   * (script-live-durable), CBOR in base64, under `okay.live.<id>` */
+  def durable[S](init: S)(view: S => Ui)(update: (S, Event) => S, push: Source[Event] = pure(()))
+                (using sc: okay.codec.Schema[S]): Live[S] =
+    new Live(init, view, update, push, Some(sc))
+
+  private[api] def encode[S](sc: okay.codec.Schema[S], s: S): String =
+    java.util.Base64.getEncoder.encodeToString(okay.codec.Cbor.write(s)(using sc))
+
+  /** damage is `None`: a torn attribute is a session that starts over */
+  private[api] def decode[S](sc: okay.codec.Schema[S], v: String): Option[S] =
+    scala.util.Try(java.util.Base64.getDecoder.decode(v)).toOption
+      .flatMap(b => okay.codec.Cbor.read[S](b)(using sc).toOption)
 
   /** where the container serves the patch consumer */
   val JsPath = "/__okay/live.js"
