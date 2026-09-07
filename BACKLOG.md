@@ -4460,9 +4460,36 @@ goes through TWO layers (the wrapper and the partitioned buffer), and
 before it, through the wrapper and its sampling. The channel-level
 version has neither — `SentinelChannel` holds the buffer in a volatile
 field and REPLACES it, so there is exactly one layer on each side of
-the swap. That is the version this entry now proposes, and its cost is
-an audit: seven methods in `SentinelChannel` read `ring` more than
-once, and each of those reads must become one local, or two reads can
-straddle the swap and compare a ring against a part of itself. The
-adoption mechanism (`AdaptiveFifo(first, firstOwner)`) is proven and
-its laws are written; it is the wrapper that has to go, not the idea.
+the swap. That is the version this entry now proposes.
+
+STATE, so whoever picks this up knows what is already paid for:
+
+- [x] THE AUDIT, done 2026-09-07 (`read-once`): six methods in
+      `SentinelChannel` read the buffer more than once in one
+      operation and now read it once into a local. No behaviour
+      change, gate green — and after a swap, two such reads could
+      have compared a ring against a part of itself.
+- [ ] the field becomes `@volatile private var`, and `growingTo(parts)`
+      arms it. Nothing else in the channel changes: the locals are
+      already there.
+- [ ] the sender waiter queues are sized for the GROWN part count at
+      construction, not resized at the swap — the array is small and
+      growing one under concurrent senders is a race nobody needs.
+- [ ] the swap itself: one CAS, losers use the winner's buffer, and
+      `AdaptiveFifo(first = the ring, firstOwner = the producer that
+      filled it)` — both already built and under laws in the reverted
+      lane's history (see the commit for `Growing`).
+- [ ] `wakeAllSenders()` immediately after, because a producer parked
+      for room in part 0 must be able to see the new parts. This is
+      the hazard of the whole design and the law to write first.
+- [ ] the trigger: the pushing thread SAMPLED every 64th push, which
+      is the only one of three that measured (a refused push does not
+      fire — a ring under sixteen producers is slow with room to
+      spare).
+- [ ] measure `oneRing_chunk` (must not move), `adaptive_chunk` (must
+      not move) and a new lane that starts with one producer and adds
+      fifteen, which is the only shape the swap is for.
+
+The adoption mechanism (`AdaptiveFifo(first, firstOwner)`) is proven
+and its laws are written; it is the WRAPPER that has to go, not the
+idea.
