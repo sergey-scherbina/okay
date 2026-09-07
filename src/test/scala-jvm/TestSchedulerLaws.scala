@@ -1,7 +1,7 @@
 package okay
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
-import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
+import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 import scala.jdk.CollectionConverters.*
 
 /** The laws every member of the scheduler family owes
@@ -126,7 +126,7 @@ class TestSchedulerLaws extends munit.FunSuite {
     given Scheduler = Schedulers.adaptive.workers(1).watched(scala.concurrent.duration.Duration(50, "ms")).build
     val ch = Channel[Int](4)
     val reader = Async.spawn(async {
-      val filler = Async.spawn(async { ch.sendBlocking(9); 0 })
+      val filler = Async.spawn(async { val _ = ch.sendBlocking(9); 0 })
       val got = ch.receiveBlocking()
       val _ = filler.join()
       got

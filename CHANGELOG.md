@@ -1,5 +1,61 @@
 # Changelog
 
+## schedulers-family — a family, a builder, and a scheduler that decides for itself
+
+The operator's direction after the fork/join row: schedulers the way
+queues are done — a family with named properties, a builder facade to
+choose by, an adaptive member, and one member not slower than kyo's.
+All four, measured.
+
+**`Schedulers.own` and `.adaptive` are builders** shaped like
+`Queues`: `Schedulers.own.workers(4).forLongTasks.build`,
+`Schedulers.adaptive.workers(8).watched(200.millis).build`, with
+`spinning`, `wakeAbove`, `helpAfter` and `spreadAbove` beside them and
+two presets that pin the one decision the scheduler otherwise makes
+for itself. `build` returns a `Schedulers.Running` — a `Scheduler`
+that is also `AutoCloseable`, with an id in its thread names, because
+a scheduler that owns threads must give them back.
+
+**The mechanism is one worker asking two questions at every sixteenth
+task**: have I been busy longer than `helpAfter` since this run of
+work began, and are my LAST sixteen tasks averaging more than
+`spreadAbove`? Both true, it wakes one sleeper. Fibers of thirty
+nanoseconds stay where they were forked, which is kyo's win; fibers of
+microseconds spread over the machine, which is the pool's. Measured,
+one tight run, us per 10 000 fork/joins:
+
+| | 30 ns a fiber | 2.5 us a fiber |
+|---|---|---|
+| kyo | 880 | 27 097 |
+| **okay `own`, deciding** | **750** | **3 645** |
+| `own.forShortTasks` (kyo's policy pinned) | 674 | 26 430 |
+| `own.forLongTasks` (the pool's pinned) | 2 038 | 3 678 |
+
+The two preset rows are the two runtimes this table has been comparing
+for a week, in one scheduler; the default row is within 11 % of the
+better one in each column without being told which case it is in.
+
+**`adaptive` adds the stuck-check**: work pending and nothing at all
+completing since the last look means a worker is blocked, so start
+another. A fiber that blocks inside a worker then costs latency
+instead of the program — the law that deadlocks under `own` and
+passes under `adaptive`.
+
+**Everything found on the way was in the WAKING, not the queues**, and
+counters found each in one run: an "active prefix" that unparked only
+the worker at its edge (one activation, two workers, 10 000 tasks);
+per-worker inboxes with a random victim, which woke a sleeper for
+nearly every external submission; an average taken from the start of a
+run of work, which let the burst-forking fiber make every burst look
+expensive and flipped the decision between iterations. A Chase-Lev
+deque per worker is in as well; its own contribution is unmeasured,
+because it landed while the first defect was masking everything.
+
+`TestSchedulerLaws`: nine laws over six members, 34 tests.
+`docs/schedulers.md` is the page; §4b of docs/benchmarks.md has the
+numbers and `specs/schedulers.md` the design.
+
+Gate: 82 modules, 2 689 tests, 0 failures, 0 warnings.
 ## script-config — seventeen environment variables become one value
 Completed: 2026-09-07
 Landed as 4cd877cd (spec then code). okay-script read `OKAY_TLS_RELOAD`
