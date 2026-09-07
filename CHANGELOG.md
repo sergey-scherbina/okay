@@ -1,5 +1,33 @@
 # Changelog
 
+## hole-scan — the hole in the unbounded queue, measured and left alone
+
+Reading Jiffy (arXiv 2010.14189v2) against our code corrected two
+things and found one. Corrected: our unbounded buffer already enqueues
+the way that paper does — one `getAndIncrement`, no CAS loop, a whole
+run per `getAndAdd` — and fetch-and-add for the BOUNDED ring would be
+a mistake rather than a missing optimisation, since a bounded claim
+can be refused and an FAA cannot be given back.
+
+Found: `Segments.pop` treats "claimed but not yet published" as
+"nothing ready", so a producer descheduled between its claim and its
+publish hides everything behind it. A probe held one hole open while
+5 000 more elements were published: the consumer saw 0 of 5 001, and
+all of them the moment the hole filled. Nothing is lost and nothing
+deadlocks — but on virtual threads, which the runtime may unmount
+anywhere, that window is not theoretical.
+
+Left alone, with the numbers for why: the unbounded buffer beats the
+bounded ring at every producer count (131 vs 142 at one, 472 vs 803 at
+four, 673 vs 1 485 at sixteen), so the hazard costs no throughput. It
+costs TAIL LATENCY, which a chunked benchmark cannot see, and the fix
+— Jiffy's forward scan — needs a handled-state per slot and a lazily
+advancing head, a redesign of a multi-consumer path that has been
+wrong once. The entry says to reopen with a latency percentile, not
+with this measurement. The probe hook was removed too: a mutable field
+read per push cost 1.15x at one producer, and a diagnostic that costs
+the hot path does not belong in main code.
+
 ## consumer-claim — a part is drained under a claim, and consumers stop walking one cursor
 
 The operator's design (2026-09-07): a queue per producer, and
