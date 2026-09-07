@@ -286,6 +286,92 @@ floor. An attempt to shave the join — parking on the
 callback and a slot — measured WORSE, 19.6 → 22.3 in every round
 (`get()` spins before it parks), and was reverted.
 
+## 4b. Adversarial lanes — the rows we expected to lose
+
+Three lanes chosen because the predictions in the claim said we lose
+them (`compare/src/jmh/scala/okay/AdversarialBenchmark.scala`,
+`-f 1 -wi 3 -i 5`, sbt-free launcher, quiet box, us/op, ±error):
+
+| lane | okay | raw Loom | zio | cats | kyo |
+|---|---|---|---|---|---|
+| fork/join 10 000 fibers | 2712 ±91 | 2632 ±32 | 2786 ±83 | 2586 ±20 | **830 ±27** |
+| many-to-many 4×4, one channel | 4964 ±96 | — | **3122 ±23** | 4213 ±142 | — |
+| many-to-many 16×16 | 9187 ±143 | — | **7012 ±192** | 9411 ±293 | — |
+| cancel 1 000 parked fibers | 1089 ±32 | — | 786 ±43 | **692 ±10** | — |
+
+Predicted: lose all three. Measured: lose two, and sit on the floor
+for the third.
+
+- **Fork/join is Loom's floor.** okay, ZIO and cats all read the raw
+  virtual-thread number within noise: a fork IS a virtual thread
+  start and a join IS its completion. kyo is 3.3x ahead because its
+  fibers are not threads at all — a fork is an enqueue onto its own
+  scheduler. We are not slower than the floor we chose; we chose the
+  floor with the higher constant.
+- **Many-to-many is one ring and one park per blocked hand-off.** All
+  P producers and C consumers contend on one Vyukov ring's head/tail,
+  and every blocked side parks a virtual thread (`LockSupport.park`
+  behind `Platform.block`) where ZIO suspends a fiber — an enqueue of
+  a continuation, no thread involved. The evidence that the ring is
+  the cost and not the park: the partitioned adaptive buffer, one
+  part per producer, reads 2502 at 4×4 — under ZIO — with the same
+  park. What it costs elsewhere is the second half of this section.
+- **Cancellation is a thread interrupt against a fiber flag.** Our
+  cancel is `Thread.interrupt` on a parked virtual thread: an unpark,
+  an `InterruptedException` and its unwind. ZIO and cats set a flag
+  the fiber checks at its next suspension point. A stackless
+  `InterruptedException` was tried and refuted (1.01x, the trace is
+  not the cost); the O(1) waiter queue likewise (0.96x, kept for
+  being simpler). The remaining 1.4–1.6x is the unpark and unwind,
+  and is the price of fibers that are threads.
+
+**What was done about the many-to-many row, and why the default did
+not change (adversarial-lanes, 2026-09-06/07).** The operator asked
+for the adaptive buffer as the default channel. It was made so, and
+the law that decision required — P producers × C consumers, one
+channel, every consumer sees the end, every element exactly once —
+found three defects in a day, all fixed and each now under a law:
+
+- `AdaptiveFifo` opened a part at the producer's CLAIM index but every
+  scan walked `0 until open`, a COUNT; one producer slow between
+  claiming and opening left a whole output in a slot nobody scanned
+  (16×16: late producers' elements lost entirely). The slot a
+  producer opens is now the count `open` had before it.
+- `seal` placed one end mark per CALLER, not per part (83 seals for
+  16 parts; 11 019 elements unread when every consumer had been told
+  the stream was over). A CAS claim fixed that and opened a second
+  window — a refused push and a concurrent seal crossing left a part
+  unsealed for good, a consumer parked on a closed empty channel —
+  closed by a three-state seal (`TestChannelLaws` had a hang in one
+  run of two; six of six after).
+- the channel's waiter queue was woken from the live queue instead of
+  a snapshot, so a receiver that re-parked was re-woken for ever: the
+  100 % CPU `close → wakeAll → receiveAsync` that had looked like a
+  livelock in the buffer.
+
+With all three in, one round of the ring-against-adaptive A/B on the
+default's own paths read, same run, quiet box:
+
+| lane | ring default | adaptive default |
+|---|---|---|
+| `manyToMany_okay` 4×4 | 4838 ±233 | **2502 ±69** (zio 3105) |
+| `okayChannelForeach_chunkNative_runForeach` | **18.2 ±0.3** | 427 ±768 |
+| `okayChunked` (merge, 256) | **216 ±3** | 2509 ±827 |
+| `bufferPerElement` / `bufferDrained` | **552 / 177** | 2218 ±1385 / 714 ±1711 |
+| `zioChunked` (control) | 73 | 620 ±583 |
+
+The control moved 8x in the adaptive arm, so that arm is not a
+measurement — it was taken under page-outs — and the second round's
+adaptive arm **deadlocked** in `manyToMany_okay` 4×4 after two warmup
+iterations: four consumers parked on "empty", one producer parked on
+"full", the fourth face of the same family and not yet named (dump
+and reproducer in BACKLOG, `adaptive-p-x-c-deadlock`). So the ring
+stays the default. What stands from the exercise: the P×C win of the
+partitioned buffer is real and now correct where the laws reach; the
+per-part capacity on single-producer paths is unmeasured (one bad
+round is not a number); and the buffer has one more race to find
+before it is a default anyone should ship.
+
 ## 5. Stream pipeline — map/filter/take(1000)/sum
 
 One session, every lane of `StreamOpsBenchmark` (chunked-source-sweep,

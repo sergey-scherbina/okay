@@ -3567,3 +3567,24 @@ measured its interpreted door at 0.92x circe and called that the
 choice; the existing staged road was already better, and that lane
 did not say so. The price list now carries all three doors and their
 prices; the fastest is this one.
+## adaptive-p-x-c-deadlock — the partitioned buffer still deadlocks, rarely, at P × C
+
+Fourth face of the adaptive-buffer family (adversarial-lanes,
+2026-09-07), after dense part indices, the three-state seal and the
+snapshot `wakeAll` were in. `AdversarialBenchmark.manyToMany_okay`
+4×4 under the ADAPTIVE default: warmup iteration 3 never returned;
+the fork sat at 0 % CPU for 2 h 39 m with four consumers parked in
+`receiveBlocking`, one producer parked in `sendBlocking`
+(`blockAccepted`), the benchmark thread at `ps.foreach(_.join())`.
+Dump kept by the lane (`adaptive-4x4-deadlock.jstack`). Not reproduced
+by `TestManyToMany` (6 runs × 5 shapes × 4 buffers) nor by
+`TestChannelLaws` × 6; it needs thousands of rounds. The shape to
+suspect: a sender parked on a full part whose emptying pop woke a
+different route's queue — `wakeSender()` wakes the senders of
+`ring.lastRoute`, the part last POPPED, which is not the parked
+sender's part when consumers rotate across parts. To hunt: the
+timed-park diagnosis in `CanBlock.block` (6 s without an answer →
+print the channel's counters and `sealedAt`) that cracked the seal
+race, plus the sender's route and `sendersAt` sizes. The ring stays
+the default until this is named; the adaptive buffer is opt-in
+(`Queues.strong.adaptive`).

@@ -1,5 +1,47 @@
 # Changelog
 
+## adversarial-lanes — the rows we expected to lose, the adaptive default that was tried, and the three defects it paid for
+
+Three lanes this project never had, because it expected to lose them
+(`AdversarialBenchmark`): fork/join as throughput at 10 000 fibers,
+many-to-many contention over one channel, cancellation of 1 000 parked
+fibers. Predictions in the claim before the numbers; §4b has the
+table and the causes. We lose two of three as predicted — cancellation
+1.4–1.6x behind (a thread interrupt against a fiber flag), many-to-many
+1.3–1.6x behind ZIO (one ring, one park per blocked hand-off) — and
+sit on the Loom floor for the third, where kyo's own scheduler is 3.3x
+ahead of everyone.
+
+**The adaptive default, tried and withdrawn on evidence.** The
+partitioned buffer beats ZIO at P × C (2502 against 3105 at 4×4), so
+the operator asked for it as the default. Making it so required a
+P × C law, and the law found three defects in one day: part indices
+that scans could not reach (whole producers' outputs lost), an end
+mark placed per caller rather than per part and then a claim that
+could strand a part unsealed (a consumer parked for good on a closed
+empty channel), and a waiter queue woken from the live queue rather
+than a snapshot (the 100 % CPU "livelock"). All three fixed, each
+under a law (`TestManyToMany`, `TestMergeEnds`, `TestChannelLaws` six
+of six where it hung one in two). A fourth face remains — a rare
+P × C deadlock after thousands of rounds, dumped and filed
+(`adaptive-p-x-c-deadlock`) — and the one A/B round with the default
+switched was taken under page-outs (the control moved 8x). So the ring
+stays the default and the adaptive buffer stays opt-in: correct where
+the laws reach, with one race left to name.
+
+**Two attempts at the losing rows refuted and recorded** (a stackless
+cancellation exception, 1.01x; an O(1) waiter queue, 0.96x — kept for
+being simpler, labelled as measuring nothing).
+
+**And the 143, solved for good.** Not an agent, not a pkill in anyone's
+turn: two launchd agents from another project on the operator's Mac —
+`io.scalascript.build-ram-guard` (every 20 s; kills the heaviest JVM
+matching `sbt-launch|sbt.script|jmh|bloop|…` under memory pressure)
+and `io.scalascript.kill-stale-builders` (hourly; a JMH host waiting on
+its fork is "idle"). Their own logs list every death by pid and cwd.
+Nothing in this repository was at fault; AGENTS.md says so.
+
+Gate: 82 modules, 2447 tests, 0 failures, 0 warnings.
 ## intent-4b-with-more-data — the learning curve on both embedders: the lines do not cross
 
 The entry predicted the 4B embedder needs more examples than 60 and
