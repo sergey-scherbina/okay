@@ -627,6 +627,46 @@ reading `.Values.ingress.issuer` where `values.yaml` had no `ingress`
 key at all. A golden-file test would have been perfectly happy with
 that chart. A real `kind` cluster stays optional and unwritten.
 
+## Results, stage 1
+
+**deploy-cluster (2026-09-07).** The `cluster` target renders a Helm
+chart from the same value the laptop and the host render, and
+okay-script's own chart is committed beside its compose file and its
+units. Three things the writing settled:
+
+- **The gate followed the repository's rule, not this module's
+  opinion.** The spec above says why, and the correction is worth
+  more than the section it replaced: helm being pure is exactly the
+  kind of local exception that erodes a general rule. It runs under
+  `sbt integrationTest`, where it caught the first rendering on the
+  first try.
+- **`helm lint` found a defect no golden file would have.** The
+  ingress annotation read `.Values.ingress.issuer` and `values.yaml`
+  had no `ingress` key: `nil pointer evaluating interface {}.issuer`.
+  A byte-comparison test against a recorded rendering would have
+  passed happily, because the bytes were exactly what the renderer
+  meant to write. The tool that consumes the output is the only thing
+  that knows the output is wrong.
+- **`kubectl` cannot join that gate, and the reason is worth
+  recording.** `kubectl apply --dry-run=client` still asks a cluster
+  for the API group list, so with no cluster it fails on every
+  document — which is why the target requires kubectl for `up` but
+  the gate is helm alone.
+
+- [x] `helm lint` and `helm template` accept the chart, and an
+      override with `--set` changes exactly what the operator named.
+- [x] no file under `templates/` is a Secret; the reference is a
+      `secretKeyRef` and `secrets.sh` carries the `kubectl create
+      secret generic` command with no value in it.
+- [x] a self-signed certificate is refused by name; Acme is a
+      cert-manager annotation, Files an Ingress `tls` stanza, Proxy an
+      Ingress with no TLS at all.
+- [x] a database is a one-replica StatefulSet whose manifest says so,
+      with its password from the Secret nobody templated — never the
+      laptop target's fixed `local-only`.
+- [x] okay-script's committed chart does not drift from its value,
+      checked with the same test as every other target.
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of
@@ -667,9 +707,11 @@ and each ends with something an operator can actually use:
   testable without a clean machine — and the CLI driven from a COPY
   of the artifacts directory with the repository absent, which is the
   claim about self-containment being tested rather than asserted.
-- **Stage 1 — cluster.** The Helm chart grown to ConfigMap, Secret
-  stubs, PVC and Ingress. Proven by `helm template` and `helm lint`
-  in the default gate, and optionally by kind in a Live test.
+- **Stage 1 — cluster.** DONE 2026-09-07. The Helm chart grown to
+  ConfigMap, PVC, Ingress and a Secret the chart deliberately does
+  NOT own. Proven by `helm template` and `helm lint` — under
+  `integrationTest` rather than the default gate, per the repository's
+  Live rule; kind stays optional and unwritten.
 - **Stage 2 — PaaS.** fly/render/railway manifests, golden-tested; a
   real deploy needs an account and stays a documented manual step.
 - **Stage 3 — the clouds.** Terraform per cloud, proven by
