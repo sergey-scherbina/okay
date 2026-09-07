@@ -548,6 +548,71 @@ defaults → file → environment (`script-config`), and the systemd unit
 put in front of a real `systemd-analyze verify`, which needs a Linux
 box this session does not have.
 
+## The cluster target (stage 1)
+
+A `Deployment` is a system of services; Kubernetes is the one target
+whose own model is the same shape, so the mapping is mostly naming
+rather than invention:
+
+| the model | the chart |
+|---|---|
+| `Service` with `Run.Image` | a Deployment and, when it has a port, a Service |
+| `Settings` | a ConfigMap, taken whole with `envFrom` |
+| `Secret` reference | an `env` entry with `valueFrom.secretKeyRef` |
+| `Need.Volume` | a PersistentVolumeClaim and its mount |
+| `Need.Dns` + `Need.Tls` | an Ingress |
+| `Need.Database` / `Need.Cache` | a one-replica StatefulSet, a PVC and a Service |
+| `Need.Neighbour` | nothing: the service name IS the DNS name |
+| `Scale.replicas` | `replicaCount` in values |
+
+Four decisions in that table are not obvious, and each is the
+difference between a chart that works and one that ruins a Friday.
+
+**The Secret is NOT templated.** The obvious move — a
+`templates/secret.yaml` with the keys and empty values, for the
+operator to fill in — is a trap: `helm upgrade` would overwrite the
+real Secret with blanks, and the first symptom is every pod
+crash-looping at 3am with an empty password. So the chart REFERENCES
+a Secret it does not own (`<release>-secrets`), and the rendering
+carries `secrets.sh` — the exact `kubectl create secret generic`
+command, with the reference name per key and no value in it. The
+rule from "Secrets" holds unchanged: no target renders a value, and
+a miss names the reference.
+
+**A self-signed certificate is refused on this target.** `TlsMode.
+SelfSigned` is honest on a laptop and a browser warning for everyone
+behind a cluster ingress. `Acme` becomes a cert-manager annotation,
+`Files` an Ingress `tls` stanza naming a Secret the operator already
+has, `Proxy` an Ingress with no TLS at all — because there the
+ingress IS the proxy. `SelfSigned` says so and names the two that
+work.
+
+**A database is rendered, and says in the file what it is.** The
+`host` target refuses one because installing Postgres on somebody's
+rented box is not ours to do; a cluster runs containers by
+definition, so refusing there would be pedantry. What it renders is
+one replica with a PVC and no backups, and the manifest says exactly
+that in a comment an operator reads before applying it — a
+development database, with the line to change (`DB_URL` to a managed
+instance) written next to it.
+
+**Templates are per service, not a `range` over a map.** One
+`range` over `.Values.services` is shorter to generate and unreadable
+to debug: `helm template` output no longer matches any file, and an
+operator chasing a wrong port has nowhere to look. So each service
+gets its own files, concrete, with the few things an operator
+actually overrides — image tag, replica count, resources — pointing
+at `values.yaml`.
+
+### The gate
+
+`helm lint` and `helm template` run on the rendered chart in the
+DEFAULT suite, not behind the Live tag: helm is a pure renderer,
+needs no cluster and no account, and a chart that lint rejects is a
+defect in this module rather than a flake in someone's environment.
+They are skipped, by name, where helm is not installed. A real
+`kind` cluster stays Live and optional.
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of
