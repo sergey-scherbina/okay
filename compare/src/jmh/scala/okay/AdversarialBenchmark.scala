@@ -31,11 +31,19 @@ class AdversarialBenchmark {
 
   final val K = 10000
 
-  /** enough work that a fiber is not pure scheduling, little enough
-   * that scheduling still shows: ~100 integer ops */
+  /** the work per fiber, integer ops. 100 is scheduling overhead
+   * with a token of work (~30 ns): the shape where NOT spreading the
+   * work wins and kyo's one-worker answer is the right one. 10 000
+   * (~3 us) is where spreading over the cores pays and a scheduler
+   * that keeps the work at home loses. Both, so the row says which
+   * it is measuring. */
+  @Param(Array("100", "10000"))
+  var work: Int = 100
+
   private def step(i: Int): Int =
     var s = 0; var j = 0
-    while j < 100 do { s += (i ^ j); j += 1 }
+    val n = work
+    while j < n do { s += (i ^ j); j += 1 }
     s
 
   @Benchmark
