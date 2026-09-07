@@ -259,6 +259,48 @@ class TestAcmePebble extends munit.FunSuite:
       rmrf(dir)
   }
 
+  test("ARI: the CA publishes a window, we build the certID from the certificate itself, and a closed window changes nothing") {
+    assume(Pebble.available, "docker is not available")
+    val dir = Files.createTempDirectory("okay-acme-pebble-ari-")
+    val pebble = Pebble.Instance(dir)
+    assume(pebble.start(), "pebble did not start")
+    val challenges = Acme.Challenges.Memory()
+    try
+      // a LONG countdown: on our own rule this certificate is nowhere
+      // near due, so anything that renews it came from the CA
+      val cfg = Acme.Config("ops@example.com", Vector(Pebble.domain),
+        dir.resolve("account.pem"), dir.resolve("cert.pem"), dir.resolve("key.pem"),
+        pebble.directory, renewBefore = java.time.Duration.ofSeconds(1),
+        timeout = java.time.Duration.ofSeconds(60))
+      val http = trusting(pebble.ca)
+      val issued = Resource.run[Either[String, Acme.Outcome], Pure](
+        Jetty.serve(pebble.challengePort)(challenges.routes)().map(_ => Acme.ensure(cfg, http, challenges))).runWith
+      assert(issued.exists(_.isInstanceOf[Acme.Outcome.Issued]), issued.toString)
+
+      // the id is built from the certificate's own AKI and serial
+      val id = Acme.certId(cfg.certFile)
+      assert(id.isRight, id.toString)
+      assert(id.exists(_.contains(".")), id.toString)
+
+      Acme.renewalWindow(cfg, http) match
+        case None => fail("Pebble publishes renewalInfo, so a window was expected")
+        case Some((start, end)) =>
+          assert(start.isBefore(end), s"$start .. $end")
+          // Pebble suggests a window inside the certificate's life
+          val notAfter = Acme.notAfterOf(cfg.certFile).get
+          assert(end.isBefore(notAfter.plusSeconds(1)), s"$end vs $notAfter")
+
+      // a certificate that is NOT due by our countdown and whose
+      // window has not opened stays put
+      val far = cfg.copy(renewBefore = java.time.Duration.ofSeconds(1))
+      val again = Resource.run[Either[String, Acme.Outcome], Pure](
+        Jetty.serve(pebble.challengePort)(challenges.routes)().map(_ => Acme.ensure(far, http, challenges))).runWith
+      assert(again.exists(_.isInstanceOf[Acme.Outcome.Current]), s"renewed with neither rule due: $again")
+    finally
+      pebble.stop()
+      rmrf(dir)
+  }
+
   test("a name Pebble cannot reach is refused with the CA's own words, not a timeout") {
     assume(Pebble.available, "docker is not available")
     val dir = Files.createTempDirectory("okay-acme-pebble-bad-")

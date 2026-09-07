@@ -95,15 +95,24 @@ object Acme:
 
   /**
    * Issue or renew, as needed: answers `Current` when the certificate
-   * on disk still has more than `renewBefore` left, and otherwise
-   * runs the whole flow and writes the new one. Never throws — a
-   * refusal names the step it failed at, because "ACME failed" is not
-   * something an operator can act on.
+   * on disk is not due yet, and otherwise runs the whole flow and
+   * writes the new one. Never throws — a refusal names the step it
+   * failed at, because "ACME failed" is not something an operator can
+   * act on.
+   *
+   * Two things decide "due" (acme-ari). `renewBefore` is ours: a
+   * countdown to the expiry. The CA's own SUGGESTED WINDOW is the
+   * other, and it exists because a mass revocation otherwise becomes
+   * every client on earth renewing in the same minute. They are read
+   * TOGETHER and either can trigger: a CA that publishes nothing, or
+   * publishes nonsense, must never be able to stop a renewal our own
+   * countdown wants.
    */
   def ensure(cfg: Config, http: Http, challenges: Challenges)
             (using Crypto, CanBlock): Either[String, Outcome] =
     notAfterOf(cfg.certFile) match
-      case Some(t) if java.time.Instant.now().plus(cfg.renewBefore).isBefore(t) => Right(Outcome.Current(t))
+      case Some(t) if java.time.Instant.now().plus(cfg.renewBefore).isBefore(t) &&
+                      !windowOpen(cfg, http) => Right(Outcome.Current(t))
       case _ => issue(cfg, http, challenges).flatMap { _ =>
         notAfterOf(cfg.certFile)
           .map(t => Outcome.Issued(cfg.domains, t))
@@ -154,12 +163,82 @@ object Acme:
   /** the LEAF's DER: a chain file holds the issuers too, and a CA
    * revokes one certificate, not a bundle */
   private[acme] def leafDer(certFile: Path): Either[String, Array[Byte]] =
+    leafCert(certFile).map(_.getEncoded)
+
+  /** the CA's suggested renewal window for the certificate on disk,
+   * when the CA publishes one (RFC 8555's ARI extension). `None` is
+   * every ordinary reason it might be missing -- this CA has no
+   * renewalInfo, the certificate has no Authority Key Identifier, the
+   * answer did not parse -- and none of them is an error worth
+   * stopping a renewal for. */
+  def renewalWindow(cfg: Config, http: Http)(using CanBlock)
+  : Option[(java.time.Instant, java.time.Instant)] =
+    for
+      dir <- get(http, cfg.directory).flatMap(json).toOption
+      endpoint <- str(dir, "renewalInfo")
+      id <- certId(cfg.certFile).toOption
+      body <- get(http, s"$endpoint/$id").flatMap(json).toOption
+      window <- field(body, "suggestedWindow")
+      start <- str(window, "start").flatMap(instant)
+      end <- str(window, "end").flatMap(instant)
+    yield (start, end)
+
+  /** has the CA's window opened? A missing or unreadable window is
+   * `false` -- it must not TRIGGER a renewal either, only allow one
+   * earlier than our own countdown would */
+  private def windowOpen(cfg: Config, http: Http)(using CanBlock): Boolean =
+    renewalWindow(cfg, http).exists((start, _) => !java.time.Instant.now().isBefore(start))
+
+  private def instant(s: String): Option[java.time.Instant] =
+    try Some(java.time.Instant.parse(s))
+    catch case _: Exception =>
+      try Some(java.time.OffsetDateTime.parse(s).toInstant) catch case _: Exception => None
+
+  /**
+   * The certificate's ARI identifier: base64url of the Authority Key
+   * Identifier's keyIdentifier, a dot, base64url of the serial.
+   *
+   * Both are read out of the leaf's own DER by hand, because the JDK
+   * hands the AKI over only as the raw extension bytes: an OCTET
+   * STRING wrapping `SEQUENCE { [0] keyIdentifier }`. Three nested
+   * unwraps and no more -- a certificate whose AKI is shaped
+   * differently answers a refusal rather than a guess.
+   */
+  private[acme] def certId(certFile: Path): Either[String, String] =
+    for
+      leaf <- leafCert(certFile)
+      raw <- Option(leaf.getExtensionValue("2.5.29.35"))
+        .toRight("this certificate carries no Authority Key Identifier, so it has no ARI id")
+      inner <- unwrap(raw, 0x04).map(_._1).toRight("the AKI extension is not an OCTET STRING")
+      seq <- unwrap(inner, 0x30).map(_._1).toRight("the AKI does not hold a SEQUENCE")
+      keyId <- unwrap(seq, 0x80.toByte).map(_._1).toRight("the AKI holds no keyIdentifier")
+    yield b64(keyId) + "." + b64(leaf.getSerialNumber.toByteArray)
+
+  /** one DER value of the expected tag: its content, and where it
+   * ended. Short and long form lengths, nothing else -- this reads
+   * two known shapes, it is not an ASN.1 library. */
+  private def unwrap(der: Array[Byte], tag: Byte): Option[(Array[Byte], Int)] =
+    if der.isEmpty || der(0) != tag || der.length < 2 then None
+    else
+      val first = der(1) & 0xff
+      val (len, from) =
+        if first < 0x80 then (first, 2)
+        else
+          val n = first & 0x7f
+          if n == 0 || n > 4 || der.length < 2 + n then (-1, 0)
+          else ((2 until 2 + n).foldLeft(0)((acc, i) => (acc << 8) | (der(i) & 0xff)), 2 + n)
+      if len < 0 || from + len > der.length then None
+      else Some((der.slice(from, from + len), from + len))
+
+  private[acme] def leafCert(certFile: Path): Either[String, java.security.cert.X509Certificate] =
     try
       val cf = java.security.cert.CertificateFactory.getInstance("X.509")
       val in = Files.newInputStream(certFile)
       val certs = try cf.generateCertificates(in) finally in.close()
-      if certs.isEmpty then Left(s"$certFile holds no certificate to revoke")
-      else Right(certs.iterator().next().getEncoded)
+      if certs.isEmpty then Left(s"$certFile holds no certificate")
+      else certs.iterator().next() match
+        case x: java.security.cert.X509Certificate => Right(x)
+        case other => Left(s"$certFile holds a ${other.getType} certificate, not X.509")
     catch case e: Exception => Left(s"$certFile is not a readable certificate: ${e.getMessage}")
 
   /** the whole flow, unconditionally */

@@ -11,12 +11,14 @@ decisions.
 | `Acme.Config` | email, domains, where the account key, certificate and key live, the directory, the renewal window |
 | `Acme.Challenges.Memory` | somewhere to put the token, plus the `routes` to chain in front of a plaintext server |
 | `Acme.revoke(cfg, http, reason)` | take a certificate back before it expires (RFC 8555 §7.6); `okay.acme.Revoke` is the same thing from a shell |
+| `Acme.renewalWindow(cfg, http)` | the CA's suggested renewal window for the certificate on disk, when it publishes one |
 | `Acme.Directory` | Let's Encrypt's staging (the default) and production URLs |
 
 Narrow on purpose: HTTP-01 only, one order, one server, no wildcards
-(they need DNS-01), no ARI. Revocation and external account binding
+(they need DNS-01). Revocation, external account binding
 (`Config.eab`, for a CA that will not open an account for a stranger)
-ARE here. Wide is certbot's
+and ARI (the CA's own renewal window, read beside `renewBefore` and
+never instead of it) ARE here. Wide is certbot's
 job, and a half-maintained wide client is a site that stops renewing
 on a Saturday.
 

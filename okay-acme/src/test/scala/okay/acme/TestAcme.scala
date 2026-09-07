@@ -163,3 +163,64 @@ class TestAcme extends munit.FunSuite:
     finally
       Files.walk(dir).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => Files.deleteIfExists(p): Unit)
   }
+
+  test("ARI decides beside renewBefore, never instead of it: an OPEN window renews a certificate our own countdown calls current") {
+    val dir = Files.createTempDirectory("okay-acme-ari-rule-")
+    val ca = FakeCa(dir.resolve("ca"))
+    assume(ca.ready, "openssl is needed for the fake CA")
+    val challenges = Acme.Challenges.Memory()
+    try
+      // a certificate on disk, far from due by our own countdown
+      val issued = Resource.run[Either[String, Acme.Outcome], Pure](
+        for
+          challengeServer <- Jetty.serve(0)(challenges.routes)()
+          caServer <- Jetty.serve(0)(ca.routes(Jetty.port(challengeServer)))()
+          http <- Jetty.http()
+        yield Acme.ensure(Acme.Config("ops@example.com", Vector("localhost"),
+          dir.resolve("account.pem"), dir.resolve("cert.pem"), dir.resolve("key.pem"),
+          s"http://127.0.0.1:${Jetty.port(caServer)}/directory",
+          renewBefore = java.time.Duration.ofSeconds(1),
+          timeout = java.time.Duration.ofSeconds(20)), http, challenges)).runWith
+      assert(issued.exists(_.isInstanceOf[Acme.Outcome.Issued]), issued.toString)
+
+      /** a CA that publishes ONE thing: a renewal window, and whether
+       * it has already opened is this stub's whole variable */
+      def sayingWindow(openAlready: Boolean): okay.http.Http = new okay.http.Http:
+        def send(r: okay.http.Request): okay.http.Response ! Async = okay.async {
+          val body =
+            if r.url.endsWith("/directory") then
+              """{"newNonce":"http://x/nonce","newAccount":"http://x/acct","newOrder":"http://x/order",""" +
+                """"renewalInfo":"http://x/ari"}"""
+            else
+              val start = java.time.Instant.now().plusSeconds(if openAlready then -60 else 3600)
+              s"""{"suggestedWindow":{"start":"$start","end":"${start.plusSeconds(7200)}"}}"""
+          okay.http.Response(200, Vector("Content-Type" -> "application/json"),
+            okay.http.Http.one(body.getBytes("UTF-8")))
+        }
+
+      val cfg = Acme.Config("ops@example.com", Vector("localhost"),
+        dir.resolve("account.pem"), dir.resolve("cert.pem"), dir.resolve("key.pem"),
+        "http://x/directory", renewBefore = java.time.Duration.ofSeconds(1),
+        timeout = java.time.Duration.ofSeconds(2))
+
+      // window still shut: our countdown says current, and it is
+      assert(Acme.ensure(cfg, sayingWindow(false), challenges).exists(_.isInstanceOf[Acme.Outcome.Current]))
+      assert(Acme.renewalWindow(cfg, sayingWindow(false)).isDefined)
+
+      // window OPEN: the run goes on to order rather than answering
+      // current -- it fails against this stub, and the failure is the
+      // proof that the CA's window brought the renewal forward
+      val forward = Acme.ensure(cfg, sayingWindow(true), challenges)
+      assert(forward.isLeft, s"an open window did not bring the renewal forward: $forward")
+
+      // and a CA that publishes NO window cannot stop the countdown's
+      // own decision either way
+      val silent: okay.http.Http = new okay.http.Http:
+        def send(r: okay.http.Request): okay.http.Response ! Async = okay.async {
+          okay.http.Response(200, Vector("Content-Type" -> "application/json"),
+            okay.http.Http.one("""{"newNonce":"http://x/nonce"}""".getBytes("UTF-8")))
+        }
+      assert(Acme.renewalWindow(cfg, silent).isEmpty)
+      assert(Acme.ensure(cfg, silent, challenges).exists(_.isInstanceOf[Acme.Outcome.Current]))
+    finally rmrf(dir)
+  }
