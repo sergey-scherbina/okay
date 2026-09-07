@@ -1316,10 +1316,15 @@ not a new primitive from scratch.
       the plaintext port ahead of the https redirect, the issued pair
       is read through `Tls.reloading` so renewals need no restart.
       Tested against a fake CA in-process. specs/acme.md.
-- [ ] acme-pebble — interop with a REAL ACME implementation: Pebble
-      (Let's Encrypt's own test server) in docker, Live-tagged. The
-      in-process fake proves the state machine, not that a real CA
-      agrees with our JWS, our nonces and our CSR.
+- [x] acme-pebble — LANDED 2026-09-07, and it EARNED its keep on the
+      first run: Pebble refused us with `badNonce`. `freshNonce`
+      returned the Replay-Nonce of the HEAD it had just made while
+      `send` had cached the same value from the same response, so the
+      next POST spent it twice; our own double accepted a replayed
+      nonce, a real CA does not. Fixed (a nonce is taken once) plus
+      the §6.5 retry every client has. The test runs Pebble in docker,
+      trusts the CA it generates per run through a test-scope Http,
+      and asserts a real chain from an issuer that is not us.
 - [ ] acme-what-is-missing — filed from specs/acme.md's own list, in
       case a deployment asks: DNS-01 (and so wildcards), EAB (some
       commercial CAs), ARI (the renewal-window hint), revocation.

@@ -1,5 +1,29 @@
 # Changelog
 
+## acme-pebble — our ACME client against Let's Encrypt's own test server, and the bug it found
+Completed: 2026-09-07
+Landed as d73eefae (spec then code, rebased). The in-process fake CA
+checks our reading of the protocol against our own writing of it;
+Pebble is someone else's implementation and deliberately strict. The
+first run against it failed — `badNonce` — and it was a real bug, not
+a test artifact: `freshNonce` returned the `Replay-Nonce` of the HEAD
+it had just made while `send` had ALSO cached that same value from
+that same response, so the next POST spent the nonce twice. Our own
+double accepted a replayed nonce, which is why nothing before this
+could have caught it. A nonce is now taken once (reading clears the
+cache), and per RFC 8555 §6.5 a `badNonce` answer is retried once
+with the fresh nonce the CA sends with it — what every real client
+does. The test runs Pebble in docker, pulls out the CA it generates
+per run with `docker cp` and trusts it through a test-scope `Http`
+over the JDK client (production transports untouched, and `Acme` is
+shown to work over any `Http`), uses `host.docker.internal` with
+`--add-host` so Linux behaves as Docker Desktop does, and serves the
+challenge on the port Pebble's own config validates against. It
+asserts a real chain for the name asked for, signed by an issuer that
+is not us; and that a name Pebble cannot reach is refused with the
+CA's own sentence, leaving no certificate behind. Live-tagged,
+skipped without docker. 6 okay-acme green 3x, 135 okay-script green.
+
 ## schema-thunks-once — a derived schema's edges answer one instance
 Completed: 2026-09-07
 Operator ask: fix the traps. staged-runtime found that a derived
