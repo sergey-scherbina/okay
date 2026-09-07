@@ -1683,6 +1683,52 @@ with its own invalidation problem, and is not filed as wanted.
       `private`; no `cache:` means no header at all.
 - [x] a POST, a redirect and a 404 carry no validators.
 
+### Warm and stats (okay-script-warm, 2026-09-07)
+
+Filed by the measurement, not by taste: §19 of docs/benchmarks.md put
+the first page of a process at 870 ms (dotc warms itself in it), and
+a page that does not compile was found by the first visitor.
+
+```scala
+Site.warm(): Vector[(String, Vector[String])]   // (page, its compile errors)
+Site.stats: Site.Stats                          // counters + gauges
+Site.opsRoutes: PartialFunction[Request, Response ! Async]  // /healthz /stats /metrics
+Page.warm(): Vector[String]                     // compile, do not invoke
+```
+
+`warm` compiles every `.md` under the root in path order WITHOUT
+invoking one, and answers the pages that did not compile with their
+errors. Language variants and included fragments are pages too and
+are compiled with the rest; `i18n/` holds messages, not pages, and is
+skipped. `Serve` warms before it binds, prints how many pages it
+compiled and how long that took, and names each broken page on
+stderr — but goes on serving: a broken page answers its error page,
+and a site does not refuse to exist over one. A deployment that wants
+the stricter rule reads `warm()`'s answer and decides for itself.
+
+`Stats` is plain values, `Store.Stats`' shape: counters since the
+Site was built (`pageRequests`, `compiles`, `statics`, `notModified`,
+`refused`, `notFound`, `failed`) and gauges read when asked
+(`pagesHeld`, `sessions`). The name `pageRequests` is what the test
+made it: a refusal and a failure are page requests too, so calling it
+`renders` would have been a lie by one. Both renderings — JSON and
+Prometheus text — are pure mappings, the move `okay.ops.Prom` makes
+for a store: no client library, a documented string.
+
+`opsRoutes` is deliberately NOT part of `routes`: exposure is the
+deployment's decision, so a caller chains it (`site.routes orElse
+site.opsRoutes`) or serves it on another port, and `Serve` mounts it
+only for `OKAY_OPS=1`. Chained that way the pages still win every
+path they claim — a site with its own `/metrics` page keeps it.
+
+- [x] `warm` compiles every page (variants and fragments included,
+      `i18n/` skipped), names the broken one with its line, and
+      leaves the good ones ready: a later render compiles nothing.
+- [x] the counters count what happened; a refusal, a 404 and a 500
+      land in their own; both renderings carry the same numbers.
+- [x] `opsRoutes` is absent from `routes`, answers when chained, and
+      loses to a page of the same name; `Serve` reads `OKAY_OPS`.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
