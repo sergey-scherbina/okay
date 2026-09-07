@@ -1,0 +1,39 @@
+task: own-long-join-deadlock
+agent: opus5-bench
+started: 2026-09-07
+branch: feature/own-long-join-deadlock
+worktree: ../okay-wt-schedlock
+based-on: feature/bench-refresh's tip (master + the BUGS.md entry that
+  filed this), so the ledger entry and its fix land together.
+
+why: operator directive 2026-09-07 — "выясни причину зависания и
+  исправь". Found by bench-refresh: BUGS.md `own-long-join-deadlock`.
+  `AdversarialBenchmark.forkJoin10k_okayOwnLongInside` sat 62 min at
+  0.0% CPU on master, the joining thread parked in Platform.scala:87
+  and all 42 `Schedulers$Owned$Worker` parked at Platform.scala:542.
+
+what: (1) reproduce it OUTSIDE JMH, in a loop, and establish whether
+  it is deterministic or intermittent — a rate, not an adjective;
+  (2) find the actual mechanism from a thread dump of the repro, not
+  from reading the comment at Platform.scala:542; (3) put the shape
+  into src/test/scala-jvm/TestSchedulerLaws.scala, which already runs
+  every law against `own.forLongTasks` and already has a "no lost
+  wake" law at ONE worker — this is the same law at the shape that
+  broke; (4) watch the new test FAIL first; (5) fix Platform.scala;
+  (6) BUGS.md -> status: fixed, fixed-in: <sha>, gate: the new law.
+
+predict: a lost wakeup in the park at Platform.scala:542 — the worker
+  publishes `parked` and leaves `awake` before its last look at the
+  queues, and the submitter's unpark is missed. That is the entry's
+  READING of the comment and may well be wrong; step 2 exists to
+  disagree with it. Disqualifying evidence: if the repro shows the
+  joined fiber's answer never WRITTEN (rather than written-but-not-
+  woken), the bug is in DriveTask/joinAsync, not in the worker park.
+
+BLOCKS: bench-refresh's measurement rounds are PAUSED for this. Every
+  number taken so far is from the pre-fix tree; if this fix touches
+  the scheduler, those rounds are re-run from scratch on the fixed
+  tree rather than mixed with post-fix rows.
+
+CAUTION: both scalascript launchd guards remain UNLOADED (see
+  .work/active/bench-refresh.claim for the two reload commands).
