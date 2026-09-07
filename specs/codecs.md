@@ -601,12 +601,9 @@ per generation, or the compilation is never earned back), and the
 FOLD is a measured share of the hot path (the parser, the wire or
 the database usually are — staged-codecs found the fold at 0.6 µs of
 a 15.2 µs text→value).
-- **okay-sql typed rows and composites** (`Typed.shapeOf`, Pg
-  composites from `pg_type`): a query's row shape is a value read at
-  connect time and decoded per row for the connection's life — the
-  best fit in the repository. Condition: a profile of a wide result
-  set showing the row fold at ≥30% of the per-row cost; today the
-  text protocol's parsing is the larger share, so measure first.
+- **okay-sql typed rows** — MEASURED AND DECLINED (sql-fold-profile,
+  2026-09-07, below). The condition was a profile at ≥30%; the fold
+  is 24% of the fastest read there is and less of any real one.
 - **JSON frames from R and Python** (specs/r.md, specs/py.md): a
   frame's column schema is a value and a frame is 10^5–10^6 rows.
   Condition: JSON is the wire. Arrow (r-arrow, py-arrow) removes the
@@ -783,3 +780,53 @@ makes all of them staged.
 - Per-codec hoisting of a product's decode arrays (they are built per
   call, as the compile-time generator builds them).
 
+## The row fold's share (2026-09-07, sql-fold-profile)
+
+The condition run-time staging set for okay-sql, measured, and the
+answer is no (operator: "do the ones still open"). Two things the
+guess had missed. First, `Typed.planOf` ALREADY hoists the fold's
+expensive half: the column-to-field matching resolves once per
+statement, against the driver's `describe`, and what runs per row is
+a `decodeCell` per field into an array and one `make` — the shape a
+staged generator would emit anyway, minus the per-cell match on the
+field's `Shape`. Second, the remainder is small next to any driver.
+
+`MeasureSqlFold` (okay-jdbc, Live-tagged, medians with the warmup
+discarded, H2 in memory, 2000 rows of six columns — one Long, one
+String, an Option[Int], a Double, a Boolean, another String):
+
+| what (per 2000 rows) | median |
+|---|---:|
+| the fold alone (frames replayed from memory, typed) | 1.03 ms |
+| the same replay, frames only | 0.14 ms |
+| **the fold itself** | **0.90 ms** = 0.45 µs per row |
+| end to end, typed | 1.32 ms |
+| end to end, raw frames (the driver alone) | 1.01 ms |
+| **the fold's share of a row** | **24.1%** |
+
+- [x] the fold is 0.45 µs per row at six columns, and 24% of a read
+      whose driver is an in-memory H2 — the CHEAPEST driver that
+      exists here. A Postgres read over a socket pays parsing, framing
+      and the network for the same row, so the same fold is a smaller
+      share of it, never a larger one; the condition cannot be met by
+      the drivers this repository has.
+- [x] the numbers measure real work, not an empty stream: the same
+      read decodes every row and the values are the fixture's
+      (a second test asserts three of them by hand)
+
+### Decisions
+- **No staged codec in okay-sql.** Not "not yet": the door would have
+  to beat 0.45 µs per row to matter, against a driver that costs four
+  times that on the friendliest possible setup, and it would put the
+  Scala compiler inside every process that opens a database. The
+  spec's own condition, honestly applied, says no.
+- **What WOULD move that number** is not staging: the per-cell match
+  on `Shape` could be resolved into an array of cell decoders when
+  `planOf` resolves the columns (the same hoisting, one level
+  deeper), which needs no compiler and no new module. Filed as
+  `sql-plan-cells`, unclaimed, with this profile as its baseline —
+  and 0.45 µs per row is small enough that it stays unclaimed until
+  a profile of a real workload names it.
+- **The measurement stays.** It is the baseline any future claim
+  about row-decode cost must beat, and it is Live-tagged so a loaded
+  CI box never turns it into a red build.

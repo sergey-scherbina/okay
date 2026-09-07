@@ -1,5 +1,23 @@
 # Changelog
 
+## sql-fold-profile — the condition okay-sql had to meet, measured, and not met
+Completed: 2026-09-07
+staged-runtime's spec named okay-sql the best candidate for a
+run-time staged codec and set a condition: a profile showing the row
+fold at >= 30% of the per-row cost. Measured (`MeasureSqlFold`,
+okay-jdbc, Live-tagged, medians with the warmup discarded, H2 in
+memory, 2000 rows of six columns): the fold is 0.90 ms per 2000 rows
+= 0.45 us per row, and 24.1% of a read end to end. Two things the
+guess had missed: `Typed.planOf` already hoists column matching out
+of the per-row loop, so the fold is thinner than a codec's; and the
+driver it is measured against is an in-memory H2, the cheapest that
+exists here — a Postgres read over a socket makes the same fold a
+SMALLER share, never a larger one. Verdict: no staged codec at the
+database seam, and not "not yet". What would move the number needs no
+compiler (resolve the per-cell Shape match into cell decoders when
+the plan resolves), filed as sql-plan-cells with this profile as its
+baseline. specs/codecs.md, "The row fold's share".
+
 ## acme-dns-providers — Cloudflare, deSEC and Route 53, so that none is the favourite
 Completed: 2026-09-07
 Landed as 387417f4 (spec then code, rebased). The `Dns` seam shipped
@@ -26,6 +44,7 @@ provider for one call — method, path, credential header, body fields,
 the delete, each refusal — since no account can be had in a test and
 the flow around them is already proven for real against Pebble. 17
 okay-acme green 3x.
+
 
 ## script-runmain-fork — the guide's own command compiles its pages again
 Completed: 2026-09-07

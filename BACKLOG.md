@@ -892,6 +892,19 @@ measure on our own data, never a predicted result.
       Interpreter before/after: measured by ALLOCATION per value (-prof gc; time on a loaded box is noise, bytes are not) on a sum-shaped Owner (a Pet enum, four case values): encode 10160 -> 8144 B/op (-20%), decode-from-AST 5976 -> 4088 (-32%), CBOR encode 7312 -> 5416 (-26%); the same runs' times 1072 -> 817, 830 -> 573, 1221 -> 974 ns (wide error bars); the Order, which has no sum and a given per type, 8016 -> 7968 B/op (-0.6%, the Option/List givens' re-summon) — history.tsv schema-thunks-once. specs/codecs.md, "Schema
       thunks once".
 
+- [x] sql-fold-profile — landed: `MeasureSqlFold` (okay-jdbc, Live).
+      The row fold is 0.45 us per row at six columns and 24.1% of an
+      in-memory H2 read; `Typed.planOf` already hoists column matching
+      out of the per-row loop. staged-runtime's condition for okay-sql
+      (>=30%) is NOT met, and cannot be by a real driver — verdict: no
+      staged codec at the database seam. specs/codecs.md, "The row
+      fold's share".
+- [ ] sql-plan-cells — the only thing that would move that number, and
+      it needs no compiler: resolve the per-cell match on `Shape` into
+      an array of cell decoders when `planOf` resolves the columns
+      (the same hoisting, one level deeper). Baseline: the table in
+      specs/codecs.md, "The row fold's share". Unclaimed until a
+      profile of a real workload names row decode as its cost.
 - [x] staging-seam — landed: `Codecs.json/cbor`, one pluggable door for
       a codec over a schema value (interpreter by default, every
       platform); `RuntimeStaged.cbor` + `install()`; `Staging.autoInstall`
