@@ -1,19 +1,28 @@
 import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
 ThisBuild / version := "0.1.0-SNAPSHOT"
-// Scala 3.7.4. The floor is 3.6 — this code uses the redesigned
-// given syntax (`given [A, E] => Conversion[…]`) and named context
-// bounds (`[M[_] : Monad as M]`), both 3.6 features, and 3.5 fails
-// with hundreds of syntax errors.
+// Scala 3.9.0 — the LTS line, opened by 3.9 as 3.3's successor and
+// maintained for at least three years. Until 3.9 this build ran the
+// latest non-LTS release on purpose (specs/modules-infra.md), because
+// LTS meant 3.3 and that was two years behind; 3.9 makes "latest" and
+// "LTS" the same choice, so the deliberate decision now goes the other
+// way for the same reason it went that way before.
 //
-// The ceiling is okay-spark, and only okay-spark. Everything else in
-// this build — the core included — COMPILES clean on 3.9.0, verified,
-// and so does okay-spark once scala-reflect is pinned below. But its
-// tests then fail at RUNTIME ("Cannot find a SparkSession
-// implementation on the Classpath"): Spark 4.0.0 ships for Scala
-// 2.13, and making its classpath work under a Scala 3 that far ahead
-// is not a version bump. Compiling is not the bar; the suite is.
-// If Spark ever leaves this build, the ceiling leaves with it.
+// The floor is 3.6 — this code uses the redesigned given syntax
+// (`given [A, E] => Conversion[…]`) and named context bounds
+// (`[M[_] : Monad as M]`), both 3.6 features, and 3.5 fails with
+// hundreds of syntax errors.
+//
+// THERE IS NO CEILING ANY MORE. It used to be okay-spark, and only
+// okay-spark: Spark ships for 2.13, and from 3.8 the Scala 3 stdlib
+// is published as `org.scala-lang:scala-library:3.x`, which evicts
+// Spark's 2.13 one and carries TASTy where that one carried
+// `@ScalaSignature` — so Spark 4's Scala-2-runtime-reflection lookup
+// of its own SparkSession could not bootstrap. Its suite now passes
+// on 3.9.0; the mechanism, the measurement that found it and the
+// four-line fix are written out beside okay-spark's settings below.
+// (scala-3-9, 2026-09-07 — full matrix green, 3024 tests, 84 module
+// runs, 0 failures, 0 warnings on main, test and Jmh.)
 ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / scalacOptions ++= Seq(
   "-Xkind-projector",
@@ -313,6 +322,13 @@ lazy val okayKafka = (project in file("okay-kafka"))
     ),
   )
 
+/**
+ * The Scala 2 standard library, resolved but NOT put on any compile
+ * classpath — okay-spark's test fork is the only consumer, and the
+ * comment there says why it needs it (scala-3-9, 2026-09-07).
+ */
+lazy val LegacyStdlib = config("legacyStdlib").hide
+
 /** Spark via the Aggregator triple (P4); Spark ships for 2.13 only,
  * so the standard for3Use2_13 cross applies */
 lazy val okaySpark = (project in file("okay-spark"))
@@ -329,6 +345,56 @@ lazy val okaySpark = (project in file("okay-spark"))
     // project's own Scala version. Naming the 2.13 artifact
     // explicitly settles it before anything can rewrite the version.
     libraryDependencies += "org.scala-lang" % "scala-reflect" % "2.13.16",
+    /**
+     * THE ONE THING 3.9 BROKE, and the whole reason okay-spark used to
+     * cap this build at 3.7 (scala-3-9, 2026-09-07).
+     *
+     * Spark 4 does not find its own SparkSession by name. It reads it
+     * through SCALA 2 RUNTIME REFLECTION — spark-sql-api's
+     * `lookupCompanion` is `scala.reflect.runtime.currentMirror`,
+     * `classSymbol(cls).companion.asModule` — and it swallows any
+     * failure into a `Try`, so all you ever see is "Cannot find a
+     * SparkSession implementation on the Classpath". The real error,
+     * caught by running that lookup under a bare `java -cp` on this
+     * project's own test classpath, is
+     *
+     *   scala.reflect.internal.FatalError: class Array does not have
+     *   a member apply
+     *
+     * — the Scala 2 mirror cannot bootstrap at all, because through
+     * Scala 3.7 the stdlib on the classpath was
+     * `org.scala-lang:scala-library:2.13.x`, and from 3.8 it is
+     * `scala-library:3.x`: the same groupId:artifactId, so the 3.x one
+     * EVICTS Spark's, and its classes carry TASTy where the 2.13 ones
+     * carried `@scala.reflect.ScalaSignature`. No pickle, no members,
+     * no mirror. (`scala3-library_3` is now an empty 344-byte shim, so
+     * the old two-jar arrangement cannot be rebuilt that way either.)
+     *
+     * The fix is ORDER, not eviction: the 2.13 stdlib goes on the test
+     * fork's classpath AHEAD of the 3.x one, so Scala 2 reflection
+     * finds pickled `scala.*` classes, and the Scala-3-only classes
+     * (CanEqual, deriving, quoted, runtime.LazyVals) fall through to
+     * the 3.x jar behind it. `unmanagedJars` is what buys the order —
+     * sbt builds externalDependencyClasspath as unmanaged ++ managed —
+     * and the `legacyStdlib` configuration is only how the jar gets
+     * RESOLVED; it reaches no compile classpath, so okay-spark is
+     * still compiled against 3.9's stdlib like every other module.
+     * The version tracks the `scala-reflect` pin three lines up — one
+     * Scala 2 library and its own reflect, never a mixed pair.
+     *
+     * Spark 4.2.0 was tried first and changes NOTHING here: same error,
+     * same line. Spark is still 2.13-only at 4.2.0, so a Spark bump is
+     * an independent decision and is deliberately not part of this one.
+     *
+     * This is a deliberate two-stdlib classpath in ONE module's tests.
+     * It is legitimate because the two jars are the same library
+     * compiled twice, and it is confined because nothing but this test
+     * fork sees it. If Spark ever publishes for Scala 3, delete all of
+     * it — the config, the jar, and this comment.
+     */
+    ivyConfigurations += LegacyStdlib,
+    libraryDependencies += "org.scala-lang" % "scala-library" % "2.13.16" % LegacyStdlib,
+    Test / unmanagedJars ++= Classpaths.managedJars(LegacyStdlib, Set("jar"), update.value),
     Test / fork := true,
     Test / javaOptions ++= Seq(
       // Run the fork on the JDK the tests were compiled for. Without

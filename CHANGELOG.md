@@ -1,5 +1,113 @@
 # Changelog
 
+## scala-3-9 — the build moves to the new LTS, and okay-spark stops being a ceiling
+
+Scala 3.9.0 opened the Long Term Support line as 3.3's successor, with
+at least three years of maintenance. `specs/modules-infra.md` had said
+"latest (3.7+), not LTS — a deliberate decision" since P0, and that
+decision was right while LTS meant 3.3 and was two years behind; 3.9
+makes latest and LTS the same release, so the same reasoning now
+argues the other way. Retaken there, dated, with the old reason kept.
+
+FULL MATRIX GREEN ON 3.9.0: 3024 tests, 84 module runs, 0 failures,
+0 warnings across main, test AND Jmh, on JVM, JS and Native. Nothing
+needed a plugin bump — `nscplugin_3.9.0:0.5.12`,
+`scala3lib_native0.5_3:3.9.0+0.5.12` and `scala3-library_sjs1_3:3.9.0`
+all exist at the versions `project/plugins.sbt` already pins, and
+3.9.0 ships with the Scala.js 1.22 that sbt-scalajs is on.
+
+**okay-spark was the ceiling and is not any more.** build.sbt had said
+only that its tests "fail at RUNTIME (Cannot find a SparkSession
+implementation on the Classpath)" and that fixing it "is not a version
+bump". The message is a lie told by a `Try`: spark-sql-api's
+`lookupCompanion` finds SparkSession through SCALA 2 RUNTIME
+REFLECTION — `scala.reflect.runtime.currentMirror`,
+`classSymbol(cls).companion.asModule` — and `DEFAULT_COMPANION`
+swallows whatever it throws. Run that same lookup under a bare
+`java -cp` on the module's own exported test classpath and the real
+error appears at once:
+
+    scala.reflect.internal.FatalError: class Array does not have a
+    member apply
+
+The Scala 2 mirror cannot bootstrap. Through 3.7 the stdlib on the
+classpath was `org.scala-lang:scala-library:2.13.x`; from 3.8 it is
+`scala-library:3.x` — the same groupId:artifactId, so the 3.x one
+EVICTS Spark's, and `javap -v scala.collection.immutable.List` shows
+the difference that matters: 2.13.18 carries
+`@scala.reflect.ScalaSignature` + `ScalaSig`, 3.9.0 carries `TASTY`
+and an empty `Scala` attribute. No pickle, no members, no mirror. And
+`scala3-library_3:3.9.0` is now an empty 344-byte shim depending on
+`scala-library:3.9.0`, so the old two-jar arrangement cannot be
+rebuilt that way.
+
+The fix is ORDER, not eviction: a hidden `legacyStdlib` ivy
+configuration resolves `scala-library:2.13.16` (tracking the
+`scala-reflect` pin beside it) and `Test / unmanagedJars` puts it on
+okay-spark's TEST fork ahead of the 3.x jar — sbt builds
+`externalDependencyClasspath` as unmanaged ++ managed, which is what
+buys the order. Scala 2 reflection then finds pickled `scala.*`
+classes and the Scala-3-only ones (CanEqual, deriving, quoted,
+runtime.LazyVals) fall through to the 3.x jar behind. Nothing reaches
+a compile classpath: okay-spark is still compiled against 3.9's
+stdlib like every other module. Four lines, one module, all of it
+explained where it lives. `okaySpark/test` 4/4.
+
+Spark 4.2.0 was tried FIRST, on the operator's call, and changes
+nothing — same error, same line; Spark is 2.13-only at 4.2.0 too. The
+pin stays at 4.0.0 so that a Spark bump remains an independent
+decision.
+
+**One hard error, and it was ours.** `TestSchemesLive.scala:118` asked
+`sh(...)._1.eq(0)` — REFERENCE equality on a boxed Int — where the
+same function three lines below writes `._1 == 0`. It only ever
+behaved because `java.lang.Integer` caches -128..127. 3.9 refuses it
+(Found `(0 : Int)`, Required `Object`). Now `!= 0`.
+
+**Four warning families, three fixed and one silenced with reasons.**
+- E198 unused import, 19 sites, all but one `import okay.given`. 3.7
+  did not see them; 3.9 does and is right. Removed — and the clean
+  three-platform build afterwards is the proof that none was
+  load-bearing on a platform whose warning had not been read.
+- E176 unused value, 3 sites in `compare/src/jmh`:
+  `mailbox.offer(...)` in the two backlog loops (safe — N=4000 into an
+  8192 mailbox, so no offer can fail) and `RuntimeStaged.install()` in
+  a `@Setup` (its Boolean is `false` under `-Dokay.staging=off`, a
+  mode the lane is meant to have, so an assertion would be wrong).
+  Both ascribed `: Unit`; no assertion added inside a measured loop.
+- E227 shadowing, 3 sites: RuntimeStaged's `JsonGen`/`CborGen`/
+  `StrictGen` each took a ctor param `nodes` shadowing `Gen`'s
+  inherited `val nodes`. Same object, so hygiene, not a defect.
+  Renamed to `table`.
+- a deprecated pattern ascription, `val (user, pass): (String, String)`
+  in `PgTarget`. Ascription dropped.
+
+**E225 `-Winfer-union` is silenced, deliberately.** It is NEW to
+`-Wall` in 3.9 — verified: the flag does not exist in 3.7.4's compiler
+at all — and it fires 29 times here with a true-positive rate of ZERO.
+Every hit was read and falls in one of four families, all shapes this
+code chose: `Builder | Unit` from `foreach { if p then buf += x }`
+(the commonest), `Int | Null` from Ring's designed sentinel, Option
+widening under `collect`/`collectFirst`, and two deliberate ad-hoc
+unions in fixtures. Suppressed by exact message in build.sbt with
+every family named and dated, because a shape rewritten to please a
+linter measures the rewrite — and 29 rewrites would hide the one real
+defect this lint might one day find. If a future hit looks like a real
+bug, delete the line and read them all again; that is half an hour.
+
+Also checked before touching anything, from the published artifacts:
+`okay-script` drives `dotty.tools.dotc.Driver`/`StoreReporter`, not
+the REPL, so the 3.8 split of the REPL into its own `scala3-repl`
+artifact costs this build nothing.
+
+Docs and specs carrying the version moved with it: README's build
+paragraph (whose test count was corrected from a stale 845 to this
+session's measured 3024), `docs/building-a-chat-app.md` (the TASTy
+floor a consumer needs, its build.sbt and the two linked-bundle
+paths), `docs/modules/okay-deploy.md`. `specs/deploy.md`'s dated
+Results record was left alone — it says what was produced in
+September, and it was.
+
 ## own-long-join-deadlock — a steal that cleared its slot lost a task, and a fiber waited for ever
 
 `Deque.steal` cleared its slot after winning the `top` CAS. A thief

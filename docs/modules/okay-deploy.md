@@ -138,7 +138,7 @@ cluster (or Terraform) needs only that directory, never okay-deploy.
 # the jar — the actual hard part (classpath, merge conflicts, one
 # main); needs no Docker at all
 sbt "okayMySvc/assembly"
-java -jar okay-my-svc/target/scala-3.7.4/app.jar
+java -jar okay-my-svc/target/scala-3.9.0/app.jar
 
 # jar + image, from the module's OWN rendered Dockerfile; says so and
 # stops after the jar when no Docker daemon answers

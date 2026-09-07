@@ -21,7 +21,12 @@ forever; ScalaCheck is allowed in test scope only.
 ## Publishing
 - groupId `io.sergiy-shcherbyna` (domain verification settled by
   publication time — deliberately NOT tied to GitHub).
-- Scala: latest (3.7+), not LTS — a deliberate decision.
+- Scala: the LTS line, 3.9+ — a deliberate decision, RETAKEN
+  2026-09-07 (scala-3-9). It read "latest (3.7+), not LTS" while LTS
+  meant 3.3 and was two years behind; 3.9 opened the new LTS line as
+  3.3's successor, so latest and LTS are now the same release and the
+  reason for the old choice argues for the new one. The floor stays
+  3.6 (redesigned given syntax, named context bounds).
 - License: Apache-2.0 (in repo).
 - Artifact of the core is literally `"…" %% "okay" % v`.
 

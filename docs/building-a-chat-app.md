@@ -49,13 +49,13 @@ The coordinates you then depend on:
 |---|---|
 | organization | `dev.okay` |
 | version | `0.1.0-SNAPSHOT` (`ThisBuild / version` in okay's build.sbt) |
-| Scala | 3.7.4 — use this or newer; 3.6 is the floor for the syntax the library uses |
+| Scala | 3.9.0 — use this or newer; 3.6 is the floor for the syntax the library uses |
 | JVM artifact | `"dev.okay" %% "okay-jetty" % "0.1.0-SNAPSHOT"` |
 | JS artifact | `"dev.okay" %%% "okay-ui" % "0.1.0-SNAPSHOT"` (`%%%` picks `_sjs1_3`) |
 
 Two things bite here. Your Scala version must be **at least** the one
 the library was built with (TASTy is forward-, not backward-,
-compatible) — 3.7.4 published, so 3.7.4 or newer in your build. And
+compatible) — 3.9.0 published, so 3.9.0 or newer in your build. And
 `%%` is the JVM artifact while `%%%` picks the platform's; in a
 crossProject you always want `%%%`.
 
@@ -115,7 +115,7 @@ addSbtPlugin("org.portable-scala" % "sbt-scalajs-crossproject" % "1.4.0")
 ```scala
 import sbtcrossproject.CrossPlugin.autoImport.{crossProject, CrossType}
 
-ThisBuild / scalaVersion := "3.7.4"
+ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / organization := "example"
 
 val okay = "0.1.0-SNAPSHOT"
@@ -200,7 +200,7 @@ object Server:
   /** the linked bundle, if `sbt uiJS/fastLinkJS` has been run */
   def appJs: Option[Path] =
     Some(Path.of(sys.env.getOrElse("APP_JS",
-      "ui/.js/target/scala-3.7.4/chat-ui-fastopt/main.js"))).filter(Files.exists(_))
+      "ui/.js/target/scala-3.9.0/chat-ui-fastopt/main.js"))).filter(Files.exists(_))
 
   def html(body: String): Response =
     Response(200, Seq("content-type" -> "text/html; charset=utf-8"),
@@ -529,7 +529,7 @@ one `munitTests()` override per suite, and `--exclude-tags=Live` in
 ## 6. Run it
 
 ```
-sbt uiJS/fastLinkJS      # link the frontend → ui/.js/target/scala-3.7.4/chat-ui-fastopt/main.js
+sbt uiJS/fastLinkJS      # link the frontend → ui/.js/target/scala-3.9.0/chat-ui-fastopt/main.js
 sbt app/run              # serve on :8080 (PORT to change it)
 ```
 

@@ -281,12 +281,13 @@ module with its own page under docs/modules:
   the JDK, Jetty or Netty behind one seam (`okay-jetty`,
   `okay-netty`); the distributed runtime (`okay-cluster`).
 
-Building: `sbt test` runs everything — 845 tests across two dozen
-modules, on the JVM, under Node and as a linked native binary (the
+Building: `sbt test` runs everything — 3024 tests across 84 module
+runs, on the JVM, under Node and as a linked native binary (the
 live suites — a local model, an npx-spawned MCP server — skip where
-their endpoint is absent). Scala 3.7.4 (the floor is 3.6, for
-the redesigned given syntax; the ceiling is okay-spark, which pins
-Spark's Scala 2.13 artifacts) and sbt 1.13.0 (sbt 2 waits on
+their endpoint is absent). Scala 3.9.0 — the LTS line — with 3.6 as
+the floor, for the redesigned given syntax, and no ceiling: okay-spark
+used to be one, and does not cap the build any more (build.sbt says
+what it took) — and sbt 1.13.0 (sbt 2 waits on
 sbt-platform-deps, which supplies `%%%` and has no sbt 2 release).
 `.jvmopts` gives the build 6g — the launcher's default 4g is shared by
 zinc, the compiler and every module at once, and has run out mid-
