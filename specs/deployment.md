@@ -606,12 +606,26 @@ at `values.yaml`.
 
 ### The gate
 
-`helm lint` and `helm template` run on the rendered chart in the
-DEFAULT suite, not behind the Live tag: helm is a pure renderer,
-needs no cluster and no account, and a chart that lint rejects is a
-defect in this module rather than a flake in someone's environment.
-They are skipped, by name, where helm is not installed. A real
-`kind` cluster stays Live and optional.
+Two suites, and the split is the point. Everything that is a function
+of the value — which files exist, what is in them, what is refused —
+is a plain test in the default suite, because it is arithmetic.
+`helm lint` and `helm template` on the rendered chart are `Live`.
+
+That second sentence was written the other way round first: helm is a
+pure renderer that needs no cluster and no account, so the default
+gate looked like the right home for it. AGENTS.md is explicit and
+general in the other direction — *every* suite reaching outside the
+JVM is Live, openssl and python3 named alongside docker — and the
+repository applies it without exception (okay-tls's own openssl tests
+are Live). One module's opinion about its own tool is exactly how a
+rule like that erodes, so this follows it.
+
+The value of running helm has not been given up, only moved:
+`sbt integrationTest` runs it, and it earned its keep on the first
+try — `helm lint` rejected the first rendering, an ingress annotation
+reading `.Values.ingress.issuer` where `values.yaml` had no `ingress`
+key at all. A golden-file test would have been perfectly happy with
+that chart. A real `kind` cluster stays optional and unwritten.
 
 ## The line this model does not cross
 
