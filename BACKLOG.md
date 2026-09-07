@@ -4214,3 +4214,17 @@ Left open: the Chase-Lev deque's OWN contribution is unmeasured, since
 it landed while the prefix defect masked everything. An A/B against a
 per-worker CLQ would say; it is cheap and nobody needs the answer yet.
 
+## adaptive-as-default — decided 2026-09-07: NO, and here is the number that would change it
+
+`Queues.strong.adaptive` wins many-to-many (0.63 of our ring, 0.93 of
+ZIO at 4x4) and is now correct under contention. It is still not
+`Channel.apply`'s default, for one measured reason: at ONE producer it
+costs about 15 % over a plain ring (144 against 122 in a tight run),
+and one producer is what a channel usually has. Get that under ~5 %
+and the default should flip; the obvious remaining suspects are the
+interface call to the part (the ring is reached through `Buffer`,
+where a plain `Channel` reaches a `Ring` directly and monomorphically)
+and the `Chunks` path each side takes. A thread-local cache of the
+producer's own buffer was tried and bought 18 % -> ~15 %, which is
+inside the noise this box can measure and is recorded as no gain.
+

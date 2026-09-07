@@ -360,6 +360,22 @@ about the order BETWEEN producers. This trades exactly that silence.
 If your consumer relies on how two producers interleave, do not use
 it — nothing ever promised you that, but it may have happened to hold.
 
+**Waking the right sender** (2026-09-07). A partitioned buffer has one
+more thing to get right than a ring: when a pop frees a slot, WHICH
+parked producer should be woken? The channel asks the buffer for the
+route it just popped from, and the first answer was the scan cursor —
+which is one shared cell, so with several consumers rotating over the
+parts it named whatever part had been scanned last BY ANYONE. The
+senders of a part that had not freed anything were woken and re-parked,
+and the producer waiting on the part that HAD freed a slot slept on:
+four consumers parked on empty, one producer parked on full, no
+progress. It took a probe at that exact shape 5 363 rounds to catch,
+and the JMH fork that first hit it had run for hours. The route is now
+the popping THREAD's own last route, which is exact because the wake
+always happens on the thread that popped, and 20 000 probe rounds are
+clean. `TestManyToMany` keeps 400 of them.
+
+
 ### Feeding a channel, and why the producer's cost is the consumer's problem
 
 `Channel.buffer(n)(source)` runs the source into a channel on its own

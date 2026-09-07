@@ -1,5 +1,6 @@
 # Changelog
 
+<<<<<<< HEAD
 ## deploy-old-helm-retired — one deployment model, not two
 Completed: 2026-09-07
 Landed as 62c851cf (spec then code). specs/deploy.md's `Deploy` and
@@ -326,6 +327,44 @@ are committed. The honest limit is in the spec rather than implied by a
 green suite: this proves the files are well-formed and say what the
 value said, not that a platform accepts them. 87 okay-deploy green 3x,
 11 Live green, 148 okay-script green.
+=======
+## losing-rows — the two rows §4b lost, and what it cost to win them
+
+**Cancellation, won, after two contract bugs.** The row said our
+cancel is a thread interrupt against their fiber flag, and it was
+true only of `Schedulers.loom`. On the schedulers that own the fiber
+object, a cancel is a CAS on its cell. Measured as medians of
+within-run ratios (the box was too busy for absolutes): cancel on
+`drive` is 0.70 of cats and 0.66 of ZIO, where the loom row was 1.12
+of cats. Two defects had to be fixed before the lane could even run,
+and both were contract, not speed: a cancelled `DriveTask` never
+answered, so a `join` on it would have waited for ever; and
+`Platform.block` read "the value arrived" before "I was interrupted",
+so an answer arriving after a cancel still became the fiber's answer.
+Both are laws.
+
+**Many-to-many, won by the buffer.** The P x C deadlock that kept the
+partitioned buffer opt-in is closed, and the mechanism was one line:
+`AdaptiveFifo.lastRoute` returned the shared SCAN CURSOR, so the
+channel woke the senders of a part that had not freed a slot while the
+sender on the part that had slept on. A probe at the JMH fork's own
+shape reproduced it at round 5 363 — four consumers parked on empty,
+one producer on full — and 20 000 rounds are clean with a thread's own
+last route in its place. `Queues.strong.adaptive` now reads 0.63 of
+our ring and 0.93 of ZIO at 4x4.
+
+**And the default stays the ring**, which is the answer to a question
+the operator asked twice. At one producer the partitioned buffer costs
+about 15 % (144 against 122), and one producer is what a channel
+usually has; at four and sixteen it is 5.2x and 32x the other way, and
+those are the channels that should ask for it. A thread-local cache of
+the producer's own BUFFER (rather than its part index) took the
+one-producer cost from 18 % to about 15 % — not a gain worth claiming,
+kept because it also makes a producer's ordering structural rather
+than a consequence of the index lookup agreeing with itself.
+
+Gate: the matrix in the release commit.
+>>>>>>> 0b0429fa (docs + changelog + backlog: the wake in the queues page, the two rows in the changelog, and the default decision with the number that would change it)
 
 ## deploy-cluster — the same value becomes a Helm chart
 Completed: 2026-09-07
