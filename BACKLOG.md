@@ -4244,3 +4244,40 @@ than one producer should ask for the buffer. Reopen only with a
 cycles-level profile (async-profiler or perfasm, neither of which
 this machine has), and read the five refutations above first.
 
+## consumer-stash — the second half of the operator's MPMC design, and the contract that stands in its way
+
+Stage 1 landed (`consumer-claim`): a part is drained under an
+exclusive per-part claim released BEFORE anything is processed, and
+each consumer starts its scan somewhere else instead of walking one
+shared cursor. Four producers, four consumers, elementwise: 1 039 ->
+893 us, and 0.39x a plain ring. Real, and smaller than predicted
+(600), which says most of what a consumer pays is not the buffer's
+head at all: an elementwise `receiveBlocking` takes ONE element per
+call through the channel's waiter machinery, and a claim over a drain
+never touches that path.
+
+STAGE 2 is the operator's own words — consumers should not hold each
+other up with what they took — and it means a per-consumer STASH: one
+claimed drain refills a private batch that later elementwise receives
+are served from without touching shared state.
+
+The problem to solve first, and it is a contract, not a mechanism: a
+stash is a place elements can die. `Queues.strong` promises that an
+accepted element is delivered and that close drains what is buffered;
+elements sitting in a consumer's private batch when that consumer
+stops are neither delivered nor drainable. Three ways out, in the
+order they should be tried:
+  1. the stash IS a part — a consumer takes ownership of a part
+     rather than copying out of it, so anything it leaves is still in
+     the array for the next scan. No new place to die, and the claim
+     already exists.
+  2. a registry of stashes the channel drains on close, which is the
+     honest version of a private batch and the most code.
+  3. a stash bounded to one receive call, which is what
+     `receiveMany` already is — and which the numbers say is not
+     where the elementwise cost lives.
+
+Do not build 2 before measuring 1: the difference between them is
+whether a consumer may hold elements no one else can reach, and that
+is the whole of the strong contract.
+

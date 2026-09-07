@@ -370,8 +370,8 @@ channel — minimum of several rounds, us:
 | 1 producer, 1 consumer | **122** | 148 |
 | 4 producers | 725 | **135** |
 | 16 producers | 2 375 | **99** |
-| 4 producers, 1 consumer (elementwise) | 904 | **510** |
-| 4 producers, 4 consumers | 2 307 | **1 039** |
+| 4 producers, 1 consumer (elementwise) | 877 | **472** |
+| 4 producers, 4 consumers | 2 305 | **893** |
 
 The one-producer row is the buffer's PRICE, and it was measured
 against rather than argued away: five causes were tried and refuted
@@ -379,6 +379,14 @@ against rather than argued away: five causes were tried and refuted
 call — a buffer that only delegates is free — the growth machinery,
 and a thread-identity fast path that made it worse). It is filed as
 `adaptive-one-producer`, closed, with the numbers.
+
+The consumer rows improved on 2026-09-07 (1 039 -> 893) when a drain
+took an exclusive claim on its part and each consumer started its scan
+somewhere else instead of walking one shared cursor. What remains is
+not the buffer: an elementwise receive takes one element per call
+through the channel's waiter machinery, which no per-part claim
+touches. See `consumer-stash` for the half that would, and the
+contract that has to be settled first.
 
 Two things to read here. Producers and consumers do NOT scale for the
 same reason: a producer gets a part of its own, while consumers share
