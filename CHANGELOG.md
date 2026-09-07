@@ -1,5 +1,35 @@
 # Changelog
 
+## staged-runtime — the staged codec for a schema that exists only at run time
+Completed: 2026-09-07
+Operator ask: make run-time staging, think where else it could be
+useful, and keep it optional — switchable off, unused if not wanted.
+`okay-staging` is a JVM-only module nothing in okay depends on;
+`RuntimeStaged.json(schema)` runs the staged generator over the
+schema as a VALUE through `scala.quoted.staging`, the compiler in the
+running process, one compilation per schema cached by identity. The
+generated code reaches the value's own functions (`make`, `parts`,
+`caseOf`, an iso's `to`/`from`, the defaults) through a table of the
+schema's nodes handed to it once — `run` compiles a closed
+expression, so nothing is lifted. Optional three ways: the module,
+the launch switch `-Dokay.staging=off` (no `Compiler` is ever made),
+and a fallback — a generation that fails answers the interpreter and
+records why in `lastFailure`. Agreement with the interpreter over the
+whole node vocabulary on schemas the generator sees only as values,
+including an `SProduct[Seq[Any]]` built the way okay-sql builds a Pg
+composite. The first cut read a sum's case as the root's product: a
+derived schema's thunks build a fresh instance per call, and an
+identity table over instances the generator re-forced did not find
+them — every thunk is now forced once in the walk. Casts, which a
+run-time schema cannot avoid, live in one object (`Unsafe`), each
+licensed by the node kind that emitted it. Price on the Order:
+encode 233 ns vs 842 interpreted (3.6x; 1.4x of the compile-time staged 165), decode-from-AST 140 vs 683 (4.9x; 1.2x of the compile-time 113); generation 8.7 ms per schema with the compiler warm (the first in a process pays the compiler's own warm-up on top, seconds), so a warm generation is earned back after ~15,000 values (609 ns saved per encode, 543 per decode) — history.tsv staged-runtime. Not a default anywhere. The spec's "where else" names the
+sites — okay-sql row shapes and composites (the best fit), R/Python
+JSON frames, a Schema from a JSON Schema document, persist replay of
+old versions, okay-script containers that already carry the compiler
+— with the condition for each: a value, long-lived, and a fold that a
+profile puts on the hot path. specs/codecs.md, "Run-time staging".
+
 ## script-https-default — https out of the box, with a proxy and without
 Completed: 2026-09-07
 Landed as c6735296 (spec then code). Operator ask, held to four
@@ -122,6 +152,7 @@ too. `opsRoutes` is deliberately absent from `routes` (exposure is
 the deployment's decision): a caller chains it, `Serve` mounts it for
 `OKAY_OPS=1`, and the pages still win every path they claim. 122
 green 3x.
+
 
 ## okay-script-measured — the first numbers for a runtime-compiled page
 Completed: 2026-09-07

@@ -95,6 +95,7 @@ API reference, gotchas.
 | [`okay-cluster`](modules/okay-cluster.md) | the remote channel, distributed chunk work, the JS↔JVM acceptance |
 | [`okay-http`](modules/okay-http.md) | REST and WebSocket as programs: a body is a `Source`, a socket session is a `Stage[Frame, Frame, A]`, and a socket IS an MCP `Link` |
 | [`okay-jetty`](modules/okay-jetty.md) | Jetty behind the same two seams — and the WebSocket SERVER okay-http could not serve |
+| [`okay-staging`](modules/okay-staging.md) | the staged codec for a schema that exists only at run time — JVM only, optional by construction, switchable off at launch |
 | [`okay-netty`](modules/okay-netty.md) | Netty behind the same two seams, plus the cross-backend matrix that proves the seam |
 | [`okay-security`](modules/okay-security.md) | authorization once: claims as values, JWT/JWKS over a crypto seam, PBKDF2, policies as an algebra, routes wrapped so a principal must exist, OAuth2 client flows |
 | [`okay-crypto`](modules/okay-crypto.md) | the primitive crypto seam — MAC, hash, KDF, randomness on the platform's own crypto, so okay-pg's SCRAM need not cycle through the security stack |

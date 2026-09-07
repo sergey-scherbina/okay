@@ -336,9 +336,8 @@ data shape. Same algebra, one more instance of it.
 - Cbor/Yaml/Xml staged algebras (the same generator, another
   emitter — when a wire names it).
 - Run-time staging (`scala.quoted.staging`) for schemas that exist
-  only at run time (a ToolSpec from a model, Pg composites from the
-  catalog): JVM-only, a compiler dependency; only if such a workload
-  appears.
+  only at run time — taken up as its own module on the operator's
+  ask, "Run-time staging" below (2026-09-07).
 
 ## Value parser (2026-09-02, json-value-parser)
 
@@ -509,3 +508,143 @@ throw.
 Re-encoding (`Json.print`/`escape`) still emits raw UTF-8 rather than
 `\uXXXX` — legal JSON either way, and not the defect: the defect was
 one direction only, decoding what someone else already escaped.
+
+## Run-time staging (2026-09-07, staged-runtime)
+
+The Staged fold mode's last out-of-scope item, taken up on the
+operator's ask ("make run-time staging, and think where else it could
+be useful" — with the condition that it stays optional: switchable
+off, unused if not wanted). `Staged.json[A]` folds a TYPE's shape at
+compile time; a schema that exists only at run time — a Postgres
+composite from the catalog, a tool's parameters as an MCP server
+declared them, a JSON frame from R or Python, a `Schema` built from a
+JSON Schema document — has no type for the macro, and had only the
+interpreter. `RuntimeStaged.json(schema)` is the same generator over
+the schema as a VALUE, run through `scala.quoted.staging`: the shape
+decides the code at generation time, the compiler in the running
+process compiles it, the codec is cached by the schema's identity.
+
+### Interface
+- module `okay-staging` (JVM only, `dependsOn(okayCodec.jvm)`, brings
+  `scala3-staging`); nothing in okay depends on it.
+- `RuntimeStaged.json[A](s: Schema[A]): JsonCodec[A]` — generated
+  once per schema (by identity), the interpreter when staging is off
+  or the generation fails; never throws for want of staging.
+- `RuntimeStaged.enabled` — `-Dokay.staging=off` / `OKAY_STAGING=off`
+  (also `false`, `0`, `no`) makes every door the interpreter and no
+  `Compiler` is ever made; `force(Some(false))`/`force(None)` from code.
+- `RuntimeStaged.lastFailure: Option[(Schema[?], Throwable)]` — the
+  last generation that fell back, and why. `isStaged(s)` — a test's
+  question.
+- `RuntimeStaged.interpreted(s)` — the interpreter as a `JsonCodec`.
+
+### Behavior
+- [x] agreement over the whole node vocabulary, on schemas the
+      generator sees only as values: products, nesting, Option/List/
+      Vector, defaults (absent with a declared default, absent
+      optional, absent required, damaged optional, damaged elements),
+      sums (every case, a sum in a list, an unknown case, the wrong
+      shape), isos (wrap bare, refine's Left, an enumeration's names),
+      recursion (delegates to the fold) — encode byte for byte, decode
+      Left for Left with the fold's own refusal words (TestRuntimeStaged)
+- [x] a schema BUILT at run time — an `SProduct[Seq[Any]]` over parts,
+      what okay-sql builds from `pg_type` — stages like a derived one
+- [x] the switch: off, the door is the interpreter and stages nothing;
+      on, the same schema is generated once and the codec is `eq`
+- [x] the price, on the compile-time benchmark's Order (CodecBenchmark,
+      compare; `-f 1 -wi 3 -i 5`): encode 233 ns vs 842 interpreted (3.6x; 1.4x of the compile-time staged 165), decode-from-AST 140 vs 683 (4.9x; 1.2x of the compile-time 113); generation 8.7 ms per schema with the compiler warm (the first in a process pays the compiler's own warm-up on top, seconds), so a warm generation is earned back after ~15,000 values (609 ns saved per encode, 543 per decode) — history.tsv staged-runtime
+
+### Decisions
+- **Its own module, and a switch, and a fallback — optional three
+  ways.** The operator's condition. A program that does not add
+  `okay-staging` has no compiler on its classpath; one that does can
+  turn the door off at launch without a code change; and a door that
+  cannot stage answers the interpreter and says why. Not a flag inside
+  okay-codec: the compiler dependency must not be reachable from a
+  module that crosses to JS and Native.
+- **The schema's functions reach the generated code through a table,
+  not through lifting.** `scala.quoted.staging.run` compiles a closed
+  expression; a `make`, a `parts`, an iso's `to` cannot be lifted into
+  it. So the generated value is a FUNCTION from the schema's node table
+  (`Array[Schema[?]]`, the instances the walk recorded) to the codec,
+  applied once; each node's handle is a table read at the call site
+  and the hot path is the straight-line code around it.
+- **Every thunk forced once.** A derived schema's field thunks may
+  build a fresh `Schema` instance per call (they do, for a sum's
+  cases); the first cut called them twice — once in the walk, once in
+  the generator — and the second instance was not in the identity
+  table, so the sum's case read the ROOT's product (a
+  ClassCastException in the agreement suite). The walk records each
+  node's children and the generator reads only those. A walk past
+  4096 nodes (a thunk that never returns the same instance) refuses
+  and the door falls back.
+- **Casts in one place, licensed by the node kind.** A run-time
+  schema is erased: the value under an `SInt` node is `Any` to the
+  generator. `RuntimeStaged.Unsafe` holds every cast (one per
+  primitive, one per node kind, one at the codec's boundary), each
+  emitted only under the node kind that proves it; the generator
+  itself, the table walk and the tests do not cast. The rule "no cast
+  without necessity" met its necessity here and isolated it.
+- **Delegation for recursion and the fold's words for refusal** — as
+  the compile-time generator: a node met again inside itself calls
+  `Json.decode(schema)`, and every cold path (wrong shape, unknown
+  case, damaged primitive) is the interpreter's own refusal, so the
+  two modes never diverge in what they say.
+- **Not a default anywhere.** No okay module calls `RuntimeStaged` for
+  the caller; a run-time schema's codec is the interpreter until a
+  measured hot path names it (below).
+
+### Where else it could be useful — and the condition for each
+The door pays for itself when three things hold at once: the schema is
+a VALUE (no type for the macro), it LIVES LONG (thousands of values
+per generation, or the compilation is never earned back), and the
+FOLD is a measured share of the hot path (the parser, the wire or
+the database usually are — staged-codecs found the fold at 0.6 µs of
+a 15.2 µs text→value).
+- **okay-sql typed rows and composites** (`Typed.shapeOf`, Pg
+  composites from `pg_type`): a query's row shape is a value read at
+  connect time and decoded per row for the connection's life — the
+  best fit in the repository. Condition: a profile of a wide result
+  set showing the row fold at ≥30% of the per-row cost; today the
+  text protocol's parsing is the larger share, so measure first.
+- **JSON frames from R and Python** (specs/r.md, specs/py.md): a
+  frame's column schema is a value and a frame is 10^5–10^6 rows.
+  Condition: JSON is the wire. Arrow (r-arrow, py-arrow) removes the
+  codec altogether and is the better road; staging is for the JSON
+  path that stays.
+- **A `Schema` built from a JSON Schema document** (structured output
+  contracts declared by a server, MCP tool results): the only way such
+  a schema can ever have a generated codec. Condition: the document's
+  values are decoded at a rate that matters — a model's replies are
+  not, a server's event stream might be.
+- **okay-persist replay of old entry versions**: an entry's schema at
+  version N is a value once the type has moved on; replay of a large
+  log decodes millions of them. Condition: CBOR (a `RuntimeStaged.cbor`
+  is the same generator with the CBOR emitter, not written until the
+  replay profile asks) and a log ≥10^6 entries.
+- **okay-script containers**: they already carry `scala3-compiler`
+  for the page; adding this module costs only the staging jar, so a
+  page's run-time data schemas (a form, a table from a query) could
+  take the staged codec at no classpath price. Condition: a page that
+  renders enough rows for the fold to show in `MeasureScript`.
+- **Beyond codecs, the same shape**: a predicate over typed rows, a
+  cue matcher over a run-time pattern set, a validator from a run-time
+  declaration — any fold over a VALUE that runs many times against
+  many inputs. The generator pattern (walk the value once, hand the
+  value's functions through a table, emit straight-line code) transfers
+  unchanged.
+
+Where NOT: JS and Native (no compiler); anything decoded a few times
+per schema (an MCP tool's arguments, a chat reply, a config file);
+per-request schemas (each generation is the `generate` lane's price);
+memory-constrained containers where the compiler's heap is the
+budget; and every path where the fold is not the bottleneck, which
+is most of them until measured.
+
+### Out of scope
+- `RuntimeStaged.cbor` / `strict` — the same generator, the other
+  emitters; written when the persist replay or a strict wire names it.
+- A generated recursive method per recursive node (delegation today,
+  as in the compile-time generator).
+- Automatic use by any okay module.
+

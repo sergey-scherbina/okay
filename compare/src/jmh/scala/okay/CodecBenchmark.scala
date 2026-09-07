@@ -107,11 +107,23 @@ class CodecBenchmark {
 
   val staged = okay.codec.Staged.json[Order]
   val stagedCbor = okay.codec.Staged.cbor[Order]
+  /** staged-runtime: the same fold over the schema as a VALUE, generated
+   * by the compiler in the running process at first use */
+  val runtimeStaged = okay.staging.RuntimeStaged.json(summon[Schema[Order]])
+  /** a fresh identity each call, so every call is a first use: the
+   * generation cost (`generate`), the number a caller pays once per schema */
+  def freshSchema(): Schema[Order] = summon[Schema[Order]] match
+    case p: Schema.SProduct[Order] => p.copy()
+    case other => other
   val cborBytes: Array[Byte] = Cbor.write(order)
 
   @Benchmark def encodeInterp(): String = Json.encode(summon[Schema[Order]])(order)
   @Benchmark def encodeStaged(): String = staged.encode(order)
   @Benchmark def decodeStagedAst(): Either[String, Order] = staged.decode(ast)
+  @Benchmark def encodeRuntimeStaged(): String = runtimeStaged.encode(order)
+  @Benchmark def decodeRuntimeStagedAst(): Either[String, Order] = runtimeStaged.decode(ast)
+  @Benchmark @Fork(1) @Warmup(iterations = 1, time = 5) @Measurement(iterations = 3, time = 5)
+  def generateRuntimeStaged(): okay.codec.JsonCodec[Order] = okay.staging.RuntimeStaged.json(freshSchema())
   @Benchmark def encodeHand(): String = handEncode(order)
   @Benchmark def encodeCirce(): String = summon[io.circe.Encoder[Order]](order).noSpaces
 

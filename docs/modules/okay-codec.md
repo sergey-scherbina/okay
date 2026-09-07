@@ -178,3 +178,10 @@ door: `val codec = Staged.strict[A]` at construction, `codec.decode(text)`
 on the hot path — the strict read generated for `A`, the same answer
 as `readStrict` (TestJsonStrictStaged holds them equal), 2.45x faster
 than circe with 32% less allocation.
+
+All three doors take a `Schema` the compiler can see. A schema that
+exists only at run time (a composite from a database catalog, a
+tool's declared parameters) has the interpreter, and — on the JVM,
+by adding the optional [`okay-staging`](okay-staging.md) module — the
+same staged codec generated from the schema as a value, switchable
+off at launch.

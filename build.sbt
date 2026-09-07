@@ -1375,7 +1375,7 @@ lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
  * product this library no longer carries.
  */
 lazy val root = (project in file("."))
-  .aggregate(okay.jvm, okay.js, okay.native, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
+  .aggregate(okay.jvm, okay.js, okay.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
     okayLex.jvm, okayLex.js, okayLex.native,
     okayParse.jvm, okayParse.js, okayParse.native,
@@ -1402,9 +1402,28 @@ lazy val root = (project in file("."))
   )
 
 /** comparison benchmarks against the ecosystem: the heavy dependencies live here */
+/**
+ * Run-time staging (staged-runtime): the staged fold over a Schema
+ * VALUE, for schemas that exist only at run time. Its own module on
+ * purpose — it carries the Scala 3 compiler (`scala3-staging` and the
+ * compiler jar) into whichever program depends on it, and it is JVM
+ * only; nothing else here depends on it, and a program that does can
+ * still switch it off at launch (`-Dokay.staging=off`). Optional by
+ * construction, not by convention.
+ */
+lazy val okayStaging = project
+  .in(file("okay-staging"))
+  .dependsOn(okayCodec.jvm)
+  .settings(
+    name := "okay-staging",
+    libraryDependencies ++= Seq(
+      "org.scala-lang" %% "scala3-staging" % scalaVersion.value,
+      "org.scalameta" %% "munit" % "1.1.1" % Test))
+
 lazy val compare = (project in file("compare"))
   .dependsOn(okay.jvm, okayLlm.jvm, okayRag.jvm, okayAgent.jvm, okayHttp.jvm, okayCluster.jvm,
-    okayActor.jvm, okayReactive)   // actor-reactive-bench: the two modules that had no numbers
+    okayActor.jvm, okayReactive,   // actor-reactive-bench: the two modules that had no numbers
+    okayStaging)                   // staged-runtime: the run-time staged codec beside the compile-time one
   .enablePlugins(JmhPlugin)
   .settings(
     name := "okay-compare",

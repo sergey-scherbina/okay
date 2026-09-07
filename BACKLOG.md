@@ -876,10 +876,15 @@ measure on our own data, never a predicted result.
       fold and the staged generator call the same primitives. Encode
       1.6x, decode 2.0x over the interpreted fold. Named by
       okay-persist's own wire path. specs/codecs.md, "Staged CBOR".
-- [ ] staged-runtime — `scala.quoted.staging` for run-time schemas
-      (ToolSpec from a model, Pg composites from the catalog);
-      JVM-only opt-in module, compiler dependency; only on a named
-      workload (specs/codecs.md, Staged fold mode, Out of scope)
+- [x] staged-runtime — landed: `okay-staging`, a JVM-only module
+      nothing depends on; `RuntimeStaged.json(schema)` is the staged
+      generator over the schema as a VALUE through
+      `scala.quoted.staging`, cached by identity, the interpreter when
+      `-Dokay.staging=off` or a generation fails (never a throw).
+      Agreement over the whole node vocabulary on run-time-built
+      schemas. Price on the Order: encode 233 ns vs 842 interpreted (3.6x; 1.4x of the compile-time staged 165), decode-from-AST 140 vs 683 (4.9x; 1.2x of the compile-time 113); generation 8.7 ms per schema with the compiler warm (the first in a process pays the compiler's own warm-up on top, seconds), so a warm generation is earned back after ~15,000 values (609 ns saved per encode, 543 per decode) — history.tsv staged-runtime. Not a default anywhere;
+      "where else" with the condition for each is in the spec.
+      specs/codecs.md, "Run-time staging".
 
 ## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
 - [ ] py-arrow — frames via pyarrow (twin of r-arrow; nearer —
