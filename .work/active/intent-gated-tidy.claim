@@ -1,0 +1,15 @@
+task: intent-gated-tidy
+agent: fable-persist
+started: 2026-09-07
+branch: feature/intent-gated-tidy
+worktree: ../okay-wt-tidy
+
+why: three intent entries stay open with a gate nobody has stated
+  as measured: fasttext ("only if the server is the problem"),
+  grammar-parse (a consumer whose wrong answer is worse than none),
+  crf-slots ("after the class problem is settled"). The lanes of
+  this window measured each gate; the boards should say so, so the
+  next reader does not re-derive it.
+
+what: boards only — each entry keeps its box unchecked and gains a
+  GATED note naming the measurement and the condition that opens it.
