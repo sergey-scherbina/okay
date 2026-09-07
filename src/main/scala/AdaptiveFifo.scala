@@ -65,6 +65,19 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    * a reader never has to walk the array to count */
   private val open = AtomicInteger(if eager then cap else 1)
 
+  /**
+   * THE ONE PART, while there is one. A channel does not know how
+   * many producers it will get, so a buffer that grows a part per
+   * producer should cost nothing until the second one arrives — and
+   * the general path costs an `open` read, an array read and a bounds
+   * check per element, which is the 149 us against a plain ring's 122
+   * at ONE producer (the same buffer is 135 against 725 at four).
+   * This field is that part while `open` is 1, and null for good
+   * afterwards: the claimer of part 1 clears it before it can route
+   * anything there, and the write is published by the volatile.
+   */
+  @volatile private var solo: Buffer[A] | Null = if eager && cap > 1 then null else slots.get(0)
+
   /** set once the channel is closing: no part may be opened after
    * that, or its end mark would never be placed */
   private val frozen = AtomicBoolean(false)
@@ -126,6 +139,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
       val idx = open.getAndIncrement()
       if idx < cap then
         slots.set(idx, make())
+        solo = null            // published before the claimer can route here
         Integer.valueOf(idx)
       else
         // the cap is reached: give the count back and share
@@ -169,18 +183,26 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     eachOpen(b => c += b.capacity.toLong)
     if c > Int.MaxValue then Int.MaxValue else c.toInt
 
-  override def push(a: A): Boolean = mine.get.buf.push(a)
+  override def push(a: A): Boolean =
+    val s = solo
+    if s != null then s.push(a) else mine.get.buf.push(a)
   override def pushAt(r: Int, a: A): Boolean = part(r).push(a)
 
   override def pushDeciding(a: A, unless: AtomicBoolean, orElse: A): A | Null =
-    mine.get.buf.pushDeciding(a, unless, orElse)
+    val s = solo
+    if s != null then s.pushDeciding(a, unless, orElse)
+    else mine.get.buf.pushDeciding(a, unless, orElse)
 
   override def pushDecidingAt(r: Int, a: A, unless: AtomicBoolean, orElse: A): A | Null =
     part(r).pushDeciding(a, unless, orElse)
 
-  override def pushMany(n: Int)(src: Int => A): Int = mine.get.buf.pushMany(n)(src)
+  override def pushMany(n: Int)(src: Int => A): Int =
+    val s = solo
+    if s != null then s.pushMany(n)(src) else mine.get.buf.pushMany(n)(src)
 
-  override def hasRoom: Boolean = mine.get.buf.hasRoom
+  override def hasRoom: Boolean =
+    val s = solo
+    if s != null then s.hasRoom else mine.get.buf.hasRoom
   override def hasRoomAt(r: Int): Boolean = part(r).hasRoom
 
   /** freeze first, THEN seal: a part opened between the two would
@@ -234,6 +256,8 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
   private val sealedAt = java.util.concurrent.atomic.AtomicIntegerArray(cap)
 
   override def pop(): A | Null =
+    val s = solo
+    if s != null then { myRoute.set(0); return s.pop() }
     // ONE PART is the common case and deserves the straight line: no
     // cursor, no loop, no scan. Measured at a single producer, a
     // partitioned buffer costs 30% over a plain ring (145.8 against
@@ -257,6 +281,8 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     out
 
   override def popMany(max: Int)(sink: A => Unit): Int =
+    val s = solo
+    if s != null then { myRoute.set(0); return s.popMany(max)(sink) }
     if open.get == 1 then { myRoute.set(0); slots.get(0).nn.popMany(max)(sink) }
     else popManyScanning(max)(sink)
 
