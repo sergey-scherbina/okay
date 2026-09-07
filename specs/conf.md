@@ -82,7 +82,56 @@ object Secrets:
 object Conf:
   def read[A: Schema](json: String): Either[String, A]
   def load[A: Schema](path: java.nio.file.Path): Either[String, A]  // JVM/Native
+
+  /** the ONE derivation of an environment name from a field:
+   * camelCase to PREFIX_SNAKE_CASE. okay-deploy renders settings
+   * with it, a process reads them with it — one derivation, not two
+   * lists that agree because a person keeps them agreeing */
+  def envName(prefix: String, field: String): String
+
+  /** the value the environment supplies, as a PATCH: only the fields
+   * an actual variable is set for, typed by the schema. A variable
+   * whose text is not a value of that field's type is a refusal
+   * naming the variable, never a silent default */
+  def fromEnv[A: Schema](prefix: String, env: String => Option[String]): Either[String, Json]
+
+  /** defaults, then a file over them, then the environment over
+   * that (RFC 7396 merge, in that order) */
+  def layered[A: Schema](defaults: A, file: Option[String],
+                         env: String => Option[String], prefix: String): Either[String, A]
 ```
+
+### The layering, and why the order is that one
+
+A config has three sources and they disagree on purpose: the value's
+own defaults are what a fresh clone runs with, a file is what a
+deployment commits, and the environment is what a container sets at
+the door. The order is **defaults, then file, then environment**,
+because each is closer to the running process than the one before it
+and closer should win.
+
+Three properties make this worth having in one place rather than in
+each module's `parse`:
+
+- **A partial file is a partial file.** The merge is RFC 7396 over
+  the value's own JSON, so a file that names one field changes one
+  field. A config file that had to be complete would be a config file
+  nobody edits.
+- **The environment cannot invent a name.** Names are DERIVED from
+  the schema by `envName`, so a variable exists exactly when a field
+  does, and `OKAY_PROT` next to a `port` field sets nothing — which
+  is why the same derivation must render the deployment's settings.
+- **A wrong value is named.** `OKAY_PORT=eighty` is a refusal saying
+  the variable, what it holds and what the field is, not a fall back
+  to 8080 that an operator discovers in production.
+
+Only scalars are read from the environment: a string, a number, a
+boolean, and a `Secret` (which is a string — the REFERENCE, never a
+value, so `OKAY_TLS_KEY=file:/run/secrets/key.pem` is exactly the
+right thing to put in a unit file). A field of any other shape is a
+refusal naming the field, because a list smuggled through a
+comma-separated variable is a parser nobody agreed on. A config that
+wants one keeps a `String` field and splits it itself, in the open.
 
 A connection config in this shape — the pattern, not a prescribed
 type, since each module's config belongs to that module:
