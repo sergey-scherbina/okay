@@ -1,0 +1,5 @@
+lane: sql-plan-cells
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: operator took it despite the condition I filed it under. `Typed.planOf` already hoists the column-to-field matching out of the per-row loop; what remains per CELL per ROW is a match on the `Shape` ADT before any work happens. Compile each field's Shape into a `SqlValue => Either[String, A]` ONCE, at plan time, so a row is an array of calls. Typed all the way (Shape[A] compiles to a decoder of A), so no new casts. Agreement with the existing `decode` is the requirement, measured on the same MeasureSqlFold baseline: 0.45 us per row, 24.1% of an in-memory H2 read.
+touches: okay-sql/src/main/scala/okay/sql/Typed.scala, okay-jdbc MeasureSqlFold, TestTyped/TestSqlPure agreement, specs/sql.md or specs/codecs.md, BACKLOG, CHANGELOG
