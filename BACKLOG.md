@@ -4018,7 +4018,7 @@ prototype with owned workers still above 1500 means the cost is in
 `Drive`'s walk, not the pool. Not before the P × C deadlock
 (`adaptive-p-x-c-deadlock`) is named.
 
-## own-deque — the shared queue is what keeps `Schedulers.own` off the top of both columns
+## own-deque — DONE 2026-09-07, and the cause was the WAKE, not the queue
 
 Measured (schedulers-family, 2026-09-07, §4b): `own` is the fastest
 lane on real work when forked from outside (2 430 us against the JDK
@@ -4036,9 +4036,22 @@ pops at one end with plain writes and a fence, thieves take from the
 other end with a CAS, so the common case has no contention at all.
 `DriveTask` is already the unit; only the container changes.
 
-Expected: `okayOwnInside` at work=10000 from 14 054 to under 3 000
-(the pool's number), with the tiny-work column unmoved (874).
-Disqualifying: a deque that does not move the inside path means the
-cost is in the steal SCAN (nine empty queues polled before the deep
-one), which is a different fix — a victim hint per thief.
+RESULT: the deque landed and moved nothing — the disqualifying
+evidence fired. Counters then named the real defect in one run: the
+"active prefix" unparked only the worker at its edge, so workers that
+had parked earlier never woke (ONE activation, two workers, 10 000
+tasks). With the prefix gone (wake any sleeper, steal from everyone)
+and the helper rule given its second clause (spread only when tasks
+average more than `spreadAboveNanos`), `okayOwnInside` reads 744 us at
+work=100 and 3 327 at work=10000 against kyo's 779 and 25 419 — 4.5 %
+faster on kyo's own ground and 7.6x on real work, one tight run.
+
+A third defect surfaced in the same lane: per-worker inboxes with a
+random victim woke a sleeping worker for nearly every external
+submission (1 249 -> 5 822 us). One shared submission queue, signalled
+only when nobody is awake, fixed it (1 554 / 2 902).
+
+Left open: the Chase-Lev deque's OWN contribution is unmeasured, since
+it landed while the prefix defect masked everything. An A/B against a
+per-worker CLQ would say; it is cheap and nobody needs the answer yet.
 

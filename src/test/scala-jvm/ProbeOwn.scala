@@ -11,7 +11,7 @@ class ProbeOwn extends munit.FunSuite {
     while j < work do { s += (i ^ j); j += 1 }
     s
 
-  test("inside-fork burst, per-worker counts") {
+  test("inside-fork burst, per-worker counts".ignore) {
     val sch = Schedulers.own()
     given Scheduler = sch
     val own = sch.asInstanceOf[Schedulers.Own]

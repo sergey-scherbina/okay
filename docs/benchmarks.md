@@ -422,19 +422,36 @@ for the third.
   what made kyo fast, and the pool then spreads what the deque cannot
   drain, which is what kyo cannot do.
 
-  `Schedulers.own` (owned workers, the helper rule) is the best lane
-  on real work when forked from outside (2 430) and the best external
-  lane at tiny work (1 249 against `drive`'s 2 206), but its inside
-  path still reads 14 054, five times what it should. The cause is
-  named and is not the policy: `own` gives each worker a
-  `ConcurrentLinkedQueue`, so an owner and nine thieves contend on one
-  head, and at 2.5 us a task that contention is the wall (10 000
-  tasks x ~1 us of contended poll = the 14 ms we see). The JDK pool
-  does not have it because a worker's deque is owner-LIFO at one end
-  and thief-FIFO at the other. The fix is a Chase-Lev deque per
-  worker, filed as `own-deque`; the helper rule itself is correct and
-  measured, and this is the only thing between `own` and the top of
-  both columns.
+  **`Schedulers.own` now holds both columns** (one tight run, every
+  error 3-7 %):
+
+  | us per 10 000 fork/joins | 100 ops each | 10 000 ops each |
+  |---|---|---|
+  | kyo, its own idiom | 779 | 25 419 |
+  | **okay `own`, the same form of call** | **744** | **3 327** |
+  | okay `drive` (JDK pool), the same form | 965 | 2 932 |
+  | okay `own`, forked from outside | 1 554 | 2 902 |
+
+  4.5 % faster than kyo on kyo's own ground and 7.6x faster on real
+  work, in one scheduler, because the helper rule reads what the work
+  IS instead of being told: at each 16-task checkpoint a worker knows
+  how long it has been busy and how many tasks that took, and it wakes
+  a sleeper only when it is past the time threshold AND its tasks are
+  averaging more than `spreadAboveNanos`. Thirty-nanosecond fibers
+  stay home; 2.5-microsecond fibers spread.
+
+  Two defects were found by counters on the way, and both were in the
+  waking rather than in the queues. The first cut kept an "active
+  prefix" and unparked only the worker at its edge, so a worker that
+  had parked earlier slept for ever — the probe showed ONE activation
+  and two workers sharing 10 000 tasks (14 054 us). The second gave
+  each worker its own inbox and picked a victim at random, so a
+  submitter woke a SLEEPING worker for nearly every task and the
+  external lane went 1 249 -> 5 822 us; one shared submission queue
+  with a signal only when nobody is awake put it back. A Chase-Lev
+  deque per worker is in as well (the owner's end and the thieves'
+  end are different ends); its own contribution is UNMEASURED, since
+  it landed while the prefix defect was still masking everything.
 
   What okay does with that, and it is the point of the whole
   exercise: the policy can be one scheduler's, not two. `Schedulers.
