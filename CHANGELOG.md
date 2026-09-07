@@ -1,5 +1,27 @@
 # Changelog
 
+## docs-intent-refresh — the intent docs catch up with six lanes
+Completed: 2026-09-07
+The module page had been quoting "80.0% at full coverage" as THE
+number since before the autonomy report showed it to be the worst of
+the promises the same tiers can make. It now leads with the curve a
+caller reads — at precision 90% you answer 53.3% offline, at 85% you
+answer 73.3%, at everything you get 80.0% — and the API table says
+the same. Added: `Demonstrations` (a public API the page did not
+mention), and three measured rules for working the model tier —
+the taxonomy's case names ARE the prompt (0.685 → 0.100 without
+words, 0.217 for a synonym, so a rename must carry a number),
+demonstrations from your own log are the biggest lever (+0.207 macro
+F1, undecodable 6/120 → 0), and what the offline extractors fill
+(80% of the times that are there) versus what they refuse on purpose
+(a bare time, a range). The `Other` section now carries the measured
+reason it is stuck (the detector ranks at AUC 0.843 and is starved of
+rows) instead of an assumption. A closing section points at
+specs/intent-autonomy.md and carries the two results a reader should
+know before building on the module: a learned combiner lost to the
+cascade, and abstention pays in both measurements that touched it.
+The docs index line and the docs-index suite agree.
+
 ## intent-offline-slots — the slots the offline door fills, and four word-shapes
 Completed: 2026-09-07
 Stage 7 of the autonomy programme, run measure-first because a door
