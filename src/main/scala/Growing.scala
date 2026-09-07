@@ -96,11 +96,29 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
       val grownTo = refused()
       if grownTo == null then false else grownTo.nn.pushAt(route, a)
 
+  // the channel's own send path is `pushDecidingAt`, so the refusal
+  // that means contention arrives HERE and not through `push` — the
+  // first cut delegated these two straight through and the buffer
+  // never grew under a channel at all, only under a direct caller
   override def pushDeciding(a: A, unless: AtomicBoolean, orElse: A): A | Null =
-    inner.pushDeciding(a, unless, orElse)
+    val b = inner
+    val out = b.pushDeciding(a, unless, orElse)
+    if out != null then out
+    else
+      val grownTo = refused()
+      if grownTo == null then null else grownTo.nn.pushDeciding(a, unless, orElse)
 
   override def pushDecidingAt(route: Int, a: A, unless: AtomicBoolean, orElse: A): A | Null =
-    inner.pushDecidingAt(route, a, unless, orElse)
+    val b = inner
+    val out = b.pushDecidingAt(route, a, unless, orElse)
+    if out != null then out
+    else
+      val grownTo = refused()
+      if grownTo == null then null
+      else
+        // the route was taken from the OLD buffer; ask the new one for
+        // this producer's own part rather than reusing a stale index
+        grownTo.nn.pushDecidingAt(grownTo.nn.route(), a, unless, orElse)
 
   override def pushMany(n: Int)(src: Int => A): Int =
     val b = inner

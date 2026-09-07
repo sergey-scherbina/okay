@@ -163,6 +163,11 @@ class ManyProducersBenchmark {
   @Benchmark def onePart_chunk(): Long =
     runChunked(Queues.strong[Long].adaptive.parts(1).each(Cap).build)
 
+  /** the one that decides for itself: a ring while one producer keeps
+   * up, a partitioned buffer once producers contend (queue-swap) */
+  @Benchmark def growing_chunk(): Long =
+    runChunked(Queues.strong[Long].growing(Cap, parts = 16).build)
+
   @Benchmark def adaptive_chunk(): Long =
     runChunked(Queues.strong[Long].adaptive.parts(16).each(Cap).build)
 
