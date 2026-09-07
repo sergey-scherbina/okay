@@ -4172,20 +4172,45 @@ is judged by, and orders the lanes. Nothing here is a hope: each item
 says what would move a number, and the items measured NOT to move one
 are listed too, so they are not tried a fourth time.
 
-### The metric, which does not exist yet and must
-"Works without a model" is not one number, it is two, and this
-repository has never printed them together:
+### The metric, now printed (intent-autonomy-report, 2026-09-07)
+"Works without a model" is not one number, it is two, and this line
+had never printed them together: the AUTONOMY RATE (the share
+answered with no network at all, and the precision among those
+answers) and the HANDED-OVER SHARE (the rest, which must reach a
+model or a person). `MeasureAutonomy` prints both, per tier and per
+abstention floor, over the same held-out English 60.
 
-- **AUTONOMY RATE** — the share of messages answered with no network
-  at all, at a stated precision. Today: the cue tier answers 53.3% of
-  held-out English at 90.6% precision; behind it the gram tier answers
-  the rest, taking the full offline door to 80.0% at 100% coverage.
-- **HANDED-OVER SHARE** — the share that reaches a model, and what it
-  costs. In the service this is the number the business cares about;
-  in this repository it is not tracked at all.
+| door | coverage | precision among answered | right of all | handed over |
+|---|---:|---:|---:|---:|
+| cues only (floor 0.4) | 53.3% | 90.6% | 48.3% | 46.7% |
+| grams only, margin ≥ 0.0 | 100.0% | 68.3% | 68.3% | 0.0% |
+| grams only, margin ≥ 0.3 | 68.3% | 73.2% | 50.0% | 31.7% |
+| grams only, margin ≥ 0.5 | 46.7% | 78.6% | 36.7% | 53.3% |
+| cues, then grams ≥ 0.0 (SHIPPED) | 100.0% | 80.0% | 80.0% | 0.0% |
+| cues, then grams ≥ 0.2 | 86.7% | 82.7% | 71.7% | 13.3% |
+| cues, then grams ≥ 0.5 | 73.3% | 88.6% | 65.0% | 26.7% |
 
-Every lane below is judged by moving one of those without breaking
-the shipped-model law (no class below F1 0.50).
+And the table a caller actually reads, which is the point of the
+lane — at the precision they need, how much needs no network:
+
+| precision needed | best offline door | coverage | handed over |
+|---|---|---:|---:|
+| ≥ 95% | none reaches it | 0.0% | 100.0% |
+| ≥ 90% | cues only (90.6%) | 53.3% | 46.7% |
+| ≥ 85% | cues + grams ≥ 0.5 (88.6%) | 73.3% | 26.7% |
+| ≥ 80% | cues + grams ≥ 0.0 (80.0%) | 100.0% | 0.0% |
+
+- [x] the framing this line had been quoting — "80.0% at full
+      coverage" — was the WORST of the available promises, because it
+      never offered the abstention. Three quarters of the traffic can
+      be answered at 88.6% with nothing but the artifact and the
+      cues; a quarter is handed over. That is the honest product
+      statement, and it was one flag away the whole time.
+- [x] the per-class law is asserted here too, so a refit that kills a
+      class fails the autonomy report and not only the model suite.
+
+Every lane below is judged by moving one of those two numbers without
+breaking the law (no class below F1 0.50).
 
 ### Measured NOT to help — do not retry without new evidence
 - **Another representation.** TF-IDF 61.7%, hashed char n-grams

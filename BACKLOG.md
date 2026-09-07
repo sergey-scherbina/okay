@@ -3025,12 +3025,14 @@ subtraction.
 Operator's direction: aim this line at working WITHOUT models. The
 metric, the measured dead ends and the order are in the spec section;
 these are the lanes.
-- [ ] intent-autonomy-report — FIRST, and cheap: a suite that prints
-      the two numbers this programme is judged by — the autonomy rate
-      (share answered with no network, at what precision, per class)
-      and the handed-over share — per tier, over the fixture. Offline,
-      no new data, runs in the ordinary suite. Every later lane must
-      move one of these; today neither is printed anywhere.
+- [x] intent-autonomy-report — LANDED 2026-09-07 (MeasureAutonomy,
+      offline, in the ordinary suite): the autonomy rate and the
+      handed-over share, per tier and per abstention floor, plus the
+      promise table a caller reads. The finding: "80.0% at full
+      coverage" was the worst of the available promises — at margin
+      0.5 the same tiers answer 73.3% of traffic at 88.6% precision
+      and hand over 26.7%. The per-class law is asserted here too.
+      specs/intent-classify.md, "The autonomy programme".
 - [ ] intent-harvest-loop — real rows with provenance: a model
       classification that survives grounding and the confidence floor
       becomes a candidate, a person confirms it, the confirmed row

@@ -1,5 +1,22 @@
 # Changelog
 
+## intent-autonomy-report — the two numbers the no-model path is judged by
+Completed: 2026-09-07
+First lane of the autonomy programme the operator asked for. "Works
+without a model" is not one number: it is the share answered with no
+network at all, at a stated precision, and the share handed over.
+This line had never printed them together, and the aggregate it had
+been quoting for months — 80.0% at full coverage — turns out to be
+the WORST of the promises the same tiers can make, because it never
+offered abstention. With the gram tier's margin floor at 0.5 the
+shipped cues and artifact answer 73.3% of held-out traffic at 88.6%
+precision and hand 26.7% over; at cues alone, 53.3% at 90.6%.
+`MeasureAutonomy` prints the whole curve and the promise table (at
+the precision you need, this much needs no network), asserts the
+per-class law so a refit that kills a class fails here too, and runs
+in the ordinary suite with no gateway. specs/intent-classify.md,
+"The autonomy programme".
+
 ## intent-offline-other — the offline door still cannot say "none of these", and now we know why
 Completed: 2026-09-07
 The operator redirected this line at the AUTONOMOUS path: the model
