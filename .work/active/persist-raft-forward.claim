@@ -1,0 +1,17 @@
+task: persist-raft-forward (a follower's append forwarded to the leader over the node wire: RaftMsg.Propose / Proposed; NotLeader only when no leader is known)
+agent: okay-42
+started: 2026-09-07
+branch: feature/persist-raft-forward
+
+why: stage 1a and 1b both name the same limit: propose succeeds only on
+  the current leader, a follower answers NotLeader(leaderId) and the
+  client retries elsewhere. The node already knows its leader from the
+  heartbeats, so the follower can carry the proposal there itself: one
+  new message pair on the existing wire (Propose(data, proposer, n) to
+  the leader, Proposed(index or refusal) back), the leader appending
+  and replicating as for its own proposals, and the proposer's pending
+  entry completing when the entry commits on ITS node -- RaftStore's
+  pending map is keyed by proposer and sequence already. NotLeader
+  stays for a node that knows no leader (an election in progress).
+  Laws: the stage-0 suite unchanged (handle gains two cases), the Live
+  suite gains an append on a follower applied on every node.
