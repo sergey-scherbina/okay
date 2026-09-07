@@ -1,0 +1,23 @@
+claimed: script-cli -- the okay-script command line (operator ask
+2026-09-07, designed in specs/okay-script.md).
+
+run / render / build / check / serve / new. `build` is the half the
+container never had: the same pages `serve` compiles per request,
+rendered ONCE to plain files -- a static site with no JVM in the
+deployment -- driven through Site itself so i18n, includes, meta and
+static files come for free rather than being reimplemented.
+
+Two things I expect to correct in the spec while writing:
+
+- the binary. okay-deploy CANNOT depend on okay-script (the arrow
+  points the other way), so `okay script ...` cannot live in
+  okay-deploy's jar. okay-script's own assembly already carries
+  okay-deploy, so THAT is the combined `okay` binary and okay-deploy's
+  smaller one stays deploy-only.
+- "build refuses a page that needs a request, naming the call". A
+  session touch and a redirect are detectable precisely. `Web.current.
+  form` is not -- Web is a data value with nowhere to put a refusal --
+  so that limit gets said rather than claimed.
+
+Files: okay-script Cli.scala + Build.scala + bin/okay, tests,
+specs/okay-script.md, boards.
