@@ -23,6 +23,16 @@ class TestRaft extends munit.FunSuite {
      * entry in its log overrides it (stage 2a) */
     private var peersOf: Map[String, Set[String]] = ids.map(i => i -> (ids.toSet - i)).toMap
     private var inbox: Map[String, Vector[RaftMsg]] = ids.map(_ -> Vector.empty).toMap
+    /** nodes the network cannot reach right now: messages to them are lost */
+    var down: Set[String] = Set.empty
+
+    /** the engine's side of compaction: this node has applied up to
+     * `upTo` and snapshotted its state machine as `snapshot` */
+    def compact(id: String, upTo: Long, snapshot: String): Boolean =
+      val ns = Raft.compact(states(id), upTo, bytes(snapshot))
+      val did = ns.snapshotIndex != states(id).snapshotIndex
+      states = states.updated(id, ns)
+      did
 
     /** a fresh server, started knowing the current cluster (as an
      * operator would configure it), not yet a member of anything */
@@ -41,7 +51,7 @@ class TestRaft extends munit.FunSuite {
     def members(id: String): Set[String] = Raft.members(states(id), peersOf(id))
 
     private def enqueue(out: Vector[RaftOut]): Unit =
-      out.foreach(o => inbox = inbox.updated(o.to, inbox(o.to) :+ o.msg))
+      out.foreach(o => if !down(o.to) then inbox = inbox.updated(o.to, inbox(o.to) :+ o.msg))
 
     def deliverAll(): Unit =
       var progressed = true
@@ -262,5 +272,90 @@ class TestRaft extends munit.FunSuite {
     assertEquals(ns.log.map(text), Vector("v0", "v1"))
     assertEquals(ns.configIndex, 0L)
     assertEquals(Raft.members(ns, Set("0", "2")), Set("0", "1", "2"), "back to the bootstrap cluster")
+  }
+
+  // ---- stage 2b: compaction and InstallSnapshot (paper §7) ---------
+
+  test("compaction drops the log up to an applied index and keeps its term, its configuration and the engine's bytes") {
+    val c = Cluster()
+    c.electionTimeout("0"); c.deliverAll()
+    c.clientAppend("0", "v0"); c.clientAppend("0", "v1"); c.deliverAll()
+    c.addNode("3")
+    assert(c.reconfigure("0", Set("0", "1", "2", "3"))); c.deliverAll()
+    c.clientAppend("0", "v2"); c.deliverAll()
+    // log: no-op, v0, v1, config, v2 — commitIndex 5
+    assertEquals(c.states("0").commitIndex, 5L)
+    assert(!c.compact("0", 6, "S"), "not committed: refused")
+    assert(c.compact("0", 4, "S4"), "up to the configuration entry")
+    val s = c.states("0")
+    assertEquals(s.snapshotIndex, 4L)
+    assertEquals(s.snapshotTerm, 1L)
+    assertEquals(s.log.map(text), Vector("v2"))
+    assertEquals(Raft.lastLogIndex(s), 5L)
+    assertEquals(Raft.members(s, Set("1", "2")), Set("0", "1", "2", "3"), "the configuration lives on in the snapshot")
+    assertEquals(new String(s.snapshotData, "UTF-8"), "S4")
+    assert(!c.compact("0", 3, "older"), "not past the current snapshot: refused")
+    // the leader goes on committing over the compacted log
+    c.clientAppend("0", "v3"); c.deliverAll()
+    assertEquals(c.states("0").commitIndex, 6L)
+    assertEquals(c.states("1").log.map(text), Vector("", "v0", "v1", "", "v2", "v3"))
+  }
+
+  test("a follower that missed a compacted stretch is sent the snapshot, restores, and goes on from its edge") {
+    val c = Cluster()
+    c.electionTimeout("0"); c.deliverAll()
+    c.clientAppend("0", "v0"); c.deliverAll()
+    c.heartbeat("0"); c.deliverAll()
+    assertEquals(c.states("2").commitIndex, 2L)
+    // node 2 drops off; the majority commits v1..v3 and the leader compacts through v2
+    c.down = Set("2")
+    for v <- Seq("v1", "v2", "v3") do { c.clientAppend("0", v); c.deliverAll() }
+    assertEquals(c.states("0").commitIndex, 5L)
+    assert(c.compact("0", 4, "machine@4"))
+    c.clientAppend("0", "v4"); c.deliverAll()
+    // node 2 is back: the leader's nextIndex for it (3, from before it
+    // dropped off) is inside the snapshot, so the next heartbeat is an
+    // InstallSnapshot; the one after carries the entries past its edge
+    c.down = Set.empty
+    c.heartbeat("0"); c.deliverAll()
+    assertEquals(c.states("2").restored, 1L, "one snapshot installed")
+    assertEquals(c.states("2").log, Vector.empty, "the log after the snapshot comes with the next replication")
+    c.heartbeat("0"); c.deliverAll()
+    val s2 = c.states("2")
+    assertEquals(s2.restored, 1L, "one snapshot installed")
+    assertEquals(s2.snapshotIndex, 4L)
+    assertEquals(new String(s2.snapshotData, "UTF-8"), "machine@4")
+    assertEquals(s2.log.map(text), Vector("v3", "v4"), "the log after the snapshot came by ordinary replication")
+    assertEquals(s2.commitIndex, c.states("0").commitIndex)
+    assertEquals(c.states("0").matchIndex("2"), 6L)
+    // and it keeps following: a later entry commits on it like on any member
+    c.clientAppend("0", "v5"); c.deliverAll(); c.heartbeat("0"); c.deliverAll()
+    assertEquals(c.states("2").commitIndex, 7L)
+    assertEquals(c.states("2").log.map(text), Vector("v3", "v4", "v5"))
+  }
+
+  test("a snapshot no newer than the follower's own changes nothing; a follower keeps the suffix its snapshot agrees with") {
+    // a follower already past that snapshot: nothing to install, it reports where it is
+    val ahead = RaftState(id = "1", currentTerm = 2, snapshotIndex = 5, snapshotTerm = 2, snapshotData = bytes("F5"), commitIndex = 5)
+    val (a, outA) = Raft.handle(ahead, RaftMsg.InstallSnapshot(2, "0", 3, 1, Vector.empty, bytes("L3")), Set("0", "2"))
+    assertEquals(a.restored, 0L)
+    assertEquals(a.snapshotIndex, 5L)
+    assertEquals(outA, Vector(RaftOut("0", RaftMsg.AppendEntriesResp(2, "1", true, 5))))
+    // a follower whose log holds the snapshot's last entry keeps what follows it
+    val partial = RaftState(id = "2", currentTerm = 2,
+      log = Vector(RaftEntry(1, Array.empty), RaftEntry(1, bytes("v0")), RaftEntry(1, bytes("v1")), RaftEntry(1, bytes("v2"))),
+      commitIndex = 2)
+    val (p, outP) = Raft.handle(partial, RaftMsg.InstallSnapshot(2, "0", 3, 1, Vector.empty, bytes("L3")), Set("0", "1"))
+    assertEquals(p.restored, 1L)
+    assertEquals(p.snapshotIndex, 3L)
+    assertEquals(p.log.map(text), Vector("v2"), "the suffix after the snapshot's edge survives")
+    assertEquals(p.commitIndex, 3L)
+    assertEquals(outP, Vector(RaftOut("0", RaftMsg.AppendEntriesResp(2, "2", true, 3))))
+    // a follower whose entry at the edge has another term drops everything
+    val conflicting = partial.copy(log = partial.log.updated(2, RaftEntry(0, bytes("stray"))))
+    val (q, _) = Raft.handle(conflicting, RaftMsg.InstallSnapshot(2, "0", 3, 1, Vector.empty, bytes("L3")), Set("0", "1"))
+    assertEquals(q.log, Vector.empty)
+    assertEquals(Raft.lastLogIndex(q), 3L)
+    assertEquals(Raft.lastLogTerm(q), 1L)
   }
 }

@@ -188,4 +188,42 @@ class TestRaftWire extends munit.FunSuite {
     finally
       n3.close(); c.close()
   }
+
+  test("compaction over the wire: a node that starts late is restored from the leader's snapshot and goes on") {
+    // two of three nodes start, commit, and compact; the third starts
+    // after the compacted stretch is gone and can only be caught up by
+    // InstallSnapshot — onRestore hands it the engine's bytes
+    val ids = Vector("0", "1", "2")
+    val ports = ids.map(_ -> freePort()).toMap
+    val addr = ports.map((id, p) => id -> ("127.0.0.1", p))
+    val applied = ids.map(_ -> collection.mutable.ArrayBuffer.empty[String]).toMap
+    val restored = collection.mutable.ArrayBuffer.empty[(Long, String)]
+    def node(id: String) = RaftWire.Node(id, ports(id), addr - id, tickMs = 20, electionTimeoutMs = 200, heartbeatMs = 50,
+      onCommit = (_, e) => if e.data.nonEmpty && e.members.isEmpty then applied(id).synchronized { applied(id) += new String(e.data, "UTF-8"): Unit },
+      onRestore = (at, bytes) => restored.synchronized { restored += (at -> new String(bytes, "UTF-8")): Unit })
+    val early = Vector("0", "1").map(id => id -> node(id)).toMap
+    var late: Option[RaftWire.Node] = None
+    try
+      assert(waitUntil(Elect)(early.values.exists(_.isLeader)))
+      val leader = early.find(_._2.isLeader).get._2
+      for v <- Seq("a", "b", "c") do assert(leader.propose(v.getBytes("UTF-8")))
+      assert(waitUntil(Commit)(early.values.forall(_.commitIndex >= 4)))   // no-op + a, b, c
+      // the engine's snapshot of "the state machine as of index 4": what it applied
+      assert(leader.compact(4, "a,b,c".getBytes("UTF-8")))
+      assertEquals(leader.snapshotIndex, 4L)
+      assert(leader.propose("d".getBytes("UTF-8")))
+      assert(waitUntil(Commit)(leader.commitIndex >= 5))
+
+      val n2 = node("2"); late = Some(n2)
+      assert(waitUntil(Commit)(n2.snapshotIndex == 4 && n2.commitIndex >= 5),
+        s"the late node was not restored: snapshot ${n2.snapshotIndex}, commit ${n2.commitIndex}")
+      assertEquals(restored.synchronized(restored.toVector), Vector((4L, "a,b,c")))
+      // what it applied itself: only what came after the snapshot
+      assert(waitUntil(Settle)(applied("2").synchronized(applied("2").toVector) == Vector("d")),
+        s"applied on the late node: ${applied("2")}")
+      assert(leader.propose("e".getBytes("UTF-8")))
+      assert(waitUntil(Commit)(applied("2").synchronized(applied("2").toVector) == Vector("d", "e")))
+    finally
+      late.foreach(_.close()); early.values.foreach(_.close())
+  }
 }

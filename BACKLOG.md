@@ -917,10 +917,17 @@ measure on our own data, never a predicted result.
       seeds clean). The sweep forced two of the paper's rules the
       core had skipped: the blank no-op at the start of a term (§8)
       and conflict-only truncation in AppendEntries (§5.3) — a real
-      safety bug under reordering, fixed. Stage 2b (compaction /
-      snapshotting), the catch-up phase for a joiner, pre-vote, and
-      the commit-wait as an `Ack` level remain open; box stays
-      unchecked for those.
+      safety bug under reordering, fixed. STAGE 2b LANDED 2026-09-07
+      (raft-compaction): `Raft.compact` (the engine's bytes, the
+      core's index arithmetic), `InstallSnapshot` for a follower
+      whose next entry is compacted away, `restored` as the engine's
+      cue; `Node.compact`/`onRestore` on the wire; the simulator's
+      nodes run state machines they snapshot and compact to — 541
+      snapshots, 81 installs on 32 of 40 seeds, safety asserted on
+      what the machines saw. Stage 2c (`RaftStore`'s own snapshot —
+      a store dump as the bytes), chunked snapshots, the catch-up
+      phase for a joiner, pre-vote, and the commit-wait as an `Ack`
+      level remain open; box stays unchecked for those.
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,

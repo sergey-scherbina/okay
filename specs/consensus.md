@@ -290,10 +290,51 @@ prices every large claim:
   never vouched for. Not here: the catch-up (non-voting) phase for
   a joining server — it joins as a voter at once and is brought up
   to date by ordinary replication, which the sweep shows suffices
-  at these sizes — and pre-vote. Compaction / snapshotting is the
-  open half of stage 2: the control log the reduction runs on is
-  small and slow-changing, but a Raft-replicated DATA log needs it
-  before it can run unbounded.
+  at these sizes — and pre-vote.
+- **Stage 2b — log compaction and InstallSnapshot, LANDED
+  2026-09-07 (raft-compaction).** Paper §7, with the bytes the
+  ENGINE's: `Raft.compact(s, upTo, snapshot)` takes an index the
+  engine has applied (so committed) and the engine's own image of
+  its state machine there, drops the log up to it, and keeps the
+  term and the configuration in force at that index in the
+  snapshot fields (`snapshotIndex/Term/Members/Data`), so
+  elections and majorities read the same as before; the core never
+  reads the bytes. Every log access goes through index arithmetic
+  against the snapshot (`termAt`, `lastLogIndex` = snapshot +
+  log length); an AppendEntries reaching back into a follower's
+  snapshot skips what the snapshot covers (state-machine safety
+  says it agrees) and goes on from the edge. A leader whose
+  `nextIndex` for a follower is inside its snapshot sends
+  `RaftMsg.InstallSnapshot` (one message, not chunked) instead of
+  entries; the follower keeps the suffix following an entry that
+  agrees with the snapshot's last one, else discards its log, and
+  bumps `RaftState.restored` — the engine's cue to reset its state
+  machine to the bytes at that index before applying anything
+  later. The answer is an `AppendEntriesResp` whose `matchIndex` is
+  the snapshot's edge, the same "what this message established"
+  the ordinary reply carries. On the wire: `Node.compact(upTo,
+  snapshot)` and `onRestore(index, bytes)`; a configuration that
+  arrives inside a snapshot carries no addresses (the bytes are the
+  engine's), so a node restored that way reaches what it was
+  started knowing plus what later entries teach it. The simulator
+  now runs a state machine per node — the texts it applied — which
+  it snapshots and compacts to every 200 ms once four entries past
+  the last snapshot, and the safety properties are asserted on what
+  the MACHINES saw rather than on log prefixes; the partition
+  scenario forces snapshots by construction (the minority misses
+  what the majority commits and compacts): forty seeds, 541
+  snapshots taken, 81 installed on 32 seeds, safety clean, every
+  ack kept; the membership sweep restored a joiner from a snapshot
+  on 33 of 40 seeds. Three hand-written cases in `TestRaft`
+  (compaction keeps term, configuration and bytes; a follower that
+  missed a compacted stretch is restored and goes on from the edge;
+  an older snapshot is a no-op and an agreeing suffix survives) and
+  a Live wire test (two nodes commit and compact, a third starts
+  late and is restored through `onRestore`, then applies only what
+  came after). Not here: `RaftStore`'s own snapshot (stage 2c — its
+  state machine is the local `Store`, whose image is a store dump,
+  not a byte string yet), chunked snapshots, snapshot-carried
+  addresses.
 - **The typestate note, still open** (asked by the user, 2026-09-01):
   the ROLE protocol (Follower → Candidate → Leader, each with its
   own legal actions) is the textbook typestate case; `PState` (the
@@ -337,8 +378,10 @@ prices every large claim:
   seeds — 40 grew, 40 shrank without their leader, 40 converged,
   every ack kept, zero changes refused; and it found the two
   skipped rules recorded under stage 2a, which is the harness doing
-  what it was built for. Not swept: compaction, which does not
-  exist yet.
+  what it was built for. Since stage 2b every node in it runs a
+  state machine it snapshots and compacts to, and the properties
+  are asserted on what the machines saw; InstallSnapshot fires on
+  most seeds (the sweep asserts that it fired at all).
 
 ## Out of scope
 

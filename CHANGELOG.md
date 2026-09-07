@@ -1,5 +1,28 @@
 # Changelog
 
+## raft-compaction — log compaction and InstallSnapshot in the Raft core, the simulator's nodes now running state machines
+
+Stage 2b of persist-raft (paper §7). `Raft.compact(s, upTo,
+snapshot)` drops the log up to an index the engine has applied and
+keeps the term, the configuration in force there and the engine's
+own bytes in the snapshot fields; every log access is index
+arithmetic against the snapshot, and an AppendEntries reaching back
+into a follower's snapshot skips what the snapshot covers. A leader
+whose `nextIndex` for a follower is inside its snapshot sends
+`InstallSnapshot`; the follower keeps an agreeing suffix or discards
+its log, and `RaftState.restored` tells the engine to reset its state
+machine to the bytes before anything later is applied. On the wire:
+`Node.compact` and `onRestore`. The simulator's nodes now run a
+state machine each (the texts they applied), snapshot and compact to
+it periodically, and the safety properties are asserted on what the
+machines saw: forty seeds, 541 snapshots, 81 installed on 32 seeds,
+safety clean, every ack kept, and the membership sweep restored a
+joiner from a snapshot on 33 seeds. Three hand-written cases in
+`TestRaft`, a Live wire test (two nodes commit and compact, a third
+starts late and is restored, then applies only what came after).
+Open: `RaftStore`'s own snapshot (2c), chunked snapshots, addresses
+inside a snapshot.
+
 ## raft-membership — cluster membership changes in the Raft core, and the two rules the simulator caught
 
 Stage 2a of persist-raft: the single-server configuration change of

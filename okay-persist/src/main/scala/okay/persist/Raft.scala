@@ -4,20 +4,21 @@ import okay.codec.Schema
 
 /**
  * Own Raft (specs/consensus.md, persist-raft): the consensus
- * ALGORITHM's core state machine — leader election, log replication
- * and, since stage 2a, cluster membership changes — safety proven by
- * simulation — as a pure value transition, no engine, no network, no
- * Store. `Election` (specs/consensus.md, the reduction) does not
+ * ALGORITHM's core state machine — leader election, log
+ * replication, cluster membership changes (stage 2a) and log
+ * compaction with snapshots (stage 2b) — safety proven by
+ * simulation — as a pure value transition, no engine, no network,
+ * no Store. `Election` (specs/consensus.md, the reduction) does not
  * change when this lands as a `RaftStore` behind a `Topic`: the
- * control log's total order is all Election ever asked an engine for,
- * and a Raft-replicated log is one more way to produce it.
+ * control log's total order is all Election ever asked an engine
+ * for, and a Raft-replicated log is one more way to produce it.
  *
- * Deliberately NOT here (filed under the same BACKLOG name): log
- * compaction/snapshotting, the catch-up (non-voting) phase for a
- * joining server, and pre-vote against a removed server's
- * disruption. This is the textbook core (Ongaro & Ousterhout, Figure
- * 2) plus the single-server configuration change of Ongaro's thesis
- * §4.1 — proven here so the engine wrapper has an honest foundation.
+ * Deliberately NOT here (filed under the same BACKLOG name): the
+ * catch-up (non-voting) phase for a joining server, pre-vote against
+ * a removed server's disruption, chunked snapshots. This is the
+ * textbook core (Ongaro & Ousterhout, Figure 2 and §7) plus the
+ * single-server configuration change of Ongaro's thesis §4.1 —
+ * proven here so the engine wrapper has an honest foundation.
  */
 
 /** one log entry: the term it was appended under (the log matching
@@ -27,9 +28,9 @@ import okay.codec.Schema
  * cluster (the leader included) from this index on, in force from
  * the moment it is appended, committed or not (thesis §4.1); its
  * `data` is then the transport's (addresses, on the wire) and no
- * state machine applies it. Empty
- * `data` with no members is a leader's blank no-op (paper §8), the
- * first entry of every term: applied by nobody either. */
+ * state machine applies it. Empty `data` with no members is a
+ * leader's blank no-op (paper §8), the first entry of every term:
+ * applied by nobody either. */
 final case class RaftEntry(term: Long, data: Array[Byte], members: Vector[String] = Vector.empty) derives Schema
 
 enum RaftRole:
@@ -38,13 +39,18 @@ enum RaftRole:
 /**
  * Everything one node knows: the persistent state the paper names
  * (currentTerm, votedFor, log) plus the volatile bookkeeping a
- * candidate/leader needs (votesGranted, nextIndex, matchIndex), and
- * `configIndex` — the index of the latest configuration entry in the
- * log (0: none yet, the bootstrap peers are the cluster), kept
- * current by `Raft.append` and by AppendEntries' truncation, so the
- * cluster a majority is counted over is always the log's own latest
- * word. `log` is 1-indexed conceptually — `log(i - 1)` is Raft's
- * index i — matching the paper exactly so its proofs read across.
+ * candidate/leader needs (votesGranted, nextIndex, matchIndex),
+ * `configIndex` — the index of the latest configuration entry (0:
+ * none yet, the bootstrap peers are the cluster), kept current by
+ * `Raft.append` and by AppendEntries' splice, so the cluster a
+ * majority is counted over is always the log's own latest word —
+ * and the snapshot (stage 2b): `log` holds only the entries AFTER
+ * `snapshotIndex`, whose term, configuration and the ENGINE's
+ * state-machine bytes the snapshot fields keep. `log` is 1-indexed
+ * conceptually — Raft's index i is `log(i - snapshotIndex - 1)` —
+ * so the paper's proofs read across unchanged. `restored` counts
+ * snapshots installed from a leader: an engine that sees it change
+ * resets its state machine to `snapshotData` at `snapshotIndex`.
  */
 final case class RaftState(
   id: String,
@@ -57,13 +63,20 @@ final case class RaftState(
   votesGranted: Set[String] = Set.empty,
   nextIndex: Map[String, Long] = Map.empty,
   matchIndex: Map[String, Long] = Map.empty,
-  configIndex: Long = 0)
+  configIndex: Long = 0,
+  snapshotIndex: Long = 0,
+  snapshotTerm: Long = 0,
+  snapshotMembers: Vector[String] = Vector.empty,
+  snapshotData: Array[Byte] = Array.empty,
+  restored: Long = 0)
 
 enum RaftMsg derives Schema:
   case RequestVote(term: Long, candidateId: String, lastLogIndex: Long, lastLogTerm: Long)
   case RequestVoteResp(term: Long, from: String, voteGranted: Boolean)
   case AppendEntries(term: Long, leaderId: String, prevLogIndex: Long, prevLogTerm: Long,
                      entries: Vector[RaftEntry], leaderCommit: Long)
+  /** the follower's answer to AppendEntries AND to InstallSnapshot:
+   * `matchIndex` is what the message ESTABLISHED on the follower */
   case AppendEntriesResp(term: Long, from: String, success: Boolean, matchIndex: Long)
   /** a follower carrying a client's proposal to the leader
    * (persist-raft-forward): `n` is the proposer's own sequence, so it
@@ -72,23 +85,43 @@ enum RaftMsg derives Schema:
   /** the leader's answer to a Propose: accepted and appended, or
    * refused with the leader it knows of (empty when none) */
   case Proposed(term: Long, from: String, n: Long, accepted: Boolean, leader: String)
+  /** the leader's whole snapshot for a follower whose next entry it
+   * has compacted away (paper §7, one message — not chunked yet):
+   * the index and term it ends at, the configuration in force
+   * there, and the engine's state-machine bytes */
+  case InstallSnapshot(term: Long, leaderId: String, lastIndex: Long, lastTerm: Long,
+                       members: Vector[String], data: Array[Byte])
 
 /** one outgoing message, addressed */
 final case class RaftOut(to: String, msg: RaftMsg)
 
 object Raft:
 
-  def lastLogIndex(s: RaftState): Long = s.log.length.toLong
-  def lastLogTerm(s: RaftState): Long = s.log.lastOption.map(_.term).getOrElse(0L)
+  def lastLogIndex(s: RaftState): Long = s.snapshotIndex + s.log.length
+  def lastLogTerm(s: RaftState): Long = s.log.lastOption.map(_.term).getOrElse(s.snapshotTerm)
   private def majority(clusterSize: Int): Int = clusterSize / 2 + 1
+
+  /** the entry at Raft index `i`, which must lie inside the log */
+  private def entry(s: RaftState, i: Long): RaftEntry = s.log((i - s.snapshotIndex - 1).toInt)
+
+  /** the term at Raft index `i`: the snapshot's own at its edge (and
+   * 0 at index 0 before any), none for what was compacted away or
+   * lies past the end */
+  def termAt(s: RaftState, i: Long): Option[Long] =
+    if i == s.snapshotIndex then Some(s.snapshotTerm)
+    else if i > s.snapshotIndex && i <= lastLogIndex(s) then Some(entry(s, i).term)
+    else None
 
   /** the cluster this node counts majorities over: the latest
    * configuration entry in its log — committed or not, in force
-   * from the moment it is appended (thesis §4.1) — or, before any,
-   * the bootstrap `peers` plus itself. `peers` is every OTHER node
-   * this one was started knowing, never itself. */
+   * from the moment it is appended (thesis §4.1) — else the one the
+   * snapshot carries, else the bootstrap `peers` plus itself.
+   * `peers` is every OTHER node this one was started knowing, never
+   * itself. */
   def members(s: RaftState, peers: Set[String]): Set[String] =
-    if s.configIndex <= 0 then peers + s.id else s.log(s.configIndex.toInt - 1).members.toSet
+    if s.configIndex > s.snapshotIndex then entry(s, s.configIndex).members.toSet
+    else if s.snapshotMembers.nonEmpty then s.snapshotMembers.toSet
+    else peers + s.id
 
   /** everyone else in the current configuration */
   def others(s: RaftState, peers: Set[String]): Set[String] = members(s, peers) - s.id
@@ -96,21 +129,42 @@ object Raft:
   /** append one entry on a leader, keeping `configIndex` current —
    * the ONE way a log grows outside AppendEntries */
   def append(s: RaftState, e: RaftEntry): RaftState =
-    val log = s.log :+ e
-    s.copy(log = log, configIndex = if e.members.nonEmpty then log.length.toLong else s.configIndex)
+    val ns = s.copy(log = s.log :+ e)
+    if e.members.nonEmpty then ns.copy(configIndex = lastLogIndex(ns)) else ns
 
   /** the configuration index once a follower's log has become
-   * `merged`: its first `kept` entries retained, the rest the
-   * leader's. A truncated configuration REVERTS to the one before
-   * it (thesis §4.1: a server uses the latest configuration in its
-   * log, whatever that log becomes). */
-  private def configAfter(merged: Vector[RaftEntry], kept: Int, old: Long): Long =
+   * `merged`: its first `kept` entries (log positions, after the
+   * snapshot) retained, the rest the leader's. A truncated
+   * configuration REVERTS to the one before it (thesis §4.1: a
+   * server uses the latest configuration in its log, whatever that
+   * log becomes) — down to the snapshot's, or the bootstrap. */
+  private def configAfter(s: RaftState, merged: Vector[RaftEntry], kept: Int): Long =
     val inNew = merged.lastIndexWhere(_.members.nonEmpty)
-    if inNew >= kept then inNew + 1L
-    else if old <= kept then old
+    if inNew >= kept then s.snapshotIndex + inNew + 1
+    else if s.configIndex <= s.snapshotIndex + kept then s.configIndex
     else
       val inKept = merged.lastIndexWhere(_.members.nonEmpty, kept - 1)
-      if inKept >= 0 then inKept + 1L else 0L
+      if inKept >= 0 then s.snapshotIndex + inKept + 1 else s.snapshotIndex
+
+  /**
+   * Log compaction (stage 2b, paper §7): the ENGINE has written its
+   * state machine as of index `upTo` — applied, hence committed —
+   * into `snapshot`, and the log up to there is dropped; the term and
+   * the configuration in force at `upTo` move into the snapshot
+   * fields, so elections and majorities read the same as before. The
+   * bytes are the engine's: the core carries them to a follower that
+   * needs them and never reads them. A no-op when `upTo` is not past
+   * the current snapshot or not yet committed.
+   */
+  def compact(s: RaftState, upTo: Long, snapshot: Array[Byte]): RaftState =
+    if upTo <= s.snapshotIndex || upTo > s.commitIndex then s
+    else
+      val term = termAt(s, upTo).getOrElse(s.snapshotTerm)
+      val ms =
+        if s.configIndex > s.snapshotIndex && s.configIndex <= upTo then entry(s, s.configIndex).members
+        else s.snapshotMembers
+      s.copy(log = s.log.drop((upTo - s.snapshotIndex).toInt),
+        snapshotIndex = upTo, snapshotTerm = term, snapshotMembers = ms, snapshotData = snapshot)
 
   /** an election timeout fired: become a candidate at the next
    * term, vote for self, ask every member. A node the current
@@ -136,10 +190,15 @@ object Raft:
     if s.role != RaftRole.Leader then Vector.empty
     else targets.toVector.map { p =>
       val ni = s.nextIndex.getOrElse(p, lastLogIndex(s) + 1)
-      val prevIdx = ni - 1
-      val prevTerm = if prevIdx <= 0 then 0L else s.log(prevIdx.toInt - 1).term
-      val entries = s.log.drop(prevIdx.toInt)
-      RaftOut(p, RaftMsg.AppendEntries(s.currentTerm, s.id, prevIdx, prevTerm, entries, s.commitIndex))
+      if ni <= s.snapshotIndex then
+        // the follower's next entry is inside the snapshot: it gets the whole snapshot
+        RaftOut(p, RaftMsg.InstallSnapshot(s.currentTerm, s.id, s.snapshotIndex, s.snapshotTerm,
+          s.snapshotMembers, s.snapshotData))
+      else
+        val prevIdx = ni - 1
+        val prevTerm = termAt(s, prevIdx).getOrElse(0L)
+        val entries = s.log.drop((prevIdx - s.snapshotIndex).toInt)
+        RaftOut(p, RaftMsg.AppendEntries(s.currentTerm, s.id, prevIdx, prevTerm, entries, s.commitIndex))
     }
 
   /**
@@ -180,6 +239,7 @@ object Raft:
       case RaftMsg.AppendEntriesResp(t, _, _, _) => t
       case RaftMsg.Propose(t, _, _, _) => t
       case RaftMsg.Proposed(t, _, _, _, _) => t
+      case RaftMsg.InstallSnapshot(t, _, _, _, _, _) => t
     val s =
       if msgTerm > s0.currentTerm then
         s0.copy(currentTerm = msgTerm, votedFor = None, role = RaftRole.Follower, leaderId = None)
@@ -219,14 +279,19 @@ object Raft:
               RaftEntry(s.currentTerm, Array.empty))
             (leader, replicateTo(leader, os))
 
-      case RaftMsg.AppendEntries(term, leader, prevIdx, prevTerm, entries, leaderCommit) =>
+      case RaftMsg.AppendEntries(term, leader, prevIdx0, prevTerm, entries0, leaderCommit) =>
         val refuse = (s, Vector(RaftOut(leader, RaftMsg.AppendEntriesResp(s.currentTerm, s.id, false, 0))))
         if term < s.currentTerm then refuse
         else
           // a valid leader for our term: acknowledge it (Candidate -> Follower too)
           val st = s.copy(role = RaftRole.Follower, leaderId = Some(leader))
-          val logOk = prevIdx == 0 ||
-            (prevIdx <= lastLogIndex(st) && st.log(prevIdx.toInt - 1).term == prevTerm)
+          // a message reaching back into our snapshot: everything up to
+          // the snapshot is committed, so it agrees (state-machine
+          // safety) — skip that much and go on from the snapshot's edge
+          val (prevIdx, entries, logOk) =
+            if prevIdx0 < st.snapshotIndex then
+              (st.snapshotIndex, entries0.drop((st.snapshotIndex - prevIdx0).toInt), true)
+            else (prevIdx0, entries0, termAt(st, prevIdx0).contains(prevTerm))
           if !logOk then (st, Vector(RaftOut(leader, RaftMsg.AppendEntriesResp(st.currentTerm, st.id, false, 0))))
           else
             // splice in the entries, deleting only what CONFLICTS (paper
@@ -237,22 +302,45 @@ object Raft:
             // older AppendEntries arriving late truncated entries the
             // follower had already acknowledged and the leader had
             // already committed on that acknowledgement
+            val at = (prevIdx - st.snapshotIndex).toInt   // log position of the first new entry
             var agree = 0
-            while agree < entries.length && prevIdx + agree < lastLogIndex(st) &&
-                  st.log((prevIdx + agree).toInt).term == entries(agree).term
+            while agree < entries.length && at + agree < st.log.length &&
+                  st.log(at + agree).term == entries(agree).term
             do agree += 1
             val merged =
               if agree == entries.length then st.log
-              else st.log.take(prevIdx.toInt + agree) ++ entries.drop(agree)
+              else st.log.take(at + agree) ++ entries.drop(agree)
             // what THIS message establishes — not the log's length, which
             // may go on past it with entries the leader has not vouched for
-            val established = prevIdx + entries.length
+            val established = math.max(prevIdx0 + entries0.length, st.snapshotIndex)
             val newCommit =
-              if leaderCommit > st.commitIndex then math.min(leaderCommit, established)
+              if leaderCommit > st.commitIndex then math.max(st.commitIndex, math.min(leaderCommit, established))
               else st.commitIndex
             val nst = st.copy(log = merged, commitIndex = newCommit,
-              configIndex = configAfter(merged, prevIdx.toInt + agree, st.configIndex))
+              configIndex = configAfter(st, merged, at + agree))
             (nst, Vector(RaftOut(leader, RaftMsg.AppendEntriesResp(nst.currentTerm, nst.id, true, established))))
+
+      case RaftMsg.InstallSnapshot(term, leader, lastIdx, lastTerm, ms, data) =>
+        if term < s.currentTerm then
+          (s, Vector(RaftOut(leader, RaftMsg.AppendEntriesResp(s.currentTerm, s.id, false, 0))))
+        else
+          val st = s.copy(role = RaftRole.Follower, leaderId = Some(leader))
+          if lastIdx <= st.snapshotIndex then
+            // nothing we do not already have: say how far we are
+            (st, Vector(RaftOut(leader, RaftMsg.AppendEntriesResp(st.currentTerm, st.id, true, st.snapshotIndex))))
+          else
+            // paper §7: keep the suffix that follows an entry agreeing
+            // with the snapshot's last one; otherwise the snapshot is
+            // the whole log now
+            val keep =
+              if termAt(st, lastIdx).contains(lastTerm) then st.log.drop((lastIdx - st.snapshotIndex).toInt)
+              else Vector.empty
+            val nst = st.copy(log = keep,
+              snapshotIndex = lastIdx, snapshotTerm = lastTerm, snapshotMembers = ms, snapshotData = data,
+              commitIndex = math.max(st.commitIndex, lastIdx),
+              configIndex = if keep.nonEmpty && st.configIndex > lastIdx then st.configIndex else lastIdx,
+              restored = st.restored + 1)
+            (nst, Vector(RaftOut(leader, RaftMsg.AppendEntriesResp(nst.currentTerm, nst.id, true, lastIdx))))
 
       case RaftMsg.AppendEntriesResp(term, follower, success, matchIdx) =>
         if s.role != RaftRole.Leader || term != s.currentTerm then (s, Vector.empty)
@@ -276,7 +364,7 @@ object Raft:
             if m == nst.id then lastLogIndex(nst) else nst.matchIndex.getOrElse(m, 0L)).sorted
           val n = matched(matched.length - majority(ms.size))
           val committed =
-            if n > nst.commitIndex && n >= 1 && nst.log(n.toInt - 1).term == nst.currentTerm
+            if n > nst.commitIndex && n >= 1 && termAt(nst, n).contains(nst.currentTerm)
             then n else nst.commitIndex
           val out = nst.copy(commitIndex = committed)
           // a leader whose own removal just committed steps down —

@@ -109,7 +109,12 @@ change commits, and a removed node stops campaigning. The core is
 swept by `TestRaftSim`, a seed-driven discrete-event simulator
 (loss, reordering, a partition, a node joining and the leader
 leaving) that asserts the safety properties after every event.
-Compaction is the open half of stage 2.
+Stage 2b adds compaction: `compact(upTo, snapshot)` drops the log up
+to an index the engine has applied, keeping the engine's own image
+of its state machine; a follower that fell behind a compacted
+stretch is sent the snapshot (`InstallSnapshot`) and told through
+`onRestore` to reset to it. `RaftStore` does not snapshot its local
+store yet (stage 2c).
 
 `Configs.ambient(name)` reads an ambient `Store` (ctx-everywhere) —
 the managed-config convenience under `provide(store) { ... }`.

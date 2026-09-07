@@ -92,7 +92,12 @@ object RaftWire:
                    stable: Stable = Stable.memory(),
                    /** a forwarded proposal was refused: its sequence, and the
                     * leader the refusing node named (None when it knew none) */
-                   onRefused: (Long, Option[String]) => Unit = (_, _) => ()) {
+                   onRefused: (Long, Option[String]) => Unit = (_, _) => (),
+                   /** a snapshot was installed from the leader (stage 2b): the
+                    * index it ends at and the engine's own bytes, as some
+                    * node's `compact` wrote them — the engine resets its
+                    * state machine to them before any later `onCommit` */
+                   onRestore: (Long, Array[Byte]) => Unit = (_, _) => ()) {
 
     private val lock = new Object
     // the two fields Raft's safety proof assumes on stable storage,
@@ -126,8 +131,12 @@ object RaftWire:
      * every follower it reaches alike, so whoever leads next can
      * reach a newcomer. Called under the lock. */
     private def learned(before: RaftState, after: RaftState): Unit =
-      if after.configIndex != before.configIndex && after.configIndex > 0 then
-        Cbor.read[Vector[Address]](after.log(after.configIndex.toInt - 1).data) match
+      // a configuration that arrived inside a snapshot carries no
+      // addresses (the snapshot's bytes are the engine's): a node
+      // restored that way reaches what it was started knowing, plus
+      // what later entries teach it
+      if after.configIndex != before.configIndex && after.configIndex > after.snapshotIndex then
+        Cbor.read[Vector[Address]](after.log((after.configIndex - after.snapshotIndex - 1).toInt).data) match
           case Right(as) => addresses = addresses ++ as.filter(_.id != id).map(a => a.id -> (a.host, a.port))
           case Left(_) => ()   // a configuration without addresses: reachable only as before
 
@@ -155,18 +164,26 @@ object RaftWire:
      * committed entries, send whatever it produced — network I/O
      * happens OUTSIDE the lock */
     private def onMessage(msg: RaftMsg): Unit =
-      val (toSend, newlyCommitted) = lock.synchronized {
+      val (toSend, restored, newlyCommitted) = lock.synchronized {
         val before = state.commitIndex
         val (ns, out) = Raft.handle(state, msg, peerIds)
         persisted(state, ns)
         learned(state, ns)
+        val installed = ns.restored != state.restored
         state = ns
         msg match
-          case _: RaftMsg.AppendEntries => nextElectionAt = System.currentTimeMillis() + jitter()
+          case _: RaftMsg.AppendEntries | _: RaftMsg.InstallSnapshot =>
+            nextElectionAt = System.currentTimeMillis() + jitter()
           case _ => ()
-        (out, if ns.commitIndex > before then (before until ns.commitIndex).toVector else Vector.empty[Long])
+        // after a snapshot the engine restarts at the snapshot's edge:
+        // what it is told to apply begins there, not at the old commit
+        val from = if installed then ns.snapshotIndex else before
+        val fresh = if ns.commitIndex > from then (from until ns.commitIndex).toVector else Vector.empty[Long]
+        (out, if installed then Some((ns.snapshotIndex, ns.snapshotData)) else None,
+          fresh.map(i => (i + 1, ns.log((i - ns.snapshotIndex).toInt))))
       }
-      newlyCommitted.foreach(i => onCommit(i + 1, state.log(i.toInt)))
+      restored.foreach((at, data) => onRestore(at, data))
+      newlyCommitted.foreach((i, e) => onCommit(i, e))
       msg match
         case RaftMsg.Proposed(_, _, n, false, leader) => onRefused(n, Option(leader).filter(_.nonEmpty))
         case _ => ()
@@ -214,6 +231,22 @@ object RaftWire:
     def logSnapshot: Vector[RaftEntry] = lock.synchronized(state.log)
     /** the cluster as this node currently counts it */
     def members: Set[String] = lock.synchronized(Raft.members(state, peerIds))
+    def snapshotIndex: Long = lock.synchronized(state.snapshotIndex)
+
+    /**
+     * Log compaction (stage 2b): the engine has written its state
+     * machine as of index `upTo` — an index it has APPLIED, so
+     * committed — into `snapshot`; the log up to there is dropped,
+     * and a follower that later needs an entry from that stretch is
+     * sent the snapshot instead (`onRestore` on its side). False when
+     * `upTo` is not past the current snapshot or not committed.
+     */
+    def compact(upTo: Long, snapshot: Array[Byte]): Boolean = lock.synchronized {
+      val ns = Raft.compact(state, upTo, snapshot)
+      val did = ns.snapshotIndex != state.snapshotIndex
+      state = ns
+      did
+    }
 
     /**
      * A membership change (stage 2a): `cluster` is the WHOLE new
