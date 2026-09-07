@@ -1220,6 +1220,15 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] okay-script-cookie-flags — LANDED 2026-09-07: the session cookie
+      had no `Secure` and no `SameSite`, and `Response.cookie` could
+      express neither — found by answering "what goes to the proxy",
+      and not something a proxy can add. `SameSite=Lax` by default;
+      `secure` decided by the container (`secureCookies`, the Site's
+      own TLS, or a trusted `X-Forwarded-Proto`), `OKAY_FORWARDED=1`
+      for Serve. The first draft read the scheme from `Request.url`,
+      which carries a path — the server knows what the request cannot
+      say. specs/okay-script.md "Cookie flags".
 - [x] okay-script-measured — LANDED 2026-09-07 (operator ask, first of
       four): the first numbers for a runtime-compiled page —
       ~150 ms to compile, 0.062 ms to answer (x2500), 870 ms for the

@@ -1,5 +1,30 @@
 # Changelog
 
+## okay-script-cookie-flags — Secure and SameSite on the cookies a Site sets
+Completed: 2026-09-07
+Landed as 1a95e8d4 (spec then code). Found by a question rather than
+a test: the operator asked what goes to a proxy, and writing the
+answer showed the session cookie leaving as `HttpOnly; Path=/` with
+no `Secure` and no `SameSite`, with `Response.current.cookie` unable
+to express either. A cookie without `Secure` leaves the browser on a
+plaintext request; one without `SameSite` rides a cross-site POST.
+Neither is something a proxy can add for you. `SameSite=Lax` is now
+the default for every cookie the container and the pages set (a page
+passes `sameSite = ""` for the old behaviour), and `secure` defaults
+to what the CONTAINER knows about the request: `Site(secureCookies =
+Some(b))` forces the answer, `None` decides — this Site's own server
+terminates TLS, or an `X-Forwarded-Proto: https` claim arrives at a
+Site built with `trustForwarded = true`, which is off by default
+because a header is a claim and the client's protocol is the first
+element of a chain. `Serve` reads `OKAY_FORWARDED=1`. The first draft
+read the scheme from `Request.url` and would have answered `false`
+for every HTTPS request — okay-http's `Request` carries a path, not
+an absolute URL — so the flag is set where TLS is configured, because
+the server knows what the request cannot say. 6 tests, the Live one
+over a real HTTPS connector where the cookie carries `Secure` with no
+header claimed by anyone; the guide gains a "behind a proxy" note.
+130 green 3x.
+
 ## okay-script-guide — a site out of markdown, from an empty directory
 Completed: 2026-09-07
 Landed as 91f85c7c. The last of the operator's four. The specs hold
