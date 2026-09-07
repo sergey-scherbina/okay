@@ -1201,6 +1201,15 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] okay-script-secure — LANDED 2026-09-07: declarative page security,
+      web.xml's constraint. `secure: <scope>`/`any` and `loginPage:`
+      in front-matter; `Site(verify = Some(...))` checks a bearer
+      token from the header or the session attribute `okay.token`
+      (`api.login(token)`/`logout()`); 302 to the login page with
+      `?next=` when one exists, else okay-security's 401/403 ladder;
+      no verifier → 500. Forwards checked, includes not; a secure
+      page's Live socket checked from its cookie. `Principal.current`.
+      specs/okay-script.md "Declarative security".
 - [x] okay-script-live — LANDED 2026-09-06 (operator ask): okay-ui as
       the front-end layer. `api.Live(init)(view)(update)` declared at
       object level, `${mount("id", app)}` in prose: SSR of the first

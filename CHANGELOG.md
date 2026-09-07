@@ -1,5 +1,27 @@
 # Changelog
 
+## okay-script-secure — declarative page security, web.xml's constraint for a page
+Completed: 2026-09-07
+Landed as c469ee88 (spec then code, rebased). The JSP-level gap left
+after live/push/resume. A page says who may see it in its
+front-matter — `secure: <scope>` (or `any`), optionally `loginPage:` —
+and `Site(verify = Some(String => Verified))` holds the door with
+okay-security's own ladder: the bearer token comes from the
+`Authorization` header (an API client) or the session attribute
+`okay.token` (a browser, written by `api.login(token)` from a login
+page after whatever it checks, cleared by `api.logout()`);
+`Policy.scoped` denies with 403 `insufficient_scope`; no or invalid
+token is 302 to the login page (`login.md` by default) with `?next=`
+when one exists, else 401 + `WWW-Authenticate` `invalid_token` — the
+uniform refusal `Secure` gives; `secure:` on a Site without a verifier
+is a 500, not an open door. Enforced per dispatched page, forwards
+included (an include is the author's composition); a secure page's
+Live socket is checked from the socket's cookie and is undefined when
+refused; `Principal.current` for the page and what it includes. `Site`
+never mints — `verify` is the deployment's, as `Admin.routes` takes it.
+`okayScript` gains `okaySecurity.jvm`. 5 tests through `Site.handle`
+with a `SessionIssuer`; 100 green 3x.
+
 ## intent-static-trigrams-and-pca — triples in the static table and a PCA cut, measured: 68.3% at 2.1 MB where pairs gave 61.7% at 5.3 MB
 
 The two extensions the static-embeddings lane filed rather than
