@@ -73,8 +73,24 @@ one pad it. `Config.eab`, or `OKAY_ACME_EAB=<kid>:<key>`. Proven
 against a Pebble configured to REQUIRE it: refused without, issued
 with.
 
-**Not a certificate manager.** No fleet, no multiple orders, no ARI
-(the renewal-window hint), no DNS-01 and so no wildcards. Each is a
+**The CA's own renewal window, since acme-ari (2026-09-07).** A CA
+that must revoke a batch of certificates otherwise triggers every
+client it has to renew in the same minute; ARI is the fix — the CA
+publishes a SUGGESTED window per certificate (`renewalInfo` in the
+directory, `GET renewalInfo/<certID>`), and a client renews inside it
+instead of purely on its own countdown. `Acme.renewalWindow` reads
+it, and `ensure` uses it BESIDE `renewBefore`, never instead: either
+can bring a renewal on, and a CA that publishes nothing, or nonsense,
+cannot stop one our own countdown wants. The certID is the leaf's
+Authority Key Identifier and serial, base64url, joined by a dot —
+both read out of the certificate's own DER by hand, because the JDK
+hands the AKI over only as raw extension bytes (an OCTET STRING
+around `SEQUENCE { [0] keyIdentifier }`); three unwraps and a named
+refusal for anything shaped otherwise, which is a reader for two
+known shapes and not an ASN.1 library.
+
+**Not a certificate manager.** No fleet, no multiple orders, no
+DNS-01 and so no wildcards. Each is a
 real thing a real manager does; a deployment that needs them runs
 certbot or a proxy, and this module says so instead of growing.
 
@@ -163,6 +179,12 @@ API answering rather than docker calling the container started.
       chain, for the name asked for, signed by an issuer that is not
       us — and a name it cannot reach is refused with the CA's own
       sentence, leaving no certificate behind.
+- [x] ARI: an OPEN window renews a certificate our own countdown calls
+      current; a shut one changes nothing; a CA publishing no window
+      leaves the countdown's answer alone (a stub CA, both ways).
+- [x] (Live, docker) Pebble publishes a window inside the
+      certificate's life, and the certID is built from the
+      certificate itself.
 - [x] (Live, docker) a Pebble that REQUIRES an external account
       binding refuses an account without one and issues with it.
 - [x] (Live, docker) Pebble REVOKES it when asked with a reason, and
