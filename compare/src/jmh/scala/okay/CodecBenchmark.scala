@@ -170,6 +170,11 @@ class CodecBenchmark {
   // fully qualified: `okay.Staged` (core) shadows `okay.codec.Staged` in this package
   private val strictStaged: okay.codec.StrictJsonCodec[Order] = okay.codec.Staged.strict[Order]
   @Benchmark def textToOrderStrictStaged(): Either[String, Order] = strictStaged.decode(text)
+  /** staged-strict: the same strict reader, generated at RUN time
+   * from the schema as a value — what a generic strict door gets */
+  private val strictRuntime: okay.codec.StrictJsonCodec[Order] =
+    okay.staging.RuntimeStaged.strict(summon[Schema[Order]])
+  @Benchmark def textToOrderStrictRuntimeStaged(): Either[String, Order] = strictRuntime.decode(text)
   /** the lossless door, for the same text: the price list's 10.3 */
   @Benchmark def textToOrderLossless(): Either[String, Order] = Json.read[Order](text)
   @Benchmark def decodeInterpAst(): Either[String, Order] = Json.decode(summon[Schema[Order]])(ast)

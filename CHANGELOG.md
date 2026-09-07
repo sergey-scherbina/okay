@@ -1,5 +1,25 @@
 # Changelog
 
+## staged-strict — the strict reader, generated from a schema value
+Completed: 2026-09-07
+The codec seam's last out-of-scope emitter, on the operator's ask to
+finish what was still open. `Json.readStrict` puts characters
+straight into the schema with no tree, and `Staged.strict[A]`
+generates that read for a type; `RuntimeStaged.strict(schema)` is the
+same generator over the schema as a VALUE, so a generic strict door
+can have it too. `Codecs.strict` / `Codecs.readStrict` join json and
+cbor on the seam, and the Provider method carries its own interpreted
+body — adding a third format to the seam broke no implementation,
+including the test's two-format fake. The agreement suite checks the
+value on a well-formed document and the SAME Left on every refusal
+the fold makes: wrong primitive, truncation, a missing required
+field, trailing input, an unknown field skipped, an unknown sum case,
+a two-entry object where a sum wants one, an iso's Left, recursion,
+and the nodes left to the fold. Price on the Order: text to Order 385 ns against the interpreted strict door's 901 (2.3x) and the compile-time generated 307 (1.25x of it); circe's fused parse+decode 706 ns on the same text, so the run-time generated strict read is 1.8x faster than circe with no type known at compile time — history.tsv staged-strict.
+Written ahead of a named workload, which the spec says plainly; the
+seam's default is still the interpreter. specs/codecs.md, "The strict
+door".
+
 ## deploy-everywhere (spec) — one declaration, every place it runs
 Completed: 2026-09-07
 Landed as dabb948a. Spec only, by the operator's own order ("сначала
@@ -80,7 +100,6 @@ provider for one call — method, path, credential header, body fields,
 the delete, each refusal — since no account can be had in a test and
 the flow around them is already proven for real against Pebble. 17
 okay-acme green 3x.
-
 
 ## script-runmain-fork — the guide's own command compiles its pages again
 Completed: 2026-09-07

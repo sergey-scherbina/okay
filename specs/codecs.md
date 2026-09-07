@@ -638,9 +638,8 @@ memory-constrained containers where the compiler's heap is the
 budget; and every path where the fold is not the bottleneck, which
 is most of them until measured.
 
-### Out of scope
-- `RuntimeStaged.cbor` / `strict` — the same generator, the other
-  emitters; written when the persist replay or a strict wire names it.
+- (`RuntimeStaged.strict` was that item; taken up on the operator's
+  ask, "The strict door" below.)
 - A generated recursive method per recursive node (delegation today,
   as in the compile-time generator).
 - Automatic use by any okay module.
@@ -830,3 +829,53 @@ String, an Option[Int], a Double, a Boolean, another String):
 - **The measurement stays.** It is the baseline any future claim
   about row-decode cost must beat, and it is Live-tagged so a loaded
   CI box never turns it into a red build.
+
+## The strict door (2026-09-07, staged-strict)
+
+The codec seam's last out-of-scope emitter, taken up on the operator's
+ask ("do the ones still open"). `Json.readStrict` puts characters
+straight into the schema with no tree; `Staged.strict[A]` generates
+that read for a TYPE. `RuntimeStaged.strict(schema)` is the same
+generator over the schema as a VALUE — `StrictGen` of Staged.scala
+with the node table where the Mirror was — so a generic strict door
+(one that has a `Schema` and no Mirror) can have it too.
+
+### Interface
+- `RuntimeStaged.strict[A](s: Schema[A]): StrictJsonCodec[A]`, cached
+  by identity like `json`/`cbor`; `isStagedStrict(s)`.
+- `Codecs.Provider.strict` — DEFAULTED to `JsonStrict.read`, so every
+  provider written before this door existed stays correct without
+  saying anything; `Codecs.strict(s)` and `Codecs.readStrict[A](text)`
+  are the doors, `RuntimeStaged.Provider` overrides with the generator.
+
+### Behavior
+- [x] agreement with `JsonStrict.read` over the node vocabulary, the
+      value on a well-formed document and the SAME Left on every
+      refusal: wrong primitive, truncated input, a missing required
+      field, the wrong shape, trailing input, an unknown field
+      (skipped, as the fold skips it), an unknown sum case, a
+      two-entry object where a sum wants one, an iso's own Left,
+      recursion, and the nodes it leaves to the fold (Char, bytes)
+      — TestRuntimeStagedStrict
+- [x] the seam: `Codecs.readStrict` is the interpreted walk until
+      okay-staging is installed and the generated reader after; off,
+      it is the walk again
+- [x] the price on the Order (CodecBenchmark): text to Order 385 ns against the interpreted strict door's 901 (2.3x) and the compile-time generated 307 (1.25x of it); circe's fused parse+decode 706 ns on the same text, so the run-time generated strict read is 1.8x faster than circe with no type known at compile time — history.tsv staged-strict
+
+### Decisions
+- **A defaulted method, not a new trait.** `strict` on `Provider`
+  carries its own interpreted body, so adding a third format to the
+  seam broke no implementation — the test's fake provider, written
+  for two, compiles unchanged. A seam that grows should not make its
+  implementers redundant work.
+- **The fold's words on every cold path, again.** A node the
+  generator does not know, and a type met again inside itself, call
+  `Reader.get` — the same walk `readStrict` runs — so the refusals
+  never diverge; that is what the agreement test checks, refusal by
+  refusal.
+- **Written ahead of a named workload, and said so.** The earlier
+  out-of-scope line was "when a strict door is generic and hot";
+  none is today. The operator asked for the open items to be done,
+  so it exists and is measured. The seam's default stays the
+  interpreter, so nothing pays for it until a program installs
+  staging.

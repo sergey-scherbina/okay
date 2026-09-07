@@ -935,6 +935,13 @@ measure on our own data, never a predicted result.
       (the same hoisting, one level deeper). Baseline: the table in
       specs/codecs.md, "The row fold's share". Unclaimed until a
       profile of a real workload names row decode as its cost.
+
+- [x] staged-strict — landed: `RuntimeStaged.strict`, the strict-JSON
+      reader generated from a schema VALUE, and `Codecs.strict` /
+      `Codecs.readStrict` beside json/cbor (the Provider method is
+      defaulted to the fold, so no implementation had to change).
+      Agreement with JsonStrict.read refusal by refusal. Price:
+      text to Order 385 ns against the interpreted strict door's 901 (2.3x) and the compile-time generated 307 (1.25x of it); circe's fused parse+decode 706 ns on the same text, so the run-time generated strict read is 1.8x faster than circe with no type known at compile time — history.tsv staged-strict. specs/codecs.md, "The strict door".
 - [x] staging-seam — landed: `Codecs.json/cbor`, one pluggable door for
       a codec over a schema value (interpreter by default, every
       platform); `RuntimeStaged.cbor` + `install()`; `Staging.autoInstall`

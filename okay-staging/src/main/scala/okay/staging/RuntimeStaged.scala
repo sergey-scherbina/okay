@@ -1,6 +1,6 @@
 package okay.staging
 
-import okay.codec.{Cbor, CborCodec, Codecs, Json, JsonCodec, Schema, Staged}
+import okay.codec.{Cbor, CborCodec, Codecs, Json, JsonCodec, JsonStrict, Schema, Staged, StrictJsonCodec}
 
 import scala.quoted.*
 import scala.quoted.staging.{Compiler, run}
@@ -81,6 +81,7 @@ object RuntimeStaged {
   private lazy val compiler: Compiler = Compiler.make(getClass.getClassLoader)
   private val jsonCache = new java.util.concurrent.ConcurrentHashMap[AnyRef, JsonCodec[Any]]()
   private val cborCache = new java.util.concurrent.ConcurrentHashMap[AnyRef, CborCodec[Any]]()
+  private val strictCache = new java.util.concurrent.ConcurrentHashMap[AnyRef, StrictJsonCodec[Any]]()
   private val lock = new Object
 
   /** the compiler's ONE thread: dotty's ContextBase refuses access
@@ -115,6 +116,12 @@ object RuntimeStaged {
     if !enabled then Codecs.Interpreter.cbor(s)
     else cached(cborCache, s, () => generateCbor(s), Codecs.Interpreter.cbor(s))(Unsafe.cborCodec[A])
 
+  /** the staged STRICT reader for a schema value: text straight into
+   * the schema, no tree — `Json.readStrict` generated for the shape */
+  def strict[A](s: Schema[A]): StrictJsonCodec[A] =
+    if !enabled then Codecs.Interpreter.strict(s)
+    else cached(strictCache, s, () => generateStrict(s), Codecs.Interpreter.strict(s))(Unsafe.strictCodec[A])
+
   private def cached[C, R](cache: java.util.concurrent.ConcurrentHashMap[AnyRef, C], s: Schema[?],
                            make: () => C, fallback: => R)(as: C => R): R =
     val key = IdentityKey(s)
@@ -136,12 +143,14 @@ object RuntimeStaged {
   /** whether `s` has a generated JSON codec already (a test's question) */
   def isStaged(s: Schema[?]): Boolean = jsonCache.containsKey(IdentityKey(s))
   def isStagedCbor(s: Schema[?]): Boolean = cborCache.containsKey(IdentityKey(s))
+  def isStagedStrict(s: Schema[?]): Boolean = strictCache.containsKey(IdentityKey(s))
 
   /** this generator as the `Codecs` provider */
   object Provider extends Codecs.Provider:
     def name = "runtime-staged"
     def json[A](s: Schema[A]): JsonCodec[A] = RuntimeStaged.json(s)
     def cbor[A](s: Schema[A]): CborCodec[A] = RuntimeStaged.cbor(s)
+    override def strict[A](s: Schema[A]): StrictJsonCodec[A] = RuntimeStaged.strict(s)
 
   /** every `Codecs` door answers the staged codec from now on; `false`
    * (and nothing installed) when the switch is off */
@@ -178,11 +187,13 @@ object RuntimeStaged {
     def vector(v: Any): Vector[Any] = v.asInstanceOf[Vector[Any]]
     def jsonCodec[A](c: JsonCodec[Any]): JsonCodec[A] = c.asInstanceOf[JsonCodec[A]]
     def cborCodec[A](c: CborCodec[Any]): CborCodec[A] = c.asInstanceOf[CborCodec[A]]
+    def strictCodec[A](c: StrictJsonCodec[Any]): StrictJsonCodec[A] = c.asInstanceOf[StrictJsonCodec[A]]
     /** the fold, for a cold path or a node the generator delegates */
     def encodeAny(s: Schema[?], v: Any): String = Json.encode(any(s))(v)
     def decodeAny(s: Schema[?], j: Json): Either[String, Any] = Json.decode(any(s))(j)
     def encodeItemAny(out: Cbor.Out, s: Schema[?], v: Any): Unit = Cbor.encodeItem(out, v)(using any(s))
     def decodeItemAny(in: Cbor.In, s: Schema[?]): Either[String, Any] = Cbor.decodeItem(in)(using any(s))
+    def getAny(r: JsonStrict.Reader, s: Schema[?]): Either[String, Any] = r.get(any(s))
   }
 
   // ---- the generator: the schema's nodes as a table, the code from their kinds ----
@@ -226,6 +237,15 @@ object RuntimeStaged {
     val table: Array[Schema[?]] = nodes.all.toArray
     val make: Array[Schema[?]] => JsonCodec[Any] = run {
       '{ (ns: Array[Schema[?]]) => ${ JsonGen(nodes, 'ns).codec(s) } }
+    }
+    make(table)
+
+  private def generateStrict[A](s: Schema[A]): StrictJsonCodec[Any] =
+    given Compiler = compiler
+    val nodes = new Nodes(s)
+    val table: Array[Schema[?]] = nodes.all.toArray
+    val make: Array[Schema[?]] => StrictJsonCodec[Any] = run {
+      '{ (ns: Array[Schema[?]]) => ${ StrictGen(nodes, 'ns).codec(s) } }
     }
     make(table)
 
@@ -509,4 +529,67 @@ object RuntimeStaged {
           val ie = '{ Unsafe.iso(${ node(s) }) }
           '{ ${ read(nodes.kid(s, 0), in, seen) }.flatMap(b => $ie.to(b)) }
         case _ => '{ Unsafe.decodeItemAny($in, ${ node(s) }) }   // SChar, SBytes: the fold
+
+  /** the STRICT-JSON reader over a schema value: `StrictGen` of
+   * Staged.scala with the node table where the Mirror was. Primitives
+   * call the reader's own `number`/`string`/`bool`, so a primitive
+   * field needs no fold branch; products and sums go through the
+   * `strict*` helpers with each field's reader staged; a node this
+   * generator does not know (Char, bytes) and a type met again inside
+   * itself take `Reader.get`, the interpreted walk, so the refusal
+   * words stay the fold's own. */
+  private final class StrictGen(nodes: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes) extends Gen(nodes, ns):
+
+    def codec(root: Schema[?]): Expr[StrictJsonCodec[Any]] =
+      '{ new StrictJsonCodec[Any] {
+           def decode(text: String): Either[String, Any] = {
+             val r = new JsonStrict.Reader(text)
+             r.skipWs()
+             ${ read(root, 'r, Nil) }.flatMap { a =>
+               r.skipWs()
+               if r.at == text.length then Right(a) else Left("trailing input at " + r.at)
+             }
+           }
+         } }
+
+    def read(s: Schema[?], r: Expr[JsonStrict.Reader], seen: List[Schema[?]]): Expr[Either[String, Any]] =
+      if seen.exists(_ eq s) then '{ Unsafe.getAny($r, ${ node(s) }) }
+      else s match
+        case Schema.SInt => '{ $r.number().map(_.toInt) }
+        case Schema.SLong => '{ $r.number().map(_.toLong) }
+        case Schema.SDouble => '{ $r.number() }
+        case Schema.SBool => '{ $r.bool() }
+        case Schema.SString => '{ $r.string() }
+        case Schema.SOption(_) =>
+          val inner = nodes.kid(s, 0)
+          '{ if $r.lit("null") then Right(None) else ${ read(inner, r, seen) }.map(Some(_)) }
+        case Schema.SList(_) =>
+          val inner = nodes.kid(s, 0)
+          '{ Staged.strictElems[Any]($r)(cur => ${ read(inner, 'cur, seen) }) }
+        case Schema.SVector(_) =>
+          val inner = nodes.kid(s, 0)
+          '{ Staged.strictElemsV[Any]($r)(cur => ${ read(inner, 'cur, seen) }) }
+        case p: Schema.SProduct[?] =>
+          val here = s :: seen
+          val pe = '{ Unsafe.product(${ node(s) }) }
+          val fields = fieldsOf(s, p)
+          val readers: List[Expr[JsonStrict.Reader => Either[String, Any]]] =
+            fields.map((_, fs) => '{ (cur: JsonStrict.Reader) => ${ read(fs, 'cur, here) } })
+          val absents: List[Expr[Either[String, Any]]] =
+            fields.zipWithIndex.map { case ((name, fs), i) => absent(p, pe, i, name, fs) }
+          val names = Expr(fields.map(_._1))
+          '{ Staged.strictProduct[Any]($r, $names.toArray, Array(${ Varargs(readers) }*),
+               Array(${ Varargs(absents) }*), xs => $pe.make(xs.toSeq)) }
+        case su: Schema.SSum[?] =>
+          val here = s :: seen
+          val tname = Expr(su.name)
+          def chain(rest: List[(String, Schema[?])], name: Expr[String]): Expr[Either[String, Any]] = rest match
+            case Nil => '{ Left("unknown case '" + $name + "' of " + $tname) }
+            case (n, cs) :: more =>
+              '{ if $name == ${ Expr(n) } then ${ read(cs, r, here) } else ${ chain(more, name) } }
+          '{ Staged.strictSum[Any]($r)(name => ${ chain(casesOf(s, su), 'name) }) }
+        case Schema.SIso(_, _, _) =>
+          val ie = '{ Unsafe.iso(${ node(s) }) }
+          '{ ${ read(nodes.kid(s, 0), r, seen) }.flatMap(b => $ie.to(b)) }
+        case _ => '{ Unsafe.getAny($r, ${ node(s) }) }   // SChar, SBytes: the fold
 }

@@ -29,6 +29,13 @@ object Codecs {
     def name: String
     def json[A](s: Schema[A]): JsonCodec[A]
     def cbor[A](s: Schema[A]): CborCodec[A]
+    /** the strict read, text straight into the schema with no tree
+     * (staged-strict). Defaulted to the interpreter's own
+     * `JsonStrict.read`, so a provider that has nothing better —
+     * and every provider written before this door existed — stays
+     * correct without saying anything. */
+    def strict[A](s: Schema[A]): StrictJsonCodec[A] = new StrictJsonCodec[A]:
+      def decode(text: String): Either[String, A] = JsonStrict.read[A](text)(using s)
 
   /** the fold, as codecs — what every door answers until something
    * else is installed, on every platform */
@@ -40,6 +47,7 @@ object Codecs {
     def cbor[A](s: Schema[A]): CborCodec[A] = new CborCodec[A]:
       def encode(a: A): Array[Byte] = Cbor.write(a)(using s)
       def decode(bytes: Array[Byte]): Either[String, A] = Cbor.read[A](bytes)(using s)
+    // `strict` is the trait's default: JsonStrict.read, the fold
 
   @volatile private var current: Provider = Interpreter
 
@@ -55,6 +63,7 @@ object Codecs {
 
   def json[A](s: Schema[A]): JsonCodec[A] = current.json(s)
   def cbor[A](s: Schema[A]): CborCodec[A] = current.cbor(s)
+  def strict[A](s: Schema[A]): StrictJsonCodec[A] = current.strict(s)
 
   /** `Json.write` through the door */
   def writeJson[A](a: A)(using s: Schema[A]): String = current.json(s).encode(a)
@@ -66,4 +75,7 @@ object Codecs {
   def writeCbor[A](a: A)(using s: Schema[A]): Array[Byte] = current.cbor(s).encode(a)
   /** `Cbor.read` through the door */
   def readCbor[A](bytes: Array[Byte])(using s: Schema[A]): Either[String, A] = current.cbor(s).decode(bytes)
+  /** `Json.readStrict` through the door: a complete document from a
+   * source trusted to be well formed, no tree built */
+  def readStrict[A](text: String)(using s: Schema[A]): Either[String, A] = current.strict(s).decode(text)
 }

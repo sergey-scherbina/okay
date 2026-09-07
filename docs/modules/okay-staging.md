@@ -86,8 +86,13 @@ prints which way it went. A JVM program that cannot depend on this
 module calls `okay.codec.Staging.autoInstall()`, which finds it by
 name.
 
-`RuntimeStaged.cbor(schema)` is the CBOR twin of `json`, the same
-generator with the CBOR emitter, held to the same agreement suite.
+`RuntimeStaged.cbor(schema)` is the CBOR twin of `json`, and
+`RuntimeStaged.strict(schema)` the strict-JSON one (characters
+straight into the schema, no tree) — the same generator with another
+emitter, each held to the same agreement suite against its
+interpreted door. `Codecs.readStrict[A](text)` is the seam's strict
+door; a provider that does not implement it answers the interpreted
+`JsonStrict.read`.
 
 ## Where it earns its keep, and where it does not
 
