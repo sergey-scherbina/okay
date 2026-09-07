@@ -1,5 +1,38 @@
 # Changelog
 
+## adaptive-one-producer — a row that did not move, and the five reasons it did not
+
+The partitioned buffer beats a plain ring everywhere a channel has
+more than one producer (135 against 725 at four, 99 against 2 375 at
+sixteen, 1 039 against 2 307 with four consumers) and loses at exactly
+one producer, by about 1.2x. That row is what keeps `Channel.apply` a
+ring, so it was worth a lane of its own. It did not move, and the
+useful output is the five refutations:
+
+- the part LOOKUP — a thread-local holding the producer's own buffer,
+  then a field for the single-part case: no measurable change, and the
+  field also skipped `claimPart`, so a second producer stopped getting
+  a part. The gate caught that; the benchmark never would have.
+- the consumer-side THREAD-LOCAL (`lastRoute` per pop): no change.
+- the extra LAYER OF CALL: a `Forwarding` buffer that does nothing but
+  delegate reads 115 against the ring's 125. The layer is free.
+- the GROWTH MACHINERY: a partitioned buffer with one part that cannot
+  grow reads the same 1.30x. So the price is fixed per-element work,
+  not the claim or the scan.
+- a THREAD-IDENTITY fast path for the first producer, replacing both
+  thread-local lookups: 146 -> 168. A volatile read costs more here
+  than the `ThreadLocal.get` it replaced.
+
+And the allocation lead, which looked strongest, dissolved: JFR names
+only the benchmark's own boxing, and turning the recorder on moves the
+two lanes past each other — the gap lives in inlining, where a
+profiler that changes inlining cannot see it.
+
+Left behind: two diagnostic lanes (`forwarded_chunk`, `onePart_chunk`)
+that make the two halves of this argument re-runnable, a consumer axis
+the benchmark never had, and a price written down in `docs/queues.md`
+instead of a claim that it will be fixed.
+
 ## json-escape-alloc — a String per character, on the staged encoders' own path
 Completed: 2026-09-07
 Landed as 7700f7d6. The mirror of json-projection-alloc, on the road

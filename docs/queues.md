@@ -373,6 +373,13 @@ channel — minimum of several rounds, us:
 | 4 producers, 1 consumer (elementwise) | 904 | **510** |
 | 4 producers, 4 consumers | 2 307 | **1 039** |
 
+The one-producer row is the buffer's PRICE, and it was measured
+against rather than argued away: five causes were tried and refuted
+(the part lookup, the consumer-side thread-local, the extra layer of
+call — a buffer that only delegates is free — the growth machinery,
+and a thread-identity fast path that made it worse). It is filed as
+`adaptive-one-producer`, closed, with the numbers.
+
 Two things to read here. Producers and consumers do NOT scale for the
 same reason: a producer gets a part of its own, while consumers share
 the head of a ring or the scan cursor of a partitioned buffer, so
