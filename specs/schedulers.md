@@ -35,7 +35,7 @@ chooses where NOT to wake one.
   | member | fiber is | blocking inside a fiber | cost per fork/join (10k, ns) | parked fiber holds | for |
   |---|---|---|---|---|---|
   | `loom` (JVM default) | a virtual thread | free — the thread parks | 271 | nothing | anything that may block: I/O, `join()`, channels |
-  | `own(workers, spin, wakeAbove)` | a DriveTask on an owned worker | holds one of `workers` threads | measured in this lane | nothing | short CPU-bound fibers, fork/join as throughput |
+  | `own(workers, spin, wakeAbove, helpAfterNanos, spreadAboveNanos)` | a DriveTask on an owned worker | holds one of `workers` threads | 744 inside / 1 554 outside | nothing | short CPU-bound fibers, fork/join as throughput |
   | `drive(pool)` | a DriveTask on a JDK pool | holds a pool thread | 231 | nothing | when the pool is given (a container's) |
   | `forkJoin(pool)` | a pool task, Loom-free | holds a pool thread | ~230 | nothing | a JVM without Loom |
   | `threads` | a platform thread | free | heavy (a thread start) | nothing | Native's default; a JVM that must not use Loom |
@@ -48,16 +48,27 @@ chooses where NOT to wake one.
   No trait hierarchy beyond `Scheduler`: a scheduler is a value, and
   the facade is the menu. `given Scheduler = Schedulers.loom` stays
   the JVM default until the adaptive one has laws and a table row.
-- **The policy of `own`** (from the profile): a submit goes to a
-  worker already running — the caller's own worker if the caller is
-  one, else the less loaded of two running workers drawn at random;
-  a parked worker is woken only when the chosen running one has more
-  than `wakeAbove` tasks queued. A worker that runs dry steals from
-  the others, spins `spin` rounds, then parks; the flag it publishes
-  before its last look at the queue is what a submitter reads, so a
-  wake is never lost (Dekker: one of the two sees the other's write).
-  `wakeAbove = 0` is the JDK pool's policy and stays as the lane
-  that shows the difference.
+- **The policy of `own`**, as measured rather than as first drafted
+  (2026-09-07). A fiber forked FROM a worker goes on that worker's own
+  Chase-Lev deque: no CAS, no signal, and the owner pops from the end
+  the thieves do not touch. A fiber forked from outside goes into ONE
+  shared submission queue, and wakes a worker only when nobody is
+  awake to see it or when the queue is deeper than `wakeAbove` — a
+  submitter that picks a random worker picks a sleeping one most of
+  the time, which cost 1 249 -> 5 822 us when it was tried. A dry
+  worker steals from every other worker, then the submission queue,
+  spins `spin` rounds, then parks; the flag it publishes before its
+  last look is what a submitter reads, so a wake is never lost.
+
+  **The helper rule, which is what makes one scheduler hold both
+  columns of the fork/join table.** At every 16th task a worker knows
+  two numbers it did not have to compute: how long it has been busy
+  and how many tasks that took. It wakes ONE sleeping worker — any
+  sleeper, wherever it sits — only when it is past `helpAfterNanos`
+  AND its tasks are averaging more than `spreadAboveNanos`. Fibers of
+  thirty nanoseconds stay home, where waking a core costs more than
+  the work; fibers of microseconds spread. The rule reads what the
+  work IS instead of being told.
 - **The adaptive policy**: what `Queues.adaptive` does for producers
   — decide by what shows up — done for BLOCKING. A fiber on `own`
   that reaches `CanBlock.block` (a `join()`, a `receiveBlocking`, a
@@ -89,10 +100,11 @@ member the way `TestManyToMany` is by buffer):
    not held: `workers = 1`, two fibers, the first blocks on the
    second's channel).
 
-The performance law: `forkJoin10k_okayOwn` within 10 % of
+The performance law: `forkJoin10k_okayOwnInside` within 10 % of
 `forkJoin10k_kyo` on the same run, recorded in the ledger with both
 numbers; a regression past that is a failing gate the way §17's rows
-are.
+are. MET 2026-09-07 and then some — 744 us against kyo's 779 on its
+own ground, and 3 327 against 25 419 when each fiber does real work.
 
 ## Decisions
 - **`own` is not the default** until the adaptive member has its laws:
