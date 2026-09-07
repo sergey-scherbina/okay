@@ -919,6 +919,56 @@ more than one service), and the packaged chart resources — a chart
 whose every knob was a value in `values.yaml` was generic in the way
 that meant "one service, and you edit YAML for anything else".
 
+## The other two clouds (stage 3, finished)
+
+`gcp` is Cloud Run; `azure` is Container Apps. Both are the same shape
+as `aws` — a service, its settings, its secrets by reference, its
+managed database — and both are gated the same way, by `terraform
+validate` against the provider's own schema.
+
+The interesting part is where the three clouds DISAGREE, because that
+is where a model that says WHAT rather than HOW earns its keep:
+
+| the need | aws | gcp | azure |
+|---|---|---|---|
+| a public port | an ALB and a listener | Cloud Run is public by a flag | Container Apps ingress |
+| a volume | EFS | **REFUSED** | an Azure Files share |
+| a database | RDS | Cloud SQL | Postgres Flexible Server |
+| a secret | Secrets Manager, read back | Secret Manager, read back | Key Vault, read back |
+| TLS on the platform's name | the ALB has none | automatic | automatic |
+
+### `Need.Volume` is refused on gcp, and this is the decision
+
+Cloud Run does support volume mounts now, so the easy answer would
+have been a GCS bucket through gcsfuse. That answer is wrong, and
+being wrong quietly is the whole failure mode this model exists to
+avoid: **gcsfuse is object storage wearing a filesystem.** There is no
+atomic rename and no locking, and okay-persist's log — the thing a
+`Need.Volume` in this repository almost always holds — is built on
+exactly those two. A deployment that mounted one would work in a demo
+and corrupt a log under concurrency, at 3am, in a way nobody would
+trace back to a target's choice.
+
+So the refusal names the service, says what a volume means here, and
+points at the two answers that work: the `cluster` target on GKE,
+which has real persistent disks, or a database instead of a directory.
+
+Azure is the counter-example that keeps this honest: Container Apps
+mounts an Azure Files share, that share IS a real filesystem, so
+`azure` renders one and does not refuse.
+
+### What neither can do without a person
+
+A custom domain on Cloud Run and on Container Apps requires DOMAIN
+VERIFICATION — a TXT record proving you own it, checked by the
+platform, before a certificate is issued. There is no Terraform
+resource that verifies a domain for you. Both targets therefore
+render the mapping AND output the platform's own name, with the
+verification step named in the file rather than discovered when an
+apply fails. Managed TLS on the platform's own name is automatic on
+both, and that is the difference from `aws`, where the ALB has no
+certificate until ACM issues one.
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of
@@ -970,8 +1020,8 @@ and each ends with something an operator can actually use:
   step.
 - **Stage 3 — the clouds.** Terraform per cloud, proven by
   `terraform validate` in a container. The AWS one first, because ECS
-  plus RDS plus Secrets Manager exercises every part of the model —
-  landed 2026-09-07; gcp and azure are their own claims.
+  plus RDS plus Secrets Manager exercises every part of the model.
+  All three landed 2026-09-07.
 - **Stage 4 — the secret schemes.** DONE 2026-09-07 (in okay-conf,
   where `Secrets` lives — see specs/conf.md): `sops:` tested end to
   end against a real sops in a container, the three managers shape-
