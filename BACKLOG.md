@@ -1220,6 +1220,23 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] okay-script-measured — LANDED 2026-09-07 (operator ask, first of
+      four): the first numbers for a runtime-compiled page —
+      ~150 ms to compile, 0.062 ms to answer (x2500), 870 ms for the
+      first page of a process (dotc's warmup), metadata free, a
+      static 304 at half a 200, 87 KiB per compiled page, ~100k
+      renders/s saturating at four threads. Not JMH, and why.
+      docs/benchmarks.md §19.
+- [ ] okay-script-warm — compile the whole directory at boot (the
+      870 ms first-page cost §19 measured), so a start fails on a
+      broken page instead of the first visitor; plus Site.stats over
+      okay-obs (renders, compiles, 4xx/5xx, cache hits).
+- [ ] okay-script-image — okay-deploy manifest for a container running
+      okay.script.Serve over a pages directory: "the page is the
+      deployment", packaged.
+- [ ] okay-script-guide — docs/okay-script-guide.md: zero to a working
+      store; specs hold decisions, the module page is a table, and
+      neither is a place to start.
 - [x] okay-script-cache — LANDED 2026-09-07 (operator ask): static
       files always carry an ETag (size+mtime, no read) and
       Last-Modified and answer 304; pages opt in with `cache:

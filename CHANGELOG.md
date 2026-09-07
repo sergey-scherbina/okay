@@ -1,5 +1,32 @@
 # Changelog
 
+## okay-script-measured — the first numbers for a runtime-compiled page
+Completed: 2026-09-07
+Landed as a609b485. Operator ask (first of four: measure, then warm +
+stats, then an image, then a guide). The container had been built out
+for four days and never once measured, which in this repository is the
+gap that shows. `MeasureScript` — Live-tagged, in okay-script's own
+suite — takes medians with the warmup discarded, prints a table, and
+asserts sanity bounds only (a page renders; a warm render beats a cold
+one), never a millisecond threshold that a loaded box turns into a red
+build. Deliberately not JMH, and the reason is in the section: every
+sample is milliseconds to seconds and dominated by dotc, so each fork
+would pay every compile again to measure the same thing.
+
+What it found: a page compiles in ~150 ms and then answers in 0.062 ms
+— a ratio of about 2500, which is why the compile-once/invoke-many
+split is the whole design rather than an optimization. The FIRST page
+of a process costs 870 ms, because dotc warms itself in it (the
+argument for compiling a directory at boot, now filed rather than
+assumed). Metadata is free: front-matter, a yaml block and headings
+cost the same as a plain code block, inside the run-to-run spread,
+because `Meta` is literalized into a compile that was happening
+anyway. A static 304 is half a 200 (0.021 vs 0.048 ms), the ETag being
+size and mtime, so a validated request never reads the file. 87 KiB
+per compiled page. Renders saturate near 100k/s at four threads on a
+host under load 8 — the per-page lock is not the ceiling, it is held
+only across the mtime check. docs/benchmarks.md §19.
+
 ## intent-shipped-model-4096 — the shipped no-network classifier refitted at 2–3-grams into 4096 buckets: 80.0% at full coverage, 71.7% under a typo
 
 The operator's call: the window sweep had measured (2,3) @4096 at
