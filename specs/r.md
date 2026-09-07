@@ -41,12 +41,39 @@ enum REval[A]:
  * NULL/NA, logical, int, double, string, bytes, and vectors of
  * those. Schema binds case classes to RValue rows exactly as it
  * binds them to Sql rows: one flat-product story, told twice. */
-enum RValue: ...
+enum RValue:
+  case RNull                        // R's NULL — the ABSENCE OF AN OBJECT
+  case NA(of: RType)                // a missing value INSIDE a vector, TYPED
+  case Lgl(v: Boolean); case Int(v: Int); case Dbl(v: Double)
+  case Str(v: String); case Bytes(v: Array[Byte])   // raw
+  case Vec(v: Vector[RValue])
+
+enum RType: case Logical, Integer, Double, Character
 
 /** a data.frame as columns of primitives; Schema[A] maps a flat
  * case class to/from a frame row-wise */
 final case class RFrame(cols: Vector[(String, RColumn)])
 ```
+
+### R's two absences (written while building it, 2026-09-07)
+
+Python has one `None`, and okay-py's `PyValue` has one case for it.
+R has TWO, and flattening them would be the "papered over" this
+spec's own behaviour list forbids:
+
+- **`NULL`** is the absence of an OBJECT. `list(a = NULL)` has no
+  `a`. It is what a function returns when it returns nothing.
+- **`NA`** is a missing value INSIDE a vector, and it is TYPED:
+  `NA_integer_`, `NA_real_`, `NA_character_` and a logical `NA` are
+  four different values, and `c(1L, NA)` stays an integer vector
+  while `c(1L, NULL)` is a one-element integer vector — the NULL
+  vanished.
+
+So `RValue` carries both, and `NA` carries its type. A caller that
+does not care can ignore the distinction; a caller doing statistics
+cannot, because `mean(c(1, NA))` is `NA` and `mean(c(1, NULL))` is
+`1`. Getting that wrong silently is exactly the class of error a
+forecast never announces.
 
 - **Functions, not strings.** `Call("forecast::auto.arima", args)`
   names a function; there is deliberately NO operation that evals
@@ -69,6 +96,23 @@ final case class RFrame(cols: Vector[(String, RColumn)])
   fault model unchanged.
 
 ## Engines (both behind the one handler)
+
+### jsonlite is a NAMED prerequisite, not a silent import
+
+okay-py's shim is stdlib-only, deliberately. R's cannot be: base R
+has no JSON reader. The three roads were a hand-written parser in
+base R, R's own binary serialization, or one package — and the
+first is our own parser sitting at the trust boundary, which is a
+worse thing to own than a dependency that every R installation used
+for anything already has.
+
+So the shim requires `jsonlite`, and its absence is refused at the
+HANDSHAKE, by name, with the two commands that fix it
+(`install.packages("jsonlite")`, or the distribution's
+`r-cran-jsonlite`). A named prerequisite an operator can act on
+beats a stack trace from inside a shim, and it is the same
+"verify over trust" rule this spec already applies to every other
+package.
 
 - **Subprocess** (stage 0): `Rscript` per session, values over
   stdin/stdout as CBOR (a tiny R-side shim decodes;
