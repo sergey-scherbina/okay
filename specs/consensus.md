@@ -260,18 +260,34 @@ prices every large claim:
   against the paper; revisit once stage 1 gives typestate something
   real to guard (a network handler that must not even COMPILE an
   AppendEntries send from a Follower).
-- **The Sim-driven fuzz harness, still open** (the same 2026-09-01
-  note): the honest way to test consensus at scale is deterministic
-  simulation (FoundationDB-style interleaving of many nodes by
-  seed) — `src/main/scala/Sim.scala` (specs/sim.md) is exactly that
-  machinery, each node a fiber, the simulator choosing who wakes
-  next, every found bug replayable byte for byte. Stage 0's tests
-  drive the SAME pure `Raft.handle` explicitly instead — sufficient
-  to prove the seven safety properties above, but a seed-swept
-  Sim harness (randomized election timeouts, message reordering
-  and loss, partition injection) is the next honest step before
-  trusting this under real concurrency, filed here rather than
-  attempted in the same pass as the core.
+- **The seed-swept simulation harness, LANDED 2026-09-07
+  (raft-sim-fuzz).** `TestRaftSim` (default gate, every platform: the
+  core is pure) is a discrete-event simulator over `Raft.handle` /
+  `startElection` / `replicate` — not fibers on `Sim`, because the
+  core is a function of messages and timeouts, so its network is a
+  priority queue of events and its clock a number; `Sim` stays the
+  machinery for programs with effects. Per seed: five nodes,
+  randomized election timeouts and heartbeats, every message delayed
+  by 1–40 (so reordered) and dropped at 10%, a minority of two cut
+  off in round 2 and healed in round 4, three proposals a round at
+  whoever leads, then a lossless stretch and one late proposal. After
+  EVERY event the four safety properties are asserted — election
+  safety (one leader per term), log matching, state-machine safety
+  (committed entries at one index agree), leader completeness (a
+  leader holds every entry any node committed) — and at the end the
+  promise Raft actually makes: every ACKED proposal (committed on the
+  leader that accepted it, what a client is told) is in every node's
+  committed prefix, the cluster has converged on one commit index,
+  and the late proposal was acked. Forty seeds: safety held on every
+  event of every seed; 40 converged, 40 kept every ack, 40 acked the
+  late one; 670 proposals accepted, 560 acked — the 110 are entries a
+  minority-side leader accepted during the cut and never committed,
+  lost on rejoin exactly as the paper says an uncommitted entry may
+  be, which the harness's first version wrongly counted as losses
+  until the property was stated as the paper states it. A failing
+  seed prints itself and replays byte for byte; the suite asserts
+  that too (seed 7 twice, equal states). Not swept: membership
+  changes and compaction, which do not exist yet (stage 2).
 
 ## Out of scope
 

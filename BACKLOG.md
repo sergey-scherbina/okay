@@ -902,9 +902,14 @@ measure on our own data, never a predicted result.
       `TestRaftWire`. FORWARDING LANDED 2026-09-07 (persist-raft-
       forward): `RaftMsg.Propose`/`Proposed`, a follower's append
       carried to the leader and applied everywhere; `NotLeader` only
-      when no leader is known. Stage 2 (compaction, membership
-      changes) and the commit-wait as an `Ack` level remain open; box
-      stays unchecked for those.
+      when no leader is known. SIM HARNESS LANDED 2026-09-07
+      (raft-sim-fuzz): `TestRaftSim`, a discrete-event simulator over
+      the pure core — five nodes, random timeouts, reordering, 10%
+      loss, a minority cut and healed — safety asserted after every
+      event on 40 seeds, acked proposals never lost, convergence and
+      a late ack on a lossless stretch; replayable by seed. Stage 2
+      (compaction, membership changes) and the commit-wait as an
+      `Ack` level remain open; box stays unchecked for those.
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,

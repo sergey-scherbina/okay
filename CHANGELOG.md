@@ -1,5 +1,26 @@
 # Changelog
 
+## raft-sim-fuzz — the seed-swept simulation of the Raft core: safety on every event of forty seeds
+
+The consensus spec kept "the Sim-driven fuzz harness" open as the
+next honest step before trusting the core under real concurrency.
+`TestRaftSim` is it, in the default gate on every platform: a
+discrete-event simulator over the pure `Raft.handle` — five nodes,
+randomized election timeouts and heartbeats, every message delayed
+1–40 and dropped at 10%, a minority cut off and healed, proposals at
+whoever leads, then a lossless stretch and a late proposal. After
+every event: election safety, log matching, state-machine safety,
+leader completeness; at the end, the promise Raft makes — every ACKED
+proposal is in every node's committed prefix, one commit index, the
+late proposal acked. Forty seeds: safety held throughout; 40
+converged, 40 kept every ack, 40 acked the late one; 670 accepted,
+560 acked, the 110 being minority-side entries never committed, lost
+on rejoin as the paper says they may be — the harness's first
+property counted those as losses until it was stated as the paper
+states it. A failing seed prints itself and replays byte for byte,
+and the suite asserts the replay. Not fibers on `Sim`: the core is a
+function, so its network is a queue and its clock a number.
+
 ## persist-raft-forward — a follower's append carried to the leader over the node wire
 
 Stages 1a and 1b both named one limit: a proposal succeeded only on
