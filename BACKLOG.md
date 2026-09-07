@@ -2433,12 +2433,20 @@ rather than on every pop, which is the same idea as
       at least 30 messages per language, which means growing it from 30
       meanings to 120. That is a translation job, and the
       author-written-translation limitation grows with it.
-- [ ] intent-4b-with-more-data — the 4B embedder is worse at 60
+- [x] intent-4b-with-more-data — the 4B embedder is worse at 60
       examples because 2560 dimensions need more of them, which is a
       prediction rather than a defeat: re-run the learning curve on
       BOTH embedders and find where the lines cross. If the 4B
       overtakes past some n, it is the right vectoriser for a
       distilled corpus even though it is the wrong one today.
+      MEASURED 2026-09-07 (`TestLearningCurveBoth`, both mirror
+      splits, n = 8..60, Conditions on every row): the lines do not
+      cross — at no n is the 4B ahead on both splits, its means sit
+      level with or under the 0.6B's (at 60: probe 78.3 vs 80.0,
+      centroid 75.8 vs 78.3), and both curves flatten from 32 with
+      the same slope. The prediction is not supported inside this
+      fixture; a crossing past 60 is a claim it cannot make. The 0.6B
+      stays the vectoriser, for a distilled corpus too.
 - [ ] intent-distil-more — 320 generated messages bought chargrams 6.7
       points and the curve was still climbing when the fixture ran out.
       The generator is resumable, so this is machine time rather than

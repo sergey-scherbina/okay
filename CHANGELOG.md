@@ -1,5 +1,20 @@
 # Changelog
 
+## intent-4b-with-more-data — the learning curve on both embedders: the lines do not cross
+
+The entry predicted the 4B embedder needs more examples than 60 and
+overtakes past some n. Measured on the 120-message fixture, both
+vectorisers through the rozum gateway, both mirror splits, the
+training half grown class-balanced 8..60, probe and centroid at each
+step, every row with its `Conditions` (`TestLearningCurveBoth`,
+Live): at no n is the 4B ahead of the 0.6B on both splits on either
+classifier; its means sit level with or under the small model's (at
+60: probe 78.3 vs 80.0, centroid 75.8 vs 78.3); both curves flatten
+from 32 with the same slope, where a vectoriser starved of data
+would show a steeper late one. Not supported inside this fixture; a
+crossing past 60 is a claim it cannot make. The 0.6B stays the
+vectoriser, for a distilled corpus too.
+
 ## okay-script-forms — typed forms from a Schema, on both roads a page has
 Completed: 2026-09-07
 Landed as 8b298c9f (spec then code, rebased). Operator ask. okay-ui's

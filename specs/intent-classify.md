@@ -3518,6 +3518,46 @@ The gap to the teacher is 18 points now, from 23; the remaining gap
 is still CONTEXT (a unit's one vector wherever it appears), and
 neither extension touches that.
 
+## Results — intent-4b-with-more-data (2026-09-07)
+
+The entry's prediction: the 4B embedder is worse at 60 examples
+because 2560 dimensions need more of them — re-run the learning
+curve on both embedders and find where the lines cross. Done on the
+120-message fixture, both vectorisers through the rozum gateway,
+both mirror splits (the bar intent-instruction-prefix measured), the
+training half grown class-balanced from 8 to 60, probe and centroid
+at each step, every row printed with its `Conditions`
+(`TestLearningCurveBoth`, Live). The two splits' means:
+
+| n | 0.6B probe | 0.6B centroid | 4B probe | 4B centroid | 4B ahead on both splits |
+|---|---|---|---|---|---|
+| 8 | 53.3% | 53.3% | 55.0% | 50.0% | no |
+| 16 | 65.0% | 64.2% | 64.2% | 60.8% | no |
+| 24 | 71.7% | 75.8% | 71.7% | 68.3% | no |
+| 32 | 84.2% | 75.0% | 78.3% | 74.2% | no |
+| 40 | 80.0% | 78.3% | 80.0% | 75.0% | no |
+| 48 | 80.8% | 79.2% | 80.0% | 77.5% | no |
+| 60 | 80.0% | 78.3% | 78.3% | 75.8% | no |
+
+**The lines do not cross, and they are not converging on a crossing.**
+At no n up to 60 is the 4B ahead of the 0.6B on both splits, on
+either classifier; its means sit level with or under the small
+model's at every step (centroid 2.5–7.5 points under from 24 on),
+and BOTH curves flatten from 32 — the same shoulder the first curve
+found on the 0.6B alone. A bigger vectoriser that needed more data
+would show a steeper late slope; it shows the same flat one. So the
+prediction is not supported inside this fixture, and a crossing past
+n = 60 is a claim the fixture cannot make — "not shown" rather than
+"refuted", but nothing here argues for it.
+
+**What follows.** The 0.6B stays the vectoriser for every measured
+row and for a distilled corpus (the question intent-distil-more
+would have asked); the 4B stays what it was found to be — 2.5x the
+dimensions for the same or fewer points — until a fixture at least
+twice this size is measured with the same two splits and shows a
+late slope. The 4B's load is also the only cost in the run: 2 s to
+embed 120 messages once resident against 0 s for the small one.
+
 ## Results — intent-instruction-prefix (2026-09-07)
 
 The entry's own ask: the first measurement (60 messages) found +1.6
