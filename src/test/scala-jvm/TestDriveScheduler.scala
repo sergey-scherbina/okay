@@ -39,7 +39,7 @@ class TestDriveScheduler extends munit.FunSuite {
     f.cancel()
     val done = new java.util.concurrent.atomic.AtomicBoolean(false)
     f.onComplete(_ => done.set(true))
-    k.get(Right(5))
+    k.get()(Right(5))
     Thread.sleep(50)
     assert(!done.get)
   }
