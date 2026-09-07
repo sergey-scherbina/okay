@@ -1370,15 +1370,18 @@ not a new primitive from scratch.
       by hand (the JDK exposes the AKI only as raw extension bytes).
       Proven against Pebble's renewalInfo and, for the decision rule,
       a stub CA both ways.
-- [ ] acme-dns01 — the challenge for a name whose HTTP this server
-      does not answer, and the ONLY road to wildcards. The protocol
-      half is small (a TXT record holding base64url(SHA-256(key
-      authorization)) under `_acme-challenge.<domain>`); the reason it
-      is not done is that it needs a DNS provider, and this repository
-      has no DNS seam at all. The honest shape is a `Dns` trait with
-      put/remove, a test double, and no provider shipped — plus the
-      propagation wait every provider needs and none of them agree
-      on.
+- [x] acme-dns01 — LANDED 2026-09-07: an `Acme.Dns` seam (put/remove a
+      TXT record, and say how long this provider propagates), dns-01
+      used when one is given, and a wildcard refused BEFORE an order
+      is placed when one is not. No provider ships, deliberately.
+      Proven end to end: pebble-challtestsrv as both the resolver
+      Pebble asks and the provider the test writes to, issuing
+      `*.okay.example`.
+- [ ] acme-dns-providers — a `Dns` for a real provider, if a
+      deployment asks: Route53, Cloudflare, deSEC. Each is an HTTP
+      API and a credential; the reason none ships is that one
+      favourite baked into a seam is worse than none. Note the
+      propagation wait is per provider and none of them agree.
 - [ ] script-tls: ALPN/HTTP2, OCSP stapling, cipher policy — still the
       proxy's, and named as such in the spec. A Site behind Caddy/nginx/an ingress needs
       three things from the operator: pass Upgrade for EVERY path

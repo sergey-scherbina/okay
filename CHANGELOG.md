@@ -1,5 +1,30 @@
 # Changelog
 
+## acme-dns01 — the DNS challenge, and the wildcard only it can prove
+Completed: 2026-09-07
+Landed as 44861162 (spec then code). The last of the three deferred
+ACME items. `Acme.Dns` is the seam dns-01 needs — put a TXT record,
+remove it, and say how long this provider takes to propagate — and
+`ensure` uses dns-01 when one is given, http-01 otherwise; the two
+differ in what is published and where, not in the dance. A wildcard
+has no host to serve a file from, so a wildcard without a `Dns` is
+refused BEFORE an order is placed, by name, instead of being
+discovered in the CA's answer. What goes into DNS is the HASH of the
+key authorization rather than the authorization, because a TXT record
+is public; `propagation` is asked for rather than guessed, since how
+long before a resolver sees a record is the provider's property and
+no default of ours would be honest; and the proof comes down whether
+the CA accepted it or not, a record left behind being a fact about
+that domain that outlives its reason. No provider implementation
+ships, deliberately — Route53, Cloudflare, deSEC and a company's own
+each have their own credentials and shape, and a seam with one
+favourite baked in is worse than a seam with none. Proven end to end:
+pebble-challtestsrv plays both parts the challenge needs, the DNS
+server Pebble is pointed at and the provider the test's own `Dns`
+writes to, and Pebble issues a `*.okay.example` certificate with the
+http-01 store never touched. 12 okay-acme green 3x, no containers
+left behind.
+
 ## acme-ari — the CA's own renewal window, honoured beside our countdown
 Completed: 2026-09-07
 Landed as 11eb0265 (spec then code, rebased). A CA that has to revoke
