@@ -26,7 +26,7 @@ object Targets:
    * `Run.Image` service is already one */
   private def imageOf(d: Deployment, s: Service): String = s.run match
     case Run.Image(repo, tag) => s"$repo:$tag"
-    case Run.Module(_, _, _, _) => s"${d.name}/${s.name}:local"
+    case _: Run.Module => s"${d.name}/${s.name}:local"
 
   // ---- laptop: one compose file ------------------------------------
 
@@ -59,10 +59,10 @@ object Targets:
           sb ++= s"  ${s.name}:\n"
           s.run match
             case Run.Image(repo, tag) => sb ++= s"    image: $repo:$tag\n"
-            case Run.Module(_, moduleDir, _, _) =>
+            case m: Run.Module =>
               sb ++= s"    image: ${imageOf(d, s)}\n"
               sb ++= "    build:\n      context: ../..\n"
-              sb ++= s"      dockerfile: $moduleDir/deploy/Dockerfile\n"
+              sb ++= s"      dockerfile: ${m.moduleDir}/deploy/Dockerfile\n"
           if s.ports.nonEmpty then
             sb ++= "    ports:\n"
             for p <- s.ports if p.public do sb ++= s"""      - "${p.number}:${p.number}"\n"""
@@ -150,9 +150,9 @@ object Targets:
       else d.ordered.map { services =>
         val units = services.map { s =>
           val exec = s.run match
-            case Run.Module(_, _, mainClass, javaOpts) =>
-              val opts = if javaOpts.isBlank then "" else javaOpts.trim + " "
-              s"/usr/bin/env java $opts-cp /opt/${d.name}/${s.name}/app.jar $mainClass"
+            case m: Run.Module =>
+              val opts = if m.javaOpts.isBlank then "" else m.javaOpts.trim + " "
+              s"/usr/bin/env java $opts-cp /opt/${d.name}/${s.name}/app.jar ${m.mainClass}"
             case Run.Image(repo, tag) =>
               s"/usr/bin/env docker run --rm --name ${s.name} $repo:$tag"
           val after = s.neighbours.map(n => s"$n.service").mkString(" ")

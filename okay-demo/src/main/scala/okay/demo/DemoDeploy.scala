@@ -1,38 +1,50 @@
 package okay.demo
 
-import okay.deploy.{Copy, Deploy, Env, Image}
+import okay.deploy.{Copy, Deployment, Need, Run, Service, Settings, Targets}
 
 /**
- * DemoChat's deployment, as the value it is (specs/deploy.md): the
- * ONLY place that knows this application's port variable, its log
- * directory, its image name. `okay-demo/deploy/` is this value
- * rendered — regenerate with `sbt "okayDemo/runMain okay.demo.DemoDeploy"`;
- * TestDemoDeploy refuses a drift between the two.
+ * DemoChat's deployment as ONE value (specs/deployment.md): the ONLY
+ * place that knows this application's port, its log directory, its
+ * image name.
+ *
+ * `okay-demo/deploy/` is this value rendered — regenerate with
+ * `sbt "okayDemo/runMain okay.demo.DemoDeploy"`; TestDemoDeploy
+ * refuses a drift between the two.
+ *
+ * Ported from specs/deploy.md's `Deploy` when that model was retired
+ * (deploy-old-helm-retired). Porting it is what found the two things
+ * the new model was missing — `extraBuild`/`extraCopy`, because this
+ * application links a Scala.js bundle in the build stage, and
+ * `metricsPath`, which the old chart annotated a pod with.
  */
 object DemoDeploy:
-  val spec: Deploy = Deploy(
+  val system: Deployment = Deployment(
     name = "demo-chat",
-    module = "okayDemo",
-    moduleDir = "okay-demo",
-    mainClass = "okay.demo.ChatDemo",
-    port = 8090,
-    image = Image("okay/demo-chat", "local"),
-    env = Vector(
-      Env("OKAY_CHAT_PORT", "8090"),
-      Env("OKAY_CHAT_LOG", ":memory:"),   // a real deployment mounts a volume here
-      // the React bundle, linked and copied in below — Chat.appJs
-      // already reads this env var first (demo-package)
-      Env("OKAY_CHAT_APP", "/app/app.js"),
-    ),
-    // one-command run (demo-package): the build stage links the
-    // React frontend too, and its output rides into the image next
-    // to the jar — no separate node/dev-server step
-    extraBuild = Vector("okayChatWebJS/fastLinkJS"),
-    extraCopy = Vector(Copy(
-      "okay-demo/web/.js/target/scala-*/*-fastopt/main.js", "/app/app.js")))
+    services = Vector(Service(
+      name = "chat",
+      // one-command run (demo-package): the build stage links the
+      // React frontend too, and its output rides into the image next
+      // to the jar — no separate node/dev-server step
+      run = Run.Module("okayDemo", "okay-demo", "okay.demo.ChatDemo",
+        extraBuild = Vector("okayChatWebJS/fastLinkJS"),
+        extraCopy = Vector(Copy(
+          "okay-demo/web/.js/target/scala-*/*-fastopt/main.js", "/app/app.js"))),
+      // the prefix is `okay` and the fields carry `chat`, because
+      // `Conf.envName` uppercases the prefix WITHOUT splitting it:
+      // Settings.of("okayChat")("port") is OKAYCHAT_PORT, which no
+      // part of this program reads. Caught by writing the port down
+      // twice and looking.
+      settings = Settings.of("okay")(
+        "chatPort" -> "8090",
+        // a real deployment mounts a volume and points this at it
+        "chatLog" -> ":memory:",
+        // Chat.appJs reads this first (demo-package)
+        "chatApp" -> "/app/app.js"),
+      needs = Vector(Need.Port(8090)))))
 
   def main(args: Array[String]): Unit =
-    // `run` forks with the MODULE directory as cwd; the deploy dir is
-    // named relative to the repository root, so find that first
-    val written = Deploy.write(spec, Deploy.repoRoot())
-    written.foreach(p => println(s"wrote $p"))
+    val root = Deployment.repoRoot()
+    for result <- Deployment.writeAll(system, Targets.all, root) do
+      result match
+        case Right(paths) => paths.foreach(p => println(s"wrote $p"))
+        case Left(msg) => System.err.println(s"okay-demo: a target refused: $msg")

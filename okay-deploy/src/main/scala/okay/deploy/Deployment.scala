@@ -61,6 +61,9 @@ final case class Service(
   secrets: Vector[Secret] = Vector.empty,
   needs: Vector[Need] = Vector.empty,
   health: Health = Health(),
+  /** what a target tells Prometheus to scrape; `None` is a service
+   * that publishes nothing */
+  metricsPath: Option[String] = Some("/metrics"),
   scale: Scale = Scale(),
   resources: Option[Resources] = None,
 ):
@@ -78,7 +81,15 @@ final case class Service(
 /** what a service IS, in the two forms every target understands */
 enum Run:
   /** built from this repository: an sbt module and its fat jar */
-  case Module(module: String, moduleDir: String, mainClass: String, javaOpts: String = "")
+  case Module(module: String, moduleDir: String, mainClass: String, javaOpts: String = "",
+              /** extra sbt tasks run in the build stage beside
+               * `<module>/assembly` — okay-demo links a Scala.js
+               * bundle there */
+              extraBuild: Vector[String] = Vector.empty,
+              /** extra files copied out of the build stage into the
+               * image: the wiring an app needs, named here rather
+               * than in a Dockerfile of its own */
+              extraCopy: Vector[Copy] = Vector.empty)
   /** already an image somewhere */
   case Image(repository: String, tag: String = "latest")
 
@@ -189,6 +200,7 @@ object Deployment:
   import Deploy.given
 
   given Schema[Secret] = Secret.given_Schema_Secret
+  given Schema[Copy] = Deploy.given_Schema_Copy
   given Schema[Run] = Schema.derived
   given Schema[Engine] = Schema.derived
   given Schema[TlsMode] = Schema.derived
@@ -205,11 +217,40 @@ object Deployment:
 
   def read(text: String): Either[String, Deployment] = Json.read[Deployment](text)
 
+  /**
+   * The image every target runs, rendered once.
+   *
+   * NOT a target's file: `laptop` builds from it, `cluster`, `aws`
+   * and the PaaS three run what it produces. It lands at
+   * `<moduleDir>/deploy/Dockerfile`, which is where every target
+   * already points, and a deployment with no `Run.Module` service
+   * renders none.
+   */
+  def image(d: Deployment): Vector[(String, String)] =
+    d.services.collect { case s @ Service(_, m: Run.Module, _, _, _, _, _, _, _) =>
+      s"${m.moduleDir}/deploy/Dockerfile" -> Dockerfile.render(d, s, m)
+    }
+
+  /** the whole repository's rendering: the image, then every target */
+  def writeAll(d: Deployment, targets: Vector[Target], root: Path): Vector[Either[String, Vector[Path]]] =
+    val images = image(d).map { (rel, content) =>
+      val p = root.resolve(rel)
+      Files.createDirectories(p.getParent)
+      Files.writeString(p, content, UTF_8)
+      Right(Vector(p)): Either[String, Vector[Path]]
+    }
+    images ++ targets.map(t => write(d, t, root))
+
+  /** the nearest ancestor of `from` holding a build.sbt — a rendered
+   * path is relative to the repository root, whatever cwd a forked
+   * `run` or test happens to have */
+  export Deploy.repoRoot
+
   /** where a target's files live: `<moduleDir>/deploy/<target>/` for
    * the first service built from this repository, or `deploy/<target>`
    * when nothing here is */
   def dir(d: Deployment, target: String): String =
-    d.services.collectFirst { case Service(_, Run.Module(_, moduleDir, _, _), _, _, _, _, _, _) => moduleDir }
+    d.services.collectFirst { case s if s.run.isInstanceOf[Run.Module] => s.run.asInstanceOf[Run.Module].moduleDir }
       .map(m => s"$m/deploy/$target").getOrElse(s"deploy/$target")
 
   /** every file this target would write, the value's own JSON among

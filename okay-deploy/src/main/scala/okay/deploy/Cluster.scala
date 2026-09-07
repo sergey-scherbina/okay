@@ -79,7 +79,7 @@ object Cluster extends Target:
       sb ++= "  image:\n"
       val (repo, tag) = s.run match
         case Run.Image(r, t) => (r, t)
-        case Run.Module(_, _, _, _) => (s"${d.name}/${s.name}", "local")
+        case _: Run.Module => (s"${d.name}/${s.name}", "local")
       sb ++= s"    repository: ${quote(repo)}\n    tag: ${quote(tag)}\n    pullPolicy: IfNotPresent\n"
       sb ++= s"  replicaCount: ${s.scale.replicas}\n"
       s.resources match
@@ -139,7 +139,7 @@ object Cluster extends Target:
               |      labels:
               |        app.kubernetes.io/name: ${s.name}
               |        app.kubernetes.io/instance: {{ .Release.Name }}
-              |    spec:
+              |${metrics(s)}    spec:
               |      containers:
               |        - name: ${s.name}
               |          image: "{{ $$v.image.repository }}:{{ $$v.image.tag }}"
@@ -189,6 +189,19 @@ object Cluster extends Target:
         sb ++= s"        - name: ${v.name}\n"
         sb ++= s"          persistentVolumeClaim:\n            claimName: {{ .Release.Name }}-${s.name}-${v.name}\n"
     sb.result()
+
+  /** what the old single-service chart annotated a pod with, kept:
+   * Prometheus scrapes by annotation and a service that publishes
+   * metrics nobody scrapes is a service that has none */
+  private def metrics(s: Service): String =
+    (s.metricsPath, s.mainPort) match
+      case (Some(path), Some(port)) =>
+        s"""      annotations:
+           |        prometheus.io/scrape: "true"
+           |        prometheus.io/port: "$port"
+           |        prometheus.io/path: ${quote(path)}
+           |""".stripMargin
+      case _ => ""
 
   private def configMap(s: Service): String =
     val sb = new StringBuilder

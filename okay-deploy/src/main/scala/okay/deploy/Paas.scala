@@ -64,8 +64,8 @@ object Paas:
       s.run match
         case Run.Image(repo, tag) =>
           sb ++= s"[build]\n  image = ${str(s"$repo:$tag")}\n\n"
-        case Run.Module(_, moduleDir, _, _) =>
-          sb ++= s"[build]\n  dockerfile = ${str(s"../../../$moduleDir/deploy/Dockerfile")}\n\n"
+        case m: Run.Module =>
+          sb ++= s"[build]\n  dockerfile = ${str(s"../../../${m.moduleDir}/deploy/Dockerfile")}\n\n"
       if s.settings.all.nonEmpty then
         sb ++= "[env]\n"
         for (k, v) <- s.settings.env do sb ++= s"  $k = ${str(v)}\n"
@@ -188,8 +188,8 @@ object Paas:
           s.run match
             case Run.Image(repo, tag) =>
               sb ++= s"    image:\n      url: ${y(s"$repo:$tag")}\n"
-            case Run.Module(_, moduleDir, _, _) =>
-              sb ++= s"    dockerfilePath: ${y(s"./$moduleDir/deploy/Dockerfile")}\n"
+            case m: Run.Module =>
+              sb ++= s"    dockerfilePath: ${y(s"./${m.moduleDir}/deploy/Dockerfile")}\n"
               sb ++= "    dockerContext: .\n"
           s.region.foreach(r => sb ++= s"    region: ${y(r)}\n")
           sb ++= s"    plan: starter\n"
@@ -262,9 +262,9 @@ object Paas:
       val build = s.run match
         case Run.Image(repo, tag) => Vector("builder" -> Json.JStr("DOCKERFILE"),
           "dockerfilePath" -> Json.JStr(s"# image $repo:$tag is set on the service, not here"))
-        case Run.Module(_, moduleDir, _, _) => Vector(
+        case m: Run.Module => Vector(
           "builder" -> Json.JStr("DOCKERFILE"),
-          "dockerfilePath" -> Json.JStr(s"$moduleDir/deploy/Dockerfile"))
+          "dockerfilePath" -> Json.JStr(s"${m.moduleDir}/deploy/Dockerfile"))
       val deploy = Vector(
         "numReplicas" -> Json.JNum(s.scale.replicas.toDouble),
         "restartPolicyType" -> Json.JStr("ON_FAILURE"),

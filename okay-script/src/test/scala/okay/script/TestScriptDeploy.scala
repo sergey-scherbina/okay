@@ -1,17 +1,15 @@
 package okay.script
 
-import okay.deploy.Deploy
+import okay.deploy.Deployment
 
-/** the committed okay-script/deploy IS the rendered ScriptDeploy.spec
- * -- a hand edit or a stale regeneration fails here, by file name */
+/** the committed okay-script/deploy IS the rendered
+ * ScriptDeploy.system -- a hand edit or a stale regeneration fails
+ * here, by file name */
 class TestScriptDeploy extends munit.FunSuite:
-  test("okay-script/deploy does not drift from ScriptDeploy.spec") {
-    assertEquals(Deploy.drift(ScriptDeploy.spec, Deploy.repoRoot()), Vector.empty)
-  }
 
   test("okay-script/deploy does not drift from ScriptDeploy.system, on every target that renders") {
     for target <- okay.deploy.Targets.all do
-      okay.deploy.Deployment.drift(ScriptDeploy.system, target, okay.deploy.Deploy.repoRoot()) match
+      okay.deploy.Deployment.drift(ScriptDeploy.system, target, Deployment.repoRoot()) match
         case Right(files) => assertEquals(files, Vector.empty, s"the ${target.name} target has drifted")
         // a target that REFUSES this deployment has nothing committed
         // and nothing to drift; what it must have is a reason
@@ -27,12 +25,12 @@ class TestScriptDeploy extends munit.FunSuite:
         assert(why.contains("Need.Region"), why)
     // and the two that do not need one are committed
     assert(java.nio.file.Files.isRegularFile(
-      okay.deploy.Deploy.repoRoot().resolve("okay-script/deploy/render/render.yaml")))
+      Deployment.repoRoot().resolve("okay-script/deploy/render/render.yaml")))
     assert(java.nio.file.Files.isRegularFile(
-      okay.deploy.Deploy.repoRoot().resolve("okay-script/deploy/railway/web/railway.json")))
+      Deployment.repoRoot().resolve("okay-script/deploy/railway/web/railway.json")))
   }
 
-  test("the new model says what the old value said: the port and the pages, each written once") {
+  test("the port and the pages are each written once") {
     val d = ScriptDeploy.system
     val web = d.service("web").getOrElse(fail("no web service"))
     assertEquals(web.mainPort, Some(8080))
@@ -46,13 +44,17 @@ class TestScriptDeploy extends munit.FunSuite:
   }
 
   test("the image runs Serve over the pages it carries, with the ops routes on") {
-    val d = ScriptDeploy.spec
-    assertEquals(d.mainClass, "okay.script.Serve")
-    assertEquals(d.env.find(_.name == "OKAY_PAGES").map(_.value), Some("/app/pages"))
-    assertEquals(d.env.find(_.name == "OKAY_OPS").map(_.value), Some("1"))
-    val dockerfile = okay.deploy.Dockerfile.render(d)
+    val web = ScriptDeploy.system.service("web").getOrElse(fail("no web service"))
+    assertEquals(web.run.asInstanceOf[okay.deploy.Run.Module].mainClass, "okay.script.Serve")
+    assertEquals(web.settings.env.toMap.get("OKAY_OPS"), Some("1"))
+    val (rel, dockerfile) = Deployment.image(ScriptDeploy.system) match
+      case Vector(one) => one
+      case other => fail(s"expected one image, got ${other.map(_._1)}")
+    assertEquals(rel, "okay-script/deploy/Dockerfile")
     assert(dockerfile.contains("COPY --from=build /src/okay-script/examples/site /app/pages"), dockerfile)
     assert(dockerfile.contains("okayScript/assembly"), dockerfile)
+    // and the committed one IS this one
+    assertEquals(java.nio.file.Files.readString(Deployment.repoRoot().resolve(rel)), dockerfile)
   }
 
   test("Serve reads OKAY_PAGES and OKAY_PORT when it is given no command line") {

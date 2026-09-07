@@ -1,122 +1,63 @@
 package okay.deploy
 
 import okay.codec.Schema
-import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 
 /**
- * A deployment as a VALUE (specs/deploy.md): what an application
- * says about itself — its module, its main, its port, its env — and
- * nothing more. Everything that follows is a pure rendering of this
- * value into the wires operators already run: a Dockerfile, a Helm
- * chart with its values, a compose file for a laptop. This module
- * knows no application; an application declares its `Deploy` in its
- * own module and OWNS the rendered files, golden-tested against the
- * value so the two cannot drift apart unnoticed.
+ * What survived specs/deploy.md.
+ *
+ * `Deploy` — one process, its Dockerfile, its compose file and its
+ * single-service Helm chart — was superseded by `Deployment` on
+ * 2026-09-07 (deploy-old-helm-retired) once the new model had six
+ * targets and okay-script was committing two charts for one
+ * application. These four types outlived it because they were right:
+ * they say what an image copies, how long a start may take, what a
+ * pod may use, and where the repository root is.
  */
-final case class Deploy(
-  name: String,                       // the release/service name (a DNS label)
-  module: String,                     // the sbt project id (`okayDemo`)
-  moduleDir: String,                  // its directory (`okay-demo`)
-  mainClass: String,                  // the one `def main`
-  port: Int,                          // what the app listens on
-  image: Image,
-  env: Vector[Env] = Vector.empty,    // how the app is told its port, dirs, keys
-  replicas: Int = 1,
-  resources: Option[Resources] = None,
-  health: Health = Health(),          // okay-ops's own routes, by default
-  metricsPath: Option[String] = Some("/metrics"),
-  javaOpts: String = "",
-  /** extra sbt tasks run in the build stage alongside
-   * `<module>/assembly` (demo-package) — e.g. linking a companion JS
-   * bundle a route serves as a static asset. Empty by default, so
-   * every prior `Deploy` value renders byte-identical */
-  extraBuild: Vector[String] = Vector.empty,
-  /** extra files copied from the build stage into the final image —
-   * the wiring an app needs is named here, not in a new Dockerfile
-   * of its own */
-  extraCopy: Vector[Copy] = Vector.empty,
-):
-  /** where the rendered files live, relative to the repository root */
-  def dir: String = s"$moduleDir/deploy"
-
-final case class Image(repository: String, tag: String = "local")
-final case class Env(name: String, value: String)
 final case class Resources(cpuRequest: String, memoryRequest: String, cpuLimit: String, memoryLimit: String)
+
 /** the probes a target wires, and how long a start may take before
- * one is believed. `startupSeconds` joined for the new model
- * (specs/deployment.md) and defaults, so every existing `Deploy`
- * value renders byte-identically. */
+ * one is believed */
 final case class Health(livenessPath: String = "/healthz", readinessPath: String = "/readyz",
                         startupSeconds: Int = 30)
+
 /** one `COPY --from=build <from> <to>` line — `from` a glob in the
  * build stage, `to` a path in the final image */
 final case class Copy(from: String, to: String)
 
 object Deploy:
   given Schema[Copy] = Schema.derived
-  given Schema[Image] = Schema.derived
-  given Schema[Env] = Schema.derived
   given Schema[Resources] = Schema.derived
   given Schema[Health] = Schema.derived
-  given Schema[Deploy] = Schema.derived
-
-  /** the chart files this module carries, verbatim — generic by
-   * construction: every knob is a value in values.yaml */
-  val chartFiles: Vector[String] = Vector(
-    "Chart.yaml", "templates/deployment.yaml", "templates/service.yaml")
-
-  private def resource(name: String): String =
-    val in = getClass.getResourceAsStream(s"/okay/deploy/chart/$name")
-    if in == null then throw IllegalStateException(s"okay-deploy is missing its own chart file $name")
-    try String(in.readAllBytes(), UTF_8) finally in.close()
-
-  /** every rendered file, as (path relative to `d.dir`, content) —
-   * the whole deployment, inspectable as data before a byte is written */
-  def files(d: Deploy): Vector[(String, String)] =
-    Vector(
-      "Dockerfile" -> Dockerfile.render(d),
-      "compose.yaml" -> Compose.render(d),
-      "helm/values.yaml" -> Helm.values(d),
-    ) ++ chartFiles.map(f => s"helm/$f" -> resource(f))
 
   /** the repository root: the nearest ancestor of `from` holding a
-   * build.sbt — `d.dir` is relative to it, whatever cwd a forked
-   * `run` or test happens to have */
+   * build.sbt — a rendered path is relative to it, whatever cwd a
+   * forked `run` or test happens to have */
   def repoRoot(from: Path = Path.of(".").toAbsolutePath.normalize): Path =
     Iterator.iterate(from)(_.getParent).takeWhile(_ != null)
       .find(p => Files.exists(p.resolve("build.sbt")))
       .getOrElse(throw IllegalStateException(s"no build.sbt above $from"))
 
-  /** write the deployment under `root/d.dir`; answers the paths written */
-  def write(d: Deploy, root: Path): Vector[Path] =
-    files(d).map { (rel, content) =>
-      val p = root.resolve(d.dir).resolve(rel)
-      Files.createDirectories(p.getParent)
-      Files.writeString(p, content, UTF_8)
-      p
-    }
-
-  /** the files under `root/d.dir` that differ from the value's rendering
-   * (missing counts as differing) — empty means the committed
-   * deployment IS the rendered one */
-  def drift(d: Deploy, root: Path): Vector[String] =
-    files(d).collect { case (rel, content)
-      if !Files.exists(root.resolve(d.dir).resolve(rel)) ||
-         Files.readString(root.resolve(d.dir).resolve(rel), UTF_8) != content => rel }
-
-/** the multi-stage build: an sbt image builds ONE module's fat jar
- * (`OkayDeploy.deployable` fixed its name), a slim JRE runs it */
+/**
+ * The multi-stage build every target's image comes out of: an sbt
+ * image builds ONE module's fat jar (`OkayDeploy.deployable` fixed
+ * its name), a slim JRE runs it.
+ *
+ * It renders from a `Service` rather than a whole `Deployment`
+ * because an image is one service's, and a system of three
+ * module-built services is three images.
+ */
 object Dockerfile:
   val sbtImage = "sbtscala/scala-sbt:eclipse-temurin-21.0.5_11_1.10.7_3.5.2"
   val jreImage = "eclipse-temurin:21-jre-alpine"
 
-  def render(d: Deploy): String =
-    val tasks = (Vector(s"${d.module}/assembly") ++ d.extraBuild)
+  def render(d: Deployment, s: Service, m: Run.Module): String =
+    val tasks = (Vector(s"${m.module}/assembly") ++ m.extraBuild)
       .map(t => s"\"$t\"").mkString(" ")
-    val extraCopyLines = d.extraCopy
+    val extraCopyLines = m.extraCopy
       .map(c => s"COPY --from=build /src/${c.from} ${c.to}\n").mkString
-    s"""# generated by okay-deploy from ${d.moduleDir}'s Deploy value — edit the value, not this file
+    val expose = s.mainPort.map(p => s"EXPOSE $p\n").getOrElse("")
+    s"""# generated by okay-deploy from ${d.name}'s Deployment value — edit the value, not this file
        |FROM $sbtImage AS build
        |WORKDIR /src
        |COPY project project
@@ -127,60 +68,12 @@ object Dockerfile:
        |
        |FROM $jreImage
        |RUN addgroup -S okay && adduser -S okay -G okay
-       |COPY --from=build /src/${d.moduleDir}/target/scala-*/app.jar /app/app.jar
+       |COPY --from=build /src/${m.moduleDir}/target/scala-*/app.jar /app/app.jar
        |${extraCopyLines}USER okay
        |WORKDIR /app
-       |EXPOSE ${d.port}
-       |ENTRYPOINT ["sh", "-c", "exec java ${d.javaOpts} -jar /app/app.jar"]
-       |""".stripMargin
-
-/** a laptop's deployment: one service, built from the same Dockerfile */
-object Compose:
-  def render(d: Deploy): String =
-    val env = if d.env.isEmpty then "" else
-      d.env.map(e => s"      ${e.name}: ${Yaml.str(e.value)}").mkString("    environment:\n", "\n", "\n")
-    s"""# generated by okay-deploy from ${d.moduleDir}'s Deploy value — edit the value, not this file
-       |services:
-       |  ${d.name}:
-       |    build:
-       |      context: ../..
-       |      dockerfile: ${d.dir}/Dockerfile
-       |    image: ${d.image.repository}:${d.image.tag}
-       |    ports:
-       |      - "${d.port}:${d.port}"
-       |$env""".stripMargin
-
-/** the chart's values — the ONLY app-specific file in the chart */
-object Helm:
-  def values(d: Deploy): String =
-    val env = if d.env.isEmpty then "env: []\n" else
-      d.env.map(e => s"  - name: ${e.name}\n    value: ${Yaml.str(e.value)}").mkString("env:\n", "\n", "\n")
-    val res = d.resources.fold("resources: {}\n") { r =>
-      s"""resources:
-         |  requests:
-         |    cpu: ${Yaml.str(r.cpuRequest)}
-         |    memory: ${Yaml.str(r.memoryRequest)}
-         |  limits:
-         |    cpu: ${Yaml.str(r.cpuLimit)}
-         |    memory: ${Yaml.str(r.memoryLimit)}
+       |$expose""".stripMargin +
+      s"""ENTRYPOINT ["sh", "-c", "exec java ${m.javaOpts} -jar /app/app.jar"]
          |""".stripMargin
-    }
-    s"""# generated by okay-deploy from ${d.moduleDir}'s Deploy value — edit the value, not this file
-       |image:
-       |  repository: ${Yaml.str(d.image.repository)}
-       |  tag: ${Yaml.str(d.image.tag)}
-       |  pullPolicy: IfNotPresent
-       |replicaCount: ${d.replicas}
-       |service:
-       |  port: ${d.port}
-       |  type: ClusterIP
-       |health:
-       |  livenessPath: ${Yaml.str(d.health.livenessPath)}
-       |  readinessPath: ${Yaml.str(d.health.readinessPath)}
-       |metrics:
-       |  enabled: ${d.metricsPath.isDefined}
-       |  path: ${Yaml.str(d.metricsPath.getOrElse("/metrics"))}
-       |$env$res""".stripMargin
 
 private object Yaml:
   /** a double-quoted YAML scalar — every value quoted, so ":memory:",

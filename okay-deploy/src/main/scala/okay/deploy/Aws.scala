@@ -586,7 +586,7 @@ object Aws extends Target:
 
   private def imageOf(d: Deployment, s: Service): String = s.run match
     case Run.Image(repo, tag) => s"$repo:$tag"
-    case Run.Module(_, _, _, _) => s"${d.name}/${s.name}:latest"
+    case _: Run.Module => s"${d.name}/${s.name}:latest"
 
   /** what a service is told about the database beside it — one URL,
    * built where the engine is known. An interpolation rather than a

@@ -1,10 +1,19 @@
 # okay-deploy — deploying an Okay service
 
-> A deployment is a VALUE (specs/deploy.md). An application declares
-> `Deploy(...)` in its own module; okay-deploy renders that value into
-> the wires operators already run — a Dockerfile, a Helm chart, a
-> compose file — and a one-line test keeps the committed files equal
-> to the value. okay-deploy itself knows no application.
+> A deployment is a VALUE (specs/deployment.md). An application
+> declares a `Deployment(...)` in its own module — its services and
+> what each of them needs — and okay-deploy renders that value into
+> the wires operators already run: a Dockerfile, a compose file,
+> systemd units, a Helm chart, fly/render/railway manifests, Terraform
+> for AWS. A one-line test keeps the committed files equal to the
+> value, and okay-deploy itself knows no application.
+>
+> **Rewritten 2026-09-07 (deploy-old-helm-retired.)** The single-
+> process `Deploy` this page used to document is gone; what follows
+> below may still describe it in places. `Deployment`, `Target`,
+> `Need` and the `okay deploy` CLI are specified in full in
+> specs/deployment.md, which is the current reference until this page
+> catches up.
 
 Depends on: `okay-codec` (a `Deploy` has a Schema). Build half:
 `okay-deploy/sbt-plugin`, a source sbt plugin the root

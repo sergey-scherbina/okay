@@ -1,9 +1,10 @@
 package okay.script
 
-import okay.deploy.{Copy, Deploy, Deployment, Env, Health, Image, Need, Run, Service, Settings, Targets, TlsMode}
+import okay.deploy.{Copy, Deployment, Health, Need, Run, Service, Settings, Targets, TlsMode}
 
 /**
- * okay-script's own deployment, as the value it is (specs/deploy.md):
+ * okay-script's own deployment, as the value it is
+ * (specs/deployment.md):
  * a container that runs `okay.script.Serve` over a directory of
  * markdown pages -- "the page is the deployment", packaged
  * (okay-script-image).
@@ -21,54 +22,28 @@ import okay.deploy.{Copy, Deploy, Deployment, Env, Health, Image, Need, Run, Ser
  * true of the container too.
  */
 object ScriptDeploy:
-  val spec: Deploy = Deploy(
-    name = "okay-script",
-    module = "okayScript",
-    moduleDir = "okay-script",
-    mainClass = "okay.script.Serve",
-    port = 8080,
-    image = Image("okay/script", "local"),
-    env = Vector(
-      // the entrypoint takes no arguments, so the pages directory and
-      // the port ride in as configuration (Serve reads them when it
-      // is given no command line)
-      Env("OKAY_PAGES", "/app/pages"),
-      Env("OKAY_PORT", "8080"),
-      // /healthz, /stats and /metrics beside the pages -- the health
-      // and metrics wiring below is what asks for them
-      Env("OKAY_OPS", "1"),
-      // NOT OKAY_DATA: /app belongs to root and the process runs as
-      // `okay`, so a store path baked in here would be a container
-      // that crashes on its first boot. A deployment that wants
-      // sessions and the application scope across a restart mounts a
-      // WRITABLE volume and sets OKAY_DATA to it -- one line in
-      // compose or in the Helm values, and nothing else changes.
-    ),
-    // okay-script has no /readyz of its own: a Site is ready when it
-    // is live (the pages were compiled before the port was bound)
-    health = Health(livenessPath = "/healthz", readinessPath = "/healthz"),
-    extraCopy = Vector(Copy("okay-script/examples/site", "/app/pages")))
 
   /**
-   * The same deployment in the model specs/deployment.md defines --
-   * a system of services and their needs, rather than one process
-   * and its env pairs (deploy-model).
+   * okay-script's whole deployment as ONE value
+   * (specs/deployment.md): the services and what each of them needs.
    *
-   * Both values live here on purpose while the model is being
-   * proven: `spec` still renders the Dockerfile and the single-service
-   * Helm chart that exist, `system` renders every target in
-   * `Targets.all`, and having them side by side in one real
-   * application is what shows the new model can say what the old one
-   * said. The old chart's retirement is its own task, because other
-   * modules render through `Deploy` too. The env pairs become `Settings`, the `/app/pages`
-   * copy becomes what it always was -- a volume the deployment
-   * mounts -- and the port stops being written twice.
+   * There used to be two values here — a `Deploy` for the Dockerfile,
+   * the compose file and a single-service Helm chart, and this one
+   * for the new targets — side by side while the new model was being
+   * proven. It is proven (deploy-old-helm-retired), and one
+   * application committing two Helm charts was exactly the drift this
+   * repository has a rule against.
    */
   val system: Deployment = Deployment(
     name = "okay-script",
     services = Vector(Service(
       name = "web",
-      run = Run.Module("okayScript", "okay-script", "okay.script.Serve"),
+      // the entrypoint takes no arguments, so the pages directory and
+      // the port ride in as settings (Serve reads them when it is
+      // given no command line); the examples site rides into the
+      // image beside the jar
+      run = Run.Module("okayScript", "okay-script", "okay.script.Serve",
+        extraCopy = Vector(Copy("okay-script/examples/site", "/app/pages"))),
       // the settings are DERIVED from the value the program itself
       // reads (script-config): a field renamed in Serve.Config is
       // renamed here, and a name this deployment could invent does
@@ -93,9 +68,8 @@ object ScriptDeploy:
       health = Health(livenessPath = "/healthz", readinessPath = "/healthz"))))
 
   def main(args: Array[String]): Unit =
-    val root = Deploy.repoRoot()
-    Deploy.write(spec, root).foreach(p => println(s"wrote $p"))
-    for target <- Targets.all do
-      Deployment.write(system, target, root) match
+    val root = Deployment.repoRoot()
+    for result <- Deployment.writeAll(system, Targets.all, root) do
+      result match
         case Right(paths) => paths.foreach(p => println(s"wrote $p"))
-        case Left(msg) => System.err.println(s"okay-script: the ${target.name} target refused: $msg")
+        case Left(msg) => System.err.println(s"okay-script: a target refused: $msg")

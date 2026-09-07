@@ -1,16 +1,30 @@
 package okay.deploy
 
-import java.nio.file.Files
-
-/** the renderers are PURE and pinned; write/drift round-trip */
+/**
+ * What survived specs/deploy.md: the Dockerfile every target's image
+ * comes out of.
+ *
+ * The compose and Helm tests that stood beside these went with the
+ * renderers they covered — `laptop` and `cluster` say the same thing
+ * for more than one service, and TestDeployment/TestCluster test
+ * those.
+ */
 class TestDeploy extends munit.FunSuite:
 
-  val d = Deploy("svc", "okaySvc", "okay-svc", "okay.svc.Main", 8080,
-    Image("okay/svc", "v1"), env = Vector(Env("OKAY_PORT", "8080"), Env("OKAY_LOG", ":memory:")),
+  private val svc = Service(
+    name = "svc",
+    run = Run.Module("okaySvc", "okay-svc", "okay.svc.Main"),
+    settings = Settings.of("okay")("port" -> "8080"),
+    needs = Vector(Need.Port(8080)),
     resources = Some(Resources("100m", "256Mi", "1", "512Mi")))
 
+  private val d = Deployment("svc", Vector(svc))
+
+  private def dockerfile(s: Service = svc): String =
+    Dockerfile.render(d, s, s.run.asInstanceOf[Run.Module])
+
   test("the Dockerfile builds ONE module's jar and runs it as a non-root user") {
-    val f = Dockerfile.render(d)
+    val f = dockerfile()
     assert(f.contains("""RUN sbt "okaySvc/assembly""""), f)
     assert(f.contains("COPY --from=build /src/okay-svc/target/scala-*/app.jar /app/app.jar"), f)
     assert(f.contains("USER okay") && f.contains("EXPOSE 8080"), f)
@@ -18,10 +32,10 @@ class TestDeploy extends munit.FunSuite:
   }
 
   test("extraBuild/extraCopy add a build task and a COPY line; empty is byte-identical (demo-package)") {
-    val withExtras = d.copy(
+    val withExtras = svc.copy(run = Run.Module("okaySvc", "okay-svc", "okay.svc.Main",
       extraBuild = Vector("okayChatWebJS/fastLinkJS"),
-      extraCopy = Vector(Copy("okay-demo/web/.js/target/scala-*/*-fastopt/main.js", "/app/app.js")))
-    val f = Dockerfile.render(withExtras)
+      extraCopy = Vector(Copy("okay-demo/web/.js/target/scala-*/*-fastopt/main.js", "/app/app.js"))))
+    val f = dockerfile(withExtras)
     assert(f.contains("""RUN sbt "okaySvc/assembly" "okayChatWebJS/fastLinkJS""""), f)
     assert(f.contains(
       "COPY --from=build /src/okay-demo/web/.js/target/scala-*/*-fastopt/main.js /app/app.js"), f)
@@ -30,40 +44,28 @@ class TestDeploy extends munit.FunSuite:
     val extraAt = f.indexOf("app.js")
     val userAt = f.indexOf("USER okay")
     assert(jarAt < extraAt && extraAt < userAt, f)
-    // and with no extras, the render is UNCHANGED from before this feature
-    assertEquals(Dockerfile.render(d), Dockerfile.render(d.copy(extraBuild = Vector.empty, extraCopy = Vector.empty)))
-    assert(!Dockerfile.render(d).contains("okayChatWebJS"))
+    // and with no extras the render is UNCHANGED
+    assert(!dockerfile().contains("okayChatWebJS"))
   }
 
-  test("values.yaml carries every knob as a quoted scalar; the chart carries none") {
-    val v = Helm.values(d)
-    assert(v.contains("""repository: "okay/svc""""), v)
-    assert(v.contains("""  - name: OKAY_LOG
-    value: ":memory:"""".stripMargin), v)
-    assert(v.contains("""livenessPath: "/healthz""""), v)
-    assert(v.contains("port: 8080"), v)
-    assert(v.contains("""cpu: "100m""""), v)
-    val chart = Deploy.files(d).collect { case (p, c) if p.startsWith("helm/templates/") => c }.mkString
-    assert(!chart.contains("okay-svc") && !chart.contains("OKAY_"), "the chart templates know no application")
+  test("a service with no port EXPOSEs none, rather than a zero") {
+    val worker = svc.copy(needs = Vector.empty)
+    val f = dockerfile(worker)
+    assert(!f.contains("EXPOSE"), f)
+    assert(f.contains("ENTRYPOINT"), f)
   }
 
-  test("compose builds from the module's own Dockerfile with the repo as context") {
-    val c = Compose.render(d)
-    assert(c.contains("context: ../..") && c.contains("dockerfile: okay-svc/deploy/Dockerfile"), c)
-    assert(c.contains(""""8080:8080""""), c)
+  test("the image is a DEPLOYMENT-level rendering: one per module-run service, none for an image") {
+    assertEquals(Deployment.image(d).map(_._1), Vector("okay-svc/deploy/Dockerfile"))
+    val pulled = Deployment("pulled", Vector(Service("only", Run.Image("nginx", "alpine"))))
+    assertEquals(Deployment.image(pulled), Vector.empty)
+    val two = Deployment("two", Vector(svc, svc.copy(name = "other",
+      run = Run.Module("okayOther", "okay-other", "okay.other.Main"))))
+    assertEquals(Deployment.image(two).map(_._1),
+      Vector("okay-svc/deploy/Dockerfile", "okay-other/deploy/Dockerfile"))
   }
 
-  test("write then drift is empty; a hand edit is named; a missing file is named") {
-    val root = Files.createTempDirectory("okay-deploy")
-    Deploy.write(d, root): Unit
-    assertEquals(Deploy.drift(d, root), Vector.empty)
-    val f = root.resolve(d.dir).resolve("helm/values.yaml")
-    Files.writeString(f, Files.readString(f) + "\n# hand edit\n")
-    Files.delete(root.resolve(d.dir).resolve("compose.yaml"))
-    assertEquals(Deploy.drift(d, root).sorted, Vector("compose.yaml", "helm/values.yaml"))
-  }
-
-  test("a Deploy is a value with a Schema: JSON-inspectable") {
-    val json = okay.codec.Json.encode(summon[okay.codec.Schema[Deploy]])(d)
-    assert(json.contains("\"okaySvc\"") && json.contains("\"/healthz\""), json)
+  test("repoRoot is the nearest ancestor with a build.sbt") {
+    val root = Deploy.repoRoot()
+    assert(java.nio.file.Files.exists(root.resolve("build.sbt")), root.toString)
   }
