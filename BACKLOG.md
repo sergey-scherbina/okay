@@ -4281,3 +4281,57 @@ Do not build 2 before measuring 1: the difference between them is
 whether a consumer may hold elements no one else can reach, and that
 is the whole of the strong contract.
 
+## jiffy-shaped-parts — what the wait-free MPSC paper says we should change, and what it does not
+
+The operator pointed at Jiffy (Adas & Friedman, arXiv 2010.14189v2):
+a wait-free MULTI-PRODUCER SINGLE-CONSUMER queue — a linked list of
+fixed-size buffers, enqueue by fetch-and-add on one tail index, a
+two-bit state per entry (empty / set / handled), NO atomic operation
+in dequeue at all, and the linearizability hole that FAA opens (a
+later enqueue claiming an earlier position) repaired by the consumer
+scanning forward and rescanning. Reported: +50 % throughput over
+WFqueue and about a tenth of its memory.
+
+WHAT APPLIES TO US, and it is not the headline number (that is an
+MPSC-against-MPMC comparison, and ours are different shapes):
+
+1. **The actor mailbox is exactly Jiffy's shape** — many senders, one
+   receiver — and we already special-case it
+   (`Queues.strong[A].bounded(n, singleConsumer = true)`, where the
+   head moves with a `lazySet` instead of a CAS; §17g measured that
+   at 35 % of an elementwise consumer's profile). What we do NOT have
+   is Jiffy's enqueue: `Ring.push` is a CAS LOOP on the tail
+   (`tail.compareAndSet(pos, pos + 1)`, retried when another pusher
+   wins), where Jiffy's is one fetch-and-add and never retries. Under
+   many senders that is the difference between a loop whose length
+   grows with contention and a constant. Worth measuring on
+   `ManyProducersBenchmark` at 16 producers with `singleConsumer`.
+2. **The unbounded single-consumer channel** is where Jiffy's growth
+   discipline belongs: buffers linked and freed eagerly, pointers
+   proportional to BUFFER count rather than element count. Our
+   `Segments` grows by segments already; what it lacks is the eager
+   reclamation and the two-bit entry state.
+3. **The consumer-side scan is a cost we already pay for another
+   reason** — `AdaptiveFifo` scans parts — so a Jiffy-style part
+   would not add a new kind of work, only move where it happens.
+
+WHAT DOES NOT APPLY: Jiffy is single-consumer BY CONSTRUCTION, and
+its dequeue is atomic-free precisely because nobody else dequeues.
+The operator's MPMC design (`consumer-claim`, landed) has several
+consumers, and the moment two of them touch one buffer Jiffy's
+dequeue needs the atomics it was built to avoid. The two designs meet
+in one place, and it is the interesting one: under the claim a part
+has ONE producer and, for the length of a drain, ONE consumer — SPSC,
+where neither side needs a CAS at all. Today a part is a full Vyukov
+`Ring` with stamps and a CAS per push. Specialising a part to SPSC
+(with a fallback to the shared ring when producers exceed the part
+cap and a part gains a second producer) is the change this paper
+argues for in our shape.
+
+NEXT, in order: (a) `Ring.push` by FAA where the ring is bounded and
+the loop is provably unnecessary, measured at 16 producers; (b) an
+SPSC part behind the claim invariant, measured on the consumer axis;
+(c) only then look at unbounded growth. Each has a competitor lane
+already (`oneRing_chunk`, `adaptiveManyConsumers`), so none of them
+needs a new benchmark.
+
