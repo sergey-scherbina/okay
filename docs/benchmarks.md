@@ -302,12 +302,38 @@ them (`compare/src/jmh/scala/okay/AdversarialBenchmark.scala`,
 Predicted: lose all three. Measured: lose two, and sit on the floor
 for the third.
 
-- **Fork/join is Loom's floor.** okay, ZIO and cats all read the raw
-  virtual-thread number within noise: a fork IS a virtual thread
-  start and a join IS its completion. kyo is 3.3x ahead because its
-  fibers are not threads at all — a fork is an enqueue onto its own
-  scheduler. We are not slower than the floor we chose; we chose the
-  floor with the higher constant.
+- **Fork/join is the JDK pool's floor, not Loom's and not the
+  thread's** (drive-scheduler-jvm, 2026-09-07; the first reading of
+  this row said "kyo's fibers are not threads", and the operator
+  asked the right question: okay has schedulers of its own too —
+  `Schedulers.forkJoin` on a pool, `Async.Drive` on JS where a fiber
+  is a continuation and nothing else). Measured, medians of four to
+  six quiet runs, `-f 1 -wi 3 -i 5`, us per 10 000 fork/joins:
+
+  | lane | us | ns per fiber |
+  |---|---|---|
+  | kyo, the step deferred into the fiber (`IO(step)`) | 792 | 79 |
+  | raw `ForkJoinPool`, external submit, no okay | 1871 | 187 |
+  | raw `ForkJoinPool`, forked from inside a worker | 1910 | 191 |
+  | okay `Schedulers.drive` — fiber, task and promise one object | 2310 | 231 |
+  | okay `Schedulers.loom` (the table above) | 2712 | 271 |
+
+  So: the JDK pool itself costs 2.4x what kyo's scheduler costs per
+  small task, external and internal push alike (submission is not
+  it — signalling and parking workers is); okay's layer over the
+  pool is 25 % (a `DriveTask` walk, a cell, a closure); the virtual
+  thread is 15 % more. Two attempts refuted on the way: separate
+  Promise + Drive + Runnable + Fiber objects against the fused
+  `DriveTask` (2417 vs 2310 — allocation count is 4 %, not the gap);
+  one latch instead of 10 000 joins (3209 — worse: the counter is a
+  contended line, and the joins were never the cost). kyo's lane
+  had to be corrected first: `(step(i): Int < Any)` is a VALUE, so
+  the table's form computed every step on the caller before
+  `parallelUnbounded` forked 10 000 finished values — kept as
+  `kyoEager` (830); the deferred form is FASTER (792) because the
+  steps run in parallel. A kyo-class number here needs a scheduler
+  that owns its threads (BACKLOG `own-scheduler-jvm`); `DriveTask`
+  is the fiber object it would schedule.
 - **Many-to-many is one ring and one park per blocked hand-off.** All
   P producers and C consumers contend on one Vyukov ring's head/tail,
   and every blocked side parks a virtual thread (`LockSupport.park`

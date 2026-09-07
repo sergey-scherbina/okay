@@ -1,5 +1,23 @@
 # Changelog
 
+## drive-scheduler-jvm — the fork/join row decomposed: the JDK pool, not the thread
+
+§4b said kyo's fibers win because they are not threads. The operator
+asked: okay has schedulers of its own — `Schedulers.forkJoin` on the
+JVM, `Async.Drive` on JS, where a fiber is a continuation walked by
+a loop — so which part of the 3.3x is the thread? Measured with a
+new scheduler and two floor lanes: none of it. `Schedulers.drive`
+(the JS shape on the JVM; `DriveTask` = fiber, pool task and promise
+in one object, `Drive` now a trait with `PromiseDrive` for JS) reads
+2310 us per 10 000 fork/joins; the raw `ForkJoinPool` with no okay
+at all reads 1871, forked from inside a worker 1910; kyo 792. The
+JDK pool charges 2.4x what kyo's scheduler charges per small task;
+okay's layer is 25 %, the virtual thread 15 % more. Refuted and
+recorded: separate objects vs the fused task (4 %), one latch
+instead of 10 000 joins (worse, a contended counter). kyo's lane
+corrected — its step was a value computed on the caller, so it
+forked finished values; deferred with `IO` it is faster still.
+Filed: `own-scheduler-jvm`, priced as a programme.
 ## intent-gated-tidy — three intent entries closed as gated, each with the measurement that gates it
 
 `intent-fasttext-subword` was "only worth it if the server is the

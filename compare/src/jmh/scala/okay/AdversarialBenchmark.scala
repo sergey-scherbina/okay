@@ -61,45 +61,8 @@ class AdversarialBenchmark {
     given Scheduler = Schedulers.forkJoin()
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
 
-  /** the drive scheduler as first written: scala Promise + Drive +
-   * Runnable + Fiber, four objects where DriveTask is one */
-  private val drivePlain: Scheduler = new:
-    def fork[A](prog: () => A ! Async): Fiber[A] =
-      val p = scala.concurrent.Promise[A]()
-      val d = Async.PromiseDrive(p)
-      java.util.concurrent.ForkJoinPool.commonPool().execute: () =>
-        try d(prog())
-        catch case e: Throwable => { val _ = p.tryFailure(e) }
-      new Fiber[A]:
-        def onComplete(k: Either[Throwable, A] => Unit): Unit =
-          p.future.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
-        def cancel(): Unit = d.cancel()
-
-  @Benchmark
-  def forkJoin10k_okayDrivePlain(): Long =
-    given Scheduler = drivePlain
-    (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
-
-  /** the pool's own floor, no okay at all: 10 000 ForkJoinTasks
-   * submitted from the caller (an EXTERNAL push: a locked submission
-   * queue and a signal per task) and joined */
-  @Benchmark
-  def forkJoin10k_rawPool(): Long =
-    val pool = java.util.concurrent.ForkJoinPool.commonPool()
-    val fs = (0 until K).map(i => pool.submit(() => step(i)))
-    fs.foldLeft(0L)((acc, f) => acc + f.join())
-
-  /** the same tasks forked from INSIDE a worker (a plain array push
-   * onto the worker's own deque): what a scheduler that owns its
-   * threads gets for free */
-  @Benchmark
-  def forkJoin10k_rawPoolInternal(): Long =
-    import java.util.concurrent.{ForkJoinPool, RecursiveTask}
-    ForkJoinPool.commonPool().invoke(new RecursiveTask[Long]:
-      def compute(): Long =
-        val fs = (0 until K).map(i => new RecursiveTask[Int] { def compute(): Int = step(i) }.fork())
-        fs.foldLeft(0L)((acc, f) => acc + f.join()))
-
+  /** okay's drive scheduler: the JS shape on the JVM, fiber = task =
+   * promise (`DriveTask`); 25 % over the raw pool, §4b */
   @Benchmark
   def forkJoin10k_okayDrive(): Long =
     given Scheduler = Schedulers.drive()
@@ -141,21 +104,6 @@ class AdversarialBenchmark {
     KyoApp.Unsafe.runAndBlock(Duration.Infinity)(
       Async.parallelUnbounded(seq).flatMap((c: Seq[Int]) => (c.foldLeft(0L)(_ + _): Long < Any)))
       .getOrThrow
-
-  /** the JOIN structure alone, ours: the same 10 000 drive fibers,
-   * one counter and one wake (what kyo's parallelUnbounded is inside)
-   * instead of 10 000 joins on the platform thread */
-  private def stepAnd(j: Int, acc: java.util.concurrent.atomic.AtomicLong, l: java.util.concurrent.CountDownLatch): Int =
-    val s = step(j); acc.addAndGet(s); l.countDown(); s
-
-  @Benchmark
-  def forkJoin10k_okayDriveLatch(): Long =
-    given Scheduler = Schedulers.drive()
-    val acc = new java.util.concurrent.atomic.AtomicLong
-    val latch = new java.util.concurrent.CountDownLatch(K)
-    var i = 0
-    while i < K do { val j = i; val _ = Async.spawn(async(stepAnd(j, acc, latch))); i += 1 }
-    latch.await(); acc.get
 
   // ── 2. many-to-many CONTENTION over one bounded queue ─────────────
 

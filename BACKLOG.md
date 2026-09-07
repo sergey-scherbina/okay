@@ -3731,3 +3731,21 @@ print the channel's counters and `sealedAt`) that cracked the seal
 race, plus the sender's route and `sendersAt` sizes. The ring stays
 the default until this is named; the adaptive buffer is opt-in
 (`Queues.strong.adaptive`).
+
+## own-scheduler-jvm — a scheduler that owns its threads, for the shape the JDK pool charges 2.4x for
+
+Measured (drive-scheduler-jvm, 2026-09-07, §4b): 10 000 small
+fork/joins cost 187 ns per task on a raw `ForkJoinPool` (external
+and internal push alike) and 79 ns on kyo's scheduler; okay's
+`Schedulers.drive` sits 25 % over the pool, Loom 15 % over that.
+Nothing in okay closes that from above the pool — fusing fiber, task
+and promise into one object (`DriveTask`) bought 4 %. What would:
+worker threads okay owns, a deque per worker, a parking policy that
+does not signal a worker per submission (kyo: adaptive, one wake per
+idle worker, batching of external pushes), `DriveTask` as the unit
+scheduled. Price it as a programme: a scheduler is a scheduler.
+Expected: fork/join 10k from 2310 toward ~1000; disqualifying: a
+prototype with owned workers still above 1500 means the cost is in
+`Drive`'s walk, not the pool. Not before the P × C deadlock
+(`adaptive-p-x-c-deadlock`) is named.
+
