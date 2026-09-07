@@ -95,17 +95,8 @@ final class Segments[A](segShift: Int = 8) extends Buffer[A] {
     seg.slots.set(i, v)
     seg.stamp.set(i, p + 1)
 
-  /** PROBE (hole-scan, 2026-09-07): a test may hold the window open
-   * between the claim and the publish, which is where a descheduled
-   * producer hides everything behind it from the consumer. Null in
-   * every real run, and a plain field so the check folds away. */
-  private[okay] var holeProbe: java.util.function.LongConsumer | Null = null
-
   override def push(a: A): Boolean =
-    val p = tail.getAndIncrement()
-    val hp = holeProbe
-    if hp != null then hp.nn.accept(p)
-    publish(p, a)
+    publish(tail.getAndIncrement(), a)
     true
 
   override def pushDeciding(a: A, unless: AtomicBoolean, orElse: A): A | Null =

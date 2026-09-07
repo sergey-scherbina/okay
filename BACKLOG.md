@@ -4281,7 +4281,7 @@ Do not build 2 before measuring 1: the difference between them is
 whether a consumer may hold elements no one else can reach, and that
 is the whole of the strong contract.
 
-## jiffy-hole-scan — a claimed-but-unpublished slot makes a full queue look empty
+## jiffy-hole-scan — MEASURED and DECLINED 2026-09-07: a real latency hazard with no measurable throughput cost
 
 The operator pointed at Jiffy (Adas & Friedman, arXiv 2010.14189v2),
 a wait-free MPSC queue: buffers in a linked list, enqueue by one
@@ -4338,9 +4338,32 @@ of `Segments`, not an edit. `popMany` in particular already carries a
 scar from getting this wrong once (its comment records a consumer
 killed by an exception nobody saw).
 
-MEASURE FIRST, and the lane exists: `oneUnbounded_chunk` at 16
-producers against `oneRing_chunk`, plus a probe that parks a producer
-between claim and publish deliberately (a test-only hook in
-`Segments`) to see how deep the cliff is. If the cliff is shallow on
-this runtime, the two bits are not worth the redesign and this entry
-should say so.
+MEASURED, both halves:
+
+- **The cliff is as sharp as the code says.** A probe hook held one
+  hole open while 5 000 more elements were pushed and published: the
+  consumer saw **0 of 5 001**, and all 5 001 the moment the hole
+  filled. Nothing is lost — the strong contract holds — but everything
+  behind a claimed-and-unpublished slot is invisible for as long as
+  that producer is off-CPU.
+- **It costs no throughput at the rates this runtime produces.** The
+  unbounded buffer (the only one with holes) beats the bounded ring at
+  every producer count: 131 against 142 at one, 472 against 803 at
+  four, 673 against 1 485 at sixteen. The disqualifying evidence for
+  the redesign was the unbounded lane trailing by more than 2x; the
+  opposite happened.
+
+DECLINED, and the reason is the shape of the risk rather than its
+size: what a hole costs is TAIL LATENCY under a descheduled producer,
+and a chunked-throughput benchmark cannot see that. The two-bit state
+and the lazily advancing head are a redesign of an MPMC consumer that
+already carries one scar; they are not worth it for a hazard that
+does not show up in throughput. Reopen with a LATENCY measurement (a
+percentile of receive-to-publish delay under many virtual-thread
+producers), not with this one.
+
+The probe hook itself was removed rather than kept: a mutable field
+read on every push is not free — 1.15x at one producer and 1.39x at
+four against master without it — so a diagnostic that costs the hot
+path does not live in main code. Re-add it temporarily if the latency
+measurement is ever built.

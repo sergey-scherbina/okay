@@ -245,6 +245,26 @@ lap number.
 **Use it when** the producer must never wait. `Channel.apply()` with
 no capacity gives you this.
 
+**A hole, and what it costs** (2026-09-07). `push` claims a position
+with one `getAndIncrement` and then publishes into it. Between those
+two steps the slot is CLAIMED BUT EMPTY, and `pop` treats that as
+"nothing ready" — so a producer descheduled in that window hides
+every element published after it until it comes back. Measured with a
+hole held open deliberately: the consumer saw 0 of 5 001 ready
+elements, and all of them the instant the hole filled. Nothing is
+lost, and no one deadlocks: the publish wakes the consumer.
+
+It is left this way on purpose. Jiffy (arXiv 2010.14189v2) solves it
+for a SINGLE consumer by scanning forward past the hole, which here
+would need a handled-state per slot and a head that advances lazily —
+a redesign of a multi-consumer path that has been wrong once before.
+And the cost does not show up where a queue is usually judged: this
+buffer beats the bounded ring at every producer count (673 against
+1 485 at sixteen). What a hole costs is tail latency under a
+descheduled producer, and that is the measurement to bring if you
+want the redesign.
+
+
 ### `AdaptiveFifo` — partitioned, for many producers
 
 `parts` independent buffers. A producer is bound to one for the life
