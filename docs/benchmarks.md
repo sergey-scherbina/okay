@@ -502,11 +502,21 @@ for the third.
   98 against 3 138 — belong to a channel that asked for them.
 
 
-  | cancel 1 000 parked fibers | ratio to cats | ratio to ZIO |
+  | cancel 1 000 parked fibers | us | ratio to cats |
   |---|---|---|
-  | okay on `drive` | **0.70** | **0.66** |
-  | okay on `own` | 0.76 | — |
-  | okay on `loom` (the row as it stood) | 1.12 | — |
+  | okay on `drive` | **570** | **0.77** |
+  | okay on `own` | 700 | 0.94 |
+  | cats | 745 | 1.00 |
+  | ZIO | 845 | 1.13 |
+  | okay on `loom` (the row as it stood) | 1149 | 1.54 |
+
+  The absolute column is the MINIMUM of five rounds — this box has
+  been shared all day, and a minimum is the closest thing to an
+  uncontended cost when the mean is contended; where a tight run did
+  land, the two agree (the producer sweep below reads 122 either way).
+  The ratio column is that minimum against cats in the same table; the
+  medians of within-run ratios over seven runs said 0.70, so the row
+  holds either way.
 
   Two defects had to be fixed before the row could even be measured,
   and both were contract bugs rather than speed: a cancelled
