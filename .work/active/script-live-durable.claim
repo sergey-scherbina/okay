@@ -1,0 +1,20 @@
+task: script-live-durable
+agent: fable-persist
+started: 2026-09-07
+branch: feature/script-live-durable
+worktree: ../okay-wt-durable
+
+why: script-live-resume gave the reconnect (in memory, this process
+  only) and filed the restart. The container already has the durable
+  thing: `Sessions.persisted(store)` keeps a session's attributes
+  across a restart, swept by TTL, clustered by `Sessions.shared`.
+
+what: `Live.durable(init)(view)(update, push)(using Schema[S])` — an
+  app whose state is a SESSION ATTRIBUTE (`okay.live.<id>`, CBOR in
+  base64): `session(key, attrs, name)` reads it before the in-memory
+  copy and writes it on Closed, through the Handle `Site.ws` binds
+  from the socket's cookie — only a bound one, so a socket with a
+  stale cookie mints nothing. A restart, a second node sharing the
+  topic, the TTL sweep: all the session's, and now the app's. An app
+  without a Schema keeps the in-memory reconnect. Test: two Sites over
+  one store, the second resumes what the first reached.
