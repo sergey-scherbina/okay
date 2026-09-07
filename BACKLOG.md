@@ -1303,9 +1303,24 @@ not a new primitive from scratch.
       (`OKAY_TLS_RELOAD=<seconds>`), so a renewal needs no restart
       and a half-written one is not adopted. This closes the reload
       half of the old entry. specs/tls.md.
-- [ ] script-tls: ALPN/HTTP2, OCSP stapling, cipher policy, and ACME
-      itself (obtaining a certificate) — still the proxy's, and named
-      as such in the spec. A Site behind Caddy/nginx/an ingress needs
+- [x] okay-acme — LANDED 2026-09-07 (operator ask): an RFC 8555 client,
+      narrow on purpose (HTTP-01, one order, staging by default, an
+      account key kept beside the certificate), wired into Serve as
+      `OKAY_ACME=<email>` + `OKAY_ACME_DOMAINS`; the challenge rides
+      the plaintext port ahead of the https redirect, the issued pair
+      is read through `Tls.reloading` so renewals need no restart.
+      Tested against a fake CA in-process. specs/acme.md.
+- [ ] acme-pebble — interop with a REAL ACME implementation: Pebble
+      (Let's Encrypt's own test server) in docker, Live-tagged. The
+      in-process fake proves the state machine, not that a real CA
+      agrees with our JWS, our nonces and our CSR.
+- [ ] acme-what-is-missing — filed from specs/acme.md's own list, in
+      case a deployment asks: DNS-01 (and so wildcards), EAB (some
+      commercial CAs), ARI (the renewal-window hint), revocation.
+      Each is a real thing certbot does; take one only when a
+      deployment needs it.
+- [ ] script-tls: ALPN/HTTP2, OCSP stapling, cipher policy — still the
+      proxy's, and named as such in the spec. A Site behind Caddy/nginx/an ingress needs
       three things from the operator: pass Upgrade for EVERY path
       (a live page's socket is on the page's own path),
       `OKAY_FORWARDED=1`, and to treat `X-Forwarded-For` as a claim.

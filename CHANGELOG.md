@@ -1,5 +1,43 @@
 # Changelog
 
+## okay-acme — a certificate a site earns for itself
+Completed: 2026-09-07
+Landed as 7b344179 (spec then code). Operator ask, after the estimate:
+not hard, one landing for the client and one for real-CA interop. A
+new module holds an RFC 8555 client that is narrow on purpose —
+HTTP-01 only (this stack owns a server; DNS-01 needs a DNS seam this
+repository has not got, and wildcards need DNS-01), one order over a
+list of names, an EC account key kept beside the certificate it
+earns, Let's Encrypt's STAGING directory as the default so a first
+run cannot burn a production rate limit, renewal when less than
+`renewBefore` is left. Wide is certbot's job, and a half-maintained
+wide client is a site that stops renewing on a Saturday.
+
+The parts that had to be built: ACME's own JWS flavour over
+okay-security's `Es256` (a flattened serialization whose protected
+header carries `nonce` and `url`, with the key as `jwk` on the first
+request and the account `kid` after), the RFC 7638 thumbprint as the
+exact canonical string the specification makes it, nonce discipline,
+POST-as-GET (this protocol has no authenticated GET), the state
+machine with its polls, and the CSR — from `openssl req`, with a
+named refusal without it, because no exported JDK API builds a
+PKCS#10, the same wall the self-signed path met. A CA's refusal comes
+back as its own `problem+json` sentence rather than a status code.
+
+okay-script wires it: `OKAY_ACME=<email>` with `OKAY_ACME_DOMAINS`,
+`OKAY_ACME_PROD=1` to leave staging. The certificate is asked for
+BEFORE the server binds, the challenge is served on the plaintext
+port ahead of the https redirect (a CA speaks plain HTTP and follows
+no redirect for it), and the issued pair is read through
+`Tls.reloading`, so every later renewal reaches the next connection
+without a restart. Without `OKAY_DATA` the account key lands in a
+temp directory and a restart registers a NEW account — said on the
+way past, not discovered in a rate limit. Tested against a fake CA in
+this process that fetches the challenge over a real socket and signs
+the CSR with its own key: the flow, the renew-or-not decision both
+ways, the refusal, the account key's reuse. Interop with a real
+implementation is Pebble, filed. 135 okay-script green 3x.
+
 ## script-real-certs — a CA-issued certificate as it actually arrives
 Completed: 2026-09-07
 Landed as 1ef46bf8 (spec then code). Operator ask, and three real
