@@ -1,5 +1,38 @@
 # Changelog
 
+## queue-swap — a queue that becomes the right one, built and reverted
+
+The operator asked for one ideal MPMC queue. Six axes measured this
+week are in tension by construction — a bounded claim must be
+refusable, so it cannot be a fetch-and-add; strict global FIFO cannot
+be had with a part per producer; an atomic-free dequeue needs exactly
+one consumer — so no single algorithm is ideal. What can exist is one
+type that BECOMES the right one, and this lane built it: a buffer that
+is a plain ring until producers contend and then an `AdaptiveFifo`
+that adopts that ring as its part 0, so nothing moves and nothing is
+copied.
+
+It works and it is dominated. Minimum of five rounds, us per 8 000
+elements: at one producer ring 123, growing 158, partitioned 144; at
+sixteen, ring 3 066, growing 446, partitioned 100. Six point nine
+times the ring where the ring is weak, and worse than BOTH of the
+things it is made of at their own shapes, because after the swap every
+push goes through two layers. A knob that is never the best choice
+misleads whoever reads the menu, so it was reverted rather than
+shipped.
+
+Kept: the measurements, and two triggers refuted by them. Growing on a
+REFUSED push is wrong — a ring is 17x slower at sixteen producers with
+room to spare, because the cost is many threads on one tail, not
+fullness, so it never refuses and never grows. Sampling the pushing
+thread every 64th push is what actually fires.
+
+Named for next time: the channel replacing its own buffer rather than
+wrapping it, which has one layer on each side of the swap. Its cost is
+an audit — seven methods in `SentinelChannel` read the buffer twice in
+one operation, and after a swap two such reads could compare a ring
+against a part of itself.
+
 ## hole-scan — the hole in the unbounded queue, measured and left alone
 
 Reading Jiffy (arXiv 2010.14189v2) against our code corrected two
