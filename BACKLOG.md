@@ -861,19 +861,25 @@ measure on our own data, never a predicted result.
       thunks once".
 
 - [x] sql-fold-profile — landed: `MeasureSqlFold` (okay-jdbc, Live).
-      The row fold is 0.45 us per row at six columns and 24.1% of an
-      in-memory H2 read; `Typed.planOf` already hoists column matching
+      The row fold is 0.14 us per row at six columns and 10.5% of an
+      in-memory H2 read (corrected 2026-09-07 by sql-plan-cells: the
+      first numbers, 0.45 us and 24.1%, were taken on 3 warmups); `Typed.planOf` already hoists column matching
       out of the per-row loop. staged-runtime's condition for okay-sql
       (>=30%) is NOT met, and cannot be by a real driver — verdict: no
       staged codec at the database seam. specs/codecs.md, "The row
       fold's share".
-- [ ] sql-plan-cells — the only thing that would move that number, and
-      it needs no compiler: resolve the per-cell match on `Shape` into
-      an array of cell decoders when `planOf` resolves the columns
-      (the same hoisting, one level deeper). Baseline: the table in
-      specs/codecs.md, "The row fold's share". Unclaimed until a
-      profile of a real workload names row decode as its cost.
-
+- [x] sql-plan-cells — MEASURED AND DECLINED 2026-09-07 (taken up on
+      the operator\'s word despite its own condition). Compiling each
+      field\'s Shape into a cell decoder at plan time is SLOWER than
+      the ADT walk it replaces: 0.13-0.14 us per row against
+      0.11-0.12, over three paired back-to-back runs. A closure call
+      per cell is a megamorphic virtual call and a tuple destructure;
+      the match it replaced is a branch the JIT already predicts.
+      Reverted. What stayed: the measurement instrument, whose 3
+      warmups had made the ORIGINAL profile three times too high
+      (0.45 us -> 0.14 us, 24.1% -> 10.5%), and TestRowDecode, a
+      decode suite the module did not have. specs/codecs.md, "The
+      cell decoders that were not faster".
 - [x] staged-strict — landed: `RuntimeStaged.strict`, the strict-JSON
       reader generated from a schema VALUE, and `Codecs.strict` /
       `Codecs.readStrict` beside json/cbor (the Provider method is

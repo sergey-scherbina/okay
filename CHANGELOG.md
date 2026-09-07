@@ -1,5 +1,29 @@
 # Changelog
 
+## sql-plan-cells — the cell decoders that were not faster, and the instrument that was wrong
+Completed: 2026-09-07
+Taken up on the operator's word despite the condition it was filed
+under. `Typed.planOf` already resolves the column mapping once per
+statement; this compiled each field's `Shape` into a decoder function
+there too, typed all the way down, so a row became an array of calls
+instead of an ADT walk per cell. It is consistently SLOWER —
+0.13-0.14 us per row against 0.11-0.12, over three paired runs with
+the implementations swapped back to back — because a closure call per
+cell is a megamorphic virtual call plus a tuple destructure, while
+the match it replaced is a branch the JIT already predicts and
+inlines. Reverted.
+Two things outlived it. The measurement instrument was wrong and that
+mattered more than the change: `MeasureSqlFold` ran 3 warmups and 7
+samples of a 0.6 ms body, two runs of the same code differed by half,
+and the profile it produced last week (0.45 us per row, 24.1% of a
+read) was three times the truth. At 50 warmups and 31 samples it
+settles at 0.14 us and 10.5%, the tables are corrected, and the
+verdict that profile supported — no staged codec at the database seam
+— is unchanged and stronger. And `TestRowDecode` stayed: a
+database-free suite for what a row decodes to and what it refuses,
+shape by shape, which this module did not have.
+specs/codecs.md, "The cell decoders that were not faster".
+
 ## deploy-clouds-rest — gcp and azure, and the Need a cloud cannot honour
 Completed: 2026-09-07
 Landed as 84ef04df (spec then code). Stage 3 finished. `gcp` is Cloud

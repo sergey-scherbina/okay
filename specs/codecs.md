@@ -796,14 +796,22 @@ String, an Option[Int], a Double, a Boolean, another String):
 
 | what (per 2000 rows) | median |
 |---|---:|
-| the fold alone (frames replayed from memory, typed) | 1.03 ms |
-| the same replay, frames only | 0.14 ms |
-| **the fold itself** | **0.90 ms** = 0.45 µs per row |
-| end to end, typed | 1.32 ms |
-| end to end, raw frames (the driver alone) | 1.01 ms |
-| **the fold's share of a row** | **24.1%** |
+| the fold alone (frames replayed from memory, typed) | 0.29 ms |
+| the same replay, frames only | 0.01 ms |
+| **the fold itself** | **0.27 ms** = 0.14 µs per row |
+| end to end, typed | 0.69 ms |
+| end to end, raw frames (the driver alone) | 0.61 ms |
+| **the fold's share of a row** | **10.5%** |
 
-- [x] the fold is 0.45 µs per row at six columns, and 24% of a read
+> CORRECTED 2026-09-07 by `sql-plan-cells`. The first run of this
+> table reported 0.45 µs per row and a 24.1% share, on 3 warmups and
+> 7 samples. At 0.6 ms a run that is not warm: two runs of the SAME
+> code differed by half, and raising the warmup to 50 and the samples
+> to 31 settled it at 0.14 µs and 10.5%. The verdict the table
+> supports is unchanged and stronger — the fold was already three
+> times smaller than the number that declined run-time staging.
+
+- [x] the fold is 0.14 µs per row at six columns, and 10.5% of a read
       whose driver is an in-memory H2 — the CHEAPEST driver that
       exists here. A Postgres read over a socket pays parsing, framing
       and the network for the same row, so the same fold is a smaller
@@ -815,7 +823,7 @@ String, an Option[Int], a Double, a Boolean, another String):
 
 ### Decisions
 - **No staged codec in okay-sql.** Not "not yet": the door would have
-  to beat 0.45 µs per row to matter, against a driver that costs four
+  to beat 0.14 µs per row to matter, against a driver that costs nine
   times that on the friendliest possible setup, and it would put the
   Scala compiler inside every process that opens a database. The
   spec's own condition, honestly applied, says no.
@@ -824,8 +832,10 @@ String, an Option[Int], a Double, a Boolean, another String):
   `planOf` resolves the columns (the same hoisting, one level
   deeper), which needs no compiler and no new module. Filed as
   `sql-plan-cells`, unclaimed, with this profile as its baseline —
-  and 0.45 µs per row is small enough that it stays unclaimed until
-  a profile of a real workload names it.
+  and 0.14 µs per row is small enough that it stays unclaimed until
+  a profile of a real workload names it. (Taken up anyway on the
+  operator\'s word, measured and DECLINED — "The cell decoders that
+  were not faster", below.)
 - **The measurement stays.** It is the baseline any future claim
   about row-decode cost must beat, and it is Live-tagged so a loaded
   CI box never turns it into a red build.
@@ -879,3 +889,49 @@ with the node table where the Mirror was — so a generic strict door
   so it exists and is measured. The seam's default stays the
   interpreter, so nothing pays for it until a program installs
   staging.
+
+## The cell decoders that were not faster (2026-09-07, sql-plan-cells)
+
+`Typed.planOf` resolves the column-to-field mapping once per
+statement, and the per-row loop then walks the `Shape` ADT for every
+cell. This lane compiled each field's shape into a
+`SqlValue => Either[String, A]` at plan time, typed all the way down
+(no new casts), so a row became an array of calls.
+
+It is slower, consistently, and the reason is worth writing down.
+
+| implementation | the fold itself (2000 rows, 6 columns) |
+|---|---:|
+| the ADT walk (shipped) | 0.22, 0.22, 0.24 ms → **0.11-0.12 µs/row** |
+| compiled cell decoders | 0.26, 0.27, 0.26 ms → **0.13-0.14 µs/row** |
+
+Three paired runs, each pair back to back on the same box, the two
+implementations swapped between them.
+
+- [x] DECLINED, and reverted. A closure call per cell is a
+      megamorphic virtual call plus a tuple destructure; the match it
+      replaced is a small, monomorphic-per-call-site dispatch the JIT
+      already predicts and inlines. "Resolve it once" is the right
+      instinct for a LOOKUP (which `planOf` already does for the
+      column mapping) and the wrong one for a BRANCH the JIT is
+      better at than we are.
+
+### What the lane did leave behind
+- **The instrument was wrong, and that mattered more than the
+  change.** `MeasureSqlFold` ran 3 warmups and 7 samples of a 0.6 ms
+  body: two runs of the SAME code differed by half, and the profile
+  it produced in `sql-fold-profile` (0.45 µs per row, 24.1%) was
+  three times the truth. At 50 warmups and 31 samples it settles at
+  0.14 µs and 10.5%, and the corrected table is above. The verdict
+  that profile supported — no staged codec at the database seam — is
+  unchanged and stronger.
+- **A decode suite the module did not have.** `TestRowDecode` was
+  written to hold the refactor to its predecessor's answers, and it
+  outlived the refactor: primitives, an Option present and absent, a
+  refining wrapper that refuses, an array with a damaged element, a
+  composite with the wrong arity, and NULL where it is not allowed —
+  values AND refusal words, with no database.
+- **A rule for the next such idea**: measure the instrument before
+  trusting it, and pair the arms in one run. Both of this lane's
+  surprises came from single-arm numbers taken minutes apart.
+

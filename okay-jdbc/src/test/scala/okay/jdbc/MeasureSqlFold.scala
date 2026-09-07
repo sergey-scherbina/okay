@@ -160,12 +160,15 @@ class MeasureSqlFold extends munit.FunSuite:
 
     val replay = Replay(cols, frames, per = 256)
     // the fold alone: frames already in memory, typed decode over them
-    val foldOnly = ms(3, 7)(drain(Typed.rows[Row](replay, select)))
+    // 50 warmups and 31 samples, not 3 and 7: at 0.6 ms a run the JIT
+    // and one GC dominate, and the medians of a 7-sample run moved by
+    // half between two runs of the SAME code (sql-plan-cells)
+    val foldOnly = ms(50, 31)(drain(Typed.rows[Row](replay, select)))
     // the same replay WITHOUT the fold: the frames handed through
-    val replayOnly = ms(3, 7)(drain(replay.query(select)))
+    val replayOnly = ms(50, 31)(drain(replay.query(select)))
     // end to end against H2: typed, and raw frames from the same query
-    val typedEnd = withDb(db => ms(2, 5)(drain(Typed.rows[Row](db, select))))
-    val rawEnd = withDb(db => ms(2, 5)(drain(db.query(select))))
+    val typedEnd = withDb(db => ms(20, 15)(drain(Typed.rows[Row](db, select))))
+    val rawEnd = withDb(db => ms(20, 15)(drain(db.query(select))))
 
     val fold = foldOnly - replayOnly
     val endToEndFold = typedEnd - rawEnd
