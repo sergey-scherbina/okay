@@ -119,13 +119,17 @@ does not cross and stages the work; each stage below is its own claim.
       already has one. Gated by `terraform init` + `validate` against
       the provider's own SCHEMA (semantic, not syntactic), plus
       `fmt -check`, plus a test that deliberately breaks it.
-- [ ] deploy-cloud-gcp — stage 3's second: Cloud Run + Cloud SQL +
-      Secret Manager, the same shape as `aws` and the same gate. The
-      interesting difference is that Cloud Run has no persistent
-      disk, so a `Need.Volume` is a named refusal or a GCS bucket —
-      decide it in the spec before writing the renderer.
-- [ ] deploy-cloud-azure — stage 3's third: Container Apps + Key
-      Vault + Azure Database for PostgreSQL, same gate.
+
+
+- [x] deploy-clouds-rest — LANDED 2026-09-07, stage 3 finished: the
+      `gcp` (Cloud Run) and `azure` (Container Apps) targets, both
+      passing `terraform validate` and `fmt -check` against their
+      providers' own schemas on the first run. The decision is a
+      REFUSAL: gcp will not mount a gcsfuse bucket for a
+      `Need.Volume`, because object storage has no atomic rename and
+      no locking and okay-persist's log needs both; azure renders an
+      Azure Files share, which is a real filesystem, and one test
+      asserts all three answers together. Nine targets from one value.
 - [x] deploy-secret-schemes — LANDED 2026-09-07, stage 4:
       `Schemes.sops/awsSecrets/gcpSecrets/azureVault` in okay-conf,
       each shelling out to the VENDOR CLI (no SDK, no second

@@ -1,5 +1,43 @@
 # Changelog
 
+## deploy-clouds-rest — gcp and azure, and the Need a cloud cannot honour
+Completed: 2026-09-07
+Landed as 84ef04df (spec then code). Stage 3 finished. `gcp` is Cloud
+Run, `azure` is Container Apps, both the same shape as `aws` and both
+gated the same way — `terraform init` then `validate` against the
+google and azurerm providers' own schemas, plus `fmt -check`. Both
+passed on the first run, which is worth recording precisely because AWS
+did not: the column aligner and the escaping that pass forced now hold
+for every renderer written after it.
+
+**The decision is a refusal.** Cloud Run does support volume mounts
+now, so the easy answer would have been a GCS bucket through gcsfuse.
+That answer is wrong, and being wrong quietly is the failure this model
+exists to avoid: gcsfuse is object storage wearing a filesystem, with
+no atomic rename and no locking, and okay-persist's log — the thing a
+`Need.Volume` in this repository almost always holds — is built on
+exactly those two. It would work in a demo and corrupt a log under
+concurrency at 3am, in a way nobody would trace back to a target's
+choice. So `gcp` refuses by name and points at the two answers that
+work: the `cluster` target on GKE, or a database instead of a
+directory. Azure is the counter-example that keeps that honest —
+Container Apps mounts an Azure Files share, which is a real filesystem,
+so `azure` renders one. One test asserts all three answers together,
+because the same `Need` reaching EFS, a real share and a refusal is the
+whole claim the model makes.
+
+Both clouds keep stage 3's secret rule — created out of band, read back
+by a data source, never a Terraform resource — and both say out loud
+that a custom domain needs a person to verify it, while their own names
+carry a managed certificate from the moment they exist.
+
+One thing fixed that was not about clouds: three suites each asserted
+`Targets.all.length`, so every target that landed needed the same
+number edited in three files. The roster is named once now, in
+`TestDeployment`. Nine targets from one value: laptop, host, cluster,
+fly, render, railway, aws, gcp, azure. 113 okay-deploy green 3x, 17
+Live green, 166 okay-script.
+
 ## intent-slot-denominators — 7 and 1 were the fixture, not a gap
 Completed: 2026-09-07
 The follow-up the slots lane filed against itself. `duration` fires
