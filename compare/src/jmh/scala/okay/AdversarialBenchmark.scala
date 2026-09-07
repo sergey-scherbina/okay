@@ -61,6 +61,21 @@ class AdversarialBenchmark {
     given Scheduler = Schedulers.forkJoin()
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
 
+  /** a scheduler that owns its threads (`Schedulers.own`, kyo's
+   * shape), one instance for the lane: the workers outlive the call */
+  private val own: Scheduler = Schedulers.own()
+  private val ownNoSpin: Scheduler = Schedulers.own(spin = 0)
+
+  @Benchmark
+  def forkJoin10k_okayOwn(): Long =
+    given Scheduler = own
+    (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
+
+  @Benchmark
+  def forkJoin10k_okayOwnNoSpin(): Long =
+    given Scheduler = ownNoSpin
+    (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
+
   /** okay's drive scheduler: the JS shape on the JVM, fiber = task =
    * promise (`DriveTask`); 25 % over the raw pool, §4b */
   @Benchmark

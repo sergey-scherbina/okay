@@ -205,6 +205,80 @@ object Schedulers {
       pool.execute(t)
       t
 
+  /**
+   * A scheduler that OWNS its threads — kyo's shape, the prototype
+   * (schedulers-family, 2026-09-07). `workers` platform threads, a
+   * queue each; a worker that runs dry steals from the others, spins
+   * `spin` rounds, then parks; a submit goes to the less loaded of
+   * two workers drawn at random and wakes it only if it is parked.
+   * The unit is `DriveTask`: no thread per fiber, a parked Await
+   * costs its callback. A BLOCKING call inside a fiber holds one of
+   * the `workers` threads — this is for short, CPU-bound fibers;
+   * `loom` is the one that makes blocking free.
+   */
+  def own(workers: Int = Runtime.getRuntime.availableProcessors(), spin: Int = 4096): Scheduler =
+    Own(workers, spin)
+
+  private[okay] final class Own(n: Int, spin: Int) extends Scheduler {
+    private val workers: Array[Worker] = Array.tabulate(n)(i => Worker(i))
+
+    private final class Worker(id: Int) extends Runnable {
+      val queue = java.util.concurrent.ConcurrentLinkedQueue[DriveTask[?]]()
+      val size = java.util.concurrent.atomic.AtomicInteger()
+      @volatile var parked = false
+      val thread: Thread = { val t = Thread(this, s"okay-own-$id"); t.setDaemon(true); t }
+
+      def enqueue(t: DriveTask[?]): Unit =
+        size.incrementAndGet()
+        queue.offer(t)
+        if parked then java.util.concurrent.locks.LockSupport.unpark(thread)
+
+      private def take(): DriveTask[?] | Null =
+        val t = queue.poll()
+        if t != null then size.decrementAndGet()
+        t
+
+      private def steal(): DriveTask[?] | Null =
+        var i = 1
+        while i < n do
+          val w = workers((id + i) % n)
+          val t = w.take()
+          if t != null then return t
+          i += 1
+        null
+
+      def run(): Unit =
+        var spins = 0
+        while true do
+          var t = take()
+          if t == null then t = steal()
+          if t != null then
+            spins = 0
+            val _ = t.exec()
+          else if spins < spin then
+            spins += 1
+            Thread.onSpinWait()
+          else
+            // publish "parked" BEFORE the last look at the queue: an
+            // enqueue that misses the flag has landed in the queue we
+            // are about to see, one that sees it will unpark us
+            parked = true
+            if queue.isEmpty then java.util.concurrent.locks.LockSupport.park(this)
+            parked = false
+            spins = 0
+    }
+
+    workers.foreach(_.thread.start())
+
+    def fork[A](prog: () => A ! Async): Fiber[A] =
+      val t = DriveTask[A](prog)
+      val r = java.util.concurrent.ThreadLocalRandom.current()
+      val a = workers(r.nextInt(n))
+      val b = workers(r.nextInt(n))
+      (if a.size.get <= b.size.get then a else b).enqueue(t)
+      t
+  }
+
   /** listeners of a running DriveTask, a stack */
   private final class Waiters[A](val k: Either[Throwable, A] => Unit, val next: Waiters[A] | Null)
 
