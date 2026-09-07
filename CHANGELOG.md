@@ -1,5 +1,28 @@
 # Changelog
 
+## okay-script-warm — the directory compiled at boot, and what a Site counts
+Completed: 2026-09-07
+Landed as 3c0d97e8 (spec then code). The second of the operator's
+four, and filed by the measurement rather than by taste: §19 had just
+put the first page of a process at 870 ms, and a page that did not
+compile was found by the first visitor. `Site.warm()` compiles every
+`.md` under the root without invoking one — language variants and
+included fragments too, `i18n/` skipped, since it holds messages —
+and answers the pages that failed with their errors; `Page.warm()` is
+its per-page half. `Serve` warms before it binds, prints how many
+pages it compiled and how long that took, names each broken page on
+stderr, and goes on serving: a broken page answers its error page,
+and a site does not refuse to exist over one. `Site.stats` is plain
+values in `Store.Stats`' shape — counters since the Site was built,
+gauges read when asked — with JSON and Prometheus text as pure
+mappings, the move `okay.ops.Prom` makes for a store. The counter is
+`pageRequests` and not `renders` because the test counted four where
+the name promised five: a refusal and a failure are page requests
+too. `opsRoutes` is deliberately absent from `routes` (exposure is
+the deployment's decision): a caller chains it, `Serve` mounts it for
+`OKAY_OPS=1`, and the pages still win every path they claim. 122
+green 3x.
+
 ## okay-script-measured — the first numbers for a runtime-compiled page
 Completed: 2026-09-07
 Landed as a609b485. Operator ask (first of four: measure, then warm +
