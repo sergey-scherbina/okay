@@ -972,8 +972,11 @@ and each ends with something an operator can actually use:
   `terraform validate` in a container. The AWS one first, because ECS
   plus RDS plus Secrets Manager exercises every part of the model —
   landed 2026-09-07; gcp and azure are their own claims.
-- **Stage 4 — the secret schemes.** `sops:`, then the three managers,
-  each shape-tested and Live-tested only where a credential exists.
+- **Stage 4 — the secret schemes.** DONE 2026-09-07 (in okay-conf,
+  where `Secrets` lives — see specs/conf.md): `sops:` tested end to
+  end against a real sops in a container, the three managers shape-
+  tested with their named refusals, because no machine here has an
+  account.
 
 ## Results
 

@@ -154,6 +154,53 @@ for
 yield JdbcInterop.connection(db.url, db.user, pw)
 ```
 
+## The four that shell out (deploy-secret-schemes, 2026-09-07)
+
+`sops:`, `aws-sm:`, `gcp-sm:` and `azure-kv:` were named in
+specs/deployment.md, checked for by okay-deploy's doctor — which tells
+an operator which binary to install for each — and implemented by
+nothing. A promise a repository makes in one file and keeps in none is
+worse than a gap, so these are the resolvers.
+
+```scala
+Secrets.sops        // sops:<file>#<key>        — sops -d --extract
+Secrets.awsSecrets  // aws-sm:<id>              — aws secretsmanager get-secret-value
+Secrets.gcpSecrets  // gcp-sm:<name>[#version]  — gcloud secrets versions access
+Secrets.azureVault  // azure-kv:<vault>/<name>  — az keyvault secret show
+```
+
+**Each shells out to the vendor's own CLI, and that is a decision.**
+An SDK would be four dependencies, four credential chains and four
+things to keep current; the CLI is one the operator already has, whose
+profile, SSO session, `gcloud auth` and `az login` already work, and
+which okay-deploy's `doctor` already checks for by name. What we gain
+by not owning the credential problem is worth more than the process
+we spend.
+
+### A failed resolver does NOT carry the command's output
+
+This inverts okay-deploy's rule on purpose, and the inversion is the
+most important line here. `Shell.failure` includes the last lines of
+output because those commands are RENDERERS and an operator needs to
+see what helm said. **A secret resolver's stdout may BE the secret.**
+So a failure names the command and the exit code and stops there: no
+output, no partial value, no "helpfully" echoed stderr that a
+misconfigured tool wrote a key into.
+
+The cost is real — a `gcloud` permission error is less obvious from
+"exit 1" than from its own message — and it is the right trade. The
+message says which command to run BY HAND to see it, which puts the
+output on the operator's terminal instead of in a log.
+
+### What is tested, and what is not
+
+`sops` is tested end to end and for real: a container with sops and
+age, a generated key, an encrypted file, decrypted THROUGH the
+resolver. There is no account for the other three on any machine this
+repository builds on, so what is tested there is the command each
+builds and the named refusal when the binary is missing. That is said
+here rather than implied by a green suite.
+
 ## Reference schemes
 
 Two schemes now, chosen because together they cover a bare machine,
