@@ -1,5 +1,30 @@
 # Changelog
 
+## okay-script-image — the container that serves a pages directory
+Completed: 2026-09-07
+Landed as b5737f3c (spec then code). The third of the operator's
+four: "the page is the deployment", packaged. `ScriptDeploy.spec` is
+an okay-deploy `Deploy` value and `okay-script/deploy/` is that value
+rendered — Dockerfile, compose.yaml, a Helm chart — with
+`TestScriptDeploy` refusing a drift between the two, the discipline
+okay-demo already runs on. The image builds `okayScript/assembly`'s
+fat jar, copies the worked example in as `/app/pages` and runs
+`okay.script.Serve`; because the entrypoint takes no arguments,
+`Serve` now reads `OKAY_PAGES` and `OKAY_PORT` from the environment
+when it is given no command line (an explicit command line still
+wins, and neither is still a usage refusal rather than a guess). Two
+decisions carry their reasons in the value: the example rides along
+so the image RUNS out of the box, and a deployment mounts its own
+directory over `/app/pages` — pages are read at request time, so a
+mounted directory that changes is a site that changes, the hot-reload
+half of "a new JSP" now true of the container; and `OKAY_DATA` is
+deliberately NOT baked in, because `/app` belongs to root while the
+process runs as `okay`, so a store path here would be a container
+that crashes on its first boot. Proven by running the assembled jar
+exactly as the entrypoint does: 13 pages compiled at boot in 3.7 s,
+the store's index served, `/metrics` and `/healthz` answering. 125
+green 3x.
+
 ## okay-script-warm — the directory compiled at boot, and what a Site counts
 Completed: 2026-09-07
 Landed as 3c0d97e8 (spec then code). The second of the operator's

@@ -1238,9 +1238,16 @@ not a new primitive from scratch.
       a page of the same name still wins. The counter is
       `pageRequests`, not `renders`: the test counted 4 where the
       name promised 5. specs/okay-script.md "Warm and stats".
-- [ ] okay-script-image — okay-deploy manifest for a container running
-      okay.script.Serve over a pages directory: "the page is the
-      deployment", packaged.
+- [x] okay-script-image — LANDED 2026-09-07 (third of four):
+      `ScriptDeploy.spec` + `okay-script/deploy` (Dockerfile,
+      compose, Helm), drift-tested; the image runs `okay.script.Serve`
+      over `/app/pages` (the example rides along so it runs out of
+      the box; mount your own over it). `Serve` reads
+      `OKAY_PAGES`/`OKAY_PORT` when given no command line. OKAY_DATA
+      deliberately not baked in — /app is root's, the process is
+      `okay`. Proven by running the jar: 13 pages compiled at boot in
+      3.7 s, pages and /metrics answering.
+      specs/okay-script.md "The image".
 - [ ] okay-script-guide — docs/okay-script-guide.md: zero to a working
       store; specs hold decisions, the module page is a table, and
       neither is a place to start.
