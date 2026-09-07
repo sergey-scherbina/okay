@@ -1,5 +1,0 @@
-lane: schema-thunks-once
-who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
-since: 2026-09-07
-what: the trap at its source — a derived Schema's thunks (fields, cases, Option/List/Vector/wrap `of`) build a fresh instance per call; memoize each thunk once (Schema.once), so identity is stable and the interpreter stops re-deriving per value. Measured on CodecBenchmark. Operator ask: "исправляй ловушки".
-touches: okay-codec/src/main/scala/okay/codec/Schema.scala, okay-codec tests, specs/codecs.md, BACKLOG, CHANGELOG
