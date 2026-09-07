@@ -1,0 +1,5 @@
+lane: intent-offline-slots
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: stage 7 of specs/intent-autonomy.md, and MEASURE FIRST. The offline door classifies without a network; filling the frame's slots is done by extractors (Temporal/Duration/People/Amount) plus, where they are silent, a model. Nobody has measured what share of the slots the OFFLINE path already fills, per slot and per language. Measure that over the fixture and the parallel set; only if the hole is real, build the sequence labeller the plan names. Either way the number lands in the autonomy report, because a door that classifies offline and then must ask a model for every slot is not autonomous.
+touches: okay-intent test (MeasureSlotCoverage), maybe Slots/extractors, specs/intent-autonomy.md, specs/intent-classify.md, BACKLOG, CHANGELOG
