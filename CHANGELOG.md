@@ -1,5 +1,18 @@
 # Changelog
 
+## live-tdict — okay-live's Registry and Hub onto TDict and TList, the second half of the cross-platform-state entry
+
+`Registry` was a `ConcurrentHashMap.computeIfAbsent`, `Hub` a
+`CopyOnWriteArrayList`; they are `TDict.computeIfAbsent` and
+`TList` now — the same semantics (one channel per key, publish to the
+subscribers of the moment, no eviction), the module's last
+`java.util.concurrent` gone, tests unchanged. `TDict`'s stated cost
+("mk may run more than once") is a discarded `Channel()` on a
+first-use race for one key, noted at `Registry`. The crossProject
+question the entry filed is decided: no JS/Native consumer is named,
+so neither okay-live nor okay-subscription moves; the swap leaves the
+door open at the cost of one build.sbt line when someone does.
+
 ## intent-extract-amount — the amount slot: a number beside a currency, in the fixture's eight languages
 
 The fourth parsed slot after when, duration and people, on the same

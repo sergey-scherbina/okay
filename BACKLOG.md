@@ -1153,16 +1153,21 @@ not a new primitive from scratch.
       a real, stated limit: `computeIfAbsent`'s `mk` may run more
       than once under CAS contention (only the winner's value is
       ever stored) — fixed the doc, not hidden.
-- [ ] Once landed: migrate `okay-subscription`'s two maps and
+- [x] Once landed: migrate `okay-subscription`'s two maps and
       `okay-live`'s `Hub`/`Registry` onto it, and reconsider whether
       either module (or okay-demo itself) should become crossProject
       at that point — no JS/Native consumer is named yet, so this is
       NOT urgent; filed so the decision is made once, deliberately,
       not by accretion the next time this exact tradeoff recurs.
       PARTIAL 2026-09-03: `okay-subscription` migrated, a pure swap
-      (9/9 existing tests unchanged). `okay-live`'s `Hub`/`Registry`
-      NOT done — the operator's ask named `okay-subscription`
-      specifically; box stays unchecked for that half.
+      (9/9 existing tests unchanged). DONE 2026-09-07 (live-tdict):
+      `okay-live`'s `Registry` over `TDict.computeIfAbsent`, `Hub`
+      over `TList` — a pure swap, the module's last
+      `java.util.concurrent` gone, tests unchanged. The crossProject
+      question, decided: neither module moves — no JS/Native consumer
+      is named, and a crossProject with one platform is a promise
+      nobody asked for; the swap leaves the door open at the cost of
+      one build.sbt line when someone does.
 
 ## okay-script (specs/okay-script.md) — markdown ```scala fenced blocks as Scala source
 - [x] okay-script-site — LANDED 2026-09-06 (c0b37da2): the container,
