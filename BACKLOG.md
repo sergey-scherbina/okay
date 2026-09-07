@@ -9,6 +9,18 @@ cloud managers and SOPS, and targets for a laptop, a rented server, a
 cluster, a PaaS and AWS/Azure/GCP. The spec draws the line the model
 does not cross and stages the work; each stage below is its own claim.
 
+- [ ] deploy-bootstrap — folded INTO stage 0 (operator ask
+      2026-09-07): the clean machine. `Tool`/`Presence`/`Report`, a
+      table that says what is missing, WHY the deployment asked for
+      it and the exact install command for the detected package
+      manager; `NotReady` for the case that actually happens (a
+      docker daemon that is down, a kubectl with no context, a flyctl
+      not logged in); `--install` as an opt-in that prints each
+      command first, never pipes from the network, never sudos
+      silently, never pins a version, and never runs during an apply;
+      and the rule that every shelled-out failure carries its
+      command, exit code and last output. Testable without a clean
+      machine by emptying PATH.
 - [ ] deploy-model — stage 0: `Deployment`/`Service`/`Need`/`Settings`
       in okay-deploy, the `laptop` (compose) and `host` (systemd)
       targets, `Up`/`Down`/`Doctor`, and okay-script's fourteen

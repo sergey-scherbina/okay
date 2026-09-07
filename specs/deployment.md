@@ -246,6 +246,152 @@ on the PATH, does `flyctl auth whoami` answer, which cluster is
 `kubectl config current-context`. A target that lists its `requires`
 gets that for free, and the answer is a sentence naming the fix.
 
+## The clean machine
+
+Operator ask (2026-09-07), and the case every tool meets first: a
+machine where nothing is installed yet. The requirement was put
+exactly: install what can be installed, or at least tell the operator
+plainly — never a cryptic error, and never a failure with no message
+at all.
+
+That last clause is the one worth reading twice. `docker: command not
+found` deep inside a compose call, or an exit code 127 with an empty
+stderr, is how most tools spend a new user's first hour. This model
+can do better cheaply, because a target already declares what it
+`requires`.
+
+### What a check knows
+
+```scala
+final case class Tool(
+  name: String,                       // "docker"
+  probe: Vector[String],              // ["docker", "--version"]
+  version: String => Option[String],  // read one out of that output
+  atLeast: Option[String],            // the minimum this needs, when it has one
+  why: String,                        // "the laptop target builds and runs containers"
+  install: Map[Manager, String],      // the exact command, per package manager
+  usable: Option[Vector[String]],     // the probe that says it WORKS, not just exists
+  site: String)                       // where the vendor documents it
+
+enum Manager: case Brew, Apt, Dnf, Apk, Pacman, Winget, Manual
+
+enum Presence:
+  case Ok(version: String)
+  case Missing
+  case TooOld(found: String, needed: String)
+  /** installed, and still cannot be used: the state that actually
+   *  happens most */
+  case NotReady(why: String, fix: String)
+```
+
+`NotReady` earns its place by being the common case rather than the
+rare one. Docker is installed and its daemon is not running.
+`kubectl` is there with no current context. `flyctl` is there and
+nobody is logged in. A tool that only asked "is the binary on the
+PATH" would pass all three and then fail later, in someone else's
+error message — which is exactly the outcome this section exists to
+prevent. So a `Tool` may carry a second probe for readiness, and its
+failure names the fix: `docker info` failing means "the Docker daemon
+is not running — start Docker Desktop, or `sudo systemctl start
+docker`".
+
+### What the operator sees
+
+One table, and it is the whole report:
+
+```
+okay-deploy: target `laptop` on macOS 15 (arm64), package manager: brew
+
+  tool             state        note
+  docker           MISSING      the laptop target builds and runs containers
+                                install:  brew install --cask docker
+                                docs:     https://docs.docker.com/get-started/
+  docker compose   MISSING      comes with Docker Desktop; nothing to install separately
+  openssl          ok 3.5.0
+  sops             MISSING      only needed because one secret is a sops: reference
+                                install:  brew install sops
+
+2 of 4 tools are not ready. Nothing has been applied.
+Run with --install to install what brew can, or install by hand and run again.
+```
+
+Three properties of that output are requirements, not taste. Every
+missing tool says WHY it is needed, and the why names the thing in
+the deployment that asked for it — a `sops:` reference, a
+`Need.Database`, the target itself — so an operator can decide to
+remove the need instead of installing the tool. Every install line is
+the command for THIS machine, chosen from the detected package
+manager, not a list of five alternatives to read past. And the last
+two lines say what happened (nothing) and what to do next, because a
+report that ends without a next step is a report that gets ignored.
+
+The same report is available as JSON for a pipeline (`--json`), with
+the same fields — a CI that fails should be able to say which tool
+and why without parsing a table.
+
+### Installing, and the line under it
+
+Installation is **opt-in, one flag, and never silent**: `Up --install`
+or `Doctor --install`. What runs is the platform's OWN package
+manager, and the exact command is printed BEFORE it runs, so the
+operator reads what is about to happen to their machine rather than
+learning afterwards.
+
+Four refusals hold, and each has a reason worth stating:
+
+- **Never `curl … | sh`.** We print the vendor's documented command;
+  we do not become a downloader of scripts that run as the user. A
+  tool that ships only that way is `Manager.Manual`: the report
+  carries the URL and stops.
+- **Never silent `sudo`.** If a package manager needs it, that is in
+  the printed command and the operator sees it. We do not prompt for
+  a password ourselves and we never store one.
+- **Never a version pin of ours.** We install what the platform's
+  manager gives; `atLeast` only ever REPORTS that what is installed
+  is too old, with the upgrade command. Pinning versions of other
+  people's software is how a deployment tool becomes a package
+  manager.
+- **Never during `apply`.** Installation happens in its own step,
+  before anything is rendered or applied. Half-applying a deployment
+  and then installing a tool is the worst of both.
+
+`--install` answers what it did per tool and re-runs the check, so
+the last thing on screen is the same table with the rows now green,
+or the ones that still are not and why.
+
+### The remote clean machine
+
+The `host` target's install script is the same logic, rendered: it
+runs on a rented box where nothing may be present, checks a JRE and
+whatever the services need, and either installs through that
+distribution's manager or prints the same report and exits non-zero.
+An operator who reads the script before running it — which they
+should — finds no surprise in it.
+
+### No silent failure, anywhere
+
+The rule generalises past bootstrap, so it is written here once: every
+command this module shells out to is wrapped, and a non-zero exit
+becomes a message carrying the command line, the exit code, the last
+lines of its output, and what it was trying to do. A tool that exits
+1 with nothing on stderr — and several of them do — must still
+produce a sentence an operator can act on. "helm upgrade failed"
+without the command is not one.
+
+- [ ] a target's `requires` is checked BEFORE anything is rendered or
+      applied, and `Up` on a machine without docker prints the report
+      and exits non-zero, having applied nothing.
+- [ ] a tool that is installed but not usable is `NotReady` with the
+      fix in the message: a stopped docker daemon, a kubectl with no
+      context, a flyctl that is not logged in.
+- [ ] the install command shown is the one for the detected manager,
+      and a tool with no manager entry says `Manual` with its URL.
+- [ ] `--install` prints each command before running it, never uses a
+      pipe from the network, and re-checks afterwards.
+- [ ] every shelled-out failure names its command, exit code and last
+      output — asserted on a command that exits non-zero and prints
+      nothing.
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of
@@ -275,12 +421,15 @@ The whole thing at once is not landable, and pretending otherwise is
 how it would arrive half-tested. Each stage is a claim of its own,
 and each ends with something an operator can actually use:
 
-- **Stage 0 — the model, the settings, and the two places that need
-  no account.** `Deployment`/`Service`/`Need`/`Settings`, the
-  `laptop` and `host` targets, `Up`/`Down`/`Doctor`, and okay-script's
-  fourteen variables re-expressed as a `Schema`'d config. Proven by a
-  real `docker compose up` in a Live test and a rendered unit that
-  `systemd-analyze verify` accepts.
+- **Stage 0 — the model, the settings, the clean machine, and the two
+  places that need no account.** `Deployment`/`Service`/`Need`/
+  `Settings`, the `laptop` and `host` targets, `Up`/`Down`/`Doctor`
+  with the bootstrap report above, and okay-script's fourteen
+  variables re-expressed as a `Schema`'d config. Proven by a real
+  `docker compose up` in a Live test, a rendered unit that
+  `systemd-analyze verify` accepts, and a check run with a PATH
+  emptied of docker — which is how the clean machine is testable
+  without a clean machine.
 - **Stage 1 — cluster.** The Helm chart grown to ConfigMap, Secret
   stubs, PVC and Ingress. Proven by `helm template` and `helm lint`
   in the default gate, and optionally by kind in a Live test.
@@ -333,3 +482,9 @@ and each ends with something an operator can actually use:
 - **`Need` is closed and its growth is a spec edit.** Rejected: an
   open `Need.Custom(String, Json)`, which is `extra` with a nicer name
   and no renderer.
+- **A clean machine is reported before it is fixed, and fixed only
+  when asked.** Rejected: installing prerequisites automatically —
+  it is someone's machine; a tool that changes it without being asked
+  has to be trusted absolutely, and this one does not need that
+  trust. Rejected too: `curl | sh` as an install road, at any
+  convenience.
