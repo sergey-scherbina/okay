@@ -195,19 +195,53 @@ object Schedulers {
   /** fibers as continuations on a pool — the JS shape on the JVM: no
    * thread per fiber, the program's tree walked by `Async.Drive` on
    * whichever pool thread picks it up; a parked Await costs its
-   * callback and nothing else. Blocking joins from inside a fiber
-   * still hold the pool thread, as with `forkJoin`. */
+   * callback and nothing else. The fiber, the pool task and the
+   * promise are ONE object (`DriveTask`), the shape kyo's IOTask
+   * has. Blocking joins from inside a fiber still hold the pool
+   * thread, as with `forkJoin`. */
   def drive(pool: ExecutorService = ForkJoinPool.commonPool()): Scheduler = new:
     def fork[A](prog: () => A ! Async): Fiber[A] =
-      val p = scala.concurrent.Promise[A]()
-      val d = Async.Drive(p)
-      pool.execute: () =>
-        try d(prog())
-        catch case e: Throwable => { val _ = p.tryFailure(e) }
-      new Fiber[A]:
-        def onComplete(k: Either[Throwable, A] => Unit): Unit =
-          p.future.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
-        def cancel(): Unit = d.cancel()
+      val t = DriveTask[A](prog)
+      pool.execute(t)
+      t
+
+  /** listeners of a running DriveTask, a stack */
+  private final class Waiters[A](val k: Either[Throwable, A] => Unit, val next: Waiters[A] | Null)
+
+  /** one object: the pool task that walks the program, the cell its
+   * answer lands in, and the Fiber a caller holds. The cell is
+   * `null` (running, nobody waiting), a `Waiters` stack, or the
+   * answer; the answer is written once. */
+  private[okay] final class DriveTask[A](prog: () => A ! Async)
+      extends java.util.concurrent.ForkJoinTask[Unit] with Async.Drive[A] with Fiber[A]:
+    private val cell = java.util.concurrent.atomic.AtomicReference[Waiters[A] | Either[Throwable, A] | Null](null)
+
+    def exec(): Boolean =
+      try apply(prog())
+      catch case e: Throwable => fail(e)
+      true
+    def getRawResult(): Unit = ()
+    def setRawResult(v: Unit): Unit = ()
+
+    protected def succeed(a: A): Unit = done(Right(a))
+    protected def fail(e: Throwable): Unit = done(Left(e))
+
+    @scala.annotation.tailrec private def done(r: Either[Throwable, A]): Unit =
+      cell.get match
+        case _: Either[?, ?] => ()
+        case cur => if cell.compareAndSet(cur, r) then fire(cur, r) else done(r)
+
+    @scala.annotation.tailrec private def fire(w: Waiters[A] | Either[Throwable, A] | Null, r: Either[Throwable, A]): Unit =
+      w match
+        case w: Waiters[A] => { w.k(r); fire(w.next, r) }
+        case _ => ()
+
+    @scala.annotation.tailrec def onComplete(k: Either[Throwable, A] => Unit): Unit =
+      cell.get match
+        case r: Either[Throwable, A] @unchecked => k(r) // the cell only ever holds this task's own answer
+        case cur => if !cell.compareAndSet(cur, Waiters(k, cur)) then onComplete(k)
+
+    override def cancel(): Unit = super[Drive].cancel()
 
   /** one honest platform thread per fiber: heavy, but works anywhere */
   val threads: Scheduler = new:

@@ -61,6 +61,25 @@ class AdversarialBenchmark {
     given Scheduler = Schedulers.forkJoin()
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
 
+  /** the drive scheduler as first written: scala Promise + Drive +
+   * Runnable + Fiber, four objects where DriveTask is one */
+  private val drivePlain: Scheduler = new:
+    def fork[A](prog: () => A ! Async): Fiber[A] =
+      val p = scala.concurrent.Promise[A]()
+      val d = Async.PromiseDrive(p)
+      java.util.concurrent.ForkJoinPool.commonPool().execute: () =>
+        try d(prog())
+        catch case e: Throwable => { val _ = p.tryFailure(e) }
+      new Fiber[A]:
+        def onComplete(k: Either[Throwable, A] => Unit): Unit =
+          p.future.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
+        def cancel(): Unit = d.cancel()
+
+  @Benchmark
+  def forkJoin10k_okayDrivePlain(): Long =
+    given Scheduler = drivePlain
+    (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
+
   @Benchmark
   def forkJoin10k_okayDrive(): Long =
     given Scheduler = Schedulers.drive()

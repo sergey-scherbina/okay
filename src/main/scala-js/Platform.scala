@@ -19,7 +19,7 @@ given Timer = new:
 given Scheduler = new:
   def fork[A](prog: () => A ! Async): Fiber[A] =
     val p = Promise[A]()
-    val d = Async.Drive(p)
+    val d = Async.PromiseDrive(p)
     d(prog())
     new Fiber[A]:
       def onComplete(k: Either[Throwable, A] => Unit): Unit =

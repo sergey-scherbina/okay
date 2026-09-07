@@ -163,7 +163,7 @@ object Async {
    */
   def runAsync[A](prog: A ! Async): Future[A] =
     val p = Promise[A]()
-    Drive(p)(prog)
+    PromiseDrive(p)(prog)
     p.future
 
   /** the callback may fire during registration, on this thread or
@@ -177,7 +177,12 @@ object Async {
    * cancel() stops the drive at its next operation AND unregisters a
    * parked Await (the canceller the registration answered with).
    */
-  private[okay] final class Drive[A](p: Promise[A]) {
+  private[okay] trait Drive[A] {
+    /** where the answer goes — a Promise on JS, the task's own cell
+     * on the JVM (`Schedulers.DriveTask`, one object for fiber, task
+     * and promise) */
+    protected def succeed(a: A): Unit
+    protected def fail(e: Throwable): Unit
     @volatile private var stopped = false
     @volatile private var unregister: () => Unit = () => ()
 
@@ -201,7 +206,7 @@ object Async {
         while looping do
           looping = false
           cur match
-            case Free.Pure(a) => { val _ = p.trySuccess(a) }
+            case Free.Pure(a) => succeed(a)
             case Free.Bind(Free.Bind(a, f), g) =>
               cur = Free.Bind(a, f(_).flatMap(g))
               looping = !stopped
@@ -218,7 +223,7 @@ object Async {
               if next != null then
                 cur = next
                 looping = !stopped
-      catch case e: Throwable => { val _ = p.tryFailure(e) }
+      catch case e: Throwable => fail(e)
 
     /** one operation: the continuation to drive next when the answer
      * came synchronously, null when the drive parked on a callback
@@ -233,17 +238,23 @@ object Async {
           if !cell.compareAndSet(null, Got(r)) then
             if !stopped then r match
               case Right(x) => apply(k(x))
-              case Left(e) => { val _ = p.tryFailure(e) }
+              case Left(e) => fail(e)
         }
         cell.getAndSet(Moved) match
           case g: Got[X] =>
             g.x match
               case Right(x) => k(x)
-              case Left(e) => { val _ = p.tryFailure(e); null }
+              case Left(e) => { fail(e); null }
           case _ =>
             unregister = cancelReg
             if stopped then cancelReg()
             null
+  }
+
+  /** the Drive that answers into a Promise (JS's scheduler, `toFuture`) */
+  private[okay] final class PromiseDrive[A](p: Promise[A]) extends Drive[A] {
+    protected def succeed(a: A): Unit = { val _ = p.trySuccess(a) }
+    protected def fail(e: Throwable): Unit = { val _ = p.tryFailure(e) }
   }
 
   /** run the program on its own fiber (a virtual thread by default on
