@@ -3021,6 +3021,45 @@ subtraction.
       intent-frame-typed-values removed. It must be an explicit
       request that reports what it re-derived, not a silent
       convenience.
+## the autonomy programme (specs/intent-classify.md, "The autonomy programme", 2026-09-07)
+Operator's direction: aim this line at working WITHOUT models. The
+metric, the measured dead ends and the order are in the spec section;
+these are the lanes.
+- [ ] intent-autonomy-report — FIRST, and cheap: a suite that prints
+      the two numbers this programme is judged by — the autonomy rate
+      (share answered with no network, at what precision, per class)
+      and the handed-over share — per tier, over the fixture. Offline,
+      no new data, runs in the ordinary suite. Every later lane must
+      move one of these; today neither is printed anywhere.
+- [ ] intent-harvest-loop — real rows with provenance: a model
+      classification that survives grounding and the confidence floor
+      becomes a candidate, a person confirms it, the confirmed row
+      lands in okay-chat/corpus/harvested.json with message, label,
+      language and confirmer. Different from distillation in the one
+      way that matters: the messages are real traffic. Criterion: 40+
+      confirmed rows, and a refit on them moves the autonomy rate
+      without breaking the per-class law.
+- [ ] intent-label-queue — which rows to ask a person about: small
+      margin plus disagreement between tiers (the shape the
+      active-learning lane measured at 28 labels against 36 for the
+      same gain). Ships as a queue the admin flow can drain.
+- [ ] intent-refit-gate — a refit that drops any class below F1 0.50
+      is REFUSED, and every refit prints before/after per class. The
+      guard for the failure a consumer already lived: headline
+      accuracy rose while a class died.
+- [ ] intent-induce-on-harvest — re-run cue induction whenever the
+      corpus grows and ship the induced cues beside the hand-written
+      ones. Cues need nothing at run time, so their coverage is pure
+      autonomy: 85.7% precision at 11.7% coverage on 60 rows today,
+      against hand-written 90.6% at 53.3%.
+- [ ] intent-offline-slots — fill the frame with no network: a
+      sequence labeller (CRF, or a grammar over the existing Amount /
+      Duration / People extractors). A capability the offline door
+      lacks entirely, not a better number: slots today need the model.
+- [ ] intent-per-language-models — one artifact per language once
+      rows exist; the shipped one is English-only and scores chance
+      (23-30%) elsewhere. GATED on intent-language-fixture-growth.
+
 - [x] intent-offline-other — MEASURED AND DECLINED 2026-09-07
       (TestOfflineGate, offline, no network). The offline analogue of
       the model path's binary gate: a second CharGrams model on the

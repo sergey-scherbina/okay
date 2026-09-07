@@ -4163,3 +4163,96 @@ leak its training rows):
   re-runs unchanged and the criterion is either met or the mechanism
   is dead for good.
 
+## The autonomy programme (2026-09-07)
+
+Written on the operator's instruction to aim this line at working
+WITHOUT models, and to put everything that serves that into the plan.
+It collects what is already measured, names the metric the programme
+is judged by, and orders the lanes. Nothing here is a hope: each item
+says what would move a number, and the items measured NOT to move one
+are listed too, so they are not tried a fourth time.
+
+### The metric, which does not exist yet and must
+"Works without a model" is not one number, it is two, and this
+repository has never printed them together:
+
+- **AUTONOMY RATE** — the share of messages answered with no network
+  at all, at a stated precision. Today: the cue tier answers 53.3% of
+  held-out English at 90.6% precision; behind it the gram tier answers
+  the rest, taking the full offline door to 80.0% at 100% coverage.
+- **HANDED-OVER SHARE** — the share that reaches a model, and what it
+  costs. In the service this is the number the business cares about;
+  in this repository it is not tracked at all.
+
+Every lane below is judged by moving one of those without breaking
+the shipped-model law (no class below F1 0.50).
+
+### Measured NOT to help — do not retry without new evidence
+- **Another representation.** TF-IDF 61.7%, hashed char n-grams
+  68.3%, the static centroid table 68.3% at 2.1MB, both embedders
+  flat from 32 examples with the same slope: four roads to one
+  ceiling. The limit is register and context, not the encoder
+  (2026-09-07). `intent-fasttext-subword` stays gated for this
+  reason; a per-language check found char-grams do NOT lose Russian
+  (53.3%, above English's 40.0% on the same 15-row slices), so
+  morphology is not the gap either.
+- **Generated rows.** Three generators, zero gain; the distilled rows
+  are a third as diverse as the fixture and carry the generator's
+  register (intent-distil-*).
+- **Abstention by a margin floor** on the four-way model: no
+  threshold separates right from wrong (Router.Floors).
+- **An argmax binary gate** for out-of-domain: with 15 rows against
+  45 it collapses to the majority; balanced, the tier dies
+  (intent-offline-other, above).
+
+### Measured TO help — every ceiling moved only when the corpus moved
+- Induced cues reach 85.7% precision at 11.7% coverage on 60 rows;
+  the hand-written ones are at 90.6% and 53.3% after months of
+  patience. Coverage is a function of rows.
+- The out-of-domain detector ranks at AUC 0.843 on 15 rows and cannot
+  be turned into a decision rule at that size.
+- Examples in the message's own language paid +0.049 macro F1.
+
+### The lanes, in order
+1. **`intent-autonomy-report`** — print the two metrics. A suite over
+   the fixture that reports, per tier: coverage, precision among
+   answered, the class breakdown, and the share that would reach a
+   model. Offline, no new data, and it must run in the ordinary
+   suite so every later lane moves a tracked number. Nothing else in
+   this programme can be judged without it, which is why it is first.
+2. **`intent-harvest-loop`** — real rows, with provenance. Every
+   model classification that survives grounding and the confidence
+   floor becomes a candidate row; a person confirms it; confirmed
+   rows land in the service's `corpus/harvested.json` with the
+   message, the label, the language and who confirmed. The property
+   that makes this different from distillation is that the MESSAGES
+   are real traffic, which is exactly what the generated rows lacked.
+3. **`intent-label-queue`** — which rows to ask a person about:
+   uncertainty (small margin) and disagreement between tiers, the
+   shape the active-learning lane already measured (28 labels against
+   36 for the same gain). A queue a person can clear in ten minutes a
+   day is worth more than a corpus nobody writes.
+4. **`intent-refit-gate`** — a refit that lowers ANY class below the
+   law is refused, and the refit prints the before/after per class. A
+   consumer's corpus grew unevenly, one class reached 137 of 184 rows,
+   their headline rose and a class died; this is the guard for that.
+5. **`intent-induce-on-harvest`** — re-run cue induction whenever the
+   corpus grows, and ship the induced cues beside the hand-written
+   ones. Cues are the only tier that needs NOTHING at run time, so
+   every point of coverage they take is a point of pure autonomy.
+6. **`intent-offline-slots`** — the frame is filled today by rules
+   plus a model. A sequence labeller (CRF or a grammar over the
+   existing `Amount`/`Duration`/`People` extractors) would fill slots
+   with no network, which is a capability the offline door does not
+   have at all, not merely a better number.
+7. **`intent-per-language-models`** — the shipped artifact is English
+   only and scores chance elsewhere; one artifact per language, fitted
+   the same way, once `intent-language-fixture-growth` supplies rows.
+
+### The one honest caveat
+Three of the seven lanes are blocked on rows that only people can
+produce, and this programme cannot generate them (measured). What it
+CAN do is make every row count: the queue picks which to ask for, the
+gate stops a refit from killing a class, and the report says whether
+autonomy actually moved.
+
