@@ -4018,3 +4018,27 @@ prototype with owned workers still above 1500 means the cost is in
 `Drive`'s walk, not the pool. Not before the P × C deadlock
 (`adaptive-p-x-c-deadlock`) is named.
 
+## own-deque — the shared queue is what keeps `Schedulers.own` off the top of both columns
+
+Measured (schedulers-family, 2026-09-07, §4b): `own` is the fastest
+lane on real work when forked from outside (2 430 us against the JDK
+pool's 3 729 and kyo's 25 379) and the best external lane at tiny work
+(1 249 against 2 206), but forked from INSIDE a worker it reads 14 054
+where the JDK pool reads 2 954. The helper rule is not the problem —
+it activates workers and they do steal. The queue is: each worker owns
+a `ConcurrentLinkedQueue`, so the owner and every thief contend on one
+head, and at 2.5 us per task that contention is the ceiling (10 000
+tasks x ~1 us of contended poll = the 14 ms measured).
+
+The fix is the standard one and the reason `ForkJoinPool` does not
+have this problem: a Chase-Lev deque per worker — the owner pushes and
+pops at one end with plain writes and a fence, thieves take from the
+other end with a CAS, so the common case has no contention at all.
+`DriveTask` is already the unit; only the container changes.
+
+Expected: `okayOwnInside` at work=10000 from 14 054 to under 3 000
+(the pool's number), with the tiny-work column unmoved (874).
+Disqualifying: a deque that does not move the inside path means the
+cost is in the steal SCAN (nine empty queues polled before the deep
+one), which is a different fix — a victim hint per thief.
+

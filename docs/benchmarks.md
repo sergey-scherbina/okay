@@ -399,6 +399,43 @@ for the third.
   the spreading placement costs more in the join than the spreading
   saves.
 
+  **The comparison, one run, every lane** (2026-09-07, accepted only
+  when the run's own error bars were tight; the two marked ~ are 13 %
+  and 16 %, the rest are 1-4 %):
+
+  | us per 10 000 fork/joins | 100 ops each | 10 000 ops each |
+  |---|---|---|
+  | kyo, its own idiom (forked inside a worker) | 776 | 25 379 |
+  | **okay `drive`, the same form** | **782** | **2 954** |
+  | okay `own`, the same form | 874 | ~14 054 |
+  | okay `own`, forked from outside | 1 249 | **2 430** |
+  | okay `drive`, forked from outside | ~2 206 | 3 729 |
+  | kyo, forked from outside | 27 495 | 31 863 |
+
+  Read the first two rows together: called the way kyo calls itself,
+  okay's `drive` scheduler is within 1 % of kyo on the scheduling
+  measure AND 8.6x faster on the real-work one. That is the whole
+  answer to "kyo is 3.3x ahead": it was ahead on one shape, in one
+  form of call, against okay's EXTERNAL form. Paired properly, the
+  JDK pool okay already ships wins the pair — because forking from
+  inside a pool worker pushes onto that worker's own deque, which is
+  what made kyo fast, and the pool then spreads what the deque cannot
+  drain, which is what kyo cannot do.
+
+  `Schedulers.own` (owned workers, the helper rule) is the best lane
+  on real work when forked from outside (2 430) and the best external
+  lane at tiny work (1 249 against `drive`'s 2 206), but its inside
+  path still reads 14 054, five times what it should. The cause is
+  named and is not the policy: `own` gives each worker a
+  `ConcurrentLinkedQueue`, so an owner and nine thieves contend on one
+  head, and at 2.5 us a task that contention is the wall (10 000
+  tasks x ~1 us of contended poll = the 14 ms we see). The JDK pool
+  does not have it because a worker's deque is owner-LIFO at one end
+  and thief-FIFO at the other. The fix is a Chase-Lev deque per
+  worker, filed as `own-deque`; the helper rule itself is correct and
+  measured, and this is the only thing between `own` and the top of
+  both columns.
+
   What okay does with that, and it is the point of the whole
   exercise: the policy can be one scheduler's, not two. `Schedulers.
   own` keeps the work at home while its queue drains fast and wakes a
