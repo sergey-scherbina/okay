@@ -1347,6 +1347,64 @@ the app starts over — damage is data.
       and mints nothing; the plain `Live` app forgets across Sites,
       as stated.
 
+### Declarative security — `secure:` (okay-script-secure, 2026-09-07)
+
+The JSP-level gap left after live/push/resume: web.xml's
+`security-constraint`. A page says who may see it in its front-matter,
+and the container holds the door with okay-security's own ladder.
+
+```markdown
+---
+secure: admin        # a scope the principal must carry; `any` = just signed in
+loginPage: login.md  # optional; root `login.md` is the default
+---
+```
+
+```scala
+final class Site(..., verify: Option[String => Verified] = None, realm: String = "okay")
+package okay.script.api:
+  object Principal: def current: Option[okay.security.Principal]
+  def login(token: String): Unit    // Session.current.set("okay.token", token)
+  def logout(): Unit                // removes it
+```
+
+The credential is a bearer token, found in the `Authorization` header
+(an API client) or, for a browser, in the session attribute
+`okay.token` — which is what a login page writes with `login(token)`
+after checking whatever it checks (`Password.verify`, a one-time
+code, an OIDC callback) and minting with a `SessionIssuer` or any
+signer the deployment's `verify` understands. `Site` never mints:
+`verify` is the deployment's, exactly as `Admin.routes` takes it.
+
+The ladder, per DISPATCHED page (a forward target is checked too; an
+`include` is the author's composition and is not):
+
+- no `verify` configured → 500, "secure: on a Site without a verifier"
+  — a misconfiguration, loudly, not an open door.
+- no token / `Verified.No` → 302 to the login page with
+  `?next=<path>` when one resolves, else 401 with
+  `WWW-Authenticate: Bearer realm=…, error="invalid_token"` — the
+  uniform refusal `Secure` gives, so an attacker learns nothing about
+  how close the token was.
+- `Verified.Ok` but `Policy.scoped(scope)` denies → 403 with
+  `error="insufficient_scope"`; `secure: any` is `Policy.allowAll`.
+- permitted → `Principal.current` is set for the page and everything
+  it includes; a Live socket on a secure page (`Site.ws`) checks the
+  same way from the socket's cookie and is simply undefined when
+  refused.
+
+- [x] `secure:` without a verifier answers 500.
+- [x] no token: 401 with `WWW-Authenticate` and no login page; 302 to
+      `/login?next=/secret` when `login.md` exists; `loginPage:`
+      overrides the default.
+- [x] a Bearer header with the scope: 200, and `Principal.current`
+      names the subject; the wrong scope: 403; `secure: any` takes
+      any valid token.
+- [x] a browser flow: the login page calls `login(token)`, the next
+      request with the session cookie is let in; `logout()` sends it
+      back to the login page.
+- [x] a forward INTO a secure page is checked; an include is not.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
