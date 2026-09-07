@@ -1405,6 +1405,58 @@ The ladder, per DISPATCHED page (a forward target is checked too; an
       back to the login page.
 - [x] a forward INTO a secure page is checked; an include is not.
 
+### Typed forms — a form from a Schema, two roads (okay-script-forms, 2026-09-07)
+
+Operator ask. okay-ui's `Form` is "the fifth algebra over Schema": a
+form rendered from the same Schema that decodes it, so the form
+cannot drift from its parser. A page gets it on both roads a page
+has.
+
+```scala
+package okay.script.api
+object Forms:
+  final case class Draft(value: Json, errors: Vector[(String, String)])   // what a failed read hands back
+  def html[A](action: String, draft: Draft = Draft.empty, submit: String = "Submit")(using Schema[A]): String
+  def read[A](fields: Map[String, String], checks: Form.Check[A]*)(using Schema[A]): Either[Draft, A]
+object Live:
+  def form[A](submit: A => String, checks: Form.Check[A]*, label: String = "Submit")(using Schema[A]): Live[Live.FormState]
+```
+
+**The plain road, no JavaScript.** `Forms.html[A]` renders the
+Schema's `Form` tree as a `<form method="post">`: the same element
+structure `Live.html` gives, plus a `name` on every input, check and
+select (the field's dotted key — `addr.city`, `tags[2]`, `pet.$case`)
+and a submit button. `Forms.read[A](Web.current.form)` folds the
+posted fields through okay-ui's OWN edit site — for every focusable
+of the rendered tree, an `Edited`/`Toggled`/`Chosen` event, applied
+with `Form.edit`, re-rendered and repeated until the value is stable
+(a sum's case knob changes the fields below it) — then `Form.errors`,
+`Form.decode`, and the cross-field `checks` on the decoded value.
+`Left(Draft)` carries the value and the per-field errors to render
+the form again with; `Right(a)` is the typed value. A list's `+`/`-`
+buttons post as `__press=<key>` and answer a `Draft` with the edit
+applied, not a submit. A checkbox not posted is `false`, as HTML has
+it.
+
+**The live road.** `Live.form[A](submit)` is a Live app whose view is
+`Form.ofWith[A](errors)` plus a submit button and a message line, and
+whose update is `Form.edit` for every field event and, on submit,
+errors → decode → checks → `submit(a)` — the message it answers is
+shown, the form clears. Mounted like any Live app; the page never
+sees a `Json`.
+
+- [x] `Forms.html` names every field by its key and posts to
+      `action`; `read` of a good post is `Right(a)`, of a missing
+      required field a `Draft` with that field's error, of a failing
+      check the check's error; an unposted checkbox reads false; a
+      `__press` on a list's `+` answers a `Draft` one item longer.
+- [x] a sum: the case knob posted changes the fields read below it.
+- [x] `Live.form` through `Site.handle`/`ws`: edits, a submit with an
+      error keeps the form and shows the error under the field, a
+      good submit calls `submit` once with the typed value and shows
+      its message.
+- [x] the example store's checkout: an `Order` form on the plain road.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
