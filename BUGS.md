@@ -14,13 +14,16 @@ the prose.
      lane: jvm
      area: scheduler
      gate: src/test/scala-jvm/TestSchedulerLaws.scala "work-stealing deque — nothing is lost while it grows under thieves"
-     fixed-in: 0815cbe8 -->
+     fixed-in: 3f09bd9c -->
 
 `compare/src/jmh/scala/okay/AdversarialBenchmark.scala:124`,
 `forkJoin10k_okayOwnLongInside` at `work = 100`, sat **62 minutes at
 0.0% CPU** in JMH warmup iteration 1 and had to be killed by pid. It
-is a lost wakeup, not slowness: the joining thread is parked and every
-worker is parked, so nothing is left to wake anyone.
+is not slowness: the joining thread is parked and every worker is
+parked, so nothing is left to wake anyone. (This paragraph first said
+"it is a lost wakeup". It is not — see ANSWERED below, where a timed
+park left the hang in place. The wrong reading is kept visible rather
+than quietly deleted, because it is the one a reader arrives with.)
 
 Found 2026-09-07 by `bench-refresh` at `dfde7ce3` (master + a claim
 commit; no library code differs from master), JDK 21.0.7-tem, on a
