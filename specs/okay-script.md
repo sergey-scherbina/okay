@@ -1867,8 +1867,15 @@ chain it is — and `OKAY_TLS_RELOAD=<seconds>` re-reads them when they
 change, so certbot's renewal needs no restart and a half-written one
 is not adopted. See specs/tls.md.
 
-Still not here, still the proxy's: ACME itself (obtaining the
-certificate), ALPN/HTTP2, OCSP stapling, cipher policy.
+**ACME** (okay-acme, the same day): `OKAY_ACME=<email>` with
+`OKAY_ACME_DOMAINS=a,b` asks a certificate authority for the
+certificate itself — staging unless `OKAY_ACME_PROD=1`, the challenge
+served on `OKAY_HTTP_PORT` ahead of the https redirect, the issued
+pair read through `Tls.reloading` so renewals need no restart. See
+specs/acme.md for what that client is and is not.
+
+Still not here, still the proxy's: ALPN/HTTP2, OCSP stapling, cipher
+policy.
 
 - [x] `httpsOnly`: an insecure request is 301'd with its path and
       query intact, before routing; a forwarded-secure one is served;
