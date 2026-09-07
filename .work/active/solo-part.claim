@@ -1,0 +1,29 @@
+task: solo-part
+agent: opus5-intent
+started: 2026-09-07
+branch: feature/solo-part
+worktree: ../okay-wt-solo
+
+why: the operator's question — how do we make a rising producer count
+  cost nothing? The answer should not be "pick the right buffer": a
+  channel does not know how many producers it will get. `AdaptiveFifo`
+  already grows a part per producer (122/725/2375 for the ring against
+  149/135/99 for the buffer at 1/4/16 producers), so the ONLY thing
+  standing between us and a channel that never slows down is its 22%
+  at ONE producer, where a plain ring is what the channel would rather
+  be.
+
+what: make the single-part case indistinguishable from a plain ring.
+  A `solo` field holds the one part while there is one, so push, pop,
+  hasRoom and popMany go straight to it — no `open` read, no
+  AtomicReferenceArray read, no scan check. When a second producer
+  claims a part, `solo` is cleared for good and the general path takes
+  over.
+
+predict: one producer 149 -> 128 or better (the ring is 122, and the
+  remaining gap is one volatile read plus the extra virtual call).
+  Four and sixteen producers unchanged (135 / 99).
+  Disqualifying: one producer still above 140 means the cost is the
+  megamorphic call site at the channel, not the lookup — and then the
+  answer is the harder one, a channel that SWAPS a plain ring for a
+  partitioned buffer when the second producer appears (filed instead).
