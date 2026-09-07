@@ -5,7 +5,7 @@ import okay.given
 import okay.http.{Body, Frame, Http, Method, Request, Response, Socket, Sockets}
 
 import org.eclipse.jetty.client.{HttpClient as JettyClient, InputStreamResponseListener, Request as JRequest}
-import org.eclipse.jetty.server.{Handler, Server, ServerConnector, Request as JsrRequest, Response as JsrResponse}
+import org.eclipse.jetty.server.{Handler, HttpConnectionFactory, Server, ServerConnector, SslConnectionFactory, Request as JsrRequest, Response as JsrResponse}
 import org.eclipse.jetty.util.Callback
 import org.eclipse.jetty.websocket.api.{Callback as WsCallback, Session}
 import org.eclipse.jetty.websocket.server.{ServerUpgradeRequest, ServerUpgradeResponse, WebSocketUpgradeHandler}
@@ -102,11 +102,24 @@ object Jetty {
             /** frames the SERVER pushes into a session's input beside the
              * client's (script-live-push) — a clock, a shared feed — for
              * the requests it is defined at; ends with the socket */
-            push: PartialFunction[Request, Source[Frame]] = PartialFunction.empty)
+            push: PartialFunction[Request, Source[Frame]] = PartialFunction.empty,
+            /** terminate TLS on this connector (script-tls): the
+             * context comes from the ONE transport seam
+             * (`okay.tls.Tls.serverContext`), so this module gains no
+             * dependency — `SSLContext` is the JDK's — and okay-jetty
+             * still knows nothing about certificates, modes or
+             * secrets. `None` is the plaintext connector, unchanged. */
+            ssl: Option[javax.net.ssl.SSLContext] = None)
            (using CanBlock, Scheduler): Server ! Resource =
     Resource.acquire {
       val server = Server()
-      val connector = ServerConnector(server)
+      val http = HttpConnectionFactory()
+      val connector = ssl match
+        case None => ServerConnector(server, http)
+        case Some(ctx) =>
+          val factory = org.eclipse.jetty.util.ssl.SslContextFactory.Server()
+          factory.setSslContext(ctx)
+          ServerConnector(server, SslConnectionFactory(factory, http.getProtocol), http)
       connector.setPort(port)
       server.addConnector(connector)
 

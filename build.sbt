@@ -1122,7 +1122,10 @@ lazy val okayScript = project
   // over the page's own WebSocket (okay-script-live).
   // okaySecurity.jvm: a page's `secure:` front-matter is enforced with
   // okay-security's own Verified/Policy ladder (okay-script-secure).
-  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty)
+  // okayTls: `Site.serve(port, ssl)` terminates HTTPS through the one
+  // transport seam (script-tls); okay-conf rides in with it, for the
+  // `Secret` a private key travels as.
+  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty, okayTls)
   .settings(
     name := "okay-script",
     // drives dotty.tools.dotc IN-PROCESS -- no scala/scala-cli

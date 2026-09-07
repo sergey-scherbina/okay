@@ -147,8 +147,9 @@ final class Site(
   /** the whole server, one line: routes, sockets and pushes over Jetty
    * (okay-script-serve). `0` asks for any free port; `Jetty.port(s)`
    * says which. A `Resource`: releasing it stops the server. */
-  def serve(port: Int)(using CanBlock, Scheduler): org.eclipse.jetty.server.Server ! Resource =
-    okay.jetty.Jetty.serve(port)(routes)(ws, push)
+  def serve(port: Int, ssl: Option[javax.net.ssl.SSLContext] = None)
+           (using CanBlock, Scheduler): org.eclipse.jetty.server.Server ! Resource =
+    okay.jetty.Jetty.serve(port)(routes)(ws, push, ssl)
 
   /** the synchronous core: one request in, one response out */
   def handle(r: Request): HttpResponse =

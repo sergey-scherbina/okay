@@ -67,12 +67,23 @@ object Tls {
 
   /** the server half: a wire server terminates TLS itself — cert as
    * a PEM path, key as a Secret ref (PKCS#8 PEM) */
-  def serverSocket(port: Int, certFile: String, key: Secret,
-                   secrets: Secrets): Either[String, SSLServerSocket] =
+  /** the server's own TLS context, named -- `serverSocket`'s first
+   * half, for a server that terminates TLS WITHOUT owning the
+   * `ServerSocket`: an embedded HTTP server (okay-jetty's connector,
+   * script-tls) is handed an `SSLContext`, not a socket, and building
+   * one by hand next door would be the second implementation of this
+   * seam the spec exists to prevent. */
+  def serverContext(certFile: String, key: Secret, secrets: Secrets): Either[String, SSLContext] =
     for
       _ <- noInlineKey(Some(key))
       pem <- secrets.get(key)
       ctx <- contextOf(None, Some((certFile, pem)))
+    yield ctx
+
+  def serverSocket(port: Int, certFile: String, key: Secret,
+                   secrets: Secrets): Either[String, SSLServerSocket] =
+    for
+      ctx <- serverContext(certFile, key, secrets)
     yield
       ctx.getServerSocketFactory.createServerSocket(port) match
         case ss: SSLServerSocket => ss

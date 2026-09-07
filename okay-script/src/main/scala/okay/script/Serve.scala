@@ -13,7 +13,9 @@ import java.nio.file.{Files, Path, Paths}
  *   OKAY_DATA=./data sbt "okayScript/runMain okay.script.Serve pages"
  *
  * `OKAY_LANGS=en,uk` names the languages the site speaks (okay-script-
- * i18n), the first the default.
+ * i18n), the first the default. `OKAY_TLS_CERT=/path/cert.pem` with
+ * `OKAY_TLS_KEY=file:/path/key.pem` (a Secret ref) serves HTTPS
+ * through the one transport seam (script-tls).
  *
  * `OKAY_DATA` names a directory for an okay-persist `FileStore`: with
  * it the sessions (`Sessions.persisted`) and the application scope
@@ -23,7 +25,9 @@ import java.nio.file.{Files, Path, Paths}
  */
 object Serve:
 
-  final case class Args(root: Path, port: Int, data: Option[Path], languages: Vector[String] = Vector("en"))
+  final case class Args(root: Path, port: Int, data: Option[Path], languages: Vector[String] = Vector("en"),
+                        tls: Option[(String, okay.conf.Secret)] = None):
+    def scheme: String = if tls.isDefined then "https" else "http"
 
   /** `<dir> [port]`; port 8080 by default */
   def parse(args: Array[String], env: String => Option[String] = k => Option(System.getenv(k))): Either[String, Args] =
@@ -33,9 +37,30 @@ object Serve:
         if !Files.isDirectory(root) then Left(s"not a directory: $dir")
         else
           rest.headOption.map(_.toIntOption.toRight(s"not a port: ${rest.head}")).getOrElse(Right(8080))
-            .map(port => Args(root, port, env("OKAY_DATA").map(Paths.get(_)),
-              env("OKAY_LANGS").map(_.split(",").toVector.map(_.trim).filter(_.nonEmpty)).filter(_.nonEmpty).getOrElse(Vector("en"))))
+            .flatMap { port =>
+              tlsOf(env).map(tls => Args(root, port, env("OKAY_DATA").map(Paths.get(_)),
+                env("OKAY_LANGS").map(_.split(",").toVector.map(_.trim).filter(_.nonEmpty)).filter(_.nonEmpty).getOrElse(Vector("en")),
+                tls))
+            }
       case _ => Left("usage: okay.script.Serve <pages-dir> [port]   (OKAY_DATA=<dir> for a persistent store)")
+
+  /** OKAY_TLS_CERT and OKAY_TLS_KEY come as a PAIR: a certificate
+   * without its key (or the other way round) is a misconfiguration
+   * named as such, never a silent fall back to plaintext */
+  private def tlsOf(env: String => Option[String]): Either[String, Option[(String, okay.conf.Secret)]] =
+    (env("OKAY_TLS_CERT"), env("OKAY_TLS_KEY")) match
+      case (None, None) => Right(None)
+      case (Some(cert), Some(key)) => Right(Some((cert, okay.conf.Secret(key))))
+      case (Some(_), None) => Left("OKAY_TLS_CERT is set without OKAY_TLS_KEY (a Secret ref: file:/run/secrets/key.pem)")
+      case (None, Some(_)) => Left("OKAY_TLS_KEY is set without OKAY_TLS_CERT (the certificate PEM's path)")
+
+  /** the TLS context the arguments describe, through the one
+   * transport seam (specs/tls.md); a refusal names what failed */
+  def sslOf(a: Args, secrets: okay.conf.Secrets = okay.conf.Secrets.chain(okay.conf.Secrets.env, okay.conf.Secrets.file))
+  : Either[String, Option[javax.net.ssl.SSLContext]] =
+    a.tls match
+      case None => Right(None)
+      case Some((cert, key)) => okay.tls.Tls.serverContext(cert, key, secrets).map(Some(_))
 
   /** the Site the arguments describe -- a caller wanting `verify`/
    * `issue` or a shared `Sessions` builds its own from here */
@@ -48,15 +73,21 @@ object Serve:
         Site(a.root, sessions = Sessions.persisted(store), application = api.Application.persisted(store), languages = a.languages)
 
   def main(args: Array[String]): Unit =
-    parse(args) match
+    val plan =
+      for
+        a <- parse(args)
+        ssl <- sslOf(a)
+      yield (a, ssl)
+    plan match
       case Left(msg) =>
         System.err.println(msg)
         System.exit(2)
-      case Right(a) =>
+      case Right((a, ssl)) =>
         val s = site(a)
         try
-          Resource.run[Unit, Pure](s.serve(a.port).map { server =>
-            println(s"okay-script: serving ${a.root.toAbsolutePath} at http://127.0.0.1:${okay.jetty.Jetty.port(server)}/" +
+          Resource.run[Unit, Pure](s.serve(a.port, ssl).map { server =>
+            println(s"okay-script: serving ${a.root.toAbsolutePath} at " +
+              s"${a.scheme}://127.0.0.1:${okay.jetty.Jetty.port(server)}/" +
               a.data.map(d => s" (data in $d)").getOrElse(""))
             Thread.sleep(Long.MaxValue)
           }).runWith
