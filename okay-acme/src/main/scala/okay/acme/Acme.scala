@@ -205,12 +205,22 @@ object Acme:
         }
       }
 
-    def post(url: String, payload: String): Either[String, Answer] =
-      for
-        n <- freshNonce()
-        body <- sign(url, n, payload)
-        r <- send(Request.post(url, Body.Text(body), Vector("Content-Type" -> "application/jose+json")))
-      yield r
+    def post(url: String, payload: String): Either[String, Answer] = post(url, payload, retried = false)
+
+    private def post(url: String, payload: String, retried: Boolean): Either[String, Answer] =
+      val attempt =
+        for
+          n <- freshNonce()
+          body <- sign(url, n, payload)
+          r <- send(Request.post(url, Body.Text(body), Vector("Content-Type" -> "application/jose+json")))
+        yield r
+      attempt match
+        // RFC 8555 §6.5: a badNonce answer carries a fresh nonce and
+        // the client SHOULD retry once with it. Pebble rejects a
+        // reused nonce where our own double did not -- which is how
+        // this retry (and the bug under it) was found.
+        case Left(msg) if !retried && msg.contains("badNonce") => post(url, payload, retried = true)
+        case other => other
 
     /** POST-as-GET: an EMPTY payload, which is how RFC 8555 reads a
      * resource -- there is no GET with authentication in this protocol */
@@ -218,13 +228,25 @@ object Acme:
 
     def postAsGetText(url: String): Either[String, String] = post(url, "").map(_.text)
 
-    private def freshNonce(): Either[String, String] = nonce match
-      case Some(n) =>
-        nonce = None
-        Right(n)
+    /** a nonce is spent ONCE: taking it clears the cache, and asking
+     * the CA for one leaves the cache empty too.
+     *
+     * The first version returned the `Replay-Nonce` of the HEAD it
+     * had just made WITHOUT clearing what `send` had cached from that
+     * same response — so the next POST spent the same value again and
+     * a strict CA answered badNonce. Our own test double accepted it;
+     * Pebble did not, which is the whole reason acme-pebble exists. */
+    private def freshNonce(): Either[String, String] = take() match
+      case Some(n) => Right(n)
       case None =>
-        send(Request(Method.Head, newNonce)).flatMap(r =>
-          header(r.head, "replay-nonce").toRight("the CA sent no Replay-Nonce"))
+        send(Request(Method.Head, newNonce)).flatMap { _ =>
+          take().toRight("the CA sent no Replay-Nonce")
+        }
+
+    private def take(): Option[String] =
+      val n = nonce
+      nonce = None
+      n
 
     private def send(r: Request): Either[String, Answer] =
       try
