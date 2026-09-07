@@ -1,5 +1,0 @@
-lane: park-interrupt-order
-who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
-since: 2026-09-07
-what: the sibling sites of scheduler-cancel-wins. `CanBlock.block` now reads the interrupt before the slot's fast path; the other two park sites in Platform.scala do not. `blockAccepted` has BOTH defects — the fast path reads `filled` without looking at the interrupt, and its LOOP still has the pre-2026-09-07 order (value first, interrupt only after the park returns). `await(h: Handoff)` has the fast-path one. Consequence is the same law: a cancelled fiber blocked on a channel send can take an acceptance that arrived after the cancel. One rule in all three, and a forced-race law for each (an uninterruptible spin in the registration, as the one that landed today), plus a look for a fourth site.
-touches: src/main/scala-jvm/Platform.scala, src/test/scala-jvm/TestSchedulerLaws.scala, specs/schedulers.md, BACKLOG, CHANGELOG
