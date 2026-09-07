@@ -1,5 +1,0 @@
-lane: scheduler-cancel-wins
-who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
-since: 2026-09-07
-what: operator took the proposal. The loom member's cancel is `t.interrupt()` alone: if the interrupt lands BEFORE the fiber parks, a value delivered afterwards can still become the cancelled fiber's answer, which the law forbids (flaky-scheduler-late-answer, red about one run in three). The drive member already does it right — it ANSWERS the fiber on cancel and the first answer wins. Give `fiberOf` the same: interrupt AND completeExceptionally, so the winner is decided atomically. Replace the law's 80 ms sleep with a deterministic repeat (1000 iterations) that fails every time rather than one in three.
-touches: src/main/scala-jvm/Platform.scala (fiberOf, used by loom, forkJoin and threads), src/test/scala-jvm/TestSchedulerLaws.scala, BACKLOG, CHANGELOG, specs if the law is stated there
