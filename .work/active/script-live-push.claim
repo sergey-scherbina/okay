@@ -1,0 +1,21 @@
+task: script-live-push
+agent: fable-persist
+started: 2026-09-07
+branch: feature/script-live-push
+worktree: ../okay-wt-push
+
+why: okay-script-live's open half: "a Live app only changes on a
+  client event; a source merged in (Ui.run's external) is what a
+  ticking clock or a shared poll needs." Ui.run already merges an
+  external Source[Event] into the host's events; a Live page over a
+  WebSocket has no such door.
+
+what: Live(init)(view)(update, push = Source[Event]) — the server's
+  own events, obeying the same capability rule as the browser's (a
+  pushed Pressed must name a shown key, as okay-ui's own timer test
+  does). okay-http gains Ws.Session(stage, push: Source[Frame]); the
+  Jetty transport feeds the pushed frames into the socket's input
+  channel beside the client's, so Wire.serve is still used verbatim;
+  Site.ws answers a Ws.Session. Tests in-JVM (the pushed frames and
+  the patches they cause) and over Jetty (patches arrive with nobody
+  pressing).
