@@ -192,6 +192,23 @@ object Schedulers {
       val fut = pool.submit(task)
       fiberOf(f, () => { fut.cancel(true); () })
 
+  /** fibers as continuations on a pool — the JS shape on the JVM: no
+   * thread per fiber, the program's tree walked by `Async.Drive` on
+   * whichever pool thread picks it up; a parked Await costs its
+   * callback and nothing else. Blocking joins from inside a fiber
+   * still hold the pool thread, as with `forkJoin`. */
+  def drive(pool: ExecutorService = ForkJoinPool.commonPool()): Scheduler = new:
+    def fork[A](prog: () => A ! Async): Fiber[A] =
+      val p = scala.concurrent.Promise[A]()
+      val d = Async.Drive(p)
+      pool.execute: () =>
+        try d(prog())
+        catch case e: Throwable => { val _ = p.tryFailure(e) }
+      new Fiber[A]:
+        def onComplete(k: Either[Throwable, A] => Unit): Unit =
+          p.future.onComplete(t => k(t.toEither))(using scala.concurrent.ExecutionContext.parasitic)
+        def cancel(): Unit = d.cancel()
+
   /** one honest platform thread per fiber: heavy, but works anywhere */
   val threads: Scheduler = new:
     def fork[A](prog: () => A ! Async): Fiber[A] =

@@ -1,0 +1,23 @@
+task: drive-scheduler-jvm
+agent: opus5-intent
+started: 2026-09-07
+branch: feature/drive-scheduler
+worktree: ../okay-wt-drive
+
+why: §4b says kyo is 3.3x ahead at fork/join 10k "because its fibers
+  are not threads". The operator asked: okay has schedulers of its
+  own too — Schedulers.forkJoin (a pool) on the JVM, Async.Drive on
+  JS (a fiber is a continuation walked by a loop, no thread at all).
+  So which part of the 3.3x is the thread, and which is the rest?
+
+what: Schedulers.drive(pool) — the JS shape on the JVM: fork =
+  pool.execute(Drive(prog)), join = Promise.onComplete. One lane,
+  forkJoin10k_okayDrive, beside okay (loom 2712), okayPool (2300),
+  rawLoom (2632), kyo (830).
+
+predict: pool 2300 -> drive ~1500 if the per-fiber cost is the
+  CompletableFuture + ForkJoinTask completion path; drive >= pool
+  means the cost is the submit + the 10k sequential joins on the
+  platform thread (Slot park per not-yet-done fiber), and closing the
+  gap needs a structured parallel (one counter, one wake) rather than
+  a cheaper fiber. Disqualifying: drive within 10% of pool.

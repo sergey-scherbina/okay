@@ -62,6 +62,11 @@ class AdversarialBenchmark {
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
 
   @Benchmark
+  def forkJoin10k_okayDrive(): Long =
+    given Scheduler = Schedulers.drive()
+    (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
+
+  @Benchmark
   def forkJoin10k_zio(): Long =
     import _root_.zio.*
     val z = ZIO.foreachPar(0 until K)(i => ZIO.succeed(step(i))).map(_.foldLeft(0L)(_ + _))
