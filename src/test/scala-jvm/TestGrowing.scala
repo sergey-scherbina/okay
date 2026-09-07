@@ -16,10 +16,10 @@ class TestGrowing extends munit.FunSuite {
     assertEquals(b.parts, 1, "a ring that was never refused must still be one part")
   }
 
-  test("one producer filling it over and over never grows it: that is backpressure, not contention") {
+  test("one producer, however many pushes, never grows it: one thread is not contention") {
     val b = Growing[Int](Ring[Int](4), 8, () => Ring[Int](4))
     var round = 0
-    while round < 5 do
+    while round < 200 do        // well past the sampling period
       var i = 0
       while i < 4 do { assert(b.push(i), s"push $i"); i += 1 }
       assert(!b.push(99), "a full ring refuses")
@@ -28,7 +28,7 @@ class TestGrowing extends munit.FunSuite {
     assertEquals(b.parts, 1, "one producer must not turn it into a partitioned buffer")
   }
 
-  test("two refused producers grow it, and what was already in it stays readable") {
+  test("a second producer grows it, and what was already in it stays readable") {
     val b = Growing[Int](Ring[Int](4), 8, () => Ring[Int](4))
     var i = 0
     while i < 4 do { assert(b.push(i), s"push $i"); i += 1 }

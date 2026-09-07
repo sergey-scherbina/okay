@@ -19,12 +19,20 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 0, so every element is still read exactly once and in its
  * producer's order.
  *
- * Two different producers, not one refusal: a bounded ring refuses
- * whenever it is FULL, which a single fast producer does to a slow
- * consumer all day long, and partitioning that channel would buy
- * nothing and cost the layer for ever. Two refused producers is
- * contention rather than backpressure. Both reads live on the refusal
- * path, which already ends in a park, so the fast path pays nothing.
+ * WHAT COUNTS AS CONTENTION, corrected by measurement (2026-09-07).
+ * The first cut grew on a REFUSED push, reasoning that a full ring
+ * with a waiting producer is contention. The benchmark said no: at
+ * sixteen producers a ring is 17x slower than a partitioned buffer
+ * with ROOM TO SPARE, because what costs is sixteen threads CASing
+ * one tail, not fullness — the ring was never refused and the buffer
+ * never grew. Fullness is backpressure, which one producer can cause
+ * on its own and which partitioning would not help.
+ *
+ * So the signal is DIFFERENT PRODUCERS, and it is sampled rather than
+ * read: a plain counter every push, and every 64th one compares the
+ * pushing thread with the last one sampled. Racy on purpose — it only
+ * has to be right eventually, and a volatile read per push was
+ * measured at 1.49x elsewhere in this codebase.
  *
  * What growth does NOT do is rescue the producer that triggered it.
  * That producer keeps part 0 — the ring it filled — because its own
@@ -43,28 +51,40 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
    * itself */
   @volatile private var inner: Buffer[A] = initial
   private val grown = AtomicBoolean(false)
-  /** the first producer this buffer refused; the second one that is
-   * not it is what contention means here */
-  @volatile private var refusedOne: Thread | Null = null
+  /** the last producer sampled, and the sampling counter. The counter
+   * is plain: a lost increment costs a later sample, nothing else */
+  @volatile private var sampled: Thread | Null = null
+  private var seen: Int = 0
 
   /** one swap, ever; losers use the winner's buffer */
   private def grow(): Buffer[A] =
     if grown.compareAndSet(false, true) then
       // part 0 is the ring, and its owner is the producer that filled it
-      val partitioned = AdaptiveFifo[A](cap, each, eager = false, first = inner, firstOwner = refusedOne)
+      val partitioned = AdaptiveFifo[A](cap, each, eager = false, first = inner, firstOwner = sampled)
       inner = partitioned
       partitioned
     else inner
 
-  /** on the refusal path only: the second DIFFERENT producer to be
-   * refused turns this into a partitioned buffer */
+  /** every 64th push: a producer that is not the one we sampled last
+   * means more than one is pushing, which is what parts are for */
+  private def sample(): Unit =
+    seen += 1
+    if (seen & 63) == 0 && !grown.get then
+      val me = Thread.currentThread()
+      val last = sampled
+      if last == null then sampled = me
+      else if !(last eq me) then { val _ = grow() }
+
+  /** the refusal path still grows it when a second producer is
+   * genuinely blocked behind a full part — backpressure AND
+   * contention, which is the one case where fullness means parts */
   private def refused(): Buffer[A] | Null =
     if grown.get then inner
     else
       val me = Thread.currentThread()
-      val first = refusedOne
-      if first == null then { refusedOne = me; null }
-      else if (first eq me) then null
+      val last = sampled
+      if last == null then { sampled = me; null }
+      else if (last eq me) then null
       else grow()
 
   override def capacity: Int = inner.capacity
@@ -82,6 +102,7 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
   override def seal(mark: A): Int = inner.seal(mark)
 
   override def push(a: A): Boolean =
+    sample()
     val b = inner
     if b.push(a) then true
     else
@@ -101,6 +122,7 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
   // first cut delegated these two straight through and the buffer
   // never grew under a channel at all, only under a direct caller
   override def pushDeciding(a: A, unless: AtomicBoolean, orElse: A): A | Null =
+    sample()
     val b = inner
     val out = b.pushDeciding(a, unless, orElse)
     if out != null then out
@@ -109,6 +131,7 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
       if grownTo == null then null else grownTo.nn.pushDeciding(a, unless, orElse)
 
   override def pushDecidingAt(route: Int, a: A, unless: AtomicBoolean, orElse: A): A | Null =
+    sample()
     val b = inner
     val out = b.pushDecidingAt(route, a, unless, orElse)
     if out != null then out
