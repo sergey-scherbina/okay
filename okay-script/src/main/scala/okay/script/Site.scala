@@ -35,8 +35,14 @@ final class Site(
   /** JSP's application scope, shared by every page (okay-script-
    * application); `Application.persisted(store)` survives a restart */
   val application: api.Application = api.Application.memory(),
+  /** the languages this site speaks, the first the default
+   * (okay-script-i18n): `page.<lang>.md` variants and `i18n/<lang>.
+   * yaml` messages are looked up for the request's language */
+  val languages: Vector[String] = Vector("en"),
 ):
   import Site.*
+
+  require(languages.nonEmpty, "a Site speaks at least one language")
 
   private val rootAbs = root.toAbsolutePath.normalize
   private val pages = new ConcurrentHashMap[Path, Page]
@@ -97,9 +103,11 @@ final class Site(
     val (path, query) = splitUrl(r.url)
     parseQuery(query).get("__live").flatMap { id =>
       resolve(path) match
-        case Some(Hit.PageFile(f, _)) =>
+        case Some(Hit.PageFile(base, params)) =>
+          // the socket's language picks the same variant its page had
+          val f = localized(base, langOf(webOf(r, path, query, params)))
           Option(lives.get((f, id))).orElse {
-            handle(Request.get(path)): Unit // a render registers what the page mounts
+            handle(Request.get(r.url, r.headers)): Unit // a render registers what the page mounts
             Option(lives.get((f, id)))
           }.map(app => (app, id))
         case _ => None
@@ -171,7 +179,9 @@ final class Site(
     if decoded.contains('\u0000') then None
     else
       val segs = decoded.split("/").toVector.filter(_.nonEmpty)
-      if segs.exists(s => s == ".." || s == "." || s.startsWith("[")) then None else Some(segs)
+      // `i18n/` holds the message files and is never routed
+      if segs.exists(s => s == ".." || s == "." || s.startsWith("[")) || segs.headOption.contains(I18nDir) then None
+      else Some(segs)
 
   private def under(p: Path): Boolean = p.toAbsolutePath.normalize.startsWith(rootAbs)
 
@@ -236,7 +246,22 @@ final class Site(
   private def pageFor(f: Path): Page =
     pages.computeIfAbsent(f, p => Page(p, classpath, tempRoot))
 
+  /** a page's front-matter; a language VARIANT inherits its base
+   * page's keys and overrides what it sets -- so `secure:` on
+   * `admin.md` holds for `admin.uk.md` whether or not the translator
+   * repeated it (okay-script-i18n) */
   private def frontMatter(f: Path): Map[String, String] =
+    baseOf(f).filter(Files.isRegularFile(_)).map(ownFrontMatter).getOrElse(Map.empty) ++ ownFrontMatter(f)
+
+  /** `page.<lang>.md` → `page.md`, for a language the site speaks */
+  private def baseOf(f: Path): Option[Path] =
+    val name = f.getFileName.toString
+    val parts = name.split('.')
+    if parts.length >= 3 && parts.last == "md" && languages.exists(_.equalsIgnoreCase(parts(parts.length - 2))) then
+      Some(f.resolveSibling(parts.dropRight(2).mkString(".") + ".md"))
+    else None
+
+  private def ownFrontMatter(f: Path): Map[String, String] =
     val mtime = Files.getLastModifiedTime(f)
     fronts.get(f) match
       case (t, fm) if t == mtime => fm
@@ -245,11 +270,18 @@ final class Site(
         fronts.put(f, (mtime, fm)): Unit
         fm
 
-  private def servePage(r: Request, path: String, query: String, params: Map[String, String], f: Path): HttpResponse =
+  private def servePage(r: Request, path: String, query: String, params: Map[String, String], base: Path): HttpResponse =
     val web = webOf(r, path, query, params)
     val resp = new api.Response
     resp.contentType(HtmlUtf8)
     val sess = sessions.handle(web.cookies.get(SessionCookie))
+    val lang = langOf(web)
+    val f = localized(base, lang)
+    api.Lang.setCurrent(lang)
+    api.Container.setTranslator(Some(translator(lang)))
+    // a `?lang=` choice is remembered by cookie for the requests after
+    if web.query.get("lang").contains(lang) && !web.cookies.get(api.Lang.Cookie).contains(lang) then
+      resp.cookie(api.Lang.Cookie, lang)
     api.Web.setCurrent(web)
     api.Response.setCurrent(resp)
     api.Session.setCurrent(sess)
@@ -269,6 +301,8 @@ final class Site(
       api.Container.setIncluder(None)
       api.Container.setLiveRegistrar(None)
       api.Container.setIssuer(None)
+      api.Container.setTranslator(None)
+      api.Lang.setCurrent(languages.head)
       api.Application.setCurrent(api.Application.detached)
       api.Principal.setCurrent(None)
       api.Web.setCurrent(api.Web.empty)
@@ -344,7 +378,7 @@ final class Site(
           resolve(pathOf(target)) match
             case Some(Hit.PageFile(g, ps)) =>
               val w2 = web.copy(params = web.params ++ ps + ("forwarded" -> target))
-              dispatch(g, w2, resp, forwards + 1)
+              dispatch(localized(g, api.Lang.current), w2, resp, forwards + 1)
             case _ =>
               resp.status = 404
               resp.contentType(TextUtf8)
@@ -377,7 +411,49 @@ final class Site(
   private def findErrorPage(f: Path): Option[Path] =
     frontMatter(f).get("errorPage").flatMap(ref => relative(f, ref)).filter(Files.isRegularFile(_))
       .orElse(Some(rootAbs.resolve("error.md")).filter(Files.isRegularFile(_)))
+      .map(localized(_, api.Lang.current))
       .filter(_ != f)
+
+  // ---- languages (okay-script-i18n)
+
+  /** `?lang=`, the cookie, `Accept-Language`, the first language */
+  private def langOf(web: api.Web): String =
+    def known(l: String): Option[String] = languages.find(_.equalsIgnoreCase(l))
+    web.query.get("lang").flatMap(known)
+      .orElse(web.cookies.get(api.Lang.Cookie).flatMap(known))
+      .orElse(web.header("Accept-Language").flatMap(acceptLanguage(_, languages)))
+      .getOrElse(languages.head)
+
+  /** `page.<lang>.md` beside `page.md`, when it exists and `lang` is
+   * one the site speaks; else the page itself */
+  private def localized(f: Path, lang: String): Path =
+    val name = f.getFileName.toString
+    if lang == languages.head || !name.endsWith(".md") then f
+    else
+      val v = f.resolveSibling(name.dropRight(3) + "." + lang + ".md")
+      if Files.isRegularFile(v) then v else f
+
+  private val messages = new ConcurrentHashMap[String, (FileTime, Map[String, String])]
+
+  /** `i18n/<lang>.yaml`, a flat mapping, cached by mtime; absent is empty */
+  private def messagesOf(lang: String): Map[String, String] =
+    val f = rootAbs.resolve(I18nDir).resolve(lang + ".yaml")
+    if !Files.isRegularFile(f) then Map.empty
+    else
+      val mtime = Files.getLastModifiedTime(f)
+      messages.get(lang) match
+        case (t, m) if t == mtime => m
+        case _ =>
+          val m = Meta.parseYaml(Files.readAllLines(f).asScala.toVector) match
+            case Meta.Value.Obj(fields) => fields.collect { case (k, Meta.Value.Str(v)) => k -> v }.toMap
+            case _ => Map.empty[String, String]
+          messages.put(lang, (mtime, m)): Unit
+          m
+
+  private def translator(lang: String): String => Option[String] =
+    val own = messagesOf(lang)
+    lazy val fallback = if lang == languages.head then Map.empty[String, String] else messagesOf(languages.head)
+    key => own.get(key).orElse(fallback.get(key))
 
   /** a page reference from inside `f`: absolute from the root with a
    * leading `/`, else relative to `f`'s directory; never outside root */
@@ -398,7 +474,7 @@ final class Site(
     if stack.length > MaxIncludeDepth then
       throw new IllegalStateException(s"include(\"$name\"): nesting deeper than $MaxIncludeDepth -- a page including itself?")
     val from = stack.headOption.getOrElse(rootAbs.resolve("index.md"))
-    val g = relative(from, name).filter(Files.isRegularFile(_))
+    val g = relative(from, name).filter(Files.isRegularFile(_)).map(localized(_, api.Lang.current))
       .getOrElse(throw new java.io.FileNotFoundException(s"include(\"$name\"): no such page under ${rootAbs.relativize(from.getParent)}"))
     val r = rendering(g)(pageFor(g).render(api.Web.current))
     if r.ok then r.stdout
@@ -441,7 +517,23 @@ object Site:
     case Misconfigured(why: String)
 
   val SessionCookie = "OKAYSESSID"
+  val I18nDir = "i18n"
   val MaxForwards = 8
+
+  /** the first of the header's languages, by q, that the site speaks
+   * -- matched on the primary subtag (`uk-UA` is `uk`) */
+  def acceptLanguage(header: String, languages: Vector[String]): Option[String] =
+    val ranked = header.split(",").toVector.flatMap { part =>
+      val ps = part.trim.split(";").toVector.map(_.trim)
+      if ps.isEmpty || ps(0).isEmpty then None
+      else
+        val q = ps.drop(1).collectFirst { case p if p.startsWith("q=") => p.drop(2).toDoubleOption.getOrElse(0.0) }.getOrElse(1.0)
+        Some(ps(0).toLowerCase -> q)
+    }.sortBy(-_._2)
+    ranked.iterator.flatMap { (tag, _) =>
+      val primary = tag.takeWhile(_ != '-')
+      languages.find(l => l.equalsIgnoreCase(tag) || l.equalsIgnoreCase(primary))
+    }.nextOption()
   val MaxIncludeDepth = 16
   private val HtmlUtf8 = "text/html; charset=utf-8"
   private val TextUtf8 = "text/plain; charset=utf-8"

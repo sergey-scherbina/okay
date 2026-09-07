@@ -17,7 +17,7 @@ class TestSiteExample extends munit.FunSuite:
   private val root = Vector("examples/site", "okay-script/examples/site").map(Paths.get(_))
     .find(Files.isDirectory(_)).getOrElse(Paths.get("examples/site"))
   private val issuer = okay.security.SessionIssuer()
-  private lazy val site = Site(root, verify = Some(issuer.verify(_)), issue = Some((s, sc) => issuer.issue(s, sc)))
+  private lazy val site = Site(root, verify = Some(issuer.verify(_)), issue = Some((s, sc) => issuer.issue(s, sc)), languages = Vector("en", "uk"))
 
   override def afterAll(): Unit = site.close()
 
@@ -86,6 +86,11 @@ class TestSiteExample extends munit.FunSuite:
     assert(rejected.contains("! must be positive"), rejected)
     assertEquals(site.handle(Request.get("/logout", Seq("Cookie" -> adminCookie))).status, 302)
     assertEquals(site.handle(Request.get("/admin", Seq("Cookie" -> adminCookie))).status, 302)
+
+    // the Ukrainian variant of the index, with the header's strings from i18n/uk.yaml
+    val uk = text(site.handle(Request.get("/?lang=uk")))
+    assert(uk.contains("Okay Крамниця") && uk.contains("Кошик (0)") && uk.contains("/product/ok-9"), uk)
+    assert(text(site.handle(Request.get("/cart", Seq("Cookie" -> "OKAYLANG=uk")))).contains("Кошик (0)"))
 
     val css = site.handle(Request.get("/style.css"))
     assertEquals(header(css, "content-type"), Some("text/css; charset=utf-8"))

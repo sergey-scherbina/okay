@@ -173,6 +173,13 @@ object Container:
 
   def setLiveRegistrar(f: Option[(String, Live[?]) => Unit]): Unit = lives.set(f)
 
+  private val translators: ThreadLocal[Option[String => Option[String]]] = ThreadLocal.withInitial(() => None)
+
+  /** the container's message lookup for the request's language */
+  def translator: Option[String => Option[String]] = translators.get()
+
+  def setTranslator(f: Option[String => Option[String]]): Unit = translators.set(f)
+
   private val issuers: ThreadLocal[Option[(String, Set[String]) => String]] = ThreadLocal.withInitial(() => None)
 
   /** the container's token minter, when the Site was given one */
@@ -212,6 +219,26 @@ object Principal:
  * cookie presents it. A login page calls this after checking the
  * credentials it checks. */
 def login(token: String): Unit = Session.current.set(Principal.TokenAttribute, token)
+
+/** The request's language (okay-script-i18n): `?lang=`, the OKAYLANG
+ * cookie, `Accept-Language`, or the Site's first language -- what
+ * chose the page variant being rendered and what `t` translates
+ * into. See specs/okay-script.md "Languages". */
+object Lang:
+  private val local: ThreadLocal[String] = ThreadLocal.withInitial(() => "en")
+
+  def current: String = local.get()
+
+  def setCurrent(l: String): Unit = local.set(l)
+
+  val Cookie = "OKAYLANG"
+
+/** A message by key in the request's language -- `i18n/<lang>.yaml`,
+ * falling back to the Site's first language, then to the key itself;
+ * `{0}`, `{1}`… are replaced by `args`. */
+def t(key: String, args: Any*): String =
+  val raw = Container.translator.flatMap(_(key)).getOrElse(key)
+  args.zipWithIndex.foldLeft(raw) { case (s, (a, i)) => s.replace("{" + i + "}", String.valueOf(a)) }
 
 /** Signs the browser in WITHOUT the page holding an issuer of its
  * own: the container mints the token (`Site(issue = Some(...))`, the

@@ -12,6 +12,9 @@ import java.nio.file.{Files, Path, Paths}
  *   sbt "okayScript/runMain okay.script.Serve pages 8080"
  *   OKAY_DATA=./data sbt "okayScript/runMain okay.script.Serve pages"
  *
+ * `OKAY_LANGS=en,uk` names the languages the site speaks (okay-script-
+ * i18n), the first the default.
+ *
  * `OKAY_DATA` names a directory for an okay-persist `FileStore`: with
  * it the sessions (`Sessions.persisted`) and the application scope
  * (`Application.persisted`) survive a restart; without it both are in
@@ -20,7 +23,7 @@ import java.nio.file.{Files, Path, Paths}
  */
 object Serve:
 
-  final case class Args(root: Path, port: Int, data: Option[Path])
+  final case class Args(root: Path, port: Int, data: Option[Path], languages: Vector[String] = Vector("en"))
 
   /** `<dir> [port]`; port 8080 by default */
   def parse(args: Array[String], env: String => Option[String] = k => Option(System.getenv(k))): Either[String, Args] =
@@ -30,18 +33,19 @@ object Serve:
         if !Files.isDirectory(root) then Left(s"not a directory: $dir")
         else
           rest.headOption.map(_.toIntOption.toRight(s"not a port: ${rest.head}")).getOrElse(Right(8080))
-            .map(port => Args(root, port, env("OKAY_DATA").map(Paths.get(_))))
+            .map(port => Args(root, port, env("OKAY_DATA").map(Paths.get(_)),
+              env("OKAY_LANGS").map(_.split(",").toVector.map(_.trim).filter(_.nonEmpty)).filter(_.nonEmpty).getOrElse(Vector("en"))))
       case _ => Left("usage: okay.script.Serve <pages-dir> [port]   (OKAY_DATA=<dir> for a persistent store)")
 
   /** the Site the arguments describe -- a caller wanting `verify`/
    * `issue` or a shared `Sessions` builds its own from here */
   def site(a: Args): Site =
     a.data match
-      case None => Site(a.root)
+      case None => Site(a.root, languages = a.languages)
       case Some(dir) =>
         Files.createDirectories(dir)
         val store = FileStore.open(dir)
-        Site(a.root, sessions = Sessions.persisted(store), application = api.Application.persisted(store))
+        Site(a.root, sessions = Sessions.persisted(store), application = api.Application.persisted(store), languages = a.languages)
 
   def main(args: Array[String]): Unit =
     parse(args) match
