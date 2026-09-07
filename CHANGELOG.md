@@ -1,5 +1,42 @@
 # Changelog
 
+## deploy-cli (spec) — the CLI, and the decision it forces
+Completed: 2026-09-07
+Landed as the ff of feature/deploy-cli-spec. Operator ask: a simple
+CLI in okay-deploy for this. An operator's entry point is a command,
+not `sbt "okayDeploy/runMain okay.deploy.Up laptop"` — and sbt is
+missing exactly where it matters most, on a server holding the
+artifacts and nothing else. So: `okay deploy render | doctor | up |
+down | diff | targets`.
+
+The important part is not the verbs but what they read. `render`
+writes `deployment.json` — the `Deployment` value through its own
+`Schema` — beside the target's files, and every later verb reads that
+rather than evaluating Scala. Three things follow, each worth more
+than the CLI itself: the artifacts directory becomes SELF-CONTAINED,
+so copying `deploy/` to a server and running `okay deploy up host`
+works with no repository, no sbt and no compiler; one binary serves
+every deployment, because the CLI depends on no application's code;
+and the model stays under useful pressure, since what the JSON cannot
+express, the model cannot either. Rendering stays in the build, where
+the Scala value lives.
+
+It ships as a fat jar plus a wrapper, which makes a JRE the one
+prerequisite — named by the doctor rather than hidden, because a tool
+that cannot report its own missing runtime is precisely the failure
+the clean-machine section exists to prevent; a native binary needing
+no JRE is filed rather than promised. The name is `okay` with
+`deploy` as the first subcommand group, leaving okay-script's `Serve`
+and okay-acme's `Revoke` a door in later. And seven properties are
+written down because each is a thing that goes wrong in tools like
+this one: exit codes that distinguish "install docker" from "the
+deploy failed", `--dry-run` printing the exact commands, `--json`
+wherever there is a table, no prompts off a terminal, `NO_COLOR`,
+help that fits a screen, and every failure carrying its wrapped
+command. Folded into stage 0, whose proof now includes driving the
+CLI from a COPY of the artifacts directory with the repository
+absent.
+
 ## deploy-bootstrap (spec) — the clean machine, and the failures it exists to prevent
 Completed: 2026-09-07
 Landed as e6569f6c. Operator ask: a machine where nothing is
