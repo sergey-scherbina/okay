@@ -40,12 +40,43 @@ port in five files and its database URL in four; the point of a value
 is that it says each once.
 
 The rule that keeps this honest, inherited from specs/deploy.md and
-not weakened here: **we render artifacts, we do not become the
-runtime.** Every target's own tool applies them — `docker compose`,
-`systemctl`, `helm`, `flyctl`, `terraform`. There is no okay
-orchestrator, no agent, no control plane. A pure function from a
-value to files can be tested without an account, and that is what
-makes "every place" affordable at all.
+sharpened by the operator's own framing (2026-09-07): **a declarative
+layer over what already works in each place, orchestrating the TOOLS
+and never becoming the RUNTIME.**
+
+The distinction is worth its paragraph, because "no orchestration"
+would be the wrong promise. We DO orchestrate: render, build, then
+apply, in dependency order (a database before the service that needs
+it), one command, with the target's prerequisites checked before
+anything runs and a failure named in that target's own words. What we
+refuse to be is the thing that keeps a workload ALIVE — no agent, no
+control plane, no scheduler, no state of our own. `docker compose`,
+`systemctl`, `helm`, `flyctl` and `terraform` are each excellent at
+exactly that, they are already installed, and an operator already
+trusts them.
+
+So: an orchestrator of tools, never of workloads. The practical test
+of the line is that everything we produce can be applied BY HAND with
+the target's own commands, and everything we do can be tested as a
+pure function from a value to files — which is what makes "every
+place" affordable at all.
+
+## The module
+
+**`okay-deploy`**, which already exists and already means this. The
+new model grows inside it rather than beside it: a second module for
+the same domain would be exactly the drift this repository's own rule
+warns about — two names for one thing — and "deploy" is the word the
+domain has. `specs/deploy.md` stays as the history of the
+single-service scaffold this supersedes; `okay.deploy` stays the
+package.
+
+Rejected: `okay-ship`, `okay-anywhere`, `okay-manifest` — a new name
+for the same subject, which buys nothing and costs everyone the
+question of which one to read. Also rejected, for now: splitting the
+cloud renderers into `okay-deploy-aws` and friends. They are pure
+string builders with no dependency of their own, so nothing is saved
+by the split and one import is lost.
 
 ## The model
 
@@ -283,9 +314,13 @@ and each ends with something an operator can actually use:
 
 ## Decisions
 
-- **Render, never orchestrate.** Kept from specs/deploy.md, and the
-  reason "every place" is affordable: a pure function is testable
-  without an account, an orchestrator is not.
+- **Orchestrate the tools, never the workloads.** The operator's own
+  framing, and the reason "every place" is affordable: rendering is a
+  pure function testable without an account, applying is somebody
+  else's excellent program. A control plane of ours would be a third
+  thing to operate and the first thing to page someone at night.
+- **One module, and it is `okay-deploy`.** Rejected: a new name for
+  the same domain.
 - **Terraform for the clouds, not SDK calls.** A file the team
   reviews and `terraform validate` checks, over an API client only an
   account can exercise.
