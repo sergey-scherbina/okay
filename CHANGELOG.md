@@ -1,5 +1,29 @@
 # Changelog
 
+## deploy-name-and-orchestration — the module is okay-deploy, and what "orchestration" means here
+Completed: 2026-09-07
+Landed as 15a73995. Two amendments to specs/deployment.md from the
+operator's framing ("мы чисто декларативная надстройка… наша задача —
+абстракция и оркестрация"). The module keeps the name it has: the new
+model grows INSIDE okay-deploy rather than beside it, because a second
+module for one domain is the two-names-for-one-thing drift this
+repository already has a rule against, and "deploy" is the word the
+domain has. Rejected by name so the question does not come back:
+okay-ship, okay-anywhere, okay-manifest, and splitting the cloud
+renderers into their own modules (they are pure string builders with
+no dependency of their own, so the split saves nothing and costs an
+import). And "render, never orchestrate" was too blunt for what was
+asked, so the line moved to where it actually is: we DO orchestrate —
+render, build, apply, in dependency order, one command, prerequisites
+checked first, failures in the target's own words — and what we refuse
+to become is the RUNTIME that keeps a workload alive: no agent, no
+control plane, no scheduler, no state of our own, since docker
+compose, systemctl, helm, flyctl and terraform are each excellent at
+that and already installed. The practical test of the line is written
+into the spec: everything produced can be applied by hand with the
+target's own commands, and everything done is a pure function from a
+value to files.
+
 ## staged-strict — the strict reader, generated from a schema value
 Completed: 2026-09-07
 The codec seam's last out-of-scope emitter, on the operator's ask to
