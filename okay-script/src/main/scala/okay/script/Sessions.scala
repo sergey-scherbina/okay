@@ -17,7 +17,7 @@ trait Sessions:
   /** the session a request sees: bound to `existing` if that id is
    * live, else created on the first `set` -- `created`/`invalidated`
    * tell the container which cookie to send back */
-  def handle(existing: Option[String], now: Long = System.currentTimeMillis()): Sessions.Handle
+  def handle(existing: Option[String], now: Long = System.currentTimeMillis()): Sessions.Bound
 
   /** live sessions */
   def size: Int
@@ -189,7 +189,7 @@ object Sessions:
       random.nextBytes(b)
       java.util.Base64.getUrlEncoder.withoutPadding.encodeToString(b)
 
-    def handle(existing: Option[String], now: Long): Handle =
+    def handle(existing: Option[String], now: Long): Bound =
       sweep(now)
       new Handle(backend, () => newId(), existing, now)
 
@@ -197,9 +197,25 @@ object Sessions:
 
     override def close(): Unit = backend.close()
 
+  /**
+   * One request's view of one session, as the CONTAINER sees it: the
+   * page's `api.Session` plus the two facts that decide the cookie.
+   *
+   * A trait rather than the concrete `Handle` because a caller can
+   * have a legitimate view of a session that is not this engine's —
+   * `okay script build` installs one whose every method refuses,
+   * since a static site has no request to have a session in
+   * (script-cli).
+   */
+  trait Bound extends api.Session:
+    /** a new id was minted during this request */
+    def created: Boolean
+    /** the client's cookie must be expired */
+    def invalidated: Boolean
+
   /** one request's view of one session */
   final class Handle private[Sessions] (backend: Backend, mint: () => String, existing: Option[String], now: Long)
-      extends api.Session:
+      extends Bound:
     private var bound: Option[(String, State)] =
       existing.flatMap(id => backend.get(id).map(s => id -> s.copy(lastAccess = now)))
     // touching is a write (the last-access time is state) but an
@@ -209,10 +225,8 @@ object Sessions:
     @volatile private var _created = false
     @volatile private var _invalidated = false
 
-    /** a new id was minted during this request */
     def created: Boolean = _created
 
-    /** the client's cookie must be expired */
     def invalidated: Boolean = _invalidated
 
     def id: String = bound.map(_._1).getOrElse("")

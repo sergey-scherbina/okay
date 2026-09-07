@@ -1,0 +1,49 @@
+#!/bin/sh
+# okay — the combined command line (specs/okay-script.md).
+#
+#   okay script new site && okay script serve site
+#   okay script build site -o out
+#   okay deploy up laptop
+#
+# It answers BOTH groups because okay-script's jar carries okay-deploy;
+# okay-deploy's own bin/okay is the smaller, deploy-only one, for an
+# operator who wants nothing else.
+#
+# The jar's own entry point stays okay.script.Serve — that is the
+# container's contract and a rendered Dockerfile depends on it — so
+# this runs the CLI by class name rather than with `java -jar`.
+set -e
+
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+jar=${OKAY_JAR:-}
+[ -n "$jar" ] || jar=$here/app.jar
+if [ ! -f "$jar" ]; then
+  jar=$(ls "$here"/../target/scala-*/app.jar 2>/dev/null | head -1 || true)
+fi
+
+if [ ! -f "$jar" ]; then
+  echo "okay: no jar to run." >&2
+  echo "  looked for: \$OKAY_JAR, $here/app.jar, $here/../target/scala-*/app.jar" >&2
+  echo "  build it:   sbt okayScript/assembly" >&2
+  exit 3
+fi
+
+if ! command -v java >/dev/null 2>&1; then
+  echo "okay: needs a Java runtime and there is none on the PATH." >&2
+  echo "  why:      the CLI is a jar, and so is everything it runs" >&2
+  case "$(uname -s)" in
+    Darwin) echo "  install:  brew install openjdk@21" >&2 ;;
+    Linux)
+      if command -v apt-get >/dev/null 2>&1; then echo "  install:  sudo apt-get install -y openjdk-21-jre-headless" >&2
+      elif command -v dnf >/dev/null 2>&1; then echo "  install:  sudo dnf install -y java-21-openjdk-headless" >&2
+      elif command -v apk >/dev/null 2>&1; then echo "  install:  sudo apk add openjdk21-jre-headless" >&2
+      else echo "  install:  your distribution's OpenJDK 21 JRE package" >&2
+      fi ;;
+    *) echo "  install:  an OpenJDK 21 JRE" >&2 ;;
+  esac
+  echo "  docs:     https://adoptium.net/" >&2
+  exit 3
+fi
+
+exec java -cp "$jar" okay.script.Cli "$@"
