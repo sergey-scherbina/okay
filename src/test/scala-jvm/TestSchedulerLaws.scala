@@ -76,6 +76,17 @@ class TestSchedulerLaws extends munit.FunSuite {
     assert(!answers.contains(Right(5)), "the late answer became the fiber's")
   }
 
+  each("cancel ANSWERS the fiber: a join on a cancelled fiber returns") { sch =>
+    given Scheduler = sch
+    val f = Async.spawn(Async.await[Int](_ => () => ()))
+    Thread.sleep(20)
+    f.cancel()
+    val answered = CountDownLatch(1)
+    f.onComplete(_ => answered.countDown())
+    assert(answered.await(5, TimeUnit.SECONDS), "a cancelled fiber never answered — a join on it would wait for ever")
+    assert(f.joinEither().isLeft, "a cancelled fiber answered with a value")
+  }
+
   each("par: both sides, on their own thread of control") { sch =>
     given Scheduler = sch
     assertEquals(Async.par(async(1), async(2)).runWith, (1, 2))

@@ -310,6 +310,24 @@ class AdversarialBenchmark {
     fs.foreach(_.cancel())
     fs.count(_.joinEither().isLeft)
 
+  /** the same 1 000 parked fibers on the owned-worker scheduler,
+   * where a cancel is a CAS on the fiber's own cell rather than an
+   * interrupt of a thread — §4b blamed the interrupt, and this is
+   * the lane that says whether it was right */
+  @Benchmark
+  def cancel1k_okayOwn(): Int =
+    given Scheduler = own
+    val fs = (0 until K2).map(_ => Async.spawn(Async.await[Unit](_ => () => ())))
+    fs.foreach(_.cancel())
+    fs.count(_.joinEither().isLeft)
+
+  @Benchmark
+  def cancel1k_okayDrive(): Int =
+    given Scheduler = Schedulers.drive()
+    val fs = (0 until K2).map(_ => Async.spawn(Async.await[Unit](_ => () => ())))
+    fs.foreach(_.cancel())
+    fs.count(_.joinEither().isLeft)
+
   @Benchmark
   def cancel1k_zio(): Int =
     import _root_.zio.*

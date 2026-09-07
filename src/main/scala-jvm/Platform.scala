@@ -68,12 +68,14 @@ given CanBlock = new:
       slot.waiter = Thread.currentThread()
       var out = false
       while !out do
-        if slot.filled then out = true
-        else
-          java.util.concurrent.locks.LockSupport.park(slot)
-          if Thread.interrupted() then
-            cancel()
-            throw InterruptedException()
+        // the interrupt is read FIRST: after a cancel, an answer that
+        // arrives anyway must not become this fiber's answer. Reading
+        // `filled` first let it (found by the scheduler law, 2026-09-07)
+        if Thread.interrupted() then
+          cancel()
+          throw InterruptedException()
+        else if slot.filled then out = true
+        else java.util.concurrent.locks.LockSupport.park(slot)
       slot.value
 
   /** the JVM handoff: the waiter is a parked (virtual) thread, woken
@@ -92,9 +94,11 @@ given CanBlock = new:
       case p: ParkHandoff[?] =>
         // publish who to wake BEFORE re-reading the flag, as `block` does
         p.waiter = Thread.currentThread()
-        while !p.filled do
-          java.util.concurrent.locks.LockSupport.park(p)
+        var out = false
+        while !out do
           if Thread.interrupted() then throw InterruptedException()
+          else if p.filled then out = true
+          else java.util.concurrent.locks.LockSupport.park(p)
       case other =>
         throw IllegalStateException("a handoff not made by this CanBlock: " + other.getClass.getName)
 
@@ -620,7 +624,14 @@ object Schedulers {
         case w: Waiters[A] @unchecked => if !cell.compareAndSet(w, Waiters(k, w)) then onComplete(k)
         case null => if !cell.compareAndSet(null, Waiters(k, null)) then onComplete(k)
 
-    override def cancel(): Unit = super[Drive].cancel()
+    /** cancel ANSWERS the fiber, as every other member does: a
+     * `join()` on a cancelled fiber must return rather than wait for
+     * an answer that will never come. The drive stops at its next
+     * operation and a late answer is ignored (`done` keeps the first
+     * one), so this is the fiber's answer and nothing else can be. */
+    override def cancel(): Unit =
+      super[Drive].cancel()
+      done(Left(java.util.concurrent.CancellationException("fiber cancelled")))
 
   /** one honest platform thread per fiber: heavy, but works anywhere */
   val threads: Scheduler = new:
