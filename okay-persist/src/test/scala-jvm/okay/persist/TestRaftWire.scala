@@ -101,15 +101,17 @@ class TestRaftWire extends munit.FunSuite {
       assert(waitUntil(Elect)(c.leader.isDefined))
       val leader = c.leader.get
       assert(c.nodes(leader).propose("hello-raft".getBytes("UTF-8")))
-      // a non-leader refuses
+      // a non-leader that knows its leader CARRIES the proposal there
+      // (persist-raft-forward): true means on its way, and it commits
+      // everywhere as the next entry
       val follower = c.ids.find(_ != leader).get
-      assert(!c.nodes(follower).propose("nope".getBytes("UTF-8")))
+      assert(c.nodes(follower).propose("via-follower".getBytes("UTF-8")))
 
-      assert(waitUntil(Commit)(c.ids.forall(id => c.nodes(id).commitIndex >= 1)),
-        s"not every node committed: ${c.ids.map(id => id -> c.nodes(id).commitIndex)}")
+      assert(waitUntil(Commit)(c.ids.forall(id => c.nodes(id).commitIndex >= 2)),
+        s"not every node committed both: ${c.ids.map(id => id -> c.nodes(id).commitIndex)}")
       c.ids.foreach { id =>
-        assert(waitUntil(Settle)(c.commits(id).nonEmpty), s"node $id never got onCommit")
-        assertEquals(c.commits(id).head, (1L, "hello-raft"))
+        assert(waitUntil(Settle)(c.commits(id).length >= 2), s"node $id never got both onCommits")
+        assertEquals(c.commits(id).take(2).toVector, Vector((1L, "hello-raft"), (2L, "via-follower")))
       }
     finally c.close()
   }

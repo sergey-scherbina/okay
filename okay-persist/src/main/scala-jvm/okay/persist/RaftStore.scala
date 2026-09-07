@@ -18,12 +18,14 @@ import java.util.concurrent.{ConcurrentHashMap, CountDownLatch, TimeUnit}
  * committed entries reach it, which is the same guarantee
  * `Replicated` states with its high-water mark.
  *
- * `append` on a follower answers `NotLeader(leaderId)` rather than
- * forwarding (stage 1a's stated limit, unchanged here): the caller
- * retries at the leader the way the two-node demo's 503 names it.
- * On the leader it waits for ITS entry to commit and returns the
- * local offset that entry was applied at — `Ack.None` waits too,
- * because an offset that is not yet an offset is not an answer; a
+ * `append` on a follower is CARRIED to the leader over the node wire
+ * (persist-raft-forward: `RaftMsg.Propose`/`Proposed`) — the leader
+ * appends it as its own entry, and the answer is still this node
+ * applying the committed entry, so the offset returned is the local
+ * one. `NotLeader(leader)` is thrown only when no leader is known (an
+ * election in progress) or when the node it was carried to refused
+ * it and named another. Every append waits for ITS entry to commit —
+ * an offset that is not yet an offset is not an answer — and a
  * proposal that does not commit within `commitWaitMs` (a lost
  * majority) throws `NotCommitted` rather than pretending.
  *
@@ -41,6 +43,12 @@ final class RaftStore private (val id: String, local: Store, commitWaitMs: Long)
   private var wired: RaftWire.Node | Null = null
   private def node: RaftWire.Node = wired.nn
   private var seq = 0L
+
+  /** a forwarded proposal the leader refused: fail the proposer's wait
+   * with the leader it named, rather than letting it time out */
+  private def refused(n: Long, leader: Option[String]): Unit =
+    val p = pending.remove(s"$id/$n")
+    if p != null then { p.nn.refused = Some(leader); p.nn.done.countDown() }
 
   /** the wire node's commit seam: apply, then wake the proposer */
   private def applied(index: Long, entry: RaftEntry): Unit =
@@ -60,14 +68,19 @@ final class RaftStore private (val id: String, local: Store, commitWaitMs: Long)
       val n = RaftStore.this.synchronized { seq += 1; seq }
       val p = Pending()
       pending.put(s"$id/$n", p)
-      val proposed = node.propose(Cbor.write(Op.Append(name, partition, key, value, id, n)))
+      // on the leader this appends here; on a follower that knows its
+      // leader it is carried there (persist-raft-forward), and either
+      // way the answer is this node applying the committed entry
+      val proposed = node.propose(n, Cbor.write(Op.Append(name, partition, key, value, id, n)))
       if !proposed then
         pending.remove(s"$id/$n")
         throw NotLeader(node.leaderId)
       if !p.done.await(commitWaitMs, TimeUnit.MILLISECONDS) then
         pending.remove(s"$id/$n")
         throw NotCommitted(name, partition)
-      p.offset
+      p.refused match
+        case Some(leader) => throw NotLeader(leader)
+        case None => p.offset
     def read(partition: Int, from: Long, max: Int): Topic.Read = mine.read(partition, from, max)
     def begin(partition: Int): Long = mine.begin(partition)
     def end(partition: Int): Long = mine.end(partition)
@@ -108,6 +121,8 @@ object RaftStore:
   private final class Pending:
     val done = CountDownLatch(1)
     @volatile var offset = -1L
+    /** set when the leader this was forwarded to refused it */
+    @volatile var refused: Option[Option[String]] = None
 
   /** this node is not the leader; the leader, when known, is named */
   final case class NotLeader(leader: Option[String])
@@ -128,5 +143,5 @@ object RaftStore:
             commitWaitMs: Long = 5000): RaftStore =
     val store = new RaftStore(id, local, commitWaitMs)
     store.wired = RaftWire.Node(id, port, peers, tickMs, electionTimeoutMs, heartbeatMs,
-      onCommit = store.applied, stable = stable)
+      onCommit = store.applied, stable = stable, onRefused = store.refused)
     store

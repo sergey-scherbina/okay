@@ -84,7 +84,10 @@ object RaftWire:
                    tickMs: Long = 50, electionTimeoutMs: Long = 300,
                    heartbeatMs: Long = 100,
                    onCommit: (Long, RaftEntry) => Unit = (_, _) => (),
-                   stable: Stable = Stable.memory()) {
+                   stable: Stable = Stable.memory(),
+                   /** a forwarded proposal was refused: its sequence, and the
+                    * leader the refusing node named (None when it knew none) */
+                   onRefused: (Long, Option[String]) => Unit = (_, _) => ()) {
 
     private val lock = new Object
     // the two fields Raft's safety proof assumes on stable storage,
@@ -142,6 +145,9 @@ object RaftWire:
         (out, if ns.commitIndex > before then (before until ns.commitIndex).toVector else Vector.empty[Long])
       }
       newlyCommitted.foreach(i => onCommit(i + 1, state.log(i.toInt)))
+      msg match
+        case RaftMsg.Proposed(_, _, n, false, leader) => onRefused(n, Option(leader).filter(_.nonEmpty))
+        case _ => ()
       toSend.foreach(send)
 
     private def send(o: RaftOut): Unit =
@@ -189,12 +195,24 @@ object RaftWire:
      * forwarding to the real leader yet (stage 1b), so a caller
      * must retry elsewhere on `false`, the same way a follower's
      * demo-two-nodes route answers 503 naming the leader */
-    def propose(data: Array[Byte]): Boolean =
+    def propose(data: Array[Byte]): Boolean = propose(0L, data)
+
+    /**
+     * Propose with the caller's own sequence: on the leader, appended
+     * and replicated here; on a follower that KNOWS its leader,
+     * carried there as a `Propose` (persist-raft-forward) — true means
+     * "on its way", and the answer is the entry committing on this
+     * node (`onCommit`) or a refusal (`onRefused`); false means no
+     * leader is known — an election in progress — and the caller
+     * retries or reports.
+     */
+    def propose(n: Long, data: Array[Byte]): Boolean =
       val toSend = lock.synchronized {
-        if state.role != RaftRole.Leader then None
-        else
+        if state.role == RaftRole.Leader then
           state = state.copy(log = state.log :+ RaftEntry(state.currentTerm, data))
           Some(Raft.replicate(state, peerIds))
+        else state.leaderId.filter(_ != state.id).map(l =>
+          Vector(RaftOut(l, RaftMsg.Propose(state.currentTerm, state.id, n, data))))
       }
       toSend match
         case None => false

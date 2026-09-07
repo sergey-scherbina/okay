@@ -1,5 +1,22 @@
 # Changelog
 
+## persist-raft-forward — a follower's append carried to the leader over the node wire
+
+Stages 1a and 1b both named one limit: a proposal succeeded only on
+the leader, a follower answered `NotLeader` and the client retried
+elsewhere. The follower knows its leader from the heartbeats, so it
+carries the proposal there itself: `RaftMsg.Propose(term, from, n,
+data)` and `Proposed(term, from, n, accepted, leader)`, two cases of
+`Raft.handle` — the leader appends a forwarded proposal as its own
+entry and replicates at once; anyone else refuses and names the
+leader it knows. The proposer's wait (`RaftStore`'s pending map, keyed
+by proposer and sequence) completes when the entry commits on its own
+node, as before; a refusal fails it with the leader named instead of
+a timeout. `Node.propose(n, data)` is false only when no leader is
+known, the one case `append` still throws `NotLeader` for. The Live
+suite appends on a follower and sees every node apply it at the next
+offset; the stage-0 suite is unchanged.
+
 ## persist-raft-1b — `RaftStore`: a `Store` over the replicated log, and the term and vote on stable storage
 
 Stage 1b of the staged climb (specs/consensus.md). `okay.persist.

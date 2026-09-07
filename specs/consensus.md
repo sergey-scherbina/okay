@@ -210,12 +210,12 @@ prices every large claim:
   so the local stores agree, and a read served from the local store
   never shows a record a failover could unwrite (only committed
   entries reach it: `Replicated`'s high-water-mark guarantee, by a
-  different road). On the leader `append` waits for ITS entry to
-  commit and answers the local offset it was applied at; on a
-  follower it throws `NotLeader(leaderId)` — no forwarding, stage
-  1a's stated limit kept and named — and a proposal that finds no
-  majority within `commitWaitMs` throws `NotCommitted` rather than
-  pretending. Topics are declared per node, as configuration.
+  different road). Every `append` waits for ITS entry to commit and
+  answers the local offset it was applied at; a proposal that finds
+  no majority within `commitWaitMs` throws `NotCommitted` rather than
+  pretending. (As landed, a follower's append threw `NotLeader` — the
+  same-day slice below carries it to the leader instead.) Topics are
+  declared per node, as configuration.
   `RaftWire.Stable` is the stable storage the proof assumes: `load()`
   once at start, `save(term, votedFor)` inside the lock BEFORE any
   message the transition produced is sent (a reply that outran its
@@ -227,8 +227,24 @@ prices every large claim:
   `TestRaftWire`: three stores, an append on the leader applied on
   all three at offsets 0 and 1, a follower's append refused by name,
   the leader killed and the survivors electing, accepting and
-  applying). Not here: forwarding to the leader, the commit-wait as
-  an `Ack` level rather than a timeout, and stage 2.
+  applying). Not here: the commit-wait as an `Ack` level rather than
+  a timeout, and stage 2.
+- **Forwarding, LANDED 2026-09-07 (persist-raft-forward).** A
+  follower's proposal is carried to the leader on the node wire: one
+  message pair, `RaftMsg.Propose(term, from, n, data)` and
+  `Proposed(term, from, n, accepted, leader)`, both `handle`'s cases
+  — the leader appends a forwarded proposal as its OWN entry (this
+  term) and replicates at once, anyone else refuses and names the
+  leader it knows. The proposer needs no answer for correctness: its
+  pending wait completes when the entry commits on ITS node, keyed by
+  proposer and sequence as before; the refusal, when it comes, fails
+  the wait with the leader named (`NotLeader(leader)`) rather than
+  letting it time out. `Node.propose(n, data)` is true when the
+  proposal is appended here or on its way, false only when no leader
+  is known — an election in progress — which is the one case
+  `RaftStore.append` still throws `NotLeader` for. The Live suite's
+  first test now appends on a follower too, and every node applies
+  it at the next offset.
 - **Stage 2 — log compaction / snapshotting, membership changes**
   (not started). The control log the reduction already runs on is
   small and slow-changing (election traffic only); an actual

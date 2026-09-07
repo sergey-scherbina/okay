@@ -63,8 +63,14 @@ class TestRaftStore extends munit.FunSuite {
       }
       // reads through the store are the local store's: the same on every node
       c.ids.foreach(id => assertEquals(c.stores(id).topic("orders").end(0), 2L))
+      // a follower's append is CARRIED to the leader (persist-raft-forward):
+      // it answers the offset its own node applied the entry at, and
+      // every node has it
       val follower = c.ids.find(_ != leader).get
-      intercept[RaftStore.NotLeader](c.stores(follower).topic("orders").append("k".getBytes, "x".getBytes))
+      val off3 = c.stores(follower).topic("orders").append("k3".getBytes, "third".getBytes)
+      assertEquals(off3, 2L)
+      c.ids.foreach(id => await(s"node $id applied the forwarded one", Commit)(
+        valuesIn(c.locals(id), "orders") == Vector("first", "second", "third")))
     finally c.close()
   }
 

@@ -54,6 +54,13 @@ enum RaftMsg derives Schema:
   case AppendEntries(term: Long, leaderId: String, prevLogIndex: Long, prevLogTerm: Long,
                      entries: Vector[RaftEntry], leaderCommit: Long)
   case AppendEntriesResp(term: Long, from: String, success: Boolean, matchIndex: Long)
+  /** a follower carrying a client's proposal to the leader
+   * (persist-raft-forward): `n` is the proposer's own sequence, so it
+   * recognises the entry when it commits on ITS node */
+  case Propose(term: Long, from: String, n: Long, data: Array[Byte])
+  /** the leader's answer to a Propose: accepted and appended, or
+   * refused with the leader it knows of (empty when none) */
+  case Proposed(term: Long, from: String, n: Long, accepted: Boolean, leader: String)
 
 /** one outgoing message, addressed */
 final case class RaftOut(to: String, msg: RaftMsg)
@@ -98,6 +105,8 @@ object Raft:
       case RaftMsg.RequestVoteResp(t, _, _) => t
       case RaftMsg.AppendEntries(t, _, _, _, _, _) => t
       case RaftMsg.AppendEntriesResp(t, _, _, _) => t
+      case RaftMsg.Propose(t, _, _, _) => t
+      case RaftMsg.Proposed(t, _, _, _, _) => t
     val s =
       if msgTerm > s0.currentTerm then
         s0.copy(currentTerm = msgTerm, votedFor = None, role = RaftRole.Follower, leaderId = None)
@@ -169,3 +178,17 @@ object Raft:
             if n > nst.commitIndex && n >= 1 && nst.log(n.toInt - 1).term == nst.currentTerm
             then n else nst.commitIndex
           (nst.copy(commitIndex = committed), Vector.empty)
+
+      case RaftMsg.Propose(_, from, n, data) =>
+        // a forwarded proposal: the leader appends it as its OWN entry
+        // (this term) and replicates at once; anyone else refuses and
+        // names the leader it knows, so the proposer can try there
+        if s.role == RaftRole.Leader then
+          val nst = s.copy(log = s.log :+ RaftEntry(s.currentTerm, data))
+          (nst, RaftOut(from, RaftMsg.Proposed(nst.currentTerm, nst.id, n, true, nst.id)) +: replicate(nst, peers))
+        else (s, Vector(RaftOut(from, RaftMsg.Proposed(s.currentTerm, s.id, n, false, s.leaderId.getOrElse("")))))
+
+      case RaftMsg.Proposed(_, _, _, _, _) =>
+        // the answer is for the node that forwarded, not for the state
+        // machine: it changes no term, no log, no vote
+        (s, Vector.empty)

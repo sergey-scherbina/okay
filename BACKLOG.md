@@ -899,9 +899,12 @@ measure on our own data, never a predicted result.
       `NotCommitted`) — and `RaftWire.Stable` (term and vote saved
       inside the lock before any send; a file replaced by rename, or
       memory). `TestStable` in the gate, `TestRaftStore` Live beside
-      `TestRaftWire`. Stage 2 (compaction, membership changes), leader
-      forwarding and the commit-wait as an `Ack` level remain open;
-      box stays unchecked for those.
+      `TestRaftWire`. FORWARDING LANDED 2026-09-07 (persist-raft-
+      forward): `RaftMsg.Propose`/`Proposed`, a follower's append
+      carried to the leader and applied everywhere; `NotLeader` only
+      when no leader is known. Stage 2 (compaction, membership
+      changes) and the commit-wait as an `Ack` level remain open; box
+      stays unchecked for those.
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,
