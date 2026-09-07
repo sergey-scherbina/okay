@@ -1,0 +1,5 @@
+lane: intent-offline-other
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: the AUTONOMOUS path, not the model path (operator's redirection). The shipped no-network door's worst number is Other: F1 0.52, recall 0.40 — it was trained to tell four classes apart, never to answer "none of them". The model path closed that hole twice (domain-bearing names, the binary gate); offline has no equivalent. Build one that needs no network — a rejection rule over the tiers we already ship (margin/distance thresholds on the static table and the gram scores, a domain lexicon from the cues) — and measure it. Criterion stated up front: Other recall >= 0.60, total accuracy down no more than 1 point, every class F1 >= 0.50 (the shipped-model law). Otherwise: negative result recorded, door unchanged.
+touches: okay-intent (NoModel/Models/Static), its offline suites, specs/intent-classify.md, BACKLOG, CHANGELOG
