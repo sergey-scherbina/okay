@@ -65,3 +65,13 @@ STATUS 2026-09-07 22:35 — PAUSED, twice over, and both reasons matter
     Boolean from `RuntimeStaged.install()`). Pre-existing, out of this
     lane's scope, belongs in BACKLOG.
   - §5 and §10 carry B/op columns; they need a `-prof gc` pass.
+
+STATUS 2026-09-07 23:02 — RESUMED, on the operator's instruction, and
+  BOTH blockers are gone:
+  - the scheduler fix landed (3f09bd9c), so the tree under measurement
+    no longer loses tasks;
+  - `scala-3-9` LANDED (75377969, master cf820fa7). The build is on
+    Scala 3.9.0 LTS, so this session measures the compiler that master
+    actually uses, and the doc will say "Scala 3.9.0".
+  Every round taken before this point is discarded. Nothing measured
+  on 3.7.4 or on the pre-fix scheduler enters the tables.
