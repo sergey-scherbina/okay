@@ -1,5 +1,32 @@
 # Changelog
 
+## acme-eab — the binding a CA asks for before it will open an account
+Completed: 2026-09-07
+Landed as cea23911 (spec then code). Some CAs — ZeroSSL, Google Trust
+Services, most commercial ones — will not open an ACME account for a
+stranger: they hand you a key id and a MAC key out of band, and
+`newAccount` must carry an `externalAccountBinding`, an INNER JWS
+whose payload is our own account JWK, signed HS256 with that key, its
+protected header naming the kid and the newAccount URL. No nonce in
+it, deliberately: it is a credential carried inside a request rather
+than a request, and §7.3.4 gives its header exactly `alg`, `kid` and
+`url`. The MAC key is read padded or unpadded, because half the CAs
+that issue one pad it. `Config.eab`, or `OKAY_ACME_EAB=<kid>:<key>`
+where the FIRST colon splits, base64url carrying none. Proven against
+a Pebble configured to REQUIRE the binding: refused without it,
+issued with it.
+
+A fixture bug fell out on the way, and it is the interesting half:
+the Pebble tests shared one container name and fixed ports, and
+`docker rm -f` returns before the container is gone — so a test could
+reach the PREVIOUS Pebble and present it a nonce that one never
+issued. The failure was a `badNonce`, which looked exactly like the
+client bug acme-pebble had just found and fixed, and was not. One
+instance per test now, ports from the OS, the config written per
+instance, and readiness is the API answering rather than docker
+calling the container started. 9 okay-acme green 3x, 136 okay-script
+green.
+
 ## acme-revoke — taking a certificate back, with a reason and a way to run it
 Completed: 2026-09-07
 Landed as the ff of feature/acme-revoke (spec then code). The one

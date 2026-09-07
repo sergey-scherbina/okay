@@ -1332,13 +1332,14 @@ not a new primitive from scratch.
       `okay.acme.Revoke` is the operator's way to run it, over the
       directory Serve writes and the switches it runs with. Proven
       against Pebble.
-- [ ] acme-eab — External Account Binding (RFC 8555 §7.3.4): the
-      newAccount request carries an extra JWS over the account's JWK,
-      signed HS256 with a key id and HMAC key the CA gave you out of
-      band. Small (~30 lines; `hmacSha256` is already in the Crypto
-      seam) and TESTABLE, since Pebble supports it by config. Take it
-      when a deployment uses a CA that requires it (ZeroSSL, Google
-      Trust Services, most commercial ones); Let's Encrypt does not.
+- [x] acme-eab — LANDED 2026-09-07: `Config.eab` / `OKAY_ACME_EAB=
+      <kid>:<key>` carries the inner HS256 JWS over our own account
+      JWK that a commercial CA requires before it opens an account.
+      Proven against a Pebble configured to require it. Fixed a
+      fixture flake on the way: the Pebble tests shared a name and
+      fixed ports, so one test could reach the PREVIOUS container and
+      get a badNonce that looked like the client bug acme-pebble had
+      just fixed — one instance per test now, ports from the OS.
 - [ ] acme-ari — Automated Renewal Information: the CA publishes a
       suggested renewal window per certificate so a mass revocation
       can be spread out, and the client renews inside it. Needs the
