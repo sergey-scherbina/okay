@@ -137,6 +137,19 @@ class AdversarialBenchmark {
       Async.parallelUnbounded(seq).flatMap((c: Seq[Int]) => (c.foldLeft(0L)(_ + _): Long < Any)))
       .getOrThrow
 
+  /** kyo forked from OUTSIDE a worker: each fiber is started from the
+   * benchmark thread, so `Worker.current` is null and kyo's scheduler
+   * takes its OTHER path — the least loaded of a random sample of
+   * workers. Same kyo, same fibers, the one difference being where
+   * `Async.run` is called from. This is the lane that says whether
+   * kyo's one-core answer at heavy work is a limit or a policy. */
+  @Benchmark
+  def forkJoin10k_kyoOutside(): Long =
+    import _root_.kyo.*
+    import AllowUnsafe.embrace.danger
+    val fs = (0 until K).map(i => IO.Unsafe.evalOrThrow(Async.run(IO(step(i)))))
+    fs.foldLeft(0L)((acc, f) => acc + IO.Unsafe.evalOrThrow(f.block(Duration.Infinity)).getOrThrow)
+
   @Benchmark
   def forkJoin10k_kyoEager(): Long =
     import _root_.kyo.*
