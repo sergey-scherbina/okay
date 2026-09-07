@@ -274,7 +274,7 @@ object RuntimeStaged {
 
   /** the JSON emitter over a schema value: `JsonGen` of Staged.scala
    * with the node table where the Mirror was */
-  private final class JsonGen(nodes: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes) extends Gen(nodes, ns):
+  private final class JsonGen(table: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes) extends Gen(table, ns):
 
     def codec(root: Schema[?]): Expr[JsonCodec[Any]] =
       '{ new JsonCodec[Any] {
@@ -419,7 +419,7 @@ object RuntimeStaged {
    * shared item primitives on `Cbor.Out`/`Cbor.In`, products decode by
    * NAME through `Staged.cborProduct` (a CBOR map carries no order
    * guarantee), a sum is a one-entry map */
-  private final class CborGen(nodes: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes) extends Gen(nodes, ns):
+  private final class CborGen(table: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes) extends Gen(table, ns):
 
     def codec(root: Schema[?]): Expr[CborCodec[Any]] =
       '{ new CborCodec[Any] {
@@ -538,7 +538,7 @@ object RuntimeStaged {
    * generator does not know (Char, bytes) and a type met again inside
    * itself take `Reader.get`, the interpreted walk, so the refusal
    * words stay the fold's own. */
-  private final class StrictGen(nodes: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes) extends Gen(nodes, ns):
+  private final class StrictGen(table: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes) extends Gen(table, ns):
 
     def codec(root: Schema[?]): Expr[StrictJsonCodec[Any]] =
       '{ new StrictJsonCodec[Any] {

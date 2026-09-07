@@ -189,5 +189,5 @@ object CodecBenchmark:
    * without it */
   @State(Scope.Benchmark)
   class Installed:
-    @Setup def up(): Unit = { okay.staging.RuntimeStaged.install(); () }
+    @Setup def up(): Unit = okay.staging.RuntimeStaged.install(): Unit
 

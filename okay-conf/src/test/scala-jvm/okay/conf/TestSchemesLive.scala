@@ -115,7 +115,7 @@ class TestSchemesLive extends munit.FunSuite:
   private val image = "okay-conf-sops-test"
 
   private def sopsImage(): Boolean =
-    if !sh(Vector("docker", "image", "inspect", image))._1.eq(0) then
+    if sh(Vector("docker", "image", "inspect", image))._1 != 0 then
       val dir = Files.createTempDirectory("okay-sops-image")
       try
         Files.writeString(dir.resolve("Dockerfile"),

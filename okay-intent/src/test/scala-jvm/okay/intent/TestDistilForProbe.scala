@@ -1,6 +1,5 @@
 package okay.intent
 
-import okay.given
 import okay.codec.{Json, Schema}
 import okay.rag.Embedding
 import java.nio.file.{Files, Paths}

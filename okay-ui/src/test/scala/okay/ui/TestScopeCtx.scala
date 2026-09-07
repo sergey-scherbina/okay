@@ -1,7 +1,6 @@
 package okay.ui
 
 import okay.*
-import okay.given
 
 /**
  * The capability door on Scope (ctx-prompts): exit reaches the

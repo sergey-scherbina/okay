@@ -68,7 +68,7 @@ class ActorReactiveBenchmark {
   def actorTellBacklog(): Long =
     val mailbox = Channel[Msg](8192)
     var i = 0L
-    while i < N do { mailbox.offer(Msg.Add(i)); i += 1 }
+    while i < N do { mailbox.offer(Msg.Add(i)): Unit; i += 1 }
     val a = Actor.spawn(0L, mailbox, Supervise.Stop)(summing).runWith
     val sum = a.ask(Msg.Get.apply, within = 10_000).runWith
     a.stop().runWith
@@ -96,7 +96,7 @@ class ActorReactiveBenchmark {
   def actorTellBacklogSC(): Long =
     val mailbox = Queues.strong[Msg].bounded(8192, singleConsumer = true).build
     var i = 0L
-    while i < N do { mailbox.offer(Msg.Add(i)); i += 1 }
+    while i < N do { mailbox.offer(Msg.Add(i)): Unit; i += 1 }
     val a = Actor.spawn(0L, mailbox, Supervise.Stop)(summing).runWith
     val sum = a.ask(Msg.Get.apply, within = 10_000).runWith
     a.stop().runWith

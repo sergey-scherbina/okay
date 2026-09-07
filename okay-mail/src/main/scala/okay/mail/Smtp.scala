@@ -1,7 +1,6 @@
 package okay.mail
 
 import okay.*
-import okay.given
 import okay.conf.{Secret, Secrets}
 import okay.mail.Mail.{Accepted, Rejection}
 import okay.tls.{Tls, TlsConfig}

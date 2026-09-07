@@ -1,7 +1,7 @@
 package okay.parse
 
 import okay.{Fold, Stage}
-import okay.lex.{Channel, Token}
+import okay.lex.Token
 
 /**
  * Streaming, error-tolerant parsing (specs/streaming-parse.md): a

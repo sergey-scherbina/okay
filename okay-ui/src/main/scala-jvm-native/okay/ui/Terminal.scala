@@ -1,7 +1,6 @@
 package okay.ui
 
 import okay.*
-import okay.given
 
 /**
  * The terminal as a Host, and it is thin because everything that can

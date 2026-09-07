@@ -1,6 +1,5 @@
 package okay.intent
 
-import okay.given
 import okay.rag.Embedding
 
 /**

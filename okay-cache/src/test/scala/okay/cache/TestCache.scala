@@ -1,7 +1,6 @@
 package okay.cache
 
 import okay.{!, Async}
-import okay.given
 
 /**
  * The cross-platform half of the contract (specs/cache.md,

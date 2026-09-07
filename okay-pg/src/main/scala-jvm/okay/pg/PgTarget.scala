@@ -23,7 +23,7 @@ object PgTarget:
       if u.getHost == null then Left(s"no host in '$url'")
       else
         val userInfo: String = Option(u.getUserInfo).getOrElse("")
-        val (user, pass): (String, String) =
+        val (user, pass) =
           if userInfo.isEmpty then ("okay", "")
           else userInfo.split(":", 2) match
             case Array(un, pw) => (un, pw)

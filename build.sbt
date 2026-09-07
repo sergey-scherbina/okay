@@ -14,7 +14,7 @@ ThisBuild / version := "0.1.0-SNAPSHOT"
 // 2.13, and making its classpath work under a Scala 3 that far ahead
 // is not a version bump. Compiling is not the bar; the suite is.
 // If Spark ever leaves this build, the ceiling leaves with it.
-ThisBuild / scalaVersion := "3.7.4"
+ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / scalacOptions ++= Seq(
   "-Xkind-projector",
   "-Wall",
@@ -63,6 +63,28 @@ ThisBuild / scalacOptions ++= Seq(
   // the build under -Wall's "unused nowarn" lint on those platforms
   // for having done its one job correctly on the JVM.
   "-Wconf:msg=@nowarn annotation does not suppress any warnings:s",
+  // `-Winfer-union` is new to -Wall in 3.9 and it fires 29 times here
+  // with a true-positive rate of ZERO. Every hit was read (scala-3-9,
+  // 2026-09-07) and falls in one of four families, all of them shapes
+  // this code chose on purpose:
+  //   * `Builder | Unit` — `xs.foreach { x => if p then buf += y }`,
+  //     the commonest by far (Markdown, Yaml, Typed, Llm, Aws, Keyword,
+  //     Split, Provider, ScalaScript, Dom). `foreach[U]` infers U from a
+  //     body whose branches are a builder and (). The result is
+  //     discarded by construction; there is nothing to fix.
+  //   * `Int | Null` — Ring's pop() answers a value or null, the
+  //     sentinel the ring is DESIGNED around (TestRing, seven sites).
+  //   * `None.type | Some[X]` — Option widening under collect /
+  //     collectFirst (Conf).
+  //   * a genuine ad-hoc union — `Seq(1.5, 2.5, Some("a"))` typed
+  //     `Seq[Any]` on purpose (TestRuntimeStaged), `battery :+ charging`
+  //     over two unrelated case classes in a fixture (TestCombine).
+  // Suppressed rather than "fixed" for the reason the policy gives: a
+  // shape rewritten to please a linter measures the rewrite, not the
+  // program, and 29 rewrites would hide the one real defect this lint
+  // might one day find. If a future hit looks like a real bug, delete
+  // this line and read them all again — that is a half-hour, not a day.
+  "-Wconf:msg=A type argument was inferred to be union type:s",
 )
 
 ThisBuild / organization := "dev.okay"

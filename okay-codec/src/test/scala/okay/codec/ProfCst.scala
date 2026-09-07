@@ -1,7 +1,6 @@
 package okay.codec
 
 import okay.*
-import okay.given
 import okay.lex.Scan
 import okay.lex.Json as JsonLex
 import okay.parse.{Cst, JsonParse, Parse}

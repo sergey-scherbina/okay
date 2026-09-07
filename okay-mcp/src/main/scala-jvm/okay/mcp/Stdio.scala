@@ -1,7 +1,6 @@
 package okay.mcp
 
 import okay.*
-import okay.given
 
 import java.io.{BufferedReader, InputStream, InputStreamReader, OutputStream, PrintWriter}
 import java.nio.charset.StandardCharsets.UTF_8

@@ -1,7 +1,6 @@
 package okay.cache
 
 import okay.{!, Async}
-import okay.given
 import okay.persist.{Ack, MemoryStore, Policy, Record}
 
 /**

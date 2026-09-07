@@ -1,6 +1,5 @@
 package okay
 
-import okay.given
 import scala.concurrent.Future
 
 /**

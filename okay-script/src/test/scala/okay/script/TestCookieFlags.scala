@@ -1,7 +1,6 @@
 package okay.script
 
 import okay.*
-import okay.given
 import okay.http.{Request, Response as HttpResponse}
 
 import java.nio.file.{Files, Path}
