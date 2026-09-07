@@ -213,13 +213,14 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
    * the stream.
    */
   private def placeEnd(): Unit =
+    val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
     if endPending.get then
-      val placed = ring.seal(Mark(true))
+      val placed = buffer.seal(Mark(true))
       if placed > 0 then
         marks.addAndGet(placed): Unit
         // a FULL part cannot take its mark now; keep asking, or the
         // stream never ends and the producers behind it never move
-        if partsSealed.addAndGet(placed) >= ring.parts then endPending.set(false)
+        if partsSealed.addAndGet(placed) >= buffer.parts then endPending.set(false)
 
   private def endAnswer: End =
     val e = failure.get
@@ -246,6 +247,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
    * writes; here it is the only scan.
    */
   override def receiveInto(h: Handoff[A]): Boolean =
+    val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
     var hit = false
     var go = true
     while go do
@@ -256,14 +258,14 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
         var stepped = true
         while stepped && !answered do
           stepped = false
-          ring.pop() match
+          buffer.pop() match
             case null => ()
             case m: Mark =>
               marks.decrementAndGet(): Unit
               wakeSender()
               placeEnd()
               if m.end then
-                if metEnds.incrementAndGet() >= ring.parts then
+                if metEnds.incrementAndGet() >= buffer.parts then
                   h(endReached()); answered = true
                 else stepped = true   // another order still has elements
               else stepped = true     // a void: step over it
@@ -282,7 +284,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
           // is that callback
           val w = Waiter(() => receiveAsync(h))
           enqueue(receivers, w)
-          if (ring.hasReady || ended.get) && w.claim() then
+          if (buffer.hasReady || ended.get) && w.claim() then
             val _ = receivers.remove(w)
             go = true
     hit
@@ -294,6 +296,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
     attemptSend(a, granted0 = false, ring.route())(k)
 
   private def attemptSend(a: A, granted0: Boolean, route: Int)(k: Accepted): Unit =
+    val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
     val granted = granted0
     var go = true
     while go do
@@ -302,13 +305,13 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
       else if granted || sendersAt(route).isEmpty then
         // the decision rides INSIDE the claim: what comes back is
         // what the ring published at the position just won
-        ring.pushDecidingAt(route, a, closing, void) match
+        buffer.pushDecidingAt(route, a, closing, void) match
           case null =>
             // full: park, and re-check afterwards in case a pop freed
             // a slot between the failed push and the registration
             val w = Waiter(() => attemptSend(a, granted0 = true, route)(k))
             enqueue(sendersAt(route), w)
-            if (ring.hasRoomAt(route) || closing.get) && w.claim() then
+            if (buffer.hasRoomAt(route) || closing.get) && w.claim() then
               val _ = sendersAt(route).remove(w)
               go = true
           case _: Mark =>
@@ -323,11 +326,12 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
       else
         val w = Waiter(() => attemptSend(a, granted0 = true, route)(k))
         enqueue(sendersAt(route), w)
-        if (ring.hasRoomAt(route) || closing.get) && w.claim() then
+        if (buffer.hasRoomAt(route) || closing.get) && w.claim() then
           val _ = sendersAt(route).remove(w)
           go = true
 
   def receiveAsync(k: End => Unit): Unit =
+    val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
     var go = true
     while go do
       go = false
@@ -337,7 +341,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
         var stepped = true
         while stepped && !answered do
           stepped = false
-          ring.pop() match
+          buffer.pop() match
             case null => ()
             case m: Mark =>
               marks.decrementAndGet(): Unit
@@ -346,7 +350,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
               // a void: the slot a sender won and declined. Step over
               // it and keep looking within the same call
               if m.end then
-                if metEnds.incrementAndGet() >= ring.parts then
+                if metEnds.incrementAndGet() >= buffer.parts then
                   k(endReached()); answered = true
                 else stepped = true   // another order still has elements
               else stepped = true
@@ -366,7 +370,7 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
         if !answered then
           val w = Waiter(() => receiveAsync(k))
           enqueue(receivers, w)
-          if (ring.hasReady || ended.get) && w.claim() then
+          if (buffer.hasReady || ended.get) && w.claim() then
             val _ = receivers.remove(w)
             go = true
 
@@ -382,17 +386,18 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
    */
   private[okay] override def receiveManyAsync(max: Int)
                                              (k: Either[Throwable, Chunk[A]] => Unit): Unit =
+    val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
     if ended.get then k(endAnswer.map(_ => Chunks.emptyChunk[A]))
     else
-      val room = if max < ring.capacity then max else ring.capacity
+      val room = if max < buffer.capacity then max else buffer.capacity
       val out = ChunkBuf[A](room)
       var n = 0
-      val took = ring.popMany(room):
+      val took = buffer.popMany(room):
         case m: Mark =>
           marks.decrementAndGet(): Unit
           // the last end mark is the one that ends it; the earlier
           // ones only say that THAT part is spent
-          if m.end && metEnds.incrementAndGet() >= ring.parts then reached.set(m)
+          if m.end && metEnds.incrementAndGet() >= buffer.parts then reached.set(m)
         case other => { out.update(n, element(other)); n += 1 }
       if n > 0 then
         var i = 0
@@ -412,11 +417,12 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
           receiveAsync(e => k(e.map(_.fold(Chunks.emptyChunk[A])(a => ChunkBuf.of(Seq(a))))))
 
   def offer(a: A): Boolean =
+    val buffer = ring   // ONE read: a replaceable buffer must not be compared with itself
     // offer never parks, so it takes its route here and now
-    val r = ring.route()
+    val r = buffer.route()
     if closing.get || !sendersAt(r).isEmpty then false
     else
-      ring.pushDecidingAt(r, a, closing, void) match
+      buffer.pushDecidingAt(r, a, closing, void) match
         case null => false
         case _: Mark =>
           marks.incrementAndGet(): Unit
