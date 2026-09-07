@@ -229,10 +229,11 @@ object Schedulers {
    * threads — this is for short, CPU-bound fibers; `loom` is the one
    * that makes blocking free.
    */
-  def own(workers: Int = Runtime.getRuntime.availableProcessors(), spin: Int = 64, wakeAbove: Int = 64): Scheduler =
-    Own(workers, spin, wakeAbove)
+  def own(workers: Int = Runtime.getRuntime.availableProcessors(), spin: Int = 64,
+          wakeAbove: Int = 64, helpAfterNanos: Long = 50000L): Scheduler =
+    Own(workers, spin, wakeAbove, helpAfterNanos)
 
-  private[okay] final class Own(n: Int, spin: Int, wakeAbove: Int) extends Scheduler {
+  private[okay] final class Own(n: Int, spin: Int, wakeAbove: Int, helpAfterNanos: Long) extends Scheduler {
     private val workers: Array[Worker] = Array.tabulate(n)(i => Worker(i))
     private val active = java.util.concurrent.atomic.AtomicInteger(1)
     private val current = ThreadLocal[Worker | Null]()
@@ -269,13 +270,26 @@ object Schedulers {
       def run(): Unit =
         current.set(this)
         var spins = 0
+        var streakStart = 0L
+        var ran = 0
         while true do
           var t = take()
           if t == null then t = steal()
           if t != null then
             spins = 0
+            if streakStart == 0L then streakStart = System.nanoTime()
             val _ = t.exec()
+            ran += 1
+            // THE HELPER RULE: work stays home while the queue drains
+            // fast (kyo's win at 30 ns per fiber, no signal per task);
+            // a worker still busy after `helpAfterNanos` with work
+            // left wakes the next one, which then steals (the pool's
+            // win at 3 us per fiber). nanoTime is read once per 16
+            // tasks, so it is under 2 ns a task.
+            if (ran & 15) == 0 && !queue.isEmpty && System.nanoTime() - streakStart > helpAfterNanos then
+              activateNext()
           else if spins < spin then
+            streakStart = 0L
             spins += 1
             Thread.onSpinWait()
           else
@@ -306,11 +320,14 @@ object Schedulers {
       if mine != null then return mine
       val top = active.get
       val w = workers(java.util.concurrent.ThreadLocalRandom.current().nextInt(top))
-      if w.size.get > wakeAbove && top < n && active.compareAndSet(top, top + 1) then
-        val next = workers(top)
-        java.util.concurrent.locks.LockSupport.unpark(next.thread)
-        next
-      else w
+      if w.size.get > wakeAbove then activateNext()
+      w
+
+    /** one more worker joins the active prefix and starts stealing */
+    private def activateNext(): Unit =
+      val top = active.get
+      if top < n && active.compareAndSet(top, top + 1) then
+        java.util.concurrent.locks.LockSupport.unpark(workers(top).thread)
   }
 
   /** listeners of a running DriveTask, a stack */
