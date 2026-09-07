@@ -1,0 +1,16 @@
+task: raft-sim-fuzz (the seed-swept simulation harness the consensus spec names: many nodes, randomized timeouts, message reordering, loss and partitions, safety asserted per seed and replayable byte for byte)
+agent: okay-42
+started: 2026-09-07
+branch: feature/raft-sim-fuzz
+
+why: specs/consensus.md keeps "the Sim-driven fuzz harness" open as the
+  next honest step before trusting the Raft core under real
+  concurrency: stage 0's seven tests drive the pure Raft.handle
+  explicitly, stage 1 runs it under real timers on three nodes; neither
+  sweeps interleavings. A deterministic simulator over the PURE core --
+  a seeded scheduler choosing which node ticks or which message
+  delivers next, dropping and reordering, partitioning and healing --
+  asserts Raft's safety properties on every seed: at most one leader
+  per term, a committed entry is never lost (every later leader's log
+  has it), log matching, and progress once the network heals. Every
+  found bug is a seed. In the default gate: pure, fast, no sockets.
