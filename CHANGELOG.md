@@ -1,5 +1,27 @@
 # Changelog
 
+## script-cli (spec) — a command line for okay-script, and an answer I had closed wrong
+Completed: 2026-09-07
+Landed as the ff of feature/script-cli-spec. Operator ask: a CLI for
+okay-script, serve among its verbs but not the point of it. `okay
+script run | render | build | check | serve | new`, sharing the `okay`
+binary specs/deployment.md introduces, so nothing new is installed
+for it. `build` is the half the container never had — the same pages
+rendered ONCE into plain files, a static site with no JVM in the
+deployment at all; everything a page can do at build time it does
+(Meta, interpolation, includes, declares, one output per language
+variant) and everything that needs a request refuses BY NAME, because
+a page rendered with an empty `Web` is a trap and being told which
+page and which call is the whole difference. `check` reopens
+something I closed the wrong way: `sbt-test / CI integration` was
+declined because a blind walk of `specs/*.md` fails on the first
+pseudo-code block — true of a WALK, and no argument against a command
+that checks the documents an author points it at; `ScalaScript.check`
+already exists, and `okay script check docs/*.md` in CI is its honest
+form. `run` is for a document that is a program, which is what
+"markdown files as Scala source" claimed on day one and no entry
+point ever offered.
+
 ## deploy-cli (spec) — the CLI, and the decision it forces
 Completed: 2026-09-07
 Landed as the ff of feature/deploy-cli-spec. Operator ask: a simple
