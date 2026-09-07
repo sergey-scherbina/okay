@@ -1,0 +1,5 @@
+lane: tod-demonstrations-from-the-log
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: "Show, Don't Tell" (SDT, Zhao & Gupta 2022) against our own taxonomy, sharpened by tod-schema-diagnostics' result that our names carry ALL the discrimination (0.685 -> 0.100 without words). The decisive arm: Indexed (no words) PLUS k annotated demonstrations — does an example recover what the names carry? Plus the okay-shaped half: demonstrations SELECTED from a recorded log (message + the typed Reading it produced) rather than hand-written, one per class, so the ChatLog becomes prompt material. Live arms over the whole fixture; verdict either way.
+touches: okay-intent (a demonstrations selector over recorded readings), its Live suite, specs/intent-classify.md, BACKLOG, CHANGELOG
