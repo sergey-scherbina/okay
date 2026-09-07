@@ -969,6 +969,51 @@ apply fails. Managed TLS on the platform's own name is automatic on
 both, and that is the difference from `aws`, where the ALB has no
 certificate until ACM issues one.
 
+## Results, stage 3 finished
+
+**deploy-clouds-rest (2026-09-07).** `gcp` and `azure` are in
+okay-deploy, and both passed `terraform validate` and `fmt -check`
+against their providers' own schemas on the FIRST run — which is
+worth recording precisely because AWS did not, and the difference is
+that the aligner and the escaping the AWS pass forced now hold for
+every renderer written after it.
+
+- [x] `terraform init` + `validate` against the google and azurerm
+      provider schemas, in a container.
+- [x] `terraform fmt -check` agrees with both.
+- [x] `sh -n` on every rendered script, through the walk over
+      `Targets.all` that stage 3 added.
+- [x] a `Need.Volume` reaches THREE answers — EFS, an Azure Files
+      share, and a named refusal — asserted in one test, because that
+      disagreement is the model's whole claim.
+- [x] no cloud makes a secret a Terraform resource; each reads one
+      back and each `setup.sh` says why.
+
+One thing this pass fixed that was not about clouds: three suites each
+asserted `Targets.all.length`, so every target that landed needed the
+same number edited in three files. The roster is now named once, in
+`TestDeployment`, and the other suites assert only that their own
+target is there.
+
+### The arc, closed
+
+Nine targets from one value: `laptop`, `host`, `cluster`, `fly`,
+`render`, `railway`, `aws`, `gcp`, `azure`. What each of the five
+stages actually proved, in one line each, because a green suite is
+persuasive and the differences matter:
+
+- **stage 0** — `docker compose up` for real, through the CLI, from a
+  directory with no repository in it.
+- **stage 1** — `helm lint`, which rejected the first chart written.
+- **stage 2** — a real parser per format, which is weaker: it proves
+  the files are well formed, not that a platform accepts them.
+- **stage 3** — `terraform validate` against a provider's own schema,
+  the strongest: it proves the resources exist and the arguments are
+  real. Not that an apply succeeds.
+- **stage 4** — sops end to end against a real key; the three cloud
+  managers argument-pinned only, because no machine here has an
+  account.
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of
