@@ -243,13 +243,13 @@ object Schedulers {
       val thread: Thread = { val t = Thread(this, s"okay-own-$id"); t.setDaemon(true); t }
 
       def enqueue(t: DriveTask[?]): Unit =
-        size.incrementAndGet()
+        val _ = size.incrementAndGet()
         queue.offer(t)
         if parked then java.util.concurrent.locks.LockSupport.unpark(thread)
 
       private def take(): DriveTask[?] | Null =
         val t = queue.poll()
-        if t != null then size.decrementAndGet()
+        if t != null then { val _ = size.decrementAndGet() }
         t
 
       private def steal(): DriveTask[?] | Null =
