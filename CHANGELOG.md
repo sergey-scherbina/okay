@@ -1,5 +1,25 @@
 # Changelog
 
+## okay-script-i18n — pages in several languages: variants by the request's language, messages via t()
+Completed: 2026-09-07
+Landed as 99d751bb (spec then code, rebased). Operator ask.
+`Site(languages = Vector("en", "uk"))`; a request's language is
+`?lang=` when the site speaks it (remembered in the `OKAYLANG`
+cookie), else the cookie, else `Accept-Language` by `q` on the
+primary subtag (`uk-UA` finds `uk`), else the first; `Lang.current`
+for the page. `page.<lang>.md` beside `page.md` is the variant that
+request renders — for routing, an `include`, a `forward` target, the
+login and error pages, and the Live socket, whose language comes from
+its own cookie or header — and a variant INHERITS its base page's
+front-matter, so `secure:` on `admin.md` holds for `admin.uk.md`
+whether or not the translator repeated it: a translation must not be
+an open door. `t(key, args*)` reads `i18n/<lang>.yaml` (a flat
+mapping, `Meta`'s own tiny YAML), falls back to the first language's
+file and then to the key, with `{0}`-style placeholders; `i18n/` is
+never routed; `Serve` reads `OKAY_LANGS=en,uk`. The example store
+gets `index.uk.md`, `i18n/{en,uk}.yaml` and a language switch in the
+header. 4 tests plus the example in Ukrainian; 113 green 3x.
+
 ## okay-script-serve — Site.serve(port), and the stock entry point a directory of pages runs with
 Completed: 2026-09-07
 Landed as 168b2d3e (spec then code, rebased). The operator asked where

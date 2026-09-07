@@ -1201,6 +1201,15 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] okay-script-i18n — LANDED 2026-09-07 (operator ask): `Site(
+      languages = ...)`; the request's language from `?lang=` (kept in
+      the OKAYLANG cookie), the cookie, `Accept-Language` or the
+      first; `page.<lang>.md` variants for routing, includes,
+      forwards, login/error pages and the Live socket, inheriting the
+      base page's front-matter (`secure:` holds for a translation);
+      `t(key, args*)` from `i18n/<lang>.yaml` with fallback to the
+      first language; `OKAY_LANGS` for Serve; the example in
+      Ukrainian. specs/okay-script.md "Languages".
 - [x] okay-script-serve — LANDED 2026-09-07 (operator ask: "where is
       the one line written?"): `Site.serve(port)` = `Jetty.serve(port)
       (routes)(ws, push)`, okay-jetty now a main dependency; the stock
