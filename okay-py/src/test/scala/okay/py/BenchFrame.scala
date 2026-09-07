@@ -10,10 +10,14 @@ import PyValue.*
  *
  * The far side is one function:  def identity(frame): return frame
  */
+import scala.util.boundary
+
 object BenchFrame:
-  def main(args: Array[String]): Unit =
-    val py = TestPy.python.getOrElse { println("no python3 on the PATH"); return }
-    val dir = args.headOption.getOrElse { println("usage: BenchFrame <dir holding okay_bench.py>"); return }
+  def main(args: Array[String]): Unit = boundary:
+    // `boundary/break` rather than a non-local return, which Scala 3
+    // no longer supports (it warned, and the gate refuses warnings)
+    val py = TestPy.python.getOrElse { println("no python3 on the PATH"); boundary.break() }
+    val dir = args.headOption.getOrElse { println("usage: BenchFrame <dir holding okay_bench.py>"); boundary.break() }
     val w = PySubprocess.start(py, Map("PYTHONPATH" -> dir))
     try
       println("  rows | round trip | encode |  parse | lossless |   walk |     bytes")
