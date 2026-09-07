@@ -1189,8 +1189,7 @@ a path into the browser's — followed by a script tag for `JsPath` and
 `okayLive("counter")`. It also registers the app with the container
 (a `Container` hook, like `include`), keyed by (page file, id).
 
-`Site.ws: PartialFunction[Request, Ws.Served]` (a `Stage[Frame, Frame,
-Unit]` plus the server's pushed frames, since script-live-push) is the
+`Site.ws: PartialFunction[Request, Stage[Frame, Frame, Unit]]` is the
 socket side: `Jetty.serve(port)(site.routes)(site.ws)` is the whole
 server. A socket at the page's own path plus `?__live=<id>` runs the
 app's `session` between two framing stages — text frames become
@@ -1277,17 +1276,19 @@ the view shows — and `Key`/`Resized` always pass. Not a new event
 kind: the server speaks the UI's event language, as `Ui.run`'s
 `external` does.
 
-Where it merges: at the socket, not in `Wire.serve`. okay-http gains
-`Ws.Served(stage: Stage[Frame, Frame, Unit], push: Source[Frame])`,
-and a WebSocket route answers one (`Jetty.serve(port)(routes)(ws:
-PartialFunction[Request, Ws.Served])`); the Jetty transport feeds the
-pushed frames into the same channel the client's frames arrive on,
-in arrival order, and stops the moment `offer` answers false — the
-socket closed. `Site.liveSession` turns the app's `push` into the
-lines the browser would have sent (`WireJson.eventJson`) and answers
-`Ws.Served(session, pushed)`; `Wire.serve` is used verbatim, as
-before. `Site.ws` answers a `Ws.Served` now; a caller that ran the
-stage in-JVM reads `.stage`.
+Where it merges: at the socket, not in `Wire.serve`. `Jetty.serve`
+takes, beside `ws`, an optional `push: PartialFunction[Request,
+Source[Frame]]` — frames the server feeds into a session's input —
+and the transport puts them into the same channel the client's
+frames arrive on, in arrival order, stopping the moment `offer`
+answers false (the socket closed). `Site.push` is defined exactly
+where `Site.ws` is and turns the app's `push` into the lines the
+browser would have sent (`WireJson.eventJson`); `Wire.serve` is used
+verbatim, `Site.ws` is unchanged, and the whole server with pushing
+is `Jetty.serve(port)(site.routes)(site.ws, site.push)`. A second
+partial function rather than a richer session value on purpose: the
+`ws` contract has callers in five modules, and a session that pushes
+nothing should not have to say so.
 
 - [x] in-JVM: the app's pushed source yields its events as text
       frames, and fed to the stage they patch the tree twice.

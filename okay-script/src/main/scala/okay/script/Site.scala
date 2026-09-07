@@ -3,7 +3,7 @@ package okay.script
 import okay.*
 import okay.given
 import okay.codec.Json
-import okay.http.{Frame, Http, Request, Response as HttpResponse, Ws}
+import okay.http.{Frame, Http, Request, Response as HttpResponse}
 import okay.ui.{Event, WireJson}
 
 import java.net.URLDecoder
@@ -54,7 +54,7 @@ final class Site(
    * as text frames; a Close frame ends the session. A socket that
    * arrives before the page was ever rendered (a reconnect after a
    * restart) renders it once to register the app. */
-  def ws: PartialFunction[Request, Ws.Served] = {
+  def ws: PartialFunction[Request, Stage[Frame, Frame, Unit]] = {
     case r if liveOf(r).isDefined => liveSession(liveOf(r).get)
   }
 
@@ -70,14 +70,21 @@ final class Site(
         case _ => None
     }
 
-  private def liveSession(app: api.Live[?]): Ws.Served =
-    val closed = Json.print(WireJson.eventJson(Event.Closed))
-    // the server's own events (script-live-push) become the same lines
-    // the browser would send, and the transport merges them in
+  /** the server's side of a Live session (script-live-push): the
+   * app's own events as the lines the browser would have sent, for
+   * `Jetty.serve(port)(site.routes)(site.ws, site.push)`; the transport
+   * merges them into the session's input beside the client's */
+  def push: PartialFunction[Request, Source[Frame]] = {
+    case r if liveOf(r).isDefined => pushOf(liveOf(r).get)
+  }
+
+  private def pushOf(app: api.Live[?]): Source[Frame] =
     val eventsToFrames: Stage[Event, Frame, Unit] =
       Stage.transduce(())((_, e) => Stage.tell[Event, Frame](Frame.Text(Json.print(WireJson.eventJson(e)))), _ => pure(()))
-    val pushed: Source[Frame] =
-      through[Event, Frame, Async, Unit, Unit](app.push)(!.widen[Unit, Take % Event + Writer % Frame, Async](eventsToFrames))
+    through[Event, Frame, Async, Unit, Unit](app.push)(!.widen[Unit, Take % Event + Writer % Frame, Async](eventsToFrames))
+
+  private def liveSession(app: api.Live[?]): Stage[Frame, Frame, Unit] =
+    val closed = Json.print(WireJson.eventJson(Event.Closed))
     val framesToLines: Stage[Frame, String, Unit] =
       Stage.transduce(())((_, f) =>
         f match
@@ -87,10 +94,8 @@ final class Site(
         _ => pure(()))
     val linesToFrames: Stage[String, Frame, Unit] =
       Stage.transduce(())((_, l) => Stage.tell[String, Frame](Frame.Text(l)), _ => pure(()))
-    Ws.Served(
-      through[Frame, String, Frame, Unit, Unit](
-        through[Frame, String, String, Unit, Unit](framesToLines)(app.session))(linesToFrames),
-      pushed)
+    through[Frame, String, Frame, Unit, Unit](
+      through[Frame, String, String, Unit, Unit](framesToLines)(app.session))(linesToFrames)
 
   /** the synchronous core: one request in, one response out */
   def handle(r: Request): HttpResponse =

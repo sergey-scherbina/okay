@@ -55,16 +55,6 @@ trait Sockets:
 object Ws {
 
   /**
-   * A served session (script-live-push): the stage, plus frames the
-   * SERVER pushes into its input beside the client's — a clock, a
-   * shared feed — merged by the transport at the socket, so the stage
-   * sees one stream and `Wire.serve` is used verbatim. `push` ends
-   * with the socket: a pushed frame after the close is dropped, and
-   * the source is not read further.
-   */
-  final case class Served(stage: Stage[Frame, Frame, Unit], push: Source[Frame] = pure(()))
-
-  /**
    * Run a session over a socket.
    *
    * The session is a `Stage[Frame, Frame, A]` — it awaits incoming

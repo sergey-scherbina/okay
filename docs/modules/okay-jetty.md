@@ -20,9 +20,9 @@ client writes, so the echo in `TestJetty` runs on both ends.
 | `Jetty.of(client)` | a caller's own configured `HttpClient`, behind the seam |
 
 Routes are a `PartialFunction[Request, Response ! Async]` and WebSocket
-routes a `PartialFunction[Request, Ws.Served]` — the stage, plus
-frames the server pushes into its input beside the client's
-(`Ws.Served(stage, push)`; a plain session is `Ws.Served(stage)`) — the
+routes a `PartialFunction[Request, Stage[Frame, Frame, Unit]]` (with an
+optional `push: PartialFunction[Request, Source[Frame]]` beside it —
+frames the server feeds into a session's input, script-live-push) — the
 smallest thing that dispatches without inventing a router.
 
 Everything is a `Resource`, because everything owns threads. A module

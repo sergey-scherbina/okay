@@ -42,11 +42,12 @@ class TestLivePush extends munit.FunSuite:
 
   test("in-JVM: the pushed source yields the app's events as frames, and fed to the stage they patch the tree") {
     withSite { site =>
-      val served = site.ws(Request.get("/counter?__live=counter"))
-      val pushed = Async.run[Seq[Frame], Pure](Writer.run(served.push).map(_._1)).runWith
+      val r = Request.get("/counter?__live=counter")
+      assert(site.push.isDefinedAt(r) && !site.push.isDefinedAt(Request.get("/counter?__live=nope")))
+      val pushed = Async.run[Seq[Frame], Pure](Writer.run(site.push(r)).map(_._1)).runWith
       val events = pushed.collect { case Frame.Text(s) => WireJson.eventOf(Json.parse(s)) }
       assertEquals(events, Seq(Some(Event.Pressed("inc")), Some(Event.Pressed("inc"))))
-      val (out, _) = !.run(Writer.run(through(Writer.of(pushed.toList :+ Frame.Close(1000, "")))(served.stage)))
+      val (out, _) = !.run(Writer.run(through(Writer.of(pushed.toList :+ Frame.Close(1000, "")))(site.ws(r))))
       val lines = out.collect { case Frame.Text(s) => s }
       assertEquals(lines.length, 3, lines.toString)
       assertEquals(WireJson.patchOf(Json.parse(lines(1))), Some(Patch.SetText(List(0), "count: 1")))
@@ -57,7 +58,7 @@ class TestLivePush extends munit.FunSuite:
   test("over Jetty: the tree, then two patches nobody pressed for") {
     withSite { site =>
       val got = Resource.run[Seq[Frame], Pure](
-        Jetty.serve(0)(site.routes)(site.ws).map { server =>
+        Jetty.serve(0)(site.routes)(site.ws, site.push).map { server =>
           val sockets = Transports.sockets()
           Async.run[Seq[Frame], Pure](
             sockets.connect(s"ws://127.0.0.1:${Jetty.port(server)}/counter?__live=counter").flatMap { sock =>

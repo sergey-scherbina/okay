@@ -90,7 +90,7 @@ class TestLive extends munit.FunSuite:
 
   test("the session in-JVM: the tree first, a press yields one narrow patch, a forged key nothing, Close ends it") {
     withSite { (site, _) =>
-      val stage = site.ws(Request.get("/counter?__live=counter")).stage
+      val stage = site.ws(Request.get("/counter?__live=counter"))
       def press(k: String) = Frame.Text(Json.print(WireJson.eventJson(Event.Pressed(k))))
       val (out, _) = !.run(Writer.run(through(Writer.of(List(press("inc"), press("forged"), Frame.Close(1000, ""), press("inc"))))(stage)))
       val lines = out.collect { case Frame.Text(s) => s }

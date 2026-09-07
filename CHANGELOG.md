@@ -7,14 +7,15 @@ push = Source[Event])` is the door `Ui.run`'s `external` already was:
 the server's own events — a clock, a shared feed — a fresh instance
 per session, ending with its socket, obeying the same capability rule
 as a browser's (a pushed `Pressed` names a shown key, as okay-ui's
-own timer test ticks). The merge is the transport's: okay-http gains
-`Ws.Served(stage, push: Source[Frame])`, a WebSocket route answers
-one, and the Jetty transport feeds the pushed frames into the same
-channel the client's frames arrive on, stopping when the socket
-closes — so `Wire.serve` is used verbatim. `Site.ws` answers a
-`Ws.Served`. In-JVM: the pushed source yields the events as frames
-and they patch the tree; over Jetty: the tree, then two patches
-nobody pressed for.
+own timer test ticks). The merge is the transport's: `Jetty.serve`
+takes an optional `push: PartialFunction[Request, Source[Frame]]`
+beside `ws` and feeds the pushed frames into the same channel the
+client's frames arrive on, stopping when the socket closes — so
+`Wire.serve` is used verbatim and `ws` keeps its callers in five
+modules. `Site.push` sits beside `Site.ws`; the whole server is
+`Jetty.serve(port)(site.routes)(site.ws, site.push)`. In-JVM: the
+pushed source yields the events as frames and they patch the tree;
+over Jetty: the tree, then two patches nobody pressed for.
 
 ## live-tdict — okay-live's Registry and Hub onto TDict and TList, the second half of the cross-platform-state entry
 
