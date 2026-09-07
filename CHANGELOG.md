@@ -1,5 +1,47 @@
 # Changelog
 
+## deploy-secret-schemes — the four resolvers okay-conf had been promising
+Completed: 2026-09-07
+Landed as 5879d1ea (spec then code). Stage 4. `sops:`, `aws-sm:`,
+`gcp-sm:` and `azure-kv:` were named in specs/deployment.md, checked
+for by okay-deploy's doctor — which tells an operator which binary to
+install for each — and implemented by nothing. A promise a repository
+makes in one file and keeps in none is worse than a gap, which is why
+this went before another render target.
+
+Each shells out to the vendor's own CLI, and that is a decision rather
+than a shortcut: an SDK would be four dependencies, four credential
+chains and four things to keep current, while the CLI is one the
+operator already has, whose profile, SSO session, `gcloud auth` and
+`az login` already work.
+
+**The rule that matters here inverts okay-deploy's.** `Shell.failure`
+carries the last lines of output because those commands are renderers
+and an operator needs to see what helm said. A secret resolver's stdout
+may BE the secret — so a failure names the command and the exit code
+and stops: no output, no partial value, no helpfully echoed stderr that
+a misconfigured tool wrote a key into. The message says which command
+to run BY HAND, which puts the output on the operator's terminal
+instead of in a log. The test that proves it uses a tool which prints a
+secret to stdout, another line to stderr, and exits 4; the refusal
+contains neither.
+
+sops is tested end to end and for real: a container with sops and age,
+a generated key, an encrypted file whose plaintext is asserted absent,
+and decryption THROUGH the resolver via a shim — with the temp
+directory mounted at its own absolute path, so a path means the same
+thing inside and out. A dotted key becomes sops' own path expression;
+no key is the whole file. A tool that succeeds and returns nothing is a
+refusal rather than an empty secret. The three cloud managers were
+checked with `/bin/echo` standing in for the CLI, which pins the exact
+arguments; no machine here has an account, and the spec says so rather
+than letting a green suite imply otherwise.
+
+`Schemes.all()` is now what okay-script's `sslOf` and okay-acme's DNS
+providers take by default, so `OKAY_TLS_KEY=sops:secrets.yaml#tls-key`
+is a certificate key that rides in git, encrypted. 28 okay-conf green
+3x, 9 Live green, 166 okay-script.
+
 ## losing-rows — the two rows §4b lost, and what it cost to win them
 
 **Cancellation, won, after two contract bugs.** The row said our
