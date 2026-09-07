@@ -1,0 +1,32 @@
+task: hole-scan
+agent: opus5-intent
+started: 2026-09-07
+branch: feature/hole-scan
+worktree: ../okay-wt-hole
+
+why: `jiffy-hole-scan` says measure before redesigning. `Segments.pop`
+  reports EMPTY when the head position is claimed but not published,
+  so a producer descheduled in the two-instruction window between
+  `tail.getAndIncrement()` and its publish hides every element behind
+  it from the consumer. The question is how deep that cliff is on this
+  runtime, because the fix (Jiffy's forward scan) needs a per-slot
+  handled state and a lazily advancing head — a redesign of the
+  consumer side of an MPMC buffer that already has a scar there.
+
+what:
+  1. a probe hook in `Segments`, test-only and null by default, called
+     between the claim and the publish, so a test can hold a hole open
+     for a known time and measure what the consumer does behind it.
+  2. the natural cliff, no hook: `oneUnbounded_chunk` at 16 producers
+     beside `oneRing_chunk`, minimum of five rounds.
+  3. the decision, written either way: deep -> build the forward scan
+     with the two-bit state; shallow -> close the entry saying so.
+
+predict: a deliberate 5 ms hole stalls the consumer for the whole 5 ms
+  with thousands of elements ready behind it (that part is certain
+  from the code); the open question is the NATURAL rate, and my guess
+  is that it is rare enough at 16 producers that `oneUnbounded_chunk`
+  is within 10% of what it would be without holes — which would mean
+  the two bits are not worth the redesign yet.
+  Disqualifying: the unbounded lane trailing the bounded ring by more
+  than 2x at 16 producers with no other explanation.
