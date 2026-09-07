@@ -1,5 +1,51 @@
 # Changelog
 
+## deploy-cloud-aws — Terraform for ECS Fargate, gated by the provider's own schema
+Completed: 2026-09-07
+Landed as 16ecebad (spec then code). Stage 3's first cloud. AWS went
+first because it exercises every `Need` the model has: a port becomes
+an ALB with a target group and a listener, a volume becomes EFS with a
+mount target per subnet, a database becomes RDS, a cache becomes
+ElastiCache, a DNS name with a TLS mode becomes ACM plus Route 53
+records plus a redirect from port 80, a region becomes the provider's.
+
+Two decisions rather than mapping. **A secret is not a Terraform
+resource**: `terraform apply` writes every resource attribute into the
+state file, and a secret version would put the VALUE there in
+plaintext — in S3, on a laptop, in a CI artifact. Rendering one would
+take a repository whose rule is "no target renders a value" and hand
+the value to the least guarded file in the deployment; so it is created
+out of band by `setup.sh` and read back by a `data` source, the ARN
+reaching the task definition while Terraform never holds one. **The
+network is not ours**: this uses the account's default VPC through data
+sources and builds nothing, because private subnets, NAT and peering
+are things an organisation already has opinions about. The single AWS
+assumption is a Route 53 hosted zone, only when a service has a
+`Need.Dns`, arriving as a variable with no default so Terraform asks.
+
+The gate is the strongest in this arc: `terraform init` fetches the
+provider and `terraform validate` checks every resource type, required
+argument and attribute reference against its schema — semantic, not
+syntactic. A test deliberately breaks it with `desired_kount` and
+asserts the rejection, because a green validate means nothing until
+you have seen it go red.
+
+It found three things, none hypothetical. `init` rejected the first
+rendering outright, an environment value written unquoted. `fmt`
+rejected the second, two blocks whose `=` padding had been typed by
+hand and was wrong — fixed not by retyping but by teaching the renderer
+to align its own columns, since hand-typed padding is wrong again the
+moment a name changes. And `sh -n` found a defect that had ALREADY
+LANDED: an apostrophe in "the master password for web's Postgres"
+opens a quote inside a `${VAR:?message}` that nothing closes, so the
+shell swallows the `}` and dies at end of file. The cluster target
+shipped that in stage 1 and no test had ever run its script.
+`Shell.prompt` now strips the hazards, both messages were reworded, and
+the check walks `Targets.all` rather than naming targets, so a target
+written later is covered the day it exists — which is the argument for
+this arc's gate discipline made against the arc itself. 101 okay-deploy
+green 3x, 15 Live green, 148 okay-script green.
+
 ## intent-autonomy-report — the two numbers the no-model path is judged by
 Completed: 2026-09-07
 First lane of the autonomy programme the operator asked for. "Works

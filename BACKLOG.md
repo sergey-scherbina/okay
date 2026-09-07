@@ -106,10 +106,21 @@ does not cross and stages the work; each stage below is its own claim.
       (tomllib, ruby -ryaml, okay's Json, `sh -n`) rather than golden
       files, which is stage 1's lesson applied. `Need.Region` joined
       the model; fly refuses without one, okay-script included.
-- [ ] deploy-clouds — stage 3: Terraform per cloud (ECS+RDS+Secrets
-      Manager, Cloud Run+Cloud SQL, Container Apps+Key Vault), proven
-      by `terraform validate` in a container. AWS first — it
-      exercises every part of the model.
+- [x] deploy-cloud-aws — LANDED 2026-09-07, stage 3's first cloud:
+      the `aws` target, Terraform for ECS Fargate (ALB, EFS, RDS,
+      ElastiCache, ACM + Route 53). A secret is NOT a Terraform
+      resource, because apply writes its value into the state file in
+      plaintext; the network is NOT ours, because an organisation
+      already has one. Gated by `terraform init` + `validate` against
+      the provider's own SCHEMA (semantic, not syntactic), plus
+      `fmt -check`, plus a test that deliberately breaks it.
+- [ ] deploy-cloud-gcp — stage 3's second: Cloud Run + Cloud SQL +
+      Secret Manager, the same shape as `aws` and the same gate. The
+      interesting difference is that Cloud Run has no persistent
+      disk, so a `Need.Volume` is a named refusal or a GCS bucket —
+      decide it in the spec before writing the renderer.
+- [ ] deploy-cloud-azure — stage 3's third: Container Apps + Key
+      Vault + Azure Database for PostgreSQL, same gate.
 - [ ] deploy-secret-schemes — stage 4: `sops:` (the encrypted value
       rides in git; the caveat is key distribution, which this repo
       cannot speak to), then `aws-sm:`, `gcp-sm:`, `azure-kv:`, each
