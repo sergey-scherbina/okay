@@ -1,0 +1,5 @@
+lane: tod-schema-diagnostics
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: the two experiments from the operator's TOD papers, as numbers. (a) D3ST's index diagnostic: a taxonomy whose case and field names carry NO words (C1..C4, s1) against the shipped Meeting names — the drop measures how much the model rides the names. (b) SGD-X's robustness method: the same four classes under two paraphrase levels (near synonyms, distant synonyms) — the spread measures whether the reading is stable under a rename a user could plausibly make. Live, over the whole labelled fixture, on the existing arm harness; verdict in the spec either way.
+touches: okay-intent test fixture (Indexed/Synonym arms + canonical), a Live suite, specs/intent-classify.md, BACKLOG, CHANGELOG
