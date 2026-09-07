@@ -768,6 +768,78 @@ not prove a platform accepts them. `iad` being a region fly has,
 `basic-256mb` being a plan Render still sells — those need an account
 and stay a manual step.
 
+## The AWS target (stage 3)
+
+ECS Fargate, and the mapping runs out of the model's needs exactly
+once — which is the point of doing this cloud first:
+
+| the model | the Terraform |
+|---|---|
+| `Service` | an ECS task definition and service |
+| `Need.Port(public)` | an ALB, a target group and a listener |
+| `Settings` | the task definition's `environment` |
+| `Secret` reference | the task definition's `secrets`, by ARN |
+| `Need.Volume` | an EFS file system, its mount targets, a volume |
+| `Need.Database` | an RDS instance and its subnet group |
+| `Need.Cache` | an ElastiCache cluster |
+| `Need.Dns` + `Need.Tls` | ACM, an HTTPS listener, Route 53 records |
+| `Need.Region` | the provider's region |
+| `Scale.replicas` | `desired_count` |
+
+### A secret is not a Terraform resource
+
+The reason is sharper than the cluster target's and worth stating on
+its own: **`terraform apply` writes every resource attribute into the
+state file, and an `aws_secretsmanager_secret_version` puts the VALUE
+there in plaintext.** A state file lives in S3, or on a laptop, or in
+a CI artifact. Rendering one would take a repository whose rule is
+"no target renders a value" and hand the value to the least guarded
+file in the deployment.
+
+So the secret is created out of band by `setup.sh` (`aws
+secretsmanager create-secret`) and READ BACK by a `data` source. The
+ARN reaches the task definition, the value never reaches Terraform,
+and an operator rotating it changes nothing here. The same shape as
+the cluster target's untemplated Secret, for a different and better
+reason.
+
+### The network is not ours
+
+This target uses the account's **default VPC and its subnets**,
+through data sources, and builds no network of its own. That is a
+boundary, not a shortcut: a real production network — private
+subnets, NAT, peering, endpoints — is a thing an organisation already
+has and has opinions about, and a deployment renderer that invented
+one would be the opposite of a declarative layer over what exists.
+The generated files say so at the top, and swapping the two data
+sources for a reference to your own module is a two-line edit that
+nothing else here depends on.
+
+The one AWS thing this target does assume is a **Route 53 hosted
+zone**, and only when a service has a `Need.Dns`: an ACM certificate
+validated by DNS needs one, and there is no honest way around it. It
+arrives as a variable with no default, so Terraform asks rather than
+guessing.
+
+### The gate: `terraform validate` against the provider's own schema
+
+This is the strongest gate in the arc so far, and it is worth naming
+why. `terraform init` downloads the AWS provider; `terraform validate`
+then checks every resource type, every required argument and every
+attribute reference against that provider's schema. A misspelled
+`desired_count`, a missing `family`, a reference to an attribute the
+resource does not have — all rejected, without an account and without
+creating anything.
+
+That is a semantic check, not a syntax one: stage 2's parsers proved
+the files were well-formed, and this proves the files describe
+resources that exist. What it still does not prove is that an apply
+succeeds — quotas, IAM, a region that lacks a class of instance. Those
+need an account and stay manual.
+
+It runs in a container (`hashicorp/terraform`), so it is Live and
+docker-dependent, and it needs the network once to fetch the provider.
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of
@@ -819,7 +891,8 @@ and each ends with something an operator can actually use:
   step.
 - **Stage 3 — the clouds.** Terraform per cloud, proven by
   `terraform validate` in a container. The AWS one first, because ECS
-  plus RDS plus Secrets Manager exercises every part of the model.
+  plus RDS plus Secrets Manager exercises every part of the model —
+  landed 2026-09-07; gcp and azure are their own claims.
 - **Stage 4 — the secret schemes.** `sops:`, then the three managers,
   each shape-tested and Live-tested only where a credential exists.
 
