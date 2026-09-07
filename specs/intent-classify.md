@@ -4281,3 +4281,82 @@ CAN do is make every row count: the queue picks which to ask for, the
 gate stops a refit from killing a class, and the report says whether
 autonomy actually moved.
 
+## The harvest programme — the model reads the logs, people only arbitrate (2026-09-07)
+
+The operator's instruction: people should not be writing rows; the
+system should mine its own chat logs WITH a model and improve the
+network-free tiers from what it finds. That is a different shape from
+this line's failed distillation lanes, and the difference is exactly
+the one the literature draws.
+
+**Why this is not the distillation that failed here.** `intent-distil-*`
+had a model WRITE messages, and the rows carried the generator's
+register (a third of the fixture's diversity, no gain anywhere).
+Here the model does not write anything: the MESSAGES are real
+traffic, and the model only proposes a LABEL for them. Labelling real
+text with an LLM and training a small classifier on the result is a
+studied, working practice ([Knowledge Distillation in Automated
+Annotation](https://arxiv.org/pdf/2406.17633); [Efficient Intent-Based
+Filtering ... Knowledge Distillation from LLMs](https://arxiv.org/html/2503.17336v1)),
+with a known and quantified failure mode — systematic label noise and
+category bias — that has its own remedies
+([Calibrating Classifiers on LLM-generated Noisy Labels](https://arxiv.org/pdf/2505.19675),
+reporting ~7% recovered by noise-aware refinement).
+
+**Where people come in, and how little.** Not writing rows: arbitrating
+the uncertain ones. [CoAnnotating](https://arxiv.org/pdf/2310.15638)
+allocates work between the model and a person by UNCERTAINTY —
+the model keeps what it is sure of, a person sees only the rest. Our
+own active-learning lane measured the same shape (28 labels for the
+gain that took 36 chosen at random), so the mechanism is already
+half-built here.
+
+**The tiers we already ship are labelling functions.** Cues, grams and
+the static table each answer some messages and abstain on others, at
+known precision — which is the definition of a labelling function in
+[Snorkel](https://www.vldb.org/pvldb/vol12/p223-varma.pdf)'s sense.
+Today the offline door is a CASCADE: the first tier that fires wins,
+and every agreement or disagreement behind it is thrown away. A label
+model learned from agreement (no gold labels needed) is a different
+combiner over the same tiers, it runs with no network, and it is
+directly a change to the AUTONOMOUS door rather than to the prompt.
+
+**And what the log holds that our taxonomy does not.** `Other` is a
+diffuse bin with the worst numbers in the door, and part of the
+reason is that it is several real classes nobody has named. Intent
+DISCOVERY does exactly that from logs:
+[Dial-In LLM](https://aclanthology.org/2025.emnlp-main.300/) (LLM in
+the loop for cluster naming and coherence, >95% agreement with human
+judgement on 100k real customer-service calls) and
+[NILC](https://arxiv.org/abs/2511.05913) (clusters refined by the
+model on the uncertain utterances, WSDM 2026). For us that is
+`intent-split-other` with a method attached.
+
+### The lanes this adds (all listed in BACKLOG)
+1. `intent-annotate-log` — the model labels REAL logged messages; a
+   row is kept only if the reading grounds in the message, the
+   confidence is at least Medium, k samples agree, and no
+   deterministic tier contradicts it at high margin. Provenance per
+   row: model, prompt fingerprint, date, filters passed.
+2. `intent-coannotate-queue` — uncertainty-guided routing: a person
+   sees only the rows the filters could not settle, ranked by
+   disagreement. The measurement is human effort per point of
+   autonomy, not accuracy alone.
+3. `intent-label-model` — the tiers as labelling functions, combined
+   by learned agreement instead of a cascade. Offline, and judged on
+   the autonomy report at equal coverage.
+4. `intent-discover-classes` — cluster what lands in `Other`, name
+   the clusters with the model, propose new classes for a person to
+   accept or reject. Judged by `Other`'s recall after the split and
+   by how many proposals survive review.
+5. `intent-noise-aware-refit` — if the harvested labels prove noisy
+   enough to bind, the noise-aware refinement the literature reports;
+   opened only by a measurement showing noise is what limits the
+   refit.
+
+### The honest ordering
+1, then 2 (they are the same pipeline), then 3 (needs no new data at
+all and improves the no-network door on its own), then 4, then 5 if
+measured to matter. Lane 3 is the one that improves autonomy without
+a single new row, which is why it should not wait behind the harvest.
+

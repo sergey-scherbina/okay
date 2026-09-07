@@ -3033,14 +3033,42 @@ these are the lanes.
       0.5 the same tiers answer 73.3% of traffic at 88.6% precision
       and hand over 26.7%. The per-class law is asserted here too.
       specs/intent-classify.md, "The autonomy programme".
-- [ ] intent-harvest-loop — real rows with provenance: a model
-      classification that survives grounding and the confidence floor
-      becomes a candidate, a person confirms it, the confirmed row
-      lands in okay-chat/corpus/harvested.json with message, label,
-      language and confirmer. Different from distillation in the one
-      way that matters: the messages are real traffic. Criterion: 40+
-      confirmed rows, and a refit on them moves the autonomy rate
-      without breaking the per-class law.
+- [ ] intent-annotate-log — the model reads the LOGS and proposes
+      labels for REAL messages (operator's direction; specs/intent-classify.md,
+      "The harvest programme"). Not the distillation that failed: the
+      model writes nothing, the messages are real traffic, only the
+      label is proposed — the practice the literature supports
+      (arxiv 2406.17633, 2503.17336). A row is kept only if the
+      reading grounds in the message, conf >= Medium, k samples agree,
+      and no deterministic tier contradicts at high margin; provenance
+      per row (model, prompt fingerprint, date, filters passed).
+      Criterion: 100+ kept rows, and a refit on them moves the
+      autonomy rate without breaking the per-class law.
+- [ ] intent-coannotate-queue — CoAnnotating (arxiv 2310.15638):
+      route by UNCERTAINTY, so a person arbitrates only what the
+      filters could not settle, ranked by tier disagreement. Our
+      active-learning lane already measured the shape (28 labels
+      against 36 random for the same gain). Criterion: human effort
+      per point of autonomy, not accuracy alone.
+- [ ] intent-label-model — the tiers we already ship ARE labelling
+      functions in Snorkel's sense (each answers some messages at a
+      known precision and abstains on the rest), and the offline door
+      throws their agreement away by taking the first that fires.
+      Learn a combiner from agreement, no gold labels needed. NEEDS NO
+      NEW DATA and runs with no network, so it should not wait behind
+      the harvest. Criterion: beats the cascade on the autonomy report
+      at equal coverage.
+- [ ] intent-discover-classes — Other is several real classes nobody
+      named; cluster what lands there and name the clusters with the
+      model (Dial-In LLM, ACL 2025.emnlp-main.300, >95% agreement with
+      human judgement on 100k real calls; NILC, arxiv 2511.05913,
+      WSDM 2026), then a person accepts or rejects each proposal.
+      Criterion: Other's recall after the split, and how many
+      proposals survive review.
+- [ ] intent-noise-aware-refit — if harvested labels prove noisy
+      enough to bind, the noise-aware refinement the literature
+      reports (arxiv 2505.19675, ~7% recovered). GATED on a
+      measurement showing noise is the limit.
 - [ ] intent-label-queue — which rows to ask a person about: small
       margin plus disagreement between tiers (the shape the
       active-learning lane measured at 28 labels against 36 for the
