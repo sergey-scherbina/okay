@@ -79,14 +79,44 @@ class AdversarialBenchmark {
     import cats.syntax.all.*
     (0 until K).toList.parTraverse(i => IO(step(i))).map(_.foldLeft(0L)(_ + _)).unsafeRunSync()
 
+  /** kyo as it must be spelled for this lane: the step DEFERRED into
+   * the fiber with `IO`. The form this table carried until 2026-09-07
+   * computed `step(i)` on the caller, sequentially, BEFORE
+   * `parallelUnbounded` saw it (`(step(i): Int < Any)` is a value),
+   * so kyo forked 10 000 finished values; it is kept below as the
+   * diagnostic that says how much of "kyo's scheduler" was that. */
   @Benchmark
   def forkJoin10k_kyo(): Long =
+    import _root_.kyo.*
+    import AllowUnsafe.embrace.danger
+    val seq: Seq[Int < (Abort[Nothing] & Async)] = (0 until K).map(i => IO(step(i)))
+    KyoApp.Unsafe.runAndBlock(Duration.Infinity)(
+      Async.parallelUnbounded(seq).flatMap((c: Seq[Int]) => (c.foldLeft(0L)(_ + _): Long < Any)))
+      .getOrThrow
+
+  @Benchmark
+  def forkJoin10k_kyoEager(): Long =
     import _root_.kyo.*
     import AllowUnsafe.embrace.danger
     val seq: Seq[Int < (Abort[Nothing] & Async)] = (0 until K).map(i => (step(i): Int < Any))
     KyoApp.Unsafe.runAndBlock(Duration.Infinity)(
       Async.parallelUnbounded(seq).flatMap((c: Seq[Int]) => (c.foldLeft(0L)(_ + _): Long < Any)))
       .getOrThrow
+
+  /** the JOIN structure alone, ours: the same 10 000 drive fibers,
+   * one counter and one wake (what kyo's parallelUnbounded is inside)
+   * instead of 10 000 joins on the platform thread */
+  private def stepAnd(j: Int, acc: java.util.concurrent.atomic.AtomicLong, l: java.util.concurrent.CountDownLatch): Int =
+    val s = step(j); acc.addAndGet(s); l.countDown(); s
+
+  @Benchmark
+  def forkJoin10k_okayDriveLatch(): Long =
+    given Scheduler = Schedulers.drive()
+    val acc = new java.util.concurrent.atomic.AtomicLong
+    val latch = new java.util.concurrent.CountDownLatch(K)
+    var i = 0
+    while i < K do { val j = i; val _ = Async.spawn(async(stepAnd(j, acc, latch))); i += 1 }
+    latch.await(); acc.get
 
   // ── 2. many-to-many CONTENTION over one bounded queue ─────────────
 
