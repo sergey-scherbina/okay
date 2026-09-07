@@ -3,6 +3,7 @@ package okay.script.api
 import okay.*
 import okay.given
 import okay.ui.{Elem, Event, React, Ui, Wire}
+import okay.TDict
 
 /** A server-driven okay-ui app a page declares -- `Wire.serve`'s
  * three arguments, held as a value so the page can `mount` it and
@@ -25,10 +26,28 @@ final class Live[S](val init: S, val view: S => Ui, val update: (S, Event) => S,
   /** the tree a fresh session shows first -- also the SSR content */
   def first: Ui = view(init)
 
+  /** the state each session KEY (the container's session cookie)
+   * last reached, so a socket that reconnects goes on rather than
+   * starting over (script-live-resume). In memory, this process
+   * only: a restart starts over, and a key is never evicted while
+   * the process lives -- stated, human-scale, like `Hub`. Held
+   * inside the app so the type stays `S` and nothing is cast. */
+  private val resumed = TDict.empty[String, S]
+
   /** one session: event lines in, tree/patch lines out (okay-ui's
-   * pure `Wire.serve`), the final state discarded */
-  def session: Stage[String, String, Unit] =
-    Wire.serve(init)(view)(update).map(_ => ())
+   * pure `Wire.serve`); with a `key`, it starts from the state that
+   * key last reached and, on Closed, remembers the state it reached
+   * -- its first frame, the full tree, puts a reconnecting browser
+   * right. Without a key the final state is discarded. */
+  def session(key: Option[String]): Stage[String, String, Unit] =
+    val from = key.flatMap(resumed.get).getOrElse(init)
+    Wire.serve(from)(view)(update).map(s => key.foreach(k => resumed.put(k, s)))
+
+  /** a session with no key: from `init`, remembering nothing */
+  def session: Stage[String, String, Unit] = session(None)
+
+  /** the state a key last reached, if any -- for a test, an admin page */
+  def resumedFor(key: String): Option[S] = resumed.get(key)
 
 object Live:
   def apply[S](init: S)(view: S => Ui)(update: (S, Event) => S, push: Source[Event] = pure(())): Live[S] =
@@ -80,6 +99,10 @@ object Live:
  * just no container to answer the socket. */
 def mount(id: String, app: Live[?]): String =
   Container.liveRegistrar.foreach(register => register(id, app))
+  // a Live page is stateful, so mounting one opens the session: the
+  // cookie it sets is the key a reconnecting socket resumes by
+  // (script-live-resume); outside a Site the session is the detached one
+  Session.current.set("okay.live", "1")
   val safe = Live.escape(id)
   s"""<div id="okay-live-$safe" data-okay-live="$safe">${Live.html(app.first)}</div>""" +
     s"""<script src="${Live.JsPath}"></script><script>okayLive("$safe")</script>"""

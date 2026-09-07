@@ -1295,6 +1295,36 @@ nothing should not have to say so.
 - [x] over Jetty (Live): the tree, then two patches nobody pressed
       for.
 
+#### Reconnect with state (script-live-resume, 2026-09-07)
+
+A socket was one session from `init`; a reload, a dropped
+connection, a closed lid started the app over. `Wire.serve` already
+answers the final state on `Closed` and `Live.session` discarded it.
+Now `Live[S]` keeps, per app, the state each SESSION KEY last reached
+— a `TDict[String, S]` held inside the app, so the type stays `S`
+and nothing is cast — and `session(key: Option[String])` starts from
+that state and remembers the one it reaches on `Closed`. The key is
+the container's session cookie (`OKAYSESSID`): `Site.ws` reads it
+from the socket's request, and `mount` OPENS the session (one
+attribute, `okay.live`), so a page that mounts a Live app sets the
+cookie a reconnecting socket resumes by — a Live page is stateful,
+and a session that never touched its attributes would have had none.
+The first frame of the resumed session is the full tree at that
+state, which puts the browser right whatever its SSR showed. Whoever
+carries the cookie owns the state, the same trust as the HTTP
+session. No cookie, no resume, nothing remembered.
+
+In memory, this process only — a restart starts over, and a key is
+never evicted while the process lives (human-scale, stated, like
+`Hub`). The durable half — okay-ui's ui-durable, a journal plus
+refold on okay-persist, so a restart resumes too — stays filed; this
+is the reconnect the entry named, not the restart.
+
+- [x] mounting a Live app opens the session: the page sets the cookie.
+- [x] in-JVM: the same cookie resumes where the last socket left off
+      (the tree at `count: 2`, then `count: 3`); another cookie, or
+      none, starts from `init`, and none remembers nothing.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a

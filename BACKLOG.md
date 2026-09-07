@@ -1201,10 +1201,16 @@ not a new primitive from scratch.
       host, and — found by the lifecycle test's ClassCastException on
       jetty's Server — any class on BOTH the page's classpath and the
       host's is the host's. specs/okay-script.md "Live pages".
-- [ ] okay-script-live: reconnect with state — a socket is one session
+- [x] okay-script-live: reconnect with state — a socket is one session
       from `init`; a browser that reconnects starts over. okay-ui's
       ui-durable (journal + refold on okay-persist) is the mechanism;
-      key by session cookie.
+      key by session cookie. DONE 2026-09-07 (script-live-resume) for
+      the RECONNECT: `Live[S]` keeps the state each session cookie
+      last reached (a `TDict[String, S]` inside the app, no cast),
+      `session(key)` starts from it and remembers on `Closed`;
+      `Site.ws` reads the cookie, `mount` opens the session so the
+      page sets one. In memory, this process only; the durable half
+      (journal + refold, so a RESTART resumes too) stays filed here.
 - [x] okay-script-live: server-pushed updates — a Live app only
       changes on a client event; a source merged in (`Ui.run`'s
       `external`) is what a ticking clock or a shared poll needs.

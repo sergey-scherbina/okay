@@ -1,5 +1,22 @@
 # Changelog
 
+## script-live-resume — a Live session resumes from the state its last socket reached, keyed by the session cookie
+
+A socket was one session from `init`; a reload started the app over.
+`Wire.serve` already answers the final state on `Closed`, and `Live`
+discarded it. `Live[S]` now keeps, per app, the state each session key
+last reached — a `TDict[String, S]` inside the app, so nothing is
+cast — and `session(key)` starts from it and remembers the state it
+reaches. The key is the container's session cookie: `Site.ws` reads
+it from the socket's request, and `mount` opens the session so a page
+that mounts a Live app sets the cookie a reconnecting socket resumes
+by. The resumed session's first frame is the full tree at that state,
+which puts the browser right whatever its SSR showed. In memory, this
+process only — a restart starts over; the durable half (a journal and
+refold on okay-persist) stays filed. In-JVM: the same cookie resumes
+at `count: 2` and goes on to 3; another cookie, or none, starts from
+`init`.
+
 ## script-live-push — server-pushed updates for Live pages: the app's own Source[Event], merged at the socket
 
 A Live page changed only on a client event. `Live(init)(view)(update,

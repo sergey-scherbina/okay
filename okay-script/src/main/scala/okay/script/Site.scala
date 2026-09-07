@@ -55,7 +55,7 @@ final class Site(
    * arrives before the page was ever rendered (a reconnect after a
    * restart) renders it once to register the app. */
   def ws: PartialFunction[Request, Stage[Frame, Frame, Unit]] = {
-    case r if liveOf(r).isDefined => liveSession(liveOf(r).get)
+    case r if liveOf(r).isDefined => liveSession(liveOf(r).get, cookiesOf(r).get(SessionCookie))
   }
 
   private def liveOf(r: Request): Option[api.Live[?]] =
@@ -83,7 +83,9 @@ final class Site(
       Stage.transduce(())((_, e) => Stage.tell[Event, Frame](Frame.Text(Json.print(WireJson.eventJson(e)))), _ => pure(()))
     through[Event, Frame, Async, Unit, Unit](app.push)(!.widen[Unit, Take % Event + Writer % Frame, Async](eventsToFrames))
 
-  private def liveSession(app: api.Live[?]): Stage[Frame, Frame, Unit] =
+  /** `key` is the session cookie, when the socket carries one: the
+   * app resumes the state that key last reached (script-live-resume) */
+  private def liveSession(app: api.Live[?], key: Option[String]): Stage[Frame, Frame, Unit] =
     val closed = Json.print(WireJson.eventJson(Event.Closed))
     val framesToLines: Stage[Frame, String, Unit] =
       Stage.transduce(())((_, f) =>
@@ -95,7 +97,7 @@ final class Site(
     val linesToFrames: Stage[String, Frame, Unit] =
       Stage.transduce(())((_, l) => Stage.tell[String, Frame](Frame.Text(l)), _ => pure(()))
     through[Frame, String, Frame, Unit, Unit](
-      through[Frame, String, String, Unit, Unit](framesToLines)(app.session))(linesToFrames)
+      through[Frame, String, String, Unit, Unit](framesToLines)(app.session(key)))(linesToFrames)
 
   /** the synchronous core: one request in, one response out */
   def handle(r: Request): HttpResponse =
@@ -316,13 +318,15 @@ final class Site(
     val form =
       if ct.startsWith("application/x-www-form-urlencoded") then parseQuery(bodyText)
       else parts.filter(!_.isFile).map(p => p.name -> p.text).toMap
-    val cookies = r.headers.collect { case (k, v) if k.equalsIgnoreCase("cookie") => v }
+    api.Web(r.method.name, path, parseQuery(query), headers, form, cookiesOf(r), bodyText, params, parts)
+
+  private def cookiesOf(r: Request): Map[String, String] =
+    r.headers.collect { case (k, v) if k.equalsIgnoreCase("cookie") => v }
       .flatMap(_.split(";").toVector)
       .flatMap { kv =>
         val i = kv.indexOf('=')
         if i <= 0 then None else Some(kv.substring(0, i).trim -> kv.substring(i + 1).trim)
       }.toMap
-    api.Web(r.method.name, path, parseQuery(query), headers, form, cookies, bodyText, params, parts)
 
 object Site:
   val SessionCookie = "OKAYSESSID"
