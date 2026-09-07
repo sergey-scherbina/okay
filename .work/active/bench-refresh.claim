@@ -35,3 +35,33 @@ CAUTION — MACHINE STATE THIS CLAIM OWNS:
     launchctl load ~/Library/LaunchAgents/io.scalascript.build-ram-guard.plist
     launchctl load ~/Library/LaunchAgents/io.scalascript.kill-stale-builders.plist
   If this session dies, whoever finds this claim must load them back.
+
+STATUS 2026-09-07 22:35 — PAUSED, twice over, and both reasons matter
+  to whoever resumes this:
+
+  1. The scheduler changed under it. Every round measured before
+     3f09bd9c is from a tree with the own-long-join-deadlock defect in
+     it. Those rounds are DISCARDED, not merged with post-fix ones —
+     the doc's own rule is that lanes quoted together come from one
+     session on one tree.
+  2. A sibling holds `scala-3-9` (migrating the build to Scala 3.9
+     LTS). That changes the compiler generating every byte being
+     timed, so a table measured on 3.7.4 and published while master is
+     on 3.9 describes a tree nobody has. Asked in the room who goes
+     first; my preference is 3.9 lands, then I measure on top of it,
+     so the numbers match master and it costs one clean session
+     instead of two.
+
+  Resuming needs: a QUIET box (no sbt, no sibling build — otherwise
+  the numbers are noise), the runner in this session's scratchpad
+  (`run-round.sh`, one JVM per benchmark class, `-f 1`, each class at
+  its own declared @Warmup/@Measurement, 3 rounds, per-lane minimum),
+  and a fresh `compare/Jmh/compile` + classpath export.
+
+  Known before it restarts:
+  - `DirectBenchmark` is in package `okaybench`, not `okay`; the class
+    pattern must be `.*\.<Class>\..*`.
+  - `CodecBenchmark.scala:192` warns on master (E176, an unused
+    Boolean from `RuntimeStaged.install()`). Pre-existing, out of this
+    lane's scope, belongs in BACKLOG.
+  - §5 and §10 carry B/op columns; they need a `-prof gc` pass.
