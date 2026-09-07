@@ -138,6 +138,15 @@ is `host.docker.internal` with `--add-host` so Linux behaves as
 Docker Desktop does, and the challenge server binds the port Pebble's
 own config validates against.
 
+One Pebble PER TEST, on its own ports and under its own name — and
+that too was learned the hard way (acme-eab): a shared name and fixed
+ports flaked, because `docker rm -f` returns before the container is
+gone and the next test's client could reach the PREVIOUS Pebble and
+present it a nonce that one never issued. A badNonce that looked like
+the client bug we had just fixed, and was a fixture bug. Ports come
+from the OS, the config is written per instance, and readiness is the
+API answering rather than docker calling the container started.
+
 ## Behavior
 
 - [x] the whole flow against the fake CA: an account is created, an
