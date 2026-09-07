@@ -122,6 +122,38 @@ transport gets TLS from one seam and adds nothing of its own.
   signature (wrap a connected socket) survives the addition.
 
 
+### script-real-certs — a CA-issued identity as it actually arrives (2026-09-07)
+
+Three gaps between "we accept a certificate and a key" and "a real
+certificate works", all found by asking what certbot actually writes.
+
+**The key algorithm was assumed.** `contextOf` built the private key
+with `KeyFactory.getInstance("RSA")` and nothing else, so an EC key
+failed at load — and a CA-issued certificate today is as likely to be
+EC as RSA (Let's Encrypt issues either; `certbot --key-type ecdsa` is
+one flag). `Tls.privateKey(pem)` now reads the algorithm from the
+PKCS#8 DER by trying what this platform can hold (RSA, EC, Ed25519,
+DSA) and refuses by NAME what it cannot: an encrypted key ("this seam
+has no passphrase to give it"), a PKCS#1/SEC1 key with the one-line
+`openssl pkcs8` that converts it.
+
+**The chain was never proven.** `generateCertificates` reads every
+certificate in a `fullchain.pem`, but nothing tested that the server
+PRESENTS them, and a leaf served without its intermediate is a
+handshake a browser refuses. Now tested against a locally built CA:
+the client trusts only the CA and verifies the leaf because the
+server sent the chain.
+
+**A certificate expires while the server is up.** A CA-issued one
+lives 90 days, so `Tls.reloading(certFile, key, secrets, every,
+onError)` answers a context whose key manager re-reads the files when
+the certificate's mtime moves (checked at most once per `every`).
+certbot renews, the next connection gets the new identity, no
+restart. A renewal caught half-written is NOT adopted: the identity
+in hand keeps serving and the failure goes to `onError`, because
+another minute of the previous certificate beats none — proven by
+tearing a file mid-flight in the suite.
+
 ### script-https-default — a self-signed identity, from the seam (2026-09-07)
 
 `Tls.selfSigned(keystore, host)` generates a PKCS#12 once, reuses it,

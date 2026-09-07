@@ -1860,8 +1860,15 @@ guess. The plaintext redirect port is a whole second server whose
 only route is that 301, and it appends the TLS port when it is not
 443 — a redirect to the wrong port is a redirect to nothing.
 
-Still not here, still the proxy's: ACME, certificate rotation without
-a restart, ALPN/HTTP2, OCSP stapling, cipher policy.
+**A real certificate** (script-real-certs, the same day) is the other
+half: `OKAY_TLS_CERT` + `OKAY_TLS_KEY` take what a CA issues — an EC
+key as readily as an RSA one, and a `fullchain.pem` presented as the
+chain it is — and `OKAY_TLS_RELOAD=<seconds>` re-reads them when they
+change, so certbot's renewal needs no restart and a half-written one
+is not adopted. See specs/tls.md.
+
+Still not here, still the proxy's: ACME itself (obtaining the
+certificate), ALPN/HTTP2, OCSP stapling, cipher policy.
 
 - [x] `httpsOnly`: an insecure request is 301'd with its path and
       query intact, before routing; a forwarded-secure one is served;
@@ -1874,6 +1881,11 @@ a restart, ALPN/HTTP2, OCSP stapling, cipher policy.
 - [x] (Live) a self-signed keystore is generated once, reused on the
       next start, and serves a page over a real TLS handshake to a
       client that trusts that certificate and nothing else.
+- [x] (Live, script-real-certs) an EC key serves; a `fullchain.pem`
+      is presented as a chain a client verifies against the CA alone;
+      a renewal on disk reaches the next connection without a
+      restart; a torn renewal is refused and the old identity keeps
+      serving; every unusable key shape is refused by name.
 
 ### What is deliberately NOT here
 
