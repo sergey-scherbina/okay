@@ -732,3 +732,38 @@ holds an old sketch; a builder is held by design.
   of the number and should never be quoted apart from it.
 - The host is a busy laptop; medians across forks and same-session
   grouping are the discipline, and history.tsv records the load.
+- A LazyList-backed number is the most machine-sensitive thing in this
+  document — 3.6-4.6x slower on a second host where chunked lanes moved
+  1.5-2.2x. Read it as the looser of the two; see Portability below.
+
+## Portability — what carries to another machine
+
+Every table above is measured on one host. On 2026-09-07 the ecosystem
+lanes were re-run on an unrelated machine — a 4-vCPU cloud VM, JDK
+21.0.10, 15 GB, load ~1.2, `-f2 -wi3 -i5` — to ask which part of a
+number is the mechanism and which part is the box.
+
+**The order carries; the gaps do not.** The bind chain (all nine
+lanes), Choice and Resource reproduce the published ordering exactly.
+Absolute times are ~2.8x slower there, and the ratios between lanes
+move: `Eager`'s advantage over `Cont` falls from 17x to 5x, and atnos
+degrades to 3.41x `okayCont` where this table has 2.92x. `Cont` and
+`Free` — 89 and 95 here — are a statistical tie there (250.7 ±10.0 vs
+251.0 ±5.7).
+
+**Where the order does not carry, it is always a lazy lane.** Four
+orderings inverted: `okayLazyList` losing to kyo in the stream
+pipeline, `okayProducer` beating `stdLazyList` and kyo beating
+`okayLazyList` in generators, fs2 beating ZStream. They share one
+mechanism. Costed against this table, chunked lanes are 1.5-2.2x
+slower on that host while LazyList-backed lanes are 3.6-4.6x
+(`okayLazyList` 4.55x in streams, `stdLazyList` 4.45x in generators,
+`okayLazyList` 3.65x in generators). Memoization is allocation, and
+that box prices allocation higher than this one — the same direction
+atnos moves in the bind row.
+
+So a chunked or handler number here prices a mechanism; a LazyList
+number prices a mechanism AND a machine, and the two cannot be
+separated from a single host. Nothing in the chunked, handler or
+Resource lanes changed places. Rows: `xhost-*` in
+[history.tsv](../src/jmh/history.tsv).
