@@ -83,10 +83,32 @@ or a proxy, and this module says so instead of growing.
 A fake CA in this process (`FakeCa`, test scope): a real HTTP server
 speaking the protocol's shapes, which fetches the challenge back over
 a real socket and signs the client's CSR with its own CA key. It
-proves the state machine, the nonce discipline, the jwk-then-kid
-switch, the poll through `pending`, and the HTTP-01 round trip. What
-it cannot prove is interop with a real CA — that is Pebble (Let's
-Encrypt's own test server) in docker, filed as `acme-pebble`.
+proves the state machine, the jwk-then-kid switch, the poll through
+`pending`, and the HTTP-01 round trip.
+
+**And Pebble, because a double checks our reading against our own
+writing** (acme-pebble, 2026-09-07). Pebble is Let's Encrypt's own
+small ACME server, deliberately strict, run in docker: our client
+against someone else's implementation. It found a real bug in the
+first run — `badNonce`.
+
+The bug: `freshNonce` returned the `Replay-Nonce` of the HEAD it had
+just made, while `send` had ALSO cached that same value from that
+same response. The next POST spent the nonce again. Our own double
+accepted a replayed nonce, so nothing before this could have caught
+it; Pebble rejects one, which is exactly what a CA is supposed to do.
+A nonce is now taken once — reading it clears the cache — and, per
+§6.5, a `badNonce` answer is retried once with the fresh nonce the CA
+sent along with it, which is what every client does and what our
+tests now assert by simply passing.
+
+Pebble's shape in the test: it generates its own CA per run, so the
+certificate is pulled out with `docker cp` and trusted by a
+test-scope `Http` over the JDK client (production transports
+untouched, and `Acme` is proven to work over any `Http`); the domain
+is `host.docker.internal` with `--add-host` so Linux behaves as
+Docker Desktop does, and the challenge server binds the port Pebble's
+own config validates against.
 
 ## Behavior
 
@@ -100,6 +122,10 @@ Encrypt's own test server) in docker, filed as `acme-pebble`.
 - [x] a refusal carries the CA's own sentence.
 - [x] the account key is generated once and reused; the canonical JWK
       is stable and in RFC 7638's order.
+- [x] (Live, docker) PEBBLE issues a certificate to this client: a
+      chain, for the name asked for, signed by an issuer that is not
+      us — and a name it cannot reach is refused with the CA's own
+      sentence, leaving no certificate behind.
 
 ## Wired into okay-script
 
