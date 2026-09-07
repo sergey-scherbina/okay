@@ -534,6 +534,35 @@ nothing gained.
 
 ---
 
+### `Growing` — a ring that becomes partitioned when producers arrive
+
+`Queues.strong[A].growing(capacity, parts)` is a plain ring until more
+than one producer is seen pushing, and an `AdaptiveFifo` after that —
+one that ADOPTS the ring as its part 0, so no element moves and the
+producer that filled it keeps pushing there (its order lives in that
+part). The trigger is sampled: a counter every push, and every 64th
+one compares the pushing thread with the last one sampled. A refused
+push is NOT the trigger, and that was measured: a ring at sixteen
+producers is 17x slower than a partitioned buffer with room to spare,
+so fullness is backpressure and says nothing about how many producers
+there are.
+
+| producers | `bounded` | `growing` | `adaptive` |
+|---|---|---|---|
+| 1 | **123** | 158 | 144 |
+| 4 | 715 | 477 | **136** |
+| 16 | 3 066 | 446 | **100** |
+
+It is honest about being between the two: 6.9x the ring where the ring
+is weak, and behind both of the buffers it is made of at their own
+shapes, because after the swap every push crosses two layers. Take
+`bounded` when there is one producer, `adaptive` when there are many
+from the first message, and this when the count is genuinely unknown.
+The layer is what has to go, and `queue-swap` is the entry that
+removes it by having the channel replace its buffer rather than wrap
+it.
+
+
 ## 4. Recipes
 
 ```scala

@@ -37,7 +37,9 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReferenc
  * shape as four earlier defects in this design — a question about one
  * part asked of the whole — so it is a law, not an argument.
  */
-final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = false)
+final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = false,
+                           first: Buffer[A] | Null = null,
+                           firstOwner: Thread | Null = null)
     extends Buffer[A] {
 
   private val cap = if limit < 1 then 1 else limit
@@ -60,7 +62,10 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
   // flag, not one type, and two nearly-identical lock-free structures
   // is two places for the same defect to hide.
   if eager then { var i = 0; while i < cap do { slots.set(i, make()); i += 1 } }
-  else slots.set(0, make())
+  // `first` is an EXISTING buffer adopted as part 0, which is how a
+  // channel becomes partitioned without moving an element: whatever is
+  // already in it stays where it is and is read from where it is
+  else slots.set(0, if first != null then first.nn else make())
 
   /** how many are open; grown only by the thread that opened one, so
    * a reader never has to walk the array to count */
@@ -71,7 +76,11 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
   private val frozen = AtomicBoolean(false)
 
   /** the next part to hand out, and the route each thread keeps */
-  private val nextPart = AtomicInteger(0)
+  // an ADOPTED part 0 already has an owner: the producer that filled
+  // the ring this buffer grew out of. Its elements are in there, so it
+  // must keep pushing there, and the next claimer must not be given
+  // the same part
+  private val nextPart = AtomicInteger(if firstOwner != null then 1 else 0)
   /** a producer's own part: the index the channel routes its parked
    * senders by, and the BUFFER itself, so the hot push is one
    * thread-local read and the ring's own push — no `open` read, no
@@ -82,8 +91,10 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
 
   private val mine = new ThreadLocal[Home]:
     override def initialValue(): Home =
-      val i = claimPart()
-      Home(i, slots.get(i).nn)
+      if (Thread.currentThread() eq firstOwner) then Home(0, slots.get(0).nn)
+      else
+        val i = claimPart()
+        Home(i.intValue, slots.get(i.intValue).nn)
 
   /**
    * ONE CONSUMER AT A TIME PER PART (consumer-claim, 2026-09-07, the

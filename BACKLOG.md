@@ -4368,7 +4368,7 @@ four against master without it — so a diagnostic that costs the hot
 path does not live in main code. Re-add it temporarily if the latency
 measurement is ever built.
 
-## queue-swap — BUILT, MEASURED and REVERTED 2026-09-07; the channel-level version is the only one that can pay
+## queue-swap — the channel-level version, which removes the layer `Growing` still pays
 
 The operator asked (2026-09-07) whether we can have a single ideal
 MPMC queue. Measured today, the answer is in two halves.
@@ -4443,9 +4443,11 @@ being stranded. Minimum of five rounds, us:
 
 It works — 6.9x the ring at sixteen producers — and it is DOMINATED at
 every point: worse than the ring where the ring wins, four times worse
-than the partitioned buffer where that wins. A knob that is never the
-best choice misleads whoever reads the menu, so it was reverted rather
-than shipped.
+than the partitioned buffer where that wins. I reverted it for that
+reason and the operator decided otherwise (2026-09-07): it ships as
+`Queues.strong[A].growing` with the table beside it in
+`docs/queues.md`, as the thing this entry improves rather than
+replaces.
 
 THREE TRIGGERS, and the first two were refuted by measurement:
 - a REFUSED push. Wrong: a ring is 17x slower at sixteen producers

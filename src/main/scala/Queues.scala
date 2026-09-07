@@ -58,6 +58,12 @@ object Queues {
       [T] => (_: Int) => Ring[T](capacity, singleConsumer)
     def segments: [T] => Int => Buffer[T] =
       [T] => (_: Int) => Segments[T]()
+    def growing(capacity: Int, parts: Int): [T] => Int => Buffer[T] =
+      [T] => (_: Int) =>
+        val cap = if capacity < 2 then 2 else capacity
+        val n = if parts < 2 then 2 else parts
+        Growing[T](Ring[T](cap), n, () => Ring[T](math.max(cap / n, 2)))
+
     def multiRing(parts: Int, each: Int): [T] => Int => Buffer[T] =
       [T] => (_: Int) => AdaptiveFifo[T](parts, () => Ring[T](each), eager = true)
     def multiSegments(parts: Int): [T] => Int => Buffer[T] =
@@ -99,6 +105,27 @@ object Queues {
      * it is not.
      */
     def relaxed: Parted[A] = Parted[A](this, eager = true)
+
+    /**
+     * GROWING: a plain ring until producers actually contend, and a
+     * partitioned buffer after that — the ring itself becomes part 0,
+     * so nothing moves and nothing is copied.
+     *
+     * {{{
+     * Queues.strong[Int].growing(1024).build          // 8 parts at most
+     * Queues.strong[Int].growing(1024, parts = 32).build
+     * }}}
+     *
+     * This is `bounded` while one producer keeps up with the channel
+     * and `adaptive` once one does not, decided by the buffer itself
+     * on the path where a push is refused — the slow path, so nothing
+     * is paid for the choice while it does not matter. Use it when the
+     * producer count is not known where the channel is made, which is
+     * most channels; use `bounded` when it is one and always will be,
+     * and `adaptive` when it is many from the first message.
+     */
+    def growing(capacity: Int, parts: Int = 8): Strong[A] =
+      copy(buffer = Some(Mechanism.growing(capacity, parts)))
 
     /**
      * ADAPTIVE: parts appear as producers do, up to the cap.
