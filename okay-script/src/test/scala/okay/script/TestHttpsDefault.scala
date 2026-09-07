@@ -66,7 +66,13 @@ class TestHttpsDefault extends munit.FunSuite:
       assertEquals(parse(Map("OKAY_TLS" -> "self")).map(_.selfSigned), Right(true))
       assertEquals(parse(Map("OKAY_TLS" -> "SELF")).map(_.selfSigned), Right(true))
       assertEquals(parse(Map("OKAY_HSTS" -> "600")).map(_.hsts), Right(Some(600)))
-      assertEquals(parse(Map("OKAY_HSTS" -> "soon")).map(_.hsts), Right(None))
+      // was silently None before script-config; a value that is not a
+      // number is now a REFUSAL naming the variable, because "the HSTS
+      // I set is not in effect" is not a thing to discover in production
+      assert(parse(Map("OKAY_HSTS" -> "soon")).left.exists(_.contains("OKAY_HSTS is not a whole number: 'soon'")),
+        parse(Map("OKAY_HSTS" -> "soon")).toString)
+      // zero and below still mean "off", which is a VALUE, not a typo
+      assertEquals(parse(Map("OKAY_HSTS" -> "0")).map(_.hsts), Right(None))
       assertEquals(parse(Map("OKAY_HTTPS_ONLY" -> "1")).map(_.httpsOnly), Right(true))
       assertEquals(parse(Map("OKAY_HTTP_PORT" -> "8080")).map(_.httpPort), Right(Some(8080)))
       // OKAY_TLS=self makes the scheme https without a certificate file

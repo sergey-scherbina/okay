@@ -78,50 +78,160 @@ object Serve:
                         acmeEab: Option[(String, String)] = None):
     def scheme: String = if tls.isDefined then "https" else "http"
 
+  /**
+   * Every setting this program has, as ONE value with its own
+   * defaults (specs/okay-script.md, "The configuration").
+   *
+   * There used to be two lists of these names: the environment
+   * variables this file read, and the environment variables
+   * `ScriptDeploy` rendered into a unit file. They agreed because a
+   * person kept them agreeing. Now the names are DERIVED from these
+   * fields on both sides — `Conf.envName`, one derivation — so a
+   * field renamed here is renamed in the deployment, and a field the
+   * deployment sets that this program does not have cannot be
+   * written at all.
+   *
+   * Flat and scalar on purpose: what an environment can carry is
+   * text, numbers, yes/no and a secret REFERENCE. The pairs this
+   * program actually wants — a certificate WITH its key, an ACME
+   * account WITH its domains — are built in `Args.of`, where a half
+   * of one is a named refusal rather than a silent fall back.
+   */
+  final case class Config(
+    /** the directory of pages; the command line's first word wins */
+    pages: String = "",
+    port: Int = 8080,
+    /** an okay-persist FileStore's directory: with it sessions and
+     * the application scope survive a restart, without it both are
+     * in memory */
+    data: String = "",
+    /** `en,uk` — the languages the site speaks, the first the
+     * default (okay-script-i18n) */
+    langs: String = "en",
+    /** mounts /healthz, /stats and /metrics beside the pages —
+     * opt-in, because exposure is the deployment's decision */
+    ops: Boolean = false,
+    /** trust `X-Forwarded-Proto`, for a Site behind a proxy YOU
+     * control, which is the only place a header is evidence */
+    forwarded: Boolean = false,
+    /** `self`: a self-signed certificate, generated once into the
+     * data directory and reused (script-https-default) */
+    tls: String = "",
+    tlsCert: String = "",
+    /** a Secret REFERENCE (`file:/run/secrets/key.pem`), which is
+     * what belongs in a unit file — never a key */
+    tlsKey: okay.conf.Secret = okay.conf.Secret(""),
+    /** re-read the certificate every N seconds when it changes, so a
+     * renewal needs no restart (script-real-certs) */
+    tlsReload: Int = 0,
+    hsts: Int = 0,
+    httpsOnly: Boolean = false,
+    /** a plaintext port that only redirects to https, and the port
+     * ACME's http-01 challenge is served on */
+    httpPort: Int = 0,
+    /** an email address: ask a certificate authority for the
+     * certificate (okay-acme). Staging unless acmeProd */
+    acme: String = "",
+    acmeDomains: String = "",
+    acmeProd: Boolean = false,
+    /** `<kid>:<base64url MAC key>`: the external account binding a
+     * commercial CA hands you out of band (acme-eab) */
+    acmeEab: String = "")
+
+  object Config:
+    given okay.codec.Schema[Config] = okay.codec.Schema.derived
+
+    /** the prefix every one of this program's variables carries */
+    val prefix = "okay"
+
+    /** the names this config answers to, in field order — what
+     * `ScriptDeploy` renders and what a `--help` would print */
+    def names: Vector[String] = summon[okay.codec.Schema[Config]] match
+      case p: okay.codec.Schema.SProduct[Config] => p.fields.map((f, _) => okay.conf.Conf.envName(prefix, f))
+      case _ => Vector.empty
+
   /** `<dir> [port]`; port 8080 by default. With NO arguments the
-   * environment answers instead -- `OKAY_PAGES` and `OKAY_PORT` --
+   * configuration answers instead -- `OKAY_PAGES` and `OKAY_PORT` --
    * because a container's entrypoint is `java -jar app.jar` and the
    * pages directory rides in as configuration, not as a command line
-   * (okay-script-image). */
-  def parse(args: Array[String], env: String => Option[String] = k => Option(System.getenv(k))): Either[String, Args] =
-    val words = if args.nonEmpty then args.toList
-      else env("OKAY_PAGES").toList ++ env("OKAY_PORT").toList
-    words match
-      case dir :: rest if rest.length <= 1 =>
-        val root = Paths.get(dir)
-        if !Files.isDirectory(root) then Left(s"not a directory: $dir")
-        else
-          rest.headOption.map(_.toIntOption.toRight(s"not a port: ${rest.head}")).getOrElse(Right(8080))
-            .flatMap { port =>
-              tlsOf(env).map(tls => Args(root, port, env("OKAY_DATA").map(Paths.get(_)),
-                env("OKAY_LANGS").map(_.split(",").toVector.map(_.trim).filter(_.nonEmpty)).filter(_.nonEmpty).getOrElse(Vector("en")),
-                tls,
-                env("OKAY_OPS").exists(v => v == "1" || v.equalsIgnoreCase("true")),
-                env("OKAY_FORWARDED").exists(v => v == "1" || v.equalsIgnoreCase("true")),
-                env("OKAY_TLS").exists(_.equalsIgnoreCase("self")),
-                env("OKAY_HSTS").flatMap(_.toIntOption).filter(_ > 0),
-                env("OKAY_HTTPS_ONLY").exists(v => v == "1" || v.equalsIgnoreCase("true")),
-                env("OKAY_HTTP_PORT").flatMap(_.toIntOption),
-                env("OKAY_TLS_RELOAD").flatMap(_.toIntOption).filter(_ > 0),
-                for
-                  email <- env("OKAY_ACME")
-                  domains = env("OKAY_ACME_DOMAINS").map(_.split(",").toVector.map(_.trim).filter(_.nonEmpty)).getOrElse(Vector.empty)
-                  if domains.nonEmpty
-                yield (email, domains, env("OKAY_ACME_PROD").exists(v => v == "1" || v.equalsIgnoreCase("true"))),
-                env("OKAY_ACME_EAB").flatMap { pair =>
-                  // kid:key -- the key is base64url and carries no colon,
-                  // so the FIRST colon separates them
-                  val i = pair.indexOf(':')
-                  Option.when(i > 0 && i < pair.length - 1)((pair.take(i), pair.drop(i + 1)))
-                }))
-            }
-      case _ => Left("usage: okay.script.Serve <pages-dir> [port]   (or OKAY_PAGES/OKAY_PORT; OKAY_DATA=<dir> for a persistent store)")
+   * (okay-script-image).
+   *
+   * The order is defaults, then the file `OKAY_CONF` names, then the
+   * environment, then the command line: each closer to the running
+   * process than the one before it (specs/conf.md). */
+  def parse(
+    args: Array[String],
+    env: String => Option[String] = k => Option(System.getenv(k)),
+    slurp: String => Either[String, String] = p =>
+      try Right(Files.readString(Paths.get(p)))
+      catch case e: Exception => Left(Option(e.getMessage).getOrElse(e.getClass.getSimpleName)),
+  ): Either[String, Args] =
+    val file = env("OKAY_CONF").filter(_.nonEmpty)
+    for
+      text <- file match
+        case None => Right(None)
+        case Some(path) => readConf(path, slurp).map(Some(_))
+      base <- okay.conf.Conf.layered(Config(), text, env, Config.prefix)
+      // the command line is the last word: `Serve pages 9000`
+      cli <- args.toList match
+        case Nil => Right(base)
+        case dir :: Nil => Right(base.copy(pages = dir))
+        case dir :: p :: Nil => p.toIntOption.toRight(s"not a port: $p").map(n => base.copy(pages = dir, port = n))
+        case _ => Left(usage)
+      a <- Args.of(cli)
+    yield a
 
-  /** OKAY_TLS_CERT and OKAY_TLS_KEY come as a PAIR: a certificate
-   * without its key (or the other way round) is a misconfiguration
-   * named as such, never a silent fall back to plaintext */
-  private def tlsOf(env: String => Option[String]): Either[String, Option[(String, okay.conf.Secret)]] =
-    (env("OKAY_TLS_CERT"), env("OKAY_TLS_KEY")) match
+  private val usage =
+    "usage: okay.script.Serve <pages-dir> [port]   (or OKAY_PAGES/OKAY_PORT; OKAY_DATA=<dir> for a persistent store)"
+
+  /** a config file that is not there is a REFUSAL naming it: the
+   * operator asked for that file by setting OKAY_CONF, and starting
+   * without it is how a deployment runs on defaults nobody chose */
+  private def readConf(path: String, slurp: String => Either[String, String]): Either[String, String] =
+    slurp(path).left.map(m => s"OKAY_CONF names $path and it could not be read: $m")
+
+  object Args:
+    /** the pairs this program wants, built from the flat config:
+     * a certificate WITHOUT its key (or the other way round) is a
+     * misconfiguration named as such, never a silent fall back to
+     * plaintext, and an ACME email without domains asks for nothing */
+    def of(c: Config): Either[String, Args] =
+      if c.pages.isEmpty then Left(usage)
+      else
+        val root = Paths.get(c.pages)
+        if !Files.isDirectory(root) then Left(s"not a directory: ${c.pages}")
+        else
+          // kid:key -- the key is base64url and carries no colon, so
+          // the FIRST colon separates them
+          val eab =
+            val i = c.acmeEab.indexOf(':')
+            Option.when(i > 0 && i < c.acmeEab.length - 1)((c.acmeEab.take(i), c.acmeEab.drop(i + 1)))
+          tlsOf(c).map { tls =>
+            Args(
+              root = root,
+              port = c.port,
+              data = Option(c.data).filter(_.nonEmpty).map(Paths.get(_)),
+              languages = list(c.langs) match
+                case Vector() => Vector("en")
+                case some => some,
+              tls = tls,
+              ops = c.ops,
+              forwarded = c.forwarded,
+              selfSigned = c.tls.equalsIgnoreCase("self"),
+              hsts = Option(c.hsts).filter(_ > 0),
+              httpsOnly = c.httpsOnly,
+              httpPort = Option(c.httpPort).filter(_ > 0),
+              tlsReload = Option(c.tlsReload).filter(_ > 0),
+              acme = Option.when(c.acme.nonEmpty && list(c.acmeDomains).nonEmpty)(
+                (c.acme, list(c.acmeDomains), c.acmeProd)),
+              acmeEab = eab)
+          }
+
+    private def list(s: String): Vector[String] =
+      s.split(",").toVector.map(_.trim).filter(_.nonEmpty)
+
+  private def tlsOf(c: Config): Either[String, Option[(String, okay.conf.Secret)]] =
+    (Option(c.tlsCert).filter(_.nonEmpty), Option(c.tlsKey.ref).filter(_.nonEmpty)) match
       case (None, None) => Right(None)
       case (Some(cert), Some(key)) => Right(Some((cert, okay.conf.Secret(key))))
       case (Some(_), None) => Left("OKAY_TLS_CERT is set without OKAY_TLS_KEY (a Secret ref: file:/run/secrets/key.pem)")

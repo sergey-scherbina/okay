@@ -133,6 +133,14 @@ final case class Scale(replicas: Int = 1)
 final case class Settings(all: Vector[Setting] = Vector.empty):
   def env: Vector[(String, String)] = all.map(s => s.name -> s.value)
   def ++(more: Settings): Settings = Settings(all ++ more.all)
+
+  /** the ones a deployment actually decides, out of everything the
+   * program's config could hold. `Settings.of[A]` renders the whole
+   * value, defaults included, and a unit file restating a program's
+   * default is a lie waiting for that default to change — so a
+   * deployment names what it overrides, and a name that is not in
+   * the schema simply is not there to name. */
+  def only(names: String*): Settings = Settings(all.filter(s => names.contains(s.name)))
   def withValue(name: String, value: String): Settings =
     Settings(all.map(s => if s.name == name then s.copy(value = value) else s))
 
@@ -166,9 +174,10 @@ object Settings:
   /** `pages` under prefix `OKAY` is `OKAY_PAGES`; `tlsReload` is
    * `OKAY_TLS_RELOAD` -- camelCase becomes SNAKE_CASE, which is the
    * convention every environment already uses */
-  def envName(prefix: String, field: String): String =
-    val snake = field.flatMap(c => if c.isUpper then "_" + c else c.toString).toUpperCase
-    if prefix.isEmpty then snake else s"${prefix.toUpperCase}_$snake"
+  // ONE derivation, in okay-conf: this renders the names and
+  // Conf.layered reads them, and two lists that agree only because a
+  // person keeps them agreeing is the drift being deleted here
+  export okay.conf.Conf.envName
 
 object Deployment:
   // Health, Resources and their Schemas come from specs/deploy.md's

@@ -67,11 +67,17 @@ object ScriptDeploy:
     services = Vector(Service(
       name = "web",
       run = Run.Module("okayScript", "okay-script", "okay.script.Serve"),
-      settings = Settings.of("okay")(
-        "pages" -> "/app/pages",
-        "port" -> "8080",
+      // the settings are DERIVED from the value the program itself
+      // reads (script-config): a field renamed in Serve.Config is
+      // renamed here, and a name this deployment could invent does
+      // not exist. Only what differs from the program's own defaults
+      // is written -- a unit file restating a default is a lie
+      // waiting for the default to change.
+      settings = Settings.of(Serve.Config(
+        pages = "/app/pages",
+        port = 8080,
         // /healthz, /stats and /metrics beside the pages
-        "ops" -> "1"),
+        ops = true), Serve.Config.prefix).only("OKAY_PAGES", "OKAY_PORT", "OKAY_OPS"),
       needs = Vector(
         Need.Port(8080),
         // NOT baked into the image (script-tls): /app belongs to root
