@@ -13,6 +13,8 @@ import java.nio.file.{Files, Path, Paths}
  *   OKAY_DATA=./data sbt "okayScript/runMain okay.script.Serve pages"
  *
  * `OKAY_OPS=1` mounts /healthz, /stats and /metrics beside the pages.
+ * `OKAY_FORWARDED=1` trusts `X-Forwarded-Proto`, so a Site behind a
+ * TLS-terminating proxy still marks its cookies `Secure`.
  *
  * `OKAY_LANGS=en,uk` names the languages the site speaks (okay-script-
  * i18n), the first the default. `OKAY_TLS_CERT=/path/cert.pem` with
@@ -32,7 +34,11 @@ object Serve:
                         /** OKAY_OPS=1 mounts /healthz, /stats and /metrics
                          * beside the pages -- opt-in, because exposure is
                          * the deployment's decision, not a directory's */
-                        ops: Boolean = false):
+                        ops: Boolean = false,
+                        /** OKAY_FORWARDED=1: trust `X-Forwarded-Proto` --
+                         * for a Site behind a proxy YOU control, which is
+                         * the only place a header is evidence */
+                        forwarded: Boolean = false):
     def scheme: String = if tls.isDefined then "https" else "http"
 
   /** `<dir> [port]`; port 8080 by default. With NO arguments the
@@ -53,7 +59,8 @@ object Serve:
               tlsOf(env).map(tls => Args(root, port, env("OKAY_DATA").map(Paths.get(_)),
                 env("OKAY_LANGS").map(_.split(",").toVector.map(_.trim).filter(_.nonEmpty)).filter(_.nonEmpty).getOrElse(Vector("en")),
                 tls,
-                env("OKAY_OPS").exists(v => v == "1" || v.equalsIgnoreCase("true"))))
+                env("OKAY_OPS").exists(v => v == "1" || v.equalsIgnoreCase("true")),
+                env("OKAY_FORWARDED").exists(v => v == "1" || v.equalsIgnoreCase("true"))))
             }
       case _ => Left("usage: okay.script.Serve <pages-dir> [port]   (or OKAY_PAGES/OKAY_PORT; OKAY_DATA=<dir> for a persistent store)")
 
@@ -79,11 +86,12 @@ object Serve:
    * `issue` or a shared `Sessions` builds its own from here */
   def site(a: Args): Site =
     a.data match
-      case None => Site(a.root, languages = a.languages)
+      case None => Site(a.root, languages = a.languages, trustForwarded = a.forwarded)
       case Some(dir) =>
         Files.createDirectories(dir)
         val store = FileStore.open(dir)
-        Site(a.root, sessions = Sessions.persisted(store), application = api.Application.persisted(store), languages = a.languages)
+        Site(a.root, sessions = Sessions.persisted(store), application = api.Application.persisted(store),
+          languages = a.languages, trustForwarded = a.forwarded)
 
   def main(args: Array[String]): Unit =
     val plan =

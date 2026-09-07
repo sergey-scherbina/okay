@@ -39,6 +39,19 @@ final class Site(
    * (okay-script-i18n): `page.<lang>.md` variants and `i18n/<lang>.
    * yaml` messages are looked up for the request's language */
   val languages: Vector[String] = Vector("en"),
+  /** `Secure` on the cookies this container sets
+   * (okay-script-cookie-flags). `None` DECIDES per request: this
+   * connection was TLS, or a trusted proxy said the client's was.
+   * `Some(true)` forces it on (the honest setting behind a proxy
+   * whose headers you do not want to trust), `Some(false)` off (a
+   * plaintext dev box). */
+  secureCookies: Option[Boolean] = None,
+  /** trust `X-Forwarded-Proto` from whatever connected -- ONLY where
+   * a proxy you control is the only thing that can (a private
+   * network, a sidecar). A header is a claim: off by default, and
+   * `secureCookies = Some(true)` is the setting that needs no
+   * trust at all. */
+  trustForwarded: Boolean = false,
 ):
   import Site.*
 
@@ -155,6 +168,10 @@ final class Site(
    * path they claim, so a page named `/stats` is still the page's */
   def serveWith(port: Int, ssl: Option[javax.net.ssl.SSLContext], ops: Boolean)
                (using CanBlock, Scheduler): org.eclipse.jetty.server.Server ! Resource =
+    // the connector terminates TLS, so every request it brings IS
+    // secure -- which is how a cookie gets its `Secure` without a
+    // header anyone could forge (okay-script-cookie-flags)
+    servedOverTls = ssl.isDefined
     okay.jetty.Jetty.serve(port)(if ops then routes orElse opsRoutes else routes)(ws, push, ssl)
 
   /** the synchronous core: one request in, one response out */
@@ -377,6 +394,9 @@ final class Site(
     val f = localized(base, lang)
     api.Lang.setCurrent(lang)
     api.Container.setTranslator(Some(translator(lang)))
+    // every cookie this request sets -- the container's own and the
+    // page's -- carries Secure iff this request was secure
+    api.Response.setSecureByDefault(secureFor(web))
     // a `?lang=` choice is remembered by cookie for the requests after
     if web.query.get("lang").contains(lang) && !web.cookies.get(api.Lang.Cookie).contains(lang) then
       resp.cookie(api.Lang.Cookie, lang)
@@ -396,6 +416,7 @@ final class Site(
       val bytes = if resp.redirected.isDefined then Array.empty[Byte] else body.getBytes(UTF_8)
       cached(r, web, base, resp, bytes)
     finally
+      api.Response.setSecureByDefault(false)
       api.Container.setIncluder(None)
       api.Container.setLiveRegistrar(None)
       api.Container.setIssuer(None)
@@ -623,6 +644,24 @@ final class Site(
       if ct.startsWith("application/x-www-form-urlencoded") then parseQuery(bodyText)
       else parts.filter(!_.isFile).map(p => p.name -> p.text).toMap
     api.Web(r.method.name, path, parseQuery(query), headers, form, cookiesOf(r), bodyText, params, parts)
+
+  /** was THIS request secure? `secureCookies` decides when it is
+   * given; otherwise this Site's own server terminates TLS, or a
+   * trusted proxy said the client's connection did
+   * (okay-script-cookie-flags).
+   *
+   * NOT read from the request's URL: okay-http's `Request` carries a
+   * path, not an absolute URL (okay-jetty builds it from
+   * `getHttpURI.getPathQuery`), so there is no scheme in it to
+   * inspect — the first draft of this method tried and would have
+   * answered `false` for every HTTPS request. The server knows
+   * instead, and says so in `serveWith`. */
+  private def secureFor(web: api.Web): Boolean = secureCookies.getOrElse {
+    servedOverTls ||
+      (trustForwarded && web.header("X-Forwarded-Proto").exists(_.split(",").head.trim.equalsIgnoreCase("https")))
+  }
+
+  @volatile private var servedOverTls = false
 
   private def cookiesOf(r: Request): Map[String, String] =
     r.headers.collect { case (k, v) if k.equalsIgnoreCase("cookie") => v }

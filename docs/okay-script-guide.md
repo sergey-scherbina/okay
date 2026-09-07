@@ -345,6 +345,7 @@ rest from the environment:
 | `OKAY_LANGS=en,uk` | the languages |
 | `OKAY_OPS=1` | `/healthz`, `/stats`, `/metrics` beside the pages |
 | `OKAY_TLS_CERT=…` `OKAY_TLS_KEY=file:…` | HTTPS, terminated in the server |
+| `OKAY_FORWARDED=1` | behind a TLS-terminating proxy: trust `X-Forwarded-Proto`, so cookies still get `Secure` |
 | `OKAY_PAGES` `OKAY_PORT` | the directory and port, when no command line is given |
 
 ```
@@ -364,6 +365,15 @@ chart. The image runs the same entry point over `/app/pages`; mount
 your own directory over that and the site is yours. Because pages are
 read at request time, a mounted directory that changes is a site that
 changes — no rebuild, no restart.
+
+**Behind a proxy.** Terminating TLS in nginx, Caddy or an ingress is
+the usual shape, and three things then need saying. Pass `Upgrade`
+and `Connection` for EVERY path, not just one — a live page opens its
+socket on the page's own path. Set `OKAY_FORWARDED=1` (or
+`Site(secureCookies = Some(true))`, which trusts nothing) so cookies
+still carry `Secure` when the app itself sees plain HTTP. And treat
+`X-Forwarded-For` as the proxy's claim it is: `Web.current.header`
+gives it to you, trusting it is your decision.
 
 **Sharing sessions across nodes.** `Sessions.shared(topic)` over an
 okay-persist replicated topic makes a cart set on one node readable

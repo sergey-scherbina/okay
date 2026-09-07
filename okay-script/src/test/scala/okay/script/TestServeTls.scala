@@ -50,7 +50,8 @@ class TestServeTls extends munit.FunSuite:
 
   test("a page over HTTPS: the same Site, TLS on the connector") {
     val root = Files.createTempDirectory("okay-script-tls-pages-")
-    Files.writeString(root.resolve("index.md"), "```scala\nimport okay.script.api.*\n```\nsecure hello (${Web.current.method})\n"): Unit
+    Files.writeString(root.resolve("index.md"),
+      "```scala\nimport okay.script.api.*\nSession.current.set(\"seen\", \"1\")\n```\nsecure hello (${Web.current.method})\n"): Unit
     val a = Serve.parse(Array(root.toString, "0"), Map("OKAY_TLS_CERT" -> cert, "OKAY_TLS_KEY" -> key.ref).get).toOption.get
     val ssl = Serve.sslOf(a, Secrets.file).fold(m => fail(m), identity)
     assert(ssl.isDefined)
@@ -73,6 +74,11 @@ class TestServeTls extends munit.FunSuite:
       }).runWith
       assert(body.startsWith("HTTP/1.1 200"), body.take(120))
       assert(body.contains("secure hello (GET)"), body)
+      // the connector terminates TLS, so the session cookie this
+      // request set carries Secure without anyone claiming a header
+      // (okay-script-cookie-flags)
+      val cookie = body.linesIterator.find(_.toLowerCase.startsWith("set-cookie:")).getOrElse(fail(s"no Set-Cookie in\n$body"))
+      assert(cookie.contains("Secure") && cookie.contains("HttpOnly") && cookie.contains("SameSite=Lax"), cookie)
     finally
       site.close()
       Files.walk(root).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => Files.deleteIfExists(p): Unit)

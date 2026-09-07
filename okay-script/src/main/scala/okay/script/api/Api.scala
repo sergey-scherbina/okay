@@ -96,14 +96,34 @@ final class Response:
   def redirected: Option[String] = redirectTo
 
   /** one `Set-Cookie`; `maxAge` in seconds, `Some(0)` expires it */
+  /** one `Set-Cookie`. `secure` and `sameSite` are not decoration
+   * (okay-script-cookie-flags): a cookie without `Secure` leaves the
+   * browser on a plaintext request, and one without `SameSite` rides
+   * a cross-site POST, which is the CSRF surface. `SameSite=Lax` is
+   * the default here; `secure` defaults to what the CONTAINER knows
+   * about this request's scheme, so a page does not have to. */
   def cookie(name: String, value: String, maxAge: Option[Int] = None,
-             path: String = "/", httpOnly: Boolean = false): Unit =
+             path: String = "/", httpOnly: Boolean = false,
+             secure: Boolean = Response.secureByDefault,
+             sameSite: String = "Lax"): Unit =
     val parts = Vector(s"$name=$value", s"Path=$path") ++
       maxAge.map(a => s"Max-Age=$a").toVector ++
-      (if httpOnly then Vector("HttpOnly") else Vector.empty)
+      (if httpOnly then Vector("HttpOnly") else Vector.empty) ++
+      (if secure then Vector("Secure") else Vector.empty) ++
+      (if sameSite.isEmpty then Vector.empty else Vector(s"SameSite=$sameSite"))
     header("Set-Cookie", parts.mkString("; "))
 
 object Response:
+  /** whether THIS request's cookies should carry `Secure`, decided by
+   * the container before the page runs: the request arrived over
+   * TLS, or a trusted proxy said it did. A page that wants the other
+   * answer passes `secure =` explicitly. */
+  private val secureLocal: ThreadLocal[Boolean] = ThreadLocal.withInitial(() => false)
+
+  def secureByDefault: Boolean = secureLocal.get()
+
+  def setSecureByDefault(b: Boolean): Unit = secureLocal.set(b)
+
   private val local: ThreadLocal[Response] = ThreadLocal.withInitial(() => new Response)
 
   def current: Response = local.get()
