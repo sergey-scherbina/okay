@@ -1,5 +1,26 @@
 # Changelog
 
+## raft-prevote — the pre-vote round, measured: terms per forty seeds 163 → 67 and 174 → 93
+
+The sweeps put a number on thesis §4.2.3's disruption: a member cut
+off from the cluster climbs terms on its own and, rejoining, deposes
+a working leader whose log is ahead of its own. The thesis's answer
+(§9.6) is now in the core: an election timeout makes a
+`PreCandidate` that asks at its next term without adopting it; a
+voter grants only if it would vote for that log at that term and it
+has not heard from a leader within an election timeout — the
+caller's word, `Raft.handle(s, msg, peers, leaderFresh)`, since the
+core has no clock — and a leader never grants; a majority of
+pre-votes starts the election as before, fewer and the term stays
+untouched. On the same forty seeds: 163 → 67 terms in the partition
+sweep, 174 → 93 in the membership sweep, more proposals accepted and
+acked because a leader that is not deposed keeps taking them; safety
+and progress unchanged. `TestRaft` shows both halves: a node that
+timed out while its peers still hear the leader spends no term; the
+same timeout when nobody has heard a leader lately is an election.
+The wire keeps "when a leader last spoke to me"; a caller passing
+nothing gets the old behaviour plus a round trip.
+
 ## raft-store-snapshot — RaftStore's own snapshot: the local store's full history as the image, and a commit-ordering race in the wire
 
 Stage 2c of persist-raft. `RaftStore.snapshot()` writes every

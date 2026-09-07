@@ -114,6 +114,10 @@ object RaftWire:
         stable.save(after.currentTerm, after.votedFor)
     private var lastHeartbeatSent = 0L
     private var nextElectionAt = System.currentTimeMillis() + jitter()
+    /** when a leader last spoke to this node (an AppendEntries or an
+     * InstallSnapshot): a pre-vote is refused while that is within an
+     * election timeout (thesis §4.2.3) */
+    private var lastHeard = 0L
 
     private def jitter(): Long =
       electionTimeoutMs + scala.util.Random.nextInt(electionTimeoutMs.toInt)
@@ -171,14 +175,16 @@ object RaftWire:
     private def onMessage(msg: RaftMsg): Unit =
       val toSend = lock.synchronized {
         val before = state.commitIndex
-        val (ns, out) = Raft.handle(state, msg, peerIds)
+        val now = System.currentTimeMillis()
+        val (ns, out) = Raft.handle(state, msg, peerIds, leaderFresh = now - lastHeard < electionTimeoutMs)
         persisted(state, ns)
         learned(state, ns)
         val installed = ns.restored != state.restored
         state = ns
         msg match
           case _: RaftMsg.AppendEntries | _: RaftMsg.InstallSnapshot =>
-            nextElectionAt = System.currentTimeMillis() + jitter()
+            lastHeard = now
+            nextElectionAt = now + jitter()
           case _ => ()
         // after a snapshot the engine restarts at the snapshot's edge:
         // what it is told to apply begins there, not at the old commit

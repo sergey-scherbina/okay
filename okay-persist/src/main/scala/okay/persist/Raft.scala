@@ -33,8 +33,10 @@ import okay.codec.Schema
  * applied by nobody either. */
 final case class RaftEntry(term: Long, data: Array[Byte], members: Vector[String] = Vector.empty) derives Schema
 
+/** PreCandidate: asking, at its next term without adopting it,
+ * whether the others would vote for it (thesis §4.2.3, §9.6) */
 enum RaftRole:
-  case Follower, Candidate, Leader
+  case Follower, PreCandidate, Candidate, Leader
 
 /**
  * Everything one node knows: the persistent state the paper names
@@ -68,11 +70,19 @@ final case class RaftState(
   snapshotTerm: Long = 0,
   snapshotMembers: Vector[String] = Vector.empty,
   snapshotData: Array[Byte] = Array.empty,
-  restored: Long = 0)
+  restored: Long = 0,
+  preVotes: Set[String] = Set.empty)
 
 enum RaftMsg derives Schema:
   case RequestVote(term: Long, candidateId: String, lastLogIndex: Long, lastLogTerm: Long)
   case RequestVoteResp(term: Long, from: String, voteGranted: Boolean)
+  /** the pre-vote (thesis §4.2.3, §9.6): `term` is the term the
+   * asker WOULD campaign at — hypothetical, it steps nobody up — and
+   * a voter grants only if it would vote for that log AND it has not
+   * heard from a leader within an election timeout, so a node that
+   * lost touch cannot depose a leader the others still hear */
+  case PreVote(term: Long, candidateId: String, lastLogIndex: Long, lastLogTerm: Long)
+  case PreVoteResp(term: Long, from: String, granted: Boolean)
   case AppendEntries(term: Long, leaderId: String, prevLogIndex: Long, prevLogTerm: Long,
                      entries: Vector[RaftEntry], leaderCommit: Long)
   /** the follower's answer to AppendEntries AND to InstallSnapshot:
@@ -166,19 +176,31 @@ object Raft:
       s.copy(log = s.log.drop((upTo - s.snapshotIndex).toInt),
         snapshotIndex = upTo, snapshotTerm = term, snapshotMembers = ms, snapshotData = snapshot)
 
-  /** an election timeout fired: become a candidate at the next
-   * term, vote for self, ask every member. A node the current
-   * configuration does not name does not campaign: it has been
-   * removed (or never added) and would only depose a working leader
-   * with a term nobody needs — the disruption of thesis §4.2.3,
-   * answered here by silence rather than by pre-vote. */
+  /** an election timeout fired: ask for PRE-votes at the next term
+   * (thesis §4.2.3, §9.6) — the term itself is not touched until a
+   * majority says it would vote, so a node that lost touch and
+   * timed out on its own cannot depose a leader the others still
+   * hear with a term nobody needs; the real election follows in
+   * `PreVoteResp`. A node the current configuration does not name
+   * does not campaign at all: removed (or never added), its term
+   * is nobody's business. A cluster of one skips the asking. */
   def startElection(s: RaftState, peers: Set[String]): (RaftState, Vector[RaftOut]) =
     if !members(s, peers)(s.id) then (s, Vector.empty)
     else
-      val ns = s.copy(currentTerm = s.currentTerm + 1, votedFor = Some(s.id),
-        role = RaftRole.Candidate, votesGranted = Set(s.id), leaderId = None)
-      (ns, others(ns, peers).toVector.map(p =>
-        RaftOut(p, RaftMsg.RequestVote(ns.currentTerm, ns.id, lastLogIndex(ns), lastLogTerm(ns)))))
+      val os = others(s, peers)
+      if os.isEmpty then campaign(s, peers)
+      else
+        val ns = s.copy(role = RaftRole.PreCandidate, preVotes = Set(s.id))
+        (ns, os.toVector.map(p =>
+          RaftOut(p, RaftMsg.PreVote(ns.currentTerm + 1, ns.id, lastLogIndex(ns), lastLogTerm(ns)))))
+
+  /** the election proper: the next term, a vote for self, RequestVote
+   * to every member */
+  private def campaign(s: RaftState, peers: Set[String]): (RaftState, Vector[RaftOut]) =
+    val ns = s.copy(currentTerm = s.currentTerm + 1, votedFor = Some(s.id),
+      role = RaftRole.Candidate, votesGranted = Set(s.id), leaderId = None, preVotes = Set.empty)
+    (ns, others(ns, peers).toVector.map(p =>
+      RaftOut(p, RaftMsg.RequestVote(ns.currentTerm, ns.id, lastLogIndex(ns), lastLogTerm(ns)))))
 
   /** a leader's replication tick (also the heartbeat when a peer is
    * fully caught up: entries answers empty) — call after every log
@@ -227,14 +249,21 @@ object Raft:
    * every RaftMsg names its own sender), the new state plus
    * whatever it answers or forwards. `peers` is this node's
    * BOOTSTRAP view of everyone ELSE in the cluster (never itself),
-   * overridden by any configuration entry in the log */
-  def handle(s0: RaftState, msg: RaftMsg, peers: Set[String])
+   * overridden by any configuration entry in the log. `leaderFresh`
+   * is the CALLER's word — the core has no clock — that this node
+   * heard from a leader within an election timeout; it decides a
+   * pre-vote and nothing else (false: the pre-vote is granted on the
+   * log alone, which is the old behaviour plus a round trip). */
+  def handle(s0: RaftState, msg: RaftMsg, peers: Set[String], leaderFresh: Boolean = false)
   : (RaftState, Vector[RaftOut]) =
     // Raft's own rule, unconditional: SEEING a higher term steps
-    // anyone down to a term-less follower, before anything else
+    // anyone down to a term-less follower, before anything else — a
+    // PreVote's term is hypothetical and steps nobody up
     val msgTerm = msg match
       case RaftMsg.RequestVote(t, _, _, _) => t
       case RaftMsg.RequestVoteResp(t, _, _) => t
+      case RaftMsg.PreVote(_, _, _, _) => 0L
+      case RaftMsg.PreVoteResp(t, _, _) => t
       case RaftMsg.AppendEntries(t, _, _, _, _, _) => t
       case RaftMsg.AppendEntriesResp(t, _, _, _) => t
       case RaftMsg.Propose(t, _, _, _) => t
@@ -246,6 +275,22 @@ object Raft:
       else s0
 
     msg match
+      case RaftMsg.PreVote(term, cand, lastIdx, lastTerm) =>
+        // granted only if this node would vote for that log at that
+        // term AND has no leader it still hears — a leader never grants
+        val upToDate = lastTerm > lastLogTerm(s) ||
+          (lastTerm == lastLogTerm(s) && lastIdx >= lastLogIndex(s))
+        val granted = term >= s.currentTerm && upToDate && !leaderFresh && s.role != RaftRole.Leader
+        (s, Vector(RaftOut(cand, RaftMsg.PreVoteResp(s.currentTerm, s.id, granted))))
+
+      case RaftMsg.PreVoteResp(_, voter, granted) =>
+        if s.role != RaftRole.PreCandidate || !granted then (s, Vector.empty)
+        else
+          val ms = members(s, peers)
+          val votes = (s.preVotes + voter).filter(ms)
+          if votes.size < majority(ms.size) then (s.copy(preVotes = votes), Vector.empty)
+          else campaign(s, peers)
+
       case RaftMsg.RequestVote(term, cand, lastIdx, lastTerm) =>
         val refuse = (s, Vector(RaftOut(cand, RaftMsg.RequestVoteResp(s.currentTerm, s.id, false))))
         if term < s.currentTerm then refuse

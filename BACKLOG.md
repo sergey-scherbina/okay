@@ -931,9 +931,15 @@ measure on our own data, never a predicted result.
       restore); restore appends the image's records past the local
       `end`, a gap is `damaged`; `snapshotEvery`; the wire's commit
       callbacks moved inside the node's lock (a real ordering race
-      between connections). Chunked snapshots, the catch-up phase
-      for a joiner, pre-vote, and the commit-wait as an `Ack` level
-      remain open; box stays unchecked for those.
+      between connections). PRE-VOTE LANDED 2026-09-07
+      (raft-prevote), measured: a `PreCandidate` asks at its next
+      term without adopting it, a voter grants only on the log AND
+      no leader heard within an election timeout (the caller's word:
+      `handle(..., leaderFresh)`); terms over the forty partition
+      seeds 163 → 67, over the membership seeds 174 → 93, more
+      proposals acked. Chunked snapshots, the catch-up phase for a
+      joiner, and the commit-wait as an `Ack` level remain open; box
+      stays unchecked for those.
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,

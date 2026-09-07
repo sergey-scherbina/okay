@@ -114,6 +114,9 @@ class TestRaftSim extends munit.FunSuite {
     var cut: Set[(String, String)] = Set.empty
     /** the highest election-timeout arming per node: an older timeout is stale */
     private var armed: Map[String, Long] = ids.map(_ -> 0L).toMap
+    /** when a leader last spoke to each node: a pre-vote is refused
+     * while that is within an election timeout (thesis §4.2.3) */
+    private var lastHeard: Map[String, Long] = ids.map(_ -> Long.MinValue / 2).toMap
 
     private def schedule(delay: Long, node: String, kind: Kind): Unit =
       seq += 1
@@ -155,6 +158,7 @@ class TestRaftSim extends munit.FunSuite {
       machine = machine.updated(id, Vector.empty)
       applied = applied.updated(id, 0L)
       armed = armed.updated(id, 0L)
+      lastHeard = lastHeard.updated(id, Long.MinValue / 2)
       armElection(id)
       schedule(heartbeatMs, id, Kind.Heartbeat)
       schedule(compactEvery, id, Kind.Compact)
@@ -170,9 +174,11 @@ class TestRaftSim extends munit.FunSuite {
         now = e.at
         if !halted(e.node) then e.kind match
           case Kind.Deliver(msg) =>
-            apply(e.node, s => Raft.handle(s, msg, boot(e.node)))
+            apply(e.node, s => Raft.handle(s, msg, boot(e.node), leaderFresh = now - lastHeard(e.node) < electionMs))
             msg match
-              case _: RaftMsg.AppendEntries | _: RaftMsg.InstallSnapshot => armElection(e.node)
+              case _: RaftMsg.AppendEntries | _: RaftMsg.InstallSnapshot =>
+                lastHeard = lastHeard.updated(e.node, now)
+                armElection(e.node)
               case _ => ()
           case Kind.ElectionTimeout(a) =>
             if a == armed(e.node) && states(e.node).role != RaftRole.Leader then
@@ -310,10 +316,10 @@ class TestRaftSim extends munit.FunSuite {
       // never committed is not a promise, and the paper says so.
       val ackedEverywhere = machines.forall(ts => sim.acked.forall(ts.contains))
       val late = sim.acked.contains("late")
-      (seed, commits.size == 1, ackedEverywhere, late, sim.accepted.length, sim.acked.size, commits.head, sim.compactions, sim.installs)
+      (seed, commits.size == 1, ackedEverywhere, late, sim.accepted.length, sim.acked.size, commits.head, sim.compactions, sim.installs, sim.leadersByTerm.size)
     }
-    val bad = results.filterNot((_, one, all, late, _, _, _, _, _) => one && all && late)
-    println(f"[raft-sim] 40 seeds, 5 nodes, drop 10%%, delays 1-40, a minority cut rounds 2-4, then lossless: ${results.count(_._2)} converged, ${results.count(_._3)} kept every ack, ${results.count(_._4)} acked the late one; accepted ${results.map(_._5).sum}, acked ${results.map(_._6).sum}, committed per seed ${results.map(_._7).min}..${results.map(_._7).max}; snapshots taken ${results.map(_._8).sum}, installed ${results.map(_._9).sum} (seeds with an install: ${results.count(_._9 > 0)})")
+    val bad = results.filterNot((_, one, all, late, _, _, _, _, _, _) => one && all && late)
+    println(f"[raft-sim] 40 seeds, 5 nodes, drop 10%%, delays 1-40, a minority cut rounds 2-4, then lossless: ${results.count(_._2)} converged, ${results.count(_._3)} kept every ack, ${results.count(_._4)} acked the late one; accepted ${results.map(_._5).sum}, acked ${results.map(_._6).sum}, committed per seed ${results.map(_._7).min}..${results.map(_._7).max}; snapshots taken ${results.map(_._8).sum}, installed ${results.map(_._9).sum} (seeds with an install: ${results.count(_._9 > 0)}); terms per seed ${results.map(_._10).min}..${results.map(_._10).max}, ${results.map(_._10).sum} in all")
     assertEquals(bad.map(_._1), Vector.empty, s"seeds that did not converge, lost an ack, or never acked the late proposal: $bad")
     assert(results.map(_._9).sum > 0, "no seed ever needed InstallSnapshot: the sweep did not exercise it")
   }
@@ -360,7 +366,7 @@ class TestRaftSim extends munit.FunSuite {
       (seed, grew, shrank, commits.size == 1, ackedEverywhere, late, sim.refusedChanges, sim.leadersByTerm.size, sim.installs)
     }
     val bad = results.filterNot((_, grew, shrank, one, all, late, _, _, _) => grew && shrank && one && all && late)
-    println(f"[raft-sim] membership, 40 seeds, drop 10%%, delays 1-40: ${results.count(_._2)} grew to six, ${results.count(_._3)} shrank without their leader, ${results.count(_._4)} converged, ${results.count(_._5)} kept every ack, ${results.count(_._6)} acked the late one; changes refused ${results.map(_._7).sum}, terms per seed ${results.map(_._8).min}..${results.map(_._8).max}, snapshots installed ${results.map(_._9).sum} (a joiner restored from one on ${results.count(_._9 > 0)} seeds)")
+    println(f"[raft-sim] membership, 40 seeds, drop 10%%, delays 1-40: ${results.count(_._2)} grew to six, ${results.count(_._3)} shrank without their leader, ${results.count(_._4)} converged, ${results.count(_._5)} kept every ack, ${results.count(_._6)} acked the late one; changes refused ${results.map(_._7).sum}, terms per seed ${results.map(_._8).min}..${results.map(_._8).max} (${results.map(_._8).sum} in all), snapshots installed ${results.map(_._9).sum} (a joiner restored from one on ${results.count(_._9 > 0)} seeds)")
     assertEquals(bad.map(_._1), Vector.empty, s"seeds that failed a membership change, lost an ack, or did not converge: $bad")
   }
 

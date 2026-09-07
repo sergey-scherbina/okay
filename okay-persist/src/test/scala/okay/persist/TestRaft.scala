@@ -25,6 +25,9 @@ class TestRaft extends munit.FunSuite {
     private var inbox: Map[String, Vector[RaftMsg]] = ids.map(_ -> Vector.empty).toMap
     /** nodes the network cannot reach right now: messages to them are lost */
     var down: Set[String] = Set.empty
+    /** nodes that heard their leader within an election timeout — the
+     * caller's word the core's pre-vote rule needs (no clock here) */
+    var fresh: Set[String] = Set.empty
 
     /** the engine's side of compaction: this node has applied up to
      * `upTo` and snapshotted its state machine as `snapshot` */
@@ -62,7 +65,7 @@ class TestRaft extends munit.FunSuite {
           if pending.nonEmpty then
             inbox = inbox.updated(id, Vector.empty)
             for m <- pending do
-              val (ns, out) = Raft.handle(states(id), m, peersOf(id))
+              val (ns, out) = Raft.handle(states(id), m, peersOf(id), leaderFresh = fresh(id))
               states = states.updated(id, ns)
               enqueue(out)
             progressed = true
@@ -204,6 +207,32 @@ class TestRaft extends munit.FunSuite {
       RaftMsg.AppendEntriesResp(2, "2", success = true, matchIndex = 1L), Set("1", "2"))
     assertEquals(ns.commitIndex, 0L,
       "an old-term entry must not commit by majority count alone (Figure 8)")
+  }
+
+  test("pre-vote: a node that lost touch and timed out cannot depose a leader its peers still hear; without that word, it can") {
+    val c = Cluster()
+    c.electionTimeout("0"); c.deliverAll()
+    c.clientAppend("0", "v0"); c.deliverAll(); c.heartbeat("0"); c.deliverAll()
+    assertEquals(c.states("0").currentTerm, 1L)
+    // node 2 stopped hearing the leader and times out again and again:
+    // its pre-votes go out, but 0 leads and 1 still hears 0 — every
+    // answer is a refusal
+    c.fresh = Set("1")
+    for _ <- 1 to 3 do { c.electionTimeout("2"); c.deliverAll() }
+    assertEquals(c.states("2").role, RaftRole.PreCandidate)
+    assertEquals(c.states("2").currentTerm, 1L, "no term was spent on an election nobody would grant")
+    assertEquals(c.states("0").role, RaftRole.Leader, "the leader stands")
+    assertEquals(c.states("0").currentTerm, 1L)
+    // back in touch: the leader's next heartbeat makes it a follower again
+    c.heartbeat("0"); c.deliverAll()
+    assertEquals(c.states("2").role, RaftRole.Follower)
+    assertEquals(c.states("2").leaderId, Some("0"))
+    // the same timeout when nobody has heard a leader lately IS an
+    // election: the pre-vote is granted on the log alone
+    c.fresh = Set.empty
+    c.electionTimeout("2"); c.deliverAll()
+    assertEquals(c.states("2").currentTerm, 2L, "1 granted the pre-vote; 2 campaigned at the next term")
+    assertEquals(c.states("0").role, RaftRole.Follower, "a real RequestVote at a higher term deposes the leader")
   }
 
   // ---- stage 2a: membership changes (thesis §4.1) ------------------

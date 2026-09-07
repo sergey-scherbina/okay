@@ -118,7 +118,10 @@ the local store's full history that image — refused by name once
 retention has dropped history, since offsets must survive a restore
 — and a store that starts late is restored from it, the image's
 records appended past its own `end` at the same offsets;
-`snapshotEvery` automates it.
+`snapshotEvery` automates it. Elections run a pre-vote first
+(thesis §9.6): a node that lost touch cannot depose a leader its
+peers still hear — the simulator's terms per forty seeds fell from
+163 to 67.
 
 `Configs.ambient(name)` reads an ambient `Store` (ctx-everywhere) —
 the managed-config convenience under `provide(store) { ... }`.

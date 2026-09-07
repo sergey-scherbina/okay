@@ -370,6 +370,37 @@ prices every large claim:
   by name. Not here: the image is one message (chunking), and a
   restore into a local store that is NOT a prefix (a node repaired
   from elsewhere) is `damaged` rather than rebuilt.
+- **Pre-vote, LANDED 2026-09-07 (raft-prevote), measured.** The
+  sweeps put a number on the disruption thesis §4.2.3 describes:
+  a member cut off from the cluster times out on its own, climbs
+  terms nobody needs, and on rejoining deposes a working leader
+  whose log is ahead of its own — 163 terms over the forty
+  partition seeds, 174 over the membership seeds. The thesis's
+  answer (§9.6): a PRE-vote round. An election timeout now makes a
+  `PreCandidate` that asks, at its NEXT term without adopting it,
+  whether the others would vote for it (`RaftMsg.PreVote`, whose
+  term is hypothetical and steps nobody up); a voter grants only if
+  it would vote for that log at that term AND it has not heard
+  from a leader within an election timeout — which the CALLER tells
+  the core, since the core has no clock: `Raft.handle(s, msg,
+  peers, leaderFresh)`, the wire and the simulator keeping "when a
+  leader last spoke to me"; a leader never grants. A majority of
+  pre-votes starts the election exactly as before (`campaign`:
+  term + 1, a vote for self, RequestVote); fewer, and the node waits
+  for its next timeout with its term untouched. A cluster of one
+  skips the asking. Measured on the same forty seeds: 163 → 67
+  terms (per seed 2..8 → 1..6) and 174 → 93 (2..7 → 2..4), with
+  more proposals accepted and acked (652/537 → 743/617) because a
+  leader that is not deposed keeps taking them; safety and progress
+  unchanged. `TestRaft` shows the two halves side by side: a node
+  that timed out while its peers still hear the leader spends no
+  term and is a follower again at the next heartbeat; the same
+  timeout when nobody has heard a leader lately IS an election. A
+  caller that passes nothing (`leaderFresh = false`) gets the old
+  behaviour plus a round trip. Still open: the catch-up phase for a
+  joiner (the sweep cannot show it at these sizes — a joiner behind
+  a compacted stretch gets a snapshot and is current in one round),
+  chunked snapshots, the commit-wait as an `Ack` level.
 - **The typestate note, still open** (asked by the user, 2026-09-01):
   the ROLE protocol (Follower → Candidate → Leader, each with its
   own legal actions) is the textbook typestate case; `PState` (the
