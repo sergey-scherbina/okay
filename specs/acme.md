@@ -44,11 +44,26 @@ the account: a new key is a new account, and a CA rate-limits those.
 The certificate key is reused across renewals, which is what lets a
 pinned key survive one. Both are PKCS#8 PEM beside the certificate.
 
-**Not a certificate manager.** No fleet, no multiple orders, no
-revocation, no EAB (the external-account binding some commercial CAs
-require), no ARI (the renewal-window hint). Each of those is a real
-thing a real manager does; a deployment that needs them runs certbot
-or a proxy, and this module says so instead of growing.
+**Revocation, since acme-revoke (2026-09-07).** `Acme.revoke(cfg,
+http, reason)` posts the LEAF's DER — a chain file holds the issuers
+too, and a CA revokes one certificate, not a bundle — signed by the
+account key that ordered it. The reason is a NAMED value, not the RFC
+5280 integer nobody remembers, because this is the field an incident
+report quotes and a CA treats `KeyCompromise` differently from
+`Superseded`. Revoking twice invents no error of ours: the CA answers
+`alreadyRevoked` and that sentence comes back as it is. An operator
+needs to RUN this at an hour nobody planned for, so `okay.acme.Revoke`
+is a main over the directory `Serve` already writes, reading the same
+`OKAY_ACME`/`OKAY_ACME_PROD` the server runs with — a revoke cannot
+talk to the wrong CA while believing it talked to the right one. It
+does not delete the certificate: it says so, because a revoked file
+left in place is a revoked identity served after the next restart.
+
+**Not a certificate manager.** No fleet, no multiple orders, no EAB
+(the external-account binding some commercial CAs require), no ARI
+(the renewal-window hint), no DNS-01 and so no wildcards. Each is a
+real thing a real manager does; a deployment that needs them runs
+certbot or a proxy, and this module says so instead of growing.
 
 ## The parts, and why they are these parts
 
@@ -126,6 +141,10 @@ own config validates against.
       chain, for the name asked for, signed by an issuer that is not
       us — and a name it cannot reach is refused with the CA's own
       sentence, leaving no certificate behind.
+- [x] (Live, docker) Pebble REVOKES it when asked with a reason, and
+      refuses the second attempt with its own `alreadyRevoked`;
+      `Revoke.parse` refuses a missing certificate, a missing account
+      key, an unknown reason and a missing `OKAY_ACME` by name.
 
 ## Wired into okay-script
 
