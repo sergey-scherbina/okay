@@ -1,5 +1,48 @@
 # Changelog
 
+## deploy-paas — fly, render and railway, with a real parser for every format
+Completed: 2026-09-07
+Landed as 0c4c4318 (spec then code). Stage 2. Three platforms that
+disagree about what a deployment IS, and the renderers show it: fly is
+one app per `fly.toml`, so a system of three services is three apps and
+three files; render is a Blueprint taking the whole system in one
+`render.yaml`; railway is per-service JSON with the project made by its
+CLI.
+
+A managed database turned out to need a third answer. `host` REFUSES
+one, because installing Postgres on somebody's rented box is not ours
+to do. `cluster` RENDERS one, because a cluster runs containers by
+definition. A PaaS is neither: the platform absolutely has a Postgres,
+but the deployment FILE cannot express it — on fly it is `postgres
+create` then `attach`, which sets `DATABASE_URL` behind our back. So it
+is DELEGATED: the file renders without it and `setup.sh` carries the
+exact commands. Render is the exception that proves the rule, since a
+Blueprint has a `databases:` section, and there the URL is a
+`fromDatabase` reference. Secrets stay references on all three — `fly
+secrets set`, Render's `sync: false`, `railway variables --set`.
+
+The gate is a real parser per format, which is stage 1's lesson applied
+rather than restated: `helm lint` had rejected a chart whose bytes were
+exactly what the renderer meant to write, and a golden file would have
+passed on it. None of these platforms has a local validator — `flyctl
+config validate` wants an account — but every format has a parser on an
+ordinary machine: `tomllib` for `fly.toml`, `ruby -ryaml` for
+`render.yaml`, okay-codec's own `Json` for `railway.json` (that one in
+the default suite, needing nothing outside the JVM), and `sh -n` for
+every rendered script. The test that earns the most is a setting
+holding a quote and a backslash: it comes back out of both parsers
+byte-identical, and escaping is exactly where a hand-rolled renderer
+breaks.
+
+`Need.Region` joined the model, which stage 3 will want too: every PaaS
+and every cloud asks where to run, and no target can invent an answer.
+fly refuses without one — including for okay-script itself, whose main
+prints that refusal and whose test asserts it, while render and railway
+are committed. The honest limit is in the spec rather than implied by a
+green suite: this proves the files are well-formed and say what the
+value said, not that a platform accepts them. 87 okay-deploy green 3x,
+11 Live green, 148 okay-script green.
+
 ## deploy-cluster — the same value becomes a Helm chart
 Completed: 2026-09-07
 Landed as 973d8048 (spec then code). Stage 1. Kubernetes is the target

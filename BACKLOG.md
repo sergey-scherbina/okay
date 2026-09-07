@@ -97,9 +97,15 @@ does not cross and stages the work; each stage below is its own claim.
       new `cluster` one. Retiring it means moving every module that
       renders through `Deploy` to a `Deployment`, which is a bigger
       change than stage 1 and wants its own claim.
-- [ ] deploy-paas — stage 2: fly.toml, render.yaml, railway.json,
-      golden-tested; a real deploy needs an account and stays a
-      documented manual step.
+- [x] deploy-paas — LANDED 2026-09-07, stage 2: the `fly`, `render`
+      and `railway` targets. A managed database is DELEGATED — the
+      third answer beside host's refusal and cluster's rendering:
+      the platform has one, the file cannot express it, so `setup.sh`
+      carries the exact commands (Render's Blueprint is the exception
+      and holds it in the file). Gated by a REAL parser per format
+      (tomllib, ruby -ryaml, okay's Json, `sh -n`) rather than golden
+      files, which is stage 1's lesson applied. `Need.Region` joined
+      the model; fly refuses without one, okay-script included.
 - [ ] deploy-clouds — stage 3: Terraform per cloud (ECS+RDS+Secrets
       Manager, Cloud Run+Cloud SQL, Container Apps+Key Vault), proven
       by `terraform validate` in a container. AWS first — it
