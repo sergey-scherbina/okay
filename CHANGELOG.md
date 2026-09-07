@@ -1,5 +1,41 @@
 # Changelog
 
+## deploy-everywhere (spec) — one declaration, every place it runs
+Completed: 2026-09-07
+Landed as dabb948a. Spec only, by the operator's own order ("сначала
+спека"), for the ask that one declaration should deploy to a laptop,
+a rented server, a cluster, a PaaS and the three clouds and work like
+clockwork. Their three answers are taken as decisions and marked as
+theirs: a FULL dependency model (I had recommended a closed list of
+five; the spec states the cost where it lands), configuration as a
+value with defaults plus a file plus the environment, and secrets
+reaching cloud managers and SOPS.
+
+The model is a `Deployment` of `Service`s, each with a `Run`, ports,
+typed `Settings`, secret REFERENCES and `Need`s — volume, database,
+cache, dns, tls, neighbour, port — which say WHAT and never HOW; a
+`Need.Database(Postgres)` is a compose service on a laptop and RDS on
+AWS, and that difference is the reason the file exists. Targets are
+pure `Deployment => Vector[(path, content)]` plus a driver that shells
+out to that target's own tool: we render artifacts and never become
+the runtime, which is what makes "every place" affordable at all — a
+pure function is testable without an account and an orchestrator is
+not. The clouds render Terraform for that same reason, plus the fact
+that HCL is what a team already reviews. `Settings` come from a
+`Schema`, so environment names are derived rather than kept in step
+by hand — the debt okay-script's fourteen `OKAY_*` variables already
+are — and the runtime order (defaults, file, environment) is pinned
+by a test that makes all three disagree.
+
+The half worth keeping is the line the model does not cross, written
+down because a general dependency model's failure mode is quietly
+becoming a worse Helm: `Need` is a closed enum whose growth is a spec
+edit, no conditionals or templating language, no target-specific
+fields (they go to a deliberately ugly per-target `extra`), no
+provisioning of accounts or clusters, no state management. Staged
+into five claims — model + laptop + host, cluster, PaaS, clouds,
+secret schemes — each filed with what proves it.
+
 ## sql-fold-profile — the condition okay-sql had to meet, measured, and not met
 Completed: 2026-09-07
 staged-runtime's spec named okay-sql the best candidate for a
