@@ -28,12 +28,34 @@ object Acme:
 
 ## What is in, and what is out
 
-**HTTP-01 only.** The CA fetches
+**Two challenges, and the caller's ability decides which**
+(acme-dns01, 2026-09-07). HTTP-01 is the default: the CA fetches
 `http://<domain>/.well-known/acme-challenge/<token>` and expects
-`<token>.<thumbprint>`. This stack owns a server, so serving that is
-a `PartialFunction` chained in front of everything else. DNS-01 would
-need a DNS provider seam this repository does not have, and wildcards
-need DNS-01 — so no wildcards, said plainly rather than discovered.
+`<token>.<thumbprint>`, which this stack serves as a
+`PartialFunction` chained in front of everything else. Give `ensure`
+a `Dns` and it uses DNS-01 instead: a TXT record at
+`_acme-challenge.<domain>` holding base64url(SHA-256(key
+authorization)) — the HASH, not the authorization, because a TXT
+record is public. A WILDCARD can only be proven that way (there is no
+host to serve a file from), so a wildcard without a `Dns` is refused
+BEFORE an order is placed, by name.
+
+```scala
+trait Dns:
+  def putTxt(name: String, value: String): Either[String, Unit]
+  def removeTxt(name: String): Unit
+  def propagation: java.time.Duration   // this provider's, not a guess of ours
+```
+
+**No provider ships.** Writing a record means a provider's API —
+Route53, Cloudflare, deSEC, a company's own — each with its own
+credentials, shape and propagation behaviour; a seam with one
+favourite baked in is worse than a seam with none. `propagation` is
+asked for rather than guessed, because how long before a resolver
+sees the record is the provider's property and no default of ours
+would be honest. The proof comes down whether the CA accepted it or
+not: a token or a TXT record left behind is a fact about that domain
+outliving its reason.
 
 **Staging is the default directory.** A first run against production
 that gets the setup wrong burns a rate limit you wait a week to undo;
@@ -90,7 +112,7 @@ refusal for anything shaped otherwise, which is a reader for two
 known shapes and not an ASN.1 library.
 
 **Not a certificate manager.** No fleet, no multiple orders, no
-DNS-01 and so no wildcards. Each is a
+provider implementations. Each is a
 real thing a real manager does; a deployment that needs them runs
 certbot or a proxy, and this module says so instead of growing.
 
@@ -179,6 +201,12 @@ API answering rather than docker calling the container started.
       chain, for the name asked for, signed by an issuer that is not
       us — and a name it cannot reach is refused with the CA's own
       sentence, leaving no certificate behind.
+- [x] (Live, docker) dns-01 issues a WILDCARD: the proof goes into a
+      DNS server the CA resolves against (pebble-challtestsrv plays
+      both the resolver Pebble asks and the provider our test `Dns`
+      writes to), the certificate names `*.okay.example`, and the
+      http-01 store is never touched. Without a `Dns`, a wildcard is
+      refused before an order is placed.
 - [x] ARI: an OPEN window renews a certificate our own countdown calls
       current; a shut one changes nothing; a CA publishing no window
       leaves the countdown's answer alone (a stub CA, both ways).
