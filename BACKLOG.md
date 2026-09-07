@@ -3021,7 +3021,7 @@ subtraction.
       intent-frame-typed-values removed. It must be an explicit
       request that reports what it re-derived, not a silent
       convenience.
-## the autonomy programme (specs/intent-classify.md, "The autonomy programme", 2026-09-07)
+## the autonomy programme (specs/intent-autonomy.md — the seams, the literature, the staged plan; measurements in specs/intent-classify.md)
 Operator's direction: aim this line at working WITHOUT models. The
 metric, the measured dead ends and the order are in the spec section;
 these are the lanes.
@@ -3050,7 +3050,8 @@ these are the lanes.
       active-learning lane already measured the shape (28 labels
       against 36 random for the same gain). Criterion: human effort
       per point of autonomy, not accuracy alone.
-- [ ] intent-label-model — the tiers we already ship ARE labelling
+- [ ] intent-label-model — STAGE 1, and FIRST of the whole programme
+      because it needs no new rows: the tiers we already ship ARE labelling
       functions in Snorkel's sense (each answers some messages at a
       known precision and abstains on the rest), and the offline door
       throws their agreement away by taking the first that fires.

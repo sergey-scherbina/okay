@@ -4165,6 +4165,13 @@ leak its training rows):
 
 ## The autonomy programme (2026-09-07)
 
+> Moved and expanded: the ARCHITECTURE of this programme — the seams
+> every future idea plugs into, the literature each rests on with
+> quotes, and the staged plan with criteria — now lives in
+> [specs/intent-autonomy.md](intent-autonomy.md). What stays here is
+> the measurement history: the numbers below are the evidence that
+> document rests on.
+
 Written on the operator's instruction to aim this line at working
 WITHOUT models, and to put everything that serves that into the plan.
 It collects what is already measured, names the metric the programme
@@ -4282,6 +4289,10 @@ gate stops a refit from killing a class, and the report says whether
 autonomy actually moved.
 
 ## The harvest programme — the model reads the logs, people only arbitrate (2026-09-07)
+
+> The full treatment, with the seams and the citations, is
+> [specs/intent-autonomy.md](intent-autonomy.md) §4. This section is
+> kept as the measured rationale.
 
 The operator's instruction: people should not be writing rows; the
 system should mine its own chat logs WITH a model and improve the
