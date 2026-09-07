@@ -158,7 +158,7 @@ chooses per program.)
 
 | **Okay** | cats WriterT/Chain | atnos | kyo Emit |
 |---|---|---|---|
-| **286** | 1127 | 3202 | 386 322* |
+| **202** | 1030 | 3215 | 342 761* |
 
 (*kyo Env/Emit go quadratic on left-nested bind chains with handled
 operations; the same shape every other lane runs.)
