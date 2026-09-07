@@ -954,6 +954,15 @@ measure on our own data, never a predicted result.
       implement, and no main-source caller uses the lossless road).
       Also corrected json-parse-fast-road's own "79x" to 37x — it was
       single-shot, which at this scale prices the JIT.
+- [x] json-projection-alloc — LANDED 2026-09-07, the rest of the
+      lossless road: the projection answered a `Vector` from every
+      node and every leaf (plus `grouped(2)` per field) and now
+      appends into a builder in one pass; `unquote` built a
+      StringBuilder and two substrings for every string token and now
+      returns the substring directly when there is no escape. ~12% on
+      that stage, ~6% end to end — A/B'd in ONE run, because the first
+      cross-run reading said 2x and was GC noise. Guarded by
+      TestJsonValue's existing prefix sweep.
 - [ ] scan-step-allocation — `Scan.step: (S, Char) => (S,
       Vector[Token[K]])` allocates a tuple per CHARACTER, which is the
       next wall on the lossless road (~26 ms of a 9.3 MB lex). An

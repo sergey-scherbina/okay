@@ -1,5 +1,42 @@
 # Changelog
 
+## json-projection-alloc — a Vector per node and a StringBuilder per string, both gone
+Completed: 2026-09-07
+Landed as 458a9481. Asked after the batch road landed: is there more in
+the lossless road. Two places, both inside `Json.scala` — unlike the
+filed `scan-step-allocation`, which would cost an interface four codecs
+implement.
+
+The projection answered a `Vector` from every node and every leaf —
+`Vector(JNull)`, `Vector(JBool(b))`, `kids.flatMap(values)` building an
+intermediate at every level — which is one Vector per token on a walk
+whose whole job is tokens; `pairs` added `grouped(2)`, another Vector
+per field. It appends into a builder now, and a field is read in one
+pass. And `unquote` built a StringBuilder for every string token plus a
+`stripPrefix` and a `stripSuffix` substring, even for a string with no
+escape in it — nearly all of them — and now returns the substring
+directly when there is no backslash.
+
+**The number, honestly: about 12% on that stage and about 6% of the
+whole lossless call**, which runs ~74-82 ms against ~78-92 before. A/B
+in ONE run, because across runs the GC state of a million-object tree
+swamps the difference — the first cross-run reading said 2x and was
+noise, the same methodology error corrected in json-cst-batch-road
+hours earlier and not worth repeating. The old shape in that A/B is a
+simplified reconstruction, so 12% is a floor, and `unquote`'s own
+saving is not separately measured.
+
+Modest, and said as modest. What also justifies it is that the code is
+simpler — one pass instead of `flatMap` + `grouped(2)` + `collect` —
+and that the behaviour is guarded rather than asserted: TestJsonValue's
+prefix sweep compares the fast value road against this projection over
+every truncation of every document. The A/B reconstruction stays in
+`ProfCst` so the number can be re-derived and a regression would show.
+
+A good place to stop: what remains is `Scan.step`'s per-character tuple
+and `JsonParse.instrs`' per-token Vector, both shared interfaces, on a
+road no main-source caller uses. Full suite green: 2997 tests.
+
 ## json-cst-batch-road — the lossless road was lexing through the effect system, one char at a time
 Completed: 2026-09-07
 Landed as 895e5b4f. The operator's follow-on to json-parse-fast-road:
