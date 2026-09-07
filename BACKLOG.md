@@ -4281,57 +4281,66 @@ Do not build 2 before measuring 1: the difference between them is
 whether a consumer may hold elements no one else can reach, and that
 is the whole of the strong contract.
 
-## jiffy-shaped-parts — what the wait-free MPSC paper says we should change, and what it does not
+## jiffy-hole-scan — a claimed-but-unpublished slot makes a full queue look empty
 
-The operator pointed at Jiffy (Adas & Friedman, arXiv 2010.14189v2):
-a wait-free MULTI-PRODUCER SINGLE-CONSUMER queue — a linked list of
-fixed-size buffers, enqueue by fetch-and-add on one tail index, a
-two-bit state per entry (empty / set / handled), NO atomic operation
-in dequeue at all, and the linearizability hole that FAA opens (a
-later enqueue claiming an earlier position) repaired by the consumer
-scanning forward and rescanning. Reported: +50 % throughput over
-WFqueue and about a tenth of its memory.
+The operator pointed at Jiffy (Adas & Friedman, arXiv 2010.14189v2),
+a wait-free MPSC queue: buffers in a linked list, enqueue by one
+fetch-and-add, two bits of state per entry, no atomic in dequeue, and
+— the part that matters to us — a dequeue that SCANS FORWARD when the
+head position is claimed but not yet published.
 
-WHAT APPLIES TO US, and it is not the headline number (that is an
-MPSC-against-MPMC comparison, and ours are different shapes):
+Reading it against our code corrected two things I had written down
+before reading carefully:
 
-1. **The actor mailbox is exactly Jiffy's shape** — many senders, one
-   receiver — and we already special-case it
-   (`Queues.strong[A].bounded(n, singleConsumer = true)`, where the
-   head moves with a `lazySet` instead of a CAS; §17g measured that
-   at 35 % of an elementwise consumer's profile). What we do NOT have
-   is Jiffy's enqueue: `Ring.push` is a CAS LOOP on the tail
-   (`tail.compareAndSet(pos, pos + 1)`, retried when another pusher
-   wins), where Jiffy's is one fetch-and-add and never retries. Under
-   many senders that is the difference between a loop whose length
-   grows with contention and a constant. Worth measuring on
-   `ManyProducersBenchmark` at 16 producers with `singleConsumer`.
-2. **The unbounded single-consumer channel** is where Jiffy's growth
-   discipline belongs: buffers linked and freed eagerly, pointers
-   proportional to BUFFER count rather than element count. Our
-   `Segments` grows by segments already; what it lacks is the eager
-   reclamation and the two-bit entry state.
-3. **The consumer-side scan is a cost we already pay for another
-   reason** — `AdaptiveFifo` scans parts — so a Jiffy-style part
-   would not add a new kind of work, only move where it happens.
+- our unbounded buffer ALREADY enqueues Jiffy's way. `Segments.push`
+  is `tail.getAndIncrement()` and a publish; `pushMany` claims a whole
+  run with one `getAndAdd`. There is no CAS loop to remove.
+- FAA for the BOUNDED ring is not an improvement waiting to happen,
+  it is a mistake: `Ring.push` CASes the position precisely because a
+  bounded claim can be REFUSED (the lap ahead may be unread), and an
+  FAA that cannot be given back would claim a slot nothing can free.
+  Vyukov's CAS is there for that reason; Jiffy can use FAA because it
+  is unbounded.
 
-WHAT DOES NOT APPLY: Jiffy is single-consumer BY CONSTRUCTION, and
-its dequeue is atomic-free precisely because nobody else dequeues.
-The operator's MPMC design (`consumer-claim`, landed) has several
-consumers, and the moment two of them touch one buffer Jiffy's
-dequeue needs the atomics it was built to avoid. The two designs meet
-in one place, and it is the interesting one: under the claim a part
-has ONE producer and, for the length of a drain, ONE consumer — SPSC,
-where neither side needs a CAS at all. Today a part is a full Vyukov
-`Ring` with stamps and a CAS per push. Specialising a part to SPSC
-(with a fallback to the shared ring when producers exceed the part
-cap and a part gains a second producer) is the change this paper
-argues for in our shape.
+WHAT IS REAL, and it is a latency defect rather than a throughput
+idea. `Segments.pop` reads the head position, and if the stamp there
+is not yet published it reports EMPTY:
 
-NEXT, in order: (a) `Ring.push` by FAA where the ring is bounded and
-the loop is provably unnecessary, measured at 16 producers; (b) an
-SPSC part behind the claim invariant, measured on the consumer axis;
-(c) only then look at unbounded growth. Each has a competitor lane
-already (`oneRing_chunk`, `adaptiveManyConsumers`), so none of them
-needs a new benchmark.
+```
+else
+  // either nothing has been claimed here, or a claim is in flight
+  // and not yet published: both mean "nothing ready"
+  empty = true
+```
 
+Those two cases are not the same. A producer descheduled between its
+`getAndIncrement` and its publish leaves a HOLE, and every element
+published after it — thousands, on a busy channel — is invisible to
+the consumer, which parks. It is woken when the hole is filled, so
+this is not a deadlock; it is a throughput cliff whose depth is how
+long a producer stays off-CPU in that two-instruction window. On
+virtual threads, which the runtime may unmount anywhere, that window
+is not theoretical.
+
+Jiffy's answer: scan forward for a set entry, take it, and rescan to
+confirm nothing earlier became set meanwhile. Our per-producer
+ordering survives it, which is the thing to check first and it checks
+out: a producer publishes its previous element before it claims the
+next, so if a later element of the same producer is visible, its
+earlier one is too.
+
+THE COST, stated honestly because it is why this is filed and not
+done: `Segments` is MPMC, and taking an element PAST the head means
+two consumers must not take the same one. That needs a per-slot
+handled/taken state — Jiffy's two bits — with the head advancing
+lazily over handled entries, which is a redesign of the consumer side
+of `Segments`, not an edit. `popMany` in particular already carries a
+scar from getting this wrong once (its comment records a consumer
+killed by an exception nobody saw).
+
+MEASURE FIRST, and the lane exists: `oneUnbounded_chunk` at 16
+producers against `oneRing_chunk`, plus a probe that parks a producer
+between claim and publish deliberately (a test-only hook in
+`Segments`) to see how deep the cliff is. If the cliff is shallow on
+this runtime, the two bits are not worth the redesign and this entry
+should say so.
