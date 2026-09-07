@@ -158,14 +158,35 @@ final class Site(
       HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8"), Http.one(LiveJs.source.getBytes(UTF_8)))
     else resolve(path) match
       case None => plain(404, "not found")
-      case Some(Hit.Static(f)) =>
-        HttpResponse(200, Vector("Content-Type" -> contentTypeOf(f)), Http.one(Files.readAllBytes(f)))
+      case Some(Hit.Static(f)) => serveStatic(r, f)
       case Some(Hit.PageFile(f, params)) =>
         servePage(r, path, query, params, f)
 
   def close(): Unit =
     pages.values.forEach(_.close())
     pages.clear()
+
+  // ---- caching (okay-script-cache)
+
+  /** a static file always carries validators -- an ETag from its size
+   * and mtime, and Last-Modified -- and answers 304 to a conditional
+   * request that still holds. Nothing is rendered, and for a large
+   * file nothing is even read. */
+  private def serveStatic(r: Request, f: Path): HttpResponse =
+    val etag = Caching.etagOf(f)
+    val mtime = Files.getLastModifiedTime(f).toMillis
+    val validators = Vector("ETag" -> etag, "Last-Modified" -> Caching.formatDate(mtime))
+    if fresh(r, etag, mtime) then HttpResponse(304, validators, Http.one(Array.emptyByteArray))
+    else HttpResponse(200, ("Content-Type" -> contentTypeOf(f)) +: validators, Http.one(Files.readAllBytes(f)))
+
+  /** does the request's own copy still hold? `If-None-Match` decides
+   * alone when it is present (RFC 9110's precedence), else the date */
+  private def fresh(r: Request, etag: String, lastModified: Long): Boolean =
+    val hs = r.headers
+    def header(n: String) = hs.collectFirst { case (k, v) if k.equalsIgnoreCase(n) => v }
+    header("If-None-Match") match
+      case Some(inm) => Caching.matches(inm, etag)
+      case None => header("If-Modified-Since").exists(Caching.notModifiedSince(_, lastModified))
 
   // ---- routing
 
@@ -297,7 +318,7 @@ final class Site(
       if sess.invalidated then resp.cookie(SessionCookie, "", maxAge = Some(0), httpOnly = true)
       else if sess.created then resp.cookie(SessionCookie, sess.id, httpOnly = true)
       val bytes = if resp.redirected.isDefined then Array.empty[Byte] else body.getBytes(UTF_8)
-      HttpResponse(resp.status, resp.headers, Http.one(bytes))
+      cached(r, web, base, resp, bytes)
     finally
       api.Container.setIncluder(None)
       api.Container.setLiveRegistrar(None)
@@ -310,6 +331,33 @@ final class Site(
       api.Response.setCurrent(new api.Response)
       api.Session.setCurrent(api.Session.detached)
       api.Error.setCurrent(None)
+
+  /** The rendered page as a response, with the validators and the
+   * directive its `cache:` earns (okay-script-cache). Opt-in per
+   * page, and never at the cost of privacy: a page that is `secure:`,
+   * that set a cookie, or that sits on a session is `private`, never
+   * `public`; anything that redirected or failed carries no cache at
+   * all. A GET whose `If-None-Match` still holds gets a 304 with the
+   * validators and no body.
+   */
+  private def cached(r: Request, web: api.Web, base: Path, resp: api.Response, bytes: Array[Byte]): HttpResponse =
+    val cacheable = resp.status == 200 && resp.redirected.isEmpty &&
+      (web.method == "GET" || web.method == "HEAD")
+    Caching.maxAge(frontMatter(base)).filter(_ => cacheable) match
+      case None => HttpResponse(resp.status, resp.headers, Http.one(bytes))
+      case Some(seconds) =>
+        val etag = Caching.etagOf(bytes)
+        // shared only when nothing about this response is one visitor's
+        val private_ = frontMatter(base).contains("secure") ||
+          resp.headers.exists((k, _) => k.equalsIgnoreCase("Set-Cookie")) ||
+          web.cookies.contains(SessionCookie)
+        val directive = (if private_ then "private" else "public") + ", max-age=" + seconds
+        val validators = Vector("ETag" -> etag, "Cache-Control" -> directive)
+        if fresh(r, etag, 0L) then HttpResponse(304, resp.headers.filterNot(isBodyHeader) ++ validators, Http.one(Array.emptyByteArray))
+        else HttpResponse(resp.status, resp.headers ++ validators, Http.one(bytes))
+
+  private def isBodyHeader(h: (String, String)): Boolean =
+    h._1.equalsIgnoreCase("Content-Type")
 
   /** renders `f`, following `forward`s (capped) and falling back to
    * the error page on failure; returns the body text */

@@ -1653,9 +1653,13 @@ opaque part.
 Cache-Control: public, max-age=60      ETag: "<sha-256 of the body>"
 ```
 
-and a matching `If-None-Match` answers 304 — which the page never
-renders for, so a page with side effects does not run on a validated
-request. Never at the cost of privacy, and the rule is mechanical
+and a matching `If-None-Match` answers 304. That saves the TRANSFER,
+not the render: an ETag of the body cannot be known without the body,
+so the page ran either way and any side effect it has happened — the
+first draft claimed otherwise and its own counter test refuted it in
+one run. A page that wants to skip WORK on a repeat visit holds the
+result in the application scope and guards on it; that is the page's
+decision, not a header's. Never at the cost of privacy, and the rule is mechanical
 rather than a matter of the author remembering: the directive is
 `private`, not `public`, when the page is `secure:`, when the
 response sets a cookie, or when the request carried the session
@@ -1673,8 +1677,8 @@ with its own invalidation problem, and is not filed as wanted.
       conditional forms; `*` and `W/` match; a changed file
       invalidates.
 - [x] `cache:` sets `public, max-age`; a matching `If-None-Match` is a
-      304 with no body, and the page did NOT render (a counter page
-      proves it).
+      304 with no body and the same ETag — and the page DID render (a
+      counter page proves the honest half).
 - [x] `secure:`, a `Set-Cookie`, or a session cookie makes it
       `private`; no `cache:` means no header at all.
 - [x] a POST, a redirect and a 404 carry no validators.
