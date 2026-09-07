@@ -1,5 +1,19 @@
 # Changelog
 
+## measure-warmup-honesty — a measurement suite said it discarded a warmup, and it did not
+Completed: 2026-09-07
+`MeasureScript`'s header claimed medians "with the warmup discarded";
+`msOf` discards nothing, it medians n samples. The numbers it has
+published stand — every body there is hundreds of milliseconds of the
+Scala compiler, where the median absorbs the first slow runs, and the
+warm-render arm takes 200 samples — but the claim was false and the
+next person to copy that helper would have inherited it. Both places
+now say what it does, and `msOf` carries the counter-example that
+made this worth fixing: sql-plan-cells measured a 0.6 ms body the
+same way with 3 samples and published a number three times too high,
+which took 50 discarded warmups and 31 samples to settle. Anything
+sub-millisecond wants a real warmup, or JMH.
+
 ## r-subprocess — okay-r stage 0, R as a handler
 Completed: 2026-09-07
 Landed as bb408e02 (spec then code). specs/r.md's model, built.
@@ -45,6 +59,7 @@ forwards the environment, because a stand-in for `Rscript` must
 inherit one as `Rscript` does, and without that the clean-env tests
 would have been measuring docker. 17 live green, 1 skipped by name, 6
 green with no R at all.
+
 
 ## sql-plan-cells — the cell decoders that were not faster, and the instrument that was wrong
 Completed: 2026-09-07

@@ -13,7 +13,8 @@ import java.nio.file.{Files, Path}
  * (a page's first render is the Scala compiler), and each JMH fork
  * would pay every compile again for a number whose variance is
  * dominated by dotc, not by the harness. So: medians of `n` samples
- * with the warmup discarded, the host's load average recorded beside
+ * (the median absorbing the first slow runs, see `msOf`), the host's
+ * load average recorded beside
  * them, printed as a table. The ASSERTIONS are sanity bounds only --
  * a page renders, a warm render is cheaper than a cold one -- never a
  * millisecond threshold, which on a loaded CI box is a red build that
@@ -29,6 +30,18 @@ class MeasureScript extends munit.FunSuite:
     val s = xs.sorted
     if s.isEmpty then 0.0 else if s.length % 2 == 1 then s(s.length / 2) else (s(s.length / 2 - 1) + s(s.length / 2)) / 2
 
+  /**
+   * The MEDIAN of `n` runs. It discards no warmup — the median is
+   * what absorbs the first slow runs, and that is enough HERE
+   * because every body below is hundreds of milliseconds of dotc (or
+   * the warm arm, which takes 200 samples).
+   *
+   * It would not be enough on a short body. `sql-plan-cells`
+   * measured a 0.6 ms body this way with 3 samples and published a
+   * number three times too high: two runs of the same code differed
+   * by half, and it took 50 discarded warmups and 31 samples to
+   * settle. Anything sub-millisecond wants a real warmup, or JMH.
+   */
   private def msOf(n: Int)(body: => Unit): Double =
     val xs = Vector.fill(n) {
       val t = System.nanoTime()
