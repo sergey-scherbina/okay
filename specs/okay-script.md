@@ -1767,6 +1767,54 @@ Proven by running the assembled jar exactly as the entrypoint does:
 - [x] `Serve` reads `OKAY_PAGES`/`OKAY_PORT` with no command line, a
       command line still wins, neither is a usage refusal.
 
+### Cookie flags — `Secure`, `SameSite` (okay-script-cookie-flags, 2026-09-07)
+
+Found by a question rather than a test: the operator asked what goes
+to a proxy, and reading the answer back showed the session cookie
+going out as `HttpOnly; Path=/` with no `Secure` and no `SameSite` —
+and `Response.current.cookie` unable to express either. A cookie
+without `Secure` leaves the browser on a plaintext request; one
+without `SameSite` rides a cross-site POST, which is the CSRF
+surface. Neither is something a proxy can add for you.
+
+```scala
+Response.current.cookie(name, value, maxAge, path, httpOnly,
+                        secure = Response.secureByDefault, sameSite = "Lax")
+final class Site(..., secureCookies: Option[Boolean] = None, trustForwarded: Boolean = false)
+```
+
+`SameSite=Lax` is the default for every cookie the container and the
+pages set (a page passes `sameSite = ""` for the old behaviour).
+`secure` defaults to what the CONTAINER knows about THIS request, so
+a page never has to ask: `secureCookies = Some(b)` forces the answer,
+and `None` decides — this Site's own server terminates TLS
+(`serveWith` sets that when it is given an `SSLContext`), or a
+`X-Forwarded-Proto: https` claim arrives at a Site built with
+`trustForwarded = true`. A header is a claim, so trusting one is
+off by default and named where it is turned on; `Some(true)` is the
+setting that needs no trust at all. In a chain the CLIENT's protocol
+is the first element, and that is the one read. `Serve` reads
+`OKAY_FORWARDED=1`.
+
+The first draft read the scheme from `Request.url` and would have
+answered `false` for every HTTPS request: okay-http's `Request`
+carries a path, not an absolute URL (okay-jetty builds it from
+`getHttpURI.getPathQuery`). The server knows what the request cannot
+say, which is why the flag is set where TLS is configured.
+
+- [x] plaintext by default: `HttpOnly`, `SameSite=Lax`, no `Secure`.
+- [x] `Some(true)` marks the container's cookie and a page's alike; a
+      page can still ask for neither flag.
+- [x] a forwarded claim counts only with `trustForwarded`; the
+      client's protocol is the first in a chain; an explicit
+      `secureCookies` beats any header both ways.
+- [x] the expiring cookie an `invalidate` sends carries the same
+      flags — a browser drops a cookie only on a match.
+- [x] the language cookie is not `HttpOnly` (a page may read it) but
+      is `Secure`/`SameSite` like the rest.
+- [x] (Live) over a real HTTPS connector the session cookie carries
+      `Secure` with no header claimed by anyone.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
