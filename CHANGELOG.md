@@ -1,5 +1,26 @@
 # Changelog
 
+## intent-offline-slots — the slots the offline door fills, and four word-shapes
+Completed: 2026-09-07
+Stage 7 of the autonomy programme, run measure-first because a door
+that classifies without a network and then asks a model for every
+slot has moved the call rather than removed it. `MeasureSlotCoverage`
+prints what the shipped extractors fill, per slot, per language, and
+as a whole frame — and, more usefully, prints every message that
+mentions a time and yields nothing. Reading that list was the lane:
+most entries were false alarms of the crude hint list, and the four
+real shapes split two and two. Two were bugs — a possessive
+("tomorrow's meeting", "Thursday's invite") and a plural weekday
+("Thursdays are remote") that the tokeniser could not see — and are
+fixed, taking `when` from 24.2% to 29.2% of the fixture and recall
+against the hint denominator from 66% to 80%. Two are deliberate
+refusals, now asserted so they cannot decay into bugs: a bare time
+with no day, and a range like "sometime this week", because `When`
+holds one date and inventing one fills a frame with something nobody
+said. The plan had named a CRF for this stage; the measurement says
+the gap was four word-shapes, not a learning problem, so no labeller
+was built. specs/intent-classify.md, "Results — intent-offline-slots".
+
 ## tod-demonstrations-from-the-log — the log as prompt material, and what an example is worth
 Completed: 2026-09-07
 "Show, Don't Tell" against our own taxonomy, sharpened by the

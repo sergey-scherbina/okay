@@ -29,18 +29,20 @@ class TestCli extends munit.FunSuite:
       Files.walk(root).sorted(java.util.Comparator.reverseOrder[Path]())
         .forEach(p => Files.deleteIfExists(p): Unit)
 
-  private def write(dir: Path, name: String, content: String): Path =
+  /** writes the file and answers NOTHING: every call site here wants
+   * the file on disk, not its path, and a returned `Path` nobody uses
+   * warned at each of them */
+  private def put(dir: Path, name: String, content: String): Unit =
     val f = dir.resolve(name)
     Option(f.getParent).foreach(Files.createDirectories(_): Unit)
     Files.writeString(f, content, UTF_8): Unit
-    f
 
   // ---- run ----------------------------------------------------------
 
   test("`run` executes a document and answers its stdout") {
     sandbox { root =>
       given Path = root
-      write(root, "hello.md", "# a doc\n\n```scala\nprintln(\"two: \" + (1 + 1))\n```\n")
+      put(root, "hello.md", "# a doc\n\n```scala\nprintln(\"two: \" + (1 + 1))\n```\n")
       val r = new Run
       assertEquals(r("run", "hello.md"), Cli.Exit.ok, r.complained)
       assert(r.said.contains("two: 2"), r.said)
@@ -52,7 +54,7 @@ class TestCli extends munit.FunSuite:
   test("a document that throws is exit 1, and the message names the file") {
     sandbox { root =>
       given Path = root
-      write(root, "boom.md", "```scala\nsys.error(\"deliberate\")\n```\n")
+      put(root, "boom.md", "```scala\nsys.error(\"deliberate\")\n```\n")
       val r = new Run
       assertEquals(r("run", "boom.md"), Cli.Exit.failed)
       assert(r.complained.contains("boom.md"), r.complained)
@@ -63,7 +65,7 @@ class TestCli extends munit.FunSuite:
   test("a document that does not compile is exit 1 with the line") {
     sandbox { root =>
       given Path = root
-      write(root, "bad.md", "```scala\nval x: Int = \"not an int\"\n```\n")
+      put(root, "bad.md", "```scala\nval x: Int = \"not an int\"\n```\n")
       val r = new Run
       assertEquals(r("run", "bad.md"), Cli.Exit.failed)
       assert(r.complained.contains("bad.md"), r.complained)
@@ -76,7 +78,7 @@ class TestCli extends munit.FunSuite:
   test("`render` writes the prose with its expressions evaluated") {
     sandbox { root =>
       given Path = root
-      write(root, "page.md", "Two plus two is ${2 + 2}.\n")
+      put(root, "page.md", "Two plus two is ${2 + 2}.\n")
       val toStdout = new Run
       assertEquals(toStdout("render", "page.md"), Cli.Exit.ok, toStdout.complained)
       assert(toStdout.said.contains("Two plus two is 4."), toStdout.said)
@@ -93,10 +95,10 @@ class TestCli extends munit.FunSuite:
     sandbox { root =>
       given Path = root
       val pages = root.resolve("pages")
-      write(pages, "index.md", "<h1>home</h1>\n<p>${1 + 1}</p>\n")
-      write(pages, "about.md", "<h1>about</h1>\n")
-      write(pages, "deep/thing.md", "<h1>deep</h1>\n")
-      write(pages, "style.css", "body { color: red }\n")
+      put(pages, "index.md", "<h1>home</h1>\n<p>${1 + 1}</p>\n")
+      put(pages, "about.md", "<h1>about</h1>\n")
+      put(pages, "deep/thing.md", "<h1>deep</h1>\n")
+      put(pages, "style.css", "body { color: red }\n")
 
       val r = new Run
       assertEquals(r("build", "pages", "-o", "site"), Cli.Exit.ok, r.complained)
@@ -124,8 +126,8 @@ class TestCli extends munit.FunSuite:
     sandbox { root =>
       given Path = root
       val pages = root.resolve("pages")
-      write(pages, "index.md", "<h1>fine</h1>\n")
-      write(pages, "cart.md",
+      put(pages, "index.md", "<h1>fine</h1>\n")
+      put(pages, "cart.md",
         "```scala\nimport okay.script.api.*\nprintln(Session.current.get(\"items\").getOrElse(\"none\"))\n```\n")
 
       val r = new Run
@@ -143,7 +145,7 @@ class TestCli extends munit.FunSuite:
     sandbox { root =>
       given Path = root
       val pages = root.resolve("pages")
-      write(pages, "go.md", "```scala\nokay.script.api.Response.current.redirect(\"/elsewhere\")\n```\n")
+      put(pages, "go.md", "```scala\nokay.script.api.Response.current.redirect(\"/elsewhere\")\n```\n")
       val r = new Run
       assertEquals(r("build", "pages", "-o", "site"), Cli.Exit.failed)
       assert(r.complained.contains("go.md"), r.complained)
@@ -156,8 +158,8 @@ class TestCli extends munit.FunSuite:
     sandbox { root =>
       given Path = root
       val pages = root.resolve("pages")
-      write(pages, "index.md", "<h1>home</h1>\n")
-      write(pages, "product/[sku].md", "<h1>${okay.script.api.Web.current.params(\"sku\")}</h1>\n")
+      put(pages, "index.md", "<h1>home</h1>\n")
+      put(pages, "product/[sku].md", "<h1>${okay.script.api.Web.current.params(\"sku\")}</h1>\n")
       val r = new Run
       assertEquals(r("build", "pages", "-o", "site"), Cli.Exit.ok, r.complained)
       assert(r.said.contains("[sku].md"), r.said)
@@ -170,8 +172,8 @@ class TestCli extends munit.FunSuite:
     sandbox { root =>
       given Path = root
       val pages = root.resolve("pages")
-      write(pages, "index.md", "<h1>hello</h1>\n")
-      write(pages, "index.uk.md", "<h1>вітаю</h1>\n")
+      put(pages, "index.md", "<h1>hello</h1>\n")
+      put(pages, "index.uk.md", "<h1>вітаю</h1>\n")
       val r = new Run
       assertEquals(r("build", "pages", "-o", "site", "--lang", "en,uk"), Cli.Exit.ok, r.complained)
       assert(Files.readString(root.resolve("site/index.html"), UTF_8).contains("hello"))
@@ -184,7 +186,7 @@ class TestCli extends munit.FunSuite:
     sandbox { root =>
       given Path = root
       val pages = root.resolve("pages")
-      write(pages, "index.md", "<h1>home</h1>\n")
+      put(pages, "index.md", "<h1>home</h1>\n")
       val r = new Run
       assertEquals(r("build", "pages", "-o", "site", "--json"), Cli.Exit.ok, r.complained)
       okay.codec.Json.parse(r.said) match
@@ -200,8 +202,8 @@ class TestCli extends munit.FunSuite:
   test("`check` is the mdoc gate: a matching fence passes, a mismatch is exit 1 with both sides") {
     sandbox { root =>
       given Path = root
-      write(root, "good.md", "```scala\nprintln(\"expected\")\n```\n\n```stdout\nexpected\n```\n")
-      write(root, "bad.md", "```scala\nprintln(\"actual\")\n```\n\n```stdout\nsomething else\n```\n")
+      put(root, "good.md", "```scala\nprintln(\"expected\")\n```\n\n```stdout\nexpected\n```\n")
+      put(root, "bad.md", "```scala\nprintln(\"actual\")\n```\n\n```stdout\nsomething else\n```\n")
 
       val good = new Run
       assertEquals(good("check", "good.md"), Cli.Exit.ok, good.complained)
@@ -218,8 +220,8 @@ class TestCli extends munit.FunSuite:
     sandbox { root =>
       given Path = root
       val docs = root.resolve("docs")
-      write(docs, "a.md", "```scala\nprintln(\"a\")\n```\n\n```stdout\na\n```\n")
-      write(docs, "b.md", "```scala\nprintln(\"b\")\n```\n\n```stdout\nb\n```\n")
+      put(docs, "a.md", "```scala\nprintln(\"a\")\n```\n\n```stdout\na\n```\n")
+      put(docs, "b.md", "```scala\nprintln(\"b\")\n```\n\n```stdout\nb\n```\n")
       val r = new Run
       assertEquals(r("check", "docs"), Cli.Exit.ok, r.complained)
       assert(r.said.contains("2 checked"), r.said)
@@ -248,7 +250,7 @@ class TestCli extends munit.FunSuite:
   test("`new` will not overwrite a directory that has something in it") {
     sandbox { root =>
       given Path = root
-      write(root, "site/mine.md", "do not touch\n")
+      put(root, "site/mine.md", "do not touch\n")
       val r = new Run
       assertEquals(r("new", "site"), Cli.Exit.usage)
       assert(r.complained.contains("not empty"), r.complained)
@@ -276,7 +278,7 @@ class TestCli extends munit.FunSuite:
   test("`okay script <verb>` and `okay <verb>` are the same program") {
     sandbox { root =>
       given Path = root
-      write(root, "page.md", "${6 * 7}\n")
+      put(root, "page.md", "${6 * 7}\n")
       val withGroup = new Run
       val without = new Run
       assertEquals(withGroup("script", "render", "page.md"), Cli.Exit.ok)

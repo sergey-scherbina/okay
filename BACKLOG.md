@@ -3100,10 +3100,22 @@ these are the lanes.
       ones. Cues need nothing at run time, so their coverage is pure
       autonomy: 85.7% precision at 11.7% coverage on 60 rows today,
       against hand-written 90.6% at 53.3%.
-- [ ] intent-offline-slots — fill the frame with no network: a
-      sequence labeller (CRF, or a grammar over the existing Amount /
-      Duration / People extractors). A capability the offline door
-      lacks entirely, not a better number: slots today need the model.
+- [x] intent-offline-slots — MEASURED AND PARTLY FIXED 2026-09-07
+      (MeasureSlotCoverage + TestTemporalForms, offline). The offline
+      extractors filled `when` on 24.2% of the fixture; the printed
+      miss list showed four real shapes, two of which are correct
+      refusals (a bare time with no day, a range like "this week").
+      The other two were word forms the tokeniser could not see — a
+      possessive ("tomorrow\'s meeting") and a plural weekday
+      ("Thursdays") — now handled: `when` 24.2% -> 29.2%, recall
+      against the hint denominator 66% -> 80%. NO sequence labeller:
+      the gap was four word-shapes, not a learning problem.
+      specs/intent-classify.md, "Results — intent-offline-slots".
+- [ ] intent-slot-denominators — `duration` fires on 7 of 120 and
+      `people` on 1, and nobody has counted how many messages CARRY
+      those slots, so neither number means anything yet. Count the
+      denominator the way the `when` lane did (print the misses, read
+      them), then decide. Cheap, offline, no new rows.
 - [ ] intent-per-language-models — one artifact per language once
       rows exist; the shipped one is English-only and scores chance
       (23-30%) elsewhere. GATED on intent-language-fixture-growth.

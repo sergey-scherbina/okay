@@ -102,7 +102,14 @@ object Temporal {
   def parse(phrase: String, today: Date): Option[When] =
     val words = phrase.toLowerCase
       .replaceAll("[.,!?;]", " ")
-      .split("\\s+").filter(_.nonEmpty).toList
+      .split("\\s+").filter(_.nonEmpty)
+      // a POSSESSIVE is the same word wearing a genitive: "tomorrow's
+      // meeting" and "Thursday's invite" carried a date this parser
+      // could not see, because the token did not match (measured,
+      // intent-offline-slots). `o'clock` is untouched — only a
+      // trailing apostrophe-s goes.
+      .map(w => if w.endsWith("'s") || w.endsWith("\u2019s") then w.dropRight(2) else w)
+      .filter(_.nonEmpty).toList
     if words.isEmpty then None
     else
       val time = timeIn(words)
@@ -143,7 +150,11 @@ object Temporal {
   private def relative(words: List[String], today: Date): Option[Date] =
     val set = words.toSet
     def weekdayAt(i: Int): Option[Int] =
-      val w = words(i)
+      val raw = words(i)
+      // a PLURAL weekday is still that weekday: "Thursdays are remote
+      // from now on" names Thursday (measured, intent-offline-slots).
+      // Tried second, so nothing that matched before changes.
+      val w = if weekdays.exists(_.startsWith(raw)) || raw.length < 4 then raw else raw.stripSuffix("s")
       val hit = weekdays.indexWhere(_.startsWith(w))
       if hit >= 0 && w.length >= 3 then Some(hit) else None
 

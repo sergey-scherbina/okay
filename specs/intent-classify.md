@@ -4520,4 +4520,66 @@ answer key (asserted in the suite, not just intended).
   journal fingerprint, exactly as a rename does. The selector is
   deterministic for that reason: the same log yields the same prompt.
 
+## Results — intent-offline-slots (2026-09-07)
+
+Stage 7 of the autonomy programme, run measure-first: a door that
+names the intent with no network and then asks a model for every slot
+has moved the call, not removed it — so what do the extractors we
+already ship actually fill? `MeasureSlotCoverage`, offline.
+
+### What the offline path fills (English fixture, 120 messages)
+
+| slot | before | after |
+|---|---:|---:|
+| `when` | 29 (24.2%) | **35 (29.2%)** |
+| `duration` | 7 (5.8%) | 7 |
+| `people` | 1 (0.8%) | 1 |
+| whole frame (all three) | 0 | 0 |
+| any slot | 33 (27.5%) | 39 (32.5%) |
+
+The whole-frame zero is not a failure: most messages never mention a
+duration or a headcount, and a frame that asks for what was not said
+is doing its job. The number that can be read as recall is the one
+against a denominator: of the messages whose words suggest a time,
+the extractor found **66% before and 80% after**.
+
+### What the misses actually were
+The measurement printed every message that mentions a time and yields
+nothing — twenty of them — and reading that list is the whole lane.
+Most were false alarms of the crude hint list ("I **am** writing",
+"Good **morning**!", "over the weekend" with no day). Four shapes
+were real, and they split two and two:
+
+- [x] **A possessive was invisible**: "before tomorrow's meeting",
+      "add the finance team to Thursday's invite". The tokeniser
+      stripped `.,!?;` and not `'s`, so the word did not match. Fixed:
+      a trailing apostrophe-s (straight or curly) is dropped.
+- [x] **A plural weekday was invisible**: "Thursdays are remote from
+      now on". `weekdays.startsWith(token)` fails for the longer
+      token. Fixed: the plural is tried second, so nothing that
+      matched before changes.
+- [x] **A bare time is DECLINED on purpose**: "a badge after 7pm"
+      names an hour with no day, and guessing today or tomorrow would
+      put a date in a frame that nobody said.
+- [x] **A range is DECLINED on purpose**: "sometime this week", "any
+      afternoon this week". `When` holds one date; the honest move is
+      to ask which day, not to pick one.
+
+Both refusals are asserted in `TestTemporalForms`, so a later change
+cannot quietly turn a decision into a bug.
+
+### Decisions
+- **No sequence labeller.** The plan named a CRF for this stage; the
+  measurement says the gap was four word-shapes, two of which are
+  correct refusals. Two regex-level fixes bought +6 messages of the
+  120 and 14 points of recall against the hint denominator — a
+  learned labeller would have needed rows this programme does not
+  have, to beat that.
+- **The measurement stays as a suite.** It is the baseline for slot
+  work, it prints the misses rather than a score, and reading the
+  misses is what produced the fix.
+- **Duration and headcount are unmeasured, not broken.** They fire on
+  7 and 1 messages, but nobody has counted how many messages CARRY
+  them; without that denominator those two numbers say nothing. Filed
+  as part of the lane's own follow-up rather than acted on blindly.
 
