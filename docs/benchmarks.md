@@ -475,22 +475,47 @@ for the third.
   neighbour only when a worker is still busy after a threshold — the
   helper rule, measured next.
 
-- **Many-to-many is one ring and one park per blocked hand-off.** All
-  P producers and C consumers contend on one Vyukov ring's head/tail,
-  and every blocked side parks a virtual thread (`LockSupport.park`
-  behind `Platform.block`) where ZIO suspends a fiber — an enqueue of
-  a continuation, no thread involved. The evidence that the ring is
-  the cost and not the park: the partitioned adaptive buffer, one
-  part per producer, reads 2502 at 4×4 — under ZIO — with the same
-  park. What it costs elsewhere is the second half of this section.
-- **Cancellation is a thread interrupt against a fiber flag.** Our
-  cancel is `Thread.interrupt` on a parked virtual thread: an unpark,
-  an `InterruptedException` and its unwind. ZIO and cats set a flag
-  the fiber checks at its next suspension point. A stackless
-  `InterruptedException` was tried and refuted (1.01x, the trace is
-  not the cost); the O(1) waiter queue likewise (0.96x, kept for
-  being simpler). The remaining 1.4–1.6x is the unpark and unwind,
-  and is the price of fibers that are threads.
+- **Many-to-many is one ring and one park per blocked hand-off — so
+  do not use one ring.** All P producers and C consumers contend on a
+  single Vyukov ring's head and tail, and every blocked side parks a
+  virtual thread where ZIO suspends a fiber. The partitioned buffer
+  (`Queues.strong.adaptive`, one part per producer) removes the first
+  half of that, and with the P x C deadlock fixed it is now correct
+  under contention (`adaptive-p-x-c-deadlock`, closed 2026-09-07: the
+  channel was waking senders on the part its shared SCAN CURSOR named
+  rather than the part a pop had just freed). Medians of within-run
+  ratios over six runs:
+
+  | many-to-many, one channel | vs okay's ring | vs ZIO | vs cats |
+  |---|---|---|---|
+  | `Queues.strong.adaptive`, 4x4 | **0.63** | **0.93** | 0.64 |
+  | `Queues.strong.adaptive`, 16x16 | 0.77 | 0.98 | 0.68 |
+  | okay's ring default, 4x4 | — | 1.43 | — |
+
+  So the row is won by the buffer and lost by the default, and the
+  default stays anyway: at ONE producer the partitioned buffer costs
+  about 15 % over a plain ring (144 against 122 in the last tight run;
+  a thread-local cache of the producer's own buffer took that from
+  18 % to about 15 %, which is not a gain worth claiming). One
+  producer is what a channel usually has, so `Channel.apply` keeps
+  the ring and the four- and sixteen-producer wins — 136 against 704,
+  98 against 3 138 — belong to a channel that asked for them.
+
+
+  | cancel 1 000 parked fibers | ratio to cats | ratio to ZIO |
+  |---|---|---|
+  | okay on `drive` | **0.70** | **0.66** |
+  | okay on `own` | 0.76 | — |
+  | okay on `loom` (the row as it stood) | 1.12 | — |
+
+  Two defects had to be fixed before the row could even be measured,
+  and both were contract bugs rather than speed: a cancelled
+  `DriveTask` never answered at all, so a `join` on it would have
+  waited for ever while loom's returned a `Left`; and `Platform.block`
+  read "the value arrived" before "I was interrupted", so an answer
+  that arrived after a cancel still became the fiber's answer. Both
+  are laws now.
+
 
 **What was done about the many-to-many row, and why the default did
 not change (adversarial-lanes, 2026-09-06/07).** The operator asked
