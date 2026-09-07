@@ -1,0 +1,37 @@
+task: bench-refresh
+agent: opus5-bench
+started: 2026-09-07
+branch: feature/bench-refresh
+worktree: ../okay-wt-bench
+
+why: the operator asked for the comparison benchmarks to be re-run and
+  every number in the documentation refreshed. docs/benchmarks.md's own
+  rule is that lanes quoted together were measured in the same session;
+  its tables have accumulated across a dozen sessions on hosts of
+  varying quiet. One session, one host, one protocol makes the tables
+  comparable to each other again.
+
+what: re-measure every CROSS-LIBRARY lane (the ones that quote
+  cats-effect / ZIO / kyo / fs2 / atnos / circe) — CompareBenchmark,
+  DirectBenchmark, Reader, Writer, Choice, Async, StreamOps, Merge,
+  ChunkFlush, IdiomaticApi, Resource, Generator, Text, Codec, Rag, and
+  FairnessProbe's floor lanes — in one session on the freshly-booted
+  quiet box, append every row to src/jmh/history.tsv, and write the new
+  numbers into docs/benchmarks.md sections 0-11 with the run's date and
+  protocol stated. Scope chosen by the operator over "everything in
+  compare/" and over "headline only".
+
+predict: most rows land within noise of the current table. The box is
+  quiet and freshly booted where several of the standing rows were
+  measured "box shared with sibling builds all day", so the honest
+  expectation is that MANY rows move DOWN together — which is a host
+  effect, not a win, and the doc must say so rather than claim
+  improvement. Orderings between libraries should not change; if one
+  does, that row gets re-run before it is written.
+
+CAUTION — MACHINE STATE THIS CLAIM OWNS:
+  both scalascript launchd guards are UNLOADED for the duration
+  (operator's decision, 2026-09-07):
+    launchctl load ~/Library/LaunchAgents/io.scalascript.build-ram-guard.plist
+    launchctl load ~/Library/LaunchAgents/io.scalascript.kill-stale-builders.plist
+  If this session dies, whoever finds this claim must load them back.
