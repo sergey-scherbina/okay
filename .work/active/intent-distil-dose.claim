@@ -1,0 +1,22 @@
+task: intent-distil-dose
+agent: fable-persist
+started: 2026-09-07
+branch: feature/intent-distil-dose
+worktree: ../okay-wt-dose
+
+why: intent-distil-for-probe found +40 distilled rows worth ten
+  centroid points and more worse, monotonically — an optimum found
+  by accident between two arms, on one split, with the
+  self-consistency filter NOT applied. The entry asks for it
+  properly, and for the question the grid cannot ask: whether the
+  knob is a dose at all or a WEIGHT.
+
+what: TestDistilDose (Live): the 0.6B embeds the 120 human rows and
+  the 320 distilled once; the filter's verdicts (the model
+  re-judging its own rows, as intent-label-distillation ran it) are
+  written beside the corpus once, intent-distilled-kept.json; the
+  dose on a grid 0..320, class round-robin, on both mirror splits,
+  unfiltered and filtered; then every distilled row counted at w in
+  {0.1, 0.25, 0.5, 1} in the centroid's mean. Conditions printed. A
+  default moves only if a cell clears the split-to-split bar on
+  both splits.
