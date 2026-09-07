@@ -4112,7 +4112,7 @@ measured its interpreted door at 0.92x circe and called that the
 choice; the existing staged road was already better, and that lane
 did not say so. The price list now carries all three doors and their
 prices; the fastest is this one.
-## adaptive-p-x-c-deadlock — the partitioned buffer still deadlocks, rarely, at P × C
+## adaptive-p-x-c-deadlock — DONE 2026-09-07: the woken senders were on the wrong part
 
 Fourth face of the adaptive-buffer family (adversarial-lanes,
 2026-09-07), after dense part indices, the three-state seal and the
@@ -4127,12 +4127,25 @@ by `TestManyToMany` (6 runs × 5 shapes × 4 buffers) nor by
 suspect: a sender parked on a full part whose emptying pop woke a
 different route's queue — `wakeSender()` wakes the senders of
 `ring.lastRoute`, the part last POPPED, which is not the parked
-sender's part when consumers rotate across parts. To hunt: the
-timed-park diagnosis in `CanBlock.block` (6 s without an answer →
-print the channel's counters and `sealedAt`) that cracked the seal
-race, plus the sender's route and `sendersAt` sizes. The ring stays
-the default until this is named; the adaptive buffer is opt-in
-(`Queues.strong.adaptive`).
+sender's part when consumers rotate across parts. RESULT: the suspicion in the paragraph above was right, and the
+mechanism is one line. `AdaptiveFifo.lastRoute` returned the SCAN
+CURSOR, and the cursor is a single shared cell: with several consumers
+rotating over the parts it names whatever part was scanned last by
+anyone, so `wakeSender()` woke the senders of a part that had not
+freed a slot, while the sender parked on the part that HAD stayed
+asleep. Reproduced in three minutes by a probe at the JMH fork's own
+shape (`ProbeAdaptivePxC`, four consumers and four producers, small
+per-part capacity): round 5 363, four consumers parked in
+`receiveBlocking`, one producer in `sendBlocking` — the JMH dump's
+shape exactly. A thread's own last route replaces the cursor (every
+`wakeSender()` runs on the thread that just popped, so it is exact),
+and 20 000 rounds pass with no stall. Law in `TestManyToMany`: 400
+rounds at capacity 4.
+
+The probe's own lesson, worth keeping: `Thread.getAllStackTraces` does
+NOT include virtual threads, so a watchdog built on it prints nothing
+about a fiber deadlock. `jcmd <pid> Thread.dump_to_file -format=json`
+does, and the fork to dump is `ForkMain`, not the sbt launcher.
 
 ## own-scheduler-jvm — DONE 2026-09-07 as `schedulers-family`: the scheduler exists, and it beats both policies
 
