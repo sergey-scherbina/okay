@@ -907,16 +907,18 @@ FINE-TUNED model (GPT-2, T5). What transfers is the construction of
 the input, not the numbers. Each item below is a hypothesis to
 measure on our own data, never a predicted result.
 
-- [ ] tod-demonstrations-from-the-log — "Show, Don't Tell" (Zhao &
-      Gupta, Google Research 2022; SDT arxiv 2204.04327, D3ST arxiv
-      2201.08904; SGD / MultiWOZ 2.4 / SGD-X). Their finding: ONE
-      annotated example dialogue in the input beats slot DESCRIPTIONS
-      — and descriptions are exactly the half we render today. The
-      okay-shaped part is where the example comes from: a recorded
-      turn in the durable ChatLog, together with the typed belief it
-      produced, IS an annotated example. The log stops being only an
-      audit trail and becomes prompt material. Highest value of the
-      three and the cheapest; offline-testable with a scripted model.
+- [x] tod-demonstrations-from-the-log — MEASURED 2026-09-07
+      (TestDemonstrationsLive + Demonstrations, offline selector with
+      its own suite). Four demonstrations chosen mechanically from a
+      log — one per class, scored messages excluded — lift the model
+      tier 0.685 → 0.892 macro F1 and take undecodable replies 6/120
+      → 0/120. With index names they recover only 0.100 → 0.376: of
+      the whole gap the examples buy 35% and the names 74%, so
+      demonstrations COMPOSE with names rather than replacing them.
+      The selector is the mechanism the harvest programme needs (the
+      log as prompt material) and it performs like hand-written
+      examples. specs/intent-classify.md, "Results —
+      tod-demonstrations-from-the-log".
 - [x] tod-schema-diagnostics — MEASURED 2026-09-07 (TestSchemaDiagnostics,
       Live). (a) D3ST: an index-named taxonomy (C1..C4, field s1)
       collapses from 0.685 to 0.100 macro F1 and answers C1 for every

@@ -1,5 +1,27 @@
 # Changelog
 
+## tod-demonstrations-from-the-log — the log as prompt material, and what an example is worth
+Completed: 2026-09-07
+"Show, Don't Tell" against our own taxonomy, sharpened by the
+previous lane's finding that our identifiers carry nearly all of the
+model tier's discrimination. `Demonstrations.perClass` selects one
+demonstration per class from recorded (message, intent) pairs — the
+dullest rule that can be stated in a sentence, deterministic, with
+the messages about to be scored excluded by construction — and
+`Demonstrations.fromReplies` builds those pairs from a log of raw
+model replies, dropping what does not decode rather than inheriting
+it. Nothing reads a log inside the module, so okay-intent gains no
+persistence dependency and okay-chat can point it at its ChatLog.
+Measured live over the whole 120-message fixture, four arms in one
+session: with real names four demonstrations are worth +0.207 macro
+F1 (0.685 → 0.892) and take undecodable replies from 6/120 to 0/120;
+with index names they recover only 0.100 → 0.376. Of the gap between
+"no words, no examples" and "names and examples", examples buy 35%
+and names 74% — they compose, and neither replaces the other. Both
+baselines reproduced the diagnostics lane to three decimals on a
+different day. specs/intent-classify.md, "Results —
+tod-demonstrations-from-the-log".
+
 ## script-cli — run, render, build, check, serve, new
 Completed: 2026-09-07
 Landed as b9d68c2b (spec then code). The operator ask, and the
@@ -45,6 +67,7 @@ render, because the container binds a session per request on the
 request thread: found by the test that expected a refusal and got a
 built page. `new` writes a starter, and the test that matters is that
 `build` builds it with nothing edited first. 167 okay-script green 3x.
+
 
 ## intent-label-model — the cascade is not naive, and eight splits said so
 Completed: 2026-09-07

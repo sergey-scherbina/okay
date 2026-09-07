@@ -4448,7 +4448,16 @@ hazard is a paper cut. Four arms, one session, the whole 120-message
 fixture, so both baselines are re-measured beside the new arms rather
 than remembered.
 
-<<SDTTABLE>>
+| arm | macro F1 | Other F1 | undecodable |
+|---|---:|---:|---:|
+| `Meeting`, no demonstrations | 0.685 | 0.63 | 6/120 |
+| `Meeting` + 4 demonstrations | **0.892** | 0.84 | **0/120** |
+| `Indexed` (C1..C4), no demonstrations | 0.100 | 0.00 | 0/120 |
+| `Indexed` + the same 4 demonstrations | 0.376 | 0.38 | 0/120 |
+
+Both baselines reproduced the diagnostics lane's numbers to three
+decimals on a different day (0.685 and 0.100), so the harness is
+stable and the deltas are the measurement.
 
 ### What the demonstrations are, and where they come from
 `Demonstrations.perClass(recorded, exclude)` takes recorded
@@ -4464,7 +4473,40 @@ okay-chat can point it at the ChatLog it already writes. The scored
 messages are passed as `exclude`, so no arm is ever shown its own
 answer key (asserted in the suite, not just intended).
 
-<<SDTVERDICT>>
+### The answer: demonstrations do not replace names, they compose with them
+- [x] **With real names, four demonstrations are worth +0.207 macro
+      F1** (0.685 → 0.892) and `Other` +0.21. That is the largest
+      single move this line has measured from a prompt change.
+- [x] **They also fix the SHAPE**: undecodable replies 6/120 → 0/120.
+      A model shown one filled answer per class stops inventing
+      wrappers. Every earlier lane that fought the decode rate was
+      fighting this.
+- [x] **With index names they recover only part of the gap**: 0.100 →
+      0.376. Of the 0.792 between "no words, no examples" and "names
+      and examples", the examples buy 35% and the names 74% — they
+      overlap, and neither is a substitute for the other. SDT's
+      finding (an example beats a description) holds in the sense
+      that examples are powerful; in OUR shape the names are worth
+      more than the examples, and the two together are worth more
+      than either.
+- [x] **The demonstrations were SELECTED, not written**: one per
+      class, first the log offers, in taxonomy order, with the scored
+      messages excluded by construction. So the mechanism the
+      programme needs — the log becoming prompt material — performs
+      like hand-written examples, which is the result that matters
+      operationally.
+
+### What a caller should do with this
+1. Name classes with the plainest standard word (measured:
+   tod-schema-diagnostics).
+2. Show one demonstration per class, taken from the log
+   (`Demonstrations.perClass`), never from the messages being scored.
+3. Expect the decode rate to go to zero, and stop paying for the
+   defensive parsing that a bare prompt needs.
+4. A taxonomy whose names cannot be changed (someone else's types, a
+   wire format) is not hopeless: demonstrations take it from 0.100 to
+   0.376 on this fixture — usable, and far below what a renamed
+   taxonomy reaches.
 
 ### Decisions
 - **The selection rule is stated, not tuned.** One per class, first
