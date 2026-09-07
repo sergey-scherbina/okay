@@ -1,0 +1,23 @@
+task: raft-leftovers
+agent: fable-persist
+started: 2026-09-07
+branch: feature/raft-leftovers
+worktree: ../okay-wt-left
+
+why: persist-raft's box has three bullets left after stages 0-2c
+  and pre-vote, each filed "if the sim shows it mattering" or "as a
+  contract question". Decide them the way the rest were decided —
+  by a number from the simulator or by the contract — so the box
+  closes on evidence, not on fatigue.
+
+what: (1) the joiner's catch-up phase (thesis §4.2.1): measure in
+  the membership sweep how long a sixth node takes from addNode to
+  being current with the leader, and how many entries the cluster
+  committed meanwhile — if a joiner is current within a round, a
+  non-voting phase buys nothing at these sizes; (2) chunked
+  InstallSnapshot: the wire frame is [len:int32][CBOR], one message
+  up to 2 GB, so chunking is flow control, not correctness — stated
+  with the frame limit; (3) the commit-wait as an Ack level: Topic's
+  append returns the record's OFFSET, which exists only once applied,
+  i.e. committed — every Ack level must wait for the commit, and the
+  timeout stays the only honest knob. Boards: the persist-raft box.
