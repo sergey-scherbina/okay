@@ -29,6 +29,12 @@ final class Site(
    * secure page is a 500, not an open door */
   verify: Option[String => Verified] = None,
   realm: String = "okay",
+  /** `verify`'s pair: how the container mints a token for
+   * `api.signIn(subject, scopes)` -- a `SessionIssuer.issue`, say */
+  issue: Option[(String, Set[String]) => String] = None,
+  /** JSP's application scope, shared by every page (okay-script-
+   * application); `Application.persisted(store)` survives a restart */
+  val application: api.Application = api.Application.memory(),
 ):
   import Site.*
 
@@ -245,6 +251,8 @@ final class Site(
     api.Container.setIncluder(Some(includer))
     api.Container.setLiveRegistrar(Some((id, app) =>
       lives.put((including.get().headOption.getOrElse(f), id), app): Unit))
+    api.Container.setIssuer(issue)
+    api.Application.setCurrent(application)
     try
       val body = dispatch(f, web, resp, 0)
       if sess.invalidated then resp.cookie(SessionCookie, "", maxAge = Some(0), httpOnly = true)
@@ -254,6 +262,8 @@ final class Site(
     finally
       api.Container.setIncluder(None)
       api.Container.setLiveRegistrar(None)
+      api.Container.setIssuer(None)
+      api.Application.setCurrent(api.Application.detached)
       api.Principal.setCurrent(None)
       api.Web.setCurrent(api.Web.empty)
       api.Response.setCurrent(new api.Response)

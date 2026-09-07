@@ -16,7 +16,8 @@ class TestSiteExample extends munit.FunSuite:
   // unforked one's the repo root -- same idiom as the other examples
   private val root = Vector("examples/site", "okay-script/examples/site").map(Paths.get(_))
     .find(Files.isDirectory(_)).getOrElse(Paths.get("examples/site"))
-  private lazy val site = Site(root)
+  private val issuer = okay.security.SessionIssuer()
+  private lazy val site = Site(root, verify = Some(issuer.verify(_)), issue = Some((s, sc) => issuer.issue(s, sc)))
 
   override def afterAll(): Unit = site.close()
 
@@ -38,7 +39,7 @@ class TestSiteExample extends munit.FunSuite:
     assert(h.contains("/product/ok-2") && h.contains("Cart (0)"), h)
 
     val product = text(site.handle(Request.get("/product/ok-2")))
-    assert(product.contains("<h1>ok-2</h1>") && product.contains("$25"), product)
+    assert(product.contains("<h1>Direct style, no ceremony</h1>") && product.contains("$25"), product)
     assertEquals(site.handle(Request.get("/product/nope")).status, 404)
 
     val form = Seq("Content-Type" -> "application/x-www-form-urlencoded")
@@ -65,6 +66,26 @@ class TestSiteExample extends munit.FunSuite:
     assert(placed.contains("Thanks, Ann! 2 item(s) on the way, gift-wrapped."), placed)
     val tooMany = text(site.handle(Request.post("/checkout", Body.Text("name=Ann&email=a%40b.c&qty=9"), form)))
     assert(tooMany.contains("! only 5 in stock"), tooMany)
+
+    // the admin: 302 to the login page without a cookie; the demo password
+    // signs in through the container's issuer; a product posted on the
+    // plain road lands in the application scope, so the index shows it
+    assertEquals(header(site.handle(Request.get("/admin")), "location"), Some("/login?next=%2Fadmin"))
+    val wrong = site.handle(Request.post("/login?next=%2Fadmin", Body.Text("password=nope"), form))
+    assert(text(wrong).contains("Wrong password"), text(wrong))
+    val signed = site.handle(Request.post("/login?next=%2Fadmin", Body.Text("password=okay"), form))
+    assertEquals(signed.status, 302)
+    val adminCookie = sessionCookie(signed).getOrElse(fail("no cookie on sign-in"))
+    val admin = text(site.handle(Request.get("/admin", Seq("Cookie" -> adminCookie))))
+    assert(admin.contains("Admin — admin") && admin.contains("ok-1:") && admin.contains("""okayLive("adder")"""), admin)
+    val added = text(site.handle(Request.post("/admin", Body.Text("sku=ok-9&name=New+thing&price=7"), form ++ Seq("Cookie" -> adminCookie))))
+    assert(added.contains("saved ok-9") && added.contains("ok-9: New thing"), added)
+    assert(text(site.handle(Request.get("/"))).contains("/product/ok-9"))
+    assert(text(site.handle(Request.get("/product/ok-9"))).contains("<h1>New thing</h1>"))
+    val rejected = text(site.handle(Request.post("/admin", Body.Text("sku=ok-0&name=Free&price=0"), form ++ Seq("Cookie" -> adminCookie))))
+    assert(rejected.contains("! must be positive"), rejected)
+    assertEquals(site.handle(Request.get("/logout", Seq("Cookie" -> adminCookie))).status, 302)
+    assertEquals(site.handle(Request.get("/admin", Seq("Cookie" -> adminCookie))).status, 302)
 
     val css = site.handle(Request.get("/style.css"))
     assertEquals(header(css, "content-type"), Some("text/css; charset=utf-8"))

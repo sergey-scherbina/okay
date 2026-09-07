@@ -173,6 +173,13 @@ object Container:
 
   def setLiveRegistrar(f: Option[(String, Live[?]) => Unit]): Unit = lives.set(f)
 
+  private val issuers: ThreadLocal[Option[(String, Set[String]) => String]] = ThreadLocal.withInitial(() => None)
+
+  /** the container's token minter, when the Site was given one */
+  def issuer: Option[(String, Set[String]) => String] = issuers.get()
+
+  def setIssuer(f: Option[(String, Set[String]) => String]): Unit = issuers.set(f)
+
 /** Renders another page -- relative to the including page's
  * directory, or from the site root with a leading `/` -- with the same
  * `Web`/`Response`/`Session`, and prints its output here, at the point
@@ -205,6 +212,16 @@ object Principal:
  * cookie presents it. A login page calls this after checking the
  * credentials it checks. */
 def login(token: String): Unit = Session.current.set(Principal.TokenAttribute, token)
+
+/** Signs the browser in WITHOUT the page holding an issuer of its
+ * own: the container mints the token (`Site(issue = Some(...))`, the
+ * pair of its `verify`) for `subject` with `scopes`, and `login`s it.
+ * A login page checks the credentials it checks, then calls this.
+ * On a Site that mints nothing it throws, loudly. */
+def signIn(subject: String, scopes: Set[String] = Set.empty): Unit =
+  Container.issuer match
+    case Some(mint) => login(mint(subject, scopes))
+    case None => throw new IllegalStateException("signIn: this Site mints no tokens (Site(issue = Some(...)) beside verify)")
 
 /** Forgets the token; the next secure page sends the browser to the
  * login page again. The session itself stays (the cart survives a
