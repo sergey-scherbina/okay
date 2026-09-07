@@ -70,6 +70,7 @@ final case class Service(
   def databases: Vector[Need.Database] = needs.collect { case d: Need.Database => d }
   def caches: Vector[Need.Cache] = needs.collect { case c: Need.Cache => c }
   def dns: Vector[String] = needs.collect { case Need.Dns(h) => h }
+  def region: Option[String] = needs.collectFirst { case Need.Region(r) => r }
   def tls: Option[TlsMode] = needs.collectFirst { case Need.Tls(m) => m }
   /** the one port a target exposes when it must pick one */
   def mainPort: Option[Int] = ports.find(_.public).map(_.number).orElse(ports.headOption.map(_.number))
@@ -90,6 +91,9 @@ enum Need:
   case Tls(mode: TlsMode)
   /** another service in this same Deployment */
   case Neighbour(service: String)
+  /** where to run: every PaaS and every cloud asks, and no target can
+   * invent an answer (specs/deployment.md, stage 2) */
+  case Region(name: String)
   case Port(number: Int, public: Boolean = true)
 
 enum Engine:

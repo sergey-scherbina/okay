@@ -3,8 +3,11 @@ package okay.deploy
 import java.nio.file.Path
 
 /**
- * The targets that need no account, and so can be proven on the
- * machine writing them (specs/deployment.md, stages 0 and 1).
+ * Every place a `Deployment` can go (specs/deployment.md, stages 0
+ * to 2). The first three need no account and are proven on the
+ * machine writing them; the PaaS three render for a platform whose
+ * acceptance needs one, which is said in the spec rather than
+ * implied by a green suite.
  *
  * Both are pure `Deployment => files`. Neither knows anything the
  * other does: a `Need.Database` is a container on a laptop and a
@@ -13,7 +16,7 @@ import java.nio.file.Path
  */
 object Targets:
 
-  val all: Vector[Target] = Vector(Laptop, Host, Cluster)
+  val all: Vector[Target] = Vector(Laptop, Host, Cluster, Paas.Fly, Paas.Render, Paas.Railway)
 
   def byName(n: String): Option[Target] = all.find(_.name == n)
 

@@ -9,10 +9,27 @@ class TestScriptDeploy extends munit.FunSuite:
     assertEquals(Deploy.drift(ScriptDeploy.spec, Deploy.repoRoot()), Vector.empty)
   }
 
-  test("okay-script/deploy does not drift from ScriptDeploy.system, on every target") {
+  test("okay-script/deploy does not drift from ScriptDeploy.system, on every target that renders") {
     for target <- okay.deploy.Targets.all do
-      assertEquals(okay.deploy.Deployment.drift(ScriptDeploy.system, target, okay.deploy.Deploy.repoRoot()),
-        Right(Vector.empty), s"the ${target.name} target has drifted")
+      okay.deploy.Deployment.drift(ScriptDeploy.system, target, okay.deploy.Deploy.repoRoot()) match
+        case Right(files) => assertEquals(files, Vector.empty, s"the ${target.name} target has drifted")
+        // a target that REFUSES this deployment has nothing committed
+        // and nothing to drift; what it must have is a reason
+        case Left(why) =>
+          assert(why.nonEmpty && why.length > 20, s"the ${target.name} target refused without saying why: $why")
+  }
+
+  test("fly refuses okay-script by name, because nobody has chosen a region") {
+    okay.deploy.Paas.Fly.render(ScriptDeploy.system) match
+      case Right(_) => fail("a region was invented for okay-script")
+      case Left(why) =>
+        assert(why.contains("region"), why)
+        assert(why.contains("Need.Region"), why)
+    // and the two that do not need one are committed
+    assert(java.nio.file.Files.isRegularFile(
+      okay.deploy.Deploy.repoRoot().resolve("okay-script/deploy/render/render.yaml")))
+    assert(java.nio.file.Files.isRegularFile(
+      okay.deploy.Deploy.repoRoot().resolve("okay-script/deploy/railway/web/railway.json")))
   }
 
   test("the new model says what the old value said: the port and the pages, each written once") {
