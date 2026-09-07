@@ -9,6 +9,17 @@ cloud managers and SOPS, and targets for a laptop, a rented server, a
 cluster, a PaaS and AWS/Azure/GCP. The spec draws the line the model
 does not cross and stages the work; each stage below is its own claim.
 
+- [ ] script-cli — a CLI for okay-script (operator ask 2026-09-07),
+      sharing the `okay` binary the deployment CLI introduces:
+      `okay script run|render|build|check|serve|new`. `build` is the
+      STATIC-SITE half the container never had — every page rendered
+      once to files, no JVM in the deployment — with a named refusal
+      for a page that needs a request (`Web.current`, a session, a
+      redirect, a mounted Live app) rather than a page rendered with
+      an empty request. `check` is the mdoc gate and the honest form
+      of the `sbt-test integration` item I declined: opt-in by path,
+      one exit code, mismatches with their lines. specs/okay-script.md
+      "The command line".
 - [ ] deploy-cli — folded INTO stage 0 (operator ask 2026-09-07): the
       `okay` CLI with `deploy` as its first subcommand group —
       render / doctor / up / down / diff / targets — reading
@@ -1561,7 +1572,7 @@ not a new primitive from scratch.
       throwing; stdout captured. Investigated ../scalascript first —
       unrelated (a full custom markdown-as-syntax language), nothing
       reusable found, recorded as a negative result in the spec.
-- [x-declined] okay-script: sbt-test / CI integration — a task walking
+- [x-declined→reopened as script-cli's `check`] okay-script: sbt-test / CI integration — a task walking
       `specs/*.md` (or a configured dir), failing the build on the
       first `!ok` Result. Deliberately not built with the core
       (operator: "библиотека/API, без интеграции в sbt test пока").

@@ -1906,6 +1906,69 @@ policy.
       restart; a torn renewal is refused and the old identity keeps
       serving; every unusable key shape is refused by name.
 
+### The command line (script-cli, designed 2026-09-07)
+
+Operator ask, and a correction of an old answer of mine. `Serve` is
+one main among several this module deserves, and serving is not even
+the most common thing a person does with a document that compiles.
+
+```
+okay script run    <file.md>              # run its blocks; stdout is the output
+okay script render <file.md> [-o out]     # prose + ${…} rendered; a file, or stdout
+okay script build  <dir> -o <out>         # every page rendered ONCE to files: a static site
+okay script check  <file.md>|<dir>        # mdoc-style: ```stdout fences must match the real run
+okay script serve  <dir> [port]           # what Serve is today
+okay script new    <dir>                  # a starter: index.md, style.css, a page that works
+```
+
+It shares the `okay` binary specs/deployment.md introduces — one
+tool, subcommand groups per module — so nothing new is installed for
+it.
+
+**`build` is the half the container never had.** The same pages that
+`serve` compiles per request can be rendered ONCE into plain files: a
+static site, deployable to anything that serves a directory, with no
+JVM in the deployment at all. Everything a page can do at build time
+it does — `Meta`, interpolation, includes, declares, i18n variants
+(one output per language) — and everything that needs a request
+refuses BY NAME rather than rendering nonsense: `Web.current`,
+`Session`, `Response.redirect`, a mounted Live app. A page that needs
+a request is a page a static site cannot hold, and being told which
+page and which call is the whole difference between this being usable
+and being a trap.
+
+**`check` answers a question I closed the wrong way.** `okay-script:
+sbt-test / CI integration` was declined (2026-09-07) on the grounds
+that the specs here quote APIs as pseudo-code and a blind walk fails
+on the first one. That reasoning holds for walking `specs/*.md`
+automatically; it says nothing against a COMMAND that checks the
+documents an author points it at. `ScalaScript.check` already exists;
+`okay script check docs/*.md` in CI is the honest form — opt-in by
+path, one exit code, the mismatches printed with their line numbers.
+
+**`run` is for a document that is a program.** A `.md` with fenced
+Scala is already a script; this runs it and gets out of the way,
+which is what "markdown files as Scala source" said on the first day
+and what no entry point ever offered.
+
+Exit codes follow the deployment CLI's: 0 fine, 1 the operation
+failed (a page threw, a `check` mismatched), 2 the arguments were
+wrong. `--json` on `check` and `build` for a pipeline; the failure of
+any of them names the file and the line, because a compile error
+already knows both (okay-script-line-mapping).
+
+- [ ] `run` executes a document and answers its stdout; a throw is
+      exit 1 with the line.
+- [ ] `render` writes one file or stdout; `build` writes a directory,
+      one output per page and per language variant.
+- [ ] `build` refuses a page that needs a request, naming the page
+      and the call — not a rendered page with an empty `Web`.
+- [ ] `check` is the mdoc gate: matching fences pass, a mismatch is
+      exit 1 with the expected and actual, and a whole directory can
+      be checked in one run.
+- [ ] `new` writes a directory that `serve` serves and `build`
+      builds, with nothing to edit first.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
