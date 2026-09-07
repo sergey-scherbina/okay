@@ -1,0 +1,17 @@
+task: intent-instruction-prefix
+agent: fable-persist
+started: 2026-09-07
+branch: feature/intent-instruction-prefix
+worktree: ../okay-wt-prefix
+
+why: the entry's own ask — "+1.6 (probe) and +3.3 (centroid) with a
+  6.6-point spread across four framings, at or near the noise floor
+  on 60 messages: re-measure on the grown fixture before making it
+  the default, and keep the finding that LONG instructions cost".
+
+what: the same four framings, the same probe/centroid evaluation,
+  on the grown fixture (and the parallel set's other languages,
+  where an English prefix on a non-English message is its own
+  question), against the rozum gateway's embedder — one run, the
+  plain baseline beside. A default moves only if the gain clears the
+  spread the same run shows; otherwise the entry closes as measured.
