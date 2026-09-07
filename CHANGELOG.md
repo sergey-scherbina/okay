@@ -1,5 +1,47 @@
 # Changelog
 
+## deploy-cluster — the same value becomes a Helm chart
+Completed: 2026-09-07
+Landed as 973d8048 (spec then code). Stage 1. Kubernetes is the target
+whose own model has the shape of ours, so most of this is naming: a
+service is a Deployment and a Service, settings are a ConfigMap taken
+whole with `envFrom`, a volume is a PVC and its mount, a DNS name with
+a TLS mode is an Ingress, and a neighbour is nothing at all because
+inside a cluster the service name IS the DNS name.
+
+Four things are decisions rather than naming. **The Secret is not
+templated** — a `templates/secret.yaml` with empty values is a trap,
+because the next `helm upgrade` overwrites the operator's real Secret
+with blanks and the first symptom is every pod crash-looping with an
+empty password; so the chart references `<release>-secrets` and ships
+`secrets.sh`, the exact `kubectl create secret generic` command, with
+no value in it. **A self-signed certificate is refused by name**,
+because behind an ingress it is a browser warning for every visitor,
+and the refusal names the two modes that work. **A database is
+rendered** — a cluster runs containers by definition, so refusing
+there would be pedantry — as one replica with a PVC, the manifest
+saying in a comment that it has no backups and what to change for a
+real one. **Templates are per service**, not one `range` over a map,
+so an operator chasing a wrong port opens the file helm rendered.
+
+The gate went the other way from what the spec first said, and the
+correction is worth more than the section it replaced. helm is a pure
+renderer needing no cluster and no account, which made the default
+suite look right; AGENTS.md is explicit that every suite leaving the
+JVM is Live, and this repository applies it without exception, so the
+helm suite is Live. Nothing was lost by moving it: under
+`integrationTest`, `helm lint` rejected the first rendering on the
+first run — an ingress annotation reading `.Values.ingress.issuer`
+where `values.yaml` had no `ingress` key at all. No golden-file test
+could have caught that, because the bytes were exactly what the
+renderer meant to write. `kubectl` cannot join that gate either:
+`apply --dry-run=client` still asks a cluster for its API group list.
+
+okay-script's chart is committed beside its compose file and its
+units, and drifts from the value in the same test as every other
+target. 69 okay-deploy green 3x, 5 helm Live green, 147 okay-script
+green.
+
 ## schedulers-family — a family, a builder, and a scheduler that decides for itself
 
 The operator's direction after the fork/join row: schedulers the way

@@ -83,9 +83,20 @@ does not cross and stages the work; each stage below is its own claim.
       a real `systemd-analyze verify` and the install script in front
       of a real rented box. Needs a Linux host; the unit is currently
       proven by its text, which is not the same thing.
-- [ ] deploy-cluster — stage 1: the Helm chart grown to ConfigMap,
-      Secret stubs, PVC and Ingress with TLS; `helm template`/`lint`
-      in the default gate, kind optional and Live.
+- [x] deploy-cluster — LANDED 2026-09-07, stage 1: the `cluster`
+      target renders a Helm chart from the same value — ConfigMap,
+      PVC, Ingress per TLS mode, a one-replica StatefulSet for a
+      database that says in the manifest what it is, and a Secret the
+      chart deliberately does NOT own (a templated one would be
+      blanked by the next `helm upgrade`), with `secrets.sh` carrying
+      the kubectl command instead. `helm lint`/`template` are LIVE,
+      not the default gate: AGENTS.md's rule for suites leaving the
+      JVM won over this module's opinion of its own tool.
+- [ ] deploy-old-helm-retired — `Deploy` still renders a
+      single-service Helm chart (okay-script/deploy/helm) beside the
+      new `cluster` one. Retiring it means moving every module that
+      renders through `Deploy` to a `Deployment`, which is a bigger
+      change than stage 1 and wants its own claim.
 - [ ] deploy-paas — stage 2: fly.toml, render.yaml, railway.json,
       golden-tested; a real deploy needs an account and stays a
       documented manual step.
