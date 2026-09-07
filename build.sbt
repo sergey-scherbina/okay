@@ -1110,14 +1110,15 @@ lazy val okayAcme = (project in file("okay-acme"))
   // the client half of a wire (okayHttp) signing with the stack's own
   // ES256 (okaySecurity) -- an ACME client is those two and a state
   // machine, which is why it is 600 lines and not a dependency
-  .dependsOn(okayHttp.jvm, okaySecurity.jvm)
+  // okayJetty is the client an operator's `Revoke` reaches the CA
+  // with -- the module's own flow takes any `Http`, this is the one
+  // it hands itself
+  .dependsOn(okayHttp.jvm, okaySecurity.jvm, okayJetty)
   .settings(
     name := "okay-acme",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     Test / fork := true,
   )
-  // a real socket for the fake-CA acceptance test
-  .dependsOn(okayJetty % Test)
 
 lazy val okayScript = project
   .in(file("okay-script"))

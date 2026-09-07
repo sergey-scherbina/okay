@@ -105,6 +105,58 @@ object Acme:
           .toRight("the certificate was written but cannot be read back")
       }
 
+  /**
+   * Why a certificate is being taken back (RFC 5280 §5.3.1, the
+   * subset RFC 8555 allows). A NAMED reason rather than the integer
+   * nobody remembers, because this is the field an incident report
+   * quotes: `KeyCompromise` is not a synonym for `Superseded`, and a
+   * CA treats them differently -- a compromised key blocks reissue
+   * for that key, a superseded one does not.
+   */
+  enum Reason(val code: Int):
+    case Unspecified extends Reason(0)
+    case KeyCompromise extends Reason(1)
+    case Superseded extends Reason(4)
+    case CessationOfOperation extends Reason(5)
+
+  /**
+   * Take the certificate back (RFC 8555 §7.6): the leaf's DER, signed
+   * by the ACCOUNT key that ordered it. A revoked certificate stops
+   * being trusted before it expires -- what a leaked key needs, and
+   * the reason this is not just "let it lapse in 90 days".
+   *
+   * Revoking twice is not an error worth inventing: the CA answers
+   * `alreadyRevoked`, and that sentence comes back as it is.
+   */
+  def revoke(cfg: Config, http: Http, reason: Reason = Reason.Unspecified)
+            (using Crypto, CanBlock): Either[String, Unit] =
+    for
+      leaf <- leafDer(cfg.certFile)
+      account <- accountKeyOf(cfg.accountKey)
+      dir <- get(http, cfg.directory).flatMap(json)
+      newNonce <- str(dir, "newNonce").toRight("the directory has no newNonce")
+      newAccount <- str(dir, "newAccount").toRight("the directory has no newAccount")
+      revokeCert <- str(dir, "revokeCert").toRight("this CA publishes no revokeCert endpoint")
+      session = new Session(http, account, newNonce)
+      // the account must be the one that ordered it, so it registers
+      // first -- against an existing account this answers the same URL
+      _ <- session.register(newAccount, cfg.email)
+      _ <- session.post(revokeCert, Json.print(Json.JObj(Vector(
+        "certificate" -> Json.JStr(b64(leaf)),
+        "reason" -> Json.JNum(reason.code.toDouble)))))
+    yield ()
+
+  /** the LEAF's DER: a chain file holds the issuers too, and a CA
+   * revokes one certificate, not a bundle */
+  private[acme] def leafDer(certFile: Path): Either[String, Array[Byte]] =
+    try
+      val cf = java.security.cert.CertificateFactory.getInstance("X.509")
+      val in = Files.newInputStream(certFile)
+      val certs = try cf.generateCertificates(in) finally in.close()
+      if certs.isEmpty then Left(s"$certFile holds no certificate to revoke")
+      else Right(certs.iterator().next().getEncoded)
+    catch case e: Exception => Left(s"$certFile is not a readable certificate: ${e.getMessage}")
+
   /** the whole flow, unconditionally */
   def issue(cfg: Config, http: Http, challenges: Challenges)
            (using Crypto, CanBlock): Either[String, Unit] =

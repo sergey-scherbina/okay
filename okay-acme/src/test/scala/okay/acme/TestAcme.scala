@@ -138,3 +138,28 @@ class TestAcme extends munit.FunSuite:
       assert(jwk.endsWith("\"}"), jwk)
     finally rmrf(dir)
   }
+
+  test("Revoke.parse: the directory, the reason by name, and what it refuses") {
+    val dir = Files.createTempDirectory("okay-acme-revoke-args-")
+    try
+      val env = Map("OKAY_ACME" -> "ops@example.com")
+      assert(Revoke.parse(Array(dir.toString), env.get).left.exists(_.contains("no certificate at")))
+      Files.writeString(dir.resolve("cert.pem"), "x"): Unit
+      assert(Revoke.parse(Array(dir.toString), env.get).left.exists(_.contains("no account key")))
+      Files.writeString(dir.resolve("account.pem"), "x"): Unit
+      assertEquals(Revoke.parse(Array(dir.toString), env.get).map(_.reason), Right(Acme.Reason.Unspecified))
+      assertEquals(Revoke.parse(Array(dir.toString, "keyCompromise"), env.get).map(_.reason), Right(Acme.Reason.KeyCompromise))
+      assert(Revoke.parse(Array(dir.toString, "because"), env.get).left.exists(_.contains("is not a reason")))
+      assert(Revoke.parse(Array(dir.toString), _ => None).left.exists(_.contains("OKAY_ACME")))
+      assert(Revoke.parse(Array.empty, env.get).left.exists(_.startsWith("usage")))
+      // the same switch the server runs with, so a revoke cannot talk
+      // to the wrong CA while believing it talked to the right one
+      assertEquals(Revoke.parse(Array(dir.toString), (env + ("OKAY_ACME_PROD" -> "1")).get).map(_.production), Right(true))
+      assertEquals(Revoke.parse(Array(dir.toString), env.get).map(_.production), Right(false))
+      // the reason codes are RFC 5280's, not ours
+      assertEquals(Acme.Reason.KeyCompromise.code, 1)
+      assertEquals(Acme.Reason.Superseded.code, 4)
+      assertEquals(Acme.Reason.CessationOfOperation.code, 5)
+    finally
+      Files.walk(dir).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => Files.deleteIfExists(p): Unit)
+  }

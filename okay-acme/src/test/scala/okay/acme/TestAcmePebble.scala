@@ -153,6 +153,36 @@ class TestAcmePebble extends munit.FunSuite:
       rmrf(dir)
   }
 
+  test("revocation: Pebble takes the certificate back, and refuses a second one by name") {
+    assume(Pebble.available, "docker is not available")
+    val dir = Files.createTempDirectory("okay-acme-pebble-revoke-")
+    val ca = dir.resolve("pebble-ca.pem")
+    assume(Pebble.start(ca), "pebble did not start")
+    val challenges = Acme.Challenges.Memory()
+    try
+      val cfg = Acme.Config("ops@example.com", Vector(Pebble.domain),
+        dir.resolve("account.pem"), dir.resolve("cert.pem"), dir.resolve("key.pem"),
+        s"https://localhost:${Pebble.apiPort}/dir", timeout = java.time.Duration.ofSeconds(60))
+      val http = trusting(ca)
+      val issued = Resource.run[Either[String, Acme.Outcome], Pure](
+        Jetty.serve(Pebble.challengePort)(challenges.routes)().map(_ => Acme.ensure(cfg, http, challenges))).runWith
+      assert(issued.exists(_.isInstanceOf[Acme.Outcome.Issued]), issued.toString)
+
+      // the leaf alone is what a CA revokes, not the bundle on disk
+      assert(Acme.leafDer(cfg.certFile).exists(_.nonEmpty))
+
+      val first = Acme.revoke(cfg, http, Acme.Reason.KeyCompromise)
+      assert(first.isRight, first.toString)
+
+      // twice is not an error we invent: the CA's own sentence comes back
+      val second = Acme.revoke(cfg, http, Acme.Reason.KeyCompromise)
+      assert(second.isLeft, "a second revoke was accepted")
+      assert(second.left.exists(m => m.toLowerCase.contains("already")), second.toString)
+    finally
+      Pebble.stop()
+      rmrf(dir)
+  }
+
   test("a name Pebble cannot reach is refused with the CA's own words, not a timeout") {
     assume(Pebble.available, "docker is not available")
     val dir = Files.createTempDirectory("okay-acme-pebble-bad-")

@@ -10,10 +10,11 @@ decisions.
 | `Acme.ensure(cfg, http, challenges)` | issue if needed, renew when less than `renewBefore` is left, answer `Issued` or `Current` |
 | `Acme.Config` | email, domains, where the account key, certificate and key live, the directory, the renewal window |
 | `Acme.Challenges.Memory` | somewhere to put the token, plus the `routes` to chain in front of a plaintext server |
+| `Acme.revoke(cfg, http, reason)` | take a certificate back before it expires (RFC 8555 §7.6); `okay.acme.Revoke` is the same thing from a shell |
 | `Acme.Directory` | Let's Encrypt's staging (the default) and production URLs |
 
 Narrow on purpose: HTTP-01 only, one order, one server, no wildcards
-(they need DNS-01), no revocation, no EAB, no ARI. Wide is certbot's
+(they need DNS-01), no EAB, no ARI. Revocation IS here. Wide is certbot's
 job, and a half-maintained wide client is a site that stops renewing
 on a Saturday.
 
