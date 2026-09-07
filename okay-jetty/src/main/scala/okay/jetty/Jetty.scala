@@ -97,7 +97,7 @@ object Jetty {
    * is what makes an echo session portable between the two ends.
    */
   def serve(port: Int)(routes: PartialFunction[Request, Response ! Async])
-           (ws: PartialFunction[Request, okay.Stage[Frame, Frame, Unit]] =
+           (ws: PartialFunction[Request, okay.http.Ws.Served] =
               PartialFunction.empty)
            (using CanBlock, Scheduler): Server ! Resource =
     Resource.acquire {
@@ -286,12 +286,21 @@ object Jetty {
    * serve WebSocket, and closing that gap should not have introduced a
    * second session type.
    */
-  private def session(stage: okay.Stage[Frame, Frame, Unit])
+  private def session(served: okay.http.Ws.Served)
                      (using Scheduler): Listen =
     val q = Channel[Frame](Int.MaxValue)
+    // the server's own frames (Ws.Served.push) enter the same channel
+    // the client's do, in arrival order; `offer` answers false once the
+    // socket has closed the channel, and that ends the feed
+    def feed(src: Source[Frame]): Unit ! Async =
+      Writer.uncons[Frame, Unit, Async](src).flatMap {
+        case Left(_) => pure(())
+        case Right((f, more)) => if q.offer(f) then feed(more) else pure(())
+      }
     Listen(new Listen.Sink:
       def open(s: Session): Unit =
-        Async.spawn(okay.http.Ws.over(socket(s, q))(stage)): Unit
+        Async.spawn(okay.http.Ws.over(socket(s, q))(served.stage)): Unit
+        Async.spawn(feed(served.push)): Unit
       def text(message: String): Unit = q.offer(Frame.Text(message)): Unit
       def binary(payload: Array[Byte]): Unit =
         q.offer(Frame.Binary(scala.collection.immutable.ArraySeq.unsafeWrapArray(payload))): Unit

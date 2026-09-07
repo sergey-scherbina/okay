@@ -12,8 +12,16 @@ import okay.ui.{Elem, Event, React, Ui, Wire}
  * Declare it once, at object level (a ```scala declare block), so the
  * app -- like a JSP declaration -- is built per compile, not per
  * request; mount it in prose with `${mount("counter", counter)}`.
+ *
+ * `push` (script-live-push) is the SERVER's own events — a clock, a
+ * shared feed — merged into every session's input beside the
+ * browser's, exactly `Ui.run`'s `external`; a fresh instance of the
+ * source runs per session. A pushed event obeys the same capability
+ * rule as a browser's (`Wire.permitted`): a `Pressed` must name a key
+ * the shown tree has, which is how okay-ui's own timer test ticks.
  */
-final class Live[S](val init: S, val view: S => Ui, val update: (S, Event) => S):
+final class Live[S](val init: S, val view: S => Ui, val update: (S, Event) => S,
+                    val push: Source[Event] = pure(())):
   /** the tree a fresh session shows first -- also the SSR content */
   def first: Ui = view(init)
 
@@ -23,8 +31,8 @@ final class Live[S](val init: S, val view: S => Ui, val update: (S, Event) => S)
     Wire.serve(init)(view)(update).map(_ => ())
 
 object Live:
-  def apply[S](init: S)(view: S => Ui)(update: (S, Event) => S): Live[S] =
-    new Live(init, view, update)
+  def apply[S](init: S)(view: S => Ui)(update: (S, Event) => S, push: Source[Event] = pure(())): Live[S] =
+    new Live(init, view, update, push)
 
   /** where the container serves the patch consumer */
   val JsPath = "/__okay/live.js"

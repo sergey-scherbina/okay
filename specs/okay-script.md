@@ -1189,7 +1189,8 @@ a path into the browser's — followed by a script tag for `JsPath` and
 `okayLive("counter")`. It also registers the app with the container
 (a `Container` hook, like `include`), keyed by (page file, id).
 
-`Site.ws: PartialFunction[Request, Stage[Frame, Frame, Unit]]` is the
+`Site.ws: PartialFunction[Request, Ws.Served]` (a `Stage[Frame, Frame,
+Unit]` plus the server's pushed frames, since script-live-push) is the
 socket side: `Jetty.serve(port)(site.routes)(site.ws)` is the whole
 server. A socket at the page's own path plus `?__live=<id>` runs the
 app's `session` between two framing stages — text frames become
@@ -1253,6 +1254,45 @@ block is object level, so its imports are its own — an
       forged key yields nothing, a Close frame ends it.
 - [x] over a real Jetty WebSocket (Live): connect, receive the tree,
       press, receive the patch.
+
+#### Server-pushed updates (script-live-push, 2026-09-07)
+
+A Live app changed only on a client event; a clock or a shared feed
+had no door. `Ui.run` already had it — `external: Source[Event]`,
+merged with the host's events — so the page gets the same word:
+
+```scala
+final class Live[S](init: S, view: S => Ui, update: (S, Event) => S,
+                    push: Source[Event] = pure(()))
+object Live:
+  def apply[S](init: S)(view: S => Ui)(update: (S, Event) => S, push: Source[Event] = pure(())): Live[S]
+```
+
+`push` is the SERVER's own events; a fresh instance of the source
+runs for every session, ending with its socket. A pushed event obeys
+the same capability rule as a browser's (`Wire.permitted`): a
+`Pressed` must name a key the shown tree has — which is how okay-ui's
+own timer test ticks, an external source that "presses" the button
+the view shows — and `Key`/`Resized` always pass. Not a new event
+kind: the server speaks the UI's event language, as `Ui.run`'s
+`external` does.
+
+Where it merges: at the socket, not in `Wire.serve`. okay-http gains
+`Ws.Served(stage: Stage[Frame, Frame, Unit], push: Source[Frame])`,
+and a WebSocket route answers one (`Jetty.serve(port)(routes)(ws:
+PartialFunction[Request, Ws.Served])`); the Jetty transport feeds the
+pushed frames into the same channel the client's frames arrive on,
+in arrival order, and stops the moment `offer` answers false — the
+socket closed. `Site.liveSession` turns the app's `push` into the
+lines the browser would have sent (`WireJson.eventJson`) and answers
+`Ws.Served(session, pushed)`; `Wire.serve` is used verbatim, as
+before. `Site.ws` answers a `Ws.Served` now; a caller that ran the
+stage in-JVM reads `.stage`.
+
+- [x] in-JVM: the app's pushed source yields its events as text
+      frames, and fed to the stage they patch the tree twice.
+- [x] over Jetty (Live): the tree, then two patches nobody pressed
+      for.
 
 ### What is deliberately NOT here
 

@@ -1205,9 +1205,17 @@ not a new primitive from scratch.
       from `init`; a browser that reconnects starts over. okay-ui's
       ui-durable (journal + refold on okay-persist) is the mechanism;
       key by session cookie.
-- [ ] okay-script-live: server-pushed updates — a Live app only
+- [x] okay-script-live: server-pushed updates — a Live app only
       changes on a client event; a source merged in (`Ui.run`'s
       `external`) is what a ticking clock or a shared poll needs.
+      DONE 2026-09-07 (script-live-push): `Live(init)(view)(update,
+      push = Source[Event])` — the server's own events, a fresh
+      instance per session, the same capability rule as the
+      browser's; `Ws.Served(stage, push: Source[Frame])` in okay-http,
+      the Jetty transport feeding the pushed frames into the socket's
+      input channel beside the client's, so `Wire.serve` is still
+      used verbatim; `Site.ws` answers a `Ws.Served`. In-JVM and over
+      Jetty: two patches arrive with nobody pressing.
 - [x] okay-script-cluster-sessions — LANDED 2026-09-06 (operator ask):
       `Sessions.shared(topic)` — the persisted engine over a
       `Replicated` coordinator (leader node) or a `RemoteStore` topic
