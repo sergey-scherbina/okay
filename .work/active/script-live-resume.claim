@@ -1,0 +1,20 @@
+task: script-live-resume
+agent: fable-persist
+started: 2026-09-07
+branch: feature/script-live-resume
+worktree: ../okay-wt-resume
+
+why: okay-script-live's last open half: "a socket is one session
+  from init; a browser that reconnects starts over." A reload, a
+  dropped connection, a laptop lid — each starts the app again.
+
+what: Wire.serve already answers the final state on Closed and Live
+  discards it. Live[S] keeps, per app, the last state each SESSION
+  COOKIE reached (a TDict[String, S] inside the app, so the type
+  stays S and nothing is cast); a socket that carries the cookie
+  starts from that state, and its first frame — the full tree — puts
+  the browser right. In memory, this process only (a restart starts
+  over): the durable half (okay-ui's journal + refold on
+  okay-persist) stays filed, stated. No cookie, no resume. Tests
+  in-JVM: two sockets with one cookie, the second's first tree shows
+  what the first reached; a different cookie starts from init.
