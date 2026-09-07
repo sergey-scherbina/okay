@@ -23,44 +23,56 @@ package okay.intent
  *     this repository's own fixture
  *   - over four meeting classes: `Proposal`, `Request`,
  *     `Notification`, `Other`
- *   - 61.7% on the 60 held-out messages ALONE, which is why it is not
- *     offered alone
- *   - 75.0% at FULL COVERAGE behind the cue tier — cues answer the
- *     53% they fire on at 90.6%, this answers the rest at 61%
+ *   - character 2–3-grams hashed into 4096 buckets (the operator's
+ *     call, intent-shipped-model-4096, 2026-09-07: it was 3–5-grams
+ *     into 1024, a quarter of the size for two points, until the
+ *     window sweep measured five to eight); 171KB of JSON as a
+ *     generated source in three pieces, because a class file caps one
+ *     string constant at 64KB
+ *   - 68.3% on the 60 held-out messages ALONE, which is why it is not
+ *     offered alone (it was 61.7% at 1024)
+ *   - 80.0% at FULL COVERAGE behind the cue tier — cues answer the
+ *     53% they fire on at 90.6%, this answers the rest at 68% (it was
+ *     75.0%)
  *
- * AND 75.0% IS A CEILING, NOT AN ESTIMATE. The held-out messages were
+ * AND 80.0% IS A CEILING, NOT AN ESTIMATE. The held-out messages were
  * written by the same hand as the training ones, on the same day, and
  * that is worth about ten points:
  *
  *   - on the half of that same held-out set LEAST like anything in
- *     training (character-trigram similarity), 66.7% against 83.3% on
+ *     training (character-trigram similarity), 70.0% against 90.0% on
  *     the near half
- *   - one deterministic typo in the longest word: 63.3%
+ *   - one deterministic typo in the longest word: 71.7% (the smaller
+ *     window is what bought this back: 63.3% before)
  *   - the politeness frame removed ("Could you please send X" ->
- *     "Send X"): 63.3%
- *   - lowercasing: unchanged; a hedge in front: 78.3%, which is one
- *     message up and says what the resolution of sixty rows is
+ *     "Send X"): 70.0%
+ *   - lowercasing: 76.7%; a hedge in front: 78.3%; a trailing
+ *     sentence: 75.0% — each a message or two, which is what the
+ *     resolution of sixty rows is
  *
- * So expect 63-67% from a message somebody else wrote, and treat
- * 75.0% as what this scores on prose of its own register. A real
+ * So expect 70-72% from a message somebody else wrote, and treat
+ * 80.0% as what this scores on prose of its own register. A real
  * second author differs in vocabulary, length and structure at once,
- * which a mechanical shift does not, so even 63% is a lower bound on
+ * which a mechanical shift does not, so even 70% is a lower bound on
  * the gap rather than a measurement of it.
  *
  * AND PER CLASS, BECAUSE A TOTAL HIDES A CLASS. On the same 60
  * held-out messages, 15 of each class (so the majority baseline is
  * 25% and the aggregate is not being carried by one class):
  *
- *   Proposal      P 0.87  R 0.87  F1 0.87
- *   Request       P 0.70  R 0.93  F1 0.80
- *   Notification  P 0.73  R 0.73  F1 0.73
- *   Other         P 0.70  R 0.47  F1 0.56
+ *   Proposal      P 0.78  R 0.93  F1 0.85
+ *   Request       P 0.79  R 1.00  F1 0.88
+ *   Notification  P 0.87  R 0.87  F1 0.87
+ *   Other         P 0.75  R 0.40  F1 0.52
  *
- * `Other` is the one to read. It MISSES MORE THAN HALF the messages
- * that are not about meetings — recall 0.47 — so out-of-domain
+ * `Other` is the one to read. The bigger model bought the total and
+ * three classes and NOT this one: it still misses more than half the
+ * messages that are not about meetings — recall 0.40, F1 0.52 just
+ * above the 0.50 floor the test holds it to — so out-of-domain
  * traffic lands in a meeting class rather than out of the way, and no
  * aggregate was ever going to say so. It is a diffuse bin by
- * construction (`intent-split-other`), and the cue tier is right
+ * construction (`intent-split-other`) with fifteen training rows
+ * (`intent-other-more-rows` is the lane), and the cue tier is right
  * about every `Other` it fires on (P 1.00) while firing on half of
  * them.
  *
@@ -93,7 +105,7 @@ object Models {
   /**
    * The shipped classifier, decoded on first use.
    *
-   * A `lazy val` because decoding is real work — 43KB of JSON and a
+   * A `lazy val` because decoding is real work — 171KB of JSON and a
    * matrix — and a caller that only wants the cue tier should not pay
    * for it. It is also why the artifact is a string in a generated
    * source rather than a classpath resource: this module is

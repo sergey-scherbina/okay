@@ -25,14 +25,17 @@ object Fit {
    * text itself. No embedder, no network, no gateway — which is what
    * makes it the one a library can SHIP.
    *
-   * `dim` defaults to 1024 rather than `CharGrams`'s own 4096 because
-   * of what the measurement said: at this corpus size 1024 scores
-   * within two points of 4096 (61.7% against 63.3% on held-out
-   * English) and the serialised model is a quarter of the size. A
-   * caller with a real corpus should raise it.
+   * The defaults are the shipped model's: 4096 buckets and a 2–3
+   * window. They were 1024 and 3–5 — chosen when 1024 scored within
+   * two points of 4096 (61.7% against 63.3%) for a quarter of the
+   * size — until intent-window-by-dim measured (2,3) @4096 at +5.0
+   * behind the cues (80.0 vs 75.0), +8.4 under a typo (71.7 vs 63.3)
+   * with `Other` above the per-class floor, and the operator took
+   * the size (intent-shipped-model-4096, 2026-09-07). The artifact is
+   * what these defaults produce; move them together or not at all.
    */
-  def grams(rows: Seq[(String, String)], dim: Int = 1024): CharGrams.Trained =
-    CharGrams.train(rows, dim = dim)
+  def grams(rows: Seq[(String, String)], dim: Int = 4096, low: Int = 2, high: Int = 3): CharGrams.Trained =
+    CharGrams.train(rows, dim = dim, low = low, high = high)
 
   // There is deliberately no `Fit.centroid(rows)` or `Fit.probe(rows)`
   // for FITTING: `Centroid.train` and `Probe.train` already take

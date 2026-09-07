@@ -2447,7 +2447,9 @@ default.** `CharGrams.train` defaults to 4096; the shipped model uses
 1024. On held-out English: 61.7% at 1024, 63.3% at 4096, 58.3% at
 8192 — more dimensions stop helping at this corpus size, and 1024
 serialises to 42KB against 170KB. `Fit.grams` carries 1024 as its
-default and says why.
+default and says why. (Superseded 2026-09-07 by the operator's call,
+intent-shipped-model-4096 below: 4096 buckets and a 2–3 window, once
+the window sweep had measured what that buys.)
 
 **What it delivers, which is the number that justifies the artifact.**
 Alone it is 61.7% and would not be worth shipping. Behind the cue
@@ -3517,6 +3519,48 @@ the pairs table cost.** Triples at PCA 256: 68.3% / 66.7%, 2.1 MB.
 The gap to the teacher is 18 points now, from 23; the remaining gap
 is still CONTEXT (a unit's one vector wherever it appears), and
 neither extension touches that.
+
+## Results — intent-shipped-model-4096 (2026-09-07)
+
+The size-for-points decision intent-window-by-dim filed, taken by the
+operator ("Делай все что решил"): the shipped no-network classifier
+moves from character 3–5-grams hashed into 1024 buckets to 2–3-grams
+into 4096. Refitted through `MakeModel`; `Fit.grams`' defaults move
+with it so the artifact stays what the generator produces; every
+number the doc comment and the tests pin re-taken from the new
+artifact on the same 60 held-out messages:
+
+| | 3–5-grams @1024 (was) | 2–3-grams @4096 (now) |
+|---|---|---|
+| alone, held-out English | 61.7% | **68.3%** |
+| full coverage behind the cues | 75.0% | **80.0%** |
+| one typo in the longest word | 63.3% | **71.7%** |
+| far half / near half | 66.7% / 83.3% | 70.0% / 90.0% |
+| lowercased / hedge / tail / blunt | — / 78.3 / — / 63.3 | 76.7 / 78.3 / 75.0 / 70.0 |
+| Proposal F1 | 0.87 | 0.85 |
+| Request F1 | 0.80 | **0.88** |
+| Notification F1 | 0.73 | **0.87** |
+| Other F1 (recall) | 0.56 (0.47) | 0.52 (**0.40**) |
+| artifact | 43KB | 171KB, three pieces |
+
+**What the size buys, and what it does not.** Five points at full
+coverage, eight under a typo (the smaller window is what survives a
+transposition, as intent-typo-robustness found), fourteen points of
+Notification and eight of Request — and NOT `Other`: recall 0.47 →
+0.40, F1 0.52 just above the 0.50 floor the balance test holds every
+class to. The out-of-domain bin is fifteen training rows, and a wider
+hash does not manufacture rows; `intent-other-more-rows` is the lane,
+and its case is stronger for this table, not weaker.
+
+**Found on the way: a class file caps one string constant at 64KB.**
+The 171KB artifact — a generated Scala source, because the module is
+cross-built and a classpath resource is a JVM-only way to load a
+model into something whose claim is that it needs nothing — did not
+compile (`UTF8 string too large`). `MakeModel` now emits the JSON as
+literals of at most 60000 characters joined once at load (`Vector(…)
+.mkString`); the artifact law (`Fit.save(MakeModel.model) ==
+MeetingModel.json`) is unchanged and still holds byte for byte, and
+`Models.meeting` still decodes lazily on first use.
 
 ## Results — intent-active-learning (2026-09-07)
 

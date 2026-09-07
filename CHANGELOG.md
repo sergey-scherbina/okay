@@ -1,5 +1,23 @@
 # Changelog
 
+## intent-shipped-model-4096 — the shipped no-network classifier refitted at 2–3-grams into 4096 buckets: 80.0% at full coverage, 71.7% under a typo
+
+The operator's call: the window sweep had measured (2,3) @4096 at
++5.0 behind the cues and +8.4 under a typo for four times a tiny
+artifact, and `Fit` had chosen 1024 when the cost was two points.
+Refitted through `MakeModel`, `Fit.grams` defaults moved with it
+(4096, 2–3), every pinned number re-taken: alone 61.7 → 68.3%, full
+coverage behind the cues 75.0 → 80.0%, one typo 63.3 → 71.7%, the far
+half 66.7 → 70.0% (near 83.3 → 90.0), the register-shift table
+re-measured; per class Proposal 0.85, Request 0.88, Notification 0.87
+and `Other` 0.52 — recall 0.47 → 0.40, so the bigger model buys three
+classes and the total and not the out-of-domain bin, which is rows'
+to buy (`intent-other-more-rows`). Found on the way: a class file
+caps one string constant at 64KB and the 171KB artifact did not
+compile — `MakeModel` now emits it in 60KB pieces joined at load, and
+the artifact law (committed == generated) still holds byte for byte.
+
+
 ## drive-scheduler-jvm — the fork/join row decomposed: the JDK pool, not the thread
 
 §4b said kyo's fibers win because they are not threads. The operator

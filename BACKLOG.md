@@ -2817,7 +2817,7 @@ subtraction.
       law at each hash width; a 2–4 window survives a typo at both
       widths and at the shipped width takes `Other` from recall 0.47 to
       0.33 while the total rises.
-- [ ] intent-shipped-model-4096 — the shipped model at (2,3) @4096:
+- [x] intent-shipped-model-4096 — the shipped model at (2,3) @4096:
       +5.0 points behind the cues (80.0 vs 75.0%), +8.4 under a typo
       (71.7 vs 63.3), `Other` F1 0.52 clean (the floor holds), at four
       times the artifact — `Fit` chose 1024 for a quarter of the size
@@ -2826,7 +2826,15 @@ subtraction.
       every number `Models.scala`'s doc comment and `TestModels` /
       `TestSecondAuthor` pin (61.7% alone, 75.0%, the register-shift
       table, per language), and move `Fit.grams`' defaults with it so
-      the artifact stays what the generator produces.
+      the artifact stays what the generator produces. TAKEN
+      2026-09-07 (the operator's call): refitted, `Fit.grams` defaults
+      4096 / 2–3, every pin re-taken — alone 61.7 → 68.3%, full
+      coverage 75.0 → 80.0%, typo 63.3 → 71.7%, far half 66.7 → 70.0%,
+      per class Proposal 0.85, Request 0.88, Notification 0.87, Other
+      0.52 (recall 0.47 → 0.40: the bigger model does not buy `Other`;
+      rows do). Found on the way: a class file caps a string constant
+      at 64KB and the 171KB artifact would not compile — `MakeModel`
+      emits it in 60KB pieces joined at load.
 - [x] intent-typo-robustness — MEASURED 2026-09-07, default kept:
       per window at both widths (`TestTypoRobustness`, default gate),
       (3,5) 65.0 → 55.0% @4096 and 61.7 → 53.3 @1024 under one

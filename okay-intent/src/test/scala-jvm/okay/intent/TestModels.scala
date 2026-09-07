@@ -29,12 +29,12 @@ class TestModels extends munit.FunSuite {
     assertEquals(heldOut.size, 60)
   }
 
-  test("61.7% alone on held-out English, which is why it is not offered alone") {
+  test("68.3% alone on held-out English, which is why it is not offered alone") {
     val hit = heldOut.count((m, gold) => CharGrams.score(Models.meeting, m).exists(_.best == gold))
-    assertEquals(hit, 37, s"the doc comment claims 61.7%, this is ${100.0 * hit / heldOut.size}")
+    assertEquals(hit, 41, s"the doc comment claims 68.3%, this is ${100.0 * hit / heldOut.size}")
   }
 
-  test("75.0% at full coverage behind the cues, with no network at all") {
+  test("80.0% at full coverage behind the cues, with no network at all") {
     // the number a caller gets from `Models` plus `Patterns` and
     // nothing else: no gateway, no embedder, no fitting at startup
     val right = heldOut.count { (m, gold) =>
@@ -42,7 +42,7 @@ class TestModels extends munit.FunSuite {
         .orElse(CharGrams.score(Models.meeting, m).map(_.best))
         .contains(gold)
     }
-    assertEquals(right, 45, s"the doc comment claims 75.0%, this is ${100.0 * right / heldOut.size}")
+    assertEquals(right, 48, s"the doc comment claims 80.0%, this is ${100.0 * right / heldOut.size}")
     // and the split the comment quotes: the cues answer half of it
     val fired = heldOut.flatMap((m, gold) =>
       Patterns.classify(Models.cues, m, floor = 0.4).map(_ -> gold))

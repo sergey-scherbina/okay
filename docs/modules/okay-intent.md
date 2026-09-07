@@ -121,18 +121,21 @@ Without it, whatever the cues miss goes to a person. For calibrated
 abstention use `NoModel`, whose threshold is conformal and comes with
 a promise.
 
-75.0% at full coverage on 60 held-out English messages over four
+80.0% at full coverage on 60 held-out English messages over four
 meeting classes — the cue tier answers the 53% it fires on at 90.6%,
-and the shipped n-gram model answers the rest at 61%.
+and the shipped n-gram model (character 2–3-grams into 4096 buckets,
+since intent-shipped-model-4096; it was 75.0% at 3–5-grams into 1024)
+answers the rest at 68%.
 
-**And that 75.0% is a ceiling, not an estimate.** Those held-out
+**And that 80.0% is a ceiling, not an estimate.** Those held-out
 messages were written by the same hand as the training ones, which is
-worth about ten points: 66.7% on the half least like anything in
-training (83.3% on the near half), 63.3% with one typo in the longest
-word, 63.3% with the politeness frame removed, unchanged under
-lowercasing. Expect **63-67% from a message somebody else wrote**, and
-read the table in `Models` before quoting the bigger number. A real second author differs in vocabulary, length and
-structure at once, so even 65% is a lower bound on the gap.
+worth about ten points: 70.0% on the half least like anything in
+training (90.0% on the near half), 71.7% with one typo in the longest
+word, 70.0% with the politeness frame removed, 76.7% lowercased.
+Expect **70-72% from a message somebody else wrote**, and read the
+table in `Models` before quoting the bigger number. A real second
+author differs in vocabulary, length and structure at once, so even
+70% is a lower bound on the gap.
 
 **And per class, because a total hides a class.** Fifteen held-out
 messages of each class, so the majority baseline is 25% and no single
@@ -140,15 +143,17 @@ class is carrying the number:
 
 | class | precision | recall | F1 |
 |---|---|---|---|
-| `Proposal` | 0.87 | 0.87 | 0.87 |
-| `Request` | 0.70 | 0.93 | 0.80 |
-| `Notification` | 0.73 | 0.73 | 0.73 |
-| `Other` | 0.70 | **0.47** | 0.56 |
+| `Proposal` | 0.78 | 0.93 | 0.85 |
+| `Request` | 0.79 | 1.00 | 0.88 |
+| `Notification` | 0.87 | 0.87 | 0.87 |
+| `Other` | 0.75 | **0.40** | 0.52 |
 
-`Other` is the row to read: it misses more than half the messages that
-are not about meetings, so out-of-domain traffic lands in a meeting
-class instead of out of the way. The 75.0% never said that, and no
-aggregate would.
+`Other` is the row to read: the bigger model bought the total and
+three classes and not this one — it still misses more than half the
+messages that are not about meetings, so out-of-domain traffic lands
+in a meeting class instead of out of the way. The 80.0% never said
+that, and no aggregate would; fifteen training rows is the reason
+(`intent-other-more-rows`).
 
 It is fitted on 60 author-written English messages from this
 repository's fixture; it is a worked example and a fallback, not a

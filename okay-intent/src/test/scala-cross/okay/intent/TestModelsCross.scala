@@ -12,7 +12,7 @@ class TestModelsCross extends munit.FunSuite {
   test("the shipped model loads with no network and no fitting") {
     val m = Models.meeting
     assertEquals(m.classes, Vector("Notification", "Other", "Proposal", "Request"))
-    assertEquals(m.dim, 1024)
+    assertEquals(m.dim, 4096)
   }
 
   test("it answers, and the cue tier answers first") {
