@@ -1,0 +1,5 @@
+lane: intent-slot-denominators
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: the follow-up intent-offline-slots filed. `duration` fires on 7 of 120 messages and `people` on 1, and nobody has counted how many messages CARRY those slots, so neither number means anything. Count the denominator the way the `when` lane did — print the misses and read them — then fix what is a word-shape and record what is a correct refusal. Same discipline: no learned labeller unless the misses say a learning problem exists.
+touches: okay-intent test (MeasureSlotCoverage), Duration/People if a shape is missing, specs/intent-classify.md, BACKLOG, CHANGELOG
