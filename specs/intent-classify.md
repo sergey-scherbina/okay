@@ -4435,3 +4435,47 @@ let a deployment re-estimate them on its own log.
   abstention pays: 89.6% coverage at 77.5% beats 100% at 72.9%, and
   the worst class rises with it.
 
+## Results — tod-demonstrations-from-the-log (2026-09-07)
+
+"Show, Don't Tell" (Zhao & Gupta 2022) reports that ONE annotated
+example in the input does the work slot DESCRIPTIONS are supposed to
+do. Run here against the sharpest question this line has: the
+previous lane measured that our taxonomy's identifiers carry
+essentially all of the discrimination (0.685 → 0.100 macro F1 with
+the words removed), so — does a demonstration RECOVER what the names
+carry? If it does, a taxonomy stops being a prompt and the rename
+hazard is a paper cut. Four arms, one session, the whole 120-message
+fixture, so both baselines are re-measured beside the new arms rather
+than remembered.
+
+<<SDTTABLE>>
+
+### What the demonstrations are, and where they come from
+`Demonstrations.perClass(recorded, exclude)` takes recorded
+`(message, intent)` pairs and returns ONE per class, in the
+taxonomy's own case order, the first the log offers — the dullest
+rule that can be stated in a sentence, because a clever one needs its
+own measurement. `Demonstrations.fromReplies` is the bridge from a log
+of RAW replies: each is decoded with the same reader the live path
+uses, and an undecodable or empty one is dropped rather than
+inherited. Nothing in the module reads a log itself; the caller passes
+the pairs, so okay-intent gains no persistence dependency and
+okay-chat can point it at the ChatLog it already writes. The scored
+messages are passed as `exclude`, so no arm is ever shown its own
+answer key (asserted in the suite, not just intended).
+
+<<SDTVERDICT>>
+
+### Decisions
+- **The selection rule is stated, not tuned.** One per class, first
+  seen, taxonomy order. Nearest-neighbour retrieval of demonstrations
+  (the obvious next idea) needs the vector tier and a measurement of
+  its own; ranking by confidence needs a calibration this stack does
+  not claim to have. Both are named in the backlog rather than
+  smuggled in as "obviously better".
+- **Demonstrations are prompt text, like names.** A change to the
+  selected demonstrations changes the prompt and therefore the
+  journal fingerprint, exactly as a rename does. The selector is
+  deterministic for that reason: the same log yields the same prompt.
+
+
