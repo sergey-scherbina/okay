@@ -3518,6 +3518,60 @@ The gap to the teacher is 18 points now, from 23; the remaining gap
 is still CONTEXT (a unit's one vector wherever it appears), and
 neither extension touches that.
 
+## Results — intent-active-learning (2026-09-07)
+
+"Labels are the bottleneck everywhere above, so choose the next ones
+to label by uncertainty rather than by order." Simulated on the
+fixture, whose labels are all known (`TestActiveLearning`, one
+embedding of the 120 messages, offline after): the pool is the
+training half, the seed eight rows (two per class), each round adds
+four — by the probe's smallest MARGIN over the unlabelled pool
+(uncertainty sampling), by the fixture's ORDER, or at RANDOM (five
+seeds, the mean); probe and centroid refitted every round, scored on
+the held-out half; both mirror splits.
+
+| labels | uncertainty (odd / even) | random (odd / even) | order (odd / even) |
+|---|---|---|---|
+| 8 (seed) | 55.0 / 51.7 | 55.0 / 51.7 | 55.0 / 51.7 |
+| 16 | 65.0 / 60.0 | 60.3 / 62.3 | 41.7 / 30.0 |
+| 28 | **78.3 / 80.0** | 65.7 / 75.0 | 43.3 / 45.0 |
+| 36 | 76.7 / 85.0 | 75.3 / 80.0 | 41.7 / 51.7 |
+| 40 | 76.7 / 90.0 | 75.0 / 82.7 | 53.3 / 63.3 |
+| 48 | 75.0 / 86.7 | 75.3 / 84.3 | 60.0 / 68.3 |
+| 60 (all) | 73.3 / 85.0 | 74.3 / 85.7 | 75.0 / 86.7 |
+
+(probe accuracy; the centroid's curves have the same shape and are in
+the run's output.) Mean over rounds, probe: uncertainty − random
+**+2.4 / +1.0**; uncertainty − order +17.3 / +20.0. Labels to reach
+80% probe on the split where 80% is reachable: uncertainty **28**,
+random 36, order 52.
+
+**A chosen label is worth a little, consistently.** Uncertainty
+sampling is ahead of random on both splits over the run and reaches
+the same accuracy eight labels sooner — a quarter fewer — where the
+accuracy is reachable at all; the gain is largest in the middle (28
+labels: +12.7 / +5.0) and gone once the pool is nearly exhausted,
+which is what a label-selection method should look like. The known
+cost shows too: at 32 the uncertainty curve dips (78.3 → 71.7 on one
+split) because the rows nearest the boundary are the least
+representative — the classical wobble, recovered by 36.
+
+**Order is a straw man here, and the straw is informative.** The
+fixture is grouped by class, so "in order" labels one class for
+rounds on end — 30 points behind at 20 labels — which is not what a
+stream of real messages does but IS what a reviewer working down a
+sorted export does. Class balance first, then uncertainty, is the
+whole recipe.
+
+**What follows.** The review queue (the chain's handed-over turns,
+Harvest signal 6) is the place this applies: order the rows a person
+confirms by the probe's margin, smallest first, after balancing the
+classes; the mechanism is one line over `Probe.score(_).margin` and
+lives with the queue, not here. `intent-ensemble-weights` stays gated
+with its reason stated (below); a calibrated confidence for the
+margin — `intent-no-model`'s — is what would turn "smallest margin"
+into "below a threshold", and is not needed for the ordering.
+
 ## Results — intent-examples-in-language (2026-09-07)
 
 The native-names lane moved one variable and, deliberately, kept the

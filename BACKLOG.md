@@ -2163,16 +2163,33 @@ ordered by what it would FIX, not by novelty.
       (who, when, where) rather than its class. `Temporal` fills one
       slot with a parser; the general case is a tagger, and a CRF is
       the classical one. Only after the class problem is settled.
-- [ ] intent-active-learning — labels are the bottleneck everywhere
+- [x] intent-active-learning — labels are the bottleneck everywhere
       above, so choose the next ones to label by uncertainty rather
       than by order. Directly compounds with `intent-label-distillation`
       (the model labels, a human confirms the uncertain ones), and
       needs the calibrated confidence `intent-no-model` is building.
+      SIMULATED 2026-09-07 (`TestActiveLearning`, the fixture's own
+      labels, both mirror splits): uncertainty (the probe's smallest
+      margin) against random, +2.4 / +1.0 probe points over the run
+      and 80% reached at 28 labels against random's 36 and order's
+      52; the classical dip at 32, recovered by 36. Order is a straw
+      man on a class-grouped fixture, and the straw says: balance the
+      classes first. The ordering needs no calibration — a threshold
+      would; it belongs with the review queue (Harvest signal 6), one
+      line over `Probe.score(_).margin`.
 - [ ] intent-ensemble-weights — `NoModel` blends the probe with the
       pattern tier using ONE fitted weight from a six-point grid,
       because sixty rows cannot support a fitted second-level model.
       When the corpus grows (see distillation), replace the grid with a
       real stacking model and measure whether it beats the blend.
+      GATED, and the gate is now measured (2026-09-07): the corpus did
+      not grow honestly — intent-distil-dose found the distilled rows'
+      gain to be one split's, intent-distil-static found them worth
+      nothing to the static table, intent-distil-diversity found them
+      a third as diverse as the fixture — so a second-level model
+      trained on them would learn the generator's register. Opens when
+      the human fixture passes ~200 rows (the review queue is the
+      source); the six-point grid stays until then.
 
 ## channel-chunk-batch-size — REFUTED TWICE 2026-09-06: the consumer already batches at 62 of 64
 

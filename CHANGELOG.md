@@ -1,5 +1,21 @@
 # Changelog
 
+## intent-active-learning — a label chosen by uncertainty is worth a little, consistently: 80% at 28 labels where random needs 36
+
+Simulated on the fixture's own labels (`TestActiveLearning`, one
+embedding, offline after): from a seed of eight, four labels a round
+chosen by the probe's smallest margin, by the fixture's order, or at
+random (five seeds), refitted and scored on the held-out half, both
+mirror splits. Uncertainty leads random by +2.4 / +1.0 probe points
+over the run and reaches 80% at 28 labels against 36 (order: 52); the
+classical dip at 32, recovered by 36. Order on a class-grouped fixture
+is a straw man whose straw is the recipe: balance the classes first,
+then uncertainty. The ordering needs no calibration and belongs with
+the review queue, one line over the probe's margin. Beside it,
+`intent-ensemble-weights` stays gated with its gate measured: the
+corpus did not grow honestly (the three distillation lanes), so a
+stacking model on it would learn the generator's register.
+
 ## intent-examples-in-language — the five few-shot examples in the message's language: better on five languages of seven, +0.049 on average
 
 The native-names lane kept the example messages English on purpose;
