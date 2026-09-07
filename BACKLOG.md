@@ -859,7 +859,12 @@ measure on our own data, never a predicted result.
       2026-09-07: `Schema.enumeration(values, name)` — the vocabulary
       as a second parameter list on `SIso`, so the twenty patterns
       stay three-armed; only `JsonSchema.of` reads it (`enum` beside
-      the underlying type); `Conf` is one; JVM/JS/Native tests.
+      the underlying type); `Schema.vocabulary` for a declared
+      vocabulary with one's own decoder — `Conf`, case-insensitive as
+      the recorded journal needs; JVM/JS/Native tests. The prompt
+      renders WITHOUT vocabularies (`JsonSchema.of(s, vocabularies =
+      false)`): measured deterministic, the enum in the schema cost
+      1.7 macro-F1, so the recording stands.
 - [x] json-value-parser — landed: JsonValue.parse, a strict
       recursive-descent parser yielding to the lossless CST parser on
       any doubt; Json.parseValue wires it in. 61x over Json.parse on

@@ -3661,7 +3661,16 @@ this lane had to find out before anyone leaned on it.
 schema says `string` where the decoder wants one of three words. The
 persuasion's one-line vocabulary rule carries what the derived
 contract loses; a JSON schema with an `enum` for refinements is a
-codec change, filed here rather than done inside a measurement.
+codec change, filed here rather than done inside a measurement —
+and done the same day (codec-jsonschema-refinement-enum,
+specs/codecs.md): `Conf` declares its vocabulary, the derived schema
+says `"enum": ["low", "medium", "high"]` — for contracts and tool
+declarations. Not for the prompt: rendering the enum into the
+prompt's schema changed the journal's fingerprint, the promotion
+rule fired (Request 0.93 → 0.89), and two live runs each way showed
+the model deterministic and the enum costing 1.7 macro-F1 both times
+(`TestEnumPromptEffect`), so `Classify.prompt` renders its schema
+with `vocabularies = false` and the recording stands.
 
 **What follows.** No default moves: the shipped prompt stays as it
 is, `responseFormat` stays as a door for a gateway that does enforce

@@ -10,11 +10,20 @@ vocabulary; in `JsonSchema.of` it is the underlying type plus `enum`,
 each value encoded by the underlying schema. The vocabulary rides on
 `SIso` as a second parameter list, so the twenty `SIso(u, to, from)`
 patterns across the folds are untouched and only the declaration
-reads it. `Conf` is an enumeration now, so a `response_format`
-contract or a tool declaration built from `Reading[I]` says `low,
-medium, high`. Tests on JVM, JS and Native: the wire unchanged, the
-schema carrying the enum, a plain refine not, an integer vocabulary
-declaring integers.
+reads it; `Schema.vocabulary(names, to, from)` is the same
+declaration with a decoder of one's own — `Conf` uses it, keeping the
+case-insensitive decode the recorded journal relies on (the gate's
+`TestEvalJournal` caught an exact-matching enumeration) — so a
+`response_format` contract or a tool declaration built from
+`Reading[I]` says `low, medium, high` — and a PROMPT does not:
+`JsonSchema.of(s, vocabularies = false)` is what `Classify.prompt`
+renders, because the enum in the prompt's schema changed the journal's
+fingerprint, the promotion rule fired, and two live runs each way
+showed the model deterministic and the enum costing 1.7 macro-F1 both
+times (the prose rule already states the words). The recording stands.
+Tests on JVM, JS and Native: the wire unchanged, the schema carrying
+the enum, a plain refine not, an integer vocabulary declaring
+integers.
 
 ## intent-active-learning — a label chosen by uncertainty is worth a little, consistently: 80% at 28 labels where random needs 36
 

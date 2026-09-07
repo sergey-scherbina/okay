@@ -31,7 +31,11 @@ newtype invisible to every algebra; `Schema.enumeration(values, name)`
 is a refine over a finite vocabulary that stays invisible on every
 wire and shows in exactly one place — `JsonSchema.of` declares it as
 `enum` — so a tool parameter or a `response_format` contract carries
-the words a prompt used to have to state.
+the words a prompt used to have to state. A prompt itself renders
+with `JsonSchema.of(s, vocabularies = false)`: measured, the same
+words rendered into the prompt's schema cost a 4B model 1.7 macro-F1
+points, deterministically, beside the prose rule that already states
+them.
 
 **Totality underneath.** `Json.parse` rides the okay-parse pipeline,
 so a damaged document projects `JErr` values and a truncated one

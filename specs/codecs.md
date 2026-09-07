@@ -210,6 +210,9 @@ object Schema:
    * an unknown spelling a decode error naming the vocabulary,
    * `"enum": [...]` in a JSON Schema */
   def enumeration[A, B](values: Vector[A], name: A => B)(using Schema[B]): Schema[A]
+  /** `refine` that DECLARES its vocabulary — the decoder may accept
+   * more spellings than the declaration lists */
+  def vocabulary[A, B](names: Vector[B], to: B => Either[String, A], from: A => B)(using Schema[B]): Schema[A]
 ```
 
 The vocabulary rides on `SIso` as a SECOND parameter list, so the
@@ -227,9 +230,19 @@ Behavior:
 - [x] the JSON Schema of an enumeration is the underlying type plus
       `enum`; a plain `refine` stays a plain string
 - [x] an integer vocabulary declares integer values
-- [x] `Conf` is an enumeration: a contract or a tool declaration built
-      from `Reading[I]` now says `low, medium, high` where the prompt
-      says it
+- [x] `Conf` declares its vocabulary (`Schema.vocabulary`, keeping the
+      case-insensitive decode the recorded journal relies on — the
+      gate's `TestEvalJournal` caught an `enumeration` that matched
+      exactly): a contract or a tool declaration built from
+      `Reading[I]` now says `low, medium, high`
+- [x] a PROMPT does not: `JsonSchema.of(s, vocabularies = false)` is
+      what `Classify.prompt`/`taxonomy` render, because the gate's
+      journal fingerprint changed, the promotion rule then fired
+      (Request 0.93 → 0.89), and two runs each way showed the model
+      deterministic and the enum in the schema costing 1.7 macro-F1
+      both times (`TestEnumPromptEffect`, Live) — the prose rule
+      already states the words, and stating them twice is worse. The
+      recording therefore stands unchanged.
 
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends

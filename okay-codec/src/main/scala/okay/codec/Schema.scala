@@ -111,10 +111,17 @@ object Schema {
    */
   def enumeration[A, B](values: Vector[A], name: A => B)(using s: => Schema[B]): Schema[A] =
     val byName = values.map(a => name(a) -> a)
-    Schema.SIso[A, B](() => s,
+    vocabulary[A, B](byName.map(_._1),
       b => byName.collectFirst { case (n, a) if n == b => a }
         .toRight(s"unknown value '$b'; one of: ${byName.map(_._1).mkString(", ")}"),
-      name)(Some(byName.map(_._1)))
+      name)
+
+  /** `refine` that DECLARES its vocabulary: the same `to`/`from` as
+   * any refinement (so a decoder may accept more spellings than the
+   * declaration lists — `Conf` reads `High` and `high` alike), plus
+   * the `names` a JSON Schema will show as `enum` */
+  def vocabulary[A, B](names: Vector[B], to: B => Either[String, A], from: A => B)(using s: => Schema[B]): Schema[A] =
+    Schema.SIso[A, B](() => s, to, from)(Some(names))
 
   given [A](using s: => Schema[A]): Schema[Option[A]] = Schema.SOption(() => s)
   given [A](using s: => Schema[A]): Schema[List[A]] = Schema.SList(() => s)

@@ -16,16 +16,22 @@ package okay.codec
  */
 object JsonSchema {
 
-  /** a datatype's shape as a JSON Schema value */
-  def of[A](s: Schema[A]): Json = s match
+  /** a datatype's shape as a JSON Schema value. `vocabularies` says
+   * whether an enumeration's values are declared (`enum`): true for a
+   * contract or a tool declaration, which is what they are for; false
+   * for a PROMPT, where the same words rendered in the schema cost a
+   * 4B model 1.7 macro-F1 points on the fixture, deterministically
+   * (codec-jsonschema-refinement-enum) — the prompt states the
+   * vocabulary in prose, once, where it was measured to help */
+  def of[A](s: Schema[A], vocabularies: Boolean = true): Json = s match
     // a wrapper does not exist to the tool schema — a Secret is a string —
     // unless it names its vocabulary (`Schema.enumeration`), which the
     // declaration carries as `enum` beside the underlying type
     case iso @ Schema.SIso(u, _, _) => iso.vocabulary match
-      case Some(vs) => of(u()) match
+      case Some(vs) if vocabularies => of(u(), vocabularies) match
         case Json.JObj(fs) => Json.JObj(fs :+ ("enum" -> Json.JArr(vs.map(v => Json.parse(Json.encode(u())(v))))))
         case other => other
-      case None => of(u())
+      case _ => of(u(), vocabularies)
     case Schema.SInt | Schema.SLong => obj("type" -> Json.JStr("integer"))
     case Schema.SDouble => obj("type" -> Json.JStr("number"))
     case Schema.SBool => obj("type" -> Json.JStr("boolean"))
@@ -37,20 +43,20 @@ object JsonSchema {
     // the model exactly how to send it
     case Schema.SBytes => obj("type" -> Json.JStr("string"),
       "contentEncoding" -> Json.JStr("base64"))
-    case Schema.SOption(inner) => of(inner())   // optionality is in `required`
+    case Schema.SOption(inner) => of(inner(), vocabularies)   // optionality is in `required`
     case Schema.SList(inner) => obj(
       "type" -> Json.JStr("array"),
-      "items" -> of(inner()))
+      "items" -> of(inner(), vocabularies))
     case Schema.SVector(inner) => obj(
       "type" -> Json.JStr("array"),
-      "items" -> of(inner()))
+      "items" -> of(inner(), vocabularies))
     case p: Schema.SProduct[A] =>
       // a DEFAULTED field is not required (the model may omit it —
       // decode falls back to the declaration) and advertises its
       // default, encoded by the field's own schema
       def defaulted(i: Int) = p.defaults.lift(i).flatten
       val props = p.fields.zipWithIndex.map { case ((n, f), i) =>
-        val base = of(f())
+        val base = of(f(), vocabularies)
         (n, defaulted(i) match
           case Some(_) => base match
             case Json.JObj(fs) => Json.JObj(fs :+
@@ -72,7 +78,7 @@ object JsonSchema {
       obj("oneOf" -> Json.JArr(su.cases.map { (n, c) =>
         obj(
           "type" -> Json.JStr("object"),
-          "properties" -> Json.JObj(Vector((n, of(c())))),
+          "properties" -> Json.JObj(Vector((n, of(c(), vocabularies)))),
           "required" -> Json.JArr(Vector(Json.JStr(n))))
       }))
 
