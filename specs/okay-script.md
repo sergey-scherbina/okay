@@ -1514,6 +1514,44 @@ from `Application`, seeding it once from a default.
       added through the plain post appears on the index and answers
       at `/product/<sku>`.
 
+### Serving — `Site.serve`, and the stock entry point (okay-script-serve, 2026-09-07)
+
+The operator asked where the one line to run a Site would be
+written. Honest answer: the container is a library, and a server
+needs a JVM entry point somewhere — until now, a `@main` in a project
+of the caller's own, depending on okay-script and okay-jetty and
+spelling `Jetty.serve(port)(site.routes)(site.ws, site.push)`, as the
+lifecycle test does. Two things close that:
+
+```scala
+final class Site: def serve(port: Int)(using CanBlock, Scheduler): Server ! Resource
+object okay.script.Serve: def main(args: Array[String]): Unit    // <pages-dir> [port]
+```
+
+`Site.serve` is that line, with okay-jetty a MAIN dependency now (it
+was Test-only for the lifecycle proof alone). `Serve` is the stock
+entry point, so a directory of pages runs with no code of its own:
+
+```
+sbt "okayScript/runMain okay.script.Serve pages 8080"
+OKAY_DATA=./data sbt "okayScript/runMain okay.script.Serve pages"
+```
+
+`OKAY_DATA` names a directory for an okay-persist `FileStore`; with it
+the sessions and the application scope are `persisted` and survive a
+restart. It prints the URL, runs until interrupted, and releases the
+`Resource` on the way out — the lifecycle proof, applied. Not a CLI
+with a command language: one class, two arguments; a deployment that
+wants `verify`/`issue`, a shared `Sessions` or TLS builds its own
+`Site` and calls `serve` from its own main.
+
+- [x] `Serve.parse`: a directory and an optional port; `OKAY_DATA`
+      names the store; a bad port, a missing directory and no
+      arguments refuse by name.
+- [x] (Live) `Site.serve(0)` answers a page over a real port, and a
+      second `Serve.site` on the same `OKAY_DATA` sees the application
+      scope the first one wrote.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
