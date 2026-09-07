@@ -4636,3 +4636,50 @@ Two rules, both from measurements already in this document:
   so: a corpus and the rows it is judged on come from the same place,
   and this module cannot check an overlap it was not shown.
 
+## Results — intent-slot-denominators (2026-09-07)
+
+The follow-up `intent-offline-slots` filed against itself: `duration`
+fires on 7 messages of 120 and `people` on 1, and those numbers mean
+nothing until somebody counts how many messages CARRY those slots.
+Counted, with the same method that worked for `when` — a wide hint
+list, then every miss printed and READ.
+
+| slot | messages the hints suggest | extractor found | of the suggested |
+|---|---:|---:|---:|
+| `duration` | 19 | 7 | 37% |
+| `people` | 5 | 1 | 20% |
+
+### The answer: 7 and 1 are the fixture, not a gap
+Reading the sixteen misses, not one is a duration or a headcount the
+extractor should have found. They are three things:
+
+- **substrings, not tokens** — the hint list matched "min" inside
+  *reminder*, "hr" inside *chairing* and *through*, "long" inside
+  *longer*. The extractors tokenise; the hint list did not, which is
+  why a hint list is a denominator and never a verdict.
+- **the same word meaning something else** — "take the **minutes** on
+  Thursday" and "**Minutes** from the last meeting" are notes, not a
+  length; "dial in **five minutes** early" is a duration standing
+  next to a people-ish hint, not a headcount.
+- **vague by nature** — "a **quick** chat", "the all-hands ran
+  **long**", "forward it to the **people** who missed it", "would
+  Wednesday suit **everyone**". No number was said, and inventing one
+  puts a length or a headcount in a frame that nobody stated.
+
+- [x] no code changed: there is nothing here to fix
+- [x] the two refusals a widening would break FIRST are now asserted
+      (`TestSlotRefusals`): a number beside a people word is not a
+      headcount, and "minutes" as notes is not a duration. Someone
+      will one day widen these extractors, watch coverage rise, and
+      ship exactly those two mistakes.
+
+### Decisions
+- **A hint list measures the DENOMINATOR, never the extractor.** Both
+  slot lanes now rest on that: print the misses and read them. Twice
+  running, the reading changed the conclusion — for `when` it found
+  two real bugs among false alarms, and here it found none at all.
+- **`duration` and `people` need a corpus that uses them** before
+  anything about them can be claimed. The meeting fixture barely
+  does, which is a fact about the fixture and is now written down
+  rather than mistaken for a defect.
+

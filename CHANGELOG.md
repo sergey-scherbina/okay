@@ -1,5 +1,23 @@
 # Changelog
 
+## intent-slot-denominators — 7 and 1 were the fixture, not a gap
+Completed: 2026-09-07
+The follow-up the slots lane filed against itself. `duration` fires
+on 7 of 120 messages and `people` on 1, and neither number means
+anything without a denominator, so the denominators were counted the
+way the `when` lane counted its own: a wide hint list, then every
+miss printed and read. The hints suggest 19 and 5; all sixteen misses
+are substring false alarms ("min" inside *reminder*, "hr" inside
+*chairing*), the same word meaning something else ("take the minutes
+on Thursday" is notes, "dial in five minutes early" is a duration
+standing beside a people-ish hint), or vague phrases with no number
+at all ("a quick chat", "would Wednesday suit everyone"). No code
+changed. What did land is a guard: the two refusals that a widening
+of these extractors would break first are now asserted, because
+someone will one day widen them, watch coverage rise, and ship
+exactly those two mistakes. specs/intent-classify.md, "Results —
+intent-slot-denominators".
+
 ## intent-refit-gate — a refit that would kill a class now refuses and names it
 Completed: 2026-09-07
 Stage 4 of the autonomy programme, deliberately done before the
@@ -60,7 +78,6 @@ than letting a green suite imply otherwise.
 providers take by default, so `OKAY_TLS_KEY=sops:secrets.yaml#tls-key`
 is a certificate key that rides in git, encrypted. 28 okay-conf green
 3x, 9 Live green, 166 okay-script.
-
 
 ## losing-rows — the two rows §4b lost, and what it cost to win them
 

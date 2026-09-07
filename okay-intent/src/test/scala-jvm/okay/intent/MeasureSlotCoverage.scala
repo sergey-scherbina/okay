@@ -99,6 +99,38 @@ class MeasureSlotCoverage extends munit.FunSuite {
   }
 
   /**
+   * The same question for `duration` and `people`
+   * (intent-slot-denominators): they fire on 7 and 1 messages of 120,
+   * and until somebody counts how many messages CARRY them those two
+   * numbers say nothing at all. The hint lists are deliberately WIDE
+   * — a false alarm here costs a line of reading, a missed one costs
+   * a wrong conclusion.
+   */
+  test("the denominators for duration and people, and every miss in full") {
+    val durationHints = Seq("minute", "minutes", "min", "hour", "hours", "hr", "half an hour",
+      "quarter of an hour", "30-minute", "45-minute", "hour-long", "all day", "all morning",
+      "briefly", "quick", "long")
+    val peopleHints = Seq("people", "person", "of us", "attendees", "participants", "guests",
+      "everyone", "the team", "we are", "there are", "four", "five", "six", "seven", "eight",
+      "two of", "three of", "headcount", "seats")
+    for (name, hints, extract) <- Seq(
+      ("duration", durationHints, (m: String) => Slots.duration.extract(m).isDefined),
+      ("people", peopleHints, (m: String) => Slots.people.extract(m).isDefined)) do
+      val rows = IntentFixture.labelled
+      val suggest = rows.filter((m, _) => hints.exists(h => m.toLowerCase.contains(h)))
+      val found = rows.count((m, _) => extract(m))
+      val missed = suggest.filterNot((m, _) => extract(m))
+      println(f"\n### $name: the denominator")
+      println(f"| messages whose words suggest $name | ${suggest.length} |")
+      println(f"| messages where the extractor found one | $found |")
+      println(f"| of the suggested, found | ${suggest.length - missed.length} (${
+        if suggest.isEmpty then 0.0 else 100.0 * (suggest.length - missed.length) / suggest.length}%.0f%%) |")
+      println(s"### $name: every message that suggests one and yields nothing (${missed.length})")
+      missed.foreach((m, _) => println(s"  - ${m.take(110)}"))
+    assert(IntentFixture.labelled.nonEmpty)
+  }
+
+  /**
    * WHAT it misses, message by message. A recall of 66% is a number;
    * this is the thing to act on. If the misses are a handful of
    * unhandled wordings, extending `Temporal` is cheaper than any

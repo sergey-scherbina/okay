@@ -2956,11 +2956,15 @@ these are the lanes.
       against the hint denominator 66% -> 80%. NO sequence labeller:
       the gap was four word-shapes, not a learning problem.
       specs/intent-classify.md, "Results — intent-offline-slots".
-- [ ] intent-slot-denominators — `duration` fires on 7 of 120 and
-      `people` on 1, and nobody has counted how many messages CARRY
-      those slots, so neither number means anything yet. Count the
-      denominator the way the `when` lane did (print the misses, read
-      them), then decide. Cheap, offline, no new rows.
+- [x] intent-slot-denominators — MEASURED 2026-09-07, NOTHING TO FIX.
+      `duration` fires on 7 of 120 and `people` on 1; the hints
+      suggest 19 and 5, and every one of the sixteen misses is a
+      substring false alarm ("min" in *reminder*), the same word
+      meaning something else ("take the minutes"), or a vague phrase
+      with no number ("a quick chat"). The two refusals a widening
+      would break first are now asserted (TestSlotRefusals). The
+      fixture simply does not carry these slots.
+      specs/intent-classify.md, "Results — intent-slot-denominators".
 - [ ] intent-per-language-models — one artifact per language once
       rows exist; the shipped one is English-only and scores chance
       (23-30%) elsewhere. GATED on intent-language-fixture-growth.
