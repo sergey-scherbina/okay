@@ -19,6 +19,11 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   the Scala.js frontend whose logic is tested on the JVM, the tests
   over a real socket, and running it. Every command executed before it
   was written down.
+- **[A site out of markdown](okay-script-guide.md)** — from an empty
+  directory to a running shop whose pages ARE markdown files compiled
+  at runtime: routing by directory, sessions and typed forms, a live
+  page, two languages, a login, and the container. Every command in
+  it was executed before it was written down.
 - **[The theory of Okay](theory/index.md)** — the textbook: which
   theories the library stands on, who established them (Moggi, Wadler,
   Felleisen, Danvy & Filinski, Atkey, Swierstra, Kiselyov, Plotkin &
