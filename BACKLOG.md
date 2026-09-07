@@ -1201,6 +1201,15 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] script-tls — LANDED 2026-09-07 (operator ask): HTTPS for a Site
+      on the one transport seam — `Tls.serverContext` (okay-tls),
+      `Jetty.serve(..., ssl)` (okay-jetty, no new dependency),
+      `Site.serve(port, ssl)`, `OKAY_TLS_CERT`+`OKAY_TLS_KEY` for
+      Serve; half a pair refuses by name. Live over openssl.
+      specs/okay-script.md "HTTPS", specs/tls.md Results.
+- [ ] script-tls: certificate reload without a restart, ALPN/HTTP2, a
+      plaintext→HTTPS redirect port. Filed from the spec's own "NOT
+      here": a proxy is today's answer, and HSTS/OCSP live there too.
 - [x] okay-script-i18n — LANDED 2026-09-07 (operator ask): `Site(
       languages = ...)`; the request's language from `?lang=` (kept in
       the OKAYLANG cookie), the cookie, `Accept-Language` or the

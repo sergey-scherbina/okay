@@ -1,5 +1,26 @@
 # Changelog
 
+## script-tls — HTTPS for a Site, through the one transport seam
+Completed: 2026-09-07
+Landed as eab6abff (spec then code). Operator ask, in three additive
+steps that add no second implementation of TLS anywhere.
+`Tls.serverContext(certFile, key, secrets)` is `serverSocket`'s own
+first half, named: a server that terminates TLS WITHOUT owning the
+`ServerSocket` — an embedded one, whose connector wants a context —
+could not reach it, and building a `KeyStore` next door would have
+been exactly what specs/tls.md exists to prevent. okay-jetty's `serve`
+gains `ssl: Option[SSLContext]` beside `ws`/`push` and gains no
+dependency for it (the type is the JDK's), so okay-jetty still knows
+nothing about certificates, modes or secrets; `None` is the plaintext
+connector unchanged. `Site.serve(port, ssl)` and `okay.script.Serve`
+read `OKAY_TLS_CERT` plus `OKAY_TLS_KEY` (a `Secret` ref), refuse half
+a pair by name rather than falling back to plaintext quietly, and
+print an `https://` URL; an inline PEM is refused by the seam itself.
+Live (openssl, skipping where absent): a page over a real HTTPS
+connection whose client is the SAME seam at `VerifyFull` against this
+run's CA — chain and hostname, not a trust-all shrug. 113 green 3x;
+the okay-jetty and okay-tls suites unchanged and green.
+
 ## okay-script-i18n — pages in several languages: variants by the request's language, messages via t()
 Completed: 2026-09-07
 Landed as 99d751bb (spec then code, rebased). Operator ask.
