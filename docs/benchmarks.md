@@ -367,6 +367,38 @@ for the third.
   chose to measure. Both columns are in `AdversarialBenchmark` under
   `@Param work`, so a lane cannot quietly return to one of them.
 
+  **Can kyo spread when it needs to? Yes, and it cannot reach the
+  spreading path from its own idiom** (measured 2026-09-07, both
+  lanes' error under 6 %). `Scheduler.schedule(task, submitter)` has
+  two paths: called from INSIDE a worker it puts the child on that
+  worker's own queue (`Worker.current`), and called from outside it
+  picks the least loaded of a random sample and wakes it. Its rebalancing
+  (`checkStalling` -> `drain`) fires only when the CURRENT TASK has
+  been running longer than `timeSliceMs`, 10 ms by default; a burst of
+  2.5 us tasks never trips it, and an idle worker does not steal —
+  it exits its loop and waits to be handed work. No flag changes this:
+  `coreWorkers` is already the core count and those workers are simply
+  asleep.
+
+  Forking the same fibers from OUTSIDE a worker takes the other path,
+  and the numbers show it working — and show why it is not a way out:
+
+  | kyo, 10 000 fibers | 100 ops each | 10 000 ops each | added |
+  |---|---|---|---|
+  | `parallelUnbounded` under `runAndBlock` (inside) | **829** | 25 222 | +24.4 ms |
+  | `Async.run` per fiber from the caller (outside) | 26 951 | 31 532 | **+4.6 ms** |
+
+  The last column is the proof: 10 000 fibers × 2.47 us of added work
+  is 24.7 ms of work, and the outside form absorbed it in 4.6 ms of
+  wall clock — about 5.4 cores. The scheduler spread it. But the same
+  form costs 2.7 us PER FIBER before any work at all (26 951 at
+  work=100 against 829), because that path joins through
+  `Fiber.block` per fiber instead of `parallelUnbounded`'s single
+  completion counter. So kyo has both behaviours and no way to ask for
+  the good half of each: the cheap join keeps the work on one core,
+  the spreading placement costs more in the join than the spreading
+  saves.
+
   What okay does with that, and it is the point of the whole
   exercise: the policy can be one scheduler's, not two. `Schedulers.
   own` keeps the work at home while its queue drains fast and wakes a
