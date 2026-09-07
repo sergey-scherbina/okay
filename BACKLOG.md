@@ -1201,6 +1201,12 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] okay-script-serve — LANDED 2026-09-07 (operator ask: "where is
+      the one line written?"): `Site.serve(port)` = `Jetty.serve(port)
+      (routes)(ws, push)`, okay-jetty now a main dependency; the stock
+      entry point `okay.script.Serve <pages-dir> [port]`, `OKAY_DATA=`
+      for a persistent FileStore behind sessions and the application
+      scope. specs/okay-script.md "Serving".
 - [x] okay-script-application — LANDED 2026-09-07: JSP's `application`
       scope (`Application.current`: attributes shared by every page,
       typed through a Schema's JSON, `memory`/`persisted(store)`),

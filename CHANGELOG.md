@@ -1,5 +1,23 @@
 # Changelog
 
+## okay-script-serve — Site.serve(port), and the stock entry point a directory of pages runs with
+Completed: 2026-09-07
+Landed as 168b2d3e (spec then code, rebased). The operator asked where
+the one line to run a Site is written; the honest answer was "in a
+`@main` of your own, spelling `Jetty.serve(port)(site.routes)(site.ws,
+site.push)`". Now `Site.serve(port)` IS that line (a `Resource`; okay-
+jetty becomes a main dependency of okay-script, Test-only before for
+the lifecycle proof alone), and `okay.script.Serve` is the stock entry
+point: `sbt "okayScript/runMain okay.script.Serve pages 8080"`, with
+`OKAY_DATA=<dir>` opening a FileStore that makes the sessions and the
+application scope persisted. Prints the URL, runs until interrupted,
+releases on the way out. Not a CLI with a command language — one
+class, two arguments; a deployment wanting `verify`/`issue`, shared
+sessions or TLS builds its own Site and calls `serve`. Tests: parse
+by name; Live — `Site.serve(0)` over a real port, and a second
+`Serve.site` on the same `OKAY_DATA` sees what the first wrote. 109
+green 3x.
+
 ## intent-distil-diversity — the distilled corpus's narrowness as a number: distinct-3 69% against the fixture's 99%, and the filter keeps the formulaic
 
 `TestDistilDiversity` (offline, in the gate): distinct-1/2/3, the
