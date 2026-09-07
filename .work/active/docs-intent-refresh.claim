@@ -1,0 +1,5 @@
+lane: docs-intent-refresh
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: the documentation has fallen behind six landed lanes (operator: "обнови документацию"). docs/modules/okay-intent.md still quotes "80.0% at full coverage" as THE number, which the autonomy report showed to be the worst of the available promises; it does not mention Demonstrations (a new public API), the naming hazard (renaming a class is a model-facing change worth 0.217 macro F1), the slot coverage numbers, or specs/intent-autonomy.md. Refresh it, add the promise table, and point the reader at the programme.
+touches: docs/modules/okay-intent.md, docs/README.md if a line is needed, docs/benchmarks.md if the codec numbers belong there, CHANGELOG
