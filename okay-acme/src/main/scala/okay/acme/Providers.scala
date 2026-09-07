@@ -3,7 +3,7 @@ package okay.acme
 import okay.*
 import okay.given
 import okay.codec.Json
-import okay.conf.{Secret, Secrets}
+import okay.conf.{Schemes, Secret, Secrets}
 import okay.http.{Body, Http, Method, Request, Response}
 
 import java.nio.charset.StandardCharsets.UTF_8
@@ -75,7 +75,7 @@ object Providers:
    * to fail, for a value an operator reads off the dashboard once.
    */
   def cloudflare(http: Http, zoneId: String, token: Secret,
-                 secrets: Secrets = Secrets.chain(Secrets.env, Secrets.file),
+                 secrets: Secrets = Schemes.all(),
                  propagationOf: java.time.Duration = java.time.Duration.ofSeconds(10),
                  endpoint: String = "https://api.cloudflare.com")
                 (using CanBlock): Either[String, Acme.Dns] =
@@ -116,7 +116,7 @@ object Providers:
    * because deSEC takes the subname rather than the full name.
    */
   def desec(http: Http, domain: String, token: Secret,
-            secrets: Secrets = Secrets.chain(Secrets.env, Secrets.file),
+            secrets: Secrets = Schemes.all(),
             propagationOf: java.time.Duration = java.time.Duration.ofSeconds(30),
             endpoint: String = "https://desec.io")
            (using CanBlock): Either[String, Acme.Dns] =
@@ -158,7 +158,7 @@ object Providers:
    * propagation, which is what `propagation` covers.
    */
   def route53(http: Http, hostedZoneId: String, accessKey: String, secret: Secret,
-              secrets: Secrets = Secrets.chain(Secrets.env, Secrets.file),
+              secrets: Secrets = Schemes.all(),
               propagationOf: java.time.Duration = java.time.Duration.ofSeconds(60),
               endpoint: String = "https://route53.amazonaws.com")
              (using CanBlock): Either[String, Acme.Dns] =

@@ -239,7 +239,10 @@ object Serve:
 
   /** the TLS context the arguments describe, through the one
    * transport seam (specs/tls.md); a refusal names what failed */
-  def sslOf(a: Args, secrets: okay.conf.Secrets = okay.conf.Secrets.chain(okay.conf.Secrets.env, okay.conf.Secrets.file))
+  // every scheme this platform can resolve, not just env: and file:
+  // (deploy-secret-schemes): OKAY_TLS_KEY=sops:secrets.yaml#tls-key
+  // is a certificate key that rides in git, encrypted
+  def sslOf(a: Args, secrets: okay.conf.Secrets = okay.conf.Schemes.all())
   : Either[String, Option[javax.net.ssl.SSLContext]] =
     a.tls match
       case Some((cert, key)) => a.tlsReload match
