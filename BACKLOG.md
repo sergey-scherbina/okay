@@ -1325,11 +1325,36 @@ not a new primitive from scratch.
       the §6.5 retry every client has. The test runs Pebble in docker,
       trusts the CA it generates per run through a test-scope Http,
       and asserts a real chain from an issuer that is not us.
-- [ ] acme-what-is-missing — filed from specs/acme.md's own list, in
-      case a deployment asks: DNS-01 (and so wildcards), EAB (some
-      commercial CAs), ARI (the renewal-window hint), revocation.
-      Each is a real thing certbot does; take one only when a
-      deployment needs it.
+- [x] acme-revoke — LANDED 2026-09-07 (operator ask): RFC 8555 §7.6.
+      `Acme.revoke(cfg, http, reason)` posts the LEAF's DER signed by
+      the account that ordered it, with an RFC 5280 reason as a named
+      value; a second revoke answers the CA's own `alreadyRevoked`.
+      `okay.acme.Revoke` is the operator's way to run it, over the
+      directory Serve writes and the switches it runs with. Proven
+      against Pebble.
+- [ ] acme-eab — External Account Binding (RFC 8555 §7.3.4): the
+      newAccount request carries an extra JWS over the account's JWK,
+      signed HS256 with a key id and HMAC key the CA gave you out of
+      band. Small (~30 lines; `hmacSha256` is already in the Crypto
+      seam) and TESTABLE, since Pebble supports it by config. Take it
+      when a deployment uses a CA that requires it (ZeroSSL, Google
+      Trust Services, most commercial ones); Let's Encrypt does not.
+- [ ] acme-ari — Automated Renewal Information: the CA publishes a
+      suggested renewal window per certificate so a mass revocation
+      can be spread out, and the client renews inside it. Needs the
+      certID (the AKI key identifier and the serial, base64url) and a
+      window parse, then feeding that into the renew decision beside
+      `renewBefore`. The cost is not the code, it is that the draft
+      still moves.
+- [ ] acme-dns01 — the challenge for a name whose HTTP this server
+      does not answer, and the ONLY road to wildcards. The protocol
+      half is small (a TXT record holding base64url(SHA-256(key
+      authorization)) under `_acme-challenge.<domain>`); the reason it
+      is not done is that it needs a DNS provider, and this repository
+      has no DNS seam at all. The honest shape is a `Dns` trait with
+      put/remove, a test double, and no provider shipped — plus the
+      propagation wait every provider needs and none of them agree
+      on.
 - [ ] script-tls: ALPN/HTTP2, OCSP stapling, cipher policy — still the
       proxy's, and named as such in the spec. A Site behind Caddy/nginx/an ingress needs
       three things from the operator: pass Upgrade for EVERY path

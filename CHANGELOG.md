@@ -1,5 +1,27 @@
 # Changelog
 
+## acme-revoke — taking a certificate back, with a reason and a way to run it
+Completed: 2026-09-07
+Landed as the ff of feature/acme-revoke (spec then code). The one
+deferred ACME item that was small and testable today. `Acme.revoke`
+posts the LEAF's DER — a chain file holds the issuers too, and a CA
+revokes one certificate, not a bundle — signed by the account key
+that ordered it. The reason is a NAMED value rather than the RFC 5280
+integer nobody remembers, because it is the field an incident report
+quotes and a CA treats `KeyCompromise` differently from `Superseded`.
+Revoking twice invents no error of ours: the CA's own `alreadyRevoked`
+sentence comes back as it is. An operator has to run this at an hour
+nobody planned for, so `okay.acme.Revoke` is a main over the
+directory `Serve` already writes, reading the same `OKAY_ACME` and
+`OKAY_ACME_PROD` the server runs with — a revoke cannot talk to the
+wrong CA while believing it talked to the right one — and it does not
+delete the certificate, saying so, because a revoked file left in
+place is a revoked identity served after the next restart. Proven
+against Pebble: the first revoke accepted, the second refused by
+name; `Revoke.parse` refuses a missing certificate, a missing account
+key, an unknown reason and a missing `OKAY_ACME`, each by name. 8
+okay-acme green 3x.
+
 ## acme-pebble — our ACME client against Let's Encrypt's own test server, and the bug it found
 Completed: 2026-09-07
 Landed as d73eefae (spec then code, rebased). The in-process fake CA
