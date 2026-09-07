@@ -93,11 +93,15 @@ does not cross and stages the work; each stage below is its own claim.
       the kubectl command instead. `helm lint`/`template` are LIVE,
       not the default gate: AGENTS.md's rule for suites leaving the
       JVM won over this module's opinion of its own tool.
-- [ ] deploy-old-helm-retired — `Deploy` still renders a
-      single-service Helm chart (okay-script/deploy/helm) beside the
-      new `cluster` one. Retiring it means moving every module that
-      renders through `Deploy` to a `Deployment`, which is a bigger
-      change than stage 1 and wants its own claim.
+- [x] deploy-old-helm-retired — LANDED 2026-09-07: one model, not
+      two. `Deployment.image` renders the Dockerfile (not a target's
+      file: every target runs what it produces), `Run.Module` gained
+      `extraBuild`/`extraCopy`, `Service` gained `metricsPath`, and
+      okay-demo ported. `Deploy`/`Compose`/`Helm` and the packaged
+      chart resources are gone; `Resources`/`Health`/`Copy`/`repoRoot`
+      survived; specs/deploy.md records its supersession. Porting a
+      REAL application found all three gaps plus a fourth — okay-demo
+      was about to render OKAYCHAT_PORT, which nothing reads.
 - [x] deploy-paas — LANDED 2026-09-07, stage 2: the `fly`, `render`
       and `railway` targets. A managed database is DELEGATED — the
       third answer beside host's refusal and cluster's rendering:

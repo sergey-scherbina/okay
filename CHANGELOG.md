@@ -1,5 +1,45 @@
 # Changelog
 
+## deploy-old-helm-retired — one deployment model, not two
+Completed: 2026-09-07
+Landed as 62c851cf (spec then code). specs/deploy.md's `Deploy` and
+specs/deployment.md's `Deployment` had lived side by side since stage
+0, deliberately and temporarily — a model proven on a fixture is not
+proven, so okay-script carried both values while the new one grew
+targets. By stage 3 that had become the drift this repository has a
+rule against: one application committing two Helm charts and two
+compose files.
+
+Three things the new model had to gain first, and porting a real
+application is what found all three. **The Dockerfile is not a
+target's file** — laptop builds from it, cluster and aws and the PaaS
+three run what it produces — so `Deployment.image` renders it per
+`Run.Module` service into `<moduleDir>/deploy/Dockerfile`, where every
+target already pointed. **`Run.Module` gained `extraBuild` and
+`extraCopy`**, because okay-demo links a Scala.js bundle in the build
+stage and copies its output into the image beside the jar; without
+those the port would have been a regression dressed as a cleanup. And
+**`Service` gained `metricsPath`**, which the old chart annotated a pod
+with and the new cluster target had quietly dropped.
+
+A fourth thing the porting caught, in okay-demo's own settings:
+`Settings.of("okayChat")("port")` is `OKAYCHAT_PORT`, because
+`envName` uppercases the prefix without splitting it, and nothing in
+ChatDemo reads that. The prefix is `okay` and the fields carry `chat`.
+Found by writing the port down twice and looking; now a test.
+
+What did not survive, and should not have: `Image`/`Env` (a `Run.Image`
+and a `Settings` say both), `Compose` and `Helm` as separate renderers
+(the `laptop` and `cluster` targets say it better, and for more than
+one service), and the packaged chart resources — a chart whose every
+knob was a value in `values.yaml` was generic in the way that means
+"one service, and you edit YAML for anything else". `Resources`,
+`Health`, `Copy` and `repoRoot` survived verbatim, and specs/deploy.md
+records its supersession rather than being deleted, because the
+decisions in it are the ones the new model inherited. okay-demo now
+renders to every target it can, and both committed charts pass `helm
+lint`. 100 okay-deploy green 3x, 15 Live green, 166 okay-script.
+
 ## docs-intent-refresh — the intent docs catch up with six lanes
 Completed: 2026-09-07
 The module page had been quoting "80.0% at full coverage" as THE
