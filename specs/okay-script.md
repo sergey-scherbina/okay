@@ -1815,6 +1815,66 @@ say, which is why the flag is set where TLS is configured.
 - [x] (Live) over a real HTTPS connector the session cookie carries
       `Secure` with no header claimed by anyone.
 
+### HTTPS out of the box (script-https-default, 2026-09-07)
+
+Operator ask: https should work with a proxy and without one, with
+the minimum that is actually necessary. Four switches, and nothing
+else:
+
+| | |
+|---|---|
+| `OKAY_TLS=self` | a self-signed certificate, generated once and reused |
+| `OKAY_HSTS=<seconds>` | `Strict-Transport-Security` on secure responses |
+| `OKAY_HTTPS_ONLY=1` | an insecure request is 301'd to the same URL on https |
+| `OKAY_HTTP_PORT=<n>` | with own TLS: a plaintext port whose only answer is that redirect |
+
+**Without a proxy.** `Tls.selfSigned(keystore, host)` (okay-tls, the
+same seam) generates a PKCS#12 ONCE, reuses it after that, and hands
+back the context and the certificate's SHA-256, which `Serve` prints
+along with the plain warning that nobody vouched for it. With
+`OKAY_DATA` set the keystore sits beside the data, so a restart keeps
+the identity; otherwise it is a temp directory and the fingerprint
+changes with it — said in the line it prints, not hidden. Generated
+by the JDK's own `keytool` (openssl as the fallback, a named refusal
+when neither is on the PATH): a certificate cannot be built through
+any exported JDK API, `sun.security.x509` is not open, and a crypto
+library added for a development convenience would cost okay-tls its
+dependency-free compile graph.
+
+**With a proxy.** The container cannot see TLS that ends elsewhere,
+so `OKAY_FORWARDED=1` (cookie-flags) makes an `X-Forwarded-Proto`
+claim count, and on that footing `OKAY_HSTS` and `OKAY_HTTPS_ONLY`
+do the two things a proxy leaves to the app: announce HSTS, and stop
+serving pages over plaintext. HSTS rides ONLY on a response the
+container knows was secure — announcing it over http is how a site
+locks itself out of a browser it cannot yet serve — and it is off by
+default, because on a self-signed development host it pins a browser
+against you for as long as its max-age and no page can take it back.
+
+The `httpsOnly` redirect happens BEFORE routing, so an unknown path
+is sent to https rather than told over plaintext that it does not
+exist. The authority comes from the request's own `Host` (a proxy
+forwards the one the client asked for); a request carrying no `Host`
+gets a 400 that says so, because there is no honest hostname to
+guess. The plaintext redirect port is a whole second server whose
+only route is that 301, and it appends the TLS port when it is not
+443 — a redirect to the wrong port is a redirect to nothing.
+
+Still not here, still the proxy's: ACME, certificate rotation without
+a restart, ALPN/HTTP2, OCSP stapling, cipher policy.
+
+- [x] `httpsOnly`: an insecure request is 301'd with its path and
+      query intact, before routing; a forwarded-secure one is served;
+      no `Host` is a 400.
+- [x] HSTS on a secure response only, page and static file alike, and
+      absent unless asked for.
+- [x] `Serve.parse` reads all four; a bad `OKAY_HSTS` reads as absent.
+- [x] the redirect port answers any path, with the TLS port spelled
+      out only when it is not 443.
+- [x] (Live) a self-signed keystore is generated once, reused on the
+      next start, and serves a page over a real TLS handshake to a
+      client that trusts that certificate and nothing else.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a

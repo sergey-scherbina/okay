@@ -122,6 +122,18 @@ transport gets TLS from one seam and adds nothing of its own.
   signature (wrap a connected socket) survives the addition.
 
 
+### script-https-default — a self-signed identity, from the seam (2026-09-07)
+
+`Tls.selfSigned(keystore, host)` generates a PKCS#12 once, reuses it,
+and answers `(SSLContext, fingerprint)` — https for a dev box or an
+internal service with nothing to obtain first. It shells out to the
+JDK's own `keytool` (openssl as the fallback, a named refusal when
+neither is present) because no exported JDK API builds a certificate
+— `sun.security.x509` is not open — and a crypto dependency added for
+a convenience would cost this module its compile graph. The caller
+prints the fingerprint and the warning that owns it: nobody vouched
+for this certificate. A public site still gets a real one.
+
 ### script-tls — the seam served an embedded HTTP server (2026-09-07)
 
 `serverSocket` assumed the server OWNS its `ServerSocket`; an embedded
