@@ -1,5 +1,0 @@
-lane: intent-label-model
-who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
-since: 2026-09-07
-what: STAGE 1 of specs/intent-autonomy.md, and the only stage that raises autonomy with NO new rows. Our offline tiers are labelling functions in Snorkel's sense (each answers some messages at a known precision and abstains on the rest); the door combines them as a CASCADE and throws every agreement away. Build several diverse offline labelers (hand cues, induced cues, grams at two windows, word TF-IDF), estimate per-labeler accuracy from AGREEMENT alone (no gold labels, Dawid-Skene/EM), and combine. Criterion: beats the cascade on MeasureAutonomy's curve at equal coverage, without breaking the per-class law. Otherwise: negative result recorded, door unchanged.
-touches: okay-intent (a Combiner over labelers), its offline suites, specs/intent-autonomy.md, specs/intent-classify.md, BACKLOG, CHANGELOG
