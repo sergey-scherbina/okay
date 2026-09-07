@@ -75,21 +75,29 @@ enormous. Ten thousand fibers, forked and joined, measured
 
 | µs per 10 000 fork/joins | 30 ns of work each | 2.5 µs of work each |
 |---|---|---|
-| kyo (never spreads a burst forked inside a worker) | **779** | 25 419 |
-| okay `Schedulers.own` | **744** | **3 327** |
-| a raw JDK `ForkJoinPool` (wakes a worker for nearly every task) | 1 871 | ~2 900 |
+| kyo (never spreads a burst forked inside a worker) | 880 | 27 097 |
+| **okay `Schedulers.own` — deciding for itself** | **750** | **3 645** |
+| okay `own.forShortTasks` — the decision pinned to "never" | 674 | 26 430 |
+| okay `own.forLongTasks` — pinned to "always" | 2 038 | 3 678 |
+| okay `drive`, on a JDK pool | 785 | 3 021 |
 
-At 30 ns a fiber, waking a core costs more than the work: the runtime
-that keeps the burst at home wins by 2.4x. At 2.5 µs a fiber, a burst
-kept at home is a burst on one core: the runtime that spreads wins by
-7.6x. A scheduler that only knows one of these is wrong half the time,
+The two pinned rows are the two runtimes this table compares, in one
+scheduler. The default row is the point: within 11 % of the better
+preset in each column without being told which case it is in.
+
+At 30 ns a fiber, waking a core costs more than the work: keeping the
+burst at home wins by 3x. At 2.5 µs a fiber, a burst kept at home is a
+burst on one core: spreading wins by 7.2x. A scheduler that only knows one of these is wrong half the time,
 and a knob that asks the PROGRAMMER which case they are in is a knob
 that will be set wrong.
 
-So `own` measures instead. At every sixteenth task a worker already
-knows two numbers — how long it has been busy and how many tasks that
-took — and it wakes one sleeper only when it is past `helpAfter` AND
-its tasks are averaging more than `spreadAbove`. Nothing is declared;
+So `own` measures instead. At every sixteenth task a worker asks two
+questions over two different spans: have I been busy longer than
+`helpAfter` since this run of work began, and are my LAST sixteen
+tasks averaging more than `spreadAbove`? Both true, it wakes one
+sleeper. (The second span is not a detail: the fiber that forks a
+burst is itself a long task, and averaging from the start made every
+burst look expensive.) Nothing is declared;
 short fibers stay home, long ones spread, and a program whose fibers
 change size gets both without touching a setting.
 
@@ -192,8 +200,8 @@ The full tables, with the runs behind them, are in
 - fork/join of 100 fibers is Loom's floor, and okay sits on it: about
   5 ns of bookkeeping per fork/join over a raw virtual thread.
 - fork/join of 10 000 tiny fibers is a measure of SCHEDULING, and
-  `own` leads it (744 µs against kyo's 779, a raw pool's 1 871).
+  `own` leads it (750 µs against kyo's 880, a raw pool's 1 871).
 - the same 10 000 fibers with real work in them is a measure of
-  SPREADING, and `own` leads that too (3 327 µs against kyo's 25 419).
+  SPREADING, and `own` is 7.4x kyo there (3 645 against 27 097).
 - the JDK pool underneath `drive` is 2.4x kyo's scheduler per small
   task and spreads what kyo will not; `own` is the one that does both.

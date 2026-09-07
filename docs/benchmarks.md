@@ -422,36 +422,46 @@ for the third.
   what made kyo fast, and the pool then spreads what the deque cannot
   drain, which is what kyo cannot do.
 
-  **`Schedulers.own` now holds both columns** (one tight run, every
-  error 3-7 %):
+  **`Schedulers.own` holds both columns, and picks the column itself**
+  (one tight run, every error 1-3 %; the presets pin the decision the
+  default makes for itself):
 
   | us per 10 000 fork/joins | 100 ops each | 10 000 ops each |
   |---|---|---|
-  | kyo, its own idiom | 779 | 25 419 |
-  | **okay `own`, the same form of call** | **744** | **3 327** |
-  | okay `drive` (JDK pool), the same form | 965 | 2 932 |
-  | okay `own`, forked from outside | 1 554 | 2 902 |
+  | kyo, its own idiom | 880 | 27 097 |
+  | **okay `own` — the default, deciding** | **750** | **3 645** |
+  | okay `own.forShortTasks` — never spread (kyo's policy) | 674 | 26 430 |
+  | okay `own.forLongTasks` — spread at once (the pool's policy) | 2 038 | 3 678 |
+  | okay `drive` (the JDK pool) | 785 | 3 021 |
 
-  4.5 % faster than kyo on kyo's own ground and 7.6x faster on real
-  work, in one scheduler, because the helper rule reads what the work
-  IS instead of being told: at each 16-task checkpoint a worker knows
-  how long it has been busy and how many tasks that took, and it wakes
-  a sleeper only when it is past the time threshold AND its tasks are
-  averaging more than `spreadAboveNanos`. Thirty-nanosecond fibers
-  stay home; 2.5-microsecond fibers spread.
+  The two preset rows ARE the two runtimes this table has been
+  comparing, in one scheduler: pin the decision to "never spread" and
+  it behaves like kyo (674 / 26 430), pin it to "always" and it
+  behaves like a pool (2 038 / 3 678). The default row is the point —
+  within 11 % of the better preset in each column without being told
+  which case it is in, and ahead of kyo on both (15 % at 30 ns a
+  fiber, 7.4x at 2.5 us).
 
-  Two defects were found by counters on the way, and both were in the
-  waking rather than in the queues. The first cut kept an "active
-  prefix" and unparked only the worker at its edge, so a worker that
-  had parked earlier slept for ever — the probe showed ONE activation
-  and two workers sharing 10 000 tasks (14 054 us). The second gave
-  each worker its own inbox and picked a victim at random, so a
-  submitter woke a SLEEPING worker for nearly every task and the
-  external lane went 1 249 -> 5 822 us; one shared submission queue
-  with a signal only when nobody is awake put it back. A Chase-Lev
-  deque per worker is in as well (the owner's end and the thieves'
-  end are different ends); its own contribution is UNMEASURED, since
-  it landed while the prefix defect was still masking everything.
+  It reads the work rather than being told about it: at every
+  sixteenth task a worker asks two questions over two different
+  spans — have I been busy longer than `helpAfter` since this run of
+  work began, and are my LAST sixteen tasks averaging more than
+  `spreadAbove`? Both true, it wakes one sleeper. The second span
+  matters: the fiber that forks a burst is itself a long task, and
+  averaging from the start of the run made every burst look expensive
+  and flipped the decision between iterations (1 538 / 5 389 with
+  25-45 % error, against 750 / 3 645 with 1-3 % after).
+
+  Three defects were found on the way and all three were in the
+  waking, not the queues. An "active prefix" unparked only the worker
+  at its edge, so a worker that had parked earlier slept for ever —
+  counters showed ONE activation and two workers sharing 10 000 tasks
+  (14 054 us). Per-worker inboxes with a random victim woke a SLEEPING
+  worker for nearly every external submission (1 249 -> 5 822 us);
+  one shared submission queue, signalled only when nobody is awake,
+  put it back. And a benchmark with three owned schedulers alive at
+  once was measuring its own thread count, which is how
+  `Schedulers.Running` got a `close()`.
 
   The scheduler is chosen and tuned the way a queue is —
   `Schedulers.own.workers(4).forLongTasks.build`,
