@@ -62,13 +62,22 @@ class AdversarialBenchmark {
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
 
   /** a scheduler that owns its threads (`Schedulers.own`, kyo's
-   * shape), one instance for the lane: the workers outlive the call */
+   * shape), one instance per policy for the lane: the workers outlive
+   * the call. `own` = running-first, wake a sleeper only above depth
+   * 16; `ownSpread` = the JDK pool's policy, wake for every task;
+   * `ownNoSpin` = running-first but a dry worker parks at once */
   private val own: Scheduler = Schedulers.own()
+  private val ownSpread: Scheduler = Schedulers.own(wakeAbove = 0)
   private val ownNoSpin: Scheduler = Schedulers.own(spin = 0)
 
   @Benchmark
   def forkJoin10k_okayOwn(): Long =
     given Scheduler = own
+    (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
+
+  @Benchmark
+  def forkJoin10k_okayOwnSpread(): Long =
+    given Scheduler = ownSpread
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
 
   @Benchmark

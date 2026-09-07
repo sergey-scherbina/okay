@@ -209,22 +209,36 @@ object Schedulers {
    * A scheduler that OWNS its threads — kyo's shape, the prototype
    * (schedulers-family, 2026-09-07). `workers` platform threads, a
    * queue each; a worker that runs dry steals from the others, spins
-   * `spin` rounds, then parks; a submit goes to the less loaded of
-   * two workers drawn at random and wakes it only if it is parked.
-   * The unit is `DriveTask`: no thread per fiber, a parked Await
-   * costs its callback. A BLOCKING call inside a fiber holds one of
-   * the `workers` threads — this is for short, CPU-bound fibers;
-   * `loom` is the one that makes blocking free.
+   * `spin` rounds, then parks. The unit is `DriveTask`: no thread per
+   * fiber, a parked Await costs its callback.
+   *
+   * The policy the profile asked for: a submit goes to a worker that
+   * is already RUNNING (the caller's own, or the less loaded of two
+   * running ones drawn at random); a parked worker is woken only when
+   * the chosen running one has more than `wakeAbove` tasks queued.
+   * For fibers of tens of nanoseconds the cost is not the work but
+   * the spreading of it — the JDK pool signals a sleeping worker for
+   * nearly every task (`scan → signalWork → unpark`, 9 % of its
+   * profile, plus 22 % of workers scanning) while kyo keeps the work
+   * on the one or two workers already awake. `wakeAbove = 0` is the
+   * JDK pool's policy, kept for the comparison.
+   *
+   * A BLOCKING call inside a fiber holds one of the `workers`
+   * threads — this is for short, CPU-bound fibers; `loom` is the one
+   * that makes blocking free.
    */
-  def own(workers: Int = Runtime.getRuntime.availableProcessors(), spin: Int = 4096): Scheduler =
-    Own(workers, spin)
+  def own(workers: Int = Runtime.getRuntime.availableProcessors(), spin: Int = 4096, wakeAbove: Int = 16): Scheduler =
+    Own(workers, spin, wakeAbove)
 
-  private[okay] final class Own(n: Int, spin: Int) extends Scheduler {
+  private[okay] final class Own(n: Int, spin: Int, wakeAbove: Int) extends Scheduler {
     private val workers: Array[Worker] = Array.tabulate(n)(i => Worker(i))
+    private val current = ThreadLocal[Worker | Null]()
 
     private final class Worker(id: Int) extends Runnable {
       val queue = java.util.concurrent.ConcurrentLinkedQueue[DriveTask[?]]()
       val size = java.util.concurrent.atomic.AtomicInteger()
+      /** true from the moment the worker decides to park until it is
+       * running again: the flag a submitter reads to choose and to wake */
       @volatile var parked = false
       val thread: Thread = { val t = Thread(this, s"okay-own-$id"); t.setDaemon(true); t }
 
@@ -248,6 +262,7 @@ object Schedulers {
         null
 
       def run(): Unit =
+        current.set(this)
         var spins = 0
         while true do
           var t = take()
@@ -272,11 +287,31 @@ object Schedulers {
 
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val t = DriveTask[A](prog)
+      choose().enqueue(t)
+      t
+
+    /** the caller's own worker; else the less loaded of two running
+     * workers; a parked one only when the running one is over
+     * `wakeAbove` deep (or when none is running) */
+    private def choose(): Worker =
+      val mine = current.get
+      if mine != null then return mine
       val r = java.util.concurrent.ThreadLocalRandom.current()
       val a = workers(r.nextInt(n))
       val b = workers(r.nextInt(n))
-      (if a.size.get <= b.size.get then a else b).enqueue(t)
-      t
+      val running =
+        if a.parked then (if b.parked then null else b)
+        else if b.parked then a
+        else if a.size.get <= b.size.get then a else b
+      if running != null && running.size.get <= wakeAbove then running
+      else
+        // a parked worker is worth waking: the first one found, else the running one
+        var i = 0
+        while i < n do
+          val w = workers((a.hashCode.abs + i) % n)
+          if w.parked then return w
+          i += 1
+        if running != null then running else a
   }
 
   /** listeners of a running DriveTask, a stack */
