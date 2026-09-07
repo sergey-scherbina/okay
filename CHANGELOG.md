@@ -39,6 +39,14 @@ established rather than the log's length. Existing index-sensitive
 tests moved by one for the no-op. Open: compaction (2b), the
 catch-up phase for a joiner, pre-vote.
 
+Beside the lane: the gate's full matrix failed `TestPoisonLaws`
+once (0..18 seen, not 19; five runs alone green). `ActorRef.stopped`
+is the mailbox's word — closed and every element handed over — not
+the handler's, so the last element can be out of the mailbox and
+still inside its handler when it turns true. The three laws now
+wait for the handler too (`settled`: stopped AND the expected
+count); the actor is unchanged.
+
 ## raft-sim-fuzz — the seed-swept simulation of the Raft core: safety on every event of forty seeds
 
 The consensus spec kept "the Sim-driven fuzz harness" open as the
