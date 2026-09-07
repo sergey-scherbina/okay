@@ -835,6 +835,31 @@ measure on our own data, never a predicted result.
 - [ ] ui-windows-terminal — raw mode beyond stty
 
 ## okay-codec
+- [ ] json-escape-alloc — `Json.escape` is `s.flatMap { ... case c =>
+      c.toString }`: a String allocated PER CHARACTER, on the encode
+      side. Measured 2026-09-07 over 200k strings: 13.5 ms against
+      4.7 ms for an allocation-free version answering the same string
+      — 2.9x. Unlike the lossless-road work, this one is HOT: it is
+      called by `Json.print`, by `Staged.scala` (the compile-time
+      encoder) and by `RuntimeStaged.scala` (the run-time one), so
+      every string through the staged doors the repo measured at 385 ns
+      pays it. The fast path is the same shape `unquote` just got:
+      scan for a character that needs escaping and answer the input
+      itself when there is none. Must escape EXACTLY the same five
+      characters — this project deliberately does not escape \b, \f or
+      controls, and escape/unescape must keep agreeing exactly.
+- [ ] codec-two-roads-audit — the json-parse-fast-road shape as a
+      QUESTION rather than a fix: a module had two roads to the same
+      value, 37x apart, and the DEFAULT was the slow one for long
+      enough that a separate feature (py-arrow) got filed to work
+      around the symptom. Where else does this repository have a fast
+      path that nothing takes by default? Named suspects: the CBOR
+      pair beside `Json`/`JsonValue`, and the staging seam's
+      interpreter-vs-installed choice (`Codecs.current`), which is a
+      runtime switch rather than a road but has the same failure mode
+      — measured once, then assumed. Cheap to check, and the last
+      check of this kind was worth 37x.
+
 - [x] codec-jsonschema-refinement-enum — `JsonSchema.of` renders an
       `SIso`/`Schema.refine` as its underlying type, so a refinement's
       vocabulary (`Conf`: three words over a string) reaches a
