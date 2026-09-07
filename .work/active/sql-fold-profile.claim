@@ -1,0 +1,5 @@
+lane: sql-fold-profile
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: the condition staged-runtime's spec set for okay-sql — a profile showing the row fold at >=30% of the per-row cost — measured, and the verdict recorded either way. Typed.planOf already hoists label matching out of the per-row loop, so what remains per row is decodeCell per field; measure typed rows vs raw frames on in-memory sqlite (MeasureScript's shape: medians, warmup discarded, Live-tagged, sanity bounds only). Operator ask: "делай то что осталось открытым".
+touches: okay-jdbc test (MeasureSqlFold), specs/codecs.md (Run-time staging: the okay-sql line), specs/sql.md if a verdict belongs there, BACKLOG, CHANGELOG
