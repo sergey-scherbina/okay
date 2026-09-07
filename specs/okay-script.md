@@ -1729,6 +1729,44 @@ path they claim — a site with its own `/metrics` page keeps it.
 - [x] `opsRoutes` is absent from `routes`, answers when chained, and
       loses to a page of the same name; `Serve` reads `OKAY_OPS`.
 
+### The image (okay-script-image, 2026-09-07)
+
+"The page is the deployment", packaged. `ScriptDeploy.spec` is an
+okay-deploy `Deploy` value; `okay-script/deploy/` is that value
+rendered (Dockerfile, compose.yaml, a Helm chart), regenerated with
+`sbt "okayScript/runMain okay.script.ScriptDeploy"`, and
+`TestScriptDeploy` refuses a drift between the two — the same
+discipline `okay-demo` already runs on.
+
+The image builds okay-script's fat jar, copies the worked example in
+as `/app/pages`, and runs `okay.script.Serve`. Its entrypoint takes
+no arguments (`java -jar app.jar`), so `Serve` now reads `OKAY_PAGES`
+and `OKAY_PORT` from the environment when it is given no command
+line; an explicit command line still wins, and neither is still a
+usage refusal rather than a guess.
+
+Two decisions worth their lines. The image carries the example store
+as its pages so that it RUNS out of the box; a real deployment mounts
+its own directory over `/app/pages` (a compose volume, a ConfigMap, a
+PVC) and changes nothing else — and because pages are read at request
+time, a mounted directory that changes is a site that changes, so the
+hot-reload half of "a new JSP" is true of the container too. And
+`OKAY_DATA` is deliberately NOT baked in: `/app` belongs to root
+while the process runs as `okay`, so a store path in the image would
+be a container that crashes on its first boot. A deployment that
+wants sessions and the application scope across a restart mounts a
+writable volume and points `OKAY_DATA` at it.
+
+Proven by running the assembled jar exactly as the entrypoint does:
+13 pages compiled at boot in 3.7 s, the store's index served, and
+`/metrics` and `/healthz` answering.
+
+- [x] `okay-script/deploy` does not drift from the value.
+- [x] the Dockerfile copies the pages in and runs `okayScript/assembly`'s
+      jar; the env carries the pages, the port and the ops routes.
+- [x] `Serve` reads `OKAY_PAGES`/`OKAY_PORT` with no command line, a
+      command line still wins, neither is a usage refusal.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
