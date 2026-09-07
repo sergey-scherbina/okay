@@ -236,6 +236,18 @@ object Schedulers {
 
   private[okay] final class Own(n: Int, spin: Int, wakeAbove: Int,
                                 helpAfterNanos: Long, spreadAboveNanos: Long) extends Scheduler {
+    /** what threads OUTSIDE the scheduler hand it. One queue, not one
+     * per worker: a submitter that picks a random worker picks a
+     * SLEEPING one most of the time and pays an unpark per task,
+     * which is the JDK pool's cost and was measured as ours too
+     * (1 249 -> 5 822 us when the victim became random). Here a
+     * submission wakes a worker only when nobody is awake to see it,
+     * or when the queue is deeper than `wakeAbove`. */
+    private val submissions = java.util.concurrent.ConcurrentLinkedQueue[DriveTask[?]]()
+    private val submissionsSize = java.util.concurrent.atomic.AtomicInteger()
+    /** how many workers are running rather than parked */
+    private val awake = java.util.concurrent.atomic.AtomicInteger(0)
+
     private val workers: Array[Worker] = Array.tabulate(n)(i => Worker(i))
     // DEBUG-PROBE (schedulers-family): what actually happened
     private[okay] val activations = java.util.concurrent.atomic.AtomicLong()
@@ -328,11 +340,6 @@ object Schedulers {
       /** the owner's own work: pushed and popped by this thread,
        * stolen from the other end */
       val deque = Deque(256)
-      /** what OTHER threads hand this worker — a foreign push cannot
-       * touch the deque, so it lands here (the pool's submission
-       * queue, same reason) */
-      val inbox = java.util.concurrent.ConcurrentLinkedQueue[DriveTask[?]]()
-      val inboxSize = java.util.concurrent.atomic.AtomicInteger()
       /** true from the moment the worker decides to park until it runs
        * again: what a submitter reads to wake it */
       @volatile var parked = false
@@ -340,32 +347,19 @@ object Schedulers {
       var stolen = 0L
       val thread: Thread = { val t = Thread(this, s"okay-own-$id"); t.setDaemon(true); t }
 
-      /** the load a submitter chooses by */
-      def size: Int = deque.size + inboxSize.get
-
-      /** any thread but the owner */
-      def enqueue(t: DriveTask[?]): Unit =
-        val _ = inboxSize.incrementAndGet()
-        inbox.offer(t)
-        if parked then java.util.concurrent.locks.LockSupport.unpark(thread)
+      /** the load the helper rule reads */
+      def size: Int = deque.size
 
       /** the owner's own fork: onto its deque, no CAS, no signal */
       def pushLocal(t: DriveTask[?]): Unit = deque.push(t)
 
-      private def fromInbox(): DriveTask[?] | Null =
-        val t = inbox.poll()
-        if t != null then { val _ = inboxSize.decrementAndGet() }
-        t
-
-      /** owner only */
+      /** owner only: its own end first, then what came from outside */
       private def take(): DriveTask[?] | Null =
         val t = deque.pop()
-        if t != null then t else fromInbox()
+        if t != null then t else fromSubmissions()
 
       /** what a thief may take from this worker */
-      def taken(): DriveTask[?] | Null =
-        val t = deque.steal()
-        if t != null then t else fromInbox()
+      def taken(): DriveTask[?] | Null = deque.steal()
 
       private def steal(): DriveTask[?] | Null =
         var i = 1
@@ -373,10 +367,11 @@ object Schedulers {
           val t = workers((id + i) % n).taken()
           if t != null then return t
           i += 1
-        null
+        fromSubmissions()
 
       def run(): Unit =
         current.set(this)
+        val _ = awake.incrementAndGet()
         var spins = 0
         var streakStart = 0L
         var ranStreak = 0
@@ -411,12 +406,15 @@ object Schedulers {
             Thread.onSpinWait()
           else
             val _ = stepDowns.incrementAndGet()
-            // publish "parked" BEFORE the last look at the queue: an
-            // enqueue that misses the flag has landed in the queue we
-            // are about to see, one that sees it will unpark us
+            // publish "parked" and drop out of `awake` BEFORE the last
+            // look at the queues: a submission that misses the flag
+            // has landed in a queue we are about to see, one that sees
+            // it will unpark us
             parked = true
-            if size == 0 then java.util.concurrent.locks.LockSupport.park(this)
+            val _ = awake.decrementAndGet()
+            if size == 0 && submissions.isEmpty then java.util.concurrent.locks.LockSupport.park(this)
             parked = false
+            val _ = awake.incrementAndGet()
             spins = 0
     }
 
@@ -426,22 +424,18 @@ object Schedulers {
       val t = DriveTask[A](prog)
       val mine = current.get
       if mine != null then mine.pushLocal(t)   // the owner's own end: no CAS, no signal
-      else choose().enqueue(t)
+      else
+        val _ = submissionsSize.incrementAndGet()
+        submissions.offer(t)
+        // a signal only when nobody would see it, or when the queue
+        // has grown past what one worker should be left with
+        if awake.get == 0 || submissionsSize.get > wakeAbove then activateNext()
       t
 
-    /** the less loaded of two AWAKE workers; a sleeping one only when
-     * everyone is asleep, and then `enqueue` wakes it. (The caller's
-     * own worker is handled in `fork`, which pushes to its deque.) */
-    private def choose(): Worker =
-      val r = java.util.concurrent.ThreadLocalRandom.current()
-      val a = workers(r.nextInt(n))
-      val b = workers(r.nextInt(n))
-      val pick =
-        if a.parked && !b.parked then b
-        else if b.parked && !a.parked then a
-        else if a.size <= b.size then a else b
-      if pick.size > wakeAbove then activateNext()
-      pick
+    private[okay] def fromSubmissions(): DriveTask[?] | Null =
+      val t = submissions.poll()
+      if t != null then { val _ = submissionsSize.decrementAndGet() }
+      t
 
     /** wake ONE sleeping worker, wherever it sits: eligibility was
      * never the thing that made a worker help — being awake is. (The
