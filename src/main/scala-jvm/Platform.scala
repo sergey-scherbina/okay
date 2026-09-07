@@ -238,23 +238,111 @@ object Schedulers {
     private val active = java.util.concurrent.atomic.AtomicInteger(1)
     private val current = ThreadLocal[Worker | Null]()
 
+    /**
+     * The owner's end and the thieves' end are different ends — a
+     * Chase-Lev deque (own-deque, 2026-09-07). The owner pushes and
+     * pops at `bottom` with plain reads and one volatile store; a
+     * thief takes at `top` with a CAS. They contend only over the
+     * last element, which is why `ForkJoinPool` does not have the
+     * wall a shared queue gave us (14 054 us against the pool's
+     * 2 954 on the same lane).
+     *
+     * Owner-only: `push`, `pop`. Any thread: `steal`, `size`.
+     */
+    private final class Deque(initial: Int) {
+      private val top = java.util.concurrent.atomic.AtomicLong(0L)
+      @volatile private var bottom: Long = 0L
+      @volatile private var buf = java.util.concurrent.atomic.AtomicReferenceArray[DriveTask[?] | Null](initial)
+
+      def size: Int =
+        val n = bottom - top.get
+        if n < 0 then 0 else n.toInt
+
+      private def index(i: Long, len: Int): Int = (i & (len - 1)).toInt
+
+      /** owner only */
+      def push(t: DriveTask[?]): Unit =
+        val b = bottom
+        val tp = top.get
+        var a = buf
+        if b - tp >= a.length() - 1 then
+          val bigger = java.util.concurrent.atomic.AtomicReferenceArray[DriveTask[?] | Null](a.length() * 2)
+          var i = tp
+          while i < b do { bigger.set(index(i, bigger.length()), a.get(index(i, a.length()))); i += 1 }
+          buf = bigger
+          a = bigger
+        a.set(index(b, a.length()), t)
+        bottom = b + 1
+
+      /** owner only */
+      def pop(): DriveTask[?] | Null =
+        val a = buf
+        val b = bottom - 1
+        bottom = b
+        val tp = top.get
+        if tp > b then { bottom = tp; null }
+        else
+          val i = index(b, a.length())
+          val t = a.get(i)
+          if tp < b then { a.set(i, null); t }
+          else
+            // the last element: a thief may be taking it right now
+            val won = top.compareAndSet(tp, tp + 1)
+            bottom = tp + 1
+            if won then { a.set(i, null); t } else null
+
+      /** any thread */
+      def steal(): DriveTask[?] | Null =
+        val tp = top.get
+        val b = bottom
+        if tp >= b then null
+        else
+          val a = buf
+          val i = index(tp, a.length())
+          val t = a.get(i)
+          if top.compareAndSet(tp, tp + 1) then { a.set(i, null); t } else null
+    }
+
     private final class Worker(val id: Int) extends Runnable {
-      val queue = java.util.concurrent.ConcurrentLinkedQueue[DriveTask[?]]()
-      val size = java.util.concurrent.atomic.AtomicInteger()
+      /** the owner's own work: pushed and popped by this thread,
+       * stolen from the other end */
+      val deque = Deque(256)
+      /** what OTHER threads hand this worker — a foreign push cannot
+       * touch the deque, so it lands here (the pool's submission
+       * queue, same reason) */
+      val inbox = java.util.concurrent.ConcurrentLinkedQueue[DriveTask[?]]()
+      val inboxSize = java.util.concurrent.atomic.AtomicInteger()
       /** true from the moment the worker decides to park until it runs
        * again: what a submitter reads to wake it */
       @volatile var parked = false
       val thread: Thread = { val t = Thread(this, s"okay-own-$id"); t.setDaemon(true); t }
 
+      /** the load a submitter chooses by */
+      def size: Int = deque.size + inboxSize.get
+
+      /** any thread but the owner */
       def enqueue(t: DriveTask[?]): Unit =
-        val _ = size.incrementAndGet()
-        queue.offer(t)
+        val _ = inboxSize.incrementAndGet()
+        inbox.offer(t)
         if parked then java.util.concurrent.locks.LockSupport.unpark(thread)
 
-      private def take(): DriveTask[?] | Null =
-        val t = queue.poll()
-        if t != null then { val _ = size.decrementAndGet() }
+      /** the owner's own fork: onto its deque, no CAS, no signal */
+      def pushLocal(t: DriveTask[?]): Unit = deque.push(t)
+
+      private def fromInbox(): DriveTask[?] | Null =
+        val t = inbox.poll()
+        if t != null then { val _ = inboxSize.decrementAndGet() }
         t
+
+      /** owner only */
+      private def take(): DriveTask[?] | Null =
+        val t = deque.pop()
+        if t != null then t else fromInbox()
+
+      /** what a thief may take from this worker */
+      def taken(): DriveTask[?] | Null =
+        val t = deque.steal()
+        if t != null then t else fromInbox()
 
       private def steal(): DriveTask[?] | Null =
         val top = active.get
@@ -262,7 +350,7 @@ object Schedulers {
         while i < top do
           val w = workers((id + i) % top)
           if w.id != id then
-            val t = w.take()
+            val t = w.taken()
             if t != null then return t
           i += 1
         null
@@ -286,7 +374,7 @@ object Schedulers {
             // left wakes the next one, which then steals (the pool's
             // win at 3 us per fiber). nanoTime is read once per 16
             // tasks, so it is under 2 ns a task.
-            if (ran & 15) == 0 && !queue.isEmpty && System.nanoTime() - streakStart > helpAfterNanos then
+            if (ran & 15) == 0 && size > 0 && System.nanoTime() - streakStart > helpAfterNanos then
               activateNext()
           else if spins < spin then
             streakStart = 0L
@@ -301,7 +389,7 @@ object Schedulers {
             // enqueue that misses the flag has landed in the queue we
             // are about to see, one that sees it will unpark us
             parked = true
-            if queue.isEmpty then java.util.concurrent.locks.LockSupport.park(this)
+            if size == 0 then java.util.concurrent.locks.LockSupport.park(this)
             parked = false
             spins = 0
     }
@@ -310,17 +398,18 @@ object Schedulers {
 
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val t = DriveTask[A](prog)
-      choose().enqueue(t)
+      val mine = current.get
+      if mine != null then mine.pushLocal(t)   // the owner's own end: no CAS, no signal
+      else choose().enqueue(t)
       t
 
-    /** the caller's own worker; else an active one at random, and the
-     * next worker activated when that one is over `wakeAbove` deep */
+    /** an active worker at random, and the next one activated when it
+     * is over `wakeAbove` deep (the caller's own worker is handled in
+     * `fork`, which pushes to its deque directly) */
     private def choose(): Worker =
-      val mine = current.get
-      if mine != null then return mine
       val top = active.get
       val w = workers(java.util.concurrent.ThreadLocalRandom.current().nextInt(top))
-      if w.size.get > wakeAbove then activateNext()
+      if w.size > wakeAbove then activateNext()
       w
 
     /** one more worker joins the active prefix and starts stealing */
