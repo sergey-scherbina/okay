@@ -1227,10 +1227,17 @@ not a new primitive from scratch.
       static 304 at half a 200, 87 KiB per compiled page, ~100k
       renders/s saturating at four threads. Not JMH, and why.
       docs/benchmarks.md §19.
-- [ ] okay-script-warm — compile the whole directory at boot (the
-      870 ms first-page cost §19 measured), so a start fails on a
-      broken page instead of the first visitor; plus Site.stats over
-      okay-obs (renders, compiles, 4xx/5xx, cache hits).
+- [x] okay-script-warm — LANDED 2026-09-07 (second of four):
+      `Site.warm()` compiles every page at boot (variants and
+      fragments too, `i18n/` skipped) and names the broken ones with
+      their errors; `Serve` warms before binding and goes on serving
+      (a broken page answers its error page). `Site.stats` in
+      `Store.Stats`' shape with JSON and Prometheus renderings as
+      pure mappings, and `opsRoutes` (/healthz /stats /metrics) that
+      is opt-in — `OKAY_OPS=1` for Serve, `orElse` for a caller, and
+      a page of the same name still wins. The counter is
+      `pageRequests`, not `renders`: the test counted 4 where the
+      name promised 5. specs/okay-script.md "Warm and stats".
 - [ ] okay-script-image — okay-deploy manifest for a container running
       okay.script.Serve over a pages directory: "the page is the
       deployment", packaged.
