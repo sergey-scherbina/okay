@@ -7,9 +7,11 @@ numpy, scikit-learn, torch — and it enters this stack exactly the
 way R did, because the shape is the same: CALL-SHAPED FOREIGN
 COMPUTE. **The model is specs/r.md's, verbatim, and is not restated
 here** (the policy rule: one file states a rule, others link):
-calls are OPERATIONS (`PyEval`, the `REval` twin — journalable by
-`Durable`, mockable by handler swap, supervised by
-dead-process-throws); named functions only, NO string eval,
+calls are OPERATIONS (`PyEval`, the `REval` twin — mockable by
+handler swap, supervised by dead-process-throws; the "journalable by
+`Durable`" half of that sentence was CORRECTED in specs/r.md on
+2026-09-07 and the correction applies here unchanged, since this
+spec inherits the model); named functions only, NO string eval,
 structurally; neutral values and frames with `Schema` at the edge;
 `verify` at startup; a clean environment the parent leaks nothing
 into unless config names it. This spec records only what is

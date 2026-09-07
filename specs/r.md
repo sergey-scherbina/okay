@@ -11,13 +11,27 @@ thing is reached here — **an R call is an OPERATION** (the
 `Model`/`Tool` precedent from okay-agent), performed by a handler
 that owns the how.
 
-That one framing buys the whole feature set before any code exists:
-an R step is journalable by `Durable` (a crashed overnight pipeline
-resumes past its R work; `Durable.replaying` re-runs an incident
-offline with R's answers frozen), testable by swapping the handler
-(a canned-answers handler IS the mock), and supervisable like a
-cluster worker (a dead R process THROWS — that is the whole
-protocol, the okay-cluster precedent).
+That one framing buys the feature set before any code exists:
+testable by swapping the handler (a canned-answers handler IS the
+mock) and supervisable like a cluster worker (a dead R process
+THROWS — that is the whole protocol, the okay-cluster precedent).
+
+**Corrected while building it (2026-09-07):** this paragraph also
+claimed an R step is journalable by `Durable`, and that is NOT true
+as written — for R or for Python, where the same sentence had been
+copied. `Durable.tools` wraps a `Handler[Tool]`, and `Tool.Call`
+carries a `ToolCall` (a name and JSON arguments); there is no generic
+"journal any operation type". An `REval` handled by `RSubprocess` is
+therefore not journalled by anything today.
+
+What IS true is narrower and worth saying exactly: an R call reached
+THROUGH a tool — an agent whose `forecast` tool happens to call R
+behind it — is journalled like any other tool call, because the
+journalled thing is the tool. Journaling `REval` itself needs
+`Durable` generalised beyond `Tool`, which is a change in okay-agent
+and is filed as `durable-any-operation` rather than assumed here. The
+two claims that survive are proven in `TestRMock`, without an R
+anywhere.
 
 What this spec refuses from the start: EMBEDDING. R in the JVM
 (JRI/rJava-reverse) is a single-threaded engine with global state
@@ -44,7 +58,7 @@ enum REval[A]:
 enum RValue:
   case RNull                        // R's NULL — the ABSENCE OF AN OBJECT
   case NA(of: RType)                // a missing value INSIDE a vector, TYPED
-  case Lgl(v: Boolean); case Int(v: Int); case Dbl(v: Double)
+  case Bool(v: Boolean); case I32(v: Int); case F64(v: Double)
   case Str(v: String); case Bytes(v: Array[Byte])   // raw
   case Vec(v: Vector[RValue])
 
@@ -176,8 +190,11 @@ they are operations, not because the modules know each other.
       RValue/RFrame (structural: the enum has no Eval-a-string case)
 - [ ] the R process starts with a clean environment: a parent env
       var is invisible in R unless the config names it
-- [ ] a journaled R step is skipped on Durable replay (an agent
-      program with an R operation recovers without re-running R)
+- [~] a journaled R step is skipped on Durable replay — NOT as
+      written: `Durable` journals `Tool`, not any operation type. An
+      R call reached through a tool is journalled because the TOOL is;
+      journaling `REval` itself is `durable-any-operation`. See the
+      correction in the overview.
 - [ ] (stage 1) the same test program passes over subprocess and
       Rserve engines unchanged (the two-driver acceptance move)
 
