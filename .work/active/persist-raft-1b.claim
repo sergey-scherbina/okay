@@ -1,0 +1,15 @@
+task: persist-raft stage 1b (RaftStore: the Store/Topic engine wrapper over RaftWire.Node, plus persistent currentTerm/votedFor)
+agent: okay-42
+started: 2026-09-07
+branch: feature/persist-raft-1b
+
+why: persist-raft is a staged climb (operator: "start it anyway"); stages
+  0 (pure core) and 1a (real peer-to-peer wire, three nodes electing,
+  replicating, failing over) landed 2026-09-03; the entry names stage 1b
+  next: the actual RaftStore -- a control-log engine under the unchanged
+  Election machinery, i.e. the Store/Topic seam served by a replicated
+  log -- and currentTerm/votedFor persisted so a restarted node cannot
+  vote twice in one term. Stage 2 (compaction, membership) stays open.
+  Laws: the existing Raft/RaftWire suites unchanged; the Store laws the
+  other engines answer for, run over a three-node RaftStore (Live, real
+  sockets, per the flake rule); a restart test for the persisted vote.
