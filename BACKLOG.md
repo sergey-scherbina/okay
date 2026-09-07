@@ -4194,7 +4194,12 @@ REFUTED, each by its own measurement (solo-part, 2026-09-07):
 - the part LOOKUP (`open` read, array read, bounds check): a
   thread-local holding the producer's own buffer, and then a `solo`
   field for the single-part case, together moved 149 -> 141 -> 143.
-  Inside the noise of this box.
+  Inside the noise of this box — and the `solo` field was REVERTED
+  for a better reason than that: routing a push straight at part 0
+  skips `claimPart`, so a second producer never gets a part and the
+  buffer quietly stops adapting. `TestAdaptiveFifo` caught it in the
+  gate. Whatever the fast path for one part turns out to be, it must
+  still make every producer claim.
 - the THREAD-LOCAL on the consumer side (`lastRoute` per pop): taken
   off the single-part path entirely. No measurable change.
 - the extra LAYER OF CALL (channel -> Buffer -> Ring): a `Forwarding`
