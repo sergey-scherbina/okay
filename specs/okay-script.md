@@ -1634,6 +1634,51 @@ stapling belong.
 - [x] (Live, openssl) a page served over HTTPS on a real port, the
       same Site, answering a real `HttpsURLConnection`.
 
+### Caching (okay-script-cache, 2026-09-07)
+
+Operator ask. Two halves, because a static file and a rendered page
+carry different risks.
+
+**Static files, always.** A strong `ETag` from the file's size and
+mtime (no read — a large file is cheap to validate), `Last-Modified`,
+and a 304 for an `If-None-Match` that matches or an
+`If-Modified-Since` that still holds. `If-None-Match` decides alone
+when present, per RFC 9110; `*` matches, a `W/` prefix compares by the
+opaque part.
+
+**Pages, opt-in.** `cache: 60` in a page's front-matter (or
+`cache: none`, and anything unparseable reads as absent):
+
+```
+Cache-Control: public, max-age=60      ETag: "<sha-256 of the body>"
+```
+
+and a matching `If-None-Match` answers 304 — which the page never
+renders for, so a page with side effects does not run on a validated
+request. Never at the cost of privacy, and the rule is mechanical
+rather than a matter of the author remembering: the directive is
+`private`, not `public`, when the page is `secure:`, when the
+response sets a cookie, or when the request carried the session
+cookie. Anything that is not a plain 200 to a GET or HEAD — a POST, a
+redirect, a 404, a 500 — carries no cache headers at all.
+
+Why no `Last-Modified` for pages: a page's output is a function of
+the request and the application scope, not only of the file's mtime,
+so the honest validator is the body's own digest. Why no stored
+responses: this is validation and freshness for the CLIENT and any
+proxy between; a server-side response cache is a different feature
+with its own invalidation problem, and is not filed as wanted.
+
+- [x] a static file carries both validators and answers 304 to both
+      conditional forms; `*` and `W/` match; a changed file
+      invalidates.
+- [x] `cache:` sets `public, max-age`; a matching `If-None-Match` is a
+      304 with no body, and the page did NOT render (a counter page
+      proves it).
+- [x] `secure:`, a `Set-Cookie`, or a session cookie makes it
+      `private`; no `cache:` means no header at all.
+- [x] a POST, a redirect and a 404 carry no validators.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
