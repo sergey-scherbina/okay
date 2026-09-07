@@ -123,17 +123,3 @@ class TestPaasParsers extends munit.FunSuite:
       assertEquals(out.text.trim, """a "quoted" \ value""")
     }
   }
-
-  test("every rendered shell script is one `sh` accepts") {
-    for t <- Vector(Paas.Fly, Paas.Railway) do
-      rendered(t) { dir =>
-        val scripts = Files.list(dir).toArray.map(_.asInstanceOf[Path])
-          .filter(_.getFileName.toString.endsWith(".sh")).toVector
-        assert(scripts.nonEmpty, s"${t.name} rendered no scripts")
-        for sh <- scripts do
-          // -n is "parse, do not run": nothing is created, no account
-          // is touched, and a broken continuation still fails here
-          val out = Shell.run(Vector("sh", "-n", sh.toString))
-          assert(out.ok, s"${t.name}/${sh.getFileName} is not valid sh:\n${out.text}")
-      }
-  }

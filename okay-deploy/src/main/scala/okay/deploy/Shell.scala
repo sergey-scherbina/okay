@@ -53,6 +53,27 @@ object Shell:
     if t.isEmpty then head + "\n  output:  none — the command printed nothing at all"
     else head + "\n  output:  " + t.linesIterator.mkString("\n           ")
 
+  /**
+   * Text safe to embed in a `${VAR:?message}` prompt.
+   *
+   * Found by `sh -n` on a rendered script, twice, in two targets: an
+   * apostrophe in "the master password for web's Postgres" opens a
+   * quote inside the parameter expansion that nothing closes, and the
+   * shell then swallows the `}` and dies at end of file. `$`, a
+   * backtick and a brace are the same class of hazard, so all of them
+   * go.
+   *
+   * A message is prose for a person, so rewriting the characters is
+   * the right answer rather than escaping them into noise.
+   */
+  def prompt(text: String): String =
+    text.map {
+      case '\'' | '"' | '`' => ' '
+      case '$' | '{' | '}' | '\\' => ' '
+      case '\n' | '\r' | '\t' => ' '
+      case c => c
+    }.replaceAll(" +", " ").trim
+
   /** a command line an operator can paste back */
   def line(cmd: Vector[String]): String =
     cmd.map(a => if a.exists(c => c.isWhitespace || c == '"') then "\"" + a.replace("\"", "\\\"") + "\"" else a)

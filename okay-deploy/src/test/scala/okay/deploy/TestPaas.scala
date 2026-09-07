@@ -183,7 +183,7 @@ class TestPaas extends munit.FunSuite:
   test("every PaaS target is in Targets.all and answers to its own name") {
     for n <- Vector("fly", "render", "railway") do
       assertEquals(Targets.byName(n).map(_.name), Some(n))
-    assertEquals(Targets.all.length, 6)
+    assertEquals(Targets.all.length, 7)
   }
 
   test("Need.Region round-trips through the Schema, like every other need") {

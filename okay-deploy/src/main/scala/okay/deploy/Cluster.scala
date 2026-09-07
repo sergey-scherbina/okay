@@ -418,7 +418,7 @@ object Cluster extends Target:
     d.services.flatMap { s =>
       s.secrets.flatMap(sec => Targets.envVarOf(sec).map(_ -> s"${s.name} reads it as ${sec.ref}")) ++
         s.databases.filter(_.engine == Engine.Postgres)
-          .map(db => passwordKey(s, db) -> s"the password for ${s.name}'s ${db.engine} (${db.database})")
+          .map(db => passwordKey(s, db) -> s"the password for the ${db.engine} beside ${s.name} (${db.database})")
     }.distinctBy(_._1)
 
   private def secretsScript(d: Deployment): String =
@@ -444,7 +444,7 @@ object Cluster extends Target:
       sb ++= "\nkubectl create secret generic \"$RELEASE-secrets\" \\\n"
       sb ++= "  --namespace \"$NAMESPACE\" \\\n"
       for (k, why) <- ks do
-        sb ++= s"""  --from-literal=$k="$${$k:?set $k — $why}" \\\n"""
+        sb ++= s"""  --from-literal=$k="$${$k:?set $k — ${Shell.prompt(why)}}" \\\n"""
       sb ++= "  --dry-run=client -o yaml | kubectl apply -f -\n"
     sb.result()
 

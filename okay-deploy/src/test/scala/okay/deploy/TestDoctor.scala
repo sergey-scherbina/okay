@@ -201,3 +201,12 @@ class TestDoctor extends munit.FunSuite:
     assertEquals(out.code, 127)
     assert(out.text.contains("nosuchbinary-okay-deploy"), out.text)
   }
+
+  test("a ${VAR:?message} prompt carries no character that could close a quote it did not open") {
+    // the defect this exists for: "web's Postgres" opened a quote
+    // inside a parameter expansion and the shell swallowed the `}`
+    assertEquals(Shell.prompt("the master password for web's Postgres"),
+      "the master password for web s Postgres")
+    assertEquals(Shell.prompt("""a "quoted" $value ${x} `cmd`"""), "a quoted value x cmd")
+    assertEquals(Shell.prompt("plain words stay"), "plain words stay")
+  }
