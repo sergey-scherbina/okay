@@ -1,5 +1,29 @@
 # Changelog
 
+## intent-offline-other — the offline door still cannot say "none of these", and now we know why
+Completed: 2026-09-07
+The operator redirected this line at the AUTONOMOUS path: the model
+lanes improve what the model does, while the no-network door's own
+worst number — Other at recall 0.40, F1 0.52 — had never been
+attacked. The hypothesis came from the model path's history: what
+closed that hole there was a separate binary question asked first,
+and the offline door never had that step. Built it (a second
+CharGrams model on the same rows folded to in/out) and measured it
+against a criterion written before the first number.
+By argmax the gate never fires: 15 out-of-domain rows against 45
+collapse the fit to the majority answer, and the gated door is
+identical to the shipped one. Balanced 15/15 it fires and the tier
+dies. But p(OUT) ranks the held-out rows at AUC 0.843, so the signal
+is there; turning that ranking into a decision costs roughly a point
+of total accuracy per 0.05 of Other recall, and over eight random
+splits the threshold that looked free on one split (+1.7 points) is
++0.4 with sd 4.2, winning on three splits of eight. DECLINED as
+stated, nothing ships, the door is unchanged and no second artifact
+is added. The value is the constraint it names: the detector already
+ranks well and is starved of rows, which turns intent-other-more-rows
+from a preference into the measured blocker.
+specs/intent-classify.md, "Results — intent-offline-other".
+
 ## tod-schema-diagnostics — the taxonomy's names are the classifier
 Completed: 2026-09-07
 The two experiments the operator's TOD papers suggested, as numbers.

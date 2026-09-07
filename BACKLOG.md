@@ -3021,16 +3021,30 @@ subtraction.
       intent-frame-typed-values removed. It must be an explicit
       request that reports what it re-derived, not a silent
       convenience.
-- [ ] intent-other-more-rows — the answer that survived
-      intent-split-other, and the second lane today to land on corpus
-      size. `Other` is under-predicted (recall 0.47, precision 0.78)
-      on 15 training rows, and under-prediction is the failure that
-      matters: out-of-domain traffic routes INTO a meeting intent.
-      Neither abstention nor splitting fixed it; both made it worse.
-      What is untested is the obvious thing — more `Other` rows, and
-      whether recall moves with them. The suite that would show it
-      already exists (`TestSplitOther`, `TestModels`), so this is a
-      corpus lane with its measurement already written.
+- [x] intent-offline-other — MEASURED AND DECLINED 2026-09-07
+      (TestOfflineGate, offline, no network). The offline analogue of
+      the model path's binary gate: a second CharGrams model on the
+      in/out task before the four-way tier. By argmax it never fires
+      (15 out-of-domain rows against 45 collapse the fit to the
+      majority); balanced 15/15 it fires and the tier dies (binary
+      accuracy 50%, AUC 0.615). The representation DOES see it —
+      p(OUT) ranks at AUC 0.843 — but over eight random splits a
+      threshold buys 0.13 of Other recall for 0.4 points of total and
+      wins on 3 splits of 8. Nothing ships; the binding constraint is
+      15 training rows, not the algorithm. specs/intent-classify.md,
+      "Results — intent-offline-other".
+- [ ] intent-other-more-rows — SHARPENED 2026-09-07 by
+      intent-offline-other, which turned this from "more data would
+      presumably help" into a measured blocker: an out-of-domain
+      detector over the same rows already RANKS at AUC 0.843, and
+      every decision rule built on it is starved by 15 training rows
+      (by argmax it cannot fire at all; balanced it destroys the
+      tier). 40-60 real out-of-domain English rows — the operator's,
+      or harvested from the service's own traffic into
+      okay-chat/corpus/harvested.json — and TestOfflineGate re-runs
+      unchanged to settle it. Still needs human rows: the distillation
+      lanes measured generated ones to be worth nothing (they carry
+      the generator's register).
 - [x] intent-english-corpus-twins — LANDED 2026-09-05. Three
       near-twin pairs rewritten, the guard asserted on `labelled`, the
       artifact regenerated and every published number re-measured:

@@ -4075,3 +4075,91 @@ class is worth more than any wording around it.
   is this measurement plus the decision above. If a taxonomy rename
   ever lands without a number, the suite is here to produce one.
 
+## Results — intent-offline-other (2026-09-07)
+
+The autonomous path, on the operator's redirection: the model lanes
+of this line improve what the MODEL does, and the offline door's own
+worst number had never been attacked. It is `Other`: recall 0.40, F1
+0.52 on held-out English — more than half the traffic that is not
+about meetings lands in a meeting class with a confident face.
+
+The hypothesis came from the model path's own history: what closed
+that hole there was not a better four-way answer, it was a SEPARATE
+BINARY QUESTION asked first. The offline door had never had that
+step, and the one abstention mechanism it did try (a margin floor on
+the four-way model) was measured not to separate. So: a second
+`CharGrams` model fitted on the same rows folded to in/out, run
+before the four-way tier. No network, no new corpus.
+
+The criterion was written into the claim before any number was seen:
+`Other` recall ≥ 0.60, total accuracy down no more than one point,
+every class F1 ≥ 0.50.
+
+### What the binary tier can and cannot do
+- [x] by ARGMAX it never fires at all: out-of-domain recall 0.0% over
+      15 held-out rows, binary accuracy 75.0% — exactly the base rate.
+      With 15 out-of-domain rows against 45 in-domain, the fit
+      collapses to the majority answer, and the gated door is
+      identical to the shipped one at every margin floor.
+- [x] balancing the classes (15/15) makes the argmax fire (out
+      recall 66.7%) and destroys the tier: binary accuracy 50.0% and
+      the ranking quality falls with it (AUC 0.615). Undersampling
+      threw away two thirds of the in-domain rows to buy an argmax.
+- [x] the REPRESENTATION can see it even where the argmax cannot: on
+      the imbalanced fit, p(OUT) ranks the held-out rows at **AUC
+      0.843** and puts 9 of the 15 true out-of-domain messages in the
+      top 15. A rare class can rank its own rows first while never
+      winning an argmax, and a threshold is how that becomes a
+      decision.
+
+### The trade, and why it is declined
+Threshold on p(OUT), one split (60 held out):
+
+| door | total | Other recall | worst class F1 |
+|---|---:|---:|---:|
+| shipped | 80.0% | 0.40 | 0.52 |
+| p(OUT) ≥ 0.30 | 81.7% | 0.47 | 0.58 |
+| p(OUT) ≥ 0.10 | 78.3% | 0.53 | 0.57 |
+| p(OUT) ≥ 0.05 | 73.3% | 0.73 | 0.59 |
+
+The +1.7 points at 0.30 is ONE message of sixty, so the same
+comparison was run over eight random splits with both tiers refitted
+each time (scoring the shipped artifact against a fresh split would
+leak its training rows):
+
+| door | total (8 splits) | Other recall | better than base |
+|---|---:|---:|---:|
+| no gate | 71.0% (sd 4.2) | 0.46 (sd 0.21) | — |
+| p(OUT) ≥ 0.30 | 71.5% (sd 4.2) | 0.51 (sd 0.23) | 3/8 |
+| p(OUT) ≥ 0.20 | 71.0% (sd 4.2) | 0.52 (sd 0.23) | 3/8 |
+| p(OUT) ≥ 0.10 | 70.6% (sd 4.7) | 0.59 (sd 0.23) | 3/8 |
+| p(OUT) ≥ 0.05 | 67.7% (sd 5.3) | 0.65 (sd 0.21) | 2/8 |
+
+- [x] DECLINED against the stated criterion. The best recall inside
+      one point of the baseline is 0.59, and the criterion said 0.60;
+      the gain that looked free on one split is +0.4 points with sd
+      4.2 and wins on three splits of eight, which is noise.
+
+### Decisions
+- **Nothing ships.** The offline door is unchanged, and no second
+  artifact is added: a knob that does not improve the default on
+  average is not worth 85KB in an artifact whose whole claim is that
+  it needs nothing. The mechanism and its curve are recorded here so
+  a caller who values refusal over accuracy can build it in four
+  lines, with a number for each threshold.
+- **The single-split gain was reported and then retracted by the
+  resampling, in that order.** Worth stating because the tempting
+  path was to ship "+1.7 points, better on every axis" — which was
+  one message.
+- **The binding constraint is named, and it is not the algorithm.**
+  p(OUT) at AUC 0.843 says the signal is there; 15 out-of-domain
+  training rows say why no decision rule can use it well. This is the
+  strongest evidence yet for `intent-other-more-rows`, and it changes
+  that lane from "more data would presumably help" to "the detector
+  already ranks at 0.843 and is starved of rows".
+- **What would settle it**: 40-60 real out-of-domain rows (the
+  operator's, or harvested from the service's own traffic, which is
+  where `harvested.json` is meant to fill from). Then this suite
+  re-runs unchanged and the criterion is either met or the mechanism
+  is dead for good.
+
