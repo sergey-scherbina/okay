@@ -63,3 +63,74 @@ CAUTION — MACHINE STATE THIS CLAIM DOES NOT OWN:
   and their forks perturb my build. No heavy compile starts until they
   say the box is free; check `pgrep -f org.openjdk.jmh.runner.ForkedMain`
   and `pgrep -f sbt-launch` before every gate, not once.
+
+--- pre-flight, 2026-09-07 20:2x, ZERO CPU (bench-refresh holds the box) ---
+Nothing compiled yet. Everything below is from the published artifacts,
+not from a build, and each line says how it was checked.
+
+heartbeat: 2026-09-07T20:30:00Z
+status: in-progress — waiting on the box (operator's call: bench-refresh
+  measures first). scalaVersion is already 3.9.0 in the worktree; the
+  version COMMENT in build.sbt is deliberately still the old one, because
+  it is a claim about what compiles and I have not measured it yet.
+
+TOOLCHAIN — all three platforms already support 3.9.0 at the plugin
+versions plugins.sbt pins. No plugin bump is part of this migration:
+  org.scala-native:nscplugin_3.9.0:0.5.12          published (metadata)
+  org.scala-native:scala3lib_native0.5_3:3.9.0+0.5.12   published
+  org.scala-lang:scala3-library_sjs1_3:3.9.0       published
+  sbt-scalajs 1.22.0 is the version 3.9.0 ships with.
+
+okay-script's compiler API SURVIVES. The REPL left the compiler jar in
+3.8 (own `scala3-repl` artifact) and this build depends on
+scala3-compiler — but ScalaScript.scala uses `dotty.tools.dotc.Driver`,
+`StoreReporter` and `Contexts.Context`, none of them REPL. Checked in
+the 3.9.0 jar itself: Driver.class and StoreReporter.class are present,
+`process(Array[String], Reporter, CompilerCallback)` still overloaded the
+same way, and StoreReporter still publishes both constructor defaults
+(`$lessinit$greater$default$1/2`), so `new StoreReporter(null)` at
+ScalaScript.scala:709 still compiles. No `repl` classes in the jar,
+which is the change, and we do not touch them.
+
+okay-spark: THE MECHANISM IS FOUND, and it is not Spark's fault.
+build.sbt says only that the tests "fail at RUNTIME"; here is why, and
+it explains exactly why 3.7 works and 3.8+ does not:
+  - through 3.7 the stdlib on the classpath was `org.scala-lang:
+    scala-library:2.13.x` and the Scala-3-only classes lived apart in
+    `scala3-library_3`. TWO jars, no conflict with Spark's 2.13 tree.
+  - from 3.8 the stdlib is compiled WITH Scala 3 and published as
+    `org.scala-lang:scala-library:3.9.0` — same groupId:artifactId as
+    Spark's `scala-library:2.13.18`, so one evicts the other, and 3.9.0
+    wins on version order. `scala3-library_3:3.9.0` is now an EMPTY
+    344-byte shim (manifest only) that just depends on scala-library
+    3.9.0 — verified by unzipping it — so the old two-jar arrangement
+    cannot be reconstructed.
+  - and the two jars are NOT interchangeable for Scala 2 reflection.
+    `javap -v scala.collection.immutable.List`:
+        scala-library 2.13.18 -> @scala.reflect.ScalaSignature + ScalaSig
+        scala-library 3.9.0   -> TASTY + an EMPTY `Scala` attribute
+    Scala 3 emits TASTy where Scala 2 emitted pickles, so scala-reflect
+    2.13 (which Spark's ScalaReflection/TypeTag encoders use, and which
+    this build already pins explicitly at build.sbt) finds no signature
+    for any stdlib type at run time. A swallowed failure on that path is
+    a very plausible source of the "Cannot find a SparkSession
+    implementation on the Classpath" message, which is what Spark 4
+    reports when loading its classic SparkSession companion throws.
+  Spark 4.2.0 is out (4.0.0 is what we pin) and still 2.13-only —
+  `cs resolve` says 4.2.0 wants scala-library/scala-reflect 2.13.18,
+  4.0.0 wants 2.13.16. Operator's call: TRY 4.2.0 FIRST on 3.9, since
+  a newer Spark may have fixed its own end, and only then decide.
+  If it still fails, the one idea worth a try before pinning the module
+  back to 3.7.4 is CLASSPATH ORDER rather than eviction: put the
+  2.13.18 jar first on okay-spark's test classpath and let the 3.9.0
+  one behind it supply only the Scala-3-only classes (CanEqual,
+  deriving, quoted, runtime.LazyVals). Delicate, and it must be
+  measured, not argued.
+
+WHAT I HAVE NOT CHECKED and cannot without the box: the given-search
+change (most general, not most specific — a SILENT behaviour change,
+only the matrix catches it), new warnings under the zero-warning
+policy, and whether `zio-direct` 1.0.0-RC7 / `kyo-direct` 0.16.2 in
+`compare` still expand under a 3.9 macro API. Those two are the
+likeliest new breakage and they live in the Jmh configuration, which
+`Test/compile` does not reach — gate with `compare/Jmh/compile`.
