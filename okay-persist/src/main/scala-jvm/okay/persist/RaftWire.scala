@@ -161,10 +161,15 @@ object RaftWire:
       finally sock.close()
 
     /** the ONE state transition, network-driven: apply, notify newly
-     * committed entries, send whatever it produced — network I/O
-     * happens OUTSIDE the lock */
+     * committed entries, send whatever it produced. The engine's
+     * callbacks (`onRestore`, `onCommit`) run INSIDE the lock, in log
+     * order: every connection is its own thread, and two messages
+     * committing adjacent ranges would otherwise race their callbacks
+     * and hand the engine 6..8 before 1..5 (stage 2c found it). So an
+     * engine's apply must not block on the cluster. Network I/O
+     * happens OUTSIDE the lock. */
     private def onMessage(msg: RaftMsg): Unit =
-      val (toSend, restored, newlyCommitted) = lock.synchronized {
+      val toSend = lock.synchronized {
         val before = state.commitIndex
         val (ns, out) = Raft.handle(state, msg, peerIds)
         persisted(state, ns)
@@ -177,13 +182,14 @@ object RaftWire:
           case _ => ()
         // after a snapshot the engine restarts at the snapshot's edge:
         // what it is told to apply begins there, not at the old commit
+        if installed then onRestore(ns.snapshotIndex, ns.snapshotData)
         val from = if installed then ns.snapshotIndex else before
-        val fresh = if ns.commitIndex > from then (from until ns.commitIndex).toVector else Vector.empty[Long]
-        (out, if installed then Some((ns.snapshotIndex, ns.snapshotData)) else None,
-          fresh.map(i => (i + 1, ns.log((i - ns.snapshotIndex).toInt))))
+        var i = from
+        while i < ns.commitIndex do
+          onCommit(i + 1, ns.log((i - ns.snapshotIndex).toInt))
+          i += 1
+        out
       }
-      restored.foreach((at, data) => onRestore(at, data))
-      newlyCommitted.foreach((i, e) => onCommit(i, e))
       msg match
         case RaftMsg.Proposed(_, _, n, false, leader) => onRefused(n, Option(leader).filter(_.nonEmpty))
         case _ => ()
@@ -247,6 +253,12 @@ object RaftWire:
       state = ns
       did
     }
+
+    /** run `f` with this node's transitions paused — no message is
+     * handled, nothing is applied — so an engine can read its own
+     * state machine at a definite index and `compact` to it in one
+     * breath. Reentrant: `compact` inside is fine. Keep it short. */
+    def quiesced[A](f: => A): A = lock.synchronized(f)
 
     /**
      * A membership change (stage 2a): `cluster` is the WHOLE new

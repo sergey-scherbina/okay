@@ -924,10 +924,16 @@ measure on our own data, never a predicted result.
       cue; `Node.compact`/`onRestore` on the wire; the simulator's
       nodes run state machines they snapshot and compact to — 541
       snapshots, 81 installs on 32 of 40 seeds, safety asserted on
-      what the machines saw. Stage 2c (`RaftStore`'s own snapshot —
-      a store dump as the bytes), chunked snapshots, the catch-up
-      phase for a joiner, pre-vote, and the commit-wait as an `Ack`
-      level remain open; box stays unchecked for those.
+      what the machines saw. STAGE 2c LANDED 2026-09-07
+      (raft-store-snapshot): `RaftStore.snapshot()` — the local
+      store's full history as the image, refused by name once
+      retention has dropped history (offsets must survive a
+      restore); restore appends the image's records past the local
+      `end`, a gap is `damaged`; `snapshotEvery`; the wire's commit
+      callbacks moved inside the node's lock (a real ordering race
+      between connections). Chunked snapshots, the catch-up phase
+      for a joiner, pre-vote, and the commit-wait as an `Ack` level
+      remain open; box stays unchecked for those.
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,

@@ -331,10 +331,45 @@ prices every large claim:
   an older snapshot is a no-op and an agreeing suffix survives) and
   a Live wire test (two nodes commit and compact, a third starts
   late and is restored through `onRestore`, then applies only what
-  came after). Not here: `RaftStore`'s own snapshot (stage 2c — its
-  state machine is the local `Store`, whose image is a store dump,
-  not a byte string yet), chunked snapshots, snapshot-carried
+  came after). Not here: chunked snapshots, snapshot-carried
   addresses.
+- **Stage 2c — `RaftStore`'s own snapshot, LANDED 2026-09-07
+  (raft-store-snapshot).** The store's state machine is its local
+  `Store`, so its image is the local store's FULL history: every
+  declared topic, every partition, every record with its offset
+  (`RaftStore.Image`, CBOR), taken at the last applied index with
+  the node quiesced (`Node.quiesced`: no transition, no apply, so
+  the index and the records agree) and handed to `compact`.
+  `snapshot()` is `Left` when a partition's `begin` is past 0 —
+  retention or a local `compact` has dropped history the image
+  would need, and OFFSETS must survive a restore, because the
+  offset `append` returns is the local one and a reader's saved
+  position points at it; the image is the whole history or
+  nothing. Restore, on a node handed the snapshot: the image's
+  records past the local store's own `end` are appended in offset
+  order — every node applies the same log, so a node's local store
+  holds a prefix of the same history by construction — and a gap
+  (local `end` short of where the image resumes, or an append that
+  lands elsewhere than the image says) is named in `damaged` and
+  refused, never papered over; the store then serves what it had.
+  A topic the image names and this node has not declared is
+  declared by the restore with the default policy. `appliedIndex`
+  is the store's own cursor: the core re-applies from the
+  snapshot's edge after a restore and the store skips what is at or
+  before its cursor, so a node whose commit was already past the
+  snapshot applies nothing twice. `snapshotEvery` takes one every
+  that many applied entries. Found on the way: the wire delivered
+  `onCommit`/`onRestore` OUTSIDE the node's lock, and every
+  connection is its own thread, so two messages committing adjacent
+  ranges could hand the engine 6..8 before 1..5 — the callbacks now
+  run inside the lock, in log order (an engine's apply must not
+  block on the cluster; `RaftStore`'s does not). Live: two stores
+  commit and snapshot, a third starts late and reads the same eight
+  records at the same offsets, then its own append is carried to
+  the leader as before; a topic with retention refuses the snapshot
+  by name. Not here: the image is one message (chunking), and a
+  restore into a local store that is NOT a prefix (a node repaired
+  from elsewhere) is `damaged` rather than rebuilt.
 - **The typestate note, still open** (asked by the user, 2026-09-01):
   the ROLE protocol (Follower → Candidate → Leader, each with its
   own legal actions) is the textbook typestate case; `PState` (the

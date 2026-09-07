@@ -2,6 +2,7 @@ package okay.persist
 
 import okay.codec.{Cbor, Schema}
 import java.util.concurrent.{ConcurrentHashMap, CountDownLatch, TimeUnit}
+import scala.util.boundary, boundary.break
 
 /**
  * The `Store` over a Raft-replicated log (specs/consensus.md, stage
@@ -31,12 +32,35 @@ import java.util.concurrent.{ConcurrentHashMap, CountDownLatch, TimeUnit}
  *
  * Topics are declared per node, not replicated: partition counts are
  * configuration, agreed the way a cluster's addresses are.
+ *
+ * Stage 2c — the store's own snapshot: `snapshot()` writes the local
+ * store's FULL history (every topic, every partition, every record
+ * with its offset) as one image at the last applied index and hands
+ * it to the node's `compact`; a node that falls behind a compacted
+ * stretch is restored from it — the image's records past its own
+ * local `end` appended in offset order, since every node applies the
+ * same log and so holds a prefix of the same history. Refused when
+ * any partition's `begin` is past 0 (retention or a local `compact`
+ * has dropped history the image would need, and offsets must survive
+ * a restore); a gap between a local `end` and the image is named in
+ * `damaged` and refused, never papered over. `snapshotEvery` > 0
+ * takes one every that many applied entries.
  */
-final class RaftStore private (val id: String, local: Store, commitWaitMs: Long) extends Store:
+final class RaftStore private (val id: String, local: Store, commitWaitMs: Long, snapshotEvery: Int) extends Store:
 
   import RaftStore.*
 
   private val pending = ConcurrentHashMap[String, Pending]()
+  /** the last Raft index applied to the local store: what a snapshot
+   * is taken at, and up to which a re-application from a snapshot's
+   * edge is skipped (already in the store). Written under the node's
+   * lock only (the callbacks run there) */
+  @volatile private var appliedIndex = 0L
+  private var sinceSnapshot = 0
+  /** a restore this store could not honour — the local store no
+   * longer matches the log and serves what it had; an operator's
+   * matter, said once and kept */
+  @volatile var damaged: Option[String] = None
   // set once by `start`, after this store exists: the node's commit
   // seam is a method of the store, and the store cannot see the node
   // before it is built
@@ -50,20 +74,96 @@ final class RaftStore private (val id: String, local: Store, commitWaitMs: Long)
     val p = pending.remove(s"$id/$n")
     if p != null then { p.nn.refused = Some(leader); p.nn.done.countDown() }
 
-  /** the wire node's commit seam: apply, then wake the proposer */
+  /** the wire node's commit seam (under its lock, in log order):
+   * apply, then wake the proposer */
   private def applied(index: Long, entry: RaftEntry): Unit =
-    // a configuration entry (stage 2a) is the cluster's business, and
-    // a leader's blank no-op (paper §8) is the log's own: nothing to apply
-    if entry.members.nonEmpty || entry.data.isEmpty then ()
-    else Cbor.read[Op](entry.data) match
-      case Right(Op.Append(topic, partition, key, value, proposer, n)) =>
-        val off = local.topic(topic).append(partition, key, value, Ack.Durable)
-        val p = pending.remove(s"$proposer/$n")
-        if p != null then { p.nn.offset = off; p.nn.done.countDown() }
+    // a re-application from a snapshot's edge: already in the store
+    if index <= appliedIndex then ()
+    else
+      // a configuration entry (stage 2a) is the cluster's business, and
+      // a leader's blank no-op (paper §8) is the log's own: nothing to apply
+      if entry.members.nonEmpty || entry.data.isEmpty then ()
+      else Cbor.read[Op](entry.data) match
+        case Right(Op.Append(topic, partition, key, value, proposer, n)) =>
+          val off = local.topic(topic).append(partition, key, value, Ack.Durable)
+          val p = pending.remove(s"$proposer/$n")
+          if p != null then { p.nn.offset = off; p.nn.done.countDown() }
+        case Left(err) =>
+          // an entry this node cannot read is a bug in the writer, not a
+          // reason to diverge silently: name it and keep applying
+          System.err.println(s"raft-store $id: unreadable entry at $index: $err")
+      appliedIndex = index
+      sinceSnapshot += 1
+      if snapshotEvery > 0 && sinceSnapshot >= snapshotEvery then
+        sinceSnapshot = 0
+        snapshot().left.foreach(why => System.err.println(s"raft-store $id: snapshot at $index refused: $why"))
+
+  /** the local store's full history as one image at the last applied
+   * index, handed to the node as its snapshot — the log up to that
+   * index is then dropped. `Left` names why not: nothing applied yet,
+   * or a partition whose `begin` is past 0 (its history is gone, and
+   * a restore could not reproduce its offsets). Taken with the node
+   * quiesced, so the index and the records agree. */
+  def snapshot(): Either[String, Long] = node.quiesced {
+    val at = appliedIndex
+    if at == 0 then Left("nothing applied yet")
+    else boundary[Either[String, Long]] {
+      val declared = synchronized(byName.map(t => (t.name, t.partitions)))
+      val topics = declared.map { (name, partitions) =>
+        val mine = local.topic(name, partitions)
+        val parts = (0 until partitions).toVector.map { p =>
+          if mine.begin(p) != 0 then
+            break(Left(s"topic $name partition $p begins at ${mine.begin(p)}: history before it is gone"))
+          val out = Vector.newBuilder[Rec]
+          var from = 0L
+          var going = true
+          while going do
+            mine.read(p, from, 512) match
+              case Topic.Read.TooEarly(b) => break(Left(s"topic $name partition $p: history before $b is gone"))
+              case Topic.Read.Records(rs) =>
+                if rs.isEmpty then going = false
+                else
+                  rs.foreach(r => out += Rec(r.offset, r.timestamp, r.key, r.value))
+                  from = rs.last.offset + 1
+          out.result()
+        }
+        TopicImage(name, partitions, parts)
+      }
+      if node.compact(at, Cbor.write(Image(at, topics))) then Right(at)
+      else Left(s"the node refused to compact at $at (snapshot ${node.snapshotIndex}, commit ${node.commitIndex})")
+    }
+  }
+
+  /** the wire node's restore seam (under its lock): a snapshot from
+   * the leader — the image's records past this store's own `end`
+   * are appended in offset order; what it already holds is a prefix
+   * of the same history, by construction. A gap is `damaged`. */
+  private def restore(index: Long, bytes: Array[Byte]): Unit =
+    if index <= appliedIndex then ()   // already past it: nothing the image knows that we do not
+    else Cbor.read[Image](bytes) match
       case Left(err) =>
-        // an entry this node cannot read is a bug in the writer, not a
-        // reason to diverge silently: name it and keep applying
-        System.err.println(s"raft-store $id: unreadable entry at $index: $err")
+        damaged = Some(s"unreadable snapshot at $index: $err")
+        System.err.println(s"raft-store $id: ${damaged.get}")
+      case Right(img) =>
+        img.topics.foreach { t =>
+          val mine = topic(t.name, t.partitions)   // declared here if not yet, with the default policy
+          for p <- 0 until t.partitions do
+            val end = mine.end(p)
+            val fresh = t.parts(p).filter(_.offset >= end)
+            fresh.headOption.filter(_.offset != end).foreach { r =>
+              damaged = Some(s"topic ${t.name} partition $p: local end $end, the snapshot resumes at ${r.offset}")
+              System.err.println(s"raft-store $id: ${damaged.get}")
+            }
+            if damaged.isEmpty then fresh.foreach { r =>
+              val off = local.topic(t.name, t.partitions).append(p, r.key, r.value, Ack.Durable)
+              if off != r.offset then
+                damaged = Some(s"topic ${t.name} partition $p: appended at $off, the snapshot said ${r.offset}")
+                System.err.println(s"raft-store $id: ${damaged.get}")
+            }
+        }
+        if damaged.isEmpty then
+          appliedIndex = index
+          sinceSnapshot = 0
 
   private final class RaftTopic(val name: String, val partitions: Int) extends Topic:
     private def mine = local.topic(name, partitions)
@@ -113,6 +213,10 @@ final class RaftStore private (val id: String, local: Store, commitWaitMs: Long)
   def currentTerm: Long = node.currentTerm
   /** the cluster as this node currently counts it */
   def members: Set[String] = node.members
+  /** the index the node's log is compacted to (0: never) */
+  def snapshotIndex: Long = node.snapshotIndex
+  /** the last Raft index applied to the local store */
+  def applied: Long = appliedIndex
   /** a membership change: the whole new cluster with addresses;
    * accepted only on the leader with no earlier change pending —
    * see `RaftWire.Node.reconfigure` */
@@ -126,6 +230,14 @@ object RaftStore:
   enum Op derives Schema:
     case Append(topic: String, partition: Int, key: Array[Byte], value: Array[Byte],
                 proposer: String, n: Long)
+
+  /** the store's snapshot (stage 2c): the local store's full history
+   * at a Raft index — every declared topic, every partition, every
+   * record with its offset (timestamps ride along; a restore's own
+   * appends stamp anew) */
+  final case class Rec(offset: Long, timestamp: Long, key: Array[Byte], value: Array[Byte]) derives Schema
+  final case class TopicImage(name: String, partitions: Int, parts: Vector[Vector[Rec]]) derives Schema
+  final case class Image(index: Long, topics: Vector[TopicImage]) derives Schema
 
   private final class Pending:
     val done = CountDownLatch(1)
@@ -149,8 +261,8 @@ object RaftStore:
   def start(id: String, port: Int, peers: Map[String, (String, Int)], local: Store,
             stable: RaftWire.Stable = RaftWire.Stable.memory(),
             tickMs: Long = 50, electionTimeoutMs: Long = 300, heartbeatMs: Long = 100,
-            commitWaitMs: Long = 5000): RaftStore =
-    val store = new RaftStore(id, local, commitWaitMs)
+            commitWaitMs: Long = 5000, snapshotEvery: Int = 0): RaftStore =
+    val store = new RaftStore(id, local, commitWaitMs, snapshotEvery)
     store.wired = RaftWire.Node(id, port, peers, tickMs, electionTimeoutMs, heartbeatMs,
-      onCommit = store.applied, stable = stable, onRefused = store.refused)
+      onCommit = store.applied, stable = stable, onRefused = store.refused, onRestore = store.restore)
     store

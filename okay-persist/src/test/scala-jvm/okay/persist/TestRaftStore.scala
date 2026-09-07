@@ -47,6 +47,62 @@ class TestRaftStore extends munit.FunSuite {
       case Topic.Read.Records(rs) => rs.map(r => String(r.value, "UTF-8"))
       case Topic.Read.TooEarly(_) => Vector.empty
 
+  private def recordsIn(local: Store, topic: String): Vector[(Long, String)] =
+    local.topic(topic).read(0, 0L, 100) match
+      case Topic.Read.Records(rs) => rs.map(r => (r.offset, String(r.value, "UTF-8")))
+      case Topic.Read.TooEarly(_) => Vector.empty
+
+  test("the store's snapshot: two nodes commit and compact, a third starts late and reads the same records at the same offsets") {
+    val ids = Vector("0", "1", "2")
+    val ports = ids.map(_ -> freePort()).toMap
+    val addr = ports.map((id, p) => id -> ("127.0.0.1", p))
+    val locals = ids.map(_ -> new MemoryStore).toMap
+    def start(id: String) = RaftStore.start(id, ports(id), addr - id, locals(id),
+      tickMs = 20, electionTimeoutMs = 150, heartbeatMs = 50)
+    val early = Vector("0", "1").map(id => id -> start(id)).toMap
+    var late: Option[RaftStore] = None
+    try
+      await("a leader", Elect)(early.values.exists(_.isLeader))
+      val leader = early.values.find(_.isLeader).get
+      val t = leader.topic("t", 1)
+      for i <- 0 until 6 do assertEquals(t.append(0, Array.empty, s"v$i".getBytes("UTF-8"), Ack.Durable), i.toLong)
+      await("both applied", Commit)(early.keys.forall(id => valuesIn(locals(id), "t").length == 6))
+      assertEquals(leader.snapshot(), Right(leader.applied), "the image is taken at the last applied index")
+      assertEquals(leader.snapshotIndex, leader.applied)
+      // the log up to there is gone on the leader; the cluster goes on
+      for i <- 6 until 8 do assertEquals(t.append(0, Array.empty, s"v$i".getBytes("UTF-8"), Ack.Durable), i.toLong)
+
+      val third = start("2"); late = Some(third)
+      await("the late node restored and caught up", Commit)(recordsIn(locals("2"), "t").length == 8)
+      assertEquals(recordsIn(locals("2"), "t"), (0 until 8).map(i => (i.toLong, s"v$i")).toVector,
+        "the same records at the same offsets: the image's, then the log's")
+      assertEquals(third.damaged, None)
+      assert(third.applied >= leader.snapshotIndex)
+      assertEquals(third.topics, Vector("t"), "the topic was declared by the restore")
+      // and it keeps applying — and a follower's append is carried to the leader as before
+      assertEquals(third.topic("t", 1).append(0, Array.empty, "v8".getBytes("UTF-8"), Ack.Durable), 8L)
+      await("the leader applied the late node's append", Commit)(valuesIn(locals(leader.id), "t").length == 9)
+    finally
+      late.foreach(_.close()); early.values.foreach(_.close())
+  }
+
+  test("the store's snapshot is refused once retention has dropped history: offsets could not survive a restore") {
+    val c = cluster()
+    try
+      await("a leader", Elect)(c.leader.isDefined)
+      val leader = c.stores(c.leader.get)
+      // a topic that keeps a few hundred bytes: `begin` moves past 0
+      val t = leader.topic("short", 1, Policy(retainBytes = 200))
+      for i <- 0 until 20 do { val _ = t.append(0, Array.empty, s"value-number-$i".getBytes("UTF-8"), Ack.Durable) }
+      await("applied", Commit)(leader.applied >= 20)
+      assert(t.begin(0) > 0, s"retention did not move begin: ${t.begin(0)}")
+      val refused = leader.snapshot()
+      assert(refused.isLeft, s"a snapshot over dropped history must be refused: $refused")
+      assert(refused.swap.exists(_.contains("begins at")), refused.toString)
+      assertEquals(leader.snapshotIndex, 0L, "nothing compacted")
+    finally c.close()
+  }
+
   test("an append on the leader is applied on every node, and a follower's append names the leader") {
     val c = cluster()
     try

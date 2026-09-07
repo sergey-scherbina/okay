@@ -113,8 +113,12 @@ Stage 2b adds compaction: `compact(upTo, snapshot)` drops the log up
 to an index the engine has applied, keeping the engine's own image
 of its state machine; a follower that fell behind a compacted
 stretch is sent the snapshot (`InstallSnapshot`) and told through
-`onRestore` to reset to it. `RaftStore` does not snapshot its local
-store yet (stage 2c).
+`onRestore` to reset to it. `RaftStore.snapshot()` (stage 2c) makes
+the local store's full history that image — refused by name once
+retention has dropped history, since offsets must survive a restore
+— and a store that starts late is restored from it, the image's
+records appended past its own `end` at the same offsets;
+`snapshotEvery` automates it.
 
 `Configs.ambient(name)` reads an ambient `Store` (ctx-everywhere) —
 the managed-config convenience under `provide(store) { ... }`.

@@ -1,5 +1,31 @@
 # Changelog
 
+## raft-store-snapshot — RaftStore's own snapshot: the local store's full history as the image, and a commit-ordering race in the wire
+
+Stage 2c of persist-raft. `RaftStore.snapshot()` writes every
+declared topic, partition and record (with its offset) as one CBOR
+image at the last applied index — taken with the node quiesced, so
+the index and the records agree — and hands it to the node's
+`compact`. It is refused by name when a partition's `begin` is past
+0: retention or a local compact has dropped history the image would
+need, and offsets must survive a restore because the offset `append`
+returns is the local one. A store handed the snapshot appends the
+image's records past its own `end` in offset order (every node
+applies the same log, so its store is a prefix of the same history);
+a gap is named in `damaged` and refused. `appliedIndex` is the
+store's cursor: re-application from the snapshot's edge skips what
+is already in the store. `snapshotEvery` automates it. Live: two
+stores commit and snapshot, a third starts late and reads the same
+eight records at the same offsets, then its own append is carried to
+the leader; a topic with retention refuses.
+
+Found on the way: `RaftWire.Node` delivered `onCommit` and
+`onRestore` outside its lock, and every connection is its own
+thread, so two messages committing adjacent ranges could hand the
+engine 6..8 before 1..5. The callbacks now run inside the lock in
+log order; `Node.quiesced` lets an engine read its state machine at
+a definite index.
+
 ## raft-compaction — log compaction and InstallSnapshot in the Raft core, the simulator's nodes now running state machines
 
 Stage 2b of persist-raft (paper §7). `Raft.compact(s, upTo,
