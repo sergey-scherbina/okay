@@ -329,6 +329,24 @@ BACKLOG); this spec is the contract it builds to.
 
 ## Results
 
+**The layering (script-config, 2026-09-07).** `envName`, `fromEnv` and
+`layered` landed with their first consumer, okay-script's seventeen
+`OKAY_*` variables. Two things the writing settled:
+
+- **`fromEnv` is a PATCH, not a value.** Only the fields a variable is
+  actually set for appear in it, which is what lets the three sources
+  merge by RFC 7396 rather than by seventeen `orElse`s — and what lets
+  a config hold a field the environment cannot carry, refusing only if
+  someone actually sets a variable for it.
+- **An empty variable is not a value.** `OKAY_PAGES=` in a compose
+  file is how an unset setting reaches a process, so it means unset.
+  Treating it as the empty string would have made a deployment's
+  blank line beat a program's default.
+
+The consumer proved the point the spec claimed: okay-deploy renders
+these names and okay-script reads them, and after this landing they
+are one derivation rather than two lists.
+
 Shipped 2026-09-01 (conf-impl): okay-conf cross-built JVM/JS/Native,
 depending on okay-codec only. 12/8/8 tests — the SHARED suite proves
 `env:` on all three platforms (PATH resolves everywhere; a miss

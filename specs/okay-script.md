@@ -2445,6 +2445,49 @@ only this one step, and only when a script asks for it, does.
       and vice versa — `check`'s own fence scan is independent of
       `blocks`'/`tokenize`'s.
 
+## The configuration (script-config, 2026-09-07)
+
+Seventeen environment variables were read in one place and written in
+another. `Serve.parse` read `OKAY_TLS_RELOAD`; `ScriptDeploy` rendered
+`OKAY_PAGES`, `OKAY_PORT` and `OKAY_OPS` into a unit file. The two
+lists agreed because a person kept them agreeing, and a rename in
+either would have been discovered by a deployment quietly running on a
+default nobody chose.
+
+Now there is one list. `Serve.Config` is a flat case class with the
+program's own defaults; okay-conf derives every environment name from
+its schema (`Conf.envName`, camelCase to `PREFIX_SNAKE_CASE`) and
+okay-deploy renders settings through that SAME derivation. A field
+renamed here is renamed in the deployment, and a variable the
+deployment could invent does not exist — a test asserts exactly that,
+walking every name the deployment renders and failing on one the
+config has no field for.
+
+The order a running process reads is **defaults, then the file
+`OKAY_CONF` names, then the environment, then the command line** —
+each closer to the process than the one before it. The layering lives
+in okay-conf because it is nobody's local trick (specs/conf.md).
+
+Three things changed behaviour, and all three are the same change:
+
+- **A wrong value is a refusal naming its variable.** `OKAY_HSTS=soon`
+  used to be silently `None` — "the HSTS I set is not in effect" is
+  not a thing to discover in production. `OKAY_HSTS=0` still means
+  off, because zero is a value and `soon` is a typo.
+- **`OKAY_CONF` pointing at a file that is not there refuses.** The
+  operator asked for that file; starting without it is how a
+  deployment runs on defaults nobody chose.
+- **The deployment writes only what it OVERRIDES.** `Settings.only`
+  keeps the three okay-script actually decides; a unit file restating
+  a program's default is a lie waiting for that default to change.
+
+The pairs stay pairs. A certificate without its key, an ACME email
+without domains, a half `kid:key` — each is built in `Args.of` and
+each is the named refusal it was before, because what an environment
+can carry (text, a number, a yes/no, a secret REFERENCE) is not the
+same question as what this program needs.
+
+
 ## Results
 
 Landed 2026-09-03 (core), extended 2026-09-03 (runtime-app follow-on:
