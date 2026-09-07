@@ -342,8 +342,15 @@ final case class Tool(
   atLeast: Option[String],            // the minimum this needs, when it has one
   why: String,                        // "the laptop target builds and runs containers"
   install: Map[Manager, String],      // the exact command, per package manager
-  usable: Option[Vector[String]],     // the probe that says it WORKS, not just exists
+  ready: Option[Ready],               // the probe that says it WORKS, not just exists
+  note: String,                       // when there is nothing to RUN: "comes with Docker Desktop"
   site: String)                       // where the vendor documents it
+
+/** written 2026-09-07: the sketch above had `usable` as a bare
+ *  Vector[String], and the probe turned out to be useless without
+ *  the sentence its failure produces -- two parallel Options that
+ *  must agree is the shape this repository keeps deleting */
+final case class Ready(probe: Vector[String], why: String, fix: String)
 
 enum Manager: case Brew, Apt, Dnf, Apk, Pacman, Winget, Manual
 
@@ -478,19 +485,68 @@ lines of its output, and what it was trying to do. A tool that exits
 produce a sentence an operator can act on. "helm upgrade failed"
 without the command is not one.
 
-- [ ] a target's `requires` is checked BEFORE anything is rendered or
+- [x] a target's `requires` is checked BEFORE anything is rendered or
       applied, and `Up` on a machine without docker prints the report
       and exits non-zero, having applied nothing.
-- [ ] a tool that is installed but not usable is `NotReady` with the
+- [x] a tool that is installed but not usable is `NotReady` with the
       fix in the message: a stopped docker daemon, a kubectl with no
       context, a flyctl that is not logged in.
-- [ ] the install command shown is the one for the detected manager,
+- [x] the install command shown is the one for the detected manager,
       and a tool with no manager entry says `Manual` with its URL.
-- [ ] `--install` prints each command before running it, never uses a
+- [x] `--install` prints each command before running it, never uses a
       pipe from the network, and re-checks afterwards.
-- [ ] every shelled-out failure names its command, exit code and last
+- [x] every shelled-out failure names its command, exit code and last
       output — asserted on a command that exits non-zero and prints
       nothing.
+
+## Results, stage 0
+
+**deploy-doctor-cli (2026-09-07), stage 0's second half.** The doctor
+and the `okay deploy` CLI are in okay-deploy, proven on a real docker
+(the Live suite renders a directory, runs `up`, sees the container,
+runs `down`) and on okay-script's own committed artifacts copied to a
+directory with nothing else in it.
+
+Four things the writing decided or corrected:
+
+- **`docker compose` is asked for BY NAME.** The laptop target used
+  to require `docker` alone, and the plugin is exactly what a
+  distribution's `docker.io` leaves out — the difference between a
+  report and a `'compose' is not a docker command` half way through
+  an apply.
+- **`Ready` is one value, not two parallel Options.** See the
+  correction beside the sketch above.
+- **A missing tool with nothing to RUN says so in words.** The note
+  ("comes with Docker Desktop; nothing to install separately") is a
+  separate field from the install map, because that map's values are
+  COMMANDS and English in it is how a tool ends up trying to run a
+  sentence.
+- **The target can come from the directory.** `okay deploy up` inside
+  `deploy/host/` needs no argument: the JSON's own parent names the
+  target, which is the shape an operator on a server actually types.
+  When the directory is not a target's name, that is a named refusal.
+
+What the doctor does NOT do is guess. A name a target requires that
+the catalogue does not know is `Unknown` and fails the check — a
+target cannot ask for something the doctor would quietly skip, and
+the catalogue cannot grow entries nothing asks for.
+
+- [x] the CLI reads `deployment.json` and never evaluates Scala: the
+      Live test's directory holds the rendered files and the JSON,
+      nothing else.
+- [x] exit codes mean something: 0 applied, 1 failed, 2 arguments, 3 a
+      prerequisite is missing, each asserted.
+- [x] `--dry-run` prints the exact command and runs nothing.
+- [x] `--json` on `doctor`, `diff` and `targets`, same fields as the
+      table.
+- [x] no prompts at all, so nothing blocks a pipeline; `--yes` is
+      accepted and documented as changing nothing.
+
+Not in this landing, and filed: okay-script's fourteen `OKAY_*`
+variables re-expressed as a Schema'd config with the runtime order
+defaults → file → environment (`script-config`), and the systemd unit
+put in front of a real `systemd-analyze verify`, which needs a Linux
+box this session does not have.
 
 ## The line this model does not cross
 
