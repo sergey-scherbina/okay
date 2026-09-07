@@ -1,0 +1,5 @@
+lane: intent-autonomy-report
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: the first lane of the autonomy programme (specs/intent-classify.md): print the two numbers the programme is judged by — the autonomy rate (share answered with NO network, at what precision, per class) and the handed-over share — per tier and per gram floor, so a caller can read "at precision >= P you can answer X% without a network and must hand over the rest". Offline, no new data, runs in the ordinary suite. Worked in the okay-wt-other worktree beside intent-offline-other, which produced the plan.
+touches: okay-intent test (MeasureAutonomy), specs/intent-classify.md, BACKLOG, CHANGELOG
