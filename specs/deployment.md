@@ -737,6 +737,37 @@ answer. It is a `Need` like the others, so a target that does not care
 ignores it and a target that must have one refuses by name when it is
 absent.
 
+## Results, stage 2
+
+**deploy-paas (2026-09-07).** The three targets are in okay-deploy,
+and okay-script renders to two of them — `render` and `railway` — in
+the repository. `fly` REFUSES okay-script by name, because nobody has
+chosen a region, and that refusal is committed behavior rather than
+an oversight: `ScriptDeploy`'s own main prints it, and a test asserts
+it.
+
+- [x] every `fly.toml` parses as TOML (`tomllib`), and a setting
+      holding a quote and a backslash comes back out of the parser
+      byte-identical — the escaping is where a hand-rolled renderer
+      breaks and only a parser notices.
+- [x] `render.yaml` parses as YAML (`ruby -ryaml`), with the services
+      the value named and a `databases:` section.
+- [x] `railway.json` parses with okay-codec's own `Json`, in the
+      default suite, and is printed INDENTED because it is committed
+      and read by people.
+- [x] every rendered shell script passes `sh -n` — nothing is run, no
+      account is touched, and a broken line continuation still fails.
+- [x] a managed database is delegated with the exact commands, never
+      guessed into a manifest; on Render, where a Blueprint can say
+      it, it is in the file and the URL is a `fromDatabase` reference.
+- [x] no rendering carries a secret value, on any of the three.
+
+The honest limit, restated because a green suite is persuasive: this
+proves the files are well-formed and say what the value said. It does
+not prove a platform accepts them. `iad` being a region fly has,
+`basic-256mb` being a plan Render still sells — those need an account
+and stay a manual step.
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of
@@ -782,9 +813,10 @@ and each ends with something an operator can actually use:
   NOT own. Proven by `helm template` and `helm lint` — under
   `integrationTest` rather than the default gate, per the repository's
   Live rule; kind stays optional and unwritten.
-- **Stage 2 — PaaS.** fly/render/railway manifests, each gated by a
-  REAL parser for its format rather than a golden file; a real deploy
-  needs an account and stays a documented manual step.
+- **Stage 2 — PaaS.** DONE 2026-09-07. fly/render/railway manifests,
+  each gated by a REAL parser for its format rather than a golden
+  file; a real deploy needs an account and stays a documented manual
+  step.
 - **Stage 3 — the clouds.** Terraform per cloud, proven by
   `terraform validate` in a container. The AWS one first, because ECS
   plus RDS plus Secrets Manager exercises every part of the model.
