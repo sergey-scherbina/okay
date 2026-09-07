@@ -21,30 +21,25 @@ does not cross and stages the work; each stage below is its own claim.
       by name but CANNOT refuse `Web.current.form`, which is a stated
       limit rather than a guess.
 
-- [ ] deploy-cli — folded INTO stage 0 (operator ask 2026-09-07): the
-      `okay` CLI with `deploy` as its first subcommand group —
-      render / doctor / up / down / diff / targets — reading
-      `deployment.json` (the value through its Schema) so an
-      artifacts directory is self-contained on a server with no
-      repository and no sbt. A fat jar plus a wrapper in
-      okay-deploy/bin; exit codes that mean something, --dry-run,
-      --json, NO_COLOR, no prompts off a terminal.
+- [x] deploy-cli — DELIVERED by deploy-doctor-cli (2026-09-07), which
+      is what "folded INTO stage 0" meant: `okay deploy render/doctor/
+      up/down/diff/targets` over `deployment.json`, a fat jar plus
+      okay-deploy/bin/okay, exit codes that mean something (3 = a
+      prerequisite is missing), --dry-run, --json, and no prompts at
+      all. Left open by mistake until the arc was reviewed.
+
 - [ ] deploy-cli-native — a GraalVM/Scala Native binary needing no
       JRE. The renderers are pure string builders and would port; the
       question is whether a second build toolchain is worth paying
       for, and nobody has asked yet.
-- [ ] deploy-bootstrap — folded INTO stage 0 (operator ask
-      2026-09-07): the clean machine. `Tool`/`Presence`/`Report`, a
-      table that says what is missing, WHY the deployment asked for
-      it and the exact install command for the detected package
-      manager; `NotReady` for the case that actually happens (a
-      docker daemon that is down, a kubectl with no context, a flyctl
-      not logged in); `--install` as an opt-in that prints each
-      command first, never pipes from the network, never sudos
-      silently, never pins a version, and never runs during an apply;
-      and the rule that every shelled-out failure carries its
-      command, exit code and last output. Testable without a clean
-      machine by emptying PATH.
+- [x] deploy-bootstrap — DELIVERED by deploy-doctor-cli (2026-09-07):
+      `Tool`/`Ready`/`Manager`/`Presence` with the second probe for
+      installed-and-still-unusable, a table saying what is missing and
+      WHY the deployment asked for it with the install command for the
+      detected manager, and opt-in `--install` that prints every
+      command and never pipes the network into a shell. Left open by
+      mistake until the arc was reviewed.
+
 - [x] deploy-model — LANDED 2026-09-07, stage 0's first half:
       `Deployment`/`Service`/`Run`/`Need`/`Settings`/`Scale` with
       derived Schemas, `Settings.of[A]` deriving env names from a
