@@ -1,0 +1,10 @@
+apiVersion: v2
+name: okay-app
+description: >
+  Generic chart for any Okay-based service (specs/deploy.md) —
+  parameterized entirely by values.yaml. A service is deployable by
+  this chart unchanged once it wires okay-ops's Ops.routes in
+  (health/readiness probes and a Prometheus scrape target come free).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

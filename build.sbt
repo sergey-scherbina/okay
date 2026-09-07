@@ -1125,7 +1125,9 @@ lazy val okayScript = project
   // okayTls: `Site.serve(port, ssl)` terminates HTTPS through the one
   // transport seam (script-tls); okay-conf rides in with it, for the
   // `Secret` a private key travels as.
-  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty, okayTls)
+  // okayDeploy: okay-script/deploy is ScriptDeploy's value rendered --
+  // a container that serves a pages directory (okay-script-image).
+  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty, okayTls, okayDeploy)
   .settings(
     name := "okay-script",
     // drives dotty.tools.dotc IN-PROCESS -- no scala/scala-cli
@@ -1135,6 +1137,9 @@ lazy val okayScript = project
       "org.scala-lang" %% "scala3-compiler" % scalaVersion.value,
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
+    // deployable (specs/deploy.md): the fat jar ScriptDeploy's
+    // Dockerfile runs, entry point okay.script.Serve
+    _root_.okay.deploy.sbt.OkayDeploy.deployable("okay.script.Serve"),
     // MUST fork (okay-script-scalac-classpath, 2026-09-03): un-forked,
     // the test JVM IS sbt's own JVM, whose System.getProperty(
     // "java.class.path") is just sbt-launch.jar -- sbt manages its

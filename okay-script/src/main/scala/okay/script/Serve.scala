@@ -35,9 +35,15 @@ object Serve:
                         ops: Boolean = false):
     def scheme: String = if tls.isDefined then "https" else "http"
 
-  /** `<dir> [port]`; port 8080 by default */
+  /** `<dir> [port]`; port 8080 by default. With NO arguments the
+   * environment answers instead -- `OKAY_PAGES` and `OKAY_PORT` --
+   * because a container's entrypoint is `java -jar app.jar` and the
+   * pages directory rides in as configuration, not as a command line
+   * (okay-script-image). */
   def parse(args: Array[String], env: String => Option[String] = k => Option(System.getenv(k))): Either[String, Args] =
-    args.toList match
+    val words = if args.nonEmpty then args.toList
+      else env("OKAY_PAGES").toList ++ env("OKAY_PORT").toList
+    words match
       case dir :: rest if rest.length <= 1 =>
         val root = Paths.get(dir)
         if !Files.isDirectory(root) then Left(s"not a directory: $dir")
@@ -49,7 +55,7 @@ object Serve:
                 tls,
                 env("OKAY_OPS").exists(v => v == "1" || v.equalsIgnoreCase("true"))))
             }
-      case _ => Left("usage: okay.script.Serve <pages-dir> [port]   (OKAY_DATA=<dir> for a persistent store)")
+      case _ => Left("usage: okay.script.Serve <pages-dir> [port]   (or OKAY_PAGES/OKAY_PORT; OKAY_DATA=<dir> for a persistent store)")
 
   /** OKAY_TLS_CERT and OKAY_TLS_KEY come as a PAIR: a certificate
    * without its key (or the other way round) is a misconfiguration
