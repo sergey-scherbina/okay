@@ -4368,7 +4368,7 @@ four against master without it — so a diagnostic that costs the hot
 path does not live in main code. Re-add it temporarily if the latency
 measurement is ever built.
 
-## queue-swap — one queue for multi-multi: not one algorithm, one that changes into the right one
+## queue-swap — BUILT, MEASURED and REVERTED 2026-09-07; the channel-level version is the only one that can pay
 
 The operator asked (2026-09-07) whether we can have a single ideal
 MPMC queue. Measured today, the answer is in two halves.
@@ -4427,7 +4427,42 @@ waiting for room in part 0. `wakeAllSenders` at swap time is the
 blunt answer and probably the right one — a swap happens once per
 channel.
 
-Measure with the lanes that already exist: `oneRing_chunk` at one
-producer (must not move), `adaptive_chunk` at four and sixteen (must
-not move), and a new lane that starts with one producer and adds
-fifteen, which is the only shape the swap is for.
+WHAT WAS BUILT AND WHAT IT MEASURED. A `Growing` buffer: a ring until
+producers contend, then an `AdaptiveFifo` that ADOPTS that ring as its
+part 0 (which needed the adaptive buffer to accept a pre-made part and
+to remember who owns it — that producer must keep pushing there or its
+own order breaks). Four laws held, including one producer never
+growing it and a producer parked on the full ring when it grows not
+being stranded. Minimum of five rounds, us:
+
+| producers | ring | growing | adaptive |
+|---|---|---|---|
+| 1 | **123** | 158 | 144 |
+| 4 | 715 | 477 | **136** |
+| 16 | 3 066 | 446 | **100** |
+
+It works — 6.9x the ring at sixteen producers — and it is DOMINATED at
+every point: worse than the ring where the ring wins, four times worse
+than the partitioned buffer where that wins. A knob that is never the
+best choice misleads whoever reads the menu, so it was reverted rather
+than shipped.
+
+THREE TRIGGERS, and the first two were refuted by measurement:
+- a REFUSED push. Wrong: a ring is 17x slower at sixteen producers
+  WITH ROOM TO SPARE, because the cost is many threads on one tail,
+  not fullness. It never refused, so it never grew.
+- two DIFFERENT refused producers. Same defect, same reason.
+- the pushing thread SAMPLED every 64th push. This one fires, and is
+  what the table above measures.
+
+WHY IT IS DOMINATED, and what to do instead: after the swap every push
+goes through TWO layers (the wrapper and the partitioned buffer), and
+before it, through the wrapper and its sampling. The channel-level
+version has neither — `SentinelChannel` holds the buffer in a volatile
+field and REPLACES it, so there is exactly one layer on each side of
+the swap. That is the version this entry now proposes, and its cost is
+an audit: seven methods in `SentinelChannel` read `ring` more than
+once, and each of those reads must become one local, or two reads can
+straddle the swap and compare a ring against a part of itself. The
+adoption mechanism (`AdaptiveFifo(first, firstOwner)`) is proven and
+its laws are written; it is the wrapper that has to go, not the idea.
