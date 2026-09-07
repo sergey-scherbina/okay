@@ -1,0 +1,65 @@
+task: scala-3-9
+agent: opus5-scala39
+started: 2026-09-07
+branch: feature/scala-3-9
+worktree: ../okay-wt-scala39
+
+why: the operator asked for it — Scala 3.9.0 shipped and it opens the new
+  Long Term Support line, succeeding 3.3 LTS (three years of maintenance
+  guaranteed). This build pins 3.7.4, a non-LTS line that stops getting
+  fixes; specs/modules-infra.md's "latest (3.7+), not LTS" was written
+  when LTS meant 3.3, i.e. two years behind. 3.9 makes latest and LTS the
+  same choice for the first time, so that decision is worth re-taking.
+
+what: move ThisBuild / scalaVersion from 3.7.4 to 3.9.0 across the whole
+  build and make the FULL MATRIX green on it — JVM, JS and Native, main,
+  test and Jmh, zero warnings. That includes deciding okay-spark's fate:
+  build.sbt's own comment says the ceiling is okay-spark and only
+  okay-spark, and that it compiles on 3.9.0 once scala-reflect is pinned
+  (it now is) but its tests then fail at RUNTIME with "Cannot find a
+  SparkSession implementation on the Classpath". Compiling is not the
+  bar; the suite is. Rewrite the version comment in build.sbt to whatever
+  is then TRUE, and update specs/modules-infra.md's Scala line.
+
+known before starting (dfbd23a7, 2026-08-31, bisected not guessed):
+  3.6.4 clean / 3.7.4 clean / 3.8.4 63 errors / 3.9.0 63 errors, and the
+  63 were ONE cause — `Free.run`'s named context function type
+  `(M: Monad[F]) ?=> F[A]`, whose `M` is out of scope in the body on 3.8+.
+  That line was already rewritten to `(using M: Monad[F])` in that commit,
+  so the core is expected clean today. Do not re-derive it; verify it.
+
+what 3.7 -> 3.9 brings that this build can trip on:
+  - the standard library is now compiled WITH Scala 3 (3.8). Explicit
+    arguments to context-bound parameters need `using`
+    (`Array.empty(using ClassTag.Int)`). This is also the first suspect
+    for okay-spark: a Scala-3-compiled stdlib beside Spark's 2.13
+    bytecode under `for3Use2_13`.
+  - the REPL moved OUT to a separate `scala3-repl` artifact (3.8). This
+    build depends on scala3-compiler (build.sbt:1183) and scala3-staging
+    (build.sbt:1482) — check okay-script and okay-staging for a REPL
+    reach before assuming they only want the compiler.
+  - given search now picks the most GENERAL matching instance, not the
+    most specific (3.7). A silent behaviour change, not an error; the
+    suite is what catches it. `-source:3.7-migration` names the sites.
+  - private implicits in a type's companion warn under -deprecation
+    (3.9), an error in 3.10 — and this repo's policy is zero warnings.
+  - JDK 17 floor (3.8). .sdkmanrc pins 21, so this is free.
+  - Scala.js 1.22 rides along (stable Wasm backend); okay is cross-built
+    to JS and Native, so both linkers move under us too.
+
+predict: the core, and most of the 60-odd modules, come up green with the
+  version string alone — that is what dfbd23a7 measured and nothing has
+  gone backwards since. The two places I expect to spend the session are
+  (1) okay-spark's runtime, which may not be fixable inside a version
+  bump and may cost the module a `.settings(scalaVersion := "3.7.4")`
+  pin or an exclusion, and (2) new warnings under a zero-warning policy,
+  most likely from the deprecation in 3.9 and from the stdlib change.
+  A silent given-search regression is the outcome I would MISS, so the
+  matrix is the gate, not the compile.
+
+CAUTION — MACHINE STATE THIS CLAIM DOES NOT OWN:
+  bench-refresh holds the box for JMH measurement and has UNLOADED both
+  scalascript launchd guards. A full matrix here perturbs their numbers
+  and their forks perturb my build. No heavy compile starts until they
+  say the box is free; check `pgrep -f org.openjdk.jmh.runner.ForkedMain`
+  and `pgrep -f sbt-launch` before every gate, not once.
