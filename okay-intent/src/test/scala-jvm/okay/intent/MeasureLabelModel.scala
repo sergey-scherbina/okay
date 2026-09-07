@@ -63,6 +63,13 @@ class MeasureLabelModel extends munit.FunSuite {
     Patterns.classify(Models.cues, m, floor = 0.4)
       .orElse(CharGrams.score(Models.meeting, m).map(_.best))
 
+  /** prints the row and answers the triple; most callers only want the
+   * print, so `show` is the one that discards it — an unused value
+   * warning at twelve call sites is noise, and silencing it at each
+   * would be worse than naming the intent once */
+  private def show(name: String, door: String => Option[String]): Unit =
+    report(name, door): Unit
+
   private def report(name: String, door: String => Option[String]): (Double, Double, Double) =
     val answers = heldOut.map((m, gold) => (gold, door(m)))
     val answered = answers.count(_._2.isDefined)
@@ -94,13 +101,13 @@ class MeasureLabelModel extends munit.FunSuite {
     println("\n| door | coverage | precision | right of all | worst class F1 |")
     println("|---|---:|---:|---:|---:|")
     val base = report("cascade (shipped)", cascade)
-    report("agreement, no floor", m => Agreement.decide(votesFor(m), w).map(_._1))
+    show("agreement, no floor", m => Agreement.decide(votesFor(m), w).map(_._1))
     for floor <- List(0.05, 0.1, 0.2, 0.3) do
-      report(f"agreement, margin >= $floor%.2f",
+      show(f"agreement, margin >= $floor%.2f",
         m => Agreement.decide(votesFor(m), w).filter(_._2 >= floor).map(_._1))
     // the same, with the cues' answer trusted outright (they are the
     // precision tier, and the door has always treated them so)
-    report("cues first, then agreement",
+    show("cues first, then agreement",
       m => Patterns.classify(Models.cues, m, floor = 0.4)
         .orElse(Agreement.decide(votesFor(m), w).map(_._1)))
     assert(base._1 > 0.0)
@@ -132,10 +139,10 @@ class MeasureLabelModel extends munit.FunSuite {
     println(s"\n[weights, independent subset]\n${w.show}")
     println("\n| door | coverage | precision | right of all | worst class F1 |")
     println("|---|---:|---:|---:|---:|")
-    report("cascade (shipped)", cascade)
-    report("agreement over 4 independent", m => Agreement.decide(votesOf(m, independent), w).map(_._1))
+    show("cascade (shipped)", cascade)
+    show("agreement over 4 independent", m => Agreement.decide(votesOf(m, independent), w).map(_._1))
     for floor <- List(0.1, 0.2) do
-      report(f"the same, margin >= $floor%.2f",
+      show(f"the same, margin >= $floor%.2f",
         m => Agreement.decide(votesOf(m, independent), w).filter(_._2 >= floor).map(_._1))
     assert(w.byLabeler.size == 4)
   }
@@ -144,12 +151,12 @@ class MeasureLabelModel extends munit.FunSuite {
     println(s"\n[weights from labelled train half]\n${byPrecision.show}")
     println("\n| door | coverage | precision | right of all | worst class F1 |")
     println("|---|---:|---:|---:|---:|")
-    report("cascade (shipped)", cascade)
-    report("precision-weighted, all six", m => Agreement.decide(votesFor(m), byPrecision).map(_._1))
+    show("cascade (shipped)", cascade)
+    show("precision-weighted, all six", m => Agreement.decide(votesFor(m), byPrecision).map(_._1))
     val independent = Set("cues", "induced", "grams23", "words")
-    report("precision-weighted, independent 4", m => Agreement.decide(votesOf(m, independent), byPrecision).map(_._1))
+    show("precision-weighted, independent 4", m => Agreement.decide(votesOf(m, independent), byPrecision).map(_._1))
     for floor <- List(0.1, 0.2, 0.3) do
-      report(f"precision-weighted 4, margin >= $floor%.2f",
+      show(f"precision-weighted 4, margin >= $floor%.2f",
         m => Agreement.decide(votesOf(m, independent), byPrecision).filter(_._2 >= floor).map(_._1))
     assert(byPrecision.byLabeler.nonEmpty)
   }
@@ -164,7 +171,8 @@ class MeasureLabelModel extends munit.FunSuite {
    */
   test("does the difference survive resampling") {
     val rows = IntentFixture.labelled
-    val independent = Set("cues", "induced", "grams23", "words")
+    // the labelers rebuilt per split ARE the independent four; the
+    // echoes (grams45, prefix) are simply not built here
     val runs = (1 to 8).map { seed =>
       val shuffled = scala.util.Random(seed.toLong * 7919).shuffle(rows)
       val (tr, te) = shuffled.splitAt(rows.length / 2)
@@ -216,12 +224,12 @@ class MeasureLabelModel extends munit.FunSuite {
   test("what each labeler is worth alone, so the combination is judged against its parts") {
     println("\n| labeler alone | coverage | precision | right of all | worst class F1 |")
     println("|---|---:|---:|---:|---:|")
-    report("cues", m => Patterns.classify(Models.cues, m, floor = 0.4))
-    report("induced", m => Induced.classify(induced, m, floor = 0.0))
-    report("grams23", m => CharGrams.score(grams23, m).map(_.best))
-    report("grams45", m => CharGrams.score(grams45, m).map(_.best))
-    report("words", m => WordTfIdf.score(words, m).map(_.best))
-    report("prefix", m => CharGrams.score(grams23, firstClause(m)).map(_.best))
+    show("cues", m => Patterns.classify(Models.cues, m, floor = 0.4))
+    show("induced", m => Induced.classify(induced, m, floor = 0.0))
+    show("grams23", m => CharGrams.score(grams23, m).map(_.best))
+    show("grams45", m => CharGrams.score(grams45, m).map(_.best))
+    show("words", m => WordTfIdf.score(words, m).map(_.best))
+    show("prefix", m => CharGrams.score(grams23, firstClause(m)).map(_.best))
     assert(heldOut.nonEmpty)
   }
 }
