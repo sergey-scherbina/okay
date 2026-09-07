@@ -4,6 +4,7 @@ import okay.*
 import okay.given
 import okay.codec.Json
 import okay.http.{Frame, Http, Request, Response as HttpResponse}
+import okay.security.{Decision, Policy, Verified}
 import okay.ui.{Event, WireJson}
 
 import java.net.URLDecoder
@@ -23,6 +24,11 @@ final class Site(
   classpath: Classpath = Classpath.ambient,
   val sessions: Sessions = Sessions(),
   tempRoot: Path = ScalaScript.defaultTempRoot,
+  /** the deployment's token verifier -- what a page's `secure:`
+   * front-matter is checked with (okay-script-secure); `None` and a
+   * secure page is a 500, not an open door */
+  verify: Option[String => Verified] = None,
+  realm: String = "okay",
 ):
   import Site.*
 
@@ -55,7 +61,7 @@ final class Site(
    * arrives before the page was ever rendered (a reconnect after a
    * restart) renders it once to register the app. */
   def ws: PartialFunction[Request, Stage[Frame, Frame, Unit]] = {
-    case r if liveOf(r).isDefined =>
+    case r if liveOf(r).isDefined && socketPermitted(r) =>
       val (app, id) = liveHit(r).get
       val cookie = cookiesOf(r).get(SessionCookie)
       // the session the cookie names, if it is live: a durable app reads
@@ -67,6 +73,19 @@ final class Site(
   }
 
   private def liveOf(r: Request): Option[api.Live[?]] = liveHit(r).map(_._1)
+
+  /** a secure page's socket is checked the way its request is, from
+   * the socket's own headers and cookie; refused is simply undefined */
+  private def socketPermitted(r: Request): Boolean =
+    val (path, query) = splitUrl(r.url)
+    resolve(path) match
+      case Some(Hit.PageFile(f, params)) =>
+        val web = webOf(r, path, query, params)
+        val sess = sessions.handle(web.cookies.get(SessionCookie))
+        access(f, web, sess) match
+          case Access.Open | Access.Granted(_) => true
+          case _ => false
+      case _ => true
 
   private def liveHit(r: Request): Option[(api.Live[?], String)] =
     val (path, query) = splitUrl(r.url)
@@ -235,6 +254,7 @@ final class Site(
     finally
       api.Container.setIncluder(None)
       api.Container.setLiveRegistrar(None)
+      api.Principal.setCurrent(None)
       api.Web.setCurrent(api.Web.empty)
       api.Response.setCurrent(new api.Response)
       api.Session.setCurrent(api.Session.detached)
@@ -243,6 +263,61 @@ final class Site(
   /** renders `f`, following `forward`s (capped) and falling back to
    * the error page on failure; returns the body text */
   private def dispatch(f: Path, web: api.Web, resp: api.Response, forwards: Int): String =
+    access(f, web, api.Session.current) match
+      case Access.Open => render(f, web, resp, forwards)
+      case Access.Granted(p) =>
+        api.Principal.setCurrent(Some(p))
+        render(f, web, resp, forwards)
+      case Access.Login(to) =>
+        resp.redirect(to + "?next=" + java.net.URLEncoder.encode(web.path, UTF_8))
+        ""
+      case Access.Refused(status, error) =>
+        resp.status = status
+        resp.contentType(TextUtf8)
+        resp.header("WWW-Authenticate", s"""Bearer realm="$realm", error="$error"""")
+        error
+      case Access.Misconfigured(why) =>
+        resp.status = 500
+        resp.contentType(TextUtf8)
+        s"${rootAbs.relativize(f)}: $why"
+
+  /** the `secure:` verdict for `f`, from the request's bearer header
+   * or the session's stored token */
+  private def access(f: Path, web: api.Web, sess: api.Session): Access =
+    frontMatter(f).get("secure") match
+      case None => Access.Open
+      case Some(scope) =>
+        verify match
+          case None => Access.Misconfigured("secure: on a Site without a verifier (Site(verify = Some(...)))")
+          case Some(check) =>
+            val token = web.header("Authorization").filter(_.startsWith("Bearer ")).map(_.drop(7))
+              .orElse(sess.get(api.Principal.TokenAttribute))
+            val policy = if scope.trim == "any" then Policy.allowAll else Policy.scoped(scope.trim)
+            token.map(check) match
+              case Some(Verified.Ok(p)) =>
+                policy(p, web.method, web.path) match
+                  case Decision.Permit => Access.Granted(p)
+                  case Decision.Deny(_) => Access.Refused(403, "insufficient_scope")
+              case _ =>
+                // no token and a bad token refuse alike: the WHY stays
+                // server-side, as okay-security's Secure has it
+                findLoginPage(f) match
+                  case Some(lp) => Access.Login(urlOf(lp))
+                  case None => Access.Refused(401, "invalid_token")
+
+  private def findLoginPage(f: Path): Option[Path] =
+    frontMatter(f).get("loginPage").flatMap(ref => relative(f, ref)).filter(Files.isRegularFile(_))
+      .orElse(Some(rootAbs.resolve("login.md")).filter(Files.isRegularFile(_)))
+      .filter(_ != f)
+
+  /** the URL a page file answers at */
+  private def urlOf(f: Path): String =
+    val rel = rootAbs.relativize(f).toString.replace(java.io.File.separatorChar, '/')
+    val noExt = if rel.endsWith(".md") then rel.dropRight(3) else rel
+    val noIndex = if noExt == "index" then "" else if noExt.endsWith("/index") then noExt.dropRight(6) + "/" else noExt
+    "/" + noIndex
+
+  private def render(f: Path, web: api.Web, resp: api.Response, forwards: Int): String =
     frontMatter(f).get("contentType").foreach(resp.contentType)
     val result = rendering(f)(pageFor(f).render(web))
     result.thrown match
@@ -341,6 +416,14 @@ final class Site(
       }.toMap
 
 object Site:
+  /** the `secure:` verdict -- see specs/okay-script.md "Declarative security" */
+  enum Access:
+    case Open
+    case Granted(principal: okay.security.Principal)
+    case Login(to: String)
+    case Refused(status: Int, error: String)
+    case Misconfigured(why: String)
+
   val SessionCookie = "OKAYSESSID"
   val MaxForwards = 8
   val MaxIncludeDepth = 16

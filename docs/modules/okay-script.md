@@ -16,6 +16,7 @@ preprocessing, meta-compilation.
 | `Site` | the container — "a new JSP": a directory of pages served over okay-http/okay-jetty (`Jetty.serve(port)(site.routes)()`); `/a/b` → `a/b.md`, `index.md`, `[param].md`, static files; sessions (`Sessions.memory`, or `Sessions.persisted` over okay-persist so a restart keeps them); error page |
 | `okay.script.api` | what a page sees: `Web.current` (method, path, query, headers, form, cookies, params), `Response.current` (status, headers, redirect, cookies), `Session.current`, `include`/`forward`, `Error.current`. Shared with the host classloader, servlet-API style |
 | `Live` / `mount` | okay-ui as the front-end layer: a page declares `Live(init)(view)(update)` and mounts it; the container serves the SSR, `/__okay/live.js` and the page's own WebSocket session (`Jetty.serve(port)(site.routes)(site.ws)`) |
+| `secure:` front-matter | declarative page security, web.xml's constraint: a scope (or `any`) the caller must carry, checked by the deployment's `verify`; a login page (`login.md`) gets the redirect, an API client the 401/403 ladder; `Principal.current`, `login(token)`/`logout()` |
 | ` ```scala declare ` | an object-level block (JSP `<%! %>`): a `val` built once per compile, a `def` every request can call |
 | `Classpath` / `Deps` | the ambient classpath a script compiles against (`Classpath.api` for a page importing the API), plus `using dep` coordinate resolution |
 

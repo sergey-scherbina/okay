@@ -185,3 +185,28 @@ def include(page: String): Unit =
 /** Abandons this page's output and answers with the target page
  * instead. `<jsp:forward>`. */
 def forward(path: String): Nothing = throw Forwarded(path)
+
+/** Who is signed in, for a page the container let through a
+ * `secure:` constraint (and for anything it includes); `None` on a
+ * page without one. See specs/okay-script.md "Declarative security". */
+object Principal:
+  private val local: ThreadLocal[Option[okay.security.Principal]] = ThreadLocal.withInitial(() => None)
+
+  def current: Option[okay.security.Principal] = local.get()
+
+  def setCurrent(p: Option[okay.security.Principal]): Unit = local.set(p)
+
+  /** the session attribute a browser's bearer token rides in */
+  val TokenAttribute = "okay.token"
+
+/** Signs the browser in: the token (minted by whatever the
+ * deployment's `verify` understands -- a `SessionIssuer`, say) is
+ * kept in the session, and every later request with the session
+ * cookie presents it. A login page calls this after checking the
+ * credentials it checks. */
+def login(token: String): Unit = Session.current.set(Principal.TokenAttribute, token)
+
+/** Forgets the token; the next secure page sends the browser to the
+ * login page again. The session itself stays (the cart survives a
+ * sign-out) -- `Session.current.invalidate()` is the other choice. */
+def logout(): Unit = Session.current.remove(Principal.TokenAttribute)

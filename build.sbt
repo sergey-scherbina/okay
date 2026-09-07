@@ -1120,7 +1120,9 @@ lazy val okayScript = project
   // persistent-sessions).
   // okayUi.jvm: a page's server-driven Live app is okay-ui's Wire.serve
   // over the page's own WebSocket (okay-script-live).
-  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okayJetty % Test)
+  // okaySecurity.jvm: a page's `secure:` front-matter is enforced with
+  // okay-security's own Verified/Policy ladder (okay-script-secure).
+  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty % Test)
   .settings(
     name := "okay-script",
     // drives dotty.tools.dotc IN-PROCESS -- no scala/scala-cli
