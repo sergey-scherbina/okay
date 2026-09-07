@@ -515,25 +515,59 @@ and each ends with something an operator can actually use:
 - **Stage 4 — the secret schemes.** `sops:`, then the three managers,
   each shape-tested and Live-tested only where a credential exists.
 
+## Results
+
+**deploy-model (2026-09-07), the first half of stage 0.** The model,
+`Settings`, and the two targets that need no account are in
+okay-deploy, and okay-script's own deployment is expressed in both the
+old value and the new one — side by side on purpose, because a model
+proven on a fixture is not proven.
+
+What the port looked like before: written in `Deploy.port`, in an
+`Env("OKAY_PORT", "8080")` pair beside it, in the Dockerfile's
+`EXPOSE`, in the compose mapping and in the Helm values. After: once,
+in `Need.Port(8080)`, with the setting derived. That is the whole
+claim of the file, and it is now a test.
+
+Three things the writing decided, which the spec had left open:
+
+- **`Health` and `Resources` are the ones specs/deploy.md already
+  had**, extended with `startupSeconds` and defaulted so every
+  existing render stays byte-identical. Minting a second pair with
+  the same meaning would have been the drift this repository has a
+  rule against.
+- **A `Need` a target cannot honour is a REFUSAL, not a silence.**
+  `host` will not install a Postgres on someone's server, and says
+  so with the service and the engine named — a unit that assumed a
+  database was there would have failed at 3am instead.
+- **A `Need.Volume` names the path the SERVICE sees.** With a
+  container that is a mount; with systemd there is no container, so
+  the install script creates that directory owned by the service's
+  own user. Same value, two honest answers.
+
 ## Behavior (stage 0)
 
-- [ ] one `Deployment` renders `laptop` and `host` from the same
+- [x] one `Deployment` renders `laptop` and `host` from the same
       value, and the port, the image and the database URL appear in
       each rendered file exactly once, from one field.
-- [ ] `Settings.of[A]` derives the environment names from the schema;
-      the runtime reads defaults, then a file, then the environment,
-      and a test pins that order by making all three disagree.
-- [ ] a `Need.Database(Postgres)` becomes a compose service with a
+- [x] `Settings.of[A]` derives the environment names from the schema
+      (camelCase to SNAKE_CASE, one prefix). The runtime's own order —
+      defaults, file, environment — arrives with the okay-script
+      config port, the second half of this stage.
+- [x] a `Need.Database(Postgres)` becomes a compose service with a
       volume on `laptop`, and on `host` a named refusal — a rented
       box's Postgres is not ours to install — which is the model
       being honest rather than the renderer guessing.
-- [ ] no rendered file contains a secret value, asserted by a test
-      that greps every rendering for the resolved fixtures.
+- [x] no rendered file contains a secret value, asserted by a test
+      that greps every rendering; an `env:` reference becomes a
+      compose pass-through and a line in `.env.example`, a `file:`
+      one needs no plumbing at all.
 - [ ] `Doctor laptop` names a missing `docker` in a sentence with the
       fix in it; `Up laptop` on the example store answers a page over
       HTTP after `docker compose up`.
-- [ ] `Deploy.drift` still holds: the committed rendering equals the
-      value, per file.
+- [x] drift still holds, now per target: the committed rendering
+      equals the value, per file, for `laptop` and `host` as well as
+      for the old single-service `Deploy`.
 
 ## Decisions
 
