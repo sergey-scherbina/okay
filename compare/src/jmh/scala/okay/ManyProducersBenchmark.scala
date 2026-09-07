@@ -154,6 +154,15 @@ class ManyProducersBenchmark {
    * producer and close to the relaxed lane at sixteen, or it is not
    * worth having.
    */
+  /** DIAGNOSTIC (adaptive-one-producer, 2026-09-07): the partitioned
+   * buffer with ONE part and no room to grow. If this costs what the
+   * growable one costs, the price is the layer's fixed work; if it
+   * costs what a plain ring costs, the price is the growth machinery
+   * (the claim, the open count, the scan) and only appears because
+   * the buffer is prepared to adapt. */
+  @Benchmark def onePart_chunk(): Long =
+    runChunked(Queues.strong[Long].adaptive.parts(1).each(Cap).build)
+
   @Benchmark def adaptive_chunk(): Long =
     runChunked(Queues.strong[Long].adaptive.parts(16).each(Cap).build)
 
