@@ -206,36 +206,96 @@ object Schedulers {
       t
 
   /**
-   * A scheduler that OWNS its threads — kyo's shape, the prototype
-   * (schedulers-family, 2026-09-07). `workers` platform threads, a
-   * queue each; the unit is `DriveTask`: no thread per fiber, a
-   * parked Await costs its callback.
+   * The owned-worker scheduler, chosen and tuned the way a queue is
+   * (`Queues.strong.adaptive.parts(8).each(256).build`):
    *
-   * The policy, from kyo's profile: a fiber forked FROM a worker goes
-   * onto that worker's own queue (kyo's `Worker.current`), so a
-   * program that forks 10 000 short children runs them where it is,
-   * in order, with no signal — kyo's 79 ns per fork/join is that,
-   * not a faster fiber. A fiber forked from outside goes to one of
-   * the ACTIVE workers, `0 until active`, drawn at random; the
-   * next worker is activated only when the chosen one is more than
-   * `wakeAbove` deep. Parallelism grows with queued depth, not with
-   * task count: the JDK pool wakes a worker for nearly every task
-   * (`scan → signalWork → unpark`, 9 % of its profile, 22 % scanning)
-   * and for fibers of tens of nanoseconds that spreading IS the
-   * cost. A dry worker steals from the active ones, spins `spin`
-   * rounds, then parks — deactivating itself if it is the top one.
+   * {{{
+   * Schedulers.own.build                          // the defaults, which adapt
+   * Schedulers.own.workers(4).build               // four threads, not one per core
+   * Schedulers.own.forShortTasks.build            // never spread: keep every fiber at home
+   * Schedulers.own.forLongTasks.build             // spread at once: a core per fiber if there is one
+   * Schedulers.adaptive.build                     // own, plus a worker when a fiber blocks
+   * }}}
+   *
+   * `workers` platform threads, a Chase-Lev deque each; a fiber
+   * forked FROM a worker lands on that worker's own end with no CAS
+   * and no signal, a fiber forked from outside lands in one shared
+   * submission queue that wakes a worker only when nobody is awake to
+   * see it. A dry worker steals, spins `spinning` rounds, then parks.
+   *
+   * THE HELPER RULE is what makes one scheduler right for both shapes
+   * of fork/join, and it reads the work rather than being told about
+   * it: at every 16th task a worker knows how long it has been busy
+   * and how many tasks that took, and it wakes one sleeper only when
+   * it is past `helpAfter` AND its tasks average more than
+   * `spreadAbove`. Thirty-nanosecond fibers stay home, where waking a
+   * core costs more than the work (kyo's shape); microsecond fibers
+   * spread over the machine (the pool's shape). Measured, one run:
+   * 744 us per 10 000 fork/joins against kyo's 779 at 30 ns a fiber,
+   * and 3 327 against kyo's 25 419 at 2.5 us a fiber.
    *
    * A BLOCKING call inside a fiber holds one of the `workers`
-   * threads — this is for short, CPU-bound fibers; `loom` is the one
-   * that makes blocking free.
+   * threads. `Schedulers.own` is for short CPU-bound fibers;
+   * `Schedulers.adaptive` adds the worker that makes blocking safe,
+   * and `Schedulers.loom` makes it free.
    */
-  def own(workers: Int = Runtime.getRuntime.availableProcessors(), spin: Int = 64,
-          wakeAbove: Int = 64, helpAfterNanos: Long = 50000L,
-          spreadAboveNanos: Long = 1000L): Scheduler =
-    Own(workers, spin, wakeAbove, helpAfterNanos, spreadAboveNanos)
+  val own: Own = Own()
 
-  private[okay] final class Own(n: Int, spin: Int, wakeAbove: Int,
-                                helpAfterNanos: Long, spreadAboveNanos: Long) extends Scheduler {
+  /** `own` with the stuck-check on: when work is pending and nothing
+   * has completed for `stuckAfter`, one more worker is started (up to
+   * `overflow`), so a fiber that blocks inside a worker costs
+   * latency instead of the program. */
+  val adaptive: Own = Own().watched()
+
+  /**
+   * The builder. Every knob has a default that is measured, and the
+   * two presets name the two ends of the one decision this scheduler
+   * makes: whether to spread a burst or keep it at home.
+   */
+  final case class Own(private val count: Int = Runtime.getRuntime.availableProcessors(),
+                       private val spinRounds: Int = 64,
+                       private val wakeDeeperThan: Int = 64,
+                       private val helpAfterNanos: Long = 50000L,
+                       private val spreadAboveNanos: Long = 1000L,
+                       private val stuckAfterMillis: Long = 0L,
+                       private val overflowWorkers: Int = 0) {
+    /** how many threads the scheduler owns (default: one per core) */
+    def workers(n: Int): Own = copy(count = if n < 1 then 1 else n)
+    /** how long a dry worker looks for work before parking */
+    def spinning(rounds: Int): Own = copy(spinRounds = if rounds < 0 then 0 else rounds)
+    /** how deep the submission queue may get before a sleeper is woken */
+    def wakeAbove(tasks: Int): Own = copy(wakeDeeperThan = if tasks < 0 then 0 else tasks)
+    /** how long a worker may be busy with work pending before it asks
+     * for help (only then is the average consulted) */
+    def helpAfter(nanos: Long): Own = copy(helpAfterNanos = if nanos < 0 then 0 else nanos)
+    def helpAfter(d: scala.concurrent.duration.FiniteDuration): Own = helpAfter(d.toNanos)
+    /** the task cost above which spreading pays; below it, waking a
+     * core costs more than the work */
+    def spreadAbove(nanos: Long): Own = copy(spreadAboveNanos = if nanos < 0 then 0 else nanos)
+    def spreadAbove(d: scala.concurrent.duration.FiniteDuration): Own = spreadAbove(d.toNanos)
+
+    /** never spread: every fiber runs where it was forked. For bursts
+     * of very short fibers, and for a program that wants its own
+     * ordering back */
+    def forShortTasks: Own = copy(spreadAboveNanos = Long.MaxValue)
+    /** spread as soon as there is anything to spread: a core per
+     * fiber where the machine has one */
+    def forLongTasks: Own = copy(helpAfterNanos = 0L, spreadAboveNanos = 0L)
+
+    /** start one more worker (up to `overflow`, default: as many as
+     * there are workers) when work is pending and nothing has
+     * completed for `after` — what makes a blocking fiber survivable */
+    def watched(after: scala.concurrent.duration.FiniteDuration = scala.concurrent.duration.Duration(100, "ms"),
+                overflow: Int = -1): Own =
+      copy(stuckAfterMillis = math.max(1L, after.toMillis), overflowWorkers = if overflow < 0 then count else overflow)
+
+    def build: Scheduler =
+      Owned(count, spinRounds, wakeDeeperThan, helpAfterNanos, spreadAboveNanos, stuckAfterMillis, overflowWorkers)
+  }
+
+  private[okay] final class Owned(n: Int, spin: Int, wakeAbove: Int,
+                                  helpAfterNanos: Long, spreadAboveNanos: Long,
+                                  stuckAfterMillis: Long, overflow: Int) extends Scheduler {
     /** what threads OUTSIDE the scheduler hand it. One queue, not one
      * per worker: a submitter that picks a random worker picks a
      * SLEEPING one most of the time and pays an unpark per task,
@@ -248,14 +308,20 @@ object Schedulers {
     /** how many workers are running rather than parked */
     private val awake = java.util.concurrent.atomic.AtomicInteger(0)
 
-    private val workers: Array[Worker] = Array.tabulate(n)(i => Worker(i))
+    /** `n` owned workers, plus room for the ones the stuck-check
+     * starts when a fiber blocks inside one */
+    private val workers: Array[Worker] = Array.tabulate(n + overflow)(i => Worker(i))
+    /** how many of them exist; the extras are started by the watchdog */
+    private val live = java.util.concurrent.atomic.AtomicInteger(n)
+    private val completed = java.util.concurrent.atomic.AtomicLong()
+    @volatile private var lastCompleted = -1L
     // DEBUG-PROBE (schedulers-family): what actually happened
     private[okay] val activations = java.util.concurrent.atomic.AtomicLong()
     private[okay] val stepDowns = java.util.concurrent.atomic.AtomicLong()
     private[okay] def stats: String =
       val sb = StringBuilder()
       var i = 0
-      while i < n do
+      while i < live.get do
         val w: Worker = workers(i)
         sb.append(s"${w.id}:${w.ran}/${w.stolen} ")
         i += 1
@@ -264,7 +330,7 @@ object Schedulers {
       activations.set(0L)
       stepDowns.set(0L)
       var i = 0
-      while i < n do
+      while i < workers.length do
         val w: Worker = workers(i)
         w.ran = 0L
         w.stolen = 0L
@@ -362,9 +428,10 @@ object Schedulers {
       def taken(): DriveTask[?] | Null = deque.steal()
 
       private def steal(): DriveTask[?] | Null =
+        val alive = live.get
         var i = 1
-        while i < n do
-          val t = workers((id + i) % n).taken()
+        while i < alive do
+          val t = workers((id + i) % alive).taken()
           if t != null then return t
           i += 1
         fromSubmissions()
@@ -384,6 +451,7 @@ object Schedulers {
             val _ = t.exec()
             ran += 1L
             ranStreak += 1
+            if stuckAfterMillis > 0L then { val _ = completed.incrementAndGet() }
             // THE HELPER RULE, in two clauses, because the fork/join
             // table has two columns. Work stays HOME while the queue
             // drains fast — that is kyo's win at 30 ns a fiber, where
@@ -418,7 +486,33 @@ object Schedulers {
             spins = 0
     }
 
-    workers.foreach(_.thread.start())
+    private def startWorker(i: Int): Unit = workers(i).thread.start()
+    var w0 = 0
+    while w0 < n do { startWorker(w0); w0 += 1 }
+
+    /** THE STUCK-CHECK (`Schedulers.adaptive`). A fiber that blocks
+     * inside a worker holds that thread; with every worker blocked the
+     * program stops, and no policy over queues can see it — the queues
+     * are not empty, they are unattended. So: every `stuckAfterMillis`,
+     * if work is pending and NOTHING has completed since the last
+     * look, start one more worker. Blocking then costs latency rather
+     * than the program, which is what lets `own` be chosen by someone
+     * who is not certain their fibers never block. Off by default: it
+     * is a thread and a timer, and `Schedulers.loom` is the answer
+     * when blocking is the norm rather than the exception. */
+    if stuckAfterMillis > 0L && overflow > 0 then
+      val check: Runnable = () =>
+        val pending = submissionsSize.get > 0 || { var any = false; var i = 0; val alive = live.get
+          while i < alive do { if workers(i).size > 0 then any = true; i += 1 }; any }
+        val done = completed.get
+        if pending && done == lastCompleted then
+          val next = live.get
+          if next < n + overflow && live.compareAndSet(next, next + 1) then
+            val _ = activations.incrementAndGet()
+            startWorker(next)
+        lastCompleted = done
+      val _ = timerWheel.scheduleWithFixedDelay(check, stuckAfterMillis, stuckAfterMillis,
+        java.util.concurrent.TimeUnit.MILLISECONDS)
 
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val t = DriveTask[A](prog)
@@ -444,8 +538,9 @@ object Schedulers {
      * ever, and the probe found exactly that: one activation, two
      * workers running, 10 000 tasks.) */
     private def activateNext(): Unit =
+      val alive = live.get
       var i = 0
-      while i < n do
+      while i < alive do
         val w = workers(i)
         if w.parked then
           val _ = activations.incrementAndGet()

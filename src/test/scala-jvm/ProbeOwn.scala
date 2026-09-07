@@ -12,9 +12,9 @@ class ProbeOwn extends munit.FunSuite {
     s
 
   test("inside-fork burst, per-worker counts".ignore) {
-    val sch = Schedulers.own()
+    val sch = Schedulers.own.build
     given Scheduler = sch
-    val own = sch.asInstanceOf[Schedulers.Own]
+    val own = sch.asInstanceOf[Schedulers.Owned]
     for work <- List(100, 10000) do
       own.reset()
       val t0 = System.nanoTime()

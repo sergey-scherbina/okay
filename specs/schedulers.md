@@ -42,12 +42,18 @@ chooses where NOT to wake one.
   | JS `given` | a PromiseDrive on the event loop | a compile error (no CanBlock) | — | nothing | the only one there |
   | `adaptive` | starts as `own`, moves a fiber to `loom` when it blocks | free after the move | `own`'s until a block is seen | — | when the program's shape is not known where the scheduler is chosen |
 
-- **The facade** (`Schedulers`, scala-jvm): every member a method with
-  its knobs as named defaults, the properties in its scaladoc in the
-  same words as the table, and `Schedulers.adaptive` beside them.
+- **The facade** (`Schedulers`, scala-jvm), LANDED 2026-09-07 and
+  shaped like `Queues`: `loom`, `threads`, `forkJoin(pool)` and
+  `drive(pool)` are values and methods; `own` and `adaptive` are
+  BUILDERS — `Schedulers.own.workers(4).forLongTasks.build`,
+  `Schedulers.adaptive.workers(8).watched(200.millis).build` — with
+  `workers`, `spinning`, `wakeAbove`, `helpAfter`, `spreadAbove`,
+  `watched` and the two presets `forShortTasks` / `forLongTasks`.
   No trait hierarchy beyond `Scheduler`: a scheduler is a value, and
   the facade is the menu. `given Scheduler = Schedulers.loom` stays
-  the JVM default until the adaptive one has laws and a table row.
+  the JVM default: `own` holds a worker when a fiber blocks, and the
+  default must be the one that cannot deadlock a correct program.
+  The user-facing page is `docs/schedulers.md`.
 - **The policy of `own`**, as measured rather than as first drafted
   (2026-09-07). A fiber forked FROM a worker goes on that worker's own
   Chase-Lev deque: no CAS, no signal, and the owner pops from the end
@@ -69,15 +75,21 @@ chooses where NOT to wake one.
   thirty nanoseconds stay home, where waking a core costs more than
   the work; fibers of microseconds spread. The rule reads what the
   work IS instead of being told.
-- **The adaptive policy**: what `Queues.adaptive` does for producers
-  — decide by what shows up — done for BLOCKING. A fiber on `own`
-  that reaches `CanBlock.block` (a `join()`, a `receiveBlocking`, a
-  `Run` that parks) is the signal: the block is performed by moving
-  the fiber's continuation to a Loom thread (the worker is not held),
-  and the scheduler remembers the SITE (the program's class) so its
-  next forks go to `loom` directly. Short fibers stay cheap; a fiber
-  that blocks pays the move once and the site pays nothing after.
-  Spec before mechanism: the laws below come first.
+- **The adaptive policy, as landed**: what `Queues.adaptive` does for
+  producers — decide by what shows up — done twice here. The helper
+  rule adapts to task COST (above), and the stuck-check adapts to
+  BLOCKING: every `watched(after)` the scheduler asks one question —
+  is work pending while nothing at all has completed since the last
+  look? — and starts one more worker if so, up to `overflow`. A fiber
+  that blocks then costs latency instead of the program. No hook in
+  `CanBlock` was needed, which the first draft assumed; the observable
+  "pending but nothing completing" is enough, and it also catches a
+  fiber wedged for a reason nobody predicted.
+
+  The draft's other idea — moving a blocking fiber's continuation to a
+  Loom thread and remembering the SITE — is NOT built, and is not
+  needed for the law: it would make blocking cheap rather than
+  survivable. Left in Open boxes.
 
 ## Behavior
 Laws every member must pass (`TestSchedulerLaws`, parameterised by
@@ -96,9 +108,17 @@ member the way `TestManyToMany` is by buffer):
    forks 1 000 children; another submitter's fiber is answered within
    the deadline (children are stolen, the submitter's fiber is not
    behind all of them).
-8. `adaptive`: a fiber that blocks on `own` completes (the worker is
-   not held: `workers = 1`, two fibers, the first blocks on the
-   second's channel).
+8. `adaptive`: a fiber that blocks on `own` completes (`workers = 1`,
+   two fibers, the first blocks on the second's channel — a deadlock
+   under `own`, a delay under `adaptive`).
+
+All eight hold as of 2026-09-07: `TestSchedulerLaws`, 33 tests over
+six members (loom, drive, own, own.forShortTasks, own.forLongTasks,
+adaptive). Two of them were CORRECTED by the run rather than the code:
+a callback registered before completion may fire after `join` returns
+(the waiters are a stack), and `cancel` on `loom` completes the fiber
+exceptionally, so the law is that a LATE answer never becomes the
+fiber's, not that nothing is answered.
 
 The performance law: `forkJoin10k_okayOwnInside` within 10 % of
 `forkJoin10k_kyo` on the same run, recorded in the ledger with both

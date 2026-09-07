@@ -78,12 +78,36 @@ class AdversarialBenchmark {
    * program runs on a worker, its children land on that worker's
    * own queue. Both are okay's idiom; the second is the one kyo's
    * lane is shaped like. */
-  private val own: Scheduler = Schedulers.own()
+  private val own: Scheduler = Schedulers.own.build
 
   @Benchmark
   def forkJoin10k_okayOwn(): Long =
     given Scheduler = own
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
+
+  /** the same scheduler with its one decision pinned by the builder:
+   * `forShortTasks` never spreads (kyo's policy), `forLongTasks`
+   * spreads at once (the pool's). The default lane above decides for
+   * itself; these two say what each end of that decision is worth on
+   * each shape of work. */
+  private val ownShort: Scheduler = Schedulers.own.forShortTasks.build
+  private val ownLong: Scheduler = Schedulers.own.forLongTasks.build
+
+  @Benchmark
+  def forkJoin10k_okayOwnShortInside(): Long =
+    given Scheduler = ownShort
+    Async.spawn {
+      val fs = (0 until K).map(i => Async.spawn(async(step(i))))
+      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+    }.join()
+
+  @Benchmark
+  def forkJoin10k_okayOwnLongInside(): Long =
+    given Scheduler = ownLong
+    Async.spawn {
+      val fs = (0 until K).map(i => Async.spawn(async(step(i))))
+      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+    }.join()
 
   @Benchmark
   def forkJoin10k_okayOwnInside(): Long =

@@ -453,6 +453,12 @@ for the third.
   end are different ends); its own contribution is UNMEASURED, since
   it landed while the prefix defect was still masking everything.
 
+  The scheduler is chosen and tuned the way a queue is —
+  `Schedulers.own.workers(4).forLongTasks.build`,
+  `Schedulers.adaptive.build` — and `docs/schedulers.md` is the page
+  for it; the two preset lanes below are the two ends of the one
+  decision the default makes for itself.
+
   What okay does with that, and it is the point of the whole
   exercise: the policy can be one scheduler's, not two. `Schedulers.
   own` keeps the work at home while its queue drains fast and wakes a
