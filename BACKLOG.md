@@ -4367,3 +4367,67 @@ read on every push is not free — 1.15x at one producer and 1.39x at
 four against master without it — so a diagnostic that costs the hot
 path does not live in main code. Re-add it temporarily if the latency
 measurement is ever built.
+
+## queue-swap — one queue for multi-multi: not one algorithm, one that changes into the right one
+
+The operator asked (2026-09-07) whether we can have a single ideal
+MPMC queue. Measured today, the answer is in two halves.
+
+**No single ALGORITHM is ideal, and the tensions are not engineering
+gaps — they are the trade itself:**
+
+| axis | one end | the other | measured today |
+|---|---|---|---|
+| producers | one head | a part per producer | ring 122 / partitioned 144 at ONE producer; ring 2 375 / partitioned 99 at sixteen |
+| bound | bounded refuses when full (backpressure) | unbounded never refuses | unbounded 673 vs bounded 1 485 at sixteen — and the difference IS the contract, not a free win |
+| claim | CAS, because a bounded claim can be REFUSED | fetch-and-add, only sound when nothing can refuse | why Jiffy may use FAA and `Ring` may not |
+| order | strict FIFO across producers | per-producer FIFO, relaxed between | partitioning gives the second by construction; the first cannot be had with parts |
+| dequeue | wait-free, atomic-free — ONE consumer | several consumers | Jiffy's dequeue is atomic-free precisely because nobody else dequeues |
+| holes | a claimed-unpublished slot stalls the head (latency) | scan past it (needs handled-state per slot) | 0 of 5 001 visible behind a held hole; no throughput cost |
+
+Anything claiming to be best on all six is best on none of them.
+
+**But one TYPE can be right for whatever the program turns out to do,
+and that is buildable.** It is the same answer the scheduler lane
+reached: measure what is happening and change policy, rather than ask
+the caller to know in advance. For a channel:
+
+1. `Channel.apply` starts with a plain `Ring` — the fastest thing at
+   one producer, which is what a channel usually has, and the reason
+   the ring is still the default.
+2. The moment a SECOND producer sends, the channel installs an
+   `AdaptiveFifo` whose PART 0 IS THAT RING. No element moves, no
+   copy, no stop-the-world: a single volatile publish of the buffer
+   reference, and both a reader holding the old reference and one
+   reading the new see the same part 0.
+3. From then on it grows a part per producer as it does today.
+
+What this buys: zero partitioning cost while there is one producer
+(the 1.15-1.3x that keeps `adaptive` opt-in disappears, because there
+is no wrapper until it is needed), and the 5x-24x at four and sixteen
+without anyone choosing.
+
+What it needs, in order:
+- `SentinelChannel.ring` becomes a volatile `var`, read once per
+  operation into a local. Every method already does this by habit;
+  the audit is that none of them read it twice and compare.
+- the waiter arrays are sized by `maxParts`, which changes at the
+  swap: allocate for the partitioned buffer's cap at swap time, and
+  publish the new arrays BEFORE the new buffer.
+- the swap must be idempotent and single-shot: one CAS on the buffer
+  reference, losers use the winner's.
+- laws: everything in `TestManyToMany` and `TestChannelLaws`, plus a
+  new one — a swap under load loses nothing, ends once, and a sender
+  parked on the ring before the swap is woken after it.
+
+The last of those is the hard part and where this could fail: a
+producer parked on a FULL ring, with the swap installing a buffer
+whose other parts have room. It must be woken rather than left
+waiting for room in part 0. `wakeAllSenders` at swap time is the
+blunt answer and probably the right one — a swap happens once per
+channel.
+
+Measure with the lanes that already exist: `oneRing_chunk` at one
+producer (must not move), `adaptive_chunk` at four and sixteen (must
+not move), and a new lane that starts with one producer and adds
+fifteen, which is the only shape the swap is for.
