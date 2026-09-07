@@ -11,10 +11,9 @@ import okay.parse.{Cst, JsonParse, Parse}
 object ProfCst:
   private def best(label: String, n: Int = 12)(body: => Any): Unit =
     var lo = Double.MaxValue
-    var last: Any = null
     for _ <- 1 to n do
       val t0 = System.nanoTime()
-      last = body
+      body: Unit
       val d = (System.nanoTime() - t0) / 1e6
       if d < lo then lo = d
     println(f"  $label%-40s $lo%8.1f ms")
