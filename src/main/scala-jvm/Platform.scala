@@ -99,7 +99,12 @@ given CanBlock = new:
   def handoff[A](): Handoff[A] = ParkHandoff[A]()
 
   def await(h: Handoff[?]): Unit =
-    if !h.filled then h match
+    // the interrupt is read before the FAST path too, as `block`
+    // does: a cancel and a fill that both land before this line are
+    // otherwise seen by a fiber that has not looked at its interrupt
+    // (park-interrupt-order)
+    if Thread.interrupted() then throw InterruptedException()
+    else if !h.filled then h match
       case p: ParkHandoff[?] =>
         // publish who to wake BEFORE re-reading the flag, as `block` does
         p.waiter = Thread.currentThread()
@@ -118,17 +123,24 @@ given CanBlock = new:
       slot.filled = true
       val t = slot.waiter
       if t != null then java.util.concurrent.locks.LockSupport.unpark(t.nn)
-    if slot.filled then slot.value
+    // the same rule as `block`, which this had not been given
+    // (park-interrupt-order): the interrupt is read FIRST, in the
+    // fast path and at the top of the loop. Reading `filled` first
+    // let an acceptance that arrived AFTER a cancel become the
+    // answer of a fiber blocked on a send.
+    if Thread.interrupted() then
+      cancel()
+      throw InterruptedException()
+    else if slot.filled then slot.value
     else
       slot.waiter = Thread.currentThread()
       var out = false
       while !out do
-        if slot.filled then out = true
-        else
-          java.util.concurrent.locks.LockSupport.park(slot)
-          if Thread.interrupted() then
-            cancel()
-            throw InterruptedException()
+        if Thread.interrupted() then
+          cancel()
+          throw InterruptedException()
+        else if slot.filled then out = true
+        else java.util.concurrent.locks.LockSupport.park(slot)
       slot.value
 
 /** the timer: a virtual thread sleeps for the duration; cancelling

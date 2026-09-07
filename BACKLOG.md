@@ -412,6 +412,18 @@ construction instead of a type test per value).
       documents the Monad/MonadPlus overlap in its header. Reopen
       only if the inference form (no type argument) bites a consumer.
 
+## okay core
+- [x] park-interrupt-order — LANDED 2026-09-07: the rule
+      scheduler-cancel-wins gave `block` on the JVM had reached one
+      park site of six. `blockAccepted` (a blocking channel send) had
+      it wrong in BOTH its fast path and its loop, `await(Handoff)`
+      in its fast path, and all three Native sites took the answer
+      outright. All six now read the interrupt first and withdraw the
+      registration when they refuse. Proved by a unit suite at the
+      park level (`TestParkInterruptOrder`, one copy per platform)
+      after a law written at the scheduler level passed with and
+      without the fix. specs/schedulers.md, "Every park site".
+
 ## Flakes observed (record → fix loop when they recur)
 - [x] flaky-scheduler-late-answer — FOUND AND FIXED 2026-09-07
       (scheduler-cancel-wins). Not the pre-park window I guessed (a

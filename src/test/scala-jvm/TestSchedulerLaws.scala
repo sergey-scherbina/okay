@@ -73,6 +73,36 @@ class TestSchedulerLaws extends munit.FunSuite {
    * interrupt does not end it — until the test has cancelled AND
    * delivered. The fiber then returns into that window every time.
    */
+  /**
+   * The same rule at the OTHER park sites (park-interrupt-order).
+   *
+   * `block` was fixed by scheduler-cancel-wins; `blockAccepted` (a
+   * blocking channel SEND) still read `filled` before the interrupt
+   * in both its fast path and its loop, and `await(Handoff)` in its
+   * fast path. The consequence is the law again, one layer down: a
+   * cancelled fiber parked on a full channel could take an
+   * acceptance that arrived after the cancel.
+   *
+   * Forced the same way: the send parks on a full channel, the test
+   * cancels, then makes room so the send is accepted, and only then
+   * lets the fiber look.
+   */
+  each("cancel wins on a blocking send too: an acceptance after cancel is not the answer") { sch =>
+    given Scheduler = sch
+    val ch = Channel[Int](1)
+    assert(Async.run(ch.send(1)).runWith, "the first send fills the channel")
+    val answers = java.util.concurrent.ConcurrentLinkedQueue[Either[Throwable, Boolean]]()
+    val f = Async.spawn(ch.send(2))          // parks: the channel is full
+    Thread.sleep(20)                          // let it reach the park
+    f.cancel()
+    val _ = Async.run(ch.receive).runWith     // makes room: the send would now be accepted
+    f.onComplete(r => { val _ = answers.offer(r) })
+    Thread.sleep(50)
+    assert(!answers.contains(Right(true)),
+      "an acceptance that arrived after the cancel became the fiber's answer")
+    assert(answers.size <= 1, s"answered ${answers.size} times")
+  }
+
   each("cancel wins the race it is in: a value delivered after cancel is never the answer") { sch =>
     given Scheduler = sch
     val k = AtomicReference[Either[Throwable, Int] => Unit](null)

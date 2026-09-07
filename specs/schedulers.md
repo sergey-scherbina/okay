@@ -216,3 +216,45 @@ shipped with a test that passed with AND without it — the test was run
 both ways precisely to check that, and it did not fail without the
 fix. A repair with no failing test is a guess wearing a diff.
 
+## Every park site, and the rule stated once (2026-09-07, park-interrupt-order)
+
+`scheduler-cancel-wins` gave `CanBlock.block` on the JVM the rule that
+the interrupt is read before the answer. There are three park sites
+per platform, and the rule had reached one of six:
+
+| site | JVM before | Native before |
+|---|---|---|
+| `block` | fixed that morning | took the answer |
+| `blockAccepted` (a blocking channel SEND) | fast path AND the loop still read the value first | took the acceptance |
+| `await(Handoff)` | fast path read the value first | took the answer |
+
+All six now read the interrupt first, in the fast path and at the top
+of the loop, and refusing also withdraws the registration.
+
+### How it is proved, after a false start
+The scheduler law states the consequence — a cancelled fiber never
+takes an answer that arrived after the cancel — and it CANNOT force
+the window: the fiber must be asleep while both the cancel and the
+answer land, and nothing in a test can hold a thread there. A law
+written at that level passed with and without the fix, which is how
+it was caught (the same trap as the lane before, checked for this
+time).
+
+So the rule is asserted where it lives: a caller that is ALREADY
+interrupted, handed an answer that is ALREADY available, must refuse
+it. That is precisely the state the racing fiber is in when it wakes,
+and it is one line to set up. `TestParkInterruptOrder` does that for
+all three sites, once per platform — a near-copy on purpose, because
+the cross suite deliberately never touches `CanBlock` and the two
+implementations share no machinery (Loom parks against wait/notify).
+
+- [x] without the fix: 3 of 4 red on Native, 2 of 4 on the JVM (its
+      `block` was already right, which is what makes the suite
+      precise rather than merely red)
+- [x] with it: 4 of 4 on both, and the 52 scheduler laws over six
+      members still pass
+- [x] the consequence law is kept beside them ("cancel wins on a
+      blocking send too") and says in its own comment that it does
+      not force the window — it guards the composed path, the unit
+      suite proves the rule
+

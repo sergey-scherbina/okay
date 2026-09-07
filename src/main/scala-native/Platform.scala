@@ -16,7 +16,13 @@ given CanBlock = new:
         done = true
         lock.notifyAll()
     }
+    // the interrupt is read FIRST, before the answer, as the JVM
+    // platform does (park-interrupt-order): an answer that is
+    // already there must not be taken by a caller that has already
+    // been cancelled — `while !done` never runs in that case, so
+    // without this line nothing would look at the interrupt at all
     try
+      if Thread.interrupted() then throw InterruptedException()
       lock.synchronized:
         while !done do lock.wait()
     catch case e: Throwable => { cancel(); throw e }
@@ -30,7 +36,8 @@ given CanBlock = new:
   def handoff[A](): Handoff[A] = MonitorHandoff[A]()
 
   def await(h: Handoff[?]): Unit =
-    if !h.filled then h match
+    if Thread.interrupted() then throw InterruptedException()
+    else if !h.filled then h match
       case m: MonitorHandoff[?] =>
         m.synchronized:
           while !m.filled do m.wait()
@@ -47,6 +54,7 @@ given CanBlock = new:
         done = true
         lock.notifyAll()
     try
+      if Thread.interrupted() then throw InterruptedException()
       lock.synchronized:
         while !done do lock.wait()
     catch case e: Throwable => { cancel(); throw e }

@@ -1,5 +1,29 @@
 # Changelog
 
+## park-interrupt-order — the rule reached one park site of six
+Completed: 2026-09-07
+`scheduler-cancel-wins` fixed `CanBlock.block` on the JVM: the
+interrupt is read before the answer, so a cancelled fiber cannot take
+a value that arrived after its cancel. There are three park sites per
+platform. `blockAccepted` — the blocking channel SEND — still read
+the value first in BOTH its fast path and its loop; `await(Handoff)`
+in its fast path; and all three Native sites took the answer
+outright, because `while !done` never runs when the answer is already
+there and nothing else looked at the interrupt. All six now read it
+first, in the fast path and at the top of the loop, and refusing also
+withdraws the registration.
+Proving it took a second attempt, and the first one is the lesson
+repeated: a law written at the scheduler level ("a cancelled fiber
+parked on a full channel must not take a later acceptance") passed
+with AND without the fix, because nothing in a test can hold a fiber
+asleep while both the cancel and the answer land. The rule is
+asserted where it lives instead — an already-interrupted caller
+handed an already-available answer must refuse it — which is exactly
+the state the racing fiber wakes in. Without the fix that suite is 3
+of 4 red on Native and 2 of 4 on the JVM (its `block` was already
+right); with it, 4 of 4 on both, and the 52 scheduler laws over six
+members still pass. specs/schedulers.md, "Every park site".
+
 ## json-parse-fast-road — the default road through the parser was the slow one, by 79x
 Completed: 2026-09-07
 Landed as 131cedc2. Found while measuring something else, which is the
@@ -41,6 +65,7 @@ Also fixed here, and it was mine: okay-r had landed without a
 r-subprocess landing did not run. A sibling had already written a
 fuller page by the time this rebased, so theirs is what stands, with
 its `Durable` sentence corrected. Full suite green: 2959 tests.
+
 
 ## scheduler-cancel-wins — the cancellation flake was one line earlier than the guess
 Completed: 2026-09-07
