@@ -199,7 +199,7 @@ object Schedulers {
    * promise are ONE object (`DriveTask`), the shape kyo's IOTask
    * has. Blocking joins from inside a fiber still hold the pool
    * thread, as with `forkJoin`. */
-  def drive(pool: ExecutorService = ForkJoinPool.commonPool()): Scheduler = new:
+  def drive(pool: ForkJoinPool = ForkJoinPool.commonPool()): Scheduler = new:
     def fork[A](prog: () => A ! Async): Fiber[A] =
       val t = DriveTask[A](prog)
       pool.execute(t)
@@ -233,13 +233,14 @@ object Schedulers {
 
     @scala.annotation.tailrec private def fire(w: Waiters[A] | Either[Throwable, A] | Null, r: Either[Throwable, A]): Unit =
       w match
-        case w: Waiters[A] => { w.k(r); fire(w.next, r) }
+        case w: Waiters[A] @unchecked => { w.k(r); fire(w.next, r) }
         case _ => ()
 
     @scala.annotation.tailrec def onComplete(k: Either[Throwable, A] => Unit): Unit =
       cell.get match
         case r: Either[Throwable, A] @unchecked => k(r) // the cell only ever holds this task's own answer
-        case cur => if !cell.compareAndSet(cur, Waiters(k, cur)) then onComplete(k)
+        case w: Waiters[A] @unchecked => if !cell.compareAndSet(w, Waiters(k, w)) then onComplete(k)
+        case _ => if !cell.compareAndSet(null, Waiters(k, null)) then onComplete(k)
 
     override def cancel(): Unit = super[Drive].cancel()
 
