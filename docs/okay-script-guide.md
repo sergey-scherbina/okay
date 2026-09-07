@@ -346,6 +346,10 @@ rest from the environment:
 | `OKAY_OPS=1` | `/healthz`, `/stats`, `/metrics` beside the pages |
 | `OKAY_TLS_CERT=…` `OKAY_TLS_KEY=file:…` | HTTPS, terminated in the server |
 | `OKAY_FORWARDED=1` | behind a TLS-terminating proxy: trust `X-Forwarded-Proto`, so cookies still get `Secure` |
+| `OKAY_TLS=self` | a self-signed certificate, generated once — https with nothing to obtain first |
+| `OKAY_HSTS=31536000` | `Strict-Transport-Security` on secure responses |
+| `OKAY_HTTPS_ONLY=1` | answer an insecure request with a 301 to https |
+| `OKAY_HTTP_PORT=80` | with own TLS: a plaintext port that only redirects |
 | `OKAY_PAGES` `OKAY_PORT` | the directory and port, when no command line is given |
 
 ```
@@ -366,12 +370,28 @@ your own directory over that and the site is yours. Because pages are
 read at request time, a mounted directory that changes is a site that
 changes — no rebuild, no restart.
 
+**https on a dev box, with nothing to obtain.**
+
+```
+$ OKAY_TLS=self OKAY_DATA=./data sbt "okayScript/runMain okay.script.Serve store 8443"
+okay-script: self-signed certificate in data/okay-script-tls.p12
+okay-script: its SHA-256 is A1:B2:… -- a browser will warn, because nobody vouched for it
+okay-script: serving /…/store at https://127.0.0.1:8443/
+```
+
+The keystore sits beside the data, so a restart keeps the same
+identity. Add `OKAY_HTTP_PORT=8080` and that port answers every
+request with a 301 to the https one. A public site gets a real
+certificate instead — `OKAY_TLS_CERT` and `OKAY_TLS_KEY`, or a proxy.
+
 **Behind a proxy.** Terminating TLS in nginx, Caddy or an ingress is
 the usual shape, and three things then need saying. Pass `Upgrade`
 and `Connection` for EVERY path, not just one — a live page opens its
 socket on the page's own path. Set `OKAY_FORWARDED=1` (or
 `Site(secureCookies = Some(true))`, which trusts nothing) so cookies
-still carry `Secure` when the app itself sees plain HTTP. And treat
+still carry `Secure` when the app itself sees plain HTTP — and on
+that footing `OKAY_HSTS` and `OKAY_HTTPS_ONLY` do the two things the
+proxy leaves to the app. And treat
 `X-Forwarded-For` as the proxy's claim it is: `Web.current.header`
 gives it to you, trusting it is your decision.
 

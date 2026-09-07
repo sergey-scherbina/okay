@@ -52,6 +52,16 @@ final class Site(
    * `secureCookies = Some(true)` is the setting that needs no
    * trust at all. */
   trustForwarded: Boolean = false,
+  /** `Strict-Transport-Security: max-age=<seconds>` on SECURE
+   * responses (script-https-default). Off by default and deliberately:
+   * HSTS on a self-signed development host pins a browser against you
+   * for as long as the max-age says, and no page can take it back. */
+  hsts: Option[Int] = None,
+  /** answer a request the container sees as INSECURE with a 301 to
+   * the same URL on https (script-https-default) -- behind a proxy
+   * that is the http-to-https redirect, and with the container's own
+   * TLS it is what a plaintext port is for */
+  httpsOnly: Boolean = false,
 ):
   import Site.*
 
@@ -177,7 +187,8 @@ final class Site(
   /** the synchronous core: one request in, one response out */
   def handle(r: Request): HttpResponse = counted {
     val (path, query) = splitUrl(r.url)
-    if path == api.Live.JsPath then
+    if httpsOnly && !secureFor(webOf(r, path, query, Map.empty)) then toHttps(r)
+    else if path == api.Live.JsPath then
       HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8"), Http.one(LiveJs.source.getBytes(UTF_8)))
     else resolve(path) match
       case None => plain(404, "not found")
@@ -267,7 +278,8 @@ final class Site(
   private def serveStatic(r: Request, f: Path): HttpResponse =
     val etag = Caching.etagOf(f)
     val mtime = Files.getLastModifiedTime(f).toMillis
-    val validators = Vector("ETag" -> etag, "Last-Modified" -> Caching.formatDate(mtime))
+    val validators = Vector("ETag" -> etag, "Last-Modified" -> Caching.formatDate(mtime)) ++
+      hstsHeader(secureFor(webOf(r, pathOf(r.url), "", Map.empty)))
     if fresh(r, etag, mtime) then HttpResponse(304, validators, Http.one(Array.emptyByteArray))
     else HttpResponse(200, ("Content-Type" -> contentTypeOf(f)) +: validators, Http.one(Files.readAllBytes(f)))
 
@@ -396,7 +408,8 @@ final class Site(
     api.Container.setTranslator(Some(translator(lang)))
     // every cookie this request sets -- the container's own and the
     // page's -- carries Secure iff this request was secure
-    api.Response.setSecureByDefault(secureFor(web))
+    val secure = secureFor(web)
+    api.Response.setSecureByDefault(secure)
     // a `?lang=` choice is remembered by cookie for the requests after
     if web.query.get("lang").contains(lang) && !web.cookies.get(api.Lang.Cookie).contains(lang) then
       resp.cookie(api.Lang.Cookie, lang)
@@ -414,6 +427,7 @@ final class Site(
       if sess.invalidated then resp.cookie(SessionCookie, "", maxAge = Some(0), httpOnly = true)
       else if sess.created then resp.cookie(SessionCookie, sess.id, httpOnly = true)
       val bytes = if resp.redirected.isDefined then Array.empty[Byte] else body.getBytes(UTF_8)
+      hstsHeader(secure).foreach((k, v) => resp.header(k, v))
       cached(r, web, base, resp, bytes)
     finally
       api.Response.setSecureByDefault(false)
@@ -662,6 +676,22 @@ final class Site(
   }
 
   @volatile private var servedOverTls = false
+
+  /** the same URL on https: the authority is the request's own `Host`
+   * (a proxy forwards the one the CLIENT asked for), and a request
+   * without one cannot be redirected anywhere honest -- it gets the
+   * refusal rather than a guessed hostname */
+  private def toHttps(r: Request): HttpResponse =
+    r.headers.collectFirst { case (k, v) if k.equalsIgnoreCase("host") => v } match
+      case Some(host) =>
+        HttpResponse(301, Vector("Location" -> s"https://$host${r.url}", "Content-Type" -> TextUtf8),
+          Http.one(Array.emptyByteArray))
+      case None => plain(400, "https is required, and this request carries no Host to redirect to")
+
+  /** HSTS rides only on a response the container knows was secure --
+   * announcing it over plaintext is how a site locks itself out */
+  private def hstsHeader(secure: Boolean): Vector[(String, String)] =
+    if secure then hsts.map(age => ("Strict-Transport-Security", s"max-age=$age")).toVector else Vector.empty
 
   private def cookiesOf(r: Request): Map[String, String] =
     r.headers.collect { case (k, v) if k.equalsIgnoreCase("cookie") => v }
