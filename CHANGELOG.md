@@ -1,5 +1,17 @@
 # Changelog
 
+## intent-gated-tidy — three intent entries closed as gated, each with the measurement that gates it
+
+`intent-fasttext-subword` was "only worth it if the server is the
+problem": the two-embedder learning curve and four no-network tiers
+meeting one ceiling say the limit is register and context.
+`intent-grammar-parse` waits for a consumer whose wrong answer is
+worse than none; the slot parsers already refuse rather than guess.
+`intent-crf-slots` waited for the class problem to settle — it has
+(0.909 macro-F1, every reply decoding) — and now waits for a frame
+that asks about a named entity, which is what a tagger is for. Boards
+only; nothing else moves.
+
 ## codec-jsonschema-refinement-enum — a refinement that names its vocabulary, and a JSON Schema that declares it
 
 intent-structured-output found the derived schema rendering `Conf` as

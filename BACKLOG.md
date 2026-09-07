@@ -2163,15 +2163,35 @@ ordered by what it would FIX, not by novelty.
       60%) and the probe (86.7%, needs a server): a trained
       representation that still ships as an array. Only worth it if
       `intent-embedding-choice` says the server is the problem.
+      GATED 2026-09-07, the gate measured: "only worth it if the
+      server is the problem" — intent-4b-with-more-data found both
+      embedders flat from 32 examples with the same slope, and every
+      no-network tier since (chargrams 65, TF-IDF 61.7, the static
+      table at 68.3 with triples and PCA) meets the same ceiling from
+      a different road: the limit is register and context, not the
+      server. A trained subword head would be a fourth road to it.
+      Opens if a fixture at least twice this size shows a late slope.
 - [ ] intent-grammar-parse — intent by GRAMMAR over `okay-lex` and
       `okay-parse`, the way `Temporal` does dates: deterministic,
       explainable, and refusing rather than guessing. Expensive in
       rules, and the honest reason to want it is a domain where a wrong
       answer is worse than no answer.
+      GATED 2026-09-07: no consumer has named a domain where a wrong
+      answer is worse than no answer; the model tier at 0.909 macro
+      F1 with zero undecodable replies, the slot parsers (when,
+      duration, people, amount) already refusing rather than guessing
+      where a wrong value would act. Opens with that consumer.
 - [ ] intent-crf-slots — sequence labelling for the frame's SLOTS
       (who, when, where) rather than its class. `Temporal` fills one
       slot with a parser; the general case is a tagger, and a CRF is
       the classical one. Only after the class problem is settled.
+      GATED 2026-09-07: "only after the class problem is settled" —
+      it is settled for the model tier (0.909, deterministic, the
+      decoder reading every reply) and the four parsed slots cover
+      what the meeting frame asks; the slots still open (who, places)
+      are named entities, which is what a tagger is for, and which no
+      frame in the fixture yet asks a question about. Opens with a
+      frame that does.
 - [x] intent-active-learning — labels are the bottleneck everywhere
       above, so choose the next ones to label by uncertainty rather
       than by order. Directly compounds with `intent-label-distillation`
