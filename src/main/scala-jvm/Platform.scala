@@ -230,12 +230,33 @@ object Schedulers {
    * that makes blocking free.
    */
   def own(workers: Int = Runtime.getRuntime.availableProcessors(), spin: Int = 64,
-          wakeAbove: Int = 64, helpAfterNanos: Long = 50000L): Scheduler =
-    Own(workers, spin, wakeAbove, helpAfterNanos)
+          wakeAbove: Int = 64, helpAfterNanos: Long = 50000L,
+          spreadAboveNanos: Long = 1000L): Scheduler =
+    Own(workers, spin, wakeAbove, helpAfterNanos, spreadAboveNanos)
 
-  private[okay] final class Own(n: Int, spin: Int, wakeAbove: Int, helpAfterNanos: Long) extends Scheduler {
+  private[okay] final class Own(n: Int, spin: Int, wakeAbove: Int,
+                                helpAfterNanos: Long, spreadAboveNanos: Long) extends Scheduler {
     private val workers: Array[Worker] = Array.tabulate(n)(i => Worker(i))
-    private val active = java.util.concurrent.atomic.AtomicInteger(1)
+    // DEBUG-PROBE (schedulers-family): what actually happened
+    private[okay] val activations = java.util.concurrent.atomic.AtomicLong()
+    private[okay] val stepDowns = java.util.concurrent.atomic.AtomicLong()
+    private[okay] def stats: String =
+      val sb = StringBuilder()
+      var i = 0
+      while i < n do
+        val w: Worker = workers(i)
+        sb.append(s"${w.id}:${w.ran}/${w.stolen} ")
+        i += 1
+      s"activations=${activations.get} stepDowns=${stepDowns.get} ran/stolen=[${sb.toString.trim}]"
+    private[okay] def reset(): Unit =
+      activations.set(0L)
+      stepDowns.set(0L)
+      var i = 0
+      while i < n do
+        val w: Worker = workers(i)
+        w.ran = 0L
+        w.stolen = 0L
+        i += 1
     private val current = ThreadLocal[Worker | Null]()
 
     /**
@@ -315,6 +336,8 @@ object Schedulers {
       /** true from the moment the worker decides to park until it runs
        * again: what a submitter reads to wake it */
       @volatile var parked = false
+      var ran = 0L   // diagnostics only: plain, so the hot path has no fence
+      var stolen = 0L
       val thread: Thread = { val t = Thread(this, s"okay-own-$id"); t.setDaemon(true); t }
 
       /** the load a submitter chooses by */
@@ -345,13 +368,10 @@ object Schedulers {
         if t != null then t else fromInbox()
 
       private def steal(): DriveTask[?] | Null =
-        val top = active.get
         var i = 1
-        while i < top do
-          val w = workers((id + i) % top)
-          if w.id != id then
-            val t = w.taken()
-            if t != null then return t
+        while i < n do
+          val t = workers((id + i) % n).taken()
+          if t != null then return t
           i += 1
         null
 
@@ -359,32 +379,38 @@ object Schedulers {
         current.set(this)
         var spins = 0
         var streakStart = 0L
-        var ran = 0
+        var ranStreak = 0
         while true do
           var t = take()
-          if t == null then t = steal()
+          if t == null then { t = steal(); if t != null then stolen += 1L }
           if t != null then
             spins = 0
-            if streakStart == 0L then streakStart = System.nanoTime()
+            if streakStart == 0L then { streakStart = System.nanoTime(); ranStreak = 0 }
             val _ = t.exec()
-            ran += 1
-            // THE HELPER RULE: work stays home while the queue drains
-            // fast (kyo's win at 30 ns per fiber, no signal per task);
-            // a worker still busy after `helpAfterNanos` with work
-            // left wakes the next one, which then steals (the pool's
-            // win at 3 us per fiber). nanoTime is read once per 16
-            // tasks, so it is under 2 ns a task.
-            if (ran & 15) == 0 && size > 0 && System.nanoTime() - streakStart > helpAfterNanos then
-              activateNext()
+            ran += 1L
+            ranStreak += 1
+            // THE HELPER RULE, in two clauses, because the fork/join
+            // table has two columns. Work stays HOME while the queue
+            // drains fast — that is kyo's win at 30 ns a fiber, where
+            // waking a core costs more than the work. A helper is
+            // woken only when this worker has been busy longer than
+            // `helpAfterNanos`, still has work, AND its tasks are
+            // averaging more than `spreadAboveNanos` — the pool's win
+            // at 2.5 us a fiber, where a core is worth waking. The
+            // average is free: the checkpoint already holds the
+            // elapsed time and the count. nanoTime is read once per
+            // 16 tasks, under 2 ns a task.
+            if (ranStreak & 15) == 0 && size > 0 then
+              val elapsed = System.nanoTime() - streakStart
+              if elapsed > helpAfterNanos && elapsed / ranStreak > spreadAboveNanos then
+                activateNext()
           else if spins < spin then
             streakStart = 0L
+            ranStreak = 0
             spins += 1
             Thread.onSpinWait()
           else
-            // the top active worker steps down before it parks, so a
-            // submitter stops choosing it; worker 0 never steps down
-            val top = active.get
-            if id == top - 1 && id > 0 then { val _ = active.compareAndSet(top, id) }
+            val _ = stepDowns.incrementAndGet()
             // publish "parked" BEFORE the last look at the queue: an
             // enqueue that misses the flag has landed in the queue we
             // are about to see, one that sees it will unpark us
@@ -403,20 +429,35 @@ object Schedulers {
       else choose().enqueue(t)
       t
 
-    /** an active worker at random, and the next one activated when it
-     * is over `wakeAbove` deep (the caller's own worker is handled in
-     * `fork`, which pushes to its deque directly) */
+    /** the less loaded of two AWAKE workers; a sleeping one only when
+     * everyone is asleep, and then `enqueue` wakes it. (The caller's
+     * own worker is handled in `fork`, which pushes to its deque.) */
     private def choose(): Worker =
-      val top = active.get
-      val w = workers(java.util.concurrent.ThreadLocalRandom.current().nextInt(top))
-      if w.size > wakeAbove then activateNext()
-      w
+      val r = java.util.concurrent.ThreadLocalRandom.current()
+      val a = workers(r.nextInt(n))
+      val b = workers(r.nextInt(n))
+      val pick =
+        if a.parked && !b.parked then b
+        else if b.parked && !a.parked then a
+        else if a.size <= b.size then a else b
+      if pick.size > wakeAbove then activateNext()
+      pick
 
-    /** one more worker joins the active prefix and starts stealing */
+    /** wake ONE sleeping worker, wherever it sits: eligibility was
+     * never the thing that made a worker help — being awake is. (The
+     * first cut grew an "active prefix" and unparked only the worker
+     * at its edge; a worker that had parked earlier then slept for
+     * ever, and the probe found exactly that: one activation, two
+     * workers running, 10 000 tasks.) */
     private def activateNext(): Unit =
-      val top = active.get
-      if top < n && active.compareAndSet(top, top + 1) then
-        java.util.concurrent.locks.LockSupport.unpark(workers(top).thread)
+      var i = 0
+      while i < n do
+        val w = workers(i)
+        if w.parked then
+          val _ = activations.incrementAndGet()
+          java.util.concurrent.locks.LockSupport.unpark(w.thread)
+          return
+        i += 1
   }
 
   /** listeners of a running DriveTask, a stack */
