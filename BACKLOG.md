@@ -2456,13 +2456,20 @@ rather than on every pop, which is the same idea as
       the same slope. The prediction is not supported inside this
       fixture; a crossing past 60 is a claim it cannot make. The 0.6B
       stays the vectoriser, for a distilled corpus too.
-- [ ] intent-distil-more — 320 generated messages bought chargrams 6.7
+- [x] intent-distil-more — 320 generated messages bought chargrams 6.7
       points and the curve was still climbing when the fixture ran out.
       The generator is resumable, so this is machine time rather than
       work: raise the target, re-filter, and find where the gain stops.
       Also worth trying on the STATIC table, which was not fed here
       because its vocabulary would have to be re-embedded — a second
-      pass over the teacher rather than a change of method.
+      pass over the teacher rather than a change of method. DECIDED
+      2026-09-07: the static half MEASURED (intent-distil-static,
+      `TestStaticDistilled`, both splits) — the corpus as vocabulary
+      0.0, as weights +1.7 (one split), as 20 training rows −1.7 /
+      +1.7, a table 1.7x larger for nothing: a static table's ceiling
+      is context, and a corpus supplies units; the generation half
+      DECLINED on intent-distil-dose's finding that the dose's gain
+      was one split's — more of it is more of that.
 - [ ] intent-distil-diversity — the distilled corpus alone scores TEN
       POINTS below a human fixture a third its size, which says its
       distribution is narrow rather than its labels wrong. Prompting

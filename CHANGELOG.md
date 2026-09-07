@@ -1,5 +1,20 @@
 # Changelog
 
+## intent-distil-static — the static table fed the distilled corpus: nothing outside the noise, and intent-distil-more closes
+
+The second pass over the teacher intent-distil-more asked for: the
+182 self-consistent distilled rows as the static table's VOCABULARY,
+then as its WEIGHTS, then as twenty TRAINING rows, on the best table
+(words + pairs + triples at PCA 256), both mirror splits, the human-
+only table beside them in the same run (`TestStaticDistilled`, Live).
+Fifteen hundred generated units move the probe 0.0 and the centroid
+−0.8; the counts as weights +1.7 on one split; twenty rows −1.7 /
++1.7 — the one-split shape intent-distil-dose found on live vectors —
+for a table 1.7x larger. A static table's ceiling is context and a
+corpus supplies units. The table stays distilled from the human
+fixture alone; the entry's other half, more generation, is declined
+on the dose lane's finding.
+
 ## okay-script-application — JSP's application scope, signIn through the container, the admin example
 Completed: 2026-09-07
 Landed as 443b1102 (spec then code, rebased). The second worked

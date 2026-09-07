@@ -3518,6 +3518,47 @@ The gap to the teacher is 18 points now, from 23; the remaining gap
 is still CONTEXT (a unit's one vector wherever it appears), and
 neither extension touches that.
 
+## Results — intent-distil-static (2026-09-07)
+
+intent-distil-more's second half: "worth trying on the STATIC table,
+which was not fed here because its vocabulary would have to be
+re-embedded — a second pass over the teacher rather than a change of
+method." This is that pass. A static table has two inputs a corpus
+can feed — its VOCABULARY (which units exist, each embedded once by
+the teacher) and its WEIGHTS (the SIF counts) — and the classifier
+over it a third, its TRAINING ROWS. The 182 self-consistent distilled
+rows were tried at each in turn, on the best table so far (words +
+pairs + triples at PCA 256), on both mirror splits, the human-only
+table re-measured beside them (`TestStaticDistilled`, Live, one
+distillation of 3673 units in 4.6 s, 2172 of them the fixture's own):
+
+| arm | units | KB | probe (odd / even) | centroid (odd / even) | means |
+|---|---|---|---|---|---|
+| human vocabulary, human weights (baseline) | 2172 | 2172 | 65.0 / 68.3 | 71.7 / 66.7 | 66.7 / 69.2 |
+| + distilled vocabulary | 3673 | 3673 | 66.7 / 66.7 | 71.7 / 65.0 | 66.7 / 68.3 |
+| + distilled vocabulary and weights | 3673 | 3673 | 68.3 / 68.3 | 71.7 / 65.0 | 68.3 / 68.3 |
+| + vocabulary, weights, and 20 training rows | 3673 | 3673 | 61.7 / 68.3 | 68.3 / 73.3 | 65.0 / 70.8 |
+
+**Nothing moves outside the noise.** Fifteen hundred generated units
+change the probe by 0.0 and the centroid by −0.8; the generated
+counts as weights add +1.7 to the probe (+3.3 on one split, 0.0 on
+the other); twenty generated training rows cost the probe 1.7 and
+give the centroid 1.7 (−3.3 / +6.7 — one split's, the same shape
+intent-distil-dose found on live vectors). The table grows 1.7x for
+it. A static table's ceiling was measured as CONTEXT (one vector per
+unit wherever it appears) and a generated corpus supplies more units,
+not more context — so this is the answer the method predicted, now
+with the number.
+
+**What follows.** The static table stays distilled from the human
+fixture alone; the entry closes with both halves decided: this one
+measured, and "more generated rows" declined on intent-distil-dose's
+finding that the gain a dose showed was one split's. (The baseline's
+65.0 / 68.3 against the 68.3 single-split cell of
+intent-static-trigrams-and-pca is the PCA refitted on a table two
+units different plus the split's own spread — the same run is the
+only fair comparison, which is why every arm here has one.)
+
 ## Results — intent-distil-dose (2026-09-07)
 
 intent-distil-for-probe found +40 distilled rows worth ten centroid
