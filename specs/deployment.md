@@ -883,6 +883,42 @@ That last one is the argument for this whole arc's gate discipline,
 made against the arc itself: stage 1's suite was careful about the
 thing it was looking at and blind to the file beside it.
 
+## One model (deploy-old-helm-retired, 2026-09-07)
+
+specs/deploy.md's `Deploy` and this file's `Deployment` lived side by
+side from stage 0, deliberately and temporarily: a model proven on a
+fixture is not proven, so okay-script carried both values while the
+new one grew targets. By stage 3 that had become the thing this
+repository has a rule against — okay-script committed TWO Helm charts
+and TWO compose files for one application — so the old one is gone
+and specs/deploy.md records its supersession rather than being
+deleted.
+
+Three things the new model had to gain first, because the old one
+carried them:
+
+- **The Dockerfile is not a target's file.** laptop builds from it,
+  cluster and aws and the PaaS three all run the image it produces.
+  So it is rendered per `Run.Module` service into
+  `<moduleDir>/deploy/Dockerfile` — exactly where every target already
+  points — by `Deployment.image`, beside the targets rather than
+  inside one.
+- **`Run.Module` gained `extraBuild` and `extraCopy`.** okay-demo
+  links a Scala.js bundle in the build stage and copies its output
+  into the image next to the jar; without those two the port would
+  have been a regression dressed as a cleanup.
+- **`Service` gained `metricsPath`.** The old Helm chart annotated a
+  pod for Prometheus and the new cluster target had quietly dropped
+  it. Found by porting, which is the argument for porting a REAL
+  application rather than declaring the model complete.
+
+What did not survive, and should not have: `Image`/`Env` (a
+`Run.Image` and a `Settings` say both), `Compose`/`Helm` as separate
+renderers (the `laptop` and `cluster` targets say it better and for
+more than one service), and the packaged chart resources — a chart
+whose every knob was a value in `values.yaml` was generic in the way
+that meant "one service, and you edit YAML for anything else".
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of

@@ -1,5 +1,15 @@
 # Deploy: a reusable scaffold, not one app's Dockerfile
 
+> **SUPERSEDED 2026-09-07 by specs/deployment.md** (deploy-old-helm-
+> retired). `Deploy` said what ONE PROCESS is; `Deployment` says what
+> a SYSTEM is, and renders it to six targets rather than three files.
+> The code in this file is gone; the file is kept because the
+> decisions in it — a deployment is a VALUE, the rendered files are
+> committed and drift-tested, the module knows no application — are
+> the ones the new model inherited unchanged, and reading why they
+> were made is worth more than a paragraph summarising them.
+> `Dockerfile`, `Health`, `Resources` and `Copy` survived verbatim.
+
 ## Overview
 
 specs/ops.md gave any Okay server the wires operators already read
