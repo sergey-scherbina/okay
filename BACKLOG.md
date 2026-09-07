@@ -1201,6 +1201,15 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] okay-script-cache — LANDED 2026-09-07 (operator ask): static
+      files always carry an ETag (size+mtime, no read) and
+      Last-Modified and answer 304; pages opt in with `cache:
+      <seconds>`, ETag of the body, and go `private` automatically
+      when `secure:`, when a cookie is set, or when the session
+      cookie rode in; only a plain 200 to GET/HEAD is cached. A 304
+      saves the transfer, not the render — the counter test refuted
+      the first draft's claim otherwise. specs/okay-script.md
+      "Caching".
 - [x] script-tls — LANDED 2026-09-07 (operator ask): HTTPS for a Site
       on the one transport seam — `Tls.serverContext` (okay-tls),
       `Jetty.serve(..., ssl)` (okay-jetty, no new dependency),

@@ -1,5 +1,27 @@
 # Changelog
 
+## okay-script-cache — conditional requests: validators for static files always, `cache:` for pages
+Completed: 2026-09-07
+Landed as ab75608e (spec then code). Operator ask, in two halves
+because a static file and a rendered page carry different risks. A
+static file always carries a strong ETag from its size and mtime — no
+read, so a large file is cheap to validate — plus `Last-Modified`, and
+answers 304 to a matching `If-None-Match` (`*` and a `W/` prefix
+included) or an `If-Modified-Since` that still holds, with
+`If-None-Match` deciding alone when present per RFC 9110. A page opts
+in with `cache: <seconds>` in its front-matter (`none`, and anything
+unparseable, reads as absent): `Cache-Control` plus an ETag of the
+rendered body, and a matching validator answers 304 with no body.
+Privacy is mechanical rather than the author's memory — the directive
+is `private`, never `public`, when the page is `secure:`, when the
+response sets a cookie, or when the request carried the session
+cookie — and anything that is not a plain 200 to a GET or HEAD carries
+no cache headers at all. The honest correction the tests forced: a 304
+saves the TRANSFER, not the render, because an ETag of the body cannot
+be known without the body; the first draft's spec claimed the page
+would not run, and its own counter test refuted that in one run. 118
+green 3x.
+
 ## script-tls — HTTPS for a Site, through the one transport seam
 Completed: 2026-09-07
 Landed as eab6abff (spec then code). Operator ask, in three additive
