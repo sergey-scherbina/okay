@@ -1106,6 +1106,19 @@ lazy val okaySubscription = project
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+lazy val okayAcme = (project in file("okay-acme"))
+  // the client half of a wire (okayHttp) signing with the stack's own
+  // ES256 (okaySecurity) -- an ACME client is those two and a state
+  // machine, which is why it is 600 lines and not a dependency
+  .dependsOn(okayHttp.jvm, okaySecurity.jvm)
+  .settings(
+    name := "okay-acme",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    Test / fork := true,
+  )
+  // a real socket for the fake-CA acceptance test
+  .dependsOn(okayJetty % Test)
+
 lazy val okayScript = project
   .in(file("okay-script"))
   // okayHttp.jvm is the MAIN dependency since okay-script-site: `Site`
@@ -1127,7 +1140,9 @@ lazy val okayScript = project
   // `Secret` a private key travels as.
   // okayDeploy: okay-script/deploy is ScriptDeploy's value rendered --
   // a container that serves a pages directory (okay-script-image).
-  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty, okayTls, okayDeploy)
+  // okayAcme: OKAY_ACME asks a certificate authority for the
+  // certificate instead of being handed one (okay-acme).
+  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty, okayTls, okayDeploy, okayAcme)
   .settings(
     name := "okay-script",
     // drives dotty.tools.dotc IN-PROCESS -- no scala/scala-cli

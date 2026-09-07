@@ -3,6 +3,7 @@ package okay.script
 import okay.*
 import okay.given
 import okay.persist.FileStore
+import okay.security.given
 
 import java.nio.file.{Files, Path, Paths}
 
@@ -11,6 +12,11 @@ import java.nio.file.{Files, Path, Paths}
  *
  *   sbt "okayScript/runMain okay.script.Serve pages 8080"
  *   OKAY_DATA=./data sbt "okayScript/runMain okay.script.Serve pages"
+ *
+ * `OKAY_ACME=<email>` with `OKAY_ACME_DOMAINS=a,b` asks a certificate
+ * authority for the certificate itself (staging unless
+ * `OKAY_ACME_PROD=1`); the challenge is served on `OKAY_HTTP_PORT`,
+ * which must be reachable from the internet on port 80.
  *
  * `OKAY_TLS_RELOAD=<seconds>` re-reads the certificate when it
  * changes on disk, so certbot's renewal needs no restart.
@@ -58,7 +64,11 @@ object Serve:
                         /** OKAY_TLS_RELOAD=<seconds>: re-read the
                          * certificate when it changes, so a renewal is
                          * picked up without a restart (script-real-certs) */
-                        tlsReload: Option[Int] = None):
+                        tlsReload: Option[Int] = None,
+                        /** OKAY_ACME=<email> with OKAY_ACME_DOMAINS=a,b:
+                         * ask a certificate authority for the certificate
+                         * (okay-acme). Staging unless OKAY_ACME_PROD=1 */
+                        acme: Option[(String, Vector[String], Boolean)] = None):
     def scheme: String = if tls.isDefined then "https" else "http"
 
   /** `<dir> [port]`; port 8080 by default. With NO arguments the
@@ -85,7 +95,12 @@ object Serve:
                 env("OKAY_HSTS").flatMap(_.toIntOption).filter(_ > 0),
                 env("OKAY_HTTPS_ONLY").exists(v => v == "1" || v.equalsIgnoreCase("true")),
                 env("OKAY_HTTP_PORT").flatMap(_.toIntOption),
-                env("OKAY_TLS_RELOAD").flatMap(_.toIntOption).filter(_ > 0)))
+                env("OKAY_TLS_RELOAD").flatMap(_.toIntOption).filter(_ > 0),
+                for
+                  email <- env("OKAY_ACME")
+                  domains = env("OKAY_ACME_DOMAINS").map(_.split(",").toVector.map(_.trim).filter(_.nonEmpty)).getOrElse(Vector.empty)
+                  if domains.nonEmpty
+                yield (email, domains, env("OKAY_ACME_PROD").exists(v => v == "1" || v.equalsIgnoreCase("true")))))
             }
       case _ => Left("usage: okay.script.Serve <pages-dir> [port]   (or OKAY_PAGES/OKAY_PORT; OKAY_DATA=<dir> for a persistent store)")
 
@@ -109,6 +124,17 @@ object Serve:
         case Some(seconds) =>
           okay.tls.Tls.reloading(cert, key, secrets, java.time.Duration.ofSeconds(seconds),
             msg => System.err.println(s"okay-script: $msg")).map(Some(_))
+      case None if a.acme.isDefined =>
+        // the certificate is EARNED, then read like any other: ACME
+        // writes the pair, and the reloading context picks up every
+        // renewal after this one without a restart (okay-acme)
+        val (files, _) = acmeFiles(a)
+        okay.acme.Acme.notAfterOf(files._1) match
+          case None => Left("OKAY_ACME is set but no certificate has been issued yet — " +
+            "the run that issues it needs the challenge port reachable; see the log above")
+          case Some(_) =>
+            okay.tls.Tls.reloading(files._1.toString, okay.conf.Secret(s"file:${files._2}"), secrets,
+              java.time.Duration.ofMinutes(5), msg => System.err.println(s"okay-script: $msg")).map(Some(_))
       case None if a.selfSigned =>
         // beside the data when there is a data directory, so a restart
         // keeps the same identity; a temp one otherwise, and then the
@@ -121,6 +147,33 @@ object Serve:
           Some(ctx)
         }
       case None => Right(None)
+
+  /** where an ACME-issued identity lives: beside the data when there
+   * is a data directory (so a restart keeps the account and the
+   * certificate), in a temp directory otherwise -- which for ACME is
+   * a bad idea and the caller is told so */
+  def acmeFiles(a: Args): ((java.nio.file.Path, java.nio.file.Path), java.nio.file.Path) =
+    val dir = a.data.getOrElse(Paths.get(System.getProperty("java.io.tmpdir"))).resolve("acme")
+    ((dir.resolve("cert.pem"), dir.resolve("key.pem")), dir.resolve("account.pem"))
+
+  /** run the ACME flow if it is configured: the challenge is served on
+   * the PLAINTEXT port (a certificate authority speaks http and
+   * follows no redirect for it), so `OKAY_HTTP_PORT` is required and
+   * the refusal says so rather than hanging on a poll */
+  def acmeRun(a: Args, challenges: okay.acme.Acme.Challenges)
+             (using okay.security.Crypto, CanBlock): Either[String, Option[okay.acme.Acme.Outcome]] =
+    a.acme match
+      case None => Right(None)
+      case Some((email, domains, prod)) =>
+        val ((cert, key), account) = acmeFiles(a)
+        if a.data.isEmpty then
+          println("okay-script: OKAY_ACME without OKAY_DATA keeps the account key in a temp directory — " +
+            "a restart then registers a NEW account, which a CA rate-limits")
+        val cfg = okay.acme.Acme.Config(email, domains, account, cert, key,
+          directory = if prod then okay.acme.Acme.Directory.letsEncrypt else okay.acme.Acme.Directory.letsEncryptStaging)
+        Resource.run[Either[String, okay.acme.Acme.Outcome], Pure](
+          okay.jetty.Jetty.http().map(http => okay.acme.Acme.ensure(cfg, http, challenges))).runWith
+          .map(Some(_))
 
   /** the Site the arguments describe -- a caller wanting `verify`/
    * `issue` or a shared `Sessions` builds its own from here */
@@ -149,9 +202,19 @@ object Serve:
   }
 
   def main(args: Array[String]): Unit =
+    val challenges = okay.acme.Acme.Challenges.Memory()
     val plan =
       for
         a <- parse(args)
+        // the certificate is asked for BEFORE the server binds, so the
+        // first start of an ACME site is the one that earns it
+        outcome <- acmeRun(a, challenges)
+        _ = outcome.foreach {
+          case okay.acme.Acme.Outcome.Issued(ds, notAfter) =>
+            println(s"okay-script: a certificate for ${ds.mkString(", ")} until $notAfter")
+          case okay.acme.Acme.Outcome.Current(notAfter) =>
+            println(s"okay-script: the certificate on disk is good until $notAfter")
+        }
         ssl <- sslOf(a)
       yield (a, ssl)
     plan match
@@ -175,7 +238,11 @@ object Serve:
             // with no proxy in front, the plaintext port's only job is
             // to send a browser to the https one (script-https-default)
             _ <- a.httpPort.filter(_ => ssl.isDefined)
-              .map(p => okay.jetty.Jetty.serve(p)(redirectTo(okay.jetty.Jetty.port(server)))().map(Some(_)))
+              // the challenge comes FIRST: a CA fetches it over plain
+              // http and follows no redirect, so a site that redirects
+              // everything can never be renewed
+              .map(p => okay.jetty.Jetty.serve(p)(
+                challenges.routes orElse redirectTo(okay.jetty.Jetty.port(server)))().map(Some(_)))
               .getOrElse(pure(None))
           yield server
           Resource.run[Unit, Pure](serving.map { server =>

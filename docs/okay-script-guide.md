@@ -346,6 +346,7 @@ rest from the environment:
 | `OKAY_OPS=1` | `/healthz`, `/stats`, `/metrics` beside the pages |
 | `OKAY_TLS_CERT=…` `OKAY_TLS_KEY=file:…` | HTTPS with a real certificate (RSA or EC, `fullchain.pem` and its key) |
 | `OKAY_TLS_RELOAD=3600` | re-read the certificate when it changes — certbot renews, no restart |
+| `OKAY_ACME=you@example.com` `OKAY_ACME_DOMAINS=shop.example.com` | ask Let's Encrypt for the certificate (staging until `OKAY_ACME_PROD=1`) |
 | `OKAY_FORWARDED=1` | behind a TLS-terminating proxy: trust `X-Forwarded-Proto`, so cookies still get `Secure` |
 | `OKAY_TLS=self` | a self-signed certificate, generated once — https with nothing to obtain first |
 | `OKAY_HSTS=31536000` | `Strict-Transport-Security` on secure responses |
@@ -393,11 +394,24 @@ $ OKAY_TLS_CERT=/etc/letsencrypt/live/shop/fullchain.pem \
 The key may be RSA or EC, `fullchain.pem` is presented as the chain
 it is, and with `OKAY_TLS_RELOAD` a renewal on disk reaches the next
 connection without a restart — a certbot deploy hook is not even
-needed. What okay-script does NOT do is OBTAIN the certificate: that
-is ACME, the protocol a CA uses to check you control the domain
-(it hands you a token to serve under `/.well-known/acme-challenge/`
-or to put in DNS, then issues a 90-day certificate). certbot or a
-proxy that speaks ACME does that part.
+needed. Or let it fetch its own, which is what ACME is — the protocol a CA
+uses to check you control the domain (it hands you a token to serve
+under `/.well-known/acme-challenge/`, then issues a 90-day
+certificate):
+
+```
+$ OKAY_ACME=you@example.com OKAY_ACME_DOMAINS=shop.example.com \
+  OKAY_DATA=./data OKAY_HTTP_PORT=80 \
+  sbt "okayScript/runMain okay.script.Serve store 443"
+```
+
+Port 80 must be reachable from the internet, because that is where
+the CA comes to check. Staging until you add `OKAY_ACME_PROD=1` —
+deliberately, since a mistake against production costs a week of rate
+limit. Renewal happens on its own and reaches the next connection
+without a restart. What this client is NOT is a certificate manager:
+no wildcards, no DNS-01, no revocation. For a fleet, certbot or a
+proxy — see [specs/acme.md](../specs/acme.md).
 
 **Behind a proxy.** Terminating TLS in nginx, Caddy or an ingress is
 the usual shape, and three things then need saying. Pass `Upgrade`

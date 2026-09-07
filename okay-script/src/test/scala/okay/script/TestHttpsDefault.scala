@@ -128,3 +128,28 @@ class TestHttpsDefault extends munit.FunSuite:
       Files.walk(dir).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => Files.deleteIfExists(p): Unit)
       Files.walk(root).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => Files.deleteIfExists(p): Unit)
   }
+
+  test("Serve.parse reads the ACME switches, and the pair is only a pair with domains") {
+    val root = Files.createTempDirectory("okay-script-acme-args-")
+    try
+      def parse(env: Map[String, String]) = Serve.parse(Array(root.toString), env.get)
+      assertEquals(parse(Map.empty).map(_.acme), Right(None))
+      // an email without domains asks for nothing: there is no name to
+      // prove control of, so this is a misconfiguration, not a request
+      assertEquals(parse(Map("OKAY_ACME" -> "ops@example.com")).map(_.acme), Right(None))
+      assertEquals(
+        parse(Map("OKAY_ACME" -> "ops@example.com", "OKAY_ACME_DOMAINS" -> "a.example.com, b.example.com")).map(_.acme),
+        Right(Some(("ops@example.com", Vector("a.example.com", "b.example.com"), false))))
+      assertEquals(
+        parse(Map("OKAY_ACME" -> "o@e.com", "OKAY_ACME_DOMAINS" -> "a", "OKAY_ACME_PROD" -> "1")).map(_.acme.map(_._3)),
+        Right(Some(true)))
+      // staging is the default: a first run cannot burn a production limit
+      assertEquals(parse(Map("OKAY_ACME" -> "o@e.com", "OKAY_ACME_DOMAINS" -> "a")).map(_.acme.map(_._3)), Right(Some(false)))
+      // and the files live beside the data, so an account survives a restart
+      val withData = parse(Map("OKAY_ACME" -> "o@e.com", "OKAY_ACME_DOMAINS" -> "a", "OKAY_DATA" -> "/tmp/d")).toOption.get
+      val ((cert, key), account) = Serve.acmeFiles(withData)
+      assertEquals(cert.toString, "/tmp/d/acme/cert.pem")
+      assertEquals(key.toString, "/tmp/d/acme/key.pem")
+      assertEquals(account.toString, "/tmp/d/acme/account.pem")
+    finally Files.deleteIfExists(root): Unit
+  }
