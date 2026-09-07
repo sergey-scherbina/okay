@@ -63,6 +63,17 @@ them and did not know it.
 
 ### 2.2 `Combiner` — how votes become one answer
 
+> Measured 2026-09-07 (`intent-label-model`): the cascade BEAT a
+> learned agreement combiner here, and the reason belongs in the
+> design rather than in a results table. A cascade is the right shape
+> when one labeler is much more precise than the rest AND abstains
+> cheaply — it lets that labeler answer and steps aside, where a
+> weighted vote dilutes it with weaker voices. Snorkel's setting is
+> dozens of sources with none dominant. So this seam stays, with the
+> cascade as its default and the condition for changing it written
+> down: more independent labelers, or a combiner that models their
+> dependence.
+
 ```scala
 trait Combiner:
   def decide(votes: Vector[(String, Option[Labeler.Vote])]): Combiner.Decision
@@ -298,7 +309,7 @@ is recorded as a negative result and does not ship, as
 | # | lane | needs new rows? | criterion |
 |---|---|---|---|
 | 0 | `intent-autonomy-report` — the metric | no | **DONE 2026-09-07** |
-| 1 | `intent-label-model` — §4.3 combiner over existing tiers | **no** | beats the cascade on the autonomy report at equal coverage |
+| 1 | `intent-label-model` — §4.3 combiner over existing tiers | no | **DECLINED 2026-09-07**: 72.2%/82.9% against the cascade's 77.5%/89.6% over 8 splits; correlated labelers inflate each other and one dominant labeler is diluted by a vote. Reopen with many INDEPENDENT labelers or dependency modelling |
 | 2 | `intent-annotate-log` — §4.1 model labels real logged messages | produces them | 100+ kept rows; a refit moves the autonomy rate without breaking the law |
 | 3 | `intent-coannotate-queue` — §4.2 uncertainty routing | reduces them | human effort per point of autonomy, against a random-selection baseline |
 | 4 | `intent-refit-gate` — the law as a gate on every refit | no | a refit that would kill a class is refused, with the class named |

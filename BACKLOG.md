@@ -3061,15 +3061,18 @@ these are the lanes.
       active-learning lane already measured the shape (28 labels
       against 36 random for the same gain). Criterion: human effort
       per point of autonomy, not accuracy alone.
-- [ ] intent-label-model — STAGE 1, and FIRST of the whole programme
-      because it needs no new rows: the tiers we already ship ARE labelling
-      functions in Snorkel's sense (each answers some messages at a
-      known precision and abstains on the rest), and the offline door
-      throws their agreement away by taking the first that fires.
-      Learn a combiner from agreement, no gold labels needed. NEEDS NO
-      NEW DATA and runs with no network, so it should not wait behind
-      the harvest. Criterion: beats the cascade on the autonomy report
-      at equal coverage.
+- [x] intent-label-model — MEASURED AND DECLINED 2026-09-07
+      (MeasureLabelModel, offline). Six offline labelers combined by
+      agreement-estimated weights (Dawid-Skene / Snorkel's idea),
+      against the cascade. Correlated labelers inflate each other
+      (prefix ranked 0.833 at 58.3% real precision); dropping them
+      fixes the weights (cues first at 0.914) and one split looked
+      good; eight splits took it back — 72.2% precision at 82.9%
+      coverage against the cascade's 77.5% at 89.6%, worst class 0.42
+      against 0.56, ahead on 1 split of 8. Nothing ships; the
+      estimator lives in the test sources. Reopen with many more
+      INDEPENDENT labelers or with dependency modelling.
+      specs/intent-classify.md, "Results — intent-label-model".
 - [ ] intent-discover-classes — Other is several real classes nobody
       named; cluster what lands there and name the clusters with the
       model (Dial-In LLM, ACL 2025.emnlp-main.300, >95% agreement with

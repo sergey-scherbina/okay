@@ -1,5 +1,30 @@
 # Changelog
 
+## intent-label-model — the cascade is not naive, and eight splits said so
+Completed: 2026-09-07
+Stage 1 of the autonomy programme, chosen because it needed no new
+rows: the offline tiers are labelling functions, the door takes the
+first that fires, and the literature says a combiner learned from
+agreement beats that. Built it (six offline labelers, Dawid-Skene
+weights estimated from UNLABELLED held-out votes) and measured.
+Correlated labelers broke the estimate first — `prefix`, which is the
+gram model on a substring, was ranked 0.833 while being 58.3%
+accurate, because it agrees with its own parent. Dropping the echoes
+fixed the weights (the cues came first at 0.914, which is correct)
+and one split looked like a win: 85.4% precision at 80.0% coverage
+against the cascade's 80.0%. Eight random splits took it back: 72.2%
+at 82.9% coverage against 77.5% at 89.6%, worst class F1 0.42 against
+0.56, ahead on one split of eight. DECLINED; nothing ships and the
+estimator moved to the test sources, where the apparatus of a
+measurement belongs. The reason is structural and worth keeping: one
+labeler here is far more precise than the rest and abstains cheaply,
+so a cascade lets it answer while a weighted vote dilutes it —
+Snorkel's setting is dozens of sources with none dominant, ours is
+four with one dominant. A by-product: the resampled table is the
+first measurement of the shipped cascade at a matched floor, and it
+confirms from another angle that abstention pays.
+specs/intent-classify.md, "Results — intent-label-model".
+
 ## deploy-cloud-aws — Terraform for ECS Fargate, gated by the provider's own schema
 Completed: 2026-09-07
 Landed as 16ecebad (spec then code). Stage 3's first cloud. AWS went
@@ -45,6 +70,7 @@ the check walks `Targets.all` rather than naming targets, so a target
 written later is covered the day it exists — which is the argument for
 this arc's gate discipline made against the arc itself. 101 okay-deploy
 green 3x, 15 Live green, 148 okay-script green.
+
 
 ## intent-autonomy-report — the two numbers the no-model path is judged by
 Completed: 2026-09-07

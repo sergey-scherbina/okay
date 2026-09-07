@@ -4371,3 +4371,67 @@ all and improves the no-network door on its own), then 4, then 5 if
 measured to matter. Lane 3 is the one that improves autonomy without
 a single new row, which is why it should not wait behind the harvest.
 
+## Results — intent-label-model (2026-09-07)
+
+Stage 1 of the autonomy programme, and the one that needed no new
+rows: our offline tiers are labelling functions, the door combines
+them as a CASCADE (first that fires wins), and Snorkel's argument is
+that a combiner learned from AGREEMENT beats that. Measured, and on
+this corpus it does not.
+
+### The apparatus
+Six offline labelers, none touching a network: hand cues, induced
+cues, char-grams at (2,3), the same at (4,5), a word TF-IDF head, and
+the gram model over the first clause only. `Agreement.estimate`
+weighs each by how often it matches the weighted consensus of the
+others (Dawid-Skene's iteration; Snorkel's generative model is the
+same idea at scale) and never sees a label — the weights come from
+UNLABELLED held-out messages, which is the property that would have
+let a deployment re-estimate them on its own log.
+
+### What happened, in order
+- [x] **Correlation broke the estimate first.** With all six, the
+      estimator ranked `prefix` at 0.833 — a labeler whose actual
+      precision is 58.3% — because it IS the gram model on a
+      substring, and it agrees with its own parent. Three of six
+      votes came from one model; a majority they form is an echo, not
+      evidence. Combined door: 66.7% at full coverage against the
+      cascade's 80.0%.
+- [x] **Dropping the echoes fixed the WEIGHTS.** Over four
+      independent labelers the estimator put the cues first (0.914),
+      which is correct — they are the precision tier at 90.6%. On one
+      split the door then looked good: 85.4% precision at 80.0%
+      coverage, worst class F1 0.59 against the cascade's 0.52.
+- [x] **And resampling took it back.** Eight random splits, every
+      labeler refitted per split and the weights re-estimated on that
+      split's unlabelled half:
+
+| door | coverage | precision | worst class F1 |
+|---|---:|---:|---:|
+| cascade, full coverage | 100.0% (sd 0.0) | 72.9% (sd 5.9) | 0.52 |
+| cascade, grams margin 0.20 | 89.6% (sd 2.0) | **77.5%** (sd 5.6) | **0.56** |
+| agreement over 4, margin 0.20 | 82.9% (sd 2.7) | 72.2% (sd 5.1) | 0.42 |
+
+      The agreement door is ahead on ONE split of eight. DECLINED.
+
+### Decisions
+- **Nothing ships, and the estimator moves to the test sources.** It
+  is the apparatus of a measurement; keeping it in `main` unused
+  would be commemorating a result rather than recording one.
+- **The cascade is not naive — it is right for this shape.** One
+  labeler (the cues) is far more precise than the rest and abstains
+  cheaply. A cascade lets it answer and steps aside; a weighted vote
+  DILUTES it with three weaker voices. Snorkel's setting is dozens of
+  genuinely different sources, none dominant; ours is four with one
+  dominant. The technique is not wrong, our shape is not its shape.
+- **What would change the answer**, stated so the lane can be
+  reopened honestly: many more independent labelers (per-class cue
+  sets, per-language models, a slot-based labeler), or dependency
+  modelling so correlated labelers stop inflating each other. Both
+  are lanes, neither is a tweak.
+- **The by-product worth keeping**: the resampled table above is the
+  first measurement of the shipped cascade AT A MATCHED FLOOR, and it
+  confirms the autonomy report's finding from another angle —
+  abstention pays: 89.6% coverage at 77.5% beats 100% at 72.9%, and
+  the worst class rises with it.
+
