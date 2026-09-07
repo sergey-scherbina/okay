@@ -1,5 +1,32 @@
 # Changelog
 
+## acme-dns-providers — Cloudflare, deSEC and Route 53, so that none is the favourite
+Completed: 2026-09-07
+Landed as 387417f4 (spec then code, rebased). The `Dns` seam shipped
+empty on the argument that one favourite baked into a seam is worse
+than none; three implementations are a menu, and a deployment's own
+`Dns` remains exactly as first-class — they are all callers of the
+same trait. What they share is what a fourth should copy: the
+credential is a `Secret` resolved through the deployment's own
+resolver, so a token never inlines and a missing one refuses before
+any request; a failure is the PROVIDER's own sentence in whichever
+dialect it speaks, because "403: Invalid access token" is actionable
+and "DNS write failed" is not; `propagation` is that provider's
+documented figure and overridable, the number being theirs; the
+endpoint is overridable too, for a proxy, a compatible service or a
+test; and a delete NAMES the record it removes — Cloudflare by the id
+its create answered, Route 53 by the value we wrote — because a zone
+holds records that are none of our business. Route 53 is signed with
+the repository's OWN SigV4 from okay-blob at `service = "route53"`,
+since the alternative was a second copy of AWS's signature algorithm,
+which is what one shared signer exists to prevent; and `CanBlock` is
+taken at construction, so `Dns` stays a plain seam a test double
+implements with a map. Tested by shape against a stub that is the
+provider for one call — method, path, credential header, body fields,
+the delete, each refusal — since no account can be had in a test and
+the flow around them is already proven for real against Pebble. 17
+okay-acme green 3x.
+
 ## script-runmain-fork — the guide's own command compiles its pages again
 Completed: 2026-09-07
 Found while checking staging-seam's boot line on the guide's exact

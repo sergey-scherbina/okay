@@ -1368,11 +1368,14 @@ not a new primitive from scratch.
       Proven end to end: pebble-challtestsrv as both the resolver
       Pebble asks and the provider the test writes to, issuing
       `*.okay.example`.
-- [ ] acme-dns-providers — a `Dns` for a real provider, if a
-      deployment asks: Route53, Cloudflare, deSEC. Each is an HTTP
-      API and a credential; the reason none ships is that one
-      favourite baked into a seam is worse than none. Note the
-      propagation wait is per provider and none of them agree.
+- [x] acme-dns-providers — LANDED 2026-09-07: `Providers.cloudflare`,
+      `.desec` and `.route53` — THREE, so that none is the favourite,
+      and a deployment's own `Dns` stays as first-class. Credentials
+      are `Secret`s, refusals are the provider's own sentence,
+      propagation and endpoint are theirs and overridable, a delete
+      names what it removes. Route 53 signs with the repo's own SigV4
+      (okay-blob) rather than a second copy of the algorithm. Shape
+      tests against a stub; the flow around them is Pebble's.
 - [ ] script-tls: ALPN/HTTP2, OCSP stapling, cipher policy — still the
       proxy's, and named as such in the spec. A Site behind Caddy/nginx/an ingress needs
       three things from the operator: pass Upgrade for EVERY path
