@@ -202,7 +202,7 @@ class TestClassify extends munit.FunSuite {
     // a refined schema (no generic rule invents an ISO-8601 date), so
     // what is asserted is the structure, and the prompt calls them
     // placeholders rather than pretending otherwise
-    val j = Json.parseValue(ex)
+    val j = Json.parse(ex)
     assertEquals(Json.print(j), ex, "the example must at least be JSON")
     for part <- Seq("\"spans\"", "\"text\"", "\"why\"", "\"alts\"", "\"intent\"", "\"conf\"")
     do assert(ex.contains(part), s"the example is missing $part: $ex")

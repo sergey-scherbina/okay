@@ -54,7 +54,7 @@ class TestDistilForProbe extends munit.FunSuite {
       out.write(okay.codec.Json.print(body).getBytes("UTF-8"))
       out.close()
       val text = scala.io.Source.fromInputStream(conn.getInputStream, "UTF-8").mkString
-      okay.codec.Json.parseValue(text) match
+      okay.codec.Json.parse(text) match
         case okay.codec.Json.JObj(fields) =>
           fields.collectFirst { case ("data", okay.codec.Json.JArr(rows)) => rows }
             .getOrElse(Vector.empty)
@@ -72,7 +72,7 @@ class TestDistilForProbe extends munit.FunSuite {
   test("live: is the probe's ceiling quantity, or one author's register") {
     assume(reachable, s"no embeddings endpoint at $embedUrl")
     assume(Files.exists(store), "no distilled corpus — run TestDistil's generator")
-    val distilled = Json.decode(summon[Schema[Corpus]])(Json.parseValue(Files.readString(store)))
+    val distilled = Json.decode(summon[Schema[Corpus]])(Json.parse(Files.readString(store)))
       .map(_.rows).getOrElse(Vector.empty)
     assume(distilled.length >= 100, s"only ${distilled.length} distilled rows")
 

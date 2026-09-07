@@ -52,7 +52,7 @@ class TestDistilDose extends munit.FunSuite {
       out.write(Json.print(body).getBytes("UTF-8"))
       out.close()
       val text = scala.io.Source.fromInputStream(conn.getInputStream, "UTF-8").mkString
-      Json.parseValue(text) match
+      Json.parse(text) match
         case Json.JObj(fields) =>
           fields.collectFirst { case ("data", Json.JArr(rows)) => rows }.getOrElse(Vector.empty)
             .flatMap {
@@ -70,7 +70,7 @@ class TestDistilDose extends munit.FunSuite {
 
   private def readCorpus: Vector[Phrasing] =
     if !Files.exists(corpusFile) then Vector.empty
-    else Json.decode(summon[Schema[Corpus]])(Json.parseValue(Files.readString(corpusFile))).map(_.rows).getOrElse(Vector.empty)
+    else Json.decode(summon[Schema[Corpus]])(Json.parse(Files.readString(corpusFile))).map(_.rows).getOrElse(Vector.empty)
 
   private def ask(prompt: String, maxTokens: Int = 400): String =
     OpenAi.complete(Transports.http(), "none",
@@ -81,7 +81,7 @@ class TestDistilDose extends munit.FunSuite {
    * ran it, its verdicts written once */
   private def kept(corpus: Vector[Phrasing]): Set[String] =
     if Files.exists(keptFile) then
-      Json.decode(summon[Schema[Kept]])(Json.parseValue(Files.readString(keptFile))).map(_.texts.toSet).getOrElse(Set.empty)
+      Json.decode(summon[Schema[Kept]])(Json.parse(Files.readString(keptFile))).map(_.texts.toSet).getOrElse(Set.empty)
     else
       val ks = corpus.grouped(10).flatMap { batch =>
         val numbered = batch.zipWithIndex.map((p, i) => s"${i + 1}. ${p.text}").mkString("\n")

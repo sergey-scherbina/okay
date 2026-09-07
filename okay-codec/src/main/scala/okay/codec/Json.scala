@@ -53,8 +53,28 @@ object Json {
     case JObj(fs) => fs.map((k, v) => "\"" + escape(k) + "\":" + print(v)).mkString("{", ",", "}")
     case JErr(m) => "\"<error: " + escape(m) + ">\""
 
-  /** the total pipeline: any string yields a Json (JErr for damage) */
-  def parse(s: String): Json = value(cst(s))
+  /**
+   * The total pipeline: any string yields a Json (JErr for damage).
+   *
+   * It takes the FAST road — one strict pass, no tokens, no tree —
+   * and falls back to the lossless one whenever that road is not
+   * sure, so damage still gets the CST's exact answer. Same values,
+   * same totality; only the trivia is not kept, and nothing that
+   * returns a `Json` ever wanted the trivia.
+   *
+   * Measured 2026-09-07 (json-parse-fast-road) on a 19.7 MB frame out
+   * of okay-py: the lossless road 4.9 s, this one 62 ms — 79x, for an
+   * equal value. `Codecs.readJson`, the generic decode door the whole
+   * stack goes through, was paying that; so was every caller in
+   * twenty-four files. A caller that genuinely wants the tree calls
+   * `cst` and `value` itself.
+   */
+  def parse(s: String): Json = JsonValue.parse(s).getOrElse(lossless(s))
+
+  /** the tokenize-then-project road, kept NAMED so the agreement
+   * test can still compare the two and so a caller who wants the
+   * CST's reading of damaged text can ask for it */
+  def lossless(s: String): Json = value(cst(s))
 
   /**
    * RFC 7396 JSON Merge Patch, applied: an object PATCH recursively
@@ -90,13 +110,7 @@ object Json {
       JObj(merged)
     case other => other
 
-  /** the same Json by the fast road (JsonValue: one strict pass, no
-   * tokens, no tree) when the text is well formed, and by the
-   * lossless road otherwise — so damage still gets the CST's exact
-   * answer. Same values, same totality; only the trivia is not kept */
-  def parseValue(s: String): Json = JsonValue.parse(s).getOrElse(parse(s))
-
-  /** the projection of an ALREADY PARSED tree — the door for anyone
+    /** the projection of an ALREADY PARSED tree — the door for anyone
    * holding a session (an incremental reparse, say) who should not
    * pay to parse the text a second time */
   def value(c: Cst[K]): Json =

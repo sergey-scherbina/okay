@@ -290,7 +290,7 @@ object Classify {
 
   /** decode the gate's answer */
   def readInDomain(reply: String): Either[String, InDomain] =
-    Json.decode(summon[Schema[InDomain]])(Json.parseValue(reply))
+    Json.decode(summon[Schema[InDomain]])(Json.parse(reply))
 
   /**
    * Decode a reply.
@@ -301,7 +301,7 @@ object Classify {
    * and a guess here silently changes what was classified.
    */
   def read[I](reply: String)(using s: Schema[Reading[I]]): Either[String, Reading[I]] =
-    Json.decode(s)(Json.parseValue(reply))
+    Json.decode(s)(Json.parse(reply))
 
   /** what a caller acts on */
   enum Decision[+I]:

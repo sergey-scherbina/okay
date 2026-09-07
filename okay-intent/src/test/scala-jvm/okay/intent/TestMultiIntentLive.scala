@@ -54,7 +54,7 @@ class TestMultiIntentLive extends munit.FunSuite {
    * as two here. The `ofTheMessage` check below is therefore a law
    * the guard makes true by construction, kept as the statement. */
   private def spansOf(reply: String, message: String): Option[(List[String], List[String])] =
-    Json.decode(sReading)(Json.parseValue(reply)).toOption.map { r =>
+    Json.decode(sReading)(Json.parse(reply)).toOption.map { r =>
       val g = r.grounded(message)
       if g.spans.length != r.spans.length then
         println(s"[live] GUARD dropped ${r.spans.length - g.spans.length} of ${r.spans.length} spans: $message")

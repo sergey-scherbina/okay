@@ -49,7 +49,7 @@ class TestStaticDistilled extends munit.FunSuite {
       out.write(Json.print(body).getBytes("UTF-8"))
       out.close()
       val text = scala.io.Source.fromInputStream(conn.getInputStream, "UTF-8").mkString
-      Json.parseValue(text) match
+      Json.parse(text) match
         case Json.JObj(fields) =>
           fields.collectFirst { case ("data", Json.JArr(rows)) => rows }.getOrElse(Vector.empty)
             .flatMap {
@@ -65,9 +65,9 @@ class TestStaticDistilled extends munit.FunSuite {
   final case class Kept(texts: Vector[String]) derives Schema
 
   private def distilled: Vector[(String, String)] =
-    val rows = Json.decode(summon[Schema[Corpus]])(Json.parseValue(Files.readString(corpusFile))).map(_.rows).getOrElse(Vector.empty)
+    val rows = Json.decode(summon[Schema[Corpus]])(Json.parse(Files.readString(corpusFile))).map(_.rows).getOrElse(Vector.empty)
     val kept = if Files.exists(keptFile) then
-      Json.decode(summon[Schema[Kept]])(Json.parseValue(Files.readString(keptFile))).map(_.texts.toSet).getOrElse(Set.empty)
+      Json.decode(summon[Schema[Kept]])(Json.parse(Files.readString(keptFile))).map(_.texts.toSet).getOrElse(Set.empty)
       else rows.map(_.text).toSet
     rows.filter(p => kept(p.text)).map(p => p.text -> p.cls)
 

@@ -37,7 +37,7 @@ class TestTaxonAndRows extends munit.FunSuite {
 
   test("a taxonomy round-trips as data, so it can be edited without a compiler") {
     val t = Taxon.parsed(Seq("A", "B"), Seq("x" -> "A"))
-    val back = Json.decode(summon[Schema[Taxon]])(Json.parseValue(Json.write(t)))
+    val back = Json.decode(summon[Schema[Taxon]])(Json.parse(Json.write(t)))
     assertEquals(back, Right(t))
   }
 

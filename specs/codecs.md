@@ -935,3 +935,51 @@ implementations swapped between them.
   trusting it, and pair the arms in one run. Both of this lane's
   surprises came from single-arm numbers taken minutes apart.
 
+
+## The parser everything went through (2026-09-07, json-parse-fast-road)
+
+`Json.parse` was `value(cst(s))` — tokenize the text into a full
+lossless CST, then project a `Json` out of it. `Json.parseValue` was
+one strict pass with a fallback to that road when it was not sure.
+Two roads, and the default was the slow one.
+
+Found while measuring something else. `py-arrow` is filed as "frames
+via pyarrow, once the JSON-frame road hurts", so the first question
+was whether it hurts. A 500k-row × 3-column frame through okay-py:
+
+| | before |
+|---|---|
+| round trip | 9.7 s |
+| our encode | 0.2 s |
+| **`Json.parse`** | **4.9 s** |
+| our own decode walk | 0.03 s |
+| `Json.parseValue`, same text | **0.06 s** |
+
+Sixty percent of the round trip was our parser, and the fast road was
+79x quicker for a value the assert says is EQUAL. The Python
+boundary — the thing py-arrow proposed to replace — was a minority
+of the cost.
+
+So `Json.parse` IS the fast road now, falling back to the lossless one
+whenever `JsonValue.parse` is not sure. Nothing else changed:
+
+- **the values are the same**, and `TestJsonValue` still proves it —
+  a corpus of well-formed and damaged documents plus a PREFIX SWEEP,
+  every truncation of every one, both roads compared. That test now
+  names `Json.lossless` explicitly, because otherwise it would have
+  quietly become `parse == parse`.
+- **totality is the same**: damage falls through to the CST road and
+  gets `JErr` leaves exactly as before.
+- **`parseValue` is gone** rather than deprecated — `parse` is that
+  road, and keeping a second name for it is the drift this repository
+  deletes elsewhere. Its ten callers now say `parse`.
+
+Measured after, same frame: **round trip 9.7 s → 0.94 s**, and 100k
+rows 1.3 s → 0.19 s. Every module that decodes JSON through
+`Codecs.readJson` was paying the difference — okay-http, okay-agent,
+okay-mcp, okay-llm, okay-conf, and the two foreign-runtime engines.
+
+The lesson worth keeping is not about JSON. A module had two roads to
+the same value, differing by 79x, and the DEFAULT was the slow one for
+long enough that a separate feature got filed to work around its
+symptom. `py-arrow` is re-filed with an honest number.

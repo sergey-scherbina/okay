@@ -26,8 +26,11 @@ class TestJsonValue extends munit.FunSuite {
     "\"unterminated", "\"raw\ncontrol\"", "\"tab\there\"", "tru", "nul", "[tru]", "{\"a\":nulls}",
     "\"esc at end\\", "[\"a\",]", "{\"a\":[1,2}", "[{\"a\":1]", "\u0000", "[1,2,3", "{\"a\":\"b\"")
 
+  // `Json.parse` IS the fast road since json-parse-fast-road, so the
+  // comparison names the LOSSLESS road explicitly — otherwise this
+  // whole file would quietly become `parse == parse`
   def same(s: String)(using munit.Location): Unit =
-    assertEquals(Json.parseValue(s), Json.parse(s), s"disagree on <$s>")
+    assertEquals(Json.parse(s), Json.lossless(s), s"disagree on <$s>")
 
   test("well-formed documents: the fast road answers, and equals the lossless one") {
     wellFormed.foreach { s =>
@@ -36,7 +39,7 @@ class TestJsonValue extends munit.FunSuite {
     }
   }
 
-  test("damaged documents: the fast road refuses, the lossless one answers, parseValue is that answer") {
+  test("damaged documents: the fast road refuses, the lossless one answers, and parse is that answer") {
     damaged.foreach { s =>
       assert(JsonValue.parse(s).isEmpty, s"the fast road accepted damage <$s>")
       same(s)

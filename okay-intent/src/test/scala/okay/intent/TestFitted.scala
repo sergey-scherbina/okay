@@ -30,7 +30,7 @@ class TestFitted extends munit.ScalaCheckSuite {
   test("a probe survives the round trip as the same classifier") {
     val fitted = Probe.train(rows)
     val wire = Json.write(Fitted.save(fitted))
-    val back = Fitted.load(Json.decode(summon[Schema[Fitted.ProbeModel]])(Json.parseValue(wire))
+    val back = Fitted.load(Json.decode(summon[Schema[Fitted.ProbeModel]])(Json.parse(wire))
       .getOrElse(fail("the model did not decode")))
     assertEquals(back.classes, fitted.classes)
     for e <- Seq(vec(1.0, 0.0, 0.3), vec(-1.0, 0.4, 0.3), vec(0.0, 0.0, 0.3)) do

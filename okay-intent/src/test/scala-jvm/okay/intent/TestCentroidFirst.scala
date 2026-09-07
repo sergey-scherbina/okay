@@ -57,7 +57,7 @@ class TestCentroidFirst extends munit.FunSuite {
       out.write(okay.codec.Json.print(body).getBytes("UTF-8"))
       out.close()
       val text = scala.io.Source.fromInputStream(conn.getInputStream, "UTF-8").mkString
-      okay.codec.Json.parseValue(text) match
+      okay.codec.Json.parse(text) match
         case okay.codec.Json.JObj(fields) =>
           fields.collectFirst { case ("data", okay.codec.Json.JArr(rows)) => rows }
             .getOrElse(Vector.empty)
@@ -100,7 +100,7 @@ class TestCentroidFirst extends munit.FunSuite {
   test("live: the learning curve, with distilled data available") {
     assume(reachable, s"no endpoint at $url")
     assume(Files.exists(store), "no distilled corpus")
-    val distilled = Json.decode(summon[Schema[Corpus]])(Json.parseValue(Files.readString(store)))
+    val distilled = Json.decode(summon[Schema[Corpus]])(Json.parse(Files.readString(store)))
       .map(_.rows).getOrElse(Vector.empty)
     val prefix = "Classify the intent of this message: "
     val vecs = human.grouped(32).flatMap(g => embed(small, g.map((t, _) => prefix + t))).toVector

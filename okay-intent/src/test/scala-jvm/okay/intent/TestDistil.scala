@@ -58,7 +58,7 @@ class TestDistil extends munit.FunSuite {
 
   private def readCorpus: Vector[Phrasing] =
     if !Files.exists(store) then Vector.empty
-    else Json.decode(summon[Schema[Corpus]])(Json.parseValue(Files.readString(store)))
+    else Json.decode(summon[Schema[Corpus]])(Json.parse(Files.readString(store)))
       .map(_.rows).getOrElse(Vector.empty)
 
   private def writeCorpus(rows: Vector[Phrasing]): Unit =

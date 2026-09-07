@@ -15,7 +15,7 @@ import Json.*
  * of — RFC 8259's grammar, and the projection's own reading of it —
  * and answers None on anything else: a stray character, a trailing
  * value, a raw control character in a string, an unterminated
- * anything, empty input. `Json.parseValue` then hands such input to
+ * anything, empty input. `Json.parse` then hands such input to
  * the lossless parser, so damage gets exactly the CST's answer (the
  * JErr in place, the truncated tail, the message) and this parser
  * never has to reproduce a damage vocabulary. Agreement is a test

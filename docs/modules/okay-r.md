@@ -2,8 +2,8 @@
 
 R as a handler (specs/r.md; the twin of [`okay-py`](okay-py.md), and
 the model is stated once for both): call-shaped foreign compute.
-Calls are OPERATIONS — journalable by `Durable`, mockable by swapping
-the handler, supervised by dead-process-throws. Named functions only:
+Calls are OPERATIONS — mockable by swapping the handler, supervised
+by dead-process-throws. Named functions only:
 the enum has no eval-a-string case, structurally, so untrusted input
 reaches R only as data.
 
@@ -36,10 +36,16 @@ MERGE contract and R carrying the CALL contract. A pipeline that
 folds a topic into a frame, hands it to `auto.arima` and journals the
 answer uses three specs, none of which knows the others' names.
 
-`okay-agent` is deliberately NOT a dependency: `Durable` journals R
-steps because they are operations, not because the modules were
-introduced to each other. The module depends on okay-codec, for the
-`Schema` at the edge.
+`okay-agent` is deliberately NOT a dependency. The module depends on
+okay-codec, for the `Schema` at the edge.
+
+A correction that arrived with the implementation (2026-09-07): both
+this spec and specs/py.md used to say an R step is "journalable by
+`Durable`", and it is not. `Durable.tools` wraps a `Handler[Tool]` and
+`Tool.Call` carries a `ToolCall`; there is no generic
+journal-any-operation. An R call reached THROUGH a tool is journalled
+because the tool is — journaling an `REval` itself is filed as
+`durable-any-operation`.
 
 ## Where the road goes
 

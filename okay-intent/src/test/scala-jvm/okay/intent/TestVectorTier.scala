@@ -44,7 +44,7 @@ class TestVectorTier extends munit.FunSuite {
     out.write(okay.codec.Json.print(body).getBytes("UTF-8"))
     out.close()
     val text = scala.io.Source.fromInputStream(conn.getInputStream, "UTF-8").mkString
-    okay.codec.Json.parseValue(text) match
+    okay.codec.Json.parse(text) match
       case okay.codec.Json.JObj(fields) =>
         fields.collectFirst { case ("data", okay.codec.Json.JArr(rows)) => rows }
           .getOrElse(Vector.empty)

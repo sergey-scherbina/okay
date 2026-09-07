@@ -15,7 +15,7 @@ import okay.codec.{Json, Schema}
  *
  * Deliberately thin. It adds no cleverness to the tiers; it is a
  * DOOR, and its value is that a caller does not have to assemble
- * `Fitted.save`, a summoned `Schema` and `Json.parseValue` correctly
+ * `Fitted.save`, a summoned `Schema` and `Json.parse` correctly
  * to keep a model between two processes.
  */
 object Fit {
@@ -49,7 +49,7 @@ object Fit {
   private def write[A: Schema](a: A): String = Json.write(a)
 
   private def read[A](s: String)(using sc: Schema[A]): Either[String, A] =
-    Json.decode(sc)(Json.parseValue(s))
+    Json.decode(sc)(Json.parse(s))
 
   def save(t: CharGrams.Trained): String = write(Fitted.save(t))
   def save(t: Probe.Trained): String = write(Fitted.save(t))

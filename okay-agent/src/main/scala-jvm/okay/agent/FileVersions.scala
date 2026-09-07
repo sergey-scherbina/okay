@@ -48,7 +48,7 @@ final class FileVersions(dir: Path) extends Rerun.Versions {
   def get(id: String): Option[Rerun.Version] =
     val f = fileOf(id)
     if !Files.exists(f) then None
-    else FileVersions.decode(Json.parseValue(Files.readString(f)))
+    else FileVersions.decode(Json.parse(Files.readString(f)))
 
   /** every version in the directory, oldest file first — a listing,
    * not a history: the ORDER of a branch is in the parent pointers,
@@ -57,7 +57,7 @@ final class FileVersions(dir: Path) extends Rerun.Versions {
     val files = Files.list(dir).iterator().asScala.toVector
       .filter(p => p.getFileName.toString.endsWith(".json"))
       .sortBy(p => (Files.getLastModifiedTime(p).toMillis, p.getFileName.toString))
-    files.flatMap(p => FileVersions.decode(Json.parseValue(Files.readString(p))))
+    files.flatMap(p => FileVersions.decode(Json.parse(Files.readString(p))))
 }
 
 object FileVersions {

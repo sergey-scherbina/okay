@@ -157,8 +157,8 @@ class CodecBenchmark {
   @Benchmark def cborDecodeStaged(): Either[String, Order] = stagedCbor.decode(cborBytes)
 
   @Benchmark def parseOnly(): Json = Json.parse(text)
-  @Benchmark def parseValueOnly(): Json = Json.parseValue(text)
-  @Benchmark def textToOrderStaged(): Either[String, Order] = staged.decode(Json.parseValue(text))
+  @Benchmark def parseValueOnly(): Json = Json.parse(text)
+  @Benchmark def textToOrderStaged(): Either[String, Order] = staged.decode(Json.parse(text))
   @Benchmark def textToOrderCirce(): Either[?, Order] = io.circe.parser.decode[Order](text)
   /** json-fast-read: the strict door -- characters straight into the
    * Schema, no tokens, no CST, no Json tree; the same answer as

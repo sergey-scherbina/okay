@@ -32,11 +32,11 @@ class TestDistilDiversity extends munit.FunSuite {
 
   private def corpus: Vector[(String, String)] =
     if !Files.exists(corpusFile) then Vector.empty
-    else Json.decode(summon[Schema[Corpus]])(Json.parseValue(Files.readString(corpusFile))).map(_.rows).getOrElse(Vector.empty).map(p => p.text -> p.cls)
+    else Json.decode(summon[Schema[Corpus]])(Json.parse(Files.readString(corpusFile))).map(_.rows).getOrElse(Vector.empty).map(p => p.text -> p.cls)
 
   private def kept: Set[String] =
     if !Files.exists(keptFile) then Set.empty
-    else Json.decode(summon[Schema[Kept]])(Json.parseValue(Files.readString(keptFile))).map(_.texts.toSet).getOrElse(Set.empty)
+    else Json.decode(summon[Schema[Kept]])(Json.parse(Files.readString(keptFile))).map(_.texts.toSet).getOrElse(Set.empty)
 
   private def words(t: String): Vector[String] = Static.tokens(t)
 
