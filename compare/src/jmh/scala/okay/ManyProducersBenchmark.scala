@@ -76,8 +76,67 @@ class ManyProducersBenchmark {
 
   // ── the comparable lanes: a CHUNKED consumer, as zio's stream has ──
 
+  /**
+   * The CONSUMER axis, which this benchmark did not have (2026-09-07,
+   * the operator asked). Producers get a part each; consumers share
+   * the scan cursor, so the two sides do not scale for the same
+   * reason and a producer sweep cannot answer for both. One consumer
+   * is the shape above; `consumers` > 1 puts several readers on the
+   * same channel and sums what each of them got.
+   */
+  @Param(Array("1", "4"))
+  var consumers: Int = 1
+
+  private def runManyConsumers(c: Channel[Long]): Long =
+    val per = Total / producers
+    val ps = (0 until producers).map(w => Thread.ofVirtual().start { () =>
+      var i = 0
+      while i < per do { val _ = c.sendBlocking(w.toLong * per + i); i += 1 }
+    })
+    val done = Thread.ofVirtual().start { () => ps.foreach(_.join()); c.close() }
+    val sums = java.util.concurrent.atomic.AtomicLong()
+    val cs = (0 until consumers).map(_ => Thread.ofVirtual().start { () =>
+      var mine = 0L
+      var go = true
+      while go do
+        c.receiveBlocking() match
+          case Some(v) => mine += v
+          case None => go = false
+      val _ = sums.addAndGet(mine)
+    })
+    cs.foreach(_.join())
+    done.join()
+    sums.get
+
+  @Benchmark def ringManyConsumers(): Long =
+    runManyConsumers(Queues.strong[Long].bounded(Cap).build)
+
+  @Benchmark def adaptiveManyConsumers(): Long =
+    runManyConsumers(Queues.strong[Long].adaptive.each(Cap / 8 max 8).build)
+
   @Benchmark def oneRing_chunk(): Long =
     runChunked(Queues.strong[Long].bounded(Cap).build)
+
+  /** DIAGNOSTIC (solo-part, 2026-09-07): a buffer that does NOTHING
+   * but forward to a ring. If this costs what the partitioned buffer
+   * costs at one producer, then the price is the extra layer of call
+   * — a channel calling `Buffer` calling `Ring` — and no amount of
+   * bookkeeping removed from the adaptive buffer will close it. */
+  private final class Forwarding[A](to: Buffer[A]) extends Buffer[A]:
+    def capacity: Int = to.capacity
+    def push(a: A): Boolean = to.push(a)
+    def pushDeciding(a: A, unless: java.util.concurrent.atomic.AtomicBoolean, orElse: A): A | Null =
+      to.pushDeciding(a, unless, orElse)
+    def pop(): A | Null = to.pop()
+    def popMany(max: Int)(sink: A => Unit): Int = to.popMany(max)(sink)
+    override def pushMany(n: Int)(src: Int => A): Int = to.pushMany(n)(src)
+    def size: Int = to.size
+    def isEmpty: Boolean = to.isEmpty
+    def hasReady: Boolean = to.hasReady
+    override def hasRoom: Boolean = to.hasRoom
+
+  @Benchmark def forwarded_chunk(): Long =
+    runChunked(Queues.strong[Long].on([T] => (_: Int) => Forwarding[T](Ring[T](Cap))).build)
 
   @Benchmark def oneUnbounded_chunk(): Long =
     runChunked(Queues.strong[Long].unbounded.build)

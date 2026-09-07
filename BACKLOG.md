@@ -4183,3 +4183,38 @@ and the `Chunks` path each side takes. A thread-local cache of the
 producer's own buffer was tried and bought 18 % -> ~15 %, which is
 inside the noise this box can measure and is recorded as no gain.
 
+## adaptive-one-producer — the last 18 %, with three refuted causes and the evidence for the fourth
+
+`Queues.strong.adaptive` beats the ring everywhere except at ONE
+producer, where it reads about 1.2x a plain ring (measured repeatedly:
+149/122, 147/126, 143/121). That gap is the whole of what keeps
+`Channel.apply` on a ring, so it is worth naming properly.
+
+REFUTED, each by its own measurement (solo-part, 2026-09-07):
+- the part LOOKUP (`open` read, array read, bounds check): a
+  thread-local holding the producer's own buffer, and then a `solo`
+  field for the single-part case, together moved 149 -> 141 -> 143.
+  Inside the noise of this box.
+- the THREAD-LOCAL on the consumer side (`lastRoute` per pop): taken
+  off the single-part path entirely. No measurable change.
+- the extra LAYER OF CALL (channel -> Buffer -> Ring): a `Forwarding`
+  buffer that does nothing but delegate reads 116.6 against the ring's
+  121.2 — the layer is free, the JIT inlines it. This one was the
+  disqualifying evidence written into the claim, and it fired.
+
+WHAT THE EVIDENCE NOW SAYS: allocation. `-prof gc` at one producer,
+same work: ring 780 KB/op, adaptive 1 446 KB/op — about 83 bytes per
+element more — and the stack profile shows
+`DirectMethodHandle$Holder.newInvokeSpecial` /
+`Invokers$Holder.linkToTargetMethod` under `receiveManyAsync` in the
+adaptive lane and nowhere else. Something on the chunked receive path
+stops being inlined or scalar-replaced when the buffer is an
+`AdaptiveFifo`, and starts allocating per element.
+
+NEXT: an allocation profile that names the TYPE (async-profiler
+`-e alloc`, or JFR `ObjectAllocationSample`) on
+`ManyProducersBenchmark.adaptive_chunk` at `producers=1`. Do not
+change code before that: three plausible causes have already been
+tried and refuted, which is what a profile that names the type would
+have saved.
+

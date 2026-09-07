@@ -360,6 +360,28 @@ about the order BETWEEN producers. This trades exactly that silence.
 If your consumer relies on how two producers interleave, do not use
 it — nothing ever promised you that, but it may have happened to hold.
 
+**What a growing producer count costs, on both axes** (2026-09-07).
+The buffer that grows a part per producer is the answer to "what if
+more producers arrive", and the numbers say so on both sides of the
+channel — minimum of several rounds, us:
+
+| | ring | adaptive |
+|---|---|---|
+| 1 producer, 1 consumer | **122** | 148 |
+| 4 producers | 725 | **135** |
+| 16 producers | 2 375 | **99** |
+| 4 producers, 1 consumer (elementwise) | 904 | **510** |
+| 4 producers, 4 consumers | 2 307 | **1 039** |
+
+Two things to read here. Producers and consumers do NOT scale for the
+same reason: a producer gets a part of its own, while consumers share
+the head of a ring or the scan cursor of a partitioned buffer, so
+adding consumers costs both designs about 2.3x while adding producers
+costs only the ring. And the one row where the ring still wins is one
+producer — that is why `Channel.apply` is still a ring, and the 1.2x
+behind it is filed as `adaptive-one-producer` with three refuted
+causes.
+
 **Waking the right sender** (2026-09-07). A partitioned buffer has one
 more thing to get right than a ring: when a pop frees a slot, WHICH
 parked producer should be woken? The channel asks the buffer for the

@@ -257,14 +257,14 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
 
   override def pop(): A | Null =
     val s = solo
-    if s != null then { myRoute.set(0); return s.pop() }
+    if s != null then return s.pop()
     // ONE PART is the common case and deserves the straight line: no
     // cursor, no loop, no scan. Measured at a single producer, a
     // partitioned buffer costs 30% over a plain ring (145.8 against
     // 112.4) -- and the hand-tuned relaxed lane costs the same, so
     // that price is partitioning itself rather than adapting. This
     // shaves what can be shaved off it.
-    if open.get == 1 then { myRoute.set(0); slots.get(0).nn.pop() }
+    if open.get == 1 then slots.get(0).nn.pop()
     else popScanning()
 
   private def popScanning(): A | Null =
@@ -282,8 +282,8 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
 
   override def popMany(max: Int)(sink: A => Unit): Int =
     val s = solo
-    if s != null then { myRoute.set(0); return s.popMany(max)(sink) }
-    if open.get == 1 then { myRoute.set(0); slots.get(0).nn.popMany(max)(sink) }
+    if s != null then return s.popMany(max)(sink)
+    if open.get == 1 then slots.get(0).nn.popMany(max)(sink)
     else popManyScanning(max)(sink)
 
   private def popManyScanning(max: Int)(sink: A => Unit): Int =
@@ -299,7 +299,11 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
       tried += 1
     took
 
-  override def lastRoute: Int = myRoute.get.intValue
+  /** with one part the route is 0 and no thread-local is read: the
+   * channel asks this after EVERY pop, and a `ThreadLocal.get` per
+   * element is the kind of cost a buffer that means to be free at one
+   * producer cannot carry */
+  override def lastRoute: Int = if solo != null then 0 else myRoute.get.intValue
 
   override def size: Int =
     var s = 0L
