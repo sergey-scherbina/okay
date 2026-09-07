@@ -1,5 +1,32 @@
 # Changelog
 
+## consumer-claim — a part is drained under a claim, and consumers stop walking one cursor
+
+The operator's design (2026-09-07): a queue per producer, and
+consumers taking from them atomically and asynchronously so that one
+consumer's processing does not hold the others up. The producer half
+already existed — `AdaptiveFifo` gives each producer a part. This is
+the consumer half, and it was the measured weak side: adding consumers
+cost 2.3x because every one of them walked the same scan cursor and
+competed for the same part's head, one element at a time.
+
+Now a drain takes an exclusive per-part claim, released BEFORE
+anything is processed — never held across a callback, never across a
+park — and each consumer starts its scan at its own offset instead of
+a shared cursor, which is deleted. Four producers, four consumers,
+elementwise: 1 039 -> 893 us, 0.39x a plain ring; one consumer 510 ->
+472.
+
+Smaller than the 600 predicted, and the miss is the finding: an
+elementwise `receiveBlocking` takes ONE element per call through the
+channel's waiter machinery, which no per-part claim touches. The half
+that would fix that is a per-consumer stash, and it is filed rather
+than built (`consumer-stash`) because a stash is a place elements can
+die and the strong contract says they may not — with the three ways
+out written down, cheapest first.
+
+Gate: 84 modules, 3 018 tests, 0 failures, 0 warnings.
+
 ## adaptive-one-producer — a row that did not move, and the five reasons it did not
 
 The partitioned buffer beats a plain ring everywhere a channel has

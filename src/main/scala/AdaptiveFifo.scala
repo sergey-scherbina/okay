@@ -106,14 +106,13 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     override def initialValue(): Integer =
       Integer.valueOf(Math.floorMod(Thread.currentThread().threadId().toInt, if cap < 1 then 1 else cap))
 
-  private val cursor = AtomicInteger(0)
   /**
    * The part THIS THREAD last took an element from — what the channel
-   * wakes senders on. The scan cursor cannot answer that question: it
-   * is one shared cell, so with several consumers rotating over the
-   * parts it names whatever part was scanned LAST BY ANYONE, and the
-   * channel then woke the senders of a part that had not freed a
-   * slot while the sender on the part that had slept on
+   * wakes senders on. A shared scan cursor could not answer that: it
+   * is one cell, so with several consumers rotating over the parts it
+   * named whatever part was scanned LAST BY ANYONE, and the channel
+   * then woke the senders of a part that had not freed a slot while
+   * the sender on the part that had slept on
    * (`adaptive-p-x-c-deadlock`, reproduced at round 5 363 of the P x C
    * probe: four consumers parked on empty, one producer parked on
    * full). A thread's own last route is exact, because every
