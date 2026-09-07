@@ -877,7 +877,7 @@ measure on our own data, never a predicted result.
       road hurts
 
 ## okay-persist (specs/persist.md — staged design; stage 0 landed)
-- [ ] persist-raft — RaftStore: consensus as one more control-log
+- [x] persist-raft — RaftStore: consensus as one more control-log
       engine under the unchanged Election machinery (specs/
       consensus.md own-Raft notes; typestate per specs/typestate.md)
       STAGE 0 LANDED 2026-09-03 (operator: "start it anyway," a
@@ -937,9 +937,19 @@ measure on our own data, never a predicted result.
       no leader heard within an election timeout (the caller's word:
       `handle(..., leaderFresh)`); terms over the forty partition
       seeds 163 → 67, over the membership seeds 174 → 93, more
-      proposals acked. Chunked snapshots, the catch-up phase for a
-      joiner, and the commit-wait as an `Ack` level remain open; box
-      stays unchecked for those.
+      proposals acked. LEFTOVERS DECIDED 2026-09-07 (raft-leftovers):
+      the joiner's catch-up phase declined by measurement (a joiner
+      is current 25..165 ms after it is added, median 71, on 40 of
+      40 seeds, one to three heartbeats, while the cluster commits
+      0..1 entries — a learner phase shortens a window already
+      shorter than a heartbeat's commits; returns when a snapshot
+      takes longer to transfer than an election timeout); chunked
+      InstallSnapshot declined until an image near the 2 GB frame
+      exists (flow control, not correctness); the commit-wait as an
+      `Ack` level declined by the contract (an offset exists only
+      once applied, i.e. committed, so every level waits for the
+      commit; the timeout is the one honest knob). BOX CLOSED: stages
+      0-2c and pre-vote landed, the rest decided on evidence.
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,

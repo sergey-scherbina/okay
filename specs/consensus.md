@@ -401,6 +401,37 @@ prices every large claim:
   joiner (the sweep cannot show it at these sizes — a joiner behind
   a compacted stretch gets a snapshot and is current in one round),
   chunked snapshots, the commit-wait as an `Ack` level.
+- **The three leftovers, decided 2026-09-07 (raft-leftovers) — by
+  a number or by the contract, the way the rest were.**
+  (1) *The joiner's catch-up phase* (thesis §4.2.1: a new server
+  as a non-voting learner until it is current, so its empty log
+  does not count against availability). Measured in the membership
+  sweep: from `addNode` to the joiner holding everything the leader
+  had committed at that moment, 25..165 ms, median 71, on 40 of 40
+  seeds — one to three heartbeats (50 ms), under the shortest
+  election timeout (150 ms) — while the cluster committed 0..1
+  entries. A learner phase would shorten a window that is already
+  shorter than a heartbeat's worth of commits; declined at these
+  sizes, and the condition under which it returns is stated: a
+  joiner whose snapshot takes longer to transfer than an election
+  timeout, which is a size the wire's one-frame InstallSnapshot
+  would meet first. (2) *Chunked InstallSnapshot*: the wire frame is
+  `[len:int32][CBOR]`, one message up to 2 GB, and the follower
+  installs it whole; chunking is flow control and resumability for
+  a transfer that is slow, not correctness — declined until an
+  image that large exists (RaftStore's image is the local store's
+  full history, so "that large" is a store that should have been
+  compacted). (3) *The commit-wait as an `Ack` level* rather than a
+  timeout: `Topic.append` returns the record's OFFSET, which exists
+  only once the entry is APPLIED to the local store, which is only
+  once it is COMMITTED — so every `Ack` level must wait for the
+  commit, and `Ack.Received`/`Durable`/`Replicated` cannot mean
+  three things over Raft (a majority-replicated commit is all
+  three). The timeout (`commitWaitMs` → `NotCommitted`) stays the
+  one honest knob: how long a caller will wait for an offset that
+  may never come. Declined by the contract. With these, the
+  persist-raft box closes: stages 0–2c and pre-vote landed, the
+  rest decided on evidence.
 - **The typestate note, still open** (asked by the user, 2026-09-01):
   the ROLE protocol (Follower → Candidate → Leader, each with its
   own legal actions) is the textbook typestate case; `PState` (the

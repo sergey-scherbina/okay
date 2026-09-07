@@ -65,6 +65,12 @@ class TestRaftSim extends munit.FunSuite {
     /** snapshots taken and snapshots installed from a leader, across the run */
     var compactions = 0
     var installs = 0
+    /** the joiner's catch-up (raft-leftovers): when it was added, the
+     * leader's commit then, and the first moment it had all of that */
+    var joinedAt = -1L
+    var joinTarget = 0L
+    var currentAt = -1L
+    var committedMeanwhile = 0L
     private var seq = 0L
     private val queue = collection.mutable.PriorityQueue.empty[Event](using Ordering.by[Event, (Long, Long)](e => (e.at, e.seq)).reverse)
     var now = 0L
@@ -152,6 +158,8 @@ class TestRaftSim extends munit.FunSuite {
      * operator would configure it), nobody's member until a leader
      * says so; it runs its own timers from now on */
     def addNode(id: String): Unit =
+      joinedAt = now
+      joinTarget = leader.map(states(_).commitIndex).getOrElse(0L)
       boot = boot.updated(id, live.toSet)
       ids = ids :+ id
       states = states.updated(id, RaftState(id = id))
@@ -211,6 +219,12 @@ class TestRaftSim extends munit.FunSuite {
               states = states.updated(e.node, ns)
             schedule(compactEvery, e.node, Kind.Compact)
         settleAcks()
+        if joinedAt >= 0 && currentAt < 0 then
+          ids.lastOption.filter(_ == "5").foreach { j =>
+            if states(j).commitIndex >= joinTarget then
+              currentAt = now
+              committedMeanwhile = leader.map(states(_).commitIndex).getOrElse(joinTarget) - joinTarget
+          }
         true
 
     def propose(data: String): Unit = leader.foreach(l => schedule(0, l, Kind.Propose(data)))
@@ -363,9 +377,12 @@ class TestRaftSim extends munit.FunSuite {
       val machines = sim.live.map(id => sim.machine(id).toSet)
       val ackedEverywhere = machines.forall(ts => sim.acked.forall(ts.contains))
       val late = sim.acked.contains("late")
-      (seed, grew, shrank, commits.size == 1, ackedEverywhere, late, sim.refusedChanges, sim.leadersByTerm.size, sim.installs)
+      (seed, grew, shrank, commits.size == 1, ackedEverywhere, late, sim.refusedChanges, sim.leadersByTerm.size, sim.installs,
+        if sim.currentAt >= 0 then sim.currentAt - sim.joinedAt else -1L, sim.committedMeanwhile)
     }
-    val bad = results.filterNot((_, grew, shrank, one, all, late, _, _, _) => grew && shrank && one && all && late)
+    val catchUp = results.map(_._10).filter(_ >= 0)
+    println(f"[raft-sim] the joiner (raft-leftovers): current with the leader's commit-at-join after ${catchUp.min}..${catchUp.max} ms (median ${catchUp.sorted.apply(catchUp.length / 2)}) on ${catchUp.length} of 40 seeds; entries the cluster committed meanwhile ${results.map(_._11).min}..${results.map(_._11).max}; election timeout ${150}..${300} ms, heartbeat 50 ms")
+    val bad = results.filterNot((_, grew, shrank, one, all, late, _, _, _, _, _) => grew && shrank && one && all && late)
     println(f"[raft-sim] membership, 40 seeds, drop 10%%, delays 1-40: ${results.count(_._2)} grew to six, ${results.count(_._3)} shrank without their leader, ${results.count(_._4)} converged, ${results.count(_._5)} kept every ack, ${results.count(_._6)} acked the late one; changes refused ${results.map(_._7).sum}, terms per seed ${results.map(_._8).min}..${results.map(_._8).max} (${results.map(_._8).sum} in all), snapshots installed ${results.map(_._9).sum} (a joiner restored from one on ${results.count(_._9 > 0)} seeds)")
     assertEquals(bad.map(_._1), Vector.empty, s"seeds that failed a membership change, lost an ack, or did not converge: $bad")
   }

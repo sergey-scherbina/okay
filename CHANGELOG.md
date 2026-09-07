@@ -1,5 +1,24 @@
 # Changelog
 
+## raft-leftovers — the persist-raft box closes: three leftovers decided by a number or by the contract
+
+The joiner's catch-up phase (thesis §4.2.1), measured in the
+membership sweep: a sixth node is current with everything the leader
+had committed when it was added after 25..165 ms, median 71, on 40 of
+40 seeds — one to three heartbeats, under the shortest election
+timeout — while the cluster commits 0..1 entries; a learner phase
+would shorten a window already shorter than a heartbeat's commits,
+so it is declined at these sizes, with the condition under which it
+returns stated (a snapshot slower to transfer than an election
+timeout). Chunked InstallSnapshot: the wire frame carries one message
+up to 2 GB, chunking is flow control, declined until an image that
+large exists. The commit-wait as an `Ack` level: `Topic.append`
+returns an offset, which exists only once applied, i.e. committed, so
+every `Ack` level over Raft must wait for the commit and the timeout
+stays the one honest knob — declined by the contract. Stages 0–2c and
+pre-vote landed, the rest decided on evidence: the box is checked.
+The simulator prints the joiner's catch-up beside its other numbers.
+
 ## script-live-durable — a Live app with a Schema keeps its state in the session, so a restart resumes too
 
 The container already had the durable thing: `Sessions.persisted`
