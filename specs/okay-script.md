@@ -1925,17 +1925,60 @@ It shares the `okay` binary specs/deployment.md introduces — one
 tool, subcommand groups per module — so nothing new is installed for
 it.
 
+**Which jar that binary is, corrected while building it (2026-09-07).**
+The sentence above was written as if `okay script …` could live in
+okay-deploy's jar. It cannot: okay-script depends on okay-deploy and
+the arrow does not reverse. What it CAN do is the other direction —
+okay-script's own assembly already carries okay-deploy — so
+`okay.script.Cli` dispatches `deploy` to `okay.deploy.Cli` and IS the
+combined binary, while okay-deploy's smaller `bin/okay` stays
+deploy-only for an operator who wants nothing else. Two wrappers, one
+of them a superset; no new module, no inverted dependency.
+
+The jar's own entry point stays `okay.script.Serve`, because that is
+the container's contract and a rendered Dockerfile depends on it, so
+the wrapper runs the CLI by class name rather than with `java -jar`.
+
 **`build` is the half the container never had.** The same pages that
 `serve` compiles per request can be rendered ONCE into plain files: a
 static site, deployable to anything that serves a directory, with no
 JVM in the deployment at all. Everything a page can do at build time
 it does — `Meta`, interpolation, includes, declares, i18n variants
-(one output per language) — and everything that needs a request
-refuses BY NAME rather than rendering nonsense: `Web.current`,
-`Session`, `Response.redirect`, a mounted Live app. A page that needs
-a request is a page a static site cannot hold, and being told which
-page and which call is the whole difference between this being usable
-and being a trap.
+(one output per language).
+
+It is built by driving a REAL `Site` with real requests rather than by
+walking the directory itself, and that is the design decision here:
+page resolution, content types, `index.md`, static files, language
+variants and the error page all come for free and cannot drift from
+what `serve` does, because they ARE what serve does.
+
+**What refuses, and the honest limit** (corrected while building it,
+2026-09-07). The paragraph this replaces promised that everything
+needing a request "refuses BY NAME", listing `Web.current`, `Session`,
+`Response.redirect` and a mounted Live app. Three of those hold and
+one does not:
+
+- **A session touch refuses**, naming the call — `Session.get(items)`
+  — because `build` installs a session engine whose every method
+  throws. That engine is installed on the SITE, not around the render:
+  the container binds a session per request on the request thread, so
+  anything set outside is overwritten before a page sees it. (Found by
+  the test that expected a refusal and got a built page.)
+- **A redirect refuses**, naming where it went, because a file cannot
+  be a 302.
+- **A `[param]` page is SKIPPED by name** rather than rendered empty:
+  there is no parameter to bind without a request.
+- **`Web.current` does not refuse, and cannot.** `Web` is a data
+  value — a case class of maps — with nowhere to put a refusal, so a
+  page reading `Web.current.form` at build time sees an empty form.
+  Saying so is better than the alternatives: a textual scan of the
+  page's source for `Web.current.form` would be a guess, and this
+  repository's rule is that a guess is worse than a stated limit.
+
+A page that needs a request is a page a static site cannot hold, and
+being told which page and which call is the whole difference between
+this being usable and being a trap. One refusal does not cost the rest
+of the site: the pages that build, build.
 
 **`check` answers a question I closed the wrong way.** `okay-script:
 sbt-test / CI integration` was declined (2026-09-07) on the grounds
@@ -1957,17 +2000,22 @@ wrong. `--json` on `check` and `build` for a pipeline; the failure of
 any of them names the file and the line, because a compile error
 already knows both (okay-script-line-mapping).
 
-- [ ] `run` executes a document and answers its stdout; a throw is
+- [x] `run` executes a document and answers its stdout; a throw is
       exit 1 with the line.
-- [ ] `render` writes one file or stdout; `build` writes a directory,
-      one output per page and per language variant.
-- [ ] `build` refuses a page that needs a request, naming the page
-      and the call — not a rendered page with an empty `Web`.
-- [ ] `check` is the mdoc gate: matching fences pass, a mismatch is
+- [x] `render` writes one file or stdout; `build` writes a directory,
+      one output per page and per language variant (the default
+      language at the root, every other under its own prefix).
+- [x] `build` refuses a page that needs a request, naming the page
+      and the call — for a session touch and for a redirect; a
+      `[param]` page is skipped by name; `Web.current.form` is the
+      stated limit above, not a claim.
+- [x] `check` is the mdoc gate: matching fences pass, a mismatch is
       exit 1 with the expected and actual, and a whole directory can
       be checked in one run.
-- [ ] `new` writes a directory that `serve` serves and `build`
-      builds, with nothing to edit first.
+- [x] `new` writes a directory that `build` builds with nothing to
+      edit first — asserted end to end, since that is the only test of
+      a starter that matters — and refuses to overwrite a directory
+      with anything in it.
 
 ### What is deliberately NOT here
 
