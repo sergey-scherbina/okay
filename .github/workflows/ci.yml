@@ -4,6 +4,13 @@ on:
     branches: [master]
   pull_request:
 
+# ONE RUN PER REF. Without this every push to master queued another full
+# suite and they piled up — 100 of them waiting when the account's Actions
+# budget ran out. A superseded run tells nothing the newer one will not.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
