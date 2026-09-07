@@ -1,0 +1,5 @@
+lane: script-runmain-fork
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: `sbt "okayScript/runMain okay.script.Serve <dir> <port>"` boots but every page fails to compile (un-forked run: Classpath.ambient reads sbt's java.class.path = sbt-launch.jar). Fork okayScript's run (or resolve the page classpath from the classloader), verify a page compiles under that exact command, re-record the guide's transcript honestly. Found by staging-seam's boot check; the same on master.
+touches: build.sbt (okayScript run / fork), okay-script Serve/ScalaScript if needed, docs/okay-script-guide.md, BACKLOG, CHANGELOG, specs/okay-script.md
