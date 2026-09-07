@@ -47,10 +47,25 @@ trait Dns:
   def propagation: java.time.Duration   // this provider's, not a guess of ours
 ```
 
-**No provider ships.** Writing a record means a provider's API —
-Route53, Cloudflare, deSEC, a company's own — each with its own
-credentials, shape and propagation behaviour; a seam with one
-favourite baked in is worse than a seam with none. `propagation` is
+**Three providers ship, and that is not the same as one**
+(acme-dns-providers, 2026-09-07). The seam shipped empty because ONE
+favourite baked in is worse than none; `Providers.cloudflare`,
+`Providers.desec` and `Providers.route53` are a menu, and a
+deployment's own `Dns` remains exactly as first-class — nothing here
+is privileged, they are all callers of the same trait. What they
+share is what a fourth should copy: the credential is a `Secret`
+resolved through the deployment's own resolver, a failure is the
+PROVIDER's own sentence ("Cloudflare answered 403: Invalid access
+token" is actionable, "DNS write failed" is not), `propagation` is
+that provider's documented figure and overridable, the endpoint is
+overridable (a proxy, a compatible API, a test), and what went up is
+what comes down — a delete names the record it removes, because a
+zone holds records that are none of our business. Route 53 is signed
+with the repository's OWN SigV4 at `service = "route53"`, since the
+alternative was a second copy of AWS's signature algorithm, which is
+what one shared signer exists to prevent. The platform's `CanBlock`
+is taken at CONSTRUCTION, so `Dns` stays a plain seam a test double
+can implement with a map. `propagation` is
 asked for rather than guessed, because how long before a resolver
 sees the record is the provider's property and no default of ours
 would be honest. The proof comes down whether the CA accepted it or
@@ -201,6 +216,12 @@ API answering rather than docker calling the container started.
       chain, for the name asked for, signed by an issuer that is not
       us — and a name it cannot reach is refused with the CA's own
       sentence, leaving no certificate behind.
+- [x] the three providers by SHAPE, against a stub that is the
+      provider for one call: the method, the path, the credential's
+      header, the body's fields, the delete that names what it
+      removes, and each dialect's own refusal sentence. No account can
+      be had in a test, and the flow around them is proven for real
+      against Pebble.
 - [x] (Live, docker) dns-01 issues a WILDCARD: the proof goes into a
       DNS server the CA resolves against (pebble-challtestsrv plays
       both the resolver Pebble asks and the provider our test `Dns`
