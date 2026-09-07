@@ -2813,9 +2813,14 @@ subtraction.
       and `Slots.duration`, asked in `when`'s six languages, showing
       `1h30`/`2h`/`45min` back. English phrases; the other languages'
       number-and-unit words are filed as
-      intent-duration-multilingual. Still open here: named entities
-      (who), places, amounts — each a `Slot.extract` rather than a
-      design, and `who` the one that is not a parser. Original: only
+      intent-duration-multilingual. Amounts DONE 2026-09-07
+      (intent-extract-amount): `Amount.parse`/`find` — a number
+      beside a symbol, a code or an unambiguous currency name in
+      the eight languages, separators told apart by the digits that
+      follow, composed number words, the nearest number wins;
+      `Amount(value, currency)` with an ISO code; `Slots.amount`.
+      Still open here: named entities (who) and places — neither a
+      parser. Original: only
       `when` and whole-message text have extractors. Named entities
       (who), durations, places and amounts are the obvious next ones,
       and each is a `Slot.extract` rather than a design.

@@ -1,5 +1,23 @@
 # Changelog
 
+## intent-extract-amount — the amount slot: a number beside a currency, in the fixture's eight languages
+
+The fourth parsed slot after when, duration and people, on the same
+two promises (total, deterministic). `Amount.parse` reads `$20`,
+`20 dollars`, `twenty dollars`, `USD 20`, `€15.50`, `15,50 €`,
+`1,000.50 dollars`, `1.000,50 €`, `two thousand five hundred
+dollars`, `двести гривень`, `500 руб`, `dwadzieścia złotych`,
+`3000円` as `Amount(value: BigDecimal, currency)` with the currency
+an ISO code — a symbol before or after, a code, or an unambiguous
+currency name as a token prefix; `.` and `,` told apart as decimal
+or thousands by the digits that follow; number words composed with
+each language's hundreds and thousands; the number nearest the
+currency wins. `pound`, `livre` and `libra` are weights and books
+too, so pounds are `£`, `GBP`, `sterling`, `quid` only. `Slots.amount`
+asks in six languages and shows `15.5 EUR`. Fifty-eight shapes, the
+negatives, the evidence window, a frame filling people and amount
+from one sentence.
+
 ## raft-prevote — the pre-vote round, measured: terms per forty seeds 163 → 67 and 174 → 93
 
 The sweeps put a number on thesis §4.2.3's disruption: a member cut

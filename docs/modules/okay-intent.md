@@ -36,6 +36,7 @@ rather than a class of parsing bug.
 | `Temporal` | temporal phrases to ISO-8601 in the fixture's eight languages (en, fr, de, es, ru, uk, pl, ja), total and deterministic, refusing rather than guessing |
 | `Duration` | duration phrases to minutes (`30 minutes`, `an hour and a half`, `1h30`, `une demi-heure`, `полтора часа`, `2時間半`) in the same eight languages as `Temporal`, the same two promises; `Slots.duration` is the slot |
 | `People` | how many people (`four people`, `six of us`, `vier Personen`, `на четверых`, `4人用`), eight languages, the same promises; `Slots.people` is the slot; `Numbers` holds the number words both parsers read |
+| `Amount` | how much money (`$20`, `twenty dollars`, `€15.50`, `1.000,50 €`, `двести гривень`, `dwadzieścia złotych`, `3000円`) as `Amount(value, currency)` with the currency an ISO code — a number beside a symbol, a code or an unambiguous currency name, composed number words (`two thousand five hundred`), separators told apart by the digits that follow; `Slots.amount` is the slot |
 
 **The dependency is `String => Embedding`, not "a server".** The vector
 tiers need a function; whether it is an HTTP call or an in-process

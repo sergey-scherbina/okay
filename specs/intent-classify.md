@@ -3440,6 +3440,41 @@ entry `who` and places remain, and neither is a parser: a name is
 whatever the message says it is, and that is the model tier's job or
 a person's.
 
+## Results — intent-extract-amount (2026-09-07)
+
+**The fourth parsed slot, the same two promises.** `Amount.parse`
+reads a sum of money as `Amount(value: BigDecimal, currency)` with
+the currency an ISO 4217 code: a number beside a currency, where the
+currency is a symbol before or after (`$20`, `20$`, `€15.50`, `15,50
+€`, `£30`, `¥500`, `3000円`, `20zł`, `30грн`), a code (`USD 20`, `20
+USD`, `1000 PLN`), or the currency's NAME in the language as a token
+prefix so inflections match (`dollars`, `euros`, `гривен`/`гривень`,
+`рублей`/`руб`, `złotych`, `доларів`, `dolarów`, `ドル`). The number
+is digits with `.` or `,` as either the decimal or the thousands
+separator — told apart by what follows: both present, the last one
+is the decimal point (`1,000.50`, `1.000,50`); one kind, more than
+once or before exactly three digits it groups thousands (`1,000`,
+`2.500`), otherwise it is the decimal (`20,5`); a thousands SPACE
+(`1 000`, plain or narrow no-break) joins — or number words
+composed: units add, hundreds and thousands multiply the group
+(`two thousand five hundred`, `двести пятьдесят`, `sto dwadzieścia`,
+`deux cents`, `mil`, `5k`, `1,5 тыс.`), the cardinal words from
+`Numbers` plus the one-word hundreds each Slavic language has. The
+number NEAREST the currency wins — the longest run of number words
+ending just before it, else the run after it (a symbol or a code
+before its number) — and the first amount in the sentence. A number
+with nothing beside it (`20`, `room 20`, `20 minutes`), a currency
+with no number (`dollars`), zero, and an ambiguous name are `None`:
+`pound`, `livre` and `libra` are weights and books too (`20 pounds
+of flour`, `j'ai lu 20 livres`), so pounds are `£`, `GBP`,
+`sterling` and `quid` only — the honest cost of a parser that never
+guesses. Fifty-eight shapes across the eight languages, the
+negatives, the nearest-wins rule, `Amount.find`'s evidence window
+(`200 dollars`, `$1,500`) and a frame that fills people and amount
+from one sentence. `Slots.amount` asks in the six languages `when`
+asks in and shows `15.5 EUR` (no trailing zeros). Still open here:
+named entities (who) and places — neither a parser.
+
 ## Results — intent-rule-induction (2026-09-07)
 
 **Cues induced from the corpus, measured where the hand-written ones

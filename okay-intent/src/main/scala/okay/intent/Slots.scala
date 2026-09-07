@@ -55,6 +55,22 @@ object Slots:
       parse = s => People.parse(s),
       extract = s => People.find(s))
 
+  /** how much money — `Amount`'s parser and extractor; shown as
+   * `20 USD`, `15.5 EUR` */
+  val amount: Slot[Amount] =
+    Slot(
+      name = "amount",
+      ask = Map(
+        "en" -> "What is the budget?",
+        "fr" -> "Quel est le budget ?",
+        "de" -> "Wie hoch ist das Budget?",
+        "es" -> "¿Cuál es el presupuesto?",
+        "ru" -> "Какой бюджет?",
+        "ja" -> "ご予算はいくらですか。"),
+      parse = s => Amount.parse(s),
+      extract = s => Amount.find(s),
+      show = (v, _) => v.show)
+
   /** a plain text slot, for the frames whose fields are not parsed at
    * all — most of them, and there is no shame in it */
   def text(name: String, ask: Map[String, String], required: Boolean = true,
