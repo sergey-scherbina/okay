@@ -1049,3 +1049,47 @@ moved to `JsonCorpus` so both files provably mean the same documents.
 
 At ~12x the fast road, the lossless one now costs about what keeping
 every token, span and piece of trivia should cost.
+
+
+## What was left in the lossless road (2026-09-07, json-projection-alloc)
+
+Asked after the batch road landed: is there more. Two places, both
+inside `Json.scala` — unlike the filed `scan-step-allocation`, which
+would cost an interface four codecs implement.
+
+**The projection answered a `Vector` from every node and every leaf.**
+`Vector(JNull)`, `Vector(JBool(b))`, `kids.flatMap(values)` building an
+intermediate at every level — one Vector per token, on a walk whose
+whole job is tokens. `pairs` added `grouped(2)`, another Vector per
+field. It appends into a builder now, and a field is read in one pass.
+
+**`unquote` built a StringBuilder for every string token**, plus a
+`stripPrefix` and a `stripSuffix` substring, even for a string with no
+escape in it — which is nearly all of them. It now returns the
+substring directly when there is no backslash.
+
+**The number, honestly.** A/B in ONE run, because across runs the GC
+state of a million-object tree swamps the difference (the first
+cross-run reading said 2x and was noise):
+
+| | |
+|---|---|
+| projection, old shape | 38.4 / 39.2 ms |
+| projection, new | 34.1 / 34.3 ms |
+
+About 12% on that stage and about 6% of the whole lossless call, which
+now runs ~74-82 ms against ~78-92 before. The old shape in that A/B is
+a simplified reconstruction — it skips `unquote` and the error text —
+so 12% is a floor rather than a ceiling, and `unquote`'s own saving is
+not separately measured.
+
+Modest, and said as modest. What justifies it is that the code is also
+simpler — one pass instead of `flatMap` + `grouped(2)` + `collect` —
+and that the behaviour is guarded, not asserted: `TestJsonValue`'s
+prefix sweep compares the fast value road against this projection over
+every truncation of every document.
+
+**This is a good place to stop.** The remaining candidates are
+`Scan.step`'s per-character tuple and `JsonParse.instrs`' per-token
+Vector; both are shared interfaces, and no main-source caller uses the
+lossless road at all. They want a consumer before they want a change.

@@ -139,8 +139,16 @@ object Json {
     else None
 
   private def unquote(lexeme: String): String =
-    val inner = lexeme.stripPrefix("\"").stripSuffix("\"")
-    val b = new StringBuilder
+    val from = if lexeme.startsWith("\"") then 1 else 0
+    val to = if lexeme.length > from && lexeme.endsWith("\"") then lexeme.length - 1 else lexeme.length
+    // the common string holds no escape at all, and then the answer
+    // IS the substring: no builder, no copy beyond the one substring
+    // Java gives us anyway (json-projection-alloc)
+    if lexeme.indexOf('\\', from) < 0 then lexeme.substring(from, to)
+    else unescape(lexeme.substring(from, to))
+
+  private def unescape(inner: String): String =
+    val b = new StringBuilder(inner.length)
     var i = 0
     while i < inner.length do
       val c = inner.charAt(i)
@@ -167,12 +175,29 @@ object Json {
 
   /** the semantic values among a node's children (trivia and
    * punctuation fall away; errors stay, as JErr) */
-  private def values(c: Cst[K]): Vector[Json] = c match
-    case Cst.Node("object", kids) => Vector(JObj(pairs(kids)))
-    case Cst.Node("array", kids) => Vector(JArr(kids.flatMap(values)))
-    case Cst.Node(_, kids) => kids.flatMap(values)
+  private def values(c: Cst[K]): Vector[Json] =
+    val out = Vector.newBuilder[Json]
+    into(c, out)
+    out.result()
+
+  /**
+   * The projection, written to APPEND rather than to answer.
+   *
+   * It used to return a `Vector[Json]` from every node and every leaf
+   * — `Vector(JNull)`, `Vector(JBool(b))` — purely to say "none, one
+   * or many", with `kids.flatMap(values)` allocating an intermediate
+   * at every level. That is one Vector per token on a road whose
+   * whole job is to walk tokens (json-projection-alloc).
+   */
+  private def into(c: Cst[K], out: scala.collection.mutable.Builder[Json, Vector[Json]]): Unit = c match
+    case Cst.Node("object", kids) => out += JObj(pairs(kids))
+    case Cst.Node("array", kids) =>
+      val vs = Vector.newBuilder[Json]
+      kids.foreach(into(_, vs))
+      out += JArr(vs.result())
+    case Cst.Node(_, kids) => kids.foreach(into(_, out))
     case Cst.Leaf(t) => t.kind match
-      case K.Str => Vector(JStr(unquote(t.lexeme)))
+      case K.Str => out += JStr(unquote(t.lexeme))
       case K.Num =>
         // the lexer's Num class is a superset of Java's parseable
         // doubles — a torn frame ends in "-" or "1e", and the lexer
@@ -181,19 +206,31 @@ object Json {
         // Found by an NIO transport benchmark whose last line was cut
         // mid-number; five inputs crashed the "total" parser.
         t.lexeme.toDoubleOption match
-          case Some(d) => Vector(JNum(d))
-          case None => Vector(JErr(s"malformed number '${t.lexeme}'"))
-      case K.Bool => Vector(JBool(t.lexeme == "true"))
-      case K.Null => Vector(JNull)
-      case _ => Vector.empty
-    case Cst.Err(t, m) => Vector(JErr(m + t.fold("")(x => s" at '${x.lexeme}'")))
+          case Some(d) => out += JNum(d)
+          case None => out += JErr(s"malformed number '${t.lexeme}'")
+      case K.Bool => out += JBool(t.lexeme == "true")
+      case K.Null => out += JNull
+      case _ => ()
+    case Cst.Err(t, m) => out += JErr(m + t.fold("")(x => s" at '${x.lexeme}'"))
 
+  /** a field is a key and the value after it — read in ONE pass, in
+   * place of a flatMap into a Vector and a grouped(2) that allocated
+   * another Vector per field */
   private def pairs(kids: Vector[Cst[K]]): Vector[(String, Json)] =
-    val vs = kids.flatMap(values)
-    vs.grouped(2).collect {
-      case Vector(JStr(k), v) => (k, v)
-      case Vector(JErr(m), v) => (s"<$m>", v)
-    }.toVector
+    val vs = Vector.newBuilder[Json]
+    kids.foreach(into(_, vs))
+    val flat = vs.result()
+    val out = Vector.newBuilder[(String, Json)]
+    var i = 0
+    while i + 1 < flat.length do
+      flat(i) match
+        case JStr(k) => out += ((k, flat(i + 1)))
+        case JErr(m) => out += ((s"<$m>", flat(i + 1)))
+        // a key that is neither is dropped, exactly as the
+        // grouped/collect pair dropped it
+        case _ => ()
+      i += 2
+    out.result()
 
   // ----------------------------------------------------------------
   // the two Schema algebras

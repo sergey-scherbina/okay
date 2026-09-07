@@ -29,6 +29,29 @@ object ProfCst:
   def streamingCst(t: String): Cst[okay.lex.Json.K] = Parse.toCst(
     through(through(chars(t))(Scan.stage(JsonLex.scan)))(JsonParse.driver).toLazyList)
 
+  // the projection as it was before json-projection-alloc: a Vector
+  // from every node and every leaf, and grouped(2) for the fields.
+  // Kept here so the two can be A/B'd in ONE run — across runs the
+  // GC state of a million-object tree swamps the difference.
+  private def oldValues(c: Cst[okay.lex.Json.K]): Vector[Json] = c match
+    case Cst.Node("object", kids) => Vector(Json.JObj(oldPairs(kids)))
+    case Cst.Node("array", kids) => Vector(Json.JArr(kids.flatMap(oldValues)))
+    case Cst.Node(_, kids) => kids.flatMap(oldValues)
+    case Cst.Leaf(t) => t.kind match
+      case okay.lex.Json.K.Str => Vector(Json.JStr(t.lexeme))
+      case okay.lex.Json.K.Num => Vector(Json.JNum(t.lexeme.toDoubleOption.getOrElse(0d)))
+      case okay.lex.Json.K.Bool => Vector(Json.JBool(t.lexeme == "true"))
+      case okay.lex.Json.K.Null => Vector(Json.JNull)
+      case _ => Vector.empty
+    case Cst.Err(_, m) => Vector(Json.JErr(m))
+
+  private def oldPairs(kids: Vector[Cst[okay.lex.Json.K]]): Vector[(String, Json)] =
+    val vs = kids.flatMap(oldValues)
+    vs.grouped(2).collect {
+      case Vector(Json.JStr(k), v) => (k, v)
+      case Vector(Json.JErr(m), v) => (s"<$m>", v)
+    }.toVector
+
   def main(args: Array[String]): Unit =
     val rows = args.headOption.flatMap(_.toIntOption).getOrElse(100000)
     val nums = Json.JArr(Vector.tabulate(rows)(i => Json.JNum(i.toDouble)))
@@ -49,5 +72,6 @@ object ProfCst:
     val toks = Scan.all(JsonLex.scan)(text, Int.MaxValue).tokens
     best("  instrs alone")(toks.iterator.flatMap(JsonParse.instrs).length)
     val tree = Json.cst(text)
-    best("  projection alone")(Json.value(tree).hashCode)
+    best("  projection alone (new)")(Json.value(tree).hashCode)
+    best("  projection alone (OLD shape)")(oldValues(tree).hashCode)
     println(s"  render byte-identical? ${Json.render(tree) == text}")
