@@ -249,6 +249,43 @@ present), and on a consumer that actually uses a restart.
   "loud refusal naming forecast==8.x". Rejected: discovering drift
   in the answers.
 
+## Results (stage 0)
+
+**r-subprocess, 2026-09-07.** okay-r with `REval`/`RValue`/`RFrame`,
+the versioned shim as a resource, and the comonadic handler over a
+clean-env `Rscript`. Proven against a live R (a container where none
+is installed, reached by a shim at the same absolute path inside and
+out): `pkg::name` and base addressing, a missing function and a
+missing package as conditions with the process SURVIVING, `stop()`
+carrying its message, frames columnar both ways with NA in place, the
+v99 handshake refusal, the jsonlite refusal by name, `verify` naming
+an absent package and a version mismatch, the `/no/such/Rscript`
+refusal at start, and the dead process turning the next call into the
+supervisor's throw. 17 live, 1 skipped, 6 without an R at all.
+
+Four things the writing decided or found:
+
+- **R's two absences are two cases**, and R's own arithmetic is the
+  test: `mean(c(1, 2, NA))` is NA and `mean(c(1, 2, NULL))` is 1.5,
+  because the NULL vanished from the vector. An NA also keeps its
+  TYPE across the wire, so `c(1L, NA)` comes back an integer vector.
+- **A plain JSON number is always a double on this wire.** jsonlite
+  reads `3` as an R integer, so without the coercion a caller's
+  `F64(3)` arrived in R as an integer — a type change nobody would
+  see until a `class()` or a join behaved oddly. An R integer is
+  tagged `i` instead.
+- **A wire array becomes an atomic vector when every element is a
+  scalar.** `sum(c(1, 2, NA))` is the call an analyst writes;
+  `sum(list(1, 2, NA))` is an error about types. A mixed or nested
+  array stays a list.
+- **`RValue.Int` was renamed `I32`** because a case called `Int`
+  shadows `scala.Int` for every caller who writes `import RValue.*`,
+  which is every caller. It is also more accurate — R's integer is
+  32-bit — and matches okay-py's `I64`/`F64`.
+
+And one correction that was not about R: see the overview on
+`Durable`.
+
 ## Results
 
 (after implementation — round-trip counts, the clean-environment

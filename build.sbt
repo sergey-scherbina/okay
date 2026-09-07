@@ -1058,6 +1058,17 @@ lazy val okayPy = (project in file("okay-py"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
   )
 
+// okay-r: R as a handler (specs/r.md) — the same shape okay-py built
+// first, with R's own two absences. okay-agent is deliberately NOT a
+// dependency: Durable journals R steps because they are operations,
+// not because the modules know each other.
+lazy val okayR = (project in file("okay-r"))
+  .dependsOn(okay.jvm, okayCodec.jvm)
+  .settings(
+    name := "okay-r",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+  )
+
 lazy val okayTls = (project in file("okay-tls"))
   .dependsOn(okayConf.jvm)
   .settings(
@@ -1438,7 +1449,7 @@ lazy val root = (project in file("."))
     okayDocs.jvm, okayDocs.js, okayDocs.native, okayDocsMongo,
     okayConf.jvm, okayConf.js, okayConf.native,
     okayObs.jvm, okayObs.js, okayObs.native,
-    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy,
+    okayBlob.jvm, okayBlob.js, okayBlob.native, okayTls, okayPy, okayR,
     okaySecurity.jvm, okaySecurity.js, okaySecurityArgon2,
     okayFrame.jvm, okayFrame.js,
     okayAgent.jvm, okayAgent.js, okayIntent.jvm, okayIntent.js, okayChatWeb.jvm, okayChatWeb.js, okayLangchain4j, okayRag.jvm, okayRag.js, okayDemo, okaySubscription, okayAdmin, okayChat, okayDeploy, okayLive, okayScript,
