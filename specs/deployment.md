@@ -231,20 +231,92 @@ decision with a reason: an HCL file is a value we can test with
 while an API client is a thing that can only be tested by having one.
 It also puts the deployment where the team's own review lives.
 
-## One command, and one that says what is missing
+## The CLI, and the deployment as data
+
+An operator's entry point is a command, not `sbt "okayDeploy/runMain
+okay.deploy.Up laptop"` — which is what this module had, and which is
+unusable on the machine that matters most: a server with the
+artifacts on it and no repository, no sbt and no source.
 
 ```
-sbt "okayDeploy/runMain okay.deploy.Up laptop"     # render, then apply
-sbt "okayDeploy/runMain okay.deploy.Down laptop"
-sbt "okayDeploy/runMain okay.deploy.Doctor fly"    # what this machine lacks
+okay deploy render <target>      # the value -> files, and say what changed
+okay deploy doctor [target]      # the clean-machine report; --install, --json
+okay deploy up <target>          # check, render if stale, apply
+okay deploy down <target>
+okay deploy diff <target>        # committed files vs what the value renders
+okay deploy targets              # what this deployment can be applied to
 ```
 
-`Doctor` is not decoration. Half of "it doesn't work" in deployment
-is a missing binary, an expired login or a kubectl context pointing
-somewhere else, and each of those has an exact question: is `flyctl`
-on the PATH, does `flyctl auth whoami` answer, which cluster is
-`kubectl config current-context`. A target that lists its `requires`
-gets that for free, and the answer is a sentence naming the fix.
+**The decision this forces, and it is the important one: the CLI
+reads the deployment as DATA.** `render` writes `deployment.json` —
+the `Deployment` value through its own `Schema` — beside the target's
+files, and every later verb reads that rather than evaluating Scala.
+Three things follow, and each is worth more than the CLI itself:
+
+- the artifacts directory is SELF-CONTAINED: copy `deploy/` to a
+  server and `okay deploy up host` works there, with no repository,
+  no sbt and no compiler;
+- the CLI has no dependency on any application's code, so one binary
+  serves every deployment;
+- what the CLI knows is exactly what the spec says a deployment is —
+  if the JSON cannot express something, the model cannot either, and
+  that is a useful pressure to keep on the model.
+
+Rendering stays where it belongs, in the build (`sbt
+"<app>/runMain <app>.Deploy"`, the shape okay-script already uses),
+because rendering is the one step that genuinely needs the Scala
+value. `okay deploy render` is the same rendering re-run from the
+JSON when only a target's files are stale — and `diff` is the drift
+test an operator can run by hand.
+
+### What it is, and how it gets onto a machine
+
+A fat jar and a small wrapper script, committed as
+`okay-deploy/bin/okay`. That makes a JRE the one prerequisite, which
+is honest rather than free — and `doctor` names it first, with the
+install command for the detected manager, because a tool that cannot
+report its own missing runtime is the exact failure this spec set out
+to prevent. A GraalVM/Scala Native binary that needs no JRE at all is
+the obvious next step and is FILED, not promised: the renderers are
+pure string builders and would port, but the value of shipping a
+second build toolchain has to be asked for before it is paid.
+
+The name is `okay`, with `deploy` as the first subcommand group.
+okay-script's `Serve` and okay-acme's `Revoke` are the same kind of
+operator-facing main and can become `okay script serve` and `okay
+acme revoke` later; nothing about that is required today, and no
+module changes for it.
+
+### What makes a CLI trustworthy, spelled out
+
+None of this is decoration; each line is a thing that goes wrong in
+tools like this one:
+
+- **Exit codes mean something**: 0 applied, 1 the operation failed, 2
+  the arguments were wrong, 3 a prerequisite is missing (the doctor's
+  own code, so a pipeline can tell "install docker" from "the deploy
+  failed").
+- **`--dry-run` on every verb that changes anything**, printing the
+  exact commands it would run.
+- **`--json` on every verb that reports**, with the same fields as
+  the table.
+- **No prompts unless a terminal is attached**, and none at all under
+  `--yes`; a CLI that blocks a pipeline on a question is a CLI that
+  gets wrapped in `yes |`.
+- **`NO_COLOR` honoured**, and colour off when the output is not a
+  terminal.
+- **Help that fits a screen**, with the three commands an operator
+  actually uses first.
+- **Every failure carries the wrapped command** — the rule from "No
+  silent failure, anywhere" applies to the CLI's own shelling out,
+  and the CLI is where an operator will meet it.
+
+`doctor` is not decoration either. Half of "it doesn't work" in
+deployment is a missing binary, an expired login or a kubectl context
+pointing somewhere else, and each has an exact question: is `flyctl`
+on the PATH, does `flyctl auth whoami` answer, what does `kubectl
+config current-context` say. A target that lists its `requires` gets
+that for free, and the answer is a sentence naming the fix.
 
 ## The clean machine
 
@@ -421,15 +493,17 @@ The whole thing at once is not landable, and pretending otherwise is
 how it would arrive half-tested. Each stage is a claim of its own,
 and each ends with something an operator can actually use:
 
-- **Stage 0 — the model, the settings, the clean machine, and the two
-  places that need no account.** `Deployment`/`Service`/`Need`/
-  `Settings`, the `laptop` and `host` targets, `Up`/`Down`/`Doctor`
-  with the bootstrap report above, and okay-script's fourteen
-  variables re-expressed as a `Schema`'d config. Proven by a real
-  `docker compose up` in a Live test, a rendered unit that
-  `systemd-analyze verify` accepts, and a check run with a PATH
-  emptied of docker — which is how the clean machine is testable
-  without a clean machine.
+- **Stage 0 — the model, the settings, the clean machine, the CLI,
+  and the two places that need no account.** `Deployment`/`Service`/
+  `Need`/`Settings`, the `laptop` and `host` targets, the `okay
+  deploy` CLI over `deployment.json` with the bootstrap report above,
+  and okay-script's fourteen variables re-expressed as a `Schema`'d
+  config. Proven by a real `docker compose up` in a Live test, a
+  rendered unit that `systemd-analyze verify` accepts, a check run
+  with a PATH emptied of docker — which is how the clean machine is
+  testable without a clean machine — and the CLI driven from a COPY
+  of the artifacts directory with the repository absent, which is the
+  claim about self-containment being tested rather than asserted.
 - **Stage 1 — cluster.** The Helm chart grown to ConfigMap, Secret
   stubs, PVC and Ingress. Proven by `helm template` and `helm lint`
   in the default gate, and optionally by kind in a Live test.
@@ -482,6 +556,14 @@ and each ends with something an operator can actually use:
 - **`Need` is closed and its growth is a spec edit.** Rejected: an
   open `Need.Custom(String, Json)`, which is `extra` with a nicer name
   and no renderer.
+- **The CLI reads the deployment as DATA, not as Scala.** Rejected:
+  reflecting a compiled application jar (a dependency on every app's
+  build), and shelling back into sbt (unavailable exactly where the
+  CLI is most needed). The cost is that the model must be
+  JSON-expressible, which is a pressure worth having.
+- **A jar and a wrapper now, a native binary filed.** Rejected:
+  paying for a second build toolchain before anyone asks; the JRE
+  prerequisite is named by the doctor rather than hidden.
 - **A clean machine is reported before it is fixed, and fixed only
   when asked.** Rejected: installing prerequisites automatically —
   it is someone's machine; a tool that changes it without being asked

@@ -9,6 +9,18 @@ cloud managers and SOPS, and targets for a laptop, a rented server, a
 cluster, a PaaS and AWS/Azure/GCP. The spec draws the line the model
 does not cross and stages the work; each stage below is its own claim.
 
+- [ ] deploy-cli — folded INTO stage 0 (operator ask 2026-09-07): the
+      `okay` CLI with `deploy` as its first subcommand group —
+      render / doctor / up / down / diff / targets — reading
+      `deployment.json` (the value through its Schema) so an
+      artifacts directory is self-contained on a server with no
+      repository and no sbt. A fat jar plus a wrapper in
+      okay-deploy/bin; exit codes that mean something, --dry-run,
+      --json, NO_COLOR, no prompts off a terminal.
+- [ ] deploy-cli-native — a GraalVM/Scala Native binary needing no
+      JRE. The renderers are pure string builders and would port; the
+      question is whether a second build toolchain is worth paying
+      for, and nobody has asked yet.
 - [ ] deploy-bootstrap — folded INTO stage 0 (operator ask
       2026-09-07): the clean machine. `Tool`/`Presence`/`Report`, a
       table that says what is missing, WHY the deployment asked for
