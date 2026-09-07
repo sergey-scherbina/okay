@@ -1,5 +1,29 @@
 # Changelog
 
+## okay-script-application — JSP's application scope, signIn through the container, the admin example
+Completed: 2026-09-07
+Landed as 443b1102 (spec then code, rebased). The second worked
+example wanted an admin page editing the catalog the index shows, and
+there was nowhere to put the catalog — a declare block is one page's
+object, and each page is its own compilation unit. `api.Application`
+is JSP's `application` implicit object: attributes shared by every
+page of a Site (`Application.current`), String values with
+`value`/`put` typed through a Schema's JSON on purpose — a `Product`
+declared in two pages is two classes, its JSON is one value, pages
+trade data and never objects — with `memory` (the default) and
+`persisted(store)` engines, the `Sessions.persisted` shape without a
+TTL. `Site(issue = Some((subject, scopes) => token))` beside `verify`
+and `api.signIn(subject, scopes)` close the loop `secure:` left open:
+a login page checks its credentials and says `signIn`, the container
+mints, a Site that mints nothing throws by name. The example store
+grows `login.md` (`Password.verify` against a hash, then `signIn`),
+`admin.md` (`secure: admin`; a `Live.form[Product]` and a plain
+`Forms` post, both saving into the catalog; sign-out), and its index
+and product pages read the catalog from Application, seeded once by
+an included `parts/catalog.md`. 3 tests, plus the example driven end
+to end (login → admin → a posted product on the index and at
+`/product/<sku>` → logout); 108 green 3x.
+
 ## intent-distil-dose — the dose found properly: the ten centroid points were one split's, and the honest knob is a small weight
 
 The earlier lane found +40 distilled rows worth ten centroid points,

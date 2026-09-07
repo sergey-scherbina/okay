@@ -1201,6 +1201,15 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] okay-script-application — LANDED 2026-09-07: JSP's `application`
+      scope (`Application.current`: attributes shared by every page,
+      typed through a Schema's JSON, `memory`/`persisted(store)`),
+      `Site(issue = ...)` + `api.signIn(subject, scopes)` so a login
+      page never holds an issuer, and the admin example on top:
+      login.md (Password.verify → signIn), admin.md (`secure: admin`,
+      `Live.form[Product]` + a plain `Forms` post into the catalog),
+      index/product reading the catalog from Application.
+      specs/okay-script.md "Application scope".
 - [x] okay-script-forms — LANDED 2026-09-07 (operator ask): typed
       forms from a `Schema`, okay-ui's `Form` on both roads. Plain:
       `Forms.html[A]`/`Forms.read[A](Web.current.form, checks*)` — a
