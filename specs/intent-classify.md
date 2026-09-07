@@ -3518,6 +3518,66 @@ The gap to the teacher is 18 points now, from 23; the remaining gap
 is still CONTEXT (a unit's one vector wherever it appears), and
 neither extension touches that.
 
+## Results — intent-distil-dose (2026-09-07)
+
+intent-distil-for-probe found +40 distilled rows worth ten centroid
+points (80.0 → 90.0) and more worse, monotonically — an optimum found
+by accident between two arms, on ONE split, with the self-consistency
+filter not applied. Found properly: the 0.6B embeds the 120 human
+rows and the 320 distilled once; the filter (the model re-judging its
+own rows, exactly as intent-label-distillation ran it) keeps 182 of
+320, and its verdicts are now data beside the corpus
+(`intent-distilled-kept.json`), so that half runs once; the dose on a
+grid 0..320, class round-robin, on BOTH mirror splits, unfiltered and
+filtered; then every distilled row counted at a WEIGHT in the
+centroid's mean (`TestDistilDose`, Live, `Conditions` printed).
+
+| dose | centroid, unfiltered (odd / even) | centroid, filtered (odd / even) | probe, unfiltered (mean) |
+|---|---|---|---|
+| 0 | 78.3 / 78.3 | 78.3 / 78.3 | 81.7 |
+| 20 | 75.0 / 86.7 | 76.7 / 88.3 | 81.7 |
+| 40 | 70.0 / **93.3** | 75.0 / 90.0 | 77.5 |
+| 50 | 75.0 / 93.3 | 73.3 / 86.7 | 76.7 |
+| 100 | 68.3 / 86.7 | 71.7 / 88.3 | 75.0 |
+| 320 (unfiltered) / 160 (filtered) | 61.7 / 78.3 | 66.7 / 86.7 | 70.8 |
+
+**The optimum was a split artefact.** On the test-even split the dose
+reproduces the earlier lane exactly — 78.3 → 93.3 at 40–50, the "ten
+points" — and on the test-odd split the same dose LOWERS the centroid,
+78.3 → 70.0 at 40, and no dose on either pool ever puts the odd split
+above its 78.3. The two halves of one fixture disagree by fifteen to
+twenty points about whether distilled data helps at all; the means
+peak at +5.9 (dose 50, unfiltered) and +4.2 (dose 20, filtered), both
+made entirely of one split. The probe never gains, on any dose, on
+either pool — its best dose is zero, as the earlier lane also saw.
+
+**The filter moves the shape, not the verdict.** Keeping the 182 the
+model agreed with on second sight moves the mean's peak from 50 to
+20, and flattens the harm at large doses (160 filtered: 76.7 against
+74.2 unfiltered at 160, 70.0 at 320) — a cleaner corpus hurts less
+when overdosed — but it does not make any dose clear the bar on both
+splits.
+
+**A weight instead of a dose.** Every distilled row at w in the
+centroid's mean:
+
+| pool | w | centroid (odd / even) | mean |
+|---|---|---|---|
+| unfiltered | 0.10 | 76.7 / 86.7 | 81.7 |
+| unfiltered | 0.25 | 73.3 / 91.7 | 82.5 |
+| unfiltered | 1.00 | 61.7 / 78.3 | 70.0 |
+| **filtered** | **0.10** | **80.0 / 86.7** | **83.3** |
+| filtered | 0.25 | 76.7 / 90.0 | 83.3 |
+| filtered | 1.00 | 66.7 / 86.7 | 76.7 |
+
+The filtered pool at w = 0.10 is the ONE cell ahead of the human-only
+centroid on both splits — +1.7 on the split that dislikes distilled
+data, +8.4 on the one that likes it — which is what "a little
+different data broadens a mean" looks like when it is stated on both
+halves: real on one, inside the noise on the other. A knob, then, but
+a small one, and the honest default stays the human fixture alone:
+nothing here clears the ten-point bar on both splits.
+
 ## Results — intent-4b-with-more-data (2026-09-07)
 
 The entry's prediction: the 4B embedder is worse at 60 examples

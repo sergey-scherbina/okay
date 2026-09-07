@@ -1,5 +1,21 @@
 # Changelog
 
+## intent-distil-dose — the dose found properly: the ten centroid points were one split's, and the honest knob is a small weight
+
+The earlier lane found +40 distilled rows worth ten centroid points,
+on one split, with the self-consistency filter not applied.
+`TestDistilDose` (Live): the dose on a grid 0..320 on BOTH mirror
+splits, unfiltered and filtered by the model re-judging its own rows
+(182 of 320 kept — the verdicts are data now, beside the corpus), and
+every distilled row at a weight in the centroid's mean. The test-even
+split reproduces 78.3 → 93.3 at dose 40–50; the test-odd split goes
+78.3 → 70.0 at the same dose and no dose ever lifts it; the probe
+never gains. The filter moves the peak to 20 and softens the overdose,
+not the verdict. The one cell ahead on both splits is the filtered
+pool at weight 0.10, +1.7 / +8.4 — a knob, a small one. No default
+moves; the human fixture alone stays the centroid's training set.
+
+
 ## adversarial-lanes — the rows we expected to lose, the adaptive default that was tried, and the three defects it paid for
 
 Three lanes this project never had, because it expected to lose them

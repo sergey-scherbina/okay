@@ -2461,7 +2461,7 @@ rather than on every pop, which is the same idea as
       cheap thing to try; measuring the corpus's own diversity (say,
       distinct trigram ratio against the human fixture's) is the honest
       way to tell whether it worked.
-- [ ] intent-distil-dose — a little distilled data is worth ten points
+- [x] intent-distil-dose — a little distilled data is worth ten points
       to the centroid (80.0% -> 90.0% at +40 rows) and more is worse,
       monotonically, down to 78.3% at +320. The optimum was found by
       accident between two arms; find it properly, and find out whether
@@ -2469,7 +2469,15 @@ rather than on every pop, which is the same idea as
       applied in that run) moves it. Also worth asking whether the
       right knob is a dose at all or a WEIGHT — distilled rows counted
       at less than one in the fit, which a centroid can express and a
-      grid over doses cannot.
+      grid over doses cannot. MEASURED 2026-09-07 (`TestDistilDose`,
+      both mirror splits, grid 0..320, filtered and not, weights):
+      the optimum was a split artefact — test-even reproduces 78.3 →
+      93.3 at dose 40–50, test-odd goes 78.3 → 70.0 at the same dose
+      and no dose ever lifts it; the probe never gains. The filter
+      (182 of 320, its verdicts now data beside the corpus) moves the
+      peak to 20 and softens the overdose, not the verdict. The one
+      cell ahead on both splits is the filtered pool at weight 0.10
+      (+1.7 / +8.4). No default moves.
 - [x] intent-centroid-reconsidered — LANDED 2026-09-04 and it RETRACTED
       the previous lane's headline: the centroid's 90.0% was measured on
       BARE embeddings, and with the classify instruction the same recipe
