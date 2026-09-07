@@ -208,37 +208,40 @@ object Schedulers {
   /**
    * A scheduler that OWNS its threads — kyo's shape, the prototype
    * (schedulers-family, 2026-09-07). `workers` platform threads, a
-   * queue each; a worker that runs dry steals from the others, spins
-   * `spin` rounds, then parks. The unit is `DriveTask`: no thread per
-   * fiber, a parked Await costs its callback.
+   * queue each; the unit is `DriveTask`: no thread per fiber, a
+   * parked Await costs its callback.
    *
-   * The policy the profile asked for: a submit goes to a worker that
-   * is already RUNNING (the caller's own, or the less loaded of two
-   * running ones drawn at random); a parked worker is woken only when
-   * the chosen running one has more than `wakeAbove` tasks queued.
-   * For fibers of tens of nanoseconds the cost is not the work but
-   * the spreading of it — the JDK pool signals a sleeping worker for
-   * nearly every task (`scan → signalWork → unpark`, 9 % of its
-   * profile, plus 22 % of workers scanning) while kyo keeps the work
-   * on the one or two workers already awake. `wakeAbove = 0` is the
-   * JDK pool's policy, kept for the comparison.
+   * The policy, from kyo's profile: a fiber forked FROM a worker goes
+   * onto that worker's own queue (kyo's `Worker.current`), so a
+   * program that forks 10 000 short children runs them where it is,
+   * in order, with no signal — kyo's 79 ns per fork/join is that,
+   * not a faster fiber. A fiber forked from outside goes to one of
+   * the ACTIVE workers, `0 until active`, drawn at random; the
+   * next worker is activated only when the chosen one is more than
+   * `wakeAbove` deep. Parallelism grows with queued depth, not with
+   * task count: the JDK pool wakes a worker for nearly every task
+   * (`scan → signalWork → unpark`, 9 % of its profile, 22 % scanning)
+   * and for fibers of tens of nanoseconds that spreading IS the
+   * cost. A dry worker steals from the active ones, spins `spin`
+   * rounds, then parks — deactivating itself if it is the top one.
    *
    * A BLOCKING call inside a fiber holds one of the `workers`
    * threads — this is for short, CPU-bound fibers; `loom` is the one
    * that makes blocking free.
    */
-  def own(workers: Int = Runtime.getRuntime.availableProcessors(), spin: Int = 4096, wakeAbove: Int = 16): Scheduler =
+  def own(workers: Int = Runtime.getRuntime.availableProcessors(), spin: Int = 64, wakeAbove: Int = 64): Scheduler =
     Own(workers, spin, wakeAbove)
 
   private[okay] final class Own(n: Int, spin: Int, wakeAbove: Int) extends Scheduler {
     private val workers: Array[Worker] = Array.tabulate(n)(i => Worker(i))
+    private val active = java.util.concurrent.atomic.AtomicInteger(1)
     private val current = ThreadLocal[Worker | Null]()
 
-    private final class Worker(id: Int) extends Runnable {
+    private final class Worker(val id: Int) extends Runnable {
       val queue = java.util.concurrent.ConcurrentLinkedQueue[DriveTask[?]]()
       val size = java.util.concurrent.atomic.AtomicInteger()
-      /** true from the moment the worker decides to park until it is
-       * running again: the flag a submitter reads to choose and to wake */
+      /** true from the moment the worker decides to park until it runs
+       * again: what a submitter reads to wake it */
       @volatile var parked = false
       val thread: Thread = { val t = Thread(this, s"okay-own-$id"); t.setDaemon(true); t }
 
@@ -253,11 +256,13 @@ object Schedulers {
         t
 
       private def steal(): DriveTask[?] | Null =
+        val top = active.get
         var i = 1
-        while i < n do
-          val w = workers((id + i) % n)
-          val t = w.take()
-          if t != null then return t
+        while i < top do
+          val w = workers((id + i) % top)
+          if w.id != id then
+            val t = w.take()
+            if t != null then return t
           i += 1
         null
 
@@ -274,6 +279,10 @@ object Schedulers {
             spins += 1
             Thread.onSpinWait()
           else
+            // the top active worker steps down before it parks, so a
+            // submitter stops choosing it; worker 0 never steps down
+            val top = active.get
+            if id == top - 1 && id > 0 then { val _ = active.compareAndSet(top, id) }
             // publish "parked" BEFORE the last look at the queue: an
             // enqueue that misses the flag has landed in the queue we
             // are about to see, one that sees it will unpark us
@@ -290,28 +299,18 @@ object Schedulers {
       choose().enqueue(t)
       t
 
-    /** the caller's own worker; else the less loaded of two running
-     * workers; a parked one only when the running one is over
-     * `wakeAbove` deep (or when none is running) */
+    /** the caller's own worker; else an active one at random, and the
+     * next worker activated when that one is over `wakeAbove` deep */
     private def choose(): Worker =
       val mine = current.get
       if mine != null then return mine
-      val r = java.util.concurrent.ThreadLocalRandom.current()
-      val a = workers(r.nextInt(n))
-      val b = workers(r.nextInt(n))
-      val running =
-        if a.parked then (if b.parked then null else b)
-        else if b.parked then a
-        else if a.size.get <= b.size.get then a else b
-      if running != null && running.size.get <= wakeAbove then running
-      else
-        // a parked worker is worth waking: the first one found, else the running one
-        var i = 0
-        while i < n do
-          val w = workers((a.hashCode.abs + i) % n)
-          if w.parked then return w
-          i += 1
-        if running != null then running else a
+      val top = active.get
+      val w = workers(java.util.concurrent.ThreadLocalRandom.current().nextInt(top))
+      if w.size.get > wakeAbove && top < n && active.compareAndSet(top, top + 1) then
+        val next = workers(top)
+        java.util.concurrent.locks.LockSupport.unpark(next.thread)
+        next
+      else w
   }
 
   /** listeners of a running DriveTask, a stack */

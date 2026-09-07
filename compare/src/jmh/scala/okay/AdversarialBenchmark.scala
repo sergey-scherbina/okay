@@ -62,13 +62,15 @@ class AdversarialBenchmark {
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
 
   /** a scheduler that owns its threads (`Schedulers.own`, kyo's
-   * shape), one instance per policy for the lane: the workers outlive
-   * the call. `own` = running-first, wake a sleeper only above depth
-   * 16; `ownSpread` = the JDK pool's policy, wake for every task;
-   * `ownNoSpin` = running-first but a dry worker parks at once */
+   * shape), one instance for the lanes: the workers outlive the
+   * call. `okayOwn` forks from the JMH thread (an external submitter,
+   * as every okay lane here does); `okayOwnInside` forks from INSIDE
+   * a fiber on the scheduler and joins by `joinAsync`, which is what
+   * kyo's `runAndBlock(parallelUnbounded(..))` does — the forking
+   * program runs on a worker, its children land on that worker's
+   * own queue. Both are okay's idiom; the second is the one kyo's
+   * lane is shaped like. */
   private val own: Scheduler = Schedulers.own()
-  private val ownSpread: Scheduler = Schedulers.own(wakeAbove = 0)
-  private val ownNoSpin: Scheduler = Schedulers.own(spin = 0)
 
   @Benchmark
   def forkJoin10k_okayOwn(): Long =
@@ -76,14 +78,21 @@ class AdversarialBenchmark {
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
 
   @Benchmark
-  def forkJoin10k_okayOwnSpread(): Long =
-    given Scheduler = ownSpread
-    (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
+  def forkJoin10k_okayOwnInside(): Long =
+    given Scheduler = own
+    Async.spawn {
+      val fs = (0 until K).map(i => Async.spawn(async(step(i))))
+      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+    }.join()
 
+  /** the same shape on the drive scheduler, for the pair */
   @Benchmark
-  def forkJoin10k_okayOwnNoSpin(): Long =
-    given Scheduler = ownNoSpin
-    (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
+  def forkJoin10k_okayDriveInside(): Long =
+    given Scheduler = Schedulers.drive()
+    Async.spawn {
+      val fs = (0 until K).map(i => Async.spawn(async(step(i))))
+      fs.foldLeft(pure[Async, Long](0L))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+    }.join()
 
   /** okay's drive scheduler: the JS shape on the JVM, fiber = task =
    * promise (`DriveTask`); 25 % over the raw pool, §4b */
