@@ -431,6 +431,34 @@ Four refusals hold, and each has a reason worth stating:
 the last thing on screen is the same table with the rows now green,
 or the ones that still are not and why.
 
+### How the doctor finds the tools to check
+
+A target already names what it `requires`, as strings. The doctor
+resolves each name against ONE catalogue — `Tools.all`, keyed by that
+name — and a name the catalogue does not know is itself a finding
+(`unknown tool`), not a silent pass. That keeps the two halves honest
+in opposite directions: a target cannot require something the doctor
+would quietly skip, and the catalogue cannot grow entries nothing
+asks for.
+
+Three sources feed the list, and each is why-carrying by
+construction:
+
+- the target's own `requires`, whose why is the target;
+- the deployment's secret REFERENCES, whose scheme names a tool
+  (`sops:` needs sops, `aws-sm:` the aws CLI, `gcp-sm:` gcloud,
+  `azure-kv:` az) and whose why is the reference itself, so an
+  operator can delete the need instead of installing the tool;
+- what a service's `Run` implies — a `Run.Module` needs a JRE
+  wherever it is not carried in an image.
+
+`Shell.run` is the single door to every subprocess in this module,
+and it is what makes "no silent failure" mechanical rather than a
+habit: it returns the exit code with the merged output, and
+`Shell.must` turns a non-zero one into a message carrying the command
+line, the code and the last lines — including the case that motivated
+it, an exit code with nothing at all on either stream.
+
 ### The remote clean machine
 
 The `host` target's install script is the same logic, rendered: it
