@@ -121,6 +121,21 @@ transport gets TLS from one seam and adds nothing of its own.
   yet would be machinery for a need nobody named. The seam's
   signature (wrap a connected socket) survives the addition.
 
+
+### script-tls — the seam served an embedded HTTP server (2026-09-07)
+
+`serverSocket` assumed the server OWNS its `ServerSocket`; an embedded
+one (okay-jetty's connector) is handed a context instead. Rather than
+build a `KeyStore` in okay-script — the second implementation this
+spec exists to prevent — `Tls.serverContext(certFile, key, secrets)`
+names what `serverSocket` already built, and `serverSocket` is now
+that plus the socket. okay-jetty's `serve` takes
+`ssl: Option[SSLContext]`, gaining no dependency (the type is the
+JDK's) and still knowing nothing about certificates, modes or
+secrets; `okay.script.Serve` reads `OKAY_TLS_CERT` + `OKAY_TLS_KEY`
+and refuses half a pair by name. Proven Live against an openssl
+self-signed identity: a Site's page over a real HTTPS connection.
+
 ## Results (the seam)
 
 Shipped 2026-09-01 (wire-tls): okay-tls (jvm, depends on okay-conf

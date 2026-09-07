@@ -1596,6 +1596,44 @@ routed. `Serve` reads `OKAY_LANGS=en,uk`.
 - [x] the example store in Ukrainian: `index.uk.md`, `t` in the
       header, a language switch.
 
+### HTTPS (script-tls, 2026-09-07)
+
+Operator ask, and three additive steps on the ONE transport seam
+specs/tls.md names — no second implementation of TLS anywhere:
+
+```scala
+okay.tls.Tls.serverContext(certFile, key: Secret, secrets): Either[String, SSLContext]
+okay.jetty.Jetty.serve(port)(routes)(ws, push, ssl: Option[SSLContext] = None)
+Site.serve(port, ssl: Option[SSLContext] = None)
+```
+
+`serverContext` is `serverSocket`'s own first half, named: a server
+that terminates TLS without owning the `ServerSocket` — an embedded
+one, whose connector wants a context — could not reach it, and
+building a `KeyStore` next door would have been the second
+implementation the spec exists to prevent. okay-jetty gains no
+dependency for its half: `SSLContext` is the JDK's, so the connector
+takes `SslContextFactory.Server().setSslContext(ctx)` and okay-jetty
+still knows nothing about certificates, modes or secrets. `None` is
+the plaintext connector, byte for byte as before.
+
+`Serve` reads the pair `OKAY_TLS_CERT` (the certificate PEM's path)
+and `OKAY_TLS_KEY` (a `Secret` ref — `file:/run/secrets/key.pem`,
+`env:KEY_PEM`), refusing half a pair by name rather than falling back
+to plaintext quietly, and prints an `https://` URL. An inline PEM in
+the ref is refused by the seam itself, as everywhere else in this
+stack.
+
+What is NOT here: certificate RELOAD without a restart, ALPN/HTTP2,
+and a redirect from a plaintext port — a deployment that wants those
+today puts the Site behind a proxy, which is also where HSTS and OCSP
+stapling belong.
+
+- [x] `Serve.parse`: the pair, and half a pair refused by name; an
+      inline key refused by the seam.
+- [x] (Live, openssl) a page served over HTTPS on a real port, the
+      same Site, answering a real `HttpsURLConnection`.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
