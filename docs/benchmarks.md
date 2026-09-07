@@ -334,6 +334,45 @@ for the third.
   steps run in parallel. A kyo-class number here needs a scheduler
   that owns its threads (BACKLOG `own-scheduler-jvm`); `DriveTask`
   is the fiber object it would schedule.
+- **kyo's 3.3x at fork/join is one column of a two-column table, and
+  the other column is 7x the other way** (schedulers-family,
+  2026-09-07). The row above forks 10 000 fibers each doing ~100
+  integer ops — about 30 ns of work. That is a measurement of
+  SCHEDULING, and kyo wins it by not scheduling: `runAndBlock` puts
+  the forking program on a worker, `Worker.current` puts every child
+  on that same worker's queue, and the whole burst runs there, in
+  order, with no signal to anyone (the stack profile: 87 % of kyo's
+  threads parked the entire run, one worker in `IOTask.eval`). The
+  JDK pool does the opposite — `scan → signalWork → unpark` for
+  nearly every task. At 30 ns of work per fiber, waking a core costs
+  more than the work.
+  
+  Give each fiber 10 000 ops (~2.5 us) instead — real work, the same
+  10 000 fibers — and the same choice reverses:
+
+  | lane (us per 10 000 fork/joins) | 100 ops each | 10 000 ops each |
+  |---|---|---|
+  | kyo `parallelUnbounded` | **778** | 25 331 |
+  | okay `own`, forked inside a fiber (kyo's form) | 845 | 26 589 |
+  | okay `drive`, forked inside a fiber (kyo's form) | 894 | **3 447** |
+  | okay `own`, forked from outside | 2 083 | **2 877** |
+  | okay `drive` (JDK pool), forked from outside | 2 284 | 3 620 |
+
+  25 ms is 10 000 × 2.5 us: kyo ran the whole burst on ONE core, and
+  a pool that spreads it over the machine is **7.3x faster on the
+  same fibers, same form of call** (3 447 against 25 331), 8.8x
+  against the external form. Neither number is a defect and neither
+  is a win: they are two policies, each right for one shape, and the
+  benchmark that quotes only the first column is measuring what it
+  chose to measure. Both columns are in `AdversarialBenchmark` under
+  `@Param work`, so a lane cannot quietly return to one of them.
+
+  What okay does with that, and it is the point of the whole
+  exercise: the policy can be one scheduler's, not two. `Schedulers.
+  own` keeps the work at home while its queue drains fast and wakes a
+  neighbour only when a worker is still busy after a threshold — the
+  helper rule, measured next.
+
 - **Many-to-many is one ring and one park per blocked hand-off.** All
   P producers and C consumers contend on one Vyukov ring's head/tail,
   and every blocked side parks a virtual thread (`LockSupport.park`
