@@ -344,7 +344,8 @@ rest from the environment:
 | `OKAY_DATA=/var/lib/store` | sessions and the application scope survive a restart |
 | `OKAY_LANGS=en,uk` | the languages |
 | `OKAY_OPS=1` | `/healthz`, `/stats`, `/metrics` beside the pages |
-| `OKAY_TLS_CERT=…` `OKAY_TLS_KEY=file:…` | HTTPS, terminated in the server |
+| `OKAY_TLS_CERT=…` `OKAY_TLS_KEY=file:…` | HTTPS with a real certificate (RSA or EC, `fullchain.pem` and its key) |
+| `OKAY_TLS_RELOAD=3600` | re-read the certificate when it changes — certbot renews, no restart |
 | `OKAY_FORWARDED=1` | behind a TLS-terminating proxy: trust `X-Forwarded-Proto`, so cookies still get `Secure` |
 | `OKAY_TLS=self` | a self-signed certificate, generated once — https with nothing to obtain first |
 | `OKAY_HSTS=31536000` | `Strict-Transport-Security` on secure responses |
@@ -381,8 +382,22 @@ okay-script: serving /…/store at https://127.0.0.1:8443/
 
 The keystore sits beside the data, so a restart keeps the same
 identity. Add `OKAY_HTTP_PORT=8080` and that port answers every
-request with a 301 to the https one. A public site gets a real
-certificate instead — `OKAY_TLS_CERT` and `OKAY_TLS_KEY`, or a proxy.
+request with a 301 to the https one. A public site gets a real certificate instead:
+
+```
+$ OKAY_TLS_CERT=/etc/letsencrypt/live/shop/fullchain.pem \
+  OKAY_TLS_KEY=file:/etc/letsencrypt/live/shop/privkey.pem \
+  OKAY_TLS_RELOAD=3600 sbt "okayScript/runMain okay.script.Serve store 443"
+```
+
+The key may be RSA or EC, `fullchain.pem` is presented as the chain
+it is, and with `OKAY_TLS_RELOAD` a renewal on disk reaches the next
+connection without a restart — a certbot deploy hook is not even
+needed. What okay-script does NOT do is OBTAIN the certificate: that
+is ACME, the protocol a CA uses to check you control the domain
+(it hands you a token to serve under `/.well-known/acme-challenge/`
+or to put in DNS, then issues a 90-day certificate). certbot or a
+proxy that speaks ACME does that part.
 
 **Behind a proxy.** Terminating TLS in nginx, Caddy or an ingress is
 the usual shape, and three things then need saying. Pass `Upgrade`

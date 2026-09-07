@@ -282,10 +282,7 @@ object Tls {
           val cf = CertificateFactory.getInstance("X.509")
           val in = java.nio.file.Files.newInputStream(java.nio.file.Paths.get(certFile))
           val chain = try cf.generateCertificates(in).toArray(Array.empty[java.security.cert.Certificate]) finally in.close()
-          val body = keyPem.linesIterator.filterNot(_.startsWith("-----")).mkString
-          val der = java.util.Base64.getDecoder.decode(body)
-          val key = java.security.KeyFactory.getInstance("RSA")
-            .generatePrivate(java.security.spec.PKCS8EncodedKeySpec(der))
+          val key = privateKey(keyPem).fold(m => throw IllegalStateException(m), k => k)
           val ks = KeyStore.getInstance(KeyStore.getDefaultType)
           ks.load(null, null)
           ks.setKeyEntry("identity", key, Array.empty, chain)
@@ -296,6 +293,135 @@ object Tls {
       ctx.init(kms, trust.orNull, null)
       Right(ctx)
     catch case e: Exception => Left(s"TLS context did not build: ${e.getMessage}")
+
+  /**
+   * A PKCS#8 PEM private key, whatever its algorithm
+   * (script-real-certs).
+   *
+   * The first version asked `KeyFactory.getInstance("RSA")` and
+   * nothing else, which loads an RSA key and refuses every EC one --
+   * and a CA-issued certificate today is as likely to be EC as RSA
+   * (Let's Encrypt issues either, and `certbot --key-type ecdsa` is
+   * a one-flag choice an operator makes without telling us). The
+   * algorithm is IN the key: PKCS#8 wraps an AlgorithmIdentifier, so
+   * the honest read is to try the ones this platform can hold and
+   * report what was actually presented when none fit.
+   *
+   * An ENCRYPTED key ("BEGIN ENCRYPTED PRIVATE KEY") is refused by
+   * name rather than by a parse error: a passphrase is a secret this
+   * seam has nowhere to take from, and `certbot` does not write one.
+   * An old-style "BEGIN RSA/EC PRIVATE KEY" (PKCS#1 / SEC1) is
+   * refused with the one-line `openssl pkcs8` that converts it.
+   */
+  def privateKey(pem: String): Either[String, java.security.PrivateKey] =
+    val head = pem.linesIterator.find(_.startsWith("-----BEGIN")).map(_.trim).getOrElse("")
+    if head.contains("ENCRYPTED") then
+      Left("the private key is encrypted; this seam has no passphrase to give it — " +
+        "supply an unencrypted PKCS#8 key (what certbot writes)")
+    else if head.contains("RSA PRIVATE KEY") || head.contains("EC PRIVATE KEY") then
+      Left(s"'$head' is a PKCS#1/SEC1 key, not PKCS#8 — convert it once: " +
+        "openssl pkcs8 -topk8 -nocrypt -in key.pem -out key.pk8.pem")
+    else
+      val body = pem.linesIterator.filterNot(_.startsWith("-----")).mkString.replaceAll("\\s", "")
+      try
+        val der = java.util.Base64.getDecoder.decode(body)
+        val spec = java.security.spec.PKCS8EncodedKeySpec(der)
+        val tried = Vector("RSA", "EC", "Ed25519", "DSA")
+        tried.iterator.map(a =>
+          try Right(java.security.KeyFactory.getInstance(a).generatePrivate(spec))
+          catch case _: Exception => Left(a))
+          .collectFirst { case Right(k) => k }
+          .toRight(s"the private key is none of ${tried.mkString(", ")} — " +
+            "an unencrypted PKCS#8 PEM is what this seam reads")
+      catch case e: Exception => Left(s"the private key is not readable PEM: ${e.getMessage}")
+
+  /**
+   * An `SSLContext` that RE-READS its certificate and key when the
+   * files change (script-real-certs) — what a CA-issued certificate
+   * needs, because it lives 90 days and something renews it while the
+   * server is up.
+   *
+   * The context is built once; its key manager delegates to a holder
+   * that reloads when the certificate's mtime moves (checked at most
+   * once per `every`). A renewal that lands half-written is not
+   * adopted: the reload keeps the identity it has and reports the
+   * failure through `onError`, because serving the previous
+   * certificate for another minute is strictly better than serving
+   * none. New CONNECTIONS get the new certificate; established ones
+   * keep the one they handshook with, which is how every server does
+   * this.
+   */
+  def reloading(certFile: String, key: Secret, secrets: Secrets,
+                every: java.time.Duration = java.time.Duration.ofMinutes(1),
+                onError: String => Unit = _ => ())
+  : Either[String, SSLContext] =
+    val path = java.nio.file.Paths.get(certFile)
+    def load(): Either[String, Array[KeyManager]] =
+      for
+        _ <- noInlineKey(Some(key))
+        pem <- secrets.get(key)
+        kms <- keyManagers(certFile, pem)
+      yield kms
+    load().flatMap { first =>
+      try
+        val holder = new java.util.concurrent.atomic.AtomicReference(first)
+        @volatile var stamp = mtimeOf(path)
+        @volatile var checked = System.currentTimeMillis()
+        def current(): Array[KeyManager] =
+          val now = System.currentTimeMillis()
+          if now - checked >= every.toMillis then
+            checked = now
+            val m = mtimeOf(path)
+            if m != stamp then
+              stamp = m
+              load() match
+                case Right(kms) => holder.set(kms)
+                case Left(msg) => onError(s"the renewed certificate at $certFile was not adopted: $msg")
+          holder.get()
+        val ctx = SSLContext.getInstance("TLS")
+        ctx.init(Array[KeyManager](Delegating(() => current())), null, null)
+        Right(ctx)
+      catch case e: Exception => Left(s"a reloading TLS context did not build: ${e.getMessage}")
+    }
+
+  private def mtimeOf(p: java.nio.file.Path): Long =
+    try java.nio.file.Files.getLastModifiedTime(p).toMillis catch case _: Exception => -1L
+
+  /** the key managers for one identity — `contextOf`'s own half, named
+   * so the reloading context can rebuild just this part */
+  private def keyManagers(certFile: String, keyPem: String): Either[String, Array[KeyManager]] =
+    try
+      val cf = CertificateFactory.getInstance("X.509")
+      val in = java.nio.file.Files.newInputStream(java.nio.file.Paths.get(certFile))
+      val chain = try cf.generateCertificates(in).toArray(Array.empty[java.security.cert.Certificate]) finally in.close()
+      if chain.isEmpty then Left(s"'$certFile' holds no certificate")
+      else
+        privateKey(keyPem).map { key =>
+          val ks = KeyStore.getInstance(KeyStore.getDefaultType)
+          ks.load(null, null)
+          ks.setKeyEntry("identity", key, Array.empty, chain)
+          val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm)
+          kmf.init(ks, Array.empty)
+          kmf.getKeyManagers
+        }
+    catch case e: Exception => Left(s"'$certFile' did not load: ${e.getMessage}")
+
+  /** every call asks the holder again, so a reload is picked up by the
+   * next handshake without rebuilding the context Jetty is holding */
+  private final class Delegating(now: () => Array[KeyManager]) extends javax.net.ssl.X509ExtendedKeyManager:
+    private def km: javax.net.ssl.X509ExtendedKeyManager =
+      now().collectFirst { case k: javax.net.ssl.X509ExtendedKeyManager => k }
+        .getOrElse(throw IllegalStateException("no X509ExtendedKeyManager in the identity"))
+    def getClientAliases(t: String, i: Array[java.security.Principal]) = km.getClientAliases(t, i)
+    def chooseClientAlias(t: Array[String], i: Array[java.security.Principal], s: Socket) = km.chooseClientAlias(t, i, s)
+    def getServerAliases(t: String, i: Array[java.security.Principal]) = km.getServerAliases(t, i)
+    def chooseServerAlias(t: String, i: Array[java.security.Principal], s: Socket) = km.chooseServerAlias(t, i, s)
+    def getCertificateChain(a: String) = km.getCertificateChain(a)
+    def getPrivateKey(a: String) = km.getPrivateKey(a)
+    override def chooseEngineServerAlias(t: String, i: Array[java.security.Principal], e: javax.net.ssl.SSLEngine) =
+      km.chooseEngineServerAlias(t, i, e)
+    override def chooseEngineClientAlias(t: Array[String], i: Array[java.security.Principal], e: javax.net.ssl.SSLEngine) =
+      km.chooseEngineClientAlias(t, i, e)
 
   private def handshake(ctx: SSLContext, sock: Socket, host: String,
                         mode: SslMode): Either[String, Socket] =

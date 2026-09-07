@@ -12,6 +12,9 @@ import java.nio.file.{Files, Path, Paths}
  *   sbt "okayScript/runMain okay.script.Serve pages 8080"
  *   OKAY_DATA=./data sbt "okayScript/runMain okay.script.Serve pages"
  *
+ * `OKAY_TLS_RELOAD=<seconds>` re-reads the certificate when it
+ * changes on disk, so certbot's renewal needs no restart.
+ *
  * `OKAY_OPS=1` mounts /healthz, /stats and /metrics beside the pages.
  * `OKAY_FORWARDED=1` trusts `X-Forwarded-Proto`, so a Site behind a
  * TLS-terminating proxy still marks its cookies `Secure`.
@@ -51,7 +54,11 @@ object Serve:
                         /** OKAY_HTTP_PORT=<n>: a plaintext port that only
                          * redirects to https, for a deployment with no
                          * proxy in front */
-                        httpPort: Option[Int] = None):
+                        httpPort: Option[Int] = None,
+                        /** OKAY_TLS_RELOAD=<seconds>: re-read the
+                         * certificate when it changes, so a renewal is
+                         * picked up without a restart (script-real-certs) */
+                        tlsReload: Option[Int] = None):
     def scheme: String = if tls.isDefined then "https" else "http"
 
   /** `<dir> [port]`; port 8080 by default. With NO arguments the
@@ -77,7 +84,8 @@ object Serve:
                 env("OKAY_TLS").exists(_.equalsIgnoreCase("self")),
                 env("OKAY_HSTS").flatMap(_.toIntOption).filter(_ > 0),
                 env("OKAY_HTTPS_ONLY").exists(v => v == "1" || v.equalsIgnoreCase("true")),
-                env("OKAY_HTTP_PORT").flatMap(_.toIntOption)))
+                env("OKAY_HTTP_PORT").flatMap(_.toIntOption),
+                env("OKAY_TLS_RELOAD").flatMap(_.toIntOption).filter(_ > 0)))
             }
       case _ => Left("usage: okay.script.Serve <pages-dir> [port]   (or OKAY_PAGES/OKAY_PORT; OKAY_DATA=<dir> for a persistent store)")
 
@@ -96,7 +104,11 @@ object Serve:
   def sslOf(a: Args, secrets: okay.conf.Secrets = okay.conf.Secrets.chain(okay.conf.Secrets.env, okay.conf.Secrets.file))
   : Either[String, Option[javax.net.ssl.SSLContext]] =
     a.tls match
-      case Some((cert, key)) => okay.tls.Tls.serverContext(cert, key, secrets).map(Some(_))
+      case Some((cert, key)) => a.tlsReload match
+        case None => okay.tls.Tls.serverContext(cert, key, secrets).map(Some(_))
+        case Some(seconds) =>
+          okay.tls.Tls.reloading(cert, key, secrets, java.time.Duration.ofSeconds(seconds),
+            msg => System.err.println(s"okay-script: $msg")).map(Some(_))
       case None if a.selfSigned =>
         // beside the data when there is a data directory, so a restart
         // keeps the same identity; a temp one otherwise, and then the
