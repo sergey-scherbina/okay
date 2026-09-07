@@ -1,0 +1,5 @@
+lane: staged-strict
+who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
+since: 2026-09-07
+what: RuntimeStaged.strict — the strict-JSON emitter over a schema VALUE (StrictGen of Staged.scala with the node table where the Mirror was), the last out-of-scope item of staged-runtime; Codecs.strict on the Provider (default: the interpreter's readStrict) so the generic strict doors reach it. Agreement with JsonStrict.read over the node vocabulary, measured. Operator ask: "делай то что осталось открытым".
+touches: okay-codec Codecs.scala, okay-staging RuntimeStaged.scala + tests, compare/CodecBenchmark, specs/codecs.md, docs/modules/okay-staging.md, BACKLOG, CHANGELOG
