@@ -891,10 +891,17 @@ measure on our own data, never a predicted result.
       wall-clock election timeouts/heartbeats. Three real nodes
       elect a leader, replicate and commit a client entry, and fail
       over on a killed leader — all over an actual network. Stage
-      1b (the Store/Topic engine wrapper — the actual RaftStore this
-      bullet names — plus persistent currentTerm/votedFor) and stage
-      2 (compaction, membership changes) remain open; box stays
-      unchecked for those.
+      1b LANDED 2026-09-07: `okay.persist.RaftStore` — a `Store` over
+      the wire node (an append proposed as one log entry, applied on
+      every node at commit to its local store; reads from the local
+      store, so nothing uncommitted is ever served; a follower's
+      append throws `NotLeader(leader)`, a lost majority
+      `NotCommitted`) — and `RaftWire.Stable` (term and vote saved
+      inside the lock before any send; a file replaced by rename, or
+      memory). `TestStable` in the gate, `TestRaftStore` Live beside
+      `TestRaftWire`. Stage 2 (compaction, membership changes), leader
+      forwarding and the commit-wait as an `Ack` level remain open;
+      box stays unchecked for those.
 
 ## okay-http (sibling's area — coordinate before taking)
 - [ ] flaky-port-roulette — the full-matrix port/readiness family,

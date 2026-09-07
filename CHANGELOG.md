@@ -1,5 +1,31 @@
 # Changelog
 
+## persist-raft-1b — `RaftStore`: a `Store` over the replicated log, and the term and vote on stable storage
+
+Stage 1b of the staged climb (specs/consensus.md). `okay.persist.
+RaftStore` is a `Store`, so `Election` constructs a `Topic` over it
+without changing — the reduction's claim, by construction. An
+`append` is proposed to the leader as one log entry (`Op.Append`:
+topic, partition, key, value, the proposer's id and sequence, CBOR
+in `RaftEntry.data`); every node applies each committed entry to its
+LOCAL store in log order through stage 1a's `onCommit` seam, so the
+local stores agree and a read never shows a record a failover could
+unwrite. On the leader `append` waits for its entry to commit and
+answers the local offset; on a follower it throws `NotLeader(leader)`
+(no forwarding — stage 1a's limit, kept and named); no majority in
+time throws `NotCommitted`. `RaftWire.Stable` is the stable storage
+Raft's proof assumes for `currentTerm`/`votedFor`: loaded once at
+start, saved inside the lock before any message the transition
+produced is sent — a reply that outran its own record is the double
+vote — as one small file replaced by rename, or in memory for tests.
+`TestStable` (gate): the file round-trips, a node over a remembered
+term 5 begins at 5 with its vote. `TestRaftStore` (Live, real
+sockets, beside `TestRaftWire`): three stores, an append on the leader
+applied on all three at offsets 0 and 1, a follower's append refused
+by name, the leader killed and the survivors electing, accepting and
+applying. Stage 2, leader forwarding and the commit-wait as an `Ack`
+level stay open.
+
 ## frame-rebind — the restart case made ordinary: `Frame.rebind` re-reads by name and reports what moved
 
 `valueOf` matches a slot by identity, so a frame read back from a

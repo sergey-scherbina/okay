@@ -21,6 +21,38 @@ import java.net.{ServerSocket, Socket}
  */
 object RaftWire:
 
+  /**
+   * Stable storage for the two fields Raft's proof assumes survive a
+   * crash: `currentTerm` and `votedFor`. Written before any message
+   * the transition produced is sent, read once at start. `file` is one
+   * small file, replaced atomically (write a sibling, rename over);
+   * `memory` is for tests and for a node whose crash is its end.
+   */
+  trait Stable:
+    def load(): (Long, Option[String])
+    def save(term: Long, votedFor: Option[String]): Unit
+
+  object Stable:
+    def memory(term: Long = 0L, votedFor: Option[String] = None): Stable = new Stable:
+      private var held = (term, votedFor)
+      def load(): (Long, Option[String]) = synchronized(held)
+      def save(t: Long, v: Option[String]): Unit = synchronized { held = (t, v) }
+
+    def file(path: java.nio.file.Path): Stable = new Stable:
+      import java.nio.file.{Files, StandardCopyOption}
+      def load(): (Long, Option[String]) =
+        if !Files.exists(path) then (0L, None)
+        else
+          val lines = Files.readString(path).split("\n", -1).toList
+          val term = lines.headOption.flatMap(_.trim.toLongOption).getOrElse(0L)
+          val vote = lines.lift(1).map(_.trim).filter(_.nonEmpty)
+          (term, vote)
+      def save(t: Long, v: Option[String]): Unit =
+        val tmp = path.resolveSibling(path.getFileName.nn.toString + ".tmp").nn
+        Files.createDirectories(path.toAbsolutePath.nn.getParent.nn)
+        Files.writeString(tmp, s"$t\n${v.getOrElse("")}\n")
+        Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE): Unit
+
   private def writeFrame(out: DataOutputStream, m: RaftMsg): Unit =
     val bs = Cbor.write(m)
     out.writeInt(bs.length)
@@ -51,10 +83,22 @@ object RaftWire:
   final class Node(id: String, port: Int, peers: Map[String, (String, Int)],
                    tickMs: Long = 50, electionTimeoutMs: Long = 300,
                    heartbeatMs: Long = 100,
-                   onCommit: (Long, RaftEntry) => Unit = (_, _) => ()) {
+                   onCommit: (Long, RaftEntry) => Unit = (_, _) => (),
+                   stable: Stable = Stable.memory()) {
 
     private val lock = new Object
-    private var state = RaftState(id = id)
+    // the two fields Raft's safety proof assumes on stable storage,
+    // read back before the first message: a node that forgot its vote
+    // could grant it twice in one term (stage 1b)
+    private var state =
+      val (term, vote) = stable.load()
+      RaftState(id = id, currentTerm = term, votedFor = vote)
+
+    /** persist term/vote BEFORE anything the transition produced is
+     * sent — a reply that outran its own record is the double vote */
+    private def persisted(before: RaftState, after: RaftState): Unit =
+      if after.currentTerm != before.currentTerm || after.votedFor != before.votedFor then
+        stable.save(after.currentTerm, after.votedFor)
     private var lastHeartbeatSent = 0L
     private var nextElectionAt = System.currentTimeMillis() + jitter()
 
@@ -90,6 +134,7 @@ object RaftWire:
       val (toSend, newlyCommitted) = lock.synchronized {
         val before = state.commitIndex
         val (ns, out) = Raft.handle(state, msg, peerIds)
+        persisted(state, ns)
         state = ns
         msg match
           case _: RaftMsg.AppendEntries => nextElectionAt = System.currentTimeMillis() + jitter()
@@ -125,6 +170,7 @@ object RaftWire:
             case _ =>
               if now >= nextElectionAt then
                 val (ns, out) = Raft.startElection(state, peerIds)
+                persisted(state, ns)
                 state = ns
                 nextElectionAt = now + jitter()
                 out
@@ -132,6 +178,7 @@ object RaftWire:
         }
         toSend.foreach(send)
 
+    def votedFor: Option[String] = lock.synchronized(state.votedFor)
     def isLeader: Boolean = lock.synchronized(state.role == RaftRole.Leader)
     def leaderId: Option[String] = lock.synchronized(state.leaderId)
     def currentTerm: Long = lock.synchronized(state.currentTerm)

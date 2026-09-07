@@ -95,8 +95,14 @@ conveniences that ride the one primitive:
 Backup/restore live on the blob side (`okay.blob.Backup` — the
 dependency arrow persist→blob would cycle through http): closed
 segments copy incrementally, restore is placing files back for the
-ordinary startup path. Elected leadership stays specced
-(persist-raft) with its decisions and refuted alternatives.
+ordinary startup path. Elected leadership is specced (persist-raft)
+with its decisions and refuted alternatives, and its own Raft is a
+staged climb: the pure core, the peer-to-peer wire, and since stage
+1b `RaftStore` — a `Store` whose appends are proposed to the leader
+as log entries and applied on every node at commit, so `Election`
+constructs a `Topic` over it unchanged — with `RaftWire.Stable`
+holding the term and the vote across a crash (JVM only; compaction
+and membership changes are stage 2).
 
 `Configs.ambient(name)` reads an ambient `Store` (ctx-everywhere) —
 the managed-config convenience under `provide(store) { ... }`.

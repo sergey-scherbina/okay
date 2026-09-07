@@ -198,11 +198,37 @@ prices every large claim:
   runs safely today only as long as no participating node crashes
   mid-term, stated not hidden).
 - **Stage 1b — the `Store`/`Topic` engine wrapper, and persistent
-  `currentTerm`/`votedFor` (not started).** Turn a running
-  `RaftWire.Node` into something `Election` can construct a `Topic`
-  over — the reduction's whole argument is that this slots in
-  without `Election` changing BY CONSTRUCTION — plus the stable
-  storage stage 1a's own limit named.
+  `currentTerm`/`votedFor`, LANDED 2026-09-07.** `okay.persist.
+  RaftStore` (JVM-only, beside `RaftWire`) IS a `Store`, so
+  `Election` constructs a `Topic` over it without changing — the
+  reduction's claim, by construction. The shape is the paper's
+  replicated state machine: an `append` is proposed to the leader as
+  one log entry (`RaftStore.Op.Append`: topic, partition, key, value,
+  the proposer's id and sequence, CBOR through the existing
+  `RaftEntry.data`), and every node applies each committed entry to
+  its LOCAL store in log order through stage 1a's `onCommit` seam —
+  so the local stores agree, and a read served from the local store
+  never shows a record a failover could unwrite (only committed
+  entries reach it: `Replicated`'s high-water-mark guarantee, by a
+  different road). On the leader `append` waits for ITS entry to
+  commit and answers the local offset it was applied at; on a
+  follower it throws `NotLeader(leaderId)` — no forwarding, stage
+  1a's stated limit kept and named — and a proposal that finds no
+  majority within `commitWaitMs` throws `NotCommitted` rather than
+  pretending. Topics are declared per node, as configuration.
+  `RaftWire.Stable` is the stable storage the proof assumes: `load()`
+  once at start, `save(term, votedFor)` inside the lock BEFORE any
+  message the transition produced is sent (a reply that outran its
+  own record is the double vote); `Stable.file(path)` is one small
+  file replaced by rename, `Stable.memory` for tests. `TestStable`
+  (default gate: the file round-trips, absent reads as the initial
+  state, a node started over a remembered term 5 begins at 5 with
+  its vote) and `TestRaftStore` (`Live`, real sockets, as
+  `TestRaftWire`: three stores, an append on the leader applied on
+  all three at offsets 0 and 1, a follower's append refused by name,
+  the leader killed and the survivors electing, accepting and
+  applying). Not here: forwarding to the leader, the commit-wait as
+  an `Ack` level rather than a timeout, and stage 2.
 - **Stage 2 — log compaction / snapshotting, membership changes**
   (not started). The control log the reduction already runs on is
   small and slow-changing (election traffic only); an actual
