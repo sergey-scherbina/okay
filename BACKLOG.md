@@ -885,6 +885,12 @@ measure on our own data, never a predicted result.
       schemas. Price on the Order: encode 233 ns vs 842 interpreted (3.6x; 1.4x of the compile-time staged 165), decode-from-AST 140 vs 683 (4.9x; 1.2x of the compile-time 113); generation 8.7 ms per schema with the compiler warm (the first in a process pays the compiler's own warm-up on top, seconds), so a warm generation is earned back after ~15,000 values (609 ns saved per encode, 543 per decode) — history.tsv staged-runtime. Not a default anywhere;
       "where else" with the condition for each is in the spec.
       specs/codecs.md, "Run-time staging".
+- [x] schema-thunks-once — landed: `Schema.once`, every derived edge
+      memoised (fields, cases, Option/List/Vector, wrap/refine); a
+      sum's case schema was re-derived per value and never the same
+      instance twice (the staged-runtime trap, at its source).
+      Interpreter before/after: measured by ALLOCATION per value (-prof gc; time on a loaded box is noise, bytes are not) on a sum-shaped Owner (a Pet enum, four case values): encode 10160 -> 8144 B/op (-20%), decode-from-AST 5976 -> 4088 (-32%), CBOR encode 7312 -> 5416 (-26%); the same runs' times 1072 -> 817, 830 -> 573, 1221 -> 974 ns (wide error bars); the Order, which has no sum and a given per type, 8016 -> 7968 B/op (-0.6%, the Option/List givens' re-summon) — history.tsv schema-thunks-once. specs/codecs.md, "Schema
+      thunks once".
 
 ## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
 - [ ] py-arrow — frames via pyarrow (twin of r-arrow; nearer —

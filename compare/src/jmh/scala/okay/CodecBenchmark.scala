@@ -23,6 +23,18 @@ object CodecFixture:
   val text: String = Json.encode(summon[Schema[Order]])(order)
   val ast: Json = Json.parse(text)
 
+  /** schema-thunks-once: a SUM whose cases have no given of their own
+   * — the shape whose case schemas the interpreter re-derived per value */
+  enum Pet derives Schema:
+    case Dog(name: String, age: Int)
+    case Cat(name: String)
+    case Rock
+  final case class Owner(name: String, pet: Pet, pets: List[Pet]) derives Schema
+  val owner = Owner("bo", Pet.Dog("rex", 3), List(Pet.Cat("tom"), Pet.Rock, Pet.Dog("ace", 1)))
+  val ownerText: String = Json.encode(summon[Schema[Owner]])(owner)
+  val ownerAst: Json = Json.parse(ownerText)
+  val ownerCbor: Array[Byte] = Cbor.write(owner)
+
   // ---- the hand-written floor: straight-line field access ----
   def handEncode(o: Order): String =
     val sb = new java.lang.StringBuilder(128)
@@ -118,6 +130,9 @@ class CodecBenchmark {
   val cborBytes: Array[Byte] = Cbor.write(order)
 
   @Benchmark def encodeInterp(): String = Json.encode(summon[Schema[Order]])(order)
+  @Benchmark def encodeSumInterp(): String = Json.encode(summon[Schema[Owner]])(owner)
+  @Benchmark def decodeSumInterpAst(): Either[String, Owner] = Json.decode(summon[Schema[Owner]])(ownerAst)
+  @Benchmark def cborEncodeSumInterp(): Array[Byte] = Cbor.write(owner)(using summon[Schema[Owner]])
   @Benchmark def encodeStaged(): String = staged.encode(order)
   @Benchmark def decodeStagedAst(): Either[String, Order] = staged.decode(ast)
   @Benchmark def encodeRuntimeStaged(): String = runtimeStaged.encode(order)

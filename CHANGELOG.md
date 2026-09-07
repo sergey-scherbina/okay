@@ -1,5 +1,19 @@
 # Changelog
 
+## schema-thunks-once — a derived schema's edges answer one instance
+Completed: 2026-09-07
+Operator ask: fix the traps. staged-runtime found that a derived
+`Schema`'s thunks build a fresh instance per call — a sum's case
+schema was re-derived for every value the interpreter encoded, and
+nothing keyed by identity could find the child it had just seen.
+`Schema.once` (by-name in, `lazy val` behind the thunk) memoises
+every edge `derived`, the `Option`/`List`/`Vector` givens and
+`wrap`/`refine`/`vocabulary` build, without forcing anything at
+construction — a recursive type's schema still terminates, and its
+recursive edge is now `eq` to the given. TestSchemaOnce holds the
+identities; the interpreter measured before/after on the Order:
+measured by ALLOCATION per value (-prof gc; time on a loaded box is noise, bytes are not) on a sum-shaped Owner (a Pet enum, four case values): encode 10160 -> 8144 B/op (-20%), decode-from-AST 5976 -> 4088 (-32%), CBOR encode 7312 -> 5416 (-26%); the same runs' times 1072 -> 817, 830 -> 573, 1221 -> 974 ns (wide error bars); the Order, which has no sum and a given per type, 8016 -> 7968 B/op (-0.6%, the Option/List givens' re-summon) — history.tsv schema-thunks-once. specs/codecs.md, "Schema thunks once".
+
 ## okay-acme — a certificate a site earns for itself
 Completed: 2026-09-07
 Landed as 7b344179 (spec then code). Operator ask, after the estimate:
@@ -64,6 +78,7 @@ serving and the failure is reported, because another minute of the
 previous certificate beats none, proven by tearing a file mid-flight.
 Still the proxy's, and now said precisely: ACME itself, the protocol
 that OBTAINS a certificate. 5 Live tests; 134 green 3x.
+
 
 ## staged-runtime — the staged codec for a schema that exists only at run time
 Completed: 2026-09-07

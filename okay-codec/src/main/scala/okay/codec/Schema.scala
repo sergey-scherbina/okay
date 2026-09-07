@@ -93,13 +93,29 @@ object Schema {
   given Schema[Char] = Schema.SChar
   given Schema[Array[Byte]] = Schema.SBytes
 
+  /**
+   * A thunk that answers the SAME instance every time (schema-thunks-
+   * once). Every edge of a schema is lazy — that is how a recursive
+   * type's schema terminates — but a lazy edge is not a memoised one:
+   * `() => summonInline[Schema[h]]` re-expanded the derivation on every
+   * call for a subtype without a given of its own, so a sum's case
+   * schema was a fresh instance per value encoded (an allocation the
+   * interpreter paid per field per value) and anything keyed by
+   * identity — a staged generator's node table — could not find the
+   * child it had just seen. By-name in, `lazy val` behind the thunk:
+   * still nothing is forced at construction, and once forced it stays.
+   */
+  def once[X](s: => Schema[X]): () => Schema[X] =
+    lazy val v = s
+    () => v
+
   /** a total wrapper — a newtype travels as what it wraps */
   def wrap[A, B](to: B => A, from: A => B)(using s: => Schema[B]): Schema[A] =
-    Schema.SIso(() => s, b => Right(to(b)), from)()
+    Schema.SIso(once(s), b => Right(to(b)), from)()
 
   /** a refining wrapper — a Left is a decode error naming itself */
   def refine[A, B](to: B => Either[String, A], from: A => B)(using s: => Schema[B]): Schema[A] =
-    Schema.SIso(() => s, to, from)()
+    Schema.SIso(once(s), to, from)()
 
   /**
    * A refinement over a FINITE vocabulary (codec-jsonschema-refinement-
@@ -121,16 +137,16 @@ object Schema {
    * declaration lists — `Conf` reads `High` and `high` alike), plus
    * the `names` a JSON Schema will show as `enum` */
   def vocabulary[A, B](names: Vector[B], to: B => Either[String, A], from: A => B)(using s: => Schema[B]): Schema[A] =
-    Schema.SIso[A, B](() => s, to, from)(Some(names))
+    Schema.SIso[A, B](once(s), to, from)(Some(names))
 
-  given [A](using s: => Schema[A]): Schema[Option[A]] = Schema.SOption(() => s)
-  given [A](using s: => Schema[A]): Schema[List[A]] = Schema.SList(() => s)
-  given [A](using s: => Schema[A]): Schema[Vector[A]] = Schema.SVector(() => s)
+  given [A](using s: => Schema[A]): Schema[Option[A]] = Schema.SOption(once(s))
+  given [A](using s: => Schema[A]): Schema[List[A]] = Schema.SList(once(s))
+  given [A](using s: => Schema[A]): Schema[Vector[A]] = Schema.SVector(once(s))
 
   private inline def thunks[T <: Tuple]: List[() => Schema[?]] =
     inline erasedValue[T] match
       case _: EmptyTuple => Nil
-      case _: (h *: t) => (() => summonInline[Schema[h]]) :: thunks[t]
+      case _: (h *: t) => once(summonInline[Schema[h]]) :: thunks[t]
 
   /** derive from the Mirror: products become named fields, sums named
    * cases; write `given Schema[T] = Schema.derived` (or `derives`) */

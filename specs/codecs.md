@@ -648,3 +648,46 @@ is most of them until measured.
   as in the compile-time generator).
 - Automatic use by any okay module.
 
+## Schema thunks once (2026-09-07, schema-thunks-once)
+
+The trap staged-runtime met, fixed at its source (operator: "fix the
+traps"). Every edge of a `Schema` is a thunk — that is how a
+recursive type's schema terminates — but `Schema.derived` built them
+as `() => summonInline[Schema[h]]`, which RE-EXPANDS the derivation
+on every call for a subtype without a given of its own (a sum's
+cases, always; a field type with no `given`). Two costs nobody had
+measured: a fresh `SProduct` per case per value encoded (the
+interpreter's `theCase`/`eachField` force the thunk each time), and
+an identity that never repeats, which is what broke the staged
+generator's node table.
+
+### Interface
+- `Schema.once[X](s: => Schema[X]): () => Schema[X]` — by-name in,
+  `lazy val` behind the thunk: nothing forced at construction, one
+  instance once forced.
+- Used by `derived` (fields and cases), the `Option`/`List`/`Vector`
+  givens and `wrap`/`refine`/`vocabulary`. No signature moved.
+
+### Behavior
+- [x] a sum's case thunk, a product's field thunks, the
+      Option/List/Vector element thunks and an iso's under all answer
+      the same instance on every call; recursion still terminates and
+      the recursive edge IS the given, not a copy; a thunk that counts
+      is forced exactly once and never at construction (TestSchemaOnce)
+- [x] the interpreter, before/after on the Order (CodecBenchmark):
+      measured by ALLOCATION per value (-prof gc; time on a loaded box is noise, bytes are not) on a sum-shaped Owner (a Pet enum, four case values): encode 10160 -> 8144 B/op (-20%), decode-from-AST 5976 -> 4088 (-32%), CBOR encode 7312 -> 5416 (-26%); the same runs' times 1072 -> 817, 830 -> 573, 1221 -> 974 ns (wide error bars); the Order, which has no sum and a given per type, 8016 -> 7968 B/op (-0.6%, the Option/List givens' re-summon) — history.tsv schema-thunks-once
+
+### Decisions
+- **Memoise at the edge, not at the door.** The alternative — every
+  consumer (the interpreter, the staged generator, JsonSchema, Form)
+  caching what it forced — repeats the fix per consumer and leaves the
+  next one to meet the trap again. One helper, four call sites.
+- **Still lazy.** `once` takes its argument by name and forces it on
+  first call, so `given Schema[Tree] = Schema.derived` constructs
+  without touching itself; the test holds the recursive edge `eq` to
+  the given.
+- **A thunk's identity is now a promise** the staged generator may
+  rely on; its own walk still records children once (belt and braces:
+  a hand-built schema may still hand a fresh instance per call, and
+  the 4096-node cap still refuses one that never repeats).
+
