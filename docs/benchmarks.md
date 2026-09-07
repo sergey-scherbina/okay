@@ -2440,3 +2440,77 @@ on unchanged code (+3%) — no win on Node, and none lost that the
 drift can distinguish. The iterators cost most where a JIT could not
 remove them: the JVM's escape analysis evidently did not, V8's
 evidently did.
+
+## 19. okay-script — what a page costs (the first numbers)
+
+The container has been built out for four days (markdown pages as a
+JSP-level web framework, specs/okay-script.md) and had never once
+been measured. Its own question is not the library-versus-library one
+the sections above answer: a `.md` page is compiled by the REAL Scala
+compiler at runtime, so the number that matters is what that costs
+ONCE against what a request costs after it.
+
+**Not JMH, and stated as a decision.** Every sample here is
+milliseconds to seconds, dominated by dotc; each JMH fork would pay
+every compile again to measure the same thing with more ceremony. The
+harness (`MeasureScript`, `Live`-tagged, in okay-script's own suite)
+takes medians of n samples with the warmup discarded and prints the
+table below; its assertions are sanity bounds only — a page renders, a
+warm render beats a cold one — never a millisecond threshold, which on
+a loaded box is a red build that says nothing about the code.
+
+Host: 14 cpus, load average 8–14 (a working machine, not a quiet
+lab), JVM 21. Three runs; the spread between them is the last column's
+business, and it was small enough that the medians below are one run's,
+not a doctored average.
+
+| what | median | note |
+|---|---:|---|
+| cold render, first page of the process | 870 ms | includes dotc's own warmup |
+| cold render, prose only | 102 ms | compile + invoke, warm JVM |
+| cold render, a code block | 152 ms | compile + invoke |
+| cold render, front-matter + yaml + code | 160 ms | the `Meta` plumbing too |
+| warm render (cached compile, re-invoked) | 0.062 ms | what a request actually costs |
+| hot reload (mtime changed, recompiled) | 111 ms | the edit–refresh loop |
+| static file, 200 (read + ETag) | 0.048 ms | size+mtime ETag, no digest |
+| static file, 304 (validated) | 0.021 ms | not read at all |
+| memory held per compiled page | 87 KiB | 20 pages, heap delta after GC |
+| renders/second, 1 thread | 58 096 | 20k renders in 0.34 s |
+| renders/second, 2 threads | 98 475 | 40k in 0.41 s |
+| renders/second, 4 threads | 100 561 | 80k in 0.80 s |
+| renders/second, 8 threads | 105 852 | 160k in 1.51 s |
+
+Run to run, the cold numbers moved by about 10% (92–102 ms prose,
+140–165 ms with code) and the warm one by 5% (0.061–0.065 ms); the
+concurrency rows moved more (58–62k single-threaded, 99–116k at four
+threads) because the host's own load did.
+
+**What the table says.**
+
+- **A page is compiled once and then it is free.** 152 ms to compile,
+  0.062 ms to answer — a ratio of about 2 500. The compile-once-
+  invoke-many split (`Page`, hot-reload by mtime) is not an
+  optimization, it is the whole reason a runtime-compiled page can
+  serve traffic at all.
+- **The first page of the process costs six of the next ones** (870 ms
+  against ~150), because dotc warms itself up in it. A server pays it
+  once, on the first visitor — which is exactly the argument for
+  compiling the whole directory at boot instead, filed as the next
+  task rather than assumed here.
+- **Metadata is free.** Front-matter, a `yaml` block and headings cost
+  the same as a plain code block (160 vs 152 ms, inside the run-to-run
+  spread): the `Meta` tree is literalized into the synthesized source,
+  so it is compile-time work in a compile that was happening anyway.
+- **A 304 is half a 200 on a static file** (0.021 vs 0.048 ms) — the
+  ETag is size and mtime, so a validated request never reads the file.
+- **87 KiB per compiled page** is the classloader, the compiled
+  classes and the temp directory's handle. A hundred pages is ~9 MiB;
+  a thousand-page site is a heap decision, not a surprise.
+- **Concurrency saturates around 100k renders/s at four threads** on
+  this host — 1.7x from one thread to two, then flat. That is the
+  shape a per-page lock gives when the work under it is 60 us: the
+  lock is not the ceiling (it is only held across the mtime check),
+  the ceiling is the shared `Application`/`Sessions` maps and the host
+  itself under load 8. For scale, 100k renders/s is roughly 8.6
+  billion a day; a page's own work — a database call, an LLM turn —
+  will decide long before this does.
