@@ -1552,6 +1552,50 @@ wants `verify`/`issue`, a shared `Sessions` or TLS builds its own
       second `Serve.site` on the same `OKAY_DATA` sees the application
       scope the first one wrote.
 
+### Languages — variants and messages (okay-script-i18n, 2026-09-07)
+
+Operator ask. Two things a site in several languages needs, both
+resolved per request from one choice of language:
+
+```scala
+final class Site(..., languages: Vector[String] = Vector("en"))   // the first is the default
+object Lang: def current: String;  val Cookie = "OKAYLANG"
+def t(key: String, args: Any*): String
+```
+
+**The language of a request**: `?lang=` when the site speaks it (and
+the choice is remembered in the `OKAYLANG` cookie), else the cookie,
+else `Accept-Language` — its tags by `q`, matched on the primary
+subtag, so `uk-UA` finds `uk` — else the first language. `Lang.current`
+tells the page.
+
+**Variants**: `page.<lang>.md` beside `page.md` — `index.uk.md` — is
+what the request for `/` renders when its language is `uk` and the
+file exists; the base page otherwise. The same lookup applies to an
+`include`, a `forward` target, the login and error pages, and the
+Live socket (whose language comes from the socket's own cookie or
+header). A variant INHERITS the base page's front-matter and
+overrides what it sets, so `secure:` on `admin.md` holds for
+`admin.uk.md` whether or not the translator repeated it — a
+translation must not be an open door.
+
+**Messages**: `i18n/<lang>.yaml`, a flat `key: value` mapping (the
+same tiny YAML `Meta` reads), read by `t(key)` in the request's
+language, falling back to the first language's file, then to the key
+itself; `{0}`, `{1}`… take `args`. The `i18n/` directory is never
+routed. `Serve` reads `OKAY_LANGS=en,uk`.
+
+- [x] `?lang=uk` renders `index.uk.md` and sets the cookie; the cookie
+      alone selects it; `Accept-Language: uk-UA,uk;q=0.9,en;q=0.8`
+      selects it; an unknown language falls back to the first; a page
+      without a variant renders its base.
+- [x] an include's variant is used; a variant inherits `secure:` from
+      its base.
+- [x] `t`: a key in `uk`, a key only in `en` (fallback), a missing key
+      (the key), a placeholder; `/i18n/uk.yaml` is not routed.
+- [x] the example store in Ukrainian: `index.uk.md`, `t` in the
+      header, a language switch.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
