@@ -2,6 +2,7 @@ package okay
 
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReference}
+import scala.jdk.CollectionConverters.*
 
 /** The laws every member of the scheduler family owes
  * (specs/schedulers.md), run against each member the way
@@ -9,13 +10,16 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReferenc
 class TestSchedulerLaws extends munit.FunSuite {
   override val munitTimeout = scala.concurrent.duration.Duration(3, "min")
 
-  private val members: List[(String, Scheduler)] = List(
-    "loom" -> Schedulers.loom,
-    "drive" -> Schedulers.drive(),
+  private val owned: List[(String, Schedulers.Running)] = List(
     "own" -> Schedulers.own.workers(4).build,
     "own.forShortTasks" -> Schedulers.own.workers(4).forShortTasks.build,
     "own.forLongTasks" -> Schedulers.own.workers(4).forLongTasks.build,
     "adaptive" -> Schedulers.adaptive.workers(2).build)
+
+  private val members: List[(String, Scheduler)] =
+    List("loom" -> Schedulers.loom, "drive" -> Schedulers.drive()) ++ owned
+
+  override def afterAll(): Unit = owned.foreach(_._2.close())
 
   private def each(name: String)(law: Scheduler => Unit): Unit =
     members.foreach { case (member, sch) => test(s"$name — $member") { law(sch) } }
@@ -75,6 +79,20 @@ class TestSchedulerLaws extends munit.FunSuite {
   each("par: both sides, on their own thread of control") { sch =>
     given Scheduler = sch
     assertEquals(Async.par(async(1), async(2)).runWith, (1, 2))
+  }
+
+  test("close stops the workers: a scheduler owns threads and gives them back") {
+    val sch = Schedulers.own.workers(3).build
+    val mine = s"okay-own-${sch.id}-"
+    given Scheduler = sch
+    assertEquals(Async.spawn(async(1)).join(), 1)
+    sch.close()
+    val deadline = System.nanoTime() + 5_000_000_000L
+    var live = 3
+    while live > 0 && System.nanoTime() < deadline do
+      live = Thread.getAllStackTraces.keySet.asScala.count(t => t.getName.startsWith(mine) && t.isAlive)
+      if live > 0 then Thread.sleep(20)
+    assert(clue(live) == 0, "workers still running after close()")
   }
 
   test("no lost wake — one worker, a fork after it parked") {

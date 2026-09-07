@@ -153,6 +153,16 @@ given Timer = new:
  */
 object Schedulers {
 
+  /** a scheduler that owns threads, so it can be stopped. `close()`
+   * lets the workers finish what they hold and then exit; a fiber
+   * forked after it is a fiber nobody will run, so close a scheduler
+   * only when the work that used it is done. */
+  trait Running extends Scheduler with AutoCloseable:
+    /** the number in this scheduler's thread names, `okay-own-<id>-<worker>` */
+    def id: Int
+
+  private val ownedCount = java.util.concurrent.atomic.AtomicInteger()
+
   private def unwrap(e: Throwable): Throwable = e match
     case e: CompletionException if e.getCause != null => e.getCause
     case e: ExecutionException if e.getCause != null => e.getCause
@@ -289,13 +299,26 @@ object Schedulers {
                 overflow: Int = -1): Own =
       copy(stuckAfterMillis = math.max(1L, after.toMillis), overflowWorkers = if overflow < 0 then count else overflow)
 
-    def build: Scheduler =
+    def build: Running =
       Owned(count, spinRounds, wakeDeeperThan, helpAfterNanos, spreadAboveNanos, stuckAfterMillis, overflowWorkers)
   }
 
   private[okay] final class Owned(n: Int, spin: Int, wakeAbove: Int,
                                   helpAfterNanos: Long, spreadAboveNanos: Long,
-                                  stuckAfterMillis: Long, overflow: Int) extends Scheduler {
+                                  stuckAfterMillis: Long, overflow: Int) extends Running {
+    val id: Int = ownedCount.incrementAndGet()
+    @volatile private var stopped = false
+    private var watchdog: java.util.concurrent.ScheduledFuture[?] | Null = null
+
+    /** stop the workers and the stuck-check. Idempotent. */
+    def close(): Unit =
+      stopped = true
+      val wd = watchdog
+      if wd != null then { val _ = wd.cancel(false) }
+      var i = 0
+      while i < workers.length do
+        java.util.concurrent.locks.LockSupport.unpark(workers(i).thread)
+        i += 1
     /** what threads OUTSIDE the scheduler hand it. One queue, not one
      * per worker: a submitter that picks a random worker picks a
      * SLEEPING one most of the time and pays an unpark per task,
@@ -411,7 +434,7 @@ object Schedulers {
       @volatile var parked = false
       var ran = 0L   // diagnostics only: plain, so the hot path has no fence
       var stolen = 0L
-      val thread: Thread = { val t = Thread(this, s"okay-own-$id"); t.setDaemon(true); t }
+      val thread: Thread = { val t = Thread(this, s"okay-own-${Owned.this.id}-$id"); t.setDaemon(true); t }
 
       /** the load the helper rule reads */
       def size: Int = deque.size
@@ -439,10 +462,11 @@ object Schedulers {
       def run(): Unit =
         current.set(this)
         val _ = awake.incrementAndGet()
+        // `stopped` ends the loop; a worker still finishes what it holds
         var spins = 0
         var streakStart = 0L
         var ranStreak = 0
-        while true do
+        while !stopped do
           var t = take()
           if t == null then { t = steal(); if t != null then stolen += 1L }
           if t != null then
@@ -480,7 +504,7 @@ object Schedulers {
             // it will unpark us
             parked = true
             val _ = awake.decrementAndGet()
-            if size == 0 && submissions.isEmpty then java.util.concurrent.locks.LockSupport.park(this)
+            if size == 0 && submissions.isEmpty && !stopped then java.util.concurrent.locks.LockSupport.park(this)
             parked = false
             val _ = awake.incrementAndGet()
             spins = 0
@@ -511,7 +535,7 @@ object Schedulers {
             val _ = activations.incrementAndGet()
             startWorker(next)
         lastCompleted = done
-      val _ = timerWheel.scheduleWithFixedDelay(check, stuckAfterMillis, stuckAfterMillis,
+      watchdog = timerWheel.scheduleWithFixedDelay(check, stuckAfterMillis, stuckAfterMillis,
         java.util.concurrent.TimeUnit.MILLISECONDS)
 
     def fork[A](prog: () => A ! Async): Fiber[A] =

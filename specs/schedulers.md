@@ -53,7 +53,12 @@ chooses where NOT to wake one.
   the facade is the menu. `given Scheduler = Schedulers.loom` stays
   the JVM default: `own` holds a worker when a fiber blocks, and the
   default must be the one that cannot deadlock a correct program.
-  The user-facing page is `docs/schedulers.md`.
+  `own.build` and `adaptive.build` return `Schedulers.Running`, a
+  `Scheduler` that is also `AutoCloseable` and carries an `id` that
+  appears in its worker thread names — a scheduler that owns threads
+  must give them back, and a benchmark with three of them alive at
+  once is a benchmark measuring its own thread count (found exactly
+  that way, 2026-09-07). The user-facing page is `docs/schedulers.md`.
 - **The policy of `own`**, as measured rather than as first drafted
   (2026-09-07). A fiber forked FROM a worker goes on that worker's own
   Chase-Lev deque: no CAS, no signal, and the owner pops from the end
@@ -108,11 +113,13 @@ member the way `TestManyToMany` is by buffer):
    forks 1 000 children; another submitter's fiber is answered within
    the deadline (children are stolen, the submitter's fiber is not
    behind all of them).
+9. `close()` stops the workers: after it, no thread of that
+   scheduler is alive (they are named `okay-own-<id>-<n>`).
 8. `adaptive`: a fiber that blocks on `own` completes (`workers = 1`,
    two fibers, the first blocks on the second's channel — a deadlock
    under `own`, a delay under `adaptive`).
 
-All eight hold as of 2026-09-07: `TestSchedulerLaws`, 33 tests over
+All nine hold as of 2026-09-07: `TestSchedulerLaws`, 34 tests over
 six members (loom, drive, own, own.forShortTasks, own.forLongTasks,
 adaptive). Two of them were CORRECTED by the run rather than the code:
 a callback registered before completion may fire after `join` returns

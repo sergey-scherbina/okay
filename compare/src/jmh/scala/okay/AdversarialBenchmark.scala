@@ -69,6 +69,23 @@ class AdversarialBenchmark {
     given Scheduler = Schedulers.forkJoin()
     (0 until K).map(i => Async.spawn(async(step(i)))).foldLeft(0L)((acc, f) => acc + f.join())
 
+  /** the owned-worker schedulers are created for the trial and closed
+   * after it: each owns `cores` threads, and three of them alive at
+   * once in one JVM is a benchmark measuring its own thread count. */
+  private var own: Schedulers.Running = null
+  private var ownShort: Schedulers.Running = null
+  private var ownLong: Schedulers.Running = null
+
+  @Setup(Level.Trial)
+  def startSchedulers(): Unit =
+    own = Schedulers.own.build
+    ownShort = Schedulers.own.forShortTasks.build
+    ownLong = Schedulers.own.forLongTasks.build
+
+  @TearDown(Level.Trial)
+  def stopSchedulers(): Unit =
+    own.close(); ownShort.close(); ownLong.close()
+
   /** a scheduler that owns its threads (`Schedulers.own`, kyo's
    * shape), one instance for the lanes: the workers outlive the
    * call. `okayOwn` forks from the JMH thread (an external submitter,
@@ -78,7 +95,6 @@ class AdversarialBenchmark {
    * program runs on a worker, its children land on that worker's
    * own queue. Both are okay's idiom; the second is the one kyo's
    * lane is shaped like. */
-  private val own: Scheduler = Schedulers.own.build
 
   @Benchmark
   def forkJoin10k_okayOwn(): Long =
@@ -90,8 +106,6 @@ class AdversarialBenchmark {
    * spreads at once (the pool's). The default lane above decides for
    * itself; these two say what each end of that decision is worth on
    * each shape of work. */
-  private val ownShort: Scheduler = Schedulers.own.forShortTasks.build
-  private val ownLong: Scheduler = Schedulers.own.forLongTasks.build
 
   @Benchmark
   def forkJoin10k_okayOwnShortInside(): Long =

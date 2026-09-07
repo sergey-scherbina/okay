@@ -124,6 +124,23 @@ free. When blocking is the norm rather than the exception, neither
 member is the answer — `Schedulers.loom` is, where blocking costs
 nothing at all.
 
+## A scheduler that owns threads gives them back
+
+`own` and `adaptive` return a `Schedulers.Running` — a `Scheduler`
+that is also `AutoCloseable`, with an `id` that appears in its thread
+names (`okay-own-3-7`, so a thread dump says which scheduler).
+
+```scala
+val crunch = Schedulers.own.workers(6).build
+try   items.map(i => Async.spawn(async(heavy(i)))(using crunch)).map(_.join())
+finally crunch.close()
+```
+
+`close()` lets the workers finish what they are holding and then exit;
+it is idempotent, and a fiber forked afterwards is a fiber nobody will
+run. `loom`, `drive` and `forkJoin` own nothing of their own and have
+nothing to close.
+
 ## What every member promises
 
 `TestSchedulerLaws` runs these against each member, and a new member
