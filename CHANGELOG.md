@@ -1,5 +1,47 @@
 # Changelog
 
+## json-parse-fast-road — the default road through the parser was the slow one, by 79x
+Completed: 2026-09-07
+Landed as 131cedc2. Found while measuring something else, which is the
+part worth keeping. `py-arrow` is filed as "frames via pyarrow, once
+the JSON-frame road hurts", so the first question was whether it hurts.
+A 500k-row × 3-column frame through okay-py took 9.7 s — and the
+breakdown said the cost was neither Python nor the wire:
+
+| | |
+|---|---|
+| our encode | 0.2 s |
+| **`Json.parse`** | **4.9 s** |
+| our own decode walk | 0.03 s |
+| `Json.parseValue`, same text | **0.06 s** |
+
+`Json.parse` was `value(cst(s))`: tokenize the text into a full
+lossless CST, then project a value out of it. `parseValue` was one
+strict pass falling back to that road when unsure. Two roads to the
+same value, 79x apart, and the DEFAULT was the slow one — which
+`Codecs.readJson`, the generic decode door the whole stack goes
+through, was taking, along with callers in twenty-four files.
+
+`parse` is the fast road now. The values are the same and
+`TestJsonValue` still proves it — a corpus of well-formed and damaged
+documents plus a PREFIX SWEEP, every truncation of every one, both
+roads compared — with the comparison now naming `Json.lossless`
+explicitly, since otherwise that file would have quietly become
+`parse == parse`. Totality is unchanged: damage falls through to the
+CST road and gets its `JErr` leaves. `parseValue` is removed rather
+than deprecated, because `parse` is that road and a second name for it
+is the drift this repository deletes elsewhere.
+
+After: the same frame round-trips in 0.94 s, 100k rows in 0.19 s. The
+bench is kept as `okay.py.BenchFrame`, since it covers a path JMH
+cannot — a real frame through a real python3.
+
+Also fixed here, and it was mine: okay-r had landed without a
+`docs/modules` page, which `TestDocsIndex` catches and which the
+r-subprocess landing did not run. A sibling had already written a
+fuller page by the time this rebased, so theirs is what stands, with
+its `Durable` sentence corrected. Full suite green: 2959 tests.
+
 ## scheduler-cancel-wins — the cancellation flake was one line earlier than the guess
 Completed: 2026-09-07
 `TestSchedulerLaws` law 4 had been red about one run in three on the

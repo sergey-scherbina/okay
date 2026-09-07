@@ -909,8 +909,23 @@ measure on our own data, never a predicted result.
       and served, with a directory given relative to the root). Found by
       staging-seam's boot check; the same failure on master before.
       specs/okay-script.md, "Site — the container".
-- [ ] py-arrow — frames via pyarrow (twin of r-arrow; nearer —
-      pyarrow is first-class)
+- [ ] py-arrow — frames via pyarrow (twin of r-arrow). RE-FILED
+      2026-09-07 with an honest number: the measurement meant to
+      justify it found that 60% of a 500k-row frame's 9.7 s round trip
+      was OUR OWN `Json.parse` taking the lossless road
+      (json-parse-fast-road). The same frame is now 0.94 s, of which
+      the Python side is roughly half and our encode 0.3 s. Arrow
+      would still take the serialization hop out, but "the JSON-frame
+      road hurts" is ten times less true than when this was filed and
+      no consumer has asked. Measure again before building.
+- [x] json-parse-fast-road — LANDED 2026-09-07, found while measuring
+      py-arrow: `Json.parse` was the LOSSLESS road (tokenize to a CST,
+      then project) while `parseValue` was one strict pass — two roads
+      to an equal value, differing by 79x, with the slow one as the
+      default that `Codecs.readJson` and twenty-four files took.
+      `parse` is the fast road now with the lossless fallback intact;
+      `parseValue` is removed rather than deprecated. 500k-row frame
+      round trip 9.7 s → 0.94 s. Full suite green, 2959 tests.
 
 ## okay-r (specs/r.md — R as a handler)
 - [x] r-subprocess — LANDED 2026-09-07, stage 0: okay-r with
