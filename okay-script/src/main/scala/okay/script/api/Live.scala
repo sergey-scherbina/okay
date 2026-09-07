@@ -71,6 +71,44 @@ object Live:
                 (using sc: okay.codec.Schema[S]): Live[S] =
     new Live(init, view, update, push, Some(sc))
 
+  /** a `Live.form`'s state: the partial value in the codec's own
+   * shape, the errors under their fields, and the last submit's
+   * message (okay-script-forms) */
+  final case class FormState(value: okay.codec.Json, errors: Vector[(String, String)], message: Option[String])
+
+  /** the key of a `Live.form`'s submit button -- `$` keeps it clear
+   * of any field name */
+  val SubmitKey = "$submit"
+
+  /** a typed form as a Live app: okay-ui's `Form.ofWith[A]` plus a
+   * submit button; `Form.edit` on every field event; on submit the
+   * per-field errors, the decode, the cross-field `checks`, and --
+   * only then -- `submit(a)` with the typed value, whose answer is
+   * shown and the form cleared. The page never sees a `Json`. */
+  def form[A](submit: A => String, checks: okay.ui.Form.Check[A]*)(using okay.codec.Schema[A]): Live[FormState] =
+    formWith[A]("Submit")(submit, checks*)
+
+  def formWith[A](label: String)(submit: A => String, checks: okay.ui.Form.Check[A]*)
+                 (using okay.codec.Schema[A]): Live[FormState] =
+    import okay.ui.Form
+    val empty = Forms.defaults[A]
+    def view(st: FormState): Ui =
+      Ui.Column(Vector(Form.ofWith[A](st.errors)(st.value), Ui.Button(label, SubmitKey))
+        ++ st.errors.collect { case ("", m) => Ui.Text(s"! $m", okay.ui.Style(bold = true)) }
+        ++ st.message.map(m => Ui.Text(m)).toVector)
+    def update(st: FormState, e: Event): FormState = e match
+      case Event.Pressed(SubmitKey) =>
+        val errs = Form.errors[A](st.value)
+        if errs.nonEmpty then st.copy(errors = errs, message = None)
+        else Form.decode[A](st.value) match
+          case Left(m) => st.copy(errors = Vector("" -> m), message = None)
+          case Right(a) =>
+            val failures = checks.flatMap(_(a)).toVector
+            if failures.nonEmpty then st.copy(errors = failures, message = None)
+            else FormState(empty, Vector.empty, Some(submit(a)))
+      case other => st.copy(value = Form.edit[A](st.value, other), message = None)
+    Live(FormState(empty, Vector.empty, None))(view)(update)
+
   private[api] def encode[S](sc: okay.codec.Schema[S], s: S): String =
     java.util.Base64.getEncoder.encodeToString(okay.codec.Cbor.write(s)(using sc))
 
@@ -86,22 +124,38 @@ object Live:
    * builds and the browser's patch consumer navigates, so a path into
    * one is a path into the other. A page is complete without any
    * script: what the browser shows first is this. */
-  def html(ui: Ui): String =
+  def html(ui: Ui): String = html(ui, named = false)
+
+  /** `named`: every input, check and select also carries `name=` (its
+   * key) and a keyed button posts as `__press=<key>` -- the plain
+   * `<form method="post">` road of `Forms.html` (okay-script-forms) */
+  def html(ui: Ui, named: Boolean): String =
     val sb = new StringBuilder
-    render(React.elem(ui), sb)
+    render(React.elem(ui), sb, named)
     sb.toString
 
-  private def render(e: Elem, sb: StringBuilder): Unit =
+  private def render(e: Elem, sb: StringBuilder, named: Boolean): Unit =
     sb ++= "<" ++= e.tag: Unit
+    val key = e.props.collectFirst { case ("data-key", k) => k }
     for (k, v) <- e.props do
       k match
         case "className" => attr(sb, "class", v)
         case "checked" => if v == "true" then sb ++= " checked": Unit
         case _ => attr(sb, k, v)
+    if named then
+      key.foreach { k =>
+        e.tag match
+          case "input" | "select" => attr(sb, "name", k)
+          case "button" =>
+            attr(sb, "name", "__press")
+            attr(sb, "value", k)
+          case _ => ()
+      }
+      if e.tag == "input" && e.props.exists(_ == ("type", "checkbox")) then attr(sb, "value", "on")
     sb ++= ">": Unit
     if e.tag != "input" then
       e.text.foreach(t => sb ++= escape(t): Unit)
-      e.children.foreach(render(_, sb))
+      e.children.foreach(render(_, sb, named))
       sb ++= "</" ++= e.tag ++= ">": Unit
 
   private def attr(sb: StringBuilder, k: String, v: String): Unit =

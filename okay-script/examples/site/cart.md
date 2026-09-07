@@ -22,4 +22,5 @@ Session.current.get("cart") match
     csv.split(",").foreach(s => println(s"  <li>$s</li>"))
     println("</ul>")
     println("""<form method="post" action="/clear"><button>Clear</button></form>""")
+    println("""<p><a href="/checkout">Checkout</a></p>""")
 ```

@@ -17,6 +17,7 @@ preprocessing, meta-compilation.
 | `okay.script.api` | what a page sees: `Web.current` (method, path, query, headers, form, cookies, params), `Response.current` (status, headers, redirect, cookies), `Session.current`, `include`/`forward`, `Error.current`. Shared with the host classloader, servlet-API style |
 | `Live` / `mount` | okay-ui as the front-end layer: a page declares `Live(init)(view)(update)` and mounts it; the container serves the SSR, `/__okay/live.js` and the page's own WebSocket session (`Jetty.serve(port)(site.routes)(site.ws)`) |
 | `secure:` front-matter | declarative page security, web.xml's constraint: a scope (or `any`) the caller must carry, checked by the deployment's `verify`; a login page (`login.md`) gets the redirect, an API client the 401/403 ladder; `Principal.current`, `login(token)`/`logout()` |
+| `Forms` / `Live.form` | typed forms from a `Schema` (okay-ui's `Form`): `Forms.html[A]`/`Forms.read[A]` is the plain `<form method=post>` road, `Live.form[A](submit)` the live one -- either way the page gets an `A`, never a `Json` |
 | ` ```scala declare ` | an object-level block (JSP `<%! %>`): a `val` built once per compile, a `def` every request can call |
 | `Classpath` / `Deps` | the ambient classpath a script compiles against (`Classpath.api` for a page importing the API), plus `using dep` coordinate resolution |
 

@@ -59,6 +59,13 @@ class TestSiteExample extends munit.FunSuite:
     val live = text(site.handle(Request.get("/live")))
     assert(live.contains("yes: 0   no: 0") && live.contains("""okayLive("poll")"""), live)
 
+    val checkout = text(site.handle(Request.get("/checkout")))
+    assert(checkout.contains("""<form method="post" action="/checkout">""") && checkout.contains("""name="email""""), checkout)
+    val placed = text(site.handle(Request.post("/checkout", Body.Text("name=Ann&email=a%40b.c&qty=2&gift=on"), form)))
+    assert(placed.contains("Thanks, Ann! 2 item(s) on the way, gift-wrapped."), placed)
+    val tooMany = text(site.handle(Request.post("/checkout", Body.Text("name=Ann&email=a%40b.c&qty=9"), form)))
+    assert(tooMany.contains("! only 5 in stock"), tooMany)
+
     val css = site.handle(Request.get("/style.css"))
     assertEquals(header(css, "content-type"), Some("text/css; charset=utf-8"))
   }
