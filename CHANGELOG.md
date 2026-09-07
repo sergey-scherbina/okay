@@ -1,5 +1,35 @@
 # Changelog
 
+## deploy-bootstrap (spec) — the clean machine, and the failures it exists to prevent
+Completed: 2026-09-07
+Landed as e6569f6c. Operator ask: a machine where nothing is
+installed yet must be handled properly — install what can be
+installed, or at least tell the operator plainly, and never fail with
+a cryptic error or with no message at all. A target already declares
+what it `requires`, so the check is cheap; what it needed was a
+model. `Tool` carries its probe, its version, its minimum, WHY the
+deployment asked for it, the install command per package manager, and
+a SECOND probe for whether it actually works. `Presence`'s fourth case
+is the one that earns the section: `NotReady` — installed and still
+unusable — is the state that actually happens, a docker daemon that
+is down, a kubectl with no context, a flyctl nobody logged into, and
+a check that only asked "is it on the PATH" passes all three and then
+fails later inside someone else's error message.
+
+The report is a table where each missing tool names the thing in the
+deployment that asked for it (so an operator can drop the need
+instead of installing the tool), the install line is the command for
+THIS machine from the detected manager, and the last two lines say
+what happened — nothing — and what to do next; JSON for a pipeline.
+Installing is opt-in, prints each command before running it, and
+holds four refusals with their reasons: never `curl | sh`, never a
+silent `sudo`, never a version pin of ours, never during an apply.
+And one rule that generalises past bootstrap: every shelled-out
+failure carries its command, its exit code and its last output,
+because a tool that exits 1 with an empty stderr must still produce a
+sentence someone can act on. Folded into stage 0, and testable
+without a clean machine by emptying PATH.
+
 ## deploy-name-and-orchestration — the module is okay-deploy, and what "orchestration" means here
 Completed: 2026-09-07
 Landed as 15a73995. Two amendments to specs/deployment.md from the
