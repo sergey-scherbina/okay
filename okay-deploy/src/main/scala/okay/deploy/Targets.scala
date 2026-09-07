@@ -3,8 +3,8 @@ package okay.deploy
 import java.nio.file.Path
 
 /**
- * The two targets that need no account, and so can be proven on the
- * machine writing them (specs/deployment.md, stage 0).
+ * The targets that need no account, and so can be proven on the
+ * machine writing them (specs/deployment.md, stages 0 and 1).
  *
  * Both are pure `Deployment => files`. Neither knows anything the
  * other does: a `Need.Database` is a container on a laptop and a
@@ -13,7 +13,7 @@ import java.nio.file.Path
  */
 object Targets:
 
-  val all: Vector[Target] = Vector(Laptop, Host)
+  val all: Vector[Target] = Vector(Laptop, Host, Cluster)
 
   def byName(n: String): Option[Target] = all.find(_.name == n)
 

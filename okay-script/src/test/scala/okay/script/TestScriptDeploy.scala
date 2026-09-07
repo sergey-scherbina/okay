@@ -9,8 +9,8 @@ class TestScriptDeploy extends munit.FunSuite:
     assertEquals(Deploy.drift(ScriptDeploy.spec, Deploy.repoRoot()), Vector.empty)
   }
 
-  test("okay-script/deploy does not drift from ScriptDeploy.system, on either new target") {
-    for target <- Vector(okay.deploy.Targets.Laptop, okay.deploy.Targets.Host) do
+  test("okay-script/deploy does not drift from ScriptDeploy.system, on every target") {
+    for target <- okay.deploy.Targets.all do
       assertEquals(okay.deploy.Deployment.drift(ScriptDeploy.system, target, okay.deploy.Deploy.repoRoot()),
         Right(Vector.empty), s"the ${target.name} target has drifted")
   }

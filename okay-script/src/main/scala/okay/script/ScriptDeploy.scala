@@ -54,11 +54,13 @@ object ScriptDeploy:
    * a system of services and their needs, rather than one process
    * and its env pairs (deploy-model).
    *
-   * Both values live here on purpose during stage 0: `spec` still
-   * renders the Dockerfile and the Helm chart that exist, `system`
-   * renders the two new targets, and having them side by side in one
-   * real application is what proves the new model can say what the
-   * old one said. The env pairs become `Settings`, the `/app/pages`
+   * Both values live here on purpose while the model is being
+   * proven: `spec` still renders the Dockerfile and the single-service
+   * Helm chart that exist, `system` renders every target in
+   * `Targets.all`, and having them side by side in one real
+   * application is what shows the new model can say what the old one
+   * said. The old chart's retirement is its own task, because other
+   * modules render through `Deploy` too. The env pairs become `Settings`, the `/app/pages`
    * copy becomes what it always was -- a volume the deployment
    * mounts -- and the port stops being written twice.
    */
@@ -93,7 +95,7 @@ object ScriptDeploy:
   def main(args: Array[String]): Unit =
     val root = Deploy.repoRoot()
     Deploy.write(spec, root).foreach(p => println(s"wrote $p"))
-    for target <- Vector(Targets.Laptop, Targets.Host) do
+    for target <- Targets.all do
       Deployment.write(system, target, root) match
         case Right(paths) => paths.foreach(p => println(s"wrote $p"))
         case Left(msg) => System.err.println(s"okay-script: the ${target.name} target refused: $msg")
