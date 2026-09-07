@@ -1,5 +1,29 @@
 # Changelog
 
+## staging-seam — one door for a codec over a schema value, and okay-script installs the staged one
+Completed: 2026-09-07
+Operator ask: add run-time staging where it is useful — okay-script
+and everywhere else. The observation that made it one lane: every
+generic door (`put[A](using Schema[A])`, a `Typed[A]` topic, a
+session's state, an HTTP body, a tool's arguments) sees its schema
+as a value, so none of them could use the compile-time macro and all
+of them can use the run-time one. `okay.codec.Codecs` is the seam:
+`json(s)`/`cbor(s)` from an installed `Provider`, the interpreter by
+default on every platform; `RuntimeStaged` gained the CBOR emitter,
+a `Provider` and `install()`; `okay.codec.Staging.autoInstall()`
+(JVM) finds the module by name for programs that cannot depend on
+the compiler; okay-script depends on okay-staging and `Serve`
+installs at boot, printing which way it went, `-Dokay.staging=off`
+keeping the interpreter. The doors of script, ui, persist (topics,
+snapshots, configs, wire frames, Raft), http, cluster, agent, llm,
+cache, mongo, conf and obs go through the seam; `Json.write` and
+`Cbor.write` are untouched. Found on the way: dotty's ContextBase
+refuses a second thread even under a lock, so every generation runs
+on one daemon thread. On the way, the gate caught `docs/modules/okay-acme.md`
+landed without its row in the docs/README.md index (TestDocsIndex,
+master's own state): the row is added here. Price on the Order: through the seam with the interpreter (nothing installed) encode 864 ns vs 860 direct, decode-from-AST 654 vs 598 — a volatile read and a wrapper, within the interpreter's noise; through the seam with okay-staging installed encode 235 ns and decode 164, the same as the generated codec called directly (236 / 142-164 across runs) — the seam costs nothing measurable over the codec behind it. The first seam run had the staged door at 2.7 µs: the launch switch read `sys.env` per call (fixed, see Decisions) — history.tsv staging-seam.
+specs/codecs.md, "The codec seam".
+
 ## acme-eab — the binding a CA asks for before it will open an account
 Completed: 2026-09-07
 Landed as cea23911 (spec then code). Some CAs — ZeroSSL, Google Trust
@@ -72,6 +96,7 @@ asserts a real chain for the name asked for, signed by an issuer that
 is not us; and that a name Pebble cannot reach is refused with the
 CA's own sentence, leaving no certificate behind. Live-tagged,
 skipped without docker. 6 okay-acme green 3x, 135 okay-script green.
+
 
 ## schema-thunks-once — a derived schema's edges answer one instance
 Completed: 2026-09-07

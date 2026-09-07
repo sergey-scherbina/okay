@@ -184,4 +184,8 @@ exists only at run time (a composite from a database catalog, a
 tool's declared parameters) has the interpreter, and — on the JVM,
 by adding the optional [`okay-staging`](okay-staging.md) module — the
 same staged codec generated from the schema as a value, switchable
-off at launch.
+off at launch. A generic door — `def put[A](a: A)(using Schema[A])`
+— takes its codec from `Codecs.json(s)` / `Codecs.cbor(s)`: the
+interpreter until a program installs a provider, the staged one
+after `RuntimeStaged.install()`; `Json.write` and `Cbor.write` stay
+the fold, verbatim.

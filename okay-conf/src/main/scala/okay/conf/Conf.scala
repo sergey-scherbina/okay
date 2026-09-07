@@ -1,6 +1,6 @@
 package okay.conf
 
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 
 /**
  * Configuration as data, secrets as references (specs/conf.md): a
@@ -65,7 +65,7 @@ object Secrets {
 /** reading a config is the codec plus a file — total, damage is
  * data, the same rules as every decode in this stack */
 object Conf:
-  def read[A: Schema](json: String): Either[String, A] = Json.read[A](json)
+  def read[A: Schema](json: String): Either[String, A] = okay.codec.Codecs.readJson[A](json)
 
   /** JVM/Native; the path is a String so the signature exists on
    * every platform — JS answers a named refusal until Node's fs

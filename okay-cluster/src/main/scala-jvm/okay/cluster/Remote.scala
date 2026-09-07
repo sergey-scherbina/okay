@@ -2,7 +2,7 @@ package okay.cluster
 
 import okay.{Channel, Chunk, Scheduler}
 import okay.given
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 import java.net.{ServerSocket, Socket}
 import java.io.{BufferedReader, InputStreamReader, PrintWriter}
 
@@ -30,7 +30,7 @@ object Remote {
           val in = BufferedReader(InputStreamReader(sock.getInputStream))
           var line = in.readLine()
           while line != null do
-            Json.read[List[A]](line) match
+            okay.codec.Codecs.readJson[List[A]](line) match
               case Right(xs) =>
                 ch.sendBlocking(okay.ChunkBuf.of(xs)): Unit
               case Left(_) => ()   // a damaged frame is dropped, the stream lives
@@ -49,8 +49,9 @@ object Remote {
   /** the sending end: chunks out, one JSON frame per line */
   final class Sender[A](sock: Socket)(using Schema[List[A]]):
     private val out = PrintWriter(sock.getOutputStream, true)
+    private val codec = okay.codec.Codecs.json(summon[Schema[List[A]]])
 
-    def send(c: Chunk[A]): Unit = out.println(Json.write(c.toList))
+    def send(c: Chunk[A]): Unit = out.println(codec.encode(c.toList))
 
     def close(): Unit = { out.flush(); sock.close() }
 

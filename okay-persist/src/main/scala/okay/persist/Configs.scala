@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 
 /**
  * Managed configuration as one more consumer of the one primitive
@@ -23,7 +23,7 @@ final class Configs(val topic: Topic):
 
   /** one write is one config version; the offset is its identity */
   def put[C](name: String, value: C, ack: Ack = Ack.Durable)(using Schema[C]): Long =
-    topic.append(keyOf(name), Json.write(value).getBytes("UTF-8"), ack)
+    topic.append(keyOf(name), okay.codec.Codecs.writeJson(value).getBytes("UTF-8"), ack)
 
   /** every surviving write under this name, oldest first, each with
    * its offset; a damaged value is a Left in place, the rest intact */
@@ -40,7 +40,7 @@ final class Configs(val topic: Topic):
           if rs.isEmpty then going = false
           else
             rs.iterator.filter(_.key.sameElements(key)).foreach { r =>
-              out += ((r.offset, Json.read[C](String(r.value, "UTF-8"))))
+              out += ((r.offset, okay.codec.Codecs.readJson[C](String(r.value, "UTF-8"))))
             }
             from = rs.last.offset + 1
     out.result()

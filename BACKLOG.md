@@ -892,6 +892,28 @@ measure on our own data, never a predicted result.
       Interpreter before/after: measured by ALLOCATION per value (-prof gc; time on a loaded box is noise, bytes are not) on a sum-shaped Owner (a Pet enum, four case values): encode 10160 -> 8144 B/op (-20%), decode-from-AST 5976 -> 4088 (-32%), CBOR encode 7312 -> 5416 (-26%); the same runs' times 1072 -> 817, 830 -> 573, 1221 -> 974 ns (wide error bars); the Order, which has no sum and a given per type, 8016 -> 7968 B/op (-0.6%, the Option/List givens' re-summon) — history.tsv schema-thunks-once. specs/codecs.md, "Schema
       thunks once".
 
+- [x] staging-seam — landed: `Codecs.json/cbor`, one pluggable door for
+      a codec over a schema value (interpreter by default, every
+      platform); `RuntimeStaged.cbor` + `install()`; `Staging.autoInstall`
+      by name on the JVM; okay-script's container installs at boot;
+      the generic doors of script, ui, persist, http, cluster, agent,
+      llm, cache, mongo, conf, obs routed through it. Price:
+      through the seam with the interpreter (nothing installed) encode 864 ns vs 860 direct, decode-from-AST 654 vs 598 — a volatile read and a wrapper, within the interpreter's noise; through the seam with okay-staging installed encode 235 ns and decode 164, the same as the generated codec called directly (236 / 142-164 across runs) — the seam costs nothing measurable over the codec behind it. The first seam run had the staged door at 2.7 µs: the launch switch read `sys.env` per call (fixed, see Decisions) — history.tsv staging-seam. specs/codecs.md, "The codec seam".
+- [ ] script-runmain-fork — found while checking the seam's boot line:
+      `sbt "okayScript/runMain okay.script.Serve <dir> <port>"` boots
+      and prints, but every page fails to compile ("package
+      scala.compiletime does not have a member method summonFrom ...
+      Not found: okay") — the SAME on master before the seam, so not
+      the seam's: okayScript has `Test / fork := true` but no
+      `run / fork`, and un-forked, `Classpath.ambient` reads sbt's
+      `java.class.path` (just sbt-launch.jar, okay-script-scalac-
+      classpath's own finding). The guide's transcripts show pages
+      compiling under that command; either they were recorded from a
+      forked run or the fat jar, or the classpath is resolved another
+      way in that path — settle which, and either set `run / fork :=
+      true` for okayScript or have `Serve` build the page classpath
+      from its classloader instead of the property.
+
 ## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
 - [ ] py-arrow — frames via pyarrow (twin of r-arrow; nearer —
       pyarrow is first-class)

@@ -101,6 +101,6 @@ class TestRuntimeStaged extends munit.FunSuite {
     assert(RuntimeStaged.isStaged(s))
     assert(RuntimeStaged.json(s) eq RuntimeStaged.json(s), "cached by identity")
     assertEquals(on.encode(Small(1, "x")), """{"a":1,"b":"x"}""")
-    assertEquals(RuntimeStaged.lastFailure, None)
+    assert(!RuntimeStaged.lastFailure.exists(_._1 eq s), "this schema never fell back")
   }
 }

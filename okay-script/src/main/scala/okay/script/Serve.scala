@@ -236,6 +236,12 @@ object Serve:
         System.err.println(msg)
         System.exit(2)
       case Right((a, ssl)) =>
+        // every generic codec door (sessions, Live state, persisted
+        // configs, JSON bodies) answers the staged codec from here on;
+        // the interpreter when the launch switch says so (staging-seam)
+        if okay.staging.RuntimeStaged.install() then
+          println("okay-script: staged codecs installed (okay-staging; -Dokay.staging=off keeps the interpreter)")
+        else println("okay-script: staged codecs off (okay.staging=off), the interpreter serves")
         val s = site(a)
         try
           // compile the whole directory before the first visitor does

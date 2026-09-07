@@ -110,6 +110,7 @@ API reference, gotchas.
 | [`okay-docs`](modules/okay-docs.md) | the document seam: get/put with CAS, declared consistency; TopicDocs own engine |
 | [`okay-docs-mongo`](modules/okay-docs-mongo.md) | the foreign adapter that proves the Docs seam, on Mongo's native CAS |
 | [`okay-conf`](modules/okay-conf.md) | configuration as data, secrets as REFERENCES — a config cannot leak what it does not contain |
+| [`okay-acme`](modules/okay-acme.md) | an ACME (RFC 8555) client: prove the name, get the certificate, renew before it runs out — issue, renew, revoke, external account binding |
 | [`okay-tls`](modules/okay-tls.md) | one TLS seam at the transport; the sslmode ladder, verify-full the only default; keys as Secret refs |
 | [`okay-mail`](modules/okay-mail.md) | sending mail: SMTP over a socket with STARTTLS, send only, and failure as data |
 | [`okay-blob`](modules/okay-blob.md) | the object-store seam: fs and S3 engines, OWN SigV4 pinned by the AWS vectors, persist backups |

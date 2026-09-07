@@ -1,7 +1,7 @@
 package okay.persist
 
 import okay.{!, Async, async}
-import okay.codec.{Cbor, Schema}
+import okay.codec.Schema
 import java.io.{BufferedInputStream, BufferedOutputStream, DataInputStream, DataOutputStream}
 import java.net.{ServerSocket, Socket}
 
@@ -33,7 +33,7 @@ object Wire:
   private def ackCode(a: Ack): Int = WireProtocol.ackCode(a)
 
   private def writeFrame[A: Schema](out: DataOutputStream, a: A): Unit =
-    val bs = Cbor.write(a)
+    val bs = okay.codec.Codecs.writeCbor(a)
     out.writeInt(bs.length)
     out.write(bs)
     out.flush()
@@ -44,7 +44,7 @@ object Wire:
     else
       val bs = new Array[Byte](len)
       in.readFully(bs)
-      Cbor.read[A](bs)
+      okay.codec.Codecs.readCbor[A](bs)
 
   // ── the server ─────────────────────────────────────────────────
 

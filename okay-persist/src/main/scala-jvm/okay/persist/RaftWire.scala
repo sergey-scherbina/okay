@@ -59,7 +59,7 @@ object RaftWire:
         Files.move(tmp, path, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE): Unit
 
   private def writeFrame(out: DataOutputStream, m: RaftMsg): Unit =
-    val bs = Cbor.write(m)
+    val bs = okay.codec.Codecs.writeCbor(m)
     out.writeInt(bs.length)
     out.write(bs)
     out.flush()
@@ -70,7 +70,7 @@ object RaftWire:
     else
       val bs = new Array[Byte](len)
       in.readFully(bs)
-      Cbor.read[RaftMsg](bs)
+      okay.codec.Codecs.readCbor[RaftMsg](bs)
 
   /**
    * One real Raft node. `peers` names every OTHER node's address —

@@ -47,9 +47,18 @@ sbt "okayScript/runMain okay.script.Serve store 8080"
 It prints what it did and where it is:
 
 ```
+okay-script: staged codecs installed (okay-staging; -Dokay.staging=off keeps the interpreter)
 okay-script: compiled 1 page(s) in 220 ms
 okay-script: serving /…/store at http://127.0.0.1:8080/
 ```
+
+The first line is the codec seam (specs/codecs.md, "The codec seam"):
+the container carries the Scala compiler for the pages anyway, so
+every generic codec door — session attributes, a Live page's state,
+persisted configs, JSON bodies — answers a codec GENERATED for its
+schema at first use instead of the interpreted fold. Launch with
+`-Dokay.staging=off` (or `OKAY_STAGING=off`) and the line says the
+interpreter serves; nothing else changes.
 
 The compile happens at START, not at the first visitor: a page that
 does not compile is named on stderr right there, and the rest of the
@@ -356,6 +365,7 @@ rest from the environment:
 
 ```
 $ OKAY_OPS=1 OKAY_LANGS=en,uk sbt "okayScript/runMain okay.script.Serve store 8080"
+okay-script: staged codecs installed (okay-staging; -Dokay.staging=off keeps the interpreter)
 okay-script: compiled 6 page(s) in 2117 ms
 okay-script: serving /…/store at http://127.0.0.1:8080/ (+ /healthz /stats /metrics)
 
@@ -376,6 +386,7 @@ changes — no rebuild, no restart.
 
 ```
 $ OKAY_TLS=self OKAY_DATA=./data sbt "okayScript/runMain okay.script.Serve store 8443"
+okay-script: staged codecs installed (okay-staging; -Dokay.staging=off keeps the interpreter)
 okay-script: self-signed certificate in data/okay-script-tls.p12
 okay-script: its SHA-256 is A1:B2:… -- a browser will warn, because nobody vouched for it
 okay-script: serving /…/store at https://127.0.0.1:8443/

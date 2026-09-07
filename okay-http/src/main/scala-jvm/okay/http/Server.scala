@@ -90,7 +90,7 @@ object Server {
   def json[A](status: Int, a: A, headers: Seq[(String, String)] = Nil)
              (using okay.codec.Schema[A]): Response ! Async =
     pure(Response(status, ("content-type", "application/json") +: headers,
-      Http.one(okay.codec.Json.write(a).getBytes("UTF-8"))))
+      Http.one(okay.codec.Codecs.writeJson(a).getBytes("UTF-8"))))
 
   /** nothing found */
   def notFound: Response ! Async = text(404, "not found")

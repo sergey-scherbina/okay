@@ -1,7 +1,7 @@
 package okay.obs
 
 import okay.{!, Async}
-import okay.codec.{Cbor, Json}
+import okay.codec.Json
 import okay.http.{Body, Http, Request}
 import okay.persist.Topic
 
@@ -45,5 +45,5 @@ object OtlpPush {
   /** damaged records are skipped — the trace topic is operational
    * data, and one bad frame must not stop the shipping of the rest */
   private def decode(rs: Vector[okay.persist.Record]): Vector[Span] =
-    rs.flatMap(r => Cbor.read[Span](r.value).toOption)
+    rs.flatMap(r => okay.codec.Codecs.readCbor[Span](r.value).toOption)
 }

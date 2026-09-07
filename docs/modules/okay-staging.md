@@ -71,6 +71,24 @@ does). `TestRuntimeStaged` holds all of it.
 - JVM only. The module does not cross to JS or Native, which is why it
   is not part of okay-codec.
 
+## Reaching every generic door: the seam
+
+`RuntimeStaged.install()` makes this generator the provider behind
+`okay.codec.Codecs`, and every generic door in okay that takes a
+`Schema` as a value goes through that seam: okay-script's session
+attributes and Live state, okay-ui's persisted sessions and forms,
+okay-persist's typed topics, snapshots, configs and wire frames,
+okay-http's JSON bodies, the cluster's frames, a tool's arguments,
+the LLM protocols, Redis and Mongo values. One call at boot, and all
+of them answer the staged codec; `-Dokay.staging=off` and they all
+answer the interpreter. okay-script's `Serve` makes that call and
+prints which way it went. A JVM program that cannot depend on this
+module calls `okay.codec.Staging.autoInstall()`, which finds it by
+name.
+
+`RuntimeStaged.cbor(schema)` is the CBOR twin of `json`, the same
+generator with the CBOR emitter, held to the same agreement suite.
+
 ## Where it earns its keep, and where it does not
 
 See specs/codecs.md, "Run-time staging": the condition is a schema

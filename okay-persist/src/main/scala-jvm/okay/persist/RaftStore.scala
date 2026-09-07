@@ -83,7 +83,7 @@ final class RaftStore private (val id: String, local: Store, commitWaitMs: Long,
       // a configuration entry (stage 2a) is the cluster's business, and
       // a leader's blank no-op (paper §8) is the log's own: nothing to apply
       if entry.members.nonEmpty || entry.data.isEmpty then ()
-      else Cbor.read[Op](entry.data) match
+      else okay.codec.Codecs.readCbor[Op](entry.data) match
         case Right(Op.Append(topic, partition, key, value, proposer, n)) =>
           val off = local.topic(topic).append(partition, key, value, Ack.Durable)
           val p = pending.remove(s"$proposer/$n")
@@ -174,7 +174,7 @@ final class RaftStore private (val id: String, local: Store, commitWaitMs: Long,
       // on the leader this appends here; on a follower that knows its
       // leader it is carried there (persist-raft-forward), and either
       // way the answer is this node applying the committed entry
-      val proposed = node.propose(n, Cbor.write(Op.Append(name, partition, key, value, id, n)))
+      val proposed = node.propose(n, okay.codec.Codecs.writeCbor(Op.Append(name, partition, key, value, id, n)))
       if !proposed then
         pending.remove(s"$id/$n")
         throw NotLeader(node.leaderId)

@@ -2,7 +2,7 @@ package okay.cache
 
 import okay.{!, Async, async}
 import okay.given
-import okay.codec.{Cbor, Schema}
+import okay.codec.Schema
 
 /**
  * The Redis engine (specs/cache.md stage 2): the same trait over a
@@ -95,14 +95,14 @@ object Redis {
     def get(k: K): Option[V] ! Async = async {
       resp.command("GET".getBytes, raw(k)) match
         case Right(Some(bytes)) if bytes.nonEmpty =>
-          Cbor.read[V](bytes) match
+          okay.codec.Codecs.readCbor[V](bytes) match
             case Right(v) => hits.incrementAndGet(); Some(v)
             case Left(_) => misses.incrementAndGet(); None   // damage is a miss, not a throw
         case _ => misses.incrementAndGet(); None
     }
 
     def put(k: K, v: V): Unit ! Async = async {
-      val body = Cbor.write(v)
+      val body = okay.codec.Codecs.writeCbor(v)
       val ok = regime match
         case Regime.Budget(ttl) =>
           resp.command("SET".getBytes, raw(k), body,
@@ -132,9 +132,9 @@ object Redis {
           val lock = flights.computeIfAbsent(key, _ => new Object)
           try lock.synchronized {
             resp.command("GET".getBytes, raw(k)) match   // re-check inside
-              case Right(Some(bytes)) if bytes.nonEmpty && Cbor.read[V](bytes).isRight =>
+              case Right(Some(bytes)) if bytes.nonEmpty && okay.codec.Codecs.readCbor[V](bytes).isRight =>
                 hits.incrementAndGet()
-                Cbor.read[V](bytes).toOption.get
+                okay.codec.Codecs.readCbor[V](bytes).toOption.get
               case _ =>
                 loads.incrementAndGet()
                 val v = okay.!.run(Async.run[V, Nothing](load(k)))

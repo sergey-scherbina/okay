@@ -136,6 +136,15 @@ class CodecBenchmark {
   @Benchmark def encodeStaged(): String = staged.encode(order)
   @Benchmark def decodeStagedAst(): Either[String, Order] = staged.decode(ast)
   @Benchmark def encodeRuntimeStaged(): String = runtimeStaged.encode(order)
+  /** staging-seam: a generic door's cost — the seam with the default
+   * interpreter (a volatile read and a small wrapper over the fold) */
+  @Benchmark def encodeSeam(): String = okay.codec.Codecs.writeJson(order)
+  @Benchmark def decodeSeamAst(): Either[String, Order] = okay.codec.Codecs.json(summon[Schema[Order]]).decode(ast)
+  /** the same door with okay-staging installed (its own fork: the
+   * provider is process-global) — a cache lookup by identity, then the
+   * generated code */
+  @Benchmark def encodeSeamStaged(st: CodecBenchmark.Installed): String = okay.codec.Codecs.writeJson(order)
+  @Benchmark def decodeSeamStagedAst(st: CodecBenchmark.Installed): Either[String, Order] = okay.codec.Codecs.json(summon[Schema[Order]]).decode(ast)
   @Benchmark def decodeRuntimeStagedAst(): Either[String, Order] = runtimeStaged.decode(ast)
   @Benchmark @Fork(1) @Warmup(iterations = 1, time = 5) @Measurement(iterations = 3, time = 5)
   def generateRuntimeStaged(): okay.codec.JsonCodec[Order] = okay.staging.RuntimeStaged.json(freshSchema())
@@ -168,3 +177,12 @@ class CodecBenchmark {
   @Benchmark def decodeCirceAst(): Either[?, Order] = summon[io.circe.Decoder[Order]].decodeJson(circeAst)
   @Benchmark def parseCirce(): io.circe.Json = io.circe.parser.parse(text).toOption.get
 }
+
+object CodecBenchmark:
+  /** staging-seam: installs the run-time staged provider for the fork
+   * that uses this state, so the seam lanes measure the door with and
+   * without it */
+  @State(Scope.Benchmark)
+  class Installed:
+    @Setup def up(): Unit = { okay.staging.RuntimeStaged.install(); () }
+

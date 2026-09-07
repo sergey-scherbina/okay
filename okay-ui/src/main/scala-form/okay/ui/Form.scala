@@ -288,7 +288,7 @@ object Form {
       case Some(x) => Json.decode(other)(x)
 
   /** the SAME decoder the wire uses — that is the whole point */
-  def decode[A](using s: Schema[A]): Json => Either[String, A] = Json.decode(s)
+  def decode[A](using s: Schema[A]): Json => Either[String, A] = okay.codec.Codecs.json(s).decode
 
   // ---- the dynamic side: a JSON Schema, as elicitation carries one
   // (flat by elicitation's own spec — v1 by design, specs/ui-toolkit.md)

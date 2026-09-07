@@ -27,6 +27,7 @@ preprocessing, meta-compilation.
 | `cache:` front-matter / `Caching` | conditional requests: static files always carry an ETag and Last-Modified and answer 304; a page opts in with `cache: <seconds>` and goes `private` automatically when it is `secure:`, sets a cookie, or rides a session |
 | `Site.warm` / `Site.stats` / `opsRoutes` | compile the whole directory at boot (a broken page is named then, not by the first visitor), counters and gauges, and opt-in `/healthz` `/stats` `/metrics` in JSON and Prometheus text |
 | `ScriptDeploy` / `okay-script/deploy` | the container: a Dockerfile, compose and a Helm chart rendered from one value, running `okay.script.Serve` over `/app/pages` — mount your own directory over it and the site is yours |
+| `-Dokay.staging=off` / `OKAY_STAGING=off` | the codec seam at boot: `Serve` installs okay-staging's generated codecs for every generic door (sessions, Live state, configs, JSON bodies) and prints which way it went; the switch keeps the interpreted fold, nothing else changes (specs/codecs.md, "The codec seam") |
 | ` ```scala declare ` | an object-level block (JSP `<%! %>`): a `val` built once per compile, a `def` every request can call |
 | `Classpath` / `Deps` | the ambient classpath a script compiles against (`Classpath.api` for a page importing the API), plus `using dep` coordinate resolution |
 

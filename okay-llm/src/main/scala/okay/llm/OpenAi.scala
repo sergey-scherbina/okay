@@ -58,7 +58,7 @@ object OpenAi {
    * token, at any prefix */
   def token(payload: String): Option[String] =
     if payload.trim == "[DONE]" then None
-    else Json.read[StreamChunk](payload).toOption
+    else okay.codec.Codecs.readJson[StreamChunk](payload).toOption
       .flatMap(_.choices.headOption)
       .flatMap(_.delta)
       .flatMap(_.content)
@@ -138,7 +138,7 @@ object OpenAi {
                url: String = chatUrl): Response ! Async =
     Writer.run[String, Unit, Async](transport.post(url, headers(apiKey), body))
       .map { (lines, _) =>
-        Json.read[Response](lines.mkString("\n"))
+        okay.codec.Codecs.readJson[Response](lines.mkString("\n"))
           .getOrElse(Response(Nil, None))   // total: a damaged body is no choices
       }
 

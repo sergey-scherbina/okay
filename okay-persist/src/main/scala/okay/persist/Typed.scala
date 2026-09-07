@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.codec.{Cbor, Schema}
+import okay.codec.Schema
 
 /**
  * The typed view (specs/persist.md, Interface and Evolution): bytes
@@ -20,12 +20,16 @@ import okay.codec.{Cbor, Schema}
 final class Typed[A](val topic: Topic, version: Int,
                      upcasts: Map[Int, Typed.Upcast])(using Schema[A]):
 
+  /** the codec for A, once per topic — the seam's answer (the fold, or
+   * the staged one when a program installed okay-staging) */
+  private val codec = okay.codec.Codecs.cbor(summon[Schema[A]])
+
   def append(partition: Int, key: Array[Byte], a: A, ack: Ack): Long =
-    topic.append(partition, key, Typed.seal(version, Cbor.write(a)), ack)
+    topic.append(partition, key, Typed.seal(version, codec.encode(a)), ack)
 
   /** keyed convenience, routing as the raw topic does */
   def append(key: Array[Byte], a: A, ack: Ack = Ack.Durable): Long =
-    topic.append(key, Typed.seal(version, Cbor.write(a)), ack)
+    topic.append(key, Typed.seal(version, codec.encode(a)), ack)
 
   def read(partition: Int, from: Long, max: Int): Typed.Read[A] =
     topic.read(partition, from, max) match
@@ -47,7 +51,7 @@ final class Typed[A](val topic: Topic, version: Int,
             upcasts.get(cur) match
               case None => bytes = Left(s"version $cur at offset ${r.offset}: no upcast to ${cur + 1}")
               case Some(up) => bytes = up(bytes.toOption.get); cur += 1
-          bytes.flatMap(Cbor.read[A](_)) match
+          bytes.flatMap(codec.decode(_)) match
             case Right(a) => Typed.Decoded.Ok(r.offset, r.timestamp, r.key, a)
             case Left(e) => Typed.Decoded.Bad(r.offset, e)
 
@@ -59,7 +63,7 @@ object Typed:
 
   /** lift a pure `Old => New` over two Schemas into a byte-level step */
   def step[Old, New](f: Old => New)(using Schema[Old], Schema[New]): Upcast =
-    bs => Cbor.read[Old](bs).map(o => Cbor.write(f(o)))
+    bs => okay.codec.Codecs.readCbor[Old](bs).map(o => okay.codec.Codecs.writeCbor(f(o)))
 
   enum Read[+A]:
     case Records(records: Vector[Decoded[A]])

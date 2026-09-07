@@ -1,7 +1,7 @@
 package okay.persist
 
 import okay.{!, Async, Net, NetConn}
-import okay.codec.{Cbor, Schema}
+import okay.codec.Schema
 
 /**
  * The wire's SHARED half (specs/persist.md "The wire", specs/
@@ -59,7 +59,7 @@ object WireProtocol {
   // ── frames over the Net seam ───────────────────────────────────
 
   def writeFrame[A](conn: NetConn, a: A)(using Schema[A]): Unit ! Async =
-    val bs = Cbor.write(a)
+    val bs = okay.codec.Codecs.writeCbor(a)
     val out = new Array[Byte](4 + bs.length)
     out(0) = (bs.length >> 24).toByte
     out(1) = (bs.length >> 16).toByte
@@ -75,7 +75,7 @@ object WireProtocol {
       if len < 0 || len > 64 * 1024 * 1024 then
         throw WireRefused(s"frame length $len is not a frame")
       conn.readFully(len).map { bs =>
-        Cbor.read[A](bs).fold(e => throw WireRefused(s"a damaged frame: $e"), identity)
+        okay.codec.Codecs.readCbor[A](bs).fold(e => throw WireRefused(s"a damaged frame: $e"), identity)
       }
     }
 

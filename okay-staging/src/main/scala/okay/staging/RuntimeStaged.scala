@@ -1,19 +1,22 @@
 package okay.staging
 
-import okay.codec.{Json, JsonCodec, Schema, Staged}
+import okay.codec.{Cbor, CborCodec, Codecs, Json, JsonCodec, Schema, Staged}
 
 import scala.quoted.*
 import scala.quoted.staging.{Compiler, run}
 
 /**
  * Run-time staging: the staged fold over a `Schema` VALUE
- * (specs/codecs.md, staged-runtime).
+ * (specs/codecs.md, staged-runtime; the CBOR emitter and the
+ * `Codecs` provider, staging-seam).
  *
  * `Staged.json[A]` folds a type's shape at COMPILE time and emits
  * straight-line code. A schema that exists only at run time — a
  * Postgres composite read from the catalog, a tool's parameters as an
- * MCP server declared them, a JSON frame handed over by R or Python —
- * has no type for that macro to see, and until now only the
+ * MCP server declared them, a JSON frame handed over by R or Python,
+ * and every GENERIC door (`def put[A](a: A)(using Schema[A])`, a
+ * persisted topic, a session's state), which has no Mirror for the
+ * macro — has no type for that macro to see, and until now only the
  * interpreter (`Json.encode/decode`, a match per node per value).
  * This is the same generator over the schema as a VALUE, run inside
  * `scala.quoted.staging.run`: the shape decides the code at
@@ -31,28 +34,42 @@ import scala.quoted.staging.{Compiler, run}
  * generator does not know, a compiler that cannot run) answers the
  * interpreter and records why in `lastFailure`.
  *
+ * REACHING THE DOORS: `install()` makes this the `Codecs` provider, so
+ * every generic door in okay that goes through `Codecs.json/cbor`
+ * (okay-script's Application and Live, okay-ui's sessions and forms,
+ * okay-persist's Typed/Snapshots/Configs and wire frames, okay-http's
+ * JSON bodies, the cluster's frames, a tool's arguments, ...) answers
+ * the staged codec from then on. okay-script's container calls it at
+ * boot; a JVM program that cannot depend on this module calls
+ * `okay.codec.Staging.autoInstall()`, which finds it by name.
+ *
  * WHAT IT COSTS, honestly: the Scala 3 compiler in the running
  * process (`scala3-staging` and its compiler jar, tens of MB, JVM
  * only — this module does not cross to JS or Native, which is why it
- * is not okay-codec), one compilation per schema at first use (the
- * benchmark prints it), and casts — a run-time schema is erased, so
- * the generated code bridges `Any` to each node's type in exactly one
+ * is not okay-codec), one compilation per schema and wire at first
+ * use (8.7 ms warm on the benchmark's Order, seconds for the first in
+ * a process), and casts — a run-time schema is erased, so the
+ * generated code bridges `Any` to each node's type in exactly one
  * place, `Unsafe`, each cast licensed by the node kind the generator
  * read when it emitted the call.
  *
  * WHAT IT PROMISES: the generated codec agrees with the interpreter —
  * encode byte for byte, decode Left for Left with the fold's own
  * refusal words on every cold path — over the whole node vocabulary
- * (`TestRuntimeStaged`). A type met again inside itself delegates to
- * the fold, as the compile-time generator does.
+ * (`TestRuntimeStaged`, `TestRuntimeStagedCbor`). A type met again
+ * inside itself delegates to the fold, as the compile-time generator
+ * does.
  */
 object RuntimeStaged {
 
-  /** the launch switch: absent or anything but off/false/0 is ON */
-  def enabled: Boolean = forced.getOrElse {
+  /** the launch switch: absent or anything but off/false/0 is ON.
+   * Read ONCE: `sys.env` copies the whole environment into a Map on
+   * every call, and the first cut read it per encode — the seam lanes
+   * measured 2.7 µs per value where the generated code costs 0.24. */
+  def enabled: Boolean = forced.getOrElse(switch)
+  private lazy val switch: Boolean =
     val v = sys.props.get("okay.staging").orElse(sys.env.get("OKAY_STAGING")).map(_.trim.toLowerCase)
     !v.exists(Set("off", "false", "0", "no").contains)
-  }
   @volatile private var forced: Option[Boolean] = None
   /** for a test, or a program that decides at run time: `Some(false)`
    * makes every door the interpreter, `None` returns to the switch */
@@ -62,39 +79,74 @@ object RuntimeStaged {
   @volatile var lastFailure: Option[(Schema[?], Throwable)] = None
 
   private lazy val compiler: Compiler = Compiler.make(getClass.getClassLoader)
-  private val cache = new java.util.concurrent.ConcurrentHashMap[AnyRef, JsonCodec[Any]]()
+  private val jsonCache = new java.util.concurrent.ConcurrentHashMap[AnyRef, JsonCodec[Any]]()
+  private val cborCache = new java.util.concurrent.ConcurrentHashMap[AnyRef, CborCodec[Any]]()
   private val lock = new Object
+
+  /** the compiler's ONE thread: dotty's ContextBase refuses access
+   * from any thread but the one that first touched it ("illegal
+   * multithreaded access"), even serialised by a lock — two suites in
+   * parallel found that. Every generation runs here, and the caller
+   * waits for it. */
+  private lazy val worker: java.util.concurrent.ExecutorService =
+    java.util.concurrent.Executors.newSingleThreadExecutor { r =>
+      val t = new Thread(r, "okay-staging")
+      t.setDaemon(true)
+      t
+    }
+  private def onWorker[T](body: => T): T =
+    val f = worker.submit(new java.util.concurrent.Callable[T] { def call(): T = body })
+    try f.get()
+    catch case e: java.util.concurrent.ExecutionException => throw e.getCause
 
   /** the interpreter, as a codec — what a door answers when staging is
    * off or refused */
-  def interpreted[A](s: Schema[A]): JsonCodec[A] = new JsonCodec[A]:
-    def encode(a: A): String = Json.encode(s)(a)
-    def decode(j: Json): Either[String, A] = Json.decode(s)(j)
+  def interpreted[A](s: Schema[A]): JsonCodec[A] = Codecs.Interpreter.json(s)
 
-  /** the staged codec for a schema value — generated once per schema
-   * (by identity), the interpreter when staging is off or the
+  /** the staged JSON codec for a schema value — generated once per
+   * schema (by identity), the interpreter when staging is off or the
    * generation fails */
   def json[A](s: Schema[A]): JsonCodec[A] =
-    if !enabled then interpreted(s)
-    else
-      val key = IdentityKey(s)
-      val got = cache.get(key)
-      if got != null then Unsafe.codec[A](got)
-      else lock.synchronized {
-        val again = cache.get(key)
-        if again != null then Unsafe.codec[A](again)
-        else
-          try
-            val made = generate(s)
-            cache.put(key, made)
-            Unsafe.codec[A](made)
-          catch case e: Throwable =>
-            lastFailure = Some((s, e))
-            interpreted(s)
-      }
+    if !enabled then Codecs.Interpreter.json(s)
+    else cached(jsonCache, s, () => generateJson(s), Codecs.Interpreter.json(s))(Unsafe.jsonCodec[A])
 
-  /** whether `s` has a generated codec already (a test's question) */
-  def isStaged(s: Schema[?]): Boolean = cache.containsKey(IdentityKey(s))
+  /** the staged CBOR codec for a schema value, the same way */
+  def cbor[A](s: Schema[A]): CborCodec[A] =
+    if !enabled then Codecs.Interpreter.cbor(s)
+    else cached(cborCache, s, () => generateCbor(s), Codecs.Interpreter.cbor(s))(Unsafe.cborCodec[A])
+
+  private def cached[C, R](cache: java.util.concurrent.ConcurrentHashMap[AnyRef, C], s: Schema[?],
+                           make: () => C, fallback: => R)(as: C => R): R =
+    val key = IdentityKey(s)
+    val got = cache.get(key)
+    if got != null then as(got)
+    else lock.synchronized {
+      val again = cache.get(key)
+      if again != null then as(again)
+      else
+        try
+          val made = onWorker(make())
+          cache.put(key, made)
+          as(made)
+        catch case e: Throwable =>
+          lastFailure = Some((s, e))
+          fallback
+    }
+
+  /** whether `s` has a generated JSON codec already (a test's question) */
+  def isStaged(s: Schema[?]): Boolean = jsonCache.containsKey(IdentityKey(s))
+  def isStagedCbor(s: Schema[?]): Boolean = cborCache.containsKey(IdentityKey(s))
+
+  /** this generator as the `Codecs` provider */
+  object Provider extends Codecs.Provider:
+    def name = "runtime-staged"
+    def json[A](s: Schema[A]): JsonCodec[A] = RuntimeStaged.json(s)
+    def cbor[A](s: Schema[A]): CborCodec[A] = RuntimeStaged.cbor(s)
+
+  /** every `Codecs` door answers the staged codec from now on; `false`
+   * (and nothing installed) when the switch is off */
+  def install(): Boolean =
+    if enabled then { Codecs.install(Provider); true } else false
 
   /** schemas are case classes over functions, so `==` is already
    * identity in practice; this makes it identity by contract */
@@ -124,18 +176,22 @@ object RuntimeStaged {
     def option(v: Any): Option[Any] = v.asInstanceOf[Option[Any]]
     def list(v: Any): List[Any] = v.asInstanceOf[List[Any]]
     def vector(v: Any): Vector[Any] = v.asInstanceOf[Vector[Any]]
-    def codec[A](c: JsonCodec[Any]): JsonCodec[A] = c.asInstanceOf[JsonCodec[A]]
+    def jsonCodec[A](c: JsonCodec[Any]): JsonCodec[A] = c.asInstanceOf[JsonCodec[A]]
+    def cborCodec[A](c: CborCodec[Any]): CborCodec[A] = c.asInstanceOf[CborCodec[A]]
     /** the fold, for a cold path or a node the generator delegates */
     def encodeAny(s: Schema[?], v: Any): String = Json.encode(any(s))(v)
     def decodeAny(s: Schema[?], j: Json): Either[String, Any] = Json.decode(any(s))(j)
+    def encodeItemAny(out: Cbor.Out, s: Schema[?], v: Any): Unit = Cbor.encodeItem(out, v)(using any(s))
+    def decodeItemAny(in: Cbor.In, s: Schema[?]): Either[String, Any] = Cbor.decodeItem(in)(using any(s))
   }
 
   // ---- the generator: the schema's nodes as a table, the code from their kinds ----
 
   /** the schema's nodes, by identity, each thunk forced ONCE: a
-   * derived schema's thunks may build a fresh instance per call, so
-   * the generator never calls one — it reads the children recorded
-   * here, the same instances the table hands the generated code */
+   * derived schema's thunks may build a fresh instance per call (they
+   * do not since schema-thunks-once, but a hand-built one may), so the
+   * generator never calls one — it reads the children recorded here,
+   * the same instances the table hands the generated code */
   private final class Nodes(root: Schema[?]):
     private val index = new java.util.IdentityHashMap[Schema[?], Integer]()
     private val kids = new java.util.IdentityHashMap[Schema[?], Vector[Schema[?]]]()
@@ -164,18 +220,41 @@ object RuntimeStaged {
       i.intValue
     def kid(s: Schema[?], i: Int): Schema[?] = kids.get(s)(i)
 
-  private def generate[A](s: Schema[A]): JsonCodec[Any] =
+  private def generateJson[A](s: Schema[A]): JsonCodec[Any] =
     given Compiler = compiler
     val nodes = new Nodes(s)
     val table: Array[Schema[?]] = nodes.all.toArray
     val make: Array[Schema[?]] => JsonCodec[Any] = run {
-      '{ (ns: Array[Schema[?]]) => ${ Gen(nodes, 'ns).codec(s) } }
+      '{ (ns: Array[Schema[?]]) => ${ JsonGen(nodes, 'ns).codec(s) } }
     }
     make(table)
 
-  private final class Gen(nodes: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes):
+  private def generateCbor[A](s: Schema[A]): CborCodec[Any] =
+    given Compiler = compiler
+    val nodes = new Nodes(s)
+    val table: Array[Schema[?]] = nodes.all.toArray
+    val make: Array[Schema[?]] => CborCodec[Any] = run {
+      '{ (ns: Array[Schema[?]]) => ${ CborGen(nodes, 'ns).codec(s) } }
+    }
+    make(table)
 
-    private def node(s: Schema[?]): Expr[Schema[?]] = '{ $ns(${ Expr(nodes.at(s)) }) }
+  /** what both emitters share: the node table, the children, the
+   * product's absence rule (declared default, then None if optional,
+   * then the refusal) */
+  private abstract class Gen(val nodes: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes):
+    protected def node(s: Schema[?]): Expr[Schema[?]] = '{ $ns(${ Expr(nodes.at(s)) }) }
+    protected def fieldsOf(s: Schema[?], p: Schema.SProduct[?]): List[(String, Schema[?])] =
+      p.fields.zipWithIndex.map((nf, i) => (nf._1, nodes.kid(s, i))).toList
+    protected def casesOf(s: Schema[?], su: Schema.SSum[?]): List[(String, Schema[?])] =
+      su.cases.zipWithIndex.map((nc, i) => (nc._1, nodes.kid(s, i))).toList
+    protected def absent(p: Schema.SProduct[?], pe: Expr[Schema.SProduct[Any]], i: Int, name: String, fs: Schema[?]): Expr[Either[String, Any]] =
+      if p.defaults.lift(i).flatten.isDefined then '{ Right($pe.defaults(${ Expr(i) }).get()) }
+      else if fs.isInstanceOf[Schema.SOption[?]] then '{ Right(None) }
+      else '{ Left(${ Expr("missing field '" + name + "' in " + p.name) }) }
+
+  /** the JSON emitter over a schema value: `JsonGen` of Staged.scala
+   * with the node table where the Mirror was */
+  private final class JsonGen(nodes: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes) extends Gen(nodes, ns):
 
     def codec(root: Schema[?]): Expr[JsonCodec[Any]] =
       '{ new JsonCodec[Any] {
@@ -186,8 +265,6 @@ object RuntimeStaged {
            }
            def decode(j: Json): Either[String, Any] = ${ read(root, 'j, Nil) }
          } }
-
-    // ---- encode ----
 
     def emit(s: Schema[?], v: Expr[Any], sb: Expr[java.lang.StringBuilder], seen: List[Schema[?]]): Expr[Unit] =
       if seen.exists(_ eq s) then '{ $sb.append(Unsafe.encodeAny(${ node(s) }, $v)): Unit }
@@ -207,27 +284,25 @@ object RuntimeStaged {
         case p: Schema.SProduct[?] =>
           val here = s :: seen
           val pe = '{ Unsafe.product(${ node(s) }) }
-          val fields = p.fields.zipWithIndex.map { (nf, i) =>
-            val key = Expr((if i == 0 then "\"" else ",\"") + nf._1 + "\":")
-            (key, nodes.kid(s, i))
+          val fields = fieldsOf(s, p).zipWithIndex.map { case ((name, fs), i) =>
+            (Expr((if i == 0 then "\"" else ",\"") + name + "\":"), fs)
           }
           '{ val it = $pe.parts($v).iterator
              $sb.append('{'): Unit
-             ${ Expr.block(fields.toList.map { (key, fs) =>
+             ${ Expr.block(fields.map { (key, fs) =>
                   '{ $sb.append($key): Unit; val fv = it.next(); ${ emit(fs, 'fv, sb, here) } } }, '{ () }) }
              $sb.append('}'): Unit }
         case su: Schema.SSum[?] =>
           val here = s :: seen
           val se = '{ Unsafe.sum(${ node(s) }) }
-          def chain(rest: List[(Int, String, Schema[?])], k: Expr[Int]): Expr[Unit] = rest match
+          def chain(rest: List[((String, Schema[?]), Int)], k: Expr[Int]): Expr[Unit] = rest match
             case Nil => '{ $sb.append(Unsafe.encodeAny(${ node(s) }, $v)): Unit }
-            case (i, name, cs) :: more =>
+            case ((name, cs), i) :: more =>
               val key = Expr("{\"" + name + "\":")
               '{ if $k == ${ Expr(i) } then {
                    $sb.append($key): Unit; ${ emit(cs, v, sb, here) }; $sb.append('}'): Unit
                  } else ${ chain(more, k) } }
-          val cases = su.cases.zipWithIndex.map((nc, i) => (i, nc._1, nodes.kid(s, i))).toList
-          '{ val k = $se.caseOf($v); ${ chain(cases, 'k) } }
+          '{ val k = $se.caseOf($v); ${ chain(casesOf(s, su).zipWithIndex, 'k) } }
         case Schema.SIso(_, _, _) =>
           val ie = '{ Unsafe.iso(${ node(s) }) }
           emit(nodes.kid(s, 0), '{ $ie.from($v) }, sb, seen)
@@ -243,8 +318,6 @@ object RuntimeStaged {
            val y = i.next()
            ${ emit(of, 'y, sb, seen) }
          $sb.append(']'): Unit }
-
-    // ---- decode ----
 
     def read(s: Schema[?], j: Expr[Json], seen: List[Schema[?]]): Expr[Either[String, Any]] =
       if seen.exists(_ eq s) then '{ Unsafe.decodeAny(${ node(s) }, $j) }
@@ -282,24 +355,19 @@ object RuntimeStaged {
         case p: Schema.SProduct[?] =>
           val here = s :: seen
           val pe = '{ Unsafe.product(${ node(s) }) }
-          val fields = p.fields.zipWithIndex.map((nf, i) => (nf._1, nodes.kid(s, i))).toList
+          val fields = fieldsOf(s, p)
           def fieldOf(i: Int, fs: Expr[Vector[(String, Json)]]): Expr[Either[String, Any]] =
             val (name, fs0) = fields(i)
-            val isOpt = fs0.isInstanceOf[Schema.SOption[?]]
-            val hasDefault = p.defaults.lift(i).flatten.isDefined
             val nameE = Expr(name)
-            val absent: Expr[Either[String, Any]] =
-              if hasDefault then '{ Right($pe.defaults(${ Expr(i) }).get()) }
-              else if isOpt then '{ Right(None) }
-              else '{ Left(${ Expr("missing field '" + name + "' in " + p.name) }) }
-            if isOpt then
+            val miss = absent(p, pe, i, name, fs0)
+            if fs0.isInstanceOf[Schema.SOption[?]] then
               '{ Staged.lookup($fs, $nameE) match
-                   case None => $absent
-                   case Some(Json.JErr(_)) => $absent
+                   case None => $miss
+                   case Some(Json.JErr(_)) => $miss
                    case Some(v) => ${ read(fs0, 'v, here) } }
             else
               '{ Staged.lookup($fs, $nameE) match
-                   case None => $absent
+                   case None => $miss
                    case Some(v) => ${ read(fs0, 'v, here) } }
           def go(i: Int, acc: List[Expr[Any]], fs: Expr[Vector[(String, Json)]]): Expr[Either[String, Any]] =
             if i == fields.length then '{ Right($pe.make(${ Expr.ofSeq(acc) })) }
@@ -312,7 +380,6 @@ object RuntimeStaged {
                case got => Unsafe.decodeAny(${ node(s) }, got) }
         case su: Schema.SSum[?] =>
           val here = s :: seen
-          val cases = su.cases.zipWithIndex.map((nc, i) => (nc._1, nodes.kid(s, i))).toList
           def chain(rest: List[(String, Schema[?])], name: Expr[String], v: Expr[Json]): Expr[Either[String, Any]] = rest match
             case Nil => '{ Unsafe.decodeAny(${ node(s) }, $j) }   // an unknown case: the fold's own words
             case (n, cs) :: more =>
@@ -320,10 +387,126 @@ object RuntimeStaged {
           '{ $j match
                case Json.JObj(fs) if fs.length == 1 =>
                  val (name, v) = fs(0)
-                 ${ chain(cases, 'name, 'v) }
+                 ${ chain(casesOf(s, su), 'name, 'v) }
                case got => Unsafe.decodeAny(${ node(s) }, got) }
         case Schema.SIso(_, _, _) =>
           val ie = '{ Unsafe.iso(${ node(s) }) }
           '{ ${ read(nodes.kid(s, 0), j, seen) }.flatMap(b => $ie.to(b)) }
         case _ => '{ Unsafe.decodeAny(${ node(s) }, $j) }   // SChar, SBytes: the fold
+
+  /** the CBOR emitter over a schema value: `CborGen` of Staged.scala
+   * with the node table where the Mirror was — primitives call the
+   * shared item primitives on `Cbor.Out`/`Cbor.In`, products decode by
+   * NAME through `Staged.cborProduct` (a CBOR map carries no order
+   * guarantee), a sum is a one-entry map */
+  private final class CborGen(nodes: Nodes, ns: Expr[Array[Schema[?]]])(using Quotes) extends Gen(nodes, ns):
+
+    def codec(root: Schema[?]): Expr[CborCodec[Any]] =
+      '{ new CborCodec[Any] {
+           def encode(a: Any): Array[Byte] = {
+             val out = new Cbor.Out
+             ${ emit(root, 'a, 'out, Nil) }
+             out.toArray
+           }
+           def decode(bytes: Array[Byte]): Either[String, Any] = {
+             val in = new Cbor.In(bytes)
+             ${ read(root, 'in, Nil) }
+           }
+         } }
+
+    def emit(s: Schema[?], v: Expr[Any], out: Expr[Cbor.Out], seen: List[Schema[?]]): Expr[Unit] =
+      if seen.exists(_ eq s) then '{ Unsafe.encodeItemAny($out, ${ node(s) }, $v) }
+      else s match
+        case Schema.SInt => '{ $out.integer(Unsafe.int($v).toLong) }
+        case Schema.SLong => '{ $out.integer(Unsafe.long($v)) }
+        case Schema.SDouble => '{ $out.double(Unsafe.double($v)) }
+        case Schema.SBool => '{ $out.bool(Unsafe.bool($v)) }
+        case Schema.SString => '{ $out.text(Unsafe.string($v)) }
+        case Schema.SOption(_) =>
+          val inner = nodes.kid(s, 0)
+          '{ Unsafe.option($v) match
+               case Some(y) => ${ emit(inner, 'y, out, seen) }
+               case None => $out.nul() }
+        case Schema.SList(_) =>
+          val inner = nodes.kid(s, 0)
+          '{ val l = Unsafe.list($v); ${ emitSeq(inner, '{ l.iterator }, '{ l.length }, out, seen) } }
+        case Schema.SVector(_) =>
+          val inner = nodes.kid(s, 0)
+          '{ val l = Unsafe.vector($v); ${ emitSeq(inner, '{ l.iterator }, '{ l.length }, out, seen) } }
+        case p: Schema.SProduct[?] =>
+          val here = s :: seen
+          val pe = '{ Unsafe.product(${ node(s) }) }
+          val fields = fieldsOf(s, p)
+          '{ val it = $pe.parts($v).iterator
+             $out.mapHeader(${ Expr(fields.length.toLong) })
+             ${ Expr.block(fields.map { (name, fs) =>
+                  '{ $out.text(${ Expr(name) }); val fv = it.next(); ${ emit(fs, 'fv, out, here) } } }, '{ () }) } }
+        case su: Schema.SSum[?] =>
+          val here = s :: seen
+          val se = '{ Unsafe.sum(${ node(s) }) }
+          def chain(rest: List[((String, Schema[?]), Int)], k: Expr[Int]): Expr[Unit] = rest match
+            case Nil => '{ Unsafe.encodeItemAny($out, ${ node(s) }, $v) }
+            case ((name, cs), i) :: more =>
+              '{ if $k == ${ Expr(i) } then {
+                   $out.mapHeader(1); $out.text(${ Expr(name) }); ${ emit(cs, v, out, here) }
+                 } else ${ chain(more, k) } }
+          '{ val k = $se.caseOf($v); ${ chain(casesOf(s, su).zipWithIndex, 'k) } }
+        case Schema.SIso(_, _, _) =>
+          val ie = '{ Unsafe.iso(${ node(s) }) }
+          emit(nodes.kid(s, 0), '{ $ie.from($v) }, out, seen)
+        case _ => '{ Unsafe.encodeItemAny($out, ${ node(s) }, $v) }   // SChar, SBytes: the fold's own items
+
+    private def emitSeq(of: Schema[?], it: Expr[Iterator[Any]], len: Expr[Int], out: Expr[Cbor.Out], seen: List[Schema[?]]): Expr[Unit] =
+      '{ $out.arrayHeader($len.toLong)
+         val i = $it
+         while i.hasNext do
+           val y = i.next()
+           ${ emit(of, 'y, out, seen) } }
+
+    def read(s: Schema[?], in: Expr[Cbor.In], seen: List[Schema[?]]): Expr[Either[String, Any]] =
+      if seen.exists(_ eq s) then '{ Unsafe.decodeItemAny($in, ${ node(s) }) }
+      else s match
+        case Schema.SInt => '{ $in.intItem().map(_.toInt) }
+        case Schema.SLong => '{ $in.intItem() }
+        case Schema.SDouble => '{ $in.doubleItem() }
+        case Schema.SBool => '{ $in.boolItem() }
+        case Schema.SString => '{ $in.textItem() }
+        case Schema.SOption(_) =>
+          val inner = nodes.kid(s, 0)
+          '{ if $in.isNull then { $in.skipNull(); Right(None) }
+             else ${ read(inner, in, seen) }.map(Some(_)) }
+        case Schema.SList(_) =>
+          val inner = nodes.kid(s, 0)
+          '{ $in.arrayHeader().flatMap(n => Staged.cborElems[Any]($in, n)(cur => ${ read(inner, 'cur, seen) })) }
+        case Schema.SVector(_) =>
+          val inner = nodes.kid(s, 0)
+          '{ $in.arrayHeader().flatMap(n => Staged.cborElemsV[Any]($in, n)(cur => ${ read(inner, 'cur, seen) })) }
+        case p: Schema.SProduct[?] =>
+          val here = s :: seen
+          val pe = '{ Unsafe.product(${ node(s) }) }
+          val fields = fieldsOf(s, p)
+          val readers: List[Expr[Cbor.In => Either[String, Any]]] =
+            fields.map((_, fs) => '{ (cur: Cbor.In) => ${ read(fs, 'cur, here) } })
+          val absents: List[Expr[Either[String, Any]]] =
+            fields.zipWithIndex.map { case ((name, fs), i) => absent(p, pe, i, name, fs) }
+          val names = Expr(fields.map(_._1))
+          val tname = Expr(p.name)
+          '{ $in.mapHeader().flatMap(n =>
+               Staged.cborProduct[Any]($in, n, $names.toArray, Array(${ Varargs(readers) }*), Array(${ Varargs(absents) }*),
+                 $tname, xs => $pe.make(xs.toSeq))) }
+        case su: Schema.SSum[?] =>
+          val here = s :: seen
+          val tname = Expr(su.name)
+          def chain(rest: List[(String, Schema[?])], name: Expr[String]): Expr[Either[String, Any]] = rest match
+            case Nil => '{ Left("unknown case '" + $name + "' of " + $tname) }
+            case (n, cs) :: more =>
+              '{ if $name == ${ Expr(n) } then ${ read(cs, in, here) } else ${ chain(more, name) } }
+          '{ $in.mapHeader().flatMap {
+               case 1 => $in.textItem().flatMap(name => ${ chain(casesOf(s, su), 'name) })
+               case n => Left("expected a one-entry map, got " + n + " entries")
+             } }
+        case Schema.SIso(_, _, _) =>
+          val ie = '{ Unsafe.iso(${ node(s) }) }
+          '{ ${ read(nodes.kid(s, 0), in, seen) }.flatMap(b => $ie.to(b)) }
+        case _ => '{ Unsafe.decodeItemAny($in, ${ node(s) }) }   // SChar, SBytes: the fold
 }

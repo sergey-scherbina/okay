@@ -54,7 +54,7 @@ object Structured {
       count += 1
       // a tree with no holes AND a value that fits the schema
       if Cst.errors(session.tree).nonEmpty then None
-      else Json.decode(s)(Json.value(session.tree)).toOption
+      else okay.codec.Codecs.json(s).decode(Json.value(session.tree)).toOption
 
     def walk(rest: Unit ! F): Cut[A] = (rest.resume: @unchecked) match
       case Pure(_) => Cut(None, text, count, stopped = false)

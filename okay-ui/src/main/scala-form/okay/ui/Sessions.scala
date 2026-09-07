@@ -70,7 +70,7 @@ object Sessions {
   def snapshot[S](s: Session, state: S, upTo: Long)(using sc: Schema[S]): Long =
     val value = Json.print(Json.JObj(Vector(
       "upTo" -> Json.JNum(upTo.toDouble),
-      "s" -> Json.parse(Json.write(state)))))
+      "s" -> Json.parse(okay.codec.Codecs.writeJson(state)))))
     s.topic.append(s.partition, s.snapBytes, value.getBytes(UTF_8), Ack.Durable)
 
   /** the newest snapshot, if any — a fold of the tail until
@@ -81,7 +81,7 @@ object Sessions {
       else
         val j = Json.parse(String(r.value, UTF_8))
         val upTo = Rpcish.num(j, "upTo")
-        val decoded = Rpcish.field(j, "s").flatMap(v => Json.decode(sc)(v).toOption)
+        val decoded = Rpcish.field(j, "s").flatMap(v => okay.codec.Codecs.json(sc).decode(v).toOption)
         (decoded, upTo) match
           case (Some(st), Some(n)) => Some((st, n))
           case _ => acc            // a damaged snapshot is data: skip it

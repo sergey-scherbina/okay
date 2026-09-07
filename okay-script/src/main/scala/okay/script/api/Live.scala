@@ -110,12 +110,12 @@ object Live:
     Live(FormState(empty, Vector.empty, None))(view)(update)
 
   private[api] def encode[S](sc: okay.codec.Schema[S], s: S): String =
-    java.util.Base64.getEncoder.encodeToString(okay.codec.Cbor.write(s)(using sc))
+    java.util.Base64.getEncoder.encodeToString(okay.codec.Codecs.cbor(sc).encode(s))
 
   /** damage is `None`: a torn attribute is a session that starts over */
   private[api] def decode[S](sc: okay.codec.Schema[S], v: String): Option[S] =
     scala.util.Try(java.util.Base64.getDecoder.decode(v)).toOption
-      .flatMap(b => okay.codec.Cbor.read[S](b)(using sc).toOption)
+      .flatMap(b => okay.codec.Codecs.cbor(sc).decode(b).toOption)
 
   /** where the container serves the patch consumer */
   val JsPath = "/__okay/live.js"

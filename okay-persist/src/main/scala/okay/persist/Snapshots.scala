@@ -1,6 +1,6 @@
 package okay.persist
 
-import okay.codec.{Cbor, Schema}
+import okay.codec.Schema
 
 /**
  * The thin put/latest convenience the ui lane asked for
@@ -41,10 +41,10 @@ final class Snapshots(val topic: Topic):
    * damage is data, never a throw */
   def putValue[S](key: Array[Byte], state: S, ack: Ack = Ack.Durable)
                  (using Schema[S]): Long =
-    put(key, Cbor.write(state), ack)
+    put(key, okay.codec.Codecs.writeCbor(state), ack)
 
   def latestValue[S](key: Array[Byte])(using Schema[S]): Option[(Long, Either[String, S])] =
-    latest(key).map(r => (r.offset, Cbor.read[S](r.value)))
+    latest(key).map(r => (r.offset, okay.codec.Codecs.readCbor[S](r.value)))
 
 object Snapshots:
   /** the conventional topic: keyed, compacted */

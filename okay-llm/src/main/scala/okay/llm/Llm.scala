@@ -56,7 +56,7 @@ object Anthropic {
    * unknown or damaged events are simply not tokens */
   def token(payload: String): Option[String] =
     if payload == "[DONE]" then None
-    else Json.read[Event](payload).toOption
+    else okay.codec.Codecs.readJson[Event](payload).toOption
       .filter(_.`type` == "content_block_delta")
       .flatMap(_.delta.flatMap(_.text))
 
@@ -69,7 +69,7 @@ object Anthropic {
   def stream(transport: Transport, apiKey: String, request: Request,
              url: String = "https://api.anthropic.com/v1/messages")
   : Unit ! (Writer % String + Async) =
-    val body = Json.write(request.copy(stream = true))
+    val body = okay.codec.Codecs.writeJson(request.copy(stream = true))
     val lines = transport.post(url, Map(
       "x-api-key" -> apiKey,
       "anthropic-version" -> "2023-06-01",

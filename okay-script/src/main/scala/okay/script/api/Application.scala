@@ -1,6 +1,6 @@
 package okay.script.api
 
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 import okay.persist.{Ack, Policy, Store, Topic}
 
 import java.util.concurrent.ConcurrentHashMap
@@ -22,9 +22,9 @@ trait Application:
 
   /** the attribute decoded by the Schema; damage or absence is `None` */
   def value[A](key: String)(using Schema[A]): Option[A] =
-    get(key).flatMap(s => Json.read[A](s).toOption)
+    get(key).flatMap(s => okay.codec.Codecs.readJson[A](s).toOption)
 
-  def put[A](key: String, a: A)(using Schema[A]): Unit = set(key, Json.write(a))
+  def put[A](key: String, a: A)(using Schema[A]): Unit = set(key, okay.codec.Codecs.writeJson(a))
 
 object Application:
   /** outside a Site (a bare `render`) there is still one, in memory,

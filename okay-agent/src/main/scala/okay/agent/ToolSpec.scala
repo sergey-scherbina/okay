@@ -23,5 +23,5 @@ object ToolSpec {
 
   /** decode a call's arguments with the SAME Schema that declared it */
   def args[A](call: ToolCall)(using s: Schema[A]): Either[String, A] =
-    Json.decode(s)(call.args)
+    okay.codec.Codecs.json(s).decode(call.args)
 }

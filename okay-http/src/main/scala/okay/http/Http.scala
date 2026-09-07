@@ -75,7 +75,7 @@ object Request:
   /** a JSON body, encoded by the schema and typed by the header */
   def json[A](url: String, a: A, headers: Seq[(String, String)] = Nil)
              (using Schema[A]): Request =
-    post(url, Body.Text(okay.codec.Json.write(a)),
+    post(url, Body.Text(okay.codec.Codecs.writeJson(a)),
       ("content-type", "application/json") +: headers)
 
 /**
@@ -177,7 +177,7 @@ object Http {
    * module adds no error type of its own.
    */
   def json[A](r: Response)(using Schema[A]): Either[String, A] ! Async =
-    text(r).map(okay.codec.Json.read[A](_))
+    text(r).map(okay.codec.Codecs.readJson[A](_))
 
   /** the body as server-sent events: our lines, through the stage
    * okay-llm already wrote — the same payloads, because it IS that

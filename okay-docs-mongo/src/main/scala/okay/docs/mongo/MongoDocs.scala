@@ -4,7 +4,7 @@ import com.mongodb.MongoWriteException
 import com.mongodb.client.{MongoClient, MongoClients, MongoCollection}
 import com.mongodb.client.model.{Filters, FindOneAndUpdateOptions, IndexOptions, Indexes, ReturnDocument, Updates}
 import okay.{!, +, Async, Chunk, ChunkBuf, Produce, async, effect}
-import okay.codec.{Cbor, Schema}
+import okay.codec.Schema
 import okay.docs.{Cond, Consistency, Docs, PutResult}
 import org.bson.Document
 import org.bson.types.Binary
@@ -35,12 +35,12 @@ final class MongoDocs[A](coll: MongoCollection[Document],
     }
 
   private def fieldsOf(@scala.annotation.unused id: String, a: A): List[org.bson.conversions.Bson] =
-    Updates.set("d", Binary(Cbor.write(a))) ::
+    Updates.set("d", Binary(okay.codec.Codecs.writeCbor(a))) ::
       indexes.toList.map((f, get) => Updates.set(s"ix_$f", get(a)))
 
   private def decode(doc: Document): Option[Docs.Versioned[A]] =
     val bytes = doc.get("d", classOf[Binary]).getData
-    Cbor.read[A](bytes).toOption.map(a => Docs.Versioned(doc.getLong("ver"), a))
+    okay.codec.Codecs.readCbor[A](bytes).toOption.map(a => Docs.Versioned(doc.getLong("ver"), a))
 
   private def currentVersion(id: String): Option[Long] =
     Option(coll.find(Filters.eq("_id", id)).first()).map(_.getLong("ver").longValue())
@@ -60,7 +60,7 @@ final class MongoDocs[A](coll: MongoCollection[Document],
       case Cond.IfAbsent =>
         try
           val doc = Document("_id", id).append("ver", 1L)
-          doc.append("d", Binary(Cbor.write(a)))
+          doc.append("d", Binary(okay.codec.Codecs.writeCbor(a)))
           indexes.foreach((f, get) => doc.append(s"ix_$f", get(a)))
           coll.insertOne(doc)
           PutResult.Applied(1L)

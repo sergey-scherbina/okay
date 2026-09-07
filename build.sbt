@@ -528,6 +528,11 @@ lazy val okayCodec = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
     ),
   )
+  // scala-jvm: `Staging.autoInstall()` reaches okay-staging by name
+  // (staging-seam) — reflection, so the JVM only
+  .jvmSettings(
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm")
 
 /** the document seam: get/put/delete by key with CAS as data,
  * declared-index queries, per-item atomicity — the one new seam of
@@ -1143,7 +1148,11 @@ lazy val okayScript = project
   // a container that serves a pages directory (okay-script-image).
   // okayAcme: OKAY_ACME asks a certificate authority for the
   // certificate instead of being handed one (okay-acme).
-  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty, okayTls, okayDeploy, okayAcme)
+  // okayStaging: the container already carries the compiler, so the
+  // staged codec for every generic door costs it only the staging jar;
+  // Serve installs it at boot, `-Dokay.staging=off` keeps the
+  // interpreter (staging-seam).
+  .dependsOn(okayHttp.jvm, okayPersist.jvm, okayUi.jvm, okaySecurity.jvm, okayJetty, okayTls, okayDeploy, okayAcme, okayStaging)
   .settings(
     name := "okay-script",
     // drives dotty.tools.dotc IN-PROCESS -- no scala/scala-cli

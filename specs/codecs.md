@@ -691,3 +691,95 @@ generator's node table.
   a hand-built schema may still hand a fresh instance per call, and
   the 4096-node cap still refuses one that never repeats).
 
+## The codec seam (2026-09-07, staging-seam)
+
+Run-time staging reached, not just built (operator: "add it where it
+is useful — okay-script and everywhere you see it"). The observation
+that made it one lane instead of twenty: every GENERIC door in the
+repository — `def put[A](key, a)(using Schema[A])`, a persisted
+topic's `Typed[A]`, a session's state, an HTTP body `json[A]`, a
+tool's `args[A]`, a cluster frame — sees its schema as a VALUE; there
+is no Mirror for `Staged.json[A]` at a generic door. So one seam,
+`Codecs`, is where those doors get their codec, and one `install`
+makes all of them staged.
+
+### Interface
+- `Codecs.json(s)` / `Codecs.cbor(s)` — a `JsonCodec` / `CborCodec`
+  for any schema, from the installed `Provider` (cross-platform,
+  okay-codec). `writeJson/readJson/writeCbor/readCbor` are the
+  `Json.write/read` and `Cbor.write/read` shapes through the door.
+- `Codecs.Provider` (`name`, `json`, `cbor`); `Codecs.Interpreter`
+  is the default; `install(p)`, `reset()`, `provider`.
+- `RuntimeStaged.cbor(s)` — the CBOR emitter over a schema value
+  (`CborGen` of Staged.scala with the node table where the Mirror
+  was); `RuntimeStaged.Provider`; `RuntimeStaged.install(): Boolean`
+  (false, nothing installed, when the switch is off).
+- `okay.codec.Staging.autoInstall(): Outcome` (JVM only, okay-codec's
+  `scala-jvm`) — finds `okay.staging.RuntimeStaged` by name and
+  installs it; `Installed | Absent | Refused(why)`.
+- okay-script depends on okay-staging and `Serve` installs at boot,
+  printing which way it went; `-Dokay.staging=off` keeps the
+  interpreter.
+
+### Behavior
+- [x] the seam's default is the interpreter and its answers are the
+      fold's; an installed provider is what every door answers; reset
+      returns (TestCodecs, JVM/JS/Native)
+- [x] the CBOR emitter agrees with `Cbor.write/read` item for item and
+      Left for Left: products, defaults and an absent field, sums
+      (every case, unknown case, wrong shape), iso, recursion, and the
+      nodes it leaves to the fold (bytes, char) (TestRuntimeStagedCbor)
+- [x] `install()` makes `Codecs.writeJson/readJson/writeCbor/readCbor`
+      go through the generator (`isStaged` / `isStagedCbor` after one
+      call); `Staging.autoInstall()` finds the module by name; off is
+      `Refused` and the interpreter stays
+- [x] the doors routed: okay-script `Application.put/value`,
+      `Live.encode/decode` (session state, CBOR); okay-ui `Sessions`
+      snapshots, `Form.decode`; okay-persist `Typed` (one codec per
+      topic), `Snapshots`, `Configs`, `WireProtocol`/`Wire` frames,
+      `RaftWire` messages, `RaftStore` ops; okay-http `Http.json`,
+      `Server.json`, `as[A]`; okay-cluster `Remote` frames; okay-agent
+      `ToolSpec.args`; okay-llm request bodies, stream events and
+      `Structured`; okay-cache Redis values; okay-docs-mongo; okay-conf
+      `read`; okay-obs spans. `Json.write`/`Cbor.write` themselves are
+      untouched — a caller who wants the fold, verbatim, still has it.
+- [x] the price of the seam, and of staging behind it, on the Order
+      (CodecBenchmark): through the seam with the interpreter (nothing installed) encode 864 ns vs 860 direct, decode-from-AST 654 vs 598 — a volatile read and a wrapper, within the interpreter's noise; through the seam with okay-staging installed encode 235 ns and decode 164, the same as the generated codec called directly (236 / 142-164 across runs) — the seam costs nothing measurable over the codec behind it. The first seam run had the staged door at 2.7 µs: the launch switch read `sys.env` per call (fixed, see Decisions) — history.tsv staging-seam
+
+### Decisions
+- **One `@volatile` reference, no registry, no ServiceLoader.** A
+  provider is installed by a call; a program that installs nothing
+  pays a thin wrapper over the fold it already paid. Reflection lives
+  in exactly one JVM-only object (`Staging`) for the module that
+  cannot depend on the compiler; okay-script, which already carries
+  the compiler, depends on okay-staging outright and installs
+  without reflection.
+- **The compiler's one thread.** dotty's `ContextBase` asserts the
+  thread that first touched it ("illegal multithreaded access"), even
+  when a lock serialises the callers — two test suites in parallel
+  found it. Every generation now runs on one daemon thread
+  (`okay-staging`) and the caller waits; the first generation in a
+  process, and every later one, is on that thread.
+- **The switch is read once.** The first seam benchmark put the
+  staged door at 2.7 µs per value against 0.24 for the generated code
+  and 0.86 for the interpreter: `enabled` read
+  `sys.env.get("OKAY_STAGING")` per call, and `sys.env` copies the
+  whole environment into a Map every time. A launch switch is a
+  constant for the process; it is a `lazy val` now, with the volatile
+  override kept for tests. The lesson is the benchmark's: measure the
+  DOOR callers use, not only the object behind it.
+- **Hot doors hold the codec once.** `Typed[A]` and the cluster's
+  `Sender` take `Codecs.cbor/json(schema)` at construction; a door
+  that is called with a fresh schema every time (`put[A]`) asks the
+  seam per call, which is a cache lookup by identity when staged and
+  a small wrapper when not.
+- **Still not a default.** With nothing installed every door is the
+  interpreter, on every platform; installing is one explicit call at
+  a program's boot, and the container prints which way it went.
+
+### Out of scope
+- A strict-JSON emitter over a schema value (`RuntimeStaged.strict`)
+  — `readStrict` doors are few and typed; when one is generic and hot.
+- Per-codec hoisting of a product's decode arrays (they are built per
+  call, as the compile-time generator builds them).
+
