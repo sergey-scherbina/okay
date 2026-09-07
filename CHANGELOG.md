@@ -1,5 +1,52 @@
 # Changelog
 
+## deploy-doctor-cli — the clean machine gets a report, and the deployment gets a command line
+Completed: 2026-09-07
+Landed as 5dd02233 (spec then code). Stage 0's second half, and two
+halves of one idea: an operator should never meet `docker: command not
+found` deep inside a compose call, and should never need sbt on the
+machine that matters.
+
+**The doctor.** `Tool`/`Manager`/`Presence` with a SECOND probe,
+because installed-and-still-unusable is the common case rather than
+the rare one — a stopped docker daemon, a kubectl with no context, a
+flyctl nobody is logged into, each `NotReady` with the fix in the row.
+What gets checked comes from three why-carrying sources: what the
+target requires, what a secret's SCHEME needs (a `sops:` reference is
+why sops is wanted, so an operator can delete the need instead of
+installing the tool), and what a service's TLS mode implies. The
+install line shown is the one for the DETECTED package manager, not
+five to read past, and `--install` is opt-in, prints every command
+before running it, and never pipes a downloaded script into a shell —
+a test asserts that refusal and walks the whole catalogue proving no
+entry asks for it or pins a version.
+
+**The CLI.** `okay deploy render|doctor|up|down|diff|targets`, reading
+`deployment.json` rather than evaluating Scala, so an artifacts
+directory is self-contained: the Live suite renders one into a
+directory holding nothing else, runs `up` against a real docker, sees
+the container, runs `down`. Exit codes mean something — 3 is "a
+prerequisite is missing", so a pipeline can tell "install docker" from
+"the deploy failed"; `--dry-run` prints the exact command and runs
+nothing; `--json` answers with the table's own fields; there are no
+prompts at all. `up` checks BEFORE it renders or applies, so a machine
+without docker gets the report and nothing else. It ships as this
+module's own fat jar behind `okay-deploy/bin/okay`, which reports a
+missing JRE itself rather than dying as `java: not found`.
+
+Four decisions the writing forced. `docker compose` is required BY
+NAME — the plugin is exactly what a distribution's `docker.io` leaves
+out. `Ready` is one value carrying probe, problem and fix, not the two
+parallel Options the spec had sketched. A tool with nothing to RUN
+says so in words, in a field kept separate from the install map,
+because that map's values are commands and English in it is how a tool
+ends up trying to run a sentence. And the target can come from the
+directory: `okay deploy up` inside `deploy/host/` needs no argument,
+while a directory that is not a target's name is a named refusal.
+What the doctor will not do is guess — a required name the catalogue
+does not know is `Unknown` and fails the check. 55 okay-deploy green
+3x, the Live docker road green, 138 okay-script green.
+
 ## deploy-model — a deployment is a system of services and their needs
 Completed: 2026-09-07
 Landed as 82f33602 (spec then code). Stage 0's first half. okay-deploy

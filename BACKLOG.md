@@ -56,14 +56,28 @@ does not cross and stages the work; each stage below is its own claim.
       expressed BOTH ways side by side, so the model is proven on a
       real application: the port that was written in five places is
       written once.
-- [ ] deploy-doctor-cli — stage 0's second half: `Tool`/`Presence`/
-      `Report` and the `okay deploy` CLI over `deployment.json`
-      (render/doctor/up/down/diff/targets), plus okay-script's
-      fourteen `OKAY_*` variables re-expressed as a Schema'd config
-      with the runtime order defaults→file→environment. Proven by a
-      real `docker compose up`, a unit `systemd-analyze verify`
-      accepts, a doctor run with a PATH emptied of docker, and the
-      CLI driven from a COPY of the artifacts directory.
+- [x] deploy-doctor-cli — LANDED 2026-09-07, stage 0's second half:
+      `Tool`/`Ready`/`Manager`/`Presence` with a second probe for the
+      installed-and-still-unusable case, a why-carrying catalogue fed
+      by the target, the secret SCHEMES and the TLS mode, opt-in
+      `--install` that prints every command and refuses to pipe the
+      network into a shell, and the `okay deploy` CLI
+      (render/doctor/up/down/diff/targets) reading `deployment.json`
+      rather than evaluating Scala. Proven by a real `docker compose
+      up` through the CLI (Live), a doctor run with a PATH emptied of
+      docker, and the CLI driven from a COPY of okay-script's own
+      artifacts directory.
+- [ ] script-config — okay-script's fourteen `OKAY_*` variables as ONE
+      Schema'd config case class, with the runtime order defaults →
+      file → environment pinned by a test that makes all three
+      disagree, and `Settings.of[A]` deriving the deployment's
+      environment names from that same schema. The second list of
+      names disappears; today the value and the reader agree only
+      because a person keeps them agreeing.
+- [ ] deploy-host-verified — put the rendered systemd unit in front of
+      a real `systemd-analyze verify` and the install script in front
+      of a real rented box. Needs a Linux host; the unit is currently
+      proven by its text, which is not the same thing.
 - [ ] deploy-cluster — stage 1: the Helm chart grown to ConfigMap,
       Secret stubs, PVC and Ingress with TLS; `helm template`/`lint`
       in the default gate, kind optional and Live.
