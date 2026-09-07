@@ -62,4 +62,29 @@ class TestManyToMany extends munit.FunSuite {
   test("the relaxed buffer ends for every consumer") {
     for (p, c) <- shapes do run("relaxed", () => Queues.strong[Long].relaxed.parts(4).each(256).build, p, c, 16000)
   }
+
+  // the shape the deadlock was reproduced at (round 5 363 of the
+  // probe): four producers, four consumers, a SMALL per-part capacity
+  // so senders park often, many rounds. `adaptive-p-x-c-deadlock`
+  test("P x C over the adaptive buffer, senders parking, 400 rounds") {
+    var round = 0
+    while round < 400 do
+      val ch = Queues.strong[Int].adaptive.each(4).build
+      val got = java.util.concurrent.atomic.AtomicInteger()
+      val consumers = (0 until 4).map(_ => Thread.startVirtualThread { () =>
+        var on = true
+        while on do ch.receiveBlocking() match
+          case Some(_) => val _ = got.incrementAndGet()
+          case None => on = false
+      })
+      val producers = (0 until 4).map(p => Thread.startVirtualThread { () =>
+        var i = 0
+        while i < 32 do { val _ = ch.sendBlocking(p * 100 + i); i += 1 }
+      })
+      producers.foreach(_.join())
+      ch.close()
+      consumers.foreach(_.join())
+      assertEquals(got.get, 128, s"round $round")
+      round += 1
+  }
 }

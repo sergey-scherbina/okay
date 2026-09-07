@@ -75,6 +75,19 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     override def initialValue(): Integer = claimPart()
 
   private val cursor = AtomicInteger(0)
+  /**
+   * The part THIS THREAD last took an element from — what the channel
+   * wakes senders on. The scan cursor cannot answer that question: it
+   * is one shared cell, so with several consumers rotating over the
+   * parts it names whatever part was scanned LAST BY ANYONE, and the
+   * channel then woke the senders of a part that had not freed a
+   * slot while the sender on the part that had slept on
+   * (`adaptive-p-x-c-deadlock`, reproduced at round 5 363 of the P x C
+   * probe: four consumers parked on empty, one producer parked on
+   * full). A thread's own last route is exact, because every
+   * `wakeSender()` runs on the thread that just popped.
+   */
+  private val myRoute = ThreadLocal.withInitial[Integer](() => Integer.valueOf(0))
 
   /**
    * A fresh part for a producer that has not sent here before, unless
@@ -217,7 +230,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     // 112.4) -- and the hand-tuned relaxed lane costs the same, so
     // that price is partitioning itself rather than adapting. This
     // shaves what can be shaved off it.
-    if open.get == 1 then slots.get(0).nn.pop()
+    if open.get == 1 then { myRoute.set(0); slots.get(0).nn.pop() }
     else popScanning()
 
   private def popScanning(): A | Null =
@@ -229,12 +242,12 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
       val at = if i >= n then i % n else i
       val b = slots.get(at)
       if b != null then out = b.nn.pop()
-      if out == null then i += 1 else cursor.set(at)
+      if out == null then i += 1 else { cursor.set(at); myRoute.set(at) }
       tried += 1
     out
 
   override def popMany(max: Int)(sink: A => Unit): Int =
-    if open.get == 1 then slots.get(0).nn.popMany(max)(sink)
+    if open.get == 1 then { myRoute.set(0); slots.get(0).nn.popMany(max)(sink) }
     else popManyScanning(max)(sink)
 
   private def popManyScanning(max: Int)(sink: A => Unit): Int =
@@ -246,11 +259,11 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
       val at = if i >= n then i % n else i
       val b = slots.get(at)
       if b != null then took = b.nn.popMany(max)(sink)
-      if took == 0 then i += 1 else cursor.set(at)
+      if took == 0 then i += 1 else { cursor.set(at); myRoute.set(at) }
       tried += 1
     took
 
-  override def lastRoute: Int = cursor.get
+  override def lastRoute: Int = myRoute.get.intValue
 
   override def size: Int =
     var s = 0L
