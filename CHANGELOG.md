@@ -1,5 +1,51 @@
 # Changelog
 
+## script-cli — run, render, build, check, serve, new
+Completed: 2026-09-07
+Landed as b9d68c2b (spec then code). The operator ask, and the
+correction of an old answer: `Serve` is one main among several this
+module deserves, and serving is not even the most common thing a
+person does with a document that compiles.
+
+**`build` is the half the container never had.** The same pages
+`serve` compiles per request are rendered ONCE into plain files — a
+static site deployable to anything that serves a directory, with no JVM
+in the deployment at all. It works by driving a REAL `Site` with real
+requests rather than walking the directory itself, which is the design
+decision: page resolution, content types, `index.md`, static files,
+language variants and the error page come for free and cannot drift
+from what `serve` does, because they ARE what serve does.
+
+Two things the spec claimed that writing this corrected. **Which jar
+the combined binary is**: `okay script …` could never have lived in
+okay-deploy's jar, since okay-script depends on okay-deploy and the
+arrow does not reverse. The other direction works — okay-script's
+assembly already carries okay-deploy — so `okay.script.Cli` dispatches
+`deploy` to `okay.deploy.Cli` and IS the combined `okay`, while
+okay-deploy's smaller `bin/okay` stays deploy-only. The jar's entry
+point stays `okay.script.Serve`, because that is the container's
+contract and a rendered Dockerfile depends on it, so the wrapper runs
+the CLI by class name. **What `build` can refuse**: the spec promised
+that everything needing a request refuses by name, `Web.current`
+included. Three of four hold — a session touch refuses naming the call,
+a redirect refuses naming where it went, a `[param]` page is skipped by
+name — and `Web.current` cannot, because `Web` is a data value with
+nowhere to put a refusal. A page reading `Web.current.form` at build
+time sees an empty form, and that limit is stated rather than faked
+with a textual scan of the page's source, which would be a guess. One
+refusal does not cost the rest of the site: the pages that build,
+build.
+
+The session refusal needed one small widening. `Sessions.handle`
+returned the concrete `Handle`, so no caller could supply its own view
+of a session; it now returns a `Bound` trait — `api.Session` plus the
+two facts that decide the cookie — which `Handle` implements unchanged.
+The refusing engine is installed on the SITE rather than around the
+render, because the container binds a session per request on the
+request thread: found by the test that expected a refusal and got a
+built page. `new` writes a starter, and the test that matters is that
+`build` builds it with nothing edited first. 167 okay-script green 3x.
+
 ## intent-label-model — the cascade is not naive, and eight splits said so
 Completed: 2026-09-07
 Stage 1 of the autonomy programme, chosen because it needed no new

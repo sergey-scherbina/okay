@@ -9,17 +9,18 @@ cloud managers and SOPS, and targets for a laptop, a rented server, a
 cluster, a PaaS and AWS/Azure/GCP. The spec draws the line the model
 does not cross and stages the work; each stage below is its own claim.
 
-- [ ] script-cli — a CLI for okay-script (operator ask 2026-09-07),
-      sharing the `okay` binary the deployment CLI introduces:
-      `okay script run|render|build|check|serve|new`. `build` is the
-      STATIC-SITE half the container never had — every page rendered
-      once to files, no JVM in the deployment — with a named refusal
-      for a page that needs a request (`Web.current`, a session, a
-      redirect, a mounted Live app) rather than a page rendered with
-      an empty request. `check` is the mdoc gate and the honest form
-      of the `sbt-test integration` item I declined: opt-in by path,
-      one exit code, mismatches with their lines. specs/okay-script.md
-      "The command line".
+- [x] script-cli — LANDED 2026-09-07: `okay script run|render|build|
+      check|serve|new`. `build` renders a whole pages directory ONCE
+      to files — a static site with no JVM in the deployment — by
+      driving a REAL `Site` with real requests, so page resolution,
+      content types, static files, language variants and the error
+      page cannot drift from what `serve` does. Two spec corrections
+      came out of the writing: the combined `okay` binary is
+      okay-script's assembly (okay-deploy cannot depend on
+      okay-script), and `build` refuses a session touch and a redirect
+      by name but CANNOT refuse `Web.current.form`, which is a stated
+      limit rather than a guess.
+
 - [ ] deploy-cli — folded INTO stage 0 (operator ask 2026-09-07): the
       `okay` CLI with `deploy` as its first subcommand group —
       render / doctor / up / down / diff / targets — reading
