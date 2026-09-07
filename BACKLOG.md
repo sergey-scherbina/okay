@@ -4012,7 +4012,7 @@ race, plus the sender's route and `sendersAt` sizes. The ring stays
 the default until this is named; the adaptive buffer is opt-in
 (`Queues.strong.adaptive`).
 
-## own-scheduler-jvm — a scheduler that owns its threads, for the shape the JDK pool charges 2.4x for
+## own-scheduler-jvm — DONE 2026-09-07 as `schedulers-family`: the scheduler exists, and it beats both policies
 
 Measured (drive-scheduler-jvm, 2026-09-07, §4b): 10 000 small
 fork/joins cost 187 ns per task on a raw `ForkJoinPool` (external
@@ -4026,8 +4026,21 @@ idle worker, batching of external pushes), `DriveTask` as the unit
 scheduled. Price it as a programme: a scheduler is a scheduler.
 Expected: fork/join 10k from 2310 toward ~1000; disqualifying: a
 prototype with owned workers still above 1500 means the cost is in
-`Drive`'s walk, not the pool. Not before the P × C deadlock
-(`adaptive-p-x-c-deadlock`) is named.
+`Drive`'s walk, not the pool.
+
+RESULT (landed 9ede2549): `Schedulers.own` reads 750 us per 10 000
+fork/joins at 30 ns a fiber and 3 645 at 2.5 us, against kyo's 880 and
+27 097 — the prediction was met on the first column and the second
+column turned out to matter more, because the two policies (keep the
+burst home / spread it) are each right on one shape and each 7x wrong
+on the other. The scheduler picks between them itself by measuring its
+own last sixteen tasks; the two presets pin it either way. The builder
+(`Schedulers.own.workers(4).forLongTasks.build`), the stuck-check that
+makes a blocking fiber survivable (`Schedulers.adaptive`), `Running`
+with `close()`, nine laws over six members and `docs/schedulers.md`
+came with it. Everything found on the way was in the WAKING, not the
+queues — see `own-deque` below for the three defects and the one
+unmeasured piece.
 
 ## own-deque — DONE 2026-09-07, and the cause was the WAKE, not the queue
 
