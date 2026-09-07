@@ -1,5 +1,20 @@
 # Changelog
 
+## script-runmain-fork — the guide's own command compiles its pages again
+Completed: 2026-09-07
+Found while checking staging-seam's boot line on the guide's exact
+command: `sbt "okayScript/runMain okay.script.Serve <dir> <port>"`
+booted, printed, and every page failed to compile — "package
+scala.compiletime does not have a member method summonFrom ... Not
+found: okay" — the same on master. The cause is the one
+okay-script-scalac-classpath found for tests on 2026-09-03: un-forked,
+`Classpath.ambient` reads sbt's `java.class.path`, which is just
+sbt-launch.jar. okayScript's tests fork for that reason; its `run`
+did not. Now it does, with the repo root as the forked JVM's working
+directory so a pages directory given relative to it (`store`) still
+resolves. Verified by running the command with a relative directory
+and fetching the page. specs/okay-script.md, "Site — the container".
+
 ## acme-dns01 — the DNS challenge, and the wildcard only it can prove
 Completed: 2026-09-07
 Landed as 44861162 (spec then code). The last of the three deferred
@@ -46,6 +61,7 @@ and long form lengths and a named refusal for anything shaped
 otherwise — a reader for two known shapes, not an ASN.1 library.
 Pebble publishes `renewalInfo`, so the Live test builds the id from a
 real certificate and reads a real window. 11 okay-acme green 3x.
+
 
 ## staging-seam — one door for a codec over a schema value, and okay-script installs the staged one
 Completed: 2026-09-07

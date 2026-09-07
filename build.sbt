@@ -1174,6 +1174,14 @@ lazy val okayScript = project
     // and dotc crashed deep in the Typer (NoSymbol -> ClassSymbol on
     // IntClass). Forking gives the test JVM a real `-cp`.
     Test / fork := true,
+    // and `run` MUST fork for the same reason (script-runmain-fork,
+    // 2026-09-07): `sbt "okayScript/runMain okay.script.Serve ..."`
+    // booted and printed, and every page failed to compile against
+    // sbt-launch.jar. Forked, the JVM has a real -cp; its working
+    // directory stays the REPO ROOT so a pages directory given
+    // relative to it (`store`) still resolves.
+    run / fork := true,
+    run / baseDirectory := (ThisBuild / baseDirectory).value,
   )
 
 lazy val okayAdmin = project

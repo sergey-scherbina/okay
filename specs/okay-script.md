@@ -1551,6 +1551,18 @@ wants `verify`/`issue`, a shared `Sessions` or TLS builds its own
 - [x] (Live) `Site.serve(0)` answers a page over a real port, and a
       second `Serve.site` on the same `OKAY_DATA` sees the application
       scope the first one wrote.
+- [x] `run` FORKS (script-runmain-fork, 2026-09-07). The command above
+      booted, printed, and compiled no page: un-forked, `Classpath.ambient`
+      is sbt's `java.class.path` — just sbt-launch.jar, the finding of
+      okay-script-scalac-classpath, which forked the TESTS and left
+      `run` as it was. Found by staging-seam's boot check on the
+      guide's exact command, the same on master. `run / fork := true`
+      with the repo root as the forked JVM's working directory, so a
+      directory given relative to the root (`store`) still resolves;
+      verified by running the command with a relative directory and
+      fetching the page. A launch flag for the forked JVM (`-Dokay.staging=off`)
+      travels through `javaOptions` or the `OKAY_STAGING` environment
+      variable, which the fork inherits.
 
 ### Languages — variants and messages (okay-script-i18n, 2026-09-07)
 

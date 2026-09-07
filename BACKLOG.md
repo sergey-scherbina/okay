@@ -899,22 +899,13 @@ measure on our own data, never a predicted result.
       the generic doors of script, ui, persist, http, cluster, agent,
       llm, cache, mongo, conf, obs routed through it. Price:
       through the seam with the interpreter (nothing installed) encode 864 ns vs 860 direct, decode-from-AST 654 vs 598 — a volatile read and a wrapper, within the interpreter's noise; through the seam with okay-staging installed encode 235 ns and decode 164, the same as the generated codec called directly (236 / 142-164 across runs) — the seam costs nothing measurable over the codec behind it. The first seam run had the staged door at 2.7 µs: the launch switch read `sys.env` per call (fixed, see Decisions) — history.tsv staging-seam. specs/codecs.md, "The codec seam".
-- [ ] script-runmain-fork — found while checking the seam's boot line:
-      `sbt "okayScript/runMain okay.script.Serve <dir> <port>"` boots
-      and prints, but every page fails to compile ("package
-      scala.compiletime does not have a member method summonFrom ...
-      Not found: okay") — the SAME on master before the seam, so not
-      the seam's: okayScript has `Test / fork := true` but no
-      `run / fork`, and un-forked, `Classpath.ambient` reads sbt's
-      `java.class.path` (just sbt-launch.jar, okay-script-scalac-
-      classpath's own finding). The guide's transcripts show pages
-      compiling under that command; either they were recorded from a
-      forked run or the fat jar, or the classpath is resolved another
-      way in that path — settle which, and either set `run / fork :=
-      true` for okayScript or have `Serve` build the page classpath
-      from its classloader instead of the property.
-
-## okay-py (specs/py.md — Python as a handler; model = specs/r.md by reference)
+- [x] script-runmain-fork — landed: okayScript's `run` forks (as its
+      tests already did, for the same reason) with the repo root as its
+      working directory; `sbt "okayScript/runMain okay.script.Serve
+      <dir> <port>"` now compiles its pages (verified: a page compiled
+      and served, with a directory given relative to the root). Found by
+      staging-seam's boot check; the same failure on master before.
+      specs/okay-script.md, "Site — the container".
 - [ ] py-arrow — frames via pyarrow (twin of r-arrow; nearer —
       pyarrow is first-class)
 
