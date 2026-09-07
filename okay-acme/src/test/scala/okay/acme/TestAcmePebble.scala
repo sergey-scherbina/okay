@@ -35,12 +35,12 @@ object Pebble:
   val eabKid = "kid-1"
   val eabKey = "zWNDZM6eQGHWpSRTPal5eIUYFTu7EajVIoguysqZ9wG44nMEtx3MUAsUDkMTQ12W"
 
-  private def sh(cmd: String*): (Int, String) =
+  private def shell(cmd: Seq[String]): (Int, String) =
     val p = ProcessBuilder(cmd*).redirectErrorStream(true).start()
     val out = String(p.getInputStream.readAllBytes(), "UTF-8")
     (p.waitFor(), out)
 
-  def available: Boolean = sh("docker", "info")._1 == 0
+  def available: Boolean = shell(Vector("docker", "info"))._1 == 0
 
   def freePort(): Int =
     val s = new java.net.ServerSocket(0)
@@ -58,7 +58,32 @@ object Pebble:
    * host's challenge server at `httpPort`, so that number has to be
    * ours too), and readiness is the API actually answering.
    */
-  final class Instance(dir: Path, val eabRequired: Boolean = false):
+  /**
+   * pebble-challtestsrv: a DNS server Pebble can be pointed at, plus
+   * an HTTP API to set records in it. It plays BOTH parts dns-01
+   * needs -- the resolver the CA asks, and the "provider" our test
+   * `Dns` writes to -- which is the only way to prove the challenge
+   * without owning a real zone.
+   */
+  final class ChallTestSrv(val dnsPort: Int, val managePort: Int):
+    val name = s"okay-acme-challtestsrv-$managePort"
+
+    def start(): Boolean =
+      val (code, out) = shell(Vector("docker", "run", "-d", "--rm", "--name", name,
+        "-p", s"$dnsPort:8053/udp", "-p", s"$dnsPort:8053/tcp", "-p", s"$managePort:8055",
+        "ghcr.io/letsencrypt/pebble-challtestsrv:latest"))
+      if code != 0 then
+        println(s"challtestsrv did not start: $out")
+        false
+      else (1 to 40).exists { _ =>
+        Thread.sleep(300)
+        try { val s = new java.net.Socket("127.0.0.1", managePort); s.close(); true }
+        catch case _: Exception => false
+      }
+
+    def stop(): Unit = shell(Vector("docker", "rm", "-f", name)): Unit
+
+  final class Instance(dir: Path, val eabRequired: Boolean = false, val dnsServer: Option[Int] = None):
     val apiPort: Int = freePort()
     val challengePort: Int = freePort()
     val name = s"okay-acme-pebble-$apiPort"
@@ -77,12 +102,16 @@ object Pebble:
 
     def start(): Boolean =
       val cfg = config()
-      val (code, out) = sh("docker", "run", "-d", "--rm", "--name", name,
+      // pointed at a DNS server, Pebble resolves EVERY name through it
+      // -- which is what makes a dns-01 (and so a wildcard) test
+      // possible without owning a zone
+      val resolver = dnsServer.toVector.flatMap(p => Vector("-dnsserver", s"host.docker.internal:$p"))
+      val (code, out) = shell(Vector("docker", "run", "-d", "--rm", "--name", name,
         "-p", s"$apiPort:$apiPort",
         "-e", "PEBBLE_VA_NOSLEEP=1",
         "--add-host=host.docker.internal:host-gateway",
         "-v", s"${cfg.toAbsolutePath}:/test/config/okay.json",
-        image, "-config", "/test/config/okay.json")
+        image, "-config", "/test/config/okay.json") ++ resolver)
       if code != 0 then
         println(s"pebble did not start: $out")
         false
@@ -92,7 +121,7 @@ object Pebble:
         // "running" is not yet a CA that is listening
         (1 to 40).exists { _ =>
           Thread.sleep(300)
-          sh("docker", "cp", s"$name:/test/certs/pebble.minica.pem", ca.toString)._1 == 0 &&
+          shell(Vector("docker", "cp", s"$name:/test/certs/pebble.minica.pem", ca.toString))._1 == 0 &&
             Files.isRegularFile(ca) && Files.size(ca) > 0 && answering()
         }
 
@@ -100,13 +129,13 @@ object Pebble:
       try
         val s = new java.net.Socket("127.0.0.1", apiPort)
         s.close()
-        sh("docker", "logs", name)._2.contains("ACME directory available")
+        shell(Vector("docker", "logs", name))._2.contains("ACME directory available")
       catch case _: Exception => false
 
     def directory: String = s"https://localhost:$apiPort/dir"
 
     def stop(): Unit =
-      sh("docker", "rm", "-f", name): Unit
+      shell(Vector("docker", "rm", "-f", name)): Unit
 
 class TestAcmePebble extends munit.FunSuite:
 
@@ -298,6 +327,64 @@ class TestAcmePebble extends munit.FunSuite:
       assert(again.exists(_.isInstanceOf[Acme.Outcome.Current]), s"renewed with neither rule due: $again")
     finally
       pebble.stop()
+      rmrf(dir)
+  }
+
+  /** the test's "DNS provider": challtestsrv's own HTTP API, which is
+   * what the CA will then resolve against */
+  private def challTestSrvDns(managePort: Int): Acme.Dns = new Acme.Dns:
+    private def post(path: String, body: String): Either[String, Unit] =
+      try
+        val c = java.net.URI.create(s"http://127.0.0.1:$managePort$path").toURL.openConnection()
+          .asInstanceOf[java.net.HttpURLConnection]
+        c.setRequestMethod("POST")
+        c.setDoOutput(true)
+        c.getOutputStream.write(body.getBytes("UTF-8"))
+        val code = c.getResponseCode
+        c.disconnect()
+        Either.cond(code == 200, (), s"challtestsrv answered $code")
+      catch case e: Exception => Left(s"challtestsrv: ${e.getMessage}")
+
+    def putTxt(name: String, value: String): Either[String, Unit] =
+      post("/set-txt", s"""{"host":"$name.","value":"$value"}""")
+
+    def removeTxt(name: String): Unit = post("/clear-txt", s"""{"host":"$name."}"""): Unit
+
+    // the record is in memory next door; there is nothing to propagate
+    override def propagation: java.time.Duration = java.time.Duration.ZERO
+
+  test("dns-01, and a WILDCARD: the proof goes into DNS and the CA resolves it") {
+    assume(Pebble.available, "docker is not available")
+    val dir = Files.createTempDirectory("okay-acme-pebble-dns-")
+    val dns = Pebble.ChallTestSrv(Pebble.freePort(), Pebble.freePort())
+    assume(dns.start(), "challtestsrv did not start")
+    val pebble = Pebble.Instance(dir, dnsServer = Some(dns.dnsPort))
+    assume(pebble.start(), "pebble did not start")
+    val challenges = Acme.Challenges.Memory()
+    try
+      // a wildcard: http-01 cannot prove one at all, which is the
+      // whole reason dns-01 exists
+      val cfg = Acme.Config("ops@example.com", Vector("*.okay.example"),
+        dir.resolve("account.pem"), dir.resolve("cert.pem"), dir.resolve("key.pem"),
+        pebble.directory, timeout = java.time.Duration.ofSeconds(60))
+      val http = trusting(pebble.ca)
+
+      // without a Dns the run refuses BEFORE placing an order, and says why
+      val refused = Acme.ensure(cfg, http, challenges)
+      assert(refused.left.exists(_.contains("wildcard")), refused.toString)
+
+      val issued = Acme.ensure(cfg, http, challenges, Some(challTestSrvDns(dns.managePort)))
+      assert(issued.exists(_.isInstanceOf[Acme.Outcome.Issued]), issued.toString)
+
+      val leaf = Acme.leafCert(cfg.certFile).fold(m => fail(m), identity)
+      val names = Option(leaf.getSubjectAlternativeNames).map(_.toArray.toVector.map(_.toString)).getOrElse(Vector.empty)
+      assert(names.exists(_.contains("*.okay.example")), names.toString)
+      assert(leaf.getIssuerX500Principal.getName.contains("Pebble"), leaf.getIssuerX500Principal.getName)
+      // the http-01 store was never touched: this was proven in DNS
+      assertEquals(challenges.size, 0)
+    finally
+      pebble.stop()
+      dns.stop()
       rmrf(dir)
   }
 

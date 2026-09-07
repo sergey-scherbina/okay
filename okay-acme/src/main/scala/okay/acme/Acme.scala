@@ -66,6 +66,29 @@ object Acme:
     def put(token: String, keyAuthorization: String): Unit
     def remove(token: String): Unit
 
+  /**
+   * Somewhere to WRITE a DNS record — what dns-01 needs and http-01
+   * does not (acme-dns01).
+   *
+   * No implementation ships with this module, deliberately: writing a
+   * TXT record means talking to a provider's API (Route53,
+   * Cloudflare, deSEC, a company's own), each with its own
+   * credentials, its own shape and its own propagation behaviour, and
+   * a seam with one favourite provider baked in is worse than a seam
+   * with none. A deployment supplies this; the tests supply their own
+   * against a DNS server they control.
+   */
+  trait Dns:
+    /** add a TXT record at `name` (already the full
+     * `_acme-challenge.<domain>`) holding `value` */
+    def putTxt(name: String, value: String): Either[String, Unit]
+    def removeTxt(name: String): Unit
+    /** how long this provider takes before a resolver can see the
+     * record. There is no honest default: DNS propagation is the
+     * provider's property, not the protocol's, so it is asked for
+     * here rather than guessed in a sleep somewhere. */
+    def propagation: java.time.Duration = java.time.Duration.ofSeconds(5)
+
   object Challenges:
     /** the in-memory one a server serves from -- `routes` is the
      * PartialFunction to chain BEFORE any https redirect, since the
@@ -108,12 +131,12 @@ object Acme:
    * publishes nonsense, must never be able to stop a renewal our own
    * countdown wants.
    */
-  def ensure(cfg: Config, http: Http, challenges: Challenges)
+  def ensure(cfg: Config, http: Http, challenges: Challenges, dns: Option[Dns] = None)
             (using Crypto, CanBlock): Either[String, Outcome] =
     notAfterOf(cfg.certFile) match
       case Some(t) if java.time.Instant.now().plus(cfg.renewBefore).isBefore(t) &&
                       !windowOpen(cfg, http) => Right(Outcome.Current(t))
-      case _ => issue(cfg, http, challenges).flatMap { _ =>
+      case _ => issue(cfg, http, challenges, dns).flatMap { _ =>
         notAfterOf(cfg.certFile)
           .map(t => Outcome.Issued(cfg.domains, t))
           .toRight("the certificate was written but cannot be read back")
@@ -242,10 +265,16 @@ object Acme:
     catch case e: Exception => Left(s"$certFile is not a readable certificate: ${e.getMessage}")
 
   /** the whole flow, unconditionally */
-  def issue(cfg: Config, http: Http, challenges: Challenges)
+  def issue(cfg: Config, http: Http, challenges: Challenges, dns: Option[Dns] = None)
            (using Crypto, CanBlock): Either[String, Unit] =
     for
       _ <- Either.cond(cfg.domains.nonEmpty, (), "ACME needs at least one domain")
+      // a wildcard cannot be proven by serving a file: there is no
+      // host to serve it from. Said here, before an order is placed,
+      // rather than discovered in the CA's refusal
+      _ <- Either.cond(dns.isDefined || !cfg.domains.exists(_.startsWith("*.")), (),
+        "a wildcard name can only be proven by dns-01 — pass a Dns to write the TXT record " +
+          "(no provider ships with this module; see specs/acme.md)")
       account <- accountKeyOf(cfg.accountKey)
       dir <- get(http, cfg.directory).flatMap(json)
       newNonce <- str(dir, "newNonce").toRight("the directory has no newNonce")
@@ -260,7 +289,7 @@ object Acme:
       authorizations <- strings(order.body, "authorizations")
       finalizeUrl <- str(order.body, "finalize").toRight("the order has no finalize")
       _ <- authorizations.foldLeft[Either[String, Unit]](Right(())) { (acc, a) =>
-        acc.flatMap(_ => authorize(session, a, challenges, cfg.timeout))
+        acc.flatMap(_ => authorize(session, a, challenges, dns, cfg.timeout))
       }
       _ <- certificateKey(cfg.keyFile)
       csr <- csrOf(cfg.keyFile, cfg.domains)
@@ -272,24 +301,61 @@ object Acme:
 
   // ---- the steps -------------------------------------------------
 
+  /**
+   * One authorization, by whichever challenge this run can answer.
+   *
+   * dns-01 when a `Dns` was given — it is the only one that proves a
+   * WILDCARD, and a `Dns` is the caller saying they can write
+   * records; http-01 otherwise. The two differ in what is published
+   * and where, not in the dance: put the proof somewhere, tell the CA
+   * to look, poll, clean up.
+   */
   private def authorize(session: Session, url: String, challenges: Challenges,
-                        timeout: java.time.Duration): Either[String, Unit] =
+                        dns: Option[Dns], timeout: java.time.Duration)
+                       (using Crypto): Either[String, Unit] =
     for
       auth <- session.postAsGet(url)
-      challenge <- httpChallenge(auth).toRight(s"no http-01 challenge in $url")
-      (challengeUrl, token) = challenge
-      keyAuth = token + "." + session.thumbprint
-      _ = challenges.put(token, keyAuth)
+      name = str(field(auth, "identifier").getOrElse(Json.JNull), "value").getOrElse("")
+      published <- publish(session, auth, challenges, dns, name)
+      (challengeUrl, undo) = published
       _ <- session.post(challengeUrl, "{}")
-      _ <- await(timeout, s"authorization $url") {
+      settled = await(timeout, s"authorization $url") {
         session.postAsGet(url).map(a => str(a, "status").getOrElse("pending")) match
           case Right("valid") => Some(Right(()))
           case Right("invalid") => Some(Left(s"the CA refused $url: ${detail(session, url)}"))
           case Right(_) => None
           case Left(m) => Some(Left(m))
       }
-      _ = challenges.remove(token)
+      // the proof comes DOWN whether the CA accepted it or not: a
+      // token or a TXT record left behind is a fact about this domain
+      // that outlives the reason for it
+      _ = undo()
+      _ <- settled
     yield ()
+
+  /** publish the proof, and answer (the challenge to trigger, how to
+   * take it back) */
+  private def publish(session: Session, auth: Json, challenges: Challenges,
+                      dns: Option[Dns], name: String)
+                     (using c: Crypto): Either[String, (String, () => Unit)] =
+    dns match
+      case Some(provider) =>
+        for
+          challenge <- challengeOf(auth, "dns-01").toRight("no dns-01 challenge offered for this name")
+          (url, token) = challenge
+          // dns-01 publishes the HASH of the key authorization, not
+          // the authorization itself -- a TXT record is public, and
+          // the token is not something to leave in one
+          value = b64(c.sha256((token + "." + session.thumbprint).getBytes(UTF_8)))
+          record = "_acme-challenge." + name.stripPrefix("*.")
+          _ <- provider.putTxt(record, value)
+          _ = Thread.sleep(provider.propagation.toMillis)
+        yield (url, () => provider.removeTxt(record))
+      case None =>
+        challengeOf(auth, "http-01").toRight("no http-01 challenge offered for this name").map { (url, token) =>
+          challenges.put(token, token + "." + session.thumbprint)
+          (url, () => challenges.remove(token))
+        }
 
   private def detail(session: Session, url: String): String =
     session.postAsGet(url).map(Json.print).getOrElse("(no detail)").take(300)
@@ -315,10 +381,10 @@ object Acme:
       answer = step
     answer.getOrElse(Left(s"$what did not settle in ${timeout.toSeconds}s"))
 
-  private def httpChallenge(auth: Json): Option[(String, String)] =
+  private def challengeOf(auth: Json, kind: String): Option[(String, String)] =
     field(auth, "challenges") match
       case Some(Json.JArr(cs)) => cs.collectFirst {
-        case c if str(c, "type").contains("http-01") =>
+        case c if str(c, "type").contains(kind) =>
           (str(c, "url").getOrElse(""), str(c, "token").getOrElse(""))
       }.filter((u, t) => u.nonEmpty && t.nonEmpty)
       case _ => None
