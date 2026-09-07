@@ -600,6 +600,13 @@ lazy val okaySql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     name := "okay-sql",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
+  // scala-jvm tests: a suite that DRAINS a `Produce + Async` stream
+  // summons a `Handler[Async]`, which needs the `CanBlock` JS and
+  // Native do not have (TestRowDecode, sql-plan-cells). The module
+  // itself stays cross-built — this is only where such a suite lives.
+  .jvmSettings(
+    Test / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm")
 
 /** the durable log: partitioned append-only persistence, offsets as
  * resume tokens; memory and file engines behind one trait
