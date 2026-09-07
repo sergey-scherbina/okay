@@ -940,6 +940,29 @@ measure on our own data, never a predicted result.
       round trip 9.7 s → 0.94 s. Full suite green, 2959 tests.
 
 ## okay-r (specs/r.md — R as a handler)
+- [x] json-cst-batch-road — LANDED 2026-09-07, the operator's follow-on
+      ("why is it slow, how is it made fast"): `Json.cst` was feeding
+      the source ONE CHARACTER AT A TIME through the effect system
+      (`Writer.tell` + `flatMap` per char) into two transducer stages
+      and a LazyList — just moving the characters cost four times the
+      entire fast value parse. `Parse.full` + `JsonParse.instrs` were
+      written for each other and JSON was the LAST codec not using
+      them. Tree 1129 → 334 ms (best of twelve, 9.3 MB), proven by a
+      TREE-level prefix sweep. Two things measured and NOT done, with
+      the numbers: skipping reparse snapshots (1.5%, noise) and
+      `Scan.step`'s per-char tuple (needs an interface four codecs
+      implement, and no main-source caller uses the lossless road).
+      Also corrected json-parse-fast-road's own "79x" to 37x — it was
+      single-shot, which at this scale prices the JIT.
+- [ ] scan-step-allocation — `Scan.step: (S, Char) => (S,
+      Vector[Token[K]])` allocates a tuple per CHARACTER, which is the
+      next wall on the lossless road (~26 ms of a 9.3 MB lex). An
+      additive `stepInto(s, c, out)` with a default delegating to
+      `step` would leave every scanner working and let one override.
+      NOT taken 2026-09-07 because no main-source caller uses the
+      lossless road at all — it serves `Json.parse`'s damage fallback,
+      the incremental reparse story and the tests. Wants a consumer
+      before it wants an interface change.
 - [x] r-subprocess — LANDED 2026-09-07, stage 0: okay-r with
       REval/RValue/RFrame, the versioned shim, the comonadic handler
       over a clean-env Rscript, conditions as data, verify, dead-

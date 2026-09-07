@@ -1,5 +1,49 @@
 # Changelog
 
+## json-cst-batch-road — the lossless road was lexing through the effect system, one char at a time
+Completed: 2026-09-07
+Landed as 895e5b4f. The operator's follow-on to json-parse-fast-road:
+why is the lossless road slow, and how is it made fast.
+
+**Why.** Not JSON, and not the tree. `Json.cst` fed the source ONE
+CHARACTER AT A TIME through the effect system —
+`Writer.tell(c).flatMap(...)` per char — into two transducer stages and
+a `LazyList`. Just moving the characters through `Writer`, with no
+lexer attached, cost 61-71 ms on 1.68 MB: four times the entire fast
+value parse. The real work was about 26 ms each for lexing,
+instructions and building.
+
+**How.** No new machinery and nothing duplicated. `Parse.full(sc,
+step)` is documented as "the common case: a per-token driver with no
+state of its own", and `JsonParse.instrs` says "no cross-token state"
+in its own comment — they were written for each other, so a batch parse
+needs no driver stage and no streaming. JSON was the LAST codec on the
+per-char road; Xml already used `Parse.fullWith` and Yaml a hand loop.
+Best of twelve on 9.3 MB: the tree 1129 → 334 ms, tree plus projection
+~1196 → 402 ms.
+
+**The evidence is the tree, not the value.** `TestJsonCst` compares the
+two roads' trees over the same corpus `TestJsonValue` uses, with the
+same PREFIX SWEEP — every truncation of every document, well-formed and
+damaged — plus the lossless law (`render` puts every document back byte
+for byte) and the diagnostics being the same errors in the same order.
+The corpus moved to `JsonCorpus` so the two files provably mean the
+same documents.
+
+**A correction of my own number.** json-parse-fast-road's spec section
+claimed 79x. Those were single timed calls after one warm-up, which at
+this scale prices the JIT as much as the code; best-of-twelve puts the
+two roads 37x apart. The conclusion and the fix are unchanged, the
+number is not, and a number in a spec is a claim.
+
+**Two things measured and not done**, both with their numbers in the
+spec: skipping the reparse snapshots a batch `cst` throws away (8%
+single-shot, 1.5% and inside the noise on best-of-twelve — the simpler
+code stands), and `Scan.step`'s per-character tuple, which needs an
+interface four codecs and okay-rag implement while no main-source
+caller uses the lossless road at all. Filed as `scan-step-allocation`
+rather than done on speculation. Full suite green: 2997 tests.
+
 ## park-interrupt-order — the rule reached one park site of six
 Completed: 2026-09-07
 `scheduler-cancel-wins` fixed `CanBlock.block` on the JVM: the
