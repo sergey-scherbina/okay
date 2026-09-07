@@ -1,0 +1,19 @@
+claimed: deploy-paas -- stage 2 (specs/deployment.md): the fly, render
+and railway targets.
+
+Three platforms, three shapes: fly is one app per service so it renders
+a fly.toml per service, render is a Blueprint and takes the whole
+system in one file, railway is per-service JSON. A managed database is
+DELEGATED rather than refused where the platform has one (the file
+cannot express it, the platform can) -- the exact commands go in a
+setup.sh, the same way the cluster target ships secrets.sh.
+
+The gate is a REAL PARSER per format, not a golden file: stage 1 just
+demonstrated that a golden test passes happily on output the consuming
+tool rejects. tomllib for fly.toml, ruby -ryaml for render.yaml, okay's
+own Json for railway.json -- the shelling ones Live, per AGENTS.md.
+
+Needs a small model addition: Need.Region, which stage 3 wants too.
+
+Files: okay-deploy Paas.scala + Deployment.scala (Need.Region) +
+Targets.scala, tests, okay-script's rendered targets, specs, boards.
