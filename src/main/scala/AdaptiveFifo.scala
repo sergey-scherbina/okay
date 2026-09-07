@@ -71,8 +71,18 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
 
   /** the next part to hand out, and the route each thread keeps */
   private val nextPart = AtomicInteger(0)
-  private val mine = new ThreadLocal[Integer]:
-    override def initialValue(): Integer = claimPart()
+  /** a producer's own part: the index the channel routes its parked
+   * senders by, and the BUFFER itself, so the hot push is one
+   * thread-local read and the ring's own push — no `open` read, no
+   * slot read, no unboxing. Caching the buffer rather than the index
+   * also keeps a producer's own order by construction: it pushes to
+   * the same object for its whole life, whatever else opens. */
+  private final class Home(val idx: Int, val buf: Buffer[A])
+
+  private val mine = new ThreadLocal[Home]:
+    override def initialValue(): Home =
+      val i = claimPart()
+      Home(i, slots.get(i).nn)
 
   private val cursor = AtomicInteger(0)
   /**
@@ -144,7 +154,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    * `parts` grows after construction and anything sized once from it
    * would be sized for a single part */
   override def maxParts: Int = cap
-  override def route(): Int = mine.get.intValue
+  override def route(): Int = mine.get.idx
 
   private def eachOpen(f: Buffer[A] => Unit): Unit =
     var i = 0
@@ -159,18 +169,18 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     eachOpen(b => c += b.capacity.toLong)
     if c > Int.MaxValue then Int.MaxValue else c.toInt
 
-  override def push(a: A): Boolean = part(route()).push(a)
+  override def push(a: A): Boolean = mine.get.buf.push(a)
   override def pushAt(r: Int, a: A): Boolean = part(r).push(a)
 
   override def pushDeciding(a: A, unless: AtomicBoolean, orElse: A): A | Null =
-    part(route()).pushDeciding(a, unless, orElse)
+    mine.get.buf.pushDeciding(a, unless, orElse)
 
   override def pushDecidingAt(r: Int, a: A, unless: AtomicBoolean, orElse: A): A | Null =
     part(r).pushDeciding(a, unless, orElse)
 
-  override def pushMany(n: Int)(src: Int => A): Int = part(route()).pushMany(n)(src)
+  override def pushMany(n: Int)(src: Int => A): Int = mine.get.buf.pushMany(n)(src)
 
-  override def hasRoom: Boolean = part(route()).hasRoom
+  override def hasRoom: Boolean = mine.get.buf.hasRoom
   override def hasRoomAt(r: Int): Boolean = part(r).hasRoom
 
   /** freeze first, THEN seal: a part opened between the two would
