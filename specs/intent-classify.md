@@ -3518,6 +3518,46 @@ The gap to the teacher is 18 points now, from 23; the remaining gap
 is still CONTEXT (a unit's one vector wherever it appears), and
 neither extension touches that.
 
+## Results — intent-instruction-prefix (2026-09-07)
+
+The entry's own ask: the first measurement (60 messages) found +1.6
+(probe) and +3.3 (centroid) for "Classify the intent of this
+message: ", a 6.6-point spread across framings, and a cost for the
+long e5-style one — at or near the noise floor — so re-measure on the
+grown fixture before any default moves. Done: the same four framings,
+the same probe/centroid, `Qwen3-Embedding-0.6B` through the rozum
+gateway, on the 120-message fixture — and on BOTH mirror splits
+(train odd / test even and the reverse), so the split-to-split spread
+of the bare framing is measured in the same run and is the bar a gain
+has to clear on both splits (`TestPrefixGrown`, Live, every row
+printed with its `Conditions`).
+
+| framing | probe (test-odd / test-even) | centroid (odd / even) |
+|---|---|---|
+| bare | 76.7% / 86.7% | 78.3% / 78.3% |
+| classify-instruction | 78.3% / 86.7% | 76.7% / 81.7% |
+| task-instruction (e5 style) | 86.7% / 81.7% | 83.3% / 63.3% |
+| represent-for | 78.3% / 80.0% | 73.3% / 78.3% |
+
+**No framing clears the bar, and the bar is the finding.** The bare
+probe is 10.0 points apart between the two halves of one fixture
+(the centroid 0.0); the classify prefix is +1.7 / +0.0 on the probe
+and −1.7 / +3.3 on the centroid — inside that; the long e5-style
+instruction is +10.0 / −5.0 and +5.0 / −15.0, which is not a cost or
+a gain but a coin, and the represent-for prefix +1.7 / −6.7. No
+default moves; the bare message stays the framing every row is
+measured under, and `Conditions.Bare` stays what it prints.
+
+**What the ten points say.** Sixty test messages resolve to 1.7
+points each; two halves of the same 120 rows disagree by six
+messages on the probe. That is the fixture's size speaking, not the
+embedding's, and it bounds every single-split claim in this
+programme at about that width — which is the case
+intent-language-fixture-growth already makes for the per-language
+set, now with a number for the English one. A framing gain that
+would be worth a default has to be larger than ten points on one
+split, or hold on every split of a larger fixture.
+
 ## Results — intent-rule-induction (2026-09-07)
 
 **Cues induced from the corpus, measured where the hand-written ones

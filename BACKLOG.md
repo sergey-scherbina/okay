@@ -2377,12 +2377,20 @@ rather than on every pop, which is the same idea as
       the zero-network property chargrams have, and it drops straight
       into `Centroid` and `Probe`, which do not care where a vector
       came from. Directly serves the no-generation goal.
-- [ ] intent-instruction-prefix — a short "Classify the intent of this
+- [x] intent-instruction-prefix — a short "Classify the intent of this
       message: " prefix measured +1.6 (probe) and +3.3 (centroid), and
       the spread across four framings was 6.6 points. Both are at or
       near the noise floor on 60 messages: re-measure on the grown
       fixture before making it the default, and keep the finding that
-      LONG instructions cost (81.7% for the e5-style one).
+      LONG instructions cost (81.7% for the e5-style one). RE-MEASURED
+      2026-09-07 on the 120-message fixture, both mirror splits, the
+      bare split-to-split spread as the bar (`TestPrefixGrown`): the
+      bare probe is 10.0 points apart between halves; the classify
+      prefix is +1.7 / +0.0 (probe) and −1.7 / +3.3 (centroid); the
+      e5-style one +10.0 / −5.0 and +5.0 / −15.0 — a coin, not a cost.
+      Nothing clears the bar; no default moves. The finding is the
+      bar: sixty test messages bound every single-split claim at about
+      ten points, which is the fixture's size, not the embedding's.
 - [x] intent-static-trigrams-and-pca — two obvious extensions of the
       static table, both filed rather than guessed: adjacent TRIPLES as
       well as pairs (pairs were worth 11.6 points, and the same

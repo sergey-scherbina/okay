@@ -1,5 +1,20 @@
 # Changelog
 
+## intent-instruction-prefix — re-measured on the grown fixture: no framing clears the split-to-split bar, and the bar is the finding
+
+The entry asked for the re-measure before any default moved. Four
+framings, `Qwen3-Embedding-0.6B`, the 120-message fixture, both mirror
+splits, every row printed with its `Conditions` (`TestPrefixGrown`,
+Live). The bare probe is 10.0 points apart between the two halves of
+one fixture; the classify prefix is +1.7 / +0.0 on the probe and
+−1.7 / +3.3 on the centroid — inside that; the long e5-style
+instruction is +10.0 / −5.0 and +5.0 / −15.0, a coin rather than the
+cost the first run saw; represent-for +1.7 / −6.7. No default moves.
+What the ten points say: sixty test messages resolve to 1.7 points
+each, so a single-split claim in this programme is bounded at about
+ten points by the fixture's size — the number the per-language
+fixture-growth entry was missing for English.
+
 ## okay-script-secure — declarative page security, web.xml's constraint for a page
 Completed: 2026-09-07
 Landed as c469ee88 (spec then code, rebased). The JSP-level gap left
