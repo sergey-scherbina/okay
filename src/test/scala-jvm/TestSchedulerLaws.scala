@@ -172,6 +172,69 @@ class TestSchedulerLaws extends munit.FunSuite {
     assert(clue(live) == 0, "workers still running after close()")
   }
 
+  /** The law the own-long-join-deadlock violated (2026-09-07).
+   *
+   * A whole-scheduler test cannot gate this: measured, the hang shows
+   * up about once in twenty thousand fork/join operations, and only
+   * with several JVMs contending — a soak, not a gate. The defect
+   * itself is one line of the work-stealing deque, so the law is
+   * stated where it lives.
+   *
+   * CONSERVATION: every task pushed comes out exactly once, from the
+   * owner's `pop` or from a thief's `steal`. The shape is the one
+   * that broke: an owner pushing far past the initial capacity, so
+   * the buffer grows repeatedly WHILE thieves are reading through it.
+   * Before the fix a thief could win its `top` CAS having read a slot
+   * another steal had cleared through a since-replaced array — the
+   * index consumed, the task never delivered, and the fiber waiting
+   * on it parked for ever.
+   */
+  test("work-stealing deque — nothing is lost while it grows under thieves") {
+    val rounds  = 60
+    val n       = 4000          // 4 -> 8 -> ... many grows from a tiny buffer
+    val thieves = 6
+    var round = 0
+    while round < rounds do
+      round += 1
+      val d    = Schedulers.Deque(4)
+      val out  = java.util.concurrent.ConcurrentHashMap.newKeySet[Schedulers.DriveTask[?]]()
+      val dup  = AtomicInteger(0)
+      val go   = CountDownLatch(1)
+      val done = CountDownLatch(thieves)
+
+      def record(t: Schedulers.DriveTask[?]): Unit =
+        if !out.add(t) then { val _ = dup.incrementAndGet() }
+
+      val ts = (0 until thieves).map { _ =>
+        val th = Thread.ofPlatform().unstarted(() => {
+          go.await()
+          var idle = 0
+          while idle < 2000 do
+            val t = d.steal()
+            if t != null then { record(t); idle = 0 } else idle += 1
+          done.countDown()
+        })
+        th.start(); th
+      }
+
+      val pushed = (0 until n).map(_ => Schedulers.DriveTask[Int](() => pure[Async, Int](1)))
+      go.countDown()
+      var i = 0
+      while i < n do { d.push(pushed(i)); i += 1 }
+      // the owner drains its own end too, exactly as Worker.run does
+      var t = d.pop()
+      while t != null do { record(t.nn); t = d.pop() }
+      done.await()
+      ts.foreach(_.join())
+      // whatever the thieves were still holding when they gave up
+      var s = d.steal()
+      while s != null do { record(s.nn); s = d.steal() }
+
+      assertEquals(dup.get, 0, s"round $round: a task came out twice")
+      assertEquals(out.size, n, s"round $round: ${n - out.size} task(s) LOST — a steal consumed an index without delivering it")
+    ()
+  }
+
   test("no lost wake — one worker, a fork after it parked") {
     given Scheduler = Schedulers.own.workers(1).build
     Thread.sleep(200)                      // the worker gives up and parks

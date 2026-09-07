@@ -396,59 +396,6 @@ object Schedulers {
      *
      * Owner-only: `push`, `pop`. Any thread: `steal`, `size`.
      */
-    private final class Deque(initial: Int) {
-      private val top = java.util.concurrent.atomic.AtomicLong(0L)
-      @volatile private var bottom: Long = 0L
-      @volatile private var buf = java.util.concurrent.atomic.AtomicReferenceArray[DriveTask[?] | Null](initial)
-
-      def size: Int =
-        val n = bottom - top.get
-        if n < 0 then 0 else n.toInt
-
-      private def index(i: Long, len: Int): Int = (i & (len - 1)).toInt
-
-      /** owner only */
-      def push(t: DriveTask[?]): Unit =
-        val b = bottom
-        val tp = top.get
-        var a = buf
-        if b - tp >= a.length() - 1 then
-          val bigger = java.util.concurrent.atomic.AtomicReferenceArray[DriveTask[?] | Null](a.length() * 2)
-          var i = tp
-          while i < b do { bigger.set(index(i, bigger.length()), a.get(index(i, a.length()))); i += 1 }
-          buf = bigger
-          a = bigger
-        a.set(index(b, a.length()), t)
-        bottom = b + 1
-
-      /** owner only */
-      def pop(): DriveTask[?] | Null =
-        val a = buf
-        val b = bottom - 1
-        bottom = b
-        val tp = top.get
-        if tp > b then { bottom = tp; null }
-        else
-          val i = index(b, a.length())
-          val t = a.get(i)
-          if tp < b then { a.set(i, null); t }
-          else
-            // the last element: a thief may be taking it right now
-            val won = top.compareAndSet(tp, tp + 1)
-            bottom = tp + 1
-            if won then { a.set(i, null); t } else null
-
-      /** any thread */
-      def steal(): DriveTask[?] | Null =
-        val tp = top.get
-        val b = bottom
-        if tp >= b then null
-        else
-          val a = buf
-          val i = index(tp, a.length())
-          val t = a.get(i)
-          if top.compareAndSet(tp, tp + 1) then { a.set(i, null); t } else null
-    }
 
     private final class Worker(val id: Int) extends Runnable {
       /** the owner's own work: pushed and popped by this thread,
@@ -607,6 +554,83 @@ object Schedulers {
           return
         i += 1
   }
+
+  /** Hoisted out of `Owned` (it captures nothing from it) so the
+   * conservation law in TestSchedulerLaws can drive it directly:
+   * the deadlock it guards is a steal/grow race that a
+   * whole-scheduler test can only catch by soaking
+   * (own-long-join-deadlock, 2026-09-07). */
+  private[okay] final class Deque(initial: Int) {
+      private val top = java.util.concurrent.atomic.AtomicLong(0L)
+      @volatile private var bottom: Long = 0L
+      @volatile private var buf = java.util.concurrent.atomic.AtomicReferenceArray[DriveTask[?] | Null](initial)
+
+      def size: Int =
+        val n = bottom - top.get
+        if n < 0 then 0 else n.toInt
+
+      private def index(i: Long, len: Int): Int = (i & (len - 1)).toInt
+
+      /** owner only */
+      def push(t: DriveTask[?]): Unit =
+        val b = bottom
+        val tp = top.get
+        var a = buf
+        if b - tp >= a.length() - 1 then
+          val bigger = java.util.concurrent.atomic.AtomicReferenceArray[DriveTask[?] | Null](a.length() * 2)
+          var i = tp
+          while i < b do { bigger.set(index(i, bigger.length()), a.get(index(i, a.length()))); i += 1 }
+          buf = bigger
+          a = bigger
+        a.set(index(b, a.length()), t)
+        bottom = b + 1
+
+      /** owner only */
+      def pop(): DriveTask[?] | Null =
+        val a = buf
+        val b = bottom - 1
+        bottom = b
+        val tp = top.get
+        if tp > b then { bottom = tp; null }
+        else
+          val i = index(b, a.length())
+          val t = a.get(i)
+          if tp < b then { a.set(i, null); t }
+          else
+            // the last element: a thief may be taking it right now
+            val won = top.compareAndSet(tp, tp + 1)
+            bottom = tp + 1
+            if won then { a.set(i, null); t } else null
+
+      /** any thread.
+       *
+       * The slot is NOT cleared here, and that is load-bearing rather
+       * than an oversight (own-long-join-deadlock, 2026-09-07). A
+       * thief reads `top`, `bottom` and `buf` at three moments, so it
+       * can be reading through an array the owner has already
+       * replaced in `push`'s grow. Clearing the slot then writes a
+       * null into an array another thief may still be reading, and
+       * that thief's `top` CAS SUCCEEDS while its `a.get(i)` came
+       * back null: the index is consumed and the task in it is never
+       * run. One lost DriveTask is one fiber that never answers, so
+       * `join` parks for ever with every worker legitimately idle —
+       * measured exactly so: forked=40004 ran=40003, nothing in any
+       * deque, one steal that won its CAS on a null slot.
+       *
+       * Canonical Chase-Lev leaves the slot for this reason. The cost
+       * is that a taken task stays reachable until its slot is
+       * overwritten, bounded by the buffer, and `pop` still clears
+       * its own end where only the owner writes. */
+      def steal(): DriveTask[?] | Null =
+        val tp = top.get
+        val b = bottom
+        if tp >= b then null
+        else
+          val a = buf
+          val i = index(tp, a.length())
+          val t = a.get(i)
+          if top.compareAndSet(tp, tp + 1) then t else null
+    }
 
   /** listeners of a running DriveTask, a stack */
   private final class Waiters[A](val k: Either[Throwable, A] => Unit, val next: Waiters[A] | Null)
