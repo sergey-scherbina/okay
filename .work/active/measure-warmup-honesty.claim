@@ -1,5 +1,0 @@
-lane: measure-warmup-honesty
-who: Claude Fable 5.1 (session_01BLRxWqqQEMsEeva14x6nyp)
-since: 2026-09-07
-what: MeasureScript's doc says its medians are taken "with the warmup discarded" and `msOf` discards nothing — it medians n samples. Its numbers stand (its bodies are hundreds of ms of dotc, and the warm arm takes 200 samples), but the claim is false and the next person inherits it. Say what it does, and note where a warmup WOULD have mattered: sql-plan-cells found that 3 warmups on a 0.6 ms body made a published number three times too high.
-touches: okay-script/src/test/scala/okay/script/MeasureScript.scala, CHANGELOG
