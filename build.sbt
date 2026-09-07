@@ -1312,6 +1312,12 @@ lazy val okayDeploy = (project in file("okay-deploy"))
   .settings(
     name := "okay-deploy",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    // the `okay` CLI is this module's own fat jar (specs/deployment.md,
+    // "What it is, and how it gets onto a machine"): okay-deploy/bin/okay
+    // runs it, and a JRE is the one prerequisite -- which `doctor`
+    // names first, because a tool that cannot report its own missing
+    // runtime is the exact failure this spec set out to prevent
+    _root_.okay.deploy.sbt.OkayDeploy.deployable("okay.deploy.Cli"),
   )
 
 lazy val okayDemo = (project in file("okay-demo"))

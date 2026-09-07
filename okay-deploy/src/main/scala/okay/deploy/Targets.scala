@@ -36,7 +36,11 @@ object Targets:
   object Laptop extends Target:
     val name = "laptop"
 
-    def requires(d: Deployment): Vector[String] = Vector("docker")
+    // `docker compose` is a PLUGIN and is missing on machines that
+    // have docker (a distro's docker.io without the plugin package):
+    // asking for it by name is the difference between a report and a
+    // `docker: 'compose' is not a docker command` half way through
+    def requires(d: Deployment): Vector[String] = Vector("docker", "docker compose")
 
     def up(dir: Path): Vector[String] = Vector("docker", "compose", "-f", dir.resolve("compose.yaml").toString, "up", "-d")
     def down(dir: Path): Vector[String] = Vector("docker", "compose", "-f", dir.resolve("compose.yaml").toString, "down")

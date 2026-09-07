@@ -1,0 +1,48 @@
+#!/bin/sh
+# okay — the deployment CLI (specs/deployment.md).
+#
+# A fat jar and this wrapper: that makes a JRE the one prerequisite,
+# which is honest rather than free, so this script says so plainly
+# instead of failing with `java: not found` from somewhere deeper.
+#
+#   okay deploy up laptop
+#   okay deploy doctor
+#   okay deploy diff host
+#
+# The jar is found in this order: $OKAY_JAR, beside this script, or
+# the one sbt assembled in a checkout.
+set -e
+
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+jar=${OKAY_JAR:-}
+[ -n "$jar" ] || jar=$here/app.jar
+if [ ! -f "$jar" ]; then
+  jar=$(ls "$here"/../target/scala-*/app.jar 2>/dev/null | head -1 || true)
+fi
+
+if [ ! -f "$jar" ]; then
+  echo "okay: no jar to run." >&2
+  echo "  looked for: \$OKAY_JAR, $here/app.jar, $here/../target/scala-*/app.jar" >&2
+  echo "  build it:   sbt okayDeploy/assembly" >&2
+  exit 3
+fi
+
+if ! command -v java >/dev/null 2>&1; then
+  echo "okay: needs a Java runtime and there is none on the PATH." >&2
+  echo "  why:      the CLI is a jar; every deployment target is applied through it" >&2
+  case "$(uname -s)" in
+    Darwin) echo "  install:  brew install openjdk@21" >&2 ;;
+    Linux)
+      if command -v apt-get >/dev/null 2>&1; then echo "  install:  sudo apt-get install -y openjdk-21-jre-headless" >&2
+      elif command -v dnf >/dev/null 2>&1; then echo "  install:  sudo dnf install -y java-21-openjdk-headless" >&2
+      elif command -v apk >/dev/null 2>&1; then echo "  install:  sudo apk add openjdk21-jre-headless" >&2
+      else echo "  install:  your distribution's OpenJDK 21 JRE package" >&2
+      fi ;;
+    *) echo "  install:  an OpenJDK 21 JRE" >&2 ;;
+  esac
+  echo "  docs:     https://adoptium.net/" >&2
+  exit 3
+fi
+
+exec java -jar "$jar" "$@"

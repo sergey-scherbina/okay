@@ -123,7 +123,7 @@ class TestDeployment extends munit.FunSuite:
   }
 
   test("targets name what they require, so a check can run before anything is applied") {
-    assertEquals(Targets.byName("laptop").map(_.requires(one)), Some(Vector("docker")))
+    assertEquals(Targets.byName("laptop").map(_.requires(one)), Some(Vector("docker", "docker compose")))
     assertEquals(Targets.byName("host").map(_.requires(one)), Some(Vector("systemctl", "java")))
     assertEquals(Targets.byName("nowhere"), None)
     assert(Targets.Laptop.up(java.nio.file.Path.of("/x")).startsWith(Vector("docker", "compose")))
