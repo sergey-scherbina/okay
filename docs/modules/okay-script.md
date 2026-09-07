@@ -22,6 +22,7 @@ preprocessing, meta-compilation.
 | `Site.serve(port)` / `okay.script.Serve` | the one line to run a Site over Jetty (routes, sockets, pushes), and the stock entry point: `sbt "okayScript/runMain okay.script.Serve pages 8080"`; `OKAY_DATA=<dir>` makes sessions and the application scope persistent, `OKAY_TLS_CERT`+`OKAY_TLS_KEY` serve HTTPS |
 | `languages` / `Lang` / `t` | pages in several languages: `page.<lang>.md` variants chosen by `?lang=`, the OKAYLANG cookie or `Accept-Language`; `t(key, args*)` from `i18n/<lang>.yaml` with fallback to the first language |
 | `cache:` front-matter / `Caching` | conditional requests: static files always carry an ETag and Last-Modified and answer 304; a page opts in with `cache: <seconds>` and goes `private` automatically when it is `secure:`, sets a cookie, or rides a session |
+| `Site.warm` / `Site.stats` / `opsRoutes` | compile the whole directory at boot (a broken page is named then, not by the first visitor), counters and gauges, and opt-in `/healthz` `/stats` `/metrics` in JSON and Prometheus text |
 | ` ```scala declare ` | an object-level block (JSP `<%! %>`): a `val` built once per compile, a `def` every request can call |
 | `Classpath` / `Deps` | the ambient classpath a script compiles against (`Classpath.api` for a page importing the API), plus `using dep` coordinate resolution |
 

@@ -43,6 +43,15 @@ final class Page(path: Path, classpath: Classpath = Classpath.ambient, tempRoot:
         cached = Some(mtime -> c)
         c
 
+  /** Compiles the page WITHOUT invoking it, answering its compile
+   * errors (empty when it compiled) -- what `Site.warm` calls at
+   * boot so a broken page is named then rather than found by the
+   * first visitor (okay-script-warm). Idempotent: the compiled
+   * program is the one a later `render` re-invokes. */
+  def warm(): Vector[String] = compiled() match
+    case Left(r) => if r.errors.nonEmpty then r.errors else Vector(r.thrown.map(_.toString).getOrElse("failed"))
+    case Right(_) => Vector.empty
+
   /** Releases the cached compiled program's classloader and deletes
    * its temp output directory. Call when no more `render()`s are
    * coming (e.g. the server that owns this `Page` is shutting down).

@@ -149,22 +149,97 @@ final class Site(
    * says which. A `Resource`: releasing it stops the server. */
   def serve(port: Int, ssl: Option[javax.net.ssl.SSLContext] = None)
            (using CanBlock, Scheduler): org.eclipse.jetty.server.Server ! Resource =
-    okay.jetty.Jetty.serve(port)(routes)(ws, push, ssl)
+    serveWith(port, ssl, ops = false)
+
+  /** `serve` plus the ops endpoints when `ops` -- the pages win every
+   * path they claim, so a page named `/stats` is still the page's */
+  def serveWith(port: Int, ssl: Option[javax.net.ssl.SSLContext], ops: Boolean)
+               (using CanBlock, Scheduler): org.eclipse.jetty.server.Server ! Resource =
+    okay.jetty.Jetty.serve(port)(if ops then routes orElse opsRoutes else routes)(ws, push, ssl)
 
   /** the synchronous core: one request in, one response out */
-  def handle(r: Request): HttpResponse =
+  def handle(r: Request): HttpResponse = counted {
     val (path, query) = splitUrl(r.url)
     if path == api.Live.JsPath then
       HttpResponse(200, Vector("Content-Type" -> "text/javascript; charset=utf-8"), Http.one(LiveJs.source.getBytes(UTF_8)))
     else resolve(path) match
       case None => plain(404, "not found")
-      case Some(Hit.Static(f)) => serveStatic(r, f)
+      case Some(Hit.Static(f)) =>
+        statics.increment()
+        serveStatic(r, f)
       case Some(Hit.PageFile(f, params)) =>
+        pageRequests.increment()
         servePage(r, path, query, params, f)
+  }
 
   def close(): Unit =
     pages.values.forEach(_.close())
     pages.clear()
+
+  // ---- warm and stats (okay-script-warm)
+
+  /** Compiles every page under `root` WITHOUT invoking one, in path
+   * order, and answers the ones that did not compile: (the page's
+   * path, its errors). The measured reason (docs/benchmarks.md §19):
+   * the first page of a process costs ~870 ms because dotc warms up
+   * in it, and a broken page is otherwise found by a visitor rather
+   * than by the start. Language variants and included fragments are
+   * pages too and are compiled with the rest; `i18n/` holds messages,
+   * not pages, and is skipped. */
+  def warm(): Vector[(String, Vector[String])] =
+    val out = Vector.newBuilder[(String, Vector[String])]
+    val walk = Files.walk(rootAbs)
+    try
+      walk.iterator().asScala.toVector
+        .filter(p => Files.isRegularFile(p) && p.getFileName.toString.endsWith(".md"))
+        .filterNot(p => rootAbs.relativize(p).iterator().asScala.exists(_.toString == I18nDir))
+        .sortBy(_.toString)
+        .foreach { f =>
+          val errs = pageFor(f).warm()
+          compiles.increment()
+          if errs.nonEmpty then out += ((rootAbs.relativize(f).toString, errs))
+        }
+    finally walk.close()
+    out.result()
+
+  private val pageRequests = new java.util.concurrent.atomic.LongAdder
+  private val compiles = new java.util.concurrent.atomic.LongAdder
+  private val statics = new java.util.concurrent.atomic.LongAdder
+  private val validated = new java.util.concurrent.atomic.LongAdder
+  private val refusals = new java.util.concurrent.atomic.LongAdder
+  private val missing = new java.util.concurrent.atomic.LongAdder
+  private val failures = new java.util.concurrent.atomic.LongAdder
+
+  /** what this Site has done and what it is holding -- plain values,
+   * the shape `Store.Stats` set (specs/ops.md): a counter is a
+   * count, a gauge is read at the moment it is asked for */
+  def stats: Site.Stats = Site.Stats(
+    pageRequests = pageRequests.sum, compiles = compiles.sum, statics = statics.sum,
+    notModified = validated.sum, refused = refusals.sum, notFound = missing.sum,
+    failed = failures.sum, pagesHeld = pages.size, sessions = sessions.size)
+
+  private def counted(r: HttpResponse): HttpResponse =
+    r.status match
+      case 304 => validated.increment()
+      case 401 | 403 => refusals.increment()
+      case 404 => missing.increment()
+      case s if s >= 500 => failures.increment()
+      case _ => ()
+    r
+
+  /** `/healthz`, `/stats` and `/metrics` for THIS site -- deliberately
+   * not part of `routes`: ops endpoints are a caller's decision about
+   * exposure, chained with `orElse` (or served on another port), never
+   * something a page directory silently gains. */
+  def opsRoutes: PartialFunction[Request, HttpResponse ! Async] = {
+    case r if r.method == okay.http.Method.Get && pathOf(r.url) == "/healthz" =>
+      pure(plain(200, "live=true"))
+    case r if r.method == okay.http.Method.Get && pathOf(r.url) == "/stats" =>
+      pure(HttpResponse(200, Vector("Content-Type" -> "application/json"), Http.one(stats.json.getBytes(UTF_8))))
+    case r if r.method == okay.http.Method.Get && pathOf(r.url) == "/metrics" =>
+      pure(HttpResponse(200, Vector("Content-Type" -> "text/plain; version=0.0.4; charset=utf-8"),
+        Http.one(stats.prometheus.getBytes(UTF_8))))
+  }
 
   // ---- caching (okay-script-cache)
 
@@ -267,6 +342,7 @@ final class Site(
 
   private def pageFor(f: Path): Page =
     pages.computeIfAbsent(f, p => Page(p, classpath, tempRoot))
+
 
   /** a page's front-matter; a language VARIANT inherits its base
    * page's keys and overrides what it sets -- so `secure:` on
@@ -557,6 +633,38 @@ final class Site(
       }.toMap
 
 object Site:
+
+  /** what a Site has done and what it holds (okay-script-warm) --
+   * plain values, `Store.Stats`' own shape: counters since the Site
+   * was built, gauges read at the moment they are asked for. The two
+   * renderings are PURE mappings, the move `okay.ops.Prom` makes for
+   * a store: no client library, a documented string. */
+  final case class Stats(pageRequests: Long, compiles: Long, statics: Long,
+                         notModified: Long, refused: Long, notFound: Long,
+                         failed: Long, pagesHeld: Int, sessions: Int):
+    def json: String =
+      s"""{"pageRequests":$pageRequests,"compiles":$compiles,"statics":$statics,""" +
+        s""""notModified":$notModified,"refused":$refused,"notFound":$notFound,""" +
+        s""""failed":$failed,"pagesHeld":$pagesHeld,"sessions":$sessions}"""
+
+    def prometheus: String =
+      val counters = Vector(
+        ("okay_script_page_requests_total",
+          "requests that resolved to a page -- a refusal and a failure are page requests too, which is why this is not called renders", pageRequests),
+        ("okay_script_compiles_total", "page compiles paid for (a warm, or a file that changed)", compiles),
+        ("okay_script_static_total", "static files served", statics),
+        ("okay_script_not_modified_total", "conditional requests answered 304", notModified),
+        ("okay_script_refused_total", "requests refused by a secure: page (401/403)", refused),
+        ("okay_script_not_found_total", "requests that matched no page (404)", notFound),
+        ("okay_script_failed_total", "requests that failed (5xx)", failed))
+      val gauges = Vector(
+        ("okay_script_pages_held", "compiled pages held in memory", pagesHeld.toLong),
+        ("okay_script_sessions", "live sessions", sessions.toLong))
+      val sb = new StringBuilder
+      for (name, help, v) <- counters do sb ++= s"# HELP $name $help\n# TYPE $name counter\n$name $v\n"
+      for (name, help, v) <- gauges do sb ++= s"# HELP $name $help\n# TYPE $name gauge\n$name $v\n"
+      sb.result()
+
   /** the `secure:` verdict -- see specs/okay-script.md "Declarative security" */
   enum Access:
     case Open

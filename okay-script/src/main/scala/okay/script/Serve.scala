@@ -12,6 +12,8 @@ import java.nio.file.{Files, Path, Paths}
  *   sbt "okayScript/runMain okay.script.Serve pages 8080"
  *   OKAY_DATA=./data sbt "okayScript/runMain okay.script.Serve pages"
  *
+ * `OKAY_OPS=1` mounts /healthz, /stats and /metrics beside the pages.
+ *
  * `OKAY_LANGS=en,uk` names the languages the site speaks (okay-script-
  * i18n), the first the default. `OKAY_TLS_CERT=/path/cert.pem` with
  * `OKAY_TLS_KEY=file:/path/key.pem` (a Secret ref) serves HTTPS
@@ -26,7 +28,11 @@ import java.nio.file.{Files, Path, Paths}
 object Serve:
 
   final case class Args(root: Path, port: Int, data: Option[Path], languages: Vector[String] = Vector("en"),
-                        tls: Option[(String, okay.conf.Secret)] = None):
+                        tls: Option[(String, okay.conf.Secret)] = None,
+                        /** OKAY_OPS=1 mounts /healthz, /stats and /metrics
+                         * beside the pages -- opt-in, because exposure is
+                         * the deployment's decision, not a directory's */
+                        ops: Boolean = false):
     def scheme: String = if tls.isDefined then "https" else "http"
 
   /** `<dir> [port]`; port 8080 by default */
@@ -40,7 +46,8 @@ object Serve:
             .flatMap { port =>
               tlsOf(env).map(tls => Args(root, port, env("OKAY_DATA").map(Paths.get(_)),
                 env("OKAY_LANGS").map(_.split(",").toVector.map(_.trim).filter(_.nonEmpty)).filter(_.nonEmpty).getOrElse(Vector("en")),
-                tls))
+                tls,
+                env("OKAY_OPS").exists(v => v == "1" || v.equalsIgnoreCase("true"))))
             }
       case _ => Left("usage: okay.script.Serve <pages-dir> [port]   (OKAY_DATA=<dir> for a persistent store)")
 
@@ -85,10 +92,20 @@ object Serve:
       case Right((a, ssl)) =>
         val s = site(a)
         try
-          Resource.run[Unit, Pure](s.serve(a.port, ssl).map { server =>
+          // compile the whole directory before the first visitor does
+          // (docs/benchmarks.md §19: the first page of a process costs
+          // ~870 ms). A broken page is NAMED here and still serves its
+          // error page; the site does not refuse to start over one.
+          val t0 = System.nanoTime()
+          val broken = s.warm()
+          val warmedMs = (System.nanoTime() - t0) / 1000000
+          println(s"okay-script: compiled ${s.stats.compiles} page(s) in ${warmedMs} ms")
+          broken.foreach((page, errs) => System.err.println(s"okay-script: $page does not compile: ${errs.mkString("; ")}"))
+          Resource.run[Unit, Pure](s.serveWith(a.port, ssl, a.ops).map { server =>
             println(s"okay-script: serving ${a.root.toAbsolutePath} at " +
               s"${a.scheme}://127.0.0.1:${okay.jetty.Jetty.port(server)}/" +
-              a.data.map(d => s" (data in $d)").getOrElse(""))
+              a.data.map(d => s" (data in $d)").getOrElse("") +
+              (if a.ops then " (+ /healthz /stats /metrics)" else ""))
             Thread.sleep(Long.MaxValue)
           }).runWith
         catch case _: InterruptedException => ()
