@@ -1294,9 +1294,18 @@ not a new primitive from scratch.
       `OKAY_HTTP_PORT=<n>` (a second server whose only route is that
       redirect). This closes the redirect-port half of the old entry.
       specs/okay-script.md "HTTPS out of the box".
-- [ ] script-tls: certificate reload without a restart, ALPN/HTTP2,
-      OCSP stapling, cipher policy — still the proxy's, and named as
-      such in the spec. A Site behind Caddy/nginx/an ingress needs
+- [x] script-real-certs — LANDED 2026-09-07 (operator ask): a CA-issued
+      certificate as it actually arrives. `Tls.privateKey` reads the
+      algorithm from the PKCS#8 DER (RSA/EC/Ed25519/DSA) — the old
+      code assumed RSA and refused every EC key certbot writes; a
+      `fullchain.pem` is now PROVEN to be presented as a chain; and
+      `Tls.reloading` re-reads cert and key when they change
+      (`OKAY_TLS_RELOAD=<seconds>`), so a renewal needs no restart
+      and a half-written one is not adopted. This closes the reload
+      half of the old entry. specs/tls.md.
+- [ ] script-tls: ALPN/HTTP2, OCSP stapling, cipher policy, and ACME
+      itself (obtaining a certificate) — still the proxy's, and named
+      as such in the spec. A Site behind Caddy/nginx/an ingress needs
       three things from the operator: pass Upgrade for EVERY path
       (a live page's socket is on the page's own path),
       `OKAY_FORWARDED=1`, and to treat `X-Forwarded-For` as a claim.

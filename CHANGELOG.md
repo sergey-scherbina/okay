@@ -1,5 +1,32 @@
 # Changelog
 
+## script-real-certs — a CA-issued certificate as it actually arrives
+Completed: 2026-09-07
+Landed as 1ef46bf8 (spec then code). Operator ask, and three real
+gaps between "we accept a certificate and a key" and "a real
+certificate works", each found by asking what certbot writes. The key
+algorithm was ASSUMED: `contextOf` built the private key with
+`KeyFactory.getInstance("RSA")` and nothing else, so an EC key — as
+likely as RSA from a CA today, and one flag in certbot — failed at
+load. `Tls.privateKey` reads the algorithm from the PKCS#8 DER
+instead (RSA, EC, Ed25519, DSA) and refuses by NAME what it cannot
+hold: an encrypted key has no passphrase this seam could give it, a
+PKCS#1/SEC1 key gets the one-line `openssl pkcs8` that converts it.
+The CHAIN was never proven: `generateCertificates` already read every
+certificate in a `fullchain.pem`, but nothing tested that the server
+presents them, and a leaf without its intermediate is a handshake a
+browser refuses — now tested against a locally built CA the client
+trusts alone. And a certificate expires while the server is up:
+`Tls.reloading(cert, key, secrets, every, onError)` answers a context
+whose key manager re-reads the files when the certificate's mtime
+moves, so certbot renews and the next connection gets the new
+identity with no restart (`OKAY_TLS_RELOAD=<seconds>` in `Serve`); a
+half-written renewal is NOT adopted — the identity in hand keeps
+serving and the failure is reported, because another minute of the
+previous certificate beats none, proven by tearing a file mid-flight.
+Still the proxy's, and now said precisely: ACME itself, the protocol
+that OBTAINS a certificate. 5 Live tests; 134 green 3x.
+
 ## staged-runtime — the staged codec for a schema that exists only at run time
 Completed: 2026-09-07
 Operator ask: make run-time staging, think where else it could be
