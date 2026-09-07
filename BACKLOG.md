@@ -905,18 +905,17 @@ measure on our own data, never a predicted result.
       produced, IS an annotated example. The log stops being only an
       audit trail and becomes prompt material. Highest value of the
       three and the cheapest; offline-testable with a scripted model.
-- [ ] tod-schema-diagnostics — two experiments, not features, both
-      from the same pair of papers. (a) D3ST randomizes slot names to
-      arbitrary indices so a TRAINED model cannot lean on the names.
-      For a PROMPTED model that is not a technique we want — we WANT
-      the priors around a word like "email" — but it is an excellent
-      DIAGNOSTIC: shuffle the names to indices and measure the drop.
-      A collapse says our descriptions are decorative and the model
-      was riding the names. (b) SGD-X's robustness method: paraphrase
-      the attribute descriptions and measure whether extraction is
-      stable. Together they turn "our schemas are good" from an
-      assumption into a number, BEFORE we invest more in writing
-      them.
+- [x] tod-schema-diagnostics — MEASURED 2026-09-07 (TestSchemaDiagnostics,
+      Live). (a) D3ST: an index-named taxonomy (C1..C4, field s1)
+      collapses from 0.685 to 0.100 macro F1 and answers C1 for every
+      message — the four identifiers carry essentially all of the
+      prompted model's discrimination. (b) SGD-X: near synonyms cost
+      0.217 macro F1 and far synonyms 0.425, with Request recall
+      0.67 -> 0.07 under "Ask" and Notification F1 0.77 -> 0.00 under
+      "Advisory". Verdict: a taxonomy's case names ARE the prompt, so a
+      rename is a model-facing change and must carry a number; name a
+      class with the plainest standard word. specs/intent-classify.md,
+      "Results — tod-schema-diagnostics".
 - [ ] tod-schema-guided-retrieval — Labruna, Bonetta, Magnini (RANLP
       2025, "Task-Oriented Dialogue Systems through Function
       Calling", MultiWOZ 2.3): let the model call a schema-guided

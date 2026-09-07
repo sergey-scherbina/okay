@@ -1,5 +1,24 @@
 # Changelog
 
+## tod-schema-diagnostics — the taxonomy's names are the classifier
+Completed: 2026-09-07
+The two experiments the operator's TOD papers suggested, as numbers.
+D3ST's diagnostic: strip every word from the taxonomy (C1..C4, field
+`s1`) and the model does not degrade, it stops classifying — 0.100
+macro F1 against the shipped names' 0.685, answering C1 for 100% of
+messages with every reply decodable. SGD-X's robustness method: the
+same four classes under near synonyms cost 0.217 macro F1 and under
+far synonyms 0.425, the damage landing per class (Request recall 0.67
+-> 0.07 under "Ask", Notification F1 0.77 -> 0.00 under "Advisory").
+Together: a `Schema` used as a taxonomy is not a declaration that
+happens to be shown to a model, it IS the prompt, and renaming a case
+is a model-facing change that must carry a number — the same rule the
+JSON Schema rendering earned. Four arms over the whole 120-message
+fixture, no examples and no gate, 24 minutes of model time,
+Live-tagged. The caveat is stated in the spec rather than hidden: one
+paraphrased name carries a digit, which is itself a small paraphrase.
+specs/intent-classify.md, "Results — tod-schema-diagnostics".
+
 ## deploy-paas — fly, render and railway, with a real parser for every format
 Completed: 2026-09-07
 Landed as 0c4c4318 (spec then code). Stage 2. Three platforms that
@@ -374,6 +393,7 @@ that and already installed. The practical test of the line is written
 into the spec: everything produced can be applied by hand with the
 target's own commands, and everything done is a pure function from a
 value to files.
+
 
 ## staged-strict — the strict reader, generated from a schema value
 Completed: 2026-09-07

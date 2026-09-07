@@ -3996,3 +3996,82 @@ judged on the whole training half, because a five-row pruning set
 was rejecting a rule right on all thirty rows it was grown on. The
 tier is not wired into the Router: its number does not earn a place
 ahead of the hand-written cues.
+
+## Results — tod-schema-diagnostics (2026-09-07)
+
+The two experiments from the operator's task-oriented-dialogue
+papers, run against our own taxonomy. Both were filed as
+"experiments, not features", to turn "our schemas are good" from an
+assumption into a number before more is invested in writing them.
+Four arms, the whole labelled fixture (120 messages), no examples and
+no gate in any arm — the NAMES are the only thing that differs.
+`TestSchemaDiagnostics`, Live-tagged; 24 minutes of model time.
+
+| arm | macro F1 | Other F1 | undecodable | vs shipped |
+|---|---:|---:|---:|---:|
+| `Meeting` (shipped names) | 0.685 | 0.63 | 6/120 | — |
+| `Indexed` — C1..C4, field `s1`, no words | 0.100 | 0.00 | 0/120 | **−0.585** |
+| Near synonyms (Suggestion/Ask/Update) | 0.468 | 0.45 | 4/120 | −0.217 |
+| Far synonyms (Offer/Solicitation/Advisory) | 0.260 | 0.23 | 4/120 | −0.425 |
+
+### (a) D3ST's diagnostic: the names are the classifier
+
+With every word removed from the schema the model does not degrade,
+it stops classifying: it answered `C1` for 100% of messages (Proposal
+recall 1.00 at precision 0.25 — the base rate — and F1 0.00 for the
+other three classes). Every reply decoded, so this is not a parsing
+failure: the shape was right and the content was empty of decisions.
+
+- [x] the shipped taxonomy's four identifiers carry essentially ALL
+      of the prompted model's discrimination; the message alone, with
+      an index-named schema, carries none
+- [x] this is not a defect to fix. D3ST randomizes names so a TRAINED
+      model cannot lean on them; a PROMPTED model is bought precisely
+      for those priors. What the number settles is the STATUS of a
+      schema in this repository: `Schema[I]` used as a taxonomy is
+      not a data declaration that happens to be shown to a model, it
+      IS the prompt, and 0.585 macro F1 of the result lives in the
+      identifiers.
+
+### (b) SGD-X's robustness: the reading is NOT stable under a rename
+
+A paraphrase a colleague would make without thinking — `MeetingRequest`
+→ `MeetingAsk`, `MeetingNotification` → `MeetingUpdate` — costs 0.217
+macro F1, and the damage is per class rather than spread: Request
+recall fell 0.67 → 0.07 under "Ask", and Notification F1 fell 0.77 →
+0.00 under "Advisory" in the far arm. The plain, standard word for a
+class is worth more than any wording around it.
+
+- [x] near paraphrase −0.217, far paraphrase −0.425; the spread across
+      three wordings of the SAME four classes (0.685 / 0.468 / 0.260)
+      is larger than the gap between the shipped prompt and the bare
+      one that this line spent four lanes closing
+- [x] caveat, stated rather than hidden: `NotAboutMeetings2` carries a
+      digit (the enum needed a distinct name in the same file), and a
+      digit in a case name is itself a small paraphrase. `Other` fell
+      0.63 → 0.45 in the near arm, so some of that 0.217 may be the
+      digit rather than the synonyms. The Request and Notification
+      collapses do not depend on it.
+
+### Decisions
+- **Renaming a taxonomy case is a PROMPT CHANGE and must be measured
+  like one.** The same rule the JSON Schema rendering earned
+  (`vocabularies = false`, measured at 1.7 macro F1): a case name
+  reaches the model, so a rename is a model-facing change, not a
+  refactor. A pull request that renames a case in a taxonomy without
+  a number beside it is changing behaviour blind.
+- **Name a class with the plainest standard word for it.** "Request"
+  beats "Ask" by 0.55 recall on the same messages; "Notification"
+  beats "Advisory" by 0.77 F1. Synonym choice is not style here.
+- **The deterministic tiers are the answer to this fragility, not a
+  better prompt.** The cue and gram tiers do not read identifiers at
+  all, which is exactly why the shipped door blends them with the
+  probe; this measurement is the strongest argument yet for keeping
+  the model off the critical path where a deterministic tier can
+  answer (Okay!Chat's own direction: drive the handed-over share
+  down).
+- **Not shipped as a lint.** A rule that refuses unusual case names
+  would be a guess about which words are plain; the honest artifact
+  is this measurement plus the decision above. If a taxonomy rename
+  ever lands without a number, the suite is here to produce one.
+

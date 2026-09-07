@@ -89,6 +89,57 @@ object IntentFixture {
     case NotAboutZarnic(what: String)
 
   /**
+   * NO WORDS AT ALL — D3ST's diagnostic (tod-schema-diagnostics).
+   *
+   * Zhao, Cao, Xu et al.'s D3ST randomizes slot names to arbitrary
+   * indices so that a TRAINED model cannot lean on them. For a
+   * PROMPTED model that is not a technique we want — the priors
+   * around a word like "meeting" are exactly what we are buying —
+   * but it is the sharpest DIAGNOSTIC available: if this arm scores
+   * like `Meeting`, the names in our taxonomy are decoration and the
+   * reading comes from the message; if it collapses, the names are
+   * load-bearing and every schema we write is a prompt.
+   *
+   * Stronger than `Zarnic`, which still looks like a deliberate
+   * proper noun and still says "Proposal"/"Request". Here nothing
+   * carries meaning: not the case names, not the field.
+   */
+  enum Indexed derives Schema:
+    case C1(s1: String)
+    case C2(s1: String)
+    case C3(s1: String)
+    case C4(s1: String)
+
+  /**
+   * SGD-X's robustness method (tod-schema-diagnostics), level 1: the
+   * same four classes under NEAR synonyms — the rename a colleague
+   * would make without thinking twice.
+   *
+   * Lee, Cheng, Zhang et al.'s SGD-X paraphrases schema descriptions
+   * and reports the spread; a system whose numbers move under a
+   * paraphrase was reading the wording, not the meaning. Ours has no
+   * descriptions — the names ARE the description — so the paraphrase
+   * is of the names.
+   */
+  enum MeetingNear derives Schema:
+    case MeetingSuggestion(what: String)
+    case MeetingAsk(what: String)
+    case MeetingUpdate(what: String)
+    case NotAboutMeetings2(what: String)
+
+  /**
+   * SGD-X level 2: DISTANT synonyms — still correct English for the
+   * same four classes, but as far from the shipped wording as the
+   * meaning allows. If level 1 holds and level 2 drops, the model is
+   * matching a word rather than reading a class.
+   */
+  enum MeetingFar derives Schema:
+    case GatheringOffer(what: String)
+    case GatheringSolicitation(what: String)
+    case GatheringAdvisory(what: String)
+    case UnrelatedToGatherings(what: String)
+
+  /**
    * The SAME four classes, named in each language of the parallel set.
    *
    * The first candidate for the language gap: a domain-bearing name is
@@ -201,6 +252,20 @@ object IntentFixture {
     "ZarnicRequest" -> "Request",
     "ZarnicNotification" -> "Notification",
     "NotAboutZarnic" -> "Other",
+    // the two diagnostics (tod-schema-diagnostics): every arm is
+    // scored on the same axis as everything else
+    "C1" -> "Proposal",
+    "C2" -> "Request",
+    "C3" -> "Notification",
+    "C4" -> "Other",
+    "MeetingSuggestion" -> "Proposal",
+    "MeetingAsk" -> "Request",
+    "MeetingUpdate" -> "Notification",
+    "NotAboutMeetings2" -> "Other",
+    "GatheringOffer" -> "Proposal",
+    "GatheringSolicitation" -> "Request",
+    "GatheringAdvisory" -> "Notification",
+    "UnrelatedToGatherings" -> "Other",
     "PropositionDeReunion" -> "Proposal",
     "DemandeDeReunion" -> "Request",
     "InformationDeReunion" -> "Notification",
