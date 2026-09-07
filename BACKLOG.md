@@ -4183,7 +4183,7 @@ and the `Chunks` path each side takes. A thread-local cache of the
 producer's own buffer was tried and bought 18 % -> ~15 %, which is
 inside the noise this box can measure and is recorded as no gain.
 
-## adaptive-one-producer — the last 18 %, with three refuted causes and the evidence for the fourth
+## adaptive-one-producer — CLOSED 2026-09-07 as the buffer's price, after five refuted causes
 
 `Queues.strong.adaptive` beats the ring everywhere except at ONE
 producer, where it reads about 1.2x a plain ring (measured repeatedly:
@@ -4216,10 +4216,31 @@ adaptive lane and nowhere else. Something on the chunked receive path
 stops being inlined or scalar-replaced when the buffer is an
 `AdaptiveFifo`, and starts allocating per element.
 
-NEXT: an allocation profile that names the TYPE (async-profiler
-`-e alloc`, or JFR `ObjectAllocationSample`) on
-`ManyProducersBenchmark.adaptive_chunk` at `producers=1`. Do not
-change code before that: three plausible causes have already been
-tried and refuted, which is what a profile that names the type would
-have saved.
+THE ALLOCATION LEAD WENT NOWHERE. JFR's `ObjectAllocationSample` on
+both lanes names only the benchmark's own boxing (`Long.valueOf` in
+the producer lambda) and the chunk array in `receiveManyAsync`, in the
+same proportions; and JFR's own instrumentation moves the two lanes
+past each other (adaptive 125 against the ring's 132 with the recorder
+on), which is itself the finding: the gap lives in inlining, not in
+allocation, and a profiler that changes inlining cannot see it.
+
+TWO MORE REFUTATIONS, and this is where the box closes:
+- the GROWTH MACHINERY: a partitioned buffer with ONE part that
+  cannot grow (`onePart_chunk`, kept as a diagnostic lane) reads
+  1.30x the ring — as much as the growable one. So the price is the
+  layer's fixed per-element work, not the claim, the open count or
+  the scan.
+- the two THREAD-LOCAL lookups that fixed work consists of
+  (`route()` per send, `lastRoute` per pop): replacing them for the
+  first producer with a thread-identity compare against a volatile
+  field made it WORSE — 146 -> 168, 1.49x the ring. A volatile read
+  on this machine costs more than the `ThreadLocal.get` it replaced.
+
+CLOSED with the price stated rather than paid down: `Queues.strong
+.adaptive` costs 1.15-1.3x a plain ring at ONE producer and is 5.2x
+and 24x faster at four and sixteen, and twice as fast with several
+consumers. `Channel.apply` stays a ring; a channel that expects more
+than one producer should ask for the buffer. Reopen only with a
+cycles-level profile (async-profiler or perfasm, neither of which
+this machine has), and read the five refutations above first.
 

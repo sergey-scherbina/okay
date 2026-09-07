@@ -79,19 +79,6 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    * the same object for its whole life, whatever else opens. */
   private final class Home(val idx: Int, val buf: Buffer[A])
 
-  /**
-   * THE FIRST PRODUCER, by identity. `route()` is asked once per send
-   * and `lastRoute` once per pop, and a `ThreadLocal.get` each is
-   * about a third of an element's whole cost at this size (measured:
-   * a partitioned buffer with ONE part that cannot even grow reads
-   * 1.30x a plain ring, while a buffer layer that only delegates is
-   * free). A thread comparison is a register read. The first claimer
-   * of part 0 is remembered here; every other producer keeps the
-   * thread-local, which is the path that has more than one part to
-   * choose from anyway.
-   */
-  @volatile private var owner0: Thread | Null = null
-
   private val mine = new ThreadLocal[Home]:
     override def initialValue(): Home =
       val i = claimPart()
@@ -133,7 +120,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    */
   private def claimPart(): Integer =
     val want = nextPart.getAndIncrement()
-    if want == 0 then { owner0 = Thread.currentThread(); Integer.valueOf(0) }
+    if want == 0 then Integer.valueOf(0)
     else if frozen.get then Integer.valueOf(Math.floorMod(want, opened))
     else
       val idx = open.getAndIncrement()
@@ -167,8 +154,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    * `parts` grows after construction and anything sized once from it
    * would be sized for a single part */
   override def maxParts: Int = cap
-  override def route(): Int =
-    if (Thread.currentThread() eq owner0) then 0 else mine.get.idx
+  override def route(): Int = mine.get.idx
 
   private def eachOpen(f: Buffer[A] => Unit): Unit =
     var i = 0
@@ -183,9 +169,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
     eachOpen(b => c += b.capacity.toLong)
     if c > Int.MaxValue then Int.MaxValue else c.toInt
 
-  override def push(a: A): Boolean =
-    if (Thread.currentThread() eq owner0) then slots.get(0).nn.push(a)
-    else mine.get.buf.push(a)
+  override def push(a: A): Boolean = mine.get.buf.push(a)
   override def pushAt(r: Int, a: A): Boolean = part(r).push(a)
 
   override def pushDeciding(a: A, unless: AtomicBoolean, orElse: A): A | Null =
@@ -289,8 +273,7 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
       tried += 1
     took
 
-  override def lastRoute: Int =
-    if open.get == 1 then 0 else myRoute.get.intValue
+  override def lastRoute: Int = myRoute.get.intValue
 
   override def size: Int =
     var s = 0L
