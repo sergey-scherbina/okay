@@ -1,5 +1,25 @@
 # Changelog
 
+## okay-script-guide — a site out of markdown, from an empty directory
+Completed: 2026-09-07
+Landed as 91f85c7c. The last of the operator's four. The specs hold
+decisions and the module page is a table; neither is a place to
+start, so `docs/okay-script-guide.md` is the road: one page, Scala in
+it, the request/response/session api, routing by directory, a form
+with POST-redirect-GET and a typed one derived from a `Schema`, a
+live page whose SSR arrives before any JavaScript, two languages, a
+locked page and the small `main` that gives a Site its verifier (the
+honest answer to "where do I write that"), what a page costs, and
+running it for real — the environment, the ops routes, TLS, the
+container, shared sessions. Every command was executed before it was
+written down, against a store built for the guide: the compile-at-
+boot line, the 404 for an unknown `[sku]`, the `Set-Cookie` that
+appears only when the session is first written, the mounted Live
+app's server-rendered tree, the `OKAYLANG` cookie with the Ukrainian
+variant, the `ETag`/`Cache-Control` a `cache:` page carries, and
+`/metrics`. Linked from docs/README's "Start here" and from the
+module page.
+
 ## okay-script-image — the container that serves a pages directory
 Completed: 2026-09-07
 Landed as b5737f3c (spec then code). The third of the operator's

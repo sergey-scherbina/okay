@@ -1248,9 +1248,13 @@ not a new primitive from scratch.
       `okay`. Proven by running the jar: 13 pages compiled at boot in
       3.7 s, pages and /metrics answering.
       specs/okay-script.md "The image".
-- [ ] okay-script-guide — docs/okay-script-guide.md: zero to a working
-      store; specs hold decisions, the module page is a table, and
-      neither is a place to start.
+- [x] okay-script-guide — LANDED 2026-09-07 (last of four):
+      docs/okay-script-guide.md, an empty directory to a running shop
+      in ten steps — routing by directory, sessions, forms (plain and
+      Schema-typed), a live page, two languages, a locked page and
+      the `main` that gives a Site its verifier, what a page costs,
+      and running it for real. Every command executed before it was
+      written down; linked from docs/README "Start here".
 - [x] okay-script-cache — LANDED 2026-09-07 (operator ask): static
       files always carry an ETag (size+mtime, no read) and
       Last-Modified and answer 304; pages opt in with `cache:
