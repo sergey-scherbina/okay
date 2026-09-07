@@ -376,6 +376,35 @@ BACKLOG); this spec is the contract it builds to.
 
 ## Results
 
+**The four that shell out landed (deploy-secret-schemes, 2026-09-07).**
+`Schemes.sops/awsSecrets/gcpSecrets/azureVault`, and `Schemes.all()`
+as the chain a deployment reads — which okay-script's `sslOf` and
+okay-acme's providers now take by default, so
+`OKAY_TLS_KEY=sops:secrets.yaml#tls-key` is a certificate key that
+rides in git, encrypted.
+
+- [x] `sops` decrypts a real file with a real age key THROUGH the
+      resolver: a container holding sops and age, the temp directory
+      mounted at its own absolute path so a path means the same thing
+      on both sides, and a shim standing in for the binary. The
+      encrypted file is asserted not to contain the value.
+- [x] a dotted key becomes sops' own path expression
+      (`db.password` → `["db"]["password"]`); no key is the whole file.
+- [x] a failure NEVER carries the output. The test that proves it uses
+      a tool that prints a secret to stdout, another line to stderr,
+      and then exits 4: the refusal contains neither, names the
+      reference and the exit code, and says which command to run by
+      hand.
+- [x] a tool that succeeds and returns nothing is a refusal, not an
+      empty secret — the failure mode where a misconfigured CLI hands
+      a process an empty password.
+- [x] a missing binary is a named refusal pointing at `okay deploy
+      doctor`, which is where the install command already lives.
+
+The three cloud managers were checked with `/bin/echo` standing in for
+the CLI, which pins the exact arguments; no machine here has an
+account, and that is the limit rather than a claim.
+
 **The layering (script-config, 2026-09-07).** `envName`, `fromEnv` and
 `layered` landed with their first consumer, okay-script's seventeen
 `OKAY_*` variables. Two things the writing settled:
