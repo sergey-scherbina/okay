@@ -1,0 +1,25 @@
+task: staged-runtime
+agent: fable-persist
+started: 2026-09-07
+branch: feature/staged-runtime
+worktree: ../okay-wt-staging
+
+why: the operator's call, 2026-09-07 ("Сделай рантайм стейджинг и
+  подумай где еще он может быть полезен"), after the case for and
+  against was laid out: the fold over Schema runs in two modes,
+  interpreted and staged at compile time (5-6x on decode/encode);
+  schemas that exist only at run time — Pg composites from the
+  catalog, tool specs from an MCP server, a JSON-frame from R/Python —
+  have only the interpreter.
+
+what: okay-staging, a JVM-only opt-in module over okay-codec with
+  the scala3-staging dependency: `RuntimeStaged.json(schema)` runs the
+  SAME generator over a Schema VALUE inside `staging.run`, one
+  persistent Compiler, a cache per schema, the generated codec
+  agreeing with the interpreter byte-for-byte and Left-for-Left over
+  the whole node vocabulary (the TestStaged agreement suite, run over
+  run-time-built schemas). Measured in `compare` against the
+  interpreter and the compile-time staged codec on the same shape —
+  the first-use compile cost and the steady-state gain both in the
+  table. A spec section lists where else a run-time schema is hot
+  enough to matter, with the condition for each, and where it is not.
