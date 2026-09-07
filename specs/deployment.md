@@ -840,6 +840,49 @@ need an account and stay manual.
 It runs in a container (`hashicorp/terraform`), so it is Live and
 docker-dependent, and it needs the network once to fetch the provider.
 
+## Results, stage 3 (AWS)
+
+**deploy-cloud-aws (2026-09-07).** The `aws` target is in okay-deploy.
+It refuses okay-script by name, the same as `fly` does, because nobody
+has chosen a region — so the fixture is what is proven here, and the
+gate is strong enough that this is worth more than a committed
+rendering would be.
+
+- [x] `terraform init` then `terraform validate`, in a container,
+      against the AWS provider's own schema.
+- [x] and a test that BREAKS it deliberately — `desired_kount` —
+      asserting the rejection, because a green validate means nothing
+      until you have seen it go red.
+- [x] `terraform fmt -check` agrees with what we wrote.
+- [x] every rendered `.sh`, on every target, passes `sh -n`.
+- [x] no `.tf` file creates a secret; the ARN reaches the task
+      definition and the value never reaches Terraform.
+- [x] no `.tf` file builds a VPC, a subnet or a NAT gateway.
+
+Three things the gate found, and none of them is hypothetical:
+
+- **`terraform init` rejected the first rendering outright** — an
+  environment value written unquoted, because settings and derived
+  database URLs took different paths to the same list and only one of
+  them quoted.
+- **`terraform fmt` rejected the second** — two blocks whose `=`
+  padding had been typed by hand and was wrong. The fix was not to
+  retype it: the renderer now aligns its own columns, so a file fmt
+  would rewrite cannot be produced. Hand-typed padding is wrong again
+  the moment a name changes.
+- **`sh -n` found a defect that had ALREADY LANDED.** An apostrophe in
+  "the master password for web's Postgres" opens a quote inside a
+  `${VAR:?message}` that nothing closes; the shell swallows the `}`
+  and dies at end of file. The cluster target shipped that in stage 1
+  and no test had ever run its script. `Shell.prompt` now strips the
+  hazards, both messages were reworded, and the check walks
+  `Targets.all` rather than naming targets — so a target written later
+  is covered the day it exists.
+
+That last one is the argument for this whole arc's gate discipline,
+made against the arc itself: stage 1's suite was careful about the
+thing it was looking at and blind to the file beside it.
+
 ## The line this model does not cross
 
 The operator chose a full dependency model over my closed list of
