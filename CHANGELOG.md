@@ -1,5 +1,28 @@
 # Changelog
 
+## okay-script-forms — typed forms from a Schema, on both roads a page has
+Completed: 2026-09-07
+Landed as 8b298c9f (spec then code, rebased). Operator ask. okay-ui's
+`Form` — "the fifth algebra over Schema", a form rendered from the
+same Schema that decodes it — reaches a page two ways. The plain
+road, no JavaScript: `Forms.html[A](action, draft, submit)` renders
+the Schema's form as a `<form method="post">` (Live.html's structure
+plus `name=` on every field, its dotted key, and `__press=<key>` on
+keyed buttons); `Forms.read[A](Web.current.form, checks*)` folds the
+posted fields through okay-ui's OWN edit site — lists grown to the
+posted indices first, a sum's case knob re-rendered until stable, an
+empty text left absent so an `Option` reads `None`, an unposted
+checkbox `false` — then `Form.errors`, `Form.decode` and the
+cross-field checks; `Left(Draft)` is the value and the errors to
+render again with, `Right(a)` the typed value. The live road:
+`Live.form[A](submit, checks*)` is a Live app (`Form.ofWith` plus a
+submit button, `Form.edit` per event, `submit(a)` only with the typed
+value, the answer shown, the form cleared to `Forms.defaults` — checks
+`false`, not absent, which the first draft learned from its own
+test). Example checkout in `examples/site` (an `Order` with a stock
+check); 5 tests, a sum's case knob and a list's `+` through the post
+among them; 105 green 3x. The page never sees a `Json`.
+
 ## intent-instruction-prefix — re-measured on the grown fixture: no framing clears the split-to-split bar, and the bar is the finding
 
 The entry asked for the re-measure before any default moved. Four

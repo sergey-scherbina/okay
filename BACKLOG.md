@@ -1201,6 +1201,15 @@ not a new primitive from scratch.
       binary-safe parser (`okay.script.Multipart`), no dependency;
       damage yields no parts rather than a 500. specs/okay-script.md
       "Uploads".
+- [x] okay-script-forms — LANDED 2026-09-07 (operator ask): typed
+      forms from a `Schema`, okay-ui's `Form` on both roads. Plain:
+      `Forms.html[A]`/`Forms.read[A](Web.current.form, checks*)` — a
+      `<form method=post>` with the fields' dotted keys as names,
+      read back through okay-ui's own edit site (lists grown to the
+      posted indices, a sum's case knob re-rendered until stable,
+      empty text = absent, unposted checkbox = false), then errors,
+      decode, checks. Live: `Live.form[A](submit, checks*)`. Example
+      checkout. specs/okay-script.md "Typed forms".
 - [x] okay-script-secure — LANDED 2026-09-07: declarative page security,
       web.xml's constraint. `secure: <scope>`/`any` and `loginPage:`
       in front-matter; `Site(verify = Some(...))` checks a bearer
@@ -1274,10 +1283,16 @@ not a new primitive from scratch.
       throwing; stdout captured. Investigated ../scalascript first —
       unrelated (a full custom markdown-as-syntax language), nothing
       reusable found, recorded as a negative result in the spec.
-- [ ] okay-script: sbt-test / CI integration — a task walking
+- [x-declined] okay-script: sbt-test / CI integration — a task walking
       `specs/*.md` (or a configured dir), failing the build on the
       first `!ok` Result. Deliberately not built with the core
       (operator: "библиотека/API, без интеграции в sbt test пока").
+      DECLINED 2026-09-07: the operator asked what it was for. It was
+      the mdoc-era doc smoke test, from before the JSP turn; the
+      specs here quote APIs as pseudo-code, so a blind walk fails on
+      the first one and nobody marked opt-in blocks. `ScalaScript.
+      check` exists for a caller that wants a document held to its
+      output; a task over it is twenty lines when a document earns it.
 - [x] okay-script-check — LANDED 2026-09-03: mdoc-style literate
       testing — a block's expected stdout, written inline as a NEW
       ```stdout fence, checked against what a real `run` actually
