@@ -1457,6 +1457,63 @@ sees a `Json`.
       its message.
 - [x] the example store's checkout: an `Order` form on the plain road.
 
+### Application scope, and the admin example (okay-script-application, 2026-09-07)
+
+The second worked example wanted an admin page that edits the
+catalog the index shows — and there was nowhere to put the catalog:
+a declare block is one PAGE's object, and each page is its own
+compilation unit. JSP's `application` implicit object is the missing
+scope.
+
+```scala
+package okay.script.api
+trait Application:
+  def get(key: String): Option[String]; def set(key: String, value: String): Unit
+  def remove(key: String): Unit;        def attributes: Map[String, String]
+  def value[A](key: String)(using Schema[A]): Option[A]   // the attribute as JSON, decoded
+  def put[A](key: String, a: A)(using Schema[A]): Unit
+object Application:
+  def current: Application
+  def memory(): Application
+  def persisted(store: okay.persist.Store, topic: String = "__application"): Application
+final class Site(..., issue: Option[(String, Set[String]) => String] = None,
+                      application: Application = Application.memory())
+def signIn(subject: String, scopes: Set[String] = Set.empty): Unit
+```
+
+Attributes are STRINGS, and the typed pair goes through the Schema's
+JSON on purpose: a `Product` declared in two pages is two classes
+(two compilation units, two loaders), but their JSON is one value —
+pages trade data, never objects, which is the same rule the
+classloader section reached from the other side. `persisted` is the
+`Sessions.persisted` shape without a TTL: one key per attribute in a
+keyed compacted topic, tombstone on `remove`, rebuilt on open; a
+`Replicated` or `RemoteStore` topic shares it across nodes.
+
+`signIn` closes the loop `secure:` opened: a login page checked a
+password and then had to hold a `SessionIssuer` the Site's `verify`
+could not see. Now the Site is given the PAIR — `verify` and `issue`
+— and a page says `signIn("admin", Set("admin"))`; the container
+mints, `login` stores. A Site that mints nothing throws, loudly.
+
+The example store grows `login.md` (a password checked with
+`Password.verify` against a hash held in the page, then `signIn`),
+`admin.md` (`secure: admin`; a `Live.form[Product]` AND a plain
+`Forms` post, both adding to `Application`'s catalog; a list of what
+is there; sign-out) and the index and product pages read the catalog
+from `Application`, seeding it once from a default.
+
+- [x] two pages of one Site share an attribute; `value`/`put` round
+      a case class through its Schema; damage reads `None`.
+- [x] `persisted` over a `MemoryStore`: set, reopen, read; remove,
+      reopen, gone.
+- [x] `signIn` on a Site with `issue`: the login page's cookie lets
+      the secure page in; without `issue` it is a 500 that names the
+      fix.
+- [x] the example: login → admin (302 without the cookie), a product
+      added through the plain post appears on the index and answers
+      at `/product/<sku>`.
+
 ### What is deliberately NOT here
 
 - **Tag libraries / JSTL / EL.** Scala is the expression language; a
