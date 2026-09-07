@@ -4583,3 +4583,56 @@ cannot quietly turn a decision into a bug.
   them; without that denominator those two numbers say nothing. Filed
   as part of the lane's own follow-up rather than acted on blindly.
 
+## Results — intent-refit-gate (2026-09-07)
+
+Stage 4 of the autonomy programme, done before the harvest that will
+write into this path. Refitting the shipped artifact used to be
+`Files.writeString(out, source)`: rows in, model out, no question
+asked. The failure that guards against is not hypothetical — a
+consumer of this module grew their corpus unevenly, one class reached
+137 of 184 rows, their headline rose from 95.8% to 96.2%, and a class
+died on the way. No aggregate says that.
+
+### Interface
+`Refit.propose(rows, heldOut, incumbent, rules)` fits a candidate,
+scores BOTH it and the incumbent on the same held-out rows, and
+answers a `Verdict` carrying every class's before and after:
+`Accepted(model, scores, total)` or `Refused(why, scores, total)`,
+where `why` names the class and the rule. `Refit.report(v)` prints
+the table. Proposing is not publishing: nothing is written by this
+module, ever.
+
+Two rules, both from measurements already in this document:
+- **the law** — no class below F1 0.50, the same rule `Models`' suite
+  asserts, so a refit cannot hand that suite a model it will reject;
+- **no slide** — no class may drop more than 0.10 against the
+  incumbent even while staying legal, because 0.85 → 0.55 over three
+  refits passes the law every time and is dead at the end.
+
+### Behavior
+- [x] the shipped corpus passes its own gate, and the report prints
+      every class before and after (TestRefitGate)
+- [x] a corpus with one `Other` row is REFUSED, naming it: "Other
+      would be at F1 0.00, below the floor 0.50"
+- [x] a two-class corpus for a four-class taxonomy is refused even
+      with no incumbent — a first fit is held to the law too
+- [x] a slide that stays above the law is refused under a stricter
+      `slip`, so the rule is not decoration
+- [x] `MakeModel` now goes THROUGH the gate: it prints the verdict,
+      writes only on `Accepted`, and `--force` writes anyway while
+      saying so. Run on the shipped corpus it accepts and reproduces
+      the artifact byte for byte, so the reproducibility test that
+      guards the blob still passes.
+
+### Decisions
+- **The verdict is data, not an exception.** A caller that publishes
+  a refused model has to write `--force` in a shell history somebody
+  can read, rather than catching something.
+- **The gate comes before the data.** Every lane of the harvest
+  programme ends in a refit; a guard added afterwards would be added
+  after the first bad corpus, which is exactly when nobody is calm
+  enough to design it.
+- **The held-out half is the caller\'s to supply**, and the door says
+  so: a corpus and the rows it is judged on come from the same place,
+  and this module cannot check an overlap it was not shown.
+

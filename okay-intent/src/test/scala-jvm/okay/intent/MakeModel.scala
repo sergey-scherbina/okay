@@ -57,8 +57,37 @@ object MakeModel {
        |    ).mkString
        |""".stripMargin
 
+  /** the rows the candidate is judged on: the half it was NOT fitted
+   * on, which is the same half every published number here uses */
+  def heldOut: Seq[(String, String)] =
+    IntentFixture.labelled.zipWithIndex.filter(_._2 % 2 == 0).map(_._1)
+
+  /**
+   * Refitting goes through the GATE (intent-refit-gate): fit, score
+   * against the artifact already in the tree, and write only if no
+   * class falls below the law or slides against the incumbent. A
+   * refit that raises the headline while killing a class is the
+   * failure this path is guarded for, and it has happened to a
+   * consumer of this module.
+   *
+   * `--force` writes anyway, and prints that it did — a caller who
+   * overrides the gate should have to say so out loud, in a shell
+   * history somebody can read.
+   */
   def main(args: Array[String]): Unit =
     val out = Paths.get("okay-intent/src/main/scala/okay/intent/MeetingModel.scala")
-    Files.writeString(out, source)
-    println(s"wrote $out (${Files.size(out) / 1024}KB), fitted on ${corpus.size} messages")
+    val incumbent = Fit.grams(MeetingModel.json).toOption
+    val verdict = Refit.propose(corpus, heldOut, incumbent)
+    println(Refit.report(verdict))
+    verdict match
+      case Refit.Verdict.Accepted(_, _, _) =>
+        Files.writeString(out, source)
+        println(s"wrote $out (${Files.size(out) / 1024}KB), fitted on ${corpus.size} messages")
+      case Refit.Verdict.Refused(why, _, _) if args.contains("--force") =>
+        Files.writeString(out, source)
+        println(s"FORCED past the gate ($why)")
+        println(s"wrote $out (${Files.size(out) / 1024}KB), fitted on ${corpus.size} messages")
+      case Refit.Verdict.Refused(why, _, _) =>
+        println(s"NOT WRITTEN: $why")
+        println("re-run with --force if you mean it, and say why in the commit")
 }

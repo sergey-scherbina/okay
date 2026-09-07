@@ -1,5 +1,24 @@
 # Changelog
 
+## intent-refit-gate — a refit that would kill a class now refuses and names it
+Completed: 2026-09-07
+Stage 4 of the autonomy programme, deliberately done before the
+harvest that will write into this path. Refitting the shipped
+artifact was `Files.writeString(out, source)` — rows in, model out,
+no question asked — and the failure that guards against has already
+happened to a consumer: their corpus grew unevenly, one class reached
+137 of 184 rows, the headline rose 95.8% to 96.2%, and a class died.
+`Refit.propose` fits the candidate, scores it AND the incumbent on
+the same held-out rows, and answers a verdict carrying every class
+before and after: the law (no class below F1 0.50, the same rule the
+shipped-model suite asserts) and the slide rule (no class down more
+than 0.10 against the incumbent, because three legal slides kill a
+class between them). Refused is data with the class named, never an
+exception and never a silent write; `MakeModel` prints the verdict,
+writes only on Accepted, and `--force` writes anyway while saying so.
+On the shipped corpus it accepts and reproduces the artifact byte for
+byte. specs/intent-classify.md, "Results — intent-refit-gate".
+
 ## deploy-secret-schemes — the four resolvers okay-conf had been promising
 Completed: 2026-09-07
 Landed as 5879d1ea (spec then code). Stage 4. `sops:`, `aws-sm:`,
@@ -42,6 +61,7 @@ providers take by default, so `OKAY_TLS_KEY=sops:secrets.yaml#tls-key`
 is a certificate key that rides in git, encrypted. 28 okay-conf green
 3x, 9 Live green, 166 okay-script.
 
+
 ## losing-rows — the two rows §4b lost, and what it cost to win them
 
 **Cancellation, won, after two contract bugs.** The row said our
@@ -78,6 +98,7 @@ kept because it also makes a producer's ordering structural rather
 than a consequence of the index lookup agreeing with itself.
 
 Gate: the matrix in the release commit.
+
 ## deploy-old-helm-retired — one deployment model, not two
 Completed: 2026-09-07
 Landed as 62c851cf (spec then code). specs/deploy.md's `Deploy` and

@@ -2932,10 +2932,14 @@ these are the lanes.
       margin plus disagreement between tiers (the shape the
       active-learning lane measured at 28 labels against 36 for the
       same gain). Ships as a queue the admin flow can drain.
-- [ ] intent-refit-gate — a refit that drops any class below F1 0.50
-      is REFUSED, and every refit prints before/after per class. The
-      guard for the failure a consumer already lived: headline
-      accuracy rose while a class died.
+- [x] intent-refit-gate — LANDED 2026-09-07: `Refit.propose` fits a
+      candidate, scores it and the incumbent on the same held-out
+      rows, and answers Accepted/Refused with every class before and
+      after; the law (no class below F1 0.50) and the slide rule (no
+      class down more than 0.10 against the incumbent) both enforced,
+      `MakeModel` writes only on Accepted and `--force` says so out
+      loud. The shipped corpus passes and reproduces the artifact byte
+      for byte. specs/intent-classify.md, "Results — intent-refit-gate".
 - [ ] intent-induce-on-harvest — re-run cue induction whenever the
       corpus grows and ship the induced cues beside the hand-written
       ones. Cues need nothing at run time, so their coverage is pure

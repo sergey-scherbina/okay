@@ -126,6 +126,13 @@ priority over one with 60).
 
 ### 2.5 `Refit` — corpus to artifact, with the law as a gate
 
+> Implemented 2026-09-07 (`intent-refit-gate`). `Refit.propose(rows,
+> heldOut, incumbent, rules)` is the door; `Verdict.Refused` names the
+> class and the rule it broke, and nothing in the module writes
+> anything. Two rules: no class below F1 0.50, and no class down more
+> than 0.10 against the incumbent — the second because three legal
+> slides kill a class between them while every one of them passes.
+
 ```scala
 trait Refit:
   def refit(corpus: Corpus): Either[Refit.Refused, Artifact]
@@ -312,7 +319,7 @@ is recorded as a negative result and does not ship, as
 | 1 | `intent-label-model` — §4.3 combiner over existing tiers | no | **DECLINED 2026-09-07**: 72.2%/82.9% against the cascade's 77.5%/89.6% over 8 splits; correlated labelers inflate each other and one dominant labeler is diluted by a vote. Reopen with many INDEPENDENT labelers or dependency modelling |
 | 2 | `intent-annotate-log` — §4.1 model labels real logged messages | produces them | 100+ kept rows; a refit moves the autonomy rate without breaking the law |
 | 3 | `intent-coannotate-queue` — §4.2 uncertainty routing | reduces them | human effort per point of autonomy, against a random-selection baseline |
-| 4 | `intent-refit-gate` — the law as a gate on every refit | no | a refit that would kill a class is refused, with the class named |
+| 4 | `intent-refit-gate` — the law as a gate on every refit | no | **DONE 2026-09-07**: `Refit.propose` answers Accepted/Refused with every class before and after; the law and a slide rule; `MakeModel` writes only on Accepted |
 | 5 | `intent-induce-on-harvest` — cue induction on the grown corpus | uses them | induced-cue coverage up at ≥ 0.85 precision (85.7% at 11.7% today) |
 | 6 | `intent-discover-classes` — §4.4 discovery over `Other` | proposes them | proposals a person accepts; `Other` recall after the split |
 | 7 | `intent-offline-slots` — slots with no network | no | a capability, not a number: slots filled offline at stated precision |
