@@ -1,5 +1,41 @@
 # Changelog
 
+## growing — the buffer that becomes partitioned, shipped as the thing to improve
+
+`Queues.strong[A].growing(capacity, parts)`: a plain ring until more
+than one producer is seen pushing, then an `AdaptiveFifo` that ADOPTS
+that ring as its part 0 — no element moves, and the producer that
+filled it keeps pushing there because its order lives in that part.
+The trigger is the sampled pushing thread (a counter every push, a
+comparison every 64th); a refused push is NOT the trigger, and that
+was measured — a ring at sixteen producers is 17x slower than a
+partitioned buffer WITH ROOM TO SPARE, so fullness is backpressure and
+says nothing about how many producers there are.
+
+It ships with its numbers, in the scaladoc and in `docs/queues.md`:
+
+| producers | bounded | growing | adaptive |
+|---|---|---|---|
+| 1 | **123** | 158 | 144 |
+| 4 | 715 | 477 | **136** |
+| 16 | 3 066 | 446 | **100** |
+
+I had measured this and reverted it, on the grounds that a knob which
+is never the best choice misleads whoever reads the menu; the operator
+decided to keep it and improve from there, so the objection went where
+it belongs — beside the knob, as the table. What it costs is one layer
+too many: after the swap every push crosses the wrapper AND the
+partitioned buffer. `queue-swap` is the entry that removes it, by
+having the channel replace its buffer instead of wrapping it, and its
+audit (one read of the buffer per operation) is already landed.
+
+Four laws: one producer never grows it; a second producer does, and
+the ring's own order survives becoming part 0; P x C over a growing
+channel loses nothing and ends once; a producer parked on the full
+ring when it grows is not stranded.
+
+Gate: 84 modules, 3 023 tests, 0 failures, 0 warnings.
+
 ## queue-swap — a queue that becomes the right one, built and reverted
 
 The operator asked for one ideal MPMC queue. Six axes measured this
