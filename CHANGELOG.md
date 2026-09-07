@@ -1,5 +1,44 @@
 # Changelog
 
+## own-long-join-deadlock — a steal that cleared its slot lost a task, and a fiber waited for ever
+
+`Deque.steal` cleared its slot after winning the `top` CAS. A thief
+reads `top`, `bottom` and `buf` at three separate moments, so it can
+be reading through an array the owner has already replaced in `push`'s
+grow; clearing then writes a null into an array another thief is still
+reading, and THAT thief's CAS succeeds while its `a.get(i)` came back
+null. The index is consumed and the task in it is never run.
+
+One lost `DriveTask` is one fiber that never answers, so `join` parks
+for ever while every worker sleeps — there genuinely is no work left.
+Canonical Chase-Lev leaves the slot for exactly this reason; the cost
+is a taken task staying reachable until its slot is overwritten,
+bounded by the buffer. `pop` still clears its own end, where only the
+owner writes.
+
+Found by `bench-refresh`, not by a test: the JMH lane
+`forkJoin10k_okayOwnLongInside` sat 62 minutes at 0.0% CPU mid-run.
+Only that shape opens the window — 10 000 `pushLocal` into ONE deque
+from capacity 256 is six grows under thirteen thieves.
+
+The prediction was wrong and the experiment that killed it is in
+BUGS.md: a 1 ms timed park in place of the blocking park left the hang
+exactly where it was, at 30% CPU. Nobody had failed to signal — the
+work was gone. The pool's counters at the terminal state said it
+outright: `forked=40004` against `ran=40003`, nothing stranded in any
+deque, one steal that won its CAS on a null slot.
+
+Reproduction needed contention (12 sequential runs of the lane were
+clean; 4 in parallel hung on rounds 1, 4, 5 and 6), so the hang is a
+soak and not a gate. `Deque` is therefore hoisted out of `Owned` — it
+captured nothing from it — and the law is stated on the deque:
+conservation, everything pushed comes out exactly once, on the
+growing-under-thieves shape. It fails on the old line in 29 ms and
+passes on the new one. The fix alone, with the real blocking park, ran
+120 forks clean.
+
+Commits: 8f8520ab (the ledger entry), 0815cbe8 (the fix and its law).
+
 ## growing — the buffer that becomes partitioned, shipped as the thing to improve
 
 `Queues.strong[A].growing(capacity, parts)`: a plain ring until more

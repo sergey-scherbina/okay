@@ -10,10 +10,11 @@ Newest first. Status lives in the machine-readable header, never in
 the prose.
 
 ## own-long-join-deadlock — 10k fibers joined inside a fiber on `Schedulers.Owned.forLongTasks` never completes
-<!-- status: open
+<!-- status: fixed
      lane: jvm
      area: scheduler
-     gate: none -->
+     gate: src/test/scala-jvm/TestSchedulerLaws.scala "work-stealing deque — nothing is lost while it grows under thieves"
+     fixed-in: 0815cbe8 -->
 
 `compare/src/jmh/scala/okay/AdversarialBenchmark.scala:124`,
 `forkJoin10k_okayOwnLongInside` at `work = 100`, sat **62 minutes at
@@ -57,17 +58,54 @@ between the queue check and the flag publish is the shape to look at
 first — but that is a reading of the comment, not a diagnosis, and
 nothing here has bisected it.
 
-**Open questions, none answered yet.**
-- Does it reproduce? Seen ONCE. Nothing has re-run it, so "intermittent"
-  and "deterministic" are both still live, and the entry says so
-  rather than picking one.
-- Does `work = 10000` hang too? Unknown — the run died on the first
-  param and never reached the second.
-- Is `joinAsync` inside a spawned fiber required, or does the flat
-  `forkJoin10k_okayOwn` shape on `forLongTasks` hang as well?
+**ANSWERED, 2026-09-07 (fixed in 0815cbe8).**
 
-Until it is understood the lane is EXCLUDED from the bench-refresh
-runs (`-e '.*forkJoin10k_okayOwnLongInside.*'`), so §4b's
-`forkJoin10k_okayOwnLongInside` row carries no number from this
-session. A gate is `none` on purpose: there is nothing to regress
-against until a repro exists.
+Cause: `Deque.steal` cleared its slot after winning the `top` CAS. A
+thief reads `top`, `bottom` and `buf` at three separate moments, so it
+can be reading through an array the owner has already replaced in
+`push`'s grow. Clearing writes a null into an array another thief is
+still reading; that thief's CAS then SUCCEEDS while its `a.get(i)`
+came back null, so the index is consumed and the task in it is never
+run. One lost `DriveTask` is one fiber that never answers — hence a
+`join` parked for ever with every worker legitimately idle. Canonical
+Chase-Lev leaves the slot for exactly this reason.
+
+The prediction in the claim — a lost wakeup in the park at
+Platform.scala:542 — was WRONG, and the experiment that killed it is
+worth keeping: replacing the worker's park with a 1 ms timed park left
+the hang exactly in place, at 30% CPU instead of 0%. Workers were
+waking, looking and finding nothing. Nobody had failed to signal; the
+work was gone.
+
+What it took to see it, in order, because three of these produced
+nothing and that is the useful part:
+
+| attempt | result |
+|---|---|
+| the shape alone, fresh scheduler per run, 200 runs | 0 |
+| scheduler reused, all three pools alive (as `@Setup(Level.Trial)`), 2000 runs | 0 |
+| cold JVM, 3 ops each, 250 JVM starts | 0 |
+| the real JMH lane, 12 sequential runs | 0 |
+| the real JMH lane, **4 in parallel** | hung on rounds 1, 4, 5, 6 |
+| timed park instead of blocking park | still hangs, 30% CPU — not a lost wakeup |
+| pool counters at the terminal state | `forked=40004 ran=40003`, 0 stranded, **1 steal that won its CAS on a null slot** |
+| the fix alone, real blocking park | 120 forks clean |
+
+Contention is the trigger, and only this lane's shape opens the
+window: 10 000 `pushLocal` into ONE deque from capacity 256 is six
+grows while thirteen thieves read through it.
+
+Answers to the questions this entry opened with:
+- Does it reproduce? Yes, but only under contention — about once in
+  twenty thousand fork/join operations with four JVMs competing, which
+  is why 12 sequential runs said nothing.
+- Does `work = 10000` hang too? Still unknown and now moot; the defect
+  was not work-size dependent.
+- Is `joinAsync` inside a spawned fiber required? No. The requirement
+  is a deque that GROWS while thieves read it, which that shape
+  produces and the flat one does not.
+
+Gate: the hang itself is a soak, not a gate, so the law is stated on
+the deque instead — conservation, everything pushed comes out exactly
+once, on the growing-under-thieves shape. It fails on the old line in
+29 ms and passes on the new one.
