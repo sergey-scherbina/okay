@@ -28,11 +28,12 @@ import java.nio.file.{Files, Path}
  */
 object Pebble:
   val image = "ghcr.io/letsencrypt/pebble:latest"
-  val name = "okay-acme-pebble-test"
   val domain = "host.docker.internal"
-  /** the port Pebble's own config validates HTTP-01 against */
-  val challengePort = 5002
-  val apiPort = 14000
+
+  /** the MAC key Pebble's own config ships for `kid-1` -- the pair a
+   * commercial CA would hand an operator out of band */
+  val eabKid = "kid-1"
+  val eabKey = "zWNDZM6eQGHWpSRTPal5eIUYFTu7EajVIoguysqZ9wG44nMEtx3MUAsUDkMTQ12W"
 
   private def sh(cmd: String*): (Int, String) =
     val p = ProcessBuilder(cmd*).redirectErrorStream(true).start()
@@ -41,26 +42,71 @@ object Pebble:
 
   def available: Boolean = sh("docker", "info")._1 == 0
 
-  def start(caOut: Path): Boolean =
-    sh("docker", "rm", "-f", name): Unit
-    val (code, out) = sh("docker", "run", "-d", "--rm", "--name", name,
-      "-p", s"$apiPort:$apiPort", "-p", "15000:15000",
-      "-e", "PEBBLE_VA_NOSLEEP=1",
-      "--add-host=host.docker.internal:host-gateway", image)
-    if code != 0 then
-      println(s"pebble did not start: $out")
-      false
-    else
-      // its API is HTTPS under a CA it generates per run: pull that out,
-      // or nothing can talk to it
-      val ready = (1 to 30).exists { _ =>
-        Thread.sleep(500)
-        sh("docker", "cp", s"$name:/test/certs/pebble.minica.pem", caOut.toString)._1 == 0 &&
-          Files.isRegularFile(caOut) && Files.size(caOut) > 0
-      }
-      ready
+  def freePort(): Int =
+    val s = new java.net.ServerSocket(0)
+    try s.getLocalPort finally s.close()
 
-  def stop(): Unit = sh("docker", "rm", "-f", name): Unit
+  /**
+   * ONE Pebble per test, on ITS OWN ports and under its own name.
+   *
+   * The first version shared a name and the fixed ports, and the
+   * suite flaked: `docker rm -f` returns before the container is
+   * gone, so the next test's client could reach the PREVIOUS Pebble
+   * and present it a nonce the new one never issued — a badNonce that
+   * looked like a client bug and was a fixture bug. Ports come from
+   * the OS, the config is written per instance (Pebble reaches the
+   * host's challenge server at `httpPort`, so that number has to be
+   * ours too), and readiness is the API actually answering.
+   */
+  final class Instance(dir: Path, val eabRequired: Boolean = false):
+    val apiPort: Int = freePort()
+    val challengePort: Int = freePort()
+    val name = s"okay-acme-pebble-$apiPort"
+    val ca: Path = dir.resolve(s"pebble-ca-$apiPort.pem")
+
+    private def config(): Path =
+      val f = dir.resolve(s"pebble-$apiPort.json")
+      val eab =
+        if !eabRequired then ""
+        else s""","externalAccountBindingRequired":true,"externalAccountMACKeys":{"$eabKid":"$eabKey"}"""
+      Files.writeString(f,
+        s"""{"pebble":{"listenAddress":"0.0.0.0:$apiPort","managementListenAddress":"0.0.0.0:15000",
+           |"certificate":"test/certs/localhost/cert.pem","privateKey":"test/certs/localhost/key.pem",
+           |"httpPort":$challengePort,"tlsPort":5001,"ocspResponderURL":""$eab}}""".stripMargin): Unit
+      f
+
+    def start(): Boolean =
+      val cfg = config()
+      val (code, out) = sh("docker", "run", "-d", "--rm", "--name", name,
+        "-p", s"$apiPort:$apiPort",
+        "-e", "PEBBLE_VA_NOSLEEP=1",
+        "--add-host=host.docker.internal:host-gateway",
+        "-v", s"${cfg.toAbsolutePath}:/test/config/okay.json",
+        image, "-config", "/test/config/okay.json")
+      if code != 0 then
+        println(s"pebble did not start: $out")
+        false
+      else
+        // its API is HTTPS under a CA it generates per run: pull that
+        // out, and wait for the API to ANSWER -- a container that is
+        // "running" is not yet a CA that is listening
+        (1 to 40).exists { _ =>
+          Thread.sleep(300)
+          sh("docker", "cp", s"$name:/test/certs/pebble.minica.pem", ca.toString)._1 == 0 &&
+            Files.isRegularFile(ca) && Files.size(ca) > 0 && answering()
+        }
+
+    private def answering(): Boolean =
+      try
+        val s = new java.net.Socket("127.0.0.1", apiPort)
+        s.close()
+        sh("docker", "logs", name)._2.contains("ACME directory available")
+      catch case _: Exception => false
+
+    def directory: String = s"https://localhost:$apiPort/dir"
+
+    def stop(): Unit =
+      sh("docker", "rm", "-f", name): Unit
 
 class TestAcmePebble extends munit.FunSuite:
 
@@ -109,22 +155,22 @@ class TestAcmePebble extends munit.FunSuite:
   test("Pebble issues our certificate: a real ACME server accepts our JWS, our nonces and our CSR") {
     assume(Pebble.available, "docker is not available")
     val dir = Files.createTempDirectory("okay-acme-pebble-")
-    val ca = dir.resolve("pebble-ca.pem")
-    assume(Pebble.start(ca), "pebble did not start")
+    val pebble = Pebble.Instance(dir)
+    assume(pebble.start(), "pebble did not start")
     val challenges = Acme.Challenges.Memory()
     try
       val out = Resource.run[Either[String, Acme.Outcome], Pure](
         // the challenge server on the port Pebble's config validates
-        Jetty.serve(Pebble.challengePort)(challenges.routes)().map { _ =>
+        Jetty.serve(pebble.challengePort)(challenges.routes)().map { _ =>
           Acme.ensure(Acme.Config(
             email = "ops@example.com",
             domains = Vector(Pebble.domain),
             accountKey = dir.resolve("account.pem"),
             certFile = dir.resolve("cert.pem"),
             keyFile = dir.resolve("key.pem"),
-            directory = s"https://localhost:${Pebble.apiPort}/dir",
+            directory = pebble.directory,
             timeout = java.time.Duration.ofSeconds(60)),
-            trusting(ca), challenges)
+            trusting(pebble.ca), challenges)
         }).runWith
 
       out match
@@ -149,23 +195,23 @@ class TestAcmePebble extends munit.FunSuite:
       // and the same identity serves TLS: the point of the exercise
       assertEquals(challenges.size, 0, "the token was not cleaned up")
     finally
-      Pebble.stop()
+      pebble.stop()
       rmrf(dir)
   }
 
   test("revocation: Pebble takes the certificate back, and refuses a second one by name") {
     assume(Pebble.available, "docker is not available")
     val dir = Files.createTempDirectory("okay-acme-pebble-revoke-")
-    val ca = dir.resolve("pebble-ca.pem")
-    assume(Pebble.start(ca), "pebble did not start")
+    val pebble = Pebble.Instance(dir)
+    assume(pebble.start(), "pebble did not start")
     val challenges = Acme.Challenges.Memory()
     try
       val cfg = Acme.Config("ops@example.com", Vector(Pebble.domain),
         dir.resolve("account.pem"), dir.resolve("cert.pem"), dir.resolve("key.pem"),
-        s"https://localhost:${Pebble.apiPort}/dir", timeout = java.time.Duration.ofSeconds(60))
-      val http = trusting(ca)
+        pebble.directory, timeout = java.time.Duration.ofSeconds(60))
+      val http = trusting(pebble.ca)
       val issued = Resource.run[Either[String, Acme.Outcome], Pure](
-        Jetty.serve(Pebble.challengePort)(challenges.routes)().map(_ => Acme.ensure(cfg, http, challenges))).runWith
+        Jetty.serve(pebble.challengePort)(challenges.routes)().map(_ => Acme.ensure(cfg, http, challenges))).runWith
       assert(issued.exists(_.isInstanceOf[Acme.Outcome.Issued]), issued.toString)
 
       // the leaf alone is what a CA revokes, not the bundle on disk
@@ -179,28 +225,58 @@ class TestAcmePebble extends munit.FunSuite:
       assert(second.isLeft, "a second revoke was accepted")
       assert(second.left.exists(m => m.toLowerCase.contains("already")), second.toString)
     finally
-      Pebble.stop()
+      pebble.stop()
+      rmrf(dir)
+  }
+
+  test("external account binding: a CA that requires one refuses without it and issues with it") {
+    assume(Pebble.available, "docker is not available")
+    val dir = Files.createTempDirectory("okay-acme-pebble-eab-")
+    val pebble = Pebble.Instance(dir, eabRequired = true)
+    assume(pebble.start(), "pebble did not start")
+    val challenges = Acme.Challenges.Memory()
+    try
+      def cfg(eab: Option[(String, String)]) = Acme.Config("ops@example.com", Vector(Pebble.domain),
+        dir.resolve("account.pem"), dir.resolve("cert.pem"), dir.resolve("key.pem"),
+        pebble.directory, timeout = java.time.Duration.ofSeconds(60), eab = eab)
+      val http = trusting(pebble.ca)
+
+      val without = Resource.run[Either[String, Acme.Outcome], Pure](
+        Jetty.serve(pebble.challengePort)(challenges.routes)().map(_ =>
+          Acme.ensure(cfg(None), http, challenges))).runWith
+      assert(without.isLeft, "an account was opened without the binding the CA requires")
+      assert(without.left.exists(m => m.toLowerCase.contains("external") || m.toLowerCase.contains("binding")),
+        without.toString)
+      assert(!Files.exists(dir.resolve("cert.pem")))
+
+      val with_ = Resource.run[Either[String, Acme.Outcome], Pure](
+        Jetty.serve(pebble.challengePort)(challenges.routes)().map(_ =>
+          Acme.ensure(cfg(Some((Pebble.eabKid, Pebble.eabKey))), http, challenges))).runWith
+      assert(with_.exists(_.isInstanceOf[Acme.Outcome.Issued]), with_.toString)
+      assert(Files.readString(dir.resolve("cert.pem")).startsWith("-----BEGIN CERTIFICATE-----"))
+    finally
+      pebble.stop()
       rmrf(dir)
   }
 
   test("a name Pebble cannot reach is refused with the CA's own words, not a timeout") {
     assume(Pebble.available, "docker is not available")
     val dir = Files.createTempDirectory("okay-acme-pebble-bad-")
-    val ca = dir.resolve("pebble-ca.pem")
-    assume(Pebble.start(ca), "pebble did not start")
+    val pebble = Pebble.Instance(dir)
+    assume(pebble.start(), "pebble did not start")
     val challenges = Acme.Challenges.Memory()
     try
       // no challenge server at all: the validation must fail, and the
       // failure must arrive as a sentence
       val out = Acme.ensure(Acme.Config("ops@example.com", Vector(Pebble.domain),
         dir.resolve("account.pem"), dir.resolve("cert.pem"), dir.resolve("key.pem"),
-        s"https://localhost:${Pebble.apiPort}/dir",
-        timeout = java.time.Duration.ofSeconds(30)), trusting(ca), challenges)
+        pebble.directory,
+        timeout = java.time.Duration.ofSeconds(30)), trusting(pebble.ca), challenges)
       assert(out.isLeft, out.toString)
       val msg = out.left.getOrElse("")
       assert(msg.contains("refused") || msg.contains("invalid") || msg.contains("did not settle"), msg)
       assert(!Files.exists(dir.resolve("cert.pem")), "a certificate appeared for a name that never validated")
     finally
-      Pebble.stop()
+      pebble.stop()
       rmrf(dir)
   }

@@ -14,7 +14,9 @@ decisions.
 | `Acme.Directory` | Let's Encrypt's staging (the default) and production URLs |
 
 Narrow on purpose: HTTP-01 only, one order, one server, no wildcards
-(they need DNS-01), no EAB, no ARI. Revocation IS here. Wide is certbot's
+(they need DNS-01), no ARI. Revocation and external account binding
+(`Config.eab`, for a CA that will not open an account for a stranger)
+ARE here. Wide is certbot's
 job, and a half-maintained wide client is a site that stops renewing
 on a Saturday.
 

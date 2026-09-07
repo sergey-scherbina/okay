@@ -153,3 +153,16 @@ class TestHttpsDefault extends munit.FunSuite:
       assertEquals(account.toString, "/tmp/d/acme/account.pem")
     finally Files.deleteIfExists(root): Unit
   }
+
+  test("Serve.parse reads OKAY_ACME_EAB as a kid:key pair, and ignores half of one") {
+    val root = Files.createTempDirectory("okay-script-eab-args-")
+    try
+      def parse(env: Map[String, String]) = Serve.parse(Array(root.toString), env.get)
+      assertEquals(parse(Map.empty).map(_.acmeEab), Right(None))
+      assertEquals(parse(Map("OKAY_ACME_EAB" -> "kid-1:zWNDZM6e")).map(_.acmeEab), Right(Some(("kid-1", "zWNDZM6e"))))
+      // the key is base64url and carries no colon, so the FIRST one splits
+      assertEquals(parse(Map("OKAY_ACME_EAB" -> "a:b:c")).map(_.acmeEab), Right(Some(("a", "b:c"))))
+      assertEquals(parse(Map("OKAY_ACME_EAB" -> "kid-only")).map(_.acmeEab), Right(None))
+      assertEquals(parse(Map("OKAY_ACME_EAB" -> "kid:")).map(_.acmeEab), Right(None))
+    finally Files.deleteIfExists(root): Unit
+  }

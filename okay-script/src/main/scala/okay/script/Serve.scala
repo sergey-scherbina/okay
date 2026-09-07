@@ -18,6 +18,9 @@ import java.nio.file.{Files, Path, Paths}
  * `OKAY_ACME_PROD=1`); the challenge is served on `OKAY_HTTP_PORT`,
  * which must be reachable from the internet on port 80.
  *
+ * `OKAY_ACME_EAB=<kid>:<key>` carries the external account binding a
+ * commercial CA requires (Let's Encrypt does not).
+ *
  * `OKAY_TLS_RELOAD=<seconds>` re-reads the certificate when it
  * changes on disk, so certbot's renewal needs no restart.
  *
@@ -68,7 +71,11 @@ object Serve:
                         /** OKAY_ACME=<email> with OKAY_ACME_DOMAINS=a,b:
                          * ask a certificate authority for the certificate
                          * (okay-acme). Staging unless OKAY_ACME_PROD=1 */
-                        acme: Option[(String, Vector[String], Boolean)] = None):
+                        acme: Option[(String, Vector[String], Boolean)] = None,
+                        /** OKAY_ACME_EAB=<kid>:<base64url MAC key>: the
+                         * external account binding a commercial CA hands
+                         * you out of band (acme-eab) */
+                        acmeEab: Option[(String, String)] = None):
     def scheme: String = if tls.isDefined then "https" else "http"
 
   /** `<dir> [port]`; port 8080 by default. With NO arguments the
@@ -100,7 +107,13 @@ object Serve:
                   email <- env("OKAY_ACME")
                   domains = env("OKAY_ACME_DOMAINS").map(_.split(",").toVector.map(_.trim).filter(_.nonEmpty)).getOrElse(Vector.empty)
                   if domains.nonEmpty
-                yield (email, domains, env("OKAY_ACME_PROD").exists(v => v == "1" || v.equalsIgnoreCase("true")))))
+                yield (email, domains, env("OKAY_ACME_PROD").exists(v => v == "1" || v.equalsIgnoreCase("true"))),
+                env("OKAY_ACME_EAB").flatMap { pair =>
+                  // kid:key -- the key is base64url and carries no colon,
+                  // so the FIRST colon separates them
+                  val i = pair.indexOf(':')
+                  Option.when(i > 0 && i < pair.length - 1)((pair.take(i), pair.drop(i + 1)))
+                }))
             }
       case _ => Left("usage: okay.script.Serve <pages-dir> [port]   (or OKAY_PAGES/OKAY_PORT; OKAY_DATA=<dir> for a persistent store)")
 
@@ -170,7 +183,8 @@ object Serve:
           println("okay-script: OKAY_ACME without OKAY_DATA keeps the account key in a temp directory — " +
             "a restart then registers a NEW account, which a CA rate-limits")
         val cfg = okay.acme.Acme.Config(email, domains, account, cert, key,
-          directory = if prod then okay.acme.Acme.Directory.letsEncrypt else okay.acme.Acme.Directory.letsEncryptStaging)
+          directory = if prod then okay.acme.Acme.Directory.letsEncrypt else okay.acme.Acme.Directory.letsEncryptStaging,
+          eab = a.acmeEab)
         Resource.run[Either[String, okay.acme.Acme.Outcome], Pure](
           okay.jetty.Jetty.http().map(http => okay.acme.Acme.ensure(cfg, http, challenges))).runWith
           .map(Some(_))

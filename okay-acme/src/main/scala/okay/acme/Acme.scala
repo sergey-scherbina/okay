@@ -52,6 +52,11 @@ object Acme:
     renewBefore: java.time.Duration = java.time.Duration.ofDays(30),
     /** how long to wait for an authorization or an order to settle */
     timeout: java.time.Duration = java.time.Duration.ofSeconds(60),
+    /** External Account Binding (RFC 8555 §7.3.4), when the CA will
+     * not open an account without proof you already have one with
+     * them: the (key id, base64url MAC key) pair they hand you out of
+     * band. Let's Encrypt needs none; most commercial CAs do. */
+    eab: Option[(String, String)] = None,
   )
 
   /** what the CA will fetch: `/.well-known/acme-challenge/<token>`
@@ -137,7 +142,7 @@ object Acme:
       newNonce <- str(dir, "newNonce").toRight("the directory has no newNonce")
       newAccount <- str(dir, "newAccount").toRight("the directory has no newAccount")
       revokeCert <- str(dir, "revokeCert").toRight("this CA publishes no revokeCert endpoint")
-      session = new Session(http, account, newNonce)
+      session = new Session(http, account, newNonce, cfg.eab)
       // the account must be the one that ordered it, so it registers
       // first -- against an existing account this answers the same URL
       _ <- session.register(newAccount, cfg.email)
@@ -167,7 +172,7 @@ object Acme:
       newNonce <- str(dir, "newNonce").toRight("the directory has no newNonce")
       newAccount <- str(dir, "newAccount").toRight("the directory has no newAccount")
       newOrder <- str(dir, "newOrder").toRight("the directory has no newOrder")
-      session = new Session(http, account, newNonce)
+      session = new Session(http, account, newNonce, cfg.eab)
       _ <- session.register(newAccount, cfg.email)
       order <- session.post(newOrder, Json.print(Json.JObj(Vector(
         "identifiers" -> Json.JArr(cfg.domains.map(d =>
@@ -241,16 +246,19 @@ object Acme:
 
   // ---- the session: nonces, JWS, and the account it signs as ------
 
-  private final class Session(http: Http, account: KeyPair, newNonce: String)(using c: Crypto):
+  private final class Session(http: Http, account: KeyPair, newNonce: String,
+                              eab: Option[(String, String)] = None)(using c: Crypto):
     private var nonce: Option[String] = None
     private var kid: Option[String] = None
 
     val thumbprint: String = b64(c.sha256(canonicalJwk(account.getPublic).getBytes(UTF_8)))
 
     def register(newAccount: String, email: String): Either[String, String] =
+      val binding = eab.map((kid, macKey) => externalBinding(newAccount, kid, macKey)).toVector
       post(newAccount, Json.print(Json.JObj(Vector(
         "termsOfServiceAgreed" -> Json.JBool(true),
-        "contact" -> Json.JArr(Vector(Json.JStr(s"mailto:$email"))))))).flatMap { r =>
+        "contact" -> Json.JArr(Vector(Json.JStr(s"mailto:$email")))) ++
+        binding.map("externalAccountBinding" -> _)))).flatMap { r =>
         header(r.head, "location").toRight("newAccount answered no Location").map { k =>
           kid = Some(k)
           k
@@ -309,6 +317,35 @@ object Acme:
         if res.status >= 400 then Left(problem(res.status, text))
         else Right(Answer(res, parsed, text))
       catch case e: Throwable => Left(s"${r.method.name} ${r.url} failed: ${Option(e.getMessage).getOrElse(e.toString)}")
+
+    /**
+     * The INNER JWS a CA asks for when it will not open an account for
+     * a stranger (RFC 8555 §7.3.4): our own account JWK as the
+     * payload, signed HS256 with the MAC key the CA gave us out of
+     * band, its protected header naming that key's id and the
+     * newAccount URL. It proves the ACME account and the account we
+     * already have with that CA are the same customer.
+     *
+     * No nonce here, deliberately: the inner JWS is not a request,
+     * it is a credential carried inside one, and RFC 8555 says its
+     * protected header has exactly `alg`, `kid` and `url`.
+     */
+    private def externalBinding(newAccount: String, kid: String, macKey: String): Json =
+      val protectedHeader = Json.print(Json.JObj(Vector(
+        "alg" -> Json.JStr("HS256"),
+        "kid" -> Json.JStr(kid),
+        "url" -> Json.JStr(newAccount))))
+      val payload = canonicalJwk(account.getPublic)
+      val signingInput = b64s(protectedHeader) + "." + b64s(payload)
+      // the MAC key travels base64url, as every CA that issues one
+      // writes it -- padded or not, both are accepted here because
+      // half of them pad
+      val key = java.util.Base64.getUrlDecoder.decode(macKey.replace("=", ""))
+      val sig = c.hmacSha256(key, signingInput.getBytes(UTF_8))
+      Json.JObj(Vector(
+        "protected" -> Json.JStr(b64s(protectedHeader)),
+        "payload" -> Json.JStr(b64s(payload)),
+        "signature" -> Json.JStr(b64(sig))))
 
     private def sign(url: String, n: String, payload: String): Either[String, String] =
       val protectedHeader = Json.JObj(Vector(
