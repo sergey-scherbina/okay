@@ -103,7 +103,7 @@ API reference, gotchas.
 | [`okay-mcp`](modules/okay-mcp.md) | the Model Context Protocol, both ends: a server is a `Handler[Tool]`, our tools are a server, and the protocol is a pure Stage |
 | [`okay-persist`](modules/okay-persist.md) | the durable log: one primitive, staged — segments and recovery, offsets, compaction, replication's core, Sql/Kafka store engines, the Doctor |
 | [`okay-ops`](modules/okay-ops.md) | health, stats and Prometheus over the persist log's own values: /healthz, /readyz, /stats, /metrics — no SDK, the manifest is the Kubernetes integration |
-| [`okay-deploy`](modules/okay-deploy.md) | a deployment as a value: pure renderers to a Dockerfile, a Helm chart and a compose file; an app declares its Deploy and owns the rendered files |
+| [`okay-deploy`](modules/okay-deploy.md) | a deployment as a value: pure renderers to a Dockerfile, a Helm chart and a compose file; an app declares its Deploy and owns the rendered files. The model that takes one value to a laptop, a server, a cluster, a PaaS and the three clouds is designed in [specs/deployment.md](../specs/deployment.md) |
 | [`okay-cache`](modules/okay-cache.md) | how a cache is ALLOWED to be wrong, named: budgets, invalidation, the log-fed view; memory and Redis engines; the cross-node invalidation topic |
 | [`okay-sql`](modules/okay-sql.md) | the relational seam: SqlValue/Col and the typed layer once, drivers underneath (JDBC, the pg wire, sqlite) |
 | [`okay-pg`](modules/okay-pg.md) | the Postgres v3 protocol spoken natively: SCRAM (phase objects), the extended protocol, no JVM driver in between |

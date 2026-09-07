@@ -1,5 +1,35 @@
 # Backlog
 
+## deploy-everywhere — one declaration, every place it runs (specs/deployment.md)
+
+Designed 2026-09-07 on the operator's ask, with their answers taken:
+a FULL dependency model (over my closed-list recommendation), a config
+value with defaults plus a file plus the environment, secrets reaching
+cloud managers and SOPS, and targets for a laptop, a rented server, a
+cluster, a PaaS and AWS/Azure/GCP. The spec draws the line the model
+does not cross and stages the work; each stage below is its own claim.
+
+- [ ] deploy-model — stage 0: `Deployment`/`Service`/`Need`/`Settings`
+      in okay-deploy, the `laptop` (compose) and `host` (systemd)
+      targets, `Up`/`Down`/`Doctor`, and okay-script's fourteen
+      `OKAY_*` variables re-expressed as a Schema'd config whose
+      environment names are DERIVED. Proven by a real `docker compose
+      up` and a unit `systemd-analyze verify` accepts.
+- [ ] deploy-cluster — stage 1: the Helm chart grown to ConfigMap,
+      Secret stubs, PVC and Ingress with TLS; `helm template`/`lint`
+      in the default gate, kind optional and Live.
+- [ ] deploy-paas — stage 2: fly.toml, render.yaml, railway.json,
+      golden-tested; a real deploy needs an account and stays a
+      documented manual step.
+- [ ] deploy-clouds — stage 3: Terraform per cloud (ECS+RDS+Secrets
+      Manager, Cloud Run+Cloud SQL, Container Apps+Key Vault), proven
+      by `terraform validate` in a container. AWS first — it
+      exercises every part of the model.
+- [ ] deploy-secret-schemes — stage 4: `sops:` (the encrypted value
+      rides in git; the caveat is key distribution, which this repo
+      cannot speak to), then `aws-sm:`, `gcp-sm:`, `azure-kv:`, each
+      shape-tested and Live only where a credential exists.
+
 ## matrix-kill-by-process-group — SETTLED 2026-09-06, and the name is wrong: it is a PKILL, not a group
 
 The trap fired. `scripts/gate-sentinels.sh` was watching a full matrix

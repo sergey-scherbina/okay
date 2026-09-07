@@ -109,6 +109,20 @@ Behavior:
       build` (or the sbt-image build stage alone) produces a jar that
       serves the React page with no separate `node`/dev-server step
 
+## Superseded in part by specs/deployment.md (2026-09-07)
+
+The operator asked for one declaration that deploys everywhere — a
+laptop, a rented server, a cluster, a PaaS and the three clouds — and
+that model lives in specs/deployment.md. This spec is not withdrawn:
+its rules are the ones the bigger model inherits (a deployment is a
+VALUE, rendering is PURE, the committed artifacts equal the
+rendering, we ship artifacts and not a pipeline), and its `Deploy`
+value stays the shape a single-service application uses until stage 0
+of the new model lands. What changes there: several services and
+their needs rather than one process, targets beyond Docker/Helm, and
+configuration derived from a Schema instead of hand-written env
+pairs.
+
 ## Out of scope
 
 - a CI pipeline that runs any of this on a schedule/push — this
