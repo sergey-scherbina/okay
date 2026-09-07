@@ -64,6 +64,106 @@ object Static {
     ws ++ ws.sliding(2).collect { case Vector(a, b) => s"$a $b" }.toVector
 
   /**
+   * Words, adjacent pairs AND adjacent triples
+   * (intent-static-trigrams-and-pca): the same argument once more —
+   * measured, +5.0 to the probe and +11.7 to the centroid over pairs
+   * on the same split, for a table 1.65x the units. The best
+   * no-network table is this splitter's, cut by `pca` to 256.
+   */
+  def units3(text: String): Vector[String] =
+    val ws = tokens(text)
+    ws ++ ws.sliding(2).collect { case Vector(a, b) => s"$a $b" }.toVector ++
+      ws.sliding(3).collect { case Vector(a, b, c) => s"$a $b $c" }.toVector
+
+  /**
+   * model2vec's PCA step (intent-static-trigrams-and-pca): the
+   * table's own unit vectors, centred, projected onto their top-k
+   * principal subspace, so a 1024-dimensional table ships at 256 —
+   * a quarter of the bytes — and, measured, loses nothing (the
+   * probe gained 5 points: the cut is a denoising). Fitted once at
+   * distillation by subspace iteration over the covariance; the
+   * PROJECTED table is what ships, and request time is still lookup
+   * and pool — the `Pca` itself is not needed after `projected`.
+   * `basis(i)` is a unit vector of the original dimension.
+   */
+  final case class Pca(mean: Array[Double], basis: Array[Array[Double]]):
+    def k: Int = basis.length
+    /** the first `n` components, for a narrower cut from one fit */
+    def take(n: Int): Pca = Pca(mean, basis.take(n))
+
+  def fitPca(vectors: Iterable[Embedding], k: Int, sweeps: Int = 40): Pca =
+    val rows = vectors.toArray
+    require(rows.nonEmpty, "a PCA over no vectors")
+    val n = rows.length; val d = rows(0).length
+    val mean = Array.tabulate(d)(j => rows.iterator.map(_(j).toDouble).sum / n)
+    // the covariance, d x d, built once
+    val cov = Array.ofDim[Double](d, d)
+    val centred = Array.ofDim[Double](d)
+    for r <- rows do
+      var j = 0
+      while j < d do { centred(j) = r(j) - mean(j); j += 1 }
+      var a = 0
+      while a < d do
+        val ca = centred(a)
+        if ca != 0.0 then
+          val row = cov(a); var b = 0
+          while b < d do { row(b) += ca * centred(b); b += 1 }
+        a += 1
+    // subspace iteration, Q <- orth(C Q), seeded so a fit is reproducible
+    val rnd = new scala.util.Random(7)
+    def orthonormalise(m: Array[Array[Double]]): Array[Array[Double]] =
+      val out = Array.ofDim[Array[Double]](m.length)
+      for i <- m.indices do
+        val v = m(i).clone()
+        for p <- 0 until i do
+          val u = out(p); var dot = 0.0; var j = 0
+          while j < d do { dot += v(j) * u(j); j += 1 }
+          j = 0
+          while j < d do { v(j) -= dot * u(j); j += 1 }
+        var norm = 0.0; var j = 0
+        while j < d do { norm += v(j) * v(j); j += 1 }
+        norm = math.sqrt(norm)
+        j = 0
+        while j < d do { v(j) = if norm > 0 then v(j) / norm else 0.0; j += 1 }
+        out(i) = v
+      out
+    var q = orthonormalise(Array.fill(math.min(k, d))(Array.fill(d)(rnd.nextGaussian())))
+    for _ <- 1 to sweeps do
+      q = orthonormalise(q.map { v =>
+        val w = Array.ofDim[Double](d)
+        var a = 0
+        while a < d do
+          val row = cov(a); var s = 0.0; var b = 0
+          while b < d do { s += row(b) * v(b); b += 1 }
+          w(a) = s; a += 1
+        w
+      })
+    Pca(mean, q)
+
+  /** one vector, centred and projected */
+  def project(p: Pca, v: Embedding): Embedding =
+    val d = p.mean.length
+    val out = Array.ofDim[Float](p.k)
+    var i = 0
+    while i < p.k do
+      val u = p.basis(i); var s = 0.0; var j = 0
+      while j < d do { s += (v(j) - p.mean(j)) * u(j); j += 1 }
+      out(i) = s.toFloat
+      i += 1
+    embedding(out)
+
+  /** the table that ships: every unit projected, weights and splitter kept */
+  def projected(t: Table, p: Pca): Table =
+    Table(p.k, t.vectors.map((k, v) => k -> project(p, v)), t.weights, t.split)
+
+  /** the share of the vectors' variance the subspace keeps — the
+   * honest size of the cut (91.5% at 256 of 1024, 78.5% at 128) */
+  def variance(p: Pca, vectors: Iterable[Embedding]): Double =
+    val total = vectors.iterator.map(v => v.indices.map(j => { val c = v(j) - p.mean(j); c * c }).sum).sum
+    val inSub = vectors.iterator.map(v => { val z = project(p, v); z.indices.map(i => z(i).toDouble * z(i)).sum }).sum
+    if total > 0 then inSub / total else 0.0
+
+  /**
    * Build the table from token vectors and the corpus they came from.
    *
    * Frequencies come from the corpus rather than from a language-wide

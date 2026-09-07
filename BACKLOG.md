@@ -2374,13 +2374,20 @@ rather than on every pop, which is the same idea as
       near the noise floor on 60 messages: re-measure on the grown
       fixture before making it the default, and keep the finding that
       LONG instructions cost (81.7% for the e5-style one).
-- [ ] intent-static-trigrams-and-pca — two obvious extensions of the
+- [x] intent-static-trigrams-and-pca — two obvious extensions of the
       static table, both filed rather than guessed: adjacent TRIPLES as
       well as pairs (pairs were worth 11.6 points, and the same
       argument applies once more with diminishing returns and a bigger
       table), and `model2vec`'s PCA step to cut 1024 dimensions to
       256 — 1303 units already cost 5.2MB as float32, and a production
-      vocabulary of 30k would be 120MB.
+      vocabulary of 30k would be 120MB. MEASURED AND LANDED
+      2026-09-07: one run, same split, baseline re-measured beside —
+      triples +5.0 probe / +11.7 centroid; PCA 256 keeps 91.5% of
+      the variance at a quarter of the bytes and GAINS five probe
+      points (a denoising); together 68.3% / 66.7% at 2.1 MB against
+      61.7% / 53.3% at 5.3 MB. `Static.units3`, `Static.fitPca` /
+      `projected` / `variance`; `TestStaticMore` (Live) holds the
+      table. 30k units ship at 30 MB (256) or 15 MB (128).
 - [ ] intent-language-fixture-growth — SHARPER NOW (2026-09-05): the
       fixture is eight languages wide (uk and pl added) and every
       non-English language has at least one class at F1 0.00 when

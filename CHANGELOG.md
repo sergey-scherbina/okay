@@ -1,5 +1,22 @@
 # Changelog
 
+## intent-static-trigrams-and-pca — triples in the static table and a PCA cut, measured: 68.3% at 2.1 MB where pairs gave 61.7% at 5.3 MB
+
+The two extensions the static-embeddings lane filed rather than
+guessed, measured in one run against the rozum gateway on the same
+split with the words+pairs baseline re-measured beside them. Adjacent
+triples beside pairs (`Static.units3`): +5.0 to the probe, +11.7 to
+the centroid, 1.65x the units. model2vec's PCA step (`Static.fitPca`
+by subspace iteration over the covariance, `Static.projected` the
+table that ships, `variance` the honest size of the cut): at 256 of
+1024 it keeps 91.5% of the variance, a quarter of the bytes, and
+gains five probe points — a denoising, not a loss; at 128 (78.5%),
+an eighth of the bytes, the probe gives back 1.7. Together, triples
+at PCA 256: 68.3% / 66.7% at 2.1 MB against 61.7% / 53.3% at 5.3 MB
+— the best no-network number so far at 40% of the bytes, and a 30k
+production vocabulary at 30 MB rather than 120. The gap to the
+teacher is 18 points now, from 23, and it is still context.
+
 ## raft-leftovers — the persist-raft box closes: three leftovers decided by a number or by the contract
 
 The joiner's catch-up phase (thesis §4.2.1), measured in the

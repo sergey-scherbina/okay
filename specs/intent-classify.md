@@ -3475,6 +3475,49 @@ from one sentence. `Slots.amount` asks in the six languages `when`
 asks in and shows `15.5 EUR` (no trailing zeros). Still open here:
 named entities (who) and places — neither a parser.
 
+## Results — intent-static-trigrams-and-pca (2026-09-07)
+
+The two extensions intent-static-embeddings filed rather than
+guessed, measured in ONE run against the rozum gateway
+(`Qwen3-Embedding-0.6B`, 1024 dims), one distillation of every word,
+pair and triple in the fixture (2172 units, 2.9 s), the same odd/even
+split for every row, the words+pairs baseline re-measured in the same
+run so the comparison is like for like (its 61.7/53.3 here against
+63.3/58.3 on 2026-09-04 is the split-and-session spread this fixture
+shows, and the bar every gain below is held to):
+
+| table | units | bytes | probe | centroid |
+|---|---|---|---|---|
+| words + pairs @ 1024 (baseline, same run) | 1317 | 5.3 MB | 61.7% | 53.3% |
+| words + pairs + triples @ 1024 | 2172 | 8.7 MB | 66.7% | 65.0% |
+| words + pairs @ PCA 256 (91.5% of the variance) | 1317 | 1.3 MB | 66.7% | 58.3% |
+| words + pairs @ PCA 128 (78.5%) | 1317 | 0.66 MB | 65.0% | 58.3% |
+| **words + pairs + triples @ PCA 256** | **2172** | **2.1 MB** | **68.3%** | **66.7%** |
+| (teacher, live vectors) | — | — | 86.7% | 80.0% |
+
+**Triples: the same argument once more, and it holds once more.**
++5.0 to the probe (at the spread's edge) and +11.7 to the centroid
+(well past it) for 1.65x the units. `Static.units3` is the splitter;
+`units` (pairs) stays for what was distilled with it.
+
+**PCA: the cut is free, and then some.** model2vec's step — the
+table's own unit vectors centred and projected onto their top-k
+principal subspace (`Static.fitPca`, subspace iteration over the
+covariance, seeded, 6.3 s for 1317x1024; `Static.projected` is the
+table that ships, and request time is still lookup and pool) — at
+256 keeps 91.5% of the variance, a QUARTER of the bytes, and gains
+five probe points: a denoising, not a loss. At 128 (78.5%) the probe
+gives back 1.7 of those and the centroid none, at an eighth of the
+bytes. So the production arithmetic the entry asked about — 30k
+units at 1024 float32 is 120 MB — is 30 MB at 256 and 15 MB at 128,
+and the smaller table classifies better than the big one did.
+
+**Together: the best no-network number so far, at 40% of the bytes
+the pairs table cost.** Triples at PCA 256: 68.3% / 66.7%, 2.1 MB.
+The gap to the teacher is 18 points now, from 23; the remaining gap
+is still CONTEXT (a unit's one vector wherever it appears), and
+neither extension touches that.
+
 ## Results — intent-rule-induction (2026-09-07)
 
 **Cues induced from the corpus, measured where the hand-written ones
