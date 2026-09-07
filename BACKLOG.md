@@ -2470,13 +2470,22 @@ rather than on every pop, which is the same idea as
       is context, and a corpus supplies units; the generation half
       DECLINED on intent-distil-dose's finding that the dose's gain
       was one split's — more of it is more of that.
-- [ ] intent-distil-diversity — the distilled corpus alone scores TEN
+- [x] intent-distil-diversity — the distilled corpus alone scores TEN
       POINTS below a human fixture a third its size, which says its
       distribution is narrow rather than its labels wrong. Prompting
       for a persona, a register or a length before each batch is the
       cheap thing to try; measuring the corpus's own diversity (say,
       distinct trigram ratio against the human fixture's) is the honest
-      way to tell whether it worked.
+      way to tell whether it worked. MEASURED 2026-09-07
+      (`TestDistilDiversity`, offline, equal samples of 120, twenty
+      draws): distinct-3 69.1% (all) / 64.3% (self-consistent) against
+      the fixture's 98.6%; vocabulary 295 vs 457; openers per message
+      41% / 34% vs 85% (`could you` x21, `your access` x13 in 182
+      rows); the two vocabularies overlap under half. The filter
+      keeps the formulaic. The persona half is not built: a later
+      corpus has its number to beat (distinct-3 and openers within
+      ten points of the fixture on equal samples), and the dose and
+      static lanes have priced what missing it buys.
 - [x] intent-distil-dose — a little distilled data is worth ten points
       to the centroid (80.0% -> 90.0% at +40 rows) and more is worse,
       monotonically, down to 78.3% at +320. The optimum was found by

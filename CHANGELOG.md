@@ -1,5 +1,21 @@
 # Changelog
 
+## intent-distil-diversity — the distilled corpus's narrowness as a number: distinct-3 69% against the fixture's 99%, and the filter keeps the formulaic
+
+`TestDistilDiversity` (offline, in the gate): distinct-1/2/3, the
+vocabulary, words per message and distinct openers per message, on
+equal samples of 120 averaged over twenty draws. The human fixture
+almost never repeats a three-word run (98.6% distinct); the generated
+corpus repeats nearly a third (69.1%), with two thirds of the
+vocabulary and half the openers (`could you` twenty-one times in 182
+rows against six in 120); the two vocabularies overlap under half. The
+182 rows the model agreed with on second sight are narrower still
+(64.3%): self-consistency keeps what a model is most consistent
+about, which is why the filter moved the dose's peak without changing
+its verdict. The persona/register prompting is not built — a later
+corpus now has a number to beat before it is embedded, and the dose
+and static lanes have priced what missing it buys.
+
 ## intent-distil-static — the static table fed the distilled corpus: nothing outside the noise, and intent-distil-more closes
 
 The second pass over the teacher intent-distil-more asked for: the

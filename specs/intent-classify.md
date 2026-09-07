@@ -3518,6 +3518,56 @@ The gap to the teacher is 18 points now, from 23; the remaining gap
 is still CONTEXT (a unit's one vector wherever it appears), and
 neither extension touches that.
 
+## Results — intent-distil-diversity (2026-09-07)
+
+The entry: the distilled corpus alone scores ten points below a human
+fixture a third its size, which says its distribution is narrow
+rather than its labels wrong; "measuring the corpus's own diversity
+(say, distinct trigram ratio against the human fixture's) is the
+honest way to tell". Measured, offline, in the gate
+(`TestDistilDiversity`): distinct-1/2/3 ratios, vocabulary, words
+per message and distinct OPENERS (the first two words) per message,
+on samples of equal size — the ratios are length-sensitive — averaged
+over twenty seeded draws:
+
+| sample of 120 | words/msg | distinct-1 | distinct-2 | distinct-3 | vocab | openers/msg |
+|---|---|---|---|---|---|---|
+| human fixture | 9.2 | 41.3% | 87.1% | **98.6%** | 457 | **85.0%** |
+| distilled, all 320 | 10.1 | 24.4% | 54.0% | 69.1% | 295 | 41.0% |
+| distilled, self-consistent 182 | 10.1 | 22.5% | 48.3% | 64.3% | 273 | 33.6% |
+
+**Narrow is the number, and it is large.** Where the human fixture
+almost never repeats a three-word run (98.6% distinct), the generated
+corpus repeats nearly a third of them (69.1%); it uses two thirds of
+the vocabulary for slightly longer messages; and it opens every other
+message the same way — `could you` twenty-one times in 182 rows,
+`your access` and `the meeting` thirteen each — where the fixture's
+commonest opener appears six times in 120. Per class the gap is the
+same shape (Request 74 vs 98 distinct-3, Notification 75 vs 100,
+Other 67 vs 100; Proposal has too few self-consistent rows to
+sample). Only 46% of the corpus's words are the fixture's and only
+32% of the fixture's words are in the corpus: the two overlap less
+than half, which is what "a mean of the wrong population"
+(intent-distil-for-probe) looks like as counts.
+
+**The filter makes it narrower.** The 182 rows the model agreed with
+on second sight are LESS diverse than the 320 (64.3% vs 69.1%
+distinct-3, 33.6% vs 41.0% openers): self-consistency keeps the
+formulaic, which is exactly what a model is most consistent about.
+This is why the filter moved the dose's peak and softened the
+overdose without changing the verdict (intent-distil-dose) — it
+removed noise and variety together.
+
+**What follows, and what is filed.** The persona/register prompting
+the entry proposed is not built: a later corpus, generated any way,
+now has the number to beat before anyone embeds it — a distinct-3
+ratio and an openers ratio within ten points of the human fixture's
+on equal samples — and intent-distil-dose and intent-distil-static
+have just measured what a corpus that misses it buys (one split's
+gain, and none). The generator is the wrong author of variety; the
+review queue (Harvest, the chain's handed-over turns) is the right
+one, and it does not need a prompt.
+
 ## Results — intent-distil-static (2026-09-07)
 
 intent-distil-more's second half: "worth trying on the STATIC table,
