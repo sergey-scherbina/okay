@@ -397,6 +397,42 @@ object IntentFixture {
     "What is the capital of Portugal?" -> Meeting.NotAboutMeetings("general knowledge"),
     "My headphones arrived broken, I want a replacement." -> Meeting.NotAboutMeetings("a support issue"))
 
+  /**
+   * The same five examples in the message's own language
+   * (intent-examples-in-language): the same five meanings, the same
+   * labels, the same English `what`. Measured against the English five
+   * on the parallel fixture: better on five languages of seven (pl
+   * 0.792 -> 1.000, uk +0.071, ru +0.066, fr +0.040, de +0.030), one
+   * message worse on es and ja, +0.049 on average — so a caller that
+   * knows the message's language passes these. The author's
+   * translations; the second-author limitation applies.
+   */
+  def meetingExamplesIn(lang: String): List[(String, Meeting)] =
+    val texts: List[String] = lang match
+      case "fr" => List("Es-tu libre pour qu'on se voie mercredi après-midi ?", "Merci de me transférer le contrat signé.",
+        "Notez que la paie est versée un jour plus tôt ce mois-ci.", "Quelle est la capitale du Portugal ?",
+        "Mon casque est arrivé cassé, je veux un remplacement.")
+      case "de" => List("Hast du Mittwochnachmittag Zeit für ein Treffen?", "Bitte leite mir den unterschriebenen Vertrag weiter.",
+        "Beachte, dass die Gehaltsabrechnung diesen Monat einen Tag früher läuft.", "Was ist die Hauptstadt von Portugal?",
+        "Meine Kopfhörer kamen kaputt an, ich möchte einen Ersatz.")
+      case "es" => List("¿Estás libre para vernos el miércoles por la tarde?", "Por favor, reenvíame el contrato firmado.",
+        "Ten en cuenta que la nómina se paga un día antes este mes.", "¿Cuál es la capital de Portugal?",
+        "Mis auriculares llegaron rotos, quiero un reemplazo.")
+      case "ru" => List("Ты свободен встретиться в среду после обеда?", "Пожалуйста, перешли мне подписанный контракт.",
+        "Учтите, что зарплата в этом месяце придёт на день раньше.", "Какая столица у Португалии?",
+        "Наушники пришли сломанными, хочу замену.")
+      case "ja" => List("水曜日の午後に会えますか？", "署名済みの契約書を転送してください。",
+        "今月は給与の支払いが一日早くなりますのでご注意ください。", "ポルトガルの首都はどこですか？",
+        "ヘッドホンが壊れて届いたので交換してほしいです。")
+      case "uk" => List("Ти вільний зустрітися в середу після обіду?", "Будь ласка, перешли мені підписаний контракт.",
+        "Зверніть увагу, що зарплата цього місяця прийде на день раніше.", "Яка столиця Португалії?",
+        "Навушники прийшли зламаними, хочу заміну.")
+      case "pl" => List("Masz czas na spotkanie w środę po południu?", "Proszę, prześlij mi podpisaną umowę.",
+        "Zwróć uwagę, że pensja w tym miesiącu będzie dzień wcześniej.", "Jaka jest stolica Portugalii?",
+        "Słuchawki przyszły zepsute, chcę wymiany.")
+      case _ => meetingExamples.map(_._1)
+    texts.zip(meetingExamples.map(_._2))
+
 
   // ----------------------------------------------------------------
   // The same intents, in several languages.

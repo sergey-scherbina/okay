@@ -1,5 +1,22 @@
 # Changelog
 
+## intent-examples-in-language — the five few-shot examples in the message's language: better on five languages of seven, +0.049 on average
+
+The native-names lane kept the example messages English on purpose;
+this moves that one variable. `TestExamplesInLanguage` (Live): per
+language of the parallel fixture, the same thirty messages, the same
+English case names, the same decoder — the five shipped examples in
+English against the same five translated. Better on fr (+0.040), de
+(+0.030), ru (+0.066), uk (+0.071) and pl (0.792 → 1.000); one message
+of thirty worse on es and ja; +0.049 on average, the biggest gains
+where the English-examples baseline was weakest. Thirty messages
+resolve to 3.3 points each, so the sign across languages is the
+reading, not a cell. The translations ship as
+`IntentFixture.meetingExamplesIn(lang)` for a caller that knows the
+language; the author's, with the second-author limitation. Filed
+beside it: `codec-jsonschema-refinement-enum`, the refinement
+vocabulary a JSON-schema contract loses.
+
 ## intent-structured-output — the answer's shape by contract, measured: nothing on top of the persuasion, nothing instead of it
 
 `OpenAi.request` gained `responseFormat`, with `OpenAi.jsonSchema(name,

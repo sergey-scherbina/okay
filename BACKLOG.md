@@ -846,6 +846,16 @@ measure on our own data, never a predicted result.
 - [ ] ui-windows-terminal — raw mode beyond stty
 
 ## okay-codec
+- [ ] codec-jsonschema-refinement-enum — `JsonSchema.of` renders an
+      `SIso`/`Schema.refine` as its underlying type, so a refinement's
+      vocabulary (`Conf`: three words over a string) reaches a
+      `response_format` contract as a plain `string`; found by
+      intent-structured-output, where the contract could not carry
+      the one thing the persuasion did. A refinement that enumerates
+      its values (a finite `refine`, or an enum's Schema) should
+      render as `"enum": [...]`. Filed, not done inside a measurement;
+      worth doing when a gateway that ENFORCES its schema appears —
+      the rozum one does not, for nested sums and lists.
 - [x] json-value-parser — landed: JsonValue.parse, a strict
       recursive-descent parser yielding to the lossless CST parser on
       any doubt; Json.parseValue wires it in. 61x over Json.parse on
@@ -1916,12 +1926,21 @@ makes both per-batch, which is why they were left; they still stand on
 the elementwise path. A dedicated SAM with `onValue`/`onEnd`/`onError`
 removes both without a cast, but it changes an abstract primitive on
 `Channel` and every implementation with it.
-- [ ] intent-examples-in-language — the candidate this lane deliberately
+- [x] intent-examples-in-language — the candidate this lane deliberately
       did not confound into itself: the example MESSAGES stayed English
       throughout, so the native-names arm moved one variable. Translating
       the five few-shot examples is untried, and examples OF A CLASS are
       the one lever that has consistently paid here — unlike every prose
-      addition, which has now cost four times running.
+      addition, which has now cost four times running. MEASURED
+      2026-09-07 (`TestExamplesInLanguage`, seven languages, English
+      names, the same decoder): the five examples in the message's
+      language against the same five in English — better on five of
+      seven (pl 0.792 → 1.000, uk +0.071, ru +0.066, fr +0.040, de
+      +0.030), one message of thirty worse on es and ja, +0.049 on
+      average; the lever holds, and its sign is the reading (thirty
+      messages resolve to 3.3 points each). The translations ship as
+      `IntentFixture.meetingExamplesIn(lang)` for a caller that knows
+      the language; the author's, second-author limitation applies.
 - [x] intent-symbolic-patterns — ALREADY DONE, closed 2026-09-04: the
       bake-off built it as the `Patterns` tier (88.6-90.9% where a cue
       fires, 58.3% coverage, 96us, no network) and nobody marked the

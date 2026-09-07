@@ -3518,6 +3518,51 @@ The gap to the teacher is 18 points now, from 23; the remaining gap
 is still CONTEXT (a unit's one vector wherever it appears), and
 neither extension touches that.
 
+## Results — intent-examples-in-language (2026-09-07)
+
+The native-names lane moved one variable and, deliberately, kept the
+five example MESSAGES English; translating them was the untried lever,
+and examples of a class are the one lever that has consistently paid
+here. Measured (`TestExamplesInLanguage`, Live): per language of the
+parallel fixture, the same thirty messages, the same English case
+names (`Meeting`), the same decoder; the only difference between the
+two arms is the language the five examples are written in. The
+translations are the author's (the second-author limitation applies
+to them as to the fixture); the `what` summaries stay English, which
+is what the model has seen in every example.
+
+| language | English examples | examples in the language | delta |
+|---|---|---|---|
+| fr | 0.887 | 0.927 | +0.040 |
+| de | 0.895 | 0.925 | +0.030 |
+| es | 0.890 | 0.855 | −0.035 |
+| ru | 0.898 | 0.964 | +0.066 |
+| ja | 0.927 | 0.888 | −0.039 |
+| uk | 0.856 | 0.927 | +0.071 |
+| pl | 0.792 | **1.000** | **+0.208** |
+| mean | | | **+0.049** |
+
+**The lever holds, and where it pays most is where it was needed
+most.** Better on five languages of seven; the biggest gains on the
+three Slavic languages, whose English-examples baselines were the
+lowest (pl 0.792 → 1.000, uk 0.856 → 0.927, ru 0.898 → 0.964); `Other`
+F1 reaches 1.00 in every language but es once the examples speak the
+message's language. Thirty messages resolve to 3.3 points each, so
+es's −0.035 and ja's −0.039 are one message of thirty apiece — inside
+the noise — while pl's +0.208 is six. The reading is the sign across
+languages, and it is positive in five of seven with the losses at the
+noise floor.
+
+**What ships.** `IntentFixture.meetingExamplesIn(lang)` — the five in
+fr, de, es, ru, ja, uk, pl, English for anything else — so a caller
+that knows the message's language passes them; the shipped prompt
+and its English examples are unchanged for a caller that does not.
+Not done: a language detector in front of `Classify` to pick them
+automatically (`intent-language-gap` has the per-language numbers a
+detector would have to beat), and the fixture-growth question that
+would turn a per-language cell from 3.3 points to something a
+default could rest on.
+
 ## Results — intent-structured-output (2026-09-07)
 
 Every lane in this line bought its answer's SHAPE by persuasion — a
