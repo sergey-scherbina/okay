@@ -1,5 +1,30 @@
 # Changelog
 
+## scheduler-cancel-wins — the cancellation flake was one line earlier than the guess
+Completed: 2026-09-07
+`TestSchedulerLaws` law 4 had been red about one run in three on the
+loom member, and only under load. The diagnosis filed with it was
+wrong, and finding that out was the work: the guess was that a cancel
+arriving before the park leaves only an interrupt flag, and widening
+that window (a sleep inside the registration) refuted it in one run —
+a sleep throws on interrupt and the fiber fails correctly. The real
+window is in `CanBlock.block`, which reads the slot's FAST path
+("already filled, never waited") before it looks at the interrupt;
+the loop below it had been corrected the same morning, the fast path
+had not. A cancel and an answer that both land while the registration
+is still running are therefore seen by a fiber that has not looked at
+its interrupt yet, and it takes the answer. The fix is the same rule
+one line earlier, at the source, so it covers loom, forkJoin and
+threads together. The new law forces the race rather than hoping for
+it: the registration spins uninterruptibly until the test has
+cancelled and delivered, so the fiber returns into the window every
+run. Without the fix it fails every time; with it, 46 laws over six
+members pass. A first, plausible fix (cancel completing the fiber's
+future, as the drive member does) was rejected — it was run against
+the test both ways and passed WITHOUT it, which is how a repair with
+no failing test gets caught. specs/schedulers.md, "Cancel wins the
+race it is in".
+
 ## measure-warmup-honesty — a measurement suite said it discarded a warmup, and it did not
 Completed: 2026-09-07
 `MeasureScript`'s header claimed medians "with the warmup discarded";

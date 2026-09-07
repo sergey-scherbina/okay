@@ -58,6 +58,42 @@ class TestSchedulerLaws extends munit.FunSuite {
     assertEquals(before.get, 1)
   }
 
+  /**
+   * The same law where the race is FORCED rather than hoped for
+   * (scheduler-cancel-wins).
+   *
+   * The window is between the registration returning and the block
+   * reading `filled` for the first time: a cancel and a value that
+   * both land in it are seen by a fiber that has not yet looked at
+   * its interrupt. It is nanoseconds wide, which is why the sibling
+   * law below caught it about one run in three under gate load and
+   * never in a quiet one.
+   *
+   * Here the registration SPINS — a plain spin, not a park, so an
+   * interrupt does not end it — until the test has cancelled AND
+   * delivered. The fiber then returns into that window every time.
+   */
+  each("cancel wins the race it is in: a value delivered after cancel is never the answer") { sch =>
+    given Scheduler = sch
+    val k = AtomicReference[Either[Throwable, Int] => Unit](null)
+    val go = java.util.concurrent.atomic.AtomicBoolean(false)
+    val f = Async.spawn(Async.await[Int] { cb =>
+      k.set(cb)
+      while !go.get() do Thread.onSpinWait()   // uninterruptible on purpose
+      () => ()
+    })
+    while k.get() == null do Thread.onSpinWait()
+    f.cancel()
+    k.get()(Right(5))
+    go.set(true)
+    val answers = java.util.concurrent.ConcurrentLinkedQueue[Either[Throwable, Int]]()
+    f.onComplete(r => { val _ = answers.offer(r) })
+    Thread.sleep(50)
+    assert(!answers.contains(Right(5)),
+      "a value delivered after cancel became the fiber's answer")
+    assert(answers.size <= 1, s"answered ${answers.size} times")
+  }
+
   each("cancel of a parked fiber: the late answer never becomes the fiber's") { sch =>
     given Scheduler = sch
     val k = AtomicReference[Either[Throwable, Int] => Unit](null)

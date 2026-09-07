@@ -104,7 +104,10 @@ member the way `TestManyToMany` is by buffer):
 3. `onComplete` fires exactly once whether registered before or
    after completion.
 4. `cancel()` of a parked fiber: the late answer is dropped, nobody
-   is resumed (the `TestDriveScheduler` law).
+   is resumed (the `TestDriveScheduler` law) — AND the same holds
+   when the fiber has not parked yet, which is a separate law with
+   its race forced rather than hoped for (scheduler-cancel-wins,
+   below).
 5. `par` and `race` hold: both sides on their own thread of control,
    a child failure fails the pair and cancels the sibling.
 6. NO LOST WAKE: `own` with one worker, a submitter that forks one
@@ -118,6 +121,14 @@ member the way `TestManyToMany` is by buffer):
 8. `adaptive`: a fiber that blocks on `own` completes (`workers = 1`,
    two fibers, the first blocks on the second's channel — a deadlock
    under `own`, a delay under `adaptive`).
+
+10. CANCEL WINS THE RACE IT IS IN (scheduler-cancel-wins,
+   2026-09-07): a value delivered AFTER a cancel is never the
+   fiber's answer, even when the cancel arrived before the fiber
+   parked. The law forces the window instead of waiting for it —
+   the registration spins uninterruptibly until the test has
+   cancelled and delivered, so the fiber returns into the window on
+   every run and every member.
 
 All nine hold as of 2026-09-07: `TestSchedulerLaws`, 34 tests over
 six members (loom, drive, own, own.forShortTasks, own.forLongTasks,
@@ -157,3 +168,51 @@ own ground, and 3 327 against 25 419 when each fiber does real work.
   primitives (`Schedulers.pool(size)` there is the JDK-pool shape).
 - kyo's admission control and preemption (`Task.Preempted`) are not
   in this family's first cut; the fairness law is the placeholder.
+
+## Cancel wins the race it is in (2026-09-07, scheduler-cancel-wins)
+
+Law 4 was red about one run in three on `loom`, and only under load:
+three consecutive runs went green, green, red, and a full gate went
+red once. Filed with a diagnosis that turned out to be WRONG — the
+first hypothesis was that a cancel arriving before the park leaves
+only an interrupt flag, and a widened window (a sleep inside the
+registration) refuted it in one run: a sleep throws on interrupt and
+the fiber fails correctly.
+
+The real window is one line earlier. `CanBlock.block` reads the
+slot's fast path — "already filled, never waited" — BEFORE it ever
+looks at the interrupt:
+
+```scala
+if slot.filled then slot.value   // never waited
+else { ...the loop, which reads the interrupt FIRST... }
+```
+
+The loop had been corrected the same morning to read the interrupt
+before the value; the fast path had not. A cancel and an answer that
+both land while the registration is still running are therefore seen
+by a fiber that has not looked at its interrupt yet, and it takes the
+answer.
+
+- [x] the fix is the same rule in the same shape, one line earlier:
+      `if Thread.interrupted() then { cancel(); throw ... }` before
+      the fast path. It is at the SOURCE, so it covers every member
+      built on `block` rather than one of them.
+- [x] the law that proves it forces the race: the registration spins
+      on an `AtomicBoolean` (a plain spin, not a park, so an
+      interrupt does not end it) until the test has cancelled and
+      delivered. Without the fix it fails on every run; with it, 46
+      of 46 laws pass over six members.
+- [x] REJECTED as unnecessary: making `cancel()` also complete the
+      fiber's future exceptionally (what the drive member does).
+      It masks the same symptom at the fiber level, but the root
+      cause is one line in `block` and covers `loom`, `forkJoin` and
+      `threads` at once; a second mechanism would have been a place
+      for the two to disagree.
+
+### The lesson worth keeping
+The first fix was written from a plausible mechanism and would have
+shipped with a test that passed with AND without it — the test was run
+both ways precisely to check that, and it did not fail without the
+fix. A repair with no failing test is a guess wearing a diff.
+

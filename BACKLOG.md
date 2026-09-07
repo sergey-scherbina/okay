@@ -413,26 +413,16 @@ construction instead of a type test per value).
       only if the inference form (no type argument) bites a consumer.
 
 ## Flakes observed (record → fix loop when they recur)
-- [ ] flaky-scheduler-late-answer — `TestSchedulerLaws` "cancel of a
-      parked fiber: the late answer never becomes the fiber's" fails
-      on the LOOM member about one run in three (observed 2026-09-07:
-      three consecutive `okayJVM/testOnly` runs went green, green,
-      red; the same assertion also reddened a full gate). The other
-      five members pass every time.
-      DIAGNOSIS, not yet a fix: the test spins until the await has
-      published its callback, then cancels — but publishing the
-      callback happens BEFORE the fiber actually parks, so a cancel
-      can land in that window and the later `cb(Right(5))` sometimes
-      still becomes the fiber's answer. Either cancellation must mark
-      the fiber so a resume after it is ignored (a real bug), or the
-      window is unreachable through the public API and the TEST is
-      racing (then the test should close the window rather than be
-      tagged away).
-      NOT tagged Live on purpose: the standing rule sends flakes to
-      the integration tag, and this one asserts a cancellation
-      INVARIANT — hiding it could hide the bug. Whoever owns the
-      scheduler should decide; the evidence is here.
-
+- [x] flaky-scheduler-late-answer — FOUND AND FIXED 2026-09-07
+      (scheduler-cancel-wins). Not the pre-park window I guessed (a
+      sleep in the registration refuted that): `CanBlock.block` read
+      the slot's FAST path before the interrupt, so a cancel and an
+      answer landing while the registration still ran were seen by a
+      fiber that had not looked at its interrupt. One line at the
+      source, covering loom, forkJoin and threads; a new law forces
+      the race instead of waiting for it and fails on every run
+      without the fix. specs/schedulers.md, "Cancel wins the race it
+      is in".
 - [ ] native-runner-137 — the Native test binary
       (`.native/target/scala-3.7.4/okay-test`) "finished with non-zero
       value 137" in a full matrix (2026-09-07 01:25, the

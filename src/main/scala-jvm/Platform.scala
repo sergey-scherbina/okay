@@ -61,7 +61,16 @@ given CanBlock = new:
       slot.filled = true          // release: value is written first
       val t = slot.waiter
       if t != null then java.util.concurrent.locks.LockSupport.unpark(t.nn)
-    if slot.filled then slot.value   // never waited
+    // the interrupt is read FIRST here TOO, not only in the loop
+    // below (scheduler-cancel-wins). A cancel and an answer that both
+    // land while the registration is still running are seen by a
+    // fiber that has not looked at its interrupt yet, and the fast
+    // path handed it the answer — the law's own race, forced and
+    // reproduced by `cancel wins the race it is in`.
+    if Thread.interrupted() then
+      cancel()
+      throw InterruptedException()
+    else if slot.filled then slot.value   // never waited
     else
       // publish who to wake BEFORE re-reading the flag: a completer
       // that misses the waiter is one whose flag we are about to see
