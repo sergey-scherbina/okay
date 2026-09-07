@@ -74,10 +74,108 @@ this testable without a network:
       consumer asking for this writes Ukrainian and Polish
 - [x] `QUIT` always, including after a rejection
 
+## Receiving — POP3, asked for 2026-09-07
+
+The section above says receiving is out of scope because "the consumer
+who asked for this argued against bundling it". The same consumer is
+asking for it now, with a reason: their service writes to people —
+one-time codes, and the notification a standing request is owed — and
+cannot hear the answer. A door that only opens outwards asks questions
+it cannot hear answered.
+
+**POP3, not IMAP.** The two are not the same size, and the difference
+is the whole argument for doing this at all:
+
+| | what a client must implement |
+|---|---|
+| POP3 | eight commands, `+OK`/`-ERR`, and a block terminated by a lone `.` |
+| IMAP | tagged commands, an untagged stream, flags, folders, literals with byte counts, `IDLE`, and a parser for its own syntax |
+
+The consumer needs "what arrived since last time", once a minute.
+That is `UIDL`, `RETR` and `DELE`. Folders, flags, search and push are
+IMAP's reasons to exist and none of them is asked for; when one is,
+IMAP is a module and not a patch on this one.
+
+### Interface
+
+- [x] `Pop3.Server(host, port, user, password: Secret, security)` —
+      the same shape `Smtp.Server` has, credentials through `Secrets`
+      rather than inline, and `security` naming implicit TLS (995),
+      `STLS` on 110, or plain for a test.
+- [x] `Pop3.Message(number, uid, raw)` — one message as it arrived.
+      No MIME parsing here: a wire hands over bytes, and what a
+      subject or a body means is the consumer's question.
+- [x] `Pop3.read(server, secrets, most)(handle: Message => Boolean)` —
+      the whole session in one call. `handle` runs INSIDE it, and its
+      answer decides `DELE`: **true means the caller has taken
+      responsibility for that message** (journalled it, in the
+      consumer's case) and it may be removed; false leaves it in the
+      mailbox for the next pass.
+- [x] `Pop3.Failure` as DATA — `Connection`, `Auth`, `Protocol` — for
+      the reason `Rejection` is data: "wrong password" and "the host
+      is unreachable" are different answers to give an operator.
+
+### Design — the wire is pure and the socket is a shell
+
+The same split `Session`/`Smtp` already has, with the seam in a
+different place because POP3's shape is different: its responses are
+either one line or a block terminated by a lone `.`, and WHICH depends
+on the command just sent. So the pure half is not a reply-driven state
+machine but a conversation over a `Wire` — read a line, read a block,
+write a line, upgrade — and a test scripts that `Wire` with no socket
+at all.
+
+- [x] `Pop3.talk(wire, …)(handle)` decides every line and every
+      outcome, and runs in the default gate against a scripted wire
+- [x] the socket half is a `Wire` over a `Socket`, and nothing else
+- [x] dot-unstuffing on the way in, because a body line beginning with
+      `.` arrives doubled — the mirror of the dot-stuffing `DATA`
+      already does on the way out
+
+### Behavior
+
+- [x] a block response ends at a line that is exactly `.`, and a line
+      of `..` in it is one dot of content
+- [x] `UIDL` first, so a message has a stable identity the caller can
+      recognise across sessions; a server that refuses `UIDL` falls
+      back to `LIST`, and the number is then the only identity there is
+- [x] `most` bounds one pass: a mailbox with ten thousand messages
+      must not become a ten-thousand-message turn
+- [x] `handle` answering false leaves the message in the mailbox, and
+      an exception from it is the same as false — a caller that threw
+      has not taken responsibility for anything
+- [x] `DELE` is sent only after `handle` answered true, and `QUIT` is
+      what commits it: a session that dies mid-pass deletes NOTHING,
+      which is what makes a re-read the safe repair
+- [x] `QUIT` always, including after a failure, like `Smtp`
+
+### Out of scope here too
+
+MIME. Attachments. `TOP`. `APOP`. Keeping a connection between
+passes. IMAP.
+
+### Results — okay-mail-pop3 (2026-09-07)
+
+`Pop3.scala`, 210 lines beside `Smtp`'s 122, and seven tests that
+script a `Wire` and touch no network. What the tests pin down is not
+the happy path — that is the easy half — but the four answers this
+module has to get right:
+
+| | |
+|---|---|
+| `DELE` only for what `handle` took | a pass that read two and took one writes `RETR 1, DELE 1, RETR 2, QUIT` |
+| a handler that THREW took nothing | no `DELE` at all, and the message is there for the next pass |
+| a refused password is `Auth`, a closed greeting is `Connection` | an operator reads one and fixes their config, reads the other and checks the host |
+| a password missing from `Secrets` never reaches the wire | the session fails before `PASS` is written |
+
+`STLS` is asserted to happen BEFORE `USER`: the test reads the first
+two lines written and refuses anything but `STLS`, `USER`, which is
+the one ordering mistake that would put a password in the clear.
+
 ## Out of scope, deliberately
 
-Receiving. Attachments. MIME multipart. Templates. A connection pool.
-DKIM signing. Each of them arrives with a reader or not at all.
+Attachments. MIME multipart. Templates. A connection pool. DKIM
+signing. Each of them arrives with a reader or not at all.
 
 ## Results — okay-mail-smtp (2026-09-05)
 
