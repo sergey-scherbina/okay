@@ -1,5 +1,23 @@
 # Changelog
 
+## intent-structured-output — the answer's shape by contract, measured: nothing on top of the persuasion, nothing instead of it
+
+`OpenAi.request` gained `responseFormat`, with `OpenAi.jsonSchema(name,
+schema, strict)` building the OpenAI-compatible `response_format` from
+the JSON schema `JsonSchema.of` already derives. Five arms over the 120
+messages on the `Meeting` taxonomy (`TestStructuredOutput`, Live): the
+shipped prompt with and without the contract gives the same macro F1
+(0.909), the same per-class scores and the same replies at 36% more
+latency; three minimal prompts under the contract decode zero of 360
+replies, and the replies violate the schema itself — `why` missing
+where it is required, a string where a tagged object is — so the
+rozum gateway's `response_format` is a hint for flat objects, not a
+grammar for nested sums and lists. And the derived schema renders a
+refinement (`Conf`, `Schema.refine` over a string) as a plain string,
+so the contract could not carry the `conf` vocabulary even if
+enforced; an `enum` for refinements in `JsonSchema` is filed. No
+default moves; the door stays for a gateway that enforces.
+
 ## okay-script-cache — conditional requests: validators for static files always, `cache:` for pages
 Completed: 2026-09-07
 Landed as ab75608e (spec then code). Operator ask, in two halves

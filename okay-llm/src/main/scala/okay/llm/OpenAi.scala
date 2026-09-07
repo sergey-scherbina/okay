@@ -92,16 +92,33 @@ object OpenAi {
         "description" -> Json.JStr(description),
         "parameters" -> parameters))))
 
+  /**
+   * The answer's shape by contract (intent-structured-output): an
+   * OpenAI-compatible `response_format` naming a JSON schema — the one
+   * `JsonSchema.of` derives — so the gateway constrains the reply to it
+   * instead of the prompt persuading the model into it. `strict` asks
+   * for the schema to be enforced exactly where the gateway can.
+   */
+  def jsonSchema(name: String, schema: Json, strict: Boolean = true): Json =
+    Json.JObj(Vector(
+      "type" -> Json.JStr("json_schema"),
+      "json_schema" -> Json.JObj(Vector(
+        "name" -> Json.JStr(name),
+        "strict" -> Json.JBool(strict),
+        "schema" -> schema))))
+
   def request(model: String, messages: Seq[Json], tools: Seq[Json] = Nil,
-              stream: Boolean = false, maxTokens: Option[Int] = None): String =
+              stream: Boolean = false, maxTokens: Option[Int] = None,
+              responseFormat: Option[Json] = None): String =
     val base = Vector(
       "model" -> Json.JStr(model),
       "messages" -> Json.JArr(messages.toVector),
       "stream" -> Json.JBool(stream))
     val withTools = if tools.isEmpty then base
       else base :+ ("tools" -> Json.JArr(tools.toVector))
-    val full = maxTokens.fold(withTools)(n =>
+    val withMax = maxTokens.fold(withTools)(n =>
       withTools :+ ("max_tokens" -> Json.JNum(n.toDouble)))
+    val full = responseFormat.fold(withMax)(f => withMax :+ ("response_format" -> f))
     Json.print(Json.JObj(full))
 
   def headers(apiKey: String): Map[String, String] = Map(

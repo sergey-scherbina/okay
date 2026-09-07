@@ -2809,7 +2809,7 @@ subtraction.
       one symptom: `Frame.filled` throws the parsed value away, which
       surfaced the moment I tried to write how it would be used and
       never in any test. Highest value of anything on this list.
-- [ ] intent-structured-output — every lane bought its answer's SHAPE
+- [x] intent-structured-output — every lane bought its answer's SHAPE
       by persuasion: a rendered example, written rules, field order.
       OpenAI-compatible gateways take `response_format` with a JSON
       schema, which makes the shape a property of DECODING rather than
@@ -2817,6 +2817,18 @@ subtraction.
       it may close the decode question outright and take accuracy with
       it — one experiment, not a research programme, and it is not a
       data problem.
+      MEASURED 2026-09-07 (`TestStructuredOutput`, five arms over 120
+      messages, `Meeting`): `OpenAi.request` gained `responseFormat`
+      and `OpenAi.jsonSchema`. Where the persuasion already works the
+      contract changes nothing — the same 0.909, the same replies — at
+      36% more latency; where it is removed, zero of 360 replies
+      decode, and they violate the schema itself (`why` missing, a
+      string for a sum): the rozum gateway's `response_format` is a
+      hint for flat objects, not a grammar for this shape. Also: the
+      derived JSON schema renders a refinement (`Conf`) as a plain
+      string, so the contract could not carry the vocabulary even if
+      enforced — an `enum` for refinements in `JsonSchema` is filed.
+      No default moves; the door stays for a gateway that enforces.
 - [x] intent-multi-intent-measured — LANDED 2026-09-05. Twelve
       two-intent messages in the fixture; the shipped path answers
       with one label by construction (matched either intent 10/12, and

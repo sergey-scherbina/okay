@@ -95,7 +95,7 @@ pipeline, so a body cut mid-string still yields the text it carried.
 | `Anthropic.token` | `String => Option[String]` | payload to text token; total |
 | `Anthropic.stream` | `(transport, apiKey, request, url?) => Unit ! (Writer % String + Async)` | the completion as a token stream |
 | `Anthropic.tokensOf` | reusable tail: SSE lines to tokens | build other providers on it |
-| `OpenAi.request/message/tool` | build the wire body as Json | derived tool schemas pass through untouched |
+| `OpenAi.request/message/tool` | build the wire body as Json | derived tool schemas pass through untouched; `responseFormat = Some(OpenAi.jsonSchema(name, JsonSchema.of(schema)))` asks the gateway for the answer's shape by contract (intent-structured-output: it holds the shape, not a refinement's vocabulary) |
 | `OpenAi.complete` | `(transport, key, body, url) => Response ! Async` | one completion, whole (what an agent loop needs) |
 | `OpenAi.stream` / `token` | SSE deltas to text tokens | total: a cut-off payload is simply not a token |
 | `Bpe` | `Bpe(ranks: Map[(String, String), Int])` / `Bpe(merges: Seq[(String, String)])` | byte-pair encoding as a `Scan[String, Bpe.S]` |

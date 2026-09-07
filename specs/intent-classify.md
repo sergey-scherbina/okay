@@ -3518,6 +3518,59 @@ The gap to the teacher is 18 points now, from 23; the remaining gap
 is still CONTEXT (a unit's one vector wherever it appears), and
 neither extension touches that.
 
+## Results — intent-structured-output (2026-09-07)
+
+Every lane in this line bought its answer's SHAPE by persuasion — a
+rendered example, written rules, a field order found by measuring the
+residue. OpenAI-compatible gateways take `response_format` with a JSON
+schema, and `JsonSchema.of(Schema[I])` is exactly that document; the
+rozum gateway honours the field (a flat object came back valid). So
+`OpenAi.request` gained `responseFormat` and `OpenAi.jsonSchema(name,
+schema, strict)`, and five arms ran over the 120 messages on the
+`Meeting` taxonomy, the same decoder throughout
+(`TestStructuredOutput`, Live, 28 minutes of calls):
+
+| arm | prompt chars | macro F1 | undecodable | reply chars | s/msg |
+|---|---|---|---|---|---|
+| shipped (persuasion only) | 2276 | 0.909 | 0/120 | 304 | 1.4 |
+| shipped + schema | 2276 | 0.909 | 0/120 | 304 | 1.9 |
+| minimal + schema | 136 | — | 120/120 | 507 | 3.6 |
+| minimal + schema + `conf` vocabulary line | 173 | — | 119/120 | 1097 | 4.8 |
+| minimal + schema + the five examples | 657 | — | 115/120 | 497 | 2.5 |
+
+**Where the persuasion already works, the contract is a no-op with a
+bill.** The shipped prompt with and without `response_format` gave
+the same macro F1, the same per-class scores, the same reply length —
+the replies are the same replies — at 36% more latency (1.4 → 1.9
+s/msg): the gateway's constrained decoding costs and buys nothing
+here, because there was nothing left to constrain.
+
+**Where the persuasion is removed, the contract does not replace it —
+and the replies do not even satisfy the schema.** Three minimal arms,
+zero decodable replies among 360. The failures are not the model
+being wrong, they are the CONTRACT being unenforced: `conf` filled
+with `"0.95, 0.95, …"` or `"}, {"`, `why` missing though the schema
+requires it, a string where the schema says a tagged object. A
+gateway that enforced the grammar could not produce these. So the
+rozum gateway's `response_format` is a hint for flat objects and not a
+grammar for this shape (nested sums, lists) — which is the one thing
+this lane had to find out before anyone leaned on it.
+
+**And one thing the contract could not carry even if enforced.**
+`Schema[Conf]` is a refinement over a string (`Schema.refine`), and
+`JsonSchema.of` renders an `SIso` as its underlying type — so the
+schema says `string` where the decoder wants one of three words. The
+persuasion's one-line vocabulary rule carries what the derived
+contract loses; a JSON schema with an `enum` for refinements is a
+codec change, filed here rather than done inside a measurement.
+
+**What follows.** No default moves: the shipped prompt stays as it
+is, `responseFormat` stays as a door for a gateway that does enforce
+(a later re-measure of the minimal arms is the test of one), and
+"persuasion versus contract" has its number — on this gateway the
+contract is worth nothing on top of the persuasion and nothing
+instead of it.
+
 ## Results — intent-distil-diversity (2026-09-07)
 
 The entry: the distilled corpus alone scores ten points below a human
