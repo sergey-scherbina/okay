@@ -49,6 +49,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   trades, the builder, recipes, the measured table, and the
   literature: Vyukov, Michael & Scott, Okasaki, Koch–Sanders–Williams
   on relaxed FIFO, Herlihy & Shavit.
+- **[Schedulers](schedulers.md)** — the family (Loom, owned workers,
+  a given pool, platform threads), the builder that chooses and tunes
+  one, the single decision the owned-worker scheduler makes for itself
+  by measuring its own last sixteen tasks, what blocking inside a
+  worker costs and what `adaptive` buys back, the nine laws every
+  member owes, and the numbers against kyo and the JDK pool.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
 - **[Capabilities](capabilities.md)** — context functions as the
