@@ -1,5 +1,42 @@
 # Changelog
 
+## json-escape-alloc — a String per character, on the staged encoders' own path
+Completed: 2026-09-07
+Landed as 7700f7d6. The mirror of json-projection-alloc, on the road
+that is actually used. `Json.escape` was `s.flatMap { ... case c =>
+c.toString }` — a String allocated per CHARACTER — and unlike the
+lossless road it has callers everywhere: `Json.print`, `Staged.scala`
+(the compile-time encoder) and `RuntimeStaged.scala` (the run-time
+one). Every string through the staged doors specs/codecs.md measures at
+385 ns was paying it.
+
+It is `unquote`'s shape now — look first, answer the input when there
+is nothing to do. Best of twelve over 200k strings:
+
+| | old | new |
+|---|---|---|
+| nothing to escape | 17.0 ms | 6.0 ms |
+| every string escapes | 37.4 ms | 13.0 ms |
+
+2.8x and 2.9x, and the win being in BOTH columns is the part worth
+noticing: the old version allocated per character whether or not
+anything needed escaping, so the fast path is not what earns most of
+this — not allocating a String to hold one character is.
+
+**The test was written first**, against the old implementation, and it
+earned that immediately. The first version of the new `escape` used
+Scala's `StringBuilder`, which has an `append(Any)`, so
+`b.append(s, 0, i)` silently appended the TUPLE `(s, 0, i)` as text
+instead of the prefix. A test written after the change would have been
+written against that behaviour. It is `java.lang.StringBuilder` now.
+
+`TestJsonEscape` pins the contract the rewrite had to keep: exactly
+five characters escaped, `\b`/`\f`/controls deliberately not (this
+project's own choice, recorded in `unquote`), occurrences at both
+edges, and a round trip through both read roads — because `Json.scala`
+says escape and unescape must agree exactly, not just resemble each
+other. Full suite green: 3018 tests.
+
 ## json-projection-alloc — a Vector per node and a StringBuilder per string, both gone
 Completed: 2026-09-07
 Landed as 458a9481. Asked after the batch road landed: is there more in

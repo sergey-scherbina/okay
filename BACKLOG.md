@@ -835,19 +835,16 @@ measure on our own data, never a predicted result.
 - [ ] ui-windows-terminal — raw mode beyond stty
 
 ## okay-codec
-- [ ] json-escape-alloc — `Json.escape` is `s.flatMap { ... case c =>
-      c.toString }`: a String allocated PER CHARACTER, on the encode
-      side. Measured 2026-09-07 over 200k strings: 13.5 ms against
-      4.7 ms for an allocation-free version answering the same string
-      — 2.9x. Unlike the lossless-road work, this one is HOT: it is
-      called by `Json.print`, by `Staged.scala` (the compile-time
-      encoder) and by `RuntimeStaged.scala` (the run-time one), so
-      every string through the staged doors the repo measured at 385 ns
-      pays it. The fast path is the same shape `unquote` just got:
-      scan for a character that needs escaping and answer the input
-      itself when there is none. Must escape EXACTLY the same five
-      characters — this project deliberately does not escape \b, \f or
-      controls, and escape/unescape must keep agreeing exactly.
+- [x] json-escape-alloc — LANDED 2026-09-07: `Json.escape` allocated a
+      String PER CHARACTER, on a path `Json.print`, `Staged.scala` and
+      `RuntimeStaged.scala` all take — so every string through the
+      staged doors paid it. `unquote`'s shape now: 17.0 → 6.0 ms with
+      nothing to escape, 37.4 → 13.0 ms when every string escapes
+      (200k strings, best of twelve). The win is in BOTH columns,
+      because the old version allocated per character either way. The
+      test was written FIRST and caught the rewrite using Scala's
+      `StringBuilder`, whose `append(Any)` silently appended a tuple.
+
 - [ ] codec-two-roads-audit — the json-parse-fast-road shape as a
       QUESTION rather than a fix: a module had two roads to the same
       value, 37x apart, and the DEFAULT was the slow one for long
