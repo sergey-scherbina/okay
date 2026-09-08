@@ -18,7 +18,7 @@ What actually makes this different:
 
 1. The encoding is your choice, not the library author's. The same program lives as a tree (steppable, inspectable, compilable) or as a function (faster). Programs move between the two. Most libraries sell you one and imply the other doesn't exist.
 
-2. Direct style with no macros. Monadic code reads as ordinary code. That isn't a trick — it's Filinski's 1994 result: given delimited control, any monad runs in direct style. And unlike the Loom-based approach, multi-shot survives here, so nondeterminism and backtracking keep working — on all three platforms.
+2. Direct style with (almost) no macros. Monadic code reads as ordinary code. That isn't a trick — it's Filinski's 1994 result: given delimited control, any monad runs in direct style. And unlike the Loom-based approach, multi-shot survives here, so nondeterminism and backtracking keep working — on all three platforms.
 
 3. One source for JVM, Scala.js and Scala Native. A platform contributes not API but evidence: "can I park a thread?" So a blocking join in JS code is a compile error, not a runtime failure in front of your user.
 
