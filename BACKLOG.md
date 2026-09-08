@@ -8,24 +8,27 @@ each case okay ships something that beats every competitor on the
 lane, and the DEFAULT path chooses something slower. The fix is a
 choice, not an optimisation, and the numbers to choose by exist.
 
+TRIMMED 2026-09-08 (forkjoin-pairing): the fork/join row was a
+MISMATCHED PAIR — okay's outside-the-runtime shape against kyo's
+inside one — and the cancel row is the same asymmetry one step
+milder. Both are corrected in §4b and neither is a defect. What
+survives is the channel default.
+
 | lane | the default | what okay already has | best competitor |
 |---|---|---|---|
-| fork/join 10 000 fibers | 2715 | `ownShort` **709** | kyo 884 |
 | many-to-many 4x4, one channel | 4806 | adaptive **870** | zio 3106 |
 | many-to-many 16x16 | 9325 | adaptive **1042** | zio 6325 |
-| cancel 1 000 parked fibers | 1116 | `drive` **597** | cats 748 |
 
-- [ ] default-scheduler-shape — the fork/join default is 3.1x behind
-      kyo while `forShortTasks` on the SAME shape reads 709, ahead of
-      everything. Expected win: 3.8x on the lane.
-      DISQUALIFYING EVIDENCE, and it is already half-visible:
-      `forShortTasks` COLLAPSES on big tasks — 27 640 against the
-      default's 3218 at `work=10000`, a 8.6x loss. So the answer is
-      not "switch the default", it is either a better adaptive rule
-      than the one in `Owned`'s helper clause or an honest statement
-      that the knob must be chosen per workload. Anyone starting here
-      measures BOTH work sizes or produces a fix that trades one for
-      the other.
+- [x] default-scheduler-shape — REFUTED 2026-09-08 by its own
+      disqualifying evidence, and the entry was built on a mismatched
+      pair besides. Matched by shape, okay is AHEAD of kyo in both:
+      1957 against 33 900 outside the runtime, 796 against 884 inside
+      it, and 3218 against 26 260 inside it at `work=10000`. And the
+      adaptive default this entry accused of choosing badly reads
+      796 / 3218 where its own fixed policies read 709 / 27 640 and
+      2618 / 3200 — it already picks best-of-both, at a 12% premium
+      over whichever policy wins each end. Nothing to fix. §4b now
+      carries both rows instead of the one that mixed them.
 - [ ] channel-default-adaptive — `Channel.apply` gives the plain ring;
       the adaptive buffer reads 870/1042 where the ring reads
       4806/9325 (4x4 and 16x16). Expected win: 5.5x and 9x at those
@@ -34,12 +37,15 @@ choice, not an optimisation, and the numbers to choose by exist.
       case the default is presumably chosen for. A fix must show the
       one-producer case does not regress, or must adapt rather than
       switch.
-- [ ] cancel-default-drive — `cancel1k` on the default scheduler is
-      1116 where okay's own `drive` reads 597, the best number in the
-      table. Expected win: 1.9x. DISQUALIFYING: `drive` may be winning
-      because it does LESS on cancel (it is the event-loop drive);
-      check the cancellation is actually delivered before crediting
-      it. specs/schedulers.md.
+- [x] cancel-default-drive — CLOSED 2026-09-08 as not-a-defect. The
+      1116 is Loom's thread INTERRUPT; cats does its thousand cancels
+      inside one `unsafeRunSync`. okay's matched lanes are the pool
+      ones — `cancel1k_okayOwn` 750 against cats' 748 is a tie, and
+      `cancel1k_okayDrive` 597 is the best number in the block. The
+      benchmark's own comment predicted this ("§4b blamed the
+      interrupt, and this is the lane that says whether it was
+      right"). The lane count still says every cancel is delivered,
+      so `drive` is not winning by doing less.
 
 ## bench-sendbulk-inverted — `sendManyNow` used to be 1.63x ahead and is now 17% behind
 

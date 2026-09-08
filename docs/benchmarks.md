@@ -346,12 +346,37 @@ Three lanes chosen because the predictions in the claim said we lose
 them (`compare/src/jmh/scala/okay/AdversarialBenchmark.scala`,
 `-f 1 -wi 3 -i 5`, sbt-free launcher, quiet box, us/op, ±error):
 
-| lane | okay | raw Loom | zio | cats | kyo |
+**This table's first row was a MISMATCHED PAIR for as long as it has
+existed, and the sixth instance of the one mistake this page keeps
+making** (forkjoin-pairing, 2026-09-08). `forkJoin10k_okay` spawns
+10 000 virtual threads and joins them from OUTSIDE the runtime;
+`forkJoin10k_kyo` is `Async.parallelUnbounded` inside `runAndBlock`
+and never leaves kyo's. Both numbers are true, of different questions,
+and Lane Rule 2 below forbids putting them in one row. The matched
+lanes were already in the file on both sides — `forkJoin10k_kyoOutside`
+and `forkJoin10k_okayOwnInside` — so this is a reading error, not a
+missing measurement. Asked properly it is two rows, and okay is ahead
+in both:
+
+| fork/join 10 000, `work=100` | okay | raw Loom | zio | cats | kyo |
 |---|---|---|---|---|---|
-| fork/join 10 000 fibers | 2715 | 2661 | 3445 | 2730 | **884** |
-| many-to-many 4×4, one channel | 4806 | — | **3106** | 4302 | — |
-| many-to-many 16×16 | 9325 | — | **6325** | 8881 | — |
-| cancel 1 000 parked fibers | 1116 | — | 887 | **748** | — |
+| **spawned and joined from OUTSIDE** | **1957** | 2661 | 3503 | 2730 | 33 900 |
+| **spawned INSIDE, runtime-native** | **796** | — | — | — | 884 |
+
+At `work=10000` the inside pair is okay **3218** against kyo **26 260**
+— 8.2x — because kyo's answer never spreads and okay's decides to.
+That decision is the point: the self-deciding `Owned` reads 796 / 3218
+where its own fixed policies read 709 / 27 640 (`forShortTasks`) and
+2618 / 3200 (`forLongTasks`). Best of both, at a 12% premium over
+either at the end where that one wins.
+
+The rest of the block, unchanged in pairing:
+
+| lane | okay | zio | cats |
+|---|---|---|---|
+| many-to-many 4×4, one channel | 4806 | **3106** | 4302 |
+| many-to-many 16×16 | 9325 | **6325** | 8881 |
+| cancel 1 000 parked fibers | 1116 | 887 | **748** |
 
 (bench-refresh 2026-09-08, `work=100`, minimum of three rounds. **Read
 this block as ranks, not as measurements**: every lane in it except
@@ -360,6 +385,19 @@ fork/join rounds were 2715 / 3197 / 1957 — because ten thousand fibers
 on fourteen cores is a scheduling experiment, not a microbenchmark.
 kyo's own rounds sat inside 5%, which is itself the finding: its
 scheduler is the steady one here.)
+
+**The cancel row is the same asymmetry, one step milder.**
+`cancel1k_okay` runs on Loom, where a cancel is a thread INTERRUPT;
+cats does its thousand cancels inside `unsafeRunSync`, entering its
+runtime once. okay's matched lanes are the pool ones, and the comment
+over them in the benchmark says so outright — "a cancel is a CAS on
+the fiber's own cell rather than an interrupt of a thread — §4b blamed
+the interrupt, and this is the lane that says whether it was right".
+It was right: `cancel1k_okayOwn` reads **750** against cats' 748, a
+tie, and `cancel1k_okayDrive` reads **597**, the best number in the
+block. The 1116 above is the price of Loom's interrupt, which is a
+real number for the default scheduler and not a defect of the
+cancellation protocol.
 
 **Two rows this table did not have, and both change the reading.** The
 same suite carries `manyToMany_okayAdaptive` — the adaptive buffer
