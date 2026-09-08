@@ -1,5 +1,49 @@
 # Changelog
 
+## growing-adopted-part0 — the 3.6x was buffer capacity, and the adoption is worth 6.4x
+
+`Growing` read 3.6x the `AdaptiveFifo` it grows into, and the backlog
+blamed the adopted part 0 by elimination. The entry rested on a
+**mismatched pair**, filed by me:
+
+| lane | what it builds | slots |
+|---|---|---|
+| `growing_chunk` | part 0 at 1024, fifteen more at 64 | **1 984** |
+| `adaptive_chunk` | sixteen parts at 1024 | **16 384** |
+
+`adaptive` had 8.3x the buffer. With 8 000 elements through one
+consumer, capacity decides how often a producer parks — so most of the
+"mechanism gap" was buffer size. A new diagnostic lane,
+`adaptiveSmall_chunk`, holds the mechanism and matches the capacity:
+
+| producers | `growing` | `adaptiveSmall` | `adaptive` | growing/small |
+|---|---|---|---|---|
+| 1 | **178.7** | 1149.6 | 174.6 | **0.16x** |
+| 4 | 527.4 | 543.1 | 172.1 | 0.97x |
+| 16 | 422.0 | 428.7 | 118.2 | 0.98x |
+
+**At matched capacity `Growing` is at parity with the buffer it grows
+into**, marginally ahead. There is no defect in the adopted part 0 —
+and the one-producer column prices the adoption for the first time:
+**6.4x faster than a partitioned buffer of the same capacity**, which
+is exactly what it exists to buy.
+
+`Growing`'s scaladoc and `docs/queues.md` both said the opposite — that
+it is "behind both of the buffers it is made of, because after the swap
+every push crosses two layers". Both halves are refuted: the layer of
+call measures 1.02x (a buffer that only forwards), and the comparison
+was never like-for-like. Both documents are corrected in place, because
+a class that misdescribes itself is worse than one with no comment.
+
+What remains is not speed but **semantics**, filed as
+`growing-capacity-semantics`: `growing(capacity, parts)` and
+`adaptive.parts(n).each(c)` spell capacity differently, so two builders
+that look comparable are not. That mismatch cost this session two
+claims and is the seventh instance of this class of error on this page.
+
+Commits: d3acba4c (the measurement and the board), 4a8e5f9e (the two
+documents).
+
 ## growing-grown-cost — the sample counter outlived the one swap it existed for
 
 `Growing`'s `sample()` stored its counter on every push **for ever**:
