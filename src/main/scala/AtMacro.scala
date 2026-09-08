@@ -49,46 +49,45 @@ object AtMacro:
       case Effect(e) => Free.inject(i.inj(e))
       case Bind(Effect(e), k) => Free.inject(i.inj(e)).flatMap(x => walk(k(x))(i))
 
+  // the receiver must be `inline`, or Scala binds it to a val proxy
+  // before the splice and the macro sees only Ident("p$proxy1")
+  /**
+   * THE CHEAP ONE. `+` is a union ([A] =>> F[A] | G[A]) and unions are
+   * ERASED, so a Free[F, A] already IS a Free[R, A] at runtime — every
+   * operation it holds is an F[X], and In witnesses that every F[X] is
+   * an R[X]. The tree walk in `widen` rebuilds a structure that was
+   * already correct; the evidence is exactly the proof that makes
+   * reinterpreting it sound instead of a guess.
+   */
   extension [A, F[+_]](p: A ! F)
-    inline def at[R[+_]](using inline i: In[F, R]): A ! R =
-      ${ atImpl[A, F, R]('p, 'i) }
+    inline def atCast[R[+_]](using In[F, R]): A ! R =
+      p.asInstanceOf[A ! R]
 
   /**
-   * Scala 3 binds an extension's receiver to a val proxy BEFORE the
-   * splice, so a naive stripper sees `Ident("p$proxy1")` and nothing
-   * else — which is exactly why the first version of this macro fell
-   * back every time and measured identical to widen. The bindings of
-   * the enclosing Inlined carry the real term; collect them on the
-   * way down and resolve the identifier against them.
+   * THE MACRO ROUTE, REFUTED — kept as the record so the next person
+   * does not spend the afternoon I did.
+   *
+   * The idea was sound and got most of the way: `State.get[Int]` is an
+   * inline def whose body is `effect(Get())`, so a macro should see
+   * the operation and emit the Inject at R directly, skipping the
+   * rebuild. Two walls, in order:
+   *
+   *   1. Scala binds an extension's receiver to a val proxy BEFORE the
+   *      splice, so the macro sees `Ident("p$proxy1")` and nothing
+   *      else. Resolving it from inside is impossible — the binding
+   *      lives outside the term the macro is handed. Marking the
+   *      receiver `inline` DOES fix this: the macro then reports
+   *      `HIT: okay.Free$.Inject$.apply`.
+   *
+   *   2. But the operation it extracts refers to a proxy created by
+   *      `effect`'s OWN inlining, and re-emitting it fails:
+   *        "a reference to value a$proxy16 was used outside the scope
+   *         where it was defined"
+   *      Rewriting a subtree that arrived from an inline def is not
+   *      generally possible. This is why `direct` builds Free.Inject
+   *      from its own pieces rather than moving anyone else's term.
+   *
+   * And it turned out not to be needed: `atCast` above is free without
+   * any of this, because the union is erased and the evidence is the
+   * proof that saying so is sound.
    */
-  private def resolved(using q: Quotes)
-                      (t: q.reflect.Term,
-                       env: Map[q.reflect.Symbol, q.reflect.Term])
-  : q.reflect.Term =
-    import q.reflect.*
-    def binds(ss: List[Statement]): Map[Symbol, Term] =
-      ss.collect { case vd: ValDef if vd.rhs.isDefined => vd.symbol -> vd.rhs.get }.toMap
-    t match
-      case Inlined(_, bs, inner) => resolved(inner, env ++ binds(bs))
-      case Block(ss, inner) => resolved(inner, env ++ binds(ss))
-      case Typed(inner, _) => resolved(inner, env)
-      case id: Ident if env.contains(id.symbol) => resolved(env(id.symbol), env)
-      case _ => t
-
-  private def isInject(using q: Quotes)(fn: q.reflect.Term): Boolean =
-    val n = fn.symbol.name
-    n == "inject" || n == "effect" ||
-      (n == "apply" && fn.symbol.owner.name.startsWith("Inject"))
-
-  def atImpl[A: Type, F[+_]: Type, R[+_]: Type](p: Expr[A ! F], i: Expr[In[F, R]])
-                                               (using Quotes): Expr[A ! R] =
-    import quotes.reflect.*
-    resolved(p.asTerm, Map.empty) match
-      // Free.inject[F, A](op) / effect[F, A](op) — the operation is
-      // right there, so put it in R's Inject and skip the rebuild
-      case Apply(fn, List(op)) if isInject(fn) =>
-        op.asExpr match
-          case '{ $o: t } =>
-            '{ Free.inject[R, A]($i.inj(${ op.asExprOf[F[A]] })) }
-      case _ =>
-        '{ walk[A, F, R]($p)($i) }

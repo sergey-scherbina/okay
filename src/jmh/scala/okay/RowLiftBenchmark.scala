@@ -3,7 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
-import okay.AtMacro.{at as atM, given}
+import okay.AtMacro.{atCast, given}
 
 /**
  * What does attaching a row COST?
@@ -129,15 +129,14 @@ class RowLiftBenchmark {
       i += 1
     State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
 
-  /** the macro `.at`: same postfix syntax, but the operation is put
-   * into R's Inject at COMPILE time — no intermediate node, no walk.
-   * Falls back to the tree walk for a receiver it cannot see through. */
+  /** no walk, no macro: the union is erased, so the program already IS
+   * one in R; the evidence is what makes saying so sound */
   @Benchmark
-  def viaAtMacro(): Int =
-    var m: Int ! R = State.get[Int].atM[R]
+  def viaAtCast(): Int =
+    var m: Int ! R = State.get[Int].atCast[R]
     var i = 1
     while i < N do
-      m = m.flatMap(_ => State.get[Int].atM[R])
+      m = m.flatMap(_ => State.get[Int].atCast[R])
       i += 1
     State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
 }
