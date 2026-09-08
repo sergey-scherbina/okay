@@ -24,6 +24,106 @@ is that a chunk is a WHOLE definition, so it is measured as a
 percentage by `okay-rag`'s `TestChunkQuality` and reported in §11
 beside the microseconds it costs.
 
+## The short version
+
+Every number is microseconds per operation, lower better, JMH, from
+one session on a quiet 14-core box. Where a competitor appears, both
+sides were checked against the Lane rules below — same shape, same
+granularity, same source, same resources — because five lanes that
+failed that check were found on 2026-09-08 alone, and every one of
+them read as "we are slow" or "we are fast" for the wrong reason.
+
+| the question | okay | best competitor | § |
+|---|---|---|---|
+| run an already-finished program | **0.0021** | ZIO 0.043 | [§0](#0-the-floor--what-each-runtime-charges-to-run-nothing) |
+| 10 000 flatMaps, built and run | **5.5** eager, **95** Cont | kyo 60 | [§1](#1-bind-chain--10k-left-nested-flatmaps-built-and-run) |
+| direct syntax over its own flatMap chain | **1.05x** | zio-direct 0.65x | [§1b](#1b-direct-syntax--the-same-10k-binds-written-as-code) |
+| 10 000 handled reads | **79** | kyo 253 | [§2](#2-reader--10k-asks--writer--10k-tells) |
+| 10 000 handled writes | **159** | kyo 178 | [§2](#2-reader--10k-asks--writer--10k-tells) |
+| fork and join 100 fibers | 24.0 | **kyo 18.5** | [§4](#4-forkjoin--100-trivial-fibers) |
+| fork and join 10 000, runtime-native | **796** | kyo 884 | [§4b](#4b-adversarial-lanes--the-rows-we-expected-to-lose) |
+| map/filter/take/sum over 1 000 | **1.70** staged, **8.2** chunked | fs2 21.9 | [§5](#5-stream-pipeline--mapfiltertake1000sum) |
+| merge two streams by readiness | **13.3** | ZIO 51.5 | [§6](#6-merge--two-500-element-streams-by-readiness) |
+| 1 000 bracketed acquire/release | **15.2** | ZIO 116 | [§7](#7-resource--1000-bracketed-acquireuserelease) |
+| the 1 000th Fibonacci, per element | **19.2** | kyo 70.7 | [§8](#8-generators--the-1000th-fibonacci-element-by-element) |
+| read a 2.5 KB JSON document | **0.35** staged, 0.66 lossless | circe 0.56 | [§10](#10-the-text-stack--lex-parse-reparse-codecs) |
+| look up a symbol in an index | **0.56** | — | [§11](#11-retrieval--indexing-re-indexing-chunking-query) |
+| 4 000 elements through an unbounded channel, chunked | **56.0** | ZIO 439.7 | [§16](#16-every-capacity-a-ring--the-table-that-closes-the-arc) |
+| 8 000 elements, 16 producers (okay's own buffers) | **128** | — | [queues.md](queues.md) |
+
+**Where okay loses, and it is here rather than buried:** fork/join of
+100 fibers against kyo (24.0 against 18.5, §4), and the single-channel
+many-to-many row against ZIO (§4b). Both are stated in place with the
+matched pairing that makes them honest.
+
+### Lane rules — before a competitor's number is quoted
+
+Every wrong row this document has carried was a lane asking a
+different question of each side. Three checks, each with the row
+that taught it:
+
+1. **Shape.** A lane built by `foldLeft` gets a RIGHT-NESTED twin
+   before its number is quoted. kyo's Env/Emit/Resource read ~1000x
+   on the left-nested shape `((ask >>= f) >>= f) >>= f` — quadratic
+   in kyo, linear right-nested — and were quoted as the library's
+   price for a week (§2; `ReaderBenchmark` keeps both shapes side by
+   side, and its header says which is which). A number that changes
+   by orders of magnitude with the nesting is the SHAPE's price, not
+   the library's, until the twin says otherwise.
+2. **Pairing.** Only lanes sharing a granularity compare: chunked
+   against chunked, elementwise against elementwise, memoised against
+   memoised. Five of six "ZIO ahead" rows on 2026-09-04/05 were
+   mismatched pairs, and every one flipped once paired (§6b, §14–§16).
+   A lane names its granularity in its name.
+3. **Source.** A competitor is priced from the source its author
+   intended: `ZStream.range`, `fs2.Stream.emits`, kyo `Stream.range`
+   — not `iterate`, not fs2's `range`, which is a singleton chunk per
+   element by construction (§5). The per-element source stays in the
+   table as the worst case it is, beside the fair one, never alone.
+4. **Resources.** Both sides get the same BUDGET: the same buffer
+   capacity, the same worker count, the same chunk size — anything the
+   runtime is handed rather than earns. Added 2026-09-08 after an
+   audit found four lanes breaking it, and the rules above could not
+   catch any of them because each pair had matching granularity and
+   an intended source. `adaptive.parts(16).each(1024)` is **16 384
+   slots**; the `oneRing`, `growing` and ZIO `Queue.bounded(1024)`
+   lanes it was quoted against have 1024. That is a 16x memory
+   advantage read as a mechanism advantage, and it sat in two files
+   and three tables. A lane whose capacity comes from
+   `availableProcessors` breaks this rule too — its number is not
+   comparable with the same lane on another machine.
+
+A new competitor lane lands with all FOUR answered in its header, or
+it lands without a number.
+
+**And the rules bind the lane you wrote yourself.** Every violation
+found in the 2026-09-08 audit was on OUR side, because our lane is
+written first and the competitor's second, against it. One of them
+(§5's chunk size: okay at its 64-element default against three
+competitors getting the whole stream in one chunk) runs AGAINST us and
+went unnoticed for months precisely because okay won the row anyway. A
+comparison unfair in your own disfavour is still unfair.
+
+## How to read this page
+
+Each section is one question, and has three parts in this order: the
+table, why okay's number is what it is, and why the competitors' are
+what theirs are. After that comes the part most pages do not have and
+this one exists for — **what was tried and REFUTED**, kept because the
+`performance` skill's first rule is that a plausible idea nobody
+recorded as wrong gets tried again.
+
+So the long prose is a record, not a preamble. If you want the number,
+the table is the top of the section. If you want to change the number,
+read the refutations first: several of them cost a day and say
+plainly what did not work and by how much.
+
+Numbers are re-measured in batches, and a section says which run it
+belongs to. When a row moved for a reason other than the code — a
+different compiler, a corrected lane, a busier box — the row says
+that too, because a table that silently improves is a table nobody
+can trust.
+
 ## THE RUN THESE TABLES COME FROM (lane-fairness, 2026-09-08 evening)
 
     date       2026-09-08, 16:00-19:08
@@ -2375,54 +2475,6 @@ measuring the thing rather than the story about it.
   of the number and should never be quoted apart from it.
 - The host is a busy laptop; medians across forks and same-session
   grouping are the discipline, and history.tsv records the load.
-
-### Lane rules — before a competitor's number is quoted
-
-Every wrong row this document has carried was a lane asking a
-different question of each side. Three checks, each with the row
-that taught it:
-
-1. **Shape.** A lane built by `foldLeft` gets a RIGHT-NESTED twin
-   before its number is quoted. kyo's Env/Emit/Resource read ~1000x
-   on the left-nested shape `((ask >>= f) >>= f) >>= f` — quadratic
-   in kyo, linear right-nested — and were quoted as the library's
-   price for a week (§2; `ReaderBenchmark` keeps both shapes side by
-   side, and its header says which is which). A number that changes
-   by orders of magnitude with the nesting is the SHAPE's price, not
-   the library's, until the twin says otherwise.
-2. **Pairing.** Only lanes sharing a granularity compare: chunked
-   against chunked, elementwise against elementwise, memoised against
-   memoised. Five of six "ZIO ahead" rows on 2026-09-04/05 were
-   mismatched pairs, and every one flipped once paired (§6b, §14–§16).
-   A lane names its granularity in its name.
-3. **Source.** A competitor is priced from the source its author
-   intended: `ZStream.range`, `fs2.Stream.emits`, kyo `Stream.range`
-   — not `iterate`, not fs2's `range`, which is a singleton chunk per
-   element by construction (§5). The per-element source stays in the
-   table as the worst case it is, beside the fair one, never alone.
-4. **Resources.** Both sides get the same BUDGET: the same buffer
-   capacity, the same worker count, the same chunk size — anything the
-   runtime is handed rather than earns. Added 2026-09-08 after an
-   audit found four lanes breaking it, and the rules above could not
-   catch any of them because each pair had matching granularity and
-   an intended source. `adaptive.parts(16).each(1024)` is **16 384
-   slots**; the `oneRing`, `growing` and ZIO `Queue.bounded(1024)`
-   lanes it was quoted against have 1024. That is a 16x memory
-   advantage read as a mechanism advantage, and it sat in two files
-   and three tables. A lane whose capacity comes from
-   `availableProcessors` breaks this rule too — its number is not
-   comparable with the same lane on another machine.
-
-A new competitor lane lands with all FOUR answered in its header, or
-it lands without a number.
-
-**And the rules bind the lane you wrote yourself.** Every violation
-found in the 2026-09-08 audit was on OUR side, because our lane is
-written first and the competitor's second, against it. One of them
-(§5's chunk size: okay at its 64-element default against three
-competitors getting the whole stream in one chunk) runs AGAINST us and
-went unnoticed for months precisely because okay won the row anyway. A
-comparison unfair in your own disfavour is still unfair.
 
 ## 17. Actors and the reactive bridge — the first numbers
 
