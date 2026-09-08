@@ -1,5 +1,43 @@
 # Changelog
 
+## flush-premium — the flusher fibers were never cancelled
+
+`flushAfter` cost **29%** over the same chunked merge without it,
+against a page that said 9% and that a standing window is free. The
+two lanes differ by one argument, and with `flushAfter = 1000` against
+an operation taking 380 **micro**seconds the timer never fires once —
+so the cost was the machinery merely standing.
+
+It was a leak. `chunkedMerge` forked a flusher per source and dropped
+the handle; `done.get` stopped it only at its NEXT tick, so every
+merge left two fibers asleep for up to a second, each holding a timer
+entry. At a few thousand merges a second that is thousands of live
+sleepers.
+
+**The measurement that found it is worth more than the fix.** A
+one-millisecond window — which does strictly MORE work, because its
+timer actually fires and flushes chunks — measured **1.14x** where the
+thousand-millisecond window measured **1.29x**. A shorter window
+costing less is not something a correct implementation can do, and
+that inversion was written into the diagnostic lane as the test before
+it was run.
+
+Each flusher is now cancelled when its own source finishes; by then
+that source has flushed its own tail, so the flusher has nothing left
+to do.
+
+| | before | after | |
+|---|---|---|---|
+| `okayChunkedFlush` | 400.0 | **349.4** | −12.7% |
+| `okayChunked` (control) | 311.2 | 315.8 | +1.5% |
+| premium of a 1000 ms window | 1.29x | **1.11x** | |
+
+The 11% that remains is two forks and two timer registrations per
+merge — work rather than waste — and §6b says so instead of implying
+the window is free.
+
+Commit: ddc62408.
+
 ## growing-default — `Channel.apply` grows, and exact FIFO gets its own name
 
 The default buffer behind `Channel.apply` is now
