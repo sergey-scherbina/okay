@@ -146,3 +146,45 @@ doc comments, so they went in together.
   done is an `Alternative`/`MonadPlus` INSTANCE for failing rows: it
   would state the algebra, and implicit search would never find it for
   a row anyone writes. The methods say the same thing and resolve.
+
+## declaring an effect (2026-09-08)
+
+The boilerplate an effect used to carry was three things: the
+operations, a `TypeableK` instance, and a constructor per operation.
+Two of them are gone.
+
+- **`derives TypeableK`** writes the instance. No macro: a
+  `ClassTag[F[Any]]` IS the erasure of F, which is exactly what
+  `typeableK` wants, and the compiler synthesizes it for any concrete
+  signature. Same instance as the hand-written
+  `typeableK(classOf[Users[?]])`, same totality — complete when the
+  answer type is the signature's only parameter, partial for
+  `State % S` and friends, which say so themselves. Tested by
+  splitting a real row with `relay`, since splitting is what the
+  instance is FOR.
+
+- **`op.perform`** removes the constructors. The answer type comes
+  from the CASE — `Find` extends `Users[Option[String]]` — so
+  unifying the receiver against `F[A]` recovers both the signature and
+  what it answers, with nothing written twice.
+
+        enum Db[+A] derives TypeableK:
+          case Get(k: String) extends Db[Option[Int]]
+          case Put(k: String, v: Int) extends Db[Unit]
+
+        Db.Get("a").perform   :  Option[Int] ! Db
+
+  Named constructors are still worth writing for an effect other
+  people will use: they are its API and read better at every call
+  site, at one line each. The demo keeps its two for that reason and
+  says so.
+
+- **Not done: generating the constructors.** It needs
+  `MacroAnnotation`, which is experimental, and would make every user
+  of the library experimental with it. `perform` gets the same
+  boilerplate to zero without that price.
+
+- **Known and named rather than prevented:** `perform` applies to any
+  `F[A]`, so `List(1, 2).perform` compiles and means nothing.
+  Preventing it would take a marker trait on every effect in the
+  library, which costs more than the mistake nobody makes.

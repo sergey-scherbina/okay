@@ -31,12 +31,24 @@ import okay.given
 import java.sql.{Connection, DriverManager}
 import okay.Rowlift.{at, plus}
 
-enum Users[+A]:
+/**
+ * The whole declaration of an effect: the operations, their answer
+ * types, and two names.
+ *
+ * `derives TypeableK` writes the instance a row split needs — it is
+ * the hand-written `typeableK(classOf[Users[?]])` with the class no
+ * longer spelled out.
+ *
+ * The two constructors are OPTIONAL: `Users.Find(id).perform` says
+ * the same thing with nothing declared. They are here because they
+ * are this effect's API — one line each, and every call site reads
+ * better for them.
+ */
+enum Users[+A] derives TypeableK:
   case Find(id: Long) extends Users[Option[String]]
   case Save(id: Long, name: String) extends Users[Unit]
 
 object Users:
-  given TypeableK[Users] = typeableK(classOf[Users[?]])
   inline def find(id: Long): Option[String] ! Users = effect(Find(id))
   inline def save(id: Long, name: String): Unit ! Users = effect(Save(id, name))
 

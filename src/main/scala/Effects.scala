@@ -47,6 +47,34 @@ inline def pure[F[+_], A](a: A): A ! F = Free.pure(a)
 /** an operation as a computation */
 inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
 
+/**
+ * The same thing postfix, which is what removes the last piece of
+ * boilerplate from declaring an effect:
+ *
+ *     enum Users[+A] derives TypeableK:
+ *       case Find(id: Long) extends Users[Option[String]]
+ *
+ *     Users.Find(7).perform   :  Option[String] ! Users
+ *
+ * The answer type comes from the CASE — `Find` extends
+ * `Users[Option[String]]`, so unifying the receiver against `F[A]`
+ * recovers both the signature and what it answers, with nothing
+ * written down twice.
+ *
+ * Named constructors (`def find(id: Long) = effect(Find(id))`) are
+ * still worth writing for an effect anyone else will use: they are its
+ * API, they read better at every call site, and they cost one line
+ * each. This is for the ones nobody but the handler will ever say.
+ *
+ * It applies to any `F[A]` and so to types that are not signatures at
+ * all — `List(1, 2).perform` compiles and means nothing. Nobody writes
+ * that by accident; it is named here rather than prevented, because
+ * preventing it would need a marker trait on every effect in the
+ * library.
+ */
+extension [F[+_], A](op: F[A])
+  inline def perform: A ! F = effect(op)
+
 /** an interpretation of F into any Control carrier C, with the answers S */
 type Interpr[F[_], C[_, _, _], S] = F ==> C[*, S, S]
 
@@ -213,6 +241,21 @@ def typeableKByClass[F[_]](cls: Class[?]): TypeableK[F] = typeableK(cls)
  * the better instance.
  */
 object TypeableK:
+  /**
+   * `enum Users[+A] derives TypeableK` — the instance every effect
+   * needs, written by the compiler.
+   *
+   * No macro: a `ClassTag[F[Any]]` IS the erasure of F, which is what
+   * `typeableK` wants, and the compiler synthesizes it for any
+   * concrete signature. So this is the hand-written
+   * `typeableK(classOf[Users[?]])` with the class no longer spelled
+   * out — same instance, same totality (see `typeableK`: complete
+   * when the answer type is the signature's only parameter, partial
+   * for `State % S` and friends, which say so themselves).
+   */
+  inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): TypeableK[F] =
+    typeableK(ct.runtimeClass)
+
   /** by the compiler-synthesized class test — no cast: sound by
    * covariance, F[Nothing] <: F[X] for every X. Complete only when
    * the erasure IS the signature's identity; a signature that wants
