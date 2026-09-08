@@ -3,7 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
-import okay.Rowlift.at
+import okay.Rowlift.{at, plus}
 
 /**
  * What does attaching a row COST?
@@ -148,6 +148,17 @@ class RowLiftBenchmark {
     var i = 1
     while i < N do
       m = m.flatMap(_ => State.get[Int].at[R])
+      i += 1
+    State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
+
+  /** the same cast, naming only what is ADDED rather than the whole
+   * target row — the spelling a helper wants */
+  @Benchmark
+  def viaPlus(): Int =
+    var m: Int ! R = State.get[Int].plus[Writer % String]
+    var i = 1
+    while i < N do
+      m = m.flatMap(_ => State.get[Int].plus[Writer % String])
       i += 1
     State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
 }

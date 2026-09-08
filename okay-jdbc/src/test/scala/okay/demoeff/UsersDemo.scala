@@ -29,7 +29,7 @@ package okay.demoeff
 import okay.*
 import okay.given
 import java.sql.{Connection, DriverManager}
-import okay.Rowlift.at
+import okay.Rowlift.{at, plus}
 
 enum Users[+A]:
   case Find(id: Long) extends Users[Option[String]]
@@ -63,12 +63,10 @@ object UsersDemo:
    * answer. `save` cannot run for a missing id because it is not
    * reachable, not because a branch remembered to skip it.
    */
-  type Renaming = Users + Abort
-
-  def rename(id: Long, to: String): String ! Renaming =
+  def rename(id: Long, to: String): String ! (Users + Abort) =
     for
-      case Some(old) <- Users.find(id).at[Renaming]
-      _              <- Users.save(id, to).at[Renaming]
+      case Some(old) <- Users.find(id).plus[Abort]
+      _              <- Users.save(id, to).plus[Abort]
     yield old
 
   /** the same program with its answer back in a value */

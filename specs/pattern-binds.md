@@ -72,12 +72,10 @@ written by hand, and the day someone forgets it the type says nothing.
 
 The demo, unchanged in output and shorter in every line that matters:
 
-    type Renaming = Users + Abort
-
-    def rename(id: Long, to: String): String ! Renaming =
+    def rename(id: Long, to: String): String ! (Users + Abort) =
       for
-        case Some(old) <- Users.find(id).at[Renaming]
-        _              <- Users.save(id, to).at[Renaming]
+        case Some(old) <- Users.find(id).plus[Abort]
+        _              <- Users.save(id, to).plus[Abort]
       yield old
 
     MISS  None / row 99 is now - / both worlds agree: true / log=find(99)

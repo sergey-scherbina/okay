@@ -57,15 +57,36 @@ object Rowlift:
    * `[R[+_] : Has[State % Int]]` rather than a using clause */
   type Has[F[+_]] = [R[+_]] =>> In[F, R]
 
+  /**
+   * THE ONLY CAST. Sound by the erasure argument above; each caller
+   * below supplies the side condition — `at` by a witness, `plus` by
+   * construction.
+   *
+   * NOT a replacement for `!.widen`: on a streaming path the walk is
+   * a normalisation and removing it is measurably slower.
+   */
+  private inline def coerce[A, F[+_], R[+_]](p: A ! F): A ! R =
+    p.asInstanceOf[A ! R]
+
   extension [A, F[+_]](p: A ! F)
+    /** land in row R, which must CONTAIN this program's row */
+    inline def at[R[+_]](using In[F, R]): A ! R = coerce(p)
+
     /**
-     * THE ONLY CAST. Sound by the erasure argument above, and `In` is
-     * the proof of its side condition.
+     * add R to whatever row this program already has: `A ! F` becomes
+     * `A ! (F + R)`.
      *
-     * NOT a replacement for `!.widen`: on a streaming path the walk is
-     * a normalisation and removing it is measurably slower.
+     * The postfix counterpart of `!.widen`, and the one to reach for
+     * inside a helper: the row you are IN is already in the type, so
+     * naming it again is noise — say only what you are adding.
+     *
+     *     Users.find(id).plus[Abort]   :  Option[String] ! (Users + Abort)
+     *
+     * Needs no witness at all, where `at` needs one: membership here
+     * is by CONSTRUCTION — `F + R` is built out of F — so there is
+     * nothing left for a proof to establish.
      */
-    inline def at[R[+_]](using In[F, R]): A ! R = p.asInstanceOf[A ! R]
+    inline def plus[R[+_]]: A ! (F + R) = coerce(p)
 
   /**
    * THE ROUTES THAT DID NOT WORK, so the next person does not spend

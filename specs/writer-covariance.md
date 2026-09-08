@@ -352,6 +352,18 @@ invariant that licenses it.
   Has[State % Int] : Has[Writer % String]]`. The target row is named
   once; the complement never is.
 
+**`plus` names only the addition.** `at[R]` asks for the whole target
+row, which is right at a call site and noise inside a helper: the row
+you are already in is in the type, so repeating it is repeating
+yourself. `p.plus[R] : A ! (F + R)` says only what is being added —
+
+    Users.find(id).plus[Abort]   :  Option[String] ! (Users + Abort)
+
+— and needs no witness at all, where `at` needs one: membership is by
+CONSTRUCTION here, `F + R` being built out of F, so there is nothing
+for a proof to establish. Both go through the same single cast, and
+`viaPlus` measures at the floor with the rest (272 016 B/op).
+
 **The prohibition that comes with it.** `.at` does NOT replace
 `!.widen`, and a change that swaps one for the other on a streaming
 path is a regression, not a cleanup: free-row-variance measured the

@@ -1,6 +1,6 @@
 package okay
 
-import okay.Rowlift.at
+import okay.Rowlift.{at, plus}
 
 /**
  * A step the program may decline: `case Some(x) <-` and `if` in a
@@ -65,5 +65,25 @@ class TestFail extends munit.FunSuite {
     // aborting would answer None for the whole search; pruning keeps
     // the branches that matched
     assertEquals(!.run(runOption[Seq[Int], okay.Pure](runChoice[Int, Abort](p))), Some(Seq(1, 3)))
+  }
+
+  test("plus names only what is added; the row you are in is already in the type") {
+    // `find` is written at its own row and lands in that row + Abort,
+    // without the caller spelling `Users` a second time
+    enum Users[+A]:
+      case Find(id: Long) extends Users[Option[String]]
+    def find(id: Long): Option[String] ! Users = effect(Users.Find(id))
+
+    def rename(id: Long): String ! (Users + Abort) =
+      for case Some(old) <- find(id).plus[Abort] yield old
+
+    val handler: Handler[Users] = new:
+      def handle[A](e: Users[A]): A = e match
+        case Users.Find(7L) => Some("ada")
+        case Users.Find(_)  => None
+    assertEquals(runOption[String, Users](rename(7L).at[Abort + Users]).runWith(using handler),
+      Some("ada"))
+    assertEquals(runOption[String, Users](rename(9L).at[Abort + Users]).runWith(using handler),
+      None)
   }
 }
