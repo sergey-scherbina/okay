@@ -575,6 +575,40 @@ matter:
    demo whose `Save` answered the name it replaced contained zero
    `map(_ => ())`, with the library untouched.
 
+**What the annotation MEANS, since that is the question underneath.**
+The answer index is not a payload — it appears in no constructor
+parameter — so the variance is a statement about what the index
+promises. Covariant, it is a LOWER BOUND: `Users[Option[String]]` says
+"answers at least an Option[String]", and `Tx[Nothing]` says "answers
+anything, having answered nothing". Invariant, it is an exact tag:
+`F[Unit]` and `F[Any]` are unrelated.
+
+Everything else follows from that one sentence. Under covariance a
+match against a case with a CONCRETE index proves only
+`Unit <: X` — a bound, because a bound is all that was promised — and
+the branch must widen. Under invariance it proves `X = Unit`, an
+equation, because there is nothing else X could be.
+
+**The escape hatch, which nobody had written down.** Covariance is per
+CASE, not per signature. A case that declares its own type parameter
+gets an equation even under `+A`:
+
+    enum Op[+A]:
+      case Ask()  extends Op[Int]
+      case Fold[A](seed: A, step: (A, Int) => A) extends Op[A]
+
+    def exact[X](e: Op[X]): X = e match
+      case Op.Fold(seed, _) => seed      // typechecks: X IS A here
+
+Two things fall out. An operation may CONSUME its answer type — `step:
+(A, Int) => A` is a contravariant occurrence and is rejected outright
+in a case indexed at the enum's own `+A`, and accepted the moment the
+case declares its own (the compiler suggests exactly this). And an
+author who needs an exact answer type for one operation can have it
+today, without touching the library's variance. So what covariance
+costs is confined to cases whose index is a concrete type — which is
+most of them, but not all, and never irreparably.
+
 The measurements above stand as the record of what the alternative
 costs, which is what makes this a decision rather than an assumption.
 The `Typeable` fallback stays with it: it is the instance covariance
