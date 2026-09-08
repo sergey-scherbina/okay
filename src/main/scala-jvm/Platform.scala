@@ -690,5 +690,15 @@ object Schedulers {
       fiberOf(f, () => t.interrupt())
 }
 
-/** the default scheduler is Loom */
-given Scheduler = Schedulers.loom
+/** The default scheduler is Loom — a fiber IS a virtual thread, which
+ * is the design and stays it. `okay.scheduler` selects another for the
+ * A/B that prices that choice (`Schedulers.own` reads 750us per 10 000
+ * fork/joins against kyo's 880, where the Loom default reads 2715);
+ * `loom` is the shipped behaviour and the only value a released build
+ * should see. scripts/ab-defaults.sh drives both arms. */
+given Scheduler =
+  scala.util.Try(System.getProperty("okay.scheduler", "loom")).getOrElse("loom") match
+    case "own"      => Schedulers.own.build
+    case "adaptive" => Schedulers.adaptive.build
+    case "drive"    => Schedulers.drive()
+    case _          => Schedulers.loom

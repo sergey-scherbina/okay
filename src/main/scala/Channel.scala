@@ -3,6 +3,7 @@ package okay
 import java.util.concurrent.atomic.AtomicInteger
 import scala.collection.immutable.Queue
 import okay.!.*
+import scala.util.Try
 
 /**
  * A channel: a queue between fibers, the missing primitive of
@@ -589,8 +590,26 @@ object Channel {
    * capacity is PER PART and a lone producer must not pay for parts
    * it never opens.
    */
+  /** which buffer `apply` builds, so the ring-vs-adaptive default can
+   * be A/B'd on the default's OWN paths (buffer, bufferChunked,
+   * merge) without editing this file between arms — the same
+   * mechanism `okay.cont.fuse` uses. `ring` (the default) is the
+   * shipped behaviour and the only value any released build should
+   * see; `adaptive` exists for the measurement the comment above
+   * says must happen before the default can change.
+   * scripts/ab-defaults.sh drives both arms. */
+  private val BufferKind: String =
+    Try(System.getProperty("okay.channel.buffer", "ring")).getOrElse("ring")
+
+  /** parts for the adaptive arm; ignored under `ring` */
+  private val AdaptiveParts: Int =
+    Try(System.getProperty("okay.channel.parts", "16").toInt).getOrElse(16)
+
   def apply[A](capacity: Int = Int.MaxValue): Channel[A] =
-    if capacity >= 2 && capacity <= MaxRing then SentinelChannel[A](capacity)
+    if BufferKind == "adaptive" && capacity >= 2 then
+      Queues.strong[A].adaptive.parts(AdaptiveParts)
+        .each(if capacity > MaxRing then MaxRing else capacity).build
+    else if capacity >= 2 && capacity <= MaxRing then SentinelChannel[A](capacity)
     else if capacity > MaxRing then SentinelChannel[A](Segments[A | Mark]())
     else StmChannel[A](capacity)
 
