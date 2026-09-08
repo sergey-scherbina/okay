@@ -28,6 +28,27 @@ object AtMacro:
   trait In[F[+_], R[+_]]:
     def inj[A](fa: F[A]): R[A]
 
+    /**
+     * The coercion IS what this witness MEANS: F is a member of R, and
+     * `+` is a union ([A] =>> F[A] | G[A]) which erases, so a program
+     * in F already is a program in R — `widen` walks the tree to
+     * rebuild a structure that was correct to begin with.
+     *
+     * The cast lives HERE, once, beside the invariant that justifies
+     * it, instead of at every call site. That is the shape the
+     * no-casts rule allows: the necessity is that the type system
+     * cannot express union erasure across an invariant type
+     * constructor, and the witness is the proof it cannot state.
+     *
+     * `<:<` was tried for this and does NOT replace it: the compiler
+     * proves `F[X] <:< R[X]` itself, for any row shape and at any
+     * depth, with no instance hierarchy at all — but the POLYMORPHIC
+     * witness `[X] => () => (F[X] <:< R[X])` is not summonable
+     * (implicit search diverges), so it cannot be a context bound.
+     * Checked, not assumed.
+     */
+    def up[A](p: A ! F): A ! R = p.asInstanceOf[A ! R]
+
   private object IdIn extends In[[A] =>> Any, [A] =>> Any]:
     def inj[A](fa: Any): Any = fa
 
@@ -60,8 +81,7 @@ object AtMacro:
    * reinterpreting it sound instead of a guess.
    */
   extension [A, F[+_]](p: A ! F)
-    inline def atCast[R[+_]](using In[F, R]): A ! R =
-      p.asInstanceOf[A ! R]
+    inline def atCast[R[+_]](using i: In[F, R]): A ! R = i.up(p)
 
   /**
    * THE MACRO ROUTE, REFUTED — kept as the record so the next person
