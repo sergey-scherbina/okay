@@ -1,0 +1,45 @@
+task: lane-fairness
+agent: opus5-bench
+started: 2026-09-08
+branch: feature/lane-fairness
+worktree: ../okay-wt-fair
+
+why: operator instruction 2026-09-08 — make every benchmark ask US and
+  the COMPETITOR the same question, then re-run and rewrite the
+  documentation. This session found SEVEN lanes that did not, and each
+  read as "we are slow": §4b's fork/join row (our outside-the-runtime
+  shape against kyo's inside), §16's strong-chunked pair (a number
+  that never reproduced), growing-vs-adaptive (1 984 slots against
+  16 384), and four the page had already recorded before I arrived.
+
+  docs/benchmarks.md has "Lane rules" — shape, pairing, source — and
+  they are DECLARED, not enforced: the §4b row broke rule 2 for weeks
+  while the rule sat two screens below it. This lane audits every
+  cross-library class against them mechanically rather than on
+  suspicion.
+
+what, in this order and the order matters:
+  1. AUDIT every benchmark class that names a competitor, lane by
+     lane, against the three rules plus a FOURTH this session
+     discovered — RESOURCES: same buffer capacity, same worker count,
+     same anything the runtime is given. Comparing 1 984 slots with
+     16 384 is the same class of error as comparing chunked with
+     elementwise.
+  2. FIX what is mismatched: rename where the lane is a diagnostic,
+     add the missing twin where one side has no fair spelling, and
+     correct the lane where it is simply wrong.
+  3. Fold in `growing-capacity-semantics`, which is a lane-fairness
+     bug wearing an API hat.
+  4. Profile `bench-sendbulk-inverted` — its inversion is real and its
+     cause unknown, and it may yet be a pairing problem too.
+  5. THEN re-run everything on a quiet box and rewrite the tables.
+
+predict: more mismatches will turn up. Seven found in one session, in
+  a file whose own rules forbid them, is not a run of bad luck — it is
+  the base rate of writing comparison benchmarks. I expect the audit
+  to find between two and six more, most of them on OUR side, because
+  we write our lane first and the competitor's second.
+  DISQUALIFYING for any fix: if a "mismatch" turns out to be a
+  deliberate diagnostic with a comment saying so, it is NOT a defect
+  and gets left alone — that mistake has already been made twice this
+  session (bench-chunk-fold-lane, bench-producer-inverted).
