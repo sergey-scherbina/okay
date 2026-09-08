@@ -1,0 +1,35 @@
+task: growing-onbehalf
+agent: opus5-bench
+started: 2026-09-08
+branch: feature/growing-onbehalf
+worktree: ../okay-wt-onbehalf
+
+why: operator instruction 2026-09-08 — take the fix. `Growing` grows
+  with ONE producer in 10 runs of 30 (BACKLOG growing-onep) because it
+  reads `Thread.currentThread()` at push time, while
+  `SentinelChannel.attemptSend` resumes a parked sender by running its
+  continuation on the WAKER's thread — the consumer's. One producer,
+  two apparent identities.
+
+what: fix shape (a), the one the operator picked. The channel already
+  knows: `attemptSend` carries `granted0` and captures `route` at
+  entry. What is missing is a way to tell the buffer, so:
+  - `Buffer.pushDecidingAtOnBehalf` — a push the channel makes ON
+    BEHALF of a parked producer, DEFAULT delegating to
+    `pushDecidingAt`, so no other buffer changes at all;
+  - `Growing` overrides it to push WITHOUT sampling and, on refusal,
+    without growing: a resumed push says nothing about who is
+    producing, so it must not be evidence either way;
+  - `SentinelChannel.attemptSend` calls it when `granted`.
+
+  And the law, which today is stated at the wrong LAYER: TestGrowing's
+  two "one producer never grows it" tests drive the Buffer directly
+  from one thread, so they cannot see the channel's resume path. The
+  new law goes through a CHANNEL with a concurrent consumer.
+
+predict: at one producer `growing_chunk` moves from 192 toward the
+  ring's ~126. DISQUALIFYING: if it lands nearer 192 than 126 the
+  thread identity was not the whole cost, the rest is the wrapper's
+  own dispatch, and I say so rather than credit the fix. The 4- and
+  16-producer numbers (601.6 / 623.6 against adaptive's 162.1 / 116.6)
+  are NOT addressed here and must not move.
