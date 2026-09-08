@@ -1,5 +1,61 @@
 # Changelog
 
+## growing-default — `Channel.apply` grows, and exact FIFO gets its own name
+
+The default buffer behind `Channel.apply` is now
+`growing(capacity, 8)`: a plain ring while one producer pushes, and an
+`AdaptiveFifo` that ADOPTS that ring the moment a second one appears.
+Measured with the ring as the in-run control, one consumer, chunked,
+8 000 elements:
+
+| producers | ring | **growing** | |
+|---|---|---|---|
+| 1 | 156.0 | 171.1 | 1.10x worse |
+| 2 | 772.4 | **188.0** | 4.1x better |
+| 4 | 1258.2 | **159.0** | 7.9x better |
+| 16 | 2907.1 | **127.6** | **22.8x better** |
+
+Ten percent at one producer for four to twenty-three times above it.
+
+**What it costs is not speed but ORDER.** A ring orders every push by
+one CAS on one tail; once this has grown, each producer keeps its own
+order and nothing is promised between them.
+`Queues.strong[A].fifo(capacity)` is the ring this default used to be,
+under a name that says what it gives — take it when the order between
+producers is part of your correctness, and not merely because it
+sounds safer, since it is a single contended tail and at sixteen
+producers that costs 22x.
+
+**A correction, because it reversed a conclusion I had published the
+day before.** This switch was blocked by `Source.merge` reading 3.5x
+slower, and after `growing-part-sizing` the regression "did not move",
+so I reported that the sizing was not the cause. It was. The
+diagnostic variant built `Growing` DIRECTLY inside a patched
+`Channel.apply` with `Ring(capacity / 8)`, bypassing
+`Queues.Mechanism.growing` — where the fix lived. It re-measured the
+old sizing twice. Swept properly:
+
+| capacity | ring | growing | |
+|---|---|---|---|
+| 64 | 127.5 | 127.7 | 1.00x — no regression at all |
+| 256 | 122.9 | 94.4 | 0.77x |
+| 1024 | 116.1 | 95.5 | 0.82x |
+
+A variant that reimplements the code under test does not test it.
+
+**Three Scala Native gaps**, found by the gate the moment
+`AdaptiveFifo` became reachable from the default — none had ever
+linked there because nothing reachable used it: `AtomicIntegerArray`
+(now a small `Cells` type over `Array[AtomicInteger]`),
+`Thread.threadId()` (Java 19+, now `System.identityHashCode`), and
+`ThreadLocal.withInitial` (now the subclass it desugars to). And
+`Thread.onSpinWait()` removed: a CPU hint with no Native equivalent,
+and the spin is correct without it.
+
+Gate: 3032 tests, 84 module runs, 0 warnings, on JVM, JS and Native.
+
+Commit: 17404a4e.
+
 ## growing-part-sizing — `capacity` is per part, and that was worth 70%
 
 `growing` divided `capacity` by the part count it MIGHT need rather

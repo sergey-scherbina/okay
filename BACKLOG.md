@@ -34,7 +34,14 @@ scans parts for a ready element, where a ring pops one. A chunked
 consumer pays that scan once per chunk; a per-element consumer pays it
 per element.
 
-- [ ] growing-small-capacity-merge — RENAMED and re-scoped
+- [x] growing-small-capacity-merge — CLOSED 2026-09-08, there was no
+      such problem. The capacity sweep it asked for found `Source.merge`
+      at capacity 64 reading 127.7 against the ring's 127.5 — no
+      regression — and 20% ahead at 256 and 1024. The 3.5x that
+      created this entry came from a diagnostic build that bypassed
+      the sizing fix. Original text kept below.
+
+      (superseded) RENAMED and re-scoped
       2026-09-08 after THREE hypotheses were measured and refuted. The
       name it had, `growing-elementwise-pop`, was one of them.
 
@@ -130,9 +137,22 @@ producer gets 64 slots of 1024 and reads 1 119, 6.6x the ring.
       capacity)` is the single ring under a name that says what it
       gives, for callers who need order BETWEEN producers once the
       default stops promising it.
-- [ ] the switch itself — BLOCKED on `growing-part-sizing` above. The
-      A/B the code demanded found `Source.merge` 3.5x slower, so the
-      switch does not happen on a measurement that says it should not.
+- [x] the switch itself — DONE 2026-09-08. `Channel.apply` builds
+      `growing(capacity, 8)`. 1.10x at one producer, 4.1x / 7.9x /
+      22.8x better at two, four and sixteen.
+      The block was MY ERROR: the A/B that reported `Source.merge`
+      3.5x slower built `Growing` directly inside a diagnostic
+      `Channel.apply` with `Ring(capacity / 8)`, bypassing
+      `Queues.Mechanism.growing` where the sizing fix lived — so it
+      re-measured the old sizing and I read that as evidence. Swept
+      properly, `Source.merge` under the fixed sizing reads 127.7
+      against the ring's 127.5 at capacity 64 and is 20% AHEAD at 256
+      and 1024. A variant that reimplements the code under test does
+      not test it.
+      Three Scala Native gaps surfaced the moment `AdaptiveFifo`
+      became reachable from the default and are fixed with it:
+      `AtomicIntegerArray`, `Thread.threadId()`, and
+      `ThreadLocal.withInitial`, plus `Thread.onSpinWait()` removed.
 
 ## default-not-measured — three lanes where the library already holds a faster answer and the default does not pick it
 
