@@ -47,4 +47,35 @@ class TestUsersDemo extends munit.FunSuite {
   }
 
 
+
+  test("the law, from outside: a run leaves the store it was given alone") {
+    // `put` answering a new store is a LAW, not something the compiler
+    // checks — so check it where it would break: run the whole pure
+    // interpretation and look at the value that went in.
+    val before = Map(7L -> "ada")
+    val (after, _) = pureRun(before)
+    assertEquals(before, Map(7L -> "ada"))
+    assertEquals(after, Map(7L -> "grace"))
+
+    val beforeVec = Vector(7L -> "ada")
+    val (afterVec, _) = pureRun(beforeVec)
+    assertEquals(beforeVec, Vector(7L -> "ada"))
+    assertEquals(afterVec, Vector(7L -> "grace"))
+  }
+
+  test("replace answers what was there, and only then writes") {
+    def law[S](empty: S)(using St: Store[S]): Unit =
+      val one = St.put(1L, "ada")(empty)
+      val (was, next) = St.replace(1L, "grace")(one)
+      assertEquals(was, Some("ada"))
+      assertEquals(St.get(1L)(next), Some("grace"))
+      // the store handed in is untouched
+      assertEquals(St.get(1L)(one), Some("ada"))
+      // an id nobody has: nothing to answer, and the write still lands
+      val (none, made) = St.replace(9L, "hopper")(one)
+      assertEquals(none, None)
+      assertEquals(St.get(9L)(made), Some("hopper"))
+    law(Map.empty[Long, String])
+    law(Vector.empty[(Long, String)])
+  }
 }

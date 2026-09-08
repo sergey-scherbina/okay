@@ -148,6 +148,26 @@ object UsersDemo:
     def get(id: Long): S => Option[String]
     def put(id: Long, name: String): S => S
 
+    /**
+     * REPLACE, answering what was there — the two above in the order
+     * that makes the answer true, said once here instead of at every
+     * call site.
+     *
+     * Writing `(get(id)(s), put(id, name)(s))` at a use site is
+     * correct only because the tuple evaluates left to right and
+     * because `put` leaves `s` alone. Neither is enforced by anything:
+     * the immutability is a LAW of this class, and a law is documented
+     * and tested, not checked by the compiler. So the sequencing lives
+     * in the contract, where the instance author owns it — and a
+     * carrier that can do the swap in one step (a persistent map with
+     * a `getAndUpdate`, a cell, a database row) overrides this and
+     * does not depend on the law at all.
+     */
+    def replace(id: Long, name: String): S => (Option[String], S) =
+      s =>
+        val was = get(id)(s)
+        (was, put(id, name)(s))
+
   object Store:
     given Store[Map[Long, String]] with
       def get(id: Long) = _.get(id)
@@ -222,10 +242,11 @@ object UsersDemo:
           State.get[S].plus[F].map(S.get(id))
         case Users.Save(id, name) =>
           // NOT `modify`: `Save` answers the name that WAS there, and
-          // the write destroys it, so the old store has to be read
-          // first and answered out of. `update` is that transition —
-          // what to answer, and what to leave behind — in one step.
-          State.update[S, X](s => (S.get(id)(s), S.put(id, name)(s))).plus[F]
+          // the write destroys it. `update` is the transition that
+          // answers something the write is about to destroy, and
+          // `Store.replace` is the read-then-write in the order that
+          // makes that answer true.
+          State.update[S, X](S.replace(id, name)).plus[F]
 
   def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (Tracked[S] + F) =
     stored[A, S, Writer % String + F](
