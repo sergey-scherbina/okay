@@ -1,5 +1,47 @@
 # Changelog
 
+## growing-grown-cost — the sample counter outlived the one swap it existed for
+
+`Growing`'s `sample()` stored its counter on every push **for ever**:
+the `!grown.get` guard sat inside the every-64th branch, so the store
+survived the swap it was there to trigger. Growth is one-shot, so
+every store after it is waste — and at sixteen producers it is sixteen
+threads storing to one cache line, which is contention rather than the
+false sharing the padding already answers.
+
+The counter now stops at the swap, gated on a racy **plain** hint
+instead of a volatile read: a producer still seeing `false` does a
+useless increment for a while, and the real decision re-reads the
+`AtomicBoolean` anyway. A variant reading the `AtomicBoolean` per push
+measured the same on many producers and looked worse on one, so the
+plain field is what ships.
+
+Alternating, four rounds, `adaptive` stable to 1% as the control:
+
+| producers | before | after | |
+|---|---|---|---|
+| 16 | 560 | **426** | −24.1% |
+| 4 | 594 | **544** | −8.5% |
+| 1 | 177 | 181 | +1.8%, inside the noise |
+
+Ratio to the buffer it grows into: **4.80x → 3.62x** at sixteen.
+
+**This closes a quarter of the gap and not more, and the board says
+so.** 3.6x remains. By elimination the suspect is the adopted part 0 —
+`grow()` keeps the original full-capacity ring as part 0 pinned to one
+producer while every other part is `cap/n` — and that is filed as
+`growing-adopted-part0` rather than guessed at here, with the warning
+that the adoption is exactly what makes the swap free, so any
+re-balancing pays a stall that has to be measured before it is
+designed.
+
+A note on the method, since it caught a wrong turn: a first run
+suggested the volatile-reading variant cost +11.4% at one producer.
+It did not reproduce over four alternating rounds. The claim was not
+made until it had been run again.
+
+Commit: c23e3707.
+
 ## growing-wrapper-cost — the sample counter was false-sharing with the consumer
 
 `Growing` at one producer cost **1.31x** the plain ring it wraps and
