@@ -2,7 +2,7 @@ package okay.demoeff
 
 import okay.*
 import okay.given
-import UsersDemo.{Store, InMemory, rename, tracked}
+import UsersDemo.{Store, InMemory, rename, swap, tracked}
 
 /**
  * The demo's claims, as assertions: one program, several
@@ -19,7 +19,7 @@ class TestUsersDemo extends munit.FunSuite {
     val (asMap, mapOut) = pureRun(Map(7L -> "ada"))
     val (asVec, vecOut) = pureRun(Vector(7L -> "ada"))
     assertEquals(mapOut, vecOut)
-    assertEquals(mapOut, (Seq("Find(7)", "Save(7,grace)"), Some("ada")))
+    assertEquals(mapOut, (Seq("Save(7,grace)"), Some("ada")))
     // only the representation differs
     assertEquals(asMap, Map(7L -> "grace"))
     assertEquals(asVec, Vector(7L -> "grace"))
@@ -39,10 +39,32 @@ class TestUsersDemo extends munit.FunSuite {
     val log = scala.collection.mutable.ListBuffer[Any]()
     assertEquals(rename(7L, "grace").runWith(using mem.tracing(log += _)), Some("ada"))
     assertEquals(mem.state, Map(7L -> "grace"))
-    assertEquals(log.map(_.toString).toSeq, Seq("Find(7)", "Save(7,grace)"))
+    assertEquals(log.map(_.toString).toSeq, Seq("Save(7,grace)"))
     // a missing id: a find, no save, nothing written
     val miss = InMemory(Map.empty[Long, String])
     assertEquals(rename(99L, "hopper").runWith(using miss), None)
     assertEquals(miss.state, Map.empty[Long, String])
+  }
+
+  test("swap needs two lookups, so it stops by itself when one is missing") {
+    val mem = InMemory(Map(7L -> "ada", 8L -> "hopper"))
+    assertEquals(swap(7L, 8L).runWith(using mem), Some(("ada", "hopper")))
+    assertEquals(mem.state, Map(7L -> "hopper", 8L -> "ada"))
+
+    // one id missing: neither save runs, and nothing is written
+    val partial = InMemory(Map(7L -> "ada"))
+    val log = scala.collection.mutable.ListBuffer[Any]()
+    assertEquals(swap(7L, 99L).runWith(using partial.tracing(log += _)), None)
+    assertEquals(partial.state, Map(7L -> "ada"))
+    assertEquals(log.map(_.toString).toSeq, Seq("Find(7)", "Find(99)"))
+  }
+
+  test("save answers what was there, and invents nothing") {
+    val mem = InMemory(Map(7L -> "ada"))
+    assertEquals(rename(7L, "grace").runWith(using mem), Some("ada"))
+    assertEquals(mem.state, Map(7L -> "grace"))
+    // an id nobody has: no answer, and no row
+    assertEquals(rename(99L, "hopper").runWith(using mem), None)
+    assertEquals(mem.state, Map(7L -> "grace"))
   }
 }
