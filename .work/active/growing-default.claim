@@ -1,0 +1,42 @@
+task: growing-default
+agent: opus5-bench
+started: 2026-09-08
+branch: feature/growing-default
+worktree: ../okay-wt-default
+
+why: operator decision 2026-09-08 — make `growing` the default buffer
+  behind `Channel.apply`, and give exact FIFO its own builder for
+  callers who need it.
+
+  The case is now measured. At an equal memory budget `growing` ties
+  the ring at one producer (171 against 169) and is 2.4x and 7.2x
+  ahead at four and sixteen. `adaptive` as the default is REFUTED by
+  the same run: it splits the budget into parts, so a lone producer
+  gets 64 slots of 1024 and reads 1119 — 6.6x the ring.
+
+  That is exactly the hazard `Channel.apply`'s own comment names:
+  "a lone producer must not pay for parts it never opens". `growing`
+  is the answer to it — until a second producer appears it IS the
+  ring.
+
+what, in the order the code itself demands:
+  1. The A/B that comment requires and that has never been run: every
+     single-producer path the default FEEDS — `Channel.buffer`,
+     `bufferChunked`, `merge` — with the ring against growing,
+     alternating, on a quiet box. Existing lanes exercise all three
+     (MergeBenchmark, ChunkFlushBenchmark, ScalingBenchmark), and they
+     go through `Channel.apply`, so a variant build measures them.
+  2. `Queues.strong[A].fifo(capacity)` — the ring under a name that
+     says what it gives. It exists today as `bounded`, which does not.
+  3. Switch the default, and say in the CONTRACT that exact order
+     between producers is no longer promised by the default and is
+     `fifo`'s job.
+  4. Re-measure and update every table the change touches.
+
+predict: the three paths are single-producer, so growing never grows
+  in them and should read within noise of the ring.
+  DISQUALIFYING: if any of the three regresses beyond noise, the
+  switch does NOT happen on my say-so — I report the number and the
+  operator decides again with it. A default that is 7x better at
+  sixteen producers is not worth a measurable tax on the single
+  producer every caller starts with.
