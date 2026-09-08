@@ -226,7 +226,27 @@ Two of them are gone.
   strings, and its MISS line now traces the SQLite handler — recording
   is not a test-only trick.
 
-- **Known and named rather than prevented:** `perform` applies to any
-  `F[A]`, so `List(1, 2).perform` compiles and means nothing.
-  Preventing it would take a marker trait on every effect in the
-  library, which costs more than the mistake nobody makes.
+- **`perform` applies to any `F[A]`, and that turns out to be a
+  feature.** The first draft of this section called `List(1, 2)
+  .perform` a meaningless thing that compiles. It is not: a freer
+  monad takes ANY type constructor as a signature, and a `List[A]`
+  already means "several A", so that expression is nondeterminism
+  without a wrapper.
+
+        val pairs: (Int, Int) ! List =
+          for
+            x <- List(1, 2).perform
+            y <- List(10, 20).perform
+          yield (x, y)
+
+        runSeq[List, (Int, Int), Pure](pairs)
+        // Seq((1,10), (1,20), (2,10), (2,20))
+
+  `runSeq` is `runChoice`'s handler unchanged, because there was never
+  anything else in it: `Choose[+A](as: Seq[A])` is a box around a Seq
+  of alternatives, and this is the same thing without the box. An
+  empty list prunes, as failure should. `Choose` keeps its name and
+  its place in a row — a row wants a signature that means
+  nondeterminism and nothing else, while `List` in a row means
+  whatever the reader guesses — but the two being one handler is the
+  clearest statement of what this library is.

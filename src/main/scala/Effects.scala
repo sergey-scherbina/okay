@@ -68,11 +68,13 @@ inline def effect[F[+_], A](a: F[A]): A ! F = Free.inject(a)
  * API, they read better at every call site, and they cost one line
  * each. This is for the ones nobody but the handler will ever say.
  *
- * It applies to any `F[A]` and so to types that are not signatures at
- * all — `List(1, 2).perform` compiles and means nothing. Nobody writes
- * that by accident; it is named here rather than prevented, because
- * preventing it would need a marker trait on every effect in the
- * library.
+ * It applies to any `F[A]`, including types nobody declared as a
+ * signature — and that is not the hazard it first looks like. A freer
+ * monad takes ANY type constructor, so `List(1, 2).perform` is not
+ * nonsense: it is nondeterminism, and `runSeq` (Choice.scala) is its
+ * handler, the same one `Choose` uses. The type that cannot be handled
+ * is the one you find out about at the handler, where the row has to
+ * be answered — which is the only place the question can be asked.
  */
 extension [F[+_], A](op: F[A])
   inline def perform: A ! F = effect(op)
