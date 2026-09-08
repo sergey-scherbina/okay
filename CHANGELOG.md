@@ -1,5 +1,48 @@
 # Changelog
 
+## growing-onbehalf — a resumed push is not a second producer
+
+`Growing` becomes partitioned when it sees two different threads
+pushing. That reading is right for a push a producer makes itself and
+wrong when the channel resumes a producer it had parked:
+`SentinelChannel.attemptSend` enqueues the sender's continuation and
+`wakeSender()` runs it on whichever thread freed the slot — the
+consumer's. So the resumed push arrived wearing the consumer's
+identity, and ONE producer looked like two. Measured: ten runs out of
+thirty grew a single-producer buffer into an `AdaptiveFifo`.
+
+`Buffer` gains `pushDecidingAtOnBehalf`, defaulting to the ordinary
+push so no other buffer changes; `Growing` overrides it to neither
+sample nor grow, because a resumed push is not evidence in either
+direction; `SentinelChannel` calls it when its own `granted` flag is
+set, which is already its word for "a sender I parked".
+
+**The law had been stated at the wrong layer.** `TestGrowing`'s two
+"one producer never grows it" tests drive the Buffer directly from one
+thread and therefore could not see the channel's resume path at all.
+The new law goes through a CHANNEL, with a consumer running and more
+elements than the buffer holds so the producer really parks. It fails
+on the old code in 32 ms, on round 1 of 30.
+
+**It is a correctness fix and it bought no speed — stated here rather
+than left for someone to discover.** With the ring as the in-run
+control over six rounds, `growing`/`ring` at one producer went 1.53x →
+1.47x, inside the noise. The arithmetic agrees: `adaptive` costs 1.20x
+the ring and the spurious growth hit a third of runs, so removing it
+was worth about six points of the fifty-three. The other ~45 is the
+wrapper's own dispatch — one extra virtual call and a `@volatile`
+read per push and per pop — and is filed as `growing-wrapper-cost`
+with the warning that the volatile is what publishes the swap and
+cannot simply be shaved.
+
+Found by `bench-refresh` triage. Of the six problem cases that lane
+filed, this is the only one that was a defect: three were already
+explained in the tree, and two were mismatched pairings — including
+§4b's headline row, which had okay losing fork/join 3.1x to kyo by
+comparing okay's outside-the-runtime shape against kyo's inside one.
+
+Commits: fa5ea54a (the fix and its law), 6c955578 (the board).
+
 ## bench-refresh — every cross-library table re-measured in one session, on 3.9.0
 
 `docs/benchmarks.md` sections 0-11 and 14-16 now come from ONE run:
