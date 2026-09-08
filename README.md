@@ -89,11 +89,15 @@ index above lists them all with one-line summaries.
 - `State` — get/set with a bespoke tail-recursive handler; `PState` —
   type-changing (typestate) state on the paramonad (State.scala). A
   row holds ONE `State % S`, since `Get()` carries no runtime trace of
-  S; for more than one, two effects lift that and make the same trade
-  `HMap` does against `TMap` — `Keyed.At["count", Int]` names its
-  states in the row and casts nothing (Keyed.scala), `Cells` makes
-  them at run time, one row member however many, with one stated cast
-  in its heap (Cells.scala).
+  S.
+- **Several instances of one effect** — `Tag.Of["small", State % Int]`
+  names them in the row, for ANY signature; `tag` puts a finished
+  program's operations under a key (so a function written against a
+  plain `State % Int` runs twice at two states), and `untag` hands the
+  plain signature back to its own handler (Tag.scala). Where the
+  instances are made rather than named, `Cells` keeps a heap: cells
+  created at run time, one row member however many, one stated cast
+  (Cells.scala).
 - `Throws` — typed errors: abort, runEither, the `throws` union; and
   `Abort` (= `Throws % Unit`), failure with nothing to say, handled by
   `runOption` (Throws.scala).

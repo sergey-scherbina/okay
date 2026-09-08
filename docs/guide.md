@@ -170,25 +170,36 @@ State + Writer, and a trace of any of them — is
 `okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`, runnable with
 `sbt "okayJdbc/Test/runMain okay.demoeff.UsersDemo"`.
 
-**More than one state.** `State % S` is told apart by its class, so a
-row holds one of it. Two effects lift that, and they are the same
-trade `HMap` makes against `TMap`:
+**Several instances of one effect.** A row is split by a RUNTIME test,
+so two members of the same signature are told apart exactly when the
+operation carries something to compare. `Tag` is that, for any
+signature: a key, and a test that reads it.
 
 ```scala
-type Count = Keyed.At["count", Int]      // the row NAMES its states
-type Name  = Keyed.At["name", String]    // nothing casts
+type Small = Tag.Of["small", State % Int]
+type Big   = Tag.Of["big",   State % Int]
 
-val p: Int ! Cells = for            // cells made at RUN TIME:
-  a <- Cells.cell(1)                // one row member however many,
-  b <- Cells.cell(10)               // and one stated cast in the heap
-  n <- Cells.write(a, 2)
-yield n
+// an ordinary function, written against a plain State, run twice
+// at two different states in one program:
+val twice: (Int, Int) ! (Small + Big) =
+  for
+    a <- Tag.tag["small", State % Int, Int, Pure](bump(1)).plus[Big]
+    b <- Tag.tag["big",   State % Int, Int, Pure](bump(10)).at[Small + Big]
+  yield (a, b)
 ```
 
-`Keyed` carries a singleton key in the operation and its test compares
-it; `Cells` keeps a heap in the handler and identity is the cell. Use
-`Keyed` when you can name the states, `Cells` when they come from the
-data.
+`tag` walks a finished program and puts every operation of F under the
+key — which is the point: the function did not have to be written for
+this. Handling needs no new handler: `untag` strips one key and hands
+back the plain signature, and the effect's own handler takes it from
+there.
+
+Where the instances are MADE rather than named, `Cells` is the
+counterpart — cells created at run time, one row member however many,
+identity by cell, at the price of a heap and one stated cast. And the
+third route is the one `Delim` already has: a fresh prompt per handler
+installation, scoped dynamically, with the program carrying the
+prompt.
 
 And any type constructor is a signature: `List(1, 2).perform` is
 nondeterminism, handled by `runSeq` — which is `runChoice`'s handler
