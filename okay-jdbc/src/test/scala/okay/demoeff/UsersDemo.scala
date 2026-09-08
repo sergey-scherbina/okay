@@ -29,7 +29,6 @@ package okay.demoeff
 import okay.*
 import okay.given
 import java.sql.{Connection, DriverManager}
-import okay.Direct.*
 import okay.Rowlift.at
 
 enum Users[+A]:
@@ -48,26 +47,32 @@ object UsersDemo:
    * cut of this program got it wrong in a way worth keeping on the
    * record. It said `find` then `save` in a for-comprehension, which
    * SEQUENCES and does not branch, so a missing id still reached the
-   * handler's upsert and CREATED the user; the answer `None` then meant
-   * two things at once, "no previous name" and "nothing written". The
-   * demo printed the bug itself: "row 99 is now hopper".
+   * handler's upsert and CREATED the user; the answer `None` then
+   * meant two things at once, "no previous name" and "nothing
+   * written". The demo printed the bug itself: "row 99 is now hopper".
    *
-   * The branch reads better in direct style than as a fold: `!?` marks
-   * the effects, `if` is an ordinary `if`, and the row stays in the
-   * TYPE — `Users` and nothing else. The monadic spelling is the same
-   * program, one line longer:
+   * `fold` puts the branch where it belongs — inside the step — and
+   * the row never changes: this is `Users` and nothing else, in both
+   * arms. The same program in direct style is
    *
-   *   for
-   *     old <- Users.find(id)
-   *     _   <- if old.isEmpty then pure[Users, Unit](())
-   *            else Users.save(id, to)
-   *   yield old
+   *   direct { val old = Users.find(id).!?
+   *            if old.isDefined then Users.save(id, to).!?
+   *            old }
+   *
+   * The shortest spelling of all would be
+   * `for case Some(old) <- Users.find(id)`, and it now works — but not
+   * here, and that is the point. A refutable pattern desugars to
+   * `withFilter`, which DROPS a step, and only a row that can express
+   * failure may do that (Choice.scala). `Users` cannot, so the
+   * compiler refuses; if it did not, a rename that quietly did nothing
+   * would be exactly the bug this comment opens with.
    */
-  def rename(id: Long, to: String): Option[String] ! Users = direct {
-    val old = Users.find(id).!?
-    if old.isDefined then Users.save(id, to).!?
-    old
-  }
+  def rename(id: Long, to: String): Option[String] ! Users =
+    for
+      old <- Users.find(id)
+      _   <- old.fold(pure[Users, Unit](()))(_ => Users.save(id, to))
+    yield old
+
 
   /** the real world: a SQLite file */
   def live(c: Connection): Handler[Users] = new:
