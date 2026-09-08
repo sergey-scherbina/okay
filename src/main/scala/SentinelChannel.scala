@@ -304,8 +304,16 @@ final class SentinelChannel[A](buf: Buffer[A | Mark]) extends Channel[A] {
       if closing.get then k(false)
       else if granted || sendersAt(route).isEmpty then
         // the decision rides INSIDE the claim: what comes back is
-        // what the ring published at the position just won
-        buffer.pushDecidingAt(route, a, closing, void) match
+        // what the ring published at the position just won.
+        // `granted` means this is a sender we PARKED and are now
+        // resuming, and the thread running it is the one that freed
+        // the slot, not the producer — so the buffer is told, or a
+        // buffer that reads its caller's identity learns a lie
+        // (growing-onep, 2026-09-08)
+        val pushed =
+          if granted then buffer.pushDecidingAtOnBehalf(route, a, closing, void)
+          else buffer.pushDecidingAt(route, a, closing, void)
+        pushed match
           case null =>
             // full: park, and re-check afterwards in case a pop freed
             // a slot between the failed push and the registration

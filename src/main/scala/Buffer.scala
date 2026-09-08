@@ -112,6 +112,29 @@ trait Buffer[A] {
                      orElse: A): A | Null = pushDeciding(a, unless, orElse)
 
   /**
+   * The same push, made by the channel ON BEHALF of a producer that
+   * parked on a full buffer — so the CALLING THREAD IS NOT THE
+   * PRODUCER. It is whichever thread freed a slot and ran the parked
+   * sender's continuation, which in practice is the consumer's.
+   *
+   * Almost every buffer can ignore the distinction, and the default
+   * does: it is the ordinary push. It exists for a buffer that infers
+   * something from its caller — `Growing` decides whether to become
+   * partitioned by comparing pushing THREADS, and a resumed push
+   * carries the waker's identity rather than the producer's. Reading
+   * it as evidence made one producer look like two and grew the
+   * buffer in ten runs out of thirty (growing-onep, 2026-09-08).
+   *
+   * A resumed push is not evidence in EITHER direction: it does not
+   * say there is a second producer, and it does not say there is only
+   * one. So the contract is "do not learn from this call", not
+   * "attribute it to somebody else".
+   */
+  def pushDecidingAtOnBehalf(route: Int, a: A,
+                             unless: java.util.concurrent.atomic.AtomicBoolean,
+                             orElse: A): A | Null = pushDecidingAt(route, a, unless, orElse)
+
+  /**
    * The part the most recent take by THIS thread came from.
    *
    * A hint for waking the right producer, and only that: a wrong

@@ -44,6 +44,26 @@ import java.util.concurrent.atomic.AtomicBoolean
  * `maxParts` reports the grown shape from the start, so a channel
  * sizes its per-part waiter queues once and never resizes them.
  *
+ * WHOSE THREAD IS PUSHING (growing-onbehalf, 2026-09-08). The
+ * identity above is read from `Thread.currentThread()`, and for a
+ * push the producer makes itself that is right. It is NOT right when
+ * the channel resumes a producer it had parked: `SentinelChannel`
+ * runs the parked sender's continuation on whichever thread freed the
+ * slot — the consumer's — so the resumed push arrives wearing the
+ * consumer's identity. Read as evidence, that made ONE producer look
+ * like two and grew the buffer in ten runs out of thirty. Such pushes
+ * come in through `pushDecidingAtOnBehalf`, which this class
+ * overrides to neither sample nor grow: a resumed push says nothing
+ * about who is producing, in either direction.
+ *
+ * The correctness of that is a law
+ * (`TestGrowing`, "one producer through a CHANNEL never grows it").
+ * Its SPEED is not the point and the honest number says so: the lane
+ * at one producer went from 1.53x the plain ring to 1.47x, which is
+ * inside the noise. The spurious growth was worth about six points of
+ * the fifty-three; the rest is this wrapper's own dispatch, and no
+ * change to the growth trigger will touch it.
+ *
  * WHAT IT COSTS TODAY, measured, minimum of five rounds, us per 8 000
  * elements through a channel:
  *
@@ -165,6 +185,15 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
         // the route was taken from the OLD buffer; ask the new one for
         // this producer's own part rather than reusing a stale index
         grownTo.nn.pushDecidingAt(grownTo.nn.route(), a, unless, orElse)
+
+  /** the channel is pushing for a producer that parked here, from
+   * whichever thread freed the slot — so this call says nothing about
+   * WHO is producing and is not allowed to teach us anything. No
+   * sample, and a refusal does not grow: it means the buffer is still
+   * full, which one producer can manage on its own. */
+  override def pushDecidingAtOnBehalf(route: Int, a: A,
+                                      unless: AtomicBoolean, orElse: A): A | Null =
+    inner.pushDecidingAtOnBehalf(route, a, unless, orElse)
 
   override def pushMany(n: Int)(src: Int => A): Int =
     val b = inner
