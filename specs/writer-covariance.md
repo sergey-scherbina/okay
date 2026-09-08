@@ -485,6 +485,42 @@ to be doing. The demo answers `Unit` on purpose — see
 better demonstration — but a real signature usually has something to
 say, and then the question does not arise.
 
+**THE COMPLETE ANSWER (the whole library made invariant).** Every
+signature's answer type flipped — `State[S, A]`, `Writer[+W, A]`,
+`Reader[R, A]`, `Throws[E, A]`, `Choose[A]`, `Take[V, A]`, `Async[A]`,
+`Resource[A]`, `Delim[A]`, `Flush[A]`, `Tx[A]` — on top of the relaxed
+bounds. Main compiles, tests compile, 83 tests pass across ten suites
+(Stm, Logic, Throws, Fail, SeqEffect, State, Effects, Delim,
+Condition, DeriveEffect). Two things needed changing beyond the
+mechanical churn, and they are the entire answer to "what is
+covariance in an effect FOR":
+
+1. **`TypeableK`'s generic instance.** `Typeable[F[Nothing]]` answers
+   at `F[Nothing]` where `F[A]` is wanted, and only covariance closed
+   that. Without it the instance needs a cast — and it is now the one
+   thing a signature can avoid needing, since `derives Effect` builds
+   the same test from a `ClassTag`.
+
+2. **An operation that never answers, declared once at `Nothing`.**
+   `case Retry() extends Tx[Nothing]` is a `Tx[A]` for every A only
+   because `Tx` is covariant. Invariant, it is written
+   `case Retry[A]() extends Tx[A]` — one type parameter, and arguably
+   a worse statement, since it now claims to answer an A it never
+   produces. Two operations in the library are of this shape (`Tx`'s
+   `Retry`, `Condition`'s `Leave`).
+
+That is all. Not the union rows, not `Pure`, not the handlers, not the
+constructions at `Nothing` — those were measured separately and are
+inference. `<|>` needed an explicit type argument, which is not a
+cost, it is a better line.
+
+**So the trade, exactly.** Covariance buys one instance and one
+declaration shorthand. It costs exact GADT refinement: matching an
+operation declared `Users[Unit]` proves only `X >: Unit`, so every
+interpreter branch that answers `Unit` carries a widening. Which of
+those matters more is a judgement about what this library is FOR, and
+it is the operator's.
+
 **Not taken, for now.** The trade is: one cast in `TypeableK`'s
 generic instance (in a repo whose rule is no cast without necessity),
 plus churn in every module, against `.map(_ => ())` in interpreters
