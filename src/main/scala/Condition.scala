@@ -30,7 +30,7 @@ object Condition {
     case Invoke(restart: String, value: Any)
     case Fail
 
-  enum Op[+A]:
+  enum Op[+A] derives okay.Effect:
     /** raise; the answer is what the policy resumed with, passed
      * through `accept` — the operation carries its own check of the
      * policy's untyped Resume (a ClassTag test), so the machine hands
@@ -242,5 +242,4 @@ object Condition {
 
   /** the Delim/Resource precedent: splitting a row on Op is a
    * total test — one class carries the whole signature */
-  given okay.Effect[Op] = okay.Effect.of(typeableK(classOf[Op[?]]))
 }

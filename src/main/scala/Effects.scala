@@ -205,7 +205,7 @@ transparent inline def Effects[M[_[+_], _]]: Effects[M] =
   compiletime.summonInline[Effects[M]]
 
 /** ∀X, the runtime test for F[X], by the erasure of F */
-@implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations, and a signature declares its own:\n  enum YourOp[+A] derives Effect\nA parameterised signature (State % S, Reader % R) cannot use `derives` — it writes\n  given yourK[S]: Effect[YourOp % S] = Effect.of(typeableKByClass(classOf[YourOp[?, ?]]))\nA ROW needs no instance: the split tests one side and takes the other by exclusion.")
+@implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations, and a signature declares its own:\n  enum YourOp[+A] derives Effect\nA parameterised one says the same: `enum YourOp[S, +A] derives Effect` abstracts the LAST\nparameter, and the test is then by class only (a row may hold one of it).\nA ROW needs no instance: the split tests one side and takes the other by exclusion.")
 trait TypeableK[F[_]]:
   def unapply[A](x: Any): Option[x.type & F[A]]
 

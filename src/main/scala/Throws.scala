@@ -18,7 +18,15 @@ import okay.RowLift.at
  */
 
 /** the effect of failing with E */
-case class Throws[E, +A](e: E)
+/**
+ * PARAMETERISED, so the derived test is by CLASS only: the operations
+ * carry no runtime trace of E, and a row may therefore hold ONE
+ * Throws. Two — `Throws % A + Throws % B` — misroute, loudly
+ * (TestRowIdentity): the first handler answers both asks and the
+ * second continuation gets a ClassCastException, rather than a
+ * plausible wrong answer.
+ */
+case class Throws[E, +A](e: E) derives okay.Effect
 
 /** perform the failure */
 inline def raise[E, A](e: E): A ! Throws % E = effect(Throws(e))
@@ -182,7 +190,6 @@ extension [A, E <: Unsafe](a: A throws E)
 
 /** by class only: the payload `e: E` is erased in the type, so a row
  * may hold ONE Throws — see typeableKByClass */
-given throwsK[E]: okay.Effect[Throws % E] = okay.Effect.of(typeableKByClass(classOf[Throws[?, ?]]))
 
 /**
  * The seam direct-try stands on: how a monad CATCHES a JVM throw

@@ -11,7 +11,15 @@ import okay.!.*
  * continuations: no channel, no buffer, no materialized list — each
  * await transfers control to the producer for exactly one element.
  */
-enum Take[V, +A]:
+/**
+ * PARAMETERISED, so the derived test is by CLASS only: the operations
+ * carry no runtime trace of V, and a row may therefore hold ONE
+ * Take. Two — `Take % Int + Take % String` — misroute, loudly
+ * (TestRowIdentity): the first handler answers both asks and the
+ * second continuation gets a ClassCastException, rather than a
+ * plausible wrong answer.
+ */
+enum Take[V, +A] derives okay.Effect:
   /** the next element, or None — the producer has ended */
   case Await[V]() extends Take[V, Option[V]]
 
@@ -574,4 +582,3 @@ def pipe[W, A, B, G[+_] : TypeableK](p: A ! Writer % W + G)(c: B ! Take % W): B 
 
 /** by class only: `Await()` carries no trace of V, so a row may hold
  * ONE Take — see typeableKByClass */
-given takeK[V]: okay.Effect[Take % V] = okay.Effect.of(typeableKByClass(classOf[Take[?, ?]]))

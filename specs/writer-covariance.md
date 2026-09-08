@@ -662,9 +662,10 @@ costs, which is what makes this a decision rather than an assumption.
 **LANDED 2026-09-08 (operator): the fallback is gone anyway.** Keeping
 covariance did not mean keeping the instance it exists for. Every
 signature in the library now declares its own test — `enum Async[+A]
-derives okay.Effect`, and for the parameterised ones
-`given stateK[S]: okay.Effect[State % S] = okay.Effect.of(...)` — and
-the generic `Typeable[F[Nothing]]` given is deleted. What that bought:
+derives okay.Effect`, and `enum State[S, +A] derives okay.Effect` for
+the parameterised ones, which works because `derives` abstracts the
+LAST type parameter — and the generic `Typeable[F[Nothing]]` given is
+deleted. What that bought:
 
 - an effect that forgets to declare a test is now a compile error at
   the DECLARATION, instead of working with a warning per use site that

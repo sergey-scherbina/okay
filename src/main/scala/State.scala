@@ -8,7 +8,15 @@ import okay.!.*
  * both operations answer with the (current or new) state. For a state
  * that changes its TYPE mid-program, see PState below.
  */
-enum State[S, +A] {
+/**
+ * PARAMETERISED, so the derived test is by CLASS only: the operations
+ * carry no runtime trace of S, and a row may therefore hold ONE
+ * State. Two — `State % Int + State % String` — misroute, loudly
+ * (TestRowIdentity): the first handler answers both asks and the
+ * second continuation gets a ClassCastException, rather than a
+ * plausible wrong answer.
+ */
+enum State[S, +A] derives okay.Effect {
   /** read the current state */
   case Get() extends State[S, S]
 
@@ -97,6 +105,3 @@ object PState {
     (m / (a => s2 => (s2, a)))(s)
 }
 
-/** by class only: `Get()`/`Set(s)` carry no trace of S in the type,
- * so a row may hold ONE State — see typeableKByClass */
-given stateK[S]: okay.Effect[State % S] = okay.Effect.of(typeableKByClass(classOf[State[?, ?]]))
