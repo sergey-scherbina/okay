@@ -3,6 +3,7 @@ package okay
 import scala.reflect.*
 import scala.util.*
 import scala.annotation.implicitNotFound
+import okay.Rowlift.at
 
 /**
  * Errors on two levels, with the bridges between them.
@@ -57,6 +58,40 @@ inline def runOption[A, F[+_]](a: A ! Abort + F): Option[A] ! F =
 inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): A ! F =
   Effects[Free].handle[Throws % E, F, A, A](a)(a => pure(a)):
     [X] => e => shift(_ => throw e.e)
+
+/**
+ * RECOVERY, in the row rather than around it: run the alternative
+ * when the first program raises.
+ *
+ *     load(id).orElse(pure(default))
+ *     load(id).recover(e => pure(fallbackFor(e)))
+ *
+ * Both are `runEither` applied to a PART of the program instead of to
+ * all of it — the handler is installed here, the failure is answered
+ * here, and the row comes out unchanged, so what follows neither knows
+ * nor cares that anything went wrong. `orElse` is `recover` for the
+ * case where the error had nothing to say, which is every `Abort`.
+ *
+ * NOT free, and the cost is where you would guess: one handler per
+ * call, over the program it guards. Wrap the smallest piece that can
+ * fail, not the whole thing.
+ *
+ * This is the Alternative structure of a failing row (`empty` is
+ * `abort`, `append` is this), spelled as methods rather than as an
+ * instance. An instance would not be FOUND: matching
+ * `Alternative[[A] =>> A ! (Throws % E + F)]` against a concrete row
+ * is the higher-order unification the compiler declines (see
+ * Fail.scala). A method's receiver is unified, not searched for, and
+ * that does work — including with the row written in the other order.
+ */
+extension [A, E, F[+_]](p: A ! (Throws % E + F))
+  /** answer the failure, seeing the error */
+  def recover(h: E => A ! (Throws % E + F)): A ! (Throws % E + F) =
+    runEither[A, F, E](p).at[Throws % E + F].flatMap(_.fold(h, pure))
+
+  /** answer the failure, ignoring the error */
+  inline def orElse(q: => A ! (Throws % E + F)): A ! (Throws % E + F) =
+    recover(_ => q)
 
 /** reflect a direct-style computation into the effect */
 inline def catching[A, E <: Unsafe : Typeable](a: => A throws E): A ! Throws % (E | Unsafe) =

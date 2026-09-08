@@ -104,13 +104,45 @@ recording handler rather than by reading SQL.
   everywhere and lie everywhere: the type would stop saying whether a
   program can stop, which is the only thing this feature is for.
 
+## Also landed
+
+Both were listed here as open and cost about the length of their own
+doc comments, so they went in together.
+
+- **`ensure[R](cond)`** — the `if` guard, outside a
+  for-comprehension. `guard` (Monad.scala) is the MonadPlus one and
+  serves any carrier with an algebra; this one serves a ROW, known by
+  membership, which is how every real row is known. Same three
+  meanings as the pattern: prune, stop, or a compile error.
+
+        for
+          balance <- State.get[Int].at[R]
+          _       <- ensure[R](balance >= amount)
+          _       <- State.set[Int](balance - amount).at[R]
+        yield balance - amount
+
+  Refused, the state proves it: `(10, None)` — the `set` was never
+  reached, not skipped.
+
+- **`p.recover(h)` and `p.orElse(q)`** — the Alternative structure of
+  a failing row (`empty` is `abort`, `append` is this), spelled as
+  METHODS rather than as an instance, for the same reason `CanFail` is
+  not MonadPlus: an `Alternative[[A] =>> A ! (Throws % E + F)]` would
+  never be found. A method's receiver is unified rather than searched
+  for, and that does work — including with the row written in the
+  other order, which is the part that was not obvious and is now
+  tested. Both are `runEither` applied to a PART of the program: the
+  handler is installed there, the failure is answered there, and the
+  row comes out unchanged, so what follows neither knows nor cares.
+  Not free — one handler per call — so wrap the smallest piece that
+  can fail.
+
+  Written for `Throws % E` generally, not for `Abort` alone: `orElse`
+  is just `recover` where the error had nothing to say.
+
 ## Open
 
-- `guard` outside a for-comprehension still asks for `MonadPlus`, so
-  it does not work in an `Abort` row. A `CanFail`-shaped counterpart
-  is two lines; it is not written because the `if` in a
-  for-comprehension already covers every use so far.
-- `Alternative` for `Abort` rows — `append` as recovery, `x <|> y` —
-  is implementable (`runEither(x).at[R].flatMap(_.fold(_ => y, pure))`,
-  probed) and not shipped: nothing needs it yet, and it installs a
-  handler per `append`.
+- Nothing outstanding on this feature. The one thing deliberately NOT
+  done is an `Alternative`/`MonadPlus` INSTANCE for failing rows: it
+  would state the algebra, and implicit search would never find it for
+  a row anyone writes. The methods say the same thing and resolve.

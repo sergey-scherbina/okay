@@ -86,4 +86,50 @@ class TestFail extends munit.FunSuite {
     assertEquals(runOption[String, Users](rename(9L).at[Abort + Users]).runWith(using handler),
       None)
   }
+
+  test("ensure is the guard outside a for-comprehension") {
+    type R = Abort + State % Int
+    def withdraw(amount: Int): Int ! R =
+      for
+        balance <- State.get[Int].at[R]
+        _       <- ensure[R](balance >= amount)
+        _       <- State.set[Int](balance - amount).at[R]
+      yield balance - amount
+    assertEquals(State.run[Int, Option[Int]](100)(runOption[Int, State % Int](withdraw(30))),
+      (70, Some(70)))
+    // refused, and the state proves the `set` was never reached
+    assertEquals(State.run[Int, Option[Int]](10)(runOption[Int, State % Int](withdraw(30))),
+      (10, None))
+  }
+
+  test("orElse answers a failure and leaves the row unchanged") {
+    type R = Abort + State % Int
+    def withdraw(amount: Int): Int ! R =
+      for
+        balance <- State.get[Int].at[R]
+        _       <- ensure[R](balance >= amount)
+        _       <- State.set[Int](balance - amount).at[R]
+      yield balance - amount
+
+    // the whole program continues after the recovery: another step
+    // runs in the same row, none the wiser
+    val p: Int ! R =
+      for
+        taken <- withdraw(30).orElse(pure[R, Int](0))
+        _     <- State.set[Int](999).at[R]
+      yield taken
+    assertEquals(State.run[Int, Option[Int]](10)(runOption[Int, State % Int](p)),
+      (999, Some(0)))
+  }
+
+  test("recover sees the error; the row may be written in either order") {
+    type R = State % Int + Throws % String
+    val boom: Int ! R = raise[String, Int]("no disk").at[R]
+    val p: Int ! R = boom.recover(e => pure[R, Int](e.length))
+    val (s, answer) =
+      State.run[Int, Either[String, Int]](0)(
+        runEither[Int, State % Int, String](p.at[Throws % String + State % Int]))
+    assertEquals(answer, Right(7))
+    assertEquals(s, 0)
+  }
 }

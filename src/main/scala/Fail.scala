@@ -68,3 +68,19 @@ extension [A, F[+_]](p: A ! F)
   /** the desugaring target of a pattern bind and of an `if` guard */
   def withFilter(q: A => Boolean)(using C: CanFail[F]): A ! F =
     p.flatMap(a => if q(a) then pure[F, A](a) else C.fail[A])
+
+/**
+ * The same demand as an `if` guard, outside a for-comprehension: hold
+ * or stop.
+ *
+ *     _ <- ensure[R](balance >= amount)
+ *
+ * `guard` (Monad.scala) is the MonadPlus one and covers any carrier
+ * with an algebra — LazyList, a bare Choose row. This one covers what
+ * that cannot: a ROW, identified by membership, which is how every
+ * real row is known. Same three meanings as the pattern: prune where
+ * the row searches, stop where it can abort, a compile error where it
+ * can do neither.
+ */
+inline def ensure[F[+_]](p: Boolean)(using C: CanFail[F]): Unit ! F =
+  if p then pure[F, Unit](()) else C.fail[Unit]
