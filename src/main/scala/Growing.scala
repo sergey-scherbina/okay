@@ -74,10 +74,30 @@ import java.util.concurrent.atomic.AtomicBoolean
  *        16     3 066        446        100
  * }}}
  *
- * Read that honestly: it is 6.9x the ring where the ring is weak, and
- * it is behind BOTH of the buffers it is made of at their own shapes,
- * because after the swap every push goes through two layers — this
- * wrapper and the partitioned buffer inside it. Choose `bounded` when
+ * Read that honestly: it is 6.9x the ring where the ring is weak.
+ *
+ * THE SECOND HALF OF THAT SENTENCE USED TO BE WRONG, and it is worth
+ * keeping the correction (growing-adopted-part0, 2026-09-08). It said
+ * this buffer is "behind BOTH of the buffers it is made of at their
+ * own shapes, because after the swap every push goes through two
+ * layers". Both halves are refuted. The layer of call is FREE — a
+ * buffer that only forwards measures 1.02x the ring it forwards to —
+ * and the `adaptive` column above is not the same object: it is
+ * sixteen parts of `capacity` each, 16 384 slots, against this
+ * buffer's 1 984. Measured against `adaptive` with parts the size
+ * THIS one's grown parts actually are, four rounds:
+ *
+ * {{{
+ * producers   growing   adaptive, matched parts   ratio
+ *         1     178.7                    1 149.6   0.16x
+ *         4     527.4                      543.1   0.97x
+ *        16     422.0                      428.7   0.98x
+ * }}}
+ *
+ * At matched capacity it is at PARITY with the buffer it grows into,
+ * and at one producer it is 6.4x FASTER than one — which is the whole
+ * point of adopting the ring rather than building parts up front, and
+ * had never been priced until that run. Choose `bounded` when
  * there is one producer, `adaptive` when there are many from the
  * first message, and this when the count is genuinely unknown and you
  * would rather not be wrong at either end.

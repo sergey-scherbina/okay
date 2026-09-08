@@ -553,11 +553,37 @@ there are.
 | 4 | 715 | 477 | **136** |
 | 16 | 3 066 | 446 | **100** |
 
-It is honest about being between the two: 6.9x the ring where the ring
-is weak, and behind both of the buffers it is made of at their own
-shapes, because after the swap every push crosses two layers. Take
-`bounded` when there is one producer, `adaptive` when there are many
-from the first message, and this when the count is genuinely unknown.
+It is 6.9x the ring where the ring is weak. **The rest of what this
+paragraph used to say was wrong and the correction matters more than
+the row** (growing-adopted-part0, 2026-09-08). It said `growing` is
+"behind both of the buffers it is made of at their own shapes, because
+after the swap every push crosses two layers". Both halves are
+refuted: a buffer that ONLY forwards measures 1.02x the ring it
+forwards to, so the layer is free; and the `adaptive` column is not
+the same object — `adaptive.parts(16).each(capacity)` is sixteen parts
+of `capacity`, 16 384 slots, while `growing(capacity, 16)` is part 0
+at `capacity` plus fifteen at `capacity / 16`, 1 984. An 8.3x
+difference in buffer, read as a difference in mechanism.
+
+Against `adaptive` with parts the size `growing`'s grown parts
+actually are, four rounds on a quiet box:
+
+| producers | `growing` | `adaptive`, matched parts | ratio |
+|---|---|---|---|
+| 1 | **178.7** | 1 149.6 | **0.16x** |
+| 4 | 527.4 | 543.1 | 0.97x |
+| 16 | 422.0 | 428.7 | 0.98x |
+
+At matched capacity it is at PARITY with the buffer it grows into, and
+at one producer it is **6.4x faster** than a partitioned buffer of the
+same size — which is precisely what adopting the ring buys, and had
+never been priced.
+
+So: take `bounded` when there is one producer and you know it,
+`adaptive` when there are many from the first message and you can
+afford `parts x each` of buffer, and this when the count is genuinely
+unknown. And read `capacity` carefully — the two builders spell it
+differently, which is filed as `growing-capacity-semantics`.
 The layer is what has to go, and `queue-swap` is the entry that
 removes it by having the channel replace its buffer rather than wrap
 it.
