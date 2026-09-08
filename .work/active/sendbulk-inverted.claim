@@ -1,0 +1,37 @@
+task: sendbulk-inverted
+agent: opus5-bench
+started: 2026-09-08
+branch: feature/sendbulk-inverted
+worktree: ../okay-wt-sendbulk
+
+why: two jobs, and the first is owed. Triage of my own perf-backlog
+  found THREE of its six entries already answered in the tree —
+  bench-chunk-fold-lane by a comment over the lane saying in capitals
+  that it does not measure what it looks like, bench-producer-inverted
+  by the paragraph above §5's table (memoised bridge vs consume-once
+  iterator), and bench-known-prices largely by the doc. I filed them
+  from the results table without reading the explanations that already
+  existed, and the chunk-fold entry I wrote SAYS to read the lane body
+  first. Correcting the board is part of this lane, not a footnote.
+
+  The second job is the entry that survived triage:
+  bench-sendbulk-inverted. §15 claims `sendManyNow` is 1.63x ahead
+  against a draining consumer; measured 2026-09-08 it is 17% BEHIND
+  (63.2 against 54.1), consistently across three rounds, and what
+  moved is the ELEMENT lane — it halved and overtook.
+
+what: (1) close bench-chunk-fold-lane and bench-producer-inverted as
+  ANSWERED, with the answer, and trim bench-known-prices to what is
+  not already written down; (2) answer the disqualifying question the
+  entry already names — `okaySendBulkRecvChunk` falls back to a
+  per-element `sendBlocking` whenever `sendManyNow` returns 0, so
+  COUNT how often that happens before touching any code. If the scan
+  rarely finds room, nothing regressed and the fix is in §15's text.
+
+predict: the fallback fires often. `Cap` bounds the ring and a
+  chunk-draining consumer empties it in bursts, so a producer running
+  ahead meets a full ring most attempts — which is exactly the failure
+  mode §15 already documents for the ELEMENTWISE consumer, and the
+  reason it says "batch both ends or neither". If so this is a doc
+  correction, not an optimisation, and I will say so rather than
+  invent a code change to justify the claim.
