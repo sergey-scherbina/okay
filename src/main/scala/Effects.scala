@@ -333,18 +333,31 @@ object TypeableK:
  * (it extends `TypeableK`), so everything that asks for one finds
  * this instance in the signature's own companion.
  *
- * It is a trait rather than a type alias so that it has room. What
- * could join it later has to be DERIVABLE from the declaration alone,
- * which rules out most things and is the point.
+ * It also carries `Direct.Effect`, the marker that lets a signature's
+ * operations auto-color inside a `direct` block:
  *
- * One candidate is deliberately NOT in: `Direct.Effect`, the marker
- * that lets a signature's operations auto-color inside a `direct`
- * block. Bundling it would be convenient and would quietly move a
- * decision the design put elsewhere — auto-coloring is gated per
- * PROJECT, not per library (specs/direct-auto-coloring.md), and an
- * effect's author would be deciding it for every consumer.
+ *     val prog: Option[String] ! Users = direct {
+ *       val old: Option[String] = find(7)   // no mark
+ *       old
+ *     }
+ *
+ * That marker was originally a separate, per-project decision
+ * (specs/direct-auto-coloring.md): auto-coloring is invasive, so
+ * arbitrary `G[A]`s must never silently color. Bundling it moves the
+ * decision to the signature's author — which is the operator's call
+ * (2026-09-08) and is defensible on its own terms: `derives Effect`
+ * is not arbitrary, it is a type declaring that its values ARE
+ * operations, which is exactly the claim the marker wanted. The other
+ * gate is untouched and does the heavier work: the conversion needs
+ * `DirectCtx[F]`, which exists ONLY inside a direct block, so nothing
+ * colors anywhere else. An effect that wants the row-split test and
+ * NOT auto-coloring writes `derives TypeableK` instead.
+ *
+ * It is a trait rather than a type alias so that it has room. What
+ * joins it has to be DERIVABLE from the declaration alone, which
+ * rules out most things and is the point.
  */
-trait Effect[F[_]] extends TypeableK[F]
+trait Effect[F[_]] extends TypeableK[F], Direct.Effect[F]
 
 object Effect:
   /** delegates to `TypeableK.derived`, which is where the check lives

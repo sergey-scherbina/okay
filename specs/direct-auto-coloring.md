@@ -19,7 +19,18 @@ allowed to fire, and both gates were named by the user (2026-09-01):
 2. **The marker gate**: operation types color only when a
    `Direct.Effect[G]` instance exists — arbitrary `G[A]`s never
    silently color; registering an effect signature for auto-coloring
-   is an explicit, one-line, per-project decision.
+   is an explicit, one-line decision.
+
+   AMENDED 2026-09-08 (operator): `okay.Effect` extends
+   `Direct.Effect`, so `enum Users[+A] derives Effect` registers the
+   signature as part of declaring it. The decision moves from the
+   project to the signature's AUTHOR, and the line that made it
+   per-project no longer holds. What the gate still buys is unchanged
+   for everything else: a type that did not declare itself an effect
+   never colors, and the capability gate above — which is the one that
+   keeps colouring inside a direct block — is untouched. An effect
+   that wants the row-split test without auto-coloring writes
+   `derives TypeableK`.
 
 Explicit marks (`.?`, `.reflect`) keep working in the same
 block and remain the recommended default; auto-coloring is the

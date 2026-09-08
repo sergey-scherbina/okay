@@ -2,6 +2,8 @@ package okay
 
 import okay.Rowlift.{at, plus}
 import scala.annotation.nowarn
+import okay.Direct.{direct, given}
+import scala.language.implicitConversions
 
 /**
  * Declaring an effect: what still has to be written by hand, and what
@@ -84,5 +86,16 @@ class TestDeriveEffect extends munit.FunSuite {
     assert(asTypeable eq asEffect)
     assertEquals(asTypeable.unapply[Option[Int]](Db.Get("a")).isDefined, true)
     assertEquals(asTypeable.unapply[Option[Int]](Writer("x")).isDefined, false)
+  }
+
+  test("derives Effect registers the signature for direct auto-coloring") {
+    // no `.!?`, no `.reflect`: the marker comes with the declaration,
+    // and the DirectCtx gate still means this colors only in here
+    def get(k: String): Option[Int] ! Db = Db.Get(k).perform
+    val prog: Option[Int] ! Db = direct {
+      val a: Option[Int] = get("a")
+      a.map(_ * 10)
+    }
+    assertEquals(prog.runWith(using handler), Some(10))
   }
 }

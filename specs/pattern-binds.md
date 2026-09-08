@@ -162,12 +162,25 @@ Two of them are gone.
   DERIVABLE from the declaration alone, which rules out most things
   and is the point.
 
-  One candidate is deliberately out: `Direct.Effect`, the marker that
-  lets a signature's operations auto-color inside a `direct` block.
-  Bundling it would be convenient and would quietly move a decision
-  the design put elsewhere — auto-coloring is gated per PROJECT, not
-  per library (specs/direct-auto-coloring.md), and an effect's author
-  would be deciding it for every consumer.
+  It also carries `Direct.Effect`, so a derived signature's operations
+  auto-color inside a `direct` block with no marks at all:
+
+        val prog: Option[Int] ! Db = direct {
+          val a: Option[Int] = get("a")
+          a.map(_ * 10)
+        }
+
+  That marker began as a separate per-project decision
+  (specs/direct-auto-coloring.md, marker gate): auto-coloring is
+  invasive, so arbitrary `G[A]`s must never silently color. Bundling
+  it moves the decision to the signature's author — the operator's
+  call (2026-09-08), and defensible on its own terms: `derives Effect`
+  is not an arbitrary type, it is one declaring that its values ARE
+  operations, which is the claim the marker wanted. The heavier gate
+  is untouched: the conversion needs `DirectCtx[F]`, which exists ONLY
+  inside a direct block, so nothing colors anywhere else. A signature
+  that wants the row-split test and NOT auto-coloring writes
+  `derives TypeableK`.
 
 - **`derives TypeableK`** (which `Effect.derived` delegates to) writes
   the instance. No macro: a
