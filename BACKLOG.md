@@ -10,7 +10,23 @@ that lane and not by any since.
 a 30% premium for bounding how long a partial chunk may wait. §6b has
 said 9% (244.3 against 223.7) since 2026-09-06.
 
-- [ ] flush-premium — STILL OPEN, and now with a firm number instead
+- [x] flush-premium — FIXED 2026-09-09. The two flusher fibers were
+      forked and DROPPED, so `done.get` stopped them only at their
+      next tick: a merge finishing in 380 microseconds left two fibers
+      asleep for a further second under `flushAfter = 1000`, each
+      holding a timer entry, and at a few thousand merges a second
+      that is thousands of live sleepers.
+      Identified by an INVERSION: a 1 ms window, which does strictly
+      more work because its timer actually fires, measured 1.14x where
+      the 1000 ms window measured 1.29x. A shorter window costing less
+      is not something a correct implementation can do.
+      Each flusher is now cancelled when its own source finishes — it
+      has already flushed its tail by then. Premium 1.29x -> **1.11x**
+      (`okayChunkedFlush` 400.0 -> 349.4, the `okayChunked` control
+      +1.5%). The 11% left is two forks and two timer registrations
+      per merge, which is work rather than waste.
+
+      (as filed) STILL OPEN, and now with a firm number instead
       of a suspicion. Six rounds, tight bars (spread 1.07x and 1.10x
       within a lane): `okayChunked` 314.5 min / 325.4 median,
       `okayChunkedFlush` 386.8 / 404.1 — a premium of **1.23x**, not

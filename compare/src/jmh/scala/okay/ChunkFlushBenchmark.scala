@@ -61,6 +61,25 @@ class ChunkFlushBenchmark {
     l.merge(r, capacity = 1024, chunked = true, flushAfter = Some(1000))
       .toLazyList.foldLeft(0L)(_ + _)
 
+  /** DIAGNOSTIC (flush-premium, 2026-09-09): the same lane with a
+   * window SHORT enough to expire during the operation.
+   *
+   * `okayChunkedFlush` uses `flushAfter = 1000` ms against an op that
+   * takes ~380 MICROseconds, so its timer never fires — yet it costs
+   * 23% over `okayChunked`. The suspicion is that the two flusher
+   * fibers are not cancelled when the merge ends: they learn of it
+   * only at their next tick, a second later, so at ~2 600 ops a
+   * second thousands of sleeping fibers and timer entries pile up.
+   *
+   * If that is the cost, a 1 ms window — where each flusher dies
+   * almost at once — should be CHEAPER than the 1000 ms one, which is
+   * the opposite of what "a shorter window does more work" predicts.
+   * That inversion is the test. */
+  @Benchmark
+  def okayChunkedFlushShort(): Long =
+    l.merge(r, capacity = 1024, chunked = true, flushAfter = Some(1))
+      .toLazyList.foldLeft(0L)(_ + _)
+
   // ── fs2 ──────────────────────────────────────────────────────────
 
   /** `Stream.range` is `emit(o) ++ go(o + step)` in 3.10.2
