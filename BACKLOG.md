@@ -129,29 +129,56 @@ grows. One real producer, two apparent ones.
       +11.4% penalty there and it did not reproduce).
       Ratio to the buffer it grows into: 4.80x -> **3.62x** at
       sixteen, 3.45x -> 3.19x at four.
-      WHAT IS LEFT, and it is most of it: 3.6x. Per this entry's own
-      disqualifying evidence that points at the ADOPTED PART 0 —
-      `grow()` passes `first = inner`, so part 0 stays a
-      full-capacity ring pinned to `firstOwner` while every other part
-      is `cap/n`. Not investigated here, and filed below rather than
-      guessed at.
+      WHAT WAS LEFT was 3.6x against `adaptive`, and it turned out
+      NOT to be mechanism at all: the two lanes differ 8.3x in buffer
+      capacity. At matched capacity `Growing` is at parity with the
+      buffer it grows into (0.97x / 0.98x). See
+      `growing-adopted-part0` below, refuted 2026-09-08.
 
-- [ ] growing-adopted-part0 — NEW. After the swap `Growing` is still
-      3.6x the `AdaptiveFifo` it became, and the counter is no longer
-      the reason. The suspect named by elimination: `grow()` adopts
-      the original ring as part 0 (`first = inner`, `firstOwner =
-      sampled`), so part 0 is a ring of the FULL capacity pinned to
-      one producer while the other parts are `cap/n` each — an
-      asymmetry a plain `adaptive` never has.
-      Expected win: down to ~1.0x of `adaptive`, which is what would
-      make `growing` the strictly-better default.
-      DISQUALIFYING: the adoption is not decoration — it is what makes
-      the swap free (no element moves, and the producer that filled
-      the ring keeps its order in it). A fix that copies elements to
-      re-balance the parts pays a stall at the swap, and that trade
-      has to be measured, not assumed. Measure a variant whose
-      `grow()` builds a FRESH AdaptiveFifo first, to price the
-      adoption, BEFORE designing anything.
+- [x] growing-adopted-part0 — REFUTED 2026-09-08, and there was never
+      a defect. The entry rested on a MISMATCHED PAIR, filed by me:
+
+        growing_chunk   Growing(Ring(1024), 16, () => Ring(1024/16))
+                        part 0 at 1024, fifteen more at 64 -> 1 984 slots
+        adaptive_chunk  AdaptiveFifo(16, () => Ring(1024))
+                        sixteen parts at 1024              -> 16 384 slots
+
+      `adaptive` had 8.3x the buffer. A new diagnostic lane,
+      `adaptiveSmall_chunk` — the same mechanism with parts the size
+      `growing`'s grown parts actually are — settles it. Four rounds,
+      quiet box, medians:
+
+      | producers | growing | adaptiveSmall | adaptive | growing/small |
+      |---|---|---|---|---|
+      | 1 | **178.7** | 1149.6 | 174.6 | **0.16x** |
+      | 4 | 527.4 | 543.1 | 172.1 | 0.97x |
+      | 16 | 422.0 | 428.7 | 118.2 | 0.98x |
+
+      At matched capacity `Growing` is at PARITY with the buffer it
+      grows into — marginally ahead. The whole 3.06x/3.57x was buffer
+      size. The adopted part 0 is not a cost; it is the design, and
+      the one-producer column prices it for the first time: **6.4x
+      faster than a partitioned buffer of the same capacity** (178.7
+      against 1149.6), which is exactly what `Growing` exists to buy.
+
+      WHAT IS LEFT is not performance but SEMANTICS, and is filed
+      below: `growing(capacity, parts)` and `adaptive.parts(n).each(c)`
+      spell capacity differently, so two lanes that look comparable
+      are not.
+
+- [ ] growing-capacity-semantics — `Queues.strong[A].growing(capacity,
+      parts)` gives `capacity` for part 0 and `capacity / parts` for
+      every other part — about 2x `capacity` in total once grown —
+      while `adaptive.parts(n).each(c)` gives `n * c`. A caller
+      reading the two builders side by side has no way to see that,
+      and the benchmark lanes built from them differ 8.3x in buffer
+      while looking like a mechanism comparison. It cost this session
+      two claims.
+      Not a defect in either buffer; a decision about what the word
+      `capacity` promises. DISQUALIFYING: if `capacity` is documented
+      somewhere as per-part rather than total, then the builders are
+      consistent and only the benchmark lanes and docs/queues.md need
+      the note.
 
   (superseded plan, kept for the record) fix the identity, not the symptom. Two shapes,
       and the choice is a DESIGN decision on a knob the operator

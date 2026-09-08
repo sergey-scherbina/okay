@@ -171,6 +171,19 @@ class ManyProducersBenchmark {
   @Benchmark def adaptive_chunk(): Long =
     runChunked(Queues.strong[Long].adaptive.parts(16).each(Cap).build)
 
+  /** DIAGNOSTIC (growing-adopted-part0, 2026-09-08): `adaptive` with
+   * parts the size `growing`'s grown parts ACTUALLY are.
+   *
+   * `growing(Cap, 16)` builds part 0 at `Cap` and fifteen more at
+   * `Cap / 16` — 1 984 slots in total. `adaptive_chunk` above builds
+   * sixteen parts at `Cap` — 16 384. So the two lanes differ by 8.3x
+   * in buffer before they differ in mechanism, and at 8 000 elements
+   * through one consumer capacity decides how often a producer parks.
+   * This lane holds the mechanism and matches the capacity, so the
+   * `growing`-vs-`adaptive` gap can be split into the two. */
+  @Benchmark def adaptiveSmall_chunk(): Long =
+    runChunked(Queues.strong[Long].adaptive.parts(16).each(math.max(Cap / 16, 2)).build)
+
   @Benchmark def adaptiveUnbounded_chunk(): Long =
     runChunked(Queues.strong[Long].adaptive.parts(16).unbounded.build)
 
