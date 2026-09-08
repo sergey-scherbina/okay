@@ -1,0 +1,41 @@
+task: growing-wrapper-cost
+agent: opus5-bench
+started: 2026-09-08
+branch: feature/growing-wrapper-cost
+worktree: ../okay-wt-wrapper
+
+why: with growth now correct (growing-onbehalf), `Growing` at one
+  producer still costs 1.47x the ring it is wrapping and doing nothing
+  else to. That 1.47x is what stops `Channel.apply` adopting it, and
+  adopting it is worth 5.5x and 9x at 4 and 16 producers
+  (channel-default-adaptive).
+
+  My backlog entry blamed the wrapper's dispatch and the `@volatile
+  inner` read. TWO EXISTING DIAGNOSTIC LANES ALREADY DISPUTE THAT and
+  I had not read them when I filed it:
+    - `forwarded_chunk`, a buffer that ONLY delegates, was recorded
+      2026-09-07 at 115.0 against the ring's 125.5 — FREE, with the
+      note "the layer of call is not the cost";
+    - `onePart_chunk`, a partitioned buffer with ONE part that cannot
+      grow, was recorded at "the same 1.3x as the growable one, which
+      refuted the growth machinery as the cause".
+  This session's three-round numbers (forwarded 160.1, onePart 173.6,
+  ring 125.6) are too noisy to settle it — two carry "read as a rank".
+
+what: settle the DECOMPOSITION before touching code. One session, one
+  tree (the fixed one), 8 rounds, four lanes at producers=1:
+    ring -> forwarded   = what the delegation layer costs
+    forwarded -> growing = what `sample()` and the volatile read cost
+    ring -> onePart      = what the partitioned push path costs with
+                           no wrapper and no growth at all
+  Only then fix whatever the decomposition names.
+
+predict: I have been wrong twice in a row on this class of question,
+  so the prediction is deliberately weak — I expect `forwarded` to sit
+  near the ring (the 2026-09-07 note) and the gap to live in
+  `sample()` plus the volatile read.
+  DISQUALIFYING: if `forwarded` is itself ~1.3x the ring, the layer IS
+  the cost, the 2026-09-07 note was a noisy round, and the fix has to
+  remove the wrapper rather than tune it. If `onePart` matches
+  `growing`, then neither the wrapper NOR the sampling is the cost and
+  the whole entry is misfiled.
