@@ -1,5 +1,53 @@
 # Backlog
 
+## growing-elementwise-pop — a partitioned buffer pays a part scan per pop, and only chunked consumers amortise it
+
+Found 2026-09-08 by the A/B for `growing-default`, after
+`growing-part-sizing` was fixed and the regression did NOT move.
+
+`Source.merge` reads **3.5x slower** when `Channel.apply` defaults to
+`growing`, and every control is flat:
+
+| lane | ring | growing | |
+|---|---|---|---|
+| `okaySourceMerge` | 135.7 | 471.9 | **+248%** |
+| `sourceMerge` n=250..2000 | | | **+189% to +260%** |
+| `okayChannelMerge` | 85.8 | 86.7 | +1.0% |
+| `okayChunksMerge` | 13.7 | 13.4 | −2.3% |
+| `sourceSingleDrain` | 98.5 | 99.2 | +0.7% |
+
+WHY THOSE TWO AND NOT THE OTHERS, established rather than guessed:
+
+- `Channel.merge` defaults to `capacity = Int.MaxValue`, which takes
+  `Channel.apply`'s `> MaxRing` branch and gets `Segments` — the
+  growing default never touches it. That is why it is flat.
+- `Source.merge` defaults to `capacity = 64`, takes the ring branch,
+  and therefore becomes `growing`.
+- Buffer SIZE is not the cause: with `growing-part-sizing` each part
+  is a full 64 and the regression is unchanged.
+- `growing_chunk` — the same buffer, many producers, a CHUNKED
+  consumer — is not merely fine but the best on the page (126 at
+  sixteen producers). `Source.merge` consumes PER ELEMENT.
+
+So the cost is the per-element pop on a partitioned buffer: each one
+scans parts for a ready element, where a ring pops one. A chunked
+consumer pays that scan once per chunk; a per-element consumer pays it
+per element.
+
+- [ ] growing-elementwise-pop — make the per-element pop on
+      `AdaptiveFifo` cheap, or make the partitioned buffer remember
+      which part it last drew from so a scan is the exception rather
+      than the rule. `lastRoute` already exists on `Buffer` for the
+      waking side and may be the hint needed here too.
+      Expected win: `Source.merge` back to ~136, which unblocks the
+      default.
+      DISQUALIFYING: if a remembered part starves the others under
+      several producers, the scan is load-bearing and the answer is
+      not to remove it — it is that a per-element consumer should not
+      be given a partitioned buffer at all, and the default must then
+      choose by CONSUMER shape rather than by producer count.
+      BLOCKS: `growing-default`.
+
 ## growing-part-sizing — `growing` divides capacity by `parts` however few producers arrive
 
 Found 2026-09-08 by the A/B that `Channel.apply`'s own comment had

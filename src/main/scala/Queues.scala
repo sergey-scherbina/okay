@@ -58,11 +58,34 @@ object Queues {
       [T] => (_: Int) => Ring[T](capacity, singleConsumer)
     def segments: [T] => Int => Buffer[T] =
       [T] => (_: Int) => Segments[T]()
+    /**
+     * `capacity` is PER PART, not divided among them
+     * (growing-part-sizing, 2026-09-08).
+     *
+     * It used to be `cap / n`, and that was the defect: `growing(64,
+     * parts = 8)` gave part 0 sixty-four slots and every later part
+     * EIGHT, so the second producer to arrive got an eighth of what
+     * the plain ring would have given it. `Source.merge` runs exactly
+     * two producers at capacity 64 and measured 3.5x slower under it
+     * — which is what blocked making this the default.
+     *
+     * Affordable because `AdaptiveFifo` opens parts LAZILY: its
+     * `open` counter starts at one and rises as producers claim, so
+     * what a channel HOLDS is `capacity x producers that actually
+     * arrived`, not `capacity x parts`. Parts that are sized and
+     * never opened cost nothing.
+     *
+     * It is a contract change and says so: a channel built this way
+     * holds `capacity` PER PRODUCER. One producer buffers exactly
+     * what a ring of `capacity` buffers, which is the case that has
+     * to stay free; sixteen producers hold sixteen times that, which
+     * is the price of not making them queue behind one tail.
+     */
     def growing(capacity: Int, parts: Int): [T] => Int => Buffer[T] =
       [T] => (_: Int) =>
         val cap = if capacity < 2 then 2 else capacity
         val n = if parts < 2 then 2 else parts
-        Growing[T](Ring[T](cap), n, () => Ring[T](math.max(cap / n, 2)))
+        Growing[T](Ring[T](cap), n, () => Ring[T](cap))
 
     def multiRing(parts: Int, each: Int): [T] => Int => Buffer[T] =
       [T] => (_: Int) => AdaptiveFifo[T](parts, () => Ring[T](each), eager = true)
