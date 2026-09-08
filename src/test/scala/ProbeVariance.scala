@@ -15,6 +15,11 @@ object ProbeVariance:
   object In extends InLow:
     given left[F[+_], G[+_]]: In[F, F + G] = new In[F, F + G]:
       def inj[A](fa: F[A]): (F + G)[A] = fa
+    /** rows are LEFT-associated ((A + B) + C), so reaching a member
+     * deeper than the outermost pair needs this */
+    given deeper[F[+_], G[+_], H[+_]](using i: In[F, G]): In[F, G + H] =
+      new In[F, G + H]:
+        def inj[A](fa: F[A]): (G + H)[A] = i.inj(fa)
 
   inline def op[F[+_], R[+_], A](fa: F[A])(using i: In[F, R]): A ! R =
     effect[R, A](i.inj(fa))
