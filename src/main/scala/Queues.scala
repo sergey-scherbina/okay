@@ -86,6 +86,34 @@ object Queues {
     def bounded(capacity: Int, singleConsumer: Boolean = false): Strong[A] =
       copy(buffer = Some(Mechanism.ring(capacity, singleConsumer)))
 
+    /**
+     * ONE ring, and therefore EXACT FIFO ACROSS PRODUCERS: every
+     * element takes its position by a single CAS on one tail, so the
+     * order a consumer sees is the order the pushes actually
+     * happened, whoever pushed.
+     *
+     * The same mechanism as `bounded` — this is a NAME, not a new
+     * buffer, and naming it is the point: a caller who needs order
+     * between producers should be able to ask for it by what it
+     * gives, not by knowing that "bounded" means "one ring" means
+     * "exact order".
+     *
+     * It was added while `growing` was being tried as the default
+     * (growing-default, 2026-09-08). That switch did NOT happen — the
+     * A/B found `Source.merge` 3.5x slower under it — but the name is
+     * worth having either way, and it is what a caller will want the
+     * day the default does change.
+     *
+     * Ask for this when the ORDER between producers is part of your
+     * correctness: a log whose lines must interleave as they were
+     * written, a sequence of commands from several sources that must
+     * apply in arrival order. Do not ask for it merely because it
+     * sounds safer — it is a single contended tail, and at sixteen
+     * producers that costs 7x.
+     */
+    def fifo(capacity: Int, singleConsumer: Boolean = false): Strong[A] =
+      bounded(capacity, singleConsumer)
+
     /** a ring that grows by segments, so a producer never waits */
     def unbounded: Strong[A] = copy(buffer = Some(Mechanism.segments))
 

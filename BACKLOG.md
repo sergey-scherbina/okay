@@ -1,5 +1,63 @@
 # Backlog
 
+## growing-part-sizing — `growing` divides capacity by `parts` however few producers arrive
+
+Found 2026-09-08 by the A/B that `Channel.apply`'s own comment had
+demanded for two days and nobody had run: every single-producer path
+the default feeds, with the plain ring against `growing`.
+
+| lane | ring | growing | |
+|---|---|---|---|
+| `okaySourceMerge` | 136.4 | 475.7 | **+249%** |
+| `sourceMerge` n=250 / 500 / 1000 / 2000 | 74.7 / 133.6 / 273.3 / 559.5 | 208.6 / 478.4 / 990.5 / 1933.7 | **+179% to +262%** |
+| `channelMerge` (control) | 175.0 | 177.6 | +1.5% |
+| `okayChunksMerge` (control) | 13.6 | 13.6 | +0.3% |
+| `sourceSingleDrain` (control) | 101.5 | 98.1 | −3.4% |
+
+Everything with ONE producer is unmoved. `Source.merge` — which runs
+exactly TWO, one fiber per side — is 3.5x slower.
+
+CAUSE, and it is arithmetic rather than a race. `Source.merge` uses
+`capacity = 64`. `growing(64, parts = 8)` builds part 0 at 64 and
+every later part at `64 / 8 = 8`. So the moment the second producer
+appears it is handed a buffer of **eight elements** where the plain
+ring gave it 64, and six more parts are sized and never opened.
+
+`growing` divides the capacity by the part count it MIGHT need rather
+than the one it has. At sixteen producers that is right and it wins
+7x; at two it is a 3.5x loss.
+
+- [ ] growing-part-sizing — size a part for the producers that
+      actually arrive, not for `parts`. The obvious shapes, in
+      increasing cost: give every part the full `capacity` (that is
+      what `adaptive.parts(n).each(c)` does, and it is `n * c` of
+      memory — see `growing-capacity-semantics`); or open parts at
+      `capacity` and let total memory grow with the producer count;
+      or halve the surviving parts as each new one opens.
+      Expected win: `Source.merge` back to the ring's number, and the
+      default switch unblocked.
+      DISQUALIFYING: whatever is chosen changes how much memory a
+      channel holds, which is a contract, not a tuning. Measure the
+      one-producer paths again after — this entry exists because that
+      is the check that caught it.
+      BLOCKS: `growing-default`.
+
+## growing-default — make `growing` the default behind `Channel.apply`
+
+Operator decision 2026-09-08. The performance case is made at an equal
+memory budget: `growing` ties the ring at one producer (171 against
+169) and is 2.4x and 7.2x ahead at four and sixteen, while `adaptive`
+as a default is refuted — it splits the budget into parts, so a lone
+producer gets 64 slots of 1024 and reads 1 119, 6.6x the ring.
+
+- [x] the exact-FIFO builder — LANDED. `Queues.strong[A].fifo(
+      capacity)` is the single ring under a name that says what it
+      gives, for callers who need order BETWEEN producers once the
+      default stops promising it.
+- [ ] the switch itself — BLOCKED on `growing-part-sizing` above. The
+      A/B the code demanded found `Source.merge` 3.5x slower, so the
+      switch does not happen on a measurement that says it should not.
+
 ## default-not-measured — three lanes where the library already holds a faster answer and the default does not pick it
 
 Found by `bench-refresh` (2026-09-08, docs/benchmarks.md §4, §4b).
