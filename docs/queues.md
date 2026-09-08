@@ -554,9 +554,16 @@ the other two.
 
 | producers | `bounded` | **`growing`** | `adaptive` | `adaptive`, 16x memory |
 |---|---|---|---|---|
-| 1 | 169 | **171** | 1 119 | 169 |
-| 4 | 1 257 | **528** | 559 | 166 |
-| 16 | 2 828 | **394** | 408 | 115 |
+| 1 | 169 | **183** | 1 119 | 169 |
+| 4 | 1 257 | **165** | 559 | 166 |
+| 16 | 2 828 | **126** | 408 | 115 |
+
+(`growing`'s columns are after growing-part-sizing, 2026-09-08:
+`capacity` is now PER PART rather than divided among them, which is
+worth 70% at four and sixteen producers — 552 to 165 and 429 to 126.
+Its memory is `capacity x producers that actually arrive`, since parts
+open lazily, so at four and sixteen it holds what the last column
+holds and reads within 10% of it.)
 
 **`growing` is the best of the three at every producer count once the
 memory is equal**, and that is the opposite of what this page said. It

@@ -1,5 +1,43 @@
 # Changelog
 
+## growing-part-sizing — `capacity` is per part, and that was worth 70%
+
+`growing` divided `capacity` by the part count it MIGHT need rather
+than the one it has. `growing(64, parts = 8)` gave part 0 sixty-four
+slots and every later part **eight**, so the second producer to arrive
+got an eighth of what a plain ring would have given it.
+
+Every part is now a full `capacity`. That is affordable because
+`AdaptiveFifo` opens parts LAZILY — its `open` counter starts at one
+and rises as producers claim — so a channel holds `capacity ×
+producers that actually arrived`, not `capacity × parts`.
+
+Alternating, three rounds, one consumer:
+
+| producers | `cap / parts` | **`cap` per part** | |
+|---|---|---|---|
+| 1 | 176.8 | 182.5 | +3.2% |
+| 4 | 552.5 | **165.4** | **−70.1%** |
+| 16 | 429.3 | **126.1** | **−70.6%** |
+
+126 at sixteen producers is within 10% of the best number on the page
+at the same memory per producer, and the one-producer case — the one
+that has to stay free — is unmoved.
+
+**It is a contract change and the scaladoc says so**: a channel built
+this way holds `capacity` per producer, not `capacity` in total.
+
+**What it did not fix, which is why it was written.** It was meant to
+unblock making `growing` the default. It did not: `Source.merge` is
+still 3.5x slower under a growing default, so the sizing was not that
+cause. Filed as `growing-elementwise-pop` with the evidence — a
+partitioned buffer pays a part scan per pop and only a CHUNKED
+consumer amortises it, which is why `growing_chunk` is now the best
+lane on the page while `Source.merge`, which reads per element, is the
+worst.
+
+Commit: 51adaf00.
+
 ## lane-fairness — five benchmark lanes asked the two sides different questions
 
 An audit of every cross-library benchmark class against this page's
