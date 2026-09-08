@@ -1,5 +1,164 @@
 # Backlog
 
+## default-not-measured — three lanes where the library already holds a faster answer and the default does not pick it
+
+Found by `bench-refresh` (2026-09-08, docs/benchmarks.md §4, §4b).
+One defect, three appearances, which is why they are one entry: in
+each case okay ships something that beats every competitor on the
+lane, and the DEFAULT path chooses something slower. The fix is a
+choice, not an optimisation, and the numbers to choose by exist.
+
+| lane | the default | what okay already has | best competitor |
+|---|---|---|---|
+| fork/join 10 000 fibers | 2715 | `ownShort` **709** | kyo 884 |
+| many-to-many 4x4, one channel | 4806 | adaptive **870** | zio 3106 |
+| many-to-many 16x16 | 9325 | adaptive **1042** | zio 6325 |
+| cancel 1 000 parked fibers | 1116 | `drive` **597** | cats 748 |
+
+- [ ] default-scheduler-shape — the fork/join default is 3.1x behind
+      kyo while `forShortTasks` on the SAME shape reads 709, ahead of
+      everything. Expected win: 3.8x on the lane.
+      DISQUALIFYING EVIDENCE, and it is already half-visible:
+      `forShortTasks` COLLAPSES on big tasks — 27 640 against the
+      default's 3218 at `work=10000`, a 8.6x loss. So the answer is
+      not "switch the default", it is either a better adaptive rule
+      than the one in `Owned`'s helper clause or an honest statement
+      that the knob must be chosen per workload. Anyone starting here
+      measures BOTH work sizes or produces a fix that trades one for
+      the other.
+- [ ] channel-default-adaptive — `Channel.apply` gives the plain ring;
+      the adaptive buffer reads 870/1042 where the ring reads
+      4806/9325 (4x4 and 16x16). Expected win: 5.5x and 9x at those
+      shapes. DISQUALIFYING: the ring is FASTER at one producer (see
+      docs/queues.md — 123 against the partitioned 144), which is the
+      case the default is presumably chosen for. A fix must show the
+      one-producer case does not regress, or must adapt rather than
+      switch.
+- [ ] cancel-default-drive — `cancel1k` on the default scheduler is
+      1116 where okay's own `drive` reads 597, the best number in the
+      table. Expected win: 1.9x. DISQUALIFYING: `drive` may be winning
+      because it does LESS on cancel (it is the event-loop drive);
+      check the cancellation is actually delivered before crediting
+      it. specs/schedulers.md.
+
+## bench-sendbulk-inverted — `sendManyNow` used to be 1.63x ahead and is now 17% behind
+
+Found by `bench-refresh` (2026-09-08, §15). The page says "batch both
+ends or neither" and prices the bulk send at 1.63x against a draining
+consumer. Re-measured, the pair has INVERTED:
+
+| lane | now | as §15 recorded it |
+|---|---|---|
+| `okaySendBulkRecvChunk` | 63.2 | 66.9 |
+| `okaySendElemRecvChunk` | **54.1** | 109.0 |
+
+Consistent across all three rounds (63/74/78 against 55/54/57), so it
+is not the host. Note WHAT moved: the bulk lane is where it was; the
+ELEMENT lane halved and overtook it.
+
+- [ ] bench-sendbulk-inverted — decide whether `Channel.sendManyNow`
+      still earns its place on this shape. Expected outcome is one of
+      two, and both are fine: recover the 1.2x, or delete the claim
+      from §15 and say the element path caught up.
+      DISQUALIFYING: if `Ring.pushMany`'s scan is simply never finding
+      room (the consumer keeps the ring full), then nothing regressed
+      and the honest fix is in the DOC, not the code — §15 already
+      explains that exact failure mode for the elementwise consumer.
+
+## bench-chunk-fold-lane — a lane named `_chunk_` costs more than its `_elem_` twin
+
+Found by `bench-refresh` (2026-09-08, §6c). In
+`IdiomaticApiBenchmark`:
+
+| lane | us/op |
+|---|---|
+| `okayChannelForeach_chunkNative_runForeach` | **20.1** |
+| `okayChannelForeach_elem_runForeach` | 196.8 |
+| `okayChannelForeach_chunk_fold` | **364.5** |
+| `zioChannelForeach_chunk_runForeach` | 129.7 |
+
+The `_chunk_fold` lane is 18x its own chunk-native twin and 1.9x the
+ELEMENT lane, and against ZIO that pairing reads as a 2.8x loss where
+the chunk-native pairing is a 6.4x win.
+
+- [ ] bench-chunk-fold-lane — READ THE LANE BODY FIRST. This
+      repository has hit the misnamed-granularity bug five times
+      (§6b, §6c, §14, §15, and the fs2 source audit), and the naming
+      rule in AGENTS.md exists because of it. Two outcomes: the lane
+      is misnamed and measures per-element work through a chunk API —
+      rename it and the 2.8x "loss" evaporates; or the path is
+      genuinely slow, and then it is a real 2.8x against ZIO.
+      DISQUALIFYING: if `_chunk_fold` folds a `Chunk` per ELEMENT it
+      is the former. Do not optimise before this is answered.
+
+## bench-producer-inverted — `Producer` beats `LazyList` in one suite and loses in the other
+
+Found by `bench-refresh` (2026-09-08, §5 against §8).
+
+| suite | `okayProducer` | `okayLazyList` |
+|---|---|---|
+| §8 generator, per element | **19.5** | 35.5 |
+| §5 pipeline, map/filter/take/sum | 188.1 | **167.5** |
+
+Same two representations, opposite ordering, both stable across three
+rounds. The `performance` skill calls a disagreeing twin the single
+most informative pattern in a ratio table, and this is one.
+
+- [ ] bench-producer-inverted — find what §5 does to `Producer` that
+      §8 does not. §8 is a bare unfold; §5 runs `Stream.map/filter/
+      take` combinators over it, and per element the two suites differ
+      by ~10x. Expected win: if the combinator layer is the cost, the
+      §5 Producer lane should approach its LazyList twin, ~1.1x.
+      DISQUALIFYING: if `take(1000)` forces materialisation in the
+      Producer path, the target is `take`, not `Producer`, and the
+      entry should be re-filed under that name.
+
+## bench-strong-chunked-tie — a pair that was 2.24x ahead is now level
+
+Found by `bench-refresh` (2026-09-08, §16). `bounded strong, chunked`
+read okay 56.2 against zio 125.9; it now reads **136.0 against 137.5**.
+ZIO barely moved (125.9 -> 137.5, inside host drift); okay did.
+
+- [ ] bench-strong-chunked-tie — establish whether this is a
+      regression at all before treating it as one. It is filed as a
+      SUSPICION, not a defect: the tree changed compiler (3.7.4 ->
+      3.9.0 LTS) and gained the scheduler fix 3f09bd9c between the two
+      measurements, and no A/B was run.
+      DISQUALIFYING / confirming: build both trees and alternate
+      rounds in ONE session, per the `performance` skill. If the two
+      agree, the old 56.2 was the outlier and §16's text needs the
+      correction rather than the code.
+
+## bench-known-prices — five internal costs with a named mechanism and a small prize each
+
+Found by `bench-refresh` (2026-09-08). None is a defect; each is a
+price this library pays on purpose, re-measured and now current. Filed
+so nobody re-derives them.
+
+- [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
+      ns against `Json.read`'s 1004. The strict door was built to
+      avoid the lossless road's cost, and 131cedc2 + b4172242 removed
+      that cost. Either make the strict walk cheaper than the CST road
+      it was meant to replace, or leave it and keep it for its
+      REFUSAL — docs/benchmarks.md §10 already says the latter.
+      DISQUALIFYING: if the strict walk's extra 100 ns is the field
+      map and `make` (the breakdown says it is ~3.3x the bare parse),
+      there is no cheap win and this closes as wontfix.
+- [ ] elements-door-cursor — the `.elements` door reads 23.8 against
+      the chunk transformers' 10.78 (§5), 2.2x for the per-element
+      cursor. Known mechanism, stated in the doc.
+- [ ] chunked-lexer-bookkeeping — chunked lexing 58.0 against
+      element-wise 48.9 (§10). The doc already refuted the boxing
+      theory (unboxing bought 8% of a 23% gap) and named per-chunk
+      bookkeeping: a builder, a token-chunk allocation and a Free node
+      per input chunk. Prize ~19%.
+- [ ] bracket-over-region — `okayBracket` 27.2 against `okayResource`
+      22.4 (§7), 21%.
+- [ ] vector-search-dominates — `searchVectors` 379 us dominates §11's
+      per-query table, where everything else is under 20. Not a
+      defect (240 segments x 1536 dims is real work), filed because it
+      is where retrieval's time actually goes.
+
 ## spark-4-2 — the Spark pin is now free to move on its own
 
 Found by scala-3-9 (2026-09-07) and deliberately NOT taken there.
