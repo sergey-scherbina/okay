@@ -1,0 +1,34 @@
+task: strong-chunked-tie
+agent: opus5-bench
+started: 2026-09-08
+branch: (none — a measurement, no code)
+worktrees: ../okay-wt-374 (0e32ed6c, Scala 3.7.4)
+           ../okay-wt-390 (4ce13ec7, Scala 3.9.0)
+
+why: §16's `bounded strong, chunked` pair read okay 56.2 against zio
+  125.9 and now reads 136.0 against 137.5 — 2.24x ahead became a tie.
+  bench-refresh recorded it and refused to call it a regression,
+  because the tree had changed compiler between the two measurements
+  and no A/B was run. This lane runs that A/B.
+
+what: the boundary is exact and clean. `0e32ed6c` is the last commit
+  on Scala 3.7.4, `4ce13ec7` the first on 3.9.0, and the migration
+  commit changed ZERO files under src/main — the channel sources are
+  byte-identical on both sides. So building both and alternating
+  rounds isolates the compiler and nothing else.
+
+  Lanes: `okayStrongChunk` and `zioStrongChunk` (the pair in
+  question), with `okayWeakChunk`/`zioWeakChunk` as controls that
+  should NOT move if the story is specific to the strong contract.
+
+predict: none worth stating. The three possibilities are all live —
+  the compiler moved it, the old 56.2 was an outlier, or it is neither
+  and the pair genuinely regressed for a reason no A/B will find.
+  DISQUALIFYING: if 3.7.4 also measures ~136 here, then the 56.2 in
+  §16 was an artefact of ITS session and the correction belongs in the
+  doc's text, not in any code. That is the outcome I would bet on if
+  forced, because §16's own numbers came from an `f=3 i=8` protocol
+  this refresh did not repeat.
+
+NOTE: no code changes, so no branch and no gate. The deliverable is
+  a measurement and whatever correction it forces in docs/benchmarks.md.
