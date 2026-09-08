@@ -2153,12 +2153,38 @@ methodology §15 had to correct twice.
 | `StmChannel` (list), chunked | **120.1** | 137.5 | 1.14x |
 
 (bench-refresh 2026-09-08, N=4000, cap=1024, minimum of three rounds.
-Two rows moved enough to say so plainly. `bounded strong, chunked` was
-2.24x ahead and is now a TIE (136.0 against 137.5) — the okay side got
-slower relative to the run this table came from, and nothing here
-explains it; it is recorded, not diagnosed. Against that, the
-`StmChannel` chunked row was ZIO's by 1.6% and is now okay's by 14%.
-The unbounded pair, the largest gap on this page, holds.)
+The `StmChannel` chunked row was ZIO's by 1.6% and is now okay's by
+14%. The unbounded pair, the largest gap on this page, holds.)
+
+**`bounded strong, chunked` was never 2.24x, and the A/B that says so
+is worth more than the row (strong-chunked-tie, 2026-09-08).** This
+table used to read okay 56.2 against zio 125.9 there; the refresh read
+136.0 against 137.5 and recorded a suspected regression WITHOUT
+diagnosing it, because the tree had changed compiler in between. The
+A/B was then run across the exact boundary — `0e32ed6c`, the last
+commit on Scala 3.7.4, against `4ce13ec7`, the first on 3.9.0, whose
+migration commit changed ZERO files under `src/main`, so the channel
+sources are byte-identical and only the compiler differs. Five
+alternating rounds each:
+
+| lane | 3.7.4 | 3.9.0 | |
+|---|---|---|---|
+| `okayStrongChunk` | **127.2** | 138.2 | +8.7% |
+| `zioStrongChunk` (control) | 142.7 | 141.4 | −0.9% |
+| `okayWeakChunk` | 65.1 | 57.0 | −12.4% |
+| `zioWeakChunk` (control) | 133.8 | 138.7 | +3.6% |
+
+**On 3.7.4 the lane reads 127.2, not 56.2.** The old number does not
+reproduce on the compiler it was measured with, so it was an artefact
+of its own session — that table was taken at `f=3 i=8`, a protocol
+this page has not repeated. The pair is 1.12x in okay's favour on
+3.7.4 and 1.02x on 3.9.0; it was never 2.24x, and there is no
+regression to find.
+
+What the A/B DOES establish is a real, modest and two-directional
+compiler effect: 3.9.0 costs this lane 8.7% and gives the weak one
+12.4% back, with both ZIO controls inside 4%. That is worth knowing
+and is not what anyone was looking for.
 
 The unbounded pair is the largest gap in this file and it deserves the
 scepticism: `Queue.unbounded` is the like-for-like, not

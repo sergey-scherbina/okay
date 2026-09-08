@@ -278,15 +278,28 @@ Found by `bench-refresh` (2026-09-08, §16). `bounded strong, chunked`
 read okay 56.2 against zio 125.9; it now reads **136.0 against 137.5**.
 ZIO barely moved (125.9 -> 137.5, inside host drift); okay did.
 
-- [ ] bench-strong-chunked-tie — establish whether this is a
-      regression at all before treating it as one. It is filed as a
-      SUSPICION, not a defect: the tree changed compiler (3.7.4 ->
-      3.9.0 LTS) and gained the scheduler fix 3f09bd9c between the two
-      measurements, and no A/B was run.
-      DISQUALIFYING / confirming: build both trees and alternate
-      rounds in ONE session, per the `performance` skill. If the two
-      agree, the old 56.2 was the outlier and §16's text needs the
-      correction rather than the code.
+- [x] bench-strong-chunked-tie — NOT A REGRESSION, answered
+      2026-09-08 by the A/B this entry asked for, and by its own
+      disqualifying clause. Boundary `0e32ed6c` (last on 3.7.4) vs
+      `4ce13ec7` (first on 3.9.0); the migration commit changed ZERO
+      files under src/main, so the channel sources are byte-identical
+      and only the compiler differs. Five alternating rounds each:
+
+      | lane | 3.7.4 | 3.9.0 | |
+      |---|---|---|---|
+      | `okayStrongChunk` | **127.2** | 138.2 | +8.7% |
+      | `zioStrongChunk` (control) | 142.7 | 141.4 | -0.9% |
+      | `okayWeakChunk` | 65.1 | 57.0 | -12.4% |
+      | `zioWeakChunk` (control) | 133.8 | 138.7 | +3.6% |
+
+      On 3.7.4 the lane reads **127.2, not 56.2** — the old number
+      does not reproduce on the compiler it was taken with, so it was
+      an artefact of that session's `f=3 i=8` protocol. The pair is
+      1.12x in okay's favour on 3.7.4 and 1.02x on 3.9.0; it was never
+      2.24x. §16's text is corrected; no code was involved.
+      By-product worth keeping: 3.9.0 costs this lane 8.7% and gives
+      the weak one 12.4% back, with both ZIO controls inside 4% — a
+      real, modest, two-directional compiler effect.
 
 ## bench-known-prices — internal costs, mostly already written down
 
