@@ -1,0 +1,30 @@
+task: sendbulk-profile
+agent: opus5-bench
+started: 2026-09-09
+branch: feature/sendbulk-profile
+worktree: /Users/sergiy/work/my/okay-wt-sendbulk
+
+why: the last open investigation from the benchmark refresh. §15 said
+  `Channel.sendManyNow` is 1.63x ahead of a per-element send against a
+  draining consumer; it measured 17% BEHIND, stably. The obvious
+  explanation was tested and REFUTED with numbers — the bulk path is
+  exercised almost perfectly (97.3% of calls find room, mean claim
+  55.8 of 64 asked, 0.05% of elements fall back) — so the cost is in
+  the bulk mechanism itself, and the entry has said "next step is a
+  profiler" ever since.
+
+what: profile `okaySendBulkRecvChunk` against `okaySendElemRecvChunk`
+  and attribute, then fix what the profile names. Also files, as board
+  hygiene, the `flushAfter` observation this evening's re-measure
+  turned up: it costs 30% over its own chunked merge where the page
+  said 9%, and nothing has looked at it.
+
+predict: none. The standing hypothesis in the backlog — that
+  `Ring.pushMany` touches every slot twice, once to scan a stamp and
+  once to write, to save a tail CAS that is uncontended with one
+  producer — is UNMEASURED, and four of my last six predictions on
+  this codebase were wrong. The profile decides.
+  DISQUALIFYING: if the profile puts the time in WAITING rather than
+  in the scan, the mechanism is not the cost and §15's claim should be
+  deleted rather than defended — the element path simply caught up,
+  which the doc already half-says.
