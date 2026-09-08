@@ -495,11 +495,17 @@ worth finding out.
 
 Two smaller facts fell out and are worth keeping:
 
-- Covariance is what lets `Choose(Seq.empty) : Choose[Nothing]` stand
-  for `Choose[A]`, and `Throws(e)` for `Throws[E, A]`. Those are
-  conveniences at construction, not requirements: the spike did not
-  touch the enums' own `[+A]`, so this was never tested against
-  invariance.
+- It was assumed that covariance is what lets `Choose(Seq.empty) :
+  Choose[Nothing]` stand for `Choose[A]`, and `Throws(e)` for
+  `Throws[E, A]`. It is NOT. Spiked with `case class Choose[A]` and
+  `case class Throws[E, A]` — invariant — on top of the relaxed
+  bounds: main compiles, the tests compile, and 28 of them pass
+  (TestLogic, TestThrows, TestFail, TestSeqEffect). The type argument
+  comes from the EXPECTED type at each construction site, which
+  inference propagates into the constructor call; variance was
+  contributing nothing there. So `Nothing` never had to be
+  substituted, and the "conveniences at construction" cost of dropping
+  covariance is zero.
 - `derives Effect` (ClassTag-based) needs no covariance at all, so the
   one place that does need it is now the one place a signature can
   avoid declaring.
