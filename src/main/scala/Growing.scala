@@ -97,7 +97,26 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
   /** the last producer sampled, and the sampling counter. The counter
    * is plain: a lost increment costs a later sample, nothing else */
   @volatile private var sampled: Thread | Null = null
-  private var seen: Int = 0
+  /**
+   * The sample counter lives OFF this object, and that is worth 9 of
+   * the 15 points sampling was costing (growing-wrapper-cost,
+   * 2026-09-08). The producer stores to it on EVERY push while the
+   * consumer loads `inner` from this object on every `popMany`, so
+   * with the counter here the two share a cache line and the store
+   * invalidates the load. Padding either side keeps it off the lines
+   * its neighbours land on.
+   *
+   * Measured, alternating, five rounds each with the plain ring as
+   * the in-run control: 1.200x the ring with the counter here, 1.109x
+   * with it moved, 1.049x with sampling removed altogether. So this
+   * recovers the sharing and leaves the branch, which is the honest
+   * remainder and not worth a trick.
+   */
+  private final class Counter:
+    var pad0, pad1, pad2, pad3, pad4, pad5, pad6: Long = 0L
+    var seen: Int = 0
+    var pad7, pad8, pad9, pad10, pad11, pad12, pad13: Long = 0L
+  private val counter = Counter()
 
   /** one swap, ever; losers use the winner's buffer */
   private def grow(): Buffer[A] =
@@ -111,8 +130,9 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
   /** every 64th push: a producer that is not the one we sampled last
    * means more than one is pushing, which is what parts are for */
   private def sample(): Unit =
-    seen += 1
-    if (seen & 63) == 0 && !grown.get then
+    val n = counter.seen + 1
+    counter.seen = n
+    if (n & 63) == 0 && !grown.get then
       val me = Thread.currentThread()
       val last = sampled
       if last == null then sampled = me

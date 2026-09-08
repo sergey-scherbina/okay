@@ -29,7 +29,11 @@ survives is the channel default.
       2618 / 3200 — it already picks best-of-both, at a 12% premium
       over whichever policy wins each end. Nothing to fix. §4b now
       carries both rows instead of the one that mixed them.
-- [ ] channel-default-adaptive — `Channel.apply` gives the plain ring;
+- [ ] channel-default-adaptive — UNBLOCKED 2026-09-08: `Growing`'s
+      one-producer premium is now 11%, not 31% (growing-wrapper-cost),
+      so the trade the default has to make is 11% at one producer
+      against 5.5x and 9x at four and sixteen. That is a decision, not
+      an optimisation, and it is the operator's: `Channel.apply` gives the plain ring;
       the adaptive buffer reads 870/1042 where the ring reads
       4806/9325 (4x4 and 16x16). Expected win: 5.5x and 9x at those
       shapes. DISQUALIFYING: the ring is FASTER at one producer (see
@@ -85,20 +89,30 @@ grows. One real producer, two apparent ones.
       of runs, so it was worth ~6 points of the 53. THE REMAINING ~45
       IS THE WRAPPER'S OWN DISPATCH and is still open below.
 
-- [ ] growing-wrapper-cost — NEW, and it is what is actually
-      expensive. With growth now correct, `Growing` at one producer
-      still costs 1.47x the plain ring it is wrapping and doing
-      nothing else to. Every push and every pop goes through one extra
-      virtual call and a `@volatile inner` read. Expected win: down to
-      ~1.0x, which is what would let `Channel.apply` adopt it and
-      unblock `channel-default-adaptive`.
-      DISQUALIFYING: if the cost is the volatile read, removing it is
-      unsafe — the field is what publishes the swap. A fix has to keep
-      the publication and lose the indirection, e.g. by having the
-      CHANNEL hold the buffer reference it re-reads anyway (it already
-      does: "ONE read: a replaceable buffer must not be compared with
-      itself") and drop the wrapper entirely. Do not shave the
-      volatile and claim the rest.
+- [x] growing-wrapper-cost — DONE 2026-09-08, and this entry named
+      the wrong causes. It blamed "one extra virtual call and a
+      `@volatile inner` read". MEASURED, eight rounds on a
+      verified-quiet box with the ring as the in-run control:
+
+      | lane | vs ring | |
+      |---|---|---|
+      | `forwarded` — a buffer that ONLY delegates | 1.02x | the call layer is FREE |
+      | `onePart` — partitioned, one part, cannot grow | 1.17x | a separate question |
+      | `growing` | 1.31x | |
+
+      Then the 29% split by alternating diagnostic builds, five rounds
+      each: removing `sample()` -> 1.03x (**-22 points**); removing
+      the `volatile` -> 1.30x (**-5 points, i.e. nothing**). So the
+      volatile is free, the extra call is free, and the whole cost is
+      the per-push sample counter.
+
+      And 60% of THAT is false sharing: the producer stores `seen` on
+      every push into the object the consumer loads `inner` from on
+      every `popMany`. Moving the counter to its own padded object,
+      semantics untouched: **1.200x -> 1.109x**, with 1.049x (no
+      sampling at all) as the floor. Landed.
+      The remaining ~6 points are the branch itself and are left
+      alone; a trick there would buy noise.
 
 - [ ] growing-grown-cost — the second prize, unchanged by this fix:
       even when growth is CORRECT, `growing` at 4 and 16 producers
