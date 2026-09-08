@@ -543,7 +543,44 @@ interpreter branch that answers `Unit` carries a widening. Which of
 those matters more is a judgement about what this library is FOR, and
 it is the operator's.
 
-**Not taken, for now.** The trade is: one cast in `TypeableK`'s
+**Contravariance was tried too, since the question comes up: `enum
+Users[-A]`.** It is not a variant of the choice, it is the wrong
+direction, and the compiler says so in one line — the GADT then proves
+`X <: Option[String]` and `X <: Unit`, UPPER bounds, and an
+interpreter branch has to PRODUCE the answer:
+
+    Found: Option[String]   Required: X
+    where: X ... with bounds <: Option[String]
+
+`Option[String]` is not an unknown subtype of itself; the branch
+cannot be written. That is the semantics showing through: the answer
+index is an OUTPUT of the handler, so it is produced narrow and
+consumed wide, which is covariance. Contravariance would let an
+operation that answers `Any` stand where one answering `Unit` is
+expected, and nothing could satisfy it.
+
+**THE DECISION: keep covariance.** Three reasons, in the order they
+matter:
+
+1. It is the RIGHT variance for what the index means. The handler
+   produces the answer; the program consumes it. Produce narrow,
+   consume wide.
+2. It is the only way to say "this operation never answers":
+   `case Retry() extends Tx[Nothing]` is a `Tx[A]` for every A.
+   Invariant, that is `Retry[A]()`, which CLAIMS to answer an A it
+   never produces — a worse type, not a smaller one.
+3. What it costs is a widening in interpreter branches that answer
+   `Unit`, and the cheapest fix for that is not variance at all: give
+   the operation something to answer. Measured — the version of the
+   demo whose `Save` answered the name it replaced contained zero
+   `map(_ => ())`, with the library untouched.
+
+The measurements above stand as the record of what the alternative
+costs, which is what makes this a decision rather than an assumption.
+The `Typeable` fallback stays with it: it is the instance covariance
+is for, and removing it buys nothing once covariance is kept.
+
+**Not taken, then.** The trade is: one cast in `TypeableK`'s
 generic instance (in a repo whose rule is no cast without necessity),
 plus churn in every module, against `.map(_ => ())` in interpreters
 and exact GADT types for anyone who wants them. Recorded here rather
