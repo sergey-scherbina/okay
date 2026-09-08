@@ -464,6 +464,27 @@ answers `Unit` — the branch is bare:
 compiles and runs (`InvSpike2`). So the widening is the sum of two
 independent choices, and each can be paid for separately.
 
+**And there is a third route that costs nothing at all: give the
+operation an answer worth computing.** With `Save` declared
+`Users[Option[String]]` — the name it replaced — the branch ends in a
+`map` that does real work, and the widening rides along inside it for
+free:
+
+    case Users.Save(id, name) =>
+      State.get[S].plus[F].flatMap: store =>
+        S.get(id)(store) match
+          case None => pure(None)
+          case was  => State.modify[S](S.put(id, name)).plus[F].map(_ => was)
+
+That version of the demo contained ZERO occurrences of `map(_ => ())`
+(counted, not remembered), with the library untouched: no variance
+change, no new combinator. The widening only looks like noise when the
+operation answers `Unit`, because then there is nothing for the `map`
+to be doing. The demo answers `Unit` on purpose — see
+`okay-jdbc/.../UsersDemo.scala`, which says why the worse model is the
+better demonstration — but a real signature usually has something to
+say, and then the question does not arise.
+
 **Not taken, for now.** The trade is: one cast in `TypeableK`'s
 generic instance (in a repo whose rule is no cast without necessity),
 plus churn in every module, against `.map(_ => ())` in interpreters
