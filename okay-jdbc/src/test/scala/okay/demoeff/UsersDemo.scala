@@ -116,16 +116,51 @@ object UsersDemo:
         finally ps.close()
 
   /**
-   * The test world: the same program, no database. It does NOT
-   * record — recording is `.tracing`, which any handler can wear,
-   * including the SQLite one below. The operations are already data,
-   * so "what did this ask for, and in what order" needs a decorator,
-   * not a second handler that might drift from the first.
+   * WHAT A STORE IS, said once: something a name can be read out of,
+   * and put back INTO — where "back into" ANSWERS a new store rather
+   * than mutating this one.
+   *
+   * That immutability is the whole reason this is a class and not a
+   * `Map`. A store that answers its successor can be held in a `var`
+   * by a handler, threaded by `State` with no mutation anywhere, or
+   * kept as a history — the same three lines of interpreter serve all
+   * of them. A `Map` is then one carrier among several, and the demo
+   * runs the pure interpretation over two to make the point.
    */
-  def inMemory(state: scala.collection.mutable.Map[Long, String]): Handler[Users] = new:
+  trait Store[S]:
+    def get(s: S, id: Long): Option[String]
+    def put(s: S, id: Long, name: String): S
+
+  object Store:
+    given Store[Map[Long, String]] with
+      def get(s: Map[Long, String], id: Long) = s.get(id)
+      def put(s: Map[Long, String], id: Long, name: String) = s + (id -> name)
+
+    /** an association list: a different carrier, the same two laws —
+     * what `put` answers, `get` finds */
+    given Store[Vector[(Long, String)]] with
+      def get(s: Vector[(Long, String)], id: Long) =
+        s.collectFirst { case (k, v) if k == id => v }
+      def put(s: Vector[(Long, String)], id: Long, name: String) =
+        s.filterNot(_._1 == id) :+ (id -> name)
+
+  /**
+   * The test world: the same program, no database. Its state is an
+   * immutable store in a `var` — the handler answers with a value, so
+   * SOMETHING has to hold the successor, and that is the only
+   * mutation in it.
+   *
+   * It does NOT record: recording is `.tracing`, which any handler can
+   * wear, including the SQLite one. The operations are already data,
+   * so "what did this ask for, and in what order" is a decorator, not
+   * a second handler that might drift from the first.
+   */
+  final class InMemory[S](init: S)(using St: Store[S]) extends Handler[Users]:
+    private var s = init
+    def state: S = s
     def handle[A](e: Users[A]): A = e match
-      case Users.Find(id)       => state.get(id)
-      case Users.Save(id, name) => state(id) = name; ()
+      case Users.Find(id)       => St.get(s, id)
+      case Users.Save(id, name) => s = St.put(s, id, name); ()
 
   /**
    * The test world WITHOUT mutable state: the same operations
@@ -137,8 +172,7 @@ object UsersDemo:
    * store becomes `State % Map`, the log becomes `Writer % String`,
    * and the residual row F is whatever the caller was already doing.
    */
-  type Store = Map[Long, String]
-  type Tracked = State % Store + Writer % String
+  type Tracked[S] = State % S + Writer % String
 
   /**
    * TWO LAYERS, each with one job.
@@ -162,20 +196,20 @@ object UsersDemo:
    * `.at[R]` moves each operation into the row they share, since a
    * for-comprehension fixes its row from the first step.
    */
-  def stored[A, F[+_]](prog: A ! (Users + F)): A ! (State % Store + F) =
-    type R = State % Store + F
+  def stored[A, S, F[+_]](prog: A ! (Users + F))(using St: Store[S]): A ! (State % S + F) =
+    type R = State % S + F
     !.interpret(prog):
       [X] => (e: Users[X]) => e match
         case Users.Find(id) =>
-          State.get[Store].at[R].map(_.get(id))
+          State.get[S].at[R].map(St.get(_, id))
         case Users.Save(id, name) =>
           for
-            store <- State.get[Store].at[R]
-            _     <- State.set(store + (id -> name)).at[R]
+            store <- State.get[S].at[R]
+            _     <- State.set(St.put(store, id, name)).at[R]
           yield ()
 
-  def tracked[A, F[+_]](prog: A ! (Users + F)): A ! (Tracked + F) =
-    stored[A, Writer % String + F](
+  def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (Tracked[S] + F) =
+    stored[A, S, Writer % String + F](
       !.tracing(prog)([X] => (e: Users[X]) => e.toString))
 
   private def nameOf(c: Connection, id: Long): String =
@@ -194,28 +228,33 @@ object UsersDemo:
       println("PROD  " + rename(7L, "grace").runWith(using live(c)) +
               " / row 7 is now " + nameOf(c, 7L))
 
-      val state = scala.collection.mutable.Map(7L -> "ada")
+      val mem = InMemory(Map(7L -> "ada"))
       val log = scala.collection.mutable.ListBuffer[Any]()
-      println("TEST  " + rename(7L, "grace").runWith(using inMemory(state).tracing(log += _)) +
-              " / log=" + log.mkString(", ") + " / state=" + state)
+      println("TEST  " + rename(7L, "grace").runWith(using mem.tracing(log += _)) +
+              " / log=" + log.mkString(", ") + " / state=" + mem.state)
 
       // the id nobody has: the database is untouched, and the trace
       // shows WHY — a find and no save. Note WHICH handler is traced:
       // the SQLite one. Recording is not a test-only trick.
       val missLog = scala.collection.mutable.ListBuffer[Any]()
       val missLive = rename(99L, "hopper").runWith(using live(c).tracing(missLog += _))
-      val missTest = rename(99L, "hopper").runWith(
-        using inMemory(scala.collection.mutable.Map()))
+      val missTest = rename(99L, "hopper").runWith(using InMemory(Map.empty[Long, String]))
       println(s"MISS  $missLive / row 99 is now ${nameOf(c, 99L)}" +
               s" / both worlds agree: ${missTest == missLive}" +
               s" / log=${missLog.mkString(", ")}")
 
       println("DIRECT " + initials(7L, 99L).runWith(using live(c)))
 
-      // no mutable collection anywhere: the store is State, the log is
-      // Writer, and the run answers with all three as plain data
-      val (store, (told, answer)) =
-        State.run[Store, (Seq[String], Option[String])](Map(7L -> "ada"))(
-          Writer.run[String, Option[String], State % Store](tracked(rename(7L, "grace"))))
+      // no mutation anywhere: the store is State, the log is Writer,
+      // and the run answers with all three as plain data. Twice, over
+      // two carriers — the interpreter is written against `Store`, so
+      // neither it nor the program knows which one it got.
+      def pureRun[S : Store](init: S): (S, (Seq[String], Option[String])) =
+        State.run[S, (Seq[String], Option[String])](init)(
+          Writer.run[String, Option[String], State % S](
+            tracked[Option[String], S, Pure](rename(7L, "grace"))))
+      val (store, (told, answer)) = pureRun(Map(7L -> "ada"))
       println(s"PURE  $answer / log=${told.mkString(", ")} / store=$store")
+      val (vecStore, (vecTold, vecAnswer)) = pureRun(Vector(7L -> "ada"))
+      println(s"PURE2 $vecAnswer / log=${vecTold.mkString(", ")} / store=$vecStore")
     finally c.close()
