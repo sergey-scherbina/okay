@@ -2291,9 +2291,29 @@ that taught it:
    — not `iterate`, not fs2's `range`, which is a singleton chunk per
    element by construction (§5). The per-element source stays in the
    table as the worst case it is, beside the fair one, never alone.
+4. **Resources.** Both sides get the same BUDGET: the same buffer
+   capacity, the same worker count, the same chunk size — anything the
+   runtime is handed rather than earns. Added 2026-09-08 after an
+   audit found four lanes breaking it, and the rules above could not
+   catch any of them because each pair had matching granularity and
+   an intended source. `adaptive.parts(16).each(1024)` is **16 384
+   slots**; the `oneRing`, `growing` and ZIO `Queue.bounded(1024)`
+   lanes it was quoted against have 1024. That is a 16x memory
+   advantage read as a mechanism advantage, and it sat in two files
+   and three tables. A lane whose capacity comes from
+   `availableProcessors` breaks this rule too — its number is not
+   comparable with the same lane on another machine.
 
-A new competitor lane lands with all three answered in its header,
-or it lands without a number.
+A new competitor lane lands with all FOUR answered in its header, or
+it lands without a number.
+
+**And the rules bind the lane you wrote yourself.** Every violation
+found in the 2026-09-08 audit was on OUR side, because our lane is
+written first and the competitor's second, against it. One of them
+(§5's chunk size: okay at its 64-element default against three
+competitors getting the whole stream in one chunk) runs AGAINST us and
+went unnoticed for months precisely because okay won the row anyway. A
+comparison unfair in your own disfavour is still unfair.
 
 ## 17. Actors and the reactive bridge — the first numbers
 

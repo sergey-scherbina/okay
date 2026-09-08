@@ -34,6 +34,28 @@ class AsyncBenchmark {
   def okaySpawn(): Int =
     (1 to K).map(_ => Async.spawn(async(1))).map(_.join()).sum
 
+  /**
+   * THE TWIN §4 WAS MISSING (lane-fairness, 2026-09-08).
+   *
+   * `okaySpawn` above forks and joins K fibers from OUTSIDE the
+   * runtime — K crossings of the boundary. Every competitor lane
+   * below enters its runtime ONCE and does all K inside:
+   * `parTraverse` within one `unsafeRunSync`, `foreachPar` within one
+   * `Runtime.unsafe.run`, `parallelUnbounded` within one
+   * `runAndBlock`. §4b hit exactly this at K = 10 000 and had okay
+   * losing 3.1x to kyo until the shapes were separated; §4 had the
+   * same pairing and no twin to separate it with.
+   *
+   * This is that twin: one entry, K fibers inside, joined
+   * asynchronously — the shape the competitors are measured in.
+   */
+  @Benchmark
+  def okaySpawnInside(): Int =
+    Async.spawn {
+      val fs = (1 to K).map(_ => Async.spawn(async(1)))
+      fs.foldLeft(pure[Async, Int](0))((acc, f) => acc.flatMap(a => f.joinAsync.map(a + _)))
+    }.join()
+
   @Benchmark
   def catsIOPar(): Int =
     import cats.effect.IO

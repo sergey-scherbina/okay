@@ -53,6 +53,31 @@ class StreamOpsBenchmark {
         Chunks.filter(
           Chunks.map(Chunks.nats[Int]())(_ * 2))(_ % 3 == 0))(N))(using Fold.sum[Int])
 
+  /**
+   * THE CHUNK SIZE, MADE COMPARABLE (lane-fairness, 2026-09-08).
+   *
+   * `okayChunks` and `okayChunksTransform` above use `Chunks.nats`'s
+   * DEFAULT size of 64, so they cross 47 chunk boundaries over this
+   * pipeline. Every competitor lane gets the whole stream as ONE
+   * chunk: `fs2.Stream.emits` by construction, `ZStream.range` and
+   * kyo's `Stream.range` because their default chunk (4096) is larger
+   * than the input. The asymmetry runs AGAINST us and okay wins the
+   * table anyway, which is why it went unnoticed -- but a comparison
+   * unfair in our own disfavour is still unfair, and a later change to
+   * the default would move the row for a reason nobody could see.
+   *
+   * This lane is the transformer pipeline at one chunk, so the default
+   * can be priced rather than guessed at. Both stay: 64 is what a
+   * caller gets without asking, one chunk is what the competitors are
+   * measured with.
+   */
+  @Benchmark
+  def okayChunksTransformWide(): Int =
+    Chunks.fold(
+      Chunks.take(
+        Chunks.filter(
+          Chunks.map(Chunks.nats[Int](3 * N + 4))(_ * 2))(_ % 3 == 0))(N))(using Fold.sum[Int])
+
   /** the whole-stage form: inline combinators beta-reduce the
    * pipeline into one while-loop (specs/staged-pipelines.md); §5's
    * `Staged` column, until chunked-source-sweep measured in another

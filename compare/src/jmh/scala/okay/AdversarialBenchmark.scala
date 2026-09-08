@@ -235,7 +235,12 @@ class AdversarialBenchmark {
    * which is what relaxed-queues built for the P x 1 shape */
   @Benchmark
   def manyToMany_okayAdaptive(): Long =
-    val c = Queues.strong[Long].adaptive.parts(16).each(Cap).build
+    // CAPACITY-MATCHED (lane-fairness, 2026-09-08): this was
+    // `each(Cap)` — 16 384 slots against `manyToMany_okay`'s 1024 and
+    // against zio's and cats' `Queue.bounded(Cap)`. §4b quoted it as
+    // "the answer this library ships, 3.6x ahead"; that comparison
+    // gave us 16x the buffer.
+    val c = Queues.strong[Long].adaptive.parts(16).each(math.max(Cap / 16, 2)).build
     val p = P; val n = C; val per = Total / p
     val ps = (0 until p).map(w => Thread.ofVirtual().start { () =>
       var i = 0L
