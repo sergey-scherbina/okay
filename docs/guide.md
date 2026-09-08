@@ -92,8 +92,10 @@ decides by class), and registers the signature for direct-style
 auto-coloring. `derives TypeableK` gives the first without the second.
 
 **Putting an operation in a wider row.** `p.plus[R]` adds R to whatever
-row `p` has; `p.at[R]` lands in a row known only by MEMBERSHIP, which
-is what a row-polymorphic helper has (`[R[+_] : Has[State % Int]]`).
+row `p` has; `p.at[R]` names the target row instead — better when
+several operations land in the same row, and required when that row is
+known only by MEMBERSHIP, as a row-polymorphic helper's is
+(`[R[+_] : Has[State % Int]]`).
 Both are one cast under a witness, measured at the same B/op as
 constructing the operation at R. Row ORDER is not a thing: `+` is a
 union, so `A ! (Users + Abort)` and `A ! (Abort + Users)` are the same

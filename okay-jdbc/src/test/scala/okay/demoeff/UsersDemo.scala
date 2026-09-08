@@ -149,11 +149,12 @@ object UsersDemo:
    *
    * Inside, `.at[R]` moves each operation into the row they share: a
    * for-comprehension fixes its row from the first step, so
-   * `Writer.tell` does not fit beside `State.get` otherwise. `.at`
-   * and not `.plus`, which is the whole rule — `plus` is the one to
-   * reach for, but it needs the target to have the form "my row plus
-   * something", and R here is `Tracked + F` with F abstract, a row
-   * known only by membership.
+   * `Writer.tell` does not fit beside `State.get` otherwise.
+   *
+   * `.plus` would also work here — `State.get[Store].plus[Writer %
+   * String + F]` compiles — but it names the COMPLEMENT, and the
+   * complement is different for every operation while the target is
+   * `R` for all of them. That is what `at` is for.
    */
   def tracked[A, F[+_]](prog: A ! (Users + F)): A ! (Tracked + F) =
     type R = Tracked + F

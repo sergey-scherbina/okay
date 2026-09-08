@@ -364,6 +364,15 @@ CONSTRUCTION here, `F + R` being built out of F, so there is nothing
 for a proof to establish. Both go through the same single cast, and
 `viaPlus` measures at the floor with the rest (272 016 B/op).
 
+Which to reach for is only about what is shorter to SAY: `plus` names
+the addition, `at` names the target. One effect added: `plus`. Several
+operations landing in one row: `at`, since there each operation's
+complement differs while the target does not. `at` is REQUIRED only
+where the complement cannot be named at all — an abstract row known
+only by membership (`Fail.scala`'s `abort[A].at[F]`). An earlier
+version of this section said an interpreter's `Tracked + F` was such a
+row; it is not, and both spellings compile there.
+
 **The prohibition that comes with it.** `.at` does NOT replace
 `!.widen`, and a change that swaps one for the other on a streaming
 path is a regression, not a cleanup: free-row-variance measured the

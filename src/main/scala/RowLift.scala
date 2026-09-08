@@ -63,9 +63,20 @@ object RowLift:
    * `In[F, R]` is the demand that R CONTAIN F. Both add; they differ
    * only in what the caller must name.
    *
-   * Reach for `plus`. `at` is for the one shape it cannot express, an
-   * ABSTRACT target known only by membership — `Fail.scala`'s
-   * `abort[A].at[F]` is that case.
+   * `plus` names the ADDITION, `at` names the TARGET, and both are
+   * the same cast, so the choice is only about which is shorter to
+   * say. One effect being added: `plus`. Several operations landing
+   * in one row: `at`, because there the target has a name and each
+   * operation's complement is different — inside an interpreter into
+   * `R = State % S + Writer % W + F`, a State operation's complement
+   * is `Writer % W + F` and a Writer operation's is `State % S + F`,
+   * while the target is `R` for both.
+   *
+   * `at` is REQUIRED only where the complement cannot be named at
+   * all: an abstract row known only by membership, as in
+   * `Fail.scala`'s `abort[A].at[F]`. Everywhere else both compile
+   * (checked — including inside an interpreter, where the complement
+   * mentions an abstract residual row and is still nameable).
    *
    * Row ORDER is not a reason to reach for either: `+` is a union and
    * `|` commutes, so `A ! (Users + Abort)` and `A ! (Abort + Users)`
