@@ -22,6 +22,10 @@ class TestState extends munit.FunSuite {
     assertEquals(State.run[Int, Int](4)(p), (40, 4))
   }
 
+  test("swap answers both states") {
+    assertEquals(State.run[Int, (Int, Int)](4)(State.swap[Int](_ * 10)), (40, (4, 40)))
+  }
+
   test("index") {
     val x = State.index(List("a", "b", "c", "d", "e", "f", "g"), 1).tap(println)
     assertEquals(x, (8L, List((7L, "g"), (6L, "f"), (5L, "e"), (4L, "d"), (3L, "c"), (2L, "b"), (1L, "a"))))

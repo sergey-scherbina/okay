@@ -63,6 +63,28 @@ object State {
   inline def update[S, B](f: S => (B, S)): B ! State % S =
     get[S].flatMap { s => val (b, next) = f(s); set(next).map(_ => b) }
 
+  /**
+   * both states — what it was and what it is.
+   *
+   * The three answer three different questions, and the cost is the
+   * reason there are three rather than one:
+   *
+   *   modify(f) : S          the new state — the common case, and it
+   *                          allocates nothing
+   *   update(f) : B          anything computed from the OLD state, in
+   *                          one pass over it: the form that answers
+   *                          what the write is about to destroy
+   *   swap(f)   : (S, S)     both, for when the caller wants to
+   *                          compare them
+   *
+   * `swap` is `update` with a pair for an answer, and a pair per call
+   * is why `modify` does not simply answer one: most callers want the
+   * new state or nothing at all, and they should not pay for a tuple
+   * to say so.
+   */
+  inline def swap[S](f: S => S): (S, S) ! State % S =
+    update(s => { val next = f(s); ((s, next), next) })
+
   /** run from an initial state to (final state, value) */
   inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))
 
