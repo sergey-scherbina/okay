@@ -1,5 +1,25 @@
 # Backlog
 
+## flush-premium — `flushAfter` costs 30% over the chunked merge where the page said 9%
+
+Found 2026-09-08 by `bench-stale-tables`, while correcting prose that
+quoted a table which had just been re-measured. Not investigated by
+that lane and not by any since.
+
+`okayChunkedFlush` reads 382 against `okayChunked`'s 293 at k = 16 —
+a 30% premium for bounding how long a partial chunk may wait. §6b has
+said 9% (244.3 against 223.7) since 2026-09-06.
+
+- [ ] flush-premium — find out whether the flusher got more expensive
+      or the chunked merge got cheaper. The ratio to both competitors
+      stayed comfortably in okay's favour (15x ZIO, 41x fs2), which is
+      presumably why nobody looked, and is also why this is a
+      curiosity rather than a defect.
+      DISQUALIFYING: `okayChunked` improved 13.7% in the same run
+      under the new default. If the whole 9% -> 30% is the DENOMINATOR
+      moving, there is nothing wrong with the flusher and the entry
+      closes as arithmetic.
+
 ## growing-elementwise-pop — a partitioned buffer pays a part scan per pop, and only chunked consumers amortise it
 
 Found 2026-09-08 by the A/B for `growing-default`, after
@@ -383,7 +403,19 @@ Consistent across all three rounds (63/74/78 against 55/54/57), so it
 is not the host. Note WHAT moved: the bulk lane is where it was; the
 ELEMENT lane halved and overtook it.
 
-- [ ] bench-sendbulk-inverted — STILL OPEN, but narrower: the
+- [x] bench-sendbulk-inverted — CLOSED 2026-09-09 as "no cause in the
+      mechanism". Profiled: both lanes are ~60% WAITING and their
+      RUNNABLE time is dominated by `Ring.popMany` on the CONSUMER
+      side; neither `pushMany` nor its scan appears at all. A variant
+      that stopped the per-element wake loop early moved the bulk lane
+      8.5% the wrong way and the element lane — which never calls
+      `sendManyNow` — 7% the right way, i.e. noise on lanes that
+      spread 64-92 across rounds. Four explanations, four
+      refutations. §15's "1.63x ahead" is withdrawn; the primitive
+      stays, since nothing shows it is wrong, only that it is no
+      longer faster where the page said. Original text below.
+
+      (superseded) STILL OPEN, but narrower: the
       disqualifying question is ANSWERED and the answer was no.
       Measured 2026-09-08 against a chunk-draining consumer, same N,
       Cap and Batch as the lane, 300 reps / 22 090 `sendManyNow`

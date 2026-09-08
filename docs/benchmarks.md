@@ -2330,13 +2330,30 @@ calls): the scan finds room in **97.3%** of calls, the mean claim is
 of elements** reach the per-element fallback. The bulk path is being
 exercised almost perfectly and is still slower.
 
-So the cost is in the bulk mechanism itself on this shape — plausibly
-`Ring.pushMany` touching every slot twice, once to scan its stamp and
-once to write, in exchange for saving a tail CAS that is uncontended
-with one producer. That is a HYPOTHESIS: it has not been profiled, and
-this page does not get to state it as a cause. What is established is
-the refutation above and the inversion. Filed as
-`bench-sendbulk-inverted`.
+**It has now been profiled, and the answer is that there is no cause
+to find in the mechanism (sendbulk-profile, 2026-09-09).** Both lanes
+are ~60% WAITING and their RUNNABLE time is dominated by
+`Ring.popMany` on the CONSUMER side — 21% and 32% of it. Neither
+`Ring.pushMany` nor its scan appears in either profile at all. Two
+further explanations were built and measured:
+
+- the scan touching every slot twice — not visible in the profile,
+  and the send side is not where the time is;
+- the per-element wake after a bulk claim (`sendManyNow` calls
+  `wakeOne` once per element admitted, sixty-four times per batch,
+  of which one wakes anybody). A variant that stops as soon as the
+  waiter queue is empty made the bulk lane 8.5% WORSE and the
+  element lane — which does not call `sendManyNow` at all — 7%
+  better, so both movements are noise. These lanes spread 64 to 92
+  across rounds; anything under ~40% here is not a measurement.
+
+So: four explanations, four refutations, and the honest reading is the
+one the paragraph above already half-states. **The element path caught
+up**, and `sendManyNow` no longer earns its place on this shape. The
+claim that it is 1.63x ahead is withdrawn rather than defended; the
+primitive stays because a producer holding a batch of elements is a
+real caller, and because nothing here shows it is WRONG — only that it
+is no longer faster where this page said it was.
 
 Against an ELEMENTWISE consumer the bulk send is still a loss, and
 there the room explanation stands: a consumer taking one element at a
