@@ -1,0 +1,36 @@
+task: close-three
+agent: opus5-bench
+started: 2026-09-09
+branch: feature/close-three
+worktree: /Users/sergiy/work/my/okay-wt-close
+
+why: operator instruction 2026-09-09 — close channel-default-adaptive,
+  flush-premium and growing-capacity-semantics. Each closes a
+  different way and none of them by assertion:
+
+  1. channel-default-adaptive is ANSWERED and only the box is
+     unticked. The default became `growing` (17404a4e); `adaptive` as
+     a default was refuted by measurement — it splits its capacity
+     across parts, so a lone producer reads 1 119 against the ring's
+     169.
+  2. flush-premium needs a MEASUREMENT, not a decision. §6b says the
+     flusher costs 9% over the chunked merge and the re-measure said
+     30%. Both lanes carry wide bars (okayChunkedFlush read ±96.8 in
+     the refresh), so the first question is whether 30% and 9% are
+     even distinguishable here. Enough rounds to answer that, then
+     close it as a real premium or as noise.
+  3. growing-capacity-semantics is now a NAMING bug rather than a
+     behaviour one, and that is the fix. Since growing-part-sizing,
+     `growing(capacity, parts)` gives `capacity` PER PART — which is
+     exactly what `adaptive.parts(n).each(c)` gives. The two builders
+     already agree; only the parameter names disagree, and that
+     mismatch cost this session two false starts.
+
+what: tick (1) with the evidence, measure (2) and close it either way,
+  rename `growing`'s parameter to say what it means for (3). Two
+  callers, both in TestGrowing, both positional.
+
+predict: for (2) — the bars overlap and the premium is not
+  distinguishable from the old 9%. DISQUALIFYING: if the bars are
+  tight and 30% stands, it does NOT close; it becomes a defect with a
+  number and stays open.
