@@ -221,18 +221,11 @@ object UsersDemo:
         case Users.Find(id) =>
           State.get[S].plus[F].map(S.get(id))
         case Users.Save(id, name) =>
-          // the read is the ANSWER — `Save` says what was there, and
-          // after the write it is gone. So `set` on the store already
-          // in hand, not `modify`: modify is get-then-set, and the get
-          // it does is the one just done.
-          //
-          // Nothing here only widens, either: the branch has a real
-          // answer to give, which is the cheapest of the three ways
-          // out of a `.map(_ => ())` (specs/writer-covariance.md).
-          for
-            store <- State.get[S].plus[F]
-            _     <- State.set(S.put(id, name)(store)).plus[F]
-          yield S.get(id)(store)
+          // NOT `modify`: `Save` answers the name that WAS there, and
+          // the write destroys it, so the old store has to be read
+          // first and answered out of. `update` is that transition —
+          // what to answer, and what to leave behind — in one step.
+          State.update[S, X](s => (S.get(id)(s), S.put(id, name)(s))).plus[F]
 
   def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (Tracked[S] + F) =
     stored[A, S, Writer % String + F](

@@ -48,6 +48,21 @@ object State {
    */
   inline def modify[S](f: S => S): S ! State % S = get[S].flatMap(s => set(f(s)))
 
+  /**
+   * a transition that ANSWERS something computed from the old state:
+   * `f` sees the state and returns what to answer and what to leave
+   * behind.
+   *
+   * `modify` cannot do this. It answers the new state, and what a
+   * caller usually wants back is something the write destroys — the
+   * value that WAS there. Spelt out, that is get, then set the
+   * modified store, then answer out of the store already read; here
+   * it is one step, and the answer type is whatever `f`'s first
+   * component is.
+   */
+  inline def update[S, B](f: S => (B, S)): B ! State % S =
+    get[S].flatMap { s => val (b, next) = f(s); set(next).map(_ => b) }
+
   /** run from an initial state to (final state, value) */
   inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))
 

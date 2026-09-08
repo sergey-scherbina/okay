@@ -16,6 +16,12 @@ class TestState extends munit.FunSuite {
     assertEquals(State.run[Int, Int](4)(State.modify[Int](_ + 1)), (5, 5))
   }
 
+  test("update answers what the write destroys") {
+    // the value that WAS there, which `modify` cannot give back
+    val p: Int ! State % Int = State.update[Int, Int](s => (s, s * 10))
+    assertEquals(State.run[Int, Int](4)(p), (40, 4))
+  }
+
   test("index") {
     val x = State.index(List("a", "b", "c", "d", "e", "f", "g"), 1).tap(println)
     assertEquals(x, (8L, List((7L, "g"), (6L, "f"), (5L, "e"), (4L, "d"), (3L, "c"), (2L, "b"), (1L, "a"))))
