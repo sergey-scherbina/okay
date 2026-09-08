@@ -96,7 +96,7 @@ index above lists them all with one-line summaries.
   row-split test and registers the signature for direct style;
   `.plus[R]` puts an operation in a wider row; with `Abort` in the row
   a refutable pattern and an `if` guard work in a for-comprehension
-  (`case Some(x) <- find(a).plus[Abort]`), so a step that must not run
+  (`case Some(old) <- find(id).plus[Abort]`), so a step that must not run
   is not reachable rather than skipped by hand; `h.tracing(log)`
   makes any handler a recording one (Fail.scala, RowLift.scala,
   docs/guide.md §2, and the worked example in

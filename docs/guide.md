@@ -108,18 +108,15 @@ somewhere for the dropped step to go — and `runOption` answers with
 what happened:
 
 ```scala
-def swap(a: Long, b: Long): Option[(String, String)] ! Users = runOption {
+def rename(id: Long, to: String): Option[String] ! Users = runOption {
   for
-    case Some(x) <- Users.find(a).plus[Abort]
-    case Some(y) <- Users.find(b).plus[Abort]
-    _            <- Users.save(a, y).plus[Abort]
-    _            <- Users.save(b, x).plus[Abort]
-  yield (x, y)
+    case Some(old) <- Users.find(id).plus[Abort]
+    _              <- Users.save(id, to).plus[Abort]
+  yield old
 }
 ```
 
-Neither `save` runs unless both `find`s answered, because they are not
-REACHABLE. Outside
+`save` cannot run for a missing id because it is not REACHABLE. Outside
 a for-comprehension the same demand is `ensure[R](cond)`, and a failure
 is answered in the row by `p.orElse(q)` / `p.recover(h)`. Where the row
 carries `Choose` instead, the same pattern PRUNES the branch and the

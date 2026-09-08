@@ -46,54 +46,39 @@ import scala.language.implicitConversions
 enum Users[+A] derives Effect:
   case Find(id: Long) extends Users[Option[String]]
 
-  /**
-   * REPLACE a name, answering the one that was there. `None` means
-   * there was nobody, and then nothing is written — a rename of
-   * somebody who does not exist is not a rename, and the cheapest
-   * place to say so is the operation itself rather than a branch in
-   * every caller.
-   */
-  case Save(id: Long, name: String) extends Users[Option[String]]
+  case Save(id: Long, name: String) extends Users[Unit]
 
 object Users:
   inline def find(id: Long): Option[String] ! Users = effect(Find(id))
-  inline def save(id: Long, name: String): Option[String] ! Users = effect(Save(id, name))
+  inline def save(id: Long, name: String): Unit ! Users = effect(Save(id, name))
 
 object UsersDemo:
 
   /**
-   * One operation, so nothing can come between the read and the
-   * write, and nothing has to remember to skip the write: `Save`
-   * ANSWERS the previous name and declines to invent a row.
+   * Renaming somebody who is not there is not a rename, and a
+   * for-comprehension SEQUENCES rather than branches — so `find` then
+   * `save` would reach the handler's upsert and CREATE the user.
    *
-   * An earlier version of this file said `find` then `save` in a
-   * for-comprehension, which sequences and does not branch, so a
-   * missing id reached the handler's upsert and created the user. The
-   * machinery below (`Abort`, a refutable pattern) fixes that class of
-   * bug and is worth having — but the FIRST fix for a step that must
-   * not run is usually to model the operation so that it cannot.
-   */
-  def rename(id: Long, to: String): Option[String] ! Users = Users.save(id, to)
-
-  /**
-   * And here is where the machinery earns its keep: two names
-   * exchanged cannot be one operation, so the program has to stop by
-   * itself if either id is missing.
-   *
-   * `case Some(x) <-` desugars to `withFilter`, `withFilter` needs
-   * somewhere for the dropped step to go, and `Abort` — failure
+   * The fix is the pattern, plus a row that says this program MAY
+   * STOP. `case Some(old) <-` desugars to `withFilter`, `withFilter`
+   * needs somewhere for the dropped step to go, and `Abort` — failure
    * carrying no information, which is all a missing row has to say —
-   * is that somewhere (Fail.scala). Neither `save` runs unless both
-   * `find`s answered, because they are not REACHABLE, not because a
-   * branch remembered to skip them.
+   * is that somewhere (Fail.scala). `save` cannot run for a missing id
+   * because it is NOT REACHABLE, not because a branch remembered to
+   * skip it, and the SQLite handler below would happily have created
+   * the row if it had been asked.
+   *
+   * Two operations, deliberately. Modelling `Save` to answer the name
+   * it replaced would collapse this to `Users.save(id, to)` and remove
+   * the question — which is the better design and a worse
+   * demonstration, so it is worth knowing and not what this file
+   * shows.
    */
-  def swap(a: Long, b: Long): Option[(String, String)] ! Users = runOption {
+  def rename(id: Long, to: String): Option[String] ! Users = runOption {
     for
-      case Some(x) <- Users.find(a).plus[Abort]
-      case Some(y) <- Users.find(b).plus[Abort]
-      _            <- Users.save(a, y).plus[Abort]
-      _            <- Users.save(b, x).plus[Abort]
-    yield (x, y)
+      case Some(old) <- Users.find(id).plus[Abort]
+      _              <- Users.save(id, to).plus[Abort]
+    yield old
   }
 
   /**
@@ -129,17 +114,15 @@ object UsersDemo:
     def handle[A](e: Users[A]): A = e match
       case Users.Find(id) => selectName(c, id)
       case Users.Save(id, name) =>
-        // read then update, in one transaction. `returning` will not
-        // do it: SQLite (like Postgres) returns the row AFTER the
-        // update, and what this operation answers is the name that was
-        // there BEFORE. An id nobody has updates nothing and answers
-        // nothing, which is the whole point of the operation.
-        val was = selectName(c, id)
-        if was.isDefined then
-          val ps = c.prepareStatement("update users set name = ? where id = ?")
-          try { ps.setString(1, name); ps.setLong(2, id); ps.executeUpdate(): Unit }
-          finally ps.close()
-        was
+        // an UPSERT: asked about an id nobody has, this handler would
+        // create the row. The program never asks, and that is the
+        // point — the guarantee is in the program's type, not in the
+        // handler's good manners.
+        val ps = c.prepareStatement(
+          "insert into users(id, name) values (?, ?) " +
+          "on conflict(id) do update set name = excluded.name")
+        try { ps.setLong(1, id); ps.setString(2, name); ps.executeUpdate(): Unit }
+        finally ps.close()
 
   /**
    * WHAT A STORE IS, said once: something a name can be read out of,
@@ -184,10 +167,7 @@ object UsersDemo:
     def state: S = s
     def handle[A](e: Users[A]): A = e match
       case Users.Find(id)       => St.get(id)(s)
-      case Users.Save(id, name) =>
-        val was = St.get(id)(s)
-        if was.isDefined then s = St.put(id, name)(s)
-        was
+      case Users.Save(id, name) => s = St.put(id, name)(s); ()
 
   /**
    * The test world WITHOUT mutable state: the same operations
@@ -230,10 +210,11 @@ object UsersDemo:
         case Users.Find(id) =>
           State.get[S].plus[F].map(S.get(id))
         case Users.Save(id, name) =>
-          State.get[S].plus[F].flatMap: store =>
-            S.get(id)(store) match
-              case None => pure(None)
-              case was  => State.modify[S](S.put(id, name)).plus[F].map(_ => was)
+          // `.map(_ => ())` is not noise: `Users` is COVARIANT (it has
+          // to be — `Free`'s row is `F[+_]`), so matching `Save` proves
+          // only `X >: Unit`, never `X = Unit`, and something must
+          // widen a `Unit ! R` to an `X ! R`
+          State.modify[S](S.put(id, name)).plus[F].map(_ => ())
 
   def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (Tracked[S] + F) =
     stored[A, S, Writer % String + F](
@@ -270,14 +251,6 @@ object UsersDemo:
               s" / log=${missLog.mkString(", ")}")
 
       println("DIRECT " + initials(7L, 99L).runWith(using live(c)))
-
-      // two names exchanged: what one operation cannot do, and where
-      // the pattern earns its keep
-      st2.execute("insert into users values (8, 'hopper')")
-      println("SWAP  " + swap(7L, 8L).runWith(using live(c)) +
-              " / 7 is " + nameOf(c, 7L) + ", 8 is " + nameOf(c, 8L))
-      println("SWAP? " + swap(7L, 99L).runWith(using live(c)) +
-              " / 7 is still " + nameOf(c, 7L))
 
       // no mutation anywhere: the store is State, the log is Writer,
       // and the run answers with all three as plain data. Twice, over
