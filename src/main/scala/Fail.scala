@@ -1,7 +1,7 @@
 package okay
 
 import scala.annotation.implicitNotFound
-import okay.Rowlift.{In, at}
+import okay.RowLift.{In, at}
 
 /**
  * A step a program may DECLINE — which is what a refutable pattern on

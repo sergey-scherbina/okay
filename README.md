@@ -98,7 +98,7 @@ index above lists them all with one-line summaries.
   a refutable pattern and an `if` guard work in a for-comprehension
   (`case Some(old) <- find(id).plus[Abort]`), so a step that must not
   run is not reachable rather than skipped by hand; `h.tracing(log)`
-  makes any handler a recording one (Fail.scala, Rowlift.scala,
+  makes any handler a recording one (Fail.scala, RowLift.scala,
   docs/guide.md §2, and the worked example in
   `okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`).
 - `Choice` — nondeterminism with a genuinely multi-shot handler; the

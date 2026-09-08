@@ -1,6 +1,6 @@
 package okay
 
-import okay.Rowlift.{at, plus}
+import okay.RowLift.{at, plus}
 import scala.annotation.nowarn
 import okay.Direct.{direct, given}
 import scala.language.implicitConversions

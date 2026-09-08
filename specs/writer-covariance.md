@@ -324,7 +324,7 @@ intermediate Inject that `widen` and the walking `.at` build does not
 get scalarised away — it is constructed and destructured inside one
 inlined region, the textbook case, and it still costs bytes.
 
-**Decision: `Rowlift.at`, one cast, under a witness.** `+` is a union
+**Decision: `RowLift.at`, one cast, under a witness.** `+` is a union
 (`[A] =>> F[A] | G[A]`) and unions erase, so a `Free[F, A]` already IS
 a `Free[R, A]` whenever F is a member of R. `In[F, R]` is the proof of
 that side condition — `self` / `left` / `deeper`, the minimal

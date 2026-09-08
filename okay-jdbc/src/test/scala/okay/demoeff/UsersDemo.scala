@@ -25,7 +25,7 @@ package okay.demoeff
 import okay.*
 import okay.given
 import java.sql.{Connection, DriverManager}
-import okay.Rowlift.{at, plus}
+import okay.RowLift.{at, plus}
 import okay.Direct.{direct, given}
 import scala.language.implicitConversions
 
@@ -144,7 +144,7 @@ object UsersDemo:
    * A for-comprehension fixes its row from the first step, so
    * `Writer.tell` does not fit beside `State.get` — and `.at[R]`
    * moves each into the row they share, naming the target and never
-   * the complement (okay.Rowlift; one cast, measured at the same
+   * the complement (okay.RowLift; one cast, measured at the same
    * B/op as constructing the operation at R).
    *
    * `.at` and not `.plus` here, which is the whole rule: `plus` is

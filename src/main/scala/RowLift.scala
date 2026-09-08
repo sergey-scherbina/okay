@@ -21,7 +21,7 @@ package okay
  * `In` is an opaque `Unit`: a witness that is only ever SUMMONED need
  * not exist at run time, and opacity is what stops a caller conjuring
  * a proof. Beware that opacity holds OUTSIDE this scope only —
- * anything written inside `Rowlift` sees `In[F, R]` as literally
+ * anything written inside `RowLift` sees `In[F, R]` as literally
  * `Unit`, and the givens below become invisible to implicit search.
  * That is the one trap here.
  *
@@ -30,7 +30,7 @@ package okay
  * — a macro, `<:<`, a covariant `Free` — are in
  * specs/writer-covariance.md, rowlift.
  */
-object Rowlift:
+object RowLift:
 
   /** F is a member of the row R. */
   opaque type In[F[+_], R[+_]] = Unit

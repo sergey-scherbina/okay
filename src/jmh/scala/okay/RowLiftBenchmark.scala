@@ -3,7 +3,7 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
-import okay.Rowlift.{at, plus}
+import okay.RowLift.{at, plus}
 
 /**
  * What does attaching a row COST?
@@ -48,7 +48,7 @@ class RowLiftBenchmark {
 
   // ---- the LOSING lanes keep the OLD witness on purpose.
   //
-  // `Rowlift.In` is an opaque `Unit` and carries no `inj`, because the
+  // `RowLift.In` is an opaque `Unit` and carries no `inj`, because the
   // shipping route does not need one. `liftAt` and `atWalk` do: they
   // re-inject the operation, so they need a witness that can be
   // CALLED. This is that shape, kept here and only here, as the guard

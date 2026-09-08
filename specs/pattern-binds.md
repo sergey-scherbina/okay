@@ -155,7 +155,7 @@ Two consequences worth keeping:
 
 - `plus` covers adding on the left as well as the right, so `at`'s one
   remaining job is an ABSTRACT target — a row known only by
-  membership. `Rowlift`'s doc said otherwise and is corrected.
+  membership. `RowLift`'s doc said otherwise and is corrected.
 - `runOption { ... }` needs no type arguments and no reordering: the
   expected type solves A and F, and the block is checked against
   `A ! (F + Abort)` whichever way round it was written. So the demo's

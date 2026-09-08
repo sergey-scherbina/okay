@@ -3,7 +3,7 @@ package okay
 import scala.reflect.*
 import scala.util.*
 import scala.annotation.implicitNotFound
-import okay.Rowlift.at
+import okay.RowLift.at
 
 /**
  * Errors on two levels, with the bridges between them.
