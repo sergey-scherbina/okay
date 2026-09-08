@@ -27,10 +27,9 @@ package okay.demoeff
  */
 
 import okay.*
-import okay.!.*
 import okay.given
 import java.sql.{Connection, DriverManager}
-import okay.Direct.*
+import okay.Rowlift.at
 
 enum Users[+A]:
   case Find(id: Long) extends Users[Option[String]]
@@ -87,31 +86,36 @@ object UsersDemo:
   type Tracked = State % Store + Writer % String
 
   /**
-   * NOTHING IS LIFTED BY HAND HERE, and the first draft of this file
-   * lifted everything — three helpers wrapping `!.widen` around
-   * State.get / State.set / Writer.tell — because a for-comprehension
-   * fixes its row from the first step and `Writer.tell` (row
-   * `Writer % String`) then does not fit beside `State.get` (row
-   * `State % Store`).
+   * A for-comprehension fixes its row from the first step, so
+   * `Writer.tell` (row `Writer % String`) does not fit beside
+   * `State.get` (row `State % Store`) — and the first draft of this
+   * file worked around that with three helpers wrapping `!.widen`,
+   * each naming the COMPLEMENT of the row it was widening into. That
+   * is the roughness `.at` exists to remove.
    *
-   * The mistake was reaching for the smart constructors. `State.get`
-   * and `Writer.tell` are the CONVENIENCE spelling, fixed at a
-   * single-effect row. Two spellings do not fix a row, and both are
-   * shorter than the helpers were:
+   * `p.at[R]` moves a program into any row R that CONTAINS its own.
+   * The target is named; the complement never is. Under the hood it
+   * is one cast licensed by a witness — `+` is a union and unions
+   * erase, so a program in `State % Store` already IS a program in R
+   * (okay.Rowlift). It costs nothing: measured at the same B/op as
+   * constructing the operation at R in the first place.
    *
-   *   effect[R, Store](State.Get())      — the operation injected
-   *                                        straight into row R; what
-   *                                        TestCtxReaderElim uses
+   * Two other spellings say the same thing and are still fine:
+   *
+   *   effect[R, Store](State.Get())      the operation injected
+   *                                      straight into row R
    *
    *   direct { State.Get[Store, Store]().!? }
-   *                                      — the macro reads the row off
-   *                                        the block's expected type,
-   *                                        checks membership and
-   *                                        injects; the row is named
-   *                                        ONCE, on the block
+   *                                      the macro reads the row off
+   *                                      the block's expected type
    *
-   * The block below is the second. Swap in the first and the file
-   * still passes — it was written both ways before this one landed.
+   * `.at` is the one that keeps the SMART constructors — `State.get`,
+   * `Writer.tell` — which is what makes the block below read like the
+   * single-effect code it is.
+   *
+   * The outer `!.widen` stays: it moves the whole program, not one
+   * operation, and a walk over a program is also a normalisation
+   * (specs/writer-covariance.md).
    */
   def tracked[A, F[+_]](prog: A ! (Users + F)): A ! (Tracked + F) =
     type R = Tracked + F
@@ -119,18 +123,19 @@ object UsersDemo:
     !.translate[A, Users, R](widened):
       [X] => (e: Users[X]) => e match
         case Users.Find(id) =>
-          val p: Option[String] ! R = direct {
-            val m = State.Get[Store, Store]().!?
-            Writer(s"find($id)").!?
-            m.get(id)
-          }
+          val p: Option[String] ! R =
+            for
+              m <- State.get[Store].at[R]
+              _ <- Writer.tell(s"find($id)").at[R]
+            yield m.get(id)
           p.map[X](x => x)
         case Users.Save(id, name) =>
-          val p: Unit ! R = direct {
-            val m = State.Get[Store, Store]().!?
-            State.Set[Store, Store](m + (id -> name)).!?
-            Writer(s"save($id,$name)").!?
-          }
+          val p: Unit ! R =
+            for
+              m <- State.get[Store].at[R]
+              _ <- State.set(m + (id -> name)).at[R]
+              _ <- Writer.tell(s"save($id,$name)").at[R]
+            yield ()
           p.map[X](x => x)
 
   private def nameOf(c: Connection, id: Long): String =
