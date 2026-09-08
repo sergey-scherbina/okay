@@ -514,6 +514,28 @@ constructions at `Nothing` — those were measured separately and are
 inference. `<|>` needed an explicit type argument, which is not a
 cost, it is a better line.
 
+**Can the `Typeable` fallback simply GO?** Measured too, since it is
+the one thing standing between this library and invariant signatures.
+With it deleted, `sbt compile` — every module's main sources — is
+green. Across the whole build's tests, five errors in two files:
+
+- `okay-sql/TestSqlPure.scala` needs `import okay.given_TypeableK_Async`.
+  The instance exists; the test was quietly getting the fallback
+  instead. Mechanical, and arguably a better line.
+- `TestDeriveEffect`'s `summon[TypeableK[Db + Writer % String]]` — a
+  COMPOSITE row. That capability really does go, and no replacement
+  can be FOUND: a structural `given both[F, G](using TypeableK[F],
+  TypeableK[G]): TypeableK[F + G]` compiles but never matches a
+  concrete row, because solving F and G from `Db + Writer % String` is
+  the same higher-order unification the compiler declines everywhere
+  else in this file. A composite test would have to be passed
+  explicitly.
+
+Nothing in the library needs a composite one: `Handler.union[F, G]`
+tests only its LEFT side, so nesting to the right keeps every tested
+signature atomic — `union[Tool, Context + (Model + Async)]` asks for
+`TypeableK[Tool]`.
+
 **So the trade, exactly.** Covariance buys one instance and one
 declaration shorthand. It costs exact GADT refinement: matching an
 operation declared `Users[Unit]` proves only `X >: Unit`, so every
