@@ -72,6 +72,45 @@ object UsersDemo:
       case Users.Find(id)       => log += s"find($id)"; state.get(id)
       case Users.Save(id, name) => log += s"save($id,$name)"; state(id) = name; ()
 
+  /**
+   * The test world WITHOUT mutable state: the same operations
+   * interpreted into OTHER EFFECTS rather than into values.
+   *
+   * A `Handler` answers with a value, so it cannot tell or get — but
+   * `translate` interprets each operation into a PROGRAM in the
+   * target row, and there State and Writer are ordinary members. The
+   * store becomes `State % Map`, the log becomes `Writer % String`,
+   * and the residual row F is whatever the caller was already doing.
+   */
+  type Store = Map[Long, String]
+  type Tracked = State % Store + Writer % String
+
+  // every piece lifted into the ONE row the branch answers in; `+` is
+  // a union ([A] =>> F[A] | G[A]), so the re-association is the
+  // compiler's own equality and not a cast
+  private def peek[F[+_]]: Store ! (Tracked + F) =
+    !.widen[Store, State % Store, Writer % String + F](State.get[Store])
+  private def poke[F[+_]](m: Store): Store ! (Tracked + F) =
+    !.widen[Store, State % Store, Writer % String + F](State.set[Store](m))
+  private def note[F[+_]](line: String): Unit ! (Tracked + F) =
+    !.widen[Unit, Writer % String, State % Store + F](Writer.tell[String](line))
+
+  def tracked[A, F[+_]](prog: A ! (Users + F)): A ! (Tracked + F) =
+    val widened: A ! (Users + (Tracked + F)) = !.widen[A, Users + F, Tracked](prog)
+    !.translate[A, Users, Tracked + F](widened):
+      [X] => (e: Users[X]) => e match
+        case Users.Find(id) =>
+          for
+            m <- peek[F]
+            _ <- note[F](s"find($id)")
+          yield (m.get(id): X)
+        case Users.Save(id, name) =>
+          for
+            m <- peek[F]
+            _ <- poke[F](m + (id -> name))
+            _ <- note[F](s"save($id,$name)")
+          yield ((): X)
+
   private def nameOf(c: Connection, id: Long): String =
     val rs = c.createStatement().executeQuery(s"select name from users where id = $id")
     if rs.next() then rs.getString(1) else "-"
@@ -95,4 +134,11 @@ object UsersDemo:
 
       println("MISS  " + rename(99L, "hopper").runWith(using live(c)) +
               " / row 99 is now " + nameOf(c, 99L))
+
+      // no mutable collection anywhere: the store is State, the log is
+      // Writer, and the run answers with all three as plain data
+      val (store, (told, answer)) =
+        State.run[Store, (Seq[String], Option[String])](Map(7L -> "ada"))(
+          Writer.run[String, Option[String], State % Store](tracked(rename(7L, "grace"))))
+      println(s"PURE  $answer / log=${told.mkString(", ")} / store=$store")
     finally c.close()
