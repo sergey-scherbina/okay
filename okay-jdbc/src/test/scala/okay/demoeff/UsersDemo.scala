@@ -46,11 +46,17 @@ import scala.language.implicitConversions
 enum Users[+A] derives Effect:
   case Find(id: Long) extends Users[Option[String]]
 
-  case Save(id: Long, name: String) extends Users[Unit]
+  /** replace a name, ANSWERING the one that was there — `None` if
+   * this handler had to invent the row. `rename` does not use that
+   * answer (it asks first, which is what the pattern below is for),
+   * but an operation with something to say costs nothing and saves
+   * every interpreter a `.map(_ => ())` (specs/writer-covariance.md,
+   * signature-covariance). */
+  case Save(id: Long, name: String) extends Users[Option[String]]
 
 object Users:
   inline def find(id: Long): Option[String] ! Users = effect(Find(id))
-  inline def save(id: Long, name: String): Unit ! Users = effect(Save(id, name))
+  inline def save(id: Long, name: String): Option[String] ! Users = effect(Save(id, name))
 
 object UsersDemo:
 
@@ -118,11 +124,13 @@ object UsersDemo:
         // create the row. The program never asks, and that is the
         // point — the guarantee is in the program's type, not in the
         // handler's good manners.
+        val was = selectName(c, id)
         val ps = c.prepareStatement(
           "insert into users(id, name) values (?, ?) " +
           "on conflict(id) do update set name = excluded.name")
         try { ps.setLong(1, id); ps.setString(2, name); ps.executeUpdate(): Unit }
         finally ps.close()
+        was
 
   /**
    * WHAT A STORE IS, said once: something a name can be read out of,
@@ -167,7 +175,10 @@ object UsersDemo:
     def state: S = s
     def handle[A](e: Users[A]): A = e match
       case Users.Find(id)       => St.get(id)(s)
-      case Users.Save(id, name) => s = St.put(id, name)(s); ()
+      case Users.Save(id, name) =>
+        val was = St.get(id)(s)
+        s = St.put(id, name)(s)
+        was
 
   /**
    * The test world WITHOUT mutable state: the same operations
@@ -210,11 +221,14 @@ object UsersDemo:
         case Users.Find(id) =>
           State.get[S].plus[F].map(S.get(id))
         case Users.Save(id, name) =>
-          // `.map(_ => ())` is not noise: `Users` is COVARIANT (it has
-          // to be — `Free`'s row is `F[+_]`), so matching `Save` proves
-          // only `X >: Unit`, never `X = Unit`, and something must
-          // widen a `Unit ! R` to an `X ! R`
-          State.modify[S](S.put(id, name)).plus[F].map(_ => ())
+          // nothing here only widens: the branch has a real answer to
+          // give, and giving it is what puts the operation's type on
+          // the program. That is the cheapest of the three ways out of
+          // a `.map(_ => ())` — see specs/writer-covariance.md
+          for
+            store <- State.get[S].plus[F]
+            _     <- State.modify[S](S.put(id, name)).plus[F]
+          yield S.get(id)(store)
 
   def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (Tracked[S] + F) =
     stored[A, S, Writer % String + F](
