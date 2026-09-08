@@ -446,6 +446,24 @@ answer the branch produces is a `Unit` (with `State.modify` answering
 the new STATE, as it does, a `.map(_ => ())` is still needed — that
 one is about the combinator, not about variance).
 
+**Two conditions, jointly.** Spiked again to settle it, because the
+question keeps being asked as if variance alone were the answer.
+Removing covariance does NOT delete the `.map(_ => ())` from an
+interpreter's Save branch: with `State.modify` answering the new STATE
+the branch still produces an `S ! R` that has to be thrown away, and
+the compiler says so ("Found: Map[Long,String], Required: X ... which
+is an alias of Unit" — the variance is gone from the message, the
+mismatch is not). Nor does a `Unit`-answering `modify` delete it on
+its own: under covariance `X` stays `>: Unit` and something must
+widen. With BOTH — an invariant signature and a combinator that
+answers `Unit` — the branch is bare:
+
+    case Users.Save(id, name) =>
+      State.modify[Map[Long, String]](_ + (id -> name)).plus[F]
+
+compiles and runs (`InvSpike2`). So the widening is the sum of two
+independent choices, and each can be paid for separately.
+
 **Not taken, for now.** The trade is: one cast in `TypeableK`'s
 generic instance (in a repo whose rule is no cast without necessity),
 plus churn in every module, against `.map(_ => ())` in interpreters
