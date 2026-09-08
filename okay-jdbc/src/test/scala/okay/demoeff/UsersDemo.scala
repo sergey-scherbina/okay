@@ -231,9 +231,8 @@ object UsersDemo:
    * `!.interpret` is `translate` with the widening done for it — the
    * target row is bigger than the source's, and F, whatever the
    * caller was already doing, rides through untouched. Inside,
-   * `.plus[F]` puts each operation in that row: a for-comprehension
-   * fixes its row from the first step, so `State.get` and `State.set`
-   * have to arrive already carrying F.
+   * `.plus[F]` puts each step in that row: the constructors build at
+   * `State % S`, and the branch has to answer in `State % S + F`.
    */
   def stored[A, S : Store as S, F[+_]](prog: A ! (Users + F)): A ! (State % S + F) =
     !.interpret(prog):
