@@ -131,4 +131,48 @@ class TestDeriveEffect extends munit.FunSuite {
     assertEquals(told, Seq("put(b,2)", "get(b)"))
     assertEquals(store, Map("b" -> 2))
   }
+
+  test("tracing records a program's asks and answers none of them") {
+    type Store = Map[String, Int]
+    type R = Db + Writer % String
+
+    def stored[A, F[+_]](p: A ! (Db + F)): A ! (State % Store + F) =
+      type S = State % Store + F
+      !.interpret(p):
+        [X] => (e: Db[X]) => e match
+          case Db.Get(k)    => State.get[Store].at[S].map(_.get(k))
+          case Db.Put(k, v) =>
+            for
+              s <- State.get[Store].at[S]
+              _ <- State.set(s + (k -> v)).at[S]
+            yield ()
+
+    val prog: Option[Int] ! Db =
+      for
+        _ <- Db.Put("b", 2).perform
+        r <- Db.Get("b").perform
+      yield r
+
+    // the recorder knows nothing about Db beyond toString, and the
+    // interpreter knows nothing about the Writer: two layers, one job
+    // each, composed
+    val both: Option[Int] ! (State % Store + Writer % String) =
+      stored[Option[Int], Writer % String](
+        !.tracing(prog)([X] => (e: Db[X]) => e.toString))
+    val (store, (told, answer)) =
+      State.run[Store, (Seq[String], Option[Int])](Map.empty)(
+        Writer.run[String, Option[Int], State % Store](both))
+    assertEquals(answer, Some(2))
+    assertEquals(told, Seq("Put(b,2)", "Get(b)"))
+    assertEquals(store, Map("b" -> 2))
+
+    // tracing alone answers nothing: the same program, still asking
+    val traced: Option[Int] ! R = !.tracing(prog)([X] => (e: Db[X]) => e.toString)
+    val (log, plain) =
+      !.run(Writer.run[String, Option[Int], Pure](
+        !.translate[Option[Int], Db, Writer % String](traced):
+          [X] => (e: Db[X]) => pure(handler.handle(e))))
+    assertEquals(plain, Some(2))
+    assertEquals(log, Seq("Put(b,2)", "Get(b)"))
+  }
 }

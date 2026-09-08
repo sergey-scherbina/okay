@@ -141,36 +141,42 @@ object UsersDemo:
   type Tracked = State % Store + Writer % String
 
   /**
-   * `!.interpret` is `translate` with the widening done for it: the
-   * target row is BIGGER than the source's (Users becomes State and
-   * Writer), and F — whatever the caller was already doing — rides
-   * through untouched. The expected type solves every row, so there
-   * is no type argument here and nothing to name twice.
+   * TWO LAYERS, each with one job.
    *
-   * Inside, `.at[R]` moves each operation into the row they share: a
-   * for-comprehension fixes its row from the first step, so
-   * `Writer.tell` does not fit beside `State.get` otherwise.
+   * `stored` answers the operations, in State and nothing else. It
+   * does not log, and it could not: it knows nothing about a Writer
+   * being in the row.
    *
-   * `.plus` would also work here — `State.get[Store].plus[Writer %
-   * String + F]` compiles — but it names the COMPLEMENT, and the
-   * complement is different for every operation while the target is
-   * `R` for all of them. That is what `at` is for.
+   * `!.tracing` records them, and answers nothing: every operation is
+   * told to a Writer and then performed exactly as before, so the row
+   * keeps `Users` and gains `Writer % String`. It knows nothing about
+   * Users beyond `toString`.
+   *
+   * `tracked` is the two composed, and the order is the meaning:
+   * recording happens BEFORE interpretation, so the log holds what
+   * the PROGRAM asked, not what the store did about it.
+   *
+   * `!.interpret` is `translate` with the widening done for it — the
+   * target row is bigger than the source's, and F, whatever the
+   * caller was already doing, rides through untouched. Inside,
+   * `.at[R]` moves each operation into the row they share, since a
+   * for-comprehension fixes its row from the first step.
    */
-  def tracked[A, F[+_]](prog: A ! (Users + F)): A ! (Tracked + F) =
-    type R = Tracked + F
+  def stored[A, F[+_]](prog: A ! (Users + F)): A ! (State % Store + F) =
+    type R = State % Store + F
     !.interpret(prog):
       [X] => (e: Users[X]) => e match
         case Users.Find(id) =>
-          for
-            store <- State.get[Store].at[R]
-            _     <- Writer.tell(s"find($id)").at[R]
-          yield store.get(id)
+          State.get[Store].at[R].map(_.get(id))
         case Users.Save(id, name) =>
           for
             store <- State.get[Store].at[R]
             _     <- State.set(store + (id -> name)).at[R]
-            _     <- Writer.tell(s"save($id,$name)").at[R]
           yield ()
+
+  def tracked[A, F[+_]](prog: A ! (Users + F)): A ! (Tracked + F) =
+    stored[A, Writer % String + F](
+      !.tracing(prog)([X] => (e: Users[X]) => e.toString))
 
   private def nameOf(c: Connection, id: Long): String =
     val rs = c.createStatement().executeQuery(s"select name from users where id = $id")

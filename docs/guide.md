@@ -144,8 +144,21 @@ def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String 
 ```
 
 The expected type solves every row, so there is no type argument and
-`F` — whatever the caller was already doing — rides through
-untouched. One program, four handlers — SQLite, a Map,
+`F` — whatever the caller was already doing — rides through untouched.
+
+Interpreters compose, and are better small. `!.tracing(p)(show)`
+records every operation into a `Writer` and then performs it exactly
+as before — it answers nothing, and knows nothing about the effect
+beyond `show` — so the storage half can be written without a Writer
+anywhere in it:
+
+```scala
+def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
+  stored[A, Writer % String + F](!.tracing(p)([X] => (e: Users[X]) => e.toString))
+```
+
+Order is the meaning: recording happens BEFORE interpretation, so the
+log holds what the program ASKED, not what the store did about it. One program, four handlers — SQLite, a Map,
 State + Writer, and a trace of any of them — is
 `okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`, runnable with
 `sbt "okayJdbc/Test/runMain okay.demoeff.UsersDemo"`.

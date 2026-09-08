@@ -1,7 +1,7 @@
 package okay
 
 import scala.quoted.*
-import okay.RowLift.plus
+import okay.RowLift.{at, plus}
 
 import scala.annotation.implicitNotFound
 
@@ -622,6 +622,33 @@ object ! {
                                                    (h: F ==> ([X] =>> X ! (G + H)))
   : A ! (G + H) =
     translate[A, F, G + H](prog.plus[G])(h)
+
+  /**
+   * RECORD what a program asks for, without answering any of it: each
+   * operation of F is told to a `Writer` and then performed exactly
+   * as before, so the row keeps F and gains `Writer % W`.
+   *
+   *     !.tracing(prog)([X] => (e: Users[X]) => e.toString)
+   *       : A ! (Users + Writer % String + G)
+   *
+   * The program-level counterpart of `h.tracing`, and the same idea:
+   * the operations are already data, so recording is a layer, not a
+   * second implementation that can drift from the first. This one
+   * records BEFORE anything is interpreted, so it sees the program's
+   * own asks whatever eventually answers them — and it knows nothing
+   * about F beyond `show`.
+   *
+   * The interpreter re-emits `e` into the target row, which does not
+   * loop: `translate` walks the SOURCE program and never re-walks
+   * what a branch answers with.
+   */
+  def tracing[A, F[+_] : TypeableK, W, G[+_]](prog: A ! (F + G))
+                                             (show: [X] => F[X] => W)
+  : A ! (F + Writer % W + G) =
+    type R = F + Writer % W + G
+    interpret[A, F, Writer % W, F + G](prog):
+      [X] => (e: F[X]) =>
+        Writer.tell(show(e)).at[R].flatMap(_ => effect[R, X](e))
 
   def translate[A, F[+_] : TypeableK, G[+_]](prog: A ! (F + G))
                                             (h: F ==> ([X] =>> X ! G)): A ! G =
