@@ -1,6 +1,23 @@
 package okay
 
-import java.util.concurrent.atomic.AtomicIntegerArray
+import java.util.concurrent.atomic.AtomicInteger
+
+/** A small fixed array of counters, one per part.
+ *
+ * `AtomicIntegerArray` would be the obvious type and CANNOT be used:
+ * Scala Native's JDK subset does not implement it, and this class
+ * became reachable from `Channel.apply`'s default on 2026-09-08
+ * (growing-default), so the Native link began to fail on
+ * `AtomicIntegerArray.get`. One `AtomicInteger` per part costs `cap`
+ * small objects — eight under the default — allocated once, which is
+ * nothing beside the parts themselves, and every operation used here
+ * (get, set, compareAndSet) is identical. */
+private final class Cells(n: Int):
+  private val a: Array[AtomicInteger] = Array.fill(n)(AtomicInteger(0))
+  def get(i: Int): Int = a(i).get
+  def set(i: Int, v: Int): Unit = a(i).set(v)
+  def compareAndSet(i: Int, expect: Int, update: Int): Boolean =
+    a(i).compareAndSet(expect, update)
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger, AtomicReferenceArray}
 
 /**
@@ -109,13 +126,21 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    * drain and nothing else — never across a callback, never across a
    * park — so a consumer that stops between drains blocks no one.
    */
-  private val claimed = AtomicIntegerArray(cap)
+  private val claimed = Cells(cap)
 
   /** where THIS consumer starts looking, so consumers do not convoy
    * onto part 0 the way a single shared cursor made them */
   private val startAt = new ThreadLocal[Integer]:
+    // `Thread.threadId()` is Java 19+ and Scala Native's JDK subset
+    // does not have it; `System.identityHashCode` is everywhere and
+    // answers the same question this asks -- give each consumer a
+    // different starting part, cheaply and without coordination. The
+    // value need not be stable across runs or unique, only spread
+    // (growing-default, 2026-09-08: this class became reachable from
+    // the default and the Native link began to fail here).
     override def initialValue(): Integer =
-      Integer.valueOf(Math.floorMod(Thread.currentThread().threadId().toInt, if cap < 1 then 1 else cap))
+      val id = System.identityHashCode(Thread.currentThread())
+      Integer.valueOf(Math.floorMod(id, if cap < 1 then 1 else cap))
 
   /**
    * The part THIS THREAD last took an element from — what the channel
@@ -129,7 +154,11 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
    * full). A thread's own last route is exact, because every
    * `wakeSender()` runs on the thread that just popped.
    */
-  private val myRoute = ThreadLocal.withInitial[Integer](() => Integer.valueOf(0))
+  // not `ThreadLocal.withInitial`: Scala Native's JDK subset has no
+  // such static (growing-default, 2026-09-08). The anonymous subclass
+  // is what it desugars to anyway.
+  private val myRoute = new ThreadLocal[Integer]:
+    override def initialValue(): Integer = Integer.valueOf(0)
 
   /**
    * A fresh part for a producer that has not sent here before, unless
@@ -259,11 +288,18 @@ final class AdaptiveFifo[A](limit: Int, make: () => Buffer[A], eager: Boolean = 
             if b.nn.push(mark) then { sealedAt.set(i, 2); placed += 1 }
             else sealedAt.set(i, 0)
             done = true
-          else if st == 1 then Thread.onSpinWait()
+          // no `Thread.onSpinWait()`: it is a CPU hint with no
+          // Scala Native equivalent, and this class became reachable
+          // from `Channel.apply`'s default on 2026-09-08 so it must
+          // link on every platform. The spin is correct without it —
+          // what it waits for is another thread finishing a mark,
+          // which is a handful of instructions away. If it ever shows
+          // up in a profile, the hint belongs behind a Platform call
+          // rather than here.
       i += 1
     placed
 
-  private val sealedAt = java.util.concurrent.atomic.AtomicIntegerArray(cap)
+  private val sealedAt = Cells(cap)
 
   override def pop(): A | Null =
     // ONE PART is the common case and deserves the straight line: no

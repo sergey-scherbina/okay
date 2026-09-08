@@ -562,11 +562,46 @@ object Channel {
    * is the one with STM composability, `AbruptChannel` the one that
    * trades drain-on-close away for speed.
    */
+  /** how many parts the default may grow into. Parts open LAZILY, so
+   * this is a ceiling on the producer count that gets its own buffer,
+   * not memory reserved up front. */
+  private final val Parts = 8
+
   /**
-   * THE DEFAULT IS A SINGLE RING TODAY; the adaptive buffer is opt-in
-   * (`Queues.strong[A].adaptive.parts(n).each(capacity).build`) while
-   * the question of making it the default is measured properly
-   * (adversarial-lanes, 2026-09-06/07).
+   * THE DEFAULT IS `growing` SINCE 2026-09-08 (growing-default): a
+   * plain ring while one producer pushes, and an `AdaptiveFifo` that
+   * ADOPTS that ring the moment a second producer appears.
+   *
+   * WHAT IT BUYS, measured with the ring as the in-run control, one
+   * consumer, chunked, 8 000 elements:
+   *
+   * {{{
+   * producers    ring   growing
+   *         1   156.0     171.1   1.10x worse
+   *         2   772.4     188.0   4.1x better
+   *         4  1258.2     159.0   7.9x better
+   *        16  2907.1     127.6  22.8x better
+   * }}}
+   *
+   * Ten percent at one producer for four to twenty-three times at
+   * two and above. The one-producer row is the whole reason the ring
+   * was the default, and it is the row that costs least here.
+   *
+   * WHAT IT COSTS, and it is not speed: EXACT FIFO ACROSS PRODUCERS.
+   * A ring orders every push by one CAS on one tail; once this has
+   * grown, each producer keeps its own order and nothing is promised
+   * between them. A caller who needs the strict order asks for it by
+   * name — `Queues.strong[A].fifo(capacity)` is the ring this default
+   * used to be.
+   *
+   * WHY NOT `adaptive`, which this comment argued for until the
+   * measurement came in: it splits its capacity across parts up
+   * front, so at an equal memory budget a lone producer gets a
+   * fraction of the buffer and reads **1 119 against the ring's
+   * 169**, 6.6x. That is exactly the hazard the paragraph below
+   * predicted — "a lone producer must not pay for parts it never
+   * opens" — and `growing` is the answer to it rather than a way
+   * round it: until a second producer appears it IS the ring.
    *
    * The case for adaptive: a single ring loses to `zio.Queue` the
    * moment there is a second consumer -- 4964us against 3122 at
@@ -590,7 +625,8 @@ object Channel {
    * it never opens.
    */
   def apply[A](capacity: Int = Int.MaxValue): Channel[A] =
-    if capacity >= 2 && capacity <= MaxRing then SentinelChannel[A](capacity)
+    if capacity >= 2 && capacity <= MaxRing then
+      SentinelChannel[A](Queues.Mechanism.growing(capacity, Parts)[A | Mark](capacity))
     else if capacity > MaxRing then SentinelChannel[A](Segments[A | Mark]())
     else StmChannel[A](capacity)
 

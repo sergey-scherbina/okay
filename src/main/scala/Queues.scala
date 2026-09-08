@@ -53,7 +53,10 @@ object Queues {
 
   /** every mechanism the strong and weak contracts can run on, in one
    * place so the two menus cannot drift apart */
-  private object Mechanism {
+  /** `private[okay]` since 2026-09-08: `Channel.apply`'s default is
+   * built from `growing` here, so the one definition of what the
+   * default IS lives in one place rather than being spelled twice. */
+  private[okay] object Mechanism {
     def ring(capacity: Int, singleConsumer: Boolean = false): [T] => Int => Buffer[T] =
       [T] => (_: Int) => Ring[T](capacity, singleConsumer)
     def segments: [T] => Int => Buffer[T] =
