@@ -34,18 +34,46 @@ scans parts for a ready element, where a ring pops one. A chunked
 consumer pays that scan once per chunk; a per-element consumer pays it
 per element.
 
-- [ ] growing-elementwise-pop — make the per-element pop on
-      `AdaptiveFifo` cheap, or make the partitioned buffer remember
-      which part it last drew from so a scan is the exception rather
-      than the rule. `lastRoute` already exists on `Buffer` for the
-      waking side and may be the hint needed here too.
-      Expected win: `Source.merge` back to ~136, which unblocks the
-      default.
-      DISQUALIFYING: if a remembered part starves the others under
-      several producers, the scan is load-bearing and the answer is
-      not to remove it — it is that a per-element consumer should not
-      be given a partitioned buffer at all, and the default must then
-      choose by CONSUMER shape rather than by producer count.
+- [ ] growing-small-capacity-merge — RENAMED and re-scoped
+      2026-09-08 after THREE hypotheses were measured and refuted. The
+      name it had, `growing-elementwise-pop`, was one of them.
+
+      REFUTED, each with the evidence, so nobody retries them:
+      1. "a part scan per pop". `AdaptiveFifo.pop` already takes a
+         straight line at `open == 1` and `popScanning` already starts
+         from a remembered `startAt`; at two producers it scans at
+         most two parts. Not 3.5x.
+      2. "the parts are too small". Fixed in `growing-part-sizing`
+         (each part now a full `capacity`, worth 70% at four and
+         sixteen producers) and the regression did not move at all.
+      3. "a per-element consumer cannot amortise it". `Source.merge`
+         is NOT per-element on the channel: it reads through `Drain`,
+         in batches, and its own comment says so.
+
+      AND THE CONTROL WAS NOT A CONTROL. `okayChannelMerge` looked
+      flat under the growing default because `Channel.merge` defaults
+      to `capacity = Int.MaxValue`, which takes `Channel.apply`'s
+      `> MaxRing` branch and gets `Segments` — the growing default
+      never touched it. The only lane in that A/B that exercised the
+      change at all was the one that regressed.
+
+      WHAT IS ESTABLISHED. At capacity 1024 with a chunked consumer,
+      growth pays at every count including TWO — `oneRing` 772.4
+      against `growing` 188.0, 4.1x (a `producers=2` lane was added
+      for this and did not exist before). At capacity **64**, two
+      producers, through `Channel.merge`, growing is 3.5x slower. The
+      profile says the time is in WAITING and that the proportions are
+      unchanged — 4.8x more of the same, not different work.
+
+      WHAT IS NOT. Why 64 behaves unlike 1024. The untested suspect is
+      the merge's READINESS interleaving: with two parts the consumer
+      drains the part it last drew from, so one producer's part fills
+      and it blocks where a shared ring would have let both through.
+      That is a hypothesis and is written as one.
+      NEXT STEP: sweep `Source.merge`'s capacity (64, 256, 1024) under
+      both buffers. If the regression vanishes as capacity rises, the
+      answer is a floor below which the default does not partition,
+      and it is one line.
       BLOCKS: `growing-default`.
 
 ## growing-part-sizing — `growing` divides capacity by `parts` however few producers arrive

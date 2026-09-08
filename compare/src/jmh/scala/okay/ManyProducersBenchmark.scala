@@ -23,7 +23,10 @@ import java.util.concurrent.TimeUnit
 @Fork(3)
 class ManyProducersBenchmark {
 
-  @Param(Array("1", "4", "16"))
+  /** 2 added 2026-09-08 (growing-elementwise-pop): `Growing` grows on
+   * the SECOND producer, and nobody had measured whether growth pays
+   * at two. `Source.merge` runs exactly two. */
+  @Param(Array("1", "2", "4", "16"))
   var producers: Int = 1
 
   final val Total = 8000
