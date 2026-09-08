@@ -15,6 +15,12 @@ import okay.given
  * checked at runtime" — which is unactionable there and was drowning
  * out everything else it had to say. The limitation belongs here
  * instead: named, demonstrated, and impossible to be surprised by.
+ *
+ * It is also not INHERENT, which the Writer case below already hints
+ * at: the split is a runtime test, so a signature that carries its
+ * identity at run time is told apart. `ProbeKeyed` shows the general
+ * form — a key in the operation, a test that compares it, and a row
+ * holding two states at once.
  */
 class TestRowIdentity extends munit.FunSuite {
 

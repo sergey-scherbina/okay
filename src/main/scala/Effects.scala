@@ -6,7 +6,6 @@ import okay.RowLift.{at, plus}
 import scala.annotation.implicitNotFound
 
 import scala.annotation.tailrec
-import scala.reflect.Typeable
 
 /**
  * Extensible effects, founded on the continuation paramonad.
