@@ -20,6 +20,30 @@ for three `!.widen` helpers before finding that `effect[R, A](Get())`
 and `direct { Get().!? }` both already avoid it. Neither is
 discoverable from the constructor that failed.
 
+THREE DESIGNS, all compiled and run (`ProbeRowCtor.scala`,
+`ProbeVariance.scala`) — the scorecard first, the detail below:
+
+| | narrow, bare | mixed, annotated | mixed, INFERRED | foldLeft seed | when the row is free |
+|---|---|---|---|---|---|
+| today: `get[S]` | yes | no — needs widen / effect[R,A] / direct | no | yes | n/a |
+| `get[S, F[+_]]` | yes | yes | **yes** | needs an annotation | silent `[_] =>> Any`, error lands far away |
+| `In[F, R]` evidence | yes | yes | **yes** | needs an annotation | **named at the call site** |
+
+The evidence design needs the `self` instance at LOW priority (a
+parent trait): matching the whole row commits it, so if it wins over
+the structural case a mixed row never forms — case 3 fails until
+`self` loses. With that ordering all four shapes work:
+NARROW Vector(a) · MIXED (7,(Vector(saw),7)) · INFER same · SEED
+Vector(0, 1, 2, 3).
+
+VARIANCE IS NOT THE LEVER, asked and answered by the compiler: making
+the parameter invariant (`F[_]`) does not compile the DEFINITION —
+`Found: Unit ! ([A] =>> Writer[W, A]) / Required: Unit ! (Writer % W + F)`.
+`Free[F[+_], A]` is built over a covariant constructor and `+` unions
+those; the covariance is what lets a narrow program sit in a wider
+row, which is the whole point. What can be fixed is F being FREE, not
+F being covariant — hence the evidence row above.
+
 MEASURED, not assumed (`src/test/scala/ProbeRowCtor.scala`, runs):
 
 - The row-polymorphic shape works and INFERS. With
@@ -29,9 +53,16 @@ MEASURED, not assumed (`src/test/scala/ProbeRowCtor.scala`, runs):
   (Vector(looked),Some(z)))`, identical to the hand-annotated arm.
 - The empty row collapses: `State % S + Pure =:= State % S` because
   `type Pure = Nothing`, so ONE definition covers the narrow case too.
-- Bare calls in a single-effect row still compile untouched — F infers
-  to Pure with nothing written (`val x: Store ! (State % Store) = getIn`,
-  and the same as the last step of a narrow for-comprehension).
+- Bare calls in a single-effect row compile untouched WHERE AN
+  EXPECTED TYPE EXISTS — F infers to Pure with nothing written. This
+  was first written here as "bare calls do not change", and that is
+  WRONG: with no expected type F sits in a covariant union and the
+  solver MAXIMISES it to `[_] =>> Any`. Three positions need an
+  annotation — a foldLeft seed, monadic reflection (`reify`/`reflect`,
+  where inference reached out and took a neighbouring row), and any
+  call standing on its own. The full-tree migration on branch
+  `tmp-row-ctor-experiment` cost 11 lines in 7 files, 4 of them the
+  signatures, and the library core needed no edit at all.
 
 COST, counted: call sites naming the type argument explicitly are
 `State.get[` 7, `State.set[` 6, `Reader.ask[` 3, `Writer.tell[` 1 —
