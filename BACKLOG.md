@@ -1,5 +1,58 @@
 # Backlog
 
+## row-polymorphic constructors — the row parameter every handler has and no constructor does
+
+Found 2026-09-08 while writing the custom-effect demo
+(`okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`), and the
+asymmetry is systematic:
+
+    State.get[S]     : S ! State % S        State.handle[S, A, F[+_]]
+    Reader.ask[R]    : R ! Reader % R       Reader.run[R, A, F[+_]]
+    Writer.tell[W]   : Unit ! Writer % W    Writer.fold/run/map[..., F[+_]]
+    raise[E, A]      : A ! Throws % E
+    choose[A]        : A ! Choose
+
+Every HANDLER is row-polymorphic; every CONSTRUCTOR is fixed at its
+own single-effect row. So a for-comprehension takes its row from the
+first step and then refuses the second: `State.get` followed by
+`Writer.tell` does not typecheck, and the writer of the demo reached
+for three `!.widen` helpers before finding that `effect[R, A](Get())`
+and `direct { Get().!? }` both already avoid it. Neither is
+discoverable from the constructor that failed.
+
+MEASURED, not assumed (`src/test/scala/ProbeRowCtor.scala`, runs):
+
+- The row-polymorphic shape works and INFERS. With
+  `getIn[S, F[+_]]: S ! (State % S + F)`, a mixed-row for-comprehension
+  needs no annotation on any operation at all — F is solved from the
+  block's expected type. Printed: `INFER (Map(7 -> z),
+  (Vector(looked),Some(z)))`, identical to the hand-annotated arm.
+- The empty row collapses: `State % S + Pure =:= State % S` because
+  `type Pure = Nothing`, so ONE definition covers the narrow case too.
+- Bare calls in a single-effect row still compile untouched — F infers
+  to Pure with nothing written (`val x: Store ! (State % Store) = getIn`,
+  and the same as the last step of a narrow for-comprehension).
+
+COST, counted: call sites naming the type argument explicitly are
+`State.get[` 7, `State.set[` 6, `Reader.ask[` 3, `Writer.tell[` 1 —
+17 in the repo. Bare call sites (49) do not change at all. Scala has
+no partial type application, so those 17 become bare or name both
+arguments.
+
+- [ ] row-polymorphic-constructors — give each constructor the `F[+_]`
+      its handler already has. NOT an overload: `get[S]` and
+      `get[S, F[+_]]` have no value parameters and clash, so this
+      either replaces the narrow form (17 call sites) or lands under a
+      second name. Decide which; the probe says the replacement is
+      source-compatible everywhere the type argument is not written
+      out. Gate: the probe's three shapes plus the 17 migrated sites,
+      and TestRowIdentity unchanged.
+- [ ] scaladoc-the-workaround — whatever is decided above, the cheap
+      half is one line on `State.get`, `Writer.tell`, `Reader.ask` and
+      `raise` naming `effect[R, A](Op())` and the direct-style
+      spelling. A reader meets the wall AT the constructor and there
+      is currently nothing there pointing out.
+
 ## spark-4-2 — the Spark pin is now free to move on its own
 
 Found by scala-3-9 (2026-09-07) and deliberately NOT taken there.
