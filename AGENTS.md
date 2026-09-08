@@ -52,10 +52,21 @@ force, all already practiced, none previously written down:
 ## Coordination
 - The protocol is the `multi-agent` skill
   (`.agents/plugins/multi-agent/commands/multi-agent.md`); this file
-  only fixes the repo-specific facts. The branch is `master` (not `main`), there is
-  no remote sync step — claims and merges are local.
-- **NEVER `reset` or `merge` to `origin/*`.** `origin/master` is STALE
-  BY DESIGN — it is days behind, because nothing here pushes. The
+  only fixes the repo-specific facts. The branch is `master` (not `main`).
+  Claims and merges are LOCAL — no lane needs the network to land, and
+  none should wait for it. Pushing is a SEPARATE, deliberate act by
+  whoever the operator asks; it is not part of landing a lane and not
+  part of the claim procedure. (2026-09-08: `origin` was 60 commits
+  behind and was fast-forwarded to `eca8877e` on the operator's
+  instruction. Before that nothing had pushed for days.)
+- **NEVER `reset` or `merge` to `origin/*`.** Not because origin is
+  always stale — since 2026-09-08 it is sometimes current — but
+  because it is current only in the moments just after somebody
+  pushes, and NOTHING in the landing procedure pushes. So at any
+  instant `origin/master` is master-minus-every-lane-landed-since-the-
+  last-push, and that number is usually not zero. `git log --oneline
+  origin/master..master` tells you what it is; do not guess, and do
+  not assume a fresh `git fetch` made it zero. The
   skill's claim procedure literally says `git fetch origin` and
   `git merge --ff-only origin/main`; followed in this repo that
   discards every lane landed since the last push. INCIDENT
