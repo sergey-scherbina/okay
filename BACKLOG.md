@@ -130,7 +130,15 @@ ring gave it 64, and six more parts are sized and never opened.
 than the one it has. At sixteen producers that is right and it wins
 7x; at two it is a 3.5x loss.
 
-- [ ] growing-part-sizing — size a part for the producers that
+- [x] growing-part-sizing — DONE 2026-09-08, landed as 51adaf00, and
+      this box went unticked until the operator asked what was left.
+      Every part is now a full `capacity`; parts open lazily, so a
+      channel holds `capacity x producers that actually arrived`.
+      Worth 70% at four and sixteen producers (552 -> 165, 429 -> 126)
+      and nothing at one. It is also what unblocked the default,
+      though a broken diagnostic hid that for a day.
+
+      (the original plan) size a part for the producers that
       actually arrive, not for `parts`. The obvious shapes, in
       increasing cost: give every part the full `capacity` (that is
       what `adaptive.parts(n).each(c)` does, and it is `n * c` of
