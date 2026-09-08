@@ -1,5 +1,59 @@
 # Changelog
 
+## lane-fairness — five benchmark lanes asked the two sides different questions
+
+An audit of every cross-library benchmark class against this page's
+own Lane rules, then a full re-run on the corrected lanes: 22 classes,
+501 lanes with all three rounds, 0 failures, and the three rounds
+indistinguishable (each one's median ratio to its own lane's best is
+1.010–1.012).
+
+**All five mismatches were on OUR side**, because our lane is written
+first and the competitor's second, against it. Four gave okay an
+unearned advantage; one handicapped us and had gone unnoticed for
+months precisely because okay won the row anyway.
+
+| lane | the mismatch |
+|---|---|
+| `AsyncBenchmark` (§4) | okay forked and joined 100 fibers from OUTSIDE the runtime; cats, ZIO and kyo each entered theirs ONCE. §4b hit this at K=10 000 and split into two rows; §4 had no twin. Added `okaySpawnInside`. |
+| `adaptive_chunk` | `parts(16).each(1024)` = **16 384 slots** against `oneRing`'s 1024 and `growing`'s 1 984. Matched; `adaptiveWide_chunk` keeps the old sizing, named. |
+| `manyToMany_okayAdaptive` | the same 16 384 against ZIO's and cats' `Queue.bounded(1024)`. Matched. |
+| `adaptiveManyConsumers` | part count from `availableProcessors`, so its capacity and its number differed per machine. Pinned. |
+| `StreamOps` | okay at `Chunks.nats`'s default 64 while every competitor got the whole stream in ONE chunk. Both sizes now measured. |
+
+**A fourth Lane rule is added — RESOURCES**: same buffer capacity,
+same worker count, same chunk size. The three existing rules could not
+have caught any of these; every mismatched pair had matching
+granularity and an author-intended source, and differed only in what
+the runtime was handed.
+
+**Three tables changed their conclusion.**
+
+`docs/queues.md`'s central table said `adaptive` is the choice for
+many producers, on 144 / 136 / 100. Those numbers had 16x the buffer
+of the rows beside them. At an equal memory budget of 1 024 slots:
+
+| producers | `bounded` | **`growing`** | `adaptive` | `adaptive`, 16x memory |
+|---|---|---|---|---|
+| 1 | 169 | **171** | 1 119 | 169 |
+| 4 | 1 257 | **528** | 559 | 166 |
+| 16 | 2 828 | **394** | 408 | 115 |
+
+`growing` is the best of the three at every producer count once the
+memory is equal — the opposite of what the page said, and a
+vindication of the decision to keep it that the numbers had appeared
+to contradict.
+
+§4b's adaptive row, added the previous day, claimed 3.6x and 6.1x
+ahead of ZIO. Matched, it is a tie at 4×4 and 3.0x ahead at 16×16.
+
+§5 now carries both chunk sizes: the 64-element default costs 24%
+against the one-chunk spelling the competitors get, and okay wins the
+table either way.
+
+Commits: 9247bdd2 (the audit and the fourth rule), 3cb19501 (the
+re-run and the tables).
+
 ## growing-adopted-part0 — the 3.6x was buffer capacity, and the adoption is worth 6.4x
 
 `Growing` read 3.6x the `AdaptiveFifo` it grows into, and the backlog
