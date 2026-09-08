@@ -26,11 +26,10 @@ package okay
  * to `A | Boundary` and force every consumer to match on something
  * that is not part of its stream.
  */
-enum Flush[+A]:
+enum Flush[+A] derives Effect:
   case Now extends Flush[Unit]
 
 object Flush:
-  given TypeableK[Flush] = typeableK(classOf[Flush[?]])
 
   /** emit whatever the chunker holds, full or not */
   def now[F[+_]]: Unit ! (Flush + F) = effect(Flush.Now)

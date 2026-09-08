@@ -17,7 +17,7 @@ import scala.annotation.implicitNotFound
  * same programs run through the event loop by runAsync, and a
  * blocking join is a compile error, not a runtime hang.
  */
-enum Async[+A]:
+enum Async[+A] derives Effect:
   /** a suspended (possibly blocking — a JVM/Native ability) computation */
   case Run[A](run: () => A) extends Async[A]
 
@@ -32,7 +32,6 @@ enum Async[+A]:
  * and there is nothing for the compiler to warn about — which is
  * exactly what this instance says, once, instead of letting it warn
  * "cannot be checked at runtime" at thirty-four use sites. */
-given TypeableK[Async] = typeableK(classOf[Async[?]])
 
 /** suspend a (possibly blocking) computation as an operation */
 inline def async[A](a: => A): A ! Async = effect(Async.Run(() => a))

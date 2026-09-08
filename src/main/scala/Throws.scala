@@ -182,7 +182,7 @@ extension [A, E <: Unsafe](a: A throws E)
 
 /** by class only: the payload `e: E` is erased in the type, so a row
  * may hold ONE Throws — see typeableKByClass */
-given throwsK[E]: TypeableK[Throws % E] = typeableKByClass(classOf[Throws[?, ?]])
+given throwsK[E]: okay.Effect[Throws % E] = okay.Effect.of(typeableKByClass(classOf[Throws[?, ?]]))
 
 /**
  * The seam direct-try stands on: how a monad CATCHES a JVM throw

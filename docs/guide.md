@@ -90,6 +90,12 @@ object Users:                       // optional: `Users.Find(id).perform`
 untagged union, so a handler for F meeting an operation in `F + G`
 decides by class), and registers the signature for direct-style
 auto-coloring. `derives TypeableK` gives the first without the second.
+It is not optional: there is no generic fallback, so a signature that
+declares nothing is a compile error where it is USED — which is the
+right place for it, since the alternative was a warning at every use
+site that the effect's author never saw. A parameterised signature
+(`State % S`) cannot use `derives`; it writes
+`given yourK[S]: Effect[Your % S] = Effect.of(typeableKByClass(classOf[Your[?, ?]]))`.
 
 **Putting an operation in a wider row.** `p.plus[R]` adds R to whatever
 row `p` has; `p.at[R]` names the target row instead — better when

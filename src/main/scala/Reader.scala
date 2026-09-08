@@ -25,4 +25,4 @@ object Reader {
 
 /** by class only: `Ask()` carries no trace of R, so a row may hold
  * ONE Reader — see TestRowIdentity and typeableKByClass */
-given readerK[R]: TypeableK[Reader % R] = typeableKByClass(classOf[Reader[?, ?]])
+given readerK[R]: okay.Effect[Reader % R] = okay.Effect.of(typeableKByClass(classOf[Reader[?, ?]]))

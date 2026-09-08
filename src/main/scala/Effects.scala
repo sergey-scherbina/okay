@@ -205,7 +205,7 @@ transparent inline def Effects[M[_[+_], _]]: Effects[M] =
   compiletime.summonInline[Effects[M]]
 
 /** ∀X, the runtime test for F[X], by the erasure of F */
-@implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations. If one class carries the whole\nsignature (the answer type is the only parameter), declare:\n  given TypeableK[${F}] = typeableK(classOf[YourOp[?]])\n— the test is then TOTAL (see Delim.scala's precedent and the typepedia entry).")
+@implicitNotFound("no TypeableK[${F}].\nSplitting a row needs a runtime test for ${F}'s operations, and a signature declares its own:\n  enum YourOp[+A] derives Effect\nA parameterised signature (State % S, Reader % R) cannot use `derives` — it writes\n  given yourK[S]: Effect[YourOp % S] = Effect.of(typeableKByClass(classOf[YourOp[?, ?]]))\nA ROW needs no instance: the split tests one side and takes the other by exclusion.")
 trait TypeableK[F[_]]:
   def unapply[A](x: Any): Option[x.type & F[A]]
 
@@ -252,14 +252,26 @@ def typeableK[F[_]](cls: Class[?]): TypeableK[F] = new TypeableK[F]:
 def typeableKByClass[F[_]](cls: Class[?]): TypeableK[F] = typeableK(cls)
 
 /**
- * The fallback lives in the TYPECLASS'S COMPANION, and that placement
- * is the whole point: a given in lexical scope (which `import
- * okay.given` puts there) BEATS one in a type's implicit scope, so a
- * toplevel generic instance would shadow every specific one — which
- * is exactly what happened, and why `Model`, `Tool` and `Context`
- * kept getting the erasure-based test after being given a total one.
- * From the companion it is implicit scope too, and specificity picks
- * the better instance.
+ * There is NO generic instance any more, and that is the point.
+ *
+ * There used to be one — `given [F[+_]](using Typeable[F[Nothing]])`,
+ * an erasure test derived for any signature that had not declared
+ * one. It cost more than it saved. It made every effect that forgot
+ * to declare a test work anyway, at a warning per USE site ("the type
+ * test for F[Nothing] cannot be checked at runtime") that the author
+ * of the effect never saw. It shadowed better instances when brought
+ * into lexical scope by `import okay.given`, which is why `Model`,
+ * `Tool` and `Context` kept getting the erasure test after being
+ * given a total one. And it was the one place in this library that
+ * NEEDED the row's covariance, since `F[Nothing] <: F[X]` is what
+ * made it sound (specs/writer-covariance.md, signature-covariance).
+ *
+ * Now a signature says `derives Effect` and its instance lives in its
+ * own companion, where implicit search finds it with no import and
+ * nothing can shadow it. What was lost with the fallback: a COMPOSITE
+ * row can no longer be given a test implicitly. Nothing needs one —
+ * `Handler.union[F, G]` and `<|>` test one side and take the other by
+ * exclusion, so every tested signature is atomic.
  */
 object TypeableK:
   /**
@@ -310,12 +322,6 @@ object TypeableK:
           "row split will find them.")
       case _ => '{ typeableK[F]($ct.runtimeClass) }
 
-  /** by the compiler-synthesized class test — no cast: sound by
-   * covariance, F[Nothing] <: F[X] for every X. Complete only when
-   * the erasure IS the signature's identity; a signature that wants
-   * better should say so with its own instance. */
-  given [F[+_]](using t: Typeable[F[Nothing]]): TypeableK[F] = new:
-    def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
 
   /** the empty signature is trivially splittable: nothing inhabits
    * it, so the test never matches — which lets row-generic code

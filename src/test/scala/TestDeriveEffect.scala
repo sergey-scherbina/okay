@@ -1,7 +1,6 @@
 package okay
 
 import okay.RowLift.{at, plus}
-import scala.annotation.nowarn
 import okay.Direct.{direct, given}
 import scala.language.implicitConversions
 
@@ -51,20 +50,17 @@ class TestDeriveEffect extends munit.FunSuite {
     assertEquals(derived.unapply[Option[Int]]("not an operation").isDefined, false)
   }
 
-  @nowarn("msg=cannot be checked at runtime")
-  def rowInstance: TypeableK[Db + Writer % String] = summon
-
-  test("a row needs no derived instance, and the generic one is right") {
-    // `TypeableK.derived[Db + Writer % String]` does not compile, and
-    // the message says why: a ClassTag of a union is its LUB — an
-    // interface every operation matches (measured: Serializable for
-    // two case classes, scala.reflect.Enum for two enums), so the
-    // split would send all of them left and say nothing. The check
-    // is in the macro; here is the reason it costs nothing to have.
-    val t = rowInstance
-    assertEquals(t.unapply[Option[Int]](Db.Get("a")).isDefined, true)
-    assertEquals(t.unapply[Option[Int]](Writer("x")).isDefined, true)
-    assertEquals(t.unapply[Option[Int]]("neither").isDefined, false)
+  test("a row has no instance of its own, and needs none") {
+    // the erasure-based fallback is gone: every signature declares its
+    // test with `derives Effect`, and a ROW is split by testing its
+    // PARTS — `Handler.union[F, G]` and `<|>` ask only about the left
+    // side, so a composite instance is never needed. It is also not
+    // available, deliberately:
+    assert(!scala.compiletime.testing.typeChecks(
+      "summon[okay.TypeableK[TestDeriveEffect.this.Db + okay.Writer % String]]"))
+    // what IS available is each part, found with no import at all
+    assertEquals(summon[TypeableK[Db]].unapply[Option[Int]](Db.Get("a")).isDefined, true)
+    assertEquals(summon[TypeableK[Writer % String]].unapply[Unit](Writer("x")).isDefined, true)
   }
 
   test("any handler can record: tracing is a decorator, not a second handler") {

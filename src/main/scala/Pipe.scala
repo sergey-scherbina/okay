@@ -574,4 +574,4 @@ def pipe[W, A, B, G[+_] : TypeableK](p: A ! Writer % W + G)(c: B ! Take % W): B 
 
 /** by class only: `Await()` carries no trace of V, so a row may hold
  * ONE Take — see typeableKByClass */
-given takeK[V]: TypeableK[Take % V] = typeableKByClass(classOf[Take[?, ?]])
+given takeK[V]: okay.Effect[Take % V] = okay.Effect.of(typeableKByClass(classOf[Take[?, ?]]))

@@ -8,13 +8,12 @@ package okay
  * by parametricity) nor an ordinary exception-style handler can.
  * Each nesting level of choose costs stack at run time.
  */
-case class Choose[+A](as: Seq[A])
+case class Choose[+A](as: Seq[A]) derives Effect
 
 /** The class IS the whole identity: Choose has no parameter but its
  * (erased) answer type, so splitting a row on it is a TOTAL test —
  * said once here, rather than as a "cannot be checked at runtime"
  * warning at every use site of a test that is in fact complete. */
-given TypeableK[Choose] = typeableK(classOf[Choose[?]])
 
 
 /** one of the given alternatives */

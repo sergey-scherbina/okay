@@ -659,8 +659,28 @@ most of them, but not all, and never irreparably.
 
 The measurements above stand as the record of what the alternative
 costs, which is what makes this a decision rather than an assumption.
-The `Typeable` fallback stays with it: it is the instance covariance
-is for, and removing it buys nothing once covariance is kept.
+**LANDED 2026-09-08 (operator): the fallback is gone anyway.** Keeping
+covariance did not mean keeping the instance it exists for. Every
+signature in the library now declares its own test — `enum Async[+A]
+derives okay.Effect`, and for the parameterised ones
+`given stateK[S]: okay.Effect[State % S] = okay.Effect.of(...)` — and
+the generic `Typeable[F[Nothing]]` given is deleted. What that bought:
+
+- an effect that forgets to declare a test is now a compile error at
+  the DECLARATION, instead of working with a warning per use site that
+  its author never sees;
+- nothing can shadow a signature's own instance, since it lives in the
+  companion rather than in lexical scope (the `Model`/`Tool`/`Context`
+  incident that the old comment recorded cannot recur);
+- `okay-sql`'s test stopped needing `import okay.given_TypeableK_Async`
+  — a companion instance is found without an import, so removing the
+  fallback FIXED a call site rather than breaking one.
+
+What it cost: a composite row can no longer be handed a test
+implicitly, which nothing asks for. And with the fallback gone,
+covariance's remaining job is one declaration shorthand
+(`Tx[Nothing]`) — the trigger named above has fired, so the invariance
+question is now open on its merits rather than blocked on a cast.
 
 **Not taken, then.** The trade is: one cast in `TypeableK`'s
 generic instance (in a repo whose rule is no cast without necessity),

@@ -99,4 +99,4 @@ object PState {
 
 /** by class only: `Get()`/`Set(s)` carry no trace of S in the type,
  * so a row may hold ONE State — see typeableKByClass */
-given stateK[S]: TypeableK[State % S] = typeableKByClass(classOf[State[?, ?]])
+given stateK[S]: okay.Effect[State % S] = okay.Effect.of(typeableKByClass(classOf[State[?, ?]]))

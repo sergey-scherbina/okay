@@ -242,5 +242,5 @@ object Condition {
 
   /** the Delim/Resource precedent: splitting a row on Op is a
    * total test — one class carries the whole signature */
-  given TypeableK[Op] = typeableK(classOf[Op[?]])
+  given okay.Effect[Op] = okay.Effect.of(typeableK(classOf[Op[?]]))
 }
