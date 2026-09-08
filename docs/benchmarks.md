@@ -2035,23 +2035,48 @@ is 298.3, not 114.8. Their advantage was never the queue.
 `Channel[Chunk[A]]`, so its channel already pays one transaction per
 chunk. `sendManyNow` is for a producer holding a batch of ELEMENTS.
 
-| lane | us/op |
-|---|---|
-| okaySendBulk + chunked receive | **66.9** |
-| okayChunked | 105.9 |
-| okaySendElem + chunked receive | 109.0 |
-| zioChunked | 114.8 |
-| okaySendElem + elementwise receive | 196.7 |
-| okaySendBulk + elementwise receive | **280.4** |
+| lane | us/op (2026-09-04) | us/op (2026-09-08) |
+|---|---|---|
+| okaySendBulk + chunked receive | **66.9** | 63.2 |
+| okayChunked | 105.9 | 58.4 |
+| okaySendElem + chunked receive | 109.0 | **54.1** |
+| zioChunked | 114.8 | 141.8 |
+| okaySendElem + elementwise receive | 196.7 | 134.9 |
+| okaySendBulk + elementwise receive | **280.4** | 138.4 |
 
-**Batch both ends or neither.** Against a draining consumer the bulk
-send is 1.63x (66.9 against 109.0) and lands 1.71x past `zioChunked`.
-Against an ELEMENTWISE consumer it is a 1.43x LOSS. The cause is room,
-not the claim: a consumer taking one element at a time keeps the ring
-full, so every bulk attempt fails its scan and falls back to a single
-send anyway — the scan is pure overhead on top of work that had to
-happen regardless. A batched primitive is not a free upgrade; it is a
-bet that the other end leaves room.
+**"Batch both ends or neither" no longer holds, and the reason it was
+believed does not either (bench-refresh, 2026-09-08).** The bulk send
+was 1.63x AHEAD of the element send against a draining consumer; it is
+now **17% BEHIND** (63.2 against 54.1), consistently across three
+rounds. What moved is not the bulk lane — it sits where it was — but
+the ELEMENT lane, which halved and overtook it.
+
+**The obvious explanation was measured and REFUTED.** The paragraph
+below blames "room": a full ring makes every bulk attempt fail its
+scan and fall back to a single send. That is true of the ELEMENTWISE
+consumer and remains the right reading of the last row. It is NOT what
+happens here. Counted directly against a chunk-draining consumer, same
+N, Cap and Batch as the lane (300 repetitions, 22 090 `sendManyNow`
+calls): the scan finds room in **97.3%** of calls, the mean claim is
+**55.8 of the 64 asked**, 18 364 calls take the full 64, and **0.05%
+of elements** reach the per-element fallback. The bulk path is being
+exercised almost perfectly and is still slower.
+
+So the cost is in the bulk mechanism itself on this shape — plausibly
+`Ring.pushMany` touching every slot twice, once to scan its stamp and
+once to write, in exchange for saving a tail CAS that is uncontended
+with one producer. That is a HYPOTHESIS: it has not been profiled, and
+this page does not get to state it as a cause. What is established is
+the refutation above and the inversion. Filed as
+`bench-sendbulk-inverted`.
+
+Against an ELEMENTWISE consumer the bulk send is still a loss, and
+there the room explanation stands: a consumer taking one element at a
+time keeps the ring full, every bulk attempt fails its scan and falls
+back to a single send, and the scan is pure overhead on work that had
+to happen anyway. A batched primitive is not a free upgrade; it is a
+bet that the other end leaves room — and, on this evidence, a bet that
+no longer pays even when it wins.
 
 **The acceptance answer stopped boxing.** `Function1` is specialised
 on Int, Long, Float and Double and not on Boolean, so every send's

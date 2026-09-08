@@ -56,14 +56,22 @@ Consistent across all three rounds (63/74/78 against 55/54/57), so it
 is not the host. Note WHAT moved: the bulk lane is where it was; the
 ELEMENT lane halved and overtook it.
 
-- [ ] bench-sendbulk-inverted — decide whether `Channel.sendManyNow`
-      still earns its place on this shape. Expected outcome is one of
-      two, and both are fine: recover the 1.2x, or delete the claim
-      from §15 and say the element path caught up.
-      DISQUALIFYING: if `Ring.pushMany`'s scan is simply never finding
-      room (the consumer keeps the ring full), then nothing regressed
-      and the honest fix is in the DOC, not the code — §15 already
-      explains that exact failure mode for the elementwise consumer.
+- [ ] bench-sendbulk-inverted — STILL OPEN, but narrower: the
+      disqualifying question is ANSWERED and the answer was no.
+      Measured 2026-09-08 against a chunk-draining consumer, same N,
+      Cap and Batch as the lane, 300 reps / 22 090 `sendManyNow`
+      calls: the scan finds room in **97.3%** of calls, mean claim
+      **55.8 of 64**, 18 364 calls take the full 64, and only
+      **0.05% of elements** hit the per-element fallback. So the
+      fallback is NOT the cause; the bulk path runs almost perfectly
+      and is still 17% slower than sending one at a time.
+      §15's text is corrected to say this. What remains is to find
+      where the bulk mechanism spends it. Standing hypothesis, NOT
+      measured: `Ring.pushMany` touches every slot twice — once to
+      scan its stamp, once to write — to save a tail CAS that is
+      uncontended with a single producer. NEXT STEP IS A PROFILER,
+      not a rewrite; the `performance` skill's rule applies, a hot
+      frame is a place to look and never a size of prize.
 
 ## bench-chunk-fold-lane — a lane named `_chunk_` costs more than its `_elem_` twin
 
