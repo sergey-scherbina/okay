@@ -1,0 +1,31 @@
+task: default-retable
+agent: opus5-bench
+started: 2026-09-08
+branch: feature/default-retable
+worktree: ../okay-wt-retable
+
+why: `Channel.apply`'s default changed from a plain ring to `growing`
+  (17404a4e). Every table whose lanes reach a channel through that
+  default now describes a tree nobody has — the same stale-number
+  problem this session has been correcting all day, except this time I
+  caused it.
+
+what: re-measure the classes that go through the DEFAULT and rewrite
+  their tables. Surveyed rather than guessed:
+    through the default   MergeBenchmark, ScalingBenchmark,
+                          ChunkFlushBenchmark, IdiomaticApiBenchmark
+    explicit mechanisms   ChannelGranularity, ChannelGuarantee,
+                          ManyProducers, Adversarial — these build
+                          AbruptChannel / SentinelChannel / StmChannel
+                          or a Queues builder by name and do NOT move
+  So four classes are re-run and four are not, and the ones that are
+  not get checked rather than assumed: a control lane from each is
+  compared against its recorded value.
+
+predict: `Source.merge` and the ChunkFlush merges improve — the sweep
+  already showed `Source.merge` 20% ahead at capacity 256 and 1024 and
+  level at 64. The Idiomatic channel lanes should be flat, since they
+  run ONE producer, where growing never grows.
+  DISQUALIFYING: if a lane that should not have moved has moved, the
+  survey above is wrong and I re-run everything rather than publish a
+  table built on a wrong list.
