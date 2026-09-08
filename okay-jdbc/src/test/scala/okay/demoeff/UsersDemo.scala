@@ -29,6 +29,7 @@ package okay.demoeff
 import okay.*
 import okay.given
 import java.sql.{Connection, DriverManager}
+import okay.Direct.*
 import okay.Rowlift.at
 
 enum Users[+A]:
@@ -43,23 +44,30 @@ object Users:
 object UsersDemo:
 
   /**
-   * Renaming somebody who is not there is not a rename. The first cut
-   * of this program said `find` then `save` unconditionally, and the
-   * TYPE did not object — a for-comprehension sequences, it does not
-   * branch for you — but the SQLite handler's upsert then happily
-   * created user 99, and the answer `None` meant two different things
-   * at once: "there was no previous name" and "nothing was written".
-   * The demo's own MISS line was the tell: "row 99 is now hopper".
+   * Renaming somebody who is not there is not a rename — and the first
+   * cut of this program got it wrong in a way worth keeping on the
+   * record. It said `find` then `save` in a for-comprehension, which
+   * SEQUENCES and does not branch, so a missing id still reached the
+   * handler's upsert and CREATED the user; the answer `None` then meant
+   * two things at once, "no previous name" and "nothing written". The
+   * demo printed the bug itself: "row 99 is now hopper".
    *
-   * So the branch is written out. `None` now means exactly one thing,
-   * and the recording handler proves it: the log for a missing id
-   * holds `find` and no `save`.
+   * The branch reads better in direct style than as a fold: `!?` marks
+   * the effects, `if` is an ordinary `if`, and the row stays in the
+   * TYPE — `Users` and nothing else. The monadic spelling is the same
+   * program, one line longer:
+   *
+   *   for
+   *     old <- Users.find(id)
+   *     _   <- if old.isEmpty then pure[Users, Unit](())
+   *            else Users.save(id, to)
+   *   yield old
    */
-  def rename(id: Long, to: String): Option[String] ! Users =
-    for
-      old <- Users.find(id)
-      _   <- if old.isEmpty then pure[Users, Unit](()) else Users.save(id, to)
-    yield old
+  def rename(id: Long, to: String): Option[String] ! Users = direct {
+    val old = Users.find(id).!?
+    if old.isDefined then Users.save(id, to).!?
+    old
+  }
 
   /** the real world: a SQLite file */
   def live(c: Connection): Handler[Users] = new:
