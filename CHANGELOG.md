@@ -1,5 +1,46 @@
 # Changelog
 
+## growing-wrapper-cost — the sample counter was false-sharing with the consumer
+
+`Growing` at one producer cost **1.31x** the plain ring it wraps and
+does nothing else to, and that premium is what kept `Channel.apply`
+on the ring. The backlog entry blamed the extra virtual call and the
+`@volatile inner` read. Measured, both are free:
+
+| lane | vs ring | |
+|---|---|---|
+| `forwarded` — a buffer that ONLY delegates | 1.02x | the layer of call is free |
+| `onePart` — partitioned, one part, cannot grow | 1.17x | a separate question |
+| `growing` | 1.31x | |
+
+Then the gap split by alternating diagnostic builds, five rounds each
+with the ring as the in-run control: removing `sample()` gives 1.03x
+(**−22 points**), removing the `volatile` gives 1.30x (**−5, i.e.
+nothing**). The whole cost is the per-push sample counter.
+
+And 60% of that is **false sharing**: the producer stores `seen` on
+every push into the same object the consumer loads `inner` from on
+every `popMany`, so the store invalidates the load. The counter moves
+to its own padded object — semantics untouched, sampling still fires
+on the 64th push, a second producer still grows the buffer, all six
+`TestGrowing` laws pass. **1.200x → 1.109x**, against a floor of
+1.049x with no sampling at all. The remaining ~6 points are the branch
+itself and are left alone.
+
+`channel-default-adaptive` is unblocked by this: the premium a default
+would pay at one producer is now 11%, not 31%, against 5.5x and 9x at
+four and sixteen producers. That is a decision rather than an
+optimisation, and it is filed for the operator.
+
+**A method note, because three predictions in a row were wrong here.**
+The first eight-round attempt was thrown away entirely: a sibling's
+build ran through rounds 3–5 and put the RING itself at 7550 against
+its usual 155. The rerun waits for the box to be quiet before it
+starts and re-checks between rounds. Everything above is from that
+second run.
+
+Commit: 6fd4ac1a.
+
 ## growing-onbehalf — a resumed push is not a second producer
 
 `Growing` becomes partitioned when it sees two different threads
