@@ -864,7 +864,12 @@ the three per-element ones 1.6–9.9 MB.
 
 | **Okay chunked** | ZIO | fs2 chunk-native | Okay elementwise | fs2 singletons |
 |---|---|---|---|---|
-| **13.1** | 51.8 | 92.7 | **125** | 10 150 |
+| **13.3** | 51.5 | 94.4 | **122** | 10 746 |
+
+(Re-measured after `Channel.apply`'s default became `growing`
+(default-retable, 2026-09-08). `Okay elementwise` — `Source.merge`,
+which runs two producers into one channel — went 130 → 125 → 122
+across the two changes that touched it.)
 
 (bench-refresh 2026-09-08, N=500 a side. `Okay elementwise` reads 130
 against the 308 this table carried, and `ScalingBenchmark` agrees at
@@ -970,10 +975,10 @@ the numbers PER ELEMENT:
 
 | per element | 500 el | 1000 el | 2000 el | 4000 el |
 |---|---|---|---|---|
-| `rawLazyListDrain` (control) | 14.3ns | 13.6 | 13.5 | 12.7 |
-| `sourceSingleDrain` | 50.8ns | 49.2 | 46.7 | 51.9 |
-| `channelMerge` | 90.7ns | 81.1 | 87.6 | 84.4 |
-| `sourceMerge` | 146.0ns | 122.5 | 122.9 | 120.2 |
+| `rawLazyListDrain` (control) | 14.0ns | 14.0 | 13.5 | 13.0 |
+| `sourceSingleDrain` | 49.4ns | 47.3 | 49.3 | 54.7 |
+| `channelMerge` | 88.8ns | 82.5 | 83.5 | 92.0 |
+| `sourceMerge` | 139.2ns | 119.0 | 118.9 | 115.3 |
 
 (bench-refresh 2026-09-08. `ScalingBenchmark`'s `n` is elements PER
 SIDE and both sides are drained, so the per-element figure is the lane
@@ -1091,6 +1096,26 @@ per-element one and made okay look 20x slower than it is. The fix is
 not to omit the row — both libraries CAN be forced to work one
 element at a time (`ZStream.range(chunkSize = 1)`, fs2's `.unchunk`)
 — it is to ask every library the same question:
+
+**These rows predate the default change and are being re-measured
+lane by lane; the ones below carry their 2026-09-06 values.** What is
+already known from `default-retable` (2026-09-08), against a noise
+floor of 5.9% established from 54 lanes that cannot be affected by the
+change:
+
+| lane | ring default | `growing` default | |
+|---|---|---|---|
+| `chunksMergeSize1` (k = 16 / 256 / 1024) | 664 / 626 / 640 | **386 / 380 / 393** | **−39%** |
+| `okayElementwise` (k = 256) | 539.9 | **423.2** | **−21.6%** |
+| `elementwiseFromRange` (k = 1024) | 464.6 | **368.0** | **−20.8%** |
+| `okayChunked` (k = 16) | 339.3 | 292.8 | −13.7% |
+
+Nothing regressed that can be shown to have regressed.
+`okayChunkedFlush` reads 10–12% higher, and that is NOT claimed as a
+regression: `sourceSingleDrain`, a lane with no channel in it at all
+and therefore untouchable by this change, moved 15.1% in the same
+pair of runs. For these contended lanes the honest band is ~15%, not
+the 5.9% the single-threaded ones support, and 12% sits inside it.
 
 | 2x2000 elements | okay | ZIO | fs2 (re-paired 2026-09-06) | fs2 as first measured | reads as |
 |---|---|---|---|---|---|
