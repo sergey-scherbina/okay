@@ -27,11 +27,19 @@ object State {
   /** replace the state */
   inline def set[S](s: S): S ! State % S = effect(Set(s))
 
-  /** apply f to the state, answering with the new one — get and set
-   * are what it is, and saying so once is worth it: a `modify` spelt
-   * out is two operations with a name in between that never means
-   * anything */
-  inline def modify[S](f: S => S): S ! State % S = get[S].flatMap(s => set(f(s)))
+  /**
+   * apply f to the state. Get and set are what it is, and saying so
+   * once is worth it: a `modify` spelt out is two operations with a
+   * name in between that never means anything.
+   *
+   * It answers UNIT, where the two operations answer the state. They
+   * answer it because they are asks — you say `get` in order to have
+   * the state — and this is a statement: you say it in order to have
+   * changed it. Where the new state is also wanted, `set(f(s))` says
+   * exactly that and answers it.
+   */
+  inline def modify[S](f: S => S): Unit ! State % S =
+    get[S].flatMap(s => set(f(s))).map(_ => ())
 
   /** run from an initial state to (final state, value) */
   inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))

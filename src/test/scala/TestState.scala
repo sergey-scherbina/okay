@@ -12,8 +12,8 @@ class TestState extends munit.FunSuite {
         n <- State.get[Int]
       yield n
     assertEquals(State.run[Int, Int](4)(p), (50, 50))
-    // it answers the NEW state, like set does
-    assertEquals(State.run[Int, Int](4)(State.modify[Int](_ + 1)), (5, 5))
+    // a statement: it answers unit, where get and set answer the state
+    assertEquals(State.run[Int, Unit](4)(State.modify[Int](_ + 1)), (5, ()))
   }
 
   test("index") {

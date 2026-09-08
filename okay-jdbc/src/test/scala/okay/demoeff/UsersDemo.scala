@@ -201,7 +201,12 @@ object UsersDemo:
         case Users.Find(id) =>
           State.get[S].plus[F].map(S.get(id))
         case Users.Save(id, name) =>
-          State.modify(S.put(id, name)).plus[F].map(_ => ())
+          // `.map(_ => ())` is not noise: `Users` is COVARIANT (it has
+          // to be — `Free`'s row is `F[+_]`), so matching `Save` proves
+          // only `X >: Unit`, not `X = Unit`. Something has to widen a
+          // `Unit ! R` to an `X ! R`, and `map` at the expected type is
+          // the shortest thing that does
+          State.modify[S](S.put(id, name)).plus[F].map(_ => ())
 
   def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (Tracked[S] + F) =
     stored[A, S, Writer % String + F](
