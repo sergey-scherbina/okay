@@ -25,7 +25,7 @@ package okay.demoeff
 import okay.*
 import okay.given
 import java.sql.{Connection, DriverManager}
-import okay.RowLift.{at, plus}
+import okay.RowLift.plus
 import okay.Direct.{direct, given}
 import scala.language.implicitConversions
 
@@ -193,19 +193,19 @@ object UsersDemo:
    * `!.interpret` is `translate` with the widening done for it — the
    * target row is bigger than the source's, and F, whatever the
    * caller was already doing, rides through untouched. Inside,
-   * `.at[R]` moves each operation into the row they share, since a
-   * for-comprehension fixes its row from the first step.
+   * `.plus[F]` puts each operation in that row: a for-comprehension
+   * fixes its row from the first step, so `State.get` and `State.set`
+   * have to arrive already carrying F.
    */
-  def stored[A, S, F[+_]](prog: A ! (Users + F))(using St: Store[S]): A ! (State % S + F) =
-    type R = State % S + F
+  def stored[A, S : Store as St, F[+_]](prog: A ! (Users + F)): A ! (State % S + F) =
     !.interpret(prog):
       [X] => (e: Users[X]) => e match
         case Users.Find(id) =>
-          State.get[S].at[R].map(St.get(_, id))
+          State.get[S].plus[F].map(St.get(_, id))
         case Users.Save(id, name) =>
           for
-            store <- State.get[S].at[R]
-            _     <- State.set(St.put(store, id, name)).at[R]
+            store <- State.get[S].plus[F]
+            _     <- State.set(St.put(store, id, name)).plus[F]
           yield ()
 
   def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (Tracked[S] + F) =
