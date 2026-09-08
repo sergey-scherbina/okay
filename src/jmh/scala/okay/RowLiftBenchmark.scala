@@ -2,6 +2,7 @@ package okay
 
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
+import okay.Direct.*
 
 /**
  * What does attaching a row COST?
@@ -43,24 +44,31 @@ class RowLiftBenchmark {
   trait In[F[+_], G[+_]]:
     def inj[A](fa: F[A]): G[A]
 
+  // EVERY instance's inj is identity — the injection is a type-level
+  // fact, not a runtime one — so one cached object serves them all.
+  // A parameterised `given` is a METHOD and allocates a fresh witness
+  // at every use site: that is the +16 B/op the first run charged to
+  // both liftAt and at.
+  private object IdIn extends In[[A] =>> Any, [A] =>> Any]:
+    def inj[A](fa: Any): Any = fa
+
   trait InLow:
-    given self[F[+_]]: In[F, F] = new In[F, F]:
-      def inj[A](fa: F[A]): F[A] = fa
+    given self[F[+_]]: In[F, F] = IdIn.asInstanceOf[In[F, F]]
 
   object In extends InLow:
-    given left[F[+_], G[+_]]: In[F, F + G] = new In[F, F + G]:
-      def inj[A](fa: F[A]): (F + G)[A] = fa
+    given left[F[+_], G[+_]]: In[F, F + G] = IdIn.asInstanceOf[In[F, F + G]]
     given deeper[F[+_], G[+_], H[+_]](using i: In[F, G]): In[F, G + H] =
-      new In[F, G + H]:
-        def inj[A](fa: F[A]): (G + H)[A] = i.inj(fa)
+      IdIn.asInstanceOf[In[F, G + H]]
 
   /** on the OPERATION: constructs at R, nothing to rebuild */
   extension [F[+_], A](fa: F[A])
     inline def liftAt[G[+_]](using i: In[F, G]): A ! G = effect[G, A](i.inj(fa))
 
   /** on the PROGRAM: the ergonomic spelling, one extra node per op */
+  // NOT inline: it recurses over the tree, and an inline recursion
+  // does not terminate at compile time (found by trying)
   extension [A, F[+_]](p: A ! F)
-    inline def at[G[+_]](using i: In[F, G]): A ! G =
+    def at[G[+_]](using i: In[F, G]): A ! G =
       import okay.!.*
       (p.resume: @unchecked) match
         case Pure(a) => Free.Pure(a)
@@ -80,10 +88,10 @@ class RowLiftBenchmark {
   /** the operation-level lift */
   @Benchmark
   def viaLiftAt(): Int =
-    var m: Int ! R = State.Get[Int, Int]().liftAt[R]
+    var m: Int ! R = (State.Get[Int, Int](): State[Int, Int]).liftAt[R]
     var i = 1
     while i < N do
-      m = m.flatMap(_ => State.Get[Int, Int]().liftAt[R])
+      m = m.flatMap(_ => (State.Get[Int, Int](): State[Int, Int]).liftAt[R])
       i += 1
     State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
 
@@ -105,6 +113,18 @@ class RowLiftBenchmark {
     while i < N do
       m = m.flatMap(_ =>
         !.widen[Int, State % Int, Writer % String](State.get[Int]))
+      i += 1
+    State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
+
+  /** direct style: the macro reads the row off the block's expected
+   * type and emits Free.Inject AT it — no widen, no evidence, no
+   * intermediate node. The candidate for "zero cost AND ergonomic". */
+  @Benchmark
+  def viaDirect(): Int =
+    var m: Int ! R = direct { State.Get[Int, Int]().!? }
+    var i = 1
+    while i < N do
+      m = m.flatMap(_ => direct { State.Get[Int, Int]().!? })
       i += 1
     State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
 }
