@@ -32,14 +32,13 @@ object State {
    * once is worth it: a `modify` spelt out is two operations with a
    * name in between that never means anything.
    *
-   * It answers UNIT, where the two operations answer the state. They
-   * answer it because they are asks — you say `get` in order to have
-   * the state — and this is a statement: you say it in order to have
-   * changed it. Where the new state is also wanted, `set(f(s))` says
-   * exactly that and answers it.
+   * It answers the NEW state, as both operations do — the file's one
+   * convention, and worth keeping over the statement-shaped `Unit`
+   * other libraries return: a caller who wants unit writes
+   * `.map(_ => ())`, and one who wants the state would otherwise have
+   * to ask for it again.
    */
-  inline def modify[S](f: S => S): Unit ! State % S =
-    get[S].flatMap(s => set(f(s))).map(_ => ())
+  inline def modify[S](f: S => S): S ! State % S = get[S].flatMap(s => set(f(s)))
 
   /** run from an initial state to (final state, value) */
   inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))
