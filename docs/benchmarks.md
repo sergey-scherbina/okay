@@ -1219,10 +1219,17 @@ the 5.9% the single-threaded ones support, and 12% sits inside it.
 
 | 2x2000 elements | okay | ZIO | fs2 (re-paired 2026-09-06) | fs2 as first measured | reads as |
 |---|---|---|---|---|---|
-| chunk-native (each library's own default) | **22.3 ±0.3** | 126.2 ±1.0 | **109.0 ±0.6** | 44443 ±2359 | comparison |
-| chunked at a matched size (16) | 223.7 ±5.0 | **127.2 ±2.2** | 2373 ±25 | 38508 ±403 | comparison |
-| chunked + timed flush | **244.3 ±3.5** | 4907 ±98 | 14597 ±371 | 54270 ±1790 | comparison |
-| per-element (chunk of one, forced on ZIO/fs2) | 824.9 ±6.9 | 10032.5 ±111.0 | 35507 ±447 | 36030 ±1204 | diagnostic |
+| chunk-native (each library's own default) | **24.0** | 146 | 134 | 49 150 | comparison |
+| chunked at a matched size (16) | **293** | 146 | 2 912 | 43 540 | comparison |
+| chunked + timed flush | **382** | 5 591 | 15 803 | 57 120 | comparison |
+| per-element (chunk of one, forced on ZIO/fs2) | **446** | 11 668 | 40 586 | 42 640 | diagnostic |
+
+(Re-measured 2026-09-08 under the `growing` default, k = 16, minimum
+of three rounds. The previous values were from 2026-09-06 and were the
+last stale table on this page — found by the operator asking whether
+the numbers had actually been updated, which they had not. The
+`chunked at a matched size` row is now a TIE with ZIO rather than 1.8x
+behind, and the timed-flush row is 15x ahead rather than 20x.)
 
 **The fs2 column was the same methodology bug a fifth time, and this
 section had already named it four (fs2-chunked-merge-lanes,
@@ -1298,12 +1305,14 @@ artefact of which library got its home field.
 **At a matched chunk of 16, ZIO leads** — 127.2 against 223.7 — a
 real result, unpacked two paragraphs down.
 
-**Timed flush is okay's by 20x** (244.3 against 4907), which says
-more about `groupedWithin` than about either representation.
+**Timed flush is okay's by 15x** (382 against 5 591), which says more
+about `groupedWithin` than about either representation. (It read 20x
+— 244.3 against 4907 — before the 2026-09-08 re-measure; the ratio
+moved because okay's flush lane rose, not because ZIO's fell.)
 
 **The forced per-element row is a DIAGNOSTIC, not a win.** Nobody
 writes `ZStream(chunkSize = 1)`: it wraps every element in a one-slot
-array and pays the chunk machinery on top, so 824.9-against-10032
+array and pays the chunk machinery on top, so 446-against-11 668
 measures what that mode costs a library with no per-element
 representation — not what okay beats `ZStream` at. It earns its place
 because a genuinely one-at-a-time source exists (LLM tokens, SSE) and
@@ -1389,12 +1398,18 @@ producer, not a universal replacement for `Source.of`.
 **Where okay wins outright: the timed flush.** A bound on how long a
 partial chunk may wait is what makes chunking safe on a live source,
 and it is the shape both competitors are worst at — ZIO's
-`groupedWithin` costs 37x its own plain `grouped` (4907 against 127),
-fs2's `groupWithin` 1.4x its own `chunkN`. okay's `flushAfter` costs
-9% over its own chunked merge (244.3 against 223.7), because the
-flusher is one sleeping fiber beside the feed rather than machinery
-in the per-element path. Against ZIO that is **20x**, against fs2
-**222x**.
+`groupedWithin` costs 38x its own plain `grouped` (5 591 against
+146), fs2's `groupWithin` 5.4x its own `chunkN`. okay's `flushAfter`
+costs **30%** over its own chunked merge (382 against 293), because
+the flusher is one sleeping fiber beside the feed rather than
+machinery in the per-element path. Against ZIO that is **15x**,
+against fs2 **41x**.
+
+(Re-measured 2026-09-08. The premium okay's flush pays over its own
+chunked merge rose from 9% to 30% — a real move, and the honest note
+is that this page has not investigated it; the ratio to both
+competitors stayed comfortably in okay's favour, which is why nobody
+had reason to look.)
 
 **The stack-safety bug this found (chunk-stack-safety).** Writing the
 edge cases turned up an overflow that predates all of it: `through`
@@ -1434,9 +1449,9 @@ in the library all along and simply was not used:
 
 | lane | us/op |
 |---|---|
-| `Chunks.foldLeft(Chunks.fromIterator(list.iterator, N))` | **11.0 ±0.5** |
-| `ZStream.fromIterable(list).runSum` | 49.6 ±2.8 |
-| `Source.of(list).toLazyList.foldLeft` (kept, ours only) | 154.1 ±17.5 |
+| `Chunks.foldLeft(Chunks.fromIterator(list.iterator, N))` | **11.6** |
+| `ZStream.fromIterable(list).runSum` | 58.6 |
+| `Source.of(list).toLazyList.foldLeft` (kept, ours only) | 162.9 |
 
 **4.5x ahead, where the mismatched row said 3.1x behind.** The
 elementwise lane stays in the table because it measures a real thing —
@@ -1518,7 +1533,7 @@ the lanes it sat beside walked a program tree one element at a time.
 
 | lane | us/op |
 |---|---|
-| `Chunks.foldLeft(Chunks.fromIterator(...))` | **12.8 ±0.1** |
+| `Chunks.foldLeft(Chunks.fromIterator(...))` | **11.3** |
 | `ZStream.fromIterable(list).runForeach` | 96.9 ±3.1 |
 | `Source.of(list).runForeach` (diagnostic, ours only) | 169.8 ±20.8 |
 | `Source.of(list).toLazyList.foreach` (diagnostic) | 165.5 ±4.5 |
@@ -2200,12 +2215,18 @@ was being measured against one per batch.
 Measured at BOTH granularities, both libraries at the same weak
 guarantee (`ChannelGranularityBenchmark`, N=4000, cap=1024):
 
-| lane | before `popMany` | after |
-|---|---|---|
-| okayElementwise | 190.1 | 212.3 |
-| okayChunked | 182.9 | **111.6** |
-| zioElementwise | 304.0 | 336.8 |
-| zioChunked | 113.7 | 149.5 |
+| lane | before `popMany` | after | 2026-09-08 |
+|---|---|---|---|
+| okayElementwise | 190.1 | 212.3 | **151.5** |
+| okayChunked | 182.9 | **111.6** | **54.8** |
+| zioElementwise | 304.0 | 336.8 | 340.9 |
+| zioChunked | 113.7 | 149.5 | 130.7 |
+
+(The third column is this page's current run, minimum of three rounds
+under the `growing` default. Both okay lanes improved — chunked by
+2.0x since the middle column — and both ZIO lanes are where they
+were, which is what makes the okay movement readable as ours rather
+than the box's.)
 
 (The two columns are separate runs on a box whose absolute level
 drifts by ~30% between them — `zioChunked` moved without its code
