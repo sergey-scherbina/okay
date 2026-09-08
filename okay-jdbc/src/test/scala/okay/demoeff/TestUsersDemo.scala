@@ -27,9 +27,9 @@ class TestUsersDemo extends munit.FunSuite {
 
   test("a store answers its successor: put then get, on both carriers") {
     def law[S](empty: S)(using St: Store[S]): Unit =
-      assertEquals(St.get(empty, 1L), None)
-      assertEquals(St.get(St.put(empty, 1L, "ada"), 1L), Some("ada"))
-      assertEquals(St.get(St.put(St.put(empty, 1L, "ada"), 1L, "grace"), 1L), Some("grace"))
+      assertEquals(St.get(1L)(empty), None)
+      assertEquals(St.get(1L)(St.put(1L, "ada")(empty)), Some("ada"))
+      assertEquals(St.get(1L)(St.put(1L, "grace")(St.put(1L, "ada")(empty))), Some("grace"))
     law(Map.empty[Long, String])
     law(Vector.empty[(Long, String)])
   }

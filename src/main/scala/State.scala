@@ -27,6 +27,12 @@ object State {
   /** replace the state */
   inline def set[S](s: S): S ! State % S = effect(Set(s))
 
+  /** apply f to the state, answering with the new one — get and set
+   * are what it is, and saying so once is worth it: a `modify` spelt
+   * out is two operations with a name in between that never means
+   * anything */
+  inline def modify[S](f: S => S): S ! State % S = get[S].flatMap(s => set(f(s)))
+
   /** run from an initial state to (final state, value) */
   inline def run[S, A](s: S)(a: A ! State % S): (S, A) = !.run(handle(s)(a))
 

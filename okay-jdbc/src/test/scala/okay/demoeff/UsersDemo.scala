@@ -128,21 +128,19 @@ object UsersDemo:
    * runs the pure interpretation over two to make the point.
    */
   trait Store[S]:
-    def get(s: S, id: Long): Option[String]
-    def put(s: S, id: Long, name: String): S
+    def get(id: Long): S => Option[String]
+    def put(id: Long, name: String): S => S
 
   object Store:
     given Store[Map[Long, String]] with
-      def get(s: Map[Long, String], id: Long) = s.get(id)
-      def put(s: Map[Long, String], id: Long, name: String) = s + (id -> name)
+      def get(id: Long) = _.get(id)
+      def put(id: Long, name: String) = _ + (id -> name)
 
     /** an association list: a different carrier, the same two laws —
      * what `put` answers, `get` finds */
     given Store[Vector[(Long, String)]] with
-      def get(s: Vector[(Long, String)], id: Long) =
-        s.collectFirst { case (k, v) if k == id => v }
-      def put(s: Vector[(Long, String)], id: Long, name: String) =
-        s.filterNot(_._1 == id) :+ (id -> name)
+      def get(id: Long) = _.collectFirst { case (k, v) if k == id => v }
+      def put(id: Long, name: String) = s => s.filterNot(_._1 == id) :+ (id -> name)
 
   /**
    * The test world: the same program, no database. Its state is an
@@ -159,8 +157,8 @@ object UsersDemo:
     private var s = init
     def state: S = s
     def handle[A](e: Users[A]): A = e match
-      case Users.Find(id)       => St.get(s, id)
-      case Users.Save(id, name) => s = St.put(s, id, name); ()
+      case Users.Find(id)       => St.get(id)(s)
+      case Users.Save(id, name) => s = St.put(id, name)(s); ()
 
   /**
    * The test world WITHOUT mutable state: the same operations
@@ -197,16 +195,13 @@ object UsersDemo:
    * fixes its row from the first step, so `State.get` and `State.set`
    * have to arrive already carrying F.
    */
-  def stored[A, S : Store as St, F[+_]](prog: A ! (Users + F)): A ! (State % S + F) =
+  def stored[A, S : Store as S, F[+_]](prog: A ! (Users + F)): A ! (State % S + F) =
     !.interpret(prog):
       [X] => (e: Users[X]) => e match
         case Users.Find(id) =>
-          State.get[S].plus[F].map(St.get(_, id))
+          State.get[S].plus[F].map(S.get(id))
         case Users.Save(id, name) =>
-          for
-            store <- State.get[S].plus[F]
-            _     <- State.set(St.put(store, id, name)).plus[F]
-          yield ()
+          State.modify(S.put(id, name)).plus[F].map(_ => ())
 
   def tracked[A, S : Store, F[+_]](prog: A ! (Users + F)): A ! (Tracked[S] + F) =
     stored[A, S, Writer % String + F](
