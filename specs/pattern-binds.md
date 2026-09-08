@@ -179,10 +179,52 @@ Two of them are gone.
   site, at one line each. The demo keeps its two for that reason and
   says so.
 
+- **What `TypeableK` is FOR, since the question keeps coming.** A row
+  is an untagged union (`[A] =>> F[A] | G[A]`) and unions ERASE, so
+  when a handler for F meets an operation in a row `F + G` it has to
+  decide at run time whether that operation is its own or must be
+  forwarded. There is no tag to read: the decision is a class test,
+  and `TypeableK` is that test. The alternative — a tagged coproduct,
+  `Inl`/`Inr` — needs no test but allocates a wrapper per operation,
+  which is exactly the allocation `rowlift` spent its effort deleting.
+  So the cost of the cheap representation is one `isInstance` per
+  dispatch, and one instance per signature.
+
+- **An effect with NOTHING declared already works**, and this is worth
+  knowing before writing any of it down: the generic instance in
+  `TypeableK`'s companion derives from a synthesized
+  `Typeable[F[Nothing]]`, which is the same class test. Measured: the
+  row splits correctly with no companion, no given, no derives. The
+  only thing it costs is a warning, "the type test for Db[Nothing]
+  cannot be checked at runtime", at every use site — unactionable
+  where it appears and, in a build that keeps zero warnings,
+  intolerable. That warning IS the whole reason effects declare an
+  instance, and `derives TypeableK` is how to stop paying it.
+
+- **Not done: making it fully automatic** by giving `TypeableK` a
+  ClassTag-based instance and dropping `derives` too. It is unsound
+  for a ROW, and the measurement is the argument: `ClassTag[(Choose +
+  Writer % String)[Any]]` is `interface java.io.Serializable` and
+  `ClassTag[(Db + Writer % String)[Any]]` is `interface
+  scala.reflect.Enum` — LUBs that every operation in the program
+  matches. An automatic instance would shadow the correct generic one
+  and send every operation left in silence. So `derived` is a macro
+  for exactly one reason: it REFUSES a union, at compile time, with a
+  message saying a row needs no instance of its own. A blacklist of
+  such classes was tried first and is whack-a-mole — the two LUBs
+  above are already different.
+
 - **Not done: generating the constructors.** It needs
   `MacroAnnotation`, which is experimental, and would make every user
   of the library experimental with it. `perform` gets the same
   boilerplate to zero without that price.
+
+- **`h.tracing(log)` makes any handler a recording one.** The
+  operations are already data, so "what did this program ask for, and
+  in what order" is a decorator, not a second handler that can drift
+  from the first. The demo's test handler stopped writing its own log
+  strings, and its MISS line now traces the SQLite handler — recording
+  is not a test-only trick.
 
 - **Known and named rather than prevented:** `perform` applies to any
   `F[A]`, so `List(1, 2).perform` compiles and means nothing.

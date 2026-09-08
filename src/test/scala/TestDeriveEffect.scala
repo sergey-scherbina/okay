@@ -1,6 +1,7 @@
 package okay
 
 import okay.Rowlift.{at, plus}
+import scala.annotation.nowarn
 
 /**
  * Declaring an effect: what still has to be written by hand, and what
@@ -46,5 +47,32 @@ class TestDeriveEffect extends munit.FunSuite {
     assertEquals(derived.unapply[Option[Int]](Db.Get("a")).isDefined,
       written.unapply[Option[Int]](Db.Get("a")).isDefined)
     assertEquals(derived.unapply[Option[Int]]("not an operation").isDefined, false)
+  }
+
+  @nowarn("msg=cannot be checked at runtime")
+  def rowInstance: TypeableK[Db + Writer % String] = summon
+
+  test("a row needs no derived instance, and the generic one is right") {
+    // `TypeableK.derived[Db + Writer % String]` does not compile, and
+    // the message says why: a ClassTag of a union is its LUB — an
+    // interface every operation matches (measured: Serializable for
+    // two case classes, scala.reflect.Enum for two enums), so the
+    // split would send all of them left and say nothing. The check
+    // is in the macro; here is the reason it costs nothing to have.
+    val t = rowInstance
+    assertEquals(t.unapply[Option[Int]](Db.Get("a")).isDefined, true)
+    assertEquals(t.unapply[Option[Int]](Writer("x")).isDefined, true)
+    assertEquals(t.unapply[Option[Int]]("neither").isDefined, false)
+  }
+
+  test("any handler can record: tracing is a decorator, not a second handler") {
+    val log = scala.collection.mutable.ListBuffer[Any]()
+    val p: Option[Int] ! Db =
+      for
+        _ <- Db.Put("b", 2).perform
+        r <- Db.Get("b").perform
+      yield r
+    assertEquals(p.runWith(using handler.tracing(log += _)), Some(2))
+    assertEquals(log.map(_.toString).toSeq, Seq("Put(b,2)", "Get(b)"))
   }
 }

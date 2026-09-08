@@ -1,5 +1,7 @@
 package okay
 
+import scala.quoted.*
+
 import scala.annotation.implicitNotFound
 
 import scala.annotation.tailrec
@@ -92,6 +94,22 @@ infix type !>[F[_], S] = Interpr[F, Cont, S]
 @implicitNotFound("no Handler[${F}].\nA Handler answers each operation with a plain value (trait Handler: def handle[A](a: F[A]): A).\nFor a ROW, build the union from the parts: given Handler[F + G] = Handler.union[F, G]\n(each part needs its own Handler in scope first).")
 trait Handler[F[_]]:
   def handle[A](a: F[A]): A
+
+extension [F[_]](h: Handler[F])
+  /**
+   * Every handler can be a recording one, without being written
+   * twice.
+   *
+   *     rename(7, "grace").runWith(using live(c).tracing(log += _))
+   *
+   * "What did this program ask for, and in what order" is the
+   * question a test wants answered, and the operations are ALREADY
+   * data — so the answer is a decorator, not a second handler. It
+   * sees exactly what the real one sees, because it IS the real one
+   * with a line in front.
+   */
+  def tracing(log: Any => Unit): Handler[F] = new:
+    def handle[A](a: F[A]): A = { log(a); h.handle(a) }
 
 /** A comonadic (per-operation) Handler at every answer type. */
 inline def handler[F[_] : Handler as H, S]: F !> S =
@@ -254,7 +272,40 @@ object TypeableK:
    * for `State % S` and friends, which say so themselves).
    */
   inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): TypeableK[F] =
-    typeableK(ct.runtimeClass)
+    ${ derivedImpl[F]('ct) }
+
+  /**
+   * The check is the reason this is a macro and not one line.
+   *
+   * A `ClassTag` of a UNION is its LUB, and a LUB is useless as a
+   * test: measured, `ClassTag[(Choose + Writer % String)[Any]]` is
+   * `interface java.io.Serializable` and `ClassTag[(Db + Writer %
+   * String)[Any]]` is `interface scala.reflect.Enum` — classes every
+   * operation in the program matches. A row derived this way would
+   * send every operation left and say nothing, which is the failure
+   * mode this library refuses on principle.
+   *
+   * A blacklist of such classes is whack-a-mole (the two above are
+   * already different). The type says it exactly: refuse a union,
+   * accept a signature. And a row does not need this anyway — the
+   * generic instance below handles a composite row correctly, by
+   * testing the parts.
+   */
+  def derivedImpl[F[_] : Type](ct: Expr[scala.reflect.ClassTag[F[Any]]])
+                              (using Quotes): Expr[TypeableK[F]] =
+    import quotes.reflect.*
+    val body = TypeRepr.of[F].dealias match
+      case tl: TypeLambda => tl.resType.dealias
+      case other => other.appliedTo(TypeRepr.of[Any]).dealias
+    body match
+      case OrType(_, _) =>
+        report.errorAndAbort(
+          "TypeableK.derived is for ONE signature, and this is a row.\n" +
+          "A ClassTag of a union is its LUB, a class every operation matches, so the\n" +
+          "split would send all of them left and say nothing.\n" +
+          "A row needs no instance of its own: let each signature derive one, and the\n" +
+          "row split will find them.")
+      case _ => '{ typeableK[F]($ct.runtimeClass) }
 
   /** by the compiler-synthesized class test — no cast: sound by
    * covariance, F[Nothing] <: F[X] for every X. Complete only when

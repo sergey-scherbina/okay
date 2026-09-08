@@ -103,12 +103,17 @@ object UsersDemo:
         try { ps.setLong(1, id); ps.setString(2, name); ps.executeUpdate(); () }
         finally ps.close()
 
-  /** the test world: same program, no database, and it records */
-  def recording(state: scala.collection.mutable.Map[Long, String],
-                log: scala.collection.mutable.Buffer[String]): Handler[Users] = new:
+  /**
+   * The test world: the same program, no database. It does NOT
+   * record — recording is `.tracing`, which any handler can wear,
+   * including the SQLite one below. The operations are already data,
+   * so "what did this ask for, and in what order" needs a decorator,
+   * not a second handler that might drift from the first.
+   */
+  def inMemory(state: scala.collection.mutable.Map[Long, String]): Handler[Users] = new:
     def handle[A](e: Users[A]): A = e match
-      case Users.Find(id)       => log += s"find($id)"; state.get(id)
-      case Users.Save(id, name) => log += s"save($id,$name)"; state(id) = name; ()
+      case Users.Find(id)       => state.get(id)
+      case Users.Save(id, name) => state(id) = name; ()
 
   /**
    * The test world WITHOUT mutable state: the same operations
@@ -193,16 +198,17 @@ object UsersDemo:
               " / row 7 is now " + nameOf(c, 7L))
 
       val state = scala.collection.mutable.Map(7L -> "ada")
-      val log = scala.collection.mutable.ListBuffer[String]()
-      println("TEST  " + renamed(7L, "grace").runWith(using recording(state, log)) +
+      val log = scala.collection.mutable.ListBuffer[Any]()
+      println("TEST  " + renamed(7L, "grace").runWith(using inMemory(state).tracing(log += _)) +
               " / log=" + log.mkString(", ") + " / state=" + state)
 
-      // the id nobody has: the database is untouched, and the recording
-      // handler shows WHY — a find and no save
-      val missLog = scala.collection.mutable.ListBuffer[String]()
-      val missLive = renamed(99L, "hopper").runWith(using live(c))
+      // the id nobody has: the database is untouched, and the trace
+      // shows WHY — a find and no save. Note WHICH handler is traced:
+      // the SQLite one. Recording is not a test-only trick.
+      val missLog = scala.collection.mutable.ListBuffer[Any]()
+      val missLive = renamed(99L, "hopper").runWith(using live(c).tracing(missLog += _))
       val missTest = renamed(99L, "hopper").runWith(
-        using recording(scala.collection.mutable.Map(), missLog))
+        using inMemory(scala.collection.mutable.Map()))
       println(s"MISS  $missLive / row 99 is now ${nameOf(c, 99L)}" +
               s" / both worlds agree: ${missTest == missLive}" +
               s" / log=${missLog.mkString(", ")}")
