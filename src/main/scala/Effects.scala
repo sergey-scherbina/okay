@@ -323,6 +323,41 @@ object TypeableK:
     def unapply[A](x: Any): Option[x.type & Nothing] = None
 
 /**
+ * WHAT A SIGNATURE SAYS ABOUT ITSELF: `enum Users[+A] derives Effect`.
+ *
+ * One word, and it reads as what it is — a declaration that this type
+ * is an effect signature — where `derives TypeableK` reads as a
+ * mechanism. What it currently carries is exactly the mechanism: a
+ * row is an untagged union, unions erase, and a handler meeting an
+ * operation in `F + G` decides by class test. `Effect` IS that test
+ * (it extends `TypeableK`), so everything that asks for one finds
+ * this instance in the signature's own companion.
+ *
+ * It is a trait rather than a type alias so that it has room. What
+ * could join it later has to be DERIVABLE from the declaration alone,
+ * which rules out most things and is the point.
+ *
+ * One candidate is deliberately NOT in: `Direct.Effect`, the marker
+ * that lets a signature's operations auto-color inside a `direct`
+ * block. Bundling it would be convenient and would quietly move a
+ * decision the design put elsewhere — auto-coloring is gated per
+ * PROJECT, not per library (specs/direct-auto-coloring.md), and an
+ * effect's author would be deciding it for every consumer.
+ */
+trait Effect[F[_]] extends TypeableK[F]
+
+object Effect:
+  /** delegates to `TypeableK.derived`, which is where the check lives
+   * that refuses a row */
+  inline def derived[F[_]](using ct: scala.reflect.ClassTag[F[Any]]): Effect[F] =
+    of(TypeableK.derived[F])
+
+  /** not inlined, deliberately: an anonymous class in an inline body
+   * is duplicated at every derivation site */
+  def of[F[_]](t: TypeableK[F]): Effect[F] = new Effect[F]:
+    def unapply[A](x: Any): Option[x.type & F[A]] = t.unapply(x)
+
+/**
  * Split the union by testing only the F side (the erasure of F, by
  * TypeableK), taking G by exclusion: a type test on an abstract G
  * would erase to an always-true test.

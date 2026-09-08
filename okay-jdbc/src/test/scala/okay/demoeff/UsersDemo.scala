@@ -35,16 +35,17 @@ import okay.Rowlift.{at, plus}
  * The whole declaration of an effect: the operations, their answer
  * types, and two names.
  *
- * `derives TypeableK` writes the instance a row split needs — it is
- * the hand-written `typeableK(classOf[Users[?]])` with the class no
- * longer spelled out.
+ * `derives Effect` writes the instance a row split needs — it is the
+ * hand-written `typeableK(classOf[Users[?]])` with the class no
+ * longer spelled out, under a name that says what is being declared
+ * rather than which mechanism does it.
  *
  * The two constructors are OPTIONAL: `Users.Find(id).perform` says
  * the same thing with nothing declared. They are here because they
  * are this effect's API — one line each, and every call site reads
  * better for them.
  */
-enum Users[+A] derives TypeableK:
+enum Users[+A] derives Effect:
   case Find(id: Long) extends Users[Option[String]]
   case Save(id: Long, name: String) extends Users[Unit]
 

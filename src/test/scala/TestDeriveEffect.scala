@@ -11,7 +11,7 @@ class TestDeriveEffect extends munit.FunSuite {
 
   /** no companion, no given, no constructors — the operations and
    * their answer types, and that is the whole declaration */
-  enum Db[+A] derives TypeableK:
+  enum Db[+A] derives Effect:
     case Get(k: String) extends Db[Option[Int]]
     case Put(k: String, v: Int) extends Db[Unit]
 
@@ -74,5 +74,15 @@ class TestDeriveEffect extends munit.FunSuite {
       yield r
     assertEquals(p.runWith(using handler.tracing(log += _)), Some(2))
     assertEquals(log.map(_.toString).toSeq, Seq("Put(b,2)", "Get(b)"))
+  }
+
+  test("derives Effect is the TypeableK a row split asks for") {
+    // the instance in Db's companion is an Effect; everything that
+    // wants a TypeableK finds it, because Effect IS one
+    val asEffect = summon[Effect[Db]]
+    val asTypeable: TypeableK[Db] = summon[TypeableK[Db]]
+    assert(asTypeable eq asEffect)
+    assertEquals(asTypeable.unapply[Option[Int]](Db.Get("a")).isDefined, true)
+    assertEquals(asTypeable.unapply[Option[Int]](Writer("x")).isDefined, false)
   }
 }

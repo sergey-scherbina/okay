@@ -153,7 +153,24 @@ The boilerplate an effect used to carry was three things: the
 operations, a `TypeableK` instance, and a constructor per operation.
 Two of them are gone.
 
-- **`derives TypeableK`** writes the instance. No macro: a
+- **`derives Effect`** is what a signature says about itself, and it
+  is the one to write. `Effect[F] extends TypeableK[F]`, so everything
+  that asks for the row-split test finds this instance in the
+  signature's own companion, and the declaration reads as a
+  declaration rather than as a mechanism. It is a trait and not an
+  alias so that it has room: whatever joins it later has to be
+  DERIVABLE from the declaration alone, which rules out most things
+  and is the point.
+
+  One candidate is deliberately out: `Direct.Effect`, the marker that
+  lets a signature's operations auto-color inside a `direct` block.
+  Bundling it would be convenient and would quietly move a decision
+  the design put elsewhere — auto-coloring is gated per PROJECT, not
+  per library (specs/direct-auto-coloring.md), and an effect's author
+  would be deciding it for every consumer.
+
+- **`derives TypeableK`** (which `Effect.derived` delegates to) writes
+  the instance. No macro: a
   `ClassTag[F[Any]]` IS the erasure of F, which is exactly what
   `typeableK` wants, and the compiler synthesizes it for any concrete
   signature. Same instance as the hand-written
