@@ -1,5 +1,37 @@
 # Okay! Extensible effects for Scala 3.
 
+There's one thing nearly every effect library does the same way, and I think it's the wrong way.
+
+They hand you one big type: IO, Task, ZIO. Everything is already baked into it — concurrency, errors, environment, cancellation. Want an effect of your own? Either stack monad transformers, or wait for the maintainers to add it to the core.
+
+Okay is built the other way round. An effect is just a set of operations. A handler is an interpretation of them. A program declares in its type what it needs, and knows nothing about how that need will be met.
+
+Here is a real line from the core:
+
+    type Source[W] = Unit ! (Writer % W + Async)
+
+Read the type out loud: a program that tells W and awaits. That's an asynchronous stream — and it is not a built-in type. It's two ordinary effects, Writer and Async, added together with +, behind a type alias. Every streaming seam in the library speaks it: HTTP response bodies, WebSocket frames, LLM tokens, a chunked source spread across a cluster.
+
+Because the type says only that, and nothing about who provides it, a scripted implementation in a test and a live one over the network are the same type. Nothing mocks anything.
+
+What actually makes this different:
+
+1. The encoding is your choice, not the library author's. The same program lives as a tree (steppable, inspectable, compilable) or as a function (faster). Programs move between the two. Most libraries sell you one and imply the other doesn't exist.
+
+2. Direct style with no macros. Monadic code reads as ordinary code. That isn't a trick — it's Filinski's 1994 result: given delimited control, any monad runs in direct style. And unlike the Loom-based approach, multi-shot survives here, so nondeterminism and backtracking keep working — on all three platforms.
+
+3. One source for JVM, Scala.js and Scala Native. A platform contributes not API but evidence: "can I park a thread?" So a blocking join in JS code is a compile error, not a runtime failure in front of your user.
+
+4. Zero dependencies in the core. Nothing comes along for the ride.
+
+5. Fast — and measured, not asserted. 10k flatMaps: Okay 5.1 µs against kyo 58, cats IO 153, ZIO 181. A stream pipeline: 16.9 against ZIO 692 and fs2 1410 (a bare Iterator is 14). Fork/join of 100 fibers: 29 against cats IO 140. Every number has its protocol and its lane rules written down beside it.
+
+What that buys you in practice: you don't choose between readable and fast, you don't choose between type-safe and ceremony-free, and you don't need anyone's permission to add an effect of your own. And only you control what every effect (even not yours) actually does in any particular case.
+
+The library stands on work by Moggi, Wadler, Felleisen, Danvy & Filinski, Atkey, Swierstra and Kiselyov — every decision has a paper and a measurement behind it.
+
+Scala 3, just moved to 3.9 LTS.
+
 Inspired by Rúnar Bjarnason, Oleg Kiselyov and Robert Atkey.
 
 http://blog.higher-order.com/assets/trampolines.pdf
