@@ -10,8 +10,17 @@ that lane and not by any since.
 a 30% premium for bounding how long a partial chunk may wait. §6b has
 said 9% (244.3 against 223.7) since 2026-09-06.
 
-- [ ] flush-premium — find out whether the flusher got more expensive
-      or the chunked merge got cheaper. The ratio to both competitors
+- [ ] flush-premium — STILL OPEN, and now with a firm number instead
+      of a suspicion. Six rounds, tight bars (spread 1.07x and 1.10x
+      within a lane): `okayChunked` 314.5 min / 325.4 median,
+      `okayChunkedFlush` 386.8 / 404.1 — a premium of **1.23x**, not
+      the 9% §6b has claimed since 2026-09-06 and not the 30% the
+      re-measure suggested. 9% is outside the bars: 314.5 x 1.09 is
+      342.8 and the flush lane starts at 386.8.
+      I was asked to close this and the measurement refused: my own
+      prediction was that the bars would overlap and it would be
+      noise, and it is not. It stays open as a defect with a number.
+      What remains is the original question — The ratio to both competitors
       stayed comfortably in okay's favour (15x ZIO, 41x fs2), which is
       presumably why nobody looked, and is also why this is a
       curiosity rather than a defect.
@@ -211,7 +220,17 @@ survives is the channel default.
       2618 / 3200 — it already picks best-of-both, at a 12% premium
       over whichever policy wins each end. Nothing to fix. §4b now
       carries both rows instead of the one that mixed them.
-- [ ] channel-default-adaptive — UNBLOCKED 2026-09-08: `Growing`'s
+- [x] channel-default-adaptive — ANSWERED 2026-09-08, and the answer
+      was NOT adaptive. The default became `growing` (17404a4e):
+      1.10x at one producer, 4.1x / 7.9x / 22.8x better at two, four
+      and sixteen. `adaptive` as the default is refuted by the same
+      run — it splits its capacity across parts, so a lone producer
+      gets a fraction of the buffer and reads 1 119 against the ring's
+      169, which is exactly the hazard `Channel.apply`'s own comment
+      had predicted. Exact FIFO across producers, which the ring gave
+      and this does not, is now `Queues.strong[A].fifo(capacity)`.
+
+      (as filed) UNBLOCKED 2026-09-08: `Growing`'s
       one-producer premium is now 11%, not 31% (growing-wrapper-cost),
       so the trade the default has to make is 11% at one producer
       against 5.5x and 9x at four and sixteen. That is a decision, not
@@ -348,7 +367,15 @@ grows. One real producer, two apparent ones.
       spell capacity differently, so two lanes that look comparable
       are not.
 
-- [ ] growing-capacity-semantics — `Queues.strong[A].growing(capacity,
+- [x] growing-capacity-semantics — CLOSED 2026-09-09 by RENAMING, once
+      `growing-part-sizing` had made the behaviours agree. The
+      parameter is now `each`, the same word `adaptive.parts(n).each(c)`
+      uses for the same thing, and the scaladoc says it is per part
+      and that parts open lazily. There was no behaviour left to fix:
+      since 51adaf00 both builders give `each` per part; only the
+      names disagreed, and that is what cost two false starts.
+
+      (as filed) `Queues.strong[A].growing(capacity,
       parts)` gives `capacity` for part 0 and `capacity / parts` for
       every other part — about 2x `capacity` in total once grown —
       while `adaptive.parts(n).each(c)` gives `n * c`. A caller

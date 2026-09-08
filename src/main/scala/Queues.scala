@@ -84,9 +84,9 @@ object Queues {
      * to stay free; sixteen producers hold sixteen times that, which
      * is the price of not making them queue behind one tail.
      */
-    def growing(capacity: Int, parts: Int): [T] => Int => Buffer[T] =
+    def growing(each: Int, parts: Int): [T] => Int => Buffer[T] =
       [T] => (_: Int) =>
-        val cap = if capacity < 2 then 2 else capacity
+        val cap = if each < 2 then 2 else each
         val n = if parts < 2 then 2 else parts
         Growing[T](Ring[T](cap), n, () => Ring[T](cap))
 
@@ -166,9 +166,15 @@ object Queues {
      * so nothing moves and nothing is copied.
      *
      * {{{
-     * Queues.strong[Int].growing(1024).build          // 8 parts at most
+     * Queues.strong[Int].growing(1024).build            // 1024 per part, 8 parts at most
      * Queues.strong[Int].growing(1024, parts = 32).build
      * }}}
+     *
+     * `each` is PER PART and parts open LAZILY, so this holds 1024
+     * elements while one producer pushes and 1024 more for each
+     * producer that arrives — never `each x parts` unless that many
+     * producers actually turn up. It is the same word and the same
+     * meaning as `adaptive.parts(n).each(c)`.
      *
      * This is `bounded` while one producer keeps up with the channel
      * and `adaptive` once one does not, decided by the buffer itself
@@ -178,8 +184,17 @@ object Queues {
      * most channels; use `bounded` when it is one and always will be,
      * and `adaptive` when it is many from the first message.
      */
-    def growing(capacity: Int, parts: Int = 8): Strong[A] =
-      copy(buffer = Some(Mechanism.growing(capacity, parts)))
+    /** `each` is PER PART, the same word `adaptive.parts(n).each(c)`
+     * uses for the same thing (growing-capacity-semantics,
+     * 2026-09-09). It was called `capacity`, and while it MEANT
+     * `capacity / parts` that name was merely imprecise; since
+     * growing-part-sizing made it per-part the two builders agree
+     * exactly and only the names disagreed. That mismatch cost two
+     * false starts in one session — a lane comparing `growing(1024,
+     * 16)` against `adaptive.parts(16).each(1024)` was reading an
+     * 8.3x difference in BUFFER as a difference in mechanism. */
+    def growing(each: Int, parts: Int = 8): Strong[A] =
+      copy(buffer = Some(Mechanism.growing(each, parts)))
 
     /**
      * ADAPTIVE: parts appear as producers do, up to the cap.

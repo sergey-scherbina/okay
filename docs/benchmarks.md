@@ -1400,16 +1400,17 @@ partial chunk may wait is what makes chunking safe on a live source,
 and it is the shape both competitors are worst at — ZIO's
 `groupedWithin` costs 38x its own plain `grouped` (5 591 against
 146), fs2's `groupWithin` 5.4x its own `chunkN`. okay's `flushAfter`
-costs **30%** over its own chunked merge (382 against 293), because
-the flusher is one sleeping fiber beside the feed rather than
+costs **23%** over its own chunked merge (386.8 against 314.5),
+because the flusher is one sleeping fiber beside the feed rather than
 machinery in the per-element path. Against ZIO that is **15x**,
 against fs2 **41x**.
 
-(Re-measured 2026-09-08. The premium okay's flush pays over its own
-chunked merge rose from 9% to 30% — a real move, and the honest note
-is that this page has not investigated it; the ratio to both
-competitors stayed comfortably in okay's favour, which is why nobody
-had reason to look.)
+(This page claimed 9% from 2026-09-06 until 2026-09-09, when six
+rounds with tight bars — 1.07x and 1.10x spread within a lane — put it
+at **1.23x**. Nine percent is outside those bars: 314.5 x 1.09 is
+342.8 and the flush lane starts at 386.8. The premium is real and
+larger than advertised; WHY it grew is not investigated and is filed
+as `flush-premium`. It was measured expecting to find noise.)
 
 **The stack-safety bug this found (chunk-stack-safety).** Writing the
 edge cases turned up an overflow that predates all of it: `through`
