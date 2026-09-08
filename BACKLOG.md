@@ -36,7 +36,64 @@ survives is the channel default.
       docs/queues.md — 123 against the partitioned 144), which is the
       case the default is presumably chosen for. A fix must show the
       one-producer case does not regress, or must adapt rather than
-      switch.
+      switch. BLOCKED ON `growing-onep` below: `Growing` is the
+      mechanism that would let the default adapt, and it is broken.
+
+## growing-onep — `Growing` grows with ONE producer, because it mistakes the consumer for a second one
+
+Found 2026-09-08 while asking why `Growing` costs 53% over the ring at
+one producer (192 against 125.6, where until a second producer appears
+it IS the ring and should cost what the ring costs).
+
+MEASURED, not reasoned. A probe running the benchmark's own shape —
+one producer, 8 000 elements, capacity 1 024, producer and consumer
+concurrent — over 30 repetitions:
+
+| outcome | runs |
+|---|---|
+| grew DURING the send, with one producer | **10** |
+| grew at close (the sentinel push) | 0 |
+| never grew (the correct outcome) | 20 |
+
+So a third of runs silently become an `AdaptiveFifo`, and the lane's
+192 is not "a ring plus a wrapper" — it is a half-grown buffer, which
+is why it sits near `adaptive`'s 158.5 rather than near the ring's
+125.6. A JMH `-prof stack` of the lane shows the giveaway directly:
+`AdaptiveFifo.popManyScanning` frames at `producers=1`.
+
+CAUSE. `Growing` identifies a producer as `Thread.currentThread()` at
+push time, in both `sample()` and `refused()`. But when the ring is
+full `SentinelChannel.attemptSend` parks the sender behind a
+continuation — `Waiter(() => attemptSend(a, granted0 = true, route)(k))`
+— and that continuation is run by `wakeSender()`, ON THE CONSUMER'S
+THREAD. The resumed push therefore arrives with the consumer's
+identity, `Growing` sees a thread that is not the one it sampled, and
+grows. One real producer, two apparent ones.
+
+- [ ] growing-onep — fix the identity, not the symptom. Two shapes,
+      and the choice is a DESIGN decision on a knob the operator
+      personally decided to keep (see the `growing` CHANGELOG entry),
+      so it is filed rather than taken unilaterally:
+      (a) the channel tells the buffer that a push is a RESUMED send
+          rather than a fresh one — `attemptSend` already carries
+          `granted0` and already captures `route` at entry, so the
+          information exists and only the Buffer API lacks a way to
+          pass it;
+      (b) `Growing` stops deriving identity from the calling thread
+          altogether and takes it from the route the channel captured
+          when the send ENTERED — which is already per-producer for
+          `AdaptiveFifo`, but is a constant 0 for a plain `Ring`, so
+          this needs the ring to carry a producer token it does not
+          have today.
+      DISQUALIFYING for both: if after the fix `growing` at one
+      producer does not approach the ring's ~126, the thread identity
+      was not the whole cost and the remaining gap is the wrapper's
+      own dispatch — measure before claiming the fix worked.
+      NOTE the second prize: `growing_chunk` at 4 and 16 producers
+      reads 601.6 and 623.6 against `adaptive`'s 162.1 and 116.6, so
+      even when growth is CORRECT the grown buffer is 3.7x and 5.3x
+      off the thing it grew into. That is a separate question and is
+      not answered here.
 - [x] cancel-default-drive — CLOSED 2026-09-08 as not-a-defect. The
       1116 is Loom's thread INTERRUPT; cats does its thousand cancels
       inside one `unsafeRunSync`. okay's matched lanes are the pool
