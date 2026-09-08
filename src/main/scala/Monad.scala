@@ -155,7 +155,7 @@ extension [F[_]](cond: F[Boolean])(using S: Selective[F])
     S.ifS(cond)(S.pure(()))(body)
 
 /** a Monad that is also an Alternative, under the traditional names */
-@implicitNotFound("no MonadPlus[${F}].\nNondeterminism needs Choose in the row: MonadPlus exists for [A] =>> A ! Choose and for rows Choose + F\n(Choice.scala); `import okay.given` brings it.")
+@implicitNotFound("no MonadPlus[${F}].\nNondeterminism needs Choose in the row: MonadPlus exists for [A] =>> A ! Choose and for rows Choose + F\n(Choice.scala); `import okay.given` brings it.\nA refutable pattern in a for-comprehension (`case Some(x) <- p`) and an `if` guard both ask for this: they DROP a step, and only a row that can fail may.")
 trait MonadPlus[F[_]]
   extends Alternative[F], Monad[F]:
   def mzero[A]: F[A] = empty
