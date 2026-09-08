@@ -54,25 +54,22 @@ object Users:
 object UsersDemo:
 
   /**
-   * Renaming somebody who is not there is not a rename — and the first
-   * cut of this program got it wrong in a way worth keeping on the
-   * record. It said `find` then `save` in a for-comprehension, which
-   * SEQUENCES and does not branch, so a missing id still reached the
-   * handler's upsert and CREATED the user; the answer `None` then
-   * meant two things at once, "no previous name" and "nothing
-   * written". The demo printed the bug itself: "row 99 is now hopper".
+   * Renaming somebody who is not there is not a rename, and the first
+   * cut of this got it wrong: `find` then `save` in a
+   * for-comprehension SEQUENCES and does not branch, so a missing id
+   * reached the handler's upsert and CREATED the user. The demo
+   * printed the bug itself — "row 99 is now hopper".
    *
-   * The fix is not a fold. It is a pattern, and the row saying that
-   * this program MAY STOP: `Abort` is failure carrying no information,
-   * which is all a missing row has to say. `case Some(old) <-`
-   * desugars to `withFilter`, `withFilter` needs somewhere for the
-   * dropped step to go, and `Abort` in the row is that somewhere
-   * (Fail.scala).
+   * The fix is not a fold. It is a pattern, plus a row that says this
+   * program MAY STOP. `case Some(old) <-` desugars to `withFilter`,
+   * `withFilter` needs somewhere for the dropped step to go, and
+   * `Abort` — failure carrying no information, which is all a missing
+   * row has to say — is that somewhere (Fail.scala).
    *
-   * So the Option leaves the signature — `String`, not
-   * `Option[String]` — and comes back at the END, as `runOption`'s
-   * answer. `save` cannot run for a missing id because it is not
-   * reachable, not because a branch remembered to skip it.
+   * So `save` cannot run for a missing id because it is NOT REACHABLE,
+   * not because a branch remembered to skip it. The Option is gone
+   * from the middle of the program and comes back at the end, as
+   * `runOption`'s answer.
    */
   def rename(id: Long, to: String): Option[String] ! Users = runOption {
     for
@@ -145,29 +142,18 @@ object UsersDemo:
 
   /**
    * A for-comprehension fixes its row from the first step, so
-   * `Writer.tell` (row `Writer % String`) does not fit beside
-   * `State.get` (row `State % Store`) — and the first draft of this
-   * file worked around that with three helpers wrapping `!.widen`,
-   * each naming the COMPLEMENT of the row it was widening into. That
-   * is the roughness `.at` exists to remove.
+   * `Writer.tell` does not fit beside `State.get` — and `.at[R]`
+   * moves each into the row they share, naming the target and never
+   * the complement (okay.Rowlift; one cast, measured at the same
+   * B/op as constructing the operation at R).
    *
-   * `p.at[R]` moves a program into any row R that CONTAINS its own.
-   * The target is named; the complement never is. Under the hood it
-   * is one cast licensed by a witness — `+` is a union and unions
-   * erase, so a program in `State % Store` already IS a program in R
-   * (okay.Rowlift). It costs nothing: measured at the same B/op as
-   * constructing the operation at R in the first place.
+   * `.at` and not `.plus` here, which is the whole rule: `plus` is
+   * the one to reach for, but it needs the target to have the form
+   * "my row plus something", and R here is `Tracked + F` with F
+   * abstract — a row known only by membership.
    *
-   * `.at` and not `.plus` here, and the difference is the whole rule:
-   * `.plus[R]` ADDS to the row a program already has and is the one
-   * to reach for (see `rename` above), but it needs the target to
-   * have the form "my row plus something". R here is `Tracked + F`
-   * with F abstract — a row known only by membership — which is
-   * exactly what `.at` is for.
-   *
-   * The outer `!.widen` stays: it moves the whole program, not one
-   * operation, and a walk over a program is also a normalisation
-   * (specs/writer-covariance.md).
+   * The outer `!.widen` stays: it moves a whole program rather than
+   * one operation, and a walk over a program is also a normalisation.
    */
   def tracked[A, F[+_]](prog: A ! (Users + F)): A ! (Tracked + F) =
     type R = Tracked + F

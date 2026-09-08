@@ -71,6 +71,69 @@ the generic combinators — `traverse`/`sequence`/`replicateA`,
 `guard` (the pruning conditional of every search), `*>`/`<*`,
 `whenS`/`unlessS` — written once, running over any instance.
 
+### Your own effect
+
+A signature is an enum whose cases carry their own answer types, and
+that is the whole declaration:
+
+```scala
+enum Users[+A] derives Effect:
+  case Find(id: Long) extends Users[Option[String]]
+  case Save(id: Long, name: String) extends Users[Unit]
+
+object Users:                       // optional: `Users.Find(id).perform`
+  inline def find(id: Long): Option[String] ! Users = effect(Find(id))
+  inline def save(id: Long, name: String): Unit ! Users = effect(Save(id, name))
+```
+
+`derives Effect` writes the runtime test a row split needs (a row is an
+untagged union, so a handler for F meeting an operation in `F + G`
+decides by class), and registers the signature for direct-style
+auto-coloring. `derives TypeableK` gives the first without the second.
+
+**Putting an operation in a wider row.** `p.plus[R]` adds R to whatever
+row `p` has; `p.at[R]` lands in a row known only by MEMBERSHIP, which
+is what a row-polymorphic helper has (`[R[+_] : Has[State % Int]]`).
+Both are one cast under a witness, measured at the same B/op as
+constructing the operation at R. Row ORDER is not a thing: `+` is a
+union, so `A ! (Users + Abort)` and `A ! (Abort + Users)` are the same
+type.
+
+**Stopping.** `Abort` (= `Throws % Unit`) is failure carrying no
+information. With it in the row, a refutable pattern and an `if` guard
+work in a for-comprehension — both desugar to `withFilter`, which needs
+somewhere for the dropped step to go — and `runOption` answers with
+what happened:
+
+```scala
+def rename(id: Long, to: String): Option[String] ! Users = runOption {
+  for
+    case Some(old) <- Users.find(id).plus[Abort]
+    _              <- Users.save(id, to).plus[Abort]
+  yield old
+}
+```
+
+`save` cannot run for a missing id because it is not REACHABLE. Outside
+a for-comprehension the same demand is `ensure[R](cond)`, and a failure
+is answered in the row by `p.orElse(q)` / `p.recover(h)`. Where the row
+carries `Choose` instead, the same pattern PRUNES the branch and the
+search goes on.
+
+**Handling.** `runWith(using h)` for a per-operation `Handler[F]`;
+`h.tracing(log)` makes any handler a recording one, since the
+operations are already data; `!.translate` interprets each operation
+into a PROGRAM in another row (a `Handler` answers with a value, so it
+cannot itself tell or get). One program, four handlers — SQLite, a Map,
+State + Writer, and a trace of any of them — is
+`okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`, runnable with
+`sbt "okayJdbc/Test/runMain okay.demoeff.UsersDemo"`.
+
+And any type constructor is a signature: `List(1, 2).perform` is
+nondeterminism, handled by `runSeq` — which is `runChoice`'s handler
+unchanged, because `Choose[+A](as: Seq[A])` is a box around exactly
+this.
+
 ## 3. Streams: codata by `uncons`
 
 A stream is defined by ONE observation:
