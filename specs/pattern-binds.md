@@ -140,6 +140,38 @@ doc comments, so they went in together.
   Written for `Throws % E` generally, not for `Abort` alone: `orElse`
   is just `recover` where the error had nothing to say.
 
+## row order does not exist (2026-09-08)
+
+Found while merging the demo's two functions into one, and it deletes
+code rather than adding any.
+
+`+` is a union and `|` is COMMUTATIVE, so `A ! (Users + Abort)` and
+`A ! (Abort + Users)` are the same type: one is assignable to the
+other with no coercion, not even a cast (`assert(a eq c)`). Every
+`.at[Abort + F]` written to "reorder" a row was noise, and there were
+four of them, including the one in this spec's own worked example.
+
+Two consequences worth keeping:
+
+- `plus` covers adding on the left as well as the right, so `at`'s one
+  remaining job is an ABSTRACT target — a row known only by
+  membership. `Rowlift`'s doc said otherwise and is corrected.
+- `runOption { ... }` needs no type arguments and no reordering: the
+  expected type solves A and F, and the block is checked against
+  `A ! (F + Abort)` whichever way round it was written. So the demo's
+  `rename` and `renamed` are one function:
+
+        def rename(id: Long, to: String): Option[String] ! Users = runOption {
+          for
+            case Some(old) <- Users.find(id).plus[Abort]
+            _              <- Users.save(id, to).plus[Abort]
+          yield old
+        }
+
+  The `.plus[Abort]` per step stays, and should: each step says which
+  row it runs in, and `withFilter` needs `Abort` in the row of the
+  step it filters, not merely in the block's.
+
 ## Open
 
 - Nothing outstanding on this feature. The one thing deliberately NOT

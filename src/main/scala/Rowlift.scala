@@ -76,18 +76,24 @@ object Rowlift:
    * keep everything the program already had. Both methods add; they
    * differ only in what the caller has to name.
    *
-   * WHICH TO REACH FOR. `plus` whenever you are BUILDING the row —
-   * it is the common case, and it names one thing instead of three.
-   * `at` for the two shapes `plus` cannot express:
+   * WHICH TO REACH FOR. `plus` whenever you are BUILDING the row: it
+   * is the common case and it names one thing instead of three.
    *
-   *   an ABSTRACT target — a helper written against `R` it knows only
-   *   by membership. `plus` needs the target to have the form "my row
-   *   plus something", and an abstract R does not. `Fail.scala`'s own
-   *   instances are this case: `abort[A].at[F]` is how a pattern bind
-   *   reaches a row it knows nothing else about.
+   * `at` for the one shape `plus` cannot express — an ABSTRACT
+   * target, a helper written against an `R` it knows only by
+   * MEMBERSHIP. `plus` needs the target to have the form "my row plus
+   * something", and an abstract R does not. `Fail.scala`'s own
+   * instances are this case: `abort[A].at[F]` is how a pattern bind
+   * reaches a row it knows nothing else about.
    *
-   *   an addition on the LEFT, or any other reordering — `plus`
-   *   appends, so `A ! (Abort + F)` out of `A ! F` is `at`'s.
+   * NOT a reason to reach for either: putting the addition on the
+   * LEFT. Row order does not exist. `+` is a union, `|` is
+   * commutative, so `A ! (Users + Abort)` and `A ! (Abort + Users)`
+   * are the SAME type and one is assignable to the other with no
+   * coercion at all — `plus` covers both, and a `.at[Abort + Users]`
+   * written to "reorder" is noise. (Checked; an earlier version of
+   * this comment claimed otherwise and the demo carried the noise for
+   * a day.)
    */
   extension [A, F[+_]](p: A ! F)
     /** land in row R, which must CONTAIN this program's row */

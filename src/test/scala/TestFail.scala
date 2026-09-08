@@ -16,7 +16,7 @@ class TestFail extends munit.FunSuite {
         _            <- State.set[Int](1).plus[Abort]
       yield n
     val (s, answer) =
-      State.run[Int, Option[Int]](0)(runOption[Int, State % Int](p.at[Abort + State % Int]))
+      State.run[Int, Option[Int]](0)(runOption[Int, State % Int](p))
     assertEquals(answer, None)
     // the state proves it: `set` was not skipped by a branch, it was
     // never reached
@@ -31,7 +31,7 @@ class TestFail extends munit.FunSuite {
         _            <- State.set[Int](n).plus[Abort]
       yield n * 2
     val (s, answer) =
-      State.run[Int, Option[Int]](0)(runOption[Int, State % Int](p.at[Abort + State % Int]))
+      State.run[Int, Option[Int]](0)(runOption[Int, State % Int](p))
     assertEquals(answer, Some(14))
     assertEquals(s, 7)
   }
@@ -81,9 +81,9 @@ class TestFail extends munit.FunSuite {
       def handle[A](e: Users[A]): A = e match
         case Users.Find(7L) => Some("ada")
         case Users.Find(_)  => None
-    assertEquals(runOption[String, Users](rename(7L).at[Abort + Users]).runWith(using handler),
+    assertEquals(runOption[String, Users](rename(7L)).runWith(using handler),
       Some("ada"))
-    assertEquals(runOption[String, Users](rename(9L).at[Abort + Users]).runWith(using handler),
+    assertEquals(runOption[String, Users](rename(9L)).runWith(using handler),
       None)
   }
 
@@ -131,5 +131,17 @@ class TestFail extends munit.FunSuite {
         runEither[Int, State % Int, String](p.at[Throws % String + State % Int]))
     assertEquals(answer, Right(7))
     assertEquals(s, 0)
+  }
+
+  test("row order does not exist: + is a union and unions commute") {
+    // `.at[Abort + F]` written to REORDER a row is noise: the two
+    // spellings are the same type, and the value passes with no
+    // coercion at all — not even a cast
+    val a: String ! (Abort + State % Int) = pure("x")
+    val b: String ! (State % Int + Abort) = a
+    val c: String ! (Abort + State % Int) = b
+    assert(a eq c)
+    assertEquals(State.run[Int, Option[String]](0)(runOption[String, State % Int](b)),
+      (0, Some("x")))
   }
 }

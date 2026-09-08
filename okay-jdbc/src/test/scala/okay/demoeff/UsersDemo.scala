@@ -74,15 +74,12 @@ object UsersDemo:
    * answer. `save` cannot run for a missing id because it is not
    * reachable, not because a branch remembered to skip it.
    */
-  def rename(id: Long, to: String): String ! (Users + Abort) =
+  def rename(id: Long, to: String): Option[String] ! Users = runOption {
     for
       case Some(old) <- Users.find(id).plus[Abort]
       _              <- Users.save(id, to).plus[Abort]
     yield old
-
-  /** the same program with its answer back in a value */
-  def renamed(id: Long, to: String): Option[String] ! Users =
-    runOption[String, Users](rename(id, to).at[Abort + Users])
+  }
 
   /**
    * The same effect in DIRECT style, where an effect stands in the
@@ -206,20 +203,20 @@ object UsersDemo:
       st.execute("insert into users values (7, 'ada')")
       st.close()
 
-      println("PROD  " + renamed(7L, "grace").runWith(using live(c)) +
+      println("PROD  " + rename(7L, "grace").runWith(using live(c)) +
               " / row 7 is now " + nameOf(c, 7L))
 
       val state = scala.collection.mutable.Map(7L -> "ada")
       val log = scala.collection.mutable.ListBuffer[Any]()
-      println("TEST  " + renamed(7L, "grace").runWith(using inMemory(state).tracing(log += _)) +
+      println("TEST  " + rename(7L, "grace").runWith(using inMemory(state).tracing(log += _)) +
               " / log=" + log.mkString(", ") + " / state=" + state)
 
       // the id nobody has: the database is untouched, and the trace
       // shows WHY — a find and no save. Note WHICH handler is traced:
       // the SQLite one. Recording is not a test-only trick.
       val missLog = scala.collection.mutable.ListBuffer[Any]()
-      val missLive = renamed(99L, "hopper").runWith(using live(c).tracing(missLog += _))
-      val missTest = renamed(99L, "hopper").runWith(
+      val missLive = rename(99L, "hopper").runWith(using live(c).tracing(missLog += _))
+      val missTest = rename(99L, "hopper").runWith(
         using inMemory(scala.collection.mutable.Map()))
       println(s"MISS  $missLive / row 99 is now ${nameOf(c, 99L)}" +
               s" / both worlds agree: ${missTest == missLive}" +
@@ -231,6 +228,6 @@ object UsersDemo:
       // Writer, and the run answers with all three as plain data
       val (store, (told, answer)) =
         State.run[Store, (Seq[String], Option[String])](Map(7L -> "ada"))(
-          Writer.run[String, Option[String], State % Store](tracked(renamed(7L, "grace"))))
+          Writer.run[String, Option[String], State % Store](tracked(rename(7L, "grace"))))
       println(s"PURE  $answer / log=${told.mkString(", ")} / store=$store")
     finally c.close()
