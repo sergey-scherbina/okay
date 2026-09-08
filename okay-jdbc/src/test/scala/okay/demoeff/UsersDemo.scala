@@ -2,20 +2,15 @@ package okay.demoeff
 
 /**
  * The worked example behind the "define your own effect" note: one
- * program, two interpretations, nothing mocked.
+ * program, four interpretations, nothing mocked.
  *
- * `rename` says in its TYPE that it looks up and stores users and
- * does nothing else, and it answers with whatever name was there
- * before — Option, so the id nobody has needs no invented
- * placeholder to keep the signature honest.
+ * `rename` says in its TYPE everything it can do — look users up,
+ * store them, and STOP if there is nobody there — and nothing else.
+ * The four handlers below answer those operations from a real SQLite
+ * file, from a Map, from State and Writer, and (with `.tracing`) into
+ * a log. The program between them is byte-identical.
  *
- * `live` is a REAL database: a SQLite file, a select and an upsert.
- * `recording` keeps state in memory AND records every operation,
- * which is what turns "what did this ask for, and in what order"
- * into an assertion rather than a debugging session. The program
- * between them is byte-identical.
- *
- * The handler here issues plain JDBC deliberately: a `Handler` must
+ * The handlers here issue plain JDBC deliberately: a `Handler` must
  * ANSWER with a value, so anything effectful inside it has to be run
  * at that point. When you want the query itself to stay an effect —
  * streamed, transacted, typed by a Schema — that is okay-jdbc's Sql
@@ -26,10 +21,13 @@ package okay.demoeff
  *   sbt "okayJdbc/Test/runMain okay.demoeff.UsersDemo"
  */
 
+
 import okay.*
 import okay.given
 import java.sql.{Connection, DriverManager}
 import okay.Rowlift.{at, plus}
+import okay.Direct.{direct, given}
+import scala.language.implicitConversions
 
 /**
  * The whole declaration of an effect: the operations, their answer
@@ -85,6 +83,25 @@ object UsersDemo:
   /** the same program with its answer back in a value */
   def renamed(id: Long, to: String): Option[String] ! Users =
     runOption[String, Users](rename(id, to).at[Abort + Users])
+
+  /**
+   * The same effect in DIRECT style, where an effect stands in the
+   * place of its answer with no marks at all.
+   *
+   * Two things color here and they come from different places. A
+   * PROGRAM (`Users.find(a)`, an `Option[String] ! Users`) colors
+   * because the block declares its carrier. An OPERATION
+   * (`Users.Find(b)`, typed at the enum) colors because `derives
+   * Effect` registered this signature for it. Neither colors OUTSIDE
+   * a direct block: the conversion needs a capability that exists
+   * only inside one, so `F[A]`-as-`A` stays the compile error it
+   * always was everywhere else.
+   */
+  def initials(a: Long, b: Long): (Option[Char], Option[Char]) ! Users = direct {
+    val first: Option[String] = Users.find(a)
+    val second: Option[String] = (Users.Find(b): Users[Option[String]])
+    (first.map(_.head), second.map(_.head))
+  }
 
 
   /** the real world: a SQLite file */
@@ -144,18 +161,12 @@ object UsersDemo:
    * (okay.Rowlift). It costs nothing: measured at the same B/op as
    * constructing the operation at R in the first place.
    *
-   * Two other spellings say the same thing and are still fine:
-   *
-   *   effect[R, Store](State.Get())      the operation injected
-   *                                      straight into row R
-   *
-   *   direct { State.Get[Store, Store]().!? }
-   *                                      the macro reads the row off
-   *                                      the block's expected type
-   *
-   * `.at` is the one that keeps the SMART constructors — `State.get`,
-   * `Writer.tell` — which is what makes the block below read like the
-   * single-effect code it is.
+   * `.at` and not `.plus` here, and the difference is the whole rule:
+   * `.plus[R]` ADDS to the row a program already has and is the one
+   * to reach for (see `rename` above), but it needs the target to
+   * have the form "my row plus something". R here is `Tracked + F`
+   * with F abstract — a row known only by membership — which is
+   * exactly what `.at` is for.
    *
    * The outer `!.widen` stays: it moves the whole program, not one
    * operation, and a walk over a program is also a normalisation
@@ -213,6 +224,8 @@ object UsersDemo:
       println(s"MISS  $missLive / row 99 is now ${nameOf(c, 99L)}" +
               s" / both worlds agree: ${missTest == missLive}" +
               s" / log=${missLog.mkString(", ")}")
+
+      println("DIRECT " + initials(7L, 99L).runWith(using live(c)))
 
       // no mutable collection anywhere: the store is State, the log is
       // Writer, and the run answers with all three as plain data
