@@ -51,27 +51,29 @@ object UsersDemo:
    * meant two things at once, "no previous name" and "nothing
    * written". The demo printed the bug itself: "row 99 is now hopper".
    *
-   * `fold` puts the branch where it belongs — inside the step — and
-   * the row never changes: this is `Users` and nothing else, in both
-   * arms. The same program in direct style is
+   * The fix is not a fold. It is a pattern, and the row saying that
+   * this program MAY STOP: `Abort` is failure carrying no information,
+   * which is all a missing row has to say. `case Some(old) <-`
+   * desugars to `withFilter`, `withFilter` needs somewhere for the
+   * dropped step to go, and `Abort` in the row is that somewhere
+   * (Fail.scala).
    *
-   *   direct { val old = Users.find(id).!?
-   *            if old.isDefined then Users.save(id, to).!?
-   *            old }
-   *
-   * The shortest spelling of all would be
-   * `for case Some(old) <- Users.find(id)`, and it now works — but not
-   * here, and that is the point. A refutable pattern desugars to
-   * `withFilter`, which DROPS a step, and only a row that can express
-   * failure may do that (Choice.scala). `Users` cannot, so the
-   * compiler refuses; if it did not, a rename that quietly did nothing
-   * would be exactly the bug this comment opens with.
+   * So the Option leaves the signature — `String`, not
+   * `Option[String]` — and comes back at the END, as `runOption`'s
+   * answer. `save` cannot run for a missing id because it is not
+   * reachable, not because a branch remembered to skip it.
    */
-  def rename(id: Long, to: String): Option[String] ! Users =
+  type Renaming = Users + Abort
+
+  def rename(id: Long, to: String): String ! Renaming =
     for
-      old <- Users.find(id)
-      _   <- old.fold(pure[Users, Unit](()))(_ => Users.save(id, to))
+      case Some(old) <- Users.find(id).at[Renaming]
+      _              <- Users.save(id, to).at[Renaming]
     yield old
+
+  /** the same program with its answer back in a value */
+  def renamed(id: Long, to: String): Option[String] ! Users =
+    runOption[String, Users](rename(id, to).at[Abort + Users])
 
 
   /** the real world: a SQLite file */
@@ -177,19 +179,19 @@ object UsersDemo:
       st.execute("insert into users values (7, 'ada')")
       st.close()
 
-      println("PROD  " + rename(7L, "grace").runWith(using live(c)) +
+      println("PROD  " + renamed(7L, "grace").runWith(using live(c)) +
               " / row 7 is now " + nameOf(c, 7L))
 
       val state = scala.collection.mutable.Map(7L -> "ada")
       val log = scala.collection.mutable.ListBuffer[String]()
-      println("TEST  " + rename(7L, "grace").runWith(using recording(state, log)) +
+      println("TEST  " + renamed(7L, "grace").runWith(using recording(state, log)) +
               " / log=" + log.mkString(", ") + " / state=" + state)
 
       // the id nobody has: the database is untouched, and the recording
       // handler shows WHY — a find and no save
       val missLog = scala.collection.mutable.ListBuffer[String]()
-      val missLive = rename(99L, "hopper").runWith(using live(c))
-      val missTest = rename(99L, "hopper").runWith(
+      val missLive = renamed(99L, "hopper").runWith(using live(c))
+      val missTest = renamed(99L, "hopper").runWith(
         using recording(scala.collection.mutable.Map(), missLog))
       println(s"MISS  $missLive / row 99 is now ${nameOf(c, 99L)}" +
               s" / both worlds agree: ${missTest == missLive}" +
@@ -199,6 +201,6 @@ object UsersDemo:
       // Writer, and the run answers with all three as plain data
       val (store, (told, answer)) =
         State.run[Store, (Seq[String], Option[String])](Map(7L -> "ada"))(
-          Writer.run[String, Option[String], State % Store](tracked(rename(7L, "grace"))))
+          Writer.run[String, Option[String], State % Store](tracked(renamed(7L, "grace"))))
       println(s"PURE  $answer / log=${told.mkString(", ")} / store=$store")
     finally c.close()

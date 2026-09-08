@@ -48,29 +48,6 @@ given [F[+_]]: MonadPlus[[A] =>> A ! (Choose + F)] with
     override def append(y: A ! (Choose + F)): A ! (Choose + F) =
       effect[Choose + F, A ! (Choose + F)](Choose(Seq(x, y))).flatMap(identity)
 
-/**
- * A REFUTABLE PATTERN on the left of `<-`, which is the same thing as
- * failure wearing different syntax.
- *
- *   for case Some(n) <- choose(Some(1), None, Some(3)) yield n
- *
- * Scala desugars that into `withFilter` plus a total match, so the
- * question it asks is not about patterns at all: may a step be
- * DROPPED? A plain `A ! F` cannot drop one — nothing in `Free`
- * declines to answer — and it should not pretend to: a silently
- * skipped step is a bug that reads like a feature. Where `Choose` is
- * in the row, dropping already has a meaning (the branch dies), and
- * that is exactly what MonadPlus evidence says. So the pattern binds
- * precisely there, and everywhere else the compiler explains what the
- * row is missing.
- *
- * The `if` guard of a for-comprehension goes through the same method,
- * so it is `guard` under its usual syntax.
- */
-extension [A, F[+_]](p: A ! F)(using M: MonadPlus[[X] =>> X ! F])
-  def withFilter(q: A => Boolean): A ! F =
-    p.flatMap(a => if q(a) then pure[F, A](a) else M.empty[A])
-
 /** all the results of all the branches, forwarding the effects F */
 def runChoice[A, F[+_]](a: A ! Choose + F): Seq[A] ! F =
   Effects[Free].handle[Choose, F, A, Seq[A]](a)(x => pure(Seq(x))):

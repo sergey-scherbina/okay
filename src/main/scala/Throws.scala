@@ -31,6 +31,28 @@ inline def runEither[A, F[+_], E](a: A ! Throws % E + F): Either[E, A] ! F =
 inline def runThrows[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): (A throws E) ! F =
   runEither(a).map(e => e)
 
+/**
+ * FAILURE WITH NOTHING TO SAY. Not every failure carries a reason: a
+ * lookup that found nothing, a pattern that did not match, a guard
+ * that did not hold. `Throws % Unit` is exactly that error, and
+ * because it is an ordinary Throws it needs no new node, no new
+ * handler and no new interpreter — only names.
+ *
+ * The Option does not disappear, it MOVES: out of every signature
+ * along the way and into the handler at the end. That is what makes
+ * `for case Some(x) <- p` work (Fail.scala) — the pattern says what
+ * happens when the value is not there, and the type says the program
+ * may stop.
+ */
+type Abort = Throws % Unit
+
+/** stop: nothing to answer with */
+inline def abort[A]: A ! Abort = raise[Unit, A](())
+
+/** handle Abort into Option, forwarding the effects F */
+inline def runOption[A, F[+_]](a: A ! Abort + F): Option[A] ! F =
+  runEither[A, F, Unit](a).map(_.toOption)
+
 /** handle Throws by actually throwing: the JVM is the handler */
 inline def runUnsafe[A, F[+_], E <: Unsafe](a: A ! Throws % E + F): A ! F =
   Effects[Free].handle[Throws % E, F, A, A](a)(a => pure(a)):
