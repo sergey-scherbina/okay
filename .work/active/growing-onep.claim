@@ -1,0 +1,35 @@
+task: growing-onep
+agent: opus5-bench
+started: 2026-09-08
+branch: feature/growing-onep
+worktree: ../okay-wt-growing
+
+why: the one survivor of `default-not-measured`. `Channel.apply` gives
+  a plain ring, which is 7.6x and 17.7x slower than the adaptive
+  buffer at 4 and 16 producers (1228 vs 162, 2064 vs 117 — measured
+  2026-09-08, minimum of three rounds) and only 26% faster at one
+  (125.6 vs 158.5). `Growing` exists to give both and today gives
+  neither: 192 at one producer, WORSE than adaptive's 158.5, and 601.6
+  at four, 3.7x adaptive's 162.1.
+
+  The target is the one-producer number. Until a second producer is
+  seen, `Growing` IS the ring it wraps and should cost what the ring
+  costs. It costs 53% more, and that overhead is what stops it being
+  the default; fix it and the default question answers itself.
+
+what: profile `growing_chunk producers=1` against `oneRing_chunk
+  producers=1` (JMH `-prof stack`/`gc`), find where the 66 us per
+  8 000 elements goes, fix THAT. Measure with the alternating protocol
+  the `performance` skill requires, not a before-block and an
+  after-block.
+
+predict: the class comment says a volatile read per push was measured
+  at 1.49x elsewhere here, and `sample()` uses a plain counter to
+  avoid exactly that — while `push`/`pushDecidingAt` read the
+  `inner` field on every push regardless. So: the volatile read of
+  `inner`, plus one wrapper dispatch that may turn the channel's
+  monomorphic call site bimorphic.
+  DISQUALIFYING: 66 us over 8 000 elements is 8.3 ns each, and an
+  acquire load on this box is ~1 ns. If the profile does not put the
+  bulk in the field read and the extra frame, the theory is wrong and
+  I stop rather than shave a nanosecond and claim the rest.
