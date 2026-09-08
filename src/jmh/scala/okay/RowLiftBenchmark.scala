@@ -3,31 +3,36 @@ package okay
 import org.openjdk.jmh.annotations.{State as JmhState, *}
 import java.util.concurrent.TimeUnit
 import okay.Direct.*
-import okay.AtMacro.{atCast, given}
+import okay.Rowlift.at
 
 /**
  * What does attaching a row COST?
  *
- * Three spellings put an operation into a composite row:
+ * A constructor builds at its own row; a program usually has a wider
+ * one. Six spellings move an operation across, and this asks which of
+ * them are free. Read B/op (-prof gc) before us/op: allocation does
+ * not drift with host load the way time does, and this box is not
+ * quiet.
  *
- *   effect[R, A](op)        constructs the node AT R — one Inject, the
- *                           floor, and what `direct` emits too
- *   State.get[Int].at[R]    builds the node at the narrow row and
- *                           moves it — a second Inject, the first
- *                           immediately garbage
- *   State.get[Int] + widen  today's spelling, same shape as `.at` but
- *                           naming the complement
+ * MEASURED, 2026-09-08 (N=1000, so a 16-byte node per operation shows
+ * up as 16 000 B/op):
  *
- * The question is whether that second Inject survives to cost
- * anything. It never escapes: it is constructed and destructured
- * within one inlined region, which is the textbook case for HotSpot's
- * escape analysis to scalarise it away. If the bytes agree, the
- * ergonomic spelling is free and the "tree rebuild" objection is
- * theoretical; if they do not, the operation-level spelling is the
- * one to ship.
+ *   viaEffect    272 016   construct AT the row -- the floor
+ *   viaDirect    272 016   the macro emits Inject at the block's row
+ *   viaAt        272 016   cast under the In witness -- AT THE FLOOR
+ *   viaLiftAt    288 000   lift the operation, +1 node per op
+ *   viaWiden     288 016   today's spelling, +1 node per op
+ *   viaAtWalk    304 000   the same postfix done by walking, +2
  *
- * Read B/op (-prof gc) before us/op: allocation does not drift with
- * host load the way time does, and this box is not quiet.
+ * So the ergonomic spelling and the cheap one are the same spelling.
+ * The second Inject that `.atWalk` and `widen` build does NOT get
+ * scalarised away by escape analysis -- that hypothesis was tested
+ * here and refuted; it survives into the tree and costs bytes.
+ *
+ * This does NOT make `widen` redundant. Its walk is also a
+ * NORMALISATION, and `Source.merge` runs 5-7% slower without it
+ * (specs/writer-covariance.md, free-row-variance). `.at` is for single
+ * operations, which are already head-normal.
  */
 @JmhState(Scope.Thread)
 @BenchmarkMode(Array(Mode.AverageTime))
@@ -41,15 +46,20 @@ class RowLiftBenchmark {
 
   type R = State % Int + Writer % String
 
-  // ---- the evidence, minimal (self / left / deeper), as probed
+  // ---- the LOSING lanes keep the OLD witness on purpose.
+  //
+  // `Rowlift.In` is an opaque `Unit` and carries no `inj`, because the
+  // shipping route does not need one. `liftAt` and `atWalk` do: they
+  // re-inject the operation, so they need a witness that can be
+  // CALLED. This is that shape, kept here and only here, as the guard
+  // on the table above — the three casts below are what the shipping
+  // design no longer pays.
   trait In[F[+_], G[+_]]:
     def inj[A](fa: F[A]): G[A]
 
-  // EVERY instance's inj is identity — the injection is a type-level
-  // fact, not a runtime one — so one cached object serves them all.
-  // A parameterised `given` is a METHOD and allocates a fresh witness
-  // at every use site: that is the +16 B/op the first run charged to
-  // both liftAt and at.
+  // inj is identity at every instance, so one cached object serves
+  // them all; a parameterised `given` is a METHOD and would allocate a
+  // fresh witness per use site.
   private object IdIn extends In[[A] =>> Any, [A] =>> Any]:
     def inj[A](fa: Any): Any = fa
 
@@ -65,16 +75,16 @@ class RowLiftBenchmark {
   extension [F[+_], A](fa: F[A])
     inline def liftAt[G[+_]](using i: In[F, G]): A ! G = effect[G, A](i.inj(fa))
 
-  /** on the PROGRAM: the ergonomic spelling, one extra node per op */
+  /** on the PROGRAM, by walking: the postfix done the expensive way */
   // NOT inline: it recurses over the tree, and an inline recursion
   // does not terminate at compile time (found by trying)
   extension [A, F[+_]](p: A ! F)
-    def at[G[+_]](using i: In[F, G]): A ! G =
+    def atWalk[G[+_]](using i: In[F, G]): A ! G =
       import okay.!.*
       (p.resume: @unchecked) match
         case Pure(a) => Free.Pure(a)
         case Effect(e) => Free.inject(i.inj(e))
-        case Bind(Effect(e), k) => Free.inject(i.inj(e)).flatMap(x => k(x).at[G])
+        case Bind(Effect(e), k) => Free.inject(i.inj(e)).flatMap(x => k(x).atWalk[G])
 
   /** the floor: construct at R directly */
   @Benchmark
@@ -98,11 +108,11 @@ class RowLiftBenchmark {
 
   /** the program-level lift — the ergonomic one under test */
   @Benchmark
-  def viaAt(): Int =
-    var m: Int ! R = State.get[Int].at[R]
+  def viaAtWalk(): Int =
+    var m: Int ! R = State.get[Int].atWalk[R]
     var i = 1
     while i < N do
-      m = m.flatMap(_ => State.get[Int].at[R])
+      m = m.flatMap(_ => State.get[Int].atWalk[R])
       i += 1
     State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
 
@@ -129,14 +139,15 @@ class RowLiftBenchmark {
       i += 1
     State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
 
-  /** no walk, no macro: the union is erased, so the program already IS
-   * one in R; the evidence is what makes saying so sound */
+  /** the same cast, under a witness that has no runtime existence at
+   * all: `In` is an opaque `Unit`, so the givens allocate nothing and
+   * the design holds exactly one asInstanceOf */
   @Benchmark
-  def viaAtCast(): Int =
-    var m: Int ! R = State.get[Int].atCast[R]
+  def viaAt(): Int =
+    var m: Int ! R = State.get[Int].at[R]
     var i = 1
     while i < N do
-      m = m.flatMap(_ => State.get[Int].atCast[R])
+      m = m.flatMap(_ => State.get[Int].at[R])
       i += 1
     State.run[Int, Int](0)(Writer.run[String, Int, State % Int](m).map(_._2))._2
 }

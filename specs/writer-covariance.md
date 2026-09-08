@@ -291,3 +291,97 @@ lesson is the one this whole arc keeps arriving at from new
 directions: an upcast that is free at the type level is not free
 operationally, and where work is DONE matters more than how much of
 it there is.
+
+## rowlift (2026-09-08): moving an operation into a wider row, for free
+
+free-row-variance answered "can the walk be deleted?" with a measured
+no. This section answers the question that survived it: the walk is
+right for `Source.merge`, but is it right for a SINGLE operation?
+
+**The problem, as it appears in code.** A constructor builds at its
+own row — `State.get[Int] : Int ! (State % Int)` — and a program
+usually has a wider one. The only spelling the library had was
+`!.widen[A, F, G]`, which asks for the COMPLEMENT: the part of the row
+you are NOT talking about. That is what made the tracked demo
+(`okay-jdbc/.../UsersDemo.scala`) awkward and what makes a helper
+against an unknown row hard to write — you cannot name a complement
+you have not been told.
+
+**Six spellings, measured.** `RowLiftBenchmark`, N=1000 operations, so
+one 16-byte node per operation reads as 16 000 B/op:
+
+| lane | B/op | what it does |
+|---|---|---|
+| `viaEffect` | 272 016 | `effect[R, A](op)` — construct AT the row, the floor |
+| `viaDirect` | 272 016 | `direct { op.!? }` — the macro emits Inject at the block's row |
+| `viaAt` | 272 016 | cast under an `In` witness |
+| `viaLiftAt` | 288 000 | lift the OPERATION, then inject: +1 node |
+| `viaWiden` | 288 016 | today's spelling: +1 node |
+| `viaAtWalk` | 304 000 | the same postfix, done by walking: +2 |
+
+The escape-analysis hypothesis was tested here and refuted: the
+intermediate Inject that `widen` and the walking `.at` build does not
+get scalarised away — it is constructed and destructured inside one
+inlined region, the textbook case, and it still costs bytes.
+
+**Decision: `Rowlift.at`, one cast, under a witness.** `+` is a union
+(`[A] =>> F[A] | G[A]`) and unions erase, so a `Free[F, A]` already IS
+a `Free[R, A]` whenever F is a member of R. `In[F, R]` is the proof of
+that side condition — `self` / `left` / `deeper`, the minimal
+hierarchy — and the single `asInstanceOf` lives in `at`, beside the
+invariant that licenses it.
+
+- **The witness has no runtime existence.** The first cut gave `In` an
+  `inj` method, so each instance had to be an object; one cached
+  `IdIn` served them all and each `given` cast it into place — three
+  casts spent to avoid an allocation, and `inj` was the erasure fact
+  stated a second time. As `opaque type In[F[+_], R[+_]] = Unit` the
+  instances are `()`: nothing allocated, no cast in any instance, and
+  opacity is what stops a caller conjuring a proof. One
+  `asInstanceOf` in the whole design.
+- **The trap, since the error message points away from it.** An opaque
+  type is TRANSPARENT inside its defining scope: write the uses in the
+  same object and `In[F, R]` is literally `Unit` there, implicit
+  search goes to `Unit`'s companion, and the compiler says "No given
+  instance of type In[...]" while suggesting the imports that are
+  already in scope. Move the uses out and the givens resolve with no
+  import at all — the companion of an opaque type IS its implicit
+  scope. `ProbeOneCast` is laid out that way for this reason.
+- **Ergonomics.** Partially applied, `type Has[F[+_]] = [R[+_]] =>>
+  In[F, R]` makes the witness a context bound: `def bump[R[+_] :
+  Has[State % Int] : Has[Writer % String]]`. The target row is named
+  once; the complement never is.
+
+**The prohibition that comes with it.** `.at` does NOT replace
+`!.widen`, and a change that swaps one for the other on a streaming
+path is a regression, not a cleanup: free-row-variance measured the
+walk as a NORMALIZATION worth 5-7% on `Source.merge`. `.at` is for
+single operations, which are already head-normal and have nothing to
+normalize. The two coexist on purpose.
+
+**Refuted along the way**, kept so the next attempt starts later than
+this one did:
+
+- **A macro** emitting the Inject at R directly. Scala binds an
+  extension's receiver to a val proxy BEFORE the splice, so the macro
+  sees `Ident("p$proxy1")`; marking the receiver `inline` fixes that
+  (`HIT: Free$.Inject$.apply`), but the operation it extracts refers
+  to a proxy from `effect`'s own inlining and re-emitting it fails
+  with "a reference to value a$proxy16 was used outside the scope
+  where it was defined". Rewriting a subtree that arrived from an
+  inline def is not generally possible — which is why `direct` builds
+  its Inject from its own pieces. Worse, a macro that cannot see its
+  term fails SILENTLY into its fallback: the lane read 288016,
+  identical to widen to three decimals, and looked like a result.
+- **`<:<` instead of `In`** — and it proves more than expected: the
+  compiler establishes `F[X] <:< R[X]` by itself, at concrete types,
+  any row shape, any depth, with no instance hierarchy written. But
+  the polymorphic form `[X] => () => (F[X] <:< R[X])` is not
+  summonable (implicit search diverges), and the operations inside a
+  program carry different X, so a per-X proof cannot serve.
+- **Currying the constructors** (`State.get[S]` returning an applier
+  that takes the row). `direct[F]` gets away with this because nobody
+  reads `direct[F]` as a value; a constructor is different — the day
+  `State.get[Int]` stops being a program, every call site that reads
+  it as one breaks. That is the migration the row parameter was
+  trying to avoid, just moved.
