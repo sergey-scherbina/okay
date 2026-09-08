@@ -32,7 +32,7 @@ The library stands on work by Moggi, Wadler, Felleisen, Danvy & Filinski, Atkey,
 
 Scala 3, just moved to 3.9 LTS.
 
-Inspired by Rúnar Bjarnason, Oleg Kiselyov and Robert Atkey.
+##Inspired by Rúnar Bjarnason, Oleg Kiselyov and Robert Atkey.
 
 http://blog.higher-order.com/assets/trampolines.pdf
 "Stackless Scala With Free Monads" Rúnar Óli Bjarnason
