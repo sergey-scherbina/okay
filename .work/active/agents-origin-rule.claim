@@ -1,0 +1,24 @@
+task: agents-origin-rule
+agent: opus5-bench
+started: 2026-09-08
+branch: feature/agents-origin-rule
+worktree: ../okay-wt-originrule
+
+why: operator instruction 2026-09-08, after `git push origin master`
+  took origin from b6063224 to eca8877e (60 commits, fast-forward).
+  AGENTS.md says `origin/master` is "STALE BY DESIGN — it is days
+  behind, because nothing here pushes" and that there is "no remote
+  sync step". Both were true this morning and are false now, and a
+  coordination rule that misdescribes the world is worse than none:
+  the next agent reads it and treats a current origin as garbage.
+
+what: correct the two places that assert origin is stale, WITHOUT
+  weakening the prohibition they justify. The rule "never reset or
+  merge to origin/*" must stand on its own feet: origin is not
+  guaranteed current at any moment (it is current only just after
+  someone pushes), so `merge --ff-only origin/master` still discards
+  every lane landed since the last push. The 2026-09-03 incident
+  stays as the evidence it is.
+
+predict: a paragraph edit, no code. The gate runs anyway because the
+  rule says so, not because markdown can break it.
