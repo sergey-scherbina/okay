@@ -18,9 +18,11 @@ import okay.given
  *
  * It is also not INHERENT, which the Writer case below already hints
  * at: the split is a runtime test, so a signature that carries its
- * identity at run time is told apart. `ProbeKeyed` shows the general
- * form — a key in the operation, a test that compares it, and a row
- * holding two states at once.
+ * identity at run time is told apart. Two effects do exactly that,
+ * and a program that needs more than one state picks between them:
+ * `Keyed` (the states are named in the row, nothing casts) and
+ * `Cells` (made at run time, one row member however many, one stated
+ * cast in the heap).
  */
 class TestRowIdentity extends munit.FunSuite {
 

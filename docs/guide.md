@@ -170,6 +170,26 @@ State + Writer, and a trace of any of them — is
 `okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`, runnable with
 `sbt "okayJdbc/Test/runMain okay.demoeff.UsersDemo"`.
 
+**More than one state.** `State % S` is told apart by its class, so a
+row holds one of it. Two effects lift that, and they are the same
+trade `HMap` makes against `TMap`:
+
+```scala
+type Count = Keyed.At["count", Int]      // the row NAMES its states
+type Name  = Keyed.At["name", String]    // nothing casts
+
+val p: Int ! Cells = for            // cells made at RUN TIME:
+  a <- Cells.cell(1)                // one row member however many,
+  b <- Cells.cell(10)               // and one stated cast in the heap
+  n <- Cells.write(a, 2)
+yield n
+```
+
+`Keyed` carries a singleton key in the operation and its test compares
+it; `Cells` keeps a heap in the handler and identity is the cell. Use
+`Keyed` when you can name the states, `Cells` when they come from the
+data.
+
 And any type constructor is a signature: `List(1, 2).perform` is
 nondeterminism, handled by `runSeq` — which is `runChoice`'s handler
 unchanged, because `Choose[+A](as: Seq[A])` is a box around exactly

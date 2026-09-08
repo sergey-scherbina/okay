@@ -87,7 +87,13 @@ index above lists them all with one-line summaries.
   re-tells at another type (Writer.scala; the five encodings tried
   before this one: docs/existentials.md).
 - `State` — get/set with a bespoke tail-recursive handler; `PState` —
-  type-changing (typestate) state on the paramonad (State.scala).
+  type-changing (typestate) state on the paramonad (State.scala). A
+  row holds ONE `State % S`, since `Get()` carries no runtime trace of
+  S; for more than one, two effects lift that and make the same trade
+  `HMap` does against `TMap` — `Keyed.At["count", Int]` names its
+  states in the row and casts nothing (Keyed.scala), `Cells` makes
+  them at run time, one row member however many, with one stated cast
+  in its heap (Cells.scala).
 - `Throws` — typed errors: abort, runEither, the `throws` union; and
   `Abort` (= `Throws % Unit`), failure with nothing to say, handled by
   `runOption` (Throws.scala).
