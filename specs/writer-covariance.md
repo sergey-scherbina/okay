@@ -559,6 +559,54 @@ consumed wide, which is covariance. Contravariance would let an
 operation that answers `Any` stand where one answering `Unit` is
 expected, and nothing could satisfy it.
 
+**THE TABLE.** Everything measured in this section, in one place. "="
+means the two are indistinguishable, and every such row is a claim
+that was checked rather than assumed.
+
+| | covariant `F[+A]` | invariant `F[A]` |
+|---|---|---|
+| what the index says | a LOWER BOUND: answers at least this | an exact tag |
+| match on a case indexed at a concrete type | `X >: Unit` — a bound | `X = Unit` — an equation |
+| interpreter branch answering Unit | must widen (`.map(_ => ())`) | writes the answer directly |
+| match on a case with its OWN parameter | `X = A`, an equation | `X = A`, an equation |
+| operation consuming its answer (`(A, Int) => A`) | rejected unless the case parameterises itself | accepted |
+| "never answers", declared once | `case Retry() extends Tx[Nothing]`, usable at every A | `Retry[A]()`, which claims an A it never produces |
+| `Typeable[F[Nothing]]`-derived `TypeableK` | sound as written | needs a cast |
+| `TypeableK` for a composite row | found (that instance) | found (same instance, with the cast) |
+| operations built at `Nothing` (`Choose(Seq.empty)`) | = | = (inference, not variance) |
+| unions, `Pure`, `Handler`, `<|>` | = | = (`<|>` wants one explicit type argument) |
+| `A ! F` subtyping in A | invariant either way | invariant either way |
+| cost to switch | — | 2 kernel edits + `[+_]`→`[_]` churn; 83 tests pass |
+
+**WHAT FOLLOWS.**
+
+1. **It is one axis, not many.** Everything that looked like a second
+   difference — Nothing-substitution, rows, `Pure`, handlers — measured
+   identical. The single question is whether the index is a promise or
+   a name.
+2. **Each side is right about something different.** Covariance is
+   right about the SEMANTICS: the answer is an output of the handler,
+   produced narrow and consumed wide, and only covariance can say
+   "this never answers". Invariance is right about the ERGONOMICS of
+   interpreting: an equation instead of a bound, which is what
+   interpreter code actually wants.
+3. **Both losses are locally repairable, and that is the real
+   finding.** Covariance's loss is repaired per case (parameterise it,
+   and the equation comes back — plus the right to consume the answer
+   type). Invariance's loss is repaired per operation (parameterise
+   the non-returning one, at the price of a type that overpromises).
+   So the choice is not which is possible; it is which repair you
+   write more often.
+4. **In this library the counts are: two operations that never
+   answer, against every interpreter branch that answers `Unit`.**
+   That leans invariant — until you notice the third route: a branch
+   only pays when its operation has nothing to answer, and an
+   operation with something to answer costs nothing either way.
+5. **What would flip it.** If the `Typeable` fallback goes (it can —
+   measured above — now that `derives Effect` exists), invariance's
+   only remaining cost is `Retry[A]()`, and the case for it becomes
+   strong. That is the trigger to watch.
+
 **THE DECISION: keep covariance.** Three reasons, in the order they
 matter:
 
