@@ -68,6 +68,14 @@ object Rowlift:
   private inline def coerce[A, F[+_], R[+_]](p: A ! F): A ! R =
     p.asInstanceOf[A ! R]
 
+  /**
+   * NEITHER SPELLING CAN LOSE AN EFFECT, which is worth saying out
+   * loud because `at[R]` names a whole row and so LOOKS like it
+   * overwrites one. It cannot: `In[F, R]` is the demand that R
+   * CONTAIN F, so the only rows `at` will accept are the ones that
+   * keep everything the program already had. Both methods add; they
+   * differ only in what the caller has to name.
+   */
   extension [A, F[+_]](p: A ! F)
     /** land in row R, which must CONTAIN this program's row */
     inline def at[R[+_]](using In[F, R]): A ! R = coerce(p)
