@@ -1,0 +1,36 @@
+task: growing-part-sizing
+agent: opus5-bench
+started: 2026-09-08
+branch: feature/growing-part-sizing
+worktree: ../okay-wt-sizing
+
+why: it blocks the default the operator has asked for. `growing`
+  divides `capacity` by the part count it MIGHT need rather than the
+  one it has: `growing(64, parts = 8)` gives part 0 sixty-four slots
+  and every later part eight. `Source.merge` runs exactly two
+  producers at capacity 64, so the second gets a buffer of EIGHT where
+  the ring gave it 64 — measured 3.5x slower, which is what stopped
+  the switch.
+
+what: `capacity` becomes PER PART rather than divided among them —
+  `Ring(cap)` for every new part instead of `Ring(cap / n)`. One line
+  in `Queues.Mechanism.growing`.
+
+  That is affordable only because `AdaptiveFifo` opens parts LAZILY
+  (its `open` counter starts at 1 and grows as producers claim), so
+  the memory a channel actually holds is `capacity x producers that
+  arrived`, not `capacity x parts`. Six parts sized and never opened
+  cost nothing today and will cost nothing after.
+
+  It is still a CONTRACT change and is stated as one: `Channel(64)`
+  under this default holds 64 per producer, not 64 in total.
+
+predict: `Source.merge` returns to the ring's ~136, since each of its
+  two producers gets the 64 the ring gave them. The many-producer
+  numbers should IMPROVE — `growing` at 16 producers becomes 16 parts
+  of 1024 rather than 15 of 64, which is the shape `adaptiveWide`
+  measures at 115.
+  DISQUALIFYING: if `Source.merge` does not come back, the sizing is
+  not the cause and the default stays blocked — I do not get to switch
+  it because the story is tidy. And the one-producer paths get
+  re-measured after, because that is the check that caught this.
