@@ -53,21 +53,40 @@ object AtMacro:
     inline def at[R[+_]](using inline i: In[F, R]): A ! R =
       ${ atImpl[A, F, R]('p, 'i) }
 
-  private def stripped(using q: Quotes)(t: q.reflect.Term): q.reflect.Term =
+  /**
+   * Scala 3 binds an extension's receiver to a val proxy BEFORE the
+   * splice, so a naive stripper sees `Ident("p$proxy1")` and nothing
+   * else — which is exactly why the first version of this macro fell
+   * back every time and measured identical to widen. The bindings of
+   * the enclosing Inlined carry the real term; collect them on the
+   * way down and resolve the identifier against them.
+   */
+  private def resolved(using q: Quotes)
+                      (t: q.reflect.Term,
+                       env: Map[q.reflect.Symbol, q.reflect.Term])
+  : q.reflect.Term =
     import q.reflect.*
+    def binds(ss: List[Statement]): Map[Symbol, Term] =
+      ss.collect { case vd: ValDef if vd.rhs.isDefined => vd.symbol -> vd.rhs.get }.toMap
     t match
-      case Inlined(_, Nil, inner) => stripped(inner)
-      case Typed(inner, _) => stripped(inner)
-      case Block(Nil, inner) => stripped(inner)
+      case Inlined(_, bs, inner) => resolved(inner, env ++ binds(bs))
+      case Block(ss, inner) => resolved(inner, env ++ binds(ss))
+      case Typed(inner, _) => resolved(inner, env)
+      case id: Ident if env.contains(id.symbol) => resolved(env(id.symbol), env)
       case _ => t
+
+  private def isInject(using q: Quotes)(fn: q.reflect.Term): Boolean =
+    val n = fn.symbol.name
+    n == "inject" || n == "effect" ||
+      (n == "apply" && fn.symbol.owner.name.startsWith("Inject"))
 
   def atImpl[A: Type, F[+_]: Type, R[+_]: Type](p: Expr[A ! F], i: Expr[In[F, R]])
                                                (using Quotes): Expr[A ! R] =
     import quotes.reflect.*
-    stripped(p.asTerm) match
+    resolved(p.asTerm, Map.empty) match
       // Free.inject[F, A](op) / effect[F, A](op) — the operation is
       // right there, so put it in R's Inject and skip the rebuild
-      case Apply(fn, List(op)) if fn.symbol.name == "inject" || fn.symbol.name == "effect" =>
+      case Apply(fn, List(op)) if isInject(fn) =>
         op.asExpr match
           case '{ $o: t } =>
             '{ Free.inject[R, A]($i.inj(${ op.asExprOf[F[A]] })) }
