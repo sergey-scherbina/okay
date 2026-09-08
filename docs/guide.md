@@ -124,7 +124,26 @@ search goes on.
 `h.tracing(log)` makes any handler a recording one, since the
 operations are already data; `!.translate` interprets each operation
 into a PROGRAM in another row (a `Handler` answers with a value, so it
-cannot itself tell or get). One program, four handlers — SQLite, a Map,
+cannot itself tell or get), and `!.interpret` is the same with the
+widening done for you, for when the target row is BIGGER than the
+source's:
+
+```scala
+def tracked[A, F[+_]](p: A ! (Users + F)): A ! (State % Store + Writer % String + F) =
+  type R = State % Store + Writer % String + F
+  !.interpret(p):
+    [X] => (e: Users[X]) => e match
+      case Find(id) =>
+        for
+          store <- State.get[Store].at[R]
+          _     <- Writer.tell(s"find($id)").at[R]
+        yield store.get(id)
+      ...
+```
+
+The expected type solves every row, so there is no type argument and
+`F` — whatever the caller was already doing — rides through
+untouched. One program, four handlers — SQLite, a Map,
 State + Writer, and a trace of any of them — is
 `okay-jdbc/src/test/scala/okay/demoeff/UsersDemo.scala`, runnable with
 `sbt "okayJdbc/Test/runMain okay.demoeff.UsersDemo"`.

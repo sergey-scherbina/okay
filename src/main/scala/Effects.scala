@@ -1,6 +1,7 @@
 package okay
 
 import scala.quoted.*
+import okay.RowLift.plus
 
 import scala.annotation.implicitNotFound
 
@@ -597,6 +598,31 @@ object ! {
    * `Free.run(f: F ==> M)` is the same idea when the row is handled
    * ENTIRELY; this is the version that leaves a residue.
    */
+  /**
+   * `translate`, with the widening done for you — and this is the one
+   * to reach for when the target row is BIGGER than the source's.
+   *
+   * `translate` interprets F into a row the program is already in.
+   * Interpreting one effect into OTHERS means arriving somewhere new:
+   * `A ! (Users + F)` becomes `A ! (State % Store + Writer % String +
+   * F)`, where F is whatever the caller was already doing and is
+   * carried through untouched. Written by hand that is a widen and a
+   * translate and three type arguments; here the expected type solves
+   * every row:
+   *
+   *     def tracked[A, F[+_]](p: A ! (Users + F)): A ! (Tracked + F) =
+   *       !.interpret(p):
+   *         [X] => (e: Users[X]) => e match
+   *           case Users.Find(id) => ...   // a PROGRAM in Tracked + F
+   *
+   * (Not `interpr`, which builds a handler out of one. This rewrites
+   * a program.)
+   */
+  def interpret[A, F[+_] : TypeableK, G[+_], H[+_]](prog: A ! (F + H))
+                                                   (h: F ==> ([X] =>> X ! (G + H)))
+  : A ! (G + H) =
+    translate[A, F, G + H](prog.plus[G])(h)
+
   def translate[A, F[+_] : TypeableK, G[+_]](prog: A ! (F + G))
                                             (h: F ==> ([X] =>> X ! G)): A ! G =
     // every step suspends under a flatMap (the answer is a PROGRAM,

@@ -98,4 +98,37 @@ class TestDeriveEffect extends munit.FunSuite {
     }
     assertEquals(prog.runWith(using handler), Some(10))
   }
+
+  test("interpret: one effect into others, the rest of the row carried through") {
+    type Store = Map[String, Int]
+    type Tracked = State % Store + Writer % String
+
+    def tracked[A, F[+_]](p: A ! (Db + F)): A ! (Tracked + F) =
+      type R = Tracked + F
+      !.interpret(p):
+        [X] => (e: Db[X]) => e match
+          case Db.Get(k) =>
+            for
+              s <- State.get[Store].at[R]
+              _ <- Writer.tell(s"get($k)").at[R]
+            yield s.get(k)
+          case Db.Put(k, v) =>
+            for
+              s <- State.get[Store].at[R]
+              _ <- State.set(s + (k -> v)).at[R]
+              _ <- Writer.tell(s"put($k,$v)").at[R]
+            yield ()
+
+    val prog: Option[Int] ! Db =
+      for
+        _ <- Db.Put("b", 2).perform
+        r <- Db.Get("b").perform
+      yield r
+    val (store, (told, answer)) =
+      State.run[Store, (Seq[String], Option[Int])](Map.empty)(
+        Writer.run[String, Option[Int], State % Store](tracked[Option[Int], Pure](prog)))
+    assertEquals(answer, Some(2))
+    assertEquals(told, Seq("put(b,2)", "get(b)"))
+    assertEquals(store, Map("b" -> 2))
+  }
 }

@@ -141,40 +141,35 @@ object UsersDemo:
   type Tracked = State % Store + Writer % String
 
   /**
-   * A for-comprehension fixes its row from the first step, so
-   * `Writer.tell` does not fit beside `State.get` — and `.at[R]`
-   * moves each into the row they share, naming the target and never
-   * the complement (okay.RowLift; one cast, measured at the same
-   * B/op as constructing the operation at R).
+   * `!.interpret` is `translate` with the widening done for it: the
+   * target row is BIGGER than the source's (Users becomes State and
+   * Writer), and F — whatever the caller was already doing — rides
+   * through untouched. The expected type solves every row, so there
+   * is no type argument here and nothing to name twice.
    *
-   * `.at` and not `.plus` here, which is the whole rule: `plus` is
-   * the one to reach for, but it needs the target to have the form
-   * "my row plus something", and R here is `Tracked + F` with F
-   * abstract — a row known only by membership.
-   *
-   * The outer `!.widen` stays: it moves a whole program rather than
-   * one operation, and a walk over a program is also a normalisation.
+   * Inside, `.at[R]` moves each operation into the row they share: a
+   * for-comprehension fixes its row from the first step, so
+   * `Writer.tell` does not fit beside `State.get` otherwise. `.at`
+   * and not `.plus`, which is the whole rule — `plus` is the one to
+   * reach for, but it needs the target to have the form "my row plus
+   * something", and R here is `Tracked + F` with F abstract, a row
+   * known only by membership.
    */
   def tracked[A, F[+_]](prog: A ! (Users + F)): A ! (Tracked + F) =
     type R = Tracked + F
-    val widened: A ! (Users + R) = !.widen[A, Users + F, Tracked](prog)
-    !.translate[A, Users, R](widened):
+    !.interpret(prog):
       [X] => (e: Users[X]) => e match
         case Users.Find(id) =>
-          val p: Option[String] ! R =
-            for
-              m <- State.get[Store].at[R]
-              _ <- Writer.tell(s"find($id)").at[R]
-            yield m.get(id)
-          p.map[X](x => x)
+          for
+            store <- State.get[Store].at[R]
+            _     <- Writer.tell(s"find($id)").at[R]
+          yield store.get(id)
         case Users.Save(id, name) =>
-          val p: Unit ! R =
-            for
-              m <- State.get[Store].at[R]
-              _ <- State.set(m + (id -> name)).at[R]
-              _ <- Writer.tell(s"save($id,$name)").at[R]
-            yield ()
-          p.map[X](x => x)
+          for
+            store <- State.get[Store].at[R]
+            _     <- State.set(store + (id -> name)).at[R]
+            _     <- Writer.tell(s"save($id,$name)").at[R]
+          yield ()
 
   private def nameOf(c: Connection, id: Long): String =
     val rs = c.createStatement().executeQuery(s"select name from users where id = $id")
