@@ -13,7 +13,7 @@ class TestFail extends munit.FunSuite {
     val p: Int ! R =
       for
         case Some(n) <- pure[R, Option[Int]](None)
-        _            <- State.set[Int](1).at[R]
+        _            <- State.set[Int](1).plus[Abort]
       yield n
     val (s, answer) =
       State.run[Int, Option[Int]](0)(runOption[Int, State % Int](p.at[Abort + State % Int]))
@@ -28,7 +28,7 @@ class TestFail extends munit.FunSuite {
     val p: Int ! R =
       for
         case Some(n) <- pure[R, Option[Int]](Some(7))
-        _            <- State.set[Int](n).at[R]
+        _            <- State.set[Int](n).plus[Abort]
       yield n * 2
     val (s, answer) =
       State.run[Int, Option[Int]](0)(runOption[Int, State % Int](p.at[Abort + State % Int]))

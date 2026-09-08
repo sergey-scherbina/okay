@@ -75,6 +75,19 @@ object Rowlift:
    * CONTAIN F, so the only rows `at` will accept are the ones that
    * keep everything the program already had. Both methods add; they
    * differ only in what the caller has to name.
+   *
+   * WHICH TO REACH FOR. `plus` whenever you are BUILDING the row —
+   * it is the common case, and it names one thing instead of three.
+   * `at` for the two shapes `plus` cannot express:
+   *
+   *   an ABSTRACT target — a helper written against `R` it knows only
+   *   by membership. `plus` needs the target to have the form "my row
+   *   plus something", and an abstract R does not. `Fail.scala`'s own
+   *   instances are this case: `abort[A].at[F]` is how a pattern bind
+   *   reaches a row it knows nothing else about.
+   *
+   *   an addition on the LEFT, or any other reordering — `plus`
+   *   appends, so `A ! (Abort + F)` out of `A ! F` is `at`'s.
    */
   extension [A, F[+_]](p: A ! F)
     /** land in row R, which must CONTAIN this program's row */
