@@ -81,15 +81,17 @@ The `_chunk_fold` lane is 18x its own chunk-native twin and 1.9x the
 ELEMENT lane, and against ZIO that pairing reads as a 2.8x loss where
 the chunk-native pairing is a 6.4x win.
 
-- [ ] bench-chunk-fold-lane — READ THE LANE BODY FIRST. This
-      repository has hit the misnamed-granularity bug five times
-      (§6b, §6c, §14, §15, and the fs2 source audit), and the naming
-      rule in AGENTS.md exists because of it. Two outcomes: the lane
-      is misnamed and measures per-element work through a chunk API —
-      rename it and the 2.8x "loss" evaporates; or the path is
-      genuinely slow, and then it is a real 2.8x against ZIO.
-      DISQUALIFYING: if `_chunk_fold` folds a `Chunk` per ELEMENT it
-      is the former. Do not optimise before this is answered.
+- [x] bench-chunk-fold-lane — ANSWERED 2026-09-08, and the answer was
+      already in the tree when this was filed. The comment over the
+      lane in `IdiomaticApiBenchmark.scala` says in capitals: "A LANE
+      THAT DOES NOT MEASURE WHAT IT LOOKS LIKE, kept with the
+      explanation rather than deleted... `.drained` already batches
+      internally through `receiveMany`. Putting `.chunked()` on top of
+      it adds a layer instead of removing one." So the lane is a
+      deliberate diagnostic, the 2.8x "loss" to ZIO is a pairing that
+      does not exist, and there is nothing to optimise. NOT A DEFECT.
+      Filed in error: the entry itself said READ THE LANE BODY FIRST
+      and it was filed from the results table without doing so.
 
 ## bench-producer-inverted — `Producer` beats `LazyList` in one suite and loses in the other
 
@@ -104,14 +106,17 @@ Same two representations, opposite ordering, both stable across three
 rounds. The `performance` skill calls a disagreeing twin the single
 most informative pattern in a ratio table, and this is one.
 
-- [ ] bench-producer-inverted — find what §5 does to `Producer` that
-      §8 does not. §8 is a bare unfold; §5 runs `Stream.map/filter/
-      take` combinators over it, and per element the two suites differ
-      by ~10x. Expected win: if the combinator layer is the cost, the
-      §5 Producer lane should approach its LazyList twin, ~1.1x.
-      DISQUALIFYING: if `take(1000)` forces materialisation in the
-      Producer path, the target is `take`, not `Producer`, and the
-      entry should be re-filed under that name.
+- [x] bench-producer-inverted — ANSWERED 2026-09-08, and it is not an
+      inversion of anything. The two suites do not ask the same
+      question: §8 pits okay's `fibs` over two okay carriers, while
+      §5's LazyList lane uses the STANDARD LIBRARY's map/filter/take
+      on a `LazyList`, not okay's combinators. And the 188-vs-57 gap
+      INSIDE §5, between `okayProducer` and `okayIterator` over the
+      identical source, is stated in the paragraph above that table:
+      `toLazyList` is "the memoized, re-observable bridge — you pay
+      for the caching", `.iterator` is "linear, fused, consume-once".
+      A documented price, not a defect. Filed in error, from the
+      results table, without reading the prose beside it.
 
 ## bench-strong-chunked-tie — a pair that was 2.24x ahead is now level
 
@@ -129,11 +134,13 @@ ZIO barely moved (125.9 -> 137.5, inside host drift); okay did.
       agree, the old 56.2 was the outlier and §16's text needs the
       correction rather than the code.
 
-## bench-known-prices — five internal costs with a named mechanism and a small prize each
+## bench-known-prices — internal costs, mostly already written down
 
 Found by `bench-refresh` (2026-09-08). None is a defect; each is a
-price this library pays on purpose, re-measured and now current. Filed
-so nobody re-derives them.
+price this library pays on purpose. TRIMMED 2026-09-08 after triage:
+four of the five were already explained in docs/benchmarks.md when
+they were filed, so they are kept only as pointers, not as work. The
+one with an open decision is the first.
 
 - [ ] json-strict-is-now-the-slow-door — `Json.readStrict` reads 1104
       ns against `Json.read`'s 1004. The strict door was built to
