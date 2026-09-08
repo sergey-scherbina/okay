@@ -114,11 +114,44 @@ grows. One real producer, two apparent ones.
       The remaining ~6 points are the branch itself and are left
       alone; a trick there would buy noise.
 
-- [ ] growing-grown-cost — the second prize, unchanged by this fix:
-      even when growth is CORRECT, `growing` at 4 and 16 producers
-      reads 748 and 672 against `adaptive`'s 173 and 112 — 4.3x and
-      6.0x off the thing it grew INTO. Same session, same run. The
-      grown buffer should cost what the buffer it grew into costs.
+- [~] growing-grown-cost — PART DONE 2026-09-08. `sample()` kept
+      storing its counter on every push FOR EVER: the `!grown.get`
+      guard sat inside the every-64th branch, so the store outlived
+      the one swap it existed to trigger. At sixteen producers that is
+      sixteen threads storing to one line — contention, not the false
+      sharing the padding answers. The counter now stops at the swap,
+      gated on a RACY plain hint (a producer still reading `false`
+      does a useless increment; the real decision re-reads the
+      AtomicBoolean).
+      Measured, alternating, four rounds, `adaptive` stable to 1% as
+      the control: **-24.1% at sixteen producers, -8.5% at four,
+      +1.8% at one** (inside the noise; a first run had suggested a
+      +11.4% penalty there and it did not reproduce).
+      Ratio to the buffer it grows into: 4.80x -> **3.62x** at
+      sixteen, 3.45x -> 3.19x at four.
+      WHAT IS LEFT, and it is most of it: 3.6x. Per this entry's own
+      disqualifying evidence that points at the ADOPTED PART 0 —
+      `grow()` passes `first = inner`, so part 0 stays a
+      full-capacity ring pinned to `firstOwner` while every other part
+      is `cap/n`. Not investigated here, and filed below rather than
+      guessed at.
+
+- [ ] growing-adopted-part0 — NEW. After the swap `Growing` is still
+      3.6x the `AdaptiveFifo` it became, and the counter is no longer
+      the reason. The suspect named by elimination: `grow()` adopts
+      the original ring as part 0 (`first = inner`, `firstOwner =
+      sampled`), so part 0 is a ring of the FULL capacity pinned to
+      one producer while the other parts are `cap/n` each — an
+      asymmetry a plain `adaptive` never has.
+      Expected win: down to ~1.0x of `adaptive`, which is what would
+      make `growing` the strictly-better default.
+      DISQUALIFYING: the adoption is not decoration — it is what makes
+      the swap free (no element moves, and the producer that filled
+      the ring keeps its order in it). A fix that copies elements to
+      re-balance the parts pays a stall at the swap, and that trade
+      has to be measured, not assumed. Measure a variant whose
+      `grow()` builds a FRESH AdaptiveFifo first, to price the
+      adoption, BEFORE designing anything.
 
   (superseded plan, kept for the record) fix the identity, not the symptom. Two shapes,
       and the choice is a DESIGN decision on a knob the operator

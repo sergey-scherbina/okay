@@ -115,11 +115,17 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
   private final class Counter:
     var pad0, pad1, pad2, pad3, pad4, pad5, pad6: Long = 0L
     var seen: Int = 0
+    /** a RACY hint that the one swap has happened. Plain, not
+     * volatile, and that is the point: a producer still reading
+     * `false` merely does a useless increment for a while, and the
+     * decision below re-reads the real `AtomicBoolean` anyway. */
+    var doneGrowing: Boolean = false
     var pad7, pad8, pad9, pad10, pad11, pad12, pad13: Long = 0L
   private val counter = Counter()
 
   /** one swap, ever; losers use the winner's buffer */
   private def grow(): Buffer[A] =
+    counter.doneGrowing = true
     if grown.compareAndSet(false, true) then
       // part 0 is the ring, and its owner is the producer that filled it
       val partitioned = AdaptiveFifo[A](cap, each, eager = false, first = inner, firstOwner = sampled)
@@ -130,13 +136,22 @@ final class Growing[A](initial: Buffer[A], cap: Int, each: () => Buffer[A]) exte
   /** every 64th push: a producer that is not the one we sampled last
    * means more than one is pushing, which is what parts are for */
   private def sample(): Unit =
-    val n = counter.seen + 1
-    counter.seen = n
-    if (n & 63) == 0 && !grown.get then
-      val me = Thread.currentThread()
-      val last = sampled
-      if last == null then sampled = me
-      else if !(last eq me) then { val _ = grow() }
+    // AFTER THE SWAP THERE IS NOTHING LEFT TO LEARN, and the counter
+    // stops (growing-grown-cost, 2026-09-08). Growth is one-shot, so
+    // every store after it is waste — and at sixteen producers it is
+    // sixteen threads storing to one line, which is contention rather
+    // than the false sharing the padding above answers. Measured,
+    // alternating, four rounds, with `adaptive` stable to 1% as the
+    // control: -24.1% at sixteen producers, -8.5% at four, and +1.8%
+    // at one, which is inside the noise.
+    if !counter.doneGrowing then
+      val n = counter.seen + 1
+      counter.seen = n
+      if (n & 63) == 0 && !grown.get then
+        val me = Thread.currentThread()
+        val last = sampled
+        if last == null then sampled = me
+        else if !(last eq me) then { val _ = grow() }
 
   /** the refusal path still grows it when a second producer is
    * genuinely blocked behind a full part — backpressure AND
