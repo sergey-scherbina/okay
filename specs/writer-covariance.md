@@ -406,3 +406,61 @@ this one did:
   `State.get[Int]` stops being a program, every call site that reads
   it as one breaks. That is the migration the row parameter was
   trying to avoid, just moved.
+
+## signature-covariance (2026-09-08): what `F[+_]` is actually for
+
+`Free`'s row is `F[+_]`, so every signature in this library is
+covariant in its answer type. The question came from a call site, not
+from theory: interpreting `Save extends Users[Unit]` inside
+`[X] => (e: Users[X]) => ...`, the GADT match proves only `X >: Unit`,
+never `X = Unit` — because a COVARIANT `Users[Unit]` is a `Users[X]`
+for every `X >: Unit`. So the branch must widen `Unit ! R` to `X ! R`,
+and every interpreter carries a `.map(_ => ())` that looks like noise
+and is not.
+
+**Measured, by spiking it.** Rewriting every `[+_]` bound in
+`src/main` to `[_]` — which does NOT make the library's own
+signatures invariant, only permits invariant ones — the whole core
+compiles with exactly TWO real failures:
+
+1. `TypeableK`'s generic instance, `given [F[+_]](using
+   Typeable[F[Nothing]])`. It answers `Option[x.type & F[Nothing]]`
+   where `Option[x.type & F[A]]` is wanted, and only covariance closed
+   that gap. Under an invariant bound it needs a cast.
+2. `<|>`, where `case T(e)` infers the unapply's type argument as
+   `Nothing` and covariance made that fine. `T.unapply[A](e) match` —
+   passing the argument instead of inferring it — fixes it with no
+   cast.
+
+That is the whole cost in the kernel. Everything else was mechanical:
+`[+_]` to `[_]` across 23 files in main and ~15 in test, none of it
+interesting, and the library's own effects stay covariant and keep
+working.
+
+**And the payoff is real.** With the bound relaxed, an invariant
+signature — `enum Users[A]` — runs end to end (`InvSpike`: a program,
+an interpreter into `State`, the right answer), and the compiler says
+of the Save branch: "X is a type in method stored **which is an alias
+of Unit**". Exact refinement. The widening disappears, provided the
+answer the branch produces is a `Unit` (with `State.modify` answering
+the new STATE, as it does, a `.map(_ => ())` is still needed — that
+one is about the combinator, not about variance).
+
+**Not taken, for now.** The trade is: one cast in `TypeableK`'s
+generic instance (in a repo whose rule is no cast without necessity),
+plus churn in every module, against `.map(_ => ())` in interpreters
+and exact GADT types for anyone who wants them. Recorded here rather
+than done, because the choice is the operator's and because the
+measurement — two kernel edits, not a rewrite — is the part that was
+worth finding out.
+
+Two smaller facts fell out and are worth keeping:
+
+- Covariance is what lets `Choose(Seq.empty) : Choose[Nothing]` stand
+  for `Choose[A]`, and `Throws(e)` for `Throws[E, A]`. Those are
+  conveniences at construction, not requirements: the spike did not
+  touch the enums' own `[+A]`, so this was never tested against
+  invariance.
+- `derives Effect` (ClassTag-based) needs no covariance at all, so the
+  one place that does need it is now the one place a signature can
+  avoid declaring.
