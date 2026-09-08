@@ -1,0 +1,54 @@
+task: queue-swap
+agent: opus5-intent
+started: 2026-09-09
+branch: feature/queue-swap
+worktree: ../okay-wt-queueswap
+
+why: the operator picked this group (2026-09-08) as the next one. It
+  is also the only entry left whose premise TODAY'S measurements
+  partly contradict, so it gets measured before it gets built.
+
+what the entry proposes: move the ring -> partitioned swap out of the
+  `Growing` wrapper and into `SentinelChannel`, which holds the buffer
+  in a volatile field and REPLACES it, so there is exactly one layer
+  on each side of the swap instead of two. Six steps are filed:
+  volatile field + `growingTo(parts)`, waiter queues sized for the
+  grown part count up front, the swap as one CAS with losers using the
+  winner's buffer, `wakeAllSenders()` right after, the every-64th-push
+  sample as the trigger, and controls that must not move.
+
+DISQUALIFYING EVIDENCE, registered before any work:
+
+  The entry's whole prize is "the layer `Growing` still pays". On
+  2026-09-08 that layer was priced and it is two separate things:
+
+  1. THE FORWARDING DISPATCH — a buffer that only forwards measured
+     **1.02x** the ring it forwards to. Free. This is the only half
+     the channel-level swap actually removes.
+  2. `sample()` — a counter write on every push plus an every-64th
+     thread compare. This is where the residual cost is, and it does
+     NOT move: the channel-level version needs the same trigger, so
+     it pays the same sample.
+
+  So the proposal as filed buys at most 2%, and the thing worth
+  attacking is the trigger, not the layer.
+
+  THE TEST, taken first and before any code: at ONE producer and
+  equal capacity, a clean alternating A/B of the channel on `growing`
+  against the channel on a plain `Ring`. `docs/queues.md` reads 183
+  against 169 (8%) from the buffer table; the channel-level number is
+  the one that decides this entry.
+
+    - gap at or under the noise floor (5.9% p95 on uncontended lanes)
+      -> the entry is REFUTED as filed. `growing` is already the
+      default channel buffer (2026-09-08), the layer is already free,
+      and there is nothing left for a swap to buy. It closes as
+      done-by-other-means with the measurement written down.
+    - gap real and it is the DISPATCH -> build the six steps.
+    - gap real and it is `sample()` -> the six steps are the wrong
+      work. Make the trigger free at one producer instead, and say so
+      in the entry.
+
+predict: the gap is real (~8%) and it is `sample()`, not the layer —
+  which refutes the filed plan and redirects the lane to the trigger.
+  Recorded so that being wrong is visible.
