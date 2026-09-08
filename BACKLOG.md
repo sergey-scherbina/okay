@@ -70,7 +70,43 @@ THREAD. The resumed push therefore arrives with the consumer's
 identity, `Growing` sees a thread that is not the one it sampled, and
 grows. One real producer, two apparent ones.
 
-- [ ] growing-onep — fix the identity, not the symptom. Two shapes,
+- [x] growing-onep — FIXED 2026-09-08 as `growing-onbehalf`, shape
+      (a). `Buffer.pushDecidingAtOnBehalf` (default: the ordinary
+      push), `Growing` overriding it to neither sample nor grow,
+      `SentinelChannel` calling it when its `granted` flag is set. The
+      law moved to the layer that broke: through a CHANNEL with a
+      concurrent consumer, since the two existing one-producer tests
+      drive the Buffer directly from one thread and could not see it.
+      Fails on the old code in 32 ms, passes on the new.
+      **It bought no speed, and the entry says so.** growing/ring at
+      one producer went 1.53x -> 1.47x over six rounds with the ring
+      as the in-run control — inside the noise. The arithmetic agrees:
+      adaptive is 1.20x the ring and the spurious growth hit a third
+      of runs, so it was worth ~6 points of the 53. THE REMAINING ~45
+      IS THE WRAPPER'S OWN DISPATCH and is still open below.
+
+- [ ] growing-wrapper-cost — NEW, and it is what is actually
+      expensive. With growth now correct, `Growing` at one producer
+      still costs 1.47x the plain ring it is wrapping and doing
+      nothing else to. Every push and every pop goes through one extra
+      virtual call and a `@volatile inner` read. Expected win: down to
+      ~1.0x, which is what would let `Channel.apply` adopt it and
+      unblock `channel-default-adaptive`.
+      DISQUALIFYING: if the cost is the volatile read, removing it is
+      unsafe — the field is what publishes the swap. A fix has to keep
+      the publication and lose the indirection, e.g. by having the
+      CHANNEL hold the buffer reference it re-reads anyway (it already
+      does: "ONE read: a replaceable buffer must not be compared with
+      itself") and drop the wrapper entirely. Do not shave the
+      volatile and claim the rest.
+
+- [ ] growing-grown-cost — the second prize, unchanged by this fix:
+      even when growth is CORRECT, `growing` at 4 and 16 producers
+      reads 748 and 672 against `adaptive`'s 173 and 112 — 4.3x and
+      6.0x off the thing it grew INTO. Same session, same run. The
+      grown buffer should cost what the buffer it grew into costs.
+
+  (superseded plan, kept for the record) fix the identity, not the symptom. Two shapes,
       and the choice is a DESIGN decision on a knob the operator
       personally decided to keep (see the `growing` CHANGELOG entry),
       so it is filed rather than taken unilaterally:
