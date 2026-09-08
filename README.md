@@ -31,8 +31,12 @@ What that buys you in practice: you don't choose between readable and fast, you 
 The library stands on work by Moggi, Wadler, Felleisen, Danvy & Filinski, Atkey, Swierstra and Kiselyov — every decision has a paper and a measurement behind it.
 
 Scala 3, just moved to 3.9 LTS.
+Zero dependencies. One source for JVM (JDK 21+, Loom), Scala.js and
+Scala Native — each platform contributes evidence (can it park? what
+is its timer? what schedules?), not API: the same Await-based test
+suite runs on a JVM, under Node and as a linked native binary.
 
-## Inspired by Rúnar Bjarnason, Oleg Kiselyov and Robert Atkey.
+### Inspired by Rúnar Bjarnason, Oleg Kiselyov and Robert Atkey.
 
 http://blog.higher-order.com/assets/trampolines.pdf
 "Stackless Scala With Free Monads" Rúnar Óli Bjarnason
@@ -45,11 +49,6 @@ https://bentnib.org/paramnotions-jfp.html
 
 Where every other idea here comes from, with the papers:
 [the theory of Okay](docs/theory/index.md).
-
-Zero dependencies. One source for JVM (JDK 21+, Loom), Scala.js and
-Scala Native — each platform contributes evidence (can it park? what
-is its timer? what schedules?), not API: the same Await-based test
-suite runs on a JVM, under Node and as a linked native binary.
 
 ## Documentation
 
