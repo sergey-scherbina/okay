@@ -9,7 +9,9 @@ is a hypothesis, not a result; lanes quoted together were measured in
 the same session on the same (busy, honestly noted) host.
 
 Versions compared: cats-effect 3.5.7, ZIO 2.1.14, kyo 0.16.2,
-atnos-eff 7.0.4, fs2 3.10.2, circe 0.14.10.
+atnos-eff 7.0.4, fs2 3.10.2, circe 0.14.10 — on **Scala 3.9.0 LTS**
+since 2026-09-08 (every table below §0 was re-measured on it; earlier
+tables on this page were 3.7.4).
 
 Run them yourself: `sbt 'Jmh/run .*Fib.*'` (core lanes),
 `sbt 'compare/Jmh/run .*Compare.*'` (ecosystem lanes; the heavy
@@ -22,17 +24,61 @@ is that a chunk is a WHOLE definition, so it is measured as a
 percentage by `okay-rag`'s `TestChunkQuality` and reported in §11
 beside the microseconds it costs.
 
+## THE RUN THESE TABLES COME FROM (bench-refresh, 2026-09-08)
+
+Sections 0-11 and 14-16 were re-measured in ONE session, because the
+tables had drifted into a dozen sessions on hosts of varying quiet and
+this page's own rule is that lanes quoted together share a session.
+
+    date       2026-09-08, 23:35-02:57
+    tree       master cf820fa7 — Scala 3.9.0 LTS (75377969), and the
+               scheduler fix 3f09bd9c in it
+    host       Apple Silicon, 14 cores, freshly booted, no sbt and no
+               sibling build for the duration; both scalascript
+               launchd guards unloaded so nothing killed a fork
+    runner     sbt-free: `java -cp <exported Jmh classpath>
+               org.openjdk.jmh.Main`, ONE JVM per benchmark class
+    protocol   `-f 1`, each class at its own declared
+               `@Warmup`/`@Measurement`, 3 rounds, PER-LANE MINIMUM.
+               The +- beside a number is that round's own 99.9% bar.
+    scale      22 classes, 499 lanes, 0 failures
+
+**Why the minimum of three rounds, stated because this run proves the
+point.** `StreamOpsBenchmark.okayIterator` read 126.2, then 94.9, then
+57.3 across the three rounds — a box still settling, not a change.
+Read after one round it looked like a 2.2x regression against the
+standing table and was very nearly reported as one. `catsFree` did the
+same in the other direction (121.8 / 168.0 / 121.0). A single round of
+this suite is not a number; it is a draw from a distribution whose
+left tail is the answer.
+
+**What this run did NOT re-measure**, so nobody reads a fresh date over
+a stale number: §12 (consumption), §13 (the sketches), §17 (actors and
+the reactive bridge), §18 (JS and Native), §19 (okay-script), §11's
+embedding-representation table, and every A/B inside the prose that
+records a past experiment — those keep their own dates and are marked
+where they sit. §9's runWith/runAsync pair is unchanged too.
+
+**Scala 3.9.0 changes the compiler that generates every lane here**, so
+these numbers are not strictly comparable with any earlier table on
+this page, which was 3.7.4. No same-session 3.7.4-vs-3.9.0 A/B was
+run — that needs both trees built and alternated, and it is not what
+was asked for. Where a row moved a lot against its predecessor the
+text says so and does NOT attribute it to the compiler.
+
 ---
 
 ## 0. The floor — what each runtime charges to run nothing
 
 | **Okay** | ZIO | kyo `.eval` | kyo `runAndBlock` | cats IO |
 |---|---|---|---|---|
-| **0.00** | 0.04 | 0.00 | 7.2 | 7.6 |
+| **0.0021** | 0.043 | 0.0047 | 8.5 | 8.7 |
 
-(`FairnessProbeBenchmark`, `floor_*`, quiet box 2026-09-06: an
+(`FairnessProbeBenchmark`, `floor_*`, bench-refresh 2026-09-08: an
 already-finished program, run. Same run as the `chain_*`, `pipeline_*`
-and `queue_*` lanes cited below.)
+and `queue_*` lanes cited below. The two zeroes this table used to
+print were a rounding of 0.002 and 0.005 — real numbers, three
+thousand times under ZIO's, and worth printing as themselves.)
 
 **Why this table exists.** Every cats lane in this document goes
 through `unsafeRunSync`, which in cats-effect 3.5.7 schedules the
@@ -57,7 +103,7 @@ cannot show it.)
 
 | **Okay Eager** | kyo | **Okay Cont** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
 |---|---|---|---|---|---|---|---|---|
-| **4.8** | 58 | **89** | **95** | 129 | 136 | 153 | 181 | 260 |
+| **5.4** | 58 | **92** | **100** | 121 | 146 | 161 | 194 | 284 |
 
 **What it measures.** The raw cost of the monadic plumbing itself:
 build a 10 000-step flatMap chain by foldLeft (the WORST, left-nested
@@ -124,10 +170,10 @@ per-program, instead of as the only semantics.
 
 | | flatMap (hand) | direct | the syntax costs |
 |---|---|---|---|
-| **Okay** (while+var) | **95** | **101** | **1.06x — matched** |
-| **Okay** (recursion) | **95** | **55** | **0.58x — faster** |
-| kyo-direct (recursion) | 56 | 157 | 2.8x |
-| zio-direct (recursion) | 187 | **120** | **0.64x — faster** |
+| **Okay** (while+var) | **102** | **106** | **1.04x — matched** |
+| **Okay** (recursion) | **102** | **61** | **0.59x — faster** |
+| kyo-direct (recursion) | 57 | 171 | 3.0x |
+| zio-direct (recursion) | 196 | **126** | **0.64x — faster** |
 
 **What it measures.** Each ecosystem's first-party direct form
 against its own hand-written flatMap chain, same shape, same run
@@ -175,17 +221,22 @@ spellings and the competitors in the one they allow.
 
 | Reader | **Okay ctx direct** | **Okay ctx instance** | **Okay row** | ZIO | cats Kleisli | atnos | kyo Env |
 |---|---|---|---|---|---|---|---|
-| right-nested (recursion) | **0.3** | **46**† | **79** | | | | 291 |
-| left-nested (foldLeft) | | | **124** | 245 | 328 | 3123 | 362 099* |
+| right-nested (recursion) | **0.34** | **44**† | **76** | | | | 270 |
+| left-nested (foldLeft) | | | **115** | 260 | 343 | 1460 | 367 900* |
 
-(† the ctx instance is measured at 1 000 binds — 4.6 µs, scaled ×10
+(† the ctx instance is measured at 1 000 binds — 4.4 µs, scaled ×10
 here — because the chain is stack-bounded at ~2-5k binds; see the
 paragraph below.)
 
+(atnos's left-nested Reader reads 1460 here against the 3123 this
+table carried from an older session — the largest single move in this
+refresh, and NOT investigated: different tree, different compiler,
+different host. It is recorded, not explained.)
+
 | Writer | **Okay** | cats WriterT/Chain | atnos | kyo Emit |
 |---|---|---|---|---|
-| right-nested (recursion) | **163** | | | 215 |
-| left-nested (foldLeft) | **209** | 1250 | 4054 | 364 313* |
+| right-nested (recursion) | **161** | | | 175 |
+| left-nested (foldLeft) | **213** | 1212 | 3386 | 369 700* |
 
 **Two shapes, deliberately (kyo-fair-lanes, 2026-09-02).** The
 foldLeft build — `(1 to N).foldLeft(ask)((m, _) => m.flatMap(_ =>
@@ -253,7 +304,7 @@ measured, not the library.
 
 | List (floor) | **Okay** | kyo | atnos |
 |---|---|---|---|
-| 580 | **1603** | 3834 | 5392 |
+| 598 | **1649** | 4080 | 5660 |
 
 The one handler that is genuinely MULTI-SHOT: the continuation runs
 once per alternative. Okay's `runChoice` folds `k(x)` over the
@@ -266,7 +317,7 @@ this handler cannot be expressed with relay OR exceptions.)
 
 | raw Loom (floor) | kyo | **Okay** | ZIO | cats IO |
 |---|---|---|---|---|
-| 21 | 25 | **29** | 50 | 140 |
+| 21.7 | 18.3 | **24.4** | 47.4 | 120 |
 
 **Why Okay's number.** There is almost no Okay here — that is the
 design. A fiber IS a virtual thread; spawn is `Thread.startVirtualThread`,
@@ -276,12 +327,15 @@ schedulers, run-loops and interruption protocols; kyo sits close to
 the metal too (its scheduler is excellent) — we simply refuse to
 compete by NOT having one.
 
-**The 8 µs did not reproduce (close-the-gaps, 2026-09-06).** In three
-alternating rounds at `-f 1` on a quiet box, `okaySpawn` read 19.6
-against `rawLoom`'s 19.1 and kyo's 17.0 — about 5 ns of fiber
-bookkeeping per fork/join, not 80. The table above is from another
-session and is left as measured; the ratio to quote is ~1.0x the
-floor. An attempt to shave the join — parking on the
+**The 8 µs did not reproduce (close-the-gaps, 2026-09-06), and this
+refresh puts a number on what IS there.** That session read `okaySpawn`
+19.6 against `rawLoom`'s 19.1 — about 5 ns of bookkeeping per
+fork/join, not 80. bench-refresh 2026-09-08 reads **24.4 against the
+floor's 21.7: 2.7 µs over 100 fork/joins, so ~27 ns each**, and kyo at
+18.3 is now UNDER the raw-Loom floor rather than beside it. The honest
+ratio to quote is 1.13x the floor, not 1.0x and not the 8 µs the
+paragraph above still says. An attempt to shave the join — parking on
+the
 `CompletableFuture` directly instead of through the fiber's
 callback and a slot — measured WORSE, 19.6 → 22.3 in every round
 (`get()` spins before it parks), and was reverted.
@@ -294,10 +348,30 @@ them (`compare/src/jmh/scala/okay/AdversarialBenchmark.scala`,
 
 | lane | okay | raw Loom | zio | cats | kyo |
 |---|---|---|---|---|---|
-| fork/join 10 000 fibers | 2712 ±91 | 2632 ±32 | 2786 ±83 | 2586 ±20 | **830 ±27** |
-| many-to-many 4×4, one channel | 4964 ±96 | — | **3122 ±23** | 4213 ±142 | — |
-| many-to-many 16×16 | 9187 ±143 | — | **7012 ±192** | 9411 ±293 | — |
-| cancel 1 000 parked fibers | 1089 ±32 | — | 786 ±43 | **692 ±10** | — |
+| fork/join 10 000 fibers | 2715 | 2661 | 3445 | 2730 | **884** |
+| many-to-many 4×4, one channel | 4806 | — | **3106** | 4302 | — |
+| many-to-many 16×16 | 9325 | — | **6325** | 8881 | — |
+| cancel 1 000 parked fibers | 1116 | — | 887 | **748** | — |
+
+(bench-refresh 2026-09-08, `work=100`, minimum of three rounds. **Read
+this block as ranks, not as measurements**: every lane in it except
+kyo's carries 15–25% round-to-round spread on a 14-core box — `okay`'s
+fork/join rounds were 2715 / 3197 / 1957 — because ten thousand fibers
+on fourteen cores is a scheduling experiment, not a microbenchmark.
+kyo's own rounds sat inside 5%, which is itself the finding: its
+scheduler is the steady one here.)
+
+**Two rows this table did not have, and both change the reading.** The
+same suite carries `manyToMany_okayAdaptive` — the adaptive buffer
+rather than the single channel the `okay` row uses — and it reads
+**870 at 4×4 and 1042 at 16×16**, against ZIO's 3106 and 6325. The
+`okay` row above is one channel against ZIO's one queue, which is the
+honest like-for-like and stays; but the answer this library actually
+ships for many producers is 3.6x and 6.1x AHEAD, not 1.5x behind, and
+a reader who stops at the table would never learn that. And on
+cancellation, `cancel1k_okayDrive` reads **597** where the `okay` row's
+default scheduler reads 1116 — the drive scheduler wins its own lane
+by 1.9x and beats every competitor here.
 
 Predicted: lose all three. Measured: lose two, and sit on the floor
 for the third.
@@ -576,32 +650,40 @@ before it is a default anyone should ship.
 
 ## 5. Stream pipeline — map/filter/take(1000)/sum
 
-One session, every lane of `StreamOpsBenchmark` (chunked-source-sweep,
-2026-09-07, `-prof gc`, two forks): each library's CHUNKED source
-beside its per-element one, us/op and bytes/op, the ratio to the
-Iterator floor of the same run.
+One session, every lane of `StreamOpsBenchmark` (bench-refresh,
+2026-09-08): each library's CHUNKED source beside its per-element one,
+the ratio to the Iterator floor of the same run. Times are the minimum
+of three rounds; bytes come from a `-prof gc` pass of the same tree in
+the same session, and allocation does not drift with host load the way
+time does.
 
 | lane | us/op | B/op | vs floor |
 |---|---|---|---|
-| Iterator (floor) | 13.96 ±0.30 | 108 872 | 1x |
-| **Okay Staged** — whole-stage inline pipeline | **1.55 ±0.08** | **112** | **0.11x** |
-| **Okay chunked** — `Chunks.map/filter/take/fold` | **9.52 ±0.10** | 116 192 | **0.68x** |
-| **Okay elements** — the `.elements` door | **22.5 ±1.4** | 129 832 | 1.6x |
-| fs2 `Stream.emits` (pure, one chunk) | 21.5 ±2.8 | 152 896 | 1.5x |
-| ZIO `ZStream.range` (4096 a chunk) | 31.4 ±0.3 | 159 126 | 2.3x |
-| Okay iterator | 49.2 ±0.5 | 656 764 | 3.5x |
-| kyo `Stream.range` (4096 a chunk) | 60.8 ±0.9 | 336 168 | 4.4x |
-| Okay Producer / LazyList | 142.8 / 144.7 | 1 580 241 / 1 531 929 | 10x |
-| kyo singleton emit | 243 ±18 | 1 602 106 | 17x |
-| ZIO `ZStream.iterate` | 618 ±11 | 5 224 534 | 44x |
-| fs2 `Stream.iterate` | 1364 ±9 | 9 898 173 | 98x |
+| Iterator (floor) | 14.72 | 108 872 | 1x |
+| **Okay Staged** — whole-stage inline pipeline | **1.66** | **112** | **0.11x** |
+| **Okay chunked** — `Chunks.map/filter/take/fold` | **10.78** | 116 192 | **0.73x** |
+| **Okay elements** — the `.elements` door | **23.8** | 129 832 | 1.6x |
+| fs2 `Stream.emits` (pure, one chunk) | 21.4 | 152 896 | 1.5x |
+| ZIO `ZStream.range` (4096 a chunk) | 35.8 | 159 257 | 2.4x |
+| Okay iterator | 57.3 | 656 765 | 3.9x |
+| kyo `Stream.range` (4096 a chunk) | 64.1 | 336 120 | 4.4x |
+| Okay LazyList / Producer | 167.5 / 188.1 | 1 366 113 / 1 534 305 | 11x / 13x |
+| kyo singleton emit | 273 | 1 554 354 | 19x |
+| ZIO `ZStream.iterate` | 673 | 5 068 695 | 46x |
+| fs2 `Stream.iterate` | 1513 | 9 802 203 | 103x |
 
-(Until this run the table mixed three sessions — Staged from one, kyo
-`Stream.range` from another, ZIO's and fs2's chunked sources from the
-fairness audit's own — and carried a ratio-to-floor caveat. The
-ratios held: Staged 0.11x where the caveat said 12x under, Okay
-chunked 0.68x where it said 0.8–1.5x, kyo chunked 4.4x where it said
-4.2x, kyo singleton 17x where it said 22x.)
+(The previous version of this table mixed three sessions — Staged from
+one, kyo `Stream.range` from another, ZIO's and fs2's chunked sources
+from the fairness audit's own. Every ratio it reported survives this
+single-session re-measure within a tenth: Staged 0.11x both times,
+Okay chunked 0.68x → 0.73x, kyo chunked 4.4x both times.
+
+`Okay iterator` is the one row worth a warning to whoever reads this
+next. Across the three rounds it read 126.2, then 94.9, then 57.3 —
+the box settling — and after one round it looked like a 2.2x
+regression. It is not: the minimum agrees with the 49.2 this table
+used to carry, once you allow that this is a different tree on a
+different compiler. Do not quote this suite from a single round.)
 
 **What it measures.** The bread-and-butter stream pipeline in each
 library's fastest mode.
@@ -664,7 +746,14 @@ the three per-element ones 1.6–9.9 MB.
 
 | **Okay chunked** | ZIO | fs2 chunk-native | Okay elementwise | fs2 singletons |
 |---|---|---|---|---|
-| **10.7** | 45 | 84 | **308** | 8878 |
+| **13.5** | 51.8 | 98.9 | **130** | 10 760 |
+
+(bench-refresh 2026-09-08, N=500 a side. `Okay elementwise` reads 130
+against the 308 this table carried, and `ScalingBenchmark` agrees at
+the same N (122.5). The paragraphs below are the record of an
+investigation that ran when the number WAS ~300; they are dated and
+kept, but the row they were explaining has moved and nothing here has
+re-run that investigation to say why.)
 
 (fs2 re-paired 2026-09-06, `fs2-chunked-merge-lanes`, same run and
 N=500: `Stream.emits` a side — fs2's own one-chunk source — reads
@@ -763,10 +852,18 @@ the numbers PER ELEMENT:
 
 | per element | 500 el | 1000 el | 2000 el | 4000 el |
 |---|---|---|---|---|
-| `rawLazyListDrain` (control) | 11.3ns | 11.4 | 11.0 | 10.6 |
-| `sourceSingleDrain` | 41.2ns | 39.6 | 41.5 | 40.6 |
-| `channelMerge` | 142.3ns | 121.9 | 127.9 | 131.8 |
-| `sourceMerge` | 303.5ns | 299.7 | 300.7 | 291.6 |
+| `rawLazyListDrain` (control) | 14.3ns | 13.6 | 13.5 | 12.7 |
+| `sourceSingleDrain` | 50.8ns | 49.2 | 46.7 | 51.9 |
+| `channelMerge` | 90.7ns | 81.1 | 87.6 | 84.4 |
+| `sourceMerge` | 146.0ns | 122.5 | 122.9 | 120.2 |
+
+(bench-refresh 2026-09-08. `ScalingBenchmark`'s `n` is elements PER
+SIDE and both sides are drained, so the per-element figure is the lane
+divided by 2n; its params are 250/500/1000/2000, which is what the
+four columns are. The shape is what this table exists for and it is
+unchanged: flat across an 8x range, so the tree is linear and there is
+no quadratic to remove. The levels are lower than the 2026-09-02
+sweep this table used to carry — same conclusion, different tree.)
 
 Flat everywhere across an 8x range — the tree is linear, there is no
 quadratic to remove, and the rewrite has no measured justification.
@@ -1302,8 +1399,8 @@ queue underneath it.
 
 | | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
 |---|---|---|---|---|---|
-| right-nested (recursion) | **15.0** | | | | 838 |
-| left-nested (foldLeft) | **21.5** | **36** | 135 | 237 | 9011* |
+| right-nested (recursion) | **15.5** | | | | 706 |
+| left-nested (foldLeft) | **22.4** | **27** | 117 | 210 | 7984* |
 
 (Same two shapes as §2, same session as §2's table. *The starred kyo
 number is the left-nested O(N²) trap explained in §2 — an earlier
@@ -1321,7 +1418,7 @@ built around suspension pay their machinery for nothing.
 
 | Iterator | LazyList | **Okay Producer** | Okay LazyList | kyo | ZStream | fs2 |
 |---|---|---|---|---|---|---|
-| 12 | 13.5 | **18.4** | 35 | 61 | 172 | 245 |
+| 11.7 | 15.7 | **19.5** | 35.5 | 72.5 | 177 | 270 |
 
 Per-element unfold — the generator's honest per-element price. The
 Okay Producer is 1.5x from the bare-iterator floor; the streaming
@@ -1350,7 +1447,7 @@ Measured at load 2.4 with tight bars; 2.5KB JSON document, 50 members.
 
 | element-wise | chunked (512) | chunked (64) | chunked (8) |
 |---|---|---|---|
-| **42.6** | 52.6 | 55.6 | 70.5 |
+| **48.9** | 57.1 | 58.0 | 72.9 |
 
 Chunked lexing is SLOWER, and the first explanation for it was
 WRONG — which is worth more than the number. The three-size probe
@@ -1376,7 +1473,7 @@ needs the whole input in memory.
 
 | full parse | incremental reparse (one-member edit) |
 |---|---|
-| 85.1 | **38.0** |
+| 94.4 | **42.9** |
 
 2.2x under the full parse for a one-in-fifty edit — real, and
 honestly below what O(damage) suggests: the relex dominates the
@@ -1389,20 +1486,37 @@ REFERENCE) is what the layer exists for.
 
 | | write | read |
 |---|---|---|
-| **Okay CBOR** | **0.418** | **0.807** |
-| circe (JSON) | 0.422 | 0.623 |
-| **Okay JSON** (`Json.read`, lossless) | **0.628** | **10.3** |
-| **Okay JSON** (`Json.readStrict`, the second door — 2026-09-07) | — | **0.744** |
+| **Okay CBOR** | **0.469** | **1.017** |
+| circe (JSON) | 0.412 | 0.689 |
+| **Okay JSON** (`Json.read`, lossless) | **0.423** | **0.657** |
 
-Read this table as a price list for CONTRACTS. Our CBOR write ties
-circe's JSON write; our CBOR read is 1.3x it — that is the Schema
-fold on its own, right next to a hand-tuned parser. Our JSON write
-is 1.5x. Our LOSSLESS JSON read is 16x slower, and that gap is the
-whole point of that door: `Json.read` runs chars → total scanner →
-total driver → LOSSLESS CST → projection → Schema fold, where circe
-parses straight into its AST. What the gap buys is damage-as-data,
-byte-for-byte losslessness, and a HALF-ARRIVED document that still
-decodes (the LLM case).
+(bench-refresh 2026-09-08, `TextBenchmark`. The `Json.readStrict` row
+this table carried is measured by `CodecBenchmark` in ns/op and lives
+in the two tables below, not here.)
+
+**The 16x this table used to charge for losslessness is GONE, and it
+is a landed change, not this session's weather.** The read row was 10.3
+against circe's 0.623, and the paragraph here explained that gap as the
+price of the contract. Since then `json-parse-fast-road` (131cedc2 —
+"the default road through the JSON parser was the slow one, by 79x")
+and `json-cst-batch-road` (b4172242 — "the lossless CST road was lexing
+through the effect system, one char at a time") landed. The lossless
+read now measures **0.657 against circe's 0.689**: at parity, not 16x
+behind.
+
+So: read this as a price list for CONTRACTS whose prices have changed.
+Our CBOR read is 1.5x circe's JSON read — the Schema fold on its own,
+next to a hand-tuned parser. Our JSON write is now UNDER circe's. And
+`Json.read` — chars → total scanner → total driver → LOSSLESS CST →
+projection → Schema fold — still buys damage-as-data, byte-for-byte
+losslessness and a HALF-ARRIVED document that still decodes (the LLM
+case), and no longer charges for it against circe's parse straight
+into its AST.
+
+The paragraphs below were written while that gap was real. They are
+kept as the record, but read them with their dates: in particular the
+stage breakdown (chars → CST at 95% of 39.1us) describes the road
+BEFORE 131cedc2, and nothing in this session re-ran it.
 
 **Since 2026-09-07 there is a choice.** `Json.readStrict` goes
 characters straight into the `Schema` with no tree — `JsonValue`'s
@@ -1413,10 +1527,41 @@ not sure of. Same run, two forks, load falling from 11 to 5:
 
 | | ns/op | B/op |
 |---|---|---|
-| `textToOrderStrict` — `Json.readStrict` | **743.9 ±14.2** | 5 048 |
-| `textToOrderCirce` | 813.1 ±69.6 | 3 416 |
-| `textToOrderLossless` — `Json.read` | 14 264 ±125 | 127 724 |
-| `parseValueOnly` — the value parser alone, tree only | 226.5 ±2.5 | 2 208 |
+| `textToOrderStrictStaged` — `Staged.strict[Order]`, no tree | **347.5** | **2 320** |
+| `textToOrderStrictRuntimeStaged` — the same, generated at run time | 406.6 | 2 808 |
+| `textToOrderStaged` — `parseValue` + `Staged.json[Order]` | 491.4 | 2 720 |
+| `textToOrderCirce` | 834.4 | 3 416 |
+| `textToOrderLossless` — `Json.read` | 1 004 | 5 816 |
+| `textToOrderStrict` — `Json.readStrict` | 1 104 | 6 136 |
+| `parseValueOnly` — the value parser alone, tree only | 247.2 | 2 208 |
+
+(bench-refresh 2026-09-08: times are the minimum of three rounds,
+bytes from a `-prof gc` pass in the same session. The two tables this
+section used to print — one for the strict door, one for the staged
+one — are merged here, because every lane is now from one run and
+splitting them was only ever an artefact of two sessions.)
+
+**Two things inverted since this section was written, and both matter
+more than the numbers.**
+
+**`Json.read` is now FASTER than `Json.readStrict`** — 1004 against
+1104 — where the strict door was introduced precisely because the
+lossless one cost 14 264. `json-parse-fast-road` (131cedc2) and
+`json-cst-batch-road` (b4172242) took the lossless road down by 14x
+and straight past the door built to avoid it. Allocation says the same:
+5 816 bytes against the strict walk's 6 136. So the argument for
+`readStrict` is no longer speed — it is refusal, that it says `Left`
+to anything it is not sure of. That is a real reason to keep it, and
+it is not the reason this page gives.
+
+**`Json.read` is also within 20% of circe** (1004 against 834), where
+this section priced it at 17x. The lossless CST — every byte kept,
+damage included, a half-arrived document that still decodes — now
+costs about a fifth over a parser that throws all of that away.
+
+The staged road remains the fastest, at 347.5 ns and 2 320 bytes:
+**2.4x circe with 32% less allocation**, and 100 bytes over the bare
+value parse. That claim survives the refresh unchanged.
 
 **0.92x circe in time, 1.48x its bytes; 19.2x faster and 25.3x less
 allocation than the lossless road.** The strict Schema walk costs
@@ -1434,9 +1579,14 @@ reads, two forks, load 25 → 7:
 | `textToOrderCirce` | 792.8 ±18.9 | 3 416 |
 | `parseValueOnly` — the value parser alone | 225.8 ±1.4 | 2 208 |
 
+(SUPERSEDED — this is the 2026-09-07 run, kept because the paragraphs
+after it argue from these exact rows. The 2026-09-08 measurement of
+the same lanes is the merged table above, and it disagrees on one
+thing that matters: `Json.readStrict` is no longer the fast door.)
+
 **The staged strict reader is 2.45x faster than circe with 32% less
 allocation, and 112 bytes over the bare value parse: it reads at the
-cost of scanning.**
+cost of scanning.** (2026-09-08: 2.4x and 32%, unchanged.)
 
 **A correction this section owes.** The second row — `parseValue`
 plus the staged decode of the tree — has been in `CodecBenchmark`
@@ -1451,6 +1601,12 @@ derivation step; `Staged.strict[A]` (or `Staged.json[A]` over
 `parseValue`) for a caller who derives once and decodes many times —
 and that is the fastest JSON read in this library, by 2.45x over the
 external reference.
+
+(2026-09-08: the three doors stand, the ORDER of the first two does
+not. `Json.read` now reads 1004 ns against `Json.readStrict`'s 1104,
+so pick `readStrict` for its REFUSAL — it answers `Left` where it is
+unsure — and not for speed. `Staged` remains the fastest by 2.4x over
+circe. See the merged table above.)
 
 That was the whole of the explanation for a while, and charging each
 stage separately shows it is directionally right and wrongly
@@ -1499,15 +1655,15 @@ comments, strings and nesting — and its 6.3KB Python twin.
 
 | Scala, 8.5KB | Python, 6.3KB |
 |---|---|
-| **644** | **449** |
+| **658** | **470** |
 
 **Where a symbol index's time goes**, split on the same 8.5KB file:
 
 | | us | share |
 |---|---|---|
-| `Code.source` — lex, parse, tree | 376.1 | 60% |
-| `Symbols.of` — the walk over it | 221.5 | 35% |
-| `indexFull` end to end | 628.7 | |
+| `Code.source` — lex, parse, tree | 413.1 | 63% |
+| `Symbols.of` — the walk over it | 231.6 | 35% |
+| `indexFull` end to end | 657.5 | |
 
 The walk looked like the same defect as everything else in this
 section: it rebuilds the whole `Index` on every identifier it sees — a
@@ -1518,9 +1674,10 @@ rewrite was **reverted, because it bought nothing**: 244.1us against
 245.4 before, which is no difference at all.
 
 So the cost is somewhere else in the walk, and the quiet machine
-eventually said where: `indexFoldNoRefs` 189.6 ±5.4 against
-`indexFoldOnly` 235.0 ±14.9 — the identifier branch is only **19%** of
-the walk, and **81% is the traversal machinery itself**: the recursion,
+eventually said where: `indexFoldNoRefs` 209.3 against `indexFoldOnly`
+231.6 (bench-refresh 2026-09-08; 189.6 ±5.4 against 235.0 ±14.9 in the
+original run) — the identifier branch is only **10%** of the walk, and
+**90% is the traversal machinery itself**: the recursion,
 the `path :+` per definition node, `defHead` scanning each head,
 `span`. That is consistent with the refuted rewrite above (mutable
 buckets targeted the 19% and bought nothing measurable) and it prices
@@ -1539,7 +1696,7 @@ segments, and one more instance of the same defect:
 | | tokenization (the floor) | index build |
 |---|---|---|
 | before | 40.7 | 157.9 |
-| after | 41.1 | **75.7** |
+| after (re-measured 2026-09-08) | 39.2 | **83.1** |
 
 `Keyword.fold` was `combine(p, one(s))`: a whole one-segment
 `Postings` per segment — with a `groupBy` allocating a `Vector` of
@@ -1554,7 +1711,7 @@ machinery around it went from 117us to 34.6.
 `combine` is untouched and still the monoid — shards merge, and there
 the shift is real rather than a shift by zero.
 
-That is 13.2 and 14.0 MB/s warm. Cold, over a real tree —
+That is 12.9 and 13.4 MB/s warm (2026-09-08). Cold, over a real tree —
 `IndexReport` on this repository, 201 files and 898KB, including file
 I/O and with no JIT warmup at all — the same work runs at 1.2 MB/s
 and finishes in 744ms. Quote whichever matches your question; the
@@ -1565,7 +1722,7 @@ file:
 
 | full re-parse | incremental reparse |
 |---|---|
-| 400 | **110** |
+| 419 | **114** |
 
 3.6x, and the same honest caveat as the JSON lane: below what
 O(damage) alone suggests, because the relex dominates and the
@@ -1577,7 +1734,7 @@ the whole reason this layer exists.
 
 | structural (parsed) | windows (unparsed) |
 |---|---|
-| 684 | **309** |
+| 703 | **330** |
 
 Structural chunking costs **2.2x** a sliding window. This is the one
 table here where the slower number is ours on purpose, so the
@@ -1601,7 +1758,7 @@ buys the 29%, and it is paid once at ingestion rather than per query.
 
 | symbols (exact) | keyword (BM25) | hybrid (fused) | hybrid + assemble | vectors (240 segs, 1536 dim) |
 |---|---|---|---|---|
-| **0.55** | 12.4 | 17.9 | 16.7 | 347 |
+| **0.56** | 11.4 | 19.2 | 19.3 | 379 |
 
 Half a microsecond for an exact symbol lookup is the number worth
 staring at: it is the argument for having a half of retrieval that
@@ -1854,11 +2011,13 @@ sharing a suffix compare:
 
 | | elementwise | chunked |
 |---|---|---|
-| okayStrong — drain-on-close as an INVARIANT | 279.4 | 166.1 |
-| okayWeak — close discards | 204.6 | 113.1 |
-| **okayLayered — the same strong contract as a LAYER** | **194.5** | **115.9** |
-| zioStrong — `Queue[Option]` | 294.9 | 124.0 |
-| zioWeak — `Queue` | 298.3 | 115.3 |
+| okayStrong — drain-on-close as an INVARIANT | 258.8 | 136.0 |
+| okayWeak — close discards | 159.7 | 57.2 |
+| **okayLayered — the same strong contract as a LAYER** | **151.4** | **57.8** |
+| zioStrong — `Queue[Option]` | 350.8 | 137.5 |
+| zioWeak — `Queue` | 329.4 | 136.7 |
+
+(bench-refresh 2026-09-08, N=4000, cap=1024.)
 
 The layer result survives the correction and gets sharper: the strong
 contract costs 2.4% bought as a sentinel (115.9 over 113.1) and 47%
@@ -1921,14 +2080,22 @@ methodology §15 had to correct twice.
 
 | pair | okay | zio | ratio |
 |---|---|---|---|
-| unbounded, chunked | **49.1** | 383.8 | **7.8x** |
-| unbounded, elementwise | **110.5** | 439.1 | **4.0x** |
-| bounded strong, chunked | **56.2** | 125.9 | 2.24x |
-| bounded strong, elementwise | **248.6** | 286.9 | 1.15x |
-| weak, chunked | **54.8** | 116.1 | 2.12x |
-| weak, elementwise | **237.6** | 304.0 | 1.28x |
-| `StmChannel`, elementwise | **235.7** | 286.9 | 1.22x |
-| `StmChannel`, chunked | 128.0 | 125.9 | zio by 1.6% |
+| unbounded, chunked | **56.3** | 425.7 | **7.6x** |
+| unbounded, elementwise | **109.5** | 493.9 | **4.5x** |
+| bounded strong, chunked | **136.0** | 137.5 | 1.01x |
+| bounded strong, elementwise | **258.8** | 350.8 | 1.36x |
+| weak, chunked | **57.2** | 136.7 | 2.39x |
+| weak, elementwise | **159.7** | 329.4 | 2.06x |
+| `StmChannel` (list), elementwise | **238.9** | 350.8 | 1.47x |
+| `StmChannel` (list), chunked | **120.1** | 137.5 | 1.14x |
+
+(bench-refresh 2026-09-08, N=4000, cap=1024, minimum of three rounds.
+Two rows moved enough to say so plainly. `bounded strong, chunked` was
+2.24x ahead and is now a TIE (136.0 against 137.5) — the okay side got
+slower relative to the run this table came from, and nothing here
+explains it; it is recorded, not diagnosed. Against that, the
+`StmChannel` chunked row was ZIO's by 1.6% and is now okay's by 14%.
+The unbounded pair, the largest gap on this page, holds.)
 
 The unbounded pair is the largest gap in this file and it deserves the
 scepticism: `Queue.unbounded` is the like-for-like, not
