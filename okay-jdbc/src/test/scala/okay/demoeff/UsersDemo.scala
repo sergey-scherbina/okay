@@ -30,6 +30,7 @@ import okay.*
 import okay.!.*
 import okay.given
 import java.sql.{Connection, DriverManager}
+import okay.Direct.*
 
 enum Users[+A]:
   case Find(id: Long) extends Users[Option[String]]
@@ -85,31 +86,52 @@ object UsersDemo:
   type Store = Map[Long, String]
   type Tracked = State % Store + Writer % String
 
-  // every piece lifted into the ONE row the branch answers in; `+` is
-  // a union ([A] =>> F[A] | G[A]), so the re-association is the
-  // compiler's own equality and not a cast
-  private def peek[F[+_]]: Store ! (Tracked + F) =
-    !.widen[Store, State % Store, Writer % String + F](State.get[Store])
-  private def poke[F[+_]](m: Store): Store ! (Tracked + F) =
-    !.widen[Store, State % Store, Writer % String + F](State.set[Store](m))
-  private def note[F[+_]](line: String): Unit ! (Tracked + F) =
-    !.widen[Unit, Writer % String, State % Store + F](Writer.tell[String](line))
-
+  /**
+   * NOTHING IS LIFTED BY HAND HERE, and the first draft of this file
+   * lifted everything — three helpers wrapping `!.widen` around
+   * State.get / State.set / Writer.tell — because a for-comprehension
+   * fixes its row from the first step and `Writer.tell` (row
+   * `Writer % String`) then does not fit beside `State.get` (row
+   * `State % Store`).
+   *
+   * The mistake was reaching for the smart constructors. `State.get`
+   * and `Writer.tell` are the CONVENIENCE spelling, fixed at a
+   * single-effect row. Two spellings do not fix a row, and both are
+   * shorter than the helpers were:
+   *
+   *   effect[R, Store](State.Get())      — the operation injected
+   *                                        straight into row R; what
+   *                                        TestCtxReaderElim uses
+   *
+   *   direct { State.Get[Store, Store]().!? }
+   *                                      — the macro reads the row off
+   *                                        the block's expected type,
+   *                                        checks membership and
+   *                                        injects; the row is named
+   *                                        ONCE, on the block
+   *
+   * The block below is the second. Swap in the first and the file
+   * still passes — it was written both ways before this one landed.
+   */
   def tracked[A, F[+_]](prog: A ! (Users + F)): A ! (Tracked + F) =
-    val widened: A ! (Users + (Tracked + F)) = !.widen[A, Users + F, Tracked](prog)
-    !.translate[A, Users, Tracked + F](widened):
+    type R = Tracked + F
+    val widened: A ! (Users + R) = !.widen[A, Users + F, Tracked](prog)
+    !.translate[A, Users, R](widened):
       [X] => (e: Users[X]) => e match
         case Users.Find(id) =>
-          for
-            m <- peek[F]
-            _ <- note[F](s"find($id)")
-          yield (m.get(id): X)
+          val p: Option[String] ! R = direct {
+            val m = State.Get[Store, Store]().!?
+            Writer(s"find($id)").!?
+            m.get(id)
+          }
+          p.map[X](x => x)
         case Users.Save(id, name) =>
-          for
-            m <- peek[F]
-            _ <- poke[F](m + (id -> name))
-            _ <- note[F](s"save($id,$name)")
-          yield ((): X)
+          val p: Unit ! R = direct {
+            val m = State.Get[Store, Store]().!?
+            State.Set[Store, Store](m + (id -> name)).!?
+            Writer(s"save($id,$name)").!?
+          }
+          p.map[X](x => x)
 
   private def nameOf(c: Connection, id: Long): String =
     val rs = c.createStatement().executeQuery(s"select name from users where id = $id")
