@@ -42,10 +42,23 @@ object Users:
 
 object UsersDemo:
 
+  /**
+   * Renaming somebody who is not there is not a rename. The first cut
+   * of this program said `find` then `save` unconditionally, and the
+   * TYPE did not object — a for-comprehension sequences, it does not
+   * branch for you — but the SQLite handler's upsert then happily
+   * created user 99, and the answer `None` meant two different things
+   * at once: "there was no previous name" and "nothing was written".
+   * The demo's own MISS line was the tell: "row 99 is now hopper".
+   *
+   * So the branch is written out. `None` now means exactly one thing,
+   * and the recording handler proves it: the log for a missing id
+   * holds `find` and no `save`.
+   */
   def rename(id: Long, to: String): Option[String] ! Users =
     for
       old <- Users.find(id)
-      _   <- Users.save(id, to)
+      _   <- if old.isEmpty then pure[Users, Unit](()) else Users.save(id, to)
     yield old
 
   /** the real world: a SQLite file */
@@ -159,8 +172,15 @@ object UsersDemo:
       println("TEST  " + rename(7L, "grace").runWith(using recording(state, log)) +
               " / log=" + log.mkString(", ") + " / state=" + state)
 
-      println("MISS  " + rename(99L, "hopper").runWith(using live(c)) +
-              " / row 99 is now " + nameOf(c, 99L))
+      // the id nobody has: the database is untouched, and the recording
+      // handler shows WHY — a find and no save
+      val missLog = scala.collection.mutable.ListBuffer[String]()
+      val missLive = rename(99L, "hopper").runWith(using live(c))
+      val missTest = rename(99L, "hopper").runWith(
+        using recording(scala.collection.mutable.Map(), missLog))
+      println(s"MISS  $missLive / row 99 is now ${nameOf(c, 99L)}" +
+              s" / both worlds agree: ${missTest == missLive}" +
+              s" / log=${missLog.mkString(", ")}")
 
       // no mutable collection anywhere: the store is State, the log is
       // Writer, and the run answers with all three as plain data
