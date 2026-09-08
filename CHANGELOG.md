@@ -1,5 +1,51 @@
 # Changelog
 
+## bench-refresh — every cross-library table re-measured in one session, on 3.9.0
+
+`docs/benchmarks.md` sections 0-11 and 14-16 now come from ONE run:
+22 benchmark classes, 499 lanes, 3 rounds, per-lane minimum, sbt-free
+launcher (one JVM per class), quiet 14-core box, master cf820fa7 on
+Scala 3.9.0 LTS. Every lane is appended to `src/jmh/history.tsv`. The
+page's own rule -- lanes quoted together share a session -- was true of
+individual sections and false of the page, which had drifted into a
+dozen sessions on hosts of varying quiet.
+
+Three findings beyond fresher numbers:
+
+- **The lossless JSON read is no longer 16x.** It read 10.3 against
+  circe's 0.623, and the page explained that gap as the price of
+  losslessness. `json-parse-fast-road` (131cedc2) and
+  `json-cst-batch-road` (b4172242) landed since; it now reads 0.657
+  against circe's 0.689. In ns/op the inversion goes further:
+  `Json.read` 1004 against `Json.readStrict`'s 1104 -- the strict door,
+  built to avoid the lossless one's cost, is now the slower of the two.
+  It is worth keeping for its REFUSAL, not its speed, and the page says
+  that now instead of the opposite.
+
+- **§4b was missing the answer this library ships.**
+  `manyToMany_okayAdaptive` reads 870 / 1042 against ZIO's 3106 / 6325,
+  where the single-channel row printed 4806 / 9325. The like-for-like
+  row stays -- it is the honest pairing -- with the adaptive one beside
+  it, because a reader who stopped at the table learned the wrong
+  thing.
+
+- **§16's bounded-strong chunked pair went from 2.24x ahead to a tie**
+  (136.0 against 137.5). Recorded and explicitly NOT diagnosed: a
+  different tree on a different compiler, with no A/B to justify a
+  cause.
+
+The banner names the tree, host, runner and protocol, and lists what
+was NOT re-measured (§12, §13, §17, §18, §19, the embedding table) so a
+fresh date is never read as a fresh number. It also records why the
+protocol takes the minimum of three rounds: `okayIterator` read 126.2,
+then 94.9, then 57.3, and after one round it looked like a 2.2x
+regression against the standing table. It was the box settling.
+
+No same-session 3.7.4-vs-3.9.0 A/B was run, so no moved row is
+attributed to the compiler.
+
+Commit: 0c02929f.
+
 ## scala-3-9 — the build moves to the new LTS, and okay-spark stops being a ceiling
 
 Scala 3.9.0 opened the Long Term Support line as 3.3's successor, with
