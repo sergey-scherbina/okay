@@ -1,0 +1,22 @@
+task: service-lifecycle
+agent: fable-resilience
+started: 2026-09-09
+heartbeat: 2026-09-09T08:19:56Z
+status: in-progress
+branch: feature/service-lifecycle
+worktree: ../okay-wt-service-lifecycle
+spec: specs/ops.md, two new sections (graceful shutdown, RED metrics) — BACKLOG "resilience" / microservices-next
+
+why: the microservices audit's cheapest missing pair: no server here
+  drains (Kubernetes cuts in-flight requests at every rollout), and
+  /metrics knows the store and the guards but not the requests — no
+  rate, errors, duration per route or per outbound client.
+
+what: okay-ops: Lifecycle (draining flag, in-flight count, route
+  wrapper answering 503 while draining, drain(grace) that waits for
+  in-flight, readyz flips first, a SIGTERM hook on the JVM); Red
+  (per-route and per-client requests/errors/duration histogram as a
+  Schema value, Prom rows in Prometheus histogram form); Ops.routes
+  takes both. Docs: docs/modules/okay-ops.md, the spec's sections.
+
+next: worktree, spec sections, code, tests, docs, gate, land

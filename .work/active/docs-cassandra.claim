@@ -1,0 +1,19 @@
+task: docs-cassandra
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T08:17:48Z
+status: in-progress
+branch: feature/docs-cassandra
+worktree: ../okay-wt-docs-cassandra
+spec: specs/data.md, Behavior (new box under the Docs class)
+
+why: the third foreign engine of Docs, the one where grants(Quorum)
+  means a quorum and CAS is a lightweight transaction.
+
+what: okay-docs-cassandra (JVM satellite, java-driver-core — the Mongo
+  precedent): CassandraDocs over CQL with LWT (IF NOT EXISTS / IF ver
+  = ?) as Cond, secondary indexes on ix_<field> for query, consistency
+  levels ONE/QUORUM/ALL mapped from Consistency; the DocsSuite contract
+  Live on docker cassandra:5 (okay-cassandra-live, 9042).
+
+next: worktree, CassandraDocs.scala, TestCassandraDocs
