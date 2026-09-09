@@ -32,6 +32,16 @@ serializers is the stated path).
 Serializable` exists precisely so these closures ship as Spark tasks
 — even local mode serializes them.
 
+**The road to the aggregation, said once.** `SparkBulk(spark)` is the
+`Bulk[D[_]]` instance (specs/bulk.md): a program that reads CSVs, maps,
+joins and expands against `Bulk[D]` names no platform, and runs on
+this instance or on the local `Chunks` one unchanged. The instance is
+an opaque `RDD[Any]` — Spark stores objects anyway — so no `ClassTag`
+is asked per intermediate type; the price is one documented cast at the
+element boundary and a boxed element where Spark boxes it too. It is
+the RDD level, not Catalyst: the Wrocław GTFS join reads 18 s here
+against 7 s through DataFrames, and 4 s in one JVM through `Chunks`.
+
 ## Tutorial
 
 ```scala
@@ -48,6 +58,14 @@ val (m2, v2) = aggregate(sc.parallelize(data, 8))(stats)
 val byKey = aggregateByKey(pairs)(Aggregator.variance[Double])
 // typed Dataset column:
 ds.select(toSpark(stats).toColumn)
+
+// the road to it, platform-free (okay.Bulk.* is the collection view):
+def revenue[D[_]](using B: Bulk[D]) =
+  B.csv("sales.csv").map(r => r("shop") -> r("amount").toLong)
+    .join(B.csv("shops.csv").map(r => r("id") -> r("city")))
+    .aggregate(Aggregator.groupBy((kv: (String, (Long, String))) => kv._2._2)(Aggregator.sum[Long].contramap(_._2._1)))
+revenue(using SparkBulk(spark))   // a cluster
+revenue(using okay.localBulk)     // one JVM, the same answer
 ```
 
 ## API reference
@@ -57,6 +75,7 @@ ds.select(toSpark(stats).toColumn)
 | `aggregate` | `(rdd)(agg)(using ClassTag[Acc]) => Out` | rdd.aggregate with the triple |
 | `aggregateByKey` | `(rdd)(agg)(using CTs) => RDD[(K, Out)]` | per-key, one pass |
 | `toSpark` | `(agg)(using Encoders) => sql.expressions.Aggregator` | the Dataset form |
+| `SparkBulk` | `(spark) => Bulk[SparkBulk.Rows]` | the ETL seam on an RDD; `Rows[A]` is an opaque `RDD[Any]` |
 
 ## Gotchas
 

@@ -1,5 +1,19 @@
 # Backlog
 
+## bulk — after the seam (specs/bulk.md, landed 2026-09-09)
+- [ ] bulk-parquet — `Bulk.csv` is the only source; the taxi demo
+      (TestTaxiAlgebra) still reads its parquet through Spark's API.
+      A `source` per format, or `Bulk.read(Format)`, with the local
+      instance reading parquet without Spark (okay-delta already
+      carries a Delta Kernel road, specs/data.md).
+- [ ] bulk-flink — `flink-core` alone carries no DataStream; an
+      instance needs flink-streaming-java. The seam's `Any`-element
+      choice is what a `DataStream[AnyRef]` instance would do too.
+- [ ] bulk-join-cost — the RDD-level join over `Csv.Row` maps reads
+      18 s where the DataFrame join read 7 s on the same GTFS. Project
+      before joining (the seam's `map` runs before the shuffle already),
+      or a `Bulk.select` that a Catalyst instance could push down.
+
 ## runner-floor — what is left under the fused pass (specs/handler-fusion.md, after the arc)
 
 The handler-fusion arc closed 2026-09-09 with the floor measured: a

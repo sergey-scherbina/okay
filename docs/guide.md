@@ -256,7 +256,13 @@ windows subtract instead of recompute), `Foldable` (the push side),
 `(zero, seqOp, combOp)`, which is why one aggregator runs over Chunks,
 on Spark and on Flink unchanged; `zip` computes several statistics in
 one pass; sketches — HyperLogLog, Count-Min, t-digest — are the
-approximate ones, honest monoids with stated error).
+approximate ones, honest monoids with stated error). The road TO an
+aggregation is a seam of its own, `Bulk[D[_]]` (specs/bulk.md): read a
+CSV, map, filter, join, expand, cache, aggregate — written once against
+`D`, run on `Chunks` in one JVM, on Spark (`SparkBulk`) or on a
+machine's cores (`okay.java.Parallel`) by the instance in scope. No
+evidence per element type: a platform stores objects, and the Spark
+instance says so in its type rather than asking a `ClassTag` per step.
 
 Both sides of that algebra are specialized, and the split is the same
 one everywhere: where the step is written at the call site, `inline`
