@@ -1,5 +1,21 @@
 # Changelog
 
+## di-module — a Module is a Providing that has not been built yet
+
+specs/di.md, stage 0, the operator's ask for our own DI and the
+bridges to everyone else's. The core already made a dependency a type
+and a missing one a compile error; what it lacked was lifecycle. A
+`Module[F]` wraps `Providing[F] ! Resource`: `module[Db](open)(close)`
+acquires in the region, `Resource.run` releases in reverse order
+whatever the program did, and `and` types its right operand
+`F[Module[G]]` so a module needing an earlier one is `Db ?=> Module[…]`
+reading `wire[Db]` — the graph is the composition, the compiler
+checks it, a test double is one more `and`. Five tests. Two decisions
+in the spec: a class, not an alias (an extension `apply` typed the
+body without its expected type — E10 from a new side), and
+`Module.ready` rather than a companion `apply`. Stages 1-3 filed in
+BACKLOG "di": qualifiers, the printable plan, okay-conf, okay-spring
+/ ZLayer / Guice bridges, the join with deployment. Commit: LANDING.
 ## sql-temporal-types — Timestamp/Date/Time/Uuid/Json in the seam, java.time fields on the JVM, and the H2 Calendar road refuted
 
 Lane 3 of the persistence audit. A `timestamptz`/`date`/`time`/`uuid`/

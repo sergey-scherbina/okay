@@ -51,6 +51,34 @@ follows, in the spec's order:
       + client-side balancing (cluster.md lists it out of scope);
       Schema compatibility checks between services; a `Log` effect
       with trace correlation (0 hits for one today).
+## di — modules, wiring and the containers next door (specs/di.md; operator's ask, 2026-09-09)
+
+Stage 0 landed in the core (Module over Providing and Resource,
+TestModule). What follows, in the spec's order — each stage's gate is
+its Behavior checklist:
+
+- [ ] di-qualifiers — stage 1: two capabilities of one type told apart
+      by an opaque type per role, never a string; a documented example
+      with a compile-error test. Expected: no new mechanism.
+- [ ] di-plan — stage 1: `Module.plan`, the acquisition order as a
+      printable, testable `Vector` of type names via the TypeableK
+      seam; its caveat stated once in the doc.
+- [ ] di-conf — stage 1: okay-conf joins — a `Config` value is a
+      `Module.value`, a `Secret` resolves in a module whose acquisition
+      reads the config. One documented example with a test.
+- [ ] okay-spring — stage 2: `Module` → `@Configuration` (one
+      BeanDefinition per capability, SmartLifecycle for the scope),
+      `Module.fromContext(ctx)`, a controller returning `A ! Async`
+      via okay-reactive, a Boot starter. New satellite; build.sbt
+      touched — coordinate.
+- [ ] zio-layer — stage 2: `ZLayer` ⇄ `Module`, `ZEnvironment` →
+      `Providing`, in okay-zio.
+- [ ] okay-guice — stage 2: `Module` → `AbstractModule`,
+      `Module.fromInjector`; CDI/Micronaut documented as the same
+      shape.
+- [ ] di-deploy — stage 3: the root module's unresolved inputs render
+      into specs/deployment.md's dependency graph.
+
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 
 The audit (2026-09-09) read every seam: `Sql` (JDBC, pg wire, R2DBC),
