@@ -834,8 +834,9 @@ lazy val okayObs = crossProject(JVMPlatform, JSPlatform, NativePlatform)
 lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-ops"))
-  // okayResilience: the breaker/bulkhead/limiter Stats become /metrics rows
-  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience)
+  // okayResilience: the breaker/bulkhead/limiter Stats become /metrics rows;
+  // okaySql: Pool.Stats joins them (persistence-e2e)
+  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience, okaySql)
   // a real socket for the route-level acceptance test, JVM only
   .jvmConfigure(_.dependsOn(okayJetty % Test))
   .settings(
@@ -1668,9 +1669,46 @@ lazy val compare = (project in file("compare"))
  * SigV4 with service "dynamodb" — no AWS SDK. JVM, like the Mongo
  * adapter; the DocsSuite contract runs Live against dynamodb-local. */
 lazy val okayDocsDynamo = (project in file("okay-docs-dynamo"))
-  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test", okayBlob.jvm, okayHttp.jvm)
+  // okayPg/okaySql in Test: the end-to-end suite (persistence-e2e) runs
+  // a Pool over the pg wire and a Saga over this adapter side by side
+  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test", okayBlob.jvm, okayHttp.jvm,
+    okaySql.jvm % Test, okayPg.jvm % Test)
   .settings(
     name := "okay-docs-dynamo",
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     Test / fork := true,
+  )
+
+/** The Spring Boot bridge of specs/di.md (stage 2): a Module's
+ * installed values as singletons in a Spring context, closed with it;
+ * a Spring bean as a module; a controller returning `A ! Async` served
+ * through Spring's ReactiveAdapterRegistry, wired by a Boot
+ * auto-configuration. JVM; the Boot test scope runs the
+ * auto-configuration under ApplicationContextRunner. */
+lazy val okaySpring = (project in file("okay-spring"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-spring",
+    libraryDependencies ++= Seq(
+      "org.springframework" % "spring-context" % "6.2.10",
+      "io.projectreactor" % "reactor-core" % "3.7.9",
+      "org.springframework.boot" % "spring-boot-autoconfigure" % "3.5.5",
+      "org.springframework.boot" % "spring-boot-test" % "3.5.5" % Test,
+      "org.assertj" % "assertj-core" % "3.27.3" % Test,   // ApplicationContextRunner's assertable context
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )
+
+/** The Guice bridge of specs/di.md (stage 2): a Module as a Guice
+ * module (bound by name from the plan, by type when unique), the
+ * scope's closer as a bound instance, and an injector's instance as
+ * a module. JVM; Guice 7 (jakarta.inject). */
+lazy val okayGuice = (project in file("okay-guice"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-guice",
+    libraryDependencies ++= Seq(
+      "com.google.inject" % "guice" % "7.0.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
   )

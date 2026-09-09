@@ -560,6 +560,11 @@ through the Typed envelope.
       they stopped
 - [x] two sagas share a topic and keep their own records; an unknown id
       refuses to recover
+- [x] (persistence-e2e) a saga whose steps are DynamoDocs CAS writes
+      crosses the crash window and recovers Forward: the re-run CAS
+      answers Stale, which the step reads as "already happened" — the
+      far end's idempotency, exactly as stated; okay-ops renders
+      `Saga.Status` as `okay_saga_*` rows (Live)
 
 ## Out of scope
 

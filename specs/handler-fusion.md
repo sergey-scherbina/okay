@@ -253,8 +253,8 @@ is the row that motivated `Handler.union` in the first place.
 `!>` built the same inline way (flat dispatch + product state carried
 in the answer type, i.e. `S = Acc => (Acc, A)` for the step members)
 runs it in one pass with no tree. That is stage 3, after the `Free`
-loop has the numbers, because `Eff` is not stack-safe on left-nested
-binds and the fused loop's first job is to keep `runFree`'s bar.
+loop has the numbers, because `Eff` was not stack-safe on left-nested
+binds (it is since specs/eff-stack-safety.md) and the fused loop's first job is to keep `runFree`'s bar.
 
 ## Decisions
 
@@ -397,7 +397,8 @@ removes that. So the order changes; the numbers, not the plan, decide:
   right-nested 16.7 µs (staged-effects.md measured 1.6–1.9x for this
   shape). Laws as stage 0: agreement with the nested `Free` runners for
   both orders, aborts included. Stated limit, in the spec before the
-  code: `Eff` is not stack-safe on left-nested binds, so this is the
+  code: `Eff` was not stack-safe on left-nested binds (fixed later the
+  same day, specs/eff-stack-safety.md), so this was the
   road for for-comprehension-shaped programs; `foldLeft`-built ones
   stay on `Free`.
 - Stages 1–2 (`Step`/`Fused.run` over `Free`, `Handler.flat`) stay
@@ -428,9 +429,10 @@ numbers are minima across rounds, B/op from `-prof gc` is load-proof:
 | nested, the other order | 354 241 | 327 569 | 33.9 | 31.7 | 1.07x |
 
 −26.7 KB/op is the Either (16 B) plus the extractor's Some (16 B) per
-operation, minus the Some `scala.reflect.Typeable` still answers for a
-told value's own test (333 per run) — the prediction (−16…24 KB) was
-under. Time: 7–11% on the hot loops, which clears the 10% bar on the
+operation — the prediction (−16…24 KB) was under. (The remark that
+`scala.reflect.Typeable`'s Some for the told value still costs was
+measured afterwards and is wrong: 0 B/op, the JIT scalarises it, and
+the fused loop never tests Writer at all — writer-test-no-some.) Time: 7–11% on the hot loops, which clears the 10% bar on the
 lane it was set on and misses it by two points on the left-nested one.
 One observation left open: `State.handle`+`Writer.foldWith` on `split`
 saved only the Option in one nesting and both wrappers in the other

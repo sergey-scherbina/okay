@@ -64,3 +64,12 @@ Async.par(async(1), async(2)).runWith
 - `fromZStream` is consume-once (the scope belongs to the iterator);
   bridge to LazyList if you need re-observation.
 - `import okay.given` is required for `runWith` and friends.
+
+**Layers are modules** (`ZioLayers`, specs/di.md). `toLayer(m)` runs a
+one-capability module under ZIO's `acquireRelease` — acquired when the
+layer builds, released when ZIO's scope closes; `fromLayer(layer)` is
+a module that builds the layer in a `Scope` of its own at acquisition
+and closes it at release, so it composes with `and`; `fromEnvironment`
+lifts a built `ZEnvironment` as a `Providing`. One capability per
+conversion: their environment is typed by Tags per member, ours by a
+context-function chain, and each side composes in its own words.

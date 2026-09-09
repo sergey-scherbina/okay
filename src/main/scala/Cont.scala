@@ -48,6 +48,13 @@ inline def reset[A, R](c: A ^ R): R = c / identity
  * tail-recursive loop, so running a flatMap chain is stack-safe.
  */
 object Cont:
+  /** a bind whose left side is deferred into the runner's loop (the
+   * constructor is private so that the representation stays the
+   * runner's). Not
+   * `inline`, for the ComonadHandler reason: an inline body reaching a
+   * private constructor makes the compiler synthesize an accessor with
+   * an unstable name, and a downstream JAR breaks on recompilation. */
+  def defer[A, B, S, T, R](thunk: () => Cont[A, T, R])(f: A => Cont[B, S, T]): Cont[B, S, R] = Defer(thunk, f)
   /** the depth budget of closure fusion: bounds the run-time stack of a fused segment */
   val Fuse = Try(System.getProperty("okay.cont.fuse", "128").toInt).getOrElse(128)
 
@@ -59,6 +66,19 @@ enum Cont[A, S, R] {
   /** sequencing, private: only the runner sees the representation */
   private case Bind[A, B, S, T, R](a: Cont[A, T, R],
                                    f: A => Cont[B, S, T]) extends Cont[B, S, R]
+  /**
+   * a bind whose LEFT side is deferred, private: the runner forces it
+   * in its own loop. This is what makes `Eff` stack-safe on a
+   * left-nested bind (specs/eff-stack-safety.md): applying a
+   * Church-encoded program to its handler used to CALL inward once per
+   * bind before any Cont existed; with the inner application deferred
+   * here, that call happens inside `/`, one per iteration, and the
+   * node rotates like any Bind. One node, not a Bind over a Suspend —
+   * measured: a separate Suspend node cost 48 B per bind on the
+   * right-nested fast path, this shape costs the thunk alone.
+   */
+  private case Defer[A, B, S, T, R](thunk: () => Cont[A, T, R],
+                                    f: A => Cont[B, S, T]) extends Cont[B, S, R]
 
   /**
    * binds fuse into the Shift closure (the fast function encoding)
@@ -82,6 +102,10 @@ enum Cont[A, S, R] {
     case Bind(Bind(a, f), g) => Bind(a, f(_).flatMap(g)) / k
     case Bind(Pure(a), f) => f(a) / k
     case Bind(Shift(s, _), f) => s(f(_)(k))
+    // the deferred left side is forced HERE, in the loop, and its own
+    // binds then rotate through the cases above — constant stack
+    case Defer(t, f) => Bind(t(), f) / k
+    case Bind(Defer(t, f), g) => Defer(t, f(_).flatMap(g)) / k
 }
 
 /** the stack-safe data instance: the default carrier */

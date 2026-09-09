@@ -78,6 +78,37 @@ class TestModule extends munit.FunSuite {
     assertEquals((prim and log).plan, Vector("Primary", "Log"))
   }
 
+  // stage 2: what a container needs
+  test("exports names, classes and values of what the scope built; an opaque role keeps its name under its erased class") {
+    val db = module[Db](new Db { val q = "row" })(_ => ())
+    val pool: Db ?=> Module[[X] =>> Pool ?=> X] =
+      module[Pool](new Pool { val db = wire[Db]; val size = 2 })(_ => ())
+    val prim = Module.value[Primary](primary(RDb("p")))
+    val xs = run((db and pool and prim).exports)
+    assertEquals(xs.map(_.name), Vector("Db", "Pool", "Primary"))
+    assertEquals(xs.map(_.cls), Vector(classOf[Db], classOf[Pool], classOf[RDb]))
+    assert(xs(1).value.isInstanceOf[Pool])
+    assertEquals(xs(2).value, RDb("p"))
+  }
+
+  test("Resource.open acquires now and releases at the closer, reverse order, once") {
+    var log = List.empty[String]
+    def open(n: String) = module[String]({ log ::= s"open $n"; n })(r => log ::= s"close $r")
+    val (xs, close) = Resource.open((open("a") and open("b")).exports)
+    assertEquals(xs.map(_.value), Vector("a", "b"))
+    assertEquals(log.reverse, List("open a", "open b"))
+    close(); close()
+    assertEquals(log.reverse, List("open a", "open b", "close b", "close a"))
+  }
+
+  test("Resource.open: a failing acquisition releases what came before, and throws") {
+    var closed = List.empty[String]
+    val a = module[String]("a")(_ => closed ::= "a")
+    val boom = module[Int](throw RuntimeException("boom"))(_ => closed ::= "never")
+    intercept[RuntimeException](Resource.open((a and boom) { wire[Int] })): Unit
+    assertEquals(closed, List("a"))
+  }
+
   test("a failing acquisition releases what came before it") {
     var closed = List.empty[String]
     val a = module[String]("a")(_ => closed ::= "a")

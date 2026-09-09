@@ -30,6 +30,37 @@ object Resource {
    * carried into the residual — they run when the residual completes
    * (abandoning the residual abandons them).
    */
+  /**
+   * Open the scope and KEEP it open: acquire everything now, hand
+   * back the value and a closer that releases in reverse acquisition
+   * order. For the scope whose end belongs to somebody else — a
+   * Spring context's close, a main's shutdown hook — where `run`
+   * cannot own the end. A throw during an acquisition releases what
+   * was acquired before it and rethrows; the closer is idempotent.
+   * Resource only: a row to forward has no home to forward to here.
+   */
+  def open[A](a: A ! Resource): (A, () => Unit) = {
+    var fin = List.empty[() => Unit]
+    def close(): Unit = { val f = fin; fin = Nil; f.foreach(_()) }
+    var x = a
+    try
+      while true do (x.resume: @unchecked) match
+        case Pure(v) => return (v, () => close())
+        case Effect(Acquire(mk, rel)) =>
+          val r = mk()
+          fin = (() => rel(r)) :: fin
+          return (r, () => close())
+        case Bind(Effect(Acquire(mk, rel)), k) =>
+          val r = mk()
+          fin = (() => rel(r)) :: fin
+          x = k(r)
+      throw MatchError(x)
+    catch
+      case t: Throwable =>
+        close()
+        throw t
+  }
+
   def run[A, F[+_]](a: A ! Resource + F): A ! F = {
     def releaseAll(fin: List[() => Unit]): Unit = fin.foreach(_())
 

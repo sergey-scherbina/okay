@@ -1,5 +1,122 @@
 # Changelog
 
+## eff-stack-safety — a million left-nested Eff binds run; the price is stated and kept
+
+`Eff` overflowed on a LEFT-nested chain between 10 000 and 100 000
+binds while a right-nested one ran at a million (measured first, a
+scratch probe). The cause is exact: applying a Church-encoded program
+to its handler called inward once per bind before any `Cont` existed,
+none of those calls a tail call. The fix defers that call into
+`Cont`'s own runner: a private `Defer` node — a bind whose left side
+is a thunk — forced inside `/`'s loop one per iteration and rotated
+like any `Bind`; `Eff.flatMap` builds one instead of applying the
+inner program eagerly. `Cont.defer` is the single door; nothing else
+in the tree matches on `Cont`'s constructors (checked).
+
+Two shapes measured, one kept: a `Suspend` node under a `Bind` cost
+the right-nested fast path 48 B per bind; the single `Defer` node
+costs 32 — +11% allocation, ~+14% time load-adjusted on `effSWr`.
+Kept, with the reasoning in the spec: a silent, shape-dependent
+overflow is the footgun this library refuses elsewhere, `Free` is
+there for the last 11%, and stage B had already measured `Eff` at
+0.58x of the fused Free loop for stateful rows. The revert is one
+line and the spec names it. Laws: a million binds in both shapes,
+`Free`/`Eff` agreement, every existing suite. Three history rows.
+## di-bridges — ZLayer and Guice, the same seam as Spring
+
+specs/di.md stage 2, the other two containers the operator named. In
+okay-zio, `ZioLayers`: `toLayer` runs a one-capability module under
+ZIO's `acquireRelease`, `fromLayer` is a module that builds a layer in
+a `Scope` of its own and closes it at release, `fromEnvironment` lifts
+a built environment as a `Providing`; one capability per conversion,
+because their environment is typed by Tags per member and ours by the
+chain, and each side composes in its own words. New JVM satellite
+okay-guice: `OkayGuice.bindings(m.exports)` binds by name from the
+plan and by type where the erased class is unique among the exports —
+two opaque roles over one class are two names and no type binding —
+with the scope's closer bound as a `ModuleScope` instance since Guice
+has no lifecycle; `OkayGuice.instance[A]` asks the injector when the
+scope builds. Also fixed on the way: an exhaustivity warning in the
+`exports` macro that okay-spring's warm gate had hidden. 3 + 3 tests.
+CDI documented as the same shape, not built. Commit: 43d93bff.
+
+## okay-spring — a Module inside Spring Boot, both ways
+
+specs/di.md stage 2, the first bridge. New JVM satellite okay-spring:
+`OkaySpring.register(ctx, m.exports)` registers one singleton per
+installed capability — named by the plan, typed by the erased class —
+and a `DisposableBean` whose destroy is the scope's closer, so the
+context's close releases in reverse order as the region would;
+`OkaySpring.bean[A](ctx)` makes a Spring bean a module looked up when
+the scope builds; an adapter on Spring's `ReactiveAdapterRegistry`
+lets a WebFlux controller return `A ! Async`, registered by a Boot
+auto-configuration (`AutoConfiguration.imports`). Two core additions
+carried it: `Resource.open`, the scope whose end belongs to somebody
+else (acquire now, idempotent closer, reverse release on a failed
+acquisition), and `m.exports`, `plan`'s macro twin generating the
+body that collects each ambient value — so no reflection touches the
+values and the bridge meets Spring's `Object` API in exactly two
+places, both restating a check already made. 3 core tests, 4 in
+okay-spring (the auto-configuration under ApplicationContextRunner).
+Not built: a WebFlux end-to-end with a real server. Commit: 59b4b17c.
+## writer-test-no-some — refuted on the first byte count, and unsound besides
+
+First of the four "runner-floor" items the operator ordered after the
+handler-fusion arc: `Writer`'s own `TypeableK` tests the told value
+through `scala.reflect.Typeable`, whose `unapply` answers a `Some` per
+tell — remove it with a `ClassTag` class test (boxed for primitives),
+`Typeable` as the fallback by given priority.
+
+Built, tests green, measured: 0 B/op, to the byte, on the fused loop
+and on both nestings of the shipping runners. Two reasons, both worth
+knowing: the JIT already scalarises that Some on the runner path (a
+tiny `unapply` consumed by `.isDefined`), and the fused loop never
+tests Writer at all — it tests State and takes Writer by exclusion, so
+the "333 Somes remain" remark in stage A's write-up was an inference,
+not a measurement; corrected there. And the road is UNSOUND anyway: a
+`ClassTag` of a union is its LUB, so `Writer % (String | Int)` would
+claim every told value — the failure `TypeableK.derived` refuses for
+rows, reappearing one level down. Reverted; nothing landed but the
+record. Next: eff-stack-safety.
+## persistence-e2e — the seven audit lanes together, and Pool/Saga stats on /metrics
+
+The seven persistence-audit lanes were each proven alone; this lane
+proves them together and makes their standing visible. okay-ops renders
+`Pool.Stats` (okay_pool_size/idle/busy/waiting/created_total, named)
+and `Saga.Status` (okay_saga_phase, steps_done, steps_undone, by id)
+beside the guards; `Pool.Stats` derives Schema; okay-ops now depends on
+okay-sql. A Live end-to-end suite in okay-docs-dynamo: a Pool over the
+pg wire lends two connections to a real write skew and `transactRetry`
+through `borrow` lands on run 2 with the pool whole after; a Saga whose
+steps are DynamoDocs CAS writes crosses the crash window and recovers
+Forward because the re-run CAS answers Stale — the far end's idempotency
+the saga states. Landed as dfb0fbaa. Gate: full matrix, 2957 tests, two
+okay-intent timeouts (TestOfflineGate, TestTypoRobustness: 30 s limit
+under three sbts on the box, 412 s matrix) green on rerun alone;
+okay-intent does not depend on the changed modules.
+
+## resilience-faults — stage 2 of specs/resilience.md: the seeded adversary, and the composite under it
+
+`Faults.http(seed, plan)(inner)` delays, drops or fails calls by a
+plan; a call's fate is a pure function of the seed and its ORDINAL
+(SplitMix64 on the pair), so a hedged race meets the same faults in
+the same places whichever attempt finishes first — Sim's move one
+seam up: a found bug is a seed. Fixed faults by ordinal win over
+drawn rates; `log` and `stats` say what each call met. `TestFaults`
+drives the five through it: the breaker opens on planned drops and
+the far end is not asked while open; the hedge answers from ordinal
+2 while ordinal 1 sleeps 5 s and is cancelled before the far end; a
+40 ms budget cuts a 5 s call; 40 calls of a drawn plan are all
+accounted for across breaker, wire and limiter, and the run replays
+by seed. Adaptive concurrency stays deferred, unmeasured: nothing
+wires `Resilient.http` into a service yet, so there is no latency to
+follow. 5 tests. The full-matrix gate caught what the scoped run
+had not: the composite test's limiter ran on the wall clock, a warm
+replay finished its 40 calls in fewer milliseconds than the first,
+refilled less, met `Exhausted`, and broke its own replay — the
+limiter's clock is frozen there now, which is the spec's own rule
+(time is injected) applied to the test that had forgotten it.
+
 ## ui-native-toolkits — the Swing host: the JVM's own toolkit over the same seam, headless-tested by the DOM battery
 
 The "out of the box" native leg specs/frontend.md left open.
@@ -22,6 +139,38 @@ React, on the raw DOM, in a Swing window, and over the wire to a
 browser or the Compose client. GTK via Scala Native is not here: the
 machine has no GTK headers, and a binding nobody can compile is not
 out of the box — it stays filed.
+## wroclaw-algebra — the same algebra on the city's own timetable
+
+`okay-spark`'s `TestWroclawAlgebra` (Live-tagged, like the taxi demo)
+runs the P1 algebra over Wrocław's GTFS feed from the city's open-data
+portal: 1 158 821 scheduled stop times, expanded across the fortnight
+the feed is valid for (2026-09-06..20, service patterns from
+calendar.txt) into **4 593 288 departures**.
+
+- `departures zip routesRunning zip tramShare` under `groupBy(_.hour)`:
+  three statistics per hour of the day in one pass, where `tramShare` is
+  two counts presented as their ratio and `routesRunning` is the exact
+  `distinct`. Spark 504 ms over the cached RDD, `Chunks.fold` over the
+  same collected rows 576 ms, counts equal and the ratio to 1e-9.
+- What it says about the city: the MORNING peak is the peak (06:00 tops
+  the day at 256 317 departures, ahead of 15:00 and 16:00); at 01:00 the
+  network is down to 17 routes of 138 with no tram at all; the tram
+  share is highest in the evening (36.1% at 20:00).
+- The window on the Group: per-minute departures over the whole
+  fortnight, 21 947 points. Subtracting what ages out costs 17.1 ms at a
+  60-minute window and 5.5 ms at 24 hours; recomputing each window costs
+  84.4 ms and 1 701.9 ms. Busiest hour of the fortnight ended Monday
+  2026-09-07 at 07:25 with 20 410 departures; busiest 24 hours ended the
+  same Monday with 340 139.
+- A window over a Monoid-only element is still a compile error, asserted
+  with `compileErrors`.
+
+Two things the demo had to be honest about. Routes are counted through
+`route_id.hashCode`, so a test asserts 138 ids give 138 distinct hashes
+before `distinct` is trusted. And `.map` on an `Array[Row]` does not
+resolve with `import okay.given` in scope — the `Id` monad's extension
+gets in the way of `ArrayOps` — so the check goes through `.iterator.map`,
+noted where it happens.
 
 ## docs-dynamo — the DynamoDB adapter of the Docs seam: condition expressions as Cond, GSIs as indexes, SigV4 without an SDK
 

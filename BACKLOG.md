@@ -1,5 +1,51 @@
 # Backlog
 
+## runner-floor — what is left under the fused pass (specs/handler-fusion.md, after the arc)
+
+The handler-fusion arc closed 2026-09-09 with the floor measured: a
+fused pass over `Free` is ~13.7 ns and ~122 B per operation
+(`FusionBenchmark.fusedSWr`, 122 641 B/op per 1 000 ops). The
+operator asked for the four things left under it, in this order:
+
+- [x] writer-test-no-some — REFUTED 2026-09-09, no code landed. Built
+      (ClassTag class test in the companion, Typeable fallback by given
+      priority) and measured: 0 B/op on fusedSWr, nestedSWr and nestedWS
+      to the byte — the JIT already scalarises `Typeable.unapply`'s Some
+      on the runner path, and the fused loop never tests Writer at all
+      (it tests State and takes Writer by exclusion). And the ClassTag
+      road is UNSOUND for a union told type: `ClassTag[String | Int]` is
+      the LUB (`Object`), so `Writer % (String | Int)` would claim every
+      told value — the same failure TypeableK.derived refuses for rows.
+      Was: `Writer`'s own `TypeableK` tests the told
+      value through `scala.reflect.Typeable`, whose `unapply` answers a
+      `Some` per tell (333 per run here). A `ClassTag`-based test where
+      one exists (boxed for primitives), `Typeable` as the fallback,
+      by given priority. Gate: B/op on `fusedSWr` drops by ~16 B per
+      tell; TestRowIdentity's two-Writers row still misroutes loudly.
+- [x] eff-stack-safety — DONE 2026-09-09: `Cont.Defer` + a deferring
+      `Eff.flatMap`; a million left-nested binds run; cost +11% B/op,
+      ~+14% time on Eff's right-nested path, kept with the reasoning and
+      the one-line revert in specs/eff-stack-safety.md. Was: `Eff` is not
+      stack-safe on left-nested binds
+      (the Church encoding calls inward once per bind before any Cont
+      exists). Measure the depth at which it dies, decide between a
+      trampoline in `Eff.flatMap` (if one exists that is not "reify to
+      Free") and a documented law + `fromFree` as the road; either way
+      a test pins the answer.
+- [ ] either-scalarised-in-one-nesting — after stage A, the shipping
+      runners saved both wrappers in `Writer.run(State.handle(p))` and
+      only the Option in `State.run(Writer.run(p))`; bytecode has no
+      `Left`/`Right` in `State$`. Per-runner lanes with the old `<|>`
+      loops kept benchmark-local as the A/B; explain, then fix or
+      record.
+- [ ] single-shot-row — the only road under 122 B/op: a mutable cell
+      in place of the threaded accumulator, which is sound only when
+      no handler below resumes a continuation twice. A type-level
+      evidence for that (per signature, derived for a row; NOT for
+      Choice/Logic/List/Vector), the handlers that consume it, and the
+      honest statement of what a user-written `handle` can break.
+      SPEC FIRST, then the measured win on `fusedSWr`.
+
 ## resilience — the microservice handlers (operator's direction, 2026-09-09)
 
 Stage 0 of specs/resilience.md landed (okay-resilience: Breaker,
@@ -22,7 +68,7 @@ follows, in the spec's order:
       `Ops.routes` takes a `Vector[Reporting[?]]`. okayOps gains the
       okayResilience dependency (JVM + JS only — okay-ops is already
       JVM + JS).
-- [ ] resilience-faults — stage 2: `Faults.http(seed, plan)(inner)`,
+- [x] resilience-faults — DONE 2026-09-09. Was: stage 2: `Faults.http(seed, plan)(inner)`,
       the seeded fault-injecting Http (delays, drops, 5xx by
       ordinal), and the composite under a plan behaving per the
       pieces' contracts. Adaptive concurrency stays deferred until
@@ -62,16 +108,15 @@ its Behavior checklist:
       the module's type (not TypeableK — see the spec's Decisions),
       the okay-conf example with a Secret resolved inside the
       acquisition.
-- [ ] okay-spring — stage 2: `Module` → `@Configuration` (one
-      BeanDefinition per capability, SmartLifecycle for the scope),
-      `Module.fromContext(ctx)`, a controller returning `A ! Async`
-      via okay-reactive, a Boot starter. New satellite; build.sbt
-      touched — coordinate.
-- [ ] zio-layer — stage 2: `ZLayer` ⇄ `Module`, `ZEnvironment` →
-      `Providing`, in okay-zio.
-- [ ] okay-guice — stage 2: `Module` → `AbstractModule`,
-      `Module.fromInjector`; CDI/Micronaut documented as the same
-      shape.
+- [x] okay-spring — DONE 2026-09-09: `OkaySpring.register`/`bean`,
+      the ReactiveAdapterRegistry adapter + Boot auto-configuration;
+      core gained `Resource.open` and `m.exports`. Not done, deferred
+      to a lane if wanted: a WebFlux end-to-end test with a real
+      server (the adapter is tested on the registry, the
+      auto-configuration under ApplicationContextRunner).
+- [x] zio-layer + okay-guice — DONE 2026-09-09 as one lane
+      (di-bridges): `ZioLayers` in okay-zio, the new okay-guice
+      satellite. CDI documented as the same shape, not built.
 - [ ] di-deploy — stage 3: the root module's unresolved inputs render
       into specs/deployment.md's dependency graph.
 
@@ -1247,6 +1292,21 @@ construction instead of a type test per value).
       without the fix. specs/schedulers.md, "Every park site".
 
 ## Flakes observed (record → fix loop when they recur)
+
+- **TestManyToMany "the default channel ends for every consumer",
+  2026-09-09 09:32 and 09:36** (okay-spring's gate, then a solo rerun),
+  both while the box was thrashing (build-ram-guard ACT lines, five
+  sibling sbts, two background gates killed for memory in the same
+  minutes): `Channel.apply 16x16: received 15000 distinct of 16000;
+  missing 1000 (by producer: Map(14 -> 1000), first Vector(14000, …));
+  duplicated 0`. Same producer, its WHOLE output, twice — and every
+  producer had returned from `sendBlocking` and joined, so 1000
+  accepted elements were never delivered after `close()`. 3/3 green
+  on the same tree once the box was quiet, Channel/Growing sources
+  identical to master. Not a timing assertion: a lost element is a
+  defect wherever it shows. For the channel lane: a part accepted
+  under memory pressure and dropped at close — reproduce under
+  `stress`/a busy box before touching anything.
 - [x] flaky-scheduler-late-answer — FOUND AND FIXED 2026-09-07
       (scheduler-cancel-wins). Not the pre-park window I guessed (a
       sleep in the registration refuted that): `CanBlock.block` read
