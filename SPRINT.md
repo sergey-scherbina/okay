@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- either-scalarised-in-one-nesting — BACKLOG "runner-floor" item 3
+  (operator's order 2, 4, 3, 1: the third). Per-runner lanes, the old
+  `<|>` loops kept benchmark-local as the A/B; explain, then fix or
+  record. Claimed 2026-09-09 (.work/active/either-scalarised.claim).
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
