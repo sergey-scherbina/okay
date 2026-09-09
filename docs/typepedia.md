@@ -448,14 +448,14 @@ and nothing else in the library casts for that reason:
   branch: the constructor has refined the answer type there, and the
   ascription is where the refined value meets the loop's type.
 - **`Failing.anyRow`** (Resource's forwarded-failure hook) — the
-  TOTAL road of the row-typeclass recipe below: the class test proves
-  the operation is an `Async.Run`/`Async.Await`, the replacement is
-  the same constructor at the same answer type, and only the erased
-  `F[X]` cannot say so. It is the LOW-priority instance; the typed
-  ones above it (anchored on `Async`) answer for every shape a
-  `Resource.run` in this repository actually passes, so the cast
-  serves the shapes the compiler cannot pin — and it is there because
-  the alternative was measured and was SILENCE (see the recipe).
+  TOTAL default of the row-typeclass recipe below: the class test
+  proves the operation is an `Async.Run`/`Async.Await`, the
+  replacement is the same constructor at the same answer type, and
+  only the erased `F[X]` cannot say so. A row holding no Async
+  operation never reaches the cast. It is the LOW-priority instance,
+  and `Failing[Async]` above it is the typed road for the single-effect
+  row most call sites pass. The cast is there because the alternative
+  was measured and was SILENCE (see the recipe).
 - **No `Tagged`, and the reason is worth more than the type was.** An
   existential package — a value with its `ClassTag` beside it — turns
   an unchecked cast into a checked one, and is the right tool for
@@ -555,23 +555,29 @@ reasons are measured rather than argued:
 - **The anchors are NOT the whole story, and the gap is silent.**
   `A + B + C` nests to the left, so `(Async + S) + P` is not
   `Async + ?G` to the implicit search and no anchored instance
-  matches. With only anchors plus an identity fallback, such a row
+  matches. With only anchors plus an identity default, such a row
   compiles, resolves, and does NOTHING — the finalizers are abandoned
   exactly as before the fix, with no error anywhere. That was measured
   (TestFailing) after a first probe read `summon` succeeding as
   "resolved" when what had answered was the identity.
-- **So the fallback must be TOTAL, not typed.** `Failing.anyRow`
-  tests the OPERATION's own class rather than the row's shape, casts
-  once, and is correct for every nesting — the low-priority instance,
-  so the typed ones win where they apply. A typeclass over rows ends
-  up with two roads on purpose: the typed one for the shapes that
-  occur, the total one so an unusual shape fails loudly or not at all.
+- **So the default must be TOTAL, not typed.** `Failing.anyRow` tests
+  the OPERATION's own class rather than the row's shape, casts once,
+  and is correct for every nesting.
+- **And then the anchored ROW instances are decoration — delete
+  them.** They were written and they work; once the default is total
+  they answer nothing it does not answer the same way, at the same
+  cost (the anchored road also runs a class test, inside `<|>`). What
+  is worth keeping from that road is the SINGLE-EFFECT instance —
+  `Failing[Async]` — because one effect is a shape the compiler pins,
+  it is what most call sites pass, and it needs no cast. Two
+  instances, not four (failing-simplify, the operator's call).
 
-The rule that survives all of it: **when a typeclass over a row can be
-answered wrongly by a default, the default must be total; when it can
-only be answered by the shape, anchor it on a concrete effect.** An
-identity default is the one thing to refuse — it turns a type-level
-miss into a runtime silence.
+The rule that survives all of it: **a typeclass over rows gets a TOTAL
+default that reads the value, plus typed instances only for the shapes
+the compiler can pin and that callers actually pass.** An identity
+default is the one thing to refuse — it turns a type-level miss into a
+runtime silence. And the corollary that cost this repository two
+lanes: prove an instance by CALLING it, never by `summon` succeeding.
 
 ## The capability recipe: adding a door to any API (ctx-everywhere)
 

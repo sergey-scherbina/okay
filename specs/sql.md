@@ -378,11 +378,14 @@ the anchored set covered `(Async + F) + G` and `(F + G) + Async` too.
 It does not: `summon` succeeded there, but what answered was the
 low-priority IDENTITY, so a deeper row was silently unguarded — the
 defect this hook exists to prevent, reintroduced by a probe that read
-"an instance was found" as "the instance guards". The fallback is now
+"an instance was found" as "the instance guards". The default is now
 TOTAL (`Failing.anyRow`: the operation's own class, one cast,
-documented in docs/typepedia.md's cast list), the typed anchored
-instances answer the shapes that actually occur, and `TestFailing`
-walks the nestings and asserts that BOTH roads guard.
+documented in docs/typepedia.md's cast list) and correct for every
+nesting; `TestFailing` walks the shapes and asserts each is guarded.
+The anchored ROW instances were then deleted as decoration
+(failing-simplify) — a total default answers those shapes identically
+— leaving two instances: the typed `Failing[Async]` for the
+single-effect row most call sites pass, and the total default.
 
 - [x] core: a forwarded `Async.Run` that throws, and an `Await` that
       answers Left, both release (TestResource); on a ROW `Async +
