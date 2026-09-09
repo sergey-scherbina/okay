@@ -11,15 +11,56 @@ import okay.given
  * attribute and React puts a closure, this puts a name.
  */
 enum Ui:
+  // ---- level L, the layout vocabulary: small and CLOSED (specs/frontend.md)
   case Text(s: String, style: Style = Style.none)
   case Row(children: Vector[Ui], key: String = "")
   case Column(children: Vector[Ui], key: String = "")
-  case Button(label: String, key: String)
-  case Input(value: String, key: String, label: String = "")
+  /** the general container: Row/Column with weights (a child's share
+   * of the main axis), a gap between children and padding inside */
+  case Box(children: Vector[Ui], dir: Dir, weights: Vector[Int] = Vector.empty,
+           gap: Int = 0, pad: Int = 0, key: String = "")
+  case Image(src: String, alt: String)
+  case Button(label: String, key: String, role: Role = Role.Plain)
+  case Input(value: String, key: String, label: String = "",
+             kind: InputKind = InputKind.Text, live: Boolean = false)
   case Check(on: Boolean, key: String, label: String = "")
   case Select(options: Vector[String], selected: Int, key: String)
+  case Scroll(child: Ui, key: String = "")
+  // ---- level S, the semantic vocabulary: OPEN, each node DEFINED by
+  // its lowering (`Ui.lower`) — a client that does not claim a node
+  // receives the lowering, and cannot tell (`Ui.keys` is the law)
+  /** fields and a submit button; `submit` is the button's label, the
+   * form's key is the button's key (Pressed(key) until ui-hybrid's
+   * Submitted) */
+  case Form(fields: Vector[Ui], submit: String, key: String)
+  /** a keyed list of items — `List` is Scala's name, so `Items` */
+  case Items(items: Vector[Ui], key: String)
+  case Table(header: Vector[String], rows: Vector[Vector[Ui]], key: String)
+  /** tab i's button is keyed `<key>$tab<i>`; only the selected page
+   * is shown, so only its keys are capabilities */
+  case Tabs(labels: Vector[String], selected: Int, pages: Vector[Ui], key: String)
+  case Modal(title: String, body: Ui, key: String)
 
-final case class Style(bold: Boolean = false, dim: Boolean = false)
+enum Dir:
+  case Horizontal, Vertical
+
+/** how a button reads — a host maps a role to its idiom */
+enum Role:
+  case Plain, Primary, Danger, Active
+
+enum InputKind:
+  case Text, Secret, Multiline, Number
+
+/** style is TOKENS, not pixels: a host maps a tone to its own idiom
+ * (bold/dim are v1's two, kept as they were) */
+enum Tone:
+  case Plain, Emphasis, Muted, Danger
+
+enum Size:
+  case Small, Normal, Large
+
+final case class Style(bold: Boolean = false, dim: Boolean = false,
+                       tone: Tone = Tone.Plain, size: Size = Size.Normal)
 object Style:
   val none = Style()
 
@@ -75,10 +116,17 @@ object Ui {
   def keyOf(ui: Ui): Option[String] = ui match
     case Row(_, k) if k.nonEmpty => Some(k)
     case Column(_, k) if k.nonEmpty => Some(k)
-    case Button(_, k) if k.nonEmpty => Some(k)
-    case Input(_, k, _) if k.nonEmpty => Some(k)
+    case Box(_, _, _, _, _, k) if k.nonEmpty => Some(k)
+    case Button(_, k, _) if k.nonEmpty => Some(k)
+    case Input(_, k, _, _, _) if k.nonEmpty => Some(k)
     case Check(_, k, _) if k.nonEmpty => Some(k)
     case Select(_, _, k) if k.nonEmpty => Some(k)
+    case Scroll(_, k) if k.nonEmpty => Some(k)
+    case Form(_, _, k) if k.nonEmpty => Some(k)
+    case Items(_, k) if k.nonEmpty => Some(k)
+    case Table(_, _, k) if k.nonEmpty => Some(k)
+    case Tabs(_, _, _, k) if k.nonEmpty => Some(k)
+    case Modal(_, _, k) if k.nonEmpty => Some(k)
     case _ => None
 
   def diff(old: Ui, next: Ui): Vector[Patch] =
@@ -86,7 +134,8 @@ object Ui {
       case (x, y) if x == y => Vector.empty
       case (Text(_, s1), Text(t, s2)) if s1 == s2 =>
         Vector(Patch.SetText(path.reverse, t))
-      case (Input(_, k1, l1), Input(v, k2, l2)) if k1 == k2 && l1 == l2 =>
+      case (Input(_, k1, l1, kd1, lv1), Input(v, k2, l2, kd2, lv2))
+        if k1 == k2 && l1 == l2 && kd1 == kd2 && lv1 == lv2 =>
         Vector(Patch.SetValue(path.reverse, v))
       case (Check(_, k1, l1), Check(on, k2, l2)) if k1 == k2 && l1 == l2 =>
         Vector(Patch.SetChecked(path.reverse, on))
@@ -94,6 +143,16 @@ object Ui {
         Vector(Patch.SetSelected(path.reverse, i))
       case (Row(c1, k1), Row(c2, k2)) if k1 == k2 => children(b, c1, c2, path)
       case (Column(c1, k1), Column(c2, k2)) if k1 == k2 => children(b, c1, c2, path)
+      case (Box(c1, d1, w1, g1, p1, k1), Box(c2, d2, w2, g2, p2, k2))
+        if d1 == d2 && w1 == w2 && g1 == g2 && p1 == p2 && k1 == k2 => children(b, c1, c2, path)
+      case (Scroll(x, k1), Scroll(y, k2)) if k1 == k2 => go(x, y, 0 :: path)
+      // semantic nodes: their children are at the paths their
+      // LOWERING puts them at (the diff commutes with lowering — the
+      // law TestVocab asserts), so a client holding either tree walks
+      // the same indices
+      case (Form(f1, s1, k1), Form(f2, s2, k2)) if s1 == s2 && k1 == k2 => children(b, f1, f2, path)
+      case (Items(i1, k1), Items(i2, k2)) if k1 == k2 => children(b, i1, i2, path)
+      case (Modal(t1, x, k1), Modal(t2, y, k2)) if t1 == t2 && k1 == k2 => go(x, y, 1 :: path)
       case _ => Vector(Patch.Replace(path.reverse, b))
 
     /**
@@ -154,15 +213,23 @@ object Ui {
       case i :: rest => u match
         case Row(c, k) => Row(c.updated(i, at(c(i), rest, f)), k)
         case Column(c, k) => Column(c.updated(i, at(c(i), rest, f)), k)
+        case b: Box => b.copy(children = b.children.updated(i, at(b.children(i), rest, f)))
+        case Scroll(c, k) if i == 0 => Scroll(at(c, rest, f), k)
+        case Form(c, s, k) => Form(c.updated(i, at(c(i), rest, f)), s, k)
+        case Items(c, k) => Items(c.updated(i, at(c(i), rest, f)), k)
+        case Modal(t, c, k) if i == 1 => Modal(t, at(c, rest, f), k)
         case other => other   // a path into a leaf: the diff never makes one
     def kids(u: Ui, f: Vector[Ui] => Vector[Ui]): Ui = u match
       case Row(c, k) => Row(f(c), k)
       case Column(c, k) => Column(f(c), k)
+      case b: Box => b.copy(children = f(b.children))
+      case Form(c, s, k) => Form(f(c), s, k)
+      case Items(c, k) => Items(f(c), k)
       case other => other
     p match
       case Patch.Replace(path, b) => at(ui, path, _ => b)
       case Patch.SetText(path, s) => at(ui, path, { case Text(_, st) => Text(s, st); case u => u })
-      case Patch.SetValue(path, v) => at(ui, path, { case Input(_, k, l) => Input(v, k, l); case u => u })
+      case Patch.SetValue(path, v) => at(ui, path, { case i: Input => i.copy(value = v); case u => u })
       case Patch.SetChecked(path, on) => at(ui, path, { case Check(_, k, l) => Check(on, k, l); case u => u })
       case Patch.SetSelected(path, i) => at(ui, path, { case Select(o, _, k) => Select(o, i, k); case u => u })
       case Patch.Remove(path, i) => at(ui, path, kids(_, c => c.patch(i, Nil, 1)))
@@ -174,8 +241,80 @@ object Ui {
   def focusable(ui: Ui): Vector[Ui] = ui match
     case Row(c, _) => c.flatMap(focusable)
     case Column(c, _) => c.flatMap(focusable)
-    case _: Text => Vector.empty
-    case leaf => Vector(leaf)
+    case Box(c, _, _, _, _, _) => c.flatMap(focusable)
+    case Scroll(c, _) => focusable(c)
+    case _: Text | _: Image => Vector.empty
+    case _: Button | _: Input | _: Check | _: Select => Vector(ui)
+    case semantic => focusable(lower(semantic, Set.empty))
+
+  /** the CAPABILITY LIST: every key an event may name. Structural on
+   * purpose — a semantic node lists its own keys, and TestVocab
+   * asserts they equal its lowering's (`keys(s) == keys(lower(s))`),
+   * which is what lets `update` not know how the client drew it */
+  def keys(ui: Ui): Set[String] = ui match
+    case Row(c, _) => c.flatMap(keys).toSet
+    case Column(c, _) => c.flatMap(keys).toSet
+    case Box(c, _, _, _, _, _) => c.flatMap(keys).toSet
+    case Scroll(c, _) => keys(c)
+    case _: Text | _: Image => Set.empty
+    case Button(_, k, _) => Set(k)
+    case Input(_, k, _, _, _) => Set(k)
+    case Check(_, k, _) => Set(k)
+    case Select(_, _, k) => Set(k)
+    case Form(fields, _, k) => fields.flatMap(keys).toSet + k
+    case Items(items, _) => items.flatMap(keys).toSet
+    case Table(_, rows, _) => rows.flatten.flatMap(keys).toSet
+    case Tabs(labels, selected, pages, k) =>
+      labels.indices.map(i => tabKey(k, i)).toSet ++ pages.lift(selected).map(keys).getOrElse(Set.empty)
+    case Modal(_, body, _) => keys(body)
+
+  def tabKey(key: String, i: Int): String = s"$key$$tab$i"
+
+  /** the names a client claims in its `hello` — a semantic node is
+   * sent as itself only to a client that named it */
+  object Vocab:
+    val form = "form"; val items = "items"; val table = "table"
+    val tabs = "tabs"; val modal = "modal"
+    val all: Set[String] = Set(form, items, table, tabs, modal)
+
+  /**
+   * The LOWERING: every semantic node the vocabulary does not claim,
+   * rewritten as level L — what the node MEANS. Total; level L is a
+   * fixed point; the result contains only claimed nodes. The keys are
+   * preserved exactly (the law), and children keep their indices so
+   * patch paths survive.
+   */
+  def lower(ui: Ui, vocab: Set[String]): Ui =
+    def go(u: Ui): Ui = u match
+      case Row(c, k) => Row(c.map(go), k)
+      case Column(c, k) => Column(c.map(go), k)
+      case b: Box => b.copy(children = b.children.map(go))
+      case Scroll(c, k) => Scroll(go(c), k)
+      case _: Text | _: Image | _: Button | _: Input | _: Check | _: Select => u
+      case Form(fields, submit, k) =>
+        if vocab(Vocab.form) then Form(fields.map(go), submit, k)
+        else Box(fields.map(go) :+ Button(submit, k, Role.Primary), Dir.Vertical, key = k)
+      case Items(items, k) =>
+        if vocab(Vocab.items) then Items(items.map(go), k)
+        else Box(items.map(go), Dir.Vertical, key = k)
+      case Table(header, rows, k) =>
+        if vocab(Vocab.table) then Table(header, rows.map(_.map(go)), k)
+        else
+          val head = Box(header.map(h => Text(h, Style(tone = Tone.Emphasis))), Dir.Horizontal,
+            weights = Vector.fill(header.length)(1))
+          Box(head +: rows.map(r => Box(r.map(go), Dir.Horizontal, weights = Vector.fill(r.length)(1))),
+            Dir.Vertical, key = k)
+      case Tabs(labels, selected, pages, k) =>
+        if vocab(Vocab.tabs) then Tabs(labels, selected, pages.map(go), k)
+        else
+          val bar = Box(labels.zipWithIndex.map { (l, i) =>
+            Button(l, tabKey(k, i), if i == selected then Role.Active else Role.Plain) },
+            Dir.Horizontal)
+          Box(bar +: pages.lift(selected).map(go).toVector, Dir.Vertical, key = k)
+      case Modal(title, body, k) =>
+        if vocab(Vocab.modal) then Modal(title, go(body), k)
+        else Box(Vector(Text(title, Style(tone = Tone.Emphasis)), go(body)), Dir.Vertical, pad = 1, key = k)
+    go(ui)
 
   /**
    * The loop: pure update, the world merged in as sources. The state
@@ -275,11 +414,15 @@ object Ui {
     val first = view(init)
     host.render(first).flatMap(_ => loop(init, first, Writer.of(events)))
 
-  /** a patch consumer as a Host: the core diff, one kept tree */
-  def diffing(b: Backend): Host = new Host:
+  /** a patch consumer as a Host: the core diff, one kept tree. A
+   * Backend is a level-L consumer (raw DOM, a native toolkit), so the
+   * tree is LOWERED before the diff — a patch path names a node the
+   * backend actually built */
+  def diffing(b: Backend, vocab: Set[String] = Set.empty): Host = new Host:
     private var last: Option[Ui] = None
     def events: Source[Event] = b.events
-    def render(ui: Ui): Unit ! Async =
+    def render(full: Ui): Unit ! Async =
+      val ui = lower(full, vocab)
       val ps = last match
         case None => Vector(Patch.Replace(Nil, ui))
         case Some(old) => diff(old, ui)

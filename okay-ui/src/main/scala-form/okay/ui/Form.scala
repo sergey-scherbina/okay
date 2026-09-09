@@ -72,12 +72,13 @@ object Form {
                     errors: Vector[(String, String)]): Ui = s match
     case Schema.SIso(u, _, _) => field(name, k, u(), v, errors)
     case Schema.SOption(of) => field(name + " (optional)", k, of(), v, errors) match
-      case Ui.Input(value, _, label) => Ui.Input(value, key = k, label)
+      case i: Ui.Input => i.copy(key = k)
       case Ui.Check(on, _, label) => Ui.Check(on, key = k, label)
       case other => other
     case Schema.SBool => Ui.Check(v.contains(Json.JBool(true)), key = k, label = name)
     case Schema.SInt | Schema.SLong | Schema.SDouble => Ui.Input(v.collect {
-      case Json.JNum(n) => Json.print(Json.JNum(n)) }.getOrElse(""), key = k, label = name)
+      case Json.JNum(n) => Json.print(Json.JNum(n)) }.getOrElse(""), key = k, label = name,
+      kind = InputKind.Number)
     case Schema.SString => Ui.Input(v.collect {
       case Json.JStr(x) => x }.getOrElse(""), key = k, label = name)
     case p: Schema.SProduct[?] =>

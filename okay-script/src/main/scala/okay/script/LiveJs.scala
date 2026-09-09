@@ -20,6 +20,8 @@ object LiveJs:
       |        var cls = [];
       |        if (u.bold) cls.push("okay-bold");
       |        if (u.dim) cls.push("okay-dim");
+      |        if (u.tone) cls.push("okay-tone-" + u.tone);
+      |        if (u.size) cls.push("okay-size-" + u.size);
       |        if (cls.length) el.className = cls.join(" ");
       |        el.textContent = u.s;
       |        return el;
@@ -30,13 +32,40 @@ object LiveJs:
       |        if (u.k) el.dataset.key = u.k;
       |        for (i = 0; i < u.c.length; i++) el.appendChild(build(u.c[i]));
       |        return el;
+      |      case "box":
+      |        el = document.createElement("div");
+      |        el.className = u.dir === "h" ? "okay-box okay-h" : "okay-box okay-v";
+      |        if (u.gap) el.style.gap = u.gap + "ch";
+      |        if (u.pad) el.style.padding = u.pad + "ch";
+      |        if (u.k) el.dataset.key = u.k;
+      |        if (u.w && u.w.length === u.c.length) el.dataset.w = u.w.join(" ");
+      |        for (i = 0; i < u.c.length; i++) el.appendChild(weighed(el, i, build(u.c[i])));
+      |        return el;
+      |      case "scroll":
+      |        el = document.createElement("div");
+      |        el.className = "okay-scroll";
+      |        el.style.overflow = "auto";
+      |        if (u.k) el.dataset.key = u.k;
+      |        el.appendChild(build(u.c[0]));
+      |        return el;
+      |      case "image":
+      |        el = document.createElement("img");
+      |        el.src = u.src;
+      |        el.alt = u.alt;
+      |        return el;
       |      case "button":
       |        el = document.createElement("button");
       |        if (u.k) el.dataset.key = u.k;
+      |        if (u.role && u.role !== "plain") el.className = "okay-" + u.role;
       |        el.textContent = u.label;
       |        return el;
       |      case "input":
-      |        el = document.createElement("input");
+      |        if (u.kind === "multiline") el = document.createElement("textarea");
+      |        else {
+      |          el = document.createElement("input");
+      |          if (u.kind === "secret") el.type = "password";
+      |          else if (u.kind === "number") el.type = "number";
+      |        }
       |        if (u.k) el.dataset.key = u.k;
       |        el.value = u.value;
       |        if (!u.label) return el;
@@ -72,11 +101,17 @@ object LiveJs:
       |    }
       |    return document.createTextNode("");
       |  }
+      |  function weighed(par, i, ch) {
+      |    if (par.dataset && par.dataset.w) { var w = par.dataset.w.split(" "); if (w[i]) ch.style.flex = w[i]; }
+      |    return ch;
+      |  }
       |  function editable(n) {
       |    var tag = n.tagName.toLowerCase();
-      |    if (tag === "input" || tag === "select") return n;
-      |    for (var i = 0; i < n.childNodes.length; i++)
-      |      if (n.childNodes[i].tagName && n.childNodes[i].tagName.toLowerCase() === "input") return n.childNodes[i];
+      |    if (tag === "input" || tag === "select" || tag === "textarea") return n;
+      |    for (var i = 0; i < n.childNodes.length; i++) {
+      |      var t = n.childNodes[i].tagName && n.childNodes[i].tagName.toLowerCase();
+      |      if (t === "input" || t === "textarea") return n.childNodes[i];
+      |    }
       |    return n;
       |  }
       |  window.okayLive = function (id) {
@@ -96,7 +131,7 @@ object LiveJs:
       |            if (root.childNodes.length) root.replaceChild(b, root.childNodes[0]); else root.appendChild(b);
       |          } else {
       |            par = at(p.at.slice(0, -1));
-      |            par.replaceChild(build(p.ui), par.childNodes[p.at[p.at.length - 1]]);
+      |            par.replaceChild(weighed(par, p.at[p.at.length - 1], build(p.ui)), par.childNodes[p.at[p.at.length - 1]]);
       |          }
       |          break;
       |        case "text": at(p.at).textContent = p.s; break;
@@ -111,7 +146,7 @@ object LiveJs:
       |          break;
       |        case "insert":
       |          n = at(p.at);
-      |          n.insertBefore(build(p.ui), p.i < n.childNodes.length ? n.childNodes[p.i] : null);
+      |          n.insertBefore(weighed(n, p.i, build(p.ui)), p.i < n.childNodes.length ? n.childNodes[p.i] : null);
       |          break;
       |      }
       |    }

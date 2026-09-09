@@ -107,7 +107,7 @@ class TestUi extends munit.FunSuite {
   }
 
   test("focusable walks the tree in tab order") {
-    assertEquals(Ui.focusable(view(3)).collect { case Button(_, k) => k },
+    assertEquals(Ui.focusable(view(3)).collect { case Button(_, k, _) => k },
       Vector("dec", "inc"))
   }
 }

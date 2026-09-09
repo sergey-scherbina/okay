@@ -34,11 +34,28 @@ object WireJson {
     case Ui.Text(s, st) =>
       val base = Vector("t" -> JStr("text"), "s" -> JStr(s))
       JObj(base ++ (if st.bold then Vector("bold" -> JBool(true)) else Vector.empty)
-        ++ (if st.dim then Vector("dim" -> JBool(true)) else Vector.empty))
+        ++ (if st.dim then Vector("dim" -> JBool(true)) else Vector.empty)
+        ++ (if st.tone != Tone.Plain then Vector("tone" -> JStr(st.tone.toString.toLowerCase)) else Vector.empty)
+        ++ (if st.size != Size.Normal then Vector("size" -> JStr(st.size.toString.toLowerCase)) else Vector.empty))
     case Ui.Row(cs, k) => tagged("row", k, "c" -> JArr(cs.map(uiJson)))
     case Ui.Column(cs, k) => tagged("col", k, "c" -> JArr(cs.map(uiJson)))
-    case Ui.Button(l, k) => tagged("button", k, "label" -> JStr(l))
-    case Ui.Input(v, k, l) => tagged("input", k, "value" -> JStr(v), "label" -> JStr(l))
+    case Ui.Box(cs, dir, w, gap, pad, k) => tagged("box", k,
+      "dir" -> JStr(if dir == Dir.Horizontal then "h" else "v"),
+      "w" -> JArr(w.map(n => JNum(n.toDouble))), "gap" -> JNum(gap.toDouble),
+      "pad" -> JNum(pad.toDouble), "c" -> JArr(cs.map(uiJson)))
+    case Ui.Scroll(c, k) => tagged("scroll", k, "c" -> JArr(Vector(uiJson(c))))
+    case Ui.Image(src, alt) => tagged("image", "", "src" -> JStr(src), "alt" -> JStr(alt))
+    case Ui.Button(l, k, role) => tagged("button", k, "label" -> JStr(l),
+      "role" -> JStr(role.toString.toLowerCase))
+    case Ui.Input(v, k, l, kind, live) => tagged("input", k, "value" -> JStr(v), "label" -> JStr(l),
+      "kind" -> JStr(kind.toString.toLowerCase), "live" -> JBool(live))
+    case Ui.Form(fs, submit, k) => tagged("form", k, "submit" -> JStr(submit), "c" -> JArr(fs.map(uiJson)))
+    case Ui.Items(is, k) => tagged("items", k, "c" -> JArr(is.map(uiJson)))
+    case Ui.Table(h, rows, k) => tagged("table", k, "header" -> JArr(h.map(JStr(_))),
+      "rows" -> JArr(rows.map(r => JArr(r.map(uiJson)))))
+    case Ui.Tabs(ls, i, pages, k) => tagged("tabs", k, "labels" -> JArr(ls.map(JStr(_))),
+      "i" -> JNum(i.toDouble), "c" -> JArr(pages.map(uiJson)))
+    case Ui.Modal(t, body, k) => tagged("modal", k, "title" -> JStr(t), "c" -> JArr(Vector(uiJson(body))))
     case Ui.Check(on, k, l) => tagged("check", k, "on" -> JBool(on), "label" -> JStr(l))
     case Ui.Select(os, i, k) => tagged("select", k,
       "options" -> JArr(os.map(JStr(_))), "i" -> JNum(i.toDouble))
@@ -57,11 +74,39 @@ object WireJson {
     str(j, "t").flatMap {
       case "text" => str(j, "s").map(s => Ui.Text(s,
         Style(bold = bool(j, "bold").getOrElse(false),
-          dim = bool(j, "dim").getOrElse(false))))
+          dim = bool(j, "dim").getOrElse(false),
+          tone = str(j, "tone").flatMap(t => Tone.values.find(_.toString.toLowerCase == t)).getOrElse(Tone.Plain),
+          size = str(j, "size").flatMap(t => Size.values.find(_.toString.toLowerCase == t)).getOrElse(Size.Normal))))
       case "row" => kids.map(Ui.Row(_, key))
       case "col" => kids.map(Ui.Column(_, key))
-      case "button" => str(j, "label").map(Ui.Button(_, key))
-      case "input" => str(j, "value").map(Ui.Input(_, key, str(j, "label").getOrElse("")))
+      case "box" => kids.map { cs =>
+        val w = field(j, "w") match
+          case Some(JArr(vs)) => vs.collect { case JNum(n) => n.toInt }
+          case _ => Vector.empty
+        Ui.Box(cs, if str(j, "dir").contains("h") then Dir.Horizontal else Dir.Vertical,
+          w, num(j, "gap").getOrElse(0), num(j, "pad").getOrElse(0), key) }
+      case "scroll" => kids.flatMap(_.headOption).map(Ui.Scroll(_, key))
+      case "image" => for src <- str(j, "src"); alt <- str(j, "alt") yield Ui.Image(src, alt)
+      case "button" => str(j, "label").map(Ui.Button(_, key,
+        str(j, "role").flatMap(r => Role.values.find(_.toString.toLowerCase == r)).getOrElse(Role.Plain)))
+      case "input" => str(j, "value").map(Ui.Input(_, key, str(j, "label").getOrElse(""),
+        str(j, "kind").flatMap(r => InputKind.values.find(_.toString.toLowerCase == r)).getOrElse(InputKind.Text),
+        bool(j, "live").getOrElse(false)))
+      case "form" => for fs <- kids; submit <- str(j, "submit") yield Ui.Form(fs, submit, key)
+      case "items" => kids.map(Ui.Items(_, key))
+      case "table" => (field(j, "header"), field(j, "rows")) match
+        case (Some(JArr(hs)), Some(JArr(rs))) =>
+          val rows = rs.map {
+            case JArr(cells) => val cs = cells.map(uiOf); if cs.forall(_.isDefined) then Some(cs.flatten) else None
+            case _ => None }
+          if rows.forall(_.isDefined) then Some(Ui.Table(hs.collect { case JStr(s) => s }, rows.flatten, key))
+          else None
+        case _ => None
+      case "tabs" => for pages <- kids; i <- num(j, "i") yield
+        Ui.Tabs(field(j, "labels") match
+          case Some(JArr(ls)) => ls.collect { case JStr(s) => s }
+          case _ => Vector.empty, i, pages, key)
+      case "modal" => for body <- kids.flatMap(_.headOption); t <- str(j, "title") yield Ui.Modal(t, body, key)
       case "check" => bool(j, "on").map(Ui.Check(_, key, str(j, "label").getOrElse("")))
       case "select" => field(j, "options") match
         case Some(JArr(os)) =>

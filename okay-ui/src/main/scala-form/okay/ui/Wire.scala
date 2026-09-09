@@ -22,12 +22,7 @@ object Wire {
   def permitted(tree: Ui, e: Event): Boolean = e match
     case Event.Closed | Event.Key(_) | Event.Resized(_, _) => true
     case _ =>
-      val keys = Ui.focusable(tree).collect {
-        case Ui.Button(_, k) => k
-        case Ui.Input(_, k, _) => k
-        case Ui.Check(_, k, _) => k
-        case Ui.Select(_, _, k) => k
-      }.toSet
+      val keys = Ui.keys(tree)
       e match
         case Event.Pressed(k) => keys(k)
         case Event.Edited(k, _) => keys(k)
@@ -42,6 +37,13 @@ object Wire {
    * session, answering the final state.
    */
   def serve[S](init: S)(view: S => Ui)(update: (S, Event) => S): Stage[String, String, S] =
+    serve(init, Set.empty)(view)(update)
+
+  /** `vocab` is what the client claims (ui-protocol makes it the
+   * hello's): every semantic node outside it is LOWERED before the
+   * diff, so the client only ever receives nodes it draws */
+  def serve[S](init: S, vocab: Set[String])(view: S => Ui)(update: (S, Event) => S): Stage[String, String, S] =
+    val shownView: S => Ui = s => Ui.lower(view(s), vocab)
     def loop(s: S, shown: Ui): Stage[String, String, S] =
       Stage.await[String, String].flatMap {
         case None => pure(s)
@@ -51,7 +53,7 @@ object Wire {
           case Some(e) if !permitted(shown, e) => loop(s, shown)   // forged is dropped
           case Some(e) =>
             val s2 = update(s, e)
-            val next = view(s2)
+            val next = shownView(s2)
             val patches = Ui.diff(shown, next)
             def tell(ps: Vector[Patch]): Stage[String, String, Unit] = ps match
               case p +: more => Stage.tell[String, String](
@@ -60,7 +62,7 @@ object Wire {
             tell(patches).flatMap(_ => loop(s2, next))
       }
 
-    val first = view(init)
+    val first = shownView(init)
     Stage.tell[String, String](Json.print(WireJson.uiJson(first)))
       .flatMap(_ => loop(init, first))
 

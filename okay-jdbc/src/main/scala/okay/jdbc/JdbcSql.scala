@@ -97,6 +97,11 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
     inTx = false
   }
 
+  /** the engine's SQLSTATE, as JDBC carries it */
+  override def sqlState(t: Throwable): Option[String] = t match
+    case e: java.sql.SQLException => Option(e.getSQLState)
+    case _ => None
+
   /** the sync emergency brake: a no-op unless a transaction is open */
   def cancel(): Unit =
     if inTx then

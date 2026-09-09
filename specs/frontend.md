@@ -172,18 +172,29 @@ aliases), so every existing application and test compiles unchanged.
 
 ## Behavior
 
-Stage 0 — the vocabulary (ui-vocab):
-- [ ] `Box` with weights: the terminal divides width by weight, the
-      DOM maps to flex-grow; Row/Column are Box and every existing
-      test passes unchanged
-- [ ] style tokens: a token renders differently on each host and the
+Stage 0 — the vocabulary (ui-vocab, LANDED 2026-09-09):
+- [x] `Box` with weights: the terminal divides the row's natural
+      width by weight, the DOM maps to flex-grow (and the box carries
+      `data-w`, so a patch consumer replacing one child gives it its
+      flex without holding the tree — TestDom's law found a Replace
+      losing it); Row/Column stay as they were and every existing test
+      passes unchanged
+- [x] style tokens: a token renders differently on each host and the
       SAME on the test host; no host receives a pixel
-- [ ] the diff law holds for every new node: diff-then-patch equals
-      the next tree across shuffles, removals, insertions and edits
-      (the keyed battery, extended)
-- [ ] `lower` is total over level S and its result is level L only
-- [ ] `keys(s) == keys(lower(s))` for every semantic node
-- [ ] diff commutes with lowering
+- [x] the diff law holds for every new node: diff-then-patch equals
+      the next tree (TestVocab's battery: every semantic node in one
+      screen, edits, a tab switch, keyed items appearing and
+      vanishing; TestDom's battery extended at the DOM)
+- [x] `lower` is total over level S and its result is level L only;
+      level L is a fixed point; a claimed node is sent as itself
+- [x] `keys(s) == keys(lower(s))` for every semantic node, under any
+      vocabulary — and only the SELECTED tab's page is a capability
+- [x] diff commutes with lowering: `lower(patch(a, diff(a, b))) ==
+      lower(b)` under every vocabulary; a form edit is the same narrow
+      SetValue at the same path on either tree
+- [x] `Wire.serve(init, vocab)` lowers before the first line: a
+      level-L client (the Live pages' `live.js`, extended for level L)
+      never receives a semantic node; hello arrives in stage 1
 
 Stage 1 — the protocol (ui-protocol):
 - [ ] `Schema[Ui]`, `Schema[Event]`, `Schema[Patch]` derived; every
@@ -217,6 +228,22 @@ Stage 3 — the first thin client (ui-native):
 - [ ] Scala Native + GTK (or Swing on the JVM) as a host over the same
       seam — the "out of the box" leg
 
+## Results
+
+Stage 0 (ui-vocab) landed 2026-09-09. Level L: `Box(dir, weights,
+gap, pad)`, `Image`, `Scroll`, `Input` kinds (text, secret,
+multiline, number) and `live`, `Button` roles, `Style` tones and
+sizes. Level S: `Form`, `Items`, `Table`, `Tabs`, `Modal`, each with
+its lowering; `Ui.lower(ui, vocab)`, `Ui.keys`, `Ui.Vocab`. Every host
+draws the new level L (terminal: weights, gap, pad, tones, secret
+masking; React/DOM: flex, classes, input types, textarea, img; the
+Live pages' `live.js`: the same) and lowers level S at its entry
+(`Ui.diffing` lowers for a Backend, `React.elem` for the React host,
+`Frame.render` for the terminal). `Form` renders numeric fields as
+`InputKind.Number`. 7 tests in TestVocab, the DOM battery extended;
+the 69 existing okay-ui tests, okay-script's 166 and okay-demo's 54
+pass unchanged.
+
 ## Out of scope
 - Animation and gestures beyond press/edit/scroll.
 - A client-side scripting language: the Local set is closed on
@@ -242,6 +269,17 @@ Stage 3 — the first thin client (ui-native):
   application says "danger", the host says red.
 - **Codecs derived, WireJson retired** — one definition, two
   encodings, versioning by the rules Schema already has.
+- **Row/Column stay; Box is the general node** — the spec first said
+  "Row/Column are Box"; an enum case cannot be an alias with its own
+  extractor, and rewriting every `case Row(c, k)` in the repository
+  for no semantic gain is not surgical. Level L is nine nodes, Row
+  and Column being Box without weights, gap or pad.
+- **`Items`, not `List`** — a case named `List` inside `Ui` shadows
+  Scala's in every `import Ui.*`, including the patch paths.
+- **Semantic nodes lower at the HOST's entry in-process** — a Backend
+  is a level-L consumer by definition, so `Ui.diffing` lowers before
+  the diff; the React host and the terminal lower in their renderers.
+  Nothing between the application and the host needs to know.
 - **First native target: Compose** — the operator's call
   (2026-09-09). Kotlin, Compose Multiplatform, so one thin client
   covers Android and desktop; the Kotlin side reads CBOR or JSON by

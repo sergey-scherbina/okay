@@ -61,7 +61,9 @@ correctness first:
       region must FAIL. Fix: read the `C` tag on COMMIT, throw on
       ROLLBACK. Same probe through R2DBC-postgresql (R2dbcSuite) and
       note what pgjdbc does. Spec: specs/sql.md Behavior.
-- [ ] sql-serialization-retry — SQLSTATE 40001/40P01 is handled
+- [x] sql-serialization-retry — DONE 2026-09-09 (233ce589): Sql.sqlState per
+      driver, Async.attempt, Typed.transactRetry with Retried(value, attempts).
+      Was: SQLSTATE 40001/40P01 is handled
       nowhere (0 hits in main sources). Under RepeatableRead/
       Serializable a serialization failure is a NORMAL outcome the
       region must retry, not an exception the program sees.
@@ -1602,7 +1604,7 @@ measure on our own data, never a predicted result.
       the items above; it is a benchmark harness, not a feature.
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
-- [ ] ui-vocab — specs/frontend.md stage 0: Box with weights/gap/pad
+- [x] ui-vocab — LANDED 2026-09-09 (see specs/frontend.md Results). Original: Box with weights/gap/pad
       (Row/Column as aliases), style tokens, Image, Input kinds,
       Scroll; the semantic level (Form, List, Table, Tabs, Modal) each
       DEFINED by its lowering; `Ui.lower(ui, vocab)`, `Ui.keys`; laws:

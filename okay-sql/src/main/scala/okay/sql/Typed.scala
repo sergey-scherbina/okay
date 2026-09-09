@@ -1,6 +1,6 @@
 package okay.sql
 
-import okay.{!, +, Async, Chunk, Chunks, Produce, Resource, Stream, effect}
+import okay.{!, +, Async, Chunk, Chunks, Produce, Resource, Scheduler, Stream, Timer, effect, pure}
 import okay.given
 import okay.codec.Schema
 import scala.collection.immutable.ArraySeq
@@ -323,6 +323,47 @@ object Typed:
       a <- body(g)
       _ <- !.widen[Unit, Async, Resource + G](db.commit())
     yield a
+
+  /** how many times a region may run, and the pause between runs */
+  final case class Retry(attempts: Int, backoffMillis: Int => Long = _ => 0L):
+    require(attempts >= 1, "a region runs at least once")
+  object Retry:
+    val none: Retry = Retry(1)
+
+  /** what a retried region answers: the value and how many runs it
+   * took (1 = no conflict) — a number worth watching in production */
+  final case class Retried[A](value: A, attempts: Int)
+
+  /**
+   * The region that RETRIES a serialization failure. Under
+   * RepeatableRead/Serializable the engine may pick this transaction
+   * to lose (SQLSTATE 40001, deadlock 40P01): that is a normal
+   * outcome, not a defect, and the only correct response is to run
+   * the body again from `begin` — which a program value can do by
+   * construction. Each run is a full `transact`: on the failure the
+   * cancel brake rolls back, the pause runs, the next run begins.
+   * Any other failure propagates at once; the last permitted run's
+   * failure propagates whatever it is.
+   *
+   * The body is `Resource + Async` (no other effect): the retry needs
+   * the run's failure as data (`Async.attempt`), which means running
+   * the body's effects inside the attempt. A body that aborts through
+   * Throws decides to abort — it is not a conflict — and runs its
+   * Throws inside, answering the Either as its value.
+   */
+  def transactRetry[A](db: Sql, isolation: Isolation = Isolation.ReadCommitted,
+                       retry: Retry = Retry.none)
+                      (body: Granted => A ! (Resource + Async))
+                      (using Scheduler, Timer): Retried[A] ! Async =
+    def once: A ! Async = Resource.run[A, Async](transact[A, Async](db, isolation)(body))
+    def go(n: Int): Retried[A] ! Async =
+      Async.attempt(once).flatMap {
+        case Right(a) => pure(Retried(a, n))
+        case Left(t) if n < retry.attempts && db.sqlState(t).exists(Sql.retryable) =>
+          Async.sleep(retry.backoffMillis(n)).flatMap(_ => go(n + 1))
+        case Left(t) => throw t
+      }
+    go(1)
 
   // ── the TYPED region: the protocol in the types ────────────────
 
