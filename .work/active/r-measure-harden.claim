@@ -1,0 +1,24 @@
+task: r-measure-harden
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T17:31:51Z
+status: in-progress
+branch: feature/r-measure-harden
+worktree: ../okay-wt-r-measure
+spec: specs/r.md (Results), BACKLOG r-arrow
+
+why: the operator's items 1 and 3 — okay-r has no wire number at all
+  (r-arrow's own condition says measure again before building, and the
+  py twin's measurement once overturned the plan), and two small
+  hardening points the r-finish lane left: verify is never run at
+  construction, and a timeout whose respawn fails throws instead of
+  answering data.
+
+what: (a) MeasureRFrame, the MeasureSqlFold pattern — a Live-tagged
+  harness splitting a big frame's round trip into our encode, the
+  wire+R, our decode and the typed rows; medians of 3+, the table into
+  BACKLOG r-arrow; (b) start(..., require) verifying packages at
+  construction and refusing by name; the respawn-failure edge stated
+  where a reader will meet it.
+
+next: worktree, harness first (it decides nothing else, but it decides r-arrow)
