@@ -57,15 +57,11 @@ Stage 0 landed in the core (Module over Providing and Resource,
 TestModule). What follows, in the spec's order — each stage's gate is
 its Behavior checklist:
 
-- [ ] di-qualifiers — stage 1: two capabilities of one type told apart
-      by an opaque type per role, never a string; a documented example
-      with a compile-error test. Expected: no new mechanism.
-- [ ] di-plan — stage 1: `Module.plan`, the acquisition order as a
-      printable, testable `Vector` of type names via the TypeableK
-      seam; its caveat stated once in the doc.
-- [ ] di-conf — stage 1: okay-conf joins — a `Config` value is a
-      `Module.value`, a `Secret` resolves in a module whose acquisition
-      reads the config. One documented example with a test.
+- [x] di-qualifiers, di-plan, di-conf — stage 1, DONE 2026-09-09 as
+      one lane (di-stage1): opaque-type roles, `m.plan` as a macro over
+      the module's type (not TypeableK — see the spec's Decisions),
+      the okay-conf example with a Secret resolved inside the
+      acquisition.
 - [ ] okay-spring — stage 2: `Module` → `@Configuration` (one
       BeanDefinition per capability, SmartLifecycle for the scope),
       `Module.fromContext(ctx)`, a controller returning `A ! Async`

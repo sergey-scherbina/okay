@@ -86,21 +86,25 @@ Stage 0 (core, `Providing.scala`, TestModule):
       type (`compileErrors`, the message quoted)
 - [x] a failing acquisition releases what was acquired before it
 
-Stage 1 — qualifiers and the plan as a value:
-- [ ] two capabilities of one type are told apart by TYPE, never by
+Stage 1 — qualifiers and the plan as a value (SHIPPED, di-stage1):
+- [x] two capabilities of one type are told apart by TYPE, never by
       string: an opaque type per role (`Primary`, `Replica`) is the
-      qualifier; a `module[Primary](…)` installs one and `wire[Replica]`
-      cannot see it. Doc + test; no new mechanism expected
-- [ ] `Module.plan`: the acquisition order as data (a `Vector` of
-      names, one per `module`, in the order they will open), printable
-      and testable — Spring's `--debug` conditions report and distage's
-      plan, as a value. The name is the type's, via the TypeableK
-      seam the row-split already uses; the caveat there
-      (docs/typepedia.md) applies and is stated in the doc
-- [ ] okay-conf joins: a `Config` value is a `Module.value`, a
-      `Secret` reference is resolved by a module whose acquisition
-      reads the config (`Config ?=> Module[…]`) — no new API, one
-      documented example with a test
+      qualifier; a `Module.value[Primary](…)` installs one and
+      `wire[Replica]` cannot see it — a compile error naming the role.
+      No new mechanism (TestModule, `ModuleRoles`)
+- [x] `m.plan`: what the module will install, in acquisition order,
+      as a `Vector[String]` — read off the module's TYPE by a macro,
+      before anything is built (a plan that acquired to be printed
+      would be a trace). A dependent module's contribution is its `G`
+      in the type of `and`, so the plan needs no value. Names are the
+      type symbols', so an opaque qualifier shows as itself
+      (`Vector("Primary", "Log")`) where its erased class could not
+- [x] okay-conf joins with no new API: a config is a `Module.value`,
+      a `Secrets` resolver is another, and the connection module is
+      `(DbConf, Secrets) ?=> Module[…]` resolving the `Secret` inside
+      its acquisition — the value exists only between `Secrets.get`
+      and the constructor argument; a miss fails the acquisition
+      naming the REFERENCE (okay-conf TestConfModule)
 
 Stage 2 — the bridges (each its own satellite; instances inward,
 values outward, the P3 rule from specs/interop.md):
@@ -169,8 +173,16 @@ is the actuator, and a Boot app can mount both).
   independent one compose with the same word, and inference finds `G`
   through the type lambda as `Providing.and` already does.
 - **Stage 0 adds no plan, no names, no tags.** Ordering and release
-  are the region's; names need the TypeableK seam and belong to
-  stage 1 where their caveat can be stated once.
+  are the region's; names belong to stage 1.
+- **The plan is the type, not a record of the build** (stage 1). The
+  entry first said "via the TypeableK seam"; that seam names an
+  effect signature by its runtime class, which is the wrong tool
+  twice over: it cannot see a dependent module's value without its
+  dependency, and it erases an opaque qualifier to its underlying
+  class. The module's `F` already carries the answer — the curried
+  chain `A ?=> B ?=> … ?=> X`, outer to inner in acquisition order —
+  so `plan` is a macro walking `F[Marker]` to the marker. It costs
+  nothing at runtime and names the qualifier as written.
 
 ## Out of scope
 

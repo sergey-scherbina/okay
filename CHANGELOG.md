@@ -1,5 +1,21 @@
 # Changelog
 
+## di-stage1 — qualifiers by type, the plan as the type, okay-conf in a module
+
+specs/di.md stage 1, three small pieces. A qualifier is an opaque type
+per role (`Primary`, `Replica`) — no mechanism, one pattern, and a
+`wire[Replica]` where only `Primary` is installed is a compile error
+naming the role. `m.plan` lists what a module will install in
+acquisition order, and it is a MACRO over the module's type: the
+curried chain `A ?=> B ?=> … ?=> X` already says it, so no value is
+built to print it and a dependent module contributes its `G` from the
+type of `and`; an opaque qualifier shows as itself, which the erased
+class could not do. The spec's "via the TypeableK seam" was wrong
+twice and is corrected in Decisions. okay-conf joins with no new API:
+config and `Secrets` are `Module.value`s and the connection module
+resolves its `Secret` inside its acquisition, so a miss fails the
+build naming the reference. 3 core tests + 2 in okay-conf.
+Commits: LANDING.
 ## sql-readonly-region — READ ONLY regions granted and read back; JdbcSql restores the isolation level with autocommit
 
 Lane 4 of the persistence audit. `Sql.begin(isolation, readOnly)` and

@@ -107,12 +107,43 @@ final class Module[F[_]](val build: Providing[F] ! Resource):
   /** install everything and run the body inside the scope */
   def apply[B](body: F[B]): B ! Resource = build.map(p => p(body))
 
+/** acquire one capability in the scope; the scope releases it */
+def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
+  new Module(Resource.acquire(acquire)(release).map(a => providing[A](a)))
+
+/**
+ * The plan is the TYPE (specs/di.md, stage 1): a module's `F` is the
+ * curried chain `A ?=> B ?=> … ?=> X`, outer to inner in acquisition
+ * order, so what it will install — and in what order — is read off
+ * `F` at compile time, before anything is built. That is why a
+ * dependent module (`Db ?=> Module[…]`), whose VALUE cannot be seen
+ * without a `Db`, still has a plan: its `G` is in the type of `and`.
+ * Names are the type symbols' — an opaque qualifier (`Primary`) shows
+ * as itself, which the erased class could not do.
+ */
+extension [F[_]](m: Module[F])
+  inline def plan: Vector[String] = ${ Module.planImpl[F] }
+
 object Module:
   /** a module with nothing to build or release — a test double, a config value */
   def ready[F[_]](p: Providing[F]): Module[F] = new Module(pure[Resource, Providing[F]](p))
   /** the same, from the bare value */
   def value[A](a: A): Module[[X] =>> A ?=> X] = ready(providing[A](a))
 
-/** acquire one capability in the scope; the scope releases it */
-def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
-  new Module(Resource.acquire(acquire)(release).map(a => providing[A](a)))
+  import scala.quoted.*
+  /** `F[Marker]` dealiased is `ContextFunction1[A, ContextFunction1[B, … Marker]]`;
+   * walk it to the marker, naming each parameter */
+  def planImpl[F[_] : Type](using Quotes): Expr[Vector[String]] =
+    import quotes.reflect.*
+    val marker = TypeRepr.of[Module.Marker]
+    def walk(t: TypeRepr, acc: List[String]): List[String] = t.dealias match
+      case AppliedType(fn, List(a, rest)) if fn.typeSymbol.name.startsWith("ContextFunction") =>
+        walk(rest, a.typeSymbol.name :: acc)
+      case t if t =:= marker => acc.reverse
+      case other => report.errorAndAbort(
+        s"Module.plan: expected a chain of context functions ending in the marker, found ${other.show}")
+    val names = walk(TypeRepr.of[F[Module.Marker]], Nil)
+    val list = Expr(names)
+    '{ $list.toVector }
+  /** the end of the chain the plan walks to; never inhabited */
+  sealed trait Marker
