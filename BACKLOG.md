@@ -5591,3 +5591,32 @@ used.
       COMPILES for the other two. A JS test for `stop` would be worth
       having, precisely because that is the platform the old code
       could never have worked on.
+
+## bulk-plan-warnings — eight warnings landed on a warning-free gate
+
+`bulk-plan` / `bulk-rewrite` (origin, 2026-09-09) added eight compiler
+warnings to a repository whose gate had none. Measured either side of
+the merge: a full gate an hour earlier read **91 modules, 3 471 tests,
+0 warnings**; the same gate with those three commits merged reads
+**8**.
+
+All eight are in the two files those commits add:
+
+    okay-spark/src/test/scala/okay/spark/TestWroclawStages.scala
+      39:48, 42:40, 45:32, 55:50   [E176] unused value
+      58:35                        [E175]
+      5:26, 8:19                   [E198] unused symbol
+    src/test/scala-jvm/TestPlan.scala
+      3:32                         [E198] unused symbol
+
+Not a subtlety: `[E176] unused value` is what a discarded
+`StringBuilder.append` or a discarded `intercept` produces, and the
+fix is `val _ =`. Two lanes today (`coordination-free`, `capability`)
+hit exactly these and fixed them before landing, because the gate is
+kept clean here — `okay-gate-checks-warnings` says a warm gate that
+hides warnings is not a gate.
+
+Owned by whoever holds the bulk-plan lane; filed rather than fixed
+because that lane was active. It is small — eight lines — and it
+matters because a gate with eight warnings in it stops being a signal:
+the ninth arrives unnoticed.
