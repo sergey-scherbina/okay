@@ -476,8 +476,26 @@ at stage 0 and never rebind.
 - [x] recovery after a torn tail serves every earlier record intact,
       and the next append continues the offset sequence (dense over
       restart)
-- [ ] a damaged index is rebuilt from segments; log content decides,
-      never the index (index deleted between runs; reads agree)
+- [x] the DIRECTORY decides, never a reader's cache of it
+      (persist-index-box, 2026-09-09 — the box used to say "a damaged
+      index is rebuilt from segments", and there is no index: a segment
+      carries its base offset in its header and a read scans within it,
+      which is the design and is now recorded as such below. What the
+      engine does keep is a derived list of segments, and THAT is what
+      the invariant is about). A reader already saw a writer's appends
+      and its rolled segments; the untested direction was deletion, and
+      it was BROKEN: retention on another handle removed a file the
+      reader still listed, and the read threw NoSuchFileException off
+      the mmap. Now the deep refresh drops what the directory no longer
+      has — after adopting what it has gained, so a reader whose every
+      known segment was dropped keeps the new ones rather than the dead
+      ones — and a file that vanishes between the refresh and the map
+      is retention one instant later: the read re-reads the directory
+      and answers `TooEarly` at the surviving front instead of
+      failing. Tested end to end (TestFileStore: 120 appends under a
+      tiny retention with a reader open across the drops; it never
+      serves a record from below the surviving front and then serves
+      the whole tail)
 - [x] keyed appends land deterministically: same key, same
       partition, order preserved per key across concurrent writers
       (routing pure and platform-stable; interleaved writers)
@@ -582,6 +600,14 @@ through the Typed envelope.
       `Saga.Status` as `okay_saga_*` rows (Live)
 
 ## Out of scope
+
+- an INDEX beside the log — stated here because a Behavior box once
+  implied one (persist-index-box): a segment carries its base offset
+  in its header, a read scans within the segment, and the only derived
+  state is the in-memory segment list, rebuilt from the directory. A
+  reader that needs an offset in the middle of a large segment pays
+  the scan; no consumer has asked for less, and an index is a second
+  thing to keep true.
 
 - transactions in the OWN engine (atomic multi-partition writes) —
   the consumer-side idempotency story covers the named consumers;

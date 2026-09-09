@@ -278,6 +278,38 @@ class TestFileStore extends StoreSuite:
       "the follower stopped at the segment it had open when it started")
   }
 
+  test("a segment DELETED behind an open reader: the directory decides, and the reader says TooEarly rather than crashing or serving a ghost") {
+    val dir = tmp()
+    val writer = FileStore.open(dir).topic("t", 1, tinyRetention)
+    (0 until 50).foreach(i => writer.append(0, Array.empty, bytes(s"payload-$i"), Ack.Durable))
+    // the reader opens with EVERY segment still on disk and reads from
+    // the front, so its derived segment list holds them all
+    val reader = FileStore.open(dir).topic("t", 1, tinyRetention)
+    val begin = reader.begin(0)
+    assert(read(reader, begin).nonEmpty)
+    val before = segmentsOf(dir, "t").length
+
+    // the writer's retention now drops whole segments from the front —
+    // files the reader still has in its list
+    (50 until 120).foreach(i => writer.append(0, Array.empty, bytes(s"payload-$i"), Ack.Durable))
+    val after = segmentsOf(dir, "t")
+    assert(after.length < before + 3 && writer.begin(0) > begin,
+      s"the fixture dropped nothing: $before -> ${after.length}, begin ${writer.begin(0)}")
+
+    // reading from an offset whose file is GONE must answer TooEarly at
+    // what survives — never a crash, never a record from a deleted file
+    reader.read(0, begin, 64) match
+      case Topic.Read.TooEarly(b) =>
+        assert(b >= writer.begin(0), s"TooEarly($b) points before the surviving front ${writer.begin(0)}")
+      case Topic.Read.Records(rs) =>
+        assert(rs.isEmpty || rs.head.offset >= writer.begin(0),
+          s"served a record at ${rs.head.offset} from below the surviving front ${writer.begin(0)}")
+    // and the reader goes on to serve what IS there, in one piece
+    val tail = read(reader, writer.begin(0)).map(v => String(v))
+    assertEquals(tail.length, (writer.end(0) - writer.begin(0)).toInt)
+    assertEquals(tail.last, "payload-119")
+  }
+
   /** every record from `from`, in one or more polls, the way a tail
    * reads: a follower asks again until nothing new comes back */
   private def read(t: Topic, from: Long): Vector[Array[Byte]] =
