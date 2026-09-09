@@ -1,5 +1,35 @@
 # Changelog
 
+## handler-fusion-eff — the composite handler over Eff measured: 0.58x, the tree was never the cost, the arc closes
+
+Stage B of specs/handler-fusion.md, the road stage 0 and stage A had
+pointed at: run the program as a FUNCTION of one inline-assembled
+composite handler (`Eff`, the Church encoding), so no Free tree exists
+between program and answer. Built and lawful — `Fused.stateWriterInterp[C]`
+threads the row's accumulator through the answer type (PState's
+trick) at any Control carrier; `runEff`/`runCtrl` run it; the `Eff`
+road agrees with the fused Free loop on generated programs, the
+carrier road at Cont and at Func.
+
+Then measured, and refuted. The same 1 000-op right-nested program:
+the fused Free loop 13.7 µs / 122 641 B/op; handler-passing over Func
+16.0 / 184 665; over Cont 18.0 / 200 673; `Eff` with the composite
+23.5 / 297 897 — 0.58x, with 2.4x the allocation. Bar was 1.5x.
+
+Why, in bytes: a Free node (Inject + Bind + one closure) is CHEAPER
+than the two closures every CPS bind allocates, and a tail-recursive
+walk over data beats closure invocation. The 1.9x staged-effects.md
+recorded was compile-time unrolling of 24 STATIC operations, which
+does not transfer to a loop or a recursion — i.e. to any program of a
+size that matters. "Drop the tree" was the premise of the reordered
+arc, and it was wrong; the byte counts said so on the first run.
+
+The arc closes with what it landed: pass fusion is 1.13–1.29x here
+(stage 0, gated off), the wrapper-free split is −18% bytes and 7–11%
+on the hot loops (stage A, landed), and the fused Free loop at 13.7 ns
+per operation is this design's floor. The `direct → Eff` follow-up is
+dropped for the same reason. Code and lanes stay in the tree as the
+measured refutation; four rows in history.tsv.
 ## di-module — a Module is a Providing that has not been built yet
 
 specs/di.md, stage 0, the operator's ask for our own DI and the

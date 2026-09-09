@@ -199,7 +199,10 @@ refuted run-time closure composition 3/3).
       abort/choose fall back to a shift with the state captured
       immutably; laws: agrees with nested for both orders, stack-safe
       at 1M, multi-shot and abort survive.
-- [ ] handler-fusion-eff — the same composite `!>` for Eff (no tree),
+- [x] handler-fusion-eff — DONE 2026-09-09, REFUTED: Eff + composite is
+      0.58x of the fused Free loop, 2.4x the bytes; the best tree-free road
+      0.86x (specs/handler-fusion.md Stage B). The arc is closed. Was: the
+      same composite `!>` for Eff (no tree),
       after the Free loop has its numbers.
 
 ## flush-premium — `flushAfter` costs 30% over the chunked merge where the page said 9%

@@ -441,3 +441,45 @@ chased.
 Verdict: stage A holds as a small, uniform, zero-risk gain and lands;
 it is not the lever. Stage B is.
 
+### Stage B — measured, 2026-09-09 (handler-fusion-eff): REFUTED, and the arc closes
+
+Built: `Fused.stateWriterInterp[C]` — the composite `!>` for
+`State % S + Writer % W` at any Control carrier, assembled inline, the
+accumulator threaded through the answer type (`Acc => (Acc, A)`, the
+PState trick) — with `runEff` (an `Eff` program run once with it, no
+tree) and `runCtrl` (a program written directly against a carrier, at
+Func or Cont). Laws green: the `Eff` road agrees with the fused Free
+loop on generated programs (`fromFree[Eff]` of the same tree), the
+carrier road agrees at Cont and Func.
+
+The same 1 000-op right-nested program, four encodings, minima over
+3 forks (load 22–37), B/op load-proof:
+
+| encoding | µs | B/op | vs fused Free |
+|---|---|---|---|
+| Free tree, fused loop (`stateWriter`, stage A) | 13.7 | 122 641 | 1.00x |
+| handler-passing over Func (no tree, runtime recursion) | 16.0 | 184 665 | 0.86x |
+| handler-passing over Cont | 18.0 | 200 673 | 0.76x |
+| `Eff` + the composite (no tree) | 23.5 | 297 897 | **0.58x** |
+
+The bar was 1.5x; the best tree-free road is 0.86x and `Eff` is 0.58x
+with 2.4x the allocation. The premise — "two thirds of a pass is the
+Free encoding re-materialising the program, so drop the tree" — is
+refuted by the byte counts: a Free node (Inject 16 + Bind 24 + one
+closure 24) is CHEAPER than the two closures a CPS bind allocates
+(`k => m(f(_)(k))`), and the tail-recursive walk over data beats
+closure invocation. What `staged-effects.md` measured at 1.9x was
+compile-time unrolling of 24 STATIC operations — real, and it does
+not transfer to a program shaped as a loop or a recursion, which is
+every program of the size that matters.
+
+**The arc closes here**, with what it landed and what it learned:
+stage 0 (pass fusion 1.13–1.29x, gated off) and stage A (the split
+without wrappers, −18% bytes, 7–11%) are in the tree; the fused Free
+loop at 13.7 ns per operation is the floor this design has, and it is
+a good floor. The composite-handler idea was right about the
+comonadic class (already one pass) and worth 10–30% on the
+continuation-aware class; staging it buys nothing unless the program
+is static at the call site. The `direct → Eff` follow-up is dropped
+for the same reason and is not filed.
+

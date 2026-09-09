@@ -97,4 +97,59 @@ object Fused {
                 case Writer.Say(v) => loop(s, w :+ v)(k(())) } }
     loop(s, Vector.empty)(p)
   }
+
+  // ---- STAGE B (handler-fusion-eff): the composite handler over a
+  // Control carrier, no tree between the program and its answer.
+  //
+  // MEASURED AND REFUTED (2026-09-09, specs/handler-fusion.md Stage B):
+  // on the same 1 000-op right-nested program the Free tree walked by
+  // `stateWriter` above is the FASTEST and the LEANEST of the four —
+  // 13.7 us / 122 641 B/op — against the handler-passing program at
+  // Func 16.0 / 184 665, at Cont 18.0 / 200 673, and `Eff` with this
+  // composite 23.5 / 297 897. A Free node (Inject + Bind + one closure)
+  // is cheaper than the closure pair every CPS bind allocates, and its
+  // tail-recursive runner beats closure invocation. "No tree" was the
+  // premise; the tree was never the cost. Kept as the measured
+  // refutation, with its agreement laws (TestFused) green.
+
+  /** the accumulator of `State % S + Writer % W`, threaded through the
+   * ANSWER TYPE the way PState threads its state: the answer is a
+   * function of the accumulator, get/set/tell are shifts that pass a
+   * new one to the continuation, and `runEff` applies the initial one */
+  type Acc[S, W] = (S, Vector[W])
+  type Answer[S, W, A] = Acc[S, W] => (Acc[S, W], A)
+
+  /**
+   * The composite interpreter for `State % S + Writer % W` at any
+   * Control carrier, assembled `inline`: one `split` (stage A), each
+   * branch a `shift` whose captured continuation is called with the
+   * new accumulator. The row's meaning is the row's order, as in the
+   * Free loops. No tree exists between an `Eff` program and this: the
+   * program IS the function of its handler.
+   */
+  inline def stateWriterInterp[C[_, _, _], S, W, A](using TypeableK[State % S])
+  : Interpr[State % S + Writer % W, C, Answer[S, W, A]] =
+    val C = Control[C]
+    // `shift[X, …]`, not `[S, …]`: inside the branch the constructor has
+    // refined X (to S, to Unit), and an abstract carrier C is invariant, so
+    // the shift must be typed at X for the branches to meet at C[X, R, R]
+    [X] => e => split[State % S, Writer % W](e) {
+        case State.Get() => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(acc._1)(acc))
+        case State.Set(s2) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(s2)((s2, acc._2)))
+      } { case Writer.Say(v) => C.shift[X, Answer[S, W, A], Answer[S, W, A]](k => acc => k(())((acc._1, acc._2 :+ v))) }
+
+  /** an `Eff` program over the row, run ONCE with the composite: the
+   * answer of `stateWriter` (`((S, Vector[W]), A)`), no Free tree */
+  inline def runEff[S, W, A](s: S)(m: Eff[State % S + Writer % W, A])
+                            (using TypeableK[State % S]): ((S, Vector[W]), A) =
+    (m[Answer[S, W, A]](stateWriterInterp[Cont, S, W, A]) / (a => acc => (acc, a)))((s, Vector.empty))
+
+  /** the same for a program written directly against a Control
+   * carrier (`def prog[C](h: Interpr[Row, C, R]): C[A, R, R]`), at Func
+   * or Cont: the fully fused road staged-effects.md measured */
+  inline def runCtrl[C[_, _, _], S, W, A](s: S)
+      (inline prog: Interpr[State % S + Writer % W, C, Answer[S, W, A]] => C[A, Answer[S, W, A], Answer[S, W, A]])
+      (using TypeableK[State % S]): ((S, Vector[W]), A) =
+    val C = Control[C]
+    (C./(prog(stateWriterInterp[C, S, W, A]))(a => acc => (acc, a)))((s, Vector.empty))
 }
