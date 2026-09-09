@@ -1,12 +1,6 @@
 # Sprint
 
 ## Doing
-- native-runner-cause — BACKLOG native-runner-error, the CAUSE half
-  (the labelling half is gate-lost-shape2, a sibling's — do not touch
-  scripts/gate.sh). The entry's "lost test process" framing is wrong
-  for shape B: the process exits 0, cleanly, and the runner's own
-  signal/non-zero lines are absent because those paths were not taken.
-  Claimed 2026-09-09 (.work/active/native-runner-cause.claim).
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

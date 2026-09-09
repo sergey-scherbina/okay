@@ -1,5 +1,50 @@
 # Changelog
 
+## native-runner-cause — the Native runner was not killed: it exited 0, and the whole exit map is now measured
+
+BACKLOG's `native-runner-error` had read three red gates in one day as
+"a lost test process" under memory pressure. For the third shape that
+is wrong, and the correction is measured rather than argued. The
+runner's own code (test-runner 0.5.12) prints "Process … finished with
+non-zero value N" on any non-zero exit, adds "Test runner interrupted
+by fatal signal N" above 128, logs "Force close …", and carries that
+failure as the cause of the `RunTerminatedException` sbt finally
+reports. The failing gate log has none of those three lines and no
+cause under the exception at all — which `NativeRunnerRPC` produces
+only when the com run SUCCEEDED, and `ComRunner` only succeeds when
+the process exited ZERO.
+
+`scripts/native-runner-probe.java` turns that reading into a
+measurement: it drives a real okay Native test binary exactly the way
+ComRunner does and ends the connection four ways. Closing the socket
+and sending a zero-length message each give exit 0 with nothing
+printed; SIGTERM gives 143 and SIGKILL 137 — the two shapes that WOULD
+have been logged, and were not. So nobody killed that process: its
+connection ended and it left, silently, while sbt still had a call in
+flight, which is why the failure is an sbt-side ClosedException with no
+test report at all.
+
+Ruled out by command, each in the entry: the RAM guard (SPARE only,
+`killed=0`, 6.9–8.5 GB available), jetsam and an OS kill (empty
+memorystatus window, no crash report, and 137 would have shown), our
+own code (no exit call in any source a Native test binary links), the
+plugin's global adapter close (30+ runner processes started and passed
+AFTER the failing one), and the adapter being collected under the GC
+storm the log shows (the plugin holds every adapter in a strong list —
+though the mechanism it would have needed does exist, `NioSocketImpl`
+carrying a Cleaner for the socket's fd). What ended that one connection
+is still OPEN, and the entry says so, names the two silent candidates
+and says what evidence separates them: a timeline of the runner
+processes, which the sbt log cannot give because it has no timestamps.
+
+Landed as 66cd90fb. Gate: NOT RUN, and the reason is that nothing sbt
+compiles changed — the lane is BACKLOG.md plus a new standalone file
+under `scripts/`, which is on no source path (build.sbt does not
+mention `scripts` at all). The probe itself was run twice, from the
+worktree and against the committed path. The labelling half of the same
+entry is a sibling's lane, gate-lost-shape2, and this one did not touch
+`scripts/gate.sh`.
+
 ## r-finish — okay-r gets its timeout and its typed frame: the two gaps the audit named, closed
 
 **r-call-timeout.** `RSubprocess.start(…, timeoutMillis)`. The blocking
