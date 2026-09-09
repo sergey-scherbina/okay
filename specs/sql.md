@@ -387,6 +387,44 @@ declined for v1 — same guarantee, plus a Free<->Cont bridge per step.
       state does not exist there) — when a pgjdbc consumer appears,
       run this probe through it before trusting `commit()`.
 
+## Serialization failures are retried (sql-serialization-retry)
+
+Under RepeatableRead and Serializable the engine may choose a
+transaction to LOSE — Postgres's SSI answers `40001
+serialization_failure`, a deadlock `40P01` — and the only correct
+response is to run the transaction again from `begin`. Before this
+lane no code in the tree looked at a SQLSTATE (0 hits), so a program
+that asked for Serializable saw an exception where the engine meant
+"try again". A transact body is a program VALUE, re-runnable by
+construction; the region is where the retry belongs.
+
+- `Sql.sqlState(t)`: the driver names the engine's SQLSTATE behind a
+  failure (pg: the ErrorResponse's `C` field, now carried on
+  `PgError.code`; JDBC: `SQLException.getSQLState`; R2DBC:
+  `R2dbcException.getSqlState`). `Sql.retryable(state)` is the class:
+  40001 and 40P01, nothing else.
+- `Async.attempt(prog)`: the program's failure as data, one fiber,
+  every platform — the effect-world try/catch the retry needs and the
+  core did not have.
+- `Typed.transactRetry(db, isolation, Retry(attempts, backoff))(body)`:
+  each run is a full `transact` (begin, body, commit; the cancel brake
+  rolls back a failed run), a retryable failure pauses and runs again,
+  anything else propagates at once, and the answer `Retried(value,
+  attempts)` carries how many runs it took — the number to watch. The
+  body is `Resource + Async`: the attempt must run the body's effects,
+  so a Throws-aborting body runs its Throws inside and answers the
+  Either (an abort is a decision, not a conflict).
+
+- [x] a driver that fails a run with 40001 N times and then succeeds:
+      `Retry(N+1)` answers the value with `attempts = N+1`, every
+      failed run was rolled back (the brake), and `Retry(N)` propagates
+      the N-th failure; a non-retryable failure propagates on the
+      first run (H2 through JDBC with a failing decorator)
+- [x] write skew on the dockerized pg under Serializable: two
+      connections read, both write, the second COMMIT fails with 40001
+      through the wire driver — and `transactRetry` on the loser
+      re-runs it and lands the write (Live)
+
 ## Out of scope
 
 - writing MySQL/MSSQL/Oracle wire protocols — R2DBC or JDBC are

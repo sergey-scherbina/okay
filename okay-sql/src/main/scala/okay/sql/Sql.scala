@@ -100,6 +100,19 @@ trait Sql:
   /** the sync emergency brake (see the trait comment) */
   def cancel(): Unit
 
+  /** the SQLSTATE behind a failure this driver raised, when it has
+   * one — the engine's own classification, so the region can tell a
+   * serialization failure (a normal outcome under Serializable, to
+   * be retried) from a defect. `None` for anything else. */
+  def sqlState(t: Throwable): Option[String] = None
+
+object Sql:
+  /** the states a region RETRIES: serialization_failure and
+   * deadlock_detected (the SQL standard's class 40, transaction
+   * rollback — the engine chose this transaction to lose) */
+  def retryable(state: String): Boolean =
+    state == "40001" || state == "40P01"
+
 /** startup drift between our Schema and their schema: data naming
  * the column, never a throw (the Durable fingerprint lesson at the
  * database seam) */

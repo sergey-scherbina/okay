@@ -1,6 +1,6 @@
 package okay.pg
 
-import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Throws, effect}
+import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Stream, Throws, effect}
 import okay.given
 import okay.crypto.given
 import okay.codec.Schema
@@ -174,6 +174,53 @@ class TestPg extends munit.FunSuite {
       // and the connection is usable afterwards, outside any transaction
       assertEquals(run(db.update("delete from customer where id = 31")), 0L)
     }
+  }
+
+  test("write skew under Serializable: the loser gets 40001 through the wire, and transactRetry re-runs it (sql-serialization-retry)") {
+    assume(available, s"no Postgres at $host:$port — the live suite skips")
+    val a = connect(); val b = connect()
+    try
+      run(a.update("drop table if exists ssi")): Unit
+      run(a.update("create table ssi(k int not null)")): Unit
+      def drain(p: Chunk[Vector[SqlValue]] ! (Produce + Async)): Vector[Vector[SqlValue]] ! Async =
+        val S = summon[Stream[[X] =>> X ! (Produce + Async), Async]]
+        S.uncons(p).flatMap {
+          case None => okay.pure(Vector.empty)
+          case Some((c, rest)) => drain(rest).map(c.toVector ++ _)
+        }
+      def count(db: Sql): Long ! Async =
+        drain(db.query("select count(*) from ssi")).map(_.head.head match
+          case SqlValue.I64(n) => n
+          case other => throw AssertionError(s"count: $other"))
+      // a's whole transaction, run to completion INSIDE b's first run,
+      // between b's read and b's write — the classic rw-conflict cycle
+      def aWrites(): Unit =
+        !.run(Async.run[Long, Nothing](Resource.run[Long, Async](
+          Typed.transact[Long, Async](a, Isolation.Serializable) { _ =>
+            !.widen[Long, Async, Resource](count(a).flatMap(_ => a.update("insert into ssi values (1)")))
+          }))): Unit
+      var runs = 0
+      val r = run(Typed.transactRetry(b, Isolation.Serializable, Typed.Retry(3)) { _ =>
+        !.widen[Long, Async, Resource](count(b).flatMap { _ =>
+          runs += 1
+          if runs == 1 then aWrites()
+          b.update("insert into ssi values (2)")
+        })
+      })
+      assertEquals(r.attempts, 2, "the first run lost to a, the second landed")
+      assertEquals(run(count(b)), 2L)
+      // and the loser's failure, seen raw, is the SQLSTATE the retry keys on
+      run(b.update("delete from ssi")): Unit
+      runs = 0
+      val e = intercept[PgError](run(Typed.transactRetry(b, Isolation.Serializable) { _ =>
+        !.widen[Long, Async, Resource](count(b).flatMap { _ =>
+          runs += 1
+          if runs == 1 then aWrites()
+          b.update("insert into ssi values (2)")
+        })
+      }))
+      assertEquals(b.sqlState(e), Some("40001"), e.getMessage)
+    finally { a.close(); b.close() }
   }
 
   test("nested transact refuses loudly on the wire too") {

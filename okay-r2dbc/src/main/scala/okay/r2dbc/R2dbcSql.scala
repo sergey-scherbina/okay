@@ -97,6 +97,11 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
   }
 
   /** the sync emergency brake: a no-op unless a transaction is open */
+  /** the engine's SQLSTATE, as R2DBC carries it */
+  override def sqlState(t: Throwable): Option[String] = t match
+    case e: io.r2dbc.spi.R2dbcException => Option(e.getSqlState)
+    case _ => None
+
   def cancel(): Unit =
     if inTx then
       inTx = false

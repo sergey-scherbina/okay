@@ -195,6 +195,11 @@ final class PgSql private (conn: NetConn) extends Sql:
 
   def rollback(): Unit ! Async = settled(simple("ROLLBACK").map { _ => inTx = false })
 
+  /** the server's SQLSTATE, carried on the ErrorResponse */
+  override def sqlState(t: Throwable): Option[String] = t match
+    case PgError(_, code) if code.nonEmpty => Some(code)
+    case _ => None
+
   /** the sync brake: mark now, roll back before the next use —
    * program order is server order, and an abandoned connection is
    * rolled back by the server anyway */
@@ -534,7 +539,7 @@ object PgSql:
         case 'M' => m = v
         case 'C' => code = v
         case _ => ()
-    PgError(if code.isEmpty then m else s"$m [$code]")
+    PgError(if code.isEmpty then m else s"$m [$code]", code)
 
   /** CommandComplete's tag: the affected count is the last token */
   private[pg] def countOf(body: Array[Byte]): Long =
