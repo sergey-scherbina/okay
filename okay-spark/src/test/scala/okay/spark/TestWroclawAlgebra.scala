@@ -1,6 +1,6 @@
 package okay.spark
 
-import okay.{Aggregator, Chunks, Monoid, sliding}
+import okay.{Aggregator, Chunks, Group, Monoid, sliding}
 import okay.given // Group[N] for every Numeric — the window's evidence
 import SparkInterop.*
 import org.apache.spark.sql.{DataFrame, SparkSession}
@@ -225,4 +225,29 @@ class TestWroclawAlgebra extends munit.FunSuite:
     val err = compileErrors("okay.sliding(LazyList(Busiest(1.0), Busiest(2.0)))(2)")
     assert(err.contains("Group[Busiest]") || err.contains("okay.Group"), err)
     println(s"  refused, as it should be: ${err.linesIterator.find(_.contains("Group")).getOrElse(err)}")
+  }
+
+  /**
+   * What that compile error is protecting. The instance CAN be written:
+   * a running maximum has an `empty` and a `combine`, and `inverse` will
+   * accept anything that type-checks. Then the window is wrong from the
+   * first value it is asked to forget, because `combine(a, inverse(a))`
+   * is `a`, not `empty` — no value un-sees a peak. The compiler can only
+   * ask for the instance; the law is the guarantee, and this is the test
+   * of it.
+   */
+  test("a fake inverse compiles, and the window lies") {
+    given fake: Group[Busiest] with
+      def empty: Busiest = Busiest(Double.NegativeInfinity)
+      def combine(x: Busiest, y: Busiest): Busiest = if x.value >= y.value then x else y
+      def inverse(a: Busiest): Busiest = a // nothing else fits
+
+    assertNotEquals(fake.combine(Busiest(9), fake.inverse(Busiest(9))), fake.empty, "the law would hold")
+
+    val series = LazyList(3.0, 9.0, 1.0, 1.0, 1.0, 2.0).map(Busiest(_))
+    val truth = series.sliding(2).map(_.map(_.value).max).toList
+    val viaGroup = sliding(series)(2).drop(1).toList.map(_.value)
+    assertEquals(truth, List(9.0, 9.0, 1.0, 1.0, 2.0))
+    assertEquals(viaGroup, List(9.0, 9.0, 9.0, 9.0, 9.0), "the window came down after all")
+    println(s"  fake inverse: a window of 2 says $viaGroup where the truth is $truth")
   }

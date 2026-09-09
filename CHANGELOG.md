@@ -357,7 +357,12 @@ calendar.txt) into **4 593 288 departures**.
   2026-09-07 at 07:25 with 20 410 departures; busiest 24 hours ended the
   same Monday with 340 139.
 - A window over a Monoid-only element is still a compile error, asserted
-  with `compileErrors`.
+  with `compileErrors` — and a second test says what that error
+  protects: write the `Group[Busiest]` the compiler asks for (`inverse`
+  can only be the identity), and over 3, 9, 1, 1, 1, 2 a window of two
+  reads 9, 9, 9, 9, 9 where the sliding maximum is 9, 9, 1, 1, 2. The
+  instance type-checks; the law `combine(a, inverse(a)) == empty` is
+  what the window actually depends on.
 
 Two things the demo had to be honest about. Routes are counted through
 `route_id.hashCode`, so a test asserts 138 ids give 138 distinct hashes
