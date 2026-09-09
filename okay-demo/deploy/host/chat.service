@@ -20,7 +20,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/demo-chat/chat
+ReadWritePaths=/app/data /var/lib/demo-chat/chat
 
 [Install]
 WantedBy=multi-user.target

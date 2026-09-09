@@ -33,6 +33,9 @@ spec:
           envFrom:
             - configMapRef:
                 name: {{ .Release.Name }}-chat
+          volumeMounts:
+            - name: data
+              mountPath: "/app/data"
           livenessProbe:
             httpGet:
               path: /healthz
@@ -52,3 +55,7 @@ spec:
           resources:
             {{- toYaml $v.resources | nindent 12 }}
       terminationGracePeriodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ .Release.Name }}-chat-data

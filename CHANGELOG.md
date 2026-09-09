@@ -1,5 +1,34 @@
 # Changelog
 
+## module-facts — the component that opens the thing declares what it needs
+
+Stage 3 as first built read only a root's unresolved inputs, so a
+module that opened its infrastructure itself was invisible to the
+deployment: the demo opened `okay-board.log` and its manifest declared
+a port and no volume. A module now carries FACTS beside its installer
+— a typed key with its own merge, in `TMap`, no deployment word in the
+core — and okay-deploy's one kind is spelled with the `Need`
+constructors at the point of opening:
+`moduleAs[Store, FileStore](open(file))(_.close()).needs(Need.Volume(dir))`.
+No wrapper, no factory per kind. `and` merges; `Needs.declared(app)`
+reads.
+
+The wall `plan` met is answered by readiness: `Module.value` is ready,
+an acquired module is not, and when the left of `and` is ready the
+dependent right is applied at once, so facts are readable after the
+config and before the first acquisition — when a manifest is written,
+with nothing opened. Behind an acquisition they wait, and a test says
+so.
+
+First use found a real defect: the demo shipped `chatLog`
+(`OKAY_CHAT_LOG`, the two-node log dir) as `:memory:` while the store
+reads `OKAY_CHAT_DB`, so the container wrote its board to an unmounted
+file. `ChatConf` is one value read alike by `main` and the deployment,
+the key is `chatDb`, and the store's declared volume now reaches every
+rendered target — PVC, compose volume, systemd `ReadWritePaths` and
+`install -d` — from one line. 3 core tests, 1 in okay-deploy, 2 in
+okay-demo; the rendered `okay-demo/deploy` regenerated and drift-
+checked. Commit: LANDING.
 ## r-frame-columnar-wire — the tag moves from the cell to the column: 58x on a 100k-row frame
 
 The spec landed first, because the thing being changed is a wire

@@ -194,6 +194,54 @@ constructor parameters and `using` clauses; that is the condition of
 portability, not a loss), hot reload, and Spring's actuator (okay-ops
 is the actuator, and a Boot app can mount both).
 
+## Components declare their own needs (module-facts, 2026-09-09)
+
+The operator's question after needs-runtime — can a provider declare
+itself, without a method per kind of dependency? — exposed the hole
+in stage 3 as first built: it read only a root's UNRESOLVED inputs,
+and a module that opens its infrastructure itself was invisible. The
+demo opened `okay-board.log` and its manifest declared a port and no
+volume. The component that opens the thing is the one that knows what
+it needs; it had nowhere to say so.
+
+**The model.** A module carries FACTS beside its installer. A fact is
+a typed key with its own merge (`Fact[V]`, held in `TMap`, the core's
+honest runtime-keyed map); the core knows no deployment word.
+okay-deploy defines one kind, `Needs.Declared`, and the spelling is
+the `Need` constructors themselves at the point of opening:
+
+```scala
+moduleAs[Store, FileStore](FileStore.open(file))(_.close())
+  .needs(Need.Volume(dir))
+```
+
+`and` merges facts left to right; `Needs.declared(app)` reads them
+off the composed value. No wrapper, no factory per kind; `Needs[A]`
+stays only for an input a place hands in from outside.
+
+**When they can be read: after config, before infrastructure.** A
+dependent module's facts hide behind its function until its input
+exists — the wall `plan` met, and why `plan` reads the type. So a
+module now knows whether it is READY: `Module.value`/`ready` are,
+acquired ones are not. When the left of `and` is ready, the right is
+applied at once and its facts and readiness carried up; behind an
+acquisition they wait for the scope. The config is a value, the
+module that opens a log at a path from that config declares the
+volume, and the deployment reads it with nothing opened — which is
+exactly when a manifest is written. Modules downstream of an
+acquisition seldom need anything from a place, and the limit is
+stated in a test rather than hidden.
+
+**What it found, first use.** The demo's settings shipped `chatLog`
+— `OKAY_CHAT_LOG`, the two-node log DIR — set to `:memory:`, while
+the store reads `OKAY_CHAT_DB`: the container wrote its board to an
+unmounted file believing it ran in memory. `ChatConf` is now one
+value read the same way by `main` (the environment) and by the
+deployment (its own settings), the key is `chatDb`, and the volume
+the store declares reaches every rendered target — a PVC in the
+chart, a volume in compose, `ReadWritePaths` and an `install -d` in
+the unit — from one line where the file is opened.
+
 ## What using it taught (di-dogfood, 2026-09-09)
 
 The arc was complete and had never built an application: outside the
@@ -287,7 +335,11 @@ what that is.
   both restating a check already made (`Class.cast`, the registry's
   class test).
 - **Needs are a given per capability, not a field on `module`**
-  (stage 3). The first sketch had the deployment fact ride on the
+  (stage 3) — REFINED by module-facts: the given stays for an input
+  the place hands in; a component that opens its own infrastructure
+  declares its need as a FACT on the module, typed by a key the
+  reader defines, so no deployment word enters the core and the
+  declaration sits where the thing is opened. The first sketch had the deployment fact ride on the
   module (`module[Pg](…).needs(Need.Database(…))`), which puts a
   deployment word into every module that touches a database and
   into the core. A `Needs[A]` given lives where the capability is

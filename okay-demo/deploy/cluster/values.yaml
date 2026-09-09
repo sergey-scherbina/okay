@@ -8,3 +8,4 @@ chat:
     pullPolicy: IfNotPresent
   replicaCount: 1
   resources: {}
+  dataSize: "1Gi"

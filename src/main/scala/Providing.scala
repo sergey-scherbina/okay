@@ -73,6 +73,33 @@ given ctxMonad[E]: Monad[[X] =>> E ?=> X] with
     def flatMap[B](f: A => E ?=> B): E ?=> B = f(fa)
 
 /**
+ * A KIND of fact a module may declare about itself (module-facts):
+ * whoever READS the fact defines the key and how two declarations
+ * merge — a deployment's needs are one such kind, defined in
+ * okay-deploy, and the core knows no deployment word. Keys compare by
+ * identity, so a `Fact` is an object, held as a val.
+ */
+trait Fact[V]:
+  def empty: V
+  def merge(a: V, b: V): V
+
+object Fact:
+  given Same[Fact] = Same.byIdentity[Fact]
+
+/** what a module has declared about itself, by kind */
+final class Facts private (private val m: TMap[Fact]):
+  def get[V](k: Fact[V]): V = m.get(k).getOrElse(k.empty)
+  def add[V](k: Fact[V], v: V): Facts = Facts(m.updated(k, k.merge(get(k), v)))
+  /** every kind either side declared, merged by its own rule */
+  def ++(that: Facts): Facts =
+    var out = this
+    that.m.foreach([A] => (k: Fact[A], v: A) => out = out.add(k, v))
+    out
+  def isEmpty: Boolean = m.isEmpty
+object Facts:
+  val empty: Facts = Facts(TMap.empty[Fact])
+
+/**
  * A module is an installer that has not been built yet (specs/di.md):
  * `Providing[F]` holds READY values, a `Module[F]` builds them in the
  * `Resource` effect — so opening a pool, starting a server, and
@@ -95,15 +122,36 @@ given ctxMonad[E]: Monad[[X] =>> E ?=> X] with
  * acquires first, so the right (inner) releases first; nesting order
  * and the override story are `Providing.and`'s, unchanged.
  *
+ * READINESS AND FACTS (module-facts). A module that has nothing to
+ * acquire — `Module.value`, `Module.ready` — is `ready`: its values
+ * exist before any scope opens. When the LEFT side of `and` is ready,
+ * the right side is applied at once rather than inside the deferred
+ * build, so the right's `facts` (and readiness) are known now. That
+ * is what lets a deployment read what an application needs AFTER its
+ * config and BEFORE its first acquisition: the config is a value, the
+ * module that opens a log at a path from that config declares the
+ * volume, and nothing opens for the reading. A module downstream of
+ * an acquisition keeps its facts until the scope runs — and such
+ * modules seldom need anything from a place.
+ *
  * A class, not an alias over the program: an extension `apply` on
  * `Providing[F] ! Resource` typed `m { wire[Db].q }` without the
  * expected type, and the body eagerly applied (the E10 trap) — the
  * same body against a class method types as it does on `Providing`.
  */
-final class Module[F[_]](val build: Providing[F] ! Resource):
+final class Module[F[_]](val build: Providing[F] ! Resource,
+                         val ready: Option[Providing[F]] = None,
+                         val facts: Facts = Facts.empty):
   /** compose; the right operand is built inside the left's context, and is the inner layer */
   infix def and[G[_]](that: F[Module[G]]): Module[[X] =>> F[G[X]]] =
-    new Module(build.flatMap(p => p(that).build.map(q => p and q)))
+    ready match
+      case Some(p) =>
+        // nothing to acquire on the left: the right exists NOW, and
+        // its facts with it; the build runs the right's build only
+        val inner = p(that)
+        new Module(inner.build.map(q => p and q), inner.ready.map(q => p and q), facts ++ inner.facts)
+      case None =>
+        new Module(build.flatMap(p => p(that).build.map(q => p and q)), None, facts)
   /** install everything and run the body inside the scope */
   def apply[B](body: F[B]): B ! Resource = build.map(p => p(body))
   /**
@@ -115,6 +163,8 @@ final class Module[F[_]](val build: Providing[F] ! Resource):
    * site. Flattening it belongs here, once.
    */
   def use[B](body: F[B ! Resource]): B ! Resource = build.flatMap(p => p(body))
+  /** declare a fact of kind `k` about this module; a reader merges it with the rest */
+  def declare[V](k: Fact[V], v: V): Module[F] = new Module(build, ready, facts.add(k, v))
 
 /** acquire one capability in the scope; the scope releases it */
 def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
@@ -165,7 +215,7 @@ extension [F[_]](m: Module[F])
 
 object Module:
   /** a module with nothing to build or release — a test double, a config value */
-  def ready[F[_]](p: Providing[F]): Module[F] = new Module(pure[Resource, Providing[F]](p))
+  def ready[F[_]](p: Providing[F]): Module[F] = new Module(pure[Resource, Providing[F]](p), Some(p))
   /** the same, from the bare value */
   def value[A](a: A): Module[[X] =>> A ?=> X] = ready(providing[A](a))
 

@@ -8,6 +8,7 @@ class TestModule extends munit.FunSuite {
   trait Db { def q: String }
   trait Pool { def db: Db; def size: Int }
   trait Log { def tag: String }
+  final case class Conf(url: String)
 
   def run[A](p: A ! Resource): A = !.run(Resource.run[A, Nothing](p))
 
@@ -127,6 +128,40 @@ class TestModule extends munit.FunSuite {
       Resource.acquire({ log ::= "open server"; wire[Db].q })(_ => log ::= "close server")
     assertEquals(run(db.use(body)), "row")
     assertEquals(log.reverse, List("open db", "open server", "close server", "close db"))
+  }
+
+  // module-facts: what a module says about itself, and when it can be read
+  object Tags extends Fact[Vector[String]]:
+    def empty = Vector.empty
+    def merge(a: Vector[String], b: Vector[String]) = a ++ b
+
+  test("facts declared on modules merge left to right under and, by the kind's own rule") {
+    val a = Module.value[Db](new Db { val q = "a" }).declare(Tags, Vector("db"))
+    val b = Module.value[Log](new Log { val tag = "" }).declare(Tags, Vector("log")).declare(Tags, Vector("log2"))
+    assertEquals((a and b).facts.get(Tags), Vector("db", "log", "log2"))
+    assertEquals(a.facts.get(Tags), Vector("db"))
+    assertEquals(module[Db](new Db { val q = "" })(_ => ()).facts.get(Tags), Vector.empty)
+  }
+
+  test("a ready left side lets the dependent right side be read before anything opens") {
+    var opened = 0
+    val conf = Module.value[Conf](Conf("/data/log"))
+    val store: Conf ?=> Module[[X] =>> Db ?=> X] =
+      module[Db]({ opened += 1; new Db { val q = wire[Conf].url } })(_ => ())
+        .declare(Tags, Vector(s"volume ${wire[Conf].url}"))
+    val app = conf and store
+    assertEquals(app.facts.get(Tags), Vector("volume /data/log"))   // read off the value: nothing opened
+    assertEquals(opened, 0)
+    assertEquals(run(app { wire[Db].q }), "/data/log")
+    assertEquals(opened, 1)
+  }
+
+  test("a right side behind an acquisition keeps its facts until the scope runs — stated, not hidden") {
+    val db = module[Db](new Db { val q = "" })(_ => ())
+    val pool: Db ?=> Module[[X] =>> Pool ?=> X] =
+      module[Pool](new Pool { val db = wire[Db]; val size = 1 })(_ => ()).declare(Tags, Vector("pool"))
+    assertEquals((db and pool).facts.get(Tags), Vector.empty)
+    assertEquals((db and pool).ready, None)
   }
 
   test("a failing acquisition releases what came before it") {

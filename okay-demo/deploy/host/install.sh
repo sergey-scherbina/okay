@@ -12,7 +12,7 @@ install -d -o demo-chat -g demo-chat /opt/demo-chat/chat /var/lib/demo-chat/chat
 # a Need.Volume names the path the SERVICE sees; with no container
 # in the way, that path is a directory on this host and the install
 # makes it, owned by the service's own user
-
+install -d -o demo-chat -g demo-chat /app/data
 
 for f in *.env; do
   [ -f "/etc/demo-chat/$f" ] || install -m 0600 -o root -g root "$f" "/etc/demo-chat/$f"

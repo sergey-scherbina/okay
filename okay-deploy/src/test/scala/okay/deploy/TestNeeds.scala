@@ -1,6 +1,7 @@
 package okay.deploy
 
-import okay.{Module, module, wire}
+import okay.{Module, module, moduleAs, wire}
+import Needs.needs
 
 /** the capabilities an application's root still waits for, each saying what it is to a deployment */
 object Caps:
@@ -54,4 +55,23 @@ class TestNeeds extends munit.FunSuite:
     assertEquals(web.databases.map(_.database), Vector("shop"))
     assertEquals(web.volumes.map(_.path), Vector("/app/data"))
     assertEquals(web.mainPort, Some(8080))
+  }
+
+  test("a component declares its own need where it opens the thing, and the deployment reads it before anything opens") {
+    final case class Conf(log: String)
+    trait Store; final class FileStore(val path: String) extends Store { var closed = false }
+    var opened = 0
+    val conf = Module.value[Conf](Conf("/app/data/board.log"))
+    val store: Conf ?=> Module[[X] =>> Store ?=> X] =
+      val path = wire[Conf].log
+      moduleAs[Store, FileStore]({ opened += 1; FileStore(path) })(_.closed = true)
+        .needs(Need.Volume(java.nio.file.Path.of(path).getParent.toString))
+    val app = conf and store
+    assertEquals(Needs.declared(app), Vector(Need.Volume("/app/data")))
+    assertEquals(opened, 0)
+    // the same component with a memory config declares nothing: the need follows the config
+    val mem: Conf ?=> Module[[X] =>> Store ?=> X] =
+      if wire[Conf].log == ":memory:" then Module.value[Store](new Store {})
+      else store
+    assertEquals(Needs.declared(Module.value[Conf](Conf(":memory:")) and mem), Vector.empty)
   }

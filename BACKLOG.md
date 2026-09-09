@@ -227,6 +227,12 @@ its Behavior checklist:
       mixed can be read without lying and without losing the
       undeclared-input error. Timer and Scheduler declared once in the
       companion; ChatDemo.Root named and pinned by okay-demo's test.
+- [x] module-facts — DONE 2026-09-09: components declare their own
+      needs where they open the thing (`.needs(Need.Volume(dir))`),
+      facts merged by `and`, readable up to the first acquisition via
+      module readiness. Found the demo's board written to an unmounted
+      file (chatLog vs OKAY_CHAT_DB); every rendered target now mounts
+      the volume the store declares.
 
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 

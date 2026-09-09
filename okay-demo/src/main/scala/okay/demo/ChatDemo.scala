@@ -430,22 +430,66 @@ object ChatDemo {
    * `boardStore` describes. A global is exactly what a module
    * replaces, and every reader of it becomes a door.
    */
+  /**
+   * The application's configuration as ONE value, read the same way
+   * by `main` (from the process environment) and by the deployment
+   * (from the settings it ships) — module-facts found the two had
+   * drifted: the manifest set `OKAY_CHAT_LOG`, the two-node log dir,
+   * while the store's path is `OKAY_CHAT_DB`, so the container wrote
+   * its board to an unmounted file believing it ran in memory.
+   */
+  final case class ChatConf(db: String)
+  object ChatConf:
+    val dbVar = "OKAY_CHAT_DB"
+    def from(env: String => Option[String]): ChatConf =
+      ChatConf(env(dbVar).getOrElse("okay-board.log"))
+
   /** the application's root, named so a deployment can read it
-   * (specs/di.md stage 3): what is still UNRESOLVED here is what
-   * something outside must give — and for this app that is a `Timer`
-   * and nothing else, because it provisions its own store, transport
-   * and secrets. `Needs.of[Root]` therefore asks the place for
-   * nothing, which okay-demo's deployment test pins. */
+   * (specs/di.md stage 3): the config is a VALUE, so everything after
+   * it can be read before anything opens — which is how the
+   * deployment learns the volume the store needs (`Needs.declared`)
+   * without opening the store. What is still unresolved is a `Timer`,
+   * the runtime's, and nothing else. */
   type Root = Timer ?=> Module[[X] =>>
-      okay.persist.Store ?=> Board ?=> Transport ?=> Secrets ?=> X]
+      ChatConf ?=> okay.persist.Store ?=> Board ?=> Transport ?=> Secrets ?=> X]
 
   def modules(using Timer): Module[[X] =>>
+      ChatConf ?=> okay.persist.Store ?=> Board ?=> Transport ?=> Secrets ?=> X] =
+    Module.value[ChatConf](ChatConf.from(sys.env.get)) and wiring
+
+  /**
+   * THE APPLICATION'S DEPENDENCIES, AS A VALUE (specs/di.md, first use
+   * of the arc by an application — di-dogfood; the config split out
+   * by module-facts).
+   *
+   * The store is opened here and CLOSED when the region ends, which
+   * the `lazy val` it replaced never was, and it DECLARES what it
+   * needs from the place where it opens it: a file store needs the
+   * directory it lives in as a volume; a memory one needs nothing.
+   * The board is built from it, so it is written as a module that
+   * reads the one before it — the dependency is the composition, and
+   * the compiler checks it.
+   *
+   * What the first conversion cost, kept as the record: `routes` had
+   * to take `Store` as a capability, because it built the ops surface
+   * from a GLOBAL lazy val, and a module's store beside that global
+   * would have opened one log twice — the failure the comment above
+   * `boardStore` describes. A global is exactly what a module
+   * replaces, and every reader of it becomes a door.
+   */
+  def wiring(using Timer): ChatConf ?=> Module[[X] =>>
       okay.persist.Store ?=> Board ?=> Transport ?=> Secrets ?=> X] =
-    val path = sys.env.getOrElse("OKAY_CHAT_DB", "okay-board.log")
+    import okay.deploy.{Need, Needs}
+    import Needs.needs
+    val path = wire[ChatConf].db
     val store =
       if path == ":memory:" then Module.value[okay.persist.Store](okay.persist.MemoryStore())
-      else moduleAs[okay.persist.Store, okay.persist.FileStore](
-        okay.persist.FileStore.open(java.nio.file.Path.of(path)))(_.close())
+      else
+        val file = java.nio.file.Path.of(path)
+        val dir = Option(file.getParent).map(_.toString).getOrElse(".")
+        moduleAs[okay.persist.Store, okay.persist.FileStore](
+          okay.persist.FileStore.open(file))(_.close())
+          .needs(Need.Volume(dir))
     val board: okay.persist.Store ?=> Module[[X] =>> Board ?=> X] =
       module[Board]({
         val b = Board(Board.topicOf(wire[okay.persist.Store]))
@@ -459,7 +503,7 @@ object ChatDemo {
   /** the server, inside the scope its dependencies are open for */
   private def app_run(port: Int, budget: Int, mode: String, node: Option[String],
                       app: okay.persist.Store => PartialFunction[Request, Response ! Async] => PartialFunction[Request, Response ! Async])
-  : (okay.persist.Store, Board, Transport, Secrets) ?=> Unit ! Resource =
+  : (ChatConf, okay.persist.Store, Board, Transport, Secrets) ?=> Unit ! Resource =
       Jetty.serve(port)(app(wire[okay.persist.Store])(node match
         case Some(n) =>
           val logDir = sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log")
