@@ -31,7 +31,7 @@ Found while writing it, and worth repeating: `set -o pipefail` plus
 `grep -q` makes a pipeline report failure ON A MATCH, because grep
 exits early and the writer takes a SIGPIPE. The first cut called every
 real failure "unrecognised" for exactly that reason. The script greps
-one stripped copy of the log as a FILE now, no pipelines. Commit: LANDING.
+one stripped copy of the log as a FILE now, no pipelines. Commit: 9b2e1073.
 
 ## dsl-letters-and-repeats — the shapes okay-chat's quoted rules were waiting on
 
