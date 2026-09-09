@@ -14,13 +14,25 @@ import okay.codec.Json
  * decides — the parallel-resilience fault model); a failing call is a
  * Condition and the process survives.
  *
+ * One edge, stated because a reader will meet it rather than read it
+ * (r-measure-harden): if the RESPAWN after a timeout fails — R gone
+ * from the environment between two calls, a container stopped — that
+ * failure THROWS rather than answering data. It is the dead-process
+ * story arriving one step later, and the honest answer is the same
+ * one: an engine whose interpreter no longer exists is not something
+ * a program can handle as a value.
+ *
  * A TIMEOUT is the third outcome (r-finish): R is a language where a
  * plausible call runs for ever (an unconverged optimiser, a regex on
  * a big frame), and the shim is line-oriented, so a host that just
  * blocks on `readLine` waits for ever with it. With `timeoutMillis`
  * set, a call that does not answer in time has its PROCESS killed —
  * the only way to stop R mid-call — a fresh one is started in its
- * place, and the call answers `Left(Condition("timeout", …))`. Data,
+ * place, and the call answers `Left(Condition("timeout", …))`. The
+ * respawn is invisible to the program, and that is a property of the
+ * no-source design rather than luck: the API has no way to assign
+ * anything in the R session, so a fresh process has nothing to have
+ * lost. Data,
  * not an exception, and the engine is usable for the next call: the
  * dead-process THROW stays what it is, an engine nobody can revive.
  */
@@ -168,14 +180,30 @@ object RSubprocess:
             /** a call that does not answer in this long has its process
              * killed and answers `Condition("timeout", …)`; the engine
              * takes the next call on a fresh process (r-finish) */
-            timeoutMillis: Option[Long] = None): RSubprocess =
+            timeoutMillis: Option[Long] = None,
+            /** packages this session REQUIRES, name -> version prefix:
+             * checked here, at construction, and a drift refuses with
+             * the engine never handed out (r-measure-harden). The same
+             * verify-at-startup posture the Sql seam takes, for the
+             * same reason — an analyst's environment drifts, and the
+             * alternative to a loud refusal is a wrong number later */
+            require: Map[String, String] = Map.empty): RSubprocess =
     val shim = java.nio.file.Files.createTempFile("okay-r-shim", ".R")
     val res = getClass.getResourceAsStream("/okay/r/shim.R")
     if res == null then throw IllegalStateException("the shim resource is missing from the jar")
     try java.nio.file.Files.copy(res, shim, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
     finally res.close()
     shim.toFile.deleteOnExit()
-    startWith(rscript, shim, env, timeoutMillis)
+    val engine = startWith(rscript, shim, env, timeoutMillis)
+    if require.isEmpty then engine
+    else
+      val drift = engine.verify(require)
+      if drift.isEmpty then engine
+      else
+        engine.close()
+        throw IllegalStateException(
+          s"the R environment does not meet what this session requires:\n  " +
+            drift.mkString("\n  "))
 
   /** the seam the handshake test uses: any shim file */
   private[r] def startWith(rscript: String, shim: java.nio.file.Path,

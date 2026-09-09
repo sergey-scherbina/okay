@@ -172,6 +172,15 @@ they are operations, not because the modules know each other.
 
 ## Behavior
 
+**Hardened 2026-09-09 (r-measure-harden):** `start(…, require)` runs
+`verify` at CONSTRUCTION and refuses to hand out an engine whose
+packages drift, the Sql seam's verify-at-startup posture in the same
+words. And one edge is now stated where a reader meets it: a respawn
+that FAILS after a timeout (R gone between two calls) throws rather
+than answering data — the dead-process story one step later, and an
+engine whose interpreter no longer exists is not something a program
+can handle as a value.
+
 **Audited 2026-09-09 (spec-truth)** against what RUNS, not what exists:
 `okayR/test` alone runs the 6 mock tests, and `TestR`'s 18 are Live —
 they skip where no R is found and otherwise build their own container
@@ -313,6 +322,32 @@ present), and on a consumer that actually uses a restart.
   package check at startup converts "wrong forecast silently" into
   "loud refusal naming forecast==8.x". Rejected: discovering drift
   in the answers.
+
+## What the wire costs (r-measure-harden, 2026-09-09)
+
+`MeasureRFrame` (Live, medians of five against the dockerized R 4.4.1,
+`identity` on a 3-column frame) — the number `r-arrow` was filed to
+wait for:
+
+| rows | payload | our encode | round trip | our decode | typed rows | OUR share |
+|---|---|---|---|---|---|---|
+| 10 000 | 0.30 MB | 6.5 ms | 1 546 ms | 7.3 ms | 2.2 ms | 0.9% |
+| 100 000 | 3.21 MB | 20.4 ms | 13 686 ms | 18.3 ms | 6.0 ms | 0.3% |
+
+It is the opposite of the Python twin's result, where 60% of the trip
+was our own parser. Here our two halves are 0.3%, and it is not the
+pipe either: 3.21 MB in 13.7 s is ~230 KB/s while we encode and decode
+the same bytes at ~83 MB/s. The cost is R walking the STRUCTURE we
+hand it, and the structure is the suspect: `Wire.enc` tags PER CELL —
+an integer, an NA and an integral double are each a small object,
+because JSON cannot otherwise keep R's integer apart from its double
+nor its four NAs apart — so a 100k-row frame is hundreds of thousands
+of objects for jsonlite to build, on the one path it cannot take fast.
+A frame is columnar and a column is homogeneous, so the tag belongs to
+the COLUMN (BACKLOG `r-frame-columnar-wire`): one type, one plain
+array, absences as an index list. That costs no dependency, where
+Arrow costs a native package on R's side and a reader on ours — so it
+goes first, and `r-arrow` waits for the number after it.
 
 ## Results (stage 0)
 
