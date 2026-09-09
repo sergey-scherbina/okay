@@ -1,0 +1,23 @@
+task: needs-runtime
+agent: opus5-di
+started: 2026-09-09
+heartbeat: 2026-09-09T17:30:44Z
+status: in-progress
+branch: feature/needs-runtime
+worktree: ../okay-wt-needsrt
+spec: specs/di.md stage 3 (the gap di-dogfood found)
+
+why: `Needs.of[Root]` treats every unresolved input as something the
+  PLACE provides, and a real root's inputs are mixed — a database is
+  the place's, a Timer is the process's own. Today the only answers
+  are a lie (`given Needs[Timer] = Needs(Need.…)`) or losing the
+  guarantee.
+
+what: `Needs` becomes a two-case declaration — Place(need) and
+  Runtime() — with `Needs(need)` unchanged for the place and
+  `Needs.runtime` for the rest; `Needs.of` collects the places and
+  still fails to compile on an input that declares neither. Timer and
+  Scheduler declared runtime in the companion, where implicit scope
+  finds them for any application.
+
+next: implement, test a mixed root, keep the missing-declaration error
