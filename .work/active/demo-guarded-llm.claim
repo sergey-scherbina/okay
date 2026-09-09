@@ -1,0 +1,26 @@
+task: demo-guarded-llm
+agent: opus5-resilience
+started: 2026-09-09
+heartbeat: 2026-09-09T16:06:43Z
+status: in-progress
+branch: feature/demo-guarded-llm
+worktree: ../okay-wt-demo-guarded-llm
+spec: specs/resilience.md — the adaptive-concurrency box gates on exactly this
+
+why: eight pieces of microservice machinery landed today, each with
+  tests, and NOT ONE is wired into a running service. The demo already
+  uses okay-ops (lifecycle, RED, /metrics); its Anthropic transport is
+  the repo's one live outbound call and has no breaker, no limiter, no
+  budget. Wiring it makes the arc a worked instance instead of a shelf,
+  and it is what specs/resilience.md names as the obstacle to measuring
+  adaptive concurrency.
+
+what: okay-demo depends on okay-resilience; a Breaker + Limiter + a
+  per-call budget around the transport it provides, via
+  Resilient.guarded (three lines at the edge, which is the design's
+  own claim — verify it is really three); the guards' stats join
+  /metrics through Ops.routes(guards = ...), which already takes them.
+  A test that the demo's guarded transport refuses when the breaker is
+  open, over the demo's own scripted model rather than a live one.
+
+next: read how the demo's tests build their fixture, wire, test, gate
