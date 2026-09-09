@@ -229,6 +229,24 @@ object Lens:
   /** `Lens.field[S]("name")` — by name, typed by the Mirror */
   def field[S <: Product]: Optic.FieldOf[S] = new Optic.FieldOf[S]
 
+/**
+ * The affine traversal — zero or one focus, and a whole that may
+ * change type: `preview` says whether the focus is there, `set`
+ * rebuilds. Composing a lens with a prism yields this type on its
+ * own (the meet); this constructor is for the affines that are not
+ * such a composition, an array index among them.
+ */
+object Affine:
+  def apply[S, T, A, B](preview: S => Either[T, A], set: (S, B) => T): Affine[S, T, A, B] =
+    new Affine[S, T, A, B]:
+      def apply[P[_, _]](p: P[A, B])(using P: Strong[P] & Choice[P]): P[S, T] =
+        // the textbook affine: pair the focus with the whole (Strong),
+        // then choose (Choice) — through the overridable `prism`, so an
+        // interpretation's direct road still applies
+        P.prism[S, T, (A, S), (B, S)](
+          s => preview(s).map(a => (a, s)),
+          (bs: (B, S)) => set(bs._2, bs._1))(P.first[A, B, S](p))
+
 object Prism:
   def apply[S, T, A, B](preview: S => Either[T, A], review: B => T): Prism[S, T, A, B] = new Prism[S, T, A, B]:
     def apply[P[_, _]](p: P[A, B])(using P: Choice[P]): P[S, T] = P.prism(preview, review)(p)

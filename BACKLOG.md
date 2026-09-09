@@ -1921,10 +1921,12 @@ measure on our own data, never a predicted result.
       the items above; it is a benchmark harness, not a feature.
 
 ## optics (specs/optics.md)
-- [ ] optics-schema — stage 1: `Json.field/index/case` optics; the
-      second-order drift law (value lens and Json lens commute with the
-      codec); a prism per derived case; `Form.edit` through the optic
-      path with every form test unchanged.
+- [x] optics-schema — LANDED 2026-09-09 (specs/optics.md Results):
+      `JsonOptic` (at/field/index/caseOf/values/entries/path), the
+      second-order drift law, the prism per derived case. `Form.edit`
+      keeps its router — it creates missing parents, which is the
+      unlawful lens — and `TestFormOptic` asserts the two agree where
+      both are defined.
 - [ ] optics-ui — stage 2: `Ui.key(k)`, `Ui.path(is)`, `Ui.everywhere`;
       foldLocal/submit written with them; `Ui.patch` under `Ui.path`
       only if stage 0's gate allowed it.

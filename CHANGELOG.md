@@ -1,5 +1,43 @@
 # Changelog
 
+## optics-schema — the second carrier: optics over Json, and an edit that cannot drift from the wire
+
+Stage 1 of specs/optics.md. `okay.codec.JsonOptic`: `at(name)` is the
+lawful lens whose focus is an `Option[Json]` — absent is `None`,
+`set(None)` removes, `set(Some(v))` inserts or replaces — and
+`field`, `index` and `caseOf` are affines over it, `values` and
+`entries` traversals. That is the `at`/`ix` pair every optics library
+ends up with, arrived at here for the reason it exists: a lens that
+CREATES a missing field breaks GetPut, and a library whose tests are
+laws cannot ship that quietly. `JsonOptic.path(schema, key)` reads a
+form's dotted key as an optic against the SCHEMA, which is what tells
+a sum from a product — `{"Case": {...}}` has a level the key does not
+mention. `Affine(preview, set)` joined the core for the affines that
+are not a lens ∘ prism.
+
+THE DRIFT LAW OF THE SECOND ORDER, which is what this stage was for:
+for a derived schema, the value optic and the Json optic commute with
+the codec. A field, a nested field through the composition on both
+sides, a list through the traversal on both sides, and a sum — the
+value's `Prism.of[Shape, Circle]` and the Json's `caseOf("Circle")`
+preview exactly together, set commutes, a miss leaves both wholes
+alone. ui-toolkit made a form unable to drift from its parser; this
+makes an EDIT unable to drift from the wire.
+
+Two findings, recorded rather than smoothed over. `at`'s PutPut holds
+MODULO FIELD ORDER: exact unless the first put removed the field, in
+which case the next insert appends and the order differs — JSON
+objects are unordered by RFC 8259, `JObj` keeps a Vector because the
+codec's field order is worth preserving, and the test asserts both
+readings and names the pair. And `Form.edit` KEEPS ITS ROUTER: the
+plan was to route it through the optic path, but it creates missing
+parents (the unlawful lens) and interprets the Edit at the leaf (not
+navigation at all), so a rewrite would have cost the optics their
+laws to make a router shorter. `TestFormOptic` asserts what the
+rewrite was after instead — where both are defined, `Form.edit`
+touches exactly the focus the optic path names and nothing else — and
+names the one place they differ.
+
 ## r-docs — okay-r's page describes the module, not the promise
 
 Four lanes changed what okay-r IS today, and its page had drifted the

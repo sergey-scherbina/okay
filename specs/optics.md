@@ -51,6 +51,12 @@ makes every traversal an EFFECTFUL traversal in the effect row, which
 is the thing a library with an effect system can say and Monocle
 cannot: `each.traverseOf(a => State.modify(_ + a))`.
 
+**The Json optics live in their own object.** The interface below
+said `Json.field(name)`; they are `JsonOptic.field(name)`, because
+`Json.scala` is the parser, printer and codec and depends on nothing
+of the core, while an optic is the core's. A separate file keeps that
+boundary, and Scala 3 cannot reopen an object to blur it.
+
 **The field selector is code, not a string.** `Lens[Person](_.age)`
 is a macro that reads ONLY the selector's tree: the lambda itself is
 the getter (no cast anywhere; the focus type comes from the type
@@ -87,6 +93,13 @@ Lens.field[S]("name")                  // by name, typed by the Mirror, no macro
 Prism(preview: S => Either[T, A], review: B => T)
 Prism.some[A, B];  Prism.of[S, A <: S: ClassTag]   // Option's Some; one case of a hierarchy
 Traversal(walk);  Traversal.each[A, B]  // Vector;  Traversal.eachList
+Affine(preview: S => Either[T, A], set: (S, B) => T)   // the affines that are not a composition
+
+// over Json (okay-codec, stage 1)
+JsonOptic.at(name): Lens[Json, Json, Option[Json], Option[Json]]   // the lawful one
+JsonOptic.field(name);  JsonOptic.index(i);  JsonOptic.caseOf(name)   // affines over it
+JsonOptic.values;  JsonOptic.entries                                  // traversals
+JsonOptic.path(schema, "addr.city"): Option[Affine[Json, Json, Json, Json]]
 
 // operations, as extensions on any optic whose constraint the interpretation meets
 o.modify(f: A => B): S => T    o.set(b: B): S => T
@@ -137,17 +150,36 @@ Stage 0 — the core (optics-core, LANDED 2026-09-09):
       `Ui.key` are a convenience over it. The numbers, and what the
       first measurement taught, are in Results.
 
-Stage 1 — from the Schema (optics-schema):
-- [ ] `Json.field(name)`, `Json.index(i)` and `Json.case(name)` as
-      optics over `Json`, composable into the dotted paths `Form.edit`
-      routes today
-- [ ] the drift law of the second order: for a derived schema, the
-      value lens and the Json lens commute with the codec —
-      `jsonField(n).set(encode(v))(encode(a)) == encode(field(n).set(v)(a))`
-- [ ] a prism per case of a derived sum, on the value (by the Mirror's
-      ordinal) and on the Json (`{"Case": {...}}`), commuting likewise
+Stage 1 — from the Schema (optics-schema, LANDED 2026-09-09):
+- [x] optics over `Json` in okay-codec: `JsonOptic.at(name)` is THE
+      lawful one (its focus an `Option[Json]`: absent is None,
+      `set(None)` removes), and `field`, `index`, `caseOf` are affines
+      over it, `values` and `entries` traversals — the `at`/`ix` pair,
+      arrived at for the reason every library arrives at it (below)
+- [x] `JsonOptic.path(schema, key)` reads a form's dotted key as an
+      optic AGAINST THE SCHEMA — which is what tells a sum from a
+      product, since `{"Case": {...}}` has a level the key does not
+      mention; a key the schema does not write answers `None`
+- [x] the drift law of the second order: for a derived schema, the
+      value optic and the Json optic commute with the codec — a
+      field, a NESTED field through the composition, and a list
+      through the traversal on both sides
+- [x] a prism per case of a derived sum: `Prism.of[Shape, Circle]` on
+      the value and `JsonOptic.caseOf("Circle")` on the Json preview
+      exactly together, set commutes, and a miss leaves both wholes
+      alone. (By the ClassTag, not the Mirror's ordinal: `Prism.of`
+      from stage 0 already IS that prism, and a second spelling would
+      have been a second thing to keep correct.)
 - [ ] `Form.edit` routes through the optic path rather than
-      `Path.parse`, and every form test passes unchanged
+      `Path.parse`: NOT DONE, and the reason is the finding —
+      `Form.edit` CREATES missing parents on the way down, which is
+      exactly the unlawful lens `JsonOptic` refuses to have, and
+      interprets the Edit at the leaf, which is not navigation at all.
+      `TestFormOptic` asserts what the rewrite was after and gets it
+      without one: where both are defined, `Form.edit` touches
+      EXACTLY the focus `JsonOptic.path` names and nothing else; and
+      where they differ — a missing parent — the test names the
+      difference.
 
 Stage 2 — the tree (optics-ui):
 - [ ] `Ui.key(k)`: an `Affine[Ui, Ui, Ui, Ui]` to the widget with a
@@ -243,6 +275,32 @@ picture, and chapter 3 of the theory textbook already reads `Cont`
   cheap enough. Measured, not assumed.
 
 ## Results
+
+Stage 1 (optics-schema) landed 2026-09-09:
+`okay-codec/src/main/scala/okay/codec/JsonOptic.scala` (~150 lines),
+`TestJsonOptic` (6, on the JVM, JS and Native), `TestFormOptic` (2,
+okay-ui), and `Affine(preview, set)` added to the core for the
+affines that are not a lens ∘ prism — an array index among them.
+
+TWO FINDINGS, both recorded rather than smoothed over:
+
+**`at`'s PutPut holds modulo field order.** `set(w) ∘ set(v)` equals
+`set(w)` exactly, EXCEPT when `v` is `None`: a removal loses where the
+field was, and the next insert appends. JSON objects are unordered by
+RFC 8259 and `JObj` keeps a Vector because the codec's field order is
+worth preserving; those two facts meet here. The test asserts the
+exact law where nothing is removed, the ordered-reading law
+otherwise, and names the pair it differs on. Every other law, and the
+drift law itself, is exact.
+
+**`Form.edit` keeps its router.** The plan was to route it through
+the optic path. It creates missing parents on the way down — the
+unlawful lens, which `JsonOptic` refuses to have — and interprets the
+Edit at the leaf, which is not navigation. Rewriting it would have
+cost the optics their laws to make a router shorter. Instead
+`TestFormOptic` asserts the statement the rewrite was after: where
+both are defined, `Form.edit` touches exactly the focus the optic
+path names and nothing else; and it names the one place they differ.
 
 Stage 0 (optics-core) landed 2026-09-09: `src/main/scala/Optic.scala`
 (~230 lines), `Focus.scala` (the selector macro, ~45), `TestOptics`
