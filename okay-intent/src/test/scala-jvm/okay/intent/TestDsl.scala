@@ -96,6 +96,32 @@ class TestDsl extends munit.FunSuite {
     assertEquals(rawsOf(t).map(_._2), Vector("an inline optional"))
   }
 
+  test("a slot: one capture, read wherever it stands, the rest of the message only at its end") {
+    // a deal number, anywhere in the message
+    val deal = slot("deal")(anywhere(capture(number)))
+    assertEquals(deal.pattern, "(?iU)(\\d+)")
+    val m = java.util.regex.Pattern.compile(deal.pattern).matcher("беру 12")
+    assert(m.find()); assertEquals(m.group(1), "12")
+    // the thing after «нужен:», to the end — and the whole message will do without it
+    val what = slot("what")((anywhere(any(lit("нужен"), lit("need"))) loose maybeChars(":") loose capture(rest)).end).orWhole
+    assertEquals(what.pattern, "(?iU)(?:нужен|need)\\s*[:]?\\s*(.+)$")
+    assert(what.fallback)
+    val w = java.util.regex.Pattern.compile(what.pattern).matcher("нужен: электрик в субботу")
+    assert(w.find()); assertEquals(w.group(1), "электрик в субботу")
+    // the scenario after «сценарий», one token; the parties, the rest
+    val scenario = slot("scenario")(anywhere(any(lit("сценарий"), lit("scenario"))) space capture(token))
+    assertEquals(scenario.pattern, "(?iU)(?:сценарий|scenario)\\s+(\\S+)")
+    // numbers with their separators: «1, 2 и 3»
+    val numbers = slot("numbers")(anywhere(capture(seq(number, many(seq(blank, someChars(",и and"), blank, number))))))
+    assertEquals(numbers.pattern, "(?iU)(\\d+(?:\\s*[,и and]+\\s*\\d+)*)")
+    val n = java.util.regex.Pattern.compile(numbers.pattern).matcher("спроси 1, 2 и 3")
+    assert(n.find()); assertEquals(n.group(1), "1, 2 и 3")
+    // and the shapes on their own
+    assertEquals(Term.render(digits(6)), "\\d{6}")
+    assertEquals(Term.render(seq(lit("допоможи"), maybeAfter(lit("мені")))), "допоможи(?:\\s+мені)?")
+    assertEquals(rule(capture(any(lit("все"), lit("all")))).pattern, "(?iU)\\b(все|all)\\b")
+  }
+
   test("a proof travels with the rule") {
     val e = Entry(rule(lit("x")), Proof.Behaviour("stems close where the file left them open"))
     e.proof match

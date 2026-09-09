@@ -76,6 +76,27 @@ object Dsl:
      * which `мо\w*` would also be. The set is spelled as the file
      * spells it — the letters, a hyphen, a comma, a space */
     case Chars(set: String, optional: Boolean)
+    /** one or more of these characters: `[,и ]+` — the separators
+     * between the numbers of «спроси 1, 2 и 3» */
+    case SomeChars(set: String)
+    /** exactly n digits: `\d{6}` — a code, which is a shape */
+    case Digits(n: Int)
+    /** whitespace or none, as a TERM — the place a slot allows air
+     * around a colon; between two terms it is `Gap.Loose` */
+    case Blank
+    /** THE REST OF THE MESSAGE, and only as a capture: `(.+)$` is what
+     * a search runs on after «нужен:». It is not a gap between two
+     * terms — nothing follows it but the end — which is why it may
+     * exist while `.*` may not */
+    case Rest
+    /** a space and this word, or neither: `(?:\s+мені)?` — the mirror
+     * of `MaybeThen`, for a word that hangs off the one before it */
+    case MaybeAfter(t: Term)
+    /** this, any number of times, nothing between: `(?:…)*` */
+    case Many(t: Term)
+    /** WHAT A SLOT READS OUT: `(t)`. The one capturing group a pattern
+     * carries, and the reason a slot is a slot and a rule is a rule */
+    case Capture(t: Term)
     /** a stem that may not run on: `мо\w{1,3}` — «мой», «моей», «моими»
      * and not «монитор» */
     case StemUpTo(text: String, n: Int)
@@ -111,6 +132,16 @@ object Dsl:
       case Maybe(t) => "(?:" + render(t) + ")?"
       case ManyThen(t) => "(?:" + render(t) + "\\s+)*"
       case Chars(set, optional) => "[" + set + "]" + (if optional then "?" else "")
+      case SomeChars(set) => "[" + set + "]+"
+      case Digits(n) => "\\d{" + n + "}"
+      case Blank => "\\s*"
+      case Rest => ".+"
+      case MaybeAfter(t) => "(?:\\s+" + render(t) + ")?"
+      case Many(t) => "(?:" + render(t) + ")*"
+      // an alternation needs no group of its own inside the capture:
+      // `(все|all)`, not `((?:все|all))` — the bytes the file has
+      case Capture(Any(of)) => "(" + of.map(render).mkString("|") + ")"
+      case Capture(t) => "(" + render(t) + ")"
       case StemUpTo(t, n) => t + "\\w{1," + n + "}"
       // an alternation needs no group inside a lookahead: `(?!a|b)`
       case Unless(Any(of), t) => "(?!" + of.map(render).mkString("|") + ")" + render(t)
@@ -128,6 +159,9 @@ object Dsl:
       case Maybe(t) => raws(t)
       case ManyThen(t) => raws(t)
       case Unless(n, t) => raws(n) ++ raws(t)
+      case MaybeAfter(t) => raws(t)
+      case Many(t) => raws(t)
+      case Capture(t) => raws(t)
       case _ => Vector.empty
 
   /**
@@ -172,6 +206,9 @@ object Dsl:
    */
   enum Anchor:
     case Word, Opening
+    /** no anchor at all — a SLOT reads its value wherever it stands,
+     * «спроси 3» and «3, спроси» alike; a rule never starts here */
+    case Anywhere
 
   /**
    * HOW A RULE ENDS.
@@ -183,6 +220,9 @@ object Dsl:
    */
   enum Ending:
     case Boundary, Alone, AlonePunctuated, Open, Colon
+    /** the end of the message, with nothing allowed after: `$` — where
+     * a captured `rest` stops */
+    case End
 
   /**
    * A rule: a term, then any number of gap-and-term steps. The
@@ -202,8 +242,13 @@ object Dsl:
     def open: Rule = copy(ending = Ending.Open)
     /** it ends on a colon: «can: fix bikes» — the label form of an offer */
     def colon: Rule = copy(ending = Ending.Colon)
+    /** it runs to the end of the message */
+    def end: Rule = copy(ending = Ending.End)
     def pattern: String =
-      (if anchor == Anchor.Opening then "(?iU)^\\s*" else "(?iU)\\b") +
+      (anchor match
+        case Anchor.Opening => "(?iU)^\\s*"
+        case Anchor.Word => "(?iU)\\b"
+        case Anchor.Anywhere => "(?iU)") +
         Term.render(head) +
         tail.map((g, t) => Gap.render(g) + Term.render(t)).mkString +
         (ending match
@@ -215,7 +260,8 @@ object Dsl:
           // would demand the last character be a word one — «сценарий
           // deal!» would stop matching
           case Ending.Open => ""
-          case Ending.Colon => "\\s*:")
+          case Ending.Colon => "\\s*:"
+          case Ending.End => "$")
     def raws: Vector[(String, String)] =
       Term.raws(head) ++ tail.flatMap((_, t) => Term.raws(t))
 
@@ -260,6 +306,23 @@ object Dsl:
 
   type AnyRule = Rule | RawRule | EitherRule
 
+  /**
+   * A SLOT: what a rule's intent then reads out of the text. A rule is
+   * a question about the message; a slot is a value in it — a deal
+   * number, the thing after «нужен:», the scenario after «сценарий».
+   * Built from the same terms, with exactly one `capture`, no anchor
+   * unless the author puts one, and open at the end unless a `rest`
+   * runs to it. `fallback` says whether the WHOLE message will do when
+   * the pattern finds nothing — true for the free text a search runs
+   * on, false for anything a caller must state exactly.
+   */
+  final case class Slot(name: String, rule: Rule, fallback: Boolean = false):
+    def pattern: String = rule.pattern
+    def raws: Vector[(String, String)] = rule.raws
+    /** the whole message will do when nothing is found */
+    def orWhole: Slot = copy(fallback = true)
+  def slot(name: String)(rule: Rule): Slot = Slot(name, rule)
+
   /** a rule together with the proof that it says what the file says */
   final case class Entry(rule: AnyRule, proof: Proof = Proof.Bytes)
   extension (r: AnyRule) def by(p: Proof): Entry = Entry(r, p)
@@ -289,6 +352,13 @@ object Dsl:
   def manyThen(t: Term): Term = Term.ManyThen(t)
   def chars(set: String): Term = Term.Chars(set, optional = false)
   def maybeChars(set: String): Term = Term.Chars(set, optional = true)
+  def someChars(set: String): Term = Term.SomeChars(set)
+  def digits(n: Int): Term = Term.Digits(n)
+  val blank: Term = Term.Blank
+  val rest: Term = Term.Rest
+  def maybeAfter(t: Term): Term = Term.MaybeAfter(t)
+  def many(t: Term): Term = Term.Many(t)
+  def capture(t: Term): Term = Term.Capture(t)
   def stemUpTo(s: String, n: Int): Term = Term.StemUpTo(s, n)
   /** not these words, and then this */
   def unless(not: Term)(t: Term): Term = Term.Unless(not, t)
@@ -303,6 +373,9 @@ object Dsl:
   def rule(t: Term): Rule = Rule(t)
   /** …and one that must OPEN the message, which is what a command is */
   def command(t: Term): Rule = Rule(t, anchor = Anchor.Opening)
+  /** …and one that reads wherever it stands and closes on nothing,
+   * which is what a slot is */
+  def anywhere(t: Term): Rule = Rule(t, anchor = Anchor.Anywhere, ending = Ending.Open)
   extension (r: Rule)
     infix def sentence(t: Term): Rule = r ~ (Gap.Sentence -> t)
     infix def space(t: Term): Rule = r ~ (Gap.Space -> t)
