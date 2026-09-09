@@ -15,11 +15,11 @@ why: the last gap of the microservices audit. specs/obs.md says
 
 what: okay-obs Log — a Line VALUE with a Schema (level, message,
   fields, traceId, spanId, at, logger); the program side is the
-  core's own Writer effect ( — no new signature); the
+  core's own Writer effect (tell(line) — no new signature); the
   correlation is the HANDLER's, stamped from the ambient Tracer at
   write time, so programs stay observability-blind (obs.md's own
   doctrine). Handlers: console (one JSON object per line, what every
   collector reads), topic (the span treatment), collecting (tests).
-  Tracer gains a public .
+  Tracer gains a public `context`.
 
 next: spec section, code, tests, docs, gate, land
