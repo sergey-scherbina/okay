@@ -1,5 +1,26 @@
 # Changelog
 
+## resource-guard — Failing[F]: the forwarded-failure hook as a typeclass, and the cast in Resource.run is gone
+
+jdbc-tails fixed the abandoned-finalizer defect with one cast in
+`Resource.guardAsync`; the operator asked for the typeclass route if
+nothing better existed. Nothing did, and the route turned out better
+than "the cast moves": `okay.Failing[F]` says, per row, how a forwarded
+operation reports its failure to the scope that forwarded it.
+`Async`'s instance is a typed GADT match (a `Run` thunk that throws, an
+`Await` callback answering Left run the hook first); the row instances
+are anchored on `Async` at either side of `+`, split by Async's own
+`TypeableK` through the kernel `<|>` — the one place a row is ever cast
+— and come back by plain upcast; a row without Async gets the
+low-priority identity. `Resource.run` takes `(using Failing[F])`.
+Measured on the way: an unanchored `Failing[F + G]` instance is
+selected by dotty but cannot pin `F` (ambiguous `TypeableK[F]`), so the
+instances name `Async` explicitly; `Async`, `Async + G`, `G + Async`
+and both three-part nestings resolve. `guardAsync` and its
+`asInstanceOf` are deleted; TestResource gains the `Async + Throws` row
+case. Landed as d2e2ecc1; specs/sql.md "The brake runs on a failing
+statement". Gate: full matrix, 3467 tests, 0 failures, 0 warnings.
+
 ## schema-compat — whether the other side still reads our messages, as a fold over two Schemas
 
 The microservices audit's last cheap gap: two services share a
