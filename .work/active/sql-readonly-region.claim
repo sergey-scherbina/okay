@@ -1,0 +1,19 @@
+task: sql-readonly-region
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T06:29:55Z
+status: in-progress
+branch: feature/sql-readonly-region
+worktree: ../okay-wt-sql-readonly
+spec: specs/sql.md, new section "Read-only regions, and the isolation restored"
+
+why: persistence audit lane 4 of 7: no read-only transactions (the
+  FOREIGN posture's honest declaration); JdbcSql restores autocommit
+  but not the isolation level after a region.
+
+what: Sql.begin(isolation, readOnly); Granted.readOnly as granted
+  (pg: SHOW transaction_read_only; JDBC: isReadOnly; R2DBC: the
+  TransactionDefinition); Typed.transact/region/transactRetry take the
+  flag; JdbcSql saves and restores isolation and readOnly.
+
+next: worktree, tests
