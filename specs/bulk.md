@@ -93,10 +93,19 @@ Tables.run(SparkBulk(spark))(prog); Tables.run(localBulk)(prog)   // the same va
   program that sorts says so in its type, `! (Tables + Sort)`, and a
   platform that has not been told about `Sort` refuses that program at
   ITS run site — nothing else in the build moves.
-- **A plan is data.** `!.tracing` prints the operations before any of
-  them runs (`Of Select Of Join Select Aggregate`), and the rewrite that
-  `bulk-join-cost` asks for — project before the join — is a walk over
-  the same data. Filed, not done.
+- **A plan is data — one step at a time.** `!.tracing` prints the
+  operations (`Of Select Of Join Select Aggregate`) by RUNNING a
+  handler that records each before answering it; a `Free` continuation
+  is a function, so nothing can look ahead of the operation in hand. A
+  whole-plan rewrite (a projection pushed under a join it has not seen
+  yet) needs a first-order operator tree, the `Pipeline` shape — filed
+  as `bulk-plan`, only when a workload needs it. What an interpreter
+  CAN do is decide at the operation it is looking at, with the heap in
+  hand: `SparkBulk.join` broadcasts a right side that a bounded probe
+  finds small, and that — not a rewrite — is what the measurement
+  wanted (bulk-rewrite: the build 6.8 → 3.95 s; the 18 s the backlog
+  blamed on the join was `cache` through Java serialization, gone with
+  Kryo).
 - **Direct style.** `derives Effect` registers the signature, so inside
   `direct { }` a mark (`!prog`) binds a handle: `val deps = !departures.cache`.
   A mark takes the block's own row exactly — a `! Tables` program in a

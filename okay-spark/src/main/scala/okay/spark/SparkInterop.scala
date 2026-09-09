@@ -71,6 +71,9 @@ object SparkBulk:
   /** the one cast: an element of `Rows[A]` is an `A` by construction */
   private inline def elem[A](x: Any): A = x.asInstanceOf[A]
 
+  /** right sides up to this many rows are broadcast rather than shuffled */
+  val broadcastRows: Int = 100_000
+
   def apply(spark: SparkSession): okay.Bulk[Rows] = new okay.Bulk[Rows]:
     def of[A](xs: Iterable[A]): Rows[A] = spark.sparkContext.parallelize(xs.toSeq)
 
@@ -85,10 +88,25 @@ object SparkBulk:
     def flatMap[A, B](d: Rows[A])(f: A => IterableOnce[B]): Rows[B] = d.flatMap(x => f(elem[A](x)))
     def filter[A](d: Rows[A])(p: A => Boolean): Rows[A] = d.filter(x => p(elem[A](x)))
 
+    /**
+     * A small right side is BROADCAST, a large one shuffled — the
+     * decision Spark SQL makes by size, made here by a bounded probe
+     * (`take(broadcastRows + 1)` scans only until it has seen enough).
+     * Measured on the Wrocław GTFS (bulk-rewrite, 2026-09-09): the
+     * three joins of 1.16M stop times against 42k trips, 138 routes and
+     * 4 calendar rows cost 3.6 s shuffled and are the reason the seam's
+     * build read slower than the DataFrame one; each of those right
+     * sides fits the probe, and a map-side join shuffles nothing.
+     */
     def join[K, A, B](l: Rows[(K, A)], r: Rows[(K, B)]): Rows[(K, (A, B))] =
       val lp: RDD[(Any, Any)] = l.map(x => elem[(Any, Any)](x))
-      val rp: RDD[(Any, Any)] = r.map(x => elem[(Any, Any)](x))
-      RDD.rddToPairRDDFunctions(lp).join(rp).map(x => x)
+      val probe = r.take(broadcastRows + 1)
+      if probe.length <= broadcastRows then
+        val small = spark.sparkContext.broadcast(probe.iterator.map(elem[(Any, Any)]).toSeq.groupMap(_._1)(_._2))
+        lp.flatMap((k, a) => small.value.getOrElse(k, Nil).iterator.map(b => (k, (a, b)): Any))
+      else
+        val rp: RDD[(Any, Any)] = r.map(x => elem[(Any, Any)](x))
+        RDD.rddToPairRDDFunctions(lp).join(rp).map(x => x)
 
     def cache[A](d: Rows[A]): Rows[A] = d.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
 

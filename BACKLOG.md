@@ -1,11 +1,20 @@
 # Backlog
 
 ## bulk — after the seam (specs/bulk.md, landed 2026-09-09)
-- [ ] bulk-rewrite — `Tables` plans are data (`!.tracing` prints them);
-      the rewrite `bulk-join-cost` asks for — a `Select` that only
-      projects, pushed below a `Join` — is a walk over the same data,
-      one pass before `Tables.via`. Worth doing with a measurement: the
-      RDD-level join over `Csv.Row` maps is where the 18 s went.
+- [x] bulk-rewrite — DONE 2026-09-09, and the premise refuted by
+      measurement (`TestWroclawStages`): the plan built in 6.8 s, same
+      as DataFrames; the 18 s was `cache` through Java serialization.
+      Landed instead: broadcast join for a small right side in
+      `SparkBulk.join`, Kryo in the demo session — analysis 15.3 → 8.1 s.
+      A whole-plan rewrite needs a first-order plan (`Pipeline`'s
+      shape), because a `Free` continuation cannot be looked ahead of;
+      filed below as bulk-plan if the need appears.
+- [ ] bulk-plan — a first-order operator tree for `Tables` (the
+      `Pipeline` shape) that `Tables.via` interprets, so that rewrites
+      can see the whole plan: column pruning into `Read`, join
+      reordering by size. Only with a workload that needs it; the
+      broadcast decision already lives where the interpreter can make
+      it.
 - [ ] bulk-parquet — `Bulk.csv` is the only source; the taxi demo
       (TestTaxiAlgebra) still reads its parquet through Spark's API.
       A `source` per format, or `Bulk.read(Format)`, with the local
@@ -14,10 +23,8 @@
 - [ ] bulk-flink — `flink-core` alone carries no DataStream; an
       instance needs flink-streaming-java. The seam's `Any`-element
       choice is what a `DataStream[AnyRef]` instance would do too.
-- [ ] bulk-join-cost — the RDD-level join over `Csv.Row` maps reads
-      18 s where the DataFrame join read 7 s on the same GTFS. Project
-      before joining (the seam's `map` runs before the shuffle already),
-      or a `Bulk.select` that a Catalyst instance could push down.
+- [x] bulk-join-cost — CLOSED 2026-09-09 by bulk-rewrite: the join was
+      not the cost, the persist was; see above.
 
 ## runner-floor — what is left under the fused pass (specs/handler-fusion.md, after the arc)
 

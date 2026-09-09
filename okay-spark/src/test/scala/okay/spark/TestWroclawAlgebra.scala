@@ -112,6 +112,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
   lazy val spark: SparkSession = SparkSession.builder()
     .master("local[4]").appName("okay-wroclaw-algebra")
     .config("spark.ui.enabled", "false")
+    .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") // persist is serialization; Java's cost 18 s here
     .getOrCreate()
 
   override def afterAll(): Unit = if !munitIgnore then spark.stop()

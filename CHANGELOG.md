@@ -1,5 +1,40 @@
 # Changelog
 
+## bulk-rewrite — the backlog's premise measured and refuted; the two costs that were real, removed
+
+`bulk-join-cost` said the RDD-level join was why the seam's build read
+18 s against 7 s through DataFrames, and `bulk-rewrite` proposed a plan
+rewrite — project before the join — to fix it. Measured stage by stage
+first (`TestWroclawStages`, Live, both platforms): read + project 1.9 s,
+the three joins +3.6 s, expand +1.2 s, **the whole build 6.8 s** — the
+same as the DataFrame version, and the projection was already before
+the joins in the program. The 18 s was `cache`: `MEMORY_AND_DISK` of
+4.6M boxed elements through Java serialization. No rewrite would have
+touched it.
+
+Two things were real, and both are the platform's, not the plan's:
+
+- **Broadcast join.** `SparkBulk.join` now probes the right side with
+  `take(broadcastRows + 1)` (100 000; a bounded scan) and, when it
+  fits, broadcasts it grouped by key and joins map-side — the decision
+  Spark SQL makes by size, made by the instance with the seam
+  unchanged. 42k trips, 138 routes and 4 calendar rows all fit; the
+  build reads 3.95 s.
+- **Kryo.** The demo session sets `spark.serializer` to Kryo;
+  `cache` + two counts read 4.3 s where Java serialization had taken
+  the difference to 18.
+
+The whole analysis — build, cache, three aggregates, a native sort — on
+Spark: 15.3 s → **8.1 s**; local 7.0 → 6.7 s; every answer equal.
+
+And the honest limit, recorded in the spec: a `Free` program is data
+ONE STEP AT A TIME — the continuations are functions — so `!.tracing`
+prints a plan by running its handler, and a whole-plan rewrite (push a
+projection under a join it cannot yet see) needs a first-order operator
+tree, the `Pipeline` shape. The effect layer optimises where an
+interpreter can: at the operation it is looking at, with the heap in
+hand — which is exactly where the broadcast decision lives.
+
 ## bulk-effect — the road to the aggregation as a program, and an operation added without touching the seam
 
 `Bulk[D]` stays the platform's contract; the program's vocabulary is now
