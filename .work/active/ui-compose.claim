@@ -1,0 +1,21 @@
+task: ui-compose
+agent: fable-frontend
+started: 2026-09-09
+branch: feature/ui-compose
+worktree: ../okay-wt-ui-compose
+spec: specs/frontend.md, stage 3
+
+why: stages 0-2 landed (f99880f5, d45fba3a, 13417298); the protocol
+  document and conformance script exist for a client in another
+  language to read. The operator's first native target is Compose.
+
+what: okay-compose/ — a Gradle/Kotlin project outside sbt, with NO okay
+  dependency: a pure protocol module (the shapes, the JSON codec with
+  the {"Case":{...}} sum, tree patching, the hybrid rule) whose test
+  replays docs/protocol/conformance.jsonl; and a Compose Multiplatform
+  app (desktop first; Android when an SDK is present) drawing level L
+  over a WebSocket to an okay-script Live page. The same server drives
+  the browser and Compose at once.
+
+predict: the conformance test is the proof; the Compose renderer is
+  ~300 lines; Gradle's first resolution is the slow part.
