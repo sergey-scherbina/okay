@@ -78,7 +78,12 @@ class TestFaults extends munit.FunSuite {
       val wire = Faults.http(seed, Faults.Plan(dropRate = 0.15, failRate = 0.25, slowRate = 0.1, slowMillis = 2))(far)
       val breaker = Breaker("c", failures = 3, openMillis = 60_000)
       val bulkhead = Bulkhead("c", permits = 4, queue = 4)
-      val limiter = Limiter("c", ratePerSecond = 1_000, burst = 30)
+      // a FROZEN clock: with the wall clock the bucket refilled by
+      // however many milliseconds the 40 calls took, and a warm second
+      // session ran faster than the first, met Exhausted where the
+      // first had not, and broke its own replay (the full-matrix gate
+      // caught it; the scoped run had not)
+      val limiter = Limiter("c", ratePerSecond = 1_000, burst = 100, clock = () => 0L)
       val client = Resilient.http(wire, budgetMillis = Some(1_000), breaker = Some(breaker),
         bulkhead = Some(bulkhead), limiter = Some((limiter, _ => "k")))
       val outs = (1 to 40).toVector.map { _ =>
@@ -98,7 +103,7 @@ class TestFaults extends munit.FunSuite {
     if firstOpen >= 0 then
       assert(outs.drop(firstOpen).forall(_ == Left("BreakerOpen")), outs.toString)
       assertEquals(breaker.state, Breaker.State.Open)
-    assertEquals(limiter.rejected, 0L)             // the burst covers a serial run
+    assertEquals(limiter.rejected, 0L)             // the burst covers the run, and nothing refills it
     assertEquals(session(11)._1, outs)             // the same seed, the same story
     assertNotEquals(session(12)._1, outs)          // a different seed, a different one
   }

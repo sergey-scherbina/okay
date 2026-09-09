@@ -15,7 +15,13 @@ the far end is not asked while open; the hedge answers from ordinal
 accounted for across breaker, wire and limiter, and the run replays
 by seed. Adaptive concurrency stays deferred, unmeasured: nothing
 wires `Resilient.http` into a service yet, so there is no latency to
-follow. 5 tests.
+follow. 5 tests. The full-matrix gate caught what the scoped run
+had not: the composite test's limiter ran on the wall clock, a warm
+replay finished its 40 calls in fewer milliseconds than the first,
+refilled less, met `Exhausted`, and broke its own replay — the
+limiter's clock is frozen there now, which is the spec's own rule
+(time is injected) applied to the test that had forgotten it.
+
 ## ui-native-toolkits — the Swing host: the JVM's own toolkit over the same seam, headless-tested by the DOM battery
 
 The "out of the box" native leg specs/frontend.md left open.
