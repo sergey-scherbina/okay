@@ -93,6 +93,36 @@ class TestAsyncCross extends munit.FunSuite {
     }
   }
 
+  test("Retry.async: retries per the policy and succeeds when an attempt does (retry-js)") {
+    var attempts = 0
+    val flaky = async { attempts += 1; if attempts < 3 then throw RuntimeException(s"try $attempts") else 42 }
+    Async.runAsync(Retry.async(Retry.immediate(5))(flaky)).map { v =>
+      assertEquals(v, 42)
+      assertEquals(attempts, 3)
+    }
+  }
+
+  test("Retry.async: a policy exhausted fails with the LAST error, after every attempt (retry-js)") {
+    var attempts = 0
+    val hopeless = async[Int] { attempts += 1; throw RuntimeException(s"try $attempts") }
+    Async.runAsync(Retry.async(Retry.immediate(2))(hopeless)).failed.map { e =>
+      assertEquals(e.getMessage, "try 3")   // the first try plus two retries
+      assertEquals(attempts, 3)
+    }
+  }
+
+  test("Retry.async: the delays are honoured on the platform timer, and zero delays sleep nothing (retry-js)") {
+    val started = System.currentTimeMillis()
+    val hopeless = async[Int](throw RuntimeException("no"))
+    Async.runAsync(Retry.async(Retry.constant(30).take(2))(hopeless)).failed.flatMap { _ =>
+      assert(System.currentTimeMillis() - started >= 60, "two delays of 30 ms must have passed")
+      val t0 = System.currentTimeMillis()
+      Async.runAsync(Retry.async(Retry.immediate(3))(hopeless)).failed.map { _ =>
+        assert(System.currentTimeMillis() - t0 < 500, "immediate retries must not sleep")
+      }
+    }
+  }
+
   test("a race of two failures fails instead of hanging") {
     val prog = Async.race(
       async[Int](throw RuntimeException("a")),

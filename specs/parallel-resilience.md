@@ -45,6 +45,14 @@ ideas from Spark).
 - [x] a supervised fiber restarts its program per policy and completes
       (the mid-merge feeder variant lands with okay-kafka, where a truly
       replayable offset-source exists)
+- [x] `Retry.async(policy)(prog)` is `retry` as an Async PROGRAM on
+      every platform (retry-js, 2026-09-09): the failure arrives as
+      data (`Async.attempt`), the delay is `Async.sleep` on the
+      platform timer, nothing parks a thread. Laws in the cross suite
+      (JVM, JS, Native): retries per the policy and answers the first
+      success; exhausted, fails with the LAST error after every
+      attempt; the delays are honoured and a zero delay sleeps
+      nothing. The blocking `retry` stays for the parking platforms.
 - [x] a non-replayable source refuses chunk-retry at compile time —
       no capability machinery needed: retryChunks is typed on pure
       `Chunks[A]` (a value whose pulls recompute from the program

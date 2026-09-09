@@ -1,5 +1,18 @@
 # Changelog
 
+## retry-js — retry as an Async program, so JS has it too
+
+`okay.retry` reruns a program with `prog.runWith` in a try/catch and
+`Thread.sleep` between attempts — a parking road, JVM and Native only,
+and JS had no retry at all. `Retry.async(policy)(prog)` is the same
+contract as an Async PROGRAM in the shared core: the attempt's failure
+arrives as data (`Async.attempt`), the delay is `Async.sleep` on the
+platform timer, nothing parks; reruns from the beginning on any
+exception (at-least-once, replayable work), a zero delay sleeps
+nothing, a policy exhausted fails with the LAST error. Three laws in
+the cross suite, green on the JVM, under Node and as a native binary.
+The blocking `retry` stays for the parking platforms.
+
 ## di-tails — the CDI bridge, and the WebFlux end-to-end that found a gap
 
 The two things specs/di.md had documented and not built, on the

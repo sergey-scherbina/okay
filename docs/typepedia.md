@@ -287,7 +287,9 @@ same material with the measurements attached.
   backpressure on JVM/Native; the JS variant is Await-based behind
   the same surface, capacity advisory); a LINEAR async stream;
   `merge` (readiness), `buffer`.
-- **`Retry`** — policies as delay streams; `retry`, `supervised`,
+- **`Retry`** — policies as delay streams; `retry` (parks a thread:
+  JVM/Native), `Retry.async` (the same as an Async program over
+  `attempt` + `sleep`: every platform), `supervised`,
   `retryChunks` (per-chunk lineage recompute), `parMap` (a fiber per
   chunk).
 

@@ -108,7 +108,9 @@ follows, in the spec's order:
       Decide the law — "a failure ends a timeout at once" reads
       right — write the test on `Async.timeout` first, then change
       `timeout` (not `race`, whose contract is stated and tested).
-- [ ] retry-js — `okay.retry` lives in scala-jvm-native and sleeps
+- [x] retry-js — DONE 2026-09-09: `Retry.async` in the shared core over
+      Async.attempt + Async.sleep, three laws in the cross suite on all
+      platforms. Was: `okay.retry` lives in scala-jvm-native and sleeps
       the thread; a JS twin over `Async.sleep` (Timer) would make the
       one resilience primitive the core already has cross-platform.
       Found by the resilience audit; not taken there because the
