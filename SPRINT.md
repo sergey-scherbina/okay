@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- adaptive-concurrency — specs/resilience.md's last open box: measure first, then build or refute (claim: adaptive-concurrency)
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

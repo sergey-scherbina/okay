@@ -1,0 +1,28 @@
+task: adaptive-concurrency
+agent: opus5-resilience
+started: 2026-09-09
+heartbeat: 2026-09-09T17:33:57Z
+status: in-progress
+branch: feature/adaptive-concurrency
+worktree: ../okay-wt-adaptive
+spec: specs/resilience.md — the one box left open, deliberately
+
+why: the box has been deferred twice with a reason, and the reason is
+  now "no measurement", not "no machinery". A gradient controller
+  tuned against no traffic is a guess with extra steps, so this lane
+  builds the MEASUREMENT first and lets it decide.
+
+what: a deterministic harness — virtual clock, a downstream whose
+  latency rises with in-flight count and whose CAPACITY HALVES
+  mid-run (the case a fixed permit count cannot follow, and the only
+  case where an adaptive one earns anything). Compare a fixed
+  Bulkhead at several permit counts against a gradient one on
+  throughput, tail latency and rejections. No wall clock, so the
+  numbers do not move with the box.
+
+  The gate: adaptive lands ONLY if it beats the best fixed setting on
+  the changing-capacity workload and does not lose badly on the
+  steady one. If it does not, the refutation lands instead — with its
+  numbers, in the spec, so nobody builds it again.
+
+next: harness, numbers, then either the controller or the refutation
