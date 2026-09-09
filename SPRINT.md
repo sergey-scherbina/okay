@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- resilience — specs/resilience.md stage 0, the five handlers (claim: resilience)
 - ui-vocab — specs/frontend.md stage 0, the vocabulary (claim: ui-vocab)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
