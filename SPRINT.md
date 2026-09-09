@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- resilience-http — specs/resilience.md stage 1: Resilient.http/route + okay-ops rows (claim: resilience-http)
 - sql-serialization-retry — BACKLOG "persistence-audit", lane 2 of 7
   (operator's go, 2026-09-09): 40001/40P01 retried by the region, the
   body re-run as the program value it is. Claim: sql-serialization-retry.
