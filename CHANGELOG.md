@@ -18,7 +18,7 @@ body that collects each ambient value — so no reflection touches the
 values and the bridge meets Spring's `Object` API in exactly two
 places, both restating a check already made. 3 core tests, 4 in
 okay-spring (the auto-configuration under ApplicationContextRunner).
-Not built: a WebFlux end-to-end with a real server. Commits: LANDING.
+Not built: a WebFlux end-to-end with a real server. Commit: 59b4b17c.
 ## writer-test-no-some — refuted on the first byte count, and unsound besides
 
 First of the four "runner-floor" items the operator ordered after the
