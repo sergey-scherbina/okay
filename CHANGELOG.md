@@ -1,5 +1,29 @@
 # Changelog
 
+## hedge-start-races — an attempt that outlived the answer
+
+Filed by hedge-timed-flake as a timer leak; the timer was the smaller
+half. `Hedge.start` published after it acted, twice: it forked an
+attempt and only then added the fiber to the list `settle` cancels,
+and it armed the hedge timer after that. The `done` check at the top
+does not cover either window, because the attempt that answers is
+another one, already in flight, and `settle` cancels only what it can
+SEE. So an attempt forked while the answer arrived ran on with nobody
+to stop it — for a hedged request, a duplicate that outlives the
+answer, which is exactly what hedging promises not to leave behind —
+and a timer armed in the same window sat until it fired.
+
+Both publications are re-checked now and undone by the thread that
+made them; both undos are idempotent, since `settle` may have
+cancelled the same fiber and disarming a spent timer does nothing.
+
+`TestHedgeStart` drives the window instead of timing it: a `Scheduler`
+wrapper records which fiber is cancelled and, on the second fork, lets
+the first attempt answer and waits until it has, so the second fiber
+is registered after `settle` has swept. Without the fix it fails
+naming what survived (`cancelled Set(1)`); with it, ten tests green
+eight runs out of eight. Commit: LANDING.
+
 ## deploy-stop-grace — the rendered manifests wait for the drain
 
 service-lifecycle gave the process a drain — readiness off, a delay
