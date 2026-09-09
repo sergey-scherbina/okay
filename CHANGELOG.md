@@ -22,7 +22,7 @@ wrapper records which fiber is cancelled and, on the second fork, lets
 the first attempt answer and waits until it has, so the second fiber
 is registered after `settle` has swept. Without the fix it fails
 naming what survived (`cancelled Set(1)`); with it, ten tests green
-eight runs out of eight. Commit: LANDING.
+eight runs out of eight. Commit: 54838b3c.
 
 ## deploy-stop-grace — the rendered manifests wait for the drain
 
