@@ -447,15 +447,18 @@ and nothing else in the library casts for that reason:
   RETURNING arm of `split`, ascribe the loop's answer inside the
   branch: the constructor has refined the answer type there, and the
   ascription is where the refined value meets the loop's type.
-- **`Failing.anyRow`** (Resource's forwarded-failure hook) — the
-  TOTAL default of the row-typeclass recipe below: the class test
-  proves the operation is an `Async.Run`/`Async.Await`, the
-  replacement is the same constructor at the same answer type, and
-  only the erased `F[X]` cannot say so. A row holding no Async
-  operation never reaches the cast. It is the LOW-priority instance,
-  and `Failing[Async]` above it is the typed road for the single-effect
-  row most call sites pass. The cast is there because the alternative
-  was measured and was SILENCE (see the recipe).
+- **`over`** — the row PRISM, `split`'s reverse direction: rewrite the
+  operations of one member of a row in place (`over[F, R](e)(f)`,
+  `f: F[A] => F[A]`), leaving the others as they are. The class test
+  proves the operation is an F, `f` keeps it one at the same answer
+  type, and the row is erased — one cast, beside `split`'s, for what
+  no witness can say about an abstract row. It is how a typeclass
+  instance written for ONE effect becomes the instance for every row
+  holding it: `Failing.anyRow` (Resource's forwarded-failure hook, the
+  TOTAL default of the recipe below) is `Failing[Async]` lifted by
+  `over`, and Failing.scala itself casts nowhere (failing-over,
+  2026-09-09). The alternative to a total default was measured and was
+  SILENCE (see the recipe).
 - **No `Tagged`, and the reason is worth more than the type was.** An
   existential package — a value with its `ClassTag` beside it — turns
   an unchecked cast into a checked one, and is the right tool for
@@ -561,8 +564,9 @@ reasons are measured rather than argued:
   (TestFailing) after a first probe read `summon` succeeding as
   "resolved" when what had answered was the identity.
 - **So the default must be TOTAL, not typed.** `Failing.anyRow` tests
-  the OPERATION's own class rather than the row's shape, casts once,
-  and is correct for every nesting.
+  the OPERATION's own class rather than the row's shape — through the
+  kernel's `over`, which casts once — and is correct for every
+  nesting.
 - **And then the anchored ROW instances are decoration — delete
   them.** They were written and they work; once the default is total
   they answer nothing it does not answer the same way, at the same
@@ -571,10 +575,25 @@ reasons are measured rather than argued:
   `Failing[Async]` — because one effect is a shape the compiler pins,
   it is what most call sites pass, and it needs no cast. Two
   instances, not four (failing-simplify, the operator's call).
+- **The total default's cast is the kernel's, not the typeclass's
+  (failing-over).** Asked to avoid the cast, or at least to move it
+  under an implicit, the implicit road was probed first: a
+  `RowLift.In[Async, F]` witness plus a `NotGiven` identity. `In`
+  walks the left spine only, so `(S + P) + Async` and a right-nested
+  row resolve no witness and would take the identity; and on an
+  ABSTRACT `F` — a polymorphic `Resource.run` caller — `NotGiven`
+  reads "unknown" as "absent". Refuted twice, before a line was
+  written. What moves is the cast: `over[F : TypeableK, R]` in
+  Effects.scala is the prism over the row — test, rewrite, back under
+  the row's type — and `Failing.anyRow` is
+  `over[Async, F](e)(Failing.async.guard(_, onFailure))`: the typed
+  instance lifted over any row, the logic written once, no cast in
+  the typeclass.
 
 The rule that survives all of it: **a typeclass over rows gets a TOTAL
-default that reads the value, plus typed instances only for the shapes
-the compiler can pin and that callers actually pass.** An identity
+default that reads the value — the single-effect instance lifted by
+`over` — plus typed instances only for the shapes the compiler can pin
+and that callers actually pass.** An identity
 default is the one thing to refuse — it turns a type-level miss into a
 runtime silence. And the corollary that cost this repository two
 lanes: prove an instance by CALLING it, never by `summon` succeeding.

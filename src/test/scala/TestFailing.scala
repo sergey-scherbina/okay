@@ -3,7 +3,9 @@ package okay
 /**
  * Every shape of a row is guarded (row-typeclass-recipe,
  * failing-simplify) — `Async` alone through the typed instance, every
- * nesting through the total default. `guarded` answers the question
+ * nesting through the total default, which is that same instance
+ * lifted over the row by the kernel's `over` (failing-over). `guarded`
+ * answers the question
  * BEHAVIOURALLY rather than by types: it hands the instance a `Run`
  * that throws and reports whether the hook ran. A `summon` that
  * succeeds proves only that an instance was found, which is how the
@@ -51,5 +53,14 @@ class TestFailing extends munit.FunSuite {
   test("an Async-free row is returned untouched — the hook has nothing to attach to") {
     assert(!guarded[S](Throws("no")))
     assert(!guarded[S + P](Throws("no")))
+  }
+
+  test("over rewrites the member it is asked for and returns every other operation as the same object") {
+    // the prism's own contract, apart from Failing: a non-member is
+    // not rebuilt, not copied — the else branch is the identity
+    val t: (S + Async)[Int] = Throws("no")
+    assert(over[Async, S + Async](t)(_ => boom) eq t)
+    val rewritten = over[Async, S + Async](boom: (S + Async)[Int])(_ => Async.Run(() => 42))
+    assertEquals(rewritten match { case r: Async.Run[?] => r.run(); case _ => -1 }, 42)
   }
 }

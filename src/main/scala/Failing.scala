@@ -14,15 +14,19 @@ package okay
  * so this typeclass says, per row, how to attach a hook that runs
  * first.
  *
- * TWO INSTANCES, and the second one's cast is the point rather than a
- * blemish: a row is a type LAMBDA, `A + B + C` nests to the left, and
- * an instance can only be written for a shape the compiler can pin.
- * So the default answers by the OPERATION's own class instead, which
- * is total over every nesting. The alternative — typed instances for
- * the shapes plus an identity default — was built, measured and
- * REFUTED: `(Async + S) + P` matched no instance, the identity
- * answered, and the row went silently unguarded (the defect this hook
- * exists to prevent). An identity default is the one thing to refuse.
+ * TWO INSTANCES: the typed one for `Async` alone, and the default for
+ * any row, which is the typed one LIFTED over the row by the kernel's
+ * prism (`over`, beside `split` in Effects.scala). A row is a type
+ * LAMBDA, `A + B + C` nests to the left, and an instance can only be
+ * written for a shape the compiler can pin — so the default reads the
+ * OPERATION's own class instead, which is total over every nesting,
+ * and the one cast a row costs is made in the kernel, where `split`
+ * already makes the same claim, not here. The alternative — typed
+ * instances for the shapes plus an identity default — was built,
+ * measured and REFUTED: `(Async + S) + P` matched no instance, the
+ * identity answered, and the row went silently unguarded (the defect
+ * this hook exists to prevent). An identity default is the one thing
+ * to refuse.
  *
  * Also refuted, in the same lane: an UNANCHORED
  * `given [F[+_], G[+_]]: Failing[F + G]` is selected by dotty and then
@@ -33,7 +37,12 @@ package okay
  * already answers those shapes identically and at the same cost. What
  * survives of that road is `Failing[Async]` below: a single effect IS
  * a shape the compiler pins, it is what most `Resource.run` call sites
- * pass, and it needs no cast at all.
+ * pass, and it needs no cast at all. And refuted last (failing-over):
+ * a `RowLift.In[Async, F]` witness with a `NotGiven` identity — `In`
+ * walks the left spine only, so `(S + P) + Async` and a right-nested
+ * row resolve nothing and would take the identity, and on an abstract
+ * `F` `NotGiven` reads "unknown" as "absent". The probe's table is in
+ * specs/sql.md (resource-async-failure).
  *
  * The whole story, with the measurements: docs/typepedia.md, "The
  * row-typeclass recipe"; the shapes are walked in TestFailing.
@@ -46,23 +55,18 @@ trait Failing[F[+_]]:
 
 trait FailingLow:
   /**
-   * ANY row, by the operation's own class — total over every nesting,
-   * and the one place this file casts.
-   *
-   * The cast is the kernel's own claim in miniature: the class test
-   * proves the operation IS an `Async.Run`/`Async.Await`, the
-   * replacement is the same constructor at the same answer type, and
-   * `F[X]` is erased — only the type system cannot say so. A row with
-   * no Async operation in it never reaches a cast: the match falls
-   * through and returns the operation untouched.
+   * ANY row, by the operation's own class — total over every nesting:
+   * the typed instance for `Async` alone, lifted over the row by the
+   * kernel's prism. The class test proves the operation is an Async,
+   * `Failing.async` rebuilds it as one under its GADT match, and
+   * `over` puts it back under the row's type — the one cast a row
+   * costs, made in the kernel beside `split`'s, not here. A row with
+   * no Async operation in it never reaches it: the test fails and the
+   * operation is returned untouched.
    */
   given anyRow[F[+_]]: Failing[F] = new:
-    def guard[X](e: F[X], onFailure: () => Unit): F[X] = e match
-      case r: Async.Run[?] =>
-        Async.Run(() => try r.run() catch { case t: Throwable => onFailure(); throw t }).asInstanceOf[F[X]]
-      case a: Async.Await[?] =>
-        Async.Await[Any](k => a.register { r => if r.isLeft then onFailure(); k(r) }).asInstanceOf[F[X]]
-      case other => other
+    def guard[X](e: F[X], onFailure: () => Unit): F[X] =
+      over[Async, F](e)(Failing.async.guard(_, onFailure))
 
 object Failing extends FailingLow:
   /** the typed road, for the row every second `Resource.run` passes:
