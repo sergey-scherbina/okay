@@ -73,6 +73,10 @@ the generic combinators — `traverse`/`sequence`/`replicateA`,
 
 ### Your own effect
 
+The short version is below; the full worked tutorial — four
+interpretations of one program, the handlers, the interpreters, and
+what bites — is **[Your own effect](your-own-effect.md)**.
+
 A signature is an enum whose cases carry their own answer types, and
 that is the whole declaration:
 

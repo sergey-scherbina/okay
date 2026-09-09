@@ -196,8 +196,8 @@ object UsersDemo:
     def handle[A](e: Users[A]): A = e match
       case Users.Find(id)       => St.get(id)(s)
       case Users.Save(id, name) =>
-        val was = St.get(id)(s)
-        s = St.put(id, name)(s)
+        val (was, next) = St.replace(id, name)(s)
+        s = next
         was
 
   /**

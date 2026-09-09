@@ -132,7 +132,8 @@ index above lists them all with one-line summaries.
 - `Throws` — typed errors: abort, runEither, the `throws` union; and
   `Abort` (= `Throws % Unit`), failure with nothing to say, handled by
   `runOption` (Throws.scala).
-- **Your own effect**, in three lines: `enum Users[+A] derives Effect`
+- **Your own effect** ([the tutorial](docs/your-own-effect.md)), in
+  three lines: `enum Users[+A] derives Effect`
   and the cases carry their answer types. `derives Effect` writes the
   row-split test and registers the signature for direct style;
   `.plus[R]` puts an operation in a wider row; with `Abort` in the row

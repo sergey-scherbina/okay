@@ -35,7 +35,7 @@ import okay.RowLift.plus
  *
  * AND THE OTHER TWO ROUTES. A key is a STATIC identity: the row lists
  * the instances, so the compiler knows how many there are and nothing
- * casts. `Cells` is the dynamic counterpart for state made at run
+ * casts. `Refs` is the dynamic counterpart for state made at run
  * time, at the price of a heap and one cast. The third is the one
  * `Delim` already offers — a fresh PROMPT per handler installation,
  * which gives an instance an identity that no type has to name and no
