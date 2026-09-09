@@ -1,6 +1,9 @@
 # Sprint
 
 ## Doing
+- eff-stack-safety — specs/eff-stack-safety.md; BACKLOG "runner-floor"
+  item 2 (operator's order 2, 4, 3, 1: the second). Claimed 2026-09-09
+  (.work/active/eff-stack-safety.claim).
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

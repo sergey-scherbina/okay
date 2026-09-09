@@ -1,0 +1,14 @@
+task: eff-stack-safety
+agent: fable-fusion
+started: 2026-09-09
+branch: feature/eff-stack-safety
+worktree: ../okay-wt-effss
+spec: specs/eff-stack-safety.md
+
+why: Eff overflows on a left-nested chain between 10k and 100k binds
+  (measured; right-nested runs 1M). The nesting is in the n inward
+  applications before any Cont exists, not in Cont's runner.
+what: Cont.Suspend + Eff.flatMap deferring the inner application; laws
+  (1M left-nested Eff, Free/Eff agreement both shapes, Cont suite);
+  effSWr does not regress (23.5 us / 297 897 B/op baseline), a
+  left-nested Eff lane added.
