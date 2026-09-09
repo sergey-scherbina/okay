@@ -5846,6 +5846,21 @@ separate investigations in one session. Every one measured:
 | `okay.persist.TestStable` | `BindException` | 0.007 s |
 | `okay.ui` TestHybrid / TestSwing | 2 comparison failures + 2 timeouts | 84/84 |
 
+**TWO ROWS OF THAT TABLE NAME THE WRONG SUITE** (gate-starved-suites,
+2026-09-09 evening). The 237 s was `okay.demo.TestRepoAgent`'s, not
+kafka's — a sibling lane had already measured it that morning and said
+so in its own commit: "TestRepoAgent indexes the whole repository and
+ran 203-237 s under four sbts against its 120 s budget, green alone —
+tagged Live" (479c510b, gate-hygiene, 12:19). The same commit fixed
+the intent row's real owners, `TestOfflineGate` and
+`TestTypoRobustness` ("4 s alone, 48-61 s under load", given a
+measured 180 s deadline). The kafka attribution is certain, the
+number matches exactly; the intent one is likely rather than proven.
+
+The irony is the entry's own lesson: a gate log read under pressure
+was turned into a table of conclusions, and half of it named the
+wrong thing.
+
 The tax is that every lane pays isolated re-runs to tell a real
 failure from noise. The real cost runs the other way: this session
 nearly dismissed a GENUINE defect (`actor-stop-drain`, 219 of 300)
@@ -5877,22 +5892,47 @@ wait. Dose-dependent, same defect.
 
 When the CONDITIONS cannot be reproduced, reproduce the MECHANISM.
 
-### Still open
+### Closed 2026-09-09 (gate-starved-suites)
 
-- [ ] the three timeouts (kafka, intent, and TestSwing's law) are
-      resource starvation, not synchronisation: they take 0.084 s and
-      0.059 s alone against 237 s and 39 s in a loaded gate. Nothing
-      in them is wrong; they are simply starved. Per AGENTS.md's
-      policy the honest options are to give them longer deadlines or
-      to move them to `integrationTest` — and neither should be done
-      by sweeping: each needs its own reading of whether its
-      assertion depends on timing at all.
-- [ ] `okay.persist.TestStable`'s `BindException` is a port
-      collision on a shared box, the class AGENTS.md already
-      describes ("a released ephemeral port is immediately
-      re-bindable by a neighbour"). It binds a real `ServerSocket` in
-      `RaftWire$Node`; a retry on bind, or an OS-assigned port, ends
-      it.
+- [x] the three timeouts are NOT starved, and were never slow. A full
+      gate under 28 CPU burners on a box already at load 20 — load
+      average 101, three times the "four sbt processes" the original
+      reading came from — is GREEN at 3596 results, with
+      `TestKafkaInterop` at 0.029 s, `TestCutStops` at 0.029 s and
+      TestSwing's law at 1.658 s. The genuinely slow tests under that
+      load are compute-bound and well inside their budgets (53.2 s
+      "stack safety: 1M produced values", 37.5 s "does the gain
+      survive resampling", 20.3 s "a typo's cost per tier"), and none
+      of the four is near them. The three real load-sensitive suites
+      were found and fixed by gate-hygiene (479c510b) the same
+      morning. Nothing to widen, nothing to move: the table was
+      wrong, and it is corrected above.
+- [x] `okay.persist.TestStable` no longer pre-binds. It asked the OS
+      for a free port, CLOSED it, and handed the number to
+      `RaftWire.Node` to bind again — a real TOCTOU by inspection,
+      and one this repo has met before: `TestRaftWire` and
+      `TestRaftStore` both carry a documented three-try retry for it
+      ("the BindException that failed a gate on 2026-09-06"). Those
+      two must pre-bind, since their nodes are told each other's
+      ports before any starts. `TestStable` has no peers and never
+      reads its own port, so it takes port 0 and lets the OS assign
+      at bind time: no window at all.
+
+      THE COLLISION DID NOT REPRODUCE, in six models, and that is
+      recorded rather than buried — neighbours grabbing ephemeral
+      ports (0 in 20 000), eight threads running the idiom at once (0
+      in 32 000), 717 615 ports churned alongside (0 in 30 000), a
+      0-500 ms gap between the close and the bind with 11.2 M ports
+      churned during the widest (0 in 300 each), neighbours that HOLD
+      what they take (0 in 300 each), and four separate JVMs racing
+      it (0 in 1 600). macOS does not appear to re-offer a
+      just-released ephemeral port while its cursor is near it,
+      within a process or across four. So the window is real in the
+      code and very hard to hit on this OS — which fits a failure
+      seen twice in months. The change is "the step that buys nothing
+      is gone", not "the flake is fixed"; and since the original gate
+      log is gone and the 237 s above was misattributed, whether that
+      BindException was even this suite's is worth doubting.
 
 ## merge-chunked-order — DONE (24a1cc38): the buffer, not the merge
 

@@ -64,3 +64,75 @@ predict: kafka is NOT plain starvation. The ratio is too large, and I
   answers instantly — that makes progress only when it wins a
   timeslice. TestCutStops and TestSwing I expect to be genuinely
   starved, deadline-only. Recorded so being wrong shows.
+
+--- FOUND, 2026-09-09 ---
+
+THE PREDICTION WAS RIGHT ABOUT KAFKA AND WRONG ABOUT WHY. It is not
+a spin, and it is not starvation: the 237 s was never that suite's.
+
+    479c510b gate-hygiene (a sibling lane, 12:19 today):
+    "TestRepoAgent indexes the whole repository and ran 203-237 s
+     under four sbts against its 120 s budget, green alone — tagged
+     Live"
+
+Same number, same gate, different suite. The entry's table named
+`okay.kafka.TestKafkaInterop` for a time that belonged to
+`okay.demo.TestRepoAgent`, and the intent row looks like the same
+error: gate-hygiene measured `TestOfflineGate` and `TestTypoRobustness`
+at "4 s alone, 48-61 s under load" and gave them a 180 s deadline,
+while my row named `TestCutStops` at 39 s. (The kafka attribution is
+certain — the number matches exactly. The intent one is likely rather
+than proven: different numbers, same module, same gate.)
+
+MEASURED, rather than argued. A full gate under 28 CPU burners on a
+box already at load 20 — load average 101 at the end, three times the
+"four sbt processes" the original was read from:
+
+    gate: sbt exited 0, 3596 test results — GREEN
+
+    okay.kafka.TestKafkaInterop        0.029s  (table said 237 s)
+    okay.intent.TestCutStops           0.029s  (table said 39 s)
+    okay.ui TestSwing, the law         1.658s  (table said timeout)
+    okay.persist.TestStable            passed  (table said BindException)
+
+The genuinely slow tests under that load are compute-bound and well
+inside their budgets: 53.2 s "stack safety: 1M produced values",
+37.5 s "does the gain survive resampling", 20.3 s "a typo's cost per
+tier". None of the four named suites appears anywhere near them.
+
+So box 1 needs no deadline and no `integrationTest` move. The three
+real load-sensitive suites were found and fixed this morning by
+another lane, with measurements, and the honest action here is to
+correct the table rather than change four suites that were never
+slow.
+
+BOX 2, and the fix is kept while the diagnosis is not claimed.
+`TestStable` asked the OS for a free port, CLOSED it, and handed the
+number to `RaftWire.Node`, which binds it again. That is a real
+TOCTOU by inspection, and this repo has met it before — `TestRaftWire`
+and `TestRaftStore` both carry a documented three-try retry for
+exactly it ("the BindException that failed a gate on 2026-09-06").
+Those two must pre-bind, because their nodes are told each other's
+ports before any of them starts. `TestStable` has no peers and never
+reads its own port, so it can take the better road: port 0, the OS
+assigns at bind time, and there is no window at all.
+
+BUT I COULD NOT REPRODUCE THE COLLISION, in six models, and that is
+recorded rather than buried:
+
+    1. idiom + neighbours grabbing ephemeral ports    0 / 20 000
+    2. 8 threads all running the idiom concurrently   0 / 32 000
+    3. + 717 615 ports churned alongside              0 / 30 000
+    4. gap 0/1/10/100/500 ms between close and bind   0 / 300 each
+       (11.2 M ports churned during the 500 ms gaps)
+    5. neighbours that HOLD what they take            0 / 300 each
+    6. four separate JVMs racing the idiom at once    0 / 1 600
+
+macOS does not appear to re-offer a just-released ephemeral port
+while the cursor is anywhere near it, within a process or across
+four. So the window is real in the code and very hard to hit on this
+OS — which fits a failure seen twice in months, and means the change
+here is "the step that buys nothing is gone", not "the flake is
+fixed". The original gate log is gone, so I cannot check whether that
+BindException was even this suite's; given the 237 s above, it is
+worth doubting.
