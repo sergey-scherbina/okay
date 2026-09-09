@@ -22,7 +22,7 @@ browser and this window at once.
 | | |
 |---|---|
 | `protocol/` | the shapes (`Model.kt`, the document transcribed), the codec (`Wire.kt`: a sum is `{"Case": {...}}`, reading is total), the tree (`Tree.kt`: patch application, the hybrid rule — a Form's fields fold here, its button submits once) |
-| `app/` | `Client.kt` (the JDK's WebSocket, hello first), `Render.kt` (level L in Compose Material), `Main.kt` |
+| `app/` | Kotlin Multiplatform: `commonMain` (`Render.kt` — level L in Compose Material; `Client.kt` — the session, hello first, events queued until the socket opens; `App.kt` — `OkayApp(url)`), `desktopMain` (`Main.kt`, `Smoke.kt`, the JDK WebSocket), `androidMain` (`MainActivity`, OkHttp's WebSocket) |
 
 ## What it claims
 
@@ -32,8 +32,19 @@ in case a future version claims some of it.
 
 ## Platforms
 
-Compose Multiplatform's desktop target today. The composables in
-`Render.kt` are common code; the Android target is the same source
-with an SDK on the build machine and an `androidTarget()` in
-`app/build.gradle.kts` — not added until one exists, so that the build
-that is checked in is the build that runs.
+Desktop (JVM) and Android, from ONE set of composables; only the
+socket is per platform. Android needs an SDK on the build machine:
+
+```
+brew install --cask android-commandlinetools
+sdkmanager --sdk_root=$HOME/Library/Android/sdk "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+ANDROID_HOME=$HOME/Library/Android/sdk ./gradlew :app:assembleDebug   # app/build/outputs/apk/debug/app-debug.apk
+```
+
+Install the APK on a device or emulator and launch it with the
+server's address (`10.0.2.2` is the emulator's name for the host):
+
+```
+adb install app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n okay.compose.app/.MainActivity --es url "ws://10.0.2.2:8080/counter?__live=counter"
+```

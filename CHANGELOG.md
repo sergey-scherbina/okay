@@ -1,5 +1,30 @@
 # Changelog
 
+## ui-mobile-android — the Android target on okay-compose: one set of composables, a debug APK built
+
+M3 of specs/frontend.md "Mobile". The Android SDK came by
+`brew install --cask android-commandlinetools` and `sdkmanager`
+(platform 35, build-tools 35.0.0). `okay-compose/app` is a Kotlin
+Multiplatform module: `commonMain` holds the composables (`Render.kt`),
+the whole client as one composable (`OkayApp(url)`) and the session
+(`Client.kt`: the kept tree, the hybrid rule, hello first, events
+queued until the socket opens); only the socket is per platform —
+`expect class Socket`, the JDK's WebSocket on the desktop, OkHttp on
+Android, which has no `java.net.http`. `MainActivity` shows `OkayApp`
+with the server address from the launch intent. `:app:assembleDebug`
+built `app-debug.apk` (8.5 MB, compileSdk 35 / minSdk 26); the desktop
+target compiles from the same sources; the protocol tests are
+unchanged, 3 of 3; the desktop smoke against a real Live page passes
+with the rewritten client. Running the APK needs an emulator system
+image, a further download not made in this session; the README gives
+the `adb install` and `am start` lines. Found on the way: a one-line
+function whose return type Kotlin inferred through a lambda that also
+referenced it — "type checking has run into a recursive problem" —
+now typed explicitly; and, by the smoke rather than the build, the
+JDK WebSocket's `onOpen` fires inside `buildAsync().join()` before
+the field the socket is assigned to exists, so the hello never left —
+the socket is taken from the callback on both platforms.
+
 ## resource-guard — Failing[F]: the forwarded-failure hook as a typeclass, and the cast in Resource.run is gone
 
 jdbc-tails fixed the abandoned-finalizer defect with one cast in

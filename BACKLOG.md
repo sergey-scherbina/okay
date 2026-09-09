@@ -1787,7 +1787,7 @@ measure on our own data, never a predicted result.
       SetValue overrides a local edit, forged Submitted dropped.
 - [x] ui-mobile — LANDED 2026-09-09 (specs/frontend.md "Mobile", M1): installable Live pages — viewport, level-L mobile CSS, manifest, service worker; Playwright in an iPhone emulation, offline reload; live.js queues events before the socket opens.
 - [x] ui-mobile-ios — LANDED 2026-09-09 (specs/frontend.md "Mobile" M2): okay-swift/, `swift test` 3/3 over conformance.jsonl, iOS Simulator build succeeded, headless smoke against a real Live page.
-- [ ] ui-mobile-android — M3: the SDK by brew + sdkmanager, the Android target on okay-compose, a debug APK.
+- [x] ui-mobile-android — LANDED 2026-09-09 (specs/frontend.md "Mobile" M3): the SDK by brew + sdkmanager, okay-compose/app as Kotlin Multiplatform (desktop + Android from one set of composables, the socket per platform), app-debug.apk built. Not run: an emulator image is a further download.
 - [x] ui-compose — LANDED 2026-09-09 (specs/frontend.md Results; okay-compose/README.md). Original: a Compose Multiplatform thin client
       (Kotlin, no okay dependency) drawing level L, passing the
       conformance script; the same server drives browser + Compose at
