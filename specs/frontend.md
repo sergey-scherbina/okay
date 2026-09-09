@@ -209,9 +209,9 @@ Stage 2 — the hybrid (ui-hybrid):
       rejects) never reaches `update`
 
 Stage 3 — the first thin client (ui-native):
-- [ ] a client in the platform's language (first target: the
-      operator's choice — SwiftUI or Compose; see Decisions) draws
-      level L, claims nothing else, passes the conformance script
+- [ ] a Compose Multiplatform client (Kotlin, no okay dependency)
+      draws level L, claims nothing else, passes the conformance
+      script
 - [ ] the same server, unchanged, drives the browser and the native
       client at once
 - [ ] Scala Native + GTK (or Swing on the JVM) as a host over the same
@@ -242,9 +242,11 @@ Stage 3 — the first thin client (ui-native):
   application says "danger", the host says red.
 - **Codecs derived, WireJson retired** — one definition, two
   encodings, versioning by the rules Schema already has.
-- **First native target** — open; the operator picks. The spec's
-  Stage 3 is written so the choice changes only the language of one
-  small program.
+- **First native target: Compose** — the operator's call
+  (2026-09-09). Kotlin, Compose Multiplatform, so one thin client
+  covers Android and desktop; the Kotlin side reads CBOR or JSON by
+  the protocol document alone and depends on nothing of okay. SwiftUI
+  follows over the same conformance script.
 
 ## Results
 (none yet — the spec is the deliverable of claim frontend-spec)
