@@ -1,5 +1,24 @@
 # Changelog
 
+## failing-simplify — two instances, not four: the anchored row instances were decoration once the default went total
+
+`Failing.asyncLeft`/`asyncRight` worked and cost nothing to keep, which
+is not a reason to keep them: with a TOTAL default they answer nothing
+it does not answer the same way and at the same cost — the anchored
+road runs a class test too, inside `<|>`. Deleted on the operator's
+call. What survives is the typed `Failing[Async]` (one effect IS a
+shape the compiler pins, it is what most `Resource.run` call sites
+pass, and it needs no cast) beside the total `FailingLow.anyRow`.
+Behaviour unchanged: `TestFailing` walks the same seven row shapes
+green, JS and Native compile. Twenty lines gone. The recipe in
+docs/typepedia.md records the deletion AND the reason to remember the
+road — anchoring on a concrete effect is still the right answer for a
+typeclass with no total default available — plus the corollary that
+cost two lanes: prove an instance by CALLING it, never by `summon`
+succeeding. Landed as 4502c40c. Gate: full matrix, 3541 tests, 0
+failures; the warnings in that run are a sibling's (bulk-plan-warnings
+is claimed for them).
+
 ## gate-warnings — the zero-warning policy made true again, twelve in four files
 
 AGENTS.md's rule is no warnings, ever — main, test AND Jmh, any
