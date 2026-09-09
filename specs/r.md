@@ -349,6 +349,123 @@ array, absences as an index list. That costs no dependency, where
 Arrow costs a native package on R's side and a reader on ours — so it
 goes first, and `r-arrow` waits for the number after it.
 
+## The columnar frame wire (r-frame-columnar-wire)
+
+Written before the code, because the code is a WIRE FORMAT and a wire
+format is the one thing a spec must fix first.
+
+### Why, with the number
+
+r-measure-harden measured a 3-column frame through `identity` (medians
+of five, dockerized R 4.4.1): 100 000 rows is 3.21 MB of JSON and
+13.7 s of round trip, of which our encode and decode together are
+0.3%. It is not the pipe either — 230 KB/s through R against 83 MB/s
+through our own codec on the same bytes. What is left is R building
+the STRUCTURE we hand it, and the structure is per-CELL:
+
+```json
+{"t":"frame","cols":[["id",[{"t":"i","v":1},{"t":"i","v":2}, …]], …]}
+```
+
+An integer cell, an NA cell and an integral double cell are each a
+small tagged object, because JSON alone cannot keep R's integer apart
+from its double, its four NAs apart from each other, or NA apart from
+NaN. Those distinctions are not negotiable — three checked Behavior
+boxes rest on them — but the PLACE of the tag is: a data.frame column
+is homogeneous by construction, so one tag serves the whole column.
+
+### The format
+
+A frame is a list of columns; a column is a type, a plain array of
+values, and the positions that are absent:
+
+```json
+{"t":"frame","v":2,"cols":[
+  {"name":"id",   "type":"i", "values":[1,2,3],        "na":[]},
+  {"name":"temp", "type":"d", "values":[1.5,0,2.5],    "na":[1], "nan":[]},
+  {"name":"site", "type":"s", "values":["a","b","c"],  "na":[]},
+  {"name":"ok",   "type":"l", "values":[true,false,true], "na":[]},
+  {"name":"blob", "type":"raw","values":["AQI=","Aw=="], "na":[]}
+]}
+```
+
+- **`type`** is R's own vocabulary, the four already in `RType` plus
+  raw: `l` logical, `i` integer, `d` double, `s` character, `raw`.
+  It is the COLUMN's type and it is what an absence takes: this is how
+  the four NAs stay four without a tag per cell.
+- **`values`** is a plain JSON array of that type's scalars — the path
+  jsonlite takes fastest, and the reason this change exists. A `raw`
+  column's values are base64 strings, as today.
+- **`na`** holds the 0-based positions that are absent; the `values`
+  array still has an entry at those positions (JSON `null`, or the
+  type's zero — the reader takes `na` as the authority and never the
+  placeholder). Empty in the common case, so it costs a pair of
+  brackets per column.
+- **`nan`** is the same list for a double column's NaNs, which R
+  distinguishes from NA. Absent for other types.
+- **`v`** is the frame format's own version inside the envelope: 2 is
+  this shape, and a reader that meets a `v` it does not know refuses
+  by name rather than guessing — the module's habit at every seam.
+
+Scalars in `Call` arguments are NOT touched. They are small, the
+per-value tagging costs nothing there, and changing two things at once
+would leave the measurement unable to say which one moved.
+
+### What must survive, and is already tested
+
+- an integer column stays integer; a double column stays double
+- the four NAs stay four values, and a column of NAs keeps its type
+- NA and NaN stay different
+- raw bytes and strings round-trip
+- an EMPTY column keeps its type (the shape carries `type` even with
+  no values, where the old per-cell form had nowhere to put it)
+- the typed layer (`RFrame.rows` / `RFrame.of`) is untouched: it works
+  on `RFrame`, above the wire
+
+### The shim moves with it
+
+The shim is a resource inside this module's jar and the handshake
+refuses drift by version, so both sides change together and no old
+shim exists anywhere: `ShimVersion` goes to 2, `enc`/`dec` gain the
+columnar branch, and a host meeting a v1 shim refuses as it always
+did. No compatibility window is needed and none is offered.
+
+### The gate
+
+`MeasureRFrame` is the measurement, and it already has the BEFORE row.
+The rule this lane is held to:
+
+- the same table AFTER, medians of five, same box, same container
+- the win must be visible at 100 000 rows in the ROUND TRIP column;
+  the honest threshold is 2x, since a change that costs a format
+  version and a shim bump should not be bought for less
+- if it lands under 2x, the entry says so and `r-arrow` stops waiting
+  behind it — the next measurement is then INSIDE the shim, to find
+  whether jsonlite's parse or its serialise holds the time
+
+### Out of scope
+
+- Arrow, until this number exists (r-arrow, filed and waiting)
+- changing the scalar wire
+- a compatibility mode for the v1 frame shape — the shim ships with
+  the host, so there is nothing to be compatible with
+
+### Behavior
+
+- [ ] a frame of every column type round-trips through a real R
+      unchanged, including an integer column, a double column with a
+      NaN, a character column, a logical column and a raw column
+- [ ] a column of NAs keeps its type across the wire (all four), and
+      an NA in a double column stays distinct from a NaN in the same
+      column
+- [ ] an empty frame and an empty column keep their column names and
+      types
+- [ ] a `v` the reader does not know refuses by name, and a v1 shim
+      refuses at the handshake as before
+- [ ] MEASURED: the same `MeasureRFrame` table after the change, beside
+      the before, in this spec — with the verdict against the 2x bar
+      written whichever way it goes
+
 ## Results (stage 0)
 
 **r-subprocess, 2026-09-07.** okay-r with `REval`/`RValue`/`RFrame`,
