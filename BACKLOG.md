@@ -1,5 +1,38 @@
 # Backlog
 
+## runner-floor — what is left under the fused pass (specs/handler-fusion.md, after the arc)
+
+The handler-fusion arc closed 2026-09-09 with the floor measured: a
+fused pass over `Free` is ~13.7 ns and ~122 B per operation
+(`FusionBenchmark.fusedSWr`, 122 641 B/op per 1 000 ops). The
+operator asked for the four things left under it, in this order:
+
+- [ ] writer-test-no-some — `Writer`'s own `TypeableK` tests the told
+      value through `scala.reflect.Typeable`, whose `unapply` answers a
+      `Some` per tell (333 per run here). A `ClassTag`-based test where
+      one exists (boxed for primitives), `Typeable` as the fallback,
+      by given priority. Gate: B/op on `fusedSWr` drops by ~16 B per
+      tell; TestRowIdentity's two-Writers row still misroutes loudly.
+- [ ] eff-stack-safety — `Eff` is not stack-safe on left-nested binds
+      (the Church encoding calls inward once per bind before any Cont
+      exists). Measure the depth at which it dies, decide between a
+      trampoline in `Eff.flatMap` (if one exists that is not "reify to
+      Free") and a documented law + `fromFree` as the road; either way
+      a test pins the answer.
+- [ ] either-scalarised-in-one-nesting — after stage A, the shipping
+      runners saved both wrappers in `Writer.run(State.handle(p))` and
+      only the Option in `State.run(Writer.run(p))`; bytecode has no
+      `Left`/`Right` in `State$`. Per-runner lanes with the old `<|>`
+      loops kept benchmark-local as the A/B; explain, then fix or
+      record.
+- [ ] single-shot-row — the only road under 122 B/op: a mutable cell
+      in place of the threaded accumulator, which is sound only when
+      no handler below resumes a continuation twice. A type-level
+      evidence for that (per signature, derived for a row; NOT for
+      Choice/Logic/List/Vector), the handlers that consume it, and the
+      honest statement of what a user-written `handle` can break.
+      SPEC FIRST, then the measured win on `fusedSWr`.
+
 ## resilience — the microservice handlers (operator's direction, 2026-09-09)
 
 Stage 0 of specs/resilience.md landed (okay-resilience: Breaker,
