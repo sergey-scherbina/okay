@@ -1,7 +1,7 @@
 task: resilience-http
 agent: fable-resilience
 started: 2026-09-09
-heartbeat: 2026-09-09T05:58:13Z
+heartbeat: 2026-09-09T06:07:01Z
 status: in-progress
 branch: feature/resilience-http
 worktree: ../okay-wt-resilience-http
@@ -19,4 +19,4 @@ what: okay-resilience: Resilient.http(inner, ...) in the fixed order
   test. okay-ops: Prom rows for Breaker/Bulkhead/Limiter stats,
   Ops.routes takes them; okayOps gains the okayResilience dependency.
 
-next: worktree, code, tests, gate, land
+next: full matrix gate running on b3ec17ad; then ff-merge, release
