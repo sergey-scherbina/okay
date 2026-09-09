@@ -1,0 +1,36 @@
+task: bracket-pairing
+agent: fable51-core
+started: 2026-09-09
+branch: feature/bracket-pairing
+worktree: ../okay-wt-bracketpair
+spec: docs/benchmarks.md §7, BACKLOG "bracket-over-region"
+
+why: the sprint queue names bracket-over-region (`okayBracket` 27.2/29
+  against `okayResource` 22.4/22.5, "21%") as open. Before optimising
+  anything I read the two lanes, and they do DIFFERENT WORK:
+
+    okayBracket:  bracket(x)(release)(r => produce(r + 1))
+    okayResource: Resource.acquire(x + 1)(release)
+
+  The bracket lane performs an extra `Produce` effect per step AND
+  runs it through its own nested handler drive (`use(r).runWith`
+  inside `bracket`); the region lane performs one acquire per step
+  and no inner program at all. That is the repo's own mismatched-pair
+  failure mode (docs/benchmarks.md "Lane rules" (2); five ZIO rows
+  went the same way on 2026-09-05), so the 21% is not yet a price of
+  `bracket`.
+
+what: (1) pair the lanes — a bracket lane whose use body is `pure`,
+  and a region lane that produces inside the scope — keeping the two
+  existing lanes RENAMED as the diagnostics they are, per the lane
+  rule; (2) B/op first for every lane (`-prof gc`, load-proof) since
+  three sibling sbt builds are on the box; (3) time only on a quiet
+  box, per-lane minimum of 3+ rounds; (4) land the numbers into §7 and
+  src/jmh/history.tsv, and either close bracket-over-region as a
+  mismatched pair or state the residual with its mechanism.
+
+predict: most of the gap is the inner effect + the nested `runWith`,
+  not `bracket`'s suspension wrapper (`pure(()).flatMap`). Recorded
+  so being wrong shows. Disqualifying evidence: if the paired lanes
+  still differ by >10% on B/op, the wrapper and the drive are the
+  price and the item stays open with a named mechanism.
