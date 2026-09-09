@@ -5439,7 +5439,7 @@ WHAT THE TREE HAS, grepped:
       instances — GCounter, PNCounter, LwwRegister over `Hlc`, GSet,
       OrSet. A merge that is not idempotent makes the type a lie, so
       the laws land first.
-- [ ] 3 — the seam: a CRDT is a fold, and okay-cache's `View` already
+- [x] 3 — the seam LANDED 2026-09-09 (`Crdt.folding`); Schema for the wire still open: a CRDT is a fold, and okay-cache's `View` already
       takes one. Merge over okay-persist; `Schema` so a replica ships
       as data.
 - [x] 4 — capability tokens. LANDED 2026-09-09.  DECIDED: the operator chose
