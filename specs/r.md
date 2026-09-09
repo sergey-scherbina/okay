@@ -172,6 +172,13 @@ they are operations, not because the modules know each other.
 
 ## Behavior
 
+**Audited 2026-09-09 (spec-truth)** against what RUNS, not what exists:
+`okayR/test` alone runs the 6 mock tests, and `TestR`'s 18 are Live —
+they skip where no R is found and otherwise build their own container
+(r-base 4.4.1 + jsonlite). This audit ran them: 17 passed, 1 skipped
+(named in its box below). A box checked here names the test that
+proves it.
+
 - [x] a Call round-trips scalars and vectors (NULL/NA distinct from
       absent; the R NA story stated, not papered over) — TestR: NULL vs
       NA, an NA keeps its TYPE (R's four NAs are four values), NA vs
@@ -218,11 +225,15 @@ they are operations, not because the modules know each other.
       and `Frame(fn, in, args)`, both taking a NAME and `RValue`s;
       TestR pins the addressing (`pkg::name`, a base name, "the
       program is data rather than code")
-- [x] the R process starts with a clean environment: a parent env
-      var is invisible in R unless the config names it — TestR both
-      ways: the process sees exactly what the config names, and a real
-      parent variable is invisible (that one only where R is on the
-      PATH)
+- [~] the R process starts with a clean environment: a parent env
+      var is invisible in R unless the config names it — the FIRST
+      half is proven ("the R process sees EXACTLY what the config
+      names, and nothing else we passed", green against the
+      dockerized R). The second, a real parent variable being
+      invisible, SKIPS wherever R is reached through the container
+      shim (the shim forwards the environment on purpose, or it would
+      measure docker rather than us) — so it is proven only on a box
+      with R on the PATH, and this audit's run was not one
 - [~] a journaled R step is skipped on Durable replay — NOT as
       written: `Durable` journals `Tool`, not any operation type. An
       R call reached through a tool is journalled because the TOOL is;
