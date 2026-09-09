@@ -1,0 +1,45 @@
+task: grant-vacuity
+agent: opus5-intent
+started: 2026-09-09
+branch: feature/grant-vacuity
+worktree: ../okay-wt-vacuity
+
+why: the last site the 2026-09-08 change still reaches.
+  `grant-unenforced` found that `okay.Effect` extending
+  `Direct.Effect` made two GREEN tests vacuous — they would have
+  passed with `provide` deleted. A sweep of the test tree for explicit
+  coloring grants found exactly one site left:
+
+    TestDirectAuto.scala:34  given Effect[[X] =>> Reader[Int, X]] with {}
+
+  `Reader derives okay.Effect`, so that grant is redundant — proved
+  already by the fourth test `grant-unenforced` added, which colors a
+  Reader block with nothing provided.
+
+what: find out whether the test around it still tests anything.
+
+  It is named "operations color via the Effect marker", and if it
+  passes with the marker deleted then it does not test the marker; it
+  tests that Reader colors, which is a different claim and one that
+  now holds for free.
+
+DISQUALIFYING EVIDENCE, registered before the work:
+
+  Delete line 34 and run. Two outcomes, two different fixes:
+
+  a) it still passes -> the test is vacuous. Repair it the way
+     `TestEffectProvide` was repaired: move it to a signature that
+     does NOT declare itself an effect, so the marker is required
+     again and the name is true. Do NOT simply delete the line and
+     leave the test — that removes the redundancy and keeps the lie.
+  b) it FAILS -> the grant is doing real work I have not understood
+     (most likely the partially-applied `[X] =>> Reader[Int, X]` is
+     not what `derives` produces for a two-parameter enum). Then line
+     34 stays, my reading of `grant-unenforced`'s fourth test was too
+     broad, and THAT is the finding — it would mean `derives Effect`
+     covers less than I said in the changelog, which is worth a
+     correction.
+
+predict: (a). Recorded so being wrong is visible. If it is (b) I owe
+  a correction to the grant-unenforced changelog entry, which states
+  the coverage more broadly than one test proves.
