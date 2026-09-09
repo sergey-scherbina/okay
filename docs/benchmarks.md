@@ -1760,6 +1760,31 @@ String per character, quadratic in token length, plus a new `S`, a
 new `P` and the `Tuple2` that `step` returns. That is the lever;
 `lexer-state-allocation` in BACKLOG carries it.
 
+**Half of that lever moved** (lexer-state-allocation, 2026-09-09).
+The two `P(off, line, col)` case classes are gone from the state —
+`S` carries the six ints flat — and the byte counts, which do not
+care what the box is doing, say it across three separate runs:
+
+| | before | after |
+|---|---|---|
+| element-wise | 453 266 | **425 832** (−6.1%) |
+| chunked (64) | 494 902 | **467 873** (−5.5%) |
+
+Semantics unchanged (spans, lexemes, `key`, `rebase`, the incremental
+relex laws; 11 + 130 + 12 tests green). TIME was not measurable: four
+attempts over the day landed on a box whose load ran 2 → 97, and two
+rounds on the SAME code disagreed by more than the effect. The
+change is recorded here as an allocation result and nothing more.
+
+The OTHER half — `buf: String` grown one character at a time,
+quadratic in the token's length — is BLOCKED, and the reason is
+worth writing down: the obvious fix is to carry the token's start
+offset and slice the input once at `finish`, and the chunked path
+cannot do it. `Lex.chunks` sees one chunk at a time and a token may
+span chunks, so there is no input to slice from. Any fix has to
+serve both paths; a state that holds an offset for one and a string
+for the other is two scanners wearing one type.
+
 **Parsing, full vs incremental:**
 
 | full parse | incremental reparse (one-member edit) |

@@ -1,5 +1,33 @@
 # Changelog
 
+## lexer-state-allocation — half the lever moved, and the other half is blocked for a reason worth writing down
+
+The target was measured, not guessed: lexing allocates ~180 bytes per
+input CHARACTER on both paths, and `okay.lex.Json`'s state was
+`S(mode, buf: String, start: P, cur: P)` with a fresh `P` and a fresh
+String per character.
+
+The positions are gone — `S` carries the six ints flat, with three
+private helpers (`eat`, `start`, `based`) where `P.+` used to be.
+Element-wise 453 266 → 425 832 B/op (−6.1%), chunked 494 902 →
+467 873 (−5.5%), reproduced across three runs at loads 2, 3.3 and 97;
+`key`, `rebase`, spans, lexemes and the incremental relex laws are
+untouched, 11 + 130 + 12 tests green.
+
+TIME is not claimed. Four attempts over the day; the box's load ran
+from 2 to 97 and two rounds on the same code disagreed by more than
+the effect. A same-run A/B was built and then REJECTED as unfair,
+which is the reusable part: a benchmark-local copy of the old scanner
+allocates 23 KB more than the identical code in the library, so the
+"old" arm was not the old code — a second scanner in one JVM also
+makes `Scan.step` a bimorphic call site. When only one of two arms
+can be the library, the arms are not comparable.
+
+The other half is BLOCKED and the reason is now in §10 and BACKLOG:
+`buf: String` cannot simply become a start offset, because
+`Lex.chunks` sees one chunk at a time and a token may span chunks —
+there is no input to slice from. Reopened as `lexer-buf-without-concat`
+with three unpriced candidates and the same gate.
 ## row-typeclass-recipe — the deeper rows were silently unguarded; a total fallback, and the recipe written down
 
 resource-guard claimed its anchored instances covered three-part rows.
