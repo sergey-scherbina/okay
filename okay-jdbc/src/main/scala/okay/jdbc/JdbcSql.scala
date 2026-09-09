@@ -111,6 +111,9 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
     conn.setReadOnly(readOnlyBefore)
     inTx = false
 
+  /** closes the connection (a pooled one goes back to its pool) */
+  def close(): Unit = conn.close()
+
   /** the engine's SQLSTATE, as JDBC carries it */
   override def sqlState(t: Throwable): Option[String] = t match
     case e: java.sql.SQLException => Option(e.getSQLState)

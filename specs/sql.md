@@ -518,6 +518,39 @@ autocommit on commit, rollback and the brake.
 - [x] r2dbc-postgresql: the SPI definition is taken, the write inside
       refuses with 25006, the plain begin grants none (Live)
 
+## The pool (sql-pool)
+
+One `Sql` is one connection and one thread of control (the driver
+contract), and the audit found no pool anywhere. `okay.sql.Pool[C <:
+Sql](size, acquireTimeoutMillis)(open)(close)` is the one that wraps
+any driver as a Resource-shaped value, every platform: `borrow(use)`
+runs a program on one connection and returns it after, value or
+failure; `pinned` hands a connection to the enclosing Resource scope,
+whose end returns it; `stats` (size, idle, busy, waiting, created,
+closed) is a plain value for /metrics; `close()` disposes idle
+connections now and busy ones as they return, and fails the waiters.
+State is one `TRef` cell modified atomically; waiters are callbacks;
+the hand-off is cancel-safe — a waiter whose timeout fired and a grant
+that races it settle on one CAS, and the loser passes the connection
+to the next waiter, so a timeout never leaks a connection. A returned
+connection goes through the BRAKE first: an open transaction (a raw
+`begin` the borrower never closed) rolls back, a no-op costs nothing —
+the health probe this stack already had. Hikari behind JDBC is `open =
+() => JdbcSql(dataSource.getConnection)` and a close that hands back;
+`JdbcSql.close` exists for the plain case.
+
+- [x] eight borrowers on a pool of two: never more than two connections
+      open, none reopened, every insert lands, idle equals opened after,
+      close disposes them all (H2)
+- [x] a borrower leaves a raw `begin` open: the brake rolls it back on
+      return, and the next borrower sees no leftover on the same
+      connection
+- [x] exhausted: the second borrow on a held pool of one fails with
+      `Exhausted` within its timeout, leaves the queue, and succeeds once
+      the first returns — on the one connection
+- [x] `pinned` holds one connection across statements for the scope and
+      returns it at the end; a borrow after `close` refuses with `Closed`
+
 ## Out of scope
 
 - writing MySQL/MSSQL/Oracle wire protocols — R2DBC or JDBC are
