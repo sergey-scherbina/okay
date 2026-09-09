@@ -21,7 +21,7 @@ element type is read from generic index 0, ours being at index 1
 `BeanPostProcessor` for every registry bean and `OkayResultHandler`
 before `ResponseBodyResultHandler`, both from the auto-configuration;
 `spring-webflux` is now a compile dependency of okay-spring. Recorded
-in the spec's Decisions. Commit: LANDING.
+in the spec's Decisions. Commit: 97d7c1a5.
 ## timeout-masks-failure — a failure under Async.timeout ends it at once, with its own exception
 
 `Async.timeout(ms)(p)` was `race(p.map(Some), sleep(ms).map(None))`,
