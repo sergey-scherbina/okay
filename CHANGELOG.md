@@ -1,5 +1,17 @@
 # Changelog
 
+## dsl-unless — not these words, and then this
+
+The last shape okay-chat's quoted rules waited on. «хочу сделать
+ремонт» is an offer and «хочу найти мастера» is a need, and the one
+rule that tells them apart says so with a negative lookahead, which
+the builder had no word for. `Term.Unless(not, t)` renders
+`(?!a|b)t` — an alternation needs no group inside a lookahead, so the
+bytes are the file's — consumes nothing, and `raws` walks both sides.
+`unless(any(…))(t)`. Not a gap: it names words, and `.*` stays
+unsayable. TestDsl proves it on «хочу найти мастера». Gate: okay-intent
+JVM tests green, JS compiles, 0 warnings.
+
 ## persist-index-box — a segment deleted behind an open reader crashed it; the phantom box named an index that never existed
 
 The last unchecked box in specs/persist.md read "a damaged index is
