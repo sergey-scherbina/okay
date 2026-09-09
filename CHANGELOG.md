@@ -16,7 +16,7 @@ with the scope's closer bound as a `ModuleScope` instance since Guice
 has no lifecycle; `OkayGuice.instance[A]` asks the injector when the
 scope builds. Also fixed on the way: an exhaustivity warning in the
 `exports` macro that okay-spring's warm gate had hidden. 3 + 3 tests.
-CDI documented as the same shape, not built. Commit: LANDING.
+CDI documented as the same shape, not built. Commit: 43d93bff.
 
 ## okay-spring — a Module inside Spring Boot, both ways
 
