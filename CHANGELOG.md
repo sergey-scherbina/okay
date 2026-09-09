@@ -1,5 +1,26 @@
 # Changelog
 
+## sql-readonly-region — READ ONLY regions granted and read back; JdbcSql restores the isolation level with autocommit
+
+Lane 4 of the persistence audit. `Sql.begin(isolation, readOnly)` and
+the flag on `transact`/`region`/`transactRetry`; `Granted.readOnly` is
+what the engine GRANTED, read back — pg's `SHOW transaction_read_only`
+after `SET TRANSACTION ... READ ONLY` (a write inside answers 25006),
+JDBC's `isReadOnly` after the hint (H2 ignores it and the grant says
+so), R2DBC's `TransactionDefinition` with `READ_ONLY` (r2dbc-postgresql
+takes it). The audit's leak: `JdbcSql` restored autocommit after a
+region but not the isolation level, so every autocommit statement after
+a `transact(Serializable)` ran Serializable — the level and the
+read-only flag are saved at `begin` and restored with autocommit on
+commit, rollback and the brake. Tests: pg wire (Live), H2, r2dbc pg
+(Live). Landed as 0777e790; specs/sql.md "Read-only regions, and the
+isolation restored". Gate: full matrix, 3143 tests, 0 failures, 0
+warnings — run before three sibling lanes (ui-protocol,
+handler-fusion-eff, ui-hybrid's claim) landed on master; the merge
+followed a claims-only rebase check that was wrong about those three,
+which touch okay-ui/okay-script/Fused only; the sql-pool gate covers
+the combined tree next.
+
 ## ui-protocol — the frontend protocol as an artifact: one derived definition, two encodings, a rendered contract
 
 Stage 1 of specs/frontend.md. `okay.ui.Protocol` derives the schemas
