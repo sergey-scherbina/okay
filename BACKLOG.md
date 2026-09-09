@@ -5355,7 +5355,7 @@ WHAT THE TREE HAS, grepped:
       same 128 bits — 48-bit millis then entropy — differing in six
       bits of version/variant and in spelling, so they are one type
       with two renderings.
-- [ ] 2 — `okay-crdt`: `Crdt[A]` and its laws (commutative,
+- [x] 2 — `okay-crdt` LANDED 2026-09-09: `Crdt[A]` and its laws (commutative,
       associative, idempotent) as a reusable check, THEN the
       instances — GCounter, PNCounter, LwwRegister over `Hlc`, GSet,
       OrSet. A merge that is not idempotent makes the type a lie, so

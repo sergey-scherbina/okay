@@ -135,11 +135,12 @@ rather than the only one.
 - [x] **0 — the spec and the claim.**
 - [x] **1 — `Hlc` and `Uid` in core**, cross-platform, with the laws
       above. Landed 2026-09-09.
-- [ ] **2 — `okay-crdt`**: `Crdt[A]` with `merge`, and its laws
+- [x] **2 — `okay-crdt`**: `Crdt[A]` with `merge`, and its laws
       (commutative, associative, idempotent) as a REUSABLE check that
       every instance runs. Instances: `GCounter`, `PNCounter`,
       `LwwRegister` (over `Hlc`), `GSet`, `OrSet`. Laws before
       instances — a merge that is not idempotent makes the type a lie.
+      Landed 2026-09-09.
 - [ ] **3 — the seam**: a `Crdt` is a fold, so it meets okay-cache's
       `View` and okay-persist directly; `Schema` for the wire so a
       replica ships as data.
@@ -220,3 +221,35 @@ than `Uid` growing a second clock. The FIELD is always 16 bits wide,
 so `Stamp` keeps one layout and its accessors never need to know who
 made it; a clock may simply choose to use fewer and borrow a
 millisecond earlier.
+
+**Stage 2 landed (coordination-free, 2026-09-09).** Module
+`okay-crdt`, JVM + JS + Native: `Crdt[A]`, `Crdt.violations`,
+`NodeId`, `GCounter`, `PNCounter`, `GSet`, `OrSet`, `LwwRegister`.
+14 tests, green on all three platforms, 0 warnings.
+
+`Crdt.violations` ships in MAIN rather than in the tests, and that is
+the decision the stage turns on. The laws are the content — a type
+whose merge is not idempotent is not "mostly a CRDT", it is a type
+that silently disagrees with itself under redelivery — so anyone
+defining an instance can run the check, and every instance here does.
+It answers a LIST of what broke instead of throwing at the first
+failure, because a merge is usually wrong in one law and right in the
+others and knowing which one is the diagnosis. Its own test proves
+that: a merge that ADDS breaks idempotence and only idempotence, and
+the check says exactly that, three times, once per sample.
+
+Two things the types are shaped by rather than decorated with:
+
+- **`LwwRegister` has a precondition, and it is load-bearing.**
+  `(at, by)` must identify a write uniquely, which holds when each
+  node stamps from its own `Hlc.Clock` — a clock never issues one
+  stamp twice. Two hand-built registers with the same stamp, the same
+  node and different values break commutativity, and the fix is NOT a
+  hash of the value: hashes differ across platforms, and a merge that
+  disagrees between JVM and JS is worse than one with a stated
+  precondition.
+- **`OrSet` is where `Uid` does a third job.** A tag has to be unique
+  without coordination, which is exactly what a locally issued
+  sortable id is. The add-wins rule is not a preference: the
+  alternative loses writes the remover never observed, which is a lost
+  update with extra steps.

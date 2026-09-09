@@ -591,6 +591,25 @@ lazy val okayLex = crossProject(JVMPlatform, JSPlatform, NativePlatform)
     ),
   )
 
+/**
+ * Convergent replicated data types (specs/coordination-free.md stage
+ * 2): a `Crdt[A]` whose three laws ship as a runnable check, and the
+ * instances that obey them. Depends on `okay` for `Hlc` — an LWW
+ * register and a sortable id want the same clock — and for `Uid`,
+ * which is what an OR-Set's tags are.
+ */
+lazy val okayCrdt = crossProject(JVMPlatform, JSPlatform, NativePlatform)
+  .crossType(CrossType.Pure)
+  .in(file("okay-crdt"))
+  .dependsOn(okay)
+  .settings(
+    name := "okay-crdt",
+    libraryDependencies ++= Seq(
+      "org.scalameta" %%% "munit" % "1.1.1" % Test,
+      "org.scalameta" %%% "munit-scalacheck" % "1.1.0" % Test,
+    ),
+  )
+
 /** streaming error-tolerant parsing: total, lossless, two surfaces (P5) */
 lazy val okayParse = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
@@ -1561,7 +1580,7 @@ lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
 lazy val root = (project in file("."))
   .aggregate(okay.jvm, okay.js, okay.native, okayStaging, okayCats, okayZio, okayKyo, okayFs2, okayReactive, okayActor.jvm, okayActor.js, okayActor.native, okayKafka,
     okayJava, okaySpark, okayFlink, okayJdbc, okayR2dbc, okayDelta,
-    okayLex.jvm, okayLex.js, okayLex.native,
+    okayLex.jvm, okayLex.js, okayLex.native, okayCrdt.jvm, okayCrdt.js, okayCrdt.native,
     okayParse.jvm, okayParse.js, okayParse.native,
     okayCodec.jvm, okayCodec.js, okayCodec.native, okayLlm.jvm, okayLlm.js,
     okayPersist.jvm, okayPersist.js, okayPersist.native,
