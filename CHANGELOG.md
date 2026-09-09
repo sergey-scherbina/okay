@@ -1,5 +1,24 @@
 # Changelog
 
+## adapter-stats — Docs.Stats and Blob.Stats counted at the seam, on /metrics; no adapter logs a credential: the last box of specs/data.md
+
+`Docs.counted` and `Blob.counted` wrap any engine with the same counters
+(gets/hits, puts applied or stale, deletes, queries, failures; puts,
+gets, misses, heads, lists, deletes, failures), Schema values both, so
+no adapter carries counters of its own (Kafka and Cache had theirs;
+Pool and Saga joined in persistence-e2e); okay-ops renders them as
+`okay_docs_*`/`okay_blob_*` counters with the engine label, beside the
+lifecycle/RED rows a sibling landed in the same routes. The DocsSuite
+and BlobContract assert the counts on every engine — Live on DynamoDB
+and Cassandra too. `TestNoCredentialLogs` (okay-deploy) reads the
+committed tree and refuses a credential-named value on any
+print/log/journal line of an adapter module; today there is no such
+line at all. Cassandra's session takes a 10 s request timeout (the 2 s
+default timed DDL out on the loaded box); okay-blob depends on
+okay-codec on every platform. Landed as 1c43e4a1 + db68b3f5. Gate: full
+matrix, 3335 tests, 0 failures. The three Live containers (pg,
+dynamodb-local, cassandra) are stopped and removed.
+
 ## service-lifecycle — graceful shutdown and RED metrics, in okay-ops
 
 The microservices audit's cheapest missing pair. No server here
