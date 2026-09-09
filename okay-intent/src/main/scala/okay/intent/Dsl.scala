@@ -79,6 +79,11 @@ object Dsl:
     /** a stem that may not run on: `мо\w{1,3}` — «мой», «моей», «моими»
      * and not «монитор» */
     case StemUpTo(text: String, n: Int)
+    /** NOT THESE, and then this: `(?!найти|искать)\w+(?:ть|ти)` — «хочу
+     * СДЕЛАТЬ» is an offer and «хочу НАЙТИ» is a need, and the only way
+     * to say so at the word is to name the words it must not be. The
+     * lookahead consumes nothing; `t` is what the rule then reads */
+    case Unless(not: Term, t: Term)
     /**
      * A fragment this builder cannot yet say, and the reason it
      * cannot — an inline optional, an alternation of whole rules.
@@ -107,6 +112,9 @@ object Dsl:
       case ManyThen(t) => "(?:" + render(t) + "\\s+)*"
       case Chars(set, optional) => "[" + set + "]" + (if optional then "?" else "")
       case StemUpTo(t, n) => t + "\\w{1," + n + "}"
+      // an alternation needs no group inside a lookahead: `(?!a|b)`
+      case Unless(Any(of), t) => "(?!" + of.map(render).mkString("|") + ")" + render(t)
+      case Unless(n, t) => "(?!" + render(n) + ")" + render(t)
       case Raw(f, _) => f
 
     /** every `Raw` under this term, with its reason */
@@ -119,6 +127,7 @@ object Dsl:
       case MaybeThen(t) => raws(t)
       case Maybe(t) => raws(t)
       case ManyThen(t) => raws(t)
+      case Unless(n, t) => raws(n) ++ raws(t)
       case _ => Vector.empty
 
   /**
@@ -281,6 +290,8 @@ object Dsl:
   def chars(set: String): Term = Term.Chars(set, optional = false)
   def maybeChars(set: String): Term = Term.Chars(set, optional = true)
   def stemUpTo(s: String, n: Int): Term = Term.StemUpTo(s, n)
+  /** not these words, and then this */
+  def unless(not: Term)(t: Term): Term = Term.Unless(not, t)
   /** THE ARGUMENT a command carries. A deal number and a word are
    * shapes rather than vocabulary, and naming them here is what keeps
    * `\d+` out of the places a reader would have to decode it */

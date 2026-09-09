@@ -55,6 +55,17 @@ class TestDsl extends munit.FunSuite {
     assertEquals(Term.render(words(lit("this"), lit("week"))), "this\\s+week")
   }
 
+  test("`unless`: not these words, and then this — «хочу сделать» and not «хочу найти»") {
+    val verb = seq(raw("\\w+", "a word"), any(lit("ть"), lit("ти")))
+    val t = unless(any(lit("найти"), lit("искать")))(verb)
+    assertEquals(Term.render(t), "(?!найти|искать)\\w+(?:ть|ти)")
+    val p = java.util.regex.Pattern.compile((rule(lit("хочу")) space t).pattern)
+    assert(p.matcher("хочу сделать ремонт").find())
+    assert(!p.matcher("хочу найти мастера").find(), "«найти» is the word it must not be")
+    // the lookahead consumes nothing, so a quoted fragment inside either side is still counted
+    assertEquals(Term.raws(t).map(_._2), Vector("a word"))
+  }
+
   test("letters, endings, a word said twice, a stem that stops — shapes, not gaps") {
     // one of these characters, and not a stem: «мою» «моя» «мои», never «моего»
     assertEquals(Term.render(seq(lit("мо"), chars("юяи"))), "мо[юяи]")
