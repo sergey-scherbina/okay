@@ -9,14 +9,18 @@ consumer today — okay-r is used through tools, where the caller's own
 supervision applies — so they are named here rather than built on
 speculation.
 
-- [ ] r-call-timeout — `timeout` appears nowhere in okay-r's main
+- [x] r-call-timeout — DONE 2026-09-09 (r-finish): the process killed at
+      the deadline, a fresh one in its place, the call answered as a
+      Condition; proven against the dockerized R. Was: `timeout` appears nowhere in okay-r's main
       sources: a hung `Rscript` hangs the calling fiber, with no way
       to report it as data. The seam already has the shape for it
       (`Condition` is the data channel, `Async.timeout` the mechanism,
       and `RSubprocess` owns the process it would have to kill). Spec
       box: "a timeout kills the call, reports as data, and the engine
       is usable after".
-- [ ] r-frame-schema — `RFrame` is `Vector[(String, Vector[RValue])]`
+- [x] r-frame-schema — DONE 2026-09-09 (r-finish): `RFrame.rows[A]` /
+      `RFrame.of[A]` over Schema, every mismatch a Condition naming the
+      column, the field or the row. Was: `RFrame` is `Vector[(String, Vector[RValue])]`
       and okay-r names no `Schema` anywhere. The spec's box promises a
       frame mapping to a Seq of a flat case class and back, with a
       column the Schema does not name an error naming the column —

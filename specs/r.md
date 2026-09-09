@@ -185,17 +185,27 @@ proves it.
       NaN, integer vs double kept apart where JSON would merge them,
       raw bytes and strings; TestRMock walks every RValue shape with no
       R present (checked 2026-09-09, spec-truth)
-- [~] a frame maps to a Seq of a flat case class and back; row
+- [x] a frame maps to a Seq of a flat case class and back; row
       count and column order survive; a column the Schema does not
       name is an error naming the column — HALF BUILT, and the half
-      that is not is the case class: `RFrame` is
+      that WAS not is the case class (BUILT since, see below): `RFrame` is
       `Vector[(String, Vector[RValue])]` and okay-r names no `Schema`
       at all. What IS proven: a frame goes out as columns and comes
       back with order and count intact, over the wire too; a column
       carries NA in place; a function answering something that is not
       a frame is a condition naming what arrived. The Schema mapping
-      and its unnamed-column error are BACKLOG `r-frame-schema`
-      (audited 2026-09-09, spec-truth)
+      and its unnamed-column error were BACKLOG `r-frame-schema`, and
+      are BUILT 2026-09-09 (r-finish): `RFrame.rows[A: Schema]` and
+      `RFrame.of[A: Schema]`, fields matched to columns BY NAME with
+      the field order as the column order; every mismatch a
+      `Condition` naming what does not line up — a column no field
+      names, a field with no column, a cell that does not fit (naming
+      the column AND the row). An absent cell keeps its COLUMN's type,
+      so an `Option` field writes `NA_character_` in a text column
+      rather than a logical NA; R's widening is admitted where R
+      admits it (an integer column into a Double field) and nowhere
+      else. Tested without R (TestRMock) and over the dockerized one
+      (TestR: a frame through `identity` and back into the case class)
 - [x] an R error (stop()) surfaces as a condition value with the
       message; the process survives for the next call — TestR, plus a
       missing function and a missing package as conditions
@@ -207,12 +217,23 @@ proves it.
       and the retry that gets a fresh process, are not covered: okay-r
       has no supervisor of its own (by design — the caller's is the
       one that decides), so the second half is a claim about a
-      CONSUMER, and belongs in the lane that writes one
-- [ ] NOT BUILT (audited 2026-09-09, spec-truth: `timeout` appears
-      nowhere in okay-r's main sources — a hung R call hangs the
-      caller's fiber today). BACKLOG `r-call-timeout`.
-      A timeout kills the call, reports as data, and the engine is
-      usable after
+      CONSUMER, and belongs in the lane that writes one. UPDATE
+      (r-finish): the in-flight half now has an answer, and a better
+      one than a throw — with a deadline set, the call whose process
+      is killed answers `Condition("timeout", …)` as DATA and the
+      engine respawns itself
+- [x] a timeout kills the call, reports as data, and the engine is
+      usable after — BUILT 2026-09-09 (r-finish), where the audit had
+      found nothing at all: `RSubprocess.start(…, timeoutMillis)`. The
+      blocking read moves to one daemon thread per engine, and only
+      where a deadline asks for it; on expiry the PROCESS is killed —
+      the only way to stop R mid-call, since a sleeping or optimising
+      R is busy in C and no polite protocol reaches it — a fresh one
+      takes its place, and the call answers
+      `Left(Condition("timeout", …))`. Proven against the dockerized
+      R: a 120-second sleep behind a 2-second deadline answers in ~2s
+      as data, and the very next call on the same engine is correct.
+      With no deadline the engine blocks exactly as before
 - [x] verify reports a missing package and a version mismatch by
       name; a passing verify then runs the program's calls — TestR
       names all three (a missing package, a version mismatch, a
