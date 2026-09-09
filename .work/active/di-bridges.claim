@@ -1,0 +1,21 @@
+task: di-bridges
+agent: fable-di
+started: 2026-09-09
+heartbeat: 2026-09-09T07:47:03Z
+status: in-progress
+branch: feature/di-bridges
+worktree: ../okay-wt-bridges
+spec: specs/di.md stage 2, zio-layer + okay-guice (BACKLOG "di")
+
+why: okay-spring proved the shape (a container is a source of values;
+  a Module renders into the container's own vocabulary). ZIO and Guice
+  are the two other containers the operator named.
+
+what: okay-zio: ZLayer <-> Module (Resource.open under ZIO's scope,
+  a layer built in a Scope the module closes), ZEnvironment -> Providing.
+  New satellite okay-guice: Module -> com.google.inject.Module (bind by
+  name from the plan, by type when unique), a closer bound as an
+  instance, injector.getInstance as a module. build.sbt appended;
+  docs/modules/okay-guice.md + README row; okay-zio.md guide paragraph.
+
+next: write both with tests, module suites, then the matrix
