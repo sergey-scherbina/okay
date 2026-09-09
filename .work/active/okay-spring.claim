@@ -1,0 +1,23 @@
+task: okay-spring
+agent: fable-di
+started: 2026-09-09
+heartbeat: 2026-09-09T07:15:39Z
+status: in-progress
+branch: feature/okay-spring
+worktree: ../okay-wt-spring
+spec: specs/di.md stage 2, okay-spring (BACKLOG "di")
+
+why: a Module runs standalone under Resource.run; the operator's ask is
+  the same code inside Spring Boot. A container needs the scope held
+  open until it closes, the values by class, and a controller that
+  returns A ! Async served as a reactive type.
+
+what: core Resource.open (acquire now, closer later); Module.exports
+  macro (name, erased class, value per installed capability); new
+  satellite okay-spring: OkaySpring.register (one singleton per export
+  named by the plan, released on context close), OkaySpring.bean[A]
+  (a Spring bean as a module), the ReactiveAdapterRegistry adapter for
+  `A ! Async` with a Boot auto-configuration. build.sbt: append
+  okaySpring; docs/modules/okay-spring.md + README table row.
+
+next: write Resource.open + exports with tests, then the satellite
