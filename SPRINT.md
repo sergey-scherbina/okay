@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- obs-log — specs/obs.md: log lines as values, correlated to the trace by the handler (claim: obs-log)
 - chunked-lexer-bookkeeping — BACKLOG (§10): chunked lexing 58.4 vs
   element-wise 49.3, the residual named as per-chunk bookkeeping.
   A/B in one run (the old loop kept benchmark-local), B/op first;
