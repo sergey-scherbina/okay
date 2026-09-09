@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- resilience-faults — specs/resilience.md stage 2: seeded Faults.http, the composite under a plan (claim: resilience-faults)
 - handler-fusion-eff — specs/handler-fusion.md "Stage B": the composite
   `!>` for a row over Eff, assembled inline, product accumulator in the
   answer type; bar 1.5x over Fused.stateWriter's right-nested 13.8 µs
