@@ -32,7 +32,7 @@ region ends (the lazy val never was), and the demo's tests no longer
 reach the repository's real `okay-board.log` when they touch an ops
 route. Stage 3 was declined for this app with a reason recorded: its
 root asks for a `Timer`, which is not something a place provides.
-52 demo tests green, 3 new core tests. Commit: LANDING.
+52 demo tests green, 3 new core tests. Commit: 9ea1e33c.
 ## merge-chunked-order — a producer's own order survives the buffer swap
 
 A merge returned one source's elements as `1..16, 49, 50, 17..48`, and
