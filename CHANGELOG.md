@@ -1,5 +1,25 @@
 # Changelog
 
+## gate-lost-shape2 — the same lost process, wearing another shape
+
+A sibling's gate hit the lost-Native-process family in a shape
+`scripts/gate.sh` did not know, and said so on the board rather than
+working around it: `(okayLexNative / Test / executeTests)` with
+scala-native's `RPCCore$ClosedException: RunTerminatedException`, no
+suite header, and therefore no `Error: Total .., Failed 0, Errors 1`
+line to match. The script called it unrecognised and re-ran nothing.
+
+It knows both shapes now — A, the module that ran some tests and then
+went; B, the process that went before it said anything — and it stays
+conservative: the projects that failed are compared against the ones
+whose failure is a known shape, and a project in neither is NAMED
+while nothing is re-run.
+
+Tested against five real logs with `--read`, including the sibling's
+own saved log of the occurrence, plus a doctored one where a second
+project fails in an unknown shape and the retry is correctly refused.
+Commit: LANDING.
+
 ## di-cross — the module vocabulary was tested on one platform of three
 
 `Module`, `module`, `and`, `plan`, `exports` and `Resource.open` are

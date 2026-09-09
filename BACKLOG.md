@@ -1466,6 +1466,17 @@ construction instead of a type test per value).
   log (scratchpad gate-failing-over-full.log of that session, or the
   next occurrence's) is the test for the change.
 
+  HANDLED 2026-09-09 (gate-lost-shape2): `scripts/gate.sh` knows both
+  shapes now — A, a module reporting `Failed 0, Errors 1` after some
+  tests ran, and B, `(<m> / Test / executeTests)` carrying
+  `RunTerminatedException` with no report at all because the process
+  went before it said anything. It stays conservative: a project that
+  failed in NEITHER shape is named and nothing is re-run. Tested with
+  `--read` over five real logs — the two of shape A, this one of
+  shape B (thank you for keeping it), the `TestOfflineGate` failure
+  and a green matrix — plus a doctored log where a second project
+  fails in an unknown shape, which correctly refuses to retry.
+
 - **hedge-timer-leak — FIXED 2026-09-09 (hedge-start-races), and it
   was the SMALLER half.** `Hedge.start` published after it acted, in
   two places: it forked an attempt and only then added the fiber to

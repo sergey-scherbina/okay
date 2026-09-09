@@ -17,6 +17,9 @@
 #   - CPU pressure alone: 13 Native modules in parallel under 42
 #     burners, four rounds, all green; and 5 modules under 28, green
 #
+# It takes two shapes, both handled below; the third occurrence was of
+# the second, and this script missed it until it was taught.
+#
 # So this script does not pretend to fix it. It makes the gate SAY it:
 # a failure that carries this signature and nothing else is re-run for
 # the affected projects ALONE, and the outcome is printed either way.
@@ -66,11 +69,34 @@ if grep -q "==> X" "$clean"; then
   exit $status
 fi
 
-# the signature: modules that errored with nothing failed
-lost=$(grep -E "^\[error\] \(.*Test / test\) sbt.TestsFailedException" "$clean" \
+# THE TWO SHAPES A LOST TEST PROCESS TAKES (native-runner-error).
+#
+#   A  the process ran some tests and then went: the module reports
+#      `Error: Total N, Failed 0, Errors 1` and names the suite that
+#      was in flight
+#   B  it went before it said anything at all, so there is no report
+#      to speak of — only `(<m> / Test / executeTests)` carrying
+#      scala-native's `RunTerminatedException` (its RPC channel closed
+#      under it). Filed by the `failing-over` gate, 2026-09-09 18:55,
+#      after this script called it "unrecognised" and re-ran nothing.
+#
+# Conservative on purpose: a project that failed in NEITHER shape
+# means we do not understand this red, so nothing is re-run.
+lost_a=$(grep -E "^\[error\] \(.*Test / test\) sbt.TestsFailedException" "$clean" \
       | sed -E 's/^\[error\] \(([^ ]+) \/ Test \/ test\).*/\1/' | sort -u)
-if [ -z "$lost" ] || ! grep -qE "^\[error\] Error: Total [0-9]+, Failed 0, Errors [1-9]" "$clean"; then
+lost_b=$(grep -E "^\[error\] \(.*Test / executeTests\).*(RunTerminatedException|RPCCore\$ClosedException)" "$clean" \
+      | sed -E 's/^\[error\] \(([^ ]+) \/ Test \/ executeTests\).*/\1/' | sort -u)
+# shape A must carry its own report line, or it is not shape A
+if [ -n "$lost_a" ] && ! grep -qE "^\[error\] Error: Total [0-9]+, Failed 0, Errors [1-9]" "$clean"; then
+  lost_a=""
+fi
+lost=$(printf '%s\n%s\n' "$lost_a" "$lost_b" | grep -v '^$' | sort -u)
+failed_projects=$(grep -E "^\[error\] \([^)]*Test / (test|executeTests)\)" "$clean" \
+      | sed -E 's/^\[error\] \(([^ ]+) \/ Test \/ (test|executeTests)\).*/\1/' | sort -u)
+unknown=$(comm -23 <(printf '%s\n' "$failed_projects" | grep -v '^$') <(printf '%s\n' "$lost" | grep -v '^$'))
+if [ -z "$lost" ] || [ -n "$unknown" ]; then
   echo "gate: RED — a failure this script does not recognise; read $log"
+  [ -n "$unknown" ] && { echo "gate: these failed in no known shape:"; echo "$unknown" | sed 's/^/  /'; }
   grep -E "^\[error\]" "$clean" | head -20
   exit $status
 fi
