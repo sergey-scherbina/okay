@@ -4,7 +4,8 @@ import okay.{!, %, +, Async, Chunk, Handler, Produce, Resource, Stream, Throws, 
 import okay.given
 import okay.crypto.given
 import okay.codec.Schema
-import okay.sql.{Granted, Isolation, Sql, SqlValue, Typed}
+import okay.sql.{Granted, Isolation, Sql, SqlType, SqlValue, Typed}
+import okay.sql.given
 
 /**
  * The wire against a REAL Postgres (the live-suite pattern: skips
@@ -221,6 +222,39 @@ class TestPg extends munit.FunSuite {
       }))
       assertEquals(b.sqlState(e), Some("40001"), e.getMessage)
     finally { a.close(); b.close() }
+  }
+
+  final case class Stamp(id: Int, at: java.time.Instant, plain: java.time.Instant, d: java.time.LocalDate,
+                         t: java.time.LocalTime, ref: java.util.UUID, doc: String, ats: Vector[java.time.Instant])
+  given Schema[Stamp] = Schema.derived
+
+  test("sql-temporal-types over the wire: timestamptz/timestamp/date/time/uuid/jsonb and a timestamptz[] read typed, bind back exact, verify clean") {
+    assume(available, s"no Postgres at $host:$port — the live suite skips")
+    withDb { db =>
+      run(db.update("drop table if exists stamps")): Unit
+      run(db.update("create table stamps(id int not null, at timestamptz not null, plain timestamp not null, " +
+        "d date not null, t time not null, ref uuid not null, doc jsonb not null, ats timestamptz[] not null)")): Unit
+      // the session zone is whatever the server has; the offset on the wire is applied, not assumed
+      run(db.update("set time zone 'Europe/Kyiv'")): Unit
+      run(db.update("insert into stamps values (1, '2026-09-02 06:00:00+00', '2026-09-02 06:00:00', '2026-09-02', " +
+        "'06:00:00.5', '6ba7b810-9dad-11d1-80b4-00c04fd430c8', '{\"k\": [1, 2]}', " +
+        "array['2026-09-02 06:00:00+00', '1969-12-31 23:59:59.999999+00']::timestamptz[])")): Unit
+      val six = java.time.Instant.parse("2026-09-02T06:00:00Z")
+      val one = Stamp(1, six, six, java.time.LocalDate.of(2026, 9, 2), java.time.LocalTime.of(6, 0, 0, 500000000),
+        java.util.UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8"), "{\"k\": [1, 2]}",
+        Vector(six, java.time.Instant.parse("1969-12-31T23:59:59.999999Z")))
+      val sql = "select id, at, plain, d, t, ref, doc, ats from stamps order by id"
+      assertEquals(run(db.describe(sql)).map(_.tpe), Vector(SqlType.I32) ++
+        Vector(SqlType.Timestamp, SqlType.Timestamp, SqlType.Date, SqlType.Time, SqlType.Uuid, SqlType.Json, SqlType.Arr(SqlType.Timestamp)))
+      assertEquals(run(Typed.verify[Stamp](db, sql)), Vector.empty)
+      assertEquals(collectChunks(Typed.rows[Stamp](db, sql)).flatten, List(Right(one)))
+      val two = one.copy(id = 2, at = six.plusNanos(1000), plain = java.time.Instant.parse("1969-12-31T23:59:59.999999Z"),
+        d = java.time.LocalDate.of(1899, 12, 31), t = java.time.LocalTime.of(23, 59, 59, 999999000),
+        ref = java.util.UUID.randomUUID(), doc = "{\"z\": true}", ats = Vector.empty)
+      assertEquals(run(Typed.update(db, "insert into stamps values ($1, $2, $3, $4, $5, $6, $7, $8)")(two)), 1L)
+      assertEquals(collectChunks(Typed.rows[Stamp](db, sql)).flatten, List(Right(one), Right(two)))
+      run(db.update("set time zone 'UTC'")): Unit
+    }
   }
 
   test("nested transact refuses loudly on the wire too") {

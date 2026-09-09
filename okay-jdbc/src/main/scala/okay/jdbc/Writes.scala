@@ -5,6 +5,7 @@ import okay.given
 import okay.codec.Schema
 import okay.persist.{Ack, Topic, Typed}
 import okay.sql.{Sql, SqlValue}
+import okay.sql.given
 
 /**
  * The write bridge (specs/jdbc.md, "Writing correctly into a

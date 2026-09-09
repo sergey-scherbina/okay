@@ -255,7 +255,7 @@ class TestPgComposite extends munit.FunSuite:
   final case class Ledger(id: Int, amount: BigDecimal, ref: String, doc: String, at: String)
   given okay.codec.Schema[Ledger] = okay.codec.Schema.derived
 
-  test("numeric is exact (Num), NaN falls to F64; uuid/jsonb/timestamptz are NAMED and a String field fits them") {
+  test("numeric is exact (Num), NaN falls to F64; uuid/jsonb/timestamptz are TYPED and a String field still fits them") {
     assume(available, "no Postgres at the configured endpoint")
     val money = BigDecimal("12345678901234567890.123456789")
     assertEquals(cell("select 12345678901234567890.123456789::numeric"), Num(money))
@@ -272,7 +272,7 @@ class TestPgComposite extends munit.FunSuite:
         "'6ba7b810-9dad-11d1-80b4-00c04fd430c8', '{\"k\": [1, 2]}', '2026-09-02 06:00:00+00')")): Unit
       val sql = "select id, amount, ref, doc, at from okay_ledger"
       assertEquals(run(db.describe(sql)).map(_.tpe), Vector(okay.sql.SqlType.I32, okay.sql.SqlType.Num,
-        okay.sql.SqlType.Other("uuid"), okay.sql.SqlType.Other("jsonb"), okay.sql.SqlType.Other("timestamptz")))
+        okay.sql.SqlType.Uuid, okay.sql.SqlType.Json, okay.sql.SqlType.Timestamp))
       assertEquals(run(okay.sql.Typed.verify[Ledger](db, sql)), Vector.empty)
       val rows = collectChunks(okay.sql.Typed.rows[Ledger](db, sql)).flatten
       assertEquals(rows.map(_.map(r => (r.amount, r.ref, r.doc))),

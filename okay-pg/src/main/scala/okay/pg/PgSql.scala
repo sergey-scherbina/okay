@@ -1,7 +1,7 @@
 package okay.pg
 
 import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Net, NetConn, Produce, effect, pure}
-import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
+import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue, Temporal}
 import okay.crypto.Crypto
 import java.nio.charset.StandardCharsets.UTF_8
 
@@ -560,15 +560,18 @@ object PgSql:
     case 1700 => SqlType.Num
     case 25 | 1043 | 18 | 19 => SqlType.Text
     case 17 => SqlType.Bytes
+    case 1114 | 1184 => SqlType.Timestamp
+    case 1082 => SqlType.Date
+    case 1083 => SqlType.Time
+    case 2950 => SqlType.Uuid
+    case 114 | 3802 => SqlType.Json
     case other => SqlType.Other(vendorNames.getOrElse(other, s"oid:$other"))
 
   /** the scalars that stay TEXT on purpose (bind-don't-model; no
    * java.time in a JVM/JS/Native module), named so verify can say what
    * it found — a String field fits any of them (pg-scalar-types) */
   private val vendorNames: Map[Int, String] = Map(
-    2950 -> "uuid", 114 -> "json", 3802 -> "jsonb", 142 -> "xml",
-    1114 -> "timestamp", 1184 -> "timestamptz", 1082 -> "date",
-    1083 -> "time", 1266 -> "timetz", 1186 -> "interval",
+    142 -> "xml", 1266 -> "timetz", 1186 -> "interval",
     869 -> "inet", 650 -> "cidr", 829 -> "macaddr", 790 -> "money")
 
   private def valueOf(oid: Int, s: String): SqlValue = oid match
@@ -589,6 +592,15 @@ object PgSql:
         out(i) = Integer.parseInt(hex.substring(i * 2, i * 2 + 2), 16).toByte
         i += 1
       SqlValue.Bytes(out)
+    // the temporal/uuid/json scalars (sql-temporal-types): pg prints a
+    // timestamptz in the SESSION's zone with its offset, a timestamp
+    // without one (read as UTC); a form the parser does not know stays
+    // text — the fallback is loud in the type, never a wrong number
+    case 1114 | 1184 => Temporal.parseTimestamp(s).fold(SqlValue.Text(s))(SqlValue.Timestamp(_))
+    case 1082 => Temporal.parseDate(s).fold(SqlValue.Text(s))(SqlValue.Date(_))
+    case 1083 => Temporal.parseTime(s).fold(SqlValue.Text(s))(SqlValue.Time(_))
+    case 2950 => SqlValue.Uuid(java.util.UUID.fromString(s))
+    case 114 | 3802 => SqlValue.Json(s)
     // ROW()/record and arrays decode into structure (pg-composite-decode)
     case 2249 => parseComposite(s)
     case a if arrayElem.contains(a) => parseArray(s, r => valueOf(arrayElem(a), r))
@@ -608,7 +620,9 @@ object PgSql:
     1000 -> 16,   1005 -> 21,   1007 -> 23,   1016 -> 20,
     1021 -> 700,  1022 -> 701,  1231 -> 1700,
     1009 -> 25,   1015 -> 1043, 1014 -> 1042, 1002 -> 18,
-    1001 -> 17,   1028 -> 26,   1005 -> 21)
+    1001 -> 17,   1028 -> 26,   1005 -> 21,
+    1115 -> 1114, 1185 -> 1184, 1182 -> 1082, 1183 -> 1083,
+    2951 -> 2950, 199 -> 114,   3807 -> 3802)
 
   /** split a composite/array body into top-level members, honouring
    * double-quoted values (both `""` and `\"`/`\\` escaping, so the
@@ -694,6 +708,11 @@ object PgSql:
     case SqlValue.F64(x) => Some(x.toString)
     case SqlValue.Num(x) => Some(x.toString)
     case SqlValue.Text(s) => Some(s)
+    case SqlValue.Timestamp(us) => Some(Temporal.renderTimestamp(us))
+    case SqlValue.Date(d) => Some(Temporal.renderDate(d))
+    case SqlValue.Time(us) => Some(Temporal.renderTime(us))
+    case SqlValue.Uuid(u) => Some(u.toString)
+    case SqlValue.Json(j) => Some(j)
     case SqlValue.Bytes(bs) =>
       Some("\\x" + bs.map(b => f"${b & 0xff}%02x").mkString)
     // the reverse of the decode: a structured value re-encodes to the

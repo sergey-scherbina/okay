@@ -35,7 +35,7 @@ object Typed:
    * composite) carrying its Schema for the typed field walk. Decode
    * and encode recurse over it by GADT matching; `tpe` is what verify
    * compares. */
-  private enum Shape[A]:
+  private[sql] enum Shape[A]:
     case Prim[A](t: SqlType, dec: SqlValue => Either[String, A], enc: A => SqlValue) extends Shape[A]
     case Opt[A](of: Shape[A]) extends Shape[Option[A]]
     case Iso[A, B](of: Shape[B], to: B => Either[String, A], from: A => B) extends Shape[A]
@@ -57,7 +57,7 @@ object Typed:
       case Iso(of, _, _) => of.optional
       case _ => false
 
-  private object Shape:
+  private[sql] object Shape:
     /** a primitive column's shape: one SqlType, and the two typed
      * directions — the widenings a column may take (I32 → I64,
      * Num → F64/Text) live in `dec` */
@@ -71,7 +71,25 @@ object Typed:
     { case SqlValue.F64(x) => x; case SqlValue.Num(x) => x.toDouble }, SqlValue.F64(_))
   private val bool = Shape.prim[Boolean](SqlType.Bool, { case SqlValue.Bool(x) => x }, SqlValue.Bool(_))
   private val text = Shape.prim[String](SqlType.Text,
-    { case SqlValue.Text(x) => x; case SqlValue.Num(x) => x.toString }, SqlValue.Text(_))
+    { case SqlValue.Text(x) => x; case SqlValue.Num(x) => x.toString
+      // the lossless fallback: a String field reads the temporal, uuid
+      // and json columns as their ISO/canonical text
+      case SqlValue.Timestamp(us) => Temporal.renderTimestamp(us)
+      case SqlValue.Date(d) => Temporal.renderDate(d)
+      case SqlValue.Time(us) => Temporal.renderTime(us)
+      case SqlValue.Uuid(u) => u.toString
+      case SqlValue.Json(j) => j }, SqlValue.Text(_))
+  private val uuid = Shape.prim[java.util.UUID](SqlType.Uuid, { case SqlValue.Uuid(u) => u }, SqlValue.Uuid(_))
+
+  /** a typed field known by the IDENTITY of its Schema given: the
+   * given is a stable val, so `schema eq known.schema` is the proof
+   * that A is X. `find` holds the one cast this module needs for it —
+   * an erased pair behind a wildcard, checked by that identity. */
+  private[sql] final class Known[X](val schema: Schema[X], val shape: Shape[X])
+  private[sql] object Known:
+    def find[A](table: Vector[Known[?]], s: Schema[A]): Option[Shape[A]] =
+      table.find(_.schema eq s).map(_.shape.asInstanceOf[Shape[A]])
+  private val known: Vector[Known[?]] = Known(uuidSchema, uuid) +: JavaTime.known
   private val bytes = Shape.prim[Array[Byte]](SqlType.Bytes, { case SqlValue.Bytes(x) => x }, SqlValue.Bytes(_))
 
   private final case class Field(name: String, shape: Shape[?]):
@@ -79,6 +97,7 @@ object Typed:
     def optional: Boolean = shape.optional
 
   private def shapeOf[A](s: Schema[A]): Either[String, Shape[A]] = s match
+    case s if Known.find(known, s).isDefined => Right(Known.find(known, s).get)
     case Schema.SInt => Right(i32)
     case Schema.SLong => Right(i64)
     case Schema.SDouble => Right(f64)
@@ -130,6 +149,8 @@ object Typed:
     case (SqlType.F64, SqlType.Num) => true
     case (SqlType.Text, SqlType.Num) => true
     case (SqlType.Text, SqlType.Other(_)) => true
+    // the ISO text of a temporal/uuid/json column (sql-temporal-types)
+    case (SqlType.Text, SqlType.Timestamp | SqlType.Date | SqlType.Time | SqlType.Uuid | SqlType.Json) => true
     // the driver could not name the element type (JDBC metadata):
     // decode checks the elements, and decode is total
     case (SqlType.Arr(_), SqlType.Arr(SqlType.Other(_))) => true
@@ -419,6 +440,12 @@ object Params:
  * numeric's text (verify passes Text against Num; decode renders a
  * Num exactly), and in JSON/CBOR it travels as a string — no float on
  * either road. `import okay.sql.given` */
+/** a uuid field, every platform: text in JSON/CBOR, `SqlValue.Uuid`
+ * on the row (sql-temporal-types) */
+given uuidSchema: Schema[java.util.UUID] = Schema.refine[java.util.UUID, String](
+  s => try Right(java.util.UUID.fromString(s)) catch { case _: IllegalArgumentException => Left(s"not a uuid: '$s'") },
+  _.toString)
+
 given decimalSchema: Schema[BigDecimal] = Schema.refine[BigDecimal, String](
   s => try Right(BigDecimal(s)) catch { case _: NumberFormatException => Left(s"not a decimal: '$s'") },
   _.toString)

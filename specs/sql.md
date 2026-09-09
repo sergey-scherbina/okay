@@ -425,6 +425,57 @@ construction; the region is where the retry belongs.
       through the wire driver — and `transactRetry` on the loser
       re-runs it and lands the write (Live)
 
+## Temporal, uuid and json values (sql-temporal-types)
+
+Before this lane a `timestamptz`, `date`, `time`, `uuid`, `json`/
+`jsonb` column travelled as `Text` under `SqlType.Other(name)`: a
+String field fit it and every `created_at` was hand-parsed per field,
+in the engine's own print form (pg in the SESSION's zone with an
+offset, H2 `+00`). The seam now has the values, platform-neutral on
+purpose — this module runs on JVM, JS and Native and java.time is
+JVM-only (okay-intent's `Temporal` made the same choice):
+
+- `SqlValue.Timestamp(micros)` — microseconds since the epoch, UTC. A
+  `timestamptz` exactly; a `timestamp` WITHOUT zone is read as UTC,
+  stated, on every driver (the JDBC reads go through a UTC calendar so
+  the JVM's default zone never enters). `Date(days)` since the epoch,
+  `Time(micros)` into the day, `Uuid(java.util.UUID)` (the JDK class
+  every platform has), `Json(text)` untouched. `SqlType` mirrors them.
+- `okay.sql.Temporal` renders ISO 8601 UTC and parses what engines
+  print (`2026-09-02 06:00:00.123456+02`, `+02:30`, `T…Z`, no zone);
+  Hinnant's civil-date arithmetic, exact over the Int range of days.
+  A form the parser does not know stays `Text` — loud in the type,
+  never a wrong number.
+- Fields: `given Schema[UUID]` everywhere; `Schema[Instant]`,
+  `Schema[LocalDate]`, `Schema[LocalTime]` on the JVM (ISO text in
+  JSON/CBOR). The typed layer knows them by the IDENTITY of the given
+  (`Typed.Known`: the given is a stable val, so `eq` is the proof of
+  the type — the one cast in the module, isolated in `Known.find`),
+  and the platform hands over its table (`JavaTime.known`, empty off
+  the JVM). A String field still fits every one of these columns and
+  reads the ISO text — the lossless fallback, its print form now
+  canonical rather than the engine's.
+- Params bind natively: JDBC `setTimestamp` with the UTC calendar,
+  `setDate`, `LocalTime`, `setObject(UUID)`; R2DBC `OffsetDateTime` at
+  UTC, `LocalDate`, `LocalTime`, `UUID`; the pg wire renders ISO text
+  and the server types it from the column. Json binds as its text —
+  a `jsonb` column through JDBC/R2DBC wants the DBA's `?::jsonb` in
+  the statement (bind-don't-model); the wire driver needs nothing.
+
+- [x] `Temporal` round-trips civil dates over centuries, parses pg's,
+      H2's and ISO's forms with offsets applied, truncates nanos to
+      micros, floors before the epoch, and renders ISO UTC (TestSqlPure,
+      JVM + JS + Native)
+- [x] H2 through JDBC: timestamptz/timestamp/date/time(6)/uuid read into
+      Instant/LocalDate/LocalTime/UUID fields, `describe` names the
+      kinds, verify is clean, a microsecond and an 1899 date survive the
+      bind-and-read round trip; the String field reads the ISO text
+- [x] pg over the wire, session zone Europe/Kyiv: the same six plus
+      jsonb and a `timestamptz[]` into `Vector[Instant]`, typed reads,
+      verify clean, exact bind back (Live)
+- [x] R2DBC on H2 and pg: timestamptz/date/time/uuid typed both ways
+      (Live for pg)
+
 ## Out of scope
 
 - writing MySQL/MSSQL/Oracle wire protocols — R2DBC or JDBC are

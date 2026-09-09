@@ -37,6 +37,17 @@ enum SqlValue:
    * without a describe); a named composite's fields are typed when the
    * driver resolves them. A NULL field is `Null`. */
   case Row(fields: Vector[SqlValue])
+  /** microseconds since the epoch, UTC (sql-temporal-types): a
+   * `timestamptz` exactly; a `timestamp` without zone read as UTC,
+   * stated. Renders as ISO 8601 (`Temporal.renderTimestamp`) */
+  case Timestamp(micros: Long)
+  /** days since 1970-01-01 */
+  case Date(days: Int)
+  /** microseconds into the day (a `time` without zone) */
+  case Time(micros: Long)
+  case Uuid(v: java.util.UUID)
+  /** json/jsonb: the document's text, untouched */
+  case Json(text: String)
 
 /** the column types verify speaks; `Other` carries a vendor type by
  * name so a drift report can say what it found rather than shrug */
@@ -45,6 +56,9 @@ enum SqlType:
   /** numeric/decimal: exact, arbitrary precision */
   case Num
   case Other(name: String)
+  // the temporal, uuid and json columns (sql-temporal-types); a
+  // String field fits every one of them — the ISO text is what it reads
+  case Timestamp, Date, Time, Uuid, Json
   /** an array column; `Other` as the element when the driver's
    * metadata cannot name it (JDBC) — decode checks the elements */
   case Arr(elem: SqlType)

@@ -687,6 +687,14 @@ lazy val okaySql = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .settings(
     name := "okay-sql",
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
+    // sql-temporal-types: java.time givens on the JVM, an empty table
+    // elsewhere (JavaTime.scala per platform)
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / (crossProjectPlatform.value match {
+        case JVMPlatform => "scala-jvm"
+        case JSPlatform => "scala-js"
+        case _ => "scala-native"
+      }),
   )
   // scala-jvm tests: a suite that DRAINS a `Produce + Async` stream
   // summons a `Handler[Async]`, which needs the `CanBlock` JS and

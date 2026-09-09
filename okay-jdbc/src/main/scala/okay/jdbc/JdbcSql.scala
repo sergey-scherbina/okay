@@ -120,7 +120,27 @@ object JdbcSql:
 
   /** java.sql.Types → the neutral vocabulary. NUMERIC/DECIMAL are
    * exact (`Num`, pg-scalar-types) — the v1 F64 mapping rounded */
+  private def utcCalendar(): java.util.Calendar =
+    java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"))
+
+  private def microsOf(t: java.sql.Timestamp): Long =
+    Math.floorDiv(t.getTime, 1000L) * 1000000L + t.getNanos / 1000L
+
+  private def microsOf(i: java.time.Instant): Long =
+    i.getEpochSecond * 1000000L + i.getNano / 1000L
+
+  private def timestampOf(us: Long): java.sql.Timestamp =
+    val t = java.sql.Timestamp(Math.floorDiv(us, 1000000L) * 1000L)
+    t.setNanos((Math.floorMod(us, 1000000L) * 1000L).toInt)
+    t
+
   private def typeOf(t: Int, vendorName: String): SqlType = t match
+    // named before the code: H2 reports UUID under BINARY, pg under OTHER
+    case _ if vendorName != null && vendorName.equalsIgnoreCase("uuid") => SqlType.Uuid
+    case _ if vendorName != null && (vendorName.equalsIgnoreCase("json") || vendorName.equalsIgnoreCase("jsonb")) => SqlType.Json
+    case Types.TIMESTAMP | Types.TIMESTAMP_WITH_TIMEZONE => SqlType.Timestamp
+    case Types.DATE => SqlType.Date
+    case Types.TIME => SqlType.Time
     case Types.BOOLEAN | Types.BIT => SqlType.Bool
     case Types.TINYINT | Types.SMALLINT | Types.INTEGER => SqlType.I32
     case Types.BIGINT => SqlType.I64
@@ -147,6 +167,15 @@ object JdbcSql:
     case d: java.math.BigDecimal => SqlValue.Num(BigDecimal(d))
     case s: String => SqlValue.Text(s)
     case bs: Array[Byte] => SqlValue.Bytes(bs)
+    case t: java.sql.Timestamp => SqlValue.Timestamp(microsOf(t))
+    case t: java.time.OffsetDateTime => SqlValue.Timestamp(microsOf(t.toInstant))
+    case t: java.time.Instant => SqlValue.Timestamp(microsOf(t))
+    case t: java.time.LocalDateTime => SqlValue.Timestamp(microsOf(t.toInstant(java.time.ZoneOffset.UTC)))
+    case d: java.sql.Date => SqlValue.Date(d.toLocalDate.toEpochDay.toInt)
+    case d: java.time.LocalDate => SqlValue.Date(d.toEpochDay.toInt)
+    case t: java.sql.Time => SqlValue.Time(t.toLocalTime.toNanoOfDay / 1000L)
+    case t: java.time.LocalTime => SqlValue.Time(t.toNanoOfDay / 1000L)
+    case u: java.util.UUID => SqlValue.Uuid(u)
     case a: java.sql.Array => arrayOf(a)
     case xs: Array[AnyRef] => SqlValue.Arr(xs.toVector.map(valueOf))
     case other => SqlValue.Text(other.toString)
@@ -163,6 +192,30 @@ object JdbcSql:
     Vector.tabulate(cols.length) { ix =>
       val i = ix + 1
       cols(ix) match
+        // the temporal reads go through a UTC calendar, so a
+        // `timestamp` without zone means UTC on every driver and the
+        // JVM's default zone never enters (sql-temporal-types); each
+        // decides its own null from the value
+        case SqlType.Timestamp =>
+          val t = rs.getTimestamp(i, utcCalendar())
+          if t == null then SqlValue.Null else SqlValue.Timestamp(microsOf(t))
+        case SqlType.Date =>
+          val d = rs.getDate(i, utcCalendar())
+          if d == null then SqlValue.Null else SqlValue.Date(Math.floorDiv(d.getTime, 86400000L).toInt)
+        case SqlType.Time =>
+          val t = rs.getObject(i, classOf[java.time.LocalTime])
+          if t == null then SqlValue.Null else SqlValue.Time(t.toNanoOfDay / 1000L)
+        case SqlType.Uuid => rs.getObject(i) match
+          case null => SqlValue.Null
+          case u: java.util.UUID => SqlValue.Uuid(u)
+          case s: String => SqlValue.Uuid(java.util.UUID.fromString(s))
+          case bs: Array[Byte] if bs.length == 16 =>
+            val bb = java.nio.ByteBuffer.wrap(bs)
+            SqlValue.Uuid(java.util.UUID(bb.getLong, bb.getLong))
+          case other => SqlValue.Text(other.toString)
+        case SqlType.Json =>
+          val s = rs.getString(i)
+          if s == null then SqlValue.Null else SqlValue.Json(s)
         // the reference reads carry their own null; sqlite-jdbc's
         // getBigDecimal does not mark the column, so wasNull after it
         // throws — decide nullness from the value here
@@ -178,7 +231,10 @@ object JdbcSql:
             case SqlType.Text => SqlValue.Text(rs.getString(i))
             case SqlType.Bytes => SqlValue.Bytes(rs.getBytes(i))
             case SqlType.Arr(_) => arrayOf(rs.getArray(i))
-            case SqlType.Num | SqlType.Other(_) | SqlType.Row(_) =>
+            // Num and the temporal kinds were answered above; the
+            // compiler wants the match total
+            case SqlType.Num | SqlType.Other(_) | SqlType.Row(_) | SqlType.Timestamp | SqlType.Date
+               | SqlType.Time | SqlType.Uuid | SqlType.Json =>
               val s = rs.getString(i)
               SqlValue.Text(if s == null then "" else s)
           if rs.wasNull then SqlValue.Null else v
@@ -196,6 +252,13 @@ object JdbcSql:
         case SqlValue.Num(v) => ps.setBigDecimal(i + 1, v.bigDecimal)
         case SqlValue.Text(v) => ps.setString(i + 1, v)
         case SqlValue.Bytes(v) => ps.setBytes(i + 1, v)
+        case SqlValue.Timestamp(us) => ps.setTimestamp(i + 1, timestampOf(us), utcCalendar())
+        case SqlValue.Date(d) => ps.setDate(i + 1, java.sql.Date(d * 86400000L), utcCalendar())
+        case SqlValue.Time(us) => ps.setObject(i + 1, java.time.LocalTime.ofNanoOfDay(us * 1000L))
+        case SqlValue.Uuid(u) => ps.setObject(i + 1, u)
+        // json binds as its text; a jsonb column on pg wants the
+        // DBA's `?::jsonb` in the statement (bind-don't-model)
+        case SqlValue.Json(s) => ps.setString(i + 1, s)
         // an Object[] is what H2 (and the pg driver's setObject) take
         // for an ARRAY parameter; the vendor-typed createArrayOf road
         // is not needed for the engines this stack binds
@@ -213,6 +276,11 @@ object JdbcSql:
     case SqlValue.Num(x) => x.bigDecimal
     case SqlValue.Text(s) => s
     case SqlValue.Bytes(bs) => bs
+    case SqlValue.Timestamp(us) => timestampOf(us)
+    case SqlValue.Date(d) => java.time.LocalDate.ofEpochDay(d.toLong)
+    case SqlValue.Time(us) => java.time.LocalTime.ofNanoOfDay(us * 1000L)
+    case SqlValue.Uuid(u) => u
+    case SqlValue.Json(s) => s
     case SqlValue.Arr(elems) => elems.map(jdbcOf).toArray
     case SqlValue.Row(fields) => fields.map(jdbcOf).toArray
 
