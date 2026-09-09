@@ -129,7 +129,8 @@ correctness first:
       but NOT the isolation level — after `transact(Serializable)`
       every later autocommit statement on the connection runs
       Serializable. Save and restore it beside `autoBefore`.
-- [ ] sql-pool — no connection pool anywhere; one `Sql` = one
+- [x] sql-pool — DONE 2026-09-09 (46498266): okay.sql.Pool, borrow/pinned/stats/
+      close, cancel-safe hand-off, the brake on return. Was: no connection pool anywhere; one `Sql` = one
       connection. A `Pool[Sql]` as a Resource: `borrow` hands a
       connection to a program and returns it after, a region pins one
       for its scope, size + acquire timeout, a health probe on return

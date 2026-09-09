@@ -1,5 +1,30 @@
 # Changelog
 
+## sql-pool — okay.sql.Pool: a fixed-size, driver-neutral connection pool with a cancel-safe hand-off and the brake on return
+
+Lane 5 of the persistence audit; before it one `Sql` was one
+connection and no pool existed anywhere. `Pool[C <: Sql](size,
+acquireTimeoutMillis)(open)(close)`: `borrow` runs a program on one
+connection and returns it after, value or failure; `pinned` hands one
+to the enclosing Resource scope; `stats` is a plain value; `close`
+disposes idle connections now and busy ones as they return. One `TRef`
+cell, waiters as callbacks; a timed-out waiter and a grant that races
+it settle on one CAS (withdrawn from the canceller AND the timeout
+branch, since a fiber's cancel is the platform's business), and the
+loser passes the connection on. A returned connection goes through
+`Sql.cancel` first, so a raw `begin` never reaches the next borrower.
+The grab's own failure travels as a value, because a failing contender
+never wins `Async.race` and a Closed pool must not read Exhausted.
+`JdbcSql.close` for the plain case; Hikari is one open function away.
+Tests on H2: eight borrowers on two connections (peak two, none
+reopened), the brake on a leftover transaction, Exhausted within its
+timeout then served on the same connection, pinned scope, Closed after
+close. Landed as 46498266; specs/sql.md "The pool". Gate: full matrix,
+3163 tests, 0 failures, 0 warnings — the tree it covered included the
+three sibling lanes the previous entry named; ui-hybrid landed during
+this gate (okay-ui/okay-script only) and the persist-saga gate covers
+it next.
+
 ## ui-hybrid — no round trip per keystroke: a Form folds on the client and submits once
 
 Stage 2 of specs/frontend.md, the operator's "hybrid from the start".
