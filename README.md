@@ -24,7 +24,7 @@ What actually makes this different:
 
 4. Zero dependencies in the core. Nothing comes along for the ride.
 
-5. Fast — and measured, not asserted. 10k flatMaps: Okay 5.1 µs against kyo 58, cats IO 153, ZIO 181. A stream pipeline: 16.9 against ZIO 692 and fs2 1410 (a bare Iterator is 14). Fork/join of 100 fibers: 29 against cats IO 140. Every number has its protocol and its lane rules written down beside it.
+5. Fast — and measured, not asserted. 10k flatMaps: Okay 5.5 µs against kyo 60, cats IO 163, ZIO 193. A stream pipeline with every lane chunked the same way: 8.2 against fs2 21.9, ZIO 35.8, kyo 65.9 (a bare Iterator is 15.2). Fork/join of 100 fibers: 24 against cats IO 121 — and kyo 18.5, which is a loss, printed as one. Every number has its protocol and its lane rules written down beside it, and a competitor's number is only quoted from the same shape and the same granularity as ours.
 
 What that buys you in practice: you don't choose between readable and fast, you don't choose between type-safe and ceremony-free, and you don't need anyone's permission to add an effect of your own. And only you control what every effect (even not yours) actually does in any particular case.
 
@@ -168,19 +168,23 @@ A stream is codata: one observation, `uncons` — effectful, in
 `Stream[S[_], F[+_]]` (F = `Pure` for pure, `Async` for awaited
 elements). LazyList is the final coalgebra every stream unfolds into.
 Consumption modes, slow-to-fast on a map/filter/take(1000)/sum
-pipeline (JMH, us/op; plain Iterator floor = 14.1):
+pipeline (JMH, us/op, one session; plain Iterator floor = 15.2):
 
 | mode | us | note |
 |---|---|---|
-| `.toLazyList` + combinators | 143 | memoized, re-observable |
-| `.iterator` | 53 | linear, fused, consume-once |
-| `Chunks` + `.elements` | 23.6 | chunked source |
-| `Chunks.map/filter/take` | 16.9 | chunk-in, chunk-out array passes |
-| `Staged` (inline whole-stage) | 1.6 | one fused while-loop; same-run Iterator = 19.3 |
+| `.toLazyList` + combinators | 172 | memoized, re-observable |
+| `.iterator` | 54 | linear, fused, consume-once |
+| `Chunks` + `.elements` | 24.5 | chunked source, per-element door |
+| `Chunks.map/filter/take`, default chunk of 64 | 10.2 | chunk-in, chunk-out array passes |
+| the same, whole input as one chunk | 8.2 | what the competitors' lanes get |
+| `Staged` (inline whole-stage) | 1.7 | one fused while-loop |
 
-(kyo 239, ZIO 692, fs2 1410 on the same pipeline. `Staged` is the
-compile-time end of the choice rule: the `Pipeline` operator tree is
-for tools — optimize, inspect, ship — the inline shape is for speed.)
+(On the same pipeline, each library's source chunked the way its own
+author intended: fs2 `emits` 21.9, `ZStream.range` 35.8, kyo
+`Stream.range` 65.9. Their per-element spellings are 266–1510 and are
+not quoted against a chunked lane. `Staged` is the compile-time end of
+the choice rule: the `Pipeline` operator tree is for tools — optimize,
+inspect, ship — the inline shape is for speed.)
 
 - `Fold`/`Foldable` — the push side; `Monoid` derives folds.
 - Writer programs, producers, generators (`generate`/`Put`: one unfold,
@@ -200,7 +204,7 @@ for tools — optimize, inspect, ship — the inline shape is for speed.)
 ## Concurrency
 
 - `Channel` — the queue between fibers; `merge` combines streams by
-  readiness (chunked merge: 10.7 us vs ZIO 45 on 2x500), `buffer`
+  readiness (chunked merge: 13.3 us vs ZIO 51.5 on 2x500), `buffer`
   runs the producer ahead. Parking backpressure on JVM/Native; the
   Await-based JS channel keeps the same surface (Channel.scala per
   platform).
@@ -210,7 +214,8 @@ for tools — optimize, inspect, ship — the inline shape is for speed.)
   source of their union, bounded by default (an endless source merged
   unbounded measured 1.27M elements produced for 10 consumed).
 - Everything runs on virtual threads by default; fork/join of 100
-  trivial tasks: 29 us (raw Loom 21, kyo 25, ZIO 50, cats-effect 140).
+  trivial tasks: 24 us (raw Loom 21.8, kyo 18.5, ZIO 46.6,
+  cats-effect 121).
 - Across machines: `Remote` ships chunks over a socket into an
   ordinary local Channel, and `Cluster.distribute` spreads a chunked
   source over workers with per-chunk recompute on failure — the
@@ -219,80 +224,97 @@ for tools — optimize, inspect, ship — the inline shape is for speed.)
 ## Benchmarks vs the ecosystem
 
 JMH, average time in us/op, lower is better. Versions: cats-effect
-3.5.7, ZIO 2.1.14, kyo 0.16.2, atnos-eff 7.0.4, fs2 3.10.2. Full
-history, protocols and refuted experiments: src/jmh/history.tsv.
+3.5.7, ZIO 2.1.14, kyo 0.16.2, atnos-eff 7.0.4, fs2 3.10.2. Every
+number is from the 2026-09-08 run; the tables, the caveats and the
+raw history are in [docs/benchmarks.md](docs/benchmarks.md) and
+src/jmh/history.tsv.
+
+Where a competitor appears, both sides are the same SHAPE and the
+same granularity. That rule is not decoration: five lanes that broke
+it were found on 2026-09-08 alone, and each one read as "we are fast"
+or "we are slow" for the wrong reason.
 
 **Bind chain** — 10k left-nested flatMaps, built and run:
 
 | **Okay Eager** | kyo | **Okay Cont** | **Okay Free** | cats Free | cats Eval | cats IO | ZIO | atnos |
 |---|---|---|---|---|---|---|---|---|
-| **5.1** | 58 | **89** | **95** | 129 | 136 | 153 | 181 | 260 |
+| **5.5** | 60 | **95** | **112** | 117 | 153 | 163 | 193 | 286 |
 
 (Okay Eager is the kyo trick as an OPT-IN encoding — import Eager.given —
 with the hazard stated: construction evaluates, so a self-referential
 program diverges before it runs, exactly what compare/TestLaziness
 catches kyo on (it runs 513 iterations at the CONSTRUCTION of an
-infinite program). Free/Eff keep the laziness contract; the user
+infinite program). Free/Cont keep the laziness contract; the user
 chooses per program.)
 
-**Reader** — 10k asks:
+**Reader** — 10k asks. The shape is part of the measurement: a
+for-comprehension nests RIGHT, a `foldLeft` build nests LEFT, and the
+starred lanes are O(N²) in that shape.
 
-| **Okay** | kyo Env | ZIO | cats Kleisli/Eval | atnos |
-|---|---|---|---|---|
-| **79** | 291 | 245 | 328 | 3123 |
+| shape | **Okay** | kyo Env | ZIO | cats Kleisli | atnos |
+|---|---|---|---|---|---|
+| right-nested | **79** | 253 | | | |
+| left-nested | **116** | 382 800* | 258 | 346 | 1469 |
 
 **Writer** — 10k tells, collected:
 
-| **Okay** | kyo Emit | cats WriterT/Chain | atnos |
-|---|---|---|---|
-| **163** | 215 | 1250 | 4054 |
-
-(Okay and kyo in the right-nested shape a for-comprehension builds.
-The left-nested foldLeft shape is O(N²) in kyo — 362 099 / 364 313 —
-and Okay's rotation keeps it linear at 124 / 209; docs/benchmarks.md
-§2 has both rows and the mechanism.)
+| shape | **Okay** | kyo Emit | cats WriterT/Chain | atnos |
+|---|---|---|---|---|
+| right-nested | **159** | 178 | | |
+| left-nested | **217** | 375 400* | 1222 | 3385 |
 
 **Choice** — 2^13 branches, all collected (plain List is the floor):
 
 | List | **Okay** | kyo | atnos |
 |---|---|---|---|
-| 580 | **1603** | 3834 | 5392 |
+| 615 | **1645** | 4185 | 5487 |
 
 **Fork/join** — 100 trivial fibers (raw virtual threads are the floor):
 
 | raw Loom | kyo | **Okay** | ZIO | cats IO |
 |---|---|---|---|---|
-| 21 | 25 | **29** | 50 | 140 |
+| 21.8 | **18.5** | 24.0 | 46.6 | 121 |
 
-**Stream pipeline** — map/filter/take(1000)/sum (Iterator is the floor):
+(A loss, and it is here rather than buried. At 10 000 fibers in each
+runtime's own native shape the order reverses — Okay 796, kyo 884 —
+docs/benchmarks.md §4b.)
 
-| Iterator | **Okay chunked** | **Okay elements** | kyo `Stream.range` | kyo singleton | ZIO | fs2 |
-|---|---|---|---|---|---|---|
-| 14 | **16.9** | **23.6** | 64† | 239 | 692 | 1410 |
+**Stream pipeline** — map/filter/take(1000)/sum, every lane taking the
+whole input as ONE chunk (Iterator is the floor):
 
-(†kyo's own chunked source, measured in a later session against a
-15.3 floor — 4.2x from the floor; docs/benchmarks.md §5.)
+| Iterator | **Okay Staged** | **Okay chunked** | **Okay chunked, default 64** | fs2 `emits` | **Okay elements** | `ZStream.range` | kyo `Stream.range` |
+|---|---|---|---|---|---|---|---|
+| 15.2 | **1.70** | **8.22** | **10.21** | 21.9 | **24.5** | 35.8 | 65.9 |
+
+(The default chunk of 64 costs 24% over one chunk, and that is the
+honest price of a size a caller gets without asking. Per-element
+spellings — kyo singleton 266, `ZStream.iterate` 700, `fs2.iterate`
+1510 — are a different question and are in §5, not compared with a
+chunked lane here.)
 
 **Merge** — two 500-element streams merged by readiness:
 
-| **Okay chunked** | ZIO | Okay elementwise | fs2 |
+| **Okay chunked** | ZIO | fs2 chunk-native | **Okay elementwise** |
 |---|---|---|---|
-| **14.7** | 47 | 158 | 9031 |
+| **13.3** | 51.5 | 94.4 | **122** |
+
+(fs2 asked fairly: `Stream.emits` a side. Its singleton spelling reads
+10 746 in the same run — 114x inside fs2, from the source alone — and
+quoting that against a chunked lane is the kind of number this page
+stopped printing.)
 
 **Resource** — 1000 bracketed acquire/use/release:
 
-| **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
-|---|---|---|---|---|
-| **15.0** | **36** | 135 | 237 | 838 |
-
-(kyo and Okay region in the right-nested shape; kyo's foldLeft lane
-is the same O(N²) trap as Reader/Writer, 9011.)
+| shape | **Okay region** | **Okay bracket** | ZIO | cats IO | kyo |
+|---|---|---|---|---|---|
+| right-nested | **15.2** | | | | 696 |
+| left-nested | **22.5** | **29** | 116 | 225 | 7912* |
 
 **Generators** — the 1000th Fibonacci number, element by element:
 
 | Iterator | LazyList | **Okay Producer** | Okay LazyList | kyo | ZStream | fs2 |
 |---|---|---|---|---|---|---|
-| 12 | 13.5 | **18.4** | 35 | 61 | 172 | 245 |
+| 11.7 | 16.2 | **19.2** | 35.5 | 70.7 | 175 | 268 |
 
 Interop: cats, ZIO, kyo, fs2, Kafka, Spark, Flink, JDBC — and the JDK
 itself (`okay-java`), where `Aggregator` IS `java.util.stream.Collector`

@@ -1,5 +1,36 @@
 # Changelog
 
+## readme-lanes — the front page was quoting the lanes this page stopped printing
+
+`lane-fairness` (2026-09-08) fixed the tables in docs/benchmarks.md and
+`bench-stale-tables` fixed the four that had been reported refreshed and
+were not. Nobody re-read README.md, which is the file people actually
+read first, and it was carrying the older, mismatched pairings — the
+exact defect those two sessions existed to remove:
+
+- Stream pipeline: `Okay chunked 16.9 | ZIO 692 | fs2 1410`. Okay's
+  number was the chunked lane and the competitors' were their
+  per-element `iterate`/singleton spellings. The fair row, every lane
+  one chunk, is `Staged 1.70 | chunked 8.22 | default-64 10.21 |
+  fs2 emits 21.9 | Okay elements 24.5 | ZStream.range 35.8 |
+  kyo Stream.range 65.9`, against an Iterator floor of 15.2.
+- Merge: `fs2 9031` was fs2's singleton source. Chunk-native fs2 is
+  94.4, against okay 13.3 and ZIO 51.5.
+- Reader, Writer and Resource put okay's right-nested numbers in one
+  row with competitors' left-nested ones. All three are now split by
+  shape, as §2 and §7 have been since kyo-fair-lanes.
+- Fork/join, bind chain, Choice and Generators were simply stale
+  (fork/join said 29 us against a raw-Loom 21; the 2026-09-08 run reads
+  okay 24.0, raw Loom 21.8 — and kyo 18.5, which is a loss and is now
+  printed as one on the front page too).
+
+Every number on README.md now comes from the 2026-09-08 run and every
+competitor's number from the same shape and the same granularity as
+ours, with the lane rule stated where the tables start. The two summary
+passages further up the page (the "Fast — and measured" bullet, the
+consumption-modes table, the merge and fork/join lines) were stale in
+the same way and were re-measured from the same run.
+
 ## row-ergonomics — a constructor's row, and a step a program may decline
 
 Closes `row-polymorphic constructors`, which had been on the backlog
