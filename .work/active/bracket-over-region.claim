@@ -1,0 +1,67 @@
+task: bracket-over-region
+agent: opus5-intent
+started: 2026-09-09
+branch: feature/bracket-over-region
+worktree: ../okay-wt-bracket
+
+why: one of the four items SPRINT.md names as open for whoever picks
+  next, and the only one of them that is a plain measured gap rather
+  than a research programme. The entry is one sentence and a number:
+
+    bracket-over-region — `okayBracket` 27.2 against `okayResource`
+    22.4 (§7), 21%.
+
+  docs/benchmarks.md §7 publishes the same gap from another session
+  (region 22.5, bracket 29) under a heading that reads as if the two
+  columns did the same work.
+
+FIRST QUESTION, and it must be asked before any optimisation: IS THIS
+A PAIR? This repository has been bitten by exactly that
+(benchmark-pairing-rule: five "we lose" rows against ZIO were
+mismatched). Read:
+
+  - `okayBracket` acquires, uses and releases N times, releasing
+    EAGERLY after each use.
+  - `okayResource` acquires N times in ONE region and releases all N
+    at the end, in reverse.
+
+  Different semantics — but comparable work: N acquires and N
+  releases either way. The region additionally builds a list of N
+  finalizers; bracket keeps a depth of one. So the pair is defensible
+  and the gap is a real question, not an artefact. What the table
+  must not do is imply the two are interchangeable, which its heading
+  currently does.
+
+WHERE I EXPECT THE 21% TO BE. `bracket` is:
+
+    pure[F, Unit](()).flatMap: _ =>
+      val r = acquire
+      try pure(use(r).runWith)
+      finally release(r)
+
+  per step: one `pure`, one `flatMap`, one more `pure` — and
+  `use(r).runWith`, which is A WHOLE NESTED INTERPRETER RUN inside
+  each bracket. The region is one drive over a while-loop with a
+  finalizer list, which the doc already says is "visible in the
+  number".
+
+DISQUALIFYING EVIDENCE, registered before the work:
+
+  - the nested `runWith` is not an accident, it is the GUARANTEE:
+    "the use-program runs to completion inside one suspension, so no
+    outer handler can skip or repeat the release". If the 21% is that
+    run, then removing it is not an optimisation, it is a weakening,
+    and the honest answer is to price it and decline — as
+    source-unfold-tuple, drain-copy-per-element, jiffy-hole-scan and
+    adaptive-concurrency were all declined this week.
+  - one round lies. Per-lane minimum of 3+, and the box has carried
+    sibling builds all evening; a control lane must hold across the
+    rounds or the numbers are the machine.
+  - 21% of 27 microseconds per 1000 steps is 5 nanoseconds a step. It
+    has to be worth having before it is worth doing.
+
+predict: MOSTLY THE NESTED RUN, and therefore mostly not removable.
+  I expect the two spare `pure` nodes to be a minority share — under
+  a third of the gap — and the honest outcome to be a decomposed
+  table plus a corrected §7 heading, not a faster bracket. Recorded
+  so being wrong shows.
