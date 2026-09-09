@@ -59,6 +59,37 @@ SQLite keep a transaction usable after a failed statement). Landed as
 load timeout in okay.intent.TestOfflineGate (48 s under two sibling
 sbts against a 30 s limit; 4 s alone; okay-intent does not depend on
 okay-pg) — noted for that lane, not tagged here.
+## ui-vocab — two vocabulary levels in one tree, each semantic node defined by its lowering
+
+Stage 0 of specs/frontend.md, the operator's frontend direction
+(2026-09-09): the logic of a frontend belongs to the application, the
+drawing to whoever draws, and a client as dumb as a browser must draw
+everything. The tree gains a CLOSED layout level — `Box(dir, weights,
+gap, pad)`, `Image`, `Scroll`, `Input` kinds and `live`, `Button`
+roles, style tones and sizes — and an OPEN semantic level — `Form`,
+`Items`, `Table`, `Tabs`, `Modal` — where a node is admitted only
+with its lowering `Ui.lower`, which is what the node MEANS. Two laws
+make the levels one and are tested: `Ui.keys(s) == Ui.keys(lower(s))`
+under any vocabulary (update cannot tell how the client drew it; only
+the selected tab's page is a capability), and the diff commutes with
+lowering (a form edit is the same SetValue at the same path on either
+tree). `Wire.serve(init, vocab)` lowers before the first line, so the
+Live pages' `live.js` — extended for level L, still ~150 lines —
+never meets a semantic node; the in-process hosts lower at their
+entry (`Ui.diffing`, `React.elem`, `Frame.render`).
+
+Found by the extended DOM battery: a `Replace` of one child of a
+weighted box lost its flex, because the child's element is built
+alone. The box now carries `data-w`, and a patch consumer (Dom,
+live.js) gives a replaced or inserted child its weight from the
+parent it lands in — the same declaration a fresh build makes.
+
+Decisions recorded in the spec: Row/Column stay (an enum case cannot
+alias with its own extractor; level L is nine nodes), `Items` not
+`List` (it would shadow Scala's under `import Ui.*`), numeric form
+fields render as `InputKind.Number`. TestVocab (7), TestDom's battery
+extended; okay-ui 69 + 7, okay-script 166, okay-demo 54, JS and
+Native legs green.
 
 ## handler-fusion-gate — pass fusion measured: 1.13–1.29x, the gate is not cleared, and the cost was never where the model put it
 

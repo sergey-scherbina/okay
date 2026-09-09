@@ -152,7 +152,9 @@ object Live:
       }
       if e.tag == "input" && e.props.exists(_ == ("type", "checkbox")) then attr(sb, "value", "on")
     sb ++= ">": Unit
-    if e.tag != "input" then
+    if e.tag != "input" && e.tag != "img" then
+      // a textarea's value is its content, not an attribute
+      if e.tag == "textarea" then e.props.collectFirst { case ("value", v) => v }.foreach(v => sb ++= escape(v): Unit)
       e.text.foreach(t => sb ++= escape(t): Unit)
       e.children.foreach(render(_, sb, named))
       sb ++= "</" ++= e.tag ++= ">": Unit

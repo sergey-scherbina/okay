@@ -43,3 +43,17 @@ as DATA — the mechanism the stack itself dictates), the raw-DOM
 patch backend (`Dom`), forms from schemas, event-sourced sessions.
 specs/ui.md holds the decisions; docs/typepedia.md the capability
 patterns.
+
+## Two vocabulary levels (specs/frontend.md, stage 0)
+
+The tree has a CLOSED layout level a thin client must draw — `Box`
+with weights/gap/pad (Row/Column are its two plain forms), `Text`
+with style tokens, `Image`, `Input` kinds, `Button` roles, `Check`,
+`Select`, `Scroll` — and an OPEN semantic level — `Form`, `Items`,
+`Table`, `Tabs`, `Modal` — where each node is DEFINED by its lowering
+to level L (`Ui.lower(ui, vocab)`). The laws: `Ui.keys(s) ==
+Ui.keys(lower(s))`, so `update` cannot tell how a client drew a node;
+and the diff commutes with lowering. `Wire.serve(init, vocab)` lowers
+what the client did not claim before the first line; the in-process
+hosts lower at their entry. Stage 1 (ui-protocol) adds the `hello`
+that carries the vocabulary and the derived codecs.

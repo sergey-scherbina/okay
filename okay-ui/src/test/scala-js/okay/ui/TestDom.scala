@@ -95,7 +95,17 @@ class TestDom extends munit.FunSuite {
       Column(Vector(Input("Ada", "name", "Name"), Button("go", "go"), Check(true, "ok", "Ok")), "app"),
       // shape change: replace at the highest differing node
       Column(Vector(Row(Vector(Text("a"), Text("b")), "r")), "app"),
-      Column(Vector(Row(Vector(Text("a"), Text("c")), "r")), "app"))
+      Column(Vector(Row(Vector(Text("a"), Text("c")), "r")), "app"),
+      // stage 0 of specs/frontend.md: the level-L additions, and a
+      // semantic node the backend receives LOWERED (Ui.diffing lowers)
+      Box(Vector(Image("/a.png", "a"), Scroll(Text("s"), "sc"),
+        Input("", "pw", "Pw", InputKind.Secret), Button("go", "go", Role.Primary)),
+        Dir.Horizontal, weights = Vector(1, 2, 1, 1), gap = 1, key = "app"),
+      Box(Vector(Image("/b.png", "b"), Scroll(Text("t"), "sc"),
+        Input("x", "pw", "Pw", InputKind.Secret), Button("go", "go", Role.Primary)),
+        Dir.Horizontal, weights = Vector(1, 2, 1, 1), gap = 1, key = "app"),
+      Form(Vector(Input("", "n", "N"), Input("m", "note", "Note", InputKind.Multiline)), "Save", "f"),
+      Form(Vector(Input("v", "n", "N"), Input("mm", "note", "Note", InputKind.Multiline)), "Save", "f"))
     val (_, root, b) = mount()
     val host = Ui.diffing(b)
     frames.indices.foreach { i =>

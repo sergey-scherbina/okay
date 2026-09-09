@@ -66,7 +66,7 @@ object Forms:
         val events = Ui.focusable(Form.of[A](value)).flatMap {
           // an empty text is NOT posted into the value: an optional
           // field stays absent (None), a required one reads "required"
-          case Ui.Input(_, k, _) => fields.get(k).filter(_.nonEmpty).map(Event.Edited(k, _))
+          case Ui.Input(_, k, _, _, _) => fields.get(k).filter(_.nonEmpty).map(Event.Edited(k, _))
           case Ui.Check(_, k, _) => Some(Event.Toggled(k, fields.contains(k)))
           case Ui.Select(os, _, k) => fields.get(k).map(v => Event.Chosen(k, math.max(os.indexOf(v), 0)))
           case _ => None

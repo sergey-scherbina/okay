@@ -1604,7 +1604,7 @@ measure on our own data, never a predicted result.
       the items above; it is a benchmark harness, not a feature.
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
-- [ ] ui-vocab — specs/frontend.md stage 0: Box with weights/gap/pad
+- [x] ui-vocab — LANDED 2026-09-09 (see specs/frontend.md Results). Original: Box with weights/gap/pad
       (Row/Column as aliases), style tokens, Image, Input kinds,
       Scroll; the semantic level (Form, List, Table, Tabs, Modal) each
       DEFINED by its lowering; `Ui.lower(ui, vocab)`, `Ui.keys`; laws:

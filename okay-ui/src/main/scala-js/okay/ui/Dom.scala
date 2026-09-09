@@ -49,7 +49,7 @@ object Dom {
         else { val _ = root.appendChild(built) }
       case Patch.Replace(path, ui) =>
         val parent = at(path.init)
-        val _ = parent.replaceChild(build(React.elem(ui)), kids(parent)(path.last))
+        val _ = parent.replaceChild(weighed(parent, path.last, build(React.elem(ui))), kids(parent)(path.last))
       case Patch.SetText(path, s) => at(path).textContent = s
       case Patch.SetValue(path, v) => input(at(path)).value = v
       case Patch.SetChecked(path, on) => input(at(path)).checked = on
@@ -69,14 +69,28 @@ object Dom {
       case Patch.Insert(path, i, ui) =>
         val n = at(path)
         val ref = if i < kids(n).length then kids(n)(i) else null
-        val _ = n.insertBefore(build(React.elem(ui)), ref)
+        val _ = n.insertBefore(weighed(n, i, build(React.elem(ui))), ref)
+
+    /** a child built for a weighted box gets its flex from the box's
+     * own data-w — the same declaration `React.elem` gives a fresh
+     * build, so the law holds after a Replace or an Insert */
+    private def weighed(parent: js.Dynamic, i: Int, child: js.Dynamic): js.Dynamic =
+      val w = parent.getAttribute("data-w")
+      if w != null && !js.isUndefined(w) then
+        w.toString.split(" ").lift(i).foreach { wi =>
+          val own = child.getAttribute("style")
+          val base = if own == null || js.isUndefined(own) then "" else own.toString + ";"
+          child.setAttribute("style", base + "flex:" + wi)
+        }
+      child
 
     /** a leaf's editable element: the node itself, or the input
      * inside its label wrapper */
     private def input(n: js.Dynamic): js.Dynamic =
       val tag = n.tagName.toString.toLowerCase
-      if tag == "input" || tag == "select" then n
-      else kids(n).find(c => c.tagName.toString.toLowerCase == "input").getOrElse(n)
+      if tag == "input" || tag == "select" || tag == "textarea" then n
+      else kids(n).find { c =>
+        val t = c.tagName.toString.toLowerCase; t == "input" || t == "textarea" }.getOrElse(n)
 
     /** an Elem, built — the plan is pure, this is the only builder */
     private def build(e: Elem): js.Dynamic =

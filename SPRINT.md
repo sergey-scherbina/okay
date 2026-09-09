@@ -11,7 +11,6 @@
   Fused.stateWriter then the shipping runners. Claimed 2026-09-09
   (.work/active/split-without-either.claim). Next in the same arc:
   handler-fusion-eff (Stage B), claimed when A lands.
-- ui-vocab — specs/frontend.md stage 0, the vocabulary (claim: ui-vocab)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
