@@ -1,0 +1,21 @@
+task: channel-lost-part
+agent: opus5-di
+started: 2026-09-09
+heartbeat: 2026-09-09T11:11:33Z
+status: in-progress
+branch: feature/channel-lost-part
+worktree: ../okay-wt-lostpart
+spec: BACKLOG "Flakes observed" (recorded 2026-09-09 by okay-spring's gate)
+
+why: TestManyToMany 16x16 twice reported one producer's WHOLE 1000
+  elements missing after close, 0 duplicated, both times under memory
+  pressure. A lost element is a defect wherever it shows.
+
+what: first make the test say WHICH of the two it is — `sendBlocking`
+  answers a Boolean and the test discards it (`val _ =`), so a refused
+  send and a lost delivery look identical today. Then reproduce under
+  load, isolate (Growing part assignment vs close-time drain), fix if
+  it is ours, or record the mechanism with a repro if it is the test's
+  own contract.
+
+next: assert the send result, reproduce under load

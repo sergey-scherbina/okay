@@ -2,7 +2,7 @@ package okay.resilience
 
 import okay.*
 import okay.given
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.{AtomicInteger, AtomicReference}
 
 /**
  * The pieces that need a real timer or a real fiber: hedging, a
@@ -13,6 +13,29 @@ import java.util.concurrent.atomic.AtomicInteger
 class TestResilienceTimed extends munit.FunSuite {
 
   def run[A](prog: A ! Async): A = Async.run(prog).runWith
+
+  /**
+   * A timer the TEST fires (hedge-timed-flake). The three assertions
+   * below that say "nothing else started" used to say it by sleeping
+   * past the hedge delay on the real timer — which asserts the BOX's
+   * speed, not the hedge's contract: under load the first attempt
+   * takes longer than the delay, the timer fires exactly as designed,
+   * and the count is 2 (measured 2026-09-09, nine sbt JVMs).
+   *
+   * With this one, no wall clock is involved: after the run has
+   * settled, `fireAll` runs whatever is still armed, and the contract
+   * is that nothing starts, because `start()` is guarded by `done`.
+   */
+  final class ManualTimer extends Timer:
+    private val armed = AtomicReference(Vector.empty[() => Unit])
+    def after(millis: Long)(k: () => Unit): () => Unit =
+      armed.updateAndGet(_ :+ k)
+      () => { armed.updateAndGet(_.filterNot(_ eq k)); () }
+    /** run every callback still armed; answers how many there were */
+    def fireAll(): Int =
+      val ks = armed.getAndSet(Vector.empty)
+      ks.foreach(_())
+      ks.size
 
   /** a program that answers after `ms` on the platform timer */
   def after[A](ms: Long)(a: => A): A ! Async =
@@ -33,21 +56,25 @@ class TestResilienceTimed extends munit.FunSuite {
     assertEquals(cancelled.get, 1)
   }
 
-  test("hedge: a fast first attempt never starts a second") {
+  test("hedge: a fast first attempt never starts a second, however late the timer fires") {
+    val timer = ManualTimer()
     val starts = AtomicInteger(0)
-    val got = run(Hedge.run(20)(okay.async { starts.incrementAndGet(); "first" }))
+    val got = run(Hedge.run(20)(okay.async { starts.incrementAndGet(); "first" })(using summon[Scheduler], timer))
     assertEquals(got, "first")
-    Thread.sleep(60)   // past the hedge delay: still one
+    assertEquals(starts.get, 1)
+    timer.fireAll()          // whatever survived the settle fires now
     assertEquals(starts.get, 1)
   }
 
   test("hedge: a failure is not slowness — the only attempt failing is the answer, nothing else starts") {
     val starts = AtomicInteger(0)
+    val timer = ManualTimer()
     val e = intercept[RuntimeException](run(Hedge.run(20)(okay.async[String] {
       starts.incrementAndGet(); throw RuntimeException("no")
-    })))
+    })(using summon[Scheduler], timer)))
     assertEquals(e.getMessage, "no")
-    Thread.sleep(60)
+    assertEquals(starts.get, 1)
+    timer.fireAll()
     assertEquals(starts.get, 1)
   }
 
