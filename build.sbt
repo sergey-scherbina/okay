@@ -1096,6 +1096,10 @@ lazy val okayUi = crossProject(JVMPlatform, JSPlatform, NativePlatform)
       baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm-native",
     Compile / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "main" / "scala-form",
+    // the Swing host (ui-native-toolkits): the JVM's own toolkit as a
+    // Backend over the same seam, zero dependencies, headless-testable
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
   )
   .nativeSettings(
     Compile / unmanagedSourceDirectories +=

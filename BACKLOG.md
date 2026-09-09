@@ -1672,7 +1672,7 @@ measure on our own data, never a predicted result.
       (Kotlin, no okay dependency) drawing level L, passing the
       conformance script; the same server drives browser + Compose at
       once; Scala Native + GTK or Swing as the out-of-the-box leg.
-- [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
+- [x] ui-native-toolkits — LANDED 2026-09-09 as the Swing host (`Swing.backend/host/window`, TestSwing headless); GTK/Cocoa satellites stay filed here: no GTK headers on the box, a binding nobody can compile is not out of the box. Original: GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
 
 ## okay-codec

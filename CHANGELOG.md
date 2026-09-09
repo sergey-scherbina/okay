@@ -1,5 +1,28 @@
 # Changelog
 
+## ui-native-toolkits — the Swing host: the JVM's own toolkit over the same seam, headless-tested by the DOM battery
+
+The "out of the box" native leg specs/frontend.md left open.
+`Swing.backend(container)` is a patch Backend built exactly as the raw
+DOM one is: the tree is the plan, `Ui.patch` keeps a mirror so events
+interpret against a value, `React.event` is the one pure
+interpretation, and a patch path walks `getComponents` index for
+index (an Input's label wrapper is a leaf's root, a Scroll's child is
+its viewport's view). `Swing.host` is `Ui.diffing` over it — semantic
+nodes arrive lowered, Form is level L — and `Swing.window` is the one
+thing that needs a display. Zero dependencies; a JVM-only source
+directory (`scala-jvm`) added to okay-ui.
+
+Headless, TestSwing (3): the DOM law battery verbatim plus semantic
+frames (patching frame by frame equals building the last frame), a
+keyed shuffle MOVES the same component instances, and delegated
+events round-trip by key while a patch's own SetValue is applied, not
+spoken. An application now runs unchanged on the terminal, under
+React, on the raw DOM, in a Swing window, and over the wire to a
+browser or the Compose client. GTK via Scala Native is not here: the
+machine has no GTK headers, and a binding nobody can compile is not
+out of the box — it stays filed.
+
 ## docs-dynamo — the DynamoDB adapter of the Docs seam: condition expressions as Cond, GSIs as indexes, SigV4 without an SDK
 
 Lane 7 of 7 of the persistence audit; the arc closes. `Docs` was

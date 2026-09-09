@@ -18,6 +18,7 @@ because subscriptions are `merge`.
 | `Host` | the seam, React-shaped: hand over the whole tree — two functions, like `Link` |
 | `Frame` | the terminal's pure half: frames are `Vector[String]`, keys interpret against the tree — tested with no tty |
 | `Terminal.host()` / `Terminal.raw` | the thin impure edge: stty, stdin, painting (JVM + Native) |
+| `Swing.backend` / `Swing.host` / `Swing.window` | the JVM's own toolkit over the same seam: zero dependencies, headless-tested by the DOM battery (ui-native-toolkits) |
 | `React.elem` / `ReactJs.host` | pure `Ui => Elem` (JVM-tested), five lines of js glue over any `createElement`-shaped global — React, Preact, likes |
 | `Form` | the fifth algebra over `Schema`: a form rendered from the same schema that decodes it; plus the dynamic (JSON Schema) side elicitation needs |
 

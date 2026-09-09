@@ -254,14 +254,31 @@ Stage 3 — the first thin client (ui-compose, LANDED 2026-09-09):
       headless smoke (`./gradlew :app:smoke`) opened the page's own
       WebSocket, received the tree, pressed `inc`, and held
       `count: 1` after the server's patch — measured, not inferred
-- [ ] Scala Native + GTK (or Swing on the JVM) as a host over the same
-      seam — the "out of the box" leg: DEFERRED, its own claim
-      (ui-native-toolkits in BACKLOG); nothing in stages 0-3 needs it
+- [x] Swing on the JVM as a host over the same seam — the "out of the
+      box" leg (ui-native-toolkits, LANDED 2026-09-09): `Swing.backend`
+      is a patch Backend built exactly as `Dom` is (the tree is the
+      plan, a mirror for events, `React.event` the one interpretation,
+      paths walk `getComponents`), `Swing.host` the diffing Host,
+      `Swing.window` the one thing that needs a display. Headless:
+      the DOM law battery verbatim plus semantic nodes lowered, a
+      keyed shuffle MOVES the same component instances, delegated
+      events round-trip by key and a patch's own change is not a
+      user. GTK via Scala Native is NOT here: the machine has no GTK
+      headers (`pkg-config gtk+-3.0` fails), and a binding nobody can
+      compile is not out of the box — filed, not claimed
 - [ ] Android: the composables are common code, but no SDK is on the
       build machine; the `androidTarget()` is added when one is, so
       the build that is checked in is the build that runs
 
 ## Results
+
+ui-native-toolkits landed 2026-09-09: `okay-ui/src/main/scala-jvm/
+okay/ui/Swing.scala` (~160 lines), TestSwing (3, headless). An
+application now runs unchanged on the terminal, under React, on the
+raw DOM, in a Swing window, over the wire to a browser or a Compose
+client. Weights are BoxLayout's natural sizes (a GridBag would need a
+second index space); pad is a border; gap is not drawn — recorded,
+not hidden.
 
 Stage 3 (ui-compose) landed 2026-09-09. `okay-compose/README.md` is
 the entry: `cd okay-compose && ./gradlew :protocol:test` is the
