@@ -331,7 +331,7 @@ final class FileStore(root: Path) extends Store:
           if channel != null then
             try channel.close() catch case _: Throwable => ()
             channel = FileChannel.open(segments.last.path, StandardOpenOption.WRITE)
-            channel.position(segments.last.size)
+            channel.position(segments.last.size): Unit
 
     def begin: Long = synchronized(segments.head.base)
     def end: Long = synchronized { refresh(deep = true); endUnsafe }

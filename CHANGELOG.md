@@ -1,5 +1,33 @@
 # Changelog
 
+## gate-warnings — the zero-warning policy made true again, twelve in four files
+
+AGENTS.md's rule is no warnings, ever — main, test AND Jmh, any
+platform — and master had drifted twelve past it, spread over four
+files from four different lanes. That is the failure mode the rule
+exists to prevent: each landing's own gate was green on what it
+touched, and nobody's gate was the repository's.
+
+All twelve are mechanical and no behaviour moved:
+- `okay-persist/FileStore.scala` — `channel.position(...)` answers a
+  `FileChannel` nobody wants: `: Unit`.
+- `okay-spark/TestWroclawStages.scala` — five `timed(label) { ... }`
+  stages discard the counts they time. The suite's whole point is the
+  PRINTED timings (its own comment: "kept as the profile to re-read
+  before the next optimisation is believed"), so `: Unit` is the
+  honest fix; an assertion would change what the suite is. Plus two
+  unused imports.
+- `okay-resilience/TestResilienceTimed.scala` — two `timer.fireAll()`
+  whose count neither call site uses.
+- `src/test/scala-jvm/TestPlan.scala` — one unused import.
+
+Checked before touching any of them: none is a discarded PROGRAM
+(`A ! F`), which `: Unit` does NOT silence — build.sbt:41 makes that
+an error and its fix is to run or flatMap the program. Verified with
+a CLEAN `Test/compile` (an incremental one hides warnings in files it
+did not touch): 0 warnings, 0 errors; both Jmh configurations from
+cleared targets likewise.
+
 ## lexer-state-allocation — half the lever moved, and the other half is blocked for a reason worth writing down
 
 The target was measured, not guessed: lexing allocates ~180 bytes per

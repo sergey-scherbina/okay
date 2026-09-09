@@ -62,7 +62,7 @@ class TestResilienceTimed extends munit.FunSuite {
     val got = run(Hedge.run(20)(okay.async { starts.incrementAndGet(); "first" })(using summon[Scheduler], timer))
     assertEquals(got, "first")
     assertEquals(starts.get, 1)
-    timer.fireAll()          // whatever survived the settle fires now
+    timer.fireAll(): Unit    // whatever survived the settle fires now
     assertEquals(starts.get, 1)
   }
 
@@ -74,7 +74,7 @@ class TestResilienceTimed extends munit.FunSuite {
     })(using summon[Scheduler], timer)))
     assertEquals(e.getMessage, "no")
     assertEquals(starts.get, 1)
-    timer.fireAll()
+    timer.fireAll(): Unit
     assertEquals(starts.get, 1)
   }
 
