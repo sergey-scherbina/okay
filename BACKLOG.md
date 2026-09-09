@@ -9,12 +9,16 @@
       A whole-plan rewrite needs a first-order plan (`Pipeline`'s
       shape), because a `Free` continuation cannot be looked ahead of;
       filed below as bulk-plan if the need appears.
-- [ ] bulk-plan — a first-order operator tree for `Tables` (the
-      `Pipeline` shape) that `Tables.via` interprets, so that rewrites
-      can see the whole plan: column pruning into `Read`, join
-      reordering by size. Only with a workload that needs it; the
-      broadcast decision already lives where the interpreter can make
-      it.
+- [x] bulk-plan — DONE 2026-09-09: `Tables.Plan`, a heap of plans
+      forced at actions, `Columns` pushed into `Read` (Spark 2.5 →
+      1.3 s, local 1.9 → 0.95 s on stop_times ⋈ trips) and joins turned
+      small-side-right by `Plan.estimate` (Spark 5.0 → 2.6 s, local
+      3.3 → 2.2 s on three joins written the wrong way round).
+- [ ] bulk-plan-next — with a workload that asks: a `Where` whose
+      predicate is structural (a column equals a value) pushed under a
+      join, and a size estimate for a held table from the count its
+      `Cache` already made. Neither is worth a line until something
+      measures for it.
 - [ ] bulk-parquet — `Bulk.csv` is the only source; the taxi demo
       (TestTaxiAlgebra) still reads its parquet through Spark's API.
       A `source` per format, or `Bulk.read(Format)`, with the local

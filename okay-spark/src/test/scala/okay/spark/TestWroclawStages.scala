@@ -5,6 +5,7 @@ import okay.given
 import okay.Tables.{read, of}
 import okay.RowLift.plus
 import okay.Direct.{direct, unary_!}
+import okay.Chunks.elements
 import org.apache.spark.sql.SparkSession
 import java.io.File
 
@@ -60,7 +61,36 @@ class TestWroclawStages extends munit.FunSuite:
         (!d.aggregate(Aggregator.count[Dep]), !d.aggregate(Aggregator.count[Dep]))
       }) }
 
+  /** the plan rewrite, A/B: the same program with and without it */
+  def rewrite[D[_]](B: Bulk[D], name: String): Unit =
+    println(s"  --- $name, the rewrite")
+    def wrongWayRound: Long ! Tables = direct {
+      // every join written with the SMALL side on the left, and no columns
+      val st = !read(file("stop_times.txt")).select(r => r("trip_id") -> r("departure_time"))
+      val tr = !read(file("trips.txt")).select(r => r("trip_id") -> (r("route_id"), r("service_id")))
+      val ro = !read(file("routes.txt")).select(r => r("route_id") -> (r("route_type2_id").toInt == 31))
+      !tr.join(st).select { case (_, ((r, s), t)) => r -> (t, s) }.join(ro).aggregate(Aggregator.count[Any])
+    }
+    def pruned: Long ! Tables =
+      read(file("stop_times.txt")).columns("trip_id", "departure_time").select(r => r("trip_id") -> r("departure_time"))
+        .join(read(file("trips.txt")).columns("trip_id", "route_id", "service_id").select(r => r("trip_id") -> (r("route_id"), r("service_id"))))
+        .aggregate(Aggregator.count[Any])
+    def unpruned: Long ! Tables =
+      read(file("stop_times.txt")).select(r => r("trip_id") -> r("departure_time"))
+        .join(read(file("trips.txt")).select(r => r("trip_id") -> (r("route_id"), r("service_id"))))
+        .aggregate(Aggregator.count[Any])
+    def run(p: Long ! Tables, rewrite: Boolean): Long =
+      State.run(Tables.Heap.empty[D])(Tables.via(B, rewrite = rewrite)(p.plus[okay.Pure]))._2
+    val a = timed("joins small-side-left, as written")(run(wrongWayRound, false))
+    val b = timed("joins small-side-left, rewritten")(run(wrongWayRound, true))
+    assertEquals(a, b)
+    val c = timed("read all columns, join")(run(unpruned, false))
+    val d = timed("columns pushed into the read, join")(run(pruned, true))
+    assertEquals(c, d)
+
   test("stages") {
     stages(SparkBulk(spark), "spark")
     stages(okay.localBulk, "local")
+    rewrite(SparkBulk(spark), "spark")
+    rewrite(okay.localBulk, "local")
   }

@@ -267,7 +267,11 @@ Over the seam the same road is an EFFECT, `Tables`: the plan is a value
 (`!.tracing` prints it), the handler is one translation into
 `State % Heap[D]` for every platform, and an operation the seam lacks —
 `Sort` — is a new signature in the row, answered through the primitives
-or natively, with no platform's build touched.
+or natively, with no platform's build touched. The heap holds plans, not
+values: an action forces a table's whole lineage as one `Tables.Plan`
+tree, rewritten first — a `columns(...)` projection pushed into the
+read so the platform prunes at the parser, the smaller side of a join
+turned to the right — and measured to pay on both platforms.
 
 Both sides of that algebra are specialized, and the split is the same
 one everywhere: where the step is written at the call site, `inline`

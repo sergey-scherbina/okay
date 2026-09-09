@@ -249,6 +249,12 @@ same material with the measurements attached.
   have, added as a signature in the row: `Sort.viaTables` (through the
   primitives, any platform) or `SparkBulk.sort` (native). Direct style
   binds handles with a mark: `val deps = !departures.cache`.
+  **`Tables.Plan[A]`** — the first-order tree a building operation puts
+  on the heap (`Of`, `Read`, `Columns`, `Select`, `Expand`, `Where`,
+  `Join`, `Held`); an action forces it — `Plan.optimize` (a `Columns`
+  into its `Read`, the smaller join side to the right by
+  `Plan.estimate`) then `Heap.compile` through the instance.
+  `Plan.show` prints it.
 
   `fold` is the seam the specialization travels through, so it is not
   final: **`Aggregator.OfLong` / `OfDouble` / `OfInt`** override it to

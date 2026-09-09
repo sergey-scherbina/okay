@@ -74,8 +74,26 @@ object SparkBulk:
   /** right sides up to this many rows are broadcast rather than shuffled */
   val broadcastRows: Int = 100_000
 
-  def apply(spark: SparkSession): okay.Bulk[Rows] = new okay.Bulk[Rows]:
+  def apply(spark: SparkSession): SparkBulk = new SparkBulk(spark)
+
+  final class SparkBulk(spark: SparkSession) extends okay.Bulk[Rows]:
     def of[A](xs: Iterable[A]): Rows[A] = spark.sparkContext.parallelize(xs.toSeq)
+
+    /** what the plan rewrite orders joins by: the file, when it is one */
+    override def size(path: String): Option[Long] =
+      val f = new java.io.File(path)
+      Option.when(f.isFile)(f.length)
+
+    /** pruned at the PARSER: Spark's CSV reader only materialises the
+     * columns selected, which is what the rewrite pushed down for */
+    override def csv(path: String, columns: Option[Set[String]]): Rows[okay.Csv.Row] = columns match
+      case None => csv(path)
+      case Some(cs) =>
+        val all = spark.read.option("header", "true").csv(path)
+        val keep = all.columns.filter(c => cs(c.stripPrefix("﻿")))
+        val df = all.select(keep.map(org.apache.spark.sql.functions.col)*)
+        val names = keep.map(_.stripPrefix("﻿")).toVector
+        df.rdd.map(r => names.iterator.zip(r.toSeq.iterator.map(v => if v == null then "" else v.toString)).toMap)
 
     /** Spark's own CSV reader, the header as names; a BOM on the first
      * column is stripped, an absent value is the empty string */
@@ -119,22 +137,24 @@ object SparkBulk:
     def toChunks[A](d: Rows[A]): okay.Chunks[A] =
       okay.Chunks.fromIteratorWith(d.toLocalIterator.map(elem[A]))(okay.ChunkBuf.factory[A](64))(64)
 
-  /**
-   * `Sort` answered NATIVELY (specs/bulk.md, the effect layer): Spark's
-   * own sort over the same heap `Tables.via` threads. Nothing in the
-   * `Tables` handler knows this exists — both translate into the same
-   * `State % Heap[Rows]`, which is how an operation joins a platform
-   * without joining the platform's contract. Keys travel as `Any` like
-   * elements do, and come back through the same `elem`.
-   */
-  def sort[A, F[+_]](p: A ! (okay.Sort + F)): A ! (okay.State % okay.Tables.Heap[Rows] + F) =
-    import okay.RowLift.plus
-    def sorted[X, K](h: okay.Tables.Heap[Rows], t: okay.Tables.Table[X], key: X => K, ord: Ordering[K])
-    : (okay.Tables.Table[X], okay.Tables.Heap[Rows]) =
-      val keyed: RDD[(Any, Any)] = h.get(t).map(x => (key(elem[X](x)): Any, x))
-      val byKey = Ordering.fromLessThan[Any]((a, b) => ord.lt(elem[K](a), elem[K](b)))
-      h.put[X](RDD.rddToOrderedRDDFunctions(keyed)(using byKey, scala.reflect.ClassTag.Any, scala.reflect.ClassTag.Any)
-        .sortByKey().values)
-    okay.!.interpret(p):
-      [X] => (e: okay.Sort[X]) => e match
-        case okay.Sort.By(t, key, ord) => okay.State.update[okay.Tables.Heap[Rows], X](h => sorted(h, t, key, ord)).plus[F]
+    /**
+     * `Sort` answered NATIVELY (specs/bulk.md, the effect layer): Spark's
+     * own sort over the same heap `Tables.via` threads. Nothing in the
+     * `Tables` handler knows this exists — both translate into the same
+     * `State % Heap[Rows]`, which is how an operation joins a platform
+     * without joining the platform's contract. The child is FORCED
+     * (rewritten and compiled) here, and the sorted RDD is held: a
+     * native operation is a materialised boundary in the plan. Keys
+     * travel as `Any` like elements do, and come back through `elem`.
+     */
+    def sort[A, F[+_]](p: A ! (okay.Sort + F)): A ! (okay.State % okay.Tables.Heap[Rows] + F) =
+      import okay.RowLift.plus
+      def sorted[X, K](h: okay.Tables.Heap[Rows], t: okay.Tables.Table[X], key: X => K, ord: Ordering[K])
+      : (okay.Tables.Table[X], okay.Tables.Heap[Rows]) =
+        val keyed: RDD[(Any, Any)] = h.force(t)(this).map(x => (key(elem[X](x)): Any, x))
+        val byKey = Ordering.fromLessThan[Any]((a, b) => ord.lt(elem[K](a), elem[K](b)))
+        h.hold[X](RDD.rddToOrderedRDDFunctions(keyed)(using byKey, scala.reflect.ClassTag.Any, scala.reflect.ClassTag.Any)
+          .sortByKey().values)
+      okay.!.interpret(p):
+        [X] => (e: okay.Sort[X]) => e match
+          case okay.Sort.By(t, key, ord) => okay.State.update[okay.Tables.Heap[Rows], X](h => sorted(h, t, key, ord)).plus[F]

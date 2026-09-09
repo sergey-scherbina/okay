@@ -1,5 +1,41 @@
 # Changelog
 
+## bulk-plan — the whole plan as a tree, and two rewrites that pay
+
+The effect layer could see one operation at a time (a `Free`
+continuation is a function). Now the heap holds PLANS: a building
+operation puts a node of the first-order `Tables.Plan` tree on the heap
+and runs nothing; an action (`Cache`, `Aggregate`, `Collect`) forces
+the table it names — its whole lineage is one tree by then —
+`Plan.optimize` rewrites it, `Heap.compile` turns it into the platform's
+value through `Bulk[D]`, and only then does anything run. The `Tables`
+effect and `Sort` are unchanged on the outside; a native extension
+forces its child and holds the result (`Plan.Held`).
+
+Two rewrites, each measured A/B in one run on both platforms
+(`TestWroclawStages`):
+
+- **A projection meets its read.** `columns("trip_id", "departure_time")`
+  is structural — names, not a function — so `Columns(Read(p))` becomes
+  `Read(p, cols)` and the platform prunes at the PARSER. `Bulk.csv(path,
+  columns)` is a default method (no instance breaks); the local
+  instance never puts a dropped column in a Map, Spark selects before
+  `.rdd`. stop_times ⋈ trips: Spark 2.5 → 1.3 s, local 1.9 → 0.95 s.
+  A `Columns` above a `Select` stays put: a function is opaque.
+- **The small side goes right.** `Plan.estimate` (a read's file size
+  from `Bulk.size`, a count for `Of`, the child's for a step, the
+  larger for a join, unknown for a held table) orders a join's sides;
+  a join written small-side-left is turned and its answer turned back
+  by `turned` — typed, no cast. Three joins written the wrong way
+  round: Spark 5.0 → 2.6 s, local 3.3 → 2.2 s. Unknown means no guess.
+
+`Plan.show` prints the tree; the demo prints the departures' lineage as
+Spark ran it. The whole analysis: local 6.7 → 4.9 s with the pruned
+reads; Spark's figure moved between 8 and 13 s across runs on this box
+and is not quoted as a rewrite result — the same-run A/B pairs above
+are. `TestPlan` pins the rules; every earlier suite still agrees on
+every answer.
+
 ## bulk-rewrite — the backlog's premise measured and refuted; the two costs that were real, removed
 
 `bulk-join-cost` said the RDD-level join was why the seam's build read
