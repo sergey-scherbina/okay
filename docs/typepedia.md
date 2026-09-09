@@ -230,6 +230,17 @@ same material with the measurements attached.
   the same contract Spark's `seqOp` has. The persistent-`Vector`
   versions they replaced cost 3x, 12x and 580x respectively.
 
+- **`Bulk[D[_]]`** — a collection too large to be in one place, as a
+  typeclass: `of`, `csv`, `map`, `flatMap`, `filter`, `join` (the
+  equi-join), `cache`, `aggregate(agg)`, `toChunks`. Instances:
+  `Bulk[Chunks]` (core, files read by scala-jvm), `SparkBulk.Rows`
+  (okay-spark, an opaque `RDD[Any]` — one documented cast, no
+  `ClassTag` per intermediate type), `java.util.List` over parallel
+  streams (okay-java `Parallel`). The extension methods are the
+  collection view for code generic in `D`; a concrete `Chunks` is a
+  program and its own `map` wins, so local code calls `B.map(d)(f)`.
+  **`Csv`** — the RFC 4180 subset on one line, `Row = Map[String, String]`.
+
   `fold` is the seam the specialization travels through, so it is not
   final: **`Aggregator.OfLong` / `OfDouble` / `OfInt`** override it to
   hand over the matching `Fold.OfX`. `count` is one; `sum` selects one

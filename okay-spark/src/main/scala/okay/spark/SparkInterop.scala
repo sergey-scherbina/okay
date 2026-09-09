@@ -2,7 +2,7 @@ package okay.spark
 
 import okay.Aggregator
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.{Dataset, Encoder}
+import org.apache.spark.sql.{Dataset, Encoder, SparkSession}
 
 /**
  * Spark via the P1 contract (specs/external-systems.md): an okay
@@ -48,3 +48,55 @@ object SparkInterop {
                              (using Encoder[Acc], Encoder[Out]): Out =
     ds.select(toSpark(agg).toColumn).collect().head
 }
+
+/**
+ * The `Bulk` seam on Spark (specs/bulk.md): one `RDD[Any]` under an
+ * opaque wrapper, so a program written against `Bulk[D]` needs no
+ * `ClassTag` per intermediate type — the evidence Spark would
+ * otherwise ask for at every `map`. Every element IS an object on
+ * Spark's side; this says so in the type and pays for it once, in
+ * `elem`, the one cast (the `Refs.slot` precedent: the wrapper is the
+ * proof, the cast is erased).
+ *
+ * What the `Any` costs and does not: a `ClassTag[Long]` would have let
+ * `collect` build a `long[]`; the seam never asks for an array — it
+ * leaves through `toLocalIterator`, one partition at a time — so the
+ * only difference is a boxed element where Spark boxes it anyway.
+ */
+object SparkBulk:
+  opaque type Rows[A] = RDD[Any]
+
+  private given scala.reflect.ClassTag[Any] = scala.reflect.ClassTag.Any
+
+  /** the one cast: an element of `Rows[A]` is an `A` by construction */
+  private inline def elem[A](x: Any): A = x.asInstanceOf[A]
+
+  def apply(spark: SparkSession): okay.Bulk[Rows] = new okay.Bulk[Rows]:
+    def of[A](xs: Iterable[A]): Rows[A] = spark.sparkContext.parallelize(xs.toSeq)
+
+    /** Spark's own CSV reader, the header as names; a BOM on the first
+     * column is stripped, an absent value is the empty string */
+    def csv(path: String): Rows[okay.Csv.Row] =
+      val df = spark.read.option("header", "true").csv(path)
+      val names = df.columns.map(_.stripPrefix("﻿")).toVector
+      df.rdd.map(r => names.iterator.zip(r.toSeq.iterator.map(v => if v == null then "" else v.toString)).toMap)
+
+    def map[A, B](d: Rows[A])(f: A => B): Rows[B] = d.map(x => f(elem[A](x)))
+    def flatMap[A, B](d: Rows[A])(f: A => IterableOnce[B]): Rows[B] = d.flatMap(x => f(elem[A](x)))
+    def filter[A](d: Rows[A])(p: A => Boolean): Rows[A] = d.filter(x => p(elem[A](x)))
+
+    def join[K, A, B](l: Rows[(K, A)], r: Rows[(K, B)]): Rows[(K, (A, B))] =
+      val lp: RDD[(Any, Any)] = l.map(x => elem[(Any, Any)](x))
+      val rp: RDD[(Any, Any)] = r.map(x => elem[(Any, Any)](x))
+      RDD.rddToPairRDDFunctions(lp).join(rp).map(x => x)
+
+    def cache[A](d: Rows[A]): Rows[A] = d.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
+
+    def aggregate[A, Acc, Out](d: Rows[A])(agg: Aggregator[A, Acc, Out]): Out =
+      val acc: Any = d.aggregate[Any](agg.init)(
+        (acc, x) => agg.add(elem[Acc](acc), elem[A](x)),
+        (a, b) => agg.merge(elem[Acc](a), elem[Acc](b)))
+      agg.present(elem[Acc](acc))
+
+    def toChunks[A](d: Rows[A]): okay.Chunks[A] =
+      okay.Chunks.fromIteratorWith(d.toLocalIterator.map(elem[A]))(okay.ChunkBuf.factory[A](64))(64)
