@@ -1429,6 +1429,9 @@ construction instead of a type test per value).
   `Error during tests:` naming whichever suite was in flight, and NOT
   ONE `==> X` anywhere. The module passes alone. It is a lost test
   process; the runner reports no exception, no stack, no output.
+  (READ "THE CAUSE" BELOW FIRST: for shape B "lost" is measurably the
+  wrong word — nobody killed that process, it exited 0 — and the same
+  test applies to shape A's logs.)
 
   WHAT IS RULED OUT, measured, so nobody repeats it:
   - the scalascript RAM guard — its log reads `killed=0` at both
@@ -1463,12 +1466,81 @@ construction instead of a type test per value).
   and nothing after it; the memorystatus window 18:47–18:56 has ZERO
   lines (no jetsam, as before). Box at the time: 5.6 GB of 7 GB swap
   used, 273 885 pageouts, a sibling sbt at 500% CPU. So the same
-  family — a lost test process under memory pressure — and gate.sh
+  family — a lost test process under memory pressure (WRONG on both
+  counts for this shape; corrected under THE CAUSE below by the agent
+  who wrote this paragraph) — and gate.sh
   should learn this shape too: a `(<m>Native / Test / executeTests)`
   error line carrying `RunTerminatedException` with no `==> X` in the
   log is the rerun-alone case, not a real red; `--read` on the saved
   log (scratchpad gate-failing-over-full.log of that session, or the
   next occurrence's) is the test for the change.
+
+  THE CAUSE, half settled (native-runner-cause, 2026-09-09). The
+  entry called this "a lost test process" for a day. For shape B that
+  is measurably wrong, and the correction comes from the runner's own
+  code rather than from the symptom:
+
+  - `ProcessRunner` (test-runner 0.5.12) fails its promise with
+    "Process … finished with non-zero value N" on any non-zero exit,
+    and above 128 also logs "Test runner interrupted by fatal signal
+    N"; `ComRunner` then logs "Force close …"; and the
+    `RunTerminatedException` sbt finally prints CARRIES that failure
+    as its cause.
+  - The failing gate log has NONE of those three lines, and its
+    `RunTerminatedException` has no cause at all — one `Caused by`,
+    nothing under it. `NativeRunnerRPC` builds it from
+    `t.failed.toOption`, so no cause means the com run SUCCEEDED,
+    which `ComRunner` only does when the process exited ZERO.
+  - `TestMain` exits 0 in exactly two cases, both in `NativeRPC.loop`:
+    end of stream, or a message length <= 0. Nothing else in that
+    binary returns 0 while a call is pending.
+
+  MEASURED, not merely read — `scripts/native-runner-probe.java`
+  drives a real okay Native test binary the way ComRunner does and
+  ends the connection four ways (on okay-lex-test, 2026-09-09):
+
+      close-socket  exit=0    printed nothing
+      zero-length   exit=0    printed nothing
+      sigterm       exit=143  printed nothing
+      sigkill       exit=137  printed nothing
+
+  So the two signal shapes are exactly the ones that WOULD have been
+  logged and were not. Nobody killed that process. Its connection
+  ended and it left, cleanly and silently, while sbt still had a call
+  in flight — which is why the error is an sbt-side `ClosedException`
+  and why the module has no test report at all.
+
+  ALSO RULED OUT BY COMMAND (this occurrence):
+  - the RAM guard: its log has only `SPARE` decisions in the window
+    and `killed=0` at every tick, with 6.9–8.5 GB available
+  - jetsam / an OS kill: the `memorystatus` window is EMPTY and there
+    is no crash report for the binary — and a SIGKILL would have
+    shown as 137 above
+  - our own code: no `sys.exit`/`System.exit`/`halt` in any source a
+    Native test binary links (the six hits are JVM-only modules)
+  - the plugin's global adapter close (`onComplete` closes EVERY
+    `TestAdapter`, and `TestAdapter.close()` is SILENT when its runs
+    are all done — the one silent closer in the JVM): refuted by the
+    log itself, since 30+ runner processes started and passed AFTER
+    the failing one
+  - the adapter being collected under the GC storm the log shows
+    (89.8% of ten seconds in GC): `registerResource` holds every
+    adapter in a strong list, so it cannot be collected — though the
+    mechanism it would have needed does exist, `NioSocketImpl` having
+    a `Cleaner` that closes an unreachable socket's fd
+
+  STILL OPEN, and stated as open: WHAT ended that one connection. Two
+  candidates remain, both silent by construction — the JVM end of the
+  com socket going away without any of the loggable paths, and a
+  non-positive length reaching `readInt` on a live connection. The
+  log's own hint favours the first: that process produced no test
+  output at all, and a desync needs at least one message to have been
+  written. What would separate them next time is a TIMELINE, which
+  the sbt log cannot give (it has no timestamps): record the runner
+  processes beside the gate (`pgrep -f '<module>-test'` once a second,
+  with the clock) and compare the death against the module's first
+  output. Died before any output, and nothing was ever written to it:
+  something closed the socket. Died after: the stream is the suspect.
 
   HANDLED 2026-09-09 (gate-lost-shape2): `scripts/gate.sh` knows both
   shapes now — A, a module reporting `Failed 0, Errors 1` after some
