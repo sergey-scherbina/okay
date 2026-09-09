@@ -330,4 +330,17 @@ class TestR extends munit.FunSuite {
       case Right(back) => assertEquals(back.rows[Point], Right(sent))
       case Left(c) => fail(s"identity on a frame: $c")
   }
+
+  test("require: a session that names a package it must have refuses at START, naming the drift") {
+    // the version is deliberately impossible, so this measures the
+    // refusal and not the box's R installation
+    val e = intercept[IllegalStateException](
+      RSubprocess.start(TestR.rscript.get, Map.empty, None, Map("stats" -> "99.9")))
+    assert(e.getMessage.contains("stats"), e.getMessage)
+    assert(e.getMessage.contains("99.9"), e.getMessage)
+    // …and a requirement the environment DOES meet hands the engine over
+    val ok = RSubprocess.start(TestR.rscript.get, Map.empty, None, Map("stats" -> ""))
+    sessions = ok :: sessions
+    assertEquals(call(ok, "sqrt", Vec(Vector(F64(81)))), Right(Vec(Vector(F64(9)))))
+  }
 }

@@ -149,6 +149,24 @@ hedged race replays exactly; `log` says what each ordinal met, and a
 found bug is a seed. This is how `TestFaults` proves the pieces'
 contracts hold through the whole stack rather than one at a time.
 
+## Why the bulkhead has no "auto" mode
+
+Because it was measured and it lost (specs/resilience.md, "The
+controller that did not earn its place"). A gradient controller —
+permits following observed latency, Netflix's shape — delivers 0.54
+of what a well-chosen constant delivers on steady capacity, and the
+ratio does not move when the run is twenty times longer: it does not
+converge, it orbits, because the only way it learns its limit is too
+high is by exceeding it. It does win about 10% when capacity halves
+mid-run, which is the honest other half of the result.
+
+So pick the number, and pick it from what `/metrics` already
+publishes: `okay_bulkhead_in_flight` and `okay_bulkhead_waiting` say
+whether the permits are used, and
+`okay_http_request_duration_seconds` says what they cost. The
+measurement is kept as a test (`TestAdaptive`) and will fail if
+someone builds a controller that actually wins.
+
 ## Gotchas
 
 - A cancel that lands while a program is IN FLIGHT under a bulkhead

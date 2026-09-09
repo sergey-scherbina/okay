@@ -1,0 +1,23 @@
+task: module-facts
+agent: opus5-di
+started: 2026-09-09
+heartbeat: 2026-09-09T17:55:09Z
+status: in-progress
+branch: feature/module-facts
+worktree: ../okay-wt-facts
+spec: specs/di.md stage 3, redesigned (operator's go, 2026-09-09)
+
+why: a module that opens infrastructure itself is invisible to the
+  deployment — the demo opens okay-board.log and its manifest declares
+  a port and no volume. The component that opens the thing is the one
+  that knows the need; today it has nowhere to say it.
+
+what: core — a Module carries FACTS beside its installer (a typed key
+  with its own merge, stored in TMap; no deployment word in core),
+  `declare`, and READINESS: a ready module (Module.value/ready) lets
+  `and` apply the dependent right side eagerly, so facts are readable
+  up to the first acquisition — after config, before infrastructure.
+  okay-deploy — `needs`/`needsOf` over Module. Demo — the store
+  declares its Volume; DemoDeploy derives needs from the app.
+
+next: core first, watched at real call sites for the E10 trap

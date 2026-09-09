@@ -2123,7 +2123,41 @@ measure on our own data, never a predicted result.
       trait; own QAP1 over Async later if named); two-engine
       acceptance
 - [ ] r-arrow — frames as Arrow files/streams once the JSON-frame
-      road hurts
+      road hurts. MEASURED 2026-09-09 (r-measure-harden,
+      `MeasureRFrame`, medians of five against the dockerized R 4.4.1,
+      `identity` on a 3-column frame):
+
+      | rows | payload | our encode | round trip | our decode | typed rows | OUR share |
+      |---|---|---|---|---|---|---|
+      | 10 000 | 0.30 MB | 6.5 ms | 1 546 ms | 7.3 ms | 2.2 ms | 0.9% |
+      | 100 000 | 3.21 MB | 20.4 ms | 13 686 ms | 18.3 ms | 6.0 ms | 0.3% |
+
+      The number says the opposite of the Python twin's. There, 60% of
+      the trip was OUR parser; here our two halves are 0.3% and the
+      other 99.7% is R. Nor is it the pipe: 3.21 MB in 13.7 s is
+      ~230 KB/s, and a pipe does that in milliseconds — we encode and
+      decode the same bytes at ~83 MB/s. So the cost is jsonlite
+      walking the STRUCTURE we hand it, and the structure is the
+      suspect below. Arrow would still remove it, at the price of the
+      `arrow` package (native, heavy) on R's side and an Arrow reader
+      on ours — a big dependency for a module whose only dependency
+      today is jsonlite. Try the cheap shape change first.
+- [ ] r-frame-columnar-wire — THE CANDIDATE THE MEASUREMENT FOUND, and
+      it costs no dependency. `Wire.enc` tags PER CELL: an R integer is
+      `{"t":"i","v":…}`, an NA is an object, an integral double is an
+      object — because JSON cannot otherwise keep R's integer apart
+      from its double, nor its four NAs apart. On a 100k-row frame that
+      is hundreds of thousands of tiny objects for jsonlite to build,
+      and jsonlite's fast path is exactly the one it cannot take.
+      A frame is COLUMNAR and a column is homogeneous, so the type tag
+      belongs to the COLUMN, not the cell: `{"name": …, "type": "i",
+      "values": [1,2,3], "na": [7, 19]}` — one tag, one plain array
+      (jsonlite's C path), and the absences as an index list. Values
+      stay exact, the four NAs stay four, and nothing about the
+      no-source rule changes. Expected to move most of the 99.7%;
+      MEASURE with `MeasureRFrame` before and after, since that is the
+      lane's own lesson. Do this before r-arrow — and if it lands the
+      win, r-arrow may never be worth its dependency.
 
 ## okay-persist (specs/persist.md — staged design; stage 0 landed)
 - [x] persist-raft — RaftStore: consensus as one more control-log

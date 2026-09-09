@@ -1,0 +1,19 @@
+task: r-frame-columnar-wire
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T17:51:22Z
+status: in-progress
+branch: feature/r-frame-columnar-wire
+worktree: ../okay-wt-rwire
+spec: specs/r.md, new section "The columnar frame wire" — WRITTEN AND
+  COMMITTED BEFORE THE CODE (the operator's instruction, spec-dev)
+
+why: r-measure-harden measured a 100k-row frame at 13.7 s round trip
+  with 0.3% of it ours; the per-CELL tagging is the suspect.
+
+what: the spec first — the format both directions, the invariants that
+  must survive, the shim version bump, and the measurement gate that
+  decides whether the code is worth keeping. Code only after the spec
+  is committed.
+
+next: write the section, commit it, stop and report

@@ -1,5 +1,82 @@
 # Changelog
 
+## adaptive-concurrency — measured, and refuted: the controller does not earn its place
+
+specs/resilience.md's last open box, deferred twice — first for want
+of machinery, then for want of a measurement. This lane built the
+measurement and let it decide, and it decided no.
+
+The instrument is deterministic on purpose: a virtual clock and a
+modelled downstream (20 concurrent calls at 50 ms, every call in
+flight beyond that adding 10 ms to everyone), because a control loop
+judged by wall-clock throughput on a shared laptop would be judged by
+the laptop. The model is checked first — fixed permits buy throughput
+to the knee (5 → 100/s, 10 → 199/s, 20 → 396/s) and only latency past
+it (40 → 162/s at p99 250 ms, 80 → 128/s at p99 650 ms).
+
+Against that, a gradient controller reaches **0.55 / 0.54 / 0.54** of
+the best fixed setting at 2 000, 10 000 and 40 000 arrivals. Twenty
+times the run changes nothing, which is what makes it a refutation
+rather than a slow start: it does not converge, it ORBITS — the only
+way it learns its limit is too high is by exceeding it, and exceeding
+it costs the latency that makes it cut again. The honest other half:
+when capacity halves mid-run it reaches 319/s at p99 200 ms against
+291/s at p99 350 ms for a constant tuned for the old capacity, so
+adaptation is worth about 10% there and is not worth 46% everywhere
+else.
+
+The first cut was worse and its lesson is kept: a growth condition of
+"the limit is at least half used" let the limit climb 10 → 51 while
+latency was still flat (open-loop arrivals fill a raised limit only
+slowly) and then collapse to 6. Tightening it to `inFlight >= limit -
+sqrt(limit)` fixed the overshoot and moved the ratio 0.55 → 0.55 —
+the orbit is not a tuning bug.
+
+Nothing was built. The measurement is kept as `TestAdaptive`, whose
+assertions encode the FINDING, so a controller that actually beats a
+constant fails there and forces its author to read the section first.
+The box is closed as refuted with its numbers, and okay-resilience's
+page says why the bulkhead has no auto mode and which published
+metrics to pick the number from.
+## r-measure-harden — the frame wire measured at last, and it points away from Arrow
+
+`MeasureRFrame` (Live, medians of five against the dockerized R 4.4.1,
+`identity` on a 3-column frame) gives okay-r the number `r-arrow` was
+filed to wait for:
+
+| rows | payload | our encode | round trip | our decode | typed rows | OUR share |
+|---|---|---|---|---|---|---|
+| 10 000 | 0.30 MB | 6.5 ms | 1 546 ms | 7.3 ms | 2.2 ms | 0.9% |
+| 100 000 | 3.21 MB | 20.4 ms | 13 686 ms | 18.3 ms | 6.0 ms | 0.3% |
+
+The Python twin's measurement once found 60% of the trip was OUR
+parser and overturned py-arrow; this one overturns r-arrow the other
+way round — our two halves are 0.3% and R holds the rest. Nor is it
+the pipe: 3.21 MB in 13.7 s is ~230 KB/s, while the same bytes go
+through our own codec at ~83 MB/s. The suspect is the STRUCTURE handed
+to jsonlite: `Wire.enc` tags per CELL (an integer, an NA and an
+integral double are each a small object, since JSON cannot otherwise
+keep R's integer from its double nor its four NAs apart), so a
+100k-row frame is hundreds of thousands of objects on the one path
+jsonlite cannot take fast. A column is homogeneous, so the tag belongs
+to the COLUMN — filed as BACKLOG `r-frame-columnar-wire` with the
+shape and the rule to measure before and after. It costs no
+dependency, where Arrow costs a native package on R's side and a
+reader on ours, so it goes first and `r-arrow` waits for the number
+after it.
+
+Hardening in the same lane: `start(…, require)` runs `verify` at
+CONSTRUCTION and refuses an engine whose packages drift, naming them —
+the Sql seam's verify-at-startup posture in the same words, tested
+both ways against a real R. The respawn edge is now stated where a
+reader meets it: a respawn that FAILS after a timeout throws rather
+than answering data, because an engine whose interpreter is gone is
+not something a program can handle as a value. Noted beside it: the
+respawn is invisible to the program, and that is the no-source design
+paying off — the API cannot assign anything in an R session, so a
+fresh process has nothing to have lost. Landed as d939cd36. Gate: full
+matrix, 3596 tests, 0 failures.
+
 ## needs-runtime — an input a place cannot provide can now say so
 
 `Needs.of[Root]` read every unresolved input of an application's root
@@ -23,7 +100,7 @@ test pins what a deployment reads from it: nothing. It provisions its
 own store, transport and secrets, and its one remaining input is the
 runtime's — so the day that root gains a database it did not
 provision, the build stops until someone says what it is. 6 tests in
-okay-deploy, 1 in okay-demo. Commit: LANDING.
+okay-deploy, 1 in okay-demo. Commit: d76482ad.
 
 ## di-dogfood — the DI arc builds an application, and the application changed it
 
