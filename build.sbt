@@ -860,7 +860,8 @@ lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
 lazy val okayBlob = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-blob"))
-  .dependsOn(okay)
+  // okayCodec: Blob.Stats derives Schema on every platform (adapter-stats)
+  .dependsOn(okay, okayCodec)
   // the S3 engine (jvm) speaks the wire through the one http client;
   // persist joined COMPILE scope with the offload tier (this
   // direction is safe — persist depends on core+codec only; the
