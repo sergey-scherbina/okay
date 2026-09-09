@@ -1,6 +1,11 @@
 # Sprint
 
 ## Doing
+- lexer-buf-without-concat — BACKLOG: ~171 B per lexed character
+  remain, and `buf: String` grown per char is most of it. PRICE the
+  three candidates before building one; the chunked path (no input to
+  slice from) is the constraint that killed the obvious fix. Claimed
+  2026-09-09 (.work/active/lexer-buf-without-concat.claim).
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
