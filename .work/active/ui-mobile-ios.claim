@@ -1,0 +1,20 @@
+task: ui-mobile-ios
+agent: fable-frontend
+started: 2026-09-09
+branch: feature/ui-mobile-ios
+worktree: ../okay-wt-ui-ios
+spec: specs/frontend.md "Mobile", M2
+
+why: M1 landed (49031598); the iOS leg is a thin client of the
+  protocol in the platform's own language, as okay-compose is for
+  Kotlin. Xcode 26.6 and Swift 6.3 are on the box.
+
+what: okay-swift/ — a SwiftPM package with NO okay dependency:
+  OkayProtocol (the document transcribed, a total codec, patching,
+  the hybrid rule) with the conformance test under `swift test`;
+  OkayUI (SwiftUI level L + a URLSessionWebSocketTask client);
+  okay-smoke (macOS executable, headless: connect, press, patch).
+  Compiled for the iOS simulator SDK with xcodebuild.
+
+predict: the Kotlin client transcribed; JSONSerialization for the
+  codec; the smoke against okay.script.Serve as the Kotlin one ran.
