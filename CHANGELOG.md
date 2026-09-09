@@ -1,5 +1,39 @@
 # Changelog
 
+## lexer-buf-without-concat — the concat is the smallest of three, and the obvious fix is worse
+
+After `lexer-state-allocation` took the positions out, ~171 bytes per
+lexed character remained and the scanner's `buf: String`, grown one
+character at a time, looked like the rest of it — quadratic in the
+token's length, and the one part everybody had noticed.
+
+The candidate that needs no input — a char array in the state grown by
+doubling, one `String` built per TOKEN — was built as a probe and
+measured: **worse by 11–12%** (element-wise 425 832 → 479 153 B/op,
+chunked 467 873 → 520 921, full parse 758 865 → 812 185). The reason
+generalises past this file: JSON's tokens are SHORT. `{`, `}`, `:`,
+`,` and most whitespace runs are one character; a key is about eight.
+Concatenating one to four characters costs less than reserving an
+eight-char buffer per token — and the `Base` state used to carry the
+interned `""` and allocate nothing at all between tokens, where the
+array version allocates one per structural character. "Quadratic in
+token length" is the right worry for a language with long tokens and
+the wrong one for JSON.
+
+What the probe produced instead is the decomposition, which is worth
+more than the change would have been. Of the ~171 B per character
+(arithmetic from the field lists, not a per-class measurement): the
+new `S` per character ~56 B (~33%), the `Tuple2` that `Scan.step`
+answers ~32 B (~19%), the concat ~40 B+ (~23%). **The concat is the
+smallest of the three** — and the only one anyone had tried to remove.
+
+The other two candidates were not built, and the reason is structural
+rather than arithmetic: `Scan.finish(s, input)` helps ONLY the
+element-wise path, because the chunked one still has no input to
+slice from, and `Either[offset, chars]` is that half-fix plus the one
+refuted here. `scan-step-allocation` is sharpened with the number it
+was waiting for: it is now the largest named share after `S` itself,
+and worth about a fifth.
 ## failing-simplify — two instances, not four: the anchored row instances were decoration once the default went total
 
 `Failing.asyncLeft`/`asyncRight` worked and cost nothing to keep, which

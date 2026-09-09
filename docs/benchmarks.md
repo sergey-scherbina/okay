@@ -1785,6 +1785,40 @@ span chunks, so there is no input to slice from. Any fix has to
 serve both paths; a state that holds an offset for one and a string
 for the other is two scanners wearing one type.
 
+**And the concat is not the lever either** (lexer-buf-without-concat,
+2026-09-09). The candidate that needs no input — a char array in the
+state, grown by doubling, one `String` built per TOKEN instead of per
+character — was built as a probe and measured, and it is WORSE:
+
+| | with `buf: String` | with a doubling array |
+|---|---|---|
+| element-wise | 425 832 | 479 153 (+12.5%) |
+| chunked (64) | 467 873 | 520 921 (+11.3%) |
+| full parse | 758 865 | 812 185 (+7.0%) |
+
+The reason is the workload, and it generalises: JSON's tokens are
+SHORT. `{`, `}`, `:`, `,` and most whitespace runs are one character;
+a key is about eight. Concatenating one to four characters costs less
+than reserving an eight-char array per token — and worse, the old
+`Base` state carried the interned `""` and allocated NOTHING between
+tokens, where the array version allocates a buffer for every
+structural character. Quadratic in token length is the right worry
+for a language with long tokens; it is the wrong worry for JSON.
+
+So where the remaining ~171 B per character goes, by object layout
+(arithmetic from the field lists, not a per-class measurement):
+
+| | bytes | share |
+|---|---|---|
+| a new `S` per character (2 refs + 6 ints + header) | ~56 | ~33% |
+| the `Tuple2` `Scan.step` answers | ~32 | ~19% |
+| the `String` from `buf + c` (short tokens) | ~40+ | ~23%+ |
+
+The concat is the SMALLEST of the three and the only one anyone has
+tried to remove. The other two are the state itself and the step's
+return shape — `scan-step-allocation` is the second, and it is an
+interface change.
+
 **Parsing, full vs incremental:**
 
 | full parse | incremental reparse (one-member edit) |

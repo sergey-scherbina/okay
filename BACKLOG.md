@@ -915,7 +915,20 @@ one with an open decision is the first.
       reason is in §10: `buf: String` cannot become a start offset
       because `Lex.chunks` has no input to slice — a token may span
       chunks. A fix must serve both paths.
-- [ ] lexer-buf-without-concat — the blocked half, reopened as its own
+- [x] lexer-buf-without-concat — REFUTED 2026-09-09, nothing landed.
+      The one candidate that needs no input (a doubling char array in
+      the state) is WORSE by 11-12% B/op: JSON's tokens are short, so
+      reserving a buffer per token costs more than concatenating one
+      to four characters, and the old `Base` state allocated nothing
+      at all between tokens. §10 carries the table and the per-object
+      decomposition it produced: of the ~171 B per character, `S`
+      itself is ~33%, the `Tuple2` ~19%, the concat ~23% — the concat
+      is the smallest of the three. The other two candidates were not
+      built and the reason is structural, not arithmetic:
+      `Scan.finish(s, input)` helps ONLY the element-wise path (the
+      chunked one still has no input), and `Either[offset, chars]` is
+      that half-fix plus this refuted one. Was: the blocked half,
+      reopened as its own
       question: how does a scanner accumulate a token's text without a
       String per character AND without the whole input? Candidates not
       yet priced: a small immutable char array grown by doubling in
@@ -1897,7 +1910,14 @@ measure on our own data, never a predicted result.
       that stage, ~6% end to end — A/B'd in ONE run, because the first
       cross-run reading said 2x and was GC noise. Guarded by
       TestJsonValue's existing prefix sweep.
-- [ ] scan-step-allocation — `Scan.step: (S, Char) => (S,
+- [ ] scan-step-allocation — NOW THE LARGEST NAMED SHARE, and priced
+      2026-09-09 by lexer-buf-without-concat: the `Tuple2` is ~19% of
+      lexing's ~171 B per character, second only to `S` itself (~33%).
+      The consumer this entry said it wanted is now here — three lanes
+      have measured this path — but note what the same work refuted:
+      the concat is the SMALLEST of the three shares, so an interface
+      change that removes only the tuple buys about a fifth. Was:
+      `Scan.step: (S, Char) => (S,
       Vector[Token[K]])` allocates a tuple per CHARACTER, which is the
       next wall on the lossless road (~26 ms of a 9.3 MB lex). An
       additive `stepInto(s, c, out)` with a default delegating to
