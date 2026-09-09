@@ -1,5 +1,44 @@
 # Changelog
 
+## r-measure-harden — the frame wire measured at last, and it points away from Arrow
+
+`MeasureRFrame` (Live, medians of five against the dockerized R 4.4.1,
+`identity` on a 3-column frame) gives okay-r the number `r-arrow` was
+filed to wait for:
+
+| rows | payload | our encode | round trip | our decode | typed rows | OUR share |
+|---|---|---|---|---|---|---|
+| 10 000 | 0.30 MB | 6.5 ms | 1 546 ms | 7.3 ms | 2.2 ms | 0.9% |
+| 100 000 | 3.21 MB | 20.4 ms | 13 686 ms | 18.3 ms | 6.0 ms | 0.3% |
+
+The Python twin's measurement once found 60% of the trip was OUR
+parser and overturned py-arrow; this one overturns r-arrow the other
+way round — our two halves are 0.3% and R holds the rest. Nor is it
+the pipe: 3.21 MB in 13.7 s is ~230 KB/s, while the same bytes go
+through our own codec at ~83 MB/s. The suspect is the STRUCTURE handed
+to jsonlite: `Wire.enc` tags per CELL (an integer, an NA and an
+integral double are each a small object, since JSON cannot otherwise
+keep R's integer from its double nor its four NAs apart), so a
+100k-row frame is hundreds of thousands of objects on the one path
+jsonlite cannot take fast. A column is homogeneous, so the tag belongs
+to the COLUMN — filed as BACKLOG `r-frame-columnar-wire` with the
+shape and the rule to measure before and after. It costs no
+dependency, where Arrow costs a native package on R's side and a
+reader on ours, so it goes first and `r-arrow` waits for the number
+after it.
+
+Hardening in the same lane: `start(…, require)` runs `verify` at
+CONSTRUCTION and refuses an engine whose packages drift, naming them —
+the Sql seam's verify-at-startup posture in the same words, tested
+both ways against a real R. The respawn edge is now stated where a
+reader meets it: a respawn that FAILS after a timeout throws rather
+than answering data, because an engine whose interpreter is gone is
+not something a program can handle as a value. Noted beside it: the
+respawn is invisible to the program, and that is the no-source design
+paying off — the API cannot assign anything in an R session, so a
+fresh process has nothing to have lost. Landed as d939cd36. Gate: full
+matrix, 3596 tests, 0 failures.
+
 ## needs-runtime — an input a place cannot provide can now say so
 
 `Needs.of[Root]` read every unresolved input of an application's root
