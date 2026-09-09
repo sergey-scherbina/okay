@@ -10,7 +10,9 @@ isolation); XA/2PC stays refused (specs/jdbc.md, specs/data.md) and
 the saga-over-journal answer stands. The gaps are concrete, ordered
 correctness first:
 
-- [ ] sql-commit-tag — an error inside a region that the BODY
+- [x] sql-commit-tag — DONE 2026-09-09 (988b4ab6): pg-wire COMMIT reads
+      its tag and throws on ROLLBACK; r2dbc-postgresql already refused.
+      Was: an error inside a region that the BODY
       handles (no unwind) leaves Postgres in the aborted state; its
       `COMMIT` then answers the command tag `ROLLBACK` with NO error,
       and `PgSql.commit` ignores the tag (`simple("COMMIT")`), so the

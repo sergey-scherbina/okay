@@ -1,5 +1,25 @@
 # Changelog
 
+## sql-commit-tag — COMMIT reads its command tag: an aborted pg transaction no longer reports success
+
+First of the seven persistence-audit lanes (BACKLOG "persistence-audit",
+the operator's go 2026-09-09). A statement failed inside a region, the
+program HANDLED the error, and the region reached COMMIT: Postgres
+answers the tag `ROLLBACK` with no ErrorResponse, and `PgSql.commit`
+ignored the tag — the region returned normally over a transaction the
+server had rolled back, the exact "rollback that quietly does not roll
+back" specs/jdbc.md refuses. Watched failing first on the dockerized pg
+("expected exception of type PgError but body evaluated successfully",
+insert gone), then `simpleTag` reads the `C` message and commit throws
+on ROLLBACK, `inTx` cleared either way. The same probe through
+r2dbc-postgresql passes: that driver refuses such a COMMIT itself. The
+JDBC road has no pg case in the tree (pgjdbc is not a dependency; H2 and
+SQLite keep a transaction usable after a failed statement). Landed as
+988b4ab6; specs/sql.md has the box. Gate: full matrix, 2849 tests, one
+load timeout in okay.intent.TestOfflineGate (48 s under two sibling
+sbts against a 30 s limit; 4 s alone; okay-intent does not depend on
+okay-pg) — noted for that lane, not tagged here.
+
 ## handler-fusion-gate — pass fusion measured: 1.13–1.29x, the gate is not cleared, and the cost was never where the model put it
 
 Stage 0 of specs/handler-fusion.md (the operator's "compose the
