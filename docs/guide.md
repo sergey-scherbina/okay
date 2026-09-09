@@ -275,8 +275,11 @@ cannot be removed.
 
 `Chunks[A] = Producer[Chunk[A]]` — a stream of array batches. The
 freer tree steps once per CHUNK and an element costs an array index,
-which is where the benchmark numbers come from (pipeline 16.9us vs
-kyo 239 / ZIO 692 / fs2 1410; merge 14.7us vs ZIO 47). Generators
+which is where the benchmark numbers come from — every lane below
+chunked the way its own author intended (pipeline 8.2us for one chunk,
+10.2 at the default 64, vs fs2 `emits` 21.9 / `ZStream.range` 35.8 /
+kyo `Stream.range` 65.9, Iterator floor 15.2; merge 13.3us vs ZIO 51.5
+and chunk-native fs2 94.4). Generators
 (`Chunks.generate/range/nats/fibs`), transformers
 (`Chunks.map/filter/take/drop/takeWhile/dropWhile` — chunk-in,
 chunk-out array passes), `zip` (realigns boundaries), `rechunk`,
