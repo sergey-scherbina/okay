@@ -355,6 +355,28 @@ import — and the platforms it runs on.
       defaults hold (port 5432, plaintext, db = user) — the tests
       that already proved this in okay-demo, moved
 
+## The brake runs on a failing statement (resource-async-failure)
+
+Found through pgjdbc (jdbc-tails, 2026-09-09): a SQL statement that
+THROWS inside a region — an `Async.Run` the outer handler executes —
+escaped `Resource.run` with the scope's residual abandoned, so the
+region's brake never ran and the connection stayed in the transaction
+(the next `begin` refused as "nested"). Every earlier region test threw
+from a pure step or aborted through Throws, both of which the scope
+catches. The fix is in the core: `Resource.run` forwards an Async
+operation GUARDED — a `Run` whose thunk throws and an `Await` whose
+callback answers Left release the finalizers first (the one cast in
+Resource.scala, isolated in `guardAsync` and argued there).
+
+- [x] core: a forwarded `Async.Run` that throws, and an `Await` that
+      answers Left, both release (TestResource)
+- [x] H2: a failing statement inside a region — the brake runs,
+      autocommit is restored, the insert before it is gone, the next
+      region begins
+- [x] pgjdbc: write skew under Serializable, raw — the loser names
+      40001 and the connection is usable after; and `transactRetry`
+      lands it on run 2 (Live)
+
 ## The typed region (sql-typestate)
 `transact` refuses a nested begin at RUNTIME (specs/jdbc.md names the
 failure mode: the rollback that quietly does not roll back). The
@@ -386,6 +408,13 @@ declined for v1 — same guarantee, plus a Free<->Cont bridge per step.
       a transaction usable after a failed statement, so the aborted
       state does not exist there) — when a pgjdbc consumer appears,
       run this probe through it before trusting `commit()`.
+- [x] (jdbc-tails, 2026-09-09) the probe ran through pgjdbc 42.7.3 and
+      FAILED: pgjdbc's `commit()` on the aborted transaction reports
+      success. `JdbcSql` now remembers a statement that failed inside
+      the open transaction (`guarded`) and, at commit, PROBES with
+      `select 1` first: on pg the probe answers 25P02, the region rolls
+      back and fails with SQLSTATE 40000; H2/SQLite answer the probe and
+      commit as before. Measured green through pgjdbc (Live).
 
 ## Serialization failures are retried (sql-serialization-retry)
 
@@ -489,6 +518,17 @@ JVM-only (okay-intent's `Temporal` made the same choice):
       verify clean, exact bind back (Live)
 - [x] R2DBC on H2 and pg: timestamptz/date/time/uuid typed both ways
       (Live for pg)
+- [x] (jdbc-tails) pgjdbc reports a `timestamptz` parameter and column
+      as plain `Types.TIMESTAMP`; binding the UTC wall clock into it
+      shifted by the session zone (three hours under Europe/Kyiv,
+      measured). `zonedCode` reads the vendor TYPE NAME too (`…tz`,
+      `with time zone`) for both reads and binds; the round trip is
+      exact through pgjdbc, jsonb through `?::jsonb` (Live)
+- [x] (jdbc-tails) SQLite: its driver TAKES `getObject(LocalDateTime)`
+      and then fails to parse ISO text with its own format, a
+      DateTimeParseException, not a SQLException — the fallback now
+      catches any non-fatal failure; declared timestamp/date columns
+      read and bind through the ISO text road
 
 ## Read-only regions, and the isolation restored (sql-readonly-region)
 

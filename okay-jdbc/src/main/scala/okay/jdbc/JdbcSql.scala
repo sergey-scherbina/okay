@@ -24,6 +24,18 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
   // a transact(Serializable) must not leave the connection Serializable
   private var isolationBefore = Connection.TRANSACTION_READ_COMMITTED
   private var readOnlyBefore = false
+  // a statement failed inside the open transaction (jdbc-tails): some
+  // engines (Postgres) abort the whole transaction on any error and
+  // answer the following COMMIT with ROLLBACK and no exception —
+  // pgjdbc included, measured. So COMMIT after a failure PROBES first.
+  private var failedInTx = false
+
+  /** run a statement, remembering a failure inside a transaction */
+  private def guarded[A](body: => A): A =
+    try body
+    catch case e: java.sql.SQLException =>
+      if inTx then failedInTx = true
+      throw e
 
   def describe(sql: String): Vector[Col] ! Async = async {
     val ps = conn.prepareStatement(sql)
@@ -58,16 +70,17 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
       val ps = conn.prepareStatement(sql)
       ps.setFetchSize(fetchSize)
       bindAll(ps, params)
-      val rs = ps.executeQuery()
+      val rs = guarded(ps.executeQuery())
       val md = rs.getMetaData
-      (rs, ps, colsOf(md).map(_.tpe), (1 to md.getColumnCount).toVector.map(md.getColumnType))
+      (rs, ps, colsOf(md).map(_.tpe),
+        (1 to md.getColumnCount).toVector.map(i => zonedCode(md.getColumnType(i), md.getColumnTypeName(i))))
     }).flatMap(go)
 
   def update(sql: String, params: Vector[SqlValue]): Long ! Async = async {
     val ps = conn.prepareStatement(sql)
     try
       bindAll(ps, params)
-      ps.executeUpdate().toLong
+      guarded(ps.executeUpdate()).toLong
     finally ps.close()
   }
 
@@ -75,7 +88,7 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
     val ps = conn.prepareStatement(sql)
     try
       rows.foreach { r => bindAll(ps, r); ps.addBatch() }
-      ps.executeBatch().foldLeft(0L)((acc, n) => acc + math.max(n, 0))
+      guarded(ps.executeBatch()).foldLeft(0L)((acc, n) => acc + math.max(n, 0))
     finally ps.close()
   }
 
@@ -96,6 +109,18 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
   }
 
   def commit(): Unit ! Async = async {
+    if failedInTx then
+      // is the transaction still alive? on pg the probe answers 25P02
+      // ("current transaction is aborted") and COMMIT would silently
+      // roll back; then this region must FAIL, not report success
+      val alive =
+        try { val st = conn.createStatement(); try st.execute("select 1") finally st.close(); true }
+        catch case _: java.sql.SQLException => false
+      if !alive then
+        try conn.rollback() finally restore()
+        throw java.sql.SQLException(
+          "COMMIT refused: an earlier statement failed and the engine aborted the transaction — " +
+            "nothing in the region is committed (jdbc-tails)", "40000")
     conn.commit()
     restore()
   }
@@ -110,6 +135,7 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
     conn.setTransactionIsolation(isolationBefore)
     conn.setReadOnly(readOnlyBefore)
     inTx = false
+    failedInTx = false
 
   /** closes the connection (a pooled one goes back to its pool) */
   def close(): Unit = conn.close()
@@ -154,6 +180,15 @@ object JdbcSql:
    * OffsetDateTime at UTC into a `timestamp with time zone`, a
    * LocalDateTime (the UTC wall clock) into a `timestamp`; a driver
    * that cannot describe its parameters (SQLite) takes ISO text */
+  /** the JDBC code, with WITH_TIMEZONE forced where the vendor NAME
+   * says so: pgjdbc reports a `timestamptz` as plain TIMESTAMP, and
+   * binding a wall clock into it shifts by the session zone (measured
+   * under Europe/Kyiv: three hours) */
+  private def zonedCode(code: Int, name: String): Int =
+    val n = if name == null then "" else name.toLowerCase
+    if code == Types.TIMESTAMP && (n.endsWith("tz") || n.contains("with time zone")) then Types.TIMESTAMP_WITH_TIMEZONE
+    else code
+
   private def bindTimestamp(ps: PreparedStatement, i: Int, us: Long, paramType: Int => Int): Unit =
     paramType(i) match
       case Types.TIMESTAMP_WITH_TIMEZONE =>
@@ -222,7 +257,10 @@ object JdbcSql:
    * JVM zone enters (sql-temporal-types). The Calendar road is NOT
    * used: H2 stamps the session offset onto a UTC calendar's wall
    * clock, measured. A driver without the JDBC 4.2 getObject(Class)
-   * (SQLite) falls back to the column's text through `Temporal`. */
+   * (SQLite) falls back to the column's text through `Temporal` —
+   * SQLite's driver TAKES getObject(LocalDateTime) and then fails to
+   * parse ISO text with its own format (DateTimeParseException), so
+   * the fallback catches any non-fatal failure, not only SQL ones. */
   private def rowOf(rs: ResultSet, cols: Vector[SqlType], codes: Vector[Int]): Vector[SqlValue] =
     Vector.tabulate(cols.length) { ix =>
       val i = ix + 1
@@ -235,17 +273,17 @@ object JdbcSql:
             else
               val t = rs.getObject(i, classOf[java.time.LocalDateTime])
               if t == null then SqlValue.Null else SqlValue.Timestamp(microsOf(t.toInstant(java.time.ZoneOffset.UTC)))
-          catch case _: java.sql.SQLException => textual(rs.getString(i), Temporal.parseTimestamp, SqlValue.Timestamp(_))
+          catch case scala.util.control.NonFatal(_) => textual(rs.getString(i), Temporal.parseTimestamp, SqlValue.Timestamp(_))
         case SqlType.Date =>
           try
             val d = rs.getObject(i, classOf[java.time.LocalDate])
             if d == null then SqlValue.Null else SqlValue.Date(d.toEpochDay.toInt)
-          catch case _: java.sql.SQLException => textual(rs.getString(i), Temporal.parseDate, SqlValue.Date(_))
+          catch case scala.util.control.NonFatal(_) => textual(rs.getString(i), Temporal.parseDate, SqlValue.Date(_))
         case SqlType.Time =>
           try
             val t = rs.getObject(i, classOf[java.time.LocalTime])
             if t == null then SqlValue.Null else SqlValue.Time(t.toNanoOfDay / 1000L)
-          catch case _: java.sql.SQLException => textual(rs.getString(i), Temporal.parseTime, SqlValue.Time(_))
+          catch case scala.util.control.NonFatal(_) => textual(rs.getString(i), Temporal.parseTime, SqlValue.Time(_))
         case SqlType.Uuid => rs.getObject(i) match
           case null => SqlValue.Null
           case u: java.util.UUID => SqlValue.Uuid(u)
@@ -287,7 +325,7 @@ object JdbcSql:
     lazy val declared: Int => Int =
       try
         val md = ps.getParameterMetaData
-        i => try md.getParameterType(i) catch case _: java.sql.SQLException => Types.OTHER
+        i => try zonedCode(md.getParameterType(i), md.getParameterTypeName(i)) catch case _: java.sql.SQLException => Types.OTHER
       catch case _: java.sql.SQLException => _ => Types.OTHER
     var i = 0
     while i < params.length do

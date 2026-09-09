@@ -69,4 +69,22 @@ class TestResource extends munit.FunSuite {
       bracket(0)(_ => released += 1)(_ => async[Int](throw RuntimeException("boom"))).runWith
     assertEquals(released, 3)
   }
+
+  test("a forwarded Async.Run that THROWS still releases (resource-async-failure)") {
+    var log = List.empty[String]
+    val prog = !.widen[String, Resource, Async](Resource.acquire { log ::= "open"; "r" } (_ => log ::= "close"))
+      .flatMap(_ => !.widen[Int, Async, Resource](okay.async[Int] { log ::= "run"; throw RuntimeException("boom") }))
+    val out = Async.runAsync(Resource.run[Int, Async](prog)).value
+    assert(out.exists(_.isFailure), s"expected the failure, got $out")
+    assertEquals(log.reverse, List("open", "run", "close"))
+  }
+
+  test("a forwarded Async.Await whose callback answers Left still releases") {
+    var log = List.empty[String]
+    val prog = !.widen[String, Resource, Async](Resource.acquire { log ::= "open"; "r" } (_ => log ::= "close"))
+      .flatMap(_ => !.widen[Int, Async, Resource](Async.await[Int](k => { k(Left(RuntimeException("no"))); () => () })))
+    val out = Async.runAsync(Resource.run[Int, Async](prog)).value
+    assert(out.exists(_.isFailure), s"expected the failure, got $out")
+    assertEquals(log.reverse, List("open", "close"))
+  }
 }

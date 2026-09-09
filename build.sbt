@@ -464,6 +464,10 @@ lazy val okayJdbc = (project in file("okay-jdbc"))
       // the embedded engine everyone actually has: SQLite through
       // the same seam, same zero-machinery argument
       "org.xerial" % "sqlite-jdbc" % "3.47.1.0" % Test,
+      // pgjdbc, Test only (jdbc-tails): the JDBC road to Postgres is
+      // probed Live — COMMIT on an aborted transaction, temporal binds
+      // by ParameterMetaData, ?::jsonb — where the wire driver was
+      "org.postgresql" % "postgresql" % "42.7.3" % Test,
     ),
     // JDBC suites fork: DriverManager registers drivers per
     // classloader, and TWO modules carrying H2 in one sbt JVM

@@ -5,6 +5,7 @@ import okay.given
 import okay.codec.Schema
 import okay.persist.{MemoryStore, Typed as PTyped}
 import okay.sql.{Granted, Isolation, Sql, SqlValue, Typed}
+import okay.sql.given
 import java.nio.file.Files
 import java.sql.DriverManager
 
@@ -41,6 +42,10 @@ class TestSqlite extends munit.FunSuite {
       st.execute("insert into customer values " +
         "(1, 'ann', 25, 10.5, 1, x'0102')," +
         "(2, 'bob', null, -3.25, 0, null)")
+      // jdbc-tails: declared temporal columns, which SQLite stores as the
+      // text it is handed — the seam's ISO text fallback road
+      st.execute("create table stamps(id integer primary key not null, at timestamp not null, d date not null)")
+      st.execute("insert into stamps values (1, '2026-09-02T06:00:00Z', '2026-09-02')")
       st.close()
     finally c.close()
 
@@ -152,4 +157,20 @@ class TestSqlite extends munit.FunSuite {
       intercept[java.sql.SQLException](run(db.update("create table mine(x int)")))
     finally conn.close()
   }
+
+  final case class Stamp(id: Long, at: java.time.Instant, d: java.time.LocalDate)
+  given Schema[Stamp] = Schema.derived
+
+  test("sql-temporal-types on SQLite: no getObject(Class), no parameter metadata — the ISO text fallback reads and binds timestamp/date columns") {
+    withDb { db =>
+      val sql = "select id, at, d from stamps order by id"
+      val one = Stamp(1, java.time.Instant.parse("2026-09-02T06:00:00Z"), java.time.LocalDate.of(2026, 9, 2))
+      val rows = collectChunks(Typed.rows[Stamp](db, sql)).flatten
+      assertEquals(rows, List(Right(one)))
+      val two = Stamp(2, java.time.Instant.parse("1969-12-31T23:59:59.999999Z"), java.time.LocalDate.of(1899, 12, 31))
+      assertEquals(run(Typed.update(db, "insert into stamps values (?, ?, ?)")(two)), 1L)
+      assertEquals(collectChunks(Typed.rows[Stamp](db, sql)).flatten, List(Right(one), Right(two)))
+    }
+  }
+
 }

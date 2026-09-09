@@ -285,6 +285,23 @@ class TestTyped extends munit.FunSuite {
     finally conn.close()
   }
 
+  test("a FAILING STATEMENT inside a region: the brake runs, autocommit is restored, the next region begins (resource-async-failure)") {
+    val conn = DriverManager.getConnection(url, "app", "app")
+    try
+      val db = JdbcSql(conn)
+      val prog = Typed.transact[Long, Async](db, Isolation.ReadCommitted) { _ =>
+        !.widen[Long, Async, Resource](
+          db.update("insert into customer(id, user_name, balance, active) values (22, 'boom', 1.0, true)"))
+          .flatMap(_ => !.widen[Long, Async, Resource](db.update("select syntax error from")))
+      }
+      intercept[java.sql.SQLException](!.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog)))): Unit
+      assert(conn.getAutoCommit, "autocommit not restored: the brake never ran")
+      assertEquals(countBy(db, "id = 22"), 0L, "the insert survived the failed statement")
+      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db)(g => okay.pure(g))))
+      assertEquals(g.granted, Isolation.ReadCommitted)
+    finally conn.close()
+  }
+
   test("transact rolls back on a handled abort crossing the scope") {
     val conn = DriverManager.getConnection(url, "app", "app")
     try
