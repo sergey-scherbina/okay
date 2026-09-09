@@ -1,5 +1,36 @@
 # Changelog
 
+## optics-state — a program over a part runs over the whole, and the four-parameter lens zooms Atkey's state
+
+Stage 3 of specs/optics.md, the last of the arc's implementation
+stages. `State.zoom(lens)(p: X ! State % A + F): X ! State % S + F`
+runs a program written against a PART of the state against the whole
+and touches nothing else; the rest of the row passes through (a Writer
+beside the State is asserted), and a program that does not write is
+the identity on the state. It is not a handler but an INTERPRETATION
+of one effect into another — every `Get` on the part is a `Get` on the
+whole read through the lens, every `Set` a read, a lens `set` and a
+write — written as `handle`'s split loop.
+
+One thing that loop cannot say. In the lone-operation arm the GADT
+refinement gives `A <: X`, not `A = X`, and `Free` is invariant in its
+answer, so `A ! row` is not `X ! row` without a cast. A LONE OPERATION
+IS A BIND WITH A PURE CONTINUATION, and the Bind arm already handles
+it, so that case delegates rather than casting — one node for a shape
+that is rare anyway, and the repo's no-casts-without-necessity rule
+kept.
+
+`PState.zoom` is the stage's whole argument, in one `shift`: read the
+part out of the whole to start the inner program, put the part back to
+finish it. A `Lens[S1, S2, A1, A2]` turns the part's transition
+A1 -> A2 into the whole's S1 -> S2, so a `Box[String]` becomes a
+`Box[Int]` because its item did, the tag rides along because the
+lens's `set` said so, and asking for the old type back does not
+compile. That is the sense in which the type-changing optic and
+Atkey's parameterised state are one picture — which is why the
+textbook chapter for it is filed beside chapter 3. TestZoom (6) on the
+JVM, JS and Native.
+
 ## optics-ui — the tree's walks get their names, and two things the plan had wrong
 
 Stage 2 of specs/optics.md. `Ui.everywhere` (every node), `Ui.shown`

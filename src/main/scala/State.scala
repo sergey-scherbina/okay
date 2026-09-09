@@ -117,6 +117,42 @@ object State {
     loop(s)(a)
   }
 
+  /**
+   * A program written against a PART of the state, run against the
+   * whole (specs/optics.md stage 3): the lens says which part, and
+   * nothing else about the state is touched.
+   *
+   * Not a handler — an INTERPRETATION of one effect into another, the
+   * shape `docs/your-own-effect.md` names: every `Get` on the part
+   * becomes a `Get` on the whole read through the lens, every `Set`
+   * becomes a read, a `set` through the lens and a write. The
+   * forwarded arm carries the rest of the row untouched, as `handle`'s
+   * does.
+   */
+  def zoom[S, A, X, F[+_]](l: Lens[S, S, A, A])(p: X ! State % A + F): X ! State % S + F = {
+    // the part, read and written through the lens, as a program over
+    // the whole — the two operations this interpretation is made of
+    def readPart: A ! State % S + F = !.widen[A, State % S, F](get[S].map(a => l.get(a)))
+    def writePart(a: A): A ! State % S + F =
+      !.widen[A, State % S, F](get[S].flatMap(s => set(l.set(a)(s))).map(_ => a))
+
+    def _loop(x: X ! State % A + F): X ! State % S + F = loop(x)
+    def loop(x: X ! State % A + F): X ! State % S + F = (x.resume: @unchecked) match
+      case Pure(v) => Pure(v)
+      // A LONE OPERATION IS A BIND WITH A PURE CONTINUATION, and the
+      // arm below already knows that case. Written out here it would
+      // need `A ! row <: X ! row` from the GADT refinement — Free is
+      // invariant in its answer, so that is a cast, and this costs one
+      // node instead of one.
+      case Effect(e) => loop(Effect(e).flatMap(x => Pure(x)))
+      case Bind(Effect(e), k) => split[State[A, *], F](e) {
+          case Get() => readPart.flatMap(a => _loop(k(a)))
+          case Set(a) => writePart(a).flatMap(x => _loop(k(x)))
+        } { e => Effect(e).flatMap(x => _loop(k(x))) }
+
+    loop(p)
+  }
+
   /** number the elements of a sequence, as a State program */
   def index[A](seq: Seq[A], from: Long = 0): (Long, Seq[(Long, A)]) = run(from):
     seq.foldLeft(Seq[(Long, A)]().state[Long]): (c, a) =>
@@ -144,5 +180,22 @@ object PState {
   /** run from an initial state to (final state, value) */
   inline def run[S, S2, A](s: S)(m: Cont[A, S2 => (S2, A), S => (S2, A)]): (S2, A) =
     (m / (a => s2 => (s2, a)))(s)
+
+  /**
+   * A typestate program over a PART, run over the whole — and this is
+   * the stage's whole argument (specs/optics.md stage 3, theory ch. 3).
+   *
+   * A four-parameter lens `Lens[S1, S2, A1, A2]` is a type-changing
+   * update: the whole goes S1 -> S2 exactly when the part goes
+   * A1 -> A2. `PState` is Atkey's parameterised state: a transition
+   * that carries the state's TYPE in the answer type. Zooming one by
+   * the other is one `shift` — read the part out of the whole to start
+   * the inner program, and put the part back to finish it — and the
+   * types line up on their own, which is the sense in which the
+   * type-changing lens and parameterised state are the same picture.
+   */
+  inline def zoom[S1, S2, A1, A2, X, R](l: Lens[S1, S2, A1, A2])
+                                       (m: Cont[X, A2 => R, A1 => R]): Cont[X, S2 => R, S1 => R] =
+    shift(k => (s1: S1) => (m / (x => (a2: A2) => k(x)(l.set(a2)(s1))))(l.get(s1)))
 }
 

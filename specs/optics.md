@@ -200,12 +200,18 @@ Stage 2 — the tree (optics-ui, LANDED 2026-09-09):
 - [x] `Ui.patch` KEEPS its navigation, as stage 0's gate decided
       (3.5x); the diff-then-patch law is untouched
 
-Stage 3 — the state (optics-state):
-- [ ] `zoom(lens)(program: X ! State % A): X ! State % S` — a program
-      over a part runs over the whole
-- [ ] the type-changing version over `PState`: a `Lens[S1, S2, A1, A2]`
-      zooms a typestate program, the four-parameter optic being
-      exactly Atkey's parameterised state (theory textbook ch. 3)
+Stage 3 — the state (optics-state, LANDED 2026-09-09):
+- [x] `State.zoom(lens)(p: X ! State % A + F): X ! State % S + F` — a
+      program over a part runs over the whole, and touches nothing
+      else; the rest of the row passes through (a Writer beside the
+      State is asserted); a program that does not write is the
+      identity on the state
+- [x] `PState.zoom(lens)` — one `shift`, and the stage's whole
+      argument: a `Lens[S1, S2, A1, A2]` turns a part's transition
+      A1 -> A2 into the whole's S1 -> S2, so `Box[String]` becomes
+      `Box[Int]` because the part did, and asking for the old type
+      back does not compile
+- [x] on the JVM, JS and Native, from one file
 
 ## Design
 
@@ -285,6 +291,34 @@ picture, and chapter 3 of the theory textbook already reads `Cont`
   cheap enough. Measured, not assumed.
 
 ## Results
+
+Stage 3 (optics-state) landed 2026-09-09: `State.zoom` and
+`PState.zoom`, `TestZoom` (6, all three platforms). `State.zoom` is
+not a handler but an INTERPRETATION of one effect into another — every
+`Get` on the part is a `Get` on the whole read through the lens, every
+`Set` a read, a lens `set` and a write — written as `handle`'s split
+loop.
+
+One thing the loop cannot say, and the way round it: in the lone-
+operation arm the GADT refinement gives `A <: X`, not `A = X`, and
+`Free` is invariant in its answer, so `A ! row` is not `X ! row`
+without a cast. A LONE OPERATION IS A BIND WITH A PURE CONTINUATION,
+and the Bind arm already handles it — so that case delegates instead
+of casting, at one node's cost for a shape that is rare anyway. (The
+repo's rule: no casts without necessity.)
+
+`PState.zoom` is the stage's argument in one line:
+
+```scala
+shift(k => (s1: S1) => (m / (x => (a2: A2) => k(x)(l.set(a2)(s1))))(l.get(s1)))
+```
+
+Read the part out of the whole to start the inner program, put the
+part back to finish it, and the types line up on their own: the whole
+changes type exactly when the part does. That is the sense in which
+the four-parameter lens and Atkey's parameterised state are the same
+picture, and it is why `theory-optics` (chapter 10) is filed beside
+chapter 3 rather than on its own.
 
 Stage 2 (optics-ui) landed 2026-09-09: `Ui.everywhere`, `Ui.shown`,
 `Ui.key`, `Ui.path` in okay-ui, `foldLocal`/`submit`/`tabOf` written

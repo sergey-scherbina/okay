@@ -1954,9 +1954,11 @@ measure on our own data, never a predicted result.
       written with them; `Ui.patch` keeps its navigation, as the gate
       decided. Found: a bottom-up rewrite is not an applicative
       traversal, and `shown` had to exist beside `everywhere`.
-- [ ] optics-state — stage 3: `zoom(lens)` over `State % S`, and the
-      type-changing version over `PState` (Atkey's parameterised state
-      IS the four-parameter lens, theory ch. 3).
+- [x] optics-state — LANDED 2026-09-09 (specs/optics.md Results):
+      `State.zoom` (an interpretation of State % A into State % S, the
+      rest of the row untouched) and `PState.zoom` (one shift: the
+      four-parameter lens zooms the parameterised state, and the whole
+      changes type exactly when the part does).
 - [ ] optics-fast — the composed optic re-interprets on every `set`
       (3.5x a nested copy, specs/optics.md Results); an interpretation
       into a concrete affine (`preview` + `set`, built once) would make
