@@ -135,8 +135,16 @@ values outward, the P3 rule from specs/interop.md):
       no type binding, no duplicate); the closer is a bound
       `ModuleScope` instance since Guice has no lifecycle;
       `OkayGuice.instance[A](injector)` asks by type when the scope
-      builds. CDI/Micronaut are the same shape and are documented in
-      the Interop section, not built
+      builds
+- [x] `okay-cdi` (SHIPPED, di-tails): `OkayCdi.extension(m.exports)`, a
+      portable Extension adding one synthetic `@Singleton` `@Named`
+      bean per export at `AfterBeanDiscovery` and running the closer
+      at `BeforeShutdown` (a singleton nobody selected is never
+      destroyed, so the bean's destroy is not the hook); `instance[A]`.
+      Weld SE in tests
+- [x] the WebFlux end-to-end (di-tails): through the handler stack in
+      the default gate, and Boot + Netty on a random port under `Live`.
+      It found the adapter alone insufficient — see Decisions
 
 Stage 3 — the join with deployment (specs/deployment.md), SHIPPED:
 - [x] the root module's unresolved inputs ARE the application's
@@ -162,12 +170,11 @@ one module written here runs under Spring Boot by rendering, under
 ZIO by conversion, standalone by `Resource.run`, and the code that
 uses `wire[Db]` does not know which.
 
-CDI (Quarkus, Micronaut's own container, Jakarta) is the same shape
-as Guice and is not built until someone needs it: a producer per
-export named by the plan, the closer as a bean, `CDI.current().select`
-as the source of values. The three bridges built share the one seam,
-`m.exports` plus `Resource.open`, and a fourth would add nothing to
-the core.
+CDI is built too (okay-cdi, on the operator's go): a synthetic bean
+per export, the closer at shutdown, `select` as the source of values.
+The four bridges share the one seam, `m.exports` plus `Resource.open`,
+and none of them touched the core — Micronaut's own container and
+Quarkus (CDI) are covered by okay-cdi's shape.
 
 What is deliberately NOT emulated, so the reader is not surprised:
 AOP proxies and `@Transactional` (the region and `Typed.transact` are
@@ -225,6 +232,20 @@ is the actuator, and a Boot app can mount both).
   root still has — a module that RESOLVES its `Pg` internally
   contributes nothing, which is right: the deployment provisions
   what the code cannot make.
+- **WebFlux needs a result handler, not only an adapter** (di-tails).
+  Two measured facts: `WebFluxConfigurationSupport` makes a
+  `ReactiveAdapterRegistry` BEAN and never consults the shared
+  instance (a program registered only there reached Jackson: "No
+  serializer found for class okay.Free$Bind"), and WebFlux reads the
+  element type from generic index 0, which for `Free[Async, A]` is
+  the effect (a `String ! Async` came back as `data:hi!`, a
+  server-sent event). So the auto-configuration registers a
+  `BeanPostProcessor` for every registry bean and an
+  `OkayResultHandler` ordered before `ResponseBodyResultHandler` that
+  hands the value on as a `Mono` under a stand-in return type whose
+  index 0 is our index 1. The alternative — a wrapper type with `A`
+  first — would have changed the controller's signature, which was
+  the one thing the ask ruled out.
 - **The plan is the type, not a record of the build** (stage 1). The
   entry first said "via the TypeableK seam"; that seam names an
   effect signature by its runtime class, which is the wrong tool

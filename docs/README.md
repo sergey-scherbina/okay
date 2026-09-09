@@ -93,6 +93,7 @@ API reference, gotchas.
 | [`okay-zio`](modules/okay-zio.md) | ZIO and ZStream bridges, the ZIO scheduler, ZLayer ⇄ Module |
 | [`okay-spring`](modules/okay-spring.md) | a Module as Spring singletons closed with the context, a bean as a module, `A ! Async` from a WebFlux controller (Boot auto-configuration) |
 | [`okay-guice`](modules/okay-guice.md) | a Module as Guice bindings by name and type, the closer bound beside them, an injector's instance as a module |
+| [`okay-cdi`](modules/okay-cdi.md) | a Module as CDI beans through a portable Extension, the closer at shutdown, a container's instance as a module |
 | [`okay-kyo`](modules/okay-kyo.md) | kyo bridges and the structural effect-row mapping |
 | [`okay-fs2`](modules/okay-fs2.md) | fs2 streams, chunk for chunk, native backpressure both sides |
 | [`okay-kafka`](modules/okay-kafka.md) | Kafka: one poll, one chunk; offsets = the replayable capability |

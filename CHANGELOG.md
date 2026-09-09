@@ -1,5 +1,27 @@
 # Changelog
 
+## di-tails — the CDI bridge, and the WebFlux end-to-end that found a gap
+
+The two things specs/di.md had documented and not built, on the
+operator's go. New JVM satellite okay-cdi: `OkayCdi.extension(m.exports)`
+is a portable Extension adding one synthetic `@Singleton` `@Named`
+bean per export at `AfterBeanDiscovery` — singleton because the
+values are built and a normal scope's client proxy is neither a
+`final` class's friend nor the instance the module wired — with the
+closer run at `BeforeShutdown`, since a singleton nobody selected is
+never destroyed; `OkayCdi.instance[A]`. Weld SE in tests, 3 of them.
+okay-spring gained the end-to-end: a controller returning
+`String ! Async` served through the real handler stack
+(`WebTestClient.bindToApplicationContext`) in the default gate, and
+Boot + Netty on a random port under `Live`. It found that the adapter
+alone did not work: WebFlux's own `ReactiveAdapterRegistry` bean never
+consults the shared instance (Jackson met `Free$Bind`), and the
+element type is read from generic index 0, ours being at index 1
+(the reply came as a server-sent event). Fixed with a
+`BeanPostProcessor` for every registry bean and `OkayResultHandler`
+before `ResponseBodyResultHandler`, both from the auto-configuration;
+`spring-webflux` is now a compile dependency of okay-spring. Recorded
+in the spec's Decisions. Commit: LANDING.
 ## timeout-masks-failure — a failure under Async.timeout ends it at once, with its own exception
 
 `Async.timeout(ms)(p)` was `race(p.map(Some), sleep(ms).map(None))`,

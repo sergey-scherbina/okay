@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Weld SE insists on a bean archive even with discovery disabled; the
+     beans of these tests are synthetic, added by the Extension -->
+<beans xmlns="https://jakarta.ee/xml/ns/jakartaee" version="4.0" bean-discovery-mode="none"/>

@@ -151,8 +151,11 @@ its Behavior checklist:
       satellite. CDI documented as the same shape, not built.
 - [x] di-deploy — DONE 2026-09-09: `Needs[A]` + `Needs.of[Root]` in
       okay-deploy. The "di" arc of specs/di.md is closed at stages
-      0-3; what remains is wanted-on-demand: CDI (documented shape),
-      a WebFlux end-to-end with a real server.
+      0-3.
+- [x] di-tails — DONE 2026-09-09: okay-cdi (Weld SE tests) and the
+      WebFlux end-to-end (handler stack in the gate, Netty under
+      Live), which found and fixed the result-handler gap. Nothing
+      left in this arc.
 
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 
