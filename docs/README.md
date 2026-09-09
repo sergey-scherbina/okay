@@ -118,6 +118,7 @@ API reference, gotchas.
 | [`okay-security`](modules/okay-security.md) | authorization once: claims as values, JWT/JWKS over a crypto seam, PBKDF2, policies as an algebra, routes wrapped so a principal must exist, OAuth2 client flows |
 | [`okay-crypto`](modules/okay-crypto.md) | the primitive crypto seam — MAC, hash, KDF, randomness on the platform's own crypto, so okay-pg's SCRAM need not cycle through the security stack |
 | [`okay-ui`](modules/okay-ui.md) | the toolkit that is not a toolkit: the view is a value, the renderer is a seam — terminal, React, test host, one application; forms derived from Schema |
+| [`okay-ui-gtk`](modules/okay-ui-gtk.md) | GTK 4 on Scala Native over the same Backend seam; aggregated only where pkg-config finds gtk4; one live backend per process, patches marshalled through g_idle_add |
 | [`okay-mcp`](modules/okay-mcp.md) | the Model Context Protocol, both ends: a server is a `Handler[Tool]`, our tools are a server, and the protocol is a pure Stage |
 | [`okay-persist`](modules/okay-persist.md) | the durable log: one primitive, staged — segments and recovery, offsets, compaction, replication's core, Sql/Kafka store engines, the Doctor |
 | [`okay-ops`](modules/okay-ops.md) | health, stats and Prometheus over the persist log's own values: /healthz, /readyz, /stats, /metrics — no SDK, the manifest is the Kubernetes integration |
