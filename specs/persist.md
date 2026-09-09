@@ -524,6 +524,43 @@ at stage 0 and never rebind.
       replicate-pull is the remote's Read, and the far node ends up
       holding the very bytes (no in-process replica wrote them)
 
+## The saga (persist-saga)
+
+The multi-item change, packaged. specs/data.md and `Docs` say a
+change across items is "a journaled sequence of conditional writes —
+the saga pattern with machinery this stack already has", and until
+this lane every consumer hand-rolled the steps, the compensations and
+the recovery. `okay.persist.Saga[S](topic, id, policy)(steps*)`: a
+step is its effect and its compensation, both over the saga's state;
+`run(init)` journals `Intent(i)` BEFORE step i and `Done(i, state)`
+after, so a restart can tell never-ran, ran-answer-lost and ran apart
+(the Durable doctrine, one level up); a failing step journals
+`Failed` and the steps before it compensate in reverse, each
+`Undone`; the end is `Finished` or `Aborted`, answers a later
+`recover` returns without touching anything. `recover()` folds the
+saga's records and acts by the declared `Policy`: `Forward` finishes
+the remaining steps, re-running one whose answer was lost — so a
+step's effect must be idempotent at its far end (a CAS, a WithKey, a
+unique constraint); `Backward` compensates everything done, the
+uncertain step included — so a compensation must tolerate "maybe it
+happened". A compensation that fails is `Stuck`, named, the journal
+left standing. `status` is a Schema value (phase, done, undone,
+pending, error) for an ops topic or /metrics. One saga = one key =
+one partition; the state travels as CBOR at the edge, the records
+through the Typed envelope.
+
+- [x] the happy path finishes with the final state; recover on a
+      finished saga answers the end and runs nothing
+- [x] a failing step: the earlier steps compensate in reverse, Aborted
+      names the step and the error, the world is clean
+- [x] the crash window (a step's effect done, its answer never
+      journaled): Forward re-runs it and finishes; Backward compensates
+      it and everything before, then Aborted
+- [x] a crash mid-compensation: recover resumes the compensations where
+      they stopped
+- [x] two sagas share a topic and keep their own records; an unknown id
+      refuses to recover
+
 ## Out of scope
 
 - transactions in the OWN engine (atomic multi-partition writes) —
