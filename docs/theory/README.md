@@ -30,6 +30,9 @@ turned out wrong are worked examples of the method, not embarrassments.
 | [5. Algebraic effects and handlers](05-effects-handlers.md) | operations, rows as unions, three shapes of handler | Plotkin & Power 2003 · Plotkin & Pretnar 2009 · Kiselyov, Sabry & Swords 2013 |
 | [6. Final tagless and staging](06-tagless-staging.md) | two ways to make abstraction free | Carette, Kiselyov & Shan 2009 · Taha & Sheard 1997/2000 |
 | [7. Logic, streams and sketches](07-logic-streams.md) | msplit, codata, the fold algebra, approximation with stated error | Kiselyov, Shan, Friedman & Sabry 2005 · Wadler 1985 · Flajolet et al. 2007 |
+| [8. Direct style](08-direct-style.md) | reflection, elaboration, capabilities — and why multi-shot survives here | Filinski 1994/1999 · Kameyama & Hasegawa 2003 · Brachthäuser et al. 2020 |
+| [9. Conditions: resumable exceptions](09-conditions.md) | signal without unwinding, restarts as prompts, the policy at the boundary | Steele 1990 · Pitman 2001 · Plotkin & Pretnar 2009/2013 · Zhang, Salvaneschi & Myers 2020 |
+| [10. Optics on profunctors](10-optics.md) | the constraint as a type parameter, the meet as an intersection, Tambara and Yoneda — and the type-changing lens that IS parameterised state | Pickering, Gibbons & Wu 2017 · Boisseau & Gibbons 2018 · Clarke et al. 2020 · Atkey 2009 |
 
 ## The notation, once
 

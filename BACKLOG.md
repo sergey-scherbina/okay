@@ -1963,10 +1963,14 @@ measure on our own data, never a predicted result.
       (3.5x a nested copy, specs/optics.md Results); an interpretation
       into a concrete affine (`preview` + `set`, built once) would make
       `set(b)` a direct call. By a consumer that needs it; none does.
-- [ ] theory-optics — chapter 10 of the textbook: Tambara modules,
-      existential ≅ profunctor by Yoneda, the type-changing lens and
-      parameterised state as one picture (Pickering–Gibbons–Wu 2017,
-      Boisseau–Gibbons 2018, Clarke et al. 2020, Riley 2018).
+- [x] theory-optics — LANDED 2026-09-09: docs/theory/10-optics.md, in
+      the index and the README table, with chapter 9 gaining the
+      forward link it lacked. Tambara modules, existential ≅
+      profunctor by Yoneda, the traversal whose applicative slot is
+      the effect row, and the type-changing lens that IS chapter 3's
+      parameterised state; plus the two refusals (a creating lens is
+      not a lens; a bottom-up rewrite is a catamorphism) and the
+      gate's numbers.
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
 - [x] ui-vocab — LANDED 2026-09-09 (see specs/frontend.md Results). Original: Box with weights/gap/pad

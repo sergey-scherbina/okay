@@ -1,5 +1,40 @@
 # Changelog
 
+## theory-optics — chapter 10, and the sentence chapter 3 had been making as a figure of speech
+
+`docs/theory/10-optics.md`, the textbook's last chapter and the ledger
+of today's optics arc read as theory. Why composition rather than
+access is the problem, and why the concrete and van Laarhoven
+encodings each fail at it; the profunctor encoding, with the
+constraint as a TYPE PARAMETER and composition as the intersection —
+Scala 3 has no constraint kinds and does not need them, because the
+meet of the lattice is `&` and an interpretation satisfies it by
+subtyping; Tambara modules, of which `Strong` is the instance over
+products, and the Yoneda isomorphism that licenses treating a
+polymorphic function as a get/set pair; and the three interpretations
+as three choices of profunctor, including the one only a library with
+an effect system can have — `Star[F]` where `F` is the effect row, so
+a traversal and a program are the same thing.
+
+The chapter's punchline is that chapter 3's phrase "read through
+Atkey's lens" was not a figure of speech. A four-parameter optic moves
+the whole S1 -> S2 exactly when the part moves A1 -> A2; Atkey's
+parameterised monad is indexed by an arrow in a category of states;
+`PState.zoom` is one `shift` and typechecks because those are the same
+arrow.
+
+Two refusals are recorded as theory rather than as apology: a lens
+that CREATES a missing field breaks GetPut (so the form router keeps
+its own walk and the optic stays lawful), and a bottom-up rewrite is a
+catamorphism, not a traversal (applying `f` to the rebuilt node is a
+bind, and a traversal has only an Applicative). Both carry the
+measurement or the test that found them; the gate's numbers close the
+chapter, as chapter 6's house rule requires.
+
+Found while linking it: the README's chapter table stopped at 7 —
+chapters 8 and 9 had never been added — and chapter 9 had no
+navigation footer. Both fixed here.
+
 ## dsl-slots — a slot is built from the same terms as the rule it belongs to
 
 okay-chat builds its routing rules with `okay.intent.Dsl` and typed
