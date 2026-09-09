@@ -1,5 +1,24 @@
 # Changelog
 
+## writer-test-no-some — refuted on the first byte count, and unsound besides
+
+First of the four "runner-floor" items the operator ordered after the
+handler-fusion arc: `Writer`'s own `TypeableK` tests the told value
+through `scala.reflect.Typeable`, whose `unapply` answers a `Some` per
+tell — remove it with a `ClassTag` class test (boxed for primitives),
+`Typeable` as the fallback by given priority.
+
+Built, tests green, measured: 0 B/op, to the byte, on the fused loop
+and on both nestings of the shipping runners. Two reasons, both worth
+knowing: the JIT already scalarises that Some on the runner path (a
+tiny `unapply` consumed by `.isDefined`), and the fused loop never
+tests Writer at all — it tests State and takes Writer by exclusion, so
+the "333 Somes remain" remark in stage A's write-up was an inference,
+not a measurement; corrected there. And the road is UNSOUND anyway: a
+`ClassTag` of a union is its LUB, so `Writer % (String | Int)` would
+claim every told value — the failure `TypeableK.derived` refuses for
+rows, reappearing one level down. Reverted; nothing landed but the
+record. Next: eff-stack-safety.
 ## persistence-e2e — the seven audit lanes together, and Pool/Saga stats on /metrics
 
 The seven persistence-audit lanes were each proven alone; this lane

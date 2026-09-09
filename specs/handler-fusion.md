@@ -428,9 +428,10 @@ numbers are minima across rounds, B/op from `-prof gc` is load-proof:
 | nested, the other order | 354 241 | 327 569 | 33.9 | 31.7 | 1.07x |
 
 −26.7 KB/op is the Either (16 B) plus the extractor's Some (16 B) per
-operation, minus the Some `scala.reflect.Typeable` still answers for a
-told value's own test (333 per run) — the prediction (−16…24 KB) was
-under. Time: 7–11% on the hot loops, which clears the 10% bar on the
+operation — the prediction (−16…24 KB) was under. (The remark that
+`scala.reflect.Typeable`'s Some for the told value still costs was
+measured afterwards and is wrong: 0 B/op, the JIT scalarises it, and
+the fused loop never tests Writer at all — writer-test-no-some.) Time: 7–11% on the hot loops, which clears the 10% bar on the
 lane it was set on and misses it by two points on the left-nested one.
 One observation left open: `State.handle`+`Writer.foldWith` on `split`
 saved only the Option in one nesting and both wrappers in the other

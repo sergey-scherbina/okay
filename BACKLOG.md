@@ -7,7 +7,16 @@ fused pass over `Free` is ~13.7 ns and ~122 B per operation
 (`FusionBenchmark.fusedSWr`, 122 641 B/op per 1 000 ops). The
 operator asked for the four things left under it, in this order:
 
-- [ ] writer-test-no-some — `Writer`'s own `TypeableK` tests the told
+- [x] writer-test-no-some — REFUTED 2026-09-09, no code landed. Built
+      (ClassTag class test in the companion, Typeable fallback by given
+      priority) and measured: 0 B/op on fusedSWr, nestedSWr and nestedWS
+      to the byte — the JIT already scalarises `Typeable.unapply`'s Some
+      on the runner path, and the fused loop never tests Writer at all
+      (it tests State and takes Writer by exclusion). And the ClassTag
+      road is UNSOUND for a union told type: `ClassTag[String | Int]` is
+      the LUB (`Object`), so `Writer % (String | Int)` would claim every
+      told value — the same failure TypeableK.derived refuses for rows.
+      Was: `Writer`'s own `TypeableK` tests the told
       value through `scala.reflect.Typeable`, whose `unapply` answers a
       `Some` per tell (333 per run here). A `ClassTag`-based test where
       one exists (boxed for primitives), `Typeable` as the fallback,
