@@ -155,7 +155,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
   }
 
   test("the same aggregator: distributed on Spark, and local over Chunks") {
-    departuresRdd.count()
+    departuresRdd.count(): Unit
     val t0 = System.nanoTime()
     val onSpark = aggregate(departuresRdd)(hourly)
     val sparkMs = (System.nanoTime() - t0) / 1000000

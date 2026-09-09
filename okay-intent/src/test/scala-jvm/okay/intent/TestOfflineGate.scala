@@ -30,6 +30,14 @@ package okay.intent
  */
 class TestOfflineGate extends munit.FunSuite {
 
+  // gate-hygiene (2026-09-09): these suites are compute-bound and ran
+  // 4 s alone, 48-61 s under three or four sibling sbts on the box —
+  // over munit's 30 s default, red in four full matrices. The budget
+  // is measured load headroom, not a wider assertion.
+  override def munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(180, "s")
+
+
   /** the same split the shipped model uses: even rows held out, odd
    * rows fitted — so the gate is trained on exactly what the four-way
    * model was trained on, and scored on what it was scored on */

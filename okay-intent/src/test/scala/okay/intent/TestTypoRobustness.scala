@@ -20,6 +20,14 @@ package okay.intent
  */
 class TestTypoRobustness extends munit.FunSuite {
 
+  // gate-hygiene (2026-09-09): these suites are compute-bound and ran
+  // 4 s alone, 48-61 s under three or four sibling sbts on the box —
+  // over munit's 30 s default, red in four full matrices. The budget
+  // is measured load headroom, not a wider assertion.
+  override def munitTimeout: scala.concurrent.duration.Duration =
+    scala.concurrent.duration.Duration(180, "s")
+
+
   private val (train, test) = IntentFixture.labelled.zipWithIndex
     .partition(_._2 % 2 == 1) match
       case (a, b) => (a.map(_._1), b.map(_._1))
