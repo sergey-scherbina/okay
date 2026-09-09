@@ -1639,3 +1639,15 @@ lazy val compare = (project in file("compare"))
       "io.circe" %% "circe-generic" % "0.14.10",
     ),
   )
+
+/** The DynamoDB adapter of the Docs seam (docs-dynamo, specs/data.md):
+ * the JSON protocol over the one http client, signed by okay-blob's
+ * SigV4 with service "dynamodb" — no AWS SDK. JVM, like the Mongo
+ * adapter; the DocsSuite contract runs Live against dynamodb-local. */
+lazy val okayDocsDynamo = (project in file("okay-docs-dynamo"))
+  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test", okayBlob.jvm, okayHttp.jvm)
+  .settings(
+    name := "okay-docs-dynamo",
+    libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
+    Test / fork := true,
+  )
