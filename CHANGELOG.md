@@ -1,5 +1,19 @@
 # Changelog
 
+## gate-hygiene — the three load flakes and two warnings nine matrices showed
+
+`TestRepoAgent` indexes the whole repository and ran 203-237 s under
+four sbts on the box against its 120 s budget, green alone — tagged
+Live, where a box-load-dependent result belongs (AGENTS.md: no flaky
+tests in the default gate). `TestOfflineGate` and `TestTypoRobustness`
+are compute-bound (4 s alone, 48-61 s under load, red in four full
+matrices at munit's 30 s) and get a measured 180 s `munitTimeout`, not
+a wider assertion. The two spark tests' discarded `count()` Longs
+become `: Unit` (the no-warnings policy). `Providing.scala`'s E029 on
+the JS compile is already gone on the current tree (cold compile, 0
+warnings). Landed as 479c510b. Gate: full matrix, 3355 tests, 0
+failures, 0 warnings.
+
 ## outbox — the transactional outbox, the inbox and the dead-letter topic, as okay-outbox
 
 The microservices audit's largest remaining gap. `Queues.ingress`/
