@@ -1,7 +1,7 @@
 task: di-tails
 agent: fable-di
 started: 2026-09-09
-heartbeat: 2026-09-09T08:13:31Z
+heartbeat: 2026-09-09T10:16:50Z
 status: in-progress
 branch: feature/di-tails
 worktree: ../okay-wt-tails
@@ -18,4 +18,4 @@ what: new satellite okay-cdi (jakarta CDI 4 API; Weld SE in tests):
   bindToController) in the default gate, and a real Netty server on a
   random port under the Live tag. build.sbt appended + okay-spring test deps.
 
-next: okay-cdi first, then the webflux tests
+next: rebased on e7bba6fe, one clean commit ef302b0b; waiting for the box (67MB free) to re-run docs-index + spring + cdi suites, then ff-merge
