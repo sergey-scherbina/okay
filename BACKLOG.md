@@ -5328,3 +5328,43 @@ so it is filed rather than fixed. Two honest routes:
   next line already says the former and does not depend on the clock.
 
 The second is better if it can be had: it tests the actual claim.
+
+## coordination-free — a clock, an identity, and state that merges
+
+The operator's direction (2026-09-09): ULID/UUIDv7, CRDTs, and
+"tokens or tickets". One direction — acting without a coordinator.
+Spec: specs/coordination-free.md. Library first; Okay!Chat is the
+application and gets its own entry once there is something to apply.
+
+WHAT THE TREE HAS, grepped:
+- ULID/UUIDv7: nothing. `UUID` is only a COLUMN TYPE (SqlType.Uuid,
+  jdbc + r2dbc); `randomUUID` (v4, random) is called ad hoc in four
+  places — McpHttp sessions, Smtp message-ids, ACME tests.
+- CRDT: nothing. The one `lww` in the tree is a local function in
+  okay-cache's TestView.
+- okay-cluster is not a cluster: one `Acceptance` object for the
+  cross-platform test.
+- tokens: okay-security is real and central (Jwt, Es256, OAuth2,
+  Oidc). No attenuation, no offline delegation.
+
+- [x] 0 — the spec.
+- [ ] 1 — `Hlc` and `Uid` in core, cross-platform, six laws. A
+      hybrid logical clock is what BOTH a monotonic id and an LWW
+      register need, so it is built once. ULID and UUIDv7 are the
+      same 128 bits — 48-bit millis then entropy — differing in six
+      bits of version/variant and in spelling, so they are one type
+      with two renderings.
+- [ ] 2 — `okay-crdt`: `Crdt[A]` and its laws (commutative,
+      associative, idempotent) as a reusable check, THEN the
+      instances — GCounter, PNCounter, LwwRegister over `Hlc`, GSet,
+      OrSet. A merge that is not idempotent makes the type a lie, so
+      the laws land first.
+- [ ] 3 — the seam: a CRDT is a fold, and okay-cache's `View` already
+      takes one. Merge over okay-persist; `Schema` so a replica ships
+      as data.
+- [ ] 4 — capability tokens. BLOCKED ON A DECISION, not on work: the
+      operator's "tokens or tickets" has two readings that are
+      opposite in spirit — attenuable capabilities (macaroon/biscuit,
+      the holder narrows its own right offline) versus tickets and
+      leases (TTL, fencing tokens, numbered queues, i.e.
+      coordination). Asked; no answer yet. Not guessed.

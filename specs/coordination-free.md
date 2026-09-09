@@ -1,0 +1,190 @@
+# Coordination-free: a clock, an identity, and state that merges
+
+## Overview
+
+The operator's direction (2026-09-09) named three things — ULID /
+UUIDv7, "распределённые структуры данных типа CRDT", and "токены или
+тикеты" — and they are one direction: **acting without asking anyone.**
+An identity you can issue locally, state that converges without a
+lock, and authority that proves itself instead of being looked up.
+
+What the tree holds today, grepped rather than remembered:
+
+- **ULID / UUIDv7: nothing.** `UUID` appears only as a *column type*
+  (`SqlType.Uuid`, mapped in okay-jdbc and okay-r2dbc).
+  `java.util.UUID.randomUUID()` — version 4, pure random — is called
+  ad hoc in four places: `McpHttp` session ids, `Smtp` message ids,
+  and twice in ACME tests. Nothing sortable, nothing monotonic.
+- **CRDT: nothing.** The only `lww` in the repository is a local
+  function inside `okay-cache`'s `TestView`.
+- **`okay-cluster` is not a cluster**: one `Acceptance` object that
+  both a JS client and a JVM server compile, so the cross-platform
+  policy has an acceptance test.
+- **Tokens: a lot, and all central.** `okay-security` has `Jwt`,
+  `Es256`, `OAuth2`, `Oidc`, `Password`, `Secure`. An issuer signs and
+  a verifier checks. There is no attenuation — no way for a holder to
+  narrow its own right and hand it on without the issuer.
+
+So the third leg exists in its centralized form and the first two do
+not exist at all.
+
+**Why this fits okay better than it looks.** `okay-cache`'s `View`
+says it in its own comment: *"a cache over a log is a CONSUMER, and a
+consumer is never invalid, only BEHIND, by a measurable amount"* — and
+`View` is built from a fold, `(Option[V], Record) => Option[V]`. A
+CRDT **is** a fold with laws: commutative, associative, idempotent.
+The machinery is already standing — okay-persist as the truth,
+Schema/codec for the wire, `Stm` for a local cell. What is missing is
+the vocabulary and the laws, not the infrastructure.
+
+And a sortable id is not decoration for a log-first library. With the
+journal as truth and the relational store derived, a time-ordered key
+means **range scans over time with no secondary index** — which a v4
+UUID cannot give at any price, because it is random by construction
+and destroys locality in every B-tree it touches.
+
+## The insight this arc turns on
+
+**One clock pays for both halves.** An LWW register needs a timestamp
+that survives a clock stepping backwards. A monotonic id needs exactly
+the same thing. That is a *hybrid logical clock*, and it is built once
+here rather than twice.
+
+**ULID and UUIDv7 are the same 128 bits.** Both are 48 bits of
+Unix milliseconds followed by entropy; they differ in six bits
+(UUIDv7 spends 4 on a version and 2 on a variant, RFC 9562) and in how
+they are spelled — Crockford base32, 26 characters, versus hyphenated
+hex, 36. They are not two types. They are one value with two
+renderings, and treating them as two would duplicate the hard part
+(monotonicity) in two places.
+
+## Interface
+
+`Hlc` and `Uid` live in **core** (`okay`), cross-platform on JVM, JS
+and Native: everything else in the library wants them — persist keys,
+chat message ids, `McpHttp` sessions — and a separate module would
+make okay-persist depend upward.
+
+```scala
+package okay
+
+/** A hybrid logical clock: 48 bits of milliseconds, 16 of counter,
+  * packed in one Long so comparison is a Long comparison. */
+opaque type Hlc = Long
+
+object Hlc:
+  /** the next stamp from this clock: never smaller than the last one
+    * it issued, whatever the physical clock does */
+  def next(): Hlc
+
+  /** merge a stamp seen from elsewhere — the HYBRID half: after this,
+    * our stamps are above anything we have been told about */
+  def observe(remote: Hlc): Hlc
+
+  def millis(h: Hlc): Long
+  def counter(h: Hlc): Int
+  given Ordering[Hlc]
+
+/** 128 bits: 48 of Unix milliseconds, then entropy. One value, two
+  * spellings — `ulid` and `uuid`. */
+final case class Uid(hi: Long, lo: Long)
+
+object Uid:
+  def next(): Uid                    // monotonic, from the ambient Hlc
+  def ulid(u: Uid): String           // 26 chars, Crockford base32
+  def uuid(u: Uid): String           // 36 chars, RFC 9562 version 7
+  def parseUlid(s: String): Option[Uid]
+  def parseUuid(s: String): Option[Uid]
+  def millis(u: Uid): Long
+  given Ordering[Uid]
+```
+
+The clock is **injected, not ambient-only**: `Hlc.at(source)` takes a
+`() => Long` so a test can step time backwards. Every law below is
+written against a controllable source; the parameterless `next()` is
+the convenience over `System.currentTimeMillis`.
+
+## Behavior
+
+**The laws, which are the deliverable.**
+
+1. *Monotonic.* Successive `Uid.next()` strictly increase, one thread
+   or many, including many within one millisecond.
+2. *Sortable as text.* For any two ids, the lexicographic order of
+   their `ulid` strings equals the numeric order of the values equals
+   the order in which they were issued. (This holds for `ulid` by
+   construction; hyphenated hex is checked too.)
+3. *A backward clock does not go back.* With a source that steps
+   backwards by a minute, ids still increase. This is the law the
+   whole design exists for.
+4. *RFC 9562.* `uuid` renders version 7 and variant `0b10`.
+5. *Round trip.* `parseUlid(ulid(u)) == Some(u)` and the same for
+   uuid; garbage parses to `None` rather than throwing.
+6. *Uniqueness under concurrency.* N threads, M ids each: no
+   duplicates.
+
+**What `Hlc` guarantees and what it does not.** It gives a total order
+that agrees with causality for events that have exchanged stamps. It
+does **not** give a global physical time, and two nodes that never
+communicate can order concurrent writes arbitrarily — which is what
+"last write wins" always meant, and why LWW is one choice in stage 2
+rather than the only one.
+
+## Stages
+
+- [x] **0 — the spec and the claim.**
+- [ ] **1 — `Hlc` and `Uid` in core**, cross-platform, with the six
+      laws above.
+- [ ] **2 — `okay-crdt`**: `Crdt[A]` with `merge`, and its laws
+      (commutative, associative, idempotent) as a REUSABLE check that
+      every instance runs. Instances: `GCounter`, `PNCounter`,
+      `LwwRegister` (over `Hlc`), `GSet`, `OrSet`. Laws before
+      instances — a merge that is not idempotent makes the type a lie.
+- [ ] **3 — the seam**: a `Crdt` is a fold, so it meets okay-cache's
+      `View` and okay-persist directly; `Schema` for the wire so a
+      replica ships as data.
+- [ ] **4 — capability tokens**, once the open decision below is
+      answered.
+
+## Decisions
+
+**Open: what "tokens or tickets" means.** Asked, not yet answered, and
+the two readings are opposite in spirit, so this is not guessed:
+
+- **Capability tokens** (macaroons, biscuits): the holder narrows its
+  own authority offline — "this token, but read-only, and only until
+  Friday" — and passes it on without the issuer being present. This
+  continues the direction of the rest of the spec.
+- **Tickets and leases**: TTL leases, fencing tokens against a zombie
+  owner, numbered queues. That is *coordination*, the thing the rest
+  of this spec is about avoiding. It is legitimate work — okay-persist
+  has Raft-backed leadership already — but it belongs to a different
+  spec.
+
+Stage 4 does not start until this is answered.
+
+**Decided: `Uid` is a case class of two Longs, not an opaque 128-bit
+type.** JS has no 128-bit integer and its `Long` is emulated;
+splitting explicitly keeps every platform reading the same code, and
+`Ordering` compares hi then lo unsigned.
+
+**Decided: the clock is a parameter.** The bug this design exists to
+prevent is a backward clock, and a design whose central hazard cannot
+be tested is not designed.
+
+## Out of scope
+
+- Distributed consensus. okay-persist already has Raft; nothing here
+  competes with it.
+- Delta-CRDTs and causal-stability garbage collection. Stage 2 ships
+  state-based (convergent) types, where merge takes two whole values.
+  Deltas are an optimisation with the same laws, additive later.
+- Byzantine settings. Merge here trusts its inputs; a replica that
+  lies is an authentication problem, which is stage 4's business.
+- Applying any of it to Okay!Chat. The operator's instruction is
+  library first — the chat is where it gets used, and it gets its own
+  entry once there is something to use.
+
+## Results
+
+(stage 1 fills this in)
