@@ -1,0 +1,23 @@
+task: schema-compat
+agent: fable-resilience
+started: 2026-09-09
+heartbeat: 2026-09-09T10:46:24Z
+status: in-progress
+branch: feature/schema-compat
+worktree: ../okay-wt-schema-compat
+spec: specs/codecs.md, a new section — BACKLOG "resilience" / microservices-next
+
+why: the last cheap gap of the microservices audit. Two services
+  share a Schema-encoded message; when one side's case class changes,
+  nothing today ANSWERS whether the other side can still read it. The
+  decode rules are stated (absent optional, declared default, damage
+  is data) but only exercised one value at a time. Schema is a VALUE,
+  so the check is a fold over two of them — no Pact, no broker.
+
+what: okay-codec Compat: compare(old, new) → Vector[Change] with a
+  verdict per direction (a new reader over old bytes, an old reader
+  over new bytes), the rules read off the decoder's own behaviour;
+  Compat.check(old, new, Mode) for a test to assert; a printable
+  report. Docs: docs/modules/okay-codec.md section, spec section.
+
+next: spec section, code, tests, docs, gate, land

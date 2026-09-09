@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- schema-compat — specs/codecs.md: does the other side still read our messages (claim: schema-compat)
 - http-post-body-audit — BACKLOG: does a POST body reach a route on
   every backend? Jetty's did not (found live by mcp-push, fixed
   there); nothing pins it anywhere. One law over all three servers in
