@@ -1601,9 +1601,13 @@ lazy val okayLangchain4jEmbed = (project in file("okay-langchain4j-embed"))
  * "okayDemoE2eBrowser/test"`.
  */
 lazy val okayDemoE2eBrowser = (project in file("okay-demo-e2e-browser"))
-  .dependsOn(okayDemo)
+  .dependsOn(okayDemo, okayScript)   // okayScript: the mobile-web proof drives a Live page (ui-mobile)
   .settings(
     name := "okay-demo-e2e-browser",
+    // forked, as okay-script's own tests are: a Live page is compiled
+    // by the embedded compiler from java.class.path, which in-process
+    // is sbt's launcher alone (ui-mobile found it as a parser crash)
+    Test / fork := true,
     libraryDependencies ++= Seq(
       "com.microsoft.playwright" % "playwright" % "1.62.0",
       "org.scalameta" %% "munit" % "1.1.1" % Test,

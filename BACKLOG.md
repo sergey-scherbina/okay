@@ -1778,6 +1778,9 @@ measure on our own data, never a predicted result.
       as Submitted(key, json) decoded by the form's schema, `live`
       inputs send Edited, the closed Local set (Toggle, Tab), server
       SetValue overrides a local edit, forged Submitted dropped.
+- [x] ui-mobile — LANDED 2026-09-09 (specs/frontend.md "Mobile", M1): installable Live pages — viewport, level-L mobile CSS, manifest, service worker; Playwright in an iPhone emulation, offline reload; live.js queues events before the socket opens.
+- [ ] ui-mobile-ios — M2: a SwiftPM package (protocol + conformance test + SwiftUI level L + URLSession WebSocket), compiled for the iOS simulator SDK; see specs/frontend.md "Mobile".
+- [ ] ui-mobile-android — M3: the SDK by brew + sdkmanager, the Android target on okay-compose, a debug APK.
 - [x] ui-compose — LANDED 2026-09-09 (specs/frontend.md Results; okay-compose/README.md). Original: a Compose Multiplatform thin client
       (Kotlin, no okay dependency) drawing level L, passing the
       conformance script; the same server drives browser + Compose at

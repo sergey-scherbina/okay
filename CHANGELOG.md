@@ -1,5 +1,38 @@
 # Changelog
 
+## ui-mobile — installable Live pages: the mobile web, proved in an iPhone emulation, offline included
+
+The first of the operator's mobile lanes (specs/frontend.md "Mobile",
+M1). `api.installable(name)` in a page's head makes a Live page a
+mobile-first, installable application with no build step: the
+viewport, `/__okay/app.css` (level L for a phone — 44px tap targets,
+16px inputs, tokens as classes), a web manifest with the page as its
+start URL, and `/__okay/sw.js`, a service worker keeping the shell —
+network first, cache on failure — so the page opens offline as last
+seen and the socket reconnects when it can. `Mobile.scala` holds the
+four files, `Site` serves them, `docs/frontend-guide.md` is the guide
+for the whole frontend story (indexed from docs/README.md).
+
+Measured through a real headless Chromium in an iPhone emulation
+(`TestMobileWeb`, okay-demo-e2e-browser, `sbt integrationTest`): the
+tap lands, the patch lands, the button is tap-sized, manifest and
+worker are served and active; offline, the page reloads whole from
+the shell. `TestMobileHead` (okay-script, default gate) checks the
+head and the four files without a browser.
+
+Four defects found on the way, by a step-by-step probe after the
+suite went silent (`MobileProbe`, kept): `live.js` DROPPED any event
+sent before the socket opened — a tap racing the connection — and now
+queues them behind the hello (a defect of every Live page, made
+visible by a phone); a worker registered without a scope controlled
+`/__okay/` and no page, so `ready` never resolved (scope `/` now,
+which the `Service-Worker-Allowed` header permits); the first load
+precedes the worker's control, so the page adds itself to the shell
+after registering (offline reload had failed with ERR_FAILED); the
+e2e module's tests were not forked, so the embedded page compiler saw
+sbt's launcher as its classpath and crashed in the parser
+(`Test / fork := true`, as okay-script's own tests have).
+
 ## discovery — service discovery and client-side balancing, in okay-resilience
 
 `Resilient.http` hardened one call to the one host in its URL; a

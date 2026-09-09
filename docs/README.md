@@ -28,6 +28,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   the Scala.js frontend whose logic is tested on the JVM, the tests
   over a real socket, and running it. Every command executed before it
   was written down.
+- **[Frontends: one application, any client](frontend-guide.md)** —
+  the view as a value with two vocabulary levels, the hosts (terminal,
+  React, DOM, Swing, GTK), the server-driven wire and its rendered
+  contract, the hybrid rule (no round trip per keystroke), Live pages,
+  the mobile web (installable, offline) and the native thin clients
+  (Compose today; a Swift package is the road for iOS).
 - **[A site out of markdown](okay-script-guide.md)** — from an empty
   directory to a running shop whose pages ARE markdown files compiled
   at runtime: routing by directory, sessions and typed forms, a live

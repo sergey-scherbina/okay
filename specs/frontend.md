@@ -356,6 +356,66 @@ Live pages' `live.js`: the same) and lowers level S at its entry
 the 69 existing okay-ui tests, okay-script's 166 and okay-demo's 54
 pass unchanged.
 
+## Mobile
+
+The operator's next direction (2026-09-09): mobile frontends and
+applications, web and native. Three lanes, in order, each measured.
+
+### M1 — the mobile web (ui-mobile, LANDED 2026-09-09)
+
+A Live page becomes an installable, mobile-first application with no
+build step. `api.installable(name)` in a page's head gives the
+viewport, `/__okay/app.css` (level L for a phone: flex rows and
+columns, 44px tap targets, 16px inputs so iOS does not zoom, tokens
+as classes), a web manifest (the page as its own start URL, standalone
+display, an SVG icon) and `/__okay/sw.js`, a service worker that keeps
+the SHELL — network first, cache on failure — so the page opens
+offline as it was last seen and the socket reconnects when it can.
+`Mobile.scala` holds the four files; `Site` serves them.
+
+- [x] in a real headless browser in an iPhone emulation (390x844,
+      touch, 3x): the tap lands, the server's patch lands, the button
+      is at least 44px tall, the manifest names the page as its start,
+      the worker and the icon are served, the worker is active
+- [x] offline: the page reloads from the shell the worker kept, whole
+      (the SSR'd tree, the button, the stylesheet), with no socket
+- [x] `TestMobileHead` (okay-script, in the default gate): the head
+      renders in a page, the four files answer 200, the manifest's
+      start URL is the query's
+
+Found on the way, all measured by the probe (`MobileProbe`, kept as
+the operator's tool for a silent box):
+- `live.js` DROPPED an event sent before the socket opened — a tap
+  racing the connection was lost on one run and landed on the next.
+  Events are queued now and sent after the hello. This is a defect of
+  every Live page, not of phones; a phone just made the race visible.
+- a worker registered from `/__okay/sw.js` without a scope controls
+  `/__okay/` and no page: `ready` never resolves. It registers with
+  scope `/`, which the `Service-Worker-Allowed` header permits.
+- the first load happens BEFORE the worker controls the page, so the
+  page itself was never cached and an offline reload failed with
+  `ERR_FAILED`; the page adds itself to the shell after registering.
+- the e2e module's tests were not forked, so the embedded page
+  compiler saw sbt's launcher as its classpath and crashed in the
+  parser; `Test / fork := true`, as okay-script's own tests have.
+
+### M2 — iOS (ui-mobile-ios, next)
+
+A SwiftPM package with no okay dependency: the protocol transcribed
+from `docs/protocol/frontend.md` (as `okay-compose/protocol` is), the
+conformance test under `swift test`, SwiftUI views for level L, a
+`URLSessionWebSocketTask` client — compiled for the iOS simulator SDK
+with the Xcode on this machine. An app bundle needs an Xcode project;
+the package is what an app imports.
+
+### M3 — Android (ui-mobile-android, next)
+
+The SDK by `brew install --cask android-commandlinetools` and
+`sdkmanager`; `okay-compose/app` gains the Android target of the same
+composables; a debug APK is built. Gated by the box: the SDK download
+and Gradle's Android plugin are the heaviest things this session has
+run.
+
 ## Out of scope
 - Animation and gestures beyond press/edit/scroll.
 - A client-side scripting language: the Local set is closed on
