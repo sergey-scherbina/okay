@@ -1,0 +1,21 @@
+task: ui-gtk
+agent: fable-frontend
+started: 2026-09-09
+branch: feature/ui-gtk
+worktree: ../okay-wt-ui-gtk
+spec: specs/frontend.md — the GTK/Cocoa leg BACKLOG ui-native-toolkits left filed
+
+why: the operator installed GTK 4 (brew) on the build machine and asked
+  for the Scala Native host over the same Backend seam as Swing and Dom.
+
+what: okay-ui-gtk/ — a Scala Native-only sbt project, AGGREGATED ONLY
+  WHEN `pkg-config --exists gtk4` answers (so `sbt test` on a box
+  without GTK never sees it): @extern bindings to the handful of GTK 4
+  calls a level-L renderer needs, a patch Backend built as Dom/Swing
+  are (mirror, React.event, paths walk first-child/next-sibling), a
+  window over GtkApplication. Test: the law battery when a display is
+  available, skipped (and said so) when gtk_init_check fails.
+
+predict: ~250 lines of bindings + backend; the signal callbacks are
+  static CFuncPtrs over a global widget→key table; GTK's main thread
+  rule means patches are marshalled through g_idle_add.
