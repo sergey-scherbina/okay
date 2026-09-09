@@ -180,7 +180,18 @@ final class PgSql private (conn: NetConn) extends Sql:
       }
     }
 
-  def commit(): Unit ! Async = settled(simple("COMMIT").map { _ => inTx = false })
+  /** COMMIT reads its COMMAND TAG: a transaction that an earlier
+   * error left in the aborted state — an error the program HANDLED,
+   * so nothing unwound the region — answers `ROLLBACK` with no
+   * ErrorResponse at all. Reporting that as success is the rollback
+   * that quietly does not roll back (specs/jdbc.md); the tag is the
+   * only place the server says so (sql-commit-tag). */
+  def commit(): Unit ! Async = settled(simpleTag("COMMIT").map { tag =>
+    inTx = false
+    if tag.startsWith("ROLLBACK") then throw PgError(
+      "COMMIT answered ROLLBACK: an earlier error aborted this transaction " +
+        "and the server rolled it back — nothing in the region is committed")
+  })
 
   def rollback(): Unit ! Async = settled(simple("ROLLBACK").map { _ => inTx = false })
 
@@ -258,6 +269,15 @@ final class PgSql private (conn: NetConn) extends Sql:
 
   private def simple(sql: String): Unit ! Async =
     conn.write(msg('Q', str(sql))).flatMap(_ => collectReady(())((_, _) => ()))
+
+  /** a simple-protocol statement whose command tag is the answer */
+  private def simpleTag(sql: String): String ! Async =
+    conn.write(msg('Q', str(sql))).flatMap { _ =>
+      collectReady("") {
+        case (('C', body), _) => new String(body, UTF_8).takeWhile(_ != '\u0000')
+        case (_, acc) => acc
+      }
+    }
 
   private def simpleValue(sql: String): Option[String] ! Async =
     conn.write(msg('Q', str(sql))).flatMap { _ =>

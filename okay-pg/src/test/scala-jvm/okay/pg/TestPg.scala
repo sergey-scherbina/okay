@@ -152,6 +152,30 @@ class TestPg extends munit.FunSuite {
     }
   }
 
+  test("a handled error inside a region: pg's COMMIT answers ROLLBACK, and the region must not report success (sql-commit-tag)") {
+    assume(available, s"no Postgres at $host:$port — the live suite skips")
+    withDb { db =>
+      // the body inserts, then RECOVERS from a failed statement (the
+      // nested blocking run is what any program that catches the
+      // PgError does); pg is now in the aborted state, and its COMMIT
+      // answers the tag ROLLBACK with no error at all
+      val prog = Typed.transact[Long, Async](db, Isolation.ReadCommitted) { _ =>
+        !.widen[Long, Async, Resource](
+          db.update("insert into customer(id, user_name, balance, active) values (31, 'tag', 1, true)"))
+          .flatMap(_ => !.widen[Long, Async, Resource](okay.async {
+            try run(db.update("select syntax error from"))
+            catch { case _: PgError => 0L }
+          }))
+      }
+      val e = intercept[PgError](!.run(Async.run[Long, Nothing](Resource.run[Long, Async](prog))))
+      assert(e.getMessage.contains("ROLLBACK"), e.getMessage)
+      val n = collectChunks(db.query("select count(*) from customer where id = 31")).flatten
+      assertEquals(n.head.head, SqlValue.I64(0), "the aborted transaction's insert is not there")
+      // and the connection is usable afterwards, outside any transaction
+      assertEquals(run(db.update("delete from customer where id = 31")), 0L)
+    }
+  }
+
   test("nested transact refuses loudly on the wire too") {
     assume(available, s"no Postgres at $host:$port — the live suite skips")
     withDb { db =>

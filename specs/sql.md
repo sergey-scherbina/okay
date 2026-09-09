@@ -372,6 +372,20 @@ declined for v1 — same guarantee, plus a Free<->Cont bridge per step.
       `transact` (proven on H2 through the JDBC driver)
 - [x] a nested `region` is a COMPILE error, and the error names the
       state (`Tx.Yes` where `Tx.No` is demanded)
+- [x] a statement fails inside a region, the program HANDLES it, and
+      the region reaches COMMIT: Postgres answers the command tag
+      `ROLLBACK` with no ErrorResponse, and the region must FAIL, not
+      report success (sql-commit-tag, 2026-09-09). Watched failing
+      first on the dockerized pg: "expected exception of type PgError
+      but body evaluated successfully" while the insert was gone. The
+      pg wire driver now reads COMMIT's tag and throws on ROLLBACK
+      (`inTx` cleared either way — the server's transaction is over).
+      The same probe through r2dbc-postgresql passes because that
+      driver refuses such a COMMIT itself. The JDBC road has no pg
+      case in the tree (pgjdbc is not a dependency; H2 and SQLite keep
+      a transaction usable after a failed statement, so the aborted
+      state does not exist there) — when a pgjdbc consumer appears,
+      run this probe through it before trusting `commit()`.
 
 ## Out of scope
 
