@@ -1,0 +1,58 @@
+task: capability
+agent: opus5-intent
+started: 2026-09-09
+branch: feature/capability
+worktree: ../okay-wt-cap
+
+why: stage 4 of specs/coordination-free.md, unblocked by the
+  operator's decision (2026-09-09): BOTH readings of "tokens or
+  tickets", capabilities first, leases as their own arc.
+
+what: a macaroon-shaped capability in okay-security (JVM + JS, where
+  that module already lives). HMAC-chained attenuation: each caveat
+  is signed with the PREVIOUS signature as its key, so anyone can
+  narrow a token and nobody can widen one — the key for the previous
+  step no longer exists anywhere. A verifier needs the root key and
+  nothing else: no registry, no call to the issuer.
+
+  This is what `okay-security` cannot express today. It has Jwt,
+  Es256, OAuth2, Oidc, Password, Secure — an issuer signs and a
+  verifier checks, centrally, and a JWT cannot be narrowed by its
+  holder. `Crypto.hmacSha256` and `Crypto.constantTimeEquals` already
+  exist cross-platform and `Password` already uses them, so the
+  primitive is in place and nothing here invents cryptography (the
+  specs/tls.md rule).
+
+A CORRECTION I OWE THE SPEC, and this claim is where it starts.
+  specs/coordination-free.md says "both want `Hlc` ... a capability's
+  `until` and a lease's expiry are the same question about time that
+  a wall clock answers badly". The second half is right; the first is
+  WRONG about `until` and I should not have written it. An expiry is
+  checked by the VERIFIER against the verifier's own clock, and no
+  logical clock helps — an HLC orders events, it does not make a
+  deadline trustworthy. The real reuse is `Uid`: the token id is one,
+  so it is unique without coordination AND sortable, which makes
+  "everything issued before T is void" a range check rather than a
+  list. The spec gets fixed in this lane.
+
+DISQUALIFYING EVIDENCE, registered before the work:
+
+  The whole claim of this design is the asymmetry — narrowing is free
+  and widening is impossible. It is worthless unless BOTH halves are
+  tested, and the second is the one that is easy to fake:
+
+  - narrowing must work WITH NO KEY IN SCOPE. If `attenuate` needs
+    the root key, this is not a capability, it is a re-issue.
+  - widening must fail. Dropping a caveat from a valid token, or
+    editing one, must break verification. If it does not, the chain
+    is not chained and the type is a lie.
+  - a caveat that VERIFIES must still be CHECKED: a token whose
+    signature is perfect and whose "until" has passed must be
+    refused. Signature validity is not authority.
+
+  If any of those three cannot be made to fail on demand, the tests
+  are not testing the design.
+
+predict: the wire round trip is where the first defect will be — a
+  caveat containing the separator, or a base64 padding difference
+  between JVM and JS. Recorded so being wrong is visible.
