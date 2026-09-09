@@ -1,0 +1,20 @@
+task: jdbc-tails
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T07:50:08Z
+status: in-progress
+branch: feature/jdbc-tails
+worktree: ../okay-wt-jdbc-tails
+spec: specs/sql.md (boxes under sql-commit-tag, sql-temporal-types)
+
+why: three tails the audit lanes left stated but unproven: pgjdbc is
+  not in the tree (COMMIT tag, ParameterMetaData binding, ?::jsonb
+  unverified through JDBC on pg); the SQLite temporal text fallback is
+  written but untested.
+
+what: pgjdbc 42.7.3 in okay-jdbc Test scope; TestPgJdbc (Live): the
+  handled-error COMMIT probe, temporal round trip by declared param
+  type, jsonb through ?::jsonb, 40001 through SQLException; TestSqlite:
+  timestamp/date columns read and bound through the ISO text fallback.
+
+next: worktree, tests, run
