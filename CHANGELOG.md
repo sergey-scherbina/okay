@@ -1,5 +1,25 @@
 # Changelog
 
+## intent-dsl — a builder for routing rules, lifted from okay-chat, with no way to write `.*`
+
+`okay.intent.Dsl`: a routing rule is an anchored, Unicode-aware
+regular expression, and typed as a string every property somebody
+needs from it is a discipline. Here `(?iU)` and the boundaries are
+emitted, never typed; a gap is a sentence (`[^.!?]*`), a bounded run,
+or whitespace — there is no combinator for `.*`, because a `.*` that
+reached across a question mark into the next sentence is the defect
+this was written after; a vocabulary is a `val`, written once. What
+the builder cannot shape yet is a `Raw` that carries its reason, so a
+caller's tests can count them and the count falls by a decision.
+`command` anchors at the message start, `.alone` says the message is
+just this, `either` joins whole rules under one flag, `Proof.Bytes` /
+`Proof.Behaviour` are how a migration is held to the file it
+replaces. In okay-chat all 156 of that service's rules are built with
+it and generated into the file the router loads. Nothing here knows
+any service; `TestDsl` (JVM — `(?U)` is a Java flag) holds the
+builder's own guarantees, including that a built sentence gap cannot
+reach across a full stop.
+
 ## jdbc-tails — pgjdbc probes find two JDBC defects and a core one: the brake now runs on a failing statement
 
 pgjdbc 42.7.3 joins okay-jdbc in Test scope and `TestPgJdbc` (Live)
