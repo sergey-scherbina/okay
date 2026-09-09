@@ -1,0 +1,14 @@
+task: dsl-slots
+agent: claude-code (session 01QsrfrMmAJVHoVysmqM8VTB)
+started: 2026-09-09
+heartbeat: 2026-09-09T19:24:12Z
+status: in-progress
+branch: feature/dsl-slots
+worktree: ../okay-wt-slots
+spec: okay-chat specs/intent-dsl.md — the slots, which the builder did not shape
+
+why: okay-chat's 19 slot patterns still live as strings in its corpus; a rule
+  is built and its slot is typed by hand beside it.
+
+what: Term.Capture / Rest / Many / Blank / Digits / MaybeAfter, Chars with a
+  '+', Anchor.Anywhere, Ending.End, a Slot(name, rule, fallback); tests; CHANGELOG.
