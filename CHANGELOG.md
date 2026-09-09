@@ -1,5 +1,28 @@
 # Changelog
 
+## dsl-letters-and-repeats — the shapes okay-chat's quoted rules were waiting on
+
+okay-chat builds its routing rules with `okay.intent.Dsl` and still
+quoted thirteen whole rules and a dozen fragments, each with its
+reason. Read together the reasons were four shapes, not thirteen
+exceptions: a set of letters (`мо[юяи]` — «мою», «моя», «мои» and NOT
+«моего», which a stem would also say), a word repeated any number of
+times (`(?:(?:мою|все)\s+)*` — the qualifiers before «заявку»), a
+stem that may not run on (`мо\w{1,3}` — «моей», not «монитор»), an
+ending of more than one letter (`удали(?:ть)?`). And two rules ended
+on a colon, which no `Ending` could say.
+
+`Term.Chars`, `Term.ManyThen`, `Term.StemUpTo`, `Term.Maybe` and
+`Ending.Colon`, with `chars`/`maybeChars`/`manyThen`/`stemUpTo`/
+`maybe` and `.colon`. `Maybe` of an alternation reuses the group
+(`(?:ть|ти)?`, not `(?:(?:ть|ti))?`), so a rule built with it is the
+bytes the file had. No existing rendering changed; `raws` walks
+through the two new wrappers so a quoted fragment inside them is
+still counted. None is a gap: `.*` remains unsayable.
+
+TestDsl renders each one and proves `stemUpTo` on «монитор». Gate:
+okay-intent JVM tests green, JS compiles, 0 warnings.
+
 ## lexer-buf-without-concat — the concat is the smallest of three, and the obvious fix is worse
 
 After `lexer-state-allocation` took the positions out, ~171 bytes per
