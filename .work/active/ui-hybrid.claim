@@ -1,0 +1,22 @@
+task: ui-hybrid
+agent: fable-frontend
+started: 2026-09-09
+branch: feature/ui-hybrid
+worktree: ../okay-wt-ui-hybrid
+spec: specs/frontend.md, stage 2
+
+why: stages 0-1 (f99880f5, d45fba3a) gave the tree its levels and the
+  wire its contract; every keystroke still crosses the wire. The
+  operator's call: hybrid from the start — no round trip per keystroke.
+
+what: Form joins the level every client draws (the hybrid rule lives
+  on it): inputs inside a Form fold on the client, the submit button
+  sends ONE Event.Submitted(formKey, json) decoded by the form's
+  schema; `live` inputs still send Edited. Claimed Tabs and the new
+  Disclosure switch locally. A server SetValue overrides a local edit.
+  Forged Submitted (key not a shown Form, or a value the schema
+  rejects) never reaches update. Wire.client, live.js, Live.form,
+  Form.submitted; the conformance script gains a Submitted.
+
+predict: Event gains a Json-carrying case — Schema[Event] derivation
+  needs Schema[Json]; live.js gets a Form case and a submit collector.
