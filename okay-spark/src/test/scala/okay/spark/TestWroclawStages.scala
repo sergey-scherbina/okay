@@ -2,10 +2,9 @@ package okay.spark
 
 import okay.*
 import okay.given
-import okay.Tables.{read, of}
+import okay.Tables.read
 import okay.RowLift.plus
 import okay.Direct.{direct, unary_!}
-import okay.Chunks.elements
 import org.apache.spark.sql.SparkSession
 import java.io.File
 
@@ -37,10 +36,10 @@ class TestWroclawStages extends munit.FunSuite:
     println(s"  --- $name")
     // 1. read + count: the CSV -> Map rows cost
     timed("read stop_times -> Map rows, count") {
-      Tables.run(B)(read(file("stop_times.txt")).aggregate(Aggregator.count[Csv.Row])) }
+      Tables.run(B)(read(file("stop_times.txt")).aggregate(Aggregator.count[Csv.Row])) }: Unit
     // 2. read + select pair + count
     timed("read + select(pair), count") {
-      Tables.run(B)(read(file("stop_times.txt")).select(r => r("trip_id") -> r("departure_time")).aggregate(Aggregator.count[(String, String)])) }
+      Tables.run(B)(read(file("stop_times.txt")).select(r => r("trip_id") -> r("departure_time")).aggregate(Aggregator.count[(String, String)])) }: Unit
     // 3. the three joins, count (no expand)
     timed("three joins, count") {
       Tables.run(B)(direct {
@@ -50,16 +49,16 @@ class TestWroclawStages extends munit.FunSuite:
         val ca = !read(file("calendar.txt")).select(r => r("service_id") -> r("start_date"))
         !st.join(tr).select { case (_, (t, (r, s))) => r -> (t, s) }.join(ro).select { case (_, ((t, s), tram)) => s -> (t, tram) }.join(ca)
           .aggregate(Aggregator.count[Any])
-      }) }
+      }) }: Unit
     // 4. the full program incl. expand, count
     timed("full departures (with expand), count") {
-      Tables.run(B)(Gtfs.departures(file).aggregate(Aggregator.count[Dep])) }
+      Tables.run(B)(Gtfs.departures(file).aggregate(Aggregator.count[Dep])) }: Unit
     // 5. cache, then count twice: what persisting costs, and what it buys
     timed("cache + count + count") {
       Tables.run(B)(direct {
         val d = !Gtfs.departures(file).cache
         (!d.aggregate(Aggregator.count[Dep]), !d.aggregate(Aggregator.count[Dep]))
-      }) }
+      }) }: Unit
 
   /** the plan rewrite, A/B: the same program with and without it */
   def rewrite[D[_]](B: Bulk[D], name: String): Unit =

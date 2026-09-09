@@ -1,6 +1,6 @@
 package okay
 
-import okay.Tables.{Plan, read, of}
+import okay.Tables.{Plan, read}
 import okay.Chunks.elements
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
