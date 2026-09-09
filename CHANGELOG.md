@@ -1,5 +1,22 @@
 # Changelog
 
+## persistence-e2e — the seven audit lanes together, and Pool/Saga stats on /metrics
+
+The seven persistence-audit lanes were each proven alone; this lane
+proves them together and makes their standing visible. okay-ops renders
+`Pool.Stats` (okay_pool_size/idle/busy/waiting/created_total, named)
+and `Saga.Status` (okay_saga_phase, steps_done, steps_undone, by id)
+beside the guards; `Pool.Stats` derives Schema; okay-ops now depends on
+okay-sql. A Live end-to-end suite in okay-docs-dynamo: a Pool over the
+pg wire lends two connections to a real write skew and `transactRetry`
+through `borrow` lands on run 2 with the pool whole after; a Saga whose
+steps are DynamoDocs CAS writes crosses the crash window and recovers
+Forward because the re-run CAS answers Stale — the far end's idempotency
+the saga states. Landed as dfb0fbaa. Gate: full matrix, 2957 tests, two
+okay-intent timeouts (TestOfflineGate, TestTypoRobustness: 30 s limit
+under three sbts on the box, 412 s matrix) green on rerun alone;
+okay-intent does not depend on the changed modules.
+
 ## resilience-faults — stage 2 of specs/resilience.md: the seeded adversary, and the composite under it
 
 `Faults.http(seed, plan)(inner)` delays, drops or fails calls by a
