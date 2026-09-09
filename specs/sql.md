@@ -455,12 +455,26 @@ JVM-only (okay-intent's `Temporal` made the same choice):
   the JVM). A String field still fits every one of these columns and
   reads the ISO text — the lossless fallback, its print form now
   canonical rather than the engine's.
-- Params bind natively: JDBC `setTimestamp` with the UTC calendar,
-  `setDate`, `LocalTime`, `setObject(UUID)`; R2DBC `OffsetDateTime` at
-  UTC, `LocalDate`, `LocalTime`, `UUID`; the pg wire renders ISO text
-  and the server types it from the column. Json binds as its text —
-  a `jsonb` column through JDBC/R2DBC wants the DBA's `?::jsonb` in
-  the statement (bind-don't-model); the wire driver needs nothing.
+- Params bind natively, and on JDBC by the DECLARED type: a Timestamp
+  goes in as an `OffsetDateTime` at UTC where the parameter is a
+  `timestamp with time zone`, as the UTC wall-clock `LocalDateTime`
+  where it is a `timestamp` (`ParameterMetaData`, asked once per
+  statement and only when a temporal param is bound); reads mirror it
+  by the column's JDBC code. The Calendar road (`setTimestamp(ts,
+  utcCalendar)`) is deliberately NOT used: MEASURED on H2 2.3, a UTC
+  calendar's 06:00 into a `timestamp with time zone` is stored as
+  `06:00:00+02` — the session's offset stamped onto the calendar's
+  wall clock, a two-hour error that the isolated suite hid because
+  the Calendar read made the same mistake in reverse; the full
+  matrix (DuckDB's suite first in the same JVM) exposed it. A driver
+  without JDBC 4.2 `getObject(Class)` or parameter metadata (SQLite)
+  falls back to ISO text through `Temporal`. R2DBC: `OffsetDateTime`
+  at UTC, `LocalDate`, `LocalTime`, `UUID`; the pg wire renders ISO
+  text and the server types it from the column. Json binds as its
+  text — a `jsonb` column through JDBC/R2DBC wants the DBA's
+  `?::jsonb` in the statement (bind-don't-model); the wire driver
+  needs nothing. okay-delta maps Timestamp/Date to Delta's own
+  TimestampType (micros) and DateType (days) — the same units.
 
 - [x] `Temporal` round-trips civil dates over centuries, parses pg's,
       H2's and ISO's forms with offsets applied, truncates nanos to

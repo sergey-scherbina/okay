@@ -138,6 +138,11 @@ object Delta:
     case SqlType.Num => new DecimalType(38, 18)
     case SqlType.Text => StringType.STRING
     case SqlType.Bytes => BinaryType.BINARY
+    // Delta's timestamp IS micros since the epoch and its date IS days
+    // (sql-temporal-types: the seam's units); time/uuid/json are text
+    case SqlType.Timestamp => TimestampType.TIMESTAMP
+    case SqlType.Date => DateType.DATE
+    case SqlType.Time | SqlType.Uuid | SqlType.Json => StringType.STRING
     case SqlType.Other(n) => throw IllegalArgumentException(s"column '$name': a vendor type '$n' has no Delta type")
     case SqlType.Arr(_) | SqlType.Row(_) =>
       throw IllegalArgumentException(s"column '$name': arrays and composites are not written by okay-delta (v1)")
@@ -153,6 +158,8 @@ object Delta:
     case _: DecimalType => SqlType.Num
     case _: StringType => SqlType.Text
     case _: BinaryType => SqlType.Bytes
+    case _: TimestampType => SqlType.Timestamp
+    case _: DateType => SqlType.Date
     case _: ArrayType => SqlType.Arr(SqlType.Other("array"))
     case _: StructType => SqlType.Row(Vector.empty)
     case other => SqlType.Other(other.toString)
@@ -170,6 +177,8 @@ object Delta:
       case _: DecimalType => SqlValue.Num(BigDecimal(c.getDecimal(i)))
       case _: StringType => SqlValue.Text(c.getString(i))
       case _: BinaryType => SqlValue.Bytes(c.getBinary(i))
+      case _: TimestampType => SqlValue.Timestamp(c.getLong(i))
+      case _: DateType => SqlValue.Date(c.getInt(i))
       case other => SqlValue.Text(String.valueOf(other))
 
   private def single[A](a: A): CloseableIterator[A] = new CloseableIterator[A]:
@@ -198,10 +207,12 @@ object Delta:
         override def getInt(i: Int): Int = at(i) match
           case SqlValue.I32(x) => x
           case SqlValue.I64(x) => x.toInt
+          case SqlValue.Date(d) => d
           case v => throw mismatch(field, v)
         override def getLong(i: Int): Long = at(i) match
           case SqlValue.I64(x) => x
           case SqlValue.I32(x) => x.toLong
+          case SqlValue.Timestamp(us) => us
           case v => throw mismatch(field, v)
         override def getDouble(i: Int): Double = at(i) match
           case SqlValue.F64(x) => x
@@ -222,6 +233,9 @@ object Delta:
           case v => throw mismatch(field, v)).setScale(scale, java.math.RoundingMode.HALF_UP)
         override def getString(i: Int): String = at(i) match
           case SqlValue.Text(s) => s
+          case SqlValue.Time(us) => okay.sql.Temporal.renderTime(us)
+          case SqlValue.Uuid(u) => u.toString
+          case SqlValue.Json(j) => j
           case v => throw mismatch(field, v)
         override def getBinary(i: Int): Array[Byte] = at(i) match
           case SqlValue.Bytes(bs) => bs
