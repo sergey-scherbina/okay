@@ -104,16 +104,45 @@ class TestWroclawAlgebra extends munit.FunSuite:
     rdd
 
   // ---------------------------------------------------------------- the algebra
+  //
+  // WHERE THE MONOID IS. An `Aggregator[In, Acc, Out]` is four
+  // functions — `init`, `add`, `merge`, `present` — and two of them are
+  // the algebra: `(init, merge)` is a MONOID on the accumulator `Acc`,
+  // `init` its unit and `merge` its associative operation. `add` is how
+  // an input acts on the accumulator, `present` the projection out of
+  // it; neither is part of the monoid.
+  //
+  // That is the whole reason the same value runs distributed: Spark's
+  // `aggregate(zero)(seqOp, combOp)` IS `(init, add, merge)`, and it is
+  // associativity that licenses Spark to split the input into whatever
+  // partitions it likes and combine them in whatever order it finishes
+  // them. A merge that were not associative would give a different
+  // answer per run and nobody would see it happen.
+
+  /** the monoid of counting: Acc = Long, init 0, merge + */
   val departures = Aggregator.count[Dep]
+
+  /** the same monoid, over a value the input carries rather than 1 */
   val trams = Aggregator.sum[Long].contramap[Dep](d => if d.tram then 1L else 0L)
 
-  /** what share of departures is rail: two counts, one pass, presented as a ratio */
+  /**
+   * What share of departures is rail. `zip` is the PRODUCT of two
+   * monoids — `((0L, 0L), (a, b) merged componentwise)` — so both counts
+   * ride one pass, and `map` moves the ratio into `present`, leaving the
+   * monoid alone.
+   */
   val tramShare = departures.zip(trams).map((n, t) => t * 100.0 / n)
 
-  /** how much of the network is awake: exact distinct routes */
+  /** how much of the network is awake: the monoid of sets, init empty, merge union */
   val routesRunning = Aggregator.distinct[Int].contramap[Dep](_.route)
 
-  /** three statistics per hour of the day, one pass */
+  /**
+   * Three statistics per hour of the day, still one pass. `groupBy` is
+   * the monoid of finite MAPS into a monoid: the unit is the empty map,
+   * and merging two maps merges the accumulators of the keys they share.
+   * Every partition builds its own 24-key map; the merge is what makes
+   * the four of them one.
+   */
   val hourly = Aggregator.groupBy((d: Dep) => d.hour)(departures.zip(routesRunning).zip(tramShare))
 
   test("routes are counted by a hash, and the hash does not collide here") {
@@ -155,6 +184,15 @@ class TestWroclawAlgebra extends munit.FunSuite:
       assert(math.abs(onSpark(h)._2 - local(h)._2) < 1e-9, s"tram% at $h")
   }
 
+  /**
+   * WHERE THE GROUP IS. A `Group[A]` is a `Monoid[A]` plus `inverse`,
+   * with the law `combine(a, inverse(a)) == empty`. For `Double` that
+   * given is `(0.0, +, negate)` — the summing monoid with subtraction —
+   * and `sliding` is written against exactly those three: it admits the
+   * newcomer with `combine(acc, x)` and drops what aged out with
+   * `combine(_, inverse(oldest))`, so a window step costs one add and
+   * one subtract no matter how wide the window is.
+   */
   test("a group is a window: the fortnight minute by minute, rolling") {
     val perMinute = aggregate(departuresRdd)(Aggregator.groupBy((d: Dep) => d.minute)(departures))
     val minutes = perMinute.keys.max + 1
