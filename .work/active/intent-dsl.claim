@@ -1,0 +1,6 @@
+feature/intent-dsl 2026-09-09T08:15:07Z
+agent: claude-code (session 01QsrfrMmAJVHoVysmqM8VTB)
+heartbeat: 2026-09-09T08:15:07Z
+status: in-progress
+scope: Dsl — a builder for anchored, Unicode-aware routing rules with no way to write `.*`; lifted from okay-chat, where it already generates that service's 156 rules
+files: okay-intent/src/main/scala/okay/intent/Dsl.scala okay-intent/src/test/
