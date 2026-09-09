@@ -1,7 +1,6 @@
 # Sprint
 
 ## Doing
-- schema-compat — specs/codecs.md: does the other side still read our messages (claim: schema-compat)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

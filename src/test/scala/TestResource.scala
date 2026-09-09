@@ -87,4 +87,14 @@ class TestResource extends munit.FunSuite {
     assert(out.exists(_.isFailure), s"expected the failure, got $out")
     assertEquals(log.reverse, List("open", "close"))
   }
+
+  test("a ROW: Async + Throws — the Async half is found through Failing and a throwing Run still releases") {
+    var log = List.empty[String]
+    type G = Throws % String
+    val prog = !.widen[String, Resource, Async + G](Resource.acquire { log ::= "open"; "r" } (_ => log ::= "close"))
+      .flatMap(_ => !.widen[Int, Async, Resource + G](okay.async[Int] { log ::= "run"; throw RuntimeException("boom") }))
+    val out = Async.runAsync(runEither[Int, Async, String](Resource.run[Int, Async + G](prog))).value
+    assert(out.exists(_.isFailure), s"expected the failure, got $out")
+    assertEquals(log.reverse, List("open", "run", "close"))
+  }
 }

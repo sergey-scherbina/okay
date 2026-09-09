@@ -244,6 +244,73 @@ Behavior:
       already states the words, and stating them twice is worse. The
       recording therefore stands unchanged.
 
+## Compatibility between two versions (2026-09-09, schema-compat)
+
+The microservices audit's last cheap gap. Two services share a
+Schema-encoded message; one side changes its case class; nothing
+here ANSWERED whether the other side can still decode. The industry
+reaches for a schema registry or a contract-testing tool. Neither is
+needed, because a `Schema` is a VALUE: the question is a fold over
+two of them.
+
+The rules are not invented for this check, they are READ OFF the
+decoders in this module — which is what makes them trustworthy, and
+what the tests assert directly (every case encodes with one schema,
+decodes with the other, and the report must have predicted the
+outcome):
+
+- an absent field takes its declared default, then None-if-optional,
+  then a refusal by name (codec-defaults);
+- an unknown CASE is a refusal, on both wires;
+- an unknown FIELD is **ignored by Json** (only declared fields are
+  looked up) and **refused by Cbor** (`unknown field '<k>'`).
+
+That last asymmetry is the one surprise, and it is why a verdict
+names its wire rather than pretending there is one answer. It also
+says something operational: a service pair that adds fields freely
+is doing so on JSON; the same change on CBOR needs the readers
+upgraded first.
+
+Two directions, and they answer different questions:
+
+| direction | who reads what | the question |
+|---|---|---|
+| BACKWARD | the new reader over old bytes | can we deploy this and still read the log, and the traffic already in flight? |
+| FORWARD | the old reader over new bytes | can we deploy this before every consumer is upgraded? |
+
+A rolling deploy needs both (`Report.rolling`); a log needs backward
+for ever.
+
+```scala
+val report = Compat.compare(summon[Schema[OrderV1]], summon[Schema[OrderV2]])
+report.backward(Compat.Wire.Cbor).compatible   // deploy-safe against the log?
+report.render                                  // the operator's paragraph
+```
+
+Behavior:
+- [x] a new REQUIRED field breaks backward on both wires; a new
+      OPTIONAL or DEFAULTED one does not
+- [x] a new field breaks FORWARD on Cbor and not on Json — the
+      decoders' own asymmetry, asserted by decoding, not assumed
+- [x] a removed required field breaks forward; on Cbor it breaks
+      backward too
+- [x] a retyped field breaks both directions and names both types
+- [x] a new case breaks forward only; a removed case breaks backward
+      only
+- [x] a change inside a nested product or collection is found and
+      its path names it; a wrapper (`SIso`) is no change at all;
+      List and Vector are the same array
+- [x] a self-referential type terminates (the name-pair guard) and
+      reports its change once
+- [x] every verdict agrees with what `Json.decode` and `Cbor.read`
+      actually do on a value written by the other schema
+
+Out of scope: a registry (who publishes which version — that is a
+deployment fact, and the log already carries the envelope version,
+specs/persist.md); a migration generator (an upcast is a function
+someone writes, `Typed.step`); field RENAMES read as a remove plus
+an add, which is what the wire sees.
+
 ## Cast-free (2026-09-02, cast-free-codec)
 `Schema` was a GADT from the start — `SOption[A](of) extends
 Schema[Option[A]]` and the rest — and the codecs cast anyway

@@ -35,6 +35,99 @@ tree, the `Pipeline` shape. The effect layer optimises where an
 interpreter can: at the operation it is looking at, with the heap in
 hand — which is exactly where the broadcast decision lives.
 
+## hedge-timed-flake — the hedge assertions stop timing the box
+
+Two tests in `TestResilienceTimed` said "nothing else started" by
+sleeping 60 ms past a 20 ms hedge delay on the real timer. That
+asserts the machine's speed: under nine sibling sbt JVMs the first
+attempt took longer than the delay, the hedge timer fired exactly as
+designed, and the count was 2 (di-deploy's gate, 2026-09-09). Both now
+take a `ManualTimer` the test fires by hand — after the run has
+settled, firing whatever is still armed starts nothing, because
+`start()` is guarded by `done`, which is the contract the sleep was
+groping for. Measured both ways with a first attempt three times
+slower than the delay: the old shape fails, the new one passes; the
+two tests went from 60+ ms each to 2 ms, and no wall clock is left in
+either. Found on the way and filed rather than fixed
+(`hedge-timer-leak`): `Hedge.start` forks before it arms, so a fast
+attempt can leave one timer armed and uncancelled - harmless when it
+fires, but it is a sleeping thread. Commit: e5d97c37.
+## ui-mobile-android — the Android target on okay-compose: one set of composables, a debug APK built
+
+M3 of specs/frontend.md "Mobile". The Android SDK came by
+`brew install --cask android-commandlinetools` and `sdkmanager`
+(platform 35, build-tools 35.0.0). `okay-compose/app` is a Kotlin
+Multiplatform module: `commonMain` holds the composables (`Render.kt`),
+the whole client as one composable (`OkayApp(url)`) and the session
+(`Client.kt`: the kept tree, the hybrid rule, hello first, events
+queued until the socket opens); only the socket is per platform —
+`expect class Socket`, the JDK's WebSocket on the desktop, OkHttp on
+Android, which has no `java.net.http`. `MainActivity` shows `OkayApp`
+with the server address from the launch intent. `:app:assembleDebug`
+built `app-debug.apk` (8.5 MB, compileSdk 35 / minSdk 26); the desktop
+target compiles from the same sources; the protocol tests are
+unchanged, 3 of 3; the desktop smoke against a real Live page passes
+with the rewritten client. Running the APK needs an emulator system
+image, a further download not made in this session; the README gives
+the `adb install` and `am start` lines. Found on the way: a one-line
+function whose return type Kotlin inferred through a lambda that also
+referenced it — "type checking has run into a recursive problem" —
+now typed explicitly; and, by the smoke rather than the build, the
+JDK WebSocket's `onOpen` fires inside `buildAsync().join()` before
+the field the socket is assigned to exists, so the hello never left —
+the socket is taken from the callback on both platforms.
+
+## resource-guard — Failing[F]: the forwarded-failure hook as a typeclass, and the cast in Resource.run is gone
+
+jdbc-tails fixed the abandoned-finalizer defect with one cast in
+`Resource.guardAsync`; the operator asked for the typeclass route if
+nothing better existed. Nothing did, and the route turned out better
+than "the cast moves": `okay.Failing[F]` says, per row, how a forwarded
+operation reports its failure to the scope that forwarded it.
+`Async`'s instance is a typed GADT match (a `Run` thunk that throws, an
+`Await` callback answering Left run the hook first); the row instances
+are anchored on `Async` at either side of `+`, split by Async's own
+`TypeableK` through the kernel `<|>` — the one place a row is ever cast
+— and come back by plain upcast; a row without Async gets the
+low-priority identity. `Resource.run` takes `(using Failing[F])`.
+Measured on the way: an unanchored `Failing[F + G]` instance is
+selected by dotty but cannot pin `F` (ambiguous `TypeableK[F]`), so the
+instances name `Async` explicitly; `Async`, `Async + G`, `G + Async`
+and both three-part nestings resolve. `guardAsync` and its
+`asInstanceOf` are deleted; TestResource gains the `Async + Throws` row
+case. Landed as d2e2ecc1; specs/sql.md "The brake runs on a failing
+statement". Gate: full matrix, 3467 tests, 0 failures, 0 warnings.
+
+## schema-compat — whether the other side still reads our messages, as a fold over two Schemas
+
+The microservices audit's last cheap gap: two services share a
+Schema-encoded message, one side's case class changes, and nothing
+answered whether the other can still decode. The industry answer is
+a schema registry or a contract-testing tool; neither is needed,
+because a `Schema` is a VALUE. `Compat.compare(old, next)` folds two
+of them into a `Report`: the changes (field added/removed with its
+optionality and whether it is defaulted, case added/removed, a
+retype, a shape change), each with a path, and a verdict per
+DIRECTION per WIRE — backward (the new reader over old bytes: the
+log, traffic in flight), forward (the old reader over new bytes:
+consumers not yet upgraded), `rolling` for both.
+
+The rules are not invented, they are read off this module's own
+decoders, and the tests assert that by encoding with one schema and
+decoding with the other rather than by restating the rule: an absent
+field takes its default then None-if-optional then a refusal; an
+unknown case is refused on both wires; an unknown FIELD is **ignored
+by Json and refused by Cbor**. That asymmetry — which surfaced only
+because the check was written against the decoders — is why a
+verdict names its wire: adding a field is forward-compatible on JSON
+and not on CBOR, so a CBOR service pair must upgrade readers first.
+
+Nesting, collections, wrappers (an `SIso` is no change at all),
+List-vs-Vector (the same array on both wires) and self-referential
+types (a name-pair guard) are handled. 14 tests; specs/codecs.md
+gained the section with its boxes; docs/modules/okay-codec.md
+documents it with the change table and the one-line regression test
+a service can keep.
 ## bulk-effect — the road to the aggregation as a program, and an operation added without touching the seam
 
 `Bulk[D]` stays the platform's contract; the program's vocabulary is now
