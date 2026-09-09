@@ -1,6 +1,12 @@
 # Sprint
 
 ## Doing
+- lexer-state-allocation — BACKLOG: ~180 B per input CHARACTER on both
+  lexing paths; Json's `S.copy(buf = s.buf + c)` is a fresh String per
+  char, quadratic in token length. Carry the start offset, slice the
+  input once at `finish`. B/op first, quiet box for time, lands only
+  on the numbers. Claimed 2026-09-09
+  (.work/active/lexer-state-allocation.claim).
 - deploy-stop-grace — BACKLOG deploy-termination-grace: the manifests wait for the drain (claim: deploy-stop-grace)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam

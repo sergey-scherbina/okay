@@ -1,0 +1,30 @@
+task: lexer-state-allocation
+agent: opus5-lex
+started: 2026-09-09
+branch: feature/lexer-state-allocation
+worktree: ../okay-wt-lexstate
+spec: docs/benchmarks.md §10 — BACKLOG "lexer-state-allocation"
+
+why: measured by chunked-lexer-bookkeeping, load-proof: lexing
+  allocates ~180 B per input CHARACTER on BOTH paths (453 KB
+  element-wise for a 2 495-char document). `okay.lex.Json`'s state is
+  `S(mode, buf: String, start: P, cur: P)` and every `step` does
+  `s.copy(buf = s.buf + c, cur = s.cur + c)` — a fresh String per
+  character, QUADRATIC in the token's length, plus a new S, a new P
+  and the Tuple2 `step` answers.
+
+what: the token's text carried as a START OFFSET, sliced from the
+  input ONCE at `finish`, instead of a String grown per character.
+  No interface change (`Scan.step` keeps its shape — that is
+  `scan-step-allocation`, a separate item measured after this one).
+
+the hazard to solve, not to ignore: the CHUNKED path never has the
+  whole input — `Lex.chunks` sees one chunk at a time and a token can
+  span chunks, so an offset alone cannot be sliced there. Whatever
+  shape the state takes must serve both paths, and the chunked one is
+  the constraint. If it cannot, say so with the measurement and stop.
+
+gate: B/op first (target: the ~180 B/char), on the Writer-only lex
+  lanes; a quiet box for time; lands only if the numbers show it AND
+  the lex/parse/codec suites are green — token identity, spans and
+  the incremental relex laws are the contract, not speed.
