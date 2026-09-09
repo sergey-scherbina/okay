@@ -95,7 +95,10 @@ follows, in the spec's order:
       ordinal), and the composite under a plan behaving per the
       pieces' contracts. Adaptive concurrency stays deferred until
       stage 1 is in use somewhere.
-- [ ] timeout-masks-failure — CORE. `Async.timeout(ms)(p)` is
+- [x] timeout-masks-failure — DONE 2026-09-09: timeout on `await`, the
+      first outcome of either kind settles it; law in TestAsyncCross on
+      all three platforms, failed first on the old shape. Was: CORE.
+      `Async.timeout(ms)(p)` is
       `race(p.map(Some), sleep(ms).map(None))`, and `race` lets a
       FAILING contender lose without ending the race: a program that
       fails at once under `timeout` comes out as `None` after the

@@ -294,10 +294,33 @@ object Async {
   def sleep(millis: Long)(using T: Timer): Unit ! Async =
     await(k => T.after(millis)(() => k(Right(()))))
 
-  /** the answer within the duration, or None; the loser is cancelled */
+  /**
+   * the answer within the duration, or None; the loser is cancelled.
+   *
+   * NOT a `race` against `sleep` (timeout-masks-failure, 2026-09-09):
+   * a race lets a failing contender lose without ending the race, so
+   * a program that failed AT ONCE came out as `None` after the whole
+   * duration with its exception replaced by a timeout — a breaker's
+   * refusal under a deadline became a 504 after five seconds. The
+   * law: the FIRST outcome of the program, of either kind, settles
+   * the timeout, and only the timer answers None. So the program's
+   * own failure comes through the error channel at once, the timer
+   * is unregistered, and the fiber is cancelled when the timer wins.
+   */
   def timeout[A](millis: Long)(prog: => A ! Async)
-                (using Scheduler, Timer): Option[A] ! Async =
-    race(prog.map(Some(_)), sleep(millis).map(_ => None))
+                (using S: Scheduler, T: Timer): Option[A] ! Async =
+    await: k =>
+      val f = spawn(prog)
+      val done = AtomicBoolean(false)
+      val timer = T.after(millis): () =>
+        if !done.getAndSet(true) then
+          f.cancel()
+          k(Right(None))
+      f.onComplete: r =>
+        if !done.getAndSet(true) then
+          timer()
+          k(r.map(Some(_)))
+      () => { if !done.getAndSet(true) then { timer(); f.cancel() } }
 
   /** the first of the two to SUCCEED; both losers are cancelled. A
    * failing contender does not win — but if both fail, the race

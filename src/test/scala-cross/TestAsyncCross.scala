@@ -79,6 +79,20 @@ class TestAsyncCross extends munit.FunSuite {
     Async.runAsync(f.joinAsync.map(_ * 2)).map(v => assertEquals(v, 42))
   }
 
+  test("a failure under timeout ends the timeout AT ONCE, with its own exception (timeout-masks-failure)") {
+    // the old shape — race(prog.map(Some), sleep.map(None)) — let a
+    // failing prog LOSE the race silently: None after the whole ms,
+    // the exception gone. The law: the first outcome of prog, of
+    // either kind, settles the timeout; only the timer answers None.
+    val boom = RuntimeException("boom")
+    val started = System.currentTimeMillis()
+    val prog = Async.timeout(2000)(async[Int](throw boom))
+    Async.runAsync(prog).failed.map { e =>
+      assertEquals(e.getMessage, "boom")
+      assert(System.currentTimeMillis() - started < 1000, "the failure must not wait for the timer")
+    }
+  }
+
   test("a race of two failures fails instead of hanging") {
     val prog = Async.race(
       async[Int](throw RuntimeException("a")),

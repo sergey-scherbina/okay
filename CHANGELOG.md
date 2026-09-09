@@ -1,5 +1,25 @@
 # Changelog
 
+## timeout-masks-failure — a failure under Async.timeout ends it at once, with its own exception
+
+`Async.timeout(ms)(p)` was `race(p.map(Some), sleep(ms).map(None))`,
+and `race`'s stated contract lets a failing contender LOSE without
+ending the race — so a program that failed immediately answered
+`None` after the whole duration, its exception replaced by a timeout.
+resilience-http met it live: a breaker's refusal under
+`Deadline.enforce` became a 504 after five seconds, and okay-resilience
+had to race on its own.
+
+The law, written as a cross test first — and it FAILED on the old
+shape (2.014 s: the failure waited for the timer): the first outcome
+of the program, of either kind, settles the timeout; only the timer
+answers `None`. `timeout` is now written directly on `await` — spawn
+the program, arm the timer, whichever settles first wins under one
+flag, the loser is cancelled or unregistered — and `race` is
+untouched, its contract being right for a race. Green on the JVM,
+under Node and as a native binary. `okay-sql`'s `Pool` is the one
+caller in the tree, and it gets the meaning it wanted: a failing
+acquire surfaces at once instead of masquerading as a timeout.
 ## gate-hygiene — the three load flakes and two warnings nine matrices showed
 
 `TestRepoAgent` indexes the whole repository and ran 203-237 s under
