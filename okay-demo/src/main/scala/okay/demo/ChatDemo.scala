@@ -430,6 +430,15 @@ object ChatDemo {
    * `boardStore` describes. A global is exactly what a module
    * replaces, and every reader of it becomes a door.
    */
+  /** the application's root, named so a deployment can read it
+   * (specs/di.md stage 3): what is still UNRESOLVED here is what
+   * something outside must give — and for this app that is a `Timer`
+   * and nothing else, because it provisions its own store, transport
+   * and secrets. `Needs.of[Root]` therefore asks the place for
+   * nothing, which okay-demo's deployment test pins. */
+  type Root = Timer ?=> Module[[X] =>>
+      okay.persist.Store ?=> Board ?=> Transport ?=> Secrets ?=> X]
+
   def modules(using Timer): Module[[X] =>>
       okay.persist.Store ?=> Board ?=> Transport ?=> Secrets ?=> X] =
     val path = sys.env.getOrElse("OKAY_CHAT_DB", "okay-board.log")

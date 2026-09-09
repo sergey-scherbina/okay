@@ -222,6 +222,11 @@ its Behavior checklist:
       global store every reader reached for). specs/di.md "What using
       it taught". Stage 3 on the demo declined with a reason: its root
       needs a Timer, which no place provides.
+- [x] needs-runtime — DONE 2026-09-09: `Needs` says which KIND of
+      input each is (`Place` / `Runtime`), so a root whose inputs are
+      mixed can be read without lying and without losing the
+      undeclared-input error. Timer and Scheduler declared once in the
+      companion; ChatDemo.Root named and pinned by okay-demo's test.
 
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 

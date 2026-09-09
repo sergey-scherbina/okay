@@ -33,4 +33,17 @@ class TestDemoDeploy extends munit.FunSuite:
     assertEquals(env.get("OKAY_CHAT_PORT"), Some("8090"))
     assertEquals(env.get("OKAY_CHAT_APP"), Some("/app/app.js"))
     assert(!env.keys.exists(_.startsWith("OKAYCHAT")), env.keys.toString)
+  
+  /**
+   * The deployment reads the application's ROOT (specs/di.md stage 3,
+   * needs-runtime). This app asks the place for nothing: it opens its
+   * own store, builds its own transport and reads its own secrets,
+   * and its one remaining input is a `Timer`, which the process
+   * brings and no target can. The day the root gains a database it
+   * did not provision, this stops compiling until someone declares
+   * what that is — which is the point.
+   */
+  test("the demo's root asks the place for nothing, and the Timer is not a need") {
+    assertEquals(okay.deploy.Needs.of[ChatDemo.Root], Vector.empty)
   }
+}

@@ -28,9 +28,25 @@ class TestNeeds extends munit.FunSuite:
     assertEquals(Needs.of[Module[[X] =>> App ?=> X]], Vector.empty)
   }
 
+  test("a mixed root: the place's inputs are declared, the runtime's are dropped") {
+    // a Timer is the process's own — declared `runtime` in Needs's
+    // companion, for every application — so it must not appear as a
+    // deployment need, and must not be an error either (needs-runtime)
+    type Mixed = Caps.Pg ?=> okay.Timer ?=> Caps.Files ?=> Module[[X] =>> App ?=> X]
+    assertEquals(Needs.of[Mixed], Vector(Need.Database(Engine.Postgres, "16", "shop"), Need.Volume("/app/data")))
+  }
+
+  test("an input a capability declares as the runtime's says nothing to the deployment") {
+    trait Ticker
+    given Needs[Ticker] = Needs.runtime
+    assertEquals(Needs.of[Ticker ?=> Module[[X] =>> App ?=> X]], Vector.empty)
+  }
+
   test("an input the deployment does not know is a compile error naming it") {
     val errs = compileErrors("Needs.of[Caps.Unknown ?=> okay.Module[[X] =>> Int ?=> X]]")
     assert(errs.contains("does not know what that is") && errs.contains("Unknown"), errs)
+    // and the message offers both answers, not just the place's one
+    assert(errs.contains("Needs.runtime"), errs)
   }
 
   test("a Service carries them beside the needs only the place can say — the database said once, in the type") {

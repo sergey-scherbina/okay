@@ -1,5 +1,30 @@
 # Changelog
 
+## needs-runtime — an input a place cannot provide can now say so
+
+`Needs.of[Root]` read every unresolved input of an application's root
+as something the PLACE must provision, and a real root's inputs are
+mixed: a database is the place's, a `Timer` is the process's own.
+di-dogfood hit that on the first application it tried — the only
+answers were a lie (declaring a `Need` for a timer, which no target
+could act on) or dropping the guarantee that an undeclared input stops
+the build.
+
+The declaration now carries the kind: `Needs(Need.Database(…))` for
+what a place provides, `Needs.runtime` for what the process brings.
+`Needs.of` collects the first and drops the second, and an input that
+declares NEITHER is still a compile error — with a message that now
+offers both answers. `Timer` and `Scheduler` are declared runtime in
+`Needs`'s own companion, where implicit scope finds them for every
+application, because they are never a place's business.
+
+The demo names its root (`ChatDemo.Root`) and okay-demo's deployment
+test pins what a deployment reads from it: nothing. It provisions its
+own store, transport and secrets, and its one remaining input is the
+runtime's — so the day that root gains a database it did not
+provision, the build stops until someone says what it is. 6 tests in
+okay-deploy, 1 in okay-demo. Commit: LANDING.
+
 ## di-dogfood — the DI arc builds an application, and the application changed it
 
 Nothing in this repository built itself with `Module`: outside the

@@ -227,12 +227,26 @@ CLOSED when the region ends (the `lazy val` it replaced never was),
 and the demo's tests no longer reach the repository's real
 `okay-board.log` through that global when they touch an ops route.
 
-Not attempted here: deriving the demo's deployment needs from the
-root's type (stage 3). Its root asks for a `Timer`, which is not
-something a PLACE provides, so `Needs.of` would demand a
-`given Needs[Timer]` that means nothing. The stage-3 loop wants a root
-whose remaining inputs are all infrastructural; the demo's are not,
-and saying so is better than bending either side to fit.
+Stage 3 on this app was declined at first and then FIXED, because the
+reason was a gap rather than a mismatch (needs-runtime). The demo's
+root asks for a `Timer`, which no place provides, and `Needs.of`
+treated every unresolved input as the place's business — so the only
+answers were a lie (declaring a `Need` for a timer) or dropping the
+guarantee that an undeclared input stops the build. A root's inputs
+are MIXED, and the declaration now says which kind each is:
+`Needs(Need.Database(…))` for the place, `Needs.runtime` for what the
+process brings. `Timer` and `Scheduler` are declared runtime in
+`Needs`'s own companion, once, for every application. The undeclared
+input is still a compile error, and its message now offers both
+answers.
+
+What that leaves for the demo is a true statement rather than a
+missing feature: `ChatDemo.Root` is named in the app, and
+`Needs.of[ChatDemo.Root]` is EMPTY — it provisions its own store,
+transport and secrets, and its one remaining input is the runtime's.
+okay-demo's deployment test pins that, so the day the root gains a
+database it did not provision, the build stops until someone says
+what that is.
 
 ## Decisions
 
