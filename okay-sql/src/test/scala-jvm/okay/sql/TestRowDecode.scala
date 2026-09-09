@@ -44,7 +44,7 @@ class TestRowDecode extends munit.FunSuite {
         .flatMap(_ => pure(Chunks.emptyChunk))
     def update(sql: String, params: Vector[SqlValue] = Vector.empty): Long ! Async = pure(0L)
     def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = pure(0L)
-    def begin(isolation: Isolation): Granted ! Async = pure(Granted(isolation, isolation))
+    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = pure(Granted(isolation, isolation))
     def commit(): Unit ! Async = pure(())
     def rollback(): Unit ! Async = pure(())
     def cancel(): Unit = ()

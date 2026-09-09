@@ -42,3 +42,16 @@ class TestR2dbcPg extends R2dbcSuite:
     finally db.close()
   }
 
+  test(s"$engine: a READ ONLY transaction through the SPI definition — granted, a write refuses with 25006 (sql-readonly-region)") {
+    val db = fresh()
+    try
+      val g = run(db.begin(Isolation.ReadCommitted, readOnly = true))
+      assert(g.readOnly, "the definition was taken")
+      val e = intercept[Exception](run(db.update("insert into okay_r2dbc values (1, 'x', 0, true, 0, null)")))
+      assertEquals(db.sqlState(e), Some("25006"), e.getMessage)
+      run(db.rollback())
+      assertEquals(run(db.begin(Isolation.ReadCommitted)).readOnly, false)
+      run(db.rollback())
+    finally db.close()
+  }
+

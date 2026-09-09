@@ -335,11 +335,11 @@ object Typed:
    * After a commit the brake is a no-op. `G` is whatever else the
    * body performs (Throws for abortable bodies; pass `Async` when
    * nothing extra). A transact program is one-shot. */
-  def transact[A, G[+_]](db: Sql, isolation: Isolation = Isolation.ReadCommitted)
+  def transact[A, G[+_]](db: Sql, isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false)
                         (body: Granted => A ! (Resource + Async + G))
   : A ! (Resource + Async + G) =
     for
-      g <- !.widen[Granted, Async, Resource + G](db.begin(isolation))
+      g <- !.widen[Granted, Async, Resource + G](db.begin(isolation, readOnly))
       _ <- !.widen[Unit, Resource, Async + G](Resource.acquire(())(_ => db.cancel()))
       a <- body(g)
       _ <- !.widen[Unit, Async, Resource + G](db.commit())
@@ -373,10 +373,10 @@ object Typed:
    * Throws inside, answering the Either as its value.
    */
   def transactRetry[A](db: Sql, isolation: Isolation = Isolation.ReadCommitted,
-                       retry: Retry = Retry.none)
+                       retry: Retry = Retry.none, readOnly: Boolean = false)
                       (body: Granted => A ! (Resource + Async))
                       (using Scheduler, Timer): Retried[A] ! Async =
-    def once: A ! Async = Resource.run[A, Async](transact[A, Async](db, isolation)(body))
+    def once: A ! Async = Resource.run[A, Async](transact[A, Async](db, isolation, readOnly)(body))
     def go(n: Int): Retried[A] ! Async =
       Async.attempt(once).flatMap {
         case Right(a) => pure(Retried(a, n))
@@ -423,10 +423,10 @@ object Typed:
    * the nested-begin failure specs/jdbc.md documents as a runtime
    * refusal is unrepresentable here. Runtime behavior is EXACTLY
    * `transact` (commit on completion, the cancel brake on abort). */
-  def region[A, G[+_]](db: Db[Tx.No], isolation: Isolation = Isolation.ReadCommitted)
+  def region[A, G[+_]](db: Db[Tx.No], isolation: Isolation = Isolation.ReadCommitted, readOnly: Boolean = false)
                       (body: Db[Tx.Yes] => A ! (Resource + Async + G))
   : A ! (Resource + Async + G) =
-    transact(db.db, isolation)(_ => body(new Db[Tx.Yes](db.db)))
+    transact(db.db, isolation, readOnly)(_ => body(new Db[Tx.Yes](db.db)))
 
 /** parameter binding: positionally from a product's declared field
  * order, through the driver's prepared path — there is no API that

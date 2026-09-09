@@ -161,20 +161,23 @@ final class PgSql private (conn: NetConn) extends Sql:
       }
     }
 
-  def begin(isolation: Isolation): Granted ! Async =
+  def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async =
     settled {
       if inTx then throw IllegalStateException(
         "nested transaction: this connection is already in one — " +
           "refuse rather than silently flatten (specs/jdbc.md)")
+      val mode = if readOnly then " READ ONLY" else ""
       simple("BEGIN").flatMap { _ =>
-        simple(s"SET TRANSACTION ISOLATION LEVEL ${levelSql(isolation)}").flatMap { _ =>
+        simple(s"SET TRANSACTION ISOLATION LEVEL ${levelSql(isolation)}$mode").flatMap { _ =>
           inTx = true
-          simpleValue("SHOW transaction_isolation").map { v =>
+          simpleValue("SHOW transaction_isolation").flatMap { v =>
             val granted = v match
               case Some("serializable") => Isolation.Serializable
               case Some("repeatable read") => Isolation.RepeatableRead
               case _ => Isolation.ReadCommitted
-            Granted(isolation, granted)
+            // read back, not assumed: pg enforces READ ONLY (a write
+            // answers 25006), and this is the server saying so
+            simpleValue("SHOW transaction_read_only").map(ro => Granted(isolation, granted, ro.contains("on")))
           }
         }
       }

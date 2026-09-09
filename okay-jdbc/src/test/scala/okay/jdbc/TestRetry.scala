@@ -33,7 +33,7 @@ class TestRetry extends munit.FunSuite {
         throw SQLException("could not serialize access (the engine chose this transaction to lose)", state)
       else inner.update(sql, params)
     def batch(sql: String, rows: Chunk[Vector[SqlValue]]) = inner.batch(sql, rows)
-    def begin(isolation: Isolation) = { begins += 1; inner.begin(isolation) }
+    def begin(isolation: Isolation, readOnly: Boolean) = { begins += 1; inner.begin(isolation, readOnly) }
     def commit() = inner.commit()
     def rollback() = inner.rollback()
     def cancel(): Unit = { cancels += 1; inner.cancel() }

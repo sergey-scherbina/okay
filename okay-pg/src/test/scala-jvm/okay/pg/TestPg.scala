@@ -257,6 +257,24 @@ class TestPg extends munit.FunSuite {
     }
   }
 
+  test("a READ ONLY region on the wire: granted and read back, a write inside answers 25006, writes work again after (sql-readonly-region)") {
+    assume(available, s"no Postgres at $host:$port — the live suite skips")
+    withDb { db =>
+      val e = intercept[PgError](run(Resource.run[Long, Async](
+        Typed.transact[Long, Async](db, Isolation.ReadCommitted, readOnly = true) { g =>
+          assert(g.readOnly, "the server granted READ ONLY")
+          !.widen[Long, Async, Resource](db.update("insert into customer(id, user_name, balance, active) values (40, 'ro', 1, true)"))
+        })))
+      assertEquals(db.sqlState(e), Some("25006"), e.getMessage)
+      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db, readOnly = true)(g => okay.pure(g))))
+      assert(g.readOnly)
+      val plain = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db)(g => okay.pure(g))))
+      assert(!plain.readOnly)
+      assertEquals(run(db.update("insert into customer(id, user_name, balance, active) values (40, 'rw', 1, true)")), 1L)
+      assertEquals(run(db.update("delete from customer where id = 40")), 1L)
+    }
+  }
+
   test("nested transact refuses loudly on the wire too") {
     assume(available, s"no Postgres at $host:$port — the live suite skips")
     withDb { db =>

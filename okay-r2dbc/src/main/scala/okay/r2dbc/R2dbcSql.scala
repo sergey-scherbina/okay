@@ -2,7 +2,7 @@ package okay.r2dbc
 
 import okay.{!, +, Async, Chunk, ChunkBuf, Chunks, Produce, async, effect}
 import okay.sql.{Col, Granted, Isolation, Sql, SqlType, SqlValue}
-import io.r2dbc.spi.{Connection, ColumnMetadata, IsolationLevel, Result, Row, RowMetadata, Statement}
+import io.r2dbc.spi.{Connection, ColumnMetadata, IsolationLevel, Result, Row, RowMetadata, Statement, TransactionDefinition}
 import java.nio.ByteBuffer
 
 /**
@@ -76,14 +76,31 @@ final class R2dbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
       updated(st)
   }
 
-  def begin(isolation: Isolation): Granted ! Async = async {
+  def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = async {
     if inTx then throw IllegalStateException(
       "nested transaction: this connection is already in one — " +
         "refuse rather than silently flatten (specs/jdbc.md)")
-    Rx.all(conn.beginTransaction()): Unit
-    Rx.all(conn.setTransactionIsolationLevel(levelOf(isolation))): Unit
+    // the SPI's TransactionDefinition carries READ ONLY; a driver that
+    // does not take definitions (r2dbc-h2) gets the plain begin and
+    // grants no read-only — reported, not assumed
+    val granted =
+      if readOnly then
+        val definition = new TransactionDefinition:
+          def getAttribute[T](option: io.r2dbc.spi.Option[T]): T =
+            if option == TransactionDefinition.READ_ONLY then option.cast(java.lang.Boolean.TRUE)
+            else if option == TransactionDefinition.ISOLATION_LEVEL then option.cast(levelOf(isolation))
+            else option.cast(null)
+        try { Rx.all(conn.beginTransaction(definition)): Unit; true }
+        catch case _: UnsupportedOperationException =>
+          Rx.all(conn.beginTransaction()): Unit
+          Rx.all(conn.setTransactionIsolationLevel(levelOf(isolation))): Unit
+          false
+      else
+        Rx.all(conn.beginTransaction()): Unit
+        Rx.all(conn.setTransactionIsolationLevel(levelOf(isolation))): Unit
+        false
     inTx = true
-    Granted(isolation, isolationOf(conn.getTransactionIsolationLevel))
+    Granted(isolation, isolationOf(conn.getTransactionIsolationLevel), granted)
   }
 
   def commit(): Unit ! Async = async {

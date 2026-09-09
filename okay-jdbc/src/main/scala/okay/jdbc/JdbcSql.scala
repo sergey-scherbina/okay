@@ -20,6 +20,10 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
 
   private var inTx = false
   private var autoBefore = true
+  // restored with autocommit when the region ends (sql-readonly-region):
+  // a transact(Serializable) must not leave the connection Serializable
+  private var isolationBefore = Connection.TRANSACTION_READ_COMMITTED
+  private var readOnlyBefore = false
 
   def describe(sql: String): Vector[Col] ! Async = async {
     val ps = conn.prepareStatement(sql)
@@ -75,28 +79,37 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
     finally ps.close()
   }
 
-  def begin(isolation: Isolation): Granted ! Async = async {
+  def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = async {
     if inTx then throw IllegalStateException(
       "nested transaction: this connection is already in one — " +
         "refuse rather than silently flatten (specs/jdbc.md)")
     autoBefore = conn.getAutoCommit
+    isolationBefore = conn.getTransactionIsolation
+    readOnlyBefore = conn.isReadOnly
     conn.setAutoCommit(false)
     conn.setTransactionIsolation(levelOf(isolation))
+    if readOnly then conn.setReadOnly(true)
     inTx = true
-    Granted(isolation, isolationOf(conn.getTransactionIsolation))
+    // JDBC's setReadOnly is a HINT; what the connection reports back is
+    // what was granted (H2 ignores it and reports false; pg enforces it)
+    Granted(isolation, isolationOf(conn.getTransactionIsolation), readOnly && conn.isReadOnly)
   }
 
   def commit(): Unit ! Async = async {
     conn.commit()
-    conn.setAutoCommit(autoBefore)
-    inTx = false
+    restore()
   }
 
   def rollback(): Unit ! Async = async {
     conn.rollback()
-    conn.setAutoCommit(autoBefore)
-    inTx = false
+    restore()
   }
+
+  private def restore(): Unit =
+    conn.setAutoCommit(autoBefore)
+    conn.setTransactionIsolation(isolationBefore)
+    conn.setReadOnly(readOnlyBefore)
+    inTx = false
 
   /** the engine's SQLSTATE, as JDBC carries it */
   override def sqlState(t: Throwable): Option[String] = t match
@@ -107,8 +120,7 @@ final class JdbcSql(conn: Connection, fetchSize: Int = 64) extends Sql:
   def cancel(): Unit =
     if inTx then
       conn.rollback()
-      conn.setAutoCommit(autoBefore)
-      inTx = false
+      restore()
 
 object JdbcSql:
 

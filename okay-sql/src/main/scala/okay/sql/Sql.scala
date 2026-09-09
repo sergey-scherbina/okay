@@ -74,7 +74,7 @@ final case class Col(label: String, tpe: SqlType, nullable: Boolean)
 enum Isolation:
   case ReadCommitted, RepeatableRead, Serializable
 
-final case class Granted(requested: Isolation, granted: Isolation):
+final case class Granted(requested: Isolation, granted: Isolation, readOnly: Boolean = false):
   def downgraded: Boolean = granted != requested
 
 /**
@@ -107,7 +107,11 @@ trait Sql:
   /** opens a transaction; a second begin before commit/rollback
    * REFUSES loudly (nested transact is the rollback that quietly
    * does not roll back — specs/jdbc.md) */
-  def begin(isolation: Isolation): Granted ! Async
+  /** `readOnly` asks for a READ ONLY transaction — the FOREIGN
+   * posture's declaration where the DBA gave us reads; the answer's
+   * `readOnly` is what the engine GRANTED (pg enforces it, H2 takes
+   * the JDBC hint and ignores it — and says so) */
+  def begin(isolation: Isolation, readOnly: Boolean = false): Granted ! Async
   def commit(): Unit ! Async
   def rollback(): Unit ! Async
 

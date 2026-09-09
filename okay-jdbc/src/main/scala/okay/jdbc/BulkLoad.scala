@@ -91,7 +91,7 @@ object BulkLoad {
       if head.startsWith("insert") || head.startsWith("update") || head.startsWith("delete")
       then refuse(sql) else db.update(sql, params)
     def batch(sql: String, rows: Chunk[Vector[SqlValue]]): Long ! Async = refuse(sql)
-    def begin(isolation: Isolation): Granted ! Async = db.begin(isolation)
+    def begin(isolation: Isolation, readOnly: Boolean): Granted ! Async = db.begin(isolation, readOnly)
     def cancel(): Unit = db.cancel()
     def commit(): Unit ! Async = db.commit()
     def rollback(): Unit ! Async = db.rollback()

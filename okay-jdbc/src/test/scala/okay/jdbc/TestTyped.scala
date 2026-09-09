@@ -415,6 +415,22 @@ class TestTyped extends munit.FunSuite {
     }
   }
 
+  test("sql-readonly-region on H2: the isolation level and the read-only hint are restored after a region; H2 grants no read-only and says so") {
+    val conn = DriverManager.getConnection(url, "app", "app")
+    try
+      val db = JdbcSql(conn)
+      val before = conn.getTransactionIsolation
+      assertNotEquals(before, java.sql.Connection.TRANSACTION_SERIALIZABLE)
+      val g = run(Resource.run[Granted, Async](Typed.transact[Granted, Async](db, Isolation.Serializable, readOnly = true)(g => okay.pure(g))))
+      assertEquals(g.granted, Isolation.Serializable)
+      // JDBC's setReadOnly is a hint H2 ignores: the grant reports what the connection says
+      assertEquals(g.readOnly, conn.isReadOnly)
+      assertEquals(conn.getTransactionIsolation, before, "the level before the region is the level after it")
+      assert(conn.getAutoCommit)
+      assert(!conn.isReadOnly)
+    finally conn.close()
+  }
+
   test("the restricted user has no DDL: their schema, our types, full function") {
     val conn = DriverManager.getConnection(url, "app", "app")
     try

@@ -490,6 +490,34 @@ JVM-only (okay-intent's `Temporal` made the same choice):
 - [x] R2DBC on H2 and pg: timestamptz/date/time/uuid typed both ways
       (Live for pg)
 
+## Read-only regions, and the isolation restored (sql-readonly-region)
+
+The FOREIGN posture's honest declaration: where the DBA gave us reads,
+the region says so and the engine enforces it. `Sql.begin(isolation,
+readOnly)` and `Typed.transact/region/transactRetry(..., readOnly =
+true)`; `Granted.readOnly` is what the engine GRANTED, read back rather
+than assumed — pg's `SET TRANSACTION ... READ ONLY` then `SHOW
+transaction_read_only` (a write inside answers `25006`); JDBC's
+`setReadOnly` is a hint and `isReadOnly` reports it (H2 ignores the
+hint and reports false, which the grant then says); R2DBC's
+`TransactionDefinition` with `READ_ONLY` (r2dbc-postgresql takes it,
+a driver that refuses definitions gets the plain begin and grants no
+read-only). And the leak the audit found: `JdbcSql` restored autocommit
+after a region but not the isolation level, so every autocommit
+statement after a `transact(Serializable)` ran Serializable; the level
+and the read-only flag are saved at `begin` and restored with
+autocommit on commit, rollback and the brake.
+
+- [x] pg over the wire: a READ ONLY region is granted and read back, a
+      write inside fails with 25006, a plain region grants none, and
+      writes work again after (Live)
+- [x] H2 through JDBC: after `transact(Serializable, readOnly = true)`
+      the connection's isolation, autocommit and read-only flag are
+      what they were before; the grant reports H2's refusal of the
+      hint honestly
+- [x] r2dbc-postgresql: the SPI definition is taken, the write inside
+      refuses with 25006, the plain begin grants none (Live)
+
 ## Out of scope
 
 - writing MySQL/MSSQL/Oracle wire protocols — R2DBC or JDBC are
