@@ -1,0 +1,15 @@
+task: intent-periods-and-zl
+agent: claude-code (session 011bEm62FX2VJERSK7qLZjBs)
+started: 2026-09-09
+heartbeat: 2026-09-09T20:05:00Z
+status: in-progress
+branch: feature/intent-periods-and-zl
+worktree: ../okay-wt-periods
+spec: specs/intent-classify.md — the temporal slot (a PERIOD beside a day) and the amount slot (the «зл» abbreviation)
+
+why: okay-chat measured its slot layer against token vectors over 317 live
+  turns (its specs/meaning.md). Two of the three real misses were vocabulary
+  here: «чиню гусли за 90 зл» carried a price `Amount` did not read, and six
+  what's-on questions said «на этой неделе» / «на выходных», which `Temporal`
+  refuses on purpose because a week is not a day. It is an interval, and an
+  interval is not a guess.
