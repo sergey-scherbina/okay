@@ -15,8 +15,8 @@ slower than the delay: the old shape fails, the new one passes; the
 two tests went from 60+ ms each to 2 ms, and no wall clock is left in
 either. Found on the way and filed rather than fixed
 (`hedge-timer-leak`): `Hedge.start` forks before it arms, so a fast
-attempt can leave one timer armed and uncancelled — harmless when it
-fires, but it is a sleeping thread. Commit: LANDING.
+attempt can leave one timer armed and uncancelled - harmless when it
+fires, but it is a sleeping thread. Commit: e5d97c37.
 ## ui-mobile-android — the Android target on okay-compose: one set of composables, a debug APK built
 
 M3 of specs/frontend.md "Mobile". The Android SDK came by
