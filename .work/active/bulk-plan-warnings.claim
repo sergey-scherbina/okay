@@ -1,0 +1,20 @@
+task: bulk-plan-warnings
+agent: opus5-di
+started: 2026-09-09
+heartbeat: 2026-09-09T16:04:19Z
+status: in-progress
+branch: feature/bulk-plan-warnings
+worktree: ../okay-wt-warnings
+spec: BACKLOG "bulk-plan-warnings"; policy in AGENTS.md ("no warnings, ever")
+
+why: eight warnings landed on a gate that had none, in two files added
+  by bulk-plan/bulk-rewrite. Everyone's clean gate is now dirty, and a
+  real warning would hide among them.
+
+what: fix all eight at the source, in the AGENTS.md order of preference
+  — a discarded value OUR code chose to return becomes a real
+  assertion where it says something (the okay-actor precedent), an
+  unused import goes, an unused pattern type becomes `?`. No wholesale
+  suppression. Verified with `clean` + `Test/compile`, not incremental.
+
+next: read both files, fix, clean-compile, gate
