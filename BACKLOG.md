@@ -2142,7 +2142,9 @@ measure on our own data, never a predicted result.
       `arrow` package (native, heavy) on R's side and an Arrow reader
       on ours — a big dependency for a module whose only dependency
       today is jsonlite. Try the cheap shape change first.
-- [ ] r-frame-columnar-wire — THE CANDIDATE THE MEASUREMENT FOUND, and
+- [x] r-frame-columnar-wire — DONE 2026-09-09 (46219dee): 58x at 100k rows
+      against a 2x bar, payload down 41%, R's share of the trip from 99.6%
+      to under 75%. Was: THE CANDIDATE THE MEASUREMENT FOUND, and
       it costs no dependency. `Wire.enc` tags PER CELL: an R integer is
       `{"t":"i","v":…}`, an NA is an object, an integral double is an
       object — because JSON cannot otherwise keep R's integer apart

@@ -1,5 +1,46 @@
 # Changelog
 
+## r-frame-columnar-wire — the tag moves from the cell to the column: 58x on a 100k-row frame
+
+The spec landed first, because the thing being changed is a wire
+format. A column of a data.frame is homogeneous by construction, so one
+type tag serves it: a column now carries its `type`, a PLAIN array of
+`values`, and its absences as index lists (`na`, and `nan` for
+doubles), with the type's zero standing at the absent positions —
+a JSON null there would make jsonlite build a list and undo the whole
+point. A column the four atomic types cannot carry (raw, mixed) keeps
+the per-cell form under `cells`; both readers take either key, and the
+v1 shape still READS, so a fixture or a journal holding one is not
+stranded. `ShimVersion` 2, host and shim moving together as the
+handshake already demands.
+
+Measured, same box, same container, medians of five, an hour apart:
+
+| rows | payload | our encode | round trip | our decode | typed rows | OUR share |
+|---|---|---|---|---|---|---|
+| 10 000, before | 0.30 MB | 5.0 ms | 1 121 ms | 5.3 ms | 2.5 ms | 0.9% |
+| 10 000, after | 0.17 MB | 3.7 ms | **20.9 ms** | 5.2 ms | 3.7 ms | 42.3% |
+| 100 000, before | 3.21 MB | 20.5 ms | 10 505 ms | 16.5 ms | 6.1 ms | 0.4% |
+| 100 000, after | 1.88 MB | 28.0 ms | **179.7 ms** | 18.0 ms | 6.6 ms | 25.6% |
+
+58x at 100 000 rows against the spec's 2x bar, 54x at 10 000, and the
+payload down 41%. The balance flipped with it: R held 99.6% of the
+trip before and under 75% now, so `r-arrow` must beat 180 ms with a
+native dependency on both sides rather than beat 10.5 seconds — it
+stays filed and stays waiting, which is the second time a measurement
+has sent it back.
+
+Learned from R rather than from the design: jsonlite UNBOXES a
+length-1 vector, so a one-row column arrives as a scalar and a single
+absence as a bare number, not as arrays of one. The reader takes both
+shapes; until it did, the round trip lost exactly one NA — caught by a
+test that already existed. One spec box is CORRECTED rather than
+checked: an empty column keeps its name but not its type, because
+`RFrame` types values and not columns; the wire can carry it, our type
+cannot, and changing a public type for a case no consumer has is not
+the trade. Landed as 46219dee. Gate: full matrix, 3610 tests, 0
+failures.
+
 ## adaptive-concurrency — measured, and refuted: the controller does not earn its place
 
 specs/resilience.md's last open box, deferred twice — first for want
