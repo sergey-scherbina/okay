@@ -127,7 +127,9 @@ follows, in the spec's order:
       (outbox): transactional outbox / inbox / dead-letter as
       okay-outbox (specs/outbox.md). DONE 2026-09-09 (discovery):
       service discovery + client-side balancing in okay-resilience
-      (specs/discovery.md). Still open: saga over `Durable`
+      (specs/discovery.md). DONE 2026-09-09 (schema-compat): Schema
+      compatibility between services, `okay.codec.Compat`
+      (specs/codecs.md). Still open: saga over `Durable`
       + persist with compensations as values; transactional outbox /
       inbox / dead-letter when the truth is in SQL; service discovery
       + client-side balancing (cluster.md lists it out of scope);

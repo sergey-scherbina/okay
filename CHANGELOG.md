@@ -1,5 +1,35 @@
 # Changelog
 
+## schema-compat — whether the other side still reads our messages, as a fold over two Schemas
+
+The microservices audit's last cheap gap: two services share a
+Schema-encoded message, one side's case class changes, and nothing
+answered whether the other can still decode. The industry answer is
+a schema registry or a contract-testing tool; neither is needed,
+because a `Schema` is a VALUE. `Compat.compare(old, next)` folds two
+of them into a `Report`: the changes (field added/removed with its
+optionality and whether it is defaulted, case added/removed, a
+retype, a shape change), each with a path, and a verdict per
+DIRECTION per WIRE — backward (the new reader over old bytes: the
+log, traffic in flight), forward (the old reader over new bytes:
+consumers not yet upgraded), `rolling` for both.
+
+The rules are not invented, they are read off this module's own
+decoders, and the tests assert that by encoding with one schema and
+decoding with the other rather than by restating the rule: an absent
+field takes its default then None-if-optional then a refusal; an
+unknown case is refused on both wires; an unknown FIELD is **ignored
+by Json and refused by Cbor**. That asymmetry — which surfaced only
+because the check was written against the decoders — is why a
+verdict names its wire: adding a field is forward-compatible on JSON
+and not on CBOR, so a CBOR service pair must upgrade readers first.
+
+Nesting, collections, wrappers (an `SIso` is no change at all),
+List-vs-Vector (the same array on both wires) and self-referential
+types (a name-pair guard) are handled. 14 tests; specs/codecs.md
+gained the section with its boxes; docs/modules/okay-codec.md
+documents it with the change table and the one-line regression test
+a service can keep.
 ## ui-mobile-ios — the Swift thin client: a SwiftPM package with no okay dependency, proved by the conformance script, built for the iOS simulator
 
 M2 of specs/frontend.md "Mobile". `okay-swift/` transcribes
