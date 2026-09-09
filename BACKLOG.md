@@ -5241,3 +5241,34 @@ and that escape hatch already shipped. A cheaper trigger would have
 to learn who is pushing without reading thread identity and without
 writing a counter, and no such mechanism has been proposed. Reopen
 this with one, not with a rearrangement of layers.
+
+## resilience-timed-flake — a wall-clock assertion in the default gate
+
+`okay.resilience.TestResilienceTimed`, "limiter: with a wait budget
+the caller parks for the refill instead of being refused", asserts
+
+    (System.nanoTime() - t0) / 1_000_000 >= 15
+
+and FAILED in a full `sbt test` on 2026-09-09 while five sbt processes
+from four sibling lanes were running. Measured immediately after, in
+isolation, on the same tree: **three runs, three passes**. So it is
+load-sensitive, not broken — and it took a green lane's gate red with
+it, which is how it was found.
+
+AGENTS.md is explicit about this class: "POLICY: no flaky tests in the
+default gate — only in `integrationTest`. Anything whose outcome
+depends on timing this repository cannot control ... a landing's gate
+must not depend on external timing."
+
+Owned by the `resilience` lane, which was active when this was found,
+so it is filed rather than fixed. Two honest routes:
+
+- move the timing assertions to `integrationTest`, which is what the
+  policy prescribes; or
+- keep them in the gate and make them robust — assert ORDER (the
+  second call completed after the refill) rather than elapsed
+  milliseconds, since the thing being tested is that the caller
+  parked, not how long it parked for. `l.stats.delayed == 1` on the
+  next line already says the former and does not depend on the clock.
+
+The second is better if it can be had: it tests the actual claim.
