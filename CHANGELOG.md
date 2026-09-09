@@ -1,5 +1,51 @@
 # Changelog
 
+## grant-unenforced — master was red, and the green tests were the problem
+
+`TestEffectProvide`'s negative test compiled what it asserts must not:
+a block coloring itself with no grant. Verified failing on
+`origin/master` alone, so every gate in the repository was red with it.
+
+It was not a leak. `okay.Effect` became
+`trait Effect[F[_]] extends TypeableK[F], Direct.Effect[F]` on
+2026-09-08 — declaring a signature with `derives Effect` now also
+grants its operations the coloring permission, which is deliberate
+and documented in `Effects.scala`. `Reader derives okay.Effect`, so
+that block colors legitimately and always will. The test was RIGHT to
+go red; what it tested had moved out from under it.
+
+**The two tests that stayed green were the worse defect.** With the
+grant arriving ambiently through `Reader`, `provide(grant)` was doing
+nothing in either of them: they would have passed with `provide`
+deleted from the file. A red test is visible. Two green tests that
+cannot fail are not, and they were the ones actually claiming the
+feature works.
+
+So the suite moved to `ProvideProbe derives TypeableK` — the escape
+hatch `Effects.scala` names for "the row-split test and NOT
+auto-coloring" — where the grant is genuinely required. Three tests
+mean what they say again and a fourth pins the new rule from the
+other side, so the next reader meets it as a decision rather than a
+hole.
+
+Proved rather than assumed: changing the probe to `derives
+okay.Effect` turns the negative test red and nothing else. It failed
+twice on the way, the second time on my own assertion — which looked
+for the `@implicitNotFound` text on `Direct.Effect` and never sees
+it. A missing CONVERSION is not reported as a missing implicit; the
+compiler says `Found: ProvideProbe[Int], Required: Int`, and that
+mismatch IS the rule holding.
+
+Also: nine unused `import okay.given`, left behind when `Keyed` went.
+**A warm gate saw four of them.** It only recompiles what changed, so
+it named okay-llm and okay-http and stayed silent about okay-chat,
+okay-script and okay-ui, whose classes were already built — fixing
+the four and re-running warm would have looked complete and left five
+in place. The clean run produced the list.
+
+Gate: clean build, 84 modules, 3 072 tests, 0 failures, 0 compiler
+warnings.
+
 ## queue-swap — the layer was free, and the entry closed itself
 
 `queue-swap` had been open since 2026-09-07 with six filed steps:
