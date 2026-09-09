@@ -1,0 +1,22 @@
+task: di-module
+agent: fable-di
+started: 2026-09-09
+heartbeat: 2026-09-09T06:13:24Z
+status: in-progress
+branch: feature/di-module
+worktree: ../okay-wt-di
+spec: specs/di.md (new), stage 0
+
+why: provide/providing/wire make a dependency a type and a missing one a
+  compile error, but an installer holds a READY value: nothing opens a
+  pool, orders start/stop, or lets one module's acquisition see the
+  module before it. That is the gap between "context functions" and DI.
+
+what: type Module[F] = Providing[F] ! Resource in the core; module(acquire)(release),
+  Module.value, Module(providing), `and` whose right operand is F[Module[G]]
+  so a dependent module reads its dependency with wire[..], apply(body)
+  into Resource.run. Tests: order/reverse release, dependent module, test
+  override, missing dependency is a compile error. Spec first, then the
+  stages for qualifiers, printed plan, okay-spring/ZLayer bridges.
+
+next: write specs/di.md, prototype in the worktree
