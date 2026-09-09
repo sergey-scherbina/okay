@@ -1681,3 +1681,9 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-09	d60eb3b0	25	effss-effSWr-suspend	30.212	23.531	1.28	Cont.Suspend under a Bind for Eff.flatMap; +48 B/bind (345888 vs 297897); ref fusedSWr 17.2 vs 13.7 (load); rejected for the single node
 2026-09-09	d60eb3b0	25	effss-effSWr-defer	29.185	23.531	1.24	ONE Defer node (bind with a thunked left); +32 B/bind (329888); ref fusedSWr 14.9 vs 13.7 -> ~+14% load-adjusted; KEPT: Eff stack-safe on any shape
 2026-09-09	d60eb3b0	25	effss-effSW-left-1000	56.028	25.678	2.18	left-nested Eff (now runs; 1M runs too) vs left-nested fused Free loop, same run; B/op 609137 vs 306225
+2026-09-09	103f0da5	30	either-stateShip-vs-either	86984	100904	-	State.handle alone, 1000 ops: split vs <|> loop B/op; the Either escaped here (14 B/op)
+2026-09-09	103f0da5	30	either-stateExtract	100936	100904	-	extractor+Either vs Either alone: the Option never escaped
+2026-09-09	103f0da5	30	either-writerShip-vs-either	197544	197480	-	Writer.foldWith alone, 1000 tells: split vs <|> vs extractor all equal — nothing escaped; split bought Writer nothing
+2026-09-09	103f0da5	30	writer-list-mapAfter-REFUTED	196800	170696	-	Writer.run as List + .map(reverse) over the residual, mixed 333 tells: +26 KB — the map left-nests 667 forwarded nodes (61 KB); rejected
+2026-09-09	103f0da5	30	writer-list-finishInLoop-mixed	148696	170696	0.87	Writer.run as List + finish inside loopWith, mixed 333 tells + 667 State ops, same run: -13% B/op
+2026-09-09	103f0da5	30	writer-list-finishInLoop-1000	128024	197544	0.65	Writer.run as List + finish inside loopWith, Writer-only 1000 tells, same run: -35% B/op; time 1.7x in a quieter run (10.4 vs 17.6)

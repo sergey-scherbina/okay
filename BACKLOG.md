@@ -32,7 +32,11 @@ operator asked for the four things left under it, in this order:
       trampoline in `Eff.flatMap` (if one exists that is not "reify to
       Free") and a documented law + `fromFree` as the road; either way
       a test pins the answer.
-- [ ] either-scalarised-in-one-nesting — after stage A, the shipping
+- [x] either-scalarised-in-one-nesting — DONE 2026-09-09: explained (the
+      Either escaped only in State.handle's loop; Writer's wrappers were
+      always scalarised), and Writer.run moved to a List finished inside
+      the loop (-13% / -35% B/op). specs/handler-fusion.md. Was: after
+      stage A, the shipping
       runners saved both wrappers in `Writer.run(State.handle(p))` and
       only the Option in `State.run(Writer.run(p))`; bytecode has no
       `Left`/`Right` in `State$`. Per-runner lanes with the old `<|>`

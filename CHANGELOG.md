@@ -1,5 +1,32 @@
 # Changelog
 
+## either-scalarised — the anomaly explained, and Writer.run loses a third of its bytes on the way
+
+Runner-floor item 3: after stage A the two nestings of the same
+program had saved different amounts, so the JIT was scalarising some
+wrappers and not others. Per-runner lanes (`SplitBenchmark`, each
+runner alone in three forms of its loop) say exactly which: in
+`State.handle`'s loop the `Either` escaped (14 B/op) and `split`
+removed it; the extractor's `Option` never escaped anywhere; and in
+`Writer.foldWith`'s loop nothing escaped at all — `split` bought
+Writer zero bytes, and the 10.7 KB one nesting saved were State's
+Eithers over its 667 forwarded operations, to the byte.
+
+The same lanes showed where Writer's bytes actually go: the `Vector`
+appended per tell. `Writer.run` now builds a `List` by prepending and
+reverses it once — inside the loop's terminal case, through a new
+`loopWith` with a `finish` step. Same-run A/B: Writer-only 1 000 tells
+197 544 → 128 024 B/op (−35%, 1.7x in a quieter run); the mixed
+program with 333 tells and 667 forwarded State operations
+170 696 → 148 696 (−13%).
+
+The first cut of that change LOST 15% on the mixed program and is the
+lesson: it finished the list with a `.map` over the residual program,
+and one outer `map` around a program that still forwards effects makes
+every forwarded node left-nested under it — `resume` rotated each of
+the 667 again, 61 KB, more than the accumulator being finished.
+`loopWith` exists so a finishing step happens where the program ends
+and nowhere else; the refuted shape is a history row. Six rows.
 ## docs-cassandra — the Cassandra adapter of the Docs seam: lightweight transactions as CAS, the consistency dial granted as asked
 
 The third foreign engine of Docs, through the Apache java driver
