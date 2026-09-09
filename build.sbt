@@ -1739,3 +1739,19 @@ lazy val okayGuice = (project in file("okay-guice"))
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
   )
+
+/** The Cassandra adapter of the Docs seam (docs-cassandra, specs/data.md):
+ * CQL through the Apache java driver (the Mongo precedent: the vendor
+ * driver lives in its satellite), lightweight transactions as the CAS,
+ * the engine where a Quorum request means a quorum. JVM; the DocsSuite
+ * contract runs Live against a dockerized cassandra:5. */
+lazy val okayDocsCassandra = (project in file("okay-docs-cassandra"))
+  .dependsOn(okay.jvm, okayDocs.jvm % "compile->compile;test->test")
+  .settings(
+    name := "okay-docs-cassandra",
+    libraryDependencies ++= Seq(
+      "org.apache.cassandra" % "java-driver-core" % "4.18.1",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+    Test / fork := true,
+  )

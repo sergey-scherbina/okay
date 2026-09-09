@@ -1,5 +1,25 @@
 # Changelog
 
+## docs-cassandra — the Cassandra adapter of the Docs seam: lightweight transactions as CAS, the consistency dial granted as asked
+
+The third foreign engine of Docs, through the Apache java driver
+4.18.1 in its own satellite (the Mongo precedent). Every conditional
+write is one LWT — `INSERT … IF NOT EXISTS`, `UPDATE`/`DELETE … IF ver
+= ?` — whose `[applied]` row carries the current version when it
+refused, so `Stale` answers with what holds now; `Cond.Always` is a
+bounded read-then-CAS loop (no atomic increment on a regular column);
+declared indexes are `ix_<field>` columns with a secondary index each;
+`grants` hands the dial back as asked (One, Quorum, ALL) — the one
+engine where Quorum means a quorum. The DocsSuite contract passes Live
+on dockerized cassandra:5, plus the grants test; module page and index
+row included. Landed as d04b21ec; specs/data.md Behavior. Gate: full
+matrix, 2892 tests run; three reds, none of this lane's —
+TestDocsIndex on the missing okay-ui-gtk page (master's, reported),
+TestOfflineGate and TestRepoAgent timeouts under four sbts plus a
+4.5 GB okay-chat container on the box, both green alone. The merge
+followed a rebase over the capability lane's okay-security source,
+disjoint from this one and not re-gated.
+
 ## intent-dsl — a builder for routing rules, lifted from okay-chat, with no way to write `.*`
 
 `okay.intent.Dsl`: a routing rule is an anchored, Unicode-aware

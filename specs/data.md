@@ -352,6 +352,13 @@ list in its spec or spec section)
       current version, declared indexes are GSIs the query walks, and
       `grants` names DynamoDB's two read modes (One eventual, Quorum
       granted Strong as ConsistentRead)
+- [x] docs-cassandra (2026-09-09): the SAME DocsSuite contract passes
+      over Cassandra (dockerized cassandra:5, Live) through the Apache
+      java driver; every conditional write is one lightweight
+      transaction whose `[applied]` row answers `Stale` with the current
+      version; declared indexes are secondary indexes the query walks;
+      `grants` hands the dial back as asked (One, Quorum, ALL) — the one
+      engine where Quorum means a quorum
 - [ ] every adapter exposes stats as a Schema value; no adapter
       logs or journals a credential (grep-able invariant from
       specs/conf.md asserted in tests where feasible)
