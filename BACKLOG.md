@@ -145,7 +145,9 @@ follows, in the spec's order:
       service discovery + client-side balancing in okay-resilience
       (specs/discovery.md). DONE 2026-09-09 (schema-compat): Schema
       compatibility between services, `okay.codec.Compat`
-      (specs/codecs.md). Still open: saga over `Durable`
+      (specs/codecs.md). DONE 2026-09-09 (obs-log): a Log effect with
+      trace correlation, `okay.obs.Log` (specs/obs.md, "The third
+      leg") — the audit's list is now closed except: saga over `Durable`
       + persist with compensations as values; transactional outbox /
       inbox / dead-letter when the truth is in SQL; service discovery
       + client-side balancing (cluster.md lists it out of scope);

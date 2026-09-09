@@ -80,13 +80,81 @@ without importing a framework.
 - [x] spans round-trip through Schema (JSON inspectable, CBOR on
       the topic)
 
+## The third leg: log lines (2026-09-09, obs-log)
+
+This spec's Out of scope said "logging framework integration — log
+lines are not this spec's". The microservices audit disagreed, and
+the reason is operational rather than aesthetic: a line nobody can
+join to a trace is a line nobody reads during an incident, and
+fifty printlns across the modules were what stood in for one. The
+doctrine's two rules answer it without importing anything.
+
+**No new signature is minted.** A program that logs is a program
+that TELLS, and the core has had that effect all along: `Writer %
+Log.Line`. `Log.info("placed", "id" -> "o1")` IS `tell(Line(...))`,
+a row that logs reads `A ! (Writer % Log.Line + Async)`, and the
+whole Writer algebra applies for free — a test can `Writer.run` a
+logging program and get its lines as a value with no handler at all.
+What is new is the VALUE and the handlers.
+
+**The correlation is the handler's, not the program's.** The
+program says a level, a message and fields. The traceId and spanId
+are stamped when the line is written, from the ambient `Tracer` —
+which is exactly this spec's ruling for spans ("the current span is
+HANDLER state, not an effect programs request") applied one leg
+over. A domain function stays free of an observability argument;
+a line told with no tracer carries no ids and says so by absence
+rather than by a guess.
+
+**The handler is comonadic, so a line is written WHEN TOLD.**
+`Say(w)` answers `Unit`, so `Handler[Writer % Line]` is expressible
+and writes through. A crash after a log call has already logged,
+which is the whole point of logging and the one thing an
+accumulating Writer would get wrong.
+
+Three sinks, each a mapping and not a dependency, as `Otlp` is for
+spans and `Prom` for metrics:
+
+| sink | what it is |
+|---|---|
+| `Log.console` | one JSON object per line on stdout — what Fluent Bit, Vector, the Docker json-file driver and a Kubernetes node agent all read with no configuration |
+| `Log.topic` | the span treatment: lines as records keyed by traceId, so retention is a Policy, shipping is a consumer, and an incident is a READ rather than a grep |
+| `Log.collecting` | the test's: the lines in order, as values |
+
+Behavior:
+- [x] the program says level, message and fields; the timestamp and
+      the ids are the handler's
+- [x] a line is written when it is told — a program that throws
+      after logging has still logged
+- [x] the level filter drops below its minimum and keeps the rest
+- [x] `failure` carries a throwable's class and message as fields
+- [x] inside `Tracer.root` and a nested `Tracer.span`, each line
+      carries THAT span's ids, and the span it names is really in
+      the trace topic; a line outside any span carries none
+- [x] `Sample.Never` writes no span, so the lines carry no ids —
+      and are still written
+- [x] `console` is one JSON object per line, ids at the top level,
+      a caller's field that shadows a reserved name kept under
+      `field.<name>`, a message with quotes and newlines still one
+      line and one parseable object
+- [x] `topic` records are keyed by traceId and read back as `Line`s
+- [x] `Writer.run` over a logging program yields the same lines
+      without any handler
+
+Out of scope, still: an SLF4J/JUL bridge (a foreign framework's
+lines are that framework's problem; a `Log.to` lambda is the whole
+adapter if someone wants one), MDC-style ambient fields beyond the
+trace ids, and a sampling policy for lines (the level is the
+filter; a topic's Policy is the retention).
+
 ## Out of scope
 
 - metrics protocols (Prometheus exposition, OTLP metrics) — stats
   are values; an exporter is a consumer of values, filed with a
   consumer
-- logging framework integration — log lines are not this spec's
-  concern; ops events already cover the structured case
+- logging framework integration — a FOREIGN framework's lines stay
+  its own problem (`Log.to` is the whole adapter). Lines themselves
+  are no longer out of scope: see "The third leg" above (obs-log)
 - baggage (W3C) — carried opaquely if present, interpreted never,
   until a consumer names a need
 - an OpenTelemetry SDK dependency — rejected below

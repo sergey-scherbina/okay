@@ -1,5 +1,38 @@
 # Changelog
 
+## obs-log — log lines as values, joined to the trace by the handler
+
+The microservices audit's last item, and the one specs/obs.md had
+explicitly declined ("log lines are not this spec's"). Fifty
+printlns across the modules were what stood in for it, and a line
+nobody can join to a trace is a line nobody reads during an
+incident. The doctrine's own two rules answered it with nothing
+imported.
+
+No new signature: a program that logs is a program that TELLS, and
+the core has had `Writer` all along — `Log.info("placed", "id" ->
+"o1")` IS `tell(Line(...))`, a logging row reads `A ! (Writer %
+Log.Line + Async)`, and a test can `Writer.run` a logging program
+and get its lines with no handler at all. The correlation is the
+HANDLER's: the traceId and spanId are stamped at write time from the
+ambient `Tracer` (obs.md's ruling for spans, applied one leg over),
+so a domain function never carries an observability argument, and a
+line outside any span says so by absence rather than by a guess. The
+handler is comonadic — `Say` answers `Unit` — so a line is written
+WHEN TOLD: a program that throws right after logging has still
+logged, which an accumulating Writer would get wrong.
+
+Three sinks, each a mapping and not a dependency, as `Otlp` is for
+spans and `Prom` for metrics: `console` (one JSON object per line —
+Fluent Bit, Vector, the json-file driver and a node agent read it
+untold; a field shadowing a reserved name is kept under
+`field.<name>`), `topic` (records keyed by traceId), `collecting`
+(tests). `Tracer` gained a public `context`. 10 tests, all
+cross-platform (28 on the JVM, 19 on JS, for the module);
+specs/obs.md gained "The third leg" and its Out of scope entry was
+amended rather than left contradicting the code;
+docs/modules/okay-obs.md documents it with the line a collector
+actually receives.
 ## channel-lost-part — the channel lost nothing; a producer died on its first send
 
 The many-to-many law twice reported one producer's whole 1000 elements
