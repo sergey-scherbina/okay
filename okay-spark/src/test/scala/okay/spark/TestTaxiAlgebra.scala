@@ -93,10 +93,23 @@ class TestTaxiAlgebra extends munit.FunSuite:
     val localMs = (System.nanoTime() - t1) / 1000000
 
     println(f"  aggregate: spark(4 partitions) ${sparkMs}%,d ms · local single pass ${localMs}%,d ms")
-    println("  hour    rides         fares    tip%")
-    for h <- List(3, 8, 12, 18, 23) do
+    println("  hour    rides         fares    tip%   $/ride")
+    for h <- 0 to 23 do
       val ((n, rev), tip) = onSpark(h)
-      println(f"  $h%4d  $n%7d  $$$rev%12.2f  $tip%5.2f%%")
+      println(f"  $h%4d  $n%,9d  $$$rev%,12.2f  $tip%5.2f%%  $$${rev / n}%6.2f")
+
+    // the answers this pass exists for
+    def by[A: Ordering](f: ((Long, Double), Double) => A) =
+      onSpark.toSeq.sortBy((_, v) => f(v._1, v._2))
+    val byRides = by((c, _) => c._1)
+    val byTip = by((_, t) => t)
+    val byFare = by((c, _) => c._2 / c._1)
+    println(f"  busiest hours: ${byRides.takeRight(3).reverse.map(_._1).mkString(", ")}" +
+      f" · quietest: ${byRides.take(3).map(_._1).mkString(", ")}")
+    println(f"  best tipping hour: ${byTip.last._1} at ${byTip.last._2._2}%.2f%%" +
+      f" · worst: ${byTip.head._1} at ${byTip.head._2._2}%.2f%%")
+    println(f"  fattest fare hour: ${byFare.last._1} at $$${byFare.last._2._1._2 / byFare.last._2._1._1}%.2f a ride" +
+      f" · thinnest: ${byFare.head._1} at $$${byFare.head._2._1._2 / byFare.head._2._1._1}%.2f")
 
     assertEquals(onSpark.keySet, local.keySet)
     for h <- onSpark.keys do
