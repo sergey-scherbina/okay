@@ -1,7 +1,7 @@
 task: outbox
 agent: fable-resilience
 started: 2026-09-09
-heartbeat: 2026-09-09T10:02:22Z
+heartbeat: 2026-09-09T10:09:10Z
 status: in-progress
 branch: feature/outbox
 worktree: ../okay-wt-outbox
@@ -23,4 +23,4 @@ what: new module okay-outbox (okay-sql + okay-persist): Outbox (a row
   DDL as values for our own databases. Tests on H2 + MemoryStore.
   Docs: docs/modules/okay-outbox.md, index row, spec.
 
-next: read the seams, write the spec, code, tests, docs, gate, land
+next: 8 tests green on JVM (H2 + MemoryStore); cross-compile check, commit, gate, land
