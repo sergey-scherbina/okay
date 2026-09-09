@@ -5434,7 +5434,7 @@ WHAT THE TREE HAS, grepped:
 - [ ] 3 — the seam: a CRDT is a fold, and okay-cache's `View` already
       takes one. Merge over okay-persist; `Schema` so a replica ships
       as data.
-- [ ] 4 — capability tokens. DECIDED 2026-09-09: the operator chose
+- [x] 4 — capability tokens. LANDED 2026-09-09.  DECIDED: the operator chose
       BOTH readings, capabilities first. Macaroon-shaped attenuation:
       each caveat signed with the previous signature as its key, so
       anyone can narrow a token and nobody can widen one, and a

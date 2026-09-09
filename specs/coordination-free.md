@@ -144,7 +144,7 @@ rather than the only one.
 - [ ] **3 — the seam**: a `Crdt` is a fold, so it meets okay-cache's
       `View` and okay-persist directly; `Schema` for the wire so a
       replica ships as data.
-- [ ] **4 — capability tokens**, decided 2026-09-09. HMAC-chained
+- [x] **4 — capability tokens**, landed 2026-09-09. HMAC-chained
       attenuation: each caveat is signed with the PREVIOUS signature
       as its key, so anyone can narrow a token and nobody can widen
       one — the key for the previous step no longer exists. A verifier
@@ -170,9 +170,20 @@ operator's decision is to have both in that order.
   rather than beside the CRDTs. Putting them here would make the spec
   mean two things.
 
-Both want `Hlc`, which is the third time this arc's clock pays for
-itself: a capability's `until` and a lease's expiry are the same
-question about time that a wall clock answers badly.
+**A CORRECTION to what stood here** (capability, 2026-09-09). This
+paragraph said "both want `Hlc` ... a capability's `until` and a
+lease's expiry are the same question about time that a wall clock
+answers badly". The lease half is right. The capability half is
+**wrong**, and it was wrong in a way worth keeping visible: an expiry
+is checked by the VERIFIER against the verifier's own clock, and a
+logical clock orders events without making a deadline trustworthy.
+Nothing inside a token can fix a verifier whose clock is wrong.
+
+The reuse that IS real is `Uid`: a capability's id is one, so it is
+unique with no coordination AND sortable by issue time — which turns
+"everything issued before T is void" from a revocation list into a
+comparison. That is the arc's id doing a fourth job, and it is a
+better answer than the one I claimed.
 
 **Decided: `Uid` is a case class of two Longs, not an opaque 128-bit
 type.** JS has no 128-bit integer and its `Long` is emulated;
@@ -263,3 +274,36 @@ Two things the types are shaped by rather than decorated with:
   sortable id is. The add-wins rule is not a preference: the
   alternative loses writes the remover never observed, which is a lost
   update with extra steps.
+
+**Stage 4 landed (capability, 2026-09-09).** `Capability` and `Caveat`
+in okay-security, JVM + JS, 17 tests. `issue`, `attenuate`, `verify`,
+`encoded`/`decode`, and `Capability.checking` as the safe default
+verifier.
+
+The asymmetry is the product, so the tests that carry it are the ones
+that must FAIL: dropping a caveat, editing one, editing the subject or
+the id, and — separately — a token whose signature is perfect and
+whose `until` has passed. Each of those first proves the signature is
+intact, so the refusal is known to come from the right place.
+
+Three things the building settled:
+
+- **Narrowing must need no key, and the test says so structurally**:
+  the attenuating helper takes only the token, so if `attenuate` ever
+  needed the root key the test would not compile. A property checked
+  by the type is better than one checked by an assertion.
+- **An unknown caveat is REFUSED, not ignored.** A verifier that
+  skips a restriction it does not understand grants more than the
+  token says, which is the one failure mode here worth being
+  paranoid about. `Capability.checking` refuses by default.
+- **The id and subject are chained, not concatenated.** Signing
+  `id + sep + subject` needs a separator no field can contain, and the
+  first draft of the file put a literal NUL in the Scala source to be
+  that separator — which is both fragile and, as it turned out, an
+  actual NUL byte in the repository. Chaining leaves nothing to
+  smuggle and nothing exotic in the source.
+
+The lane predicted the wire round trip would break first, on a caveat
+carrying the separator. It did not: base64url on every part removes
+the hazard by construction, and the awkward-caveat test passed
+immediately.
