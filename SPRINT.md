@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- outbox — specs/outbox.md: transactional outbox, inbox, dead-letter over okay-sql + okay-persist (claim: outbox)
 - timeout-masks-failure — BACKLOG (CORE): `Async.timeout` lets a
   failing contender lose the race silently, so an immediate failure
   comes out as `None` after the whole ms. Law first ("a failure ends a
