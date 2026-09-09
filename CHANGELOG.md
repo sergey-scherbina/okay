@@ -1,5 +1,60 @@
 # Changelog
 
+## lexer-state-allocation — half the lever moved, and the other half is blocked for a reason worth writing down
+
+The target was measured, not guessed: lexing allocates ~180 bytes per
+input CHARACTER on both paths, and `okay.lex.Json`'s state was
+`S(mode, buf: String, start: P, cur: P)` with a fresh `P` and a fresh
+String per character.
+
+The positions are gone — `S` carries the six ints flat, with three
+private helpers (`eat`, `start`, `based`) where `P.+` used to be.
+Element-wise 453 266 → 425 832 B/op (−6.1%), chunked 494 902 →
+467 873 (−5.5%), reproduced across three runs at loads 2, 3.3 and 97;
+`key`, `rebase`, spans, lexemes and the incremental relex laws are
+untouched, 11 + 130 + 12 tests green.
+
+TIME is not claimed. Four attempts over the day; the box's load ran
+from 2 to 97 and two rounds on the same code disagreed by more than
+the effect. A same-run A/B was built and then REJECTED as unfair,
+which is the reusable part: a benchmark-local copy of the old scanner
+allocates 23 KB more than the identical code in the library, so the
+"old" arm was not the old code — a second scanner in one JVM also
+makes `Scan.step` a bimorphic call site. When only one of two arms
+can be the library, the arms are not comparable.
+
+The other half is BLOCKED and the reason is now in §10 and BACKLOG:
+`buf: String` cannot simply become a start offset, because
+`Lex.chunks` sees one chunk at a time and a token may span chunks —
+there is no input to slice from. Reopened as `lexer-buf-without-concat`
+with three unpriced candidates and the same gate.
+## row-typeclass-recipe — the deeper rows were silently unguarded; a total fallback, and the recipe written down
+
+resource-guard claimed its anchored instances covered three-part rows.
+They do not, and the way that claim was made is the lesson: the probe
+asserted `summon` SUCCEEDED, and what had answered was the
+low-priority IDENTITY. `A + B + C` nests to the left, so
+`(Async + S) + P` is not `Async + ?G` to the implicit search, no
+anchored instance matches, and such a row compiled, resolved and
+abandoned the scope's finalizers exactly as before the fix — with no
+error anywhere. `FailingLow.anyRow` is now TOTAL: it tests the
+operation's own class rather than the row's shape, casts once (added
+to typepedia's canonical cast list), and is correct for every nesting,
+while the typed anchored instances still answer the shapes that occur
+— which is every row a `Resource.run` in this repository passes.
+`TestFailing` walks seven shapes and asserts BOTH roads guard, so a
+future instance that moves the boundary moves it visibly.
+docs/typepedia.md gains "The row-typeclass recipe" beside the
+capability one: an unanchored `given [F, G]: TC[F + G]` cannot pin `F`
+(ambiguous `TypeableK[F]`; `Handler` meets the same wall worse and is
+called by name for it), anchoring on the concrete effect is the typed
+road, and an identity default is the one thing to refuse — it turns a
+type-level miss into a runtime silence. specs/sql.md carries the
+correction. Landed as fd1d466f. Gate: full matrix, 3526 tests, 0
+failures. Warnings seen in that gate are a sibling's live file
+(okay-spark TestWroclawStages, E176/E175/E198) — left to that lane
+after an attempted fix made it worse and was reverted.
+
 ## resilient-transport — the seams that stream get the guards too
 
 The resilience arc guarded `okay.http.Http`, and the awkward fact
