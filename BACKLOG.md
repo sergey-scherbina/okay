@@ -5363,9 +5363,31 @@ WHAT THE TREE HAS, grepped:
 - [ ] 3 — the seam: a CRDT is a fold, and okay-cache's `View` already
       takes one. Merge over okay-persist; `Schema` so a replica ships
       as data.
-- [ ] 4 — capability tokens. BLOCKED ON A DECISION, not on work: the
-      operator's "tokens or tickets" has two readings that are
-      opposite in spirit — attenuable capabilities (macaroon/biscuit,
-      the holder narrows its own right offline) versus tickets and
-      leases (TTL, fencing tokens, numbered queues, i.e.
-      coordination). Asked; no answer yet. Not guessed.
+- [ ] 4 — capability tokens. DECIDED 2026-09-09: the operator chose
+      BOTH readings, capabilities first. Macaroon-shaped attenuation:
+      each caveat signed with the previous signature as its key, so
+      anyone can narrow a token and nobody can widen one, and a
+      verifier needs neither a registry nor the issuer. This is what
+      `okay-security` has no way to express — it signs and verifies,
+      centrally, and a JWT cannot be narrowed by its holder.
+
+## leases — tickets, TTLs and fencing tokens
+
+The second half of the operator's "tokens or tickets" (2026-09-09),
+deliberately NOT in specs/coordination-free.md: leases are
+COORDINATION, and that spec is about avoiding it. Keeping them
+together would make one spec mean two things.
+
+Belongs on okay-persist, which already has Raft-backed leadership —
+not beside the CRDTs.
+
+- [ ] 0 — specs/leases.md: a TTL lease, renewal, and what happens
+      when it expires while the holder still believes it holds one.
+- [ ] the FENCING TOKEN is the point, not the lease: a monotonically
+      increasing number handed out with each grant, which the store
+      checks and refuses if it has already seen a higher one. Without
+      it a holder that stalled past its expiry and woke up still
+      writes, and the lease bought nothing. `Hlc` is the obvious
+      source and the check is the store's, not the lease's.
+- [ ] numbered queues (a ticket per waiter, served in order) only if
+      something actually needs them — filed as a question, not work.

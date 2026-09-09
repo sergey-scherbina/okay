@@ -144,25 +144,35 @@ rather than the only one.
 - [ ] **3 — the seam**: a `Crdt` is a fold, so it meets okay-cache's
       `View` and okay-persist directly; `Schema` for the wire so a
       replica ships as data.
-- [ ] **4 — capability tokens**, once the open decision below is
-      answered.
+- [ ] **4 — capability tokens**, decided 2026-09-09. HMAC-chained
+      attenuation: each caveat is signed with the PREVIOUS signature
+      as its key, so anyone can narrow a token and nobody can widen
+      one — the key for the previous step no longer exists. A verifier
+      needs neither a registry nor the issuer.
 
 ## Decisions
 
-**Open: what "tokens or tickets" means.** Asked, not yet answered, and
-the two readings are opposite in spirit, so this is not guessed:
+**ANSWERED 2026-09-09: both, capabilities first.** The question was
+which of two opposite readings "tokens or tickets" meant, and the
+operator's decision is to have both in that order.
 
-- **Capability tokens** (macaroons, biscuits): the holder narrows its
-  own authority offline — "this token, but read-only, and only until
-  Friday" — and passes it on without the issuer being present. This
-  continues the direction of the rest of the spec.
-- **Tickets and leases**: TTL leases, fencing tokens against a zombie
-  owner, numbered queues. That is *coordination*, the thing the rest
-  of this spec is about avoiding. It is legitimate work — okay-persist
-  has Raft-backed leadership already — but it belongs to a different
-  spec.
+- **Stage 4 is capability tokens** (macaroon-shaped): the holder
+  narrows its own authority offline — "this token, but read-only, and
+  only until Friday" — and passes it on without the issuer being
+  present. This finishes the direction the rest of the spec is going
+  in: an id issued locally, state merged locally, and now a right
+  CHECKED locally.
+- **Tickets and leases go to their own spec** (`specs/leases.md`, and
+  filed in BACKLOG): TTL leases, fencing tokens against a zombie
+  owner, numbered queues. They are legitimate and they are
+  *coordination* — the thing this spec is about avoiding — and they
+  belong on okay-persist, which already has Raft-backed leadership,
+  rather than beside the CRDTs. Putting them here would make the spec
+  mean two things.
 
-Stage 4 does not start until this is answered.
+Both want `Hlc`, which is the third time this arc's clock pays for
+itself: a capability's `until` and a lease's expiry are the same
+question about time that a wall clock answers badly.
 
 **Decided: `Uid` is a case class of two Longs, not an opaque 128-bit
 type.** JS has no 128-bit integer and its `Long` is emulated;

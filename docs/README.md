@@ -100,6 +100,7 @@ API reference, gotchas.
 | [`okay-r2dbc`](modules/okay-r2dbc.md) | the R2DBC hatch behind the same Sql seam: driver availability on the JVM, honestly framed as not a speed unlock |
 | [`okay-delta`](modules/okay-delta.md) | Delta Lake without Spark: Delta Kernel create/append/snapshot/rows over SqlValue rows; DuckDB reads the same table through the JDBC seam |
 | [`okay-lex`](modules/okay-lex.md) | total streaming tokenization: chunked, snapshottable, incremental |
+| [`okay-crdt`](modules/okay-crdt.md) | state that merges without a coordinator: the three laws as a runnable check, then GCounter, PNCounter, GSet, OrSet and an Hlc-stamped LwwRegister |
 | [`okay-parse`](modules/okay-parse.md) | total lossless parsing; incremental reparse with reference reuse |
 | [`okay-codec`](modules/okay-codec.md) | the Schema algebra; JSON, CBOR and Markdown dialects |
 | [`okay-llm`](modules/okay-llm.md) | language models as streams; two protocols over one seam; structured output that cuts generation |
