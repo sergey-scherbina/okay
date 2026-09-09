@@ -58,3 +58,20 @@ class TestProm extends munit.FunSuite:
     assert(out.endsWith("\n"))
     assertEquals(Prom.guards(Vector.empty), "")
   }
+
+  test("pools and sagas: Pool.Stats and Saga.Status render as named rows; empty inputs render nothing") {
+    val st = okay.sql.Pool.Stats(size = 4, idle = 1, busy = 2, waiting = 3, created = 5L, closed = false)
+    val out = Prom.pools(Vector(("pg", () => st)))
+    assert(out.contains("okay_pool_size{name=\"pg\"} 4"), out)
+    assert(out.contains("okay_pool_idle{name=\"pg\"} 1"), out)
+    assert(out.contains("okay_pool_busy{name=\"pg\"} 2"), out)
+    assert(out.contains("okay_pool_waiting{name=\"pg\"} 3"), out)
+    assert(out.contains("okay_pool_created_total{name=\"pg\"} 5"), out)
+    assertEquals(Prom.pools(Vector.empty), "")
+    val s = okay.persist.Saga.Status("o1", "compensating", Vector("reserve", "charge"), Vector("charge"), None, Some("ship refused"))
+    val sg = Prom.sagas(Vector(() => s))
+    assert(sg.contains("okay_saga_phase{id=\"o1\",phase=\"compensating\"} 1"), sg)
+    assert(sg.contains("okay_saga_steps_done{id=\"o1\"} 2"), sg)
+    assert(sg.contains("okay_saga_steps_undone{id=\"o1\"} 1"), sg)
+    assertEquals(Prom.sagas(Vector.empty), "")
+  }
