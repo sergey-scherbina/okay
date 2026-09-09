@@ -38,6 +38,14 @@ object Temporal {
       case Some(h) => f"${date.iso}T$h%02d:$minute%02d"
       case None => date.iso
 
+  /** an interval of days, both ends inclusive — what a week, a
+   * weekend and a month ARE, and what a day is not. Printed the way
+   * ISO 8601 prints an interval, `from/to`. */
+  final case class Period(from: Date, to: Date):
+    def iso: String = s"${from.iso}/${to.iso}"
+    def contains(d: Date): Boolean =
+      toEpochDay(from) <= toEpochDay(d) && toEpochDay(d) <= toEpochDay(to)
+
   private val weekdays = Vector(
     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 
@@ -214,6 +222,51 @@ object Temporal {
     }
 
   /**
+   * A PERIOD, beside the day (intent-periods-and-zl).
+   *
+   * `parse` refuses «later this week» on purpose: a day it would have
+   * to guess, and a guessed day is acted on. But «на этой неделе» is
+   * not a guess — it names Monday to Sunday exactly, and the parser
+   * that answered it with a DAY would be the one guessing. So the
+   * shapes that are intervals get a value that is an interval: this /
+   * next / last week, the weekend (the Saturday and Sunday of the
+   * week named), and a month named without a day — the coming one, as
+   * `monthAndDay` takes the coming year. Everything else is `None`: a
+   * weekday is a day and `parse` has it, a date is a date, «soon» is
+   * nothing. `parse` is untouched; «next week» still answers a day
+   * there, because a consumer that asked for a day gets one.
+   *
+   * Measured by a consumer over 317 live messages (okay-chat,
+   * specs/meaning.md): six what's-on questions named a week or a
+   * weekend, and nothing here could say so.
+   */
+  def period(phrase: String, today: Date): Option[Period] =
+    Multilingual.period(phrase, today)
+
+  /** `find`'s evidence rule over `period`: the value is the whole
+   * message's, and the span is the shortest window of words that
+   * reproduces it */
+  def findPeriod(message: String, today: Date): Option[Found[Period]] =
+    period(message, today).map { v =>
+      val toks = message.split("\\s+").filter(_.nonEmpty)
+      val windows =
+        for len <- 1 to toks.length; i <- 0 to toks.length - len yield (i, len)
+      val span = windows
+        .find((i, len) => period(toks.slice(i, i + len).mkString(" "), today).contains(v))
+        .map((i, len) => toks.slice(i, i + len).mkString(" "))
+        .getOrElse(message)
+      Found(span.replaceAll("^[\\p{Punct}]+|[\\p{Punct}]+$", "").trim, v)
+    }
+
+  /** the Monday of the week a day falls in */
+  private def mondayOf(d: Date): Date = plusDays(d, -dayOfWeek(d))
+
+  /** the last day of a month, from the first day of the next */
+  private def lastDayOf(year: Int, month: Int): Date =
+    val next = if month == 12 then Date(year + 1, 1, 1) else Date(year, month + 1, 1)
+    plusDays(next, -1)
+
+  /**
    * The other seven languages of the parallel fixture
    * (intent-temporal-multilingual). The same shapes as the English
    * parser, over a lexicon per language: weekday, month and
@@ -235,7 +288,11 @@ object Temporal {
     final case class Lexicon(
       weekdays: Vector[Seq[String]], months: Vector[Seq[String]],
       today: Seq[String], tomorrow: Seq[String], dayAfter: Seq[String], yesterday: Seq[String],
-      next: Seq[String], last: Seq[String], week: Seq[String], days: Seq[String], ago: Seq[String])
+      next: Seq[String], last: Seq[String], week: Seq[String], days: Seq[String], ago: Seq[String],
+      /** the weekend, as prefixes; a language that says it in several
+       * words (`fin de semana`) says so in `weekendPhrase` instead */
+      weekend: Seq[String] = Seq.empty,
+      weekendPhrase: Seq[List[String]] = Seq.empty)
 
     private def is(tok: String, forms: Seq[String]): Boolean = forms.exists(f => tok.startsWith(f))
     private def has(words: List[String], forms: Seq[String]): Boolean = words.exists(w => is(w, forms))
@@ -246,41 +303,95 @@ object Temporal {
         Seq("juillet"), Seq("août", "aout"), Seq("septembre"), Seq("octobre"), Seq("novembre"), Seq("décembre", "decembre")),
       today = Seq("aujourd'hui", "aujourd’hui"), tomorrow = Seq("demain"), dayAfter = Seq("après-demain", "apres-demain"),
       yesterday = Seq("hier"), next = Seq("prochain"), last = Seq("dernier", "dernière"), week = Seq("semaine"),
-      days = Seq("jour"), ago = Seq("il"))
+      days = Seq("jour"), ago = Seq("il"), weekend = Seq("week-end", "weekend"))
     val de = Lexicon(
       Vector(Seq("montag"), Seq("dienstag"), Seq("mittwoch"), Seq("donnerstag"), Seq("freitag"), Seq("samstag", "sonnabend"), Seq("sonntag")),
       Vector(Seq("januar", "jänner"), Seq("februar"), Seq("märz", "maerz"), Seq("april"), Seq("mai"), Seq("juni"),
         Seq("juli"), Seq("august"), Seq("september"), Seq("oktober"), Seq("november"), Seq("dezember")),
       today = Seq("heute", "heutig"), tomorrow = Seq("morgen", "morgig"), dayAfter = Seq("übermorgen", "uebermorgen"),
       yesterday = Seq("gestern", "gestrig"), next = Seq("nächst", "naechst", "kommend"), last = Seq("letzt", "vergangen"),
-      week = Seq("woche"), days = Seq("tag"), ago = Seq("vor"))
+      week = Seq("woche"), days = Seq("tag"), ago = Seq("vor"), weekend = Seq("wochenend"))
     val es = Lexicon(
       Vector(Seq("lunes"), Seq("martes"), Seq("miércoles", "miercoles"), Seq("jueves"), Seq("viernes"), Seq("sábado", "sabado"), Seq("domingo")),
       Vector(Seq("enero"), Seq("febrero"), Seq("marzo"), Seq("abril"), Seq("mayo"), Seq("junio"),
         Seq("julio"), Seq("agosto"), Seq("septiembre", "setiembre"), Seq("octubre"), Seq("noviembre"), Seq("diciembre")),
       today = Seq("hoy"), tomorrow = Seq("mañana", "manana"), dayAfter = Seq("pasado"), yesterday = Seq("ayer"),
-      next = Seq("próxim", "proxim", "siguiente"), last = Seq("pasad"), week = Seq("semana"), days = Seq("día", "dia"), ago = Seq("hace"))
+      next = Seq("próxim", "proxim", "siguiente"), last = Seq("pasad"), week = Seq("semana"), days = Seq("día", "dia"), ago = Seq("hace"),
+      weekend = Seq("finde"), weekendPhrase = Seq(List("fin", "de", "semana")))
     val ru = Lexicon(
       Vector(Seq("понедельник"), Seq("вторник"), Seq("сред"), Seq("четверг"), Seq("пятниц"), Seq("суббот"), Seq("воскресень")),
       Vector(Seq("январ"), Seq("феврал"), Seq("март"), Seq("апрел"), Seq("мая", "май"), Seq("июн"),
         Seq("июл"), Seq("август"), Seq("сентябр"), Seq("октябр"), Seq("ноябр"), Seq("декабр")),
       today = Seq("сегодня"), tomorrow = Seq("завтра"), dayAfter = Seq("послезавтра"), yesterday = Seq("вчера"),
-      next = Seq("следующ", "будущ"), last = Seq("прошл", "прошедш"), week = Seq("недел"), days = Seq("дн", "день"), ago = Seq("назад"))
+      next = Seq("следующ", "будущ"), last = Seq("прошл", "прошедш"), week = Seq("недел"), days = Seq("дн", "день"), ago = Seq("назад"),
+      weekend = Seq("выходн", "уикенд", "уик-энд"))
     val uk = Lexicon(
       Vector(Seq("понеділ", "щопонеділ"), Seq("вівтор", "щовівтор"), Seq("серед", "щосеред"), Seq("четвер", "щочетверг"),
         Seq("п'ятниц", "п’ятниц", "щоп'ятниц", "щоп’ятниц"), Seq("субот", "щосубот"), Seq("неділ", "щонеділ")),
       Vector(Seq("січ"), Seq("лют"), Seq("берез"), Seq("квіт"), Seq("трав"), Seq("черв"),
         Seq("лип"), Seq("серп"), Seq("верес"), Seq("жовт"), Seq("листопад"), Seq("груд")),
       today = Seq("сьогодні"), tomorrow = Seq("завтра"), dayAfter = Seq("післязавтра"), yesterday = Seq("вчора"),
-      next = Seq("наступн"), last = Seq("минул", "попередн"), week = Seq("тижд", "тижн"), days = Seq("дн", "день"), ago = Seq("тому"))
+      next = Seq("наступн"), last = Seq("минул", "попередн"), week = Seq("тижд", "тижн"), days = Seq("дн", "день"), ago = Seq("тому"),
+      weekend = Seq("вихідн", "вікенд"))
     val pl = Lexicon(
       Vector(Seq("poniedział"), Seq("wtor"), Seq("środ", "srod"), Seq("czwart"), Seq("piąt", "piat"), Seq("sobot"), Seq("niedziel")),
       Vector(Seq("stycz"), Seq("lut"), Seq("marz", "marc"), Seq("kwiet"), Seq("maj"), Seq("czerw"),
         Seq("lip"), Seq("sierp"), Seq("wrze"), Seq("październik", "pazdziernik"), Seq("listopad"), Seq("grud")),
       today = Seq("dziś", "dzisiaj"), tomorrow = Seq("jutr"), dayAfter = Seq("pojutrze"), yesterday = Seq("wczoraj"),
       next = Seq("przyszł", "przyszl", "następn", "nastepn"), last = Seq("zeszł", "zeszl", "ostatn", "poprzedn"),
-      week = Seq("tydz", "tygod"), days = Seq("dni", "dzień", "dzien"), ago = Seq("temu"))
+      week = Seq("tydz", "tygod"), days = Seq("dni", "dzień", "dzien"), ago = Seq("temu"), weekend = Seq("weekend"))
     val lexicons = Vector(fr, de, es, ru, uk, pl)
+
+    /** English, for PERIODS only — the day parser has its own English
+     * and this is deliberately not in `lexicons`, so nothing `parse`
+     * answers changes */
+    val en = Lexicon(
+      weekdays.map(Seq(_)), months.map(Seq(_)),
+      today = Seq("today"), tomorrow = Seq("tomorrow"), dayAfter = Seq("after"), yesterday = Seq("yesterday"),
+      next = Seq("next", "coming", "following"), last = Seq("last", "past", "previous"), week = Seq("week"),
+      days = Seq("day"), ago = Seq("ago"), weekend = Seq("weekend", "week-end"))
+    private val periodLexicons = en +: lexicons
+
+    /**
+     * The interval a phrase names, if it names one (`Temporal.period`).
+     *
+     * The weekend is read BEFORE the week, and the reason is a prefix:
+     * `wochenende`, `week-end` and `weekend` all start with the week
+     * word, so a parser that read the week first would call the
+     * weekend a week. A month counts only with no day beside it —
+     * with one it is a date, and `parse` has it.
+     */
+    def period(phrase: String, today: Date): Option[Period] =
+      val words = tokens(phrase)
+      if words.isEmpty then None
+      else periodLexicons.iterator.map(lex => periodIn(words, today, lex)).collectFirst { case Some(p) => p }
+
+    private def periodIn(words: List[String], today: Date, lex: Lexicon): Option[Period] =
+      val monday = mondayOf(today)
+      // the qualifier is read from every lexicon, as `dateIn` reads it —
+      // and from this one, since English is not in `anyLast`
+      val shift =
+        if has(words, lex.next) then 7
+        else if has(words, lex.last) || has(words, anyLast) then -7
+        else 0
+      def week(of: Date) = Period(of, plusDays(of, 6))
+      def weekend(of: Date) = Period(plusDays(of, 5), plusDays(of, 6))
+      val start = plusDays(monday, shift)
+      if has(words, lex.weekend) || lex.weekendPhrase.exists(words.containsSlice) then Some(weekend(start))
+      else if has(words, lex.week) then Some(week(start))
+      else monthAlone(words, today, lex)
+
+    /** a month named with no day beside it — the coming one */
+    private def monthAlone(words: List[String], today: Date, lex: Lexicon): Option[Period] =
+      val idx = words.indexWhere(w => lex.months.exists(forms => is(w, forms)))
+      if idx < 0 then None
+      else
+        def dayAt(j: Int) = words.lift(j).exists { case digits(d) => d.toInt >= 1 && d.toInt <= 31; case _ => false }
+        if dayAt(idx + 1) || dayAt(idx - 1) then None
+        else
+          val m = lex.months.indexWhere(forms => is(words(idx), forms)) + 1
+          val year = if toEpochDay(lastDayOf(today.year, m)) >= toEpochDay(today) then today.year else today.year + 1
+          Some(Period(Date(year, m, 1), lastDayOf(year, m)))
     // qualifiers are the words most alike across the Cyrillic and Slavic
     // pairs (ru "четверг" is a prefix of uk "четверга"), so a lexicon that
     // finds the weekday reads the qualifier from EVERY lexicon: "минулого"

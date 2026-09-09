@@ -1,5 +1,23 @@
 # Changelog
 
+## intent-periods-and-zl — a period beside the day, and «зл»
+
+okay-chat measured its slot layer against the production encoder's
+token vectors over 317 live messages (its specs/meaning.md), and two
+of the three real misses were vocabulary here. `Amount` now reads the
+abbreviation «зл» / «zl» as an exact symbol beside `zł` — a symbol,
+not a name prefix, so «злой» stays a mood. `Temporal.Period(from, to)`
+is a second value beside `When`: `period(phrase, today)` answers this /
+next / last week, the weekend, and a month named without a day, in
+en/ru/uk/pl/fr/de/es, and `None` for a weekday, a date or a guess —
+because «на этой неделе» is not a guess, it names Monday to Sunday
+exactly, and the parser that answered it with a day would have been
+the one guessing. The weekend is read before the week (`wochenende`
+starts with `woche`); English gets a lexicon for periods that `parse`
+does not walk, so nothing `parse` answered changed. `findPeriod` is
+`find`'s evidence rule over it. Gate: okay-intent JVM 241 green, JS
+compiles, 0 warnings; full matrix below.
+
 ## theory-optics — chapter 10, and the sentence chapter 3 had been making as a figure of speech
 
 `docs/theory/10-optics.md`, the textbook's last chapter and the ledger

@@ -28,9 +28,15 @@ final case class Amount(value: BigDecimal, currency: String):
  */
 object Amount {
 
-  /** symbols, before or after the number */
+  /** symbols, before or after the number — and the ABBREVIATIONS that
+   * behave like one: exact tokens, never prefixes. «зл» lives here
+   * and not in `names`, because a name is matched by `startsWith`
+   * and «зл» as a prefix would read «злой» as money. Measured by a
+   * consumer over its live log: «чиню гусли за 90 зл», three times,
+   * a price nobody recorded (intent-periods-and-zl). */
   private val symbols: Map[String, String] = Map(
-    "$" -> "USD", "€" -> "EUR", "£" -> "GBP", "¥" -> "JPY", "円" -> "JPY", "₴" -> "UAH", "₽" -> "RUB", "zł" -> "PLN", "грн" -> "UAH")
+    "$" -> "USD", "€" -> "EUR", "£" -> "GBP", "¥" -> "JPY", "円" -> "JPY", "₴" -> "UAH", "₽" -> "RUB", "zł" -> "PLN", "грн" -> "UAH",
+    "зл" -> "PLN", "zl" -> "PLN")
   private val codes: Map[String, String] =
     Seq("USD", "EUR", "GBP", "JPY", "UAH", "RUB", "PLN", "CHF", "CAD", "AUD").map(c => c.toLowerCase -> c).toMap
 

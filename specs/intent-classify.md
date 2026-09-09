@@ -132,13 +132,13 @@ object Eval:
 - [x] the prompt carries that example
 - [x] the gate asks with an example object rather than with a schema
 - [x] a gate verdict decodes, and a malformed one is a `Left`
-- [ ] `Amount` reads the abbreviation «зл» / «zl» beside a number —
+- [x] `Amount` reads the abbreviation «зл» / «zl» beside a number —
       as an exact token, never as a prefix (intent-periods-and-zl)
-- [ ] `Temporal.period` answers an INTERVAL for this / next / last
+- [x] `Temporal.period` answers an INTERVAL for this / next / last
       week, the weekend and a month named without a day, in en, ru,
       uk, pl, fr, de, es — and `None` for a weekday, a date, or a
       phrase it would have to guess (intent-periods-and-zl)
-- [ ] `Temporal.findPeriod` returns the shortest window of words
+- [x] `Temporal.findPeriod` returns the shortest window of words
       reproducing the whole message's period, the evidence rule of
       `find` (intent-periods-and-zl)
 
@@ -4734,6 +4734,9 @@ The English side gets a lexicon of its own for this, beside the six
 so nothing `parse` answered changes.
 
 `findPeriod` is `find`'s evidence rule over `period`: the value is the
-whole message's, and the span is the shortest window that reproduces
-it — «на этой неделе» out of the question about Wrocław, never the
-question.
+whole message's, and the span is the SHORTEST window that reproduces
+it — «неделе» out of the question about Wrocław, as `find` gives
+«пятницу» for «в пятницу». Minimal evidence, not the phrase: a
+consumer that wants «на этой неделе» widens over the function words
+beside the span, which it can do with a word list, while a parser
+guessing at how far a phrase reaches would be a second parser.
