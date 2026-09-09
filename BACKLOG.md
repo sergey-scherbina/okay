@@ -2142,15 +2142,30 @@ measure on our own data, never a predicted result.
       handshake refuses on. Proven against a live R in a container.
       The "Durable-replay test" in this entry could not be written
       and should not have been promised — see durable-any-operation.
-- [ ] durable-any-operation — `Durable.tools` wraps a `Handler[Tool]`
-      and `Tool.Call` carries a `ToolCall`, so there is NO generic
-      journal-any-operation. specs/r.md and specs/py.md both claimed
-      a foreign-runtime step is "journalable by Durable"; both are
-      corrected, and this is the item that would make it true. The
-      question to answer first is what a fingerprint and a key mean
-      for an arbitrary operation type — `ToolCall` gave both for
-      free, and an `REval.Frame` carrying a million rows gives
-      neither cheaply.
+- [x] durable-any-operation — STAGE 1 LANDED 2026-09-09.
+      `Journalled[Op]` and `Durable.over[Op]`; `tools` and `replaying`
+      are spellings of them at `Tool`. 121 agent tests pass with no
+      test file changed, and `TestDurableAnyOp` proves the seam over a
+      second operation type answering an `Int`.
+
+      THE QUESTION THIS ENTRY ASKED, answered: a fingerprint and a key
+      are the INSTANCE'S business, not the framework's. An R instance
+      fingerprints the script and a hash of its inputs; nothing forces
+      a million-row frame through `Json.print`, and the key is derived
+      from the fingerprint so it costs what that costs.
+
+      AND THE HALF THE ENTRY MISSED, which decided the shape: the
+      journal is String-typed end to end (`Entry.answer` is an
+      `Option[String]`, and every file and table behind `Journal`
+      stores strings), so an operation answering an `A` must also say
+      how that `A` is written down and read back. That codec lives on
+      the instance. Writing a million rows down is then the honest
+      cost of being able to replay them — not a defect of the seam,
+      and an instance that refuses it journals a handle instead.
+
+      Stage 2 — an `REval` instance, which makes specs/r.md's
+      retracted claim true — is left for whoever owns okay-r.
+      specs/llm-agentic.md "Any operation, not only a tool".
 - [ ] r-rserve — stage 1: the served engine (Java client behind a
       trait; own QAP1 over Async later if named); two-engine
       acceptance

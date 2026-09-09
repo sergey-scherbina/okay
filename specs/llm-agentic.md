@@ -364,6 +364,95 @@ the fingerprint and stops the replay loudly.
   (re-execute when idempotent, ask a human, or fail) — the same
   at-least-once honesty as the Kafka source.
 
+## Any operation, not only a tool (2026-09-09, durable-any-operation)
+
+`Durable` journalled `Tool` and nothing else, and two other specs
+noticed by promising what it could not do: specs/r.md and specs/py.md
+both said a foreign-runtime step is "journalable by Durable". Both
+were corrected rather than made true, and this section is what makes
+them true.
+
+**What the framework actually needs of an operation.** Reading
+Durable.scala, `ToolCall` is used in exactly four ways: its NAME (the
+journal's `op` and the span), a FINGERPRINT (`name(args)`, compared on
+replay to catch drift), a KEY (`name-seq-hash`, what a far end
+deduplicates on), and the RETRY THAT CARRIES THE KEY (`WithKey` puts
+`idempotency_key` into the arguments). Nothing else about a tool
+reaches the journal. So the seam is a typeclass with those four
+members, and `Tool` becomes its first instance.
+
+**And a fifth the backlog entry did not name, which decides the
+shape.** `Entry.answer` is an `Option[String]` and `Tool.Call` answers
+a `String`, so the journal is String-typed end to end — every file
+and table behind `Journal` stores strings today. An arbitrary `Op[A]`
+answers an `A`, so the operation must also say how its answer is
+written down and read back. That is a per-operation codec, and it
+belongs on the same instance: the operation knows its own answer type,
+the framework does not.
+
+    trait Journalled[Op[_]]:
+      def name[A](op: Op[A]): String
+      def fingerprint[A](op: Op[A]): String
+      def withKey[A](op: Op[A], key: String): Op[A]
+      def encode[A](op: Op[A], answer: A): String
+      def decode[A](op: Op[A], written: String): A
+      def asked[A](op: Op[A]): Json          // what a parked question shows
+
+`Tool`'s instance is the identity on all of it: `encode` and `decode`
+are `identity` because the answer already IS a `String`, and `asked`
+is the call's arguments — which is why `Durable.tools` keeps its exact
+behaviour, including the reserved `idempotency_key` field, the span
+attributes, and the `Awaiting` exception carrying `args`.
+
+**THE MILLION-ROW ANSWER, which the entry raised as the blocker.** It
+asked what a fingerprint and a key mean when an `REval.Frame` carries
+a million rows — `ToolCall` gave both for free and a frame gives
+neither cheaply. The answer is that neither is the framework's
+business:
+
+- the FINGERPRINT is whatever the instance says identifies the
+  request. An R instance fingerprints the SCRIPT and a hash of its
+  inputs. Nothing forces a frame through `Json.print`.
+- the KEY is derived from the fingerprint, so it costs whatever the
+  fingerprint costs.
+- the ANSWER is the honest cost, and it is not a defect of this seam:
+  a journal that can replay a million-row result has to have written
+  a million rows down. An instance that does not want that pays a
+  different price — journal a handle, or do not journal that
+  operation — and either way the choice is stated where the operation
+  is declared, which is where every other Durable decision already
+  lives.
+
+**What stays out.** `Journal` and `Entry` do not change: they are
+shipped, they have file and table implementations, and making them
+generic in the answer type would break every one of them to buy
+nothing the codec does not already buy.
+
+- [x] (stage 1) LANDED 2026-09-09. `Journalled[Op]`, `Durable.over[Op]`
+      and `Durable.replayingOver[Op]`; `tools` and `replaying` are now
+      spellings of them at `Tool`, not a second implementation. The
+      gate held: 121 agent tests pass with NO test file changed.
+      `TestDurableAnyOp` adds six laws over a second operation type
+      whose answer is an `Int` — the only way a generalisation is
+      proved — and its codec is deliberately not `toString`, so a
+      framework that journalled the answer itself instead of asking
+      the instance would fail them. Corrupting the journalled form
+      fails three of the six and one of the original suite's.
+
+      TWO THINGS THE WRITING ABOVE DID NOT FORESEE. `perform` exists
+      because `Tool[+A]` is COVARIANT: matching refines `A` only to
+      `A >: String`, which is enough to decode and not enough to
+      encode, so the instance performs the call inside its own match
+      where the answer type is still exact. (Making `Tool` invariant
+      was tried and refused by the compiler for a real reason — the
+      effect row needs the variance, and `effect(Tool.Call(c))` stops
+      type-checking without it.) And `reconcile`/`escalate` are
+      polymorphic function types, `[X] => (Op[X], String) =>
+      Option[String]`, because an abstract type constructor cannot be
+      applied to a wildcard.
+- [ ] (stage 2) an `REval` instance in okay-r, which makes specs/r.md's
+      retracted claim true. Belongs to whoever owns okay-r.
+
 ## Waiting on a person (2026-09-04, durable-waiting-on-a-person)
 
 An `Entry` whose `answer` is `None` had exactly one meaning: the crash
