@@ -15,7 +15,7 @@ twice and is corrected in Decisions. okay-conf joins with no new API:
 config and `Secrets` are `Module.value`s and the connection module
 resolves its `Secret` inside its acquisition, so a miss fails the
 build naming the reference. 3 core tests + 2 in okay-conf.
-Commits: LANDING.
+Commit: f41ea76f.
 ## sql-readonly-region — READ ONLY regions granted and read back; JdbcSql restores the isolation level with autocommit
 
 Lane 4 of the persistence audit. `Sql.begin(isolation, readOnly)` and
