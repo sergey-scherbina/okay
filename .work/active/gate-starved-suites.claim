@@ -1,0 +1,66 @@
+task: gate-starved-suites
+agent: opus5-intent
+started: 2026-09-09
+branch: feature/gate-starved-suites
+worktree: ../okay-wt-starved
+
+why: the two boxes still open under BACKLOG's `gate-honesty`. They are
+  the tax every lane pays: the gate cried wolf four times in one day,
+  and the real cost ran the other way — that session nearly dismissed
+  a GENUINE defect (actor-stop-drain, 219 of 300 messages lost) as
+  load, by analogy with these.
+
+    suite                          in the gate   alone
+    okay.kafka.TestKafkaInterop        237 s     0.084 s
+    okay.intent.TestCutStops            39 s     0.059 s
+    okay.ui TestSwing (the law)      timeout     passes
+    okay.persist.TestStable      BindException   0.007 s
+
+WHAT I HAVE READ ALREADY, before claiming, because the entry insists
+each needs its OWN reading of whether its assertion depends on timing:
+
+  - TestCutStops asserts TOKEN COUNTS and emission counts. No clock,
+    no deadline, nothing timing-dependent.
+  - TestKafkaInterop is mocks (`MockConsumer`), asserting values and
+    their order. No clock either.
+  - TestSwing's law renders twelve frames and compares each against a
+    freshly built one. No clock.
+  - TestStable's second test asserts `currentTerm == 5` and
+    `votedFor == Some("1")`. It is not about networking at all; the
+    port is incidental machinery, and it is bound the textbook wrong
+    way:
+
+        val port = { val ss = ServerSocket(0); val p = ss.getLocalPort; ss.close(); p }
+        val node = RaftWire.Node("0", port, ...)
+
+    ask the OS, CLOSE it, then race a neighbour to bind it again.
+    `RaftWire.Node` passes its port straight to `ServerSocket(port)`,
+    which takes 0 and lets the OS assign — so the pre-bind buys
+    nothing and costs a collision.
+
+So on the face of it all four say "the assertion does not depend on
+timing", and AGENTS' first option (a longer deadline) is the honest
+one for the three, with the port fixed properly for the fourth.
+
+DISQUALIFYING EVIDENCE, registered before the work:
+
+  - 237 s against 0.084 s is 2 800x. CPU starvation on a 14-core box
+    carrying six sibling builds does not multiply by 2 800. If that
+    suite is SPINNING rather than starved — a poll or retry loop with
+    no backoff, doing orders of magnitude more work under contention
+    — then a longer deadline HIDES A DEFECT, and hiding one is
+    exactly what this backlog entry exists to stop. The same question
+    must be asked of the 39 s.
+  - a longer deadline must be justified per suite and never swept:
+    the entry says so, and a blanket `munitTimeout` across the repo
+    would be the sweeping it forbids.
+  - "it passes alone" proves nothing about the fix. The mechanism has
+    to be reproduced, and this session already learned that a load
+    harness may FAIL to reproduce it (28 spinners did not reproduce
+    the ui pair) — in which case isolate the variable instead.
+
+predict: kafka is NOT plain starvation. The ratio is too large, and I
+  expect a busy poll loop — `pollMillis = 10` with a mock that
+  answers instantly — that makes progress only when it wins a
+  timeslice. TestCutStops and TestSwing I expect to be genuinely
+  starved, deadline-only. Recorded so being wrong shows.
