@@ -1949,9 +1949,11 @@ measure on our own data, never a predicted result.
       keeps its router — it creates missing parents, which is the
       unlawful lens — and `TestFormOptic` asserts the two agree where
       both are defined.
-- [ ] optics-ui — stage 2: `Ui.key(k)`, `Ui.path(is)`, `Ui.everywhere`;
-      foldLocal/submit written with them; `Ui.patch` under `Ui.path`
-      only if stage 0's gate allowed it.
+- [x] optics-ui — LANDED 2026-09-09 (specs/optics.md Results):
+      `Ui.everywhere`/`shown`/`key`/`path`; foldLocal, submit and tabOf
+      written with them; `Ui.patch` keeps its navigation, as the gate
+      decided. Found: a bottom-up rewrite is not an applicative
+      traversal, and `shown` had to exist beside `everywhere`.
 - [ ] optics-state — stage 3: `zoom(lens)` over `State % S`, and the
       type-changing version over `PState` (Atkey's parameterised state
       IS the four-parameter lens, theory ch. 3).
