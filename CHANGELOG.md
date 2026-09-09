@@ -1,5 +1,39 @@
 # Changelog
 
+## r-finish — okay-r gets its timeout and its typed frame: the two gaps the audit named, closed
+
+**r-call-timeout.** `RSubprocess.start(…, timeoutMillis)`. The blocking
+line read moves onto one daemon thread per engine, and only where a
+deadline asks for it; on expiry the PROCESS is killed — the only way to
+stop R mid-call, since a sleeping or optimising R sits in C and no
+polite protocol reaches it — a fresh process takes its place, and the
+call answers `Left(Condition("timeout", …))`. Data, not an exception,
+and the engine serves the next call; with no deadline it blocks exactly
+as before, so the default is unchanged behaviour. Proven against the
+dockerized R: a 120-second sleep behind a 2-second deadline answers in
+about two seconds, and the next call on the same engine is correct.
+
+**r-frame-schema.** `RFrame.rows[A: Schema]` and `RFrame.of[A: Schema]`
+— fields matched to columns by name, the field order the column order.
+Every mismatch is a `Condition` naming what does not line up: a column
+no field names, a field with no column, a cell that does not fit
+(naming the column and the row). An absent cell keeps its COLUMN's
+type, so an `Option` field writes `NA_character_` in a text column
+rather than a logical NA — the same four-NAs rule the wire already
+keeps — and R's widening is admitted where R admits it (an integer
+column into a Double field) and nowhere else. Five tests without R and
+two over a real one, including a frame through `identity` and back into
+the case class.
+
+specs/r.md's two boxes are checked with what proves them, and the
+dead-worker box's in-flight half now points at the timeout: the call
+whose process is killed answers as data and the engine respawns, while
+the retry POLICY stays the caller's supervisor, not okay-r's. Landed as
+e1081282. Gate: full matrix, 3524 tests, one red —
+okay.resilience.TestResilienceTimed's hedge test, a sibling's known
+timed flake (its third sighting today, a second lane already landed
+against it), green on rerun alone; okay-r shares nothing with it.
+
 ## gate-lost-shape2 — the same lost process, wearing another shape
 
 A sibling's gate hit the lost-Native-process family in a shape
