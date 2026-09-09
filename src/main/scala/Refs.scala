@@ -15,45 +15,45 @@ import okay.!.*
  * of a walk, one per element of a list nobody has read yet — because
  * a type cannot list what does not exist yet.
  *
- * So `Cells` says only "this program uses cells". One row member
+ * So `Refs` says only "this program uses refs". One row member
  * however many there are, `cell(init)` makes a new one at run time,
  * and identity is the cell itself:
  *
- *     val p: Int ! Cells = direct {
- *       val a = Cells.cell(1).!?
- *       val b = Cells.cell(10).!?
- *       Cells.write(a, Cells.read(a).!? + Cells.read(b).!?).!?
+ *     val p: Int ! Refs = direct {
+ *       val a = Refs.ref(1).!?
+ *       val b = Refs.ref(10).!?
+ *       Refs.write(a, Refs.read(a).!? + Refs.read(b).!?).!?
  *     }
  *
  * The price, stated: the row no longer says which states there are,
  * and the handler's heap is keyed by identity, so reading a cell
  * returns an `Any` that ONE cast turns back into its type. That cast
- * is sound because a `Cell[S]` is only ever made by `New(init: S)`
- * and only ever written by `Write(c: Cell[S], s: S)`, so what comes
+ * is sound because a `Ref[S]` is only ever made by `New(init: S)`
+ * and only ever written by `Write(c: Ref[S], s: S)`, so what comes
  * out of a slot is what the same S put in. It is the cast `TMap`
  * makes, for the same reason, and it is the whole difference between
  * the two halves.
  */
-enum Cells[+A]:
-  case New[S](init: S) extends Cells[Cells.Cell[S]]
-  case Read[S](c: Cells.Cell[S]) extends Cells[S]
-  case Write[S](c: Cells.Cell[S], s: S) extends Cells[S]
+enum Refs[+A]:
+  case New[S](init: S) extends Refs[Refs.Ref[S]]
+  case Read[S](c: Refs.Ref[S]) extends Refs[S]
+  case Write[S](c: Refs.Ref[S], s: S) extends Refs[S]
 
-object Cells:
+object Refs:
   /** a slot in the handler's heap. Opaque, and declared HERE so that
    * the handler below — and only it — can see the number. */
-  opaque type Cell[S] = Int
+  opaque type Ref[S] = Int
 
-  given okay.Effect[Cells] = okay.Effect.of(typeableK(classOf[Cells[?]]))
+  given okay.Effect[Refs] = okay.Effect.of(typeableK(classOf[Refs[?]]))
 
   /** a new cell, holding init */
-  inline def cell[S](init: S): Cell[S] ! Cells = effect(New(init))
+  inline def ref[S](init: S): Ref[S] ! Refs = effect(New(init))
 
   /** what the cell holds */
-  inline def read[S](c: Cell[S]): S ! Cells = effect(Read(c))
+  inline def read[S](c: Ref[S]): S ! Refs = effect(Read(c))
 
   /** replace it, answering the new value */
-  inline def write[S](c: Cell[S], s: S): S ! Cells = effect(Write(c, s))
+  inline def write[S](c: Ref[S], s: S): S ! Refs = effect(Write(c, s))
 
   /**
    * The handler is `State.handle`'s loop over a HEAP: the next free
@@ -65,20 +65,20 @@ object Cells:
    * as the one now reading it (see the class comment). Isolated here
    * so there is one place to check that claim.
    */
-  def handle[A, F[+_]](p: A ! (Cells + F)): A ! F =
-    def slot[S](h: Map[Int, Any], c: Cell[S]): S = h(c).asInstanceOf[S]
+  def handle[A, F[+_]](p: A ! (Refs + F)): A ! F =
+    def slot[S](h: Map[Int, Any], c: Ref[S]): S = h(c).asInstanceOf[S]
 
-    def _loop(n: Int, h: Map[Int, Any])(x: A ! (Cells + F)): A ! F = loop(n, h)(x)
+    def _loop(n: Int, h: Map[Int, Any])(x: A ! (Refs + F)): A ! F = loop(n, h)(x)
 
-    @tailrec def loop(n: Int, h: Map[Int, Any])(x: A ! (Cells + F)): A ! F =
+    @tailrec def loop(n: Int, h: Map[Int, Any])(x: A ! (Refs + F)): A ! F =
       (x.resume: @unchecked) match
         case Pure(a) => Pure(a)
-        case Effect(e) => <|>[Cells, F](e) match
+        case Effect(e) => <|>[Refs, F](e) match
           case Left(New(init)) => Pure(n)
           case Left(Read(c)) => Pure(slot(h, c))
           case Left(Write(_, s)) => Pure(s)
           case Right(e) => Effect(e)
-        case Bind(Effect(e), k) => <|>[Cells, F](e) match
+        case Bind(Effect(e), k) => <|>[Refs, F](e) match
           case Left(New(init)) => loop(n + 1, h.updated(n, init))(k(n))
           case Left(Read(c)) => loop(n, h)(k(slot(h, c)))
           case Left(Write(c, s)) => loop(n, h.updated(c, s))(k(s))
@@ -87,4 +87,4 @@ object Cells:
     loop(0, Map.empty)(p)
 
   /** run a program that uses cells, and nothing else */
-  inline def run[A](p: A ! Cells): A = !.run(handle[A, okay.Pure](p))
+  inline def run[A](p: A ! Refs): A = !.run(handle[A, okay.Pure](p))

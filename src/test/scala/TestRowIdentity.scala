@@ -22,7 +22,7 @@ import okay.given
  * and a program needing more than one instance picks between them:
  * `Tag` (the instances are NAMED in the row, for any signature at
  * all, and handled by that signature's own handler after `untag`) and
- * `Cells` (state made at run time, one row member however many, one
+ * `Refs` (state made at run time, one row member however many, one
  * stated cast in the heap).
  */
 class TestRowIdentity extends munit.FunSuite {

@@ -1,5 +1,83 @@
 # Changelog
 
+## row-ergonomics — a constructor's row, and a step a program may decline
+
+Closes `row-polymorphic constructors`, which had been on the backlog
+since the custom-effect demo hit it: every HANDLER is row-polymorphic
+and every CONSTRUCTOR is fixed at its own single-effect row, so a
+for-comprehension takes its row from the first step and refuses the
+second.
+
+`p.plus[R]` adds R to the row a program already has; `p.at[R]` lands
+in a row known only by MEMBERSHIP, which is what a row-polymorphic
+helper has (`[R[+_] : Has[State % Int]]`). Both are ONE cast under an
+`In` witness — the whole design holds a single `asInstanceOf` — and
+both measure at the floor, the same B/op as constructing the operation
+at R in the first place (`RowLiftBenchmark`: viaEffect, viaDirect,
+viaAt and viaPlus all 272 016; the walking spellings 288 016 and
+304 000). `!.widen` stays: its walk is also a NORMALISATION and
+deleting it costs 5-7% on `Source.merge`.
+
+Row ORDER turned out not to exist — `+` is a union and `|` commutes,
+so `A ! (Users + Abort)` and `A ! (Abort + Users)` are the same type
+and assignable both ways with no coercion. Four `.at[...]` calls
+written to "reorder" a row were deleted.
+
+**A step a program may decline.** `case Some(x) <- p` and an `if`
+guard both desugar to `withFilter`, so neither is about patterns: the
+question is whether a program may STOP. `CanFail[F]` is the witness,
+carried by membership of an effect that can fail — `Choose` (the
+branch dies, the search goes on) or the new `Abort` (= `Throws % Unit`,
+the program stops and `runOption` answers None). `ensure[R](cond)` is
+the same demand outside a for-comprehension, and `p.recover(h)` /
+`p.orElse(q)` answer a failure inside the row.
+
+And any type constructor is a signature: `List(1, 2).perform` is
+nondeterminism, handled by `runSeq`, which is `runChoice`'s handler
+unchanged — `Choose[+A](as: Seq[A])` was a box around exactly this.
+
+specs/pattern-binds.md and specs/writer-covariance.md (rowlift,
+signature-covariance) carry the decisions, the measurements and the
+refuted routes — a macro, `<:<`, MonadPlus as the evidence, and a
+fully invariant library.
+
+## declaring an effect — `derives Effect`, and the fallback that is gone
+
+An effect used to carry three things: the operations, a `TypeableK`
+instance, and a constructor per operation. Now:
+
+    enum Users[+A] derives Effect {
+      case Find(id: Long) extends Users[Option[String]]
+      case Save(id: Long, name: String) extends Users[Option[String]]
+    }
+
+`derives Effect` writes the row-split test (no macro: a
+`ClassTag[F[Any]]` IS the erasure of F) and registers the signature
+for direct-style auto-coloring. It works for parameterised signatures
+too — `enum State[S, +A] derives okay.Effect` abstracts the last
+parameter — and every effect in the library now declares itself that
+way. `op.perform` removes the constructors where they are not wanted;
+they remain worth writing as an effect's API.
+
+**The generic `Typeable[F[Nothing]]` instance is deleted.** It made an
+effect that forgot to declare a test work anyway, at a warning per USE
+site its author never saw; it shadowed better instances through
+`import okay.given` (the Model/Tool/Context incident); and it was the
+one place in the library that needed the row's covariance. A signature
+that declares nothing is now a compile error, with a message naming
+both spellings.
+
+**New machinery around handling.** `!.interpret` is `translate` with
+the widening done for it, for interpreting one effect into OTHERS;
+`h.tracing(log)` makes any handler a recording one, and `!.tracing`
+does it at the program level, before anything is interpreted;
+`Tag.Of["small", State % Int]` puts several instances of ONE signature
+in a row, with `tag` putting a finished program's operations under a
+key and `untag` handing the plain signature back to its own handler;
+`Refs` is the dynamic counterpart, cells made at run time with one row
+member however many. `State.update` and `State.swap` answer what a
+write is about to destroy.
+
 ## growing-default — `Channel.apply` grows, and exact FIFO gets its own name
 
 The default buffer behind `Channel.apply` is now

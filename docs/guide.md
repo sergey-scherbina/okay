@@ -194,7 +194,7 @@ this. Handling needs no new handler: `untag` strips one key and hands
 back the plain signature, and the effect's own handler takes it from
 there.
 
-Where the instances are MADE rather than named, `Cells` is the
+Where the instances are MADE rather than named, `Refs` is the
 counterpart — cells created at run time, one row member however many,
 identity by cell, at the price of a heap and one stated cast. And the
 third route is the one `Delim` already has: a fresh prompt per handler

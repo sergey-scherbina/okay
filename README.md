@@ -126,9 +126,9 @@ index above lists them all with one-line summaries.
   program's operations under a key (so a function written against a
   plain `State % Int` runs twice at two states), and `untag` hands the
   plain signature back to its own handler (Tag.scala). Where the
-  instances are made rather than named, `Cells` keeps a heap: cells
+  instances are made rather than named, `Refs` keeps a heap: cells
   created at run time, one row member however many, one stated cast
-  (Cells.scala).
+  (Refs.scala).
 - `Throws` — typed errors: abort, runEither, the `throws` union; and
   `Abort` (= `Throws % Unit`), failure with nothing to say, handled by
   `runOption` (Throws.scala).
