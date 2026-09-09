@@ -1442,6 +1442,26 @@ construction instead of a type test per value).
   --predicate 'eventMessage CONTAINS "memorystatus"'` window before
   rerunning, and add the pair here.
 
+  THIRD OCCURRENCE, a NEW SHAPE (failing-over's gate, 2026-09-09
+  18:50–18:55, a cold matrix in a fresh worktree beside two sibling
+  sbts): `okayLexNative / Test / executeTests` failed with
+  `RPCCore$ClosedException: NativeRunnerRPC$RunTerminatedException` —
+  the runner process started (`Starting process '…/okay-lex-test' on
+  port '60120'`) and printed NOT ONE suite header before it was gone,
+  so there is no `Errors 1` line at all, and `scripts/gate.sh` said
+  "RED — a failure this script does not recognise" and did NOT
+  re-run. Alone, a minute later: 11/11. The pair the entry asked for:
+  the module's section of the log is the one `Starting process` line
+  and nothing after it; the memorystatus window 18:47–18:56 has ZERO
+  lines (no jetsam, as before). Box at the time: 5.6 GB of 7 GB swap
+  used, 273 885 pageouts, a sibling sbt at 500% CPU. So the same
+  family — a lost test process under memory pressure — and gate.sh
+  should learn this shape too: a `(<m>Native / Test / executeTests)`
+  error line carrying `RunTerminatedException` with no `==> X` in the
+  log is the rerun-alone case, not a real red; `--read` on the saved
+  log (scratchpad gate-failing-over-full.log of that session, or the
+  next occurrence's) is the test for the change.
+
 - **hedge-timer-leak — FIXED 2026-09-09 (hedge-start-races), and it
   was the SMALLER half.** `Hedge.start` published after it acted, in
   two places: it forked an attempt and only then added the fiber to
