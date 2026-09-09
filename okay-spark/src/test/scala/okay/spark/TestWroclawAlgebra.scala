@@ -1,7 +1,7 @@
 package okay.spark
 
-import okay.{Aggregator, Chunks, Monoid, sliding}
-import okay.given // Group[N] for every Numeric — the window's evidence
+import okay.{Aggregator, Chunks, Group, Monoid, sliding}
+import okay.given // Stream[LazyList, Pure] and friends
 import SparkInterop.*
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import java.io.File
@@ -9,6 +9,30 @@ import java.time.{LocalDate, LocalDateTime}
 
 /** One scheduled departure: a vehicle leaving a stop at a known minute. */
 final case class Dep(minute: Int, hour: Int, tram: Boolean, route: Int)
+
+/**
+ * How much service a stretch of time carries. This is the type the
+ * whole demo aggregates into, and it is a GROUP:
+ *
+ *   empty                      the unit — no service at all
+ *   combine(x, y)              two stretches side by side
+ *   inverse(a)                 the same service, negated
+ *
+ * with `combine(a, inverse(a)) == empty` (asserted below). The
+ * aggregation only ever needs the first two — that is the monoid, and
+ * it is what lets Spark merge partial results from any partitioning.
+ * The rolling window needs the third as well: `inverse` is how a minute
+ * that has aged out of the window is REMOVED without recomputing what
+ * is left. No inverse, no window.
+ */
+final case class Load(departures: Long, trams: Long):
+  def tramPct: Double = if departures == 0 then 0.0 else trams * 100.0 / departures
+
+object Load:
+  given group: Group[Load] with
+    def empty: Load = Load(0, 0)
+    def combine(x: Load, y: Load): Load = Load(x.departures + y.departures, x.trams + y.trams)
+    def inverse(a: Load): Load = Load(-a.departures, -a.trams)
 
 /** A running maximum: a Monoid with no inverse — nothing un-sees a peak. */
 final case class Busiest(value: Double)
@@ -119,31 +143,34 @@ class TestWroclawAlgebra extends munit.FunSuite:
   // them. A merge that were not associative would give a different
   // answer per run and nobody would see it happen.
 
-  /** the monoid of counting: Acc = Long, init 0, merge + */
-  val departures = Aggregator.count[Dep]
-
-  /** the same monoid, over a value the input carries rather than 1 */
-  val trams = Aggregator.sum[Long].contramap[Dep](d => if d.tram then 1L else 0L)
-
   /**
-   * What share of departures is rail. `zip` is the PRODUCT of two
-   * monoids — `((0L, 0L), (a, b) merged componentwise)` — so both counts
-   * ride one pass, and `map` moves the ratio into `present`, leaving the
-   * monoid alone.
+   * The service an hour carries. `fromMonoid` is the aggregator that IS
+   * its algebra: no accumulator of its own, `init` is `Load.empty` and
+   * `merge` is `Load.combine` — the group above, used here as a monoid.
    */
-  val tramShare = departures.zip(trams).map((n, t) => t * 100.0 / n)
+  val load = Aggregator.fromMonoid[Load].contramap[Dep](d => Load(1, if d.tram then 1 else 0))
 
   /** how much of the network is awake: the monoid of sets, init empty, merge union */
   val routesRunning = Aggregator.distinct[Int].contramap[Dep](_.route)
 
   /**
-   * Three statistics per hour of the day, still one pass. `groupBy` is
-   * the monoid of finite MAPS into a monoid: the unit is the empty map,
-   * and merging two maps merges the accumulators of the keys they share.
-   * Every partition builds its own 24-key map; the merge is what makes
-   * the four of them one.
+   * Both statistics per hour of the day, in one pass. `zip` is the
+   * PRODUCT of two monoids — a pair of units, merged componentwise —
+   * and `groupBy` the monoid of finite MAPS into a monoid: the unit is
+   * the empty map, and merging two maps merges the accumulators of the
+   * keys they share. Every partition builds its own 24-key map; the
+   * merge is what makes the four of them one.
    */
-  val hourly = Aggregator.groupBy((d: Dep) => d.hour)(departures.zip(routesRunning).zip(tramShare))
+  val hourly = Aggregator.groupBy((d: Dep) => d.hour)(load.zip(routesRunning))
+
+  test("Load is a group: the law the window depends on") {
+    val G = Load.group
+    val samples = List(Load(0, 0), Load(1, 0), Load(17, 5), Load(4593288, 1500000))
+    for a <- samples do assertEquals(G.combine(a, G.inverse(a)), G.empty, s"no inverse for $a")
+    for a <- samples; b <- samples; c <- samples do
+      assertEquals(G.combine(G.combine(a, b), c), G.combine(a, G.combine(b, c)), "not associative")
+    println("  Load: combine(a, inverse(a)) == empty, and combine is associative")
+  }
 
   test("routes are counted by a hash, and the hash does not collide here") {
     // .iterator.map, not .map: with `import okay.given` in scope the Id
@@ -168,57 +195,55 @@ class TestWroclawAlgebra extends munit.FunSuite:
     println(f"  aggregate: spark(4 partitions) ${sparkMs}%,d ms · local single pass ${localMs}%,d ms")
     println("  hour  departures   routes   tram%")
     for h <- 0 to 23 do
-      val ((n, routes), tram) = onSpark(h)
-      println(f"  $h%4d  $n%,10d  $routes%7d  $tram%5.1f%%")
+      val (l, routes) = onSpark(h)
+      println(f"  $h%4d  ${l.departures}%,10d  $routes%7d  ${l.tramPct}%5.1f%%")
 
-    val byDeps = onSpark.toSeq.sortBy((_, v) => v._1._1)
-    val byTram = onSpark.toSeq.sortBy((_, v) => v._2)
+    val byDeps = onSpark.toSeq.sortBy((_, v) => v._1.departures)
+    val byTram = onSpark.toSeq.sortBy((_, v) => v._1.tramPct)
     println(f"  busiest hours: ${byDeps.takeRight(3).reverse.map(_._1).mkString(", ")}" +
       f" · quietest: ${byDeps.take(3).map(_._1).mkString(", ")}")
-    println(f"  most rail: ${byTram.last._1} at ${byTram.last._2._2}%.1f%% tram" +
-      f" · least: ${byTram.head._1} at ${byTram.head._2._2}%.1f%%")
+    println(f"  most rail: ${byTram.last._1} at ${byTram.last._2._1.tramPct}%.1f%% tram" +
+      f" · least: ${byTram.head._1} at ${byTram.head._2._1.tramPct}%.1f%%")
 
     assertEquals(onSpark.keySet, local.keySet)
-    for h <- onSpark.keys do
-      assertEquals(onSpark(h)._1, local(h)._1, s"counts differ at hour $h")
-      assert(math.abs(onSpark(h)._2 - local(h)._2) < 1e-9, s"tram% at $h")
+    for h <- onSpark.keys do assertEquals(onSpark(h), local(h), s"hour $h differs")
   }
 
   /**
-   * WHERE THE GROUP IS. A `Group[A]` is a `Monoid[A]` plus `inverse`,
-   * with the law `combine(a, inverse(a)) == empty`. For `Double` that
-   * given is `(0.0, +, negate)` — the summing monoid with subtraction —
-   * and `sliding` is written against exactly those three: it admits the
-   * newcomer with `combine(acc, x)` and drops what aged out with
-   * `combine(_, inverse(oldest))`, so a window step costs one add and
-   * one subtract no matter how wide the window is.
+   * WHERE THE GROUP IS. The aggregation above used `Load`'s `empty` and
+   * `combine` only — a monoid is all a merge needs. A rolling window
+   * needs the third function: `sliding` admits the newcomer with
+   * `combine(acc, x)` and drops what aged out with
+   * `combine(_, inverse(oldest))`, so a step costs one add and one
+   * subtract no matter how wide the window is, where recomputing costs
+   * the width. Same type, same operation, one extra law.
    */
   test("a group is a window: the fortnight minute by minute, rolling") {
-    val perMinute = aggregate(departuresRdd)(Aggregator.groupBy((d: Dep) => d.minute)(departures))
+    val perMinute = aggregate(departuresRdd)(Aggregator.groupBy((d: Dep) => d.minute)(load))
     val minutes = perMinute.keys.max + 1
-    val series = LazyList.tabulate(minutes)(m => perMinute.getOrElse(m, 0L).toDouble)
+    val G = Load.group
+    val series = LazyList.tabulate(minutes)(m => perMinute.getOrElse(m, G.empty))
 
-    def bench(w: Int): (Vector[Double], Double, Double) =
+    def bench(w: Int): (Vector[Load], Double, Double) =
       sliding(series)(w).drop(w - 1).foreach(_ => ())
-      series.sliding(w).map(_.sum).foreach(_ => ())
+      series.sliding(w).map(_.reduce(G.combine)).foreach(_ => ())
       val t0 = System.nanoTime()
       val rolling = sliding(series)(w).drop(w - 1).toVector
       val groupMs = (System.nanoTime() - t0) / 1000000.0
       val t1 = System.nanoTime()
-      val naive = series.sliding(w).map(_.sum).toVector
+      val naive = series.sliding(w).map(_.reduce(G.combine)).toVector
       val naiveMs = (System.nanoTime() - t1) / 1000000.0
-      assertEquals(rolling.length, naive.length)
-      rolling.zip(naive).zipWithIndex.foreach { case ((a, b), i) =>
-        assert(math.abs(a - b) < 1e-6, s"window $w at $i: $a vs $b") }
+      assertEquals(rolling, naive, s"the window of $w disagrees with recomputing it")
       (rolling, groupMs, naiveMs)
 
     val day0 = LocalDate.parse("20260906", java.time.format.DateTimeFormatter.BASIC_ISO_DATE)
     for w <- List(60, 1440) do
       val (rolling, groupMs, naiveMs) = bench(w)
-      val (peak, peakEnd) = rolling.zipWithIndex.maxBy(_._1)
+      val (peak, peakEnd) = rolling.zipWithIndex.maxBy(_._1.departures)
       val end = LocalDateTime.of(day0, java.time.LocalTime.MIDNIGHT).plusMinutes(peakEnd + w)
       println(f"  window $w%5d min: ${rolling.length}%,d windows · subtract-what-aged-out $groupMs%6.1f ms" +
-        f" · recompute $naiveMs%7.1f ms (${naiveMs / groupMs}%5.1fx) · peak ${peak}%,.0f departures ending $end")
+        f" · recompute $naiveMs%7.1f ms (${naiveMs / groupMs}%5.1fx) · peak ${peak.departures}%,d departures" +
+        f" (${peak.tramPct}%.1f%% tram) ending $end")
   }
 
   test("no inverse, no window — the compile error is the point") {
