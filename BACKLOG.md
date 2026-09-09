@@ -5507,11 +5507,41 @@ used.
 - [x] read `stop`'s drain against `Channel`'s close — the answer was
       simpler than the suspected sentinel race.
 - [x] the law was RIGHT and the code was wrong.
-- [ ] okay-actor has no JS or Native tests (`src/test/` is
-      `scala-jvm` only), so the fix is proved on the JVM and merely
-      COMPILES for the other two. A JS test for `stop` would be worth
-      having, precisely because that is the platform the old code
-      could never have worked on.
+- [x] CORRECTION (same day, before starting it): I filed "a JS test
+      for `stop` would be worth having" and it is NOT ACHIEVABLE as
+      filed. `Actor.spawn` requires `CanBlock`, and the `CanBlock`
+      given exists only on JVM and Native — `src/main/scala-js` has
+      none, deliberately ("There is no CanBlock on JS, so a blocking
+      join is a compile error, not a frozen loop"). So no actor can be
+      SPAWNED on JS at all: the module cross-builds and is unusable
+      there. My commit message's "JS is exactly the platform the old
+      code could never have worked on" is true and misleading —
+      nothing works there, because there is nothing to work.
+
+## actor-on-js — okay-actor cross-builds for a platform it cannot run on
+
+Found while trying to write the JS test above (2026-09-09). `okay-actor`
+is `crossProject(JVMPlatform, JSPlatform, NativePlatform)`, but its
+loop reads with `mailbox.receiveBlocking()` and `Actor.spawn` asks for
+`CanBlock`, which JS does not have. The JS artifact therefore compiles
+and can never spawn an actor.
+
+That is a real question, not a defect, and it has two honest answers:
+
+- [ ] **Say so.** Drop JSPlatform from the module, the way okay-reactive
+      is JVM-only for `Flow`. Then the build states the truth and
+      nobody ships a JS artifact that cannot be used. Smallest, and
+      loses nothing that works today.
+- [ ] **Or make the loop asynchronous** — `receiveAsync` and a drive
+      rather than `receiveBlocking` — so an actor runs on the event
+      loop, which is what the JS `Scheduler` already is ("the event
+      loop IS the scheduler"). Bigger, and it is the version that
+      makes actors mean something in a browser.
+
+`stop` is already asynchronous after actor-stop-drain, so the second
+answer is one step less far away than it was this morning. Whoever
+takes it should decide deliberately rather than leave a cross-build
+that quietly cannot run.
 
 ## bulk-plan-warnings — eight warnings landed on a warning-free gate
 
