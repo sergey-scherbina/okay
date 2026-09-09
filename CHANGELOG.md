@@ -1,5 +1,34 @@
 # Changelog
 
+## jdbc-tails — pgjdbc probes find two JDBC defects and a core one: the brake now runs on a failing statement
+
+pgjdbc 42.7.3 joins okay-jdbc in Test scope and `TestPgJdbc` (Live)
+runs the audit's probes through JDBC on Postgres, where the wire driver
+had run them. Found: (1) pgjdbc's `commit()` on an aborted transaction
+reports success — `JdbcSql` now remembers a statement that failed
+inside the open transaction and probes with `select 1` before COMMIT,
+refusing with SQLSTATE 40000 when the engine aborted (H2/SQLite pass
+the probe and commit as before); (2) pgjdbc reports `timestamptz` as
+plain `Types.TIMESTAMP`, so the UTC wall clock shifted by the session
+zone (three hours under Europe/Kyiv) — `zonedCode` reads the vendor
+type name for reads and binds; (3) THE CORE: a SQL statement that
+throws inside a region is an `Async.Run` the outer handler executes,
+and `Resource.run` abandoned the scope's finalizers with the residual —
+the region's brake never ran, the connection stayed in the transaction,
+the next `begin` refused as nested. Every earlier region test had
+thrown from a pure step or aborted through Throws. `Resource.run` now
+forwards Async operations guarded: a `Run` whose thunk throws and an
+`Await` answering Left release first (`guardAsync`, the one cast in
+Resource.scala, argued there). SQLite: its driver takes
+`getObject(LocalDateTime)` and then throws DateTimeParseException on
+ISO text — the temporal fallback catches any non-fatal failure, tested.
+Landed as 3bb1ff09; specs/sql.md "The brake runs on a failing
+statement" plus boxes. Gate: 3283 tests green before the rebase; the
+re-gate after ui-gtk landed (3173 run) failed only on
+okay.deploy.TestDocsIndex — docs/modules/okay-ui-gtk.md is missing on
+master, the ui-gtk lane's, reported in the room; di-deploy landed
+during the re-gate and is not covered by it.
+
 ## di-deploy — the root module's inputs are the deployment's needs
 
 specs/di.md stage 3, the arc's last piece. In okay-deploy, `Needs[A]`
