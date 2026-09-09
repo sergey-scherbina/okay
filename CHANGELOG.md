@@ -1,5 +1,35 @@
 # Changelog
 
+## persist-index-box — a segment deleted behind an open reader crashed it; the phantom box named an index that never existed
+
+The last unchecked box in specs/persist.md read "a damaged index is
+rebuilt from segments". There is no index: a segment carries its base
+offset in its header and a read scans within it — now recorded as a
+decision in Out of scope, since a box implying one is how the design
+gets misread. What the engine DOES keep is a derived segment list, and
+that is what the invariant was really about: the directory decides,
+never a reader's cache of it. The append direction was covered (a
+reader sees a writer's appends and its rolled segments); the deletion
+direction was untested and BROKEN — retention on another handle removed
+a file the reader still listed, and the read threw NoSuchFileException
+straight off the mmap. The deep refresh now drops what the directory no
+longer has, AFTER adopting what it gained (a reader whose every known
+segment was dropped must keep the new ones, not the dead ones), and a
+file that vanishes between the refresh and the map is the same
+retention one instant later: the read re-reads the directory and
+answers TooEarly at the surviving front. TestFileStore covers it end to
+end — 120 appends under a tiny retention with a reader open across the
+drops, no record served from below the surviving front, then the whole
+tail. Landed as 4d090ca6. Gate: full matrix, 3547 tests, 0 failures.
+
+Method note, since it cost an hour: a first cut wrapped the read in
+`Option(mapOf(seg)).foreach { … }` and 18 unrelated tests went empty. I
+read that as cross-suite interference until the honest experiment —
+master twice, green; then a mechanical bisect — showed the formulation
+itself was at fault. Rewritten as a plain try/catch around the body it
+is correct. Guessing at a failure I introduced cost more than the
+measurement would have.
+
 ## native-runner-error — the gate can now tell its two reds apart
 
 Twice on 2026-09-09 a full matrix ended red with no failed test: a
