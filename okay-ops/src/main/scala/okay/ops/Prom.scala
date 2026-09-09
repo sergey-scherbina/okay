@@ -68,6 +68,16 @@ object Prom:
    * CUMULATIVE with `le`, a `+Inf` row equal to `_count`, then `_sum`
    * (seconds) and `_count` — what `histogram_quantile` reads.
    */
+  /** milliseconds as seconds, spelled the same on every platform:
+    * a Double's toString says "10.0" on the JVM and "10" on JS, and a
+    * `le` label is matched as TEXT by Prometheus; the canonical
+    * spelling is the shortest one ("10", "0.005", "2.5") */
+  private def seconds(millis: Long): String =
+    val whole = millis / 1000
+    val frac = millis % 1000
+    if frac == 0 then whole.toString
+    else s"$whole." + f"$frac%03d".reverse.dropWhile(_ == '0').reverse
+
   def red(rs: Vector[Red]): String =
     val all = rs.map(_.stats).filter(_.series.nonEmpty)
     if all.isEmpty then return ""
@@ -85,9 +95,9 @@ object Prom:
       var acc = 0L
       for (bound, n) <- Red.buckets.zip(se.buckets) do
         acc += n
-        sb ++= s"""okay_http_request_duration_seconds_bucket{${labels(st.name, se.route, s""",le="${bound / 1000.0}"""")}} $acc\n"""
+        sb ++= s"""okay_http_request_duration_seconds_bucket{${labels(st.name, se.route, s""",le="${seconds(bound)}"""")}} $acc\n"""
       sb ++= s"""okay_http_request_duration_seconds_bucket{${labels(st.name, se.route, """,le="+Inf"""")}} ${se.requests}\n"""
-      sb ++= s"okay_http_request_duration_seconds_sum{${labels(st.name, se.route)}} ${se.sumMillis / 1000.0}\n"
+      sb ++= s"okay_http_request_duration_seconds_sum{${labels(st.name, se.route)}} ${seconds(se.sumMillis)}\n"
       sb ++= s"okay_http_request_duration_seconds_count{${labels(st.name, se.route)}} ${se.requests}\n"
     sb.result()
 

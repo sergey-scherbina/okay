@@ -151,7 +151,7 @@ class TestLifecycleRed extends munit.FunSuite:
     assert(out.contains("""okay_http_request_duration_seconds_bucket{name="api",route="GET /a",le="0.005"} 0"""))
     assert(out.contains("""okay_http_request_duration_seconds_bucket{name="api",route="GET /a",le="0.01"} 1"""))
     assert(out.contains("""okay_http_request_duration_seconds_bucket{name="api",route="GET /a",le="0.05"} 2"""))
-    assert(out.contains("""okay_http_request_duration_seconds_bucket{name="api",route="GET /a",le="10.0"} 2"""))   // 20 s is beyond every bound
+    assert(out.contains("""okay_http_request_duration_seconds_bucket{name="api",route="GET /a",le="10"} 2"""))   // 20 s is beyond every bound; "10", not "10.0" — the same text on JS and the JVM
     assert(out.contains("""okay_http_request_duration_seconds_bucket{name="api",route="GET /a",le="+Inf"} 3"""), out)
     assert(out.contains("""okay_http_request_duration_seconds_sum{name="api",route="GET /a"} 20.037"""))
     assert(out.contains("""okay_http_request_duration_seconds_count{name="api",route="GET /a"} 3"""))
