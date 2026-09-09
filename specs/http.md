@@ -200,6 +200,25 @@ than growing without limit.
       with `undefined cannot be cast to java.lang.Integer`, which is
       exactly the failure `js.Dynamic` is worst at and exactly why this
       run had to exist
+- [x] the REST half of that program answers on EVERY server, not just
+      the one that hosts it (http-post-body-audit, 2026-09-09).
+      `Acceptance.rest` is the shared program's REST checks alone —
+      the JDK's own server serves no WebSocket, so the full `check`
+      cannot hold it — and `TestBackends` runs it against the JDK,
+      Jetty and Netty. It was written because ONE of its checks, "a
+      POST body reaches the route", is the exact thing Jetty failed in
+      production: `posted` did not exist, every body arrived empty,
+      and an MCP route answered every message as damaged (mcp-push).
+      Nothing in the tree asserted it on any backend but Jetty, and
+      Jetty's own assertion arrived only with the fix. Verified to be
+      able to FAIL: disabling Jetty's body read in a worktree turns
+      the law red naming the backend and the check
+      (`jetty failed these: "a POST body reaches the route"`).
+      NOTE what the DEFAULT gate can do here: nothing. Every suite
+      that binds a real port is `Live`-tagged by policy
+      (nio-port-scope), so this class of regression is caught by
+      `sbt integrationTest`, and a change to any HTTP backend is not
+      gated until that has run.
 - [x] a body can be let go UNREAD. `Response` carries a `release`, and
       `Http.discard` is it — draining a large body only to throw it
       away is the wrong fix, and the JDK documents that leaving one

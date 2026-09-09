@@ -2069,8 +2069,13 @@ measure on our own data, never a predicted result.
       2026-09-01, green twice alone — port/readiness race shape)
 - [ ] http-streaming-responses — incremental bodies on the NIO and
       Netty backends (Jetty has it); unblocks MCP push there
-- [ ] http-post-body-audit — Netty/NIO: do POST bodies reach routes?
-      (Jetty's did not — found by mcp-push, fixed there)
+- [x] http-post-body-audit — DONE 2026-09-09. Netty and the JDK server
+      DO read the body (Jetty's `posted` was the only defect and
+      mcp-push fixed it) — but nothing asserted it on any backend but
+      Jetty, so the audit's answer is a law, not a fix:
+      `Acceptance.rest` runs against all three servers in
+      TestBackends, proven able to fail. The entry's "NIO" was a
+      misnomer: `Nio.scala` is raw TCP, not an HTTP server.
 
 ## okay-demo (the showcase lane — specs/demo-chat.md, specs/match.md) — DONE, all 11 landed
 - [x] demo-streaming-cut — LANDED 2026-09-02: `Chat.reply`/`chatRoute`

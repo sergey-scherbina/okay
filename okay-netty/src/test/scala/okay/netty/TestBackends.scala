@@ -3,7 +3,7 @@ package okay.netty
 import okay.*
 import okay.given
 import okay.codec.Schema
-import okay.http.{Frame, Http, Request, Server as OkayServer, Sockets, Transports, Ws}
+import okay.http.{Acceptance, Frame, Http, Request, Server as OkayServer, Sockets, Transports, Ws}
 import okay.jetty.Jetty
 
 /**
@@ -86,6 +86,26 @@ class TestBackends extends munit.FunSuite {
         fetchPerson(Transports.http(), s"http://127.0.0.1:${Netty.port(s)}/p"))).runWith
 
     assertEquals(Seq(jdk, jetty, netty), Seq.fill(3)(Right(ann)))
+  }
+
+  test("a POST body reaches the route on EVERY server (http-post-body-audit)") {
+    // the shared acceptance program — the one that already carries "a
+    // POST body reaches the route" — had run against Jetty alone, and
+    // that check is exactly the one Jetty failed in production until
+    // mcp-push found it. Here every server answers it.
+    def restOn(port: Int): Seq[(String, Boolean)] =
+      Async.run[Seq[(String, Boolean)], Pure](
+        Acceptance.rest(Transports.http(), port)).runWith
+
+    val jdk = Resource.run[Seq[(String, Boolean)], Pure](
+      OkayServer.serve(0)(Acceptance.routes).map(s => restOn(OkayServer.port(s)))).runWith
+    val jetty = Resource.run[Seq[(String, Boolean)], Pure](
+      Jetty.serve(0)(Acceptance.routes)().map(s => restOn(Jetty.port(s)))).runWith
+    val netty = Resource.run[Seq[(String, Boolean)], Pure](
+      Netty.serve(0)(Acceptance.routes)().map(s => restOn(Netty.port(s)))).runWith
+
+    for (name, got) <- Seq("jdk" -> jdk, "jetty" -> jetty, "netty" -> netty) do
+      assertEquals(got.filter(!_._2).map(_._1), Nil, s"$name failed these")
   }
 
   test("the same session answers the same on both WebSocket servers") {

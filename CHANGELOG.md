@@ -1,5 +1,35 @@
 # Changelog
 
+## http-post-body-audit — the law existed, and exactly one of three backends ran it
+
+The audit asked whether a POST body reaches a route on every backend,
+because Jetty's did not: `posted` did not exist, every body arrived
+empty, and an MCP route answered every message as damaged until
+mcp-push found it live. The code answer is reassuring — Netty reads
+`req.content` after its aggregator, `okay.http.Server` reads
+`getRequestBody.readAllBytes()`, and Jetty has read one since the fix.
+
+The test answer was not. The shared acceptance program already
+carries the check — "a POST body reaches the route" — and it ran
+against **Jetty alone**, the backend that had the bug; the other two
+had never been made to pass it. So the deliverable is a law, not a
+fix: `Acceptance.rest` is the program's REST half (the JDK server
+serves no WebSocket, so the full `check` cannot hold it), and
+`TestBackends` — the suite whose whole point is one program, every
+backend — now runs it against the JDK, Jetty and Netty, reporting
+which backend failed which check.
+
+Proven able to fail, not assumed: disabling Jetty's body read in the
+worktree turned it red with `jetty failed these: "a POST body reaches
+the route"`, and restoring it turned it green.
+
+One thing the audit could not fix and states instead, in specs/http.md:
+the DEFAULT gate cannot catch this class at all. Every suite that
+binds a real port is `Live`-tagged by policy (nio-port-scope), so a
+change to any HTTP backend is ungated until `sbt integrationTest`
+runs. Also corrected on the way out: the entry's "NIO" was a misnomer
+— `Nio.scala` is raw TCP, not an HTTP server.
+
 ## ui-mobile — installable Live pages: the mobile web, proved in an iPhone emulation, offline included
 
 The first of the operator's mobile lanes (specs/frontend.md "Mobile",
