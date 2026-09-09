@@ -172,7 +172,9 @@ deleted:
   graph is the composition, and the compiler checks it. Two of one
   type are told apart by an opaque type per ROLE, never a string;
   `m.plan` lists what a module will install, in order, read off its
-  type before anything is built.
+  type before anything is built. The whole story — lifecycle, reading
+  a module before it is built, an application end to end, the
+  containers next door — is [Dependency injection](di.md).
 
 Two design rules keep it honest. **Environment vs. resource**: a
 capability should be an *environment* — `Http`, `Secrets`, `Crypto`,

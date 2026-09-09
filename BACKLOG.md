@@ -233,6 +233,12 @@ its Behavior checklist:
       module readiness. Found the demo's board written to an unmounted
       file (chatLog vs OKAY_CHAT_DB); every rendered target now mounts
       the volume the store declares.
+- [x] docs-di — DONE 2026-09-09: docs/di.md, the guide beside the
+      spec — lifecycle, the graph as composition, qualifiers, reading
+      a module before it is built, an application end to end, the
+      four containers, what a deployment reads, and the gotchas that
+      cost time. Its samples run as TestDiDocs, so the page cannot
+      rot silently.
 
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 

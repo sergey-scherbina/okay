@@ -72,6 +72,12 @@ JVM (JDK 21+, Loom), Scala.js and Scala Native.
   member owes, and the numbers against kyo and the JDK pool.
 - **[Typepedia](typepedia.md)** — every core type and typeclass with
   its meaning and the recurring gotchas; the reference you grep.
+- **[Dependency injection](di.md)** — the module vocabulary: a
+  capability that must be opened and closed, a graph that IS the
+  composition, qualifiers as types, reading a module before it is
+  built (`plan`, `exports`, declared needs), an application wired end
+  to end, the same modules inside Spring, Guice, CDI and ZIO, and
+  what a deployment reads from all of it.
 - **[Capabilities](capabilities.md)** — context functions as the
   wiring: doors, `provide`/`providing`, `wire`, the zero-framework
   dependency-injection story, the theory the compiler runs (the

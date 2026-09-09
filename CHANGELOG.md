@@ -1,5 +1,28 @@
 # Changelog
 
+## docs-di — the guide for wiring, beside the spec that records the design
+
+The arc had a spec, three bridge pages and no page that tells a
+reader how to wire anything: capabilities.md stops at
+`provide`/`providing`/`wire`, and everything the modules added —
+lifecycle, a graph that IS the composition, qualifiers as types,
+reading a module before it is built, an application end to end, the
+same modules inside Spring, Guice, CDI and ZIO, and what a deployment
+reads from all of it — lived only in specs/di.md, which is a design
+record rather than a guide.
+
+`docs/di.md` is that page, linked from the guide list and
+cross-linked with capabilities.md. Its samples are COMPILED: they run
+as `TestDiDocs` in okay-deploy (9 tests), so a rename that makes the
+page wrong fails a test instead of misleading a reader — and writing
+them that way already corrected two spellings the prose had guessed
+(`Resource.run`'s two type arguments, and the import the `.needs`
+extension needs). The gotchas section carries what this arc actually
+cost: the E10 trap on a combinator written as an extension, facts
+below an acquisition not being readable early, a qualifier's export
+carrying the erased class, and the container registrations being
+eager. Commit: LANDING.
+
 ## optics-core — lenses on profunctors: the constraint is a type parameter, composition is the intersection, and the gate said where they may live
 
 The operator's direction (2026-09-09), specs/optics.md. An optic is
