@@ -146,10 +146,19 @@ final class CassandraDocs[A](session: CqlSession, keyspace: String, table: Strin
 object CassandraDocs:
   /** a session on one contact point; the keyspace is created with
    * SimpleStrategy at the given factor when absent */
-  def session(host: String, port: Int, datacenter: String, keyspace: String, replication: Int = 1): CqlSession =
+  def session(host: String, port: Int, datacenter: String, keyspace: String, replication: Int = 1,
+              requestTimeoutSeconds: Long = 10L): CqlSession =
+    // the driver's 2 s default is too short for DDL on a loaded node
+    // (measured: CREATE TABLE + CREATE INDEX per test timed out under
+    // four sbts on the box); the timeout is a session setting here
+    val config = com.datastax.oss.driver.api.core.config.DriverConfigLoader.programmaticBuilder()
+      .withDuration(com.datastax.oss.driver.api.core.config.DefaultDriverOption.REQUEST_TIMEOUT,
+        java.time.Duration.ofSeconds(requestTimeoutSeconds))
+      .build()
     val s = CqlSession.builder()
       .addContactPoint(java.net.InetSocketAddress(host, port))
       .withLocalDatacenter(datacenter)
+      .withConfigLoader(config)
       .build()
     s.execute(s"CREATE KEYSPACE IF NOT EXISTS $keyspace WITH replication = " +
       s"{'class': 'SimpleStrategy', 'replication_factor': $replication}"): Unit

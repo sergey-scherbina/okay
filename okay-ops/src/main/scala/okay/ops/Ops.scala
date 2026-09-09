@@ -32,7 +32,9 @@ object Ops:
              pools: Vector[(String, () => okay.sql.Pool.Stats)] = Vector.empty,
              sagas: Vector[() => okay.persist.Saga.Status] = Vector.empty,
              lifecycle: Option[Lifecycle] = None,
-             red: Vector[Red] = Vector.empty)
+             red: Vector[Red] = Vector.empty,
+             docs: Vector[(String, () => okay.docs.Docs.Stats)] = Vector.empty,
+             blobs: Vector[(String, () => okay.blob.Blob.Stats)] = Vector.empty)
   : PartialFunction[Request, Response ! Async] =
     case r if r.method == okay.http.Method.Get && r.url == "/healthz" =>
       val h = Health.of(store)
@@ -47,5 +49,6 @@ object Ops:
       text(200, Json.encode(summon[Schema[Store.Stats]])(store.stats), "application/json")
     case r if r.method == okay.http.Method.Get && r.url == "/metrics" =>
       text(200, Prom.render(store.stats, lagOf) + Prom.guards(guards) + Prom.pools(pools) + Prom.sagas(sagas)
-        + lifecycle.fold("")(Prom.lifecycle) + Prom.red(red),
+        + lifecycle.fold("")(Prom.lifecycle) + Prom.red(red)
+        + Prom.docs(docs) + Prom.blobs(blobs),
         "text/plain; version=0.0.4; charset=utf-8")

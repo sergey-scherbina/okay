@@ -185,3 +185,38 @@ object Prom:
       read.foreach(s => sb ++= s"""okay_saga_steps_undone{id="${esc(s.id)}"} ${s.undone.length}""" += '\n')
     sb.result()
 
+  /** a Docs engine's counters as named counters (adapter-stats) */
+  def docs(pieces: Vector[(String, () => okay.docs.Docs.Stats)]): String =
+    val sb = new StringBuilder
+    val read = pieces.map((n, f) => (n, f()))
+    def metric(name: String, help: String)(value: okay.docs.Docs.Stats => Long): Unit =
+      if read.nonEmpty then
+        sb ++= s"# HELP $name $help\n# TYPE $name counter\n"
+        read.foreach((n, s) => sb ++= s"""$name{name="${esc(n)}",engine="${esc(s.engine)}"} ${value(s)}""" += '\n')
+    metric("okay_docs_gets_total", "gets asked")(_.gets)
+    metric("okay_docs_hits_total", "gets that found a document")(_.hits)
+    metric("okay_docs_puts_total", "puts asked")(_.puts)
+    metric("okay_docs_applied_total", "conditional writes applied")(_.applied)
+    metric("okay_docs_stale_total", "conditional writes answered Stale")(_.stale)
+    metric("okay_docs_deletes_total", "deletes asked")(_.deletes)
+    metric("okay_docs_queries_total", "index queries asked")(_.queries)
+    metric("okay_docs_failures_total", "calls that failed")(_.failures)
+    sb.result()
+
+  /** a Blob engine's counters as named counters (adapter-stats) */
+  def blobs(pieces: Vector[(String, () => okay.blob.Blob.Stats)]): String =
+    val sb = new StringBuilder
+    val read = pieces.map((n, f) => (n, f()))
+    def metric(name: String, help: String)(value: okay.blob.Blob.Stats => Long): Unit =
+      if read.nonEmpty then
+        sb ++= s"# HELP $name $help\n# TYPE $name counter\n"
+        read.foreach((n, s) => sb ++= s"""$name{name="${esc(n)}",engine="${esc(s.engine)}"} ${value(s)}""" += '\n')
+    metric("okay_blob_puts_total", "puts")(_.puts)
+    metric("okay_blob_gets_total", "gets")(_.gets)
+    metric("okay_blob_misses_total", "gets of an absent key")(_.misses)
+    metric("okay_blob_heads_total", "heads")(_.heads)
+    metric("okay_blob_lists_total", "lists")(_.lists)
+    metric("okay_blob_deletes_total", "deletes")(_.deletes)
+    metric("okay_blob_failures_total", "calls that failed")(_.failures)
+    sb.result()
+

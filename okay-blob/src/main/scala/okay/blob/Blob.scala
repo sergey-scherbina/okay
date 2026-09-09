@@ -33,3 +33,39 @@ trait Blob:
 
   /** idempotent — deleting the absent is a no-op */
   def delete(key: String): Unit ! Async
+
+object Blob:
+  /** an engine's standing as a value (specs/data.md, adapter-stats):
+   * calls per operation, misses and failures — one definition for
+   * every engine, counted by the seam */
+  final case class Stats(engine: String, puts: Long, gets: Long, misses: Long, heads: Long,
+                         lists: Long, deletes: Long, failures: Long) derives okay.codec.Schema
+
+  def counted(engine: String, inner: Blob): Counted = new Counted(engine, inner)
+
+  final class Counted(engine: String, inner: Blob) extends Blob:
+    import java.util.concurrent.atomic.AtomicLong
+    private val puts, gets, misses, heads, lists, deletes, failures = AtomicLong(0L)
+
+    private def counting[B](n: AtomicLong)(p: B ! Async): B ! Async =
+      n.incrementAndGet()
+      Async.await[B] { k =>
+        okay.Async.runAsync(p).onComplete {
+          case scala.util.Success(b) => k(Right(b))
+          case scala.util.Failure(t) => failures.incrementAndGet(); k(Left(t))
+        }(using scala.concurrent.ExecutionContext.parasitic)
+        () => ()
+      }
+
+    def put(key: String, bytes: Chunk[Byte] ! (Produce + Async)): Etag ! Async = counting(puts)(inner.put(key, bytes))
+    def get(key: String, range: Option[(Long, Long)] = None): Either[String, Unit] ! (Produce + Async) =
+      gets.incrementAndGet()
+      inner.get(key, range).map { r => if r.isLeft then misses.incrementAndGet(): Unit; r }
+    def head(key: String): Option[Meta] ! Async = counting(heads)(inner.head(key))
+    def list(prefix: String): Chunk[Meta] ! (Produce + Async) =
+      lists.incrementAndGet()
+      inner.list(prefix)
+    def delete(key: String): Unit ! Async = counting(deletes)(inner.delete(key))
+
+    def stats: Stats = Stats(engine, puts.get, gets.get, misses.get, heads.get, lists.get, deletes.get, failures.get)
+

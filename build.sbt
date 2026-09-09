@@ -840,7 +840,8 @@ lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
   .in(file("okay-ops"))
   // okayResilience: the breaker/bulkhead/limiter Stats become /metrics rows;
   // okaySql: Pool.Stats joins them (persistence-e2e)
-  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience, okaySql)
+  // okayDocs/okayBlob: Docs.Stats and Blob.Stats join too (adapter-stats)
+  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience, okaySql, okayDocs, okayBlob)
   // a real socket for the route-level acceptance test, JVM only
   .jvmConfigure(_.dependsOn(okayJetty % Test))
   .settings(
