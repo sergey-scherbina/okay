@@ -1,5 +1,27 @@
 # Changelog
 
+## deploy-stop-grace — the rendered manifests wait for the drain
+
+service-lifecycle gave the process a drain — readiness off, a delay
+for endpoint removal, in-flight requests finished, 17 s by default —
+and no rendered manifest told its platform to wait for it. Every
+platform's default is at or under that budget (Kubernetes 30 s,
+compose 10, ECS 30), so a drain nobody waits for is a drain that does
+not happen. `Health.stopSeconds` (30) now renders wherever the target
+has a documented equivalent: `terminationGracePeriodSeconds` in the
+pod spec, `stop_grace_period` in compose, `TimeoutStopSec` in the
+systemd unit (beside the `TimeoutStartSec` already there), and
+`stopTimeout` in the ECS container definition. Azure's container app
+has no per-revision equivalent, so it renders none rather than a
+guess.
+
+No `preStop` hook, as a decision: the usual `preStop: sleep 5` recipe
+exists because the process does not handle SIGTERM, and okay-ops's
+`Signals` does — two answers to one question make a shutdown take the
+sum of both. The committed demo renderings are regenerated through
+`DemoDeploy`'s own main, and the drift test that caught them is green
+again. 1 new test.
+
 ## chunked-lexer-bookkeeping — the named residual was not it either, and the byte counts found the real one
 
 §10 had already refuted one explanation for chunked lexing's 19% gap

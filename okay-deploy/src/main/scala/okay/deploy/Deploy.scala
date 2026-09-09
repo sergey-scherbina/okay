@@ -16,10 +16,22 @@ import java.nio.file.{Files, Path}
  */
 final case class Resources(cpuRequest: String, memoryRequest: String, cpuLimit: String, memoryLimit: String)
 
-/** the probes a target wires, and how long a start may take before
- * one is believed */
+/**
+ * The probes a target wires, how long a start may take before one is
+ * believed, and how long a STOP may take before the platform kills.
+ *
+ * `stopSeconds` is the drain's budget (deploy-stop-grace): okay-ops's
+ * `Signals.awaitSignal` answers SIGTERM by turning readiness off,
+ * waiting for endpoint removal to propagate, and letting in-flight
+ * requests finish — 2 + 15 s by default. A platform that kills before
+ * that has a drain in name only, and every platform's default is at
+ * or under it (Kubernetes 30, compose 10, ECS 30). 30 is the default
+ * here because it clears 17 with room, and it is rendered wherever the
+ * target has a documented equivalent. No `preStop` hook anywhere: the
+ * process handles the signal itself.
+ */
 final case class Health(livenessPath: String = "/healthz", readinessPath: String = "/readyz",
-                        startupSeconds: Int = 30)
+                        startupSeconds: Int = 30, stopSeconds: Int = 30)
 
 /** one `COPY --from=build <from> <to>` line — `from` a glob in the
  * build stage, `to` a path in the final image */

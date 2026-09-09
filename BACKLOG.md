@@ -131,7 +131,11 @@ follows, in the spec's order:
       one resilience primitive the core already has cross-platform.
       Found by the resilience audit; not taken there because the
       module needed none of it.
-- [ ] deploy-termination-grace — the rendered Kubernetes manifest
+- [x] deploy-termination-grace — DONE 2026-09-09 (deploy-stop-grace):
+      `Health.stopSeconds` (30), rendered as Kubernetes's
+      `terminationGracePeriodSeconds`, compose's `stop_grace_period`,
+      systemd's `TimeoutStopSec` and the ECS task's `stopTimeout`; no
+      preStop (the process answers the signal). Was: the rendered Kubernetes manifest
       (okay-deploy `Cluster`) should set `terminationGracePeriodSeconds`
       above the lifecycle's delay + grace (2 + 15 s by default → 30),
       and a `preStop` is NOT needed (the process handles SIGTERM

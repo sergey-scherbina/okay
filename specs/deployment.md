@@ -1093,11 +1093,42 @@ What the port looked like before: written in `Deploy.port`, in an
 in `Need.Port(8080)`, with the setting derived. That is the whole
 claim of the file, and it is now a test.
 
+### The drain's budget (2026-09-09, deploy-stop-grace)
+
+okay-ops's `Signals.awaitSignal` answers SIGTERM by turning readiness
+off, waiting for endpoint removal to propagate, and letting in-flight
+requests finish (2 + 15 s by default). No rendered manifest told its
+platform to WAIT for that, and every platform's default is at or
+under it: Kubernetes 30 s, compose 10, ECS 30. A drain nobody waits
+for is a drain that does not happen.
+
+`Health.stopSeconds` (30) is rendered wherever the target has a
+documented equivalent, and nowhere else: `terminationGracePeriodSeconds`
+in the pod spec, `stop_grace_period` in compose, `TimeoutStopSec` in
+the unit (beside the `TimeoutStartSec` that was already there), and
+`stopTimeout` in the ECS container definition. Azure's container app
+has no per-revision equivalent to render, so it gets none rather than
+a guess.
+
+**No `preStop` hook**, and that is a decision rather than an
+omission: the usual Kubernetes recipe is `preStop: sleep 5` precisely
+because the process does NOT handle the signal, and ours does. Two
+answers to one question is how a shutdown ends up taking the sum of
+both.
+
+- [x] the pod spec carries `terminationGracePeriodSeconds` and no
+      `preStop`; a service declaring a longer drain renders a longer
+      wait
+- [x] compose, the unit and the ECS task carry their own equivalent
+- [x] the committed renderings are regenerated and the drift test
+      that caught them is green
+
 Three things the writing decided, which the spec had left open:
 
 - **`Health` and `Resources` are the ones specs/deploy.md already
-  had**, extended with `startupSeconds` and defaulted so every
-  existing render stays byte-identical. Minting a second pair with
+  had**, extended with `startupSeconds` (and later `stopSeconds`,
+  deploy-stop-grace) and defaulted so every existing render stays
+  byte-identical. Minting a second pair with
   the same meaning would have been the drift this repository has a
   rule against.
 - **A `Need` a target cannot honour is a REFUSAL, not a silence.**

@@ -37,6 +37,15 @@ into the service's route table:
 case r if Ops.routes(store).isDefinedAt(r) => Ops.routes(store)(r)
 ```
 
+Give it a `Lifecycle` too, and every rendered target already waits
+for the drain: `Health.stopSeconds` (default 30) becomes Kubernetes's
+`terminationGracePeriodSeconds`, compose's `stop_grace_period`,
+systemd's `TimeoutStopSec` and the ECS task's `stopTimeout`. No
+`preStop` hook anywhere — `Signals.awaitSignal` answers SIGTERM
+itself, and a hook would be a second answer to one question. Raise
+`stopSeconds` if your drain's budget (the readiness delay plus the
+grace) grows past it.
+
 **2. One `def main`** in the module — the class the jar runs.
 
 **3. build.sbt — one line each** for the dependency and the jar:
@@ -108,7 +117,7 @@ re-rendering, fails that test naming the file.
 | `env` | `Vector[Env(name, value)]` — container env in the chart and in compose; this is how the app is told its port, directories, keys | empty |
 | `replicas` | Deployment replicas | 1 |
 | `resources` | `Some(Resources(cpuRequest, memoryRequest, cpuLimit, memoryLimit))` | none (`resources: {}`) |
-| `health` | `Health(livenessPath, readinessPath)` — probe paths | okay-ops's `/healthz`, `/readyz` |
+| `health` | `Health(livenessPath, readinessPath, startupSeconds, stopSeconds)` — probe paths, the start's patience and the drain's budget | okay-ops's `/healthz`, `/readyz`, and `Signals.awaitSignal` |
 | `metricsPath` | `Some(path)` sets the `prometheus.io/scrape` annotation; `None` turns it off | `Some("/metrics")` |
 | `javaOpts` | inserted into the image's `java` line (`-Xmx512m`, `-Dfoo=bar`) | empty |
 

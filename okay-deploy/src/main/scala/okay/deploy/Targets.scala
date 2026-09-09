@@ -89,6 +89,8 @@ object Targets:
             sb ++= "      interval: 10s\n      retries: 5\n"
             sb ++= s"      start_period: ${s.health.startupSeconds}s\n"
           }
+          // compose kills at 10 s by default, under the drain's budget
+          sb ++= s"    stop_grace_period: ${s.health.stopSeconds}s\n"
           sb ++= "    restart: unless-stopped\n"
 
           // the needs that are containers of their own
@@ -173,6 +175,7 @@ object Targets:
                |Restart=on-failure
                |RestartSec=5
                |TimeoutStartSec=${s.health.startupSeconds}
+               |TimeoutStopSec=${s.health.stopSeconds}
                |# what a service can reach, narrowed to what it needs
                |NoNewPrivileges=true
                |PrivateTmp=true

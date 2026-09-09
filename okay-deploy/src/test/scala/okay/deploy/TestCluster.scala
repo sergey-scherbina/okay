@@ -37,6 +37,20 @@ class TestCluster extends munit.FunSuite:
   private def files(d: Deployment = shop): Map[String, String] =
     Cluster.render(d).getOrElse(fail(s"refused: ${Cluster.render(d)}")).toMap
 
+  test("the pod waits for the drain: terminationGracePeriodSeconds, and NO preStop hook") {
+    val pod = files()("templates/web-deployment.yaml")
+    // okay-ops's Signals answers SIGTERM itself (readiness off, a
+    // delay, in-flight requests finish); this only tells Kubernetes
+    // to wait for it, which its 30 s default already almost does and
+    // a shorter one would not (deploy-stop-grace)
+    assert(pod.contains("      terminationGracePeriodSeconds: 30\n"), pod)
+    assert(!pod.contains("preStop"), "the process handles the signal; a hook would be a second answer")
+
+    // a service that declares a longer drain gets a longer wait
+    val slow = shop.copy(services = Vector(web.copy(health = Health(stopSeconds = 90))))
+    assert(files(slow)("templates/web-deployment.yaml").contains("terminationGracePeriodSeconds: 90"))
+  }
+
   test("a service becomes a Deployment, a Service and a ConfigMap, one file each") {
     val f = files()
     assert(f.contains("Chart.yaml"), f.keys.toString)
