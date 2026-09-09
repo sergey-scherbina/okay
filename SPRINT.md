@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- handler-fusion-gate — specs/handler-fusion.md, Behavior "MEASURED
+  before any of the above is built": the hand-written fused
+  State+Writer loop against the nested runners, ≥ 1.3x or the
+  refutation. Claimed 2026-09-09 (.work/active/handler-fusion-gate.claim).
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

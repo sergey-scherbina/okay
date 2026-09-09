@@ -1,5 +1,39 @@
 # Backlog
 
+## handler-fusion — one composite handler for a row, staged at compile time (specs/handler-fusion.md)
+
+The operator's proposal, 2026-09-09, assessed in the spec: compose a
+row's handlers into ONE handler first, run once, stage the composite.
+Already the design for comonadic rows (Handler.union + runFree is one
+pass); the continuation-aware class (Writer/State/Throws/Choice/
+Reader.local) runs one effect at a time and rebuilds every foreign
+operation once per pass. Fold fusion (Wu & Schrijvers 2015), evidence
+passing (Xie & Leijen 2020/2021) — licensed by the initiality Free/Eff
+already claim. Order is semantics; the product state is immutable;
+compile-time inline is the ONLY staging admitted (staged-effects.md
+refuted run-time closure composition 3/3).
+
+- [ ] handler-fusion-gate — STAGE 0, the measurement gate: a
+      hand-written fused loop for `State % S + Writer % W` (one
+      @tailrec match, product accumulator, immutable) against
+      `State.handle(s)(Writer.run(p))` and the other nesting, JMH
+      µs/op AND B/op (-prof gc), N=1000, plus the three-effect row
+      (+ Throws, no abort taken). Agreement test on generated
+      programs for BOTH orders. Threshold ≥ 1.3x; below it the
+      spec's Results record the refutation and the stages below
+      are not built.
+- [ ] handler-fusion-flat — `Handler.flat`: Handler.union assembled
+      inline so the nested <|> chain unrolls to one match; measured
+      on the four-effect agent row, fourth position is the number.
+- [ ] handler-fusion-step — `Step[F, Acc]` (tail-resumptive by type)
+      and `Fused.run` over `F + G` with the row-shaped product state;
+      instances for State, Writer (Fold-generic), Reader incl. local;
+      abort/choose fall back to a shift with the state captured
+      immutably; laws: agrees with nested for both orders, stack-safe
+      at 1M, multi-shot and abort survive.
+- [ ] handler-fusion-eff — the same composite `!>` for Eff (no tree),
+      after the Free loop has its numbers.
+
 ## flush-premium — `flushAfter` costs 30% over the chunked merge where the page said 9%
 
 Found 2026-09-08 by `bench-stale-tables`, while correcting prose that
