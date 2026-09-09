@@ -1,5 +1,57 @@
 # Changelog
 
+## merge-chunked-order — a producer's own order survives the buffer swap
+
+A merge returned one source's elements as `1..16, 49, 50, 17..48`, and
+the defect was not in the merge. `Channel.apply` has built a `growing`
+buffer since 2026-09-08: a plain ring that, when a second producer
+appears, installs an `AdaptiveFifo` which ADOPTS that ring as its part
+0. Every producer was then handed a part of its own while its earlier
+elements were still sitting in part 0 — and parts drain independently,
+so a producer's later elements could be read before its earlier ones.
+
+`growing`'s own doc had given up FIFO across producers deliberately
+and kept per-producer order in the same breath. That was the promise
+being broken, and it is the one every merge rests on.
+
+Reproduced before anything was changed, with no merge, no chunks and
+no streams: two producers into `Channel[Int](4)`. The first guess —
+fibres changing carrier threads — was wrong, and plain platform
+threads, which never migrate, proved it by breaking just as hard.
+
+    two plain threads     73 / 300      merge, elementwise  21 / 500
+    two virtual threads  225 / 300      merge, chunked      11 / 500
+    two fibres           117 / 300
+
+One producer alone breaks nothing: it takes two to partition the
+buffer at all, which is exactly why no law had caught it.
+
+THE ADOPTED PART IS READ FIRST while it holds anything. Everything in
+it was pushed before anything in a part opened after it, so taking it
+first restores each producer's order and no producer waits for it. Two
+earlier attempts are recorded in the code with what refuted each:
+making the producer wait instead broke an existing law (a producer
+that had pushed nothing into the ring cannot be told from one that
+had), and a one-shot barrier lifting on the first empty still let one
+element in 400 land behind its own successors. The adopted part is
+also nobody's home now — its former owner included, and the
+wrap-around that shares parts when they run out no longer hands it
+out — because a producer pinned there refills the part the rule reads
+first.
+
+Afterwards: 0 in 2000 rounds on every probe, and all five merge shapes
+0 in 500. Cost: none the lane can see (`ManyProducersBenchmark`, 16
+producers, minimum of the rounds whose untouched control lane held —
+102.9us with the rule against 114.7 without; the first A/B was thrown
+away because that control had moved 75%).
+
+WHY IT SHIPPED, and both halves are closed. `TestChannelLaws` carries
+the note "add a mechanism here and it must answer for the whole
+contract" — and `growing`, the default, was never added to that list.
+Its order law also used ONE producer. The default now answers for
+every law, the law sends from two, and four more laws state the rule
+directly, each proved red with the fix off.
+
 ## native-runner-cause — the Native runner was not killed: it exited 0, and the whole exit map is now measured
 
 BACKLOG's `native-runner-error` had read three red gates in one day as
