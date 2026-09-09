@@ -34,6 +34,19 @@ trait Bulk[D[_]]:
   /** a header-first CSV file as named fields, read the platform's way */
   def csv(path: String): D[Csv.Row]
 
+  /**
+   * The same, keeping only these columns — where the platform can prune
+   * at the parser (Spark) it does; the default reads everything and
+   * drops after. A DEFAULT, so an instance that never heard of pruning
+   * still compiles: the seam grows by a capability, not by a demand.
+   */
+  def csv(path: String, columns: Option[Set[String]]): D[Csv.Row] =
+    columns.fold(csv(path))(cs => map(csv(path))(row => row.filter((k, _) => cs(k))))
+
+  /** what a source is worth in bytes, when the platform can tell —
+   * the estimate a plan rewrite orders joins by (specs/bulk.md) */
+  def size(path: String): Option[Long] = None
+
   def map[A, B](d: D[A])(f: A => B): D[B]
   def flatMap[A, B](d: D[A])(f: A => IterableOnce[B]): D[B]
   def filter[A](d: D[A])(p: A => Boolean): D[A]
@@ -69,9 +82,13 @@ object Bulk:
    * file becomes lines (scala-jvm supplies `java.nio`; another platform
    * supplies its own). Sources are deferred, so every run re-reads.
    */
-  def local(lines: String => Iterator[String]): Bulk[Chunks] = new Bulk[Chunks]:
+  def local(lines: String => Iterator[String], bytes: String => Option[Long] = _ => None): Bulk[Chunks] = new Bulk[Chunks]:
     def of[A](xs: Iterable[A]): Chunks[A] = Chunks.defer(Chunks.fromIterator(xs.iterator))
     def csv(path: String): Chunks[Csv.Row] = Chunks.defer(Chunks.fromIterator(Csv.rows(lines(path))))
+    /** pruned at the parser: the dropped columns are never put in a Map */
+    override def csv(path: String, columns: Option[Set[String]]): Chunks[Csv.Row] =
+      Chunks.defer(Chunks.fromIterator(Csv.rows(lines(path), columns)))
+    override def size(path: String): Option[Long] = bytes(path)
     def map[A, B](d: Chunks[A])(f: A => B): Chunks[B] = Chunks.map(d)(f)
     def flatMap[A, B](d: Chunks[A])(f: A => IterableOnce[B]): Chunks[B] =
       Chunks.defer(Chunks.fromIterator(d.elements.flatMap(f)))
@@ -118,9 +135,14 @@ object Csv:
     out += cur.result()
     out.result()
 
-  /** lines to rows: the first line names the columns (a BOM is stripped) */
-  def rows(lines: Iterator[String]): Iterator[Row] =
+  /** lines to rows: the first line names the columns (a BOM is stripped);
+   * `keep` prunes at the parser — a dropped column never enters a Map */
+  def rows(lines: Iterator[String], keep: Option[Set[String]] = None): Iterator[Row] =
     if !lines.hasNext then Iterator.empty
     else
       val header = fields(lines.next().stripPrefix("﻿"))
-      lines.filter(_.nonEmpty).map(l => header.iterator.zip(fields(l).iterator).toMap)
+      val wanted = keep.fold(header.indices)(cs => header.indices.filter(i => cs(header(i))))
+      lines.filter(_.nonEmpty).map { l =>
+        val fs = fields(l)
+        wanted.iterator.collect { case i if i < fs.length => header(i) -> fs(i) }.toMap
+      }

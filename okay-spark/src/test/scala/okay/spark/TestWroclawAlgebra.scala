@@ -58,9 +58,14 @@ final case class Service(from: Long, to: Long, days: Vector[Boolean]):
  */
 object Gtfs:
   def departures(file: String => String): Table[Dep] ! Tables = direct {
-    val stopTimes = !read(file("stop_times.txt")).select(r => r("trip_id") -> r("departure_time"))
-    val trips = !read(file("trips.txt")).select(r => r("trip_id") -> (r("route_id"), r("service_id")))
-    val routes = !read(file("routes.txt")).select(r => r("route_id") -> (r("route_type2_id").toInt == 31))
+    // `columns` is structural, so the rewrite pushes it into the read and
+    // the platform prunes at the parser; `select` is a function, opaque
+    val stopTimes = !read(file("stop_times.txt")).columns("trip_id", "departure_time")
+      .select(r => r("trip_id") -> r("departure_time"))
+    val trips = !read(file("trips.txt")).columns("trip_id", "route_id", "service_id")
+      .select(r => r("trip_id") -> (r("route_id"), r("service_id")))
+    val routes = !read(file("routes.txt")).columns("route_id", "route_type2_id")
+      .select(r => r("route_id") -> (r("route_type2_id").toInt == 31))
     val calendar = !read(file("calendar.txt")).select { r =>
       val days = Vector("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday").map(r(_) == "1")
       r("service_id") -> Service(epochDay(r("start_date")), epochDay(r("end_date")), days)
@@ -112,11 +117,12 @@ class TestWroclawAlgebra extends munit.FunSuite:
   lazy val spark: SparkSession = SparkSession.builder()
     .master("local[4]").appName("okay-wroclaw-algebra")
     .config("spark.ui.enabled", "false")
+    .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") // persist is serialization; Java's cost 18 s here
     .getOrCreate()
 
   override def afterAll(): Unit = if !munitIgnore then spark.stop()
 
-  val sparkBulk: Bulk[SparkBulk.Rows] = SparkBulk(spark)
+  val sparkBulk = SparkBulk(spark)
   val localBulk: Bulk[Chunks] = okay.localBulk
 
   // ---------------------------------------------------------------- the algebra
@@ -180,7 +186,10 @@ class TestWroclawAlgebra extends munit.FunSuite:
 
   lazy val onSpark =
     val t0 = System.nanoTime()
-    val r = State.run(Tables.Heap.empty[SparkBulk.Rows])(SparkBulk.sort(Tables.via(sparkBulk)(analysis(file))))._2
+    val plans = scala.collection.mutable.ListBuffer.empty[String]
+    val r = State.run(Tables.Heap.empty[SparkBulk.Rows])(sparkBulk.sort(Tables.via(sparkBulk, p => plans += Tables.Plan.show(p))(analysis(file))))._2
+    // the deepest plan forced is the departures' lineage — printed after the rewrite, as Spark ran it
+    println("  the plan Spark ran, after the rewrite:\n" + plans.maxBy(_.linesIterator.size).linesIterator.map("    " + _).mkString("\n"))
     println(f"  spark: ${r._1}%,d scheduled departures, the whole analysis in ${(System.nanoTime() - t0) / 1000000}%,d ms")
     r
   lazy val local =

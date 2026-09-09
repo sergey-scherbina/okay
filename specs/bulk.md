@@ -93,10 +93,39 @@ Tables.run(SparkBulk(spark))(prog); Tables.run(localBulk)(prog)   // the same va
   program that sorts says so in its type, `! (Tables + Sort)`, and a
   platform that has not been told about `Sort` refuses that program at
   ITS run site — nothing else in the build moves.
-- **A plan is data.** `!.tracing` prints the operations before any of
-  them runs (`Of Select Of Join Select Aggregate`), and the rewrite that
-  `bulk-join-cost` asks for — project before the join — is a walk over
-  the same data. Filed, not done.
+- **A plan is data — and since bulk-plan, ALL of it.** A `Free`
+  continuation is a function, so the effect alone could see one
+  operation at a time (`!.tracing` records them by running a handler).
+  The heap therefore holds PLANS: a building operation (`Read`,
+  `Columns`, `Select`, `Expand`, `Where`, `Join`, `Of`) puts a node of
+  the first-order `Tables.Plan` tree on the heap and runs nothing; an
+  action (`Cache`, `Aggregate`, `Collect`) forces the table it names,
+  and at that moment the table's whole lineage is one tree —
+  `Plan.optimize` rewrites it, `Heap.compile` turns it into `D` through
+  the instance, and only then does the platform run. A native extension
+  forces its child and holds the result (`Plan.Held`): a materialised
+  boundary, and the rewrite scope is per forced tree.
+- **Two rewrites, both measured (bulk-plan, 2026-09-09, A/B in one
+  run).** (1) `Columns` is a STRUCTURAL projection — names, not a
+  function — so `Columns(Read(p))` becomes `Read(p, cols)` and the
+  platform prunes at the parser: `Bulk.csv(path, columns)` is a default
+  method (an instance that never heard of pruning still compiles), the
+  local instance never puts a dropped column in a Map, Spark selects
+  before `.rdd`. stop_times ⋈ trips: Spark 2.5 → 1.3 s, local 1.9 →
+  0.95 s. A `Columns` above a `Select` stays where it is: a function is
+  opaque, and a rewrite that guessed through one would be wrong
+  silently. (2) A join whose left side `Plan.estimate` finds smaller
+  than its right is turned around and its answer turned back
+  (`turned`, typed, no cast), so the small side is the one a platform
+  hashes or broadcasts; the estimate is `Bulk.size(path)` for a read, a
+  count for an `Of`, the child's for a step, the larger for a join,
+  unknown for a held table — and unknown means no guess. Three joins
+  written small-side-left: Spark 5.0 → 2.6 s, local 3.3 → 2.2 s.
+- **What the rewrite is NOT.** Not Catalyst: the tree carries opaque
+  functions, and the two rules are the two that need none. Broadcast
+  itself stays the instance's decision at `join` (bulk-rewrite), made
+  with the RDD in hand; the rewrite only makes sure the small side is
+  where that decision can see it.
 - **Direct style.** `derives Effect` registers the signature, so inside
   `direct { }` a mark (`!prog`) binds a handle: `val deps = !departures.cache`.
   A mark takes the block's own row exactly — a `! Tables` program in a
@@ -122,6 +151,12 @@ Tables.run(SparkBulk(spark))(prog); Tables.run(localBulk)(prog)   // the same va
       locally and natively on Spark, to the same top-3
 - [x] the Wrocław analysis as ONE program over `Tables + Sort`, run on
       Spark and in one JVM to equal departures, hours and sorted minutes
+- [x] bulk-plan: `Columns` over `Read` prunes at the parser; two
+      projections intersect; a projection above a function stays; a
+      join with the smaller estimated left side is turned and its answer
+      turned back, equal to the join as written; unknown sizes are not
+      guessed (TestPlan); the rewrite measured A/B on both platforms
+      (TestWroclawStages)
 
 ## Out of scope
 - Flink: `flink-core` alone carries no DataStream, so no instance yet;

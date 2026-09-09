@@ -88,3 +88,13 @@ revenue(using okay.localBulk)     // one JVM, the same answer
   see build.sbt).
 - Floating-point merges drift by split point: assert with tolerances,
   relative ones for wide value ranges.
+- `SparkBulk(spark)` is a class: the `Bulk` instance and its native
+  `sort` together. `csv(path, columns)` selects before `.rdd`, which is
+  where a `columns(...)` in the program ends up after the plan rewrite
+  (2.5 → 1.3 s on stop_times ⋈ trips); `size(path)` is the file's
+  length, the estimate the rewrite orders join sides by.
+- `SparkBulk.join` broadcasts a right side of up to `broadcastRows`
+  (100 000) rows, found by a bounded `take`; larger ones shuffle. And
+  `cache` is serialization: set `spark.serializer` to Kryo, or a persist
+  of a few million boxed elements costs more than the build did (the
+  Wrocław demo: 18 s with Java serialization, 4.3 s with Kryo).

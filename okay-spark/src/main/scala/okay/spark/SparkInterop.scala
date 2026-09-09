@@ -71,8 +71,29 @@ object SparkBulk:
   /** the one cast: an element of `Rows[A]` is an `A` by construction */
   private inline def elem[A](x: Any): A = x.asInstanceOf[A]
 
-  def apply(spark: SparkSession): okay.Bulk[Rows] = new okay.Bulk[Rows]:
+  /** right sides up to this many rows are broadcast rather than shuffled */
+  val broadcastRows: Int = 100_000
+
+  def apply(spark: SparkSession): SparkBulk = new SparkBulk(spark)
+
+  final class SparkBulk(spark: SparkSession) extends okay.Bulk[Rows]:
     def of[A](xs: Iterable[A]): Rows[A] = spark.sparkContext.parallelize(xs.toSeq)
+
+    /** what the plan rewrite orders joins by: the file, when it is one */
+    override def size(path: String): Option[Long] =
+      val f = new java.io.File(path)
+      Option.when(f.isFile)(f.length)
+
+    /** pruned at the PARSER: Spark's CSV reader only materialises the
+     * columns selected, which is what the rewrite pushed down for */
+    override def csv(path: String, columns: Option[Set[String]]): Rows[okay.Csv.Row] = columns match
+      case None => csv(path)
+      case Some(cs) =>
+        val all = spark.read.option("header", "true").csv(path)
+        val keep = all.columns.filter(c => cs(c.stripPrefix("﻿")))
+        val df = all.select(keep.map(org.apache.spark.sql.functions.col)*)
+        val names = keep.map(_.stripPrefix("﻿")).toVector
+        df.rdd.map(r => names.iterator.zip(r.toSeq.iterator.map(v => if v == null then "" else v.toString)).toMap)
 
     /** Spark's own CSV reader, the header as names; a BOM on the first
      * column is stripped, an absent value is the empty string */
@@ -85,10 +106,25 @@ object SparkBulk:
     def flatMap[A, B](d: Rows[A])(f: A => IterableOnce[B]): Rows[B] = d.flatMap(x => f(elem[A](x)))
     def filter[A](d: Rows[A])(p: A => Boolean): Rows[A] = d.filter(x => p(elem[A](x)))
 
+    /**
+     * A small right side is BROADCAST, a large one shuffled — the
+     * decision Spark SQL makes by size, made here by a bounded probe
+     * (`take(broadcastRows + 1)` scans only until it has seen enough).
+     * Measured on the Wrocław GTFS (bulk-rewrite, 2026-09-09): the
+     * three joins of 1.16M stop times against 42k trips, 138 routes and
+     * 4 calendar rows cost 3.6 s shuffled and are the reason the seam's
+     * build read slower than the DataFrame one; each of those right
+     * sides fits the probe, and a map-side join shuffles nothing.
+     */
     def join[K, A, B](l: Rows[(K, A)], r: Rows[(K, B)]): Rows[(K, (A, B))] =
       val lp: RDD[(Any, Any)] = l.map(x => elem[(Any, Any)](x))
-      val rp: RDD[(Any, Any)] = r.map(x => elem[(Any, Any)](x))
-      RDD.rddToPairRDDFunctions(lp).join(rp).map(x => x)
+      val probe = r.take(broadcastRows + 1)
+      if probe.length <= broadcastRows then
+        val small = spark.sparkContext.broadcast(probe.iterator.map(elem[(Any, Any)]).toSeq.groupMap(_._1)(_._2))
+        lp.flatMap((k, a) => small.value.getOrElse(k, Nil).iterator.map(b => (k, (a, b)): Any))
+      else
+        val rp: RDD[(Any, Any)] = r.map(x => elem[(Any, Any)](x))
+        RDD.rddToPairRDDFunctions(lp).join(rp).map(x => x)
 
     def cache[A](d: Rows[A]): Rows[A] = d.persist(org.apache.spark.storage.StorageLevel.MEMORY_AND_DISK)
 
@@ -101,22 +137,24 @@ object SparkBulk:
     def toChunks[A](d: Rows[A]): okay.Chunks[A] =
       okay.Chunks.fromIteratorWith(d.toLocalIterator.map(elem[A]))(okay.ChunkBuf.factory[A](64))(64)
 
-  /**
-   * `Sort` answered NATIVELY (specs/bulk.md, the effect layer): Spark's
-   * own sort over the same heap `Tables.via` threads. Nothing in the
-   * `Tables` handler knows this exists — both translate into the same
-   * `State % Heap[Rows]`, which is how an operation joins a platform
-   * without joining the platform's contract. Keys travel as `Any` like
-   * elements do, and come back through the same `elem`.
-   */
-  def sort[A, F[+_]](p: A ! (okay.Sort + F)): A ! (okay.State % okay.Tables.Heap[Rows] + F) =
-    import okay.RowLift.plus
-    def sorted[X, K](h: okay.Tables.Heap[Rows], t: okay.Tables.Table[X], key: X => K, ord: Ordering[K])
-    : (okay.Tables.Table[X], okay.Tables.Heap[Rows]) =
-      val keyed: RDD[(Any, Any)] = h.get(t).map(x => (key(elem[X](x)): Any, x))
-      val byKey = Ordering.fromLessThan[Any]((a, b) => ord.lt(elem[K](a), elem[K](b)))
-      h.put[X](RDD.rddToOrderedRDDFunctions(keyed)(using byKey, scala.reflect.ClassTag.Any, scala.reflect.ClassTag.Any)
-        .sortByKey().values)
-    okay.!.interpret(p):
-      [X] => (e: okay.Sort[X]) => e match
-        case okay.Sort.By(t, key, ord) => okay.State.update[okay.Tables.Heap[Rows], X](h => sorted(h, t, key, ord)).plus[F]
+    /**
+     * `Sort` answered NATIVELY (specs/bulk.md, the effect layer): Spark's
+     * own sort over the same heap `Tables.via` threads. Nothing in the
+     * `Tables` handler knows this exists — both translate into the same
+     * `State % Heap[Rows]`, which is how an operation joins a platform
+     * without joining the platform's contract. The child is FORCED
+     * (rewritten and compiled) here, and the sorted RDD is held: a
+     * native operation is a materialised boundary in the plan. Keys
+     * travel as `Any` like elements do, and come back through `elem`.
+     */
+    def sort[A, F[+_]](p: A ! (okay.Sort + F)): A ! (okay.State % okay.Tables.Heap[Rows] + F) =
+      import okay.RowLift.plus
+      def sorted[X, K](h: okay.Tables.Heap[Rows], t: okay.Tables.Table[X], key: X => K, ord: Ordering[K])
+      : (okay.Tables.Table[X], okay.Tables.Heap[Rows]) =
+        val keyed: RDD[(Any, Any)] = h.force(t)(this).map(x => (key(elem[X](x)): Any, x))
+        val byKey = Ordering.fromLessThan[Any]((a, b) => ord.lt(elem[K](a), elem[K](b)))
+        h.hold[X](RDD.rddToOrderedRDDFunctions(keyed)(using byKey, scala.reflect.ClassTag.Any, scala.reflect.ClassTag.Any)
+          .sortByKey().values)
+      okay.!.interpret(p):
+        [X] => (e: okay.Sort[X]) => e match
+          case okay.Sort.By(t, key, ord) => okay.State.update[okay.Tables.Heap[Rows], X](h => sorted(h, t, key, ord)).plus[F]
