@@ -83,12 +83,16 @@ class TestResilienceTimed extends munit.FunSuite {
   }
 
   test("limiter: with a wait budget the caller parks for the refill instead of being refused") {
-    val l = Limiter("slow", ratePerSecond = 50, burst = 1, maxWaitMillis = 100)
+    // the limiter's clock is FROZEN, so the bucket cannot refill behind
+    // the test's back however slow the box is: the second call always
+    // owes a 20 ms park, and `delayed` says it happened. No wall-clock
+    // assertion — resilience-timed-flake: one read 0 ms under five
+    // sibling sbts, because the real clock had refilled the bucket
+    // between the two calls.
+    val l = Limiter("slow", ratePerSecond = 50, burst = 1, maxWaitMillis = 100, clock = () => 0L)
     assertEquals(run(l.admit()(okay.async(1))), 1)
-    val order = new java.util.concurrent.ConcurrentLinkedQueue[Int]()
-    val t0 = System.nanoTime()
-    assertEquals(run(l.admit()(okay.async { order.add(2); 2 })), 2)   // ~20 ms later
-    assert((System.nanoTime() - t0) / 1_000_000 >= 15, "the second call did not wait for its token")
+    assertEquals(l.stats.delayed, 0L)
+    assertEquals(run(l.admit()(okay.async(2))), 2)   // parks ~20 ms on the platform timer
     assertEquals(l.stats.delayed, 1L)
     assertEquals(l.stats.rejected, 0L)
   }

@@ -5256,6 +5256,13 @@ this with one, not with a rearrangement of layers.
 
 ## resilience-timed-flake — a wall-clock assertion in the default gate
 
+DONE 2026-09-09 (resilience-http): the second route. The mechanism was
+the opposite of "too slow": under load the two calls were more than
+20 ms apart, the REAL clock had refilled the bucket, and the second
+call never parked — elapsed read 0. The limiter now takes a frozen
+clock in that test, so the park is owed whatever the box is doing,
+and `stats.delayed` is the assertion; the elapsed check is gone.
+
 `okay.resilience.TestResilienceTimed`, "limiter: with a wait budget
 the caller parks for the refill instead of being refused", asserts
 

@@ -20,7 +20,11 @@ continuation escape, so the breaker never counted such failures. Both
 fixed and pinned. The two-hop deadline test corrected the spec's own
 wording: a relative header charges work, not transit. Eleven latent
 warnings in okay-ops's tests, hidden by warm compiles, surfaced with
-the new dependency and are fixed. 9 new tests.
+the new dependency and are fixed. 9 new tests. Also closes
+`resilience-timed-flake`, filed by grant-vacuity mid-lane: the timed
+limiter test's wall-clock assertion failed under five sibling sbts
+because the real clock refilled the bucket between the calls; it now
+freezes the limiter's clock and asserts `delayed`, not milliseconds.
 ## grant-vacuity — the last test that had stopped testing what it says
 
 The sweep `grant-unenforced` implied, done: one explicit coloring
