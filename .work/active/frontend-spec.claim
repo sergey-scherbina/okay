@@ -1,0 +1,26 @@
+task: frontend-spec
+agent: fable-frontend
+started: 2026-09-09
+branch: feature/frontend-spec
+worktree: ../okay-wt-frontend
+spec: specs/frontend.md (draft, this claim writes it)
+
+why: the operator's direction (2026-09-09): okay's frontend support
+  must be ideal — the logic of a frontend defined by the structure of
+  the application, not by the rendering technology; and a DYNAMIC
+  native frontend, where the client is as dumb as a browser and the
+  server changes all logic without a client update, over a protocol
+  that depends on neither side. Answers given: thin clients in the
+  platform's own language count (Scala hosts still out of the box);
+  two vocabulary levels, semantic and layout, both first-class; hybrid
+  from the start — no round trip per keystroke.
+
+what: the spec only — the protocol as a first-class artifact (hello /
+  vocab negotiation, lowering on the server, Submitted as the form's
+  one typed event, the closed Local set), the staged plan, the laws
+  each stage must prove. No code in this claim; each stage is its own
+  claim later.
+
+predict: most of specs/ui.md survives unchanged; what changes is the
+  wire (a handshake, lowering, Submitted) and the tree (Box with
+  weights, style tokens, Image, Scroll, Form/List/Table/Tabs/Modal).
