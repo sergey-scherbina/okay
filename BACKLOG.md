@@ -22,7 +22,11 @@ operator asked for the four things left under it, in this order:
       one exists (boxed for primitives), `Typeable` as the fallback,
       by given priority. Gate: B/op on `fusedSWr` drops by ~16 B per
       tell; TestRowIdentity's two-Writers row still misroutes loudly.
-- [ ] eff-stack-safety — `Eff` is not stack-safe on left-nested binds
+- [x] eff-stack-safety — DONE 2026-09-09: `Cont.Defer` + a deferring
+      `Eff.flatMap`; a million left-nested binds run; cost +11% B/op,
+      ~+14% time on Eff's right-nested path, kept with the reasoning and
+      the one-line revert in specs/eff-stack-safety.md. Was: `Eff` is not
+      stack-safe on left-nested binds
       (the Church encoding calls inward once per bind before any Cont
       exists). Measure the depth at which it dies, decide between a
       trampoline in `Eff.flatMap` (if one exists that is not "reify to

@@ -253,8 +253,8 @@ is the row that motivated `Handler.union` in the first place.
 `!>` built the same inline way (flat dispatch + product state carried
 in the answer type, i.e. `S = Acc => (Acc, A)` for the step members)
 runs it in one pass with no tree. That is stage 3, after the `Free`
-loop has the numbers, because `Eff` is not stack-safe on left-nested
-binds and the fused loop's first job is to keep `runFree`'s bar.
+loop has the numbers, because `Eff` was not stack-safe on left-nested
+binds (it is since specs/eff-stack-safety.md) and the fused loop's first job is to keep `runFree`'s bar.
 
 ## Decisions
 
@@ -397,7 +397,8 @@ removes that. So the order changes; the numbers, not the plan, decide:
   right-nested 16.7 µs (staged-effects.md measured 1.6–1.9x for this
   shape). Laws as stage 0: agreement with the nested `Free` runners for
   both orders, aborts included. Stated limit, in the spec before the
-  code: `Eff` is not stack-safe on left-nested binds, so this is the
+  code: `Eff` was not stack-safe on left-nested binds (fixed later the
+  same day, specs/eff-stack-safety.md), so this was the
   road for for-comprehension-shaped programs; `foldLeft`-built ones
   stay on `Free`.
 - Stages 1–2 (`Step`/`Fused.run` over `Free`, `Handler.flat`) stay

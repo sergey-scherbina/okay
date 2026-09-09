@@ -457,8 +457,9 @@ given Effects[Free] with
  * reenact the history, and "Free and Eff agree" is the claim that the
  * two papers describe one thing. Choose Eff when the program is a
  * pipeline: built once and run, the handler fusing into the closures
- * with no tree materialized at all. (Unlike Free, Eff is not
- * stack-safe on a left-nested flatMap, and cannot be stepped.)
+ * with no tree materialized at all. (Unlike Free, Eff cannot be
+ * stepped. It IS stack-safe on any bind shape since eff-stack-safety:
+ * a bind defers the inner application into Cont's runner.)
  */
 type Eff[F[+_], A] = [S] => F !> S => A /> S
 
@@ -477,8 +478,12 @@ given Effects[Eff] with
     [S] => (h: F !> S) => h(e)
 
   extension [F[+_], A](m: Eff[F, A])
+    // the inner application is DEFERRED into the Cont runner's loop
+    // (specs/eff-stack-safety.md): applying a left-nested chain to its
+    // handler no longer calls inward once per bind before any Cont
+    // exists, which is where a million binds used to overflow
     override inline def flatMap[B](f: A => Eff[F, B]): Eff[F, B] =
-      [S] => (h: F !> S) => m[S](h).flatMap(a => f(a)[S](h))
+      [S] => (h: F !> S) => Cont.defer(() => m[S](h))(a => f(a)[S](h))
     override inline def foldCont[S](h: F !> S): A /> S = m[S](h)
     /** Eff is committed to Cont; changing the carrier reifies the tree first */
     override inline def foldIn[C[_, _, _], S](h: Interpr[F, C, S])(using Control[C]): C[A, S, S] =

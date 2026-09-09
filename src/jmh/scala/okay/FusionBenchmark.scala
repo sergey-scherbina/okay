@@ -77,6 +77,13 @@ class FusionBenchmark {
   @Benchmark
   def effSWr(): Int = Fused.runEff(0)(effR)._2
 
+  /** the left-nested twin as Eff: the shape that overflowed before
+   * eff-stack-safety; priced beside the right-nested one */
+  var effL: Eff[SW, Int] = scala.compiletime.uninitialized
+
+  @Benchmark
+  def effSW(): Int = Fused.runEff(0)(effL)._2
+
   @Benchmark
   def ctrlContSWr(): Int = Fused.runCtrl[Cont, Int, String, Int](0)(h => rightCtrl[Cont](h)(0, 0))._2
 
@@ -86,6 +93,14 @@ class FusionBenchmark {
   @Setup
   def up(): Unit =
     effR = rightEff(0, 0)
+    effL =
+      val E = Effects[Eff]
+      (0 until N).foldLeft(E.pure[SW, Int](0)): (m: Eff[SW, Int], i) =>
+        E.flatMap[SW, Int](m): acc =>
+          (i % 3) match
+            case 0 => E.flatMap[SW, Int](E.perform[SW, Int](State.Get()))(x => E.pure(acc + x))
+            case 1 => E.flatMap[SW, Int](E.perform[SW, Int](State.Set(i)))(x => E.pure(acc + x))
+            case _ => E.flatMap[SW, Unit](E.perform[SW, Unit](Writer.Say("w")))(_ => E.pure(acc + 1))
     swR = rightSW(0, 0)
     sw = (0 until N).foldLeft(pure[SW, Int](0)): (m, i) =>
       m.flatMap: acc =>

@@ -26,31 +26,32 @@ Nothing public changes shape. Added, in `Cont`:
 
 ```scala
 /** a deferred computation: the runner unfolds it in its own loop */
-case Suspend[A, S, R](thunk: () => Cont[A, S, R]) extends Cont[A, S, R]
+case Defer[A, B, S, T, R](thunk: () => Cont[A, T, R], f: A => Cont[B, S, T]) extends Cont[B, S, R]
 ```
 
 and `Eff.flatMap` becomes
 
 ```scala
-[S] => h => Cont.Suspend(() => m[S](h)).flatMap(a => f(a)[S](h))
+[S] => h => Cont.defer(() => m[S](h))(a => f(a)[S](h))
 ```
 
-so that applying a program to a handler returns at once (a `Suspend`
-under a `Bind`), and the inward applications happen inside `/`'s
-loop, one per iteration, with `Bind(Bind(Suspend, f), g)` rotated
-exactly as `Bind(Bind(a, f), g)` is today.
+so that applying a program to a handler returns at once (one `Defer`
+node: a bind whose left side is a thunk), and the inward applications
+happen inside `/`'s loop, one per iteration, with `Bind(Defer(t, f), g)`
+rotated into `Defer(t, f andThen flatMap g)` exactly as `Bind(Bind(a, f), g)`
+is today.
 
 ## Behavior
 
-- [ ] a left-nested chain of 1 000 000 `Eff` binds runs on the default
+- [x] a left-nested chain of 1 000 000 `Eff` binds runs on the default
       test stack (TestEffects), and a right-nested one still does.
-- [ ] `Free` and `Eff` agree on both shapes (`fromFree[Eff]` of the
+- [x] `Free` and `Eff` agree on both shapes (`fromFree[Eff]` of the
       Free chain answers what the Free chain answers).
-- [ ] `Cont`'s own laws are unchanged: the `Control[Cont]` suite and
+- [x] `Cont`'s own laws are unchanged: the `Control[Cont]` suite and
       every existing test green; `Suspend` never reaches user code (no
       public constructor of it is needed; `flatMap`/`map` on a
       `Suspend` build a `Bind`, as on any non-`Shift`).
-- [ ] MEASURED: `FusionBenchmark.effSWr` (right-nested, 23.5 µs /
+- [x] MEASURED: `FusionBenchmark.effSWr` (right-nested, 23.5 µs /
       297 897 B/op today) does not regress; a new left-nested `Eff`
       lane exists and runs. Prediction: right-nested moves LITTLE
       either way — a `Suspend` replaces nothing on the hot path but
@@ -79,3 +80,36 @@ exactly as `Bind(Bind(a, f), g)` is today.
   only `flatMap`'s body defers. `pure` and `perform` stay eager (a
   `Cont.Pure` / the handler's answer), so a program with no binds costs
   what it did.
+
+## Results
+
+2026-09-09, FusionBenchmark, box at load 10–48, minima over 3 forks;
+B/op from -prof gc, load-proof. Baselines are stage B's (23.5 µs /
+297 897 B/op for `effSWr`).
+
+| lane | before | Suspend node under a Bind | ONE Defer node |
+|---|---|---|---|
+| `effSWr` (right-nested, 1 000 ops) B/op | 297 897 | 345 888 (+48/bind) | **329 888 (+32/bind)** |
+| `effSWr` µs, same-run `fusedSWr` as load reference | 23.5 (ref 13.7) | 30.2 (ref 17.2) | **29.2 (ref 14.9)** |
+| `effSW` (LEFT-nested, 1 000 ops) | ran (1M did not) | 56.9 / 641 137 | **56.0 / 609 137** |
+| a million left-nested binds | StackOverflowError | runs | **runs** |
+
+The prediction "moves little" was wrong: deferring costs the fast
+right-nested path the thunk and a node it did not have — the eager
+path fused each bind into the previous `Shift`'s closure (56 B), the
+deferred one is a `Defer` plus, at run, the `Bind(Shift, f)` closure
+(≈80 B). Two shapes were measured and the single-node one kept: +11%
+allocation, ~+14% time load-adjusted on `Eff`'s right-nested path.
+
+**Decision, stated so it can be reversed in one line:** kept. `Eff`
+is stack-safe on any bind shape from here, at that price. The
+reasoning: the overflow was silent and shape-dependent (a
+`foldLeft`-built program of 100 000 binds dies, a for-comprehension
+of the same size runs), which is the kind of footgun this library
+refuses elsewhere; `Free` already exists for anyone who needs the
+last 11% AND stack safety; and stage B measured `Eff` at 0.58x of
+the fused Free loop for stateful rows before this change, so the
+"speed encoding" argument for keeping the tax off was already weak.
+If a consumer's pipeline is right-nested and hot, the revert is
+`Cont.defer(() => m[S](h))(…)` → `m[S](h).flatMap(…)`.
+

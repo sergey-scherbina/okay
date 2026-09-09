@@ -1,5 +1,27 @@
 # Changelog
 
+## eff-stack-safety — a million left-nested Eff binds run; the price is stated and kept
+
+`Eff` overflowed on a LEFT-nested chain between 10 000 and 100 000
+binds while a right-nested one ran at a million (measured first, a
+scratch probe). The cause is exact: applying a Church-encoded program
+to its handler called inward once per bind before any `Cont` existed,
+none of those calls a tail call. The fix defers that call into
+`Cont`'s own runner: a private `Defer` node — a bind whose left side
+is a thunk — forced inside `/`'s loop one per iteration and rotated
+like any `Bind`; `Eff.flatMap` builds one instead of applying the
+inner program eagerly. `Cont.defer` is the single door; nothing else
+in the tree matches on `Cont`'s constructors (checked).
+
+Two shapes measured, one kept: a `Suspend` node under a `Bind` cost
+the right-nested fast path 48 B per bind; the single `Defer` node
+costs 32 — +11% allocation, ~+14% time load-adjusted on `effSWr`.
+Kept, with the reasoning in the spec: a silent, shape-dependent
+overflow is the footgun this library refuses elsewhere, `Free` is
+there for the last 11%, and stage B had already measured `Eff` at
+0.58x of the fused Free loop for stateful rows. The revert is one
+line and the spec names it. Laws: a million binds in both shapes,
+`Free`/`Eff` agreement, every existing suite. Three history rows.
 ## di-bridges — ZLayer and Guice, the same seam as Spring
 
 specs/di.md stage 2, the other two containers the operator named. In
