@@ -1,0 +1,18 @@
+task: intent-spans
+agent: claude-code (session 011bEm62FX2VJERSK7qLZjBs)
+started: 2026-09-09
+heartbeat: 2026-09-09T20:40:00Z
+status: in-progress
+branch: feature/intent-spans
+worktree: ../okay-wt-spans
+spec: specs/intent-spans.md — typed spans from token vectors, and the encoder that keeps them
+
+why: okay-chat measured (its specs/meaning.md, 317 live turns) that the
+  production encoder's TOKEN vectors — which mean pooling throws away —
+  find the place and the time of a message at 93% / 86% agreement with
+  hand-written extractors and find what those cannot name, with no fitting.
+  Three things it needs from the platform: a Token (a vector with a
+  location) in okay-rag; a Spans tier in okay-intent, pure, fitted from
+  prototypes embedded IN CONTEXT, shipped as data through Fitted; and an
+  okay-onnx module (operator's name) — the direct ONNX session that gives
+  the pooled vector and the token vectors from ONE forward pass.
