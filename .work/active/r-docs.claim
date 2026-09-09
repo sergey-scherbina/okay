@@ -1,0 +1,20 @@
+task: r-docs
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T18:56:32Z
+status: in-progress
+branch: feature/r-docs
+worktree: ../okay-wt-rdocs
+spec: docs/modules/okay-r.md (the module page), specs/r.md is the source
+
+why: today's four lanes (r-finish, r-measure-harden,
+  r-frame-columnar-wire) changed what the module IS, and the page
+  documents a promise instead — it already claims a Schema frame
+  mapping that only landed this afternoon, and says nothing about the
+  timeout, verify-at-start or the columnar wire.
+
+what: the page brought up to the code: the API a caller actually
+  writes, the guarantees with their mechanisms, the wire and what it
+  costs (measured), and the limits stated rather than implied.
+
+next: worktree, rewrite the page, gate, land
