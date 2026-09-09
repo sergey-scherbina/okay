@@ -1,7 +1,6 @@
 # Sprint
 
 ## Doing
-- intent-spans — `okay.rag.Token`, the `Spans` tier in okay-intent (prototypes in context, `Fitted.SpansModel`), and `okay-onnx`: the direct session, pooled + token vectors from one pass. Claimed 2026-09-09; spec specs/intent-spans.md.
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
