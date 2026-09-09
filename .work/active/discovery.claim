@@ -1,7 +1,7 @@
 task: discovery
 agent: fable-resilience
 started: 2026-09-09
-heartbeat: 2026-09-09T10:15:16Z
+heartbeat: 2026-09-09T10:24:19Z
 status: in-progress
 branch: feature/discovery
 worktree: ../okay-wt-discovery
@@ -18,4 +18,4 @@ what: in okay-resilience: Discovery seam (service name → endpoints;
   call marks its endpoint down for a cool-down, Refused.NoEndpoint
   when none is alive; stats with a Schema; docs page section + spec.
 
-next: spec, code, tests, docs, gate, land
+next: 38 resilience tests green on JVM incl. discovery; JS run, docs, commit, gate, land
