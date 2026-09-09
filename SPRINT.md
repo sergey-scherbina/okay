@@ -1,6 +1,7 @@
 # Sprint
 
 ## Doing
+- ui-vocab — specs/frontend.md stage 0, the vocabulary (claim: ui-vocab)
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

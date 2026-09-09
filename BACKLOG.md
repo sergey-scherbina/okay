@@ -1493,6 +1493,25 @@ measure on our own data, never a predicted result.
       the items above; it is a benchmark harness, not a feature.
 
 ## okay-ui: above v1 (specs/ui.md, "The architecture above v1")
+- [ ] ui-vocab — specs/frontend.md stage 0: Box with weights/gap/pad
+      (Row/Column as aliases), style tokens, Image, Input kinds,
+      Scroll; the semantic level (Form, List, Table, Tabs, Modal) each
+      DEFINED by its lowering; `Ui.lower(ui, vocab)`, `Ui.keys`; laws:
+      diff-then-patch on every new node, keys(s)==keys(lower(s)), diff
+      commutes with lowering.
+- [ ] ui-protocol — stage 1: derived Schema[Ui]/[Event]/[Patch] (JSON +
+      CBOR from one definition; needs codec-vector's gaps closed),
+      `hello {vocab, version}` first line and lowering per vocab in
+      Wire.serve, the conformance script, docs/protocol/frontend.md
+      rendered from the schemas. WireJson retires after equality.
+- [ ] ui-hybrid — stage 2: Input local by default, Form submits ONCE
+      as Submitted(key, json) decoded by the form's schema, `live`
+      inputs send Edited, the closed Local set (Toggle, Tab), server
+      SetValue overrides a local edit, forged Submitted dropped.
+- [ ] ui-compose — stage 3: a Compose Multiplatform thin client
+      (Kotlin, no okay dependency) drawing level L, passing the
+      conformance script; the same server drives browser + Compose at
+      once; Scala Native + GTK or Swing as the out-of-the-box leg.
 - [ ] ui-native-toolkits — GTK/Cocoa satellites over the Backend seam
 - [ ] ui-windows-terminal — raw mode beyond stty
 
