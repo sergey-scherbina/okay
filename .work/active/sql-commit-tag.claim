@@ -1,0 +1,18 @@
+task: sql-commit-tag
+agent: fable-persist
+started: 2026-09-09
+heartbeat: 2026-09-09T05:42:17Z
+status: in-progress
+branch: feature/sql-commit-tag
+worktree: ../okay-wt-sql-commit-tag
+spec: specs/sql.md Behavior (new box)
+
+why: the persistence audit (2026-09-09): PgSql.commit ignores the
+  COMMIT command tag; on an aborted transaction pg answers ROLLBACK
+  with no error and the region reports success.
+
+what: Live test in TestPg (handled error, commit, row absent), then
+  read the C tag on COMMIT and throw on ROLLBACK; same probe on R2DBC.
+  First of the seven persistence-audit lanes in BACKLOG.
+
+next: worktree, failing test

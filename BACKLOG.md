@@ -1,5 +1,73 @@
 # Backlog
 
+## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
+
+The audit (2026-09-09) read every seam: `Sql` (JDBC, pg wire, R2DBC),
+`Topic`/`Store`, `Docs` (Mongo, TopicDocs), `Cache`/`View`, `Blob`,
+Delta, migrations, bulk load. Local transactions are right in shape
+(region + sync brake + compile-time nested refusal + granted
+isolation); XA/2PC stays refused (specs/jdbc.md, specs/data.md) and
+the saga-over-journal answer stands. The gaps are concrete, ordered
+correctness first:
+
+- [ ] sql-commit-tag — an error inside a region that the BODY
+      handles (no unwind) leaves Postgres in the aborted state; its
+      `COMMIT` then answers the command tag `ROLLBACK` with NO error,
+      and `PgSql.commit` ignores the tag (`simple("COMMIT")`), so the
+      region reports success on a transaction that rolled back — the
+      exact "rollback that does not roll back" specs/jdbc.md refuses.
+      Test first (TestPg, Live): handled error, commit, row absent,
+      region must FAIL. Fix: read the `C` tag on COMMIT, throw on
+      ROLLBACK. Same probe through R2DBC-postgresql (R2dbcSuite) and
+      note what pgjdbc does. Spec: specs/sql.md Behavior.
+- [ ] sql-serialization-retry — SQLSTATE 40001/40P01 is handled
+      nowhere (0 hits in main sources). Under RepeatableRead/
+      Serializable a serialization failure is a NORMAL outcome the
+      region must retry, not an exception the program sees.
+      `Typed.transact(..., retry = Retry(max, backoff))` re-runs the
+      BODY (a program value — re-runnable by construction) on 40001/
+      40P01/deadlock, with the count exposed; anything else propagates.
+      The driver names the class: `Sql.Failure.Serialization` from a
+      pg ErrorResponse's SQLSTATE and from `SQLException.getSQLState`.
+      Test: two connections, SSI conflict on pg (Live), and a fake
+      driver that fails N times (unit).
+- [ ] sql-temporal-types — `SqlValue` has no timestamp/date/time/uuid/
+      json: they travel as Text under `SqlType.Other`, so every
+      `created_at timestamptz` is hand-parsed per field. Add
+      `SqlValue.Timestamp(Instant)`, `Date(LocalDate)`, `Time`,
+      `Uuid(UUID)`, `Json(String)` with `SqlType` mirrors; Schema
+      givens for the java.time types and UUID; both drivers encode/
+      decode; verify accepts the pairs. Keep Text←Timestamp as the
+      lossless fallback so nothing that reads today stops reading.
+- [ ] sql-readonly-region — (a) `transact(readOnly = true)`: `SET
+      TRANSACTION READ ONLY` on pg, `Connection.setReadOnly` on JDBC,
+      the FOREIGN posture's honest declaration where the DBA gave us
+      reads; (b) `JdbcSql.commit/rollback/cancel` restore autocommit
+      but NOT the isolation level — after `transact(Serializable)`
+      every later autocommit statement on the connection runs
+      Serializable. Save and restore it beside `autoBefore`.
+- [ ] sql-pool — no connection pool anywhere; one `Sql` = one
+      connection. A `Pool[Sql]` as a Resource: `borrow` hands a
+      connection to a program and returns it after, a region pins one
+      for its scope, size + acquire timeout, a health probe on return
+      (a connection whose transaction is still open is rolled back,
+      not returned). Hikari behind the JDBC driver as the interop
+      hatch; the pool itself is driver-neutral (pg wire has none).
+- [ ] persist-saga — the multi-item change is spec'd as "a journaled
+      sequence of conditional writes" (Docs.scala, specs/data.md) but
+      nothing packages it: every consumer hand-rolls steps,
+      compensations and recovery. `Saga` over `Durable.Journal` +
+      CAS: steps with a compensation each, intent journaled before
+      each step, `recover` replays the tail (finish forward or
+      compensate back, a declared policy), status as a Schema value.
+      Test: crash between steps (journal cut), both policies.
+- [ ] docs-dynamo — `Docs` was designed for Dynamo/Cassandra/Mongo and
+      is implemented on Mongo only; the seam has not met condition
+      expressions or eventual reads. DynamoDB adapter over the REST
+      API with SigV4 (okay-blob already signs): `Cond` → condition
+      expressions, `grants(Quorum)` → ConsistentRead, declared indexes
+      → GSIs. Live against dynamodb-local in docker.
+
 ## handler-fusion — one composite handler for a row, staged at compile time (specs/handler-fusion.md)
 
 The operator's proposal, 2026-09-09, assessed in the spec: compose a

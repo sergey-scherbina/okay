@@ -1,6 +1,12 @@
 # Sprint
 
 ## Doing
+- sql-commit-tag — BACKLOG "persistence-audit", first of seven lanes
+  (the operator's go, 2026-09-09): COMMIT on an aborted pg transaction
+  answers ROLLBACK and the region reports success. Test first, then the
+  tag check. Claim: sql-commit-tag. The six that follow, in order:
+  sql-serialization-retry, sql-temporal-types, sql-readonly-region,
+  sql-pool, persist-saga, docs-dynamo.
 - split-without-either — specs/handler-fusion.md "Stage A": the row
   split without an Either/Option per operation, measured on
   Fused.stateWriter then the shipping runners. Claimed 2026-09-09
