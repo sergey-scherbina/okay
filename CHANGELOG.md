@@ -1,5 +1,23 @@
 # Changelog
 
+## di-bridges — ZLayer and Guice, the same seam as Spring
+
+specs/di.md stage 2, the other two containers the operator named. In
+okay-zio, `ZioLayers`: `toLayer` runs a one-capability module under
+ZIO's `acquireRelease`, `fromLayer` is a module that builds a layer in
+a `Scope` of its own and closes it at release, `fromEnvironment` lifts
+a built environment as a `Providing`; one capability per conversion,
+because their environment is typed by Tags per member and ours by the
+chain, and each side composes in its own words. New JVM satellite
+okay-guice: `OkayGuice.bindings(m.exports)` binds by name from the
+plan and by type where the erased class is unique among the exports —
+two opaque roles over one class are two names and no type binding —
+with the scope's closer bound as a `ModuleScope` instance since Guice
+has no lifecycle; `OkayGuice.instance[A]` asks the injector when the
+scope builds. Also fixed on the way: an exhaustivity warning in the
+`exports` macro that okay-spring's warm gate had hidden. 3 + 3 tests.
+CDI documented as the same shape, not built. Commit: LANDING.
+
 ## okay-spring — a Module inside Spring Boot, both ways
 
 specs/di.md stage 2, the first bridge. New JVM satellite okay-spring:

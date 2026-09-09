@@ -123,14 +123,20 @@ values outward, the P3 rule from specs/interop.md):
       `@Configuration` the entry first named became `register` on a
       `GenericApplicationContext`: a configuration CLASS is Spring's
       way of saying a value, and we have the value
-- [ ] `okay-zio` gains `ZLayer[R, E, A]` ⇄ `Module`: a layer is a
-      resource-scoped constructor, `>>>` is `and`; `ZEnvironment` →
-      `Providing`
-- [ ] `okay-guice`: `Module` → `AbstractModule` (one `bind` per
-      capability, `@Singleton`, a `PreDestroy`-style close) and
-      `Module.fromInjector` — the same "container as a source of
-      values" bridge; CDI/Micronaut follow the same shape and are
-      documented, not built, until someone needs one
+- [x] `okay-zio` gains `ZioLayers` (SHIPPED): `toLayer` (a module
+      under ZIO's `acquireRelease`), `fromLayer` (a layer built in a
+      `Scope` the module closes), `fromEnvironment` (a `Providing`).
+      One capability per conversion — their environment is typed by
+      Tags per member, ours by the chain, and each composes in its own
+      words (`++`, `and`)
+- [x] `okay-guice` (SHIPPED): `OkayGuice.bindings(m.exports)` binds by
+      NAME from the plan and by type where the erased class is unique
+      among the exports (two opaque roles over one class: two names,
+      no type binding, no duplicate); the closer is a bound
+      `ModuleScope` instance since Guice has no lifecycle;
+      `OkayGuice.instance[A](injector)` asks by type when the scope
+      builds. CDI/Micronaut are the same shape and are documented in
+      the Interop section, not built
 
 Stage 3 — the join with deployment (specs/deployment.md):
 - [ ] the root module's unresolved inputs ARE the application's
@@ -149,6 +155,13 @@ and a foreign container is a SOURCE of values for a `Providing`. So
 one module written here runs under Spring Boot by rendering, under
 ZIO by conversion, standalone by `Resource.run`, and the code that
 uses `wire[Db]` does not know which.
+
+CDI (Quarkus, Micronaut's own container, Jakarta) is the same shape
+as Guice and is not built until someone needs it: a producer per
+export named by the plan, the closer as a bean, `CDI.current().select`
+as the source of values. The three bridges built share the one seam,
+`m.exports` plus `Resource.open`, and a fourth would add nothing to
+the core.
 
 What is deliberately NOT emulated, so the reader is not surprised:
 AOP proxies and `@Transactional` (the region and `Typed.transact` are

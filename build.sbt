@@ -1679,3 +1679,17 @@ lazy val okaySpring = (project in file("okay-spring"))
       "org.scalameta" %% "munit" % "1.1.1" % Test,
     ),
   )
+
+/** The Guice bridge of specs/di.md (stage 2): a Module as a Guice
+ * module (bound by name from the plan, by type when unique), the
+ * scope's closer as a bound instance, and an injector's instance as
+ * a module. JVM; Guice 7 (jakarta.inject). */
+lazy val okayGuice = (project in file("okay-guice"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-guice",
+    libraryDependencies ++= Seq(
+      "com.google.inject" % "guice" % "7.0.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )

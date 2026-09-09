@@ -110,11 +110,9 @@ its Behavior checklist:
       to a lane if wanted: a WebFlux end-to-end test with a real
       server (the adapter is tested on the registry, the
       auto-configuration under ApplicationContextRunner).
-- [ ] zio-layer — stage 2: `ZLayer` ⇄ `Module`, `ZEnvironment` →
-      `Providing`, in okay-zio.
-- [ ] okay-guice — stage 2: `Module` → `AbstractModule`,
-      `Module.fromInjector`; CDI/Micronaut documented as the same
-      shape.
+- [x] zio-layer + okay-guice — DONE 2026-09-09 as one lane
+      (di-bridges): `ZioLayers` in okay-zio, the new okay-guice
+      satellite. CDI documented as the same shape, not built.
 - [ ] di-deploy — stage 3: the root module's unresolved inputs render
       into specs/deployment.md's dependency graph.
 

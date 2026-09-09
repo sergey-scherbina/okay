@@ -183,9 +183,10 @@ object Module:
         val name = Expr(a.typeSymbol.name)
         // the erased class: an opaque type's is its underlying's
         val cls = Literal(ClassOfConstant(a.dealias)).asExprOf[Class[?]]
-        (a.asType, rest.asType) match
-          case ('[at], '[rt]) =>
-            '{ (x: at) ?=> ${ body(more, '{ Installed($name, $cls, x) } :: acc).asExprOf[rt] } }
+        a.asType match
+          case '[at] => rest.asType match
+            case '[rt] =>
+              '{ (x: at) ?=> ${ body(more, '{ Installed($name, $cls, x) } :: acc).asExprOf[rt] } }
     val collect = body(levels, Nil).asExprOf[F[Vector[Installed]]]
     '{ $m.build.map(p => p[Vector[Installed]]($collect)) }
   /** the end of the chain the plan walks to; never inhabited */
