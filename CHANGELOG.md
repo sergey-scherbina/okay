@@ -1,5 +1,27 @@
 # Changelog
 
+## persist-saga — okay.persist.Saga: intent-first steps with compensations over a keyed topic, recovery by policy
+
+Lane 6 of the persistence audit. The multi-item change specs/data.md
+and `Docs` describe as "a journaled sequence of conditional writes"
+was hand-rolled by every consumer; now `Saga[S](topic, id, policy)
+(steps*)`: a step is its effect and its compensation over the saga's
+state; `Intent(i)` lands before step i and `Done(i, state)` after, so
+a restart tells never-ran, ran-answer-lost and ran apart; a failing
+step journals `Failed` and the earlier steps compensate in reverse;
+`Finished`/`Aborted` are answers a later `recover` returns untouched.
+`recover()` folds the records and acts by the declared `Policy`:
+Forward re-runs a step whose answer was lost (its far end must be
+idempotent — the Durable rule one level up), Backward compensates
+everything done, the uncertain step included. `Stuck` names a failed
+compensation; `status` is a Schema value. One saga = one key = one
+partition; state as CBOR at the edge, records through the Typed
+envelope. Tests on MemoryStore: the happy path, failure and
+compensation, the crash window under both policies, a crash
+mid-compensation, two sagas on one topic. Landed as 9e8ef60d;
+specs/persist.md "The saga". Gate: full matrix, 3176 tests, 0
+failures, 0 warnings.
+
 ## sql-pool — okay.sql.Pool: a fixed-size, driver-neutral connection pool with a cancel-safe hand-off and the brake on return
 
 Lane 5 of the persistence audit; before it one `Sql` was one

@@ -137,7 +137,9 @@ correctness first:
       (a connection whose transaction is still open is rolled back,
       not returned). Hikari behind the JDBC driver as the interop
       hatch; the pool itself is driver-neutral (pg wire has none).
-- [ ] persist-saga — the multi-item change is spec'd as "a journaled
+- [x] persist-saga — DONE 2026-09-09 (9e8ef60d): okay.persist.Saga, steps with
+      compensations, intent-first on a keyed topic, recover by Forward/Backward
+      policy, Stuck, status. Was: the multi-item change is spec'd as "a journaled
       sequence of conditional writes" (Docs.scala, specs/data.md) but
       nothing packages it: every consumer hand-rolls steps,
       compensations and recovery. `Saga` over `Durable.Journal` +
