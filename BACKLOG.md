@@ -5692,3 +5692,48 @@ When the CONDITIONS cannot be reproduced, reproduce the MECHANISM.
       re-bindable by a neighbour"). It binds a real `ServerSocket` in
       `RaftWire$Node`; a retry on bind, or an OS-assigned port, ends
       it.
+
+## merge-chunked-order — a later chunk of one source overtook an earlier one
+
+Found by gate-honesty's own gate (2026-09-09), and it is the one
+failure of the day that is NOT a false alarm and NOT yet explained.
+
+`okay.TestStream."merge(chunked): the same elements as merge, both
+sources drained, union typed"` failed in 0.068 s — too fast to be
+starvation. Nothing was lost or duplicated: all 100 elements arrived
+and both `.sorted` assertions passed. What broke is the LAST one,
+whose comment names the law:
+
+    // and each source's own order is preserved within the merge
+    assertEquals(chunked.collect { case i: Int => i }, (1 to 50).toList)
+
+    obtained: 1..16, 49, 50, 17..48
+
+Source `a`'s own elements came back out of order — 49 and 50 ahead of
+17. That cannot be a hasty test (nothing is early or extra, as in the
+ui sleeps) and cannot be starvation (nothing is slow). A later chunk
+of ONE source overtook an earlier chunk of the SAME source.
+
+FIVE isolated runs of `okay.TestStream` passed. So it needs
+contention, like `actor-stop-drain` did — and that one turned out to
+be a real defect, which is why this is filed as open rather than
+dismissed.
+
+TWO READINGS, and the library does not settle it: `merge`'s doc
+covers chunk size, capacity and `flushAfter` at length and says
+NOTHING about per-source order. So either
+
+- [ ] per-source order IS the law — it is what a merge normally
+      promises, and `mergeFlushing` speaks of a flush landing "where
+      the producer says it is" — and the chunked path has a race
+      between chunks of the same source; or
+- [ ] it is NOT promised when `chunked = true`, in which case the
+      test asserts more than the contract and the CONTRACT should say
+      so out loud, because the natural reading of "merge" is that it
+      interleaves sources without reordering within one.
+
+Whoever takes it: get a repro first (this session's rule — no failing
+repro, no fix). Contention is the lever; `Chunks.merge` and the
+capacity/ChunkSize arithmetic in `Source.merge` are where to look.
+Deciding the contract by weakening the test would be the wrong way
+round unless the design intent really is "no order within a source".
