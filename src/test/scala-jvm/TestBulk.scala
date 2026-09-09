@@ -1,6 +1,5 @@
 package okay
 
-import okay.Bulk.*
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
 

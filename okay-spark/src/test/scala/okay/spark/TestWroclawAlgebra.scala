@@ -172,7 +172,7 @@ class TestWroclawAlgebra extends munit.FunSuite:
   }
 
   test("the same program on Spark and in one JVM: equal departures, equal hours") {
-    onSpark; local // built and cached OUTSIDE the timers: no lane below is an ETL
+    onSpark: Unit; local: Unit // built and cached OUTSIDE the timers: no lane below is an ETL
     val t0 = System.nanoTime()
     val sparkHours = onSpark.aggregate(hourly)
     val sparkMs = (System.nanoTime() - t0) / 1000000
