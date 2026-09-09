@@ -1,5 +1,34 @@
 # Changelog
 
+## grant-vacuity — the last test that had stopped testing what it says
+
+The sweep `grant-unenforced` implied, done: one explicit coloring
+grant was left in the test tree, in `TestDirectAuto`'s "operations
+color via the Effect marker". `Reader derives okay.Effect` and
+`Effect extends Direct.Effect` since 2026-09-08, so the marker arrived
+without the line. **Measured: the test passes with it deleted.** It
+had stopped testing the marker and was testing that Reader colors,
+which now holds for free.
+
+Same defect as the two vacuous tests in `TestEffectProvide`, and the
+same lesson twice in one day: a red test tells you what broke, a test
+that cannot fail tells you nothing, and its NAME keeps promising what
+the code stopped doing. Both were invisible in a green gate.
+
+The line is gone, the name says what is exercised, and it points at
+`TestEffectProvide` for the claim it used to make — where that claim
+is now a negative test proved by mutation. `an unmarked G never
+colors` was checked and left: it uses `List`, which has no
+`okay.Effect`, so it still refuses for its stated reason.
+
+The lane predicted this outcome in its claim and named the other
+branch too — if the test had FAILED without the grant, that would
+have meant `derives Effect` covers less than the `grant-unenforced`
+changelog entry claims, and that entry would have needed a
+correction. It did not; no correction is owed.
+
+Gate: clean build, 86 modules, 3 104 tests, 0 failures, 0 warnings.
+
 ## resilience — stage 0 of specs/resilience.md: breaker, bulkhead, limiter, hedge, deadline
 
 The microservices audit (operator's direction, 2026-09-09) found the
