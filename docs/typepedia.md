@@ -240,6 +240,15 @@ same material with the measurements attached.
   collection view for code generic in `D`; a concrete `Chunks` is a
   program and its own `map` wins, so local code calls `B.map(d)(f)`.
   **`Csv`** — the RFC 4180 subset on one line, `Row = Map[String, String]`.
+- **`Tables[+A]`** — the same road as an EFFECT: `Of`, `Read`, `Select`,
+  `Expand`, `Where`, `Join`, `Cache`, `Aggregate`, `Collect`, answering
+  `Table[A]` — an opaque slot on the handler's heap (`Refs.Ref`).
+  `Tables.via(B)` translates into `State % Heap[D]` through any
+  `Bulk[D]`; `Tables.run(B)(prog)` runs a plan on a platform. A plan is a
+  value: `!.tracing` prints it. **`Sort`** — an operation `Bulk` does not
+  have, added as a signature in the row: `Sort.viaTables` (through the
+  primitives, any platform) or `SparkBulk.sort` (native). Direct style
+  binds handles with a mark: `val deps = !departures.cache`.
 
   `fold` is the seam the specialization travels through, so it is not
   final: **`Aggregator.OfLong` / `OfDouble` / `OfInt`** override it to

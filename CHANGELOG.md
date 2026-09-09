@@ -1,5 +1,41 @@
 # Changelog
 
+## bulk-effect — the road to the aggregation as a program, and an operation added without touching the seam
+
+`Bulk[D]` stays the platform's contract; the program's vocabulary is now
+an EFFECT over it (specs/bulk.md, "the effect layer"). `Tables[+A]
+derives Effect` — Of, Read, Select, Expand, Where, Join, Cache,
+Aggregate, Collect — answers with `Table[A]`, an opaque slot on the
+handler's heap (the `Refs.Ref` precedent, one cast in `Heap.get`).
+`Tables.via(B)` translates every operation into one step of
+`State % Heap[D]` using only `B: Bulk[D]` — one handler for every
+platform — and `Tables.run(B)(prog)` runs a plan on a platform.
+
+**The point, demonstrated: `Sort`.** Not in `Bulk`, not a method
+anywhere. `enum Sort[+A] derives Effect` with `By(t, key, ord)`;
+`Sort.viaTables` answers it through the primitives (collect, sort, hand
+back — correct on any platform, written once), `SparkBulk.sort` answers
+it natively by translating into the same `State % Heap[Rows]`, and
+`Tables.via` knows nothing of either. A program that sorts says so in
+its type, `! (Tables + Sort)`; nothing in any platform's build moved.
+
+The Wrocław analysis is now ONE program over `Tables + Sort` in direct
+style — build the departures, cache, count, per-hour, per-minute, the
+three busiest minutes sorted on the platform — run on Spark (native
+sort) and in one JVM (`viaTables`), equal in every part: 4 593 288
+departures, the same 24 hours, the same top three (minutes 1855, 16255,
+14815 at 372 departures each). Spark 15.3 s, local 7.0 s for the whole
+analysis. `!.tracing` prints the plan before anything runs:
+`Read Select Read Select Read Select Read Select Aggregate Join Select
+Join Select Join Expand` — 3 joins, as the assertion says.
+
+Two findings for the spec. A mark in a direct block takes the block's
+own row EXACTLY — a `! Tables` program in a `! (Tables + Sort)` block
+says `.plus[Sort]` (the macro accepts the carrier or a single operation
+of its row, not a narrower program). And `!` is invariant in its
+answer, so where a match refines `X >: Table[A]` under the covariant
+enum, the handler spells the widening as `.map(t => t: X)`.
+
 ## bulk — the road to the aggregation, said once (specs/bulk.md)
 
 The Wrocław demo wrote its ETL — four GTFS CSVs joined and expanded

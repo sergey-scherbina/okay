@@ -1,6 +1,7 @@
 package okay
 
 import okay.Bulk.*
+import okay.Chunks.elements
 import java.nio.file.Files
 import scala.jdk.CollectionConverters.*
 
@@ -43,5 +44,49 @@ class TestBulk extends munit.FunSuite {
     val all = Aggregator[(Int, (String, Int)), Vector[(Int, (String, Int))], Vector[(Int, (String, Int))]](Vector.empty)(_ :+ _)(_ ++ _)(identity)
     val joined = B.aggregate(B.join(l, r))(all)
     assertEquals(joined.sorted, Vector(1 -> ("a", 10), 1 -> ("a", 11), 1 -> ("c", 10), 1 -> ("c", 11), 2 -> ("b", 20)))
+  }
+}
+
+/** The effect layer over the seam: a program of tables, run and traced (specs/bulk.md). */
+class TestTables extends munit.FunSuite {
+  import okay.Tables.{Table, read, of}
+  import okay.Sort.sortBy
+  import okay.RowLift.plus
+  import java.nio.file.Files
+
+  final case class Sale(shop: Int, amount: Long)
+
+  /** the plan: a VALUE, no platform in its type */
+  def revenue(sales: Iterable[Sale], cities: Iterable[(Int, String)]): Map[String, Long] ! Tables =
+    of(sales).select(s => s.shop -> s.amount)
+      .join(of(cities))
+      .select { case (_, (amount, city)) => (city, amount) }
+      .aggregate(Aggregator.groupBy((kv: (String, Long)) => kv._1)(Aggregator.sum[Long].contramap(_._2)))
+
+  val sales = (1 to 2000).map(i => Sale(i % 7, (i % 13).toLong))
+  val cities = (0 until 7).map(i => i -> (if i % 2 == 0 then "Wrocław" else "Kraków"))
+  val city = cities.toMap
+
+  test("the same plan on the local platform equals the direct computation") {
+    val got = Tables.run(localBulk)(revenue(sales, cities))
+    val want = sales.groupMapReduce(s => city(s.shop))(_.amount)(_ + _)
+    assertEquals(got, want)
+  }
+
+  test("a plan is data: tracing prints it before anything runs") {
+    val traced = !.tracing(revenue(sales, cities).plus[okay.Pure])([X] => (e: Tables[X]) => e.productPrefix)
+    val handled = State.handle(Tables.Heap.empty[Chunks])(Tables.via(localBulk)(traced))
+    val (plan, (_, got)) = !.run(Writer.run(handled))
+    assertEquals(plan, Seq("Of", "Select", "Of", "Join", "Select", "Aggregate"))
+    assertEquals(got, sales.groupMapReduce(s => city(s.shop))(_.amount)(_ + _))
+  }
+
+  test("Sort is an operation Bulk does not have, answered through the primitives") {
+    val prog: Vector[(Int, Long)] ! (Tables + Sort) =
+      of(sales).select(s => s.shop -> s.amount).plus[Sort]
+        .aggregate(Aggregator.groupBy((kv: (Int, Long)) => kv._1)(Aggregator.sum[Long].contramap(_._2)))
+        .flatMap(byShop => of(byShop.toVector).plus[Sort].sortBy(-_._2).collect.map(_.elements.toVector))
+    val got = Tables.run(localBulk)(Sort.viaTables(prog))
+    assertEquals(got.map(_._1), sales.groupMapReduce(_.shop)(_.amount)(_ + _).toVector.sortBy(-_._2).map(_._1))
   }
 }

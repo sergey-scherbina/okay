@@ -76,6 +76,7 @@ revenue(using okay.localBulk)     // one JVM, the same answer
 | `aggregateByKey` | `(rdd)(agg)(using CTs) => RDD[(K, Out)]` | per-key, one pass |
 | `toSpark` | `(agg)(using Encoders) => sql.expressions.Aggregator` | the Dataset form |
 | `SparkBulk` | `(spark) => Bulk[SparkBulk.Rows]` | the ETL seam on an RDD; `Rows[A]` is an opaque `RDD[Any]` |
+| `SparkBulk.sort` | `A ! (Sort + F) => A ! (State % Tables.Heap[Rows] + F)` | the `Sort` effect answered natively, over the heap `Tables.via` threads |
 
 ## Gotchas
 
