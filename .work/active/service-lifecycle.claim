@@ -1,7 +1,7 @@
 task: service-lifecycle
 agent: fable-resilience
 started: 2026-09-09
-heartbeat: 2026-09-09T08:19:56Z
+heartbeat: 2026-09-09T08:37:33Z
 status: in-progress
 branch: feature/service-lifecycle
 worktree: ../okay-wt-service-lifecycle
@@ -19,4 +19,4 @@ what: okay-ops: Lifecycle (draining flag, in-flight count, route
   Schema value, Prom rows in Prometheus histogram form); Ops.routes
   takes both. Docs: docs/modules/okay-ops.md, the spec's sections.
 
-next: worktree, spec sections, code, tests, docs, gate, land
+next: lane committed and rebased (d26dfcd0), 15 ops tests green JVM+JS; waiting for a quiet box for the full gate, then land
