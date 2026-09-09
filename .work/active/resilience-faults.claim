@@ -1,7 +1,7 @@
 task: resilience-faults
 agent: fable-resilience
 started: 2026-09-09
-heartbeat: 2026-09-09T06:21:55Z
+heartbeat: 2026-09-09T06:26:12Z
 status: in-progress
 branch: feature/resilience-faults
 worktree: ../okay-wt-resilience-faults
@@ -18,4 +18,4 @@ what: okay-resilience: Faults.http(seed, plan)(inner) — delays, drops
   contracts (breaker opens on drops, hedge hides delays, deadline
   bounds the whole). Adaptive concurrency stays deferred.
 
-next: worktree, Faults, tests, gate, land
+next: stage 2 committed (30 tests green scoped); gate, then ff-merge and release
