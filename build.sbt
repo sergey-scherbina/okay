@@ -1242,6 +1242,9 @@ lazy val okayResilience = crossProject(JVMPlatform, JSPlatform)
   )
   .jvmSettings(
     // the parking tests: a fiber that waits, a hedge that races a timer
+    // DiscoveryJvm: the resolver and sys.env are the JVM's own
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )

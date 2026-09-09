@@ -1,5 +1,24 @@
 # Changelog
 
+## discovery — service discovery and client-side balancing, in okay-resilience
+
+`Resilient.http` hardened one call to the one host in its URL; a
+service in Kubernetes is N pods behind a name, and specs/cluster.md
+had left discovery out of scope. `Discovery` is the seam (a name to
+endpoints) with the three sources that cover where a service runs —
+a static table, the environment (Kubernetes's `<NAME>_SERVICE_HOST`/
+`_PORT`, or `OKAY_SERVICE_<NAME>` as a comma list), and DNS on the
+JVM (a headless Service's A-records, behind `Discovery.cached`) —
+plus `chain`. `Balanced.http` is a URL rewrite: `http://orders/…`
+goes to an endpoint picked round-robin among those not cooling down;
+an unknown host passes through; a THROWN wire error cools its
+endpoint down, an answered 5xx is left to the breaker; all cooling
+down → the least recently failed is tried; an empty resolution
+refuses with `Refused.NoEndpoint` (503). `Resilient.http(...,
+balanced = Some(b))` composes it innermost, so a hedged attempt picks
+its own endpoint and the breaker counts per service. 8 tests (6 of
+them green on JS unchanged); specs/discovery.md; the okay-resilience
+page gained the section with the Kubernetes wiring.
 ## retry-js — retry as an Async program, so JS has it too
 
 `okay.retry` reruns a program with `prog.runWith` in a try/catch and

@@ -34,6 +34,9 @@ object Refused:
   final class DeadlineExceeded(val remainingMillis: Long)
     extends Refused(s"deadline exceeded by ${-remainingMillis} ms"):
     def retryAfterMillis: Option[Long] = None
+  final class NoEndpoint(val service: String)
+    extends Refused(s"no endpoint for service '$service'"):
+    def retryAfterMillis: Option[Long] = None
 
 /** every piece reports itself as a value with a Schema, so a metric
   * and a span attribute need no second definition */

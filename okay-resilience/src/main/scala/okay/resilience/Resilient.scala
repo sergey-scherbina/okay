@@ -11,8 +11,8 @@ import okay.http.{Http, Method, Request, Response}
  * The order is the decision: deadline outermost (the budget bounds
  * the waits under it), then breaker (an open circuit spends no permit
  * and no token), then bulkhead, then limiter (a refused permit burns
- * no token), hedge innermost (each hedged attempt is one call of the
- * inner, and the breaker sees hedged failures as what they are).
+ * no token), hedge, and balancing innermost (each hedged attempt
+ * picks its own endpoint; the breaker counts per SERVICE).
  */
 object Resilient:
 
@@ -42,6 +42,7 @@ object Resilient:
            limiter: Option[(Limiter, Request => String)] = None,
            hedge: Option[(Long, Int)] = None,
            hedgeable: Request => Boolean = safeMethods,
+           balanced: Option[Balanced] = None,
            clock: () => Long = wall)
           (using Scheduler, Timer): Http = new Http:
     def send(r: Request): Response ! Async =
@@ -53,9 +54,12 @@ object Resilient:
         case (a, b) => a.orElse(b)
       val req = deadline.fold(r)(d => Deadline.carry(r, d, clock))
 
+      // balancing is innermost: each hedged attempt picks its own
+      // endpoint, and the breaker above counts per SERVICE
+      val wire: Http = balanced.fold(inner)(_.http(inner))
       def call: Response ! Async = hedge match
-        case Some((after, max)) if hedgeable(req) => Hedge.run(after, max)(inner.send(req))
-        case _ => inner.send(req)
+        case Some((after, max)) if hedgeable(req) => Hedge.run(after, max)(wire.send(req))
+        case _ => wire.send(req)
       def limited: Response ! Async = limiter match
         case Some((l, key)) => l.admit(key(req))(call)
         case None => call
@@ -100,6 +104,7 @@ object Resilient:
     case _: Refused.BulkheadFull => 503
     case _: Refused.BreakerOpen => 503
     case _: Refused.DeadlineExceeded => 504
+    case _: Refused.NoEndpoint => 503
 
   private def refused(e: Refused): Response =
     val retry = e.retryAfterMillis.map(ms => ("retry-after", math.max(1L, (ms + 999) / 1000).toString))
