@@ -47,9 +47,11 @@ trait Reporting[S]:
  * `Async.Drive` makes: a `Run` is re-issued with its thunk guarded,
  * an `Await` with its callback's `Left` turned into an answer. It
  * costs one extra node per operation of the guarded program, which
- * is the price of not paying a fiber per call.
+ * is the price of not paying a fiber per call. Public because
+ * okay-ops's `Lifecycle` and `Red` need the same observation
+ * (service-lifecycle); it is a building block, not a policy.
  */
-private[resilience] object Attempt:
+object Attempt:
   def apply[A](p: A ! Async): Either[Throwable, A] ! Async =
     // `resume` runs continuations (a `flatMap` body after `Pure`), and
     // a continuation may throw — the breaker's own refusal does. That

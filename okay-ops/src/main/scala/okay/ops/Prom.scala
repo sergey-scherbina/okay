@@ -51,6 +51,56 @@ object Prom:
         sb += '\n'
     sb.result()
 
+  /** the lifecycle as two gauges and a counter */
+  def lifecycle(l: Lifecycle): String =
+    val s = l.stats
+    val sb = new StringBuilder
+    sb ++= "# HELP okay_lifecycle_draining 1 while the process is draining, else 0\n# TYPE okay_lifecycle_draining gauge\n"
+    sb ++= s"okay_lifecycle_draining ${if s.draining then 1 else 0}\n"
+    sb ++= "# HELP okay_lifecycle_in_flight requests being answered now\n# TYPE okay_lifecycle_in_flight gauge\n"
+    sb ++= s"okay_lifecycle_in_flight ${s.inFlight}\n"
+    sb ++= "# HELP okay_lifecycle_refused_total requests refused while draining\n# TYPE okay_lifecycle_refused_total counter\n"
+    sb ++= s"okay_lifecycle_refused_total ${s.refused}\n"
+    sb.result()
+
+  /**
+   * RED per route, in Prometheus's histogram shape: `_bucket` rows
+   * CUMULATIVE with `le`, a `+Inf` row equal to `_count`, then `_sum`
+   * (seconds) and `_count` — what `histogram_quantile` reads.
+   */
+  /** milliseconds as seconds, spelled the same on every platform:
+    * a Double's toString says "10.0" on the JVM and "10" on JS, and a
+    * `le` label is matched as TEXT by Prometheus; the canonical
+    * spelling is the shortest one ("10", "0.005", "2.5") */
+  private def seconds(millis: Long): String =
+    val whole = millis / 1000
+    val frac = millis % 1000
+    if frac == 0 then whole.toString
+    else s"$whole." + f"$frac%03d".reverse.dropWhile(_ == '0').reverse
+
+  def red(rs: Vector[Red]): String =
+    val all = rs.map(_.stats).filter(_.series.nonEmpty)
+    if all.isEmpty then return ""
+    val sb = new StringBuilder
+    def labels(name: String, route: String, more: String = ""): String =
+      s"""name="${esc(name)}",route="${esc(route)}"""" + more
+    sb ++= "# HELP okay_http_requests_total requests by status class\n# TYPE okay_http_requests_total counter\n"
+    for st <- all; se <- st.series; c <- se.byClass.sortBy(_.cls) do
+      sb ++= s"""okay_http_requests_total{${labels(st.name, se.route, s""",class="${c.cls}"""")}} ${c.n}\n"""
+    sb ++= "# HELP okay_http_errors_total 5xx answers and throws\n# TYPE okay_http_errors_total counter\n"
+    for st <- all; se <- st.series do
+      sb ++= s"okay_http_errors_total{${labels(st.name, se.route)}} ${se.errors}\n"
+    sb ++= "# HELP okay_http_request_duration_seconds how long a request took\n# TYPE okay_http_request_duration_seconds histogram\n"
+    for st <- all; se <- st.series do
+      var acc = 0L
+      for (bound, n) <- Red.buckets.zip(se.buckets) do
+        acc += n
+        sb ++= s"""okay_http_request_duration_seconds_bucket{${labels(st.name, se.route, s""",le="${seconds(bound)}"""")}} $acc\n"""
+      sb ++= s"""okay_http_request_duration_seconds_bucket{${labels(st.name, se.route, """,le="+Inf"""")}} ${se.requests}\n"""
+      sb ++= s"okay_http_request_duration_seconds_sum{${labels(st.name, se.route)}} ${seconds(se.sumMillis)}\n"
+      sb ++= s"okay_http_request_duration_seconds_count{${labels(st.name, se.route)}} ${se.requests}\n"
+    sb.result()
+
   /**
    * The resilience pieces' stats (specs/resilience.md, stage 1):
    * `name` is the label, gauges for what IS, counters for what
@@ -133,5 +183,40 @@ object Prom:
       read.foreach(s => sb ++= s"""okay_saga_steps_done{id="${esc(s.id)}"} ${s.done.length}""" += '\n')
       sb ++= "# HELP okay_saga_steps_undone steps compensated\n# TYPE okay_saga_steps_undone gauge\n"
       read.foreach(s => sb ++= s"""okay_saga_steps_undone{id="${esc(s.id)}"} ${s.undone.length}""" += '\n')
+    sb.result()
+
+  /** a Docs engine's counters as named counters (adapter-stats) */
+  def docs(pieces: Vector[(String, () => okay.docs.Docs.Stats)]): String =
+    val sb = new StringBuilder
+    val read = pieces.map((n, f) => (n, f()))
+    def metric(name: String, help: String)(value: okay.docs.Docs.Stats => Long): Unit =
+      if read.nonEmpty then
+        sb ++= s"# HELP $name $help\n# TYPE $name counter\n"
+        read.foreach((n, s) => sb ++= s"""$name{name="${esc(n)}",engine="${esc(s.engine)}"} ${value(s)}""" += '\n')
+    metric("okay_docs_gets_total", "gets asked")(_.gets)
+    metric("okay_docs_hits_total", "gets that found a document")(_.hits)
+    metric("okay_docs_puts_total", "puts asked")(_.puts)
+    metric("okay_docs_applied_total", "conditional writes applied")(_.applied)
+    metric("okay_docs_stale_total", "conditional writes answered Stale")(_.stale)
+    metric("okay_docs_deletes_total", "deletes asked")(_.deletes)
+    metric("okay_docs_queries_total", "index queries asked")(_.queries)
+    metric("okay_docs_failures_total", "calls that failed")(_.failures)
+    sb.result()
+
+  /** a Blob engine's counters as named counters (adapter-stats) */
+  def blobs(pieces: Vector[(String, () => okay.blob.Blob.Stats)]): String =
+    val sb = new StringBuilder
+    val read = pieces.map((n, f) => (n, f()))
+    def metric(name: String, help: String)(value: okay.blob.Blob.Stats => Long): Unit =
+      if read.nonEmpty then
+        sb ++= s"# HELP $name $help\n# TYPE $name counter\n"
+        read.foreach((n, s) => sb ++= s"""$name{name="${esc(n)}",engine="${esc(s.engine)}"} ${value(s)}""" += '\n')
+    metric("okay_blob_puts_total", "puts")(_.puts)
+    metric("okay_blob_gets_total", "gets")(_.gets)
+    metric("okay_blob_misses_total", "gets of an absent key")(_.misses)
+    metric("okay_blob_heads_total", "heads")(_.heads)
+    metric("okay_blob_lists_total", "lists")(_.lists)
+    metric("okay_blob_deletes_total", "deletes")(_.deletes)
+    metric("okay_blob_failures_total", "calls that failed")(_.failures)
     sb.result()
 

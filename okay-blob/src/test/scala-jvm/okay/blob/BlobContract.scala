@@ -110,4 +110,16 @@ abstract class BlobContract(engine: String) extends munit.FunSuite {
     run(b.delete("k"))
     assertEquals(run(b.head("k")), None)
   }
+
+  test(s"$engine: counted — the seam counts puts, gets and misses, heads, lists and deletes as a Schema value") {
+    val b = Blob.counted(engine, make())
+    run(b.put("c/one", bytes(100))): Unit
+    drainGet(b.get("c/one")): Unit
+    drainGet(b.get("c/absent")): Unit
+    run(b.head("c/one")): Unit
+    run(b.delete("c/one"))
+    val s = b.stats
+    assertEquals((s.engine, s.puts, s.gets, s.misses, s.heads, s.deletes, s.failures), (engine, 1L, 2L, 1L, 1L, 1L, 0L))
+    assert(okay.codec.Json.write(s).contains("\"misses\":1"))
+  }
 }

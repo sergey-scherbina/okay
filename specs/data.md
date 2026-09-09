@@ -359,9 +359,18 @@ list in its spec or spec section)
       version; declared indexes are secondary indexes the query walks;
       `grants` hands the dial back as asked (One, Quorum, ALL) — the one
       engine where Quorum means a quorum
-- [ ] every adapter exposes stats as a Schema value; no adapter
+- [x] every adapter exposes stats as a Schema value; no adapter
       logs or journals a credential (grep-able invariant from
-      specs/conf.md asserted in tests where feasible)
+      specs/conf.md asserted in tests where feasible) — adapter-stats
+      (2026-09-09): `Docs.Stats`/`Docs.counted` and `Blob.Stats`/
+      `Blob.counted` count every engine the same way at the seam, so
+      no adapter carries counters of its own (Kafka and Cache had
+      theirs already; Pool and Saga joined in persistence-e2e); the
+      DocsSuite and BlobContract assert the counts on every engine;
+      okay-ops renders them as `okay_docs_*`/`okay_blob_*` counters;
+      `TestNoCredentialLogs` (okay-deploy) reads the committed tree and
+      refuses a credential-named value on any print/log/journal line of
+      an adapter — today there is no such line at all
 
 ## Out of scope
 

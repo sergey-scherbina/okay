@@ -434,11 +434,9 @@ operation — the prediction (−16…24 KB) was under. (The remark that
 measured afterwards and is wrong: 0 B/op, the JIT scalarises it, and
 the fused loop never tests Writer at all — writer-test-no-some.) Time: 7–11% on the hot loops, which clears the 10% bar on the
 lane it was set on and misses it by two points on the left-nested one.
-One observation left open: `State.handle`+`Writer.foldWith` on `split`
-saved only the Option in one nesting and both wrappers in the other
-(bytecode shows no `Left`/`Right` in `State$` at all), so the JIT was
-already scalarising that Either in one shape and not the other; not
-chased.
+One observation was left open here and is now closed — see
+"either-scalarised" below: the Either escaped only in `State.handle`'s
+loop; `Writer.foldWith`'s wrappers had always been scalarised.
 
 Verdict: stage A holds as a small, uniform, zero-risk gain and lands;
 it is not the lever. Stage B is.
@@ -484,4 +482,39 @@ comonadic class (already one pass) and worth 10–30% on the
 continuation-aware class; staging it buys nothing unless the program
 is static at the call site. The `direct → Eff` follow-up is dropped
 for the same reason and is not filed.
+
+### either-scalarised — resolved, 2026-09-09 (runner-floor item 3)
+
+Per-runner lanes (`SplitBenchmark`), each runner alone over 1 000 of
+its own operations, three forms of its loop, `-prof gc`:
+
+| runner | shipping (`split`) | `<|>` (Either) | extractor + Either |
+|---|---|---|---|
+| `State.handle` | 86 984 | 100 904 | 100 936 |
+| `Writer.foldWith` | 197 544 | 197 480 | 197 496 |
+
+So: in `State.handle`'s loop the Either ESCAPED (14 B/op) and `split`
+removed it; the extractor's Option never escaped in either loop; and
+in `Writer.foldWith`'s loop NOTHING escaped — `split` bought Writer
+zero bytes. That is the whole "anomaly": `State.run(Writer.run(p))`
+saved State's Eithers over 667 forwarded ops (10.7 KB, to the byte)
+and nothing from Writer. Why C2 scalarised one loop's Either and not
+the other's is not chased: the byte counts settle what `split` is for.
+
+What the lanes found instead: `Writer.run`'s cost was the `Vector`
+appended per tell. A `List` built by prepending and reversed ONCE —
+inside the loop's terminal case (`loopWith`'s `finish`), NOT as a
+`.map` over the residual — measured, same run:
+
+| | old (Vector) | List, `.map` after | List, finish in the loop |
+|---|---|---|---|
+| Writer-only, 1 000 tells | 197 544 | 128 104 | **128 024 (−35%)** |
+| mixed, 333 tells + 667 State ops | 170 696 | 196 800 (+15%) | **148 696 (−13%)** |
+
+The middle column is the lesson worth more than the win: one `.map`
+wrapped around a program that still forwards effects made every
+forwarded node left-nested under it, and `resume` rotated each of them
+again — 61 KB over 667 operations, more than the accumulator it was
+finishing. `loopWith` exists so that a finishing step happens where
+the program ends and nowhere else.
 

@@ -46,13 +46,21 @@ operator asked for the four things left under it, in this order:
       trampoline in `Eff.flatMap` (if one exists that is not "reify to
       Free") and a documented law + `fromFree` as the road; either way
       a test pins the answer.
-- [ ] either-scalarised-in-one-nesting — after stage A, the shipping
+- [x] either-scalarised-in-one-nesting — DONE 2026-09-09: explained (the
+      Either escaped only in State.handle's loop; Writer's wrappers were
+      always scalarised), and Writer.run moved to a List finished inside
+      the loop (-13% / -35% B/op). specs/handler-fusion.md. Was: after
+      stage A, the shipping
       runners saved both wrappers in `Writer.run(State.handle(p))` and
       only the Option in `State.run(Writer.run(p))`; bytecode has no
       `Left`/`Right` in `State$`. Per-runner lanes with the old `<|>`
       loops kept benchmark-local as the A/B; explain, then fix or
       record.
-- [ ] single-shot-row — the only road under 122 B/op: a mutable cell
+- [x] single-shot-row — PRICED AND REFUTED 2026-09-09: a mutable cell
+      buys Writer's reverse and nothing else (-8.9% B/op on the mixed
+      program, gate was 10%; -18.7% Writer-only); the evidence type is
+      not shipped, specs/single-shot-row.md has the table. The
+      runner-floor list is closed. Was: the only road under 122 B/op: a mutable cell
       in place of the threaded accumulator, which is sound only when
       no handler below resumes a continuation twice. A type-level
       evidence for that (per signature, derived for a row; NOT for
@@ -102,10 +110,15 @@ follows, in the spec's order:
       one resilience primitive the core already has cross-platform.
       Found by the resilience audit; not taken there because the
       module needed none of it.
+- [ ] deploy-termination-grace — the rendered Kubernetes manifest
+      (okay-deploy `Cluster`) should set `terminationGracePeriodSeconds`
+      above the lifecycle's delay + grace (2 + 15 s by default → 30),
+      and a `preStop` is NOT needed (the process handles SIGTERM
+      itself). Regenerate the committed rendering (drift test).
+      Found by service-lifecycle, not taken there.
 - [ ] microservices-next — the audit's remaining gaps, each its own
-      spec when picked: graceful shutdown (readiness → 503, stop
-      accepting, drain in-flight — no server here does it); RED
-      metrics per route and per outbound client; saga over `Durable`
+      spec when picked. DONE 2026-09-09 (service-lifecycle): graceful
+      shutdown and RED metrics, both in okay-ops. Still open: saga over `Durable`
       + persist with compensations as values; transactional outbox /
       inbox / dead-letter when the truth is in SQL; service discovery
       + client-side balancing (cluster.md lists it out of scope);

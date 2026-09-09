@@ -62,6 +62,15 @@ object ChatDemo {
     Board.store(sys.env.getOrElse("OKAY_CHAT_DB", "okay-board.log"))
   def opsStore: okay.persist.Store = boardStore
 
+  /** graceful shutdown and per-route RED (specs/ops.md): `/readyz`
+   * reads the lifecycle, `main` drains on SIGTERM before the region
+   * releases Jetty, and `/metrics` carries every route's requests,
+   * errors and durations */
+  val lifecycle: okay.ops.Lifecycle = okay.ops.Lifecycle()
+  val red: okay.ops.Red = okay.ops.Red("chat")
+  def opsRoutes: PartialFunction[Request, Response ! Async] =
+    Ops.routes(opsStore, lifecycle = Some(lifecycle), red = Vector(red))
+
   /**
    * The production board, durable by default — and NOT what the
    * routes read.
@@ -294,7 +303,7 @@ object ChatDemo {
             Chat.sse("note", Json.print(JStr(note)))))
       pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
-    case r if Ops.routes(opsStore).isDefinedAt(r) => Ops.routes(opsStore)(r)
+    case r if opsRoutes.isDefinedAt(r) => opsRoutes(r)
 
     case r if r.method == okay.http.Method.Post && r.url == "/login" =>
       val email = Chat.fieldOf(r.body, "email")
@@ -363,8 +372,14 @@ object ChatDemo {
     // exactly as it always was — every existing test constructs
     // routes(...) directly and never sets this env var
     val node = sys.env.get("OKAY_CHAT_NODE")
+    // the ops routes sit OUTSIDE the lifecycle wrapper: a draining
+    // process must still answer /healthz 200 (or Kubernetes restarts
+    // it) and /readyz 503 (so it leaves the endpoints); everything
+    // else is counted, measured, and refused once draining
+    def app(routes: PartialFunction[Request, Response ! Async]): PartialFunction[Request, Response ! Async] =
+      opsRoutes.orElse(lifecycle.route(red.route(okay.ops.Red.byMethodAndPath)(routes)))
     provide(Transports.http(), Secrets.env, board)(Resource.run[Unit, Pure](
-      Jetty.serve(port)(node match
+      Jetty.serve(port)(app(node match
         case Some(n) =>
           val logDir = sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log")
           val tickMs = sys.env.get("OKAY_CHAT_TICK_MS").flatMap(_.toLongOption).getOrElse(500L)
@@ -372,13 +387,17 @@ object ChatDemo {
           val twoNode = TwoNode(java.nio.file.Path.of(logDir), n, tickMs, leaseMs)
           TwoNode.leaderGated(twoNode)(routes(Chat.model, budget))
         case None => handler(budget)
-      )().map { s =>
+      ))().map { s =>
         println(s"chat: http://127.0.0.1:${Jetty.port(s)}  (model: $mode)")
         node.foreach(n => println(s"two-node: $n — leader status at /whoami"))
         // no delivery channel yet (same limit Login.start states about
         // its one-time code) — the admin token rides the console
         println(s"admin token (okay-admin, /admin/replay): ${Admin.Issuer.issue()}")
-        Thread.sleep(Long.MaxValue)   // ctrl-c ends the process and the Resource
+        // SIGTERM/ctrl-c: readiness off, two seconds for the endpoints
+        // to notice, in-flight requests finish (15 s grace), then this
+        // returns and the region stops Jetty — the JVM waits for it
+        val drained = okay.ops.Signals.awaitSignal(lifecycle)
+        println(s"chat: stopping (drained=$drained, in flight ${lifecycle.inFlight})")
       }).runWith)
 
   /** the React page: okay-ui's tree rendered by a real React (CDN

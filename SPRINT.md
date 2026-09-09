@@ -1,11 +1,12 @@
 # Sprint
 
 ## Doing
-- service-lifecycle — specs/ops.md: graceful shutdown + RED metrics in okay-ops (claim: service-lifecycle)
-- either-scalarised-in-one-nesting — BACKLOG "runner-floor" item 3
-  (operator's order 2, 4, 3, 1: the third). Per-runner lanes, the old
-  `<|>` loops kept benchmark-local as the A/B; explain, then fix or
-  record. Claimed 2026-09-09 (.work/active/either-scalarised.claim).
+- outbox — specs/outbox.md: transactional outbox, inbox, dead-letter over okay-sql + okay-persist (claim: outbox)
+- timeout-masks-failure — BACKLOG (CORE): `Async.timeout` lets a
+  failing contender lose the race silently, so an immediate failure
+  comes out as `None` after the whole ms. Law first ("a failure ends a
+  timeout at once"), test on Async.timeout, then change timeout, not
+  race. Claimed 2026-09-09 (.work/active/timeout-masks-failure.claim).
 ## Queue
 (other candidates from BACKLOG.md: the roads the landed Sql seam
  unblocks — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

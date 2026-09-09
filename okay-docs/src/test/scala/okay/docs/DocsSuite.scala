@@ -116,3 +116,19 @@ abstract class DocsSuite extends FunSuite:
       assert(g.ordinal >= c.ordinal || g == d.grants(Consistency.Strong),
         s"granted $g for requested $c — an engine may strengthen or state its truth, not lie upward")
   }
+
+  test("counted: the seam counts every call as a Schema value — gets/hits, puts applied or stale, deletes, queries") {
+    val d = Docs.counted("under-test", mkDocs())
+    val PutResult.Applied(v1) = run(d.put("s", Person("S", "Kyiv"), Cond.IfAbsent)): @unchecked
+    run(d.put("s", Person("S2", "Lviv"), Cond.IfAbsent)): Unit
+    run(d.put("s", Person("S3", "Odesa"), Cond.IfVersion(v1))): Unit
+    run(d.get("s")): Unit
+    run(d.get("absent")): Unit
+    collect(d.query("city", "Odesa", 10)): Unit
+    run(d.delete("s", Cond.IfVersion(v1))): Unit
+    val s = d.stats
+    assertEquals((s.engine, s.gets, s.hits, s.puts, s.applied, s.stale, s.deletes, s.queries, s.failures),
+      ("under-test", 2L, 1L, 3L, 2L, 2L, 1L, 1L, 0L))
+    assert(okay.codec.Json.write(s).contains("\"stale\":2"), okay.codec.Json.write(s))
+  }
+

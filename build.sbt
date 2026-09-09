@@ -840,7 +840,8 @@ lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
   .in(file("okay-ops"))
   // okayResilience: the breaker/bulkhead/limiter Stats become /metrics rows;
   // okaySql: Pool.Stats joins them (persistence-e2e)
-  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience, okaySql)
+  // okayDocs/okayBlob: Docs.Stats and Blob.Stats join too (adapter-stats)
+  .dependsOn(okay, okayCodec, okayPersist, okayHttp, okayResilience, okaySql, okayDocs, okayBlob)
   // a real socket for the route-level acceptance test, JVM only
   .jvmConfigure(_.dependsOn(okayJetty % Test))
   .settings(
@@ -848,6 +849,10 @@ lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
     libraryDependencies += "org.scalameta" %%% "munit" % "1.1.1" % Test,
   )
   .jvmSettings(
+    // the shutdown hook (Signals) is the JVM's own; the routes and
+    // the values stay shared
+    Compile / unmanagedSourceDirectories +=
+      baseDirectory.value.getParentFile / "src" / "main" / "scala-jvm",
     Test / unmanagedSourceDirectories +=
       baseDirectory.value.getParentFile / "src" / "test" / "scala-jvm",
   )
@@ -855,7 +860,8 @@ lazy val okayOps = crossProject(JVMPlatform, JSPlatform)
 lazy val okayBlob = crossProject(JVMPlatform, JSPlatform, NativePlatform)
   .crossType(CrossType.Pure)
   .in(file("okay-blob"))
-  .dependsOn(okay)
+  // okayCodec: Blob.Stats derives Schema on every platform (adapter-stats)
+  .dependsOn(okay, okayCodec)
   // the S3 engine (jvm) speaks the wire through the one http client;
   // persist joined COMPILE scope with the offload tier (this
   // direction is safe — persist depends on core+codec only; the

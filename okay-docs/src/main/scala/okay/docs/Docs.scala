@@ -43,6 +43,48 @@ object Docs:
   /** a document and the version a CAS can be aimed at */
   final case class Versioned[A](version: Long, value: A)
 
+  /** an engine's standing as a value (specs/data.md, adapter-stats):
+   * what was asked of it and how the CAS answered — the same counts
+   * for every engine, so a dashboard needs one definition */
+  final case class Stats(engine: String, gets: Long, hits: Long, puts: Long, applied: Long, stale: Long,
+                         deletes: Long, queries: Long, failures: Long) derives okay.codec.Schema
+
+  /** every engine counted the same way: the seam wraps the adapter,
+   * so an adapter needs no counters of its own */
+  def counted[A](engine: String, inner: Docs[A]): Counted[A] = new Counted[A](engine, inner)
+
+  final class Counted[A](engine: String, inner: Docs[A]) extends Docs[A]:
+    import java.util.concurrent.atomic.AtomicLong
+    private val gets, hits, puts, applied, stale, deletes, queries, failures = AtomicLong(0L)
+
+    private def counting[B](n: AtomicLong)(p: B ! Async)(after: B => Unit): B ! Async =
+      n.incrementAndGet()
+      Async.await[B] { k =>
+        okay.Async.runAsync(p).onComplete {
+          case scala.util.Success(b) => after(b); k(Right(b))
+          case scala.util.Failure(t) => failures.incrementAndGet(); k(Left(t))
+        }(using scala.concurrent.ExecutionContext.parasitic)
+        () => ()
+      }
+
+    def get(id: String): Option[Docs.Versioned[A]] ! Async =
+      counting(gets)(inner.get(id))(r => if r.isDefined then hits.incrementAndGet(): Unit)
+    def put(id: String, a: A, cond: Cond): PutResult ! Async =
+      counting(puts)(inner.put(id, a, cond))(outcome)
+    def delete(id: String, cond: Cond): PutResult ! Async =
+      counting(deletes)(inner.delete(id, cond))(outcome)
+    def query(field: String, equals: String, max: Int): Chunk[(String, A)] ! (Produce + Async) =
+      queries.incrementAndGet()
+      inner.query(field, equals, max)
+    def grants(requested: Consistency): Consistency = inner.grants(requested)
+
+    private def outcome(r: PutResult): Unit = r match
+      case PutResult.Applied(_) => applied.incrementAndGet(): Unit
+      case PutResult.Stale(_) => stale.incrementAndGet(): Unit
+
+    def stats: Stats = Stats(engine, gets.get, hits.get, puts.get, applied.get, stale.get,
+      deletes.get, queries.get, failures.get)
+
 /** the write condition — the decision, not a promise */
 enum Cond:
   case Always

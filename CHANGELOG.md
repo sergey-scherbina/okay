@@ -40,6 +40,104 @@ program's monadic `map`, not the seam's, so local concrete code calls
 `B.map(d)(f)`; the collection view is for code generic in `D`, which is
 the code the seam is for.
 
+## adapter-stats — Docs.Stats and Blob.Stats counted at the seam, on /metrics; no adapter logs a credential: the last box of specs/data.md
+
+`Docs.counted` and `Blob.counted` wrap any engine with the same counters
+(gets/hits, puts applied or stale, deletes, queries, failures; puts,
+gets, misses, heads, lists, deletes, failures), Schema values both, so
+no adapter carries counters of its own (Kafka and Cache had theirs;
+Pool and Saga joined in persistence-e2e); okay-ops renders them as
+`okay_docs_*`/`okay_blob_*` counters with the engine label, beside the
+lifecycle/RED rows a sibling landed in the same routes. The DocsSuite
+and BlobContract assert the counts on every engine — Live on DynamoDB
+and Cassandra too. `TestNoCredentialLogs` (okay-deploy) reads the
+committed tree and refuses a credential-named value on any
+print/log/journal line of an adapter module; today there is no such
+line at all. Cassandra's session takes a 10 s request timeout (the 2 s
+default timed DDL out on the loaded box); okay-blob depends on
+okay-codec on every platform. Landed as 1c43e4a1 + db68b3f5. Gate: full
+matrix, 3335 tests, 0 failures. The three Live containers (pg,
+dynamodb-local, cassandra) are stopped and removed.
+
+## service-lifecycle — graceful shutdown and RED metrics, in okay-ops
+
+The microservices audit's cheapest missing pair. No server here
+drained: a region release called `stop()` and every request in
+flight was cut, which Kubernetes does at every rollout. `Lifecycle`
+is a value — draining flag, in-flight count, `route` that counts and,
+once draining, answers 503 `Connection: close` without running — and
+`Ops.routes(store, lifecycle = Some(l))` makes `/readyz` say
+`ready=false (draining)` while `/healthz` stays 200 (an un-live pod
+is restarted, an un-ready one leaves the endpoints). `Signals
+.awaitSignal` (JVM) blocks the main thread until SIGTERM/ctrl-c, runs
+readiness-off → delay → drain, returns so the region stops the
+server, and its shutdown hook joins the main thread so the JVM waits
+for that. The demo's `Thread.sleep(Long.MaxValue)` became that call.
+`/metrics` also knew nothing about REQUESTS: `Red` keeps per-label
+requests by status class, errors and a fixed-bucket duration
+histogram, `red.route` and `red.http` measure a server's routes and
+an outbound client, and `Prom.red` renders the Prometheus histogram
+shape (`_bucket` cumulative, `+Inf` = `_count`, `_sum` in seconds).
+One wrapper per concern serves all three servers, since each takes
+the same `PartialFunction`. `Attempt` in okay-resilience is public
+now — both wrappers observe a program's outcome with it. 15 tests;
+specs/ops.md gained the two sections and their boxes;
+docs/modules/okay-ops.md documents both with the shutdown sequence.
+
+## single-shot-row — priced, refuted, and the runner-floor list closes
+
+The last of the four items the operator ordered after the
+handler-fusion arc: the one road left under the fused pass is a
+mutable accumulator, sound only under a promise — "no handler applied
+to the residual resumes a continuation twice" — that the types cannot
+enforce (a user-written multi-shot `Effects.handle` over any signature
+breaks it silently). The spec designs the evidence (`SingleShot`, a
+promise about the handlers of the residual row, library givens for
+the five single-shot signatures, none for Choose/Logic/List/Vector)
+and then does the arithmetic: it buys Writer's reverse, 24 B per tell,
+and nothing else — State threads one value already.
+
+Priced before any API, as the spec demands: a benchmark-local
+`ListBuffer` runner against the shipping `Writer.run`, same run,
+`-prof gc`. Writer-only 1 000 tells −18.7% B/op (predicted −19%); the
+mixed program −8.9% (predicted −5%); time within noise both ways. The
+gate was 10% on the mixed program. Not shipped.
+
+So the list is closed with its ledger: writer-test-no-some refuted
+(0 B, and unsound for a union); eff-stack-safety landed (a million
+left-nested binds, +11% on Eff's fast path, kept); either-scalarised
+explained to the byte and `Writer.run` −13/−35% on the way;
+single-shot-row priced and refused. What is left under the fused pass
+at ~122 B and ~14 ns per operation is the program's own nodes — and
+those are the program.
+
+## either-scalarised — the anomaly explained, and Writer.run loses a third of its bytes on the way
+
+Runner-floor item 3: after stage A the two nestings of the same
+program had saved different amounts, so the JIT was scalarising some
+wrappers and not others. Per-runner lanes (`SplitBenchmark`, each
+runner alone in three forms of its loop) say exactly which: in
+`State.handle`'s loop the `Either` escaped (14 B/op) and `split`
+removed it; the extractor's `Option` never escaped anywhere; and in
+`Writer.foldWith`'s loop nothing escaped at all — `split` bought
+Writer zero bytes, and the 10.7 KB one nesting saved were State's
+Eithers over its 667 forwarded operations, to the byte.
+
+The same lanes showed where Writer's bytes actually go: the `Vector`
+appended per tell. `Writer.run` now builds a `List` by prepending and
+reverses it once — inside the loop's terminal case, through a new
+`loopWith` with a `finish` step. Same-run A/B: Writer-only 1 000 tells
+197 544 → 128 024 B/op (−35%, 1.7x in a quieter run); the mixed
+program with 333 tells and 667 forwarded State operations
+170 696 → 148 696 (−13%).
+
+The first cut of that change LOST 15% on the mixed program and is the
+lesson: it finished the list with a `.map` over the residual program,
+and one outer `map` around a program that still forwards effects makes
+every forwarded node left-nested under it — `resume` rotated each of
+the 667 again, 61 KB, more than the accumulator being finished.
+`loopWith` exists so a finishing step happens where the program ends
+and nowhere else; the refuted shape is a history row. Six rows.
 ## docs-cassandra — the Cassandra adapter of the Docs seam: lightweight transactions as CAS, the consistency dial granted as asked
 
 The third foreign engine of Docs, through the Apache java driver

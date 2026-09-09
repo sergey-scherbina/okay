@@ -86,18 +86,33 @@ object Writer {
    */
   inline def foldWith[W, S, A, F[+_]](a: A ! Writer % W + F)(z: S)
                                      (inline step: (S, W) => S)
-                                     (using TypeableK[Writer % W]): (S, A) ! F = {
-    def _loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = loop(s)(x)
+                                     (using TypeableK[Writer % W]): (S, A) ! F =
+    loopWith[W, S, S, A, F](a)(z)(step)(s => s)
+
+  /**
+   * The loop itself, with a `finish` applied to the accumulator where
+   * the PROGRAM ends — inside the loop, never as a `.map` over the
+   * residual: a map wrapped around a program that still forwards
+   * effects makes every forwarded node left-nested under it, and
+   * `resume` then rotates each of them again (either-scalarised,
+   * 2026-09-09: one outer `.map` cost 61 KB over 667 forwarded
+   * operations — more than the accumulator it was finishing).
+   */
+  inline def loopWith[W, S, S2, A, F[+_]](a: A ! Writer % W + F)(z: S)
+                                          (inline step: (S, W) => S)
+                                          (inline finish: S => S2)
+                                          (using TypeableK[Writer % W]): (S2, A) ! F = {
+    def _loop(s: S)(x: A ! Writer % W + F): (S2, A) ! F = loop(s)(x)
 
     // `split`, not `<|>` (split-without-either): no Either per tell.
-    @tailrec def loop(s: S)(x: A ! Writer % W + F): (S, A) ! F = (x.resume: @unchecked) match
-      case Pure(a) => Pure((s, a))
+    @tailrec def loop(s: S)(x: A ! Writer % W + F): (S2, A) ! F = (x.resume: @unchecked) match
+      case Pure(a) => Pure((finish(s), a))
       case Effect(e) => split[Writer % W, F](e) {
           // matching the constructor refines the answer type to Unit:
           // the program ends here, and a tell ends it with nothing —
           // the ascription is where the refined value meets the loop
-          case Say(v) => Pure((step(s, v), ())): (S, A) ! F
-        } { e => Effect(e).map((s, _)) }
+          case Say(v) => Pure((finish(step(s, v)), ())): (S2, A) ! F
+        } { e => Effect(e).map((finish(s), _)) }
       case Bind(Effect(e), k) => split[Writer % W, F](e) { w0 =>
           // here it refines the CONTINUATION's domain, so this is an
           // ordinary call and not an assertion; the checker cannot see
@@ -113,7 +128,12 @@ object Writer {
   /** collect everything told, in order, forwarding the effects F */
   def run[W, A, F[+_]](a: A ! Writer % W + F)
                       (using TypeableK[Writer % W]): (Seq[W], A) ! F =
-    fold[W, Seq[W], A, F](a)
+    // a List built by prepending and reversed ONCE at the end, not a
+    // Vector appended per tell: either-scalarised (2026-09-09) measured
+    // `Writer.run` at 197 B per tell with the split, Either and Option
+    // all costing NOTHING on this loop — the whole price was `:+`
+    // (~150 B per append). A cons is 24 B, the reverse is one pass.
+    loopWith[W, List[W], Seq[W], A, F](a)(Nil)((s, w) => w :: s)(_.reverse)
 
   /**
    * Map the told values, keeping the PROGRAM.
