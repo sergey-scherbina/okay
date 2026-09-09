@@ -2,7 +2,6 @@ package okay.ui
 
 import okay.*
 import okay.given
-import okay.codec.Json
 
 /**
  * Stage 0 of specs/frontend.md: two vocabulary levels in one tree.
@@ -96,9 +95,11 @@ class TestVocab extends munit.FunSuite {
 
   test("the wire round-trips every new shape") {
     for u <- Vector(screen(0), screen(1, 1, 3), Ui.lower(screen(0), Set.empty), Ui.lower(screen(0), Set(Vocab.table))) do
-      assertEquals(WireJson.uiOf(Json.parse(Json.print(WireJson.uiJson(u)))), Some(u))
+      assertEquals(Protocol.treeOf(Protocol.line(Protocol.Msg.Tree(u))), Some(u))
+      assertEquals(Protocol.ofBytes(Protocol.bytes(Protocol.Msg.Tree(u))), Some(Protocol.Msg.Tree(u)))
     for p <- Ui.diff(screen(0), screen(1, 1, 3)) do
-      assertEquals(WireJson.patchOf(Json.parse(Json.print(WireJson.patchJson(p)))), Some(p))
+      assertEquals(Protocol.patchOf(Protocol.line(Protocol.Msg.Patch(p))), Some(p))
+      assertEquals(Protocol.ofBytes(Protocol.bytes(Protocol.Msg.Patch(p))), Some(Protocol.Msg.Patch(p)))
   }
 
   test("the terminal: weights divide the row, gap and pad are spaces, tokens are the terminal's idiom") {
@@ -140,10 +141,10 @@ class TestVocab extends munit.FunSuite {
   test("Wire.serve lowers for the client's vocabulary: a level-L client never sees a semantic node") {
     val view: Int => Ui = n => Form(Vector(Input(n.toString, "n")), "Save", "f")
     def first(vocab: Set[String]): String =
-      val (out, _) = !.run(Writer.run(through(Writer.of(List.empty[String]))(
-        Wire.serve(0, vocab)(view)((s, _) => s))))
+      val (out, _) = !.run(Writer.run(through(Writer.of(List(Protocol.line(Protocol.hello(vocab)))))(
+        Wire.serve(0)(view)((s, _) => s))))
       out.head
-    assert(!first(Set.empty).contains("\"form\""), first(Set.empty))
-    assert(first(Set(Vocab.form)).contains("\"form\""), first(Set(Vocab.form)))
+    assert(!first(Set.empty).contains("\"Form\""), first(Set.empty))
+    assert(first(Set(Vocab.form)).contains("\"Form\""), first(Set(Vocab.form)))
   }
 }

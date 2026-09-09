@@ -2,10 +2,9 @@ package okay.script
 
 import okay.*
 import okay.given
-import okay.codec.Json
 import okay.http.{Frame, Request, Transports, Ws}
 import okay.jetty.Jetty
-import okay.ui.{Event, Patch, WireJson}
+import okay.ui.{Event, Patch, Protocol}
 
 import java.nio.file.{Files, Path}
 
@@ -45,13 +44,13 @@ class TestLivePush extends munit.FunSuite:
       val r = Request.get("/counter?__live=counter")
       assert(site.push.isDefinedAt(r) && !site.push.isDefinedAt(Request.get("/counter?__live=nope")))
       val pushed = Async.run[Seq[Frame], Pure](Writer.run(site.push(r)).map(_._1)).runWith
-      val events = pushed.collect { case Frame.Text(s) => WireJson.eventOf(Json.parse(s)) }
+      val events = pushed.collect { case Frame.Text(s) => Protocol.eventOf(s) }
       assertEquals(events, Seq(Some(Event.Pressed("inc")), Some(Event.Pressed("inc"))))
       val (out, _) = !.run(Writer.run(through(Writer.of(pushed.toList :+ Frame.Close(1000, "")))(site.ws(r))))
       val lines = out.collect { case Frame.Text(s) => s }
       assertEquals(lines.length, 3, lines.toString)
-      assertEquals(WireJson.patchOf(Json.parse(lines(1))), Some(Patch.SetText(List(0), "count: 1")))
-      assertEquals(WireJson.patchOf(Json.parse(lines(2))), Some(Patch.SetText(List(0), "count: 2")))
+      assertEquals(Protocol.patchOf(lines(1)), Some(Patch.SetText(List(0), "count: 1")))
+      assertEquals(Protocol.patchOf(lines(2)), Some(Patch.SetText(List(0), "count: 2")))
     }
   }
 
@@ -71,8 +70,8 @@ class TestLivePush extends munit.FunSuite:
         }).runWith
       val lines = got.collect { case Frame.Text(s) => s }
       assertEquals(lines.length, 3, got.toString)
-      assert(WireJson.uiOf(Json.parse(lines(0))).isDefined, lines(0))
-      assertEquals(WireJson.patchOf(Json.parse(lines(1))), Some(Patch.SetText(List(0), "count: 1")))
-      assertEquals(WireJson.patchOf(Json.parse(lines(2))), Some(Patch.SetText(List(0), "count: 2")))
+      assert(Protocol.treeOf(lines(0)).isDefined, lines(0))
+      assertEquals(Protocol.patchOf(lines(1)), Some(Patch.SetText(List(0), "count: 1")))
+      assertEquals(Protocol.patchOf(lines(2)), Some(Patch.SetText(List(0), "count: 2")))
     }
   }

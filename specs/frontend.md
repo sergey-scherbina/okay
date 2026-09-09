@@ -196,17 +196,28 @@ Stage 0 — the vocabulary (ui-vocab, LANDED 2026-09-09):
       level-L client (the Live pages' `live.js`, extended for level L)
       never receives a semantic node; hello arrives in stage 1
 
-Stage 1 — the protocol (ui-protocol):
-- [ ] `Schema[Ui]`, `Schema[Event]`, `Schema[Patch]` derived; every
-      shape round-trips through JSON and CBOR; the derived JSON equals
-      `WireJson`'s on the existing battery (then `WireJson` retires)
-- [ ] hello: a client claiming only level L receives a tree with no
-      semantic node; a client claiming `Table` receives `Table`
-- [ ] the conformance script: one line sequence, the frames the test
-      host produces; the terminal, DOM and React hosts produce the
-      same frames modulo painting
-- [ ] docs/protocol/frontend.md is written from the derived schemas,
-      not by hand (rendered, so it cannot drift)
+Stage 1 — the protocol (ui-protocol, LANDED 2026-09-09):
+- [x] `Schema[Ui]`, `Schema[Event]`, `Schema[Patch]` and the envelope
+      `Schema[Protocol.Msg]` derived (the enumerations spell
+      themselves short: `"h"`/`"v"`, `"secret"`, `"danger"`); every
+      shape round-trips through JSON lines and CBOR bytes from the one
+      definition. `WireJson` RETIRED — not "equal on the battery", the
+      derived shape replaced it (see Decisions), and every consumer
+      (Sessions, okay-script's Site and `live.js`, the tests) speaks
+      `Protocol` now
+- [x] hello: a client claiming nothing receives a tree with no
+      semantic node; one claiming `form` receives `Form`; unknown
+      names are ignored; an event before any hello is served as
+      level L, and that first line is still handled
+- [x] the conformance script (`docs/protocol/conformance.jsonl`): the
+      client's outs and the server's ins with the tree the client must
+      hold after each; `Wire.client` over a recording host reproduces
+      every tree, and says every out, hello first
+- [x] `docs/protocol/frontend.md` is rendered from the derived schemas
+      by `Protocol.document` (a shape language over the Schema
+      algebra, recursion by name — `JsonSchema.of` overflows on the
+      recursive `Ui`); `TestProtocol` fails when either file drifts,
+      `OKAY_RENDER=1` regenerates
 
 Stage 2 — the hybrid (ui-hybrid):
 - [ ] typing into a `Form`'s inputs crosses the wire ZERO times;
@@ -229,6 +240,18 @@ Stage 3 — the first thin client (ui-native):
       seam — the "out of the box" leg
 
 ## Results
+
+Stage 1 (ui-protocol) landed 2026-09-09. `okay.ui.Protocol`: the
+derived schemas (enumerations as short names), `Msg` (Hello, Tree,
+Patch, Event, Close), JSON lines and CBOR bytes, `document`,
+`describe` (the shape language), `conformance`. `Wire.serve` reads
+the hello first and lowers per its vocabulary; `Wire.client(host,
+vocab)` says hello first. `live.js` rewritten to the derived shapes
+(~160 lines, still dependency-free). `docs/protocol/frontend.md` and
+`docs/protocol/conformance.jsonl` are the contract a Compose client
+implements in stage 3. TestProtocol (5); okay-ui 74, okay-script 166,
+okay-demo 54, the Live-tagged wire/session/jetty suites, JS and
+Native legs green.
 
 Stage 0 (ui-vocab) landed 2026-09-09. Level L: `Box(dir, weights,
 gap, pad)`, `Image`, `Scroll`, `Input` kinds (text, secret,
@@ -269,6 +292,23 @@ pass unchanged.
   application says "danger", the host says red.
 - **Codecs derived, WireJson retired** — one definition, two
   encodings, versioning by the rules Schema already has.
+- **The derived shape IS the wire; WireJson retired** — the spec
+  first planned "derived JSON equals WireJson's, then retire", which
+  is impossible (a derived sum is `{"Case": {...}}`, the dialect was
+  `{"t": "text"}`), and keeping two shapes would have made the
+  document a lie about one of them. The derived shape is a little
+  longer on the wire and much better for a client in another
+  language: every field present, by name, and the document names
+  exactly what the codec writes.
+- **A shape language, not JSON Schema, in the document** — the
+  codec's `JsonSchema.of` has no `$ref` and overflows on a recursive
+  type; the wire's document needs recursion by name and nothing else
+  JSON Schema offers. `Protocol.describe` renders the algebra in one
+  screen a Kotlin developer can read whole.
+- **Hello first, but not a gate** — a client that sends an event
+  before any hello is served as level L; a second hello is ignored.
+  The Live pages' journal (ui-durable) keeps hello lines verbatim and
+  the refold reads them like any other.
 - **Row/Column stay; Box is the general node** — the spec first said
   "Row/Column are Box"; an enum case cannot be an alias with its own
   extractor, and rewriting every `case Row(c, k)` in the repository

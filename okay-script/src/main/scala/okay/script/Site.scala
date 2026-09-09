@@ -1,10 +1,9 @@
 package okay.script
 
 import okay.*
-import okay.codec.Json
 import okay.http.{Frame, Http, Request, Response as HttpResponse}
 import okay.security.{Decision, Policy, Verified}
-import okay.ui.{Event, WireJson}
+import okay.ui.{Event, Protocol}
 
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets.UTF_8
@@ -145,7 +144,7 @@ final class Site(
 
   private def pushOf(app: api.Live[?]): Source[Frame] =
     val eventsToFrames: Stage[Event, Frame, Unit] =
-      Stage.transduce(())((_, e) => Stage.tell[Event, Frame](Frame.Text(Json.print(WireJson.eventJson(e)))), _ => pure(()))
+      Stage.transduce(())((_, e) => Stage.tell[Event, Frame](Frame.Text(Protocol.eventLine(e))), _ => pure(()))
     through[Event, Frame, Async, Unit, Unit](app.push)(!.widen[Unit, Take % Event + Writer % Frame, Async](eventsToFrames))
 
   /** `key` is the session cookie, when the socket carries one: the
@@ -153,7 +152,7 @@ final class Site(
    * `bound` the live session it names, where a durable app keeps its
    * state (script-live-durable); `name` the mount id */
   private def liveSession(app: api.Live[?], key: Option[String], bound: Option[api.Session], name: String): Stage[Frame, Frame, Unit] =
-    val closed = Json.print(WireJson.eventJson(Event.Closed))
+    val closed = Protocol.eventLine(Event.Closed)
     val framesToLines: Stage[Frame, String, Unit] =
       Stage.transduce(())((_, f) =>
         f match

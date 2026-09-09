@@ -2,7 +2,7 @@ package okay.ui
 
 import okay.*
 import okay.given
-import okay.codec.{Json, Schema}
+import okay.codec.Schema
 import okay.persist.MemoryStore
 
 /**
@@ -29,8 +29,8 @@ class TestSessions extends munit.FunSuite {
       case Event.Pressed("dec") => Count(s.n - 1)
       case _ => s
 
-  def press(k: String): String = Json.print(WireJson.eventJson(Event.Pressed(k)))
-  def closed: String = Json.print(WireJson.eventJson(Event.Closed))
+  def press(k: String): String = Protocol.eventLine(Event.Pressed(k))
+  def closed: String = Protocol.eventLine(Event.Closed)
 
   /** a fresh session on a fresh in-memory topic */
   def fresh(key: String = "s1", partitions: Int = 2): Sessions.Session =
@@ -115,6 +115,6 @@ class TestSessions extends munit.FunSuite {
     val end = Sessions.serve(s)(Count(0))(view)(update)(
       okay.Source.of(List(press("inc"), closed)), l => async { sent += l; () }).runWith
     assertEquals(end, Count(2))
-    assertEquals(WireJson.uiOf(Json.parse(sent.head)), Some(view(Count(1))))
+    assertEquals(Protocol.treeOf(sent.head), Some(view(Count(1))))
   }
 }

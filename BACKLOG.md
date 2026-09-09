@@ -1657,7 +1657,7 @@ measure on our own data, never a predicted result.
       DEFINED by its lowering; `Ui.lower(ui, vocab)`, `Ui.keys`; laws:
       diff-then-patch on every new node, keys(s)==keys(lower(s)), diff
       commutes with lowering.
-- [ ] ui-protocol — stage 1: derived Schema[Ui]/[Event]/[Patch] (JSON +
+- [x] ui-protocol — LANDED 2026-09-09 (specs/frontend.md Results). Original: derived Schema[Ui]/[Event]/[Patch] (JSON +
       CBOR from one definition; needs codec-vector's gaps closed),
       `hello {vocab, version}` first line and lowering per vocab in
       Wire.serve, the conformance script, docs/protocol/frontend.md

@@ -2,10 +2,9 @@ package okay.script
 
 import okay.*
 import okay.given
-import okay.codec.Json
 import okay.http.{Frame, Transports, Ws}
 import okay.jetty.Jetty
-import okay.ui.{Event, Patch, WireJson}
+import okay.ui.{Event, Patch, Protocol}
 
 import java.nio.file.{Files, Path}
 
@@ -35,9 +34,11 @@ class TestLiveJetty extends munit.FunSuite:
           val sockets = Transports.sockets()
           Async.run[Seq[Frame], Pure](
             sockets.connect(s"ws://127.0.0.1:${Jetty.port(server)}/counter?__live=counter").flatMap { sock =>
+              // a browser says hello first (live.js does), then reads the tree
               val say: Stage[Frame, Frame, Seq[Frame]] =
-                Stage.await[Frame, Frame].flatMap { first =>
-                  Stage.tell[Frame, Frame](Frame.Text(Json.print(WireJson.eventJson(Event.Pressed("inc"))))).flatMap(_ =>
+                Stage.tell[Frame, Frame](Frame.Text(Protocol.line(Protocol.hello(Set.empty)))).flatMap(_ =>
+                Stage.await[Frame, Frame]).flatMap { first =>
+                  Stage.tell[Frame, Frame](Frame.Text(Protocol.eventLine(Event.Pressed("inc")))).flatMap(_ =>
                     Stage.await[Frame, Frame].map(second => first.toSeq ++ second.toSeq))
                 }
               Ws.over(sock)(say).flatMap(fs => sock.close().map(_ => fs))
@@ -45,8 +46,8 @@ class TestLiveJetty extends munit.FunSuite:
         }).runWith
       val lines = got.collect { case Frame.Text(s) => s }
       assertEquals(lines.length, 2, got.toString)
-      assert(WireJson.uiOf(Json.parse(lines(0))).isDefined, lines(0))
-      assertEquals(WireJson.patchOf(Json.parse(lines(1))), Some(Patch.SetText(List(0), "count: 1")))
+      assert(Protocol.treeOf(lines(0)).isDefined, lines(0))
+      assertEquals(Protocol.patchOf(lines(1)), Some(Patch.SetText(List(0), "count: 1")))
     finally
       site.close()
       Files.walk(root).sorted(java.util.Comparator.reverseOrder[Path]()).forEach(p => Files.deleteIfExists(p): Unit)

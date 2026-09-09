@@ -1,5 +1,38 @@
 # Changelog
 
+## ui-protocol — the frontend protocol as an artifact: one derived definition, two encodings, a rendered contract
+
+Stage 1 of specs/frontend.md. `okay.ui.Protocol` derives the schemas
+of the tree, the events, the patches and the envelope (`Msg`: Hello,
+Tree, Patch, Event, Close) — enumerations spelt short (`"h"`/`"v"`,
+`"secret"`, `"danger"`) — and both encodings come from it: JSON lines
+for the WebSocket, CBOR bytes for a byte transport. The hand-mapped
+`WireJson` is RETIRED, its dialect replaced by the derived shape
+(`{"Tree":{"ui":{"Box":{...}}}}`): every consumer — `Sessions`'s
+segment split, okay-script's `Site` push and close lines, the Live
+pages' `live.js` (rewritten, still dependency-free), the wire/session/
+live tests — speaks `Protocol`. The client's first line is its
+`Hello {vocab, version}`; `Wire.serve` reads it and lowers every
+semantic node the client did not claim (unknown names ignored, an
+event before any hello served as level L and still handled);
+`Wire.client(host, vocab)` says hello first.
+
+The contract is rendered, not written: `docs/protocol/frontend.md` is
+`Protocol.document` — fixed prose plus a SHAPE LANGUAGE over the
+Schema algebra (`Protocol.describe`: named types once, in
+first-reference order, so the recursive `Ui` is a name; `JsonSchema.of`
+has no `$ref` and overflowed on it) — and `docs/protocol/conformance.jsonl`
+is `Protocol.conformance`, a scripted session with the tree a client
+must hold after each line. `TestProtocol` fails when either file
+drifts; `OKAY_RENDER=1 sbt okayUiJVM/testOnly okay.ui.TestProtocol`
+regenerates. A Compose client (stage 3) reads those two files and
+nothing of okay.
+
+Spec correction recorded: "derived JSON equals WireJson's, then
+retire" was impossible and is replaced by the retirement itself.
+TestProtocol (5); okay-ui 74, okay-script 166, okay-demo 54, the
+Live-tagged wire, session and jetty suites, JS and Native legs green.
+
 ## handler-fusion-eff — the composite handler over Eff measured: 0.58x, the tree was never the cost, the arc closes
 
 Stage B of specs/handler-fusion.md, the road stage 0 and stage A had

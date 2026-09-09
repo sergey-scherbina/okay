@@ -5,17 +5,13 @@ import okay.codec.{Cbor, Json, Schema}
 /**
  * The exhibit codec-vector was filed for: the WHOLE Ui tree — a
  * recursive sum whose cases hold Vectors — now derives its Schema and
- * round-trips both wires. WireJson stays as the wire's own compact
- * dialect (the MCP-dialect precedent); what this buys is that the
- * hand mapping is a CHOICE now, not a workaround, and any OTHER type
- * built like Ui derives for free.
+ * round-trips both wires. Since ui-protocol these derivations ARE the
+ * wire (`Protocol`): WireJson retired, and any OTHER type built like
+ * Ui derives for free.
  */
 class TestDerivedUi extends munit.FunSuite {
 
-  given Schema[Style] = Schema.derived
-  given Schema[Ui] = Schema.derived
-  given Schema[Event] = Schema.derived
-  given Schema[Patch] = Schema.derived
+  import Protocol.given
 
   val tree: Ui = Ui.Column(Vector(
     Ui.Text("title", Style(bold = true)),
