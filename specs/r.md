@@ -172,24 +172,57 @@ they are operations, not because the modules know each other.
 
 ## Behavior
 
-- [ ] a Call round-trips scalars and vectors (NULL/NA distinct from
-      absent; the R NA story stated, not papered over)
-- [ ] a frame maps to a Seq of a flat case class and back; row
+- [x] a Call round-trips scalars and vectors (NULL/NA distinct from
+      absent; the R NA story stated, not papered over) — TestR: NULL vs
+      NA, an NA keeps its TYPE (R's four NAs are four values), NA vs
+      NaN, integer vs double kept apart where JSON would merge them,
+      raw bytes and strings; TestRMock walks every RValue shape with no
+      R present (checked 2026-09-09, spec-truth)
+- [~] a frame maps to a Seq of a flat case class and back; row
       count and column order survive; a column the Schema does not
-      name is an error naming the column
-- [ ] an R error (stop()) surfaces as a condition value with the
-      message; the process survives for the next call
-- [ ] a killed R process makes the in-flight call THROW; a
+      name is an error naming the column — HALF BUILT, and the half
+      that is not is the case class: `RFrame` is
+      `Vector[(String, Vector[RValue])]` and okay-r names no `Schema`
+      at all. What IS proven: a frame goes out as columns and comes
+      back with order and count intact, over the wire too; a column
+      carries NA in place; a function answering something that is not
+      a frame is a condition naming what arrived. The Schema mapping
+      and its unnamed-column error are BACKLOG `r-frame-schema`
+      (audited 2026-09-09, spec-truth)
+- [x] an R error (stop()) surfaces as a condition value with the
+      message; the process survives for the next call — TestR, plus a
+      missing function and a missing package as conditions
+- [~] a killed R process makes the in-flight call THROW; a
       supervisor retry gets a fresh process (the dead-worker
-      protocol)
-- [ ] a timeout kills the call, reports as data, and the engine is
+      protocol) — the NEXT call after a death throws, and that is
+      tested ("a DEAD process makes the next call THROW — the
+      supervisor decides, not us"). Killing a call already IN FLIGHT,
+      and the retry that gets a fresh process, are not covered: okay-r
+      has no supervisor of its own (by design — the caller's is the
+      one that decides), so the second half is a claim about a
+      CONSUMER, and belongs in the lane that writes one
+- [ ] NOT BUILT (audited 2026-09-09, spec-truth: `timeout` appears
+      nowhere in okay-r's main sources — a hung R call hangs the
+      caller's fiber today). BACKLOG `r-call-timeout`.
+      A timeout kills the call, reports as data, and the engine is
       usable after
-- [ ] verify reports a missing package and a version mismatch by
-      name; a passing verify then runs the program's calls
-- [ ] no API accepts runtime-built R source; args reach R only as
-      RValue/RFrame (structural: the enum has no Eval-a-string case)
-- [ ] the R process starts with a clean environment: a parent env
-      var is invisible in R unless the config names it
+- [x] verify reports a missing package and a version mismatch by
+      name; a passing verify then runs the program's calls — TestR
+      names all three (a missing package, a version mismatch, a
+      passing verify that says nothing and then runs), and two more
+      the box did not ask for: a shim from another version and a shim
+      without jsonlite each refuse BY NAME
+- [x] no API accepts runtime-built R source; args reach R only as
+      RValue/RFrame (structural: the enum has no Eval-a-string case) —
+      read on the current tree: `REval` has exactly `Call(fn, args)`
+      and `Frame(fn, in, args)`, both taking a NAME and `RValue`s;
+      TestR pins the addressing (`pkg::name`, a base name, "the
+      program is data rather than code")
+- [x] the R process starts with a clean environment: a parent env
+      var is invisible in R unless the config names it — TestR both
+      ways: the process sees exactly what the config names, and a real
+      parent variable is invisible (that one only where R is on the
+      PATH)
 - [~] a journaled R step is skipped on Durable replay — NOT as
       written: `Durable` journals `Tool`, not any operation type. An
       R call reached through a tool is journalled because the TOOL is;

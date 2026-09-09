@@ -1,5 +1,29 @@
 # Backlog
 
+## okay-r: two claims the spec made that the module does not (spec-truth, 2026-09-09)
+
+Found by auditing specs/r.md's Behavior list against the 24 tests that
+exist: five boxes were already proven and are now checked, two are half
+built and say so, and these two are simply absent. Neither blocks a
+consumer today — okay-r is used through tools, where the caller's own
+supervision applies — so they are named here rather than built on
+speculation.
+
+- [ ] r-call-timeout — `timeout` appears nowhere in okay-r's main
+      sources: a hung `Rscript` hangs the calling fiber, with no way
+      to report it as data. The seam already has the shape for it
+      (`Condition` is the data channel, `Async.timeout` the mechanism,
+      and `RSubprocess` owns the process it would have to kill). Spec
+      box: "a timeout kills the call, reports as data, and the engine
+      is usable after".
+- [ ] r-frame-schema — `RFrame` is `Vector[(String, Vector[RValue])]`
+      and okay-r names no `Schema` anywhere. The spec's box promises a
+      frame mapping to a Seq of a flat case class and back, with a
+      column the Schema does not name an error naming the column —
+      the analyst-facing half of the frame story. The column round
+      trip itself IS built and tested; this is the typed layer over
+      it, the same move `Typed.rows` makes over `Sql`.
+
 ## bulk — after the seam (specs/bulk.md, landed 2026-09-09)
 - [x] bulk-rewrite — DONE 2026-09-09, and the premise refuted by
       measurement (`TestWroclawStages`): the plan built in 6.8 s, same
