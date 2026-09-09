@@ -1,5 +1,31 @@
 # Changelog
 
+## r-docs — okay-r's page describes the module, not the promise
+
+Four lanes changed what okay-r IS today, and its page had drifted the
+awkward way: it claimed a `Schema` frame mapping that only landed this
+afternoon, and said nothing about the deadline, the package check or
+the columnar wire. A page that documents a promise is worse than a
+missing one — a reader trusts it.
+
+It now carries the API a caller writes (start with an optional deadline
+and required packages, an addressed call, a frame in and a case class
+out, close), each guarantee beside the mechanism that makes it true
+(no R source because the enum has nowhere to put one; a failing call is
+data and the session survives; a deadline kills the process and the
+respawn is invisible BECAUSE the API cannot assign anything in an R
+session; `--vanilla` and an emptied environment; a shim that cannot
+drift; packages checked before the engine is handed over), the wire
+with the measurement that chose its shape, and the limits stated
+rather than implied — no supervisor, one session one process, an empty
+column loses its type, not an aggregation engine. Every API name in
+the example was checked against the source, since nothing compiles a
+documentation code block and that is exactly how one starts lying.
+
+The last paragraph says what a reader most needs and a page rarely
+admits: nothing in this repository calls `REval` yet. Landed as
+2b51a542. Gate: full matrix, 3637 tests, 0 failures.
+
 ## docs-di — the guide for wiring, beside the spec that records the design
 
 The arc had a spec, three bridge pages and no page that tells a
