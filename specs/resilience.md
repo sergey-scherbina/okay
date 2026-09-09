@@ -274,17 +274,11 @@ open) and a token bucket (5/s, burst 10) and publishes both to
 - [x] the guard is transparent when nothing refuses: every line of
       the streamed answer arrives
 
-- [ ] adaptive concurrency (a bulkhead whose permits follow observed
-      latency, Netflix's gradient) is DEFERRED with a measured reason
-      or landed here — not before stage 1 is in use. Status
-      2026-09-09: still deferred, and now for a BETTER reason.
-      demo-guarded-llm wired a breaker and a token bucket around
-      okay-demo's Anthropic transport, so the obstacle is gone and
-      there is a service to measure. What is missing is the
-      MEASUREMENT: a gradient bulkhead is a control loop, and a
-      control loop tuned against no traffic is a guess with extra
-      steps. It lands when someone has latency from a demo under
-      real load, not before
+- [x] adaptive concurrency (a bulkhead whose permits follow observed
+      latency, Netflix's gradient) — MEASURED AND REFUTED 2026-09-09
+      (adaptive-concurrency). See "The controller that did not earn
+      its place" below. It is not built, and the measurement that
+      says why is kept as a test.
 
 ## Out of scope
 
@@ -341,6 +335,75 @@ synchronized clocks; a remaining budget needs none and loses only
 the transit time, which is the loss gRPC accepts (`grpc-timeout`).
 The header name is ours because REST has no standard one; the
 semantics are gRPC's so that a gateway can translate.
+
+
+## The controller that did not earn its place (2026-09-09, adaptive-concurrency)
+
+The box above was deferred twice: first for want of machinery, then
+for want of a measurement. This is the measurement, and it says no.
+
+**The instrument.** A control loop judged by wall-clock throughput on
+a shared laptop would be judged by the laptop, so nothing here uses a
+real clock or a real thread: a virtual clock, a modelled downstream
+(20 concurrent calls at 50 ms; every call in flight beyond that adds
+10 ms to everyone — the queueing shape that makes a concurrency limit
+worth having), and arrivals every 2 ms. Two runs of one configuration
+are the same run. What is measured is the POLICY, not `Bulkhead`'s
+parking, which has its own tests.
+
+**The model is sound first.** Against a capacity of 20, fixed permits
+buy throughput up to the knee and only latency past it — 5 → 100/s,
+10 → 199/s, 20 → 396/s, then 40 → 162/s with p99 250 ms and 80 →
+128/s with p99 650 ms. A limit exists because of that second half.
+
+**The gradient loses on steady capacity, and stays lost.**
+
+| run | gradient | best fixed | ratio |
+|---|---|---|---|
+| 2 000 arrivals | 218.9/s | 396.2/s | 0.55 |
+| 10 000 | 216.7/s | 399.2/s | 0.54 |
+| 40 000 | 215.1/s | 399.8/s | 0.54 |
+
+Twenty times the run changes nothing, and that is what makes it a
+refutation rather than a slow start: the controller does not
+converge, it ORBITS. The only way it learns its limit is too high is
+by EXCEEDING it, and exceeding it costs the latency that makes it cut
+again. It spends the whole run climbing towards the knee and
+retreating from it, and averages a little over half of what a
+well-chosen constant delivers.
+
+**The one thing it does buy, stated so the refutation is not
+mis-read.** When capacity halves mid-run — a deploy, a lost instance,
+a neighbour taking the shared database — the gradient reaches 319/s
+at p99 200 ms against a constant tuned for the old capacity (291/s,
+p99 350 ms) and a conservative one tuned for the new (199/s).
+Adaptation is worth about 10% there. It is not worth 46% everywhere
+else.
+
+**The first cut was worse, and the reason is worth keeping.** The
+growth condition began as "the limit is at least half used"
+(`inFlight >= limit * 0.5`). That lets the limit run to twice the
+concurrency ever observed: traced, it climbed 10 → 51 while latency
+was still flat, because open-loop arrivals fill a raised limit only
+slowly, and then collapsed to 6 when they caught up. Tightening it to
+`inFlight >= limit - sqrt(limit)` — at the limit, not half of it —
+moved the ratio from 0.55 to... 0.55. The tightening fixed the
+overshoot and changed the verdict not at all, which is itself the
+finding: the orbit is not a tuning bug.
+
+**What this does NOT say.** It does not say adaptive limits are
+useless in general — a downstream shared with other clients, where
+capacity moves constantly, is the case the middle table row is about,
+and this repository does not have one. It says that HERE, against
+this stack's own workloads, a `Bulkhead` with a permit count someone
+chose is better, and that the honest place to spend effort is
+choosing that number well. `/metrics` publishes what a person needs
+to choose it: `okay_bulkhead_in_flight`, `okay_bulkhead_waiting` and
+`okay_http_request_duration_seconds`.
+
+The tests assert the finding, not the hope: a controller that beats a
+constant will FAIL `TestAdaptive` and force whoever wrote it to read
+this section before moving the bar.
 
 ## Decisions
 

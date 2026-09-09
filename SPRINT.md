@@ -5,7 +5,6 @@
   spec is WRITTEN AND LANDED (05fa9153), the code is not started. The
   measurement that motivates it and the 2x bar that can refute it are
   both in that section. Claim: r-frame-columnar-wire.
-- adaptive-concurrency — specs/resilience.md's last open box: measure first, then build or refute (claim: adaptive-concurrency)
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,
