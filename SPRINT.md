@@ -1,6 +1,10 @@
 # Sprint
 
 ## Doing
+- handler-fusion-eff — specs/handler-fusion.md "Stage B": the composite
+  `!>` for a row over Eff, assembled inline, product accumulator in the
+  answer type; bar 1.5x over Fused.stateWriter's right-nested 13.8 µs
+  (post-stage-A). Claimed 2026-09-09 (.work/active/handler-fusion-eff.claim).
 - sql-temporal-types — BACKLOG "persistence-audit", lane 3 of 7:
   timestamp/date/time/uuid/json as SqlValue cases with Schema givens,
   both drivers, verify. Claim: sql-temporal-types. Then:

@@ -1,0 +1,28 @@
+task: handler-fusion-eff
+agent: fable-fusion
+started: 2026-09-09
+branch: feature/handler-fusion-eff
+worktree: ../okay-wt-eff
+spec: specs/handler-fusion.md, "Stage B" (operator's go 2026-09-09, A then B)
+
+why: stage 0 put two thirds of a pass's cost in the Free encoding
+  re-materialising the program (every k(x) builds the next node);
+  stage A removed the wrappers (-18% bytes, 7-11% time) and confirmed
+  the rest is the tree. Eff is the Church encoding — the program is a
+  function of its handler, no tree between them — and staged-effects.md
+  measured 1.6-1.9x for exactly this shape on a bind chain.
+
+what: a composite `!>` for a row (State % S + Writer % W first, then
+  + Throws) assembled INLINE at compile time, the product accumulator
+  carried in the answer type (S = Acc => (Acc, A)) so the handler is
+  one static expression and the program runs once with no tree. Laws
+  as stage 0: agreement with the nested Free runners for both orders,
+  aborts included, on generated programs. JMH: the same 1000-op
+  right-nested workload written as Eff vs Fused.stateWriter (13.8 us);
+  bar 1.5x. Stated limit in the spec before the code: Eff is not
+  stack-safe on left-nested binds — the for-comprehension road.
+
+predict: 1.5-1.9x on the right-nested program, B/op down by most of the
+  ~100 KB the tree costs; if it lands under 1.3x the mechanism to look
+  at is Cont's own node allocation inside foldCont (the answer-type
+  shifts), and the spec records it.
