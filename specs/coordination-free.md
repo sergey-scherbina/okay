@@ -133,8 +133,8 @@ rather than the only one.
 ## Stages
 
 - [x] **0 — the spec and the claim.**
-- [ ] **1 — `Hlc` and `Uid` in core**, cross-platform, with the six
-      laws above.
+- [x] **1 — `Hlc` and `Uid` in core**, cross-platform, with the laws
+      above. Landed 2026-09-09.
 - [ ] **2 — `okay-crdt`**: `Crdt[A]` with `merge`, and its laws
       (commutative, associative, idempotent) as a REUSABLE check that
       every instance runs. Instances: `GCounter`, `PNCounter`,
@@ -187,4 +187,36 @@ be tested is not designed.
 
 ## Results
 
-(stage 1 fills this in)
+**Stage 1 landed (coordination-free, 2026-09-09).** `Hlc` and `Uid` in
+core. 15 laws on JVM, JS and Native (`src/test/scala-cross`), 2 more
+needing real threads on the JVM only. Gate green, 0 warnings — 721 /
+42 / 50, where JS and Native each gained exactly the 15 shared laws.
+
+Two things worth keeping from building it.
+
+**The test placement was a real hole, not a formality.** The laws
+first went in `src/test/scala`, everything passed, and the claim's
+"every law runs on all three platforms" looked satisfied. It was not:
+for core, `src/test/scala` is JVM-ONLY, and the suite that also runs
+on JS and Native is `src/test/scala-cross` (build.sbt, `Test /
+unmanagedSourceDirectories`). `okayJS/test` and `okayNative/test`
+went green because the MAIN sources compiled there — which proves the
+code builds cross-platform and says nothing about whether it behaves.
+The tell was in the log: `okay.TestUid:` appeared once, not three
+times. Moving the files turned 27 -> 42 on JS and 35 -> 50 on Native,
+and those +15 are the evidence the claim actually asked for.
+
+**Two spellings, one value, is cheaper than it sounds.** Because the
+canonical form is a conforming UUIDv7, the ULID rendering is a base32
+walk over the same 128 bits and the version/variant bits are constant
+— so they contribute nothing to a comparison, and lexicographic order
+of the text equals numeric order of the value equals the order the
+ids were issued in. That is one law, tested once, covering both
+spellings.
+
+The 12-bit counter is what the layout has room for beside a version
+and a variant, so `Hlc.Clock` grew a `counterBits` parameter rather
+than `Uid` growing a second clock. The FIELD is always 16 bits wide,
+so `Stamp` keeps one layout and its accessors never need to know who
+made it; a clock may simply choose to use fewer and borrow a
+millisecond earlier.

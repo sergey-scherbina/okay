@@ -5348,7 +5348,8 @@ WHAT THE TREE HAS, grepped:
   Oidc). No attenuation, no offline delegation.
 
 - [x] 0 — the spec.
-- [ ] 1 — `Hlc` and `Uid` in core, cross-platform, six laws. A
+- [x] 1 — `Hlc` and `Uid` in core, cross-platform. LANDED
+      2026-09-09: 15 laws on JVM/JS/Native, 2 threaded ones on JVM. A
       hybrid logical clock is what BOTH a monotonic id and an LWW
       register need, so it is built once. ULID and UUIDv7 are the
       same 128 bits — 48-bit millis then entropy — differing in six
