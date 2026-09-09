@@ -1,0 +1,21 @@
+task: di-cross
+agent: opus5-di
+started: 2026-09-09
+heartbeat: 2026-09-09T16:49:14Z
+status: in-progress
+branch: feature/di-cross
+worktree: ../okay-wt-dicross
+spec: specs/di.md (the arc's one untested edge)
+
+why: Module, module, plan, exports and Resource.open live in shared
+  core, so they COMPILE for JS and Native — and nothing runs them
+  there: TestModule is in src/test/scala, and both non-JVM platforms
+  replace the test sources with src/test/scala-cross only.
+
+what: a cross suite for the module vocabulary — acquisition order and
+  reverse release through Resource.run, a dependent module reading the
+  one before it, the test-double override, plan off the type, exports
+  with the erased class, and Resource.open's closer. Runs on JVM, JS
+  and Native.
+
+next: write it, run all three platforms
