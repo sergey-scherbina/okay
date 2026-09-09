@@ -82,7 +82,7 @@ class TestTaxiAlgebra extends munit.FunSuite:
   val hourly = Aggregator.groupBy((t: Trip) => t.hour)(rides.zip(fares).zip(tipPct))
 
   test("the same aggregator: distributed on Spark, and local over Chunks") {
-    trips.count() // load and cache OUTSIDE the timer: no lane here is a parquet read
+    trips.count(): Unit // load and cache OUTSIDE the timer: no lane here is a parquet read
     val t0 = System.nanoTime()
     val onSpark = aggregate(trips)(hourly)
     val sparkMs = (System.nanoTime() - t0) / 1000000
