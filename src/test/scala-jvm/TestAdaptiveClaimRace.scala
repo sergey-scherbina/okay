@@ -20,7 +20,7 @@ class TestAdaptiveClaimRace extends munit.FunSuite {
     var thrown: Throwable | Null = null
     var r = 0
     while r < rounds && thrown == null do
-      val buf = AdaptiveFifo[Long](parts, () => Ring[Long](64), eager = false, first = null, firstOwner = null)
+      val buf = AdaptiveFifo[Long](parts, () => Ring[Long](64), eager = false, first = null)
       val start = java.util.concurrent.CountDownLatch(1)
       val done = java.util.concurrent.CountDownLatch(producers)
       var i = 0

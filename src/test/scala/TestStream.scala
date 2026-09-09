@@ -154,8 +154,17 @@ class TestStream extends munit.FunSuite {
     // the union survives: each element is one side or the other
     assertEquals(chunked.collect { case i: Int => i }.sorted, (1 to 50).toList)
     assertEquals(chunked.collect { case s: String => s.toInt }.sorted, (51 to 100).toList)
-    // and each source's own order is preserved within the merge
+    // and EACH source's own order is preserved within the merge --
+    // both sides, and the plain merge too. Only the first of these
+    // four was asserted, and only the first caught the day the
+    // channel's buffer stopped keeping a producer's order
+    // (merge-chunked-order, 2026-09-09); the plain merge was breaking
+    // 21 times in 500 at its own default capacity with nothing to
+    // say so.
     assertEquals(chunked.collect { case i: Int => i }, (1 to 50).toList)
+    assertEquals(chunked.collect { case s: String => s.toInt }, (51 to 100).toList)
+    assertEquals(plain.collect { case i: Int => i }, (1 to 50).toList)
+    assertEquals(plain.collect { case s: String => s.toInt }, (51 to 100).toList)
   }
 
   test("merge(chunked): a partial final chunk is flushed, not dropped") {
