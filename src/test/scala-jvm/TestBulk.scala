@@ -48,7 +48,7 @@ class TestBulk extends munit.FunSuite {
 
 /** The effect layer over the seam: a program of tables, run and traced (specs/bulk.md). */
 class TestTables extends munit.FunSuite {
-  import okay.Tables.{read, of}
+  import okay.Tables.of
   import okay.Sort.sortBy
   import okay.RowLift.plus
 
