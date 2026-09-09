@@ -104,11 +104,12 @@ its Behavior checklist:
       the module's type (not TypeableK — see the spec's Decisions),
       the okay-conf example with a Secret resolved inside the
       acquisition.
-- [ ] okay-spring — stage 2: `Module` → `@Configuration` (one
-      BeanDefinition per capability, SmartLifecycle for the scope),
-      `Module.fromContext(ctx)`, a controller returning `A ! Async`
-      via okay-reactive, a Boot starter. New satellite; build.sbt
-      touched — coordinate.
+- [x] okay-spring — DONE 2026-09-09: `OkaySpring.register`/`bean`,
+      the ReactiveAdapterRegistry adapter + Boot auto-configuration;
+      core gained `Resource.open` and `m.exports`. Not done, deferred
+      to a lane if wanted: a WebFlux end-to-end test with a real
+      server (the adapter is tested on the registry, the
+      auto-configuration under ApplicationContextRunner).
 - [ ] zio-layer — stage 2: `ZLayer` ⇄ `Module`, `ZEnvironment` →
       `Providing`, in okay-zio.
 - [ ] okay-guice — stage 2: `Module` → `AbstractModule`,

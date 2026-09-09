@@ -124,6 +124,20 @@ def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
 extension [F[_]](m: Module[F])
   inline def plan: Vector[String] = ${ Module.planImpl[F] }
 
+/**
+ * What a module installed, for a container that wants values BY CLASS
+ * (specs/di.md, stage 2): the name is the plan's, the class is the
+ * erased one — an opaque qualifier exports under its underlying class
+ * and keeps its role in the name — and the value is what the scope
+ * built. `m.exports` is the macro twin of `plan`: it reads the same
+ * chain off the type and generates the body that collects each
+ * ambient value, so no cast and no reflection touch the values.
+ */
+final case class Installed(name: String, cls: Class[?], value: Any)
+
+extension [F[_]](m: Module[F])
+  inline def exports: Vector[Installed] ! Resource = ${ Module.exportsImpl[F]('m) }
+
 object Module:
   /** a module with nothing to build or release — a test double, a config value */
   def ready[F[_]](p: Providing[F]): Module[F] = new Module(pure[Resource, Providing[F]](p))
@@ -133,17 +147,46 @@ object Module:
   import scala.quoted.*
   /** `F[Marker]` dealiased is `ContextFunction1[A, ContextFunction1[B, … Marker]]`;
    * walk it to the marker, naming each parameter */
+  /** the chain `A ?=> B ?=> … ?=> End` as its parameters, outer first,
+   * each with the type that remains after it */
+  private def chain(using q: Quotes)(t: q.reflect.TypeRepr, end: q.reflect.TypeRepr)
+      : List[(q.reflect.TypeRepr, q.reflect.TypeRepr)] =
+    import q.reflect.*
+    def walk(t: TypeRepr, acc: List[(TypeRepr, TypeRepr)]): List[(TypeRepr, TypeRepr)] = t.dealias match
+      case AppliedType(fn, List(a, rest)) if fn.typeSymbol.name.startsWith("ContextFunction") =>
+        walk(rest, (a, rest) :: acc)
+      case t if t =:= end => acc.reverse
+      case other => report.errorAndAbort(
+        s"Module: expected a chain of context functions ending in ${end.show}, found ${other.show}")
+    walk(t, Nil)
+
   def planImpl[F[_] : Type](using Quotes): Expr[Vector[String]] =
     import quotes.reflect.*
-    val marker = TypeRepr.of[Module.Marker]
-    def walk(t: TypeRepr, acc: List[String]): List[String] = t.dealias match
-      case AppliedType(fn, List(a, rest)) if fn.typeSymbol.name.startsWith("ContextFunction") =>
-        walk(rest, a.typeSymbol.name :: acc)
-      case t if t =:= marker => acc.reverse
-      case other => report.errorAndAbort(
-        s"Module.plan: expected a chain of context functions ending in the marker, found ${other.show}")
-    val names = walk(TypeRepr.of[F[Module.Marker]], Nil)
+    val names = chain(TypeRepr.of[F[Module.Marker]], TypeRepr.of[Module.Marker]).map(_._1.typeSymbol.name)
     val list = Expr(names)
     '{ $list.toVector }
+
+  /**
+   * Generates `m.build.map(p => p((a: A) ?=> (b: B) ?=> … List(Installed(…, a), Installed(…, b)).toVector))`.
+   * Each level is quoted with its own parameter type and ascribed to
+   * the type the chain says remains — `asExprOf` is a CHECK at
+   * expansion time, not a runtime cast, and it fails the expansion
+   * if the generated body's type ever disagrees with the chain's.
+   */
+  def exportsImpl[F[_] : Type](m: Expr[Module[F]])(using Quotes): Expr[Vector[Installed] ! Resource] =
+    import quotes.reflect.*
+    val end = TypeRepr.of[Vector[Installed]]
+    val levels = chain(TypeRepr.of[F[Vector[Installed]]], end)
+    def body(ls: List[(TypeRepr, TypeRepr)], acc: List[Expr[Installed]]): Expr[Any] = ls match
+      case Nil => '{ ${ Expr.ofList(acc.reverse) }.toVector }
+      case (a, rest) :: more =>
+        val name = Expr(a.typeSymbol.name)
+        // the erased class: an opaque type's is its underlying's
+        val cls = Literal(ClassOfConstant(a.dealias)).asExprOf[Class[?]]
+        (a.asType, rest.asType) match
+          case ('[at], '[rt]) =>
+            '{ (x: at) ?=> ${ body(more, '{ Installed($name, $cls, x) } :: acc).asExprOf[rt] } }
+    val collect = body(levels, Nil).asExprOf[F[Vector[Installed]]]
+    '{ $m.build.map(p => p[Vector[Installed]]($collect)) }
   /** the end of the chain the plan walks to; never inhabited */
   sealed trait Marker

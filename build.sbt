@@ -1659,3 +1659,23 @@ lazy val okayDocsDynamo = (project in file("okay-docs-dynamo"))
     libraryDependencies += "org.scalameta" %% "munit" % "1.1.1" % Test,
     Test / fork := true,
   )
+
+/** The Spring Boot bridge of specs/di.md (stage 2): a Module's
+ * installed values as singletons in a Spring context, closed with it;
+ * a Spring bean as a module; a controller returning `A ! Async` served
+ * through Spring's ReactiveAdapterRegistry, wired by a Boot
+ * auto-configuration. JVM; the Boot test scope runs the
+ * auto-configuration under ApplicationContextRunner. */
+lazy val okaySpring = (project in file("okay-spring"))
+  .dependsOn(okay.jvm)
+  .settings(
+    name := "okay-spring",
+    libraryDependencies ++= Seq(
+      "org.springframework" % "spring-context" % "6.2.10",
+      "io.projectreactor" % "reactor-core" % "3.7.9",
+      "org.springframework.boot" % "spring-boot-autoconfigure" % "3.5.5",
+      "org.springframework.boot" % "spring-boot-test" % "3.5.5" % Test,
+      "org.assertj" % "assertj-core" % "3.27.3" % Test,   // ApplicationContextRunner's assertable context
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+  )

@@ -91,6 +91,7 @@ API reference, gotchas.
 | `okay` (core) | effects, streams, chunks, the algebra — covered by the guide/tutorial/typepedia above |
 | [`okay-cats`](modules/okay-cats.md) | cats instances (law-tested), IO and free-monad bridges, their runtime as our Scheduler |
 | [`okay-zio`](modules/okay-zio.md) | ZIO and ZStream bridges, the ZIO scheduler |
+| [`okay-spring`](modules/okay-spring.md) | a Module as Spring singletons closed with the context, a bean as a module, `A ! Async` from a WebFlux controller (Boot auto-configuration) |
 | [`okay-kyo`](modules/okay-kyo.md) | kyo bridges and the structural effect-row mapping |
 | [`okay-fs2`](modules/okay-fs2.md) | fs2 streams, chunk for chunk, native backpressure both sides |
 | [`okay-kafka`](modules/okay-kafka.md) | Kafka: one poll, one chunk; offsets = the replayable capability |

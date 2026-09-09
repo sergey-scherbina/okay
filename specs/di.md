@@ -108,14 +108,21 @@ Stage 1 — qualifiers and the plan as a value (SHIPPED, di-stage1):
 
 Stage 2 — the bridges (each its own satellite; instances inward,
 values outward, the P3 rule from specs/interop.md):
-- [ ] `okay-spring`: `Module` → Spring, a `@Configuration` that
-      registers one `BeanDefinition` per installed capability and
-      maps the scope to `SmartLifecycle` (start in order, stop in
-      reverse); Spring → `Module`, `Module.fromContext(ctx)` reading
-      beans by type as a `Providing` (a container is a source of
-      values); a controller returning `A ! Async` served through
-      okay-reactive's `Publisher` bridge. A Boot starter (auto-
-      configuration) so the dependency is one line
+- [x] `okay-spring` (SHIPPED): `OkaySpring.register(ctx, m.exports)` —
+      one singleton per installed capability, named by the plan, typed
+      by the erased class, a `DisposableBean` closing the scope with
+      the context (reverse order, tested); `OkaySpring.bean[A](ctx)`, a
+      bean as a module looked up when the scope builds; the
+      `ReactiveAdapterRegistry` adapter so a controller returns
+      `A ! Async`, registered by `OkayAutoConfiguration` (Boot's
+      `AutoConfiguration.imports`, tested under
+      `ApplicationContextRunner`). Two core additions carried it:
+      `Resource.open` (acquire now, closer later — the scope whose end
+      belongs to somebody else) and `m.exports`, `plan`'s macro twin
+      that generates the body collecting each ambient value. The
+      `@Configuration` the entry first named became `register` on a
+      `GenericApplicationContext`: a configuration CLASS is Spring's
+      way of saying a value, and we have the value
 - [ ] `okay-zio` gains `ZLayer[R, E, A]` ⇄ `Module`: a layer is a
       resource-scoped constructor, `>>>` is `and`; `ZEnvironment` →
       `Providing`
@@ -174,6 +181,22 @@ is the actuator, and a Boot app can mount both).
   through the type lambda as `Providing.and` already does.
 - **Stage 0 adds no plan, no names, no tags.** Ordering and release
   are the region's; names belong to stage 1.
+- **A container holds the scope open; `Resource.open` hands it the
+  closer** (stage 2). `Resource.run` owns the end of its scope; a
+  Spring context, a Guice injector, a `main` with a shutdown hook
+  own theirs. `open` acquires now and returns the value with an
+  idempotent closer, releasing in reverse on a failed acquisition as
+  `run` does. Resource-only by signature: there is no home to forward
+  a row to.
+- **`exports` generates the collecting body; nothing reflects on the
+  values.** The alternative — recording values as `module` builds
+  them — would have put a name and an `Any` into every module for the
+  sake of one bridge. The macro reads the same chain `plan` does and
+  writes `(a: A) ?=> (b: B) ?=> Vector(Installed(…, a), …)`, so the
+  values reach the container through the givens they were installed
+  as. The bridge meets Spring's `Object`-typed API in two places,
+  both restating a check already made (`Class.cast`, the registry's
+  class test).
 - **The plan is the type, not a record of the build** (stage 1). The
   entry first said "via the TypeableK seam"; that seam names an
   effect signature by its runtime class, which is the wrong tool

@@ -1,5 +1,24 @@
 # Changelog
 
+## okay-spring — a Module inside Spring Boot, both ways
+
+specs/di.md stage 2, the first bridge. New JVM satellite okay-spring:
+`OkaySpring.register(ctx, m.exports)` registers one singleton per
+installed capability — named by the plan, typed by the erased class —
+and a `DisposableBean` whose destroy is the scope's closer, so the
+context's close releases in reverse order as the region would;
+`OkaySpring.bean[A](ctx)` makes a Spring bean a module looked up when
+the scope builds; an adapter on Spring's `ReactiveAdapterRegistry`
+lets a WebFlux controller return `A ! Async`, registered by a Boot
+auto-configuration (`AutoConfiguration.imports`). Two core additions
+carried it: `Resource.open`, the scope whose end belongs to somebody
+else (acquire now, idempotent closer, reverse release on a failed
+acquisition), and `m.exports`, `plan`'s macro twin generating the
+body that collects each ambient value — so no reflection touches the
+values and the bridge meets Spring's `Object` API in exactly two
+places, both restating a check already made. 3 core tests, 4 in
+okay-spring (the auto-configuration under ApplicationContextRunner).
+Not built: a WebFlux end-to-end with a real server. Commits: LANDING.
 ## writer-test-no-some — refuted on the first byte count, and unsound besides
 
 First of the four "runner-floor" items the operator ordered after the
