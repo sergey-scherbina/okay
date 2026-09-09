@@ -1,5 +1,38 @@
 # Changelog
 
+## cbor-unknown-fields — the two wires disagreed, and nothing had chosen that
+
+`Json.decode` skipped a field it did not declare; `Cbor.get` refused
+one, for the same `Schema` and the same value. schema-compat found it
+this morning and DOCUMENTED it as a surprise, giving its verdicts a
+`Wire` because of it. Documenting a divergence is how it gets looked
+at; this lane looked.
+
+Nothing had chosen the refusal: no test pinned it, no spec stated it,
+and `JsonStrict` — the door whose whole point is strictness — skips
+unknown fields by design, so "strict" here never meant this. It was
+also the operationally worse half: it made adding a field a breaking
+change for every reader already deployed, on the wire this stack uses
+between services.
+
+`Cbor.In.skipItem` reads one complete item and discards it, by major
+type; the interpreted decoder and the staged one both call it, so the
+generated reader answers what the fold answers. The depth limit is
+the part worth reading: every other read here recurses on the depth
+of the SCHEMA, which the program wrote, while a skip recurses on the
+depth of the INPUT, which the sender wrote — so `Cbor.maxSkipDepth`
+(256) bounds it and the refusal names the limit, instead of a stack
+overflow where this module promises a value.
+
+`Compat` lost its `Wire` parameter with the defect it existed to
+describe, and the five compat tests that asserted the asymmetry now
+assert the agreement. `TestCompat.reads` decodes on BOTH wires and
+requires them to agree, so the law is enforced for every case there
+and not only in the new suite. 6 new tests, including every major
+type skipping to exactly the next field, the depth limit from both
+sides, and a truncated unknown field still being damage. Removed on
+the way: a `tname` parameter of the staged product reader that only
+the deleted error message used.
 ## bracket-pairing — the "bracket costs 21%" row was two different workloads, and pairing them reversed the answer
 
 The sprint had `bracket-over-region` open since the §7 table: okay's

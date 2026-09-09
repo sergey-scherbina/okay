@@ -133,22 +133,27 @@ what a rolling deploy needs.
 
 ```scala
 val r = Compat.compare(summon[Schema[OrderV1]], summon[Schema[OrderV2]])
-r.backward(Compat.Wire.Cbor).compatible   // false: `currency` is new and required
-r.backward(Compat.Wire.Cbor).reasons      // why, in words
-println(r.render)                          // the changes and all four verdicts
+r.backward.compatible   // false: `currency` is new and required
+r.backward.reasons      // why, in words
+println(r.render)       // the changes and both verdicts
 ```
 
-A verdict names its WIRE, and it must: an unknown field is **ignored
-by JSON** and **refused by CBOR**, so adding a field is
-forward-compatible on one and not the other. The rules are read off
-this module's own decoders, and the tests prove it by encoding with
-one schema and decoding with the other rather than by assertion.
+The rules are read off this module's own decoders, and the tests
+prove them by encoding with one schema and decoding with the other
+rather than by assertion — on BOTH wires, which must agree.
+
+That last clause was once false, and finding out is what this check
+is for: JSON skipped an unknown field and CBOR refused it, so a
+verdict used to name its wire. Nothing had chosen that (no test, no
+spec, and `JsonStrict` skips unknown fields by design), so it was
+fixed rather than documented — see specs/codecs.md, "Unknown fields,
+on both wires".
 
 | change | backward (new reader, old bytes) | forward (old reader, new bytes) |
 |---|---|---|
-| field added, required | broken — no value for it | Json ok, Cbor refuses |
-| field added, optional or defaulted | ok — the fallback | Json ok, Cbor refuses |
-| field removed, required | Json ok, Cbor refuses | broken |
+| field added, required | broken — no value for it | ok — an old reader skips it |
+| field added, optional or defaulted | ok — the fallback | ok |
+| field removed, required | ok — the new reader skips it | broken |
 | field retyped | broken | broken |
 | case added | ok | broken — unknown case |
 | case removed | broken | ok |
@@ -158,7 +163,7 @@ discovery:
 
 ```scala
 test("v2 still reads what v1 wrote") {
-  assert(Compat.compare(v1, v2).backward(Compat.Wire.Cbor).compatible)
+  assert(Compat.compare(v1, v2).backward.compatible)
 }
 ```
 
@@ -181,7 +186,8 @@ the wire sees.
 | `Json.encode` / `Json.decode` | the two Schema algebras | render / read back (`Either`) |
 | `Json.read` / `Json.write` | `String => Either[String, A]` / `A => String` | one-movers |
 | `Cbor.write` / `Cbor.read` | `A => Array[Byte]` / `Array[Byte] => Either[String, A]` | RFC 8949, same content as JSON |
-| `Compat.compare` | `(Schema[A], Schema[B]) => Report` | what changed, and whether each direction still decodes, per wire |
+| `Compat.compare` | `(Schema[A], Schema[B]) => Report` | what changed, and whether each direction still decodes |
+| `Cbor.In.skipItem` | `Int => Either[String, Unit]` | one complete item read and discarded — what a decoder does with a field it does not declare; bounded by `Cbor.maxSkipDepth` |
 | `Markdown.parse` | `String => Cst[Markdown.K]` | the reframing dialect (headings, paragraphs, `*`/`_` emphasis, code spans) |
 | `Markdown.scan` / `Markdown.instructions` | the dialect's Scan and its instruction fold | reuse or extend |
 

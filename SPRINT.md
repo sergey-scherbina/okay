@@ -1,7 +1,6 @@
 # Sprint
 
 ## Doing
-- cbor-unknown-fields — specs/codecs.md: the two wires disagree about a field nobody declared (claim: cbor-unknown-fields)
 ## Queue
 (the note that stood here named eight candidates; SIX have since
  landed — sql-pg-wire, lake-read-duckdb, jdbc-write-bridge,

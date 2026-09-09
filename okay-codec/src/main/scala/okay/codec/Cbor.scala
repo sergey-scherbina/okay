@@ -20,6 +20,11 @@ import scala.collection.mutable.ArrayBuffer
  */
 object Cbor {
 
+  /** how deep a SKIPPED value may nest before the decoder refuses —
+   * the sender chooses this depth, so it is bounded (see skipItem) */
+  val maxSkipDepth: Int = 256
+
+
   // ---------------------------------------------------------------- encode
 
   /** the CBOR item primitives, once: `put` below and Staged.scala's
@@ -177,6 +182,40 @@ object Cbor {
         case (m, _) => Left(s"expected a map, got major $m")
       }
 
+    /**
+     * Read one complete item and discard it — what a decoder does
+     * with a field the schema does not declare (cbor-unknown-fields).
+     *
+     * The DEPTH LIMIT is not decoration. Every other read here
+     * recurses on the depth of the SCHEMA, which the program wrote;
+     * this one recurses on the depth of the INPUT, which the sender
+     * did. Without a bound, a hundred thousand nested arrays in a
+     * field nobody declared would be a stack overflow rather than a
+     * decode error — a fault where this module promises a value.
+     */
+    def skipItem(depth: Int = 0): Either[String, Unit] =
+      if depth > maxSkipDepth then Left(s"skipped value nested deeper than $maxSkipDepth")
+      else head().flatMap { (major, n) =>
+        major match
+          // 0/1: the argument WAS the integer; 7: head() consumed the
+          // simple value or the float's bits with it
+          case 0 | 1 | 7 => Right(())
+          case 2 | 3 => take(n.toInt).map(_ => ())
+          case 4 => many(n, depth)
+          case 5 => many(n * 2, depth)     // a map is its pairs, flattened
+          case 6 => skipItem(depth + 1)    // a tag, then the tagged item
+          case m => Left(s"unsupported major type $m")
+      }
+
+    private def many(count: Long, depth: Int): Either[String, Unit] =
+      var left = count
+      var bad: Option[String] = None
+      while bad.isEmpty && left > 0 do
+        skipItem(depth + 1) match
+          case Left(e) => bad = Some(e)
+          case Right(()) => left -= 1
+      bad.toLeft(())
+
   private def get[A](in: In, s: Schema[A]): Either[String, A] = s match
     case Schema.SIso(u, to, _) => get(in, u()).flatMap(to)
     case Schema.SInt => in.intItem().map(_.toInt)
@@ -210,7 +249,12 @@ object Cbor {
               in.textItem().flatMap { k =>
                 p.fields.find(_._1 == k) match
                   case Some((_, sc)) => field(in, sc()).map(v => m + (k -> v))
-                  case None => Left(s"unknown field '$k' of ${p.name}")
+                  // a field this schema does not declare is SKIPPED,
+                  // as Json.decode has always skipped it: one Schema,
+                  // one value, one answer on either wire, and adding a
+                  // field stops being a breaking change for every
+                  // deployed reader (cbor-unknown-fields)
+                  case None => in.skipItem().map(_ => m)
               }
             }
         }.flatMap { m =>
