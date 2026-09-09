@@ -61,6 +61,38 @@ React, on the raw DOM, in a Swing window, and over the wire to a
 browser or the Compose client. GTK via Scala Native is not here: the
 machine has no GTK headers, and a binding nobody can compile is not
 out of the box — it stays filed.
+## wroclaw-algebra — the same algebra on the city's own timetable
+
+`okay-spark`'s `TestWroclawAlgebra` (Live-tagged, like the taxi demo)
+runs the P1 algebra over Wrocław's GTFS feed from the city's open-data
+portal: 1 158 821 scheduled stop times, expanded across the fortnight
+the feed is valid for (2026-09-06..20, service patterns from
+calendar.txt) into **4 593 288 departures**.
+
+- `departures zip routesRunning zip tramShare` under `groupBy(_.hour)`:
+  three statistics per hour of the day in one pass, where `tramShare` is
+  two counts presented as their ratio and `routesRunning` is the exact
+  `distinct`. Spark 504 ms over the cached RDD, `Chunks.fold` over the
+  same collected rows 576 ms, counts equal and the ratio to 1e-9.
+- What it says about the city: the MORNING peak is the peak (06:00 tops
+  the day at 256 317 departures, ahead of 15:00 and 16:00); at 01:00 the
+  network is down to 17 routes of 138 with no tram at all; the tram
+  share is highest in the evening (36.1% at 20:00).
+- The window on the Group: per-minute departures over the whole
+  fortnight, 21 947 points. Subtracting what ages out costs 17.1 ms at a
+  60-minute window and 5.5 ms at 24 hours; recomputing each window costs
+  84.4 ms and 1 701.9 ms. Busiest hour of the fortnight ended Monday
+  2026-09-07 at 07:25 with 20 410 departures; busiest 24 hours ended the
+  same Monday with 340 139.
+- A window over a Monoid-only element is still a compile error, asserted
+  with `compileErrors`.
+
+Two things the demo had to be honest about. Routes are counted through
+`route_id.hashCode`, so a test asserts 138 ids give 138 distinct hashes
+before `distinct` is trusted. And `.map` on an `Array[Row]` does not
+resolve with `import okay.given` in scope — the `Id` monad's extension
+gets in the way of `ArrayOps` — so the check goes through `.iterator.map`,
+noted where it happens.
 
 ## docs-dynamo — the DynamoDB adapter of the Docs seam: condition expressions as Cond, GSIs as indexes, SigV4 without an SDK
 
