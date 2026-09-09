@@ -75,3 +75,15 @@ class TestProm extends munit.FunSuite:
     assert(sg.contains("okay_saga_steps_undone{id=\"o1\"} 1"), sg)
     assertEquals(Prom.sagas(Vector.empty), "")
   }
+
+  test("docs and blobs: Docs.Stats and Blob.Stats render as named counters with the engine label") {
+    val ds = okay.docs.Docs.Stats("dynamo", 5, 4, 3, 2, 1, 0, 6, 0)
+    val out = Prom.docs(Vector(("orders", () => ds)))
+    assert(out.contains("okay_docs_stale_total{name=\"orders\",engine=\"dynamo\"} 1"), out)
+    assertEquals(Prom.docs(Vector.empty), "")
+    val bs = okay.blob.Blob.Stats("s3", 1, 2, 1, 0, 0, 0, 0)
+    val bo = Prom.blobs(Vector(("media", () => bs)))
+    assert(bo.contains("okay_blob_misses_total{name=\"media\",engine=\"s3\"} 1"), bo)
+    assertEquals(Prom.blobs(Vector.empty), "")
+  }
+

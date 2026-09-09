@@ -1,0 +1,26 @@
+task: outbox
+agent: fable-resilience
+started: 2026-09-09
+heartbeat: 2026-09-09T10:02:22Z
+status: in-progress
+branch: feature/outbox
+worktree: ../okay-wt-outbox
+spec: specs/outbox.md (new) — BACKLOG "resilience" / microservices-next
+
+why: the microservices audit's largest remaining gap. Queues.ingress/
+  egress bridge FOREIGN brokers; when the truth is in our OWN SQL
+  database nothing carries a business transaction's event into the
+  log atomically (specs/jdbc.md refuses it only for THEIR databases),
+  no consumer dedups durably across restarts, and a poison record
+  blocks its partition for ever.
+
+what: new module okay-outbox (okay-sql + okay-persist): Outbox (a row
+  in the same transaction, a relay into a Topic, at-least-once with
+  the outbox id as the record key), Inbox (once-by-id inside the
+  consumer's transaction, the unique constraint as the idempotency
+  machinery), DeadLetter (a consumer loop that retries, then parks
+  the record with its error in a DLQ topic and moves on; replay).
+  DDL as values for our own databases. Tests on H2 + MemoryStore.
+  Docs: docs/modules/okay-outbox.md, index row, spec.
+
+next: read the seams, write the spec, code, tests, docs, gate, land

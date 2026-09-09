@@ -1,5 +1,24 @@
 # Changelog
 
+## adapter-stats — Docs.Stats and Blob.Stats counted at the seam, on /metrics; no adapter logs a credential: the last box of specs/data.md
+
+`Docs.counted` and `Blob.counted` wrap any engine with the same counters
+(gets/hits, puts applied or stale, deletes, queries, failures; puts,
+gets, misses, heads, lists, deletes, failures), Schema values both, so
+no adapter carries counters of its own (Kafka and Cache had theirs;
+Pool and Saga joined in persistence-e2e); okay-ops renders them as
+`okay_docs_*`/`okay_blob_*` counters with the engine label, beside the
+lifecycle/RED rows a sibling landed in the same routes. The DocsSuite
+and BlobContract assert the counts on every engine — Live on DynamoDB
+and Cassandra too. `TestNoCredentialLogs` (okay-deploy) reads the
+committed tree and refuses a credential-named value on any
+print/log/journal line of an adapter module; today there is no such
+line at all. Cassandra's session takes a 10 s request timeout (the 2 s
+default timed DDL out on the loaded box); okay-blob depends on
+okay-codec on every platform. Landed as 1c43e4a1 + db68b3f5. Gate: full
+matrix, 3335 tests, 0 failures. The three Live containers (pg,
+dynamodb-local, cassandra) are stopped and removed.
+
 ## service-lifecycle — graceful shutdown and RED metrics, in okay-ops
 
 The microservices audit's cheapest missing pair. No server here
@@ -357,7 +376,12 @@ calendar.txt) into **4 593 288 departures**.
   2026-09-07 at 07:25 with 20 410 departures; busiest 24 hours ended the
   same Monday with 340 139.
 - A window over a Monoid-only element is still a compile error, asserted
-  with `compileErrors`.
+  with `compileErrors` — and a second test says what that error
+  protects: write the `Group[Busiest]` the compiler asks for (`inverse`
+  can only be the identity), and over 3, 9, 1, 1, 1, 2 a window of two
+  reads 9, 9, 9, 9, 9 where the sliding maximum is 9, 9, 1, 1, 2. The
+  instance type-checks; the law `combine(a, inverse(a)) == empty` is
+  what the window actually depends on.
 
 Two things the demo had to be honest about. Routes are counted through
 `route_id.hashCode`, so a test asserts 138 ids give 138 distinct hashes
