@@ -68,8 +68,33 @@ object ChatDemo {
    * errors and durations */
   val lifecycle: okay.ops.Lifecycle = okay.ops.Lifecycle()
   val red: okay.ops.Red = okay.ops.Red("chat")
+  /**
+   * The guards on the one call that leaves this process
+   * (demo-guarded-llm, specs/resilience.md). A model API is the thing
+   * here most likely to answer 429 or 529, and its seam STREAMS — the
+   * transport posts and then tells its lines — so the guard has to be
+   * the row-walking one, and the permit has to span the whole answer
+   * rather than its first token.
+   *
+   * The numbers are Anthropic's own published shape, not taste: five
+   * consecutive failures before the circuit opens, thirty seconds
+   * closed, and a token bucket well under any real account's limit so
+   * a runaway loop here cannot spend someone's quota.
+   */
+  val llmBreaker: okay.resilience.Breaker = okay.resilience.Breaker("anthropic", failures = 5, openMillis = 30_000)
+  val llmLimiter: okay.resilience.Limiter = okay.resilience.Limiter("anthropic", ratePerSecond = 5, burst = 10)
+
+  /** the transport, guarded — the three lines specs/resilience.md
+   * claims a caller needs, written out to keep that claim honest */
+  def guarded(inner: okay.llm.Transport)(using Timer): okay.llm.Transport = new okay.llm.Transport:
+    def post(url: String, headers: Map[String, String], body: String)
+    : Unit ! (Writer % String + Async) =
+      okay.resilience.Resilient.guarded(inner.post(url, headers, body),
+        breaker = Some(llmBreaker), limiter = Some(llmLimiter), key = "anthropic")
+
   def opsRoutes: PartialFunction[Request, Response ! Async] =
-    Ops.routes(opsStore, lifecycle = Some(lifecycle), red = Vector(red))
+    Ops.routes(opsStore, lifecycle = Some(lifecycle), red = Vector(red),
+      guards = Vector(llmBreaker, llmLimiter))
 
   /**
    * The production board, durable by default — and NOT what the
@@ -378,7 +403,7 @@ object ChatDemo {
     // else is counted, measured, and refused once draining
     def app(routes: PartialFunction[Request, Response ! Async]): PartialFunction[Request, Response ! Async] =
       opsRoutes.orElse(lifecycle.route(red.route(okay.ops.Red.byMethodAndPath)(routes)))
-    provide(Transports.http(), Secrets.env, board)(Resource.run[Unit, Pure](
+    provide(guarded(Transports.http()), Secrets.env, board)(Resource.run[Unit, Pure](
       Jetty.serve(port)(app(node match
         case Some(n) =>
           val logDir = sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log")

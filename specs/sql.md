@@ -378,11 +378,38 @@ the anchored set covered `(Async + F) + G` and `(F + G) + Async` too.
 It does not: `summon` succeeded there, but what answered was the
 low-priority IDENTITY, so a deeper row was silently unguarded — the
 defect this hook exists to prevent, reintroduced by a probe that read
-"an instance was found" as "the instance guards". The fallback is now
+"an instance was found" as "the instance guards". The default is now
 TOTAL (`Failing.anyRow`: the operation's own class, one cast,
-documented in docs/typepedia.md's cast list), the typed anchored
-instances answer the shapes that actually occur, and `TestFailing`
-walks the nestings and asserts that BOTH roads guard.
+documented in docs/typepedia.md's cast list) and correct for every
+nesting; `TestFailing` walks the shapes and asserts each is guarded.
+The anchored ROW instances were then deleted as decoration
+(failing-simplify) — a total default answers those shapes identically
+— leaving two instances: the typed `Failing[Async]` for the
+single-effect row most call sites pass, and the total default.
+
+**The cast leaves Failing.scala (failing-over, 2026-09-09, the
+operator's question: avoid the cast, or at least move it somewhere
+less explicit — "через имплисит или тайпкласс").** Two roads were
+weighed. The implicit one — a `RowLift.In[Async, F]` witness selecting
+a guarding instance and `NotGiven` selecting an identity — was PROBED
+before anything was built, with `summonFrom` on every TestFailing
+shape: `In[Async, F]` resolves for `Async`, `Async + S`, `S + Async`,
+`(Async + S) + P` and `(S + Async) + P`, and does NOT for
+`(S + P) + Async` or the right-nested row (`In` walks the left spine
+only), so those two would take the identity — the silence recorded
+above. And a complete `In` would not rescue it: on an ABSTRACT `F` (a
+polymorphic `Resource.run` caller) `NotGiven` answers "no" where the
+truth is "unknown", and identity again. Refuted on both counts. What
+CAN move is the cast itself, because it is the kernel's own claim —
+"the class test proved the operation is an F, and the row is erased"
+— which `split` already makes twice in Effects.scala. So the kernel
+gains a prism over the row, `over[F : TypeableK, R](e: R[A])(f:
+F[A] => F[A]): R[A]`, one cast beside `split`'s, and `Failing.anyRow`
+is `over[Async, F](e)(Failing.async.guard(_, onFailure))`: the typed
+GADT instance lifted over any row, any nesting, an abstract F
+included, because what the test reads is the operation. Failing.scala
+has no cast and the guard logic once; the answer to "avoid it" is
+no, to "move it" is the prism.
 
 - [x] core: a forwarded `Async.Run` that throws, and an `Await` that
       answers Left, both release (TestResource); on a ROW `Async +
@@ -394,6 +421,11 @@ walks the nestings and asserts that BOTH roads guard.
       Async-free row is returned untouched (TestFailing,
       row-typeclass-recipe — the shapes are the test, so a future
       instance that moves the boundary moves it visibly)
+- [x] the default carries no cast of its own: `Failing.anyRow` is the
+      typed `Failing[Async]` lifted over the row by the kernel prism
+      `over`, and the same TestFailing shapes still each report the
+      hook ran (failing-over); the `In`-witness road is recorded above
+      as refuted, with the two shapes it misses
 - [x] H2: a failing statement inside a region — the brake runs,
       autocommit is restored, the insert before it is gone, the next
       region begins

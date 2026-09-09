@@ -172,24 +172,89 @@ they are operations, not because the modules know each other.
 
 ## Behavior
 
-- [ ] a Call round-trips scalars and vectors (NULL/NA distinct from
-      absent; the R NA story stated, not papered over)
-- [ ] a frame maps to a Seq of a flat case class and back; row
+**Audited 2026-09-09 (spec-truth)** against what RUNS, not what exists:
+`okayR/test` alone runs the 6 mock tests, and `TestR`'s 18 are Live —
+they skip where no R is found and otherwise build their own container
+(r-base 4.4.1 + jsonlite). This audit ran them: 17 passed, 1 skipped
+(named in its box below). A box checked here names the test that
+proves it.
+
+- [x] a Call round-trips scalars and vectors (NULL/NA distinct from
+      absent; the R NA story stated, not papered over) — TestR: NULL vs
+      NA, an NA keeps its TYPE (R's four NAs are four values), NA vs
+      NaN, integer vs double kept apart where JSON would merge them,
+      raw bytes and strings; TestRMock walks every RValue shape with no
+      R present (checked 2026-09-09, spec-truth)
+- [x] a frame maps to a Seq of a flat case class and back; row
       count and column order survive; a column the Schema does not
-      name is an error naming the column
-- [ ] an R error (stop()) surfaces as a condition value with the
-      message; the process survives for the next call
-- [ ] a killed R process makes the in-flight call THROW; a
+      name is an error naming the column — HALF BUILT, and the half
+      that WAS not is the case class (BUILT since, see below): `RFrame` is
+      `Vector[(String, Vector[RValue])]` and okay-r names no `Schema`
+      at all. What IS proven: a frame goes out as columns and comes
+      back with order and count intact, over the wire too; a column
+      carries NA in place; a function answering something that is not
+      a frame is a condition naming what arrived. The Schema mapping
+      and its unnamed-column error were BACKLOG `r-frame-schema`, and
+      are BUILT 2026-09-09 (r-finish): `RFrame.rows[A: Schema]` and
+      `RFrame.of[A: Schema]`, fields matched to columns BY NAME with
+      the field order as the column order; every mismatch a
+      `Condition` naming what does not line up — a column no field
+      names, a field with no column, a cell that does not fit (naming
+      the column AND the row). An absent cell keeps its COLUMN's type,
+      so an `Option` field writes `NA_character_` in a text column
+      rather than a logical NA; R's widening is admitted where R
+      admits it (an integer column into a Double field) and nowhere
+      else. Tested without R (TestRMock) and over the dockerized one
+      (TestR: a frame through `identity` and back into the case class)
+- [x] an R error (stop()) surfaces as a condition value with the
+      message; the process survives for the next call — TestR, plus a
+      missing function and a missing package as conditions
+- [~] a killed R process makes the in-flight call THROW; a
       supervisor retry gets a fresh process (the dead-worker
-      protocol)
-- [ ] a timeout kills the call, reports as data, and the engine is
-      usable after
-- [ ] verify reports a missing package and a version mismatch by
-      name; a passing verify then runs the program's calls
-- [ ] no API accepts runtime-built R source; args reach R only as
-      RValue/RFrame (structural: the enum has no Eval-a-string case)
-- [ ] the R process starts with a clean environment: a parent env
-      var is invisible in R unless the config names it
+      protocol) — the NEXT call after a death throws, and that is
+      tested ("a DEAD process makes the next call THROW — the
+      supervisor decides, not us"). Killing a call already IN FLIGHT,
+      and the retry that gets a fresh process, are not covered: okay-r
+      has no supervisor of its own (by design — the caller's is the
+      one that decides), so the second half is a claim about a
+      CONSUMER, and belongs in the lane that writes one. UPDATE
+      (r-finish): the in-flight half now has an answer, and a better
+      one than a throw — with a deadline set, the call whose process
+      is killed answers `Condition("timeout", …)` as DATA and the
+      engine respawns itself
+- [x] a timeout kills the call, reports as data, and the engine is
+      usable after — BUILT 2026-09-09 (r-finish), where the audit had
+      found nothing at all: `RSubprocess.start(…, timeoutMillis)`. The
+      blocking read moves to one daemon thread per engine, and only
+      where a deadline asks for it; on expiry the PROCESS is killed —
+      the only way to stop R mid-call, since a sleeping or optimising
+      R is busy in C and no polite protocol reaches it — a fresh one
+      takes its place, and the call answers
+      `Left(Condition("timeout", …))`. Proven against the dockerized
+      R: a 120-second sleep behind a 2-second deadline answers in ~2s
+      as data, and the very next call on the same engine is correct.
+      With no deadline the engine blocks exactly as before
+- [x] verify reports a missing package and a version mismatch by
+      name; a passing verify then runs the program's calls — TestR
+      names all three (a missing package, a version mismatch, a
+      passing verify that says nothing and then runs), and two more
+      the box did not ask for: a shim from another version and a shim
+      without jsonlite each refuse BY NAME
+- [x] no API accepts runtime-built R source; args reach R only as
+      RValue/RFrame (structural: the enum has no Eval-a-string case) —
+      read on the current tree: `REval` has exactly `Call(fn, args)`
+      and `Frame(fn, in, args)`, both taking a NAME and `RValue`s;
+      TestR pins the addressing (`pkg::name`, a base name, "the
+      program is data rather than code")
+- [~] the R process starts with a clean environment: a parent env
+      var is invisible in R unless the config names it — the FIRST
+      half is proven ("the R process sees EXACTLY what the config
+      names, and nothing else we passed", green against the
+      dockerized R). The second, a real parent variable being
+      invisible, SKIPS wherever R is reached through the container
+      shim (the shim forwards the environment on purpose, or it would
+      measure docker rather than us) — so it is proven only on a box
+      with R on the PATH, and this audit's run was not one
 - [~] a journaled R step is skipped on Durable replay — NOT as
       written: `Durable` journals `Tool`, not any operation type. An
       R call reached through a tool is journalled because the TOOL is;

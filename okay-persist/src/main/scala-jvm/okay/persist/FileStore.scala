@@ -332,6 +332,17 @@ final class FileStore(root: Path) extends Store:
             try channel.close() catch case _: Throwable => ()
             channel = FileChannel.open(segments.last.path, StandardOpenOption.WRITE)
             channel.position(segments.last.size): Unit
+        // …and the other direction (persist-index-box): another handle's
+        // RETENTION deletes whole segments from the FRONT, and a list
+        // that still names them makes this reader map a file that is
+        // gone. The directory decides; the list is a cache of it. After
+        // the adoption above, so a reader whose every known segment was
+        // dropped keeps what it has just learned rather than the dead
+        // ones; an empty result means the directory itself is going
+        // away, and the old list is then the better answer than none.
+        val alive = found.map(_.getFileName.toString).toSet
+        val kept = segments.filter(s => alive(s.path.getFileName.toString))
+        if kept.nonEmpty && kept.length != segments.length then segments = kept
 
     def begin: Long = synchronized(segments.head.base)
     def end: Long = synchronized { refresh(deep = true); endUnsafe }
@@ -365,21 +376,36 @@ final class FileStore(root: Path) extends Store:
         val out = Vector.newBuilder[Record]
         var need = max
         var want = from
+        // a segment file can also vanish BETWEEN the refresh above and
+        // the map below — the same retention, one instant later
+        var vanished = false
         for seg <- segments do
           // a closed segment's record count is not tracked; the scan
           // itself is the authority on where it ends
           val pastWant = (seg eq segments.last) && want >= seg.base + seg.count
-          if need > 0 && !pastWant then
-            val buf = mapOf(seg)
-            buf.position(readHeader(buf, seg.path)._2)
-            scan(buf, seg.base, seg.format) { (off, ts, k, v) =>
-              if off >= want then
-                out += Record(off, ts, k, v)
-                need -= 1
-                want = off + 1
-              need > 0
-            }: Unit
-        Topic.Read.Records(out.result())
+          if need > 0 && !pastWant && !vanished then
+            try
+              val buf = mapOf(seg)
+              buf.position(readHeader(buf, seg.path)._2)
+              scan(buf, seg.base, seg.format) { (off, ts, k, v) =>
+                if off >= want then
+                  out += Record(off, ts, k, v)
+                  need -= 1
+                  want = off + 1
+                need > 0
+              }: Unit
+            catch
+              // the file is GONE: retention on another handle removed
+              // it between the refresh above and this map
+              case _: java.nio.file.NoSuchFileException => vanished = true
+        val got = out.result()
+        if vanished then
+          // whatever this reader still believed about the front is
+          // stale: re-read the directory and AIM the caller at what
+          // survives, rather than failing on a file retention removed
+          refresh(deep = true)
+          if got.isEmpty then Topic.Read.TooEarly(segments.head.base) else Topic.Read.Records(got)
+        else Topic.Read.Records(got)
 
     /** keep the latest record per key across the CLOSED segments,
      * atomic-rename shape: survivors to a temporary file, fsync,

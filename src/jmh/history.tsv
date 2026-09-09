@@ -1698,3 +1698,7 @@ date	sha	host_load	workload	mine	ref	ratio	note
 2026-09-09	dd39023f	2	lexstate-flatP-chunked64	467872.971	494901.683	1.06	the same on the chunked path
 2026-09-09	dd39023f	2	lexstate-time-UNMEASURABLE	-	-	-	four attempts; load ran 2 -> 97 across the day and two rounds on the SAME code disagreed by more than the effect. No time claim. A same-run A/B was tried and rejected as unfair: a benchmark-local COPY of the old scanner allocates 23 KB more than the identical code in the library (bimorphic call site / lost cross-module inlining)
 2026-09-09	dd39023f	2	lexstate-buf-BLOCKED	-	-	-	the start-offset slice cannot serve the chunked path: Lex.chunks holds one chunk and a token may span chunks -> lexer-buf-without-concat
+2026-09-09	7073ec1e	7	lexbuf-array-elementwise	479152.506	425832.498	0.89	a doubling char array in the scanner's state instead of buf: String — WORSE by 12.5%: JSON tokens are short and Base used to carry the interned empty string
+2026-09-09	7073ec1e	7	lexbuf-array-chunked64	520920.665	467872.971	0.90	the same on the chunked path, +11.3%
+2026-09-09	7073ec1e	7	lexbuf-array-parseFull	812185.094	758865.363	0.93	and through the parser, +7.0%
+2026-09-09	7073ec1e	7	lexbuf-decomposition	-	-	-	of the ~171 B per lexed character (arithmetic from field lists): S ~56 B (33%), step's Tuple2 ~32 B (19%), the concat ~40+ B (23%) — the concat is the smallest, and it is the only one anyone had tried to remove

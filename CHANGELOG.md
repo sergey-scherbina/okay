@@ -1,5 +1,408 @@
 # Changelog
 
+## native-runner-cause — the Native runner was not killed: it exited 0, and the whole exit map is now measured
+
+BACKLOG's `native-runner-error` had read three red gates in one day as
+"a lost test process" under memory pressure. For the third shape that
+is wrong, and the correction is measured rather than argued. The
+runner's own code (test-runner 0.5.12) prints "Process … finished with
+non-zero value N" on any non-zero exit, adds "Test runner interrupted
+by fatal signal N" above 128, logs "Force close …", and carries that
+failure as the cause of the `RunTerminatedException` sbt finally
+reports. The failing gate log has none of those three lines and no
+cause under the exception at all — which `NativeRunnerRPC` produces
+only when the com run SUCCEEDED, and `ComRunner` only succeeds when
+the process exited ZERO.
+
+`scripts/native-runner-probe.java` turns that reading into a
+measurement: it drives a real okay Native test binary exactly the way
+ComRunner does and ends the connection four ways. Closing the socket
+and sending a zero-length message each give exit 0 with nothing
+printed; SIGTERM gives 143 and SIGKILL 137 — the two shapes that WOULD
+have been logged, and were not. So nobody killed that process: its
+connection ended and it left, silently, while sbt still had a call in
+flight, which is why the failure is an sbt-side ClosedException with no
+test report at all.
+
+Ruled out by command, each in the entry: the RAM guard (SPARE only,
+`killed=0`, 6.9–8.5 GB available), jetsam and an OS kill (empty
+memorystatus window, no crash report, and 137 would have shown), our
+own code (no exit call in any source a Native test binary links), the
+plugin's global adapter close (30+ runner processes started and passed
+AFTER the failing one), and the adapter being collected under the GC
+storm the log shows (the plugin holds every adapter in a strong list —
+though the mechanism it would have needed does exist, `NioSocketImpl`
+carrying a Cleaner for the socket's fd). What ended that one connection
+is still OPEN, and the entry says so, names the two silent candidates
+and says what evidence separates them: a timeline of the runner
+processes, which the sbt log cannot give because it has no timestamps.
+
+Landed as 66cd90fb. Gate: NOT RUN, and the reason is that nothing sbt
+compiles changed — the lane is BACKLOG.md plus a new standalone file
+under `scripts/`, which is on no source path (build.sbt does not
+mention `scripts` at all). The probe itself was run twice, from the
+worktree and against the committed path. The labelling half of the same
+entry is a sibling's lane, gate-lost-shape2, and this one did not touch
+`scripts/gate.sh`.
+
+## r-finish — okay-r gets its timeout and its typed frame: the two gaps the audit named, closed
+
+**r-call-timeout.** `RSubprocess.start(…, timeoutMillis)`. The blocking
+line read moves onto one daemon thread per engine, and only where a
+deadline asks for it; on expiry the PROCESS is killed — the only way to
+stop R mid-call, since a sleeping or optimising R sits in C and no
+polite protocol reaches it — a fresh process takes its place, and the
+call answers `Left(Condition("timeout", …))`. Data, not an exception,
+and the engine serves the next call; with no deadline it blocks exactly
+as before, so the default is unchanged behaviour. Proven against the
+dockerized R: a 120-second sleep behind a 2-second deadline answers in
+about two seconds, and the next call on the same engine is correct.
+
+**r-frame-schema.** `RFrame.rows[A: Schema]` and `RFrame.of[A: Schema]`
+— fields matched to columns by name, the field order the column order.
+Every mismatch is a `Condition` naming what does not line up: a column
+no field names, a field with no column, a cell that does not fit
+(naming the column and the row). An absent cell keeps its COLUMN's
+type, so an `Option` field writes `NA_character_` in a text column
+rather than a logical NA — the same four-NAs rule the wire already
+keeps — and R's widening is admitted where R admits it (an integer
+column into a Double field) and nowhere else. Five tests without R and
+two over a real one, including a frame through `identity` and back into
+the case class.
+
+specs/r.md's two boxes are checked with what proves them, and the
+dead-worker box's in-flight half now points at the timeout: the call
+whose process is killed answers as data and the engine respawns, while
+the retry POLICY stays the caller's supervisor, not okay-r's. Landed as
+e1081282. Gate: full matrix, 3524 tests, one red —
+okay.resilience.TestResilienceTimed's hedge test, a sibling's known
+timed flake (its third sighting today, a second lane already landed
+against it), green on rerun alone; okay-r shares nothing with it.
+
+## gate-lost-shape2 — the same lost process, wearing another shape
+
+A sibling's gate hit the lost-Native-process family in a shape
+`scripts/gate.sh` did not know, and said so on the board rather than
+working around it: `(okayLexNative / Test / executeTests)` with
+scala-native's `RPCCore$ClosedException: RunTerminatedException`, no
+suite header, and therefore no `Error: Total .., Failed 0, Errors 1`
+line to match. The script called it unrecognised and re-ran nothing.
+
+It knows both shapes now — A, the module that ran some tests and then
+went; B, the process that went before it said anything — and it stays
+conservative: the projects that failed are compared against the ones
+whose failure is a known shape, and a project in neither is NAMED
+while nothing is re-run.
+
+Tested against five real logs with `--read`, including the sibling's
+own saved log of the occurrence, plus a doctored one where a second
+project fails in an unknown shape and the retry is correctly refused.
+Commit: d64d466e.
+
+## di-cross — the module vocabulary was tested on one platform of three
+
+`Module`, `module`, `and`, `plan`, `exports` and `Resource.open` are
+shared core, so they compile for JS and Native — and nothing ran them
+there. `TestModule` lives in `src/test/scala`, and both non-JVM
+platforms replace the test sources with `src/test/scala-cross` alone,
+so the JVM suite could never have said whether the vocabulary worked
+where it ships. `TestModuleCross` now does: acquisition order and
+reverse release through the region, a dependent module reading the one
+before it, the override to the right, `plan` read off the type before
+anything is built, `exports` with the erased class, and
+`Resource.open`'s idempotent closer.
+
+Five tests, green on JVM, JS and Native at the first run. It found no
+defect, and that is the honest result: the code was already right, the
+guard was missing. With it the DI arc of specs/di.md is complete on
+every platform it ships to. Commit: 15ff0b59.
+## failing-over — the row cast leaves Failing.scala: one prism in the kernel, and the default is the typed instance lifted over the row
+
+The operator's question, on `Failing.anyRow`'s two `.asInstanceOf[F[X]]`:
+avoid the cast, or at least move it somewhere less explicit — an
+implicit, a typeclass. The implicit road was probed BEFORE anything was
+built: a `RowLift.In[Async, F]` witness selecting a guarding instance,
+`NotGiven` selecting an identity. `summonFrom` on every TestFailing
+shape: `In[Async, F]` resolves for five of the seven Async-holding
+shapes and NOT for `(S + P) + Async` or the right-nested row (`In`
+walks the left spine only) — both would have taken the identity, the
+silence this hook's whole history refuses. And a complete `In` would
+not rescue it: on an abstract `F` (a polymorphic `Resource.run`
+caller) `NotGiven` reads "unknown" as "absent". Refuted twice, with
+no line written.
+
+What CAN move is the cast, because it is the kernel's own claim — the
+class test proved the operation is an F, and the row is erased — which
+`split` already makes twice in Effects.scala. The kernel gains its
+reverse direction: `over[F : TypeableK, R](e: R[A])(f: F[A] => F[A]):
+R[A]`, a prism over the row — test, rewrite, back under the row's
+type — one cast beside `split`'s. `Failing.anyRow` is now
+`over[Async, F](e)(Failing.async.guard(_, onFailure))`: the typed GADT
+instance lifted over any row, any nesting, an abstract F included,
+because what the test reads is the operation. Failing.scala casts
+nowhere and writes the guard logic once (it was duplicated between the
+two instances). TestFailing's nine shapes report the hook ran as
+before, plus `over`'s own contract: a non-member comes back as the
+same object. Recipe and cast list in docs/typepedia.md; the probe's
+table in specs/sql.md (resource-async-failure). Landed as c322ef6b.
+Gate: full matrix in the lane's worktree, 92 suites, 3538 tests, 0 failures, 0 warnings; okayLexNative's test runner was LOST (RunTerminatedException, no test failed) on a box at 5.6 GB swap with a sibling sbt at 500% CPU, and passed alone, 11/11 — the native-runner-error signature, one more shape of it.
+
+## actor-on-js — the loop was a `while` over blocking reads, so the module shipped a JS artifact that could not spawn an actor
+
+`okay-actor` was `crossProject(JVMPlatform, JSPlatform, NativePlatform)`
+and could be USED on two of the three. The mailbox loop read with
+`mailbox.receiveBlocking()` and ran each behaviour with `.runWith`;
+both need `CanBlock`, so `Actor.spawn` asked for one, and JS has none
+— deliberately, since "there is no CanBlock on JS, so a blocking join
+is a compile error, not a frozen loop". The JS artifact therefore
+compiled, published, and could never spawn an actor. Nobody noticed
+because nothing tried: every law in the module lived in `scala-jvm`.
+
+The blocking bought nothing. It was the imperative shape — a `while`
+over a blocking read is how a mailbox loop is written when the
+platform has threads — in a library whose whole point is that waiting
+for the next message is a PROGRAM, not a parked thread. The loop is
+that program now: `mailbox.receive.flatMap` instead of
+`receiveBlocking`, `Async.attempt(b(state, m))` instead of a try/catch
+around `runWith`, recursion through `flatMap` instead of a mutable
+`var state`, forked onto whatever the platform's `Scheduler` is — and
+on JS that is the event loop itself.
+
+Supervision carried over word for word: the failed message is still
+gone and never retried, `Resume` keeps the state, `Restart` takes a
+fresh one, `Stop` and `Escalate` fail the mailbox and drain what
+nobody will read. The 15 existing JVM laws passed unchanged on the
+first run, which is what makes that claim checkable rather than
+asserted. `CanBlock` then had no user left in the module, so both
+`spawn`s dropped it, and `import okay.given` with it — it had been
+there for `CanBlock` alone.
+
+20 tests on the JVM and FIVE ON JS AND FIVE ON NATIVE: the first time
+anything in this module has executed on those platforms rather than
+merely compiled for them. The new shared laws live in
+`src/test/scala`, so a return to blocking stops the file compiling for
+JS — a better guard than a comment. The `build.sbt` comment that had
+explained why the laws were JVM-only ("the laws need a Scheduler to
+fork with, and that is platform work") was true of the blocking loop
+and false after it, and was corrected in the same commit: a build
+comment promising what the code no longer does is the same defect
+class as a test named for what it stopped checking.
+
+Landed as c8664564; this entry was written afterwards, the lane having
+recorded itself in BACKLOG and not here.
+
+## spec-truth — boxes that named refuted or already-proven work now say which
+
+Two Behavior lists were sending the next agent to the wrong place.
+specs/handler-fusion.md: the gate was NOT cleared and stages 1-2 do not
+start, yet six boxes stood open as if waiting for a taker — five now
+say GATED OFF with the stage they belong to, the sixth ("every existing
+suite stays green; no runner changes behaviour") is a claim about what
+WAS built and is checked, and the list opens by pointing at Results.
+specs/r.md: nine open boxes against a built module with 24 tests, so
+each was read against the tests and the source. Five are proven and
+checked with the test named; two are half built and say which half (the
+frame's Schema/case-class layer is absent; the dead-worker box's second
+half is a claim about a CONSUMER, since okay-r has no supervisor by
+design); one is NOT BUILT — no timeout anywhere in okay-r, a hung
+Rscript hangs the caller's fiber. The two real gaps became BACKLOG
+r-call-timeout and r-frame-schema instead of silent boxes.
+
+Caught before landing, and worth more than the audit: the five checks
+first rested on TestR, which is Live-tagged and SKIPS where no R is
+found — this box has none, so `okayR/test` had run six mock tests and
+none of the eighteen the boxes stand on. The suite builds its own R
+container when docker is there, so the fix was to RUN it: 17 passed, 1
+skipped, and the skipped one (a parent variable being invisible, which
+the container shim cannot show because it forwards the environment on
+purpose) turned its box from [x] into [~]. A test that exists is not a
+test that passed — the third form of that error in one day, all three
+now in the session's memory. Landed as 1998b570. Gate: full matrix,
+3548 tests, 0 failures.
+
+## dsl-unless — not these words, and then this
+
+The last shape okay-chat's quoted rules waited on. «хочу сделать
+ремонт» is an offer and «хочу найти мастера» is a need, and the one
+rule that tells them apart says so with a negative lookahead, which
+the builder had no word for. `Term.Unless(not, t)` renders
+`(?!a|b)t` — an alternation needs no group inside a lookahead, so the
+bytes are the file's — consumes nothing, and `raws` walks both sides.
+`unless(any(…))(t)`. Not a gap: it names words, and `.*` stays
+unsayable. TestDsl proves it on «хочу найти мастера». Gate: okay-intent
+JVM tests green, JS compiles, 0 warnings.
+
+## persist-index-box — a segment deleted behind an open reader crashed it; the phantom box named an index that never existed
+
+The last unchecked box in specs/persist.md read "a damaged index is
+rebuilt from segments". There is no index: a segment carries its base
+offset in its header and a read scans within it — now recorded as a
+decision in Out of scope, since a box implying one is how the design
+gets misread. What the engine DOES keep is a derived segment list, and
+that is what the invariant was really about: the directory decides,
+never a reader's cache of it. The append direction was covered (a
+reader sees a writer's appends and its rolled segments); the deletion
+direction was untested and BROKEN — retention on another handle removed
+a file the reader still listed, and the read threw NoSuchFileException
+straight off the mmap. The deep refresh now drops what the directory no
+longer has, AFTER adopting what it gained (a reader whose every known
+segment was dropped must keep the new ones, not the dead ones), and a
+file that vanishes between the refresh and the map is the same
+retention one instant later: the read re-reads the directory and
+answers TooEarly at the surviving front. TestFileStore covers it end to
+end — 120 appends under a tiny retention with a reader open across the
+drops, no record served from below the surviving front, then the whole
+tail. Landed as 4d090ca6. Gate: full matrix, 3547 tests, 0 failures.
+
+Method note, since it cost an hour: a first cut wrapped the read in
+`Option(mapOf(seg)).foreach { … }` and 18 unrelated tests went empty. I
+read that as cross-suite interference until the honest experiment —
+master twice, green; then a mechanical bisect — showed the formulation
+itself was at fault. Rewritten as a plain try/catch around the body it
+is correct. Guessing at a failure I introduced cost more than the
+measurement would have.
+
+## native-runner-error — the gate can now tell its two reds apart
+
+Twice on 2026-09-09 a full matrix ended red with no failed test: a
+Native module reported `Failed 0, Errors 1`, named whichever suite was
+in flight, had run fewer tests than that module has, and passed alone.
+Each cost a six-minute rerun, and a gate that cries wolf stops being
+read.
+
+Three causes measured and RULED OUT rather than guessed: the RAM guard
+(its log reads `killed=0` at both minutes), an OS kill (the kernel's
+memorystatus log for both windows holds only idle-exit of system
+daemons — no jetsam, nothing of ours), and CPU pressure alone (13
+Native modules in parallel under 42 burners, four rounds, green; five
+modules under 28, green). Both real occurrences had memory pressure
+with the concurrency, which is not something to reproduce deliberately
+on a shared machine.
+
+So it is not fixed, and it is labelled instead. `scripts/gate.sh` runs
+the matrix and separates the two reds: any `==> X` is a real failure,
+printed and final; a failure carrying exactly the lost-process
+signature re-runs those modules alone and says which they were,
+green or red. `--read <log>` replays the decision over a gate log that
+already exists, which is how all three branches were tested — against
+today's real logs, two lost-process gates, one true failure and one
+green — rather than by waiting for the flake. AGENTS.md points at it
+and BACKLOG carries the evidence.
+
+Found while writing it, and worth repeating: `set -o pipefail` plus
+`grep -q` makes a pipeline report failure ON A MATCH, because grep
+exits early and the writer takes a SIGPIPE. The first cut called every
+real failure "unrecognised" for exactly that reason. The script greps
+one stripped copy of the log as a FILE now, no pipelines. Commit: 9b2e1073.
+
+## dsl-letters-and-repeats — the shapes okay-chat's quoted rules were waiting on
+
+okay-chat builds its routing rules with `okay.intent.Dsl` and still
+quoted thirteen whole rules and a dozen fragments, each with its
+reason. Read together the reasons were four shapes, not thirteen
+exceptions: a set of letters (`мо[юяи]` — «мою», «моя», «мои» and NOT
+«моего», which a stem would also say), a word repeated any number of
+times (`(?:(?:мою|все)\s+)*` — the qualifiers before «заявку»), a
+stem that may not run on (`мо\w{1,3}` — «моей», not «монитор»), an
+ending of more than one letter (`удали(?:ть)?`). And two rules ended
+on a colon, which no `Ending` could say.
+
+`Term.Chars`, `Term.ManyThen`, `Term.StemUpTo`, `Term.Maybe` and
+`Ending.Colon`, with `chars`/`maybeChars`/`manyThen`/`stemUpTo`/
+`maybe` and `.colon`. `Maybe` of an alternation reuses the group
+(`(?:ть|ти)?`, not `(?:(?:ть|ti))?`), so a rule built with it is the
+bytes the file had. No existing rendering changed; `raws` walks
+through the two new wrappers so a quoted fragment inside them is
+still counted. None is a gap: `.*` remains unsayable.
+
+TestDsl renders each one and proves `stemUpTo` on «монитор». Gate:
+okay-intent JVM tests green, JS compiles, 0 warnings.
+## demo-guarded-llm — the arc gets a worked instance
+
+Eight pieces of microservice machinery landed today, each with its
+own tests, and not one was wired into a running service. okay-demo
+already used okay-ops (the lifecycle, RED, `/metrics`); its Anthropic
+transport — the one live outbound call in this repository — had no
+breaker, no limiter and no budget, which is backwards for the thing
+most likely to answer 429 or 529.
+
+`ChatDemo.guarded` wraps the transport it provides with
+`Resilient.guarded`: a breaker (5 consecutive failures, 30 s open)
+and a token bucket (5/s, burst 10, so a runaway loop here cannot
+spend an account's quota), both published to `/metrics` through
+`Ops.routes(guards = ...)`. It is exactly the three lines
+specs/resilience.md claimed a caller needs — written out rather than
+asserted, which is the point of a worked instance.
+
+Four tests, none touching a wire or a clock: the demo's guards are
+the ones `/metrics` is given (this catches a guard wired but never
+published); a dead model opens the circuit and the wire is not
+touched while it is open, then one probe closes it; the bucket
+refuses before the model is reached; the guard is transparent when
+nothing refuses. The adaptive-concurrency box stays deferred, now for
+a better reason — the obstacle is gone, the MEASUREMENT is what is
+missing, and a control loop tuned against no traffic is a guess with
+extra steps.
+
+Found while writing it, and worth more than the lane: a suite-level
+mutable clock made one test's `now = 200` run time BACKWARD after an
+earlier test left it at 30 000, the refill went negative, and a
+fixture bug looked exactly like a limiter bug. The clock is per test
+now.
+
+## lexer-buf-without-concat — the concat is the smallest of three, and the obvious fix is worse
+
+After `lexer-state-allocation` took the positions out, ~171 bytes per
+lexed character remained and the scanner's `buf: String`, grown one
+character at a time, looked like the rest of it — quadratic in the
+token's length, and the one part everybody had noticed.
+
+The candidate that needs no input — a char array in the state grown by
+doubling, one `String` built per TOKEN — was built as a probe and
+measured: **worse by 11–12%** (element-wise 425 832 → 479 153 B/op,
+chunked 467 873 → 520 921, full parse 758 865 → 812 185). The reason
+generalises past this file: JSON's tokens are SHORT. `{`, `}`, `:`,
+`,` and most whitespace runs are one character; a key is about eight.
+Concatenating one to four characters costs less than reserving an
+eight-char buffer per token — and the `Base` state used to carry the
+interned `""` and allocate nothing at all between tokens, where the
+array version allocates one per structural character. "Quadratic in
+token length" is the right worry for a language with long tokens and
+the wrong one for JSON.
+
+What the probe produced instead is the decomposition, which is worth
+more than the change would have been. Of the ~171 B per character
+(arithmetic from the field lists, not a per-class measurement): the
+new `S` per character ~56 B (~33%), the `Tuple2` that `Scan.step`
+answers ~32 B (~19%), the concat ~40 B+ (~23%). **The concat is the
+smallest of the three** — and the only one anyone had tried to remove.
+
+The other two candidates were not built, and the reason is structural
+rather than arithmetic: `Scan.finish(s, input)` helps ONLY the
+element-wise path, because the chunked one still has no input to
+slice from, and `Either[offset, chars]` is that half-fix plus the one
+refuted here. `scan-step-allocation` is sharpened with the number it
+was waiting for: it is now the largest named share after `S` itself,
+and worth about a fifth.
+## failing-simplify — two instances, not four: the anchored row instances were decoration once the default went total
+
+`Failing.asyncLeft`/`asyncRight` worked and cost nothing to keep, which
+is not a reason to keep them: with a TOTAL default they answer nothing
+it does not answer the same way and at the same cost — the anchored
+road runs a class test too, inside `<|>`. Deleted on the operator's
+call. What survives is the typed `Failing[Async]` (one effect IS a
+shape the compiler pins, it is what most `Resource.run` call sites
+pass, and it needs no cast) beside the total `FailingLow.anyRow`.
+Behaviour unchanged: `TestFailing` walks the same seven row shapes
+green, JS and Native compile. Twenty lines gone. The recipe in
+docs/typepedia.md records the deletion AND the reason to remember the
+road — anchoring on a concrete effect is still the right answer for a
+typeclass with no total default available — plus the corollary that
+cost two lanes: prove an instance by CALLING it, never by `summon`
+succeeding. Landed as 4502c40c. Gate: full matrix, 3541 tests, 0
+failures; the warnings in that run are a sibling's (bulk-plan-warnings
+is claimed for them).
+
 ## gate-warnings — the zero-warning policy made true again, twelve in four files
 
 AGENTS.md's rule is no warnings, ever — main, test AND Jmh, any

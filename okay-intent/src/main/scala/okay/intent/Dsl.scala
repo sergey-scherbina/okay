@@ -63,6 +63,27 @@ object Dsl:
      * The trailing space belongs INSIDE the option, which is what
      * makes «что там с работой» and «что с работой» one rule */
     case MaybeThen(t: Term)
+    /** this, or nothing: `(?:my )?`. Where `MaybeThen` owns the space
+     * after the word, `Maybe` owns nothing but the term — an ending of
+     * more than one letter (`удали(?:ть)?`), a word glued to the next */
+    case Maybe(t: Term)
+    /** this word and the space after it, any number of times:
+     * `(?:(?:мою|все|эту)\s+)*` — the qualifiers a person puts before
+     * «заявку», which `MaybeThen` says once and a person says twice */
+    case ManyThen(t: Term)
+    /** ONE OF THESE CHARACTERS: `[юяи]`, and `[юяи]?` when optional.
+     * Not a stem: `мо[юяи]` is «мою», «моя», «мои» and NOT «моего»,
+     * which `мо\w*` would also be. The set is spelled as the file
+     * spells it — the letters, a hyphen, a comma, a space */
+    case Chars(set: String, optional: Boolean)
+    /** a stem that may not run on: `мо\w{1,3}` — «мой», «моей», «моими»
+     * and not «монитор» */
+    case StemUpTo(text: String, n: Int)
+    /** NOT THESE, and then this: `(?!найти|искать)\w+(?:ть|ти)` — «хочу
+     * СДЕЛАТЬ» is an offer and «хочу НАЙТИ» is a need, and the only way
+     * to say so at the word is to name the words it must not be. The
+     * lookahead consumes nothing; `t` is what the rule then reads */
+    case Unless(not: Term, t: Term)
     /**
      * A fragment this builder cannot yet say, and the reason it
      * cannot — an inline optional, an alternation of whole rules.
@@ -85,6 +106,15 @@ object Dsl:
       case StemPlus(t) => t + "\\w+"
       case Seq(ps) => ps.map(render).mkString
       case MaybeThen(t) => "(?:" + render(t) + "\\s+)?"
+      // an alternation is already a group: `(?:ть|ти)?`, not `(?:(?:ть|ти))?`
+      case Maybe(a: Any) => render(a) + "?"
+      case Maybe(t) => "(?:" + render(t) + ")?"
+      case ManyThen(t) => "(?:" + render(t) + "\\s+)*"
+      case Chars(set, optional) => "[" + set + "]" + (if optional then "?" else "")
+      case StemUpTo(t, n) => t + "\\w{1," + n + "}"
+      // an alternation needs no group inside a lookahead: `(?!a|b)`
+      case Unless(Any(of), t) => "(?!" + of.map(render).mkString("|") + ")" + render(t)
+      case Unless(n, t) => "(?!" + render(n) + ")" + render(t)
       case Raw(f, _) => f
 
     /** every `Raw` under this term, with its reason */
@@ -95,6 +125,9 @@ object Dsl:
       case Words(ps) => ps.flatMap(raws)
       case Seq(ps) => ps.flatMap(raws)
       case MaybeThen(t) => raws(t)
+      case Maybe(t) => raws(t)
+      case ManyThen(t) => raws(t)
+      case Unless(n, t) => raws(n) ++ raws(t)
       case _ => Vector.empty
 
   /**
@@ -149,7 +182,7 @@ object Dsl:
    * allows what a person's thumb adds: «telegram?», «code.».
    */
   enum Ending:
-    case Boundary, Alone, AlonePunctuated, Open
+    case Boundary, Alone, AlonePunctuated, Open, Colon
 
   /**
    * A rule: a term, then any number of gap-and-term steps. The
@@ -167,6 +200,8 @@ object Dsl:
     def alonePunctuated: Rule = copy(ending = Ending.AlonePunctuated)
     /** it ends on an open token; there is nothing to close */
     def open: Rule = copy(ending = Ending.Open)
+    /** it ends on a colon: «can: fix bikes» — the label form of an offer */
+    def colon: Rule = copy(ending = Ending.Colon)
     def pattern: String =
       (if anchor == Anchor.Opening then "(?iU)^\\s*" else "(?iU)\\b") +
         Term.render(head) +
@@ -179,7 +214,8 @@ object Dsl:
           // already consumed to the next space, and a `\\b` after it
           // would demand the last character be a word one — «сценарий
           // deal!» would stop matching
-          case Ending.Open => "")
+          case Ending.Open => ""
+          case Ending.Colon => "\\s*:")
     def raws: Vector[(String, String)] =
       Term.raws(head) ++ tail.flatMap((_, t) => Term.raws(t))
 
@@ -249,6 +285,13 @@ object Dsl:
   def stemPlus(s: String): Term = Term.StemPlus(s)
   def seq(ts: Term*): Term = Term.Seq(ts.toVector)
   def maybeThen(t: Term): Term = Term.MaybeThen(t)
+  def maybe(t: Term): Term = Term.Maybe(t)
+  def manyThen(t: Term): Term = Term.ManyThen(t)
+  def chars(set: String): Term = Term.Chars(set, optional = false)
+  def maybeChars(set: String): Term = Term.Chars(set, optional = true)
+  def stemUpTo(s: String, n: Int): Term = Term.StemUpTo(s, n)
+  /** not these words, and then this */
+  def unless(not: Term)(t: Term): Term = Term.Unless(not, t)
   /** THE ARGUMENT a command carries. A deal number and a word are
    * shapes rather than vocabulary, and naming them here is what keeps
    * `\d+` out of the places a reader would have to decode it */

@@ -1,5 +1,33 @@
 # Backlog
 
+## okay-r: two claims the spec made that the module does not (spec-truth, 2026-09-09)
+
+Found by auditing specs/r.md's Behavior list against the 24 tests that
+exist: five boxes were already proven and are now checked, two are half
+built and say so, and these two are simply absent. Neither blocks a
+consumer today — okay-r is used through tools, where the caller's own
+supervision applies — so they are named here rather than built on
+speculation.
+
+- [x] r-call-timeout — DONE 2026-09-09 (r-finish): the process killed at
+      the deadline, a fresh one in its place, the call answered as a
+      Condition; proven against the dockerized R. Was: `timeout` appears nowhere in okay-r's main
+      sources: a hung `Rscript` hangs the calling fiber, with no way
+      to report it as data. The seam already has the shape for it
+      (`Condition` is the data channel, `Async.timeout` the mechanism,
+      and `RSubprocess` owns the process it would have to kill). Spec
+      box: "a timeout kills the call, reports as data, and the engine
+      is usable after".
+- [x] r-frame-schema — DONE 2026-09-09 (r-finish): `RFrame.rows[A]` /
+      `RFrame.of[A]` over Schema, every mismatch a Condition naming the
+      column, the field or the row. Was: `RFrame` is `Vector[(String, Vector[RValue])]`
+      and okay-r names no `Schema` anywhere. The spec's box promises a
+      frame mapping to a Seq of a flat case class and back, with a
+      column the Schema does not name an error naming the column —
+      the analyst-facing half of the frame story. The column round
+      trip itself IS built and tested; this is the typed layer over
+      it, the same move `Typed.rows` makes over `Sql`.
+
 ## bulk — after the seam (specs/bulk.md, landed 2026-09-09)
 - [x] bulk-rewrite — DONE 2026-09-09, and the premise refuted by
       measurement (`TestWroclawStages`): the plan built in 6.8 s, same
@@ -184,6 +212,10 @@ its Behavior checklist:
       WebFlux end-to-end (handler stack in the gate, Netty under
       Live), which found and fixed the result-handler gap. Nothing
       left in this arc.
+- [x] di-cross — DONE 2026-09-09: the module vocabulary pinned on
+      JVM, JS and Native (`TestModuleCross`, src/test/scala-cross).
+      Found nothing; the guard was what was missing. The arc is now
+      complete on every platform it ships to.
 
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 
@@ -915,7 +947,20 @@ one with an open decision is the first.
       reason is in §10: `buf: String` cannot become a start offset
       because `Lex.chunks` has no input to slice — a token may span
       chunks. A fix must serve both paths.
-- [ ] lexer-buf-without-concat — the blocked half, reopened as its own
+- [x] lexer-buf-without-concat — REFUTED 2026-09-09, nothing landed.
+      The one candidate that needs no input (a doubling char array in
+      the state) is WORSE by 11-12% B/op: JSON's tokens are short, so
+      reserving a buffer per token costs more than concatenating one
+      to four characters, and the old `Base` state allocated nothing
+      at all between tokens. §10 carries the table and the per-object
+      decomposition it produced: of the ~171 B per character, `S`
+      itself is ~33%, the `Tuple2` ~19%, the concat ~23% — the concat
+      is the smallest of the three. The other two candidates were not
+      built and the reason is structural, not arithmetic:
+      `Scan.finish(s, input)` helps ONLY the element-wise path (the
+      chunked one still has no input), and `Either[offset, chars]` is
+      that half-fix plus this refuted one. Was: the blocked half,
+      reopened as its own
       question: how does a scanner accumulate a token's text without a
       String per character AND without the whole input? Candidates not
       yet priced: a small immutable char array grown by doubling in
@@ -1375,6 +1420,138 @@ construction instead of a type test per value).
       without the fix. specs/schedulers.md, "Every park site".
 
 ## Flakes observed (record → fix loop when they recur)
+
+- **native-runner-error — a Native module errors with NO failed test,
+  and the runner says nothing else** (twice on 2026-09-09, in my own
+  gates: `okay.codec.TestJsonEscape` at 13:01, `okay.lex.TestBpe` at
+  13:41). The signature is exact: `Error: Total 110, Failed 0,
+  Errors 1, Passed 109` where the module alone runs 116, plus
+  `Error during tests:` naming whichever suite was in flight, and NOT
+  ONE `==> X` anywhere. The module passes alone. It is a lost test
+  process; the runner reports no exception, no stack, no output.
+  (READ "THE CAUSE" BELOW FIRST: for shape B "lost" is measurably the
+  wrong word — nobody killed that process, it exited 0 — and the same
+  test applies to shape A's logs.)
+
+  WHAT IS RULED OUT, measured, so nobody repeats it:
+  - the scalascript RAM guard — its log reads `killed=0` at both
+    minutes, though it was in T1 (the box was paging both times)
+  - an OS kill — the kernel's `memorystatus` log for that window has
+    only idle-exit of system daemons (cfprefsd, softwareupdated);
+    nothing of ours, no jetsam
+  - CPU pressure alone — 13 Native modules in parallel (`sbt all
+    <m>/test ...`) under 42 CPU burners, four rounds: green. Five
+    modules under 28 burners: green. So concurrency by itself does
+    not do it; both real occurrences had memory pressure with it.
+
+  NOT FIXED, and honestly labelled instead: `scripts/gate.sh` runs the
+  matrix, and when a failure carries exactly this signature — no
+  `==> X`, a module with `Failed 0` and `Errors ≥ 1` — it re-runs
+  those modules ALONE and says which they were, in both outcomes. A
+  single real test failure is final and never retried. Next occurrence:
+  capture the module's own section of the log and the `log show
+  --predicate 'eventMessage CONTAINS "memorystatus"'` window before
+  rerunning, and add the pair here.
+
+  THIRD OCCURRENCE, a NEW SHAPE (failing-over's gate, 2026-09-09
+  18:50–18:55, a cold matrix in a fresh worktree beside two sibling
+  sbts): `okayLexNative / Test / executeTests` failed with
+  `RPCCore$ClosedException: NativeRunnerRPC$RunTerminatedException` —
+  the runner process started (`Starting process '…/okay-lex-test' on
+  port '60120'`) and printed NOT ONE suite header before it was gone,
+  so there is no `Errors 1` line at all, and `scripts/gate.sh` said
+  "RED — a failure this script does not recognise" and did NOT
+  re-run. Alone, a minute later: 11/11. The pair the entry asked for:
+  the module's section of the log is the one `Starting process` line
+  and nothing after it; the memorystatus window 18:47–18:56 has ZERO
+  lines (no jetsam, as before). Box at the time: 5.6 GB of 7 GB swap
+  used, 273 885 pageouts, a sibling sbt at 500% CPU. So the same
+  family — a lost test process under memory pressure (WRONG on both
+  counts for this shape; corrected under THE CAUSE below by the agent
+  who wrote this paragraph) — and gate.sh
+  should learn this shape too: a `(<m>Native / Test / executeTests)`
+  error line carrying `RunTerminatedException` with no `==> X` in the
+  log is the rerun-alone case, not a real red; `--read` on the saved
+  log (scratchpad gate-failing-over-full.log of that session, or the
+  next occurrence's) is the test for the change.
+
+  THE CAUSE, half settled (native-runner-cause, 2026-09-09). The
+  entry called this "a lost test process" for a day. For shape B that
+  is measurably wrong, and the correction comes from the runner's own
+  code rather than from the symptom:
+
+  - `ProcessRunner` (test-runner 0.5.12) fails its promise with
+    "Process … finished with non-zero value N" on any non-zero exit,
+    and above 128 also logs "Test runner interrupted by fatal signal
+    N"; `ComRunner` then logs "Force close …"; and the
+    `RunTerminatedException` sbt finally prints CARRIES that failure
+    as its cause.
+  - The failing gate log has NONE of those three lines, and its
+    `RunTerminatedException` has no cause at all — one `Caused by`,
+    nothing under it. `NativeRunnerRPC` builds it from
+    `t.failed.toOption`, so no cause means the com run SUCCEEDED,
+    which `ComRunner` only does when the process exited ZERO.
+  - `TestMain` exits 0 in exactly two cases, both in `NativeRPC.loop`:
+    end of stream, or a message length <= 0. Nothing else in that
+    binary returns 0 while a call is pending.
+
+  MEASURED, not merely read — `scripts/native-runner-probe.java`
+  drives a real okay Native test binary the way ComRunner does and
+  ends the connection four ways (on okay-lex-test, 2026-09-09):
+
+      close-socket  exit=0    printed nothing
+      zero-length   exit=0    printed nothing
+      sigterm       exit=143  printed nothing
+      sigkill       exit=137  printed nothing
+
+  So the two signal shapes are exactly the ones that WOULD have been
+  logged and were not. Nobody killed that process. Its connection
+  ended and it left, cleanly and silently, while sbt still had a call
+  in flight — which is why the error is an sbt-side `ClosedException`
+  and why the module has no test report at all.
+
+  ALSO RULED OUT BY COMMAND (this occurrence):
+  - the RAM guard: its log has only `SPARE` decisions in the window
+    and `killed=0` at every tick, with 6.9–8.5 GB available
+  - jetsam / an OS kill: the `memorystatus` window is EMPTY and there
+    is no crash report for the binary — and a SIGKILL would have
+    shown as 137 above
+  - our own code: no `sys.exit`/`System.exit`/`halt` in any source a
+    Native test binary links (the six hits are JVM-only modules)
+  - the plugin's global adapter close (`onComplete` closes EVERY
+    `TestAdapter`, and `TestAdapter.close()` is SILENT when its runs
+    are all done — the one silent closer in the JVM): refuted by the
+    log itself, since 30+ runner processes started and passed AFTER
+    the failing one
+  - the adapter being collected under the GC storm the log shows
+    (89.8% of ten seconds in GC): `registerResource` holds every
+    adapter in a strong list, so it cannot be collected — though the
+    mechanism it would have needed does exist, `NioSocketImpl` having
+    a `Cleaner` that closes an unreachable socket's fd
+
+  STILL OPEN, and stated as open: WHAT ended that one connection. Two
+  candidates remain, both silent by construction — the JVM end of the
+  com socket going away without any of the loggable paths, and a
+  non-positive length reaching `readInt` on a live connection. The
+  log's own hint favours the first: that process produced no test
+  output at all, and a desync needs at least one message to have been
+  written. What would separate them next time is a TIMELINE, which
+  the sbt log cannot give (it has no timestamps): record the runner
+  processes beside the gate (`pgrep -f '<module>-test'` once a second,
+  with the clock) and compare the death against the module's first
+  output. Died before any output, and nothing was ever written to it:
+  something closed the socket. Died after: the stream is the suspect.
+
+  HANDLED 2026-09-09 (gate-lost-shape2): `scripts/gate.sh` knows both
+  shapes now — A, a module reporting `Failed 0, Errors 1` after some
+  tests ran, and B, `(<m> / Test / executeTests)` carrying
+  `RunTerminatedException` with no report at all because the process
+  went before it said anything. It stays conservative: a project that
+  failed in NEITHER shape is named and nothing is re-run. Tested with
+  `--read` over five real logs — the two of shape A, this one of
+  shape B (thank you for keeping it), the `TestOfflineGate` failure
+  and a green matrix — plus a doctored log where a second project
+  fails in an unknown shape, which correctly refuses to retry.
 
 - **hedge-timer-leak — FIXED 2026-09-09 (hedge-start-races), and it
   was the SMALLER half.** `Hedge.start` published after it acted, in
@@ -1897,7 +2074,14 @@ measure on our own data, never a predicted result.
       that stage, ~6% end to end — A/B'd in ONE run, because the first
       cross-run reading said 2x and was GC noise. Guarded by
       TestJsonValue's existing prefix sweep.
-- [ ] scan-step-allocation — `Scan.step: (S, Char) => (S,
+- [ ] scan-step-allocation — NOW THE LARGEST NAMED SHARE, and priced
+      2026-09-09 by lexer-buf-without-concat: the `Tuple2` is ~19% of
+      lexing's ~171 B per character, second only to `S` itself (~33%).
+      The consumer this entry said it wanted is now here — three lanes
+      have measured this path — but note what the same work refuted:
+      the concat is the SMALLEST of the three shares, so an interface
+      change that removes only the tuple buys about a fifth. Was:
+      `Scan.step: (S, Char) => (S,
       Vector[Token[K]])` allocates a tuple per CHARACTER, which is the
       next wall on the lossless road (~26 ms of a 9.3 MB lex). An
       additive `stepInto(s, c, out)` with a default delegating to
@@ -5604,7 +5788,13 @@ was true of the blocking loop and false now; corrected in the same
 commit. A build comment promising what the code no longer does is the
 same defect class as a test named for what it stopped checking.
 
-## bulk-plan-warnings — eight warnings landed on a warning-free gate
+## bulk-plan-warnings — DONE 2026-09-09 by `gate-warnings` (76478fa1)
+
+Closed by a sibling lane that swept twelve warnings in four files —
+a superset of the eight filed here — rather than by this entry.
+VERIFIED before closing it: `clean` + `Test/compile` over the whole
+build on master, zero `[warn]` lines. The entry stays for its
+measurement, which is the argument for the rule.
 
 `bulk-plan` / `bulk-rewrite` (origin, 2026-09-09) added eight compiler
 warnings to a repository whose gate had none. Measured either side of

@@ -247,7 +247,9 @@ still refused.
 
 Deliberately NOT a dependency per seam: okay-resilience knows
 nothing about llm, mcp or cluster; a caller wires this at its own
-edge in three lines.
+edge in three lines. That claim was CHECKED rather than left
+standing: `ChatDemo.guarded` (demo-guarded-llm) is exactly those
+three lines around the transport it provides.
 
 - [x] a guarded stream tells every line, and the guards are
       transparent when nothing refuses
@@ -258,14 +260,31 @@ edge in three lines.
 - [x] the limiter refuses before the seam is touched at all
 - [x] no guards is the program unchanged
 
+The worked instance (demo-guarded-llm): okay-demo guards its
+Anthropic transport with a breaker (5 consecutive failures, 30 s
+open) and a token bucket (5/s, burst 10) and publishes both to
+`/metrics` through `Ops.routes(guards = ...)`.
+
+- [x] the demo's guards are named and are the ones `/metrics` is
+      given — the test that catches a guard wired but never published
+- [x] a dead model opens the circuit, the wire is NOT touched while
+      it is open, and one probe after the window closes it again
+- [x] the bucket bounds a runaway loop before it spends the quota,
+      and a refused call never reaches the model
+- [x] the guard is transparent when nothing refuses: every line of
+      the streamed answer arrives
+
 - [ ] adaptive concurrency (a bulkhead whose permits follow observed
       latency, Netflix's gradient) is DEFERRED with a measured reason
       or landed here — not before stage 1 is in use. Status
-      2026-09-09: deferred, unmeasured — nothing in the tree wires
-      these guards into a service yet, so there is no latency to
-      follow; the box stays open until there is. resilient-transport
-      removed the OBSTACLE (the live outbound path can now be
-      guarded) but wiring it into okay-demo is its own lane
+      2026-09-09: still deferred, and now for a BETTER reason.
+      demo-guarded-llm wired a breaker and a token bucket around
+      okay-demo's Anthropic transport, so the obstacle is gone and
+      there is a service to measure. What is missing is the
+      MEASUREMENT: a gradient bulkhead is a control loop, and a
+      control loop tuned against no traffic is a guess with extra
+      steps. It lands when someone has latency from a demo under
+      real load, not before
 
 ## Out of scope
 
