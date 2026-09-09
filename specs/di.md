@@ -194,6 +194,46 @@ constructor parameters and `using` clauses; that is the condition of
 portability, not a loss), hot reload, and Spring's actuator (okay-ops
 is the actuator, and a Boot app can mount both).
 
+## What using it taught (di-dogfood, 2026-09-09)
+
+The arc was complete and had never built an application: outside the
+core's own tests, the only user of `Module` was okay-deploy's test of
+`Needs`. So okay-demo's `ChatDemo` — four capabilities, one of them a
+log on disk — was rewired by it. The app boots and prints its own
+plan (`chat: modules Store, Board, Transport, Secrets`). Three things
+the tests could not have told us:
+
+- **A capability is installed under one type and released under
+  another.** The store is a `FileStore` to open and close, and a
+  `Store` to everything that reads it — `Store` has no `close` and
+  should not grow one for this. `module[A]` forces both to be `A`,
+  which leaves an application choosing between over-specifying every
+  consumer and a type test in the release. `moduleAs[A, R <: A]` is
+  the missing spelling and is now in the core.
+- **An application's body is itself a program in the scope.** A
+  server is `Server ! Resource`, not a value, so `m { body }` answers
+  a program inside a program and the discarded-value lint fires at
+  the call site. `Module.use` flattens it once, where it belongs.
+- **A global `lazy val` is exactly what a module replaces, and every
+  reader of it becomes a door.** `routes` built its ops surface from
+  the global store, so a module's store beside it would have opened
+  one log twice — the failure the code's own comment describes.
+  `routes` takes `Store` as a capability now. That is the cost of the
+  conversion, and it is the whole point: the graph moves from a
+  global into the type.
+
+Two things improved by construction rather than by intent: the log is
+CLOSED when the region ends (the `lazy val` it replaced never was),
+and the demo's tests no longer reach the repository's real
+`okay-board.log` through that global when they touch an ops route.
+
+Not attempted here: deriving the demo's deployment needs from the
+root's type (stage 3). Its root asks for a `Timer`, which is not
+something a PLACE provides, so `Needs.of` would demand a
+`given Needs[Timer]` that means nothing. The stage-3 loop wants a root
+whose remaining inputs are all infrastructural; the demo's are not,
+and saying so is better than bending either side to fit.
+
 ## Decisions
 
 - **`Module` is a class wrapping the program, not an alias over it.**

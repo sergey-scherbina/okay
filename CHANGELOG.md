@@ -1,5 +1,38 @@
 # Changelog
 
+## di-dogfood — the DI arc builds an application, and the application changed it
+
+Nothing in this repository built itself with `Module`: outside the
+core's own tests, the only user was okay-deploy's test of `Needs`. An
+arc proved by its own tests is not proved, so okay-demo's `ChatDemo`
+was rewired by it — four capabilities, one of them a log on disk. It
+boots and prints its own plan: `chat: modules Store, Board, Transport,
+Secrets`.
+
+Using it found two gaps in the vocabulary, both now filled in the
+core. `moduleAs[A, R <: A]` acquires the concrete thing, installs the
+capability and releases the concrete thing — a `FileStore` is opened
+and closed, and a `Store` is what the program should see; `module`
+alone forced those to be one type, leaving a choice between
+over-specifying every consumer and a type test in the release.
+`Module.use` takes a body that is ITSELF a program in the scope — a
+server is `Server ! Resource`, and `apply` would answer a program
+inside a program, which the discarded-value lint catches at every call
+site.
+
+It also found the friction that is the point of the exercise:
+`ChatDemo.routes` built its ops surface from a GLOBAL store, so a
+module's store beside it would have opened one log twice — the failure
+that file's own comment describes. `routes` takes `Store` as a
+capability now. A global lazy val is what a module replaces, and every
+reader of it becomes a door.
+
+Two improvements fell out by construction: the log is CLOSED when the
+region ends (the lazy val never was), and the demo's tests no longer
+reach the repository's real `okay-board.log` when they touch an ops
+route. Stage 3 was declined for this app with a reason recorded: its
+root asks for a `Timer`, which is not something a place provides.
+52 demo tests green, 3 new core tests. Commit: LANDING.
 ## merge-chunked-order — a producer's own order survives the buffer swap
 
 A merge returned one source's elements as `1..16, 49, 50, 17..48`, and

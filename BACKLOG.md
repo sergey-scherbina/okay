@@ -216,6 +216,12 @@ its Behavior checklist:
       JVM, JS and Native (`TestModuleCross`, src/test/scala-cross).
       Found nothing; the guard was what was missing. The arc is now
       complete on every platform it ships to.
+- [x] di-dogfood — DONE 2026-09-09: ChatDemo wired by modules, the
+      first application to use the arc. Found and filled two gaps in
+      the vocabulary (`moduleAs`, `Module.use`) and one in the demo (a
+      global store every reader reached for). specs/di.md "What using
+      it taught". Stage 3 on the demo declined with a reason: its root
+      needs a Timer, which no place provides.
 
 ## persistence-audit — what the database layer still lacks (operator's go, 2026-09-09)
 

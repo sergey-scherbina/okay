@@ -66,7 +66,7 @@ class TestGuardedLlm extends munit.FunSuite:
     // forgetting to publish it, which is how a breaker goes unnoticed
     assertEquals(ChatDemo.llmBreaker.name, "anthropic")
     assertEquals(ChatDemo.llmLimiter.name, "anthropic")
-    val metrics = Async.run(ChatDemo.opsRoutes(okay.http.Request.get("/metrics"))
+    val metrics = Async.run(ChatDemo.opsRoutes()(okay.http.Request.get("/metrics"))
       .flatMap(okay.http.Http.text)).runWith
     assert(metrics.contains("""okay_breaker_state{name="anthropic"}"""), metrics)
     assert(metrics.contains("""okay_limiter_keys{name="anthropic"}"""), metrics)

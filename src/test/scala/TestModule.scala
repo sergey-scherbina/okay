@@ -109,6 +109,26 @@ class TestModule extends munit.FunSuite {
     assertEquals(closed, List("a"))
   }
 
+  test("moduleAs: acquired as the concrete type, installed as the capability, released as the concrete type") {
+    class Conn(val name: String) extends Db { def q = s"row from $name"; var closed = false }
+    val c = Conn("primary")
+    val m = moduleAs[Db, Conn](c)(_.closed = true)
+    assertEquals(run(m { wire[Db].q }), "row from primary")
+    assertEquals(c.closed, true)
+    // and what it installs is the CAPABILITY, not the concrete class
+    assert(compileErrors("import okay.*; okay.Module.value[Int](1) { wire[String] }").nonEmpty)
+  }
+
+  test("use: a body that is itself a program in the scope, flattened once") {
+    var log = List.empty[String]
+    val db = module[Db]({ log ::= "open db"; new Db { val q = "row" } })(_ => log ::= "close db")
+    // the body acquires further IN the same region, as a server would
+    val body: Db ?=> (String ! Resource) =
+      Resource.acquire({ log ::= "open server"; wire[Db].q })(_ => log ::= "close server")
+    assertEquals(run(db.use(body)), "row")
+    assertEquals(log.reverse, List("open db", "open server", "close server", "close db"))
+  }
+
   test("a failing acquisition releases what came before it") {
     var closed = List.empty[String]
     val a = module[String]("a")(_ => closed ::= "a")

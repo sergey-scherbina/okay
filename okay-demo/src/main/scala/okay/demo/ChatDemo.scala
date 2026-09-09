@@ -92,8 +92,12 @@ object ChatDemo {
       okay.resilience.Resilient.guarded(inner.post(url, headers, body),
         breaker = Some(llmBreaker), limiter = Some(llmLimiter), key = "anthropic")
 
-  def opsRoutes: PartialFunction[Request, Response ! Async] =
-    Ops.routes(opsStore, lifecycle = Some(lifecycle), red = Vector(red),
+  /** the ops routes over the store the caller is using — a parameter,
+   * not the global, since `main` now opens its store as a module
+   * (di-dogfood) and a second open of one log is the failure the
+   * comment above `boardStore` describes */
+  def opsRoutes(store: okay.persist.Store = opsStore): PartialFunction[Request, Response ! Async] =
+    Ops.routes(store, lifecycle = Some(lifecycle), red = Vector(red),
       guards = Vector(llmBreaker, llmLimiter))
 
   /**
@@ -248,9 +252,11 @@ object ChatDemo {
 
   // ---- the routes ----------------------------------------------------
 
-  def routes(m: Chat.Model, budget: Int)(using Secrets, Board)
+  def routes(m: Chat.Model, budget: Int)(using Secrets, Board, okay.persist.Store)
   : PartialFunction[Request, Response ! Async] =
     val board = summon[Board]
+    // ONE ops surface per server, over the caller's store
+    val ops = opsRoutes(summon[okay.persist.Store])
     // built ONCE per server, not per request — McpHttp keeps its
     // session table inside the route, and a session issued on one
     // request must still be found on the next
@@ -328,7 +334,7 @@ object ChatDemo {
             Chat.sse("note", Json.print(JStr(note)))))
       pure(Response(200, Seq("content-type" -> "text/event-stream"), src))
 
-    case r if opsRoutes.isDefinedAt(r) => opsRoutes(r)
+    case r if ops.isDefinedAt(r) => ops(r)
 
     case r if r.method == okay.http.Method.Post && r.url == "/login" =>
       val email = Chat.fieldOf(r.body, "email")
@@ -383,7 +389,7 @@ object ChatDemo {
    * the same value both times, and a missing capability is a compile
    * error, not a container exception */
   def handler(budget: Int)
-  : (Transport, Secrets, Board) ?=> PartialFunction[Request, Response ! Async] =
+  : (Transport, Secrets, Board, okay.persist.Store) ?=> PartialFunction[Request, Response ! Async] =
     routes(Chat.model, budget)
 
   def main(args: Array[String]): Unit =
@@ -401,10 +407,51 @@ object ChatDemo {
     // process must still answer /healthz 200 (or Kubernetes restarts
     // it) and /readyz 503 (so it leaves the endpoints); everything
     // else is counted, measured, and refused once draining
-    def app(routes: PartialFunction[Request, Response ! Async]): PartialFunction[Request, Response ! Async] =
-      opsRoutes.orElse(lifecycle.route(red.route(okay.ops.Red.byMethodAndPath)(routes)))
-    provide(guarded(Transports.http()), Secrets.env, board)(Resource.run[Unit, Pure](
-      Jetty.serve(port)(app(node match
+    def app(store: okay.persist.Store)(routes: PartialFunction[Request, Response ! Async])
+    : PartialFunction[Request, Response ! Async] =
+      opsRoutes(store).orElse(lifecycle.route(red.route(okay.ops.Red.byMethodAndPath)(routes)))
+    Resource.run[Unit, Pure](modules.use { app_run(port, budget, mode, node, app) }).runWith
+
+  /**
+   * THE APPLICATION'S DEPENDENCIES, AS A VALUE (specs/di.md, first use
+   * of the arc by an application — di-dogfood).
+   *
+   * Four capabilities, one of them acquired: the store is opened here
+   * and CLOSED when the region ends, which the `lazy val` it replaces
+   * never was. The board is built from it, so it is written as a
+   * module that reads the one before it — the dependency is the
+   * composition, and the compiler checks it. `plan` prints the order
+   * before anything opens.
+   *
+   * What this exercise cost, kept as the record: `routes` had to take
+   * `Store` as a capability, because it built the ops surface from a
+   * GLOBAL lazy val, and a module's store beside that global would
+   * have opened one log twice — the failure the comment above
+   * `boardStore` describes. A global is exactly what a module
+   * replaces, and every reader of it becomes a door.
+   */
+  def modules(using Timer): Module[[X] =>>
+      okay.persist.Store ?=> Board ?=> Transport ?=> Secrets ?=> X] =
+    val path = sys.env.getOrElse("OKAY_CHAT_DB", "okay-board.log")
+    val store =
+      if path == ":memory:" then Module.value[okay.persist.Store](okay.persist.MemoryStore())
+      else moduleAs[okay.persist.Store, okay.persist.FileStore](
+        okay.persist.FileStore.open(java.nio.file.Path.of(path)))(_.close())
+    val board: okay.persist.Store ?=> Module[[X] =>> Board ?=> X] =
+      module[Board]({
+        val b = Board(Board.topicOf(wire[okay.persist.Store]))
+        b.replay(): Unit
+        b
+      })(_ => ())
+    store and board and
+      Module.value[Transport](guarded(Transports.http())) and
+      Module.value[Secrets](Secrets.env)
+
+  /** the server, inside the scope its dependencies are open for */
+  private def app_run(port: Int, budget: Int, mode: String, node: Option[String],
+                      app: okay.persist.Store => PartialFunction[Request, Response ! Async] => PartialFunction[Request, Response ! Async])
+  : (okay.persist.Store, Board, Transport, Secrets) ?=> Unit ! Resource =
+      Jetty.serve(port)(app(wire[okay.persist.Store])(node match
         case Some(n) =>
           val logDir = sys.env.getOrElse("OKAY_CHAT_LOG", "okay-chat.log")
           val tickMs = sys.env.get("OKAY_CHAT_TICK_MS").flatMap(_.toLongOption).getOrElse(500L)
@@ -413,6 +460,7 @@ object ChatDemo {
           TwoNode.leaderGated(twoNode)(routes(Chat.model, budget))
         case None => handler(budget)
       ))().map { s =>
+        println(s"chat: modules ${modules(using summon[Timer]).plan.mkString(", ")}")
         println(s"chat: http://127.0.0.1:${Jetty.port(s)}  (model: $mode)")
         node.foreach(n => println(s"two-node: $n — leader status at /whoami"))
         // no delivery channel yet (same limit Login.start states about
@@ -423,7 +471,7 @@ object ChatDemo {
         // returns and the region stops Jetty — the JVM waits for it
         val drained = okay.ops.Signals.awaitSignal(lifecycle)
         println(s"chat: stopping (drained=$drained, in flight ${lifecycle.inFlight})")
-      }).runWith)
+      }
 
   /** the React page: okay-ui's tree rendered by a real React (CDN
    * UMD globals), the logic cross-tested on the JVM — the frontend

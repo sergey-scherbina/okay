@@ -64,8 +64,15 @@ class TestChatDemo extends munit.FunSuite {
    * test would inherit their tasks and prove nothing */
   def memoryBoard: Board = Board(Board.topicOf(Board.store(":memory:")))
 
+  /** the store the ops routes report on. `routes` takes it as a
+   * capability now (di-dogfood), and a memory one per server is what
+   * the comment above `memoryBoard` already asks for: before this,
+   * every test that touched an ops route read the repository's real
+   * `okay-board.log` through a global. */
+  def memoryStore: okay.persist.Store = Board.store(":memory:")
+
   def withServer[A](budget: Int, board: Board = memoryBoard)(f: Int => A): A =
-    provide(deadWire, noSecrets, board)(Resource.run[A, Pure](
+    provide(deadWire, noSecrets, board, memoryStore)(Resource.run[A, Pure](
       Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.scripted, budget))()
         .map(s => f(Jetty.port(s)))).runWith)
 
@@ -133,7 +140,7 @@ class TestChatDemo extends munit.FunSuite {
         HttpResponse.BodyHandlers.ofString()).statusCode() == 200
     } catch { case _: Throwable => false }
     assume(up, s"no local model at $base — skipped")
-    provide(okay.llm.Transports.http(), noSecrets, memoryBoard)(Resource.run[Unit, Pure](
+    provide(okay.llm.Transports.http(), noSecrets, memoryBoard, memoryStore)(Resource.run[Unit, Pure](
       Jetty.serve(0)(ChatDemo.routes(okay.chat.Chat.local(base), 512))()
         .map { s =>
           val port = Jetty.port(s)
@@ -171,7 +178,7 @@ class TestChatDemo extends munit.FunSuite {
         .foldLeft(pure(()): Unit ! F)((acc, l) =>
           acc.flatMap(_ => effect[F, Unit](Writer(l))))
     def run(wire: okay.llm.Transport, secrets: okay.conf.Secrets): String =
-      provide(wire, secrets, memoryBoard)(
+      provide(wire, secrets, memoryBoard, memoryStore)(
         Resource.run[String, Pure](
           Jetty.serve(0)(ChatDemo.handler(512))().map { s =>
             new String(post(Jetty.port(s),

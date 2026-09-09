@@ -106,10 +106,35 @@ final class Module[F[_]](val build: Providing[F] ! Resource):
     new Module(build.flatMap(p => p(that).build.map(q => p and q)))
   /** install everything and run the body inside the scope */
   def apply[B](body: F[B]): B ! Resource = build.map(p => p(body))
+  /**
+   * The same, for a body that is ITSELF a program in the scope — a
+   * server that acquires further, a stream that opens a file. An
+   * application's body usually is one (di-dogfood: `Jetty.serve` is
+   * `Server ! Resource`), and `apply` would answer a program inside a
+   * program, which the discarded-value lint catches at every call
+   * site. Flattening it belongs here, once.
+   */
+  def use[B](body: F[B ! Resource]): B ! Resource = build.flatMap(p => p(body))
 
 /** acquire one capability in the scope; the scope releases it */
 def module[A](acquire: => A)(release: A => Unit): Module[[X] =>> A ?=> X] =
   new Module(Resource.acquire(acquire)(release).map(a => providing[A](a)))
+
+/**
+ * Acquire an `R`, install it as `A`, release it as `R` — the shape an
+ * application actually has (di-dogfood): a `FileStore` is opened and
+ * closed, and what the program should SEE is `Store`, which has no
+ * `close` and should not grow one for this. `module` alone forces
+ * those to be the same type, which leaves a real app choosing between
+ * installing the concrete type (every consumer over-specified) and a
+ * type test in the release (a cast, which this repository refuses).
+ *
+ * {{{
+ *   moduleAs[Store, FileStore](FileStore.open(path))(_.close())
+ * }}}
+ */
+def moduleAs[A, R <: A](acquire: => R)(release: R => Unit): Module[[X] =>> A ?=> X] =
+  new Module(Resource.acquire(acquire)(release).map(r => providing[A](r)))
 
 /**
  * The plan is the TYPE (specs/di.md, stage 1): a module's `F` is the
