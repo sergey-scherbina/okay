@@ -1,5 +1,38 @@
 # Changelog
 
+## native-runner-error — the gate can now tell its two reds apart
+
+Twice on 2026-09-09 a full matrix ended red with no failed test: a
+Native module reported `Failed 0, Errors 1`, named whichever suite was
+in flight, had run fewer tests than that module has, and passed alone.
+Each cost a six-minute rerun, and a gate that cries wolf stops being
+read.
+
+Three causes measured and RULED OUT rather than guessed: the RAM guard
+(its log reads `killed=0` at both minutes), an OS kill (the kernel's
+memorystatus log for both windows holds only idle-exit of system
+daemons — no jetsam, nothing of ours), and CPU pressure alone (13
+Native modules in parallel under 42 burners, four rounds, green; five
+modules under 28, green). Both real occurrences had memory pressure
+with the concurrency, which is not something to reproduce deliberately
+on a shared machine.
+
+So it is not fixed, and it is labelled instead. `scripts/gate.sh` runs
+the matrix and separates the two reds: any `==> X` is a real failure,
+printed and final; a failure carrying exactly the lost-process
+signature re-runs those modules alone and says which they were,
+green or red. `--read <log>` replays the decision over a gate log that
+already exists, which is how all three branches were tested — against
+today's real logs, two lost-process gates, one true failure and one
+green — rather than by waiting for the flake. AGENTS.md points at it
+and BACKLOG carries the evidence.
+
+Found while writing it, and worth repeating: `set -o pipefail` plus
+`grep -q` makes a pipeline report failure ON A MATCH, because grep
+exits early and the writer takes a SIGPIPE. The first cut called every
+real failure "unrecognised" for exactly that reason. The script greps
+one stripped copy of the log as a FILE now, no pipelines. Commit: LANDING.
+
 ## dsl-letters-and-repeats — the shapes okay-chat's quoted rules were waiting on
 
 okay-chat builds its routing rules with `okay.intent.Dsl` and still

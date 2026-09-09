@@ -266,6 +266,14 @@ force, all already practiced, none previously written down:
   lane found that suite's assertion was testing something unassertable
   on a shared machine (a released ephemeral port is immediately
   re-bindable by a neighbour) and fixed the assertion too.
+- `scripts/gate.sh` runs `sbt test` and TELLS THE TWO REDS APART: a
+  real failure (any `==> X`) is final and printed; the one false red
+  this repository is known to produce — a Native module reporting
+  `Failed 0, Errors 1` because its test process was lost, which alone
+  passes — is re-run for exactly those modules and reported either
+  way. `scripts/gate.sh --read <log>` says what it would have done
+  with a gate log you already have. The evidence, and what is ruled
+  out, is in BACKLOG's `native-runner-error`.
 - `sbt test` runs everything, JVM + JS + Native. The core suite forks
   (see build.sbt for why); `.jvmopts` gives sbt 6g.
 - **The full matrix PASSES: 2422 tests, 81 module runs, 0 failures, 83

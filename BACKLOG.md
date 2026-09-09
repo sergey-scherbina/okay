@@ -1389,6 +1389,35 @@ construction instead of a type test per value).
 
 ## Flakes observed (record → fix loop when they recur)
 
+- **native-runner-error — a Native module errors with NO failed test,
+  and the runner says nothing else** (twice on 2026-09-09, in my own
+  gates: `okay.codec.TestJsonEscape` at 13:01, `okay.lex.TestBpe` at
+  13:41). The signature is exact: `Error: Total 110, Failed 0,
+  Errors 1, Passed 109` where the module alone runs 116, plus
+  `Error during tests:` naming whichever suite was in flight, and NOT
+  ONE `==> X` anywhere. The module passes alone. It is a lost test
+  process; the runner reports no exception, no stack, no output.
+
+  WHAT IS RULED OUT, measured, so nobody repeats it:
+  - the scalascript RAM guard — its log reads `killed=0` at both
+    minutes, though it was in T1 (the box was paging both times)
+  - an OS kill — the kernel's `memorystatus` log for that window has
+    only idle-exit of system daemons (cfprefsd, softwareupdated);
+    nothing of ours, no jetsam
+  - CPU pressure alone — 13 Native modules in parallel (`sbt all
+    <m>/test ...`) under 42 CPU burners, four rounds: green. Five
+    modules under 28 burners: green. So concurrency by itself does
+    not do it; both real occurrences had memory pressure with it.
+
+  NOT FIXED, and honestly labelled instead: `scripts/gate.sh` runs the
+  matrix, and when a failure carries exactly this signature — no
+  `==> X`, a module with `Failed 0` and `Errors ≥ 1` — it re-runs
+  those modules ALONE and says which they were, in both outcomes. A
+  single real test failure is final and never retried. Next occurrence:
+  capture the module's own section of the log and the `log show
+  --predicate 'eventMessage CONTAINS "memorystatus"'` window before
+  rerunning, and add the pair here.
+
 - **hedge-timer-leak — FIXED 2026-09-09 (hedge-start-races), and it
   was the SMALLER half.** `Hedge.start` published after it acted, in
   two places: it forked an attempt and only then added the fiber to
