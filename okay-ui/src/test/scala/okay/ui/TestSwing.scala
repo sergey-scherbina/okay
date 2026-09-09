@@ -41,6 +41,15 @@ class TestSwing extends munit.FunSuite {
     now(b.apply(Patch.Replace(Nil, ui)))
     show(root.getComponent(0))
 
+  /** wait for a count rather than a duration; bounded, and loud when
+   * the bound is hit, because a test that says what it waited for is
+   * debuggable and one that fails an unrelated assertion is not */
+  private def awaitAtLeast(counter: java.util.concurrent.atomic.AtomicInteger,
+                           n: Int, what: String): Unit =
+    val deadline = System.currentTimeMillis() + 10_000
+    while counter.get < n && System.currentTimeMillis() < deadline do Thread.`yield`()
+    assert(counter.get >= n, s"timed out after 10 s waiting for $what; saw ${counter.get} of $n")
+
   test("the law at Swing: patching frame by frame equals building the last frame") {
     val frames = Vector(
       Column(Vector(Text("hello"), Button("go", "go"), Input("", "name", "Name")), "app"),
@@ -83,10 +92,16 @@ class TestSwing extends munit.FunSuite {
     val (root, b) = mount()
     val host = Ui.diffing(b)
     val got = scala.collection.mutable.Buffer[Event]()
+    // written from the collector's fiber and READ from this thread,
+    // so the COUNT is atomic; the buffer is only inspected once the
+    // count says the events have arrived
+    val arrived = java.util.concurrent.atomic.AtomicInteger(0)
     val drain = Async.spawn(Writer.uncons[Event, Unit, Async](b.events).flatMap {
       def loop(r: Either[Unit, (Event, Source[Event])]): Unit ! Async = r match
         case Left(_) => pure(())
-        case Right((e, more)) => got += e; Writer.uncons[Event, Unit, Async](more).flatMap(loop)
+        case Right((e, more)) =>
+          got += e; arrived.incrementAndGet()
+          Writer.uncons[Event, Unit, Async](more).flatMap(loop)
       loop
     })
     now(host.render(Column(Vector(
@@ -102,7 +117,14 @@ class TestSwing extends munit.FunSuite {
     now(host.render(Column(Vector(
       Button("go", "go"), Input("server", "name", "Name"), Check(false, "ok", "Ok"),
       Select(Vector("x", "y"), 0, "sel"), Button("nokey", "")), "app")))
-    Thread.sleep(50)
+    // WAIT FOR THE FOUR EVENTS, not for 50 ms. The four gestures above
+    // — click, type, tick, choose — each speak once, and the
+    // server-side SetValue that follows must speak NOTHING, which is
+    // what the last assertion checks. Sleeping asked the clock how
+    // long that takes on this machine today; under a loaded gate the
+    // answer was "longer than 50 ms" and the suite failed on the
+    // count (gate-honesty, 2026-09-09).
+    awaitAtLeast(arrived, 4, "the four gestures to be heard")
     assertEquals(got.headOption, Some(Event.Pressed("go")))
     assert(got.contains(Event.Edited("name", "Ada")), got.toString)
     assert(got.contains(Event.Toggled("ok", true)), got.toString)

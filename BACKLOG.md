@@ -5632,3 +5632,63 @@ Owned by whoever holds the bulk-plan lane; filed rather than fixed
 because that lane was active. It is small — eight lines — and it
 matters because a gate with eight warnings in it stops being a signal:
 the ninth arrives unnoticed.
+
+## gate-honesty — the gate's false failures, measured
+
+The full gate cried wolf four times on 2026-09-09, costing four
+separate investigations in one session. Every one measured:
+
+| suite | in the gate | alone |
+|---|---|---|
+| `okay.kafka.TestKafkaInterop` | 237 s, timeout | 0.084 s |
+| `okay.intent.TestCutStops` | 39 s, timeout | 0.059 s |
+| `okay.persist.TestStable` | `BindException` | 0.007 s |
+| `okay.ui` TestHybrid / TestSwing | 2 comparison failures + 2 timeouts | 84/84 |
+
+The tax is that every lane pays isolated re-runs to tell a real
+failure from noise. The real cost runs the other way: this session
+nearly dismissed a GENUINE defect (`actor-stop-drain`, 219 of 300)
+as load, by analogy with these.
+
+**The okay.ui pair were NOT flakes, and that is the finding.** Both
+came from `Thread.sleep(50)` used as a synchronisation point:
+
+- `TestHybrid.client` slept 50 ms to let the server's tree land
+  before feeding user events. Under a loaded gate that is not
+  enough, so the first keystroke arrived before the client knew
+  "name" belonged to a Form — and crossed the wire as an ordinary
+  `Edited`, failing the ZERO-times law with one EXTRA event.
+- `TestSwing` slept 50 ms before asserting on asynchronously
+  collected events.
+
+Fixed by waiting for the thing each sleep was waiting FOR — a render
+count and an event count — bounded at 10 s and LOUD on expiry. A
+test that hangs and then names what it waited for is debuggable; one
+that sleeps 50 ms and fails an unrelated assertion is not.
+
+**HOW IT WAS PROVED, including the attempt that failed.** A load
+harness (28 spinners on 14 cores) did NOT reproduce it: the old
+version passed under it, so a green run of the fixed version proved
+nothing. What worked was isolating the variable instead of recreating
+the conditions — setting the sleep to ZERO, which failed with the
+same shape and more of it: one extra event in the gate, three at zero
+wait. Dose-dependent, same defect.
+
+When the CONDITIONS cannot be reproduced, reproduce the MECHANISM.
+
+### Still open
+
+- [ ] the three timeouts (kafka, intent, and TestSwing's law) are
+      resource starvation, not synchronisation: they take 0.084 s and
+      0.059 s alone against 237 s and 39 s in a loaded gate. Nothing
+      in them is wrong; they are simply starved. Per AGENTS.md's
+      policy the honest options are to give them longer deadlines or
+      to move them to `integrationTest` — and neither should be done
+      by sweeping: each needs its own reading of whether its
+      assertion depends on timing at all.
+- [ ] `okay.persist.TestStable`'s `BindException` is a port
+      collision on a shared box, the class AGENTS.md already
+      describes ("a released ephemeral port is immediately
+      re-bindable by a neighbour"). It binds a real `ServerSocket` in
+      `RaftWire$Node`; a retry on bind, or an OS-assigned port, ends
+      it.

@@ -26,18 +26,47 @@ class TestHybrid extends munit.FunSuite {
     Disclosure("more", false, Text("hidden"), "d")))
 
   /** a client over a scripted host: what it SENT, what it RENDERED */
+  /**
+   * Wait for the client to have rendered `n` frames, rather than for
+   * a duration. Bounded and LOUD: a test that hangs for ten seconds
+   * and then says what it was waiting for is debuggable; one that
+   * sleeps 50 ms and fails an unrelated assertion is not.
+   */
+  private def awaitRendered(counter: java.util.concurrent.atomic.AtomicInteger,
+                            n: Int, what: String): Unit =
+    val deadline = System.currentTimeMillis() + 10_000
+    while counter.get < n && System.currentTimeMillis() < deadline do Thread.`yield`()
+    assert(counter.get >= n, s"timed out after 10 s waiting for $what")
+
   def client(vocab: Set[String], serverLines: Vector[String], userEvents: Vector[Event]): (Vector[String], Vector[Ui]) =
     val sent = scala.collection.mutable.Buffer[String]()
     val frames = scala.collection.mutable.Buffer[Ui]()
     val down = Channel[String]()
     val feed = Channel[Event]()
+    // rendered from the client's fiber and READ from this thread, so
+    // the count is atomic: the buffer itself is only safe to look at
+    // after the join below
+    val rendered = java.util.concurrent.atomic.AtomicInteger(0)
     val host = new Host:
-      def render(ui: Ui): Unit ! Async = async { frames += ui; () }
+      def render(ui: Ui): Unit ! Async =
+        async { frames += ui; rendered.incrementAndGet(); () }
       def events: Source[Event] = Writer.of(feed)
     val fiber = Async.spawn(Wire.client(host, vocab)(Writer.of(down), l => async { sent += l; () }))
     serverLines.foreach(l => { val _ = down.offer(l) })
-    // let the tree land before the user acts
-    Thread.sleep(50)
+    // LET THE TREE LAND BEFORE THE USER ACTS — the precondition this
+    // helper always had, waited for rather than slept through.
+    //
+    // It was `Thread.sleep(50)`, and 50 ms is a guess about a machine
+    // rather than a fact about the program. Under a loaded gate it is
+    // not enough: the first keystroke arrives before the client knows
+    // "name" belongs to a Form, so it crosses the wire as an ordinary
+    // Edited and the ZERO-times law fails with one extra event
+    // (gate-honesty, measured 2026-09-09 — the suite passed 84/84
+    // alone and failed twice in a full 93-module run).
+    //
+    // The library was right both times. The test was asking the clock
+    // a question only the program could answer.
+    awaitRendered(rendered, serverLines.length, "the tree to land")
     userEvents.foreach(e => { val _ = feed.offer(e) })
     val _ = feed.offer(Event.Closed)
     down.close()
