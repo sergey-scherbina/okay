@@ -49,7 +49,11 @@ enum Supervise[+S]:
  * producer that outlives its actor is ordinary, not exceptional, and
  * that is the reading `Channel.send` already takes.
  */
-final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M]):
+final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M],
+                                       /** closed by the loop as it EXITS, which is
+                                        * exactly when every accepted message has
+                                        * been handled — the signal `stop` waits on */
+                                       private[actor] val done: Channel[Unit]):
 
   private val children =
     java.util.concurrent.atomic.AtomicReference[List[ActorRef[?]]](Nil)
@@ -108,24 +112,53 @@ final class ActorRef[M] private[actor] (private[actor] val mailbox: Channel[M]):
    * true. A caller who needs them handled wanted `Resume` or
    * `Restart`; a caller who needs to know they were dropped watches
    * `stopped` on a `tell` that answered true. */
-  def stop(): Unit ! Async = async {
+  def stop(): Unit ! Async =
     // LEAVES INWARD: a child must not outlive its parent's mailbox,
     // so the parent's stop completes only after every child has
     // closed AND drained. Closing the parent first would leave a
-    // child holding messages nobody will ever read
-    children.get.foreach: c =>
-      c.stopBlocking()
-    mailbox.close()
-  }
+    // child holding messages nobody will ever read.
+    //
+    // Written with `flatMap` rather than as one `async { }` block
+    // because `async` SUSPENDS A THUNK — it is not a direct block, so
+    // an `! Async` inside it would have to be run, and running it is
+    // blocking, which is exactly what JS cannot do.
+    def stopAll(cs: List[ActorRef[?]]): Unit ! Async = cs match
+      case Nil => async(())
+      case c :: rest => c.stop().flatMap(_ => stopAll(rest))
+    stopAll(children.get)
+      .flatMap(_ => async(mailbox.close()))
+      .flatMap(_ => drained)
 
-  private[actor] def stopBlocking(): Unit =
-    children.get.foreach(_.stopBlocking())
-    mailbox.close()
-    // drained, not merely closed: the strong contract says the
-    // accepted messages are still coming, and law 8 says a parent
-    // waits for them
-    val deadline = System.currentTimeMillis() + 5000
-    while !mailbox.finished && System.currentTimeMillis() < deadline do Thread.`yield`()
+  /**
+   * Wait for the loop to EXIT, which is exactly the moment every
+   * accepted message has been handled.
+   *
+   * ASYNCHRONOUS, not blocking, and that is not a stylistic
+   * preference. What stood here was
+   *
+   *     val deadline = System.currentTimeMillis() + 5000
+   *     while !mailbox.finished && now < deadline do Thread.`yield`()
+   *
+   * — a busy spin that GAVE UP after five seconds and said nothing, so
+   * the caller believed the law two comments above had held. Measured
+   * (actor-stop-drain): with a handler taking 20 ms, `stop` returned
+   * in 5.038 s having handled 219 of 300 accepted messages and thrown
+   * the other 81 away silently. With a fast handler the deadline
+   * almost sufficed, which is why it had only ever shown up as "299 of
+   * 300, sometimes, under load" — and the spin fed the failure, since
+   * the busier the machine the more of the budget the waiting itself
+   * burned.
+   *
+   * The blocking shape was also wrong for JS, where `CanBlock` does
+   * not exist at all: there are no threads, so a spin cannot yield to
+   * the loop it is waiting for and the five seconds could only ever
+   * be spent, never used. Waiting on the signal asynchronously is what
+   * makes this work on every platform rather than on one.
+   */
+  private[actor] def drained: Unit ! Async =
+    Async.await[Unit]: k =>
+      done.receiveAsync(_ => k(Right(())))
+      () => ()
 
   def stopped: Boolean = mailbox.finished
 
@@ -185,6 +218,10 @@ object Actor:
                  (b: Behavior[S, M])
                  (using sch: Scheduler, cb: CanBlock): ActorRef[M] ! Async =
     async {
+      // the loop's completion signal: closed as the loop exits, which
+      // is what `stop` waits on. A channel rather than a flag, because
+      // waiting on a flag is the spin this replaced.
+      val done = Channel[Unit](2)
       sch.fork { () => async {
         var state = init
         var running = true
@@ -215,6 +252,8 @@ object Actor:
                     to(e); mailbox.fail(e); mailbox.close(); discardRest(); running = false
                   case Supervise.Stop =>
                     mailbox.fail(e); mailbox.close(); discardRest(); running = false
+        done.close()          // the loop has exited: every accepted
+                              // message is handled, and `stop` may return
       }}: Unit
-      ActorRef(mailbox)
+      ActorRef(mailbox, done)
     }

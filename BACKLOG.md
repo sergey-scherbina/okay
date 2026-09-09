@@ -5502,40 +5502,53 @@ not beside the CRDTs.
 - [ ] numbered queues (a ticket per waiter, served in order) only if
       something actually needs them — filed as a question, not work.
 
-## actor-stop-drain — a parent's stop lost one accepted message, under load
+## actor-stop-drain — FIXED 2026-09-09: stop waited by the clock and gave up
 
 `okay.actor.TestChildren`, "law: a parent's stop waits for its
-children to DRAIN", read **299 of 300** in a full `sbt test` on
-2026-09-09 (crdt-wire's gate, 90 modules, the only failure). Three
-isolated runs of the same suite on the same tree passed.
+children to DRAIN", read 299 of 300 in a full 90-module run. Not a
+race — a DECISION:
 
-**This is not the same thing as `resilience-timed-flake`, and the
-difference is the whole entry.** That one asserts `elapsed >= 15 ms`
-— a clock assumption, which a loaded box can defeat without anything
-being wrong. This one has NO timing in it:
+    val deadline = System.currentTimeMillis() + 5000
+    while !mailbox.finished && System.currentTimeMillis() < deadline
+      do Thread.`yield`()
 
-    (0 until 300).foreach(i => child.tell(i).runWith)
-    parent.stop().runWith
-    assertEquals(handled.get, 300)
+`stopBlocking` waited up to five seconds for the drain and then
+returned SILENTLY, so the caller believed the law one comment above
+it — "drained, not merely closed … a parent waits for them" — had
+held.
 
-300 sends into a channel of capacity 1024, so every message is
-ACCEPTED; then `stop`, which the law says waits for accepted messages
-to be handled. 299 means one accepted message was not handled before
-`stop` returned. That is the law failing, not a deadline missed —
-there is a window in the drain that load widens.
+MEASURED with a repro that needs no load at all: a handler taking
+20 ms over 300 messages is six seconds of honest work, one second
+past the deadline.
 
-WHAT IT IS NOT: it is not crdt-wire's doing. okay-actor does not
-depend on okay-crdt and that lane touched neither `Actor` nor
-`Channel`.
+| | before | after |
+|---|---|---|
+| handled | **219 of 300** | **300 of 300** |
+| elapsed | 5.038 s — the deadline exactly | 6.87 s — the work exactly |
 
-- [ ] reproduce it deliberately, which means UNDER LOAD — isolated
-      runs pass, so a bare `testOnly` proves nothing either way. Run
-      the suite with the box busy, or add a stress variant with more
-      children and more messages.
-- [ ] then read `stop`'s drain against `Channel`'s close: the
-      suspicion is a message accepted into the channel after the
-      drain has decided how many there are — the same shape as the
-      sentinel/close races already recorded in okay-stm-consumers.
-- [ ] if it is real, the law is right and the code is wrong; if the
-      law over-promises, say so in the spec and weaken the test
-      deliberately rather than by accident.
+Eighty-one accepted messages dropped without a word. With a fast
+handler the deadline almost sufficed, which is why it had only ever
+appeared as "299 of 300, sometimes, under load" — and the busy spin
+fed the failure: the busier the machine, the more of the budget the
+waiting itself burned.
+
+THE FIX: the actor already has an exact readiness signal — the moment
+its own loop EXITS — and it was being thrown away, since `sch.fork`
+discarded the handle. The loop now closes a `done` channel as it
+leaves, and `stop` awaits that. No deadline, no spin, and no
+blocking: `stop` composes with `flatMap` and `Async.await` instead.
+
+The blocking shape was also unusable on JS, where `CanBlock` does not
+exist — the compiler said so the moment the wait stopped being a
+`Thread.yield` loop. Five seconds there could only be spent, never
+used.
+
+- [x] reproduce deliberately — done, and deterministically.
+- [x] read `stop`'s drain against `Channel`'s close — the answer was
+      simpler than the suspected sentinel race.
+- [x] the law was RIGHT and the code was wrong.
+- [ ] okay-actor has no JS or Native tests (`src/test/` is
+      `scala-jvm` only), so the fix is proved on the JVM and merely
+      COMPILES for the other two. A JS test for `stop` would be worth
+      having, precisely because that is the platform the old code
+      could never have worked on.
