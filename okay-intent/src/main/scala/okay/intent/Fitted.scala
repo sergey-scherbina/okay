@@ -85,6 +85,11 @@ object Fitted {
                               b: Array[Double], low: Int, high: Int) derives Schema
   final case class StaticModel(dim: Int, units: Vector[String],
                                vectors: Vector[Embedding], weights: Array[Double]) derives Schema
+  /** one prototype phrase, pooled: the slot it describes and its unit
+   * vector. The centroids are not persisted — `Spans.train` derives
+   * them, and a derived value written down is a second copy */
+  final case class SpanRow(slot: String, vector: Embedding) derives Schema
+  final case class SpansModel(rows: Vector[SpanRow]) derives Schema
 
   def save(t: Probe.Trained): ProbeModel = ProbeModel(t.classes, Matrix.of(t.w.toSeq), t.b)
   def load(m: ProbeModel): Probe.Trained =
@@ -101,6 +106,13 @@ object Fitted {
   def load(m: GramsModel): CharGrams.Trained =
     CharGrams.Trained(m.classes, m.dim, m.w.rows.toArray, m.b, m.low, m.high,
       Taxon.parsed(m.classes))
+
+  def save(t: Spans.Trained): SpansModel =
+    SpansModel(t.slots.flatMap(slot => t.phrases(slot).map(SpanRow(slot, _))))
+  def load(m: SpansModel): Spans.Trained =
+    // the rows are pooled phrases already; feeding each back as a
+    // one-vector phrase re-derives the same unit vector and centroid
+    Spans.train(m.rows.map(r => r.slot -> Vector(r.vector)))
 
   /**
    * A static table loses its `split` on the way out and takes it back

@@ -63,21 +63,21 @@ contributor's `sbt test` should need.
 
 ## Behavior
 
-- [ ] `inContext` returns exactly the tokens overlapping the phrase's
+- [x] `inContext` returns exactly the tokens overlapping the phrase's
       characters inside the carrier, and none of the carrier's own
-- [ ] `train` normalises each phrase vector and each centroid; a slot
+- [x] `train` normalises each phrase vector and each centroid; a slot
       with no phrases is absent, not a zero vector
-- [ ] `windows` never yields a window that ends on a function word or
+- [x] `windows` never yields a window that ends on a function word or
       is made only of them, and does yield one that opens on one
-- [ ] `find` answers the best window per slot, only at or above the
+- [x] `find` answers the best window per slot, only at or above the
       threshold, with the centroid score and the nearest-phrase score
       both reported
-- [ ] a `SpansModel` survives `Fitted` save and load byte for byte
-- [ ] `Encoder.encode`'s pooled vector equals the mean of its token
+- [x] a `SpansModel` survives `Fitted` save and load byte for byte
+- [x] `Encoder.encode`'s pooled vector equals the mean of its token
       vectors over every attended position — the production
       embedding, not a second one (okay-chat measured cosine 1.0000
       against the langchain4j pooling of the same file)
-- [ ] `Encoder` tokens carry character offsets that cover the text and
+- [x] `Encoder` tokens carry character offsets that cover the text and
       drop the two specials; the suite SKIPS, and says so, when no
       model directory is named
 
@@ -129,7 +129,22 @@ right.
   0.2–0.3 of cosine, so that road is a compromise to measure, not a
   default. BACKLOG.
 
-## Results
+## Results — intent-spans (2026-09-09)
 
-(filled at landing, and by the consumer's shadow run — okay-chat's
-`frame-in-shadow`, which records the frame beside every live turn.)
+Landed as three pieces along the seam the tiers already draw:
+`okay.rag.Token` (a vector with a location; not `okay.lex.Span`,
+which is a lexer's line-and-column for a document), the pure `Spans`
+tier in okay-intent with `Fitted.SpansModel` beside the other four
+models, and `okay-onnx`. The tier's tests run over a fake encoder
+whose vectors are what a word's spelling says — every property in the
+Behavior list is checked without a model on disk. The encoder's tests
+run against the real file when `OKAY_ONNX_MODEL` names it, and the
+one that matters most is the third: a token inside a sentence agrees
+with the same token alone at less than 0.95 — the measurement's
+lesson, now a gate, so that «prototypes in context» cannot quietly
+become pointless under a future encoder that is not contextual.
+
+Not measured here: the tier over the real encoder on real messages.
+That is the consumer's shadow run (okay-chat, `frame-in-shadow`),
+which records the frame beside every live turn and answers, over
+months rather than one evening, where the threshold sits.

@@ -1598,6 +1598,28 @@ lazy val okayLangchain4jEmbed = (project in file("okay-langchain4j-embed"))
   )
 
 /**
+ * The direct ONNX session (specs/intent-spans.md): the same model file
+ * `okay-langchain4j-embed` wraps, opened by this repository's own
+ * hands so that the TOKEN vectors come back beside the pooled one —
+ * one forward pass, both readings. The operator's name for the
+ * module. A native runtime and a model on disk, so — as with
+ * okayLangchain4jEmbed — DELIBERATELY NOT in the root `.aggregate`:
+ * `sbt okayOnnx/test`, with OKAY_ONNX_MODEL naming a model directory
+ * (model.onnx + tokenizer.json), and the suite says SKIPPED without it.
+ */
+lazy val okayOnnx = (project in file("okay-onnx"))
+  .dependsOn(okayRag.jvm)
+  .settings(
+    name := "okay-onnx",
+    libraryDependencies ++= Seq(
+      "com.microsoft.onnxruntime" % "onnxruntime" % "1.20.0",
+      "ai.djl.huggingface" % "tokenizers" % "0.36.0",
+      "org.scalameta" %% "munit" % "1.1.1" % Test,
+    ),
+    Test / fork := true,
+  )
+
+/**
  * A browser-level proof of the chat demo (specs/demo-chat.md,
  * demo-e2e-browser): one real chat round through a headless
  * Chromium, driven by Playwright — the same reasoning as

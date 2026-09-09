@@ -1,5 +1,29 @@
 # Changelog
 
+## intent-spans — typed spans from token vectors, and okay-onnx
+
+A sentence encoder computes a vector per token and mean pooling throws
+them away; okay-chat measured what they are worth for the slot layer
+(its specs/meaning.md, 317 live turns: the place at 93% agreement with
+a hand-written city table and five finds beyond it, with nothing
+fitted). Three pieces along the seam the tiers already draw.
+`okay.rag.Token(text, start, end, vector)` and `Tokens = String =>
+Vector[Token]` — a vector with a location. `okay.intent.Spans`, pure
+and cross-platform: `inContext` (a prototype embedded ALONE is the
+wrong reference for a span INSIDE a sentence, by 0.2–0.3 of cosine —
+so the phrase goes into a carrier and only its own tokens are pooled),
+`train`, `windows` (a span may open on a function word and may not
+close on one), `find` (the best window per slot at or above a
+threshold, centroid and nearest-phrase scores both reported), and
+`Fitted.SpansModel` beside the other four. And `okay-onnx`, the
+operator's name: the direct session over the same model file
+`okay-langchain4j-embed` wraps, answering the pooled vector — mean
+over every position then unit length, what the wrapper computes — AND
+the token vectors from ONE forward pass; outside the root aggregate
+like its sibling, `OKAY_ONNX_MODEL=<dir> sbt okayOnnx/test`, skipping
+and saying so without it. Gate: full matrix green; okayOnnx 4/4 with
+the model, 4 skipped without; 0 warnings.
+
 ## intent-periods-and-zl — a period beside the day, and «зл»
 
 okay-chat measured its slot layer against the production encoder's

@@ -156,6 +156,7 @@ API reference, gotchas.
 | [`okay-script`](modules/okay-script.md) | markdown files as Scala source: fenced blocks through the real Scala 3 compiler in-process, errors pointing at the original `.md` line |
 | [`okay-langchain4j`](modules/okay-langchain4j.md) | their ChatModel as a `Handler[Model]` — their provider breadth behind our effect |
 | [`okay-langchain4j-embed`](modules/okay-langchain4j-embed.md) | their EmbeddingModel as `String => Embedding` and as okay-rag's `Handler[Embed]` |
+| [`okay-onnx`](modules/okay-onnx.md) | the direct ONNX session: the pooled vector AND the token vectors with their characters, from one forward pass — the door `okay.intent.Spans` reads through |
 | [`okay-demo-e2e-browser`](modules/okay-demo-e2e-browser.md) | one chat round through a real headless browser — the fetch/ReadableStream glue a JVM test cannot reach |
 | [`okay-security-argon2`](modules/okay-security-argon2.md) | the one satellite that buys a dependency: Argon2id in the PHC form, RFC-vector-pinned |
 | [`okay-java`](modules/okay-java.md) | the JDK itself as interop: an Aggregator IS a Collector |
